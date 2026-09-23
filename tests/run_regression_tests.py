@@ -40,10 +40,14 @@ RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
 # (test_pet_restart_journey.py a flat-file server; test_mob_gold_dial_runtime.py a
 # server and a level promotion helper). The MySQL playtime journey needs a
 # disposable database and --server, and invokes its repository probe with that
-# database's environment. They are run explicitly, not by the generic test-all
-# runner, which invokes every discovered script with no arguments.
+# database's environment. The economic accounting and baseline schema tests
+# need the disposable loopback schema that run_economic_accounting_schema_mysql.sh
+# prepares. They are run explicitly, not by the generic test-all runner, which
+# invokes every discovered script with no arguments.
 MANUAL_ONLY_TEST_NAMES = frozenset(
     {
+        "test_economic_accounting_schema_mysql.py",
+        "test_economic_baseline_schema_mysql.py",
         "test_mob_gold_dial_runtime.py",
         "test_mysql_playtime_journey.py",
         "test_pet_restart_journey.py",
