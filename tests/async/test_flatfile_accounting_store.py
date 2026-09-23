@@ -15,6 +15,7 @@ SOURCES = [
     "src/persistence/critical_command.c",
     "src/economy/currency_command.c",
     "src/item/item_transfer_command.c",
+    "src/player/player_snapshot_codec.c",
     "src/economy/economic_accounting_types.c",
     "src/economy/economic_accounting_plan.c",
     "src/economy/economic_accounting_intent.c",

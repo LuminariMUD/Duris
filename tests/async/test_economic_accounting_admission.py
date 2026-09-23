@@ -16,6 +16,7 @@ SOURCES = (
     "src/economy/economic_accounting_plan.c",
     "src/economy/economic_accounting_types.c",
     "src/item/item_transfer_command.c",
+    "src/player/player_snapshot_codec.c",
     "src/persistence/critical_command.c",
     "src/persistence/critical_command_journal.c",
     "src/persistence/critical_command_coordinator.c",

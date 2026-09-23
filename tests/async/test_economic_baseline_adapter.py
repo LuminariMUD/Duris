@@ -48,7 +48,7 @@ with tempfile.TemporaryDirectory(prefix='duris-baseline-') as temporary:
             'src/economy/economic_command_admission.c','src/economy/economic_currency_adapter.c',
             'src/persistence/critical_command_coordinator.c','src/persistence/critical_command_journal.c',
             'src/flatfile/flatfile_accounting_store.c','src/flatfile/flatfile_authority_transaction.c','src/flatfile/flatfile_store.c',
-            'src/economy/currency_command.c','src/persistence/critical_command.c','src/item/item_transfer_command.c')]
+            'src/economy/currency_command.c','src/persistence/critical_command.c','src/item/item_transfer_command.c','src/player/player_snapshot_codec.c')]
         command+=['-Wl,--wrap=_Znwm,--wrap=_Znam','-lcrypto','-lz','-pthread','-o',str(executable)]
         subprocess.run(command,check=True)
         environment=dict(os.environ,ASAN_OPTIONS='detect_leaks=1:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1')
