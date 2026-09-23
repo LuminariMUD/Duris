@@ -2215,10 +2215,11 @@ prepare_custody_remove(const std::string &root, const flatfile_authority_lock &l
 					    [](const auto &left, const auto &right)
 					    { return left.item_uid < right.item_uid; }))
 				return flatfile_item_repository_result::invalid;
-			if (std::find_if(
-				    owners.begin(), owners.end(), [&](const auto &owner)
-				    { return item_owner_identity_equal(owner, expected.owner); }) !=
-			    owners.end())
+			if (std::find_if(owners.begin(), owners.end(),
+					 [&](const auto &owner) {
+						 return item_owner_identity_equal(owner,
+										  expected.owner);
+					 }) != owners.end())
 				return flatfile_item_repository_result::invalid;
 			const owner_state *stored_owner = find_owner(&catalog, expected.owner);
 			if (!stored_owner)
@@ -2251,10 +2252,11 @@ prepare_custody_remove(const std::string &root, const flatfile_authority_lock &l
 					    [](const auto &left, const auto &right)
 					    { return left.item_uid < right.item_uid; }))
 				return flatfile_item_repository_result::invalid;
-			if (std::find_if(
-				    owners.begin(), owners.end(), [&](const auto &owner)
-				    { return item_owner_identity_equal(owner, expected.owner); }) !=
-			    owners.end())
+			if (std::find_if(owners.begin(), owners.end(),
+					 [&](const auto &owner) {
+						 return item_owner_identity_equal(owner,
+										  expected.owner);
+					 }) != owners.end())
 				return flatfile_item_repository_result::invalid;
 			const owner_state *stored_owner = find_owner(&catalog, expected.owner);
 			if (!stored_owner)
