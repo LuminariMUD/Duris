@@ -109,6 +109,13 @@ player_snapshot_codec_result player_item_snapshot_list_encode(const std::vector<
     return player_snapshot_codec_result::ok;
 }
 
+// Craft outputs are not exercised here, so refuse to decode them.
+player_snapshot_codec_result player_item_snapshot_list_decode(const uint8_t *, size_t,
+                                      std::vector<player_item_snapshot> *)
+{
+    return player_snapshot_codec_result::invalid_value;
+}
+
 critical_apply_result apply_transfer(const critical_command &command, void *)
 {
     item_transfer_payload payload = {};

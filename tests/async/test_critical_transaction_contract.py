@@ -51,8 +51,10 @@ assert "critical_command_repository_reconcile(connection, command)" in REPOSITOR
 # The per-thread setup goes through the shared helper so the client library
 # is initialised first; MySQL 8 fails mysql_thread_init() without it.
 assert "sql_worker_thread_init()" in REPOSITORY and "mysql_thread_end()" in REPOSITORY
-assert "read_operation(connection, command.operation_id, false" in REPOSITORY
-assert "error == 1205 || error == 1213" in REPOSITORY
+# Reconcile reads ordinary operations without locking; only accounted bank
+# roots take the locking read inside their own transaction.
+assert "read_operation(connection, command.operation_id, accounted_bank" in REPOSITORY
+assert "error == 1205" in REPOSITORY and "error == 1213" in REPOSITORY
 assert "EEXIST" in REPOSITORY and "ERANGE" in REPOSITORY
 assert "command.payload.data()" not in REPOSITORY
 assert "PREPARE " not in REPOSITORY
@@ -116,6 +118,7 @@ with tempfile.TemporaryDirectory(prefix="duris-critical-outbox-") as temporary:
             "g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
             "-pthread", "-Isrc", str(source), rel("critical_outbox.c"),
             rel("corpse_lifecycle_command.c"), rel("item_transfer_command.c"),
+            rel("player_snapshot_codec.c"),
             rel("critical_command.c"), "-lcrypto",
             "-o", str(binary),
         ] + mysql_flags,

@@ -188,8 +188,8 @@ assert "chaos_material_pouch_is(item)" in SALCHEMIST
 assert "chaos_material_pouch_is(jewel)" in SALCHEMIST
 assert "read_object(static_cast<int>(jewel_vnum), VIRTUAL)" in SALCHEMIST
 assert "virtual_jewel" in SALCHEMIST
-assert "chaos_material_pouch_report_generated_failure" in SALCHEMIST
-assert "if (!chaos_material_pouch_record_generated" in SALCHEMIST
+# Virtual pouch encrust is refused until pouch usage can join the craft receipt.
+assert "Virtual Chaos-pouch encrust is temporarily unavailable" in SALCHEMIST
 CHAOS = source("chaos.c").read_text(encoding="utf-8", errors="replace")
 ACTINF = source("actinf.c").read_text(encoding="utf-8", errors="replace")
 ACTOBJ = source("actobj.c").read_text(encoding="utf-8", errors="replace")
