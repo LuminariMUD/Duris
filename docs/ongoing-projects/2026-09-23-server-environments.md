@@ -7,18 +7,18 @@ Plesk install is stopped and kept for rollback. See
 
 ## SSH aliases
 
-All three aliases are defined in the workstation's `~/.ssh/config`. The old
-entry is saved as `~/.ssh/config.bak-20260923`.
+Both aliases are defined in the workstation's `~/.ssh/config`. The old entry is
+saved as `~/.ssh/config.bak-20260923`.
 
 | Alias | Role | Host | Login | Key |
 | --- | --- | --- | --- | --- |
 | `duris` | Public staging/dev | `178.156.165.10` | `duris-staging` | `~/.ssh/duris_ed25519` |
-| `duris-prod` | Production | `178.156.165.10` | `duris` | `~/.ssh/duris_prod_ed25519` |
 | `duris-plesk` | Former staging, stopped | `plesk.luminarimud.com` (`74.208.126.44`) | `duris` | `~/.ssh/duris_ed25519` |
 
-`duris` and `duris-prod` share a machine but are separate accounts and separate
-installs. `duris-staging` has no sudo. Host-level work, such as `ufw`, goes
-through `duris-prod`.
+Production (`duris-prod` below) is the `duris` account on the same machine, with
+a separate install. The workstation's access to that account was removed on
+2026-09-26. `duris-staging` has no sudo, so host-level work, such as `ufw`,
+needs someone with access to the production account.
 
 ## `duris` — staging/dev
 
@@ -57,7 +57,7 @@ listener, no tunnel and no website Redis.
   ed25519 keys copied from Plesk's `duris` account. One has no comment; the other
   is labelled `hermes-agent duris@plesk.luminarimud.com 2026-08-31`. The account
   has no sudo. Host-level work, such as `ufw` rules, packages and the system
-  journal, goes through `duris-prod`.
+  journal, needs the production account.
 - **MariaDB admin.** `'duris-staging'@'localhost'` has
   `ALL PRIVILEGES ON *.* WITH GRANT OPTION` through `unix_socket`, so no password
   is needed:
