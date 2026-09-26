@@ -81,6 +81,7 @@ logs/valgrind/
 *.backup
 *~
 .hermes/
+.kilo/
 /.vscode/
 /core
 /core.*
