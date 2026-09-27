@@ -42,7 +42,7 @@ reward = find(text_combat, 'ship_gain_money(contacts[i].ship, ship, salvage, bou
 reward_queue = find(text_combat, 'queue_ship_save(contacts[i].ship, "combat reward");', reward)
 checks.append(('combat reward queued save', reward, reward_queue, -1, -1))
 
-sink = find(text_combat, 'ship_loss_on_sink(ship, attacker, frag_gain);')
+sink = find(text_combat, 'ship_loss_on_sink(ship, attacker, frag_loss);')
 sink_queue = find(text_combat, 'queue_ship_save(ship, "sink resolution");', sink)
 checks.append(('sink queued save', sink, sink_queue, -1, -1))
 

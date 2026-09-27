@@ -144,6 +144,7 @@ than 9, unless it is sinking.
 | `world cargo [reload\|reset\|save\|update]` | Show both price grids, re-read the market, flatten it to 1.0, write it, or force a drift tick. |
 | `set ship <owner> frags <n>` | Set ship frags. |
 | `set ship <owner> guns\|repair\|sail <amount>` | Train a crew skill. These do not queue a save, so the change persists on the next save or at shutdown. |
+| `setbit ship <owner> <field> <value>` | Set a raw field: `armor0`–`armor3`, `mxarmor0`–`mxarmor3`, `intern0`–`intern3`, `mxintern0`–`mxintern3`, `sail`, `money`, `frags`, `maxspeed`, `capacity`, `air`, `crew`, `chief` or `clearchiefs`. |
 | `rename ship <owner> <new name>` | Rename without charge. |
 | `fire pirate\|hunter\|escort [level]` | At any panel, spawn an NPC ship of that type near this ship. |
 | `lock ai_off\|ai_pirate\|ai_hunter\|ai_escort\|ai_advanced\|ai_basic` | Attach, retype or remove an NPC brain on the ship at this panel. |
@@ -435,9 +436,9 @@ it happens. Immortals and contraband use live prices.
 - A crate weighs 2. The free space is the lesser of the hull's cargo rating
   (+10% with Mirabolan Merchants) minus the load, and the remaining weight
   budget divided by 2.
-- `buy cargo` stacks onto an existing slot of the same commodity and records
-  the invoice, so `list cargo` can show profit. Each `buy contraband` takes a new
-  slot.
+- `buy cargo` and `buy contraband` stack onto an existing slot of the same
+  goods and record the invoice, so `list cargo` can show profit. Only then do
+  they take an empty slot.
 - **Jettison** drops crates over water, and each has a 50% chance to float as a
   salvageable crate. Sinking ships jettison their whole hold. NPC ships under
   fire jettison some cargo.
@@ -450,7 +451,8 @@ it happens. Immortals and contraband use live prices.
 
 - **Buying** needs ship frags at least the commodity's requirement, **or** crew
   skills of deck ≥ 4×, guns ≥ 1× and repair ≥ 2× that requirement. Warships
-  cannot buy contraband. The allowance is the hull's contraband rating scaled
+  cannot buy contraband, and neither can a captain at the maximum alignment,
+  1000 (`MINCONTRAALIGN`). The allowance is the hull's contraband rating scaled
   down when the ship is weight-limited.
 - **Customs** runs when a ship docks at a port by maneuvering. It also runs on
   summon arrival, but a summoned hold is already empty. A port never

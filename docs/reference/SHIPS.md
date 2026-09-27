@@ -340,8 +340,8 @@ map room except mountains. When the next room is illegal the ship stops dead,
 re-centres at 50.5, stops its autopilot, and then may crash:
 
 - no chance unless the crew is at battle stations;
-- otherwise the chance is `50 / ((1 + 2 × sail_mod) × stamina_mod)` against
-  `2d50` (speed is zeroed before this is computed, so it does not matter);
+- otherwise the chance is `(speed + 50) / ((1 + 2 × sail_mod) × stamina_mod)`
+  against `2d50`, with the speed the ship hit the coast at;
 - certain while mindblasted.
 
 `crash_land()` deals `hull_weight / 25 + 1` potential hits of 1–9 damage. The
@@ -499,13 +499,15 @@ Ballistic weapons (catapults) weight closing speed heavily. Direct-fire weapons
    against a flying target;
 5. multiplies the hit chance by the stamina modifier and clamps it to 1–100%.
 
-The number shown to players ("Chance to hit: N%") is not the true
-probability. `volley_hit_event()` hits when `2d50 ≥ 100 − N`. Two dice push
-the result towards the extremes:
+`volley_hit_event()` hits when `2d50 ≥ 100 − N`, which is not a flat N%: two
+dice push the result towards the extremes. Players are shown the real chance,
+`volley_hit_percent(N)` (rounded), both in `look sight` and when firing:
 
-| Shown | 10% | 20% | 30% | 40% | 50% | 60% | 70% | 80% | 90% |
+| N (`weaponsight()`) | 10 | 20 | 30 | 40 | 50 | 60 | 70 | 80 | 90 |
 |-------|----:|----:|----:|----:|----:|----:|----:|----:|----:|
-| Actual | 2.6% | 9.2% | 19.8% | 34.4% | 53.0% | 70.4% | 83.8% | 93.2% | 98.6% |
+| Real chance | 2.6% | 9.2% | 19.8% | 34.4% | 53.0% | 70.4% | 83.8% | 93.2% | 98.6% |
+
+Ramming rolls a flat percentage, so its shown chance is already exact.
 
 ### Firing and volleys
 
@@ -717,7 +719,7 @@ and one time in five at level 1.
 | 1 | 4 ketches, 3 caravels, 3 corvettes | 500–600 | Twilight Cove tier (40231–40241) |
 | 2 | 5 corvettes, 7 destroyers | 700–1000 | Marauders tier (40242–40252) |
 | 3 | 3 corvettes, 3 destroyers, 2 frigates | 2000–3000 | Dark Sun tier (40253–40263) |
-| 4 | 3 dreadnoughts (+ one `SH_ZONE_SHIP` row) | 3000–4000 | Demon tier (40264–40274) |
+| 4 | 3 dreadnoughts (+ one `SH_ZONE_SHIP` row, which "any hull" never picks) | 3000–4000 | Demon tier (40264–40274) |
 
 Crew sizes are 8 (clipper), 9 (ketch), 12 (caravel, corvette), 15 (destroyer),
 18 (frigate) and 25 (dreadnought). `load_npc_ship_crew()` fills berths in order
@@ -1025,6 +1027,7 @@ The focused regressions live in `tests/async/`. Run them directly, for example
 | `test_ship_boot_loads_every_row.py` | `sql_load_all_ships()` loads more than 512 rows. |
 | `test_ship_boot_room_pool_full.py` | Booting more ships than the room pool holds: all-or-nothing room claims, unplaced ships destroyed with their rows kept and placed again as rooms free up, the hull-change room check, and a clean shutdown (real loader, layout, retry and `shutdown_ships()`, ASan/UBSan). |
 | `test_ship_purchase_room_guards.py` | A hull change that the pool cannot hold is refused or refunded, and a first-ship purchase by an owner with a stored ship brings it back instead (real `ship_hull_purchase_committed()`). |
+| `test_ship_documented_bugs.py` | The fixes for the bugs this document listed: true volley chances, crash speed, disembark edge, fleet frag loss, contraband stacking and alignment gate, summon quote, `Ship.Info`, counter-ram, zone-ship picks, stale comments and help drift. |
 | `test_ship_boarders_use_target_rooms.py` | Pirate boarders land only in the target's own, non-contiguous rooms. |
 | `test_ship_damage_control.py` | Ship Damage Control reduces sail and hull damage with the owner aboard. |
 | `test_player_save_owned_ship.py` | A player save queues or writes the ship the player owns, never the one they stand in (real `do_save_silent()`). |
@@ -1038,59 +1041,15 @@ The focused regressions live in `tests/async/`. Run them directly, for example
 
 ## Known issues and discrepancies
 
-These were found by reading the code while writing this document. None has been
-reproduced in a running server.
+These were found by reading the code while writing this document. The code bugs
+among them are fixed; `test_ship_documented_bugs.py` pins the fixes. Two need a
+decision rather than a fix:
 
-1. The volley roll `2d50 ≥ 100 − N` makes the displayed hit chance inaccurate
-   (see the table in [Hit chance](#hit-chance)).
-2. `ShipData::z` is never set, so flying gives no range advantage, despite the
-   comment on `range()`. The flying defence is the 1.5× miss multiplier and
-   ram immunity.
-3. The coastline crash chance ignores speed: `ship->speed` is zeroed before the
-   formula reads it.
-4. The disembark "edge of the ship" test in `ship_room_proc()` derives the room
-   slot from `vnum % 10`, which only matches when the pool happens to allocate
-   aligned rooms. For Cruisers and Dreadnoughts it is bypassed (docking bay only).
-5. The sinking victim loses only the **per-ship share** of frags when several
-   ships split the kill, because `ship_loss_on_sink()` receives the divided
-   value.
-6. `buy contraband` never stacks onto an existing slot. It searches only for an
-   empty slot, so every purchase uses a new one.
-7. The contraband alignment gate (`GET_ALIGNMENT > MINCONTRAALIGN`, 1000) can
-   never trigger, because alignment is capped at 1000.
-8. The shipwright's "summon for a small fee of hull × 100" prompt quotes double
-   the charged price (`summon_ship()` charges hull weight × 50 copper).
-9. `Ship.Info` reports `people` as 0 (`ShipData::people` is never written),
-   `maxSail` as the constant 250 rather than the class maximum, and `status`
-   with colour codes embedded.
-10. When the **target** of a ram has a fitted ram, its counter-hit is sized with
-    `eq_ram_damage(ship)`, the rammer's ram, instead of its own
-    (`try_ram_ship()`).
-11. `find_ship_setup(4, -1, …)` can pick the `SH_ZONE_SHIP` row. That is only
-    reachable through the immortal `fire pirate 4` family, because ambushes stop
-    at level 3.
-12. The `warship.sails.damage.reduction` property in `lib/duris.properties` is not
-    read anywhere. `ship.cargo.minPriceMod` and `ship.cargo.maxPriceMod` (and the
-    contraband pair) are also inert: their clamp is commented out in
-    `read_cargo()`.
-13. Two comments are stale: the one on `is_diplomat_slot()` and its neighbours
-    says the diplomat "legitimises contraband" (it suppresses pirates and taxes
-    sales by 10%), and the one on `set_chief()` refers to a non-existent
-    `setship … chief` command (`set ship` supports `frags`, `guns`, `repair`
-    and `sail` only).
-14. **In-game help drift.** Player help for ships comes from
-    `lib/information/helpships` (topic `ships`, pages `SHIP1`–`SHIP5`), the
-    `Ship`, `Ship basic`, `Ship list`, `Ship movement`, `Ship combat`,
-    `Ship cargo`, `Ship looks`, `Ship commands` and `Ship crews` entries in
-    `help/duris_help_parsed.hlp`, and the `SHIP DAMAGE CONTROL` skill entry in
-    `lib/information/help_index`. Known drift:
-    - `SHIP2` gives 45° fore/rear and 120° beam arcs (the code uses 80° and
-      100°).
-    - `SHIP1` says turning slows at speed (it improves with speed).
-    - `SHIP4` says maneuvering needs speed ≤ 10 (the code allows ≤ 20).
-    - `Ship commands` offers `repair weapon all` (`repair weapon` takes a slot;
-      use `repair all`).
-    - The `Ship cargo` entry contains about 70 pasted prompt lines.
-    - The index points at `Ship npcs`, `Ship Weapons` and `Toggle Shipmap`,
-      none of which has an entry in the repository help sources. `Ship Damage
-      Control` has one only in `lib/information/help_index`.
+1. **Flying gives no range advantage.** `ShipData::z` is always 0, so a flying
+   ship is no farther away than a surface one. Its defence is the 1.5× miss
+   multiplier and ram immunity. Giving it altitude would change ship combat.
+2. **Inert properties.** `warship.sails.damage.reduction` in
+   `lib/duris.properties` is not read anywhere, and the cargo and contraband
+   `minPriceMod`/`maxPriceMod` clamp is commented out in `read_cargo()`, so
+   those properties do nothing. Wiring either in would change warship combat
+   or the cargo economy.
