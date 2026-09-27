@@ -508,6 +508,10 @@ included. Travel time uses the ship's speed with an empty hold:
 A sunk ship arrives with no sail. Its speed counts as 2, so fetching a wreck
 from the Locker takes about 62 minutes.
 
+A summons still under way at a reboot or copyover is lost. The ship comes back
+where it last docked (Davy Jones' Locker for a wreck) and can be summoned
+again. The fee is not refunded.
+
 ### Timers at sea
 
 | Timer | Ticks |

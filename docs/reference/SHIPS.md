@@ -183,7 +183,11 @@ and NPC. It is keyed by the hull object and capped at `MAXSHIPS` (2000).
 ### Flags
 
 `ShipData::flags` is persisted wholesale, so runtime bits such as `LOADED`,
-`DOCKED` and `SUMMONED` travel through the database too.
+`DOCKED` and `SUMMONED` travel through the database too. `load_ship()` clears
+the transient ones (`SINKING`, `FLYING`, `RAMMING`, `SUNKBYNPC`,
+`ATTACKBYNPC` and `SUMMONED`) and sets `DOCKED` and `LOADED`. The summon's
+arrival event is not saved, so a summons in flight at a reboot or copyover is
+dropped and the ship comes back at its anchor.
 
 | Flag | Meaning |
 |------|---------|
@@ -534,6 +538,12 @@ Each arc has **armour** over **internal structure** (`damage_hull()`):
    (`val2`). A weapon is damaged at 1 or more (cannot fire) and destroyed at 100.
 5. One hull hit in nine knocks everyone aboard off their feet.
 
+Before any of that, and before sail damage in `damage_sail()`, the owner's
+**Ship Damage Control** epic skill reduces the hit while the owner is aboard
+(`captain_is_aboard()`): `epic_ship_damage_control()` removes 4% plus a fifth
+of the skill in percent (24% at 100), never going below 1 point. Damage a
+character deals to a hull (`ch_damage_hull()`) is not reduced.
+
 `update_ship_status()` clamps values at zero and counts **breached** arcs
 (armour and internal both 0):
 
@@ -799,7 +809,10 @@ changed them since:
 `sql_save_ship()` inserts the `ships` row on first save (then reads back the
 id) or updates it. It then upserts armour, crew and slots in one multi-statement
 batch inside a transaction, joining the caller's transaction if one is open
-(`shutdown_ships()` owns one). `sql_load_all_ships()` loads every owner's ship
+(`shutdown_ships()` owns one). When the batch or the commit fails, only a ship
+whose row this same call inserted goes back to `db_id == -1`. An existing ship
+keeps its id, so its retry updates rather than inserting into
+`UNIQUE(owner_name)`. `sql_load_all_ships()` loads every owner's ship
 at boot. `sql_delete_ship()` deletes the `ships` row (children cascade) and
 queues invalidation of the retired Redis snapshot key.
 
@@ -827,7 +840,9 @@ those legacy files (not part of the default build).
   combat-reward, sinking and summon paths all queue.
 - **`write_ship()`** writes immediately. Only renames use it, because they must
   roll back on failure. `rename_ship_owner()` restores the old owner and name if
-  the write fails.
+  the write fails. A character rename (`rename_character()`) moves the ship the
+  character owns (`get_ship_from_owner()`, wherever they stand) before the
+  database and locker renames, and hands it back if either of those fails.
 - **Copyover.** `drain_pending_ship_saves()` ignores the retry gate. If any
   pending ship cannot be made durable, the copyover is aborted.
 - **Shutdown.** `shutdown_ships()` puts every passenger and loose object in a
@@ -900,7 +915,8 @@ toggle get a text look-out every time the ship changes room.
 - **Innates.** `SEADOG` adds 2 to maximum speed at the helm and 10% to cargo
   sale proceeds.
 - **Epic.** `EPIC_SHIP_PVP` progress for PvP kills. The **Ship Damage Control**
-  epic skill is buyable but currently has no effect (see below).
+  epic skill reduces sail and hull damage to its owner's ship while the owner
+  is aboard (see [Damage model](#damage-model)).
 - **Economy hooks.** Cargo purchases apply `EPIC_BONUS_CARGO`. Cargo sale
   proceeds pass through `check_nexus_bonus(NEXUS_BONUS_CARGO)`.
 - **CTF.** A ship carrying a CTF flag (objects 790–792, or a flag carrier aboard)
@@ -956,6 +972,12 @@ The focused regressions live in `tests/async/`. Run them directly, for example
 | `test_ship_owner_rename_failure.py`, `run_ship_owner_rename_failure.sh` | `rename_ship_owner()` rollback. |
 | `test_ship_nested_transaction.py`, `test_ship_shutdown_txn.py` | Joining the caller's transaction, and the batched shutdown. |
 | `test_ship_cargo_txn.py`, `test_auction_ship_txn_fixes.py` | Cargo market write transactions and ship `db_id` reset on failed inserts. |
+| `test_ship_save_failure_keeps_db_id.py` | A failed save keeps an existing ship's `db_id` and forgets a rolled-back insert (real `sql_save_ship()`). |
+| `test_character_rename_ship_ownership.py` | Character renames move the owned ship, charge once, and roll back on failure (real `rename_character()` and rename hook). |
+| `test_ship_load_clears_summon.py` | `load_ship()` drops a stale `SUMMONED`. |
+| `test_ship_boot_loads_every_row.py` | `sql_load_all_ships()` loads more than 512 rows. |
+| `test_ship_boarders_use_target_rooms.py` | Pirate boarders land only in the target's own, non-contiguous rooms. |
+| `test_ship_damage_control.py` | Ship Damage Control reduces sail and hull damage with the owner aboard. |
 | `test_ship_name_purchase.py` | Coloured names and the pending hull-purchase context. |
 | `test_ship_shop_list_contract.py` | Shipwright listing output. |
 | `test_ship_autopilot_group_safety.py` | Autopilot bounds and message audiences. |
@@ -967,82 +989,46 @@ The focused regressions live in `tests/async/`. Run them directly, for example
 ## Known issues and discrepancies
 
 These were found by reading the code while writing this document. None has been
-reproduced in a running server. Treat the first four as open bugs.
+reproduced in a running server.
 
-1. **A failed SQL update makes a ship unsaveable** (`sql_save_ship()`,
-   `src/sql/sql_player.c`). The failure paths after the batch reset
-   `ship->db_id = -1` even when the ship already had a row. The next save then
-   takes the insert path, collides with `UNIQUE(owner_name)` and fails, and
-   keeps failing until reboot. At shutdown, `shutdown_ships()` treats that
-   failure as corruption. The reset is only correct for a brand-new insert that
-   was rolled back.
-2. **Character renames and ship ownership** (`rename_character()` and
-   `mob_do_rename_hook()`, `src/net/modify.c`). `rename_character()` decides
-   whether to move ship ownership with `get_ship_from_char()` (is the character
-   standing aboard *any* ship?) rather than by ownership. It does so after the
-   SQL player rename and the locker rename have already happened. The paid-rename
-   hook then calls `rename_ship_owner()` unconditionally, and returns before
-   charging if that fails. The consequences:
-   - When an immortal renames an owner who is ashore, the ship stays under the
-     old name, so the renamed character no longer owns it.
-   - A character without a ship who is standing aboard someone else's ship gets
-     the SQL rename, but `rename_character()` returns failure before updating the
-     in-memory name.
-   - A paid rename is free for a character without a ship, or one aboard their
-     own ship, who is told "Ship ownership update failed". It is charged
-     correctly only for an owner who is ashore.
-3. **`SUMMONED` survives reboot and copyover.** The flag is persisted but the
-   `summon_ship_event()` is not. After a restart the ship loads at its old anchor
-   with `SUMMONED` still set, and `summon` answers "There is already an order out
-   on your ship" until a hull change or sinking clears it (`reset_ship()`).
-4. **SQL boot loads at most 512 ships** (`sql_load_all_ships()` collects owner
-   names into a fixed `[512]` array). Any further rows are silently skipped,
-   though `MAXSHIPS` is 2000.
-5. The **Ship Damage Control** epic skill is sold (`epic_skills.c`) but its only
-   call sites in `damage_sail()` and `damage_hull()` are commented out.
-6. The volley roll `2d50 ≥ 100 − N` makes the displayed hit chance inaccurate
+1. The volley roll `2d50 ≥ 100 − N` makes the displayed hit chance inaccurate
    (see the table in [Hit chance](#hit-chance)).
-7. `ShipData::z` is never set, so flying gives no range advantage, despite the
+2. `ShipData::z` is never set, so flying gives no range advantage, despite the
    comment on `range()`. The flying defence is the 1.5× miss multiplier and
    ram immunity.
-8. The coastline crash chance ignores speed: `ship->speed` is zeroed before the
+3. The coastline crash chance ignores speed: `ship->speed` is zeroed before the
    formula reads it.
-9. The disembark "edge of the ship" test in `ship_room_proc()` derives the room
+4. The disembark "edge of the ship" test in `ship_room_proc()` derives the room
    slot from `vnum % 10`, which only matches when the pool happens to allocate
    aligned rooms. For Cruisers and Dreadnoughts it is bypassed (docking bay only).
-10. The sinking victim loses only the **per-ship share** of frags when several
-    ships split the kill, because `ship_loss_on_sink()` receives the divided
-    value.
-11. `buy contraband` never stacks onto an existing slot. It searches only for an
-    empty slot, so every purchase uses a new one.
-12. The contraband alignment gate (`GET_ALIGNMENT > MINCONTRAALIGN`, 1000) can
-    never trigger, because alignment is capped at 1000.
-13. The shipwright's "summon for a small fee of hull × 100" prompt quotes double
-    the charged price (`summon_ship()` charges hull weight × 50 copper).
-14. `Ship.Info` reports `people` as 0 (`ShipData::people` is never written),
-    `maxSail` as the constant 250 rather than the class maximum, and `status`
-    with colour codes embedded.
-15. When the **target** of a ram has a fitted ram, its counter-hit is sized with
+5. The sinking victim loses only the **per-ship share** of frags when several
+   ships split the kill, because `ship_loss_on_sink()` receives the divided
+   value.
+6. `buy contraband` never stacks onto an existing slot. It searches only for an
+   empty slot, so every purchase uses a new one.
+7. The contraband alignment gate (`GET_ALIGNMENT > MINCONTRAALIGN`, 1000) can
+   never trigger, because alignment is capped at 1000.
+8. The shipwright's "summon for a small fee of hull × 100" prompt quotes double
+   the charged price (`summon_ship()` charges hull weight × 50 copper).
+9. `Ship.Info` reports `people` as 0 (`ShipData::people` is never written),
+   `maxSail` as the constant 250 rather than the class maximum, and `status`
+   with colour codes embedded.
+10. When the **target** of a ram has a fitted ram, its counter-hit is sized with
     `eq_ram_damage(ship)`, the rammer's ram, instead of its own
     (`try_ram_ship()`).
-16. `NPCShipAI::board_target()` places boarders at `target->bridge + room_no`,
-    which assumes the target's interior vnums are contiguous. Interior rooms are
-    claimed first-free from a pool that NPC spawns and despawns fragment, so a
-    boarder can land in another ship's room or in an idle pool room. The ship's
-    own crew always loads on its bridge and is unaffected.
-17. `find_ship_setup(4, -1, …)` can pick the `SH_ZONE_SHIP` row. That is only
+11. `find_ship_setup(4, -1, …)` can pick the `SH_ZONE_SHIP` row. That is only
     reachable through the immortal `fire pirate 4` family, because ambushes stop
     at level 3.
-18. The `warship.sails.damage.reduction` property in `lib/duris.properties` is not
+12. The `warship.sails.damage.reduction` property in `lib/duris.properties` is not
     read anywhere. `ship.cargo.minPriceMod` and `ship.cargo.maxPriceMod` (and the
     contraband pair) are also inert: their clamp is commented out in
     `read_cargo()`.
-19. Two comments are stale: the one on `is_diplomat_slot()` and its neighbours
+13. Two comments are stale: the one on `is_diplomat_slot()` and its neighbours
     says the diplomat "legitimises contraband" (it suppresses pirates and taxes
     sales by 10%), and the one on `set_chief()` refers to a non-existent
     `setship … chief` command (`set ship` supports `frags`, `guns`, `repair`
     and `sail` only).
-20. **In-game help drift.** Player help comes from two places:
+14. **In-game help drift.** Player help comes from two places:
     `lib/information/helpships` (topic `ships`, pages `SHIP1`–`SHIP5`) and the
     `Ship`, `Ship basic`, `Ship list`, `Ship movement`, `Ship combat`,
     `Ship cargo`, `Ship looks`, `Ship commands` and `Ship crews` entries in
