@@ -838,11 +838,14 @@ those legacy files (not part of the default build).
   pending, and `flush_pending_ship_saves()` (every 2 pulses) writes it unless
   its signature matches the last durable write. A failure keeps the ship pending
   with a 1-second retry gate. The docking, purchase, repair, hiring, cargo,
-  combat-reward, sinking and summon paths all queue.
+  combat-reward, sinking and summon paths all queue, and so does a player
+  checkpoint, for the loaded player ship the character owns (not one they stand
+  in).
 - **`write_ship()`** writes immediately. Besides the queue's own flush and
-  drain, it is called directly by `shutdown_ships()`, by the synchronous player
-  save `do_save_silent()` (see [Known issues](#known-issues-and-discrepancies))
-  and by both renames. `rename_ship_owner()` restores the old owner and name if
+  drain, it is called directly by `shutdown_ships()`, by both renames, and by
+  the fallback branch of the player save `do_save_silent()` (a character
+  without a pid, or a terminal save type), which writes the character's own
+  loaded ship and reports a failed write as a failed save. `rename_ship_owner()` restores the old owner and name if
   the write fails; `rename_ship()` does not roll back. A character rename
   (`rename_character()`) moves the ship the character owns
   (`get_ship_from_owner()`, wherever they stand) before the database and locker
@@ -987,6 +990,7 @@ The focused regressions live in `tests/async/`. Run them directly, for example
 | `test_ship_boot_loads_every_row.py` | `sql_load_all_ships()` loads more than 512 rows. |
 | `test_ship_boarders_use_target_rooms.py` | Pirate boarders land only in the target's own, non-contiguous rooms. |
 | `test_ship_damage_control.py` | Ship Damage Control reduces sail and hull damage with the owner aboard. |
+| `test_player_save_owned_ship.py` | A player save queues or writes the ship the player owns, never the one they stand in (real `do_save_silent()`). |
 | `test_ship_name_purchase.py` | Coloured names and the pending hull-purchase context. |
 | `test_ship_shop_list_contract.py` | Shipwright listing output. |
 | `test_ship_autopilot_group_safety.py` | Autopilot bounds and message audiences. |
@@ -1037,15 +1041,7 @@ reproduced in a running server.
     sales by 10%), and the one on `set_chief()` refers to a non-existent
     `setship … chief` command (`set ship` supports `frags`, `guns`, `repair`
     and `sail` only).
-14. The synchronous player save `do_save_silent()` (`src/cmd/actoth.c`), used by
-    deferred-save flushes, soulbinding, epic-skill purchases, account rewards,
-    tradeskills and more, also writes the ship the player is **standing in**
-    (`get_ship_from_char()`), not the one they own. `write_ship()` refuses NPC
-    ships, so while a player stands aboard a boarded NPC ship every such save
-    reports failure although the character was written: deferred saves retry
-    with "Save attempt failed" and a persistence alert. A player aboard someone
-    else's ship writes that ship instead.
-15. **In-game help drift.** Player help for ships comes from
+14. **In-game help drift.** Player help for ships comes from
     `lib/information/helpships` (topic `ships`, pages `SHIP1`–`SHIP5`), the
     `Ship`, `Ship basic`, `Ship list`, `Ship movement`, `Ship combat`,
     `Ship cargo`, `Ship looks`, `Ship commands` and `Ship crews` entries in
