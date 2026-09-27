@@ -142,7 +142,10 @@ Interior rooms come from a fixed pool in zone 600 (`areas/wld/ship.wld`, vnums
 
 The remaining 4,997 rooms are handed out by `find_free_ship_room()`. A room is
 in use while its `funct` is `ship_room_proc`, and `clear_ship_layout()`
-returns it to the pool. The pool must stay contiguous.
+returns it to the pool. The pool must stay contiguous. At 2 to 15 rooms per
+hull it holds between 333 and 2,498 ships, depending on the hull mix.
+`set_ship_physical_layout()` claims all of a ship's rooms or none: when the pool
+runs out part-way, it gives back what it had claimed.
 
 Each hull class has a fixed interior graph built by `set_ship_layout()`. It is
 first built as slot indices, then wired to real rooms by
@@ -243,10 +246,13 @@ stateDiagram-v2
 - **Name.** `name_ship()` rebuilds the hull object's strings. The hull
   prototype's strings are shared by every copy, so the old pointers are
   dropped rather than freed. That is deliberate, not a leak.
-- **Load.** `load_ship(ship, real_room)` claims interior rooms, puts the panel
-  on the bridge and the hull in the room, sets `DOCKED | LOADED`, clears
-  `SINKING`, `FLYING`, `SUNKBYNPC`, `ATTACKBYNPC`, `RAMMING` and `SUMMONED`,
-  and records the room as the anchor.
+- **Load.** `load_ship(ship, real_room)` first clears `LOADED`, which is saved
+  with the other flags. It then claims interior rooms, puts the panel on the
+  bridge and the hull in the room, sets `DOCKED | LOADED`, clears `SINKING`,
+  `FLYING`, `SUNKBYNPC`, `ATTACKBYNPC`, `RAMMING` and `SUMMONED`, and records
+  the room as the anchor. If it fails, usually because the room pool is full,
+  every caller erases and destroys the ship. Boot keeps its row for a later
+  boot, and a purchase is refunded or not charged.
 - **Undock.** `order undock` checks the sails, mobility and
   `check_undocking_conditions()`: a legal name, weapons allowed on the hull,
   per-arc mount and weight limits, and the captain's level at least the hull's
@@ -810,12 +816,16 @@ changed them since:
 `sql_save_ship()` inserts the `ships` row on first save (then reads back the
 id) or updates it. It then upserts armour, crew and slots in one multi-statement
 batch inside a transaction, joining the caller's transaction if one is open
-(`shutdown_ships()` owns one). When the batch or the commit fails, only a ship
-whose row this same call inserted goes back to `db_id == -1`. An existing ship
-keeps its id, so its retry updates rather than inserting into
-`UNIQUE(owner_name)`. `sql_load_all_ships()` loads every owner's ship
-at boot. `sql_delete_ship()` deletes the `ships` row (children cascade) and
-queues invalidation of the retired Redis snapshot key.
+(`shutdown_ships()` owns one). When the batch fails, only a ship whose row this
+same call inserted goes back to `db_id == -1`. An existing ship keeps its id, so
+its retry updates rather than inserting into `UNIQUE(owner_name)`. A failed
+COMMIT may still have been applied, with its reply lost. So a ship whose row it
+inserted keeps the id, marked unconfirmed (`ShipData::db_id_unconfirmed`). Its
+next save looks the row up by id first, then updates it, or inserts again if
+the row is not there. `sql_load_all_ships()` loads every owner's ship at boot.
+It destroys a ship that `load_ship()` cannot place, and keeps its row.
+`sql_delete_ship()` deletes the `ships` row (children cascade) and queues
+invalidation of the retired Redis snapshot key.
 
 **Flat file** (`__NO_MYSQL__`). One checksummed catalog,
 `<state root>/domains/ship_catalog` (magic `DURSHIP\0`, version 1, atomic
@@ -842,22 +852,31 @@ those legacy files (not part of the default build).
   checkpoint, for the loaded player ship the character owns (not one they stand
   in).
 - **`write_ship()`** writes immediately. Besides the queue's own flush and
-  drain, it is called directly by `shutdown_ships()`, by both renames, and by
-  the fallback branch of the player save `do_save_silent()` (a character
-  without a pid, or a terminal save type), which writes the character's own
-  loaded ship and reports a failed write as a failed save. `rename_ship_owner()` restores the old owner and name if
-  the write fails; `rename_ship()` does not roll back. A character rename
-  (`rename_character()`) moves the ship the character owns
-  (`get_ship_from_owner()`, wherever they stand) before the database and locker
-  renames, and hands it back if either of those fails.
+  drain, it is called directly by `shutdown_ships()`, by `rename_ship()` and
+  `rename_ship_owner()`, and by the fallback branch of the player save
+  `do_save_silent()` (a character without a pid, or a terminal save type),
+  which writes the character's own loaded ship and reports a failed write as a
+  failed save. `rename_ship_owner()` restores the old owner and name if the
+  write fails; `rename_ship()` does not roll back.
+- **Character rename.** `rename_character()` stores the player row and the ship
+  the character owns (`get_ship_from_owner()`, wherever they stand) in one
+  transaction, `sql_rename_player_and_ship()`. The ship's new owner is set in
+  memory first (`begin_ship_owner_change()`). Unless the transaction commits, it
+  is put back from memory, with no further write. A failed COMMIT is settled by
+  reading the player row back. If that read fails too, the rename is reported
+  as failed and staff are told it may have been stored, but the player row and
+  the ship still carry the same name. If the locker rename fails afterwards, a
+  second transaction moves both back. If that does not commit either, the
+  rename stands for both of them, and only the locker keeps the old name.
 - **Copyover.** `drain_pending_ship_saves()` ignores the retry gate. If any
   pending ship cannot be made durable, the copyover is aborted.
 - **Shutdown.** `shutdown_ships()` puts every passenger and loose object in a
-  ship at the ship's anchor room, then writes every ship in one SQL
-  transaction. A failed write or commit is treated as corruption
-  (`panic_corruption()`).
-- **Boot.** `initialize_ships()` attaches the procedures, loads every ship at
-  its anchor (docked), deletes ships flagged `TO_DELETE`, loads the cargo
+  ship at the ship's anchor room, skipping rooms a ship does not have, then
+  writes every ship in one SQL transaction. A failed write or commit of a
+  loaded player ship is treated as corruption (`panic_corruption()`).
+- **Boot.** `initialize_ships()` attaches the procedures, loads every ship that
+  fits in the room pool at its anchor (docked), deletes ships flagged
+  `TO_DELETE`, loads the cargo
   market, spawns Cyric's Revenge and seeds the moonstone fragments (skipped
   during Redis world recovery).
 
@@ -984,10 +1003,11 @@ The focused regressions live in `tests/async/`. Run them directly, for example
 | `test_ship_owner_rename_failure.py`, `run_ship_owner_rename_failure.sh` | `rename_ship_owner()` rollback. |
 | `test_ship_nested_transaction.py`, `test_ship_shutdown_txn.py` | Joining the caller's transaction, and the batched shutdown. |
 | `test_ship_cargo_txn.py`, `test_auction_ship_txn_fixes.py` | Cargo market write transactions and ship `db_id` reset on failed inserts. |
-| `test_ship_save_failure_keeps_db_id.py` | A failed save keeps an existing ship's `db_id` and forgets a rolled-back insert (real `sql_save_ship()`). |
-| `test_character_rename_ship_ownership.py` | Character renames move the owned ship, charge once, and roll back on failure (real `rename_character()` and rename hook). |
+| `test_ship_save_failure_keeps_db_id.py` | A failed save keeps an existing ship's `db_id` and forgets a rolled-back insert. A first save whose COMMIT fails, whether rejected or applied with its reply lost, is settled on the next save (real `sql_save_ship()`). |
+| `test_character_rename_ship_ownership.py` | Character renames store the player row and the owned ship in one transaction and charge once. Faults are injected in each statement, the COMMIT, the ROLLBACK, the read-back and the locker (real `rename_character()`, rename hook and `sql_rename_player_and_ship()`). |
 | `test_ship_load_clears_summon.py` | `load_ship()` drops a stale `SUMMONED`. |
 | `test_ship_boot_loads_every_row.py` | `sql_load_all_ships()` loads more than 512 rows. |
+| `test_ship_boot_room_pool_full.py` | Booting more ships than the room pool holds: all-or-nothing room claims, unplaced ships destroyed with their rows kept, and a clean shutdown (real loader, layout and `shutdown_ships()`, ASan/UBSan). |
 | `test_ship_boarders_use_target_rooms.py` | Pirate boarders land only in the target's own, non-contiguous rooms. |
 | `test_ship_damage_control.py` | Ship Damage Control reduces sail and hull damage with the owner aboard. |
 | `test_player_save_owned_ship.py` | A player save queues or writes the ship the player owns, never the one they stand in (real `do_save_silent()`). |
@@ -1057,3 +1077,11 @@ reproduced in a running server.
     - The index points at `Ship npcs`, `Ship Weapons` and `Toggle Shipmap`,
       none of which has an entry in the repository help sources. `Ship Damage
       Control` has one only in `lib/information/help_index`.
+15. A hull change does not check that the room pool can hold the new layout.
+    `reset_ship()` frees the old rooms and ignores a failed
+    `set_ship_physical_layout()`. So upgrading a hull while the pool is nearly
+    full leaves a loaded ship with no rooms.
+16. A ship left out at boot because the room pool is full keeps its row, but
+    its owner has no ship in the game. If they buy one once rooms free up, its
+    first save collides with that row on `UNIQUE(owner_name)` and keeps
+    failing, so the new ship is lost at the next reboot.
