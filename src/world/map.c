@@ -31,6 +31,7 @@ using namespace std;
 #include "world/vnum.mob.h"
 #include "world/vnum.obj.h"
 #include "world/weather.h"
+#include "classes/necromancy.h"
 
 struct continent
 {
@@ -537,7 +538,11 @@ int whats_in_maproom(P_char ch, int room, int distance, int show_regardless)
 			}
 			else if (obj->type == ITEM_CORPSE)
 			{
-				if (!str_cmp(ch->player.name, obj->action_description) ||
+				/* Your own corpse, by pid, since you may have been renamed
+				 * since it was made. */
+				if ((IS_PC(ch) && IS_SET(obj->value[CORPSE_FLAGS], PC_CORPSE) &&
+				     obj->value[CORPSE_PID] == GET_PID(ch)) ||
+				    !str_cmp(ch->player.name, obj->action_description) ||
 				    IS_TRUSTED(ch) || has_innate(ch, INNATE_VISION_OF_THE_DEAD))
 				{
 					val = MIN(val, CONTAINS_CORPSE);

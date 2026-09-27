@@ -15863,8 +15863,11 @@ void spell_resurrect(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int 
 
 		for (t_ch = character_list; t_ch; t_ch = t_ch->next)
 		{
+			/* The corpse's owner, by pid first: a corpse keeps the name it
+			 * was made under, and its owner may have been renamed since. */
 			if (t_ch && IS_PC(t_ch) &&
-			    !str_cmp(t_ch->player.name, obj->action_description))
+			    (GET_PID(t_ch) == obj->value[CORPSE_PID] ||
+			     !str_cmp(t_ch->player.name, obj->action_description)))
 			{
 				if (t_ch == ch)
 				{
@@ -16271,8 +16274,11 @@ void spell_lesser_resurrect(int level, P_char ch, char * /*arg*/, [[maybe_unused
 
 		for (t_ch = character_list; t_ch; t_ch = t_ch->next)
 		{
+			/* The corpse's owner, by pid first: a corpse keeps the name it
+			 * was made under, and its owner may have been renamed since. */
 			if (t_ch && IS_PC(t_ch) &&
-			    !str_cmp(t_ch->player.name, obj->action_description))
+			    (GET_PID(t_ch) == obj->value[CORPSE_PID] ||
+			     !str_cmp(t_ch->player.name, obj->action_description)))
 			{
 				if (t_ch == ch)
 				{

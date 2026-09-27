@@ -79,10 +79,10 @@ enum class sql_commit_outcome
 	unknown,
 };
 
-// rename the character's player row and save the ship they own (NULL for
-// none, its owner already changed in memory) in one transaction
-sql_commit_outcome sql_rename_player_and_ship(P_char ch, const char *new_name,
-					      struct ShipData *ship);
+// rename the character, everything their name keys, and the ship they own
+// (NULL for none, its owner already changed in memory) in one transaction
+sql_commit_outcome sql_rename_character(P_char ch, const char *old_name, const char *new_name,
+					struct ShipData *ship);
 
 // get player pid by name
 int sql_get_player_pid(const char *name);

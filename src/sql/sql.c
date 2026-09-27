@@ -2570,15 +2570,28 @@ void sql_modify_frags(P_char ch, int gain)
  * therefore advanced the counter far past the surviving row count. Resolving the
  * row first keeps the steady-state path an UPDATE, which allocates nothing.
  */
-static long sql_find_account_character_id(const char *escaped_char_name)
+static long sql_find_account_character_id(long pid, const char *escaped_char_name)
 {
-	MYSQL_RES *result =
-		db_query("SELECT id FROM account_characters WHERE char_name='%s' LIMIT 1",
-			 escaped_char_name);
+	/* The character's active mapping by pid first, preferring one that already
+	 * has its name, so a renamed character updates its row instead of adding a
+	 * second one; then any row with its name. */
+	MYSQL_RES *result = db_query("SELECT id FROM account_characters "
+				     "WHERE pid=%ld AND deleted_at IS NULL "
+				     "ORDER BY char_name='%s' DESC, id LIMIT 1",
+				     pid, escaped_char_name);
+	MYSQL_ROW row = result ? mysql_fetch_row(result) : NULL;
+	const long by_pid = (row && row[0]) ? atol(row[0]) : 0;
+	if (result)
+		mysql_free_result(result);
+	if (by_pid > 0)
+		return by_pid;
+
+	result = db_query("SELECT id FROM account_characters WHERE char_name='%s' LIMIT 1",
+			  escaped_char_name);
 	if (!result)
 		return 0;
 
-	MYSQL_ROW row = mysql_fetch_row(result);
+	row = mysql_fetch_row(result);
 	long mapping_id = (row && row[0]) ? atol(row[0]) : 0;
 	mysql_free_result(result);
 	return mapping_id;
@@ -2627,7 +2640,7 @@ void sql_update_account_character(P_char ch)
 	// Update an existing mapping in place and insert only a genuinely new one,
 	// so a repeated projection of the same character allocates no identity value.
 	// created_at is preserved either way.
-	const long mapping_id = sql_find_account_character_id(char_name_sql);
+	const long mapping_id = sql_find_account_character_id(GET_PID(ch), char_name_sql);
 	const bool written =
 		mapping_id > 0 ? qry("UPDATE account_characters "
 				     "SET account_name = '%s', pid = %ld, char_name = '%s', "

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Character renames move the ship the character owns, in one transaction.
+"""Character renames move everything the name keys, in one transaction.
 
 rename_character() used to decide whether to move ship ownership with
 get_ship_from_char(), which asks whether the character is standing aboard any
@@ -17,19 +17,26 @@ rename, and wrote it back when a later step failed.  If the database failed afte
 that first write, the write-back failed too, and the ship stayed stored under a
 name no character had.
 
-Now the player row and the ship are stored in one transaction.  The ship's owner
-changes in memory first and is put back from memory, with no further write,
-unless the transaction committed.  A failed COMMIT may still have been applied,
-so the player row is read back to tell which.  A failed locker rename moves both
-back in a second transaction; if that does not commit either, the rename stands
-for both of them.
+Renames also left the account's login mapping under the old name.  The next
+save added a second mapping for the new one, and the account could not load
+again.  A personal locker, the character's locker grants and guild roster entry
+stayed under the old name too.
+
+Now one transaction stores the player row, everything else the name keys
+(sql_rename_character_references()) and the ship.  The ship's owner changes in
+memory first and is put back from memory, with no further write, unless the
+transaction committed; the live guild roster follows only a committed rename.  A
+failed COMMIT may still have been applied, so the player row is read back to tell
+which.  An open personal locker would save under the old name afterwards, so the
+rename waits for it.
 
 This runs the real rename_character(), mob_do_rename_hook(),
-sql_rename_player_and_ship(), sql_player_rename() and the ship owner-change
-helpers against a fake transactional store that can fail each statement, the
-COMMIT (rejected, or applied with its reply lost), the ROLLBACK and the
-read-back.  After every case the stored player row and ship row must carry the
-same name.  get_ship_from_char() is deliberately not defined here.
+sql_rename_character(), sql_rename_character_references(), sql_player_rename()
+and the ship owner-change helpers against a fake transactional store that can
+fail each statement, the COMMIT (rejected, or applied with its reply lost), the
+ROLLBACK and the read-back.  After every case the stored player, ship and
+reference rows must carry the same name.  get_ship_from_char() is deliberately
+not defined here.
 """
 
 from pathlib import Path
@@ -45,7 +52,8 @@ FUNCTIONS = "\n\n".join(
         extract_function("sql_player.c", signature)
         for signature in (
             "static int sql_player_row_named(",
-            "sql_commit_outcome sql_rename_player_and_ship(P_char ch,",
+            "static bool sql_rename_character_references(",
+            "sql_commit_outcome sql_rename_character(P_char ch,",
         )
     ]
     + [
@@ -85,6 +93,7 @@ HARNESS = r'''
 #include <strings.h>
 #include <string>
 #include <unistd.h>
+#include <vector>
 
 bool rename_character(P_char ch, char *old_name, char *new_name);
 
@@ -95,13 +104,14 @@ static const int PID = 42;
 
 struct Rows
 {
-	std::string player, ship;
+	std::string player, ship, references;
 	int ship_id;
 };
 static Rows durable, pending;
 static bool in_transaction = false, connection_lost = false;
 // Faults, each failing one step.
-static bool fail_player_update, fail_ship_save, fail_rollback, fail_read_back;
+static bool fail_player_update, fail_ship_save, fail_references, fail_rollback, fail_read_back;
+static std::vector<std::string> statements; // every reference statement, in order
 static enum { COMMIT_OK, COMMIT_REJECTED, COMMIT_APPLIED_REPLY_LOST } commit_mode;
 static int fail_transaction = 0; // 1: the first transaction, 2: the second, 0: every one
 static int transactions = 0, ship_saves = 0, next_ship_id = 7;
@@ -144,11 +154,24 @@ static bool sql_run_query(const char *query)
 	assert(in_transaction);
 	char name[64];
 	int pid;
-	assert(sscanf(query, "UPDATE player_data SET name='%63[^']' WHERE pid='%d'", name, &pid) == 2);
-	assert(pid == PID);
-	if (faulty(fail_player_update))
+	if (sscanf(query, "UPDATE player_data SET name='%63[^']' WHERE pid='%d'", name, &pid) == 2)
+	{
+		assert(pid == PID);
+		if (faulty(fail_player_update))
+			return false;
+		pending.player = name;
+		return true;
+	}
+	// The references: the account mapping stands for all of them.
+	statements.emplace_back(query);
+	if (faulty(fail_references) && statements.size() == 4)
 		return false;
-	pending.player = name;
+	if (sscanf(query, "UPDATE account_characters SET char_name='%63[^']' WHERE pid=%d", name,
+		   &pid) == 2)
+	{
+		assert(pid == PID);
+		pending.references = name;
+	}
 	return true;
 }
 bool sql_save_ship(P_ship ship)
@@ -185,7 +208,7 @@ void mysql_free_result(MYSQL_RES *) {}
 // --- the ship registry, keyed by the live ship's owner -------------------------
 static ShipData ships[2];
 static obj_data hulls[2];
-static std::string invalidated;
+static std::string invalidated, guild_renamed;
 
 P_ship get_ship_from_owner(char *name)
 {
@@ -197,25 +220,38 @@ P_ship get_ship_from_owner(char *name)
 void name_ship(const char *name, P_ship ship) { ship->name = strdup(name); }
 unsigned long long ship_save_signature(const P_ship) { return 99; }
 void redis_invalidate_ship_snapshot(const char *owner) { invalidated = owner; }
-
+void rename_guild_member(const char *from, const char *to)
+{
+	assert(!in_transaction && durable.player == to);
+	guild_renamed = std::string(from) + ">" + to;
+}
 // --- the rest of the rename ----------------------------------------------------
-static bool fail_locker = false;
-static int lockers = 0, charged = 0;
+static bool locker_open = false, fail_core_save = false;
+static int charged = 0;
 static std::string told;
 
-bool rename_locker(P_char, char *, char *)
+bool personal_locker_in_use(const char *name)
 {
-	++lockers;
-	return !fail_locker;
+	assert(!strcmp(name, "Oldname"));
+	return locker_open;
 }
 bool sql_player_exists(const char *) { return false; }
 bool pfile_exists(const char *, char *) { return false; }
-int sql_save_player_core(P_char) { return TRUE; }
+int sql_save_player_core(P_char) { return fail_core_save ? FALSE : TRUE; }
 int writeCharacter(P_char, int, int) { return TRUE; }
 void deny_name(char *) {}
 void moveToBackup(char *) {}
-struct acct_chars *find_char_in_list(struct acct_chars *, char *) { return nullptr; }
-int write_account(P_acct) { return 0; }
+static acct_chars listed;
+static int account_writes = 0;
+struct acct_chars *find_char_in_list(struct acct_chars *list, char *name)
+{
+	return list && !strcasecmp(list->charname, name) ? list : nullptr;
+}
+int write_account(P_acct)
+{
+	++account_writes;
+	return 0;
+}
 
 bool _parse_name(char *arg, char *name, bool)
 {
@@ -296,6 +332,9 @@ static void reset(bool owns_ship = true)
 	owner.only.pc = &owner_pc;
 	owner.desc = &owner_desc;
 	owner_desc.account = &owner_account;
+	listed = acct_chars{};
+	listed.charname = strdup("Oldname");
+	owner_account.acct_character_list = &listed;
 	owner.points.cash[3] = PRICE / 1000;
 	banker.player.name = strdup("banker");
 	banker.player.race = RACE_HUMAN;
@@ -313,15 +352,18 @@ static void reset(bool owns_ship = true)
 	ships[1].ownername = strdup("Stranger");
 	ships[1].name = strdup("Gull");
 
-	durable = { "Oldname", owns_ship ? "Oldname" : "Someoneelse", 3 };
+	durable = { "Oldname", owns_ship ? "Oldname" : "Someoneelse", "Oldname", 3 };
 	pending = durable;
 	in_transaction = connection_lost = false;
-	fail_player_update = fail_ship_save = fail_rollback = fail_read_back = false;
+	fail_player_update = fail_ship_save = fail_references = fail_rollback = fail_read_back =
+		false;
 	commit_mode = COMMIT_OK;
-	fail_transaction = transactions = ship_saves = lockers = charged = 0;
+	fail_transaction = transactions = ship_saves = charged = account_writes = 0;
 	next_ship_id = 7;
-	fail_locker = false;
+	locker_open = fail_core_save = false;
+	statements.clear();
 	invalidated.clear();
+	guild_renamed.clear();
 	told.clear();
 }
 
@@ -335,7 +377,7 @@ static bool rename_by_immortal()
 // live character and their ship carry the name the store has.
 static void check_owned_by(const char *name)
 {
-	assert(durable.player == name && durable.ship == name);
+	assert(durable.player == name && durable.ship == name && durable.references == name);
 	assert(!strcmp(GET_NAME(&owner), name) && !strcmp(ships[0].ownername, name));
 	assert(!strcmp(ships[0].name, "Brine") && !strcmp(ships[1].ownername, "Stranger"));
 	assert(!in_transaction);
@@ -343,31 +385,57 @@ static void check_owned_by(const char *name)
 
 int main()
 {
-	// An immortal renames an owner who is ashore: player and ship move together,
-	// in one transaction, and the ship is marked saved.
+	// An immortal renames an owner who is ashore: the player row, the ship and
+	// every name reference move together, in one transaction, and the ship is
+	// marked saved.  The live guild roster and account list follow.
 	reset();
 	assert(rename_by_immortal());
 	check_owned_by("Newname");
-	assert(transactions == 1 && ship_saves == 1 && lockers == 1);
+	assert(transactions == 1 && ship_saves == 1);
 	assert(!ships[0].save_pending && ships[0].save_saved_signature == 99);
-	assert(invalidated == "Oldname");
+	assert(invalidated == "Oldname" && guild_renamed == "Oldname>Newname");
+	assert(!strcmp(listed.charname, "Newname") && account_writes == 1);
+
+	// The references cover the login mapping, a personal locker and its access
+	// list, locker grants, the guild roster and top fragger, and the leaderboard.
+	for (const char *table : { "account_characters", "UPDATE lockers", "locker_access SET owner",
+				   "locker_access SET visitor", "guild_members", "guilds SET topfragger",
+				   "frag_leaderboard" })
+	{
+		bool found = false;
+		for (const std::string &statement : statements)
+			found = found || statement.find(table) != std::string::npos;
+		assert(found);
+	}
+	for (const std::string &statement : statements)
+		assert(statement.find("corpses") == std::string::npos);
 
 	// A character with no ship is renamed without touching anyone's ship.
 	reset(false);
 	assert(rename_by_immortal());
-	assert(durable.player == "Newname" && !strcmp(GET_NAME(&owner), "Newname"));
+	assert(durable.player == "Newname" && durable.references == "Newname");
+	assert(!strcmp(GET_NAME(&owner), "Newname"));
 	assert(ship_saves == 0 && !strcmp(ships[0].ownername, "Someoneelse"));
 
-	// A failed player-row update or ship save rolls the whole rename back, and
-	// the live ship is put back without another write.
-	for (bool *fault : { &fail_player_update, &fail_ship_save })
+	// An open personal locker would save under the old name: nothing is written.
+	reset();
+	locker_open = true;
+	assert(!rename_by_immortal());
+	assert(told.find("currently using that locker") != std::string::npos);
+	assert(transactions == 0);
+	check_owned_by("Oldname");
+
+	// A failed statement, player row, reference or ship, rolls the whole rename
+	// back, and the live ship is put back without another write.
+	for (bool *fault : { &fail_player_update, &fail_references, &fail_ship_save })
 	{
 		reset();
 		*fault = true;
 		assert(!rename_by_immortal());
 		assert(told.find("Failed to rename character in DB!") != std::string::npos);
 		check_owned_by("Oldname");
-		assert(transactions == 1 && lockers == 0 && ships[0].save_pending);
+		assert(transactions == 1 && ships[0].save_pending && guild_renamed.empty());
+		assert(!strcmp(listed.charname, "Oldname"));
 	}
 
 	// The same when the ROLLBACK also fails: the server discards the transaction.
@@ -381,7 +449,7 @@ int main()
 	commit_mode = COMMIT_REJECTED;
 	assert(!rename_by_immortal());
 	check_owned_by("Oldname");
-	assert(lockers == 0);
+	assert(guild_renamed.empty());
 
 	// A COMMIT applied with its reply lost: the read-back finds the new name, so
 	// the rename goes on and completes.
@@ -389,41 +457,20 @@ int main()
 	commit_mode = COMMIT_APPLIED_REPLY_LOST;
 	assert(rename_by_immortal());
 	check_owned_by("Newname");
-	assert(lockers == 1);
+	assert(guild_renamed == "Oldname>Newname");
 
-	// A failed COMMIT that cannot be read back is reported as failed, and both
-	// rows still carry one name, whichever it turned out to be.
+	// A failed COMMIT that cannot be read back is reported as failed, and every
+	// row still carries one name, whichever it turned out to be.
 	for (auto mode : { COMMIT_REJECTED, COMMIT_APPLIED_REPLY_LOST })
 	{
 		reset();
 		commit_mode = mode;
 		fail_read_back = true;
 		assert(!rename_by_immortal());
-		assert(durable.player == durable.ship);
+		assert(durable.player == durable.ship && durable.player == durable.references);
 		assert(durable.player == (mode == COMMIT_REJECTED ? "Oldname" : "Newname"));
 		assert(!strcmp(GET_NAME(&owner), "Oldname") && !strcmp(ships[0].ownername, "Oldname"));
-		assert(lockers == 0 && !in_transaction);
-	}
-
-	// A failed locker rename moves the character and ship back together.
-	reset();
-	fail_locker = true;
-	assert(!rename_by_immortal());
-	check_owned_by("Oldname");
-	assert(transactions == 2 && lockers == 1);
-
-	// If moving them back does not commit, the rename stands for both of them.
-	for (bool *fault : { &fail_player_update, &fail_ship_save, &fail_read_back })
-	{
-		reset();
-		fail_locker = true;
-		fail_transaction = 2;
-		*fault = true;
-		if (fault == &fail_read_back)
-			commit_mode = COMMIT_REJECTED;
-		assert(rename_by_immortal());
-		check_owned_by("Newname");
-		assert(told.find("the locker could not be renamed") != std::string::npos);
+		assert(!in_transaction && guild_renamed.empty());
 	}
 
 	// A ship that was never stored is inserted by the rename.  If the rename is
@@ -435,6 +482,23 @@ int main()
 	assert(!rename_by_immortal());
 	check_owned_by("Oldname");
 	assert(ships[0].db_id == 7 && ships[0].db_id_unconfirmed);
+
+	// A linkdead character has no descriptor: the rename completes, and their
+	// account menu reads the renamed mapping at their next login.
+	reset();
+	owner.desc = nullptr;
+	assert(rename_by_immortal());
+	check_owned_by("Newname");
+	assert(account_writes == 0 && !strcmp(listed.charname, "Oldname"));
+
+	// Once the rename is stored, a failed core save is reported but does not
+	// undo it, and the account list still follows.
+	reset();
+	fail_core_save = true;
+	assert(rename_by_immortal());
+	check_owned_by("Newname");
+	assert(told.find("failed to save the renamed character") != std::string::npos);
+	assert(!strcmp(listed.charname, "Newname"));
 
 	// A paid rename charges an owner once, and moves the ship once.
 	reset();
@@ -457,7 +521,7 @@ int main()
 	assert(charged == 0);
 	check_owned_by("Oldname");
 
-	puts("character renames store the player and their ship in one transaction");
+	puts("character renames store the player, their references and their ship in one transaction");
 	return 0;
 }
 '''

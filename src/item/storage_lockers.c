@@ -3599,74 +3599,18 @@ static int lockerName_is_inuse(char *lockerName)
 	return nCnt;
 }
 
-bool rename_locker(P_char ch, char *old_charname, char *new_charname)
+/*
+ * Whether `char_name`'s personal locker ("<name>.locker") is open or has a
+ * save in flight.  A rename must wait for it, because the rename moves the
+ * locker's rows to the new name, and the open locker would still save under
+ * the old one.
+ */
+bool personal_locker_in_use(const char *char_name)
 {
-	char lockerOldName[MAX_STRING_LENGTH], lockerNewName[MAX_STRING_LENGTH];
-	P_char chLocker = NULL;
-	int tmp;
+	char locker_name[MAX_STRING_LENGTH];
 
-	snprintf(lockerOldName, MAX_STRING_LENGTH, "%s.locker", old_charname);
-	snprintf(lockerNewName, MAX_STRING_LENGTH, "%s.locker", new_charname);
-
-	chLocker = (P_char)mm_get(dead_mob_pool);
-	clear_char(chLocker);
-	ensure_pconly_pool();
-	chLocker->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-	chLocker->only.pc->aggressive = -1;
-	chLocker->desc = NULL;
-
-	tmp = restoreCharOnly(chLocker, lockerOldName);
-
-	/* char has no locker yet, nothing to rename then */
-	if (-1 == tmp)
-	{
-		free_char(chLocker);
-		return TRUE;
-	}
-
-	if (tmp != -1)
-	{
-		if (lockerName_is_inuse(lockerOldName) > 0)
-		{
-			send_to_char(
-				"Someone is currently using that locker.  Please try later.\r\n",
-				ch);
-			free_char(chLocker);
-			return FALSE;
-		}
-
-		tmp = restoreItemsOnly(chLocker, 100);
-	}
-
-	/* Save the new locker character FIRST, before deleting the old one.
-	 * This ensures we never have a window where the locker doesn't exist. */
-	char *old_name = GET_NAME(chLocker);
-	CAP(lockerNewName);
-	GET_NAME(chLocker) = str_dup(lockerNewName);
-
-	if (!writeCharacter(chLocker, 0, NOWHERE))
-	{
-		logit(LOG_OBJ, "Char save failed for %s in rename_locker()!", GET_NAME(ch));
-		debug("Char save failed for %s in rename_locker()!", GET_NAME(ch));
-		/* Restore the original name and return failure. The old locker
-		 * is still intact because we haven't deleted it yet. */
-		if (GET_NAME(chLocker))
-			str_free(GET_NAME(chLocker));
-		GET_NAME(chLocker) = old_name;
-		free_char(chLocker);
-		return FALSE;
-	}
-
-	/* New locker saved successfully - now safe to delete the old one.
-	 * Reset the name to the old one so deleteCharacter targets the right
-	 * record, then free with the new name still allocated. */
-	if (GET_NAME(chLocker))
-		str_free(GET_NAME(chLocker));
-	GET_NAME(chLocker) = old_name;
-	deleteCharacter(chLocker, false);
-
-	free_char(chLocker);
-	return TRUE;
+	snprintf(locker_name, sizeof(locker_name), "%s.locker", char_name);
+	return lockerName_is_inuse(locker_name) > 0 || locker_async_name_busy(locker_name);
 }
 
 void StorageLocker::SortIValues(void)

@@ -858,16 +858,19 @@ those legacy files (not part of the default build).
   which writes the character's own loaded ship and reports a failed write as a
   failed save. `rename_ship_owner()` restores the old owner and name if the
   write fails; `rename_ship()` does not roll back.
-- **Character rename.** `rename_character()` stores the player row and the ship
-  the character owns (`get_ship_from_owner()`, wherever they stand) in one
-  transaction, `sql_rename_player_and_ship()`. The ship's new owner is set in
-  memory first (`begin_ship_owner_change()`). Unless the transaction commits, it
-  is put back from memory, with no further write. A failed COMMIT is settled by
-  reading the player row back. If that read fails too, the rename is reported
-  as failed and staff are told it may have been stored, but the player row and
-  the ship still carry the same name. If the locker rename fails afterwards, a
-  second transaction moves both back. If that does not commit either, the
-  rename stands for both of them, and only the locker keeps the old name.
+- **Character rename.** `rename_character()` stores the player row, the ship
+  the character owns (`get_ship_from_owner()`, wherever they stand) and
+  everything else their name keys in one transaction, `sql_rename_character()`.
+  That covers the account mapping login reads, a personal locker and its access
+  list, their locker grants, guild roster row and top-fragger credit, and their
+  leaderboard name. Corpses keep the name they were made under. The ship's new
+  owner is set in memory first (`begin_ship_owner_change()`). Unless the
+  transaction commits, it is put back from memory, with no further write, and
+  only a committed rename renames the live guild roster. A failed COMMIT is
+  settled by reading the player row back. If that read fails too, the rename is
+  reported as failed and staff are told it may have been stored, but every row
+  still carries the same name. The rename waits while the character's personal
+  locker is open, since that locker would otherwise save under the old name.
 - **Copyover.** `drain_pending_ship_saves()` ignores the retry gate. If any
   pending ship cannot be made durable, the copyover is aborted.
 - **Shutdown.** `shutdown_ships()` puts every passenger and loose object in a
@@ -1004,7 +1007,8 @@ The focused regressions live in `tests/async/`. Run them directly, for example
 | `test_ship_nested_transaction.py`, `test_ship_shutdown_txn.py` | Joining the caller's transaction, and the batched shutdown. |
 | `test_ship_cargo_txn.py`, `test_auction_ship_txn_fixes.py` | Cargo market write transactions and ship `db_id` reset on failed inserts. |
 | `test_ship_save_failure_keeps_db_id.py` | A failed save keeps an existing ship's `db_id` and forgets a rolled-back insert. A first save whose COMMIT fails, whether rejected or applied with its reply lost, is settled on the next save (real `sql_save_ship()`). |
-| `test_character_rename_ship_ownership.py` | Character renames store the player row and the owned ship in one transaction and charge once. Faults are injected in each statement, the COMMIT, the ROLLBACK, the read-back and the locker (real `rename_character()`, rename hook and `sql_rename_player_and_ship()`). |
+| `test_character_rename_ship_ownership.py` | Character renames store the player row, everything the name keys and the owned ship in one transaction, and charge once. Faults are injected in each statement, the COMMIT, the ROLLBACK and the read-back, and a linkdead target and an open locker are covered (real `rename_character()`, rename hook and `sql_rename_character()`). |
+| `run_character_rename_references_mysql.sh` | The rename's reference updates against MySQL/MariaDB tables shaped like production. |
 | `test_ship_load_clears_summon.py` | `load_ship()` drops a stale `SUMMONED`. |
 | `test_ship_boot_loads_every_row.py` | `sql_load_all_ships()` loads more than 512 rows. |
 | `test_ship_boot_room_pool_full.py` | Booting more ships than the room pool holds: all-or-nothing room claims, unplaced ships destroyed with their rows kept, and a clean shutdown (real loader, layout and `shutdown_ships()`, ASan/UBSan). |

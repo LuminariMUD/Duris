@@ -480,8 +480,8 @@ bool sql_player_rename(P_char /*ch*/, const char * /*new_name*/)
 {
 	return false;
 }
-sql_commit_outcome sql_rename_player_and_ship(P_char /*ch*/, const char * /*new_name*/,
-					      P_ship /*ship*/)
+sql_commit_outcome sql_rename_character(P_char /*ch*/, const char * /*old_name*/,
+					const char * /*new_name*/, P_ship /*ship*/)
 {
 	return sql_commit_outcome::rolled_back;
 }
@@ -1132,22 +1132,101 @@ static int sql_player_row_named(int pid, const char *name)
 }
 
 /*
- * Rename `ch`'s player row to `new_name` and save `ship`, whose owner the
- * caller has already changed in memory, in one transaction, so a character
- * and the ship they own are never stored under different names.  `ship` may
- * be NULL.
+ * Carry over what else the character's name keys, besides the player row
+ * and the ship: the account mapping that login reads, a personal locker and
+ * its access list, the character's own grants on other lockers, their guild
+ * roster row and top-fragger credit, and their leaderboard name.  Runs inside
+ * the rename transaction.  Corpses keep the name they were made under, which
+ * the corpse objects in the world also carry, and logs keep their history.
+ *
+ * A grant naming an account as well as the character is ambiguous, and stays
+ * with the account.  If the new name already holds a grant on a locker, the
+ * old one is dropped.
+ */
+static bool sql_rename_character_references(int pid, const char *old_name, const char *new_name)
+{
+	char *esc_old = sql_escape_string(old_name);
+	char *esc_new = sql_escape_string(new_name);
+	if (!esc_old || !esc_new)
+	{
+		free(esc_old);
+		free(esc_new);
+		return false;
+	}
+
+	char queries[9][1024];
+	int count = 0;
+	/* Earlier renames could leave a second active mapping for the pid; keep
+	 * the oldest, so the one rename below cannot collide with itself. */
+	snprintf(queries[count++], sizeof(queries[0]),
+		 "DELETE stale FROM account_characters stale JOIN account_characters keeper "
+		 "ON keeper.pid=stale.pid AND keeper.id<stale.id AND keeper.deleted_at IS NULL "
+		 "WHERE stale.pid=%d AND stale.deleted_at IS NULL",
+		 pid);
+	snprintf(queries[count++], sizeof(queries[0]),
+		 "UPDATE account_characters SET char_name='%s' "
+		 "WHERE pid=%d AND deleted_at IS NULL",
+		 esc_new, pid);
+	snprintf(queries[count++], sizeof(queries[0]),
+		 "UPDATE lockers SET locker_name=CONCAT('%s','.locker') "
+		 "WHERE locker_name=CONCAT('%s','.locker') AND (owner_pid=%d OR owner_pid IS NULL)",
+		 esc_new, esc_old, pid);
+	snprintf(queries[count++], sizeof(queries[0]),
+		 "UPDATE locker_access SET owner=CONCAT('%s','.locker') "
+		 "WHERE owner=CONCAT('%s','.locker')",
+		 esc_new, esc_old);
+	snprintf(queries[count++], sizeof(queries[0]),
+		 "UPDATE IGNORE locker_access SET visitor='%s' WHERE visitor='%s' "
+		 "AND NOT EXISTS (SELECT 1 FROM accounts WHERE account_name='%s')",
+		 esc_new, esc_old, esc_old);
+	snprintf(queries[count++], sizeof(queries[0]),
+		 "DELETE FROM locker_access WHERE visitor='%s' "
+		 "AND NOT EXISTS (SELECT 1 FROM accounts WHERE account_name='%s')",
+		 esc_old, esc_old);
+	snprintf(queries[count++], sizeof(queries[0]),
+		 "UPDATE guild_members SET player_name='%s' "
+		 "WHERE player_pid=%d OR (player_pid IS NULL AND player_name='%s')",
+		 esc_new, pid, esc_old);
+	snprintf(queries[count++], sizeof(queries[0]),
+		 "UPDATE guilds SET topfragger='%s' WHERE topfragger='%s'", esc_new, esc_old);
+	snprintf(queries[count++], sizeof(queries[0]),
+		 "UPDATE frag_leaderboard SET char_name='%s' WHERE pid=%d", esc_new, pid);
+	free(esc_old);
+	free(esc_new);
+
+	for (int i = 0; i < count; i++)
+	{
+		if (!sql_run_query(queries[i]))
+			return false;
+	}
+	return true;
+}
+
+/*
+ * Rename `ch` from `old_name` to `new_name` in one transaction: the player
+ * row, everything else the name keys (sql_rename_character_references()),
+ * and `ship`, whose owner the caller has already changed in memory.  So a
+ * character, their login, locker, guild entry and ship are never stored under
+ * different names.  `ship` may be NULL.
  *
  * A ROLLBACK only fails when the connection is gone, and the server then
  * discards the transaction itself.  A failed COMMIT, however, may have been
  * applied with its reply lost, so the player row is read back to tell which;
  * sql_commit_outcome::unknown means it could not be read.
  */
-sql_commit_outcome sql_rename_player_and_ship(P_char ch, const char *new_name, P_ship ship)
+sql_commit_outcome sql_rename_character(P_char ch, const char *old_name, const char *new_name,
+					P_ship ship)
 {
-	if (!DB || !ch || !new_name || sql_in_transaction() || !sql_begin_transaction())
+	if (!DB || !ch || !old_name || !new_name || sql_in_transaction() ||
+	    !sql_begin_transaction())
 		return sql_commit_outcome::rolled_back;
 
-	if (!sql_player_rename(ch, new_name) || (ship && !sql_save_ship(ship)))
+	char stored_name[MAX_STRING_LENGTH];
+	strlcpy(stored_name, new_name, sizeof(stored_name));
+	normalize_player_name_case(stored_name);
+	if (!sql_player_rename(ch, new_name) ||
+	    !sql_rename_character_references(GET_PID(ch), old_name, stored_name) ||
+	    (ship && !sql_save_ship(ship)))
 	{
 		sql_rollback();
 		return sql_commit_outcome::rolled_back;
@@ -4910,22 +4989,35 @@ bool sql_save_account(struct acct_entry *acc)
 }
 
 /*
- * Resolve an existing account_characters row id for an escaped character name,
- * or 0 when the mapping is absent, so the steady-state projection can be an
- * UPDATE that allocates no identity value.
+ * Resolve an existing account_characters row id for a character, or 0 when
+ * the mapping is absent, so the steady-state projection can be an UPDATE that
+ * allocates no identity value.  The character's active mapping is found by
+ * pid first, preferring one that already has its name, so a renamed
+ * character updates its row instead of inserting a second one; then any row
+ * with its name.
  */
-static long sql_find_account_character_mapping(const char *escaped_char_name)
+static long sql_find_account_character_mapping(int pid, const char *escaped_char_name)
 {
 	if (!DB || !escaped_char_name)
 		return 0;
 
-	MYSQL_RES *result =
-		db_query("SELECT id FROM account_characters WHERE char_name='%s' LIMIT 1",
-			 escaped_char_name);
+	MYSQL_RES *result = db_query("SELECT id FROM account_characters "
+				     "WHERE pid=%d AND deleted_at IS NULL "
+				     "ORDER BY char_name='%s' DESC, id LIMIT 1",
+				     pid, escaped_char_name);
+	MYSQL_ROW row = result ? mysql_fetch_row(result) : NULL;
+	const long by_pid = (row && row[0]) ? atol(row[0]) : 0;
+	if (result)
+		mysql_free_result(result);
+	if (by_pid > 0)
+		return by_pid;
+
+	result = db_query("SELECT id FROM account_characters WHERE char_name='%s' LIMIT 1",
+			  escaped_char_name);
 	if (!result)
 		return 0;
 
-	MYSQL_ROW row = mysql_fetch_row(result);
+	row = mysql_fetch_row(result);
 	long mapping_id = (row && row[0]) ? atol(row[0]) : 0;
 	mysql_free_result(result);
 	return mapping_id;
@@ -4992,7 +5084,7 @@ static bool sql_save_account_characters(struct acct_entry *acc)
 		   account_characters identity value on every INSERT ... ON DUPLICATE
 		   KEY UPDATE attempt, so projecting the same character on each account
 		   save advanced the signed INT counter without adding a row. */
-		const long mapping_id = sql_find_account_character_mapping(esc_char);
+		const long mapping_id = sql_find_account_character_mapping(pid, esc_char);
 
 		char query[512];
 		if (mapping_id > 0)
@@ -5099,6 +5191,26 @@ int sql_repair_account_character_projection(const char *account_name)
 		return -1;
 	}
 
+	/* A character renamed before renames carried their mapping along has two
+	 * active mappings, and the repair below would then give both the same
+	 * unique name.  Keep the one with the current name, or else the oldest. */
+	written = snprintf(
+		query, sizeof(query),
+		"DELETE stale FROM account_characters stale "
+		"JOIN player_data pd ON pd.pid=stale.pid "
+		"JOIN account_characters keeper ON keeper.pid=stale.pid AND keeper.id<>stale.id "
+		"AND keeper.deleted_at IS NULL "
+		"AND (LOWER(keeper.char_name)=LOWER(pd.name) OR keeper.id<stale.id) "
+		"WHERE stale.deleted_at IS NULL AND LOWER(stale.char_name)<>LOWER(pd.name) "
+		"AND LOWER(pd.account_name)=LOWER('%s')",
+		escaped_account);
+	if (written < 0 || static_cast<size_t>(written) >= sizeof(query) || !sql_run_query(query))
+	{
+		free(escaped_account);
+		return -1;
+	}
+	const my_ulonglong duplicates = mysql_affected_rows(DB);
+
 	written =
 		snprintf(query, sizeof(query),
 			 "INSERT INTO account_characters "
@@ -5125,7 +5237,7 @@ int sql_repair_account_character_projection(const char *account_name)
 	if (!sql_run_query(query))
 		return -1;
 
-	const my_ulonglong affected = mysql_affected_rows(DB);
+	const my_ulonglong affected = mysql_affected_rows(DB) + duplicates;
 	return affected > static_cast<my_ulonglong>(INT_MAX) ? INT_MAX : static_cast<int>(affected);
 }
 
@@ -5691,9 +5803,12 @@ bool sql_delete_account(const char *name)
 			free(escaped_character);
 			goto fail;
 		}
+		/* A corpse keeps the name it was made under, so one from before a
+		 * rename is found by its owner pid. */
 		snprintf(query, sizeof(query),
-			 "DELETE FROM corpses WHERE LOWER(player_name)=LOWER('%s')",
-			 escaped_character);
+			 "DELETE FROM corpses WHERE LOWER(player_name)=LOWER('%s') "
+			 "OR (value3=%d AND (value1 & %u)<>0)",
+			 escaped_character, pid, PC_CORPSE);
 		if (!sql_run_query(query))
 		{
 			free(escaped_character);
