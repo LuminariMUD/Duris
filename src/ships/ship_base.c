@@ -1114,6 +1114,11 @@ int load_ship(P_ship ship, int to_room)
 		REMOVE_BIT(ship->flags, ATTACKBYNPC);
 	if (IS_SET(ship->flags, RAMMING))
 		REMOVE_BIT(ship->flags, RAMMING);
+	/* The summon's arrival event is not saved, so a ship loaded after a
+	 * reboot or copyover with SUMMONED still set would refuse every later
+	 * summon.  It comes back at its anchor instead. */
+	if (IS_SET(ship->flags, SUMMONED))
+		REMOVE_BIT(ship->flags, SUMMONED);
 	SET_BIT(ship->flags, DOCKED);
 	SET_BIT(ship->flags, LOADED);
 
