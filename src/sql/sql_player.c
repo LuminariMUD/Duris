@@ -11143,23 +11143,21 @@ bool sql_load_all_ships()
 		return false;
 
 	// collect owner names first to avoid nested queries
-	char owner_names[512][64];
-	int num_ships = 0;
+	std::vector<std::string> owner_names;
 
 	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(result)) && num_ships < 512)
+	while ((row = mysql_fetch_row(result)))
 	{
 		if (!row[0])
 			continue;
-		strlcpy(owner_names[num_ships], row[0], sizeof owner_names[num_ships]);
-		num_ships++;
+		owner_names.emplace_back(row[0]);
 	}
 	mysql_free_result(result);
 
 	// now load each ship
-	for (int i = 0; i < num_ships; i++)
+	for (const std::string &owner_name : owner_names)
 	{
-		P_ship ship = sql_load_ship(owner_names[i]);
+		P_ship ship = sql_load_ship(owner_name.c_str());
 		if (!ship)
 		{
 			logit(LOG_FILE, "sql_load_all_ships: component=rows outcome=failure");
