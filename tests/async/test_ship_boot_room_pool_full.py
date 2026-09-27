@@ -19,6 +19,10 @@ a ship that cannot be placed is destroyed (its row is kept), LOADED is cleared
 before placement, and shutdown skips rooms a ship never got.  The first sloop
 fits in the two rooms the frigates leave, which it could not when a failed
 frigate kept them.
+
+The ships left out are noted, and retry_unplaced_ships() brings them back as
+rooms free up; ship_rooms_fit_class() tells a hull change whether the pool can
+hold it.
 """
 
 from pathlib import Path
@@ -47,13 +51,26 @@ FUNCTIONS = "\n\n".join(
             "void init_ship_layout(P_ship ship)",
             "void set_ship_layout(P_ship ship, int m_class)",
             "int find_free_ship_room()",
+            "static int ship_class_room_count(int m_class)",
+            "static int count_free_ship_rooms()",
+            "bool ship_rooms_fit_class(P_ship ship, int m_class)",
+            "void clear_ship_layout(P_ship ship)",
             "static void release_ship_rooms(P_ship ship)",
             "bool set_ship_physical_layout(P_ship ship)",
             "int load_ship(P_ship ship, int to_room)",
             "void shutdown_ships()",
+            "void note_unplaced_ship(const char *owner)",
+            "stored_ship_state place_stored_ship(const char *owner)",
+            "void retry_unplaced_ships(void)",
         )
     ]
-    + [extract_function("sql_player.c", "bool sql_load_all_ships()")]
+    + [
+        extract_function("sql_player.c", signature)
+        for signature in (
+            "P_ship sql_place_ship(const char *owner_name, bool *unplaced)",
+            "bool sql_load_all_ships()",
+        )
+    ]
 )
 
 HARNESS = r'''
@@ -70,6 +87,7 @@ HARNESS = r'''
 #include <cstring>
 #include <set>
 #include <string>
+#include <strings.h>
 #include <vector>
 
 static const int FRIGATES = 700, SLOOPS = 2, ANCHOR_VNUM = 43220;
@@ -100,6 +118,7 @@ int panic_corruption_int(const char *, const char *, ...) { abort(); }
 void panic_corruption(const char *, const char *, ...) { abort(); }
 void fatal_boot_error(const char *, const char *, ...) { abort(); }
 void logit(const char *, const char *, ...) {}
+static std::vector<std::string> unplaced_ship_owners;
 int BOUNDED(int low, int value, int high) { return value < low ? low : value > high ? high : value; }
 
 void obj_to_room(P_obj, int) {}
@@ -164,6 +183,7 @@ P_ship sql_load_ship(const char *owner)
 	ship->shipobj = new obj_data{};
 	ship->panel = new obj_data{};
 	ship->db_id = 1 + static_cast<int>(next_row);
+	ship->ownername = strdup(owner);
 	ship->m_class = strncmp(owner, "Sloop", 5) ? SH_FRIGATE : SH_SLOOP;
 	ship->anchor = ANCHOR_VNUM;
 	ship->flags = LOADED | DOCKED; // every saved ship was loaded when saved
@@ -174,6 +194,22 @@ P_ship sql_load_ship(const char *owner)
 }
 
 ''' + FUNCTIONS + r'''
+
+int sql_ship_stored(const char *owner)
+{
+	for (auto &stored : owners)
+		if (!strcasecmp(stored.c_str(), owner))
+			return 1;
+	return 0;
+}
+P_ship get_ship_from_owner(char *owner)
+{
+	ShipVisitor svs;
+	for (bool fn = shipObjHash.get_first(svs); fn; fn = shipObjHash.get_next(svs))
+		if (svs->ownername && !strcasecmp(svs->ownername, owner))
+			return svs;
+	return nullptr;
+}
 
 static int rooms_in_use()
 {
@@ -226,6 +262,13 @@ int main()
 	}
 	assert((int)owned.size() == pool && rooms_in_use() == pool);
 
+	// Every ship left out is noted for a later try, and a full pool fits no
+	// bigger hull.
+	assert((int)unplaced_ship_owners.size() == FRIGATES - frigates_placed + 1);
+	P_ship first = get_ship_from_owner(const_cast<char *>("Frigate0"));
+	assert(first && ship_rooms_fit_class(first, SH_FRIGATE));
+	assert(!ship_rooms_fit_class(first, SH_DREADNOUGHT));
+
 	// A frigate that cannot be placed gives back what it claimed, and keeps
 	// its room graph for a later try.
 	P_ship late = sql_load_ship("Frigate-late");
@@ -236,6 +279,29 @@ int main()
 		assert(SHIP_ROOM_NUM(late, i) == -1);
 	assert(!load_ship(late, 0) && !SHIP_LOADED(late));
 	delete_ship(late, true);
+
+	// Two frigates leave the world; the next try places the first two ships
+	// that were left out, and takes them off the list.
+	for (const char *leaving : { "Frigate0", "Frigate1" })
+	{
+		P_ship ship = get_ship_from_owner(const_cast<char *>(leaving));
+		clear_ship_layout(ship);
+		shipObjHash.erase(ship);
+		++destroyed;
+	}
+	const int waiting = unplaced_ship_owners.size();
+	assert(!get_ship_from_owner(const_cast<char *>("Frigate555")));
+	retry_unplaced_ships();
+	for (const char *back : { "Frigate555", "Frigate556" })
+	{
+		P_ship ship = get_ship_from_owner(const_cast<char *>(back));
+		assert(ship && SHIP_LOADED(ship));
+	}
+	assert((int)unplaced_ship_owners.size() == waiting - 2);
+	assert(rooms_in_use() == pool);
+	assert(place_stored_ship("Frigate557") == stored_ship_state::no_room);
+	assert(place_stored_ship("Frigate2") == stored_ship_state::placed);
+	assert(place_stored_ship("Nobody") == stored_ship_state::none);
 
 	// A ship registered without rooms, as an unplaced ship once was, does not
 	// send shutdown outside the world.

@@ -2003,6 +2003,7 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 		gmcp_flush_dirty_ship_contacts();
 		gmcp_flush_dirty_ship_info();
 		flush_pending_ship_saves();
+		retry_unplaced_ships();
 		locker_async_pulse();
 		corpse_lifecycle_transaction_pulse();
 		critical_completion critical_completions[64] = {};

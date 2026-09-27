@@ -60,21 +60,14 @@ MYSQL_ROW mysql_fetch_row(MYSQL_RES *)
 }
 void mysql_free_result(MYSQL_RES *) { result_open = false; }
 
-P_ship sql_load_ship(const char *owner_name)
+P_ship sql_place_ship(const char *owner_name, bool *unplaced)
 {
 	assert(!result_open); // no query while the owner list is still open
 	loaded.emplace_back(owner_name);
+	*unplaced = false;
 	return &ships[loaded.size() - 1];
 }
-void name_ship(const char *, P_ship) {}
-int real_room0(const int) { return 1; }
-int load_ship(P_ship, int) { return TRUE; }
-void update_crew(P_ship) {}
-void reset_crew_stamina(P_ship) {}
-void set_ship_armor(P_ship, bool) {}
-void update_ship_status(P_ship, P_ship) {}
-void logit(const char *, const char *, ...) {}
-int BOUNDED(int low, int value, int high) { return value < low ? low : value > high ? high : value; }
+void note_unplaced_ship(const char *) { assert(false); }
 
 ''' + extract_function("sql_player.c", "bool sql_load_all_ships()") + r'''
 

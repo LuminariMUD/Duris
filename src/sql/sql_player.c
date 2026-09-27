@@ -415,6 +415,16 @@ P_ship sql_load_ship(const char *owner_name)
 {
 	return NULL;
 }
+P_ship sql_place_ship(const char * /*owner_name*/, bool *unplaced)
+{
+	if (unplaced)
+		*unplaced = false;
+	return NULL;
+}
+int sql_ship_stored(const char * /*owner_name*/)
+{
+	return -1;
+}
 bool sql_load_all_ships(void)
 {
 	return false;
@@ -11337,6 +11347,56 @@ P_ship sql_load_ship(const char *owner_name)
 	return ship;
 }
 
+/*
+ * Load `owner_name`'s ship and put it in the world at its anchor.  Returns
+ * the ship, or NULL with any part-built ship destroyed and its row kept.
+ * `unplaced` says whether it was loaded but could not be placed, usually
+ * because the ship-room pool is full.
+ */
+P_ship sql_place_ship(const char *owner_name, bool *unplaced)
+{
+	*unplaced = false;
+	P_ship ship = sql_load_ship(owner_name);
+	if (!ship)
+	{
+		logit(LOG_FILE, "sql_load_all_ships: component=rows outcome=failure");
+		return NULL;
+	}
+
+	name_ship(ship->name, ship);
+	if (!load_ship(ship, real_room0(ship->anchor)))
+	{
+		/* An unplaced ship must not stay registered; the row is kept. */
+		logit(LOG_FILE, "sql_load_all_ships: component=ship outcome=failure");
+		shipObjHash.erase(ship);
+		delete_ship(ship, true);
+		*unplaced = true;
+		return NULL;
+	}
+
+	ship->mainsail = BOUNDED(0, ship->mainsail, SHIP_MAX_SAIL(ship));
+	update_crew(ship);
+	reset_crew_stamina(ship);
+	set_ship_armor(ship, false);
+	update_ship_status(ship);
+	return ship;
+}
+
+/* Whether `owner_name` has a ships row: 1 if so, 0 if not, -1 if it cannot be read. */
+int sql_ship_stored(const char *owner_name)
+{
+	char *esc_owner = sql_escape_string(owner_name);
+	if (!esc_owner)
+		return -1;
+	MYSQL_RES *result = db_query("select 1 from ships where owner_name='%s'", esc_owner);
+	free(esc_owner);
+	if (!result)
+		return -1;
+	const int stored = mysql_fetch_row(result) ? 1 : 0;
+	mysql_free_result(result);
+	return stored;
+}
+
 bool sql_load_all_ships()
 {
 	if (!DB)
@@ -11358,32 +11418,12 @@ bool sql_load_all_ships()
 	}
 	mysql_free_result(result);
 
-	// now load each ship
+	// now load each ship; one the room pool cannot hold is placed later
 	for (const std::string &owner_name : owner_names)
 	{
-		P_ship ship = sql_load_ship(owner_name.c_str());
-		if (!ship)
-		{
-			logit(LOG_FILE, "sql_load_all_ships: component=rows outcome=failure");
-			continue;
-		}
-
-		name_ship(ship->name, ship);
-		if (!load_ship(ship, real_room0(ship->anchor)))
-		{
-			/* Usually the ship-room pool is full.  The row is kept for a
-			 * later boot, but an unplaced ship must not stay registered. */
-			logit(LOG_FILE, "sql_load_all_ships: component=ship outcome=failure");
-			shipObjHash.erase(ship);
-			delete_ship(ship, true);
-			continue;
-		}
-
-		ship->mainsail = BOUNDED(0, ship->mainsail, SHIP_MAX_SAIL(ship));
-		update_crew(ship);
-		reset_crew_stamina(ship);
-		set_ship_armor(ship, false);
-		update_ship_status(ship);
+		bool unplaced = false;
+		if (!sql_place_ship(owner_name.c_str(), &unplaced) && unplaced)
+			note_unplaced_ship(owner_name.c_str());
 	}
 
 	return true;

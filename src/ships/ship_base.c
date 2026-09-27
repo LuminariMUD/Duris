@@ -119,7 +119,9 @@
 #include <cmath>
 #include <limits>
 #include <new>
+#include <string>
 #include <utility>
+#include <vector>
 #endif
 
 extern char buf[MAX_STRING_LENGTH];
@@ -1683,6 +1685,40 @@ int find_free_ship_room()
 	return -1;
 }
 
+/* The number of rooms a hull of class `m_class` has. */
+static int ship_class_room_count(int m_class)
+{
+	ShipData scratch = {};
+	init_ship_layout(&scratch);
+	set_ship_layout(&scratch, m_class);
+	return scratch.room_count;
+}
+
+/* The number of free rooms in the ship-room pool. */
+static int count_free_ship_rooms()
+{
+	int free_rooms = 0;
+	for (int vroom = (SHIPZONE * 100) + 3; vroom <= VROOM_SHIPS_END; vroom++)
+	{
+		const int rroom = real_room0(vroom);
+		if (!rroom)
+			break;
+		if (world[rroom].funct != ship_room_proc)
+			free_rooms++;
+	}
+	return free_rooms;
+}
+
+/*
+ * Whether `ship` can be rebuilt as a hull of class `m_class`: the rooms it
+ * holds, which reset_ship() gives back first, and the free rooms in the pool
+ * must cover the new layout.  A hull change checks this before it is charged.
+ */
+bool ship_rooms_fit_class(P_ship ship, int m_class)
+{
+	return ship->room_count + count_free_ship_rooms() >= ship_class_room_count(m_class);
+}
+
 /*
  * Give back every room set_ship_physical_layout() has claimed for `ship`,
  * freeing the exits it made, but keep the abstract room graph.
@@ -1868,7 +1904,11 @@ void reset_ship(P_ship ship, bool clear_slots)
 	name_ship(ship->name, ship);
 	clear_ship_layout(ship);
 	set_ship_layout(ship, ship->m_class);
-	set_ship_physical_layout(ship);
+	/* Callers check ship_rooms_fit_class() first, and a downgrade always fits
+	 * in the rooms the ship gave back, so this cannot fail. */
+	if (!set_ship_physical_layout(ship))
+		logit(LOG_SHIP, "reset_ship: no rooms for %s's %s", SHIP_OWNER(ship),
+		      SHIP_CLASS_NAME(ship));
 	obj_to_room(ship->panel, real_room0(ship->bridge));
 
 	ship->timer[T_UNDOCK] = 0;
@@ -3507,12 +3547,98 @@ int read_ships()
 	for (const auto &record : records)
 		if (!flat_ship_materialize(record, &error))
 		{
+			/* A full ship-room pool is not corruption: keep the record and
+			 * place the ship when rooms free up. */
+			if (shiperror == 4)
+			{
+				note_unplaced_ship(record.owner_name.c_str());
+				continue;
+			}
 			logit(LOG_FILE, "flat ship load failed for ship %u: %s", record.ship_id,
 			      error.empty() ? "materialization failure" : error.c_str());
 			return FALSE;
 		}
 	return TRUE;
 #endif
+}
+
+/*
+ * Owners whose stored ship could not be placed at boot, because the ship-room
+ * pool was full.  Their ships stay stored; retry_unplaced_ships() places them
+ * when rooms free up, and a first-ship purchase brings one back instead of
+ * selling a second ship that could never be saved beside it.
+ */
+static std::vector<std::string> unplaced_ship_owners;
+
+void note_unplaced_ship(const char *owner)
+{
+	for (const std::string &noted : unplaced_ship_owners)
+		if (!strcasecmp(noted.c_str(), owner))
+			return;
+	logit(LOG_SHIP, "No room to place %s's ship; it stays stored and will be retried.", owner);
+	unplaced_ship_owners.emplace_back(owner);
+}
+
+/*
+ * Bring `owner`'s stored ship into the world at its anchor, if they have one
+ * and it is not already in the world.
+ */
+stored_ship_state place_stored_ship(const char *owner)
+{
+	if (get_ship_from_owner(const_cast<char *>(owner)))
+		return stored_ship_state::placed;
+#ifndef __NO_MYSQL__
+	const int stored = sql_ship_stored(owner);
+	if (stored <= 0)
+		return stored == 0 ? stored_ship_state::none : stored_ship_state::unreadable;
+	bool unplaced = false;
+	if (sql_place_ship(owner, &unplaced))
+		return stored_ship_state::placed;
+	return unplaced ? stored_ship_state::no_room : stored_ship_state::unreadable;
+#else
+	const char *root = persistence_mode_flatfile_root();
+	std::string error;
+	std::vector<flatfile_ship_record> records;
+	if (!root || flatfile_ship_list(root, &records, &error) != flatfile_ship_result::ok)
+		return stored_ship_state::unreadable;
+	for (const auto &record : records)
+	{
+		if (strcasecmp(record.owner_name.c_str(), owner))
+			continue;
+		if (!flat_ship_record_is_loadable(record, &error))
+			return stored_ship_state::unreadable;
+		if (flat_ship_materialize(record, &error))
+			return stored_ship_state::placed;
+		return shiperror == 4 ? stored_ship_state::no_room : stored_ship_state::unreadable;
+	}
+	return stored_ship_state::none;
+#endif
+}
+
+/*
+ * Try again, about once a minute, to place the ships the room pool could not
+ * hold at boot.  Called from the game loop; cheap when there are none.
+ */
+void retry_unplaced_ships(void)
+{
+	static time_t next_try = 0;
+	const time_t now = time(NULL);
+	if (unplaced_ship_owners.empty() || now < next_try)
+		return;
+	next_try = now + 60;
+
+	for (auto owner = unplaced_ship_owners.begin(); owner != unplaced_ship_owners.end();)
+	{
+		const stored_ship_state state = place_stored_ship(owner->c_str());
+		if (state == stored_ship_state::placed || state == stored_ship_state::none)
+		{
+			logit(LOG_SHIP, "Unplaced ship of %s is %s.", owner->c_str(),
+			      state == stored_ship_state::placed ? "now in the world" : "gone");
+			owner = unplaced_ship_owners.erase(owner);
+		}
+		else
+			++owner;
+	}
 }
 
 /*

@@ -251,8 +251,18 @@ stateDiagram-v2
   bridge and the hull in the room, sets `DOCKED | LOADED`, clears `SINKING`,
   `FLYING`, `SUNKBYNPC`, `ATTACKBYNPC`, `RAMMING` and `SUMMONED`, and records
   the room as the anchor. If it fails, usually because the room pool is full,
-  every caller erases and destroys the ship. Boot keeps its row for a later
-  boot, and a purchase is refunded or not charged.
+  every caller erases and destroys the ship. Boot keeps the stored ship and
+  notes its owner (`note_unplaced_ship()`), and `retry_unplaced_ships()` places
+  it about once a minute once rooms free up. A purchase is refunded or not
+  charged.
+- **Hull change.** A hull purchase first checks `ship_rooms_fit_class()`: the
+  rooms the ship holds, which `reset_ship()` gives back, plus the free rooms in
+  the pool must cover the new layout. If they do not, the purchase is refused
+  before the epic transaction starts, or refunded if the pool filled up while
+  it was pending. A first-ship purchase by someone whose stored ship is out of
+  the world brings that ship back instead (`place_stored_ship()`), or is
+  refused while there is no room, because a second ship could never be saved
+  beside it.
 - **Undock.** `order undock` checks the sails, mobility and
   `check_undocking_conditions()`: a legal name, weapons allowed on the hull,
   per-arc mount and weight limits, and the captain's level at least the hull's
@@ -822,8 +832,9 @@ its retry updates rather than inserting into `UNIQUE(owner_name)`. A failed
 COMMIT may still have been applied, with its reply lost. So a ship whose row it
 inserted keeps the id, marked unconfirmed (`ShipData::db_id_unconfirmed`). Its
 next save looks the row up by id first, then updates it, or inserts again if
-the row is not there. `sql_load_all_ships()` loads every owner's ship at boot.
-It destroys a ship that `load_ship()` cannot place, and keeps its row.
+the row is not there. `sql_load_all_ships()` loads every owner's ship at boot
+through `sql_place_ship()`. A ship that `load_ship()` cannot place is destroyed
+in memory, and its row is kept and retried (see **Load** above).
 `sql_delete_ship()` deletes the `ships` row (children cascade) and queues
 invalidation of the retired Redis snapshot key.
 
@@ -835,7 +846,8 @@ becomes an array subscript is range-checked on load and on save
 its own type selects). A missing catalog is first seeded from a legacy
 `Ships/` directory (`ship_index` plus version-3 per-owner files), otherwise
 created empty. Any load failure is **fatal at boot**, because the flat file is
-the only authority. The cargo market lives in `<state root>/metadata/cargo_market`
+the only authority, except a ship the full room pool cannot place, which stays
+in the catalog and is retried like an SQL one. The cargo market lives in `<state root>/metadata/cargo_market`
 (magic `DURCARGO`, SHA-256 trailer).
 
 `lib/etc/ship_index` is an empty leftover of the pre-SQL flat-file layout and
@@ -1011,7 +1023,8 @@ The focused regressions live in `tests/async/`. Run them directly, for example
 | `run_character_rename_references_mysql.sh` | The rename's reference updates against MySQL/MariaDB tables shaped like production. |
 | `test_ship_load_clears_summon.py` | `load_ship()` drops a stale `SUMMONED`. |
 | `test_ship_boot_loads_every_row.py` | `sql_load_all_ships()` loads more than 512 rows. |
-| `test_ship_boot_room_pool_full.py` | Booting more ships than the room pool holds: all-or-nothing room claims, unplaced ships destroyed with their rows kept, and a clean shutdown (real loader, layout and `shutdown_ships()`, ASan/UBSan). |
+| `test_ship_boot_room_pool_full.py` | Booting more ships than the room pool holds: all-or-nothing room claims, unplaced ships destroyed with their rows kept and placed again as rooms free up, the hull-change room check, and a clean shutdown (real loader, layout, retry and `shutdown_ships()`, ASan/UBSan). |
+| `test_ship_purchase_room_guards.py` | A hull change that the pool cannot hold is refused or refunded, and a first-ship purchase by an owner with a stored ship brings it back instead (real `ship_hull_purchase_committed()`). |
 | `test_ship_boarders_use_target_rooms.py` | Pirate boarders land only in the target's own, non-contiguous rooms. |
 | `test_ship_damage_control.py` | Ship Damage Control reduces sail and hull damage with the owner aboard. |
 | `test_player_save_owned_ship.py` | A player save queues or writes the ship the player owns, never the one they stand in (real `do_save_silent()`). |
@@ -1081,11 +1094,3 @@ reproduced in a running server.
     - The index points at `Ship npcs`, `Ship Weapons` and `Toggle Shipmap`,
       none of which has an entry in the repository help sources. `Ship Damage
       Control` has one only in `lib/information/help_index`.
-15. A hull change does not check that the room pool can hold the new layout.
-    `reset_ship()` frees the old rooms and ignores a failed
-    `set_ship_physical_layout()`. So upgrading a hull while the pool is nearly
-    full leaves a loaded ship with no rooms.
-16. A ship left out at boot because the room pool is full keeps its row, but
-    its owner has no ship in the game. If they buy one once rooms free up, its
-    first save collides with that row on `UNIQUE(owner_name)` and keeps
-    failing, so the new ship is lost at the next reboot.
