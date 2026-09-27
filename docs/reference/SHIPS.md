@@ -226,6 +226,7 @@ stateDiagram-v2
     Anchored --> Transit: summon
     Docked --> Transit: summon
     Transit --> Docked: summon_ship_event()
+    Transit --> Docked: reboot or copyover (load_ship() at the anchor)
     Underway --> Sinking: two arcs breached
     Anchored --> Sinking: two arcs breached
     Sinking --> DavyJones: player ship: finish_sinking() downgrades it to a sloop
@@ -244,8 +245,8 @@ stateDiagram-v2
   dropped rather than freed. That is deliberate, not a leak.
 - **Load.** `load_ship(ship, real_room)` claims interior rooms, puts the panel
   on the bridge and the hull in the room, sets `DOCKED | LOADED`, clears
-  `SINKING`, `FLYING`, `SUNKBYNPC`, `ATTACKBYNPC` and `RAMMING`, and records
-  the room as the anchor.
+  `SINKING`, `FLYING`, `SUNKBYNPC`, `ATTACKBYNPC`, `RAMMING` and `SUMMONED`,
+  and records the room as the anchor.
 - **Undock.** `order undock` checks the sails, mobility and
   `check_undocking_conditions()`: a legal name, weapons allowed on the hull,
   per-arc mount and weight limits, and the captain's level at least the hull's
@@ -838,11 +839,14 @@ those legacy files (not part of the default build).
   its signature matches the last durable write. A failure keeps the ship pending
   with a 1-second retry gate. The docking, purchase, repair, hiring, cargo,
   combat-reward, sinking and summon paths all queue.
-- **`write_ship()`** writes immediately. Only renames use it, because they must
-  roll back on failure. `rename_ship_owner()` restores the old owner and name if
-  the write fails. A character rename (`rename_character()`) moves the ship the
-  character owns (`get_ship_from_owner()`, wherever they stand) before the
-  database and locker renames, and hands it back if either of those fails.
+- **`write_ship()`** writes immediately. Besides the queue's own flush and
+  drain, it is called directly by `shutdown_ships()`, by the synchronous player
+  save `do_save_silent()` (see [Known issues](#known-issues-and-discrepancies))
+  and by both renames. `rename_ship_owner()` restores the old owner and name if
+  the write fails; `rename_ship()` does not roll back. A character rename
+  (`rename_character()`) moves the ship the character owns
+  (`get_ship_from_owner()`, wherever they stand) before the database and locker
+  renames, and hands it back if either of those fails.
 - **Copyover.** `drain_pending_ship_saves()` ignores the retry gate. If any
   pending ship cannot be made durable, the copyover is aborted.
 - **Shutdown.** `shutdown_ships()` puts every passenger and loose object in a
@@ -916,7 +920,12 @@ toggle get a text look-out every time the ship changes room.
   sale proceeds.
 - **Epic.** `EPIC_SHIP_PVP` progress for PvP kills. The **Ship Damage Control**
   epic skill reduces sail and hull damage to its owner's ship while the owner
-  is aboard (see [Damage model](#damage-model)).
+  is aboard (see [Damage model](#damage-model)). It is taught only by the
+  headless commodore (mob 2733) in 10-point lessons. `epic_teacher()` charges
+  three times the table's 80 points and twice its 8,000 platinum, so the first
+  lesson costs 240 epic points and 16,000 platinum, and the price rises with
+  the skill (`epic.progressFactor`). New Chaos characters with starter epic
+  skills enabled are granted it at 100 ([CHAOS_MODE.md](CHAOS_MODE.md)).
 - **Economy hooks.** Cargo purchases apply `EPIC_BONUS_CARGO`. Cargo sale
   proceeds pass through `check_nexus_bonus(NEXUS_BONUS_CARGO)`.
 - **CTF.** A ship carrying a CTF flag (objects 790–792, or a flag carrier aboard)
@@ -1028,11 +1037,20 @@ reproduced in a running server.
     sales by 10%), and the one on `set_chief()` refers to a non-existent
     `setship … chief` command (`set ship` supports `frags`, `guns`, `repair`
     and `sail` only).
-14. **In-game help drift.** Player help comes from two places:
-    `lib/information/helpships` (topic `ships`, pages `SHIP1`–`SHIP5`) and the
+14. The synchronous player save `do_save_silent()` (`src/cmd/actoth.c`), used by
+    deferred-save flushes, soulbinding, epic-skill purchases, account rewards,
+    tradeskills and more, also writes the ship the player is **standing in**
+    (`get_ship_from_char()`), not the one they own. `write_ship()` refuses NPC
+    ships, so while a player stands aboard a boarded NPC ship every such save
+    reports failure although the character was written: deferred saves retry
+    with "Save attempt failed" and a persistence alert. A player aboard someone
+    else's ship writes that ship instead.
+15. **In-game help drift.** Player help for ships comes from
+    `lib/information/helpships` (topic `ships`, pages `SHIP1`–`SHIP5`), the
     `Ship`, `Ship basic`, `Ship list`, `Ship movement`, `Ship combat`,
     `Ship cargo`, `Ship looks`, `Ship commands` and `Ship crews` entries in
-    `help/duris_help_parsed.hlp`. Known drift:
+    `help/duris_help_parsed.hlp`, and the `SHIP DAMAGE CONTROL` skill entry in
+    `lib/information/help_index`. Known drift:
     - `SHIP2` gives 45° fore/rear and 120° beam arcs (the code uses 80° and
       100°).
     - `SHIP1` says turning slows at speed (it improves with speed).
@@ -1040,6 +1058,6 @@ reproduced in a running server.
     - `Ship commands` offers `repair weapon all` (`repair weapon` takes a slot;
       use `repair all`).
     - The `Ship cargo` entry contains about 70 pasted prompt lines.
-    - The index points at `Ship npcs`, `Ship Weapons`, `Ship Damage Control` and
-      `Toggle Shipmap`, none of which has an entry in the repository help
-      sources.
+    - The index points at `Ship npcs`, `Ship Weapons` and `Toggle Shipmap`,
+      none of which has an entry in the repository help sources. `Ship Damage
+      Control` has one only in `lib/information/help_index`.

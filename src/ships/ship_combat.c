@@ -93,7 +93,7 @@
 extern char buf[MAX_STRING_LENGTH];
 
 /*
- * Reduce incoming `dam` according to `ch`'s SHIP_SHIP_DAMAGE_CONTROL skill.
+ * Reduce incoming `dam` according to `ch`'s SKILL_SHIP_DAMAGE_CONTROL skill.
  *
  * Removes a flat 4-24% of the damage depending on skill, taking whole points
  * first and then rolling for the fractional remainder, and never takes the

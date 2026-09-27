@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """The Ship Damage Control epic skill reduces damage to its owner's ship.
 
-SKILL_SHIP_DAMAGE_CONTROL is sold as an epic reward (80 epic points and 8,000
-platinum) and taught by the Commodore in Headless, and its help entry promises
+SKILL_SHIP_DAMAGE_CONTROL is an epic reward taught by the headless commodore
+(mob 2733): the first lesson costs 240 epic points and 16,000 platinum, and
+Chaos starter characters are granted it.  Its help entry promises
 that the captain's ship "endures blows that would send lesser hulls to the
 bottom".  Its only call sites, in damage_sail() and damage_hull(), had been
 commented out, so the skill did nothing.

@@ -526,6 +526,17 @@ again. The fee is not refunded.
 | Sinking: player / NPC / Cyric's Revenge | 75–150 / 1000–1500 / 7500 |
 | NPC despawn after losing its target | 300, extended while players watch |
 
+### Ship Damage Control
+
+The **Ship Damage Control** epic skill protects its owner's ship while the
+owner is aboard: every sail and hull hit from another ship is cut by 4% plus a
+fifth of the skill (14% at 50, 24% at 100), never below 1 point. Spells and
+other damage a character deals to a hull are not reduced. The headless
+commodore (mob 2733, in Headless) teaches it from level 56 in 10-point lessons.
+The first lesson costs 240 epic points and 16,000 platinum, and the price
+rises with the skill. New Chaos characters with starter epic skills enabled
+start with it at 100.
+
 ### Sinking consequences for the owner
 
 A player ship is never destroyed by sinking. It becomes a **sloop** with every
