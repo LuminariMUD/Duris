@@ -1555,20 +1555,26 @@ bool rename_craftlist(char *old_name, char *new_name)
 	return TRUE;
 }
 
-/* Hand a ship that rename_character() moved back to its original owner. */
-static void return_renamed_ship(const char *new_name, const char *original_name)
+/*
+ * Store `doofus` and the ship they own (NULL for none) under `to` in one
+ * transaction.  The ship's owner changes in memory first, and goes back
+ * unless the transaction committed.
+ */
+static sql_commit_outcome store_character_name(P_char doofus, P_ship ship, const char *to)
 {
-	char from[MAX_STRING_LENGTH], to[MAX_STRING_LENGTH];
+	ShipOwnerChange change;
+	if (ship && !begin_ship_owner_change(ship, to, &change))
+		return sql_commit_outcome::rolled_back;
 
-	strlcpy(from, new_name, sizeof(from));
-	strlcpy(to, original_name, sizeof(to));
-	if (!rename_ship_owner(from, to))
+	const sql_commit_outcome outcome = sql_rename_player_and_ship(doofus, to, ship);
+	if (ship)
 	{
-		wizlog(AVATAR, "Rename of %s failed, and their ship is still owned by %s!", to,
-		       from);
-		logit(LOG_PLAYER, "Rename of %s failed, and their ship is still owned by %s.", to,
-		      from);
+		if (outcome == sql_commit_outcome::committed)
+			finish_ship_owner_change(&change);
+		else
+			undo_ship_owner_change(&change);
 	}
+	return outcome;
 }
 
 /* ------------------------------------------------------------------------------ */
@@ -1655,49 +1661,50 @@ bool rename_character(P_char ch, char *old_name, char *new_name)
 			}
 		}
 
-		/* Move the character's ship first: unlike the database rename it
-		 * can fail on its own, and it can be handed back if a later step
-		 * fails.  It is found by owner, wherever the character stands, and
-		 * owning no ship is fine. */
+		/* The ship the character owns, found by owner wherever they stand,
+		 * changes owner in the same transaction as the player row, so the
+		 * two are never stored under different names.  Owning no ship is
+		 * fine. */
 		char current_name[MAX_STRING_LENGTH];
 		strlcpy(current_name, GET_NAME(doofus), sizeof(current_name));
-		bool moved_ship = false;
-		if (get_ship_from_owner(current_name))
-		{
-			char ship_owner[MAX_STRING_LENGTH], ship_from[MAX_STRING_LENGTH];
-			strlcpy(ship_owner, new_name, sizeof(ship_owner));
-			strlcpy(ship_from, current_name, sizeof(ship_from));
-			if (!rename_ship_owner(ship_from, ship_owner))
-			{
-				send_to_char("Ship ownership update failed.\r\n", ch);
-				return FALSE;
-			}
-			moved_ship = true;
-		}
+		P_ship ship = get_ship_from_owner(current_name);
 
-		if (!sql_player_rename(doofus, new_name))
+		const sql_commit_outcome renamed = store_character_name(doofus, ship, new_name);
+		if (renamed != sql_commit_outcome::committed)
 		{
 			send_to_char("Failed to rename character in DB!\r\n", ch);
-			if (moved_ship)
-				return_renamed_ship(new_name, current_name);
+			if (renamed == sql_commit_outcome::unknown)
+			{
+				wizlog(AVATAR,
+				       "Rename of %s to %s may have been stored: its COMMIT failed. Their ship is stored under the same name as they are.",
+				       current_name, new_name);
+				logit(LOG_PLAYER,
+				      "Rename of %s to %s may have been stored: its COMMIT failed.",
+				      current_name, new_name);
+			}
 			return FALSE;
 		}
 
 		/* if failed rename locker - is in use or something wierd, then dont rename */
 		if (!rename_locker(ch, old_name, new_name))
 		{
-			if (!sql_player_rename(doofus, current_name))
-			{
-				wizlog(AVATAR,
-				       "Rename of %s failed, and the database still calls them %s!",
-				       current_name, new_name);
-				logit(LOG_PLAYER,
-				      "Rename of %s failed, and the database still calls them %s.",
-				      current_name, new_name);
-			}
-			if (moved_ship)
-				return_renamed_ship(new_name, current_name);
-			return FALSE;
+			/* Move the character and their ship back together.  If that
+			 * does not commit, the rename stands for both of them, and only
+			 * the locker keeps the old name. */
+			const sql_commit_outcome restored =
+				store_character_name(doofus, ship, current_name);
+			if (restored == sql_commit_outcome::committed)
+				return FALSE;
+			const char *stands = restored == sql_commit_outcome::unknown ? "may stand" :
+										       "stands";
+			send_to_char(
+				"&+RWarning:&n the locker could not be renamed and is still under the old name.\r\n",
+				ch);
+			wizlog(AVATAR, "Rename of %s to %s %s, but their locker is still under %s!",
+			       current_name, new_name, stands, current_name);
+			logit(LOG_PLAYER,
+			      "Rename of %s to %s %s, but their locker is still under %s.",
+			      current_name, new_name, stands, current_name);
 		}
 
 		/* if GOD changing someones name, put old one to deny list */

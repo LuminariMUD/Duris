@@ -71,6 +71,19 @@ bool sql_player_exists(const char *name);
 // character rename
 bool sql_player_rename(P_char ch, const char *new_name);
 
+// outcome of a transaction whose COMMIT may have been applied even though it failed
+enum class sql_commit_outcome
+{
+	committed,
+	rolled_back,
+	unknown,
+};
+
+// rename the character's player row and save the ship they own (NULL for
+// none, its owner already changed in memory) in one transaction
+sql_commit_outcome sql_rename_player_and_ship(P_char ch, const char *new_name,
+					      struct ShipData *ship);
+
 // get player pid by name
 int sql_get_player_pid(const char *name);
 

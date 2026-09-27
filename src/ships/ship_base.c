@@ -1044,6 +1044,79 @@ bool rename_ship_owner(char *old_name, char *new_name)
 }
 
 /*
+ * Give `ship` the owner `new_owner` in memory only, keeping in `change` what
+ * undo_ship_owner_change() needs to put it back without another write.
+ * rename_character() stores the change in the same transaction as the
+ * player row, then calls finish_ship_owner_change() if that committed.
+ *
+ * Returns FALSE, with the ship untouched, when `new_owner` is empty or the
+ * old names cannot be copied.
+ */
+bool begin_ship_owner_change(P_ship ship, const char *new_owner, ShipOwnerChange *change)
+{
+	if (!ship || !new_owner || !*new_owner)
+		return FALSE;
+
+	change->ship = ship;
+	change->ownername = str_dup(ship->ownername ? ship->ownername : "");
+	change->name = str_dup(SHIP_NAME(ship) ? SHIP_NAME(ship) : "");
+	change->db_id = ship->db_id;
+	if (!change->ownername || !change->name)
+	{
+		if (change->ownername)
+			FREE(change->ownername);
+		if (change->name)
+			FREE(change->name);
+		return FALSE;
+	}
+
+	str_free(ship->ownername);
+	ship->ownername = str_dup(new_owner);
+	CAP(ship->ownername);
+	name_ship(SHIP_NAME(ship), ship);
+	return TRUE;
+}
+
+/*
+ * The owner change is stored: mark the ship saved, since the transaction
+ * saved all of it, and drop the old owner's cached copies.
+ */
+void finish_ship_owner_change(ShipOwnerChange *change)
+{
+	P_ship ship = change->ship;
+	char path[MAX_STRING_LENGTH];
+
+	ship->save_pending = false;
+	ship->save_retry_after = 0;
+	ship->save_saved_signature = ship_save_signature(ship);
+
+	redis_invalidate_ship_snapshot(change->ownername);
+	snprintf(path, sizeof(path), "Ships/%s", change->ownername);
+	unlink(path);
+
+	FREE(change->ownername);
+	FREE(change->name);
+}
+
+/*
+ * The owner change was not stored: put back the old owner and name.  A row
+ * id the transaction gave a ship that had none is kept but marked
+ * unconfirmed, because a failed COMMIT may still have stored it;
+ * sql_save_ship() checks before using it.
+ */
+void undo_ship_owner_change(ShipOwnerChange *change)
+{
+	P_ship ship = change->ship;
+
+	str_free(ship->ownername);
+	ship->ownername = change->ownername;
+	name_ship(change->name, ship);
+	FREE(change->name);
+	if (ship->db_id != change->db_id)
+		ship->db_id_unconfirmed = true;
+}
+
+/*
  * Bring `ship` into the world at `to_room` (a real room index).
  *
  * Carves out the ship's interior rooms, places the hull object and the

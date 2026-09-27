@@ -708,6 +708,18 @@ bool resolve_volley_endpoints(const VolleyData *volley, P_ship *attacker, P_ship
 void name_ship(const char *name, P_ship ship);
 bool rename_ship(P_char ch, char *owner_name, char *new_name);
 bool rename_ship_owner(char *old_name, char *new_name);
+
+// A ship owner change made in memory only, so that it can be undone without
+// another write if the transaction storing it does not commit.
+struct ShipOwnerChange
+{
+	P_ship ship;
+	char *ownername, *name; // the ship's previous owner and name
+	int db_id;
+};
+bool begin_ship_owner_change(P_ship ship, const char *new_owner, ShipOwnerChange *change);
+void finish_ship_owner_change(ShipOwnerChange *change);
+void undo_ship_owner_change(ShipOwnerChange *change);
 int load_ship(P_ship shipdata, int to_room);
 
 void delete_ship(P_ship ship, bool npc = false);

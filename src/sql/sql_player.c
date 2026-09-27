@@ -480,6 +480,11 @@ bool sql_player_rename(P_char /*ch*/, const char * /*new_name*/)
 {
 	return false;
 }
+sql_commit_outcome sql_rename_player_and_ship(P_char /*ch*/, const char * /*new_name*/,
+					      P_ship /*ship*/)
+{
+	return sql_commit_outcome::rolled_back;
+}
 
 int sql_get_locker_id_by_name(const char * /*locker_name*/)
 {
@@ -1112,6 +1117,54 @@ bool sql_player_rename(P_char ch, const char *new_name)
 	free(escaped_name);
 
 	return sql_run_query(query);
+}
+
+/* Whether the player row for `pid` is named `name`: 1 if so, 0 if not, -1 if it cannot be read. */
+static int sql_player_row_named(int pid, const char *name)
+{
+	MYSQL_RES *result = db_query("SELECT name FROM player_data WHERE pid=%d", pid);
+	if (!result)
+		return -1;
+	MYSQL_ROW row = mysql_fetch_row(result);
+	const int named = row && row[0] && !strcasecmp(row[0], name) ? 1 : 0;
+	mysql_free_result(result);
+	return named;
+}
+
+/*
+ * Rename `ch`'s player row to `new_name` and save `ship`, whose owner the
+ * caller has already changed in memory, in one transaction, so a character
+ * and the ship they own are never stored under different names.  `ship` may
+ * be NULL.
+ *
+ * A ROLLBACK only fails when the connection is gone, and the server then
+ * discards the transaction itself.  A failed COMMIT, however, may have been
+ * applied with its reply lost, so the player row is read back to tell which;
+ * sql_commit_outcome::unknown means it could not be read.
+ */
+sql_commit_outcome sql_rename_player_and_ship(P_char ch, const char *new_name, P_ship ship)
+{
+	if (!DB || !ch || !new_name || sql_in_transaction() || !sql_begin_transaction())
+		return sql_commit_outcome::rolled_back;
+
+	if (!sql_player_rename(ch, new_name) || (ship && !sql_save_ship(ship)))
+	{
+		sql_rollback();
+		return sql_commit_outcome::rolled_back;
+	}
+	if (sql_commit())
+		return sql_commit_outcome::committed;
+
+	sql_rollback();
+	switch (sql_player_row_named(GET_PID(ch), new_name))
+	{
+	case 1:
+		return sql_commit_outcome::committed;
+	case 0:
+		return sql_commit_outcome::rolled_back;
+	default:
+		return sql_commit_outcome::unknown;
+	}
 }
 
 int sql_get_player_pid(const char *name)
