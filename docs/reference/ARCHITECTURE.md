@@ -300,8 +300,11 @@ Design rationale: [STUDIOPROC.md](../content/STUDIOPROC.md). Builder grammar:
 
 The ship simulation (sailing, cargo, naval combat, NPC crews/shops) is a
 self-contained subsystem under `src/ships/`, built into its own object files
-and linked into the main binary. Ship SQL and optional Redis snapshot routes remain
-distinct from the revisioned player-save and critical-command authorities.
+and linked into the main binary. Ship state is SQL-authoritative and distinct from
+the revisioned player-save and critical-command authorities. The old Redis ship
+snapshot keys are retired, and the server now only invalidates them.
+See [SHIPS.md](SHIPS.md) for the subsystem reference and
+[SHIP_GAMEPLAY.md](SHIP_GAMEPLAY.md) for commands, catalogues and the trade economy.
 
 ## Help system
 

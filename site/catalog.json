@@ -77,6 +77,13 @@
     "description": "Follow deferred work through the timer wheel."
   },
   {
+    "slug": "ships",
+    "source": "docs/reference/SHIPS.md",
+    "title": "Ship system",
+    "group": "Engineering",
+    "description": "Follow a vessel from shipyard to sea floor: sailing, combat, NPCs, and persistence."
+  },
+  {
     "slug": "player-saves",
     "source": "docs/persistence/PLAYER_SAVE_PIPELINE.md",
     "title": "Player saves",
@@ -173,6 +180,13 @@
     "title": "Chaos mode",
     "group": "World building",
     "description": "Understand character grants, equipment, and craft pouches."
+  },
+  {
+    "slug": "ship-gameplay",
+    "source": "docs/reference/SHIP_GAMEPLAY.md",
+    "title": "Ship gameplay",
+    "group": "World building",
+    "description": "Look up ship commands, hulls, weapons, crews, and the cargo economy."
   },
   {
     "slug": "colorization",

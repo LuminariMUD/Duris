@@ -30,6 +30,8 @@ docs/
 | [CODEBASE.md](reference/CODEBASE.md) | Module-by-module map of the server sources. |
 | [DATABASE.md](reference/DATABASE.md) | Database authority, typed reads/writes, schema, reconciliation, and migrations. |
 | [EVENTS.md](reference/EVENTS.md) | The `nevent` deferred-work scheduler: the timer wheel, scheduling, cancellation, the per-pulse budget, and catch-up. |
+| [SHIPS.md](reference/SHIPS.md) | Ship subsystem engineering reference: lifecycle, heartbeat, movement, crews, combat, NPC ships, persistence, GMCP, extending, and known issues. |
+| [SHIP_GAMEPLAY.md](reference/SHIP_GAMEPLAY.md) | Ship commands, shipyards and crew halls, hull/weapon/equipment/crew catalogues, the cargo economy, costs, timings, and properties. |
 | [api/health.md](reference/api/health.md) | The health endpoint contract. |
 | [api/durisweb.md](reference/api/durisweb.md) | DurisWeb transport, challenge authentication, authorization, and privacy contract. |
 

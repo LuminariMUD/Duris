@@ -112,8 +112,11 @@ trade. `src/ships/ship_auto.c` is the player autopilot; it is not generated and 
 separate from the NPC combat brain in `src/ships/ship_npc_ai.c`. `src/ships/ship_identity.c`
 provides process-local generation-checked references, `src/ships/ship_variables.c` owns
 the append-only static identifier tables, and `src/ships/ship_utils.c` contains shared
-map/contact helpers. The external API is `src/ships/ships.h`; ship index data is
-`lib/etc/ship_index`.
+map/contact helpers. The external API is `src/ships/ships.h`. Ships persist to the
+`ships`, `ship_armor`, `ship_crew` and `ship_slots` tables (or the flat-file
+`ship_catalog`). `lib/etc/ship_index` is an empty leftover of the pre-SQL layout and is
+not read. [SHIPS.md](SHIPS.md) is the full engineering reference, and
+[SHIP_GAMEPLAY.md](SHIP_GAMEPLAY.md) covers commands, catalogues and the cargo economy.
 
 ## Kingdom subsystem and retired siege identifiers
 
