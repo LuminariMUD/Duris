@@ -43,6 +43,10 @@ static size_t next_row = 0;
 static bool result_open = false;
 static std::vector<std::string> loaded;
 static ShipData ships[ROWS];
+ShipObjHash shipObjHash;
+ShipObjHash::ShipObjHash() {}
+bool ShipObjHash::erase(P_ship) { return true; } // for a ship load_ship() refused
+void delete_ship(P_ship, bool) {}
 
 MYSQL_RES *db_query_at(struct persistence_query_site, const char *, ...)
 {

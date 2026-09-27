@@ -11256,7 +11256,11 @@ bool sql_load_all_ships()
 		name_ship(ship->name, ship);
 		if (!load_ship(ship, real_room0(ship->anchor)))
 		{
+			/* Usually the ship-room pool is full.  The row is kept for a
+			 * later boot, but an unplaced ship must not stay registered. */
 			logit(LOG_FILE, "sql_load_all_ships: component=ship outcome=failure");
+			shipObjHash.erase(ship);
+			delete_ship(ship, true);
 			continue;
 		}
 
