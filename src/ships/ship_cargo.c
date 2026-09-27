@@ -112,6 +112,19 @@ static uint64_t cargo_maintenance_work_id;
 static size_t cargo_maintenance_value_count;
 static int64_t cargo_maintenance_values[3 + NUM_PORTS * NUM_PORTS * 4];
 
+/*
+ * Keep a market modifier inside its configured band, ship.cargo.minPriceMod
+ * to maxPriceMod, or the contraband pair.  An unset bound does not clamp.
+ */
+static float bound_market_mod(bool contraband, float modifier)
+{
+	const float low = get_property(
+		contraband ? "ship.contraband.minPriceMod" : "ship.cargo.minPriceMod", 0.0);
+	const float high = get_property(
+		contraband ? "ship.contraband.maxPriceMod" : "ship.cargo.maxPriceMod", 1000.0);
+	return BOUNDEDF(low, modifier, high);
+}
+
 #ifdef __NO_MYSQL__
 namespace
 {
@@ -419,9 +432,12 @@ void replace_live_cargo(const flat_cargo_record &record)
 		for (int type = 0; type < NUM_PORTS; ++type)
 		{
 			const size_t index = port * NUM_PORTS + type;
-			ship_cargo_market_mod[port][type] = record.cargo[index];
-			ship_cargo_market_mod_delayed[port][type] = record.cargo[index];
-			ship_contra_market_mod[port][type] = record.contraband[index];
+			ship_cargo_market_mod[port][type] =
+				bound_market_mod(false, record.cargo[index]);
+			ship_cargo_market_mod_delayed[port][type] =
+				ship_cargo_market_mod[port][type];
+			ship_contra_market_mod[port][type] =
+				bound_market_mod(true, record.contraband[index]);
 		}
 }
 } // namespace
@@ -582,14 +598,14 @@ int read_cargo()
 		if (!strcmp(type, "CARGO"))
 		{
 			ship_cargo_market_mod[port_id][cargo_type] =
-				modifier; // BOUNDEDF(get_property("ship.cargo.minPriceMod", 0.0), modifier, get_property("ship.cargo.maxPriceMod", 0.0));
+				bound_market_mod(false, modifier);
 			ship_cargo_market_mod_delayed[port_id][cargo_type] =
 				ship_cargo_market_mod[port_id][cargo_type];
 		}
 		else if (!strcmp(type, "CONTRABAND"))
 		{
 			ship_contra_market_mod[port_id][cargo_type] =
-				modifier; // BOUNDEDF(get_property("ship.contraband.minPriceMod", 0.0), modifier, get_property("ship.contraband.maxPriceMod", 0.0));
+				bound_market_mod(true, modifier);
 		}
 	}
 
@@ -858,6 +874,11 @@ static void adjust_cargo_market()
 									0.05));
 				}
 			}
+			/* A neutral point outside the band cannot pull a price out of it. */
+			ship_cargo_market_mod[i][j] =
+				bound_market_mod(false, ship_cargo_market_mod[i][j]);
+			ship_contra_market_mod[i][j] =
+				bound_market_mod(true, ship_contra_market_mod[i][j]);
 		}
 	}
 }
@@ -1323,6 +1344,10 @@ void adjust_ship_market(int transaction, int location, int type, int volume)
 			ship_contra_market_mod[location][type] *
 			(1.0 + get_property("ship.contraband.buyAdjustMod", 0.015) * volume);
 	}
+	ship_cargo_market_mod[location][type] =
+		bound_market_mod(false, ship_cargo_market_mod[location][type]);
+	ship_contra_market_mod[location][type] =
+		bound_market_mod(true, ship_contra_market_mod[location][type]);
 
 	if (!write_cargo())
 	{

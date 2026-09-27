@@ -1924,6 +1924,7 @@ void reset_ship(P_ship ship, bool clear_slots)
 		REMOVE_BIT(ship->flags, SINKING);
 	if (IS_SET(ship->flags, FLYING))
 		REMOVE_BIT(ship->flags, FLYING);
+	ship->z = 0;
 	if (IS_SET(ship->flags, SUNKBYNPC))
 		REMOVE_BIT(ship->flags, SUNKBYNPC);
 	if (IS_SET(ship->flags, ATTACKBYNPC))
@@ -3330,6 +3331,7 @@ void fly_ship(P_ship ship)
 			     SHIP_ID(ship), SHIP_NAME(ship));
 
 	ship->shipobj->z_cord = 4;
+	ship->z = SHIP_FLYING_ALTITUDE;
 	update_ship_status(ship);
 }
 
@@ -3337,8 +3339,8 @@ void fly_ship(P_ship ship)
  * Set a flying ship back down.
  *
  * Clears FLYING and returns the ship to the surface, starting the levistone's
- * recharge (LEVISTONE_RECHARGE).  If the ship is over terrain it cannot float
- * on, landing damages it -- a levistone running out over land is expensive.
+ * recharge (LEVISTONE_RECHARGE).  Over terrain it cannot float on, the ship
+ * stops dead where it lands, undamaged, and must maneuver back onto water.
  */
 void land_ship(P_ship ship)
 {
@@ -3382,6 +3384,7 @@ void land_ship(P_ship ship)
 	}
 
 	ship->shipobj->z_cord = 0;
+	ship->z = 0;
 	update_ship_status(ship);
 }
 

@@ -904,15 +904,20 @@ void volley_hit_event(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/, void *dat
  * Apply `dam` to `target`'s mainsail and announce it to all three audiences:
  * the attacker's crew, the target's crew, and nearby ships.
  *
- * `attacker` may be NULL for damage with no ship behind it.  The owner's
- * Ship Damage Control skill reduces the damage while they are aboard, and it
- * is floored at 1.  Always returns TRUE.
+ * `attacker` may be NULL for damage with no ship behind it.  A warship takes
+ * warship.sails.damage.reduction of it, the owner's Ship Damage Control skill
+ * reduces it while they are aboard, and it is floored at 1.  Always returns
+ * TRUE.
  *
  * Note the sail is reduced without clamping here; update_ship_status() is
  * what floors it at zero and recomputes the resulting speed.
  */
 int damage_sail(P_ship attacker, P_ship target, int dam)
 {
+	/* A warship's rigging is built to take fire. */
+	if (IS_WARSHIP(target))
+		dam = (int)(dam * get_property("warship.sails.damage.reduction", 1.0));
+
 	P_char captain = captain_is_aboard(target);
 
 	if (captain)

@@ -20599,6 +20599,9 @@ over long ranges and scatter it across the target, and their aim suffers
 most when the range is changing fast.  Beamcannons do more damage the closer
 the target is.  The mind blast cannon does no damage, but stuns the target's
 crew: they cannot steer, fire, reload or repair until they recover.
+A flying ship is 4 squares up, so it is farther from guns on the water, and
+the shortest-reaching weapons cannot hit it at all.  Warships' sails are
+built to take fire, and suffer less from every sail hit.
 Beamcannons, the mind blast and fragmentation cannons and the Long Tom
 catapult are capital weapons.  A ship can carry only one capital item, and
 each needs a skilled gun crew or a ship with many frags.

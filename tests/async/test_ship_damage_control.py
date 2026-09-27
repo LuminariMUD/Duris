@@ -38,6 +38,17 @@ HARNESS = r'''
 
 #include <cassert>
 #include <cstdio>
+#include <cstring>
+
+// A frigate is a warship; every other class is not.
+const ShipTypeData ship_type_data[MAXSHIPCLASS] = {
+	{}, {}, {}, {}, {}, {}, {}, {}, {}, { ._kind = SHK_WARSHIP },
+};
+static double warship_reduction = 1.0;
+float get_property(const char *name, double fallback)
+{
+	return !strcmp(name, "warship.sails.damage.reduction") ? warship_reduction : fallback;
+}
 
 static P_char aboard = nullptr;
 static int skill = 0;
@@ -58,9 +69,10 @@ void stun_all_in_ship(P_ship, int) {}
 
 ''' + FUNCTIONS + r'''
 
-static int sail_after(int dam)
+static int sail_after(int dam, int m_class = SH_SLOOP)
 {
 	ShipData ship = {};
+	ship.m_class = m_class;
 	ship.mainsail = 1000;
 	damage_sail(nullptr, &ship, dam);
 	return 1000 - ship.mainsail;
@@ -99,7 +111,17 @@ int main()
 	assert(sail_after(100) == 86 && hull_after(100) == 86);
 	assert(sail_after(1) == 1 && hull_after(2) >= 1);
 
-	puts("ship damage control reduces damage to its owner's ship");
+	// warship.sails.damage.reduction applies to a warship's sails only, before
+	// Damage Control: 100 * 0.85 = 85, then 14% off = 73.
+	aboard = nullptr;
+	warship_reduction = 0.85;
+	assert(sail_after(100, SH_FRIGATE) == 85 && sail_after(100) == 100);
+	assert(hull_after(100) == 100);
+	aboard = &captain;
+	assert(sail_after(100, SH_FRIGATE) == 73);
+	assert(sail_after(1, SH_FRIGATE) == 1);
+
+	puts("ship damage control and the warship sail reduction reduce ship damage");
 	return 0;
 }
 '''

@@ -2203,8 +2203,8 @@ const char *condition_prefix(int maxhp, int curhp, bool light)
  * (`x`, `y`).
  *
  * The target's own fractional offset within its cell is added in, so ships
- * sharing a cell still have a meaningful sub-room separation.  z is always 0
- * (see range()).
+ * sharing a cell still have a meaningful sub-room separation; the z axis
+ * covers flying ships (see range()).
  */
 static float ship_range(P_ship ship, P_ship target, int x, int y)
 {
@@ -2214,9 +2214,9 @@ static float ship_range(P_ship ship, P_ship target, int x, int y)
 
 /*
  * Straight-line distance between two points in map space.  Plain 3-D
- * Euclidean, but every ship's z is 0, flying or not, so ranges are flat.  A
- * flying ship is harder to hit (weaponsight()) and cannot be rammed, but no
- * farther away.
+ * Euclidean; z is altitude, SHIP_FLYING_ALTITUDE for a flying ship and 0 on
+ * the water, so a flying ship is farther from surface guns, and a surface
+ * weapon whose range is no more than the altitude cannot reach it at all.
  */
 float range(float x1, float y1, float z1, float x2, float y2, float z2)
 {

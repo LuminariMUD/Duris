@@ -664,12 +664,14 @@ for 60 ticks and lands automatically, and the stone recharges for 600 ticks.
 - it cannot be boarded or left (immortals excepted), cannot anchor or maneuver,
   and rams pass over or under it;
 - shots at it miss 50% more often;
+- it is at altitude: `fly_ship()` sets `ShipData::z` to `SHIP_FLYING_ALTITUDE`
+  (4 squares) and `land_ship()` back to 0. Ranges are three-dimensional, so a
+  surface ship three squares away is five from a flying one, and a surface
+  weapon with a reach of 4 or less cannot hit it. Two flying ships are level;
 - the levistone weighs nothing.
 
 Landing over land stops the ship on the land room, and it must `order maneuver`
-back onto adjacent water. There is no damage, despite what the comment on
-`land_ship()` says. `ShipData::z` is never set, so flying gives no range
-advantage (see [Known issues](#known-issues-and-discrepancies)).
+back onto adjacent water. It is not damaged.
 Hulls with `AIR` fly without the timer. Only Cyric's Revenge has it, and its AI
 takes off at random.
 
@@ -1041,15 +1043,10 @@ The focused regressions live in `tests/async/`. Run them directly, for example
 
 ## Known issues and discrepancies
 
-These were found by reading the code while writing this document. The code bugs
-among them are fixed; `test_ship_documented_bugs.py` pins the fixes. Two need a
-decision rather than a fix:
-
-1. **Flying gives no range advantage.** `ShipData::z` is always 0, so a flying
-   ship is no farther away than a surface one. Its defence is the 1.5× miss
-   multiplier and ram immunity. Giving it altitude would change ship combat.
-2. **Inert properties.** `warship.sails.damage.reduction` in
-   `lib/duris.properties` is not read anywhere, and the cargo and contraband
-   `minPriceMod`/`maxPriceMod` clamp is commented out in `read_cargo()`, so
-   those properties do nothing. Wiring either in would change warship combat
-   or the cargo economy.
+These were found by reading the code while writing this document, and are all
+resolved. `test_ship_documented_bugs.py` pins the code bugs. The two that needed
+a decision were settled by wiring them in: flying ships have altitude (see
+[Flying ships](#flying-ships), `test_ship_altitude_and_market_bounds.py`),
+`warship.sails.damage.reduction` cuts sail damage to warships
+(`test_ship_damage_control.py`), and the cargo and contraband price bands hold
+the markets (see [SHIP_GAMEPLAY.md](SHIP_GAMEPLAY.md#market-movement)).

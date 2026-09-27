@@ -196,6 +196,7 @@
 #define WEIGHT_CARGO 2
 #define WEIGHT_CONTRABAND 2
 
+#define SHIP_FLYING_ALTITUDE 4 // squares above the water; ranges to a flying ship include it
 #define MINCONTRAALIGN 1000 // alignment at or above which contraband is refused
 #define MINCONTRAFRAGS 100
 

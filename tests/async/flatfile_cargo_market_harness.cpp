@@ -28,6 +28,17 @@ const char *persistence_mode_flatfile_root(void)
 
 void logit(const char *, const char *, ...) {}
 
+// No price band is configured here, so loading keeps every modifier as stored.
+float get_property(const char *, double fallback)
+{
+	return fallback;
+}
+
+float BOUNDEDF(float low, float value, float high)
+{
+	return value < low ? low : value > high ? high : value;
+}
+
 void set_timer(const char *name, int date);
 
 void set_timer(const char *name)
