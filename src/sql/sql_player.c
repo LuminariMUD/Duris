@@ -10844,6 +10844,10 @@ bool sql_save_ship(P_ship ship)
 		own_transaction = true;
 	}
 
+	/* Only a row this call inserted is undone by a rollback.  An existing
+	 * ship keeps its id when its update fails, or its next save would take
+	 * the insert path and collide with UNIQUE(owner_name). */
+	bool inserted = false;
 	if (ship->db_id == -1)
 	{
 		char initQuery[1024];
@@ -10897,6 +10901,7 @@ bool sql_save_ship(P_ship ship)
 		}
 
 		ship->db_id = atoi(row[0]);
+		inserted = true;
 
 		mysql_free_result(result);
 	}
@@ -10922,7 +10927,8 @@ bool sql_save_ship(P_ship ship)
 		free(batch);
 		if (own_transaction)
 			sql_rollback();
-		ship->db_id = -1;
+		if (inserted)
+			ship->db_id = -1;
 		return false;
 	}
 
@@ -10934,7 +10940,8 @@ bool sql_save_ship(P_ship ship)
 		sql_clear_results();
 		if (own_transaction)
 			sql_rollback();
-		ship->db_id = -1;
+		if (inserted)
+			ship->db_id = -1;
 		return false;
 	}
 	result = mysql_store_result(DB);
@@ -10950,6 +10957,8 @@ bool sql_save_ship(P_ship ship)
 		logit(LOG_DEBUG, "sql_save_ship: failed to commit for ship %d", ship->db_id);
 		if (sql_in_transaction())
 			sql_rollback();
+		if (inserted)
+			ship->db_id = -1;
 		return false;
 	}
 
