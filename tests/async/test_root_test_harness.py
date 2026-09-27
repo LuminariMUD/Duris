@@ -61,6 +61,8 @@ expected_resource_intensive = {
 }
 assert runner.RESOURCE_INTENSIVE_TEST_NAMES == expected_resource_intensive
 assert runner.MANUAL_ONLY_TEST_NAMES == {
+    "test_economic_accounting_schema_mysql.py",
+    "test_economic_baseline_schema_mysql.py",
     "test_mob_gold_dial_runtime.py",
     "test_mysql_playtime_journey.py",
     "test_pet_restart_journey.py",
