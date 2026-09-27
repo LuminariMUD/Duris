@@ -1310,7 +1310,7 @@ void delete_ship(P_ship ship, bool npc)
 		cyrics_revenge = 0;
 
 	logit(LOG_STATUS, "Ship \"%s\" (%s) deleted", strip_ansi(ship->name).c_str(),
-	      ship->ownername);
+	      ship->ownername ? ship->ownername : "no owner");
 
 	FREE(ship);
 }

@@ -2694,7 +2694,7 @@ int buy_equipment(P_char ch, P_ship ship, char *arg1)
  */
 int buy_hull(P_char ch, P_ship ship, int owned, char *arg1, char *arg2)
 {
-	int cost, buildtime, hull_type, oldhull;
+	int cost, hull_type, oldhull;
 	struct affected_type *paf = get_spell_from_char(ch, AIP_CARGOCOUNT);
 	bool quickbuild = (paf && paf->modifier >= 10000) ? TRUE : FALSE;
 	bool free_tattoo_hull = false;
@@ -2829,34 +2829,6 @@ int buy_hull(P_char ch, P_ship ship, int owned, char *arg1, char *arg2)
 			submit_ship_hull_purchase(ch, context);
 			return TRUE;
 		}
-
-		kick_everyone_off(ship);
-		ship->m_class = hull_type;
-		reset_ship(ship, false);
-
-		if (ship->m_class > oldhull)
-		{
-			buildtime = 75 * (ship->m_class / 2 - oldhull / 3);
-		}
-		else
-		{
-			buildtime = 75 * (oldhull / 2 - ship->m_class / 3);
-		}
-
-		if (ocean_pvp_state())
-		{
-			buildtime *= 5;
-		}
-
-		// Achievement - Trader
-		if (quickbuild)
-		{
-			buildtime /= 2;
-		}
-		send_to_char_f(
-			ch,
-			"&+gThanks for your business, it will take &n%d&+g hours to complete this upgrade.&n\n",
-			buildtime / 75);
 	}
 	else
 	{
@@ -2926,59 +2898,7 @@ int buy_hull(P_char ch, P_ship ship, int owned, char *arg1, char *arg2)
 		memcpy(context.name, normalized_name, name_bytes + 1);
 		submit_ship_hull_purchase(ch, context);
 		return TRUE;
-
-		// Now, create the ship object
-		ship = new_ship(hull_type);
-		if (ship == NULL)
-		{
-			logit(LOG_FILE, "Error in new_ship(): %d\n", shiperror);
-			send_to_char_f(ch,
-				       "&=LrError creating new ship (%d), please notify a god.&n\n",
-				       shiperror);
-			return TRUE;
-		}
-
-		buildtime = 75 * SHIPTYPE_ID(hull_type) / 4;
-		ship->ownername = str_dup(GET_NAME(ch));
-		ship->anchor = world[ch->in_room].number;
-		name_ship(arg2, ship);
-		// Achievement - Trader
-		if (quickbuild)
-		{
-			buildtime /= 2;
-		}
-		if (!load_ship(ship, ch->in_room))
-		{
-			logit(LOG_FILE, "Error in load_ship(): %d\n", shiperror);
-			shipObjHash.erase(ship);
-			delete_ship(ship, true);
-			send_to_char_f(ch, "&=LrError loading ship (%d), please notify a god.&n\n",
-				       shiperror);
-			return TRUE;
-		}
-
-		// everything went successfully, substracting the cost
-		SUB_MONEY(ch, SHIPTYPE_COST(hull_type), 0);
-		if (SHIPTYPE_EPIC_COST(hull_type) > 0)
-		{
-			epic_gain_skillpoints(ch, -SHIPTYPE_EPIC_COST(hull_type));
-		}
-
-		send_to_char_f(ch, "&+gYour ship, '&n%s&+g', will be &n%s&+g once painted.&n\n",
-			       strip_ansi(arg2).c_str(), arg2);
-		send_to_char_f(
-			ch,
-			"&+gThanks for your business, this hull will take &n%d &+ghours to build.\r\n",
-			buildtime / 75);
 	}
-
-	if (!IS_TRUSTED(ch) && BUILDTIME)
-	{
-		ship->timer[T_MAINTENANCE] += buildtime;
-	}
-	update_ship_status(ship);
-	queue_ship_save(ship, "ship shop update");
-	return TRUE;
 }
 
 /*
