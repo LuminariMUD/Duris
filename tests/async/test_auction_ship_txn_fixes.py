@@ -17,13 +17,15 @@ cargo = (SRC / "ships/ship_cargo.c").read_text()
 assert contains(cargo, "logit(LOG_DEBUG, \"write_cargo(): commit failed\");\n\t\tsql_rollback();")
 
 # 3. A failed ship save resets db_id only when that save inserted the row: the
-# batch, batch-helper and commit failures are all guarded.  An existing ship
+# batch and batch-helper failures are guarded.  A failed commit may have stored
+# the row anyway, so it keeps the id unconfirmed instead.  An existing ship
 # keeps its id (behaviour: test_ship_save_failure_keeps_db_id.py).
 sql_player = (SRC / "sql_player.c").read_text()
 save_start = sql_player.index("#define SHIP_SQL_BATCH_SIZE")
 save_ship = sql_player[save_start:sql_player.index("static bool sql_load_ship_armor(", save_start)]
 assert contains(save_ship, "ship->db_id = atoi(row[0]);\n\t\tinserted = true;")
-assert len(re.findall(r"if \(inserted\)\s*ship->db_id = -1;", save_ship)) == 3
+assert len(re.findall(r"if \(inserted\)\s*ship->db_id = -1;", save_ship)) == 2
+assert len(re.findall(r"if \(inserted\)\s*ship->db_id_unconfirmed = true;", save_ship)) == 1
 
 # 4. Ship UPDATE must include owner_name so rename_ship_owner persists
 assert contains(sql_player, "update ships set owner_name='%s', ship_name='%s'")

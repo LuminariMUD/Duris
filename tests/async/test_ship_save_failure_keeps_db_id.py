@@ -14,8 +14,15 @@ reboot (shutdown_ships() then treats that as corruption).  The commit-failure pa
 had the opposite defect: a new ship kept the id of a row that was rolled back, so
 later saves updated a row that did not exist.
 
+A failed COMMIT is not always a rollback, though: the server can apply it and
+lose the reply.  Forgetting the new row's id then left a stored row the ship no
+longer knew, and every later save collided with it.  So a new ship whose COMMIT
+fails keeps its id marked unconfirmed, and its next save looks for the row
+before choosing between update and insert.
+
 This runs the real sql_save_ship() and its batch helpers against a scripted
-database that enforces `UNIQUE(owner_name)`.
+database that enforces `UNIQUE(owner_name)`, with a COMMIT that is either
+rejected and rolled back or applied with its reply lost.
 """
 
 from pathlib import Path
@@ -38,6 +45,7 @@ HARNESS = r'''
 #include "sql/sql_player.h"
 
 #include <cassert>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -50,8 +58,9 @@ MYSQL *DB = reinterpret_cast<MYSQL *>(&handle);
 // current transaction inserted it.
 static bool row_committed = false, row_pending = false;
 static bool in_transaction = false;
-static bool fail_batch = false, fail_commit = false;
-static int inserts = 0, rollbacks = 0;
+static bool fail_batch = false, fail_commit = false, commit_applies = false, fail_confirm = false;
+static int inserts = 0, rollbacks = 0, confirms = 0;
+static int queried_id = -1;
 static const int ROW_ID = 7;
 static char id_text[16];
 static char *id_row[] = { id_text };
@@ -67,11 +76,13 @@ bool sql_begin_transaction(void)
 bool sql_commit(void)
 {
 	assert(in_transaction);
-	if (fail_commit)
-		return false;
-	in_transaction = false;
+	if (fail_commit && !commit_applies)
+		return false; // rejected: still in the transaction, for the caller to roll back
 	row_committed = row_committed || row_pending;
 	row_pending = false;
+	if (fail_commit)
+		return false; // applied, but the reply was lost; the ROLLBACK changes nothing
+	in_transaction = false;
 	return true;
 }
 bool sql_rollback(void)
@@ -97,13 +108,24 @@ static bool sql_run_query(const char *query)
 	return true;
 }
 
-MYSQL_RES *db_query_at(struct persistence_query_site, const char *, ...)
+MYSQL_RES *db_query_at(struct persistence_query_site, const char *format, ...)
 {
+	queried_id = -1;
+	if (!strcmp(format, "select 1 from ships where id=%d"))
+	{
+		va_list args;
+		va_start(args, format);
+		queried_id = va_arg(args, int);
+		va_end(args);
+		++confirms;
+		if (fail_confirm)
+			return nullptr;
+	}
 	return reinterpret_cast<MYSQL_RES *>(&result_handle);
 }
 MYSQL_ROW mysql_fetch_row(MYSQL_RES *)
 {
-	if (!row_committed && !row_pending)
+	if ((!row_committed && !row_pending) || (queried_id != -1 && queried_id != ROW_ID))
 		return nullptr;
 	snprintf(id_text, sizeof id_text, "%d", ROW_ID);
 	return id_row;
@@ -127,8 +149,8 @@ static void reset(bool row_exists, int db_id, bool outer_transaction = false)
 	row_committed = row_exists;
 	row_pending = false;
 	in_transaction = outer_transaction;
-	fail_batch = fail_commit = false;
-	inserts = rollbacks = 0;
+	fail_batch = fail_commit = commit_applies = fail_confirm = false;
+	inserts = rollbacks = confirms = 0;
 	ship = ShipData{};
 	ship.ownername = owner;
 	ship.name = name;
@@ -174,15 +196,42 @@ int main()
 	assert(sql_save_ship(&ship));
 	assert(inserts == 2 && row_committed && ship.db_id == ROW_ID);
 
-	// The same after a failed commit: the row was rolled back, so the id goes.
+	// A new ship whose COMMIT is rejected: the row was rolled back, but a failed
+	// COMMIT cannot say so.  The id is kept unconfirmed; the next save finds no
+	// row and inserts again.
 	reset(false, -1);
 	fail_commit = true;
 	assert(!sql_save_ship(&ship));
 	assert(rollbacks == 1 && inserts == 1 && !row_committed);
-	assert(ship.db_id == -1);
+	assert(ship.db_id == ROW_ID && ship.db_id_unconfirmed);
 	fail_commit = false;
 	assert(sql_save_ship(&ship));
-	assert(inserts == 2 && row_committed && ship.db_id == ROW_ID);
+	assert(confirms == 1 && inserts == 2 && row_committed);
+	assert(ship.db_id == ROW_ID && !ship.db_id_unconfirmed);
+
+	// A new ship whose COMMIT was applied with its reply lost: the next save
+	// finds the row and updates it, instead of colliding with UNIQUE(owner_name).
+	reset(false, -1);
+	fail_commit = commit_applies = true;
+	assert(!sql_save_ship(&ship));
+	assert(inserts == 1 && row_committed);
+	assert(ship.db_id == ROW_ID && ship.db_id_unconfirmed);
+	fail_commit = commit_applies = false;
+	assert(sql_save_ship(&ship));
+	assert(confirms == 1 && inserts == 1 && row_committed && !in_transaction);
+	assert(ship.db_id == ROW_ID && !ship.db_id_unconfirmed);
+
+	// If the row cannot be looked up, the save fails without guessing, and the
+	// id stays unconfirmed for the next try.
+	reset(true, ROW_ID);
+	ship.db_id_unconfirmed = true;
+	fail_confirm = true;
+	assert(!sql_save_ship(&ship));
+	assert(confirms == 1 && inserts == 0 && rollbacks == 1 && !in_transaction);
+	assert(ship.db_id == ROW_ID && ship.db_id_unconfirmed);
+	fail_confirm = false;
+	assert(sql_save_ship(&ship));
+	assert(confirms == 2 && inserts == 0 && !ship.db_id_unconfirmed);
 
 	// A new ship inside a caller's transaction also forgets the id it inserted.
 	reset(false, -1, true);
@@ -190,7 +239,7 @@ int main()
 	assert(!sql_save_ship(&ship));
 	assert(rollbacks == 0 && in_transaction && ship.db_id == -1);
 
-	puts("ship save failure keeps an existing db_id and forgets a rolled-back insert");
+	puts("ship save failure keeps an existing db_id and confirms an uncertain insert");
 	return 0;
 }
 '''

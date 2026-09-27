@@ -516,6 +516,7 @@ struct ShipData
 	time_t save_retry_after; /* transient retry gate for failed ship saves */
 	bool save_pending; /* queued for deferred persistence */
 	unsigned long long save_saved_signature; /* signature of last persisted state */
+	bool db_id_unconfirmed; /* db_id is from a save whose COMMIT failed; the row may not exist */
 	ShipRuntimeRef runtime_ref; /* process-local slot and reuse generation */
 };
 

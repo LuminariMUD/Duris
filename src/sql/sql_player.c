@@ -10802,6 +10802,17 @@ static bool sql_save_ship_slots(P_ship ship, char *queryBuffer, int batchSize, i
 	return true;
 }
 
+/* Whether ships row `id` exists: 1 if it does, 0 if not, -1 if it cannot be read. */
+static int sql_ship_row_exists(int id)
+{
+	MYSQL_RES *result = db_query("select 1 from ships where id=%d", id);
+	if (!result)
+		return -1;
+	const int exists = mysql_fetch_row(result) ? 1 : 0;
+	mysql_free_result(result);
+	return exists;
+}
+
 bool sql_save_ship(P_ship ship)
 {
 	if (!DB || !ship || !ship->ownername)
@@ -10842,6 +10853,29 @@ bool sql_save_ship(P_ship ship)
 			return false;
 		}
 		own_transaction = true;
+	}
+
+	/* A save whose COMMIT failed may still have stored its row, because the
+	 * server can apply a COMMIT and lose the reply.  Look for the row before
+	 * using the id, so the ship neither updates a row that was rolled back
+	 * nor inserts a second row for its owner. */
+	if (ship->db_id != -1 && ship->db_id_unconfirmed)
+	{
+		const int exists = sql_ship_row_exists(ship->db_id);
+		if (exists < 0)
+		{
+			sql_player_error("sql_save_ship/confirm");
+			free(batch);
+			free(esc_owner);
+			if (esc_name)
+				free(esc_name);
+			if (own_transaction)
+				sql_rollback();
+			return false;
+		}
+		if (!exists)
+			ship->db_id = -1;
+		ship->db_id_unconfirmed = false;
 	}
 
 	/* Only a row this call inserted is undone by a rollback.  An existing
@@ -10957,8 +10991,10 @@ bool sql_save_ship(P_ship ship)
 		logit(LOG_DEBUG, "sql_save_ship: failed to commit for ship %d", ship->db_id);
 		if (sql_in_transaction())
 			sql_rollback();
+		/* The row this call inserted may have been committed anyway.  Keep
+		 * its id, and let the next save check whether the row exists. */
 		if (inserted)
-			ship->db_id = -1;
+			ship->db_id_unconfirmed = true;
 		return false;
 	}
 
