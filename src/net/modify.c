@@ -1487,16 +1487,11 @@ int mob_do_rename_hook(P_char npc, P_char ch, int cmd, char *arg)
 			return TRUE;
 		}
 
-		// Bad names handled in rename_character function.
+		// Bad names and ship ownership are handled in rename_character.
 		strcpy(old_name, GET_NAME(ch));
 		if (!rename_character(ch, old_name, new_name))
 		{
 			return TRUE;
-		}
-		if (!rename_ship_owner(old_name, new_name))
-		{
-			send_to_char("Ship ownership update failed.\r\n", ch);
-			return FALSE;
 		}
 		SUB_MONEY(ch, renamePrice, 0);
 
@@ -1558,6 +1553,22 @@ bool rename_craftlist(char *old_name, char *new_name)
 	}
 
 	return TRUE;
+}
+
+/* Hand a ship that rename_character() moved back to its original owner. */
+static void return_renamed_ship(const char *new_name, const char *original_name)
+{
+	char from[MAX_STRING_LENGTH], to[MAX_STRING_LENGTH];
+
+	strlcpy(from, new_name, sizeof(from));
+	strlcpy(to, original_name, sizeof(to));
+	if (!rename_ship_owner(from, to))
+	{
+		wizlog(AVATAR, "Rename of %s failed, and their ship is still owned by %s!", to,
+		       from);
+		logit(LOG_PLAYER, "Rename of %s failed, and their ship is still owned by %s.", to,
+		      from);
+	}
 }
 
 /* ------------------------------------------------------------------------------ */
@@ -1644,21 +1655,48 @@ bool rename_character(P_char ch, char *old_name, char *new_name)
 			}
 		}
 
+		/* Move the character's ship first: unlike the database rename it
+		 * can fail on its own, and it can be handed back if a later step
+		 * fails.  It is found by owner, wherever the character stands, and
+		 * owning no ship is fine. */
+		char current_name[MAX_STRING_LENGTH];
+		strlcpy(current_name, GET_NAME(doofus), sizeof(current_name));
+		bool moved_ship = false;
+		if (get_ship_from_owner(current_name))
+		{
+			char ship_owner[MAX_STRING_LENGTH], ship_from[MAX_STRING_LENGTH];
+			strlcpy(ship_owner, new_name, sizeof(ship_owner));
+			strlcpy(ship_from, current_name, sizeof(ship_from));
+			if (!rename_ship_owner(ship_from, ship_owner))
+			{
+				send_to_char("Ship ownership update failed.\r\n", ch);
+				return FALSE;
+			}
+			moved_ship = true;
+		}
+
 		if (!sql_player_rename(doofus, new_name))
 		{
 			send_to_char("Failed to rename character in DB!\r\n", ch);
+			if (moved_ship)
+				return_renamed_ship(new_name, current_name);
 			return FALSE;
 		}
 
 		/* if failed rename locker - is in use or something wierd, then dont rename */
 		if (!rename_locker(ch, old_name, new_name))
 		{
-			return FALSE;
-		}
-
-		/* if failed rename ship owner - then dont rename */
-		if (get_ship_from_char(doofus) && !rename_ship_owner(old_name, new_name))
-		{
+			if (!sql_player_rename(doofus, current_name))
+			{
+				wizlog(AVATAR,
+				       "Rename of %s failed, and the database still calls them %s!",
+				       current_name, new_name);
+				logit(LOG_PLAYER,
+				      "Rename of %s failed, and the database still calls them %s.",
+				      current_name, new_name);
+			}
+			if (moved_ship)
+				return_renamed_ship(new_name, current_name);
 			return FALSE;
 		}
 
