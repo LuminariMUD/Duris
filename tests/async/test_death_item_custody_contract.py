@@ -243,7 +243,7 @@ checks.append((
     "a disputed death waits for database acknowledgement before releasing the character",
     contains(disposition, "return durable;") and
     contains(disposition, "player_save_terminal_result::database_acknowledged") and
-    contains(disposition, "DEATH_DISPOSITION_TIMEOUT_MSEC,\n\t\tfalse);") and
+    contains(disposition, "DEATH_DISPOSITION_TIMEOUT_MSEC);") and
     not contains(disposition, "player_save_terminal_result::journal_durable")
 ))
 checks.append((

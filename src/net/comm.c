@@ -921,13 +921,12 @@ int run_the_game(int port, int sslport)
 	logit(LOG_STATUS, "Entering game loop.");
 	if (!mini_mode)
 		locker_async_init();
-	const char *journal_directory = getenv("PLAYER_SAVE_JOURNAL_DIR");
-	if (!player_save_pipeline_init(journal_directory))
+	// Only a journal left behind by an older server is read, once.
+	if (!player_save_pipeline_init(getenv("PLAYER_SAVE_JOURNAL_DIR")))
 	{
-		logit(LOG_STATUS,
-		      "Player save pipeline unavailable; nonterminal saves fail closed.");
+		logit(LOG_STATUS, "Persistence writer unavailable; saves are not written.");
 		persistence_alert(AVATAR, "player_save", "pipeline", "none", "none", "start_failed",
-				  "check PLAYER_SAVE_JOURNAL_DIR");
+				  "writer thread did not start");
 	}
 	const char *critical_journal_directory = getenv("CRITICAL_COMMAND_JOURNAL_DIR");
 	critical_apply_fn critical_apply = critical_command_repository_apply_from_pool;

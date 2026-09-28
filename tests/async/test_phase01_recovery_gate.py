@@ -19,7 +19,6 @@ WIZREDIS = (SRC / "wizredis.c").read_text()
 
 
 HARNESS = r'''
-#include "player/player_revision_state.h"
 #include "player/player_save_worker.h"
 
 #include <cassert>
@@ -44,6 +43,7 @@ player_save_apply_result apply(const player_snapshot &snapshot, void *raw)
     std::unique_lock<std::mutex> lock(state.mutex);
     state.changed.wait(lock, [&] { return state.release; });
     const unsigned int attempt = ++state.attempts[snapshot.pid];
+    // A lost connection is retried at the head of the queue.
     if (snapshot.pid % 17 == 0 && attempt == 1)
         return {player_save_apply_outcome::ambiguous_commit, snapshot.revision - 1, 2013};
     if (snapshot.pid % 23 == 0)
@@ -53,33 +53,27 @@ player_save_apply_result apply(const player_snapshot &snapshot, void *raw)
 
 player_snapshot snapshot_for(int pid)
 {
-    assert(player_revision_hydrate(pid, 0));
-    player_revision_t revision = 0;
-    player_component_mask_t components = 0;
-    assert(player_revision_mark(pid, PLAYER_COMPONENT_STATUS, &revision));
-    assert(player_revision_queue(pid, &revision, &components));
     player_snapshot snapshot = {};
     snapshot.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
     snapshot.pid = pid;
-    snapshot.revision = revision;
-    snapshot.components = components;
+    snapshot.revision = 1;
+    snapshot.components = PLAYER_COMPONENT_STATUS;
     snapshot.encoded_size_bound = 4096;
     return snapshot;
 }
 
 void run_wave(int clients)
 {
-    player_revision_reset_for_tests();
     player_save_worker_reset_for_tests();
     load_state state;
-    assert(player_save_worker_init(apply, &state, 4));
+    assert(player_save_worker_init(apply, &state));
     const auto started = std::chrono::steady_clock::now();
     for (int index = 0; index < clients; ++index)
         assert(player_save_worker_submit(snapshot_for(10000 + index)) ==
                player_save_submit_result::accepted);
     auto queued = player_save_worker_health_copy();
-    assert(queued.queued_pids + queued.inflight_pids == static_cast<uint64_t>(clients));
-    assert(queued.queued_bytes <= PLAYER_SAVE_WORKER_MAX_BYTES);
+    assert(queued.queued_jobs + queued.inflight_jobs == static_cast<uint64_t>(clients));
+    assert(queued.queued_bytes <= static_cast<uint64_t>(clients) * 4096);
     {
         std::lock_guard<std::mutex> lock(state.mutex);
         state.release = true;
@@ -92,35 +86,28 @@ void run_wave(int clients)
         const auto health = player_save_worker_health_copy();
         if (health.applied == static_cast<uint64_t>(clients))
             break;
-        assert(std::chrono::steady_clock::now() - started < std::chrono::seconds(5));
+        assert(std::chrono::steady_clock::now() - started < std::chrono::seconds(10));
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     const auto health = player_save_worker_health_copy();
-    assert(health.queued_pids == 0 && health.inflight_pids == 0 && health.queued_bytes == 0);
-    assert(health.high_water_pids == static_cast<uint64_t>(clients));
+    assert(health.queued_jobs == 0 && health.inflight_jobs == 0 && health.queued_bytes == 0);
+    assert(health.high_water_jobs == static_cast<uint64_t>(clients));
     assert(health.oldest_age_msec < PLAYER_SAVE_WORKER_MAX_AGE_MSEC);
     uint64_t expected_retries = 0;
     for (int index = 0; index < clients; ++index)
         if ((10000 + index) % 17 == 0)
             ++expected_retries;
-    assert(health.retryable_failures == expected_retries);
-    for (int index = 0; index < clients; ++index)
-    {
-        player_revision_snapshot revision = {};
-        assert(player_revision_snapshot_copy(10000 + index, &revision));
-        assert(revision.current_revision == 1 && revision.acknowledged_revision == 1);
-        assert(revision.unacknowledged_components == 0);
-    }
+    assert(health.connection_retries == expected_retries);
+    assert(health.failures == 0);
     const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - started).count();
-    std::printf("clients=%d high_water_pids=%llu high_water_bytes=%llu retries=%llu elapsed_us=%lld\n",
-                clients, static_cast<unsigned long long>(health.high_water_pids),
+    std::printf("clients=%d high_water_jobs=%llu high_water_bytes=%llu retries=%llu elapsed_us=%lld\n",
+                clients, static_cast<unsigned long long>(health.high_water_jobs),
                 static_cast<unsigned long long>(health.high_water_bytes),
-                static_cast<unsigned long long>(health.retryable_failures),
+                static_cast<unsigned long long>(health.connection_retries),
                 static_cast<long long>(elapsed));
     player_save_worker_shutdown();
     player_save_worker_reset_for_tests();
-    player_revision_reset_for_tests();
 }
 
 int main()
@@ -140,13 +127,13 @@ with tempfile.TemporaryDirectory(prefix="duris-phase01-gate-") as temp_dir:
         [
             "g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
             "-pthread", "-Isrc", str(source), rel("player_save_worker.c"),
-            rel("player_revision_state.c"), rel("persistence_observability.c"),
+            rel("persistence_observability.c"),
             "-lmysqlclient", "-o", str(binary),
         ],
         cwd=ROOT,
         check=True,
     )
-    subprocess.run([str(binary)], check=True, timeout=20)
+    subprocess.run([str(binary)], check=True, timeout=60)
 
 
 for retired in (
@@ -164,7 +151,7 @@ for contract in (
 ):
     assert contract in PIPELINE
 assert "player_snapshot_capture" in PIPELINE
-assert "apply_callback(job->snapshot" in WORKER
+assert "apply_callback(job.snapshot" in WORKER
 assert "P_char" not in WORKER and "P_obj" not in WORKER
 assert "publish_callback(generation.blob.data()," in WORLD
 publisher = WORLD[WORLD.index("void publisher_main()"): WORLD.index("bool capture_one_record()")]

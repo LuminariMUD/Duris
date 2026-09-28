@@ -121,7 +121,7 @@ class LockerOwnershipCutoverTests(unittest.TestCase):
         job = function_body(self.snapshot, "struct locker_async_job", "struct locker_async_result")
         self.assertNotIn("P_obj", job)
         self.assertNotIn("P_char", job)
-        self.assertIn("char *sql", job)
+        self.assertIn("std::shared_ptr<std::string> sql", job)
 
     def test_cutover_is_guarded_rerunnable_and_non_destructive(self):
         migration = (ROOT / "migrations/locker_ownership_cutover.sql").read_text()

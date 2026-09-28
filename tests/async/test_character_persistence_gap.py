@@ -102,15 +102,15 @@ require(
     "a new character with no live room must save the empty pet set at its resolved save room",
 )
 
-pulse = section(SAVE_PIPELINE, "void player_save_pipeline_pulse(void)", "\n}\n")
+completion = section(SAVE_PIPELINE, "void finish_completion(", "\n}\n")
 require(
-    "player_save_apply_outcome::terminal_failure" in pulse and "ENOENT" in pulse,
+    "completion.error_code == ENOENT" in completion,
     "the pulse must detect the missing-baseline apply failure",
 )
 require(
-    "SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE)" in pulse
-    and "outcome=missing_baseline" in pulse,
-    "a missing baseline row must re-arm the synchronous fallback and be logged",
+    "SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE)" in completion
+    and "write_failed" in completion,
+    "a missing baseline row must re-arm the synchronous fallback and be reported",
 )
 
 # --- 2. death terminal-save recovery ----------------------------------------------

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Runtime revision-state and source contracts for nonterminal player-save cutover."""
+"""Player saves go straight to the one writer; nothing is journaled any more."""
 
 from _paths import SRC, rel
 import subprocess
@@ -16,44 +16,254 @@ CHECKPOINT = (SRC / "persistence_checkpoint.c").read_text()
 EVENTS = (SRC / "new_events.c").read_text()
 COMM = (SRC / "comm.c").read_text()
 NANNY = (SRC / "nanny.c").read_text()
-WORKER = (SRC / "player_save_worker.c").read_text()
-SQL_PLAYER = (SRC / "sql_player.c").read_text()
 
 
 def section(text: str, start: str, end: str) -> str:
-    """Extract a production function region for contract checks and compiled harnesses."""
+    """Extract a production function region for contract checks."""
     first = text.index(start)
     return text[first : text.index(end, first)]
 
 
 HARNESS = r'''
-#include "player/player_revision_state.h"
-#include <cassert>
+#include "player/player_save_pipeline.h"
+#include "player/player_save_journal.h"
+#include "player/player_save_worker.h"
+#include "player/player_snapshot_capture.h"
+#include "core/prototypes.h"
+#include "core/utils.h"
 
-int main()
+#include <cassert>
+#include <chrono>
+#include <condition_variable>
+#include <cstdarg>
+#include <cstdlib>
+#include <filesystem>
+#include <map>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
+
+P_char character_list = nullptr;
+int alerts = 0;
+
+void logit(const char *, const char *, ...) {}
+void persistence_alert(int, const char *, const char *, const char *, const char *,
+                       const char *, const char *, ...)
 {
-    player_revision_reset_for_tests();
+    ++alerts;
+}
+int panic_corruption_int(const char *, const char *, ...)
+{
+    std::abort();
+}
+
+struct apply_state
+{
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::vector<std::string> order;
+    std::map<int, unsigned int> failures;
+    bool hold = false;
+    bool holding = false;
+};
+apply_state state;
+
+player_save_apply_result player_snapshot_repository_apply_from_pool(const player_snapshot &snapshot,
+                                                                    void *)
+{
+    std::unique_lock<std::mutex> lock(state.mutex);
+    if (state.hold)
+    {
+        state.holding = true;
+        state.changed.notify_all();
+        state.changed.wait(lock, [] { return !state.hold; });
+        state.holding = false;
+    }
+    state.order.push_back(std::to_string(snapshot.pid) + ":" + std::to_string(snapshot.revision));
+    if (state.failures[snapshot.pid])
+    {
+        --state.failures[snapshot.pid];
+        return {player_save_apply_outcome::terminal_failure, 0, 1452};
+    }
+    return {player_save_apply_outcome::applied, snapshot.revision, 0};
+}
+
+player_snapshot_capture_result player_snapshot_capture(P_char ch, player_revision_t revision,
+                                                       player_component_mask_t components, int,
+                                                       int, player_snapshot *snapshot)
+{
+    *snapshot = {};
+    snapshot->schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
+    snapshot->pid = GET_PID(ch);
+    snapshot->revision = revision;
+    snapshot->components = components;
+    snapshot->encoded_size_bound = 128;
+    return player_snapshot_capture_result::ok;
+}
+
+player_snapshot_capture_result player_death_snapshot_capture(
+    P_char, P_obj, P_obj, const critical_operation_id &, player_revision_t, int,
+    const std::vector<critical_operation_id> &, player_snapshot *)
+{
+    return player_snapshot_capture_result::malformed_source;
+}
+
+struct player
+{
+    char_data ch = {};
+    pc_only_data pc = {};
+    explicit player(int pid)
+    {
+        ch.only.pc = &pc;
+        pc.pid = pid;
+    }
+};
+
+void hold_writer(bool hold)
+{
+    std::lock_guard<std::mutex> lock(state.mutex);
+    state.hold = hold;
+    state.changed.notify_all();
+}
+
+void wait_until_held()
+{
+    std::unique_lock<std::mutex> lock(state.mutex);
+    state.changed.wait(lock, [] { return state.holding; });
+}
+
+player_snapshot journal_record(int pid, player_revision_t revision)
+{
+    player_snapshot snapshot = {};
+    snapshot.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
+    snapshot.pid = pid;
+    snapshot.revision = revision;
+    snapshot.components = PLAYER_COMPONENT_STATUS;
+    snapshot.encoded_size_bound = 128;
+    return snapshot;
+}
+
+std::vector<std::string> take_order()
+{
+    std::lock_guard<std::mutex> lock(state.mutex);
+    std::vector<std::string> order;
+    order.swap(state.order);
+    return order;
+}
+
+int main(int argc, char **argv)
+{
+    assert(argc == 2);
+    const std::string root = argv[1];
+    namespace fs = std::filesystem;
+
+    // A journal left by an older server is replayed once at boot.
+    const std::string replayed = root + "/replayed";
+    assert(player_save_journal_init(replayed.c_str()));
+    assert(player_save_journal_append(journal_record(42, 5)) == player_save_journal_result::ok);
+    assert(player_save_journal_append(journal_record(41, 3)) == player_save_journal_result::ok);
+    player_save_journal_shutdown();
+    assert(player_save_pipeline_init(replayed.c_str()));
+    assert((take_order() == std::vector<std::string>{"41:3", "42:5"}));
+    player_save_pipeline_health health = player_save_pipeline_health_copy();
+    assert(health.legacy_journal_replayed == 2 && !health.legacy_journal_retired);
+    player_save_pipeline_reset_for_tests();
+
+    // Whatever it cannot apply is retired, never to be replayed over newer saves.
+    const std::string blocked = root + "/blocked";
+    assert(player_save_journal_init(blocked.c_str()));
+    assert(player_save_journal_append(journal_record(43, 9)) == player_save_journal_result::ok);
+    player_save_journal_shutdown();
+    state.failures[43] = 1;
+    assert(player_save_pipeline_init(blocked.c_str()));
+    health = player_save_pipeline_health_copy();
+    assert(health.legacy_journal_retired && alerts == 1);
+    bool retired_file = false;
+    for (const auto &entry : fs::directory_iterator(blocked))
+        retired_file |= entry.path().filename().string().rfind("player-save.journal.retired-", 0) == 0;
+    assert(retired_file && !fs::exists(blocked + "/player-save.journal"));
+    take_order();
+    player_save_pipeline_reset_for_tests();
+
+    // No journal directory at all is fine: nothing is journaled any more.
+    assert(player_save_pipeline_init(nullptr));
+    player alice(41), bob(42), carol(44);
+    alice.ch.next = &bob.ch;
+    bob.ch.next = &carol.ch;
+    character_list = &alice.ch;
     assert(player_revision_hydrate(41, 7));
-    assert(player_revision_dirty_count() == 0);
-    player_revision_t revision = 0;
-    assert(player_revision_mark(41, PLAYER_COMPONENT_STATUS, &revision));
-    assert(revision == 8);
-    assert(player_revision_dirty_count() == 1);
-    player_revision_t queued = 0;
-    player_component_mask_t components = 0;
-    assert(player_revision_queue(41, &queued, &components));
-    assert(queued == 8 && components == PLAYER_COMPONENT_STATUS);
-    assert(player_revision_dirty_count() == 1);
-    assert(player_revision_begin_inflight(41, queued, components));
-    assert(player_revision_acknowledge(41, queued, components));
-    assert(player_revision_dirty_count() == 0);
+    assert(player_revision_hydrate(42, 0));
+    assert(player_revision_hydrate(44, 0));
+
+    // Nothing dirty, nothing captured.
+    assert(player_save_pipeline_checkpoint_dirty(&alice.ch, 1, 3001) ==
+           player_save_pipeline_result::unchanged);
+
+    // A queued save leaves its owner clean: the writer has it.
+    hold_writer(true);
+    assert(player_save_pipeline_request(&bob.ch, PLAYER_COMPONENT_SKILLS, 1, 3001) ==
+           player_save_pipeline_result::queued);
+    wait_until_held();
+    assert(player_save_pipeline_request(&alice.ch, PLAYER_COMPONENT_STATUS, 1, 3001) ==
+           player_save_pipeline_result::queued);
+    player_revision_snapshot revision = {};
+    assert(player_revision_snapshot_copy(41, &revision));
+    assert(revision.current_revision == 8 && revision.acknowledged_revision == 8);
+    assert(!revision.unacknowledged_components && !revision.dirty_components);
+    assert(player_save_pipeline_target_save_pending(41));
+    // A newer save replaces the queued one and moves to the back.
+    assert(player_save_pipeline_request(&carol.ch, PLAYER_COMPONENT_STATUS, 1, 3001) ==
+           player_save_pipeline_result::queued);
+    assert(player_save_pipeline_request(&alice.ch, PLAYER_COMPONENT_AFFECTS, 1, 3001) ==
+           player_save_pipeline_result::coalesced);
+    // Equipment and inventory are one item graph.
+    assert(player_save_pipeline_mark(42, PLAYER_COMPONENT_INVENTORY));
+    assert(player_revision_snapshot_copy(42, &revision));
+    assert(revision.dirty_components ==
+           (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY));
+    assert(player_save_pipeline_checkpoint_dirty(&bob.ch, 1, 3001) ==
+           player_save_pipeline_result::queued);
+
+    // A stalled writer fails the drain within its bound and admission resumes.
+    assert(!player_save_pipeline_drain(20));
+    assert(player_save_pipeline_health_copy().drain_failures == 1);
+    assert(!player_save_pipeline_mark(41, PLAYER_COMPONENT_STATUS));
+    player_save_pipeline_resume();
+    assert(player_save_pipeline_mark(41, PLAYER_COMPONENT_STATUS));
+
+    hold_writer(false);
+    assert(persistence_writer_wait_idle(5000));
+    // Bob's first save was being written; everything else in capture order.
+    assert((take_order() == std::vector<std::string>{"42:1", "44:1", "41:9", "42:2"}));
+    assert(!player_save_pipeline_target_save_pending(42));
+
+    // A failed write is reported and its owner is dirty again.
+    state.failures[44] = 1;
+    assert(player_save_pipeline_request(&carol.ch, PLAYER_COMPONENT_TIMERS, 1, 3001) ==
+           player_save_pipeline_result::queued);
+    assert(persistence_writer_wait_idle(5000));
+    const int alerts_before = alerts;
+    player_save_pipeline_pulse();
+    assert(alerts == alerts_before + 1);
+    assert(player_revision_snapshot_copy(44, &revision));
+    assert(revision.dirty_components == PLAYER_COMPONENT_TIMERS);
+    health = player_save_pipeline_health_copy();
+    assert(health.write_failures == 1);
+    assert(player_save_pipeline_checkpoint_dirty(&carol.ch, 1, 3001) ==
+           player_save_pipeline_result::queued);
+
+    assert(player_save_pipeline_drain(5000));
+    assert((take_order() == std::vector<std::string>{"44:2", "44:3"}));
+    player_save_pipeline_reset_for_tests();
     return 0;
 }
 '''
 
+
 with tempfile.TemporaryDirectory(prefix="duris-player-save-pipeline-") as temp_dir:
-    source = Path(temp_dir) / "revision_test.cpp"
-    binary = Path(temp_dir) / "revision_test"
+    source = Path(temp_dir) / "pipeline_test.cpp"
+    binary = Path(temp_dir) / "pipeline_test"
     source.write_text(HARNESS)
     subprocess.run(
         [
@@ -61,11 +271,19 @@ with tempfile.TemporaryDirectory(prefix="duris-player-save-pipeline-") as temp_d
             "-std=c++20",
             "-Wall",
             "-Wextra",
-            "-Wpedantic",
             "-Werror",
+            "-Wno-unused-parameter",
+            "-pthread",
             "-Isrc",
+            "-I/usr/include/mysql",
             str(source),
+            rel("player_save_pipeline.c"),
+            rel("player_save_worker.c"),
+            rel("player_save_journal.c"),
+            rel("player_snapshot_codec.c"),
             rel("player_revision_state.c"),
+            rel("persistence_observability.c"),
+            "-lmysqlclient",
             "-o",
             str(binary),
         ],
@@ -74,50 +292,31 @@ with tempfile.TemporaryDirectory(prefix="duris-player-save-pipeline-") as temp_d
         capture_output=True,
         text=True,
     )
-    subprocess.run([str(binary)], check=True)
-print("[PASS] unchanged, dirty, queued, inflight, and exact ACK counts are deterministic")
+    work = Path(temp_dir) / "journals"
+    work.mkdir(mode=0o700)
+    subprocess.run([str(binary), str(work)], check=True, timeout=60)
+print("[PASS] a leftover journal is replayed once at boot and retired if anything is left")
+print("[PASS] a queued save leaves its owner clean; a newer save replaces the queued one")
+print("[PASS] a failed write is reported and marks its owner dirty again")
+print("[PASS] drain waits for the writer within its bound")
 
-for contract in (
-    "PLAYER_SAVE_PIPELINE_MAX_SNAPSHOTS = 256",
-    "PLAYER_SAVE_PIPELINE_MAX_BYTES = 32 * 1024 * 1024",
-    "PLAYER_SAVE_PIPELINE_PULSE_BUDGET = 32",
-    "pending_append",
-    "durable_ready",
-    "retained_bytes",
-    "high_water_snapshots",
-    "append_failures",
-    "overloads",
-):
-    assert contract in HEADER
-dispatcher = section(PIPELINE, "void dispatcher_main()", "player_save_pipeline_result enqueue_snapshot")
-assert dispatcher.index("player_save_journal_append(snapshot)") < dispatcher.index(
-    "durable_ready.push_back"
-)
-assert "player_save_journal_replay(selected_snapshot_apply()" in dispatcher
-selector = section(PIPELINE, "player_save_apply_fn selected_snapshot_apply()", "struct terminal_fence")
-assert "flatfile_player_snapshot_apply_selected" in selector
-assert "player_snapshot_repository_apply_from_pool" in selector
-assert "sleep_for(std::chrono::milliseconds(100))" in dispatcher
-print("[PASS] bounded dispatcher journals before worker eligibility and retains append failures")
-
+assert "PLAYER_SAVE_PIPELINE_MAX_BYTES" not in HEADER
+assert "pending_append" not in PIPELINE and "durable_ready" not in PIPELINE
+assert "dispatcher" not in PIPELINE
+assert "player_save_journal_append" not in PIPELINE
 checkpoint = section(
     PIPELINE,
     "player_save_pipeline_result player_save_pipeline_checkpoint_dirty",
     "player_save_pipeline_result player_save_pipeline_request",
 )
-assert checkpoint.index("if (!revision.dirty_components)") < checkpoint.index(
-    "player_revision_queue"
-)
 assert checkpoint.index("player_revision_queue") < checkpoint.index("player_snapshot_capture")
 for forbidden in ("player_save_journal_", "sql_", "redis_", "fopen", "open(", "write("):
     assert forbidden not in checkpoint
-pulse = section(PIPELINE, "void player_save_pipeline_pulse", "player_save_pipeline_health")
+pulse = section(PIPELINE, "void player_save_pipeline_pulse", "void player_save_pipeline_quiesce")
 assert "player_save_worker_pulse" in pulse
-assert "player_save_worker_submit_retained" in pulse
 for forbidden in ("player_save_journal_", "sql_", "redis_", "fopen", "open(", "write("):
     assert forbidden not in pulse
-assert "if (append && !acknowledge)" in WORKER
-print("[PASS] simulation-thread checkpoint and completion paths contain no external I/O")
+print("[PASS] game-thread checkpoint and completion paths contain no external I/O")
 
 write_character = section(FILES, "int writeCharacter(P_char ch", "int deleteCharacter")
 branch = write_character.index("player_save_pipeline_is_nonterminal_type")
@@ -133,38 +332,9 @@ for legacy in (
 silent = section(ACTOTH, "bool do_save_silent(P_char ch", "void do_save(P_char")
 assert silent.index("player_save_pipeline_is_nonterminal_type") < silent.index("fopen(tmp_buf")
 assert silent.index("player_save_pipeline_request") < silent.index("writeCharacter(ch")
-print("[PASS] ordinary direct and manual saves branch before legacy mutation and I/O")
-
-flat_fence = section(write_character, "#ifdef __NO_MYSQL__", "#endif")
-assert "player_save_pipeline_terminal(ch, type, room, 5000, false)" in flat_fence
-assert flat_fence.index("player_save_pipeline_terminal") < flat_fence.index("unequip_char")
-assert flat_fence.index("database_acknowledged") < flat_fence.index(
-    "REMOVE_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE)"
-)
-terminal_save = section(
-    ACTOTH,
-    "static bool persistence_save_character_terminal_with_policy",
-    "bool persistence_save_all_characters_terminal",
-)
-assert "allow_journal_handoff = false" in terminal_save
-assert "persistence_save_character_terminal_with_policy(ch, type, 2000, true)" in terminal_save
-assert "persistence_save_character_terminal_with_policy(ch, type, 5000, false)" in terminal_save
 init_char = section(NANNY, "void init_char(P_char ch)", "int approve_mode")
 assert "player_revision_hydrate(ch->only.pc->pid, 0)" in init_char
-print("[PASS] flat baselines and terminal extraction wait for materialized authority")
-
-legacy_start = SQL_PLAYER.rindex("bool sql_save_player(P_char ch")
-legacy_save = SQL_PLAYER[legacy_start : SQL_PLAYER.index("bool sql_save_player_status", legacy_start)]
-assert "player_revision_mark(GET_PID(ch), PLAYER_CHECKPOINT_COMPONENT_ALL" in legacy_save
-assert "SET save_revision=%llu WHERE pid=%d AND save_revision<%llu" in legacy_save
-assert "mysql_affected_rows(DB) != 1" in legacy_save
-assert legacy_save.index("sql_save_player_shapechanges") < legacy_save.index("SET save_revision")
-assert legacy_save.index("SET save_revision") < legacy_save.index("if (own_txn)")
-assert "player_revision_acknowledge_durable" in legacy_save
-assert legacy_save.index("if (own_txn)") < legacy_save.index(
-    "player_revision_acknowledge_durable"
-)
-print("[PASS] transactional compatibility saves fence every older immutable revision")
+print("[PASS] ordinary direct and manual saves branch before legacy mutation and I/O")
 
 mark = section(CHECKPOINT, "void mark_player_dirty(int pid)", "void flush_dirty_players(void)")
 flush = section(CHECKPOINT, "void flush_dirty_players(void)", "int get_dirty_player_count(void)")
@@ -175,280 +345,11 @@ for retired in ("redis_command", "redis_reconnect", "sql_save_player", "fork("):
 event_init = section(EVENTS, "void ne_init_events", "void zone_purge")
 assert '"dirty-player-checkpoint", event_flush_dirty_players' in event_init
 assert "nevent_periodic_policy::fixed_delay, true" in event_init
-print("[PASS] autosave durability is local and the Redis dirty-save fork is retired")
+print("[PASS] autosave is local and the Redis dirty-save fork is retired")
 
-assert 'getenv("PLAYER_SAVE_JOURNAL_DIR")' in COMM
-assert "player_save_pipeline_init(journal_directory)" in COMM
+assert 'player_save_pipeline_init(getenv("PLAYER_SAVE_JOURNAL_DIR"))' in COMM
 assert "player_save_pipeline_pulse();" in COMM
 assert "player_save_pipeline_shutdown();" in COMM
-assert "PLAYER_SAVE_JOURNAL_DIR" in (ROOT / ".env.example").read_text()
-print("[PASS] production lifecycle and explicit absolute journal configuration are wired")
+print("[PASS] the pipeline starts without a journal directory")
 
-terminal = section(
-    PIPELINE,
-    "player_save_terminal_result player_save_pipeline_terminal",
-    "void player_save_pipeline_pulse",
-)
-assert "std::array<terminal_fence, PLAYER_SAVE_PIPELINE_MAX_SNAPSHOTS>" in PIPELINE
-assert "fence->revision == durable_ready.back().revision" in dispatcher
-assert "fence->revision == completions[index].revision" in pulse
-assert "completions[index].durable_revision >= fence->revision" in pulse
-assert "std::chrono::steady_clock::now()" in terminal
-# Both terminal entry points reserve the fence and mark a fresh ALL revision.
-begin_fence = section(
-    PIPELINE,
-    "bool begin_terminal_fence(int pid, player_revision_t *revision)",
-    "player_save_terminal_result await_terminal_fence",
-)
-assert "player_revision_mark(pid, PLAYER_CHECKPOINT_COMPONENT_ALL, revision)" in begin_fence
-assert terminal.count("begin_terminal_fence(pid, &revision)") == 2
-# A refused corpse handoff is finalized by recording the death itself, not by
-# checkpointing a character whose refused assets are still only live objects.
-death_terminal = section(
-    PIPELINE,
-    "player_save_pipeline_terminal_death(P_char ch, P_obj corpse, P_obj wallet_pile,",
-    "/** Pump the pipeline until this player revision is durable",
-)
-assert "player_death_snapshot_capture(ch, corpse, wallet_pile, operation_id, revision" in death_terminal
-assert death_terminal.index("player_death_snapshot_capture") < death_terminal.index(
-    "enqueue_snapshot(std::move(snapshot))"
-) < death_terminal.index("await_terminal_fence(pid, revision")
-assert "player_save_pipeline_checkpoint_dirty" not in death_terminal
-assert "CHAR_RFLAG_LOAD_ITEM_PAYLOAD_GAP" in death_terminal
-assert "promote_existing" not in terminal
-assert terminal.index("if (fence->acknowledged)") < terminal.index("if (allow_journal_handoff")
-assert "*fence = {};" in terminal
-assert "++health.terminal_timeouts" in terminal
-mark_body = section(
-    PIPELINE, "bool player_save_pipeline_mark", "player_save_pipeline_result player_save_pipeline_checkpoint_dirty"
-)
-assert "if (!accepting)" in mark_body
-assert "fence->revision = revision" in mark_body
-assert "fence->journaled = false" in mark_body
-drain = section(PIPELINE, "bool player_save_pipeline_drain", "player_save_pipeline_health")
-assert "pending_append.empty() && !append_inflight" in drain
-assert "std::chrono::steady_clock::now()" in drain
-assert "++health.drain_failures" in drain
-print("[PASS] terminal fences, exact durability outcomes, retry tracking, and bounded drain are wired")
-
-print("nonterminal player save pipeline contracts passed")
-
-# Run the actual terminal coordinator against controlled worker ACKs. In
-# particular, an ACKed nonterminal retry must not authorize a later camp.
-# The slice starts inside the anonymous namespace holding the fence helpers.
-terminal_slice = "namespace\n{\n" + section(
-    PIPELINE,
-    "bool begin_terminal_fence(int pid, player_revision_t *revision)",
-    "void player_save_pipeline_pulse",
-)
-terminal_preamble = r'''
-#include "player/player_save_pipeline.h"
-#include "player/player_snapshot.h"
-#include "player/player_snapshot_capture.h"
-#include "core/defines.h"
-#include <cassert>
-#include <chrono>
-#include <mutex>
-#include <thread>
-struct char_data { int pid; unsigned int runtime_flags; };
-struct obj_data { int uid; };
-#define IS_SET(flag, bit) ((flag) & (bit))
-player_snapshot_capture_result death_capture_result = player_snapshot_capture_result::ok;
-int death_enqueued = 0;
-bool enqueue_refused = false;
-bool queue_mismatch = false;
-player_snapshot_capture_result player_death_snapshot_capture(
-    P_char ch, P_obj, P_obj, const critical_operation_id &, player_revision_t revision, int,
-    const std::vector<critical_operation_id> &, player_snapshot *snapshot)
-{
-    snapshot->pid = ch->pid;
-    snapshot->revision = revision;
-    snapshot->components = PLAYER_CHECKPOINT_COMPONENT_ALL;
-    if (queue_mismatch) snapshot->components = PLAYER_COMPONENT_STATUS;
-    return death_capture_result;
-}
-player_save_pipeline_result enqueue_snapshot(player_snapshot snapshot)
-{
-    player_revision_snapshot current = {};
-    assert(player_revision_snapshot_copy(snapshot.pid, &current));
-    assert(current.queued_revision == snapshot.revision);
-    assert(current.queued_components == snapshot.components);
-    ++death_enqueued;
-    return enqueue_refused ? player_save_pipeline_result::unavailable : player_save_pipeline_result::queued;
-}
-#define IS_NPC(ch) false
-#define GET_PID(ch) ((ch)->pid)
-#define LOG_STATUS 0
-struct terminal_fence { int pid; player_revision_t revision; bool journaled; bool acknowledged; };
-struct target_save_login_fence { int pid; player_revision_t expected_revision; };
-terminal_fence fence = {};
-target_save_login_fence target_fence = {};
-std::mutex pipeline_mutex;
-player_save_pipeline_health health = {};
-int captured_intent = 1, captured_room = 0;
-player_revision_t captured_revision = 0;
-bool database_ready = true, journal_ready = false;
-terminal_fence *find_terminal_fence_locked(int pid) { return fence.pid == pid ? &fence : nullptr; }
-target_save_login_fence *find_target_save_login_fence_locked(int pid) {
-    return target_fence.pid == pid ? &target_fence : nullptr;
-}
-terminal_fence *allocate_terminal_fence_locked(int pid) { if (fence.pid && fence.pid != pid) return nullptr; fence.pid = pid; return &fence; }
-bool trace_player_saves() { return true; }
-bool snapshot_is_journaled_locked(const player_revision_snapshot &) { return true; }
-uint64_t persistence_observability_now_usec() { return 0; }
-void logit(int, const char *, ...) {}
-player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int intent, int room) {
-    player_revision_snapshot current = {};
-    assert(player_revision_snapshot_copy(ch->pid, &current));
-    if (!current.dirty_components) return player_save_pipeline_result::unchanged;
-    captured_intent = intent;
-    captured_room = room;
-    captured_revision = current.current_revision;
-    player_revision_t queued;
-    player_component_mask_t components;
-    assert(player_revision_queue(ch->pid, &queued, &components));
-    if (journal_ready && fence.revision == captured_revision) fence.journaled = true;
-    return player_save_pipeline_result::queued;
-}
-void player_save_pipeline_pulse() {
-    if (!database_ready) return;
-    player_revision_snapshot current = {};
-    assert(player_revision_snapshot_copy(1, &current));
-    if (current.queued_components) {
-        assert(player_revision_begin_inflight(1, current.queued_revision, current.queued_components));
-        assert(player_revision_acknowledge(1, current.queued_revision, current.queued_components));
-        if (fence.revision == current.queued_revision) fence.acknowledged = true;
-    }
-}
-'''
-terminal_main = r'''
-int main() {
-    char_data player{1};
-    health.initialized = true;
-    for (int trial = 0; trial < 10; ++trial) {
-        player_revision_reset_for_tests();
-        const player_revision_t old_revision = 50 + trial * 10;
-        assert(player_revision_hydrate(1, old_revision));
-        fence = {1, old_revision, true, true};
-        captured_intent = 1; captured_room = 999;
-        database_ready = true; journal_ready = false;
-        assert(player_save_pipeline_terminal(&player, 6, 22800, 20, false) ==
-               player_save_terminal_result::database_acknowledged);
-        assert(captured_intent == 6 && captured_room == 22800);
-        assert(captured_revision > old_revision);
-
-        // A full pending snapshot also belongs to its original save intent.
-        player_revision_t pending;
-        assert(player_revision_mark(1, PLAYER_CHECKPOINT_COMPONENT_ALL, &pending));
-        player_save_pipeline_checkpoint_dirty(&player, 1, 777);
-        assert(player_save_pipeline_terminal(&player, 6, 22801, 20, false) ==
-               player_save_terminal_result::database_acknowledged);
-        assert(captured_intent == 6 && captured_room == 22801 && captured_revision > pending);
-
-        database_ready = false;
-        assert(player_save_pipeline_terminal(&player, 6, 22802, 1, false) ==
-               player_save_terminal_result::timed_out);
-        database_ready = true;
-        player_save_pipeline_pulse();
-        assert(player_revision_mark(1, PLAYER_CHECKPOINT_COMPONENT_ALL, &pending));
-        fence = {1, pending, false, false};
-        player_save_pipeline_checkpoint_dirty(&player, 1, 777);
-        player_save_pipeline_pulse();
-        assert(fence.acknowledged);
-        assert(player_save_pipeline_terminal(&player, 6, 22803, 20, false) ==
-               player_save_terminal_result::database_acknowledged);
-        assert(captured_intent == 6 && captured_room == 22803 && captured_revision > pending);
-
-        // MariaDB's permitted journal handoff still requires this terminal intent.
-        database_ready = false; journal_ready = true;
-        assert(player_save_pipeline_terminal(&player, 4, 22804, 20, true) ==
-               player_save_terminal_result::journal_durable);
-        assert(captured_intent == 4 && captured_room == 22804);
-        assert(player_save_pipeline_terminal(&player, 4, 22804, 1, false) ==
-               player_save_terminal_result::timed_out);
-
-        // A death with no live corpse has nothing to record, and must not reserve
-        // a fence or mark a revision on the way to finding that out.
-        const critical_operation_id operation = {};
-        const player_revision_t before_death = captured_revision;
-        assert(player_save_pipeline_terminal_death(&player, nullptr, nullptr, operation,
-                                                   22805, 20, false) ==
-               player_save_terminal_result::invalid);
-        assert(captured_revision == before_death && captured_room == 22804);
-
-        // Neither backend could take the record. The caller is told so it can keep
-        // the live character and its refused assets instead of releasing them.
-        obj_data corpse{1};
-        database_ready = false; journal_ready = false;
-        assert(player_save_pipeline_terminal_death(&player, &corpse, nullptr, operation,
-                                                   22806, 1, false) ==
-               player_save_terminal_result::timed_out);
-        // Capacity refusal cannot enqueue a partial record or authorize release,
-        // even if an older terminal fence had already been acknowledged.
-        const int enqueued_before = death_enqueued;
-        const auto failures_before = health.capture_failures;
-        fence.acknowledged = true;
-        death_capture_result = player_snapshot_capture_result::limit_exceeded;
-        assert(player_save_pipeline_terminal_death(&player, &corpse, nullptr, operation,
-                                                   22806, 20, true) ==
-               player_save_terminal_result::invalid);
-        assert(death_enqueued == enqueued_before);
-        assert(health.capture_failures == failures_before + 1);
-        assert(fence.pid == 0);
-        // Repeated failures on distinct players must not consume fence capacity.
-        for (int pid = 2; pid <= 300; ++pid) {
-            char_data other{pid};
-            assert(player_revision_hydrate(pid, 1));
-            assert(player_save_pipeline_terminal_death(&other, &corpse, nullptr, operation,
-                                                       22806, 20, false) ==
-                   player_save_terminal_result::invalid);
-            assert(fence.pid == 0);
-        }
-        death_capture_result = player_snapshot_capture_result::ok;
-        for (int refusal = 0; refusal < 2; ++refusal) {
-            queue_mismatch = refusal == 0;
-            enqueue_refused = refusal == 1;
-            assert(player_save_pipeline_terminal_death(&player, &corpse, nullptr, operation,
-                                                       22806, 20, false) ==
-                   player_save_terminal_result::unavailable);
-            assert(fence.pid == 0);
-        }
-        queue_mismatch = false; enqueue_refused = false;
-        database_ready = true;
-        assert(player_save_pipeline_terminal(&player, 6, 22806, 20, false) ==
-               player_save_terminal_result::database_acknowledged);
-        assert(player_save_pipeline_terminal_death(&player, &corpse, nullptr, operation,
-                                                   22806, 20, false) ==
-               player_save_terminal_result::database_acknowledged);
-
-        // Partial loads remain fenced from every ordinary snapshot. A generic
-        // degraded load cannot record a death either, but the specific payload-
-        // gap admission can use the immutable disposition without opening the
-        // ordinary terminal path.
-        player.runtime_flags = CHAR_RFLAG_LOAD_DEGRADED;
-        assert(player_save_pipeline_terminal(&player, 6, 22807, 20, false) ==
-               player_save_terminal_result::unavailable);
-        assert(player_save_pipeline_terminal_death(&player, &corpse, nullptr, operation,
-                                                   22807, 20, false) ==
-               player_save_terminal_result::unavailable);
-        player.runtime_flags |= CHAR_RFLAG_LOAD_ITEM_PAYLOAD_GAP;
-        assert(player_save_pipeline_terminal(&player, 6, 22807, 20, false) ==
-               player_save_terminal_result::unavailable);
-        assert(player_save_pipeline_terminal_death(&player, &corpse, nullptr, operation,
-                                                   22807, 20, false) ==
-               player_save_terminal_result::database_acknowledged);
-        player.runtime_flags = 0;
-    }
-}
-'''
-terminal_build = ROOT / "bin/tests/terminal-save-intent"
-terminal_build.mkdir(parents=True, exist_ok=True)
-terminal_source = terminal_build / "regression.cpp"
-terminal_binary = terminal_build / "regression"
-terminal_source.write_text(terminal_preamble + terminal_slice + terminal_main)
-subprocess.run([
-    "g++", "-std=c++20", "-Isrc", str(terminal_source),
-    "src/player/player_revision_state.c", "-pthread", "-o", str(terminal_binary),
-], cwd=ROOT, check=True)
-subprocess.run([str(terminal_binary)], check=True, timeout=10)
-print("[PASS] ten terminal-intent trials cover prior ACK, pending save, timed-out camp retry, and journal handoff")
+print("player save pipeline contracts passed")

@@ -2151,10 +2151,9 @@ bool persistence_flush_all_character_saves(void)
 	return all_saved;
 }
 
-/** Wait for terminal durability under the caller's database/journal policy. */
+/** Wait for the terminal save to be written. */
 static bool persistence_save_character_terminal_with_policy(P_char ch, int type,
-							    uint64_t timeout_msec,
-							    bool allow_journal_handoff)
+							    uint64_t timeout_msec)
 {
 	struct deferred_save_slot *slot;
 
@@ -2162,14 +2161,9 @@ static bool persistence_save_character_terminal_with_policy(P_char ch, int type,
 		return false;
 
 	const int room = calculate_save_room(ch, type, ch->in_room);
-#ifdef __NO_MYSQL__
-	allow_journal_handoff = false;
-#endif
 	const player_save_terminal_result terminal =
-		player_save_pipeline_terminal(ch, type, room, timeout_msec, allow_journal_handoff);
-	const bool saved =
-		terminal == player_save_terminal_result::database_acknowledged ||
-		(allow_journal_handoff && terminal == player_save_terminal_result::journal_durable);
+		player_save_pipeline_terminal(ch, type, room, timeout_msec);
+	const bool saved = terminal == player_save_terminal_result::database_acknowledged;
 	slot = find_deferred_save_slot(GET_PID(ch));
 	if (saved && slot)
 		memset(slot, 0, sizeof(*slot));
@@ -2191,14 +2185,14 @@ static bool persistence_save_character_terminal_with_policy(P_char ch, int type,
 bool persistence_save_character_terminal(P_char ch, int type)
 {
 	if (type == RENT_INN || type == RENT_CAMPED)
-		return persistence_save_character_terminal_with_policy(ch, type, 5000, false);
-	return persistence_save_character_terminal_with_policy(ch, type, 2000, true);
+		return persistence_save_character_terminal_with_policy(ch, type, 5000);
+	return persistence_save_character_terminal_with_policy(ch, type, 2000);
 }
 
 /** Require the terminal snapshot to be committed before an immediate process replacement. */
 bool persistence_save_character_terminal_database_acknowledged(P_char ch, int type)
 {
-	return persistence_save_character_terminal_with_policy(ch, type, 5000, false);
+	return persistence_save_character_terminal_with_policy(ch, type, 5000);
 }
 
 /** Attempt terminal durability for every live player and report whether all succeeded. */

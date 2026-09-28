@@ -24,6 +24,9 @@
 
 namespace
 {
+/* A replacement player-item graph did not exactly match active custody. */
+constexpr unsigned int PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH = 10001;
+
 struct query_result
 {
 	bool ok;

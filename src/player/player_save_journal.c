@@ -486,6 +486,21 @@ bool player_save_journal_init(const char *directory, size_t quota_bytes)
 	return true;
 }
 
+bool player_save_journal_retire(void)
+{
+	std::lock_guard<std::mutex> lock(journal_mutex);
+	if (!health.initialized)
+		return false;
+	// Keep every retired journal: each one may hold the only copy of a save.
+	std::string retired = journal_path + ".retired-" + std::to_string(realtime_msec());
+	if (rename(journal_path.c_str(), retired.c_str()) != 0 || !sync_directory())
+		return false;
+	health.records = 0;
+	health.bytes = 0;
+	oldest_record_msec = 0;
+	return true;
+}
+
 void player_save_journal_shutdown(void)
 {
 	std::lock_guard<std::mutex> lock(journal_mutex);

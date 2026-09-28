@@ -69,7 +69,6 @@ checks["terminal helper uses typed coordinator outcome"] = all(
     for token in (
         "player_save_pipeline_terminal",
         "database_acknowledged",
-        "journal_durable",
         "terminal-save-retry",
     )
 ) and "do_save_silent" not in terminal_helper and "writeCharacter" not in terminal_helper
@@ -82,19 +81,19 @@ database_terminal_helper = (
            actoth.index("bool persistence_save_all_characters_terminal", database_terminal_start)]
     if database_terminal_start >= 0 else ""
 )
-checks["database terminal helper rejects journal-only durability"] = (
+checks["database terminal helper waits for the written save"] = (
     database_terminal_start >= 0 and
-    "persistence_save_character_terminal_with_policy(ch, type, 5000, false)" in
+    "persistence_save_character_terminal_with_policy(ch, type, 5000)" in
         database_terminal_helper and
-    "player_save_terminal_result::journal_durable" not in database_terminal_helper
+    "journal" not in database_terminal_helper
 )
 
 checks["voluntary logout requires database acknowledgement"] = (
     "if (type == RENT_INN || type == RENT_CAMPED)" in terminal_helper and
-    "persistence_save_character_terminal_with_policy(ch, type, 5000, false)" in
+    "persistence_save_character_terminal_with_policy(ch, type, 5000)" in
         terminal_helper and
     terminal_helper.index("if (type == RENT_INN || type == RENT_CAMPED)") <
-        terminal_helper.index("persistence_save_character_terminal_with_policy(ch, type, 2000, true)")
+        terminal_helper.index("persistence_save_character_terminal_with_policy(ch, type, 2000)")
 )
 
 player_sql_start = files.index("if (!sql_save_player(ch, type, room))")

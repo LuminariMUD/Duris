@@ -2,7 +2,9 @@
 
 **Date:** 2026-09-28
 
-**Status:** Plan. Nothing is implemented yet.
+**Status:** Phase 1 in progress on branch `fix/7-persistence-phase-1`. See
+[Phase 1 progress](#phase-1-progress) at the end for what is done, how it was done, and what is
+left.
 
 **Work items:** #7 (player saves and deaths). This plan also removes the persistence causes behind
 #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert storms).
@@ -282,3 +284,61 @@ These parts were cut:
   After Phase 2, nothing on the loop does.
 - The database cannot hold one item under two owners, and `logs/log/dupes` accounts for every item a
   save or load gave up.
+
+## Phase 1 progress
+
+This section is the hand-over log. Each step records what landed, the decisions made while
+implementing it, and anything a later step must pick up.
+
+Build and test commands used throughout:
+
+- `make -C src -j16` for the MariaDB server.
+- The flat-file build goes into a scratch directory:
+  `make -C src PERSISTENCE_BACKEND=flatfile BIN_ROOT=<dir> OBJDIR=<dir>/objects/server SERVER_BIN_DIR=<dir>/server DMS_BINARY=<dir>/server/dms_new -j12`.
+- `./scripts/format.sh --all --check` before each commit, because CI formats every tracked file.
+
+### Step 1: one writer (done)
+
+- `src/player/player_save_worker.c` is now the one writer: a single `std::thread`, one FIFO
+  (`std::list`) plus an index of the queued job per owner, and the job being written held apart
+  in `inflight`. Job kinds are `player`, `corpse`, `locker` and `saved_item`
+  (`persistence_job_kind`). Player jobs carry a `player_snapshot` and use the apply callback;
+  the other kinds carry a `persistence_job_write_fn` closure that runs on the writer thread.
+- A newer job for the same owner removes the queued one and goes to the back. A job for an owner
+  whose save is being written simply queues behind it.
+- Failure policy: `retryable_failure` and `ambiguous_commit` (a lost connection) are retried at
+  the head with a backoff from 100 ms to 5 s, so no later save overtakes them. Anything else is
+  returned as a completion and dropped. Shutdown interrupts a retry; the job stays listed in
+  `persistence_writer_pending_owners()` so the caller can name it.
+- Revision bookkeeping moved out of the writer. `player_save_pipeline.c` calls
+  `player_revision_queue()`, captures, submits, and then `player_revision_acknowledge_durable()`
+  straight away: a character is clean once the writer has its save. A failed write re-marks the
+  captured components with `player_save_pipeline_mark()` (only while the character is live).
+- The dispatcher thread, `pending_append`/`durable_ready` and journal appends are gone.
+  `player_save_pipeline_init()` takes the old `PLAYER_SAVE_JOURNAL_DIR` only to replay a leftover
+  journal once, synchronously on the main thread before the writer starts, and then renames it
+  `player-save.journal.retired-<ms>` if anything could not be applied
+  (`player_save_journal_retire()`). This is the upgrade path: on staging the stuck characters'
+  newest state exists only in that journal. **Step 2 must keep the replay revision-fenced**
+  (skip records whose revision is not newer than `player_data.save_revision`) even though
+  ordinary saves lose the fence, or a replay could roll a character back.
+- Locker saves: `locker_async.c` keeps its per-locker slots and game-thread completion handling,
+  but its sealed SQL script now runs as a `locker` job on the writer (keyed by `locker_id`), and
+  its own pthread is gone. A lost connection inside the script is returned as retryable so the
+  writer retries it; any other failure still pushes a failed result, which runs the old
+  synchronous fallback (`sql_save_locker()` on the game thread). Revisit in step 2 when lockers
+  claim their items.
+- Terminal saves still wait (`player_save_pipeline_terminal()` pumps the pulse until the
+  completion for its revision arrives; the journal hand-off result is gone). Step 7 removes the
+  wait.
+- `world persistence` prints a `player_pipeline` line and a `writer` line; the `player_journal`
+  line is gone.
+- Tests: `test_player_save_worker.py` (capture order, replacement, head retry, failures, shutdown
+  naming), `test_player_save_pipeline.py` (now a linked harness: legacy replay and retire,
+  handoff, replacement, re-mark on failure, drain bound), plus contract updates in
+  `test_phase01_recovery_gate.py`, `test_player_save_journal.py`, `test_sql_worker_thread_init.py`,
+  `test_locker_ownership_cutover.py`, `test_terminal_save_safety.py`,
+  `test_character_persistence_gap.py`, `test_death_item_custody_contract.py` and
+  `test_player_item_custody_write_guard.py`.
+- `PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH` now lives only in
+  `player_snapshot_repository.c`; step 2 deletes it with the custody checks.

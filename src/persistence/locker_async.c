@@ -7,7 +7,8 @@
  *  - At most LOCKER_ASYNC_MAX_INFLIGHT jobs are in the worker concurrently.
  *  - Snapshot is an immutable multi-statement SQL blob built on the main thread
  *    while that player is object-command locked.
- *  - Worker never touches P_char/P_obj; only applies the sealed SQL blob.
+ *  - The persistence writer applies the sealed SQL blob in capture order with
+ *    every other save; it never touches P_char/P_obj.
  *  - Completion runs on the next main pulse (extract terminal locker char, unlock).
  *
  * Note: private-chest rows are still written synchronously inside
@@ -16,7 +17,6 @@
  */
 
 #include "core/prototypes.h"
-#include "sql/sql_thread_init.h"
 #include "core/structs.h"
 #include "core/utils.h"
 #include "core/utility.h"
@@ -26,12 +26,15 @@
 #include "sql/item_extra_descr_codec.h"
 #include "item/storage_lockers.h"
 #include "persistence/locker_async.h"
+#include "player/player_save_worker.h"
 #include "net/comm.h"
 #include "world/db.h"
 #include "world/events.h"
 
 #include <mysql/mysql.h>
 #include <pthread.h>
+#include <memory>
+#include <string>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,7 +50,6 @@ extern const int top_of_world;
 
 #define LOCKER_ASYNC_SLOTS 128
 #define LOCKER_ASYNC_NAME_LEN 128
-#define LOCKER_ASYNC_JOBS 16
 #define LOCKER_ASYNC_RESULTS 32
 #define LOCKER_ASYNC_SCRIPT_INIT (64 * 1024)
 
@@ -76,12 +78,12 @@ struct locker_async_slot
 
 struct locker_async_job
 {
-	int used;
 	char locker_name[LOCKER_ASYNC_NAME_LEN];
+	int locker_id;
 	unsigned long gen;
 	int terminal;
 	int user_pid;
-	char *sql;
+	std::shared_ptr<std::string> sql;
 };
 
 struct locker_async_result
@@ -100,22 +102,12 @@ static int g_snapshots_started_this_pulse = 0;
 static int g_inflight = 0;
 
 static pthread_mutex_t g_q_mu = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t g_q_cv = PTHREAD_COND_INITIALIZER;
-static struct locker_async_job g_jobs[LOCKER_ASYNC_JOBS];
 static struct locker_async_result g_results[LOCKER_ASYNC_RESULTS];
-static int g_worker_running = 0;
-static int g_worker_created = 0;
-static int g_worker_stop = 0;
-static pthread_t g_worker_tid;
 static int g_inited = 0;
 
 static int locker_async_worker_available(void)
 {
-	int available;
-	pthread_mutex_lock(&g_q_mu);
-	available = g_worker_created && g_worker_running && !g_worker_stop;
-	pthread_mutex_unlock(&g_q_mu);
-	return available;
+	return player_save_worker_health_copy().running;
 }
 
 /* ---------------- slot helpers (main only) ---------------- */
@@ -186,41 +178,6 @@ int locker_async_name_busy(const char *locker_name)
 }
 
 /* ---------------- job/result queue (shared) ---------------- */
-
-static int job_push(struct locker_async_job *src)
-{
-	int i;
-	pthread_mutex_lock(&g_q_mu);
-	for (i = 0; i < LOCKER_ASYNC_JOBS; i++)
-	{
-		if (!g_jobs[i].used)
-		{
-			g_jobs[i] = *src;
-			g_jobs[i].used = 1;
-			src->sql = NULL;
-			pthread_cond_signal(&g_q_cv);
-			pthread_mutex_unlock(&g_q_mu);
-			return 1;
-		}
-	}
-	pthread_mutex_unlock(&g_q_mu);
-	return 0;
-}
-
-static int job_pop(struct locker_async_job *dst)
-{
-	int i;
-	for (i = 0; i < LOCKER_ASYNC_JOBS; i++)
-	{
-		if (g_jobs[i].used)
-		{
-			*dst = g_jobs[i];
-			memset(&g_jobs[i], 0, sizeof(g_jobs[i]));
-			return 1;
-		}
-	}
-	return 0;
-}
 
 static void result_push_locked(const struct locker_async_result *r)
 {
@@ -697,11 +654,12 @@ static int repair_failed_connection(MYSQL **conn_io)
 	return 0;
 }
 
-static int apply_sql_script(MYSQL **conn_io, const char *sql)
+static int apply_sql_script(MYSQL **conn_io, const char *sql, unsigned int *error_code)
 {
 	MYSQL *conn;
 	int status;
 
+	*error_code = 0;
 	if (!conn_io || !*conn_io || !sql)
 		return 0;
 
@@ -722,6 +680,7 @@ static int apply_sql_script(MYSQL **conn_io, const char *sql)
 				     PERSISTENCE_QUERY_CONTEXT_LOCKER_WORKER, sql, strlen(sql),
 				     &operation_id))
 	{
+		*error_code = mysql_errno(conn);
 		return repair_failed_connection(conn_io);
 	}
 
@@ -738,78 +697,61 @@ static int apply_sql_script(MYSQL **conn_io, const char *sql)
 			      "sqlstate=%.5s",
 			      (unsigned long long)operation_id, (unsigned int)mysql_errno(conn),
 			      mysql_sqlstate(conn));
+			*error_code = mysql_errno(conn);
 			return repair_failed_connection(conn_io);
 		}
 	} while (status == 0);
 	return 1;
 }
-#endif
 
-static void *locker_async_worker_main(void *arg)
+static bool locker_connection_error(unsigned int error_code)
 {
-	(void)arg;
-#ifndef __NO_MYSQL__
-	if (sql_worker_thread_init() != 0)
-	{
-		logit(LOG_FILE, "locker_async: mysql_thread_init failed");
-		pthread_mutex_lock(&g_q_mu);
-		g_worker_running = 0;
-		pthread_mutex_unlock(&g_q_mu);
-		return NULL;
-	}
+	return error_code == 2002 || error_code == 2003 || error_code == 2006 || error_code == 2013;
+}
 #endif
 
-	for (;;)
-	{
-		struct locker_async_job job;
-		struct locker_async_result res;
+/* Runs on the persistence writer thread. A lost connection goes back to the
+ * writer, which retries this job before any later save. */
+static player_save_apply_result locker_write_job(const struct locker_async_job &job)
+{
+	struct locker_async_result res;
 
-		memset(&job, 0, sizeof(job));
-		pthread_mutex_lock(&g_q_mu);
-		while (!g_worker_stop && !job_pop(&job))
-			pthread_cond_wait(&g_q_cv, &g_q_mu);
-		if (g_worker_stop && !job.used)
-		{
-			pthread_mutex_unlock(&g_q_mu);
-			break;
-		}
-		pthread_mutex_unlock(&g_q_mu);
-
-		memset(&res, 0, sizeof(res));
-		snprintf(res.locker_name, sizeof(res.locker_name), "%s", job.locker_name);
-		res.gen = job.gen;
-		res.terminal = job.terminal;
-		res.user_pid = job.user_pid;
-		res.ok = 0;
+	memset(&res, 0, sizeof(res));
+	snprintf(res.locker_name, sizeof(res.locker_name), "%s", job.locker_name);
+	res.gen = job.gen;
+	res.terminal = job.terminal;
+	res.user_pid = job.user_pid;
+	unsigned int error_code = 0;
 
 #ifndef __NO_MYSQL__
-		MYSQL *conn = NULL;
-		conn = sql_persistence_connection();
-		if (conn && job.sql)
-			res.ok = apply_sql_script(&conn, job.sql) ? 1 : 0;
-		else if (job.sql && job.sql[0] == '/' && job.sql[1] == '*')
-			res.ok = 1;
-		if (conn)
-			sql_persistence_release_connection(conn);
+	MYSQL *conn = sql_persistence_connection();
+	if (!conn)
+		return { player_save_apply_outcome::retryable_failure, 0, ETIMEDOUT };
+	res.ok = apply_sql_script(&conn, job.sql->c_str(), &error_code) ? 1 : 0;
+	sql_persistence_release_connection(conn);
+	if (!res.ok && locker_connection_error(error_code))
+		return { player_save_apply_outcome::retryable_failure, 0, error_code };
 #else
-		res.ok = 0;
+	res.ok = 0;
+	error_code = ENOTSUP;
 #endif
 
-		if (job.sql)
-			free(job.sql);
-
-		pthread_mutex_lock(&g_q_mu);
-		result_push_locked(&res);
-		pthread_mutex_unlock(&g_q_mu);
-	}
-
-#ifndef __NO_MYSQL__
-	mysql_thread_end();
-#endif
 	pthread_mutex_lock(&g_q_mu);
-	g_worker_running = 0;
+	result_push_locked(&res);
 	pthread_mutex_unlock(&g_q_mu);
-	return NULL;
+	if (res.ok)
+		return { player_save_apply_outcome::applied, 0, 0 };
+	return { player_save_apply_outcome::terminal_failure, 0, error_code ? error_code : EIO };
+}
+
+static int job_push(const struct locker_async_job &job)
+{
+	const size_t bytes = job.sql->size();
+	const player_save_submit_result submitted = persistence_writer_submit(
+		persistence_job_kind::locker, static_cast<uint64_t>(job.locker_id), bytes,
+		[job]() { return locker_write_job(job); });
+	return submitted == player_save_submit_result::accepted ||
+	       submitted == player_save_submit_result::replaced;
 }
 
 /* ---------------- mark dirty / pulse / completion ---------------- */
@@ -1048,7 +990,7 @@ static int locker_sync_fallback_durable(struct locker_async_slot *s, P_char chLo
 
 static int start_one_snapshot(struct locker_async_slot *s)
 {
-	struct locker_async_job job;
+	struct locker_async_job job = {};
 	char *sql;
 	P_char chLocker;
 	P_char chUser;
@@ -1122,18 +1064,25 @@ static int start_one_snapshot(struct locker_async_slot *s)
 		return 0;
 	}
 
-	memset(&job, 0, sizeof(job));
 	snprintf(job.locker_name, sizeof(job.locker_name), "%s", s->locker_name);
+	job.locker_id = s->locker_id;
 	job.gen = s->gen;
 	job.terminal = s->terminal;
 	job.user_pid = s->user_pid;
-	job.sql = sql;
+	try
+	{
+		job.sql = std::make_shared<std::string>(sql);
+	}
+	catch (const std::bad_alloc &)
+	{
+		job.sql.reset();
+	}
+	free(sql);
 
-	if (!job_push(&job))
+	if (!job.sql || !job_push(job))
 	{
 		int durable_ok;
 
-		free(sql);
 		persistence_alert(AVATAR, "locker_async", s->locker_name, "none", "none",
 				  "job_queue_full", "falling back to synchronous persistence");
 		durable_ok = locker_sync_fallback_durable(s, chLocker);
@@ -1246,70 +1195,27 @@ int locker_async_drain(int wait_ms)
 
 void locker_async_init(void)
 {
-	int err;
 	if (g_inited)
 		return;
 	if (!sql_pool_is_active())
 	{
 		logit(LOG_STATUS,
-		      "locker_async: connection pool unavailable; async worker disabled");
+		      "locker_async: connection pool unavailable; async locker saves disabled");
 		persistence_alert(AVATAR, "locker_async", "worker", "none", "none",
-				  "pool_unavailable", "locker async worker disabled");
+				  "pool_unavailable", "locker async saves disabled");
 		return;
 	}
 	memset(g_slots, 0, sizeof(g_slots));
-	memset(g_jobs, 0, sizeof(g_jobs));
 	memset(g_results, 0, sizeof(g_results));
-	pthread_mutex_lock(&g_q_mu);
-	g_worker_stop = 0;
-	g_worker_running = 1;
-	g_worker_created = 0;
-	pthread_mutex_unlock(&g_q_mu);
-	err = pthread_create(&g_worker_tid, NULL, locker_async_worker_main, NULL);
-	if (err != 0)
-	{
-		pthread_mutex_lock(&g_q_mu);
-		g_worker_running = 0;
-		pthread_mutex_unlock(&g_q_mu);
-		logit(LOG_FILE, "locker_async: pthread_create failed: %d", err);
-		persistence_alert(AVATAR, "locker_async", "worker", "none", "none", "start_failed",
-				  "locker async worker could not start");
-		return;
-	}
-	pthread_mutex_lock(&g_q_mu);
-	/* Creation succeeded, so join ownership persists even if the worker
-	 * exits and clears its separate running/health flag. */
-	g_worker_created = 1;
-	pthread_mutex_unlock(&g_q_mu);
 	g_inited = 1;
-	logit(LOG_STATUS, "Started locker async persistence worker.");
+	logit(LOG_STATUS, "Locker saves go through the persistence writer.");
 }
 
 void locker_async_shutdown(void)
 {
-	int join_created;
-
-	pthread_mutex_lock(&g_q_mu);
-	join_created = g_worker_created;
-	pthread_mutex_unlock(&g_q_mu);
-	if (!g_inited && !join_created)
+	if (!g_inited)
 		return;
-
 	if (locker_async_worker_available())
 		locker_async_drain(2000);
-
-	pthread_mutex_lock(&g_q_mu);
-	g_worker_stop = 1;
-	pthread_cond_broadcast(&g_q_cv);
-	pthread_mutex_unlock(&g_q_mu);
-
-	if (join_created)
-		pthread_join(g_worker_tid, NULL);
-
-	pthread_mutex_lock(&g_q_mu);
-	g_worker_created = 0;
-	g_worker_running = 0;
-	pthread_mutex_unlock(&g_q_mu);
 	g_inited = 0;
-	logit(LOG_STATUS, "Stopped locker async persistence worker.");
 }

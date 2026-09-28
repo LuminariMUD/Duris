@@ -56,7 +56,6 @@ using namespace std;
 #include "persistence/critical_command_journal.h"
 #include "persistence/critical_outbox.h"
 #include "player/player_save_worker.h"
-#include "player/player_save_journal.h"
 #include "player/player_save_pipeline.h"
 #include "player/player_load_pipeline.h"
 #include "player/player_death_restitution_adapter.h"
@@ -4154,7 +4153,6 @@ static void show_world_persistence(P_char ch)
 	const redis_floor_store_health redis_floor = redis_floor_store_health_copy();
 	const redis_donation_worker_health redis_donation = redis_donation_worker_health_copy();
 	const player_save_worker_health player_saves = player_save_worker_health_copy();
-	const player_save_journal_health player_journal = player_save_journal_health_copy();
 	const player_save_pipeline_health player_pipeline = player_save_pipeline_health_copy();
 	const player_load_pipeline_health player_loads = player_load_pipeline_health_copy();
 	const player_death_restitution_runtime_live_health restitution =
@@ -4194,8 +4192,6 @@ static void show_world_persistence(P_char ch)
 		world_persistence_max(oldest_save_age_msec, dirty.inflight_oldest_age_msec);
 	oldest_save_age_msec =
 		world_persistence_max(oldest_save_age_msec, player_saves.oldest_age_msec);
-	oldest_save_age_msec =
-		world_persistence_max(oldest_save_age_msec, player_journal.oldest_age_msec);
 	oldest_save_age_msec =
 		world_persistence_max(oldest_save_age_msec, critical.oldest_age_msec);
 	oldest_save_age_msec =
@@ -4570,96 +4566,50 @@ static void show_world_persistence(P_char ch)
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),
-		 "player_pipeline state=%s pending_append=%llu durable_ready=%llu bytes=%llu "
-		 "high_water=%llu/%llu marked=%llu captured=%llu coalesced=%llu unchanged=%llu "
-		 "capture_failures=%llu append_failures=%llu overloads=%llu dispatched=%llu "
-		 "durable_spills=%llu completions=%llu accepting=%d append_inflight=%d "
-		 "terminal=%llu/%llu/%llu timeouts=%llu drain_failures=%llu replay=%s\n",
-		 !player_pipeline.initialized					 ? "stopped" :
-		 player_pipeline.replay_blocked					 ? "degraded" :
-		 player_pipeline.pending_append || player_pipeline.durable_ready ? "pending" :
-										   "ready",
-		 (unsigned long long)player_pipeline.pending_append,
-		 (unsigned long long)player_pipeline.durable_ready,
-		 (unsigned long long)player_pipeline.retained_bytes,
-		 (unsigned long long)player_pipeline.high_water_snapshots,
-		 (unsigned long long)player_pipeline.high_water_bytes,
+		 "player_pipeline state=%s marked=%llu captured=%llu coalesced=%llu unchanged=%llu "
+		 "capture_failures=%llu submit_failures=%llu completions=%llu "
+		 "write_failures=%llu accepting=%d terminal=%llu/%llu timeouts=%llu "
+		 "drain_failures=%llu legacy_journal_replayed=%llu legacy_journal_retired=%d\n",
+		 !player_pipeline.initialized ? "stopped" : "ready",
 		 (unsigned long long)player_pipeline.marked,
 		 (unsigned long long)player_pipeline.captured,
 		 (unsigned long long)player_pipeline.coalesced,
 		 (unsigned long long)player_pipeline.unchanged,
 		 (unsigned long long)player_pipeline.capture_failures,
-		 (unsigned long long)player_pipeline.append_failures,
-		 (unsigned long long)player_pipeline.overloads,
-		 (unsigned long long)player_pipeline.dispatched,
-		 (unsigned long long)player_pipeline.durable_spills,
-		 (unsigned long long)player_pipeline.completions, player_pipeline.accepting ? 1 : 0,
-		 player_pipeline.append_inflight ? 1 : 0,
+		 (unsigned long long)player_pipeline.submit_failures,
+		 (unsigned long long)player_pipeline.completions,
+		 (unsigned long long)player_pipeline.write_failures,
+		 player_pipeline.accepting ? 1 : 0,
 		 (unsigned long long)player_pipeline.terminal_fences,
 		 (unsigned long long)player_pipeline.terminal_database_acks,
-		 (unsigned long long)player_pipeline.terminal_journal_handoffs,
 		 (unsigned long long)player_pipeline.terminal_timeouts,
 		 (unsigned long long)player_pipeline.drain_failures,
-		 player_pipeline.replay_complete ? "complete" :
-		 player_pipeline.replay_blocked	 ? "blocked" :
-						   "pending");
+		 (unsigned long long)player_pipeline.legacy_journal_replayed,
+		 player_pipeline.legacy_journal_retired ? 1 : 0);
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),
-		 "player_journal state=%s bytes=%llu records=%llu oldest_age_ms=%llu "
-		 "appended=%llu append_failures=%llu checkpoints=%llu checkpoint_failures=%llu "
-		 "replayed=%llu duplicates=%llu corrupt=%llu unsupported=%llu "
-		 "quarantined_bytes=%llu backpressure=%llu quota_exceeded=%d "
-		 "age_limit_exceeded=%d\n",
-		 !player_journal.initialized ? "stopped" :
-		 player_journal.records	     ? "pending" :
-					       "empty",
-		 (unsigned long long)player_journal.bytes,
-		 (unsigned long long)player_journal.records,
-		 (unsigned long long)player_journal.oldest_age_msec,
-		 (unsigned long long)player_journal.appended,
-		 (unsigned long long)player_journal.append_failures,
-		 (unsigned long long)player_journal.checkpoints,
-		 (unsigned long long)player_journal.checkpoint_failures,
-		 (unsigned long long)player_journal.replayed,
-		 (unsigned long long)player_journal.duplicates,
-		 (unsigned long long)player_journal.corrupt_records,
-		 (unsigned long long)player_journal.unsupported_records,
-		 (unsigned long long)player_journal.quarantined_bytes,
-		 (unsigned long long)player_journal.backpressure, player_journal.quota_exceeded,
-		 player_journal.age_limit_exceeded);
-	send_to_char(line, ch);
-
-	snprintf(line, sizeof(line),
-		 "player_save state=%s queued=%llu inflight=%llu bytes=%llu oldest_age_ms=%llu "
-		 "high_water_pids=%llu high_water_bytes=%llu submitted=%llu coalesced=%llu "
-		 "applied=%llu stale=%llu retryable=%llu terminal=%llu "
-		 "custody_payload_mismatch=%llu retries_exhausted=%llu "
-		 "age_limit_exceeded=%d workers=%u/%u stop_pending=%d "
-		 "max_capture_to_apply_us=%llu max_apply_us=%llu "
-		 "max_ack_us=%llu max_revision_gap=%llu\n",
+		 "writer state=%s queued=%llu inflight=%llu bytes=%llu oldest_age_ms=%llu "
+		 "high_water_jobs=%llu high_water_bytes=%llu submitted=%llu replaced=%llu "
+		 "applied=%llu connection_retries=%llu failures=%llu age_limit_exceeded=%d "
+		 "stop_pending=%d max_capture_to_apply_us=%llu max_apply_us=%llu\n",
 		 !player_saves.running					? "stopped" :
-		 player_saves.queued_pids || player_saves.inflight_pids ? "pending" :
+		 player_saves.queued_jobs || player_saves.inflight_jobs ? "pending" :
 									  "empty",
-		 (unsigned long long)player_saves.queued_pids,
-		 (unsigned long long)player_saves.inflight_pids,
+		 (unsigned long long)player_saves.queued_jobs,
+		 (unsigned long long)player_saves.inflight_jobs,
 		 (unsigned long long)player_saves.queued_bytes,
 		 (unsigned long long)player_saves.oldest_age_msec,
-		 (unsigned long long)player_saves.high_water_pids,
+		 (unsigned long long)player_saves.high_water_jobs,
 		 (unsigned long long)player_saves.high_water_bytes,
 		 (unsigned long long)player_saves.submitted,
-		 (unsigned long long)player_saves.coalesced,
-		 (unsigned long long)player_saves.applied, (unsigned long long)player_saves.stale,
-		 (unsigned long long)player_saves.retryable_failures,
-		 (unsigned long long)player_saves.terminal_failures,
-		 (unsigned long long)player_saves.custody_payload_mismatches,
-		 (unsigned long long)player_saves.retries_exhausted,
-		 player_saves.age_limit_exceeded, player_saves.running_workers,
-		 player_saves.worker_threads, player_saves.stop_pending,
+		 (unsigned long long)player_saves.replaced,
+		 (unsigned long long)player_saves.applied,
+		 (unsigned long long)player_saves.connection_retries,
+		 (unsigned long long)player_saves.failures, player_saves.age_limit_exceeded,
+		 player_saves.stop_pending,
 		 (unsigned long long)player_saves.max_capture_to_apply_usec,
-		 (unsigned long long)player_saves.max_apply_usec,
-		 (unsigned long long)player_saves.max_ack_latency_usec,
-		 (unsigned long long)player_saves.max_revision_gap);
+		 (unsigned long long)player_saves.max_apply_usec);
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),

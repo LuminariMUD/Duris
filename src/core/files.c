@@ -1762,7 +1762,7 @@ int writeCharacter(P_char ch, int type, int room)
 		if (ch->desc)
 			ch->desc->rtype = type;
 		const player_save_terminal_result saved =
-			player_save_pipeline_terminal(ch, type, room, 5000, false);
+			player_save_pipeline_terminal(ch, type, room, 5000);
 		if (saved != player_save_terminal_result::database_acknowledged)
 			return 0;
 		if (establishing_baseline)

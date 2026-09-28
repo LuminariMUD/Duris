@@ -1,25 +1,32 @@
 # Player Save Pipeline
 
-Ordinary player checkpoints use one revisioned pipeline:
+Memory is the authority. The database is a copy that catches up through one writer:
 
-1. The game thread marks the affected component bits and seals a bounded immutable
-   snapshot only when dirty work exists.
-2. A bounded dispatcher appends and syncs the typed journal record.
-3. The keyed worker applies the snapshot through the revision-guarded repository.
-4. The game pulse consumes typed completions; the worker checkpoints the journal only
-   after durable revision evidence.
+1. The game thread marks the affected component bits and seals an immutable snapshot
+   only when dirty work exists.
+2. The snapshot goes straight to the one persistence writer, and the character is
+   clean again: the writer has it.
+3. The writer is a single background thread (`src/player/player_save_worker.c`). It
+   applies every queued save in capture order: player saves (with their pets),
+   corpse saves, locker saves and saved room items. A newer save of the same owner
+   replaces its queued one and goes to the back of the queue.
+4. The game pulse consumes typed completions. A lost connection never reaches it:
+   the writer retries that job at the head of the queue, with a backoff capped at
+   five seconds. Any other failure is reported once, the job is dropped, and the
+   owner is marked dirty so its next save carries the state again.
 
 The game-thread checkpoint and completion paths perform no MySQL, Redis, or filesystem
-operation. Redis remains available for reconstructible caches but is not player-save
-durability state. The old Redis dirty set and player-save fork are disabled.
+operation. Nothing is journaled; see [Player Save Journal](PLAYER_SAVE_JOURNAL.md) for
+the one-time replay of a journal left by an older server. A crash loses whatever had
+not reached the database, at most one 30-second `dirty-player-checkpoint`.
 
 ## Configuration And Health
 
-`PLAYER_SAVE_JOURNAL_DIR` is required and must be an absolute, server-user-owned path.
-Startup fails closed when the journal or worker cannot start. `world persistence`
-reports bounded coordinator depth/bytes, high-water marks, captures, coalescing,
-unchanged checkpoints, append failures, overload, dispatch, completion, and replay
-state. Output contains no player identity or snapshot value.
+The writer needs no configuration. `world persistence` reports the pipeline (marks,
+captures, replacements, unchanged checkpoints, write failures, terminal waits, drain
+failures, legacy journal replay) and the writer (queued and in-flight jobs, bytes,
+oldest age, high-water marks, connection retries, failures, capture-to-apply and apply
+latency). Output contains no player identity or snapshot value.
 
 ## Persistence reporting severity
 

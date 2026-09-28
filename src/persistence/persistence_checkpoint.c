@@ -66,7 +66,7 @@ struct persistence_dirty_save_snapshot persistence_dirty_save_snapshot_copy(void
 	snapshot.enabled = 1;
 	snapshot.available = pipeline.initialized ? 1 : 0;
 	snapshot.active_count = player_save_pipeline_dirty_count();
-	snapshot.inflight_count = worker.inflight_pids;
+	snapshot.inflight_count = worker.queued_jobs + worker.inflight_jobs;
 	snapshot.inflight_oldest_age_msec = worker.oldest_age_msec;
 	return snapshot;
 }

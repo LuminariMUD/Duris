@@ -80,19 +80,11 @@ assert index(capture_tree, "active_durable_custody =") < index(
     capture_tree, "!active_durable_custody"
 )
 
-# Rejections are separately measurable and produce a redacted operational alert.
-assert contains(worker_header, "PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH")
-assert contains(worker_header, "custody_payload_mismatches")
-assert contains(worker, "health.custody_payload_mismatches")
-assert contains(diagnostics, '"custody_payload_mismatch=%llu')
-assert contains(pipeline, '"custody_payload_mismatch_rejected"')
-assert contains(pipeline, "destructive_write=0")
-assert contains(pipeline, '"custody-mismatch-recapture"')
-assert contains(pipeline, "recapture_scheduled=%d")
-assert contains(pipeline, "custody_recapture_armed.insert")
-assert contains(pipeline, "custody_recapture_armed.erase")
-assert contains(pipeline, "custody_recapture_allowed")
-assert contains(pipeline, "GET_STAT(ch) != STAT_DEAD")
-assert contains(pipeline, "CHAR_RFLAG_LOAD_DEGRADED")
+# A rejected save is no longer recaptured in a loop: the writer drops it,
+# reports it once and marks the owner dirty for its next checkpoint.
+assert not contains(pipeline, "custody_recapture_armed")
+assert not contains(pipeline, "custody-mismatch-recapture")
+assert contains(pipeline, '"write_failed"')
+assert contains(pipeline, "player_save_pipeline_mark(completion.pid, completion.components)")
 
 print("player item custody write guard contract: ok")

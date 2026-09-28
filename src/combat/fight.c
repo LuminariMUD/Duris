@@ -2616,8 +2616,7 @@ static bool save_disputed_death_disposition(P_char ch, uint64_t corpse_uid)
 	// the disposition; otherwise reconnect could race an unapplied death.
 	const player_save_terminal_result saved = player_save_pipeline_terminal_death(
 		ch, corpse, wallet_pile, operation,
-		calculate_save_room(ch, RENT_DEATH, ch->in_room), DEATH_DISPOSITION_TIMEOUT_MSEC,
-		false);
+		calculate_save_room(ch, RENT_DEATH, ch->in_room), DEATH_DISPOSITION_TIMEOUT_MSEC);
 	if (wallet_pile)
 		extract_obj(wallet_pile, FALSE);
 	const bool durable = saved == player_save_terminal_result::database_acknowledged;
