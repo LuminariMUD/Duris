@@ -25,6 +25,8 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-item-repository-test-") as t
             "-Isrc/no_mysql",
             "tests/async/flatfile_item_repository_harness.cpp",
             rel("flatfile_item_repository.c"),
+            rel("item_claim.c"),
+            rel("dupe_log.c"),
             rel("flatfile_collector_repository.c"),
             rel("collector_command.c"),
             rel("collector_codec.c"),

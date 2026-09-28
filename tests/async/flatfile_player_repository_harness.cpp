@@ -355,6 +355,96 @@ static void inspect_authority(const std::string &root, int32_t pid)
 	std::cout << "]}\n";
 }
 
+// A save claims what the player holds in the same authority transaction that writes
+// the player file, so the ownership catalog follows memory: whatever the player file
+// says after a save, the catalog says too, and nothing is left for a load to repair.
+static void item_consistency_matrix(const fs::path &path)
+{
+	const std::string root = path.string();
+	for (const auto &directory : { path, path / "players", path / "domains",
+				       path / "identities", path / "identities/names" })
+	{
+		fs::create_directories(directory);
+		fs::permissions(directory, fs::perms::owner_all, fs::perm_options::replace);
+	}
+	std::string error;
+	int32_t pid = 0;
+	for (int32_t i = 1; i <= 42; ++i)
+		require(flatfile_identity_allocate_pid(root, &pid, &error) ==
+				flatfile_identity_result::ok,
+			"consistency identity allocation");
+	require(flatfile_identity_claim(root, 42, "Player", "Account-One", &error) ==
+			flatfile_identity_result::ok,
+		"consistency identity claim");
+	require(flatfile_player_snapshot_apply(root, make_full(1), &error).outcome ==
+			player_save_apply_outcome::applied,
+		"consistency baseline: " + error);
+	auto reload = [&](const player_snapshot &snapshot, uint64_t request_id)
+	{
+		require(flatfile_player_snapshot_apply(root, snapshot, &error).outcome ==
+				player_save_apply_outcome::applied,
+			"item-consistency fixture save failed: " + error);
+		player_load_request items_request = {};
+		items_request.request_id = request_id;
+		items_request.pid = 42;
+		items_request.account_name = "account-one";
+		items_request.deadline_usec =
+			persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
+		return flatfile_player_load_repository_execute(root, items_request);
+	};
+	player_item_snapshot orphan = {};
+	orphan.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	orphan.object_uid = 103;
+	orphan.vnum = 503;
+
+	// The child taken out of its container stays out: the catalog moved with it.
+	player_snapshot moved = make_full(2);
+	moved.items[1].parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	player_load_result loaded = reload(moved, 9);
+	require(loaded.outcome == player_load_outcome::applied && loaded.repaired_item_rows == 0 &&
+			loaded.stale_item_rows == 0 &&
+			loaded.snapshot.items[1].parent_index == PLAYER_SNAPSHOT_NO_PARENT &&
+			!loaded.item_identities[1].parent_item_uid,
+		"a moved item did not load where the save put it");
+
+	// An item nobody had recorded is recorded by the save that holds it.
+	player_snapshot extra = make_full(3);
+	extra.items.push_back(orphan);
+	loaded = reload(extra, 10);
+	require(loaded.outcome == player_load_outcome::applied &&
+			loaded.snapshot.items.size() == 3 && loaded.stale_item_rows == 0 &&
+			loaded.missing_payload_rows == 0 &&
+			// The legacy pet has no UID, so its item is the player's too.
+			loaded.authoritative_item_count == 4,
+		"a newly held item was not recorded by the save");
+
+	// A container's contents follow it into another container.
+	player_snapshot nested = make_full(4);
+	nested.items.insert(nested.items.begin(), orphan);
+	nested.items[1].parent_index = 0;
+	nested.items[2].parent_index = 1;
+	loaded = reload(nested, 11);
+	require(loaded.outcome == player_load_outcome::applied &&
+			loaded.snapshot.items.size() == 3 && loaded.stale_item_rows == 0 &&
+			loaded.promoted_item_rows == 0 &&
+			loaded.snapshot.items[1].parent_index == 0 &&
+			loaded.snapshot.items[2].parent_index == 1 &&
+			loaded.item_identities[1].root_item_uid == 103 &&
+			loaded.item_identities[1].parent_item_uid == 103 &&
+			loaded.item_identities[2].root_item_uid == 103,
+		"nested contents did not load under their new container");
+
+	// An item the player no longer holds stays recorded until its next holder claims
+	// it; the load simply has no payload for it.
+	player_snapshot dropped = make_full(5);
+	dropped.items.pop_back();
+	loaded = reload(dropped, 12);
+	require(loaded.outcome == player_load_outcome::applied &&
+			loaded.snapshot.items.size() == 1 && loaded.stale_item_rows == 0 &&
+			loaded.missing_payload_rows == 2,
+		"an item the player dropped refused the load");
+}
+
 static void coin_player_matrix(const fs::path &path)
 {
 	const std::string root = path.string();
@@ -733,10 +823,11 @@ int main(int argc, char **argv)
 	require(load_result.outcome == player_load_outcome::timed_out &&
 			load_result.error_code == ETIMEDOUT,
 		"expired flat-file load request was accepted");
-	applied = flatfile_player_snapshot_apply(root.string(), full, &error);
+	// Only the one-time replay of an older server's journal keeps the revision fence.
+	applied = flatfile_player_snapshot_apply(root.string(), full, &error, true);
 	require(applied.outcome == player_save_apply_outcome::already_applied &&
 			applied.durable_revision == 1,
-		"duplicate revision was not idempotent");
+		"duplicate legacy replay was not idempotent");
 
 	player_snapshot trophy_checkpoint = make_status(2, 51, 1202);
 	trophy_checkpoint.components |= PLAYER_COMPONENT_TROPHIES;
@@ -753,10 +844,10 @@ int main(int argc, char **argv)
 			loaded.trophies[0].experience == 645 &&
 			loaded.trophies[1].experience == 678 && loaded.output_preferences.empty(),
 		"partial status merge discarded an untouched component");
-	applied = flatfile_player_snapshot_apply(root.string(), full, &error);
+	applied = flatfile_player_snapshot_apply(root.string(), full, &error, true);
 	require(applied.outcome == player_save_apply_outcome::stale_revision &&
 			applied.durable_revision == 2,
-		"stale player revision was accepted");
+		"stale legacy replay was accepted");
 
 	player_snapshot torn_items = {};
 	torn_items.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
@@ -809,75 +900,10 @@ int main(int argc, char **argv)
 			loaded.revision == 5 && loaded.status_integers[0].signed_value == 55,
 		"concurrent player writers lost the highest revision");
 
-	// The ownership catalog is written once, at baseline, so a later save can leave the
-	// two files disagreeing. None of these disagreements may lock the character out.
-	auto reload = [&](const player_snapshot &snapshot, uint64_t request_id)
-	{
-		require(flatfile_player_snapshot_apply(root.string(), snapshot, &error).outcome ==
-				player_save_apply_outcome::applied,
-			"item-consistency fixture save failed: " + error);
-		player_load_request items_request = {};
-		items_request.request_id = request_id;
-		items_request.pid = 42;
-		items_request.account_name = "account-one";
-		items_request.deadline_usec =
-			persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
-		return flatfile_player_load_repository_execute(root.string(), items_request);
-	};
-	player_item_snapshot orphan = {};
-	orphan.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
-	orphan.object_uid = 103;
-	orphan.vnum = 503;
-
-	// A stale projection that still shows an authoritative child at top level heals
-	// back into its container instead of refusing the character.
-	player_snapshot stale_parent = make_full(6);
-	stale_parent.items[1].parent_index = PLAYER_SNAPSHOT_NO_PARENT;
-	player_load_result recovered = reload(stale_parent, 9);
-	require(recovered.outcome == player_load_outcome::applied &&
-			recovered.repaired_item_rows == 1 &&
-			recovered.snapshot.items[1].parent_index == 0 &&
-			recovered.item_identities[1].serialized_parent_id ==
-				recovered.item_identities[0].database_id,
-		"stale flat-file item placement refused the load");
-
-	player_snapshot extra_payload = make_full(7);
-	extra_payload.items.push_back(orphan);
-	recovered = reload(extra_payload, 10);
-	require(recovered.outcome == player_load_outcome::applied &&
-			recovered.snapshot.items.size() == 2 && recovered.stale_item_rows == 1 &&
-			recovered.missing_payload_rows == 0 &&
-			recovered.authoritative_item_count == 3,
-		"a payload item missing from the ownership catalog refused the load");
-
-	player_snapshot dropped_payload = make_full(8);
-	dropped_payload.items.pop_back();
-	recovered = reload(dropped_payload, 11);
-	require(recovered.outcome == player_load_outcome::applied &&
-			recovered.snapshot.items.size() == 1 &&
-			recovered.missing_payload_rows == 1 && recovered.stale_item_rows == 0 &&
-			recovered.authoritative_item_count == 2,
-		"an ownership record without its payload item refused the load");
-
-	// The orphan is the container this time: its contents load at the top level rather
-	// than disappearing with it.
-	player_snapshot orphan_container = make_full(9);
-	orphan_container.items.insert(orphan_container.items.begin(), orphan);
-	orphan_container.items[1].parent_index = 0;
-	orphan_container.items[2].parent_index = 1;
-	recovered = reload(orphan_container, 12);
-	require(recovered.outcome == player_load_outcome::applied &&
-			recovered.snapshot.items.size() == 2 && recovered.stale_item_rows == 1 &&
-			recovered.promoted_item_rows == 1 && recovered.missing_payload_rows == 0 &&
-			recovered.snapshot.items[0].parent_index == PLAYER_SNAPSHOT_NO_PARENT &&
-			recovered.snapshot.items[1].parent_index == 0 &&
-			recovered.item_identities[0].root_item_uid == 100 &&
-			!recovered.item_identities[0].parent_item_uid &&
-			recovered.item_identities[1].root_item_uid == 100,
-		"contents of an orphaned container did not survive the load");
+	item_consistency_matrix(root / "consistency");
 	require(flatfile_player_snapshot_apply(root.string(), make_full(10), &error).outcome ==
 			player_save_apply_outcome::applied,
-		"could not restore the consistent item fixture: " + error);
+		"could not save the item fixture: " + error);
 
 	// A refused corpse handoff is finalized through the durable disposition. It has
 	// to leave the player empty-handed for normal re-entry while every refused
@@ -887,7 +913,7 @@ int main(int argc, char **argv)
 	fs::create_directories(deaths);
 	fs::permissions(deaths, fs::perms::owner_all, fs::perm_options::replace);
 	setenv("DURIS_FLATFILE_TEST_FAIL_BEFORE_AUTHORITY_COMMIT", "1", 1);
-	require(flatfile_player_snapshot_apply(root.string(), death_record, &error).outcome ==
+	require(flatfile_player_snapshot_apply(root.string(), death_record, &error, true).outcome ==
 			player_save_apply_outcome::retryable_failure,
 		"death acknowledged a failed authority commit");
 	unsetenv("DURIS_FLATFILE_TEST_FAIL_BEFORE_AUTHORITY_COMMIT");
@@ -904,11 +930,11 @@ int main(int argc, char **argv)
 			!retained_items.empty(),
 		"failed death commit changed active inventory or custody");
 	setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_IMAGE", "1", 1);
-	require(flatfile_player_snapshot_apply(root.string(), death_record, &error).outcome ==
+	require(flatfile_player_snapshot_apply(root.string(), death_record, &error, true).outcome ==
 			player_save_apply_outcome::retryable_failure,
 		"death acknowledged an interrupted authority commit");
 	unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_IMAGE");
-	require(flatfile_player_snapshot_apply(root.string(), death_record, &error).outcome ==
+	require(flatfile_player_snapshot_apply(root.string(), death_record, &error, true).outcome ==
 			player_save_apply_outcome::already_applied,
 		"death retry did not recover its custody and player after-images: " + error);
 	require(flatfile_player_snapshot_load(root.string(), 42, &loaded, &error) ==
@@ -955,7 +981,7 @@ int main(int argc, char **argv)
 			disposition.death->custody[2].item.expected_state ==
 				item_custody_state::absent,
 		"the death disposition lost corpse identity, wallet or custody evidence");
-	require(flatfile_player_snapshot_apply(root.string(), death_record, &error).outcome ==
+	require(flatfile_player_snapshot_apply(root.string(), death_record, &error, true).outcome ==
 			player_save_apply_outcome::already_applied,
 		"replaying the death repeated its consequences: " + error);
 	uint64_t replay_owner_revision = 0;

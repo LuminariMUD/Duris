@@ -342,3 +342,57 @@ Build and test commands used throughout:
   `test_player_item_custody_write_guard.py`.
 - `PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH` now lives only in
   `player_snapshot_repository.c`; step 2 deletes it with the custody checks.
+
+### Step 2: saves never refuse (done)
+
+- One claim rule for every item graph, in two places:
+  - MariaDB: `claim_items()` in `src/item/item_claim_repository.c`, called by
+    `player_snapshot_repository.c` for the player's items and each pet's items, inside the
+    save transaction.
+  - Flat-file: `flatfile_item_repository_prepare_claim()` builds one catalog after-image,
+    committed in the same authority transaction as the player file
+    (`flatfile_player_snapshot_apply()`).
+  - Shared rules live in `src/item/item_claim.{h,c}` (`item_claim_owner_is_economy()`,
+    `item_claim_written_items()`, `item_claim_log_dupes()`). Corpse, locker and saved-item jobs
+    (steps 1 and 6) must use the same helpers.
+- The claim, per item, parents before children: no row → insert; same owner → fix placement
+  (root, parent, vnum, state) silently; another owner → take it, bump `item_revision`, and write
+  an `item_owner_audit` row (flat-file: a `claimed` line in `logs/log/item_claims`); an auction,
+  shopkeeper or collector row → the item and its contents are left out of the save and logged to
+  `logs/log/dupes`.
+- **Coins:** a money object (`ITEM_MONEY`) with an existing row is never claimed or revived; the
+  currency transactions own coin custody until Phase 2. Without this, a save captured just before
+  a coin pickup committed revived a destroyed pile (`test_flatfile_player_repository.py`'s coin
+  matrix caught it). A pile with no row gets one.
+- Owner revisions: each owner whose holdings changed (the claimer, and every owner that lost an
+  item) gets its revision bumped once per save; the claimer's row is created if missing.
+- No revision fence and no missing-row failure: `apply_snapshot()` inserts a minimal
+  `player_data (pid,name)` row when there is none. Only the one-time legacy journal replay keeps the
+  fence: the pipeline passes `PLAYER_SAVE_LEGACY_REPLAY` as the apply context, and both backends
+  skip a record whose revision is not newer than the stored one.
+- Removed: `verify_player_item_custody()`, `verify_player_death_item_payload()`,
+  `verify_pet_custody()`, `read_durable_revision()`, the flat-file `establish_item_baseline()`, and
+  the refusal paths in `sync_restitution_runtime_state()` (it now just updates the sidecar for
+  delivered items the player still holds). A pet row is found by `pet_uid` alone and follows
+  whoever holds the pet.
+- The flat-file save now takes the authority lock. It is not reentrant, and a new player's domain
+  baseline takes it itself, so the save releases it around that call.
+- Migration `0033_item_owner_audit` (additive, no foreign keys). Everything that pins the
+  schema head was updated: `migration_manifest.json`, `runtime_compatibility_manifest.json`
+  (216 tables, fingerprints measured on clean `mariadb:10.11` and `mysql:8.0` containers:
+  bootstrap + all immutable migrations, then `verify_runtime_compatibility.sh` prints the actual
+  value; the same method reproduced HEAD's sealed values first), `runtime_compatibility_contract.h`,
+  `data_lifecycle_manifest.json` (250 stores), `bootstrap_multithread_safe.sql`, the two
+  validators, and the tests that pin counts or the head. **Any existing database needs
+  `python3 scripts/migration_runner.py run` before this binary boots (COMPAT-E002 otherwise).**
+- Tests: `test_player_save_claim.py` (flat-file leg plus contracts), the MariaDB leg
+  `tests/async/run_player_save_claim_mysql.sh` (in `make test-db`; also passes on
+  `PLAYER_SAVE_CLAIM_DB_IMAGE=mysql:8.0`), and rewrites of the tests that pinned custody refusal
+  or the fence (`test_player_item_custody_write_guard.py` deleted; the flat-file player
+  repository, playtime, death-disposition, output-preference and trophy harnesses updated).
+- Found while doing this: `run_output_preferences_mysql.sh` and `run_experience_trophy_mysql.sh`
+  had not linked for a while (missing codec and restitution sources, `sql_escape_string`,
+  `-lcrypto`), so they are not in `make test-db`. Their link is fixed; the trophy script's second
+  harness, `player_load_repository_mysql_harness`, still expects `component_failure` for a bad
+  trophy row where the loader now degrades. Step 3 rewrites load outcomes, so fix that
+  expectation there and then add both legs to `make test-db`.

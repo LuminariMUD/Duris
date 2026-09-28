@@ -8,7 +8,7 @@ constexpr const char *RUNTIME_BASELINE_ID = "duris-schema-2026-08-27-session11";
 constexpr const char *RUNTIME_BASELINE_FINGERPRINT =
 	"db13d7a42bf82bcbd32bac8d83224913c755fefd000ade6d4e798b1bd4f494dd";
 constexpr unsigned RUNTIME_BASELINE_TABLE_COUNT = 170;
-constexpr unsigned RUNTIME_CURRENT_TABLE_COUNT = 215;
+constexpr unsigned RUNTIME_CURRENT_TABLE_COUNT = 216;
 constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'account_banks','account_bound_reward_pwipe_state','account_bound_reward_summons',"
 	"'account_bound_rewards','account_characters','account_erasure_evidence',"
@@ -33,7 +33,7 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'economic_baseline_witness','economic_epoch','economic_lineage_state','epic_balance_baseline',"
 	"'epic_bonus','epic_gain','epic_ledger','epic_stone_claim','eq_drop','frag_leaderboard',"
 	"'guild_members','guild_outcome_ledger','guild_ranks','guild_transactions','guildhall_rooms',"
-	"'guildhalls','guilds','ip_info','item_current_owner','item_owner_revision',"
+	"'guildhalls','guilds','ip_info','item_current_owner','item_owner_audit','item_owner_revision',"
 	"'item_ownership_baseline','item_ownership_ledger','item_ownership_quarantine',"
 	"'item_uid_allocator','items','kingdom_garrison','kingdom_land','kingdom_realms','level_cap',"
 	"'lifecycle_archive_batches','lifecycle_archive_evidence','lifecycle_archive_jobs',"
@@ -43,8 +43,8 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'mud_schema_baselines','mud_schema_history','mud_schema_migration_state','mud_schema_migrations',"
 	"'multiplay_whitelist','nexus_stones','offline_message_receipts','offline_messages','outposts',"
 	"'pages','persistence_item_events','persistence_scalar_events','personal_data_export_audit',"
-	"'personal_data_export_requests','personal_data_export_sections','ping','pkill_event','pkill_info',"
-	"'player_affects','player_data','player_death_custody','player_death_disposition',"
+	"'personal_data_export_requests','personal_data_export_sections','ping','pkill_event',"
+	"'pkill_info','player_affects','player_data','player_death_custody','player_death_disposition',"
 	"'player_death_restitution_delivery','player_death_restitution_item',"
 	"'player_death_restitution_receipt','player_death_restitution_runtime','player_forged_items',"
 	"'player_granted_cmds','player_intros','player_item_affects','player_item_extra_descr',"
@@ -64,9 +64,9 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'world_quest_accomplished','zone_story_quest_state','zone_touch_outcome',"
 	"'zone_touch_outcome_participant','zone_touches','zone_trophy','zones'";
 constexpr const char *RUNTIME_MYSQL8_METADATA_FINGERPRINT =
-	"27f2e960b8c67fee3738c0d374a1e010d6113b883514201e437ffa43973dfb5b";
+	"63d11c8b24726bbf14cd539d7335d74963a2c649ac0a79a88be5620c07668c9b";
 constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
-	"757c9dd929d22bae7a728ceda7f06844a29fd588b7c0b7ae43f4688fed411bf4";
+	"7ac07204e5dc4e75c9883994a587c78e47143faa73e54aeae93e65b0ecd1f080";
 /* Includes the six telemetry stores introduced by migration 0014, the two
  * rollup stores introduced by migration 0017, the five Collector authority
  * stores introduced by migration 0018, corpse catalog authority introduced by
@@ -81,15 +81,16 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * additive critical-operation failure stage; it changes no runtime table count.
  * Migration 0031 adds retained accounting evidence and identity metadata.
  * Migration 0032 adds baseline witness retention and opening reservations.
+ * Migration 0033 adds the item owner audit a save writes when it takes an item.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0032_economic_baseline";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 32;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0033_item_owner_audit";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 33;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"97f27800708a4492bd157b353010988811de10486c0f06ae14df370995ed5ee3";
+	"9b88eb689a7c252a0bd04ee290dc35c2db3f7b811d6b8daee9bbb8fec8a198cb";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"6cb06fc24dc98b3e14151fdf9676aece96e3501cd7cafe7896201dd8f1dde602";
+	"944bc34d6b18ab85218e44762d639d2ab18ac582f59d549d6e4a75fd22b856b9";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"3da80f3cd53f0a388e4b23e88a0937f5a97c0168a376c39bd8e644d217555063";
+	"99e067a04c3cb0cb39aeb51168a87a7cef14240ac2f8d4d8cb1b6cde83e0b67d";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";

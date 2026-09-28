@@ -10,6 +10,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sources = [
   "tests/async/flatfile_craft_conservation_harness.cpp",
   rel("flatfile_item_repository.c"),
+  rel("item_claim.c"),
+  rel("dupe_log.c"),
   rel("flatfile_collector_repository.c"),
   rel("collector_command.c"),
   rel("collector_codec.c"),

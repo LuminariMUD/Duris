@@ -16,6 +16,8 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-auction-") as temporary:
         rel("flatfile_auction_repository.c"),
         rel("flatfile_boon_repository.c"),
         rel("flatfile_item_repository.c"),
+        rel("item_claim.c"),
+        rel("dupe_log.c"),
         rel("flatfile_collector_repository.c"),
         rel("collector_command.c"),
         rel("collector_codec.c"),

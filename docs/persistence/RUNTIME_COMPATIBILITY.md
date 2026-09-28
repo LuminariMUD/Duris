@@ -16,7 +16,7 @@ python3 scripts/migration_runner.py run
 ./migrations/verify_runtime_compatibility.sh
 ```
 
-The current head is `0030_telemetry_quarantine`, and the contract describes 203
+The current head is `0033_item_owner_audit`, and the contract describes 216
 current tables: the 170-table baseline plus the post-baseline runtime tables created
 by immutable migrations. Migration 0029 adds the replay-safe
 `critical_operation_inbox.failure_stage` receipt field as `SMALLINT UNSIGNED NOT
@@ -26,6 +26,10 @@ step is guarded and re-runnable: it verifies the existing shape, preserves all r
 and records sequence 29 rather than trying to alter the old immutable history.
 Migration 0030 adds the protected `telemetry_quarantine` table used to isolate and
 replay record-specific telemetry storage failures without blocking the stream.
+Migration 0033 adds `item_owner_audit`, one row each time a save takes an item from
+another owner (see [Player Save Pipeline](PLAYER_SAVE_PIPELINE.md#what-a-save-writes)).
+It is additive, has no foreign keys, and an existing database must apply it before
+the updated binary boots.
 Fingerprints are measured on clean `mysql:8.0` and `mariadb:10.11` schemas with
 `tests/async/telemetry_rollup_schema_mysql.py --update-contract`; they must not be
 copied from a production-derived clone.
@@ -64,7 +68,7 @@ recovery replay, listener acceptance, or gameplay publication, it verifies:
 - the sealed baseline ID and table-name fingerprint;
 - immutable migration ID, sequence, apply/verifier hashes, applied count, and history
   checksum;
-- all 203 tables, InnoDB engine, and `utf8mb4_unicode_ci` collation;
+- all 216 tables, InnoDB engine, and `utf8mb4_unicode_ci` collation;
 - normalized table, column, default, index, and foreign-key metadata against the
   checked-in MySQL 8.0 or MariaDB 10.11 fingerprint;
 - `utf8mb4`, UTC, READ COMMITTED, strict SQL modes, ten-second connection/read/write

@@ -181,6 +181,7 @@ test-db:
 	$(PYTHON) tests/async/run_epic_zone_seed_mysql.py --image mysql:8.0
 	$(PYTHON) tests/async/run_epic_zone_seed_mysql.py --image mariadb:11.4
 	tests/async/run_pet_repository_mysql.sh
+	tests/async/run_player_save_claim_mysql.sh
 
 clean:
 	+$(MAKE) -C src clean

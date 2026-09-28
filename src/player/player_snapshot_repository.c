@@ -1,6 +1,7 @@
 #include "player/player_snapshot_repository.h"
 
 #include "core/defines.h"
+#include "item/item_claim_repository.h"
 #include "persistence/persistence_observability.h"
 #include "player/player_snapshot_codec.h"
 #include "sql/item_extra_descr_codec.h"
@@ -24,9 +25,6 @@
 
 namespace
 {
-/* A replacement player-item graph did not exactly match active custody. */
-constexpr unsigned int PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH = 10001;
-
 struct query_result
 {
 	bool ok;
@@ -498,168 +496,66 @@ query_result insert_item_rows(MYSQL *connection, const std::vector<player_item_s
 	return { true, 0 };
 }
 
+// Keep the restitution sidecar in step with delivered items the player still holds.
+// A delivered item the player no longer holds belongs to someone else now, and there
+// is nothing to update; the save goes ahead either way.
 query_result sync_restitution_runtime_state(MYSQL *connection,
 					    const std::vector<player_item_snapshot> &items,
 					    int owner_id)
 {
 	if (!connection)
 		return { false, EINVAL };
+	if (items.empty())
+		return { true, 0 };
 
-	MYSQL_RES *availability = nullptr;
 	query_result available = execute(
 		connection,
-		"SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE() "
+		"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() "
 		"AND table_name IN ('player_death_restitution_delivery',"
-		"'player_death_restitution_runtime') ORDER BY table_name");
+		"'player_death_restitution_runtime')");
 	if (!available.ok)
 		return available;
-	availability = mysql_store_result(connection);
+	MYSQL_RES *availability = mysql_store_result(connection);
 	if (!availability)
 		return { false, mysql_errno(connection) };
-	bool delivery_present = false;
-	bool runtime_present = false;
-	MYSQL_ROW availability_row;
-	while ((availability_row = mysql_fetch_row(availability)) != nullptr)
-	{
-		if (!availability_row[0])
-		{
-			mysql_free_result(availability);
-			return { false, EINVAL };
-		}
-		if (!std::strcmp(availability_row[0], "player_death_restitution_delivery"))
-			delivery_present = true;
-		else if (!std::strcmp(availability_row[0], "player_death_restitution_runtime"))
-			runtime_present = true;
-	}
+	MYSQL_ROW availability_row = mysql_fetch_row(availability);
+	const bool present = availability_row && availability_row[0] &&
+			     std::strcmp(availability_row[0], "2") == 0;
 	mysql_free_result(availability);
-	if (!delivery_present)
+	if (!present)
 		return { true, 0 };
+
+	std::ostringstream uid_list;
+	bool first = true;
+	for (const player_item_snapshot &item : items)
+		if (item.object_uid)
+		{
+			uid_list << (first ? "" : ",") << item.object_uid;
+			first = false;
+		}
+	if (first)
+		return { true, 0 };
+	query_result delivered_query =
+		execute(connection, "SELECT item_uid FROM player_death_restitution_delivery "
+				    "WHERE item_uid IN (" +
+					    uid_list.str() + ")");
+	if (!delivered_query.ok)
+		return delivered_query;
+	MYSQL_RES *delivered_rows = mysql_store_result(connection);
+	if (!delivered_rows)
+		return { false, mysql_errno(connection) };
+	std::unordered_set<uint64_t> delivered;
+	while (MYSQL_ROW row = mysql_fetch_row(delivered_rows))
+		if (row[0])
+			delivered.insert(std::strtoull(row[0], nullptr, 10));
+	mysql_free_result(delivered_rows);
 
 	const std::string owner_filter =
 		"own.owner_type=1 AND own.owner_id=" + std::to_string(owner_id) +
 		" AND own.owner_context_id=0 AND own.state=1";
-	std::unordered_set<uint64_t> requested;
-	std::ostringstream uid_list;
-	try
-	{
-		requested.reserve(items.size());
-		bool first = true;
-		for (const player_item_snapshot &item : items)
-			if (item.object_uid && requested.insert(item.object_uid).second)
-			{
-				uid_list << (first ? "" : ",") << item.object_uid;
-				first = false;
-			}
-	}
-	catch (const std::bad_alloc &)
-	{
-		return { false, ENOMEM };
-	}
-
-	// Include both sides of the custody/projection comparison. The requested
-	// predicate keeps a delivered UID visible when its current-owner row is
-	// missing or foreign; the owner predicate finds an active delivery that the
-	// snapshot omitted. Either case must roll back instead of being treated as
-	// an empty scoped result.
-	const std::string requested_filter =
-		requested.empty() ? "0" : "d.item_uid IN (" + uid_list.str() + ")";
-	const std::string runtime_select =
-		runtime_present ? ",HEX(runtime.state_digest),SHA2(runtime.state_payload,256)" : "";
-	const std::string runtime_join =
-		runtime_present ?
-			" LEFT JOIN player_death_restitution_runtime runtime ON runtime.item_uid=d.item_uid" :
-			"";
-	const std::string scoped_sql =
-		"SELECT d.item_uid,ri.vnum,own.item_uid,own.owner_type,own.owner_id,"
-		"own.owner_context_id,own.vnum,own.state" +
-		runtime_select +
-		" FROM player_death_restitution_delivery d "
-		"JOIN player_death_restitution_item ri ON ri.restitution_id=d.restitution_id "
-		"AND ri.item_uid=d.item_uid LEFT JOIN item_current_owner own ON "
-		"own.item_uid=d.item_uid" +
-		runtime_join + " WHERE (" + requested_filter + " OR (" + owner_filter +
-		")) ORDER BY d.item_uid FOR UPDATE";
-	query_result scoped_query = execute(connection, scoped_sql);
-	if (!scoped_query.ok)
-		return scoped_query;
-	MYSQL_RES *scoped = mysql_store_result(connection);
-	if (!scoped)
-		return { false, mysql_errno(connection) };
-	std::unordered_set<uint64_t> restored;
-	try
-	{
-		restored.reserve(requested.size());
-	}
-	catch (const std::bad_alloc &)
-	{
-		mysql_free_result(scoped);
-		return { false, ENOMEM };
-	}
-	MYSQL_ROW row;
-	size_t scoped_delivery_count = 0;
-	const std::string player_owner_type =
-		std::to_string(static_cast<unsigned>(item_owner_type::player));
-	const std::string expected_owner_id = std::to_string(owner_id);
-	while ((row = mysql_fetch_row(scoped)) != nullptr)
-	{
-		uint64_t item_uid = 0;
-		if (!row[0])
-		{
-			mysql_free_result(scoped);
-			return { false, EINVAL };
-		}
-		char *end = nullptr;
-		errno = 0;
-		const unsigned long long parsed_uid = std::strtoull(row[0], &end, 10);
-		item_uid = static_cast<uint64_t>(parsed_uid);
-		if (errno || end == row[0] || *end || !item_uid || !row[1] || !row[2] ||
-		    std::strcmp(row[0], row[2]) != 0 || !row[3] || !row[4] || !row[5] || !row[6] ||
-		    !row[7] || player_owner_type != row[3] || expected_owner_id != row[4] ||
-		    std::strcmp(row[5], "0") != 0 || std::strcmp(row[7], "1") != 0 ||
-		    requested.find(item_uid) == requested.end())
-		{
-			mysql_free_result(scoped);
-			return { false, ENOENT };
-		}
-		++scoped_delivery_count;
-		if (!runtime_present)
-		{
-			mysql_free_result(scoped);
-			return { false, ENOENT };
-		}
-		if (!row[8] || !row[9] || strcasecmp(row[8], row[9]) != 0)
-		{
-			mysql_free_result(scoped);
-			return { false, ENOENT };
-		}
-		const auto source = std::find_if(items.begin(), items.end(),
-						 [item_uid](const player_item_snapshot &candidate)
-						 { return candidate.object_uid == item_uid; });
-		if (source == items.end() || std::to_string(source->vnum) != row[1] ||
-		    std::to_string(source->vnum) != row[6])
-		{
-			mysql_free_result(scoped);
-			return { false, EINVAL };
-		}
-		try
-		{
-			restored.insert(item_uid);
-		}
-		catch (const std::bad_alloc &)
-		{
-			mysql_free_result(scoped);
-			return { false, ENOMEM };
-		}
-	}
-	mysql_free_result(scoped);
-	// Every active delivery owned by this player must be represented exactly
-	// once in the requested snapshot.
-	if (restored.size() != scoped_delivery_count)
-		return { false, ENOENT };
-
 	for (const player_item_snapshot &source : items)
 	{
-		if (!restored.count(source.object_uid))
+		if (!delivered.count(source.object_uid))
 			continue;
 		player_item_snapshot standalone = source;
 		standalone.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
@@ -690,266 +586,50 @@ query_result sync_restitution_runtime_state(MYSQL *connection,
 	return { true, 0 };
 }
 
-struct expected_player_item_custody
+struct claimed_graph
 {
-	uint64_t root_item_uid;
-	uint64_t parent_item_uid;
-	int32_t vnum;
+	item_owner_identity owner;
+	item_claim_outcome outcome;
 };
 
-bool parse_custody_uint64(const char *text, uint64_t *value)
+query_result claim_graph(MYSQL *connection, const item_owner_identity &owner,
+			 const std::vector<player_item_snapshot> &items,
+			 std::vector<claimed_graph> *claims,
+			 std::vector<player_item_snapshot> *written)
 {
-	if (!text || !value || !*text)
-		return false;
-	char *end = nullptr;
-	errno = 0;
-	const unsigned long long parsed = std::strtoull(text, &end, 10);
-	if (errno || end == text || *end)
-		return false;
-	*value = static_cast<uint64_t>(parsed);
-	return true;
-}
-
-/**
- * Prove that a complete replacement payload is an exact projection of active player
- * custody before deleting a single existing payload row.  Inline coin custody is the
- * sole exception: coin_payload is itself an authoritative, independently loadable item
- * payload and therefore does not require a player_items row.
- */
-query_result verify_player_item_custody(MYSQL *connection, const player_snapshot &snapshot)
-{
-	std::unordered_map<uint64_t, expected_player_item_custody> expected;
-	try
-	{
-		expected.reserve(snapshot.items.size());
-		for (size_t index = 0; index < snapshot.items.size(); ++index)
-		{
-			const player_item_snapshot &item = snapshot.items[index];
-			if (!item.object_uid || item.vnum <= 0 ||
-			    item.parent_index >= static_cast<int32_t>(index) ||
-			    item.parent_index < PLAYER_SNAPSHOT_NO_PARENT)
-				return { false, PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH };
-
-			uint64_t root_item_uid = item.object_uid;
-			uint64_t parent_item_uid = 0;
-			if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
-			{
-				const player_item_snapshot &parent =
-					snapshot.items[item.parent_index];
-				const auto parent_custody = expected.find(parent.object_uid);
-				if (parent_custody == expected.end())
-					return { false,
-						 PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH };
-				root_item_uid = parent_custody->second.root_item_uid;
-				parent_item_uid = parent.object_uid;
-			}
-			if (!expected.emplace(item.object_uid,
-					      expected_player_item_custody{
-						      root_item_uid, parent_item_uid, item.vnum })
-				     .second)
-				return { false, PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH };
-		}
-	}
-	catch (const std::bad_alloc &)
-	{
-		return { false, ENOMEM };
-	}
-
-	const std::string sql =
-		"SELECT item_uid,root_item_uid,COALESCE(parent_item_uid,0),vnum,"
-		"coin_payload IS NOT NULL FROM item_current_owner WHERE owner_type=" +
-		std::to_string(static_cast<unsigned>(item_owner_type::player)) +
-		" AND owner_id=" + std::to_string(snapshot.pid) +
-		" AND owner_context_id=0 AND state=" +
-		std::to_string(static_cast<unsigned>(item_custody_state::active)) +
-		" ORDER BY item_uid FOR UPDATE";
-	query_result query = execute(connection, sql);
-	if (!query.ok)
-		return query;
-	MYSQL_RES *rows = mysql_store_result(connection);
-	if (!rows)
-		return { false, mysql_errno(connection) };
-
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(rows)) != nullptr)
-	{
-		uint64_t item_uid = 0, root_item_uid = 0, parent_item_uid = 0;
-		const bool valid = parse_custody_uint64(row[0], &item_uid) && item_uid &&
-				   parse_custody_uint64(row[1], &root_item_uid) && root_item_uid &&
-				   parse_custody_uint64(row[2], &parent_item_uid) && row[3] &&
-				   row[4];
-		if (!valid)
-		{
-			mysql_free_result(rows);
-			return { false, PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH };
-		}
-
-		const auto found = expected.find(item_uid);
-		const bool inline_coin_payload = std::strcmp(row[4], "0") != 0;
-		if (found == expected.end())
-		{
-			if (inline_coin_payload)
-				continue;
-			mysql_free_result(rows);
-			return { false, PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH };
-		}
-		const expected_player_item_custody &item = found->second;
-		if (item.root_item_uid != root_item_uid ||
-		    item.parent_item_uid != parent_item_uid || std::to_string(item.vnum) != row[3])
-		{
-			mysql_free_result(rows);
-			return { false, PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH };
-		}
-		expected.erase(found);
-	}
-	mysql_free_result(rows);
-	return expected.empty() ? query_result{ true, 0 } :
-				  query_result{ false, PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH };
-}
-
-// A death disposition deliberately has no active inventory snapshot: the live
-// items are recorded in its immutable corpse payload instead. Before removing
-// the old player_items projection, prove that every stored payload is present
-// in that corpse. A custody row with no payload may then be quarantined by its
-// captured root without making the normal complete-save check destructive.
-query_result verify_player_death_item_payload(MYSQL *connection, const player_snapshot &snapshot)
-{
-	if (!snapshot.death || !snapshot.items.empty())
-		return { false, PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH };
-	std::unordered_map<uint64_t, int32_t> captured;
-	try
-	{
-		captured.reserve(snapshot.death->corpse.size());
-		for (const player_item_snapshot &item : snapshot.death->corpse)
-			if (!item.object_uid || item.vnum <= 0 ||
-			    !captured.emplace(item.object_uid, item.vnum).second)
-				return { false, PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH };
-	}
-	catch (const std::bad_alloc &)
-	{
-		return { false, ENOMEM };
-	}
-	const query_result query =
-		execute(connection, "SELECT obj_uid,vnum FROM player_items WHERE pid=" +
-					    std::to_string(snapshot.pid) + " FOR UPDATE");
-	if (!query.ok)
-		return query;
-	MYSQL_RES *rows = mysql_store_result(connection);
-	if (!rows)
-		return { false, mysql_errno(connection) };
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(rows)) != nullptr)
-	{
-		uint64_t item_uid = 0;
-		if (!parse_custody_uint64(row[0], &item_uid) || !item_uid || !row[1])
-		{
-			mysql_free_result(rows);
-			return { false, PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH };
-		}
-		const auto found = captured.find(item_uid);
-		if (found == captured.end() || std::to_string(found->second) != row[1])
-		{
-			mysql_free_result(rows);
-			return { false, PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH };
-		}
-		captured.erase(found);
-	}
-	mysql_free_result(rows);
+	claimed_graph claim;
+	claim.owner = owner;
+	const unsigned int failed = claim_items(connection, owner, items, &claim.outcome);
+	if (failed)
+		return { false, failed };
+	*written = item_claim_written_items(items, claim.outcome.left_out);
+	if (claims && !claim.outcome.dupes.empty())
+		claims->push_back(std::move(claim));
 	return { true, 0 };
 }
 
-query_result apply_items(MYSQL *connection, const player_snapshot &snapshot)
+query_result apply_items(MYSQL *connection, const player_snapshot &snapshot,
+			 std::vector<claimed_graph> *claims)
 {
 	const bool equipment = snapshot.components & PLAYER_COMPONENT_EQUIPMENT;
 	const bool inventory = snapshot.components & PLAYER_COMPONENT_INVENTORY;
-	/* New snapshots always replace both halves together.  Keep accepting legacy
-	 * component-only journal records, but require every complete replacement to
-	 * prove its payload/custody equivalence before the destructive projection. */
-	if (equipment && inventory)
-	{
-		const query_result verified =
-			snapshot.death ? verify_player_death_item_payload(connection, snapshot) :
-					 verify_player_item_custody(connection, snapshot);
-		if (!verified.ok)
-			return verified;
-	}
+	const item_owner_identity owner = { item_owner_type::player,
+					    static_cast<uint64_t>(snapshot.pid), 0 };
+	std::vector<player_item_snapshot> written;
+	query_result result = claim_graph(connection, owner, snapshot.items, claims, &written);
+	if (!result.ok)
+		return result;
 	std::string deletion = "DELETE FROM player_items WHERE pid=" + std::to_string(snapshot.pid);
+	// Legacy journal records may carry only one half of the item graph.
 	if (equipment != inventory)
 		deletion += equipment ? " AND equip_slot>0" : " AND equip_slot=0";
-	query_result result = execute(connection, deletion);
+	result = execute(connection, deletion);
 	if (!result.ok)
 		return result;
-	result = insert_item_rows(connection, snapshot.items, snapshot.pid, false);
+	result = insert_item_rows(connection, written, snapshot.pid, false);
 	if (!result.ok)
 		return result;
-	return sync_restitution_runtime_state(connection, snapshot.items, snapshot.pid);
-}
-
-query_result verify_pet_custody(MYSQL *connection, int pid, const player_pet_snapshot &pet)
-{
-	if (!pet.pet_uid)
-		return { true, 0 };
-	struct expected_item
-	{
-		uint64_t root;
-		uint64_t parent;
-		int32_t vnum;
-	};
-	std::unordered_map<uint64_t, expected_item> expected;
-	for (size_t index = 0; index < pet.items.size(); ++index)
-	{
-		const auto &item = pet.items[index];
-		if (!item.object_uid || item.parent_index >= static_cast<int32_t>(index) ||
-		    item.parent_index < -1)
-			return { false, EINVAL };
-		uint64_t root = item.object_uid;
-		uint64_t parent = 0;
-		if (item.parent_index >= 0)
-		{
-			const auto &ancestor = pet.items[item.parent_index];
-			const auto found = expected.find(ancestor.object_uid);
-			if (found == expected.end())
-				return { false, EINVAL };
-			root = found->second.root;
-			parent = ancestor.object_uid;
-		}
-		if (!expected.emplace(item.object_uid, expected_item{ root, parent, item.vnum })
-			     .second)
-			return { false, EINVAL };
-	}
-	const std::string sql =
-		"SELECT item_uid,root_item_uid,COALESCE(parent_item_uid,0),vnum FROM "
-		"item_current_owner WHERE owner_type=" +
-		std::to_string(static_cast<unsigned>(item_owner_type::pet)) +
-		" AND owner_id=" + std::to_string(pet.pet_uid) +
-		" AND owner_context_id=" + std::to_string(pid) +
-		" AND state=1 ORDER BY item_uid FOR UPDATE";
-	query_result result = execute(connection, sql);
-	if (!result.ok)
-		return result;
-	MYSQL_RES *rows = mysql_store_result(connection);
-	if (!rows)
-		return { false, mysql_errno(connection) };
-	while (MYSQL_ROW row = mysql_fetch_row(rows))
-	{
-		if (!row[0] || !row[1] || !row[2] || !row[3])
-		{
-			mysql_free_result(rows);
-			return { false, EILSEQ };
-		}
-		const uint64_t uid = std::strtoull(row[0], nullptr, 10);
-		const auto found = expected.find(uid);
-		if (found == expected.end() || std::to_string(found->second.root) != row[1] ||
-		    std::to_string(found->second.parent) != row[2] ||
-		    std::to_string(found->second.vnum) != row[3])
-		{
-			mysql_free_result(rows);
-			return { false, ESTALE };
-		}
-		expected.erase(found);
-	}
-	mysql_free_result(rows);
-	return expected.empty() ? query_result{ true, 0 } : query_result{ false, ESTALE };
+	return sync_restitution_runtime_state(connection, written, snapshot.pid);
 }
 
 query_result pet_has_live_custody(MYSQL *connection, int pid, uint64_t pet_uid, bool *has_custody)
@@ -979,7 +659,8 @@ query_result pet_has_live_custody(MYSQL *connection, int pid, uint64_t pet_uid, 
 	return { true, 0 };
 }
 
-query_result apply_pets(MYSQL *connection, const player_snapshot &snapshot)
+query_result apply_pets(MYSQL *connection, const player_snapshot &snapshot,
+			std::vector<claimed_graph> *claims)
 {
 	query_result result = { true, 0 };
 	std::unordered_set<uint64_t> retained;
@@ -1001,10 +682,10 @@ query_result apply_pets(MYSQL *connection, const player_snapshot &snapshot)
 		uint64_t pet_id = 0;
 		if (pet.pet_uid)
 		{
-			result = execute(connection,
-					 "SELECT id FROM player_pets WHERE owner_pid=" +
-						 std::to_string(snapshot.pid) + " AND pet_uid=" +
-						 std::to_string(pet.pet_uid) + " FOR UPDATE");
+			// The pet is whoever holds it in memory; its row follows it.
+			result = execute(connection, "SELECT id FROM player_pets WHERE pet_uid=" +
+							     std::to_string(pet.pet_uid) +
+							     " FOR UPDATE");
 			if (!result.ok)
 				return result;
 			MYSQL_RES *rows = mysql_store_result(connection);
@@ -1014,34 +695,47 @@ query_result apply_pets(MYSQL *connection, const player_snapshot &snapshot)
 			if (row && row[0])
 				pet_id = std::strtoull(row[0], nullptr, 10);
 			mysql_free_result(rows);
-			if (!pet_id)
-				return { false, ESTALE };
-			result = verify_pet_custody(connection, snapshot.pid, pet);
-			if (!result.ok)
-				return result;
 		}
+		// A pet's items belong to the pet; a legacy pet without a UID keeps its
+		// items under its owner.
+		const item_owner_identity owner =
+			pet.pet_uid ? item_owner_identity{ item_owner_type::pet, pet.pet_uid,
+							   static_cast<uint64_t>(snapshot.pid) } :
+				      item_owner_identity{ item_owner_type::player,
+							   static_cast<uint64_t>(snapshot.pid), 0 };
+		std::vector<player_item_snapshot> written;
+		result = claim_graph(connection, owner, pet.items, claims, &written);
+		if (!result.ok)
+			return result;
 		std::ostringstream sql;
 		if (pet_id)
-			sql << "UPDATE player_pets SET mob_vnum=" << pet.mob_vnum
-			    << ",pet_order=" << pet.order << ",hit=" << pet.hit
-			    << ",max_hit=" << pet.max_hit << ",mana=" << pet.mana
-			    << ",max_mana=" << pet.max_mana << ",vitality=" << pet.vitality
-			    << ",max_vitality=" << pet.max_vitality
+			sql << "UPDATE player_pets SET owner_pid=" << snapshot.pid
+			    << ",mob_vnum=" << pet.mob_vnum << ",pet_order=" << pet.order
+			    << ",hit=" << pet.hit << ",max_hit=" << pet.max_hit
+			    << ",mana=" << pet.mana << ",max_mana=" << pet.max_mana
+			    << ",vitality=" << pet.vitality << ",max_vitality=" << pet.max_vitality
 			    << ",charm_duration=" << pet.charm_duration
 			    << ",room_vnum=" << pet.room_vnum << ",saved_at=NOW(),restore_state="
 			    << quote(connection, pet.restore_state)
 			    << ",hold_reason=" << static_cast<uint32_t>(pet.hold_reason)
 			    << " WHERE id=" << pet_id;
 		else
+		{
 			sql << "INSERT INTO player_pets (owner_pid,mob_vnum,pet_order,hit,"
 			       "max_hit,mana,max_mana,vitality,max_vitality,charm_duration,room_vnum,"
-			       "saved_at,restore_state,hold_reason) VALUES ("
-			    << snapshot.pid << ',' << pet.mob_vnum << ',' << pet.order << ','
-			    << pet.hit << ',' << pet.max_hit << ',' << pet.mana << ','
-			    << pet.max_mana << ',' << pet.vitality << ',' << pet.max_vitality << ','
-			    << pet.charm_duration << ',' << pet.room_vnum << ",NOW(),"
+			       "saved_at,restore_state,hold_reason";
+			if (pet.pet_uid)
+				sql << ",pet_uid";
+			sql << ") VALUES (" << snapshot.pid << ',' << pet.mob_vnum << ','
+			    << pet.order << ',' << pet.hit << ',' << pet.max_hit << ',' << pet.mana
+			    << ',' << pet.max_mana << ',' << pet.vitality << ',' << pet.max_vitality
+			    << ',' << pet.charm_duration << ',' << pet.room_vnum << ",NOW(),"
 			    << quote(connection, pet.restore_state) << ','
-			    << static_cast<uint32_t>(pet.hold_reason) << ')';
+			    << static_cast<uint32_t>(pet.hold_reason);
+			if (pet.pet_uid)
+				sql << ',' << pet.pet_uid;
+			sql << ')';
+		}
 		result = execute(connection, sql.str());
 		if (!result.ok)
 			return result;
@@ -1051,14 +745,11 @@ query_result apply_pets(MYSQL *connection, const player_snapshot &snapshot)
 		    pet_id > static_cast<unsigned long long>(std::numeric_limits<int>::max()))
 			return { false, EIO };
 		retained.insert(pet_id);
-		if (pet.pet_uid)
-		{
-			result = execute(connection, "DELETE FROM player_pet_items WHERE pet_id=" +
-							     std::to_string(pet_id));
-			if (!result.ok)
-				return result;
-		}
-		result = insert_item_rows(connection, pet.items, static_cast<int>(pet_id), true);
+		result = execute(connection, "DELETE FROM player_pet_items WHERE pet_id=" +
+						     std::to_string(pet_id));
+		if (!result.ok)
+			return result;
+		result = insert_item_rows(connection, written, static_cast<int>(pet_id), true);
 		if (!result.ok)
 			return result;
 	}
@@ -1117,7 +808,8 @@ query_result apply_trophies(MYSQL *connection, const player_snapshot &snapshot)
 	return execute(connection, sql.str());
 }
 
-query_result apply_components(MYSQL *connection, const player_snapshot &snapshot)
+query_result apply_components(MYSQL *connection, const player_snapshot &snapshot,
+			      std::vector<claimed_graph> *claims)
 {
 	query_result result = { true, 0 };
 	if (snapshot.components & PLAYER_COMPONENT_STATUS)
@@ -1130,9 +822,9 @@ query_result apply_components(MYSQL *connection, const player_snapshot &snapshot
 		result = apply_affects(connection, snapshot);
 	if (result.ok &&
 	    (snapshot.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)))
-		result = apply_items(connection, snapshot);
+		result = apply_items(connection, snapshot, claims);
 	if (result.ok && (snapshot.components & PLAYER_COMPONENT_PETS))
-		result = apply_pets(connection, snapshot);
+		result = apply_pets(connection, snapshot, claims);
 	if (result.ok && (snapshot.components & PLAYER_COMPONENT_SHAPECHANGES))
 		result = apply_shapes(connection, snapshot);
 	if (result.ok && (snapshot.components & PLAYER_COMPONENT_TROPHIES))
@@ -1228,46 +920,67 @@ query_result apply_death(MYSQL *connection, const player_snapshot &snapshot)
 	return result;
 }
 
-player_save_apply_result read_durable_revision(MYSQL *connection, int pid)
+// A character with no player_data row yet gets one. The rest of the save fills it in.
+query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapshot)
 {
+	query_result result =
+		execute(connection, "SELECT save_revision FROM player_data WHERE pid=" +
+					    std::to_string(snapshot.pid) + " FOR UPDATE");
+	if (!result.ok)
+		return result;
+	MYSQL_RES *rows = mysql_store_result(connection);
+	if (!rows)
+		return { false, mysql_errno(connection) };
+	const bool present = mysql_fetch_row(rows) != nullptr;
+	mysql_free_result(rows);
+	if (present)
+		return { true, 0 };
+	const auto name = std::find_if(snapshot.status_strings.begin(),
+				       snapshot.status_strings.end(),
+				       [](const player_snapshot_string &row)
+				       { return row.field == player_status_string_field::name; });
+	if (name == snapshot.status_strings.end() || name->value.empty())
+		return { false, ENOENT };
+	return execute(connection, "INSERT INTO player_data (pid,name) VALUES (" +
+					   std::to_string(snapshot.pid) + "," +
+					   quote(connection, name->value) + ")");
+}
+
+// Only the one-time replay of a journal left by an older server keeps the revision
+// fence: a record the database already has, or has something newer than, is skipped.
+player_save_apply_result replay_fence(MYSQL *connection, const player_snapshot &snapshot,
+				      bool *skip)
+{
+	*skip = false;
 	const query_result query =
-		execute(connection,
-			"SELECT save_revision FROM player_data WHERE pid=" + std::to_string(pid));
+		execute(connection, "SELECT save_revision FROM player_data "
+				    "WHERE pid=" +
+					    std::to_string(snapshot.pid) + " FOR UPDATE");
 	if (!query.ok)
 		return failure(query.error_code);
 	MYSQL_RES *result = mysql_store_result(connection);
 	if (!result)
 		return failure(mysql_errno(connection));
 	MYSQL_ROW row = mysql_fetch_row(result);
-	if (!row || !row[0])
-	{
-		mysql_free_result(result);
-		return { player_save_apply_outcome::terminal_failure, 0, ENOENT };
-	}
-	char *end = nullptr;
-	errno = 0;
-	const unsigned long long revision = std::strtoull(row[0], &end, 10);
-	const bool valid = !errno && end && !*end;
+	const unsigned long long durable = row && row[0] ? std::strtoull(row[0], nullptr, 10) : 0;
 	mysql_free_result(result);
-	if (!valid)
-		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
-	return { player_save_apply_outcome::already_applied, revision, 0 };
+	if (durable >= snapshot.revision)
+	{
+		*skip = true;
+		return { durable == snapshot.revision ? player_save_apply_outcome::already_applied :
+							player_save_apply_outcome::stale_revision,
+			 durable, 0 };
+	}
+	return { player_save_apply_outcome::applied, durable, 0 };
 }
-} // namespace
 
-bool player_snapshot_repository_write_pets(MYSQL *connection, const player_snapshot &snapshot)
-{
-	return connection && snapshot.pid > 0 && apply_pets(connection, snapshot).ok;
-}
-
-player_save_apply_result player_snapshot_repository_apply(MYSQL *connection,
-							  const player_snapshot &snapshot)
+player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot &snapshot,
+					bool legacy_replay)
 {
 	if (!connection || snapshot.pid <= 0 || !snapshot.revision || !snapshot.components ||
 	    (snapshot.components & ~PLAYER_CHECKPOINT_COMPONENT_ALL))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
-	// Death records require their custody disposition to commit with this save.
-	// Never acknowledge one through the ordinary component-only writer.
+	// Death dispositions only arrive from a journal written before the reset.
 	if (snapshot.death ? snapshot.schema_version != PLAYER_SNAPSHOT_DEATH_SCHEMA_VERSION ||
 				     snapshot.death->corpse.empty() ||
 				     snapshot.components != PLAYER_CHECKPOINT_COMPONENT_ALL ||
@@ -1278,86 +991,56 @@ player_save_apply_result player_snapshot_repository_apply(MYSQL *connection,
 	query_result query = execute(connection, "START TRANSACTION");
 	if (!query.ok)
 		return failure(query.error_code);
-	query = execute(connection, "SELECT save_revision FROM player_data WHERE pid=" +
-					    std::to_string(snapshot.pid) + " FOR UPDATE");
-	if (!query.ok)
+	if (legacy_replay)
 	{
-		execute(connection, "ROLLBACK");
-		return failure(query.error_code);
+		bool skip = false;
+		const player_save_apply_result fenced = replay_fence(connection, snapshot, &skip);
+		if (skip || fenced.outcome != player_save_apply_outcome::applied)
+		{
+			execute(connection, "ROLLBACK");
+			return fenced;
+		}
 	}
-	MYSQL_RES *result = mysql_store_result(connection);
-	if (!result)
-	{
-		const unsigned int error_code = mysql_errno(connection);
-		execute(connection, "ROLLBACK");
-		return failure(error_code);
-	}
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (!row || !row[0])
-	{
-		mysql_free_result(result);
-		execute(connection, "ROLLBACK");
-		return { player_save_apply_outcome::terminal_failure, 0, ENOENT };
-	}
-	char *end = nullptr;
-	errno = 0;
-	const unsigned long long durable = std::strtoull(row[0], &end, 10);
-	const bool valid_revision = !errno && end && !*end;
-	mysql_free_result(result);
-	if (!valid_revision)
-	{
-		execute(connection, "ROLLBACK");
-		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
-	}
-	if (durable >= snapshot.revision)
-	{
-		execute(connection, "ROLLBACK");
-		return { durable == snapshot.revision ? player_save_apply_outcome::already_applied :
-							player_save_apply_outcome::stale_revision,
-			 durable, 0 };
-	}
-
-	query = apply_components(connection, snapshot);
+	std::vector<claimed_graph> claims;
+	query = ensure_player_row(connection, snapshot);
+	if (query.ok)
+		query = apply_components(connection, snapshot, &claims);
 	if (query.ok)
 		query = apply_death(connection, snapshot);
+	if (query.ok)
+		query = execute(connection, "UPDATE player_data SET save_revision=" +
+						    std::to_string(snapshot.revision) +
+						    " WHERE pid=" + std::to_string(snapshot.pid));
 	if (!query.ok)
 	{
-		execute(connection, "ROLLBACK");
-		player_save_apply_result failed = failure(query.error_code);
-		failed.durable_revision = durable;
-		return failed;
-	}
-	query = execute(connection, "UPDATE player_data SET save_revision=" +
-					    std::to_string(snapshot.revision) +
-					    " WHERE pid=" + std::to_string(snapshot.pid) +
-					    " AND save_revision=" + std::to_string(durable));
-	if (!query.ok || mysql_affected_rows(connection) != 1)
-	{
-		const unsigned int error_code = query.ok ? EAGAIN : query.error_code;
-		execute(connection, "ROLLBACK");
-		return { player_save_apply_outcome::retryable_failure, durable, error_code };
+		if (!connection_error(query.error_code))
+			execute(connection, "ROLLBACK");
+		return failure(query.error_code);
 	}
 	query = execute(connection, "COMMIT");
 	if (!query.ok)
 	{
+		// A lost connection may or may not have committed. The save is a full
+		// replacement, so writing it again is always safe.
 		if (!connection_error(query.error_code))
 			execute(connection, "ROLLBACK");
 		return { connection_error(query.error_code) ?
 				 player_save_apply_outcome::ambiguous_commit :
 				 failure(query.error_code).outcome,
-			 durable, query.error_code };
+			 0, query.error_code };
 	}
+	for (const claimed_graph &claim : claims)
+		item_claim_log_dupes("save_left_out", claim.owner, claim.outcome);
 	return { player_save_apply_outcome::applied, snapshot.revision, 0 };
 }
 
-player_save_apply_result player_snapshot_repository_apply_from_pool(const player_snapshot &snapshot,
-								    void *context)
+player_save_apply_result apply_with_pool(const player_snapshot &snapshot, bool legacy_replay)
 {
-	(void)context;
 	MYSQL *connection = sql_pool_acquire();
 	if (!connection)
 		return { player_save_apply_outcome::retryable_failure, 0, ETIMEDOUT };
-	player_save_apply_result applied = player_snapshot_repository_apply(connection, snapshot);
+	const player_save_apply_result applied =
+		apply_snapshot(connection, snapshot, legacy_replay);
 	if (applied.outcome == player_save_apply_outcome::ambiguous_commit ||
 	    connection_error(applied.error_code))
 	{
@@ -1369,23 +1052,31 @@ player_save_apply_result player_snapshot_repository_apply_from_pool(const player
 		}
 		connection = replacement;
 	}
-	if (applied.outcome == player_save_apply_outcome::ambiguous_commit)
-	{
-		const player_save_apply_result durable =
-			read_durable_revision(connection, snapshot.pid);
-		if (durable.error_code == 0)
-		{
-			if (durable.durable_revision == snapshot.revision)
-				applied = { player_save_apply_outcome::already_applied,
-					    durable.durable_revision, 0 };
-			else if (durable.durable_revision > snapshot.revision)
-				applied = { player_save_apply_outcome::stale_revision,
-					    durable.durable_revision, 0 };
-			else
-				applied = { player_save_apply_outcome::retryable_failure,
-					    durable.durable_revision, applied.error_code };
-		}
-	}
 	sql_pool_release(connection);
 	return applied;
+}
+} // namespace
+
+bool player_snapshot_repository_write_pets(MYSQL *connection, const player_snapshot &snapshot)
+{
+	if (!connection || snapshot.pid <= 0)
+		return false;
+	std::vector<claimed_graph> claims;
+	if (!apply_pets(connection, snapshot, &claims).ok)
+		return false;
+	for (const claimed_graph &claim : claims)
+		item_claim_log_dupes("save_left_out", claim.owner, claim.outcome);
+	return true;
+}
+
+player_save_apply_result player_snapshot_repository_apply(MYSQL *connection,
+							  const player_snapshot &snapshot)
+{
+	return apply_snapshot(connection, snapshot, false);
+}
+
+player_save_apply_result player_snapshot_repository_apply_from_pool(const player_snapshot &snapshot,
+								    void *context)
+{
+	return apply_with_pool(snapshot, context == PLAYER_SAVE_LEGACY_REPLAY);
 }

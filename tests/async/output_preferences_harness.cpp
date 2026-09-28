@@ -130,7 +130,7 @@ int main()
 	       requests == 2);
 	for (auto failure :
 	     { player_save_pipeline_result::invalid, player_save_pipeline_result::capture_failed,
-	       player_save_pipeline_result::overloaded, player_save_pipeline_result::unavailable })
+	       player_save_pipeline_result::unavailable })
 	{
 		admission = failure;
 		assert(update_player_output_preferences(&a, second) ==

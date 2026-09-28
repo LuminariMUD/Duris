@@ -11,7 +11,7 @@ checks = {
     "pending results are drained before rollback": source.find("sql_clear_results_on(conn);") < source.find("mysql_rollback(conn)"),
     "failed transactions are rolled back": "mysql_rollback(conn)" in source,
     "poisoned pooled connections are replaced": "sql_pool_replace_connection(conn)" in source,
-    "replacement is returned to the worker release path": "apply_sql_script(&conn, job.sql)" in source,
+    "replacement is returned to the writer release path": "apply_sql_script(&conn, job.sql->c_str(), &error_code)" in source,
     "multi-statement failure does not split and replay the batch": "Fallback: split on" not in source,
     "multi-result failure also repairs the connection": source.count("repair_failed_connection(conn_io)") >= 2,
 }

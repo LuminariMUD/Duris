@@ -6,6 +6,7 @@
 #include "flatfile/flatfile_shop_trade_materialization.h"
 #include "flatfile/flatfile_store.h"
 #include "persistence/persistence_observability.h"
+#include "persistence/dupe_log.h"
 #include "persistence/persistence_mode.h"
 #include "player/player_snapshot_codec.h"
 
@@ -15,6 +16,7 @@
 #include <climits>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <new>
 #include <numeric>
@@ -500,78 +502,6 @@ bool merge_snapshot(const player_snapshot &incoming, player_snapshot *materializ
 	return true;
 }
 
-bool append_baseline_items(const std::vector<player_item_snapshot> &items,
-			   const item_owner_identity &owner, std::unordered_set<uint64_t> *seen,
-			   std::vector<flatfile_item_ownership_record> *records)
-{
-	if (!seen || !records)
-		return false;
-	std::vector<uint64_t> roots;
-	try
-	{
-		roots.reserve(items.size());
-		for (size_t index = 0; index < items.size(); ++index)
-		{
-			const player_item_snapshot &item = items[index];
-			if (!item.object_uid || item.vnum <= 0 ||
-			    !seen->insert(item.object_uid).second)
-				return false;
-			uint64_t parent_uid = 0, root_uid = item.object_uid;
-			if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
-			{
-				if (item.parent_index < 0 ||
-				    static_cast<size_t>(item.parent_index) >= index)
-					return false;
-				const size_t parent = static_cast<size_t>(item.parent_index);
-				parent_uid = items[parent].object_uid;
-				root_uid = roots[parent];
-			}
-			roots.push_back(root_uid);
-			records->push_back({ item.object_uid, root_uid, parent_uid, owner, 1,
-					     item.vnum, item_custody_state::active });
-		}
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	return true;
-}
-
-flatfile_item_baseline_result establish_item_baseline(const std::string &root,
-						      const player_snapshot &snapshot,
-						      std::string *error)
-{
-	const item_owner_identity owner = { item_owner_type::player,
-					    static_cast<uint64_t>(snapshot.pid), 0 };
-	std::unordered_set<uint64_t> seen;
-	std::vector<flatfile_item_ownership_record> records;
-	try
-	{
-		const size_t pet_items =
-			std::accumulate(snapshot.pets.begin(), snapshot.pets.end(), size_t{ 0 },
-					[](size_t count, const player_pet_snapshot &pet)
-					{ return count + pet.items.size(); });
-		if (snapshot.items.size() > PLAYER_LOAD_ITEM_MAX ||
-		    pet_items > PLAYER_LOAD_ITEM_MAX - snapshot.items.size())
-			return flatfile_item_baseline_result::invalid;
-		seen.reserve(snapshot.items.size() + pet_items);
-		records.reserve(snapshot.items.size() + pet_items);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return flatfile_item_baseline_result::io_error;
-	}
-	if (!append_baseline_items(snapshot.items, owner, &seen, &records))
-		return flatfile_item_baseline_result::invalid;
-	for (const player_pet_snapshot &pet : snapshot.pets)
-		if (!append_baseline_items(pet.items, owner, &seen, &records))
-			return flatfile_item_baseline_result::invalid;
-	std::sort(records.begin(), records.end(), [](const auto &left, const auto &right)
-		  { return left.item_uid < right.item_uid; });
-	return flatfile_item_repository_establish_owner(root, owner, records, error);
-}
-
 flatfile_player_domain_result establish_domain_baseline(const std::string &root,
 							const player_snapshot &snapshot,
 							std::string *error)
@@ -852,27 +782,34 @@ flatfile_player_snapshot_prepare_remove(const std::string &root,
 
 player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 							const player_snapshot &snapshot,
-							std::string *error)
+							std::string *error, bool legacy_replay)
 {
 	if (!valid_snapshot(snapshot) || !replace_items_together(snapshot.components))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	flatfile_player_snapshot_lock snapshot_lock;
 	if (!snapshot_lock.acquire(root, snapshot.pid, error))
 		return { player_save_apply_outcome::retryable_failure, 0, EIO };
-	flatfile_authority_lock authority;
-	if (snapshot.death)
+	// The authority lock is not reentrant, and a new player's domain baseline takes it
+	// itself, so it is held around each step rather than for the whole save.
+	auto authority = std::make_unique<flatfile_authority_lock>();
+	const auto lock_authority = [&]() -> player_save_apply_result
 	{
-		if (!authority.acquire(root, error))
+		if (!authority->acquire(root, error))
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
 		const auto recovered =
-			flatfile_authority_transaction_recover(root, authority, error);
+			flatfile_authority_transaction_recover(root, *authority, error);
 		if (recovered != flatfile_authority_transaction_result::ok)
 			return { recovered == flatfile_authority_transaction_result::io_error ?
 					 player_save_apply_outcome::retryable_failure :
 					 player_save_apply_outcome::terminal_failure,
 				 0, EIO };
-	}
+		return { player_save_apply_outcome::applied, 0, 0 };
+	};
+	player_save_apply_result locked = lock_authority();
+	if (locked.outcome != player_save_apply_outcome::applied)
+		return locked;
 	player_snapshot materialized = {};
+	bool new_player = false;
 	const flatfile_player_load_result loaded =
 		flatfile_player_snapshot_read(root, snapshot.pid, &materialized, error);
 	if (loaded == flatfile_player_load_result::invalid)
@@ -883,19 +820,13 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	{
 		if (snapshot.death || snapshot.components != PLAYER_CHECKPOINT_COMPONENT_ALL)
 			return { player_save_apply_outcome::terminal_failure, 0, ENOENT };
-		const flatfile_item_baseline_result item_baseline =
-			establish_item_baseline(root, snapshot, error);
-		if (item_baseline == flatfile_item_baseline_result::io_error)
-			return { player_save_apply_outcome::retryable_failure, 0, EIO };
-		if (item_baseline != flatfile_item_baseline_result::applied &&
-		    item_baseline != flatfile_item_baseline_result::already_applied)
-			return { player_save_apply_outcome::terminal_failure, 0,
-				 static_cast<unsigned int>(
-					 item_baseline == flatfile_item_baseline_result::conflict ?
-						 EEXIST :
-						 EINVAL) };
+		new_player = true;
+		authority = std::make_unique<flatfile_authority_lock>();
 		const flatfile_player_domain_result domain_baseline =
 			establish_domain_baseline(root, snapshot, error);
+		locked = lock_authority();
+		if (locked.outcome != player_save_apply_outcome::applied)
+			return locked;
 		if (domain_baseline == flatfile_player_domain_result::io_error)
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
 		if (domain_baseline != flatfile_player_domain_result::ok)
@@ -912,7 +843,8 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	}
 	else
 	{
-		if (materialized.revision >= snapshot.revision)
+		// Only the one-time replay of an older server's journal keeps the fence.
+		if (legacy_replay && materialized.revision >= snapshot.revision)
 			return { materialized.revision == snapshot.revision ?
 					 player_save_apply_outcome::already_applied :
 					 player_save_apply_outcome::stale_revision,
@@ -921,6 +853,57 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			return { player_save_apply_outcome::terminal_failure, materialized.revision,
 				 EINVAL };
 	}
+
+	// Claim what the player and its pets hold, as one catalog write.
+	const item_owner_identity player_owner = { item_owner_type::player,
+						   static_cast<uint64_t>(snapshot.pid), 0 };
+	std::vector<flatfile_item_claim> claims;
+	std::vector<flatfile_item_claim_audit> audits;
+	flatfile_authority_operation claimed;
+	bool claim_changed = false;
+	if (snapshot.components &
+	    (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY | PLAYER_COMPONENT_PETS))
+	{
+		try
+		{
+			if (snapshot.components &
+			    (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY))
+				claims.push_back({ player_owner, &materialized.items, {}, new_player });
+			if (snapshot.components & PLAYER_COMPONENT_PETS)
+				for (const player_pet_snapshot &pet : materialized.pets)
+					claims.push_back(
+						{ pet.pet_uid ?
+							  item_owner_identity{
+								  item_owner_type::pet, pet.pet_uid,
+								  static_cast<uint64_t>(
+									  snapshot.pid) } :
+							  player_owner,
+						  &pet.items,
+						  {} });
+		}
+		catch (const std::bad_alloc &)
+		{
+			return { player_save_apply_outcome::retryable_failure, 0, ENOMEM };
+		}
+		const auto prepared = flatfile_item_repository_prepare_claim(
+			root, *authority, &claims, &claimed, &audits, error);
+		if (prepared == flatfile_item_repository_result::io_error)
+			return { player_save_apply_outcome::retryable_failure, 0, EIO };
+		if (prepared != flatfile_item_repository_result::ok &&
+		    prepared != flatfile_item_repository_result::unchanged)
+			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+		claim_changed = prepared == flatfile_item_repository_result::ok;
+		// Leave out what the economy holds, with its contents.
+		size_t claim = 0;
+		if (snapshot.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY))
+			materialized.items = item_claim_written_items(
+				materialized.items, claims[claim++].outcome.left_out);
+		if (snapshot.components & PLAYER_COMPONENT_PETS)
+			for (player_pet_snapshot &pet : materialized.pets)
+				pet.items = item_claim_written_items(
+					pet.items, claims[claim++].outcome.left_out);
+	}
+
 	std::vector<uint8_t> bytes;
 	// Keep the immutable evidence, quarantine and empty player projection in the
 	// same recoverable authority transaction. A failed commit leaves no evidence
@@ -936,50 +919,52 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	}
 	if (!encode_file(&materialized, &bytes))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
-	if (snapshot.death)
+	std::vector<flatfile_authority_operation> operations;
+	try
 	{
-		std::vector<flatfile_authority_operation> operations;
-		operations.push_back({ flatfile_authority_store::player_deaths,
-				       flatfile_authority_operation_kind::write,
-				       death_filename(snapshot.pid, snapshot.revision),
-				       std::move(death_bytes) });
-		std::vector<uint64_t> custody_uids;
-		try
+		if (claim_changed)
+			operations.push_back(std::move(claimed));
+		if (snapshot.death)
 		{
+			operations.push_back({ flatfile_authority_store::player_deaths,
+					       flatfile_authority_operation_kind::write,
+					       death_filename(snapshot.pid, snapshot.revision),
+					       std::move(death_bytes) });
+			std::vector<uint64_t> custody_uids;
 			custody_uids.reserve(snapshot.death->custody.size());
 			for (const auto &row : snapshot.death->custody)
 				if (row.item.item_uid)
 					custody_uids.push_back(row.item.item_uid);
+			flatfile_authority_operation quarantine;
+			const auto quarantined = flatfile_item_repository_prepare_death_quarantine(
+				root, *authority, snapshot.pid, custody_uids, &quarantine, error);
+			if (quarantined == flatfile_item_repository_result::ok)
+				operations.push_back(std::move(quarantine));
+			else if (quarantined != flatfile_item_repository_result::unchanged)
+				return { quarantined == flatfile_item_repository_result::io_error ?
+						 player_save_apply_outcome::retryable_failure :
+						 player_save_apply_outcome::terminal_failure,
+					 0, EIO };
 		}
-		catch (const std::bad_alloc &)
-		{
-			return { player_save_apply_outcome::retryable_failure, 0, ENOMEM };
-		}
-		flatfile_authority_operation quarantine;
-		const auto prepared = flatfile_item_repository_prepare_death_quarantine(
-			root, authority, snapshot.pid, custody_uids, &quarantine, error);
-		if (prepared == flatfile_item_repository_result::ok)
-			operations.push_back(std::move(quarantine));
-		else if (prepared != flatfile_item_repository_result::unchanged)
-			return { prepared == flatfile_item_repository_result::io_error ?
-					 player_save_apply_outcome::retryable_failure :
-					 player_save_apply_outcome::terminal_failure,
-				 0, EIO };
 		operations.push_back({ flatfile_authority_store::players,
 				       flatfile_authority_operation_kind::write,
 				       player_filename(snapshot.pid), std::move(bytes) });
-		const auto committed = flatfile_authority_transaction_commit_operations(
-			root, authority, operations, error);
-		if (committed != flatfile_authority_transaction_result::ok)
-			return { committed == flatfile_authority_transaction_result::io_error ?
-					 player_save_apply_outcome::retryable_failure :
-					 player_save_apply_outcome::terminal_failure,
-				 0, EIO };
-		return { player_save_apply_outcome::applied, snapshot.revision, 0 };
 	}
-	if (!flatfile_atomic_write(player_directory(root), player_filename(snapshot.pid), bytes,
-				   error))
-		return { player_save_apply_outcome::retryable_failure, 0, EIO };
+	catch (const std::bad_alloc &)
+	{
+		return { player_save_apply_outcome::retryable_failure, 0, ENOMEM };
+	}
+	const auto committed = flatfile_authority_transaction_commit_operations(root, *authority,
+										operations, error);
+	if (committed != flatfile_authority_transaction_result::ok)
+		return { committed == flatfile_authority_transaction_result::io_error ?
+				 player_save_apply_outcome::retryable_failure :
+				 player_save_apply_outcome::terminal_failure,
+			 0, EIO };
+	for (const flatfile_item_claim_audit &audit : audits)
+		item_claim_log_item(audit.item_uid, audit.vnum, audit.old_owner, audit.new_owner);
+	for (const flatfile_item_claim &claim : claims)
+		item_claim_log_dupes("save_left_out", claim.owner, claim.outcome);
 	return { player_save_apply_outcome::applied, snapshot.revision, 0 };
 }
 
@@ -991,5 +976,6 @@ player_save_apply_result flatfile_player_snapshot_apply_selected(const player_sn
 	if (!root)
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	std::string error;
-	return flatfile_player_snapshot_apply(root, snapshot, &error);
+	return flatfile_player_snapshot_apply(root, snapshot, &error,
+					      context == PLAYER_SAVE_LEGACY_REPLAY);
 }

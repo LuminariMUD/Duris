@@ -25,8 +25,8 @@ assert body.count('"terminal_not_durable"') == 2
 assert body.count("s->state = LCHK_DIRTY;") >= 2
 
 # Neither failure branch may discard the recovery fence unconditionally.
-snapshot_failed = body[body.index("if (!sql)"):body.index("if (!job_push")]
-job_full = body[body.index("if (!job_push"):]
+snapshot_failed = body[body.index("if (!sql)"):body.index("if (!job.sql || !job_push")]
+job_full = body[body.index("if (!job.sql || !job_push"):]
 for label, branch in (("snapshot_failed", snapshot_failed), ("job_queue_full", job_full)):
     assert "if (s->terminal && durable_ok)" in branch, label
     assert "else if (s->terminal)" in branch, label

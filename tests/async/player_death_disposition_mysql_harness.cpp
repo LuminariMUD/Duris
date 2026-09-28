@@ -1,5 +1,7 @@
 // A death whose corpse handoff the ledger refused is only durable if the record
-// commits with the death itself. This drives player_snapshot_repository_apply()
+// commits with the death itself. Deaths no longer write such records; one can only
+// arrive in the one-time replay of a journal an older server left behind. This
+// drives that replay through player_snapshot_repository_apply_from_pool()
 // against a real server: the player is left empty-handed, and the corpse
 // identity, the wallet a rejected conversion never took, the refused item
 // payload and the disputed custody rows are all still there afterwards.
@@ -17,11 +19,11 @@
 #include <mysql/mysql.h>
 #include <string>
 
-// player_snapshot_repository.c also offers a pooled entry point this harness
-// does not exercise; the pool itself belongs to the running server.
+// The legacy replay takes its connection from the pool: hand it the harness's.
+MYSQL *harness_connection = nullptr;
 MYSQL *sql_pool_acquire(void)
 {
-	return nullptr;
+	return harness_connection;
 }
 void sql_pool_release(MYSQL *) {}
 MYSQL *sql_pool_replace_connection(MYSQL *)
@@ -150,6 +152,9 @@ int main()
 {
 	require(!mysql_library_init(0, nullptr, nullptr), "could not initialize the MySQL client");
 	MYSQL *connection = mysql_init(nullptr);
+	harness_connection = connection;
+	const auto replay = [](const player_snapshot &snapshot)
+	{ return player_snapshot_repository_apply_from_pool(snapshot, PLAYER_SAVE_LEGACY_REPLAY); };
 	require(connection != nullptr, "could not allocate a MySQL connection");
 	const std::string host = environment("DB_HOST", "127.0.0.1");
 	const std::string user = environment("DB_USER", "root");
@@ -175,7 +180,7 @@ int main()
 		"(201,201,NULL,1,1,3,501,1),(203,201,201,1,1,1,501,1),(204,204,NULL,1,2,9,501,1),(205,205,NULL,2,9001,6,501,1),(206,206,NULL,1,1,8,501,1),(207,201,201,1,1,1,501,1)");
 
 	const player_snapshot death = make_death(5);
-	player_save_apply_result applied = player_snapshot_repository_apply(connection, death);
+	player_save_apply_result applied = replay(death);
 	require(applied.outcome == player_save_apply_outcome::applied &&
 			applied.durable_revision == 5,
 		"the death disposition was refused by the MariaDB backend: error=" +
@@ -233,7 +238,7 @@ int main()
 		"the stored death payload lost the refused corpse contents");
 
 	// Replay must not repeat the death, and must not duplicate the record.
-	applied = player_snapshot_repository_apply(connection, death);
+	applied = replay(death);
 	require(applied.outcome == player_save_apply_outcome::already_applied &&
 			applied.durable_revision == 5,
 		"replaying the death did not report it as already applied");
@@ -258,29 +263,10 @@ int main()
 			"1",
 		"an ordinary save discarded the death disposition");
 
-	// A payload outside the captured corpse must not be deleted by a later
-	// disputed death, even if its custody row is present and active.
-	execute(connection,
-		"INSERT INTO player_items (pid,vnum,equip_slot,container_id,quantity,item_type,"
-		"obj_uid) VALUES (1,501,0,NULL,1,0,300)");
-	execute(connection,
-		"INSERT INTO item_current_owner (item_uid,root_item_uid,parent_item_uid,owner_type,"
-		"owner_id,item_revision,vnum,state) VALUES (300,300,NULL,1,1,1,501,1)");
-	applied = player_snapshot_repository_apply(connection, make_death(7));
-	require(applied.outcome == player_save_apply_outcome::terminal_failure &&
-			applied.error_code == PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH,
-		"death deleted a payload absent from its immutable corpse evidence");
-	require(scalar(connection,
-		       "SELECT COUNT(*) FROM player_items WHERE pid=1 AND obj_uid=300") == "1" &&
-			scalar(connection, "SELECT save_revision FROM player_data WHERE pid=1") ==
-				"6",
-		"rejected death changed the player payload or revision");
-
 	// A death record the codec cannot accept must never reach the tables.
 	player_snapshot malformed = make_death(7);
 	malformed.death->corpse.clear();
-	require(player_snapshot_repository_apply(connection, malformed).outcome ==
-			player_save_apply_outcome::terminal_failure,
+	require(replay(malformed).outcome == player_save_apply_outcome::terminal_failure,
 		"a death record without its corpse was accepted");
 	require(scalar(connection, "SELECT save_revision FROM player_data WHERE pid=1") == "6",
 		"a refused death record still advanced the durable player revision");

@@ -20,6 +20,33 @@ operation. Nothing is journaled; see [Player Save Journal](PLAYER_SAVE_JOURNAL.m
 the one-time replay of a journal left by an older server. A crash loses whatever had
 not reached the database, at most one 30-second `dirty-player-checkpoint`.
 
+## What a save writes
+
+A save never refuses. In one transaction it writes what its owner holds in memory and
+makes `item_current_owner` agree (`claim_items()` in `src/item/item_claim_repository.c`;
+the flat-file backend does the same in `flatfile_item_repository_prepare_claim()` and
+commits it with the player file):
+
+- an item with no ownership row gets one;
+- a row naming this owner is corrected if the item moved;
+- a row naming anyone else (a player, corpse, locker, room or pet) is taken, and an
+  `item_owner_audit` row records the item, its vnum, the old owner, the new owner and
+  the time (flat-file: a line in `logs/log/item_claims`);
+- a row naming an auction, a shopkeeper or the collector is left alone: the item and
+  its contents are left out of the save and logged to `logs/log/dupes`. The economy
+  still moves items through its own transactions until Phase 2 of the persistence
+  reset, so the database is right about what it holds;
+- a coin pile keeps whatever ownership the currency transactions gave it: it is
+  written, and recorded if nobody has recorded it, but never taken or revived.
+
+The owner's revision, and the revision of each owner that lost an item, advances once
+per save that changes them. There is no revision fence: with one writer, every save is
+newer than the last one for that owner. A character with no `player_data` row yet gets
+one. Only the one-time replay of an older server's journal keeps the fence.
+
+`logs/log/dupes` has one line per item a save left out, naming the item, its vnum,
+the owner that lost it and the owner that has it.
+
 ## Configuration And Health
 
 The writer needs no configuration. `world persistence` reports the pipeline (marks,

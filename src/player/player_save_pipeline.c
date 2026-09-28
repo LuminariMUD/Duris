@@ -133,7 +133,7 @@ void replay_legacy_journal(const char *directory)
 		return;
 	}
 	const player_save_journal_result replayed =
-		player_save_journal_replay(selected_snapshot_apply(), nullptr);
+		player_save_journal_replay(selected_snapshot_apply(), PLAYER_SAVE_LEGACY_REPLAY);
 	const player_save_journal_health journal = player_save_journal_health_copy();
 	bool retired = false;
 	if (journal.records)
