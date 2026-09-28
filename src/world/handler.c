@@ -4564,11 +4564,12 @@ bool submit_corpse_destruction(P_obj corpse)
 	return corpse_lifecycle_transaction_destroy(payload, publish_corpse_destruction);
 }
 
+// Corpses live in memory: a raise, resurrection, release, unmaking, wall of bones,
+// compaction or destruction runs the in-memory code that follows each deferral,
+// and the corpse save records the result. Phase 3 deletes the durable paths.
 bool durable_corpse_lifecycle_enabled()
 {
-	const persistence_mode mode = persistence_mode_get();
-	return mode == PERSISTENCE_MODE_MARIADB_PRIMARY ||
-	       mode == PERSISTENCE_MODE_FLATFILE_PRIMARY;
+	return false;
 }
 } // namespace
 

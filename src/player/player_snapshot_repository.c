@@ -394,8 +394,38 @@ std::string optional_item_string(MYSQL *connection, const player_item_snapshot &
 	return row.string_mask & mask ? quote(connection, value) : "NULL";
 }
 
+// The tables an item graph is written to: a player's, a pet's, a corpse's or a saved
+// room item's.
+struct item_tables
+{
+	const char *items;
+	const char *owner_columns;
+	bool equip_slot;
+	bool quantity;
+	bool condition;
+	const char *affects;
+	const char *descriptions;
+};
+
+constexpr item_tables player_item_tables = {
+	"player_items", "pid", true, true, true, "player_item_affects", "player_item_extra_descr"
+};
+constexpr item_tables pet_item_tables = {
+	"player_pet_items",	      "pet_id", true, false, true, "player_pet_item_affects",
+	"player_pet_item_extra_descr"
+};
+constexpr item_tables corpse_item_tables = {
+	"corpse_items",		  "corpse_id", false, true, true, "corpse_item_affects",
+	"corpse_item_extra_descr"
+};
+constexpr item_tables saved_item_tables = {
+	"saved_items",	      "item_key,room_vnum",    false, true, false,
+	"saved_item_affects", "saved_item_extra_descr"
+};
+
+// `owner_values` fills the table's owner columns.
 query_result insert_item_rows(MYSQL *connection, const std::vector<player_item_snapshot> &items,
-			      int owner_id, bool pet_items)
+			      const std::string &owner_values, const item_tables &tables)
 {
 	std::vector<unsigned long long> ids;
 	ids.reserve(items.size());
@@ -407,16 +437,18 @@ query_result insert_item_rows(MYSQL *connection, const std::vector<player_item_s
 		const std::string container =
 			row.parent_index < 0 ? "NULL" : std::to_string(ids[row.parent_index]);
 		std::ostringstream sql;
-		if (pet_items)
-			sql << "INSERT INTO player_pet_items (pet_id,vnum,equip_slot,container_id,";
-		else
-			sql << "INSERT INTO player_items (pid,vnum,equip_slot,container_id,quantity,";
-		sql << "weight,cost,timer,extra_flags,wear_flags,item_type,value0,value1,value2,"
+		sql << "INSERT INTO " << tables.items << " (" << tables.owner_columns << ",vnum,"
+		    << (tables.equip_slot ? "equip_slot," : "") << "container_id,"
+		    << (tables.quantity ? "quantity," : "")
+		    << "weight,cost,timer,extra_flags,wear_flags,item_type,value0,value1,value2,"
 		       "value3,value4,value5,value6,value7,name,short_descr,description,action_descr,"
-		       "bitvector1,bitvector2,bitvector3,bitvector4,bitvector5,item_material,obj_uid,"
-		       "item_condition) VALUES ("
-		    << owner_id << ',' << row.vnum << ',' << row.equipment_slot << ',' << container;
-		if (!pet_items)
+		       "bitvector1,bitvector2,bitvector3,bitvector4,bitvector5,item_material,obj_uid"
+		    << (tables.condition ? ",item_condition" : "") << ") VALUES (" << owner_values
+		    << ',' << row.vnum;
+		if (tables.equip_slot)
+			sql << ',' << row.equipment_slot;
+		sql << ',' << container;
+		if (tables.quantity)
 			sql << ",1";
 		sql << ',' << row.weight << ',' << row.cost << ',' << row.timers[0] << ','
 		    << row.extra_flags << ',' << row.wear_flags << ','
@@ -429,8 +461,10 @@ query_result insert_item_rows(MYSQL *connection, const std::vector<player_item_s
 		    << optional_item_string(connection, row, 8, row.action_description);
 		for (uint64_t bitvector : row.bitvectors)
 			sql << ',' << bitvector;
-		sql << ',' << static_cast<int>(row.material) << ',' << row.object_uid << ','
-		    << row.condition << ')';
+		sql << ',' << static_cast<int>(row.material) << ',' << row.object_uid;
+		if (tables.condition)
+			sql << ',' << row.condition;
+		sql << ')';
 		query_result result = execute(connection, sql.str());
 		if (!result.ok)
 			return result;
@@ -451,9 +485,7 @@ query_result insert_item_rows(MYSQL *connection, const std::vector<player_item_s
 			if (!affect_keys.insert(key).second)
 				continue;
 			result = execute(connection,
-					 "INSERT INTO " +
-						 std::string(pet_items ? "player_pet_item_affects" :
-									 "player_item_affects") +
+					 "INSERT INTO " + std::string(tables.affects) +
 						 " (item_id,location,modifier) VALUES (" +
 						 std::to_string(item_id) + "," +
 						 std::to_string(affect[0]) + "," +
@@ -481,10 +513,7 @@ query_result insert_item_rows(MYSQL *connection, const std::vector<player_item_s
 			if (!description_keys.insert(std::move(description_key)).second)
 				continue;
 			result = execute(connection,
-					 "INSERT INTO " +
-						 std::string(pet_items ?
-								     "player_pet_item_extra_descr" :
-								     "player_item_extra_descr") +
+					 "INSERT INTO " + std::string(tables.descriptions) +
 						 " (item_id,keyword,description) VALUES (" +
 						 std::to_string(item_id) + "," +
 						 quote(connection, encoded_keyword) + "," +
@@ -626,7 +655,8 @@ query_result apply_items(MYSQL *connection, const player_snapshot &snapshot,
 	result = execute(connection, deletion);
 	if (!result.ok)
 		return result;
-	result = insert_item_rows(connection, written, snapshot.pid, false);
+	result = insert_item_rows(connection, written, std::to_string(snapshot.pid),
+				  player_item_tables);
 	if (!result.ok)
 		return result;
 	return sync_restitution_runtime_state(connection, written, snapshot.pid);
@@ -749,7 +779,8 @@ query_result apply_pets(MYSQL *connection, const player_snapshot &snapshot,
 						     std::to_string(pet_id));
 		if (!result.ok)
 			return result;
-		result = insert_item_rows(connection, written, static_cast<int>(pet_id), true);
+		result = insert_item_rows(connection, written, std::to_string(pet_id),
+					  pet_item_tables);
 		if (!result.ok)
 			return result;
 	}
@@ -1034,13 +1065,177 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 	return { player_save_apply_outcome::applied, snapshot.revision, 0 };
 }
 
-player_save_apply_result apply_with_pool(const player_snapshot &snapshot, bool legacy_replay)
+// Reads one unsigned value; *found is false when the query returns no row.
+query_result read_value(MYSQL *connection, const std::string &sql, bool *found, uint64_t *value)
+{
+	*found = false;
+	query_result result = execute(connection, sql);
+	if (!result.ok)
+		return result;
+	MYSQL_RES *rows = mysql_store_result(connection);
+	if (!rows)
+		return { false, mysql_errno(connection) ? mysql_errno(connection) : EIO };
+	if (MYSQL_ROW row = mysql_fetch_row(rows))
+	{
+		char *end = nullptr;
+		*value = row[0] ? std::strtoull(row[0], &end, 10) : 0;
+		*found = row[0] && end && !*end && !mysql_fetch_row(rows);
+		if (!*found)
+		{
+			mysql_free_result(rows);
+			return { false, EILSEQ };
+		}
+	}
+	mysql_free_result(rows);
+	return { true, 0 };
+}
+
+query_result write_corpse(MYSQL *connection, const corpse_snapshot &corpse,
+			  std::vector<claimed_graph> *claims)
+{
+	bool found = false;
+	uint64_t catalog_revision = 0;
+	query_result result = read_value(
+		connection,
+		"SELECT catalog_revision FROM corpse_catalog_state WHERE state_id=1 FOR UPDATE",
+		&found, &catalog_revision);
+	if (!result.ok)
+		return result;
+	if (!found || !catalog_revision || catalog_revision == UINT64_MAX)
+		return { false, EILSEQ };
+	const std::string key = "player_name=" + quote(connection, corpse.player_name) +
+				" AND save_id=" + std::to_string(corpse.save_id);
+	uint64_t corpse_revision = 0;
+	result = read_value(connection,
+			    "SELECT corpse_revision FROM corpses WHERE " + key + " FOR UPDATE",
+			    &found, &corpse_revision);
+	if (!result.ok)
+		return result;
+	if (!found && corpse.remove)
+		return { true, 0 };
+	// The corpse's items, affects and descriptions go with its row.
+	if (found && !(result = execute(connection, "DELETE FROM corpses WHERE " + key)).ok)
+		return result;
+	if (!corpse.remove)
+	{
+		std::ostringstream sql;
+		sql << "INSERT INTO corpses (player_name,save_id,corpse_revision,room_vnum,"
+		       "short_descr,description,name,weight,value0,value1,value2,value3,value4,"
+		       "value5,value7) VALUES ("
+		    << quote(connection, corpse.player_name) << ',' << corpse.save_id << ','
+		    << (found ? corpse_revision + 1 : 1) << ',' << corpse.room_vnum << ','
+		    << quote(connection, corpse.short_description) << ','
+		    << quote(connection, corpse.description) << ','
+		    << quote(connection, corpse.keywords) << ',' << corpse.weight;
+		for (size_t index : { 0, 1, 2, 3, 4, 5, 7 })
+			sql << ',' << corpse.values[index];
+		sql << ')';
+		if (!(result = execute(connection, sql.str())).ok)
+			return result;
+		const unsigned long long corpse_id = mysql_insert_id(connection);
+		if (!corpse_id)
+			return { false, EIO };
+		std::vector<player_item_snapshot> written;
+		if (!(result =
+			      claim_graph(connection, corpse.owner, corpse.items, claims, &written))
+			     .ok ||
+		    !(result = insert_item_rows(connection, written, std::to_string(corpse_id),
+						corpse_item_tables))
+			     .ok)
+			return result;
+	}
+	result = execute(connection, "UPDATE corpse_catalog_state SET catalog_revision=" +
+					     std::to_string(catalog_revision + 1) +
+					     " WHERE state_id=1 AND catalog_revision=" +
+					     std::to_string(catalog_revision));
+	if (result.ok && mysql_affected_rows(connection) != 1)
+		return { false, EILSEQ };
+	return result;
+}
+
+player_save_apply_result apply_corpse(MYSQL *connection, const corpse_snapshot &corpse)
+{
+	if (!connection || corpse.owner.type != item_owner_type::corpse || !corpse.owner.id ||
+	    corpse.save_id <= 0 || corpse.player_name.empty())
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+	query_result query = execute(connection, "START TRANSACTION");
+	if (!query.ok)
+		return failure(query.error_code);
+	std::vector<claimed_graph> claims;
+	query = write_corpse(connection, corpse, &claims);
+	if (!query.ok)
+	{
+		if (!connection_error(query.error_code))
+			execute(connection, "ROLLBACK");
+		return failure(query.error_code);
+	}
+	query = execute(connection, "COMMIT");
+	if (!query.ok)
+	{
+		// The corpse save is a full replacement, so writing it again is safe.
+		if (!connection_error(query.error_code))
+			execute(connection, "ROLLBACK");
+		return { connection_error(query.error_code) ?
+				 player_save_apply_outcome::ambiguous_commit :
+				 failure(query.error_code).outcome,
+			 0, query.error_code };
+	}
+	for (const claimed_graph &claim : claims)
+		item_claim_log_dupes("save_left_out", claim.owner, claim.outcome);
+	return { player_save_apply_outcome::applied, 0, 0 };
+}
+
+query_result write_saved_item(MYSQL *connection, const saved_item_snapshot &item,
+			      std::vector<claimed_graph> *claims)
+{
+	const std::string key = quote(connection, item.item_key);
+	query_result result = execute(connection, "DELETE FROM saved_items WHERE item_key=" + key);
+	if (!result.ok || item.remove)
+		return result;
+	std::vector<player_item_snapshot> written;
+	if (!(result = claim_graph(connection, item.owner, item.items, claims, &written)).ok)
+		return result;
+	return insert_item_rows(connection, written, key + "," + std::to_string(item.room_vnum),
+				saved_item_tables);
+}
+
+player_save_apply_result apply_saved_item(MYSQL *connection, const saved_item_snapshot &item)
+{
+	if (!connection || item.owner.type != item_owner_type::room || item.item_key.empty() ||
+	    (!item.remove && item.items.empty()))
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+	query_result query = execute(connection, "START TRANSACTION");
+	if (!query.ok)
+		return failure(query.error_code);
+	std::vector<claimed_graph> claims;
+	query = write_saved_item(connection, item, &claims);
+	if (!query.ok)
+	{
+		if (!connection_error(query.error_code))
+			execute(connection, "ROLLBACK");
+		return failure(query.error_code);
+	}
+	query = execute(connection, "COMMIT");
+	if (!query.ok)
+	{
+		if (!connection_error(query.error_code))
+			execute(connection, "ROLLBACK");
+		return { connection_error(query.error_code) ?
+				 player_save_apply_outcome::ambiguous_commit :
+				 failure(query.error_code).outcome,
+			 0, query.error_code };
+	}
+	for (const claimed_graph &claim : claims)
+		item_claim_log_dupes("save_left_out", claim.owner, claim.outcome);
+	return { player_save_apply_outcome::applied, 0, 0 };
+}
+
+template <typename Apply> player_save_apply_result apply_with_pool(Apply apply)
 {
 	MYSQL *connection = sql_pool_acquire();
 	if (!connection)
 		return { player_save_apply_outcome::retryable_failure, 0, ETIMEDOUT };
-	const player_save_apply_result applied =
-		apply_snapshot(connection, snapshot, legacy_replay);
+	const player_save_apply_result applied = apply(connection);
 	if (applied.outcome == player_save_apply_outcome::ambiguous_commit ||
 	    connection_error(applied.error_code))
 	{
@@ -1078,5 +1273,33 @@ player_save_apply_result player_snapshot_repository_apply(MYSQL *connection,
 player_save_apply_result player_snapshot_repository_apply_from_pool(const player_snapshot &snapshot,
 								    void *context)
 {
-	return apply_with_pool(snapshot, context == PLAYER_SAVE_LEGACY_REPLAY);
+	return apply_with_pool(
+		[&](MYSQL *connection) {
+			return apply_snapshot(connection, snapshot,
+					      context == PLAYER_SAVE_LEGACY_REPLAY);
+		});
+}
+
+player_save_apply_result corpse_snapshot_repository_apply(MYSQL *connection,
+							  const corpse_snapshot &corpse)
+{
+	return apply_corpse(connection, corpse);
+}
+
+player_save_apply_result corpse_snapshot_repository_apply_from_pool(const corpse_snapshot &corpse)
+{
+	return apply_with_pool([&](MYSQL *connection) { return apply_corpse(connection, corpse); });
+}
+
+player_save_apply_result saved_item_snapshot_repository_apply(MYSQL *connection,
+							      const saved_item_snapshot &item)
+{
+	return apply_saved_item(connection, item);
+}
+
+player_save_apply_result
+saved_item_snapshot_repository_apply_from_pool(const saved_item_snapshot &item)
+{
+	return apply_with_pool([&](MYSQL *connection)
+			       { return apply_saved_item(connection, item); });
 }

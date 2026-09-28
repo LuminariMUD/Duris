@@ -3,6 +3,7 @@
 
 #include "flatfile/flatfile_authority_transaction.h"
 #include "flatfile/flatfile_player_snapshot_file.h"
+#include "flatfile/flatfile_world_item_repository.h"
 #include "player/player_load_repository.h"
 #include "player/player_save_worker.h"
 
@@ -41,6 +42,16 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 							bool legacy_replay = false);
 player_save_apply_result flatfile_player_snapshot_apply_selected(const player_snapshot &snapshot,
 								 void *context);
+
+// The flat-file corpse and saved-item saves: claim the items for their owner and
+// write the record as memory holds it, or remove it, in one authority transaction.
+player_save_apply_result flatfile_corpse_snapshot_apply(const std::string &root,
+							const flatfile_corpse_record &corpse,
+							bool remove, std::string *error);
+player_save_apply_result
+flatfile_saved_item_snapshot_apply(const std::string &root,
+				   const flatfile_saved_world_item_record &item, bool remove,
+				   std::string *error);
 flatfile_player_load_result flatfile_player_snapshot_prepare_remove(
 	const std::string &root, const flatfile_player_snapshot_lock &snapshot_lock,
 	const flatfile_authority_lock &authority_lock, int32_t pid,

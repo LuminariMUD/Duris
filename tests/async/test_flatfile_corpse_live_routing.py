@@ -85,14 +85,13 @@ raise_completion = body(NECROMANCY, "void complete_corpse_raise_after_commit(",
                         "void spell_create_dracolich(")
 
 assert "PERSISTENCE_MODE_FLATFILE_PRIMARY" in write_corpse
-assert "stage_corpse_lifecycle" in write_corpse
-assert "corpse_lifecycle_action::upsert" in write_corpse
-assert "corpse_lifecycle_action::remove" in write_corpse
+# Corpses live in memory: the flat-file corpse save is a writer job (step 6).
+assert "queue_corpse_save(corpse, !present)" in write_corpse
 assert write_corpse.index("PERSISTENCE_MODE_FLATFILE_PRIMARY") < write_corpse.index(
     "sql_save_corpse")
 assert "PERSISTENCE_MODE_FLATFILE_PRIMARY" in purge_corpse
 assert "skip_corpse_save" in purge_corpse
-assert "corpse_lifecycle_action::remove" in purge_corpse
+assert "queue_corpse_save(corpse, true)" in purge_corpse
 assert "flatfile_corpse_restore_catalog" in restore_corpses
 assert "fatal_boot_error" in restore_corpses
 
@@ -104,8 +103,8 @@ assert "corpse_lifecycle_transaction_note_item_transfer" in ACTOBJ
 assert "persistence_defer_corpse_room_release(obj)" in decay
 assert decay.index("persistence_defer_corpse_room_release(obj)") < decay.index(
     "if (OBJ_ROOM(obj))")
-assert "PERSISTENCE_MODE_MARIADB_PRIMARY" in durable_lifecycle
-assert "PERSISTENCE_MODE_FLATFILE_PRIMARY" in durable_lifecycle
+# The durable deferrals stay until Phase 3 but are switched off.
+assert "return false;" in durable_lifecycle
 assert "durable_corpse_lifecycle_enabled()" in deferred_release
 assert "corpse_lifecycle_transaction_busy" in deferred_release
 busy_check = deferred_release.index("corpse_lifecycle_transaction_busy")

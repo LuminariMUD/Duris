@@ -22,12 +22,13 @@ class SavedItemFlatfileRoutingTests(unittest.TestCase):
                         restore.index("sql_restore_saved_items"))
         self.assertLess(purge.index("PERSISTENCE_MODE_FLATFILE_PRIMARY"),
                         purge.index("sql_delete_saved_item"))
-        self.assertIn("item_ownership_runtime_lookup", write)
-        self.assertIn("item_custody_state::destroyed", purge)
+        # Saved items live in memory: their saves and deletes are writer jobs (step 6).
+        self.assertEqual(write.count("queue_saved_item_save("), 2)
+        self.assertEqual(purge.count("queue_saved_item_save(item, Gbuf2, true)"), 2)
 
     def test_storage_admin_mutations_move_in_memory(self):
         # Memory is the authority: the storage command changes the room at once on
-        # both backends. (Flat-file saved items gain their writer job in step 6.)
+        # both backends, and the room's saved-item write records it.
         actwiz = (SRC / "actwiz.c").read_text()
         storage = actwiz[actwiz.index("void do_storage(") :]
         storage = storage[: storage.index("\n}\n")]

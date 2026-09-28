@@ -175,5 +175,16 @@ flatfile_world_item_result flatfile_world_item_prepare_world_corpse_raise(
 	const std::string &root, const flatfile_authority_lock &lock,
 	const corpse_lifecycle_payload &payload, flatfile_world_corpse_raise_mutation *mutation,
 	std::string *error);
+// Write a player corpse or a saved room item as memory holds it, or remove it (the
+// persistence reset's corpse and saved-item saves). Its items leave any other record
+// that still lists them: the last save to claim an item wins.
+flatfile_world_item_result flatfile_world_item_prepare_corpse_snapshot(
+	const std::string &root, const flatfile_authority_lock &lock,
+	const flatfile_corpse_record &corpse, bool remove, flatfile_authority_operation *operation,
+	std::string *error);
+flatfile_world_item_result flatfile_world_item_prepare_saved_item_snapshot(
+	const std::string &root, const flatfile_authority_lock &lock,
+	const flatfile_saved_world_item_record &item, bool remove,
+	flatfile_authority_operation *operation, std::string *error);
 
 #endif

@@ -561,10 +561,11 @@ taken back out (see "Removed in the ablation" below).
   trade recording an unrecorded shopper, the shop trade publication's per-item revisions, and the
   deletion of `OBJ_RFLAG_CREATION_CANDIDATE`.
 - **Known gaps, to close before Phase 1 ships:**
-  - Flat-file lockers and flat-file storage containers were persisted only through the durable
-    transfers. In-memory deposits and storage changes are not written on the flat-file backend until
-    step 6 adds flat-file writer jobs for saved room items, corpses and lockers (the flat-file
-    private-chest save is a stub, so flat-file lockers never had a snapshot path of their own).
+  - Flat-file storage containers were persisted only through the durable transfers; step 6 gives
+    saved room items a flat-file writer job. Flat-file lockers are not a gap of this step: the
+    backend never loads a locker's items at all (`sql_load_locker()` is a stub there and nothing
+    reads the locker records), so a save job would have nothing to feed. That is a missing
+    flat-file feature, not part of Phase 1.
   - A floor item is not an owner that saves: an item dropped in memory is gone after a restart on
     both backends (MariaDB never persisted floor drops either). `test_flatfile_full_world_boot.py`
     drops the mace, saves, picks it up and checks it survives the restart with the player.
@@ -574,8 +575,9 @@ taken back out (see "Removed in the ablation" below).
   - World recovery (`world_recovery_pipeline.c`) still skips a room item whose cached owner is not
     the room. That is the safe side: it cannot restore a floor copy of an item its dropper's save
     still holds.
-  - Until steps 5 and 6, a durable corpse batch can race a queued player save that claims the same
-    items back, which makes the combat journey flaky.
+  - Until steps 5 and 6, a durable corpse batch could race a queued player save that claimed the
+    same items back, which made the combat journey flaky. Resolved: step 5 removed the batch and
+    step 6 puts the corpse save on the one writer, behind the player's older saves.
   - Until step 5, a player who dies carrying an item that moved in memory keeps it: the durable
     corpse batch still runs at death, the runtime cache never learned the in-memory move, so the
     batch submits the item as a creation and the repository refuses it (`EEXIST`,
@@ -649,7 +651,7 @@ taken back out (see "Removed in the ablation" below).
     Nothing is lost: antiquities simply stay in the corpse. Economy code for Phase 2.
   - A flat-file corpse's items were persisted only by those durable transfers (the flat-file
     lifecycle upsert carries the corpse and its money, not its items), so on the flat-file backend
-    a corpse's items do not survive a restart until step 6 adds the flat-file corpse job.
+    a corpse's items did not survive a restart until step 6 added the flat-file corpse job.
   - `player_save_pipeline_terminal_death()` and the death-disposition plumbing behind it have no
     caller left; Phase 3 deletes them.
 - Tests: `test_deaths_happen_at_once.py`; the death sections of `test_character_persistence_gap.py`,
@@ -678,3 +680,52 @@ taken back out (see "Removed in the ablation" below).
   `test_flatfile_combat_journey.py` (three variants), `test_mysql_combat_journey.py` (three
   variants, disposable MariaDB) and `run_corpse_haul_journey.py` (disposable MariaDB; the
   player-corpse part passes now).
+
+### Step 6: corpses in memory (done)
+
+- `durable_corpse_lifecycle_enabled()` returns false, so every `persistence_defer_corpse_*()`
+  (raise, resurrection, room release, unmaking, wall of bones, compaction, destruction) returns
+  false and its 18 callers, and `Decay()`, run the in-memory code that already follows the call.
+  The durable paths behind it stay as dead code for Phase 3.
+- `writeCorpse()`, `PurgeCorpseFile()` (a corpse leaving the world), `writeSavedItem()` and
+  `PurgeSavedItemFile()` queue a job on the one writer (`queue_corpse_save()` and
+  `queue_saved_item_save()` in `files.c`), keyed by the corpse owner id or the item uid, so a newer
+  write replaces a queued one and an older save of the player can no longer claim the items back
+  after the corpse or room write. The game thread captures the corpse or item graph
+  (`player_item_snapshot_contents_capture()`, `player_item_snapshot_tree_capture()`); nothing is
+  written on the game thread any more. If the writer refuses a job, MariaDB falls back to the old
+  synchronous `sql_save_corpse()`/`sql_save_saved_item()` (which the corpse save claims in, since
+  step 5); flat-file alerts `queue_failed`.
+- MariaDB: `corpse_snapshot_repository_apply()` and `saved_item_snapshot_repository_apply()` in
+  `player_snapshot_repository.c` run in one transaction: replace the corpse row (catalog and
+  corpse revisions as before) or the saved item's rows, claim the graph for
+  `corpse(item_corpse_owner_id(pid, save_id))` or `room(vnum)` with `claim_graph()`, and write the
+  rows with the player save's `insert_item_rows()`, now parameterized by an `item_tables`
+  descriptor (player, pet, corpse, saved item). Economy-held items are left out as in a player
+  save.
+- Flat-file: `flatfile_corpse_snapshot_apply()` and `flatfile_saved_item_snapshot_apply()` in
+  `flatfile_player_repository.c` take the authority lock, claim the graph in the ownership catalog,
+  and write the world item catalog (`flatfile_world_item_prepare_corpse_snapshot()` /
+  `_saved_item_snapshot()`) in one authority transaction. The catalog requires every uid to be
+  unique across corpse, saved-item and room records, so a write strips its items from any other
+  record that still lists them (the last save to claim an item wins; a saved item left empty is
+  dropped). A corpse's coin piles are items in the record and its scalar `money` stays zero, so a
+  restore cannot create them twice. The flat-file corpse lifecycle staging
+  (`stage_corpse_lifecycle()`, `capture_corpse_lifecycle()`, `capture_corpse_money()`) is gone.
+- Tests: `test_corpses_in_memory.py`; `player_save_claim_mysql_harness.cpp` and
+  `flatfile_player_save_claim_harness.cpp` now also save, replace and remove a corpse and a saved
+  item, check the claims (with audit) and the flat-file strip rule; `test_flatfile_corpse_live_routing.py`
+  and `test_saved_item_flatfile_routing.py` pin the job routing.
+- `docs/persistence/economy_accounting/writers.json` census regenerated for the new lines.
+- Verified: `make -C src`, `make -C src pfile` (`files.c` is also built with `-D_PFILE_`; the purge
+  call is guarded), `./scripts/format.sh --all --check`, the validator, the 38 tests that read
+  the corpse, saved-item, repository or flat-file world-item code, `test_player_save_claim.py`,
+  the MariaDB legs `run_player_save_claim_mysql.sh`, `run_pet_repository_mysql.sh`,
+  `run_player_death_disposition_mysql.sh`, `run_output_preferences_mysql.sh`,
+  `run_experience_trophy_mysql.sh` and `test_playtime_mysql_repository.py` (disposable MariaDB),
+  and the journeys `test_flatfile_combat_journey.py`, `test_mysql_combat_journey.py`,
+  `run_corpse_haul_journey.py`, `test_flatfile_full_world_boot.py` and
+  `run_saved_item_recovery_journey.py`.
+- Left for the Phase 1 tests: a journey that dies, restarts with full-world corpse restoration
+  and loots the restored corpse (the minimal-world journeys skip corpse restoration), and the
+  "raising, resurrecting and decaying make no database call" test.

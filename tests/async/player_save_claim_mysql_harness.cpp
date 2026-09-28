@@ -249,6 +249,67 @@ int main()
 		"the missing row is created and filled in");
 	require(owner_of(1012) == "1:3:0:1:1012:0", "the newcomer's item is claimed");
 
+	// A corpse save claims what the corpse holds and replaces its rows; a remove deletes
+	// them (persistence reset step 6).
+	const uint64_t corpse_owner = (static_cast<uint64_t>(3) << 32) | 555;
+	const std::string corpse_prefix = "4:" + std::to_string(corpse_owner) + ":0:1:";
+	corpse_snapshot corpse;
+	corpse.owner = { item_owner_type::corpse, corpse_owner, 0 };
+	corpse.save_id = 555;
+	corpse.player_name = "Newcomer";
+	corpse.room_vnum = 3001;
+	corpse.short_description = "the corpse of Newcomer";
+	corpse.description = "The corpse of Newcomer is lying here.";
+	corpse.keywords = "newcomer corpse _pcorpse_";
+	corpse.values = { 20, 2, 0, 3, 0, 0, 555, 0 };
+	corpse.items = { item(1012, 512, PLAYER_SNAPSHOT_NO_PARENT), item(1020, 520, 0) };
+	applied = corpse_snapshot_repository_apply(test_connection, corpse);
+	require(applied.outcome == player_save_apply_outcome::applied, "a corpse save commits");
+	require(owner_of(1012) == corpse_prefix + "1012:0" &&
+			owner_of(1020) == corpse_prefix + "1012:1012",
+		"the corpse claims its items: " + owner_of(1012) + " " + owner_of(1020));
+	require(scalar(test_connection, "SELECT COUNT(*) FROM item_owner_audit WHERE item_uid=1012 "
+					"AND old_owner_type=1 AND new_owner_type=4") == "1",
+		"taking the dead player's item is audited");
+	require(scalar(test_connection,
+		       "SELECT COUNT(*) FROM corpse_items child JOIN corpse_items bag ON "
+		       "bag.id=child.container_id WHERE child.obj_uid=1020 AND bag.obj_uid=1012") ==
+			"1",
+		"the corpse's items are written with their containment");
+	corpse.items.resize(1);
+	applied = corpse_snapshot_repository_apply(test_connection, corpse);
+	require(applied.outcome == player_save_apply_outcome::applied &&
+			scalar(test_connection, "SELECT COUNT(*) FROM corpse_items") == "1" &&
+			scalar(test_connection, "SELECT corpse_revision FROM corpses WHERE "
+						"player_name='Newcomer' AND save_id=555") == "2",
+		"a later corpse save replaces the rows");
+	corpse.remove = true;
+	applied = corpse_snapshot_repository_apply(test_connection, corpse);
+	require(applied.outcome == player_save_apply_outcome::applied &&
+			scalar(test_connection, "SELECT COUNT(*) FROM corpses") == "0" &&
+			scalar(test_connection, "SELECT COUNT(*) FROM corpse_items") == "0",
+		"a corpse leaving the world is deleted");
+
+	// A saved room item claims itself and its contents for the room.
+	saved_item_snapshot saved;
+	saved.owner = { item_owner_type::room, 3001, 0 };
+	saved.item_key = "item.uid.1030";
+	saved.room_vnum = 3001;
+	saved.items = { item(1030, 530, PLAYER_SNAPSHOT_NO_PARENT), item(1020, 520, 0) };
+	applied = saved_item_snapshot_repository_apply(test_connection, saved);
+	require(applied.outcome == player_save_apply_outcome::applied &&
+			owner_of(1030) == "3:3001:0:1:1030:0" &&
+			owner_of(1020) == "3:3001:0:1:1030:1030" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM saved_items WHERE "
+			       "item_key='item.uid.1030' AND room_vnum=3001") == "2",
+		"a saved item save claims its graph for the room: " + owner_of(1020));
+	saved.remove = true;
+	applied = saved_item_snapshot_repository_apply(test_connection, saved);
+	require(applied.outcome == player_save_apply_outcome::applied &&
+			scalar(test_connection, "SELECT COUNT(*) FROM saved_items") == "0",
+		"a saved item leaving the room is deleted");
+
 	mysql_close(test_connection);
 	mysql_library_end();
 	std::cout << "player save claim MariaDB leg passed\n";

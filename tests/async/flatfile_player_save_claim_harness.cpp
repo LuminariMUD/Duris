@@ -8,6 +8,7 @@
 #include "flatfile/flatfile_player_repository.h"
 #include "player/player_save_worker.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -276,6 +277,55 @@ int main(int argc, char **argv)
 				.find("load_skipped uid=1001 vnum=501 lost_by=player:42:0 "
 				      "held_by=player:41:0") != std::string::npos,
 		"the dupe log names the skipped item");
+	// A corpse save claims what the corpse holds; a saved room item claims its graph
+	// for the room and takes a piece out of the corpse record that still lists it; a
+	// removed corpse leaves the catalog (persistence reset step 6).
+	const auto loose = [](uint64_t uid, int32_t vnum, int32_t parent)
+	{
+		player_item_snapshot entry = item(uid, vnum, parent);
+		entry.equipment_slot = -1;
+		return entry;
+	};
+	flatfile_corpse_record dead;
+	dead.owner_pid = 41;
+	dead.owner_name = "Newcomer";
+	dead.save_id = 555;
+	dead.room_vnum = 3001;
+	dead.short_description = "the corpse of Newcomer";
+	dead.description = "The corpse of Newcomer is lying here.";
+	dead.keywords = "newcomer corpse _pcorpse_";
+	dead.items = { loose(1001, 501, PLAYER_SNAPSHOT_NO_PARENT), loose(1030, 530, 0) };
+	require(flatfile_corpse_snapshot_apply(root, dead, false, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"corpse save: " + error);
+	const item_owner_identity dead_corpse = { item_owner_type::corpse,
+						  (static_cast<uint64_t>(41) << 32) | 555, 0 };
+	require(held_by(root, dead_corpse).size() == 2, "the corpse claims its items");
+	flatfile_saved_world_item_record chest;
+	chest.item_key = "item.uid.1040";
+	chest.room_vnum = 3001;
+	chest.items = { loose(1040, 540, PLAYER_SNAPSHOT_NO_PARENT), loose(1030, 530, 0) };
+	require(flatfile_saved_item_snapshot_apply(root, chest, false, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"saved item save: " + error);
+	std::vector<flatfile_corpse_record> corpses;
+	std::vector<flatfile_saved_world_item_record> saved_items;
+	require(flatfile_world_item_list(root, &corpses, &saved_items, &error) ==
+				flatfile_world_item_result::ok &&
+			corpses.size() == 1 && corpses[0].items.size() == 1 &&
+			corpses[0].items[0].object_uid == 1001 && saved_items.size() == 1 &&
+			saved_items[0].items.size() == 2,
+		"the saved item takes its piece out of the corpse record");
+	const auto in_room = held_by(root, room);
+	require(std::count_if(in_room.begin(), in_room.end(), [](const auto &record)
+			      { return record.item_uid == 1030 || record.item_uid == 1040; }) == 2,
+		"the room holds the saved item and its contents");
+	require(flatfile_corpse_snapshot_apply(root, dead, true, &error).outcome ==
+				player_save_apply_outcome::applied &&
+			flatfile_world_item_list(root, &corpses, &saved_items, &error) ==
+				flatfile_world_item_result::ok &&
+			corpses.empty(),
+		"a corpse leaving the world is removed");
 	std::cout << "flat-file player save claim passed\n";
 	return 0;
 }

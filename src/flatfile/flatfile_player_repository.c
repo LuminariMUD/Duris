@@ -984,6 +984,118 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	return { player_save_apply_outcome::applied, snapshot.revision, 0 };
 }
 
+namespace
+{
+template <typename Prepare>
+player_save_apply_result apply_world_snapshot(const std::string &root,
+					      const item_owner_identity &owner,
+					      const std::vector<player_item_snapshot> *items,
+					      Prepare prepare, std::string *error)
+{
+	flatfile_authority_lock authority;
+	if (!authority.acquire(root, error))
+		return { player_save_apply_outcome::retryable_failure, 0, EIO };
+	const auto recovered = flatfile_authority_transaction_recover(root, authority, error);
+	if (recovered != flatfile_authority_transaction_result::ok)
+		return { recovered == flatfile_authority_transaction_result::io_error ?
+				 player_save_apply_outcome::retryable_failure :
+				 player_save_apply_outcome::terminal_failure,
+			 0, EIO };
+	std::vector<flatfile_item_claim> claims;
+	std::vector<flatfile_item_claim_audit> audits;
+	std::vector<flatfile_authority_operation> operations;
+	std::vector<player_item_snapshot> written;
+	try
+	{
+		if (items)
+		{
+			claims.push_back({ owner, items, {} });
+			flatfile_authority_operation claimed;
+			const auto prepared = flatfile_item_repository_prepare_claim(
+				root, authority, &claims, &claimed, &audits, error);
+			if (prepared == flatfile_item_repository_result::io_error)
+				return { player_save_apply_outcome::retryable_failure, 0, EIO };
+			if (prepared != flatfile_item_repository_result::ok &&
+			    prepared != flatfile_item_repository_result::unchanged)
+				return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+			if (prepared == flatfile_item_repository_result::ok)
+				operations.push_back(std::move(claimed));
+			// Leave out what the economy holds, with its contents.
+			written = item_claim_written_items(*items, claims[0].outcome.left_out);
+		}
+		flatfile_authority_operation world;
+		const flatfile_world_item_result prepared = prepare(authority, written, &world);
+		if (prepared == flatfile_world_item_result::io_error)
+			return { player_save_apply_outcome::retryable_failure, 0, EIO };
+		if (prepared == flatfile_world_item_result::ok)
+			operations.push_back(std::move(world));
+		else if (prepared != flatfile_world_item_result::unchanged)
+			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+	}
+	catch (const std::bad_alloc &)
+	{
+		return { player_save_apply_outcome::retryable_failure, 0, ENOMEM };
+	}
+	if (operations.empty())
+		return { player_save_apply_outcome::applied, 0, 0 };
+	const auto committed = flatfile_authority_transaction_commit_operations(root, authority,
+										operations, error);
+	if (committed != flatfile_authority_transaction_result::ok)
+		return { committed == flatfile_authority_transaction_result::io_error ?
+				 player_save_apply_outcome::retryable_failure :
+				 player_save_apply_outcome::terminal_failure,
+			 0, EIO };
+	for (const flatfile_item_claim_audit &audit : audits)
+		item_claim_log_item(audit.item_uid, audit.vnum, audit.old_owner, audit.new_owner);
+	for (const flatfile_item_claim &claim : claims)
+		item_claim_log_dupes("save_left_out", claim.owner, claim.outcome);
+	return { player_save_apply_outcome::applied, 0, 0 };
+}
+} // namespace
+
+player_save_apply_result flatfile_corpse_snapshot_apply(const std::string &root,
+							const flatfile_corpse_record &corpse,
+							bool remove, std::string *error)
+{
+	const item_owner_identity owner = { item_owner_type::corpse,
+					    item_corpse_owner_id(corpse.owner_pid, corpse.save_id),
+					    0 };
+	return apply_world_snapshot(
+		root, owner, remove ? nullptr : &corpse.items,
+		[&](const flatfile_authority_lock &lock,
+		    const std::vector<player_item_snapshot> &written,
+		    flatfile_authority_operation *operation)
+		{
+			flatfile_corpse_record record = corpse;
+			record.items = written;
+			return flatfile_world_item_prepare_corpse_snapshot(
+				root, lock, record, remove, operation, error);
+		},
+		error);
+}
+
+player_save_apply_result
+flatfile_saved_item_snapshot_apply(const std::string &root,
+				   const flatfile_saved_world_item_record &item, bool remove,
+				   std::string *error)
+{
+	const item_owner_identity owner = { item_owner_type::room,
+					    static_cast<uint64_t>(item.room_vnum), 0 };
+	return apply_world_snapshot(
+		root, owner, remove ? nullptr : &item.items,
+		[&](const flatfile_authority_lock &lock,
+		    const std::vector<player_item_snapshot> &written,
+		    flatfile_authority_operation *operation)
+		{
+			flatfile_saved_world_item_record record = item;
+			record.items = written;
+			// A saved item whose every piece the economy holds leaves the room.
+			return flatfile_world_item_prepare_saved_item_snapshot(
+				root, lock, record, remove || written.empty(), operation, error);
+		},
+		error);
+}
+
 player_save_apply_result flatfile_player_snapshot_apply_selected(const player_snapshot &snapshot,
 								 void *context)
 {
