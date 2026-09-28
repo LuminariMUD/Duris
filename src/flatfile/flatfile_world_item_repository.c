@@ -2157,12 +2157,13 @@ flatfile_world_item_result flatfile_world_item_prepare_corpse_snapshot(
 	return finish_snapshot(&catalog, operation);
 }
 
-flatfile_world_item_result flatfile_world_item_prepare_saved_item_snapshot(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const flatfile_saved_world_item_record &item, bool remove,
+flatfile_world_item_result flatfile_world_item_prepare_room_item_snapshot(
+	const std::string &root, const flatfile_authority_lock &lock, int32_t room_vnum,
+	const std::vector<player_item_snapshot> &items, bool remove,
 	flatfile_authority_operation *operation, std::string *error)
 {
-	if (root.empty() || !lock.matches(root) || !operation || item.item_key.empty())
+	if (root.empty() || !lock.matches(root) || !operation || items.empty() ||
+	    (!remove && room_vnum <= 0))
 		return flatfile_world_item_result::invalid;
 	world_item_catalog catalog;
 	try
@@ -2170,25 +2171,28 @@ flatfile_world_item_result flatfile_world_item_prepare_saved_item_snapshot(
 		const auto loaded = load_for_snapshot(root, &catalog, error);
 		if (loaded != flatfile_world_item_result::ok)
 			return loaded;
-		auto found = std::lower_bound(catalog.saved_items.begin(),
-					      catalog.saved_items.end(), item, saved_item_less);
-		const bool exists = found != catalog.saved_items.end() &&
-				    found->item_key == item.item_key;
-		const uint64_t revision = exists ? found->revision + 1 : 1;
-		if (exists)
-			catalog.saved_items.erase(found);
-		if (remove)
-			return exists ? finish_snapshot(&catalog, operation) :
-					flatfile_world_item_result::unchanged;
-		if (catalog.saved_items.size() >= saved_item_maximum)
-			return flatfile_world_item_result::conflict;
-		strip_everywhere(&catalog, item.items);
-		flatfile_saved_world_item_record record = item;
-		record.revision = revision;
-		catalog.saved_items.insert(std::lower_bound(catalog.saved_items.begin(),
-							    catalog.saved_items.end(), record,
-							    saved_item_less),
-					   std::move(record));
+		strip_everywhere(&catalog, items);
+		if (!remove)
+		{
+			flatfile_room_item_record key = {};
+			key.room_vnum = room_vnum;
+			auto found = std::lower_bound(catalog.rooms.begin(), catalog.rooms.end(),
+						      key, room_less);
+			if (found == catalog.rooms.end() || found->room_vnum != room_vnum)
+			{
+				if (catalog.rooms.size() >= room_maximum)
+					return flatfile_world_item_result::conflict;
+				found = catalog.rooms.insert(found, key);
+			}
+			++found->revision;
+			const int32_t base = static_cast<int32_t>(found->items.size());
+			for (player_item_snapshot item : items)
+			{
+				if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
+					item.parent_index += base;
+				found->items.push_back(std::move(item));
+			}
+		}
 	}
 	catch (const std::bad_alloc &)
 	{

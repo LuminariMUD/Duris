@@ -1139,6 +1139,25 @@ flatfile_item_repository_result flatfile_item_repository_load_owner_locked(
 	return flatfile_item_repository_result::ok;
 }
 
+flatfile_item_repository_result
+flatfile_item_repository_load_uids(const std::string &root, const std::vector<uint64_t> &uids,
+				   std::vector<flatfile_item_ownership_record> *records,
+				   std::string *error)
+{
+	if (!records)
+		return flatfile_item_repository_result::invalid;
+	std::lock_guard<std::mutex> guard(ownership_mutex);
+	flatfile_authority_lock authority;
+	if (!authority.acquire(root, error))
+		return flatfile_item_repository_result::io_error;
+	const auto recovered = flatfile_authority_transaction_recover(root, authority, error);
+	if (recovered != flatfile_authority_transaction_result::ok)
+		return recovered == flatfile_authority_transaction_result::io_error ?
+			       flatfile_item_repository_result::io_error :
+			       flatfile_item_repository_result::invalid;
+	return flatfile_item_repository_load_uids_locked(root, authority, uids, records, error);
+}
+
 flatfile_item_repository_result flatfile_item_repository_load_uids_locked(
 	const std::string &root, const flatfile_authority_lock &lock,
 	const std::vector<uint64_t> &uids, std::vector<flatfile_item_ownership_record> *records,

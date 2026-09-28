@@ -58,6 +58,10 @@ assert world.index("flatfile_item_repository_prepare_claim(") < world.index("pre
 assert "flatfile_authority_transaction_commit_operations" in world
 WORLD = (SRC / "flatfile_world_item_repository.c").read_text()
 assert "strip_everywhere(&catalog, corpse.items);" in WORLD
-assert "strip_everywhere(&catalog, item.items);" in WORLD
+assert "strip_everywhere(&catalog, items);" in WORLD
+OWNERSHIP = (SRC / "flatfile_corpse_ownership.c").read_text()
+world_filter = body(OWNERSHIP, "flatfile_world_filter_item_ownership(")
+assert '"load_skipped"' in world_filter and "items.size() != custody.size()" not in OWNERSHIP
 print("[PASS] the jobs claim the items for the corpse or the room in the write's transaction")
+print("[PASS] a flat-file corpse or room load skips what another owner holds and logs it")
 print("corpses in memory contracts passed")

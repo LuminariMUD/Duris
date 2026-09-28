@@ -124,6 +124,10 @@ flatfile_item_repository_result flatfile_item_repository_load_owner_locked(
 	const item_owner_identity &owner, uint64_t *owner_revision,
 	std::vector<flatfile_item_ownership_record> *items, std::string *error);
 // The record of each uid that has one, whoever it names.
+flatfile_item_repository_result
+flatfile_item_repository_load_uids(const std::string &root, const std::vector<uint64_t> &uids,
+				   std::vector<flatfile_item_ownership_record> *records,
+				   std::string *error);
 flatfile_item_repository_result flatfile_item_repository_load_uids_locked(
 	const std::string &root, const flatfile_authority_lock &lock,
 	const std::vector<uint64_t> &uids, std::vector<flatfile_item_ownership_record> *records,

@@ -278,8 +278,8 @@ int main(int argc, char **argv)
 				      "held_by=player:41:0") != std::string::npos,
 		"the dupe log names the skipped item");
 	// A corpse save claims what the corpse holds; a saved room item claims its graph
-	// for the room and takes a piece out of the corpse record that still lists it; a
-	// removed corpse leaves the catalog (persistence reset step 6).
+	// for the room, joins the room's record and takes a piece out of the corpse record
+	// that still lists it; removals leave the catalog (persistence reset step 6).
 	const auto loose = [](uint64_t uid, int32_t vnum, int32_t parent)
 	{
 		player_item_snapshot entry = item(uid, vnum, parent);
@@ -310,16 +310,26 @@ int main(int argc, char **argv)
 		"saved item save: " + error);
 	std::vector<flatfile_corpse_record> corpses;
 	std::vector<flatfile_saved_world_item_record> saved_items;
+	std::vector<flatfile_room_item_record> rooms;
 	require(flatfile_world_item_list(root, &corpses, &saved_items, &error) ==
 				flatfile_world_item_result::ok &&
+			flatfile_world_item_list_rooms(root, &rooms, &error) ==
+				flatfile_world_item_result::ok &&
 			corpses.size() == 1 && corpses[0].items.size() == 1 &&
-			corpses[0].items[0].object_uid == 1001 && saved_items.size() == 1 &&
-			saved_items[0].items.size() == 2,
-		"the saved item takes its piece out of the corpse record");
+			corpses[0].items[0].object_uid == 1001 && rooms.size() == 1 &&
+			rooms[0].room_vnum == 3001 && rooms[0].items.size() == 2 &&
+			rooms[0].items[1].parent_index == 0,
+		"the saved item joins its room's record and leaves the corpse record");
 	const auto in_room = held_by(root, room);
 	require(std::count_if(in_room.begin(), in_room.end(), [](const auto &record)
 			      { return record.item_uid == 1030 || record.item_uid == 1040; }) == 2,
 		"the room holds the saved item and its contents");
+	require(flatfile_saved_item_snapshot_apply(root, chest, true, &error).outcome ==
+				player_save_apply_outcome::applied &&
+			flatfile_world_item_list_rooms(root, &rooms, &error) ==
+				flatfile_world_item_result::ok &&
+			rooms.size() == 1 && rooms[0].items.empty(),
+		"a saved item leaving the room leaves its record");
 	require(flatfile_corpse_snapshot_apply(root, dead, true, &error).outcome ==
 				player_save_apply_outcome::applied &&
 			flatfile_world_item_list(root, &corpses, &saved_items, &error) ==

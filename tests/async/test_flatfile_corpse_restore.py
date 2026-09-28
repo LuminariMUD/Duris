@@ -210,19 +210,23 @@ item_owner_identity flatfile_corpse_item_owner(uint32_t owner_pid, uint32_t save
 }
 
 flatfile_corpse_ownership_result flatfile_corpse_load_item_ownership(
-	const std::string &, const flatfile_corpse_record &, uint64_t *owner_revision,
+	const std::string &, const flatfile_corpse_record &record,
+	std::vector<player_item_snapshot> *items, uint64_t *owner_revision,
 	std::vector<player_load_item_identity> *identities, std::string *)
 {
+	*items = record.items;
 	*owner_revision = 0;
 	identities->clear();
 	return flatfile_corpse_ownership_result::ok;
 }
 
 flatfile_corpse_ownership_result flatfile_room_load_item_ownership(
-	const std::string &, const flatfile_room_item_record &record, uint64_t *owner_revision,
+	const std::string &, const flatfile_room_item_record &record,
+	std::vector<player_item_snapshot> *items, uint64_t *owner_revision,
 	std::vector<player_load_item_identity> *identities, std::string *)
 {
 	assert(record.room_vnum == 500 && record.items.size() == 2);
+	*items = record.items;
 	*owner_revision = 2;
 	identities->resize(2);
 	return flatfile_corpse_ownership_result::ok;

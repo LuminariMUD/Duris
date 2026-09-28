@@ -4814,10 +4814,12 @@ static bool queue_saved_item_save(P_obj item, const char *item_key, bool remove)
 	{
 		snapshot.room_vnum = world[item->loc.room].number;
 		snapshot.owner.id = static_cast<uint64_t>(snapshot.room_vnum);
-		if (player_item_snapshot_tree_capture(item, &snapshot.items, nullptr) !=
-		    player_snapshot_capture_result::ok)
-			return false;
 	}
+	// A flat-file removal takes the item's graph out of its room's record.
+	if ((!remove || persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY) &&
+	    player_item_snapshot_tree_capture(item, &snapshot.items, nullptr) !=
+		    player_snapshot_capture_result::ok)
+		return false;
 	persistence_job_write_fn write;
 	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
 	{

@@ -44,7 +44,8 @@ player_save_apply_result flatfile_player_snapshot_apply_selected(const player_sn
 								 void *context);
 
 // The flat-file corpse and saved-item saves: claim the items for their owner and
-// write the record as memory holds it, or remove it, in one authority transaction.
+// write the corpse record, or the item's graph into its room's record, as memory holds
+// it (or remove it), in one authority transaction.
 player_save_apply_result flatfile_corpse_snapshot_apply(const std::string &root,
 							const flatfile_corpse_record &corpse,
 							bool remove, std::string *error);

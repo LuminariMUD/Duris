@@ -175,16 +175,18 @@ flatfile_world_item_result flatfile_world_item_prepare_world_corpse_raise(
 	const std::string &root, const flatfile_authority_lock &lock,
 	const corpse_lifecycle_payload &payload, flatfile_world_corpse_raise_mutation *mutation,
 	std::string *error);
-// Write a player corpse or a saved room item as memory holds it, or remove it (the
-// persistence reset's corpse and saved-item saves). Its items leave any other record
-// that still lists them: the last save to claim an item wins.
+// Write a player corpse as memory holds it, or remove it (the persistence reset's
+// corpse save). Its items leave any other record that still lists them: the last save
+// to claim an item wins.
 flatfile_world_item_result flatfile_world_item_prepare_corpse_snapshot(
 	const std::string &root, const flatfile_authority_lock &lock,
 	const flatfile_corpse_record &corpse, bool remove, flatfile_authority_operation *operation,
 	std::string *error);
-flatfile_world_item_result flatfile_world_item_prepare_saved_item_snapshot(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const flatfile_saved_world_item_record &item, bool remove,
+// A saved room item lives in its room's record, which is what a boot restores: the
+// item's graph leaves every record, and unless `remove` joins the room's.
+flatfile_world_item_result flatfile_world_item_prepare_room_item_snapshot(
+	const std::string &root, const flatfile_authority_lock &lock, int32_t room_vnum,
+	const std::vector<player_item_snapshot> &items, bool remove,
 	flatfile_authority_operation *operation, std::string *error);
 
 #endif

@@ -1087,11 +1087,11 @@ flatfile_saved_item_snapshot_apply(const std::string &root,
 		    const std::vector<player_item_snapshot> &written,
 		    flatfile_authority_operation *operation)
 		{
-			flatfile_saved_world_item_record record = item;
-			record.items = written;
 			// A saved item whose every piece the economy holds leaves the room.
-			return flatfile_world_item_prepare_saved_item_snapshot(
-				root, lock, record, remove || written.empty(), operation, error);
+			const bool drop = remove || written.empty();
+			return flatfile_world_item_prepare_room_item_snapshot(
+				root, lock, item.room_vnum, drop ? item.items : written, drop,
+				operation, error);
 		},
 		error);
 }
