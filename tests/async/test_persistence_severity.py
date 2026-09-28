@@ -117,10 +117,11 @@ with tempfile.TemporaryDirectory(prefix='persistence-severity-') as temp:
 print('[PASS] production reporter routing, fallback severity, legacy alerts, formatting and redaction')
 
 from contract_text import contains
-# A death saves and leaves at once; only a failed terminal save alerts.
-assert re.search(r'persistence_alert\(AVATAR,\s*"player_save",\s*"death",\s*"none",\s*"none",\s*"terminal_save_failed"', fight)
-assert 'death_recovery' not in fight
-print('[PASS] a death is quiet unless its terminal save fails')
+actoth_source = (ROOT / 'src/cmd/actoth.c').read_text()
+# A death saves and leaves at once; a save that cannot be queued alerts where it is queued.
+assert 'death_recovery' not in fight and 'terminal_save_failed' not in fight
+assert '"queue_failed"' in actoth_source
+print('[PASS] a death is quiet; a terminal save that cannot be queued alerts')
 
 for file, snippet in [
     ('src/cmd/actoth.c', 'persistence_report(saved ? persistence_severity::ok : persistence_severity::alert,'),

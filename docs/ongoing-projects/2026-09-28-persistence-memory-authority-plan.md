@@ -729,3 +729,32 @@ taken back out (see "Removed in the ablation" below).
 - Left for the Phase 1 tests: a journey that dies, restarts with full-world corpse restoration
   and loots the restored corpse (the minimal-world journeys skip corpse restoration), and the
   "raising, resurrecting and decaying make no database call" test.
+
+### Step 7: logging out never waits (done)
+
+- `persistence_save_character_terminal()` (`actoth.c`) marks every component, captures and
+  queues the save with `player_save_pipeline_request()`, clears the player's deferred-save slot,
+  and returns true. A save that cannot be queued is alerted (`player_save terminal
+  queue_failed`); the character still leaves. The timeout policy (`_with_policy`, 2 s / 5 s) and
+  the `terminal-save-retry` crash-save retry are gone.
+  `persistence_save_character_terminal_database_acknowledged()` (copyover) queues the same way;
+  copyover and shutdown already drain the writer afterwards (`player_save_pipeline_drain()`).
+  `persistence_save_all_characters_terminal()` queues a save for everyone and returns true.
+- Every caller dropped its refusal branch and extracts at once: quit (`actoth.c`, both paths),
+  camp (`affects.c`), rent at an inn and the undead coffin inn, heaven release
+  (`specs.room.c`), death (`fight.c`), idle rent (`limits.c`), link loss (`comm.c`, no more
+  `link-loss-retry`) and ghost extraction (`actwiz.c`).
+- The flat-file build's terminal branch in `writeCharacter()` (`#ifdef __NO_MYSQL__`) queues too,
+  except a new player's first save (`CHAR_RFLAG_NO_DB_BASELINE`): that one still waits for the
+  write, because the domains it established are read back straight after.
+- `player_save_pipeline_terminal()` stays for that baseline case; its terminal fences are
+  otherwise unused and go in Phase 3.
+- Tests: `test_terminal_save_safety.py` and `test_deferred_save_retry.py` pin the new contract
+  (callers queue and extract, no refusal, no retry, copyover queues then drains);
+  `test_persistence_severity.py` checks the `queue_failed` alert. The behavioural test "rent, quit
+  and camp extract at once while the writer is stalled" is in the Phase 1 tests list.
+- Verified: `make -C src`, the flat-file build, `./scripts/format.sh --all --check`, the
+  accounting validator (census regenerated), the 97 tests that mention terminal saves, rent,
+  copyover or quit, and the journeys `test_flatfile_newbie_regrant_journey.py`,
+  `test_flatfile_combat_journey.py`, `test_mysql_combat_journey.py` (disposable MariaDB) and
+  `test_account_recovery_journey.py`.

@@ -2896,9 +2896,8 @@ void die(P_char ch, P_char killer)
 		REMOVE_BIT(ch->specials.act2, PLR2_SPEC_TIMER);
 		// The corpse already holds the items and its save is queued. The player's
 		// save follows it, and the character leaves at once.
-		if (!CHAR_IN_ARENA(ch) && !persistence_save_character_terminal(ch, RENT_DEATH))
-			persistence_alert(AVATAR, "player_save", "death", "none", "none",
-					  "terminal_save_failed", "extract_refused=0");
+		if (!CHAR_IN_ARENA(ch))
+			persistence_save_character_terminal(ch, RENT_DEATH);
 		GET_HIT(ch) = 1;
 		ch->only.pc->pc_timer[1] = 0; // reset flee timer
 	}

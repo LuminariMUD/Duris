@@ -13386,23 +13386,7 @@ static bool extractlink_attempt(P_char ch, P_char vict)
 	if (dangling_descriptor)
 		vict->desc = NULL;
 
-	if (!persistence_save_character_terminal(vict, RENT_LINKDEAD))
-	{
-		snprintf(buf, sizeof(buf),
-			 "Retained ghost %s: terminal save was not durable, so no extraction "
-			 "was performed. Resolve the persistence failure and retry.\r\n",
-			 victim_name);
-		send_to_char(buf, ch);
-		wizlog(GET_LEVEL(ch),
-		       "%s could not extract ghost character %s: terminal save was not "
-		       "durable; character retained",
-		       GET_NAME(ch), victim_name);
-		logit(LOG_WIZ,
-		      "%s could not extract ghost character %s: terminal save was not "
-		      "durable; character retained",
-		      GET_NAME(ch), victim_name);
-		return false;
-	}
+	persistence_save_character_terminal(vict, RENT_LINKDEAD);
 
 	extract_char_after_terminal_save(vict);
 	wizlog(GET_LEVEL(ch), "%s extracted ghost character %s", GET_NAME(ch), victim_name);

@@ -3375,14 +3375,7 @@ void close_socket(struct descriptor_data *d)
 					 GET_NAME(GET_PLYR(d->character)), d->host, Gbuf1);
 				sql_log(d->character, CONNECTLOG, "Lost Link");
 			}
-			if (!persistence_save_character_terminal(d->character, RENT_CRASH))
-			{
-				persistence_alert(AVATAR, "player_save", "link_loss", "none",
-						  "none", "terminal_save_failed",
-						  "retry_scheduled=1");
-				persistence_schedule_character_save(d->character, RENT_CRASH, 4,
-								    "link-loss-retry");
-			}
+			persistence_save_character_terminal(d->character, RENT_CRASH);
 			d->character->desc = 0;
 		}
 		else

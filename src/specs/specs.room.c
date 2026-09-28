@@ -366,19 +366,9 @@ int inn(int room, P_char ch, int cmd, char * /*arg*/)
 			REMOVE_BIT(ch->specials.affected_by4, AFF4_TUPOR);
 		}
 
-		int previous_home = GET_HOME(ch);
 		GET_HOME(ch) = world[ch->in_room].number;
 
-		if (!persistence_save_character_terminal(ch, RENT_INN))
-		{
-			GET_HOME(ch) = previous_home;
-			if (had_tupor)
-				SET_BIT(ch->specials.affected_by4, AFF4_TUPOR);
-			send_to_char("Failed to save this character, most likely too much eq.\r\n",
-				     ch);
-			wizlog(56, "%s was unable to rent [specs.room.c()].", GET_NAME(ch));
-			return TRUE;
-		}
+		persistence_save_character_terminal(ch, RENT_INN);
 		if (ch->following)
 			do_dismiss(ch, NULL, CMD_RENT);
 		send_to_char(
@@ -468,17 +458,9 @@ int undead_inn(int /*room*/, P_char ch, int cmd, char * /*arg*/)
 		if (had_tupor)
 			REMOVE_BIT(ch->specials.affected_by4, AFF4_TUPOR);
 
-		int previous_home = GET_HOME(ch);
 		GET_HOME(ch) = world[ch->in_room].number;
-		if (IS_PC(ch) && !persistence_save_character_terminal(ch, RENT_INN))
-		{
-			GET_HOME(ch) = previous_home;
-			if (had_tupor)
-				SET_BIT(ch->specials.affected_by4, AFF4_TUPOR);
-			send_to_char("Your character could not be saved, so you remain here.\r\n",
-				     ch);
-			return TRUE;
-		}
+		if (IS_PC(ch))
+			persistence_save_character_terminal(ch, RENT_INN);
 		send_to_char(
 			"The innkeeper shows you to a rotted coffin, you climb in and shut the lid.\r\n",
 			ch);
@@ -1467,13 +1449,7 @@ int mortal_heaven(int room, P_char ch, int cmd, char * /*arg*/)
 
 		if (tch->only.pc->pc_timer[PC_TIMER_HEAVEN] <= time(NULL))
 		{
-			if (!persistence_save_character_terminal(tch, RENT_DEATH))
-			{
-				persistence_alert(AVATAR, "player_save", "mortal_heaven", "none",
-						  "none", "terminal_save_failed",
-						  "extract_refused=1");
-				continue;
-			}
+			persistence_save_character_terminal(tch, RENT_DEATH);
 			send_to_char(
 				"Your soul is torn from the afterlife, eternal rest denied...\n\r",
 				tch);

@@ -312,13 +312,7 @@ void do_camp(P_char ch, char *arg, int /*cmd*/)
 		*(timestr + strlen(timestr) - 1) = '\0';
 		strcat(timestr, " EST");
 
-		if (!persistence_save_character_terminal(ch, RENT_INN))
-		{
-			send_to_char(
-				"Your character could not be saved, so you remain in the game.\r\n",
-				ch);
-			return;
-		}
+		persistence_save_character_terminal(ch, RENT_INN);
 
 		logit(LOG_COMM, "%s has quit in [%d] @ %s.", GET_NAME(ch),
 		      world[ch->in_room].number, timestr);
@@ -1706,12 +1700,7 @@ void do_quit(P_char ch, char * /*argument*/, int /*cmd*/)
 		ch->in_room = i;
 	}
 
-	if (!persistence_save_character_terminal(ch, RENT_INN))
-	{
-		send_to_char("Your character could not be saved, so you remain in the game.\r\n",
-			     ch);
-		return;
-	}
+	persistence_save_character_terminal(ch, RENT_INN);
 
 	act("Goodbye, friend.. Come back soon!", FALSE, ch, 0, 0, TO_CHAR);
 	act("$n has quit the game.", TRUE, ch, 0, 0, TO_ROOM);
@@ -2150,66 +2139,46 @@ bool persistence_flush_all_character_saves(void)
 	return all_saved;
 }
 
-/** Wait for the terminal save to be written. */
-static bool persistence_save_character_terminal_with_policy(P_char ch, int type,
-							    uint64_t timeout_msec)
+/*
+ * Logging out never waits: the terminal save is captured and queued on the one
+ * writer, and the caller extracts at once. Shutdown and copyover drain the writer.
+ * A save that cannot be queued is reported; the character still leaves.
+ */
+bool persistence_save_character_terminal(P_char ch, int type)
 {
-	struct deferred_save_slot *slot;
-
 	if (!ch || IS_NPC(ch) || !GET_NAME(ch))
 		return false;
 
 	const int room = calculate_save_room(ch, type, ch->in_room);
-	const player_save_terminal_result terminal =
-		player_save_pipeline_terminal(ch, type, room, timeout_msec);
-	const bool saved = terminal == player_save_terminal_result::database_acknowledged;
-	slot = find_deferred_save_slot(GET_PID(ch));
-	if (saved && slot)
-		memset(slot, 0, sizeof(*slot));
-	if (saved)
-		clear_manual_save_status(GET_PID(ch));
-	if (!saved)
+	const player_save_pipeline_result queued =
+		player_save_pipeline_request(ch, PLAYER_CHECKPOINT_COMPONENT_ALL, type, room);
+	if (queued == player_save_pipeline_result::queued ||
+	    queued == player_save_pipeline_result::coalesced)
 	{
-		logit(LOG_PLAYER,
-		      "terminal_save_failed: mono_us=%llu pid=%d intent=%d outcome=%u retry_requested=1",
-		      (unsigned long long)persistence_observability_now_usec(), GET_PID(ch), type,
-		      (unsigned)terminal);
-		persistence_schedule_character_save(
-			ch, RENT_CRASH, PERSISTENCE_DEFERRED_RETRY_INITIAL, "terminal-save-retry");
+		if (struct deferred_save_slot *slot = find_deferred_save_slot(GET_PID(ch)))
+			memset(slot, 0, sizeof(*slot));
+		clear_manual_save_status(GET_PID(ch));
 	}
-	return saved;
+	else
+		persistence_alert(AVATAR, "player_save", "terminal", "none", "none", "queue_failed",
+				  "pid=%d intent=%d outcome=%u", GET_PID(ch), type,
+				  (unsigned)queued);
+	return true;
 }
 
-/** Wait for terminal durability; retain a safe crash-save retry when logout cannot proceed. */
-bool persistence_save_character_terminal(P_char ch, int type)
-{
-	if (type == RENT_INN || type == RENT_CAMPED)
-		return persistence_save_character_terminal_with_policy(ch, type, 5000);
-	return persistence_save_character_terminal_with_policy(ch, type, 2000);
-}
-
-/** Require the terminal snapshot to be committed before an immediate process replacement. */
+/** Copyover drains the writer after queuing every save. */
 bool persistence_save_character_terminal_database_acknowledged(P_char ch, int type)
 {
-	return persistence_save_character_terminal_with_policy(ch, type, 5000);
+	return persistence_save_character_terminal(ch, type);
 }
 
-/** Attempt terminal durability for every live player and report whether all succeeded. */
+/** Queue a terminal save for every live player; the caller drains the writer. */
 bool persistence_save_all_characters_terminal(int type)
 {
-	P_char ch;
-	bool all_saved = true;
-
-	for (ch = character_list; ch; ch = ch->next)
-	{
-		if (!IS_PC(ch) || !GET_NAME(ch))
-			continue;
-		if (!persistence_save_character_terminal(ch, type))
-		{
-			all_saved = false;
-		}
-	}
-	return all_saved;
+	for (P_char ch = character_list; ch; ch = ch->next)
+		if (IS_PC(ch) && GET_NAME(ch))
+			persistence_save_character_terminal(ch, type);
+	return true;
 }
 
 /** Summarize deferred-save queue counts and oldest pending age on the game thread. */

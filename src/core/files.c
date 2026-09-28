@@ -1750,10 +1750,22 @@ int writeCharacter(P_char ch, int type, int room)
 		room = calculate_save_room(ch, type, room);
 		if (ch->desc)
 			ch->desc->rtype = type;
-		const player_save_terminal_result saved =
-			player_save_pipeline_terminal(ch, type, room, 5000);
-		if (saved != player_save_terminal_result::database_acknowledged)
-			return 0;
+		// A new player's first save must land before its domains are read back;
+		// any other terminal save is queued and the caller extracts at once.
+		if (establishing_baseline)
+		{
+			if (player_save_pipeline_terminal(ch, type, room, 5000) !=
+			    player_save_terminal_result::database_acknowledged)
+				return 0;
+		}
+		else
+		{
+			const player_save_pipeline_result queued = player_save_pipeline_request(
+				ch, PLAYER_CHECKPOINT_COMPONENT_ALL, type, room);
+			if (queued != player_save_pipeline_result::queued &&
+			    queued != player_save_pipeline_result::coalesced)
+				return 0;
+		}
 		if (establishing_baseline)
 		{
 			flatfile_player_domain_record domains;
