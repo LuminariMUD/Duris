@@ -8145,6 +8145,27 @@ bool sql_save_corpse(P_obj corpse)
 
 	int corpse_id = (int)mysql_insert_id(DB);
 
+	// The corpse holds these in memory, so its save claims them.
+	if (corpse->value[CORPSE_PID] > 0)
+	{
+		const item_owner_identity owner = {
+			item_owner_type::corpse,
+			item_corpse_owner_id(static_cast<uint32_t>(corpse->value[CORPSE_PID]),
+					     static_cast<uint32_t>(save_id)),
+			0
+		};
+		std::vector<player_item_snapshot> held;
+		item_claim_outcome claim;
+		if (player_item_snapshot_contents_capture(corpse, &held) !=
+			    player_snapshot_capture_result::ok ||
+		    claim_items(DB, owner, held, &claim) != 0)
+		{
+			logit(LOG_DEBUG, "sql_save_corpse: component=claim outcome=failure");
+			sql_rollback();
+			return false;
+		}
+	}
+
 	// save contained items atomically - any failure rolls back the whole corpse save
 	for (P_obj obj = corpse->contains; obj; obj = obj->next_content)
 	{

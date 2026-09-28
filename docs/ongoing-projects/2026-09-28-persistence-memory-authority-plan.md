@@ -580,7 +580,7 @@ taken back out (see "Removed in the ablation" below).
     corpse batch still runs at death, the runtime cache never learned the in-memory move, so the
     batch submits the item as a creation and the repository refuses it (`EEXIST`,
     `corpse rejected_preserved`). Nothing is lost or duplicated, but the corpse is empty. The
-    player-corpse part of `run_corpse_haul_journey.py` checks this and passes once step 5 lands.
+    player-corpse part of `run_corpse_haul_journey.py` checks this; it passes since step 5.
 - Found while doing this, not fixed (outside Phase 1): on the flat-file backend a character that
   becomes trusted (level 61) is written with identity racewar `ACCT_IMMORTAL` (0, from
   `account.c`) while its player domain keeps the racewar it was created with. The domain load then
@@ -621,3 +621,60 @@ taken back out (see "Removed in the ablation" below).
   `test_pet_restart_journey.py`, `run_npc_container_claim_journey.py`,
   `run_saved_item_recovery_journey.py` (disposable MariaDB) and the NPC-corpse part of
   `run_corpse_haul_journey.py` (disposable MariaDB; the player-corpse part waits for step 5).
+
+### Step 5: deaths happen at once (done)
+
+- `make_corpse()` moves a player's carried and worn items into the corpse the way it does for an NPC
+  (`corpse->contains = ch->carrying`), then queues the corpse save (`writeCorpse()`) and marks the
+  player dirty. `money_to_inventory()` runs only for NPCs, so a player's coins stay in the wallet.
+  Moving the items first also brings back two things the durable batch had silently skipped for
+  players: owned artifacts are unflagged as they enter the corpse, and divinely bound reward
+  containers dissolve inside it (`account_bound_reward_prepare_player_corpse()` walks the corpse).
+- `die()` calls the terminal save and extracts at once, whatever the save returns; a failed save is
+  logged (`terminal_save_failed`) and the character still leaves. The terminal save still waits
+  up to 2 s until step 7.
+- Deleted: `submit_next_corpse_item()`, `corpse_item_completion()`, the dispute helpers,
+  `death_wallet_pending()`, the whole recovery chain (`event_death_extract_retry()`,
+  `schedule_`/`wake_`/`hold_for_death_extract_retry()`, `death_extract_retry_pulse()` and its call in
+  `comm.c`, `save_disputed_death_disposition()`, `release_after_terminal_death()`, the
+  custody-wait clock and `DEATH_*` constants), the `pc_only_data` fields they used, and the
+  spawn-raise skip that waited for the handoff.
+- The MariaDB corpse save claims what the corpse holds: `sql_save_corpse()` runs `claim_items()` for
+  owner `corpse(item_corpse_owner_id(pid, save_id))` inside its transaction, before it writes the
+  `corpse_items` rows, the same way the locker saves do. Without it the ownership rows keep naming
+  the player and the corpse load filter drops the items after a reboot.
+- **Known gaps:**
+  - The collector's death intake rode on the durable `corpse_create` transfer
+    (`collector_death_enrollment_attach()`), so the collector no longer enrols player deaths.
+    Nothing is lost: antiquities simply stay in the corpse. Economy code for Phase 2.
+  - A flat-file corpse's items were persisted only by those durable transfers (the flat-file
+    lifecycle upsert carries the corpse and its money, not its items), so on the flat-file backend
+    a corpse's items do not survive a restart until step 6 adds the flat-file corpse job.
+  - `player_save_pipeline_terminal_death()` and the death-disposition plumbing behind it have no
+    caller left; Phase 3 deletes them.
+- Tests: `test_deaths_happen_at_once.py`; the death sections of `test_character_persistence_gap.py`,
+  `test_terminal_extract_item_retention.py`, `test_persistence_severity.py` and
+  `test_live_item_movement_contract.py` now pin the new contract. Deleted with the code they tested:
+  `test_collector_death_recovery.py`, `test_corpse_creation_batch.py`,
+  `test_corpse_handoff_inflight_contract.py`, `test_death_item_custody_contract.py` (and its
+  `run_death_item_custody.sh` wrapper), `test_death_recovery_alert_level.py` and
+  `test_death_wallet_retry.py`; also `test_account_reward_container_contract.py` (the reward hook
+  now runs with the items already in the corpse) and `test_flatfile_corpse_live_routing.py`.
+- Journeys: `test_flatfile_combat_journey.py` checks the player's corpse holds no coins (the wallet
+  keeps them). `test_mysql_combat_journey.py` takes the player's saved `player_items` rows as what
+  must reach the corpse (the ownership table still names the player for items it dropped in
+  memory), and its second half, which drove the deleted disputed-death disposition, now checks a
+  second death is immediate and a restart changes nothing.
+- Docs: the death sections of `docs/persistence/PLAYER_SAVE_PIPELINE.md` describe the new path;
+  `docs/operations/corpse-creation-batches.md` and `docs/testing/DEATH_WALLET_FAILURE_PROOF.md`
+  described only the deleted code and are gone. `docs/persistence/economy_accounting/writers.json`
+  drops `death.wallet_disposition`, re-anchors the writers whose functions steps 4 and 5 deleted
+  (`staff.load`, `staff.storage_repair`, `item.trusted_steal`, `death.corpse_creation`), and has a
+  fresh census, so `scripts/validate_economy_accounting.py` passes again (it had drifted on
+  master; nothing runs it automatically). Regenerate the census whenever `src/` changes before a
+  commit: rerun the scan in that script and keep the file's layout.
+- Verified: `make -C src`, `./scripts/format.sh --all --check`, the 162 tests that read
+  `fight.c`, `sql_player.c`, `comm.c` or `structs.h`, the validator, and the journeys
+  `test_flatfile_combat_journey.py` (three variants), `test_mysql_combat_journey.py` (three
+  variants, disposable MariaDB) and `run_corpse_haul_journey.py` (disposable MariaDB; the
+  player-corpse part passes now).

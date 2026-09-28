@@ -113,48 +113,16 @@ require(
     "a missing baseline row must re-arm the synchronous fallback and be reported",
 )
 
-# --- 2. death terminal-save recovery ----------------------------------------------
+# --- 2. a death saves and leaves at once -----------------------------------------
 require(
-    "static void event_death_extract_retry(" in FIGHT
-    and "static void schedule_death_extract_retry(" in FIGHT,
-    "death recovery event is missing",
+    "event_death_extract_retry" not in FIGHT and "schedule_death_extract_retry" not in FIGHT,
+    "a death no longer holds the character for a recovery event",
 )
 die_body = section(FIGHT, "void die(P_char ch, P_char killer)", "\nvoid ")
 require(
-    "!persistence_save_character_terminal(ch, RENT_DEATH)" in die_body
-    and "schedule_death_extract_retry(ch, death_corpse_uid," in die_body,
-    "die() must schedule the recovery when the terminal save fails",
-)
-retry = section(FIGHT, "static void event_death_extract_retry(P_char ch, P_char victim", "\nvoid die(")
-require(
-    "persistence_save_character_terminal(ch, RENT_DEATH)" in retry,
-    "the recovery event must re-attempt the terminal save",
-)
-release = section(
-    FIGHT,
-    "static void release_after_terminal_death(P_char ch, const char *outcome)",
-    "\n/** Record the refused death disposition",
-)
-require(
-    "release_after_terminal_death(ch," in retry
-    and "extract_char_after_terminal_save(ch)" in release,
-    "the recovery event must complete saved-item extraction",
-)
-require(
-    "GET_STAT(ch) != STAT_DEAD" in retry,
-    "the recovery event must abandon extraction after resurrection",
-)
-require(
-    "schedule_death_extract_retry(ch, context.corpse_uid, previous_delay * 2)" in retry,
-    "a failed retry must reschedule with backoff",
-)
-require(
-    "NULL, NULL, 0, &context" in FIGHT and "uint64_t corpse_uid;" in FIGHT,
-    "the recovery event must retain corpse identity without binding its lifetime",
-)
-require(
-    "#define DEATH_EXTRACT_RETRY_MAX" in FIGHT,
-    "the retry backoff must be clamped",
+    die_body.index("persistence_save_character_terminal(ch, RENT_DEATH)")
+    < die_body.index("extract_char_after_terminal_save(ch)"),
+    "die() must queue the player's save before it extracts the character",
 )
 
 # --- 4. extra descriptions / affects are replaced, not appended -------------------

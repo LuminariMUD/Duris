@@ -86,18 +86,14 @@ class LiveItemMovementContractTests(unittest.TestCase):
             "IS_PC(ch) && item_command_uses_durable_ownership(o_obj)", get_body
         )
 
-    def test_death_items_are_chained_after_ack_and_failure_is_preserved(self):
+    def test_death_puts_the_items_in_the_corpse_in_memory(self):
         fight = (SRC / "fight.c").read_text()
         make_corpse = fight[fight.index("P_obj make_corpse"):]
-        self.assertIn("submit_next_corpse_item", fight)
-        self.assertIn("item_transfer_reason::corpse_create", fight)
-        self.assertIn("corpse->weight = GET_WEIGHT(ch);", fight)
-        self.assertIn("int contents_weight = total_carried_weight(ch);", fight)
-        self.assertIn("sizeof(context), corpse", fight)
-        self.assertIn("failed_preserved", fight)
+        make_corpse = make_corpse[:make_corpse.index("\nvoid make_bloodstain")]
+        self.assertNotIn("submit_next_corpse_item", fight)
+        self.assertIn("corpse->contains = ch->carrying;", make_corpse)
+        self.assertIn("corpse->weight = GET_WEIGHT(ch);", make_corpse)
         self.assertNotIn("sql_delete_player_items", make_corpse)
-        completion = fight[fight.index("void corpse_item_completion"):]
-        self.assertLess(completion.index("if (!committed)"), completion.index("obj_from_char"))
 
     def test_corpse_identity_and_floor_hints_are_non_authoritative(self):
         migration = (ROOT / "migrations/live_item_movement_cutover.sql").read_text()

@@ -612,11 +612,11 @@ def recover_player_corpse(port: int, reset_coins: bool = False) -> None:
         client.send(f"look in {CHARACTER}")
         corpse = client.expect("a banana", timeout=10)
         require(CHARACTER in corpse, "player corpse did not contain the saved loot marker")
+        # A player's coins stay in the wallet at death (persistence reset step 5).
+        require("coins" not in corpse, "player coins were put into the corpse")
 
         client.send(f"get banana {CHARACTER}")
         client.expect("get a banana", timeout=15)
-        client.send(f"get coins {CHARACTER}")
-        client.expect("You get 3s." if reset_coins else "You get 1c.", timeout=15)
         client.send("save")
         client.expect(f"Save complete for {CHARACTER}.", timeout=15)
         client.send("quit")

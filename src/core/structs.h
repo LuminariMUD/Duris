@@ -1260,17 +1260,6 @@ struct pc_only_data
 	int spare4;
 	uint64_t bank_revision; /* Transactional shared account-bank domain revision. */
 	uint64_t wallet_revision; /* Transactional carried-wallet domain revision. */
-	bool death_custody_disputed; /* Runtime-only refused corpse handoff. */
-	uint64_t death_retry_corpse_uid; /* Runtime-only event admission fallback. */
-	uint64_t death_retry_due_usec;
-	int death_retry_delay;
-	/* Runtime-only custody-wait clock. Monotonic microseconds at the first
-	 * poll that found a handoff in flight, how many stall alerts that wait
-	 * has already produced, and how many polls it has taken -- the last of
-	 * those is diagnostic only, never a measure of time. */
-	uint64_t death_custody_wait_since_usec;
-	int death_custody_wait_alerts;
-	int death_custody_wait_polls;
 
 	long frags; /* Pkill counter                           */
 	long oldfrags; /* Pkill counter                           */

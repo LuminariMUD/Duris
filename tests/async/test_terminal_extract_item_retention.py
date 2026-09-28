@@ -78,16 +78,6 @@ death = body(fight, "void die(P_char ch, P_char killer)")
 assert death.index("persistence_save_character_terminal(ch, RENT_DEATH)") < death.index(
     "extract_char_after_terminal_save(ch)"
 )
-death_retry = body(
-    fight,
-    "static void event_death_extract_retry(P_char ch, P_char victim, P_obj obj, void *data)\n{",
-)
-# The retry now releases through release_after_terminal_death(), which owns the
-# extraction; both of its callers still save first.
-assert death_retry.index("persistence_save_character_terminal(ch, RENT_DEATH)") < death_retry.index(
-    'release_after_terminal_death(ch, "death_recovery_completed")'
-)
-release = body(fight, "static void release_after_terminal_death(P_char ch, const char *outcome)")
-assert "extract_char_after_terminal_save(ch);" in release
+assert "event_death_extract_retry" not in fight
 
 print("terminal saved-item extraction contracts passed")

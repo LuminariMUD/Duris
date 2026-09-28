@@ -99,13 +99,8 @@ and numeric-only detail filtering; owner, item UID and event ID arguments are
 omitted from the output at every severity.
 
 Use `ok` after a successful durable operation and `info` for expected progress.
-Death recovery/disposition completion and durable disposition recording are `ok`.
-Ordinary custody waits, undisputed in-flight transfers and successfully submitted
-corpse-item restarts are `info`. Automatic raising skipped while corpse ownership
-is pending is also informational. Failed restart submissions, disputes, missing
-corpses, abandoned recovery, event scheduling failures and failed saves remain
-alerts. A custody wait still escalates after 30 seconds and once per subsequent
-30-second window; normal polls now use `outcome=info` in the file records.
+A death is quiet unless its terminal save fails (`terminal_save_failed` alerts); the
+character leaves at once either way.
 
 Successful deferred-save flushes, flat fallback writes and complete legacy replays
 also use `ok`; failed flushes and partial replays retain alerts. Retired raw-worker
@@ -146,8 +141,7 @@ is promised. Failure counts are also printed on ordinary shutdown.
 Validate bounded admission, blocked I/O, independent sink failures, rotation, and
 drain behavior with `python3 tests/async/test_persistence_log.py`.
 
-Validate routing and privacy with `python3 tests/async/test_persistence_severity.py`;
-`test_death_recovery_alert_level.py` also verifies the timed stall escalation.
+Validate routing and privacy with `python3 tests/async/test_persistence_severity.py`.
 
 ## Terminal Saves And Process Drain
 
@@ -196,61 +190,15 @@ journal handoff. These guarantees do not prevent legitimate storage timeouts or
 operating-system starvation. The controlled retry/crash modes are documented in
 [Testing](../guides/TESTING.md#full-world-save-diagnostics).
 
-## Disputed player deaths
+## Player deaths
 
-A refused corpse handoff records a per-player runtime dispute. The death retry
-captures the corpse, refused inventory, wallet-conversion evidence, and observed
-custody in one bounded death snapshot. SQL applies `player_death_disposition`,
-`player_death_custody`, quarantine of remaining player-owned custody, and the
-cleared player snapshot in one transaction. Flat-file authority publishes the
-same effects with `player-deaths/<pid>-<revision>.death` in its recoverable
-authority transaction. Successfully transferred corpse-owned items stay active;
-quarantine includes remaining durable-only descendants.
-
-Release requires durability for the death revision. Capture/admission failure,
-a missing corpse, or a failed durability fence retains live assets for retry.
-If event admission fails, the live player's fallback due time is serviced by the
-game pulse. A two-second terminal wait is one attempt's budget, not a bound on
-total death recovery. Restart replay applies journaled death evidence idempotently;
-the runtime dispute flag itself is not durable evidence before journal admission.
-
-A death disposition preserves evidence, not automatic restitution. Later ordinary
-saves cannot overwrite it. SQL and file death stores are protected recovery data
-in the [lifecycle manifest](../../migrations/data_lifecycle_manifest.json); retention
-continues until recovery is resolved and the controller approves a purge horizon.
-Do not treat these files as rotating logs. See `test_death_item_custody_contract.py`,
-`test_player_snapshot_capture.py`, `test_player_save_pipeline.py`, and the isolated
-`run_player_death_disposition_mysql.sh` suite for the relevant boundaries.
-
-### Corpse creation batches (#174)
-
-Registered carried roots and their nested contents are captured in one immutable
-`corpse_create` command, within the existing item count and payload size bounds.
-The command advances player/corpse custody revisions together. Publication checks
-every captured node and live containment link before advancing the registry or
-moving any root. A stale live topology retains the committed movement and its
-busy fence; it does not release the player or publish a partial corpse.
-
-After publication, the death callback writes the complete corpse once and advances
-the existing retry event to the next game pulse. The retry still checks currency
-and item work, disputes, and terminal-save durability before extraction. This
-avoids extracting the actor inside the coordinator completion dispatcher. Pending
-currency/reward work remains fenced, and event-admission failure retains the
-existing allocation-free pulse fallback.
-
-Legacy roots without runtime ownership entries retain the existing single-root
-adoption path before the remaining registered roots are batched. Non-transient
-admission refusal enters disputed-death disposition; transient admission conflicts
-remain retryable. Disposition is durable evidence, not automatic restitution.
-No absolute production latency guarantee follows from the batch change: database
-latency, pending currency, and the final corpse snapshot still contribute.
-
-`test_corpse_creation_batch.py` runs production admission, codec, registry, and
-publication code under ASan/UBSan with nested 1/15/100-root fixtures, refusals,
-pending coin work, stale topology, and duplicate completions. The combat journey
-also runs with boons enabled and checks ordinary recovery, conservation, disputed
-custody evidence before release, and exactly-once death consequences on restart.
-
-The [corpse batch verification guide](../operations/corpse-creation-batches.md)
-documents the real MariaDB character journey, isolated database setup, and the
-minimal-world restart coverage limits.
+A death happens at once (persistence reset step 5): `make_corpse()` moves the
+player's items into the corpse in memory, the corpse save claims them, the
+player's save follows, and the character is extracted. There is no recovery
+hold, corpse handoff batch or disputed-death disposition any more; a player's
+coins stay in the wallet until Phase 2. See
+[the persistence reset plan](../ongoing-projects/2026-09-28-persistence-memory-authority-plan.md)
+and `tests/async/test_deaths_happen_at_once.py`. Death evidence already stored by
+older servers (`player_death_disposition`, `player_death_custody`, flat-file
+`player-deaths/`) remains protected recovery data in the
+[lifecycle manifest](../../migrations/data_lifecycle_manifest.json).
