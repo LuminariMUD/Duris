@@ -118,21 +118,16 @@ bool player_load_reconcile_item_topology(std::vector<player_item_snapshot> *item
 			depth[node] = parent == no_parent ? 1 : depth[parent] + 1;
 			if (depth[node] > PLAYER_SNAPSHOT_MAX_DEPTH)
 				return false;
-			if (parent == no_parent)
-			{
-				if ((*identities)[node].root_item_uid !=
-				    (*identities)[node].item_uid)
-					return false;
-			}
-			else if (promoted[parent])
-			{
+			// A root that disagrees with the graph is corrected, not refused: the
+			// next save writes the placement the character actually has.
+			const uint64_t expected_root = parent == no_parent ?
+							       (*identities)[node].item_uid :
+							       (*identities)[parent].root_item_uid;
+			if (parent != no_parent && promoted[parent])
 				promoted[node] = true;
-				(*identities)[node].root_item_uid =
-					(*identities)[parent].root_item_uid;
-			}
-			else if ((*identities)[node].root_item_uid !=
-				 (*identities)[parent].root_item_uid)
-				return false;
+			else if ((*identities)[node].root_item_uid != expected_root)
+				++*repaired_item_rows;
+			(*identities)[node].root_item_uid = expected_root;
 			visit_state[node] = 2;
 		}
 	}

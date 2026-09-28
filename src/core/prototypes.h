@@ -86,6 +86,7 @@ void account_select_char(P_desc, char *);
 void account_confirm_char(P_desc, char *);
 void account_new_char(P_desc, char *);
 void account_delete_char(P_desc, char *);
+void account_delete_char_loaded(P_desc);
 void account_display_info(P_desc, char *);
 void delete_account(P_desc, char *);
 void verify_delete_account(P_desc, char *);

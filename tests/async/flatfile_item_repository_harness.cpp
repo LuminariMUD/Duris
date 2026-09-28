@@ -569,7 +569,7 @@ static void coin_matrix(const fs::path &path, int coin_vnum)
 	require(remaining.empty(), "destroyed coins were returned as active items");
 	reload(0, { pile_uid, pile_uid + 1 });
 	std::vector<uint64_t> consumed;
-	for (size_t index = 0; index <= PLAYER_LOAD_ITEM_SKIP_MAX; ++index)
+	for (size_t index = 0; index <= 32; ++index)
 	{
 		const uint64_t uid = pile_uid + 2 + index;
 		auto create = command(wallet(42, 1000, 999), pile(uid, 0, 1));

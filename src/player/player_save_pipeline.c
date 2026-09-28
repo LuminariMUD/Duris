@@ -308,8 +308,6 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 {
 	if (!ch || IS_NPC(ch) || GET_PID(ch) <= 0)
 		return player_save_pipeline_result::invalid;
-	if (IS_SET(ch->runtime_flags, CHAR_RFLAG_LOAD_DEGRADED))
-		return player_save_pipeline_result::unavailable;
 	{
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
 		if (!health.initialized || find_target_save_login_fence_locked(GET_PID(ch)))
@@ -350,8 +348,6 @@ player_save_pipeline_result player_save_pipeline_request(P_char ch,
 							 player_component_mask_t components,
 							 int save_intent, int room_vnum)
 {
-	if (ch && IS_SET(ch->runtime_flags, CHAR_RFLAG_LOAD_DEGRADED))
-		return player_save_pipeline_result::unavailable;
 	if (!ch || IS_NPC(ch) || !player_save_pipeline_mark(GET_PID(ch), components))
 		return player_save_pipeline_result::invalid;
 	return player_save_pipeline_checkpoint_dirty(ch, save_intent, room_vnum);
@@ -425,8 +421,6 @@ player_save_terminal_result player_save_pipeline_terminal(P_char ch, int save_in
 {
 	if (!ch || IS_NPC(ch) || GET_PID(ch) <= 0 || !timeout_msec)
 		return player_save_terminal_result::invalid;
-	if (IS_SET(ch->runtime_flags, CHAR_RFLAG_LOAD_DEGRADED))
-		return player_save_terminal_result::unavailable;
 	const int pid = GET_PID(ch);
 	player_revision_t revision = 0;
 	if (!begin_terminal_fence(pid, &revision))
@@ -449,13 +443,6 @@ player_save_pipeline_terminal_death(P_char ch, P_obj corpse, P_obj wallet_pile,
 {
 	if (!ch || IS_NPC(ch) || GET_PID(ch) <= 0 || !corpse || !timeout_msec)
 		return player_save_terminal_result::invalid;
-	// A payload-gap load keeps its valid item graph read-only. Its only safe
-	// terminal write is the immutable death disposition, which records that
-	// graph and quarantines matching durable custody. Every other degraded load
-	// may be missing state the disposition cannot reconstruct.
-	if (IS_SET(ch->runtime_flags, CHAR_RFLAG_LOAD_DEGRADED) &&
-	    !IS_SET(ch->runtime_flags, CHAR_RFLAG_LOAD_ITEM_PAYLOAD_GAP))
-		return player_save_terminal_result::unavailable;
 	const int pid = GET_PID(ch);
 	player_revision_t revision = 0;
 	if (!begin_terminal_fence(pid, &revision))
@@ -646,6 +633,12 @@ bool player_save_pipeline_save_admitted(int pid)
 		return false;
 	std::lock_guard<std::mutex> lock(pipeline_mutex);
 	return find_target_save_login_fence_locked(pid) == nullptr;
+}
+
+bool player_save_pipeline_load_held(int pid)
+{
+	return pid > 0 && (player_save_worker_pid_pending(pid) ||
+			   player_save_pipeline_target_save_login_fenced(pid));
 }
 
 /** Stop the pipeline and clear writer, revision, and health state for an isolated test. */

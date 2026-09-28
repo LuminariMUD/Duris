@@ -74,7 +74,7 @@ docker exec "$TOOLS_CONTAINER" bash -lc '
 	g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
 		"${MYSQL_CFLAGS[@]}" -ffunction-sections -fdata-sections \
 		tests/async/player_load_repository_spellbook_mysql_harness.cpp \
-		src/player/player_load_repository.c src/player/player_load_topology.c \
+		src/player/player_load_repository.c src/persistence/dupe_log.c src/player/player_load_topology.c \
 		src/player/player_load_items.c src/player/player_snapshot_codec.c \
 		src/persistence/persistence_observability.c \
 		src/persistence/player_death_restitution_command.c \

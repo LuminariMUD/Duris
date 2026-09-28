@@ -155,44 +155,16 @@ player_load_result identity_failure(const player_load_request &request,
 	return result;
 }
 
-void mark_degraded(player_load_result *result, uint32_t component, const char *stage)
-{
-	if (!result)
-		return;
-	result->outcome = player_load_outcome::degraded;
-	result->degraded_components |= component;
-	if (!result->failed_component)
-		result->failed_component = stage;
-}
-
-void clear_items_and_pets(player_load_result *result)
-{
-	if (!result)
-		return;
-	result->snapshot.items.clear();
-	result->snapshot.pets.clear();
-	result->item_identities.clear();
-	result->pet_identities.clear();
-	result->item_owner_revision = 0;
-	result->authoritative_item_count = 0;
-	result->authoritative_pet_item_count = 0;
-	result->stale_item_rows = 0;
-	result->missing_payload_rows = 0;
-	result->promoted_item_rows = 0;
-	result->repaired_item_rows = 0;
-	result->snapshot.components = PLAYER_LOAD_SESSION01_COMPONENTS;
-}
-
-// The ownership file is authoritative. A payload item it does not list, or lists as
-// somebody else's or as inactive, is one skippable row: refusing it here would make the
-// character permanently unloadable over a single inconsistent entry. Skipped rows are
-// compacted out and the contents of a skipped container move to the top level.
-bool build_item_identities(std::vector<player_item_snapshot> *items,
-			   const std::unordered_map<uint64_t, flatfile_item_ownership_record> &owned,
-			   const item_owner_identity &owner, uint64_t owner_revision,
-			   uint64_t *next_database_id, std::unordered_set<uint64_t> *consumed,
-			   std::vector<player_load_item_identity> *identities,
-			   player_load_result *result)
+// A load takes a payload item when the ownership catalog has no record for it or
+// names this owner, whatever the record's state. A record naming anyone else makes
+// the item a stale or duplicate copy: it is skipped, logged to logs/log/dupes, and
+// the contents of a skipped container move to the top level.
+bool build_item_identities(
+	std::vector<player_item_snapshot> *items,
+	const std::unordered_map<uint64_t, flatfile_item_ownership_record> &catalog,
+	const item_owner_identity &owner, uint64_t owner_revision, uint64_t *next_database_id,
+	std::unordered_set<uint64_t> *consumed, std::vector<player_load_item_identity> *identities,
+	player_load_result *result)
 {
 	if (!items || !next_database_id || !consumed || !identities || !result)
 		return false;
@@ -209,8 +181,7 @@ bool build_item_identities(std::vector<player_item_snapshot> *items,
 		for (size_t index = 0; index < items->size(); ++index)
 		{
 			player_item_snapshot item = std::move((*items)[index]);
-			if (!item.object_uid || item.vnum <= 0 ||
-			    *next_database_id > static_cast<uint64_t>(INT_MAX))
+			if (*next_database_id > static_cast<uint64_t>(INT_MAX))
 				return false;
 			size_t parent_new = skipped_index;
 			if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
@@ -220,37 +191,47 @@ bool build_item_identities(std::vector<player_item_snapshot> *items,
 					return false;
 				parent_new = remap[static_cast<size_t>(item.parent_index)];
 			}
-			const auto found = owned.find(item.object_uid);
-			if (found == owned.end() ||
-			    !item_owner_identity_equal(found->second.owner, owner) ||
-			    found->second.state != item_custody_state::active)
+			const auto found = catalog.find(item.object_uid);
+			const bool recorded = found != catalog.end();
+			const bool elsewhere =
+				recorded && !item_owner_identity_equal(found->second.owner, owner);
+			if (!item.object_uid || item.vnum <= 0 || elsewhere ||
+			    consumed->count(item.object_uid))
 			{
+				if (elsewhere)
+					dupe_log_item("load_skipped", item.object_uid, item.vnum,
+						      owner, found->second.owner);
 				remap.push_back(skipped_index);
 				++result->stale_item_rows;
 				continue;
 			}
-			if (!consumed->insert(item.object_uid).second)
-				return false;
-			const flatfile_item_ownership_record &record = found->second;
+			consumed->insert(item.object_uid);
 			uint64_t serialized_parent = 0;
+			uint64_t parent_uid = 0;
 			if (parent_new != skipped_index)
+			{
 				serialized_parent = database_ids[parent_new];
-			else if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT &&
-				 !record.parent_item_uid)
+				parent_uid = kept[parent_new].object_uid;
+			}
+			else if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
 				++result->promoted_item_rows;
-			if (record.vnum != item.vnum)
-				return false;
+			// A recorded item keeps the catalog's placement; an unrecorded one sits
+			// where the player file puts it.
 			item.parent_index = parent_new == skipped_index ?
 						    PLAYER_SNAPSHOT_NO_PARENT :
 						    static_cast<int32_t>(parent_new);
 			const uint64_t database_id = (*next_database_id)++;
 			database_ids.push_back(database_id);
 			remap.push_back(kept.size());
-			identities->push_back({ database_id, serialized_parent, 1,
-						PLAYER_LOAD_ITEM_OVERRIDE_ALL, record.item_uid,
-						record.root_item_uid, record.parent_item_uid,
-						record.owner, record.item_revision, owner_revision,
-						record.state });
+			identities->push_back(
+				{ database_id, serialized_parent, 1, PLAYER_LOAD_ITEM_OVERRIDE_ALL,
+				  item.object_uid,
+				  recorded && found->second.root_item_uid ?
+					  found->second.root_item_uid :
+					  item.object_uid,
+				  recorded ? found->second.parent_item_uid : parent_uid, owner,
+				  recorded ? found->second.item_revision : 0, owner_revision,
+				  item_custody_state::active });
 			kept.push_back(std::move(item));
 		}
 		*items = std::move(kept);
@@ -293,14 +274,15 @@ bool reconcile_item_ownership(const std::string &root, player_load_result *resul
 	}
 	const flatfile_item_repository_result loaded = flatfile_item_repository_load_owner_locked(
 		root, authority, owner, &owner_revision, &records, &error);
-	if (loaded != flatfile_item_repository_result::ok)
+	// An owner nobody has recorded yet simply holds nothing in the catalog.
+	if (loaded != flatfile_item_repository_result::ok &&
+	    loaded != flatfile_item_repository_result::not_found)
 	{
 		result->outcome = loaded == flatfile_item_repository_result::io_error ?
 					  player_load_outcome::retryable_failure :
 					  player_load_outcome::component_failure;
-		result->error_code = loaded == flatfile_item_repository_result::not_found ? ENOENT :
-				     loaded == flatfile_item_repository_result::io_error  ? EIO :
-											    EILSEQ;
+		result->error_code = loaded == flatfile_item_repository_result::io_error ? EIO :
+											   EILSEQ;
 		result->failed_component = "item_ownership";
 		return false;
 	}
@@ -320,15 +302,36 @@ bool reconcile_item_ownership(const std::string &root, player_load_result *resul
 		result->failed_component = "shop_trade_materialization";
 		return false;
 	}
-	std::unordered_map<uint64_t, flatfile_item_ownership_record> owned;
+	// Every record the player file's items have, whoever it names.
+	std::unordered_map<uint64_t, flatfile_item_ownership_record> catalog;
 	std::unordered_set<uint64_t> consumed;
+	std::unordered_set<uint64_t> recorded_for_owner;
 	try
 	{
-		owned.reserve(records.size());
-		consumed.reserve(records.size());
+		std::vector<uint64_t> uids;
+		for (const player_item_snapshot &item : result->snapshot.items)
+			uids.push_back(item.object_uid);
+		for (const player_pet_snapshot &pet : result->snapshot.pets)
+			for (const player_item_snapshot &item : pet.items)
+				uids.push_back(item.object_uid);
+		std::vector<flatfile_item_ownership_record> found;
+		const auto looked_up = flatfile_item_repository_load_uids_locked(
+			root, authority, uids, &found, &error);
+		if (looked_up != flatfile_item_repository_result::ok)
+		{
+			result->outcome = looked_up == flatfile_item_repository_result::io_error ?
+						  player_load_outcome::retryable_failure :
+						  player_load_outcome::component_failure;
+			result->error_code =
+				looked_up == flatfile_item_repository_result::io_error ? EIO :
+											 EILSEQ;
+			result->failed_component = "item_ownership";
+			return false;
+		}
+		for (auto &record : found)
+			catalog.emplace(record.item_uid, std::move(record));
 		for (const auto &record : records)
-			if (!owned.emplace(record.item_uid, record).second)
-				return false;
+			recorded_for_owner.insert(record.item_uid);
 		result->pet_identities.resize(result->snapshot.pets.size());
 	}
 	catch (const std::bad_alloc &)
@@ -339,9 +342,9 @@ bool reconcile_item_ownership(const std::string &root, player_load_result *resul
 		return false;
 	}
 	uint64_t next_database_id = 1;
-	size_t pet_owned_count = 0;
 	size_t pet_materialized_count = 0;
-	if (!build_item_identities(&result->snapshot.items, owned, owner, owner_revision,
+	size_t legacy_pet_item_count = 0;
+	if (!build_item_identities(&result->snapshot.items, catalog, owner, owner_revision,
 				   &next_database_id, &consumed, &result->item_identities, result))
 		goto invalid;
 	for (size_t index = 0; index < result->snapshot.pets.size(); ++index)
@@ -352,13 +355,14 @@ bool reconcile_item_ownership(const std::string &root, player_load_result *resul
 						       static_cast<uint64_t>(result->pid) } :
 				  owner;
 		uint64_t pet_revision = owner_revision;
-		std::unordered_map<uint64_t, flatfile_item_ownership_record> pet_owned;
 		if (pet_uid)
 		{
 			std::vector<flatfile_item_ownership_record> pet_records;
+			pet_revision = 0;
 			const auto read = flatfile_item_repository_load_owner_locked(
 				root, authority, pet_owner, &pet_revision, &pet_records, &error);
-			if (read != flatfile_item_repository_result::ok)
+			if (read != flatfile_item_repository_result::ok &&
+			    read != flatfile_item_repository_result::not_found)
 			{
 				result->outcome =
 					read == flatfile_item_repository_result::io_error ?
@@ -370,12 +374,10 @@ bool reconcile_item_ownership(const std::string &root, player_load_result *resul
 				result->failed_component = "pet_ownership";
 				return false;
 			}
-			pet_owned_count += pet_records.size();
 			try
 			{
 				for (const auto &record : pet_records)
-					if (!pet_owned.emplace(record.item_uid, record).second)
-						goto invalid;
+					recorded_for_owner.insert(record.item_uid);
 			}
 			catch (const std::bad_alloc &)
 			{
@@ -389,23 +391,24 @@ bool reconcile_item_ownership(const std::string &root, player_load_result *resul
 		identity.database_id = index + 1;
 		identity.pet_uid = pet_uid;
 		identity.owner_revision = pet_revision;
-		if (!build_item_identities(&result->snapshot.pets[index].items,
-					   pet_uid ? pet_owned : owned, pet_owner, pet_revision,
-					   &next_database_id, &consumed, &identity.item_identities,
-					   result))
+		if (!build_item_identities(&result->snapshot.pets[index].items, catalog, pet_owner,
+					   pet_revision, &next_database_id, &consumed,
+					   &identity.item_identities, result))
 			goto invalid;
+		// A legacy pet without a UID carries items its owner holds.
 		if (pet_uid)
 			pet_materialized_count += identity.item_identities.size();
+		else
+			legacy_pet_item_count += identity.item_identities.size();
 	}
-	if (consumed.size() > records.size() + pet_owned_count ||
-	    pet_materialized_count > consumed.size())
-		goto invalid;
-	// An ownership record whose payload item is gone cannot be rebuilt, but it must not
-	// refuse the load either. Preserve it for explicit operator repair; snapshot saves are
-	// not allowed to rewrite authoritative custody.
-	result->missing_payload_rows = records.size() + pet_owned_count - consumed.size();
+	// A record whose payload item is gone is an item the player no longer holds; its
+	// next holder claims it. It is only counted.
+	result->missing_payload_rows = 0;
+	for (uint64_t uid : recorded_for_owner)
+		if (!consumed.count(uid))
+			++result->missing_payload_rows;
 	result->item_owner_revision = owner_revision;
-	result->authoritative_item_count = consumed.size() - pet_materialized_count;
+	result->authoritative_item_count = result->item_identities.size() + legacy_pet_item_count;
 	result->authoritative_pet_item_count = pet_materialized_count;
 	return true;
 
@@ -678,12 +681,7 @@ player_load_result flatfile_player_load_repository_execute(const std::string &ro
 		return result;
 	}
 	if (request.include_items && !reconcile_item_ownership(root, &result))
-	{
-		clear_items_and_pets(&result);
-		mark_degraded(&result, PLAYER_LOAD_DEGRADED_ITEMS, "item_ownership");
-		if (request.include_pets)
-			result.degraded_components |= PLAYER_LOAD_DEGRADED_PETS;
-	}
+		return result;
 	int64_t snapshot_racewar = 0;
 	if (!snapshot_signed(result.snapshot, player_status_field::racewar, &snapshot_racewar) ||
 	    snapshot_racewar != identity.racewar)
@@ -702,12 +700,11 @@ player_load_result flatfile_player_load_repository_execute(const std::string &ro
 			domains_loaded == flatfile_player_domain_result::not_found ? ENOENT :
 			domains_loaded == flatfile_player_domain_result::io_error  ? EIO :
 										     EILSEQ;
-		mark_degraded(&result, PLAYER_LOAD_DEGRADED_BANK | PLAYER_LOAD_DEGRADED_GAMEPLAY,
-			      "domains");
-		result.read_components = 0;
-		result.domains = {};
-		result.recent_pvp_deaths.clear();
-		result.completed_epic_zones.clear();
+		result.outcome = domains_loaded == flatfile_player_domain_result::io_error ?
+					 player_load_outcome::retryable_failure :
+					 player_load_outcome::component_failure;
+		result.failed_component = "domains";
+		return result;
 	}
 	else
 	{
@@ -735,8 +732,7 @@ player_load_result flatfile_player_load_repository_execute(const std::string &ro
 	result.metrics.byte_count = result.snapshot.encoded_size_bound;
 	result.metrics.row_count = 1;
 	result.metrics.transaction_usec = persistence_observability_now_usec() - started;
-	if (!result.degraded_components)
-		result.outcome = player_load_outcome::applied;
+	result.outcome = player_load_outcome::applied;
 	return result;
 }
 
@@ -868,7 +864,8 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		{
 			if (snapshot.components &
 			    (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY))
-				claims.push_back({ player_owner, &materialized.items, {}, new_player });
+				claims.push_back(
+					{ player_owner, &materialized.items, {}, new_player });
 			if (snapshot.components & PLAYER_COMPONENT_PETS)
 				for (const player_pet_snapshot &pet : materialized.pets)
 					claims.push_back(

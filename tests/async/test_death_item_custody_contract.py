@@ -70,8 +70,8 @@ checks.append((
     contains(fight, "item_movement_transaction_submit_batch(character, roots.data(), roots.size(), NULL,")
 ))
 checks.append((
-    "the login invariant that rejected the desynchronised character still holds",
-    contains(repository, "owned_count == payload_count")
+    "a load no longer refuses a character whose ownership rows lack payloads",
+    not contains(repository, "owned_count == payload_count")
 ))
 
 die = body(fight, "void die(P_char ch, P_char killer)")
@@ -88,12 +88,8 @@ checks.append((
     die.index("persistence_save_character_terminal(ch, RENT_DEATH)")
 ))
 checks.append((
-    "a load-time payload gap enters the disposition path without waiting for a transfer",
-    contains(die, "CHAR_RFLAG_LOAD_ITEM_PAYLOAD_GAP") and
-    contains(die, "note_corpse_transfer_dispute(ch);") and
-    contains(die, '"load_item_payload_gap_disposition"') and
-    die.index("CHAR_RFLAG_LOAD_ITEM_PAYLOAD_GAP") <
-    die.rindex("item_movement_transaction_player_busy(ch)")
+    "there is no load-time payload-gap death path any more",
+    not contains(die, "CHAR_RFLAG_LOAD_ITEM_PAYLOAD_GAP")
 ))
 checks.append((
     "a deferred death remains dead until recovery completes",

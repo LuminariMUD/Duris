@@ -91,10 +91,6 @@ typedef unsigned int uint;
 #define CHAR_RFLAG_COLLECTOR_SAVE_FENCE BIT_6
 /* no in-memory purchase payload survived; only a cold player load can clear it */
 #define CHAR_RFLAG_COLLECTOR_SAVE_RELOAD BIT_7
-/* the player entered with secondary persistence domains quarantined; never publish a partial save */
-#define CHAR_RFLAG_LOAD_DEGRADED BIT_8
-/* durable item custody was missing payload; death may only use the immutable disposition path */
-#define CHAR_RFLAG_LOAD_ITEM_PAYLOAD_GAP BIT_9
 
 /* object runtime flags (not saved to db) */
 #define OBJ_RFLAG_DIRTY_CONTAINER BIT_1

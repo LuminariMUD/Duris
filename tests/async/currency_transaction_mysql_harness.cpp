@@ -487,9 +487,8 @@ void coin_failure_matrix()
 		      "AND coin_payload IS NULL AND parent_item_uid IS NULL AND root_item_uid=item_uid") ==
 	       1);
 	verify_reload(1000, 0);
-	// Repeated completed pickups before an inventory snapshot must not look like
-	// a damaged inventory and trip the materializer's stale-row refusal threshold.
-	for (size_t index = 0; index <= PLAYER_LOAD_ITEM_SKIP_MAX; ++index)
+	// Repeated completed pickups before an inventory snapshot are not stale rows.
+	for (size_t index = 0; index <= 32; ++index)
 	{
 		const uint64_t uid = pile + 1 + index;
 		auto small_put =

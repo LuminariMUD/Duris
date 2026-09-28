@@ -396,3 +396,88 @@ Build and test commands used throughout:
   harness, `player_load_repository_mysql_harness`, still expects `component_failure` for a bad
   trophy row where the loader now degrades. Step 3 rewrites load outcomes, so fix that
   expectation there and then add both legs to `make test-db`.
+
+### Step 3: loads filter on the ownership table (done)
+
+- The filter: a load takes an item row when `item_current_owner` has no row for its uid or the
+  row names the loading owner, in any state. Otherwise the row is skipped, counted in
+  `stale_item_rows`, and logged to `logs/log/dupes` as `load_skipped uid= vnum= lost_by= held_by=`
+  (`dupe_log_item()`). An unreadable row is skipped and counted too. Nothing about item rows
+  refuses a load any more.
+  - Player and pet items (MariaDB): `parse_item_payload()` in `player_load_repository.c` returns
+    `accepted`, `foreign` or `invalid`. An unrecorded item (no ownership row) is placed from its
+    payload row once every row is read; a recorded one keeps the ownership row's placement. A root
+    that disagrees with the graph is corrected in `player_load_reconcile_item_topology()` and
+    counted in `repaired_item_rows`. An ownership row with no payload row is only counted
+    (`missing_payload_rows`): its next holder claims it.
+  - Player and pet items (flat-file): `build_item_identities()` in `flatfile_player_repository.c`
+    reads each payload uid's record with the new `flatfile_item_repository_load_uids_locked()` and
+    applies the same rule; contents of a skipped container move to the top level. A legacy pet
+    without a uid carries items its owner holds, so they count in `authoritative_item_count`
+    as they do on MariaDB.
+  - Corpses, lockers, private chests and saved room items (MariaDB) go through
+    `sql_persistence_item_owner_matches_identity()` in `sql.c`: no row or a matching row loads,
+    another owner's row is skipped and logged, and a failed lookup keeps the item (losing it would
+    be worse than a copy the next claim settles). Only an active row is hydrated into
+    `item_ownership_runtime`, which the item commands still use until step 4. What a skipped
+    container holds moves up a level: to the corpse's top level (both passes in
+    `sql_load_all_corpses()`; before this an item whose container was skipped or malformed was never
+    placed and leaked), to the locker level (`append_loaded_objects()`), into the private chest, or
+    up the saved room item, which no longer fails its source-graph check over one stale child.
+- **Deferred to step 6:** the flat-file corpse and room loaders still use their strict
+  `flatfile_world_reconcile_item_ownership()`; they get the filter when corpses and room items are
+  saved through the writer with claims.
+- Degraded loads are gone: `player_load_outcome::degraded`, `PLAYER_LOAD_DEGRADED_*`,
+  `degraded_components`, `CHAR_RFLAG_LOAD_DEGRADED`, `CHAR_RFLAG_LOAD_ITEM_PAYLOAD_GAP`,
+  `pc_only_data::load_degraded_components`, `PLAYER_LOAD_ITEM_SKIP_MAX`, the degraded save guards
+  in `files.c`, `sql.c`, `sql_player.c` and `player_save_pipeline.c`, and the payload-gap death
+  route in `fight.c`. A load step fails only on a database error or a limit; the load then fails as
+  a whole and the login is asked to try again. The materializer refuses (instead of admitting
+  degraded) when something it must set up fails.
+- Logins never block: `load_char_into_game()` in `account.c` submits the load and parks the
+  descriptor in `CON_PLAYER_LOAD`; the sync fallback, `execute_account_load_sync()` and the retry
+  of `timed_out`/`retryable_failure` results are gone. Account character deletion loads the same
+  way (`PLAYER_LOAD_MODE_ACCOUNT_DELETE`; `account_delete_char_loaded()` asks for the final
+  confirmation once the load arrives). The legacy non-account login in `nanny.c` (unreachable:
+  its states are dispatched only without `USE_ACCOUNT`, which is always defined) lost its sync
+  fallback too. Copyover restore is the only
+  caller of `player_load_pipeline_wait()`/`_execute_sync()`; it runs before the game loop.
+  `player_load_pipeline_login_admit()` was an unused shim and is gone.
+- Hold: `player_load_pipeline_set_hold(player_save_pipeline_load_held)` (set in `comm.c`). The
+  load worker rotates a held request to the back of its queue and loads the others; when every
+  queued request is held it sleeps 10 ms. A held request that reaches its deadline is answered
+  `timed_out`. `player_save_pipeline_load_held(pid)` is true while the writer has a job for the
+  pid (`player_save_worker_pid_pending()`) or a staff target fence holds it. Lock order: the load
+  worker calls the hold with its own mutex held; nothing holding the writer or save-pipeline mutex
+  takes the load mutex. Lockers were already held: `lockerName_is_inuse()` counts a locker whose
+  async save slot is dirty or in flight.
+- Found while doing this, fixed in its own commit (`916f99520`): the coin failure matrix in
+  `run_currency_transaction_schema_mysql.sh` inserted a second `player_items` row for a pile the
+  coin put had already projected, so every later coin merge failed with `EILSEQ`. It had been
+  failing since `b839cadbd`.
+- `make test-db` now also runs the four legs that link the player loader:
+  `run_player_load_repository_mysql.sh`, `run_currency_transaction_schema_mysql.sh`,
+  `run_experience_trophy_mysql.sh` and `run_output_preferences_mysql.sh`.
+- Tests: `tests/async/player_load_filter_mysql_harness.cpp` (in `run_player_save_claim_mysql.sh`:
+  the giver's stale sword row is skipped and logged after the taker's save claims it, a quarantined
+  own row and an unrecorded row still load, and the giver's next save clears the stale row), the
+  flat-file leg in `flatfile_player_save_claim_harness.cpp`, the hold in
+  `test_player_load_pipeline.py`'s linked harness, the contracts in `test_player_save_claim.py`,
+  and rewrites of `player_load_repository_mysql_harness.cpp`, `test_player_load_items.py`,
+  `test_player_load_topology.py`, `test_death_item_custody_contract.py`,
+  `test_character_persistence_gap.py` and `test_locker_receipt_recovery.py`.
+- Journey rewrite: `test_flatfile_combat_journey.py`'s payload-gap death (a ghost ownership record
+  under a held item, then a death that had to take the disposition route) became
+  `ghost_ownership_record()`: the character loads, the record is only counted, and it saves and
+  camps out normally. The restart check now expects the inventory to survive re-entry. (Its printed
+  ~13 s is the camp timer: `quit` camps mortals, `RENT_CAMPED`.) `test_account_character_delete_runtime.py`
+  drives the asynchronous delete load.
+- **Interim race until steps 5 and 6 land:** a player save queued before a death can land after the
+  old durable corpse batch and claim the items back from the corpse, so a corpse loot is then
+  refused with "ownership records disagree". It made `test_flatfile_combat_journey.py` fail once at
+  `recover_player_corpse` (passed on rerun). Steps 2 to 6 must ship together.
+- Environment limitation: `run_player_load_repository_spellbook_mysql.sh` needs the
+  `duris-issue-213-tools` Docker image, which is not available here; its link line was updated but
+  it was not run.
+- Open: `test_flatfile_full_world_boot.py` aborted once in nine runs (SIGABRT at the first
+  connection, before character creation). It did not reproduce; if it recurs, run it under gdb.

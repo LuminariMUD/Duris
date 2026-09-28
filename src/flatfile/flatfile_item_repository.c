@@ -1033,6 +1033,33 @@ flatfile_item_repository_result flatfile_item_repository_load_owner_locked(
 	return flatfile_item_repository_result::ok;
 }
 
+flatfile_item_repository_result flatfile_item_repository_load_uids_locked(
+	const std::string &root, const flatfile_authority_lock &lock,
+	const std::vector<uint64_t> &uids, std::vector<flatfile_item_ownership_record> *records,
+	std::string *error)
+{
+	if (!lock.matches(root) || !records)
+		return flatfile_item_repository_result::invalid;
+	ownership_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	records->clear();
+	if (loaded == flatfile_item_repository_result::not_found)
+		return flatfile_item_repository_result::ok;
+	if (loaded != flatfile_item_repository_result::ok)
+		return loaded;
+	try
+	{
+		for (uint64_t uid : uids)
+			if (const auto *item = find_item(&catalog, uid); item)
+				records->push_back(*item);
+	}
+	catch (const std::bad_alloc &)
+	{
+		return flatfile_item_repository_result::io_error;
+	}
+	return flatfile_item_repository_result::ok;
+}
+
 // The caller selects ITEM_MONEY identities from the original snapshot. Include
 // their tombstones even though consumed records no longer have a coin payload.
 flatfile_item_repository_result flatfile_item_repository_load_coins_locked(

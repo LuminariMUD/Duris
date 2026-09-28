@@ -2531,25 +2531,6 @@ void reconnect(P_desc d, P_char tmp_ch)
 	send_offline_messages(d->character);
 }
 
-static bool legacy_load_outcome_needs_sync_retry(player_load_outcome outcome)
-{
-	return outcome == player_load_outcome::retryable_failure ||
-	       outcome == player_load_outcome::timed_out ||
-	       outcome == player_load_outcome::cancelled || outcome == player_load_outcome::stale;
-}
-
-static bool execute_legacy_load_sync(P_desc d, player_load_result *result_out)
-{
-	if (!d || !d->character || GET_PID(d->character) <= 0 || !GET_NAME(d->character))
-		return false;
-	player_load_request request = {};
-	request.request_id = player_load_pipeline_next_request_id();
-	request.pid = GET_PID(d->character);
-	request.player_name = GET_NAME(d->character);
-	request.deadline_usec = persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
-	return player_load_pipeline_execute_sync(request, result_out);
-}
-
 static void finish_legacy_player_login(P_desc d)
 {
 	char buf[MAX_STRING_LENGTH];
@@ -2626,15 +2607,7 @@ void nanny_player_load_complete(P_desc d, player_load_result result)
 	}
 	d->player_load_request_id = 0;
 	d->player_load_pid = 0;
-	if (legacy_load_outcome_needs_sync_retry(result.outcome))
-	{
-		player_load_result retry = {};
-		if (execute_legacy_load_sync(d, &retry))
-			result = std::move(retry);
-	}
-	if ((result.outcome != player_load_outcome::applied &&
-	     result.outcome != player_load_outcome::degraded) ||
-	    result.pid <= 0)
+	if (result.outcome != player_load_outcome::applied || result.pid <= 0)
 	{
 		d->player_load_mode = PLAYER_LOAD_MODE_NONE;
 		SEND_TO_Q(
@@ -2648,14 +2621,6 @@ void nanny_player_load_complete(P_desc d, player_load_result result)
 		STATE(d) = CON_NAME;
 		return;
 	}
-	if (!player_save_pipeline_save_admitted(result.pid))
-	{
-		result.outcome = player_load_outcome::degraded;
-		result.degraded_components |= PLAYER_LOAD_DEGRADED_RECOVERY;
-		if (!result.failed_component)
-			result.failed_component = "recovery";
-	}
-
 	char password[sizeof(d->character->only.pc->pwd)] = {};
 	strlcpy(password, d->character->only.pc->pwd, sizeof(password));
 	P_char loaded = (P_char)mm_get(dead_mob_pool);
@@ -2787,20 +2752,11 @@ void select_pwd(P_desc d, char *arg)
 			if (player_load_pipeline_submit(request) !=
 			    player_load_submit_outcome::accepted)
 			{
-				player_load_result blocking = {};
-				if (!player_load_pipeline_execute_sync(request, &blocking))
-				{
-					d->player_load_pid = 0;
-					SEND_TO_Q(
-						"Player loading is temporarily unavailable. Please try again.\r\n",
-						d);
-					STATE(d) = CON_FLUSH;
-					return;
-				}
-				d->player_load_request_id = request.request_id;
-				d->player_load_mode = PLAYER_LOAD_MODE_LEGACY;
-				STATE(d) = CON_PLAYER_LOAD;
-				nanny_player_load_complete(d, std::move(blocking));
+				d->player_load_pid = 0;
+				SEND_TO_Q(
+					"Player loading is temporarily unavailable. Please try again.\r\n",
+					d);
+				STATE(d) = CON_FLUSH;
 				return;
 			}
 			d->player_load_request_id = request.request_id;

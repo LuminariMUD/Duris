@@ -27,7 +27,7 @@ SQL = ['src/item/item_transfer_command.c', 'src/item/item_transfer_repository.c'
        'src/economy/collector_policy.c', 'src/economy/collector_repository.c',
        'src/persistence/corpse_lifecycle_command.c',
        'src/persistence/corpse_lifecycle_repository.c',
-       'src/player/player_snapshot_codec.c', 'src/player/player_load_repository.c',
+       'src/player/player_snapshot_codec.c', 'src/player/player_load_repository.c', 'src/persistence/dupe_log.c',
        'src/player/player_load_topology.c', 'src/persistence/persistence_observability.c',
        'src/persistence/economic_accounting_repository.c','src/persistence/economic_sql_bank_transaction.c','src/economy/economic_currency_adapter.c','src/economy/economic_accounting_types.c','src/economy/economic_accounting_plan.c','src/economy/economic_accounting_intent.c','src/persistence/critical_command_repository.c']
 

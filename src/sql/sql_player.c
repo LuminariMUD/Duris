@@ -1350,14 +1350,6 @@ bool sql_save_player(P_char ch, int type, int room)
 		logit(LOG_DEBUG, "sql_save_player: invalid char or npc");
 		return false;
 	}
-	if (IS_SET(ch->runtime_flags, CHAR_RFLAG_LOAD_DEGRADED))
-	{
-		logit(LOG_DEBUG,
-		      "sql_save_player: deferred degraded player save pid=%d components=0x%x",
-		      GET_PID(ch), ch->only.pc->load_degraded_components);
-		return true;
-	}
-
 	if (!DB)
 	{
 		logit(LOG_DEBUG, "sql_save_player: db not initialized");
@@ -6313,6 +6305,22 @@ static P_obj sql_load_locker_items(int locker_id, int public_chest_id, int conta
 
 #define MAX_CONTAINER_LOAD_DEPTH 64
 
+// Append a loaded object chain to the end of a list being built.
+static void append_loaded_objects(P_obj *first, P_obj *last, P_obj chain)
+{
+	while (chain)
+	{
+		P_obj next = chain->next_content;
+		if (!*first)
+			*first = chain;
+		else
+			(*last)->next_content = chain;
+		*last = chain;
+		chain->next_content = NULL;
+		chain = next;
+	}
+}
+
 static P_obj sql_load_locker_items_filtered(int locker_id, int container_id, int chest_id,
 					    int depth)
 {
@@ -6459,10 +6467,13 @@ static P_obj sql_load_locker_items_filtered(int locker_id, int container_id, int
 				    static_cast<unsigned long long>(chest_id),
 				    "sql_load_locker_items"))
 			{
-				logit(LOG_DEBUG,
-				      "sql_load_locker_items_filtered: component=ownership "
-				      "outcome=mismatch");
+				// A stale copy another owner holds is left out, and what it
+				// contains moves up a level.
 				extract_obj(obj, FALSE);
+				append_loaded_objects(
+					&first_obj, &last_obj,
+					sql_load_locker_items_filtered(locker_id, item_id, chest_id,
+								       depth + 1));
 				continue;
 			}
 		}
@@ -7260,7 +7271,18 @@ void sql_load_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)
 			    static_cast<unsigned long long>(chest_id),
 			    "sql_load_private_chest_items"))
 		{
+			// A stale copy another owner holds is left out; what it contains
+			// goes into the chest.
 			extract_obj(obj, FALSE);
+			for (P_obj orphan = sql_load_locker_items_filtered(locker_id, item_id,
+									   chest_id, 1);
+			     orphan;)
+			{
+				P_obj next = orphan->next_content;
+				orphan->next_content = NULL;
+				obj_to_obj(orphan, chest_obj);
+				orphan = next;
+			}
 			continue;
 		}
 
@@ -8423,12 +8445,13 @@ bool sql_load_all_corpses(void)
 				}
 #undef HASH_SIZE
 
-				// build top-level list
+				// build top-level list; an item whose container was skipped
+				// or cannot hold it lies loose in the corpse
 				P_obj first = NULL;
 				P_obj last_obj = NULL;
 				for (int i = 0; i < num_objs; i++)
 				{
-					if (container_map[i] == 0)
+					if (container_map[i] != -1)
 					{
 						if (!first)
 							first = obj_map[i];
@@ -8715,11 +8738,12 @@ bool sql_load_all_corpses(void)
 		}
 #undef HASH_SIZE
 
+		// An item whose container was skipped or cannot hold it lies loose in the corpse.
 		P_obj first = NULL;
 		P_obj last_obj = NULL;
 		for (int i = 0; i < num_objs; i++)
 		{
-			if (container_map[i] == 0)
+			if (container_map[i] != -1)
 			{
 				if (!first)
 					first = obj_map[i];
@@ -10271,8 +10295,13 @@ static P_obj sql_load_saved_item_contents(const char *item_key, int room_vnum, i
 		if (!sql_persistence_item_owner_matches(obj->obj_uid, "room", owner_ref,
 							"sql_load_saved_item_contents"))
 		{
-			*valid = false;
+			// A stale copy another owner holds is left out, and what it contains
+			// moves up a level; the rest of the container still loads.
 			extract_obj(obj, FALSE);
+			append_loaded_objects(&first_obj, &last_obj,
+					      sql_load_saved_item_contents(item_key, room_vnum,
+									   item_id, depth + 1,
+									   source_ids, valid));
 			continue;
 		}
 		obj->db_item_id = item_id;

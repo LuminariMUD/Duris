@@ -44,8 +44,35 @@ per save that changes them. There is no revision fence: with one writer, every s
 newer than the last one for that owner. A character with no `player_data` row yet gets
 one. Only the one-time replay of an older server's journal keeps the fence.
 
-`logs/log/dupes` has one line per item a save left out, naming the item, its vnum,
-the owner that lost it and the owner that has it.
+`logs/log/dupes` has one line per item a save left out or a load skipped, naming the
+item, its vnum, the owner that lost it and the owner that has it.
+
+## What a load reads
+
+A load takes an item row only if `item_current_owner` has no row for that uid or names
+the loading owner, whatever the row's state. A row naming anyone else makes the item a
+stale or duplicate copy: it is skipped, logged to `logs/log/dupes` as `load_skipped`,
+and the owner's next save no longer writes it. What a skipped container holds moves up
+a level (to the top of the inventory, the corpse, the locker chest or the room item), so
+one stale row never takes the rest of the graph with it. A root that disagrees with the
+graph is corrected, not refused. The same rule applies to player and pet items
+(`player_load_repository.c`; flat-file: `flatfile_player_repository.c`), and to corpses,
+lockers and saved room items through `sql_persistence_item_owner_matches_identity()`.
+The flat-file corpse and room loaders still use their own reconciliation until those
+owners are saved through the writer.
+
+A load always succeeds with the rows that pass the filter; there is no degraded
+admission, no stale-row refusal threshold and no read-only quarantine. Logins never
+block the game loop: the account menu submits the load and the descriptor waits in
+`CON_PLAYER_LOAD` until the load worker answers. If the worker refuses the request, the
+player is asked to try again. Copyover restore, which runs before the game loop starts,
+is the only caller that still waits for a load.
+
+A character is not loaded while it still has a save queued on the writer, or while a
+staff target fence holds it (`player_save_pipeline_load_held()`): the load worker moves
+it to the back of its queue and loads the others meanwhile, so a quick relog always reads
+the latest state. A held load that reaches its deadline is answered `timed_out`. A locker
+cannot be reopened while its save slot is dirty or in flight.
 
 ## Configuration And Health
 

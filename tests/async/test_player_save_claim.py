@@ -50,6 +50,7 @@ with tempfile.TemporaryDirectory(prefix="flat-claim-test-", dir=ROOT / "bin/test
     subprocess.run([str(binary), str(work / "root")], check=True, timeout=120)
 print("[PASS] flat-file saves claim what the player and its pets hold, in one transaction")
 print("[PASS] the auction keeps what it holds; the dupe and claim logs name each item")
+print("[PASS] a flat-file load skips what another owner holds and logs it")
 
 # One claim helper for every item graph; the custody checks that refused saves are gone.
 for retired in ("verify_player_item_custody", "verify_player_death_item_payload",
@@ -85,6 +86,38 @@ capture_tree = CAPTURE[CAPTURE.index("capture_item_tree("):]
 assert "active_durable_custody" in capture_tree and "durable_norent_included" in capture_tree
 print("[PASS] item graphs are saved whole, and a failed save is not recaptured in a loop")
 
+LOAD_REPOSITORY = (SRC / "player_load_repository.c").read_text()
+SQL = (SRC / "sql.c").read_text()
+# Loads take a row only when the ownership table has no row for it or names the
+# loading owner; any other owner's row is skipped and logged, in every loader.
+assert 'dupe_log_item("load_skipped"' in LOAD_REPOSITORY
+assert 'dupe_log_item("load_skipped"' in FLAT_PLAYER
+assert 'dupe_log_item("load_skipped", item_uid, entry.vnum, expected, entry.owner)' in SQL
+RUNNER = (ROOT / "tests/async/run_player_save_claim_mysql.sh").read_text()
+assert "player_load_filter_mysql_harness" in RUNNER
+# A skipped container never takes the rest of the graph with it: in the corpse,
+# locker and saved-item loaders what it contains moves up a level.
+SQL_PLAYER = (SRC / "sql_player.c").read_text()
+assert SQL_PLAYER.count("if (container_map[i] != -1)") == 2
+assert "if (container_map[i] == 0)\n\t\t\t{" not in SQL_PLAYER
+locker = SQL_PLAYER[SQL_PLAYER.index("static P_obj sql_load_locker_items_filtered("):]
+locker = locker[: locker.index("\n}\n")]
+assert "&first_obj, &last_obj,\n\t\t\t\t\tsql_load_locker_items_filtered(" in locker
+room = SQL_PLAYER[SQL_PLAYER.index("static P_obj sql_load_saved_item_contents("):]
+room = room[: room.index("\n}\n")]
+assert "append_loaded_objects(&first_obj, &last_obj,\n" in room
+owner_check = room[room.index("sql_persistence_item_owner_matches(obj->obj_uid"):]
+assert "*valid = false" not in owner_check[: owner_check.index("continue;")]
+chest = SQL_PLAYER[SQL_PLAYER.index("void sql_load_private_chest_items(int locker_id"):]
+chest = chest[: chest.index("\n}\n")]
+assert "obj_to_obj(orphan, chest_obj)" in chest
+print("[PASS] player, pet, corpse, locker and saved-item loads use the same filter")
+
 assert "tests/async/run_player_save_claim_mysql.sh" in MAKEFILE
-print("[PASS] the MariaDB claim leg runs under make test-db")
+# Every leg that links the player loader runs there too, so a loader change
+# cannot leave one of them unbuildable again.
+for leg in ("run_player_load_repository_mysql.sh", "run_currency_transaction_schema_mysql.sh",
+            "run_experience_trophy_mysql.sh", "run_output_preferences_mysql.sh"):
+    assert "tests/async/" + leg in MAKEFILE, leg
+print("[PASS] the MariaDB claim and loader legs run under make test-db")
 print("player save claim contracts passed")

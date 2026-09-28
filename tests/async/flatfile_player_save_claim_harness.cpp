@@ -241,10 +241,41 @@ int main(int argc, char **argv)
 	uint64_t newcomer_revision = 0;
 	std::vector<flatfile_item_ownership_record> newcomer_items;
 	require(flatfile_item_repository_load_owner(root, { item_owner_type::player, 41, 0 },
-						    &newcomer_revision, &newcomer_items,
-						    &error) == flatfile_item_repository_result::ok &&
+						    &newcomer_revision, &newcomer_items, &error) ==
+				flatfile_item_repository_result::ok &&
 			newcomer_revision == 1 && newcomer_items.empty(),
 		"a new player without items has no owner record");
+	// A load takes only what the catalog gives the player. The newcomer's save claims
+	// the corpse's old item; the player's file still lists it, and its next load
+	// leaves it behind and logs it.
+	player_snapshot player_save = snapshot_for(3);
+	player_save.items = { item(1001, 501, PLAYER_SNAPSHOT_NO_PARENT),
+			      item(1004, 504, PLAYER_SNAPSHOT_NO_PARENT) };
+	require(flatfile_player_snapshot_apply(root, player_save, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"player save before the hand-over: " + error);
+	player_snapshot newcomer_save = snapshot_for(2, 41, "Newcomer");
+	newcomer_save.items = { item(1001, 501, PLAYER_SNAPSHOT_NO_PARENT) };
+	require(flatfile_player_snapshot_apply(root, newcomer_save, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"newcomer save: " + error);
+	player_load_request request = {};
+	request.request_id = 1;
+	request.pid = 42;
+	request.account_name = "Account-One";
+	request.include_items = true;
+	request.include_pets = true;
+	const player_load_result loaded = flatfile_player_load_repository_execute(root, request);
+	require(loaded.outcome == player_load_outcome::applied,
+		"the player's load must succeed: component=" +
+			std::string(loaded.failed_component ? loaded.failed_component : "none"));
+	require(loaded.snapshot.items.size() == 1 && loaded.snapshot.items[0].object_uid == 1004 &&
+			loaded.stale_item_rows == 1,
+		"the player loads what it still holds and skips what the newcomer took");
+	require(text_of(path / "logs/log/dupes")
+				.find("load_skipped uid=1001 vnum=501 lost_by=player:42:0 "
+				      "held_by=player:41:0") != std::string::npos,
+		"the dupe log names the skipped item");
 	std::cout << "flat-file player save claim passed\n";
 	return 0;
 }

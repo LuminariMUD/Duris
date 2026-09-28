@@ -24,6 +24,7 @@
 #include "persistence/persistence_mode.h"
 #include "core/utils.h"
 #include "sql/sql.h"
+#include "persistence/dupe_log.h"
 #include "sql/sql_telemetry_connection.h"
 #include "sql/sql_exclusion_guard.h"
 #include "item/item_ownership_runtime.h"
@@ -2265,14 +2266,6 @@ int sql_save_player_core(P_char ch)
 	char assoc_name[MAX_STRING_LENGTH];
 	char assoc_name_sql[MAX_STRING_LENGTH * 2 + 1];
 	struct char_player_data *p;
-	if (ch && IS_PC(ch) && IS_SET(ch->runtime_flags, CHAR_RFLAG_LOAD_DEGRADED))
-	{
-		logit(LOG_DEBUG,
-		      "sql_save_player_core: deferred degraded player save pid=%d components=0x%x",
-		      GET_PID(ch), ch->only.pc->load_degraded_components);
-		return 1;
-	}
-
 	if (IS_MORPH(ch))
 		ch = MORPH_ORIG(ch);
 	p = &ch->player;
@@ -5676,6 +5669,13 @@ bool sql_persistence_write_large_event_line(const char *line)
 	return sql_persistence_execute_raw(line);
 }
 
+/*
+ * A load takes an item when item_current_owner has no row for it or names the
+ * loading owner, whatever the row's state. A row naming anyone else makes this a
+ * stale or duplicate copy: it is skipped and logged to logs/log/dupes, and the
+ * owner's next save removes it. A failed lookup keeps the item: losing it would
+ * be worse than a copy the next claim settles.
+ */
 bool sql_persistence_item_owner_matches_identity(unsigned long long item_uid,
 						 const char *owner_type,
 						 unsigned long long expected_id,
@@ -5707,27 +5707,29 @@ bool sql_persistence_item_owner_matches_identity(unsigned long long item_uid,
 		return false;
 	if (!expected_id)
 		return false;
+	const item_owner_identity expected = { expected_type, expected_id, expected_context_id };
 	char query[512];
 	snprintf(
 		query, sizeof(query),
 		"SELECT current_item.root_item_uid,COALESCE(current_item.parent_item_uid,0),"
 		"current_item.owner_type,current_item.owner_id,current_item.owner_context_id,"
 		"current_item.item_revision,current_item.vnum,current_item.state,owner.revision "
-		"FROM item_current_owner current_item JOIN item_owner_revision owner ON "
+		"FROM item_current_owner current_item LEFT JOIN item_owner_revision owner ON "
 		"owner.owner_type=current_item.owner_type AND owner.owner_id=current_item.owner_id "
 		"AND owner.owner_context_id=current_item.owner_context_id WHERE current_item.item_uid=%llu",
 		item_uid);
 	MYSQL_RES *result = db_query("%s", query);
 	if (!result)
-		return false;
+	{
+		logit(LOG_FILE, "sql_persistence: owner lookup failed item_uid=%llu context=%s",
+		      item_uid, context);
+		return true;
+	}
 	MYSQL_ROW row = mysql_fetch_row(result);
 	if (!row)
 	{
 		mysql_free_result(result);
-		logit(LOG_FILE,
-		      "sql_persistence: authoritative owner missing item_uid=%llu context=%s",
-		      item_uid, context);
-		return false;
+		return true;
 	}
 	item_ownership_runtime_entry entry = {
 		.item_uid = item_uid,
@@ -5736,28 +5738,22 @@ bool sql_persistence_item_owner_matches_identity(unsigned long long item_uid,
 		.owner = { static_cast<item_owner_type>(strtoul(row[2], NULL, 10)),
 			   strtoull(row[3], NULL, 10), strtoull(row[4], NULL, 10) },
 		.item_revision = strtoull(row[5], NULL, 10),
-		.owner_revision = strtoull(row[8], NULL, 10),
+		.owner_revision = row[8] ? strtoull(row[8], NULL, 10) : 0,
 		.vnum = static_cast<int32_t>(strtol(row[6], NULL, 10)),
 		.state = static_cast<item_custody_state>(strtoul(row[7], NULL, 10)),
 	};
-	const bool matches = entry.owner.type == expected_type && entry.owner.id == expected_id &&
-			     entry.owner.context_id == expected_context_id &&
-			     entry.state == item_custody_state::active;
-	if (!matches)
+	const bool revision_known = row[8] != NULL;
+	mysql_free_result(result);
+	if (!item_owner_identity_equal(entry.owner, expected))
 	{
-		logit(LOG_DEBUG,
-		      "sql_persistence: OWNERSHIP MISMATCH item_uid=%llu "
-		      "expected=%u:%llu:%llu actual=%u:%llu:%llu context=%s",
-		      item_uid, static_cast<unsigned int>(expected_type), expected_id,
-		      expected_context_id, static_cast<unsigned int>(entry.owner.type),
-		      (unsigned long long)entry.owner.id,
-		      (unsigned long long)entry.owner.context_id, context);
-		mysql_free_result(result);
+		dupe_log_item("load_skipped", item_uid, entry.vnum, expected, entry.owner);
 		return false;
 	}
-	const bool hydrated = item_ownership_runtime_hydrate(entry);
-	mysql_free_result(result);
-	return hydrated;
+	// The in-memory ownership catalog still serves item commands that have not moved
+	// to memory yet; it only takes an active row.
+	if (entry.state == item_custody_state::active && revision_known)
+		item_ownership_runtime_hydrate(entry);
+	return true;
 }
 
 bool sql_persistence_item_owner_matches(unsigned long long item_uid, const char *owner_type,

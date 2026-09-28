@@ -1175,8 +1175,7 @@ static P_char copyover_load_player(const char *name, P_desc d)
 	const bool worker_loaded =
 		player_load_pipeline_wait(request, &result, PLAYER_LOAD_TIMEOUT_USEC / 1000);
 	if (!worker_loaded || result.request_id != request.request_id ||
-	    (result.outcome != player_load_outcome::applied &&
-	     result.outcome != player_load_outcome::degraded))
+	    result.outcome != player_load_outcome::applied)
 	{
 		player_load_result retry = {};
 		if (!player_load_pipeline_execute_sync(request, &retry) ||

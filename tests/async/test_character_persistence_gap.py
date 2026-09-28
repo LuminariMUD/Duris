@@ -259,8 +259,9 @@ require(
     "the SESSION03 item graph failure must be logged",
 )
 require(
-    LOAD_MATERIALIZE.count("component=ownership") == 3,
-    "all three ownership hydration failures must be logged",
+    LOAD_MATERIALIZE.count("component=ownership") == 1
+    and "outcome=hydrate_skipped" in LOAD_MATERIALIZE,
+    "a skipped in-memory ownership hydration must be logged",
 )
 
 # Full loads reconstruct coin payloads with one owner-scoped query, outside the
