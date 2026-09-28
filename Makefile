@@ -186,6 +186,7 @@ test-db:
 	tests/async/run_currency_transaction_schema_mysql.sh
 	tests/async/run_experience_trophy_mysql.sh
 	tests/async/run_output_preferences_mysql.sh
+	tests/async/run_item_transfer_schema_mysql.sh
 
 clean:
 	+$(MAKE) -C src clean

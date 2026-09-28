@@ -1,4 +1,5 @@
 #include "economy/collector_repository.h"
+#include "item/item_claim.h"
 
 #include "economy/collector_custody_boundary.h"
 #include "economy/collector_eligibility.h"
@@ -2198,6 +2199,12 @@ bool collector_repository_execute(MYSQL *connection, const critical_command &com
 			return false;
 		result->from_owner_revision = from_revision;
 		result->to_owner_revision = to_revision;
+		// Memory is the authority for the player buying and for the room or corpse
+		// an antiquity is collected from: saves move their revisions.
+		if (item_claim_owner_is_memory_held(payload.from_owner.type))
+			payload.expected_from_owner_revision = from_revision;
+		if (item_claim_owner_is_memory_held(payload.to_owner.type))
+			payload.expected_to_owner_revision = to_revision;
 		if (from_revision != payload.expected_from_owner_revision ||
 		    to_revision != payload.expected_to_owner_revision)
 		{

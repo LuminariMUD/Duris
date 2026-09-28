@@ -50,6 +50,7 @@
 #include "persistence/corpse_lifecycle_transaction.h"
 #include "item/item_transfer_command.h"
 #include "item/item_transfer_repository.h"
+#include "item/item_claim_repository.h"
 
 // external tables
 extern P_index obj_index;
@@ -6298,7 +6299,24 @@ bool sql_save_locker(P_char locker_ch, int owner_pid, int owner_assoc_id)
 		return false;
 	}
 
-	return sql_save_locker_items(locker_ch, locker_id, public_chest_id, own_txn);
+	// The locker holds these in memory, so its save claims them.
+	const item_owner_identity chest = { item_owner_type::locker,
+					    static_cast<uint64_t>(locker_id),
+					    static_cast<uint64_t>(public_chest_id) };
+	std::vector<player_item_snapshot> held;
+	item_claim_outcome claim;
+	if (player_item_snapshot_list_capture(locker_ch, false, true, false, &held, nullptr) !=
+		    player_snapshot_capture_result::ok ||
+	    claim_items(DB, chest, held, &claim) != 0)
+	{
+		logit(LOG_DEBUG, "sql_save_locker: component=claim outcome=failure");
+		sql_rollback();
+		return false;
+	}
+	const bool saved = sql_save_locker_items(locker_ch, locker_id, public_chest_id, own_txn);
+	if (saved)
+		item_claim_log_dupes("save_left_out", chest, claim);
+	return saved;
 }
 
 static P_obj sql_load_locker_items(int locker_id, int public_chest_id, int container_id);
@@ -7158,6 +7176,22 @@ bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)
 		return false;
 	}
 
+	// The chest holds these in memory, so its save claims them.
+	const item_owner_identity chest = { item_owner_type::locker,
+					    static_cast<uint64_t>(locker_id),
+					    static_cast<uint64_t>(chest_id) };
+	std::vector<player_item_snapshot> held;
+	item_claim_outcome claim;
+	if (player_item_snapshot_contents_capture(chest_obj, &held) !=
+		    player_snapshot_capture_result::ok ||
+	    claim_items(DB, chest, held, &claim) != 0)
+	{
+		logit(LOG_DEBUG, "sql_save_private_chest_items: component=claim outcome=failure");
+		if (own_txn)
+			sql_rollback();
+		return false;
+	}
+
 	// save all items in the chest - any failure rolls back the DELETE above
 	for (P_obj obj = chest_obj->contains; obj; obj = obj->next_content)
 	{
@@ -7178,7 +7212,7 @@ bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)
 		sql_rollback();
 		return false;
 	}
-
+	item_claim_log_dupes("save_left_out", chest, claim);
 	return true;
 }
 

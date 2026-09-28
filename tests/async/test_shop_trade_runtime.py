@@ -20,7 +20,10 @@ for token in (
     "ITEM_TRANSFER_ABSENT_REVISION",
     "item_ownership_runtime_lookup(stock->obj_uid",
     "item_ownership_runtime_lookup(destination->obj_uid",
-    "built.target_parent_item_uid = target.item_uid",
+    "built.target_parent_item_uid = destination->obj_uid",
+    # A sale or a purchase into a bag starts from what the player holds in memory.
+    "const bool player_held = !creates && !shop_owned(action);",
+    "!OBJ_CARRIED_BY(destination, player)",
     "action == shop_trade_action::discard_invalid",
     "shop_owned(action) ? shop_owner : player_owner",
     "shop_trade_command_encode_payload(built",

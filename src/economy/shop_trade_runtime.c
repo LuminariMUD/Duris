@@ -144,18 +144,23 @@ shop_trade_runtime_build_payload(P_char player, P_obj selected, P_obj stock, P_o
 				snapshots[static_cast<size_t>(snapshot.parent_index)].object_uid;
 		item_ownership_runtime_entry runtime = {};
 		const bool adopted = item_ownership_runtime_lookup(snapshot.object_uid, &runtime);
+		// What the player sells is what it holds in memory; the trade claims it. Only
+		// the shop's own stock is checked against the ownership record.
+		const bool player_held = !creates && !shop_owned(action);
 		if ((creates && adopted) ||
-		    (!creates &&
+		    (!creates && !player_held &&
 		     (!adopted || !item_owner_identity_equal(runtime.owner, expected_owner) ||
 		      runtime.root_item_uid != selected->obj_uid ||
 		      runtime.parent_item_uid != parent_uid || runtime.vnum != snapshot.vnum ||
 		      runtime.state != item_custody_state::active)))
 			return shop_trade_payload_build_result::unavailable;
+		const uint64_t known_revision =
+			adopted && runtime.item_revision ? runtime.item_revision : 1;
 		built.items[index] = {
 			snapshot.object_uid,
 			selected->obj_uid,
 			parent_uid,
-			creates ? ITEM_TRANSFER_ABSENT_REVISION : runtime.item_revision,
+			creates ? ITEM_TRANSFER_ABSENT_REVISION : known_revision,
 			snapshot.vnum,
 			creates ? item_custody_state::absent : item_custody_state::active,
 		};
@@ -179,17 +184,17 @@ shop_trade_runtime_build_payload(P_char player, P_obj selected, P_obj stock, P_o
 		built.stock_vnum = exemplar.vnum;
 		if (destination)
 		{
+			// The bag the purchase goes into is the one the player carries.
 			item_ownership_runtime_entry target = {};
 			if (!destination->obj_uid || destination->obj_uid == selected->obj_uid ||
-			    !item_ownership_runtime_lookup(destination->obj_uid, &target) ||
-			    !item_owner_identity_equal(target.owner, player_owner) ||
-			    target.root_item_uid != target.item_uid || target.parent_item_uid ||
-			    target.state != item_custody_state::active ||
-			    target.vnum != OBJ_VNUM(destination))
+			    !OBJ_CARRIED_BY(destination, player))
 				return shop_trade_payload_build_result::unavailable;
-			built.target_root_item_uid = target.root_item_uid;
-			built.target_parent_item_uid = target.item_uid;
-			built.expected_target_parent_revision = target.item_revision;
+			const bool known =
+				item_ownership_runtime_lookup(destination->obj_uid, &target);
+			built.target_root_item_uid = destination->obj_uid;
+			built.target_parent_item_uid = destination->obj_uid;
+			built.expected_target_parent_revision =
+				known && target.item_revision ? target.item_revision : 1;
 		}
 	}
 	else if (action == shop_trade_action::buy_existing ||

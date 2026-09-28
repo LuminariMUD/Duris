@@ -363,7 +363,8 @@ Build and test commands used throughout:
 - **Coins:** a money object (`ITEM_MONEY`) with an existing row is never claimed or revived; the
   currency transactions own coin custody until Phase 2. Without this, a save captured just before
   a coin pickup committed revived a destroyed pile (`test_flatfile_player_repository.py`'s coin
-  matrix caught it). A pile with no row gets one.
+  matrix caught it). A pile with no row gets one. Step 4 narrowed this to spent piles only: a live
+  pile moves in memory now, so a save claims it like any item.
 - Owner revisions: each owner whose holdings changed (the claimer, and every owner that lost an
   item) gets its revision bumped once per save; the claimer's row is created if missing.
 - No revision fence and no missing-row failure: `apply_snapshot()` inserts a minimal
@@ -481,3 +482,142 @@ Build and test commands used throughout:
   it was not run.
 - Open: `test_flatfile_full_world_boot.py` aborted once in nine runs (SIGABRT at the first
   connection, before character creation). It did not reproduce; if it recurs, run it under gdb.
+
+### Step 4: items move in memory (done)
+
+Kept to the step 4 list after a plan-ablation pass: anything that did not stop a real failure was
+taken back out (see "Removed in the ablation" below).
+
+- `obj_to_char()` lost its ownership gate. It refused to publish any item the runtime ownership
+  catalog did not give the player, and routed a fresh object through a creation grant. The object is
+  placed, and the next save records it (the claim inserts a missing row).
+  `OBJ_RFLAG_CREATION_CANDIDATE` is still set by `db.c` but nothing reads it; Phase 3 deletes it.
+- `item_command_uses_durable_ownership()` returns false, so get, drop, give, put, empty and their
+  bulk forms take the in-memory branches that already existed next to the durable ones. Those
+  branches carry the game rules (NOLOOT, NODROP, weight, cursed). The durable branches in
+  `actobj.c` stay as dead code until Phase 3 deletes them with `item_movement_transaction.c`.
+  `get` from a uid-less container no longer refuses ("lacks authoritative ownership").
+- The other callers move the object directly; their durable submissions and publication callbacks
+  are deleted: slip (`rogues.c`), steal from a player (`steal_player_item()`/`steal_from_player()` in
+  `actoth.c`), soulbind to another player (`give_soulbind_item()` in `magic.c`, which also clears a
+  replaced soulbind), key break (`actmove.c`), wizard `load` and the `storage` command (`actwiz.c`;
+  the flat-file branches are gone, both backends now use the in-memory path), the Chaos pouch
+  (`collect_into_pouch()`), and the forced weapon drop (`forced_weapon_drop_result` is now only
+  `rejected` or `dropped`).
+- Crafts: `item_movement_transaction_submit_craft()` retires the inputs and gives the outputs in
+  memory, then calls the completion with `committed=true` before returning. The five callers in
+  `salchemist.c` and `drannak.c` are unchanged. Phase 3 can inline it.
+- `item_get_source_owner()` (coin gets) resolves the source from the live placement: a room, a
+  player, a PC corpse, or a locker chest (`locker_owner_for_room()`/`_for_container()`).
+- **Decision: creation grants stay durable in Phase 1.** They are asynchronous (the loop never waits
+  on them), they only create new uids, and they are not in the step 4 list.
+- The economy still moves items through its own transactions until Phase 2, so what memory says a
+  player, room, corpse, locker or pet holds is what those transactions take
+  (`item_claim_owner_is_memory_held()`, inline in `item_claim.h`):
+  - The item transfer repository (`item_transfer_repository_execute_at_offset()`: coins, grants,
+    pet and shop transfers), the auction listing (`transition_items()`, whose custody rows then take
+    the claimed revisions) and the flat-file `apply_transfer()` and `prepare_auction_transfer()`
+    stop fencing on a memory-held owner's revision and claim the items first:
+    `claim_transfer_item()` in `item_claim_repository.c` (MariaDB) and `claim_catalog_item()` in
+    `flatfile_item_repository.c` insert a missing record, take another owner's (with an
+    `item_owner_audit` row, or a `logs/log/item_claims` line) and correct a stale placement. A
+    destroyed record is never revived and an item the economy holds is never taken; those fail with
+    `ESTALE`. A grant into a container the player holds claims the container too, and the
+    `player_items` projection writes the item loose when the container has no row yet.
+  - The collector (MariaDB, flat-file and the runtime cache's collector publication) only stops
+    fencing on a memory-held owner's revision.
+  - Game-thread prechecks take the real holder: the auction listing (no more "ownership is still
+    being synchronized") and the shop trade payload (`shop_trade_runtime.c`: a sale no longer asks
+    the cache, and a purchase into a bag needs the bag carried).
+  - The runtime ownership cache learns a committed transfer out of a memory-held owner instead of
+    refusing to publish it (`item_ownership_runtime_apply()`); it counts exactly when it was in step
+    and takes the result's revision when a claim moved it.
+- **Coin piles.** A save claims a live pile like any item; only a spent (destroyed) pile is left
+  alone (`item_claim_leaves_owner_alone(item, recorded_state)`). A login loads a pile only if the
+  character's own saved rows hold it: the MariaDB coin query requires a `player_items` row of this
+  pid, and the flat-file reconcile only mentions piles the player file lists. Before this, a pile
+  dropped or given away in memory came back at the next login from its custody row, which still
+  named the player. The cost: a pile committed after the last save is lost on a crash, which is the
+  accepted crash model ([What a crash costs](#what-a-crash-costs)).
+- **Flat-file transfer events.** Every flat-file transfer to a player leaves a materialization event
+  (`buy_existing`), and a login added back any event item the catalog still gave the player but the
+  file lacked. With drops in memory the catalog keeps naming the player, so a dropped kit came back
+  and the newbie regrant never fired. A flat-file player save that carries equipment, inventory and
+  pets now retires that player's events in the same authority transaction
+  (`flatfile_shop_trade_materialization_prepare_player_remove()`, already used by character
+  delete), the way a MariaDB save replaces the `player_items` rows a transfer wrote.
+- Lockers claim: `sql_save_private_chest_items()` and `sql_save_locker()` run `claim_items()` for
+  owner `locker(locker_id, chest_id)` in their transaction, and the async public-chest job captures
+  the chest's items (`player_item_snapshot_list_capture()`), opens the transaction itself, claims,
+  then runs its script (which no longer starts its own transaction).
+  `player_item_snapshot_contents_capture()` captures a container's contents.
+- Found while doing this: `run_item_transfer_schema_mysql.sh` ran against the `.env` database, so it
+  was never run; it now uses a disposable MariaDB server and is in `make test-db`. Its restitution
+  craft payload had not built since the #551 craft validation (it needed `multi_root` and no target
+  root).
+- **Removed in the ablation** (each had no failing requirement behind it): detaching a record's
+  stale child when its container moves (both backends), limiting the `player_items` projection to
+  the target pid's own rows, collector claims (the revision relax is enough), the flat-file shop
+  trade recording an unrecorded shopper, the shop trade publication's per-item revisions, and the
+  deletion of `OBJ_RFLAG_CREATION_CANDIDATE`.
+- **Known gaps, to close before Phase 1 ships:**
+  - Flat-file lockers and flat-file storage containers were persisted only through the durable
+    transfers. In-memory deposits and storage changes are not written on the flat-file backend until
+    step 6 adds flat-file writer jobs for saved room items, corpses and lockers (the flat-file
+    private-chest save is a stub, so flat-file lockers never had a snapshot path of their own).
+  - A floor item is not an owner that saves: an item dropped in memory is gone after a restart on
+    both backends (MariaDB never persisted floor drops either). `test_flatfile_full_world_boot.py`
+    drops the mace, saves, picks it up and checks it survives the restart with the player.
+  - The collector's scheduled collection of antiquities still prepares from the runtime cache
+    (`collector_collection_prepare()`): an antiquity moved in memory since load is not collected
+    until a reboot refreshes the cache. It is economy code for Phase 2.
+  - World recovery (`world_recovery_pipeline.c`) still skips a room item whose cached owner is not
+    the room. That is the safe side: it cannot restore a floor copy of an item its dropper's save
+    still holds.
+  - Until steps 5 and 6, a durable corpse batch can race a queued player save that claims the same
+    items back, which makes the combat journey flaky.
+  - Until step 5, a player who dies carrying an item that moved in memory keeps it: the durable
+    corpse batch still runs at death, the runtime cache never learned the in-memory move, so the
+    batch submits the item as a creation and the repository refuses it (`EEXIST`,
+    `corpse rejected_preserved`). Nothing is lost or duplicated, but the corpse is empty. The
+    player-corpse part of `run_corpse_haul_journey.py` checks this and passes once step 5 lands.
+- Found while doing this, not fixed (outside Phase 1): on the flat-file backend a character that
+  becomes trusted (level 61) is written with identity racewar `ACCT_IMMORTAL` (0, from
+  `account.c`) while its player domain keeps the racewar it was created with. The domain load then
+  reports `conflict`, which the login turns into a component failure, and the test inspector's
+  `inspect` fails. Flat-file banks are keyed by account and racewar, so the fix is a decision about
+  which bank an immortal uses. `run_npc_container_claim_journey.py` hit it through the inspector.
+- Tests: `test_items_move_in_memory.py` (contracts for all of the above), the rewritten
+  `item_transfer_mysql_harness.cpp` (stale revisions no longer fence; a stale owner's record is
+  taken with an audit row; an auction-held item and a destroyed item are refused; a grant claims its
+  container), `flatfile_item_repository_harness.cpp` (a pile missing from the player file is not
+  loaded; one it lists takes its amount from custody), and rewrites of the tests that pinned the
+  durable paths: `test_issue_524_trusted_steal_contract.py`,
+  `test_issue_549_cross_player_transfer_contract.py` (its runtime harness, which drove the deleted
+  publication callbacks, is deleted), `test_key_break_custody_contract.py`,
+  `test_forced_weapon_drop.py`, `test_get_item_source_owner.py`, `test_saved_item_flatfile_routing.py`,
+  `test_orphan_item_session_regressions.py`, `test_newbie_grant_lifecycle.py` (the scenarios that
+  routed `obj_to_char` into grants are gone), `test_item_movement_input_queue.py`,
+  `test_item_ownership_runtime.py`, `test_flatfile_item_repository.py`, `test_shop_trade_runtime.py`,
+  `test_auction_transactional_cutover.py`, `test_chaos_infinite_starting_grants.py`,
+  `test_bulk_drop_put_durable_chain.py`, `test_item_command_pipeline_contract.py`,
+  `test_live_item_movement_contract.py`, and the journeys `test_flatfile_full_world_boot.py` and
+  `test_flatfile_newbie_regrant_journey.py` (which read what the player's saved file holds). Every
+  harness that links the transfer, auction or collector repository also links
+  `item_claim_repository.c`, `item_claim.c`, `dupe_log.c` and `persistence_observability.c`.
+- Journeys rewritten for in-memory moves: `run_npc_container_claim_journey.py` no longer inspects
+  the ownership catalog after the drop (it checks the NPC takes the nested item, the container
+  empties and the server lives). `run_corpse_haul_journey.py` holds only the coin pickup now (the
+  committed coins are credited, nothing is taken from a room the actor left), then takes the banana
+  with a plain haul, and it honours `TEST_DB_PORT` so it can run on a disposable MariaDB.
+- Found while doing this, fixed in its own commit (`b1b31399b`): `run_critical_command_schema_mysql.sh`
+  stopped at the linker (restitution sources, and the outbox harness's codecs).
+- Verified: `make -C src`, the flat-file build, `./scripts/format.sh --all --check`, the tests
+  above, `run_item_transfer_schema_mysql.sh`, `run_currency_transaction_schema_mysql.sh` and
+  `run_critical_command_schema_mysql.sh` on disposable MariaDB, `test_playtime_mysql_repository.py`
+  on a disposable MariaDB, and the journeys `test_flatfile_newbie_regrant_journey.py`,
+  `test_flatfile_full_world_boot.py`, `test_flatfile_combat_journey.py`,
+  `test_account_recovery_journey.py`, `test_flatfile_auction_coin_put_journey.py`,
+  `test_pet_restart_journey.py`, `run_npc_container_claim_journey.py`,
+  `run_saved_item_recovery_journey.py` (disposable MariaDB) and the NPC-corpse part of
+  `run_corpse_haul_journey.py` (disposable MariaDB; the player-corpse part waits for step 5).

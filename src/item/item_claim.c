@@ -9,9 +9,9 @@ bool item_claim_owner_is_economy(item_owner_type type)
 	       type == item_owner_type::collector;
 }
 
-bool item_claim_leaves_owner_alone(const player_item_snapshot &item)
+bool item_claim_leaves_owner_alone(const player_item_snapshot &item, item_custody_state recorded)
 {
-	return item.type == ITEM_MONEY;
+	return item.type == ITEM_MONEY && recorded == item_custody_state::destroyed;
 }
 
 std::vector<player_item_snapshot>

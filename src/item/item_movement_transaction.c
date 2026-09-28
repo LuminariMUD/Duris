@@ -2039,9 +2039,11 @@ bool item_movement_transaction_submit_batch(
 	return true;
 }
 
+// Memory is the authority: a craft retires its inputs and gives its outputs to the
+// crafter at once, and the crafter's next save records both.
 bool item_movement_transaction_submit_craft(P_char actor, P_obj const *inputs, size_t input_count,
 					    P_obj const *outputs, size_t output_count,
-					    int64_t recipe_id,
+					    int64_t /*recipe_id*/,
 					    item_movement_completion_fn completion,
 					    const void *context, size_t context_size,
 					    item_movement_reject *reject)
@@ -2050,169 +2052,35 @@ bool item_movement_transaction_submit_craft(P_char actor, P_obj const *inputs, s
 	if (!reject)
 		reject = &discarded;
 	*reject = item_movement_reject::none;
-	const bool valid_actor = actor && IS_PC(actor) && GET_PID(actor) > 0;
-	if (!valid_actor || !inputs || !input_count || input_count > ITEM_TRANSFER_MAX_ITEMS ||
+	if (!actor || !IS_PC(actor) || GET_PID(actor) <= 0 || !inputs || !input_count ||
+	    input_count > ITEM_TRANSFER_MAX_ITEMS ||
 	    (output_count && (!outputs || output_count > ITEM_TRANSFER_MAX_ITEMS)) ||
 	    context_size > ITEM_MOVEMENT_CONTEXT_MAX_BYTES || (context_size && !context))
 		return reject_with(reject, item_movement_reject::invalid_request);
-	if (pending.size() >= ITEM_MOVEMENT_PENDING_MAX)
-		return reject_with(reject, item_movement_reject::queue_saturated);
-	const item_owner_identity owner = { item_owner_type::player,
-					    static_cast<uint64_t>(GET_PID(actor)), 0 };
-	if (movement_conflicts(owner, owner))
-		return reject_with(reject, item_movement_reject::pending_conflict);
-	uint64_t owner_revision = 0;
-	if (!item_ownership_runtime_owner_revision(owner, &owner_revision))
-		return reject_with(reject, item_movement_reject::missing_owner_revision);
-	std::vector<item_transfer_entry> items;
-	std::vector<player_item_snapshot> output_snapshots;
-	std::unordered_set<uint64_t> input_uids;
-	std::unordered_set<uint64_t> output_uids;
-	try
-	{
-		items.reserve(ITEM_TRANSFER_MAX_ITEMS);
-		output_snapshots.reserve(ITEM_TRANSFER_MAX_ITEMS);
-		input_uids.reserve(ITEM_TRANSFER_MAX_ITEMS);
-		output_uids.reserve(ITEM_TRANSFER_MAX_ITEMS);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return reject_with(reject, item_movement_reject::allocation_failure);
-	}
 	for (size_t index = 0; index < input_count; ++index)
 	{
-		P_obj root = inputs[index];
-		item_ownership_runtime_entry runtime = {};
-		if (!root || !root->obj_uid || !object_belongs_to_actor(root, actor) ||
-		    coordinator_item_fenced(root) || coin_movement_pending(root) ||
-		    !item_ownership_runtime_lookup(root->obj_uid, &runtime) ||
-		    !item_owner_identity_equal(runtime.owner, owner) ||
-		    !input_uids.insert(root->obj_uid).second ||
-		    !capture(root, runtime.root_item_uid, runtime.parent_item_uid, &items))
+		if (!inputs[index] || !object_belongs_to_actor(inputs[index], actor))
 			return reject_with(reject, item_movement_reject::topology_mismatch);
-	}
-	std::sort(items.begin(), items.end(), [](const auto &left, const auto &right)
-		  { return left.item_uid < right.item_uid; });
-	if (items.empty() || items.size() > ITEM_TRANSFER_MAX_ITEMS ||
-	    std::adjacent_find(items.begin(), items.end(), [](const auto &left, const auto &right)
-			       { return left.item_uid == right.item_uid; }) != items.end())
-		return reject_with(reject, item_movement_reject::topology_mismatch);
-	for (size_t index = 0; index < output_count; ++index)
-	{
-		P_obj root = outputs[index];
-		if (!root || !root->obj_uid || !OBJ_NOWHERE(root) ||
-		    coordinator_item_fenced(root) || coin_movement_pending(root))
-			return reject_with(reject, item_movement_reject::invalid_request);
-		std::vector<player_item_snapshot> tree;
-		if (player_item_snapshot_tree_capture(root, &tree, nullptr) !=
-			    player_snapshot_capture_result::ok ||
-		    tree.empty() || tree.size() > ITEM_TRANSFER_MAX_ITEMS ||
-		    output_snapshots.size() > ITEM_TRANSFER_MAX_ITEMS - tree.size())
-			return reject_with(reject, item_movement_reject::snapshot_failure);
-		const size_t offset = output_snapshots.size();
-		for (player_item_snapshot &snapshot : tree)
-		{
-			if (!snapshot.object_uid ||
-			    !output_uids.insert(snapshot.object_uid).second ||
-			    input_uids.contains(snapshot.object_uid))
+		for (size_t other = 0; other < index; ++other)
+			if (inputs[other] == inputs[index])
 				return reject_with(reject, item_movement_reject::topology_mismatch);
-			if (snapshot.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
-				snapshot.parent_index += static_cast<int32_t>(offset);
-			output_snapshots.push_back(std::move(snapshot));
-		}
 	}
-	if ((output_count && (output_snapshots.empty() ||
-			      output_snapshots.front().object_uid != outputs[0]->obj_uid)) ||
-	    (!output_count && !output_snapshots.empty()))
-		return reject_with(reject, item_movement_reject::snapshot_failure);
-	std::vector<uint8_t> item_blob;
-	if ((!output_snapshots.empty() &&
-	     (player_item_snapshot_list_encode(output_snapshots, &item_blob) !=
-		      player_snapshot_codec_result::ok ||
-	      item_blob.empty() || item_blob.size() > ITEM_TRANSFER_ITEM_BLOB_MAX_BYTES)) ||
-	    (output_count && item_blob.empty()))
-		return reject_with(reject, item_movement_reject::snapshot_failure);
-	item_transfer_payload payload = { .from_owner = owner,
-					  .to_owner = owner,
-					  .reason = item_transfer_reason::craft,
-					  .reason_id = recipe_id,
-					  .expected_from_revision = owner_revision,
-					  .expected_to_revision = owner_revision,
-					  .selected_item_uid = output_count ?
-								       outputs[0]->obj_uid :
-								       items[0].root_item_uid,
-					  .target_root_item_uid = 0,
-					  .target_parent_item_uid = 0,
-					  .expected_target_parent_revision = 0,
-					  .multi_root = true,
-					  .item_count = static_cast<uint16_t>(items.size()),
-					  .items = {},
-					  .item_blob_size = static_cast<uint32_t>(item_blob.size()),
-					  .item_blob = {},
-					  .corpse = {},
-					  .collector = {} };
-	for (size_t index = 0; index < items.size(); ++index)
-		payload.items[index] = items[index];
-	std::copy(item_blob.begin(), item_blob.end(), payload.item_blob.begin());
-	critical_operation_id operation_id = {};
-	critical_command command = {};
-	if (!critical_operation_id_generate(&operation_id) ||
-	    !item_transfer_command_build(&command, operation_id, payload,
-					 critical_source_site::command,
-					 critical_deadline_class::interactive))
-		return reject_with(reject, item_movement_reject::command_build_failure);
-	pending_movement entry = { .actor_pid = static_cast<uint32_t>(GET_PID(actor)),
-				   .actor_runtime_id = actor->runtime_id,
-				   .payload = payload,
-				   .requested_to_owner = owner,
-				   .requested_target_parent_uid = 0,
-				   .requested_reason = item_transfer_reason::craft,
-				   .requested_reason_id = recipe_id,
-				   .requested_corpse_uid = 0,
-				   .adopting = false,
-				   .adoption_only = false,
-				   .completion = completion,
-				   .publication = nullptr,
-				   .context = {},
-				   .context_size = context_size,
-				   .completion_ready = false,
-				   .publication_failed = false,
-				   .publication_attempts = 0,
-				   .publication_status = publication_state::none,
-				   .creation_batch = false,
-				   .registry_applied = false,
-				   .collector_invalidated = false,
-				   .completed = {} };
-	if (context_size)
-		memcpy(entry.context.data(), context, context_size);
-	const std::string key = operation_key(operation_id);
-	try
-	{
-		pending.emplace(key, std::move(entry));
-	}
-	catch (const std::bad_alloc &)
-	{
-		return reject_with(reject, item_movement_reject::allocation_failure);
-	}
-	const critical_submit_result submitted =
-		critical_command_coordinator_submit(std::move(command));
-	if (submitted == critical_submit_result::journal_uncertain)
-	{
-		++health.submission_failures;
-		*reject = coordinator_reject_reason(submitted);
-		account_health();
-		return true;
-	}
-	if (submitted != critical_submit_result::accepted &&
-	    submitted != critical_submit_result::awaiting_durability &&
-	    submitted != critical_submit_result::attached)
-	{
-		pending.erase(key);
-		++health.submission_failures;
-		return reject_with(reject, coordinator_reject_reason(submitted));
-	}
-	++health.submitted;
-	account_health();
+	for (size_t index = 0; index < output_count; ++index)
+		if (!outputs[index] || !OBJ_NOWHERE(outputs[index]))
+			return reject_with(reject, item_movement_reject::topology_mismatch);
+
+	item_transfer_result result = {};
+	result.root_item_uid = output_count ? outputs[0]->obj_uid : inputs[0]->obj_uid;
+	result.item_count = static_cast<uint16_t>(input_count + output_count);
+	for (size_t index = 0; index < input_count; ++index)
+		extract_obj(inputs[index]);
+	for (size_t index = 0; index < output_count; ++index)
+		obj_to_char(outputs[index], actor);
+	mark_player_dirty_components(GET_PID(actor),
+				     PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY);
+	if (completion)
+		completion(actor, true, result, 0, static_cast<const uint8_t *>(context),
+			   context_size);
 	return true;
 }
 

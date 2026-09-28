@@ -27,6 +27,11 @@
 #include "item/storage_lockers.h"
 #include "persistence/locker_async.h"
 #include "player/player_save_worker.h"
+#include "player/player_snapshot_capture.h"
+#include "item/item_claim.h"
+#ifndef __NO_MYSQL__
+#include "item/item_claim_repository.h"
+#endif
 #include "net/comm.h"
 #include "world/db.h"
 #include "world/events.h"
@@ -35,6 +40,7 @@
 #include <pthread.h>
 #include <memory>
 #include <string>
+#include <vector>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -72,6 +78,7 @@ struct locker_async_slot
 	unsigned long gen;
 	time_t dirty_at;
 	int user_pid;
+	int public_id;
 	P_char chLocker;
 	P_char chUser;
 };
@@ -84,6 +91,9 @@ struct locker_async_job
 	int terminal;
 	int user_pid;
 	std::shared_ptr<std::string> sql;
+	// What the public chest holds in memory; the job claims it with the save.
+	item_owner_identity chest;
+	std::shared_ptr<std::vector<player_item_snapshot>> items;
 };
 
 struct locker_async_result
@@ -583,15 +593,16 @@ static char *build_locker_snapshot_sql(struct locker_async_slot *s)
 	if (!ensure_locker_ids(chLocker, owner_pid, owner_assoc_id, &locker_id, &public_id))
 		return NULL;
 	s->locker_id = locker_id;
+	s->public_id = public_id;
 
 	if (!la_buf_init(&b, LOCKER_ASYNC_SCRIPT_INIT))
 		return NULL;
 
 	g_tmp_id_seq = 0;
 
+	/* The writer opens the transaction and claims the items before this runs. */
 	if (!la_buf_printf(
 		    &b,
-		    "START TRANSACTION;\n"
 		    "DELETE FROM locker_items WHERE locker_id=%d AND (chest_id IS NULL OR chest_id=%d);\n",
 		    locker_id, public_id))
 		goto fail;
@@ -727,10 +738,22 @@ static player_save_apply_result locker_write_job(const struct locker_async_job &
 	MYSQL *conn = sql_persistence_connection();
 	if (!conn)
 		return { player_save_apply_outcome::retryable_failure, 0, ETIMEDOUT };
-	res.ok = apply_sql_script(&conn, job.sql->c_str(), &error_code) ? 1 : 0;
+	item_claim_outcome claim;
+	if (mysql_query(conn, "START TRANSACTION") != 0 ||
+	    (error_code = claim_items(conn, job.chest, *job.items, &claim)) != 0)
+	{
+		if (!error_code)
+			error_code = mysql_errno(conn);
+		repair_failed_connection(&conn);
+		res.ok = 0;
+	}
+	else
+		res.ok = apply_sql_script(&conn, job.sql->c_str(), &error_code) ? 1 : 0;
 	sql_persistence_release_connection(conn);
 	if (!res.ok && locker_connection_error(error_code))
 		return { player_save_apply_outcome::retryable_failure, 0, error_code };
+	if (res.ok)
+		item_claim_log_dupes("save_left_out", job.chest, claim);
 #else
 	res.ok = 0;
 	error_code = ENOTSUP;
@@ -1069,9 +1092,16 @@ static int start_one_snapshot(struct locker_async_slot *s)
 	job.gen = s->gen;
 	job.terminal = s->terminal;
 	job.user_pid = s->user_pid;
+	job.chest = { item_owner_type::locker, static_cast<uint64_t>(s->locker_id),
+		      static_cast<uint64_t>(s->public_id) };
 	try
 	{
 		job.sql = std::make_shared<std::string>(sql);
+		job.items = std::make_shared<std::vector<player_item_snapshot>>();
+		if (player_item_snapshot_list_capture(chLocker, false, true, false, job.items.get(),
+						      nullptr) !=
+		    player_snapshot_capture_result::ok)
+			job.sql.reset();
 	}
 	catch (const std::bad_alloc &)
 	{

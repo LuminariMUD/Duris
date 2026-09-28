@@ -1,4 +1,5 @@
 #include "economy/auction_repository.h"
+#include "item/item_claim_repository.h"
 
 #include "item/item_transfer_command.h"
 
@@ -356,9 +357,31 @@ bool transition_items(MYSQL *connection, const critical_command &command,
 		order[index] = index;
 	std::sort(order.begin(), order.begin() + payload.item_count, [&](size_t left, size_t right)
 		  { return payload.items[left].item_uid < payload.items[right].item_uid; });
+	std::array<uint64_t, AUCTION_COMMAND_MAX_ITEMS> revisions = {};
 	for (size_t position = 0; position < payload.item_count; ++position)
 	{
 		const auction_item_entry &item = payload.items[order[position]];
+		if (from_type == item_owner_type::player)
+		{
+			// The seller holds it in memory: the listing takes it from whatever the
+			// ownership record still says, as a save would.
+			const uint64_t no_parent = 0;
+			bool refused = false;
+			if (const unsigned int failed = claim_transfer_item(
+				    connection, { item_owner_type::player, from_id, 0 },
+				    item.item_uid, item.item_uid, &no_parent, item.vnum,
+				    &revisions[order[position]], &refused))
+			{
+				errno = static_cast<int>(failed);
+				return false;
+			}
+			if (refused)
+			{
+				*result_code = ESTALE;
+				return true;
+			}
+			continue;
+		}
 		const std::string sql =
 			"SELECT root_item_uid,parent_item_uid,owner_type,owner_id,owner_context_id,"
 			"item_revision,vnum,state FROM item_current_owner WHERE item_uid=" +
@@ -384,6 +407,7 @@ bool transition_items(MYSQL *connection, const critical_command &command,
 			*result_code = ESTALE;
 			return true;
 		}
+		revisions[order[position]] = item.expected_item_revision;
 	}
 	++player_revision;
 	++auction_revision;
@@ -391,14 +415,19 @@ bool transition_items(MYSQL *connection, const critical_command &command,
 	for (size_t index = 0; index < payload.item_count; ++index)
 	{
 		const auction_item_entry &item = payload.items[index];
-		const uint64_t next_item_revision = item.expected_item_revision + 1;
+		if (revisions[index] == UINT64_MAX)
+		{
+			*result_code = ERANGE;
+			return true;
+		}
+		const uint64_t next_item_revision = revisions[index] + 1;
 		std::string sql =
 			"UPDATE item_current_owner SET owner_type=" +
 			std::to_string(static_cast<unsigned int>(to_type)) +
 			",owner_id=" + std::to_string(to_id) +
 			",owner_context_id=0,item_revision=" + std::to_string(next_item_revision) +
 			" WHERE item_uid=" + std::to_string(item.item_uid) +
-			" AND item_revision=" + std::to_string(item.expected_item_revision);
+			" AND item_revision=" + std::to_string(revisions[index]);
 		if (!execute(connection, sql) || mysql_affected_rows(connection) != 1)
 			return false;
 		sql = "INSERT INTO item_ownership_ledger(operation_id,event_index,item_uid,"
@@ -588,6 +617,15 @@ bool auction_repository_execute(MYSQL *connection, const critical_command &comma
 			errno = *result_code;
 			return false;
 		}
+		// A listing claims the items, so their revisions are known only now.
+		for (size_t index = 0; index < payload.item_count; ++index)
+			if (!execute(connection,
+				     "UPDATE auction_item_custody SET item_revision=" +
+					     std::to_string(result->item_revisions[index]) +
+					     " WHERE auction_id=" + std::to_string(auction_id) +
+					     " AND item_uid=" +
+					     std::to_string(payload.items[index].item_uid)))
+				return false;
 		if (!apply_wallet_delta(connection, command, payload, -payload.listing_fee, &wallet,
 					result_code))
 			return false;

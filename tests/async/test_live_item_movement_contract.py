@@ -75,8 +75,8 @@ class LiveItemMovementContractTests(unittest.TestCase):
     def test_pc_corpse_roots_bypass_generic_ownership_transfers(self):
         actobj = (SRC / "actobj.c").read_text()
         policy = (SRC / "item/item_command_policy.c").read_text()
-        self.assertIn("ITEM_CORPSE", policy)
-        self.assertIn("PC_CORPSE", policy)
+        # No item, player corpses included, takes a generic ownership transfer.
+        self.assertIn("return false;", policy)
         self.assertGreaterEqual(
             actobj.count("item_command_uses_durable_ownership("), 10
         )

@@ -179,9 +179,10 @@ unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,
 			changed = true;
 			continue;
 		}
-		if (item_claim_leaves_owner_alone(item))
-			continue;
 		const current_row &current = found->second;
+		if (item_claim_leaves_owner_alone(item,
+						  static_cast<item_custody_state>(current.state)))
+			continue;
 		const bool owned = same_owner(current.owner, owner);
 		if (owned && current.root_item_uid == roots[index] &&
 		    current.parent_item_uid == parent_uid && current.vnum == item.vnum &&
@@ -230,4 +231,89 @@ unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,
 						loser + ")"))
 			return failed;
 	return 0;
+}
+
+unsigned int claim_transfer_item(MYSQL *connection, const item_owner_identity &holder,
+				 uint64_t item_uid, uint64_t root_uid, const uint64_t *parent_uid,
+				 int32_t vnum, uint64_t *revision, bool *refused)
+{
+	if (!connection || !item_uid || !revision || !refused)
+		return EINVAL;
+	*revision = 0;
+	*refused = false;
+	const std::string uid = std::to_string(item_uid);
+	if (const unsigned int failed =
+		    execute(connection, "SELECT owner_type,owner_id,owner_context_id,root_item_uid,"
+					"COALESCE(parent_item_uid,0),item_revision,vnum,state FROM "
+					"item_current_owner WHERE item_uid=" +
+						uid + " FOR UPDATE"))
+		return failed;
+	MYSQL_RES *result = mysql_store_result(connection);
+	if (!result)
+		return mysql_errno(connection) ? mysql_errno(connection) : EIO;
+	MYSQL_ROW row = mysql_fetch_row(result);
+	uint64_t type = 0, id = 0, context = 0, root = 0, parent = 0, stored_revision = 0,
+		 state = 0;
+	int32_t stored_vnum = 0;
+	const bool found = row != nullptr;
+	const bool parsed = !found ||
+			    (parse_u64(row[0], &type) && parse_u64(row[1], &id) &&
+			     parse_u64(row[2], &context) && parse_u64(row[3], &root) &&
+			     parse_u64(row[4], &parent) && parse_u64(row[5], &stored_revision) &&
+			     row[6] && parse_u64(row[7], &state));
+	if (found && row[6])
+		stored_vnum = static_cast<int32_t>(std::strtol(row[6], nullptr, 10));
+	mysql_free_result(result);
+	if (!parsed)
+		return EILSEQ;
+	const uint64_t wanted_parent = parent_uid ? *parent_uid : parent;
+	const std::string parent_sql = wanted_parent ? std::to_string(wanted_parent) : "NULL";
+	const int32_t wanted_vnum = vnum ? vnum : stored_vnum;
+	const std::string active =
+		std::to_string(static_cast<unsigned>(item_custody_state::active));
+	if (!found)
+	{
+		*revision = 1;
+		return execute(connection,
+			       "INSERT INTO item_current_owner (item_uid,root_item_uid,"
+			       "parent_item_uid,owner_type,owner_id,owner_context_id,item_revision,"
+			       "vnum,state) VALUES (" +
+				       uid + ',' + std::to_string(root_uid) + ',' + parent_sql +
+				       ',' + owner_values(holder) + ",1," +
+				       std::to_string(wanted_vnum) + ',' + active + ')');
+	}
+	const item_owner_identity current = { static_cast<item_owner_type>(type), id, context };
+	if (state == static_cast<uint64_t>(item_custody_state::destroyed) ||
+	    item_claim_owner_is_economy(current.type))
+	{
+		*refused = true;
+		return 0;
+	}
+	const bool owned = same_owner(current, holder);
+	*revision = stored_revision;
+	if (owned && root == root_uid && parent == wanted_parent && stored_vnum == wanted_vnum &&
+	    state == static_cast<uint64_t>(item_custody_state::active))
+		return 0;
+	if (stored_revision == UINT64_MAX)
+		return ERANGE;
+	if (const unsigned int failed =
+		    execute(connection,
+			    "UPDATE item_current_owner SET owner_type=" +
+				    std::to_string(static_cast<unsigned>(holder.type)) +
+				    ",owner_id=" + std::to_string(holder.id) +
+				    ",owner_context_id=" + std::to_string(holder.context_id) +
+				    ",root_item_uid=" + std::to_string(root_uid) +
+				    ",parent_item_uid=" + parent_sql +
+				    ",vnum=" + std::to_string(wanted_vnum) + ",state=" + active +
+				    ",item_revision=item_revision+1 WHERE item_uid=" + uid))
+		return failed;
+	*revision = stored_revision + 1;
+	if (owned)
+		return 0;
+	return execute(connection, "INSERT INTO item_owner_audit (item_uid,vnum,old_owner_type,"
+				   "old_owner_id,old_owner_context_id,new_owner_type,new_owner_id,"
+				   "new_owner_context_id) VALUES (" +
+					   uid + ',' + std::to_string(wanted_vnum) + ',' +
+					   owner_values(current) + ',' + owner_values(holder) +
+					   ')');
 }

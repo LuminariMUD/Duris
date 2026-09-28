@@ -918,8 +918,9 @@ int main()
 	check_intact(&q);
 	drain(&q);
 
-	/* A committed completion whose live registry revision is stale must retain
-	   the transaction and its dependent queue hold instead of calling back. */
+	/* Memory is the authority for the room an item came from: a committed
+	   completion whose cached revision is stale teaches the cache the committed
+	   state and calls back, releasing the dependent queue hold. */
 	const item_ownership_runtime_entry fault_entry = {
 		104, 104, 0, room_owner, 1, 6, 103, item_custody_state::active
 	};
@@ -949,17 +950,12 @@ int main()
 	std::copy(encoded.begin(), encoded.end(), completion.result_payload.begin());
 	item_movement_transaction_handle_completions(&completion, 1);
 	const item_movement_health movement_health = item_movement_transaction_health_copy();
-	assert(movement_health.pending == 1 && movement_health.stale_publications == 1);
-	assert(stale_completion_callbacks == 0);
-	assert(item_movement_transaction_player_busy(&actor));
-	item_movement_transaction_player_ready(&actor);
-	assert(item_movement_transaction_player_busy(&actor));
-	assert(item_movement_transaction_health_copy().stale_publications == 1);
-	push(&q, "wear fault");
-	assert(!get_playing_cmd_from_q(&actor, &q, dest));
-	check_intact(&q);
-	expect_text(q.head->text, "wear fault", "stale publication keeps dependent hold");
-	drain(&q);
+	assert(movement_health.pending == 0 && movement_health.stale_publications == 0);
+	assert(stale_completion_callbacks == 1);
+	assert(!item_movement_transaction_player_busy(&actor));
+	item_ownership_runtime_entry learned = {};
+	assert(item_ownership_runtime_lookup(104, &learned) && learned.item_revision == 2 &&
+	       item_owner_identity_equal(learned.owner, player_owner));
 	item_movement_transaction_reset_for_tests();
 	assert(!item_movement_transaction_player_busy(&actor));
 

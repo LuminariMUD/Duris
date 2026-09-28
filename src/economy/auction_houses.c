@@ -521,16 +521,14 @@ bool auction_offer(P_char ch, char *args)
 			send_to_char("You do not have enough of that item.\r\n", ch);
 			return true;
 		}
-		item_ownership_runtime_entry runtime = {};
-		if (!current->obj_uid ||
-		    !item_ownership_runtime_lookup(current->obj_uid, &runtime) ||
-		    runtime.owner.type != item_owner_type::player ||
-		    runtime.owner.id != static_cast<uint64_t>(GET_PID(ch)))
+		// The seller holds it in memory; the listing claims it from whatever the
+		// ownership record still says.
+		if (!current->obj_uid)
 		{
-			send_to_char("That item's ownership is still being synchronized.\r\n", ch);
+			send_to_char("&+WYou can't sell that item.\r\n", ch);
 			return true;
 		}
-		payload.items[index] = { current->obj_uid, runtime.item_revision,
+		payload.items[index] = { current->obj_uid, 0,
 					 static_cast<int32_t>(OBJ_VNUM(current)) };
 		current = current->next_content;
 	}
@@ -1798,16 +1796,14 @@ bool auction_offer(P_char ch, char *args)
 			send_to_char("You do not have enough of that item.\r\n", ch);
 			return true;
 		}
-		item_ownership_runtime_entry runtime = {};
-		if (!current->obj_uid ||
-		    !item_ownership_runtime_lookup(current->obj_uid, &runtime) ||
-		    runtime.owner.type != item_owner_type::player ||
-		    runtime.owner.id != static_cast<uint64_t>(GET_PID(ch)))
+		// The seller holds it in memory; the listing claims it from whatever the
+		// ownership record still says.
+		if (!current->obj_uid)
 		{
-			send_to_char("That item's ownership is still being synchronized.\r\n", ch);
+			send_to_char("&+WYou can't sell that item.\r\n", ch);
 			return true;
 		}
-		payload.items[index] = { current->obj_uid, runtime.item_revision,
+		payload.items[index] = { current->obj_uid, 0,
 					 static_cast<int32_t>(OBJ_VNUM(current)) };
 		current = current->next_content;
 	}

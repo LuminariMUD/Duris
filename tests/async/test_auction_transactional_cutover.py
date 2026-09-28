@@ -155,7 +155,9 @@ class AuctionTransactionalCutoverTests(unittest.TestCase):
         self.assertIn("flatfile_auction_find_pending_event", expiry)
         self.assertIn("publish_flat_auction_event", expiry)
         self.assertIn("flatfile_auction_acknowledge_event", expiry)
-        self.assertIn("item_ownership_runtime_lookup", offer)
+        # The seller holds the item in memory; the listing claims it in the repository.
+        self.assertNotIn("item_ownership_runtime_lookup", offer)
+        self.assertNotIn("ownership is still being synchronized", offer)
         self.assertIn("write_one_object", offer)
         for route in (offer, bid, remove):
             self.assertIn("auction_transaction_submit", route)

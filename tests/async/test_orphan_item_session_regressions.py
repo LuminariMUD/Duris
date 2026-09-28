@@ -82,28 +82,15 @@ def normalize_cxx(source):
     return "".join(source.split())
 
 
-# 1. Wizard-loaded objects reach the ownership ledger.
+# 1. A wizard-loaded object is placed at once; the next save of whoever holds it
+#    records it (a save inserts the ownership row a new item does not have yet).
 load = actwiz[actwiz.index("void do_load("):]
 load = load[:load.index("void do_purge(")]
-check("do_load establishes ownership instead of a bare obj_to_char",
-      "submit_wizard_load_establish(ch, obj, to_room)" in load)
-check("do_load discards the object when ownership will not commit",
-      "extract_obj(obj, FALSE)" in load)
-establish = actwiz[actwiz.index("bool submit_wizard_load_establish("):]
-establish = establish[:establish.index("\n}")]
-check("the establish is a same-owner creation transfer",
-      "item_transfer_reason::creation" in establish
-      and "owner, owner," in establish)
-check("a room-bound object is established against the room, not the wizard",
-      "item_owner_type::room" in establish and "item_owner_type::player" in establish)
-completion = actwiz[actwiz.index("void wizard_load_completion("):]
-completion = completion[:completion.index("\n}")]
-check("the live move happens only once the transfer commits",
-      "if (!committed)" in completion
-      and "obj_to_char(object, actor)" in completion
-      and "obj_to_room(object, context.room)" in completion)
-check("an uncommitted establish does not leave the object in play",
-      "extract_obj(object, FALSE)" in completion)
+check("do_load places the object in memory",
+      "obj_to_char(obj, ch)" in load and "obj_to_room(obj, ch->in_room)" in load)
+check("do_load no longer waits for an ownership transaction",
+      "item_movement_transaction_submit" not in actwiz
+      and "submit_wizard_load_establish" not in actwiz)
 
 # 2. extract_obj's silence about the ledger is deliberate and documented.
 extract_preamble = handler[:handler.index("void extract_obj(")]
@@ -160,20 +147,13 @@ check("transfer serialization does not masquerade as an unowned player save",
       and "budget, seen, 1, false, false" in capture
       and "true, true);" in capture)
 
-# Every remaining direct grant is fenced at the low-level player publication boundary.
+# Memory is the authority: obj_to_char places an object without asking the ownership
+# catalog, and the holder's next save records a new item.
 to_char = handler[handler.index("void obj_to_char("):]
 to_char = to_char[:to_char.index("void obj_from_char(")]
-ownership_guard = condition_after(to_char, "// A persisted generic item")
-ownership_guard_body = braced_block_after(to_char, "// A persisted generic item")
-check("obj_to_char defers missing or mismatched ownership including transient gear",
-      normalize_cxx(ownership_guard)
-      == normalize_cxx("""IS_PC(ch) && GET_PID(ch) > 0 && object->obj_uid &&
-      object->type != ITEM_MONEY &&
-      !(object->type == ITEM_CORPSE &&
-        IS_SET(object->value[CORPSE_FLAGS], PC_CORPSE))""")
-      and "item_ownership_runtime_lookup(object->obj_uid, &ownership)" in ownership_guard_body
-      and "item_owner_identity_equal(ownership.owner, player)" in ownership_guard_body
-      and "item_creation_grant_submit_to_player(ch, object, ch)" in ownership_guard_body)
+check("obj_to_char has no ownership gate",
+      "item_ownership_runtime_lookup" not in to_char
+      and "item_creation_grant_submit_to_player" not in to_char)
 check("new characters initialize their item-owner revision before receiving equipment",
       "item_ownership_runtime_hydrate_owner(" in nanny
       and "item_owner_type::player" in nanny[nanny.index("void init_char("):])

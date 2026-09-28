@@ -36,7 +36,6 @@
 #include "world/epic_transaction.h"
 #include "core/files.h"
 #include "net/gmcp.h"
-#include "item/item_movement_transaction.h"
 #include "combat/justice.h"
 #include "net/listen.h"
 #include "world/map.h"
@@ -5207,89 +5206,6 @@ void do_force(P_char ch, char *argument, int /*cmd*/)
 	}
 }
 
-namespace
-{
-// do_load used to hand the new object straight to the wizard with obj_to_char() and
-// submit no transfer, so it arrived carrying a uid the ownership ledger had never heard
-// of. The next save wrote a player_items row with no item_current_owner row - the orphan
-// that used to make the character permanently unloadable. Establish ownership the way
-// every other grant does, and let the completion do the live move.
-struct wizard_load_context
-{
-	uint64_t item_uid;
-	int32_t room;
-	int32_t to_room;
-};
-
-P_obj find_object_by_uid(uint64_t item_uid)
-{
-	if (!item_uid)
-		return NULL;
-	for (P_obj object = object_list; object; object = object->next)
-		if (object->obj_uid == item_uid)
-			return object;
-	return NULL;
-}
-
-void wizard_load_completion(P_char actor, bool committed, const item_transfer_result &,
-			    unsigned int, const uint8_t *encoded, size_t encoded_size)
-{
-	wizard_load_context context = {};
-	if (!actor || !encoded || encoded_size != sizeof(context))
-		return;
-	memcpy(&context, encoded, sizeof(context));
-	P_obj object = find_object_by_uid(context.item_uid);
-	if (!object)
-		return;
-	if (!committed)
-	{
-		// Nothing owns it and nothing ever will; leaving it in play would recreate
-		// exactly the orphan this submission exists to prevent.
-		send_to_char(
-			"The ownership authority did not commit; the object was discarded.\r\n",
-			actor);
-		if (OBJ_NOWHERE(object))
-			extract_obj(object, FALSE);
-		return;
-	}
-	if (!OBJ_NOWHERE(object) || context.room <= NOWHERE || context.room > top_of_world)
-	{
-		logit(LOG_FILE, "wizard load committed but live publication was stale (uid=%llu)",
-		      (unsigned long long)context.item_uid);
-		send_to_char("The ownership authority committed, but live publication failed.\r\n",
-			     actor);
-		return;
-	}
-	act("$n makes a strange magical gesture.", TRUE, actor, 0, 0, TO_ROOM);
-	act("$n has created $p!", TRUE, actor, object, 0, TO_ROOM);
-	act("You have created $p!", FALSE, actor, object, 0, TO_CHAR);
-	if (context.to_room)
-		obj_to_room(object, context.room);
-	else
-		obj_to_char(object, actor);
-}
-
-// Same-owner establish: the object has no ledger row yet, so source and destination are
-// both the owner it is about to have.
-bool submit_wizard_load_establish(P_char actor, P_obj object, bool to_room)
-{
-	if (!actor || !object || !OBJ_NOWHERE(object) || actor->in_room <= NOWHERE ||
-	    actor->in_room > top_of_world)
-		return false;
-	const item_owner_identity owner =
-		to_room ? item_owner_identity{ item_owner_type::room,
-					       static_cast<uint64_t>(world[actor->in_room].number),
-					       0 } :
-			  item_owner_identity{ item_owner_type::player,
-					       static_cast<uint64_t>(GET_PID(actor)), 0 };
-	const wizard_load_context context = { object->obj_uid, actor->in_room, to_room ? 1 : 0 };
-	return item_movement_transaction_submit(
-		actor, object, NULL, owner, owner, item_transfer_reason::creation,
-		object->R_num >= 0 ? obj_index[object->R_num].virtual_number : 0,
-		wizard_load_completion, &context, sizeof(context));
-}
-} // namespace
-
 void do_load(P_char ch, char *argument, int /*cmd*/)
 {
 	P_char mob;
@@ -5370,24 +5286,14 @@ void do_load(P_char ch, char *argument, int /*cmd*/)
 		      obj->short_description, world[ch->in_room].number);
 		sql_log(ch, WIZLOG, "Loaded obj %s &n[%s]", obj->short_description, num);
 		obj->z_cord = ch->specials.z_cord;
-		// An object with no uid never reaches the ownership ledger at all, so there is
-		// nothing to establish and nothing to orphan.
-		const bool to_room = !IS_SET(obj->wear_flags, ITEM_TAKE);
-		if (!obj->obj_uid)
-		{
-			act("$n makes a strange magical gesture.", TRUE, ch, 0, 0, TO_ROOM);
-			act("$n has created $p!", TRUE, ch, obj, 0, TO_ROOM);
-			act("You have created $p!", FALSE, ch, obj, 0, TO_CHAR);
-			if (to_room)
-				obj_to_room(obj, ch->in_room);
-			else
-				obj_to_char(obj, ch);
-		}
-		else if (!submit_wizard_load_establish(ch, obj, to_room))
-		{
-			send_to_char("Item ownership is busy; nothing was created.\r\n", ch);
-			extract_obj(obj, FALSE);
-		}
+		// The next save of whoever holds it records the new object.
+		act("$n makes a strange magical gesture.", TRUE, ch, 0, 0, TO_ROOM);
+		act("$n has created $p!", TRUE, ch, obj, 0, TO_ROOM);
+		act("You have created $p!", FALSE, ch, obj, 0, TO_CHAR);
+		if (!IS_SET(obj->wear_flags, ITEM_TAKE))
+			obj_to_room(obj, ch->in_room);
+		else
+			obj_to_char(obj, ch);
 	}
 	else
 		send_to_char("That'll have to be either 'char' or 'obj'.\n", ch);
@@ -10333,188 +10239,6 @@ void do_tranquilize(P_char ch, char *argument, int /*cmd*/)
 	}
 }
 
-namespace
-{
-enum class flat_storage_action : uint8_t
-{
-	establish = 1,
-	destroy,
-	remove_child,
-	remove_root,
-};
-
-struct flat_storage_context
-{
-	uint64_t storage_uid;
-	uint64_t item_uid;
-	int32_t room;
-	flat_storage_action action;
-};
-
-P_obj find_flat_storage_object(uint64_t item_uid)
-{
-	for (P_obj object = object_list; object; object = object->next)
-		if (object->obj_uid == item_uid)
-			return object;
-	return NULL;
-}
-
-bool flat_storage_room_owner(P_obj storage, int32_t room, item_owner_identity *owner = nullptr)
-{
-	if (!storage || storage->type != ITEM_STORAGE || !OBJ_ROOM(storage) ||
-	    storage->loc.room != room || room <= NOWHERE || room > top_of_world)
-		return false;
-	if (owner)
-		*owner = { item_owner_type::room, static_cast<uint64_t>(world[room].number), 0 };
-	return true;
-}
-
-void log_flat_storage_change(P_char actor, const char *verb, const std::string &description,
-			     int32_t room)
-{
-	if (!actor || !verb)
-		return;
-	wizlog(GET_LEVEL(actor), "%s %s storage item %s in room %d.", J_NAME(actor), verb,
-	       description.c_str(), world[room].number);
-	logit(LOG_WIZ, "%s %s storage item %s in room %d.", J_NAME(actor), verb,
-	      description.c_str(), world[room].number);
-}
-
-bool submit_flat_storage_remove_next(P_char actor, P_obj storage, int32_t room);
-
-void flat_storage_completion(P_char actor, bool committed, const item_transfer_result &,
-			     unsigned int, const uint8_t *encoded, size_t encoded_size)
-{
-	flat_storage_context context = {};
-	if (encoded && encoded_size == sizeof(context))
-		memcpy(&context, encoded, sizeof(context));
-	if (!actor || !encoded || encoded_size != sizeof(context))
-		return;
-	P_obj storage = find_flat_storage_object(context.storage_uid);
-	if (!committed)
-	{
-		send_to_char("The storage change did not commit; the live object was retained.\r\n",
-			     actor);
-		if (context.action == flat_storage_action::establish && storage &&
-		    OBJ_NOWHERE(storage))
-			extract_obj(storage, FALSE);
-		return;
-	}
-	if (context.action == flat_storage_action::establish)
-	{
-		if (!storage || !OBJ_NOWHERE(storage) || context.room <= NOWHERE ||
-		    context.room > top_of_world)
-		{
-			logit(LOG_FILE,
-			      "storage establish committed but live publication was stale (uid=%llu)",
-			      (unsigned long long)context.storage_uid);
-			send_to_char(
-				"The storage authority committed, but live publication failed.\r\n",
-				actor);
-			return;
-		}
-		const std::string description =
-			storage->short_description ? storage->short_description : "(unnamed)";
-		obj_to_room(storage, context.room);
-		send_to_char(
-			"This object now loads here without being in a .zon file.  Please remove it from the .zon file if necessessary to prevent double loading and confusion.\n",
-			actor);
-		log_flat_storage_change(actor, "loads", description, context.room);
-		return;
-	}
-	if (!flat_storage_room_owner(storage, context.room))
-	{
-		logit(LOG_FILE,
-		      "storage mutation committed but live publication was stale (uid=%llu)",
-		      (unsigned long long)context.storage_uid);
-		send_to_char("The storage authority committed, but live publication failed.\r\n",
-			     actor);
-		return;
-	}
-	if (context.action == flat_storage_action::remove_child)
-	{
-		P_obj item = find_flat_storage_object(context.item_uid);
-		if (!item || !OBJ_INSIDE(item) || item->loc.inside != storage)
-		{
-			logit(LOG_FILE,
-			      "storage child move committed but live topology was stale (uid=%llu)",
-			      (unsigned long long)context.item_uid);
-			send_to_char("A storage item committed, but live publication failed.\r\n",
-				     actor);
-			return;
-		}
-		obj_from_obj(item);
-		obj_to_room(item, context.room);
-		if (!submit_flat_storage_remove_next(actor, storage, context.room))
-			send_to_char(
-				"The moved contents are safe, but the remaining storage change is busy.\r\n",
-				actor);
-		return;
-	}
-	if (context.action == flat_storage_action::remove_root && storage->contains)
-	{
-		logit(LOG_FILE,
-		      "empty storage removal committed while live contents remained (uid=%llu)",
-		      (unsigned long long)context.storage_uid);
-		send_to_char("The storage authority committed, but live contents changed.\r\n",
-			     actor);
-		return;
-	}
-	const std::string description = storage->short_description ? storage->short_description :
-								     "(unnamed)";
-	const char *verb = context.action == flat_storage_action::destroy ? "deletes" : "removes";
-	log_flat_storage_change(actor, verb, description, context.room);
-	extract_obj(storage, context.action == flat_storage_action::destroy);
-}
-
-bool submit_flat_storage_destroy(P_char actor, P_obj storage, int32_t room,
-				 flat_storage_action action)
-{
-	item_owner_identity source = {};
-	if (!actor || !flat_storage_room_owner(storage, room, &source) ||
-	    (action != flat_storage_action::destroy && action != flat_storage_action::remove_root))
-		return false;
-	const item_owner_identity destination = { item_owner_type::destruction, 0, 0 };
-	const flat_storage_context context = { storage->obj_uid, storage->obj_uid, room, action };
-	return item_movement_transaction_submit(actor, storage, NULL, source, destination,
-						item_transfer_reason::destruction,
-						static_cast<int64_t>(storage->obj_uid),
-						flat_storage_completion, &context, sizeof(context));
-}
-
-bool submit_flat_storage_remove_next(P_char actor, P_obj storage, int32_t room)
-{
-	item_owner_identity owner = {};
-	if (!actor || !flat_storage_room_owner(storage, room, &owner))
-		return false;
-	if (!storage->contains)
-		return submit_flat_storage_destroy(actor, storage, room,
-						   flat_storage_action::remove_root);
-	P_obj item = storage->contains;
-	const flat_storage_context context = { storage->obj_uid, item->obj_uid, room,
-					       flat_storage_action::remove_child };
-	return item_movement_transaction_submit(actor, item, NULL, owner, owner,
-						item_transfer_reason::operator_repair,
-						static_cast<int64_t>(storage->obj_uid),
-						flat_storage_completion, &context, sizeof(context));
-}
-
-bool submit_flat_storage_establish(P_char actor, P_obj storage, int32_t room)
-{
-	if (!actor || !storage || storage->type != ITEM_STORAGE || !OBJ_NOWHERE(storage) ||
-	    !storage->obj_uid || room <= NOWHERE || room > top_of_world)
-		return false;
-	const item_owner_identity owner = { item_owner_type::room,
-					    static_cast<uint64_t>(world[room].number), 0 };
-	const flat_storage_context context = { storage->obj_uid, storage->obj_uid, room,
-					       flat_storage_action::establish };
-	return item_movement_transaction_submit(actor, storage, NULL, owner, owner,
-						item_transfer_reason::operator_repair,
-						world[room].number, flat_storage_completion,
-						&context, sizeof(context));
-}
-} // namespace
-
 /* Storage command:
  * Item needs to be a type of ITEM_CONTAINER or ITEM_STORAGE
  * storage new <item vnum> - loads a new object setup to store through boots in room.
@@ -10554,20 +10278,6 @@ void do_storage(P_char ch, char *arg, int /*cmd*/)
 			REMOVE_BIT(s_obj->wear_flags, ITEM_TAKE);
 			// Just making sure.
 			REMOVE_BIT(s_obj->extra_flags, ITEM_ARTIFACT);
-			if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-			{
-				if (!submit_flat_storage_establish(ch, s_obj, ch->in_room))
-				{
-					send_to_char(
-						"The storage authority is busy; no object was created.\r\n",
-						ch);
-					extract_obj(s_obj, FALSE);
-				}
-				else
-					send_to_char("The storage creation is being committed.\r\n",
-						     ch);
-				return;
-			}
 			obj_to_room(s_obj, ch->in_room);
 			writeSavedItem(s_obj);
 			send_to_char(
@@ -10595,18 +10305,6 @@ void do_storage(P_char ch, char *arg, int /*cmd*/)
 		if ((s_obj = get_obj_in_list(objarg, world[ch->in_room].contents)) &&
 		    (s_obj->type == ITEM_STORAGE))
 		{
-			if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-			{
-				if (!submit_flat_storage_destroy(ch, s_obj, ch->in_room,
-								 flat_storage_action::destroy))
-					send_to_char(
-						"The storage authority is busy; nothing was deleted.\r\n",
-						ch);
-				else
-					send_to_char("The storage deletion is being committed.\r\n",
-						     ch);
-				return;
-			}
 			wizlog(GET_LEVEL(ch), "%s deletes storage item %s from room %d.",
 			       J_NAME(ch), s_obj->short_description, world[ch->in_room].number);
 			logit(LOG_WIZ, "%s deletes storage item %s from room %d.", J_NAME(ch),
@@ -10627,17 +10325,6 @@ void do_storage(P_char ch, char *arg, int /*cmd*/)
 		if ((s_obj = get_obj_in_list(objarg, world[ch->in_room].contents)) &&
 		    (s_obj->type == ITEM_STORAGE))
 		{
-			if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-			{
-				if (!submit_flat_storage_remove_next(ch, s_obj, ch->in_room))
-					send_to_char(
-						"The storage authority is busy; nothing was removed.\r\n",
-						ch);
-				else
-					send_to_char("The storage removal is being committed.\r\n",
-						     ch);
-				return;
-			}
 			for (tmpobj = s_obj->contains; tmpobj; tmpobj = next_obj)
 			{
 				next_obj = tmpobj->next_content;

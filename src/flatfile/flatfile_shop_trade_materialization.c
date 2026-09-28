@@ -946,10 +946,14 @@ flatfile_shop_trade_materialization_result flatfile_shop_trade_materialization_r
 				if (!owner_records.emplace(record.item_uid, record).second)
 					return flatfile_shop_trade_materialization_result::invalid;
 		}
-		// Coin commits carry their current payload in custody even when the
-		// process stopped before a player snapshot or transfer event was written.
+		// A pile's amount comes from its custody payload. Only a pile the player
+		// file holds is loaded: one given away or dropped in memory is no longer
+		// the player's.
+		std::unordered_set<uint64_t> held;
+		for (const auto &item : snapshot->items)
+			held.insert(item.object_uid);
 		for (const auto &record : owned)
-			if (!record.coin_payload.empty())
+			if (!record.coin_payload.empty() && held.contains(record.item_uid))
 			{
 				std::vector<player_item_snapshot> coins;
 				if (player_item_snapshot_list_decode(

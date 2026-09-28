@@ -916,11 +916,30 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	}
 	if (!encode_file(&materialized, &bytes))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+	// A save that carries everything the player holds replaces what earlier
+	// transfers gave it, as a MariaDB save replaces the player_items rows they wrote.
+	constexpr player_component_mask_t held_components =
+		PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY | PLAYER_COMPONENT_PETS;
+	flatfile_authority_operation delivered;
+	bool delivered_changed = false;
+	if ((snapshot.components & held_components) == held_components)
+	{
+		const auto retired = flatfile_shop_trade_materialization_prepare_player_remove(
+			root, *authority, static_cast<uint32_t>(snapshot.pid), &delivered, error);
+		if (retired == flatfile_shop_trade_materialization_result::io_error)
+			return { player_save_apply_outcome::retryable_failure, 0, EIO };
+		if (retired != flatfile_shop_trade_materialization_result::ok &&
+		    retired != flatfile_shop_trade_materialization_result::unchanged)
+			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+		delivered_changed = retired == flatfile_shop_trade_materialization_result::ok;
+	}
 	std::vector<flatfile_authority_operation> operations;
 	try
 	{
 		if (claim_changed)
 			operations.push_back(std::move(claimed));
+		if (delivered_changed)
+			operations.push_back(std::move(delivered));
 		if (snapshot.death)
 		{
 			operations.push_back({ flatfile_authority_store::player_deaths,

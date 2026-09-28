@@ -69,7 +69,6 @@ int main(int argc, char **argv) {
     player_snapshot snapshot;
     std::string error;
     assert(flatfile_player_snapshot_read(argv[1], 1, &snapshot, &error) == flatfile_player_load_result::ok);
-    assert(!snapshot.items.empty());
     for (const auto &item : snapshot.items) {
         std::cout << "ITEM " << item.object_uid << ' ' << item.vnum << ' ' << item.extra_flags << '\n';
         for (const auto &description : item.extra_descriptions) {
@@ -95,6 +94,28 @@ int main(int argc, char **argv) {
 def saved_items(inspector, state):
     """Read the current synthetic player's saved item and spell identities."""
     return sorted(subprocess.check_output([str(inspector), str(state)], text=True).splitlines())
+
+
+def held(inspector, state):
+    """What the player's saved file holds, by uid. Memory is the authority: the
+    ownership catalog keeps naming the player for items it dropped until another
+    owner's save claims them, so the saved file is what the player has."""
+    return {int(fields[1]): int(fields[2]) for fields in
+            (line.split() for line in saved_items(inspector, state)) if fields[0] == "ITEM"}
+
+
+def save_and_wait(actor, inspector, state, done, timeout=30):
+    """Save, then wait for the asynchronous writer to land a file that satisfies done."""
+    actor.send("save")
+    actor.expect(f"Save complete for {journey.CHARACTER}.", timeout=20)
+    actor.expect("Pos: standing >")
+    deadline = time.monotonic() + timeout
+    while True:
+        current = held(inspector, state)
+        if done(current):
+            return current
+        journey.require(time.monotonic() < deadline, "the save did not reach the player file")
+        time.sleep(0.05)
 
 
 def run(binary, chaos, class_name="Warrior"):
@@ -198,10 +219,8 @@ def run(binary, chaos, class_name="Warrior"):
                     actor.send("remove all")
                     actor.expect("Pos: standing >")
                     actor.send("drop all")
-                    deadline = time.monotonic() + 90
-                    while owned(state) and time.monotonic() < deadline:
-                        actor._receive()
-                    journey.require(not owned(state), "drop did not empty the synthetic inventory")
+                    actor.expect("Pos: standing >", timeout=30)
+                    save_and_wait(actor, inspector, state, lambda items: not items)
                     actor.send("quit")
                     actor.expect("ACCOUNT MENU", timeout=40)
                     actor.send("0")
@@ -215,7 +234,7 @@ def run(binary, chaos, class_name="Warrior"):
                     actor.expect("Pos: standing >")
                     elapsed = time.monotonic() - preparing
                     login_elapsed = time.monotonic() - started
-                    complete = owned(state)
+                    complete = save_and_wait(actor, inspector, state, lambda items: len(items) > 10)
                     composition = Counter(complete.values())
                     journey.require(len(complete) > 10, "regrant omitted the legacy kit")
                     journey.require(not (set(complete) & prior_uids), "regrant reused an old item identity")
@@ -224,9 +243,6 @@ def run(binary, chaos, class_name="Warrior"):
                     if not chaos:
                         journey.require(composition == Counter(initial.values()), "regrant changed first-login contents")
                     journey.require(composition == expected, "repeated grant changed kit contents")
-                    actor.send("save")
-                    actor.expect(f"Save complete for {journey.CHARACTER}.", timeout=20)
-                    actor.expect("Pos: standing >")
                     saved = saved_items(inspector, state)
                     journey.require(sum(line.startswith("ITEM ") for line in saved) == len(complete),
                                     "saved kit lost a root or transient item")
@@ -238,7 +254,7 @@ def run(binary, chaos, class_name="Warrior"):
                     journey.require(elapsed < 8, "legacy grant still waits through serialized roots")
                     prior_uids |= set(complete)
                 # A nonempty saved inventory must survive login without a third kit.
-                saved = owned(state)
+                saved = held(inspector, state)
                 saved_snapshot = saved_items(inspector, state)
                 actor.send("quit")
                 actor.expect("ACCOUNT MENU", timeout=40)
@@ -247,7 +263,7 @@ def run(binary, chaos, class_name="Warrior"):
                 actor = journey.reconnect_character(plain, expected_room=None)
                 text = actor.expect("Pos: standing >", timeout=20)
                 journey.require("starter kit is being prepared" not in text, "nonempty inventory regranted")
-                journey.require(owned(state) == saved, "saved kit identities changed across reload")
+                journey.require(held(inspector, state) == saved, "saved kit identities changed across reload")
                 actor.send("save")
                 actor.expect(f"Save complete for {journey.CHARACTER}.", timeout=20)
                 actor.expect("Pos: standing >")

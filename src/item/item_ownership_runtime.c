@@ -1,6 +1,7 @@
 #include "item/item_ownership_runtime.h"
 
 #include "economy/collector_command.h"
+#include "item/item_claim.h"
 #include "player/player_snapshot_codec.h"
 
 #include <algorithm>
@@ -592,7 +593,12 @@ bool item_ownership_runtime_apply(const item_transfer_payload &payload,
 	    result.root_item_uid != item_transfer_result_root(payload))
 		return false;
 	const bool creation = payload.from_owner.type == item_owner_type::system;
-	if (payload.target_parent_item_uid)
+	// Memory is the authority for a player, room, corpse, locker or pet, and the
+	// repository claimed the items from it: this cache learns the committed state
+	// instead of checking what it last saw.
+	const bool memory_held = item_claim_owner_is_memory_held(payload.from_owner.type);
+	if (payload.target_parent_item_uid &&
+	    !item_claim_owner_is_memory_held(payload.to_owner.type))
 	{
 		const auto parent = entries.find(payload.target_parent_item_uid);
 		if (parent == entries.end() ||
@@ -644,10 +650,11 @@ bool item_ownership_runtime_apply(const item_transfer_payload &payload,
 	{
 		auto found = entries.find(payload.items[index].item_uid);
 		uint64_t target_root = 0, target_parent = 0;
-		if (found == entries.end() ||
-		    found->second.item_revision != payload.items[index].expected_item_revision ||
-		    !item_owner_identity_equal(found->second.owner, payload.from_owner) ||
-		    found->second.item_revision == std::numeric_limits<uint64_t>::max() ||
+		if ((!memory_held &&
+		     (found == entries.end() ||
+		      found->second.item_revision != payload.items[index].expected_item_revision ||
+		      !item_owner_identity_equal(found->second.owner, payload.from_owner) ||
+		      found->second.item_revision == std::numeric_limits<uint64_t>::max())) ||
 		    !item_transfer_target_topology(payload, payload.items[index].item_uid,
 						   &target_root, &target_parent))
 			return false;
@@ -659,7 +666,16 @@ bool item_ownership_runtime_apply(const item_transfer_payload &payload,
 		if (!item_transfer_target_topology(payload, payload.items[index].item_uid,
 						   &target_root, &target_parent))
 			return false;
-		++entry.item_revision;
+		const bool in_step = entry.item_uid == payload.items[index].item_uid &&
+				     entry.item_revision ==
+					     payload.items[index].expected_item_revision;
+		entry.item_uid = payload.items[index].item_uid;
+		entry.vnum = payload.items[index].vnum;
+		// A claim moved a revision this cache did not see; the result bounds it.
+		if (memory_held && !in_step)
+			entry.item_revision = result.max_item_revision;
+		else
+			++entry.item_revision;
 		entry.root_item_uid = target_root;
 		entry.parent_item_uid = target_parent;
 		entry.owner = payload.to_owner;
@@ -720,14 +736,18 @@ bool collector_publish_authority(const collector_command_payload &payload,
 				 const collector_command_result &result,
 				 std::vector<item_ownership_runtime_entry> desired)
 {
-	if (result.from_owner_revision != payload.expected_from_owner_revision + 1 ||
-	    result.to_owner_revision != payload.expected_to_owner_revision + 1)
+	// Saves move a player's, room's or corpse's revision; the result is learned.
+	const bool from_memory = item_claim_owner_is_memory_held(payload.from_owner.type);
+	const bool to_memory = item_claim_owner_is_memory_held(payload.to_owner.type);
+	if ((!from_memory &&
+	     result.from_owner_revision != payload.expected_from_owner_revision + 1) ||
+	    (!to_memory && result.to_owner_revision != payload.expected_to_owner_revision + 1))
 		return false;
 	uint64_t from_revision = 0, to_revision = 0;
 	if (!item_ownership_runtime_owner_revision(payload.from_owner, &from_revision) ||
 	    !item_ownership_runtime_owner_revision(payload.to_owner, &to_revision) ||
-	    from_revision < payload.expected_from_owner_revision ||
-	    to_revision < payload.expected_to_owner_revision)
+	    (!from_memory && from_revision < payload.expected_from_owner_revision) ||
+	    (!to_memory && to_revision < payload.expected_to_owner_revision))
 		return false;
 	const uint64_t published_from_revision =
 		std::max(from_revision, result.from_owner_revision);

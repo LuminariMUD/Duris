@@ -651,6 +651,33 @@ player_item_snapshot_tree_capture(P_obj root, std::vector<player_item_snapshot> 
 	return player_snapshot_capture_result::ok;
 }
 
+player_snapshot_capture_result
+player_item_snapshot_contents_capture(P_obj container, std::vector<player_item_snapshot> *items_out)
+{
+	if (!container || !items_out)
+		return player_snapshot_capture_result::invalid_identity;
+	try
+	{
+		capture_budget budget;
+		std::vector<player_item_snapshot> items;
+		std::unordered_set<const obj_data *> seen;
+		for (const obj_data *content = container->contains; content;
+		     content = content->next_content)
+		{
+			const auto result = capture_item_tree(content, PLAYER_SNAPSHOT_NO_PARENT, 0,
+							      items, budget, seen, 1, false, false);
+			if (result != player_snapshot_capture_result::ok)
+				return result;
+		}
+		*items_out = std::move(items);
+	}
+	catch (const std::bad_alloc &)
+	{
+		return player_snapshot_capture_result::retryable_allocation_failure;
+	}
+	return player_snapshot_capture_result::ok;
+}
+
 player_snapshot_capture_result player_snapshot_capture(P_char ch, player_revision_t revision,
 						       player_component_mask_t components,
 						       int save_intent, int room_vnum,

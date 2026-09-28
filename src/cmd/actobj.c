@@ -2822,29 +2822,11 @@ void do_get(P_char ch, char *argument, int cmd)
 				if (!do_get_container_preflight(ch, s_obj, corpse_flag, TRUE, arg1,
 								arg2, fail))
 					return;
-				if (IS_PC(ch))
+				if (IS_PC(ch) && s_obj->obj_uid)
 				{
-					if (s_obj->obj_uid)
-					{
-						start_container_bulk_get(ch, s_obj,
-									 alldot ? Gbuf2 : NULL,
-									 corpse_flag);
-						return;
-					}
-					int ownership_safety = top_of_objt + 1;
-					for (o_obj = s_obj->contains;
-					     o_obj && ownership_safety-- > 0;
-					     o_obj = o_obj->next_content)
-						if (o_obj->obj_uid > 0 &&
-						    o_obj->type != ITEM_MONEY &&
-						    (!alldot ||
-						     (o_obj->name && isname(Gbuf2, o_obj->name))))
-						{
-							send_to_char(
-								"That container lacks authoritative ownership.\r\n",
-								ch);
-							return;
-						}
+					start_container_bulk_get(ch, s_obj, alldot ? Gbuf2 : NULL,
+								 corpse_flag);
+					return;
 				}
 
 				int container_safety = top_of_objt + 1;
@@ -4896,8 +4878,7 @@ void do_drop(P_char ch, char *argument, int cmd)
 						      world[ch->in_room].number);
 					}
 					obj_to_room(tmp_object, ch->in_room);
-					if (IS_PC(ch) &&
-					    item_command_uses_durable_ownership(tmp_object))
+					if (IS_PC(ch) && tmp_object->obj_uid > 0)
 						redis_log_floor_drop(tmp_object,
 								     world[ch->in_room].number);
 					dropped_any = true;

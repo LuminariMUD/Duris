@@ -37,11 +37,20 @@ struct item_claim_outcome
 };
 
 bool item_claim_owner_is_economy(item_owner_type type);
+// Owners whose holdings memory is the authority for: players, rooms, corpses, lockers
+// and pets. A transfer out of or into one of them does not check that owner's revision
+// or the item's recorded owner; it claims the items the way a save does.
+inline bool item_claim_owner_is_memory_held(item_owner_type type)
+{
+	return type == item_owner_type::player || type == item_owner_type::room ||
+	       type == item_owner_type::corpse || type == item_owner_type::locker ||
+	       type == item_owner_type::pet;
+}
 
-// Coin piles keep the ownership the currency transactions give them until
-// Phase 2: a save records a pile nobody has recorded, and writes a pile it holds,
-// but never takes or revives one the ownership record gives elsewhere.
-bool item_claim_leaves_owner_alone(const player_item_snapshot &item);
+// A coin pile the currency transactions spent stays spent: a save captured before
+// the pickup committed must not revive it. A live pile is claimed like any item,
+// so coins follow the bag that holds them.
+bool item_claim_leaves_owner_alone(const player_item_snapshot &item, item_custody_state recorded);
 
 // The items a save writes after its claim: all of them except those left with the
 // economy. Parent indexes are renumbered for the items that remain.

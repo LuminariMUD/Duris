@@ -207,9 +207,12 @@ item_transfer_payload multi_root_creation_payload(uint64_t first_root, uint64_t 
 critical_apply_result apply(MYSQL *connection, uint8_t id, const item_transfer_payload &value)
 {
 	critical_command command = {};
-	assert(item_transfer_command_build(&command, operation(id), value,
-					   critical_source_site::operator_repair,
-					   critical_deadline_class::interactive));
+	const bool built = item_transfer_command_build(&command, operation(id), value,
+						       critical_source_site::operator_repair,
+						       critical_deadline_class::interactive);
+	if (!built)
+		fprintf(stderr, "item transfer command %u did not build\n", id);
+	assert(built);
 	command.accepted_at_usec = 1;
 	return critical_command_repository_apply(connection, command);
 }
@@ -359,7 +362,7 @@ void check_restitution_runtime_transfer(MYSQL *connection)
 	craft.expected_from_revision = source_revision;
 	craft.expected_to_revision = source_revision;
 	craft.selected_item_uid = uid;
-	craft.target_root_item_uid = uid;
+	craft.multi_root = true;
 	craft.item_count = 1;
 	craft.items[0] = { uid, uid, 0, 1, 1901, item_custody_state::active };
 	const critical_apply_result rejected_craft = apply(connection, 16, craft);
@@ -441,6 +444,97 @@ void check_restitution_runtime_transfer(MYSQL *connection)
 }
 } // namespace
 
+// What memory says a player holds is what a transfer takes: another player's
+// record is taken, an item the economy holds is never taken, and the container a
+// grant goes into is claimed for the player holding it.
+void check_memory_claims(MYSQL *connection)
+{
+	const item_owner_identity system = { item_owner_type::system, 0, 0 };
+	const item_owner_identity player_one = { item_owner_type::player, 4000000001, 0 };
+	const item_owner_identity player_two = { item_owner_type::player, 4000000002, 0 };
+	const item_owner_identity room = { item_owner_type::room, 3001, 0 };
+	item_uid_allocator_reset_for_tests();
+	assert(item_uid_allocator_reserve(connection, 5));
+	const uint64_t bag = item_uid_allocator_next();
+	const uint64_t ring = item_uid_allocator_next();
+	const uint64_t held_by_auction = item_uid_allocator_next();
+	const uint64_t pack = item_uid_allocator_next();
+	const uint64_t gift = item_uid_allocator_next();
+
+	// The record still gives the bag and its ring to another player; memory says
+	// player one holds them and drops them.
+	root_uid = bag;
+	child_uid = ring;
+	assert(apply(connection, 17,
+		     payload(system, player_two, item_transfer_reason::creation,
+			     owner_revision(connection, system),
+			     owner_revision(connection, player_two), ITEM_TRANSFER_ABSENT_REVISION))
+		       .outcome == critical_apply_outcome::applied);
+	critical_apply_result dropped =
+		apply(connection, 18,
+		      payload(player_one, room, item_transfer_reason::player_drop, 0, 0, 1));
+	assert(dropped.outcome == critical_apply_outcome::applied);
+	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid IN (" +
+				   std::to_string(bag) + "," + std::to_string(ring) +
+				   ") AND owner_type=3 AND owner_id=3001 AND root_item_uid=" +
+				   std::to_string(bag))
+					  .c_str()) == 2);
+	assert(scalar(connection, ("SELECT COUNT(*) FROM item_owner_audit WHERE item_uid=" +
+				   std::to_string(bag) +
+				   " AND old_owner_id=4000000002 AND new_owner_id=4000000001")
+					  .c_str()) == 1);
+
+	// An item the auction holds stays with the auction.
+	execute(connection,
+		"INSERT INTO item_current_owner (item_uid,root_item_uid,parent_item_uid,"
+		"owner_type,owner_id,owner_context_id,item_revision,vnum,state) VALUES (" +
+			std::to_string(held_by_auction) + "," + std::to_string(held_by_auction) +
+			",NULL,6,900,0,3,1001,1)");
+	root_uid = held_by_auction;
+	critical_apply_result taken =
+		apply(connection, 19,
+		      payload(player_one, room, item_transfer_reason::player_drop, 0, 0, 1, 1));
+	assert(taken.outcome == critical_apply_outcome::terminal_failure &&
+	       taken.error_code == ESTALE);
+	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid=" +
+				   std::to_string(held_by_auction) +
+				   " AND owner_type=6 AND owner_id=900 AND item_revision=3")
+					  .c_str()) == 1);
+
+	// A grant goes into a pack the record still gives to another player.
+	root_uid = pack;
+	child_uid = pack;
+	assert(apply(connection, 20,
+		     payload(system, player_two, item_transfer_reason::creation,
+			     owner_revision(connection, system),
+			     owner_revision(connection, player_two), ITEM_TRANSFER_ABSENT_REVISION,
+			     1))
+		       .outcome == critical_apply_outcome::applied);
+	root_uid = gift;
+	child_uid = gift;
+	auto grant = payload(system, player_one, item_transfer_reason::creation,
+			     owner_revision(connection, system), 0, ITEM_TRANSFER_ABSENT_REVISION,
+			     1);
+	grant.selected_item_uid = gift;
+	grant.target_root_item_uid = pack;
+	grant.target_parent_item_uid = pack;
+	grant.expected_target_parent_revision = 9;
+	assert(apply(connection, 21, grant).outcome == critical_apply_outcome::applied);
+	assert(scalar(connection,
+		      ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid=" +
+		       std::to_string(pack) + " AND owner_type=1 AND owner_id=4000000001")
+			      .c_str()) == 1);
+	assert(scalar(connection,
+		      ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid=" +
+		       std::to_string(gift) + " AND root_item_uid=" + std::to_string(pack) +
+		       " AND parent_item_uid=" + std::to_string(pack))
+			      .c_str()) == 1);
+	assert(scalar(connection, ("SELECT COUNT(*) FROM item_owner_audit WHERE item_uid=" +
+				   std::to_string(pack) +
+				   " AND old_owner_id=4000000002 AND new_owner_id=4000000001")
+					  .c_str()) == 1);
+}
+
 int main()
 {
 	MYSQL *connection = mysql_init(nullptr);
@@ -511,20 +605,11 @@ int main()
 			      .c_str()) == 1);
 
 	uint64_t player_two_revision = owner_revision(connection, player_two);
-	critical_apply_result incomplete =
-		apply(connection, 2,
-		      payload(player_one, player_two, item_transfer_reason::synthetic,
-			      created_result.to_owner_revision, player_two_revision, 1, 1));
-	assert(incomplete.outcome == critical_apply_outcome::terminal_failure &&
-	       incomplete.error_code == EMSGSIZE);
-	critical_apply_result stale =
-		apply(connection, 3,
-		      payload(player_one, player_two, item_transfer_reason::synthetic,
-			      created_result.to_owner_revision - 1, player_two_revision, 1));
-	assert(stale.outcome == critical_apply_outcome::terminal_failure &&
-	       stale.error_code == ESTALE);
+	// Memory is the authority for a player: a stale owner or item revision no longer
+	// refuses the move. The items go where the game put them.
 	const auto give_payload = payload(player_one, player_two, item_transfer_reason::player_give,
-					  created_result.to_owner_revision, player_two_revision, 1);
+					  created_result.to_owner_revision - 1,
+					  player_two_revision + 5, 7);
 	critical_apply_result moved = apply(connection, 4, give_payload);
 	assert(moved.outcome == critical_apply_outcome::applied);
 	item_transfer_result moved_result = {};
@@ -539,6 +624,10 @@ int main()
 		      ("SELECT COUNT(*) FROM player_items WHERE pid=4000000001 AND obj_uid IN (" +
 		       std::to_string(root_uid) + "," + std::to_string(child_uid) + ")")
 			      .c_str()) == 0);
+	// The record already named the giver, so nothing was claimed from anyone else.
+	assert(scalar(connection, ("SELECT COUNT(*) FROM item_owner_audit WHERE item_uid IN (" +
+				   std::to_string(root_uid) + "," + std::to_string(child_uid) + ")")
+					  .c_str()) == 0);
 	critical_apply_result replayed_give = apply(connection, 4, give_payload);
 	item_transfer_result replayed_give_result = {};
 	// The populated cross-owner give must apply exactly once when its operation is replayed.
@@ -562,18 +651,35 @@ int main()
 			      std::numeric_limits<uint64_t>::max()));
 	assert(overflow.outcome == critical_apply_outcome::terminal_failure &&
 	       overflow.error_code == ERANGE);
-	execute(connection, ("UPDATE item_current_owner SET item_revision=2 WHERE root_item_uid=" +
+	// The record still names the giver, as when the receiver's save has not landed:
+	// the destruction takes the items from it and audits the claim.
+	execute(connection, ("UPDATE item_current_owner SET item_revision=2,owner_id=4000000001 "
+			     "WHERE root_item_uid=" +
 			     std::to_string(root_uid))
 				    .c_str());
 	critical_apply_result destruction =
 		apply(connection, 6,
-		      payload(player_two, destroyed, item_transfer_reason::destruction,
-			      moved_result.to_owner_revision, destruction_revision, 2));
+		      payload(player_two, destroyed, item_transfer_reason::destruction, 0,
+			      destruction_revision, 2));
 	assert(destruction.outcome == critical_apply_outcome::applied);
 	const std::string uid_list = std::to_string(root_uid) + "," + std::to_string(child_uid);
 	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner WHERE root_item_uid=" +
 				   std::to_string(root_uid) +
-				   " AND owner_type=8 AND state=2 AND item_revision=3")
+				   " AND owner_type=8 AND state=2 AND item_revision=4")
+					  .c_str()) == 2);
+	assert(scalar(connection,
+		      ("SELECT COUNT(*) FROM item_owner_audit WHERE item_uid IN (" + uid_list +
+		       ") AND old_owner_type=1 AND old_owner_id=4000000001 AND "
+		       "new_owner_type=1 AND new_owner_id=4000000002")
+			      .c_str()) == 2);
+	// A destroyed item is never revived by a later claim.
+	critical_apply_result revived =
+		apply(connection, 22,
+		      payload(player_two, player_one, item_transfer_reason::player_give, 0, 0, 4));
+	assert(revived.outcome == critical_apply_outcome::terminal_failure &&
+	       revived.error_code == ESTALE);
+	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner WHERE root_item_uid=" +
+				   std::to_string(root_uid) + " AND owner_type=8 AND state=2")
 					  .c_str()) == 2);
 	assert(scalar(connection,
 		      ("SELECT COUNT(*) FROM item_ownership_ledger WHERE item_uid IN (" + uid_list +
@@ -785,7 +891,9 @@ int main()
 	assert(item_uid_allocator_reserve(connection, 2));
 	assert(item_uid_allocator_next() == allocator_start + 9);
 	assert(item_uid_allocator_next() == allocator_start + 10);
-	for (uint8_t id = 1; id <= 16; ++id)
+
+	check_memory_claims(connection);
+	for (uint8_t id = 1; id <= 24; ++id)
 	{
 		const std::string hex = operation_hex(id);
 		execute(connection,

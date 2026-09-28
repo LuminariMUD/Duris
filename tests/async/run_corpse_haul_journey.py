@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Three real Telnet players; hold MariaDB item acknowledgements while looter moves.
+"""Three real Telnet players; hold the MariaDB coin pickup while the looter moves.
 
 Requires a freshly built MariaDB server and TEST_DB_HOST/USER/PASSWORD pointing
 to a disposable loopback database. Creates and drops its own unique schema.
@@ -40,13 +40,14 @@ def run(binary):
     database='haul_journey_'+uuid.uuid4().hex[:12]
     host=os.environ['TEST_DB_HOST']
     assert host in ('localhost','127.0.0.1')
+    port=os.environ.get('TEST_DB_PORT','3306')
     env=dict(PATH=os.environ.get('PATH','/usr/bin:/bin'), ENVIRONMENT='local',
-             DB_HOST=host,DB_PORT='3306',DB_NAME=database,DB_USER=os.environ['TEST_DB_USER'],
+             DB_HOST=host,DB_PORT=port,DB_NAME=database,DB_USER=os.environ['TEST_DB_USER'],
              DB_PASSWD=os.environ['TEST_DB_PASSWORD'],MYSQL_PWD=os.environ['TEST_DB_PASSWORD'],
              DB_ALLOWED_TARGETS=host+'/'+database,PERSISTENCE_MODE='mariadb-primary',DB_TLS='FALSE',
              REDIS='FALSE',CHAOS_MUD='FALSE',LISTEN_ADDRESS='127.0.0.1',
              DURIS_WEBSOCKET_LISTEN_ADDRESS='127.0.0.1')
-    mysql=['mysql','--protocol=tcp','-h',host,'-u',env['DB_USER'],'-N','-B','--unbuffered']
+    mysql=['mysql','--protocol=tcp','-h',host,'-P',port,'-u',env['DB_USER'],'-N','-B','--unbuffered']
     def sql(statement, selected=True):
         return subprocess.check_output(mysql+([database] if selected else []),input=statement,
                                        text=True,env=env).strip()
@@ -128,40 +129,46 @@ def run(binary):
                     actor.send('south'); actor.expect('The Regression Arena')
                     return final
 
-                # The first missing-stock acknowledgement only adopts the banana
-                # at its source; departure prevents a new ownership transfer.
-                first=held_departure('stock adoption')
-                assert 'Nothing acquired.' in first and 'no longer available' in first,first
-                assert sql(f'SELECT COUNT(*) FROM item_current_owner WHERE owner_type=1 AND owner_id={pid} AND vnum=15')=='0'
-                assert sql('SELECT COUNT(*) FROM item_current_owner WHERE owner_type=3 AND owner_id=22800 AND vnum=15 AND state=1')=='1'
-                # The next attempt moves the tracked banana and the initially
-                # untracked NPC coin pile. Both must complete from the exact
-                # corpse after the actor flees.
-                second=held_departure('equipment and coin transfer')
-                assert 'a banana' in second and '3s' in second,second
-                assert 'Some contents were not acquired.' not in second,second
-                assert sql(f'SELECT COUNT(*) FROM item_current_owner WHERE owner_type=1 AND owner_id={pid} AND vnum=15 AND state=1')=='1'
-                assert sql(f'SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}')=='0\t3\t0\t0'
+                def plain_haul(target='corpse', name='the corpse of Raoul'):
+                    for c in clients: drain(c)
+                    actor.send('get all '+target)
+                    actor.expect('You finish sorting your haul from '+name,timeout=30)
+                    final=drain(actor,1)
+                    assert 'Haul:' in final,final
+                    return final
+
+                # Items move in memory; only the coin pickup waits on SQL. While it
+                # is held the actor leaves: the committed coins are credited, but
+                # nothing is taken from a room the actor is no longer in.
+                first=held_departure('held coin pickup')
+                assert '3s' in first and 'no longer available' in first,first
+                assert 'a banana' not in first,first
+                actor.send('look in corpse'); actor.expect('banana')
+                second=plain_haul()
+                assert 'a banana' in second and 'Some contents were not acquired.' not in second,second
+                print('equipment haul: '+second,flush=True)
                 actor.send('inventory'); actor.expect('a banana')
                 actor.send('save'); actor.expect('Save complete for Taverek.',timeout=30)
+                assert sql(f'SELECT COUNT(*) FROM item_current_owner WHERE owner_type=1 AND owner_id={pid} AND vnum=15 AND state=1')=='1'
+                assert sql(f'SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}')=='0\t3\t0\t0'
                 actor.close(); clients.remove(actor)
                 # Reconnect to the same live player, verify inventory and save.
                 actor=reconnect_linkdead(port); clients.append(actor)
                 actor.send('inventory'); actor.expect('a banana')
                 actor.send('save'); actor.expect('Save complete for Taverek.',timeout=30)
                 assert 'finish sorting' not in drain(actor), 'completion replayed on reconnect'
-                # Repeat the accepted item and coin boundary against the actual
-                # player's corpse, including its lifecycle revision publication.
+                # The player's own corpse gives the banana back, and the wallet ends
+                # where it was whether the coins went into the corpse or stayed.
                 journey.attack_until_death(actor); actor.expect('ACCOUNT MENU',timeout=45)
                 actor.close(); clients.remove(actor)
                 actor=journey.reconnect_character(port); clients.append(actor)
                 actor.send('look'); actor.expect('The corpse of a Human is lying here.')
-                pc_items=held_departure('player corpse equipment','Taverek','the corpse of Taverek')
-                assert 'a banana' in pc_items and '3s' in pc_items,pc_items
-                assert 'Some contents were not acquired.' not in pc_items,pc_items
+                pc_items=plain_haul('Taverek','the corpse of Taverek')
+                assert 'a banana' in pc_items and 'Some contents were not acquired.' not in pc_items,pc_items
+                print('player corpse haul: '+pc_items,flush=True)
                 actor.send('save'); actor.expect('Save complete for Taverek.',timeout=30)
                 assert sql(f'SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}')=='0\t3\t0\t0'
-                print('PASS: actual three-player NPC/player corpse held SQL adoption/item/coin movement, observers, durable custody, wallet and reconnect',flush=True)
+                print('PASS: three-player NPC/player corpse hauls: held coin pickup, in-memory items, observers, saved custody, wallet and reconnect',flush=True)
             except Exception:
                 print((runtime/'server.out').read_text(errors='replace')[-5000:])
                 print(journey.runtime_logs(runtime)[-12000:])

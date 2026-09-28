@@ -1205,8 +1205,9 @@ bool load_items(MYSQL *connection, player_load_result *result)
 		    }))
 		return false;
 
-	// Reconstruct committed piles even if the process stopped before a player
-	// snapshot could publish them. Placement comes from the same custody row.
+	// A pile's amount comes from its custody row, which the currency transactions
+	// keep. Only a pile the character's own saved rows hold is loaded: one it gave
+	// away or dropped in memory is no longer its own.
 	const std::string coin_sql =
 		"SELECT own.item_uid,own.root_item_uid,COALESCE(own.parent_item_uid,0),"
 		"own.item_revision,revision.revision,own.coin_payload,own.vnum FROM item_current_owner own "
@@ -1214,7 +1215,9 @@ bool load_items(MYSQL *connection, player_load_result *result)
 		"AND revision.owner_id=own.owner_id AND revision.owner_context_id=own.owner_context_id "
 		"WHERE own.owner_type=1 AND own.owner_id=" +
 		pid +
-		" AND own.owner_context_id=0 AND own.state=1 AND own.coin_payload IS NOT NULL ORDER BY own.item_uid";
+		" AND own.owner_context_id=0 AND own.state=1 AND own.coin_payload IS NOT NULL AND "
+		"EXISTS (SELECT 1 FROM player_items held WHERE held.pid=" +
+		pid + " AND held.obj_uid=own.item_uid) ORDER BY own.item_uid";
 	std::unique_ptr<MYSQL_RES, decltype(&mysql_free_result)> coin_rows(
 		query(connection, coin_sql, result), mysql_free_result);
 	if (!coin_rows)

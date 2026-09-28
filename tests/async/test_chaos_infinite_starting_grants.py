@@ -203,18 +203,14 @@ assert "chaos_material_pouch_can_record_generated" in MATERIALS
 assert "chaos_material_pouch_record_collected" in MATERIALS
 assert "chaos_material_pouch_scoreboard" in MATERIALS
 assert "chaos_material_pouch_collect_inventory" in ACTOBJ
-assert "item_transfer_reason::destruction" in MATERIALS_C
-assert "item_movement_transaction_submit_batch" in MATERIALS_C
-assert "chaos_material_pouch_collection_completion" in MATERIALS_C
-assert "chaos_material_pouch_revert_collected" in MATERIALS_C
+# Memory is the authority: the pouch records the materials and consumes them at once.
+collect = MATERIALS_C[MATERIALS_C.index("bool collect_into_pouch("):]
+collect = collect[: collect.index("\n}\n")]
+assert "item_movement_transaction_submit" not in MATERIALS_C
+assert "chaos_material_pouch_collection_completion" not in MATERIALS_C
 assert "obj_from_char(material)" not in MATERIALS_C
-assert "extract_obj(material, FALSE)" in MATERIALS_C
-assert MATERIALS_C.index("chaos_material_pouch_record_collected(pouch, usage.data(), usage_count)") < MATERIALS_C.index(
-    "item_movement_transaction_submit_batch(actor, roots, root_count"
-)
-assert MATERIALS_C.index("chaos_material_pouch_revert_collected(pouch, usage.data(), usage_count)") < MATERIALS_C.index(
-    "pending_collections.erase(actor_pid);\n\t\tlogit(LOG_FILE, \"CHAOS pouch collection could not be queued"
-)
+assert collect.index("chaos_material_pouch_record_collected(pouch, usage.data(), usage_count)") < \
+    collect.index("extract_obj(roots[index], FALSE)")
 assert "CHAOS_MATERIAL_POUCH_SEARCH_BUDGET" in MATERIALS
 assert "WEAR_ATTACH_BELT_1" in ACTOBJ
 assert "WEAR_ATTACH_BELT_3" in ACTOBJ

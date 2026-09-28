@@ -104,10 +104,12 @@ int main()
 	assert(item_ownership_runtime_lookup(200, &created));
 	assert(created.root_item_uid == 101 && created.parent_item_uid == 101 &&
 	       created.owner_revision == 12);
+	// A player holds its containers in memory, so a grant into one that the cache
+	// last saw at another revision is learned, not refused.
 	creation.selected_item_uid = 201;
 	creation.items[0].item_uid = 201;
 	creation.expected_target_parent_revision = 2;
-	assert(!item_ownership_runtime_apply(creation, { 201, 1, 2, 13, 1, 0 }));
+	assert(item_ownership_runtime_apply(creation, { 201, 1, 2, 12, 1, 0 }));
 
 	const item_ownership_runtime_entry stale = {
 		101, 101, 0, player, 3, 10, 8, item_custody_state::active
@@ -723,6 +725,25 @@ int main()
 	       item_owner_identity_equal(absent.owner, retained_player));
 	assert(item_ownership_runtime_owner_revision(retained_player, &owner_revision) &&
 	       owner_revision == 4);
+	{
+		uint64_t owner_after = 0;
+		assert(item_ownership_runtime_owner_revision(player, &owner_after));
+		// A move out of a player at a revision the cache did not see is learned too.
+		const item_ownership_runtime_entry dropped = {
+			150, 150, 0, player, 4, owner_after, 7, item_custody_state::active
+		};
+		assert(item_ownership_runtime_hydrate(dropped));
+		item_transfer_payload learned = move;
+		learned.to_owner = { item_owner_type::room, 1300, 0 };
+		learned.selected_item_uid = 150;
+		learned.target_root_item_uid = 150;
+		learned.items[0] = { 150, 150, 0, 99, 7, item_custody_state::active };
+		item_ownership_runtime_entry moved = {};
+		assert(item_ownership_runtime_apply(learned, { 150, 1, owner_after + 1, 2, 9, 0 }));
+		assert(item_ownership_runtime_lookup(150, &moved) && moved.item_revision == 9 &&
+		       item_owner_identity_equal(moved.owner, learned.to_owner));
+		item_ownership_runtime_forget(150);
+	}
 	return 0;
 }
 '''
