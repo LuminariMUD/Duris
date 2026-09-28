@@ -196,7 +196,8 @@
 #define WEIGHT_CARGO 2
 #define WEIGHT_CONTRABAND 2
 
-#define MINCONTRAALIGN 1000
+#define SHIP_FLYING_ALTITUDE 4 // squares above the water; ranges to a flying ship include it
+#define MINCONTRAALIGN 1000 // alignment at or above which contraband is refused
 #define MINCONTRAFRAGS 100
 
 // defines for adjust_ship_market
@@ -516,6 +517,7 @@ struct ShipData
 	time_t save_retry_after; /* transient retry gate for failed ship saves */
 	bool save_pending; /* queued for deferred persistence */
 	unsigned long long save_saved_signature; /* signature of last persisted state */
+	bool db_id_unconfirmed; /* db_id is from a save whose COMMIT failed; the row may not exist */
 	ShipRuntimeRef runtime_ref; /* process-local slot and reuse generation */
 };
 
@@ -707,6 +709,18 @@ bool resolve_volley_endpoints(const VolleyData *volley, P_ship *attacker, P_ship
 void name_ship(const char *name, P_ship ship);
 bool rename_ship(P_char ch, char *owner_name, char *new_name);
 bool rename_ship_owner(char *old_name, char *new_name);
+
+// A ship owner change made in memory only, so that it can be undone without
+// another write if the transaction storing it does not commit.
+struct ShipOwnerChange
+{
+	P_ship ship;
+	char *ownername, *name; // the ship's previous owner and name
+	int db_id;
+};
+bool begin_ship_owner_change(P_ship ship, const char *new_owner, ShipOwnerChange *change);
+void finish_ship_owner_change(ShipOwnerChange *change);
+void undo_ship_owner_change(ShipOwnerChange *change);
 int load_ship(P_ship shipdata, int to_room);
 
 void delete_ship(P_ship ship, bool npc = false);
@@ -718,6 +732,19 @@ void init_ship_layout(P_ship ship);
 void clear_ship_layout(P_ship ship);
 void set_ship_layout(P_ship ship, int m_class);
 bool set_ship_physical_layout(P_ship ship);
+bool ship_rooms_fit_class(P_ship ship, int m_class);
+
+// Whether an owner's stored ship could be brought into the world.
+enum class stored_ship_state
+{
+	none, // the owner has no stored ship
+	placed, // it is in the world now
+	no_room, // the ship-room pool cannot hold it yet
+	unreadable, // it could not be read
+};
+void note_unplaced_ship(const char *owner);
+stored_ship_state place_stored_ship(const char *owner);
+void retry_unplaced_ships(void);
 
 void set_ship_armor(P_ship ship, bool equal);
 
@@ -759,6 +786,7 @@ int weaponsight(P_ship ship, int slot, int t_contact, P_char ch);
 int fire_weapon(P_ship ship, int w_num, int t_contact, P_char ch);
 int fire_weapon(P_ship ship, int w_num, int t_contact, int hit_chance, P_char ch);
 void volley_hit_event(P_char ch, P_char victim, P_obj obj, void *data);
+int volley_hit_percent(int hit_chance);
 void stun_all_in_ship(P_ship ship, int timer);
 int damage_sail(P_ship ship, P_ship target, int dam);
 int damage_hull(P_ship ship, P_ship target, int dam, int arc, int armor_pierce);

@@ -37,36 +37,36 @@ be deleted by a maintainer or kept.
 
 | Issue | Title | Author | Discussion | Category | Comments |
 | --- | --- | --- | --- | --- | --- |
-| [#63](#issue-63) | Upstream Origin Issues Audit (xanadinn/DurisMUD) | moshehbenavraham | #628 | General | 3 |
-| [#474](#issue-474) | Economy accounting: implement balanced coin transfers and auditable item custody | xander-l | #644 | Ideas | 18 |
-| [#475](#issue-475) | Economy accounting [01/16]: define conservation contracts and inventory every economic writer | xander-l | #645 | Ideas | 4 |
-| [#476](#issue-476) | Economy accounting [02/16]: implement bounded balanced plans and versioned operation links | xander-l | #646 | Ideas | 3 |
-| [#477](#issue-477) | Economy accounting [03/16]: add atomic SQL journal storage and immutable migrations | xander-l | #647 | Ideas | 6 |
-| [#478](#issue-478) | Economy accounting [04/16]: persist accounting evidence atomically in flat-file mode | xander-l | #648 | Ideas | 9 |
-| [#479](#issue-479) | Economy accounting [05/16]: establish opening balances and a restart-safe cutover | xander-l | #649 | Ideas | 10 |
-| [#480](#issue-480) | Economy accounting [06/16]: journal wallet, bank and physical coin transfers | xander-l | #650 | Ideas | 1 |
-| [#481](#issue-481) | Economy accounting [07/16]: account for coin issuance, expenses and authorized adjustments | xander-l | #651 | Ideas | 0 |
-| [#482](#issue-482) | Economy accounting [08/16]: link item custody and lifecycle events to economic operations | xander-l | #652 | Ideas | 1 |
-| [#483](#issue-483) | Economy accounting [09/16]: make shop purchases and sales balanced atomic exchanges | xander-l | #653 | Ideas | 0 |
-| [#484](#issue-484) | Economy accounting [10/16]: journal collector purchases, buybacks and item expiry | xander-l | #654 | Ideas | 0 |
-| [#485](#issue-485) | Economy accounting [11/16]: account for auction escrow, claims, refunds and settlement | xander-l | #655 | Ideas | 1 |
-| [#486](#issue-486) | Economy accounting [12/16]: preserve accounting through death, world lifecycle and recovery | xander-l | #656 | Ideas | 0 |
-| [#505](#issue-505) | Investigate 889 main-production coin-transfer ESTALE failures (2026-09-18) | xander-l | #643 | General | 0 |
-| [#509](#issue-509) | Performance: cache mundane-event handles for world-activity wakeups | xander-l | #642 | Ideas | 1 |
-| [#510](#issue-510) | Performance: remove transient allocations from PC-corpse activity traversal | xander-l | #641 | Ideas | 1 |
-| [#526](#issue-526) | Add guarded exact-UID recovery for active custody with missing player payloads | xander-l | #640 | Ideas | 0 |
-| [#533](#issue-533) | Do not block authenticated player login on non-core persistence failures | xander-l | #639 | Ideas | 1 |
-| [#539](#issue-539) | Improve quantity-buy syntax, shop listings, and purchase feedback | xander-l | #638 | Ideas | 1 |
-| [#546](#issue-546) | Investigate elemental aura no-op reports on Fire and Air Plane | xander-l | #637 | Q&A | 1 |
-| [#561](#issue-561) | Telemetry: validate the live repository/schema contract before enabling the writer | xander-l | #636 | Ideas | 0 |
-| [#564](#issue-564) | CI: run telemetry migrations and SQL repository round trips for every record kind | xander-l | #635 | Ideas | 0 |
-| [#565](#issue-565) | Telemetry: define repository mappings and schema checks from one canonical column contract | xander-l | #634 | Ideas | 0 |
-| [#566](#issue-566) | Telemetry: preserve or explicitly account for queued records across restart and copyover | xander-l | #627 | Ideas | 0 |
-| [#567](#issue-567) | Data quality: register and reconcile the telemetry outage beginning 2026-09-21 00:49:26 UTC | xander-l | #633 | General | 0 |
-| [#569](#issue-569) | Persistence: audit, repair, and prevent player item topology rows with missing payloads | xander-l | #632 | General | 4 |
-| [#570](#issue-570) | Persistence: correlate corpse rejection and critical-command integrity recovery to a terminal custody outcome | xander-l | #631 | General | 3 |
-| [#598](#issue-598) | Add player-facing feedback for bartender kill-quest XP | xander-l | #630 | Ideas | 0 |
-| [#616](#issue-616) | Flight Dragon network: learnable destinations, distance-priced tickets and discovery EXP (mobs 47015–47041) | moshehbenavraham | #629 | Ideas | 2 |
+| [#63](#63-upstream-origin-issues-audit-xanadinndurismud) | Upstream Origin Issues Audit (xanadinn/DurisMUD) | moshehbenavraham | #628 | General | 3 |
+| [#474](#474-economy-accounting-implement-balanced-coin-transfers-and-auditable-item-custody) | Economy accounting: implement balanced coin transfers and auditable item custody | xander-l | #644 | Ideas | 18 |
+| [#475](#475-economy-accounting-0116-define-conservation-contracts-and-inventory-every-economic-writer) | Economy accounting [01/16]: define conservation contracts and inventory every economic writer | xander-l | #645 | Ideas | 4 |
+| [#476](#476-economy-accounting-0216-implement-bounded-balanced-plans-and-versioned-operation-links) | Economy accounting [02/16]: implement bounded balanced plans and versioned operation links | xander-l | #646 | Ideas | 3 |
+| [#477](#477-economy-accounting-0316-add-atomic-sql-journal-storage-and-immutable-migrations) | Economy accounting [03/16]: add atomic SQL journal storage and immutable migrations | xander-l | #647 | Ideas | 6 |
+| [#478](#478-economy-accounting-0416-persist-accounting-evidence-atomically-in-flat-file-mode) | Economy accounting [04/16]: persist accounting evidence atomically in flat-file mode | xander-l | #648 | Ideas | 9 |
+| [#479](#479-economy-accounting-0516-establish-opening-balances-and-a-restart-safe-cutover) | Economy accounting [05/16]: establish opening balances and a restart-safe cutover | xander-l | #649 | Ideas | 10 |
+| [#480](#480-economy-accounting-0616-journal-wallet-bank-and-physical-coin-transfers) | Economy accounting [06/16]: journal wallet, bank and physical coin transfers | xander-l | #650 | Ideas | 1 |
+| [#481](#481-economy-accounting-0716-account-for-coin-issuance-expenses-and-authorized-adjustments) | Economy accounting [07/16]: account for coin issuance, expenses and authorized adjustments | xander-l | #651 | Ideas | 0 |
+| [#482](#482-economy-accounting-0816-link-item-custody-and-lifecycle-events-to-economic-operations) | Economy accounting [08/16]: link item custody and lifecycle events to economic operations | xander-l | #652 | Ideas | 1 |
+| [#483](#483-economy-accounting-0916-make-shop-purchases-and-sales-balanced-atomic-exchanges) | Economy accounting [09/16]: make shop purchases and sales balanced atomic exchanges | xander-l | #653 | Ideas | 0 |
+| [#484](#484-economy-accounting-1016-journal-collector-purchases-buybacks-and-item-expiry) | Economy accounting [10/16]: journal collector purchases, buybacks and item expiry | xander-l | #654 | Ideas | 0 |
+| [#485](#485-economy-accounting-1116-account-for-auction-escrow-claims-refunds-and-settlement) | Economy accounting [11/16]: account for auction escrow, claims, refunds and settlement | xander-l | #655 | Ideas | 1 |
+| [#486](#486-economy-accounting-1216-preserve-accounting-through-death-world-lifecycle-and-recovery) | Economy accounting [12/16]: preserve accounting through death, world lifecycle and recovery | xander-l | #656 | Ideas | 0 |
+| [#505](#505-investigate-889-main-production-coin-transfer-estale-failures-2026-09-18) | Investigate 889 main-production coin-transfer ESTALE failures (2026-09-18) | xander-l | #643 | General | 0 |
+| [#509](#509-performance-cache-mundane-event-handles-for-world-activity-wakeups) | Performance: cache mundane-event handles for world-activity wakeups | xander-l | #642 | Ideas | 1 |
+| [#510](#510-performance-remove-transient-allocations-from-pc-corpse-activity-traversal) | Performance: remove transient allocations from PC-corpse activity traversal | xander-l | #641 | Ideas | 1 |
+| [#526](#526-add-guarded-exact-uid-recovery-for-active-custody-with-missing-player-payloads) | Add guarded exact-UID recovery for active custody with missing player payloads | xander-l | #640 | Ideas | 0 |
+| [#533](#533-do-not-block-authenticated-player-login-on-non-core-persistence-failures) | Do not block authenticated player login on non-core persistence failures | xander-l | #639 | Ideas | 1 |
+| [#539](#539-improve-quantity-buy-syntax-shop-listings-and-purchase-feedback) | Improve quantity-buy syntax, shop listings, and purchase feedback | xander-l | #638 | Ideas | 1 |
+| [#546](#546-investigate-elemental-aura-no-op-reports-on-fire-and-air-plane) | Investigate elemental aura no-op reports on Fire and Air Plane | xander-l | #637 | Q&A | 1 |
+| [#561](#561-telemetry-validate-the-live-repositoryschema-contract-before-enabling-the-writer) | Telemetry: validate the live repository/schema contract before enabling the writer | xander-l | #636 | Ideas | 0 |
+| [#564](#564-ci-run-telemetry-migrations-and-sql-repository-round-trips-for-every-record-kind) | CI: run telemetry migrations and SQL repository round trips for every record kind | xander-l | #635 | Ideas | 0 |
+| [#565](#565-telemetry-define-repository-mappings-and-schema-checks-from-one-canonical-column-contract) | Telemetry: define repository mappings and schema checks from one canonical column contract | xander-l | #634 | Ideas | 0 |
+| [#566](#566-telemetry-preserve-or-explicitly-account-for-queued-records-across-restart-and-copyover) | Telemetry: preserve or explicitly account for queued records across restart and copyover | xander-l | #627 | Ideas | 0 |
+| [#567](#567-data-quality-register-and-reconcile-the-telemetry-outage-beginning-2026-09-21-004926-utc) | Data quality: register and reconcile the telemetry outage beginning 2026-09-21 00:49:26 UTC | xander-l | #633 | General | 0 |
+| [#569](#569-persistence-audit-repair-and-prevent-player-item-topology-rows-with-missing-payloads) | Persistence: audit, repair, and prevent player item topology rows with missing payloads | xander-l | #632 | General | 4 |
+| [#570](#570-persistence-correlate-corpse-rejection-and-critical-command-integrity-recovery-to-a-terminal-custody-outcome) | Persistence: correlate corpse rejection and critical-command integrity recovery to a terminal custody outcome | xander-l | #631 | General | 3 |
+| [#598](#598-add-player-facing-feedback-for-bartender-kill-quest-xp) | Add player-facing feedback for bartender kill-quest XP | xander-l | #630 | Ideas | 0 |
+| [#616](#616-flight-dragon-network-learnable-destinations-distance-priced-tickets-and-discovery-exp-mobs-4701547041) | Flight Dragon network: learnable destinations, distance-priced tickets and discovery EXP (mobs 47015–47041) | moshehbenavraham | #629 | Ideas | 2 |
 
 ## Original text
 

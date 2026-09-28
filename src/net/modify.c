@@ -25,6 +25,7 @@
 #include "magic/spells.h"
 #include "sql/sql.h"
 #include "sql/sql_player.h"
+#include "guild/assocs.h"
 
 /*
    external variables
@@ -1487,16 +1488,11 @@ int mob_do_rename_hook(P_char npc, P_char ch, int cmd, char *arg)
 			return TRUE;
 		}
 
-		// Bad names handled in rename_character function.
+		// Bad names and ship ownership are handled in rename_character.
 		strcpy(old_name, GET_NAME(ch));
 		if (!rename_character(ch, old_name, new_name))
 		{
 			return TRUE;
-		}
-		if (!rename_ship_owner(old_name, new_name))
-		{
-			send_to_char("Ship ownership update failed.\r\n", ch);
-			return FALSE;
 		}
 		SUB_MONEY(ch, renamePrice, 0);
 
@@ -1558,6 +1554,37 @@ bool rename_craftlist(char *old_name, char *new_name)
 	}
 
 	return TRUE;
+}
+
+/*
+ * Store `doofus` under `to` instead of `from` in one transaction, with the
+ * ship they own (NULL for none) and everything else their name keys.  The
+ * ship's owner changes in memory first, and goes back unless the transaction
+ * committed; a committed rename also renames their guild roster entry.
+ */
+static sql_commit_outcome store_character_name(P_char doofus, P_ship ship, const char *from,
+					       const char *to)
+{
+	ShipOwnerChange change;
+	if (ship && !begin_ship_owner_change(ship, to, &change))
+		return sql_commit_outcome::rolled_back;
+
+	const sql_commit_outcome outcome = sql_rename_character(doofus, from, to, ship);
+	if (ship)
+	{
+		if (outcome == sql_commit_outcome::committed)
+			finish_ship_owner_change(&change);
+		else
+			undo_ship_owner_change(&change);
+	}
+	if (outcome == sql_commit_outcome::committed)
+	{
+		char stored[MAX_STRING_LENGTH];
+		strlcpy(stored, to, sizeof(stored));
+		CAP(stored);
+		rename_guild_member(from, stored);
+	}
+	return outcome;
 }
 
 /* ------------------------------------------------------------------------------ */
@@ -1644,21 +1671,37 @@ bool rename_character(P_char ch, char *old_name, char *new_name)
 			}
 		}
 
-		if (!sql_player_rename(doofus, new_name))
+		/* The ship the character owns, found by owner wherever they stand,
+		 * changes owner in the same transaction as the player row, as do
+		 * their login mapping, personal locker and guild entry, so none of
+		 * them is ever stored under the other name.  Owning no ship is fine.
+		 * An open personal locker would save under the old name afterwards,
+		 * so the rename waits for it. */
+		char current_name[MAX_STRING_LENGTH];
+		strlcpy(current_name, GET_NAME(doofus), sizeof(current_name));
+		if (personal_locker_in_use(current_name))
+		{
+			send_to_char(
+				"Someone is currently using that locker.  Please try later.\r\n",
+				ch);
+			return FALSE;
+		}
+		P_ship ship = get_ship_from_owner(current_name);
+
+		const sql_commit_outcome renamed =
+			store_character_name(doofus, ship, current_name, new_name);
+		if (renamed != sql_commit_outcome::committed)
 		{
 			send_to_char("Failed to rename character in DB!\r\n", ch);
-			return FALSE;
-		}
-
-		/* if failed rename locker - is in use or something wierd, then dont rename */
-		if (!rename_locker(ch, old_name, new_name))
-		{
-			return FALSE;
-		}
-
-		/* if failed rename ship owner - then dont rename */
-		if (get_ship_from_char(doofus) && !rename_ship_owner(old_name, new_name))
-		{
+			if (renamed == sql_commit_outcome::unknown)
+			{
+				wizlog(AVATAR,
+				       "Rename of %s to %s may have been stored: its COMMIT failed. Everything their name keys is stored under the same one of the two names.",
+				       current_name, new_name);
+				logit(LOG_PLAYER,
+				      "Rename of %s to %s may have been stored: its COMMIT failed.",
+				      current_name, new_name);
+			}
 			return FALSE;
 		}
 
@@ -1673,7 +1716,8 @@ bool rename_character(P_char ch, char *old_name, char *new_name)
 		/* put new name and save char file */
 		CAP(new_name);
 		GET_NAME(doofus) = str_dup(new_name);
-		// Need to update the core stuff here.
+		/* The rename itself is stored by now, so a failure below is reported
+		 * but does not undo it, or stop the account list following it. */
 		if (!sql_save_player_core(doofus))
 		{
 			send_to_char(
@@ -1682,12 +1726,16 @@ bool rename_character(P_char ch, char *old_name, char *new_name)
 			statuslog(56, "&+RALERT&n: renamed character core save failed");
 			persistence_alert(AVATAR, "player", "redacted", "none", "none",
 					  "sql_save_failed", NULL);
-			return FALSE;
 		}
 		writeCharacter(doofus, 1, doofus->in_room);
 
 #ifdef USE_ACCOUNT
-		c = find_char_in_list(doofus->desc->account->acct_character_list, old_name);
+		/* A linkdead character has no descriptor; their account menu is read
+		 * back from the renamed mapping at their next login. */
+		c = doofus->desc && doofus->desc->account ?
+			    find_char_in_list(doofus->desc->account->acct_character_list,
+					      current_name) :
+			    NULL;
 		if (c)
 		{
 			FREE(c->charname);

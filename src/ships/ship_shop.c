@@ -126,6 +126,36 @@ void refund_ship_epics(P_char ch, const ship_hull_purchase_context &context)
 }
 
 /*
+ * Tell `ch` they cannot buy a first ship because they own one that is stored
+ * but not in the world, first trying to bring it back.  Returns false when
+ * they have no stored ship.  A second ship could never be saved beside the
+ * stored one, because ships are unique by owner.
+ */
+static bool refuse_for_stored_ship(P_char ch)
+{
+	switch (place_stored_ship(GET_NAME(ch)))
+	{
+	case stored_ship_state::none:
+		return false;
+	case stored_ship_state::placed:
+		send_to_char(
+			"&+gYou already own a ship.  It was waiting in dry dock, and is back at its dock now.&n\n",
+			ch);
+		break;
+	case stored_ship_state::no_room:
+		send_to_char(
+			"&+gYou already own a ship, in dry dock until the harbour has room for it.  Try again later.&n\n",
+			ch);
+		break;
+	case stored_ship_state::unreadable:
+		send_to_char("&+gYour ship's records could not be read.  Please notify a god.&n\n",
+			     ch);
+		break;
+	}
+	return true;
+}
+
+/*
  * Completion callback for a hull purchase's epic-point transaction: the point
  * at which the ship actually changes.
  *
@@ -163,6 +193,19 @@ void ship_hull_purchase_committed(P_char ch, bool committed, const epic_command_
 			refund_ship_epics(ch, context);
 			return;
 		}
+		if (!ship_rooms_fit_class(ship, context.hull_type))
+		{
+			send_to_char(
+				"The shipyard has no room to build that hull now; your epics are being refunded.\n",
+				ch);
+			refund_ship_epics(ch, context);
+			return;
+		}
+	}
+	else if (refuse_for_stored_ship(ch))
+	{
+		refund_ship_epics(ch, context);
+		return;
 	}
 	if (context.coin_delta > 0 && GET_MONEY(ch) < context.coin_delta)
 	{
@@ -188,6 +231,8 @@ void ship_hull_purchase_committed(P_char ch, bool committed, const epic_command_
 		name_ship(context.name, ship);
 		if (!load_ship(ship, context.room))
 		{
+			shipObjHash.erase(ship);
+			delete_ship(ship, true);
 			send_to_char(
 				"The shipyard could not load your ship; your epics are being refunded.\n",
 				ch);
@@ -304,7 +349,7 @@ int list_cargo(P_char ch, P_ship ship, bool owned)
 	send_to_char("\n&+gTo buy cargo, type '&+Gbuy cargo <number of crates>&+g'&n\n", ch);
 	send_to_char("&+gTo sell cargo, type '&+Gsell cargo&+g'&n\n", ch);
 
-	if (GET_ALIGNMENT(ch) <= MINCONTRAALIGN)
+	if (GET_ALIGNMENT(ch) < MINCONTRAALIGN)
 	{
 		if (can_buy_contraband(ship, portnum))
 		{
@@ -718,6 +763,12 @@ int list_hulls(P_char ch, P_ship ship, int owned)
 	return TRUE;
 }
 
+/* What a summons costs, in copper: the one charged, and the one quoted. */
+static int summon_ship_cost(P_ship ship)
+{
+	return SHIPTYPE_HULL_WEIGHT(ship->m_class) * 50;
+}
+
 /*
  * "summon" at a shipwright -- have your ship sail itself to this port.
  *
@@ -793,7 +844,7 @@ int summon_ship(P_char ch, P_ship ship, bool time_only)
 
 	if (!time_only)
 	{
-		int summon_cost = SHIPTYPE_HULL_WEIGHT(ship->m_class) * 50;
+		int summon_cost = summon_ship_cost(ship);
 		if (GET_MONEY(ch) < summon_cost)
 		{
 			send_to_char_f(ch, "&+gIt will cost &n%s &+gto summon your ship!&n\n",
@@ -2160,7 +2211,7 @@ int buy_contra(P_char ch, P_ship ship, char *arg)
 		send_to_char("&+gWhat contraband?  We don't sell any contraband!&n\n", ch);
 		return TRUE;
 	}
-	if (!IS_TRUSTED(ch) && GET_ALIGNMENT(ch) > MINCONTRAALIGN)
+	if (!IS_TRUSTED(ch) && GET_ALIGNMENT(ch) >= MINCONTRAALIGN)
 	{
 		send_to_char(
 			"&+gGoodie goodie two shoes like you shouldn't think of contraband.&n\n",
@@ -2254,11 +2305,23 @@ int buy_contra(P_char ch, P_ship ship, char *arg)
 	}
 	*/
 
+	/* Stack onto this port's contraband already aboard, as cargo does, and
+	 * only then take an empty slot. */
 	for (slot = 0; slot < MAXSLOTS; ++slot)
 	{
-		if (ship->slot[slot].type == SLOT_EMPTY)
+		if (ship->slot[slot].type == SLOT_CONTRABAND && ship->slot[slot].index == rroom)
 		{
 			break;
+		}
+	}
+	if (slot == MAXSLOTS)
+	{
+		for (slot = 0; slot < MAXSLOTS; ++slot)
+		{
+			if (ship->slot[slot].type == SLOT_EMPTY)
+			{
+				break;
+			}
 		}
 	}
 	if (slot == MAXSLOTS)
@@ -2631,7 +2694,7 @@ int buy_equipment(P_char ch, P_ship ship, char *arg1)
  */
 int buy_hull(P_char ch, P_ship ship, int owned, char *arg1, char *arg2)
 {
-	int cost, buildtime, hull_type, oldhull;
+	int cost, hull_type, oldhull;
 	struct affected_type *paf = get_spell_from_char(ch, AIP_CARGOCOUNT);
 	bool quickbuild = (paf && paf->modifier >= 10000) ? TRUE : FALSE;
 	bool free_tattoo_hull = false;
@@ -2690,6 +2753,13 @@ int buy_hull(P_char ch, P_ship ship, int owned, char *arg1, char *arg2)
 		}
 		if (!check_undocking_conditions(ship, hull_type, ch))
 		{
+			return TRUE;
+		}
+		if (!ship_rooms_fit_class(ship, hull_type))
+		{
+			send_to_char(
+				"&+gThe shipyard has no room to build that hull right now.  Try again later.&n\n",
+				ch);
 			return TRUE;
 		}
 		/* There are checks for hull change being valid now.
@@ -2759,37 +2829,13 @@ int buy_hull(P_char ch, P_ship ship, int owned, char *arg1, char *arg2)
 			submit_ship_hull_purchase(ch, context);
 			return TRUE;
 		}
-
-		kick_everyone_off(ship);
-		ship->m_class = hull_type;
-		reset_ship(ship, false);
-
-		if (ship->m_class > oldhull)
-		{
-			buildtime = 75 * (ship->m_class / 2 - oldhull / 3);
-		}
-		else
-		{
-			buildtime = 75 * (oldhull / 2 - ship->m_class / 3);
-		}
-
-		if (ocean_pvp_state())
-		{
-			buildtime *= 5;
-		}
-
-		// Achievement - Trader
-		if (quickbuild)
-		{
-			buildtime /= 2;
-		}
-		send_to_char_f(
-			ch,
-			"&+gThanks for your business, it will take &n%d&+g hours to complete this upgrade.&n\n",
-			buildtime / 75);
 	}
 	else
 	{
+		if (refuse_for_stored_ship(ch))
+		{
+			return TRUE;
+		}
 		if (!check_ship_name(0, ch, arg2))
 		{
 			return TRUE;
@@ -2852,57 +2898,7 @@ int buy_hull(P_char ch, P_ship ship, int owned, char *arg1, char *arg2)
 		memcpy(context.name, normalized_name, name_bytes + 1);
 		submit_ship_hull_purchase(ch, context);
 		return TRUE;
-
-		// Now, create the ship object
-		ship = new_ship(hull_type);
-		if (ship == NULL)
-		{
-			logit(LOG_FILE, "Error in new_ship(): %d\n", shiperror);
-			send_to_char_f(ch,
-				       "&=LrError creating new ship (%d), please notify a god.&n\n",
-				       shiperror);
-			return TRUE;
-		}
-
-		buildtime = 75 * SHIPTYPE_ID(hull_type) / 4;
-		ship->ownername = str_dup(GET_NAME(ch));
-		ship->anchor = world[ch->in_room].number;
-		name_ship(arg2, ship);
-		// Achievement - Trader
-		if (quickbuild)
-		{
-			buildtime /= 2;
-		}
-		if (!load_ship(ship, ch->in_room))
-		{
-			logit(LOG_FILE, "Error in load_ship(): %d\n", shiperror);
-			send_to_char_f(ch, "&=LrError loading ship (%d), please notify a god.&n\n",
-				       shiperror);
-			return TRUE;
-		}
-
-		// everything went successfully, substracting the cost
-		SUB_MONEY(ch, SHIPTYPE_COST(hull_type), 0);
-		if (SHIPTYPE_EPIC_COST(hull_type) > 0)
-		{
-			epic_gain_skillpoints(ch, -SHIPTYPE_EPIC_COST(hull_type));
-		}
-
-		send_to_char_f(ch, "&+gYour ship, '&n%s&+g', will be &n%s&+g once painted.&n\n",
-			       strip_ansi(arg2).c_str(), arg2);
-		send_to_char_f(
-			ch,
-			"&+gThanks for your business, this hull will take &n%d &+ghours to build.\r\n",
-			buildtime / 75);
 	}
-
-	if (!IS_TRUSTED(ch) && BUILDTIME)
-	{
-		ship->timer[T_MAINTENANCE] += buildtime;
-	}
-	update_ship_status(ship);
-	queue_ship_save(ship, "ship shop update");
-	return TRUE;
 }
 
 /*
@@ -3011,7 +3007,7 @@ int ship_shop_proc(int /*room*/, P_char ch, int cmd, char *arg)
 				send_to_char_f(
 					ch,
 					"&+gFor a small fee of &n%s&+g, I can have my men tell your crew to sail here.&n\n",
-					coin_stringv(SHIPTYPE_HULL_WEIGHT(ship->m_class) * 100));
+					coin_stringv(summon_ship_cost(ship)));
 				send_to_char(
 					"&+gJust type '&+Gsummon ship&+g' to have your ship sail here.&n\n",
 					ch);

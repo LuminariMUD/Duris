@@ -144,6 +144,7 @@ than 9, unless it is sinking.
 | `world cargo [reload\|reset\|save\|update]` | Show both price grids, re-read the market, flatten it to 1.0, write it, or force a drift tick. |
 | `set ship <owner> frags <n>` | Set ship frags. |
 | `set ship <owner> guns\|repair\|sail <amount>` | Train a crew skill. These do not queue a save, so the change persists on the next save or at shutdown. |
+| `setbit ship <owner> <field> <value>` | Set a raw field: `armor0`–`armor3`, `mxarmor0`–`mxarmor3`, `intern0`–`intern3`, `mxintern0`–`mxintern3`, `sail`, `money`, `frags`, `maxspeed`, `capacity`, `air`, `crew`, `chief` or `clearchiefs`. |
 | `rename ship <owner> <new name>` | Rename without charge. |
 | `fire pirate\|hunter\|escort [level]` | At any panel, spawn an NPC ship of that type near this ship. |
 | `lock ai_off\|ai_pirate\|ai_hunter\|ai_escort\|ai_advanced\|ai_basic` | Attach, retype or remove an NPC brain on the ship at this panel. |
@@ -242,6 +243,11 @@ fragments per shot, each landing separately.
 - **Ballistic** weapons (catapults and the Long Tom) care most about closing
   speed. Direct-fire weapons care most about crossing speed (see
   [SHIPS.md](SHIPS.md#hit-chance)).
+- A **flying** ship is 4 squares up, and ranges include that: a surface ship
+  three squares away is five from it, and a weapon that reaches 4 or less
+  cannot hit it from the water. Two flying ships are level with each other.
+- A **warship's** sails take 85% of every sail hit
+  (`warship.sails.damage.reduction`), before Ship Damage Control.
 - The **Mind Blast Cannon** does no damage. A hit stuns the crew for
   `5 + 15 × range factor` ticks (no steering, firing, reloading or repair) and
   knocks everyone aboard down inside mid-range.
@@ -277,7 +283,7 @@ One of each item per ship. It occupies a slot but no arc.
 | # | Equipment | Price | Weight | Hulls | Effect |
 |--:|-----------|------:|--------|-------|--------|
 | 1 | Bronze Plated Ram | hull weight (Galleon: 330) | `(hull + 10) / 24` | Clipper and up | Extra fore hit when ramming, halves fore-arc crash damage taken. |
-| 2 | Zentharium Levistone | 5,000 (needs 1000 ship frags) | `(hull + 50) / 40`, 0 while flying | Clipper and up | `order fly`: 60 ticks of flight, 600 ticks to recharge. Capital. |
+| 2 | Zentharium Levistone | 5,000 (needs 1000 ship frags) | `(hull + 50) / 40`, 0 while flying | Clipper and up | `order fly`: 60 ticks of flight at 4 squares' altitude, 600 ticks to recharge. Capital. |
 | 3 | Diplomat's Flag | free | 0 | all | Pirate ambushes become far rarer (1 in 60,001 per tick instead of 1 in 1,001 with the shipped properties). Cruising NPC ships will not choose you as a target, though ambushers spawned for you still attack. Those ambushers lose any mind blast cannon. Cargo sales pay 10% less. |
 
 Equipment installs instantly: its table weight is 0, and install time is
@@ -428,16 +434,21 @@ it happens. Immortals and contraband use live prices.
   `sellPriceMod` for a port's own goods and `buyPriceMod` for everything else,
   both 0.6 as shipped, so an untouched market settles at 60% of the formula
   prices.
-- `world cargo reset` puts every modifier to 1.0.
+- Every modifier is held inside its band, `minPriceMod`–`maxPriceMod`
+  (cargo 0.54–0.69 around its 0.60 neutral point, contraband 0.85–1.3), on
+  load, after each trade and after each drift. A heavy trade stops at the edge
+  of the band instead of crashing or inflating the price.
+- `world cargo reset` puts every modifier to 1.0, which the cargo band then
+  holds at 0.69 until drift brings it back to 0.60.
 
 ### Capacity, jettison and salvage
 
 - A crate weighs 2. The free space is the lesser of the hull's cargo rating
   (+10% with Mirabolan Merchants) minus the load, and the remaining weight
   budget divided by 2.
-- `buy cargo` stacks onto an existing slot of the same commodity and records
-  the invoice, so `list cargo` can show profit. Each `buy contraband` takes a new
-  slot.
+- `buy cargo` and `buy contraband` stack onto an existing slot of the same
+  goods and record the invoice, so `list cargo` can show profit. Only then do
+  they take an empty slot.
 - **Jettison** drops crates over water, and each has a 50% chance to float as a
   salvageable crate. Sinking ships jettison their whole hold. NPC ships under
   fire jettison some cargo.
@@ -450,7 +461,8 @@ it happens. Immortals and contraband use live prices.
 
 - **Buying** needs ship frags at least the commodity's requirement, **or** crew
   skills of deck ≥ 4×, guns ≥ 1× and repair ≥ 2× that requirement. Warships
-  cannot buy contraband. The allowance is the hull's contraband rating scaled
+  cannot buy contraband, and neither can a captain at the maximum alignment,
+  1000 (`MINCONTRAALIGN`). The allowance is the hull's contraband rating scaled
   down when the ship is weight-limited.
 - **Customs** runs when a ship docks at a port by maneuvering. It also runs on
   summon arrival, but a summoned hold is already empty. A port never
@@ -508,6 +520,10 @@ included. Travel time uses the ship's speed with an empty hold:
 A sunk ship arrives with no sail. Its speed counts as 2, so fetching a wreck
 from the Locker takes about 62 minutes.
 
+A summons still under way at a reboot or copyover is lost. The ship comes back
+where it last docked (Davy Jones' Locker for a wreck) and can be summoned
+again. The fee is not refunded.
+
 ### Timers at sea
 
 | Timer | Ticks |
@@ -521,6 +537,17 @@ from the Locker takes about 62 minutes.
 | Levistone flight / recharge | 60 / 600 |
 | Sinking: player / NPC / Cyric's Revenge | 75–150 / 1000–1500 / 7500 |
 | NPC despawn after losing its target | 300, extended while players watch |
+
+### Ship Damage Control
+
+The **Ship Damage Control** epic skill protects its owner's ship while the
+owner is aboard: every sail and hull hit from another ship is cut by 4% plus a
+fifth of the skill (14% at 50, 24% at 100), never below 1 point. Spells and
+other damage a character deals to a hull are not reduced. The headless
+commodore (mob 2733, in Headless) teaches it from level 56 in 10-point lessons.
+The first lesson costs 240 epic points and 16,000 platinum, and the price
+rises with the skill. New Chaos characters with starter epic skills enabled
+start with it at 100.
 
 ### Sinking consequences for the owner
 
@@ -556,8 +583,9 @@ Read with `get_property()` from `lib/duris.properties` (section `[ships]`).
 | `ship.cargo.autoSellAdjustRate` / `autoBuyAdjustRate` | 0.05 / 0.05 | 0.05 / 0.05 | Drift speed for cargo. |
 | `ship.contraband.autoSellAdjustRate` / `autoBuyAdjustRate` | 0.05 / 0.05 | 0.05 / 0.05 | Drift speed for contraband. |
 | `ship.contraband.baseConfiscationChance` | 35 | 0 | Base customs chance per crate. |
-| `ship.contraband.minPriceMod` / `maxPriceMod` (the cargo pair is commented out) | 0.85 / 1.3 | — | Not applied (the clamp in `read_cargo()` is commented out). |
-| `warship.sails.damage.reduction` | 0.85 | — | Not read by any code. |
+| `ship.cargo.minPriceMod` / `maxPriceMod` | 0.54 / 0.69 | none | The band a cargo modifier is held in, on load, after each trade and after each drift: 0.90–1.15 of the 0.60 neutral point. |
+| `ship.contraband.minPriceMod` / `maxPriceMod` | 0.85 / 1.3 | none | The same band for contraband. |
+| `warship.sails.damage.reduction` | 0.85 | 1.0 | Multiplies every sail hit a warship takes, before Ship Damage Control. |
 
 Related environment switch: `CHAOS_STARTER_FRIGATE` (see
 [CONFIGURATION.md](../operations/CONFIGURATION.md) and

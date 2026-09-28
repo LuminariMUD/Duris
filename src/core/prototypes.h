@@ -2046,7 +2046,7 @@ void show_string(struct descriptor_data *, const char *);
 
 /* storage_lockers.c */
 
-bool rename_locker(P_char ch, char *old_charname, char *new_charname);
+bool personal_locker_in_use(const char *char_name);
 void for_debug_print_char_list(P_char ch);
 
 /* mount.c */

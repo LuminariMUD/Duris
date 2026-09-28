@@ -53,6 +53,29 @@ bool kingdom_db_save_payment_pair(const std::string &root,
 // Internal variables
 P_Guild guild_list = NULL;
 
+/*
+ * A character was renamed: carry their roster entry and any top-fragger
+ * credit over to the new name.  The rename transaction has already changed
+ * guild_members and guilds, so this only updates the live guilds, and a later
+ * Guild::save() writes the same name.
+ */
+void rename_guild_member(const char *old_name, const char *new_name)
+{
+	if (!old_name || !*old_name || !new_name || !*new_name)
+		return;
+
+	for (P_Guild guild = guild_list; guild; guild = guild->next_guild)
+	{
+		for (P_member member = guild->members; member; member = member->next)
+		{
+			if (!strcasecmp(member->name, old_name))
+				strlcpy(member->name, new_name, sizeof(member->name));
+		}
+		if (!strcasecmp(guild->frags.topfragger, old_name))
+			strlcpy(guild->frags.topfragger, new_name, sizeof(guild->frags.topfragger));
+	}
+}
+
 void forget_deleted_guild_member(const char *character_name)
 {
 	if (!character_name || !character_name[0])

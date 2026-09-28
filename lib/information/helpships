@@ -29,10 +29,8 @@ a large ship with small sails.  On the same note, when a heading is set, the
 ship does not immediatly face that direction, it has to turn to that
 direction, this is the turn rate.  Turn rate is higher on smaller ships than
 large Dreadnaughts, so theoretically a small fast Clipper can run circles
-around a Galleon.  Turn rate is also affected by the speed of the ship, the
-faster a ship is traveling the slower they turn, and below a minimum speed,
-the ship also turns slower so it is best to maintain a medium speed for best
-maneuverability.
+around a Galleon.  Turn rate also improves with speed: the faster a ship is
+travelling, the faster it turns, and a ship crawling along turns sluggishly.
 #
 SHIP2
 
@@ -41,9 +39,9 @@ targets, and damage.  You might be asking what are firing arcs, but it's
 simple, firing arcs are the direction your weapons are pointing on your ship.  
 For example, a ballista mounted on your Port(Left) side is pointing to the 
 ship's left, so if the target is on the right side, it is out of that particular weapon's
-arc.  The fore and rear arcs are both 45 degree arcs and the port(left) and
-starboard(right) are 120 degree arcs, so if weapons are mounted only on
-the forward arc, that means the ship only has a cone of fire 45 degrees in
+arc.  The fore and rear arcs are both 80 degree arcs and the port(left) and
+starboard(right) are 100 degree arcs, so if weapons are mounted only on
+the forward arc, that means the ship only has a cone of fire 80 degrees in
 the front.  If a ship has weapons on all four parts of the ship it can
 basically shoot in any direction.
 
@@ -145,7 +143,7 @@ maneuver <N/E/S/W>
     heading from there.  Conversly, you also use the maneuver command to
     dock, since using sails will make you crash.  To dock, move your ship
     next to a dockable place then 'order maneuver <direction of dockable
-    place>' and your ship will dock.  You must be at speed 10 or below to
+    place>' and your ship will dock.  You must be at speed 20 or below to
     maneuver.
 
 undock 

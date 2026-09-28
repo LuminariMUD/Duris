@@ -29815,7 +29815,7 @@ Ship Commands
 * Repair all
 * Repair <armor/internal> <fore/rear/port/starboard/all>
 * Repair sail
-* Repair weapon <weapon number/all>
+* Repair weapon <weapon slot number>
 * Reload <weapon number/all>
 * Enter *.ship -or- Enter <owner name> -or- Enter *.<shiptype>
 

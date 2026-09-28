@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 source_text = (SRC / "sql_player.c").read_text(
     encoding="utf-8", errors="replace"
 )
-mysql_source_text = source_text[source_text.index("\n#else\n\n// globals") :]
+mysql_source_text = source_text[source_text.index("\n// globals\n") :]
 
 
 def body(text, signature):
@@ -134,7 +134,7 @@ int main()
             "id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, "
             "account_name VARCHAR(255) NOT NULL, pid INT NOT NULL, "
             "char_name VARCHAR(80) NOT NULL, created_at DATETIME NOT NULL, "
-            "deleted_at DATETIME NULL, UNIQUE KEY account_character_pid (pid), "
+            "deleted_at DATETIME NULL, KEY account_character_pid (pid), "
             "UNIQUE KEY account_character_name (char_name))");
     execute("CREATE TEMPORARY TABLE currency_wallet_baseline ("
             "pid INT NOT NULL PRIMARY KEY, opening_copper INT, opening_silver INT, "
@@ -159,6 +159,16 @@ int main()
             "(account_name,pid,char_name,created_at,deleted_at) VALUES "
             "('WrongAcct',102,'MovedHero',NOW(),NULL),"
             "('RepairAcct',103,'DeletedHero',NOW(),NOW())");
+    // Renames used to leave a second active mapping for the same pid, like
+    // production, whose account_characters is unique on char_name only.
+    execute("INSERT INTO player_data(pid,name,account_name,active) VALUES "
+            "(106,'RenamedNew','RepairAcct',1),(107,'Twicenamed','RepairAcct',1)");
+    execute("INSERT INTO account_characters "
+            "(account_name,pid,char_name,created_at,deleted_at) VALUES "
+            "('RepairAcct',106,'RenamedOld',NOW(),NULL),"
+            "('RepairAcct',106,'RenamedNew',NOW(),NULL),"
+            "('RepairAcct',107,'Firstname',NOW(),NULL),"
+            "('RepairAcct',107,'Secondname',NOW(),NULL)");
     execute("INSERT INTO combat_frag_baseline VALUES(102,77,0)");
     execute("INSERT INTO combat_frag_ledger VALUES(105)");
 
@@ -168,7 +178,14 @@ int main()
     // These reload queries have no process-local account/character state. They
     // prove the missing and misassigned projections were written to the database.
     assert(scalar("SELECT COUNT(*) FROM account_characters "
-                  "WHERE account_name='RepairAcct' AND deleted_at IS NULL") == 2);
+                  "WHERE account_name='RepairAcct' AND deleted_at IS NULL") == 4);
+    // One active mapping per renamed character, under its current name.
+    assert(scalar("SELECT COUNT(*) FROM account_characters WHERE pid=106") == 1);
+    assert(scalar("SELECT COUNT(*) FROM account_characters "
+                  "WHERE pid=106 AND char_name='RenamedNew' AND deleted_at IS NULL") == 1);
+    assert(scalar("SELECT COUNT(*) FROM account_characters WHERE pid=107") == 1);
+    assert(scalar("SELECT COUNT(*) FROM account_characters "
+                  "WHERE pid=107 AND char_name='Twicenamed' AND deleted_at IS NULL") == 1);
     assert(scalar("SELECT COUNT(*) FROM account_characters "
                   "WHERE pid=101 AND account_name='RepairAcct' AND deleted_at IS NULL") == 1);
     assert(scalar("SELECT COUNT(*) FROM account_characters "

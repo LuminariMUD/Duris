@@ -184,10 +184,12 @@ struct kingdom_realm;
 #endif
 
 void forget_deleted_guild_member(const char *character_name);
+void rename_guild_member(const char *old_name, const char *new_name);
 
 class Guild
 {
 	friend void forget_deleted_guild_member(const char *character_name);
+	friend void rename_guild_member(const char *old_name, const char *new_name);
 	friend bool sql_save_guild(Guild *guild);
 	friend Guild *sql_load_guild(unsigned int guild_id);
 	friend bool sql_load_all_guilds();

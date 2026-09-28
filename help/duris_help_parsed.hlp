@@ -20558,79 +20558,67 @@ hide it well on your ship, because they will be confiscated by authorities
 if found. The more crates of cargo you have on your ship, the easier is to
 hide crates with contraband.
 Next suggested reading: "help SHIP_NPCS"
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
-<> < 273h/273H 176v/176V Pos: standing >
+#0
+
+Ship npcs
+Ship npcs - Last Edited: 2026-09-27 00:00:00 by Duris
+=====================================================
+Ship NPCs
+=========================================
+Pirates and hunters roam the open sea.  While your ship is under way on the
+map with no target, there is a small chance at any moment that an NPC ship
+appears about 45 squares off your bow and sails straight at you.  Sloops,
+yachts and docked ships are never ambushed, and nobody is while the ocean
+is at war.
+Merchant hulls are ambushed at most once per trip; the count resets when you
+dock.  The bigger your hull and the more frags your ship has, the tougher
+the pirates: from level 0 raiders in clippers and ketches up to level 3
+hunters in destroyers and frigates.  Warships are rarely noticed, but what
+finds them is a hunter.
+Pirates ram, board and loot.  Their captain carries the key to a treasure
+chest aboard, and a pirate ship's frags set the bounty for sinking it.
+A diplomat's flag (see "help Ship cargo") makes ambushes much rarer, hunters
+pass you over, and a pirate that does attack carries no mind blast cannon.
+Cyric's Revenge, a dreadnought, hunts the seas on its own.
+Next suggested reading: "help Ship Weapons"
+#0
+
+Ship Weapons
+Ship Weapons - Last Edited: 2026-09-27 00:00:00 by Duris
+=====================================================
+Ship Weapons
+=========================================
+At a shipwright, "list weapons" shows every weapon with its price, weight,
+ammunition, range and damage, and the arcs and hulls it fits.  Buy one with
+"buy weapon <number> <fore/rear/port/starboard>".
+A weapon covers only the arc it is mounted on.  The fore and rear arcs are
+80 degrees wide and the port and starboard arcs 100 degrees, so mount
+weapons on every side you expect to fight from.
+Ballistas fire straight and hit hardest close in.  Catapults lob their shot
+over long ranges and scatter it across the target, and their aim suffers
+most when the range is changing fast.  Beamcannons do more damage the closer
+the target is.  The mind blast cannon does no damage, but stuns the target's
+crew: they cannot steer, fire, reload or repair until they recover.
+A flying ship is 4 squares up, so it is farther from guns on the water, and
+the shortest-reaching weapons cannot hit it at all.  Warships' sails are
+built to take fire, and suffer less from every sail hit.
+Beamcannons, the mind blast and fragmentation cannons and the Long Tom
+catapult are capital weapons.  A ship can carry only one capital item, and
+each needs a skilled gun crew or a ship with many frags.
+Weapons run out of ammunition; "reload <weapon number/all>" at a dock.  On
+the bridge, "look weaponspec" shows your mounts and "look sight <weapon
+number>" your chance to hit the locked target.
+Next suggested reading: "help Ship Combat"
+#0
+
+Toggle Shipmap
+Toggle Shipmap - Last Edited: 2026-09-27 00:00:00 by Duris
+=====================================================
+Syntax: toggle shipmap
+While you are aboard a ship, shipmap shows you the view outside, as "look
+out" does, every time the ship moves, so you can watch the sea go by.  It is
+on for new characters; turn it off if the scrolling map is too much.
+See also: "help Ship Looks", "help Toggle"
 #0
 
 Ship Combat
@@ -20732,7 +20720,7 @@ Ship Commands
 * Repair all
 * Repair <armor/internal> <fore/rear/port/starboard/all>
 * Repair sail
-* Repair weapon <weapon number/all>
+* Repair weapon <weapon slot number>
 * Reload <weapon number/all>
 * Enter *.ship -or- Enter <owner name> -or- Enter *.<shiptype>
 == Commands at a Ship's Bridge ==

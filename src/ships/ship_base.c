@@ -119,7 +119,9 @@
 #include <cmath>
 #include <limits>
 #include <new>
+#include <string>
 #include <utility>
+#include <vector>
 #endif
 
 extern char buf[MAX_STRING_LENGTH];
@@ -624,6 +626,9 @@ void shutdown_ships()
 		P_ship ship = svs;
 		for (i = 0; i < ship->room_count; i++)
 		{
+			/* A ship that failed to load has no rooms to empty. */
+			if (real_room(SHIP_ROOM_NUM(ship, i)) == NOWHERE)
+				continue;
 			for (ch = world[real_room(SHIP_ROOM_NUM(ship, i))].people; ch; ch = ch_next)
 			{
 				if (ch)
@@ -1044,6 +1049,79 @@ bool rename_ship_owner(char *old_name, char *new_name)
 }
 
 /*
+ * Give `ship` the owner `new_owner` in memory only, keeping in `change` what
+ * undo_ship_owner_change() needs to put it back without another write.
+ * rename_character() stores the change in the same transaction as the
+ * player row, then calls finish_ship_owner_change() if that committed.
+ *
+ * Returns FALSE, with the ship untouched, when `new_owner` is empty or the
+ * old names cannot be copied.
+ */
+bool begin_ship_owner_change(P_ship ship, const char *new_owner, ShipOwnerChange *change)
+{
+	if (!ship || !new_owner || !*new_owner)
+		return FALSE;
+
+	change->ship = ship;
+	change->ownername = str_dup(ship->ownername ? ship->ownername : "");
+	change->name = str_dup(SHIP_NAME(ship) ? SHIP_NAME(ship) : "");
+	change->db_id = ship->db_id;
+	if (!change->ownername || !change->name)
+	{
+		if (change->ownername)
+			FREE(change->ownername);
+		if (change->name)
+			FREE(change->name);
+		return FALSE;
+	}
+
+	str_free(ship->ownername);
+	ship->ownername = str_dup(new_owner);
+	CAP(ship->ownername);
+	name_ship(SHIP_NAME(ship), ship);
+	return TRUE;
+}
+
+/*
+ * The owner change is stored: mark the ship saved, since the transaction
+ * saved all of it, and drop the old owner's cached copies.
+ */
+void finish_ship_owner_change(ShipOwnerChange *change)
+{
+	P_ship ship = change->ship;
+	char path[MAX_STRING_LENGTH];
+
+	ship->save_pending = false;
+	ship->save_retry_after = 0;
+	ship->save_saved_signature = ship_save_signature(ship);
+
+	redis_invalidate_ship_snapshot(change->ownername);
+	snprintf(path, sizeof(path), "Ships/%s", change->ownername);
+	unlink(path);
+
+	FREE(change->ownername);
+	FREE(change->name);
+}
+
+/*
+ * The owner change was not stored: put back the old owner and name.  A row
+ * id the transaction gave a ship that had none is kept but marked
+ * unconfirmed, because a failed COMMIT may still have stored it;
+ * sql_save_ship() checks before using it.
+ */
+void undo_ship_owner_change(ShipOwnerChange *change)
+{
+	P_ship ship = change->ship;
+
+	str_free(ship->ownername);
+	ship->ownername = change->ownername;
+	name_ship(change->name, ship);
+	FREE(change->name);
+	if (ship->db_id != change->db_id)
+		ship->db_id_unconfirmed = true;
+}
+
+/*
  * Bring `ship` into the world at `to_room` (a real room index).
  *
  * Carves out the ship's interior rooms, places the hull object and the
@@ -1055,6 +1133,11 @@ bool rename_ship_owner(char *old_name, char *new_name)
  */
 int load_ship(P_ship ship, int to_room)
 {
+	/* LOADED is saved with the other flags, so a ship read from storage
+	 * arrives with it set.  It becomes true below, once the ship has rooms;
+	 * a failed load must not leave it claiming rooms it does not have. */
+	REMOVE_BIT(ship->flags, LOADED);
+
 	if (ship->shipobj == NULL)
 	{
 		shiperror = 2;
@@ -1114,6 +1197,11 @@ int load_ship(P_ship ship, int to_room)
 		REMOVE_BIT(ship->flags, ATTACKBYNPC);
 	if (IS_SET(ship->flags, RAMMING))
 		REMOVE_BIT(ship->flags, RAMMING);
+	/* The summon's arrival event is not saved, so a ship loaded after a
+	 * reboot or copyover with SUMMONED still set would refuse every later
+	 * summon.  It comes back at its anchor instead. */
+	if (IS_SET(ship->flags, SUMMONED))
+		REMOVE_BIT(ship->flags, SUMMONED);
 	SET_BIT(ship->flags, DOCKED);
 	SET_BIT(ship->flags, LOADED);
 
@@ -1222,7 +1310,7 @@ void delete_ship(P_ship ship, bool npc)
 		cyrics_revenge = 0;
 
 	logit(LOG_STATUS, "Ship \"%s\" (%s) deleted", strip_ansi(ship->name).c_str(),
-	      ship->ownername);
+	      ship->ownername ? ship->ownername : "no owner");
 
 	FREE(ship);
 }
@@ -1597,6 +1685,64 @@ int find_free_ship_room()
 	return -1;
 }
 
+/* The number of rooms a hull of class `m_class` has. */
+static int ship_class_room_count(int m_class)
+{
+	ShipData scratch = {};
+	init_ship_layout(&scratch);
+	set_ship_layout(&scratch, m_class);
+	return scratch.room_count;
+}
+
+/* The number of free rooms in the ship-room pool. */
+static int count_free_ship_rooms()
+{
+	int free_rooms = 0;
+	for (int vroom = (SHIPZONE * 100) + 3; vroom <= VROOM_SHIPS_END; vroom++)
+	{
+		const int rroom = real_room0(vroom);
+		if (!rroom)
+			break;
+		if (world[rroom].funct != ship_room_proc)
+			free_rooms++;
+	}
+	return free_rooms;
+}
+
+/*
+ * Whether `ship` can be rebuilt as a hull of class `m_class`: the rooms it
+ * holds, which reset_ship() gives back first, and the free rooms in the pool
+ * must cover the new layout.  A hull change checks this before it is charged.
+ */
+bool ship_rooms_fit_class(P_ship ship, int m_class)
+{
+	return ship->room_count + count_free_ship_rooms() >= ship_class_room_count(m_class);
+}
+
+/*
+ * Give back every room set_ship_physical_layout() has claimed for `ship`,
+ * freeing the exits it made, but keep the abstract room graph.
+ */
+static void release_ship_rooms(P_ship ship)
+{
+	for (int j = 0; j < MAX_SHIP_ROOM; j++)
+	{
+		if (SHIP_ROOM_NUM(ship, j) == -1)
+			continue;
+		int rroom = real_room0(SHIP_ROOM_NUM(ship, j));
+		if (rroom)
+		{
+			for (int dir = 0; dir < NUM_EXITS; dir++)
+			{
+				if (world[rroom].dir_option[dir])
+					FREE(world[rroom].dir_option[dir]);
+			}
+			world[rroom].funct = NULL;
+		}
+		SHIP_ROOM_NUM(ship, j) = -1;
+	}
+}
+
 /*
  * Turn the ship's abstract room graph into real world rooms.
  *
@@ -1606,10 +1752,8 @@ int find_free_ship_room()
  * entrance room vnums and titles every room.
  *
  * Returns FALSE if the room pool is exhausted or a vnum fails to resolve.
- *
- * CAVEAT: a mid-way failure leaves the rooms already claimed still marked
- * with ship_room_proc.  The caller is expected to treat this as fatal for the
- * ship (load_ship() does) rather than retrying.
+ * A failure gives back every room already claimed, so the pool is left as
+ * it was and a smaller ship can still use the rooms that are free.
  */
 bool set_ship_physical_layout(P_ship ship)
 {
@@ -1618,10 +1762,12 @@ bool set_ship_physical_layout(P_ship ship)
 	for (int j = 0; j < ship->room_count; j++)
 	{
 		vroom = find_free_ship_room();
-		if ((vroom < VROOM_SHIPS_START) || (vroom > VROOM_SHIPS_END))
+		if ((vroom < VROOM_SHIPS_START) || (vroom > VROOM_SHIPS_END) ||
+		    (rroom = real_room0(vroom)) == 0)
+		{
+			release_ship_rooms(ship);
 			return FALSE;
-		if ((rroom = real_room0(vroom)) == 0)
-			return FALSE;
+		}
 
 		SHIP_ROOM_NUM(ship, j) = vroom;
 		world[rroom].funct = ship_room_proc;
@@ -1630,6 +1776,7 @@ bool set_ship_physical_layout(P_ship ship)
 	{
 		if ((rroom = real_room0(SHIP_ROOM_NUM(ship, j))) == 0)
 		{
+			release_ship_rooms(ship);
 			return FALSE;
 		}
 
@@ -1639,7 +1786,10 @@ bool set_ship_physical_layout(P_ship ship)
 			{
 				if ((to_room = real_room0(SHIP_ROOM_NUM(
 					     ship, SHIP_ROOM_EXIT(ship, j, dir)))) == 0)
+				{
+					release_ship_rooms(ship);
 					return FALSE;
+				}
 
 				if (!world[rroom].dir_option[dir])
 					CREATE(world[rroom].dir_option[dir], room_direction_data, 1,
@@ -1754,7 +1904,11 @@ void reset_ship(P_ship ship, bool clear_slots)
 	name_ship(ship->name, ship);
 	clear_ship_layout(ship);
 	set_ship_layout(ship, ship->m_class);
-	set_ship_physical_layout(ship);
+	/* Callers check ship_rooms_fit_class() first, and a downgrade always fits
+	 * in the rooms the ship gave back, so this cannot fail. */
+	if (!set_ship_physical_layout(ship))
+		logit(LOG_SHIP, "reset_ship: no rooms for %s's %s", SHIP_OWNER(ship),
+		      SHIP_CLASS_NAME(ship));
 	obj_to_room(ship->panel, real_room0(ship->bridge));
 
 	ship->timer[T_UNDOCK] = 0;
@@ -1770,6 +1924,7 @@ void reset_ship(P_ship ship, bool clear_slots)
 		REMOVE_BIT(ship->flags, SINKING);
 	if (IS_SET(ship->flags, FLYING))
 		REMOVE_BIT(ship->flags, FLYING);
+	ship->z = 0;
 	if (IS_SET(ship->flags, SUNKBYNPC))
 		REMOVE_BIT(ship->flags, SUNKBYNPC);
 	if (IS_SET(ship->flags, ATTACKBYNPC))
@@ -1885,13 +2040,17 @@ int ship_room_proc([[maybe_unused]] int room, P_char ch, int cmd, char *arg)
 			//      }
 		}
 
+		/* An outer-edge room is one missing an exit in some direction.  Find
+		 * the character's room slot by its vnum: rooms come first-free from
+		 * the pool, so the vnum's last digit says nothing about the slot. */
 		i = world[ch->in_room].number;
-		j = i - ((int)(i / 10) * 10);
+		for (j = 0; j < ship->room_count && SHIP_ROOM_NUM(ship, j) != i; j++)
+			;
 		k = 0;
-		if (SHIP_ROOM_EXIT(ship, j, DIR_NORTH) == -1 ||
-		    SHIP_ROOM_EXIT(ship, j, DIR_SOUTH) == -1 ||
-		    SHIP_ROOM_EXIT(ship, j, DIR_EAST) == -1 ||
-		    SHIP_ROOM_EXIT(ship, j, DIR_WEST) == -1)
+		if (j < ship->room_count && (SHIP_ROOM_EXIT(ship, j, DIR_NORTH) == -1 ||
+					     SHIP_ROOM_EXIT(ship, j, DIR_SOUTH) == -1 ||
+					     SHIP_ROOM_EXIT(ship, j, DIR_EAST) == -1 ||
+					     SHIP_ROOM_EXIT(ship, j, DIR_WEST) == -1))
 		{
 			k = 1;
 		}
@@ -2737,6 +2896,9 @@ void ship_activity()
 						}
 						else
 						{
+							/* The crash chance grows with the speed the ship
+							 * hits the coast at, so keep it before stopping. */
+							const int impact_speed = ship->speed;
 							ship->setspeed = 0;
 							ship->speed = 0;
 							ship->x = 50.500;
@@ -2748,7 +2910,7 @@ void ship_activity()
 							int crash_chance =
 								(ship->timer[T_BSTATION] == 0) ?
 									0 :
-									(int)((float)(ship->speed +
+									(int)((float)(impact_speed +
 										      50) /
 									      ((1.0 +
 										ship->crew.sail_mod_applied *
@@ -3169,6 +3331,7 @@ void fly_ship(P_ship ship)
 			     SHIP_ID(ship), SHIP_NAME(ship));
 
 	ship->shipobj->z_cord = 4;
+	ship->z = SHIP_FLYING_ALTITUDE;
 	update_ship_status(ship);
 }
 
@@ -3176,8 +3339,8 @@ void fly_ship(P_ship ship)
  * Set a flying ship back down.
  *
  * Clears FLYING and returns the ship to the surface, starting the levistone's
- * recharge (LEVISTONE_RECHARGE).  If the ship is over terrain it cannot float
- * on, landing damages it -- a levistone running out over land is expensive.
+ * recharge (LEVISTONE_RECHARGE).  Over terrain it cannot float on, the ship
+ * stops dead where it lands, undamaged, and must maneuver back onto water.
  */
 void land_ship(P_ship ship)
 {
@@ -3221,6 +3384,7 @@ void land_ship(P_ship ship)
 	}
 
 	ship->shipobj->z_cord = 0;
+	ship->z = 0;
 	update_ship_status(ship);
 }
 
@@ -3393,12 +3557,98 @@ int read_ships()
 	for (const auto &record : records)
 		if (!flat_ship_materialize(record, &error))
 		{
+			/* A full ship-room pool is not corruption: keep the record and
+			 * place the ship when rooms free up. */
+			if (shiperror == 4)
+			{
+				note_unplaced_ship(record.owner_name.c_str());
+				continue;
+			}
 			logit(LOG_FILE, "flat ship load failed for ship %u: %s", record.ship_id,
 			      error.empty() ? "materialization failure" : error.c_str());
 			return FALSE;
 		}
 	return TRUE;
 #endif
+}
+
+/*
+ * Owners whose stored ship could not be placed at boot, because the ship-room
+ * pool was full.  Their ships stay stored; retry_unplaced_ships() places them
+ * when rooms free up, and a first-ship purchase brings one back instead of
+ * selling a second ship that could never be saved beside it.
+ */
+static std::vector<std::string> unplaced_ship_owners;
+
+void note_unplaced_ship(const char *owner)
+{
+	for (const std::string &noted : unplaced_ship_owners)
+		if (!strcasecmp(noted.c_str(), owner))
+			return;
+	logit(LOG_SHIP, "No room to place %s's ship; it stays stored and will be retried.", owner);
+	unplaced_ship_owners.emplace_back(owner);
+}
+
+/*
+ * Bring `owner`'s stored ship into the world at its anchor, if they have one
+ * and it is not already in the world.
+ */
+stored_ship_state place_stored_ship(const char *owner)
+{
+	if (get_ship_from_owner(const_cast<char *>(owner)))
+		return stored_ship_state::placed;
+#ifndef __NO_MYSQL__
+	const int stored = sql_ship_stored(owner);
+	if (stored <= 0)
+		return stored == 0 ? stored_ship_state::none : stored_ship_state::unreadable;
+	bool unplaced = false;
+	if (sql_place_ship(owner, &unplaced))
+		return stored_ship_state::placed;
+	return unplaced ? stored_ship_state::no_room : stored_ship_state::unreadable;
+#else
+	const char *root = persistence_mode_flatfile_root();
+	std::string error;
+	std::vector<flatfile_ship_record> records;
+	if (!root || flatfile_ship_list(root, &records, &error) != flatfile_ship_result::ok)
+		return stored_ship_state::unreadable;
+	for (const auto &record : records)
+	{
+		if (strcasecmp(record.owner_name.c_str(), owner))
+			continue;
+		if (!flat_ship_record_is_loadable(record, &error))
+			return stored_ship_state::unreadable;
+		if (flat_ship_materialize(record, &error))
+			return stored_ship_state::placed;
+		return shiperror == 4 ? stored_ship_state::no_room : stored_ship_state::unreadable;
+	}
+	return stored_ship_state::none;
+#endif
+}
+
+/*
+ * Try again, about once a minute, to place the ships the room pool could not
+ * hold at boot.  Called from the game loop; cheap when there are none.
+ */
+void retry_unplaced_ships(void)
+{
+	static time_t next_try = 0;
+	const time_t now = time(NULL);
+	if (unplaced_ship_owners.empty() || now < next_try)
+		return;
+	next_try = now + 60;
+
+	for (auto owner = unplaced_ship_owners.begin(); owner != unplaced_ship_owners.end();)
+	{
+		const stored_ship_state state = place_stored_ship(owner->c_str());
+		if (state == stored_ship_state::placed || state == stored_ship_state::none)
+		{
+			logit(LOG_SHIP, "Unplaced ship of %s is %s.", owner->c_str(),
+			      state == stored_ship_state::placed ? "now in the world" : "gone");
+			owner = unplaced_ship_owners.erase(owner);
+		}
+		else
+			++owner;
+	}
 }
 
 /*
