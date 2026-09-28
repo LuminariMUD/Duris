@@ -23,7 +23,7 @@ assert "persistence_item_event_queue_reset();" in utility
 assert utility.index("persistence_large_event_worker_stop(0)") < utility.index("persistence_large_event_queue_reset()")
 assert utility.index("persistence_large_event_queue_reset()") < utility.index("PWipe persistence workers quiesced")
 
-terminal_gate = "if (!_pwipe && !persistence_save_all_characters_terminal(RENT_CRASH))"
+terminal_gate = "if (!_pwipe)\n\t{\n\t\tpersistence_save_all_characters_terminal(RENT_CRASH);"
 assert terminal_gate in comm
 assert comm.index(terminal_gate) < comm.index("if (!_copyover && !_pwipe)\n\t{")
 main_shutdown = comm[comm.index("game_loop(port, sslport);"):comm.index("/* Don't need this anymore")]

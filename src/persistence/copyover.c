@@ -869,7 +869,9 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 		return false;
 	}
 	player_save_pipeline_quiesce();
-	if (!player_save_pipeline_drain(3000))
+	// Copyover goes once the writer has written every queued save (persistence reset
+	// step 8); otherwise it is called off and the game keeps running.
+	if (!player_save_pipeline_drain(30000))
 	{
 		critical_command_coordinator_resume();
 		player_save_pipeline_resume();

@@ -137,6 +137,7 @@
 #include "world/epic_transaction.h"
 #include "world/vnum.mob.h"
 #include "player/player_save_pipeline.h"
+#include "player/player_save_worker.h"
 #include "player/player_load_pipeline.h"
 #include "player/player_death_restitution_adapter.h"
 #if !defined(__NO_TESTS__) || defined(TEST_REAL_PERSISTENCE)
@@ -2529,10 +2530,11 @@ resume_game_loop:
 		 * realms still marked dirty), so the eventual kingdom_shutdown()
 		 * after a failed copyover re-flushes nothing. */
 		kingdom_flush_persistent_state();
+		// Copyover goes once the writer has drained; otherwise it is called off.
 		if (!copyover_save(s, S, WS))
 		{
 			persistence_alert(AVATAR, "player_save", "copyover", "none", "none",
-					  "terminal_save_failed", "shutdown_cancelled=1");
+					  "copyover_failed", "copyover_cancelled=1");
 			shutdownflag = 0;
 			_reboot = 0;
 			_copyover = 0;
@@ -2542,102 +2544,36 @@ resume_game_loop:
 		return;
 	}
 
+	// Shutdown always goes (persistence reset step 8). Each drain is bounded and a
+	// failure is reported, never a reason to keep running; the writer gets 30 s for
+	// what is queued, and whatever it could not write is named.
 	if (!_pwipe && item_creation_grant_batches_pending())
-	{
 		persistence_alert(AVATAR, "starter_grant", "shutdown", "none", "none",
-				  "kit_pending",
-				  "shutdown_cancelled=1 retry_after_kit_completion=1");
-		shutdownflag = 0;
-		_reboot = 0;
-		_autoboot = 0;
-		goto resume_game_loop;
-	}
-
+				  "kit_pending", "shutdown_cancelled=0");
 	critical_command_coordinator_quiesce();
 	critical_outbox_quiesce();
 	if (!_pwipe && !critical_command_coordinator_drain(3000))
-	{
-		critical_command_coordinator_resume();
-		critical_outbox_resume();
 		persistence_alert(AVATAR, "critical_command", "shutdown", "none", "none",
-				  "pipeline_drain_failed", "shutdown_cancelled=1");
-		shutdownflag = 0;
-		_reboot = 0;
-		_autoboot = 0;
-		goto resume_game_loop;
-	}
+				  "pipeline_drain_failed", "shutdown_cancelled=0");
 	if (!_pwipe && !critical_outbox_drain(3000))
-	{
-		critical_command_coordinator_resume();
-		critical_outbox_resume();
 		persistence_alert(AVATAR, "critical_outbox", "shutdown", "none", "none",
-				  "pipeline_drain_failed", "shutdown_cancelled=1");
-		shutdownflag = 0;
-		_reboot = 0;
-		_autoboot = 0;
-		goto resume_game_loop;
-	}
-	if (!_pwipe && !persistence_save_all_characters_terminal(RENT_CRASH))
+				  "pipeline_drain_failed", "shutdown_cancelled=0");
+	if (!_pwipe)
 	{
-		critical_command_coordinator_resume();
-		critical_outbox_resume();
-		persistence_alert(AVATAR, "player_save", "shutdown", "none", "none",
-				  "terminal_save_failed", "shutdown_cancelled=1");
-		for (P_desc pending_desc = descriptor_list; pending_desc;
-		     pending_desc = pending_desc->next)
-			if (pending_desc->descriptor > 0 && pending_desc->connected == CON_PLAYING)
-				write_to_descriptor(
-					pending_desc,
-					"\r\nShutdown cancelled because a character save failed.\r\n");
-		shutdownflag = 0;
-		_reboot = 0;
-		_autoboot = 0;
-		goto resume_game_loop;
-	}
-	if (!_pwipe && !player_save_pipeline_drain(3000))
-	{
-		critical_command_coordinator_resume();
-		critical_outbox_resume();
-		player_save_pipeline_resume();
-		persistence_alert(AVATAR, "player_save", "shutdown", "none", "none",
-				  "pipeline_drain_failed", "shutdown_cancelled=1");
-		shutdownflag = 0;
-		_reboot = 0;
-		_autoboot = 0;
-		goto resume_game_loop;
-	}
-	if (!_pwipe && !redis_world_recovery_drain(3000))
-	{
-		critical_command_coordinator_resume();
-		critical_outbox_resume();
-		player_save_pipeline_resume();
-		persistence_alert(AVATAR, "world_recovery", "shutdown", "none", "none",
-				  "pipeline_drain_failed", "shutdown_cancelled=1");
-		shutdownflag = 0;
-		_reboot = 0;
-		_autoboot = 0;
-		goto resume_game_loop;
-	}
-	if (!_pwipe && !save_dirty_shopkeepers(true))
-	{
-		/* Dirty shopkeeper state is authoritative inventory.  Do not extract
-		 * characters or tear down services while a forced save is unresolved. */
-		critical_command_coordinator_resume();
-		critical_outbox_resume();
-		player_save_pipeline_resume();
-		persistence_alert(AVATAR, "shopkeeper_save", "shutdown", "none", "none",
-				  "dirty_save_failed", "shutdown_cancelled=1");
-		shutdownData.eShutdownType = TimedShutdownData::NONE;
-		for (P_desc pending_desc = descriptor_list; pending_desc;
-		     pending_desc = pending_desc->next)
-			if (pending_desc->descriptor > 0 && pending_desc->connected == CON_PLAYING)
-				write_to_descriptor(
-					pending_desc,
-					"\r\nShutdown cancelled because shopkeeper inventory could not be saved.\r\n");
-		shutdownflag = 0;
-		_reboot = 0;
-		_autoboot = 0;
-		goto resume_game_loop;
+		persistence_save_all_characters_terminal(RENT_CRASH);
+		if (!player_save_pipeline_drain(30000))
+			for (const persistence_job_owner &owner :
+			     persistence_writer_pending_owners())
+				persistence_alert(AVATAR, "persistence_writer",
+						  persistence_job_kind_name(owner.first), "none",
+						  "none", "not_written", "owner=%llu",
+						  static_cast<unsigned long long>(owner.second));
+		if (!redis_world_recovery_drain(3000))
+			persistence_alert(AVATAR, "world_recovery", "shutdown", "none", "none",
+					  "pipeline_drain_failed", "shutdown_cancelled=0");
+		if (!save_dirty_shopkeepers(true))
+			persistence_alert(AVATAR, "shopkeeper_save", "shutdown", "none", "none",
+					  "dirty_save_failed", "shutdown_cancelled=0");
 	}
 
 	PROFILES(SAVE);

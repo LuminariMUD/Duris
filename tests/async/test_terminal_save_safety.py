@@ -49,7 +49,8 @@ checks = {
     "copyover saves before close": copyover.index("persistence_save_character_terminal") < copyover.index("close(d->descriptor)"),
     "copyover requires database-acknowledged terminal saves":
         "persistence_save_character_terminal_database_acknowledged(" in copyover,
-    "shutdown resumes": "goto resume_game_loop;" in comm and "shutdown_cancelled=1" in comm,
+    # Shutdown always goes (step 8); only a failed copyover resumes the game.
+    "shutdown always goes": "shutdown_cancelled=1" not in comm and "copyover_cancelled=1" in comm,
     "artifact dummy retention": artifact.count("extract_refused=1") >= 2,
     "legacy locker retention": "terminal_not_durable" in lockers and
                                lockers.index("terminal_not_durable", lockers.index("event_deferredTerminalSave")) <

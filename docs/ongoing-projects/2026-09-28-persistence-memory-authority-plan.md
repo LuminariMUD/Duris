@@ -729,6 +729,17 @@ taken back out (see "Removed in the ablation" below).
 - Left for the Phase 1 tests: a journey that dies, restarts with full-world corpse restoration
   and loots the restored corpse (the minimal-world journeys skip corpse restoration), and the
   "raising, resurrecting and decaying make no database call" test.
+- **Correction (made with step 8):** a flat-file boot restores corpse records and per-room records
+  (`flatfile_room_item_record`), never the `saved_items` records, so the flat-file saved-item job
+  now writes the item's graph into its room's record
+  (`flatfile_world_item_prepare_room_item_snapshot()`; a removal only strips it). The step 3
+  item deferred here is done too: `flatfile_world_filter_item_ownership()` in
+  `flatfile_corpse_ownership.c` replaces the strict `flatfile_world_reconcile_item_ownership()`
+  for corpse and room loads. A record's item is taken if the catalog has no record for it or
+  names the corpse or room; one naming anyone else is skipped and logged (`load_skipped`), and
+  what it held moves to the top level. The strict check would have failed a boot over a stale
+  corpse record, or over a room whose custody also holds claimed saved items.
+  `flatfile_item_repository_load_uids()` is the unlocked lookup it uses.
 
 ### Step 7: logging out never waits (done)
 
@@ -758,3 +769,38 @@ taken back out (see "Removed in the ablation" below).
   copyover or quit, and the journeys `test_flatfile_newbie_regrant_journey.py`,
   `test_flatfile_combat_journey.py`, `test_mysql_combat_journey.py` (disposable MariaDB) and
   `test_account_recovery_journey.py`.
+
+### Step 8: shutdown and copyover always go (done)
+
+- Shutdown (`game_loop()` in `comm.c`) no longer cancels: a pending starter kit, a failed critical
+  command or outbox drain, a failed world recovery drain or a failed shopkeeper save is alerted
+  (`shutdown_cancelled=0`) and the shutdown goes on. Every player's save is queued, and the
+  writer gets 30 s (`player_save_pipeline_drain(30000)`); whatever it could not write is named,
+  one alert per owner (`persistence_writer not_written owner=<id>`, from
+  `persistence_writer_pending_owners()`).
+- Copyover drains the writer for up to 30 s; if it cannot, copyover is called off and the game
+  keeps running (the existing path, now alerted as `copyover_failed copyover_cancelled=1`).
+- Tests: `test_terminal_save_safety.py`, `test_copyover_save_guards.py`,
+  `test_save_logging_sweep.py`, `test_locker_ownership_cutover.py`, `test_pwipe_quiescence.py` and
+  `test_chaos_preentry_grant.py` pin the new contract. `run_copyover_runtime_journey.py` (flat-file)
+  passes both the failed-copyover and the real exec cases. The behavioural test "shutdown with the
+  database down exits within the bound" is in the Phase 1 tests list.
+
+### Step 9: the dupe log (done, built in steps 2 and 3)
+
+- `src/persistence/dupe_log.c` writes `logs/log/dupes`, one line per item: `save_left_out` when a
+  save leaves out what the economy holds, `load_skipped` when a load skips a stale copy, with the
+  uid, vnum, `lost_by=<owner>` and `held_by=<owner>`. Claims taken from another owner go to
+  `logs/log/item_claims` on flat-file (`claimed ... from ... to ...`) and to `item_owner_audit`
+  on MariaDB.
+- Every path writes it: player and pet saves and loads on both backends, lockers
+  (`locker_async.c`), the corpse and saved-item jobs, the MariaDB corpse, locker and saved-item
+  loads (`sql_persistence_item_owner_matches_identity()`), and the flat-file corpse and room loads
+  (`flatfile_world_filter_item_ownership()`). The harnesses check the exact lines.
+- Verified (steps 8 and the step 6 correction): `make -C src`, the flat-file build,
+  `./scripts/format.sh --all --check`, the validator, the 97 terminal/copyover/shutdown tests,
+  the flat-file world-item, corpse, restore, ownership and repository tests, and the journeys
+  `run_copyover_runtime_journey.py`, `test_flatfile_combat_journey.py`,
+  `test_flatfile_full_world_boot.py`, `test_flatfile_newbie_regrant_journey.py`,
+  `test_flatfile_auction_coin_put_journey.py`, `test_pet_restart_journey.py` and
+  `run_npc_container_claim_journey.py`.

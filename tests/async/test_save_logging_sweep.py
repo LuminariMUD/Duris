@@ -12,8 +12,8 @@ checks = [
     ),
     (
         rel("comm.c"),
-        'shutdown_cancelled=1',
-        'if (!_pwipe && !persistence_save_all_characters_terminal(RENT_CRASH))',
+        '"not_written"',
+        'if (!player_save_pipeline_drain(30000))',
         1,
     ),
     (

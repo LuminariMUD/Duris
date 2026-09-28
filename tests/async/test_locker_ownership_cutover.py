@@ -76,7 +76,7 @@ class LockerOwnershipCutoverTests(unittest.TestCase):
                         save.index("LockerToPFile()"))
         self.assertIn("std::any_of", self.movement)
         critical_drain = self.copyover.index("critical_command_coordinator_drain(3000)")
-        player_drain = self.copyover.index("player_save_pipeline_drain(3000)", critical_drain)
+        player_drain = self.copyover.index("player_save_pipeline_drain(30000)", critical_drain)
         final_locker_drain = self.copyover.index("locker_async_drain(3000)", player_drain)
         world_drain = self.copyover.index("redis_world_recovery_drain(3000)", player_drain)
         self.assertLess(critical_drain, player_drain)

@@ -91,8 +91,9 @@ assert "if (item_creation_grant_batches_pending())" in copyover_start
 assert "return false;" in copyover_start.split("if (item_creation_grant_batches_pending())", 1)[1]
 shutdown_start = COMM.split("void game_loop(", 1)[1].split("critical_command_coordinator_quiesce();", 1)[0]
 shutdown_guard = shutdown_start.split("if (!_pwipe && item_creation_grant_batches_pending())", 1)[1]
-for token in ("shutdownflag = 0;", "_reboot = 0;", "_autoboot = 0;", "goto resume_game_loop;"):
-    assert token in shutdown_guard
+# Shutdown always goes (persistence reset step 8): a pending kit is reported, not a
+# reason to keep running.
+assert '"kit_pending"' in shutdown_guard and "goto resume_game_loop;" not in shutdown_guard
 assert "bool item_creation_grant_batches_pending(void);" in TRANSACTION_H
 
 # Nonplaying socket teardown must release the unsubmitted batch before freeing
