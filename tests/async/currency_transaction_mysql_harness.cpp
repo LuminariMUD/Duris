@@ -329,11 +329,12 @@ void coin_failure_matrix()
 	assert(scalar("SELECT COUNT(*) FROM critical_operation_inbox i WHERE status=1 "
 		      "AND NOT EXISTS (SELECT 1 FROM critical_outbox o WHERE o.operation_id=i.operation_id)") ==
 	       0);
-	// A crash before the inventory snapshot leaves no player_items coin row.
+	// The put projects the pile into player_items in the same transaction.
+	assert(scalar("SELECT COUNT(*) FROM player_items WHERE obj_uid=900000002 AND container_id=" +
+		      std::to_string(bag_row)) == 1);
 	verify_reload(900, 100);
 	// A later stale projection must not replace the committed amount or metadata.
-	execute("INSERT INTO player_items(pid,vnum,obj_uid,container_id,value0,name,item_type) VALUES(" +
-		pid_text + ",402013,900000002," + std::to_string(bag_row) + ",1,'stale coins',20)");
+	execute("UPDATE player_items SET value0=1,name='stale coins' WHERE obj_uid=900000002");
 
 	critical_command merge = make_put(900, 100, 200);
 	assert(critical_command_repository_apply(connection, merge).outcome ==
@@ -496,9 +497,8 @@ void coin_failure_matrix()
 				     coin_pile(pid, uid, bag, {}, { 1, 0, 0, 0 }));
 		assert(critical_command_repository_apply(connection, small_put).outcome ==
 		       critical_apply_outcome::applied);
-		execute("INSERT INTO player_items(pid,vnum,obj_uid,container_id,value0,item_type) VALUES(" +
-			pid_text + ",402013," + std::to_string(uid) + "," +
-			std::to_string(bag_row) + ",1,20)");
+		assert(scalar("SELECT COUNT(*) FROM player_items WHERE obj_uid=" +
+			      std::to_string(uid)) == 1);
 		auto small_get = coin_command(coin_pile(pid, uid, bag, { 1, 0, 0, 0 }, {}),
 					      coin_wallet(pid, account, { 999, 0, 0, 0 },
 							  { 1000, 0, 0, 0 }));
