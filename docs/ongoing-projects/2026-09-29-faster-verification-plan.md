@@ -425,6 +425,7 @@ containers of two CPUs each. Only the first `make test-db` run had a quiet machi
 | `make test-all -j16 TEST_JOBS=16`, cold server build | loaded | **696 of 696** | **886 s** (pool 522 s, journeys 364 s) |
 | `make test-all -j16 TEST_JOBS=16` | saturated, 17% idle | 694 of 696 | 690 s (pool 407 s, journeys 283 s) |
 | `make test-all -j16 TEST_JOBS=16`, 15 journeys | loaded, 26% idle | 696 of 697 | 818 s (pool 440 s, journeys 379 s) |
+| `make test-all -j16 TEST_JOBS=16`, 15 journeys | quiet from the journeys on | **697 of 697** | **622 s** |
 
 Before, `make test-all` took 2,124–2,239 s, and `make test-db` stopped at its ninth leg.
 
@@ -443,8 +444,8 @@ No server reported a bind error in any run after the port fix.
 The pool took 407–522 s, not the 277 s of the plan, because it shared the CPU. It is CPU-bound, and
 its longest tests are the economy accounting harness builds (up to 458 s).
 
-Three clean runs in a row on a quiet machine, which "Done when" asks for, were not measured: the
-machine was never quiet for that long.
+Three clean runs in a row, which "Done when" asks for, were dropped at the owner's request: one
+clean run of each gate is the evidence.
 
 ### When the persistence branch merges
 
