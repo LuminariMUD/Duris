@@ -306,8 +306,12 @@ int main()
 	assert(trophy.snapshot.trophies[1].experience == INT_MAX);
 	execute_sql(connection, "UPDATE zone_trophy SET exp=-1 WHERE pid=" + std::to_string(pid) +
 					" AND zone_number=12");
-	assert(execute_load(connection, request, 811).outcome ==
-	       player_load_outcome::component_failure);
+	// Since #531 only status and identity can refuse a load: a trophy row that cannot be
+	// valid leaves the optional components out and degrades it.
+	const auto bad_trophy = execute_load(connection, request, 811);
+	assert(bad_trophy.outcome == player_load_outcome::degraded &&
+	       (bad_trophy.degraded_components & PLAYER_LOAD_DEGRADED_COMPONENTS) &&
+	       bad_trophy.snapshot.trophies.empty());
 	execute_sql(connection, "DELETE FROM zone_trophy WHERE pid=" + std::to_string(pid));
 	std::string trophy_rows = "INSERT INTO zone_trophy(pid,zone_number,exp) VALUES ";
 	for (size_t index = 0; index < ZONE_TROPHY_MAX_ZONES; ++index)
@@ -325,11 +329,14 @@ int main()
 	const uint64_t before_rows = session_rows_sent(connection);
 	const auto oversized_trophy = execute_load(connection, request, 814);
 	const uint64_t sent_rows = session_rows_sent(connection) - before_rows;
-	assert(oversized_trophy.outcome == player_load_outcome::limit_exceeded);
-	// Count rows sent by the server, not just rows visited by our callback. The
-	// first status query itself contributes one row. mysql_store_result must not
-	// buffer an unbounded result before the application detects the extra entry.
-	assert(sent_rows <= oversized_trophy.metrics.row_count + 1);
+	assert(oversized_trophy.outcome == player_load_outcome::degraded &&
+	       (oversized_trophy.degraded_components & PLAYER_LOAD_DEGRADED_COMPONENTS) &&
+	       oversized_trophy.snapshot.trophies.empty());
+	// Count rows sent by the server, not just rows visited by our callback:
+	// mysql_store_result must not buffer an unbounded result before the application
+	// detects the extra entry. The load goes on after the limit, and its single-row
+	// reads are not all visited by a callback, so the bound is the second batch.
+	assert(sent_rows < oversized_trophy.metrics.row_count + ZONE_TROPHY_MAX_ZONES);
 	execute_sql(connection, "DELETE FROM zone_trophy WHERE pid=" + std::to_string(pid));
 	trophy = execute_load(connection, request, 813);
 	assert(trophy.outcome == player_load_outcome::applied && trophy.snapshot.trophies.empty());
@@ -581,17 +588,21 @@ int main()
 		    "item_condition) VALUES(1003," +
 			    std::to_string(pid) + ",102,1,1,4,5,-1,0,0,0,0,0,0,0,0,0,900003,98)");
 
-	// Payload/custody vnum disagreement fails before publication.
+	// Payload/custody vnum disagreement publishes no items, and degrades the load.
 	execute_sql(connection, "UPDATE item_current_owner SET vnum=999 WHERE item_uid=900003");
-	assert(execute_load(connection, request, 83).outcome ==
-	       player_load_outcome::component_failure);
+	const auto vnum_drift = execute_load(connection, request, 83);
+	assert(vnum_drift.outcome == player_load_outcome::degraded &&
+	       (vnum_drift.degraded_components & PLAYER_LOAD_DEGRADED_ITEMS) &&
+	       vnum_drift.snapshot.items.empty());
 	execute_sql(connection, "UPDATE item_current_owner SET vnum=102 WHERE item_uid=900003");
 
-	// More than four distinct static affects is an explicit limit outcome.
+	// More than four distinct static affects is over the limit: no items, a degraded load.
 	execute_sql(connection, "INSERT INTO player_item_affects(item_id,location,modifier) VALUES"
 				"(1002,3,1),(1002,4,1),(1002,5,1)");
-	assert(execute_load(connection, request, 84).outcome ==
-	       player_load_outcome::limit_exceeded);
+	const auto affect_limit = execute_load(connection, request, 84);
+	assert(affect_limit.outcome == player_load_outcome::degraded &&
+	       (affect_limit.degraded_components & PLAYER_LOAD_DEGRADED_ITEMS) &&
+	       affect_limit.snapshot.items.empty());
 	execute_sql(connection, "DELETE FROM player_item_affects WHERE location>=3");
 
 	// Empty ownership still carries and validates its owner revision.
