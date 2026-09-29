@@ -37,6 +37,10 @@ extern "C"
 	void locker_async_init(void);
 	void locker_async_shutdown(void);
 
+	/* The locker a public locker save's writer key belongs to (lower case), or NULL:
+ * shutdown names the lockers it could not write. */
+	const char *locker_async_job_name(unsigned long long key);
+
 	/* Optional helpers implemented in storage_lockers.c (C linkage). */
 	void locker_async_request_resort(P_char chLocker, P_char chUser);
 	void locker_async_restore_snapshot_view(P_char chUser);

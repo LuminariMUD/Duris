@@ -33,12 +33,20 @@ assert "not_written" not in loop and "persistence_writer_pending_owners" not in 
 print("[PASS] the game loop queues every save and dirty locker before the timed drain")
 
 run = body(COMM, "int run_the_game(int port, int sslport)")
-assert run.index("game_loop(port, sslport);") < run.index("locker_async_shutdown();") < \
-    run.index("report_unwritten_saves(player_save_pipeline_finish(shutdown_writer_deadline_usec,")
+assert run.index("game_loop(port, sslport);") < \
+    run.index("locker_async_drain(shutdown_writer_remaining_msec(2000));") < \
+    run.index("report_unwritten_saves(player_save_pipeline_finish(shutdown_writer_deadline_usec,") < \
+    run.index("locker_async_shutdown();")
 assert "sql_pool_interrupt_borrowed" in run
+# The locker drains wait only for what is left of the writer's 30 s.
+assert COMM.count("locker_async_drain(shutdown_writer_remaining_msec(2000));") == 2
+remaining = body(COMM, "static int shutdown_writer_remaining_msec(int cap_msec)")
+assert "now >= shutdown_writer_deadline_usec" in remaining and "return 0;" in remaining
 assert COMM.count("report_unwritten_saves(") == 2  # the definition and its one call
 report = body(COMM, "static void report_unwritten_saves(")
 assert '"not_written"' in report and "persistence_job_kind::log" in report
+assert "named.insert(owner).second" in report and "locker_async_job_name(owner.second)" in report
+assert '"locker_id=%llu chest_id=%llu"' in report
 assert 'std::string("persistence_writer/") + persistence_job_kind_name(owner.first)' in report
 print("[PASS] the one report of unwritten saves runs after the last locker drain")
 

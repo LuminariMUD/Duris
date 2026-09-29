@@ -228,6 +228,14 @@ static uint64_t locker_job_key(const char *name)
 	return assigned;
 }
 
+const char *locker_async_job_name(unsigned long long key)
+{
+	for (const auto &entry : g_job_keys)
+		if (entry.second == key)
+			return entry.first.c_str();
+	return NULL;
+}
+
 /* ---------------- writer ---------------- */
 
 /* Runs on the persistence writer thread. A lost connection goes back to the

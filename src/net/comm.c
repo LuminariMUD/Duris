@@ -139,6 +139,9 @@
 #include "player/player_save_pipeline.h"
 #include "persistence/persistence_observability.h"
 #include "sql/sql_pool.h"
+
+#include <algorithm>
+#include <set>
 #include "player/player_save_worker.h"
 #include "player/player_load_pipeline.h"
 #include "player/player_death_restitution_adapter.h"
@@ -388,11 +391,25 @@ int copyover_boot = 0;
 constexpr uint64_t SHUTDOWN_WRITER_SECONDS = 30;
 static uint64_t shutdown_writer_deadline_usec = 0;
 
-// Names every save shutdown could not write, one alert per owner with its kind in the
-// domain (persistence_writer/player, .../locker, ...). Log rows are counted instead.
+// What is left of the writer's shutdown bound, at most cap_msec: once it has passed, a
+// drain only queues and does not wait for a writer that is not writing.
+static int shutdown_writer_remaining_msec(int cap_msec)
+{
+	const uint64_t now = persistence_observability_now_usec();
+	if (!shutdown_writer_deadline_usec || now >= shutdown_writer_deadline_usec)
+		return 0;
+	return static_cast<int>(
+		std::min<uint64_t>(cap_msec, (shutdown_writer_deadline_usec - now) / 1000));
+}
+
+// Names every save shutdown could not write, once per owner, with its kind in the
+// domain (persistence_writer/player, .../locker, ...). A public locker save is also
+// logged by the locker's name and a private chest by its locker and chest; log rows
+// are counted instead.
 static void report_unwritten_saves(const std::vector<persistence_job_owner> &owners)
 {
 	size_t log_rows = 0;
+	std::set<persistence_job_owner> named;
 	for (const persistence_job_owner &owner : owners)
 	{
 		if (owner.first == persistence_job_kind::log)
@@ -400,10 +417,27 @@ static void report_unwritten_saves(const std::vector<persistence_job_owner> &own
 			++log_rows;
 			continue;
 		}
+		// A save being written and a newer one queued behind it are one owner.
+		if (!named.insert(owner).second)
+			continue;
 		const std::string domain =
 			std::string("persistence_writer/") + persistence_job_kind_name(owner.first);
-		persistence_alert(AVATAR, domain.c_str(), "shutdown", "none", "none", "not_written",
-				  "owner=%llu", static_cast<unsigned long long>(owner.second));
+		const bool chest = owner.first == persistence_job_kind::locker &&
+				   (owner.second >> 32);
+		if (chest)
+			persistence_alert(AVATAR, domain.c_str(), "shutdown", "none", "none",
+					  "not_written", "locker_id=%llu chest_id=%llu",
+					  static_cast<unsigned long long>(owner.second &
+									  0xffffffffULL),
+					  static_cast<unsigned long long>(owner.second >> 32));
+		else
+			persistence_alert(AVATAR, domain.c_str(), "shutdown", "none", "none",
+					  "not_written", "owner=%llu",
+					  static_cast<unsigned long long>(owner.second));
+		if (owner.first == persistence_job_kind::locker && !chest)
+			if (const char *name = locker_async_job_name(owner.second))
+				logit(LOG_FILE, "persistence_writer: locker %s was not written",
+				      name);
 	}
 	if (log_rows)
 		persistence_alert(AVATAR, "persistence_writer/log", "shutdown", "none", "none",
@@ -1054,16 +1088,16 @@ int run_the_game(int port, int sslport)
 	critical_outbox_shutdown();
 	if (!_pwipe)
 	{
-		// The last lockers (players still inside one when the game stopped) are queued
-		// here. Nothing queues a write after this: the writer gets what is left of its
-		// 30 s, a query still running then is cut off, and every save it could not
-		// write is named.
-		locker_async_shutdown();
+		// The last lockers are queued here. Nothing queues a write after this: the
+		// writer gets what is left of its 30 s, a query still running then is cut off,
+		// and every save it could not write is named.
 		if (!shutdown_writer_deadline_usec)
 			shutdown_writer_deadline_usec = persistence_observability_now_usec() +
 							SHUTDOWN_WRITER_SECONDS * 1000000ULL;
+		locker_async_drain(shutdown_writer_remaining_msec(2000));
 		report_unwritten_saves(player_save_pipeline_finish(shutdown_writer_deadline_usec,
 								   sql_pool_interrupt_borrowed));
+		locker_async_shutdown();
 	}
 
 	/* Don't need this anymore, as dropped artis are handled in real time on the DB.
@@ -2620,7 +2654,7 @@ resume_game_loop:
 	if (!_pwipe)
 	{
 		flush_pending_ship_saves();
-		locker_async_drain(2000);
+		locker_async_drain(shutdown_writer_remaining_msec(2000));
 
 		if (no_ferries == 0)
 		{
