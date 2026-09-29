@@ -895,10 +895,15 @@ int main(int argc, char **argv)
 		require(wait(&status) > 0 && WIFEXITED(status) && WEXITSTATUS(status) == 0,
 			"concurrent player writer failed");
 	}
+	// Saves carry no revision fence any more: the one writer applies them in capture
+	// order, so two processes racing leave whichever committed last. The authority lock
+	// still makes each write whole: the file holds one snapshot, never a mix of two.
 	require(flatfile_player_snapshot_load(root.string(), 42, &loaded, &error) ==
 				flatfile_player_load_result::ok &&
-			loaded.revision == 5 && loaded.status_integers[0].signed_value == 55,
-		"concurrent player writers lost the highest revision");
+			(loaded.revision == 4 || loaded.revision == 5) &&
+			loaded.status_integers[0].signed_value ==
+				50 + static_cast<int64_t>(loaded.revision),
+		"concurrent player writers left a torn player file");
 
 	item_consistency_matrix(root / "consistency");
 	require(flatfile_player_snapshot_apply(root.string(), make_full(10), &error).outcome ==
