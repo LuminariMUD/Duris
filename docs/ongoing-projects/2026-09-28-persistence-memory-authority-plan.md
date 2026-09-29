@@ -894,3 +894,13 @@ taken back out (see "Removed in the ablation" below).
   paths (item movement transactions, the corpse lifecycle deferrals, terminal fences,
   `player_save_pipeline_terminal_death()`, the flat-file corpse lifecycle staging code in the
   critical command path).
+
+### Review and branches
+
+- Phase 1 is in review as [!2](https://gitlab.com/max757/duris/-/merge_requests/2) (source
+  `fix/7-persistence-phase-1`, part of #7). Keep that branch fixed to Phase 1: review fixes are
+  committed there (`git switch fix/7-persistence-phase-1` in this worktree), pushed, and then
+  merged into the phase 2 branch.
+- Phases 2 and 3 continue in this worktree on `fix/7-persistence-phase-2`, branched from the
+  Phase 1 head. After !2 merges (its source branch is removed on merge), rebase the phase 2 branch
+  onto `master` and open its own MR.
