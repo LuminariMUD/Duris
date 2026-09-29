@@ -856,3 +856,12 @@ taken back out (see "Removed in the ablation" below).
   These belong with Phase 2 (artifacts and rewards move with the economy).
 - Found while doing this, fixed in its own commit: `test_locker_receipt_recovery.py`'s MariaDB leg
   did not link (the extra-description codec, its escape stub and the restitution sources).
+- Full suite (`make test-all`, 2026-09-29): 688 passed, 4 failed, all fixed after. `extractlink`
+  still counted and described a "retained after save failure" case step 7 removed; the counter,
+  its help line and its summary text are gone and `test_extractlink_feedback_runtime.py` checks a
+  failing save stub still extracts. `test_new_player_bank_hydration.py` picked the first
+  `if (establishing_baseline)` block in `files.c`, which step 7 made the wait; it now selects the
+  domain read-back block. `test_mysql_stalled_writer_journey.py` skips without its runner's
+  environment, like the other MariaDB journeys. `test_information_cache_journey.py` failed only
+  because a source edit landed during its build ("inputs changed during compilation") and passes
+  alone.

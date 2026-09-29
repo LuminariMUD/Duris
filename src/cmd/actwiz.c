@@ -13370,7 +13370,7 @@ void do_account(P_char ch, char *arg, int /*cmd*/)
  * Usage: extractlink <name> - extract specific ghost character
  *        extractlink all    - extract all ghost characters
  */
-static bool extractlink_attempt(P_char ch, P_char vict)
+static void extractlink_attempt(P_char ch, P_char vict)
 {
 	char victim_name[MAX_INPUT_LENGTH];
 	char buf[MAX_STRING_LENGTH];
@@ -13393,7 +13393,6 @@ static bool extractlink_attempt(P_char ch, P_char vict)
 	logit(LOG_WIZ, "%s extracted ghost character %s", GET_NAME(ch), victim_name);
 	snprintf(buf, sizeof(buf), "Extracted ghost: %s.\r\n", victim_name);
 	send_to_char(buf, ch);
-	return true;
 }
 
 void do_extractlink(P_char ch, char *argument, int /*cmd*/)
@@ -13404,7 +13403,6 @@ void do_extractlink(P_char ch, char *argument, int /*cmd*/)
 	int matches = 0;
 	int ghosts = 0;
 	int extracted = 0;
-	int retained = 0;
 	int connected = 0;
 	int excluded = 0;
 
@@ -13420,8 +13418,6 @@ void do_extractlink(P_char ch, char *argument, int /*cmd*/)
 			"  extractlink <name>  Save and extract a matching disconnected player\r\n",
 			ch);
 		send_to_char("  extractlink all     Save and extract every disconnected player\r\n",
-			     ch);
-		send_to_char("A character is retained when its terminal save is not durable.\r\n",
 			     ch);
 		send_to_char(
 			"Detects both linkdead characters and invalid descriptor pointers.\r\n",
@@ -13466,10 +13462,9 @@ void do_extractlink(P_char ch, char *argument, int /*cmd*/)
 		}
 
 		ghosts++;
-		if (extractlink_attempt(ch, vict))
-			extracted++;
-		else
-			retained++;
+		// The save is queued and the ghost always leaves (persistence reset step 7).
+		extractlink_attempt(ch, vict);
+		extracted++;
 	}
 
 	if (extract_all)
@@ -13480,9 +13475,8 @@ void do_extractlink(P_char ch, char *argument, int /*cmd*/)
 		else
 		{
 			snprintf(buf, sizeof(buf),
-				 "extractlink all complete: %d ghost%s found; %d extracted; %d "
-				 "retained after save failure.\r\n",
-				 ghosts, ghosts == 1 ? "" : "s", extracted, retained);
+				 "extractlink all complete: %d ghost%s found; %d extracted.\r\n",
+				 ghosts, ghosts == 1 ? "" : "s", extracted);
 			send_to_char(buf, ch);
 		}
 		return;
@@ -13497,10 +13491,10 @@ void do_extractlink(P_char ch, char *argument, int /*cmd*/)
 	}
 
 	snprintf(buf, sizeof(buf),
-		 "extractlink result: %d match%s; %d ghost%s found; %d extracted; %d "
-		 "retained after save failure; %d connected; %d excluded.\r\n",
+		 "extractlink result: %d match%s; %d ghost%s found; %d extracted; %d connected; "
+		 "%d excluded.\r\n",
 		 matches, matches == 1 ? "" : "es", ghosts, ghosts == 1 ? "" : "s", extracted,
-		 retained, connected, excluded);
+		 connected, excluded);
 	send_to_char(buf, ch);
 }
 

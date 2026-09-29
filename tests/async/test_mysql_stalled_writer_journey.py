@@ -146,4 +146,8 @@ def run(server):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--server', type=Path, default=ROOT / 'bin/server/dms_new')
-    run(parser.parse_args().server.resolve(strict=True))
+    arguments = parser.parse_args()
+    if not os.getenv('TEST_DB_HOST') or not os.getenv('TEST_DB_CONTAINER'):
+        print('stalled writer journey skipped: run it through run_mysql_stalled_writer_journey.sh')
+    else:
+        run(arguments.server.resolve(strict=True))

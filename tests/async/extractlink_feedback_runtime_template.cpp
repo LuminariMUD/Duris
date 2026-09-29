@@ -169,9 +169,8 @@ static void named_success()
 	assert(ghost.extract_calls == 1);
 	assert(contains(admin.output, "Attempting ghost extraction: Spidgaul (linkdead)."));
 	assert(contains(admin.output, "Extracted ghost: Spidgaul."));
-	assert(contains(admin.output,
-			"extractlink result: 1 match; 1 ghost found; 1 extracted; 0 retained "
-			"after save failure; 0 connected; 0 excluded."));
+	assert(contains(admin.output, "extractlink result: 1 match; 1 ghost found; 1 extracted; "
+				      "0 connected; 0 excluded."));
 	assert(!contains(admin.output, "Retained ghost"));
 	assert(!contains(admin.output, "No player character"));
 	assert(wiz_audit.size() == 1);
@@ -179,6 +178,8 @@ static void named_success()
 	assert(file_audit == wiz_audit);
 }
 
+// The terminal save is queued and the ghost always leaves (persistence reset step 7),
+// even when the save stub reports a failure.
 static void named_save_failure()
 {
 	reset_observations();
@@ -192,21 +193,14 @@ static void named_save_failure()
 
 	do_extractlink(&admin, argument, 0);
 
-	assert(!ghost.extracted);
+	assert(ghost.extracted);
 	assert(ghost.save_calls == 1);
-	assert(ghost.extract_calls == 0);
-	assert(contains(admin.output,
-			"Retained ghost Spidgaul: terminal save was not durable, so no "
-			"extraction was performed."));
-	assert(contains(admin.output,
-			"extractlink result: 1 match; 1 ghost found; 0 extracted; 1 retained "
-			"after save failure; 0 connected; 0 excluded."));
-	assert(!contains(admin.output, "No player character"));
-	assert(!contains(admin.output, "Extracted ghost:"));
+	assert(ghost.extract_calls == 1);
+	assert(contains(admin.output, "Extracted ghost: Spidgaul."));
+	assert(contains(admin.output, "extractlink result: 1 match; 1 ghost found; 1 extracted; "
+				      "0 connected; 0 excluded."));
+	assert(!contains(admin.output, "Retained ghost"));
 	assert(wiz_audit.size() == 1);
-	assert(contains(wiz_audit[0],
-			"could not extract ghost character Spidgaul: terminal save was not "
-			"durable; character retained"));
 	assert(file_audit == wiz_audit);
 }
 
@@ -228,9 +222,8 @@ static void named_connected_match()
 	assert(player.extract_calls == 0);
 	assert(contains(admin.output,
 			"Cannot extract Spidgaul: character has a valid connection."));
-	assert(contains(admin.output,
-			"extractlink result: 1 match; 0 ghosts found; 0 extracted; 0 retained "
-			"after save failure; 1 connected; 0 excluded."));
+	assert(contains(admin.output, "extractlink result: 1 match; 0 ghosts found; 0 extracted; "
+				      "1 connected; 0 excluded."));
 	assert(!contains(admin.output, "No player character"));
 	assert(wiz_audit.empty());
 	assert(file_audit.empty());
@@ -284,16 +277,13 @@ static void mixed_all()
 	assert(connected.save_calls == 0);
 	assert(connected.extract_calls == 0);
 	assert(linkdead_success.extracted);
-	assert(!linkdead_failure.extracted);
+	assert(linkdead_failure.extracted);
 	assert(dangling_success.extracted);
 	assert(dangling_success.desc == nullptr);
 	assert(contains(admin.output, "Dangling (invalid descriptor)."));
 	assert(!contains(admin.output, "Connected"));
-	assert(contains(admin.output,
-			"extractlink all complete: 3 ghosts found; 2 extracted; 1 retained "
-			"after save failure."));
-	assert(count_containing(wiz_audit, " extracted ghost character ") == 2);
-	assert(count_containing(wiz_audit, " could not extract ghost character ") == 1);
+	assert(contains(admin.output, "extractlink all complete: 3 ghosts found; 3 extracted."));
+	assert(count_containing(wiz_audit, " extracted ghost character ") == 3);
 	assert(file_audit == wiz_audit);
 }
 
@@ -312,8 +302,7 @@ static void self_and_usage_feedback()
 	char blank_argument[] = "   ";
 	do_extractlink(&admin, blank_argument, 0);
 	assert(contains(admin.output, "extractlink <name>"));
-	assert(contains(admin.output,
-			"A character is retained when its terminal save is not durable."));
+	assert(!contains(admin.output, "retained"));
 }
 
 int main()

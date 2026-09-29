@@ -10,7 +10,7 @@ from _paths import ROOT, extract_function
 
 
 FUNCTIONS = (
-    ("actwiz.c", "static bool extractlink_attempt(P_char ch"),
+    ("actwiz.c", "static void extractlink_attempt(P_char ch"),
     ("actwiz.c", "void do_extractlink(P_char ch"),
 )
 
