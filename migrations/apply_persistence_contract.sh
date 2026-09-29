@@ -35,7 +35,7 @@ fi
 
 MYSQL_PWD="$DB_PASSWD"
 export MYSQL_PWD
-if mysql --help 2>&1 | grep -q -- '--ssl-mode'; then
+if mysql --help 2>&1 | grep -- '--ssl-mode' >/dev/null; then
     MYSQL_SSL=(--ssl-mode=PREFERRED)
 else
     MYSQL_SSL=(--skip-ssl)
