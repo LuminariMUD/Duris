@@ -2,7 +2,10 @@
 
 **Date:** 2026-09-28
 
-**Status:** Phase 1 in progress on branch `fix/7-persistence-phase-1`. See
+**Status:** Phase 1 is done on branch `fix/7-persistence-phase-1`, in review as
+[!2](https://gitlab.com/max757/duris/-/merge_requests/2), with the first review round's fixes in
+(see [Review round 1](#review-round-1-mr-2)). Phases 2 and 3 continue on
+`fix/7-persistence-phase-2` (see [Review and branches](#review-and-branches)). See
 [Phase 1 progress](#phase-1-progress) at the end for what is done, how it was done, and what is
 left.
 
@@ -55,10 +58,11 @@ A single background thread writes everything to the database, in the order it wa
 - player saves, with their pets;
 - corpse saves;
 - locker saves;
-- saved room items.
+- saved room items;
+- `log_entries` rows from `sql_log()` (since review round 1).
 
 This writer is the existing player save worker, cut from two threads to one
-(`PLAYER_SAVE_WORKER_DEFAULT_THREADS`), with three new job kinds.
+(`PLAYER_SAVE_WORKER_DEFAULT_THREADS`), with four new job kinds.
 
 - **Order:** a newer save of the same owner replaces its queued one and goes to the back of the
   queue. Saves are therefore always applied in capture order.
@@ -781,7 +785,9 @@ taken back out (see "Removed in the ablation" below).
   (`shutdown_cancelled=0`) and the shutdown goes on. Every player's save is queued, and the
   writer gets 30 s (`player_save_pipeline_drain(30000)`); whatever it could not write is named,
   one alert per owner (`persistence_writer not_written owner=<id>`, from
-  `persistence_writer_pending_owners()`).
+  `persistence_writer_pending_owners()`). Review round 1 moved the report to the end of
+  `run_the_game()`, after the last locker drain, and made the 30 s a hard bound; see
+  [Review round 1](#review-round-1-mr-2).
 - Copyover drains the writer for up to 30 s; if it cannot, copyover is called off and the game
   keeps running (the existing path, now alerted as `copyover_failed copyover_cancelled=1`).
 - Tests: `test_terminal_save_safety.py`, `test_copyover_save_guards.py`,
@@ -899,12 +905,88 @@ taken back out (see "Removed in the ablation" below).
   `player_save_pipeline_terminal_death()`, the flat-file corpse lifecycle staging code in the
   critical command path).
 
+### Review round 1 (MR !2)
+
+The review of `2881c9f20` (tag `persistence/phase-1-review-0`) found five defects. Each is fixed
+in its own commit on `fix/7-persistence-phase-1`, with a regression test that fails without it.
+The fixed head is tagged `persistence/phase-1-review-1`.
+
+| Finding | Fix | Commit |
+|---|---|---|
+| 1. High: a stale save revived an item the economy had destroyed (sold for destruction), so relog restored it while the player kept the proceeds. | A destroyed record is final for every item type on both backends: the save leaves the item and its contents out and names them in `logs/log/dupes` (`item_claim_leaves_out()`). | `0ee61068b` |
+| 2. High: shutdown named what the writer had not written, then ran locker drains that queued more; with a stalled writer those were lost without an alert. | The game loop queues dirty lockers before its timed drain; `player_save_pipeline_finish()` reports once, in `run_the_game()`, after the last locker drain. | `3aca05650`, `a3b7e6934` |
+| 3. Medium: a locker snapshot looked up and created locker ids with SQL on the game loop, and a failed job fell back to synchronous `sql_save_locker()`. | The public locker job is a snapshot applied wholly on the writer (`locker_snapshot_repository_apply()` finds or creates the locker and chest); a failed terminal save retries through the writer after 30 s. The one-in-flight cap and the 128-slot table, which made a stalled writer object-lock users or fall back to `writeCharacter()`, are gone. | `35bdc71d3` |
+| 4. Medium: every logout ran `sql_log()`'s synchronous `INSERT` on the game loop (9.8 s freeze measured with `log_entries` locked). | `sql_log()` queues a `log` job on the writer, escaped there, with the time it was logged. | `c8fba0087` |
+| 5. Medium: after the drain timed out, the writer was joined without a bound, so a query blocked on the database held shutdown. | At the deadline `sql_pool_interrupt_borrowed()` shuts the borrowed connection's socket down; the query returns as a lost connection and the job is named unwritten. | `3aca05650` |
+
+Found while verifying, fixed in their own commits:
+
+- `00ec69f56`: the snapshot capture wrote one row per spellbook marker; the game reads only the
+  first, so a second marker's spells were saved but unusable. The capture keeps one marker with
+  every spell, as the legacy writers and the old locker SQL did.
+- `9ddb74003`: the economy writer census re-anchored after line shifts (no site added or removed).
+- `6ae847fe3`: boot flagged locker rooms by room index, not vnum, so since 2026-07-04 100
+  unrelated rooms (#107747-#107846) were treated as lockers and the real ones were not; a
+  character saved inside a locker came back stranded in an empty room. The proc is left unset at
+  boot, because a free locker room is found by not having it.
+- `d45e751ea`: queued saves (checkpoints, terminal saves) recorded the locker room a character
+  stood in; the capture now records the room outside the locker's door.
+- `3e5be7f57`: queued saves never ran the locker's post-save hook, so a locker was saved only when
+  its occupant walked out; what was dropped in it was lost on shutdown, idle rent, link loss or a
+  crash. Checkpoints and terminal saves now save it, and the locker slot keeps no character
+  pointers across pulses.
+- `77b0ff0c2`: `persistence_log_submit()` dropped an alert when it raced the log worker's
+  dequeue (`try_to_lock`); one of shutdown's unwritten-save alerts was lost that way.
+- `924b8b900`: `migrations/tools` had not built since 2026-09-13 (a C++20 header in a C++14
+  build); it builds as C++20 and `test_migration_tools_build.py` builds it in the suite.
+- `a810bed5a`: a character deletion failed ("could not be confirmed") whenever the zone-story
+  catalog had not booted, as in every minimal journey world; it now succeeds when no zone-story
+  state was ever stored and still fails closed otherwise.
+- Tests left stale by earlier Phase 1 commits: `f16fd3e48` (the terminal-extract contract looked
+  for `extractlink_attempt()`'s old signature), `28116f7f8` (the flat-file concurrent-writer check
+  assumed a revision fence; it now checks the file is whole), `d22ea9cc7` (the MariaDB combat and
+  corpse-haul count-cap journeys read the database before the writer had caught up), and
+  `850d21253` (four MariaDB journeys pinned port 3306).
+
+Verification for this round, on the final head:
+
+- `make -C src`, the flat-file build, `make -C src pfile`, the `migrations/tools` builds and
+  `./scripts/format.sh --all --check`; `scripts/validate_economy_accounting.py`.
+- `make test-all`: 699 passed on the final head (an earlier run caught the two stale tests
+  fixed above); `make test-db`: all 24 legs, with the new `run_sql_pool_interrupt_mysql.sh`.
+- MariaDB journeys on a disposable server: combat (all three variants), corpse haul and its count
+  cap (also flat-file), chaos raise, saved-item recovery and allocator, world writer retry,
+  deletion, playtime, information cache and the locker receipt leg; on flat-file,
+  `run_generated_npc_journey.py`.
+- `run_generated_npc_journey.py` (flat-file) promotes its character to level 62 and failed the
+  copyover reload with `component=domain_identity`, on `master` too: the owner decision in !2.
+  Resolved as the owner chose (an immortal keeps their own side's bank, as on MariaDB) in
+  `6e4934ab0`: the flat-file identity keeps the character's own racewar, the account menu works
+  its admission racewar out from that and the level, and an identity written before holds 0 and
+  loads with the snapshot's racewar. The journey now passes.
+- `run_mysql_stalled_writer_journey.sh`: camp with `player_items` and `log_entries` locked reaches
+  the menu while a second connection's slowest reply is 0.25 s (9.8 s before finding 4's fix),
+  and the save and log row land after; shutdown with the writer blocked in a query on a locked
+  table exits in about 30 s and names the save; shutdown with the database stopped does the same
+  on a second server.
+- Local server with the `.env` account: a locker save lands through the writer (row, claim and
+  public chest); a bread dropped in the locker reaches `locker_items` within one checkpoint with
+  the character inside, and one dropped just before a SIGTERM is saved; after the restart the
+  character loads outside the locker (before the boot fix it was stranded in room 65202);
+  shutdown with the writer stalled and the character in the locker names the player save and the
+  locker by name (about 35 s); `quit` writes its `log_entries` row through the writer.
+
 ### Review and branches
 
 - Phase 1 is in review as [!2](https://gitlab.com/max757/duris/-/merge_requests/2) (source
   `fix/7-persistence-phase-1`, part of #7). Keep that branch fixed to Phase 1: review fixes are
   committed there (`git switch fix/7-persistence-phase-1` in this worktree), pushed, and then
-  merged into the phase 2 branch.
+  brought into the phase 2 branch (`git merge --ff-only` while it has no commits of its own,
+  otherwise a merge).
+- Each review round is tagged on the phase 1 branch: `persistence/phase-1-review-0` is the head
+  the first review read (`2881c9f20`), `persistence/phase-1-review-1` the head with its fixes. A
+  later round adds `-review-2` and so on, so `git diff persistence/phase-1-review-<n-1>
+  persistence/phase-1-review-<n>` shows what one round changed.
 - Phases 2 and 3 continue in this worktree on `fix/7-persistence-phase-2`, branched from the
   Phase 1 head. After !2 merges (its source branch is removed on merge), rebase the phase 2 branch
   onto `master` and open its own MR.
