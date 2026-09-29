@@ -43,6 +43,7 @@ struct acct_chars
 	unsigned long int count;
 	long int last;
 	char blocked;
+	/* The racewar the account admits the character by (account_admission_racewar()). */
 	char racewar;
 	int level;
 	int race;
@@ -50,8 +51,20 @@ struct acct_chars
 	unsigned int secondary_class;
 	int last_room;
 	long last_save;
+	/* The character's own racewar (RACEWAR_*). It keys the flat-file identity, wallet
+	 * and bank, as GET_RACEWAR() keys the MariaDB bank; 0 when not yet known. */
+	char player_racewar;
 	struct acct_chars *next;
 };
+
+#ifndef _DE_
+/* Immortals are exempt from racewar admission; everyone else is admitted as good or
+ * evil. */
+inline char account_admission_racewar(int player_racewar, bool immortal)
+{
+	return immortal ? ACCT_IMMORTAL : player_racewar == RACEWAR_EVIL ? ACCT_EVIL : ACCT_GOOD;
+}
+#endif
 
 struct acct_entry
 { // Main Account Structure

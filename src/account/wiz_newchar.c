@@ -392,7 +392,8 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 		c->charname = str_dup(newch->player.name);
 		c->count = 1;
 		c->last = time(NULL);
-		c->racewar = (GET_RACEWAR(newch) == RACEWAR_EVIL) ? ACCT_EVIL : ACCT_GOOD;
+		c->racewar = account_admission_racewar(GET_RACEWAR(newch), false);
+		c->player_racewar = GET_RACEWAR(newch);
 		c->next = ch->desc->account->acct_character_list;
 		ch->desc->account->acct_character_list = c;
 		ch->desc->account->num_chars++;
