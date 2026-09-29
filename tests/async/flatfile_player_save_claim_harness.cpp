@@ -380,6 +380,48 @@ int main(int argc, char **argv)
 		require(left_out.find(line) != std::string::npos,
 			std::string("the dupe log names each destroyed item: ") + line + "\n" +
 				left_out);
+	// An identity written before it kept the character's own racewar holds the account
+	// menu's immortal value (0) for an immortal. The load takes the snapshot's racewar
+	// and the wallet and bank stored under it, instead of refusing the character.
+	require(flatfile_identity_claim(root, 40, "Elder", "Account-Four", &error) ==
+			flatfile_identity_result::ok,
+		"elder identity claim: " + error);
+	flatfile_identity_record elder;
+	require(flatfile_identity_lookup_pid(root, 40, &elder, &error) ==
+			flatfile_identity_result::ok,
+		"elder identity lookup: " + error);
+	elder.racewar = 1;
+	elder.level = 62;
+	require(flatfile_identity_sync_account(root, "Account-Four", { elder }, &error) ==
+			flatfile_identity_result::ok,
+		"elder identity racewar: " + error);
+	player_snapshot elder_save = snapshot_for(1, 40, "Elder");
+	for (auto &field : elder_save.status_integers)
+		if (field.field == player_status_field::racewar)
+			field.signed_value = 1;
+		else if (field.field == player_status_field::copper)
+			field.signed_value = field.unsigned_value = 77;
+	require(flatfile_player_snapshot_apply(root, elder_save, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"elder first save: " + error);
+	elder.racewar = 0;
+	require(flatfile_identity_sync_account(root, "Account-Four", { elder }, &error) ==
+			flatfile_identity_result::ok,
+		"elder legacy immortal identity: " + error);
+	player_load_request elder_request = {};
+	elder_request.request_id = 2;
+	elder_request.pid = 40;
+	elder_request.account_name = "Account-Four";
+	const player_load_result elder_loaded =
+		flatfile_player_load_repository_execute(root, elder_request);
+	require(elder_loaded.outcome == player_load_outcome::applied &&
+			elder_loaded.domains.wallet[0] == 77,
+		std::string(
+			"a legacy immortal identity must load with its own racewar's domains: ") +
+			(elder_loaded.failed_component ? elder_loaded.failed_component : "none") +
+			" outcome=" + std::to_string(static_cast<int>(elder_loaded.outcome)) +
+			" error=" + std::to_string(elder_loaded.error_code) +
+			" copper=" + std::to_string(elder_loaded.domains.wallet[0]));
 	std::cout << "flat-file player save claim passed\n";
 	return 0;
 }

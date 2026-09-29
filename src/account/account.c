@@ -2444,9 +2444,8 @@ P_char load_char_into_game(struct acct_chars *c, P_desc d)
 	if (d->player_load_mode != PLAYER_LOAD_MODE_ACCOUNT_DELETE)
 		d->player_load_mode = PLAYER_LOAD_MODE_ACCOUNT;
 	// Preserve the trusted-character exemption in the account projection.
-	c->racewar = IS_TRUSTED(player)			 ? ACCT_IMMORTAL :
-		     GET_RACEWAR(player) == RACEWAR_EVIL ? ACCT_EVIL :
-							   ACCT_GOOD;
+	c->racewar = account_admission_racewar(GET_RACEWAR(player), IS_TRUSTED(player));
+	c->player_racewar = GET_RACEWAR(player);
 	d->rtype = loaded.snapshot.save_intent;
 	return player;
 }
@@ -2668,10 +2667,8 @@ void add_char_to_account(P_desc d)
 	c->count = 1;
 	c->last = time(NULL);
 	c->blocked = 0;
-	if (GET_RACEWAR(player) == RACEWAR_EVIL)
-		c->racewar = ACCT_EVIL;
-	else
-		c->racewar = ACCT_GOOD;
+	c->racewar = account_admission_racewar(GET_RACEWAR(player), false);
+	c->player_racewar = GET_RACEWAR(player);
 	c->level = GET_LEVEL(player);
 	c->race = GET_RACE(player);
 	c->m_class = player->player.m_class;
@@ -2709,9 +2706,8 @@ int sync_account_character_projection(P_char player, int room, int persist)
 	character->race = GET_RACE(player);
 	character->m_class = player->player.m_class;
 	character->secondary_class = player->player.secondary_class;
-	character->racewar = IS_TRUSTED(player)			 ? ACCT_IMMORTAL :
-			     GET_RACEWAR(player) == RACEWAR_EVIL ? ACCT_EVIL :
-								   ACCT_GOOD;
+	character->racewar = account_admission_racewar(GET_RACEWAR(player), IS_TRUSTED(player));
+	character->player_racewar = GET_RACEWAR(player);
 	if (room != NOWHERE)
 		character->last_room = room;
 	character->last_save = time(NULL);
@@ -3318,6 +3314,7 @@ int read_account(P_acct acct) // returns -1 if error, 1 if no errors
 		copy->last = source->last;
 		copy->blocked = source->blocked;
 		copy->racewar = source->racewar;
+		copy->player_racewar = source->player_racewar;
 		copy->level = source->level;
 		copy->race = source->race;
 		copy->m_class = source->m_class;

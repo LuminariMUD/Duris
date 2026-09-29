@@ -53,6 +53,7 @@ int main(int argc, char **argv)
 	character.last = 100;
 	character.blocked = 0;
 	character.racewar = 2;
+	character.player_racewar = 2;
 	character.level = 50;
 	character.race = 4;
 	character.m_class = 8;
@@ -84,6 +85,60 @@ int main(int argc, char **argv)
 			loaded->acct_character_list->last_room == 600 &&
 			loaded->acct_character_list->last_save == 700,
 		"catalog membership did not materialize into the account DTO: " + error);
+
+	// The identity keeps each character's own racewar; the account menu's admission
+	// racewar is worked out from it and the level. An immortal keeps its side's racewar
+	// (and so its side's bank), and an undead mortal is admitted as good.
+	int32_t immortal_pid = 0, undead_pid = 0;
+	require(flatfile_identity_allocate_pid(root.string(), &immortal_pid, &error) ==
+				flatfile_identity_result::ok &&
+			flatfile_identity_allocate_pid(root.string(), &undead_pid, &error) ==
+				flatfile_identity_result::ok,
+		"second and third PID allocation failed: " + error);
+	struct acct_chars immortal = {};
+	immortal.pid = immortal_pid;
+	immortal.charname = strdup("Watcher");
+	immortal.racewar = ACCT_IMMORTAL;
+	immortal.player_racewar = 1;
+	immortal.level = 62;
+	struct acct_chars undead = {};
+	undead.pid = undead_pid;
+	undead.charname = strdup("Wight");
+	undead.racewar = ACCT_GOOD;
+	undead.player_racewar = 3;
+	undead.level = 20;
+	loaded->acct_character_list->next = &immortal;
+	immortal.next = &undead;
+	loaded->num_chars = 3;
+	require(flatfile_account_state_save(loaded, &error),
+		"account save with an immortal and an undead failed: " + error);
+	flatfile_identity_record immortal_identity, undead_identity;
+	require(flatfile_identity_lookup_pid(root.string(), immortal_pid, &immortal_identity,
+					     &error) == flatfile_identity_result::ok &&
+			immortal_identity.racewar == 1 &&
+			flatfile_identity_lookup_pid(root.string(), undead_pid, &undead_identity,
+						     &error) == flatfile_identity_result::ok &&
+			undead_identity.racewar == 3,
+		"the identity must keep each character's own racewar");
+	P_acct reloaded = flatfile_account_state_load("account-one", &error);
+	require(reloaded && reloaded->num_chars == 3, "reload with three characters: " + error);
+	for (struct acct_chars *entry = reloaded->acct_character_list; entry; entry = entry->next)
+	{
+		if (!strcmp(entry->charname, "Watcher"))
+			require(entry->player_racewar == 1 && entry->racewar == ACCT_IMMORTAL,
+				"an immortal is admitted as an immortal and keeps its racewar");
+		else if (!strcmp(entry->charname, "Wight"))
+			require(entry->player_racewar == 3 && entry->racewar == ACCT_GOOD,
+				"an undead mortal is admitted as good and keeps its racewar");
+		else
+			require(entry->player_racewar == 2 && entry->racewar == ACCT_EVIL,
+				"an evil mortal is admitted as evil and keeps its racewar");
+	}
+	flatfile_account_state_release(reloaded);
+	loaded->acct_character_list->next = nullptr;
+	loaded->num_chars = 1;
+	free(immortal.charname);
+	free(undead.charname);
 
 	free(loaded->acct_character_list->charname);
 	loaded->acct_character_list->charname = strdup("HeroRenamed");

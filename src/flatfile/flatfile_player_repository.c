@@ -682,9 +682,13 @@ player_load_result flatfile_player_load_repository_execute(const std::string &ro
 	}
 	if (request.include_items && !reconcile_item_ownership(root, &result))
 		return result;
+	// The identity keeps the character's own racewar. One written before it did holds
+	// the account menu's immortal value (0) for an immortal instead; the snapshot's is
+	// the character's own, and the next save writes it back.
 	int64_t snapshot_racewar = 0;
 	if (!snapshot_signed(result.snapshot, player_status_field::racewar, &snapshot_racewar) ||
-	    snapshot_racewar != identity.racewar)
+	    (identity.racewar && snapshot_racewar != identity.racewar) ||
+	    snapshot_racewar < INT8_MIN || snapshot_racewar > INT8_MAX)
 	{
 		result.outcome = player_load_outcome::component_failure;
 		result.error_code = EILSEQ;
@@ -693,7 +697,8 @@ player_load_result flatfile_player_load_repository_execute(const std::string &ro
 	}
 	flatfile_player_domain_record domains;
 	const flatfile_player_domain_result domains_loaded = flatfile_player_domain_load(
-		root, identity.pid, identity.account, identity.racewar, &domains, &error);
+		root, identity.pid, identity.account, static_cast<int8_t>(snapshot_racewar),
+		&domains, &error);
 	if (domains_loaded != flatfile_player_domain_result::ok)
 	{
 		result.error_code =
