@@ -25,7 +25,7 @@ def run(server):
     assert host in ('127.0.0.1', 'localhost'), 'use a disposable loopback database'
     environment = {
         'PATH': os.environ.get('PATH', '/usr/bin:/bin'),
-        'ENVIRONMENT': 'local', 'DB_HOST': host, 'DB_PORT': '3306',
+        'ENVIRONMENT': 'local', 'DB_HOST': host, 'DB_PORT': os.environ.get('TEST_DB_PORT', '3306'),
         'DB_NAME': database, 'DB_USER': os.environ['TEST_DB_USER'],
         'DB_PASSWD': os.environ['TEST_DB_PASSWORD'],
         'DB_ALLOWED_TARGETS': host+'/'+database,
@@ -36,7 +36,8 @@ def run(server):
     }
     if 'LD_LIBRARY_PATH' in os.environ:
         environment['LD_LIBRARY_PATH'] = os.environ['LD_LIBRARY_PATH']
-    mysql = ['mysql', '--protocol=tcp', '-h', host, '-u', environment['DB_USER'], '-N', '-B']
+    mysql = ['mysql', '--protocol=tcp', '-h', host, '-P', environment['DB_PORT'], '-u',
+             environment['DB_USER'], '-N', '-B']
 
     def sql(text, selected=True):
         return subprocess.check_output(mysql+([database] if selected else []), input=text,
