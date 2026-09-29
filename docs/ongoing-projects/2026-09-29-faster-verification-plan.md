@@ -412,19 +412,28 @@ containers of two CPUs each. Only the first `make test-db` run had a quiet machi
 | `make test-db`, before the port and probe fixes | 12 tests of its own at once | 20 of 31 | 535 s |
 | `make test-db` | quiet | **28 of 28** | **187 s** |
 | `make test-db` | saturated, 8% idle on average | 25 of 28 | 452 s |
+| `make test-db` | saturated, 24% idle | 27 of 28 | 228 s |
 | `make test-all -j16 TEST_JOBS=16`, cold server build | loaded | **696 of 696** | **886 s** (pool 522 s, journeys 364 s) |
+| `make test-all -j16 TEST_JOBS=16` | saturated, 17% idle | 694 of 696 | 690 s (pool 407 s, journeys 283 s) |
 
 Before, `make test-all` took 2,124–2,239 s, and `make test-db` stopped at its ninth leg.
 
-In the saturated run the three failures were the two saved-item journeys, whose server did not exit
-within its 20 seconds, and the corpse haul journey, which read the ownership table before the write
-landed. All three passed in the quiet run. That is rule 3: run the gate on a quiet machine.
+Every failure in the saturated runs was a time budget, and every one of those tests passed in a
+run with more CPU. That is rule 3: run the gate on a quiet machine.
 
-The pool took 522 s, not the 277 s of the plan, because it shared the CPU. It is CPU-bound, and its
-longest tests are the economy accounting harness builds (up to 458 s in that run).
+- The two saved-item journeys: the server did not exit within its 20 seconds.
+- The corpse haul journey: it read the ownership table before the write landed.
+- The playtime journey: 8 played seconds against 5 measured ones, with a tolerance of 2.
+- `test_flatfile_ip_activity.py` and `test_redis_donation_worker_live.py`, in the pool: a 2-second
+  window and a worker's counters. Both passed three times in a row alone, right after that run.
+
+No server reported a bind error in any run after the port fix.
+
+The pool took 407–522 s, not the 277 s of the plan, because it shared the CPU. It is CPU-bound, and
+its longest tests are the economy accounting harness builds (up to 458 s).
 
 Three clean runs in a row on a quiet machine, which "Done when" asks for, were not measured: the
-machine was not quiet for long enough.
+machine was never quiet for that long.
 
 ### When the persistence branch merges
 
