@@ -89,6 +89,14 @@ def run(server, reset_coins=False, boons=False):
                     process.wait(timeout=30)
                     assert process.returncode == 0
 
+                def settle(check, what, timeout=20):
+                    # The writer applies the death's corpse and player saves after the
+                    # character has left; give it time to catch up.
+                    deadline = time.monotonic()+timeout
+                    while not check():
+                        assert time.monotonic()<deadline, what() if callable(what) else what
+                        time.sleep(.1)
+
                 def stable_state(pid):
                     return (
                         sql(f'SELECT copper,silver,gold,platinum,wallet_revision,numb_deaths,exp,level FROM player_data WHERE pid={pid}'),
@@ -119,8 +127,9 @@ def run(server, reset_coins=False, boons=False):
                     elapsed=time.monotonic()-began
                     client.send('0'); client.close(); client=None
                     uids=','.join(captured)
-                    assert number(f'SELECT COUNT(*) FROM item_current_owner WHERE item_uid IN ({uids}) AND owner_type=4 AND state=1')==len(captured), sql(f'SELECT item_uid,owner_type,owner_id,state FROM item_current_owner WHERE item_uid IN ({uids})')
-                    assert number(f'SELECT numb_deaths FROM player_data WHERE pid={pid}')==before_deaths+1
+                    settle(lambda: number(f'SELECT COUNT(*) FROM item_current_owner WHERE item_uid IN ({uids}) AND owner_type=4 AND state=1')==len(captured),
+                           lambda: 'the corpse did not claim the items: '+sql(f'SELECT item_uid,owner_type,owner_id,state FROM item_current_owner WHERE item_uid IN ({uids})'))
+                    settle(lambda: number(f'SELECT numb_deaths FROM player_data WHERE pid={pid}')==before_deaths+1, 'the death was not saved')
                     assert number("SELECT COUNT(*) FROM corpse_items ci JOIN corpses c ON c.id=ci.corpse_id WHERE c.player_name='"+journey.CHARACTER+"'")>=len(captured)
                     print(f'MariaDB actual character: {len(captured)} items in the corpse, attack-to-menu {elapsed:.3f}s',flush=True)
                     # Minimal boot deliberately skips SQL corpse restoration.
@@ -158,9 +167,9 @@ def run(server, reset_coins=False, boons=False):
                     journey.attack_until_death(client)
                     client.expect('ACCOUNT MENU',timeout=45)
                     client.send('0'); client.close(); client=None
-                    assert number(f'SELECT COUNT(*) FROM item_current_owner WHERE item_uid={banana} AND owner_type=4 AND state=1')==1
-                    assert number(f'SELECT COUNT(*) FROM player_items WHERE pid={pid}')==0
-                    assert number(f'SELECT numb_deaths FROM player_data WHERE pid={pid}')==before_deaths+1
+                    settle(lambda: number(f'SELECT COUNT(*) FROM item_current_owner WHERE item_uid={banana} AND owner_type=4 AND state=1')==1, 'the corpse did not claim the banana')
+                    settle(lambda: number(f'SELECT COUNT(*) FROM player_items WHERE pid={pid}')==0, 'the dead player still holds items')
+                    settle(lambda: number(f'SELECT numb_deaths FROM player_data WHERE pid={pid}')==before_deaths+1, 'the second death was not saved')
                     assert sql(f'SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}')==expected
                     before=stable_state(pid)
                     stop(); process=boot()
