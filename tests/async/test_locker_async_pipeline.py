@@ -84,7 +84,7 @@ def main():
     ok &= check("inflight coalesce rebuild flag",
                 "rebuild_objects" in files["async_c"])
     ok &= check("terminal extract waits for a landed save; a failure retries through the writer",
-                "if (r->ok && chLocker)" in files["async_c"] and
+                "if (r->ok && chLocker && !s->rebuild_objects)" in files["async_c"] and
                 "slot_retry_later(s);" in files["async_c"] and
                 "s->retry_at > now" in files["async_c"])
     ok &= check("ambiguity prefers non-descriptor locker char",
