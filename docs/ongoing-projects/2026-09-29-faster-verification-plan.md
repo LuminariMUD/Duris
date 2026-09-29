@@ -357,12 +357,15 @@ them had stopped passing. The plan went through plan ablation again, against mas
 | 1. The nested items test is gone | `0bccac115` |
 | 2. `tests/run_db_tests.sh`, `with_disposable_mariadb.sh`, `test-db: build-server` | `2de992efb` |
 | 2. The locker receipt leg and the corpse haul journey take `TEST_DB_PORT` | `867dc83ad` |
+| 2. The currency and trophy legs build their own loader harness file | `e46204708` |
+| 2. The generated-NPC journey runs in `make test-all` | `f7b301cdc` |
 | 3. The combat variants run at once | `c17808e57` |
 | 4. The routine is in `docs/guides/TESTING.md` ("Before a merge") | with this document |
 
-The list in `tests/run_db_tests.sh` is 28 tests: master's 17 legs, the output preferences leg, and
-ten MariaDB journeys (combat, corpse haul and its count cap, saved-item recovery and allocator,
-world writer retry, deletion, playtime, information cache, locker receipt).
+The list in `tests/run_db_tests.sh` is 32 tests: master's 17 legs, the output preferences,
+currency, experience trophy and item transfer legs, and eleven MariaDB journeys (combat, corpse
+haul and its count cap, saved-item recovery and allocator, world writer retry, deletion, chaos
+raise, playtime, information cache, locker receipt). `make test-all` runs 15 journeys side by side.
 
 ### Fixed on the way
 
@@ -372,9 +375,24 @@ Each was needed for a test in the list to pass on master, and each has its own c
   `TEST_DB_PORT`. It is the branch's `850d21253`.
 - `70de26222`: the collector catalog leg's fingerprint. It is the branch's `a970f6bec`. Master's
   `make test-db` stopped at this leg, so the eight legs after it had not run.
-- `9bc21a8fc` and `5831878a4`: the locker receipt and output preferences legs stopped at the linker.
+- `9bc21a8fc`, `5831878a4` and `e46204708`: the locker receipt, output preferences and trophy
+  legs stopped at the linker.
+- `57bfc15a3`: the currency leg's coin matrix built a duplicate row. It is the branch's
+  `916f99520`.
+- `9b52ca019`: the loader fixture matrix, which the currency and trophy legs run, still expected a
+  refused load where #531 made master degrade it.
+- `2a2ea84b7`: the item transfer leg sourced `.env` and ran against the configured development
+  database. It has its own container now. Its craft case built the payload from before #573.
+- `0e82c5690`: a flat-file character promoted to immortal was refused at its next login or
+  copyover, so the generated-NPC journey failed. It is the branch's `6e4934ab0`, resolved against
+  master's degraded item load.
+- `f59877ec2`: raising a corpse that holds a coin pile from before item custody committed, then
+  went through live recovery and paused the caster's saves. The chaos raise journey failed on it.
+  Its default mode also expected the corpse's items with the caster; a follower holds them.
 - `ca5b00dd3`: a character could not be deleted in a world without zone-story content, so the
-  deletion journey failed. It is the branch's `a810bed5a`, the one change to `src/`.
+  deletion journey failed. It is the branch's `a810bed5a`.
+
+Three of these change `src/`: `ca5b00dd3`, `0e82c5690` and `f59877ec2`.
 - `d56aad34f`: `apply_persistence_contract.sh` and `verify_persistence_contract.sh` probed for
   `--ssl-mode` with `grep -q` under `pipefail`. When `mysql --help` died of SIGPIPE, they chose
   `--skip-ssl`, which MySQL 8's client refuses. The persistence contract leg lost that race in the
@@ -385,22 +403,12 @@ Each was needed for a test in the list to pass on master, and each has its own c
 
 - **`TEST_DB_CONTAINER` and an image override in the wrapper.** Nothing on master reads them. The
   stalled-writer journey, which needs the container name, keeps its own wrapper.
-- **`run_player_load_repository_mysql.sh` leaving the list.** It was never in master's list.
+- **`run_player_load_repository_mysql.sh` leaving the list.** It was never in master's list. It
+  stays a manual check against the development database.
 - **Four files that only the branch has:** `run_player_save_claim_mysql.sh`,
   `run_sql_pool_interrupt_mysql.sh`, `test_player_save_claim.py` and
-  `run_mysql_stalled_writer_journey.sh`.
-- **Four tests that fail on master and pass on the branch.** Their fixes are the persistence reset
-  itself, or conflict with master's code:
-  - The currency and experience trophy legs. Both run `player_load_repository_mysql_harness.cpp`,
-    which still expects a refused load where #531 made master degrade it (a bad trophy row, more
-    than the trophy limit, and further on). The branch rewrote those expectations.
-  - The chaos raise journey. On master the raise ends in "its live effects needed recovery". The
-    branch's `a1d6272e2` replaces that path.
-  - The generated-NPC journey. On master a flat-file character promoted to immortal is refused at
-    the copyover reload. The branch's `6e4934ab0` fixes it, and does not apply to master's
-    `flatfile_player_repository.c`. The journey stays `run_generated_npc_journey.py`, outside
-    `make test-all`.
-- **`run_item_transfer_schema_mysql.sh`.** On master it sources `.env`, so it is not isolated.
+  `run_mysql_stalled_writer_journey.sh`. They test the save claim, the query cut-off and the one
+  writer, which master does not have.
 
 ### Measured on master
 
@@ -413,8 +421,10 @@ containers of two CPUs each. Only the first `make test-db` run had a quiet machi
 | `make test-db` | quiet | **28 of 28** | **187 s** |
 | `make test-db` | saturated, 8% idle on average | 25 of 28 | 452 s |
 | `make test-db` | saturated, 24% idle | 27 of 28 | 228 s |
+| `make test-db`, all 32 tests | loaded, 39% idle | **32 of 32** | **200 s** |
 | `make test-all -j16 TEST_JOBS=16`, cold server build | loaded | **696 of 696** | **886 s** (pool 522 s, journeys 364 s) |
 | `make test-all -j16 TEST_JOBS=16` | saturated, 17% idle | 694 of 696 | 690 s (pool 407 s, journeys 283 s) |
+| `make test-all -j16 TEST_JOBS=16`, 15 journeys | loaded, 26% idle | 696 of 697 | 818 s (pool 440 s, journeys 379 s) |
 
 Before, `make test-all` took 2,124–2,239 s, and `make test-db` stopped at its ninth leg.
 
@@ -424,8 +434,9 @@ run with more CPU. That is rule 3: run the gate on a quiet machine.
 - The two saved-item journeys: the server did not exit within its 20 seconds.
 - The corpse haul journey: it read the ownership table before the write landed.
 - The playtime journey: 8 played seconds against 5 measured ones, with a tolerance of 2.
-- `test_flatfile_ip_activity.py` and `test_redis_donation_worker_live.py`, in the pool: a 2-second
-  window and a worker's counters. Both passed three times in a row alone, right after that run.
+- `test_flatfile_ip_activity.py`, `test_redis_donation_worker_live.py` and
+  `test_telemetry_runtime_integration.py`, in the pool: a 2-second window, a worker's counters and
+  a flush capped at 250 ms. Each passed three times in a row alone, right after its run.
 
 No server reported a bind error in any run after the port fix.
 
@@ -437,23 +448,20 @@ machine was never quiet for that long.
 
 ### When the persistence branch merges
 
-1. `Makefile` will conflict in `test-db`. Keep master's recipe, and add the branch's tests to
+1. `Makefile` will conflict in `test-db`. Keep master's recipe, and add the branch's three tests to
    `tests/run_db_tests.sh`:
 
    ```
    stalled_writer tests/async/run_mysql_stalled_writer_journey.sh
-   chaos_raise $DB python3 tests/async/run_chaos_raise_transient_journey.py $SERVER
-   currency_transaction tests/async/run_currency_transaction_schema_mysql.sh
-   experience_trophy tests/async/run_experience_trophy_mysql.sh
-   item_transfer tests/async/run_item_transfer_schema_mysql.sh
    player_save_claim tests/async/run_player_save_claim_mysql.sh
    sql_pool_interrupt tests/async/run_sql_pool_interrupt_mysql.sh
    ```
 
    Leave `run_player_load_repository_mysql.sh` out, as change 2 says.
-2. Give the currency and trophy legs their own `player_load_repository_mysql_harness` output file.
-3. Point `test_player_save_claim.py` at `tests/run_db_tests.sh`.
-4. Move the generated-NPC journey to `make test-all`, as change 2 describes.
-5. Expect small conflicts in `test_locker_receipt_recovery.py` and
-   `run_output_preferences_mysql.sh` (take the branch's longer link lists), and in
-   `test_mysql_combat_journey.py` (keep master's variants and the branch's waits).
+2. Point `test_player_save_claim.py` at `tests/run_db_tests.sh`.
+3. Where a test file conflicts, take the branch's side: it describes the branch's server. That is
+   the loader harness, the chaos raise journey, the item transfer leg, and the link lists of the
+   locker receipt, output preferences, trophy and currency legs. Keep from master the
+   `TEST_DB_PORT` lines, the combat variants, and the currency and trophy legs' own harness file.
+4. `handler.c` will conflict where master counts a corpse's coin piles. The branch raises in
+   memory and drops that code.
