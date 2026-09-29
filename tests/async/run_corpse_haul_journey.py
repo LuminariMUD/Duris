@@ -39,14 +39,15 @@ def reconnect_linkdead(port):
 def run(binary):
     database='haul_journey_'+uuid.uuid4().hex[:12]
     host=os.environ['TEST_DB_HOST']
+    port=os.environ.get('TEST_DB_PORT','3306')
     assert host in ('localhost','127.0.0.1')
     env=dict(PATH=os.environ.get('PATH','/usr/bin:/bin'), ENVIRONMENT='local',
-             DB_HOST=host,DB_PORT='3306',DB_NAME=database,DB_USER=os.environ['TEST_DB_USER'],
+             DB_HOST=host,DB_PORT=port,DB_NAME=database,DB_USER=os.environ['TEST_DB_USER'],
              DB_PASSWD=os.environ['TEST_DB_PASSWORD'],MYSQL_PWD=os.environ['TEST_DB_PASSWORD'],
              DB_ALLOWED_TARGETS=host+'/'+database,PERSISTENCE_MODE='mariadb-primary',DB_TLS='FALSE',
              REDIS='FALSE',CHAOS_MUD='FALSE',LISTEN_ADDRESS='127.0.0.1',
              DURIS_WEBSOCKET_LISTEN_ADDRESS='127.0.0.1')
-    mysql=['mysql','--protocol=tcp','-h',host,'-u',env['DB_USER'],'-N','-B','--unbuffered']
+    mysql=['mysql','--protocol=tcp','-h',host,'-P',port,'-u',env['DB_USER'],'-N','-B','--unbuffered']
     def sql(statement, selected=True):
         return subprocess.check_output(mysql+([database] if selected else []),input=statement,
                                        text=True,env=env).strip()
