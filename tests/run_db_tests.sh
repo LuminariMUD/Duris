@@ -38,12 +38,16 @@ corpse_haul $DB python3 tests/async/run_corpse_haul_journey.py $SERVER
 corpse_haul_count_cap $DB python3 tests/async/run_corpse_haul_count_cap_journey.py $SERVER mariadb
 information_cache $DB python3 tests/async/test_information_cache_journey.py --backend mariadb --server $SERVER
 deletion $DB python3 tests/async/run_mysql_deletion_journey.py --server $SERVER
+chaos_raise $DB python3 tests/async/run_chaos_raise_transient_journey.py $SERVER
 locker_receipt $DB python3 tests/async/test_locker_receipt_recovery.py
 world_writer_retry $DB python3 tests/async/run_world_writer_retry_journey.py $SERVER
 corpse_lifecycle_repository tests/async/run_corpse_lifecycle_repository_schema_mysql.sh
+currency_transaction tests/async/run_currency_transaction_schema_mysql.sh
 collector_repository tests/async/run_collector_repository_schema_mysql.sh
 account_bound_reward tests/async/run_account_bound_reward_schema_mysql.sh
 pet_repository tests/async/run_pet_repository_mysql.sh
+experience_trophy tests/async/run_experience_trophy_mysql.sh
+item_transfer tests/async/run_item_transfer_schema_mysql.sh
 collector_catalog tests/async/run_collector_catalog_schema_mysql.sh
 epic_zone_seed_mysql python3 tests/async/run_epic_zone_seed_mysql.py --image mysql:8.0
 epic_zone_seed_mariadb python3 tests/async/run_epic_zone_seed_mysql.py --image mariadb:11.4
