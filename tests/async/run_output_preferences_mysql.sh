@@ -31,6 +31,8 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fd
     "${MYSQL_CFLAGS[@]}" tests/async/output_preferences_mysql_harness.cpp \
     src/player/player_snapshot_repository.c src/player/player_load_repository.c \
     src/player/player_load_topology.c src/player/player_snapshot_codec.c \
-    src/persistence/persistence_observability.c -Wl,--gc-sections "${MYSQL_LIBS[@]}" \
+    src/sql/item_extra_descr_codec.c tests/async/item_extra_descr_codec_sql_escape_stub.cpp \
+    src/persistence/player_death_restitution_command.c \
+    src/persistence/persistence_observability.c -Wl,--gc-sections "${MYSQL_LIBS[@]}" -lcrypto \
     -o bin/tests/output_preferences_mysql_harness
 bin/tests/output_preferences_mysql_harness
