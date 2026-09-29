@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from _paths import SRC, rel
+import os
 import pathlib
 import shutil
 import sys
@@ -83,7 +84,10 @@ with tempfile.TemporaryDirectory(prefix="flat-player-test-", dir=ROOT / "bin/tes
         if not destination.is_relative_to((ROOT / "bin").resolve()):
             raise SystemExit("inspector must be placed below bin/")
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(binary, destination)
+        # Journeys running side by side build and run this one path: replace it whole.
+        staged = destination.with_name(f"{destination.name}.{os.getpid()}")
+        shutil.copy2(binary, staged)
+        os.replace(staged, destination)
         raise SystemExit(0)
 
     state_root = temporary_path / "state"

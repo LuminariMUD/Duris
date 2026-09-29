@@ -17,11 +17,13 @@ import hashlib
 import json
 import struct
 import pathlib
+import random
 import re
 import shutil
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -45,10 +47,10 @@ def available_ports() -> tuple[int, int, int]:
     for _ in range(200):
         probes = [socket.socket() for _ in range(3)]
         try:
-            probes[0].bind(("127.0.0.1", 0))
-            plain = probes[0].getsockname()[1]
-            if plain <= 1024 or plain >= 65533:
-                continue
+            # Below the kernel's ephemeral range, which outgoing connections and
+            # Docker's published ports draw from while the server is still booting.
+            plain = random.randrange(20000, 32000)
+            probes[0].bind(("127.0.0.1", plain))
             probes[1].bind(("127.0.0.1", plain + 1))
             probes[2].bind(("127.0.0.1", plain + 2))
             return plain, plain + 1, plain + 2
@@ -810,7 +812,14 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                             process.wait(timeout=5)
 
 
+VARIANTS = {"default": {}, "reset-coins": {"reset_coins": True},
+            "boons": {"boons_enabled": True}}
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--variant"]:
+        run_journey(pathlib.Path(sys.argv[3]), **VARIANTS[sys.argv[2]])
+        raise SystemExit(0)
     subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
                     "--build-inspector", str(INSPECTOR)], cwd=ROOT, check=True, timeout=180)
     # Private temporary roots retain standalone build cleanup. The regression
@@ -819,7 +828,8 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix=f"flatfile-combat-{os.getpid()}-",
                                      dir=ROOT / "bin/tests") as build_tmp:
         binary = build_flatfile_server(pathlib.Path(build_tmp))
-        run_journey(binary)
-        run_journey(binary, reset_coins=True)
-        run_journey(binary, boons_enabled=True)
+        # The variants share only the binaries and wait on game time: run them at once.
+        variants = [subprocess.Popen([sys.executable, __file__, "--variant", name, str(binary)],
+                                     cwd=ROOT) for name in VARIANTS]
+        require(not any([variant.wait() for variant in variants]), "a combat variant failed")
     print("flat-file combat, player death, corpse recovery, save, and reconnect journey passed")

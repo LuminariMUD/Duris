@@ -15,6 +15,7 @@ import os
 import pathlib
 import shutil
 import signal
+import random
 import socket
 import subprocess
 import tempfile
@@ -43,10 +44,10 @@ def available_ports() -> tuple[int, int, int]:
     for _ in range(200):
         probes = [socket.socket() for _ in range(3)]
         try:
-            probes[0].bind(("127.0.0.1", 0))
-            plain = probes[0].getsockname()[1]
-            if plain <= 1024 or plain >= 65533:
-                continue
+            # Below the kernel's ephemeral range, which outgoing connections and
+            # Docker's published ports draw from while the server is still booting.
+            plain = random.randrange(20000, 32000)
+            probes[0].bind(("127.0.0.1", plain))
             probes[1].bind(("127.0.0.1", plain + 1))
             probes[2].bind(("127.0.0.1", plain + 2))
             return plain, plain + 1, plain + 2

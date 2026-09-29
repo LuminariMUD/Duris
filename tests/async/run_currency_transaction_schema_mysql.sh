@@ -106,6 +106,6 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
     src/player/player_snapshot_codec.c src/persistence/critical_command.c \
     src/persistence/player_death_restitution_command.c \
     src/persistence/persistence_observability.c \
-    "${MYSQL_LIBS[@]}" -lcrypto -o "$ROOT/bin/tests/player_load_repository_mysql_harness"
+    "${MYSQL_LIBS[@]}" -lcrypto -o "$ROOT/bin/tests/currency_transaction_player_load_harness"
 PLAYER_LOAD_DISPOSABLE_SCHEMA=1 GAME_ACCOUNT_NAME=coin_matrix_account GAME_ACCOUNT_CHARACTER_NAME=CoinMatrix \
-    "$ROOT/bin/tests/player_load_repository_mysql_harness"
+    "$ROOT/bin/tests/currency_transaction_player_load_harness"

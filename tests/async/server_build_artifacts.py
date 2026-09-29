@@ -40,7 +40,7 @@ def input_key(environment):
         digest.update(json.dumps(value, sort_keys=True).encode() + b"\0")
 
     add({key: value for key, value in environment.items() if key not in IGNORED_ENV})
-    add({"contract": 1, "backend": "flatfile", "jobs": 2, "timeout": 600})
+    add({"contract": 1, "backend": "flatfile", "timeout": 600})
     add(str(ROOT))  # Absolute source paths are embedded in compiler debug info.
     # Do not depend on Git: exported source trees and dirty worktrees are valid.
     paths = list((ROOT / "src").rglob("*"))
@@ -143,7 +143,7 @@ def compile_server(build_root, environment):
     build = subprocess.run(
         ["make", "-C", "src", "PERSISTENCE_BACKEND=flatfile",
          f"BIN_ROOT={build_root}", f"OBJDIR={build_root / 'objects/server'}",
-         f"SERVER_BIN_DIR={binary.parent}", f"DMS_BINARY={binary}", "-j2"],
+         f"SERVER_BIN_DIR={binary.parent}", f"DMS_BINARY={binary}", f"-j{os.cpu_count()}"],
         cwd=ROOT, env=environment, text=True, stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, timeout=600,
     )

@@ -53,7 +53,7 @@ python3 tests/async/test_wear_all_regression.py
 # or via its wrapper:
 tests/async/run_sql_pool_shutdown.sh
 
-# Isolated Docker/MySQL schema suites (Docker is an optional prerequisite):
+# Isolated Docker database legs and MariaDB journeys (Docker is an optional prerequisite):
 make test-db
 
 # Full historical legacy upgrade, replay, bootstrap equivalence, and compatibility:
@@ -67,21 +67,25 @@ RUNTIME_DB_IMAGE=mariadb:10.11 tests/async/run_runtime_compatibility_mysql.sh
 `TEST_JOBS=0` is the default and selects up to eight workers based on available
 CPUs. Test output is buffered per process so parallel failures remain readable.
 The runner executes every discovered `test_*.py` in a separate process and
-returns nonzero if any test fails. Tests that build a complete isolated
-flat-file server or a large sanitizer harness run serially after the parallel
-phase so their inner compiler workers cannot starve one another and exhaust
-per-build timeouts.
+returns nonzero if any test fails. The journeys that boot a real server, and the
+large sanitizer harness, start together once the parallel phase is done. They
+wait on game time, not on the CPU, and they share one server build.
 
 `make test-all` deliberately excludes Docker and externally provisioned
-database checks. `make test-db` creates and destroys isolated MySQL containers;
-the three scripts at the root of `tests/` require explicitly named disposable
+database checks. `make test-db` runs the isolated database legs and the MariaDB
+journeys listed in `tests/run_db_tests.sh`, 12 at a time (`TEST_DB_JOBS=N`
+changes that). Every test creates and destroys its own MySQL or MariaDB
+container, prints `PASS` or `FAIL` with its seconds, and writes its log under
+`bin/tests/db/`. A new leg or journey is one more line in that list;
+`tests/async/with_disposable_mariadb.sh CMD...` gives a journey its own MariaDB.
+The three scripts at the root of `tests/` require explicitly named disposable
 or read-only databases and are manual migration-verification tools. Never point
 them at production.
 
-The MariaDB playtime journey also runs explicitly. Supply `TEST_DB_HOST=127.0.0.1`,
-`TEST_DB_USER`, and `TEST_DB_PASSWORD` for a disposable local database server,
-then run `python3 tests/async/test_mysql_playtime_journey.py --server bin/server/dms_new`
-after a MariaDB server build. The journey creates and removes its own schema and
+The MariaDB playtime journey runs in `make test-db`. To run it alone after a
+MariaDB server build, use `tests/async/with_disposable_mariadb.sh python3
+tests/async/test_mysql_playtime_journey.py --server bin/server/dms_new`. The
+journey creates and removes its own schema and
 invokes `test_playtime_mysql_repository.py` with that schema's environment. Both
 scripts are excluded from argument-free discovery; the database-independent
 playtime capture, checkpoint, legacy SQL, and flat-file tests remain in `make test-all`.
@@ -101,8 +105,8 @@ kit, combat and full-world boot acquire one compatible flat-file server from
 authority, journals, logs, listeners and process cleanup. Executables are shared
 read-only; runtime state is never stored in the artifact directory. The
 item-prompt ASan/UBSan harness remains a separate build with its existing flags
-and timeout. Resource-intensive tests still run serially, with two jobs per
-server build and the original 600-second build ceiling.
+and the server build's 600-second ceiling. That one server build uses every
+core, and the journeys start together when it is done.
 
 The artifact key covers all files under `src/` (including untracked files),
 test headers, the helper contract, the flat-file backend, and the inherited build
@@ -166,6 +170,30 @@ refers to server artifacts; the operating-system page cache was not flushed.
 Initial environment-setup attempts were excluded; the reported runs used the same
 installed dependencies, Linux line endings, hardware and concurrency.
 
+## Before a merge
+
+Run the gate, one command after the other, on a quiet machine. The performance
+gate (`test_telemetry_capacity_272.py`) and the latency journeys are
+CPU-sensitive, and a busy machine fails their time budgets.
+
+```bash
+./scripts/format.sh --all --check
+make test-all -j16 TEST_JOBS=16
+make test-db
+```
+
+`make test-all` takes about 10 minutes and `make test-db` about 3½ (16 cores,
+2026-09-29). Run these only when the change touches what they check:
+
+| Check | When |
+| --- | --- |
+| The backup-recovery container job (root-only `test_persistence_backup_integration.py`) | backup, restore, `scripts/backup_*`, or the flat-file launcher |
+| CodeQL and Trivy (`security.yml`) | dependencies, `packaging/`, `Dockerfile`, network or authentication code, and before a production deploy |
+| `npm ci --prefix site && npm test --prefix site` | `docs/` or `site/` |
+
+Do not replay the `flatfile-build`, `quality` or `build.yml` workflow jobs step
+by step. Their tests are the ones `make test-all` just ran on the same host.
+
 ## Full-world save diagnostics
 
 `test_flatfile_full_world_boot.py` supports opt-in synthetic failure/recovery
@@ -200,7 +228,7 @@ iterating, then run every row required by the session or release gate.
 | Focused source/runtime | `python3 tests/async/test_<feature>.py` | One named invariant or compiled harness | Unrelated domains or integrated load |
 | Server build | `make -C src` | C++20 server compiles under the warning profile | Schema compatibility or runtime readiness |
 | Repository gate | `make test-all` | Maintained builds, generated world inputs, all discovered Python tests, and native signal tests | Docker database suites, representative data, or a 200-player hold |
-| Disposable schema | `make test-db` | Listed schema contracts and legacy-to-current convergence on isolated Docker MySQL | MariaDB parity or configured database state |
+| Disposable database | `make test-db` | Listed schema contracts, legacy-to-current convergence, and the MariaDB journeys on a real server, each on its own Docker container | Configured database state |
 | Dual-engine boot contract | `tests/async/run_runtime_compatibility_mysql.sh` and `RUNTIME_DB_IMAGE=mariadb:10.11 tests/async/run_runtime_compatibility_mysql.sh` | Fresh bootstrap, immutable head, drift rejection, and boot compatibility on MySQL 8 and MariaDB 10.11 | A configured or production upgrade |
 | Lifecycle/privacy | commands below | Pending-policy fail-closed behavior, synthetic archive/export/erasure contracts, and disposable schemas | Controller approval, legal compliance, or enabled canonical mutation |
 | Capacity/fault precursors | commands below | Bounded 25/50/100/200 logical-client codecs and named crash/fault invariants | Representative eight-profile 30-minute 200-player readiness |

@@ -30,6 +30,7 @@ RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
         "test_flatfile_newbie_regrant_journey.py",
         "test_flatfile_first_session_currency.py",
         "test_flatfile_full_world_boot.py",
+        "test_generated_npc_journey.py",
         "test_item_movement_prompt_runtime.py",
         "test_information_cache_journey.py",
         "test_mysql_combat_journey.py",
@@ -154,8 +155,8 @@ def main() -> int:
     failures: list[TestResult] = []
     completed_count = 0
     print(
-        f"Running {len(tests)} Python regression tests with {jobs} worker(s); "
-        f"serializing {len(resource_intensive_tests)} resource-intensive test(s)"
+        f"Running {len(tests)} Python regression tests with {jobs} worker(s), "
+        f"then {len(resource_intensive_tests)} journey(s) side by side"
     )
 
     def report(result: TestResult) -> None:
@@ -184,8 +185,12 @@ def main() -> int:
         for future in as_completed(pending):
             report(future.result())
 
-    for path in resource_intensive_tests:
-        report(run_test(path))
+    # These wait on game time, not on the CPU, so they run together after the pool.
+    with ThreadPoolExecutor(max_workers=max(1, len(resource_intensive_tests))) as executor:
+        for future in as_completed(
+            [executor.submit(run_test, path) for path in resource_intensive_tests]
+        ):
+            report(future.result())
 
     for result in failures:
         print(f"\n--- {relative(result.path)} output ---")

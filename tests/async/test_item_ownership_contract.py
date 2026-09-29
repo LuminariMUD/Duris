@@ -22,7 +22,7 @@ class ItemOwnershipContractTests(unittest.TestCase):
         self.assertIn("shopkeeper_item_owner.sql", runner)
         self.assertIn("collector_item_owner.sql", runner)
         self.assertIn("verify_collector_item_owner.sh", runner)
-        self.assertIn("run_collector_item_owner_schema_mysql.sh", (ROOT / "Makefile").read_text())
+        self.assertIn("run_collector_item_owner_schema_mysql.sh", (ROOT / "tests/run_db_tests.sh").read_text())
         self.assertLess(
             runner.index('"$SCRIPT_DIR/item_ownership_ledger.sql"'),
             runner.index('"$SCRIPT_DIR/artifact_guild_outcome.sql"'),

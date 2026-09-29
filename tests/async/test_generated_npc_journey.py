@@ -154,4 +154,10 @@ def run(binary, mode='file'):
                 redis.terminate(); redis.wait(timeout=15)
             if database: sql('DROP DATABASE '+database, False)
 
-if __name__=='__main__': run(Path(sys.argv[1]).resolve(), sys.argv[2] if len(sys.argv)>2 else 'file')
+if __name__=='__main__':
+    if len(sys.argv)>1: run(Path(sys.argv[1]).resolve(), sys.argv[2] if len(sys.argv)>2 else 'file')
+    else:
+        # make test-all: the flat-file server the other journeys share.
+        (journey.ROOT/'bin/tests').mkdir(parents=True,exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='generated-npc-build-',dir=journey.ROOT/'bin/tests') as build:
+            run(journey.build_flatfile_server(Path(build)))
