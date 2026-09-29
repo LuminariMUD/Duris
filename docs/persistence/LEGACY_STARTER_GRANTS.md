@@ -104,7 +104,7 @@ case, new ownership identities, unchanged kit composition, saved transient
 roots, native spellbook spell IDs/page counts, and no extra grant on a nonempty
 relogin. A second player continuously runs `score`; the test measures actual
 command-to-prompt responses. The regression runner schedules this journey in its
-serial resource-intensive partition.
+resource-intensive partition, after the parallel batch.
 
 The same 28-root non-Chaos regrant took 14.016 seconds from preparation notice to
 usable prompt on the original `115fe3bad` implementation, failing the journey's
