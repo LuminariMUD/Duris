@@ -66,7 +66,7 @@ for inn_signature in ("int inn(", "int undead_inn("):
     assert "persistence_save_character_terminal" in inn
     assert "extract_char_after_terminal_save(ch)" in inn
 
-ghost_attempt = body(actwiz, "static bool extractlink_attempt(P_char ch")
+ghost_attempt = body(actwiz, "static void extractlink_attempt(P_char ch")
 assert ghost_attempt.count("extract_char_after_terminal_save(vict)") == 1
 assert ghost_attempt.index(
     "persistence_save_character_terminal(vict, RENT_LINKDEAD)"
