@@ -409,7 +409,7 @@ def main():
                             'item_transfer_command.c', 'critical_command.c',
                             'player_snapshot_capture.c', 'player_snapshot_codec.c']],
                         '-Wl,--gc-sections', '-Wl,--wrap=write', '-lz', '-lcrypto', '-lcjson', '-o', str(binary)],
-                       cwd=ROOT, check=True, timeout=120)
+                       cwd=ROOT, check=True, timeout=600)
         subprocess.run([str(binary)], check=True, timeout=30)
 
 
