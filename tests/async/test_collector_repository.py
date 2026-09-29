@@ -81,14 +81,14 @@ class CollectorRepositoryTest(unittest.TestCase):
 
     def test_disposable_journey_is_wired_into_database_tests(self) -> None:
         runner = RUNNER.read_text()
-        makefile = (ROOT / "Makefile").read_text()
+        database_tests = (ROOT / "tests/run_db_tests.sh").read_text()
         self.assertTrue(RUNNER.stat().st_mode & stat.S_IXUSR)
         self.assertIn("never reads .env", runner)
         self.assertIn("COLLECTOR_REPOSITORY_DB_IMAGE", runner)
         self.assertIn("bootstrap_multithread_safe.sql", runner)
         self.assertIn("collector_repository_mysql_harness.cpp", runner)
         self.assertIn("-Wpedantic -Werror", runner)
-        self.assertIn("run_collector_repository_schema_mysql.sh", makefile)
+        self.assertIn("run_collector_repository_schema_mysql.sh", database_tests)
 
     def test_journey_covers_replay_and_cross_authority_effects(self) -> None:
         harness = HARNESS.read_text()

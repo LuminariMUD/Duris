@@ -88,7 +88,7 @@ class CorpseLifecycleRepositoryTest(unittest.TestCase):
 
     def test_disposable_dual_engine_journey_is_wired(self) -> None:
         runner = RUNNER.read_text()
-        makefile = (ROOT / "Makefile").read_text()
+        database_tests = (ROOT / "tests/run_db_tests.sh").read_text()
         self.assertTrue(RUNNER.stat().st_mode & stat.S_IXUSR)
         self.assertIn("never reads .env", runner)
         self.assertIn("CORPSE_LIFECYCLE_REPOSITORY_DB_IMAGE", runner)
@@ -97,7 +97,7 @@ class CorpseLifecycleRepositoryTest(unittest.TestCase):
         self.assertIn("src/persistence/corpse_lifecycle_command.c", runner)
         self.assertIn("src/persistence/corpse_lifecycle_repository.c", runner)
         self.assertIn("-Wpedantic -Werror", runner)
-        self.assertIn("run_corpse_lifecycle_repository_schema_mysql.sh", makefile)
+        self.assertIn("run_corpse_lifecycle_repository_schema_mysql.sh", database_tests)
 
     def test_existing_dispatcher_harnesses_link_the_corpse_branch(self) -> None:
         runners = ROOT.glob("tests/async/run*_mysql.sh")

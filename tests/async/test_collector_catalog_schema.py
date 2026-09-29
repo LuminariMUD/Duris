@@ -46,12 +46,12 @@ class CollectorCatalogSchemaTest(unittest.TestCase):
     def test_verifier_and_disposable_dual_engine_wrapper_are_wired(self) -> None:
         verifier = VERIFIER.read_text()
         wrapper = WRAPPER.read_text()
-        makefile = (ROOT / "Makefile").read_text()
+        database_tests = (ROOT / "tests/run_db_tests.sh").read_text()
         self.assertIn("singleton_rows", verifier)
         self.assertNotIn("1:0:1", verifier)
         self.assertIn("COLLECTOR_CATALOG_DB_IMAGE", wrapper)
         self.assertIn("never reads .env", wrapper)
-        self.assertIn("run_collector_catalog_schema_mysql.sh", makefile)
+        self.assertIn("run_collector_catalog_schema_mysql.sh", database_tests)
         self.assertTrue(WRAPPER.stat().st_mode & stat.S_IXUSR)
 
     def test_runtime_and_lifecycle_inventories_include_all_collector_tables(self) -> None:

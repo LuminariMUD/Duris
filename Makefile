@@ -63,7 +63,7 @@ help:
 		'  make test            Run deterministic local regression tests' \
 		'  make test-all        Build everything, generate world data, and test' \
 		'  make test-list       List tests discovered by the regression runner' \
-		'  make test-db         Run isolated Docker/MySQL integration tests' \
+		'  make test-db         Run isolated Docker database tests and MariaDB journeys' \
 		'  make build-deps-package  Build the Debian metapackage under bin/packages' \
 		'  make security-sbom    Generate dependency inventory and SPDX under bin/security' \
 		'  make security-check   Generate the SBOM and run local security contracts' \
@@ -153,9 +153,10 @@ test-all: build
 test-list:
 	$(PYTHON) tests/run_regression_tests.py --list $(if $(strip $(TEST_MATCH)),--match "$(TEST_MATCH)",)
 
-# These suites create and destroy their own MySQL containers. They are kept out
-# of test-all because Docker is intentionally not a core build dependency.
-test-db:
+# Every test here creates and destroys its own MySQL or MariaDB container, and
+# they run side by side. They are kept out of test-all because Docker is
+# intentionally not a core build dependency. The journeys run the built server.
+test-db: build-server
 	@command -v docker >/dev/null 2>&1 || { \
 		echo 'error: make test-db requires Docker' >&2; \
 		exit 127; \
@@ -164,23 +165,7 @@ test-db:
 		echo 'error: the Docker daemon is not available' >&2; \
 		exit 1; \
 	}
-	tests/async/run_account_bound_reward_schema_mysql.sh
-	tests/async/run_corpse_persistence_schema_mysql.sh
-	tests/async/run_persistence_contract_mysql.sh
-	tests/async/run_lifecycle_archive_schema_mysql.sh
-	tests/async/run_personal_data_export_schema_mysql.sh
-	tests/async/run_account_erasure_schema_mysql.sh
-	tests/async/run_immutable_migration_ledger_mysql.sh
-	tests/async/run_collector_item_owner_schema_mysql.sh
-	tests/async/run_collector_catalog_schema_mysql.sh
-	tests/async/run_collector_repository_schema_mysql.sh
-	tests/async/run_corpse_lifecycle_repository_schema_mysql.sh
-	tests/async/run_lookup_dataset_mysql.sh
-	tests/async/run_runtime_compatibility_mysql.sh
-	tests/async/run_legacy_migration_mysql.sh
-	$(PYTHON) tests/async/run_epic_zone_seed_mysql.py --image mysql:8.0
-	$(PYTHON) tests/async/run_epic_zone_seed_mysql.py --image mariadb:11.4
-	tests/async/run_pet_repository_mysql.sh
+	tests/run_db_tests.sh
 
 clean:
 	+$(MAKE) -C src clean

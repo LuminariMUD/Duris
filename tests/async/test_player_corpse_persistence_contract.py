@@ -11,7 +11,7 @@ migration = (ROOT / "migrations/corpse_persistence_state.sql").read_text()
 runner = (ROOT / "migrations/run_migration.sh").read_text()
 bootstrap = (ROOT / "migrations/bootstrap_multithread_safe.sql").read_text()
 combined = (ROOT / "migrations/pfile_to_db_combined_migration.sql").read_text()
-makefile = (ROOT / "Makefile").read_text()
+database_tests = (ROOT / "tests/run_db_tests.sh").read_text()
 mysql_schema_test = ROOT / "tests/async/run_corpse_persistence_schema_mysql.sh"
 
 
@@ -68,7 +68,7 @@ for column in outer_columns:
 
 assert contains(runner, '"$SCRIPT_DIR/corpse_persistence_state.sql"')
 assert mysql_schema_test.exists(), "database-backed corpse schema regression is missing"
-assert contains(makefile, "tests/async/run_corpse_persistence_schema_mysql.sh")
+assert contains(database_tests, "tests/async/run_corpse_persistence_schema_mysql.sh")
 assert contains(saver, "name, weight, ")
 assert contains(saver, "value0, value1, value2, value3, value4, value5, value7")
 for value_index in range(6):
