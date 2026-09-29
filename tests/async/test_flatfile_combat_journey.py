@@ -23,6 +23,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -831,7 +832,14 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                             process.wait(timeout=5)
 
 
+VARIANTS = {"default": {}, "reset-coins": {"reset_coins": True},
+            "boons": {"boons_enabled": True}}
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--variant"]:
+        run_journey(pathlib.Path(sys.argv[3]), **VARIANTS[sys.argv[2]])
+        raise SystemExit(0)
     subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
                     "--build-inspector", str(INSPECTOR)], cwd=ROOT, check=True, timeout=180)
     # Private temporary roots retain standalone build cleanup. The regression
@@ -840,7 +848,8 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix=f"flatfile-combat-{os.getpid()}-",
                                      dir=ROOT / "bin/tests") as build_tmp:
         binary = build_flatfile_server(pathlib.Path(build_tmp))
-        run_journey(binary)
-        run_journey(binary, reset_coins=True)
-        run_journey(binary, boons_enabled=True)
+        # The variants share only the binaries and wait on game time: run them at once.
+        variants = [subprocess.Popen([sys.executable, __file__, "--variant", name, str(binary)],
+                                     cwd=ROOT) for name in VARIANTS]
+        require(not any([variant.wait() for variant in variants]), "a combat variant failed")
     print("flat-file combat, player death, corpse recovery, save, and reconnect journey passed")

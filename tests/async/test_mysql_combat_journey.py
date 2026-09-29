@@ -11,6 +11,7 @@ import argparse
 import os
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -206,10 +207,14 @@ def run(server, reset_coins=False, boons=False):
         sql('DROP DATABASE '+database,False)
 
 
+VARIANTS={'default':{},'reset-coins':{'reset_coins':True},'boons':{'boons':True}}
+
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('--server',type=Path)
     parser.add_argument('--one',action='store_true',help='run only the default-coin variant')
+    parser.add_argument('--variant',choices=VARIANTS,help=argparse.SUPPRESS)
     args=parser.parse_args()
     if not os.getenv('TEST_DB_HOST'):
         print('MariaDB live combat skipped: TEST_DB_HOST is not set')
@@ -218,7 +223,10 @@ if __name__=='__main__':
         if not args.server:
             subprocess.run(['make','-C','src','-j2','PERSISTENCE_BACKEND=mariadb'],cwd=ROOT,check=True)
         server=(args.server or ROOT/'bin/server/dms_new').resolve()
-        run(server)
-        if not args.one:
-            run(server,reset_coins=True)
-            run(server,boons=True)
+        if args.one or args.variant:
+            run(server,**VARIANTS[args.variant or 'default'])
+        else:
+            # Each variant has its own schema, fixture and ports: run them at once.
+            variants=[subprocess.Popen([sys.executable,__file__,'--server',str(server),'--variant',name],
+                                       cwd=ROOT) for name in VARIANTS]
+            assert not any([variant.wait() for variant in variants]),'a combat variant failed'
