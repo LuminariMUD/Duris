@@ -1128,3 +1128,49 @@ Verification for this round, on the final head:
 ## Phase 2 progress
 
 This section is the hand-over log for Phase 2, in the same form as Phase 1's.
+
+### Step 1: critical commands on the one writer (done)
+
+- `critical_command_coordinator_submit()` reserves the operation, fences its keys and queues it
+  on the one writer as a `critical` job (`persistence_job_kind::critical`), so a command lands in
+  capture order with the saves around it. The job carries its own copy of the command and of the
+  apply function: a command queued before shutdown still lands, and its completion is dropped
+  (a generation counter tells a stale job from a new coordinator's).
+- The writer retries a lost connection, a lock wait and an ambiguous commit at the head of its
+  queue, as it retries a save; the coordinator counts them in its `retries` and `ambiguous`
+  health. Any other outcome goes to the existing completion channel, so the pulse, the fences,
+  the recent-completion cache, the publication hold and every domain's completion handler are
+  unchanged.
+- Removed from the coordinator: the admission worker and its journal appends, the two execution
+  workers, the per-key execution slots (`keys_available()`), uncertain-admission recovery and the
+  coordinator's own retry cap. `critical_command_coordinator_init()` lost its worker count. A
+  command held for publication keeps its fences until acknowledged, but no longer holds back a
+  later command on the same key (see [What was cut](#what-was-cut-and-why)).
+- The journal: `CRITICAL_COMMAND_JOURNAL_DIR` is read only for a journal an older server left.
+  Every record is validated first (one this server cannot execute stops the boot with nothing
+  applied and the journal untouched), then its commands go to the writer in journal order and
+  each is checkpointed once it lands. The directory stays required outside mini mode: locker
+  identification keeps its receipts there.
+- Shutdown names unwritten commands by count (`persistence_writer/critical ... commands=N`).
+- Tests: `test_critical_command_coordinator.py` links the real writer: saves and commands land in
+  capture order, fences, attach and conflict, a writer retry of an ambiguous commit, the
+  publication hold, a job queued before a coordinator shutdown, an older journal's one-time
+  replay, the bounds, and a never-resolved command named at writer shutdown.
+  `test_critical_command_admission.py` now pins that a submit to a stalled writer returns in
+  microseconds with no file I/O on the game thread. `test_critical_completion_capacity.py` keeps
+  the once-only delivery through a full pulse buffer. The economic accounting admission and
+  replay, baseline, native flat-file admission and publication retention harnesses start the
+  writer and replay an older journal where they used to restart a journaled one;
+  `test_critical_command_journal_uncertain.py` tested only the uncertain append and is deleted
+  (its adapter check moved into the admission test). The native death restitution crash harness
+  journals the command the way an older server did before its crash.
+- Found while doing this, fixed in its own commit (`9c627799c`): the restitution repository
+  unit's stub no longer matched `critical_command_repository_finish_inbox()`, so
+  `build_player_death_restitution_native.sh` stopped at the link.
+- Docs: `docs/persistence/CRITICAL_COMMAND_PIPELINE.md` describes execution on the writer and the
+  one-time journal replay; `docs/operations/CONFIGURATION.md` the journal directory.
+- Verified: `make -C src`, the flat-file build, `./scripts/format.sh --all --check`, the tests
+  above and every other test that links the coordinator, `build_player_death_restitution_native.sh`,
+  and the journeys `test_area_coin_pickup.py`, `test_flatfile_combat_journey.py` and
+  `run_corpse_haul_journey.py` (disposable MariaDB), whose coin, death and haul commands now run
+  on the writer.

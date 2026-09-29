@@ -271,6 +271,8 @@ const char *persistence_job_kind_name(persistence_job_kind kind)
 		return "saved_item";
 	case persistence_job_kind::log:
 		return "log";
+	case persistence_job_kind::critical:
+		return "critical";
 	}
 	return "unknown";
 }

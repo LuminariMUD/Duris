@@ -77,7 +77,7 @@ Run the focused queue and policy regressions with:
 ```sh
 python3 tests/async/test_newbie_grant_lifecycle.py
 python3 tests/async/test_critical_command_journal_faults.py
-python3 tests/async/test_critical_command_journal_uncertain.py
+python3 tests/async/test_critical_command_admission.py
 python3 tests/async/test_newbie_kit_plan.py
 python3 tests/async/test_newbie_kit_readiness_contract.py
 python3 tests/async/test_creation_grant_batch_submission.py

@@ -34,6 +34,8 @@ std::condition_variable apply_changed;
 bool apply_started = false;
 bool allow_crash_apply = false;
 bool allow_second_restart_apply = false;
+// What the crash stage's writer was applying.
+critical_command crash_command;
 bool target_fence_held = false;
 int release_calls = 0;
 
@@ -106,6 +108,7 @@ critical_apply_result apply(const critical_command &command, void *)
 	if (crash_phase.load())
 	{
 		std::unique_lock<std::mutex> lock(apply_mutex);
+		crash_command = command;
 		apply_started = true;
 		apply_changed.notify_all();
 		apply_changed.wait(lock, [] { return allow_crash_apply; });
@@ -174,37 +177,43 @@ template <typename Predicate> void wait_until(Predicate predicate)
 	}
 }
 
+player_save_apply_result apply_save(const player_snapshot &snapshot, void *)
+{
+	return { player_save_apply_outcome::applied, snapshot.revision, 0 };
+}
+
 void run_crash_stage(const std::string &directory)
 {
 	crash_phase = true;
+	assert(player_save_worker_init(apply_save, nullptr));
 	assert(critical_command_coordinator_init(
-		directory.c_str(), apply, nullptr, 1,
+		directory.c_str(), apply, nullptr,
 		player_death_restitution_runtime_restore_replayed_command, nullptr));
 	player_death_restitution_runtime_submission submission = {};
 	const auto result = player_death_restitution_runtime_submit_live(valid_plan(), &submission);
-	// A retained live command may return before the journal worker's fsync
-	// acknowledgement. Both outcomes hold the target fence and are accepted
-	// admission states; durability is checked by the restart path below.
-	assert(result == player_death_restitution_runtime_result::accepted ||
-	       result == player_death_restitution_runtime_result::awaiting_durability);
+	assert(result == player_death_restitution_runtime_result::accepted);
 	assert(target_fence_held && !player_death_restitution_runtime_login_admit(RECIPIENT_PID));
 	assert(player_death_restitution_runtime_login_admit(RECIPIENT_PID + 1));
 
 	{
 		std::unique_lock<std::mutex> lock(apply_mutex);
-		apply_changed.wait_for(lock, std::chrono::seconds(1), [] { return apply_started; });
+		assert(apply_changed.wait_for(lock, std::chrono::seconds(5),
+					      [] { return apply_started; }));
 	}
-	// The command append is fsync'd before submit_live returns.  Exit without
-	// coordinator/runtime shutdown to model a process crash with the journal
-	// record still present and the in-memory fence gone with the process.
+	// New commands are not journaled. An older server journaled this command before
+	// applying it: journal it here the same way, then exit without shutdown to model
+	// that server crashing with the record present and the in-memory fence gone.
+	assert(critical_command_journal_append(crash_command) ==
+	       critical_command_journal_result::ok);
 	::_exit(0);
 }
 
 void run_restart_stage(const std::string &directory)
 {
 	crash_phase = false;
+	assert(player_save_worker_init(apply_save, nullptr));
 	assert(critical_command_coordinator_init(
-		directory.c_str(), apply, nullptr, 1,
+		directory.c_str(), apply, nullptr,
 		player_death_restitution_runtime_restore_replayed_command, nullptr));
 	// The replay hook runs inside coordinator init, before this process can
 	// accept a login or publish a worker completion.
@@ -243,6 +252,7 @@ void run_restart_stage(const std::string &directory)
 	assert(release_calls == 1);
 	assert(critical_command_journal_health_copy().records == 0);
 	critical_command_coordinator_shutdown();
+	player_save_worker_reset_for_tests();
 }
 } // namespace
 

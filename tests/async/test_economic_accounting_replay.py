@@ -20,8 +20,9 @@ with tempfile.TemporaryDirectory(prefix='run-', dir=work) as temporary, tempfile
         'src/economy/economic_accounting_intent.c', 'src/economy/economic_accounting_plan.c',
         'src/economy/economic_accounting_types.c', 'src/item/item_transfer_command.c', 'src/player/player_snapshot_codec.c',
         'src/persistence/critical_command.c', 'src/persistence/critical_command_journal.c',
-        'src/persistence/critical_command_coordinator.c')]
-    command += ['-lcrypto', '-lz', '-o', str(executable)]
+        'src/persistence/critical_command_coordinator.c', 'src/player/player_save_worker.c',
+        'src/persistence/persistence_observability.c')]
+    command += ['-lcrypto', '-lz', '-lmysqlclient', '-o', str(executable)]
     subprocess.run(command, check=True)
     environment = dict(os.environ, ASAN_OPTIONS='detect_leaks=1:halt_on_error=1',
                        UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1')

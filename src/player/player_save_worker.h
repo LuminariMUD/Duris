@@ -12,9 +12,10 @@
 /*
  * The one persistence writer. A single background thread applies every queued
  * save in the order it was captured: player saves (with their pets), corpse
- * saves, locker saves, saved room items and log_entries rows. A newer save of the
- * same owner replaces its queued one and goes to the back of the queue; each log
- * row is its own owner, so none replaces another.
+ * saves, locker saves, saved room items, log_entries rows and critical commands.
+ * A newer save of the same owner replaces its queued one and goes to the back of
+ * the queue; each log row and each command is its own owner, so none replaces
+ * another.
  *
  * A lost connection is retried at the head of the queue. Any other failure is
  * reported through the completion and the job is dropped; the caller marks the
@@ -34,6 +35,8 @@ enum class persistence_job_kind : uint8_t
 	locker,
 	saved_item,
 	log,
+	// A critical command (critical_command_coordinator.c), in capture order with the saves.
+	critical,
 };
 
 enum class player_save_apply_outcome : uint8_t

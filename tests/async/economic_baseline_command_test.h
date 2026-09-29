@@ -31,7 +31,7 @@ void baseline_coordinator_refusal(const critical_command &command, const std::st
 	       economic_command_admission_supported })
 	{
 		assert(critical_command_coordinator_init(path.c_str(), baseline_must_not_execute,
-							 nullptr, 1, nullptr, nullptr, validator));
+							 nullptr, nullptr, nullptr, validator));
 		assert(critical_command_coordinator_submit(command) ==
 		       critical_submit_result::invalid);
 		assert(critical_command_coordinator_submit_for_publication(command) ==
@@ -47,7 +47,7 @@ void baseline_coordinator_refusal(const critical_command &command, const std::st
 	assert(critical_command_journal_append(command) == critical_command_journal_result::ok);
 	critical_command_journal_shutdown();
 	assert(!critical_command_coordinator_init(path.c_str(), baseline_must_not_execute, nullptr,
-						  1, nullptr, nullptr,
+						  nullptr, nullptr,
 						  economic_command_admission_supported));
 	critical_command_coordinator_shutdown();
 	assert(critical_command_journal_init(path.c_str()));

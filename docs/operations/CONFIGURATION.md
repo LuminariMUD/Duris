@@ -141,7 +141,7 @@ per-operation authority transfer is not supported.
 | `DB_TLS` | Required as `TRUE` for non-loopback hosts | Enforce encrypted database transport. |
 | `DB_SSL_CA` | Required for non-loopback hosts | Regular CA file used to verify the database server certificate. |
 | `PLAYER_SAVE_JOURNAL_DIR` | Optional | Where an older server kept its player-save journal. A leftover journal is replayed once at boot and then renamed `player-save.journal.retired-<ms>`; nothing new is written. |
-| `CRITICAL_COMMAND_JOURNAL_DIR` | Required outside mini mode | Absolute server-user-owned `0700` directory for non-coalescing critical commands. |
+| `CRITICAL_COMMAND_JOURNAL_DIR` | Required outside mini mode | Absolute server-user-owned `0700` directory. Holds locker identification receipts; a critical-command journal left there by an older server is replayed once at boot (new commands run on the persistence writer and are not journaled). |
 | `MAINTENANCE_STATE_FILE` | Optional; `bin/server/maintenance-scheduler.state` | Durable scheduler cursor/completion state; parent directory must be server-user controlled. |
 
 `scripts/cycle_mud.sh --check-config` validates the selected mode without starting the

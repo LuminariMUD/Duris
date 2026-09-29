@@ -147,7 +147,7 @@ int main(int argc, char **argv)
     critical_completion receipt = {};
     receipt.operation_id = original.operation_id;
     receipt.outcome = critical_apply_outcome::applied;
-    receipt.attempt = CRITICAL_COORDINATOR_MAX_RETRIES + 1;
+    receipt.attempt = 9;
 
     const bool malformed_stale = scenario.rfind("coin_stale_", 0) == 0;
     const bool nonwallet_payload = scenario == "coin_nonwallet_payload";

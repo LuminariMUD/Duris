@@ -1,5 +1,6 @@
 #include "economy/economic_accounting_intent.h"
 #include "persistence/critical_command_coordinator.h"
+#include "player/player_save_worker.h"
 
 #include <atomic>
 #include <cassert>
@@ -73,7 +74,7 @@ void blocked_replay(const std::string &path, const std::vector<critical_command>
 	seed(path, commands);
 	const auto original_files = snapshot(path);
 	unsigned observed = 0;
-	assert(!critical_command_coordinator_init(path.c_str(), apply, nullptr, 1, observe,
+	assert(!critical_command_coordinator_init(path.c_str(), apply, nullptr, observe,
 						  &observed));
 	assert(applied == 0 && !critical_command_coordinator_health_copy().initialized);
 	// Startup callers shut down the failed coordinator to discard queued legacy state.
@@ -98,10 +99,15 @@ void blocked_replay(const std::string &path, const std::vector<critical_command>
 		  << ": apply callbacks=0, replay observers=" << observed
 		  << ", original journal bytes retained\n";
 }
+player_save_apply_result apply_save(const player_snapshot &snapshot, void *)
+{
+	return { player_save_apply_outcome::applied, snapshot.revision, 0 };
+}
 } // namespace
 int main(int argc, char **argv)
 {
 	assert(argc == 2);
+	assert(player_save_worker_init(apply_save, nullptr));
 	const std::filesystem::path root(argv[1]);
 	critical_command legacy = {};
 	legacy.schema_version = CRITICAL_COMMAND_SCHEMA_VERSION;
@@ -128,7 +134,7 @@ int main(int argc, char **argv)
 	accounting.schema_version = CRITICAL_COMMAND_ACCOUNTING_SCHEMA_VERSION;
 	assert(critical_command_envelope_valid(accounting) && !critical_command_valid(accounting));
 	const auto admission_path = (root / "fresh-admission").string();
-	assert(critical_command_coordinator_init(admission_path.c_str(), apply, nullptr, 1));
+	assert(critical_command_coordinator_init(admission_path.c_str(), apply, nullptr));
 	assert(critical_command_coordinator_submit(accounting) == critical_submit_result::invalid);
 	assert(critical_command_coordinator_submit_for_publication(accounting) ==
 	       critical_submit_result::invalid);
@@ -147,7 +153,7 @@ int main(int argc, char **argv)
 	const auto legacy_path = (root / "legacy-only").string();
 	seed(legacy_path, { legacy });
 	unsigned observed = 0;
-	assert(critical_command_coordinator_init(legacy_path.c_str(), apply, nullptr, 1, observe,
+	assert(critical_command_coordinator_init(legacy_path.c_str(), apply, nullptr, observe,
 						 &observed));
 	assert(observed == 1);
 	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
@@ -166,6 +172,7 @@ int main(int argc, char **argv)
 	assert(critical_operation_id_equal(completion.operation_id, legacy.operation_id));
 	assert(applied == 1);
 	critical_command_coordinator_shutdown();
+	player_save_worker_reset_for_tests();
 	std::cout
 		<< "both admission APIs reject accounting envelopes; legacy-only replay succeeds\n";
 }

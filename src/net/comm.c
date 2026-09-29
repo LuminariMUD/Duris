@@ -408,13 +408,18 @@ static int shutdown_writer_remaining_msec(int cap_msec)
 // are counted instead.
 static void report_unwritten_saves(const std::vector<persistence_job_owner> &owners)
 {
-	size_t log_rows = 0;
+	size_t log_rows = 0, commands = 0;
 	std::set<persistence_job_owner> named;
 	for (const persistence_job_owner &owner : owners)
 	{
 		if (owner.first == persistence_job_kind::log)
 		{
 			++log_rows;
+			continue;
+		}
+		if (owner.first == persistence_job_kind::critical)
+		{
+			++commands;
 			continue;
 		}
 		// A save being written and a newer one queued behind it are one owner.
@@ -442,6 +447,9 @@ static void report_unwritten_saves(const std::vector<persistence_job_owner> &own
 	if (log_rows)
 		persistence_alert(AVATAR, "persistence_writer/log", "shutdown", "none", "none",
 				  "not_written", "rows=%zu", log_rows);
+	if (commands)
+		persistence_alert(AVATAR, "persistence_writer/critical", "shutdown", "none", "none",
+				  "not_written", "commands=%zu", commands);
 }
 
 static int recovered_mother_desc = -1;
@@ -1008,7 +1016,6 @@ int run_the_game(int port, int sslport)
 #endif
 		!critical_command_coordinator_init(
 			critical_journal_directory, critical_apply, NULL,
-			CRITICAL_COORDINATOR_DEFAULT_WORKERS,
 			player_death_restitution_runtime_restore_replayed_command, NULL,
 			critical_extension_validator))
 	{

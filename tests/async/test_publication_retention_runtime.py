@@ -16,8 +16,10 @@ HARNESS = r'''
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_codec.h"
 #include "persistence/persistence_checkpoint.h"
+#include "player/player_save_worker.h"
 
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cstdarg>
@@ -35,6 +37,7 @@ extern const int top_of_world = 1;
 static item_ownership_runtime_entry runtime_entry = {};
 static int publication_attempts = 0;
 static critical_apply_outcome forced_outcome = critical_apply_outcome::applied;
+static std::atomic<unsigned int> apply_calls{0};
 
 void obj_to_obj(P_obj, P_obj) {}
 void extract_obj(P_obj, int) {}
@@ -129,6 +132,7 @@ critical_apply_result apply_transfer(const critical_command &command, void *)
     std::array<uint8_t, ITEM_TRANSFER_RESULT_BYTES> encoded = {};
     assert(item_transfer_command_encode_result(result, &encoded));
     critical_apply_result applied = {};
+    ++apply_calls;
     applied.outcome = forced_outcome;
     applied.durable_revision = 1;
     applied.result_size = encoded.size();
@@ -145,6 +149,11 @@ bool publication_callback(P_char actor, bool committed, const item_transfer_resu
         return false;
     ++publication_attempts;
     return publication_attempts >= 2;
+}
+
+player_save_apply_result apply_save(const player_snapshot &snapshot, void *)
+{
+    return {player_save_apply_outcome::applied, snapshot.revision, 0};
 }
 
 int main(int argc, char **argv)
@@ -177,7 +186,8 @@ int main(int argc, char **argv)
     runtime_entry.vnum = 42;
     runtime_entry.state = item_custody_state::active;
 
-    assert(critical_command_coordinator_init(argv[1], apply_transfer, nullptr, 1));
+    assert(player_save_worker_init(apply_save, nullptr));
+    assert(critical_command_coordinator_init(argv[1], apply_transfer, nullptr));
     item_movement_reject reject = item_movement_reject::none;
     const item_owner_identity destination = {item_owner_type::player, 1001, 0};
     if (!item_movement_transaction_submit(
@@ -237,28 +247,29 @@ int main(int argc, char **argv)
     assert(!critical_command_coordinator_is_fenced(
         {critical_entity_type::player, 1001}, nullptr));
 
-    // Exhausted uncertainty must not invoke the command callback as failure,
-    // and must not checkpoint away the only durable retry/reconciliation record.
+    // An outcome that stays uncertain is retried by the writer. It must not invoke
+    // the command callback as a failure, and the item stays fenced meanwhile.
     publication_attempts = 0;
     forced_outcome = critical_apply_outcome::ambiguous_commit;
+    const unsigned int calls_before = apply_calls;
     assert(item_movement_transaction_submit(
         &actor, &object, nullptr, runtime_entry.owner, destination,
         item_transfer_reason::player_give, 2002, nullptr, nullptr, 0, nullptr,
         &reject, publication_callback));
-    bool uncertain_seen = false;
-    for (int spin = 0; spin < 1000 && !uncertain_seen; ++spin) {
+    bool retried = false;
+    for (int spin = 0; spin < 2000 && !retried; ++spin) {
         const size_t count = critical_command_coordinator_pulse(completions, 8);
         item_movement_transaction_handle_completions(completions, count);
-        uncertain_seen = critical_command_coordinator_health_copy().blocked == 1;
-        if (!uncertain_seen)
+        retried = apply_calls >= calls_before + 2;
+        if (!retried)
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    assert(uncertain_seen && publication_attempts == 0);
+    assert(retried && publication_attempts == 0);
     assert(item_movement_transaction_health_copy().pending == 1);
     assert(critical_command_coordinator_is_fenced(
         {critical_entity_type::item, object.obj_uid}, nullptr));
-    assert(critical_command_journal_health_copy().records == 1);
     critical_command_coordinator_shutdown();
+    player_save_worker_reset_for_tests();
     return 0;
 }
 '''
@@ -275,7 +286,8 @@ with tempfile.TemporaryDirectory(prefix="duris-publication-retention-") as tempo
             "-Isrc", "-Isrc/no_mysql", str(source),
             rel("item/item_movement_transaction.c"), rel("item/item_transfer_command.c"),
             rel("critical_command.c"), rel("persistence/critical_command_journal.c"),
-            rel("persistence/critical_command_coordinator.c"),
+            rel("persistence/critical_command_coordinator.c"), rel("player_save_worker.c"),
+            rel("persistence_observability.c"),
             "-Wl,--gc-sections", "-lz", "-lcrypto", "-o", str(binary),
         ],
         cwd=ROOT,

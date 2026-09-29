@@ -20,6 +20,8 @@ SOURCES = (
     "src/persistence/critical_command.c",
     "src/persistence/critical_command_journal.c",
     "src/persistence/critical_command_coordinator.c",
+    "src/player/player_save_worker.c",
+    "src/persistence/persistence_observability.c",
 )
 # Native temporary storage preserves the private directory modes used by journals.
 with tempfile.TemporaryDirectory(prefix="duris-bank-admission-") as temporary:
@@ -34,7 +36,8 @@ with tempfile.TemporaryDirectory(prefix="duris-bank-admission-") as temporary:
         if mode == "client-free":
             command += ["-D__NO_MYSQL__", "-I" + str(ROOT / "src/no_mysql")]
         command += [str(ROOT / source) for source in SOURCES]
-        command += ["-lcrypto", "-lz", "-o", str(executable)]
+        command += ["-lcrypto", "-lz"] + ([] if mode == "client-free" else ["-lmysqlclient"])
+        command += ["-o", str(executable)]
         subprocess.run(command, check=True)
         environment = dict(os.environ, ASAN_OPTIONS="detect_leaks=1:halt_on_error=1",
                            UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1")
