@@ -10,6 +10,7 @@
 #include "core/utils.h"
 
 #include <algorithm>
+#include <array>
 #include <new>
 #include <type_traits>
 #include <unordered_set>
@@ -410,38 +411,57 @@ capture_item_tree(const obj_data *object, int parent_index, int equipment_slot,
 		row.dynamic_affects.push_back({ affect->type, affect->data, affect->extra2 });
 	}
 	std::unordered_set<const extra_descr_data *> description_seen;
+	// An item keeps one spellbook marker holding every spell its markers hold, as the
+	// legacy writers saved it: the game reads only the first marker.
+	std::array<bool, MAX_SKILLS> spells = {};
+	int spellbook_index = -1;
 	for (const extra_descr_data *description = object->ex_description; description;
 	     description = description->next)
 	{
 		if (!description_seen.insert(description).second)
 			return player_snapshot_capture_result::object_cycle;
-		if (!budget.add(sizeof(player_item_extra_description_snapshot), 1))
-			return player_snapshot_capture_result::limit_exceeded;
-		player_item_extra_description_snapshot extra = {};
 		const bool spellbook = description->keyword && strlen(description->keyword) == 3 &&
 				       description->keyword[0] == 3 &&
 				       description->keyword[1] == 1 && description->keyword[2] == 3;
 		if (spellbook)
 		{
-			extra.spellbook = true;
-			if (!copy_string("SPELLBOOK", extra.keyword, budget) ||
-			    !description->description)
+			if (!description->description)
 				return player_snapshot_capture_result::malformed_source;
+			if (spellbook_index < 0)
+			{
+				if (!budget.add(sizeof(player_item_extra_description_snapshot), 1))
+					return player_snapshot_capture_result::limit_exceeded;
+				player_item_extra_description_snapshot extra = {};
+				extra.spellbook = true;
+				if (!copy_string("SPELLBOOK", extra.keyword, budget))
+					return player_snapshot_capture_result::malformed_source;
+				spellbook_index = static_cast<int>(row.extra_descriptions.size());
+				row.extra_descriptions.push_back(std::move(extra));
+			}
 			for (int skill_id = 0; skill_id < MAX_SKILLS; ++skill_id)
 				if ((static_cast<unsigned char>(
 					     description->description[skill_id / 8]) &
 				     (1U << (skill_id % 8))) != 0)
-				{
-					if (!budget.add(sizeof(int32_t)))
-						return player_snapshot_capture_result::limit_exceeded;
-					extra.spell_ids.push_back(skill_id);
-				}
+					spells[skill_id] = true;
+			continue;
 		}
-		else if (!copy_string(description->keyword, extra.keyword, budget) ||
-			 !copy_string(description->description, extra.description, budget))
+		if (!budget.add(sizeof(player_item_extra_description_snapshot), 1))
+			return player_snapshot_capture_result::limit_exceeded;
+		player_item_extra_description_snapshot extra = {};
+		if (!copy_string(description->keyword, extra.keyword, budget) ||
+		    !copy_string(description->description, extra.description, budget))
 			return player_snapshot_capture_result::limit_exceeded;
 		row.extra_descriptions.push_back(std::move(extra));
 	}
+	if (spellbook_index >= 0)
+		for (int skill_id = 0; skill_id < MAX_SKILLS; ++skill_id)
+			if (spells[skill_id])
+			{
+				if (!budget.add(sizeof(int32_t)))
+					return player_snapshot_capture_result::limit_exceeded;
+				row.extra_descriptions[spellbook_index].spell_ids.push_back(
+					skill_id);
+			}
 
 	const int row_index = static_cast<int>(target.size());
 	target.push_back(std::move(row));
