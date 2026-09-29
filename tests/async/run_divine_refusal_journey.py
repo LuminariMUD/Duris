@@ -203,7 +203,11 @@ def run_scenario(server_binary: Path, enabled: bool) -> None:
                 client = None
             if process and process.poll() is None:
                 process.terminate()
-                process.wait(timeout=30)
+                try:
+                    process.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
             process = None
             if output:
                 output.close()
