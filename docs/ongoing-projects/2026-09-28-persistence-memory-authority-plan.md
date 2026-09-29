@@ -804,3 +804,29 @@ taken back out (see "Removed in the ablation" below).
   `test_flatfile_full_world_boot.py`, `test_flatfile_newbie_regrant_journey.py`,
   `test_flatfile_auction_coin_put_journey.py`, `test_pet_restart_journey.py` and
   `run_npc_container_claim_journey.py`.
+
+### Phase 1 tests and journeys (in progress)
+
+- Covered by the step tests: claims with audit and a MariaDB leg, the auction left out and logged,
+  stale rows skipped and logged (steps 2 and 3); deaths (`test_deaths_happen_at_once.py`, which
+  also pins that `writeCorpse()` queues the corpse job before any SQL path and that the corpse
+  gets the items before it is saved); raise, resurrection and decay take the in-memory paths
+  (`test_corpses_in_memory.py`); capture order and replacement (`test_player_save_worker.py`).
+- `tests/async/test_mysql_stalled_writer_journey.py`, run by `run_mysql_stalled_writer_journey.sh`
+  on a disposable MariaDB: with `player_items` locked (the writer stalls), `quit` (camping in the
+  fixture room, which has its own ~11 s delay) still reaches the account menu while the table is
+  locked, where the old terminal save timed out and cancelled the camp; after unlock the save
+  lands and a relog reads it. With the database container stopped, shutdown exits in about 30 s
+  and names the unwritten save. (`save` leaves a command lag; the journey waits it out before
+  quitting.)
+- Raising a corpse as a necromancer: `run_chaos_raise_transient_journey.py`'s default path now
+  checks the in-memory raise (the caster takes the items, the corpse row is deleted through the
+  queued delete, the caster's save records the items once; a hostile raise retries a fresh
+  fixture). Its option modes pinned the durable raise and its receipts; they refuse to run.
+- Found by that journey and fixed with it: the in-memory raise called `create_saved_corpse()`,
+  which cloned the corpse and its contents (new uids) into the corpse storage room, where nothing
+  ever restored it. With corpses saved through the writer that clone would have been a second,
+  persisted set of the items. It is deleted with `check_saved_corpse()` and its event.
+- Still to do: the journeys on a local server with the `.env` account (die and loot your own
+  corpse, give an item to another player, rent, quit and relog, shut down with players online),
+  then on staging, which runs tagged `master`, so it needs this branch merged first.

@@ -2857,8 +2857,6 @@ void die(P_char ch, P_char killer)
 					af->flags &= ~MEMTYPE_FULL;
 			}
 
-			check_saved_corpse(ch);
-
 			disarm_char_nevents(ch, NULL);
 			ch->specials.conditions[DISEASE_TYPE] = 0;
 			ch->specials.conditions[POISON_TYPE] = 0;

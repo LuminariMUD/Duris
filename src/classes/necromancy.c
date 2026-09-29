@@ -712,7 +712,6 @@ void raise_undead(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 	/* move objects in corpse to undead's inventory */
 	if (obj->contains)
 	{
-		create_saved_corpse(obj, undead);
 		for (obj_in_corpse = obj->contains; obj_in_corpse; obj_in_corpse = next_obj)
 		{
 			if (corpselog)
@@ -1174,7 +1173,6 @@ void spell_call_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 
 	if (obj->contains)
 	{
-		create_saved_corpse(obj, mob);
 		for (obj_in_corpse = obj->contains; obj_in_corpse; obj_in_corpse = next_obj)
 		{
 			if (corpselog)
@@ -1238,61 +1236,6 @@ void spell_call_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 			schedule_pet_death(mob, (duration + 1) * 60 * 4);
 		}
 	}
-}
-
-struct SavedCorpseData
-{
-	P_obj corpse;
-};
-
-void check_saved_corpse(P_char ch)
-{
-	P_nevent e = NULL;
-	P_obj corpse = NULL;
-
-	if (!ch)
-		return;
-
-	if ((e = get_scheduled(ch, event_saved_corpse)))
-	{
-		SavedCorpseData *data = (SavedCorpseData *)e->data;
-		corpse = data->corpse;
-	}
-
-	if (corpse && corpse->loc.room == real_room(CORPSE_STORAGE))
-		extract_obj(corpse);
-}
-
-void event_saved_corpse(P_char ch, P_char /*vict*/, P_obj /*obj*/, void *data)
-{
-	if (!ch || !data)
-		return;
-
-	SavedCorpseData *savedCorpseData = (SavedCorpseData *)data;
-
-	add_event(event_saved_corpse, 1000, ch, 0, 0, 0, savedCorpseData, sizeof(SavedCorpseData));
-}
-
-void create_saved_corpse(P_obj obj, P_char mob)
-{
-	char buff[MAX_STRING_LENGTH];
-	if (!obj || !mob)
-		return;
-
-	if (!IS_SET(obj->value[CORPSE_FLAGS], PC_CORPSE))
-		return;
-
-	P_obj savecorpse = clone_obj(obj);
-	clone_container_obj(savecorpse, obj);
-	snprintf(buff, MAX_STRING_LENGTH, "%s %s", savecorpse->name, "_savecorpse_");
-	savecorpse->name = str_dup(buff);
-	savecorpse->value[CORPSE_SAVEID] = time(NULL);
-	obj_to_room(savecorpse, real_room(40));
-	affect_from_obj(savecorpse, TAG_OBJ_DECAY);
-	SavedCorpseData savedCorpseData;
-	savedCorpseData.corpse = savecorpse;
-	add_event(event_saved_corpse, 0, mob, NULL, NULL, 0, &savedCorpseData,
-		  sizeof(SavedCorpseData));
 }
 
 namespace
@@ -1777,7 +1720,6 @@ void spell_create_dracolich(int level, P_char ch, char * /*arg*/, [[maybe_unused
 
 	if (obj->contains)
 	{
-		create_saved_corpse(obj, mob);
 		for (obj_in_corpse = obj->contains; obj_in_corpse; obj_in_corpse = next_obj)
 		{
 			if (corpselog)
@@ -2044,7 +1986,6 @@ void create_golem(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 
 	if (obj->contains)
 	{
-		create_saved_corpse(obj, mob);
 		for (obj_in_corpse = obj->contains; obj_in_corpse; obj_in_corpse = next_obj)
 		{
 			if (corpselog)
@@ -2266,7 +2207,6 @@ void spell_call_avatar(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 
 	if (obj->contains)
 	{
-		create_saved_corpse(obj, mob);
 		for (obj_in_corpse = obj->contains; obj_in_corpse; obj_in_corpse = next_obj)
 		{
 			if (corpselog)
@@ -2515,7 +2455,6 @@ void spell_create_greater_dracolich(int level, P_char ch, char * /*arg*/, [[mayb
 
 	if (obj->contains)
 	{
-		create_saved_corpse(obj, mob);
 		for (obj_in_corpse = obj->contains; obj_in_corpse; obj_in_corpse = next_obj)
 		{
 			if (corpselog)

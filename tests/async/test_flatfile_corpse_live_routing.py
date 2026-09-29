@@ -73,7 +73,7 @@ resurrection_item_publication = body(HANDLER, "void publish_corpse_resurrection_
 raise_publication = body(HANDLER, "void publish_corpse_raise(",
                          "P_obj find_resurrection_item(")
 raise_undead = body(NECROMANCY, "void raise_undead(", "#undef UNDEAD_TYPES")
-call_titan = body(NECROMANCY, "void spell_call_titan(", "struct SavedCorpseData")
+call_titan = body(NECROMANCY, "void spell_call_titan(", "void discard_nested_raise_exclusions(")
 create_dracolich = body(NECROMANCY, "void spell_create_dracolich(",
                         "void spell_create_golem(")
 create_golem = body(NECROMANCY, "void create_golem(", "void spell_call_avatar(")
@@ -197,8 +197,8 @@ for raise_spell in (raise_undead, call_titan, create_dracolich, create_golem,
     assert "persistence_defer_corpse_raise" in raise_spell
     assert raise_spell.index("persistence_defer_corpse_raise") < \
            raise_spell.index("char_to_room")
-    assert raise_spell.index("persistence_defer_corpse_raise") < \
-           raise_spell.index("create_saved_corpse")
+    # The stored clone of the raised corpse is gone (persistence reset step 6).
+    assert "create_saved_corpse" not in raise_spell
 assert "corpse_lifecycle_transaction_raise_follower" in HANDLER
 assert "item_ownership_runtime_apply_corpse_raise" in raise_publication
 assert "apply_corpse_discarded_runtime(corpse, result, false)" in raise_publication

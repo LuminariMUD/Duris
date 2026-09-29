@@ -20580,7 +20580,6 @@ void spell_single_banish(int level, P_char ch, char * /*arg*/, int /*type*/, P_c
 			    FALSE, ch, 0, victim, TO_CHAR);
 			act("$N &+Lsuddenly becomes lifeless once more and crumbles to dust.&n",
 			    FALSE, ch, 0, victim, TO_NOTVICT);
-			check_saved_corpse(victim);
 			extract_char(victim);
 			return;
 		}
@@ -20636,7 +20635,6 @@ void spell_single_banish(int level, P_char ch, char * /*arg*/, int /*type*/, P_c
 			    TO_NOTVICT);
 			break;
 		}
-		check_saved_corpse(victim);
 		extract_char(victim);
 	}
 }

@@ -38,6 +38,12 @@ for gone in ("submit_next_corpse_item", "event_death_extract_retry", "schedule_d
     assert gone not in FIGHT, gone
 assert "death_extract_retry_pulse" not in (SRC / "comm.c").read_text()
 assert "death_retry" not in (SRC / "structs.h").read_text()
+# The corpse job reaches the writer before the player's save, and the game thread
+# writes no SQL for either (persistence reset phase 1 tests).
+assert corpse.index("writeCorpse(corpse);") > corpse.index("corpse->contains = ch->carrying;")
+FILES = (SRC / "files.c").read_text()
+write = body(FILES, "void writeCorpse(P_obj corpse)")
+assert write.index("queue_corpse_save(corpse, false)") < write.index("sql_save_corpse(corpse)")
 print("[PASS] die() saves the corpse, then the player, and extracts at once")
 
 SQL_PLAYER = (SRC / "sql_player.c").read_text()

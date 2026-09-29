@@ -27,6 +27,9 @@ for name in ("raise", "resurrection", "room_release", "unmaking", "wall_of_bones
              "destruction"):
     deferral = body(HANDLER, f"bool persistence_defer_corpse_{name}(")
     assert "durable_corpse_lifecycle_enabled()" in deferral, name
+# The in-memory raise gives the corpse's items to the caster; the stored clone it used
+# to leave in the corpse storage room was a second, persisted set of the items.
+assert "create_saved_corpse" not in (SRC / "necromancy.c").read_text()
 print("[PASS] every corpse deferral falls through to its in-memory code")
 
 FILES = (SRC / "files.c").read_text()

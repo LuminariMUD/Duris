@@ -90,9 +90,6 @@ void schedule_pet_death(P_char pet, int delay);
 
 void spell_corpseform(int, P_char, char *, int, P_char, P_obj);
 void event_corpseform_wearoff(P_char, P_char, P_obj, void *);
-void check_saved_corpse(P_char);
-void event_saved_corpse(P_char ch, P_char vict, P_obj obj, void *data);
-void create_saved_corpse(P_obj obj, P_char mob);
 void spell_compact_corpse(int, P_char, char *, int, P_char, P_obj);
 bool complete_corpse_wall_of_bones(P_char caster, P_obj corpse, int level, int exit_dir);
 bool persistence_defer_corpse_raise(P_obj corpse, P_char caster, P_char follower,
