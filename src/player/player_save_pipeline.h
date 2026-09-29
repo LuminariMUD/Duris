@@ -2,10 +2,12 @@
 #define PLAYER_SAVE_PIPELINE_H
 
 #include "player/player_revision_state.h"
+#include "player/player_save_worker.h"
 #include "persistence/critical_command.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 struct char_data;
 typedef struct char_data *P_char;
@@ -77,6 +79,12 @@ void player_save_pipeline_quiesce(void);
 void player_save_pipeline_resume(void);
 // Stop taking new saves and wait for the writer to write everything queued.
 bool player_save_pipeline_drain(uint64_t timeout_msec);
+// Shutdown, once nothing queues a write any more: the writer gets until deadline_usec
+// (persistence_observability_now_usec() time) for what is queued, then stops. A job
+// still being written then is cut short through `interrupt`. Returns every owner left
+// unwritten, and shuts the pipeline down.
+std::vector<persistence_job_owner> player_save_pipeline_finish(uint64_t deadline_usec,
+							       void (*interrupt)(void));
 player_save_pipeline_health player_save_pipeline_health_copy(void);
 size_t player_save_pipeline_dirty_count(void);
 bool player_save_pipeline_is_nonterminal_type(int save_intent);

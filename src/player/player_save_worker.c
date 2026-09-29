@@ -299,15 +299,21 @@ bool player_save_worker_init(player_save_apply_fn apply, void *context)
 	return true;
 }
 
-void player_save_worker_shutdown(void)
+void player_save_worker_shutdown(void (*interrupt)(void))
 {
+	bool writing = false;
 	{
 		std::lock_guard<std::mutex> lock(worker_mutex);
 		stop_requested = true;
 		health.stop_pending = true;
+		writing = inflight != nullptr;
 		job_available.notify_all();
 		retry_wakeup.notify_all();
 	}
+	// A job still being written is cut short: its database call returns as a lost
+	// connection, and the stopping writer leaves it pending.
+	if (writing && interrupt)
+		interrupt();
 	if (writer.joinable())
 		writer.join();
 	std::lock_guard<std::mutex> lock(worker_mutex);

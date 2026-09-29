@@ -38,6 +38,9 @@ struct apply_state
     std::map<int, unsigned int> attempts;
     bool first_started = false;
     bool release_first = false;
+    // Pid 12 blocks as a query on a locked table does, until shutdown interrupts it.
+    bool stuck_started = false;
+    unsigned int interrupts = 0;
 };
 
 apply_state state;
@@ -56,6 +59,13 @@ player_save_apply_result apply_snapshot(const player_snapshot &snapshot, void *)
         state.first_started = true;
         state.changed.notify_all();
         state.changed.wait(lock, [] { return state.release_first; });
+    }
+    if (snapshot.pid == 12)
+    {
+        state.stuck_started = true;
+        state.changed.notify_all();
+        state.changed.wait(lock, [] { return state.interrupts > 0; });
+        return {player_save_apply_outcome::retryable_failure, 0, 2013};
     }
     // Pid 5 loses its connection twice, pid 9 never gets it back.
     if ((snapshot.pid == 5 && state.attempts[5] <= 2) || snapshot.pid == 9)
@@ -95,6 +105,15 @@ template <typename Predicate> void wait_until(Predicate predicate)
         assert(std::chrono::steady_clock::now() < deadline);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+}
+
+// What sql_pool_interrupt_borrowed() does to a blocked query: it returns as a lost
+// connection.
+void interrupt_writer()
+{
+    std::lock_guard<std::mutex> lock(state.mutex);
+    ++state.interrupts;
+    state.changed.notify_all();
 }
 
 std::vector<player_save_completion> drain()
@@ -198,6 +217,32 @@ int main()
            player_save_submit_result::unavailable);
     player_save_worker_reset_for_tests();
     assert(persistence_writer_pending_owners().empty());
+
+    // Shutdown does not wait on a job stuck in a database call: it interrupts it, the
+    // job stays pending and is named with what was queued behind it. A writer with
+    // nothing in flight is not interrupted.
+    assert(player_save_worker_init(apply_snapshot, nullptr));
+    player_save_worker_shutdown(interrupt_writer);
+    assert(state.interrupts == 0);
+    player_save_worker_reset_for_tests();
+    assert(player_save_worker_init(apply_snapshot, nullptr));
+    assert(player_save_worker_submit(snapshot_for(12, 1)) == player_save_submit_result::accepted);
+    assert(persistence_writer_submit(persistence_job_kind::log, 1, 64, locker_job(1)) ==
+           player_save_submit_result::accepted);
+    {
+        std::unique_lock<std::mutex> lock(state.mutex);
+        state.changed.wait(lock, [] { return state.stuck_started; });
+    }
+    const auto stopping = std::chrono::steady_clock::now();
+    player_save_worker_shutdown(interrupt_writer);
+    assert(std::chrono::steady_clock::now() - stopping < std::chrono::seconds(2));
+    assert(state.interrupts == 1);
+    const auto unwritten = persistence_writer_pending_owners();
+    assert(unwritten.size() == 2);
+    assert(unwritten[0] == persistence_job_owner(persistence_job_kind::player, 12));
+    assert(unwritten[1] == persistence_job_owner(persistence_job_kind::log, 1));
+    assert(std::string(persistence_job_kind_name(persistence_job_kind::log)) == "log");
+    player_save_worker_reset_for_tests();
     return 0;
 }
 '''
@@ -233,6 +278,7 @@ with tempfile.TemporaryDirectory(prefix="duris-player-save-worker-") as temp_dir
 print("[PASS] one writer applies saves in capture order; a newer save replaces its queued one")
 print("[PASS] a lost connection is retried at the head; other failures are reported and dropped")
 print("[PASS] shutdown stops a stuck retry and names the owners it could not write")
+print("[PASS] shutdown interrupts a job stuck in a database call and names it as unwritten")
 
 assert "PLAYER_SAVE_WORKER_DEFAULT_THREADS = 1" in WORKER_HEADER
 assert "std::thread writer;" in WORKER

@@ -137,6 +137,8 @@
 #include "world/epic_transaction.h"
 #include "world/vnum.mob.h"
 #include "player/player_save_pipeline.h"
+#include "persistence/persistence_observability.h"
+#include "sql/sql_pool.h"
 #include "player/player_save_worker.h"
 #include "player/player_load_pipeline.h"
 #include "player/player_death_restitution_adapter.h"
@@ -382,6 +384,32 @@ int no_ferries = 0;
 
 // copyover support
 int copyover_boot = 0;
+// The writer's shutdown bound: game_loop() starts it, run_the_game() enforces it.
+constexpr uint64_t SHUTDOWN_WRITER_SECONDS = 30;
+static uint64_t shutdown_writer_deadline_usec = 0;
+
+// Names every save shutdown could not write, one alert per owner with its kind in the
+// domain (persistence_writer/player, .../locker, ...). Log rows are counted instead.
+static void report_unwritten_saves(const std::vector<persistence_job_owner> &owners)
+{
+	size_t log_rows = 0;
+	for (const persistence_job_owner &owner : owners)
+	{
+		if (owner.first == persistence_job_kind::log)
+		{
+			++log_rows;
+			continue;
+		}
+		const std::string domain =
+			std::string("persistence_writer/") + persistence_job_kind_name(owner.first);
+		persistence_alert(AVATAR, domain.c_str(), "shutdown", "none", "none", "not_written",
+				  "owner=%llu", static_cast<unsigned long long>(owner.second));
+	}
+	if (log_rows)
+		persistence_alert(AVATAR, "persistence_writer/log", "shutdown", "none", "none",
+				  "not_written", "rows=%zu", log_rows);
+}
+
 static int recovered_mother_desc = -1;
 static int recovered_mother_desc_ssl = -1;
 static int recovered_ws_desc = -1;
@@ -1026,8 +1054,16 @@ int run_the_game(int port, int sslport)
 	critical_outbox_shutdown();
 	if (!_pwipe)
 	{
+		// The last lockers (players still inside one when the game stopped) are queued
+		// here. Nothing queues a write after this: the writer gets what is left of its
+		// 30 s, a query still running then is cut off, and every save it could not
+		// write is named.
 		locker_async_shutdown();
-		player_save_pipeline_shutdown();
+		if (!shutdown_writer_deadline_usec)
+			shutdown_writer_deadline_usec = persistence_observability_now_usec() +
+							SHUTDOWN_WRITER_SECONDS * 1000000ULL;
+		report_unwritten_saves(player_save_pipeline_finish(shutdown_writer_deadline_usec,
+								   sql_pool_interrupt_borrowed));
 	}
 
 	/* Don't need this anymore, as dropped artis are handled in real time on the DB.
@@ -2545,8 +2581,9 @@ resume_game_loop:
 	}
 
 	// Shutdown always goes (persistence reset step 8). Each drain is bounded and a
-	// failure is reported, never a reason to keep running; the writer gets 30 s for
-	// what is queued, and whatever it could not write is named.
+	// failure is reported, never a reason to keep running. The writer gets 30 s for
+	// what is queued; run_the_game() names whatever it could not write once nothing
+	// else can queue a write.
 	if (!_pwipe && item_creation_grant_batches_pending())
 		persistence_alert(AVATAR, "starter_grant", "shutdown", "none", "none",
 				  "kit_pending", "shutdown_cancelled=0");
@@ -2561,24 +2598,11 @@ resume_game_loop:
 	if (!_pwipe)
 	{
 		persistence_save_all_characters_terminal(RENT_CRASH);
-		if (!player_save_pipeline_drain(30000))
-		{
-			// Log rows are counted, not named one by one.
-			size_t log_rows = 0;
-			for (const persistence_job_owner &owner :
-			     persistence_writer_pending_owners())
-				if (owner.first == persistence_job_kind::log)
-					++log_rows;
-				else
-					persistence_alert(
-						AVATAR, "persistence_writer",
-						persistence_job_kind_name(owner.first), "none",
-						"none", "not_written", "owner=%llu",
-						static_cast<unsigned long long>(owner.second));
-			if (log_rows)
-				persistence_alert(AVATAR, "persistence_writer", "log", "none",
-						  "none", "not_written", "rows=%zu", log_rows);
-		}
+		// Queue every dirty locker's save now, so this drain covers it too.
+		locker_async_drain(0);
+		shutdown_writer_deadline_usec =
+			persistence_observability_now_usec() + SHUTDOWN_WRITER_SECONDS * 1000000ULL;
+		player_save_pipeline_drain(SHUTDOWN_WRITER_SECONDS * 1000ULL);
 		if (!redis_world_recovery_drain(3000))
 			persistence_alert(AVATAR, "world_recovery", "shutdown", "none", "none",
 					  "pipeline_drain_failed", "shutdown_cancelled=0");

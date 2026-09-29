@@ -106,8 +106,10 @@ using persistence_job_write_fn = std::function<player_save_apply_result()>;
 using persistence_job_owner = std::pair<persistence_job_kind, uint64_t>;
 
 bool player_save_worker_init(player_save_apply_fn apply, void *context);
-// Stops after the job being written. Jobs still queued are discarded.
-void player_save_worker_shutdown(void);
+// Stops after the job being written. If one is being written, `interrupt` (when given)
+// is called to cut its database call short; the job then stays pending. Jobs still
+// queued are not written: persistence_writer_pending_owners() names them all.
+void player_save_worker_shutdown(void (*interrupt)(void) = nullptr);
 player_save_submit_result player_save_worker_submit(player_snapshot snapshot);
 player_save_submit_result persistence_writer_submit(persistence_job_kind kind, uint64_t owner,
 						    size_t bytes, persistence_job_write_fn write);

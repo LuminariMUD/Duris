@@ -182,6 +182,7 @@ test-db:
 	$(PYTHON) tests/async/run_epic_zone_seed_mysql.py --image mariadb:11.4
 	tests/async/run_pet_repository_mysql.sh
 	tests/async/run_player_save_claim_mysql.sh
+	tests/async/run_sql_pool_interrupt_mysql.sh
 	tests/async/run_player_load_repository_mysql.sh
 	tests/async/run_currency_transaction_schema_mysql.sh
 	tests/async/run_experience_trophy_mysql.sh

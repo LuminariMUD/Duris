@@ -122,7 +122,7 @@ checks["logout log rows are queued, never inserted on the game loop"] = (
     and "log_entry_repository_apply_from_pool(entry)" in sql_log
     and "entry.logged_at = time(NULL);" in sql_log
     and all(token not in sql_log for token in ("qry(", "db_query", "mysql_", "INSERT INTO"))
-    and "LOCK TABLES player_items WRITE, log_entries WRITE" in
+    and "lock_tables('player_items WRITE, log_entries WRITE')" in
     (root / "tests/async/test_mysql_stalled_writer_journey.py").read_text()
 )
 

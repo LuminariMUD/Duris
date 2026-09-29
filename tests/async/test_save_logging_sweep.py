@@ -13,7 +13,7 @@ checks = [
     (
         rel("comm.c"),
         '"not_written"',
-        'if (!player_save_pipeline_drain(30000))',
+        'report_unwritten_saves(player_save_pipeline_finish(',
         1,
     ),
     (

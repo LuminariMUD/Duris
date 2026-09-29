@@ -535,6 +535,20 @@ bool player_save_pipeline_drain(uint64_t timeout_msec)
 	return drained;
 }
 
+std::vector<persistence_job_owner> player_save_pipeline_finish(uint64_t deadline_usec,
+							       void (*interrupt)(void))
+{
+	player_save_pipeline_quiesce();
+	const uint64_t now = persistence_observability_now_usec();
+	const bool drained = persistence_writer_wait_idle(
+		deadline_usec > now ? (deadline_usec - now) / 1000 : 0);
+	player_save_pipeline_pulse();
+	player_save_worker_shutdown(drained ? nullptr : interrupt);
+	std::vector<persistence_job_owner> left = persistence_writer_pending_owners();
+	player_save_pipeline_shutdown();
+	return left;
+}
+
 player_save_pipeline_health player_save_pipeline_health_copy(void)
 {
 	std::lock_guard<std::mutex> lock(pipeline_mutex);

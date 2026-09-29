@@ -18,11 +18,13 @@
 #include "sql/sql.h"
 #include "sql/sql_exclusion_guard.h"
 #include "sql/sql_pool.h"
+#include "sql/sql_telemetry_connection.h"
 
 #include <pthread.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <time.h>
 
 #ifndef __NO_MYSQL__
@@ -157,6 +159,22 @@ void sql_pool_shutdown(void)
 	pthread_mutex_unlock(&pool_mutex);
 
 	logit(LOG_STATUS, "SQL connection pool shut down.");
+}
+
+void sql_pool_interrupt_borrowed(void)
+{
+	pthread_mutex_lock(&pool_mutex);
+	if (pool)
+	{
+		pool_closing = 1;
+		pthread_cond_broadcast(&pool_cond);
+		/* shutdown() leaves the descriptor open, so the borrower's handle stays
+		 * valid; its blocked read returns at once. */
+		for (int i = 0; i < pool_size; i++)
+			if (pool[i].in_use && pool[i].conn)
+				shutdown(sql_telemetry_socket(pool[i].conn), SHUT_RDWR);
+	}
+	pthread_mutex_unlock(&pool_mutex);
 }
 
 /* ------------------------------------------------------------------ */
@@ -393,6 +411,8 @@ int sql_pool_init(int size)
 }
 
 void sql_pool_shutdown(void) {}
+
+void sql_pool_interrupt_borrowed(void) {}
 
 MYSQL *sql_pool_acquire_with_status(int *pool_was_active)
 {

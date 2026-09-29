@@ -73,8 +73,8 @@ checks = {
     "copyover defers SQL saved-ground restoration":
         "if (!copyover_boot)" in db[db.index("Saved ground/storage objects"):
                                      db.index("-- Shopkeepers")],
-    "shutdown names what it could not write": "!player_save_pipeline_drain(30000)" in comm and
-                                               "not_written" in comm,
+    "shutdown names what it could not write":
+        "report_unwritten_saves(player_save_pipeline_finish(" in comm and "not_written" in comm,
     "no destructive restart fallback": "refusing fallback exit" in comm,
     "copyover reloads durable player inventory and pets":
         "request.include_items = true;" in recover and

@@ -349,7 +349,10 @@ print("[PASS] autosave is local and the Redis dirty-save fork is retired")
 
 assert 'player_save_pipeline_init(getenv("PLAYER_SAVE_JOURNAL_DIR"))' in COMM
 assert "player_save_pipeline_pulse();" in COMM
-assert "player_save_pipeline_shutdown();" in COMM
-print("[PASS] the pipeline starts without a journal directory")
+assert "player_save_pipeline_finish(shutdown_writer_deadline_usec," in COMM
+assert "player_save_pipeline_shutdown();" in section(
+    (SRC / "player_save_pipeline.c").read_text(), "std::vector<persistence_job_owner> player_save_pipeline_finish(",
+    "player_save_pipeline_health player_save_pipeline_health_copy(void)")
+print("[PASS] the pipeline starts without a journal directory and shutdown finishes it")
 
 print("player save pipeline contracts passed")
