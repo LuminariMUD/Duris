@@ -112,9 +112,13 @@ def run(server):
                     return int(sql("SELECT played_time FROM player_data WHERE name='" + journey.CHARACTER + "'"))
 
                 rows = []
+                sent = {}
 
                 def save(label):
                     assert client is not None
+                    # The server captures the playtime before it answers, so an
+                    # interval between two saves starts when the first was sent.
+                    sent[label] = time.monotonic()
                     client.send("save")
                     client.expect("Save complete for " + journey.CHARACTER + ".", timeout=30)
                     value = persisted()
@@ -139,13 +143,11 @@ def run(server):
                     client = journey.MudClient(plain)
                     journey.create_character(client)
                     before = save("initial")
-                    start = time.monotonic()
                     time.sleep(3)  # Exercise real elapsed playtime, not a guessed fixture value.
                     after = save("elapsed-save")
-                    assert 2 <= after - before <= time.monotonic() - start + 2, rows
-                    start = time.monotonic()
+                    assert 2 <= after - before <= time.monotonic() - sent["initial"] + 2, rows
                     again = save("repeated-save")
-                    assert 0 <= again - after <= time.monotonic() - start + 2, rows
+                    assert 0 <= again - after <= time.monotonic() - sent["elapsed-save"] + 2, rows
                     # Send no gameplay commands while the existing 30-second
                     # periodic owner checkpoints this otherwise quiet session.
                     deadline = time.monotonic() + 45
@@ -173,10 +175,10 @@ def run(server):
                     client = journey.reconnect_character(plain)
                     reloaded = save("restart-login-save")
                     assert 0 <= reloaded - terminal <= time.monotonic() - start + 2, rows
-                    start = time.monotonic()
                     time.sleep(3)
                     continued = save("second-session-save")
-                    assert 2 <= continued - reloaded <= time.monotonic() - start + 2, rows
+                    assert 2 <= continued - reloaded <= \
+                        time.monotonic() - sent["restart-login-save"] + 2, rows
                     # Exercise the actual death/terminal-save route, checking
                     # only playtime rather than unrelated combat or item outcomes.
                     journey.attack_until_death(client)
