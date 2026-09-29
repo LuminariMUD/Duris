@@ -201,7 +201,8 @@ void finish_completion(const player_save_completion &completion)
 	{
 		persistence_alert(AVATAR, "persistence_writer",
 				  persistence_job_kind_name(completion.kind), "none", "none",
-				  "write_failed", "error=%u", completion.error_code);
+				  "write_failed", "owner=%llu error=%u",
+				  (unsigned long long)completion.owner, completion.error_code);
 		return;
 	}
 	// The job is gone. Mark the owner dirty so its next save carries the state again.
@@ -544,6 +545,8 @@ std::vector<persistence_job_owner> player_save_pipeline_finish(uint64_t deadline
 		deadline_usec > now ? (deadline_usec - now) / 1000 : 0);
 	player_save_pipeline_pulse();
 	player_save_worker_shutdown(drained ? nullptr : interrupt);
+	// The job the writer was on when it stopped may have failed since the pulse.
+	player_save_pipeline_pulse();
 	std::vector<persistence_job_owner> left = persistence_writer_pending_owners();
 	player_save_pipeline_shutdown();
 	return left;
