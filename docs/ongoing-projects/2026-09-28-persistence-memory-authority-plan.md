@@ -3,8 +3,8 @@
 **Date:** 2026-09-28
 
 **Status:** Phase 1 is done on branch `fix/7-persistence-phase-1`, in review as
-[!2](https://gitlab.com/max757/duris/-/merge_requests/2), with the first review round's fixes in
-(see [Review round 1](#review-round-1-mr-2)). Phases 2 and 3 continue on
+[!2](https://gitlab.com/max757/duris/-/merge_requests/2), with the fixes of two review rounds in
+(see [Review round 1](#review-round-1-mr-2) and [Review round 2](#review-round-2-mr-2)). Phases 2 and 3 continue on
 `fix/7-persistence-phase-2` (see [Review and branches](#review-and-branches)). See
 [Phase 1 progress](#phase-1-progress) at the end for what is done, how it was done, and what is
 left.
@@ -976,6 +976,46 @@ Verification for this round, on the final head:
   shutdown with the writer stalled and the character in the locker names the player save and the
   locker by name (about 35 s); `quit` writes its `log_entries` row through the writer.
 
+### Review round 2 (MR !2)
+
+The follow-up review of `507c9881b` (tag `persistence/phase-1-review-1`) confirmed the round 1
+fixes and found four more defects. Each is fixed in its own commit on `fix/7-persistence-phase-1`,
+with a regression test that fails without it. The fixed head is tagged
+`persistence/phase-1-review-2`.
+
+| Finding | Fix | Commit |
+|---|---|---|
+| 1. High: leaving a locker while an in-stay save was being written extracted the locker character when that older save landed, so what went in after it started was never written. | A completion with a newer generation waiting leaves the locker character alone; it goes once the save that holds its contents lands. `test_locker_leave_during_save.py` links `locker_async.c` and plays the sequence. | `8e049c849` |
+| 2. Medium: after a lost connection the writer opens a replacement, which the interrupt cannot cut short, so the writer join and then the pool teardown could run past the 30 s bound. | After the interrupt the writer gets one second (`PLAYER_SAVE_WORKER_STOP_GRACE_MSEC`). One still busy is left to finish on its own and its job is named unwritten; an interrupted pool's shutdown no longer waits for that borrower. | `5e5fcc2bb` |
+| 3. Medium: a job that failed after shutdown's last pulse was neither reported as `write_failed` nor named as not written. | `player_save_pipeline_finish()` takes the completions again once the writer has stopped. A failed corpse, locker, saved-item or log job names its owner too. | `5fe1a7574` |
+| 4. Medium: on flat-file, a level 62 character saved in mortal mode came back exempt from the racewar cooldown, because the admission was worked out from the level alone. | The identity stores whether the account menu admits the character as an immortal (format version 3). A record written before is read as before until the account's next save. | `7d129958c` |
+
+Found while verifying, fixed in their own commits:
+
+- `4e1b1bd20` re-anchors the economy writer census, which `3e5be7f57` (round 1) had left behind in
+  `actoth.c` and `files.c`.
+- `4f1096267`: four journeys (saved-item allocator and recovery, copyover runtime, divine refusal)
+  left their server running when it did not stop within the wait after SIGTERM. Two left by the
+  allocator journey on `master` had spun at full CPU for eight hours after their disposable
+  database was dropped. The cleanup now kills the server.
+
+Verification for this round, on the final head:
+
+- `make -C src`, the flat-file build and `./scripts/format.sh --all --check`;
+  `scripts/validate_economy_accounting.py`.
+- Each new regression test fails without its fix (run against the previous code):
+  `test_locker_leave_during_save.py` extracts the locker character when the older save lands,
+  `test_player_save_worker.py` hangs in the join, `run_sql_pool_interrupt_mysql.sh` waits for
+  the borrower, `test_player_save_pipeline.py` raises no alert, and
+  `test_flatfile_account_membership.py` reloads the character as an immortal.
+- `make test-all`: 700 of 700. `make test-db`: all 24 legs.
+- Journeys: on a disposable MariaDB, `run_mysql_stalled_writer_journey.sh` (camp reaches the
+  menu with the tables locked, slowest loop reply 0.25 s; shutdown exits in 30.5 s with the writer
+  blocked in a query and in 30.3 s with the database down, naming the save), and the saved-item
+  allocator and recovery journeys with their new cleanup; on flat-file,
+  `run_generated_npc_journey.py` (the level 62 character through a copyover reload),
+  `run_copyover_runtime_journey.py` and `run_divine_refusal_journey.py`.
+
 ### Review and branches
 
 - Phase 1 is in review as [!2](https://gitlab.com/max757/duris/-/merge_requests/2) (source
@@ -984,9 +1024,10 @@ Verification for this round, on the final head:
   brought into the phase 2 branch (`git merge --ff-only` while it has no commits of its own,
   otherwise a merge).
 - Each review round is tagged on the phase 1 branch: `persistence/phase-1-review-0` is the head
-  the first review read (`2881c9f20`), `persistence/phase-1-review-1` the head with its fixes. A
-  later round adds `-review-2` and so on, so `git diff persistence/phase-1-review-<n-1>
-  persistence/phase-1-review-<n>` shows what one round changed.
+  the first review read (`2881c9f20`), `persistence/phase-1-review-1` the head with its fixes and
+  `persistence/phase-1-review-2` the head with the second round's. A later round adds `-review-3`
+  and so on, so `git diff persistence/phase-1-review-<n-1> persistence/phase-1-review-<n>` shows
+  what one round changed.
 - Phases 2 and 3 continue in this worktree on `fix/7-persistence-phase-2`, branched from the
   Phase 1 head. After !2 merges (its source branch is removed on merge), rebase the phase 2 branch
   onto `master` and open its own MR.
