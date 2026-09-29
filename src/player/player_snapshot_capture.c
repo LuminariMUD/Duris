@@ -617,6 +617,20 @@ player_snapshot_capture_result capture_shapes_and_trophies(P_char ch,
 		}
 	return player_snapshot_capture_result::ok;
 }
+
+// A character inside a locker is saved in the room outside its door. Locker rooms are
+// made for one visit and nothing restores one after a restart; the locker's pre-save
+// hook rewrote the room for a direct save, but a queued save does not run it.
+int save_room_vnum(P_char ch, int room_vnum)
+{
+	if (ch->in_room < 0 || ch->in_room > top_of_world ||
+	    world[ch->in_room].number != room_vnum || !IS_ROOM(ch->in_room, ROOM_LOCKER))
+		return room_vnum;
+	const room_direction_data *door = world[ch->in_room].dir_option[0];
+	if (door && door->to_room >= 0 && door->to_room <= top_of_world)
+		return world[door->to_room].number;
+	return room_vnum;
+}
 } // namespace
 
 player_snapshot_capture_result
@@ -715,7 +729,7 @@ player_snapshot_capture_result player_snapshot_capture(P_char ch, player_revisio
 		snapshot.revision = revision;
 		snapshot.components = components;
 		snapshot.save_intent = save_intent;
-		snapshot.room_vnum = room_vnum;
+		snapshot.room_vnum = save_room_vnum(ch, room_vnum);
 		snapshot.recipes_are_external = true;
 		capture_budget budget;
 		if ((components & PLAYER_COMPONENT_STATUS) &&
