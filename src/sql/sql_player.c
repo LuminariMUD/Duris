@@ -7141,6 +7141,33 @@ bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)
 	if (!DB || locker_id <= 0 || chest_id <= 0 || !chest_obj)
 		return false;
 
+	// Outside a transaction the chest save goes to the one writer, behind any save still
+	// queued; inside one it stays part of the caller's.
+	if (!sql_in_transaction())
+	{
+		locker_chest_snapshot snapshot;
+		snapshot.locker_id = locker_id;
+		snapshot.chest_id = chest_id;
+		if (player_item_snapshot_contents_capture(chest_obj, &snapshot.items) ==
+		    player_snapshot_capture_result::ok)
+		{
+			// A private chest's key never matches its locker's public job.
+			const uint64_t owner = (static_cast<uint64_t>(chest_id) << 32) |
+					       static_cast<uint32_t>(locker_id);
+			const size_t bytes = sizeof(snapshot) +
+					     snapshot.items.size() * sizeof(player_item_snapshot);
+			const player_save_submit_result submitted = persistence_writer_submit(
+				persistence_job_kind::locker, owner, bytes,
+				[snapshot]() {
+					return locker_chest_snapshot_repository_apply_from_pool(
+						snapshot);
+				});
+			if (submitted == player_save_submit_result::accepted ||
+			    submitted == player_save_submit_result::replaced)
+				return true;
+		}
+	}
+
 	bool own_txn = false;
 	if (!sql_in_transaction())
 	{

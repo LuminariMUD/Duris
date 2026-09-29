@@ -418,6 +418,10 @@ constexpr item_tables corpse_item_tables = {
 	"corpse_items",		  "corpse_id", false, true, true, "corpse_item_affects",
 	"corpse_item_extra_descr"
 };
+constexpr item_tables locker_item_tables = {
+	"locker_items",	       "locker_id,chest_id",	 false, true, true,
+	"locker_item_affects", "locker_item_extra_descr"
+};
 constexpr item_tables saved_item_tables = {
 	"saved_items",	      "item_key,room_vnum",    false, true, false,
 	"saved_item_affects", "saved_item_extra_descr"
@@ -1153,16 +1157,15 @@ query_result write_corpse(MYSQL *connection, const corpse_snapshot &corpse,
 	return result;
 }
 
-player_save_apply_result apply_corpse(MYSQL *connection, const corpse_snapshot &corpse)
+// Run one corpse, saved-item or locker chest write in its own transaction, then log
+// what the claims left out.
+template <typename Write> player_save_apply_result apply_owner_write(MYSQL *connection, Write write)
 {
-	if (!connection || corpse.owner.type != item_owner_type::corpse || !corpse.owner.id ||
-	    corpse.save_id <= 0 || corpse.player_name.empty())
-		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	query_result query = execute(connection, "START TRANSACTION");
 	if (!query.ok)
 		return failure(query.error_code);
 	std::vector<claimed_graph> claims;
-	query = write_corpse(connection, corpse, &claims);
+	query = write(&claims);
 	if (!query.ok)
 	{
 		if (!connection_error(query.error_code))
@@ -1172,7 +1175,7 @@ player_save_apply_result apply_corpse(MYSQL *connection, const corpse_snapshot &
 	query = execute(connection, "COMMIT");
 	if (!query.ok)
 	{
-		// The corpse save is a full replacement, so writing it again is safe.
+		// The write is a full replacement, so writing it again is safe.
 		if (!connection_error(query.error_code))
 			execute(connection, "ROLLBACK");
 		return { connection_error(query.error_code) ?
@@ -1183,6 +1186,15 @@ player_save_apply_result apply_corpse(MYSQL *connection, const corpse_snapshot &
 	for (const claimed_graph &claim : claims)
 		item_claim_log_dupes("save_left_out", claim.owner, claim.outcome);
 	return { player_save_apply_outcome::applied, 0, 0 };
+}
+
+player_save_apply_result apply_corpse(MYSQL *connection, const corpse_snapshot &corpse)
+{
+	if (!connection || corpse.owner.type != item_owner_type::corpse || !corpse.owner.id ||
+	    corpse.save_id <= 0 || corpse.player_name.empty())
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+	return apply_owner_write(connection, [&](std::vector<claimed_graph> *claims)
+				 { return write_corpse(connection, corpse, claims); });
 }
 
 query_result write_saved_item(MYSQL *connection, const saved_item_snapshot &item,
@@ -1204,30 +1216,36 @@ player_save_apply_result apply_saved_item(MYSQL *connection, const saved_item_sn
 	if (!connection || item.owner.type != item_owner_type::room || item.item_key.empty() ||
 	    (!item.remove && item.items.empty()))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
-	query_result query = execute(connection, "START TRANSACTION");
-	if (!query.ok)
-		return failure(query.error_code);
-	std::vector<claimed_graph> claims;
-	query = write_saved_item(connection, item, &claims);
-	if (!query.ok)
-	{
-		if (!connection_error(query.error_code))
-			execute(connection, "ROLLBACK");
-		return failure(query.error_code);
-	}
-	query = execute(connection, "COMMIT");
-	if (!query.ok)
-	{
-		if (!connection_error(query.error_code))
-			execute(connection, "ROLLBACK");
-		return { connection_error(query.error_code) ?
-				 player_save_apply_outcome::ambiguous_commit :
-				 failure(query.error_code).outcome,
-			 0, query.error_code };
-	}
-	for (const claimed_graph &claim : claims)
-		item_claim_log_dupes("save_left_out", claim.owner, claim.outcome);
-	return { player_save_apply_outcome::applied, 0, 0 };
+	return apply_owner_write(connection, [&](std::vector<claimed_graph> *claims)
+				 { return write_saved_item(connection, item, claims); });
+}
+
+player_save_apply_result apply_locker_chest(MYSQL *connection, const locker_chest_snapshot &chest)
+{
+	if (!connection || chest.locker_id <= 0 || chest.chest_id <= 0)
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+	const item_owner_identity owner = { item_owner_type::locker,
+					    static_cast<uint64_t>(chest.locker_id),
+					    static_cast<uint64_t>(chest.chest_id) };
+	const std::string keys =
+		std::to_string(chest.locker_id) + "," + std::to_string(chest.chest_id);
+	return apply_owner_write(
+		connection,
+		[&](std::vector<claimed_graph> *claims)
+		{
+			query_result result =
+				execute(connection,
+					"DELETE FROM locker_items WHERE locker_id=" +
+						std::to_string(chest.locker_id) +
+						" AND chest_id=" + std::to_string(chest.chest_id));
+			std::vector<player_item_snapshot> written;
+			if (result.ok)
+				result = claim_graph(connection, owner, chest.items, claims,
+						     &written);
+			return result.ok ? insert_item_rows(connection, written, keys,
+							    locker_item_tables) :
+					   result;
+		});
 }
 
 template <typename Apply> player_save_apply_result apply_with_pool(Apply apply)
@@ -1302,4 +1320,17 @@ saved_item_snapshot_repository_apply_from_pool(const saved_item_snapshot &item)
 {
 	return apply_with_pool([&](MYSQL *connection)
 			       { return apply_saved_item(connection, item); });
+}
+
+player_save_apply_result locker_chest_snapshot_repository_apply(MYSQL *connection,
+								const locker_chest_snapshot &chest)
+{
+	return apply_locker_chest(connection, chest);
+}
+
+player_save_apply_result
+locker_chest_snapshot_repository_apply_from_pool(const locker_chest_snapshot &chest)
+{
+	return apply_with_pool([&](MYSQL *connection)
+			       { return apply_locker_chest(connection, chest); });
 }

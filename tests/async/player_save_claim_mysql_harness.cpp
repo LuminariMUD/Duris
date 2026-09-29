@@ -310,6 +310,29 @@ int main()
 			scalar(test_connection, "SELECT COUNT(*) FROM saved_items") == "0",
 		"a saved item leaving the room is deleted");
 
+	// A private locker chest save claims its contents for the chest and replaces its rows.
+	execute(test_connection,
+		"INSERT INTO lockers (id,locker_name,owner_pid) VALUES (7,'Claimer',1)");
+	locker_chest_snapshot chest;
+	chest.locker_id = 7;
+	chest.chest_id = 2;
+	chest.items = { item(1030, 530, PLAYER_SNAPSHOT_NO_PARENT), item(1040, 540, 0) };
+	applied = locker_chest_snapshot_repository_apply(test_connection, chest);
+	require(applied.outcome == player_save_apply_outcome::applied &&
+			owner_of(1030) == "5:7:2:1:1030:0" &&
+			owner_of(1040) == "5:7:2:1:1030:1030" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM locker_items WHERE locker_id=7 "
+			       "AND chest_id=2") == "2",
+		"a chest save claims its contents: " + owner_of(1030));
+	chest.items.resize(1);
+	applied = locker_chest_snapshot_repository_apply(test_connection, chest);
+	require(applied.outcome == player_save_apply_outcome::applied &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM locker_items WHERE locker_id=7 "
+			       "AND chest_id=2") == "1",
+		"a later chest save replaces the rows");
+
 	mysql_close(test_connection);
 	mysql_library_end();
 	std::cout << "player save claim MariaDB leg passed\n";

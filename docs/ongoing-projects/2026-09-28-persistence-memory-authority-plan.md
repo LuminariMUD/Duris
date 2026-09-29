@@ -827,6 +827,32 @@ taken back out (see "Removed in the ablation" below).
   which cloned the corpse and its contents (new uids) into the corpse storage room, where nothing
   ever restored it. With corpses saved through the writer that clone would have been a second,
   persisted set of the items. It is deleted with `check_saved_corpse()` and its event.
-- Still to do: the journeys on a local server with the `.env` account (die and loot your own
-  corpse, give an item to another player, rent, quit and relog, shut down with players online),
-  then on staging, which runs tagged `master`, so it needs this branch merged first.
+- Local server with the `.env` account (2026-09-29, `duris_dev` migrated by the boot, script in
+  the session scratchpad): Veridian loads clean (no `missing_payload_rows`, no dupe or claim log
+  lines; before Phase 1 he loaded degraded and blocked a graceful stop); drop and get move in
+  memory; `quit` and a relog give back the same inventory and equipment; SIGTERM with Veridian
+  online ends in a normal termination after 6 s, and after a restart and relog his inventory and
+  equipment are unchanged.
+- Not run live: dying and looting your own corpse, and giving an item to another player, need a
+  second character online, and the `.env` account allows one session at a time. Both run on a
+  real server in `test_flatfile_combat_journey.py` / `test_mysql_combat_journey.py` and the corpse
+  haul journey (death and loot) and in the item transfer legs (give).
+- Staging runs tagged `master`, so the staging journeys and the day of staging checks wait for this
+  branch to be merged.
+
+### Done-when review (in progress)
+
+- Private locker chests: `sql_save_private_chest_items()` (run when a player leaves the locker
+  room, from `LockerToPFile()`) wrote on the game thread. Outside a transaction it now queues a
+  `locker` job keyed `(chest_id << 32) | locker_id`, so it never replaces its locker's public-chest
+  job (keyed by `locker_id`); `locker_chest_snapshot_repository_apply()` deletes the chest's rows,
+  claims the graph for `locker(locker_id, chest_id)` and writes `locker_items` with the shared item
+  writer. Inside a caller's transaction, or if the writer refuses the job, the old synchronous
+  write runs. The corpse, saved-item and chest applies share one transaction wrapper
+  (`apply_owner_write()`). `player_save_claim_mysql_harness.cpp` covers the chest.
+- Still on the game thread at a death, both economy-adjacent and both only when the corpse holds
+  such an item: `remove_owned_artifact_sql()` for an owned artifact entering a player's corpse,
+  and the `account_bound_reward_summons` reset when a divinely bound reward container dissolves.
+  These belong with Phase 2 (artifacts and rewards move with the economy).
+- Found while doing this, fixed in its own commit: `test_locker_receipt_recovery.py`'s MariaDB leg
+  did not link (the extra-description codec, its escape stub and the restitution sources).

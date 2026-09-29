@@ -56,4 +56,18 @@ player_save_apply_result saved_item_snapshot_repository_apply(MYSQL *connection,
 player_save_apply_result
 saved_item_snapshot_repository_apply_from_pool(const saved_item_snapshot &item);
 
+// A private locker chest's contents as its save writes them.
+struct locker_chest_snapshot
+{
+	int32_t locker_id = 0;
+	int32_t chest_id = 0;
+	std::vector<player_item_snapshot> items;
+};
+
+// Replaces the chest's rows in one transaction, claiming them for the chest.
+player_save_apply_result locker_chest_snapshot_repository_apply(MYSQL *connection,
+								const locker_chest_snapshot &chest);
+player_save_apply_result
+locker_chest_snapshot_repository_apply_from_pool(const locker_chest_snapshot &chest);
+
 #endif

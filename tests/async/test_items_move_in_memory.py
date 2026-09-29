@@ -96,7 +96,11 @@ SQL_PLAYER = (SRC / "sql_player.c").read_text()
 for signature in ("bool sql_save_locker(P_char locker_ch, int owner_pid, int owner_assoc_id)\n{",
                   "bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)\n{"):
     assert "claim_items(DB, chest, held, &claim)" in body(SQL_PLAYER, signature, True), signature
-print("[PASS] locker and private chest saves claim what the chest holds")
+private_chest = body(SQL_PLAYER, "bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)\n{", True)
+assert private_chest.index("locker_chest_snapshot_repository_apply_from_pool") < \
+    private_chest.index("DELETE FROM locker_items")
+print("[PASS] locker and private chest saves claim what the chest holds; a private chest save "
+      "outside a transaction goes to the writer")
 
 # A save claims a live coin pile like any item; a spent pile stays spent, and a
 # player loads only the piles his own save lists.
