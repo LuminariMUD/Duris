@@ -34,10 +34,10 @@ Both flatfile and MariaDB builds pass. Changed lines were formatted through
   runs and actual custody save/exec/recovery.
 - `test_redis_fault_recovery_live.py` and `test_redis_floor_store_live.py`: real
   isolated Redis, timeout/uncertain publication and asynchronous floor barriers.
-- `run_generated_npc_journey.py <server> file`: real account creation, offline
+- `test_generated_npc_journey.py <server> file`: real account creation, offline
   promotion of the disposable staff character, string/setattr/stat/look/scan,
   two live file copyovers, stable IDs/counts/base stats and same-socket saves.
-- `run_generated_npc_journey.py <mariadb-server> redis`: a uniquely named local
+- `test_generated_npc_journey.py <mariadb-server> redis`: a uniquely named local
   MariaDB schema and private Redis process, acknowledged snapshot, forced
   process crash, clean reboot, reconnect and retained NPC identity/state.
   Requires `TEST_DB_HOST`, `TEST_DB_USER`, `TEST_DB_PASSWORD`; the host must be
