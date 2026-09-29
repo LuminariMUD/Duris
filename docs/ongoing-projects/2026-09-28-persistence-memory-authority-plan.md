@@ -4,10 +4,10 @@
 
 **Status:** Phase 1 is done on branch `fix/7-persistence-phase-1`, in review as
 [!2](https://gitlab.com/max757/duris/-/merge_requests/2), with the fixes of two review rounds in
-(see [Review round 1](#review-round-1-mr-2) and [Review round 2](#review-round-2-mr-2)). Phases 2 and 3 continue on
-`fix/7-persistence-phase-2` (see [Review and branches](#review-and-branches)). See
-[Phase 1 progress](#phase-1-progress) at the end for what is done, how it was done, and what is
-left.
+(see [Review round 1](#review-round-1-mr-2) and [Review round 2](#review-round-2-mr-2)). Phase 2
+is in progress on `fix/7-persistence-phase-2` (see [Phase 2 steps](#phase-2-steps),
+[Phase 2 progress](#phase-2-progress) and [Review and branches](#review-and-branches)). See
+[Phase 1 progress](#phase-1-progress) for what Phase 1 did, how it was done, and what is left.
 
 **Work items:** #7 (player saves and deaths). This plan also removes the persistence causes behind
 #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert storms).
@@ -224,8 +224,8 @@ Production follows with the owner's go-ahead.
   - Each currency transaction (95 references) becomes the in-memory update that the NPC branches
     already make.
   - Coins drop into corpses again.
-  - An action that moves money between two saved owners queues both saves as one job, so a crash
-    cannot pay twice.
+  - An action that moves money between two saved owners queues the owner it leaves first, so a
+    crash cannot pay twice (see [Phase 2 steps](#phase-2-steps)).
 - **Epic points and frags** move the same way: the save writes them, and their transactions become
   in-memory updates.
 - **Auctions, shops and the collector** save their holdings through the writer with the same claim.
@@ -236,6 +236,86 @@ Production follows with the owner's go-ahead.
   - calls that read happen at boot, from a cache, or through the async path.
 
   The latency trace must then show no database wait on the loop.
+
+### Phase 2 steps
+
+Phase 2 keeps the rules. Each step is its own commit (or a few) with a focused regression test, on
+both backends; the MariaDB legs run on a disposable server. Steps 2 to 5 must ship together: the
+save writes the wallet only once nothing else writes it.
+
+**One pattern for what is left.** Each transaction API keeps its signature, so its callers stay as
+they are; Phase 3 inlines what is left and deletes the rest.
+
+- Balances (wallet, bank, epic points, frags): the submit changes the character at once and calls
+  its completion before returning. The save writes the result.
+- What must still commit in the database (auctions, the collector, item transfers and grants,
+  boons, artifacts, combat outcomes, zone touches, death restitution) runs on the one writer,
+  queued at submit on the game thread, so it lands in capture order with the saves around it.
+
+**Two owners.** When money moves between two saved owners, the one it leaves is queued before the
+one it reaches: the giver's save before the receiver's, the corpse before the looter, the player
+(whose save records a grant as paid) before the bank credit, a bank debit before the wallet it
+fills. A crash between them loses the money; it can never pay it twice. One job for both was
+considered and cut: ordering on the one writer gives the same guarantee without a new job kind.
+
+1. **Critical commands on the one writer.** `critical_command_coordinator_submit()` queues the
+   command as a writer job instead of journaling it for its own workers. The job carries its own
+   copy of the command, so one queued at shutdown still lands. A lost connection is retried by the
+   writer at the head; any other outcome goes to the existing completion channel, so the operation
+   table, its fences, the pulse and every completion handler stay as they are. A journal left by
+   an older server is replayed once at boot, onto the writer.
+2. **Money in memory.**
+   - The save writes the wallet: `apply_status()` stops skipping copper to platinum, and the
+     flat-file save writes the wallet into the domain record in its authority transaction.
+   - `currency_transaction_submit()` and its variants change the wallet at once, and the bank view
+     of every online character of the account and side, then complete before returning. A change
+     that would take a balance below zero is refused with `ENOSPC`, as the repository refused it.
+   - A bank change is queued on the writer as a delta (`bank` job): MariaDB adds it to the
+     `account_banks` row, creating it; flat-file adds it to the bank domain.
+   - Coins: get, drop, give and put take the branches NPCs take, and so does
+     `money_to_inventory()`. The guards (`currency_transaction_can_submit_nonrebasable()`,
+     `_player_busy()`, `_coin_item_busy()`) admit.
+3. **The economy stops writing balances.** The auction, collector, coin transfer and combat
+   outcome repositories (both backends) stop reading and writing wallet and bank columns and their
+   revisions. The money moves in memory: taken at submit and given back on a refusal (a bid, a
+   purchase, a fee), or given at commit (a sale's proceeds, a money pickup).
+4. **Coins drop into corpses.** `make_corpse()` turns a player's wallet into a pile in the corpse.
+5. **Epic points and frags in memory.** The save writes epics, frags and old frags (both
+   backends). `epic_transaction_submit*()` and the combat outcome's frag and epic changes update
+   the character at once; the repositories stop writing those columns.
+6. **Shops in memory.** A trade moves the item and the coins at once, the way the completion
+   already publishes it. The shopkeeper's stock is saved through the writer, claimed for the
+   shopkeeper.
+7. **The economy exception goes.** With auctions, the collector and shops committing in capture
+   order, `item_claim_owner_is_economy()` goes: a save claims whatever its owner holds.
+8. **Game-thread SQL off the loop.**
+   - Writes are queued on the writer (`sql` job), with the statement built on the game thread.
+   - Reads that feed a command's output run on the writer (`sql_read` job), behind the writes queued
+     before them, and hand their rows to a game-thread callback on a later pulse.
+   - Reads the game logic depends on come from memory, loaded at boot and kept up to date by the
+     writes above.
+   - Boot and shutdown may still query.
+   - A journey pins that the loop issues no query after boot.
+
+### Phase 2 tests
+
+New focused tests, each failing without its step:
+
+- Critical commands and saves land in capture order (a linked harness with the real writer).
+- A deposit, withdrawal, payment and reward change the wallet and bank at once; a spend beyond a
+  balance is refused; the save writes the wallet; the bank delta lands (a MariaDB leg).
+- Coins given between two players: the giver's save is queued before the receiver's.
+- A player's coins go into the corpse at death, and looting them claims the pile.
+- An epic purchase and a PvP award change the character at once; the save writes them.
+- A shop sale and purchase move the item and the coins at once; the shopkeeper's stock survives a
+  restart.
+- An auction listing and a bid take the item and the coins at once and give them back when
+  refused; a stale save cannot take a listed item back.
+- A journey pins that the game loop issues no query after boot.
+
+The Phase 1 journeys (death and corpse loot, necromancer raise, give, rent/quit/relog, shutdown
+with players online) run again, and the local `.env`-account session covers money, the bank, a
+shop and an auction by hand.
 
 ## Phase 3: delete what is left over
 
@@ -279,6 +359,15 @@ These parts were cut:
   dead character's wallet removes that. This is the one visible, temporary gameplay change in Phase 1.
 - **Rewriting the 345 legacy `qry()` calls in Phase 1.** They are small statements. The multi-second
   freezes came from the persistence waits that Phase 1 removes.
+- **One job for both saves when money moves between two owners (Phase 2).** Queuing the owner the
+  money leaves before the one it reaches, on the one writer, already means a crash can lose the
+  money but never pay it twice, with no new job kind.
+- **Holding a command's execution while an earlier one on the same key waits for its publication
+  (Phase 2).** On the one writer commands already run one at a time in capture order; the fence
+  still tells callers the key is busy until the game thread acknowledges the publication.
+- **The coordinator's retry cap (Phase 2).** Like a save, a command that loses its connection is
+  retried by the writer until it lands or shutdown names it; a cap would only drop a command whose
+  outcome is unknown.
 
 ## Done when
 
@@ -1029,5 +1118,13 @@ Verification for this round, on the final head:
   and so on, so `git diff persistence/phase-1-review-<n-1> persistence/phase-1-review-<n>` shows
   what one round changed.
 - Phases 2 and 3 continue in this worktree on `fix/7-persistence-phase-2`, branched from the
-  Phase 1 head. After !2 merges (its source branch is removed on merge), rebase the phase 2 branch
-  onto `master` and open its own MR.
+  Phase 1 head. Phase 2 is in review as [!3](https://gitlab.com/max757/duris/-/merge_requests/3),
+  which targets `fix/7-persistence-phase-1` so its diff is Phase 2 alone. Each Phase 1 review
+  round is merged in (`git merge --no-ff`). After !2 merges (its source branch is removed on
+  merge), rebase the phase 2 branch onto `master` and retarget !3 to `master`.
+- Phase 2 review rounds are tagged the same way on the phase 2 branch:
+  `persistence/phase-2-review-0` is the head the first review reads.
+
+## Phase 2 progress
+
+This section is the hand-over log for Phase 2, in the same form as Phase 1's.
