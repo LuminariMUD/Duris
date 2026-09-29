@@ -121,6 +121,6 @@ assert "!record.coin_payload.empty() && held.contains(record.item_uid)" in MATER
 print("[PASS] saves claim live coin piles, never spent ones, and a login loads only its own piles")
 print("[PASS] a flat-file save that carries every held item retires the transfers it replaces")
 
-MAKEFILE = (ROOT / "Makefile").read_text()
-assert "tests/async/run_item_transfer_schema_mysql.sh" in MAKEFILE
+assert "tests/async/run_item_transfer_schema_mysql.sh" in (
+    ROOT / "tests/run_db_tests.sh").read_text()
 print("items move in memory contracts passed")

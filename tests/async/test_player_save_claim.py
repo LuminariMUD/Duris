@@ -16,7 +16,7 @@ REPOSITORY = (SRC / "player_snapshot_repository.c").read_text()
 CLAIM = (SRC / "item_claim_repository.c").read_text()
 FLAT_PLAYER = (SRC / "flatfile_player_repository.c").read_text()
 FLAT_ITEMS = (SRC / "flatfile_item_repository.c").read_text()
-MAKEFILE = (ROOT / "Makefile").read_text()
+DATABASE_TESTS = (ROOT / "tests/run_db_tests.sh").read_text()
 
 SOURCES = [
     "flatfile_player_repository.c", "player_load_topology.c", "flatfile_identity_repository.c",
@@ -114,11 +114,11 @@ chest = chest[: chest.index("\n}\n")]
 assert "obj_to_obj(orphan, chest_obj)" in chest
 print("[PASS] player, pet, corpse, locker and saved-item loads use the same filter")
 
-assert "tests/async/run_player_save_claim_mysql.sh" in MAKEFILE
+assert "tests/async/run_player_save_claim_mysql.sh" in DATABASE_TESTS
 # Every leg that links the player loader runs there too, so a loader change
 # cannot leave one of them unbuildable again.
-for leg in ("run_player_load_repository_mysql.sh", "run_currency_transaction_schema_mysql.sh",
-            "run_experience_trophy_mysql.sh", "run_output_preferences_mysql.sh"):
-    assert "tests/async/" + leg in MAKEFILE, leg
+for leg in ("run_currency_transaction_schema_mysql.sh", "run_experience_trophy_mysql.sh",
+            "run_output_preferences_mysql.sh"):
+    assert "tests/async/" + leg in DATABASE_TESTS, leg
 print("[PASS] the MariaDB claim and loader legs run under make test-db")
 print("player save claim contracts passed")

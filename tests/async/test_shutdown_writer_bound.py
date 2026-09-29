@@ -59,6 +59,7 @@ assert stop.index("writing = inflight != nullptr;") < stop.index("interrupt();")
     stop.index("writer.join();")
 interrupt = body(POOL, "void sql_pool_interrupt_borrowed(void)")
 assert "pool_closing = 1;" in interrupt and "shutdown(sql_telemetry_socket(pool[i].conn), SHUT_RDWR);" in interrupt
-assert "tests/async/run_sql_pool_interrupt_mysql.sh" in (ROOT / "Makefile").read_text()
+assert "tests/async/run_sql_pool_interrupt_mysql.sh" in (
+    ROOT / "tests/run_db_tests.sh").read_text()
 print("[PASS] at the deadline a query the writer is blocked in is cut off, not waited for")
 print("shutdown writer bound contracts passed")
