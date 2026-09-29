@@ -2152,6 +2152,8 @@ bool persistence_save_character_terminal(P_char ch, int type)
 	const int room = calculate_save_room(ch, type, ch->in_room);
 	const player_save_pipeline_result queued =
 		player_save_pipeline_request(ch, PLAYER_CHECKPOINT_COMPONENT_ALL, type, room);
+	// A character leaving from inside a locker takes the locker's save with them.
+	locker_post_save_hook(ch);
 	if (queued == player_save_pipeline_result::queued ||
 	    queued == player_save_pipeline_result::coalesced)
 	{

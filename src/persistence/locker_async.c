@@ -67,9 +67,9 @@ struct locker_async_slot
 	unsigned long gen;
 	time_t dirty_at;
 	time_t retry_at; /* a failed terminal save waits for this before the pulse starts it */
+	/* The user by pid and the locker character by name, found again when a snapshot
+	 * starts: either may be extracted before then (a user saved on the way out). */
 	int user_pid;
-	P_char chLocker;
-	P_char chUser;
 };
 
 struct locker_async_job
@@ -157,8 +157,7 @@ static void slot_clear(struct locker_async_slot *s)
 }
 
 /* A failed terminal save goes back to the writer later. The locker character keeps
- * the items until one lands, and is found again by name then; its user has left, so
- * nothing stays object-locked. */
+ * the items until one lands; its user has left, so nothing stays object-locked. */
 static void slot_retry_later(struct locker_async_slot *s)
 {
 	s->state = LCHK_DIRTY;
@@ -166,8 +165,6 @@ static void slot_retry_later(struct locker_async_slot *s)
 	s->dirty_at = time(NULL);
 	s->retry_at = s->dirty_at + LOCKER_ASYNC_RETRY_SECONDS;
 	s->user_pid = 0;
-	s->chUser = NULL;
-	s->chLocker = NULL;
 }
 
 int locker_async_player_obj_locked(P_char ch)
@@ -295,9 +292,6 @@ int locker_async_mark_dirty(P_char chLocker, P_char chUser, int terminal, const 
 		return 0;
 	}
 
-	s->chLocker = chLocker;
-	if (chUser)
-		s->chUser = chUser;
 	if (terminal)
 		s->terminal = 1;
 	if (chUser && !IS_NPC(chUser))
@@ -398,7 +392,6 @@ static void apply_result(struct locker_async_result *r)
 		{
 			chLocker->specials.timer = 0;
 			extract_char(chLocker);
-			s->chLocker = NULL;
 		}
 	}
 	else if (chLocker && chUser)
@@ -413,10 +406,6 @@ static void apply_result(struct locker_async_result *r)
 		s->gen = g_gen_seq++;
 		s->dirty_at = time(NULL);
 		s->retry_at = 0;
-		if (chLocker)
-			s->chLocker = chLocker;
-		if (chUser)
-			s->chUser = chUser;
 	}
 	else if (r->ok || !s->terminal)
 	{
@@ -462,8 +451,8 @@ static int start_one_snapshot(struct locker_async_slot *s)
 	if (g_snapshots_started_this_pulse >= LOCKER_ASYNC_SNAPSHOTS_PER_PULSE)
 		return 0;
 
-	chLocker = s->chLocker ? s->chLocker : find_locker_char_by_name(s->locker_name);
-	chUser = s->chUser ? s->chUser : find_char_by_pid(s->user_pid);
+	chLocker = find_locker_char_by_name(s->locker_name);
+	chUser = find_char_by_pid(s->user_pid);
 	if (!chLocker)
 	{
 		logit(LOG_FILE, "locker_async: dirty locker char missing for %s -- clearing",
@@ -471,8 +460,6 @@ static int start_one_snapshot(struct locker_async_slot *s)
 		slot_clear(s);
 		return 0;
 	}
-	s->chLocker = chLocker;
-	s->chUser = chUser;
 
 	/* Always re-prepare live inventory onto the locker char before sealing.
 	 * Terminal leave already did LockerToPFile; a second call is mostly no-op.

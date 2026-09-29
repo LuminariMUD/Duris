@@ -20,7 +20,7 @@ for forbidden in ("sql_save_locker", "writeCharacter", "qry(", "db_query", "sql_
 # A retry waits, and nobody stays object-locked while it does: the user has left.
 retry = body("static void slot_retry_later(")
 assert "s->retry_at = s->dirty_at + LOCKER_ASYNC_RETRY_SECONDS;" in retry
-assert "s->user_pid = 0;" in retry and "s->chUser = NULL;" in retry
+assert "s->user_pid = 0;" in retry
 assert "s->retry_at > now" in body("void locker_async_pulse(")
 
 # A snapshot that cannot be captured or queued is retried if terminal, and never
