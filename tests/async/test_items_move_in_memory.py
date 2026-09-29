@@ -102,10 +102,12 @@ assert private_chest.index("locker_chest_snapshot_repository_apply_from_pool") <
 print("[PASS] locker and private chest saves claim what the chest holds; a private chest save "
       "outside a transaction goes to the writer")
 
-# A save claims a live coin pile like any item; a spent pile stays spent, and a
-# player loads only the piles his own save lists.
-leaves = body((SRC / "item_claim.c").read_text(), "bool item_claim_leaves_owner_alone(")
-assert "item.type == ITEM_MONEY && recorded == item_custody_state::destroyed" in leaves
+# A save claims a live coin pile like any item; a spent pile, like any destroyed
+# item, stays destroyed and is left out, and a player loads only the piles their
+# own save lists.
+leaves = body((SRC / "item_claim.c").read_text(), "bool item_claim_leaves_out(")
+assert "state == item_custody_state::destroyed" in leaves and "ITEM_MONEY" not in leaves
+assert "item_claim_leaves_owner_alone" not in (SRC / "item_claim_repository.c").read_text()
 LOAD = (SRC / "player_load_repository.c").read_text()
 assert "held.pid=\" +" in LOAD and "held.obj_uid=own.item_uid" in LOAD
 FLAT_PLAYER = (SRC / "flatfile_player_repository.c").read_text()

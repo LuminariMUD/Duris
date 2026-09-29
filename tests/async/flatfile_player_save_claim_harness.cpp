@@ -1,8 +1,9 @@
 // The flat-file backend claims exactly as MariaDB does: a player save writes what
 // the player holds in memory and makes the ownership catalog agree in the same
 // authority transaction. Items other owners held are taken and logged to
-// logs/log/item_claims; an item an auction holds is left out with its contents
-// and logged to logs/log/dupes; nothing refuses the save.
+// logs/log/item_claims; an item an auction holds, or one the catalog says was
+// destroyed, is left out with its contents and logged to logs/log/dupes; nothing
+// refuses the save.
 #include "flatfile/flatfile_identity_repository.h"
 #include "flatfile/flatfile_item_repository.h"
 #include "flatfile/flatfile_player_repository.h"
@@ -336,6 +337,49 @@ int main(int argc, char **argv)
 				flatfile_world_item_result::ok &&
 			corpses.empty(),
 		"a corpse leaving the world is removed");
+	// A destroyed item stays destroyed. Player 8's bag and what it holds are destroyed,
+	// as a sale for destruction leaves them; a save of player 42 captured before that
+	// still holds the bag, and leaves it and its contents out.
+	const item_owner_identity seller = { item_owner_type::player, 8, 0 };
+	establish(root, seller, { { 1060, 1060, 0, 560 }, { 1061, 1060, 1060, 561 } });
+	{
+		flatfile_authority_lock lock;
+		flatfile_authority_operation operation;
+		require(lock.acquire(root, &error) &&
+				flatfile_item_repository_prepare_player_remove(
+					root, lock, 8, &operation, &error) ==
+					flatfile_item_repository_result::ok &&
+				flatfile_authority_transaction_commit_operations(
+					root, lock, { operation }, &error) ==
+					flatfile_authority_transaction_result::ok,
+			"destroying the seller's items: " + error);
+	}
+	player_snapshot stale = snapshot_for(4);
+	stale.items = { item(1060, 560, PLAYER_SNAPSHOT_NO_PARENT), item(1061, 561, 0),
+			item(1004, 504, PLAYER_SNAPSHOT_NO_PARENT) };
+	require(flatfile_player_snapshot_apply(root, stale, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"a save holding destroyed items still commits: " + error);
+	std::vector<flatfile_item_ownership_record> destroyed;
+	require(flatfile_item_repository_load_uids(root, { 1060, 1061 }, &destroyed, &error) ==
+				flatfile_item_repository_result::ok &&
+			destroyed.size() == 2,
+		"read the destroyed records: " + error);
+	for (const auto &record : destroyed)
+		require(record.owner.type == item_owner_type::destruction &&
+				record.state == item_custody_state::destroyed,
+			"a destroyed item stays destroyed: uid=" + std::to_string(record.item_uid));
+	require(flatfile_player_snapshot_read(root, 42, &stored, &error) ==
+				flatfile_player_load_result::ok &&
+			stored.items.size() == 1 && stored.items[0].object_uid == 1004,
+		"the destroyed bag and its contents are left out of the player file");
+	const std::string left_out = text_of(path / "logs/log/dupes");
+	for (const char *line :
+	     { "save_left_out uid=1060 vnum=560 lost_by=player:42:0 held_by=destruction:0:0",
+	       "save_left_out uid=1061 vnum=561 lost_by=player:42:0 held_by=destruction:0:0" })
+		require(left_out.find(line) != std::string::npos,
+			std::string("the dupe log names each destroyed item: ") + line + "\n" +
+				left_out);
 	std::cout << "flat-file player save claim passed\n";
 	return 0;
 }

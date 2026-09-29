@@ -50,6 +50,7 @@ with tempfile.TemporaryDirectory(prefix="flat-claim-test-", dir=ROOT / "bin/test
     subprocess.run([str(binary), str(work / "root")], check=True, timeout=120)
 print("[PASS] flat-file saves claim what the player and its pets hold, in one transaction")
 print("[PASS] the auction keeps what it holds; the dupe and claim logs name each item")
+print("[PASS] a destroyed item stays destroyed and is left out of a save captured before")
 print("[PASS] a flat-file load skips what another owner holds and logs it")
 
 # One claim helper for every item graph; the custody checks that refused saves are gone.
@@ -62,7 +63,7 @@ assert "claim_graph(connection, owner, snapshot.items, claims, &written)" in REP
 assert "claim_graph(connection, owner, pet.items, claims, &written)" in REPOSITORY
 assert "INSERT INTO item_owner_audit" in CLAIM
 assert "flatfile_item_repository_prepare_claim(" in FLAT_PLAYER
-assert "item_claim_owner_is_economy(record->owner.type)" in FLAT_ITEMS
+assert "item_claim_leaves_out(record->owner, record->state)" in FLAT_ITEMS
 assert "establish_item_baseline" not in FLAT_PLAYER
 # Only the one-time legacy journal replay keeps the revision fence.
 assert "if (legacy_replay)" in REPOSITORY and "replay_fence(connection, snapshot, &skip)" in REPOSITORY

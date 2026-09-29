@@ -1,9 +1,9 @@
 // A save never refuses. It writes what its owner holds in memory and makes
 // item_current_owner agree: an item the table gives to a corpse, a locker, a room,
 // another player or a pet is taken, with an audit row per change; an item an
-// auction holds is left out with its contents and logged to the dupe log; the
-// rest of the save commits. This drives player_snapshot_repository_apply() against
-// a real server.
+// auction holds, or one the table says was destroyed, is left out with its contents
+// and logged to the dupe log; the rest of the save commits. This drives
+// player_snapshot_repository_apply() against a real server.
 #include "persistence/dupe_log.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_repository.h"
@@ -137,7 +137,10 @@ int main()
 		"(1006,1006,NULL,6,12,0,1,506,1)," // an auction
 		"(1007,1006,1006,6,12,0,1,507,1)," // inside the auctioned container
 		"(1009,1009,NULL,1,1,0,5,509,1)," // already pid 1's
-		"(1011,1011,NULL,1,1,0,5,511,3)"); // pid 1's, but quarantined
+		"(1011,1011,NULL,1,1,0,5,511,3)," // pid 1's, but quarantined
+		"(1050,1050,NULL,8,0,0,2,550,2)," // sold to a shop and destroyed
+		"(1051,1050,1050,8,0,0,2,551,2)," // destroyed with the bag it was in
+		"(1053,1053,NULL,1,1,0,2,553,1)"); // taken out of that bag before the sale
 	// A stale payload row for an item pid 1 no longer holds.
 	execute(test_connection, "INSERT INTO player_items (pid,vnum,equip_slot,container_id,"
 				 "quantity,item_type,obj_uid) VALUES (1,599,0,NULL,1,0,1099)");
@@ -155,6 +158,10 @@ int main()
 		item(1008, 508, PLAYER_SNAPSHOT_NO_PARENT), // no row at all
 		item(1009, 509, PLAYER_SNAPSHOT_NO_PARENT),
 		item(1011, 511, PLAYER_SNAPSHOT_NO_PARENT),
+		// 11: captured before the sale destroyed it, with what it held then.
+		item(1050, 550, PLAYER_SNAPSHOT_NO_PARENT),
+		item(1051, 551, 11),
+		item(1053, 553, 11),
 	};
 	player_save_apply_result applied = player_snapshot_repository_apply(test_connection, save);
 	require(applied.outcome == player_save_apply_outcome::applied,
@@ -167,6 +174,10 @@ int main()
 		"the room item must be pid 1's, inside the bag: " + owner_of(1003));
 	require(owner_of(1006) == "6:12:0:1:1006:0" && owner_of(1007) == "6:12:0:1:1006:1006",
 		"the auction keeps what it holds");
+	require(owner_of(1050) == "8:0:0:2:1050:0" && owner_of(1051) == "8:0:0:2:1050:1050" &&
+			owner_of(1053) == "1:1:0:1:1053:0",
+		"a destroyed item stays destroyed, and what it held is not moved: " +
+			owner_of(1050) + " " + owner_of(1051) + " " + owner_of(1053));
 
 	require(scalar(test_connection, "SELECT COUNT(*) FROM item_owner_audit") == "5",
 		"one audit row per item taken from another owner");
@@ -179,11 +190,10 @@ int main()
 		"the audit names each item, its vnum, the old owner and the new one");
 
 	require(scalar(test_connection, "SELECT COUNT(*) FROM player_items WHERE pid=1") == "9",
-		"every held item except the auction's container and its contents is written");
-	require(scalar(test_connection,
-		       "SELECT COUNT(*) FROM player_items WHERE pid=1 AND obj_uid IN (1006,1007,1099)") ==
-			"0",
-		"the save leaves out the auction's items and drops the stale row");
+		"every held item except the auction's and the destroyed graphs is written");
+	require(scalar(test_connection, "SELECT COUNT(*) FROM player_items WHERE pid=1 AND obj_uid "
+					"IN (1006,1007,1050,1051,1053,1099)") == "0",
+		"the save leaves out the auction's and the destroyed items and drops the stale row");
 	require(scalar(test_connection,
 		       "SELECT COUNT(*) FROM player_items child JOIN player_items bag ON "
 		       "bag.id=child.container_id WHERE child.obj_uid=1003 AND bag.obj_uid=1010") ==
@@ -199,13 +209,15 @@ int main()
 	std::stringstream lines;
 	lines << log.rdbuf();
 	const std::string text = lines.str();
-	require(text.find(
-			"save_left_out uid=1006 vnum=506 lost_by=player:1:0 held_by=auction:12:0") !=
-				std::string::npos &&
-			text.find(
-				"save_left_out uid=1007 vnum=507 lost_by=player:1:0 held_by=auction:12:0") !=
-				std::string::npos,
-		"the dupe log names both left-out items: " + text);
+	for (const char *line :
+	     { "save_left_out uid=1006 vnum=506 lost_by=player:1:0 held_by=auction:12:0",
+	       "save_left_out uid=1007 vnum=507 lost_by=player:1:0 held_by=auction:12:0",
+	       "save_left_out uid=1050 vnum=550 lost_by=player:1:0 held_by=destruction:0:0",
+	       "save_left_out uid=1051 vnum=551 lost_by=player:1:0 held_by=destruction:0:0",
+	       "save_left_out uid=1053 vnum=553 lost_by=player:1:0 held_by=player:1:0" })
+		require(text.find(line) != std::string::npos,
+			std::string("the dupe log names each left-out item: ") + line + "\n" +
+				text);
 
 	// Saving the same state again changes nothing and audits nothing.
 	save.revision = 6;

@@ -77,9 +77,12 @@ In one transaction:
    - the row names this owner: nothing to do;
    - the row names another player, corpse, locker, room or pet: set it to this owner, and write an
      `item_owner_audit` row with the item, vnum, old owner, new owner and time.
-2. **Leave out what the economy holds.** If the row names an auction, a shopkeeper or the collector,
-   the item is left out of this save and logged to `logs/log/dupes`. Those three still move items
-   through their own transactions until Phase 2, so the database is right about them.
+2. **Leave out what the economy holds, and what was destroyed.** If the row names an auction, a
+   shopkeeper or the collector, the item is left out of this save and logged to `logs/log/dupes`.
+   Those three still move items through their own transactions until Phase 2, so the database is
+   right about them. A row that says the item was destroyed (a sale for destruction, a spent coin
+   pile) is final the same way: only a save captured before the destruction can still hold the
+   item, so it is left out, with its contents, and logged.
 3. **Write the owner's rows** (`player_items`, `corpse_items`, `locker_items` and the others) from
    memory, as today.
 
@@ -532,8 +535,9 @@ taken back out (see "Removed in the ablation" below).
   - The runtime ownership cache learns a committed transfer out of a memory-held owner instead of
     refusing to publish it (`item_ownership_runtime_apply()`); it counts exactly when it was in step
     and takes the result's revision when a claim moved it.
-- **Coin piles.** A save claims a live pile like any item; only a spent (destroyed) pile is left
-  alone (`item_claim_leaves_owner_alone(item, recorded_state)`). A login loads a pile only if the
+- **Coin piles.** A save claims a live pile like any item; a spent (destroyed) pile is left out
+  (`item_claim_leaves_out()`, which since the MR !2 review applies to every destroyed item). A
+  login loads a pile only if the
   character's own saved rows hold it: the MariaDB coin query requires a `player_items` row of this
   pid, and the flat-file reconcile only mentions piles the player file lists. Before this, a pile
   dropped or given away in memory came back at the next login from its custody row, which still

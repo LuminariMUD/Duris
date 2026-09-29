@@ -1,6 +1,5 @@
 #include "item/item_claim.h"
 
-#include "core/defines.h"
 #include "persistence/dupe_log.h"
 
 bool item_claim_owner_is_economy(item_owner_type type)
@@ -9,9 +8,9 @@ bool item_claim_owner_is_economy(item_owner_type type)
 	       type == item_owner_type::collector;
 }
 
-bool item_claim_leaves_owner_alone(const player_item_snapshot &item, item_custody_state recorded)
+bool item_claim_leaves_out(const item_owner_identity &owner, item_custody_state state)
 {
-	return item.type == ITEM_MONEY && recorded == item_custody_state::destroyed;
+	return item_claim_owner_is_economy(owner.type) || state == item_custody_state::destroyed;
 }
 
 std::vector<player_item_snapshot>

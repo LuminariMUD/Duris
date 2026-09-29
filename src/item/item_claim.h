@@ -11,12 +11,14 @@
 
 /*
  * A save claims what its owner holds in memory: it writes those items and makes
- * the ownership record agree, whoever the record named before. Only items the
- * economy holds (an auction, a shopkeeper or the collector) are left out, with
- * their contents, because the economy still moves items through its own
- * transactions until Phase 2 of the persistence reset. Both backends use these
- * rules: claim_items() in item_claim_repository.c for MariaDB, and
- * flatfile_item_repository_prepare_claim() for the flat-file backend.
+ * the ownership record agree, whoever the record named before. Two kinds of item
+ * are left out, with their contents: those the economy holds (an auction, a
+ * shopkeeper or the collector), because the economy still moves items through its
+ * own transactions until Phase 2 of the persistence reset, and those whose record
+ * says they were destroyed, because only a save captured before the destruction can
+ * still hold them. Both backends use these rules: claim_items() in
+ * item_claim_repository.c for MariaDB, and flatfile_item_repository_prepare_claim()
+ * for the flat-file backend.
  */
 
 struct item_claim_dupe
@@ -47,10 +49,12 @@ inline bool item_claim_owner_is_memory_held(item_owner_type type)
 	       type == item_owner_type::pet;
 }
 
-// A coin pile the currency transactions spent stays spent: a save captured before
-// the pickup committed must not revive it. A live pile is claimed like any item,
+// True when a save must leave out an item with this record: the economy holds it, or
+// it was destroyed. A destroyed item stays destroyed, so an item sold to a shop for
+// destruction, or a coin pile the currency transactions spent, never comes back from
+// a save captured before that committed. A live coin pile is claimed like any item,
 // so coins follow the bag that holds them.
-bool item_claim_leaves_owner_alone(const player_item_snapshot &item, item_custody_state recorded);
+bool item_claim_leaves_out(const item_owner_identity &owner, item_custody_state state);
 
 // The items a save writes after its claim: all of them except those left with the
 // economy. Parent indexes are renumbered for the items that remain.

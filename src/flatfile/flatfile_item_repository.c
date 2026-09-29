@@ -2294,7 +2294,7 @@ flatfile_item_repository_result flatfile_item_repository_prepare_claim(
 										 claim.owner });
 					continue;
 				}
-				if (record && item_claim_owner_is_economy(record->owner.type))
+				if (record && item_claim_leaves_out(record->owner, record->state))
 				{
 					claim.outcome.left_out.insert(item.object_uid);
 					claim.outcome.dupes.push_back(
@@ -2327,8 +2327,6 @@ flatfile_item_repository_result flatfile_item_repository_prepare_claim(
 					claimer_changed = true;
 					continue;
 				}
-				if (item_claim_leaves_owner_alone(item, record->state))
-					continue;
 				const bool owned =
 					item_owner_identity_equal(record->owner, claim.owner);
 				if (owned && record->root_item_uid == roots[index] &&

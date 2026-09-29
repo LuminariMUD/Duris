@@ -155,7 +155,9 @@ unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,
 									  owner });
 			continue;
 		}
-		if (found != rows.end() && item_claim_owner_is_economy(found->second.owner.type))
+		if (found != rows.end() &&
+		    item_claim_leaves_out(found->second.owner,
+					  static_cast<item_custody_state>(found->second.state)))
 		{
 			outcome->left_out.insert(item.object_uid);
 			outcome->dupes.push_back(
@@ -180,9 +182,6 @@ unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,
 			continue;
 		}
 		const current_row &current = found->second;
-		if (item_claim_leaves_owner_alone(item,
-						  static_cast<item_custody_state>(current.state)))
-			continue;
 		const bool owned = same_owner(current.owner, owner);
 		if (owned && current.root_item_uid == roots[index] &&
 		    current.parent_item_uid == parent_uid && current.vnum == item.vnum &&
