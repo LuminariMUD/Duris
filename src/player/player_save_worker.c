@@ -50,6 +50,8 @@ void *apply_context = nullptr;
 player_save_worker_health health = {};
 size_t queued_bytes = 0;
 bool stop_requested = false;
+// False while a writer thread runs, including one shutdown left behind.
+bool writer_exited = true;
 
 uint64_t now_usec()
 {
@@ -210,6 +212,9 @@ void writer_main()
 	if (mysql_ready)
 		mysql_thread_end();
 #endif
+	std::lock_guard<std::mutex> lock(worker_mutex);
+	writer_exited = true;
+	writer_idle.notify_all();
 }
 
 player_save_submit_result enqueue(queued_job job)
@@ -276,13 +281,14 @@ bool player_save_worker_init(player_save_apply_fn apply, void *context)
 		return false;
 	{
 		std::lock_guard<std::mutex> lock(worker_mutex);
-		if (health.running || writer.joinable())
+		if (health.running || writer.joinable() || !writer_exited)
 			return false;
 		apply_callback = apply;
 		apply_context = context;
 		stop_requested = false;
 		health.running = true;
 		health.stop_pending = false;
+		writer_exited = false;
 	}
 	try
 	{
@@ -291,6 +297,7 @@ bool player_save_worker_init(player_save_apply_fn apply, void *context)
 	catch (const std::system_error &)
 	{
 		std::lock_guard<std::mutex> lock(worker_mutex);
+		writer_exited = true;
 		health.running = false;
 		apply_callback = nullptr;
 		apply_context = nullptr;
@@ -311,9 +318,20 @@ void player_save_worker_shutdown(void (*interrupt)(void))
 		retry_wakeup.notify_all();
 	}
 	// A job still being written is cut short: its database call returns as a lost
-	// connection, and the stopping writer leaves it pending.
+	// connection, and the stopping writer leaves it pending. Opening a new connection
+	// cannot be cut short, so a writer still in one after the grace is left behind.
 	if (writing && interrupt)
+	{
 		interrupt();
+		std::unique_lock<std::mutex> lock(worker_mutex);
+		if (!writer_idle.wait_for(
+			    lock, std::chrono::milliseconds(PLAYER_SAVE_WORKER_STOP_GRACE_MSEC),
+			    [] { return writer_exited; }))
+		{
+			lock.unlock();
+			writer.detach();
+		}
+	}
 	if (writer.joinable())
 		writer.join();
 	std::lock_guard<std::mutex> lock(worker_mutex);
@@ -421,7 +439,8 @@ player_save_worker_health player_save_worker_health_copy(void)
 void player_save_worker_reset_for_tests(void)
 {
 	player_save_worker_shutdown();
-	std::lock_guard<std::mutex> lock(worker_mutex);
+	std::unique_lock<std::mutex> lock(worker_mutex);
+	writer_idle.wait(lock, [] { return writer_exited; });
 	queue.clear();
 	queued_by_owner.clear();
 	inflight.reset();

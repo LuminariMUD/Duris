@@ -46,6 +46,9 @@ static int pool_size = 0;
 static pthread_mutex_t pool_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t pool_cond = PTHREAD_COND_INITIALIZER;
 static int pool_closing = 0;
+/* Set by sql_pool_interrupt_borrowed(): a borrower still out after it is stuck opening
+ * a connection, and shutdown leaves its handle to the process exit. */
+static int pool_interrupted = 0;
 
 static MYSQL *sql_pool_create_connection(const char *site, int slot)
 {
@@ -84,6 +87,7 @@ int sql_pool_init(int size)
 
 	pool_size = size;
 	pool_closing = 0;
+	pool_interrupted = 0;
 
 	for (int i = 0; i < size; i++)
 	{
@@ -126,8 +130,9 @@ void sql_pool_shutdown(void)
 	pthread_cond_broadcast(&pool_cond);
 
 	/* Borrowers own the MYSQL handle outside pool_mutex.  Do not close
-	 * anything until every borrower has returned its handle. */
-	while (1)
+	 * anything until every borrower has returned its handle, unless the pool was
+	 * interrupted: a borrower still out then is not coming back in time. */
+	while (!pool_interrupted)
 	{
 		int borrowed = 0;
 		for (int i = 0; i < pool_size; i++)
@@ -139,11 +144,9 @@ void sql_pool_shutdown(void)
 
 	for (int i = 0; i < pool_size; i++)
 	{
-		if (pool[i].conn)
-		{
+		if (pool[i].conn && !pool[i].in_use)
 			mysql_close(pool[i].conn);
-			pool[i].conn = NULL;
-		}
+		pool[i].conn = NULL;
 		pool[i].in_use = 0;
 	}
 
@@ -151,6 +154,7 @@ void sql_pool_shutdown(void)
 	pool = NULL;
 	pool_size = 0;
 	pool_closing = 0;
+	pool_interrupted = 0;
 
 	/* Wake every thread blocked in sql_pool_acquire().  They will see
 	 * pool == NULL and return gracefully. */
@@ -167,6 +171,7 @@ void sql_pool_interrupt_borrowed(void)
 	if (pool)
 	{
 		pool_closing = 1;
+		pool_interrupted = 1;
 		pthread_cond_broadcast(&pool_cond);
 		/* shutdown() leaves the descriptor open, so the borrower's handle stays
 		 * valid; its blocked read returns at once. */

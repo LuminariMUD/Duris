@@ -2,14 +2,17 @@
 // sql_pool_interrupt_borrowed() shuts the borrowed connection's socket down, so a query
 // blocked on a locked table returns at once as a lost connection. Without it the query
 // waits for the lock (here up to the 20 s lock_wait_timeout; on a live server, up to a
-// day). This drives the real pool against a disposable server.
+// day). A borrower opening a replacement connection cannot be cut short, so the pool's
+// shutdown leaves it. This drives the real pool against a disposable server.
 #include "sql/sql.h"
 #include "sql/sql_pool.h"
 
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <future>
 #include <iostream>
+#include <mutex>
 #include <string>
 
 namespace
@@ -49,12 +52,24 @@ void execute(MYSQL *connection, const char *sql)
 	require(mysql_query(connection, sql) == 0,
 		std::string(sql) + ": " + mysql_error(connection));
 }
+
+// While set, opening a connection hangs, as a connect to an unreachable host does.
+std::mutex connect_mutex;
+std::condition_variable connect_changed;
+bool hold_connects = false;
+bool connect_held = false;
 } // namespace
 
 // The pool opens its connections through the game's factory; here they are plain
 // connections with no read timeout, so only the interrupt can end the wait early.
 MYSQL *sql_open_configured_connection(unsigned long)
 {
+	{
+		std::unique_lock<std::mutex> lock(connect_mutex);
+		connect_held = hold_connects;
+		connect_changed.notify_all();
+		connect_changed.wait(lock, [] { return !hold_connects; });
+	}
 	MYSQL *connection = open_connection();
 	execute(connection, "SET SESSION lock_wait_timeout=20");
 	return connection;
@@ -99,6 +114,36 @@ int main()
 	sql_pool_release(borrowed);
 	execute(admin, "UNLOCK TABLES");
 	sql_pool_shutdown();
+
+	// A borrower replacing its lost connection when the interrupt comes is stuck in a
+	// connect nothing can cut short. Shutdown leaves it instead of waiting.
+	require(sql_pool_init(1) == 0, "the pool did not start again");
+	MYSQL *repairing = sql_pool_acquire();
+	require(repairing != nullptr, "no pooled connection to repair");
+	{
+		std::lock_guard<std::mutex> lock(connect_mutex);
+		hold_connects = true;
+	}
+	auto repair = std::async(std::launch::async,
+				 [repairing]() { return sql_pool_replace_connection(repairing); });
+	{
+		std::unique_lock<std::mutex> lock(connect_mutex);
+		require(connect_changed.wait_for(lock, std::chrono::seconds(5),
+						 [] { return connect_held; }),
+			"the replacement connect did not start");
+	}
+	sql_pool_interrupt_borrowed();
+	auto closing = std::async(std::launch::async, []() { sql_pool_shutdown(); });
+	const bool closed = closing.wait_for(std::chrono::seconds(3)) == std::future_status::ready;
+	{
+		std::lock_guard<std::mutex> lock(connect_mutex);
+		hold_connects = false;
+		connect_changed.notify_all();
+	}
+	require(closed, "shutdown waited for a borrower opening a connection");
+	require(repair.get() == nullptr, "a replacement must not join a pool that has shut down");
+	sql_pool_release(repairing);
+	mysql_close(repairing);
 	mysql_close(admin);
 	mysql_library_end();
 	std::cout << "sql pool interrupt MariaDB leg passed\n";
