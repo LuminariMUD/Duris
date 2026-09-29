@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Logging out and shutting down never wait on the database (persistence reset phase 1).
 
-A real server on a disposable MariaDB: with the writer stalled on a locked table, quit
-reaches the account menu at once and the save lands once the table is free; a relog
-reads it. With the database stopped, shutdown still exits within its bound and names
-the save it could not write. Run through run_mysql_stalled_writer_journey.sh, which
-sets TEST_DB_* and TEST_DB_CONTAINER; --server picks the executable.
+A real server on a disposable MariaDB: with the writer stalled on locked tables
+(player_items and log_entries), quit reaches the account menu and the game loop keeps
+answering a second connection throughout; the save and the log row land once the tables
+are free, and a relog reads the save. With the database stopped, shutdown still exits
+within its bound and names the save it could not write. Run through
+run_mysql_stalled_writer_journey.sh, which sets TEST_DB_* and TEST_DB_CONTAINER;
+--server picks the executable.
 """
 from pathlib import Path
 import argparse
@@ -13,12 +15,46 @@ import os
 import signal
 import subprocess
 import tempfile
+import threading
 import time
 import uuid
 
 import test_flatfile_combat_journey as journey
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+class LoopProbe(threading.Thread):
+    """Pings the game loop from a second connection's login prompt and records the
+    slowest reply: a loop blocked on the database stops answering it."""
+
+    def __init__(self, port):
+        super().__init__(daemon=True)
+        self.client = journey.MudClient(port)
+        self.client.expect('account name', timeout=20)
+        self.done = threading.Event()
+        self.slowest = 0.0
+        self.replies = 0
+        self.error = None
+
+    def run(self):
+        try:
+            while not self.done.is_set():
+                started = time.monotonic()
+                self.client.send('1')  # an illegal account name: re-prompted, nothing else
+                self.client.expect('Account Name:', timeout=90)
+                self.slowest = max(self.slowest, time.monotonic() - started)
+                self.replies += 1
+                time.sleep(0.2)
+        except Exception as error:  # reported by the main thread
+            self.error = error
+
+    def finish(self):
+        self.done.set()
+        self.join(timeout=100)
+        self.client.close()
+        assert self.error is None, self.error
+        return self.slowest, self.replies
 
 
 def run(server):
@@ -84,21 +120,31 @@ def run(server):
                 client.expect('Obvious exits', timeout=20)
                 client.expect('Pos: standing >', timeout=10)
 
-                # The writer stalls on a locked table; quit still leaves at once.
+                # The writer stalls on locked tables; quit still leaves, and the game
+                # loop never waits: not for the save, and not for the log row.
                 lock = subprocess.Popen(mysql + ['--unbuffered', database], stdin=subprocess.PIPE,
                                         stdout=subprocess.PIPE, text=True, env=environment,
                                         bufsize=1)
-                lock.stdin.write("LOCK TABLES player_items WRITE; SELECT 'held';\n")
+                lock.stdin.write("LOCK TABLES player_items WRITE, log_entries WRITE; "
+                                 "SELECT 'held';\n")
                 lock.stdin.flush()
                 assert lock.stdout.readline().strip() == 'held'
+                camped_rows = ("SELECT COUNT(*) FROM log_entries WHERE player_name='" +
+                               journey.CHARACTER + "' AND message='Camped'")
+                probe = LoopProbe(plain)
+                probe.start()
                 # Quitting here is camping, which has its own delay. The old terminal
-                # save timed out on the stalled writer and cancelled the camp; now the
-                # character reaches the menu while the table is still locked.
+                # save timed out on the stalled writer and cancelled the camp, and the
+                # camp's log row blocked the loop on its INSERT; now the character
+                # reaches the menu while the tables are still locked.
                 started = time.monotonic()
                 client.send('quit')
                 _, camped = client.expect_any(('ACCOUNT MENU',), timeout=60)
                 quit_elapsed = time.monotonic() - started
+                slowest, replies = probe.finish()
                 assert 'could not be saved' not in camped, camped
+                assert replies >= 10 and slowest < 3, \
+                    f'the game loop stalled: slowest reply {slowest:.1f}s over {replies}'
                 client.send('0')
                 client.close()
                 client = None
@@ -106,13 +152,15 @@ def run(server):
                 lock.stdin.close()
                 assert lock.wait(timeout=15) == 0
                 lock = None
-                # The queued save lands, and a relog reads it.
+                # The queued save and log row land, and a relog reads the save.
                 client = journey.reconnect_character(plain)
                 client.send('inventory')
                 client.expect('Pos: standing >', timeout=15)
                 assert sql(f'SELECT COUNT(*) FROM player_items WHERE pid={pid}') == held
-                print(f'camp on a stalled writer: menu after {quit_elapsed:.1f}s with the table locked; relog '
-                      'read the save', flush=True)
+                assert sql(camped_rows) == '1', 'the queued log row did not land'
+                print(f'camp on a stalled writer: menu after {quit_elapsed:.1f}s with the tables '
+                      f'locked, slowest loop reply {slowest:.2f}s; the save and log row landed '
+                      'after, and a relog read the save', flush=True)
 
                 # With the database stopped, shutdown still exits within its bound.
                 subprocess.run(['docker', 'stop', '-t', '0', os.environ['TEST_DB_CONTAINER']],

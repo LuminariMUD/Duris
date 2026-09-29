@@ -1328,6 +1328,25 @@ player_save_apply_result apply_locker(MYSQL *connection, const locker_snapshot &
 		});
 }
 
+player_save_apply_result apply_log_entry(MYSQL *connection, const log_entry_snapshot &entry)
+{
+	if (!connection || entry.kind.empty())
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+	const query_result result = execute(
+		connection,
+		"INSERT INTO log_entries (date,kind,ip_address,pid,player_name,zone_number,"
+		"room_vnum,message) VALUES (FROM_UNIXTIME(" +
+			std::to_string(entry.logged_at) + ")," + quote(connection, entry.kind) +
+			',' + quote(connection, entry.ip_address) + ',' +
+			std::to_string(entry.pid) + ',' + quote(connection, entry.player_name) +
+			',' + std::to_string(entry.zone_number) + ',' +
+			std::to_string(entry.room_vnum) + ',' + quote(connection, entry.message) +
+			')');
+	if (!result.ok)
+		return failure(result.error_code);
+	return { player_save_apply_outcome::applied, 0, 0 };
+}
+
 template <typename Apply> player_save_apply_result apply_with_pool(Apply apply)
 {
 	MYSQL *connection = sql_pool_acquire();
@@ -1424,4 +1443,16 @@ player_save_apply_result locker_snapshot_repository_apply(MYSQL *connection,
 player_save_apply_result locker_snapshot_repository_apply_from_pool(const locker_snapshot &locker)
 {
 	return apply_with_pool([&](MYSQL *connection) { return apply_locker(connection, locker); });
+}
+
+player_save_apply_result log_entry_repository_apply(MYSQL *connection,
+						    const log_entry_snapshot &entry)
+{
+	return apply_log_entry(connection, entry);
+}
+
+player_save_apply_result log_entry_repository_apply_from_pool(const log_entry_snapshot &entry)
+{
+	return apply_with_pool([&](MYSQL *connection)
+			       { return apply_log_entry(connection, entry); });
 }

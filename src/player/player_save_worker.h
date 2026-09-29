@@ -12,8 +12,9 @@
 /*
  * The one persistence writer. A single background thread applies every queued
  * save in the order it was captured: player saves (with their pets), corpse
- * saves, locker saves and saved room items. A newer save of the same owner
- * replaces its queued one and goes to the back of the queue.
+ * saves, locker saves, saved room items and log_entries rows. A newer save of the
+ * same owner replaces its queued one and goes to the back of the queue; each log
+ * row is its own owner, so none replaces another.
  *
  * A lost connection is retried at the head of the queue. Any other failure is
  * reported through the completion and the job is dropped; the caller marks the
@@ -30,6 +31,7 @@ enum class persistence_job_kind : uint8_t
 	corpse,
 	locker,
 	saved_item,
+	log,
 };
 
 enum class player_save_apply_outcome : uint8_t
@@ -99,7 +101,7 @@ inline char player_save_legacy_replay_marker = 0;
 
 using player_save_apply_fn = player_save_apply_result (*)(const player_snapshot &snapshot,
 							  void *context);
-// Writes one sealed corpse, locker or saved room item job on the writer thread.
+// Writes one sealed corpse, locker, saved room item or log job on the writer thread.
 using persistence_job_write_fn = std::function<player_save_apply_result()>;
 using persistence_job_owner = std::pair<persistence_job_kind, uint64_t>;
 

@@ -2562,12 +2562,23 @@ resume_game_loop:
 	{
 		persistence_save_all_characters_terminal(RENT_CRASH);
 		if (!player_save_pipeline_drain(30000))
+		{
+			// Log rows are counted, not named one by one.
+			size_t log_rows = 0;
 			for (const persistence_job_owner &owner :
 			     persistence_writer_pending_owners())
-				persistence_alert(AVATAR, "persistence_writer",
-						  persistence_job_kind_name(owner.first), "none",
-						  "none", "not_written", "owner=%llu",
-						  static_cast<unsigned long long>(owner.second));
+				if (owner.first == persistence_job_kind::log)
+					++log_rows;
+				else
+					persistence_alert(
+						AVATAR, "persistence_writer",
+						persistence_job_kind_name(owner.first), "none",
+						"none", "not_written", "owner=%llu",
+						static_cast<unsigned long long>(owner.second));
+			if (log_rows)
+				persistence_alert(AVATAR, "persistence_writer", "log", "none",
+						  "none", "not_written", "rows=%zu", log_rows);
+		}
 		if (!redis_world_recovery_drain(3000))
 			persistence_alert(AVATAR, "world_recovery", "shutdown", "none", "none",
 					  "pipeline_drain_failed", "shutdown_cancelled=0");

@@ -264,6 +264,8 @@ const char *persistence_job_kind_name(persistence_job_kind kind)
 		return "locker";
 	case persistence_job_kind::saved_item:
 		return "saved_item";
+	case persistence_job_kind::log:
+		return "log";
 	}
 	return "unknown";
 }

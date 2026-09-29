@@ -400,6 +400,28 @@ int main()
 			       " FROM lockers WHERE locker_name='guild.12.locker'") == "0:12",
 		"a guild locker's row names its guild");
 
+	// sql_log() queues its row on the writer: it is written with the time it was logged,
+	// and its text is escaped on the writer's connection.
+	log_entry_snapshot entry;
+	entry.logged_at = 1700000000;
+	entry.kind = "CONNECTLOG";
+	entry.ip_address = "127.0.0.1";
+	entry.pid = 1;
+	entry.player_name = "Claimer";
+	entry.zone_number = 30;
+	entry.room_vnum = 3001;
+	entry.message = "Quit Game: it's a \\ test";
+	applied = log_entry_repository_apply(test_connection, entry);
+	require(applied.outcome == player_save_apply_outcome::applied &&
+			scalar(test_connection,
+			       "SELECT CONCAT(UNIX_TIMESTAMP(date),'|',kind,'|',ip_address,'|',pid,'|',"
+			       "player_name,'|',zone_number,'|',room_vnum,'|',message) FROM "
+			       "log_entries") ==
+				"1700000000|CONNECTLOG|127.0.0.1|1|Claimer|30|3001|Quit Game: it's a "
+				"\\ test",
+		"a log row keeps its time and text: " +
+			scalar(test_connection, "SELECT message FROM log_entries"));
+
 	mysql_close(test_connection);
 	mysql_library_end();
 	std::cout << "player save claim MariaDB leg passed\n";
