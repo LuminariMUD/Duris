@@ -84,8 +84,10 @@ bool membership_records(P_acct account, std::vector<flatfile_identity_record> *r
 		value.last_login = character->last;
 		value.blocked = character->blocked;
 		value.active = true;
-		// The identity keeps the character's own racewar, which keys its domains.
+		// The identity keeps the character's own racewar, which keys its domains, and
+		// whether the account menu admits it as an immortal.
 		value.racewar = character->player_racewar;
+		value.trusted = character->racewar == ACCT_IMMORTAL;
 		value.level = character->level;
 		value.race = character->race;
 		value.primary_class = character->m_class;
@@ -171,10 +173,7 @@ P_acct from_record(const flatfile_account_record &record, std::string *error)
 		character->last = source.last_login;
 		character->blocked = source.blocked;
 		character->player_racewar = source.racewar;
-		// The admission racewar is worked out from the character's own and its level,
-		// as account.c does from a loaded character.
-		character->racewar =
-			account_admission_racewar(source.racewar, source.level > MAXLVLMORTAL);
+		character->racewar = account_admission_racewar(source.racewar, source.trusted);
 		character->level = source.level;
 		character->race = source.race;
 		character->m_class = source.primary_class;
