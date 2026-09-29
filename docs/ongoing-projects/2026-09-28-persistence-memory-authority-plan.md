@@ -865,3 +865,32 @@ taken back out (see "Removed in the ablation" below).
   environment, like the other MariaDB journeys. `test_information_cache_journey.py` failed only
   because a source edit landed during its build ("inputs changed during compilation") and passes
   alone.
+- Found while doing this, fixed in its own commit (`a970f6bec`):
+  `run_collector_catalog_schema_mysql.sh` kept its own copy of the runtime metadata query, missing
+  the economic baseline sections the verifier gained, so `make test-db` stopped there on master too.
+- `make test-db` passes in full on this branch (2026-09-29).
+
+### Phase 1 status (2026-09-29)
+
+- Steps 1 to 9 are done on `fix/7-persistence-phase-1`, with the Phase 1 tests above. Verified by
+  `make test-all` (688 of 692 at the time; the 4 failures were fixed in `599f70c5d` and pass),
+  `make test-db`, the flat-file build and full-world boot, the journeys listed under each step,
+  and the local `.env`-account session.
+- Left for Phase 1 sign-off, in this order:
+  1. merge the branch (staging runs tagged `master`) and run the staging journeys (die and loot
+     your own corpse, raise corpses as a necromancer, give an item to another player, rent, quit
+     and relog, shut down with players online);
+  2. after a day on staging, check the logs: no custody, terminal-save, death-recovery or
+     corpse-raise alerts; `rent` and `quit` gone from `COMMAND OP SLOW`; no 2-second
+     `NEVENT SLOW` stalls;
+  3. production only with the owner's go-ahead. `duris_dev` and any other database need
+     `python3 scripts/migration_runner.py run` for `0033_item_owner_audit` before this binary
+     boots (the local boot applies it).
+- Known and accepted until Phase 2: creation grants and the economy (shops, auctions, collector,
+  currency) still move items through their own transactions; the collector's death intake and
+  its scheduled collection read the runtime cache; artifacts entering a player's corpse and
+  divinely bound reward containers still make one synchronous call each at death; flat-file
+  lockers never load items at all (a missing flat-file feature). Phase 3 deletes the dead durable
+  paths (item movement transactions, the corpse lifecycle deferrals, terminal fences,
+  `player_save_pipeline_terminal_death()`, the flat-file corpse lifecycle staging code in the
+  critical command path).
