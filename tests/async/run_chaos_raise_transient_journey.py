@@ -481,10 +481,13 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                     if pet_probe and "--expect-hostile" in sys.argv[2:]:
                         print("follower raise; retrying for hostile outcome", flush=True)
                         return False
-                    item_table = "player_pet_items" if pet_probe else "player_items"
+                    # A follower holds what its corpse held, under pet custody.
+                    pet_custody = pet_probe or sql(
+                        f"SELECT COUNT(*) FROM player_pets WHERE owner_pid={pid}") == "1"
+                    item_table = "player_pet_items" if pet_custody else "player_items"
                     assert sql(f"SELECT COUNT(*) FROM {item_table} WHERE "
                                f"obj_uid IN ({UIDS[0]},{UIDS[1]})") == "2"
-                    if pet_probe:
+                    if pet_custody:
                         assert sql("SELECT COUNT(*) FROM player_items WHERE "
                                    f"obj_uid IN ({UIDS[0]},{UIDS[1]})") == "0"
                         assert sql("SELECT CONCAT(owner_type,':',owner_id,':',"
