@@ -2,22 +2,43 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-set -a
-# shellcheck disable=SC1091
-source "$ROOT/.env"
-set +a
-environment_name="${ENVIRONMENT:-${APP_ENV:-}}"
-[[ "${environment_name,,}" =~ (dev|local|test) ]] || { echo 'refusing item transfer test: environment is not development/local/test' >&2; exit 1; }
-[[ "${DB_NAME,,}" =~ (dev|local|test) ]] || { echo 'refusing item transfer test: database name is not development/local/test' >&2; exit 1; }
-export MYSQL_PWD="$DB_PASSWD"
+cd "$ROOT"
+# The transfer matrix uses only synthetic data in its own disposable server.
+# Never source the checkout's .env: it may point at the live game.
+NAME="duris-item-transfer-$$-$RANDOM"
+PASSWORD="transfer-$$-$RANDOM"
+IMAGE="${ITEM_TRANSFER_DB_IMAGE:-mariadb:10.11}"
+cleanup() { docker rm -fv "$NAME" >/dev/null 2>&1 || true; }
+trap cleanup EXIT HUP INT TERM
+if [[ "$IMAGE" == mariadb:* ]]; then PASSWORD_ENV=MARIADB_ROOT_PASSWORD; else PASSWORD_ENV=MYSQL_ROOT_PASSWORD; fi
+docker run -d --name "$NAME" -p 127.0.0.1::3306 -e "$PASSWORD_ENV=$PASSWORD" "$IMAGE" >/dev/null
+mapping="$(docker port "$NAME" 3306/tcp)"
+container_host="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$NAME")"
+export ENVIRONMENT=test
+export DB_USER=root DB_PASSWD="$PASSWORD" MYSQL_PWD="$PASSWORD"
+export DB_NAME=item_transfer_test ITEM_TRANSFER_TEST_DB_NAME=item_transfer_test
 if mysql --help 2>&1 | grep -- '--ssl-mode' >/dev/null; then MYSQL_SSL=(--ssl-mode=PREFERRED); else MYSQL_SSL=(--skip-ssl); fi
-MYSQL=(mysql "${MYSQL_SSL[@]}" -h "$DB_HOST" -P "${DB_PORT:-3306}" -u "$DB_USER" -N -B)
-"${MYSQL[@]}" "$DB_NAME" < "$ROOT/migrations/item_ownership_ledger.sql"
-"${MYSQL[@]}" "$DB_NAME" < "$ROOT/migrations/shopkeeper_item_owner.sql"
-"${MYSQL[@]}" "$DB_NAME" < "$ROOT/migrations/collector_item_owner.sql"
-DB_NAME="$DB_NAME" "$ROOT/migrations/verify_collector_item_owner.sh"
+ready=0
+for candidate in "127.0.0.1:${mapping##*:}" "host.docker.internal:${mapping##*:}" "$container_host:3306"; do
+    [[ "$candidate" == :3306 ]] && continue
+    export DB_HOST="${candidate%:*}" DB_PORT="${candidate##*:}"
+    MYSQL=(mysql "${MYSQL_SSL[@]}" --protocol=tcp --connect-timeout=3 -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -N -B)
+    for _ in $(seq 1 10); do
+        if "${MYSQL[@]}" -e 'SELECT 1' >/dev/null 2>&1; then ready=1; break 2; fi
+        sleep 1
+    done
+done
+if [[ "$ready" != 1 ]]; then
+    printf 'Disposable item transfer SQL readiness failed on the bounded local endpoints.\n' >&2
+    exit 1
+fi
+"${MYSQL[@]}" -e "CREATE DATABASE $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+"${MYSQL[@]}" "$DB_NAME" < "$ROOT/migrations/bootstrap_multithread_safe.sql"
+"${MYSQL[@]}" "$DB_NAME" < "$ROOT/migrations/critical_command_inbox_outbox.sql"
+for migration in "$ROOT"/migrations/immutable/*.sql; do
+    "${MYSQL[@]}" "$DB_NAME" < "$migration"
+done
 DB_NAME="$DB_NAME" "$ROOT/migrations/verify_item_ownership_schema.sh"
-export ITEM_TRANSFER_TEST_DB_NAME="$DB_NAME"
 mkdir -p "$ROOT/bin/tests"
 read -r -a MYSQL_CFLAGS <<< "$(mysql_config --cflags)"
 read -r -a MYSQL_LIBS <<< "$(mysql_config --libs)"

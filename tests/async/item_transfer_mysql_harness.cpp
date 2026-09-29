@@ -359,7 +359,7 @@ void check_restitution_runtime_transfer(MYSQL *connection)
 	craft.expected_from_revision = source_revision;
 	craft.expected_to_revision = source_revision;
 	craft.selected_item_uid = uid;
-	craft.target_root_item_uid = uid;
+	craft.multi_root = true;
 	craft.item_count = 1;
 	craft.items[0] = { uid, uid, 0, 1, 1901, item_custody_state::active };
 	const critical_apply_result rejected_craft = apply(connection, 16, craft);
