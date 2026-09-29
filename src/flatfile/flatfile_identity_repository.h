@@ -26,6 +26,9 @@ struct flatfile_identity_record
 	uint32_t secondary_class = 0;
 	int32_t last_room = 0;
 	int64_t last_save = 0;
+	// The account menu admits the character as an immortal (IS_TRUSTED(): above mortal
+	// level with mortal mode off). The level alone cannot tell.
+	bool trusted = false;
 };
 
 enum class flatfile_identity_result

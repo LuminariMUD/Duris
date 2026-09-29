@@ -24,6 +24,8 @@ constexpr unsigned int PLAYER_SAVE_WORKER_DEFAULT_THREADS = 1;
 constexpr uint64_t PLAYER_SAVE_WORKER_MAX_AGE_MSEC = 5 * 60 * 1000;
 constexpr uint64_t PLAYER_SAVE_WORKER_RETRY_INITIAL_MSEC = 100;
 constexpr uint64_t PLAYER_SAVE_WORKER_RETRY_MAX_MSEC = 5000;
+// How long an interrupted writer gets to stop before shutdown goes on without it.
+constexpr uint64_t PLAYER_SAVE_WORKER_STOP_GRACE_MSEC = 1000;
 
 enum class persistence_job_kind : uint8_t
 {
@@ -107,8 +109,10 @@ using persistence_job_owner = std::pair<persistence_job_kind, uint64_t>;
 
 bool player_save_worker_init(player_save_apply_fn apply, void *context);
 // Stops after the job being written. If one is being written, `interrupt` (when given)
-// is called to cut its database call short; the job then stays pending. Jobs still
-// queued are not written: persistence_writer_pending_owners() names them all.
+// is called to cut its database call short; the job then stays pending. A writer that
+// has not stopped within PLAYER_SAVE_WORKER_STOP_GRACE_MSEC after that (a new
+// connection being opened cannot be cut short) is left to finish on its own. Jobs
+// still queued are not written: persistence_writer_pending_owners() names them all.
 void player_save_worker_shutdown(void (*interrupt)(void) = nullptr);
 player_save_submit_result player_save_worker_submit(player_snapshot snapshot);
 player_save_submit_result persistence_writer_submit(persistence_job_kind kind, uint64_t owner,

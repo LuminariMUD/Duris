@@ -87,7 +87,12 @@ def run(binary, compressed, nonroot=False):
             nonlocal process, output, client
             if client: client.close(); client = None
             if process and process.poll() is None:
-                process.terminate(); process.wait(timeout=30)
+                process.terminate()
+                try:
+                    process.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
             if output: output.close()
 
         def boot():

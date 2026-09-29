@@ -41,6 +41,9 @@ struct apply_state
     // Pid 12 blocks as a query on a locked table does, until shutdown interrupts it.
     bool stuck_started = false;
     unsigned int interrupts = 0;
+    // Pid 13 blocks as opening a new connection does: the interrupt cannot end it.
+    bool connecting = false;
+    bool connected = false;
 };
 
 apply_state state;
@@ -65,6 +68,13 @@ player_save_apply_result apply_snapshot(const player_snapshot &snapshot, void *)
         state.stuck_started = true;
         state.changed.notify_all();
         state.changed.wait(lock, [] { return state.interrupts > 0; });
+        return {player_save_apply_outcome::retryable_failure, 0, 2013};
+    }
+    if (snapshot.pid == 13)
+    {
+        state.connecting = true;
+        state.changed.notify_all();
+        state.changed.wait(lock, [] { return state.connected; });
         return {player_save_apply_outcome::retryable_failure, 0, 2013};
     }
     // Pid 5 loses its connection twice, pid 9 never gets it back.
@@ -243,6 +253,33 @@ int main()
     assert(unwritten[1] == persistence_job_owner(persistence_job_kind::log, 1));
     assert(std::string(persistence_job_kind_name(persistence_job_kind::log)) == "log");
     player_save_worker_reset_for_tests();
+
+    // A writer the interrupt cannot stop is left behind after the grace: shutdown
+    // still returns and names its job. No new writer starts until it has exited.
+    assert(player_save_worker_init(apply_snapshot, nullptr));
+    assert(player_save_worker_submit(snapshot_for(13, 1)) == player_save_submit_result::accepted);
+    {
+        std::unique_lock<std::mutex> lock(state.mutex);
+        state.changed.wait(lock, [] { return state.connecting; });
+    }
+    const auto abandoning = std::chrono::steady_clock::now();
+    player_save_worker_shutdown(interrupt_writer);
+    const auto abandoned = std::chrono::steady_clock::now() - abandoning;
+    assert(abandoned >= std::chrono::milliseconds(PLAYER_SAVE_WORKER_STOP_GRACE_MSEC));
+    assert(abandoned < std::chrono::milliseconds(PLAYER_SAVE_WORKER_STOP_GRACE_MSEC + 1000));
+    const auto stuck = persistence_writer_pending_owners();
+    assert(stuck.size() == 1);
+    assert(stuck[0] == persistence_job_owner(persistence_job_kind::player, 13));
+    assert(!player_save_worker_health_copy().running);
+    assert(!player_save_worker_init(apply_snapshot, nullptr));
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        state.connected = true;
+        state.changed.notify_all();
+    }
+    player_save_worker_reset_for_tests();
+    assert(player_save_worker_init(apply_snapshot, nullptr));
+    player_save_worker_reset_for_tests();
     return 0;
 }
 '''
@@ -279,6 +316,7 @@ print("[PASS] one writer applies saves in capture order; a newer save replaces i
 print("[PASS] a lost connection is retried at the head; other failures are reported and dropped")
 print("[PASS] shutdown stops a stuck retry and names the owners it could not write")
 print("[PASS] shutdown interrupts a job stuck in a database call and names it as unwritten")
+print("[PASS] shutdown leaves a writer the interrupt cannot stop after the grace, and names its job")
 
 assert "PLAYER_SAVE_WORKER_DEFAULT_THREADS = 1" in WORKER_HEADER
 assert "std::thread writer;" in WORKER

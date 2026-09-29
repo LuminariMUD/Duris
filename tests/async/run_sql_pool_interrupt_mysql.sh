@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Shutdown cuts off a writer query blocked on the database (MR !2 review finding 5):
+# Shutdown cuts off a writer query blocked on the database (MR !2 review finding 5) and
+# leaves a borrower stuck opening a connection (review round 2, finding 2):
 # the real connection pool against a disposable MariaDB. Never sources the checkout's
 # .env.
 set -euo pipefail

@@ -29,6 +29,7 @@ HARNESS = r'''
 #include "player/player_save_journal.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_capture.h"
+#include "persistence/persistence_observability.h"
 #include "core/prototypes.h"
 #include "core/utils.h"
 
@@ -255,6 +256,20 @@ int main(int argc, char **argv)
 
     assert(player_save_pipeline_drain(5000));
     assert((take_order() == std::vector<std::string>{"44:2", "44:3"}));
+
+    // Shutdown reports a save that failed after its last pulse: the writer was still on
+    // it when the drain ran out, and the interrupt made it fail.
+    player_save_pipeline_resume();
+    hold_writer(true);
+    state.failures[41] = 1;
+    assert(player_save_pipeline_request(&alice.ch, PLAYER_COMPONENT_STATUS, 1, 3001) ==
+           player_save_pipeline_result::queued);
+    wait_until_held();
+    const int alerts_at_shutdown = alerts;
+    const auto left = player_save_pipeline_finish(persistence_observability_now_usec() + 20000,
+                                                  [] { hold_writer(false); });
+    assert(left.empty());
+    assert(alerts == alerts_at_shutdown + 1);
     player_save_pipeline_reset_for_tests();
     return 0;
 }
@@ -299,6 +314,7 @@ print("[PASS] a leftover journal is replayed once at boot and retired if anythin
 print("[PASS] a queued save leaves its owner clean; a newer save replaces the queued one")
 print("[PASS] a failed write is reported and marks its owner dirty again")
 print("[PASS] drain waits for the writer within its bound")
+print("[PASS] shutdown reports a save that failed after the last pulse")
 
 assert "PLAYER_SAVE_PIPELINE_MAX_BYTES" not in HEADER
 assert "pending_append" not in PIPELINE and "durable_ready" not in PIPELINE

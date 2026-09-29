@@ -33,7 +33,7 @@ assert "extract_char" not in failed
 # The locker character is extracted only once its save landed; a failed terminal
 # save is retried.
 result = body("static void apply_result(")
-assert result.index("if (r->ok && chLocker)") < result.index("extract_char(chLocker)")
+assert result.index("if (r->ok && chLocker && !s->rebuild_objects)") < result.index("extract_char(chLocker)")
 assert "else if (r->ok || !s->terminal)" in result
 assert result.index("else if (r->ok || !s->terminal)") < result.index("slot_retry_later(s);")
 
