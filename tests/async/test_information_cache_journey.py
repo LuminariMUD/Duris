@@ -65,12 +65,13 @@ def authority(backend, runtime):
     journey.require(host in ("127.0.0.1", "localhost"), "use a disposable loopback database")
     database = "information_journey_test_" + uuid.uuid4().hex[:12]
     environment.update(
-        PERSISTENCE_MODE="mariadb-primary", DB_TLS="FALSE", DB_HOST=host, DB_PORT="3306",
+        PERSISTENCE_MODE="mariadb-primary", DB_TLS="FALSE", DB_HOST=host, DB_PORT=os.environ.get("TEST_DB_PORT", "3306"),
         DB_USER=os.environ["TEST_DB_USER"], DB_PASSWD=os.environ["TEST_DB_PASSWORD"],
         DB_NAME=database, DB_ALLOWED_TARGETS=host + "/" + database,
         MYSQL_PWD=os.environ["TEST_DB_PASSWORD"],
     )
-    mysql = ["mysql", "--protocol=tcp", "-h", host, "-u", environment["DB_USER"], "-N", "-B"]
+    mysql = ["mysql", "--protocol=tcp", "-h", host, "-P", environment["DB_PORT"], "-u",
+             environment["DB_USER"], "-N", "-B"]
 
     def sql(statement, selected=True):
         return subprocess.check_output(mysql + ([database] if selected else []),
