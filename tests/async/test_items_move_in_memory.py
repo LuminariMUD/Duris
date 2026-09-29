@@ -89,9 +89,13 @@ print("[PASS] item and auction transfers claim what memory holds and collector t
 
 LOCKER = (SRC / "locker_async.c").read_text()
 locker_job = body(LOCKER, "static player_save_apply_result locker_write_job(")
-assert locker_job.index("START TRANSACTION") < locker_job.index("claim_items(") < \
-    locker_job.index("apply_sql_script(")
-assert "START TRANSACTION" not in body(LOCKER, "static char *build_locker_snapshot_sql(")
+assert "locker_snapshot_repository_apply_from_pool(*job.snapshot)" in locker_job
+# The writer finds the locker, then deletes, claims and writes in one transaction.
+REPOSITORY = (SRC / "player_snapshot_repository.c").read_text()
+apply_locker = body(REPOSITORY, "player_save_apply_result apply_locker(MYSQL")
+assert "apply_owner_write(" in apply_locker
+assert apply_locker.index("find_locker(") < apply_locker.index("DELETE FROM locker_items") < \
+    apply_locker.index("claim_graph(") < apply_locker.index("insert_item_rows(")
 SQL_PLAYER = (SRC / "sql_player.c").read_text()
 for signature in ("bool sql_save_locker(P_char locker_ch, int owner_pid, int owner_assoc_id)\n{",
                   "bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)\n{"):

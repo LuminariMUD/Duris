@@ -1248,6 +1248,86 @@ player_save_apply_result apply_locker_chest(MYSQL *connection, const locker_ches
 		});
 }
 
+// The locker's row and its public chest, created for a new locker.
+query_result find_locker(MYSQL *connection, const locker_snapshot &locker, uint64_t *locker_id,
+			 uint64_t *public_id)
+{
+	const std::string name = quote(connection, locker.locker_name);
+	bool found = false;
+	query_result result = read_value(
+		connection, "SELECT id FROM lockers WHERE locker_name=" + name, &found, locker_id);
+	if (result.ok && !found)
+	{
+		const std::string owner_pid =
+			locker.owner_name.empty() ?
+				"NULL" :
+				"(SELECT pid FROM player_data WHERE LOWER(name)=LOWER(" +
+					quote(connection, locker.owner_name) + ") LIMIT 1)";
+		result = execute(
+			connection,
+			"INSERT INTO lockers (locker_name,owner_pid,owner_assoc_id,racewar,race) "
+			"VALUES (" +
+				name + ',' + owner_pid + ',' +
+				(locker.owner_assoc_id > 0 ? std::to_string(locker.owner_assoc_id) :
+							     "NULL") +
+				',' + std::to_string(locker.racewar) + ',' +
+				std::to_string(locker.race) + ')');
+		*locker_id = result.ok ? mysql_insert_id(connection) : 0;
+	}
+	if (!result.ok)
+		return result;
+	if (!*locker_id)
+		return { false, EIO };
+	const std::string id = std::to_string(*locker_id);
+	result = read_value(connection,
+			    "SELECT id FROM private_chests WHERE locker_id=" + id +
+				    " AND is_public=1 ORDER BY id LIMIT 1",
+			    &found, public_id);
+	if (result.ok && !found)
+	{
+		result = execute(
+			connection,
+			"INSERT INTO private_chests (locker_id,chest_name,is_public) VALUES (" +
+				id + ",'public',1)");
+		*public_id = result.ok ? mysql_insert_id(connection) : 0;
+	}
+	if (result.ok && !*public_id)
+		return { false, EIO };
+	return result;
+}
+
+player_save_apply_result apply_locker(MYSQL *connection, const locker_snapshot &locker)
+{
+	if (!connection || locker.locker_name.empty())
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+	return apply_owner_write(
+		connection,
+		[&](std::vector<claimed_graph> *claims)
+		{
+			uint64_t locker_id = 0, public_id = 0;
+			query_result result =
+				find_locker(connection, locker, &locker_id, &public_id);
+			const std::string keys =
+				std::to_string(locker_id) + "," + std::to_string(public_id);
+			// Rows written before public chests existed have no chest_id.
+			if (result.ok)
+				result = execute(connection,
+						 "DELETE FROM locker_items WHERE locker_id=" +
+							 std::to_string(locker_id) +
+							 " AND (chest_id IS NULL OR chest_id=" +
+							 std::to_string(public_id) + ")");
+			std::vector<player_item_snapshot> written;
+			if (result.ok)
+				result = claim_graph(connection,
+						     { item_owner_type::locker, locker_id,
+						       public_id },
+						     locker.items, claims, &written);
+			return result.ok ? insert_item_rows(connection, written, keys,
+							    locker_item_tables) :
+					   result;
+		});
+}
+
 template <typename Apply> player_save_apply_result apply_with_pool(Apply apply)
 {
 	MYSQL *connection = sql_pool_acquire();
@@ -1333,4 +1413,15 @@ locker_chest_snapshot_repository_apply_from_pool(const locker_chest_snapshot &ch
 {
 	return apply_with_pool([&](MYSQL *connection)
 			       { return apply_locker_chest(connection, chest); });
+}
+
+player_save_apply_result locker_snapshot_repository_apply(MYSQL *connection,
+							  const locker_snapshot &locker)
+{
+	return apply_locker(connection, locker);
+}
+
+player_save_apply_result locker_snapshot_repository_apply_from_pool(const locker_snapshot &locker)
+{
+	return apply_with_pool([&](MYSQL *connection) { return apply_locker(connection, locker); });
 }

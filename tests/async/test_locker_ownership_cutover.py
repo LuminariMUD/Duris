@@ -109,19 +109,18 @@ class LockerOwnershipCutoverTests(unittest.TestCase):
         self.assertIn("item_transfer_reason::locker_withdraw", self.flat_items)
 
     def test_snapshot_is_not_ownership_authority_and_worker_is_pointer_free(self):
-        builder = function_body(self.snapshot, "static char *build_locker_snapshot_sql(",
-                                "/* ---------------- worker ---------------- */")
+        # The game thread only captures; the writer claims through the repository.
         for forbidden in (
             "item_current_owner",
             "item_owner_revision",
             "item_ownership_ledger",
             "item_ownership_baseline",
         ):
-            self.assertNotIn(forbidden, builder)
+            self.assertNotIn(forbidden, self.snapshot)
         job = function_body(self.snapshot, "struct locker_async_job", "struct locker_async_result")
         self.assertNotIn("P_obj", job)
         self.assertNotIn("P_char", job)
-        self.assertIn("std::shared_ptr<std::string> sql", job)
+        self.assertIn("std::shared_ptr<locker_snapshot> snapshot", job)
 
     def test_cutover_is_guarded_rerunnable_and_non_destructive(self):
         migration = (ROOT / "migrations/locker_ownership_cutover.sql").read_text()

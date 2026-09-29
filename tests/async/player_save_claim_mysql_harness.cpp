@@ -345,6 +345,61 @@ int main()
 			       "AND chest_id=2") == "1",
 		"a later chest save replaces the rows");
 
+	// A locker's public chest save runs wholly on the writer: it finds the locker's row
+	// and public chest by name, creating them for a new locker, claims what the chest
+	// holds and replaces its rows, including one written before public chests existed.
+	locker_snapshot locker;
+	locker.locker_name = "Claimer.locker";
+	locker.owner_name = "Claimer";
+	locker.racewar = 1;
+	locker.race = 2;
+	locker.items = { item(1080, 580, PLAYER_SNAPSHOT_NO_PARENT), item(1081, 581, 0) };
+	applied = locker_snapshot_repository_apply(test_connection, locker);
+	require(applied.outcome == player_save_apply_outcome::applied,
+		"a new locker's save commits");
+	const std::string locker_id = scalar(
+		test_connection, "SELECT id FROM lockers WHERE locker_name='Claimer.locker'");
+	const std::string public_id = scalar(
+		test_connection, "SELECT id FROM private_chests WHERE locker_id=" + locker_id +
+					 " AND is_public=1 AND chest_name='public'");
+	const std::string public_prefix = "5:" + locker_id + ":" + public_id + ":1:";
+	require(scalar(test_connection,
+		       "SELECT CONCAT(COALESCE(owner_pid,0),':',"
+		       "COALESCE(owner_assoc_id,0),':',racewar,':',race) FROM lockers "
+		       "WHERE id=" +
+			       locker_id) == "1:0:1:2",
+		"a new locker's row names its owner, racewar and race");
+	require(owner_of(1080) == public_prefix + "1080:0" &&
+			owner_of(1081) == public_prefix + "1080:1080" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM locker_items WHERE locker_id=" + locker_id +
+				       " AND chest_id=" + public_id) == "2",
+		"the public chest claims and writes what it holds: " + owner_of(1080));
+	execute(test_connection,
+		"INSERT INTO locker_items (locker_id,chest_id,vnum,obj_uid) VALUES (" + locker_id +
+			",NULL,599,1098)");
+	locker.items.resize(1);
+	applied = locker_snapshot_repository_apply(test_connection, locker);
+	require(applied.outcome == player_save_apply_outcome::applied &&
+			scalar(test_connection, "SELECT COUNT(*) FROM lockers WHERE "
+						"locker_name='Claimer.locker'") == "1" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM private_chests WHERE locker_id=" +
+				       locker_id) == "1" &&
+			scalar(test_connection,
+			       "SELECT GROUP_CONCAT(obj_uid) FROM locker_items WHERE locker_id=" +
+				       locker_id) == "1080",
+		"a later save finds the same locker and chest and replaces the rows");
+	locker_snapshot guild;
+	guild.locker_name = "guild.12.locker";
+	guild.owner_assoc_id = 12;
+	applied = locker_snapshot_repository_apply(test_connection, guild);
+	require(applied.outcome == player_save_apply_outcome::applied &&
+			scalar(test_connection,
+			       "SELECT CONCAT(COALESCE(owner_pid,0),':',owner_assoc_id)"
+			       " FROM lockers WHERE locker_name='guild.12.locker'") == "0:12",
+		"a guild locker's row names its guild");
+
 	mysql_close(test_connection);
 	mysql_library_end();
 	std::cout << "player save claim MariaDB leg passed\n";

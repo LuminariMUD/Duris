@@ -41,7 +41,10 @@ checks = [
     ("raw persistence execution is disabled while typed workers remain observed",
      "return false;" in texts["sql_persistence_raw.c"] and
      "sql_observed_execute_at" not in texts["sql_persistence_raw.c"] and
-     "sql_observed_execute_at" in texts["locker_async.c"]),
+     "mysql_" not in texts["locker_async.c"] and
+     "locker_snapshot_repository_apply_from_pool" in texts["locker_async.c"] and
+     "persistence_query_record(PERSISTENCE_QUERY_SITE,\n\t\t\t\t PERSISTENCE_QUERY_CONTEXT_PLAYER_SAVE_WORKER"
+     in (SRC / "player_snapshot_repository.c").read_text()),
     ("explicit trace labels remain semantic sites", "const struct persistence_query_site semantic_site" in texts["sql.c"] and "(void)label" not in texts["sql.c"]),
     ("fork context uses process origin", "static const pid_t sql_main_process_id = getpid();" in texts["sql.c"]),
     ("private trace file removed", "garp-item-trace" not in combined),

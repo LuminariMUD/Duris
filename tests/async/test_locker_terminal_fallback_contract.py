@@ -1,35 +1,40 @@
 #!/usr/bin/env python3
-"""Fail-closed contracts for every terminal locker sync fallback path."""
+"""A terminal locker save that fails goes back to the writer; nothing writes it on the
+game thread, and the locker character keeps the items until a save lands."""
 from _paths import SRC
-from pathlib import Path
 
 source = (SRC / "locker_async.c").read_text()
 
-helper_start = source.index("static int locker_sync_fallback_durable")
-helper_end = source.index("\n}\n", helper_start) + 3
-helper = source[helper_start:helper_end]
-assert "sql_save_locker" in helper
-assert "writeCharacter" in helper
-assert helper.index("sql_save_locker") < helper.index("writeCharacter")
-assert "return 1;" in helper
-assert "return 0;" in helper
 
-start = source.index("static int start_one_snapshot")
-end = source.index("\n}\n", start) + 3
-body = source[start:end]
+def body(signature):
+    start = source.index(signature)
+    end = source.index("\n}\n", start) + 3
+    return source[start:end]
 
-# Snapshot-build failure and job-queue-full must share the same durability gate.
-assert body.count("locker_sync_fallback_durable(s, chLocker)") == 2
-assert body.count("if (s->terminal && durable_ok)") == 2
-assert body.count('"terminal_not_durable"') == 2
-assert body.count("s->state = LCHK_DIRTY;") >= 2
 
-# Neither failure branch may discard the recovery fence unconditionally.
-snapshot_failed = body[body.index("if (!sql)"):body.index("if (!job.sql || !job_push")]
-job_full = body[body.index("if (!job.sql || !job_push"):]
-for label, branch in (("snapshot_failed", snapshot_failed), ("job_queue_full", job_full)):
-    assert "if (s->terminal && durable_ok)" in branch, label
-    assert "else if (s->terminal)" in branch, label
-    assert branch.index("if (s->terminal && durable_ok)") < branch.index("extract_char(chLocker)"), label
+# No synchronous database fallback anywhere in the locker save path.
+for forbidden in ("sql_save_locker", "writeCharacter", "qry(", "db_query", "sql_get_",
+                  "mysql_", "sql_persistence_connection", "locker_sync_fallback_durable"):
+    assert forbidden not in source, forbidden
 
-print("locker terminal fallback fail-closed checks passed")
+# A retry waits, and nobody stays object-locked while it does: the user has left.
+retry = body("static void slot_retry_later(")
+assert "s->retry_at = s->dirty_at + LOCKER_ASYNC_RETRY_SECONDS;" in retry
+assert "s->user_pid = 0;" in retry and "s->chUser = NULL;" in retry
+assert "s->retry_at > now" in body("void locker_async_pulse(")
+
+# A snapshot that cannot be captured or queued is retried if terminal, and never
+# extracts the locker character.
+start = body("static int start_one_snapshot(")
+failed = start[start.index("if (!job.snapshot || !job_push("):start.index("s->state = LCHK_INFLIGHT;")]
+assert failed.index("if (s->terminal)") < failed.index("slot_retry_later(s);")
+assert "extract_char" not in failed
+
+# The locker character is extracted only once its save landed; a failed terminal
+# save is retried.
+result = body("static void apply_result(")
+assert result.index("if (r->ok && chLocker)") < result.index("extract_char(chLocker)")
+assert "else if (r->ok || !s->terminal)" in result
+assert result.index("else if (r->ok || !s->terminal)") < result.index("slot_retry_later(s);")
+
+print("locker terminal saves retry through the writer and never write on the game thread")

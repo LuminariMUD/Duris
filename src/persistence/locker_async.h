@@ -1,5 +1,5 @@
 //
-// Async locker persistence: main-thread walk+snapshot, worker SQL apply.
+// Async locker persistence: main-thread snapshot, persistence writer apply.
 // Coalesce per locker and pace at most one snapshot start per pulse.
 //
 #ifndef __LOCKER_ASYNC_H__
@@ -9,7 +9,6 @@ struct char_data;
 typedef struct char_data *P_char;
 
 #define LOCKER_ASYNC_SNAPSHOTS_PER_PULSE 1
-#define LOCKER_ASYNC_MAX_INFLIGHT 1
 
 #ifdef __cplusplus
 extern "C"
@@ -28,8 +27,8 @@ extern "C"
 	/* True while this player's object-manipulation cmds should be blocked. */
 	int locker_async_player_obj_locked(P_char ch);
 
-	/* Main-thread pulse: start at most LOCKER_ASYNC_SNAPSHOTS_PER_PULSE snapshots,
- * apply worker completion results, keep in-flight bounded. */
+	/* Main-thread pulse: start at most LOCKER_ASYNC_SNAPSHOTS_PER_PULSE snapshots
+ * and apply the writer's completion results. */
 	void locker_async_pulse(void);
 
 	/* Drain outstanding jobs (copyover/shutdown). Returns 1 if all drained. */

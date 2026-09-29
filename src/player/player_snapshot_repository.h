@@ -70,4 +70,24 @@ player_save_apply_result locker_chest_snapshot_repository_apply(MYSQL *connectio
 player_save_apply_result
 locker_chest_snapshot_repository_apply_from_pool(const locker_chest_snapshot &chest);
 
+// A locker's public chest as its save writes it, keyed by the locker's name. The writer
+// finds the locker's row and public chest, creating them for a new locker, so the game
+// thread never queries for them.
+struct locker_snapshot
+{
+	std::string locker_name;
+	// A player locker's owner, looked up only to create its row; empty for guild and
+	// account lockers.
+	std::string owner_name;
+	int32_t owner_assoc_id = 0;
+	int32_t racewar = 0;
+	int32_t race = 0;
+	std::vector<player_item_snapshot> items;
+};
+
+// Replaces the public chest's rows in one transaction, claiming them for the chest.
+player_save_apply_result locker_snapshot_repository_apply(MYSQL *connection,
+							  const locker_snapshot &locker);
+player_save_apply_result locker_snapshot_repository_apply_from_pool(const locker_snapshot &locker);
+
 #endif

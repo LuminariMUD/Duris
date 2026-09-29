@@ -59,9 +59,11 @@ assert contains(extra_descr_save, "spellbook_bits")
 assert contains(extra_descr_save, "spellbook_emitted")
 assert contains(extra_descr_save, "char query[32768]")
 assert contains(extra_descr_save, "static_cast<size_t>(written) >= sizeof(query)")
-assert contains(LOCKER_ASYNC, "spellbook_bits")
-assert contains(LOCKER_ASYNC, "spellbook_emitted")
-assert contains(LOCKER_ASYNC, "sql_encode_item_extra_descr(source_keyword, source_description")
+# A public locker is saved from its snapshot, like every writer-thread save: the capture
+# merges an item's spellbook markers and the repository encodes the one that remains.
+assert contains(LOCKER_ASYNC, "player_item_snapshot_list_capture(")
+assert "sql_encode_item_extra_descr" not in LOCKER_ASYNC
+assert contains(CAPTURE, "spellbook_index")
 
 assert contains(REPOSITORY, "canonicalize_snapshot_extra_description")
 assert contains(REPOSITORY, 'sql_decode_stored_spellbook("SPELLBOOK"')

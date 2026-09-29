@@ -1,19 +1,33 @@
 #!/usr/bin/env python3
-"""Regression contracts for pooled locker connection failure hygiene."""
+"""A locker save's failed connection is rolled back and replaced like every writer job's."""
 from _paths import SRC
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-source = (SRC / "locker_async.c").read_text(encoding="utf-8", errors="replace")
+locker = (SRC / "locker_async.c").read_text(encoding="utf-8", errors="replace")
+repository = (SRC / "player_snapshot_repository.c").read_text(encoding="utf-8", errors="replace")
 
+
+def body(text, signature):
+    start = text.index(signature)
+    end = text.index("\n}\n", start) + 3
+    return text[start:end]
+
+
+pool = body(repository, "template <typename Apply> player_save_apply_result apply_with_pool(")
+owner_write = body(repository,
+                   "template <typename Write> player_save_apply_result apply_owner_write(")
+write_job = body(locker, "static player_save_apply_result locker_write_job(")
 checks = {
-    "failed connection has a repair helper": "static int repair_failed_connection(MYSQL **conn_io)" in source,
-    "pending results are drained before rollback": source.find("sql_clear_results_on(conn);") < source.find("mysql_rollback(conn)"),
-    "failed transactions are rolled back": "mysql_rollback(conn)" in source,
-    "poisoned pooled connections are replaced": "sql_pool_replace_connection(conn)" in source,
-    "replacement is returned to the writer release path": "apply_sql_script(&conn, job.sql->c_str(), &error_code)" in source,
-    "multi-statement failure does not split and replay the batch": "Fallback: split on" not in source,
-    "multi-result failure also repairs the connection": source.count("repair_failed_connection(conn_io)") >= 2,
+    "the locker save runs through the pooled repository apply":
+        "apply_with_pool([&](MYSQL *connection) { return apply_locker(connection, locker); })"
+        in repository,
+    "a lost or ambiguous connection is replaced before it goes back to the pool":
+        "sql_pool_replace_connection(connection)" in pool
+        and "applied.outcome == player_save_apply_outcome::ambiguous_commit" in pool,
+    "a failed write is rolled back": 'execute(connection, "ROLLBACK")' in owner_write,
+    "a lost connection goes back to the writer before any result is reported":
+        write_job.index("player_save_apply_outcome::retryable_failure")
+        < write_job.index("g_results.push_back(res)"),
+    "no multi-statement script is built or replayed": "apply_sql_script" not in locker,
 }
 
 for name, ok in checks.items():
