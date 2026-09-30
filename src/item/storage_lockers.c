@@ -371,7 +371,7 @@ static bool locker_handle_leave(P_char ch, StorageLocker *pLocker, int room, int
 		 * until the worker completes and extracts the locker char. */
 		if (!locker_async_mark_dirty(chLocker, ch, 1, "leave-terminal"))
 		{
-			/* async path down - keep legacy 1-tick deferred terminal event */
+			/* the async writer is full: ask it again shortly */
 			if (!get_scheduled(chLocker, event_deferredTerminalSave))
 				add_event(event_deferredTerminalSave, 1, chLocker, ch, NULL, 0,
 					  NULL, 0);
@@ -2303,41 +2303,14 @@ void StorageLocker::event_resortLocker(P_char chLocker, P_char ch, P_obj /*obj*/
 	}
 }
 
-/* Deferred terminal save event - fires 1 tick after the player leaves the
- * locker.  By this point the player has already departed and the locker room
- * has been freed.  The locker character (chLocker) still holds all items in
- * memory.  This function performs the actual SQL serialization and then
- * extracts the locker character.
- *
- * If the save fails, writeCharacter already has its own internal flat-file
- * fallback.  The failure is logged for staff attention. */
+/* The async locker writer refused the terminal save when the player left (its slots were
+ * full): ask it again a little later. The locker character keeps every item in memory until
+ * the writer takes the save, then the writer's completion extracts it. */
 static void event_deferredTerminalSave(P_char chLocker, P_char /*ch*/, P_obj /*obj*/,
 				       void * /*data*/)
 {
-	if (!chLocker)
-		return;
-
-	logit(LOG_DEBUG, "Deferred terminal save: locker_char=%s carried=%d", GET_NAME(chLocker),
-	      locker_count_carried_objects(chLocker));
-
-	/* sql_save_locker owns and commits its transaction when called through
-	 * writeCharacter. A false result preserves the locker character and all
-	 * inventory for an operator retry. */
-	if (!writeCharacter(chLocker, 3, NOWHERE))
-	{
-		logit(LOG_OBJ,
-		      "Deferred terminal save: writeCharacter failed for %s (flat fallback may have been attempted)",
-		      GET_NAME(chLocker));
-		persistence_alert(AVATAR, "locker", "deferred_terminal", "none", "none",
-				  "terminal_not_durable", "extract_refused=1");
-		return;
-	}
-
-	chLocker->specials.timer = 0;
-	char locker_name_save[MAX_INPUT_LENGTH];
-	snprintf(locker_name_save, sizeof(locker_name_save), "%s", GET_NAME(chLocker));
-	extract_char(chLocker);
-	logit(LOG_DEBUG, "Deferred terminal save: completed for %s", locker_name_save);
+	if (chLocker && !locker_async_mark_dirty(chLocker, NULL, 1, "deferred-terminal"))
+		add_event(event_deferredTerminalSave, WAIT_SEC, chLocker, NULL, NULL, 0, NULL, 0);
 }
 
 static int locker_equipcmd(P_char ch, char *arg)
@@ -3349,7 +3322,7 @@ static P_char create_locker_char(P_char chOwner, P_char ch, char *esc_locker_nam
 	GET_RACE(ch) = GET_RACE(chOwner);
 	//  init_char(ch);
 	strcpy(ch->only.pc->pwd, chOwner->only.pc->pwd);
-	writeCharacter(ch, 0, NOWHERE);
+	// Stored by the async locker writer once it holds something or its user leaves.
 	return ch;
 }
 
@@ -3407,18 +3380,10 @@ static int save_locker_char(P_char ch, int bTerminal)
 		 * locker_handle_leave). Keep fail-closed: mark terminal async. */
 		if (!locker_async_mark_dirty(chLocker, ch, 1, "save_locker_char-terminal"))
 		{
-			/* async unavailable - sync terminal save */
-			if (!writeCharacter(chLocker, 3, NOWHERE))
-			{
-				locker_log_save_failure(
-					pLocker, ch, chLocker,
-					"terminal-writeCharacter-sync-fallback",
-					"async unavailable and writeCharacter failed");
-				pLocker->PFileToLocker();
-				return 0;
-			}
-			chLocker->specials.timer = 0;
-			extract_char(chLocker);
+			locker_log_save_failure(pLocker, ch, chLocker, "terminal-async-refused",
+						"the async locker writer refused the save");
+			pLocker->PFileToLocker();
+			return 0;
 		}
 		return 1;
 	}
@@ -3426,20 +3391,10 @@ static int save_locker_char(P_char ch, int bTerminal)
 	/* Non-terminal: coalesce on dirty slot; one snapshot per pulse globally. */
 	if (!locker_async_mark_dirty(chLocker, ch, 0, "save_locker_char-nonterminal"))
 	{
-		/* async unavailable - fall back to synchronous public save */
-		if (!writeCharacter(chLocker, 0, NOWHERE))
-		{
-			locker_log_save_failure(pLocker, ch, chLocker,
-						"sync-writeCharacter-fallback",
-						"async unavailable and writeCharacter failed");
-			pLocker->PFileToLocker();
-			return 0;
-		}
-		chLocker->specials.timer = 0;
-		if (!get_scheduled(chLocker, StorageLocker::event_resortLocker))
-			add_event(StorageLocker::event_resortLocker, 1, chLocker, ch, NULL, 0, NULL,
-				  0);
-		return 1;
+		locker_log_save_failure(pLocker, ch, chLocker, "async-refused",
+					"the async locker writer refused the save");
+		pLocker->PFileToLocker();
+		return 0;
 	}
 	return 1;
 }

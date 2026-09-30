@@ -24,10 +24,10 @@ hook = body(files, "void locker_post_save_hook(P_char ch)")
 assert "IS_ROOM(ch->in_room, ROOM_LOCKER)" in hook and "world[ch->in_room].funct" in hook
 assert "(-81)" in hook
 write = body(files, "int writeCharacter(P_char ch, int type, int room)")
-queued = write[write.index("player_save_pipeline_is_nonterminal_type(type))"):]
+queued = write[write.index("CHAR_RFLAG_NO_DB_BASELINE) && queued_save)"):]
 assert queued.index("player_save_pipeline_request(") < queued.index("locker_post_save_hook(ch);") < \
     queued.index("return queued == player_save_pipeline_result::queued")
-assert write.count("locker_post_save_hook(ch);") == 3
+assert write.count("locker_post_save_hook(ch);") == 2
 assert "(-81)" not in write
 print("[PASS] writeCharacter() runs the locker post-save hook on each of its paths")
 

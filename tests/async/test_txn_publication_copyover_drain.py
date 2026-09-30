@@ -19,9 +19,9 @@ locker_save = locker[locker.index("static int save_locker_char") : locker.index(
 assert "LockerToPFile()" in locker_save
 assert "locker_async_mark_dirty" in locker_save
 assert "save_locker_char-nonterminal" in locker_save
-# Fallbacks keep durability if the worker is unavailable.
-assert "async unavailable" in locker_save
-assert "writeCharacter(chLocker, 0, NOWHERE)" in locker_save or "writeCharacter(chLocker, 3, NOWHERE)" in locker_save
+# A save the worker refuses is the caller's failure; nothing saves on the loop instead.
+assert "the async locker writer refused the save" in locker_save
+assert "writeCharacter" not in locker_save
 
 # Active offer/bid commands submit immutable typed requests without destroying
 # live objects. Durable database mutation, inbox/result, and outbox publication

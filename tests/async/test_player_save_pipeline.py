@@ -338,16 +338,11 @@ for forbidden in ("player_save_journal_", "sql_", "redis_", "fopen", "open(", "w
 print("[PASS] game-thread checkpoint and completion paths contain no external I/O")
 
 write_character = section(FILES, "int writeCharacter(P_char ch", "int deleteCharacter")
-branch = write_character.index("player_save_pipeline_is_nonterminal_type")
-assert "!sql_in_transaction()" in write_character[:branch]
-for legacy in (
-    "sql_save_player_shapechanges",
-    "sql_update_money",
-    "unequip_char",
-    "all_affects(ch, FALSE)",
-    "sql_save_player(ch",
-):
-    assert branch < write_character.index(legacy)
+# Every MariaDB save, terminal ones too, is queued: no synchronous SQL is left in it.
+branch = write_character.index("player_save_pipeline_request(")
+assert "const bool queued_save = true;" in write_character[:branch]
+for legacy in ("sql_save_player", "sql_update_money", "sql_save_locker"):
+    assert legacy not in write_character, legacy
 silent = section(ACTOTH, "bool do_save_silent(P_char ch", "void do_save(P_char")
 assert silent.index("player_save_pipeline_is_nonterminal_type") < silent.index("fopen(tmp_buf")
 assert silent.index("player_save_pipeline_request") < silent.index("writeCharacter(ch")

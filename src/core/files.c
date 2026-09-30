@@ -1423,151 +1423,6 @@ int writeItems(char *buf, P_char ch)
 	return (int)(ibuf - start);
 }
 
-static int persistence_write_character_flat_fallback(P_char ch, int type, int room)
-{
-	FILE *f;
-	char *buf, *skill_off, *affect_off, *item_off, *size_off, *witness_off, *tmp;
-	char Gbuf1[MAX_STRING_LENGTH], Gbuf2[MAX_STRING_LENGTH], dir[MAX_STRING_LENGTH];
-	int bak;
-	static char fallback_buff[SAV_MAXSIZE * 2];
-	struct stat statbuf;
-
-	if (!ch || !GET_NAME(ch))
-		return 0;
-
-	buf = fallback_buff;
-	ADD_BYTE(buf, (char)SAV_SAVEVERS);
-	ADD_BYTE(buf, (char)(short_size));
-	ADD_BYTE(buf, (char)(int_size));
-	ADD_BYTE(buf, (char)(long_size));
-	ADD_BYTE(buf, (char)type);
-
-	skill_off = buf;
-	ADD_INT(buf, (int)0);
-	witness_off = buf;
-	ADD_INT(buf, (int)0);
-	affect_off = buf;
-	ADD_INT(buf, (int)0);
-	item_off = buf;
-	ADD_INT(buf, (int)0);
-	size_off = buf;
-	ADD_INT(buf, (int)0);
-	ADD_INT(buf, (ch->specials.act3));
-	ADD_INT(buf, room);
-	ADD_LONG(buf, time(0));
-
-	buf += writeStatus(buf, ch,
-			   ((type != RENT_POOFARTI) && (type != RENT_SWAPARTI) &&
-			    (type != RENT_FIGHTARTI)) ?
-				   TRUE :
-				   FALSE);
-	ADD_INT(skill_off, (int)(buf - fallback_buff));
-	buf += writeSkills(buf, ch, MAX_SKILLS);
-#if 1
-	// remove on wipe
-	ADD_INT(witness_off, (int)(buf - fallback_buff));
-	ADD_BYTE(buf, (char)SAV_WTNSVERS);
-	ADD_INT(buf, 0);
-	buf += 1 + sizeof(int);
-#endif
-	ADD_INT(affect_off, (int)(buf - fallback_buff));
-	updateShortAffects(ch);
-	buf += writeAffects(buf, ch->affected);
-	ADD_INT(item_off, (int)(buf - fallback_buff));
-	buf += writeItems(buf, ch);
-	ADD_INT(size_off, (int)(buf - fallback_buff));
-
-	if ((int)(buf - fallback_buff) > SAV_MAXSIZE)
-	{
-		persistence_alert(AVATAR, "player_flat_fallback", "redacted", "none", "none",
-				  "fallback_too_large", "type=%d size=%d max=%d", type,
-				  (int)(buf - fallback_buff), SAV_MAXSIZE);
-		return 0;
-	}
-
-	snprintf(dir, sizeof(dir), "%s/%c", SAVE_DIR, LOWER(*ch->player.name));
-	mkdir(dir, 0775);
-	checked_snprintf(Gbuf1, sizeof(Gbuf1), "%s/", dir);
-	tmp = Gbuf1 + strlen(Gbuf1);
-	strncat(Gbuf1, GET_NAME(ch), sizeof(Gbuf1) - strlen(Gbuf1) - 1);
-	for (; *tmp; tmp++)
-		*tmp = LOWER(*tmp);
-	checked_snprintf(Gbuf2, sizeof(Gbuf2), "%s.bak", Gbuf1);
-
-	if (stat(Gbuf1, &statbuf) == 0)
-	{
-		if (rename(Gbuf1, Gbuf2) == -1)
-		{
-			persistence_alert(AVATAR, "player_flat_fallback", "redacted", "none",
-					  "none", "backup_failed", "errno=%d", errno);
-			return 0;
-		}
-		bak = 1;
-	}
-	else
-	{
-		if (errno != ENOENT)
-		{
-			persistence_alert(AVATAR, "player_flat_fallback", "redacted", "none",
-					  "none", "stat_failed", "errno=%d", errno);
-			return 0;
-		}
-		bak = 0;
-	}
-
-	f = fopen(Gbuf1, "wb");
-	if (!f)
-	{
-		persistence_alert(AVATAR, "player_flat_fallback", "redacted", "none", "none",
-				  "open_failed", "errno=%d", errno);
-		bak -= 2;
-	}
-	else
-	{
-		if (fwrite(fallback_buff, 1, (unsigned)(buf - fallback_buff), f) !=
-		    (size_t)(buf - fallback_buff))
-		{
-			persistence_alert(AVATAR, "player_flat_fallback", "redacted", "none",
-					  "none", "write_failed", "errno=%d", errno);
-			fclose(f);
-			bak -= 2;
-		}
-		else if (fclose(f))
-		{
-			persistence_alert(AVATAR, "player_flat_fallback", "redacted", "none",
-					  "none", "close_failed", "errno=%d", errno);
-			bak -= 2;
-		}
-	}
-
-	switch (bak)
-	{
-	case 1:
-		if (unlink(Gbuf2) == -1)
-			logit(LOG_FILE,
-			      "Could not delete backup pfile after fallback save errno=%d", errno);
-		[[fallthrough]];
-	case 0:
-		persistence_report(persistence_severity::ok, AVATAR, "player_flat_fallback",
-				   "redacted", "none", "none", "fallback_saved", "type=%d size=%d",
-				   type, (int)(buf - fallback_buff));
-		return 1;
-
-	case -1:
-		if (rename(Gbuf2, Gbuf1) == -1)
-		{
-			persistence_alert(AVATAR, "player_flat_fallback", "redacted", "none",
-					  "none", "restore_failed", "errno=%d", errno);
-		}
-		return 0;
-
-	case -2:
-		return 0;
-	}
-
-	return 0;
-}
-
 void delete_knownShapes(P_char ch)
 {
 	struct char_shapechange_data *curShape = ch->only.pc->knownShapes;
@@ -1579,15 +1434,6 @@ void delete_knownShapes(P_char ch)
 		FREE(pShape);
 	}
 	ch->only.pc->knownShapes = NULL;
-}
-
-void writeShapechangeData(P_char ch)
-{
-	if (IS_PC(ch) && has_innate(ch, INNATE_SHAPECHANGE))
-	{
-		if (!sql_save_player_shapechanges(ch))
-			logit(LOG_FILE, "writeShapechangeData: shapechange save failed");
-	}
 }
 
 void readShapechangeData(P_char ch)
@@ -1673,10 +1519,6 @@ void locker_post_save_hook(P_char ch)
 
 int writeCharacter(P_char ch, int type, int room)
 {
-	P_obj obj, obj2;
-	int i;
-	int result = 1;
-
 	if (!ch || !GET_NAME(ch))
 		return 0;
 
@@ -1691,10 +1533,6 @@ int writeCharacter(P_char ch, int type, int room)
 		return 0;
 
 	const bool is_locker_char = (strstr(GET_NAME(ch), ".locker") != NULL);
-	const bool terminal_type = (type == RENT_INN || type == RENT_LINKDEAD ||
-				    type == RENT_CAMPED || type == RENT_DEATH ||
-				    type == RENT_POOFARTI || type == RENT_SWAPARTI ||
-				    type == RENT_FIGHTARTI);
 	if (!is_locker_char && GET_PID(ch) > 0 && !player_save_pipeline_save_admitted(GET_PID(ch)))
 		return 0;
 	const bool corpse_raise_save_pending = corpse_raise_player_save_fenced(ch);
@@ -1714,9 +1552,16 @@ int writeCharacter(P_char ch, int type, int room)
 	    (world[ch->in_room].funct))
 		room = (*world[ch->in_room].funct)(ch->in_room, ch, (-80), NULL);
 
-	if (!is_locker_char && GET_PID(ch) > 0 && !sql_in_transaction() &&
-	    !IS_SET(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE) &&
-	    player_save_pipeline_is_nonterminal_type(type))
+#ifdef __NO_MYSQL__
+	const bool terminal_type = !player_save_pipeline_is_nonterminal_type(type);
+	const bool queued_save = !terminal_type;
+#else
+	// On MariaDB a terminal save is queued like any other; the caller disposes of the
+	// character (persistence_save_character_terminal() does the same).
+	const bool queued_save = true;
+#endif
+	if (!is_locker_char && GET_PID(ch) > 0 &&
+	    !IS_SET(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE) && queued_save)
 	{
 		room = calculate_save_room(ch, type, room);
 		const player_save_pipeline_result queued = player_save_pipeline_request(
@@ -1730,6 +1575,8 @@ int writeCharacter(P_char ch, int type, int room)
 	if (!is_locker_char &&
 	    (terminal_type || IS_SET(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE)))
 	{
+		P_obj obj, obj2;
+		int i;
 		const bool establishing_baseline =
 			IS_SET(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE);
 		room = calculate_save_room(ch, type, room);
@@ -1860,128 +1707,8 @@ int writeCharacter(P_char ch, int type, int room)
 	}
 #endif
 
-	if (!is_locker_char)
-	{
-		if (!sql_save_player_shapechanges(ch))
-		{
-			logit(LOG_FILE, "sql_save_player_shapechanges failed");
-			result = 0;
-		}
-		room = calculate_save_room(ch, type, room);
-
-		// skip locker characters for sql operations
-		sql_update_money(ch);
-		if ((type != RENT_POOFARTI) && (type != RENT_SWAPARTI) && (type != RENT_FIGHTARTI))
-			sql_update_playtime(ch);
-		sql_update_epics(ch);
-	}
-	else
-	{
-		room = calculate_save_room(ch, type, room);
-	}
-
-	if (ch->desc)
-		ch->desc->rtype = type;
-
-	// unequip everything and remove affects before saving
-	for (i = 0; i < MAX_WEAR; i++)
-		if (ch->equipment[i])
-			save_equip[i] = unequip_char(ch, i, TRUE);
-		else
-			save_equip[i] = NULL;
-
-	all_affects(ch, FALSE);
-	updateShortAffects(ch);
-
-	// save to database
-	if (strstr(GET_NAME(ch), ".locker"))
-	{
-		// save locker to database
-		int owner_pid = 0;
-		int owner_assoc_id = 0;
-
-		if (strncmp(GET_NAME(ch), "guild.", 6) == 0)
-		{
-			// guild locker: guild.X.locker - extract guild id
-			owner_assoc_id = atoi(GET_NAME(ch) + 6);
-		}
-		else if (strncmp(GET_NAME(ch), "account.", 8) == 0)
-		{
-			// account locker - stored by name, no pid
-			owner_pid = 0;
-		}
-		else
-		{
-			// player locker: playername.locker - get player's pid
-			char pname[MAX_NAME_LENGTH + 1];
-			strlcpy(pname, GET_NAME(ch), sizeof pname);
-			char *dot = strstr(pname, ".locker");
-			if (dot)
-				*dot = '\0';
-			owner_pid = sql_get_player_pid(pname);
-		}
-
-		if (!sql_save_locker(ch, owner_pid, owner_assoc_id))
-		{
-			logit(LOG_FILE, "sql_save_locker failed");
-			wizlog(AVATAR, "&+RERROR&N sql_save_locker failed");
-			persistence_alert(AVATAR, "locker", "redacted", "none", "none",
-					  "sql_save_failed", NULL);
-			if (!persistence_write_character_flat_fallback(ch, type, room))
-			{
-				persistence_alert(AVATAR, "locker", "redacted", "none", "none",
-						  "flat_fallback_failed", NULL);
-			}
-			result = 0;
-		}
-	}
-	else
-	{
-		if (!sql_save_player(ch, type, room))
-		{
-			logit(LOG_FILE, "sql_save_player failed");
-			wizlog(AVATAR, "&+RERROR&N sql_save_player failed");
-			persistence_alert(AVATAR, "player", "redacted", "none", "none",
-					  "sql_save_failed", "type=%d", type);
-			persistence_alert(AVATAR, "player", "redacted", "none", "none",
-					  "flat_fallback_retired", "journal_required=1");
-			result = 0;
-		}
-	}
-
-	// Failed saves always restore the live recovery source. Terminal inventory may
-	// be extracted only after the database save has succeeded; a flat fallback is
-	// recovery evidence, not authorization to destroy live state.
-	if (!persistence_should_extract_terminal_inventory(result != 0, terminal_type))
-	{
-		for (i = 0; i < MAX_WEAR; i++)
-			if (save_equip[i])
-				equip_char(ch, save_equip[i], i, 9);
-		for (i = 0; i < MAX_WEAR; i++)
-			save_equip[i] = NULL;
-	}
-	else
-	{
-		for (i = 0; i < MAX_WEAR; i++)
-			if (save_equip[i])
-			{
-				extract_obj(save_equip[i]);
-				save_equip[i] = NULL;
-			}
-		for (obj = ch->carrying; obj; obj = obj2)
-		{
-			obj2 = obj->next_content;
-			extract_obj(obj);
-			obj = NULL;
-		}
-	}
-
-	// reapply affects
-	all_affects(ch, TRUE);
-
-	locker_post_save_hook(ch);
-
-	return result;
+	logit(LOG_DEBUG, "writeCharacter: nothing saves %s (locker or no pid)", GET_NAME(ch));
+	return 0;
 }
 
 #endif

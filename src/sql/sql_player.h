@@ -149,19 +149,12 @@ bool sql_delete_account(const char *name, std::function<void(bool deleted)> done
 // locker functions
 // ============================================================================
 
-// save locker to db
-// for personal locker: owner_pid set, owner_assoc_id = 0
-// for guild locker: owner_pid = 0, owner_assoc_id set
-bool sql_save_locker(P_char locker_ch, int owner_pid, int owner_assoc_id);
-
 // delete locker
 std::string sql_delete_locker_statement(int owner_pid, int owner_assoc_id);
 bool sql_delete_locker(int owner_pid, int owner_assoc_id);
 bool sql_delete_locker_by_name(const char *locker_name);
 
 // private chest functions
-int sql_get_locker_id_by_name(const char *locker_name);
-int sql_get_or_create_public_chest(int locker_id);
 // private_chest_log action_type values
 #define CHEST_ACTION_OPEN 1
 #define CHEST_ACTION_CLOSE 2

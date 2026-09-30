@@ -1120,7 +1120,6 @@ bool can_hit_target(P_char, P_char);
 void moveToBackup(char *name);
 int writeCharacter(P_char, int, int);
 void restore_houses();
-void writeShapechangeData(P_char ch);
 int register_ship(int);
 int ship_registered(int);
 bool writeObjectlist(P_obj, int);

@@ -206,9 +206,6 @@ void sql_insert_new_item(P_char /*ch*/, P_obj /*obj*/) {}
 
 void sql_webinfo_toggle(P_char /*ch*/) {}
 void sql_update_level(P_char /*ch*/) {}
-void sql_update_money(P_char /*ch*/) {}
-void sql_update_epics(P_char /*ch*/) {}
-void sql_update_playtime(P_char /*ch*/) {}
 void manual_log(P_char /*ch*/) {}
 void perform_wiki_search(P_char /*ch*/, const char * /*buf*/) {}
 int sql_quest_finish(P_char /*ch*/, P_char /*giver*/, int /*type*/, int /*value*/)
@@ -2817,30 +2814,6 @@ void sql_update_level(P_char ch)
 	if (!ch || !IS_PC(ch))
 		return;
 	// level already saved in player_data
-}
-
-/* Update money info */
-void sql_update_money(P_char ch)
-{
-	if (!ch || !IS_PC(ch))
-		return;
-	// money stored as copper/silver/gold/platinum in player_data
-}
-
-/* Update playtime info */
-void sql_update_playtime(P_char ch)
-{
-	if (!ch || !IS_PC(ch))
-		return;
-	// playtime is played_time in player_data
-}
-
-/* Update player's epics: We want to record their total epics gained not epics unused */
-void sql_update_epics(P_char ch)
-{
-	if (!ch || !IS_PC(ch))
-		return;
-	// epics already in player_data
 }
 
 void manual_log(P_char ch)

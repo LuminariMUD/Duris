@@ -100,14 +100,12 @@ assert "apply_owner_write(" in apply_locker
 assert apply_locker.index("find_locker(") < apply_locker.index("DELETE FROM locker_items") < \
     apply_locker.index("claim_graph(") < apply_locker.index("insert_item_rows(")
 SQL_PLAYER = (SRC / "sql_player.c").read_text()
-for signature in ("bool sql_save_locker(P_char locker_ch, int owner_pid, int owner_assoc_id)\n{",
-                  "bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)\n{"):
-    assert "claim_items(DB, chest, held, &claim)" in body(SQL_PLAYER, signature, True), signature
+# A private chest's save is a writer job only; the writer's chest apply claims its items.
 private_chest = body(SQL_PLAYER, "bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)\n{", True)
-assert private_chest.index("locker_chest_snapshot_repository_apply_from_pool") < \
-    private_chest.index("DELETE FROM locker_items")
-print("[PASS] locker and private chest saves claim what the chest holds; a private chest save "
-      "outside a transaction goes to the writer")
+assert "locker_chest_snapshot_repository_apply_from_pool" in private_chest
+assert "DELETE FROM locker_items" not in private_chest and "claim_items(DB" not in private_chest
+assert "bool sql_save_locker(" not in SQL_PLAYER
+print("[PASS] locker and private chest saves go to the writer, which claims what the chest holds")
 
 # A save claims a live coin pile like any item; a spent pile, like any destroyed
 # item, stays destroyed and is left out, and a login loads the amount the save wrote,
