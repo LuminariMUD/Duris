@@ -226,6 +226,10 @@ const char *sql_get_player_name(int)
 {
 	return nullptr;
 }
+int sql_highest_player_pid(void)
+{
+	return 0;
+}
 bool sql_load_player_status(P_char ch, int pid)
 {
 	return false;
@@ -1086,6 +1090,7 @@ struct player_name
 	bool active;
 };
 std::unordered_map<int, player_name> names_by_pid;
+int highest_pid = 0;
 // The lowercase name to the pid a lookup gives: the active character of that name.
 std::unordered_map<std::string, int> pids_by_name;
 
@@ -1112,6 +1117,7 @@ bool sql_player_names_load(void)
 		const int pid = atoi(row[0]);
 		const bool active = row[2] && atoi(row[2]);
 		names_by_pid[pid] = { row[1], active };
+		highest_pid = std::max(highest_pid, pid);
 		auto [named, added] = pids_by_name.try_emplace(lowercase(row[1]), pid);
 		if (!added && active)
 			named->second = pid;
@@ -1132,6 +1138,12 @@ void sql_player_names_set(int pid, const char *name)
 			entry.active = false;
 	names_by_pid[pid] = { name, true };
 	pids_by_name[lower] = pid;
+	highest_pid = std::max(highest_pid, pid);
+}
+
+int sql_highest_player_pid(void)
+{
+	return highest_pid;
 }
 
 void sql_player_names_forget(int pid)

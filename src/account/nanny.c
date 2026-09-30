@@ -250,21 +250,9 @@ int getNewPCidNumb(void)
 	highestPCidNumb = allocated;
 	return allocated;
 #else
-	FILE *file;
-
-	file = fopen(SAVE_DIR "/pc_idnumb", "wt");
-	if (!file)
-	{
-		logit(LOG_FILE, "could not open pc_idnumb file for writing");
-		return -1;
-	}
-	else
-	{
-		highestPCidNumb++;
-		fprintf(file, "%ld\n", highestPCidNumb);
-		fclose(file);
-	}
-
+	// Every character's pid is in memory (sql_player_names_load()). init_char() records
+	// the new one there at once, so the next allocation is past it.
+	highestPCidNumb = sql_highest_player_pid() + 1;
 	return highestPCidNumb;
 #endif
 }
@@ -282,27 +270,7 @@ void setNewPCidNumbfromFile(void)
 	}
 	highestPCidNumb = highest;
 #else
-	FILE *file;
-
-	file = fopen(SAVE_DIR "/pc_idnumb", "rt");
-	if (!file)
-	{
-		file = fopen(SAVE_DIR "/pc_idnumb", "wt");
-		if (!file)
-		{
-			logit(LOG_FILE, "could not open pc_idnumb file for writing");
-			highestPCidNumb = 1;
-			return;
-		}
-		fprintf(file, "1");
-		fclose(file);
-		highestPCidNumb = 1;
-	}
-	else
-	{
-		REQUIRED_FSCANF(file, "%ld\n", &highestPCidNumb);
-		fclose(file);
-	}
+	highestPCidNumb = sql_highest_player_pid();
 #endif
 
 	logit(LOG_STATUS, "highest PC number is %ld", highestPCidNumb);
@@ -4494,17 +4462,16 @@ void init_char(P_char ch)
 	    !item_ownership_runtime_hydrate_owner(
 		    { item_owner_type::player, static_cast<uint64_t>(ch->only.pc->pid), 0 }, 0))
 		logit(LOG_FILE, "could not initialize new player item ownership state");
-#ifdef __NO_MYSQL__
 	if (ch->only.pc->pid > 0 && !player_revision_hydrate(ch->only.pc->pid, 0))
-		logit(LOG_FILE, "could not initialize flat-file player revision state");
-#endif
-	/*
-	 * getNewPCidNumb() allocates from the on-disk counter and touches no table, so a
-	 * brand new character has a positive pid but no player_data row. The async save
-	 * pipeline only ever UPDATEs, so it would fail with ENOENT forever. Force the
-	 * first save down the synchronous path, which is the only one that INSERTs.
-	 */
+		logit(LOG_FILE, "could not initialize new player revision state");
+	// The name is taken from now on.
+	sql_player_names_set(ch->only.pc->pid, GET_NAME(ch));
+#ifdef __NO_MYSQL__
+	/* The flat-file first save establishes the player's domains, which the save then
+	 * reads back, so it waits for the write. On MariaDB the first save is queued like
+	 * any other: the writer inserts the player_data row and its opening baselines. */
 	SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE);
+#endif
 	ch->only.pc->screen_length = DEFAULT_SCREEN_LENGTH;
 	ch->only.pc->wiz_invis = 0;
 	ch->only.pc->highest_level = 1;

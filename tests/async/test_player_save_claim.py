@@ -69,7 +69,15 @@ assert "establish_item_baseline" not in FLAT_PLAYER
 # Only the one-time legacy journal replay keeps the revision fence.
 assert "if (legacy_replay)" in REPOSITORY and "replay_fence(connection, snapshot, &skip)" in REPOSITORY
 assert "if (legacy_replay && materialized.revision >= snapshot.revision)" in FLAT_PLAYER
-assert "ensure_player_row(connection, snapshot)" in REPOSITORY
+assert "ensure_player_row(connection, snapshot, &created)" in REPOSITORY
+# A new character's first save goes through the writer: the row it creates gets the
+# opening baselines the accounting ledgers start from, and nanny no longer forces a
+# synchronous first save on MariaDB.
+assert "if (query.ok && created)\n\t\tquery = insert_opening_baselines(connection, snapshot.pid);" in REPOSITORY
+NANNY = (SRC / "nanny.c").read_text()
+new_player = NANNY[NANNY.index("ch->only.pc->pid = getNewPCidNumb();"):]
+new_player = new_player[:new_player.index("SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE);")]
+assert new_player.rstrip().endswith("#ifdef __NO_MYSQL__") or "#ifdef __NO_MYSQL__" in new_player.split("sql_player_names_set")[1]
 print("[PASS] custody checks and the revision fence are gone; a missing row is created")
 
 PIPELINE = (SRC / "player_save_pipeline.c").read_text()

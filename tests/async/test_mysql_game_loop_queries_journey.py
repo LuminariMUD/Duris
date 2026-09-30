@@ -45,9 +45,6 @@ NOT_CONVERTED = {
     # periodic artifact events
     'event_artifact_check_poof_sql', 'event_artifact_wars_sql',
     'event_artifact_check_bind_sql',
-    # character creation: the name check, the first save and its pid
-    'sql_try_get_player_pid', 'sql_begin_transaction', 'sql_commit',
-    'sql_rollback', 'sql_run_query', 'sql_run_multi_query',
 }
 
 
@@ -176,6 +173,16 @@ def run(server):
                 process.wait()
             output.close()
 
+        # The new character's first save went through the writer: its row and the
+        # opening baselines the accounting ledgers start from.
+        for table in ('player_data', 'currency_wallet_baseline', 'epic_balance_baseline',
+                      'combat_frag_baseline'):
+            count = subprocess.run(
+                mysql + [database], text=True, env=environment, check=True,
+                capture_output=True,
+                input=f"SELECT COUNT(*) FROM {table} t JOIN player_data pd ON pd.pid=t.pid "
+                      f"WHERE pd.name='{journey.CHARACTER}'").stdout.strip()
+            assert count == '1', f'{table} holds {count} rows for the new character'
         # Shutdown drained the writer: the revoked grant and its summon are gone.
         for table in ('account_bound_rewards', 'account_bound_reward_summons'):
             left = subprocess.run(mysql + [database], input='SELECT COUNT(*) FROM ' + table,

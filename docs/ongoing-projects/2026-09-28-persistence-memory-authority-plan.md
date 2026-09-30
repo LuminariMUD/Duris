@@ -1690,6 +1690,25 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   a command's read (`sql_read_for()`) tells the player.
 - With it, the game-loop queries journey lists no login-time read any more.
 
+#### A new character's first save (done)
+
+- On MariaDB a new character's first save ran the whole legacy synchronous save on the loop
+  (`sql_save_player()`: the name lookup, the status INSERT, skills, affects, items, pets and
+  shapechanges, each in the loop's transaction), because it was the only path that could
+  insert the `player_data` row, and the row took its pid from AUTO_INCREMENT. The writer's
+  save has inserted a missing row since Phase 1 (`ensure_player_row()`), so the first save
+  is now queued like any other. The writer also gives a row it creates its opening
+  baselines (`insert_opening_baselines()`: wallet, epics and frags, from the row it has just
+  written), which the legacy save did.
+- The pid comes from memory: `getNewPCidNumb()` takes the name index's highest pid plus one
+  (`sql_highest_player_pid()`) and `init_char()` records the new name and pid in the index
+  at once. The old `Players/pc_idnumb` counter had fallen far behind the rows (22 against
+  3306 in `duris_dev`) because the legacy insert ignored it; in a fresh runtime it could not
+  be written at all, so the pid was -1 until that insert. Flat-file keeps its identity
+  allocator and its synchronous first save (its domains are read back after it).
+- The game-loop queries journey checks the new character's row and its three baselines
+  after shutdown; its session no longer reaches any query outside the artifact events.
+
 ### Review round 1 (MR !3)
 
 The review of `c3ffc4b8a` (tag `persistence/phase-2-review-0`) found five defects. Each is fixed

@@ -112,6 +112,8 @@ bool sql_player_names_load(void);
 void sql_player_names_set(int pid, const char *name);
 void sql_player_names_forget(int pid);
 const char *sql_get_player_name(int pid);
+// The highest pid any character has had, for allocating the next one.
+int sql_highest_player_pid(void);
 
 // delete player from db (for pwipe, etc)
 // Transaction owners defer revision eviction until their commit is confirmed.
