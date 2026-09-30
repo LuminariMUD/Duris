@@ -3191,7 +3191,8 @@ P_obj read_object(int nr, int type)
  */
 void no_reset_zone_reset(int zone_number)
 {
-	if (!qry("SELECT reset_perc FROM zones WHERE id = '%d'", zone_number))
+	if (!qry("SELECT reset_perc FROM zones WHERE number = '%d'",
+		 zone_table[zone_number].number))
 	{
 		logit(LOG_DEBUG,
 		      "no_reset_zone_reset: could not find zone information for zone id %d",
@@ -3214,15 +3215,16 @@ void no_reset_zone_reset(int zone_number)
 	{
 		// zone_purge(zone_number);
 		reset_zone(zone_number, 0);
-		db_query("UPDATE zones SET reset_perc = '%d' WHERE id = '%d'", 0, zone_number);
+		db_query("UPDATE zones SET reset_perc = '%d' WHERE number = '%d'", 0,
+			 zone_table[zone_number].number);
 		// epic_zone_erase_touch(zone_table[zone_number].number);
 	}
 	else
 	{
 		add_event(event_reset_zone, WAIT_MIN * 60, 0, 0, 0, 0, &zone_number,
 			  sizeof(zone_number));
-		db_query("UPDATE zones SET reset_perc = '%d' WHERE id = '%d'", atoi(row[0]) + 1,
-			 zone_number);
+		db_query("UPDATE zones SET reset_perc = '%d' WHERE number = '%d'", atoi(row[0]) + 1,
+			 zone_table[zone_number].number);
 	}
 	mysql_free_result(res);
 }
