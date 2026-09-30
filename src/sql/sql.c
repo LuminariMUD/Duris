@@ -1549,12 +1549,10 @@ int initialize_mysql()
 		return -1;
 	}
 	if (!sql_player_names_load() || !account_rewards_load() || !sql_player_recipes_load() ||
-	    !artifacts_load() || !polls_load())
+	    !artifacts_load() || !polls_load() || !sql_spellbooks_load())
 	{
 		logit(LOG_STATUS,
-		      "FATAL: the character names, account rewards, recipes, artifacts or polls "
-		      "could not be read, "
-		      "aborting boot");
+		      "FATAL: the boot data held in memory could not be read, aborting boot");
 		duris_sql_exclusion_guard_release();
 		mysql_close(DB);
 		DB = NULL;

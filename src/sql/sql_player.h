@@ -267,7 +267,8 @@ Guild *sql_load_guild(unsigned int guild_id);
 bool sql_load_all_guilds(void);
 bool sql_delete_guild(unsigned int guild_id);
 
-// spellbooks (conjurable mobs)
+// spellbooks (conjurable mobs); on MariaDB read at boot and kept in memory
+bool sql_spellbooks_load(void);
 bool sql_add_spellbook_mob(int pid, int mob_vnum);
 bool sql_remove_spellbook_mob(int pid, int mob_vnum);
 bool sql_has_spellbook_mob(int pid, int mob_vnum);

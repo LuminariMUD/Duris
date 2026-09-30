@@ -24,6 +24,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <set>
 #include <new>
 #include <string>
 #include <thread>
@@ -10456,83 +10457,61 @@ bool sql_delete_guild(unsigned int guild_id)
 // spellbook (conjurable mobs) functions
 // ============================================================================
 
+// Every character's spellbook, read at boot and kept current by the game's own writes,
+// which are queued on the writer: only the game writes the spellbooks.
+static std::unordered_map<int, std::set<int>> spellbooks;
+
+bool sql_spellbooks_load(void)
+{
+	MYSQL_RES *result = db_query("select pid, mob_vnum from player_spellbooks");
+	if (!result)
+		return false;
+	spellbooks.clear();
+	while (MYSQL_ROW row = mysql_fetch_row(result))
+		if (row[0] && row[1])
+			spellbooks[atoi(row[0])].insert(atoi(row[1]));
+	mysql_free_result(result);
+	return true;
+}
+
 bool sql_add_spellbook_mob(int pid, int mob_vnum)
 {
-	if (!DB || pid <= 0)
+	if (!DB || pid <= 0 ||
+	    !sql_queue("insert ignore into player_spellbooks (pid, mob_vnum) values (%d, %d)", pid,
+		       mob_vnum))
 		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "insert ignore into player_spellbooks (pid, mob_vnum) values (%d, %d)", pid,
-		 mob_vnum);
-	return sql_run_query(query);
+	spellbooks[pid].insert(mob_vnum);
+	return true;
 }
 
 bool sql_remove_spellbook_mob(int pid, int mob_vnum)
 {
-	if (!DB || pid <= 0 || mob_vnum <= 0)
+	if (!DB || pid <= 0 || mob_vnum <= 0 ||
+	    !sql_queue("delete from player_spellbooks where pid=%d and mob_vnum=%d", pid, mob_vnum))
 		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query), "delete from player_spellbooks where pid=%d and mob_vnum=%d",
-		 pid, mob_vnum);
-	return sql_run_query(query);
+	spellbooks[pid].erase(mob_vnum);
+	return true;
 }
 
 bool sql_has_spellbook_mob(int pid, int mob_vnum)
 {
-	if (!DB || pid <= 0)
-		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "select 1 from player_spellbooks where pid=%d and mob_vnum=%d", pid, mob_vnum);
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	bool has = (mysql_num_rows(result) > 0);
-	mysql_free_result(result);
-	return has;
+	const auto book = spellbooks.find(pid);
+	return book != spellbooks.end() && book->second.count(mob_vnum);
 }
 
 // returns array of mob vnums, sets count. caller must free array.
 int *sql_get_spellbook_mobs(int pid, int *count)
 {
 	*count = 0;
-	if (!DB || pid <= 0)
+	const auto book = spellbooks.find(pid);
+	if (book == spellbooks.end() || book->second.empty())
 		return NULL;
 
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "select mob_vnum from player_spellbooks where pid=%d order by mob_vnum", pid);
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return NULL;
-
-	int num = mysql_num_rows(result);
-	if (num == 0)
-	{
-		mysql_free_result(result);
-		return NULL;
-	}
-
-	int *mobs = (int *)malloc(sizeof(int) * num);
+	int *mobs = (int *)malloc(sizeof(int) * book->second.size());
 	if (!mobs)
-	{
-		mysql_free_result(result);
 		return NULL;
-	}
-
-	MYSQL_ROW row;
-	int i = 0;
-	while ((row = mysql_fetch_row(result)) && i < num)
-	{
-		mobs[i++] = atoi(row[0]);
-	}
-	mysql_free_result(result);
-
-	*count = i;
+	for (int mob_vnum : book->second)
+		mobs[(*count)++] = mob_vnum;
 	return mobs;
 }
 
