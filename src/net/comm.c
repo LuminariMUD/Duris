@@ -2644,17 +2644,18 @@ resume_game_loop:
 	if (!_pwipe)
 	{
 		persistence_save_all_characters_terminal(RENT_CRASH);
-		// Queue every dirty locker's save now, so this drain covers it too.
+		// Queue every dirty locker's and shopkeeper's save now, so this drain covers
+		// them too.
 		locker_async_drain(0);
+		if (!save_dirty_shopkeepers(true))
+			persistence_alert(AVATAR, "shopkeeper_save", "shutdown", "none", "none",
+					  "dirty_save_failed", "shutdown_cancelled=0");
 		shutdown_writer_deadline_usec =
 			persistence_observability_now_usec() + SHUTDOWN_WRITER_SECONDS * 1000000ULL;
 		player_save_pipeline_drain(SHUTDOWN_WRITER_SECONDS * 1000ULL);
 		if (!redis_world_recovery_drain(3000))
 			persistence_alert(AVATAR, "world_recovery", "shutdown", "none", "none",
 					  "pipeline_drain_failed", "shutdown_cancelled=0");
-		if (!save_dirty_shopkeepers(true))
-			persistence_alert(AVATAR, "shopkeeper_save", "shutdown", "none", "none",
-					  "dirty_save_failed", "shutdown_cancelled=0");
 	}
 
 	PROFILES(SAVE);

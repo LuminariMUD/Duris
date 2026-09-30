@@ -1495,8 +1495,10 @@ void shopping_sell(char *arg, P_char ch, P_char keeper, int shop_nr)
 		obj_to_char(temp1, keeper);
 	}
 
-	// A new sale does not forgive an outstanding persistence failure/backoff.
-	shop_index[shop_nr].dirty = 1;
+	// The item left the player for the shopkeeper: the player's save goes first, so a
+	// crash between the two saves loses the item rather than leaving it with both.
+	currency_transaction_save_first(ch);
+	writeShopKeeper(keeper, shop_nr);
 	return;
 }
 

@@ -1,6 +1,7 @@
 #ifndef PLAYER_SNAPSHOT_REPOSITORY_H
 #define PLAYER_SNAPSHOT_REPOSITORY_H
 
+#include "flatfile/flatfile_shopkeeper_repository.h"
 #include "item/item_claim.h"
 #include "player/player_save_worker.h"
 #include <mysql/mysql.h>
@@ -32,6 +33,12 @@ struct corpse_snapshot
 	std::array<int32_t, 8> values = {};
 	std::vector<player_item_snapshot> items;
 };
+
+// Replaces a shopkeeper's row, affects and stock in one transaction.
+player_save_apply_result
+shopkeeper_snapshot_repository_apply(MYSQL *connection, const flatfile_shopkeeper_record &shop);
+player_save_apply_result
+shopkeeper_snapshot_repository_apply_from_pool(const flatfile_shopkeeper_record &shop);
 
 // Replaces the corpse row and its items in one transaction, claiming the items for
 // the corpse as a player save claims what the player holds.

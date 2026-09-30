@@ -634,7 +634,9 @@ bool sql_delete_spellbook_mobs(int pid)
 
 #else
 
+#include "flatfile/flatfile_shopkeeper_capture.h"
 #include "player/player_snapshot_capture.h"
+#include "player/player_snapshot_codec.h"
 #include "player/player_snapshot_repository.h"
 
 // globals
@@ -9060,177 +9062,6 @@ void log_shopkeeper_dirty_retry(int shop_nr, shopkeeper_save_reason reason, P_ch
 }
 }
 
-static bool sql_save_shopkeeper_item_affects(int item_id, P_obj obj)
-{
-	if (!obj || !DB || item_id <= 0)
-		return false;
-
-	for (int i = 0; i < MAX_OBJ_AFFECT; i++)
-	{
-		if (obj->affected[i].location != 0 || obj->affected[i].modifier != 0)
-		{
-			// skip duplicates
-			bool is_dup = false;
-			for (int j = 0; j < i; j++)
-			{
-				if (obj->affected[j].location == obj->affected[i].location &&
-				    obj->affected[j].modifier == obj->affected[i].modifier)
-				{
-					is_dup = true;
-					break;
-				}
-			}
-			if (is_dup)
-				continue;
-
-			char query[256];
-			snprintf(
-				query, sizeof(query),
-				"INSERT INTO shopkeeper_item_affects (item_id, location, modifier) VALUES (%d, %d, %d)",
-				item_id, obj->affected[i].location, obj->affected[i].modifier);
-			if (!sql_run_query(query))
-				return false;
-		}
-	}
-	return true;
-}
-
-static int sql_save_shopkeeper_item(int shopkeeper_id, P_obj obj, int equip_slot, int container_id)
-{
-	if (!obj || !DB || shopkeeper_id <= 0)
-		return 0;
-
-	int vnum = obj_index[obj->R_num].virtual_number;
-
-	char *esc_name = NULL;
-	char *esc_short = NULL;
-	char *esc_desc = NULL;
-	char *esc_action = NULL;
-
-	if (obj->str_mask & STRUNG_KEYS)
-		esc_name = sql_escape_string(obj->name ? obj->name : "");
-	if (obj->str_mask & STRUNG_DESC2)
-		esc_short = sql_escape_string(obj->short_description ? obj->short_description : "");
-	if (obj->str_mask & STRUNG_DESC1)
-		esc_desc = sql_escape_string(obj->description ? obj->description : "");
-	if (obj->str_mask & STRUNG_DESC3)
-		esc_action =
-			sql_escape_string(obj->action_description ? obj->action_description : "");
-
-	char container_str[32];
-	if (container_id > 0)
-		snprintf(container_str, sizeof(container_str), "%d", container_id);
-	else
-		strcpy(container_str, "NULL");
-
-	char name_str[1024], short_str[1024], desc_str[2048], action_str[2048];
-	if (esc_name)
-		snprintf(name_str, sizeof(name_str), "'%s'", esc_name);
-	else
-		strcpy(name_str, "NULL");
-	if (esc_short)
-		snprintf(short_str, sizeof(short_str), "'%s'", esc_short);
-	else
-		strcpy(short_str, "NULL");
-	if (esc_desc)
-		snprintf(desc_str, sizeof(desc_str), "'%s'", esc_desc);
-	else
-		strcpy(desc_str, "NULL");
-	if (esc_action)
-		snprintf(action_str, sizeof(action_str), "'%s'", esc_action);
-	else
-		strcpy(action_str, "NULL");
-
-	char query[8192];
-	// Shared helper formats wear_str, type_str, and bv1-5_str
-	// (NULL when matching the prototype) and frees the loaded prototype.
-	// See sql_format_item_diff_fields_and_free_proto().
-	char wear_str[32];
-	char type_str[16];
-	char material_str[16];
-	char bv1_str[32], bv2_str[32], bv3_str[32], bv4_str[32], bv5_str[32];
-	sql_format_item_diff_fields_and_free_proto(obj, wear_str, type_str, material_str, bv1_str,
-						   bv2_str, bv3_str, bv4_str, bv5_str);
-
-	snprintf(query, sizeof(query),
-		 "INSERT INTO shopkeeper_items ("
-		 "shopkeeper_id, vnum, equip_slot, container_id, quantity, "
-		 "weight, cost, timer, extra_flags, "
-		 "value0, value1, value2, value3, value4, value5, value6, value7, "
-		 "name, short_descr, description, action_descr, "
-		 "wear_flags, item_type, item_material, "
-		 "bitvector1, bitvector2, bitvector3, bitvector4, bitvector5"
-		 ") VALUES ("
-		 "%d, %d, %d, %s, 1, "
-		 "%d, %d, %ld, %lu, "
-		 "%d, %d, %d, %d, %d, %d, %d, %d, "
-		 "%s, %s, %s, %s, "
-		 "%s, %s, %s, "
-		 "%s, %s, %s, %s, %s"
-		 ")",
-		 shopkeeper_id, vnum, equip_slot, container_str, obj->weight, obj->cost,
-		 (long)obj->timer[0], (unsigned long)obj->extra_flags, obj->value[0], obj->value[1],
-		 obj->value[2], obj->value[3], obj->value[4], obj->value[5], obj->value[6],
-		 obj->value[7], name_str, short_str, desc_str, action_str, wear_str, type_str,
-		 material_str, bv1_str, bv2_str, bv3_str, bv4_str, bv5_str);
-
-	if (esc_name)
-		free(esc_name);
-	if (esc_short)
-		free(esc_short);
-	if (esc_desc)
-		free(esc_desc);
-	if (esc_action)
-		free(esc_action);
-
-	if (!sql_run_query(query))
-		return 0;
-
-	int item_id = (int)mysql_insert_id(DB);
-
-	if (!sql_save_shopkeeper_item_affects(item_id, obj))
-		return 0;
-	if (!sql_save_item_extra_descr(item_id, obj, "shopkeeper_item_extra_descr"))
-		return 0;
-
-	if (obj->contains)
-	{
-		for (P_obj content = obj->contains; content; content = content->next_content)
-		{
-			if (!sql_save_shopkeeper_item(shopkeeper_id, content, 0, item_id))
-				return 0;
-		}
-	}
-
-	return item_id;
-}
-
-static bool sql_save_shopkeeper_affects(int shopkeeper_id, P_char ch)
-{
-	if (!ch || !DB || shopkeeper_id <= 0)
-		return false;
-
-	for (struct affected_type *af = ch->affected; af; af = af->next)
-	{
-		if (IS_SET(af->flags, AFFTYPE_NOSAVE))
-			continue;
-
-		char query[512];
-		snprintf(
-			query, sizeof(query),
-			"INSERT INTO shopkeeper_affects (shopkeeper_id, type, duration, modifier, location, "
-			"bitvector1, bitvector2, bitvector3, bitvector4, bitvector5) "
-			"VALUES (%d, %d, %d, %d, %d, %lu, %lu, %lu, %lu, %lu)",
-			shopkeeper_id, af->type, af->duration, af->modifier, af->location,
-			af->bitvector, af->bitvector2, af->bitvector3, af->bitvector4,
-			af->bitvector5);
-		if (!sql_run_query(query))
-			return false;
-	}
-
-	return true;
-}
-
 bool sql_save_shopkeeper(P_char ch, int shop_nr)
 {
 	const shopkeeper_save_reason guard = validate_shopkeeper_save(ch, shop_nr);
@@ -9239,94 +9070,34 @@ bool sql_save_shopkeeper(P_char ch, int shop_nr)
 		log_shopkeeper_save_guard(ch, shop_nr, guard);
 		return false;
 	}
-
-	// start transaction
-	if (!sql_begin_transaction())
-	{
-		logit(LOG_DEBUG, "sql_save_shopkeeper: failed to start transaction for shop %d",
-		      shop_nr);
+	// The stock is captured now and written by the one persistence writer, in order
+	// with the saves around it.
+	flatfile_shopkeeper_record shop;
+	if (flatfile_shopkeeper_capture(ch, static_cast<uint32_t>(shop_nr), 1, time(0), &shop) !=
+	    player_snapshot_capture_result::ok)
 		return false;
-	}
-
-	int mob_vnum = mob_index[GET_RNUM(ch)].virtual_number;
-	// Fixed shops can be moved by game mechanics after binding. Their stock
-	// remains owned by that shop and cold-restores at its configured home;
-	// only roaming shops persist a changing location.
-	int room_vnum = shop_index[shop_nr].shop_is_roaming ? world[ch->in_room].number :
-							      shop_index[shop_nr].in_room;
-	long save_time = time(0);
-
-	char del_query[128];
-	snprintf(del_query, sizeof(del_query), "DELETE FROM shopkeepers WHERE shop_id=%d", shop_nr);
-	if (!sql_run_query(del_query))
-	{
-		logit(LOG_DEBUG, "sql_save_shopkeeper: failed to delete old shopkeeper %d",
-		      shop_nr);
-		sql_rollback();
-		return false;
-	}
-
-	char ins_query[256];
-	snprintf(
-		ins_query, sizeof(ins_query),
-		"INSERT INTO shopkeepers (shop_id, mob_vnum, room_vnum, save_time) VALUES (%d, %d, %d, FROM_UNIXTIME(NULLIF(%ld,0)))",
-		shop_nr, mob_vnum, room_vnum, save_time);
-
-	if (!sql_run_query(ins_query))
-	{
-		logit(LOG_DEBUG, "sql_save_shopkeeper: failed to insert shopkeeper %d", shop_nr);
-		sql_rollback();
-		return false;
-	}
-
-	int shopkeeper_id = (int)mysql_insert_id(DB);
-
-	if (!sql_save_shopkeeper_affects(shopkeeper_id, ch))
-	{
-		logit(LOG_DEBUG, "sql_save_shopkeeper: failed to save affects for shop %d",
-		      shop_nr);
-		sql_rollback();
-		return false;
-	}
-
-	for (int i = 0; i < MAX_WEAR; i++)
-	{
-		if (ch->equipment[i])
-		{
-			if (!sql_save_shopkeeper_item(shopkeeper_id, ch->equipment[i], i + 1, 0))
-			{
-				logit(LOG_DEBUG,
-				      "sql_save_shopkeeper: failed to save equip slot %d for shop %d",
-				      i, shop_nr);
-				sql_rollback();
-				return false;
-			}
-		}
-	}
-
+	// Fixed shops can be moved by game mechanics after binding. Their stock remains
+	// owned by that shop and cold-restores at its configured home; only roaming shops
+	// persist a changing location.
+	if (!shop_index[shop_nr].shop_is_roaming)
+		shop.room_vnum = shop_index[shop_nr].in_room;
+	// Producing stock is regenerated from the shop's definition, not saved.
 	for (P_obj obj = ch->carrying; obj; obj = obj->next_content)
-	{
-		// skip producing items - they're regenerated from zone definitions
 		if (shop_producing(obj, shop_nr))
-			continue;
-		if (!sql_save_shopkeeper_item(shopkeeper_id, obj, 0, 0))
 		{
-			logit(LOG_DEBUG,
-			      "sql_save_shopkeeper: failed to save inventory item for shop %d",
-			      shop_nr);
-			sql_rollback();
-			return false;
+			std::vector<player_item_snapshot> produced, rest;
+			if (player_item_snapshot_extract_subtree(shop.items, obj->obj_uid,
+								 &produced, &rest) !=
+			    player_snapshot_codec_result::ok)
+				return false;
+			shop.items = std::move(rest);
 		}
-	}
-
-	if (!sql_commit())
-	{
-		logit(LOG_DEBUG, "sql_save_shopkeeper: failed to commit for shop %d", shop_nr);
-		sql_rollback();
-		return false;
-	}
-
-	return true;
+	const size_t bytes = sizeof(shop) + shop.items.size() * sizeof(player_item_snapshot);
+	const player_save_submit_result submitted = persistence_writer_submit(
+		persistence_job_kind::shopkeeper, static_cast<uint64_t>(shop_nr), bytes,
+		[shop]() { return shopkeeper_snapshot_repository_apply_from_pool(shop); });
+	return submitted == player_save_submit_result::accepted ||
+	       submitted == player_save_submit_result::replaced;
 }
 
 bool sql_delete_shopkeeper(int shop_nr)

@@ -19,7 +19,7 @@ save = sql[save_start:sql.index("bool sql_delete_shopkeeper", save_start)]
 flush_marker = "void sql_save_dirty_shopkeepers(" if baseline else "bool sql_save_dirty_shopkeepers("
 flush_start = sql.index(flush_marker) if baseline else sql.rindex(flush_marker)
 flush = sql[flush_start:sql.index("static P_obj sql_load_saved_item_contents", flush_start)]
-guards = "" if baseline else sql[sql.rfind("namespace", 0, sql.index("enum class shopkeeper_save_reason")):sql.index("static bool sql_save_shopkeeper_item_affects")]
+guards = "" if baseline else sql[sql.rfind("namespace", 0, sql.index("enum class shopkeeper_save_reason")):save_start]
 files = (subprocess.check_output(["git", "show", "440248b17:src/core/files.c"], cwd=ROOT, text=True)
          if baseline else (ROOT / "src/core/files.c").read_text())
 direct_start = files.index("int writeShopKeeper(P_char ch)") if baseline else files.index(
@@ -30,6 +30,8 @@ preamble = r'''
 #include "economy/shopkeeper_save_policy.h"
 #include <cassert>
 #include <cstdarg>
+#include <cstdint>
+#include <utility>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -38,7 +40,7 @@ preamble = r'''
 constexpr int NOWHERE = -1, LOG_DEBUG = 0, MAX_WEAR = 2;
 struct Character;
 using P_char = Character *;
-struct Object { Object *next_content = nullptr; };
+struct Object { Object *next_content = nullptr; unsigned long obj_uid = 0; };
 using P_obj = Object *;
 using mob_proc = int (*)(P_char, P_char, int, char *);
 struct npc_data { int shopkeeper_shop_id = -1; };
@@ -112,6 +114,26 @@ int mysql_insert_id(bool) { return 1; }
 bool sql_save_shopkeeper_affects(int, P_char) { return true; }
 bool sql_save_shopkeeper_item(int, P_obj, int, int) { return item_ok; }
 bool shop_producing(P_obj, int) { return false; }
+// The save captures the stock on the game thread and queues it on the writer.
+enum class player_snapshot_capture_result { ok, failed };
+enum class player_snapshot_codec_result { ok };
+struct player_item_snapshot {};
+struct flatfile_shopkeeper_record { int room_vnum = 0; std::vector<player_item_snapshot> items; };
+enum class persistence_job_kind { shopkeeper };
+enum class player_save_submit_result { accepted, replaced, refused };
+struct player_save_apply_result {};
+int captures = 0, queued = 0;
+bool capture_ok = true, queue_ok = true;
+player_snapshot_capture_result flatfile_shopkeeper_capture(P_char, uint32_t, uint64_t, int64_t,
+                                                           flatfile_shopkeeper_record *)
+{ ++captures; return capture_ok ? player_snapshot_capture_result::ok : player_snapshot_capture_result::failed; }
+player_snapshot_codec_result player_item_snapshot_extract_subtree(
+    const std::vector<player_item_snapshot> &, uint64_t, std::vector<player_item_snapshot> *,
+    std::vector<player_item_snapshot> *) { return player_snapshot_codec_result::ok; }
+player_save_apply_result shopkeeper_snapshot_repository_apply_from_pool(const flatfile_shopkeeper_record &) { return {}; }
+template <typename Write>
+player_save_submit_result persistence_writer_submit(persistence_job_kind, uint64_t, size_t, Write)
+{ ++queued; return queue_ok ? player_save_submit_result::accepted : player_save_submit_result::refused; }
 '''
 main = r'''
 int main() {
@@ -127,11 +149,11 @@ int main() {
     mob_index[0].func.mob = trainer_proc;
     shops[0].keeper = -1;
     assert(!sql_save_dirty_shopkeepers(false));
-    assert(shops[0].dirty && begins==0 && writes==0);
+    assert(shops[0].dirty && captures==0 && queued==0);
     assert(logs.back().find("reason=invalid_keeper") != std::string::npos);
     auto first_logs=logs.size();
     for (int i=0; i<100; ++i) assert(!sql_save_dirty_shopkeepers(false));
-    assert(logs.size()==first_logs && begins==0);
+    assert(logs.size()==first_logs && captures==0);
     clock_now += 60;
     assert(!sql_save_dirty_shopkeepers(false));
     assert(logs.size()==first_logs+1 && shops[0].dirty);
@@ -143,13 +165,13 @@ int main() {
     shops[0].dirty = 1;
     assert(sql_save_dirty_shopkeepers(true));
     assert(mob_index[0].qst_func == world_quest_proc && mob_index[0].func.mob == trainer_proc);
-    assert(!shops[0].dirty && begins==1 && commits==1);
+    assert(!shops[0].dirty && queued==1);
     assert(shops[0].dirty_save_retry.failure_count==0);
     shops[0].dirty = 1;
     mob_index[0].qst_func = trainer_proc;
     assert(sql_save_dirty_shopkeepers(true));
     assert(mob_index[0].qst_func == trainer_proc && mob_index[0].func.mob == trainer_proc);
-    assert(!shops[0].dirty && commits==2);
+    assert(!shops[0].dirty && queued==2);
 
     // Invalid configured keeper must not silently discard retry state.
     shops[0].dirty=1; shops[0].keeper=-1;
@@ -168,23 +190,19 @@ int main() {
     assert(!sql_save_dirty_shopkeepers(true) && shops[0].dirty);
     assert(logs.back().find("reason=keeper_ambiguous") != std::string::npos);
     keeper.next=nullptr;
-    // Transaction failures never clear dirty; forced flush reports failure.
-    begin_ok=false;
-    assert(!sql_save_dirty_shopkeepers(true) && shops[0].dirty && begins==3);
-    begin_ok=true; write_ok=false;
-    assert(!sql_save_dirty_shopkeepers(true) && shops[0].dirty && rollbacks==1);
-    write_ok=true; commit_ok=false;
-    assert(!sql_save_dirty_shopkeepers(true) && shops[0].dirty && rollbacks==2);
-    commit_ok=true; Object stock; keeper.carrying=&stock; item_ok=false;
-    assert(!sql_save_dirty_shopkeepers(true) && shops[0].dirty && rollbacks==3 && keeper.carrying==&stock);
-    item_ok=true;
+    // A capture or a queue that fails never clears dirty; a forced flush reports it.
+    capture_ok=false;
+    assert(!sql_save_dirty_shopkeepers(true) && shops[0].dirty);
+    capture_ok=true; queue_ok=false;
+    assert(!sql_save_dirty_shopkeepers(true) && shops[0].dirty);
+    queue_ok=true; Object stock; keeper.carrying=&stock;
     assert(sql_save_dirty_shopkeepers(true) && !shops[0].dirty && keeper.carrying==&stock);
-    // Direct invalid identity is refused before BEGIN or array dereference.
-    auto before=begins;
+    // Direct invalid identity is refused before any capture or array dereference.
+    auto before=captures;
     assert(!sql_save_shopkeeper(&keeper,2));
     keeper.rnum=1; assert(!sql_save_shopkeeper(&keeper,0)); keeper.rnum=0;
     keeper.in_room=99; assert(!sql_save_shopkeeper(&keeper,0)); keeper.in_room=0;
-    assert(begins==before);
+    assert(captures==before);
     // Explicit shop_nr selects the bound shared-template shop; no slot guessing.
     number_of_shops=2; shops[0].keeper=shops[1].keeper=0;
     shops[0].in_room=100; shops[1].in_room=101;
@@ -212,16 +230,16 @@ int main() {
     shops[0].dirty=1; keeper.only.npc->shopkeeper_shop_id=-1;
     assert(sql_save_dirty_shopkeepers(true) && !shops[0].dirty);
     // A player-controlled copy of a keeper template is not shop stock authority.
-    keeper.master=&duplicate; shops[0].dirty=1; before=begins;
-    assert(!sql_save_dirty_shopkeepers(true) && shops[0].dirty && begins==before); keeper.master=nullptr;
+    keeper.master=&duplicate; shops[0].dirty=1; before=captures;
+    assert(!sql_save_dirty_shopkeepers(true) && shops[0].dirty && captures==before); keeper.master=nullptr;
     // Database outage is a terminal failed flush, not permission to clear dirty state.
-    DB=false; before=begins;
-    assert(!sql_save_dirty_shopkeepers(true) && shops[0].dirty && begins==before);
+    DB=false; before=captures;
+    assert(!sql_save_dirty_shopkeepers(true) && shops[0].dirty && captures==before);
     DB=true;
     // A failed direct buy-path checkpoint must leave a retry pending.
-    keeper.in_room=0; keeper.only.npc->shopkeeper_shop_id=-1; commit_ok=false;
+    keeper.in_room=0; keeper.only.npc->shopkeeper_shop_id=-1; queue_ok=false;
     assert(writeShopKeeper(&keeper,0)==0 && shops[0].dirty);
-    commit_ok=true; assert(writeShopKeeper(&keeper,0)==1 && !shops[0].dirty);
+    queue_ok=true; assert(writeShopKeeper(&keeper,0)==1 && !shops[0].dirty);
     std::puts("production shopkeeper save/flush: explicit identity, non-shop procs, roaming room0, retained dirty, controlled exclusion, terminal failures PASS");
 }
 '''

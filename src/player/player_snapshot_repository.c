@@ -415,6 +415,10 @@ constexpr item_tables locker_item_tables = {
 	"locker_items",	       "locker_id,chest_id",	 false, true, true,
 	"locker_item_affects", "locker_item_extra_descr"
 };
+constexpr item_tables shopkeeper_item_tables = {
+	"shopkeeper_items",	      "shopkeeper_id", true, true, false, "shopkeeper_item_affects",
+	"shopkeeper_item_extra_descr"
+};
 constexpr item_tables saved_item_tables = {
 	"saved_items",	      "item_key,room_vnum",    false, true, false,
 	"saved_item_affects", "saved_item_extra_descr"
@@ -1213,6 +1217,48 @@ player_save_apply_result apply_saved_item(MYSQL *connection, const saved_item_sn
 				 { return write_saved_item(connection, item, claims); });
 }
 
+player_save_apply_result apply_shopkeeper(MYSQL *connection, const flatfile_shopkeeper_record &shop)
+{
+	if (!connection || !shop.mob_vnum)
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+	return apply_owner_write(
+		connection,
+		[&](std::vector<claimed_graph> *)
+		{
+			const std::string shop_id = std::to_string(shop.shop_id);
+			query_result result = execute(
+				connection, "DELETE FROM shopkeepers WHERE shop_id=" + shop_id);
+			if (result.ok)
+				result = execute(
+					connection,
+					"INSERT INTO shopkeepers (shop_id,mob_vnum,room_vnum,"
+					"save_time) VALUES (" +
+						shop_id + "," + std::to_string(shop.mob_vnum) +
+						"," + std::to_string(shop.room_vnum) +
+						",FROM_UNIXTIME(NULLIF(" +
+						std::to_string(shop.saved_at) + ",0)))");
+			if (!result.ok)
+				return result;
+			const std::string keeper = std::to_string(mysql_insert_id(connection));
+			for (const flatfile_shopkeeper_affect_record &affect : shop.affects)
+			{
+				std::ostringstream sql;
+				sql << "INSERT INTO shopkeeper_affects (shopkeeper_id,type,duration,"
+				       "modifier,location,bitvector1,bitvector2,bitvector3,bitvector4,"
+				       "bitvector5) VALUES ("
+				    << keeper << ',' << affect.type << ',' << affect.duration << ','
+				    << affect.modifier << ',' << affect.location;
+				for (uint64_t bitvector : affect.bitvectors)
+					sql << ',' << bitvector;
+				sql << ')';
+				if (!(result = execute(connection, sql.str())).ok)
+					return result;
+			}
+			return insert_item_rows(connection, shop.items, keeper,
+						shopkeeper_item_tables);
+		});
+}
+
 player_save_apply_result apply_locker_chest(MYSQL *connection, const locker_chest_snapshot &chest)
 {
 	if (!connection || chest.locker_id <= 0 || chest.chest_id <= 0)
@@ -1426,6 +1472,19 @@ player_save_apply_result corpse_snapshot_repository_apply(MYSQL *connection,
 player_save_apply_result corpse_snapshot_repository_apply_from_pool(const corpse_snapshot &corpse)
 {
 	return apply_with_pool([&](MYSQL *connection) { return apply_corpse(connection, corpse); });
+}
+
+player_save_apply_result
+shopkeeper_snapshot_repository_apply(MYSQL *connection, const flatfile_shopkeeper_record &shop)
+{
+	return apply_shopkeeper(connection, shop);
+}
+
+player_save_apply_result
+shopkeeper_snapshot_repository_apply_from_pool(const flatfile_shopkeeper_record &shop)
+{
+	return apply_with_pool([&](MYSQL *connection)
+			       { return apply_shopkeeper(connection, shop); });
 }
 
 player_save_apply_result saved_item_snapshot_repository_apply(MYSQL *connection,

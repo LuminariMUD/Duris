@@ -275,6 +275,8 @@ const char *persistence_job_kind_name(persistence_job_kind kind)
 		return "critical";
 	case persistence_job_kind::bank:
 		return "bank";
+	case persistence_job_kind::shopkeeper:
+		return "shopkeeper";
 	}
 	return "unknown";
 }

@@ -458,6 +458,42 @@ int main()
 			bank() == "8:0:0:4@1",
 		"a debit the row cannot cover fails: " + bank());
 
+	// A shopkeeper save replaces the shop's row, affects and stock in one transaction;
+	// nested stock keeps its container and every row keeps its uid.
+	flatfile_shopkeeper_record shop;
+	shop.shop_id = 17;
+	shop.mob_vnum = 3001;
+	shop.room_vnum = 3002;
+	shop.saved_at = 1700000000;
+	shop.affects.push_back({ 5, 10, 2, 1, { 1, 0, 0, 0, 0 } });
+	player_item_snapshot worn = item(9101, 12, -1);
+	worn.equipment_slot = 3;
+	shop.items = { item(9102, 13, -1), item(9103, 14, 0), worn };
+	shop.items[1].parent_index = 0;
+	applied = shopkeeper_snapshot_repository_apply(test_connection, shop);
+	require(applied.outcome == player_save_apply_outcome::applied &&
+			scalar(test_connection,
+			       "SELECT CONCAT(COUNT(*),':',MAX(mob_vnum),':',MAX(room_vnum)) FROM "
+			       "shopkeepers WHERE shop_id=17") == "1:3001:3002" &&
+			scalar(test_connection, "SELECT COUNT(*) FROM shopkeeper_affects") == "1" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM shopkeeper_items child JOIN shopkeeper_items "
+			       "bag ON bag.id=child.container_id WHERE child.obj_uid=9103 AND "
+			       "bag.obj_uid=9102") == "1" &&
+			scalar(test_connection,
+			       "SELECT equip_slot FROM shopkeeper_items WHERE obj_uid=9101") == "3",
+		"a shopkeeper save did not write its row, affects and stock");
+	shop.items = { item(9104, 15, -1) };
+	shop.affects.clear();
+	applied = shopkeeper_snapshot_repository_apply(test_connection, shop);
+	require(applied.outcome == player_save_apply_outcome::applied &&
+			scalar(test_connection,
+			       "SELECT GROUP_CONCAT(obj_uid) FROM shopkeeper_items") == "9104" &&
+			scalar(test_connection, "SELECT COUNT(*) FROM shopkeeper_affects") == "0" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM shopkeepers WHERE shop_id=17") == "1",
+		"a shopkeeper save did not replace the shop's stock");
+
 	mysql_close(test_connection);
 	mysql_library_end();
 	std::cout << "player save claim MariaDB leg passed\n";

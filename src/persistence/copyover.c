@@ -861,6 +861,15 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 			return false;
 		}
 	}
+	// Preserve custom shop item state that the basic NPC file record omits. The saves go
+	// to the writer, so they are queued before the drain below.
+	if (!mini_mode && !snapshot_shopkeepers_for_copyover())
+	{
+		critical_command_coordinator_resume();
+		logit(LOG_STATUS, "copyover: shopkeeper snapshot failed, aborting copyover");
+		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
+		return false;
+	}
 	if (!persistence_flush_all_character_saves())
 	{
 		critical_command_coordinator_resume();
@@ -895,14 +904,6 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	{
 		critical_command_coordinator_resume();
 		logit(LOG_STATUS, "copyover: world recovery drain failed, aborting copyover");
-		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
-		return false;
-	}
-
-	// Preserve custom shop item state that the basic NPC file record omits.
-	if (!mini_mode && !snapshot_shopkeepers_for_copyover())
-	{
-		logit(LOG_STATUS, "copyover: shopkeeper snapshot failed, aborting copyover");
 		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
 		return false;
 	}

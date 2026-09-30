@@ -39,6 +39,8 @@ enum class persistence_job_kind : uint8_t
 	critical,
 	// A change to an account's bank, added to what the database holds.
 	bank,
+	// A shopkeeper's stock, keyed by shop.
+	shopkeeper,
 };
 
 enum class player_save_apply_outcome : uint8_t
