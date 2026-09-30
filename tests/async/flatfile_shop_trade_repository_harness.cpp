@@ -196,20 +196,17 @@ int main(int argc, char **argv)
 			fs::exists(domains / ".critical-authority-transaction"),
 		"interrupted purchase did not preserve its cross-authority intent");
 
+	// The wallet is memory's: the purchase paid at submit, so the domain keeps its wallet.
 	flatfile_player_domain_record loaded_player;
 	require(flatfile_player_domain_load(root.string(), 42, "shop-account", 1, &loaded_player,
 					    &error) == flatfile_player_domain_result::ok &&
-			loaded_player.domains.wallet == std::array<uint64_t, 4>{ 0, 0, 9, 9 } &&
-			loaded_player.domains.wallet_revision == 1 &&
-			loaded_player.domains.bank_revision == 2 &&
+			loaded_player.domains.wallet == std::array<uint64_t, 4>{ 0, 0, 0, 10 } &&
 			!fs::exists(domains / ".critical-authority-transaction"),
 		"player load did not recover interrupted purchase after-images");
 
 	applied = flatfile_shop_trade_repository_apply(root.string(), purchase_command);
 	const shop_trade_result purchased = result_of(applied);
 	require(applied.outcome == critical_apply_outcome::already_applied &&
-			purchased.wallet.amount == std::array<int64_t, 4>{ 0, 0, 9, 9 } &&
-			purchased.wallet_revision == 1 && purchased.bank_revision == 2 &&
 			purchased.shop_revision == 2 && purchased.player_owner_revision == 2 &&
 			purchased.counterparty_owner_revision == 2 && purchased.item_count == 2 &&
 			purchased.item_uids[0] == 200 && purchased.item_revisions[0] == 2 &&
@@ -280,7 +277,7 @@ int main(int argc, char **argv)
 
 	require(flatfile_player_domain_load(root.string(), 42, "shop-account", 1, &loaded_player,
 					    &error) == flatfile_player_domain_result::ok &&
-			loaded_player.domains.wallet == std::array<uint64_t, 4>{ 0, 0, 9, 9 },
+			loaded_player.domains.wallet == std::array<uint64_t, 4>{ 0, 0, 0, 10 },
 		"durable rejection changed player money");
 
 	shop_trade_payload sale = payload;
@@ -443,16 +440,14 @@ int main(int argc, char **argv)
 	const shop_trade_result cleaned = result_of(applied);
 	require(applied.outcome == critical_apply_outcome::already_applied &&
 			cleaned.action == shop_trade_action::discard_invalid &&
-			cleaned.wallet_revision == 5 && cleaned.bank_revision == 6 &&
 			cleaned.shop_revision == 7 && cleaned.player_owner_revision == 6 &&
 			cleaned.counterparty_owner_revision == 1 && cleaned.item_count == 2 &&
 			!fs::exists(domains / ".critical-authority-transaction"),
 		"invalid-stock cleanup did not recover and replay exactly");
 	require(flatfile_player_domain_load(root.string(), 42, "shop-account", 1, &loaded_player,
 					    &error) == flatfile_player_domain_result::ok &&
-			loaded_player.domains.wallet_revision == 5 &&
-			loaded_player.domains.bank_revision == 6,
-		"invalid-stock cleanup changed player money revisions");
+			loaded_player.domains.wallet == std::array<uint64_t, 4>{ 0, 0, 0, 10 },
+		"the shop trades changed the player's saved wallet");
 	shops.clear();
 	require(flatfile_shopkeeper_list(root.string(), &shops, &error) ==
 				flatfile_shopkeeper_result::ok &&
@@ -516,11 +511,8 @@ int main(int argc, char **argv)
 						       command(complimentary_purchase, 1));
 	const shop_trade_result complimentary_result = result_of(applied);
 	require(applied.outcome == critical_apply_outcome::applied &&
-			complimentary_result.wallet.amount ==
-				std::array<int64_t, 4>{ 0, 0, 0, 10 } &&
-			complimentary_result.wallet_revision == 1 &&
-			complimentary_result.bank_revision == 2,
-		"complimentary purchase did not preserve player money");
+			complimentary_result.action == shop_trade_action::buy_existing,
+		"complimentary purchase did not apply");
 	require(flatfile_player_domain_load(complimentary_root.string(), 42, "shop-account", 1,
 					    &loaded_player,
 					    &error) == flatfile_player_domain_result::ok &&

@@ -76,10 +76,13 @@ if not callback.index("shop_trade_runtime_object_matches_payload") < cleanup_bra
     "extract_obj(object, TRUE)", cleanup_branch
 ):
     raise SystemExit("invalid shop stock is extracted before committed snapshot revalidation")
-if not TRANSACTION.index("currency_transaction_publish_balances(") < TRANSACTION.index(
+# The wallet is memory's: a sale is paid, or a refused purchase refunded, before the callback.
+if not TRANSACTION.index("currency_transaction_submit_wallet_value(") < TRANSACTION.index(
     "completion(character, committed && published"
 ):
-    raise SystemExit("shop callback can run before authoritative runtime publication")
+    raise SystemExit("shop callback can run before the wallet is settled")
+if "currency_transaction_publish_balances" in TRANSACTION:
+    raise SystemExit("shop completion still publishes repository balances")
 for token in (
     "transfer.target_root_item_uid = payload.target_root_item_uid",
     "transfer.target_parent_item_uid = payload.target_parent_item_uid",
