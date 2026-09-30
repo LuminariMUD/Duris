@@ -2786,24 +2786,6 @@ int restoreCharOnly(P_char ch, char *name)
 		return -1;
 	}
 
-#ifndef __NO_MYSQL__
-	// try loading from sql first
-	int pid = sql_get_player_pid(name);
-	if (pid > 0)
-	{
-		if (sql_load_player_status(ch, pid))
-		{
-			sql_load_player_skills(ch);
-			sql_load_player_affects(ch);
-			//sql_load_player_items(ch);
-			sql_load_player_shapechanges(ch);
-			return 0;
-		}
-		return -2;
-	}
-	// player not in sql, fall through to pfile loading
-#endif
-
 	strcpy(buff, name);
 	for (buf = buff; *buf; buf++)
 	{

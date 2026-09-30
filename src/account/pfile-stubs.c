@@ -138,24 +138,3 @@ int ne_event_time(P_nevent)
 {
 	return 0;
 }
-
-int sql_get_player_pid(const char *)
-{
-	return 0;
-}
-bool sql_load_player_affects(P_char)
-{
-	return true;
-}
-bool sql_load_player_shapechanges(P_char)
-{
-	return true;
-}
-bool sql_load_player_skills(P_char)
-{
-	return true;
-}
-bool sql_load_player_status(P_char, int)
-{
-	return true;
-}
