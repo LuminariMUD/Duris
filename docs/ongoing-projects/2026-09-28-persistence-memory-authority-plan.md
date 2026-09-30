@@ -1513,11 +1513,29 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
      its repair, IPs and characters; a queued save; same-account sessions copied from memory.
      **Done**, see [Account login and saves](#account-login-and-saves-done).
   2. The name-to-pid index, and offline character loads through the player load pipeline.
-     The account screens and the login's MIA text needed no load at all, see
-     [Account screens without character loads](#account-screens-without-character-loads-done).
-  3. The login-time reads, the periodic events, then the command output subsystem by subsystem,
-     skipping what nothing calls and what only boot runs.
-  4. The journey that pins no query after boot.
+     **Done** (the index, the account screens, `finger`, `lore`, `disguise`, `mask`,
+     `load char`); the offline loads left belong to lockers, artifacts and deletion.
+  3. The login-time reads (**done**: rewards, the frag position, the restitution notice),
+     a new character's first save (**done**), then the periodic events and the command
+     output, subsystem by subsystem, skipping what nothing calls and what only boot runs.
+  4. The journey that pins no query after boot: `test_mysql_game_loop_queries_journey.py`,
+     in `make test-db` since the account screens; its `NOT_CONVERTED` list must end empty.
+- How the rest was split (2026-09-30, the user allowed up to five subagents): four agents
+  work in their own worktrees under `/home/aiwithapex/projects/duris-issue-7-wt/`, each on a
+  branch from `96714d824`: `step8/artifacts` (`artifact.c`, `artifact_guild_state.c`, the
+  artifact bind data in `sql.c`, `load_dummy_char()`), `step8/economy` (`auction_houses.c`,
+  `boon.c`, `nexus_stones.c`, `ctf.c`, the crafting recipe reads), `step8/guilds`
+  (`storage_lockers.c` and the locker and chest functions in `sql_player.c`, ships,
+  guilds, guildhalls, alliances, kingdoms, `ship_cargo.c`) and `step8/world` (`epic.c`,
+  `outposts.c`, `poll.c`, `hardcore.c` and the hardcore `killed_by` write in `die()`,
+  `timers.c`, `epic_bonus.c`, `db.c`, `epic_task_catalog.c`, the zone story state, the zone
+  functions in `sql.c`, spellbook mobs, the multiplay whitelist, `whois`, `test`,
+  `newchar`). They do not edit this document or the census; the coordinator merges each
+  branch into `fix/7-persistence-phase-2-step-8`, regenerates the census, records each
+  subsystem here and runs the gates. The coordinator keeps character and account deletion
+  (both websocket deletions too), renames and the leftovers in `sql.c` and
+  `sql_player.c`. If a session takes over mid-way: `git worktree list` shows the branches;
+  a branch with commits not yet merged still needs merging and a section here.
 - Found on the way (the rest of step 8): copyover restored each preserved session's account
   under the character's name, so unless the two names matched the session lost its account
   and `quit` closed the connection instead of returning to the menu. The restore now uses the
