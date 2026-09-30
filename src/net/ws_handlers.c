@@ -26,6 +26,7 @@
 #include <time.h>
 #include "account/account.h"
 #include "player/player_load_offline.h"
+#include "player/player_load_pipeline.h"
 #include "sql/sql_async.h"
 #include "account/account_recovery.h"
 #include "combat/chaos_config.h"
@@ -3097,6 +3098,16 @@ void ws_cmd_delete_character(struct descriptor_data *d, cJSON *data)
 						    "Failed to load character file");
 				    return;
 			    }
+			    // One in the game, linkdead or entering it would go on playing, unsaved.
+			    if (is_pid_online(GET_PID(loaded), TRUE) ||
+				player_load_pipeline_pid_pending(GET_PID(loaded)))
+			    {
+				    free_char(loaded);
+				    if (P_desc reader = writer_replied(id))
+					    ws_send_account_message(reader, "error", NULL,
+								    "Character is in the game");
+				    return;
+			    }
 			    delete_character(
 				    loaded, true,
 				    [id, name](character_delete_result result)
@@ -3243,6 +3254,17 @@ static void admin_delete_character_loaded(P_desc d, P_acct target_acct, const ch
 						    character.c_str(), request.c_str(),
 						    queued ? NULL :
 							     "Failed to remove the orphaned entry");
+				    return;
+			    }
+			    // One in the game, linkdead or entering it would go on playing, unsaved.
+			    if (is_pid_online(GET_PID(loaded), TRUE) ||
+				player_load_pipeline_pid_pending(GET_PID(loaded)))
+			    {
+				    free_char(loaded);
+				    if (P_desc reader = writer_replied(id))
+					    ws_send_admin_delete_response(
+						    reader, 0, account.c_str(), character.c_str(),
+						    request.c_str(), "Character is in the game");
 				    return;
 			    }
 			    logit(LOG_PLAYER,

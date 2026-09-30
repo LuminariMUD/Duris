@@ -120,7 +120,9 @@ struct Character { struct { char *name; int level; } player; int pid=1, sex=0, f
 static P_desc descriptor_list = nullptr;
 static int fail_stage=0, frees=0, menus=0, writes=0, audits=0, runtime_ships=0,
     ship_rows=0, loads=0, backend_calls=0, load_requests=0, forgotten=0, guild_rows=0;
-static bool async_loads=false, durable_active=true;
+static bool async_loads=false, durable_active=true, in_game=false, loading=false;
+bool is_pid_online(int, bool) { return in_game; }
+bool player_load_pipeline_pid_pending(int) { return loading; }
 static Guild fixture_guild;
 Guild *get_guild_from_id(int id) { return id == 7 ? &fixture_guild : nullptr; }
 namespace zone_story_quest_runtime {
@@ -197,7 +199,7 @@ main = r'''
 static void input(P_desc d,const char *s) { account_delete_char(d,const_cast<char*>(s)); }
 static void reset(Account &a,Descriptor &d) {
     fail_stage=frees=menus=writes=audits=runtime_ships=ship_rows=loads=backend_calls=0;
-    load_requests=forgotten=guild_rows=0; async_loads=false; durable_active=true;
+    load_requests=forgotten=guild_rows=0; async_loads=in_game=loading=false; durable_active=true;
     a.acct_character_list=(acct_chars*)calloc(1,sizeof(acct_chars));
     *a.acct_character_list={strdup("Fixture"),1,1,nullptr}; a.num_chars=1;
     d=Descriptor{}; d.account=&a; descriptor_list=&d;
@@ -253,6 +255,14 @@ int main() {
     reset(a,d); fail_stage=1; input(&d,"1"); input(&d,"yes"); released(d); kept(a);
     fail_stage=0; input(&d,"1"); input(&d,"yes"); released(d); deleted(a); dispose(a);
 #endif
+    // A character in the game (linkdead too) or being loaded to enter it would go on
+    // playing, unsaved: the confirmation is refused before anything is queued.
+    for(bool *busy:{&in_game,&loading}) {
+        reset(a,d); *busy=true; input(&d,"1"); input(&d,"yes");
+        released(d); kept(a); assert(!backend_calls);
+        assert(d.output.find("in the game; it cannot be deleted now")!=std::string::npos);
+        dispose(a);
+    }
     for(const char *cancel:{"no","0","back"}) {
         reset(a,d); input(&d,"1"); input(&d,cancel); released(d);
         assert(!backend_calls && !audits && durable_active); dispose(a);
@@ -296,4 +306,4 @@ with tempfile.TemporaryDirectory(prefix='account-delete-', dir=build_root) as di
                         '-fno-omit-frame-pointer', *flags, str(cpp), '-o', str(exe)], check=True)
         subprocess.run([str(exe)], check=True)
 print('PASS: account deletion runtime refusal at every statement, release, publication, '
-      'retry and closed-session scenarios on both backends')
+      'retry, in-game refusal and closed-session scenarios on both backends')

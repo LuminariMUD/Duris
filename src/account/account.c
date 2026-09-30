@@ -2614,6 +2614,18 @@ void account_delete_char(P_desc d, char *arg)
 			display_account_menu(d, NULL);
 			return;
 		}
+		// One in the game, linkdead or entering it would go on playing, unsaved.
+		if (is_pid_online(GET_PID(d->character), TRUE) ||
+		    player_load_pipeline_pid_pending(GET_PID(d->character)))
+		{
+			SEND_TO_Q(
+				"\r\n&+RThat character is in the game; it cannot be deleted now.&n\r\n",
+				d);
+			release_delete_character(d);
+			STATE(d) = CON_DISPLAY_ACCT_MENU;
+			display_account_menu(d, NULL);
+			return;
+		}
 		SEND_TO_Q("\r\n&+RDeleting character...&n\r\n\r\n", d);
 		// The session waits for the deletion, holding the character it confirmed.
 		const uint64_t id = wait_for_writer(d);

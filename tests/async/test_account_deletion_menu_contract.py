@@ -51,5 +51,10 @@ for signature in ("void ws_cmd_delete_character(", "static void admin_delete_cha
     assert "player_load_offline(" in ws and "delete_character(" in ws, signature
     assert "wait_for_writer(d)" in ws and "writer_replied(id)" in ws, signature
     assert "restoreCharOnly" not in ws and "deleteCharacter" not in ws, signature
+    # A character in the game, linkdead or entering it is refused before anything is queued.
+    refused = ws.index("if (is_pid_online(GET_PID(loaded), TRUE) ||")
+    guard = ws[refused : ws.index(" delete_character(", refused)]
+    assert "player_load_pipeline_pid_pending(GET_PID(loaded))" in guard, signature
+    assert "Character is in the game" in guard and "return;" in guard, signature
 
 print("account and character deletion are reachable and guarded from the account menu")
