@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <chrono>
 #include <functional>
+#include <map>
 #include <memory>
 #include <set>
 #include <new>
@@ -277,49 +278,6 @@ bool sql_save_locker(P_char locker_ch, int owner_pid, int owner_assoc_id)
 {
 	return false;
 }
-P_char sql_load_locker(int owner_pid, int owner_assoc_id)
-{
-	return NULL;
-}
-P_char sql_load_locker_by_name(const char *locker_name)
-{
-	return NULL;
-}
-/* Flatfile mode does not use the legacy SQL owner-existence probe. */
-bool sql_locker_exists(int owner_pid, int owner_assoc_id)
-{
-	return false;
-}
-/* Flatfile mode does not use the legacy SQL name-existence probe. */
-bool sql_locker_exists_by_name(const char *locker_name)
-{
-	return false;
-}
-/* Validate a flatfile personal locker owner against the current identity authority. */
-bool sql_locker_owner_can_access(const char *locker_name, int owner_pid, int racewar)
-{
-	if (!locker_name || owner_pid <= 0)
-		return false;
-	const char *root = persistence_mode_flatfile_root();
-	if (!root)
-		return false;
-	std::string error;
-	std::vector<flatfile_locker_record> lockers;
-	std::vector<flatfile_locker_access_record> access;
-	if (flatfile_locker_list(root, &lockers, &access, &error) != flatfile_locker_result::ok)
-		return false;
-	/* Locate the one case-insensitive locker name supplied by the caller. */
-	auto locker =
-		std::find_if(lockers.begin(), lockers.end(), [locker_name](const auto &entry)
-			     { return strcasecmp(entry.locker_name.c_str(), locker_name) == 0; });
-	if (locker == lockers.end() || locker->owner_pid != owner_pid || locker->owner_assoc_id ||
-	    locker->racewar != racewar)
-		return false;
-	flatfile_identity_record identity;
-	return flatfile_identity_lookup_pid(root, owner_pid, &identity, &error) ==
-		       flatfile_identity_result::ok &&
-	       identity.active && !identity.blocked && identity.racewar == racewar;
-}
 /* Flatfile locker deletion is implemented by its repository-backed callers. */
 bool sql_delete_locker(int owner_pid, int owner_assoc_id)
 {
@@ -470,37 +428,6 @@ int sql_get_or_create_public_chest(int /*locker_id*/)
 {
 	return -1;
 }
-int sql_create_private_chest_hashed(int /*locker_id*/, const char * /*chest_name*/,
-				    const char * /*password*/)
-{
-	return 0;
-}
-bool sql_delete_private_chest(int /*chest_id*/)
-{
-	return false;
-}
-int sql_get_chest_id(int /*locker_id*/, const char * /*chest_name*/)
-{
-	return -1;
-}
-bool sql_set_chest_password_hash(int /*chest_id*/, const char * /*password*/)
-{
-	return false;
-}
-bool sql_get_chest_password_hash(int /*chest_id*/, char **hash)
-{
-	*hash = nullptr;
-	return false;
-}
-bool sql_finish_chest_password(int /*chest_id*/, const char * /*expected*/,
-			       const char * /*upgrade*/)
-{
-	return false;
-}
-int sql_count_private_chests(int /*locker_id*/)
-{
-	return -1;
-}
 bool sql_log_chest_activity(int /*locker_id*/, int /*chest_id*/, const char * /*char_name*/,
 			    int /*action_type*/, const char * /*item_short*/)
 {
@@ -510,7 +437,11 @@ bool sql_save_private_chest_items(int /*locker_id*/, int /*chest_id*/, P_obj /*c
 {
 	return false;
 }
-void sql_load_private_chest_items(int /*locker_id*/, int /*chest_id*/, P_obj /*chest_obj*/) {}
+P_obj sql_locker_items_from_rows(const sql_rows & /*rows*/, int /*locker_id*/, int /*chest_id*/,
+				 P_obj /*chest_obj*/)
+{
+	return NULL;
+}
 
 bool sql_add_spellbook_mob(int pid, int mob_vnum)
 {
@@ -2524,6 +2455,35 @@ static int sql_batch_save_simple_items(int pid, int container_id, P_obj first_ob
 static bool sql_merge_duplicate_spellbook(struct extra_descr_data *existing,
 					  struct extra_descr_data *candidate);
 
+// Attach one stored extra description to obj. A second native spellbook row of the
+// same item is merged into the first (*loaded_spellbook) instead of attached.
+static void sql_add_item_extra_descr(P_obj obj, const char *keyword, const char *description,
+				     const char *table, int item_id,
+				     struct extra_descr_data **loaded_spellbook)
+{
+	struct extra_descr_data *ed;
+	CREATE(ed, extra_descr_data, 1, MEM_TAG_EXDESCD);
+
+	sql_load_item_extra_descr_values(keyword, description, ed, table, item_id);
+
+	if (sql_item_extra_descr_is_spellbook_marker(ed->keyword))
+	{
+		if (*loaded_spellbook && sql_merge_duplicate_spellbook(*loaded_spellbook, ed))
+		{
+			persistence_alert(
+				AVATAR, "item_extra_descr", table ? table : "unknown", "none",
+				"none", "duplicate_spellbook_rows",
+				"item_id=%d had duplicate native spellbook rows; merged their bitmaps",
+				item_id);
+			return;
+		}
+		*loaded_spellbook = ed;
+	}
+	ed->next = obj->ex_description;
+	obj->ex_description = ed;
+	obj->str_mask |= STRUNG_EDESC;
+}
+
 static bool sql_load_item_extra_descr_from_table(int item_id, P_obj obj, const char *table)
 {
 	char query[256];
@@ -2542,38 +2502,11 @@ static bool sql_load_item_extra_descr_from_table(int item_id, P_obj obj, const c
 	MYSQL_RES *result = db_query("%s", query);
 	if (!result)
 		return false;
-	if (result)
-	{
-		struct extra_descr_data *loaded_spellbook = NULL;
-		MYSQL_ROW row;
-		while ((row = mysql_fetch_row(result)))
-		{
-			struct extra_descr_data *ed;
-			CREATE(ed, extra_descr_data, 1, MEM_TAG_EXDESCD);
-
-			sql_load_item_extra_descr_values(row[0], row[1], ed, table, item_id);
-
-			if (sql_item_extra_descr_is_spellbook_marker(ed->keyword))
-			{
-				if (loaded_spellbook &&
-				    sql_merge_duplicate_spellbook(loaded_spellbook, ed))
-				{
-					persistence_alert(
-						AVATAR, "item_extra_descr",
-						table ? table : "unknown", "none", "none",
-						"duplicate_spellbook_rows",
-						"item_id=%d had duplicate native spellbook rows; merged their bitmaps",
-						item_id);
-					continue;
-				}
-				loaded_spellbook = ed;
-			}
-			ed->next = obj->ex_description;
-			obj->ex_description = ed;
-			obj->str_mask |= STRUNG_EDESC;
-		}
-		mysql_free_result(result);
-	}
+	struct extra_descr_data *loaded_spellbook = NULL;
+	MYSQL_ROW row;
+	while ((row = mysql_fetch_row(result)))
+		sql_add_item_extra_descr(obj, row[0], row[1], table, item_id, &loaded_spellbook);
+	mysql_free_result(result);
 	return true;
 }
 
@@ -2610,50 +2543,29 @@ static bool sql_merge_duplicate_spellbook(struct extra_descr_data *existing,
 	return true;
 }
 
-// load item affects from db into obj->affected[]
-// clears prototype affects if db has any custom affects
-static void sql_load_item_affects_from_table(int item_id, P_obj obj, const char *table)
+// Set obj's affects to its stored (location, modifier) rows. Any stored row replaces
+// the prototype's affects; duplicates are dropped.
+static void sql_set_item_affects(P_obj obj, const std::vector<std::pair<int, int>> &affects)
 {
-	if (!obj || !DB || item_id <= 0 || !table)
+	if (affects.empty())
 		return;
-
-	char query[256];
-	snprintf(query, sizeof(query), "SELECT location, modifier FROM %s WHERE item_id=%d", table,
-		 item_id);
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return;
-
-	MYSQL_ROW row;
-	int aff_idx = 0;
-	bool affects_cleared = false;
-
-	while ((row = mysql_fetch_row(result)) && aff_idx < MAX_OBJ_AFFECT)
+	for (int a = 0; a < MAX_OBJ_AFFECT; a++)
 	{
-		// clear prototype affects before loading first db affect
-		if (!affects_cleared)
-		{
-			for (int a = 0; a < MAX_OBJ_AFFECT; a++)
-			{
-				obj->affected[a].location = 0;
-				obj->affected[a].modifier = 0;
-			}
-			affects_cleared = true;
-		}
-
-		int loc = atoi(row[0]);
-		int mod = atoi(row[1]);
-
-		// skip duplicates from db
+		obj->affected[a].location = 0;
+		obj->affected[a].modifier = 0;
+	}
+	int aff_idx = 0;
+	for (const auto &[loc, mod] : affects)
+	{
+		if (aff_idx >= MAX_OBJ_AFFECT)
+			break;
 		bool is_dup = false;
 		for (int d = 0; d < aff_idx; d++)
-		{
 			if (obj->affected[d].location == loc && obj->affected[d].modifier == mod)
 			{
 				is_dup = true;
 				break;
 			}
-		}
 		if (!is_dup)
 		{
 			obj->affected[aff_idx].location = loc;
@@ -2661,7 +2573,6 @@ static void sql_load_item_affects_from_table(int item_id, P_obj obj, const char 
 			aff_idx++;
 		}
 	}
-	mysql_free_result(result);
 }
 
 static bool sql_save_item_extra_descr(int item_id, P_obj obj, const char *table)
@@ -5939,8 +5850,6 @@ bool sql_save_locker(P_char locker_ch, int owner_pid, int owner_assoc_id)
 	return saved;
 }
 
-static P_obj sql_load_locker_items(int locker_id, int public_chest_id, int container_id);
-
 #define MAX_CONTAINER_LOAD_DEPTH 64
 
 // Append a loaded object chain to the end of a list being built.
@@ -5959,450 +5868,200 @@ static void append_loaded_objects(P_obj *first, P_obj *last, P_obj chain)
 	}
 }
 
-static P_obj sql_load_locker_items_filtered(int locker_id, int container_id, int chest_id,
-					    int depth)
+// The item rows of a locker entry read, by (chest, container), and their affect and
+// extra description rows by item.
+struct locker_row_index
 {
-	if (!DB || locker_id <= 0)
-		return NULL;
+	std::map<std::pair<int, int>, std::vector<const sql_row *>> items;
+	std::map<int, std::vector<const sql_row *>> affects, extras;
+};
 
-	logit(LOG_DEBUG,
-	      "sql_load_locker_items_filtered: begin locker_id=%d container_id=%d chest_id=%d depth=%d",
-	      locker_id, container_id, chest_id, depth);
-
+// Build the items of one chest level: its rows in order, each with its contents. An
+// item another owner holds is left out and what it contains moves up a level. With
+// chest_obj (a private chest) each item goes into the chest before its contents are
+// attached, so a full container is not refused by the chest's fit check.
+static P_obj locker_items_from_index(const locker_row_index &index, int locker_id, int chest_id,
+				     int container_id, int depth, P_obj chest_obj)
+{
 	if (depth > MAX_CONTAINER_LOAD_DEPTH)
 	{
 		logit(LOG_DEBUG,
-		      "sql_load_locker_items_filtered: component=container outcome=depth_limit");
+		      "sql_locker_items_from_rows: component=container outcome=depth_limit");
 		return NULL;
 	}
-
-	char query[1024];
-	char chest_filter[256] = "";
-	if (chest_id > 0)
-		snprintf(chest_filter, sizeof(chest_filter), " AND chest_id=%d", chest_id);
-	else
-		snprintf(chest_filter, sizeof(chest_filter),
-			 " AND (chest_id IS NULL OR chest_id NOT IN "
-			 "(SELECT id FROM private_chests WHERE locker_id=%d AND is_public=0))",
-			 locker_id);
-
-	if (container_id > 0)
-		snprintf(
-			query, sizeof(query),
-			"SELECT id, vnum, weight, cost, timer, extra_flags, wear_flags, item_type, "
-			"value0, value1, value2, value3, value4, value5, value6, value7, "
-			"name, short_descr, description, action_descr, obj_uid, item_condition, "
-			"bitvector1, bitvector2, bitvector3, bitvector4, bitvector5, item_material "
-			"FROM locker_items WHERE locker_id=%d AND container_id=%d%s",
-			locker_id, container_id, chest_filter);
-	else
-		snprintf(
-			query, sizeof(query),
-			"SELECT id, vnum, weight, cost, timer, extra_flags, wear_flags, item_type, "
-			"value0, value1, value2, value3, value4, value5, value6, value7, "
-			"name, short_descr, description, action_descr, obj_uid, item_condition, "
-			"bitvector1, bitvector2, bitvector3, bitvector4, bitvector5, item_material "
-			"FROM locker_items WHERE locker_id=%d AND container_id IS NULL%s",
-			locker_id, chest_filter);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
+	const auto level = index.items.find({ chest_id, container_id });
+	if (level == index.items.end())
 		return NULL;
 
 	P_obj first_obj = NULL;
 	P_obj last_obj = NULL;
-	MYSQL_ROW row;
-
-	while ((row = mysql_fetch_row(result)))
+	for (const sql_row *item : level->second)
 	{
-		int item_id = atoi(row[0]);
-		int vnum = atoi(row[1]);
-		int rnum = real_object(vnum);
-		logit(LOG_DEBUG,
-		      "sql_load_locker_items_filtered: row item_id=%d locker_id=%d container_id=%d chest_id=%d vnum=%d rnum=%d depth=%d",
-		      item_id, locker_id, container_id, chest_id, vnum, rnum, depth);
+		const sql_row &row = *item;
+		const int item_id = atoi(row[1]);
+		const int rnum = real_object(atoi(row[2]));
 		if (rnum < 0)
 		{
 			logit(LOG_DEBUG,
-			      "sql_load_locker_items_filtered: skip unknown vnum item_id=%d vnum=%d locker_id=%d chest_id=%d container_id=%d",
-			      item_id, vnum, locker_id, chest_id, container_id);
+			      "sql_locker_items_from_rows: skip unknown vnum item_id=%d vnum=%s locker_id=%d chest_id=%d",
+			      item_id, row[2], locker_id, chest_id);
 			continue;
 		}
-
 		P_obj obj = read_object(rnum, REAL);
 		if (!obj)
-		{
-			logit(LOG_DEBUG,
-			      "sql_load_locker_items_filtered: skip failed read_object item_id=%d vnum=%d rnum=%d locker_id=%d chest_id=%d container_id=%d",
-			      item_id, vnum, rnum, locker_id, chest_id, container_id);
 			continue;
-		}
 
-		if (row[2])
-			obj->weight = atoi(row[2]);
 		if (row[3])
-			obj->cost = atoi(row[3]);
+			obj->weight = atoi(row[3]);
 		if (row[4])
-			obj->timer[0] = atol(row[4]);
+			obj->cost = atoi(row[4]);
 		if (row[5])
-			obj->extra_flags = strtoul(row[5], NULL, 10);
+			obj->timer[0] = atol(row[5]);
 		if (row[6])
-			obj->wear_flags = atoi(row[6]);
+			obj->extra_flags = strtoul(row[6], NULL, 10);
 		if (row[7])
-			obj->type = sql_validate_loaded_item_type(obj, atoi(row[7]),
+			obj->wear_flags = atoi(row[7]);
+		if (row[8])
+			obj->type = sql_validate_loaded_item_type(obj, atoi(row[8]),
 								  "sql_load_locker_items");
-
-		obj->value[0] = row[8] ? atoi(row[8]) : obj->value[0];
-		obj->value[1] = row[9] ? atoi(row[9]) : obj->value[1];
-		obj->value[2] = row[10] ? atoi(row[10]) : obj->value[2];
-		obj->value[3] = row[11] ? atoi(row[11]) : obj->value[3];
-		obj->value[4] = row[12] ? atoi(row[12]) : obj->value[4];
-		obj->value[5] = row[13] ? atoi(row[13]) : obj->value[5];
-		obj->value[6] = row[14] ? atoi(row[14]) : obj->value[6];
-		obj->value[7] = row[15] ? atoi(row[15]) : obj->value[7];
-
-		if (row[16] && strlen(row[16]) > 0)
+		for (int v = 0; v < 8; v++)
+			if (row[9 + v])
+				obj->value[v] = atoi(row[9 + v]);
+		if (row[17] && *row[17])
 		{
-			obj->name = str_dup(row[16]);
+			obj->name = str_dup(row[17]);
 			obj->str_mask |= STRUNG_KEYS;
 		}
-		if (row[17] && strlen(row[17]) > 0)
+		if (row[18] && *row[18])
 		{
-			obj->short_description = str_dup(row[17]);
+			obj->short_description = str_dup(row[18]);
 			obj->str_mask |= STRUNG_DESC2;
 		}
-		if (row[18] && strlen(row[18]) > 0)
+		if (row[19] && *row[19])
 		{
-			obj->description = str_dup(row[18]);
+			obj->description = str_dup(row[19]);
 			obj->str_mask |= STRUNG_DESC1;
 		}
-		if (row[19] && strlen(row[19]) > 0)
+		if (row[20] && *row[20])
 		{
-			obj->action_description = str_dup(row[19]);
+			obj->action_description = str_dup(row[20]);
 			obj->str_mask |= STRUNG_DESC3;
 		}
-		if (row[22])
-			obj->bitvector = strtoul(row[22], NULL, 10);
 		if (row[23])
-			obj->bitvector2 = strtoul(row[23], NULL, 10);
+			obj->bitvector = strtoul(row[23], NULL, 10);
 		if (row[24])
-			obj->bitvector3 = strtoul(row[24], NULL, 10);
+			obj->bitvector2 = strtoul(row[24], NULL, 10);
 		if (row[25])
-			obj->bitvector4 = strtoul(row[25], NULL, 10);
+			obj->bitvector3 = strtoul(row[25], NULL, 10);
 		if (row[26])
-			obj->bitvector5 = strtoul(row[26], NULL, 10);
+			obj->bitvector4 = strtoul(row[26], NULL, 10);
 		if (row[27])
-			obj->material = atoi(row[27]);
+			obj->bitvector5 = strtoul(row[27], NULL, 10);
+		if (row[28])
+			obj->material = atoi(row[28]);
+		if (row[21] && strtoul(row[21], NULL, 10) > 0)
+			obj->obj_uid = strtoul(row[21], NULL, 10);
 
-		if (row[20] && strlen(row[20]) > 0)
+		const char *const owner[] = { row[31], row[32], row[33], row[34], row[35],
+					      row[36], row[37], row[38], row[39] };
+		if (!sql_persistence_item_owner_fields_match(
+			    obj->obj_uid, "locker", static_cast<unsigned long long>(locker_id),
+			    static_cast<unsigned long long>(chest_id), row[31] ? owner : NULL))
 		{
-			unsigned long saved_uid = strtoul(row[20], NULL, 10);
-			if (saved_uid > 0)
-				obj->obj_uid = saved_uid;
-			if (!sql_persistence_item_owner_matches_identity(
-				    obj->obj_uid, "locker",
-				    static_cast<unsigned long long>(locker_id),
-				    static_cast<unsigned long long>(chest_id),
-				    "sql_load_locker_items"))
+			// A stale copy another owner holds is left out, and what it contains
+			// moves up a level.
+			extract_obj(obj, FALSE);
+			P_obj orphans = locker_items_from_index(index, locker_id, chest_id, item_id,
+								depth + 1, NULL);
+			if (!chest_obj)
+				append_loaded_objects(&first_obj, &last_obj, orphans);
+			while (chest_obj && orphans)
 			{
-				// A stale copy another owner holds is left out, and what it
-				// contains moves up a level.
-				extract_obj(obj, FALSE);
-				append_loaded_objects(
-					&first_obj, &last_obj,
-					sql_load_locker_items_filtered(locker_id, item_id, chest_id,
-								       depth + 1));
-				continue;
+				P_obj next = orphans->next_content;
+				orphans->next_content = NULL;
+				obj_to_obj(orphans, chest_obj);
+				orphans = next;
 			}
+			continue;
 		}
-		if (row[21] && strlen(row[21]) > 0)
-			obj->condition = atoi(row[21]);
+		if (row[22] && *row[22])
+			obj->condition = atoi(row[22]);
 		obj->db_item_id = item_id;
 		REMOVE_BIT(obj->runtime_flags, OBJ_RFLAG_CREATION_CANDIDATE);
 
-		sql_load_item_affects_from_table(item_id, obj, "locker_item_affects");
-		sql_load_item_extra_descr_from_table(item_id, obj, "locker_item");
-
-		obj->contains =
-			sql_load_locker_items_filtered(locker_id, item_id, chest_id, depth + 1);
+		const auto affects = index.affects.find(item_id);
+		if (affects != index.affects.end())
 		{
-			int child_count = 0;
-			for (P_obj c = obj->contains; c; c = c->next_content)
-				child_count++;
-			logit(LOG_DEBUG, "sql_load_locker_items_filtered: children=%d",
-			      child_count);
+			std::vector<std::pair<int, int>> stored;
+			for (const sql_row *affect : affects->second)
+				stored.emplace_back(atoi((*affect)[2]), atoi((*affect)[3]));
+			sql_set_item_affects(obj, stored);
 		}
+		const auto extras = index.extras.find(item_id);
+		if (extras != index.extras.end())
+		{
+			struct extra_descr_data *loaded_spellbook = NULL;
+			for (const sql_row *extra : extras->second)
+				sql_add_item_extra_descr(obj, (*extra)[2], (*extra)[3],
+							 "locker_item", item_id, &loaded_spellbook);
+		}
+
+		if (chest_obj)
+			obj_to_obj(obj, chest_obj);
+		obj->contains = locker_items_from_index(index, locker_id, chest_id, item_id,
+							depth + 1, NULL);
 		for (P_obj c = obj->contains; c; c = c->next_content)
 		{
 			if (!obj_can_nest(c, obj))
 			{
 				logit(LOG_DEBUG,
-				      "sql_load_locker_items_filtered: component=container_link "
-				      "outcome=malformed");
+				      "sql_locker_items_from_rows: component=container_link outcome=malformed");
 				continue;
 			}
 			c->loc_p = LOC_INSIDE;
 			c->loc.inside = obj;
 		}
 
-		if (!first_obj)
-			first_obj = obj;
-		else
-			last_obj->next_content = obj;
-		last_obj = obj;
-		obj->next_content = NULL;
+		if (!chest_obj)
+			append_loaded_objects(&first_obj, &last_obj, obj);
 	}
-
-	mysql_free_result(result);
 	return first_obj;
 }
-static P_obj sql_load_locker_items(int locker_id, int public_chest_id, int container_id)
+
+P_obj sql_locker_items_from_rows(const sql_rows &rows, int locker_id, int chest_id, P_obj chest_obj)
 {
-	return sql_load_locker_items_filtered(locker_id, container_id, public_chest_id, 0);
+	locker_row_index index;
+	for (const sql_row &row : rows)
+	{
+		if (!row[0] || !row[1])
+			continue;
+		if (!strcmp(row[0], "item"))
+			index.items[{ row[29] ? atoi(row[29]) : 0, row[30] ? atoi(row[30]) : 0 }]
+				.push_back(&row);
+		else if (!strcmp(row[0], "affect"))
+			index.affects[atoi(row[1])].push_back(&row);
+		else if (!strcmp(row[0], "extra"))
+			index.extras[atoi(row[1])].push_back(&row);
+	}
+	return locker_items_from_index(index, locker_id, chest_id, 0, 0, chest_obj);
 }
 
-P_char sql_load_locker(int owner_pid, int owner_assoc_id)
+/* The statement that deletes the personal or association locker selected by its
+ * stable owner key (its chests and items cascade); empty without a key. */
+std::string sql_delete_locker_statement(int owner_pid, int owner_assoc_id)
 {
-	if (!DB)
-		return NULL;
-
-	char query[256];
 	if (owner_pid > 0)
-		snprintf(query, sizeof(query),
-			 "SELECT id, locker_name, racewar, race FROM lockers WHERE owner_pid=%d",
-			 owner_pid);
-	else if (owner_assoc_id > 0)
-		snprintf(
-			query, sizeof(query),
-			"SELECT id, locker_name, racewar, race FROM lockers WHERE owner_assoc_id=%d",
-			owner_assoc_id);
-	else
-		return NULL;
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return NULL;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (!row)
-	{
-		mysql_free_result(result);
-		return NULL;
-	}
-
-	int locker_id = atoi(row[0]);
-	const char *locker_name = row[1];
-	int racewar = atoi(row[2]);
-	int race = atoi(row[3]);
-
-	// allocate locker character
-	P_char ch = (P_char)mm_get(dead_mob_pool);
-	if (!ch)
-	{
-		mysql_free_result(result);
-		return NULL;
-	}
-	clear_char(ch);
-	ensure_pconly_pool();
-	ch->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-	if (!ch->only.pc)
-	{
-		mm_release(dead_mob_pool, ch);
-		mysql_free_result(result);
-		return NULL;
-	}
-	memset(ch->only.pc, 0, sizeof(struct pc_only_data));
-	ch->only.pc->aggressive = -1;
-	ch->only.pc->zone_trophy = NULL;
-	ch->desc = NULL;
-
-	ch->player.name = str_dup(locker_name);
-	GET_RACEWAR(ch) = racewar;
-	GET_RACE(ch) = race;
-
-	mysql_free_result(result);
-
-	// load items
-	const int public_chest_id = sql_get_or_create_public_chest(locker_id);
-	if (public_chest_id <= 0)
-	{
-		free_char(ch);
-		return NULL;
-	}
-	ch->carrying = sql_load_locker_items(locker_id, public_chest_id, 0);
-	{
-		int carry_count = 0;
-		for (P_obj obj = ch->carrying; obj; obj = obj->next_content)
-			carry_count++;
-		logit(LOG_DEBUG, "sql_load_locker: outcome=success items=%d", carry_count);
-	}
-	for (P_obj obj = ch->carrying; obj; obj = obj->next_content)
-	{
-		obj->loc_p = LOC_CARRIED;
-		obj->loc.carrying = ch;
-	}
-
-	return ch;
+		return sql_format("DELETE FROM lockers WHERE owner_pid=%d", owner_pid);
+	if (owner_assoc_id > 0)
+		return sql_format("DELETE FROM lockers WHERE owner_assoc_id=%d", owner_assoc_id);
+	return {};
 }
 
-// load locker by name (used by storage_lockers.c)
-P_char sql_load_locker_by_name(const char *locker_name)
-{
-	if (!DB || !locker_name)
-		return NULL;
-
-	char *esc_name = sql_escape_string(locker_name);
-	if (!esc_name)
-		return NULL;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "SELECT id, racewar, race FROM lockers WHERE locker_name='%s'", esc_name);
-	free(esc_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return NULL;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (!row)
-	{
-		mysql_free_result(result);
-		return NULL;
-	}
-
-	int locker_id = atoi(row[0]);
-	int racewar = atoi(row[1]);
-	int race = atoi(row[2]);
-	mysql_free_result(result);
-
-	// allocate locker character
-	P_char ch = (P_char)mm_get(dead_mob_pool);
-	if (!ch)
-		return NULL;
-	clear_char(ch);
-	ensure_pconly_pool();
-	ch->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-	if (!ch->only.pc)
-	{
-		mm_release(dead_mob_pool, ch);
-		return NULL;
-	}
-	memset(ch->only.pc, 0, sizeof(struct pc_only_data));
-	ch->only.pc->aggressive = -1;
-	ch->only.pc->zone_trophy = NULL;
-	ch->desc = NULL;
-
-	ch->player.name = str_dup(locker_name);
-	GET_RACEWAR(ch) = racewar;
-	GET_RACE(ch) = race;
-
-	// load items
-	const int public_chest_id = sql_get_or_create_public_chest(locker_id);
-	if (public_chest_id <= 0)
-	{
-		free_char(ch);
-		return NULL;
-	}
-	ch->carrying = sql_load_locker_items(locker_id, public_chest_id, 0);
-	for (P_obj obj = ch->carrying; obj; obj = obj->next_content)
-	{
-		obj->loc_p = LOC_CARRIED;
-		obj->loc.carrying = ch;
-	}
-
-	return ch;
-}
-
-/* Report whether MariaDB contains the locker selected by a stable owner key. */
-bool sql_locker_exists(int owner_pid, int owner_assoc_id)
-{
-	if (!DB)
-		return false;
-
-	char query[128];
-	if (owner_pid > 0)
-		snprintf(query, sizeof(query), "SELECT 1 FROM lockers WHERE owner_pid=%d LIMIT 1",
-			 owner_pid);
-	else if (owner_assoc_id > 0)
-		snprintf(query, sizeof(query),
-			 "SELECT 1 FROM lockers WHERE owner_assoc_id=%d LIMIT 1", owner_assoc_id);
-	else
-		return false;
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	bool exists = (row != NULL);
-	mysql_free_result(result);
-	return exists;
-}
-
-/* Report whether MariaDB contains the named locker. */
-bool sql_locker_exists_by_name(const char *locker_name)
-{
-	if (!DB || !locker_name)
-		return false;
-
-	char *esc_name = sql_escape_string(locker_name);
-	if (!esc_name)
-		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query), "SELECT 1 FROM lockers WHERE locker_name='%s' LIMIT 1",
-		 esc_name);
-	free(esc_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	bool exists = (row != NULL);
-	mysql_free_result(result);
-	return exists;
-}
-
-/* Validate a MariaDB personal locker owner against its current identity mapping. */
-bool sql_locker_owner_can_access(const char *locker_name, int owner_pid, int racewar)
-{
-	if (!DB || !locker_name || owner_pid <= 0)
-		return false;
-	char *escaped_name = sql_escape_string(locker_name);
-	if (!escaped_name)
-		return false;
-	MYSQL_RES *result =
-		db_query("SELECT 1 FROM lockers l JOIN account_characters ac ON ac.pid=l.owner_pid "
-			 "WHERE l.locker_name='%s' AND l.owner_pid=%d AND l.owner_assoc_id IS NULL "
-			 "AND l.racewar=%d AND ac.racewar=l.racewar AND ac.blocked=0 "
-			 "AND ac.deleted_at IS NULL LIMIT 1",
-			 escaped_name, owner_pid, racewar);
-	free(escaped_name);
-	if (!result)
-		return false;
-	const bool allowed = mysql_num_rows(result) == 1;
-	mysql_free_result(result);
-	return allowed;
-}
-
-/* Delete the personal or association locker selected by its stable owner key. */
+/* Delete that locker inside the caller's transaction (a character deletion). */
 bool sql_delete_locker(int owner_pid, int owner_assoc_id)
 {
-	if (!DB)
-		return false;
-
-	char query[128];
-	if (owner_pid > 0)
-		snprintf(query, sizeof(query), "DELETE FROM lockers WHERE owner_pid=%d", owner_pid);
-	else if (owner_assoc_id > 0)
-		snprintf(query, sizeof(query), "DELETE FROM lockers WHERE owner_assoc_id=%d",
-			 owner_assoc_id);
-	else
-		return false;
-
-	return sql_run_query(query);
+	const std::string statement = sql_delete_locker_statement(owner_pid, owner_assoc_id);
+	return DB && !statement.empty() && sql_run_query(statement.c_str());
 }
 
 bool sql_delete_locker_by_name(const char *locker_name)
@@ -6483,277 +6142,17 @@ int sql_get_or_create_public_chest(int locker_id)
 	return (int)mysql_insert_id(DB);
 }
 
-int sql_create_private_chest_hashed(int locker_id, const char *chest_name, const char *hash)
-{
-	if (!DB || locker_id <= 0 || !chest_name)
-		return 0;
-	if (hash && !is_bcrypt_hash(hash))
-		return 0;
-
-	if (sql_count_private_chests(locker_id) >= 5)
-		return -1;
-
-	char *esc_name = sql_escape_string(chest_name);
-	if (!esc_name)
-		return 0;
-
-	char query[512];
-	if (hash && hash[0])
-	{
-		char *esc_hash = hash ? sql_escape_string(hash) : NULL;
-		if (!esc_hash)
-		{
-			free(esc_name);
-			return 0;
-		}
-		snprintf(
-			query, sizeof(query),
-			"INSERT INTO private_chests (locker_id, chest_name, password_hash, is_public) "
-			"VALUES (%d, '%s', '%s', 0)",
-			locker_id, esc_name, esc_hash);
-		free(esc_hash);
-	}
-	else
-	{
-		snprintf(
-			query, sizeof(query),
-			"INSERT INTO private_chests (locker_id, chest_name, is_public) VALUES (%d, '%s', 0)",
-			locker_id, esc_name);
-	}
-	free(esc_name);
-
-	if (!sql_run_query(query))
-		return 0;
-
-	return (int)mysql_insert_id(DB);
-}
-
-bool sql_delete_private_chest(int chest_id)
-{
-	if (!DB || chest_id <= 0)
-		return false;
-
-	char query[256];
-	MYSQL_RES *result = NULL;
-	MYSQL_ROW row = NULL;
-	bool is_private = false;
-	bool has_items = false;
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-			return false;
-		own_txn = true;
-	}
-
-	/* Lock the parent first. InnoDB foreign-key inserts must wait on this
-	 * lock, so the emptiness check and delete cannot race a child insert. */
-	snprintf(query, sizeof(query),
-		 "SELECT is_public FROM private_chests WHERE id=%d FOR UPDATE", chest_id);
-	result = db_query("%s", query);
-	if (!result)
-		goto fail;
-	row = mysql_fetch_row(result);
-	is_private = row && atoi(row[0]) == 0;
-	mysql_free_result(result);
-	if (!is_private)
-		goto fail;
-
-	snprintf(query, sizeof(query), "SELECT id FROM locker_items WHERE chest_id=%d FOR UPDATE",
-		 chest_id);
-	result = db_query("%s", query);
-	if (!result)
-		goto fail;
-	has_items = mysql_fetch_row(result) != NULL;
-	mysql_free_result(result);
-	if (has_items)
-		goto fail;
-
-	snprintf(query, sizeof(query), "DELETE FROM private_chests WHERE id=%d AND is_public=0",
-		 chest_id);
-	if (!sql_run_query(query) || mysql_affected_rows(DB) != 1)
-		goto fail;
-
-	if (own_txn && !sql_commit())
-		goto fail;
-	return true;
-
-fail:
-	if (own_txn)
-		sql_rollback();
-	return false;
-}
-
-int sql_get_chest_id(int locker_id, const char *chest_name)
-{
-	if (!DB || locker_id <= 0 || !chest_name)
-		return 0;
-
-	char *esc_name = sql_escape_string(chest_name);
-	if (!esc_name)
-		return 0;
-
-	char query[512];
-	snprintf(query, sizeof(query),
-		 "SELECT id FROM private_chests WHERE locker_id=%d AND chest_name='%s'", locker_id,
-		 esc_name);
-	free(esc_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return 0;
-
-	int id = 0;
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (row)
-		id = atoi(row[0]);
-	mysql_free_result(result);
-	return id;
-}
-
-bool sql_set_chest_password_hash(int chest_id, const char *hash)
-{
-	if (!DB || chest_id <= 0)
-		return false;
-
-	char query[512];
-	if (!hash || !hash[0])
-	{
-		snprintf(query, sizeof(query),
-			 "UPDATE private_chests SET password_hash=NULL WHERE id=%d AND is_public=0",
-			 chest_id);
-		if (!sql_run_query(query))
-			return false;
-		if (mysql_affected_rows(DB) == 1)
-			return true;
-
-		snprintf(
-			query, sizeof(query),
-			"SELECT id FROM private_chests WHERE id=%d AND is_public=0 AND password_hash IS NULL",
-			chest_id);
-		MYSQL_RES *result = db_query("%s", query);
-		if (!result)
-			return false;
-		bool found = mysql_fetch_row(result) != NULL;
-		mysql_free_result(result);
-		return found;
-	}
-	if (!is_bcrypt_hash(hash))
-		return false;
-
-	char *esc_hash = hash ? sql_escape_string(hash) : NULL;
-	if (!esc_hash)
-		return false;
-	snprintf(query, sizeof(query),
-		 "UPDATE private_chests SET password_hash='%s' WHERE id=%d AND is_public=0",
-		 esc_hash, chest_id);
-	free(esc_hash);
-	return sql_run_query(query) && mysql_affected_rows(DB) == 1;
-}
-
-/* Returns an owned copy; NULL is an unprotected chest, false is a read failure. */
-bool sql_get_chest_password_hash(int chest_id, char **hash)
-{
-	*hash = nullptr;
-	if (!DB || chest_id <= 0)
-		return false;
-	MYSQL_RES *result =
-		db_query("SELECT password_hash FROM private_chests WHERE id=%d", chest_id);
-	if (!result)
-		return false;
-	MYSQL_ROW row = mysql_fetch_row(result);
-	bool found = row != nullptr;
-	if (row && row[0])
-	{
-		*hash = strdup(row[0]);
-		if (!*hash)
-			found = false;
-	}
-	mysql_free_result(result);
-	return found;
-}
-
-bool sql_finish_chest_password(int chest_id, const char *expected, const char *upgrade)
-{
-	char *current = nullptr;
-	if (!sql_get_chest_password_hash(chest_id, &current))
-		return false;
-	bool same = (!current && !expected) || (current && expected && !strcmp(current, expected));
-	free(current);
-	if (!same)
-		return false;
-	if (!upgrade)
-		return true;
-	if (!expected || !is_bcrypt_hash(upgrade))
-		return false;
-	char *esc_hash = sql_escape_string(upgrade);
-	char *esc_old = sql_escape_string(expected);
-	if (!esc_hash || !esc_old)
-	{
-		free(esc_hash);
-		free(esc_old);
-		return false;
-	}
-	char query[512];
-	snprintf(query, sizeof(query),
-		 "UPDATE private_chests SET password_hash='%s' WHERE id=%d AND password_hash='%s'",
-		 esc_hash, chest_id, esc_old);
-	free(esc_hash);
-	free(esc_old);
-	// A racing password change fails closed; never re-run bcrypt on this thread.
-	return sql_run_query(query) && mysql_affected_rows(DB) == 1;
-}
-
-int sql_count_private_chests(int locker_id)
-{
-	if (!DB || locker_id <= 0)
-		return 0;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "SELECT COUNT(*) FROM private_chests WHERE locker_id=%d AND is_public=0",
-		 locker_id);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return 0;
-
-	int count = 0;
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (row)
-		count = atoi(row[0]);
-	mysql_free_result(result);
-	return count;
-}
-
 bool sql_log_chest_activity(int locker_id, int chest_id, const char *char_name, int action_type,
 			    const char *item_short)
 {
 	if (!DB || locker_id <= 0 || !char_name || action_type < 1)
 		return false;
-
-	char *esc_char = sql_escape_string(char_name);
-	char *esc_item = item_short ? sql_escape_string(item_short) : NULL;
-
-	char chest_str[32];
-	if (chest_id > 0)
-		snprintf(chest_str, sizeof(chest_str), "%d", chest_id);
-	else
-		strcpy(chest_str, "NULL");
-
-	char query[1024];
-	snprintf(
-		query, sizeof(query),
+	return sql_queue(
 		"INSERT INTO private_chest_log (locker_id, chest_id, char_name, action_type, item_short) "
-		"VALUES (%d, %s, '%s', %d, %s%s%s)",
-		locker_id, chest_str, esc_char, action_type, esc_item ? "'" : "",
-		esc_item ? esc_item : "NULL", esc_item ? "'" : "");
-
-	free(esc_char);
-	if (esc_item)
-		free(esc_item);
-
-	return sql_run_query(query);
+		"VALUES (%d, %s, '%s', %d, %s)",
+		locker_id, chest_id > 0 ? std::to_string(chest_id).c_str() : "NULL",
+		escape_str(char_name).c_str(), action_type,
+		item_short ? ("'" + escape_str(item_short) + "'").c_str() : "NULL");
 }
 
 bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)
@@ -6861,137 +6260,6 @@ bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)
 	}
 	item_claim_log_dupes("save_left_out", chest, claim);
 	return true;
-}
-
-void sql_load_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)
-{
-	if (!DB || locker_id <= 0 || chest_id <= 0 || !chest_obj)
-		return;
-
-	char query[1024];
-	snprintf(query, sizeof(query),
-		 "SELECT id, vnum, weight, cost, timer, extra_flags, wear_flags, item_type, "
-		 "value0, value1, value2, value3, value4, value5, value6, value7, "
-		 "name, short_descr, description, action_descr, obj_uid, item_condition, "
-		 "item_material "
-		 "FROM locker_items WHERE locker_id=%d AND container_id IS NULL AND chest_id=%d",
-		 locker_id, chest_id);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return;
-
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(result)))
-	{
-		int item_id = atoi(row[0]);
-		int vnum = atoi(row[1]);
-		int rnum = real_object(vnum);
-		if (rnum < 0)
-			continue;
-
-		P_obj obj = read_object(rnum, REAL);
-		if (!obj)
-			continue;
-
-		if (row[2])
-			obj->weight = atoi(row[2]);
-		if (row[3])
-			obj->cost = atoi(row[3]);
-		if (row[4])
-			obj->timer[0] = atol(row[4]);
-		if (row[5])
-			obj->extra_flags = strtoul(row[5], NULL, 10);
-		if (row[6])
-			obj->wear_flags = atoi(row[6]);
-		if (row[7])
-			obj->type = sql_validate_loaded_item_type(obj, atoi(row[7]),
-								  "sql_load_private_chest_items");
-
-		obj->value[0] = row[8] ? atoi(row[8]) : obj->value[0];
-		obj->value[1] = row[9] ? atoi(row[9]) : obj->value[1];
-		obj->value[2] = row[10] ? atoi(row[10]) : obj->value[2];
-		obj->value[3] = row[11] ? atoi(row[11]) : obj->value[3];
-		obj->value[4] = row[12] ? atoi(row[12]) : obj->value[4];
-		obj->value[5] = row[13] ? atoi(row[13]) : obj->value[5];
-		obj->value[6] = row[14] ? atoi(row[14]) : obj->value[6];
-		obj->value[7] = row[15] ? atoi(row[15]) : obj->value[7];
-
-		if (row[16] && strlen(row[16]) > 0)
-		{
-			obj->name = str_dup(row[16]);
-			obj->str_mask |= STRUNG_KEYS;
-		}
-		if (row[17] && strlen(row[17]) > 0)
-		{
-			obj->short_description = str_dup(row[17]);
-			obj->str_mask |= STRUNG_DESC2;
-		}
-		if (row[18] && strlen(row[18]) > 0)
-		{
-			obj->description = str_dup(row[18]);
-			obj->str_mask |= STRUNG_DESC1;
-		}
-		if (row[19] && strlen(row[19]) > 0)
-		{
-			obj->action_description = str_dup(row[19]);
-			obj->str_mask |= STRUNG_DESC3;
-		}
-		// restore obj_uid and condition
-		if (row[20] && strlen(row[20]) > 0)
-		{
-			unsigned long saved_uid = strtoul(row[20], NULL, 10);
-			if (saved_uid > 0)
-				obj->obj_uid = saved_uid;
-		}
-		if (row[21] && strlen(row[21]) > 0)
-			obj->condition = atoi(row[21]);
-
-		if (!sql_persistence_item_owner_matches_identity(
-			    obj->obj_uid, "locker", static_cast<unsigned long long>(locker_id),
-			    static_cast<unsigned long long>(chest_id),
-			    "sql_load_private_chest_items"))
-		{
-			// A stale copy another owner holds is left out; what it contains
-			// goes into the chest.
-			extract_obj(obj, FALSE);
-			for (P_obj orphan = sql_load_locker_items_filtered(locker_id, item_id,
-									   chest_id, 1);
-			     orphan;)
-			{
-				P_obj next = orphan->next_content;
-				orphan->next_content = NULL;
-				obj_to_obj(orphan, chest_obj);
-				orphan = next;
-			}
-			continue;
-		}
-
-		obj->db_item_id = item_id;
-		REMOVE_BIT(obj->runtime_flags, OBJ_RFLAG_CREATION_CANDIDATE);
-		sql_load_item_affects_from_table(item_id, obj, "locker_item_affects");
-		sql_load_item_extra_descr_from_table(item_id, obj, "locker_item");
-
-		// Put the chest item into the room before loading nested contents so
-		// nested containers do not get rejected by a fit check while still full.
-		obj_to_obj(obj, chest_obj);
-
-		// load contained items (bags inside the chest)
-		obj->contains = sql_load_locker_items_filtered(locker_id, item_id, chest_id, 1);
-		for (P_obj c = obj->contains; c; c = c->next_content)
-		{
-			if (!obj_can_nest(c, obj))
-			{
-				logit(LOG_DEBUG,
-				      "sql_load_private_chest_items: skipping malformed container link %d -> %d",
-				      c->db_item_id, obj->db_item_id);
-				continue;
-			}
-			c->loc_p = LOC_INSIDE;
-			c->loc.inside = obj;
-		}
-	}
-	mysql_free_result(result);
 }
 
 // migration helpers

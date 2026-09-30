@@ -7,6 +7,8 @@
 
 #include "core/structs.h"
 
+#include "sql/sql_work.h"
+
 #include <functional>
 #include <string>
 #include <vector>
@@ -152,35 +154,14 @@ bool sql_delete_account(const char *name, std::function<void(bool deleted)> done
 // for guild locker: owner_pid = 0, owner_assoc_id set
 bool sql_save_locker(P_char locker_ch, int owner_pid, int owner_assoc_id);
 
-// load locker from db
-// pass owner_pid for personal, owner_assoc_id for guild (other should be 0)
-P_char sql_load_locker(int owner_pid, int owner_assoc_id);
-
-// load locker by name (e.g. "playername.locker" or "guild.123.locker")
-P_char sql_load_locker_by_name(const char *locker_name);
-
-/* Report whether a locker exists for the supplied stable owner key. */
-bool sql_locker_exists(int owner_pid, int owner_assoc_id);
-/* Report whether a locker exists for the supplied display name. */
-bool sql_locker_exists_by_name(const char *locker_name);
-
-/* Validate personal-locker ownership through a current same-side identity mapping. */
-bool sql_locker_owner_can_access(const char *locker_name, int owner_pid, int racewar);
-
 // delete locker
+std::string sql_delete_locker_statement(int owner_pid, int owner_assoc_id);
 bool sql_delete_locker(int owner_pid, int owner_assoc_id);
 bool sql_delete_locker_by_name(const char *locker_name);
 
 // private chest functions
 int sql_get_locker_id_by_name(const char *locker_name);
 int sql_get_or_create_public_chest(int locker_id);
-int sql_create_private_chest_hashed(int locker_id, const char *chest_name, const char *hash);
-bool sql_delete_private_chest(int chest_id);
-int sql_get_chest_id(int locker_id, const char *chest_name);
-bool sql_set_chest_password_hash(int chest_id, const char *hash);
-bool sql_get_chest_password_hash(int chest_id, char **hash);
-bool sql_finish_chest_password(int chest_id, const char *expected, const char *upgrade);
-int sql_count_private_chests(int locker_id);
 // private_chest_log action_type values
 #define CHEST_ACTION_OPEN 1
 #define CHEST_ACTION_CLOSE 2
@@ -191,7 +172,10 @@ int sql_count_private_chests(int locker_id);
 bool sql_log_chest_activity(int locker_id, int chest_id, const char *char_name, int action_type,
 			    const char *item_short);
 bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj);
-void sql_load_private_chest_items(int locker_id, int chest_id, P_obj chest_obj);
+// A locker's items from the rows its entry read on the writer (storage_lockers.c):
+// the chain of chest `chest_id`, or, with chest_obj, placed in that private chest.
+P_obj sql_locker_items_from_rows(const sql_rows &rows, int locker_id, int chest_id,
+				 P_obj chest_obj);
 
 // account bank
 struct AccountBankBalances

@@ -91,6 +91,24 @@ COMMANDS = (
     ('prestige', 'Prestigious Associations'),
     ('society ledger', 'Guild Ledger:'),
 )
+# The account locker, in the fixture's locker rooms: entered (read on the writer),
+# a private chest created, opened and closed, the log and the grants read, a mace put
+# in the chest and one dropped, then left and entered again (see locker()).
+LOCKER_COMMANDS = (
+    ('load obj 3097', 'Pos: standing >'),
+    ('enter locker', 'this cost you'),
+    ('eq chest create vault', "Private chest 'vault' created"),
+    ('eq chest list', 'Private chests: 1/5'),
+    ('open vault', "You open the 'vault' chest."),
+    ('close', 'You close the chest.'),
+    ('eq log', 'Recent locker activity'),
+    ('grant list', 'No one has access to your locker but you.'),
+    ('grant add Nobody', 'Unknown character or account: nobody'),
+    ('load obj 677', 'Pos: standing >'),
+    ('put mace vault', 'Pos: standing >'),
+    ('load obj 677', 'Pos: standing >'),
+    ('drop mace', 'Pos: standing >'),
+)
 REENTRY_COMMANDS = (
     ('epic bonus', 'benefiting from the Experience Bonus'),
     ('divineclaim list', 'Copies'),
@@ -111,6 +129,43 @@ def enter(client):
     client.expect('Play as', timeout=15)
     client.send('y')
     client.expect('The Regression Arena', timeout=30)
+
+
+def add_lockers(runtime):
+    """Locker rooms (the holding room and one locker) and a locker counter."""
+    mini = runtime / 'areas_mini'
+    zone = (mini / 'mini.zon').read_text()
+    assert '29999 0 0 6 11 1' in zone, 'the journey zone header changed'
+    (mini / 'mini.zon').write_text(zone.replace('29999 0 0 6 11 1', '65999 0 0 6 11 1'))
+    rooms = ''.join(f'#{vnum}\nA locker room~\n~\n1 0 0\nS\n' for vnum in (65201, 65202))
+    world = (mini / 'mini.wld').read_text()
+    (mini / 'mini.wld').write_text(world.replace('$~', rooms + '$~'))
+    counter = ('#3097\ncounter locker~\na locker counter~\nA locker counter stands here.~\n~\n'
+               '13 0 0 0 0 0 0 0 0 0 0\n0 0 0 0 0 0 0 0\n0 0 100\n')
+    objects = (mini / 'mini.obj').read_text()
+    (mini / 'mini.obj').write_text(objects.replace('$~', counter + '$~'))
+
+
+def locker(client):
+    """Use the locker, leave it, and enter again once its save has landed: the
+    rows come back from the writer with the dropped mace and the chest's."""
+    run_commands(client, LOCKER_COMMANDS)
+    client.send('north')
+    client.expect('applying magic locks', timeout=30)
+    deadline = time.monotonic() + 60
+    while True:
+        client.send('enter locker')
+        matched, _ = client.expect_any(('this cost you', 'Please try later',
+                                        'Slow your roll'), timeout=30)
+        if matched == 'this cost you':
+            break
+        assert time.monotonic() < deadline, 'the locker was never saved'
+        time.sleep(1)
+    run_commands(client, (
+        ('eq chest list', 'vault'),
+        ('look in vault', 'mace'),
+        ('north', 'applying magic locks'),
+    ))
 
 
 def run_commands(client, commands):
@@ -151,6 +206,7 @@ def run(server):
     with tempfile.TemporaryDirectory(prefix='loop-queries-', dir=ROOT / 'bin/tests') as tmp:
         runtime = Path(tmp)
         journey.make_fixture(runtime)
+        add_lockers(runtime)
         journey.generate_certificate(runtime)
         (runtime / 'logs/log').mkdir(parents=True)
         for name in ('players', 'critical'):
@@ -162,7 +218,7 @@ def run(server):
         output_path = runtime / 'server.out'
         output = output_path.open('w')
         process = subprocess.Popen(
-            [str(server), '--minimal', '-s', '-d', str(runtime), str(plain)], cwd=runtime,
+            [str(server), '--minimal', '-d', str(runtime), str(plain)], cwd=runtime,
             env=environment, stdout=output, stderr=subprocess.STDOUT)
         client = None
         try:
@@ -191,7 +247,7 @@ def run(server):
                     journey.CHARACTER + "' AND message='Camped'").stdout.strip() != '1':
                 assert time.monotonic() < deadline, 'the quit was not written'
                 time.sleep(0.2)
-            sql(f"UPDATE player_data SET level=62 WHERE name='{journey.CHARACTER}'")
+            sql(f"UPDATE player_data SET level=62,platinum=1000 WHERE name='{journey.CHARACTER}'")
             # The account menu's lists come from the account in memory.
             client.send('8')
             client.expect('RESTED BONUS STATUS', timeout=15)
@@ -202,6 +258,7 @@ def run(server):
             client.expect('Please select an option', timeout=15)
             enter(client)
             run_commands(client, COMMANDS)
+            locker(client)
             client.send('quit')
             client.expect('Please select an option', timeout=60)
             enter(client)
@@ -282,7 +339,10 @@ def run(server):
         assert whitelist.split('\t') == ['10.2.*.*', 'guests', journey.CHARACTER, '1'], whitelist
         for query, expected in (
                 ("SELECT COUNT(*) FROM guilds WHERE TRIM(name)='Journeyguild'", '1'),
-                ("SELECT COUNT(*) FROM associations WHERE TRIM(name)='Journeyguild'", '1')):
+                ("SELECT COUNT(*) FROM associations WHERE TRIM(name)='Journeyguild'", '1'),
+                ("SELECT COUNT(*) FROM private_chests WHERE chest_name='vault'", '1'),
+                ('SELECT COUNT(*) FROM locker_items WHERE vnum=677', '2'),
+                ('SELECT COUNT(*) > 1 FROM private_chest_log', '1')):
             got = scalar(query)
             assert got == expected, f'{query}: {got}, expected {expected}'
 

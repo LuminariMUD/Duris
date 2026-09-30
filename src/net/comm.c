@@ -1007,7 +1007,8 @@ int run_the_game(int port, int sslport)
 
 	fprintf(stderr, "Entering game loop.\n\r");
 	logit(LOG_STATUS, "Entering game loop.");
-	if (!mini_mode)
+	// A minimal world on MariaDB saves its lockers through the writer too.
+	if (!mini_mode || sql_pool_is_active())
 		locker_async_init();
 	// Only a journal left behind by an older server is read, once.
 	if (!player_save_pipeline_init(getenv("PLAYER_SAVE_JOURNAL_DIR")))

@@ -5552,6 +5552,59 @@ bool sql_persistence_write_large_event_line(const char *line)
 	return sql_persistence_execute_raw(line);
 }
 
+static item_owner_type sql_persistence_owner_type(const char *owner_type)
+{
+	if (!strcmp(owner_type, "player"))
+		return item_owner_type::player;
+	if (!strcmp(owner_type, "container"))
+		return item_owner_type::container;
+	if (!strcmp(owner_type, "room"))
+		return item_owner_type::room;
+	if (!strcmp(owner_type, "corpse"))
+		return item_owner_type::corpse;
+	if (!strcmp(owner_type, "locker"))
+		return item_owner_type::locker;
+	if (!strcmp(owner_type, "auction"))
+		return item_owner_type::auction;
+	if (!strcmp(owner_type, "shopkeeper"))
+		return item_owner_type::shopkeeper;
+	if (!strcmp(owner_type, "collector"))
+		return item_owner_type::collector;
+	return item_owner_type::unknown;
+}
+
+// The rule below for an item_current_owner row already read: root, parent (0 for
+// none), owner type, id and context, item revision, vnum, state and owner revision,
+// or NULL when the item has no row.
+static bool sql_persistence_owner_row_matches(unsigned long long item_uid,
+					      const item_owner_identity &expected,
+					      const char *const *row)
+{
+	if (!row)
+		return true;
+	item_ownership_runtime_entry entry = {
+		.item_uid = item_uid,
+		.root_item_uid = strtoull(row[0], NULL, 10),
+		.parent_item_uid = strtoull(row[1], NULL, 10),
+		.owner = { static_cast<item_owner_type>(strtoul(row[2], NULL, 10)),
+			   strtoull(row[3], NULL, 10), strtoull(row[4], NULL, 10) },
+		.item_revision = strtoull(row[5], NULL, 10),
+		.owner_revision = row[8] ? strtoull(row[8], NULL, 10) : 0,
+		.vnum = static_cast<int32_t>(strtol(row[6], NULL, 10)),
+		.state = static_cast<item_custody_state>(strtoul(row[7], NULL, 10)),
+	};
+	if (!item_owner_identity_equal(entry.owner, expected))
+	{
+		dupe_log_item("load_skipped", item_uid, entry.vnum, expected, entry.owner);
+		return false;
+	}
+	// The in-memory ownership catalog still serves item commands that have not moved
+	// to memory yet; it only takes an active row.
+	if (entry.state == item_custody_state::active && row[8])
+		item_ownership_runtime_hydrate(entry);
+	return true;
+}
+
 /*
  * A load takes an item when item_current_owner has no row for it or names the
  * loading owner, whatever the row's state. A row naming anyone else makes this a
@@ -5569,38 +5622,12 @@ bool sql_persistence_item_owner_matches_identity(unsigned long long item_uid,
 		return true;
 	if (!owner_type || !context || !DB)
 		return false;
-	item_owner_type expected_type = item_owner_type::unknown;
-	if (!strcmp(owner_type, "player"))
-		expected_type = item_owner_type::player;
-	else if (!strcmp(owner_type, "container"))
-		expected_type = item_owner_type::container;
-	else if (!strcmp(owner_type, "room"))
-		expected_type = item_owner_type::room;
-	else if (!strcmp(owner_type, "corpse"))
-		expected_type = item_owner_type::corpse;
-	else if (!strcmp(owner_type, "locker"))
-		expected_type = item_owner_type::locker;
-	else if (!strcmp(owner_type, "auction"))
-		expected_type = item_owner_type::auction;
-	else if (!strcmp(owner_type, "shopkeeper"))
-		expected_type = item_owner_type::shopkeeper;
-	else if (!strcmp(owner_type, "collector"))
-		expected_type = item_owner_type::collector;
-	if (expected_type == item_owner_type::unknown)
+	const item_owner_type expected_type = sql_persistence_owner_type(owner_type);
+	if (expected_type == item_owner_type::unknown || !expected_id)
 		return false;
-	if (!expected_id)
-		return false;
-	const item_owner_identity expected = { expected_type, expected_id, expected_context_id };
 	char query[512];
-	snprintf(
-		query, sizeof(query),
-		"SELECT current_item.root_item_uid,COALESCE(current_item.parent_item_uid,0),"
-		"current_item.owner_type,current_item.owner_id,current_item.owner_context_id,"
-		"current_item.item_revision,current_item.vnum,current_item.state,owner.revision "
-		"FROM item_current_owner current_item LEFT JOIN item_owner_revision owner ON "
-		"owner.owner_type=current_item.owner_type AND owner.owner_id=current_item.owner_id "
-		"AND owner.owner_context_id=current_item.owner_context_id WHERE current_item.item_uid=%llu",
-		item_uid);
+	snprintf(query, sizeof(query), "%s WHERE current_item.item_uid=%llu", SQL_ITEM_OWNER_SELECT,
+		 item_uid);
 	MYSQL_RES *result = db_query("%s", query);
 	if (!result)
 	{
@@ -5608,35 +5635,24 @@ bool sql_persistence_item_owner_matches_identity(unsigned long long item_uid,
 		      item_uid, context);
 		return true;
 	}
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (!row)
-	{
-		mysql_free_result(result);
-		return true;
-	}
-	item_ownership_runtime_entry entry = {
-		.item_uid = item_uid,
-		.root_item_uid = strtoull(row[0], NULL, 10),
-		.parent_item_uid = strtoull(row[1], NULL, 10),
-		.owner = { static_cast<item_owner_type>(strtoul(row[2], NULL, 10)),
-			   strtoull(row[3], NULL, 10), strtoull(row[4], NULL, 10) },
-		.item_revision = strtoull(row[5], NULL, 10),
-		.owner_revision = row[8] ? strtoull(row[8], NULL, 10) : 0,
-		.vnum = static_cast<int32_t>(strtol(row[6], NULL, 10)),
-		.state = static_cast<item_custody_state>(strtoul(row[7], NULL, 10)),
-	};
-	const bool revision_known = row[8] != NULL;
+	const bool matches = sql_persistence_owner_row_matches(
+		item_uid, { expected_type, expected_id, expected_context_id },
+		mysql_fetch_row(result));
 	mysql_free_result(result);
-	if (!item_owner_identity_equal(entry.owner, expected))
-	{
-		dupe_log_item("load_skipped", item_uid, entry.vnum, expected, entry.owner);
-		return false;
-	}
-	// The in-memory ownership catalog still serves item commands that have not moved
-	// to memory yet; it only takes an active row.
-	if (entry.state == item_custody_state::active && revision_known)
-		item_ownership_runtime_hydrate(entry);
-	return true;
+	return matches;
+}
+
+bool sql_persistence_item_owner_fields_match(unsigned long long item_uid, const char *owner_type,
+					     unsigned long long expected_id,
+					     unsigned long long expected_context_id,
+					     const char *const *row)
+{
+	if (item_uid == 0)
+		return true;
+	const item_owner_type expected_type = sql_persistence_owner_type(owner_type);
+	return expected_type != item_owner_type::unknown && expected_id &&
+	       sql_persistence_owner_row_matches(
+		       item_uid, { expected_type, expected_id, expected_context_id }, row);
 }
 
 bool sql_persistence_item_owner_matches(unsigned long long item_uid, const char *owner_type,

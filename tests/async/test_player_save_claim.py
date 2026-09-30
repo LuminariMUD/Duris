@@ -121,17 +121,15 @@ assert "player_load_filter_mysql_harness" in RUNNER
 SQL_PLAYER = (SRC / "sql_player.c").read_text()
 assert SQL_PLAYER.count("if (container_map[i] != -1)") == 2
 assert "if (container_map[i] == 0)\n\t\t\t{" not in SQL_PLAYER
-locker = SQL_PLAYER[SQL_PLAYER.index("static P_obj sql_load_locker_items_filtered("):]
+locker = SQL_PLAYER[SQL_PLAYER.index("static P_obj locker_items_from_index("):]
 locker = locker[: locker.index("\n}\n")]
-assert "&first_obj, &last_obj,\n\t\t\t\t\tsql_load_locker_items_filtered(" in locker
+assert "append_loaded_objects(&first_obj, &last_obj, orphans);" in locker
+assert "obj_to_obj(orphans, chest_obj)" in locker
 room = SQL_PLAYER[SQL_PLAYER.index("static P_obj sql_load_saved_item_contents("):]
 room = room[: room.index("\n}\n")]
 assert "append_loaded_objects(&first_obj, &last_obj,\n" in room
 owner_check = room[room.index("sql_persistence_item_owner_matches(obj->obj_uid"):]
 assert "*valid = false" not in owner_check[: owner_check.index("continue;")]
-chest = SQL_PLAYER[SQL_PLAYER.index("void sql_load_private_chest_items(int locker_id"):]
-chest = chest[: chest.index("\n}\n")]
-assert "obj_to_obj(orphan, chest_obj)" in chest
 print("[PASS] player, pet, corpse, locker and saved-item loads use the same filter")
 
 assert "tests/async/run_player_save_claim_mysql.sh" in DATABASE_TESTS

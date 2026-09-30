@@ -36,7 +36,7 @@ from _paths import ROOT, extract_function, source
 # The stored-ship rows and the boot load, from their struct to sql_load_all_ships().
 SQL_PLAYER = source("sql_player.c").read_text(encoding="utf-8")
 SQL_SHIPS = SQL_PLAYER[SQL_PLAYER.index("/* The stored rows of one ship"):
-                       SQL_PLAYER.index("/* The statement that deletes")]
+                       SQL_PLAYER.index("/* The statement that deletes `owner_name`'s ship")]
 
 FUNCTIONS = "\n\n".join(
     [

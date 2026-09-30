@@ -13,6 +13,8 @@
 #define __STORAGE_LOCKERS_H__
 
 #include <string.h>
+#include <string>
+#include <vector>
 #include "item/item_transfer_command.h"
 
 // Type-specific locker chests only accept matching items.  Containers and
@@ -23,10 +25,14 @@ bool locker_owner_for_room(P_char actor, item_owner_identity *owner);
 bool locker_owner_for_container(P_char actor, P_obj container, item_owner_identity *owner);
 
 int guild_locker_room_hook(int room, P_char ch, int cmd, char *arg);
+/* The statement that removes every locker grant `name` holds (a character deletion). */
+std::string remove_all_locker_access_statement(const char *name);
+/* Remove them inside the caller's transaction (a character deletion). */
 bool remove_all_locker_access(P_char ch);
 
 class LockerChest;
 class ComboChest;
+class PrivateChest;
 
 class StorageLocker
 {
@@ -63,6 +69,11 @@ class StorageLocker
 	int GetPublicChestId(void) { return m_publicChestId; };
 	void SetPublicChestId(int id) { m_publicChestId = id; };
 	void AddPrivateChest(LockerChest *chest) { AddLockerChest(chest); };
+	// The private chest named `name` (any case), or NULL.
+	PrivateChest *FindPrivateChest(const char *name);
+	std::vector<PrivateChest *> GetPrivateChests(void);
+	// Unlink the chest and delete it.
+	void RemovePrivateChest(PrivateChest *chest);
 	int GetRealRoom(void) { return m_realRoom; };
 
     protected:
@@ -278,15 +289,20 @@ class PrivateChest : public LockerChest
 	friend class StorageLocker;
 
     public:
-	PrivateChest(int chest_id, const char *name, bool has_password);
+	// password_hash is the stored bcrypt hash, or NULL for none.
+	PrivateChest(int chest_id, const char *name, const char *password_hash);
 
 	virtual bool ItemFits(P_obj /*obj*/) override { return false; };
 	virtual bool IsPrivateChest(void) override { return true; };
 	virtual int GetChestId(void) override { return m_chestId; };
+	const char *GetName(void) { return m_chestName; };
+	// Memory holds the chest's password: empty for none.
+	const std::string &GetPasswordHash(void) { return m_passwordHash; };
+	void SetPasswordHash(const char *hash) { m_passwordHash = hash ? hash : ""; };
 
     protected:
 	int m_chestId;
-	bool m_hasPassword;
+	std::string m_passwordHash;
 	char m_chestName[128];
 };
 

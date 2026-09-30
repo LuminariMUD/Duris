@@ -39,8 +39,9 @@ class LockerOwnershipCutoverTests(unittest.TestCase):
         ):
             self.assertIn(token, self.lockers)
         self.assertIn("m_publicChestId", self.lockers_h)
-        self.assertIn("SetPublicChestId(sql_get_or_create_public_chest(locker_id))",
-                      self.lockers)
+        # The locker and its public chest come from the entry read on the writer.
+        self.assertIn("pLocker->SetPublicChestId(atoi((*row)[4]));", self.lockers)
+        self.assertIn("INSERT INTO private_chests (locker_id, chest_name, ", self.lockers)
 
     def test_deposit_and_withdraw_are_ack_gated(self):
         # Locker ownership is now resolved by the focused item policy module;
@@ -84,17 +85,19 @@ class LockerOwnershipCutoverTests(unittest.TestCase):
         self.assertLess(final_locker_drain, world_drain)
 
     def test_restore_checks_exact_numeric_owner_identity(self):
-        self.assertIn("sql_persistence_item_owner_matches_identity", self.sql)
+        self.assertIn("sql_persistence_item_owner_fields_match", self.sql)
         self.assertIn("static_cast<unsigned long long>(locker_id)", self.sql_player)
         self.assertIn("static_cast<unsigned long long>(chest_id)", self.sql_player)
         self.assertNotIn('sql_persistence_item_owner_matches(obj->obj_uid, "locker"',
                          self.sql_player)
         locker_restore = function_body(
             self.sql_player,
-            "static P_obj sql_load_locker_items(int locker_id",
-            "bool sql_locker_exists(",
+            "static P_obj locker_items_from_index(",
+            "P_obj sql_locker_items_from_rows(",
         )
         self.assertNotIn("owner_ref", locker_restore)
+        self.assertIn('sql_persistence_item_owner_fields_match(\n\t\t\t    obj->obj_uid, "locker"',
+                      locker_restore)
 
     def test_flat_transfer_composes_locker_and_ownership_after_images(self):
         self.assertIn("flatfile_locker_prepare_item_transfer", self.flat_lockers)
