@@ -19,8 +19,10 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <functional>
 #include <string>
 #include <type_traits>
+#include <vector>
 #include <utility>
 #include "account/account.h"
 #include "cmd/mail.h"
@@ -106,7 +108,7 @@ void add_ip_entry(P_acct, P_desc);
 struct acct_ip *find_ip_entry(P_acct, P_desc);
 int can_connect(struct acct_chars *, P_desc);
 int is_char_in_game(struct acct_chars *, P_desc);
-struct acct_chars *find_char_in_list(struct acct_chars *, char *);
+struct acct_chars *find_char_in_list(struct acct_chars *, const char *);
 P_char load_char_into_game(struct acct_chars *, P_desc);
 void account_new_char_name(P_desc, char *);
 void display_character_list(P_desc, P_acct account = NULL);
@@ -114,7 +116,7 @@ void display_character_list_to_char(P_char ch, P_acct account);
 void display_delete_character_list(P_desc);
 void add_char_to_account(P_desc);
 int sync_account_character_projection(P_char, int, int);
-void remove_char_from_list(P_acct, char *, bool persist = true);
+void remove_char_from_list(P_acct, const char *, bool persist = true);
 int write_account(P_acct);
 const char *get_account_name_safe(P_char);
 
@@ -709,7 +711,7 @@ void event_artifact_check_poof_sql(P_char ch, P_char vict, P_obj obj, void *arg)
 void event_artifact_wars_sql(P_char, P_char, P_obj, void *);
 bool get_artifact_data_sql(int vnum, P_arti artidata);
 bool remove_owned_artifact_sql(P_obj arti, int pid = -1);
-std::string remove_all_artifacts_sql(int pid);
+std::vector<std::string> remove_all_artifacts_sql(int pid);
 void artifacts_forget_deleted_character(int pid);
 void setupMortArtiList_sql(void);
 bool artifacts_load(void);
@@ -1134,9 +1136,12 @@ enum class character_delete_result
 	refused,
 	reconciliation_required
 };
-// Never consumes ch. Legacy callers receive TRUE only for confirmed completion.
-character_delete_result delete_character_result(P_char ch, bool bDeleteLocker = true);
-int deleteCharacter(P_char, bool bDeleteLocker = true);
+// Deletes ch's stored state and, once that is done, lets memory forget the character.
+// done gets the outcome on the game thread: at once on flat-file, on a later pulse on
+// MariaDB, where the deletion is one writer job. Never consumes ch, which may leave the
+// game before done runs.
+void delete_character(P_char ch, bool delete_locker = true,
+		      std::function<void(character_delete_result)> done = {});
 int deletePet(char *);
 int deleteShopKeeper(int);
 P_obj read_one_object(char *);

@@ -125,34 +125,6 @@ int real_room(const int room)
 }
 void clear_title(P_char) {}
 void create_epic_skills() {}
-void delete_ship(char *) {}
-void delete_ship_runtime(const char *) {}
-void player_revision_forget(int) {}
-void sql_player_names_forget(int) {}
-bool sql_in_transaction()
-{
-	return false;
-}
-bool qry_at(struct persistence_query_site, const char *, ...)
-{
-	return false;
-}
-bool sql_begin_transaction()
-{
-	return false;
-}
-bool sql_commit()
-{
-	return false;
-}
-bool sql_rollback()
-{
-	return false;
-}
-bool sql_delete_ship(const char *)
-{
-	return false;
-}
 void event_short_affect(P_char, P_char, P_obj, void *) {}
 struct extra_descr_data *find_spell_description(P_obj)
 {
@@ -162,49 +134,11 @@ P_Guild get_guild_from_id(int)
 {
 	return NULL;
 }
-void Guild::kick(P_char) {}
-bool Guild::save_without_member(P_char)
-{
-	return false;
-}
-void Guild::forget_deleted_member(P_char) {}
 int ne_event_time(P_nevent)
 {
 	return 0;
 }
-std::string remove_all_artifacts_sql(int)
-{
-	return {};
-}
-void artifacts_forget_deleted_character(int) {}
-bool remove_all_locker_access(P_char)
-{
-	return true;
-}
-void remove_char_from_list(P_acct, char *, bool) {}
 
-enum persistence_mode persistence_mode_get(void)
-{
-	return PERSISTENCE_MODE_MARIADB_PRIMARY;
-}
-const char *persistence_mode_flatfile_root(void)
-{
-	return "";
-}
-flatfile_character_delete_result flatfile_character_delete(const std::string &, int32_t,
-							   const std::string &, std::string *)
-{
-	return flatfile_character_delete_result::ok;
-}
-
-bool sql_delete_locker(int, int)
-{
-	return true;
-}
-bool sql_delete_player(int, bool)
-{
-	return true;
-}
 int sql_get_player_pid(const char *)
 {
 	return 0;
@@ -222,10 +156,6 @@ bool sql_load_player_skills(P_char)
 	return true;
 }
 bool sql_load_player_status(P_char, int)
-{
-	return true;
-}
-bool sql_soft_delete_character(long)
 {
 	return true;
 }

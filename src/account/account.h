@@ -138,5 +138,9 @@ account_recovery_apply_outcome account_apply_recovered_password(
 using account_read_done =
 	std::function<void(struct descriptor_data *d, bool ok, struct acct_entry *account)>;
 void account_read(struct descriptor_data *d, const char *name, account_read_done done);
+// A session that waits for the writer: its input is held until writer_replied() finds it
+// by the id wait_for_writer() gave, or finds nothing once the connection has closed.
+uint64_t wait_for_writer(struct descriptor_data *d);
+struct descriptor_data *writer_replied(uint64_t id);
 
 #endif // DURIS_ACCOUNT_H

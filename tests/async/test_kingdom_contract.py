@@ -650,10 +650,9 @@ def test_payment_durability_is_one_write() -> None:
     if bodies:
         body = strip_comments(bodies[0])
         check(
-            re.search(r"if\s*\(\s*!\s*sql_in_transaction\s*\(\s*\)\s*\)\s*return\s+"
-                      r"sql_queue_statements\s*\(\s*statements\s*\)", body) is not None,
-            "outside a caller's transaction sql_save_guild queues its statements as one "
-            "writer job",
+            "sql_queue_statements(sql_save_guild_statements(" in body
+            and "sql_in_transaction" not in body,
+            "sql_save_guild queues its statements as one writer job",
         )
         check(
             "sql_begin_transaction(" not in body and "sql_commit(" not in body

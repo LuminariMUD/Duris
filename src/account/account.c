@@ -2166,7 +2166,7 @@ int is_char_in_game(struct acct_chars *c, P_desc d)
 	return 1;
 }
 
-struct acct_chars *find_char_in_list(struct acct_chars *list, char *arg)
+struct acct_chars *find_char_in_list(struct acct_chars *list, const char *arg)
 {
 	if (!list)
 		return NULL;
@@ -2529,6 +2529,29 @@ int sync_account_character_projection(P_char player, int room, int persist)
 	return !persist || write_account(player->desc->account) == 1;
 }
 
+/* A session waiting for the writer holds its input (comm.c) until the reply, which finds
+ * it by this id, so a connection closed meanwhile just drops the reply. On flat-file the
+ * reply comes at once. */
+uint64_t wait_for_writer(P_desc d)
+{
+	static uint64_t sequence = 0;
+	d->writer_wait_id = ++sequence;
+	return d->writer_wait_id;
+}
+
+P_desc writer_replied(uint64_t id)
+{
+	for (P_desc d = descriptor_list; d; d = d->next)
+		if (d->writer_wait_id == id)
+		{
+			d->writer_wait_id = 0;
+			// Output queued here arrives without input.
+			d->prompt_mode = TRUE;
+			return d;
+		}
+	return nullptr;
+}
+
 static void release_delete_character(P_desc d)
 {
 	P_char ch = d->character;
@@ -2539,6 +2562,31 @@ static void release_delete_character(P_desc d)
 		ch->desc = NULL;
 		free_char(ch);
 	}
+}
+
+/* Tells the session how its character deletion went, and returns it to the menu. */
+static void finish_character_deletion(P_desc d, character_delete_result result)
+{
+	if (result == character_delete_result::deleted)
+	{
+		statuslog(GET_LEVEL(d->character), "%s deleted %sself (%s).",
+			  GET_NAME(d->character), GET_SEX(d->character) == SEX_MALE ? "him" : "her",
+			  d->host);
+		logit(LOG_PLAYER, "%s deleted %sself (%s).", GET_NAME(d->character),
+		      GET_SEX(d->character) == SEX_MALE ? "him" : "her", d->host);
+		SEND_TO_Q("&+GCharacter deleted successfully.&n\r\n\r\n", d);
+	}
+	else if (result == character_delete_result::reconciliation_required)
+		SEND_TO_Q("&+RDeletion could not be confirmed. Some cleanup may have completed. "
+			  "Please contact an immortal before retrying.&n\r\n\r\n",
+			  d);
+	else
+		SEND_TO_Q(
+			"&+RCharacter deletion did not complete. Please try again later.&n\r\n\r\n",
+			d);
+	release_delete_character(d);
+	STATE(d) = CON_DISPLAY_ACCT_MENU;
+	display_account_menu(d, NULL);
 }
 
 void account_delete_char(P_desc d, char *arg)
@@ -2567,30 +2615,14 @@ void account_delete_char(P_desc d, char *arg)
 			return;
 		}
 		SEND_TO_Q("\r\n&+RDeleting character...&n\r\n\r\n", d);
-		const auto result = delete_character_result(d->character);
-		if (result == character_delete_result::deleted)
-		{
-			statuslog(GET_LEVEL(d->character), "%s deleted %sself (%s).",
-				  GET_NAME(d->character),
-				  GET_SEX(d->character) == SEX_MALE ? "him" : "her", d->host);
-			logit(LOG_PLAYER, "%s deleted %sself (%s).", GET_NAME(d->character),
-			      GET_SEX(d->character) == SEX_MALE ? "him" : "her", d->host);
-			SEND_TO_Q("&+GCharacter deleted successfully.&n\r\n\r\n", d);
-		}
-		else if (result == character_delete_result::reconciliation_required)
-		{
-			SEND_TO_Q(
-				"&+RDeletion could not be confirmed. Some cleanup may have completed. "
-				"Please contact an immortal before retrying.&n\r\n\r\n",
-				d);
-		}
-		else
-			SEND_TO_Q(
-				"&+RCharacter deletion did not complete. Please try again later.&n\r\n\r\n",
-				d);
-		release_delete_character(d);
-		STATE(d) = CON_DISPLAY_ACCT_MENU;
-		display_account_menu(d, NULL);
+		// The session waits for the deletion, holding the character it confirmed.
+		const uint64_t id = wait_for_writer(d);
+		delete_character(d->character, true,
+				 [id](character_delete_result result)
+				 {
+					 if (P_desc reader = writer_replied(id))
+						 finish_character_deletion(reader, result);
+				 });
 		return;
 	}
 	else if (!strcasecmp(arg, "n") || !strcasecmp(arg, "no"))
@@ -2717,7 +2749,7 @@ void account_delete_char_loaded(P_desc d)
 	d->character = ch;
 }
 
-void remove_char_from_list(P_acct acct, char *ch, bool persist)
+void remove_char_from_list(P_acct acct, const char *ch, bool persist)
 {
 	struct acct_chars *c = NULL;
 	struct acct_chars *prev = NULL;
@@ -2841,30 +2873,6 @@ static void finish_account_deletion(P_desc d, bool deleted, size_t characters)
 	d->account = free_account(d->account);
 	STATE(d) = CON_FLUSH;
 }
-
-#ifndef __NO_MYSQL__
-/* A session waiting for the writer holds its input (comm.c) until the reply, which finds
- * it by this id, so a connection closed meanwhile just drops the reply. */
-static uint64_t wait_for_writer(P_desc d)
-{
-	static uint64_t sequence = 0;
-	d->writer_wait_id = ++sequence;
-	return d->writer_wait_id;
-}
-
-static P_desc writer_replied(uint64_t id)
-{
-	for (P_desc d = descriptor_list; d; d = d->next)
-		if (d->writer_wait_id == id)
-		{
-			d->writer_wait_id = 0;
-			// Output queued here arrives without input.
-			d->prompt_mode = TRUE;
-			return d;
-		}
-	return nullptr;
-}
-#endif
 
 void verify_delete_account(P_desc d, char *arg)
 {

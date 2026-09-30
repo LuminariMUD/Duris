@@ -16,7 +16,7 @@
       "source": "runtime-call",
       "key": "account+canonical-name",
       "disposition": "covered_by_identity",
-      "evidence": { "path": "src/core/files.c", "token": "remove_char_from_list(ch->desc->account" }
+      "evidence": { "path": "src/core/files.c", "token": "remove_char_from_list(d->account, deleted.name.c_str(), false)" }
     },
     {
       "id": "player_snapshot",

@@ -1380,13 +1380,14 @@ void Guild::update_member(P_char ch)
 	}
 }
 
-bool Guild::save_without_member(P_char ch)
+#ifndef __NO_MYSQL__
+std::vector<std::string> Guild::statements_without_member(P_char ch)
 {
 	P_member *link = &members;
 	while (*link && strcasecmp((*link)->name, GET_NAME(ch)))
 		link = &(*link)->next;
 	if (!*link)
-		return false;
+		return {};
 	P_member member = *link;
 	const auto old_frags = frags;
 	*link = member->next;
@@ -1396,33 +1397,32 @@ bool Guild::save_without_member(P_char ch)
 		frags.top_frags = 0;
 	}
 	frags.frags -= GET_FRAGS(ch);
-	const bool saved = save();
+	std::vector<std::string> statements = sql_save_guild_statements(this);
 	frags = old_frags;
 	*link = member;
-	return saved;
+	return statements;
 }
+#endif
 
-void Guild::forget_deleted_member(P_char ch)
+void Guild::forget_deleted_member(const char *name, long member_frags)
 {
 	P_member *link = &members;
-	while (*link && strcasecmp((*link)->name, GET_NAME(ch)))
+	while (*link && strcasecmp((*link)->name, name))
 		link = &(*link)->next;
-	if (*link)
+	if (!*link)
+		return;
+	P_member member = *link;
+	*link = member->next;
+	member->next = NULL;
+	delete member;
+	if (member_count > 0)
+		--member_count;
+	if (!strcasecmp(name, frags.topfragger))
 	{
-		P_member member = *link;
-		*link = member->next;
-		member->next = NULL;
-		delete member;
-		if (member_count > 0)
-			--member_count;
-		if (!strcasecmp(GET_NAME(ch), frags.topfragger))
-		{
-			frags.topfragger[0] = '\0';
-			frags.top_frags = 0;
-		}
-		frags.frags -= GET_FRAGS(ch);
+		frags.topfragger[0] = '\0';
+		frags.top_frags = 0;
 	}
-	GET_ASSOC(ch) = NULL;
+	frags.frags -= member_frags;
 }
 
 void Guild::kick(P_char ch)

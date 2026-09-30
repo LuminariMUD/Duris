@@ -5444,7 +5444,7 @@ void do_purge(P_char ch, char *argument, int /*cmd*/)
 				if (((timegone > 1440) && ((timegone / 1440) > 60)) &&
 				    (GET_LEVEL(vict) <= 56))
 				{
-					deleteCharacter(vict);
+					delete_character(vict);
 				}
 				if (vict)
 					free_char(vict);
@@ -9689,7 +9689,7 @@ void do_terminate(P_char ch, char *argument, int /*cmd*/)
 	{
 		update_ingame_racewar(-GET_RACEWAR(ch));
 	}
-	deleteCharacter(victim);
+	delete_character(victim);
 	extract_char(victim); // extract_char also calls free_char
 	victim = NULL;
 	return;

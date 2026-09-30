@@ -2810,7 +2810,7 @@ void die(P_char ch, P_char killer)
 					}
 
 					// Delete character file
-					deleteCharacter(ch);
+					delete_character(ch);
 
 					// Disconnect descriptor before extract_char so it won't show menu
 					ch->desc = NULL;
@@ -2833,7 +2833,7 @@ void die(P_char ch, P_char killer)
 				// Without account system, or no descriptor, just disconnect
 				if (ch->desc)
 					close_socket(ch->desc);
-				deleteCharacter(ch);
+				delete_character(ch);
 				extract_char(ch); // extract_char also calls free_char
 				ch = NULL;
 

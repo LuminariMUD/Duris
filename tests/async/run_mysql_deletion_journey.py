@@ -163,12 +163,13 @@ def run(server):
                     client.close()
                     client = create_erased()
                     client.send('0'); client.close(); client = None
+                    # Neither deletion, nor anything else here, queries on the game loop.
                     sites = [line for line in (runtime/'logs/log').rglob('*') if line.is_file()
                              for line in line.read_text(errors='replace').splitlines()
-                             if 'game loop query site' in line and 'account' in line]
+                             if 'game loop query site' in line]
                     assert not sites, sites
                     stop()
-                    print('account deletion: refusal kept the fence, the retry deleted it on the writer and freed its names', flush=True)
+                    print('account deletion: refusal kept the fence, the retry deleted it on the writer and freed its names; no game-loop query', flush=True)
                 except Exception as error:
                     raise AssertionError(str(error)+'\n'+output_path.read_text(errors='replace')[-10000:]+'\n'+journey.runtime_logs(runtime)) from error
                 finally:

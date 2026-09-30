@@ -364,7 +364,7 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 			send_to_char("failed to link character to account.\r\n", ch);
 			logit(LOG_DEBUG, "wiz_newchar: failed to link %s to account %s",
 			      newch->player.name, ch->desc->account->acct_name);
-			deleteCharacter(newch, FALSE);
+			delete_character(newch, false);
 			free_char(newch);
 			return;
 		}

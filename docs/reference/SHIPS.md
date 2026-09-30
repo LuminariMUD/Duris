@@ -899,13 +899,14 @@ those legacy files (not part of the default build).
 
 ### Deletion paths
 
-- Character deletion (`deleteCharacter()` in `src/core/files.c`) runs
-  `sql_delete_ship()` inside the same transaction that deletes the player. Only
-  after the commit does it drop the runtime ship with `delete_ship_runtime()`,
-  which does no second durable delete.
+- Character deletion (`delete_character()` in `src/core/files.c`) deletes the
+  ship's rows (`sql_delete_ship_statement()`) in the same writer job that deletes
+  the player. Only after the commit does it forget the stored rows and the Redis
+  snapshot (`sql_delete_ship()`) and drop the runtime ship with
+  `delete_ship_runtime()`.
 - Account deletion (`remove_deleted_account_runtime()` in
   `src/account/account.c`) invalidates each character's legacy Redis snapshot
-  and calls `delete_ship_runtime()` once the durable deletion has completed.
+  and calls `delete_ship_runtime()` before its writer job deletes the rows.
 - Immortals can delete a ship with test object 1203 (`say ship delete <owner>`).
 - `sell ship` is disabled, so players cannot delete their own ship.
 

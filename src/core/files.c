@@ -49,6 +49,7 @@
 #include "magic/spells.h"
 #include "sql/item_extra_descr_codec.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "sql/sql_player.h"
 #include "item/storage_lockers.h"
 #include "item/trophy.h"
@@ -1713,89 +1714,128 @@ int writeCharacter(P_char ch, int type, int room)
 
 #endif
 
-int deleteCharacter(P_char ch, bool bDeleteLocker)
-{
-	return delete_character_result(ch, bDeleteLocker) == character_delete_result::deleted;
-}
-
-character_delete_result delete_character_result(P_char ch, bool bDeleteLocker)
-{
-	if (!ch || !GET_NAME(ch) || GET_PID(ch) <= 0)
-		return character_delete_result::refused;
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		if (!bDeleteLocker)
-			return character_delete_result::refused;
-		std::string error;
-		const auto result = flatfile_character_delete(persistence_mode_flatfile_root(),
-							      GET_PID(ch), GET_NAME(ch), &error);
-		if (result != flatfile_character_delete_result::ok &&
-		    result != flatfile_character_delete_result::already_deleted)
-		{
-			logit(LOG_DEBUG, "deleteCharacter(): flat deletion failed for pid %d: %s",
-			      GET_PID(ch),
-			      error.empty() ? "unspecified authority failure" : error.c_str());
-			return character_delete_result::refused;
-		}
-	}
-	else
-	{
-		// Own the transaction: a later cleanup failure must leave the mapping and
-		// player loadable for retry. Never publish or kick/save the live character
-		// while this transaction can still roll back.
-		if (sql_in_transaction() || !sql_begin_transaction())
-			return character_delete_result::refused;
-		const bool prepared = sql_soft_delete_character(GET_PID(ch)) &&
-				      qry("%s", remove_all_artifacts_sql(GET_PID(ch)).c_str()) &&
-				      remove_all_locker_access(ch) &&
-				      (!GET_ASSOC(ch) || GET_ASSOC(ch)->save_without_member(ch)) &&
-				      (!bDeleteLocker || sql_delete_locker(GET_PID(ch), 0)) &&
-				      sql_delete_ship(GET_NAME(ch)) &&
-				      sql_delete_player(GET_PID(ch), false);
-		if (!prepared)
-		{
-			const bool rolled_back = sql_rollback();
-			logit(LOG_DEBUG, "deleteCharacter(): cleanup failed pid=%d rollback=%s",
-			      GET_PID(ch), rolled_back ? "confirmed" : "uncertain");
-			return rolled_back ? character_delete_result::refused :
-					     character_delete_result::reconciliation_required;
-		}
-		if (!sql_commit())
-		{
-			// COMMIT may have reached the server even when its reply was lost.
-			sql_rollback();
-			logit(LOG_DEBUG, "deleteCharacter(): commit outcome uncertain pid=%d",
-			      GET_PID(ch));
-			return character_delete_result::reconciliation_required;
-		}
-	}
-
-	// Durable cleanup has completed. These operations only release runtime state.
-	player_revision_forget(GET_PID(ch));
-	sql_player_names_forget(GET_PID(ch));
-	artifacts_forget_deleted_character(GET_PID(ch));
-	if (GET_ASSOC(ch))
-		GET_ASSOC(ch)->forget_deleted_member(ch);
-#ifdef USE_ACCOUNT
-	if (ch->desc && ch->desc->account)
-		remove_char_from_list(ch->desc->account, ch->player.name, false);
-#endif
-	delete_ship_runtime(GET_NAME(ch));
 #ifndef _PFILE_
+namespace
+{
+// What a deleted character leaves in memory, captured when its deletion starts: the
+// character itself may leave the game before the deletion commits.
+struct deleted_character
+{
+	int pid;
+	std::string name;
+	int guild_id;
+	long frags;
+};
+
+// The deletion committed: memory lets go of the character.
+character_delete_result forget_deleted_character(const deleted_character &deleted)
+{
+	player_revision_forget(deleted.pid);
+	sql_player_names_forget(deleted.pid);
+	artifacts_forget_deleted_character(deleted.pid);
+	if (Guild *guild = deleted.guild_id ? get_guild_from_id(deleted.guild_id) : nullptr)
+		guild->forget_deleted_member(deleted.name.c_str(), deleted.frags);
+#ifdef USE_ACCOUNT
+	// Names are unique: only the live sessions of the character's account list it.
+	for (P_desc d = descriptor_list; d; d = d->next)
+		if (d->account)
+			remove_char_from_list(d->account, deleted.name.c_str(), false);
+#endif
+	delete_ship_runtime(deleted.name.c_str());
 	std::string zone_story_error;
-	if (!zone_story_quest_runtime::erase_character(static_cast<uint32_t>(GET_PID(ch)),
+	if (!zone_story_quest_runtime::erase_character(static_cast<uint32_t>(deleted.pid),
 						       &zone_story_error))
 	{
 		logit(LOG_DEBUG,
-		      "deleteCharacter(): zone-story state cleanup requires reconciliation pid=%d: %s",
-		      GET_PID(ch),
+		      "delete_character(): zone-story state cleanup requires reconciliation pid=%d: %s",
+		      deleted.pid,
 		      zone_story_error.empty() ? "unspecified persistence failure" :
 						 zone_story_error.c_str());
 		return character_delete_result::reconciliation_required;
 	}
-#endif
 	return character_delete_result::deleted;
 }
+} // namespace
+
+void delete_character(P_char ch, bool delete_locker,
+		      std::function<void(character_delete_result)> done)
+{
+	if (!done)
+		done = [](character_delete_result) {};
+	if (!ch || !GET_NAME(ch) || GET_PID(ch) <= 0)
+	{
+		done(character_delete_result::refused);
+		return;
+	}
+	const deleted_character deleted = {
+		GET_PID(ch), GET_NAME(ch),
+		GET_ASSOC(ch) ? static_cast<int>(GET_ASSOC(ch)->get_id()) : 0, GET_FRAGS(ch)
+	};
+#ifdef __NO_MYSQL__
+	if (!delete_locker)
+	{
+		done(character_delete_result::refused);
+		return;
+	}
+	std::string error;
+	const auto result = flatfile_character_delete(persistence_mode_flatfile_root(), deleted.pid,
+						      deleted.name, &error);
+	if (result != flatfile_character_delete_result::ok &&
+	    result != flatfile_character_delete_result::already_deleted)
+	{
+		logit(LOG_DEBUG, "delete_character(): flat deletion failed for pid %d: %s",
+		      deleted.pid, error.empty() ? "unspecified authority failure" : error.c_str());
+		done(character_delete_result::refused);
+		return;
+	}
+	done(forget_deleted_character(deleted));
+#else
+	// One writer job, so one transaction: a failure anywhere leaves the character's
+	// rows, mapping and memory as they were, and loadable for a retry.
+	std::vector<std::string> statements = {
+		sql_format("UPDATE account_characters SET deleted_at = NOW() WHERE pid = %d AND "
+			   "deleted_at IS NULL",
+			   deleted.pid),
+		sql_format("UPDATE frag_leaderboard SET deleted_at = NOW() WHERE pid = %d AND "
+			   "deleted_at IS NULL",
+			   deleted.pid),
+		remove_all_locker_access_statement(deleted.name.c_str()),
+	};
+	for (std::string &statement : remove_all_artifacts_sql(deleted.pid))
+		statements.push_back(std::move(statement));
+	if (GET_ASSOC(ch))
+		for (std::string &statement : GET_ASSOC(ch)->statements_without_member(ch))
+			statements.push_back(std::move(statement));
+	if (delete_locker)
+		statements.push_back(sql_delete_locker_statement(deleted.pid, 0));
+	statements.push_back(sql_delete_ship_statement(deleted.name.c_str()));
+	statements.push_back(sql_format("DELETE FROM player_data WHERE pid=%d", deleted.pid));
+	if (!sql_read_work(
+		    [statements](MYSQL *connection, sql_rows *) -> unsigned int
+		    {
+			    for (const std::string &statement : statements)
+				    if (const unsigned int error =
+						sql_execute(connection, statement))
+					    return error;
+			    return 0;
+		    },
+		    [deleted, done](bool ok, const sql_rows &)
+		    {
+			    if (!ok)
+			    {
+				    logit(LOG_DEBUG, "delete_character(): refused pid=%d",
+					  deleted.pid);
+				    done(character_delete_result::refused);
+				    return;
+			    }
+			    // The ship's stored rows and Redis key follow its deleted row.
+			    sql_delete_ship(deleted.name.c_str());
+			    done(forget_deleted_character(deleted));
+		    }))
+		done(character_delete_result::refused);
+#endif
+}
+#endif
 
 void PurgeCorpseFile(P_obj corpse)
 {

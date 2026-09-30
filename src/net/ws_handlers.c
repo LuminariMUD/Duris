@@ -25,6 +25,8 @@
 #include <sys/stat.h>
 #include <time.h>
 #include "account/account.h"
+#include "player/player_load_offline.h"
+#include "sql/sql_async.h"
 #include "account/account_recovery.h"
 #include "combat/chaos_config.h"
 #include "core/defines.h"
@@ -3033,9 +3035,7 @@ void ws_cmd_delete_character(struct descriptor_data *d, cJSON *data)
 {
 	cJSON *name_json, *confirm_json;
 	const char *char_name;
-	struct acct_chars *c, *prev;
-	P_char ch;
-	cJSON *result_data;
+	struct acct_chars *c;
 
 	if (!d->account)
 	{
@@ -3067,17 +3067,7 @@ void ws_cmd_delete_character(struct descriptor_data *d, cJSON *data)
 	char_name = name_json->valuestring;
 
 	/* find character in account list */
-	c = d->account->acct_character_list;
-	prev = NULL;
-	while (c)
-	{
-		if (strcasecmp(c->charname, char_name) == 0)
-		{
-			break;
-		}
-		prev = c;
-		c = c->next;
-	}
+	c = find_char_in_list(d->account->acct_character_list, char_name);
 
 	if (!c)
 	{
@@ -3085,92 +3075,56 @@ void ws_cmd_delete_character(struct descriptor_data *d, cJSON *data)
 		return;
 	}
 
-	/* load character for deletion */
-	ch = (struct char_data *)malloc(sizeof(struct char_data));
-	if (!ch)
-	{
-		ws_send_account_message(d, "error", NULL, "Failed to load character");
-		return;
-	}
-
-	memset(ch, 0, sizeof(struct char_data));
-	ch->only.pc = (struct pc_only_data *)malloc(sizeof(struct pc_only_data));
-	if (!ch->only.pc)
-	{
-		free(ch);
-		ws_send_account_message(d, "error", NULL, "Failed to load character");
-		return;
-	}
-
-	memset(ch->only.pc, 0, sizeof(struct pc_only_data));
-
-	if (restoreCharOnly(ch, (char *)char_name) < 0)
-	{
-		free(ch->only.pc);
-		free(ch);
-		ws_send_account_message(d, "error", NULL, "Failed to load character file");
-		return;
-	}
-
 	/* log the deletion */
-	statuslog(ch->player.level, "%s deleted %s via web client (%s).", d->account->acct_name,
-		  char_name, d->host);
+	statuslog(c->level, "%s deleted %s via web client (%s).", d->account->acct_name, char_name,
+		  d->host);
 	logit(LOG_PLAYER, "%s deleted %s via web client (%s).", d->account->acct_name, char_name,
 	      d->host);
 
-	if (!deleteCharacter(ch))
+	/* The character loads off the loop and is deleted on the writer while the session
+	 * waits; the deletion drops it from the account's character lists. */
+	const uint64_t id = wait_for_writer(d);
+	const std::string name = c->charname;
+	if (!player_load_offline(
+		    name.c_str(), false,
+		    [id, name](P_char loaded)
+		    {
+			    if (!loaded)
+			    {
+				    if (P_desc reader = writer_replied(id))
+					    ws_send_account_message(
+						    reader, "error", NULL,
+						    "Failed to load character file");
+				    return;
+			    }
+			    delete_character(
+				    loaded, true,
+				    [id, name](character_delete_result result)
+				    {
+					    P_desc reader = writer_replied(id);
+					    if (!reader)
+						    return;
+					    if (result != character_delete_result::deleted)
+					    {
+						    ws_send_account_message(
+							    reader, "error", NULL,
+							    "Failed to delete character database records");
+						    return;
+					    }
+					    cJSON *result_data = cJSON_CreateObject();
+					    cJSON_AddStringToObject(result_data, "name",
+								    name.c_str());
+					    cJSON_AddItemToObject(result_data, "characters",
+								  ws_build_character_list(reader));
+					    ws_send_account_message(reader, "character_deleted",
+								    result_data, NULL);
+				    });
+			    free_char(loaded);
+		    }))
 	{
-		ws_send_account_message(d, "error", NULL,
-					"Failed to delete character database records");
-		return;
+		writer_replied(id);
+		ws_send_account_message(d, "error", NULL, "Failed to load character");
 	}
-
-	/* free strings allocated by restoreCharOnly */
-	if (ch->player.name)
-		str_free(ch->player.name);
-	if (ch->player.title)
-		str_free(ch->player.title);
-	if (ch->player.short_descr)
-		str_free(ch->player.short_descr);
-	if (ch->player.long_descr)
-		str_free(ch->player.long_descr);
-	if (ch->player.description)
-		str_free(ch->player.description);
-	if (ch->only.pc->poofIn)
-		str_free(ch->only.pc->poofIn);
-	if (ch->only.pc->poofOut)
-		str_free(ch->only.pc->poofOut);
-	if (ch->only.pc->gcmd_arr)
-		FREE(ch->only.pc->gcmd_arr);
-
-	free(ch->only.pc);
-	free(ch);
-
-	/* remove from account character list */
-	if (prev)
-	{
-		prev->next = c->next;
-	}
-	else
-	{
-		d->account->acct_character_list = c->next;
-	}
-	FREE(c->charname);
-	FREE(c);
-	d->account->num_chars--;
-
-	if (-1 == write_account(d->account))
-	{
-		statuslog(56, "&+RALERT&n: deleted-character account update failed");
-		persistence_alert(AVATAR, "account", "redacted", "none", "none", "write_failed",
-				  NULL);
-	}
-
-	/* send success with updated character list */
-	result_data = cJSON_CreateObject();
-	cJSON_AddStringToObject(result_data, "name", char_name);
-	cJSON_AddItemToObject(result_data, "characters", ws_build_character_list(d));
-	ws_send_account_message(d, "character_deleted", result_data, NULL);
 }
 
 /* helper to send admin_delete_character progress update */
@@ -3225,9 +3179,6 @@ static void admin_delete_character_loaded(P_desc d, P_acct target_acct, const ch
 					  const char *char_name, int char_pid,
 					  const char *deleted_by, const char *request_id)
 {
-	struct acct_chars *c, *prev;
-	P_char ch;
-
 	if (!target_acct)
 	{
 		ws_send_admin_delete_progress(d, request_id, "Account not found", "error");
@@ -3241,19 +3192,7 @@ static void admin_delete_character_loaded(P_desc d, P_acct target_acct, const ch
 	/* find character in account list */
 	ws_send_admin_delete_progress(d, request_id, "Searching for character in account...",
 				      "info");
-	c = target_acct->acct_character_list;
-	prev = NULL;
-	while (c)
-	{
-		if (strcasecmp(c->charname, char_name) == 0)
-		{
-			break;
-		}
-		prev = c;
-		c = c->next;
-	}
-
-	if (!c)
+	if (!find_char_in_list(target_acct->acct_character_list, char_name))
 	{
 		ws_send_admin_delete_progress(d, request_id, "Character not found in account",
 					      "error");
@@ -3265,171 +3204,77 @@ static void admin_delete_character_loaded(P_desc d, P_acct target_acct, const ch
 
 	ws_send_admin_delete_progress(d, request_id, "Character found in account", "success");
 
-	/* load character for deletion */
-	ws_send_admin_delete_progress(d, request_id, "Loading character save file...", "info");
-	ch = (struct char_data *)malloc(sizeof(struct char_data));
-	if (!ch)
-	{
-		ws_send_admin_delete_progress(d, request_id, "Failed to allocate memory", "error");
-		ws_send_admin_delete_response(d, 0, account_name, char_name, request_id,
-					      "Failed to allocate character");
-		free_account(target_acct);
-		return;
-	}
-
-	memset(ch, 0, sizeof(struct char_data));
-	ch->only.pc = (struct pc_only_data *)malloc(sizeof(struct pc_only_data));
-	if (!ch->only.pc)
-	{
-		free(ch);
-		ws_send_admin_delete_progress(d, request_id, "Failed to allocate memory", "error");
-		ws_send_admin_delete_response(d, 0, account_name, char_name, request_id,
-					      "Failed to allocate character data");
-		free_account(target_acct);
-		return;
-	}
-
-	memset(ch->only.pc, 0, sizeof(struct pc_only_data));
-
-	int restore_result = restoreCharOnly(ch, (char *)char_name);
-	if (restore_result < 0)
-	{
-		/* pfile doesn't exist or is corrupted - still clean up account and database */
-		if (restore_result == -1)
-		{
-			ws_send_admin_delete_progress(
-				d, request_id, "Character save file not found (orphaned entry)",
-				"info");
-		}
-		else
-		{
-			ws_send_admin_delete_progress(d, request_id,
-						      "Character save file corrupted", "info");
-		}
-		free(ch->only.pc);
-		free(ch);
-
-		ws_send_admin_delete_progress(d, request_id,
-					      "Cleaning up orphaned character data...", "info");
-
-		/* log the deletion - audit trail */
-		logit(LOG_PLAYER,
-		      "ADMIN: %s deleted character %s (pid=%d) from account %s via web admin (pfile missing/corrupted)",
-		      deleted_by, char_name, char_pid, account_name);
-
-		/* soft delete from frag leaderboard tables using the provided PID */
-		ws_send_admin_delete_progress(d, request_id, "Removing from frag leaderboard...",
-					      "info");
-		if (!sql_soft_delete_character(char_pid))
-		{
-			ws_send_admin_delete_progress(
-				d, request_id, "Failed to remove from frag leaderboard", "error");
-			return;
-		}
-		ws_send_admin_delete_progress(d, request_id, "Removed from frag leaderboard",
-					      "success");
-
-		/* remove from account character list */
-		ws_send_admin_delete_progress(d, request_id,
-					      "Removing from account character list...", "info");
-		if (prev)
-		{
-			prev->next = c->next;
-		}
-		else
-		{
-			target_acct->acct_character_list = c->next;
-		}
-		FREE(c->charname);
-		FREE(c);
-		target_acct->num_chars--;
-
-		ws_send_admin_delete_progress(d, request_id, "Writing account file...", "info");
-		if (-1 == write_account(target_acct))
-		{
-			ws_send_admin_delete_progress(d, request_id,
-						      "Failed to update account file", "error");
-			statuslog(56, "&+RALERT&n: character-delete account update failed");
-			persistence_alert(AVATAR, "account", "redacted", "none", "none",
-					  "write_failed", NULL);
-			free_account(target_acct);
-			return;
-		}
-		free_account(target_acct);
-		ws_send_admin_delete_progress(d, request_id, "Account file updated", "success");
-
-		/* send success - web will soft-delete from database */
-		ws_send_admin_delete_progress(d, request_id, "Character deletion completed",
-					      "success");
-		ws_send_admin_delete_response(d, 1, account_name, char_name, request_id, NULL);
-		return;
-	}
-
-	ws_send_admin_delete_progress(d, request_id, "Character save file loaded", "success");
-
-	/* log the deletion - audit trail */
-	logit(LOG_PLAYER, "ADMIN: %s deleted character %s from account %s via web admin",
-	      deleted_by, char_name, account_name);
-
-	/* delete character file and free temp character */
-	ws_send_admin_delete_progress(d, request_id, "Deleting character save file...", "info");
-	deleteCharacter(ch);
-	ws_send_admin_delete_progress(d, request_id, "Character save file deleted", "success");
-
-	/* free strings allocated by restoreCharOnly */
-	if (ch->player.name)
-		str_free(ch->player.name);
-	if (ch->player.title)
-		str_free(ch->player.title);
-	if (ch->player.short_descr)
-		str_free(ch->player.short_descr);
-	if (ch->player.long_descr)
-		str_free(ch->player.long_descr);
-	if (ch->player.description)
-		str_free(ch->player.description);
-	if (ch->only.pc->poofIn)
-		str_free(ch->only.pc->poofIn);
-	if (ch->only.pc->poofOut)
-		str_free(ch->only.pc->poofOut);
-	if (ch->only.pc->gcmd_arr)
-		FREE(ch->only.pc->gcmd_arr);
-
-	free(ch->only.pc);
-	free(ch);
-
-	/* remove from account character list */
-	ws_send_admin_delete_progress(d, request_id, "Removing from account character list...",
-				      "info");
-	if (prev)
-	{
-		prev->next = c->next;
-	}
-	else
-	{
-		target_acct->acct_character_list = c->next;
-	}
-	FREE(c->charname);
-	FREE(c);
-	target_acct->num_chars--;
-	ws_send_admin_delete_progress(d, request_id, "Removed from account", "success");
-
-	ws_send_admin_delete_progress(d, request_id, "Writing account file...", "info");
-	if (-1 == write_account(target_acct))
-	{
-		ws_send_admin_delete_progress(d, request_id, "Failed to update account file",
-					      "error");
-		statuslog(56, "&+RALERT&n: character-delete account update failed");
-		persistence_alert(AVATAR, "account", "redacted", "none", "none", "write_failed",
-				  NULL);
-		free_account(target_acct);
-		return;
-	}
-	ws_send_admin_delete_progress(d, request_id, "Account file updated", "success");
 	free_account(target_acct);
 
-	/* send success response */
-	ws_send_admin_delete_progress(d, request_id, "Character deletion completed", "success");
-	ws_send_admin_delete_response(d, 1, account_name, char_name, request_id, NULL);
+	/* The character loads off the loop and is deleted on the writer while the session
+	 * waits; the deletion drops it from the account's character lists. */
+	ws_send_admin_delete_progress(d, request_id, "Loading character save file...", "info");
+	const uint64_t id = wait_for_writer(d);
+	if (!player_load_offline(
+		    char_name, false,
+		    [id, char_pid, account = std::string(account_name),
+		     character = std::string(char_name), by = std::string(deleted_by),
+		     request = std::string(request_id)](P_char loaded)
+		    {
+			    if (!loaded)
+			    {
+				    /* An orphaned entry: its mapping and leaderboard row go. */
+				    logit(LOG_PLAYER,
+					  "ADMIN: %s deleted character %s (pid=%d) from account %s via web admin (character missing)",
+					  by.c_str(), character.c_str(), char_pid, account.c_str());
+				    const bool queued = sql_queue_statements(
+					    { sql_format(
+						      "UPDATE account_characters SET deleted_at = NOW() "
+						      "WHERE pid = %d AND deleted_at IS NULL",
+						      char_pid),
+					      sql_format(
+						      "UPDATE frag_leaderboard SET deleted_at = NOW() "
+						      "WHERE pid = %d AND deleted_at IS NULL",
+						      char_pid) });
+				    if (queued)
+					    for (P_desc s = descriptor_list; s; s = s->next)
+						    if (s->account)
+							    remove_char_from_list(s->account,
+										  character.c_str(),
+										  false);
+				    if (P_desc reader = writer_replied(id))
+					    ws_send_admin_delete_response(
+						    reader, queued, account.c_str(),
+						    character.c_str(), request.c_str(),
+						    queued ? NULL :
+							     "Failed to remove the orphaned entry");
+				    return;
+			    }
+			    logit(LOG_PLAYER,
+				  "ADMIN: %s deleted character %s from account %s via web admin",
+				  by.c_str(), character.c_str(), account.c_str());
+			    delete_character(
+				    loaded, true,
+				    [id, account, character,
+				     request](character_delete_result result)
+				    {
+					    P_desc reader = writer_replied(id);
+					    if (!reader)
+						    return;
+					    const bool deleted = result ==
+								 character_delete_result::deleted;
+					    if (deleted)
+						    ws_send_admin_delete_progress(
+							    reader, request.c_str(),
+							    "Character deletion completed",
+							    "success");
+					    ws_send_admin_delete_response(
+						    reader, deleted, account.c_str(),
+						    character.c_str(), request.c_str(),
+						    deleted ? NULL : "Failed to delete character");
+				    });
+			    free_char(loaded);
+		    }))
+	{
+		writer_replied(id);
+		ws_send_admin_delete_response(d, 0, account_name, char_name, request_id,
+					      "Failed to load character");
+	}
 }
 
 void ws_cmd_admin_delete_character(struct descriptor_data *d, cJSON *data)

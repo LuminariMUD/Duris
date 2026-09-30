@@ -261,21 +261,7 @@ bool sql_load_player_pets(P_char ch)
 	return false;
 }
 
-bool sql_delete_player(int pid, bool forget_revision)
-{
-	return false;
-}
-bool sql_delete_player_by_name(const char *name)
-{
-	return false;
-}
-
 bool sql_save_account(struct acct_entry *acc)
-{
-	return false;
-}
-/* Flatfile locker deletion is implemented by its repository-backed callers. */
-bool sql_delete_locker(int owner_pid, int owner_assoc_id)
 {
 	return false;
 }
@@ -1241,31 +1227,6 @@ static bool sql_try_get_player_pid(const char *name, int *pid_out)
 	mysql_free_result(result);
 
 	return true;
-}
-
-// player delete
-
-bool sql_delete_player(int pid, bool forget_revision)
-{
-	if (!DB || pid <= 0)
-		return false;
-
-	char query[128];
-	snprintf(query, sizeof(query), "DELETE FROM player_data WHERE pid=%d", pid);
-
-	if (!sql_run_query(query))
-		return false;
-	if (forget_revision)
-		player_revision_forget(pid);
-	return true;
-}
-
-bool sql_delete_player_by_name(const char *name)
-{
-	int pid = sql_get_player_pid(name);
-	if (pid <= 0)
-		return false;
-	return sql_delete_player(pid);
 }
 
 // master save function
@@ -5638,13 +5599,6 @@ std::string sql_delete_locker_statement(int owner_pid, int owner_assoc_id)
 	return {};
 }
 
-/* Delete that locker inside the caller's transaction (a character deletion). */
-bool sql_delete_locker(int owner_pid, int owner_assoc_id)
-{
-	const std::string statement = sql_delete_locker_statement(owner_pid, owner_assoc_id);
-	return DB && !statement.empty() && sql_run_query(statement.c_str());
-}
-
 bool sql_delete_locker_by_name(const char *locker_name)
 {
 	if (!DB || !locker_name)
@@ -8593,15 +8547,10 @@ std::string sql_delete_ship_statement(const char *owner_name)
 	return "delete from ships where owner_name='" + escape_str(owner_name) + "'";
 }
 
-/* Delete a ship's rows. Inside a caller's transaction (a character deletion) the
- * statement joins it; otherwise it is a writer job. */
+/* Delete a ship's rows on the writer, and forget its stored rows and snapshot. */
 bool sql_delete_ship(const char *owner_name)
 {
-	if (!DB || !owner_name)
-		return false;
-	const std::string statement = sql_delete_ship_statement(owner_name);
-	if (sql_in_transaction() ? !sql_run_query(statement.c_str()) :
-				   !sql_queue("%s", statement.c_str()))
+	if (!owner_name || !sql_queue("%s", sql_delete_ship_statement(owner_name).c_str()))
 		return false;
 
 	const auto stored = stored_ship(owner_name);
@@ -8651,24 +8600,10 @@ std::vector<std::string> sql_save_guild_statements(Guild *guild)
 	return statements;
 }
 
-/* Save one guild. Inside a caller's transaction (a character deletion) the statements
- * join it on the game thread's connection, and a failure is the owner's to roll back;
- * otherwise they are one writer job. */
+/* Save one guild: its statements are one writer job. */
 bool sql_save_guild(Guild *guild)
 {
-	if (!DB || !guild)
-		return false;
-	const std::vector<std::string> statements = sql_save_guild_statements(guild);
-	if (!sql_in_transaction())
-		return sql_queue_statements(statements);
-	for (const std::string &statement : statements)
-		if (!sql_run_query(statement.c_str()))
-		{
-			logit(LOG_DEBUG, "sql_save_guild: failed to save guild %u",
-			      guild->get_id());
-			return false;
-		}
-	return true;
+	return guild && sql_queue_statements(sql_save_guild_statements(guild));
 }
 
 Guild *sql_load_guild(unsigned int guild_id)

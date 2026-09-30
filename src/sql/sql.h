@@ -182,7 +182,6 @@ void sql_update_frag_leaderboard(P_char ch);
 void sql_update_account_character(P_char ch);
 // Tells ch the account's total donations, if it has any.
 void show_total_donated(P_char ch, const char *account_name);
-bool sql_soft_delete_character(long pid);
 
 string get_mud_info(const char *name);
 // Reads mud_info again, then calls done while ch is still in the game.

@@ -37,4 +37,19 @@ assert contains(delete, "STATE(completed_desc) = CON_ACCT_VERIFY_DELETE_ACCT;")
 assert contains(verify, "d->account->acct_blocked = ACCOUNT_BLOCK_DELETION")
 assert contains(verify, "sql_delete_account(account_name.c_str(),")
 
-print("account deletion is reachable and guarded from the account menu")
+# Character deletion waits for the writer's reply with the confirmed character held.
+delete_char = body("void account_delete_char(")
+assert contains(delete_char, "const uint64_t id = wait_for_writer(d);")
+assert contains(delete_char, "delete_character(d->character, true,")
+assert contains(delete_char, "finish_character_deletion(reader, result);")
+
+# The websocket deletions load the character off the loop and delete it the same way.
+WS = (SRC / "ws_handlers.c").read_text(encoding="utf-8", errors="replace")
+for signature in ("void ws_cmd_delete_character(", "static void admin_delete_character_loaded("):
+    start = WS.index(signature)
+    ws = WS[start : WS.index("\n}\n", start)]
+    assert "player_load_offline(" in ws and "delete_character(" in ws, signature
+    assert "wait_for_writer(d)" in ws and "writer_replied(id)" in ws, signature
+    assert "restoreCharOnly" not in ws and "deleteCharacter" not in ws, signature
+
+print("account and character deletion are reachable and guarded from the account menu")

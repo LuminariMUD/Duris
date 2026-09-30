@@ -122,8 +122,6 @@ int sql_highest_player_pid(void);
 
 // delete player from db (for pwipe, etc)
 // Transaction owners defer revision eviction until their commit is confirmed.
-bool sql_delete_player(int pid, bool forget_revision = true);
-bool sql_delete_player_by_name(const char *name);
 
 // ============================================================================
 // account functions
@@ -151,7 +149,6 @@ bool sql_delete_account(const char *name, std::function<void(bool deleted)> done
 
 // delete locker
 std::string sql_delete_locker_statement(int owner_pid, int owner_assoc_id);
-bool sql_delete_locker(int owner_pid, int owner_assoc_id);
 bool sql_delete_locker_by_name(const char *locker_name);
 
 // private chest functions

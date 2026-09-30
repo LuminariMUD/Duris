@@ -542,10 +542,6 @@ void sql_update_frag_leaderboard(P_char ch)
 				  "flat_write_failed", "pid=%d error=%s", GET_PID(ch),
 				  error.c_str());
 }
-bool sql_soft_delete_character(long /*pid*/)
-{
-	return false;
-}
 bool sql_trace_exec_at(struct persistence_query_site /*source_site*/, const char * /*label*/,
 		       const char * /*sql*/, size_t /*len*/, bool /*drain_before*/,
 		       bool /*drain_after*/)
@@ -2721,53 +2717,6 @@ void sql_update_frag_leaderboard(P_char ch)
 		logit(LOG_DEBUG, "sql_update_frag_leaderboard: failed for %s",
 		      GET_NAME(ch) ? GET_NAME(ch) : "<null>");
 	}
-}
-
-/* Soft delete a character from the leaderboard tables */
-bool sql_soft_delete_character(long pid)
-{
-	if (!DB || pid <= 0)
-		return false;
-
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-			return false;
-		own_txn = true;
-	}
-
-	// UPDATE has no result set, including when a retry changes zero rows.
-	char query[256];
-	checked_snprintf(
-		query, sizeof(query),
-		"UPDATE account_characters SET deleted_at = NOW() WHERE pid = %ld AND deleted_at IS NULL",
-		pid);
-	if (!sql_trace_exec("sql_soft_delete_character", query, strlen(query), true, false))
-	{
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-
-	checked_snprintf(
-		query, sizeof(query),
-		"UPDATE frag_leaderboard SET deleted_at = NOW() WHERE pid = %ld AND deleted_at IS NULL",
-		pid);
-	if (!sql_trace_exec("sql_soft_delete_character", query, strlen(query), true, false))
-	{
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-
-	if (own_txn && !sql_commit())
-	{
-		sql_rollback();
-		return false;
-	}
-
-	return true;
 }
 
 /* Save frags delta */

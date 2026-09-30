@@ -28,7 +28,6 @@ int guild_locker_room_hook(int room, P_char ch, int cmd, char *arg);
 /* The statement that removes every locker grant `name` holds (a character deletion). */
 std::string remove_all_locker_access_statement(const char *name);
 /* Remove them inside the caller's transaction (a character deletion). */
-bool remove_all_locker_access(P_char ch);
 
 class LockerChest;
 class ComboChest;

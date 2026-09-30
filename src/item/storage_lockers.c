@@ -3685,12 +3685,6 @@ std::string remove_all_locker_access_statement(const char *name)
 	return "DELETE FROM locker_access WHERE visitor='" + escape_str(name) + "'";
 }
 
-bool remove_all_locker_access(P_char ch)
-{
-	return ch && GET_NAME(ch) &&
-	       qry("%s", remove_all_locker_access_statement(GET_NAME(ch)).c_str());
-}
-
 static void locker_access_transferAccess(P_char chLocker, P_char ch)
 {
 	// Set list of names that have access to locker.

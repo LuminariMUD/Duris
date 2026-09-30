@@ -279,6 +279,16 @@ void sql_update_bind_data(int vnum, int *owner_pid, int *timer)
 {
 	artifact_bind_store(vnum, *owner_pid, *timer);
 }
+
+// For a character's deletion: the statements that release its artifacts, in the deletion's
+// transaction. artifacts_forget_deleted_character() releases them in memory once it commits.
+std::vector<std::string> remove_all_artifacts_sql(int pid)
+{
+	return { sql_format("UPDATE artifacts SET owned='N', timer=NULL, lastUpdate=SYSDATE() "
+			    "WHERE location=%d AND locType=%d",
+			    pid, ARTIFACT_ON_PC),
+		 artifact_domain_mirror(-1) };
+}
 #else
 void artifacts_forget_deleted_character(int /*pid*/) {}
 
@@ -287,14 +297,6 @@ bool artifact_feed_state(int, int64_t *, int32_t *, int64_t *)
 	return false;
 }
 #endif
-
-// For a character's deletion: the statement that releases its artifacts, in the deletion's
-// transaction. artifacts_forget_deleted_character() releases them in memory once it commits.
-std::string remove_all_artifacts_sql(int pid)
-{
-	return "UPDATE artifacts SET owned='N', timer=NULL, lastUpdate=SYSDATE() WHERE location=" +
-	       std::to_string(pid) + " AND locType=" + std::to_string(ARTIFACT_ON_PC);
-}
 
 static void artifact_bind_maintenance_update(int vnum, int owner_pid, long timer)
 {

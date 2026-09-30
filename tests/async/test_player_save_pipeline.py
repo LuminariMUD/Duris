@@ -337,7 +337,7 @@ for forbidden in ("player_save_journal_", "sql_", "redis_", "fopen", "open(", "w
     assert forbidden not in pulse
 print("[PASS] game-thread checkpoint and completion paths contain no external I/O")
 
-write_character = section(FILES, "int writeCharacter(P_char ch", "int deleteCharacter")
+write_character = section(FILES, "int writeCharacter(P_char ch", "character_delete_result forget_deleted_character(")
 # Every MariaDB save, terminal ones too, is queued: no synchronous SQL is left in it.
 branch = write_character.index("player_save_pipeline_request(")
 assert "const bool queued_save = true;" in write_character[:branch]
