@@ -123,8 +123,6 @@ extern char *greetinga3;
 extern char *greetinga4;
 extern int top_of_mobt;
 extern P_index mob_index;
-extern void GetMIA(char *playerName, char *returned);
-extern void GetMIA2(char *playerName, char *returned);
 extern struct time_info_data time_info;
 
 #define PLR_FLAGS(ch) ((ch)->specials.act)
@@ -1768,7 +1766,7 @@ void enter_game(P_desc d)
 		debug("'%s' getting rested bonus!", J_NAME(ch));
 	}
 
-	GetMIA(ch->player.name, Gbuf1);
+	GetMIA(ch->player.time.saved, Gbuf1);
 	// Convert to EST.
 	ct -= 4 * 60 * 60;
 	snprintf(timestr, MAX_STRING_LENGTH, "%s", asctime(localtime(&ct)));

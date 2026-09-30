@@ -853,16 +853,6 @@ static void ws_cmd_request_wholist(struct descriptor_data *d, cJSON *data)
 	ws_send_wholist_to_client(d);
 }
 
-/* helper structure for character display */
-struct ws_char_info
-{
-	char name[32];
-	int level;
-	int race;
-	int hometown; /* Room index for last room name */
-	char class_str[256]; /* full class string (e.g., "cleric / zealot") */
-};
-
 static cJSON *ws_build_character_list(struct descriptor_data *d);
 
 /* find a race in restricted_races[], or NULL when it is not one */
@@ -957,55 +947,6 @@ static const char *ws_get_class_alignment(int value)
 }
 
 /* load basic character info for json response */
-static int ws_load_char_info(const char *charname, struct ws_char_info *info)
-{
-	P_char temp_ch;
-	int result;
-
-	temp_ch = (struct char_data *)malloc(sizeof(struct char_data));
-	if (!temp_ch)
-		return 0;
-
-	memset(temp_ch, 0, sizeof(struct char_data));
-
-	temp_ch->only.pc = (struct pc_only_data *)malloc(sizeof(struct pc_only_data));
-	if (!temp_ch->only.pc)
-	{
-		free(temp_ch);
-		return 0;
-	}
-
-	memset(temp_ch->only.pc, 0, sizeof(struct pc_only_data));
-
-	result = restoreCharOnly(temp_ch, (char *)charname);
-	if (result < 0)
-	{
-		if (temp_ch->only.pc)
-			free(temp_ch->only.pc);
-		free(temp_ch);
-		return 0;
-	}
-
-	strlcpy(info->name, GET_NAME(temp_ch), sizeof info->name);
-	/* capitalize first letter */
-	if (info->name[0])
-		info->name[0] = toupper(info->name[0]);
-
-	info->level = GET_LEVEL(temp_ch);
-	info->race = GET_RACE(temp_ch);
-	info->hometown = GET_HOME(temp_ch);
-
-	/* use get_class_string - handles spec and multiclass */
-	get_class_string(temp_ch, info->class_str);
-
-	cleanup_temp_char(temp_ch);
-	if (temp_ch->only.pc)
-		free(temp_ch->only.pc);
-	free(temp_ch);
-
-	return 1;
-}
-
 /* get race name string with ansi colors */
 static const char *ws_get_race_name(int race)
 {
@@ -2601,43 +2542,37 @@ static void ws_send_account_message(struct descriptor_data *d, const char *actio
 	cJSON_Delete(root);
 }
 
-/* build character list json array */
+/* build character list json array, from the account's characters */
 static cJSON *ws_build_character_list(struct descriptor_data *d)
 {
 	cJSON *characters = cJSON_CreateArray();
-	struct acct_chars *c;
 
-	if (d->account && d->account->acct_character_list)
+	for (struct acct_chars *c = d->account ? d->account->acct_character_list : nullptr; c;
+	     c = c->next)
 	{
-		c = d->account->acct_character_list;
-		while (c)
-		{
-			struct ws_char_info info;
-			if (ws_load_char_info(c->charname, &info))
-			{
-				cJSON *char_obj = cJSON_CreateObject();
-				cJSON_AddStringToObject(char_obj, "name", info.name);
-				cJSON_AddNumberToObject(char_obj, "level", info.level);
-				cJSON_AddStringToObject(char_obj, "race",
-							ws_get_race_name(info.race));
-				cJSON_AddStringToObject(char_obj, "class", info.class_str);
+		char name[32];
+		char class_str[MAX_STRING_LENGTH];
 
-				/* last room name */
-				if (info.hometown >= 0 && info.hometown < top_of_world &&
-				    world[info.hometown].name)
-				{
-					cJSON_AddStringToObject(char_obj, "lastRoom",
-								world[info.hometown].name);
-				}
-				else
-				{
-					cJSON_AddStringToObject(char_obj, "lastRoom", "Unknown");
-				}
+		strlcpy(name, c->charname, sizeof name);
+		/* capitalize first letter */
+		if (name[0])
+			name[0] = toupper(name[0]);
 
-				cJSON_AddItemToArray(characters, char_obj);
-			}
-			c = c->next;
-		}
+		cJSON *char_obj = cJSON_CreateObject();
+		cJSON_AddStringToObject(char_obj, "name", name);
+		cJSON_AddNumberToObject(char_obj, "level", c->level);
+		cJSON_AddStringToObject(char_obj, "race", ws_get_race_name(c->race));
+		cJSON_AddStringToObject(char_obj, "class",
+					class_string(c->m_class, c->secondary_class, c->spec,
+						     class_str));
+
+		/* last room name */
+		const int room = real_room(c->last_room);
+		cJSON_AddStringToObject(char_obj, "lastRoom",
+					room != NOWHERE && world[room].name ? world[room].name :
+									      "Unknown");
+
+		cJSON_AddItemToArray(characters, char_obj);
 	}
 
 	return characters;
@@ -2646,12 +2581,9 @@ static cJSON *ws_build_character_list(struct descriptor_data *d)
 /* get extended account information */
 void ws_cmd_account_info(struct descriptor_data *d, cJSON * /*data*/)
 {
-	cJSON *info_data, *characters, *char_obj;
+	cJSON *info_data;
 	char time_buf[64];
-	char class_str[256];
-	char name_cap[32];
 	struct acct_chars *c;
-	P_char temp_ch;
 	long total_playtime = 0;
 	int immortal_level = 0;
 
@@ -2680,75 +2612,17 @@ void ws_cmd_account_info(struct descriptor_data *d, cJSON * /*data*/)
 		cJSON_AddStringToObject(info_data, "lastLogin", "never");
 	}
 
-	/* single pass: collect playtime, immortal level, and character list */
-	characters = cJSON_CreateArray();
-	c = d->account->acct_character_list;
-	while (c)
+	for (c = d->account->acct_character_list; c; c = c->next)
 	{
-		temp_ch = (struct char_data *)malloc(sizeof(struct char_data));
-		if (temp_ch)
-		{
-			memset(temp_ch, 0, sizeof(struct char_data));
-			temp_ch->only.pc =
-				(struct pc_only_data *)malloc(sizeof(struct pc_only_data));
-			if (temp_ch->only.pc)
-			{
-				memset(temp_ch->only.pc, 0, sizeof(struct pc_only_data));
-				if (restoreCharOnly(temp_ch, c->charname) >= 0)
-				{
-					int level = GET_LEVEL(temp_ch);
-
-					/* accumulate playtime */
-					total_playtime += temp_ch->player.time.played;
-
-					/* track highest immortal level */
-					if (level >= 57 && level > immortal_level)
-					{
-						immortal_level = level;
-					}
-
-					/* build character json object */
-					strlcpy(name_cap, GET_NAME(temp_ch), sizeof name_cap);
-					if (name_cap[0])
-						name_cap[0] = toupper(name_cap[0]);
-
-					get_class_string(temp_ch, class_str);
-
-					char_obj = cJSON_CreateObject();
-					cJSON_AddStringToObject(char_obj, "name", name_cap);
-					cJSON_AddNumberToObject(char_obj, "level", level);
-					cJSON_AddStringToObject(
-						char_obj, "race",
-						ws_get_race_name(GET_RACE(temp_ch)));
-					cJSON_AddStringToObject(char_obj, "class", class_str);
-
-					/* last room name */
-					int hometown = GET_HOME(temp_ch);
-					if (hometown >= 0 && hometown < top_of_world &&
-					    world[hometown].name)
-					{
-						cJSON_AddStringToObject(char_obj, "lastRoom",
-									world[hometown].name);
-					}
-					else
-					{
-						cJSON_AddStringToObject(char_obj, "lastRoom",
-									"Unknown");
-					}
-
-					cJSON_AddItemToArray(characters, char_obj);
-				}
-				cleanup_temp_char(temp_ch);
-				free(temp_ch->only.pc);
-			}
-			free(temp_ch);
-		}
-		c = c->next;
+		total_playtime += c->played;
+		/* track highest immortal level */
+		if (c->level >= 57 && c->level > immortal_level)
+			immortal_level = c->level;
 	}
 
 	cJSON_AddNumberToObject(info_data, "totalPlaytime", total_playtime);
 	cJSON_AddNumberToObject(info_data, "immortalLevel", immortal_level);
-	cJSON_AddItemToObject(info_data, "characters", characters);
+	cJSON_AddItemToObject(info_data, "characters", ws_build_character_list(d));
 
 	ws_send_account_message(d, "info", info_data, NULL);
 }
@@ -3655,8 +3529,6 @@ void ws_cmd_admin_delete_character(struct descriptor_data *d, cJSON *data)
 void ws_cmd_rested_bonus(struct descriptor_data *d, cJSON * /*data*/)
 {
 	cJSON *result_data, *characters, *char_obj;
-	struct acct_chars *c;
-	P_char temp_ch;
 	time_t current_time;
 
 	if (!d->account)
@@ -3669,50 +3541,28 @@ void ws_cmd_rested_bonus(struct descriptor_data *d, cJSON * /*data*/)
 	characters = cJSON_CreateArray();
 	current_time = time(0);
 
-	c = d->account->acct_character_list;
-	while (c)
+	for (struct acct_chars *c = d->account->acct_character_list; c; c = c->next)
 	{
-		temp_ch = (struct char_data *)malloc(sizeof(struct char_data));
-		if (temp_ch)
-		{
-			memset(temp_ch, 0, sizeof(struct char_data));
-			temp_ch->only.pc =
-				(struct pc_only_data *)malloc(sizeof(struct pc_only_data));
-			if (temp_ch->only.pc)
-			{
-				memset(temp_ch->only.pc, 0, sizeof(struct pc_only_data));
-				if (restoreCharOnly(temp_ch, c->charname) >= 0)
-				{
-					time_t offline_seconds =
-						current_time - temp_ch->player.time.saved;
-					int offline_hours = offline_seconds / 3600;
-					int max_hours = 20; /* well-rested threshold */
-					int percent = (offline_hours * 100) / max_hours;
-					if (percent > 100)
-						percent = 100;
+		time_t offline_seconds = current_time - c->last_save;
+		int offline_hours = offline_seconds / 3600;
+		int max_hours = 20; /* well-rested threshold */
+		int percent = (offline_hours * 100) / max_hours;
+		if (percent > 100)
+			percent = 100;
 
-					/* capitalize name */
-					char name_cap[32];
-					strlcpy(name_cap, GET_NAME(temp_ch), sizeof name_cap);
-					if (name_cap[0])
-						name_cap[0] = toupper(name_cap[0]);
+		/* capitalize name */
+		char name_cap[32];
+		strlcpy(name_cap, c->charname, sizeof name_cap);
+		if (name_cap[0])
+			name_cap[0] = toupper(name_cap[0]);
 
-					char_obj = cJSON_CreateObject();
-					cJSON_AddStringToObject(char_obj, "name", name_cap);
-					cJSON_AddNumberToObject(char_obj, "restedPercent", percent);
-					cJSON_AddNumberToObject(char_obj, "restedHours",
-								offline_hours > max_hours ?
-									max_hours :
-									offline_hours);
-					cJSON_AddNumberToObject(char_obj, "maxHours", max_hours);
-					cJSON_AddItemToArray(characters, char_obj);
-				}
-				cleanup_temp_char(temp_ch);
-				free(temp_ch->only.pc);
-			}
-			free(temp_ch);
-		}
-		c = c->next;
+		char_obj = cJSON_CreateObject();
+		cJSON_AddStringToObject(char_obj, "name", name_cap);
+		cJSON_AddNumberToObject(char_obj, "restedPercent", percent);
+		cJSON_AddNumberToObject(char_obj, "restedHours",
+					offline_hours > max_hours ? max_hours : offline_hours);
+		cJSON_AddNumberToObject(char_obj, "maxHours", max_hours);
+		cJSON_AddItemToArray(characters, char_obj);
 	}
 
 	cJSON_AddItemToObject(result_data, "characters", characters);

@@ -51,8 +51,10 @@ struct acct_chars
 	int race;
 	unsigned int m_class;
 	unsigned int secondary_class;
+	int spec;
 	int last_room;
 	long last_save;
+	long played; /* seconds played, as of the last save */
 	/* The character's own racewar (RACEWAR_*). It keys the flat-file identity, wallet
 	 * and bank, as GET_RACEWAR() keys the MariaDB bank; 0 when not yet known. */
 	char player_racewar;
@@ -104,7 +106,6 @@ struct acct_list_entry
 	struct acct_list_entry *next;
 };
 
-void cleanup_temp_char(struct char_data *ch);
 int is_valid_email(const char *email);
 bool is_email_taken(const char *email);
 

@@ -7672,31 +7672,10 @@ void do_ptell(P_char ch, char *arg, int /*cmd*/)
 	return;
 }
 
-void GetMIA(char *playerName, char *returned)
+// How long ago `laston` was, as the login log and finger show it.
+void GetMIA(time_t laston, char *returned)
 {
-	unsigned long laston, minutesgone;
-	P_char finger_foo;
-
-	if (!playerName || !*playerName)
-	{
-		snprintf(returned, MAX_STRING_LENGTH, "NoArgs");
-		return;
-	}
-
-	finger_foo = (struct char_data *)mm_get(dead_mob_pool);
-	ensure_pconly_pool();
-	finger_foo->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-
-	if (restoreCharOnly(finger_foo, skip_spaces(playerName)) < 0 || !finger_foo)
-	{
-		if (finger_foo)
-			free_char(finger_foo);
-		snprintf(returned, MAX_STRING_LENGTH, "NoPfile: '%s'.", playerName);
-		return;
-	}
-
-	laston = finger_foo->player.time.saved;
-	minutesgone = (time(0) - laston) / 60;
+	unsigned long minutesgone = (time(0) - laston) / 60;
 
 	snprintf(returned, MAX_STRING_LENGTH, "  &n(&+cMIA: &+w");
 	if (minutesgone > 0)
@@ -7735,62 +7714,6 @@ void GetMIA(char *playerName, char *returned)
 	strcat(returned, "&n)");
 
 	return;
-}
-
-// Same as GetMIA but includes seconds and no "  (" to start..
-void GetMIA2(char *playerName, char *returned)
-{
-	unsigned long timegone;
-	int days, hours, minutes, seconds;
-	time_t laston;
-	P_char finger_foo;
-
-	finger_foo = (struct char_data *)mm_get(dead_mob_pool);
-	ensure_pconly_pool();
-	finger_foo->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-	if (restoreCharOnly(finger_foo, skip_spaces(playerName)) < 0 || !finger_foo)
-	{
-		if (finger_foo)
-			free_char(finger_foo);
-		debug("Pfile does not exist or is invalid.\n");
-		return;
-	}
-
-	laston = finger_foo->player.time.saved;
-	timegone = time(0) - laston;
-
-	days = (timegone) / (3600 * 24);
-	hours = (timegone % (3600 * 24)) / (3600);
-	minutes = (timegone % (3600)) / (60);
-	seconds = (timegone % (60));
-
-	snprintf(returned, MAX_STRING_LENGTH, "&+cMIA:&n ");
-
-	if (days)
-	{
-		snprintf(returned + strlen(returned), MAX_STRING_LENGTH - strlen(returned),
-			 "%d day%s%s", days, (days > 1) ? "s" : "", (hours || minutes) ? ", " : "");
-	}
-	if (hours)
-	{
-		snprintf(returned + strlen(returned), MAX_STRING_LENGTH - strlen(returned),
-			 "%d hour%s%s", hours, (hours > 1) ? "s" : "",
-			 (minutes || seconds) ? ", " : "");
-	}
-	if (minutes)
-	{
-		snprintf(returned + strlen(returned), MAX_STRING_LENGTH - strlen(returned),
-			 "%d minute%s%s", minutes, (minutes > 1) ? "s" : "", (seconds) ? ", " : "");
-	}
-	// display seconds only if there are no days/hours/minutes
-	if (seconds)
-	{
-		snprintf(returned + strlen(returned), MAX_STRING_LENGTH - strlen(returned),
-			 "%d second%s", seconds, (seconds > 1) ? "s" : "");
-	}
-	snprintf(returned + strlen(returned), MAX_STRING_LENGTH - strlen(returned),
-		 " - %ld mud hour%s.", timegone / SECS_PER_MUD_HOUR,
-		 (timegone / SECS_PER_MUD_HOUR) > 1 ? "s" : "");
 }
 
 void do_finger(P_char ch, char *arg, int /*cmd*/)
@@ -7897,7 +7820,7 @@ void do_finger(P_char ch, char *arg, int /*cmd*/)
 		  timegone = lastDisconnect;
 		*/
 
-		GetMIA(finger_foo->player.name, Gbuf1);
+		GetMIA(finger_foo->player.time.saved, Gbuf1);
 		send_to_char(Gbuf1, ch);
 		Gbuf1[0] = '\0';
 	}

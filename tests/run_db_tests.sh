@@ -39,6 +39,7 @@ corpse_haul_count_cap $DB python3 tests/async/run_corpse_haul_count_cap_journey.
 information_cache $DB python3 tests/async/test_information_cache_journey.py --backend mariadb --server $SERVER
 deletion $DB python3 tests/async/run_mysql_deletion_journey.py --server $SERVER
 stalled_writer tests/async/run_mysql_stalled_writer_journey.sh
+game_loop_queries $DB python3 tests/async/test_mysql_game_loop_queries_journey.py --server $SERVER
 chaos_raise $DB python3 tests/async/run_chaos_raise_transient_journey.py $SERVER
 locker_receipt $DB python3 tests/async/test_locker_receipt_recovery.py
 world_writer_retry $DB python3 tests/async/run_world_writer_retry_journey.py $SERVER

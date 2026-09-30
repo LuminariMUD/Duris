@@ -43,6 +43,7 @@
 #include "magic/spells.h"
 #include "sql/sql_player.h"
 #include "player/player_name.h"
+#include "player/player_playtime.h"
 #include "player/player_load_materialize.h"
 #include "player/player_load_pipeline.h"
 #include "player/player_revision_state.h"
@@ -1537,203 +1538,40 @@ void account_confirm_char(P_desc d, char *arg)
 	return;
 }
 
-// Helper structure for character display data
-struct char_display_info
-{
-	char charname[32];
-	int level;
-	int race;
-	unsigned int m_class;
-	unsigned int secondary_class;
-	char *rested_status; // "Well-Rested", "Rested", or "None"
-	int hometown; // Last room character was in
-	long last_login;
-};
-
-// cleanup temp char loaded via restoreCharOnly before freeing
-// handles items, affects, events, strings
-// NOTE: does NOT free the char struct itself or pc_only_data - caller must do that
-void cleanup_temp_char(P_char ch)
-{
-	extern struct mm_ds *dead_affect_pool;
-
-	if (!ch)
-		return;
-
-	// unequip and extract all equipment
-	for (int i = 0; i < MAX_WEAR; i++)
-	{
-		if (ch->equipment[i])
-		{
-			P_obj obj = unequip_char(ch, i);
-			extract_obj(obj, FALSE);
-		}
-	}
-
-	// remove and extract all carried items
-	while (ch->carrying)
-	{
-		P_obj obj = ch->carrying;
-		obj_from_char(obj);
-		extract_obj(obj, FALSE);
-	}
-
-	// release affects directly to pool (don't use affect_remove - it schedules events)
-	while (ch->affected)
-	{
-		struct affected_type *af = ch->affected;
-		ch->affected = af->next;
-		if (dead_affect_pool)
-			mm_release(dead_affect_pool, af);
-	}
-
-	// clear any scheduled events
-	disarm_char_nevents(ch, NULL);
-
-	// free strings allocated by sql_row_str/getString
-	if (ch->player.name)
-		str_free(ch->player.name);
-	if (ch->player.title)
-		str_free(ch->player.title);
-	if (ch->player.short_descr)
-		str_free(ch->player.short_descr);
-	if (ch->player.long_descr)
-		str_free(ch->player.long_descr);
-	if (ch->player.description)
-		str_free(ch->player.description);
-
-	// free pc-only strings and data
-	if (IS_PC(ch) && ch->only.pc)
-	{
-		if (ch->only.pc->poofIn)
-			str_free(ch->only.pc->poofIn);
-		if (ch->only.pc->poofOut)
-			str_free(ch->only.pc->poofOut);
-		if (ch->only.pc->gcmd_arr)
-			FREE(ch->only.pc->gcmd_arr);
-	}
-}
-
-// Helper function to load character display data
-// Returns 1 on success, 0 on failure
-int load_char_display_data(char *charname, struct char_display_info *info)
-{
-	P_char temp_ch;
-	int result;
-
-	// Create temporary character structure using malloc (like pfile.c does)
-	temp_ch = (struct char_data *)malloc(sizeof(struct char_data));
-	if (!temp_ch)
-		return 0;
-
-	memset(temp_ch, 0, sizeof(struct char_data));
-
-	temp_ch->only.pc = (struct pc_only_data *)malloc(sizeof(struct pc_only_data));
-	if (!temp_ch->only.pc)
-	{
-		free(temp_ch);
-		return 0;
-	}
-
-	memset(temp_ch->only.pc, 0, sizeof(struct pc_only_data));
-
-	// Load character data
-	result = restoreCharOnly(temp_ch, charname);
-	if (result < 0)
-	{
-		if (temp_ch->only.pc)
-			free(temp_ch->only.pc);
-		free(temp_ch);
-		return 0;
-	}
-
-	// Extract display data
-	strlcpy(info->charname, GET_NAME(temp_ch), sizeof info->charname);
-	info->level = GET_LEVEL(temp_ch);
-	info->race = GET_RACE(temp_ch);
-	info->m_class = temp_ch->player.m_class;
-	info->secondary_class = temp_ch->player.secondary_class;
-	info->hometown = GET_HOME(temp_ch);
-
-	// Calculate rested status based on offline time (same logic as nanny.c)
-	time_t current_time = time(0);
-	time_t offline_seconds = current_time - temp_ch->player.time.saved;
-	int offline_hours = offline_seconds / 3600;
-	char rested_buf[128];
-
-	if (offline_hours >= 20)
-	{
-		// Well-rested bonus
-		snprintf(rested_buf, 128, "&+Wwell-rested&n bonus (&+G%d&n hours offline)",
-			 offline_hours);
-		info->rested_status = str_dup(rested_buf);
-	}
-	else if (offline_hours >= 9)
-	{
-		// Rested bonus
-		snprintf(rested_buf, 128, "&+Grested&n bonus (&+Y%d&n hours offline)",
-			 offline_hours);
-		info->rested_status = str_dup(rested_buf);
-	}
-	else
-	{
-		// No bonus yet - show how many more hours needed
-		int hours_needed = 9 - offline_hours;
-		snprintf(rested_buf, 128, "&+LNone&n (&+R%d&n more hour%s needed)", hours_needed,
-			 hours_needed == 1 ? "" : "s");
-		info->rested_status = str_dup(rested_buf);
-	}
-
-	cleanup_temp_char(temp_ch);
-
-	// free the temp char struct
-	if (temp_ch->only.pc)
-		free(temp_ch->only.pc);
-	free(temp_ch);
-
-	return 1;
-}
-
-// Helper function to get race name from character display info
-void get_race_name_from_info(struct char_display_info *info, char *race_str, int max_len)
-{
-	extern const struct race_names race_names_table[];
-	if (info->race >= 0 && info->race < LAST_RACE)
-		strlcpy(race_str, race_names_table[info->race].normal, max_len);
-	else
-		strlcpy(race_str, "Unknown", max_len);
-}
-
 void check_rested_bonus(P_desc d)
 {
-	struct acct_chars *c = d->account->acct_character_list;
 	char buf[512];
 	int count = 0;
 
 	SEND_TO_Q("\r\n&+y===== &+WRESTED BONUS STATUS&+y =====&n\r\n\r\n", d);
 
-	while (c)
+	for (struct acct_chars *c = d->account->acct_character_list; c; c = c->next, count++)
 	{
-		struct char_display_info info;
+		// Capitalize character name
+		char name_cap[32];
+		strlcpy(name_cap, c->charname, sizeof name_cap);
+		if (name_cap[0])
+			name_cap[0] = toupper(name_cap[0]);
 
-		if (load_char_display_data(c->charname, &info))
+		// Rested status from the time offline (same logic as nanny.c)
+		const int offline_hours = (time(0) - c->last_save) / 3600;
+		char rested[128];
+		if (offline_hours >= 20)
+			snprintf(rested, sizeof rested,
+				 "&+Wwell-rested&n bonus (&+G%d&n hours offline)", offline_hours);
+		else if (offline_hours >= 9)
+			snprintf(rested, sizeof rested, "&+Grested&n bonus (&+Y%d&n hours offline)",
+				 offline_hours);
+		else
 		{
-			// Capitalize character name
-			char name_cap[32];
-			strlcpy(name_cap, info.charname, sizeof name_cap);
-			if (name_cap[0])
-				name_cap[0] = toupper(name_cap[0]);
-
-			snprintf(buf, 512, "&+C%-12s&n: %s\r\n", name_cap,
-				 info.rested_status ? info.rested_status : "&+LNone&n");
-			SEND_TO_Q(buf, d);
-
-			if (info.rested_status)
-				str_free(info.rested_status);
-
-			count++;
+			// No bonus yet - show how many more hours needed
+			const int hours_needed = 9 - offline_hours;
+			snprintf(rested, sizeof rested, "&+LNone&n (&+R%d&n more hour%s needed)",
+				 hours_needed, hours_needed == 1 ? "" : "s");
 		}
-		c = c->next;
+
+		snprintf(buf, 512, "&+C%-12s&n: %s\r\n", name_cap, rested);
+		SEND_TO_Q(buf, d);
 	}
 
 	if (count == 0)
@@ -1840,39 +1678,32 @@ void display_delete_character_list(P_desc d)
 	// Display sorted characters in red
 	for (i = 0; i < count; i++)
 	{
-		struct char_display_info info;
+		struct acct_chars *ch = sorted_chars[i];
 		char name_capitalized[32];
 		char race_str[32];
 		char class_str[64];
 		char level_str[16];
 		char line_buf[512];
 
-		// Load character display data
-		if (!load_char_display_data(sorted_chars[i]->charname, &info))
-		{
-			snprintf(
-				line_buf, 512,
-				"&+R|&n &+R%d&n &+R|&n &+R%-12s&n &+R|&n &+R%-5s&n &+R|&n &+R%-12s&n &+R|&n &+R%-12s&n &+R|&n\r\n",
-				i + 1, sorted_chars[i]->charname, "?", "?", "?");
-			SEND_TO_Q(line_buf, d);
-			continue;
-		}
-
 		// Capitalize character name
-		strlcpy(name_capitalized, info.charname, sizeof name_capitalized);
+		strlcpy(name_capitalized, ch->charname, sizeof name_capitalized);
 		if (name_capitalized[0])
 			name_capitalized[0] = toupper(name_capitalized[0]);
 
 		// Get race name
-		get_race_name_from_info(&info, race_str, 32);
+		extern const struct race_names race_names_table[];
+		if (ch->race >= 0 && ch->race < LAST_RACE)
+			strlcpy(race_str, race_names_table[ch->race].normal, sizeof race_str);
+		else
+			strlcpy(race_str, "Unknown", sizeof race_str);
 
 		// Get class name(s)
 		extern const struct class_names class_names_table[];
-		int primary_idx = flag2idx(info.m_class);
-		int secondary_idx = info.secondary_class ? flag2idx(info.secondary_class) : 0;
+		int primary_idx = flag2idx(ch->m_class);
+		int secondary_idx = ch->secondary_class ? flag2idx(ch->secondary_class) : 0;
 
-		snprintf(level_str, 16, "%d", info.level);
-		if (info.secondary_class && secondary_idx > 0)
+		snprintf(level_str, 16, "%d", ch->level);
+		if (ch->secondary_class && secondary_idx > 0)
 		{
 			// Multiclass
 			snprintf(class_str, sizeof class_str, "%s/%s",
@@ -1899,10 +1730,6 @@ void display_delete_character_list(P_desc d)
 			"&+R|&n %d &+R|&n &+R%-12s&n &+R|&n &+R%-5s&n &+R|&n &+R%-12s&n &+R|&n &+R%-12s&n &+R|&n\r\n",
 			i + 1, name_capitalized, level_str, race_str, class_str);
 		SEND_TO_Q(line_buf, d);
-
-		// Free rested status string
-		if (info.rested_status)
-			str_free(info.rested_status);
 	}
 
 	// Display table footer
@@ -2655,6 +2482,7 @@ void add_char_to_account(P_desc d)
 	c->race = GET_RACE(player);
 	c->m_class = player->player.m_class;
 	c->secondary_class = player->player.secondary_class;
+	c->spec = player->player.spec;
 	c->next = d->account->acct_character_list;
 	d->account->acct_character_list = c;
 
@@ -2687,6 +2515,9 @@ int sync_account_character_projection(P_char player, int room, int persist)
 	character->race = GET_RACE(player);
 	character->m_class = player->player.m_class;
 	character->secondary_class = player->player.secondary_class;
+	character->spec = player->player.spec;
+	character->played = player_playtime_total(player->player.time.played,
+						  player->player.time.logon, time(NULL));
 	character->racewar = account_admission_racewar(GET_RACEWAR(player), IS_TRUSTED(player));
 	character->player_racewar = GET_RACEWAR(player);
 	if (room != NOWHERE)
@@ -3150,8 +2981,10 @@ static void copy_account(P_acct to, const struct acct_entry *from)
 		copy->race = source->race;
 		copy->m_class = source->m_class;
 		copy->secondary_class = source->secondary_class;
+		copy->spec = source->spec;
 		copy->last_room = source->last_room;
 		copy->last_save = source->last_save;
+		copy->played = source->played;
 		*character_tail = copy;
 		character_tail = &copy->next;
 	}

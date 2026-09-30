@@ -1513,6 +1513,8 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
      its repair, IPs and characters; a queued save; same-account sessions copied from memory.
      **Done**, see [Account login and saves](#account-login-and-saves-done).
   2. The name-to-pid index, and offline character loads through the player load pipeline.
+     The account screens and the login's MIA text needed no load at all, see
+     [Account screens without character loads](#account-screens-without-character-loads-done).
   3. The login-time reads, the periodic events, then the command output subsystem by subsystem,
      skipping what nothing calls and what only boot runs.
   4. The journey that pins no query after boot.
@@ -1578,6 +1580,31 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
 - Verified: `make -C src`, the flat-file build, `make test-db` (35 of 35), the flat-file
   combat, copyover and account recovery journeys, and a local session as the `.env` account
   (log in, `finger`, `save`, `quit`): no account site logs as a loop query any more.
+
+#### Account screens without character loads (done)
+
+- The "whole offline character load during character entry" was `GetMIA()`: the login log's
+  MIA text loaded the entering character again to read its last save time. `GetMIA()` now
+  takes that time, which the character already holds (finger passes its target's), and the
+  unused `GetMIA2()` is gone.
+- The account menu's rested-bonus and delete lists and the websocket character list, account
+  information and rested bonus loaded every character on the account (four queries each) to
+  show what the account already holds. They read the account's characters now. The account
+  carries two more fields for them, `spec` and `played` (read with the account, kept current
+  by `sync_account_character_projection()` at each save), and the websocket class text comes
+  from `class_string()`, `get_class_string()` split from its character. The websocket
+  `lastRoom` shows the last room, as the telnet list does (it indexed `world[]` with the
+  hometown vnum). Gone: `load_char_display_data()`, `struct char_display_info`,
+  `get_race_name_from_info()`, `ws_load_char_info()`, `struct ws_char_info` and
+  `cleanup_temp_char()`. The flat-file account has no `spec` or `played` yet, so there the
+  websocket shows no specialization and no playtime; before, it listed no characters at
+  all, because the flat-file backend has no pfiles for `restoreCharOnly()` to read.
+- `tests/async/test_mysql_game_loop_queries_journey.py` (in `make test-db`) creates an
+  account and a character on a disposable MariaDB, plays, saves, quits, opens the rested
+  and delete lists, enters again and quits, and fails on any game-loop query site outside
+  its `NOT_CONVERTED` list, which the rest of step 8 empties. On the previous binary it
+  fails with the character loads (`sql_get_player_pid()`, `sql_load_player_status()`, skills
+  and affects).
 
 ### Review round 1 (MR !3)
 

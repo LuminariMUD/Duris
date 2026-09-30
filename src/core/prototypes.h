@@ -575,7 +575,7 @@ void do_setbit(P_char, char *, int);
 
 void sprintbitde(ulong, const flagDef[], char *);
 char *comma_string(long);
-void GetMIA(char *, char *);
+void GetMIA(time_t, char *);
 char *where_obj(P_obj, int);
 int gr_idiotproof(P_char, P_char, char *, int);
 struct obj_data *clone_obj(P_obj);
@@ -2988,6 +2988,8 @@ int GET_CLASS1(P_char, uint);
 int GET_ALT_SIZE(P_char);
 int GET_CHAR_SKILL_P(P_char, int);
 char *get_class_string(P_char, char *);
+// get_class_string() for a character that is not loaded, from its class fields.
+char *class_string(unsigned int m_class, unsigned int secondary_class, int spec, char *strn);
 void broadcast_to_arena(const char *, P_char, P_char, int);
 void remove_plushit_bits(P_char mob);
 int is_introd(P_char, P_char);

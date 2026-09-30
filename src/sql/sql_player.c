@@ -5139,6 +5139,8 @@ P_acct account_from_rows(const account_rows &rows)
 			character_row[9] ? (unsigned int)strtoul(character_row[9], NULL, 10) : 0;
 		ch->last_room = character_row[10] ? atoi(character_row[10]) : 0;
 		ch->last_save = character_row[11] ? atol(character_row[11]) : 0;
+		ch->spec = character_row[12] ? atoi(character_row[12]) : 0;
+		ch->played = character_row[13] ? atol(character_row[13]) : 0;
 		*character_tail = ch;
 		character_tail = &ch->next;
 		acc->num_chars++;
@@ -5183,7 +5185,7 @@ bool sql_load_account(const char *name, std::function<void(bool ok, P_acct loade
 				sql_format(
 					"select ac.pid, ac.char_name, ac.login_count, UNIX_TIMESTAMP(ac.last_login), "
 					"ac.blocked, ac.racewar, pd.level, pd.race, pd.m_class, pd.secondary_class, "
-					"pd.last_room, UNIX_TIMESTAMP(pd.last_save) "
+					"pd.last_room, UNIX_TIMESTAMP(pd.last_save), pd.spec, pd.played_time "
 					"from account_characters ac "
 					"left join player_data pd on ac.pid = pd.pid "
 					"where LOWER(ac.account_name)=LOWER('%s') and ac.deleted_at is null",
