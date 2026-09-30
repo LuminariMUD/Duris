@@ -42,8 +42,6 @@ REENTRY_COMMANDS = (
 
 # The functions this session still reaches with a query on the game loop.
 NOT_CONVERTED = {
-    # login-time reads
-    'player_death_restitution_locker_notice',
     # periodic artifact events
     'event_artifact_check_poof_sql', 'event_artifact_wars_sql',
     'event_artifact_check_bind_sql',

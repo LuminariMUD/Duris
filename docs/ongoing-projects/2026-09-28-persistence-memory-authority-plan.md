@@ -1681,6 +1681,15 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   pulses.
 - The game-loop queries journey runs `fraglist` and `fraglist warrior` (Redis off there).
 
+#### The restitution locker notice (done)
+
+- The login notice that a restitution bag waits in an account locker
+  (`player_death_restitution_locker_notice()`) reads the lockers on the writer and prints
+  on a later pulse while the character is still in the game. A background read for a
+  character stays silent when it fails (`sql_read()` with the character's runtime id), where
+  a command's read (`sql_read_for()`) tells the player.
+- With it, the game-loop queries journey lists no login-time read any more.
+
 ### Review round 1 (MR !3)
 
 The review of `c3ffc4b8a` (tag `persistence/phase-2-review-0`) found five defects. Each is fixed
