@@ -155,6 +155,14 @@ bank gains and before it when the bank loses, so a crash can lose money but neve
 it twice. Shutdown names bank deltas the writer could not write
 (`persistence_writer/bank ... deltas=N`).
 
+The economy's commands still run on the writer, but they no longer read or write a
+balance. An auction listing fee or bid and a collector purchase price leave the wallet
+at submit, with the player's save queued before the command. The completion gives back
+what the command did not charge: all of it when refused, and the rest of a bid that was
+capped at the buy-now price or only raised the bidder's own bid. A money claim brings
+its money at completion. A refund for a collector buyer who has left is given when they
+return.
+
 Coins are ordinary items. Get, drop, give and put move the pile and the wallet in
 memory, the way they always did for NPCs, and `money_to_inventory()` does the same.
 When money moves between two saved owners, the owner it leaves is saved first

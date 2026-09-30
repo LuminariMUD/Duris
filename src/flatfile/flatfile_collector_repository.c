@@ -3,7 +3,6 @@
 #include "economy/collector_custody_boundary.h"
 #include "economy/collector_eligibility.h"
 #include "flatfile/flatfile_item_repository.h"
-#include "flatfile/flatfile_player_domain_repository.h"
 #include "flatfile/flatfile_shop_trade_materialization.h"
 #include "flatfile/flatfile_store.h"
 #include "flatfile/flatfile_world_item_repository.h"
@@ -1095,21 +1094,6 @@ bool command_digest(const critical_command &command,
 	return true;
 }
 
-int64_t wallet_value(const currency_vector &wallet)
-{
-	constexpr std::array<int64_t, CURRENCY_DENOMINATION_COUNT> coin_values = { 1, 10, 100,
-										   1000 };
-	int64_t value = 0;
-	for (size_t index = 0; index < wallet.amount.size(); ++index)
-	{
-		if (wallet.amount[index] < 0 ||
-		    wallet.amount[index] > (INT64_MAX - value) / coin_values[index])
-			return -1;
-		value += wallet.amount[index] * coin_values[index];
-	}
-	return value;
-}
-
 uint64_t durable_revision(const collector_command_result &result, uint64_t catalog_revision)
 {
 	return std::max({ catalog_revision, result.catalog_revision, result.from_owner_revision,
@@ -1263,33 +1247,6 @@ critical_apply_result flatfile_collector_repository_apply(const std::string &roo
 		 listing->entry.revision != payload.expected_listing_revision)
 		result_code = ESTALE;
 
-	flatfile_wallet_mutation wallet_read;
-	if (!result_code && payload.action == collector_action::purchase)
-	{
-		const auto prepared = flatfile_player_domain_prepare_wallet(
-			root, lock, payload.actor_pid, payload.account_name.data(), payload.racewar,
-			payload.expected_wallet_revision, payload.expected_bank_revision, 0, false,
-			&wallet_read, &result_code, &error);
-		if (prepared != flatfile_player_domain_result::ok)
-		{
-			if (prepared == flatfile_player_domain_result::not_found)
-				result_code = ENOENT;
-			else
-				return { prepared == flatfile_player_domain_result::io_error ?
-						 critical_apply_outcome::retryable_failure :
-						 critical_apply_outcome::terminal_failure,
-					 catalog.catalog_revision,
-					 static_cast<unsigned int>(
-						 prepared == flatfile_player_domain_result::io_error ?
-							 EIO :
-							 EILSEQ) };
-		}
-		result.wallet = wallet_read.wallet;
-		result.bank = wallet_read.bank;
-		result.wallet_revision = wallet_read.wallet_revision;
-		result.bank_revision = wallet_read.bank_revision;
-	}
-
 	player_item_snapshot exact;
 	if (!result_code && payload.item_count && !decode_singleton(payload, &exact, &result_code))
 		return { critical_apply_outcome::retryable_failure, catalog.catalog_revision,
@@ -1348,16 +1305,12 @@ critical_apply_result flatfile_collector_repository_apply(const std::string &roo
 			policy = collector::activate(&updated, payload.expected_listing_revision,
 						     payload.observed_at);
 		else if (payload.action == collector_action::purchase)
-		{
-			const int64_t carried = wallet_value(wallet_read.wallet);
-			if (carried < 0)
-				result_code = ERANGE;
-			else
-				policy = collector::purchase(
-					&updated, payload.expected_listing_revision,
-					payload.actor_pid, static_cast<uint64_t>(carried),
-					payload.capacity_admitted, payload.observed_at);
-		}
+			// The wallet is memory's: the submit took the price of the listing at
+			// this revision, so the buyer carries exactly that.
+			policy = collector::purchase(&updated, payload.expected_listing_revision,
+						     payload.actor_pid, updated.price_value,
+						     payload.capacity_admitted,
+						     payload.observed_at);
 		else if (payload.action == collector_action::expire)
 			policy = collector::expire(&updated, payload.expected_listing_revision,
 						   payload.observed_at);
@@ -1376,10 +1329,8 @@ critical_apply_result flatfile_collector_repository_apply(const std::string &roo
 
 	flatfile_item_collector_mutation item;
 	flatfile_collector_world_mutation world;
-	flatfile_wallet_mutation wallet_apply;
 	flatfile_shop_trade_materialization_mutation materialization;
-	bool include_item = false, include_world = false, include_wallet = false,
-	     include_materialization = false;
+	bool include_item = false, include_world = false, include_materialization = false;
 	if (!result_code && payload.item_count)
 	{
 		const auto prepared = flatfile_item_repository_prepare_collector_transfer(
@@ -1425,63 +1376,22 @@ critical_apply_result flatfile_collector_repository_apply(const std::string &roo
 	}
 	if (!result_code && payload.action == collector_action::purchase)
 	{
-		if (updated.price_value > static_cast<uint64_t>(INT64_MAX))
-			result_code = ERANGE;
-		else
-		{
-			const auto prepared = flatfile_player_domain_prepare_wallet(
-				root, lock, payload.actor_pid, payload.account_name.data(),
-				payload.racewar, payload.expected_wallet_revision,
-				payload.expected_bank_revision,
-				-static_cast<int64_t>(updated.price_value), true, &wallet_apply,
-				&result_code, &error);
-			if (prepared != flatfile_player_domain_result::ok)
-			{
-				if (prepared == flatfile_player_domain_result::not_found)
-					result_code = ENOENT;
-				else
-					return { prepared == flatfile_player_domain_result::io_error ?
-							 critical_apply_outcome::retryable_failure :
-							 critical_apply_outcome::terminal_failure,
-						 catalog.catalog_revision,
-						 static_cast<unsigned int>(
-							 prepared == flatfile_player_domain_result::
-										 io_error ?
-								 EIO :
-								 EILSEQ) };
-			}
-			include_wallet = !result_code;
-			if (!result_code)
-			{
-				result.wallet = wallet_apply.wallet;
-				result.bank = wallet_apply.bank;
-				result.wallet_revision = wallet_apply.wallet_revision;
-				result.bank_revision = wallet_apply.bank_revision;
-			}
-		}
-		if (!result_code)
-		{
-			const item_transfer_payload transfer = materialization_payload(payload);
-			const auto prepared = flatfile_item_transfer_materialization_prepare(
-				root, lock, command.operation_id, transfer, &materialization,
-				&error);
-			if (prepared != flatfile_shop_trade_materialization_result::ok &&
-			    prepared != flatfile_shop_trade_materialization_result::unchanged)
-				return {
-					prepared == flatfile_shop_trade_materialization_result::
-								io_error ?
-						critical_apply_outcome::retryable_failure :
-						critical_apply_outcome::terminal_failure,
-					catalog.catalog_revision,
-					static_cast<unsigned int>(
-						prepared == flatfile_shop_trade_materialization_result::
-									io_error ?
-							EIO :
-							EILSEQ)
-				};
-			include_materialization = prepared ==
-						  flatfile_shop_trade_materialization_result::ok;
-		}
+		const item_transfer_payload transfer = materialization_payload(payload);
+		const auto prepared = flatfile_item_transfer_materialization_prepare(
+			root, lock, command.operation_id, transfer, &materialization, &error);
+		if (prepared != flatfile_shop_trade_materialization_result::ok &&
+		    prepared != flatfile_shop_trade_materialization_result::unchanged)
+			return { prepared == flatfile_shop_trade_materialization_result::io_error ?
+					 critical_apply_outcome::retryable_failure :
+					 critical_apply_outcome::terminal_failure,
+				 catalog.catalog_revision,
+				 static_cast<unsigned int>(
+					 prepared == flatfile_shop_trade_materialization_result::
+								 io_error ?
+						 EIO :
+						 EILSEQ) };
+		include_materialization = prepared ==
+					  flatfile_shop_trade_materialization_result::ok;
 	}
 
 	const bool mutation_applied = !result_code;
@@ -1524,17 +1434,9 @@ critical_apply_result flatfile_collector_repository_apply(const std::string &roo
 			return { critical_apply_outcome::retryable_failure,
 				 catalog.catalog_revision, ENOMEM };
 		}
-		include_item = include_world = include_wallet = include_materialization = false;
-		const currency_vector wallet = result.wallet;
-		const currency_vector bank = result.bank;
-		const uint64_t wallet_revision = result.wallet_revision;
-		const uint64_t bank_revision = result.bank_revision;
+		include_item = include_world = include_materialization = false;
 		result = {};
 		result.action = payload.action;
-		result.wallet = wallet;
-		result.bank = bank;
-		result.wallet_revision = wallet_revision;
-		result.bank_revision = bank_revision;
 	}
 	try
 	{
@@ -1559,9 +1461,6 @@ critical_apply_result flatfile_collector_repository_apply(const std::string &roo
 			images.push_back(std::move(item.after_image));
 		if (include_world)
 			images.push_back(std::move(world.after_image));
-		if (include_wallet)
-			for (auto &image : wallet_apply.after_images)
-				images.push_back(std::move(image));
 		if (include_materialization)
 			images.push_back(std::move(materialization.after_image));
 	}

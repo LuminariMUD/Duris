@@ -61,11 +61,12 @@ resume. Collection commands fence the complete current corpse or room root even
 though only the selected item enters collector custody. This gives repositories
 enough evidence to reject an incomplete root, detach a bag without taking its
 excluded or later-added contents, and deterministically repair the topology that
-remains. Purchase separately carries the listing revision, wallet and bank
-revisions, collector and player owner revisions, and exact item revision; a
-collision between the player wallet key and player-owner key never discards the
-second revision because it remains in the versioned payload for repository
-validation. Successful fixed-size results contain the complete canonical record
+remains. Purchase separately carries the listing revision, collector and player
+owner revisions, and exact item revision. The price leaves the buyer's wallet in
+memory when the purchase is submitted, and a refusal gives it back (see
+[Money lives in memory](../persistence/CRITICAL_COMMAND_PIPELINE.md#money-lives-in-memory));
+the repositories no longer read or write the wallet, so the wallet and bank
+revisions the payload still carries are not checked. Successful fixed-size results contain the complete canonical record
 for due-queue publication and remain well below the coordinator's result limit.
 `collector_transaction.{h,c}` submits this command through the critical-command
 coordinator, retains interactive completions across disconnect/reconnect, and

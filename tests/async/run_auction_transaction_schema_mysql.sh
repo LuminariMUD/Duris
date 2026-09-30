@@ -38,4 +38,4 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
     src/persistence/critical_command_repository.c \
     "${MYSQL_LIBS[@]}" -lcrypto -o "$ROOT/bin/tests/auction_transaction_mysql_harness"
 "$ROOT/bin/tests/auction_transaction_mysql_harness"
-printf 'auction listing, stale bid, replay, settlement, refund, money claim, and item claim checks passed\n'
+printf 'auction listing, bid, replay, settlement, refund, money claim, and item claim checks passed\n'

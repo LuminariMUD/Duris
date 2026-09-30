@@ -174,11 +174,15 @@ class AuctionTransactionalCutoverTests(unittest.TestCase):
         repository = (SRC / "auction_repository.c").read_text()
         generic = (SRC / "critical_command_repository.c").read_text()
         for token in (
-            "FOR UPDATE", "apply_wallet_delta", "transition_items", "stage_money",
+            "FOR UPDATE", "transition_items", "stage_money",
             "stage_items", "auction_item_custody", "auction_ledger",
             "claim_operation_id", "claimed_at=CURRENT_TIMESTAMP(6)",
         ):
             self.assertIn(token, repository)
+        # The wallet is memory's: the repository reports what it charged or paid.
+        for token in ("UPDATE player_data", "account_banks", "currency_ledger"):
+            self.assertNotIn(token, repository)
+        self.assertIn("wallet_value_delta", repository)
         auction_branch = generic[generic.index("if (auction_command)"):]
         self.assertLess(auction_branch.index("insert_outbox"),
                         auction_branch.index('execute(connection, "COMMIT")'))

@@ -94,8 +94,6 @@ bool fill_auction_actor(P_char ch, auction_command_payload *payload)
 		return false;
 	payload->actor_pid = static_cast<uint32_t>(GET_PID(ch));
 	payload->racewar = static_cast<uint8_t>(GET_RACEWAR(ch));
-	payload->expected_wallet_revision = ch->only.pc->wallet_revision;
-	payload->expected_bank_revision = ch->only.pc->bank_revision;
 	payload->closing_fee_basis_points =
 		static_cast<uint32_t>(std::max(0.0f, std::min(1.0f, flat_closing_fee)) * 10000.0f);
 	payload->bid_extension_seconds =
@@ -512,6 +510,11 @@ bool auction_offer(P_char ch, char *args)
 	payload.buy_price = buy_price;
 	payload.listing_fee =
 		flat_listing_fee + static_cast<int64_t>(start_price * flat_start_price_fee);
+	if (GET_MONEY(ch) < payload.listing_fee)
+	{
+		send_to_char("&+WYou don't have enough money to list the item.\r\n", ch);
+		return true;
+	}
 	payload.end_time = static_cast<uint64_t>(time(nullptr)) + days * UINT64_C(86400);
 	P_obj current = object;
 	for (int index = 0; index < quantity; ++index)
@@ -574,6 +577,13 @@ bool auction_bid(P_char ch, char *args)
 	payload.value = bid;
 	if (!fill_auction_actor(ch, &payload))
 		return report_flat_query_failure(ch, "player auction identity is unavailable");
+	// The bid leaves the wallet until the auction settles it.
+	if (GET_MONEY(ch) < bid)
+	{
+		send_to_char_f(ch, "&+WYou don't have enough money!\r\nYou need: &n%s\r\n",
+			       coin_stringv(static_cast<int>(bid)));
+		return true;
+	}
 	if (!auction_transaction_submit(ch, payload, flat_bid_completed))
 		send_to_char("The auction house is busy; your money is unchanged.\r\n", ch);
 	else
@@ -1525,8 +1535,6 @@ bool auction_fill_actor(P_char ch, auction_command_payload *payload)
 		return false;
 	payload->actor_pid = static_cast<uint32_t>(GET_PID(ch));
 	payload->racewar = static_cast<uint8_t>(GET_RACEWAR(ch));
-	payload->expected_wallet_revision = ch->only.pc->wallet_revision;
-	payload->expected_bank_revision = ch->only.pc->bank_revision;
 	payload->closing_fee_basis_points = static_cast<uint32_t>(
 		std::max(0.0f, std::min(1.0f, AUCTION_CLOSING_PCT_FEE)) * 10000.0f);
 	payload->bid_extension_seconds = static_cast<uint32_t>(std::max(0, BID_TIME_EXTENSION));
@@ -1787,6 +1795,11 @@ bool auction_offer(P_char ch, char *args)
 	payload.buy_price = buy_price;
 	payload.listing_fee = AUCTION_LISTING_FEE +
 			      static_cast<int64_t>(start_price * AUCTION_START_PRICE_PCT_FEE);
+	if (GET_MONEY(ch) < payload.listing_fee)
+	{
+		send_to_char("&+WYou don't have enough money to list the item.\r\n", ch);
+		return true;
+	}
 	payload.end_time = static_cast<uint64_t>(time(nullptr) + days * 86400);
 	P_obj current = object;
 	for (int index = 0; index < quantity; ++index)
@@ -2497,6 +2510,13 @@ bool auction_bid(P_char ch, char *args)
 	payload.value = bid;
 	if (!auction_fill_actor(ch, &payload))
 		return false;
+	// The bid leaves the wallet until the auction settles it.
+	if (GET_MONEY(ch) < bid)
+	{
+		send_to_char_f(ch, "&+WYou don't have enough money!\r\nYou need: &n%s\r\n",
+			       coin_stringv(static_cast<int>(bid)));
+		return true;
+	}
 	if (!auction_transaction_submit(ch, payload, auction_bid_completed))
 		send_to_char("The auction house is busy; your money is unchanged.\r\n", ch);
 	else

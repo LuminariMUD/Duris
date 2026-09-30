@@ -35,8 +35,9 @@ harness = r'''
 #include <string>
 #include <unordered_map>
 
-bool currency_transaction_publish_balances(P_char, const char *, uint8_t,
-    const currency_vector &, const currency_vector &, uint64_t, uint64_t) { return true; }
+bool currency_transaction_submit_wallet_value(P_char, int64_t, currency_reason_type, int64_t,
+    critical_source_site, critical_deadline_class, currency_completion_fn, const void *,
+    size_t) { return true; }
 ''' + declarations + publication + r'''
 
 static uint64_t revision(item_owner_identity owner) {

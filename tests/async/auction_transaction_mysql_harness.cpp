@@ -176,7 +176,10 @@ int main()
 	auction_command_result result = apply(list_command);
 	const uint32_t auction_id = result.auction_id;
 	assert(auction_id && result.event_type == auction_event_type::listed);
-	assert(scalar("SELECT platinum FROM player_data WHERE pid=" + std::to_string(seller)) == 9);
+	// The wallet is memory's: the repository reports the fee and leaves the row alone.
+	assert(result.wallet_value_delta == -1000);
+	assert(scalar("SELECT platinum FROM player_data WHERE pid=" + std::to_string(seller)) ==
+	       10);
 	assert(scalar("SELECT owner_type FROM item_current_owner WHERE item_uid=" +
 		      std::to_string(item_uid)) == 6);
 	assert(scalar("SELECT COUNT(*) FROM auction_item_custody WHERE auction_id=" +
@@ -192,21 +195,16 @@ int main()
 	apply(command_for(early_finalize, &operations), critical_apply_outcome::terminal_failure,
 	      EAGAIN);
 
-	auction_command_payload stale_bid = {};
-	stale_bid.action = auction_action::bid;
-	stale_bid.auction_id = auction_id;
-	stale_bid.value = 3000;
-	fill_actor(&stale_bid, bidder, bidder_account, "AuctionBidder", 99);
-	apply(command_for(stale_bid, &operations), critical_apply_outcome::terminal_failure,
-	      ESTALE);
-	assert(scalar("SELECT platinum FROM player_data WHERE pid=" + std::to_string(bidder)) ==
-	       10);
-
-	auction_command_payload bid = stale_bid;
+	auction_command_payload bid = {};
+	bid.action = auction_action::bid;
+	bid.auction_id = auction_id;
+	bid.value = 3000;
 	fill_actor(&bid, bidder, bidder_account, "AuctionBidder", 0);
 	result = apply(command_for(bid, &operations));
-	assert(result.event_type == auction_event_type::bid_placed && result.final_price == 3000);
-	assert(scalar("SELECT platinum FROM player_data WHERE pid=" + std::to_string(bidder)) == 7);
+	assert(result.event_type == auction_event_type::bid_placed && result.final_price == 3000 &&
+	       result.wallet_value_delta == -3000);
+	assert(scalar("SELECT platinum FROM player_data WHERE pid=" + std::to_string(bidder)) ==
+	       10);
 
 	auction_command_payload buy = {};
 	buy.action = auction_action::bid;
@@ -250,7 +248,7 @@ int main()
 	const int money_loser = 1 - money_winner;
 	assert(money_results[money_winner].outcome == critical_apply_outcome::applied);
 	assert(money_results[money_loser].outcome == critical_apply_outcome::terminal_failure &&
-	       money_results[money_loser].error_code == ESTALE);
+	       money_results[money_loser].error_code == ENOENT);
 	assert(auction_command_decode_result(money_results[money_winner].result_payload.data(),
 					     money_results[money_winner].result_size, &result));
 	assert(result.wallet_value_delta == 4850);

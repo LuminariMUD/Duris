@@ -3,7 +3,6 @@
 #include "economy/auction_command.h"
 #include "flatfile/flatfile_authority_transaction.h"
 #include "flatfile/flatfile_item_repository.h"
-#include "flatfile/flatfile_player_domain_repository.h"
 #include "flatfile/flatfile_store.h"
 
 #include <algorithm>
@@ -880,32 +879,8 @@ critical_apply_result flatfile_auction_repository_apply(const std::string &root,
 	auction_command_result result = {};
 	result.action = payload.action;
 	unsigned int result_code = 0;
-	flatfile_wallet_mutation wallet;
-	if (payload.actor_pid)
-	{
-		const auto prepared = flatfile_player_domain_prepare_wallet(
-			root, lock, payload.actor_pid, payload.account_name.data(), payload.racewar,
-			payload.expected_wallet_revision, payload.expected_bank_revision, 0, false,
-			&wallet, &result_code, &error);
-		if (prepared != flatfile_player_domain_result::ok)
-		{
-			if (prepared == flatfile_player_domain_result::not_found)
-				result_code = ENOENT;
-			else
-				return { prepared == flatfile_player_domain_result::io_error ?
-						 critical_apply_outcome::retryable_failure :
-						 critical_apply_outcome::terminal_failure,
-					 0,
-					 static_cast<unsigned int>(
-						 prepared == flatfile_player_domain_result::io_error ?
-							 EIO :
-							 EILSEQ) };
-		}
-		result.wallet = wallet.wallet;
-		result.bank = wallet.bank;
-		result.wallet_revision = wallet.wallet_revision;
-		result.bank_revision = wallet.bank_revision;
-	}
+	// The wallet is memory's: the submit took the fee or the bid, and the completion
+	// gives back what wallet_value_delta does not keep.
 	flatfile_item_auction_mutation item_mutation;
 	auction_catalog original_catalog;
 	try
@@ -917,8 +892,6 @@ critical_apply_result flatfile_auction_repository_apply(const std::string &root,
 		return { critical_apply_outcome::retryable_failure, catalog.revision, ENOMEM };
 	}
 	bool mutation_applied = false;
-	int64_t wallet_delta = 0;
-	bool mutate_wallet = false;
 	if (!result_code && payload.action == auction_action::list)
 	{
 		if (payload.listing_fee < 0 || payload.start_price < 0 ||
@@ -979,8 +952,7 @@ critical_apply_result flatfile_auction_repository_apply(const std::string &root,
 			{
 				return { critical_apply_outcome::retryable_failure, 0, ENOMEM };
 			}
-			wallet_delta = -payload.listing_fee;
-			mutate_wallet = true;
+			result.wallet_value_delta = -payload.listing_fee;
 			result.auction_id = id;
 			result.status = auction_status_open;
 			result.seller_pid = payload.actor_pid;
@@ -1062,8 +1034,7 @@ critical_apply_result flatfile_auction_repository_apply(const std::string &root,
 					else
 						listing->end_time += payload.bid_extension_seconds;
 				}
-				wallet_delta = -to_pay;
-				mutate_wallet = true;
+				result.wallet_value_delta = -to_pay;
 				result.auction_id = listing->id;
 				result.status = listing->status;
 				result.seller_pid = listing->seller_pid;
@@ -1135,12 +1106,11 @@ critical_apply_result flatfile_auction_repository_apply(const std::string &root,
 			result_code = ERANGE;
 		else
 		{
-			wallet_delta = pickup->amount;
-			mutate_wallet = true;
+			result.wallet_value_delta = pickup->amount;
 			pickup->amount = 0;
 			++pickup->revision;
 			result.event_type = auction_event_type::money_claimed;
-			result.auction_revision = wallet.wallet_revision + 1;
+			result.auction_revision = pickup->revision;
 			mutation_applied = true;
 		}
 	}
@@ -1212,30 +1182,6 @@ critical_apply_result flatfile_auction_repository_apply(const std::string &root,
 	else if (!result_code)
 		result_code = EINVAL;
 
-	if (!result_code && mutate_wallet)
-	{
-		const auto prepared = flatfile_player_domain_prepare_wallet(
-			root, lock, payload.actor_pid, payload.account_name.data(), payload.racewar,
-			payload.expected_wallet_revision, payload.expected_bank_revision,
-			wallet_delta, true, &wallet, &result_code, &error);
-		if (prepared != flatfile_player_domain_result::ok)
-			return { prepared == flatfile_player_domain_result::io_error ?
-					 critical_apply_outcome::retryable_failure :
-					 critical_apply_outcome::terminal_failure,
-				 0,
-				 static_cast<unsigned int>(
-					 prepared == flatfile_player_domain_result::io_error ?
-						 EIO :
-						 EILSEQ) };
-		if (!result_code)
-		{
-			result.wallet_value_delta = wallet_delta;
-			result.wallet = wallet.wallet;
-			result.bank = wallet.bank;
-			result.wallet_revision = wallet.wallet_revision;
-			result.bank_revision = wallet.bank_revision;
-		}
-	}
 	if (result_code)
 	{
 		mutation_applied = false;
@@ -1250,10 +1196,6 @@ critical_apply_result flatfile_auction_repository_apply(const std::string &root,
 		}
 		result = {};
 		result.action = payload.action;
-		result.wallet = wallet.wallet;
-		result.bank = wallet.bank;
-		result.wallet_revision = wallet.wallet_revision;
-		result.bank_revision = wallet.bank_revision;
 	}
 	try
 	{
@@ -1278,9 +1220,6 @@ critical_apply_result flatfile_auction_repository_apply(const std::string &root,
 		images.push_back({ catalog_filename, std::move(catalog_bytes) });
 		if (mutation_applied && item_mutation.after_image.bytes.size())
 			images.push_back(std::move(item_mutation.after_image));
-		if (mutation_applied)
-			for (auto &image : wallet.after_images)
-				images.push_back(std::move(image));
 	}
 	catch (const std::bad_alloc &)
 	{

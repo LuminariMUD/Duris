@@ -1230,3 +1230,41 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   validator, `make test-all` (every other test passed), `run_currency_transaction_schema_mysql.sh`
   and `run_player_save_claim_mysql.sh` (disposable MariaDB), and the journeys
   `test_area_coin_pickup.py` and `test_flatfile_combat_journey.py`.
+
+### Step 3: the economy stops writing balances (done)
+
+- Auction: `auction_transaction` takes a listing's fee or a bid from the wallet in memory at
+  submit, queues the player's save, then queues the command; a coordinator refusal gives it
+  straight back. The completion gives back what the command did not charge (the escrow plus
+  `wallet_value_delta`): everything when refused, the rest of a bid capped at the buy-now
+  price or raising the bidder's own bid, and a money claim's money. The four list and bid
+  commands check the wallet first and say so. `auction_repository.c` and
+  `flatfile_auction_repository.c` no longer read or write the wallet, the bank, their
+  revisions, the currency ledger or the baselines; they report `wallet_value_delta`. A
+  completion for a player who has left still waits for `auction_transaction_player_ready()`.
+  Changed behavior: raising your own bid needs the full new bid on hand while it settles,
+  though only the difference is charged.
+- Collector: a purchase takes the price of the listing it was prepared from (the in-memory
+  catalog, at the payload's listing revision) at submit, saves first, and is refunded when
+  refused; a refund for a buyer who has left waits in `refunds` for
+  `collector_transaction_player_ready()`. Both repositories hand the policy the price as
+  what the buyer carries and no longer write the wallet or the ledger.
+- Left as they are, because only an older journal's one-time replay reaches them, at boot and
+  before anyone loads: the currency repository, the coin transfer command, the corpse
+  lifecycle wallet (dead since Phase 1 step 6) and the accounting bank commands. Phase 3
+  deletes them. The combat outcome's blood money moves with step 5, in the same repository
+  code as frags and epics; shops are step 6.
+- Tests: `test_auction_escrow.py` (new: the production submit and completion with a recorded
+  wallet, save and coordinator), the collector transaction harness (the price at submit, the
+  refund, a refund held for a buyer who left), the MariaDB and flat-file auction and
+  collector repository harnesses (the wallet is left alone; the stale-wallet and
+  insufficient-funds refusals the repositories no longer make are gone) and the source
+  contracts. `test_flatfile_auction_coin_put_journey.py` passes again.
+- Found while doing this, fixed in its own commit: `run_auction_transaction_schema_mysql.sh`
+  no longer linked (the restitution command sources were missing). It runs against the
+  `.env` development database, not a disposable one, so it is not part of `make test-db`.
+- Verified: `make -C src`, the flat-file build, `./scripts/format.sh --all --check`, the
+  validator, the tests above and every other test that links the auction or collector code,
+  `run_collector_repository_schema_mysql.sh` (disposable MariaDB),
+  `run_auction_transaction_schema_mysql.sh` (local development database) and the auction
+  coin-put journey.

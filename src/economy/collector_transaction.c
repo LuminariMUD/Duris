@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <climits>
 #include <mutex>
 #include <memory>
 #include <new>
@@ -30,6 +31,8 @@ struct pending_collector
 	collector_completion_fn completion = nullptr;
 	bool completion_ready = false;
 	critical_completion completed = {};
+	// A purchase's price, taken from the wallet at submit.
+	int64_t escrow = 0;
 };
 
 struct completed_player_recovery
@@ -48,6 +51,8 @@ std::unordered_map<std::string, pending_collector> pending;
 // process restarts before the player returns.
 std::unordered_map<std::string, completed_player_recovery> player_recoveries;
 constexpr size_t COLLECTOR_PLAYER_RECOVERY_MAX = 128;
+// The price of a refused purchase whose buyer was gone, given back when they return.
+std::unordered_map<uint32_t, int64_t> refunds;
 
 enum class outbox_publication_state : uint8_t
 {
@@ -168,20 +173,23 @@ bool publish(std::unordered_map<std::string, pending_collector>::iterator found,
 		published = false;
 		publication_error = ESTALE;
 	}
-	if (published && committed && submitted_payload.action == collector_action::purchase &&
-	    character &&
-	    !currency_transaction_publish_balances(
-		    character, submitted_payload.account_name.data(), submitted_payload.racewar,
-		    result.wallet, result.bank, result.wallet_revision, result.bank_revision))
+	// A refused purchase gives its price back, when the buyer returns if they left.
+	if (!durable_commit && entry.escrow)
 	{
-		published = false;
-		publication_error = ESTALE;
+		if (character)
+			currency_transaction_submit_wallet_value(
+				character, entry.escrow, currency_reason_type::refund,
+				static_cast<int64_t>(submitted_payload.listing),
+				critical_source_site::command, critical_deadline_class::interactive,
+				nullptr, nullptr, 0);
+		else
+			refunds[entry.actor_pid] += entry.escrow;
 	}
-	// The repository has already durably applied the wallet and item rows.  A
-	// purchase may therefore be published without a live character: custody and
-	// catalog state must stop fencing the listing, while the player's in-memory
-	// wallet and notification are naturally refreshed on the next login.  The
-	// completion callback intentionally accepts nullptr for this recovery path.
+	// The repository has already durably applied the item rows.  A purchase may
+	// therefore be published without a live character: custody and catalog state
+	// must stop fencing the listing, while the player's notification is refreshed
+	// on the next login.  The completion callback intentionally accepts nullptr for
+	// this recovery path.
 	if (published && committed && !collector_runtime_publish(result))
 	{
 		published = false;
@@ -233,6 +241,16 @@ bool submit(P_char character, const critical_operation_id &operation_id,
 	critical_command command = {};
 	if (!collector_command_build(&command, operation_id, payload, source, deadline))
 		return false;
+	// A purchase pays the price of the listing it was prepared from: it leaves the
+	// wallet now, and the buyer's save is queued before the command, so a crash between
+	// them loses the money instead of paying it twice. A refusal gives it back.
+	collector::record listing = {};
+	const bool purchase = payload.action == collector_action::purchase;
+	if (purchase && (!collector_runtime_find(payload.listing, &listing) ||
+			 listing.revision != payload.expected_listing_revision ||
+			 listing.price_value > INT_MAX))
+		return false;
+	const int64_t escrow = purchase ? static_cast<int64_t>(listing.price_value) : 0;
 	std::string key;
 	try
 	{
@@ -243,7 +261,8 @@ bool submit(P_char character, const critical_operation_id &operation_id,
 								std::move(payload_copy),
 								completion,
 								false,
-								{} });
+								{},
+								escrow });
 		if (!inserted.second)
 			return false;
 	}
@@ -251,11 +270,28 @@ bool submit(P_char character, const critical_operation_id &operation_id,
 	{
 		return false;
 	}
+	if (escrow)
+	{
+		if (!currency_transaction_submit_wallet_value(
+			    character, -escrow, currency_reason_type::collector_purchase,
+			    static_cast<int64_t>(payload.listing), source, deadline, nullptr,
+			    nullptr, 0))
+		{
+			pending.erase(key);
+			return false;
+		}
+		currency_transaction_save_first(character);
+	}
 	const critical_submit_result submitted =
 		critical_command_coordinator_submit(std::move(command));
 	if (!critical_submit_result_keeps_operation(submitted))
 	{
 		pending.erase(key);
+		if (escrow)
+			currency_transaction_submit_wallet_value(
+				character, escrow, currency_reason_type::refund,
+				static_cast<int64_t>(payload.listing), source, deadline, nullptr,
+				nullptr, 0);
 		return false;
 	}
 	return true;
@@ -335,6 +371,16 @@ void collector_transaction_player_ready(P_char character)
 {
 	if (!character || IS_NPC(character) || GET_PID(character) <= 0)
 		return;
+	if (const auto refund = refunds.find(static_cast<uint32_t>(GET_PID(character)));
+	    refund != refunds.end())
+	{
+		currency_transaction_submit_wallet_value(character, refund->second,
+							 currency_reason_type::refund, 0,
+							 critical_source_site::command,
+							 critical_deadline_class::interactive,
+							 nullptr, nullptr, 0);
+		refunds.erase(refund);
+	}
 	for (auto found = pending.begin(); found != pending.end();)
 	{
 		auto current = found++;
@@ -528,6 +574,7 @@ void collector_transaction_reset_for_tests(void)
 {
 	pending.clear();
 	player_recoveries.clear();
+	refunds.clear();
 	std::lock_guard<std::mutex> lock(outbox_mutex);
 	outbox_publications.clear();
 }
