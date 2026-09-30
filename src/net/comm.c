@@ -144,6 +144,7 @@
 #include <algorithm>
 #include <set>
 #include "player/player_save_worker.h"
+#include "player/player_load_offline.h"
 #include "player/player_load_pipeline.h"
 #include "player/player_death_restitution_adapter.h"
 #if !defined(__NO_TESTS__) || defined(TEST_REAL_PERSISTENCE)
@@ -2134,7 +2135,7 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 					delivered = true;
 					break;
 				}
-			if (!delivered)
+			if (!delivered && !player_load_offline_complete(load_completions[index]))
 				player_load_pipeline_note_stale();
 		}
 		information_cache_pulse();

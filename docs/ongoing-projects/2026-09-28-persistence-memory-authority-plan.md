@@ -1625,6 +1625,28 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
 - Tests: `test_player_names_index.py` links the index and checks its rules; the game-loop
   queries journey no longer lists `sql_player_exists`.
 
+#### Offline character loads (in progress)
+
+- `player_load_offline()` (`src/player/player_load_offline.{h,c}`) loads a character that is
+  not in the game through the player load pipeline, by name, without its pets and, unless
+  asked, its items, and hands it to a callback on a later pulse (`comm.c` gives it every
+  load no descriptor claims). `player_load_offline_for()` is the command form: the callback
+  runs only while the requester is still in the game, and a load that cannot be queued
+  tells them. Both backends load through it, so these commands also work on flat-file now,
+  where `restoreCharOnly()` read pfiles the backend no longer writes.
+- Converted: `finger`, `lore` (a character; an object in the inventory is still lored at
+  once), `disguise`, the illusionist's `mask` (masking back as yourself loads nothing), and
+  staff `load char`, which now brings the character in with its items: on MariaDB
+  `restoreItemsOnly()` skipped them, so a loaded character held nothing, and its next save
+  would have written that.
+- Still on `restoreCharOnly()`, each converted with its subsystem: the locker access check
+  (lockers), the artifact owner loads (`load_dummy_char()`, artifacts), and the websocket
+  character deletions (deletion). Then `restoreCharOnly()` loses its SQL branch and stays
+  the pfile reader that `lookup pfile`, `purge pfiles` and the `pfile` tool use; no MariaDB
+  deployment has pfiles, so those two commands reach no query.
+- The game-loop queries journey promotes its character to a god between sessions (after
+  the camp's log row lands, so the queued quit save cannot undo it) and runs `finger`.
+
 ### Review round 1 (MR !3)
 
 The review of `c3ffc4b8a` (tag `persistence/phase-2-review-0`) found five defects. Each is fixed

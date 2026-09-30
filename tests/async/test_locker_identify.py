@@ -14,7 +14,7 @@ assert 'locker_identify_receipt(ch)' in stat and 'locker_identify_replay' not in
 assert 'CharWait' not in stat and 'do_lore' not in stat and 'SUB_MONEY' not in stat
 lore = (ROOT / 'src/cmd/actnew.c').read_text()
 normal = lore.split('void do_lore(',1)[1].split('static void render_item_lore(',1)[0]
-assert 'lore_item(ch, obj);\n\t\tCharWait(ch, 3);' in normal
+assert 'lore_item(ch, obj);\n\tCharWait(ch, 3);' in normal
 captured = lore.split('std::string item_lore_description(',1)[1].split('const char *MAKE_FORMAT',1)[0]
 assert 'CharWait' not in captured and 'send_to_char' not in captured
 

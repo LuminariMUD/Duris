@@ -3,7 +3,8 @@
 
 A real server on a disposable MariaDB, in the combat journey's fixture world: a new
 account and character are created, the character plays, saves and quits, the account
-menu lists its characters, and the character enters the game again and quits. Every
+menu lists its characters, and the character, now a god, enters the game again, runs
+the commands the rest of step 8 moved off the loop, and quits. Every
 query the game thread issues while the loop runs logs its site once (`game loop query
 site <file>:<line> <function> (<kind>)`). No site may appear except the functions
 NOT_CONVERTED still lists: the rest of step 8 empties it. Run it through
@@ -22,6 +23,12 @@ import uuid
 import test_flatfile_combat_journey as journey
 
 ROOT = Path(__file__).resolve().parents[2]
+
+# What the god runs in the game, and a line of each answer: the answer comes on a later
+# pulse when the command reads the database.
+COMMANDS = (
+    ('finger ' + journey.CHARACTER, 'PID:'),
+)
 
 # The functions this session still reaches with a query on the game loop.
 NOT_CONVERTED = {
@@ -53,6 +60,9 @@ def run(server):
         environment['LD_LIBRARY_PATH'] = os.environ['LD_LIBRARY_PATH']
     mysql = ['mysql', '--protocol=tcp', '-h', host, '-P', port, '-u', environment['DB_USER'],
              '-N', '-B']
+    def sql(text):
+        subprocess.run(mysql + [database], input=text, text=True, env=environment, check=True)
+
     subprocess.run(mysql, input='CREATE DATABASE ' + database +
                    ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci', text=True,
                    env=environment, check=True)
@@ -95,6 +105,17 @@ def run(server):
             client.expect('Pos: standing >', timeout=10)
             client.send('quit')
             client.expect('Please select an option', timeout=60)
+            # The staff commands below need a god. The camp's log row is queued after
+            # the quit's save, so once it lands the save cannot undo the promotion.
+            deadline = time.monotonic() + 30
+            while subprocess.run(
+                    mysql + [database], text=True, env=environment, check=True,
+                    capture_output=True,
+                    input="SELECT COUNT(*) FROM log_entries WHERE player_name='" +
+                    journey.CHARACTER + "' AND message='Camped'").stdout.strip() != '1':
+                assert time.monotonic() < deadline, 'the quit was not written'
+                time.sleep(0.2)
+            sql(f"UPDATE player_data SET level=62 WHERE name='{journey.CHARACTER}'")
             # The account menu's lists come from the account in memory.
             client.send('8')
             client.expect('RESTED BONUS STATUS', timeout=15)
@@ -109,6 +130,9 @@ def run(server):
             client.expect('Play as', timeout=15)
             client.send('y')
             client.expect('The Regression Arena', timeout=30)
+            for command, answer in COMMANDS:
+                client.send(command)
+                client.expect(answer, timeout=30)
             client.send('quit')
             client.expect('Please select an option', timeout=60)
             client.send('0')

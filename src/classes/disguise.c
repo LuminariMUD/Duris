@@ -14,6 +14,7 @@
 #include "core/mm.h"
 #include "item/objmisc.h"
 #include "magic/spells.h"
+#include "player/player_load_offline.h"
 #include "stdio.h"
 #include "string.h"
 #include "time.h"
@@ -94,145 +95,75 @@ struct disguise_list_data_struct disguise_list_data[] = {
 	  { "&+Lan orog warrior&n", "&+ran orog berserker&n", "&+yan orog warpriest&n" } }
 };
 
-void do_disguise(P_char ch, char *arg, int /*cmd*/)
+/* Whether ch may disguise as target, a loaded character (null when there is none). A
+ * refused target is freed. */
+static bool disguise_target_allowed(P_char ch, P_char target)
 {
-	int skl_lvl = 0;
+	// Character dosn't exist
+	if (!target)
+	{
+		send_to_char("Disguise as who?\r\n", ch);
+		return false;
+	}
+
+	if (!training_dummy_disguise_target_allowed(target))
+	{
+		send_to_char("The training dummy cannot be used as a disguise.\r\n", ch);
+		free_char(target);
+		return false;
+	}
+
+	// Disguise as himself?
+	if (target == ch)
+	{
+		send_to_char("It is too hard to disguise into that loser!\r\n", ch);
+		free_char(target);
+		return false;
+	}
+
+	// No disguising as immortals
+	if (!IS_TRUSTED(ch) && GET_LEVEL(target) > 56)
+	{
+		send_to_char("You really don't want to disguise yourself as a God!\r\n", ch);
+		free_char(target);
+		return false;
+	}
+
+	// Dissalow imms disguising as higher levle imms
+	if (IS_TRUSTED(ch))
+	{
+		if (GET_LEVEL(ch) <= GET_LEVEL(target))
+		{
+			send_to_char("No you don't!\r\n", ch);
+			free_char(target);
+			return false;
+		}
+	}
+
+	// If it's a mortal disguising
+	if (!IS_TRUSTED(ch))
+	{
+		if (GET_RACE(target) == RACE_ILLITHID || GET_RACE(target) == RACE_CENTAUR ||
+		    GET_RACE(target) == RACE_THRIKREEN || GET_RACE(target) == RACE_MINOTAUR ||
+		    GET_RACE(target) == RACE_TROLL)
+		{
+			send_to_char("Disguising into that is just short of impossible.\r\n", ch);
+			free_char(target);
+			return false;
+		}
+	}
+	return true;
+}
+
+/* Disguises ch as target, a loaded character, or else as disguise_list[i]. */
+static void disguise_as(P_char ch, P_char target, int i)
+{
+	int skl_lvl = GET_CHAR_SKILL(ch, SKILL_DISGUISE) * 2;
 	int percent = 0;
-	int i, the_size;
+	int the_size;
 	char Gbuf1[MAX_STRING_LENGTH];
-	char name[MAX_STRING_LENGTH];
-	P_char target = NULL;
 	P_obj temp = NULL;
 	bool equipped = false;
-
-	if (!ch)
-		return;
-
-	/*  if (!IS_TRUSTED(ch)) {
-	   send_to_char("Not ready yet!\r\n", ch);
-	   return;
-	   } */
-
-	// No disguise while fighting
-	if (IS_FIGHTING(ch))
-	{
-		send_to_char("Can't do that while fighting!\r\n", ch);
-		return;
-	}
-
-	// No diguising for NPC's!
-	if (IS_NPC(ch))
-		return;
-
-	skl_lvl = GET_CHAR_SKILL(ch, SKILL_DISGUISE) * 2;
-
-	// Do we have the skill?
-	if (!skl_lvl)
-	{
-		send_to_char("You don't know how.\r\n", ch);
-		return;
-	}
-
-	if (!*arg)
-	{
-		// Removing the disguise
-		if (IS_DISGUISE(ch))
-		{
-			remove_disguise(ch, FALSE);
-			act("$n starts removing $s disguise.", FALSE, ch, 0, ch, TO_ROOM);
-			send_to_char("You start removing your disguise.\n\r", ch);
-			CharWait(ch, PULSE_VIOLENCE * 3);
-		}
-		// Otherwise they are clueless
-		else
-		{
-			send_to_char("Disguise as who or what?\r\n", ch);
-		}
-		return;
-	}
-
-	// Disguising when already disgusied? I think not!
-	if (IS_DISGUISE(ch))
-	{
-		send_to_char(
-			"You need to remove your disguise (just 'disguise') before trying to disguise again!\r\n",
-			ch);
-		return;
-	}
-
-	one_argument(arg, name);
-
-	// Search the disguise_list to see if we're looking for an npc disguise
-	if ((i = search_block(name, disguise_list, 0)) < 0)
-	{
-		target = (struct char_data *)mm_get(dead_mob_pool);
-		ensure_pconly_pool();
-		target->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-
-		// Bad / no pfile. Note: target will never be NULL because of above.
-		if ((restoreCharOnly(target, skip_spaces(arg)) < 0))
-		{
-			free_char(target);
-			target = NULL;
-		}
-
-		// Character dosn't exist
-		if (!target)
-		{
-			send_to_char("Disguise as who?\r\n", ch);
-			return;
-		}
-
-		if (!training_dummy_disguise_target_allowed(target))
-		{
-			send_to_char("The training dummy cannot be used as a disguise.\r\n", ch);
-			free_char(target);
-			return;
-		}
-
-		// Disguise as himself?
-		if (target == ch)
-		{
-			send_to_char("It is too hard to disguise into that loser!\r\n", ch);
-			free_char(target);
-			return;
-		}
-
-		// No disguising as immortals
-		if (!IS_TRUSTED(ch) && GET_LEVEL(target) > 56)
-		{
-			send_to_char("You really don't want to disguise yourself as a God!\r\n",
-				     ch);
-			free_char(target);
-			return;
-		}
-
-		// Dissalow imms disguising as higher levle imms
-		if (IS_TRUSTED(ch))
-		{
-			if (GET_LEVEL(ch) <= GET_LEVEL(target))
-			{
-				send_to_char("No you don't!\r\n", ch);
-				free_char(target);
-				return;
-			}
-		}
-
-		// If it's a mortal disguising
-		if (!IS_TRUSTED(ch))
-		{
-			if (GET_RACE(target) == RACE_ILLITHID || GET_RACE(target) == RACE_CENTAUR ||
-			    GET_RACE(target) == RACE_THRIKREEN ||
-			    GET_RACE(target) == RACE_MINOTAUR || GET_RACE(target) == RACE_TROLL)
-			{
-				send_to_char(
-					"Disguising into that is just short of impossible.\r\n",
-					ch);
-				free_char(target);
-				return;
-			}
-		}
-	}
 
 	// Check if we have a disguise kit
 	if (!IS_TRUSTED(ch) || !affected_by_spell(ch, ACH_DECEPTICON))
@@ -376,6 +307,83 @@ void do_disguise(P_char ch, char *arg, int /*cmd*/)
 	if (target)
 		free_char(target);
 	return;
+}
+
+void do_disguise(P_char ch, char *arg, int /*cmd*/)
+{
+	int skl_lvl = 0;
+	int i;
+	char name[MAX_STRING_LENGTH];
+
+	if (!ch)
+		return;
+
+	/*  if (!IS_TRUSTED(ch)) {
+	   send_to_char("Not ready yet!\r\n", ch);
+	   return;
+	   } */
+
+	// No disguise while fighting
+	if (IS_FIGHTING(ch))
+	{
+		send_to_char("Can't do that while fighting!\r\n", ch);
+		return;
+	}
+
+	// No diguising for NPC's!
+	if (IS_NPC(ch))
+		return;
+
+	skl_lvl = GET_CHAR_SKILL(ch, SKILL_DISGUISE) * 2;
+
+	// Do we have the skill?
+	if (!skl_lvl)
+	{
+		send_to_char("You don't know how.\r\n", ch);
+		return;
+	}
+
+	if (!*arg)
+	{
+		// Removing the disguise
+		if (IS_DISGUISE(ch))
+		{
+			remove_disguise(ch, FALSE);
+			act("$n starts removing $s disguise.", FALSE, ch, 0, ch, TO_ROOM);
+			send_to_char("You start removing your disguise.\n\r", ch);
+			CharWait(ch, PULSE_VIOLENCE * 3);
+		}
+		// Otherwise they are clueless
+		else
+		{
+			send_to_char("Disguise as who or what?\r\n", ch);
+		}
+		return;
+	}
+
+	// Disguising when already disgusied? I think not!
+	if (IS_DISGUISE(ch))
+	{
+		send_to_char(
+			"You need to remove your disguise (just 'disguise') before trying to disguise again!\r\n",
+			ch);
+		return;
+	}
+
+	one_argument(arg, name);
+
+	// Search the disguise_list to see if we're looking for an npc disguise
+	if ((i = search_block(name, disguise_list, 0)) >= 0)
+	{
+		disguise_as(ch, NULL, i);
+		return;
+	}
+	player_load_offline_for(ch, skip_spaces(arg), false,
+				[](P_char disguiser, P_char target)
+				{
+					if (disguise_target_allowed(disguiser, target))
+						disguise_as(disguiser, target, -1);
+				});
 }
 
 void remove_disguise(P_char ch, bool show_messages)

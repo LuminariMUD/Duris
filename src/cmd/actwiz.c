@@ -42,6 +42,7 @@
 #include "core/mm.h"
 #include "item/objmisc.h"
 #include "persistence/persistence_mode.h"
+#include "player/player_load_offline.h"
 #include "ships/ships.h"
 #include "world/specs.prototypes.h"
 #include "magic/spells.h"
@@ -474,28 +475,15 @@ void test_load_all_chars(P_char ch)
 }
 
 /* Load a player manually from save files */
-void do_read_player(P_char ch, char *arg, int /*cmd*/)
+/* Brings vict, a character loaded with its items (null when there is none), before ch. */
+static void read_player_loaded(P_char ch, P_char vict)
 {
-	P_char vict = NULL;
-	int tmp;
-
-	if (!*arg)
-	{
-		send_to_char("Syntax: load char <name> or load <m|c|o|i> <vnum>\n", ch);
-		return;
-	}
-
-	vict = (P_char)mm_get(dead_mob_pool);
-	clear_char(vict);
-	vict->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-	vict->only.pc->aggressive = -1;
-	vict->desc = NULL;
-	if ((tmp = restoreCharOnly(vict, arg)) < 0)
+	if (!vict)
 	{
 		send_to_char("&=RlDanger Will Robinson! Bad pfile!!&n\n", ch);
 		return;
 	}
-	tmp = restoreItemsOnly(vict, 100);
+	vict->only.pc->aggressive = -1;
 
 	if (!strstr(GET_NAME(vict), ".locker"))
 	{
@@ -531,6 +519,16 @@ void do_read_player(P_char ch, char *arg, int /*cmd*/)
 	logit(LOG_WIZ, "%s loaded %s's char into the game [%d]", GET_NAME(ch), GET_NAME(vict),
 	      world[ch->in_room].number);
 	sql_log(ch, WIZLOG, "Loaded char %s", GET_NAME(vict));
+}
+
+void do_read_player(P_char ch, char *arg, int /*cmd*/)
+{
+	if (!*arg)
+	{
+		send_to_char("Syntax: load char <name> or load <m|c|o|i> <vnum>\n", ch);
+		return;
+	}
+	player_load_offline_for(ch, arg, true, read_player_loaded);
 }
 
 void do_release(P_char ch, char *argument, int /*cmd*/)
@@ -7716,28 +7714,16 @@ void GetMIA(time_t laston, char *returned)
 	return;
 }
 
-void do_finger(P_char ch, char *arg, int /*cmd*/)
+static void finger_loaded(P_char ch, P_char finger_foo)
 {
 	unsigned long timegone;
 	time_t laston;
 	char Gbuf1[MAX_STRING_LENGTH], Gbuf2[512];
-	P_char finger_foo;
 	bool in_game;
 	int pid;
 
-	if (!*arg)
+	if (!finger_foo)
 	{
-		send_to_char("Usage:\n  finger playername.\n", ch);
-		return;
-	}
-	finger_foo = (struct char_data *)mm_get(dead_mob_pool);
-	ensure_pconly_pool();
-	finger_foo->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-
-	if (restoreCharOnly(finger_foo, skip_spaces(arg)) < 0 || !finger_foo)
-	{
-		if (finger_foo)
-			free_char(finger_foo);
 		send_to_char("Pfile does not exist or is invalid.\n", ch);
 		return;
 	}
@@ -7832,8 +7818,17 @@ void do_finger(P_char ch, char *arg, int /*cmd*/)
 		world[real_room0(GET_HOME(finger_foo))].name, GET_HOME(finger_foo),
 		world[real_room0(GET_BIRTHPLACE(finger_foo))].name, GET_BIRTHPLACE(finger_foo));
 	send_to_char(Gbuf1, ch);
-	if (finger_foo)
-		free_char(finger_foo);
+	free_char(finger_foo);
+}
+
+void do_finger(P_char ch, char *arg, int /*cmd*/)
+{
+	if (!*arg)
+	{
+		send_to_char("Usage:\n  finger playername.\n", ch);
+		return;
+	}
+	player_load_offline_for(ch, skip_spaces(arg), false, finger_loaded);
 }
 
 void do_decline(P_char ch, char *arg, int /*cmd*/)
