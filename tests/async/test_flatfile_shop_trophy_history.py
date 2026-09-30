@@ -53,7 +53,7 @@ if "PERSISTENCE_MODE_FLATFILE_PRIMARY" not in db_trophy or "flat_sql_shop_trophy
 callback = shop_source[shop_source.index("static void shop_trade_completion") : shop_source.index("void push(")]
 sale = callback[callback.index('act("$n sells $p.') :]
 record = sale.index("sql_shop_sell(ch, object, payload.price);")
-if not record < sale.index("obj_from_char(object)") or not record < sale.index("extract_obj(object, TRUE)"):
+if not record < sale.index("obj_to_char(object, keeper)") or not record < sale.index("extract_obj(object, TRUE)"):
     raise SystemExit("committed flat sale history is recorded after the live object is consumed")
 
 print("flat-file shop-trophy history runtime and routing regression passed")
