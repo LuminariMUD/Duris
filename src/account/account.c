@@ -210,17 +210,10 @@ class account_deletion_drain_guard
 	bool player_quiesced_ = false;
 };
 
-void remove_deleted_account_runtime(P_desc deleting_session,
-				    const std::vector<account_deletion_identity> &identities)
+// The account's characters leave the game. Closing their sessions queued their terminal saves.
+void remove_deleted_account_characters(P_desc deleting_session,
+				       const std::vector<account_deletion_identity> &identities)
 {
-	for (const auto &identity : identities)
-	{
-		item_ownership_runtime_forget_player_domain(identity.pid);
-		player_revision_forget(identity.pid);
-		redis_invalidate_ship_snapshot(identity.name.c_str());
-		forget_deleted_guild_member(identity.name.c_str());
-		delete_ship_runtime(identity.name.c_str());
-	}
 	for (P_char character = character_list, next = NULL; character; character = next)
 	{
 		next = character->next;
@@ -240,6 +233,19 @@ void remove_deleted_account_runtime(P_desc deleting_session,
 				extract_char_after_terminal_save(character);
 				break;
 			}
+	}
+}
+
+// The account's deletion committed: memory lets go of its characters.
+void forget_deleted_account_characters(const std::vector<account_deletion_identity> &identities)
+{
+	for (const auto &identity : identities)
+	{
+		item_ownership_runtime_forget_player_domain(identity.pid);
+		player_revision_forget(identity.pid);
+		redis_invalidate_ship_snapshot(identity.name.c_str());
+		forget_deleted_guild_member(identity.name.c_str());
+		delete_ship_runtime(identity.name.c_str());
 	}
 }
 
@@ -2961,10 +2967,11 @@ void verify_delete_account(P_desc d, char *arg)
 	close_other_account_sessions(d);
 
 #ifndef __NO_MYSQL__
-	// Memory goes first: the account's characters leave the game before the deletion, so
-	// no save of theirs can land after it. The deletion runs on the writer, behind the
-	// account's queued saves (its fence among them), while this session waits.
-	remove_deleted_account_runtime(d, identities);
+	// The account's characters leave the game before the deletion, so no save of theirs
+	// can land after it. The deletion runs on the writer, behind the account's queued saves
+	// (its fence among them), while this session waits. Memory lets go of the characters
+	// only once it committed: a refusal leaves the account and its characters as they were.
+	remove_deleted_account_characters(d, identities);
 	const uint64_t id = wait_for_writer(d);
 	if (!sql_delete_account(
 		    account_name.c_str(),
@@ -2972,6 +2979,7 @@ void verify_delete_account(P_desc d, char *arg)
 		    {
 			    if (deleted)
 			    {
+				    forget_deleted_account_characters(identities);
 				    for (const auto &identity : identities)
 				    {
 					    sql_player_names_forget(identity.pid);
@@ -3009,7 +3017,8 @@ void verify_delete_account(P_desc d, char *arg)
 	}
 	if (deleted)
 	{
-		remove_deleted_account_runtime(d, identities);
+		forget_deleted_account_characters(identities);
+		remove_deleted_account_characters(d, identities);
 		account_recovery_forget(account_name.c_str());
 	}
 	finish_account_deletion(d, deleted, identities.size());

@@ -904,9 +904,10 @@ those legacy files (not part of the default build).
   the player. Only after the commit does it forget the stored rows and the Redis
   snapshot (`sql_delete_ship()`) and drop the runtime ship with
   `delete_ship_runtime()`.
-- Account deletion (`remove_deleted_account_runtime()` in
-  `src/account/account.c`) invalidates each character's legacy Redis snapshot
-  and calls `delete_ship_runtime()` before its writer job deletes the rows.
+- Account deletion deletes the rows in its writer job. Only after the commit
+  does `forget_deleted_account_characters()` (`src/account/account.c`)
+  invalidate each character's legacy Redis snapshot and call
+  `delete_ship_runtime()`, so a refused deletion keeps the ships.
 - Immortals can delete a ship with test object 1203 (`say ship delete <owner>`).
 - `sell ship` is disabled, so players cannot delete their own ship.
 

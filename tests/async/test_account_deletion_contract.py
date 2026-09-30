@@ -37,7 +37,7 @@ begin_delete = function_body(ACCOUNT, "void delete_account(")
 confirm_delete = function_body(ACCOUNT, "void verify_delete_account(")
 drain_guard = ACCOUNT[
     ACCOUNT.index("class account_deletion_drain_guard") : ACCOUNT.index(
-        "void remove_deleted_account_runtime"
+        "void remove_deleted_account_characters"
     )
 ]
 sql_delete = function_body(SQL_PLAYER, "bool sql_delete_account(const char *name", last=True)
@@ -88,19 +88,22 @@ for call in (
     assert call in drain_guard
 assert "drain_pending_ship_saves()" in confirm_delete
 assert confirm_delete.index("account_deletion_drain_guard drain_guard") > confirm_delete.index("#else")
-runtime_remove = function_body(ACCOUNT, "void remove_deleted_account_runtime(")
+runtime_remove = function_body(ACCOUNT, "void remove_deleted_account_characters(")
 detach_character = runtime_remove.index("character->desc = NULL")
 detach_descriptor = runtime_remove.index("character_desc->character = NULL")
 close_descriptor = runtime_remove.index("close_socket(character_desc)")
 extract_character = runtime_remove.index("extract_char_after_terminal_save(character)")
 assert detach_character < detach_descriptor < close_descriptor < extract_character
-assert contains(runtime_remove, "player_revision_forget(identity.pid)")
+# Taking the characters out of the game forgets nothing: a refused deletion keeps them whole.
+assert "forget" not in runtime_remove and "delete_ship_runtime" not in runtime_remove
+runtime_forget = function_body(ACCOUNT, "void forget_deleted_account_characters(")
+assert contains(runtime_forget, "player_revision_forget(identity.pid)")
 assert contains(
-    runtime_remove, "item_ownership_runtime_forget_player_domain(identity.pid)"
+    runtime_forget, "item_ownership_runtime_forget_player_domain(identity.pid)"
 )
-assert contains(runtime_remove, "redis_invalidate_ship_snapshot(identity.name.c_str())")
-assert contains(runtime_remove, "forget_deleted_guild_member(identity.name.c_str())")
-assert contains(runtime_remove, "delete_ship_runtime(identity.name.c_str())")
+assert contains(runtime_forget, "redis_invalidate_ship_snapshot(identity.name.c_str())")
+assert contains(runtime_forget, "forget_deleted_guild_member(identity.name.c_str())")
+assert contains(runtime_forget, "delete_ship_runtime(identity.name.c_str())")
 assert "delete_ship_by_owner(owner_name, false)" in ship_runtime_remove
 assert "P_member *link = &guild->members" in guild_forget
 assert "flatfile_association_list(root, &records, &error)" in guild_forget
@@ -154,14 +157,17 @@ assert sql_delete.index("UPDATE guilds g JOIN guild_members gm") < sql_delete.in
     "DELETE FROM guild_members"
 )
 
-# The account's characters leave memory before the deletion is queued, so no save of
+# The account's characters leave the game before the deletion is queued, so no save of
 # theirs lands after it; the session waits for the reply with its input held.
 mariadb = confirm_delete[confirm_delete.index("#ifndef __NO_MYSQL__") : confirm_delete.index("#else")]
-assert mariadb.index("remove_deleted_account_runtime(d, identities)") < mariadb.index(
+assert mariadb.index("remove_deleted_account_characters(d, identities)") < mariadb.index(
     "sql_delete_account("
 )
-# A refused deletion rolls back, so the names and grants leave memory only on success.
+# A refused deletion rolls back, so memory lets go of the characters (guild memberships,
+# ships, revision and item ownership), names and grants only on success.
 succeeded = mariadb[mariadb.index("if (deleted)") : mariadb.index("writer_replied(id))")]
+assert "forget_deleted_account_characters(identities);" in succeeded
+assert mariadb.count("forget_deleted_account_characters(") == 1
 assert "sql_player_names_forget(identity.pid)" in succeeded
 assert "account_rewards_forget_account(account_name.c_str())" in succeeded
 assert "polls_forget_account(account_name.c_str())" in succeeded
