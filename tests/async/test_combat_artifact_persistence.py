@@ -43,8 +43,9 @@ checks = {
     and "return true;" in bind_lookup,
     "update goes through the store": "artifact_bind_store(vnum, *owner_pid, *timer);" in bind_update,
     "store changes memory, then queues": store.index("artifact_binds[vnum] =")
-    < store.index("sql_queue(")
-    and "ON DUPLICATE KEY UPDATE" in store,
+    < store.index("sql_queue_statements(")
+    and "ON DUPLICATE KEY UPDATE" in store
+    and "artifact_domain_mirror(vnum)" in store,
 }
 for label, passed in checks.items():
     print(f"[{'PASS' if passed else 'FAIL'}] bind data: {label}")

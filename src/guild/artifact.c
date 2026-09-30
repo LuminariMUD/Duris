@@ -119,6 +119,24 @@ const char ARTIFACT_ROWS_QUERY[] =
 	"SELECT 'a', vnum, owned, locType, location, UNIX_TIMESTAMP(timer), type FROM artifacts";
 const char ARTIFACT_BINDS_QUERY[] = "SELECT 'b', vnum, owner_pid, timer FROM artifact_bind";
 
+/* artifact_domain_state repeats each artifact's row and soul for the transactions that
+ * ledger artifact changes (the artifact guild outcome checks the two agree), so every
+ * change the game queues here is repeated there in the same job. vnum -1: every artifact. */
+std::string artifact_domain_mirror(int vnum)
+{
+	return sql_format(
+		"INSERT INTO artifact_domain_state (vnum, owned, loc_type, location, timer_epoch, "
+		"artifact_type, bind_owner_pid, bind_timer_epoch) "
+		"SELECT a.vnum, a.owned = 'Y', a.locType, COALESCE(a.location, 0), "
+		"COALESCE(UNIX_TIMESTAMP(a.timer), 0), COALESCE(a.type, 0), COALESCE(b.owner_pid, 0), "
+		"COALESCE(b.timer, 0) FROM artifacts a LEFT JOIN artifact_bind b ON b.vnum = a.vnum%s "
+		"ON DUPLICATE KEY UPDATE owned = VALUES(owned), loc_type = VALUES(loc_type), "
+		"location = VALUES(location), timer_epoch = VALUES(timer_epoch), "
+		"artifact_type = VALUES(artifact_type), bind_owner_pid = VALUES(bind_owner_pid), "
+		"bind_timer_epoch = VALUES(bind_timer_epoch)",
+		vnum < 0 ? "" : sql_format(" WHERE a.vnum = %d", vnum).c_str());
+}
+
 // A row of ARTIFACT_ROWS_QUERY or ARTIFACT_BINDS_QUERY (a MYSQL_ROW or an sql_row).
 template <typename Row> void artifact_row_read(const Row &row)
 {
@@ -143,13 +161,16 @@ bool artifact_expired(const artifact_row &row)
 void artifact_row_store(int vnum, const artifact_row &row)
 {
 	artifact_rows[vnum] = row;
-	sql_queue("INSERT INTO artifacts (vnum, owned, locType, location, timer, type, lastUpdate) "
-		  "VALUES(%d, '%c', %d, %d, FROM_UNIXTIME(NULLIF(%ld, 0)), %d, SYSDATE()) "
-		  "ON DUPLICATE KEY UPDATE owned=VALUES(owned), locType=VALUES(locType), "
-		  "location=VALUES(location), timer=VALUES(timer), type=VALUES(type), "
-		  "lastUpdate=VALUES(lastUpdate)",
-		  vnum, row.owned ? 'Y' : 'N', row.locType, row.location, (long)row.timer,
-		  row.type);
+	sql_queue_statements(
+		{ sql_format(
+			  "INSERT INTO artifacts (vnum, owned, locType, location, timer, type, lastUpdate) "
+			  "VALUES(%d, '%c', %d, %d, FROM_UNIXTIME(NULLIF(%ld, 0)), %d, SYSDATE()) "
+			  "ON DUPLICATE KEY UPDATE owned=VALUES(owned), locType=VALUES(locType), "
+			  "location=VALUES(location), timer=VALUES(timer), type=VALUES(type), "
+			  "lastUpdate=VALUES(lastUpdate)",
+			  vnum, row.owned ? 'Y' : 'N', row.locType, row.location, (long)row.timer,
+			  row.type),
+		  artifact_domain_mirror(vnum) });
 	arti_cache_invalidate();
 }
 
@@ -157,9 +178,12 @@ void artifact_row_store(int vnum, const artifact_row &row)
 void artifact_bind_store(int vnum, int owner_pid, int timer)
 {
 	artifact_binds[vnum] = { owner_pid, timer };
-	sql_queue("INSERT INTO artifact_bind (vnum, owner_pid, timer) VALUES(%d, %d, %d) "
-		  "ON DUPLICATE KEY UPDATE owner_pid=VALUES(owner_pid), timer=VALUES(timer)",
-		  vnum, owner_pid, timer);
+	sql_queue_statements(
+		{ sql_format(
+			  "INSERT INTO artifact_bind (vnum, owner_pid, timer) VALUES(%d, %d, %d) "
+			  "ON DUPLICATE KEY UPDATE owner_pid=VALUES(owner_pid), timer=VALUES(timer)",
+			  vnum, owner_pid, timer),
+		  artifact_domain_mirror(vnum) });
 }
 
 // Frees vnum's soul (every soul for -1) and queues the same change.
@@ -168,11 +192,12 @@ bool artifact_binds_reset(int vnum)
 	for (auto &entry : artifact_binds)
 		if (vnum < 0 || entry.first == vnum)
 			entry.second = { -1, 0 };
-	return vnum < 0 ?
-		       sql_queue("UPDATE artifact_bind SET owner_pid = -1, timer = 0") :
-		       sql_queue(
-			       "UPDATE artifact_bind SET owner_pid = -1, timer = 0 WHERE vnum = %d",
-			       vnum);
+	return sql_queue_statements(
+		{ vnum < 0 ? "UPDATE artifact_bind SET owner_pid = -1, timer = 0" :
+			     sql_format("UPDATE artifact_bind SET owner_pid = -1, timer = 0 WHERE "
+					"vnum = %d",
+					vnum),
+		  artifact_domain_mirror(vnum) });
 }
 } // namespace
 
@@ -189,6 +214,20 @@ bool artifacts_load(void)
 			artifact_row_read(row);
 		mysql_free_result(res);
 	}
+	// Changes made before the game repeated them there (see artifact_domain_mirror()).
+	return qry("%s", artifact_domain_mirror(-1).c_str());
+}
+
+bool artifact_feed_state(int vnum, int64_t *timer, int32_t *bind_owner_pid, int64_t *bind_timer)
+{
+	const auto row = artifact_rows.find(vnum);
+	if (row == artifact_rows.end())
+		return false;
+	int owner_pid = 0, soul_timer = 0;
+	sql_get_bind_data(vnum, &owner_pid, &soul_timer);
+	*timer = row->second.timer;
+	*bind_owner_pid = owner_pid;
+	*bind_timer = soul_timer;
 	return true;
 }
 
@@ -242,6 +281,11 @@ void sql_update_bind_data(int vnum, int *owner_pid, int *timer)
 }
 #else
 void artifacts_forget_deleted_character(int /*pid*/) {}
+
+bool artifact_feed_state(int, int64_t *, int32_t *, int64_t *)
+{
+	return false;
+}
 #endif
 
 // For a character's deletion: the statement that releases its artifacts, in the deletion's
@@ -4508,6 +4552,8 @@ void arti_syncdb_sql(P_char ch)
 		       "SET ab.owner_pid = pi.pid, ab.timer = UNIX_TIMESTAMP()" })
 			if (const unsigned int error = sql_execute(connection, statement))
 				return error;
+		if (const unsigned int error = sql_execute(connection, artifact_domain_mirror(-1)))
+			return error;
 		rows->push_back(sql_row{ { cleared, updated } });
 		if (const unsigned int error = sql_select(connection, ARTIFACT_ROWS_QUERY, rows))
 			return error;

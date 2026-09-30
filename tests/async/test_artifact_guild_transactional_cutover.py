@@ -112,8 +112,22 @@ class ArtifactGuildCutoverTests(unittest.TestCase):
 
     def test_hydration_schema_and_generic_save_protection(self):
         state = (SRC / "artifact_guild_state.c").read_text()
-        self.assertIn("next_artifacts", state)
-        self.assertIn("artifacts.swap(next_artifacts)", state)
+        # The guild revisions are hydrated; an artifact's timer and soul come from the
+        # artifact memory the game keeps current, and the repository locks the revision.
+        self.assertIn("guild_revisions.swap(next_guilds)", state)
+        self.assertIn("artifact_feed_state(vnum, &timer, &bind_owner_pid, &bind_timer)", state)
+        self.assertNotIn("artifact_domain_state", state)
+        repository = (SRC / "artifact_guild_repository.c").read_text()
+        self.assertNotIn("state.revision != entry.expected_revision", repository)
+        self.assertIn("std::to_string(artifact_states[index].revision)", repository)
+        # Every artifact change the game queues is repeated in artifact_domain_state.
+        artifact = (SRC / "artifact.c").read_text()
+        for store in ("void artifact_row_store(", "void artifact_bind_store(",
+                      "bool artifact_binds_reset("):
+            body = artifact[artifact.index(store):]
+            body = body[: body.index("\n}\n")]
+            self.assertIn("artifact_domain_mirror(vnum)", body)
+        self.assertIn('return qry("%s", artifact_domain_mirror(-1).c_str());', artifact)
         self.assertIn("artifact_guild_state_hydrate", (SRC / "comm.c").read_text())
         migration = (ROOT / "migrations/artifact_guild_outcome.sql").read_text()
         bootstrap = (ROOT / "migrations/bootstrap_multithread_safe.sql").read_text()

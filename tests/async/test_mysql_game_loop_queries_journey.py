@@ -216,6 +216,13 @@ def run(server):
                                    capture_output=True,
                                    input='SELECT vnum, owned, locType FROM artifacts').stdout.split()
         assert artifacts in (['900', 'N', '4'], ['900', 'N', '2']), artifacts
+        # artifact_domain_state repeats the row and its soul, which the guild feed checks.
+        domain = subprocess.run(mysql + [database], text=True, env=environment, check=True,
+                                capture_output=True,
+                                input='SELECT s.vnum, s.owned, s.loc_type, s.location, s.timer_epoch, '
+                                      's.bind_owner_pid, s.bind_timer_epoch FROM artifact_domain_state s '
+                                      'WHERE s.vnum=900').stdout.split()
+        assert domain[:3] == ['900', '0', artifacts[2]], domain
 
         logs = output_path.read_text(errors='replace') + '\n'.join(
             path.read_text(errors='replace') for path in (runtime / 'logs/log').glob('*')
