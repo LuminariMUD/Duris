@@ -45,6 +45,7 @@ COMMANDS = (
     ('boon remove 1', 'Successfully removed boon # 1.'),
     ('boon shop', 'Stat points available: 0'),
     ('boon shop stat str', "You don't have any stat points available."),
+    ('ctf score', 'No data'),
 )
 REENTRY_COMMANDS = (
     ('divineclaim list', 'Copies'),

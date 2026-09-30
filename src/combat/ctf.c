@@ -78,6 +78,7 @@ int ctf_carrying_flag(P_char /*ch*/)
 	return FALSE;
 }
 #else
+#include "sql/sql_async.h"
 
 extern MYSQL *DB;
 extern P_index obj_index;
@@ -634,14 +635,12 @@ void capture_flag(P_char ch, P_obj flag, int id)
 	return;
 }
 
+// Queued on the writer.
 int add_ctf_entry(P_char ch, int flagtype, int type)
 {
-	if (qry("INSERT INTO ctf_data (time, pid, type, flagtype, racewar) VALUES "
-		"(NOW(), %d, %d, %d, %d)",
-		GET_PID(ch), type, flagtype, GET_RACEWAR(ch)))
-		return TRUE;
-
-	return FALSE;
+	return sql_queue("INSERT INTO ctf_data (time, pid, type, flagtype, racewar) VALUES "
+			 "(NOW(), %d, %d, %d, %d)",
+			 GET_PID(ch), type, flagtype, GET_RACEWAR(ch));
 }
 
 void show_ctf(P_char ch)
@@ -693,13 +692,10 @@ void show_ctf(P_char ch)
 void show_ctf_score(P_char ch, char *argument)
 {
 	char arg[MAX_STRING_LENGTH];
-	char buff[MAX_STRING_LENGTH];
 	char dbqry[MAX_STRING_LENGTH];
 	int type = 0;
 	int flagtype = 0;
 	int racewar = 0;
-
-	send_to_char_f(ch, "&+W%-30s %-3s\r\n", "Name", "Score");
 
 	while (*argument)
 	{
@@ -774,42 +770,26 @@ void show_ctf_score(P_char ch, char *argument)
 	checked_snprintf(dbqry + strlen(dbqry), MAX_STRING_LENGTH - strlen(dbqry),
 			 " GROUP BY pid ORDER BY score DESC LIMIT 10");
 
-	if (!qry(dbqry))
-	{
-		send_to_char("No data\r\n", ch);
-		debug("get_boon_data(): cant read from db");
-		return;
-	}
-
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (!res)
-	{
-		logit(LOG_DEBUG, "%s: mysql_store_result failed", __func__);
-		return;
-	}
-
-	if (mysql_num_rows(res) < 1)
-	{
-		send_to_char("No data\r\n", ch);
-		mysql_free_result(res);
-		return;
-	}
-
-	MYSQL_ROW row;
-
-	*buff = '\0';
-	while ((row = mysql_fetch_row(res)))
-	{
-		checked_snprintf(buff + strlen(buff), MAX_STRING_LENGTH - strlen(buff),
-				 "%-30s %-3d\r\n", get_player_name_from_pid(atoi(row[1])),
-				 atoi(row[0]));
-	}
-
-	mysql_free_result(res);
-
-	send_to_char(buff, ch);
-
-	return;
+	// Read on the writer; the scores follow on a later pulse.
+	sql_read_for(ch, dbqry,
+		     [](P_char viewer, const sql_rows &rows)
+		     {
+			     send_to_char_f(viewer, "&+W%-30s %-3s\r\n", "Name", "Score");
+			     if (rows.empty())
+			     {
+				     send_to_char("No data\r\n", viewer);
+				     return;
+			     }
+			     char buff[MAX_STRING_LENGTH];
+			     *buff = '\0';
+			     for (const sql_row &row : rows)
+				     checked_snprintf(buff + strlen(buff),
+						      MAX_STRING_LENGTH - strlen(buff),
+						      "%-30s %-3d\r\n",
+						      get_player_name_from_pid(atoi(row[1])),
+						      atoi(row[0]));
+			     send_to_char(buff, viewer);
+		     });
 }
 
 void do_ctf(P_char ch, char *arg, int /*cmd*/)
