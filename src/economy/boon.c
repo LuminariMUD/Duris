@@ -2605,12 +2605,15 @@ int boon_display(P_char ch, char *argument)
 		case 'u':
 		{
 			argument = one_argument(argument, arg);
+			// Any player may filter by author: the name goes into the query escaped.
+			const string author = escape_str(arg);
 			if (*name)
 				checked_snprintf(name + strlen(name),
 						 MAX_STRING_LENGTH - strlen(name),
-						 "OR author LIKE '%s' ", arg);
+						 "OR author LIKE '%s' ", author.c_str());
 			else
-				checked_snprintf(name, MAX_STRING_LENGTH, "author LIKE '%s' ", arg);
+				checked_snprintf(name, MAX_STRING_LENGTH, "author LIKE '%s' ",
+						 author.c_str());
 			flat_filters.authors.emplace_back(arg);
 			break;
 		}

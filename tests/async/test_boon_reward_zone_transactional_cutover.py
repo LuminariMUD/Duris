@@ -118,6 +118,16 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
         comm = (SRC / "comm.c").read_text()
         self.assertIn("boon_shop_transaction_handle_completions(completions, count)", comm)
 
+    def test_boon_list_escapes_the_author_filter(self):
+        # `boon list u <name>` is open to every player; the name reached the query raw,
+        # so a quote in it rewrote the SQL.
+        source = (SRC / "boon.c").read_text()
+        start = source.index("int boon_display(P_char")
+        author = source[source.index("case 'u':", start):source.index("case 't':", start)]
+        self.assertIn("escape_str(arg)", author)
+        self.assertNotIn("'%s' \", arg)", author)
+        self.assertNotIn("'%s' \", arg);", author)
+
     def test_epic_touch_uses_one_immutable_zone_batch(self):
         source = (SRC / "epic.c").read_text()
         start = source.index("int epic_stone(P_obj")
