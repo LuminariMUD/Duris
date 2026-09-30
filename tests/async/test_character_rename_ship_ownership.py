@@ -473,15 +473,15 @@ int main()
 		assert(!in_transaction && guild_renamed.empty());
 	}
 
-	// A ship that was never stored is inserted by the rename.  If the rename is
-	// rolled back, it keeps that row id only as unconfirmed, for its next save
-	// to check.
+	// A ship that was never stored is given its row id by the rename.  If the
+	// rename is rolled back, it keeps that id: its next save inserts or
+	// updates its row by it.
 	reset();
 	ships[0].db_id = -1;
 	commit_mode = COMMIT_REJECTED;
 	assert(!rename_by_immortal());
 	check_owned_by("Oldname");
-	assert(ships[0].db_id == 7 && ships[0].db_id_unconfirmed);
+	assert(ships[0].db_id == 7);
 
 	// A linkdead character has no descriptor: the rename completes, and their
 	// account menu reads the renamed mapping at their next login.

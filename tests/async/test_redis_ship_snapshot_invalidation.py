@@ -20,14 +20,14 @@ assert "redis_cache_ship_snapshot" not in header
 assert "redis_load_ship_snapshot" not in legacy
 assert "redis_cache_ship_snapshot" not in legacy
 
-load_start = sql.index("P_ship sql_load_ship(const char *owner_name)")
+load_start = sql.index("static bool sql_read_ship_rows(const char *owner_name")
 load_end = sql.index("bool sql_load_all_ships()", load_start)
 load = sql[load_start:load_end]
 assert "from ships where owner_name" in load
 assert "redis_" not in load
 
-save_start = sql.index("bool sql_save_ship(P_ship ship)")
-save_end = sql.index("static bool sql_load_ship_armor", save_start)
+save_start = sql.index("static std::vector<std::string> sql_save_ship_statements(P_ship ship)")
+save_end = sql.index("/* The stored rows of one ship", save_start)
 assert "redis_" not in sql[save_start:save_end]
 
 assert "bool redis_clear_ship_snapshots(struct redisContext *context)" in legacy_header

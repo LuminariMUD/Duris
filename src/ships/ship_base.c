@@ -593,7 +593,9 @@ void initialize_ships()
  *
  * Puts each ship's passengers ashore and docks the hull, so nobody comes
  * back to find themselves in a ship room that no longer exists, then
- * persists every ship in one batched transaction.  Called during an orderly
+ * persists every ship (on MariaDB each save is a writer job, in order behind
+ * the saves queued before it, and the shutdown drains the writer after this
+ * runs).  Called during an orderly
  * shutdown; see drain_pending_ship_saves() for the copyover path, which has
  * different durability requirements.
  */
@@ -602,23 +604,6 @@ void shutdown_ships()
 	int i;
 	P_char ch, ch_next;
 	P_obj obj, obj_next;
-
-#ifndef __NO_MYSQL__
-	int batchSize = 1024 * 1024 * 10;
-	char *batch = (char *)malloc(batchSize);
-	if (!batch)
-	{
-		fatal_boot_error("ship_base", "shutdown_ships: could not allocate batch buffer");
-	}
-
-	// do this update as a transaction
-	if (!sql_begin_transaction())
-	{
-		logit(LOG_DEBUG, "shutdown_ships: start transaction failed");
-		free(batch);
-		return;
-	}
-#endif
 
 	ShipVisitor svs;
 	for (bool fn = shipObjHash.get_first(svs); fn; fn = shipObjHash.get_next(svs))
@@ -653,28 +638,8 @@ void shutdown_ships()
 			}
 		}
 		if (!write_ship(ship) && !IS_NPC_SHIP(ship) && SHIP_LOADED(ship))
-		{
-#ifndef __NO_MYSQL__
-			if (sql_rollback())
-				logit(LOG_DEBUG,
-				      "shutdown_ships: rolled back after write_ship failed");
-			panic_corruption("shutdown_ships", "write_ship failed after rollback");
-#else
-			panic_corruption("shutdown_ships", "flat write_ship failed");
-#endif
-		}
+			panic_corruption("shutdown_ships", "write_ship failed");
 	}
-
-#ifndef __NO_MYSQL__
-	if (!sql_commit())
-	{
-		logit(LOG_DEBUG, "shutdown_ships: commit failed");
-		if (sql_rollback())
-			logit(LOG_DEBUG, "shutdown_ships: rolled back after commit failure");
-		panic_corruption("shutdown_ships", "commit failed after rollback");
-	}
-	free(batch);
-#endif
 }
 
 /*
@@ -1065,7 +1030,6 @@ bool begin_ship_owner_change(P_ship ship, const char *new_owner, ShipOwnerChange
 	change->ship = ship;
 	change->ownername = str_dup(ship->ownername ? ship->ownername : "");
 	change->name = str_dup(SHIP_NAME(ship) ? SHIP_NAME(ship) : "");
-	change->db_id = ship->db_id;
 	if (!change->ownername || !change->name)
 	{
 		if (change->ownername)
@@ -1105,9 +1069,8 @@ void finish_ship_owner_change(ShipOwnerChange *change)
 
 /*
  * The owner change was not stored: put back the old owner and name.  A row
- * id the transaction gave a ship that had none is kept but marked
- * unconfirmed, because a failed COMMIT may still have stored it;
- * sql_save_ship() checks before using it.
+ * id the transaction gave a ship that had none is kept: the ship's next save
+ * inserts or updates its row by that id.
  */
 void undo_ship_owner_change(ShipOwnerChange *change)
 {
@@ -1117,8 +1080,6 @@ void undo_ship_owner_change(ShipOwnerChange *change)
 	ship->ownername = change->ownername;
 	name_ship(change->name, ship);
 	FREE(change->name);
-	if (ship->db_id != change->db_id)
-		ship->db_id_unconfirmed = true;
 }
 
 /*
@@ -3598,9 +3559,8 @@ stored_ship_state place_stored_ship(const char *owner)
 	if (get_ship_from_owner(const_cast<char *>(owner)))
 		return stored_ship_state::placed;
 #ifndef __NO_MYSQL__
-	const int stored = sql_ship_stored(owner);
-	if (stored <= 0)
-		return stored == 0 ? stored_ship_state::none : stored_ship_state::unreadable;
+	if (!sql_ship_stored(owner))
+		return stored_ship_state::none;
 	bool unplaced = false;
 	if (sql_place_ship(owner, &unplaced))
 		return stored_ship_state::placed;

@@ -43,11 +43,11 @@ assert apply_body.index("auction_repository_execute") < apply_body.index(
     'execute(connection, "COMMIT")', apply_body.index("auction_repository_execute")
 )
 
-# A failed shutdown commit must rollback and terminate through the corruption path.
+# A ship the shutdown cannot save terminates through the corruption path.
 shutdown_start = ship.index("void shutdown_ships()")
 shutdown_end = ship.index("struct ShipData *new_ship", shutdown_start)
 shutdown_body = ship[shutdown_start:shutdown_end]
-assert contains(shutdown_body, 'panic_corruption("shutdown_ships", "commit failed after rollback")')
+assert contains(shutdown_body, 'panic_corruption("shutdown_ships", "write_ship failed")')
 
 # Room-exit callbacks may veto only with the explicit sentinel; ordinary legacy
 # TRUE results must remain notifications rather than removal vetoes.

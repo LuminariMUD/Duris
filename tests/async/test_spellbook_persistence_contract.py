@@ -46,7 +46,7 @@ assert contains(saved_writer, 'sql_save_item_extra_descr(item_id, obj, "saved_it
 
 saved_contents = body(SQL, "static P_obj sql_load_saved_item_contents(", "void sql_restore_saved_items(")
 assert contains(saved_contents, 'sql_load_item_extra_descr_from_table(item_id, obj, "saved_item")')
-saved_restore = last_body(SQL, "void sql_restore_saved_items(", "#define SHIP_SQL_BATCH_SIZE")
+saved_restore = last_body(SQL, "void sql_restore_saved_items(", "static int ship_next_db_id")
 assert contains(saved_restore, 'sql_load_item_extra_descr_from_table(item_id, obj, "saved_item")')
 
 # A shopkeeper is saved from its capture on the writer, through the same item rows the

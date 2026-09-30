@@ -78,11 +78,11 @@ flat_capture = text_base[flat_capture_start:flat_capture_end]
 flat_load_start = find(text_base, "static bool flat_ship_materialize")
 flat_load_end = find(text_base, "void initialize_ships()", flat_load_start)
 flat_load = text_base[flat_load_start:flat_load_end]
-sql_save_start = find(text_player, "static bool sql_save_ship_slots")
+sql_save_start = find(text_player, "static std::vector<std::string> sql_save_ship_statements")
 sql_save_end = find(text_player, "bool sql_save_ship(P_ship ship)", sql_save_start)
 sql_save = text_player[sql_save_start:sql_save_end]
-sql_load_start = find(text_player, "static bool sql_load_ship_slots")
-sql_load_end = find(text_player, "P_ship sql_load_ship", sql_load_start)
+sql_load_start = find(text_player, "static P_ship sql_ship_from_rows")
+sql_load_end = find(text_player, "P_ship sql_place_ship", sql_load_start)
 sql_load = text_player[sql_load_start:sql_load_end]
 for row_index, (runtime_field, record_field) in enumerate(slot_fields.items(), start=1):
     if f"ship->slot[index].{runtime_field}" not in flat_capture:
@@ -99,7 +99,7 @@ for row_index, (runtime_field, record_field) in enumerate(slot_fields.items(), s
     if f"ship->slot[i].{runtime_field}" not in sql_save:
         print(f"MariaDB ship save omits {runtime_field}")
         sys.exit(1)
-    if f"ship->slot[idx].{runtime_field} = atoi(row[{row_index}]);" not in sql_load:
+    if f"ship->slot[idx].{runtime_field} = atoi(slot[{row_index}]);" not in sql_load:
         print(f"MariaDB ship load omits {runtime_field}")
         sys.exit(1)
 compact_flat_capture = "".join(flat_capture.split())
@@ -136,13 +136,13 @@ checks.append(('ship save retry fallback', write_ship, retry_pending, retry_dela
 
 # MySQL is the only ship read authority. Redis invalidation remains temporarily so
 # retired snapshot keys cannot survive deletes or owner renames.
-sql_load_ship_fn = find(text_player, 'P_ship sql_load_ship(const char *owner_name)')
-sql_load_ship_end = find(text_player, 'bool sql_load_all_ships()', sql_load_ship_fn)
+sql_load_ship_fn = find(text_player, 'static bool sql_read_ship_rows(const char *owner_name')
+sql_load_ship_end = find(text_player, 'P_ship sql_place_ship(', sql_load_ship_fn)
 sql_load_query = find(text_player, 'from ships where owner_name', sql_load_ship_fn)
 checks.append(('sql_load_ship SQL authority', sql_load_ship_fn, sql_load_query, -1, -1))
 
-sql_delete_ship_fn = find(text_player, 'bool sql_delete_ship(const char *owner_name)')
-sql_delete_query = find(text_player, "delete from ships where owner_name='%s'", sql_delete_ship_fn)
+sql_delete_ship_fn = find(text_player, 'std::string sql_delete_ship_statement(const char *owner_name)')
+sql_delete_query = find(text_player, "delete from ships where owner_name='", sql_delete_ship_fn)
 sql_delete_inv = find(text_player, 'redis_invalidate_ship_snapshot', sql_delete_ship_fn)
 checks.append(('sql_delete_ship redis invalidate', sql_delete_ship_fn, sql_delete_query, sql_delete_inv, -1))
 

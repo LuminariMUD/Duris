@@ -77,7 +77,7 @@ for token in (
     "flatfile_player_identity_pid(ship->ownername, &owner_pid, error)",
     "CAP(ship->ownername);",
     "const auto result = root ? flatfile_ship_remove(",
-    'panic_corruption("shutdown_ships", "flat write_ship failed")',
+    'panic_corruption("shutdown_ships", "write_ship failed")',
     'fatal_boot_error("ship_base", "flat ship authority could not be loaded")',
     'flatfile_ship_upsert(root ? root : "", &record, &error)',
     "flatfile_ship_list(root, &records, &error)",

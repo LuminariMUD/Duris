@@ -256,10 +256,10 @@ void sql_restore_saved_items(void);
 // ships
 struct ShipData;
 bool sql_save_ship(struct ShipData *ship);
-struct ShipData *sql_load_ship(const char *owner_name);
 bool sql_load_all_ships(void);
 struct ShipData *sql_place_ship(const char *owner_name, bool *unplaced);
-int sql_ship_stored(const char *owner_name);
+bool sql_ship_stored(const char *owner_name);
+std::string sql_delete_ship_statement(const char *owner_name);
 bool sql_delete_ship(const char *owner_name);
 
 // guilds

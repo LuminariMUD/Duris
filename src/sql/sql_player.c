@@ -381,19 +381,15 @@ bool sql_save_ship(P_ship ship)
 {
 	return false;
 }
-P_ship sql_load_ship(const char *owner_name)
-{
-	return NULL;
-}
 P_ship sql_place_ship(const char * /*owner_name*/, bool *unplaced)
 {
 	if (unplaced)
 		*unplaced = false;
 	return NULL;
 }
-int sql_ship_stored(const char * /*owner_name*/)
+bool sql_ship_stored(const char * /*owner_name*/)
 {
-	return -1;
+	return false;
 }
 bool sql_load_all_ships(void)
 {
@@ -9614,441 +9610,141 @@ void sql_restore_saved_items(void)
 	logit(LOG_DEBUG, "sql_restore_saved_items: loaded %d items", loaded);
 }
 
-#define SHIP_SQL_BATCH_SIZE (10 * 1024)
+/* The next ships row id: the boot load reads the highest stored one, and -1 means it
+ * could not, so no new ship is saved over a stored one. */
+static int ship_next_db_id = -1;
 
-static bool sql_save_ship_armor(P_ship ship, char *queryBuffer, int batchSize, int &bufferPosition)
+/* A ship's statements: its row (inserted or updated by its id), then its armor, crew
+ * and slots. A new ship takes its id from memory here. Empty when no id can be given. */
+static std::vector<std::string> sql_save_ship_statements(P_ship ship)
 {
-	if (!DB || !ship || ship->db_id == -1)
+	if (ship->db_id == -1)
 	{
-		logit(LOG_DEBUG, "sql_save_ship_armor: invalid parameters");
-		return false;
+		if (ship_next_db_id < 0)
+			return {};
+		ship->db_id = ++ship_next_db_id;
 	}
-
+	const std::string owner = escape_str(ship->ownername);
+	const std::string name = escape_str(ship->name ? ship->name : "");
+	std::vector<std::string> statements;
+	statements.push_back(sql_format(
+		"insert into ships (id, owner_name, ship_name, ship_class, frags, anchor_room, time_played, mainsail, race, money, flags) "
+		"values (%d, '%s', '%s', %d, %d, %d, %d, %d, %d, %d, %lu) "
+		"on duplicate key update owner_name=values(owner_name), ship_name=values(ship_name), "
+		"ship_class=values(ship_class), frags=values(frags), anchor_room=values(anchor_room), "
+		"time_played=values(time_played), mainsail=values(mainsail), race=values(race), "
+		"money=values(money), flags=values(flags)",
+		ship->db_id, owner.c_str(), name.c_str(), ship->m_class, ship->frags, ship->anchor,
+		ship->time, ship->mainsail, ship->race, ship->money, ship->flags));
 	for (int i = 0; i < 4; i++)
-	{
-		if (bufferPosition >= batchSize)
-		{
-			logit(LOG_DEBUG, "sql_save_ship_armor: buffer overflow");
-			return false;
-		}
-
-		bufferPosition +=
-			snprintf(queryBuffer + bufferPosition, batchSize - bufferPosition,
-				 "insert into ship_armor (ship_id, side, armor, internal) "
-				 "values (%d, %d, %d, %d) "
-				 "on duplicate key update armor=%d, internal=%d;",
-				 ship->db_id, i, ship->armor[i], ship->internal[i], ship->armor[i],
-				 ship->internal[i]);
-	}
-	return true;
-}
-
-static bool sql_save_ship_crew(P_ship ship, char *queryBuffer, int batchSize, int &bufferPosition)
-{
-	if (!DB || !ship || ship->db_id == -1)
-	{
-		logit(LOG_DEBUG, "sql_save_ship_crew: invalid parameters");
-		return false;
-	}
-
-	if (bufferPosition >= batchSize)
-	{
-		logit(LOG_DEBUG, "sql_save_ship_crew: buffer overflow");
-		return false;
-	}
-
-	bufferPosition += snprintf(
-		queryBuffer + bufferPosition, batchSize - bufferPosition,
+		statements.push_back(
+			sql_format("insert into ship_armor (ship_id, side, armor, internal) "
+				   "values (%d, %d, %d, %d) "
+				   "on duplicate key update armor=%d, internal=%d",
+				   ship->db_id, i, ship->armor[i], ship->internal[i],
+				   ship->armor[i], ship->internal[i]));
+	statements.push_back(sql_format(
 		"insert into ship_crew (ship_id, crew_index, sail_skill, guns_skill, rpar_skill, "
 		"sail_chief, guns_chief, rpar_chief) "
 		"values (%d, %d, %d, %d, %d, %d, %d, %d) "
 		"on duplicate key update crew_index=%d, sail_skill=%d, guns_skill=%d, rpar_skill=%d, "
-		"sail_chief=%d, guns_chief=%d, rpar_chief=%d;",
+		"sail_chief=%d, guns_chief=%d, rpar_chief=%d",
 		ship->db_id, ship->crew.index, (int)(ship->crew.sail_skill * 1000),
 		(int)(ship->crew.guns_skill * 1000), (int)(ship->crew.rpar_skill * 1000),
 		ship->crew.sail_chief, ship->crew.guns_chief, ship->crew.rpar_chief,
 		ship->crew.index, (int)(ship->crew.sail_skill * 1000),
 		(int)(ship->crew.guns_skill * 1000), (int)(ship->crew.rpar_skill * 1000),
-		ship->crew.sail_chief, ship->crew.guns_chief, ship->crew.rpar_chief);
-
-	return true;
-}
-
-static bool sql_save_ship_slots(P_ship ship, char *queryBuffer, int batchSize, int &bufferPosition)
-{
-	if (!DB || !ship || ship->db_id == -1)
-	{
-		logit(LOG_DEBUG, "sql_save_ship_slots: invalid parameters");
-		return false;
-	}
-
+		ship->crew.sail_chief, ship->crew.guns_chief, ship->crew.rpar_chief));
 	for (int i = 0; i < MAXSLOTS; i++)
-	{
-		if (bufferPosition >= batchSize)
-		{
-			logit(LOG_DEBUG, "sql_save_ship_slots: buffer overflow");
-			return false;
-		}
-
-		bufferPosition += snprintf(
-			queryBuffer + bufferPosition, batchSize - bufferPosition,
+		statements.push_back(sql_format(
 			"insert into ship_slots (ship_id, slot_index, slot_type, item_index, position, "
 			"timer, val0, val1, val2, val3, val4) "
 			"values (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d) "
 			"on duplicate key update slot_type=%d, item_index=%d, position=%d, "
-			"timer=%d, val0=%d, val1=%d, val2=%d, val3=%d, val4=%d;",
+			"timer=%d, val0=%d, val1=%d, val2=%d, val3=%d, val4=%d",
 			ship->db_id, i, ship->slot[i].type, ship->slot[i].index,
 			ship->slot[i].position, ship->slot[i].timer, ship->slot[i].val0,
 			ship->slot[i].val1, ship->slot[i].val2, ship->slot[i].val3,
 			ship->slot[i].val4, ship->slot[i].type, ship->slot[i].index,
 			ship->slot[i].position, ship->slot[i].timer, ship->slot[i].val0,
 			ship->slot[i].val1, ship->slot[i].val2, ship->slot[i].val3,
-			ship->slot[i].val4);
-	}
-	return true;
+			ship->slot[i].val4));
+	return statements;
 }
 
-/* Whether ships row `id` exists: 1 if it does, 0 if not, -1 if it cannot be read. */
-static int sql_ship_row_exists(int id)
-{
-	MYSQL_RES *result = db_query("select 1 from ships where id=%d", id);
-	if (!result)
-		return -1;
-	const int exists = mysql_fetch_row(result) ? 1 : 0;
-	mysql_free_result(result);
-	return exists;
-}
-
+/* Save one ship. Inside a caller's transaction (a character rename) the statements join
+ * it on the game thread's connection; otherwise they are one writer job. */
 bool sql_save_ship(P_ship ship)
 {
 	if (!DB || !ship || !ship->ownername)
 		return false;
-
-	char *esc_owner = sql_escape_string(ship->ownername);
-	if (!esc_owner)
+	const std::vector<std::string> statements = sql_save_ship_statements(ship);
+	if (statements.empty())
 		return false;
-
-	char *esc_name = sql_escape_string(ship->name ? ship->name : "");
-
-	int pos = 0;
-	char *batch = (char *)malloc(SHIP_SQL_BATCH_SIZE);
-	int batchSize = SHIP_SQL_BATCH_SIZE;
-	if (!batch)
-	{
-		free(esc_owner);
-		if (esc_name)
-			free(esc_name);
-		return false;
-	}
-	memset(batch, 0, batchSize);
-
-	/* Join an existing aggregate transaction when the caller owns one
-	 * (for example shutdown_ships()).  Starting a nested transaction would
-	 * fail and make an otherwise valid ship save look like a persistence
-	 * error.  Only the transaction owner may commit or roll back it. */
-	bool own_transaction = false;
 	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
+		return sql_queue_statements(statements);
+	for (const std::string &statement : statements)
+		if (!sql_run_query(statement.c_str()))
 		{
-			logit(LOG_DEBUG, "sql_save_ship: failed to start transaction");
-			free(batch);
-			free(esc_owner);
-			if (esc_name)
-				free(esc_name);
+			sql_player_error("sql_save_ship");
 			return false;
 		}
-		own_transaction = true;
-	}
-
-	/* A save whose COMMIT failed may still have stored its row, because the
-	 * server can apply a COMMIT and lose the reply.  Look for the row before
-	 * using the id, so the ship neither updates a row that was rolled back
-	 * nor inserts a second row for its owner. */
-	if (ship->db_id != -1 && ship->db_id_unconfirmed)
-	{
-		const int exists = sql_ship_row_exists(ship->db_id);
-		if (exists < 0)
-		{
-			sql_player_error("sql_save_ship/confirm");
-			free(batch);
-			free(esc_owner);
-			if (esc_name)
-				free(esc_name);
-			if (own_transaction)
-				sql_rollback();
-			return false;
-		}
-		if (!exists)
-			ship->db_id = -1;
-		ship->db_id_unconfirmed = false;
-	}
-
-	/* Only a row this call inserted is undone by a rollback.  An existing
-	 * ship keeps its id when its update fails, or its next save would take
-	 * the insert path and collide with UNIQUE(owner_name). */
-	bool inserted = false;
-	if (ship->db_id == -1)
-	{
-		char initQuery[1024];
-		snprintf(
-			initQuery, ARRAY_SIZE(initQuery),
-			"insert into ships (owner_name, ship_name, ship_class, frags, anchor_room, time_played, mainsail, race, money, flags) "
-			"values ('%s', '%s', %d, %d, %d, %d, %d, %d, %d, %lu) ",
-			esc_owner, esc_name, ship->m_class, ship->frags, ship->anchor, ship->time,
-			ship->mainsail, ship->race, ship->money, ship->flags);
-		// new ship
-		if (!sql_run_query(initQuery))
-		{
-			sql_player_error("sql_save_ship/init");
-			free(batch);
-			free(esc_owner);
-			if (esc_name)
-				free(esc_name);
-			if (own_transaction)
-				sql_rollback();
-			return false;
-		}
-
-		// get ship id
-		char query[200];
-		snprintf(query, ARRAY_SIZE(query), "select id from ships where owner_name='%s'",
-			 esc_owner);
-		MYSQL_RES *result = db_query("%s", query);
-		free(esc_owner);
-		if (esc_name)
-			free(esc_name);
-
-		if (!result)
-		{
-			sql_player_error("sql_save_ship/update");
-			free(batch);
-			if (own_transaction)
-				sql_rollback();
-			ship->db_id = -1;
-			return false;
-		}
-
-		MYSQL_ROW row = mysql_fetch_row(result);
-		if (!row)
-		{
-			free(batch);
-			mysql_free_result(result);
-			if (own_transaction)
-				sql_rollback();
-			ship->db_id = -1;
-			return false;
-		}
-
-		ship->db_id = atoi(row[0]);
-		inserted = true;
-
-		mysql_free_result(result);
-	}
-	else
-	{
-		pos += snprintf(
-			batch + pos, batchSize - pos,
-			"update ships set owner_name='%s', ship_name='%s', ship_class=%d, frags=%d, anchor_room=%d, time_played=%d, mainsail=%d, race=%d, money=%d, flags=%lu "
-			"where id=%d;",
-			esc_owner, esc_name, ship->m_class, ship->frags, ship->anchor, ship->time,
-			ship->mainsail, ship->race, ship->money, ship->flags, ship->db_id);
-
-		free(esc_owner);
-		if (esc_name)
-			free(esc_name);
-	}
-
-	if (!sql_save_ship_armor(ship, batch, batchSize, pos) ||
-	    !sql_save_ship_crew(ship, batch, batchSize, pos) ||
-	    !sql_save_ship_slots(ship, batch, batchSize, pos))
-	{
-		sql_player_error("sql_save_ship/transaction");
-		free(batch);
-		if (own_transaction)
-			sql_rollback();
-		if (inserted)
-			ship->db_id = -1;
-		return false;
-	}
-
-	MYSQL_RES *result = NULL;
-	if (!sql_trace_exec("sql_save_ship_batch", batch, strlen(batch), false, true))
-	{
-		sql_player_error("sql_save_ship/batch");
-		free(batch);
-		sql_clear_results();
-		if (own_transaction)
-			sql_rollback();
-		if (inserted)
-			ship->db_id = -1;
-		return false;
-	}
-	result = mysql_store_result(DB);
-	free(batch);
-	if (result)
-	{
-		mysql_free_result(result);
-	}
-	sql_clear_results(); // need to clear all of the batch results
-
-	if (own_transaction && !sql_commit())
-	{
-		logit(LOG_DEBUG, "sql_save_ship: failed to commit for ship %d", ship->db_id);
-		if (sql_in_transaction())
-			sql_rollback();
-		/* The row this call inserted may have been committed anyway.  Keep
-		 * its id, and let the next save check whether the row exists. */
-		if (inserted)
-			ship->db_id_unconfirmed = true;
-		return false;
-	}
-
-	logit(LOG_DEBUG, "sql_save_ship: finished saving ship %d", ship->db_id);
-
 	return true;
 }
 
-static bool sql_load_ship_armor(int ship_id, P_ship ship)
+/* The stored rows of one ship: its ships row, then its armor, crew and slot rows. */
+struct ship_rows
 {
-	if (!DB || !ship || ship_id <= 0)
-		return false;
+	sql_rows ship, armor, crew, slots;
+};
 
-	char query[128];
-	snprintf(query, sizeof(query),
-		 "select side, armor, internal from ship_armor where ship_id=%d", ship_id);
+/* Stored ships that are not in the world: the room pool could not hold them at boot, or
+ * their rows could not be read. place_stored_ship() tries them again from here. */
+static std::vector<std::pair<std::string, ship_rows>> stored_ships;
 
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(result)))
-	{
-		int side = atoi(row[0]);
-		if (side >= 0 && side < 4)
-		{
-			ship->armor[side] = atoi(row[1]);
-			ship->internal[side] = atoi(row[2]);
-		}
-	}
-
-	mysql_free_result(result);
-	return true;
+static std::vector<std::pair<std::string, ship_rows>>::iterator stored_ship(const char *owner_name)
+{
+	return std::find_if(stored_ships.begin(), stored_ships.end(),
+			    [owner_name](const auto &stored)
+			    { return !strcasecmp(stored.first.c_str(), owner_name); });
 }
 
-static bool sql_load_ship_crew(int ship_id, P_ship ship)
+/* Boot only: read one ship's rows. */
+static bool sql_read_ship_rows(const char *owner_name, ship_rows *rows)
 {
-	if (!DB || !ship || ship_id <= 0)
+	if (sql_select(
+		    DB,
+		    "select id, ship_name, ship_class, frags, anchor_room, time_played, mainsail, "
+		    "race, money, flags from ships where owner_name='" +
+			    escape_str(owner_name) + "'",
+		    &rows->ship) ||
+	    rows->ship.empty() || !rows->ship[0][0])
 		return false;
-
-	char query[256];
-	snprintf(
-		query, sizeof(query),
-		"select crew_index, sail_skill, guns_skill, rpar_skill, sail_chief, guns_chief, rpar_chief "
-		"from ship_crew where ship_id=%d",
-		ship_id);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (row)
-	{
-		ship->crew.index = atoi(row[0]);
-		ship->crew.sail_skill = (float)atoi(row[1]) / 1000.0f;
-		ship->crew.guns_skill = (float)atoi(row[2]) / 1000.0f;
-		ship->crew.rpar_skill = (float)atoi(row[3]) / 1000.0f;
-		ship->crew.sail_chief = atoi(row[4]);
-		ship->crew.guns_chief = atoi(row[5]);
-		ship->crew.rpar_chief = atoi(row[6]);
-	}
-
-	mysql_free_result(result);
-	return true;
+	const std::string where = std::string(" where ship_id=") + rows->ship[0][0];
+	return !sql_select(DB, "select side, armor, internal from ship_armor" + where,
+			   &rows->armor) &&
+	       !sql_select(DB,
+			   "select crew_index, sail_skill, guns_skill, rpar_skill, sail_chief, "
+			   "guns_chief, rpar_chief from ship_crew" +
+				   where,
+			   &rows->crew) &&
+	       !sql_select(DB,
+			   "select slot_index, slot_type, item_index, position, timer, val0, val1, "
+			   "val2, val3, val4 from ship_slots" +
+				   where,
+			   &rows->slots);
 }
 
-static bool sql_load_ship_slots(int ship_id, P_ship ship)
+static P_ship sql_ship_from_rows(const char *owner_name, const ship_rows &rows)
 {
-	if (!DB || !ship || ship_id <= 0)
-		return false;
-
-	char query[256];
-	snprintf(
-		query, sizeof(query),
-		"select slot_index, slot_type, item_index, position, timer, val0, val1, val2, val3, val4 "
-		"from ship_slots where ship_id=%d",
-		ship_id);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(result)))
-	{
-		int idx = atoi(row[0]);
-		if (idx >= 0 && idx < MAXSLOTS)
-		{
-			ship->slot[idx].type = atoi(row[1]);
-			ship->slot[idx].index = atoi(row[2]);
-			ship->slot[idx].position = atoi(row[3]);
-			ship->slot[idx].timer = atoi(row[4]);
-			ship->slot[idx].val0 = atoi(row[5]);
-			ship->slot[idx].val1 = atoi(row[6]);
-			ship->slot[idx].val2 = atoi(row[7]);
-			ship->slot[idx].val3 = atoi(row[8]);
-			ship->slot[idx].val4 = atoi(row[9]);
-		}
-	}
-
-	mysql_free_result(result);
-	return true;
-}
-
-P_ship sql_load_ship(const char *owner_name)
-{
-	if (!owner_name)
+	if (rows.ship.empty())
 		return NULL;
-
-	if (!DB)
-		return NULL;
-
-	char *esc_owner = sql_escape_string(owner_name);
-	if (!esc_owner)
-		return NULL;
-
-	char query[320];
-	snprintf(
-		query, sizeof(query),
-		"select id, ship_name, ship_class, frags, anchor_room, time_played, mainsail, race, money, flags "
-		"from ships where owner_name='%s'",
-		esc_owner);
-	free(esc_owner);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return NULL;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (!row)
-	{
-		mysql_free_result(result);
-		return NULL;
-	}
-
-	int ship_id = atoi(row[0]);
-	int ship_class = atoi(row[2]);
-
-	P_ship ship = new_ship(ship_class);
+	const sql_row &row = rows.ship[0];
+	P_ship ship = new_ship(atoi(row[2]));
 	if (!ship)
-	{
-		mysql_free_result(result);
 		return NULL;
-	}
 
-	ship->db_id = ship_id;
+	ship->db_id = atoi(row[0]);
 	ship->ownername = str_dup(owner_name);
 	ship->name = str_dup(row[1] ? row[1] : "");
 	ship->frags = atoi(row[3]);
@@ -10058,15 +9754,42 @@ P_ship sql_load_ship(const char *owner_name)
 	ship->race = atoi(row[7]);
 	ship->money = atoi(row[8]);
 	ship->flags = row[9] ? strtoul(row[9], NULL, 10) : 0;
-	mysql_free_result(result);
 
-	if (!sql_load_ship_armor(ship_id, ship) || !sql_load_ship_crew(ship_id, ship) ||
-	    !sql_load_ship_slots(ship_id, ship))
+	for (const sql_row &armor : rows.armor)
 	{
-		logit(LOG_DEBUG, "sql_load_ship: component=dependent_rows outcome=failure");
-		shipObjHash.erase(ship);
-		delete_ship(ship, true);
-		return NULL;
+		int side = atoi(armor[0]);
+		if (side >= 0 && side < 4)
+		{
+			ship->armor[side] = atoi(armor[1]);
+			ship->internal[side] = atoi(armor[2]);
+		}
+	}
+	if (!rows.crew.empty())
+	{
+		const sql_row &crew = rows.crew[0];
+		ship->crew.index = atoi(crew[0]);
+		ship->crew.sail_skill = (float)atoi(crew[1]) / 1000.0f;
+		ship->crew.guns_skill = (float)atoi(crew[2]) / 1000.0f;
+		ship->crew.rpar_skill = (float)atoi(crew[3]) / 1000.0f;
+		ship->crew.sail_chief = atoi(crew[4]);
+		ship->crew.guns_chief = atoi(crew[5]);
+		ship->crew.rpar_chief = atoi(crew[6]);
+	}
+	for (const sql_row &slot : rows.slots)
+	{
+		int idx = atoi(slot[0]);
+		if (idx >= 0 && idx < MAXSLOTS)
+		{
+			ship->slot[idx].type = atoi(slot[1]);
+			ship->slot[idx].index = atoi(slot[2]);
+			ship->slot[idx].position = atoi(slot[3]);
+			ship->slot[idx].timer = atoi(slot[4]);
+			ship->slot[idx].val0 = atoi(slot[5]);
+			ship->slot[idx].val1 = atoi(slot[6]);
+			ship->slot[idx].val2 = atoi(slot[7]);
+			ship->slot[idx].val3 = atoi(slot[8]);
+			ship->slot[idx].val4 = atoi(slot[9]);
+		}
 	}
 	ship->save_pending = false;
 	ship->save_retry_after = 0;
@@ -10076,26 +9799,28 @@ P_ship sql_load_ship(const char *owner_name)
 }
 
 /*
- * Load `owner_name`'s ship and put it in the world at its anchor.  Returns
- * the ship, or NULL with any part-built ship destroyed and its row kept.
- * `unplaced` says whether it was loaded but could not be placed, usually
- * because the ship-room pool is full.
+ * Put `owner_name`'s stored ship in the world at its anchor, from the rows the boot
+ * read.  Returns the ship, or NULL with any part-built ship destroyed and its rows kept.
+ * `unplaced` says whether it was built but could not be placed, usually because the
+ * ship-room pool is full.
  */
 P_ship sql_place_ship(const char *owner_name, bool *unplaced)
 {
 	*unplaced = false;
-	P_ship ship = sql_load_ship(owner_name);
+	const auto stored = stored_ship(owner_name);
+	P_ship ship = stored == stored_ships.end() ? NULL :
+						     sql_ship_from_rows(owner_name, stored->second);
 	if (!ship)
 	{
-		logit(LOG_FILE, "sql_load_all_ships: component=rows outcome=failure");
+		logit(LOG_FILE, "sql_place_ship: component=rows outcome=failure");
 		return NULL;
 	}
 
 	name_ship(ship->name, ship);
 	if (!load_ship(ship, real_room0(ship->anchor)))
 	{
-		/* An unplaced ship must not stay registered; the row is kept. */
-		logit(LOG_FILE, "sql_load_all_ships: component=ship outcome=failure");
+		/* An unplaced ship must not stay registered; its rows are kept. */
+		logit(LOG_FILE, "sql_place_ship: component=ship outcome=failure");
 		shipObjHash.erase(ship);
 		delete_ship(ship, true);
 		*unplaced = true;
@@ -10107,48 +9832,44 @@ P_ship sql_place_ship(const char *owner_name, bool *unplaced)
 	reset_crew_stamina(ship);
 	set_ship_armor(ship, false);
 	update_ship_status(ship);
+	stored_ships.erase(stored);
 	return ship;
 }
 
-/* Whether `owner_name` has a ships row: 1 if so, 0 if not, -1 if it cannot be read. */
-int sql_ship_stored(const char *owner_name)
+/* Whether `owner_name` has a stored ship that is not in the world. */
+bool sql_ship_stored(const char *owner_name)
 {
-	char *esc_owner = sql_escape_string(owner_name);
-	if (!esc_owner)
-		return -1;
-	MYSQL_RES *result = db_query("select 1 from ships where owner_name='%s'", esc_owner);
-	free(esc_owner);
-	if (!result)
-		return -1;
-	const int stored = mysql_fetch_row(result) ? 1 : 0;
-	mysql_free_result(result);
-	return stored;
+	return stored_ship(owner_name) != stored_ships.end();
 }
 
+/* Boot: read every ship, place the ones the room pool can hold, and keep the rows of
+ * the rest for place_stored_ship(). */
 bool sql_load_all_ships()
 {
 	if (!DB)
 		return false;
 
-	MYSQL_RES *result = db_query("select owner_name from ships");
+	MYSQL_RES *result = db_query("select owner_name, id from ships");
 	if (!result)
 		return false;
 
-	// collect owner names first to avoid nested queries
+	ship_next_db_id = 0;
 	std::vector<std::string> owner_names;
-
 	MYSQL_ROW row;
 	while ((row = mysql_fetch_row(result)))
 	{
-		if (!row[0])
-			continue;
-		owner_names.emplace_back(row[0]);
+		ship_next_db_id = std::max(ship_next_db_id, atoi(row[1]));
+		if (row[0])
+			owner_names.emplace_back(row[0]);
 	}
 	mysql_free_result(result);
 
-	// now load each ship; one the room pool cannot hold is placed later
 	for (const std::string &owner_name : owner_names)
 	{
+		ship_rows rows;
+		if (!sql_read_ship_rows(owner_name.c_str(), &rows))
+			rows = {};
+		stored_ships.emplace_back(owner_name, std::move(rows));
 		bool unplaced = false;
 		if (!sql_place_ship(owner_name.c_str(), &unplaced) && unplaced)
 			note_unplaced_ship(owner_name.c_str());
@@ -10157,22 +9878,26 @@ bool sql_load_all_ships()
 	return true;
 }
 
+/* The statement that deletes `owner_name`'s ship; its armor, crew and slots go with it. */
+std::string sql_delete_ship_statement(const char *owner_name)
+{
+	return "delete from ships where owner_name='" + escape_str(owner_name) + "'";
+}
+
+/* Delete a ship's rows. Inside a caller's transaction (a character deletion) the
+ * statement joins it; otherwise it is a writer job. */
 bool sql_delete_ship(const char *owner_name)
 {
 	if (!DB || !owner_name)
 		return false;
-
-	char *esc_owner = sql_escape_string(owner_name);
-	if (!esc_owner)
+	const std::string statement = sql_delete_ship_statement(owner_name);
+	if (sql_in_transaction() ? !sql_run_query(statement.c_str()) :
+				   !sql_queue("%s", statement.c_str()))
 		return false;
 
-	char query[256];
-	snprintf(query, sizeof(query), "delete from ships where owner_name='%s'", esc_owner);
-	free(esc_owner);
-
-	if (!sql_run_query(query))
-		return false;
-
+	const auto stored = stored_ship(owner_name);
+	if (stored != stored_ships.end())
+		stored_ships.erase(stored);
 	redis_invalidate_ship_snapshot(owner_name);
 	return true;
 }

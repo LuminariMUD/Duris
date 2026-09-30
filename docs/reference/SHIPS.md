@@ -62,7 +62,7 @@ Integration points outside `src/ships/`:
 | `src/net/comm.c` | Runs `ship_activity()` once per second, and the GMCP flush plus `flush_pending_ship_saves()` every 2 pulses. It also calls `shutdown_ships()` on orderly shutdown and applies cargo maintenance completions. |
 | `src/persistence/copyover.c` | Drains pending ship saves before copyover and aborts the copyover if any save cannot be made durable. |
 | `src/persistence/maintenance_*.c` | Drives the periodic cargo-market update (job `cargo_market`). |
-| `src/sql/sql_player.c` | SQL backend: `sql_save_ship()`, `sql_load_ship()`, `sql_load_all_ships()`, `sql_delete_ship()`. |
+| `src/sql/sql_player.c` | SQL backend: `sql_save_ship()`, `sql_load_all_ships()`, `sql_place_ship()`, `sql_delete_ship()`. |
 | `src/flatfile/flatfile_ship_repository.c` | Flat-file backend: the `ship_catalog` record and the legacy `Ships/` importer. |
 | `src/redis/redis_ship_legacy.c` | Asynchronous invalidation of retired `ship:snapshot:*` Redis keys. |
 | `src/net/gmcp.c`, `src/core/json_utils.c` | `Ship.Contacts` and `Ship.Info` packages. |
@@ -827,20 +827,18 @@ changed them since:
 | `ship_slots` | `(ship_id, slot_index)`, FK cascade | `slot_type`, `item_index`, `position`, `timer`, `val0`–`val4` |
 | `ship_cargo_market_mods`, `ship_cargo_prices` | indexed `(type, port_id, cargo_type)` | Market modifiers and last published prices (`type` is `CARGO` or `CONTRABAND`). |
 
-`sql_save_ship()` inserts the `ships` row on first save (then reads back the
-id) or updates it. It then upserts armour, crew and slots in one multi-statement
-batch inside a transaction, joining the caller's transaction if one is open
-(`shutdown_ships()` owns one). When the batch fails, only a ship whose row this
-same call inserted goes back to `db_id == -1`. An existing ship keeps its id, so
-its retry updates rather than inserting into `UNIQUE(owner_name)`. A failed
-COMMIT may still have been applied, with its reply lost. So a ship whose row it
-inserted keeps the id, marked unconfirmed (`ShipData::db_id_unconfirmed`). Its
-next save looks the row up by id first, then updates it, or inserts again if
-the row is not there. `sql_load_all_ships()` loads every owner's ship at boot
+`sql_save_ship()` never waits on the database. A new ship takes its `ships`
+id from memory (`sql_load_all_ships()` reads the highest one at boot), and each
+save is one job on the persistence writer, in one transaction: the `ships` row
+inserted or updated by that id, then the armour, crew and slot upserts. Inside a
+caller's transaction (a character rename) the same statements join it instead.
+`sql_load_all_ships()` reads every owner's rows at boot and places each ship
 through `sql_place_ship()`. A ship that `load_ship()` cannot place is destroyed
-in memory, and its row is kept and retried (see **Load** above).
-`sql_delete_ship()` deletes the `ships` row (children cascade) and queues
-invalidation of the retired Redis snapshot key.
+in memory, and its rows stay in memory to be placed again (see **Load** above);
+nothing reads the tables after boot. `sql_delete_ship()` queues the delete of
+the `ships` row (children cascade; `sql_delete_ship_statement()` builds it) and
+the invalidation of the retired Redis snapshot key. `shutdown_ships()` saves
+every ship the same way; the shutdown drains the writer after it.
 
 **Flat file** (`__NO_MYSQL__`). One checksummed catalog,
 `<state root>/domains/ship_catalog` (magic `DURSHIP\0`, version 1, atomic
@@ -891,8 +889,8 @@ those legacy files (not part of the default build).
   pending ship cannot be made durable, the copyover is aborted.
 - **Shutdown.** `shutdown_ships()` puts every passenger and loose object in a
   ship at the ship's anchor room, skipping rooms a ship does not have, then
-  writes every ship in one SQL transaction. A failed write or commit of a
-  loaded player ship is treated as corruption (`panic_corruption()`).
+  saves every ship (on SQL, writer jobs the shutdown drains). A loaded player
+  ship that cannot be saved is treated as corruption (`panic_corruption()`).
 - **Boot.** `initialize_ships()` attaches the procedures, loads every ship that
   fits in the room pool at its anchor (docked), deletes ships flagged
   `TO_DELETE`, loads the cargo
@@ -1020,13 +1018,12 @@ The focused regressions live in `tests/async/`. Run them directly, for example
 | `test_ship_save_queue_dedup.py`, `run_ship_save_queue_dedup.sh` | Signature-based save coalescing. |
 | `test_ship_rename_save_guards.py`, `run_ship_rename_save_guards.sh` | Rename persistence ordering. |
 | `test_ship_owner_rename_failure.py`, `run_ship_owner_rename_failure.sh` | `rename_ship_owner()` rollback. |
-| `test_ship_nested_transaction.py`, `test_ship_shutdown_txn.py` | Joining the caller's transaction, and the batched shutdown. |
-| `test_ship_cargo_txn.py`, `test_auction_ship_txn_fixes.py` | Cargo market write transactions and ship `db_id` reset on failed inserts. |
-| `test_ship_save_failure_keeps_db_id.py` | A failed save keeps an existing ship's `db_id` and forgets a rolled-back insert. A first save whose COMMIT fails, whether rejected or applied with its reply lost, is settled on the next save (real `sql_save_ship()`). |
+| `test_ship_save_ids_in_memory.py`, `test_ship_shutdown_txn.py` | A new ship's id comes from memory and each save is one writer job (or joins a caller's transaction); the shutdown saves the same way (real `sql_save_ship()`). |
+| `test_ship_cargo_txn.py`, `test_auction_ship_txn_fixes.py` | The cargo market save is one writer job, and a ship save updates its owner by id. |
 | `test_character_rename_ship_ownership.py` | Character renames store the player row, everything the name keys and the owned ship in one transaction, and charge once. Faults are injected in each statement, the COMMIT, the ROLLBACK and the read-back, and a linkdead target and an open locker are covered (real `rename_character()`, rename hook and `sql_rename_character()`). |
 | `run_character_rename_references_mysql.sh` | The rename's reference updates against MySQL/MariaDB tables shaped like production. |
 | `test_ship_load_clears_summon.py` | `load_ship()` drops a stale `SUMMONED`. |
-| `test_ship_boot_loads_every_row.py` | `sql_load_all_ships()` loads more than 512 rows. |
+| `test_ship_boot_loads_every_row.py` | `sql_load_all_ships()` loads more than 512 rows and reads the highest ship id. |
 | `test_ship_boot_room_pool_full.py` | Booting more ships than the room pool holds: all-or-nothing room claims, unplaced ships destroyed with their rows kept and placed again as rooms free up, the hull-change room check, and a clean shutdown (real loader, layout, retry and `shutdown_ships()`, ASan/UBSan). |
 | `test_ship_purchase_room_guards.py` | A hull change that the pool cannot hold is refused or refunded, and a first-ship purchase by an owner with a stored ship brings it back instead (real `ship_hull_purchase_committed()`). |
 | `test_ship_documented_bugs.py` | The fixes for the bugs this document listed: true volley chances, crash speed, disembark edge, fleet frag loss, contraband stacking and alignment gate, summon quote, `Ship.Info`, counter-ram, zone-ship picks, stale comments and help drift. |
