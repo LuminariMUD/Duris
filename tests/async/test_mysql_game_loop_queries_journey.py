@@ -36,6 +36,7 @@ COMMANDS = (
     ('stat zone', 'Zone flags:'),
     ('epic', 'Evils'),
     ('epic trophy', 'Epic Trophy'),
+    ('epic bonus exp', 'Your epic bonus has been changed to Experience Bonus'),
     # The poll wizard takes the lines that follow as its answers.
     ('poll create', 'Enter the poll question'),
     ('Which color should the arena be?', 'Allow multiple selections'),

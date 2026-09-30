@@ -16,6 +16,7 @@
 #include <string.h>
 #include "core/config.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include <errno.h>
 #include <limits.h>
 #include <math.h>
@@ -109,9 +110,12 @@ void epic_bonus_set(P_char ch, int type)
 	if (!IS_PC(ch) || type < EPIC_BONUS_NONE || type > EPIC_BONUS_MOVE_REG)
 		return;
 
-	if (!qry("INSERT INTO epic_bonus (pid, type, time) VALUES ('%i', '%i', NOW()) "
-		 "ON DUPLICATE KEY UPDATE type=VALUES(type), time=VALUES(time)",
-		 GET_PID(ch), type))
+	// Queued on the writer; the selection time is the one the character keeps.
+	const time_t now = time(NULL);
+	if (!sql_queue(
+		    "INSERT INTO epic_bonus (pid, type, time) VALUES ('%i', '%i', FROM_UNIXTIME(%ld)) "
+		    "ON DUPLICATE KEY UPDATE type=VALUES(type), time=VALUES(time)",
+		    GET_PID(ch), type, (long)now))
 	{
 		send_to_char(
 			"Your epic bonus could not be changed right now. Please try again.\r\n",
@@ -123,8 +127,8 @@ void epic_bonus_set(P_char ch, int type)
 	double contribution_cap = 0.0;
 	double maximum_modifier = 0.0;
 	if (!epic_bonus_config(type, &window_days, &contribution_cap, &maximum_modifier) ||
-	    !epic_bonus_state_select(&ch->only.pc->epic_bonus_state, type, time(NULL),
-				     contribution_cap, maximum_modifier))
+	    !epic_bonus_state_select(&ch->only.pc->epic_bonus_state, type, now, contribution_cap,
+				     maximum_modifier))
 		epic_bonus_state_mark_unavailable(&ch->only.pc->epic_bonus_state);
 	else
 		ch->only.pc->epic_bonus_state.window_days = window_days;

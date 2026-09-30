@@ -57,7 +57,7 @@ checks = [
     ("midnight expiry preserves strict cutoff", "TIME(gained.time) = '00:00:00'" in hydration_body and "exact_midnight" in bonus),
     ("hydration has explicit unavailable outcomes", hydration_body.count("epic_bonus_state_mark_unavailable") >= 5),
     ("login hydrates after status", load_body.index("sql_load_player_status") < load_body.index("sql_load_player_epic_bonus")),
-    ("selection persists before cache publication", selection_body.index("if (!qry(") < selection_body.index("epic_bonus_state_select")),
+    ("selection is queued before cache publication", selection_body.index("if (!sql_queue(") < selection_body.index("epic_bonus_state_select")),
     ("selection write is idempotent", "ON DUPLICATE KEY UPDATE" in selection_body),
     ("award submits immutable final amount", "epic_transaction_submit_identified(" in gain_body),
     ("award cache updates only from committed ack", "if (!committed" in award_ack_body and "epic_bonus_record_gain(ch, context.type, context.amount);" in award_ack_body),
