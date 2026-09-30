@@ -1727,6 +1727,49 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
 - The game-loop queries journey checks the new character's row and its three baselines
   after shutdown; its session no longer reaches any query outside the artifact events.
 
+#### Economy: auctions, nexus stones, boons, CTF and recipes (done)
+
+Converted on `step8/economy` by an agent and rebased onto this branch (`7fcb189db` to
+`1ddc99a31`).
+
+- Auctions read on the writer: `auction list`, `auction info`, `auction pickup` (its money,
+  else its oldest auction's items, in one `sql_read_work_for()`; the claim is submitted in the
+  callback) and `auction resort` (its keyword updates queued back). The committed event's row
+  is read with `sql_read()` and published on a later pulse; an event whose auction cannot be
+  read is logged instead of held. `insert_money_pickup()` is queued, so auction refunds, ship
+  insurance and the epic and boon fallbacks carry on at once.
+- Nexus stones are in memory: only the game writes `nexus_stones` (the pwipe aside, at
+  shutdown), so `load_nexus_stones()` keeps every row (`nexus_rows`) and the bonus check on
+  every gain, the expiry tick, the sage, the lists and the random enemy stone answer from it.
+  A touch or an expiry changes the row and queues the update; a reset or reload loads from
+  memory. The old bonus check returned 0 when its store failed, which zeroed the gain. In
+  mini mode `init_nexus_stones()` does not run, so there are no stones there.
+- Boons are read on the writer: the maintenance scheduler and the reward commands also write
+  these tables. `boon list` and the shop are shown on a later pulse; a stat point is spent on
+  the writer (`stats > 0`, one affected row), the stat rises in the callback and a point spent
+  at 100 is given back. `create_boon()` (now told the requester) counts, inserts and reads its
+  id in one writer job; extend reads and extends in one; remove reads there and queues
+  `remove_boon()`. Each is announced from the row it read (`boon_notify_snapshot()` also
+  takes `BN_EXTEND` and `BN_REACTIVATE`). `is_boon_valid()`, `count_boons()`,
+  `get_boon_data()`, `get_boon_shop_data()` and `extend_boon()` are flat-file only now.
+- CTF: `add_ctf_entry()` is queued and `ctf score` reads on the writer.
+- Recipes are in memory: only the game writes `player_recipes`, so
+  `sql_player_recipes_load()` reads them at boot (the boot stops if it fails) and learning
+  or forgetting changes memory and queues the write.
+- Left for Phase 3: `auction_houses_activity()` (the maintenance scheduler scans), the
+  auction backfill tick, `auction_money_pickup_committed()`, the `*_legacy` auction
+  functions, `boon_maintenance()`, `boon_random_maintenance()`, `boon_get_random_zone()`,
+  `get_boon_progress_data()`, `create_boon_progress()` and `create_boon_shop_entry()`, all
+  reached from nothing or from dead code. `ctf_populate_boons()` runs only at boot.
+- Found on the way: `boon list u <name>` is open to every player and put the name into the
+  boons query unescaped, so a quote rewrote the SQL (`c0defb8b2`, escaped with `escape_str()`).
+- Tests: the game-loop queries journey runs auction list, info and pickup, `nexus`, boon add,
+  list, filter, extend, remove and shop, and `ctf score`. `test_ctf_writer_contract.py` is
+  new; the auction cutover, copyover drain, boon cutover, flat-file nexus and recipe
+  contracts pin the writer reads, memory answers and queued writes. The MariaDB combat journey
+  (all three variants) passes. Recipe learning happens through an object proc the minimal
+  world cannot reach, so only its contract covers it.
+
 ### Review round 1 (MR !3)
 
 The review of `c3ffc4b8a` (tag `persistence/phase-2-review-0`) found five defects. Each is fixed
