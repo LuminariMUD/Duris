@@ -166,7 +166,14 @@ at submit, with the player's save queued before the command. The completion give
 what the command did not charge: all of it when refused, and the rest of a bid that was
 capped at the buy-now price or only raised the bidder's own bid. A money claim brings
 its money at completion. A refund for a collector buyer who has left is given when they
-return.
+return. A flat-file shop purchase pays its price the same way, and a sale is paid when
+it commits.
+
+Items the economy takes leave memory the same way: a listing's items, a flat-file sale's
+item and a collected antiquity are taken out at submit, before the owner's save. A
+committed command extracts them (a sale hands its item to the shopkeeper); a refused
+one puts them back. So a save captured afterwards never holds them, and saves claim
+whatever their owner holds, the economy's records included.
 
 Coins are ordinary items. Get, drop, give and put move the pile and the wallet in
 memory, the way they always did for NPCs, and `money_to_inventory()` does the same.

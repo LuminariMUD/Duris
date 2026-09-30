@@ -8,7 +8,8 @@ Memory is the authority. The database is a copy that catches up through one writ
    clean again: the writer has it.
 3. The writer is a single background thread (`src/player/player_save_worker.c`). It
    applies every queued save in capture order: player saves (with their pets),
-   corpse saves, locker saves, saved room items, bank deltas and critical commands.
+   corpse saves, locker saves, saved room items, shopkeeper saves, bank deltas and
+   critical commands.
    A newer save of the same owner replaces its queued one and goes to the back of
    the queue.
 4. The game pulse consumes typed completions. A lost connection never reaches it:
@@ -34,13 +35,15 @@ commits it with the player file):
 
 - an item with no ownership row gets one;
 - a row naming this owner is corrected if the item moved;
-- a row naming anyone else (a player, corpse, locker, room or pet) is taken, and an
-  `item_owner_audit` row records the item, its vnum, the old owner, the new owner and
-  the time (flat-file: a line in `logs/log/item_claims`);
-- a row naming an auction, a shopkeeper or the collector is left alone: the item and
-  its contents are left out of the save and logged to `logs/log/dupes`. The economy
-  still moves items through its own transactions until Phase 2 of the persistence
-  reset, so the database is right about what it holds;
+- a row naming anyone else (a player, corpse, locker, room, pet, auction, shopkeeper
+  or the collector) is taken, and an `item_owner_audit` row records the item, its
+  vnum, the old owner, the new owner and the time (flat-file: a line in
+  `logs/log/item_claims`). An auction listing, a sale and a collection take their
+  items out of memory before their command, so a save captured afterwards never
+  holds what the economy took;
+- a row that says the item was destroyed is left alone: the item and its contents are
+  left out of the save and logged to `logs/log/dupes`. Only a save captured before
+  the destruction can still hold it;
 - a coin pile is claimed like any item. A pile an older server's coin transaction
   spent stays spent, like any destroyed item.
 

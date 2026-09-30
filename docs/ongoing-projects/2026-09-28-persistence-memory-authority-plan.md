@@ -1336,3 +1336,54 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   validator, the tests above, `run_player_save_claim_mysql.sh` (disposable MariaDB),
   `run_epic_transaction_schema_mysql.sh` and `run_combat_outcome_schema_mysql.sh` (local
   development database), and `make test-all`.
+
+### Step 6: shops in memory (done)
+
+- MariaDB shops already trade in memory: the item and the coins move at once and the
+  shopkeeper is saved afterwards. What changed is the save. `sql_save_shopkeeper()` used to
+  capture and write the stock on the game thread with dozens of queries; it now captures the
+  record the flat-file backend writes (`flatfile_shopkeeper_capture()`), strips the produced
+  stock, and queues one `shopkeeper` job on the writer, which replaces the keeper's rows,
+  affects and stock in one transaction (`shopkeeper_snapshot_repository_apply()`). A sale
+  queues the seller's save before the keeper's, so a crash between them loses the item and
+  never leaves it with both. Copyover and shutdown queue the dirty shopkeepers before they
+  drain the writer.
+- Flat-file shops keep the shop trade command, which records the trade in the shop's
+  authority. A purchase's price leaves the wallet at submit, with the buyer's save queued
+  first, and comes back on a refusal. The repository no longer writes the wallet: since
+  step 2 its balance publication was skipped, so a buyer kept both the item and the money. A
+  sale takes its item out of the inventory at submit, saves the seller first, and is paid
+  when it commits. The completion hands the item to the shopkeeper or destroys it, and a
+  refusal gives it back before the callback.
+- Changed from the plan: the MariaDB keeper's stock is saved in order, not claimed. It has no
+  ownership rows, and a restore gives it fresh uids, so there is nothing to claim.
+- The auction listing and the collector's collection, which step 7 needed, moved the same
+  way. A listing's items and a collected antiquity leave memory at submit, before the
+  owner's save. A committed command extracts them, and a refused one puts them back: in
+  the seller's inventory, or where the antiquity was (in the room, if its container is gone).
+- Found while doing this, fixed in its own commit: a held item was kept as a raw pointer
+  until its completion. A god revoking a reward grant, or a soulbind removing a character's
+  other soulbound items, walks the object list and can extract such an item. The completion
+  then gave back or extracted freed memory. The completions now look each held item up
+  again (`find_live_object()`, made public) and leave one that is gone.
+- Tests: the shop trade transaction harness (the price at submit, the item held from submit,
+  given back on refusal, left alone once extracted), `test_shop_trade_live_route.py` (the
+  order in the submit), `test_shopkeeper_save_runtime.py` (capture and queue), the save-claim
+  MariaDB leg (a shopkeeper save replaces its rows), `test_auction_escrow.py` and the
+  collector transaction harness (held items, the extracted case), and the source contracts.
+
+### Step 7: the economy exception goes (done)
+
+- `item_claim_owner_is_economy()` is gone. Saves and memory-held transfers now claim any item
+  their owner holds, even when its record names an auction, a shopkeeper or the collector.
+  Only a destroyed record is still left out (`item_claim_leaves_out(state)`).
+- This is safe because nothing the economy is taking stays in memory once its save has been
+  captured. Listings, flat-file sales and collections take their items out before the
+  command, and a MariaDB sale saves the seller before the keeper.
+- Tests: the save-claim harnesses on both backends and the MariaDB transfer harness: an item
+  whose record names an auction is claimed and audited. Plus the source contracts.
+- Verified: `make -C src`, the flat-file build, `./scripts/format.sh --all --check`, the
+  validator, the tests above and every other test that links the shop, auction, collector
+  or claim code. The MariaDB legs `run_player_save_claim_mysql.sh`,
+  `run_item_transfer_schema_mysql.sh` and `run_collector_repository_schema_mysql.sh` ran on
+  disposable servers.
