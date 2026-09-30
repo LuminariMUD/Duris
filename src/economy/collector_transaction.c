@@ -177,14 +177,16 @@ bool publish(std::unordered_map<std::string, pending_collector>::iterator found,
 	}
 	// The antiquity left the world at submit: a collection that committed keeps it, one
 	// that did not puts it back where it was (in the room, if its container is gone).
-	if (entry.collected)
+	// It may have been extracted while it was held.
+	if (P_obj collected =
+		    find_live_object(entry.collected, submitted_payload.selected_item_uid))
 	{
 		if (durable_commit)
-			extract_obj(entry.collected, FALSE);
+			extract_obj(collected, FALSE);
 		else
-			put_back(entry.collected, entry.collected_from, entry.collected_room);
-		entry.collected = nullptr;
+			put_back(collected, entry.collected_from, entry.collected_room);
 	}
+	entry.collected = nullptr;
 	// A refused purchase gives its price back, when the buyer returns if they left.
 	if (!durable_commit && entry.escrow)
 	{

@@ -65,6 +65,10 @@ static std::string item_place = "inventory";
 void obj_from_char(P_obj) { item_place = "held"; order.push_back("item:held"); }
 void obj_to_char(P_obj, P_char) { item_place = "inventory"; order.push_back("item:back"); }
 void extract_obj(P_obj, int = 0) { item_place = "gone"; order.push_back("item:gone"); }
+P_obj find_live_object(P_obj expected, uint64_t uid)
+{
+    return item_place == "held" && uid == 200 ? expected : nullptr;
+}
 critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
     queued = command;
@@ -172,6 +176,15 @@ int main()
     assert(wallet == 8980 && item_place == "gone");
     assert((order == std::vector<std::string>{"wallet:-1020", "item:held", "save", "command",
                                               "item:gone"}));
+    order.clear();
+    // An item extracted while it was held is not given back.
+    item_place = "inventory";
+    assert(submit(&ch, list, nullptr, critical_source_site::command,
+                  critical_deadline_class::interactive));
+    item_place = "gone";
+    order.clear();
+    complete(&ch, false, 0);
+    assert(wallet == 8980 && (order == std::vector<std::string>{"wallet:1020"}));
     order.clear();
     // A listing of an item the seller no longer carries is refused before anything moves.
     ch.carrying = nullptr;

@@ -246,6 +246,14 @@ void extract_obj(P_obj object, int)
 	++extracted;
 }
 
+// Whether the antiquity still exists; a case extracts it while it is held.
+bool antiquity_live = true;
+P_obj find_live_object(P_obj expected, uint64_t uid)
+{
+	return antiquity_live && expected == &antiquity && uid == antiquity.obj_uid ? expected :
+										      nullptr;
+}
+
 void obj_to_obj(P_obj, P_obj)
 {
 	assert(false && "the collected antiquity was in a room");
@@ -458,6 +466,13 @@ int main()
 	collector_transaction_handle_completions(&refused_collection, 1);
 	assert(completion_called && !completion_committed && put_back == 1 && extracted == 3 &&
 	       OBJ_ROOM(&antiquity));
+	// An antiquity extracted while it was held is left alone.
+	assert(collector_transaction_submit_background(refused_collect, completed));
+	antiquity_live = false;
+	refused_collection.operation_id = submitted_command.operation_id;
+	collector_transaction_handle_completions(&refused_collection, 1);
+	assert(put_back == 1 && extracted == 3);
+	antiquity_live = true;
 
 	// If the transactional outbox wins the race against the coordinator completion,
 	// publication must reuse the retained request so custody and the live graph are
@@ -489,8 +504,8 @@ int main()
 	collector_transaction_publish_outbox();
 	assert(completion_called && completion_committed && completion_error == 0 &&
 	       completion_action == collector_action::collect && ownership_publications == 4 &&
-	       runtime_publications == 3 && live_collection_validations == 5 &&
-	       live_collection_detaches == 5 && extracted == 4 &&
+	       runtime_publications == 3 && live_collection_validations == 6 &&
+	       live_collection_detaches == 6 && extracted == 4 &&
 	       !collector_transaction_item_busy(205));
 	assert(!outbox_publications && outbox_resumes == 1);
 	assert(collector_transaction_outbox_delivery(pending_record, nullptr) ==
@@ -522,5 +537,5 @@ int main()
 	       passthrough_deliveries == 1);
 
 	collector_transaction_reset_for_tests();
-	assert(submit_count == 8);
+	assert(submit_count == 9);
 }

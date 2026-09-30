@@ -1359,6 +1359,8 @@ void extract_obj(P_obj obj,
 // If it was actually in game, takeable by players,
 //   and it's going away completely, then use.
 void obj_from_char(P_obj);
+// The object a pointer kept across a wait still names, or NULL once it was extracted.
+P_obj find_live_object(P_obj expected, uint64_t uid);
 void obj_from_obj(P_obj);
 bool obj_can_nest(P_obj obj, P_obj obj_to);
 bool obj_is_in_container(P_obj obj, P_obj container);

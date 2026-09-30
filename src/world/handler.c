@@ -3282,6 +3282,14 @@ bool obj_is_in_container(P_obj obj, P_obj container)
 	return FALSE;
 }
 
+P_obj find_live_object(P_obj expected, uint64_t uid)
+{
+	for (P_obj object = object_list; object; object = object->next)
+		if (object == expected && object->obj_uid == uid)
+			return object;
+	return nullptr;
+}
+
 namespace
 {
 constexpr int CORPSE_RELEASE_RETRY_DELAY = 5 * WAIT_SEC;
@@ -3381,14 +3389,6 @@ P_obj find_live_corpse(uint32_t owner_pid, uint32_t save_id)
 		if (object->type == ITEM_CORPSE && IS_SET(object->value[CORPSE_FLAGS], PC_CORPSE) &&
 		    object->value[CORPSE_PID] == static_cast<int32_t>(owner_pid) &&
 		    object->value[CORPSE_SAVEID] == static_cast<int32_t>(save_id))
-			return object;
-	return nullptr;
-}
-
-P_obj find_live_object(P_obj expected, uint64_t uid)
-{
-	for (P_obj object = object_list; object; object = object->next)
-		if (object == expected && object->obj_uid == uid)
 			return object;
 	return nullptr;
 }

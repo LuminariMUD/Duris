@@ -69,11 +69,16 @@ bool publish(std::unordered_map<std::string, pending_auction>::iterator found, P
 	// The auction keeps what it charged of the fee or bid the submit took and gives the
 	// rest back, all of it when refused; a money claim brings its money.
 	const int64_t credit = entry.escrow + (committed ? result.wallet_value_delta : 0);
-	for (P_obj object : entry.held)
-		if (committed)
-			extract_obj(object);
-		else if (character)
-			obj_to_char(object, character);
+	// A held item may have been extracted while the listing was in flight.
+	for (size_t index = 0; index < entry.held.size(); ++index)
+		if (P_obj object = find_live_object(entry.held[index],
+						    entry.payload.items[index].item_uid))
+		{
+			if (committed)
+				extract_obj(object);
+			else if (character)
+				obj_to_char(object, character);
+		}
 	if (character && credit > 0)
 		currency_transaction_submit_wallet_value(
 			character, credit,

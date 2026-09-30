@@ -40,6 +40,7 @@ bool currency_transaction_submit_wallet_value(P_char, int64_t, currency_reason_t
     size_t) { return true; }
 void obj_to_char(P_obj, P_char) {}
 void extract_obj(P_obj, int = 0) {}
+P_obj find_live_object(P_obj expected, uint64_t) { return expected; }
 ''' + declarations + publication + r'''
 
 static uint64_t revision(item_owner_identity owner) {
