@@ -143,7 +143,7 @@ static int scrap_attempts=0;
 static void MakeScrap(P_char,P_obj) { ++scrap_attempts; }
 static void writeCorpse(P_obj) {}
 static int wallet=0;
-static void ADD_MONEY(P_char,int amount) { wallet+=amount; }
+static bool credit_coins(P_char,int64_t value) { wallet+=static_cast<int>(value); return value>0; }
 static void extract_obj(P_obj o,int) { objects.erase(o->obj_uid); o->location=0; }
 static void add_coins(P_obj,int,int,int,int) {}
 static const char *coins_to_string(int p,int g,int s,int c,const char *) {

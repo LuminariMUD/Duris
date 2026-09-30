@@ -11,8 +11,14 @@ from _paths import ROOT, SRC, extract_function
 ACTOBJ = (SRC / "actobj.c").read_text(encoding="utf-8", errors="replace")
 _start = ACTOBJ.index("static bool take_coins(", ACTOBJ.index("// Take the selected coins"))
 TAKE = ACTOBJ[_start:ACTOBJ.index("P_obj find_live_item_uid(", _start)]
-assert "coins_to_string(" in TAKE and "ADD_MONEY(actor" in TAKE
-assert "currency_transaction" not in TAKE
+assert "coins_to_string(" in TAKE and "if (!credit_coins(actor, value))" in TAKE
+# The purse takes the coins before the pile gives them up, on both paths.
+assert TAKE.index("credit_coins(actor, value)") < TAKE.index("money->value[index] -= got[index]")
+GET = extract_function("actobj.c", "void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)")
+assert "const int64_t total_value = got_p * 1000LL + got_g * 100LL + got_s * 10LL + got_c;" in GET
+assert GET.index("if (!credit_coins(ch, total_value))") < GET.index(
+    "o_obj->value[3] = o_obj->value[2] = o_obj->value[1] = o_obj->value[0] = 0;")
+assert "int total_value" not in GET and "ADD_MONEY(ch, total_value)" not in GET
 
 HARNESS = r'''
 #include <algorithm>
@@ -77,7 +83,15 @@ void act(const char *text, int, P_char, P_obj, void *container, int type)
 		++room_acts;
 	}
 }
-void ADD_MONEY(P_char ch, int amount) { ch->wallet += amount; }
+// The purse: it refuses coins it cannot hold, the way a player's wallet refuses a
+// denomination that would overflow.
+static bool credit_coins(P_char ch, int64_t value)
+{
+	if (value <= 0 || value > INT_MAX - ch->wallet)
+		return false;
+	ch->wallet += static_cast<int>(value);
+	return true;
+}
 void extract_obj(P_obj pile, int) { pile->extracted = true; }
 void add_coins(P_obj, int, int, int, int) { ++relabels; }
 void writeCorpse(P_obj) { ++corpse_writes; }
@@ -147,6 +161,17 @@ int main()
 	assert(take_coins(&actor, &hauled, &corpse, TRUE, all_of(hauled)));
 	assert(actor.wallet == 1303 && hauled.extracted);
 	assert(state.haul.size() == 1 && state.haul[0] == coins_to_string(1, 0, 0, 0, "&+y"));
+	assert(actor_text.empty() && room_acts == 0);
+
+	// Coins the purse cannot hold are refused, and the pile keeps them.
+	reset();
+	char_data full;
+	full.wallet = INT_MAX - 5;
+	obj_data heavy = {};
+	heavy.type = 1;
+	heavy.value[3] = 1;
+	assert(!take_coins(&full, &heavy, nullptr, TRUE, all_of(heavy)));
+	assert(full.wallet == INT_MAX - 5 && heavy.value[3] == 1 && !heavy.extracted);
 	assert(actor_text.empty() && room_acts == 0);
 
 	// Nothing to take is refused and changes nothing.

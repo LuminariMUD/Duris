@@ -400,6 +400,29 @@ static void announce_corpse_bulk_get(P_char actor, bulk_get_state &state, P_obj 
 		act("$n begins pulling things from $p.", TRUE, actor, container, 0, TO_ROOM);
 }
 
+// Add coins taken from a pile to the actor's purse. A player's wallet refuses them when a
+// denomination would overflow; its revision advances only when it took them. The caller
+// takes the coins out of the pile only once this returns true.
+static bool credit_coins(P_char actor, int64_t value)
+{
+	if (value <= 0)
+		return false;
+	if (!IS_PC(actor) || GET_PID(actor) <= 0)
+	{
+		if (value > INT_MAX)
+			return false;
+		ADD_MONEY(actor, static_cast<int>(value));
+		return true;
+	}
+	const uint64_t revision = actor->only.pc->wallet_revision;
+	return currency_transaction_submit_wallet_value(actor, value,
+							currency_reason_type::wallet_reward, 0,
+							critical_source_site::command,
+							critical_deadline_class::interactive,
+							nullptr, nullptr, 0) &&
+	       actor->only.pc->wallet_revision != revision;
+}
+
 // Take the selected coins from a pile in memory, leaving the rest in it.
 static bool take_coins(P_char actor, P_obj money, P_obj container, int showit,
 		       const coin_get_submission_options &options)
@@ -416,11 +439,10 @@ static bool take_coins(P_char actor, P_obj money, P_obj container, int showit,
 		emptied = emptied && got[index] == money->value[index];
 		value += got[index] * values[index];
 	}
-	if (value <= 0 || value > INT_MAX)
+	if (!credit_coins(actor, value))
 		return false;
 	for (size_t index = 0; index < got.size(); ++index)
 		money->value[index] -= got[index];
-	ADD_MONEY(actor, static_cast<int>(value));
 	const std::string coins = coins_to_string(got[3], got[2], got[1], got[0], "&+y");
 	if (bulk_get_state *haul = container ? corpse_bulk_get(actor, container->obj_uid) : NULL)
 		haul->haul.push_back(coins);
@@ -1085,55 +1107,51 @@ publish_after_ack:
 					    (o_obj->value[2] > 0) || (o_obj->value[3] > 0)))
 	{
 		got_p = o_obj->value[3];
-		o_obj->value[3] = 0;
-
 		got_g = o_obj->value[2];
-		o_obj->value[2] = 0;
-
 		got_s = o_obj->value[1];
-		o_obj->value[1] = 0;
-
 		got_c = o_obj->value[0];
-		o_obj->value[0] = 0;
 
-		int total_value = (got_p * 1000 + got_g * 100 + got_s * 10 + got_c);
+		// A corpse can hold more coins than an int counts. The pile is emptied only once
+		// the purse has taken them.
+		const int64_t total_value = got_p * 1000LL + got_g * 100LL + got_s * 10LL + got_c;
 		GETDBG_LOG(
-			"GETDBG[get-coins-start]: ch=%s room=%d obj=%s [%d] uid=%lu got_p=%d got_g=%d got_s=%d got_c=%d total=%d showit=%d slip=%d from_container=%s [%d]",
+			"GETDBG[get-coins-start]: ch=%s room=%d obj=%s [%d] uid=%lu got_p=%d got_g=%d got_s=%d got_c=%d total=%lld showit=%d slip=%d from_container=%s [%d]",
 			GET_NAME(ch), world[ch->in_room].number,
 			o_obj->short_description ? o_obj->short_description : "(null)",
-			OBJ_VNUM(o_obj), o_obj->obj_uid, got_p, got_g, got_s, got_c, total_value,
-			showit ? 1 : 0, slip ? 1 : 0,
+			OBJ_VNUM(o_obj), o_obj->obj_uid, got_p, got_g, got_s, got_c,
+			(long long)total_value, showit ? 1 : 0, slip ? 1 : 0,
 			s_obj && s_obj->short_description ? s_obj->short_description : "(none)",
 			s_obj ? OBJ_VNUM(s_obj) : -1);
 
-		if (total_value <= 0)
+		if (!credit_coins(ch, total_value))
 		{
 			GETDBG_LOG(
-				"GETDBG[get-coins-empty]: ch=%s room=%d obj=%s [%d] uid=%lu total=%d showit=%d slip=%d container=%s [%d]",
+				"GETDBG[get-coins-empty]: ch=%s room=%d obj=%s [%d] uid=%lu total=%lld showit=%d slip=%d container=%s [%d]",
 				GET_NAME(ch), world[ch->in_room].number,
 				o_obj->short_description ? o_obj->short_description : "(null)",
-				OBJ_VNUM(o_obj), o_obj->obj_uid, total_value, showit ? 1 : 0,
-				slip ? 1 : 0,
+				OBJ_VNUM(o_obj), o_obj->obj_uid, (long long)total_value,
+				showit ? 1 : 0, slip ? 1 : 0,
 				s_obj && s_obj->short_description ? s_obj->short_description :
 								    "(none)",
 				s_obj ? OBJ_VNUM(s_obj) : -1);
 			send_to_char("You can't carry any of the coins.\r\n", ch);
 			return;
 		}
-		ADD_MONEY(ch, total_value);
+		o_obj->value[3] = o_obj->value[2] = o_obj->value[1] = o_obj->value[0] = 0;
 		if (total_value > 999999)
 		{
+			const char *coins = coins_to_string(got_p, got_g, got_s, got_c, "&+y");
 			GETDBG_LOG(
-				"GETDBG[get-coins-partial]: ch=%s room=%d obj=%s [%d] uid=%lu total=%d showit=%d slip=%d container=%s [%d]",
+				"GETDBG[get-coins-partial]: ch=%s room=%d obj=%s [%d] uid=%lu total=%lld showit=%d slip=%d container=%s [%d]",
 				GET_NAME(ch), world[ch->in_room].number,
 				o_obj->short_description ? o_obj->short_description : "(null)",
-				OBJ_VNUM(o_obj), o_obj->obj_uid, total_value, showit ? 1 : 0,
-				slip ? 1 : 0,
+				OBJ_VNUM(o_obj), o_obj->obj_uid, (long long)total_value,
+				showit ? 1 : 0, slip ? 1 : 0,
 				s_obj && s_obj->short_description ? s_obj->short_description :
 								    "(none)",
 				s_obj ? OBJ_VNUM(s_obj) : -1);
 			logit(LOG_DEBUG, "%s (%d) got %s from %s.", J_NAME(ch),
-			      world[ch->in_room].number, coin_stringv(total_value),
+			      world[ch->in_room].number, coins,
 			      OBJ_NOWHERE(o_obj) ? "NOWHERE!!" :
 			      OBJ_ROOM(o_obj)	 ? "room" :
 			      OBJ_INSIDE(o_obj)	 ? o_obj->loc.inside->name :
@@ -1141,7 +1159,7 @@ publish_after_ack:
 						   GET_NAME(o_obj->loc.wearing));
 			if (IS_PC(ch))
 			{
-				sql_log(ch, PLAYERLOG, "Got %s from %s.", coin_stringv(total_value),
+				sql_log(ch, PLAYERLOG, "Got %s from %s.", coins,
 					OBJ_NOWHERE(o_obj) ? "NOWHERE!!" :
 					OBJ_ROOM(o_obj)	   ? "room" :
 					OBJ_INSIDE(o_obj)  ? o_obj->loc.inside->name :
@@ -1150,7 +1168,7 @@ publish_after_ack:
 			}
 
 			wizlog(MINLVLIMMORTAL, "%s (%d) got %s from %s.", J_NAME(ch),
-			       world[ch->in_room].number, coin_stringv(total_value),
+			       world[ch->in_room].number, coins,
 			       OBJ_NOWHERE(o_obj) ? "NOWHERE!!" :
 			       OBJ_ROOM(o_obj)	  ? "room" :
 			       OBJ_INSIDE(o_obj)  ? o_obj->loc.inside->name :
@@ -1216,11 +1234,11 @@ publish_after_ack:
 		else
 		{
 			GETDBG_LOG(
-				"GETDBG[get-coins-exact]: ch=%s room=%d obj=%s [%d] uid=%lu total=%d showit=%d slip=%d container=%s [%d]",
+				"GETDBG[get-coins-exact]: ch=%s room=%d obj=%s [%d] uid=%lu total=%lld showit=%d slip=%d container=%s [%d]",
 				GET_NAME(ch), world[ch->in_room].number,
 				o_obj->short_description ? o_obj->short_description : "(null)",
-				OBJ_VNUM(o_obj), o_obj->obj_uid, total_value, showit ? 1 : 0,
-				slip ? 1 : 0,
+				OBJ_VNUM(o_obj), o_obj->obj_uid, (long long)total_value,
+				showit ? 1 : 0, slip ? 1 : 0,
 				s_obj && s_obj->short_description ? s_obj->short_description :
 								    "(none)",
 				s_obj ? OBJ_VNUM(s_obj) : -1);
