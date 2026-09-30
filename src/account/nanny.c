@@ -1880,6 +1880,7 @@ void enter_game(P_desc d)
 	}
 #endif
 	sql_connectIP(ch);
+	sql_world_quest_history_load(ch);
 	displayShutdownMsg(ch);
 
 	/* initialize infobar */

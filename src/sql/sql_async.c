@@ -116,22 +116,21 @@ bool sql_queue_work_at(struct persistence_query_site site, sql_work work)
 	return work && queue(site, sizeof(work), std::move(work));
 }
 
-bool sql_read_at(struct persistence_query_site site, std::string query,
-		 std::function<void(bool ok, const sql_rows &rows)> done)
+bool sql_read_work_at(struct persistence_query_site site, sql_read_work_fn work,
+		      std::function<void(bool ok, const sql_rows &rows)> done)
 {
-	if (query.empty() || !done || !DB)
+	if (!work || !done || !DB)
 		return false;
-	const size_t bytes = sizeof(query) + query.size();
 	return submit(
-		site, bytes,
-		[query = std::move(query), done = std::move(done)]()
+		site, sizeof(work),
+		[work = std::move(work), done = std::move(done)]()
 		{
 			sql_rows rows;
 			const player_save_apply_result result = sql_work_repository_apply_from_pool(
 				[&](MYSQL *connection)
 				{
 					rows.clear();
-					return sql_select(connection, query, &rows);
+					return work(connection, &rows);
 				});
 			// A lost connection is retried; any other outcome is final.
 			if (result.outcome == player_save_apply_outcome::retryable_failure)
@@ -154,24 +153,42 @@ bool sql_read_at(struct persistence_query_site site, std::string query,
 		});
 }
 
-bool sql_read_for_at(struct persistence_query_site site, P_char ch, std::string query,
-		     std::function<void(P_char ch, const sql_rows &rows)> done)
+bool sql_read_at(struct persistence_query_site site, std::string query,
+		 std::function<void(bool ok, const sql_rows &rows)> done)
+{
+	return !query.empty() &&
+	       sql_read_work_at(
+		       site, [query = std::move(query)](MYSQL *connection, sql_rows *rows)
+		       { return sql_select(connection, query, rows); }, std::move(done));
+}
+
+bool sql_read_work_for_at(struct persistence_query_site site, P_char ch, sql_read_work_fn work,
+			  std::function<void(P_char ch, const sql_rows &rows)> done)
 {
 	if (!ch || !done)
 		return false;
 	const uint64_t runtime_id = ch->runtime_id;
-	return sql_read_at(site, std::move(query),
-			   [ch, runtime_id, done = std::move(done)](bool ok, const sql_rows &rows)
-			   {
-				   P_char live = live_character(ch, runtime_id);
-				   if (!live)
-					   return;
-				   if (ok)
-					   done(live, rows);
-				   else
-					   send_to_char("That is not available right now.\r\n",
-							live);
-			   });
+	return sql_read_work_at(
+		site, std::move(work),
+		[ch, runtime_id, done = std::move(done)](bool ok, const sql_rows &rows)
+		{
+			P_char live = live_character(ch, runtime_id);
+			if (!live)
+				return;
+			if (ok)
+				done(live, rows);
+			else
+				send_to_char("That is not available right now.\r\n", live);
+		});
+}
+
+bool sql_read_for_at(struct persistence_query_site site, P_char ch, std::string query,
+		     std::function<void(P_char ch, const sql_rows &rows)> done)
+{
+	return !query.empty() &&
+	       sql_read_work_for_at(
+		       site, ch, [query = std::move(query)](MYSQL *connection, sql_rows *rows)
+		       { return sql_select(connection, query, rows); }, std::move(done));
 }
 
 size_t sql_async_pulse(void)

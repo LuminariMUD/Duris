@@ -24,6 +24,7 @@
 #include "persistence/persistence_mode.h"
 #include "core/utils.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "persistence/dupe_log.h"
 #include "sql/sql_telemetry_connection.h"
 #include "sql/sql_exclusion_guard.h"
@@ -197,13 +198,8 @@ int sql_save_player_core(P_char /*ch*/)
 {
 	return 0;
 }
-void sql_modify_frags(P_char ch, int /*gain*/)
-{
-	sql_update_frag_leaderboard(ch);
-}
 void sql_insert_item(P_char /*ch*/, P_obj /*obj*/, char * /*desc*/) {}
 
-void sql_save_pkill(P_char /*ch*/, P_char /*victim*/) {}
 void sql_insert_new_item(P_char /*ch*/, P_obj /*obj*/) {}
 
 void sql_webinfo_toggle(P_char /*ch*/) {}
@@ -243,6 +239,8 @@ void sql_world_quest_finished(P_char ch, P_obj /*obj*/)
 				  "flat_write_failed", "pid=%d error=%s", GET_PID(ch),
 				  error.c_str());
 }
+
+void sql_world_quest_history_load(P_char) {}
 
 int sql_world_quest_done_already(P_char ch, int quest_target)
 {
@@ -515,10 +513,7 @@ int sql_level_cap(int /*racewar_side*/)
 {
 	return frag_cap_config_get()->cap_floor_level;
 }
-double sql_get_total_donated(const char * /*account_name*/)
-{
-	return 0.0;
-}
+void show_total_donated(P_char /*ch*/, const char * /*account_name*/) {}
 void sql_update_frag_leaderboard(P_char ch)
 {
 	if (!ch || IS_NPC(ch))
@@ -678,6 +673,13 @@ void send_mud_info(const char *name, P_char ch)
 	send_to_char(get_mud_info(name).c_str(), ch, LOG_NONE);
 }
 
+void sql_mud_info_reload(P_char ch, std::function<void(P_char)> done)
+{
+	done(ch);
+}
+
+void sql_mud_info_refresh(void) {}
+
 void sql_update_bind_data(int vnum, int *owner_pid, int *timer)
 {
 	if (!owner_pid || !timer)
@@ -752,9 +754,14 @@ uint64_t sql_game_loop_query_count(void)
 {
 	return 0;
 }
+void sql_level_cap_reload(void) {}
 #else
 
 static void sql_resetConnectTimes(void);
+static void sql_load_ip_activity(void);
+static void sql_load_level_cap(void);
+static void sql_load_recent_counts(void);
+static void sql_load_mud_info(void);
 static bool sql_verify_boot_database(void);
 
 // The global database handler
@@ -1514,6 +1521,10 @@ int initialize_mysql()
 	logit(LOG_STATUS, "Connection established.");
 
 	sql_resetConnectTimes();
+	sql_load_ip_activity();
+	sql_load_level_cap();
+	sql_load_recent_counts();
+	sql_load_mud_info();
 
 	if (!sql_verify_boot_database())
 	{
@@ -2296,7 +2307,7 @@ int sql_save_player_core(P_char ch)
 	snprintf(query, MAX_STRING_LENGTH,
 		 "UPDATE player_data SET active = 0 WHERE name = '%s' and pid != %d", p->name,
 		 GET_PID(ch));
-	db_query(query);
+	sql_queue("%s", query);
 
 	// Mark this player active and keep its denormalized account identity aligned
 	// with the canonical account projection. Existing rows created before the
@@ -2306,11 +2317,11 @@ int sql_save_player_core(P_char ch)
 	{
 		char account_name_sql[MAX_STRING_LENGTH * 2 + 1];
 		mysql_str(ch->desc->account->acct_name, account_name_sql);
-		if (!qry("UPDATE player_data SET active=1,account_name='%s' WHERE pid=%d",
-			 account_name_sql, GET_PID(ch)))
+		if (!sql_queue("UPDATE player_data SET active=1,account_name='%s' WHERE pid=%d",
+			       account_name_sql, GET_PID(ch)))
 			return 0;
 	}
-	else if (!qry("UPDATE player_data SET active=1 WHERE pid=%d", GET_PID(ch)))
+	else if (!sql_queue("UPDATE player_data SET active=1 WHERE pid=%d", GET_PID(ch)))
 	{
 		return 0;
 	}
@@ -2327,64 +2338,83 @@ int sql_save_player_core(P_char ch)
 #define PROGRESS_EXP 2
 void sql_save_progress(int pid, int delta, int var_type)
 {
-	db_query("INSERT INTO progress VALUES( 0, %d, %d, NOW(), %d )", pid, var_type, delta);
+	sql_queue("INSERT INTO progress VALUES( 0, %d, %d, NOW(), %d )", pid, var_type, delta);
+}
+
+// The level_cap row, read at boot and after the maintenance job changes it, and kept
+// current by sql_check_level_cap(), so the game never waits to read it.
+static struct
+{
+	bool loaded = false;
+	long most_frags = -1;
+	int racewar = RACEWAR_NONE;
+	int level = 0;
+	time_t next_update = 0;
+} level_cap_row;
+
+static void level_cap_row_publish(const char *most_frags, const char *racewar, const char *level,
+				  const char *next_update)
+{
+	level_cap_row.loaded = most_frags && racewar && level && next_update;
+	if (!level_cap_row.loaded)
+		return;
+	level_cap_row.most_frags = (long)(atof(most_frags) * 100. + .01);
+	level_cap_row.racewar = atoi(racewar);
+	level_cap_row.level = atoi(level);
+	level_cap_row.next_update = atol(next_update);
+}
+
+static const char level_cap_query[] =
+	"SELECT most_frags, racewar_leader, level, UNIX_TIMESTAMP(next_update) FROM level_cap";
+
+// Boot only: the game loop is not running yet.
+static void sql_load_level_cap(void)
+{
+	MYSQL_RES *db = db_query("%s", level_cap_query);
+	MYSQL_ROW row = db ? mysql_fetch_row(db) : NULL;
+	level_cap_row_publish(row ? row[0] : NULL, row ? row[1] : NULL, row ? row[2] : NULL,
+			      row ? row[3] : NULL);
+	if (db)
+		mysql_free_result(db);
+	if (!level_cap_row.loaded)
+		debug("sql_load_level_cap: Database read fail.");
+}
+
+void sql_level_cap_reload(void)
+{
+	sql_read(level_cap_query,
+		 [](bool ok, const sql_rows &rows)
+		 {
+			 if (ok && !rows.empty())
+				 level_cap_row_publish(rows[0][0], rows[0][1], rows[0][2],
+						       rows[0][3]);
+		 });
 }
 
 // Retrieves the current highest number of frags and which racewar side has it.
 void get_level_cap_info(long *max_frags, int *racewar, int *level, time_t *next_update)
 {
-	MYSQL_RES *db = NULL;
-	MYSQL_ROW row;
-	db = db_query(
-		"SELECT most_frags, racewar_leader, level, UNIX_TIMESTAMP(next_update) FROM level_cap");
-
-	if ((db == NULL) || ((row = mysql_fetch_row(db)) == NULL))
+	if (!level_cap_row.loaded)
 	{
-		debug("get_level_cap_info: Database read fail.");
 		*max_frags = (long)-1;
 		*racewar = RACEWAR_NONE;
 		*level = frag_cap_config_get()->cap_floor_level;
 		*next_update = 0;
 		return;
 	}
-	*max_frags = (long)(atof(row[0]) * 100. + .01);
-	*racewar = atoi(row[1]);
-	*level = atoi(row[2]);
-	*next_update = atol(row[3]);
-
-	// cycle out until a NULL return
-	while (row != NULL)
-	{
-		row = mysql_fetch_row(db);
-	}
-	mysql_free_result(db);
+	*max_frags = level_cap_row.most_frags;
+	*racewar = level_cap_row.racewar;
+	*level = level_cap_row.level;
+	*next_update = level_cap_row.next_update;
 }
 
 // Returns the highest level achievable by mortals, limited by racewar side.
 int sql_level_cap(int /*racewar_side*/)
 {
-	int level_cap;
-	MYSQL_RES *db = NULL;
-	MYSQL_ROW row;
-
-	db = db_query("SELECT level, racewar_leader FROM level_cap");
-
-	if ((db == NULL) || ((row = mysql_fetch_row(db)) == NULL))
-	{
-		debug("sql_level_cap: Database read fail.");
-		return frag_cap_config_get()->cap_floor_level;
-	}
-
-	level_cap = atoi(row[0]);
-
-	// cycle out until a NULL return
-	while (row != NULL)
-	{
-		row = mysql_fetch_row(db);
-	}
-	mysql_free_result(db);
-
 	const struct frag_cap_config *config = frag_cap_config_get();
+	if (!level_cap_row.loaded)
+		return config->cap_floor_level;
+	const int level_cap = level_cap_row.level;
 
 	// Clamp database values to the configured mortal-cap range.
 	if (level_cap >= config->cap_maximum_level)
@@ -2434,20 +2464,27 @@ void sql_check_level_cap(long max_frags, int racewar)
 			int next_level = old_level + config->cap_level_step;
 			if (next_level > config->cap_maximum_level)
 				next_level = config->cap_maximum_level;
+			const time_t next_time =
+				time(NULL) +
+				SECS_PER_REAL_DAY * frag_cap_config_timer_days(old_level);
 			snprintf(
 				query, sizeof(query),
 				"UPDATE level_cap SET most_frags = %f, racewar_leader = %d, level = %d, next_update = FROM_UNIXTIME(%ld)",
-				max_frags / 100., racewar, next_level,
-				(long)(time(NULL) +
-				       SECS_PER_REAL_DAY * frag_cap_config_timer_days(old_level)));
-			db_query(query);
+				max_frags / 100., racewar, next_level, (long)next_time);
+			sql_queue("%s", query);
+			level_cap_row.level = next_level;
+			level_cap_row.next_update = next_time;
+			level_cap_row.most_frags = max_frags;
+			level_cap_row.racewar = racewar;
 		}
 		else if (max_frags > old_max_frags)
 		{
 			snprintf(query, 1024,
 				 "UPDATE level_cap SET most_frags = %f, racewar_leader = %d",
 				 max_frags / 100., racewar);
-			db_query(query);
+			sql_queue("%s", query);
+			level_cap_row.most_frags = max_frags;
+			level_cap_row.racewar = racewar;
 		}
 	}
 	// Just changing highest frag amount and, possibly, racewar leader.
@@ -2455,103 +2492,9 @@ void sql_check_level_cap(long max_frags, int racewar)
 	{
 		snprintf(query, 1024, "UPDATE level_cap SET most_frags = %f, racewar_leader = %d",
 			 max_frags / 100., racewar);
-		db_query(query);
-	}
-}
-
-// Re-check the current racewar total even when no new frag was recorded.
-// This allows a qualified cap increase and its boon to become available as
-// soon as the configured timer expires.
-void sql_check_level_cap_periodic(void)
-{
-	long max_frags;
-	int old_racewar, old_level;
-	time_t next_update;
-	MYSQL_RES *res;
-	MYSQL_ROW row;
-
-	get_level_cap_info(&max_frags, &old_racewar, &old_level, &next_update);
-	if (old_racewar == RACEWAR_NONE || old_level < 0)
-		return;
-
-	res = db_query(
-		"SELECT COALESCE(SUM(total_frags), 0) FROM frag_leaderboard WHERE racewar=%d",
-		old_racewar);
-	if (!res)
-		return;
-
-	row = mysql_fetch_row(res);
-	if (row && row[0])
-	{
-		max_frags = atol(row[0]);
-		sql_check_level_cap(max_frags, old_racewar);
-	}
-	mysql_free_result(res);
-}
-
-// Sets the values of level (actual cap) and racewar (the side that is in the lead).
-void get_level_cap(int *level, int *racewar)
-{
-	MYSQL_RES *db = NULL;
-	MYSQL_ROW row = NULL;
-
-	db = db_query("SELECT level, racewar_leader FROM level_cap");
-
-	if ((db == NULL) || ((row = mysql_fetch_row(db)) == NULL))
-	{
-		debug("get_level_cap: Database read fail.");
-		*level = 25;
-		*racewar = RACEWAR_NONE;
-	}
-	else
-	{
-		*level = atoi(row[0]);
-		*racewar = atoi(row[1]);
-	}
-
-	// cycle out until a NULL return
-	while (row != NULL)
-	{
-		row = mysql_fetch_row(db);
-	}
-	mysql_free_result(db);
-}
-
-/* Save frags delta */
-void sql_modify_frags(P_char ch, int gain)
-{
-	// We don't want IS_TRUSTED(ch) because that can be turned off with toggle fog.
-	if (GET_LEVEL(ch) > MAXLVLMORTAL)
-	{
-		return;
-	}
-	if (IS_MORPH(ch))
-		ch = MORPH_ORIG(ch);
-	sql_save_progress(GET_PID(ch), gain, PROGRESS_FRAGS);
-	// Update frag leaderboard with new frag count (incremental update for performance)
-	// Only update if the character is in the database (pid > 0)
-	if (GET_PID(ch) > 0)
-	{
-		db_query(
-			"UPDATE frag_leaderboard SET total_frags = %d, last_updated = NOW() WHERE pid = %ld AND deleted_at IS NULL",
-			ch->only.pc->frags, GET_PID(ch));
-	}
-
-	if (gain >= 0)
-	{
-		MYSQL_RES *res = db_query(
-			"SELECT COALESCE(SUM(total_frags), 0) FROM frag_leaderboard WHERE racewar=%d",
-			GET_RACEWAR(ch));
-		if (res)
-		{
-			MYSQL_ROW row = mysql_fetch_row(res);
-			if (row and row[0])
-			{
-				long total = atol(row[0]);
-				sql_check_level_cap(total, GET_RACEWAR(ch));
-			}
-			mysql_free_result(res);
-		}
+		sql_queue("%s", query);
+		level_cap_row.most_frags = max_frags;
+		level_cap_row.racewar = racewar;
 	}
 }
 
@@ -2571,31 +2514,31 @@ void sql_modify_frags(P_char ch, int gain)
  * therefore advanced the counter far past the surviving row count. Resolving the
  * row first keeps the steady-state path an UPDATE, which allocates nothing.
  */
-static long sql_find_account_character_id(long pid, const char *escaped_char_name)
+static unsigned int sql_find_account_character_id(MYSQL *connection, long pid,
+						  const std::string &escaped_char_name, long *id)
 {
 	/* The character's active mapping by pid first, preferring one that already
 	 * has its name, so a renamed character updates its row instead of adding a
 	 * second one; then any row with its name. */
-	MYSQL_RES *result = db_query("SELECT id FROM account_characters "
-				     "WHERE pid=%ld AND deleted_at IS NULL "
-				     "ORDER BY char_name='%s' DESC, id LIMIT 1",
-				     pid, escaped_char_name);
-	MYSQL_ROW row = result ? mysql_fetch_row(result) : NULL;
-	const long by_pid = (row && row[0]) ? atol(row[0]) : 0;
-	if (result)
-		mysql_free_result(result);
-	if (by_pid > 0)
-		return by_pid;
-
-	result = db_query("SELECT id FROM account_characters WHERE char_name='%s' LIMIT 1",
-			  escaped_char_name);
-	if (!result)
-		return 0;
-
-	row = mysql_fetch_row(result);
-	long mapping_id = (row && row[0]) ? atol(row[0]) : 0;
-	mysql_free_result(result);
-	return mapping_id;
+	sql_rows rows;
+	if (const unsigned int error_code =
+		    sql_select(connection,
+			       sql_format("SELECT id FROM account_characters "
+					  "WHERE pid=%ld AND deleted_at IS NULL "
+					  "ORDER BY char_name='%s' DESC, id LIMIT 1",
+					  pid, escaped_char_name.c_str()),
+			       &rows))
+		return error_code;
+	if (rows.empty())
+		if (const unsigned int error_code = sql_select(
+			    connection,
+			    sql_format(
+				    "SELECT id FROM account_characters WHERE char_name='%s' LIMIT 1",
+				    escaped_char_name.c_str()),
+			    &rows))
+			return error_code;
+	*id = !rows.empty() && rows[0][0] ? atol(rows[0][0]) : 0;
+	return 0;
 }
 
 /* Update account_characters mapping table */
@@ -2640,55 +2583,65 @@ void sql_update_account_character(P_char ch)
 
 	// Update an existing mapping in place and insert only a genuinely new one,
 	// so a repeated projection of the same character allocates no identity value.
-	// created_at is preserved either way.
-	const long mapping_id = sql_find_account_character_id(GET_PID(ch), char_name_sql);
-	const bool written =
-		mapping_id > 0 ? qry("UPDATE account_characters "
-				     "SET account_name = '%s', pid = %ld, char_name = '%s', "
-				     "deleted_at = NULL "
-				     "WHERE id = %ld",
-				     account_name_sql, GET_PID(ch), char_name_sql, mapping_id)
-				 // ON DUPLICATE KEY UPDATE still converges when another writer
-				 // inserted the same unique char_name between the lookup and here.
-				 :
-				 qry("INSERT INTO account_characters "
-				     "(account_name, pid, char_name, created_at, deleted_at) "
-				     "VALUES('%s', %ld, '%s', NOW(), NULL) "
-				     "ON DUPLICATE KEY UPDATE "
-				     "account_name = VALUES(account_name), "
-				     "pid = VALUES(pid), "
-				     "char_name = VALUES(char_name), "
-				     "deleted_at = NULL",
-				     account_name_sql, GET_PID(ch), char_name_sql);
+	// created_at is preserved either way. The lookup runs on the writer, just before
+	// the write it decides.
+	const long pid = GET_PID(ch);
+	const std::string account = account_name_sql, name = char_name_sql;
+	const bool queued = sql_queue_work(
+		[pid, account, name](MYSQL *connection) -> unsigned int
+		{
+			long mapping_id = 0;
+			if (const unsigned int error_code = sql_find_account_character_id(
+				    connection, pid, name, &mapping_id))
+				return error_code;
+			return sql_execute(
+				connection,
+				mapping_id > 0 ?
+					sql_format(
+						"UPDATE account_characters "
+						"SET account_name = '%s', pid = %ld, char_name = '%s', "
+						"deleted_at = NULL "
+						"WHERE id = %ld",
+						account.c_str(), pid, name.c_str(), mapping_id) :
+					// ON DUPLICATE KEY UPDATE still converges when another row
+					// with the same unique char_name appeared after the lookup.
+					sql_format(
+						"INSERT INTO account_characters "
+						"(account_name, pid, char_name, created_at, deleted_at) "
+						"VALUES('%s', %ld, '%s', NOW(), NULL) "
+						"ON DUPLICATE KEY UPDATE "
+						"account_name = VALUES(account_name), "
+						"pid = VALUES(pid), "
+						"char_name = VALUES(char_name), "
+						"deleted_at = NULL",
+						account.c_str(), pid, name.c_str()));
+		});
 
-	if (!written)
+	if (!queued)
 	{
 		logit(LOG_DEBUG, "sql_update_account_character: failed for %s",
 		      GET_NAME(ch) ? GET_NAME(ch) : "<null>");
 	}
 }
 
-double sql_get_total_donated(const char *account_name)
+void show_total_donated(P_char ch, const char *account_name)
 {
-#ifdef __NO_MYSQL__
-	return 0.0;
-#else
 	if (!account_name || !*account_name)
-		return 0.0;
-
-	MYSQL_RES *res = db_query("SELECT total_donated FROM accounts WHERE account_name='%s'",
-				  escape_str(account_name).c_str());
-	if (!res)
-		return 0.0;
-
-	double total = 0.0;
-	MYSQL_ROW row = mysql_fetch_row(res);
-	if (row && row[0])
-		total = atof(row[0]);
-
-	mysql_free_result(res);
-	return total;
-#endif
+		return;
+	sql_read_for(ch,
+		     sql_format("SELECT total_donated FROM accounts WHERE account_name='%s'",
+				escape_str(account_name).c_str()),
+		     [](P_char live, const sql_rows &rows)
+		     {
+			     const double total = !rows.empty() && rows[0][0] ? atof(rows[0][0]) :
+										0;
+			     if (total <= 0)
+				     return;
+			     char buf[MAX_STRING_LENGTH];
+			     snprintf(buf, MAX_STRING_LENGTH, "&+YTotal Donations:&n &+W$%.2f&n\n",
+				      total);
+			     send_to_char(buf, live);
+		     });
 }
 
 /* Update frag_leaderboard table with current character data */
@@ -2728,20 +2681,21 @@ void sql_update_frag_leaderboard(P_char ch)
 	// Insert or update frag_leaderboard
 	// Using INSERT ... ON DUPLICATE KEY UPDATE to preserve the row id while
 	// refreshing the current stats.
-	if (!qry("INSERT INTO frag_leaderboard "
-		 "(pid, account_name, char_name, total_frags, racewar, race, class, level, deleted_at) "
-		 "VALUES(%ld, '%s', '%s', %d, %d, '%s', '%s', %d, NULL) "
-		 "ON DUPLICATE KEY UPDATE "
-		 "account_name=VALUES(account_name), "
-		 "char_name=VALUES(char_name), "
-		 "total_frags=VALUES(total_frags), "
-		 "racewar=VALUES(racewar), "
-		 "race=VALUES(race), "
-		 "class=VALUES(class), "
-		 "level=VALUES(level), "
-		 "deleted_at=NULL",
-		 GET_PID(ch), account_name_sql, char_name_sql, ch->only.pc->frags, GET_RACEWAR(ch),
-		 race_sql, class_sql, GET_LEVEL(ch)))
+	if (!sql_queue(
+		    "INSERT INTO frag_leaderboard "
+		    "(pid, account_name, char_name, total_frags, racewar, race, class, level, deleted_at) "
+		    "VALUES(%d, '%s', '%s', %ld, %d, '%s', '%s', %d, NULL) "
+		    "ON DUPLICATE KEY UPDATE "
+		    "account_name=VALUES(account_name), "
+		    "char_name=VALUES(char_name), "
+		    "total_frags=VALUES(total_frags), "
+		    "racewar=VALUES(racewar), "
+		    "race=VALUES(race), "
+		    "class=VALUES(class), "
+		    "level=VALUES(level), "
+		    "deleted_at=NULL",
+		    GET_PID(ch), account_name_sql, char_name_sql, ch->only.pc->frags,
+		    GET_RACEWAR(ch), race_sql, class_sql, GET_LEVEL(ch)))
 	{
 		logit(LOG_DEBUG, "sql_update_frag_leaderboard: failed for %s",
 		      GET_NAME(ch) ? GET_NAME(ch) : "<null>");
@@ -2806,13 +2760,14 @@ void sql_insert_item(P_char /*ch*/, P_obj obj, char *desc)
 	mysql_str(desc, sql_desc);
 	mysql_str(obj->short_description, sql_short);
 
-	db_query_nolog("INSERT INTO items_stats VALUES( null, '%s', '', %d)", sql_short, m_virtual);
 	checked_snprintf(query, MAX_STRING_LENGTH,
 			 "UPDATE items_stats SET  obj_stat = '%s', vnum = %d "
 			 " WHERE short_desc = '%s'",
 			 sql_desc, m_virtual, sql_short);
-
-	db_query(query);
+	sql_queue_statements(
+		{ sql_format("INSERT IGNORE INTO items_stats VALUES( null, '%s', '', %d)",
+			     sql_short, m_virtual),
+		  query });
 }
 
 void sql_insert_new_item(P_char ch, P_obj obj)
@@ -2821,154 +2776,6 @@ void sql_insert_new_item(P_char ch, P_obj obj)
 
 	snprintf(item_id, MAX_STRING_LENGTH, "o %s", obj->name);
 	do_stat(ch, item_id, 555);
-}
-
-unsigned long new_pkill_event(P_char ch)
-{
-	char room_name_sql[MAX_STRING_LENGTH * 2 + 1];
-	string query;
-
-	mysql_str(world[ch->in_room].name, room_name_sql);
-	query = "INSERT INTO pkill_event (stamp, room_vnum, room_name) VALUES( NOW(), ";
-	query += std::to_string(world[ch->in_room].number);
-	query += ", '";
-	query += room_name_sql;
-	query += "' )";
-
-	sql_clear_results_on(DB);
-	if (!sql_trace_exec("new_pkill_event", query.c_str(), query.size(), false, false))
-	{
-		logit(LOG_DEBUG, "MYSQL: Failed to create pkill event");
-		return 0;
-	}
-
-	return mysql_insert_id(DB);
-}
-
-void get_pkill_player_description(P_char ch, char *buffer)
-{
-	char assoc_name[MAX_STRING_LENGTH];
-
-	if (GET_ASSOC(ch) == NULL)
-	{
-		assoc_name[0] = '\0';
-	}
-	else
-	{
-		snprintf(assoc_name, MAX_STRING_LENGTH, "%s", GET_ASSOC(ch)->get_name().c_str());
-	}
-
-	checked_snprintf(buffer, MAX_STRING_LENGTH, "[%2d %s&n] %s &n%s &n(%s&n)", GET_LEVEL(ch),
-			 get_class_name(ch, ch), GET_NAME(ch), assoc_name,
-			 race_names_table[GET_RACE(ch)].ansi);
-
-	logit(LOG_DEBUG, "%s", buffer);
-}
-
-void store_pkill_info(unsigned long pkill_event, P_char ch, const char *type, int leader,
-		      int in_room)
-{
-	char buf[MAX_STRING_LENGTH];
-	char equip_sql[MAX_STRING_LENGTH * 2 + 1];
-	char player_description_sql[MAX_STRING_LENGTH * 2 + 1];
-	char log_sql[MAX_LOG_LEN * 2 + 1];
-
-	if (!ch || !IS_PC(ch))
-		return;
-
-	if (!GET_PLAYER_LOG(ch))
-	{
-		logit(LOG_DEBUG,
-		      "Tried to dump player log (%s) in store_pkill_info(), but player log was null!",
-		      GET_NAME(ch));
-		return;
-	}
-
-	get_equipment_list(ch, buf, 1);
-	mysql_str(buf, equip_sql);
-
-	get_pkill_player_description(ch, buf);
-	mysql_str(buf, player_description_sql);
-
-	mysql_str(GET_PLAYER_LOG(ch)->read(LOG_PUBLIC, MAX_LOG_LEN), log_sql);
-
-	db_query(
-		"INSERT INTO pkill_info (event_id, pid, level, pk_type, player_description, equip, log, inroom, leader) "
-		"VALUES( %d, %d, %d, '%s', '%s', '%s', '%s', %d ,%d )",
-		pkill_event, GET_PID(ch), GET_LEVEL(ch), type, player_description_sql, equip_sql,
-		log_sql, in_room, leader);
-}
-
-/* Save racewr pkill information */
-void sql_save_pkill(P_char ch, P_char victim)
-{
-	unsigned long pkill_event;
-
-	// NPCs can't be pkilled.
-	if (IS_NPC(victim))
-	{
-		return;
-	}
-
-	/* If pet is the killer, we blame the owner, if he's around */
-	if (IS_NPC(ch))
-	{
-		if (ch->following && IS_PC(ch->following) &&
-		    ch->in_room == ch->following->in_room && grouped(ch, ch->following))
-		{
-			ch = ch->following;
-		}
-		else
-		{
-			return;
-		}
-	}
-
-	/* Log a new pkill event, and get the handler for further logs */
-	pkill_event = new_pkill_event(ch);
-	if (!pkill_event)
-		return;
-
-	int in_room = 0;
-	int leader = 0;
-
-	// always store killer first, then group
-	if (IS_PC(ch))
-	{
-		leader = (ch->group && ch->group->ch == ch) ? 1 : 0;
-		store_pkill_info(pkill_event, ch, "KILLER", leader, 1);
-	}
-
-	if (ch->group)
-	{
-		for (struct group_list *gl = ch->group; gl; gl = gl->next)
-		{
-			if (IS_PC(gl->ch) && gl->ch != ch)
-			{
-				in_room = (ch->in_room == gl->ch->in_room) ? 1 : 0;
-				store_pkill_info(pkill_event, gl->ch, "KILLER", 0, in_room);
-			}
-		}
-	}
-
-	// always store victim first, then group
-	if (IS_PC(victim))
-	{
-		leader = (victim->group && victim->group->ch == victim) ? 1 : 0;
-		store_pkill_info(pkill_event, victim, "VICTIM", leader, 1);
-	}
-
-	if (victim->group)
-	{
-		for (struct group_list *gl = victim->group; gl; gl = gl->next)
-		{
-			if (IS_PC(gl->ch) && gl->ch != victim)
-			{
-				in_room = (victim->in_room == gl->ch->in_room) ? 1 : 0;
-				store_pkill_info(pkill_event, gl->ch, "VICTIM-GROUP", 0, in_room);
-			}
-		}
-	}
 }
 
 /* Save character's preferences about displaying extended info on
@@ -3048,8 +2855,8 @@ void manual_log(P_char ch)
 	snprintf(a, 256, "%d%d", number(0, 32767), number(0, 2147483647));
 	snprintf(b, 256, "%s", CRYPT2(a, ch->player.name));
 
-	db_query("INSERT INTO MANUAL_LOG VALUES( 0, '%s', '%s', %d, 0, NOW() )", log_sql, b,
-		 GET_PID(ch));
+	sql_queue("INSERT INTO MANUAL_LOG VALUES( 0, '%s', '%s', %d, 0, NOW() )", log_sql, b,
+		  GET_PID(ch));
 
 	snprintf(
 		buf, MAX_STRING_LENGTH,
@@ -3065,32 +2872,147 @@ void sql_resetConnectTimes(void)
 	db_query("UPDATE ip_info SET last_disconnect = NOW() WHERE last_connect > last_disconnect");
 }
 
+// ip_info, read at boot and kept current by sql_connectIP() and sql_disconnectIP(), so
+// logins and finger never wait for the database. Times are UNIX seconds.
+struct ip_activity
+{
+	std::string ip;
+	time_t last_connect = 0;
+	time_t last_disconnect = 0;
+	int racewar_side = RACEWAR_NONE;
+};
+static std::unordered_map<int, ip_activity> ip_activity_by_pid;
+
+// Boot only: the game loop is not running yet.
+static void sql_load_ip_activity(void)
+{
+	MYSQL_RES *db = db_query("SELECT pid, last_ip, UNIX_TIMESTAMP(last_connect), "
+				 "UNIX_TIMESTAMP(last_disconnect), racewar_side FROM ip_info");
+	if (!db)
+		return;
+	while (MYSQL_ROW row = mysql_fetch_row(db))
+	{
+		if (!row[0])
+			continue;
+		ip_activity &activity = ip_activity_by_pid[atoi(row[0])];
+		activity.ip = row[1] ? row[1] : "";
+		activity.last_connect = row[2] ? strtoul(row[2], NULL, 10) : 0;
+		activity.last_disconnect = row[3] ? strtoul(row[3], NULL, 10) : 0;
+		activity.racewar_side = row[4] ? atoi(row[4]) : RACEWAR_NONE;
+	}
+	mysql_free_result(db);
+}
+
 void sql_disconnectIP(P_char ch)
 {
 	if (!ch || !IS_PC(ch))
 		return;
 
-	db_query_nolog("INSERT IGNORE INTO ip_info (pid) VALUES (%d)", GET_PID(ch));
+	std::vector<std::string> statements = { sql_format(
+		"INSERT IGNORE INTO ip_info (pid) VALUES (%d)", GET_PID(ch)) };
+	ip_activity &activity = ip_activity_by_pid[GET_PID(ch)];
 	if (ch->desc)
 	{
 		// Set racewar side if not an immortal.
-		db_query(
-			"UPDATE ip_info SET last_disconnect = NOW(), racewar_side=%d WHERE pid = %d",
-			IS_TRUSTED(ch) ? RACEWAR_NONE : GET_RACEWAR(ch), GET_PID(ch));
+		activity.last_disconnect = time(NULL);
+		activity.racewar_side = IS_TRUSTED(ch) ? RACEWAR_NONE : GET_RACEWAR(ch);
+		statements.push_back(sql_format(
+			"UPDATE ip_info SET last_disconnect = FROM_UNIXTIME(%ld), racewar_side=%d WHERE pid = %d",
+			(long)activity.last_disconnect, activity.racewar_side, GET_PID(ch)));
 	}
+	sql_queue_statements(std::move(statements));
 }
 
 void sql_connectIP(P_char ch)
 {
 	// insert will silently fail if the PID is already in the table
-	db_query_nolog("INSERT IGNORE INTO ip_info (pid) VALUES (%d)", GET_PID(ch));
+	std::vector<std::string> statements = { sql_format(
+		"INSERT IGNORE INTO ip_info (pid) VALUES (%d)", GET_PID(ch)) };
+	ip_activity &activity = ip_activity_by_pid[GET_PID(ch)];
 	if (ch->desc)
 	{
-		db_query(
-			"UPDATE ip_info SET last_ip = '%s', last_connect = NOW(), racewar_side = %d WHERE pid = %d",
-			ch->desc->host, IS_TRUSTED(ch) ? RACEWAR_NONE : GET_RACEWAR(ch),
-			GET_PID(ch));
+		activity.ip = ch->desc->host;
+		activity.last_connect = time(NULL);
+		activity.racewar_side = IS_TRUSTED(ch) ? RACEWAR_NONE : GET_RACEWAR(ch);
+		statements.push_back(sql_format(
+			"UPDATE ip_info SET last_ip = '%s', last_connect = FROM_UNIXTIME(%ld), racewar_side = %d WHERE pid = %d",
+			escape_str(ch->desc->host).c_str(), (long)activity.last_connect,
+			activity.racewar_side, GET_PID(ch)));
 	}
+	sql_queue_statements(std::move(statements));
+}
+
+// Each character's world quest history, read when it enters the game and kept current
+// by sql_world_quest_finished(), so the quest checks never wait for the database.
+struct world_quest_history
+{
+	std::unordered_set<int> targets;
+	// Quests finished today, by the level they were finished at, and the day (local
+	// time) they count for.
+	std::unordered_map<int, int> today_by_level;
+	int today_total = 0;
+	long day = 0;
+};
+static std::unordered_map<int, world_quest_history> world_quest_histories;
+static std::unordered_set<int> world_quest_histories_loading;
+
+// Days since the epoch in local time, as TO_DAYS(NOW()) counts them on this host.
+static long local_day_number(void)
+{
+	const time_t now = time(NULL);
+	struct tm local;
+	localtime_r(&now, &local);
+	return (long)((now + local.tm_gmtoff) / 86400);
+}
+
+void sql_world_quest_history_load(P_char ch)
+{
+	if (!ch || !IS_PC(ch) || GET_PID(ch) <= 0 ||
+	    !world_quest_histories_loading.insert(GET_PID(ch)).second)
+		return;
+	const int pid = GET_PID(ch);
+	if (!sql_read(sql_format("SELECT quest_target, player_level, "
+				 "TO_DAYS(timestamp) = TO_DAYS(NOW()) "
+				 "FROM world_quest_accomplished WHERE pid = %d",
+				 pid),
+		      [pid](bool ok, const sql_rows &rows)
+		      {
+			      world_quest_histories_loading.erase(pid);
+			      if (!ok)
+				      return;
+			      world_quest_history history;
+			      history.day = local_day_number();
+			      for (const sql_row &row : rows)
+			      {
+				      if (row[0])
+					      history.targets.insert(atoi(row[0]));
+				      if (row[1] && row[2] && atoi(row[2]))
+				      {
+					      ++history.today_by_level[atoi(row[1])];
+					      ++history.today_total;
+				      }
+			      }
+			      world_quest_histories[pid] = std::move(history);
+		      }))
+		world_quest_histories_loading.erase(pid);
+}
+
+// The character's history, or NULL while it is being read.
+static world_quest_history *world_quest_history_of(P_char ch)
+{
+	const auto found = world_quest_histories.find(GET_PID(ch));
+	if (found == world_quest_histories.end())
+	{
+		sql_world_quest_history_load(ch);
+		return NULL;
+	}
+	if (found->second.day != local_day_number())
+	{
+		found->second.today_by_level.clear();
+		found->second.today_total = 0;
+		found->second.day = local_day_number();
+	}
+	return &found->second;
 }
 
 void sql_world_quest_finished(P_char ch, P_obj reward)
@@ -3101,10 +3023,23 @@ void sql_world_quest_finished(P_char ch, P_obj reward)
 		reward ? ((reward->R_num >= 0) ? obj_index[reward->R_num].virtual_number : 0) : 0;
 	char *reward_desc = reward ? mysql_str(reward->short_description, buf) : mysql_str("", buf);
 
-	db_query(
+	sql_queue(
 		"INSERT INTO world_quest_accomplished (pid, timestamp, quest_giver, player_name, player_level, quest_target, reward_vnum, reward_desc) VALUES (%d, now(), %d, '%s', %d, %d, %d, '%s')",
 		GET_PID(ch), ch->only.pc->quest_giver, GET_NAME(ch), GET_LEVEL(ch),
 		ch->only.pc->quest_mob_vnum, reward_vnum, reward_desc);
+	const auto found = world_quest_histories.find(GET_PID(ch));
+	if (found != world_quest_histories.end())
+	{
+		found->second.targets.insert(ch->only.pc->quest_mob_vnum);
+		++found->second.today_by_level[GET_LEVEL(ch)];
+		++found->second.today_total;
+	}
+	else
+	{
+		// A read queued before this insert would miss it: queue one after it.
+		world_quest_histories_loading.erase(GET_PID(ch));
+		sql_world_quest_history_load(ch);
+	}
 
 	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 }
@@ -3115,20 +3050,17 @@ int sql_world_quest_can_do_another(P_char ch)
 	if (!IS_PC(ch))
 		return 0;
 
-	MYSQL_RES *db = 0;
-	if (GET_LEVEL(ch) < 50)
-		db = db_query(
-			"SELECT count(id) FROM world_quest_accomplished where pid = %d and player_level =%d and TO_DAYS( NOW() ) - TO_DAYS( timestamp ) <= 0",
-			GET_PID(ch), GET_LEVEL(ch));
-	else
-		db = db_query(
-			"SELECT count(id) FROM world_quest_accomplished where pid = %d and TO_DAYS( NOW() ) - TO_DAYS( timestamp ) <= 0",
-			GET_PID(ch));
-
-	if (!db)
+	const world_quest_history *history = world_quest_history_of(ch);
+	if (!history)
 	{
-		logit(LOG_DEBUG, "sql_world_quest_can_do_another: count query failed");
+		logit(LOG_DEBUG, "sql_world_quest_can_do_another: history not loaded yet");
 		return -1;
+	}
+	int done_today = history->today_total;
+	if (GET_LEVEL(ch) < 50)
+	{
+		const auto found = history->today_by_level.find(GET_LEVEL(ch));
+		done_today = found == history->today_by_level.end() ? 0 : found->second;
 	}
 
 	int returning_value = 0;
@@ -3143,19 +3075,8 @@ int sql_world_quest_can_do_another(P_char ch)
 	else
 		returning_value = get_property("world.quest.max.level.other", 6.000);
 
-	MYSQL_ROW row = mysql_fetch_row(db);
-	if (NULL == row || NULL == row[0])
-	{
-		mysql_free_result(db);
-		logit(LOG_DEBUG, "sql_world_quest_can_do_another: count row missing");
-		return -1;
-	}
 	returning_value = difficulty_scale_world_quest_allowance(returning_value);
-	returning_value -= atoi(row[0]);
-
-	while ((row = mysql_fetch_row(db)))
-		;
-	mysql_free_result(db);
+	returning_value -= done_today;
 	return MAX(returning_value, 0);
 }
 
@@ -3163,67 +3084,29 @@ int sql_world_quest_done_already(P_char ch, int quest_target)
 {
 	if (!ch || !IS_PC(ch) || !ch->only.pc || GET_PID(ch) <= 0 || quest_target <= 0)
 		return -1;
-	MYSQL_RES *db = db_query(
-		"SELECT count(id) FROM world_quest_accomplished where quest_target = %d and pid = %d",
-		quest_target, GET_PID(ch));
-	if (!db)
+	const world_quest_history *history = world_quest_history_of(ch);
+	if (!history)
 	{
-		logit(LOG_DEBUG, "sql_world_quest_done_already: count query failed");
+		logit(LOG_DEBUG, "sql_world_quest_done_already: history not loaded yet");
 		return -1;
 	}
-
-	MYSQL_ROW row = mysql_fetch_row(db);
-	if (NULL == row || NULL == row[0])
-	{
-		mysql_free_result(db);
-		logit(LOG_DEBUG, "sql_world_quest_done_already: count row missing");
-		return -1;
-	}
-	const int returning_value = atoi(row[0]);
-
-	while ((row = mysql_fetch_row(db)))
-		;
-	mysql_free_result(db);
-	return returning_value;
+	return history->targets.count(quest_target) ? 1 : 0;
 }
 
 const char *sql_select_IP_info(P_char ch, char *buf, size_t bufSize, time_t *lastConnect,
 			       time_t *lastDisconnect)
 {
-	time_t now = 0;
 	buf[0] = '\0';
-
-	MYSQL_RES *db = db_query(
-		"SELECT last_ip, UNIX_TIMESTAMP(last_connect), UNIX_TIMESTAMP(last_disconnect), UNIX_TIMESTAMP() "
-		"FROM ip_info WHERE pid = %d",
-		GET_PID(ch));
-	if (db)
-	{
-		MYSQL_ROW row = mysql_fetch_row(db);
-
-		if (NULL != row)
-		{
-			strlcpy(buf, row[0] ? row[0] : "", bufSize);
-			now = strtoul(row[3], NULL, 10);
-			if (lastConnect)
-			{
-				*lastConnect = strtoul(row[1], NULL, 10);
-				if (0 != *lastConnect)
-					*lastConnect = now - *lastConnect;
-			}
-			if (lastDisconnect)
-			{
-				*lastDisconnect = strtoul(row[2], NULL, 10);
-				if (0 != *lastDisconnect)
-					*lastDisconnect = now - *lastDisconnect;
-			}
-
-			// cycle out until a NULL return
-			while ((row = mysql_fetch_row(db)))
-				;
-		}
-		mysql_free_result(db);
-	}
+	const auto found = ip_activity_by_pid.find(GET_PID(ch));
+	if (found == ip_activity_by_pid.end())
+		return buf;
+	const time_t now = time(NULL);
+	strlcpy(buf, found->second.ip.c_str(), bufSize);
+	if (lastConnect)
+		*lastConnect = found->second.last_connect ? now - found->second.last_connect : 0;
+	if (lastDisconnect)
+		*lastDisconnect =
+			found->second.last_disconnect ? now - found->second.last_disconnect : 0;
 	return buf;
 }
 
@@ -3231,56 +3114,34 @@ const char *sql_select_IP_info(P_char ch, char *buf, size_t bufSize, time_t *las
 // Or 0 if no character has been on within an hour.
 int sql_find_racewar_for_ip(char *ip, int *racewar_side)
 {
-	MYSQL_RES *db;
-	MYSQL_ROW row;
-	time_t last_connect, last_disconnect, hour_ago;
+	const ip_activity *latest = NULL;
+	for (const auto &entry : ip_activity_by_pid)
+		if (entry.second.ip == ip &&
+		    (!latest || entry.second.last_connect > latest->last_connect))
+			latest = &entry.second;
+	if (!latest)
+		return RACEWAR_NONE;
 
-	db = db_query(
-		"SELECT UNIX_TIMESTAMP(last_connect), UNIX_TIMESTAMP(last_disconnect), UNIX_TIMESTAMP(), racewar_side"
-		" from ip_info WHERE last_ip = \"%s\" ORDER BY last_connect DESC LIMIT 1",
-		ip);
+	const time_t last_connect = latest->last_connect;
+	const time_t last_disconnect = latest->last_disconnect;
+	const time_t hour_ago = time(NULL) - 60 * 60;
+	*racewar_side = latest->racewar_side;
 
-	if (db && ((row = mysql_fetch_row(db)) != NULL))
+	// If they've been offline for an hour or more, return a 0 timer.
+	if (last_disconnect > last_connect && last_disconnect <= hour_ago)
 	{
-		// Arih: fix NULL pointer crash when last_disconnect is NULL in ip_info table - 20251103
-		// UNIX_TIMESTAMP() returns NULL for NULL datetime values, causing strtoul to segfault
-		last_connect = row[0] ? strtoul(row[0], NULL, 10) : 0;
-		last_disconnect = row[1] ? strtoul(row[1], NULL, 10) : 0;
-		hour_ago = row[2] ? strtoul(row[2], NULL, 10) - 60 * 60 : 0;
-		*racewar_side = row[3] ? atoi(row[3]) : 0;
-
-		// If they've been offline for an hour or more, return a 0 timer.
-		if (last_disconnect > last_connect && last_disconnect <= hour_ago)
-		{
-			racewar_side = RACEWAR_NONE;
-			while (row != NULL)
-				row = mysql_fetch_row(db);
-			return 0;
-		}
-
-		while (row != NULL)
-			row = mysql_fetch_row(db);
-
-		mysql_free_result(db);
-
-		// Return an hour if they're still online, or time delta to an hour offline.
-		return (last_disconnect < last_connect) ? 60 * 60 : last_disconnect - hour_ago;
+		*racewar_side = RACEWAR_NONE;
+		return 0;
 	}
 
-	if (db)
-		mysql_free_result(db);
-	return RACEWAR_NONE;
+	// Return an hour if they're still online, or time delta to an hour offline.
+	return (last_disconnect < last_connect) ? 60 * 60 : last_disconnect - hour_ago;
 }
 
 void perform_wiki_search(P_char ch, const char *query)
 {
-	char buf[MAX_STRING_LENGTH];
-	char buf2[MAX_STRING_LENGTH];
 	char escaped_query[MAX_STRING_LENGTH * 2 +
 			   1]; // SECURITY: Buffer for escaped query (MySQL needs 2x+1 size)
-	buf[0] = '\0';
-	buf2[0] = '\0';
-	MYSQL_ROW row;
 
 	// SECURITY FIX: Sanitize user input to prevent SQL injection
 	// Escape the query string using MySQL's built-in escape function
@@ -3292,27 +3153,28 @@ void perform_wiki_search(P_char ch, const char *query)
 	1)) and si_title like LOWER('%s') limit 1", query, query);
 	*/
 
-	MYSQL_RES *db = db_query(
-		"SELECT REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(old_text,'<pre>',''),'</pre>',''), ']]', ''),'[[' ,'' ), '::', ':'), '<br>', ''), '\'\'', '') , '==', '') "
-		"FROM `wikki_text`  WHERE old_id = (SELECT rev_text_id FROM `wikki_page`,`wikki_revision`  WHERE (page_id=rev_page) AND rev_id = (SELECT page_latest FROM `wikki_page`  WHERE page_id "
-		"= (SELECT page_id  FROM `wikki_page`  WHERE page_namespace = '0' AND LOWER(page_title) = REPLACE(LOWER('%s'), ' ', '_')  LIMIT 1)  LIMIT 1)  LIMIT 1)  LIMIT 1",
-		escaped_query);
-	if (db)
-	{
-		row = mysql_fetch_row(db);
-		if (NULL != row)
+	const std::string title = escaped_query;
+	sql_read_for(
+		ch,
+		sql_format(
+			"SELECT REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(old_text,'<pre>',''),'</pre>',''), ']]', ''),'[[' ,'' ), '::', ':'), '<br>', ''), '\'\'', '') , '==', '') "
+			"FROM `wikki_text`  WHERE old_id = (SELECT rev_text_id FROM `wikki_page`,`wikki_revision`  WHERE (page_id=rev_page) AND rev_id = (SELECT page_latest FROM `wikki_page`  WHERE page_id "
+			"= (SELECT page_id  FROM `wikki_page`  WHERE page_namespace = '0' AND LOWER(page_title) = REPLACE(LOWER('%s'), ' ', '_')  LIMIT 1)  LIMIT 1)  LIMIT 1)  LIMIT 1",
+			escaped_query),
+		[title](P_char live, const sql_rows &rows)
 		{
-			checked_snprintf(buf, MAX_STRING_LENGTH,
-					 "\t&+W========| &+m %s &+W |========&n\n%s", escaped_query,
-					 row[0]);
-		}
-		else
-			snprintf(buf, MAX_STRING_LENGTH,
-				 "&+WNothing matches, see &+mHelp wiki&+W how to add this help.&n");
-		while ((row = mysql_fetch_row(db)))
-			;
-		mysql_free_result(db);
-	}
+			char buf[MAX_STRING_LENGTH];
+			if (!rows.empty())
+				checked_snprintf(buf, MAX_STRING_LENGTH,
+						 "\t&+W========| &+m %s &+W |========&n\n%s",
+						 title.c_str(), rows[0][0] ? rows[0][0] : "");
+			else
+				snprintf(
+					buf, MAX_STRING_LENGTH,
+					"&+WNothing matches, see &+mHelp wiki&+W how to add this help.&n");
+			strlcat(buf, "\r\n", sizeof(buf));
+			send_to_char(buf, live);
+		});
 
 	/*
 	  MYSQL_RES *db2 = db_query("SELECT lower(si_title), MATCH (si_text) AGAINST REPLACE(LOWER('%s'), ' ', '_') as SCORE  FROM wikki_searchindex  order by SCORE desc limit 10", query);
@@ -3347,9 +3209,6 @@ void perform_wiki_search(P_char ch, const char *query)
 	   }
 	  }
 	  */
-	strcat(buf2, "\r\n");
-	strcat(buf, buf2);
-	send_to_char(buf, ch);
 }
 
 static bool sql_trace_enabled(void)
@@ -3615,8 +3474,8 @@ void send_to_pid_offline(const char *msg, int pid)
 {
 	char buff[MAX_STRING_LENGTH];
 	mysql_real_escape_string(DB, buff, msg, strlen(msg));
-	qry("INSERT INTO offline_messages (date, pid, message) VALUES (now(), '%d', '%s')", pid,
-	    buff);
+	sql_queue("INSERT INTO offline_messages (date, pid, message) VALUES (now(), '%d', '%s')",
+		  pid, buff);
 }
 
 static bool sql_escape_offline_message(const char *message, std::string *escaped)
@@ -3656,38 +3515,19 @@ bool send_to_pid_offline_deduplicated(const char *msg, int pid, const unsigned c
 	// The receipt is the durable outbox. The physical queue row is rebuilt from
 	// a pending receipt, so a crash between enqueue/dequeue and restart cannot
 	// lose a notification. The primary key, not an advisory lock or message
-	// text, owns identity and concurrent retries.
-	std::string query = "START TRANSACTION;"
-			    "INSERT INTO offline_message_receipts "
-			    "(pid,message_id,message,status) VALUES (";
-	query += std::to_string(pid);
-	query += ",UNHEX('";
-	query += message_id_hex;
-	query += "'),'";
-	query += escaped_message;
-	query += "',0) ON DUPLICATE KEY UPDATE message=message;"
-		 "INSERT IGNORE INTO offline_messages (date,pid,message,message_id) "
-		 "SELECT UTC_TIMESTAMP(6),pid,message,message_id "
-		 "FROM offline_message_receipts WHERE pid=";
-	query += std::to_string(pid);
-	query += " AND message_id=UNHEX('";
-	query += message_id_hex;
-	query += "') AND status IN (0,1);"
-		 "COMMIT;";
-
-	if (sql_run_multi_query(query.c_str()))
-		return true;
-	(void)sql_run_multi_query("ROLLBACK;");
-	return false;
+	// text, owns identity and concurrent retries. Both rows are one sql job, so
+	// they commit together.
+	return sql_queue_statements(
+		{ sql_format("INSERT INTO offline_message_receipts "
+			     "(pid,message_id,message,status) VALUES (%d,UNHEX('%s'),'%s',0) "
+			     "ON DUPLICATE KEY UPDATE message=message",
+			     pid, message_id_hex, escaped_message.c_str()),
+		  sql_format("INSERT IGNORE INTO offline_messages (date,pid,message,message_id) "
+			     "SELECT UTC_TIMESTAMP(6),pid,message,message_id "
+			     "FROM offline_message_receipts WHERE pid=%d "
+			     "AND message_id=UNHEX('%s') AND status IN (0,1)",
+			     pid, message_id_hex) });
 }
-
-struct sql_offline_delivery
-{
-	bool durable = false;
-	int queue_id = 0;
-	std::string message_id;
-	std::string message;
-};
 
 void send_offline_messages(P_char ch)
 {
@@ -3695,83 +3535,143 @@ void send_offline_messages(P_char ch)
 		return;
 	const int pid = GET_PID(ch);
 
-	// A claimed receipt is retried only after its short lease expires. This
-	// makes a process restart recover an in-flight delivery without a 5-second
-	// advisory lock held by the game loop.
-	if (!qry("UPDATE offline_message_receipts SET status=0 "
-		 "WHERE pid='%d' AND status=1 AND (last_attempt_at IS NULL OR "
-		 "last_attempt_at < UTC_TIMESTAMP(6) - INTERVAL 30 SECOND)",
-		 pid))
-	{
-		return;
-	}
-	if (!qry("SELECT 'R' AS delivery_kind, 0 AS queue_id, LOWER(HEX(r.message_id)) AS message_id, "
-		 "r.message, r.created_at AS created_at FROM offline_message_receipts r "
-		 "WHERE r.pid='%d' AND r.status=0 "
-		 "UNION ALL "
-		 "SELECT 'L', m.id, '', m.message, m.date FROM offline_messages m "
-		 "WHERE m.pid='%d' AND m.message_id IS NULL "
-		 "ORDER BY created_at ASC, delivery_kind ASC, queue_id ASC",
-		 pid, pid))
-	{
-		return;
-	}
-
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (!res)
-		return;
-	std::vector<sql_offline_delivery> deliveries;
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(res)))
-	{
-		sql_offline_delivery delivery;
-		delivery.durable = row[0] && row[0][0] == 'R';
-		delivery.queue_id = row[1] ? atoi(row[1]) : 0;
-		if (row[2])
-			delivery.message_id = row[2];
-		if (row[3])
-			delivery.message = row[3];
-		deliveries.push_back(std::move(delivery));
-	}
-	mysql_free_result(res);
-
-	for (const sql_offline_delivery &delivery : deliveries)
-	{
-		if (delivery.durable)
+	// The writer finds the waiting messages and claims each durable receipt before
+	// the game shows it, so a restart retries a delivery that did not finish. A
+	// claimed receipt is retried only after its short lease expires.
+	sql_read_work_for(
+		ch,
+		[pid](MYSQL *connection, sql_rows *rows) -> unsigned int
 		{
-			if (delivery.message_id.empty() ||
-			    !qry("UPDATE offline_message_receipts SET status=1, "
-				 "attempt_count=attempt_count+1,last_attempt_at=UTC_TIMESTAMP(6) "
-				 "WHERE pid='%d' AND message_id=UNHEX('%s') AND status=0",
-				 pid, delivery.message_id.c_str()) ||
-			    mysql_affected_rows(DB) != 1)
-				continue;
-
-			send_to_char(delivery.message.c_str(), ch);
-			if (!qry("UPDATE offline_message_receipts SET status=2, "
-				 "delivered_at=UTC_TIMESTAMP(6) WHERE pid='%d' "
-				 "AND message_id=UNHEX('%s') AND status=1",
-				 pid, delivery.message_id.c_str()) ||
-			    mysql_affected_rows(DB) != 1)
+			if (const unsigned int error_code = sql_execute(
+				    connection,
+				    sql_format(
+					    "UPDATE offline_message_receipts SET status=0 "
+					    "WHERE pid='%d' AND status=1 AND (last_attempt_at IS NULL OR "
+					    "last_attempt_at < UTC_TIMESTAMP(6) - INTERVAL 30 SECOND)",
+					    pid)))
+				return error_code;
+			sql_rows waiting;
+			if (const unsigned int error_code = sql_select(
+				    connection,
+				    sql_format(
+					    "SELECT 'R' AS delivery_kind, 0 AS queue_id, LOWER(HEX(r.message_id)) AS message_id, "
+					    "r.message, r.created_at AS created_at FROM offline_message_receipts r "
+					    "WHERE r.pid='%d' AND r.status=0 "
+					    "UNION ALL "
+					    "SELECT 'L', m.id, '', m.message, m.date FROM offline_messages m "
+					    "WHERE m.pid='%d' AND m.message_id IS NULL "
+					    "ORDER BY created_at ASC, delivery_kind ASC, queue_id ASC",
+					    pid, pid),
+				    &waiting))
+				return error_code;
+			for (sql_row &row : waiting)
 			{
+				const bool durable = row[0] && row[0][0] == 'R';
+				if (durable)
+				{
+					if (!row[2] || !*row[2])
+						continue;
+					if (const unsigned int error_code = sql_execute(
+						    connection,
+						    sql_format(
+							    "UPDATE offline_message_receipts SET status=1, "
+							    "attempt_count=attempt_count+1,"
+							    "last_attempt_at=UTC_TIMESTAMP(6) "
+							    "WHERE pid='%d' AND message_id=UNHEX('%s') "
+							    "AND status=0",
+							    pid, row[2])))
+						return error_code;
+					if (mysql_affected_rows(connection) != 1)
+						continue;
+				}
+				rows->push_back(std::move(row));
+			}
+			return 0;
+		},
+		[pid](P_char live, const sql_rows &rows)
+		{
+			std::vector<std::string> acknowledgements;
+			for (const sql_row &delivery : rows)
+			{
+				send_to_char(delivery[3] ? delivery[3] : "", live);
+				if (delivery[0] && delivery[0][0] == 'R')
+				{
+					// The receipt remains as the durable acknowledgement; delivered
+					// receipts are excluded from the next delivery scan.
+					acknowledgements.push_back(sql_format(
+						"UPDATE offline_message_receipts SET status=2, "
+						"delivered_at=UTC_TIMESTAMP(6) WHERE pid='%d' "
+						"AND message_id=UNHEX('%s') AND status=1",
+						pid, delivery[2]));
+					acknowledgements.push_back(sql_format(
+						"DELETE FROM offline_messages WHERE pid='%d' "
+						"AND message_id=UNHEX('%s')",
+						pid, delivery[2]));
+				}
+				else
+					acknowledgements.push_back(sql_format(
+						"DELETE FROM offline_messages WHERE id='%d'",
+						delivery[1] ? atoi(delivery[1]) : 0));
+			}
+			if (!acknowledgements.empty() &&
+			    !sql_queue_statements(std::move(acknowledgements)))
 				persistence_alert(AVATAR, "offline_message", "player", "unknown",
 						  "acknowledge", "database_write_failed", "pid=%d",
 						  pid);
-				break;
-			}
-			// The receipt remains as the durable acknowledgement. Failure to
-			// remove this physical row is harmless because delivered receipts
-			// are excluded from the next delivery scan.
-			(void)qry("DELETE FROM offline_messages WHERE pid='%d' "
-				  "AND message_id=UNHEX('%s')",
-				  pid, delivery.message_id.c_str());
-			continue;
-		}
+		});
+}
 
-		send_to_char(delivery.message.c_str(), ch);
-		if (!qry("DELETE FROM offline_messages WHERE id='%d'", delivery.queue_id))
-			break;
+// Recent events per key (shop sales per item, quest rewards per giver), each kept as
+// the local day it happened on. They are read at boot and added to as they happen, so
+// prices and rewards never wait for the database.
+struct recent_counts
+{
+	int window_days;
+	std::unordered_map<int, std::vector<long>> days;
+
+	void add(int key, long day)
+	{
+		std::vector<long> &events = days[key];
+		const long since = local_day_number() - window_days;
+		events.erase(std::remove_if(events.begin(), events.end(),
+					    [since](long event) { return event < since; }),
+			     events.end());
+		events.push_back(day);
 	}
+
+	int count(int key) const
+	{
+		const auto found = days.find(key);
+		if (found == days.end())
+			return 0;
+		const long since = local_day_number() - window_days;
+		return (int)std::count_if(found->second.begin(), found->second.end(),
+					  [since](long event) { return event >= since; });
+	}
+
+	// Boot only: rows of (key, days before today).
+	void load(const char *query)
+	{
+		MYSQL_RES *db = db_query("%s", query);
+		if (!db)
+			return;
+		const long today = local_day_number();
+		while (MYSQL_ROW row = mysql_fetch_row(db))
+			if (row[0] && row[1])
+				days[atoi(row[0])].push_back(today - atol(row[1]));
+		mysql_free_result(db);
+	}
+};
+static recent_counts recent_shop_sales = { 7, {} };
+static recent_counts recent_quest_rewards = { 14, {} };
+
+static void sql_load_recent_counts(void)
+{
+	recent_shop_sales.load("SELECT item, TO_DAYS(NOW()) - TO_DAYS(timestamp) FROM shop_trophy "
+			       "WHERE TO_DAYS(NOW()) - TO_DAYS(timestamp) <= 7");
+	recent_quest_rewards.load(
+		"SELECT mob_vnum, TO_DAYS(NOW()) - TO_DAYS(timestamp) FROM quest_trophy "
+		"WHERE TO_DAYS(NOW()) - TO_DAYS(timestamp) <= 14");
 }
 
 int sql_shop_sell(P_char ch, P_obj obj, int value)
@@ -3784,8 +3684,10 @@ int sql_shop_sell(P_char ch, P_obj obj, int value)
 
 	int pid = (IS_PC(ch) ? GET_PID(ch) : 0);
 
-	qry("INSERT INTO shop_trophy (item, value, seller, timestamp) VALUES ('%d', '%d', %d, now())",
-	    m_virtual, value, pid);
+	sql_queue(
+		"INSERT INTO shop_trophy (item, value, seller, timestamp) VALUES ('%d', '%d', %d, now())",
+		m_virtual, value, pid);
+	recent_shop_sales.add(m_virtual, local_day_number());
 
 	return 1;
 }
@@ -3806,26 +3708,7 @@ int sql_shop_trophy(P_obj obj)
 		return 0;
 
 	int m_virtual = (obj->R_num >= 0) ? obj_index[obj->R_num].virtual_number : 0;
-
-	MYSQL_RES *db = db_query(
-		"SELECT count(id) FROM shop_trophy where item = %d and  TO_DAYS( NOW() ) - TO_DAYS( timestamp ) <= 7",
-		m_virtual);
-
-	int returning_value = 0;
-	if (db)
-	{
-		MYSQL_ROW row = mysql_fetch_row(db);
-		if (NULL != row)
-		{
-			returning_value = atoi(row[0]);
-		}
-		else
-			returning_value = 0;
-		while ((row = mysql_fetch_row(db)))
-			;
-		mysql_free_result(db);
-	}
-	return returning_value;
+	return recent_shop_sales.count(m_virtual);
 }
 
 ///
@@ -3834,33 +3717,16 @@ int sql_quest_finish(P_char ch, P_char giver, int type, int value)
 {
 	int m_virtual = GET_VNUM(giver);
 	// GET_PID(ch), ch->only.pc->quest_giver, GET_NAME(ch), GET_LEVEL(ch), ch->only.pc->quest_mob_vnum, m_virtual ,reward->short_description );
-	qry("INSERT INTO quest_trophy (mob_vnum, pid, type, reward_value, timestamp) VALUES ('%d', '%d', %d, %d ,now())",
-	    m_virtual, GET_PID(ch), type, value);
+	sql_queue(
+		"INSERT INTO quest_trophy (mob_vnum, pid, type, reward_value, timestamp) VALUES ('%d', '%d', %d, %d ,now())",
+		m_virtual, GET_PID(ch), type, value);
+	recent_quest_rewards.add(m_virtual, local_day_number());
 	return 1;
 }
 
 int sql_quest_trophy(P_char giver)
 {
-	int m_virtual = GET_VNUM(giver);
-
-	MYSQL_RES *db = db_query(
-		"SELECT count(id) FROM quest_trophy where mob_vnum = %d and  TO_DAYS( NOW() ) - TO_DAYS( timestamp ) <= 14",
-		m_virtual);
-	int returning_value = 0;
-	if (db)
-	{
-		MYSQL_ROW row = mysql_fetch_row(db);
-		if (NULL != row)
-		{
-			returning_value = atoi(row[0]);
-		}
-		else
-			returning_value = 0;
-		while ((row = mysql_fetch_row(db)))
-			;
-		mysql_free_result(db);
-	}
-	return returning_value;
+	return recent_quest_rewards.count(GET_VNUM(giver));
 }
 
 void log_epic_gain(int pid, int type, int type_id, int epics)
@@ -3895,15 +3761,7 @@ void do_sql(P_char ch, char *argument, int cmd)
 	char third[MAX_INPUT_LENGTH];
 	char *rest;
 	char buf[MAX_STRING_LENGTH];
-	int limited_result = 0;
 	int prep_statement;
-	int num_fields, i;
-
-	char result[MAX_STRING_LENGTH * 10];
-	char tmp[MAX_STRING_LENGTH];
-
-	MYSQL_RES *db = 0;
-	MYSQL_ROW row;
 
 	if (!IS_TRUSTED(ch))
 	{
@@ -3970,36 +3828,24 @@ void do_sql(P_char ch, char *argument, int cmd)
 			}
 			if (strstr(third, "run"))
 			{
-				db = db_query(
-					"SELECT sql_code FROM prepstatement_duris_sql WHERE id=%d",
-					prep_statement);
-				if (db)
-				{
-					MYSQL_ROW prepared_row = mysql_fetch_row(db);
-
-					if (prepared_row != NULL)
+				sql_read_for(
+					ch,
+					sql_format(
+						"SELECT sql_code FROM prepstatement_duris_sql WHERE id=%d",
+						prep_statement),
+					[](P_char live, const sql_rows &rows)
 					{
-						snprintf(tmp, MAX_STRING_LENGTH, "%s",
-							 prepared_row[0]);
-					}
-					else
-					{
-						send_to_char(
-							"That prepped statement does not exist.\n\r",
-							ch);
-						tmp[0] = '\0';
-					}
-					while ((prepared_row = mysql_fetch_row(db)))
-						;
-					mysql_free_result(db);
-
-					do_sql(ch, tmp, 0);
-					return;
-				}
-				else
-				{
-					send_to_char("Error no db created.\n\r", ch);
-				}
+						if (rows.empty() || !rows[0][0])
+						{
+							send_to_char(
+								"That prepped statement does not exist.\n\r",
+								live);
+							return;
+						}
+						char code[MAX_STRING_LENGTH];
+						strlcpy(code, rows[0][0], sizeof(code));
+						do_sql(live, code, 0);
+					});
 				return;
 			}
 			if (strstr(third, "desc"))
@@ -4019,8 +3865,9 @@ void do_sql(P_char ch, char *argument, int cmd)
 				// SECURITY FIX: Escape user input to prevent SQL injection
 				char escaped_sql[MAX_STRING_LENGTH * 2 + 1];
 				mysql_real_escape_string(DB, escaped_sql, rest, strlen(rest));
-				if (qry("UPDATE prepstatement_duris_sql SET sql_code = '%s' WHERE id='%d'",
-					escaped_sql, prep_statement))
+				if (sql_queue(
+					    "UPDATE prepstatement_duris_sql SET sql_code = '%s' WHERE id='%d'",
+					    escaped_sql, prep_statement))
 				{
 					snprintf(buf, MAX_STRING_LENGTH,
 						 "Row %d sql_code set to '%s'.\n\r", prep_statement,
@@ -4031,8 +3878,8 @@ void do_sql(P_char ch, char *argument, int cmd)
 			}
 			if (strstr(third, "delete"))
 			{
-				if (qry("DELETE FROM prepstatement_duris_sql WHERE id=%d",
-					prep_statement))
+				if (sql_queue("DELETE FROM prepstatement_duris_sql WHERE id=%d",
+					      prep_statement))
 				{
 					snprintf(buf, MAX_STRING_LENGTH, "Row %d deleted.\n\r",
 						 prep_statement);
@@ -4043,59 +3890,60 @@ void do_sql(P_char ch, char *argument, int cmd)
 		}
 	}
 
-	MYSQL_FIELD *fields;
-	result[0] = '\0';
-
-	sql_clear_results_on(DB);
-	if (!sql_trace_exec("do_sql", argument, strlen(argument), false, false))
-	{
-		snprintf(result, MAX_STRING_LENGTH, "Database operation failed.\r\n");
-		logit(LOG_DEBUG, "Database admin command failed");
-		send_to_char(result, ch);
-		return;
-	}
-	db = mysql_use_result(DB);
-	if (db)
-	{
-		num_fields = mysql_num_fields(db);
-
-		fields = mysql_fetch_fields(db);
-		for (i = 0; i < num_fields; i++)
+	// The query runs on the writer. Its first 100 rows come back, the column names
+	// first, with a 101st when there were more.
+	const std::string text = argument;
+	sql_read_work_for(
+		ch,
+		[text](MYSQL *connection, sql_rows *rows) -> unsigned int
 		{
-			snprintf(tmp, MAX_STRING_LENGTH, " | %-15s&n ", fields[i].name);
-			strcat(result, tmp);
-		}
-		strcat(result, " |\n\n");
-
-		int maxsize = 100;
-		while ((row = mysql_fetch_row(db)))
-		{
-			maxsize--;
-			if (maxsize == 0)
+			if (mysql_real_query(connection, text.data(), text.size()))
+				return mysql_errno(connection);
+			MYSQL_RES *db = mysql_use_result(connection);
+			if (!db)
+				return mysql_errno(connection);
+			const unsigned int width = mysql_num_fields(db);
+			const MYSQL_FIELD *fields = mysql_fetch_fields(db);
+			sql_row names;
+			for (unsigned int i = 0; i < width; i++)
+				names.fields.emplace_back(fields[i].name);
+			rows->push_back(std::move(names));
+			while (MYSQL_ROW row = mysql_fetch_row(db))
 			{
-				while ((row = mysql_fetch_row(db)))
-					;
-				limited_result = 1;
-				break;
+				if (rows->size() > 101)
+					continue;
+				sql_row copied;
+				for (unsigned int i = 0; i < width; i++)
+					if (row[i])
+						copied.fields.emplace_back(row[i]);
+					else
+						copied.fields.emplace_back();
+				rows->push_back(std::move(copied));
 			}
-
-			for (i = 0; i < num_fields; i++)
-			{
-				snprintf(tmp, MAX_STRING_LENGTH, " | %-15s&n ", row[i]);
-				strcat(result, tmp);
-			}
-			strcat(result, " |\n\n");
-		}
-		send_to_char(result, ch);
-		if (limited_result)
+			const unsigned int error_code = mysql_errno(connection);
+			mysql_free_result(db);
+			return error_code;
+		},
+		[](P_char live, const sql_rows &rows)
 		{
-			send_to_char(
-				"Result to big, pls use limit. 'select * from blah &+Ylimit 10&n' will show 10 results.\n",
-				ch);
-		}
-		mysql_free_result(db);
-		return;
-	}
+			std::string result;
+			char tmp[MAX_STRING_LENGTH];
+			for (size_t index = 0; index < rows.size() && index <= 100; ++index)
+			{
+				for (size_t i = 0; i < rows[index].fields.size(); i++)
+				{
+					snprintf(tmp, MAX_STRING_LENGTH, " | %-15s&n ",
+						 rows[index][i] ? rows[index][i] : "(null)");
+					result += tmp;
+				}
+				result += " |\n\n";
+			}
+			send_to_char(result.c_str(), live);
+			if (rows.size() > 101)
+				send_to_char(
+					"Result to big, pls use limit. 'select * from blah &+Ylimit 10&n' will show 10 results.\n",
+					live);
+		});
 }
 
 void update_zone_db()
@@ -4170,35 +4018,29 @@ void show_frag_trophy(P_char ch, P_char who)
 	if (!IS_PC(who))
 		return;
 
-	if (!qry("select player_data.name, count(*) as cnt from epic_gain, player_data where epic_gain.type_id = player_data.pid and epic_gain.pid = %d and type = 1 group by type_id order by name asc",
-		 who->only.pc->pid))
-	{
-		logit(LOG_DEBUG, "show_frag_trophy(): query failed.");
-		return;
-	}
+	sql_read_for(
+		ch,
+		sql_format(
+			"select player_data.name, count(*) as cnt from epic_gain, player_data where epic_gain.type_id = player_data.pid and epic_gain.pid = %d and type = 1 group by type_id order by name asc",
+			who->only.pc->pid),
+		[](P_char live, const sql_rows &rows)
+		{
+			if (rows.empty())
+			{
+				send_to_char("&+WYou haven't fragged anyone!\r\n", live);
+				return;
+			}
 
-	MYSQL_RES *res = mysql_store_result(DB);
+			send_to_char("&+gFrag Trophy:\r\n", live);
 
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		send_to_char("&+WYou haven't fragged anyone!\r\n", ch);
-		return;
-	}
-
-	send_to_char("&+gFrag Trophy:\r\n", ch);
-
-	char buff[MAX_STRING_LENGTH];
-
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(res)))
-	{
-		snprintf(buff, MAX_STRING_LENGTH, " &+g(&+G%2d&+g) &+W%s\r\n", atoi(row[1]),
-			 row[0]);
-		send_to_char(buff, ch);
-	}
-
-	mysql_free_result(res);
+			char buff[MAX_STRING_LENGTH];
+			for (const sql_row &row : rows)
+			{
+				snprintf(buff, MAX_STRING_LENGTH, " &+g(&+G%2d&+g) &+W%s\r\n",
+					 row[1] ? atoi(row[1]) : 0, row[0] ? row[0] : "");
+				send_to_char(buff, live);
+			}
+		});
 }
 
 // At most `bytes` bytes of `value`, cut at a UTF-8 character boundary.
@@ -4316,37 +4158,68 @@ bool get_zone_info(int zone_number, struct zone_info *info)
 	return TRUE;
 }
 
+// mud_info, read at boot, every minute (so a creation lock set in the database takes hold
+// without waiting) and when staff reload it. Nothing waits to read it.
+static std::unordered_map<std::string, std::string> mud_info;
+
+static void mud_info_publish(const sql_rows &rows)
+{
+	mud_info.clear();
+	for (const sql_row &row : rows)
+		if (row[0])
+			mud_info[row[0]] = row[1] ? row[1] : "";
+}
+
+// Boot only: the game loop is not running yet.
+static void sql_load_mud_info(void)
+{
+	MYSQL_RES *res = db_query("SELECT name, content FROM mud_info");
+	if (!res)
+		return;
+	sql_rows rows;
+	while (MYSQL_ROW row = mysql_fetch_row(res))
+	{
+		sql_row copied;
+		copied.fields.emplace_back(row[0] ? std::optional<std::string>(row[0]) :
+						    std::nullopt);
+		copied.fields.emplace_back(row[1] ? std::optional<std::string>(row[1]) :
+						    std::nullopt);
+		rows.push_back(std::move(copied));
+	}
+	mysql_free_result(res);
+	mud_info_publish(rows);
+}
+
+void sql_mud_info_refresh(void)
+{
+	sql_read("SELECT name, content FROM mud_info",
+		 [](bool ok, const sql_rows &rows)
+		 {
+			 if (ok)
+				 mud_info_publish(rows);
+		 });
+}
+
+void sql_mud_info_reload(P_char ch, std::function<void(P_char)> done)
+{
+	sql_read_for(ch, "SELECT name, content FROM mud_info",
+		     [done = std::move(done)](P_char live, const sql_rows &rows)
+		     {
+			     mud_info_publish(rows);
+			     done(live);
+		     });
+}
+
 string get_mud_info(const char *name)
 {
-	if (!qry("SELECT content FROM mud_info WHERE name = '%s'", name))
-	{
-		logit(LOG_DEBUG, "get_mud_info(): failed to read mud_info '%s' from database",
-		      name);
-		return string();
-	}
-
-	MYSQL_RES *res = mysql_store_result(DB);
-
-	if (!res)
-	{
-		logit(LOG_DEBUG, "get_mud_info(): mysql_store_result failed for '%s'", name);
-		return string();
-	}
-
-	if (mysql_num_rows(res) > 0)
-	{
-		MYSQL_ROW row = mysql_fetch_row(res);
-		string ret_str(row[0]);
-		mysql_free_result(res);
-		return ret_str;
-	}
-	else
+	const auto found = mud_info.find(name ? name : "");
+	if (found == mud_info.end())
 	{
 		logit(LOG_DEBUG, "get_mud_info(): requested mud_info '%s', but doesn't exist!",
 		      name);
-		mysql_free_result(res);
 		return string();
 	}
+	return found->second;
 }
 
 void send_mud_info(const char *name, P_char ch)
@@ -4466,7 +4339,7 @@ void sql_update_bind_data(int vnum, int *owner_pid, int *timer)
 bool sql_clear_zone_trophy()
 {
 	// Update the table zones, set the alignment to 0, where there's an epic stone.
-	if (!qry("UPDATE zones SET alignment=0 WHERE epic_type > 0"))
+	if (!sql_queue("UPDATE zones SET alignment=0 WHERE epic_type > 0"))
 	{
 		debug("sql_clear_zone_trophy(): Failed sql UPDATE.. :(");
 		return FALSE;

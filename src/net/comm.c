@@ -216,6 +216,7 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 		if (result.job_id == maintenance_job_id::level_cap &&
 		    result.outcome == maintenance_outcome::complete && result.rows > 0)
 		{
+			sql_level_cap_reload();
 			redis_invalidate_fraglist();
 			if (result.value_count == 3 && result.values[0] > 0 &&
 			    result.values[0] <= INT32_MAX)
@@ -2148,6 +2149,8 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 				     loop_tick);
 	}
 	sql_async_pulse();
+	if (!(pulse % (WAIT_SEC * 60)))
+		sql_mud_info_refresh();
 	maintenance_result maintenance_results[MAINTENANCE_COMPLETION_MAX] = {};
 	const size_t maintenance_count = maintenance_scheduler_pulse(
 		ne_event_tick, maintenance_results, MAINTENANCE_COMPLETION_MAX);

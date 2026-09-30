@@ -116,10 +116,9 @@ def test_mariadb_world_quest_reads_fail_closed() -> None:
     db_done = SQL[db_done_start:SQL.index("const char *sql_select_IP_info", db_done_start)]
     quota_start = SQL.rfind("int sql_world_quest_can_do_another(")
     quota = SQL[quota_start:db_done_start]
-    assert "if (!db)" in db_done and "return -1;" in db_done
-    assert "NULL == row || NULL == row[0]" in db_done
-    assert "if (!db)" in quota and "return -1;" in quota
-    assert "NULL == row || NULL == row[0]" in quota
+    # Until the character's history is read, both checks fail closed.
+    assert "if (!history)" in db_done and "return -1;" in db_done
+    assert "if (!history)" in quota and "return -1;" in quota
 
 
 def test_temporary_mobile_load_failures_are_cleaned() -> None:

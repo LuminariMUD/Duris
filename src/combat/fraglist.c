@@ -21,7 +21,6 @@ extern P_room world;
 extern const racewar_struct racewar_color[MAX_RACEWAR + 2];
 
 extern void get_level_cap_info(long *max_frags, int *racewar, int *level, time_t *next_update);
-extern void get_level_cap(int *max_level, int *racewar);
 extern int sql_level_cap(int racewar_side);
 
 /*

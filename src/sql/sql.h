@@ -5,6 +5,7 @@
 #include "item/item_ownership_runtime.h"
 #include "persistence/persistence_observability.h"
 #include "world/world_recovery_pipeline.h"
+#include <functional>
 #include <stdlib.h>
 
 /* Database connection fields are explicit. Runtime validation rejects missing values. */
@@ -65,9 +66,6 @@ int sql_save_player_core(P_char ch);
 bool sql_load_player_items(P_char ch);
 int sql_level_cap(int racewar_side);
 // void sql_save_progress( int pid, int delta, const char *type );
-void sql_modify_frags(P_char ch, int gain);
-void sql_check_level_cap_periodic(void);
-void sql_save_pkill(P_char ch, P_char victim);
 void sql_webinfo_toggle(P_char ch);
 void sql_update_level(P_char ch);
 void sql_update_money(P_char ch);
@@ -93,6 +91,8 @@ bool sql_persistence_write_large_event_line(const char *line);
 bool sql_trace_exec_at(struct persistence_query_site source_site, const char *label,
 		       const char *sql, size_t len, bool drain_before, bool drain_after);
 void sql_trace_panic(void);
+// Reads the level_cap row again, after the maintenance job changed it.
+void sql_level_cap_reload(void);
 // The game loop marks when it runs. A query on the game thread's connection while it
 // does makes the loop wait for the database: each one is counted, and each site is
 // logged once, so none is added unnoticed.
@@ -127,6 +127,8 @@ bool sql_persistence_reconcile_world_recovery_items(const world_recovery_authori
 						    size_t authoritative_capacity);
 bool sql_hydrate_item_owner_revisions(void);
 void sql_world_quest_finished(P_char ch, P_obj obj);
+// Reads a character's world quest history, which the quest checks then use.
+void sql_world_quest_history_load(P_char ch);
 int sql_world_quest_done_already(P_char ch, int number);
 int sql_world_quest_can_do_another(P_char ch);
 void sql_zone_touch_finished(const char *event_key, int boot_time, int touched_at, int zone_number,
@@ -162,10 +164,15 @@ void show_frag_trophy(P_char ch, P_char who);
 // Frag leaderboard hybrid system - for web statistics
 void sql_update_frag_leaderboard(P_char ch);
 void sql_update_account_character(P_char ch);
-double sql_get_total_donated(const char *account_name);
+// Tells ch the account's total donations, if it has any.
+void show_total_donated(P_char ch, const char *account_name);
 bool sql_soft_delete_character(long pid);
 
 string get_mud_info(const char *name);
+// Reads mud_info again, then calls done while ch is still in the game.
+void sql_mud_info_reload(P_char ch, std::function<void(P_char)> done);
+// Reads mud_info again in the background.
+void sql_mud_info_refresh(void);
 void send_mud_info(const char *name, P_char ch);
 
 string escape_str(const char *str);

@@ -35,6 +35,13 @@ bool sql_read_at(struct persistence_query_site site, std::string query,
 // the character and does not call done.
 bool sql_read_for_at(struct persistence_query_site site, P_char ch, std::string query,
 		     std::function<void(P_char ch, const sql_rows &rows)> done);
+// A read that takes more than one query, or claims what it reads: work fills *rows on
+// the writer, in one transaction.
+using sql_read_work_fn = std::function<unsigned int(MYSQL *connection, sql_rows *rows)>;
+bool sql_read_work_at(struct persistence_query_site site, sql_read_work_fn work,
+		      std::function<void(bool ok, const sql_rows &rows)> done);
+bool sql_read_work_for_at(struct persistence_query_site site, P_char ch, sql_read_work_fn work,
+			  std::function<void(P_char ch, const sql_rows &rows)> done);
 // Runs the callbacks of the reads the writer finished. Returns how many ran.
 size_t sql_async_pulse(void);
 
@@ -43,5 +50,7 @@ size_t sql_async_pulse(void);
 #define sql_queue_work(...) sql_queue_work_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)
 #define sql_read(...) sql_read_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)
 #define sql_read_for(...) sql_read_for_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)
+#define sql_read_work(...) sql_read_work_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)
+#define sql_read_work_for(...) sql_read_work_for_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)
 
 #endif

@@ -5761,13 +5761,7 @@ void do_score(P_char ch, char * /*argument*/, int /*cmd*/)
 			const char *acct = get_account_name_safe(ch);
 			if (acct && *acct)
 			{
-				double total = sql_get_total_donated(acct);
-				if (total > 0)
-				{
-					snprintf(buf, MAX_STRING_LENGTH,
-						 "&+YTotal Donations:&n &+W$%.2f&n\n", total);
-					send_to_char(buf, ch);
-				}
+				show_total_donated(ch, acct);
 			}
 		}
 

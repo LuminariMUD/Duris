@@ -26,7 +26,7 @@ def main() -> None:
         "message_id",
         "ON DUPLICATE KEY UPDATE",
         "INSERT IGNORE INTO offline_messages",
-        "sql_run_multi_query",
+        "sql_queue_statements",
     ):
         if required not in enqueue:
             raise AssertionError(f"identity-stable enqueue contract missing: {required}")
