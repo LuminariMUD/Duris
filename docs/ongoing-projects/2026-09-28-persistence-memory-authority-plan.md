@@ -1108,26 +1108,16 @@ Verification for this round, on the final head:
 
 ### Review and branches
 
-- Phase 1 is in review as [!2](https://gitlab.com/max757/duris/-/merge_requests/2) (source
-  `fix/7-persistence-phase-1`, part of #7). Keep that branch fixed to Phase 1: review fixes are
-  committed there (`git switch fix/7-persistence-phase-1` in this worktree), pushed, and then
-  brought into the phase 2 branch (`git merge --ff-only` while it has no commits of its own,
-  otherwise a merge).
-- Each review round is tagged on the phase 1 branch: `persistence/phase-1-review-0` is the head
-  the first review read (`2881c9f20`), `persistence/phase-1-review-1` the head with its fixes and
-  `persistence/phase-1-review-2` the head with the second round's. A later round adds `-review-3`
-  and so on, so `git diff persistence/phase-1-review-<n-1> persistence/phase-1-review-<n>` shows
-  what one round changed.
-- Phases 2 and 3 continue in this worktree on `fix/7-persistence-phase-2`, branched from the
-  Phase 1 head. Phase 2 is in review as [!3](https://gitlab.com/max757/duris/-/merge_requests/3),
-  which targets `fix/7-persistence-phase-1` so its diff is Phase 2 alone. Each Phase 1 review
-  round is merged in (`git merge --no-ff`). After !2 merges (its source branch is removed on
-  merge), rebase the phase 2 branch onto `master` and retarget !3 to `master`.
-- Phase 2 review rounds are tagged the same way on the phase 2 branch:
-  `persistence/phase-2-review-0` is the head the first review reads.
-- The rest of Phase 2 step 8 continues on `fix/7-persistence-phase-2-step-8`, branched from the
-  phase 2 head and in review as its own MR, which targets `fix/7-persistence-phase-2` so its diff
-  is that work alone. Phase 2 review fixes are merged into it the same way.
+- Phase 1 was reviewed as [!2](https://gitlab.com/max757/duris/-/merge_requests/2) (source
+  `fix/7-persistence-phase-1`), Phase 2 as [!3](https://gitlab.com/max757/duris/-/merge_requests/3)
+  (source `fix/7-persistence-phase-2`, stacked on !2 so its diff was Phase 2 alone). Each review
+  round is tagged on the head it read and the head with its fixes: `persistence/phase-1-review-0`
+  to `-2`, `persistence/phase-2-review-0` and `-1`. `git diff` between two tags shows one round.
+- Both landed together on 2026-09-30 in `7887bf1d6`, one `--no-ff` merge of the phase 2 head,
+  which held phase 1 and had `master` merged in. No rebase, so every review tag still names the
+  commit that was reviewed. The two branches are deleted.
+- The rest of Phase 2 step 8 continues on `fix/7-persistence-phase-2-step-8`, branched from that
+  merge. Its MR targets `master`, and its review rounds are tagged `persistence/phase-2-step-8-review-<n>`.
 
 ## Phase 2 progress
 
