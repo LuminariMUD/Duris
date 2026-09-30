@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Synthetic runtime and source contracts for linear player-item hydration."""
 
+import re
 from _paths import SRC, rel
 import subprocess
 import tempfile
@@ -1144,7 +1145,7 @@ assert "player_load_items_materialize" in MATERIALIZE
 # owner. A row naming another owner is that owner's item: it is skipped and logged to
 # logs/log/dupes, and skipping never refuses the character, however many rows it is.
 assert "PLAYER_LOAD_ITEM_SKIP_MAX" not in MATERIALIZE
-assert 'dupe_log_item("load_skipped"' in REPOSITORY
+assert re.search(r'dupe_log_item\(\s*"load_skipped"', REPOSITORY)
 assert "item_row_outcome::foreign" in REPOSITORY
 assert MATERIALIZE.count("wizlog(OVERLORD") == 1
 assert "alert_refusal_once(result.pid)" in MATERIALIZE

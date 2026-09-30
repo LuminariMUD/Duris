@@ -48,7 +48,9 @@ repository_bid = auction_repository[
     auction_repository.index("else if (payload.action == auction_action::bid)"):
     auction_repository.index("else if (payload.action == auction_action::finalize")
 ]
-assert "lock_auction" in repository_bid and "apply_wallet_delta" in repository_bid
+# The bid locks the auction; the wallet is memory's, so the bid only reports what it charged.
+assert "lock_auction" in repository_bid and "apply_wallet_delta" not in repository_bid
+assert "wallet_value_delta = -to_pay" in repository_bid
 
 # Live inventory destruction and external broadcast/notification happen only
 # after a committed completion or a committed outbox delivery.
