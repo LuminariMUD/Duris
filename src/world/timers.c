@@ -3,6 +3,7 @@
 #include "world/epic.h"
 #include "ships/ships.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "core/utility.h"
 #include <stdlib.h>
 
@@ -148,12 +149,14 @@ void set_timer(const char *name)
 	set_timer(name, time(NULL));
 }
 
+// Queued on the writer, in capture order with the saves.
 void set_timer(const char *name, int date)
 {
-	if (!qry("REPLACE INTO timers (name, date) VALUES ('%s', '%d')", name, date))
-		logit(LOG_DEBUG, "set_timer: failed to save timer %s", name ? name : "<null>");
+	if (!sql_queue("REPLACE INTO timers (name, date) VALUES ('%s', '%d')", name, date))
+		logit(LOG_DEBUG, "set_timer: failed to queue timer %s", name ? name : "<null>");
 }
 
+// Boot only (the cargo market's last updates); the game loop reads no timer.
 int get_timer(const char *name)
 {
 	if (!qry("SELECT date FROM timers WHERE name = '%s'", name))
