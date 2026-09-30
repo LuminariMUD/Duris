@@ -3973,85 +3973,66 @@ bool sql_save_player_recipes(P_char ch)
 	return true;
 }
 
+namespace
+{
+// Every character's recipes, in the order learned: read at boot, changed here at once, and
+// written on the writer. Only the game writes player_recipes.
+std::unordered_map<int, std::vector<int>> recipes_by_pid;
+} // namespace
+
+bool sql_player_recipes_load(void)
+{
+	MYSQL_RES *result = db_query("SELECT pid, recipe_vnum FROM player_recipes ORDER BY id");
+	if (!result)
+		return false;
+	recipes_by_pid.clear();
+	while (MYSQL_ROW row = mysql_fetch_row(result))
+		if (row[0] && row[1])
+			recipes_by_pid[atoi(row[0])].push_back(atoi(row[1]));
+	mysql_free_result(result);
+	return true;
+}
+
 bool sql_add_player_recipe(int pid, int recipe_vnum)
 {
 	if (!DB || pid <= 0)
 		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "INSERT IGNORE INTO player_recipes (pid, recipe_vnum) VALUES (%d, %d)", pid,
-		 recipe_vnum);
-	return sql_run_query(query);
+	std::vector<int> &recipes = recipes_by_pid[pid];
+	if (std::find(recipes.begin(), recipes.end(), recipe_vnum) != recipes.end())
+		return true;
+	recipes.push_back(recipe_vnum);
+	return sql_queue("INSERT IGNORE INTO player_recipes (pid, recipe_vnum) VALUES (%d, %d)",
+			 pid, recipe_vnum);
 }
 
 bool sql_delete_player_recipes(int pid)
 {
 	if (!DB || pid <= 0)
 		return false;
-
-	char query[128];
-	snprintf(query, sizeof(query), "DELETE FROM player_recipes WHERE pid=%d", pid);
-	return sql_run_query(query);
+	recipes_by_pid.erase(pid);
+	return sql_queue("DELETE FROM player_recipes WHERE pid=%d", pid);
 }
 
 bool sql_has_player_recipe(int pid, int recipe_vnum)
 {
-	if (!DB || pid <= 0)
-		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "SELECT 1 FROM player_recipes WHERE pid=%d AND recipe_vnum=%d LIMIT 1", pid,
-		 recipe_vnum);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	bool has = (mysql_fetch_row(result) != NULL);
-	mysql_free_result(result);
-	return has;
+	const auto found = recipes_by_pid.find(pid);
+	return found != recipes_by_pid.end() &&
+	       std::find(found->second.begin(), found->second.end(), recipe_vnum) !=
+		       found->second.end();
 }
 
 // returns array of recipe vnums, sets count. caller must free array
 int *sql_get_player_recipes(int pid, int *count)
 {
 	*count = 0;
-	if (!DB || pid <= 0)
+	const auto found = recipes_by_pid.find(pid);
+	if (found == recipes_by_pid.end() || found->second.empty())
 		return NULL;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "SELECT recipe_vnum FROM player_recipes WHERE pid=%d ORDER BY id", pid);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return NULL;
-
-	int num_rows = mysql_num_rows(result);
-	if (num_rows == 0)
-	{
-		mysql_free_result(result);
-		return NULL;
-	}
-
-	int *recipes = (int *)malloc(num_rows * sizeof(int));
+	int *recipes = (int *)malloc(found->second.size() * sizeof(int));
 	if (!recipes)
-	{
-		mysql_free_result(result);
 		return NULL;
-	}
-
-	MYSQL_ROW row;
-	int i = 0;
-	while ((row = mysql_fetch_row(result)))
-	{
-		recipes[i++] = atoi(row[0]);
-	}
-
-	mysql_free_result(result);
-	*count = i;
+	std::copy(found->second.begin(), found->second.end(), recipes);
+	*count = static_cast<int>(found->second.size());
 	return recipes;
 }
 

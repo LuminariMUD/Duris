@@ -1538,10 +1538,10 @@ int initialize_mysql()
 		}
 		return -1;
 	}
-	if (!sql_player_names_load() || !account_rewards_load())
+	if (!sql_player_names_load() || !account_rewards_load() || !sql_player_recipes_load())
 	{
 		logit(LOG_STATUS,
-		      "FATAL: the character names or account rewards could not be read, "
+		      "FATAL: the character names, account rewards or recipes could not be read, "
 		      "aborting boot");
 		duris_sql_exclusion_guard_release();
 		mysql_close(DB);

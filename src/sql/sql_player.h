@@ -53,6 +53,8 @@ bool sql_save_player_items(P_char ch);
 bool sql_delete_player_items(int pid);
 bool sql_save_player_shapechanges(P_char ch);
 bool sql_save_player_recipes(P_char ch);
+// Every character's recipes, read at boot and kept in memory (MariaDB).
+bool sql_player_recipes_load(void);
 bool sql_add_player_recipe(int pid, int recipe_vnum);
 bool sql_delete_player_recipes(int pid);
 bool sql_has_player_recipe(int pid, int recipe_vnum);
