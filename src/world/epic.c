@@ -36,6 +36,7 @@ using namespace std;
 #include "redis/redis_report_cache.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "world/timers.h"
 #include "item/trophy.h"
 #include "telemetry/telemetry_runtime.h"
@@ -445,37 +446,17 @@ void epic_choose_new_epic_task(P_char ch)
 	affect_to_char(ch, &af);
 }
 
-vector<epic_trophy_data> get_epic_zone_trophy(P_char ch)
+// The zones of a character's epic zone awards (rows of zone, time, oldest first), newest
+// first: the last epic.zoneTrophy.size distinct zones with how often each was awarded.
+static vector<epic_trophy_data> epic_zone_trophy(const sql_rows &rows)
 {
-	vector<epic_trophy_data> trophy;
-
-#ifdef __NO_MYSQL__
-	(void)ch;
-	debug("get_epic_zone_trophy(): __NO_MYSQL__, returning 0");
-	return trophy;
-#else
-	if (!qry("select type_id,time from epic_gain where pid = '%d' and type = '%d' union all "
-		 "select reason_id,created_at from epic_ledger where pid = '%d' and reason_type = '%d' "
-		 "order by time asc",
-		 GET_PID(ch), EPIC_ZONE, GET_PID(ch), (int)epic_reason_type::zone_award))
-		return trophy;
-
-	MYSQL_RES *res = mysql_store_result(DB);
-
-	if (!res)
-	{
-		mysql_free_result(res);
-		return trophy;
-	}
-
 	list<epic_trophy_data> tq;
 
 	int trophy_size = (int)get_property("epic.zoneTrophy.size", 40);
 
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(res)))
+	for (const sql_row &row : rows)
 	{
-		int zone_number = atoi(row[0]);
+		int zone_number = row[0] ? atoi(row[0]) : 0;
 
 		bool in_trophy = false;
 		for (list<epic_trophy_data>::iterator it = tq.begin(); it != tq.end(); it++)
@@ -506,55 +487,7 @@ vector<epic_trophy_data> get_epic_zone_trophy(P_char ch)
 		}
 	}
 
-	while (!tq.empty())
-	{
-		trophy.push_back(tq.front());
-		tq.pop_front();
-	}
-
-	mysql_free_result(res);
-
-	return trophy;
-
-#endif
-}
-
-int modify_by_epic_trophy(P_char ch, int amount, int zone_number)
-{
-	vector<epic_trophy_data> trophy = get_epic_zone_trophy(ch);
-
-	for (vector<epic_trophy_data>::iterator it = trophy.begin(); it != trophy.end(); it++)
-	{
-		if (zone_number == it->zone_number && it->count > 0)
-		{
-			float factor =
-				pow(get_property("epic.zoneTrophy.mod", 0.8),
-				    MIN(it->count, get_property("epic.zoneTrophy.maxMods", 4)));
-			amount = (int)(amount * factor);
-			amount = MAX(1, amount);
-
-			switch (it->count)
-			{
-			case 1:
-				send_to_char("This seems familiar somehow...\n", ch);
-				break;
-
-			case 2:
-			case 3:
-				send_to_char("&+GHaven't you seen all of this before?\n", ch);
-				break;
-
-			case 4:
-			default:
-				send_to_char("&+RThis is getting extremely boring.\n", ch);
-				break;
-			}
-
-			return amount;
-		}
-	}
-
-	return amount;
+	return vector<epic_trophy_data>(tq.begin(), tq.end());
 }
 
 void group_gain_epic(P_char ch, int type, int data, int amount)
@@ -1672,36 +1605,19 @@ int stat_shops(int /*room*/, P_char ch, int cmd, char *arg)
 	return FALSE;
 }
 
-vector<string> get_epic_players(int racewar)
+// The top epic players of each side, as rows of racewar and name.
+static void show_epic_players(P_char ch, const sql_rows &rows)
 {
-	vector<string> names;
+	send_to_char("&+GEpic Players\n\n", ch);
+	send_to_char(" &+WGoods\n\n", ch);
+	for (const sql_row &row : rows)
+		if (row[0] && row[1] && atoi(row[0]) == RACEWAR_GOOD)
+			send_to_char_f(ch, "   %s\n", row[1]);
 
-#ifdef __NO_MYSQL__
-	(void)racewar;
-	debug("get_epic_players(): __NO_MYSQL__, returning 0");
-	return names;
-#else
-	if (!qry("SELECT name from player_data WHERE active=1 AND epics > 0 AND racewar = '%d' AND level < 57 ORDER BY epics DESC LIMIT %d",
-		 racewar, (int)get_property("epic.list.limit", 10)))
-		return names;
-
-	MYSQL_RES *res = mysql_store_result(DB);
-
-	if (!res)
-	{
-		return names;
-	}
-
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(res)))
-	{
-		names.push_back(string(row[0]));
-	}
-
-	mysql_free_result(res);
-
-	return names;
-#endif
+	send_to_char("\n\n &+LEvils\n\n", ch);
+	for (const sql_row &row : rows)
+		if (row[0] && row[1] && atoi(row[0]) == RACEWAR_EVIL)
+			send_to_char_f(ch, "   %s\n", row[1]);
 }
 
 void do_epic(P_char ch, char *arg, int cmd)
@@ -1748,29 +1664,24 @@ void do_epic(P_char ch, char *arg, int cmd)
 		return;
 	}
 
-	// else show list of epic players
-	vector<string> top_good_players = get_epic_players(RACEWAR_GOOD);
-	vector<string> top_evil_players = get_epic_players(RACEWAR_EVIL);
-
-	// list
-	send_to_char("&+GEpic Players\n\n", ch);
-	send_to_char(" &+WGoods\n\n", ch);
-
-	for (size_t i = 0; i < top_good_players.size(); i++)
-	{
-		send_to_char("   ", ch);
-		send_to_char(top_good_players[i].c_str(), ch);
-		send_to_char("\n", ch);
-	}
-
-	send_to_char("\n\n &+LEvils\n\n", ch);
-
-	for (size_t i = 0; i < top_evil_players.size(); i++)
-	{
-		send_to_char("   ", ch);
-		send_to_char(top_evil_players[i].c_str(), ch);
-		send_to_char("\n", ch);
-	}
+	// else show the list of epic players, read on the writer
+	const int limit = (int)get_property("epic.list.limit", 10);
+	if (!sql_read_work_for(
+		    ch,
+		    [limit](MYSQL *connection, sql_rows *rows) -> unsigned int
+		    {
+			    for (int racewar : { RACEWAR_GOOD, RACEWAR_EVIL })
+				    if (const unsigned int error = sql_select(
+						connection,
+						sql_format(
+							"SELECT %d, name from player_data WHERE active=1 AND epics > 0 AND racewar = '%d' AND level < 57 ORDER BY epics DESC LIMIT %d",
+							racewar, racewar, limit),
+						rows))
+					    return error;
+			    return 0;
+		    },
+		    show_epic_players))
+		show_epic_players(ch, {});
 }
 
 void epic_zone_erase_touch(int zone_number)
@@ -2157,19 +2068,31 @@ void do_epic_trophy(P_char ch, char *arg, int /*cmd*/)
 		}
 	}
 
-	vector<epic_trophy_data> trophy = get_epic_zone_trophy(t_ch);
-
-	send_to_char("&+WEpic Trophy\n", ch);
-
-	for (size_t i = 0; i < trophy.size(); i++)
+	// Read on the writer; the trophy follows on a later pulse.
+	const auto show = [](P_char live, const sql_rows &rows)
 	{
-		if (trophy[i].zone_number >= 0 && real_zone0(trophy[i].zone_number))
+		char line[MAX_STRING_LENGTH];
+		send_to_char("&+WEpic Trophy\n", live);
+		for (const epic_trophy_data &zone : epic_zone_trophy(rows))
 		{
-			snprintf(buff2, MAX_STRING_LENGTH, "[&+W%3d&n] %s\n", trophy[i].count,
-				 zone_table[real_zone0(trophy[i].zone_number)].name);
-			send_to_char(buff2, ch);
+			if (zone.zone_number >= 0 && real_zone0(zone.zone_number))
+			{
+				snprintf(line, MAX_STRING_LENGTH, "[&+W%3d&n] %s\n", zone.count,
+					 zone_table[real_zone0(zone.zone_number)].name);
+				send_to_char(line, live);
+			}
 		}
-	}
+	};
+	const int pid = GET_PID(t_ch);
+	if (!sql_read_for(
+		    ch,
+		    sql_format(
+			    "select type_id,time from epic_gain where pid = '%d' and type = '%d' union all "
+			    "select reason_id,created_at from epic_ledger where pid = '%d' and reason_type = '%d' "
+			    "order by time asc",
+			    pid, EPIC_ZONE, pid, (int)epic_reason_type::zone_award),
+		    show))
+		show(ch, {});
 }
 
 void update_epic_zone_alignment(int zone_number, int delta)

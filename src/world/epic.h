@@ -73,9 +73,6 @@ void do_epic(P_char ch, char *arg, int cmd);
 void do_epic_trophy(P_char ch, char *arg, int cmd);
 void do_epic_zones(P_char ch, char *arg, int cmd);
 void do_epic_share(P_char ch, char *arg, int cmd);
-vector<string> get_epic_players(int racewar);
-vector<epic_trophy_data> get_epic_zone_trophy(P_char ch);
-int modify_by_epic_trophy(P_char ch, int amount, int zone_number);
 void gain_epic(P_char, int type, int data, int amount);
 // Epic points are earned from epic.gain.minLevel (default 50) upward, and epic skills are
 // learned from epic.skills.minLevel (default 56) upward.
