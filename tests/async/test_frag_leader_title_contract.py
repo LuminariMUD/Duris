@@ -12,9 +12,9 @@ start = SOURCE.index("static void check_frag_position(")
 end = SOURCE.index("// shows the frag list", start)
 body = SOURCE[start:end]
 
-leader_query = body[body.index('res = db_query("SELECT char_name') : body.index("if (res)")]
+leader_query = body[body.index("sql_read(\"(SELECT 'lead', char_name") : body.index("UNION ALL")]
 
 assert '"WHERE deleted_at IS NULL AND total_frags > 0 "' in leader_query
-assert '"ORDER BY total_frags DESC, id ASC LIMIT 1"' in leader_query
+assert '"ORDER BY total_frags DESC, id ASC LIMIT 1) ' in leader_query
 
 print("frag leader title contract passed")

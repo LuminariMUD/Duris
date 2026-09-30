@@ -1666,6 +1666,21 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   it, enters again so the login summons it, lists and revokes it, and after shutdown finds
   both tables empty; the six reward source contracts follow the memory version.
 
+#### The frag leaderboard (done)
+
+- `frag_leaderboard` is the web-facing projection the game writes on the writer
+  (`sql_update_frag_leaderboard()`, the combat outcome), so the game reads it there too,
+  behind the writes queued before each read. At entry `check_frag_position()` reads the
+  overall top and bottom and sets the Frag Lord flags in the callback. `fraglist` with a
+  filter reads the totals by side and the top and lowest fraggers in one job
+  (`show_fraglist()`); the rows come tagged `total`, `top` and `low`, and
+  `fraglist_leaders()` (`redis_report_cache.c`) reads the last two for both callers.
+- The cached default view is rebuilt the same way: `redis_cache_fraglist(ch)` reads on the
+  writer, caches the list, and shows it to `ch` on a cache miss. Without the cache (Redis
+  off) `fraglist` shows the list it reads. The boot's own rebuild now lands on the first
+  pulses.
+- The game-loop queries journey runs `fraglist` and `fraglist warrior` (Redis off there).
+
 ### Review round 1 (MR !3)
 
 The review of `c3ffc4b8a` (tag `persistence/phase-2-review-0`) found five defects. Each is fixed

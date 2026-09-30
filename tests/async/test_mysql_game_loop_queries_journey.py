@@ -29,6 +29,8 @@ ROOT = Path(__file__).resolve().parents[2]
 # granted here, and REENTRY_COMMANDS revoke it.
 COMMANDS = (
     ('finger ' + journey.CHARACTER, 'PID:'),
+    ('fraglist', 'Lowest Fraggers'),
+    ('fraglist warrior', 'Lowest Fraggers'),
     ('load obj 677', 'Pos: standing >'),
     ('divineclaim mace ' + journey.ACCOUNT + ' days 1', 'Created divine reward #1'),
     ('divineclaim list ' + journey.ACCOUNT, 'Active Divine Account Rewards'),
@@ -41,7 +43,7 @@ REENTRY_COMMANDS = (
 # The functions this session still reaches with a query on the game loop.
 NOT_CONVERTED = {
     # login-time reads
-    'check_frag_position', 'player_death_restitution_locker_notice',
+    'player_death_restitution_locker_notice',
     # periodic artifact events
     'event_artifact_check_poof_sql', 'event_artifact_wars_sql',
     'event_artifact_check_bind_sql',

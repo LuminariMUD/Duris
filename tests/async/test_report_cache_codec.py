@@ -90,10 +90,10 @@ assert "named_report_cache_ttl_seconds = 86400" in redis
 assert "fraglist_cache_ttl_seconds = 900" in redis
 assert "report_cache_countdown_encode" in redis
 assert "report_cache_countdown_render" in redis
-fraglist = redis[redis.index("char *generate_fraglist_cache_payload") :]
+fraglist = redis[redis.index("static char *fraglist_cache_payload") :]
 fraglist = fraglist[: fraglist.index("} // namespace")]
 assert "sql_level_cap(" not in fraglist
-cache_fraglist = redis[redis.index("void redis_cache_fraglist") :]
+cache_fraglist = redis[redis.index("bool redis_cache_fraglist") :]
 cache_fraglist = cache_fraglist[: cache_fraglist.index("char *redis_get_fraglist")]
 assert "cache_set_ex(REDIS_CACHE_FRAGLIST" in cache_fraglist
 assert "redis_invalidate_fraglist();" in comm
