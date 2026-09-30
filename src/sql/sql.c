@@ -36,6 +36,7 @@
 #include <algorithm>
 #include <atomic>
 #include <memory>
+#include <set>
 #include <openssl/sha.h>
 #include <math.h>
 #include <stdarg.h>
@@ -745,6 +746,11 @@ uint64_t sql_season_epoch(void)
 bool sql_clear_zone_trophy()
 {
 	return FALSE;
+}
+void sql_game_loop_running(bool) {}
+uint64_t sql_game_loop_query_count(void)
+{
+	return 0;
 }
 #else
 
@@ -3439,6 +3445,20 @@ bool sql_observed_execute_at(MYSQL *conn, struct persistence_query_site site,
 	return status == 0;
 }
 
+static bool game_loop_running = false;
+static uint64_t game_loop_queries = 0;
+static std::set<std::pair<std::string, int>> game_loop_query_sites;
+
+void sql_game_loop_running(bool running)
+{
+	game_loop_running = running;
+}
+
+uint64_t sql_game_loop_query_count(void)
+{
+	return game_loop_queries;
+}
+
 bool sql_trace_exec_at(struct persistence_query_site source_site, const char *label,
 		       const char *sql, size_t len, bool drain_before, bool drain_after)
 {
@@ -3447,6 +3467,15 @@ bool sql_trace_exec_at(struct persistence_query_site source_site, const char *la
 	const struct persistence_query_site semantic_site = {
 		source_site.file, label && *label ? label : source_site.function, source_site.line
 	};
+	if (game_loop_running && sql_current_context() == PERSISTENCE_QUERY_CONTEXT_MAIN)
+	{
+		++game_loop_queries;
+		if (game_loop_query_sites.emplace(source_site.file, source_site.line).second)
+			logit(LOG_STATUS, "game loop query: %s:%d %s (%s)", source_site.file,
+			      source_site.line, source_site.function,
+			      persistence_statement_kind_name(
+				      persistence_statement_kind_from_sql(sql)));
+	}
 	if (drain_before)
 		sql_clear_results_on(DB);
 	uint64_t operation_id = 0;

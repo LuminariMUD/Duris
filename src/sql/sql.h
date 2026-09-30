@@ -93,6 +93,11 @@ bool sql_persistence_write_large_event_line(const char *line);
 bool sql_trace_exec_at(struct persistence_query_site source_site, const char *label,
 		       const char *sql, size_t len, bool drain_before, bool drain_after);
 void sql_trace_panic(void);
+// The game loop marks when it runs. A query on the game thread's connection while it
+// does makes the loop wait for the database: each one is counted, and each site is
+// logged once, so none is added unnoticed.
+void sql_game_loop_running(bool running);
+uint64_t sql_game_loop_query_count(void);
 
 /* Resolve which database name to connect to based on the current
  * running port.  On non-default ports (e.g. dev builds) the live

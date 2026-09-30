@@ -4362,6 +4362,9 @@ static void show_world_persistence(P_char ch)
 		 (unsigned long long)restitution.fenced_targets);
 	send_to_char(line, ch);
 
+	snprintf(line, sizeof(line), "game_loop_queries count=%llu\n",
+		 (unsigned long long)sql_game_loop_query_count());
+	send_to_char(line, ch);
 	const size_t rendered_sites = query.count < top_site_limit ? query.count : top_site_limit;
 	for (size_t site_index = 0; site_index < rendered_sites; ++site_index)
 	{

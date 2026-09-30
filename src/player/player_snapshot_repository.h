@@ -4,9 +4,11 @@
 #include "flatfile/flatfile_shopkeeper_repository.h"
 #include "item/item_claim.h"
 #include "player/player_save_worker.h"
+#include "sql/sql_work.h"
 #include <mysql/mysql.h>
 
 #include <array>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -114,6 +116,12 @@ struct log_entry_snapshot
 player_save_apply_result log_entry_repository_apply(MYSQL *connection,
 						    const log_entry_snapshot &entry);
 player_save_apply_result log_entry_repository_apply_from_pool(const log_entry_snapshot &entry);
+
+// SQL work the game thread queued (sql_async.c), run in one transaction. `work` returns
+// 0 or the MySQL error that failed it. A commit whose outcome is unknown is not retried:
+// running it again could apply it twice.
+player_save_apply_result sql_work_repository_apply(MYSQL *connection, const sql_work &work);
+player_save_apply_result sql_work_repository_apply_from_pool(const sql_work &work);
 
 // A change to one account's bank on one side, added to what account_banks holds (the
 // characters of an account share its bank). The row is created when missing.

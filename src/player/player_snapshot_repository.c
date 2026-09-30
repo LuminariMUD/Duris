@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -1386,6 +1387,26 @@ player_save_apply_result apply_log_entry(MYSQL *connection, const log_entry_snap
 	return { player_save_apply_outcome::applied, 0, 0 };
 }
 
+player_save_apply_result apply_sql_work(MYSQL *connection, const sql_work &work)
+{
+	query_result query = execute(connection, "START TRANSACTION");
+	if (!query.ok)
+		return failure(query.error_code);
+	if (const unsigned int error_code = work(connection))
+	{
+		if (!connection_error(error_code))
+			execute(connection, "ROLLBACK");
+		return failure(error_code);
+	}
+	query = execute(connection, "COMMIT");
+	if (query.ok)
+		return { player_save_apply_outcome::applied, 0, 0 };
+	if (connection_error(query.error_code))
+		return { player_save_apply_outcome::terminal_failure, 0, query.error_code };
+	execute(connection, "ROLLBACK");
+	return failure(query.error_code);
+}
+
 player_save_apply_result apply_bank_delta(MYSQL *connection, const bank_delta_snapshot &bank)
 {
 	if (!connection || bank.account_name.empty())
@@ -1536,6 +1557,20 @@ player_save_apply_result log_entry_repository_apply_from_pool(const log_entry_sn
 			       { return apply_log_entry(connection, entry); });
 }
 
+player_save_apply_result sql_work_repository_apply(MYSQL *connection, const sql_work &work)
+{
+	if (!connection || !work)
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+	return apply_sql_work(connection, work);
+}
+
+player_save_apply_result sql_work_repository_apply_from_pool(const sql_work &work)
+{
+	if (!work)
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+	return apply_with_pool([&](MYSQL *connection) { return apply_sql_work(connection, work); });
+}
+
 player_save_apply_result bank_delta_repository_apply(MYSQL *connection,
 						     const bank_delta_snapshot &bank)
 {
@@ -1546,4 +1581,48 @@ player_save_apply_result bank_delta_repository_apply_from_pool(const bank_delta_
 {
 	return apply_with_pool([&](MYSQL *connection)
 			       { return apply_bank_delta(connection, bank); });
+}
+
+unsigned int sql_execute(MYSQL *connection, const std::string &statement)
+{
+	if (const unsigned int error_code = execute(connection, statement).error_code)
+		return error_code;
+	// A statement that returns rows must still be drained.
+	if (MYSQL_RES *result = mysql_store_result(connection))
+		mysql_free_result(result);
+	return mysql_errno(connection);
+}
+
+unsigned int sql_select(MYSQL *connection, const std::string &query, sql_rows *rows)
+{
+	if (const unsigned int error_code = execute(connection, query).error_code)
+		return error_code;
+	MYSQL_RES *result = mysql_store_result(connection);
+	if (!result)
+		return mysql_errno(connection);
+	const unsigned int width = mysql_num_fields(result);
+	try
+	{
+		rows->reserve(rows->size() + mysql_num_rows(result));
+		while (MYSQL_ROW row = mysql_fetch_row(result))
+		{
+			const unsigned long *lengths = mysql_fetch_lengths(result);
+			sql_row copied;
+			copied.fields.reserve(width);
+			for (unsigned int index = 0; index < width; ++index)
+				if (row[index])
+					copied.fields.emplace_back(std::in_place, row[index],
+								   lengths[index]);
+				else
+					copied.fields.emplace_back();
+			rows->push_back(std::move(copied));
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		mysql_free_result(result);
+		return ENOMEM;
+	}
+	mysql_free_result(result);
+	return 0;
 }

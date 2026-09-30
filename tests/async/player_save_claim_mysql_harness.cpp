@@ -493,6 +493,47 @@ int main()
 			       "SELECT COUNT(*) FROM shopkeepers WHERE shop_id=17") == "1",
 		"a shopkeeper save did not replace the shop's stock");
 
+	// Game-thread SQL (sql_async.c): a job's work runs in one transaction, so one that
+	// fails leaves nothing; a read's rows are copied, NULLs included.
+	execute(test_connection, "CREATE TEMPORARY TABLE sql_job_probe (id INT PRIMARY KEY, "
+				 "note VARCHAR(8) NULL)");
+	applied = sql_work_repository_apply(
+		test_connection,
+		[](MYSQL *connection) -> unsigned int
+		{
+			if (const unsigned int error_code = sql_execute(
+				    connection, "INSERT INTO sql_job_probe VALUES (1,'one')"))
+				return error_code;
+			return sql_execute(connection, "INSERT INTO sql_job_probe VALUES (2,NULL)");
+		});
+	require(applied.outcome == player_save_apply_outcome::applied &&
+			scalar(test_connection, "SELECT COUNT(*) FROM sql_job_probe") == "2",
+		"queued statements did not apply");
+	applied = sql_work_repository_apply(
+		test_connection,
+		[](MYSQL *connection) -> unsigned int
+		{
+			if (const unsigned int error_code = sql_execute(
+				    connection, "INSERT INTO sql_job_probe VALUES (3,'three')"))
+				return error_code;
+			return sql_execute(connection,
+					   "INSERT INTO sql_job_probe VALUES (1,'again')");
+		});
+	require(applied.outcome == player_save_apply_outcome::terminal_failure &&
+			scalar(test_connection, "SELECT COUNT(*) FROM sql_job_probe") == "2",
+		"a failed statement left the others of its job applied");
+	sql_rows rows;
+	applied = sql_work_repository_apply(
+		test_connection,
+		[&](MYSQL *connection) {
+			return sql_select(connection,
+					  "SELECT id,note FROM sql_job_probe ORDER BY id", &rows);
+		});
+	require(applied.outcome == player_save_apply_outcome::applied && rows.size() == 2 &&
+			std::string(rows[0][0]) == "1" && std::string(rows[0][1]) == "one" &&
+			std::string(rows[1][0]) == "2" && !rows[1][1],
+		"a queued read did not copy its rows");
+
 	mysql_close(test_connection);
 	mysql_library_end();
 	std::cout << "player save claim MariaDB leg passed\n";

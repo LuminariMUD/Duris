@@ -41,6 +41,8 @@ enum class persistence_job_kind : uint8_t
 	bank,
 	// A shopkeeper's stock, keyed by shop.
 	shopkeeper,
+	// Statements or a read the game thread queued (sql_async.c); each is its own owner.
+	sql,
 };
 
 enum class player_save_apply_outcome : uint8_t

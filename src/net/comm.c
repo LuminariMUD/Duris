@@ -93,6 +93,7 @@
 #include "account/creation_availability_config.h"
 #include "item/material_rarity.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "sql/sql_player.h"
 #include "net/telnet.h"
 #include "world/timers.h"
@@ -2146,6 +2147,7 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 				     latency_trace_elapsed_us(gmcp_begin_us, loop_monotonic_us()),
 				     loop_tick);
 	}
+	sql_async_pulse();
 	maintenance_result maintenance_results[MAINTENANCE_COMPLETION_MAX] = {};
 	const size_t maintenance_count = maintenance_scheduler_pulse(
 		ne_event_tick, maintenance_results, MAINTENANCE_COMPLETION_MAX);
@@ -2558,6 +2560,7 @@ void game_loop(int port, int sslport)
 	long last_desc_per_hour_reset = time(0);
 	/* Main loop */
 resume_game_loop:
+	sql_game_loop_running(true);
 	while (!shutdownflag)
 	{
 		const uint64_t loop_time_begin_us = loop_monotonic_us();
@@ -2595,6 +2598,7 @@ resume_game_loop:
 		run_combat_phase(context);
 		run_pulse_reset_phase(context);
 	}
+	sql_game_loop_running(false);
 
 	if (_copyover)
 	{
