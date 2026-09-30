@@ -8,8 +8,8 @@ Memory is the authority. The database is a copy that catches up through one writ
    clean again: the writer has it.
 3. The writer is a single background thread (`src/player/player_save_worker.c`). It
    applies every queued save in capture order: player saves (with their pets),
-   corpse saves, locker saves, saved room items, shopkeeper saves, bank deltas and
-   critical commands.
+   corpse saves, locker saves, saved room items, shopkeeper saves, bank deltas,
+   critical commands and the game thread's SQL (see below).
    A newer save of the same owner replaces its queued one and goes to the back of
    the queue.
 4. The game pulse consumes typed completions. A lost connection never reaches it:
@@ -21,6 +21,21 @@ The game-thread checkpoint and completion paths perform no MySQL, Redis, or file
 operation. Nothing is journaled; see [Player Save Journal](PLAYER_SAVE_JOURNAL.md) for
 the one-time replay of a journal left by an older server. A crash loses whatever had
 not reached the database, at most one 30-second `dirty-player-checkpoint`.
+
+## Game-thread SQL
+
+Code on the game thread that needs the database does not query it. It queues the SQL on the
+writer instead (`src/sql/sql_async.h`):
+
+- `sql_queue()` queues a write. `sql_queue_statements()` queues several, and
+  `sql_queue_work()` queues work that reads before it writes.
+- `sql_read()` and `sql_read_for()` queue a read, which sees every write queued before it.
+  The writer copies the rows, and the game thread gets them on a later pulse.
+
+Each `sql` job runs in one transaction. A lost connection is retried, and a commit whose
+outcome is unknown is reported instead of retried. Whatever still queries the game thread's
+connection while the loop runs is counted (`game_loop_queries` in `world persistence`) and
+logged once per site (`game loop query: ...` in `logs/log/status`).
 
 ## What a save writes
 

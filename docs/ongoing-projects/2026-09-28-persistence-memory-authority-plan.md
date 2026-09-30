@@ -1124,6 +1124,9 @@ Verification for this round, on the final head:
   merge), rebase the phase 2 branch onto `master` and retarget !3 to `master`.
 - Phase 2 review rounds are tagged the same way on the phase 2 branch:
   `persistence/phase-2-review-0` is the head the first review reads.
+- The rest of Phase 2 step 8 continues on `fix/7-persistence-phase-2-step-8`, branched from the
+  phase 2 head and in review as its own MR, which targets `fix/7-persistence-phase-2` so its diff
+  is that work alone. Phase 2 review fixes are merged into it the same way.
 
 ## Phase 2 progress
 
@@ -1387,3 +1390,59 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   or claim code. The MariaDB legs `run_player_save_claim_mysql.sh`,
   `run_item_transfer_schema_mysql.sh` and `run_collector_repository_schema_mysql.sh` ran on
   disposable servers.
+
+### Step 8: game-thread SQL off the loop (foundation done; the rest follows in its own MR)
+
+- The way off the loop (`src/sql/sql_async.{h,c}`):
+  - `sql_queue()`, `sql_queue_statements()` and `sql_queue_work()` build SQL on the game
+    thread and queue it on the one writer as an `sql` job, in capture order with the saves.
+    Work that must read before it writes, such as a lookup followed by an update or an
+    insert, runs there too, with `sql_select()` and `sql_execute()`.
+  - Each job runs in one transaction, so a retry after a lost connection never applies it
+    twice. A commit whose outcome is unknown is reported instead of retried.
+  - `sql_read()` and `sql_read_work()` queue a read the same way, so it sees every write
+    queued before it. The writer copies its rows, and the game thread gets them on a later
+    pulse (`sql_async_pulse()`). `sql_read_for()` calls back only while the character is
+    still in the game.
+- What still waits is named. While the loop runs, every query on the game thread's connection
+  is counted (`game_loop_queries` in `world persistence`), and each site is logged once
+  (`game loop query: <file>:<line> <function> (<kind>)`).
+- `sql.c` is done:
+  - Queued on the writer: the core save, the account-character projection (its lookup
+    runs on the writer, just before the write it decides), the frag leaderboard, progress
+    rows, IP activity, world quest, shop and quest trophies, manual logs, offline message
+    enqueues and the level cap updates.
+  - Read at boot and kept current by the game's own writes:
+    - the level cap row, read again when the maintenance job raises it;
+    - `ip_info`;
+    - the recent shop sales and quest rewards;
+    - `mud_info`, also read every minute so a creation lock set in the database still
+      takes hold.
+  - Read when a character enters the game: its world quest history. The quest checks fail
+    closed until it arrives.
+  - Answered on a later pulse: offline messages, the wiki search, the frag trophy, total
+    donations, the `mud_info` reload and the `sql` command. Offline delivery claims each
+    receipt on the writer before the game shows it.
+- Changed from the plan: the plan counted 345 `qry()` calls. The survey found about 330
+  functions on the game thread's connection, and about 250 of them remain. So on 2026-09-30
+  the step was split. This MR carries the foundation and `sql.c`; the rest moves to its own
+  MR, stacked on this one (see [Review and branches](#review-and-branches)), subsystem by
+  subsystem:
+  - account login and saves, and the offline character loads (`restoreCharOnly()`, which
+    finger, lockers, artifacts and the websocket handlers use);
+  - lockers and private chests, artifacts (including the poof and bind events), ships,
+    guilds and associations, boons, auctions, nexus stones, epic zones, polls, outposts
+    and kingdoms.
+  The journey that pins "no query after boot" lands with it.
+- Found on the way:
+  - `sql_find_racewar_for_ip()` assigned `RACEWAR_NONE` to its pointer instead of the side,
+    and leaked the result after an hour offline.
+  - The frag leaderboard upsert passed an `int` to `%ld` and a `long` to `%d`.
+  - The in-memory versions do neither. The dead `get_level_cap()`,
+    `sql_check_level_cap_periodic()`, `sql_modify_frags()` and `sql_save_pkill()` are
+    deleted.
+- Tests: `test_sql_async.py` (new) links the real writer. It checks the order, the later
+  pulse, a retried read, work that reads before it writes, and a character who left. The
+  save-claim MariaDB leg checks the transaction and the copied rows. The source contracts
+  for the converted functions follow them. A local session as the `.env` account confirmed
+  that the converted commands answer, and that their sites no longer log as loop queries.
