@@ -2,12 +2,19 @@
 
 **Date:** 2026-09-28
 
-**Status:** Phase 1 is done on branch `fix/7-persistence-phase-1`, in review as
-[!2](https://gitlab.com/max757/duris/-/merge_requests/2), with the fixes of two review rounds in
-(see [Review round 1](#review-round-1-mr-2) and [Review round 2](#review-round-2-mr-2)). Phase 2
-is in progress on `fix/7-persistence-phase-2` (see [Phase 2 steps](#phase-2-steps),
-[Phase 2 progress](#phase-2-progress) and [Review and branches](#review-and-branches)). See
-[Phase 1 progress](#phase-1-progress) for what Phase 1 did, how it was done, and what is left.
+**Status (2026-09-30):**
+
+- **Phase 1** ([!2](https://gitlab.com/max757/duris/-/merge_requests/2)) and **Phase 2 steps 1 to
+  7 and the foundation of step 8** ([!3](https://gitlab.com/max757/duris/-/merge_requests/3)) are
+  on `master`, merged together in `7887bf1d6` after two and one review rounds (see
+  [Review and branches](#review-and-branches)).
+- **The rest of Phase 2 step 8** (the game thread's remaining SQL) is in progress on
+  `fix/7-persistence-phase-2-step-8`. Phase 2 is done when it lands. See
+  [Step 8](#step-8-game-thread-sql-off-the-loop-in-progress).
+- **Phase 3** has not started.
+
+See [Phase 1 progress](#phase-1-progress) and [Phase 2 progress](#phase-2-progress) for what each
+step did and how.
 
 **Work items:** #7 (player saves and deaths). This plan also removes the persistence causes behind
 #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert storms).
@@ -59,10 +66,12 @@ A single background thread writes everything to the database, in the order it wa
 - corpse saves;
 - locker saves;
 - saved room items;
-- `log_entries` rows from `sql_log()` (since review round 1).
+- `log_entries` rows from `sql_log()` (since Phase 1 review round 1);
+- since Phase 2: critical commands (step 1), bank deltas (step 2), shopkeeper saves (step 6) and
+  the game thread's own SQL, as `sql` jobs (step 8).
 
 This writer is the existing player save worker, cut from two threads to one
-(`PLAYER_SAVE_WORKER_DEFAULT_THREADS`), with four new job kinds.
+(`PLAYER_SAVE_WORKER_DEFAULT_THREADS`), with a job kind for each of these.
 
 - **Order:** saves are applied in capture order. A newer save of the same owner replaces its
   queued one only when that is the last job queued; otherwise it is queued behind, so it never
@@ -80,14 +89,15 @@ In one transaction:
 1. **Claim what it holds.** For every item the owner holds:
    - no row in `item_current_owner`: insert one;
    - the row names this owner: nothing to do;
-   - the row names another player, corpse, locker, room or pet: set it to this owner, and write an
-     `item_owner_audit` row with the item, vnum, old owner, new owner and time.
-2. **Leave out what the economy holds, and what was destroyed.** If the row names an auction, a
-   shopkeeper or the collector, the item is left out of this save and logged to `logs/log/dupes`.
-   Those three still move items through their own transactions until Phase 2, so the database is
-   right about them. A row that says the item was destroyed (a sale for destruction, a spent coin
-   pile) is final the same way: only a save captured before the destruction can still hold the
-   item, so it is left out, with its contents, and logged.
+   - the row names another player, corpse, locker, room or pet, or (since Phase 2 step 7) an
+     auction, a shopkeeper or the collector: set it to this owner, and write an `item_owner_audit`
+     row with the item, vnum, old owner, new owner and time. The economy takes its items out of
+     memory before its command, so a later save never holds what it took.
+2. **Leave out what was destroyed.** A row that says the item was destroyed (a sale for
+   destruction, a spent coin pile) is final: only a save captured before the destruction can
+   still hold the item, so it is left out, with its contents, and logged to `logs/log/dupes`.
+   (Until Phase 2 step 7, a row naming an auction, a shopkeeper or the collector was left out the
+   same way.)
 3. **Write the owner's rows** (`player_items`, `corpse_items`, `locker_items` and the others) from
    memory, as today.
 
@@ -118,6 +128,11 @@ Nothing is duplicated: an item handed over during a crash ends up with whichever
 last. There is one loss case: a hand-over where the giver's save landed and the receiver's did not.
 Both are written in the same checkpoint batch, so that window is milliseconds.
 
+Since Phase 2 money follows the same rule: the owner it leaves is saved first, so a crash between
+the two saves loses the money but never pays it twice. On MariaDB a bank delta or an `sql` job
+whose commit has an unknown outcome (the connection dropped during `COMMIT`) is reported and not
+retried, which can lose it but never apply it twice.
+
 ## Phase 1: end the problems
 
 Each step is its own commit with a focused regression test. The flat-file backend gets the same change
@@ -126,7 +141,8 @@ wherever it has the same code, and its CI build and full-world boot test must ke
 1. **One writer.**
    - Cut the save worker to one thread.
    - Add job kinds for corpse, locker and saved-room-item snapshots.
-   - A newer save of an owner replaces its queued one and moves to the back.
+   - A newer save of an owner replaces its queued one and moves to the back. (Since MR !3 review
+     round 1, only the last job queued is replaced; otherwise the newer save queues behind.)
    - Take the journal out of `player_save_pipeline.c`, and drop the `PLAYER_SAVE_JOURNAL_DIR`
      requirement.
    - Apply the failure policy from [One writer](#one-writer).
@@ -196,7 +212,8 @@ New focused tests in `tests/async/`:
 - Raising, resurrecting and decaying a corpse make no database call and cannot fail.
 - `rent`, `quit` and `camp` extract at once while the writer is stalled.
 - Shutdown with the database down exits within the bound.
-- The writer applies saves in capture order, and a replaced save moves to the back.
+- The writer applies saves in capture order, and a replaced save moves to the back (since MR !3
+  review round 1, only the last job queued is replaced).
 
 Tests that pin the old behaviour (custody contracts, death disposition, corpse batches, terminal
 fences) are rewritten to the new rules or deleted.
@@ -229,14 +246,17 @@ Production follows with the owner's go-ahead.
     crash cannot pay twice (see [Phase 2 steps](#phase-2-steps)).
 - **Epic points and frags** move the same way: the save writes them, and their transactions become
   in-memory updates.
-- **Auctions, shops and the collector** save their holdings through the writer with the same claim.
-  The economy exception in the claim then goes.
-- **Game-thread SQL.** The remaining 345 `qry()` calls, most of them in `sql.c`, `artifact.c`,
-  `auction_houses.c`, `boon.c`, `account_reward.c` and `epic.c`, move off the loop:
+- **Auctions, shops and the collector** take what they trade out of memory when the command is
+  submitted, and MariaDB shopkeepers are saved on the writer after the seller. The economy
+  exception in the claim then goes.
+- **Game-thread SQL.** The game thread's own queries move off the loop. The plan counted 345
+  `qry()` calls; the survey found about 330 functions using the game thread's connection, in
+  `sql.c`, `sql_player.c`, `artifact.c`, `auction_houses.c`, `boon.c`, `account_reward.c`,
+  `epic.c` and a dozen others:
   - calls that write are queued on the writer;
-  - calls that read happen at boot, from a cache, or through the async path.
+  - calls that read happen at boot, from memory, or through the async path.
 
-  The latency trace must then show no database wait on the loop.
+  The game-loop query count must then stay at zero after boot.
 
 ### Phase 2 steps
 
@@ -285,18 +305,33 @@ considered and cut: ordering on the one writer gives the same guarantee without 
    backends). `epic_transaction_submit*()` and the combat outcome's frag and epic changes update
    the character at once; the repositories stop writing those columns.
 6. **Shops in memory.** A trade moves the item and the coins at once, the way the completion
-   already publishes it. The shopkeeper's stock is saved through the writer, claimed for the
-   shopkeeper.
+   already publishes it. The shopkeeper's stock is saved through the writer, after the seller's
+   save. (As done: the MariaDB stock is saved in order rather than claimed, because it has no
+   ownership rows; flat-file shops keep the shop trade command, and a sale takes its item out of
+   the seller's inventory at submit. Auction listings and collections take their items out at
+   submit the same way.)
 7. **The economy exception goes.** With auctions, the collector and shops committing in capture
    order, `item_claim_owner_is_economy()` goes: a save claims whatever its owner holds.
-8. **Game-thread SQL off the loop.**
-   - Writes are queued on the writer (`sql` job), with the statement built on the game thread.
-   - Reads that feed a command's output run on the writer (`sql_read` job), behind the writes queued
-     before them, and hand their rows to a game-thread callback on a later pulse.
+8. **Game-thread SQL off the loop.** Everything below is an `sql` job on the one writer
+   (`src/sql/sql_async.h`), in capture order with the saves, and each job runs in one transaction.
+   - Writes are queued with the statement built on the game thread (`sql_queue()`,
+     `sql_queue_statements()`). A write that needs the database's answer first, such as a lookup
+     that decides between an update and an insert, runs its lookup on the writer, just before the
+     write it decides (`sql_queue_work()`).
+   - Reads that feed a command's output run on the writer, behind the writes queued before them,
+     and hand copies of their rows to a game-thread callback on a later pulse (`sql_read()`,
+     `sql_read_for()`; `sql_read_work()` for a read that takes more than one query).
    - Reads the game logic depends on come from memory, loaded at boot and kept up to date by the
-     writes above.
+     writes above. Two variations: data that belongs to one character is read when it enters the
+     game (the checks fail closed until it arrives), and data that the website edits rather than
+     the game is also read again on a timer (`mud_info`, every minute).
+   - Loads that a connection waits for take the async path too: logging in to an account, and
+     loading an offline character for finger, lockers or artifacts. The connection waits in a loading state
+     while the game loop carries on, the way the Phase 1 player load already does
+     (`CON_PLAYER_LOAD`); a command gets its answer on a later pulse.
    - Boot and shutdown may still query.
-   - A journey pins that the loop issues no query after boot.
+   - While the loop runs, every query on the game thread's connection is counted and each site is
+     logged once, and a journey pins that the loop issues no query after boot.
 
 ### Phase 2 tests
 
@@ -312,7 +347,7 @@ New focused tests, each failing without its step:
   restart.
 - An auction listing and a bid take the item and the coins at once and give them back when
   refused; a stale save cannot take a listed item back.
-- A journey pins that the game loop issues no query after boot.
+- A journey pins that the game loop issues no query after boot (with the rest of step 8).
 
 The Phase 1 journeys (death and corpse loot, necromancer raise, give, rent/quit/relog, shutdown
 with players online) run again, and the local `.env`-account session covers money, the bank, a
@@ -331,6 +366,11 @@ Remove the code nothing calls any more:
 - the custody and degraded-load code;
 - `currency_transaction.c`;
 - the item and currency parts of `critical_command_*`;
+- the currency repository, the coin transfer command, the corpse lifecycle wallet and the
+  accounting bank commands, which Phase 2 kept only for an older journal's one-time replay;
+- the game-thread SQL functions nothing calls, found by the step 8 survey: the `*_legacy` auction
+  functions, `check_boon_completion_legacy()`, `poll_check_expirations()`,
+  `update_epic_zone_mods()`, `get_epic_zone_frequency_mod()` and `event_write_statistic()`;
 - the flat-file equivalents of all of the above.
 
 That is roughly 20,000 to 30,000 lines. The death-custody tables stay until staff have resolved the
@@ -369,6 +409,15 @@ These parts were cut:
 - **The coordinator's retry cap (Phase 2).** Like a save, a command that loses its connection is
   retried by the writer until it lands or shutdown names it; a cap would only drop a command whose
   outcome is unknown.
+- **A barrier job that later saves cannot replace (MR !3 review round 1).** A newer save replaces
+  a queued one only when that is the last job queued, which keeps capture order exactly with no
+  new job kind.
+- **A receipt table for bank deltas (MR !3 review round 1).** A MariaDB delta runs in a
+  transaction and a commit with an unknown outcome is not retried; a flat-file retry writes the
+  bank record its first attempt prepared. Neither can add a delta twice, and neither needs a
+  migration.
+- **A second job kind for reads (step 8).** One `sql` job kind carries writes and reads; a read's
+  job copies its rows back to the game thread.
 
 ## Done when
 
@@ -378,7 +427,9 @@ These parts were cut:
 - No corpse raise, resurrection or decay can fail on the database.
 - Shutdown and copyover never wait on a failing save.
 - After Phase 1, saves, logouts, deaths and corpses never wait on the database from the game loop.
-  After Phase 2, nothing on the loop does.
+  After Phase 2, nothing on the loop does: the game-loop query count stays at zero after boot. (On
+  `master` since `7887bf1d6`, `sql.c` meets this; the rest of the game thread's SQL follows with
+  the rest of step 8.)
 - The database cannot hold one item under two owners, and `logs/log/dupes` accounts for every item a
   save or load gave up.
 
@@ -1382,7 +1433,7 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   `run_item_transfer_schema_mysql.sh` and `run_collector_repository_schema_mysql.sh` ran on
   disposable servers.
 
-### Step 8: game-thread SQL off the loop (foundation done; the rest follows in its own MR)
+### Step 8: game-thread SQL off the loop (in progress)
 
 - The way off the loop (`src/sql/sql_async.{h,c}`):
   - `sql_queue()`, `sql_queue_statements()` and `sql_queue_work()` build SQL on the game
@@ -1416,15 +1467,34 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
     receipt on the writer before the game shows it.
 - Changed from the plan: the plan counted 345 `qry()` calls. The survey found about 330
   functions on the game thread's connection, and about 250 of them remain. So on 2026-09-30
-  the step was split. This MR carries the foundation and `sql.c`; the rest moves to its own
-  MR, stacked on this one (see [Review and branches](#review-and-branches)), subsystem by
-  subsystem:
-  - account login and saves, and the offline character loads (`restoreCharOnly()`, which
-    finger, lockers, artifacts and the websocket handlers use);
-  - lockers and private chests, artifacts (including the poof and bind events), ships,
-    guilds and associations, boons, auctions, nexus stones, epic zones, polls, outposts
-    and kingdoms.
-  The journey that pins "no query after boot" lands with it.
+  the step was split: the foundation above and `sql.c` went to `master` with !3 (in
+  `7887bf1d6`), and the rest follows in its own MR from `fix/7-persistence-phase-2-step-8`,
+  subsystem by subsystem, each its own commit with its test.
+- What is left. A session as the `.env` account (log in, the account menu, character entry, then
+  `finger`, `trophy`, `fraglist`, `epic`, `boon`, `nexus`, `arti`, `auction`, `poll`, `outpost`,
+  `kingdom`, `hardcore`, `leaderboard`, `prestige`, `ledger`, `save` and `quit`) still logged
+  33 sites:
+  - logging in: `sql_account_exists()`, `sql_load_account()` with its characters and IPs,
+    and the account save (`sql_save_account()`, its character mapping lookup and its
+    transaction);
+  - a whole offline character load (`restoreCharOnly()`: `sql_get_player_pid()`,
+    `sql_load_player_status()`, skills and affects) during character entry, still to be traced
+    to its caller; finger, lockers, artifacts and the websocket handlers load offline
+    characters the same way;
+  - at login: `query_grants()` (account rewards), `check_frag_position()` and
+    `player_death_restitution_locker_notice()`;
+  - periodic events: `event_artifact_check_poof_sql()` and `event_artifact_wars_sql()`;
+  - command output: `auction_list()`, `boon_display()`, `nexus_stone_god_list()`,
+    `poll_get_all()`, `do_prestige()`, `get_epic_players()`, `displayHardCore()`,
+    `displayLeader()` and `load_outpost_records()`.
+
+  The rest of the static inventory (lockers and private chests, ships, guilds and
+  associations, kingdoms, the remaining artifact, boon, auction and nexus paths, epic zones
+  and `get_zone_info()`, artifact bind data) is converted with its subsystem, whether the
+  session reached it or not.
+- Order: account login and saves first (every player goes through them), then offline
+  character loads, the login-time reads, the periodic events, the command output subsystem by
+  subsystem, and last the journey that pins no query after boot.
 - Found on the way:
   - `sql_find_racewar_for_ip()` assigned `RACEWAR_NONE` to its pointer instead of the side,
     and leaked the result after an hour offline.
