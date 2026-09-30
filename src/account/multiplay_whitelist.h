@@ -31,5 +31,6 @@ struct whitelist_data
 void do_whitelist(P_char, char *, int);
 bool whitelisted_host(const char *host);
 vector<whitelist_data> get_whitelist();
+bool whitelist_load(void);
 
 #endif // __MULTIPLAY_WHITELIST_H__

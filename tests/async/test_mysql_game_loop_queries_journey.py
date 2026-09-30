@@ -53,6 +53,10 @@ COMMANDS = (
     ('poll close 1', 'has been closed by'),
     ('hardcore', 'Hall Of'),
     ('leaderboard', 'Leader Board'),
+    ('whitelist add Twins 10.1.*.* Brothers on one network', 'Host pattern added'),
+    ('whitelist add Guests 10.2.*.* A shared library', 'Host pattern added'),
+    ('whitelist remove 10.1.*.*', 'Host pattern removed'),
+    ('whitelist', 'A shared library'),
     ('divineclaim mace ' + journey.ACCOUNT + ' days 1', 'Created divine reward #1'),
     ('divineclaim list ' + journey.ACCOUNT, 'Active Divine Account Rewards'),
     ('auction list', 'No auctions to list!'),
@@ -226,8 +230,9 @@ def run(server):
                 input=f"SELECT COUNT(*) FROM {table} t JOIN player_data pd ON pd.pid=t.pid "
                       f"WHERE pd.name='{journey.CHARACTER}'").stdout.strip()
             assert count == '1', f'{table} holds {count} rows for the new character'
-        # Shutdown drained the writer: the revoked grant and its summon are gone, and the
-        # closed poll, its two options and the one vote are stored.
+        # Shutdown drained the writer: the revoked grant and its summon are gone, the
+        # closed poll, its two options and the one vote are stored, and so is the one
+        # whitelist entry left.
         def scalar(query):
             return subprocess.run(mysql + [database], input=query, text=True,
                                   env=environment, check=True,
@@ -253,6 +258,9 @@ def run(server):
                       '(SELECT COUNT(*) FROM poll_votes WHERE poll_id=1 AND option_id=2) '
                       'FROM polls WHERE id=1')
         assert poll.split() == ['0', '1', '86400', '2', '1'], poll
+        whitelist = scalar('SELECT pattern, player, admin, created_on IS NOT NULL '
+                           'FROM multiplay_whitelist')
+        assert whitelist.split('\t') == ['10.2.*.*', 'guests', journey.CHARACTER, '1'], whitelist
 
         logs = output_path.read_text(errors='replace') + '\n'.join(
             path.read_text(errors='replace') for path in (runtime / 'logs/log').glob('*')

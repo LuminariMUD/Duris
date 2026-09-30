@@ -58,6 +58,7 @@
 #include "account/account.h"
 #include "account/account_reward.h"
 #include "net/poll.h"
+#include "account/multiplay_whitelist.h"
 #include "guild/assocs.h"
 #include "economy/boon.h"
 #include "world/epic.h"
@@ -1549,10 +1550,12 @@ int initialize_mysql()
 		return -1;
 	}
 	if (!sql_player_names_load() || !account_rewards_load() || !sql_player_recipes_load() ||
-	    !artifacts_load() || !polls_load() || !sql_spellbooks_load())
+	    !artifacts_load() || !polls_load() || !sql_spellbooks_load() || !whitelist_load())
 	{
 		logit(LOG_STATUS,
-		      "FATAL: the boot data held in memory could not be read, aborting boot");
+		      "FATAL: the character names, account rewards, recipes, artifacts, "
+		      "polls, spellbooks or multiplay whitelist could not be read, "
+		      "aborting boot");
 		duris_sql_exclusion_guard_release();
 		mysql_close(DB);
 		DB = NULL;

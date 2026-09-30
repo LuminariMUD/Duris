@@ -3,6 +3,9 @@
 #include "core/utility.h"
 #include "core/utils.h"
 #include "account/multiplay_whitelist.h"
+#include <algorithm>
+#include <cctype>
+#include <ctime>
 #include <string.h>
 #include "sql/sql.h"
 
@@ -10,11 +13,8 @@
 #include "flatfile/flatfile_store.h"
 #include "persistence/persistence_mode.h"
 
-#include <algorithm>
 #include <array>
-#include <cctype>
 #include <climits>
-#include <ctime>
 #include <new>
 #include <openssl/crypto.h>
 #include <openssl/sha.h>
@@ -256,6 +256,17 @@ bool save_flat_whitelist(const string &directory, const vector<whitelist_data> &
 	return flatfile_atomic_write(directory, whitelist_filename, bytes, error);
 }
 
+} // namespace
+#else
+#include "sql/sql_async.h"
+
+// The whitelist, read at boot and kept current by the staff's changes, which are queued on
+// the writer: only the game writes it.
+static vector<whitelist_data> stored_whitelist;
+#endif
+
+namespace
+{
 string trimmed(const char *value)
 {
 	if (!value)
@@ -283,7 +294,6 @@ bool current_date(string *value)
 	return true;
 }
 } // namespace
-#endif
 
 extern P_desc descriptor_list;
 
@@ -311,30 +321,28 @@ vector<whitelist_data> get_whitelist()
 		logit(LOG_DEBUG, "get_whitelist: %s", error.c_str());
 	return whitelist;
 #else
-	if (!qry("SELECT id, created_on, pattern, player, admin, description FROM %s",
-		 MULTIPLAY_WHITELIST_TABLE_NAME))
-	{
-		logit(LOG_DEBUG, "get_whitelist(): qry failed");
-		return whitelist;
-	}
-
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (!res)
-	{
-		logit(LOG_DEBUG, "%s: mysql_store_result failed", __func__);
-		return whitelist;
-	}
-	while (MYSQL_ROW row = mysql_fetch_row(res))
-	{
-		whitelist.push_back(whitelist_data(atoi(row[0]), string(row[1]), string(row[2]),
-						   string(row[3]), string(row[4]), string(row[5])));
-	}
-
-	mysql_free_result(res);
-
-	return whitelist;
+	return stored_whitelist;
 #endif
 }
+
+#ifndef __NO_MYSQL__
+// Boot only: the game loop is not running yet.
+bool whitelist_load(void)
+{
+	MYSQL_RES *res =
+		db_query("SELECT id, created_on, pattern, player, admin, description FROM %s",
+			 MULTIPLAY_WHITELIST_TABLE_NAME);
+	if (!res)
+		return false;
+	stored_whitelist.clear();
+	while (MYSQL_ROW row = mysql_fetch_row(res))
+		stored_whitelist.push_back(whitelist_data(
+			atoi(row[0]), row[1] ? row[1] : "", row[2] ? row[2] : "",
+			row[3] ? row[3] : "", row[4] ? row[4] : "", row[5] ? row[5] : ""));
+	mysql_free_result(res);
+	return true;
+}
+#endif
 
 bool add_to_whitelist(P_char ch, const char *player, const char *pattern, const char *description)
 {
@@ -395,16 +403,23 @@ bool add_to_whitelist(P_char ch, const char *player, const char *pattern, const 
 	      saved_player.c_str(), saved_description.c_str());
 	return true;
 #else
-	char descbuff[MAX_STRING_LENGTH];
-
-	mysql_real_escape_string(DB, descbuff, description, strlen(description));
-
-	if (!qry("INSERT INTO %s (created_on, admin, player, pattern, description) VALUES (now(), trim('%s'), trim('%s'), trim('%s'), trim('%s'))",
-		 MULTIPLAY_WHITELIST_TABLE_NAME, GET_NAME(ch), player, pattern, descbuff))
+	string created_on;
+	if (!ch || !GET_NAME(ch) || !current_date(&created_on))
+		return false;
+	const whitelist_data entry(0, created_on, trimmed(pattern), trimmed(player),
+				   trimmed(GET_NAME(ch)), trimmed(description));
+	if (!sql_queue(
+		    "INSERT INTO %s (created_on, admin, player, pattern, description) VALUES ('%s', '%s', '%s', '%s', '%s')",
+		    MULTIPLAY_WHITELIST_TABLE_NAME, created_on.c_str(),
+		    escape_str(entry.admin.c_str()).c_str(),
+		    escape_str(entry.player.c_str()).c_str(),
+		    escape_str(entry.pattern.c_str()).c_str(),
+		    escape_str(entry.description.c_str()).c_str()))
 	{
-		logit(LOG_DEBUG, "add_to_whitelist(): qry failed");
+		logit(LOG_DEBUG, "add_to_whitelist(): the write could not be queued");
 		return false;
 	}
+	stored_whitelist.push_back(entry);
 
 	sql_log(ch, WIZLOG, "Added '%s' (%s: %s) to multiplay whitelist", pattern, player,
 		description);
@@ -457,12 +472,17 @@ bool remove_from_whitelist(P_char ch, const char *pattern)
 	logit(WIZLOG, "Removed '%s' from multiplay whitelist", saved_pattern.c_str());
 	return true;
 #else
-	if (!qry("DELETE FROM %s WHERE pattern = trim('%s')", MULTIPLAY_WHITELIST_TABLE_NAME,
-		 pattern))
+	const string saved_pattern = trimmed(pattern);
+	if (!sql_queue("DELETE FROM %s WHERE pattern = '%s'", MULTIPLAY_WHITELIST_TABLE_NAME,
+		       escape_str(saved_pattern.c_str()).c_str()))
 	{
-		logit(LOG_DEBUG, "remove_from_whitelist(): qry failed");
+		logit(LOG_DEBUG, "remove_from_whitelist(): the write could not be queued");
 		return false;
 	}
+	stored_whitelist.erase(remove_if(stored_whitelist.begin(), stored_whitelist.end(),
+					 [&](const whitelist_data &entry)
+					 { return entry.pattern == saved_pattern; }),
+			       stored_whitelist.end());
 
 	sql_log(ch, WIZLOG, "Removed '%s' from multiplay whitelist", pattern);
 	return true;
