@@ -8,10 +8,12 @@
   7 and the foundation of step 8** ([!3](https://gitlab.com/max757/duris/-/merge_requests/3)) are
   on `master`, merged together in `7887bf1d6` after two and one review rounds (see
   [Review and branches](#review-and-branches)).
-- **The rest of Phase 2 step 8** (the game thread's remaining SQL) is done on
-  `fix/7-persistence-phase-2-step-8` and waits for review in its own MR to `master`; Phase 2 is
-  done when it lands. See [Step 8](#step-8-game-thread-sql-off-the-loop-done).
-- **Phase 3** has not started.
+- **The rest of Phase 2 step 8** (the game thread's remaining SQL,
+  [!4](https://gitlab.com/max757/duris/-/merge_requests/4)) is on `master` since `60f56fb5b`,
+  after one review round. **Phase 2 is done.** See
+  [Step 8](#step-8-game-thread-sql-off-the-loop-done).
+- **Phase 3** has not started. It continues on `fix/7-persistence-phase-3`; see
+  [Phase 3 progress](#phase-3-progress) for where it starts.
 
 See [Phase 1 progress](#phase-1-progress) and [Phase 2 progress](#phase-2-progress) for what each
 step did and how.
@@ -447,8 +449,8 @@ These parts were cut:
 - Shutdown and copyover never wait on a failing save.
 - After Phase 1, saves, logouts, deaths and corpses never wait on the database from the game loop.
   After Phase 2, nothing on the loop does: the game-loop query count stays at zero after boot. (On
-  `master` since `7887bf1d6`, `sql.c` meets this; the rest of step 8 meets it for the whole game
-  thread, and the game-loop queries journey pins it with an empty `NOT_CONVERTED` list.)
+  `master` since `60f56fb5b` for the whole game thread; the game-loop queries journey pins it with
+  an empty `NOT_CONVERTED` list.)
 - The database cannot hold one item under two owners, and `logs/log/dupes` accounts for every item a
   save or load gave up.
 
@@ -1186,8 +1188,13 @@ Verification for this round, on the final head:
 - Both landed together on 2026-09-30 in `7887bf1d6`, one `--no-ff` merge of the phase 2 head,
   which held phase 1 and had `master` merged in. No rebase, so every review tag still names the
   commit that was reviewed. The two branches are deleted.
-- The rest of Phase 2 step 8 continues on `fix/7-persistence-phase-2-step-8`, branched from that
-  merge. Its MR targets `master`, and its review rounds are tagged `persistence/phase-2-step-8-review-<n>`.
+- The rest of Phase 2 step 8 was reviewed as [!4](https://gitlab.com/max757/duris/-/merge_requests/4)
+  (source `fix/7-persistence-phase-2-step-8`, branched from that merge), tagged
+  `persistence/phase-2-step-8-review-0` and `-1`. It landed on 2026-09-30 in `60f56fb5b`, one
+  `--no-ff` merge of the `-1` head, with no rebase. The branch is deleted.
+- Phase 3 continues on `fix/7-persistence-phase-3`, branched from `60f56fb5b`. Its MR targets
+  `master` and is opened once it holds work; its review rounds are tagged
+  `persistence/phase-3-review-<n>`.
 
 ## Phase 2 progress
 
@@ -2161,3 +2168,25 @@ Verification for this round, on the final head:
 - Journeys: the MariaDB deletion journey (a linkdead character refused, a new pid after the
   restart, the account deletion refused and retried) and the game-loop queries journey
   (`finger` through an offline load by pid with no account).
+
+## Phase 3 progress
+
+Not started. The branch is `fix/7-persistence-phase-3` (see [Review and branches](#review-and-branches)).
+
+Where it starts:
+
+- What to delete: the list in [Phase 3](#phase-3-delete-what-is-left-over), the dead functions named
+  in [What is left after step 8](#what-is-left-after-step-8), and the "left for Phase 3" notes in
+  the Phase 1 and Phase 2 steps.
+- A prerequisite for part of it: the currency repository, the coin transfer command, the corpse
+  lifecycle wallet, the accounting bank commands and the item and currency parts of
+  `critical_command_*` stay only for an older journal's one-time replay at boot. They can go once
+  every server that ran an earlier build (staging and production) has booted a Phase 2 build, which
+  replays and empties that journal. Where that cannot be confirmed, keeping the replay or dropping
+  the old journal is an owner decision.
+- The death-custody tables stay until staff have resolved the records in them (an owner decision).
+
+The first step: put the Phase 3 list through ablation (`.agents/skills/ablation`), confirming each
+item has no caller left, and split it into steps. Each step deletes one area with its tests, in its
+own commits, and passes the gates: `make test-all`, `make test-db`, the flat-file and pfile builds
+and `./scripts/format.sh --all --check`.
