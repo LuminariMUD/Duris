@@ -123,6 +123,7 @@ enum class persistence_job_kind { shopkeeper };
 enum class player_save_submit_result { accepted, replaced, refused };
 struct player_save_apply_result {};
 int captures = 0, queued = 0;
+uint64_t queued_owner = 0;
 bool capture_ok = true, queue_ok = true;
 player_snapshot_capture_result flatfile_shopkeeper_capture(P_char, uint32_t, uint64_t, int64_t,
                                                            flatfile_shopkeeper_record *)
@@ -131,9 +132,14 @@ player_snapshot_codec_result player_item_snapshot_extract_subtree(
     const std::vector<player_item_snapshot> &, uint64_t, std::vector<player_item_snapshot> *,
     std::vector<player_item_snapshot> *) { return player_snapshot_codec_result::ok; }
 player_save_apply_result shopkeeper_snapshot_repository_apply_from_pool(const flatfile_shopkeeper_record &) { return {}; }
+// Like the real writer, owner 0 is refused.
 template <typename Write>
-player_save_submit_result persistence_writer_submit(persistence_job_kind, uint64_t, size_t, Write)
-{ ++queued; return queue_ok ? player_save_submit_result::accepted : player_save_submit_result::refused; }
+player_save_submit_result persistence_writer_submit(persistence_job_kind, uint64_t owner, size_t, Write)
+{
+    if (!owner) return player_save_submit_result::refused;
+    ++queued; queued_owner = owner;
+    return queue_ok ? player_save_submit_result::accepted : player_save_submit_result::refused;
+}
 '''
 main = r'''
 int main() {
@@ -165,7 +171,8 @@ int main() {
     shops[0].dirty = 1;
     assert(sql_save_dirty_shopkeepers(true));
     assert(mob_index[0].qst_func == world_quest_proc && mob_index[0].func.mob == trainer_proc);
-    assert(!shops[0].dirty && queued==1);
+    // Shop 0 is saved under owner 1: the writer refuses owner 0.
+    assert(!shops[0].dirty && queued==1 && queued_owner==1);
     assert(shops[0].dirty_save_retry.failure_count==0);
     shops[0].dirty = 1;
     mob_index[0].qst_func = trainer_proc;

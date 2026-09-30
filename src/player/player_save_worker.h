@@ -39,7 +39,7 @@ enum class persistence_job_kind : uint8_t
 	critical,
 	// A change to an account's bank, added to what the database holds.
 	bank,
-	// A shopkeeper's stock, keyed by shop.
+	// A shopkeeper's stock, keyed by shop number plus one.
 	shopkeeper,
 	// Statements or a read the game thread queued (sql_async.c); each is its own owner.
 	sql,

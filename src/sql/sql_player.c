@@ -9093,8 +9093,9 @@ bool sql_save_shopkeeper(P_char ch, int shop_nr)
 			shop.items = std::move(rest);
 		}
 	const size_t bytes = sizeof(shop) + shop.items.size() * sizeof(player_item_snapshot);
+	// The writer's owners are nonzero; shop numbers start at 0.
 	const player_save_submit_result submitted = persistence_writer_submit(
-		persistence_job_kind::shopkeeper, static_cast<uint64_t>(shop_nr), bytes,
+		persistence_job_kind::shopkeeper, static_cast<uint64_t>(shop_nr) + 1, bytes,
 		[shop]() { return shopkeeper_snapshot_repository_apply_from_pool(shop); });
 	return submitted == player_save_submit_result::accepted ||
 	       submitted == player_save_submit_result::replaced;
