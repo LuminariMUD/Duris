@@ -161,7 +161,6 @@ for relative in (
     "src/economy/auction_transaction.c",
     "src/economy/boon_shop_transaction.c",
     "src/economy/boon_reward_transaction.c",
-    "src/economy/currency_transaction.c",
     "src/guild/artifact_guild_transaction.c",
     "src/combat/combat_outcome_transaction.c",
     "src/persistence/corpse_lifecycle_transaction.c",

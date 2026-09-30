@@ -2680,11 +2680,11 @@ def test_store_refused_grant_restores_coin_and_material() -> None:
         "the material draw follows the committed purse debit and precedes the grant",
         f"coin {coin_take}, spend {spend}, grant {grant}",
     )
-    busy = buy.find("currency_transaction_player_busy(")
+    busy = buy.find("item_movement_transaction_player_busy(")
     make = buy.find("currency_transaction_submit_wallet_value(")
     check(
-        -1 < busy < make,
-        "a currency transaction in flight is asked about before a payment is submitted",
+        -1 < busy < make and "currency_transaction_player_busy(" not in buy,
+        "an item move in flight is asked about before the payment, which applies at once",
         f"busy {busy}, submit {make}",
     )
 

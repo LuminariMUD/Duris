@@ -239,13 +239,11 @@ query_result apply_status(MYSQL *connection, const player_snapshot &snapshot)
 	sql << ",output_preferences=" << quote(connection, snapshot.output_preferences);
 	for (const player_snapshot_integer &row : snapshot.status_integers)
 	{
+		// The wallet is memory's and the save writes it; epics and frags still belong
+		// to their transactions.
 		if (row.field == player_status_field::epics ||
 		    row.field == player_status_field::frags ||
-		    row.field == player_status_field::old_frags ||
-		    row.field == player_status_field::copper ||
-		    row.field == player_status_field::silver ||
-		    row.field == player_status_field::gold ||
-		    row.field == player_status_field::platinum)
+		    row.field == player_status_field::old_frags)
 			continue;
 		const char *column = status_column(row.field);
 		if (!column)
@@ -1347,6 +1345,33 @@ player_save_apply_result apply_log_entry(MYSQL *connection, const log_entry_snap
 	return { player_save_apply_outcome::applied, 0, 0 };
 }
 
+player_save_apply_result apply_bank_delta(MYSQL *connection, const bank_delta_snapshot &bank)
+{
+	if (!connection || bank.account_name.empty())
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+	static constexpr std::array<const char *, 4> columns = { "bank_copper", "bank_silver",
+								 "bank_gold", "bank_platinum" };
+	std::ostringstream sql;
+	sql << "INSERT INTO account_banks (account_name,racewar,bank_copper,bank_silver,bank_gold,"
+	       "bank_platinum) VALUES ("
+	    << quote(connection, bank.account_name) << ',' << bank.racewar;
+	for (int64_t amount : bank.delta)
+		sql << ',' << std::max<int64_t>(amount, 0);
+	sql << ") ON DUPLICATE KEY UPDATE bank_revision=bank_revision+1";
+	// The columns are unsigned: a debit subtracts, so one the row cannot cover fails.
+	for (size_t index = 0; index < columns.size(); ++index)
+		if (bank.delta[index] > 0)
+			sql << ',' << columns[index] << '=' << columns[index] << '+'
+			    << bank.delta[index];
+		else if (bank.delta[index] < 0)
+			sql << ',' << columns[index] << '=' << columns[index] << '-'
+			    << -bank.delta[index];
+	const query_result result = execute(connection, sql.str());
+	if (!result.ok)
+		return failure(result.error_code);
+	return { player_save_apply_outcome::applied, 0, 0 };
+}
+
 template <typename Apply> player_save_apply_result apply_with_pool(Apply apply)
 {
 	MYSQL *connection = sql_pool_acquire();
@@ -1455,4 +1480,16 @@ player_save_apply_result log_entry_repository_apply_from_pool(const log_entry_sn
 {
 	return apply_with_pool([&](MYSQL *connection)
 			       { return apply_log_entry(connection, entry); });
+}
+
+player_save_apply_result bank_delta_repository_apply(MYSQL *connection,
+						     const bank_delta_snapshot &bank)
+{
+	return apply_bank_delta(connection, bank);
+}
+
+player_save_apply_result bank_delta_repository_apply_from_pool(const bank_delta_snapshot &bank)
+{
+	return apply_with_pool([&](MYSQL *connection)
+			       { return apply_bank_delta(connection, bank); });
 }

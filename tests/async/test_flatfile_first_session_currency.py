@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""First-connection currency with empty and populated bank authority, retry and reload."""
+"""First-connection coins: in memory at once, written by the save, with either bank, over a reload."""
 
 import pathlib
 import subprocess
@@ -22,14 +22,16 @@ def verify_first_session(client, port, state_root, populated_bank):
             f"unexpected opening wallet: {opening}")
     require(opening["bank"] == bank and opening["bank_revision"] == revision,
             f"creation changed the selected account bank: {opening}")
-    # This command submits both expected live revisions, before any reconnect.
+    # The coins move into the wallet in memory; the save writes it.
     client.send("get coins")
-    client.expect("You get 3s.", timeout=20)
+    client.expect("There were: 3 silver coins.", timeout=20)
+    client.send("save")
+    client.expect(f"Save complete for {CHARACTER}.", timeout=20)
     credited = inspect_authority(state_root)
-    require(credited["wallet"] == [0, 3, 0, 0] and credited["wallet_revision"] == 1,
-            f"first-session credit did not commit exactly once: {credited}")
-    require(credited["bank"] == bank and credited["bank_revision"] == revision + 1,
-            f"first-session bank revision did not advance once: {credited}")
+    require(credited["wallet"] == [0, 3, 0, 0],
+            f"the save did not write the credited wallet: {credited}")
+    require(credited["bank"] == bank and credited["bank_revision"] == revision,
+            f"a wallet credit changed the account bank: {credited}")
     # Repeating the pickup and saving cannot credit the absent pile again.
     client.send("get coins")
     client.send("save")
@@ -44,14 +46,16 @@ def verify_first_session(client, port, state_root, populated_bank):
         reloaded.send("save")
         reloaded.expect(f"Save complete for {CHARACTER}.", timeout=20)
         after = inspect_authority(state_root)
-        for key in ("wallet", "wallet_revision", "bank", "bank_revision"):
+        for key in ("wallet", "bank", "bank_revision"):
             require(after[key] == credited[key], f"retry/reload changed {key}: {after}")
-        # Spending uses the bank revision published to the live character on reload.
+        # The reloaded wallet spends, and the next save writes what is left.
         reloaded.send("drop 1 silver")
         reloaded.expect("OK.", timeout=20)
+        reloaded.send("save")
+        reloaded.expect(f"Save complete for {CHARACTER}.", timeout=20)
         spent = inspect_authority(state_root)
-        require(spent["wallet"] == [0, 2, 0, 0] and spent["wallet_revision"] == 2
-                and spent["bank"] == bank and spent["bank_revision"] == revision + 2,
+        require(spent["wallet"] == [0, 2, 0, 0] and spent["bank"] == bank
+                and spent["bank_revision"] == revision,
                 f"reloaded currency state was not usable: {spent}")
     finally:
         reloaded.close()

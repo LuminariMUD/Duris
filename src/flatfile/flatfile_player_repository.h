@@ -8,6 +8,7 @@
 #include "player/player_save_worker.h"
 
 #include <memory>
+#include <array>
 #include <string>
 
 class flatfile_player_snapshot_lock
@@ -42,6 +43,13 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 							bool legacy_replay = false);
 player_save_apply_result flatfile_player_snapshot_apply_selected(const player_snapshot &snapshot,
 								 void *context);
+
+// A bank change (the characters of an account share its bank), added to the account's
+// bank record for that side in one authority transaction.
+player_save_apply_result flatfile_bank_delta_apply(const std::string &root,
+						   const std::string &account_name, int8_t racewar,
+						   const std::array<int64_t, 4> &delta,
+						   std::string *error);
 
 // The flat-file corpse and saved-item saves: claim the items for their owner and
 // write the corpse record, or the item's graph into its room's record, as memory holds

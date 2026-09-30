@@ -14,6 +14,7 @@ import test_flatfile_first_session_currency as first_session
 TRANSFER_FAILED = "The coin transfer did not commit; nothing changed."
 TRANSFER_SUCCEEDED = "coins into a small leather bag."
 REMAINING_WALLET = [0, 8, 9, 8]  # Ten platinum less the 1,020-copper listing fee.
+COINS_BACK = "There were: 8 platinum coins, 9 gold coins, 8 silver coins."
 original_fixture = journey.make_fixture
 
 
@@ -52,7 +53,7 @@ def verify(client, port, state_root, populated_bank, expect_regression=False):
     command(client, "get saleitem", "You get a large leather bag.")
     command(client, "get banana", "You get a banana.")
     command(client, "put banana testbag", "Ok.")
-    command(client, "get coins", "You get 10p.")
+    command(client, "get coins", "There were: 10 platinum coins.")
     command(client, "auction offer saleitem 1", "is now listed as auction")
     listed = journey.inspect_authority(state_root)
     journey.require(listed["wallet"] == REMAINING_WALLET,
@@ -68,9 +69,10 @@ def verify(client, port, state_root, populated_bank, expect_regression=False):
                                 f"failed coin put changed {key}: {after}")
     else:
         command(client, "put all.coins testbag", TRANSFER_SUCCEEDED)
+        command(client, "save", f"Save complete for {journey.CHARACTER}.")
         journey.require(journey.inspect_authority(state_root)["wallet"] == [0, 0, 0, 0],
                         "successful coin put did not durably debit the wallet")
-        command(client, "get coins testbag", "You get 8p, 9g, and 8s.")
+        command(client, "get coins testbag", COINS_BACK)
         command(client, "put all.coins testbag", TRANSFER_SUCCEEDED)
 
     command(client, "save", f"Save complete for {journey.CHARACTER}.")
@@ -80,7 +82,8 @@ def verify(client, port, state_root, populated_bank, expect_regression=False):
     reloaded = journey.reconnect_character(port)
     try:
         if not expect_regression:
-            command(reloaded, "get coins testbag", "You get 8p, 9g, and 8s.")
+            command(reloaded, "get coins testbag", COINS_BACK)
+            command(reloaded, "save", f"Save complete for {journey.CHARACTER}.")
         after = journey.inspect_authority(state_root)
         journey.require(after["wallet"] == REMAINING_WALLET,
                         f"round trip or full reload changed the coin balance: {after}")

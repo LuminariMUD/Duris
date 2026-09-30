@@ -202,15 +202,9 @@ static bool recover_creation_batch = false;
 static obj_data recovered_grant_first = {};
 static obj_data recovered_grant_second = {};
 static critical_command submitted_command = {};
-static uint64_t pending_coin_uid = 0;
 static uint64_t fenced_item_uid = 0;
 static uint64_t collector_pending_uid = 0;
 static unsigned collector_invalidations = 0;
-bool currency_transaction_coin_item_busy(uint64_t uid)
-{
-	return uid && uid == pending_coin_uid;
-}
-
 bool collector_transaction_player_busy(P_char)
 {
 	return false;
@@ -314,7 +308,6 @@ void command_interpreter(P_char character, char *input);
 void process_with_paging(P_char character, char *input);
 static bool bulk_get_pending = false;
 bool bulk_get_player_busy(P_char) { return bulk_get_pending; }
-bool currency_transaction_player_busy(P_char) { return false; }
 bool input_allowed_while_item_moving(const char *input);
 bool input_allowed_while_currency_pending(const char *) { return true; }
 bool input_allowed_while_item_and_currency_pending(const char *input)
@@ -679,19 +672,12 @@ int main()
 		item_transfer_reason::player_get, first_roast.obj_uid,
 		held_bulk_get_completion, NULL, 0, NULL, &reject));
 	assert(reject == item_movement_reject::pending_conflict && !command_submitted);
-	collector_pending_uid = 0;
-	pending_coin_uid = first_roast.obj_uid;
-	assert(!item_movement_transaction_submit(
-		&actor, &first_roast, NULL, room_owner, player_owner,
-		item_transfer_reason::player_get, first_roast.obj_uid,
-		held_bulk_get_completion, NULL, 0, NULL, &reject));
-	assert(reject == item_movement_reject::pending_conflict && !command_submitted);
 	assert(!item_movement_transaction_submit_batch(
 		&actor, roots, 2, NULL, room_owner, player_owner,
 		item_transfer_reason::player_get, first_roast.obj_uid,
 		held_bulk_get_completion, NULL, 0, NULL, &reject));
 	assert(reject == item_movement_reject::pending_conflict && !command_submitted);
-	pending_coin_uid = backpack.obj_uid;
+	collector_pending_uid = backpack.obj_uid;
 	assert(!item_movement_transaction_submit(
 		&actor, &first_roast, &backpack, room_owner, player_owner,
 		item_transfer_reason::player_put, first_roast.obj_uid,
@@ -702,18 +688,8 @@ int main()
 		item_transfer_reason::player_put, first_roast.obj_uid,
 		held_bulk_get_completion, NULL, 0, NULL, &reject));
 	assert(reject == item_movement_reject::pending_conflict && !command_submitted);
-	// A nested container inherits the pending check from its authoritative root.
-	obj_data nested = {};
-	nested.obj_uid = 201;
-	assert(item_ownership_runtime_hydrate({201, 200, 200, player_owner, 1, 7,
-		100, item_custody_state::active}));
-	assert(!item_movement_transaction_submit(
-		&actor, &nested, NULL, player_owner, room_owner,
-		item_transfer_reason::player_drop, nested.obj_uid,
-		held_bulk_get_completion, NULL, 0, NULL, &reject));
-	assert(reject == item_movement_reject::pending_conflict && !command_submitted);
 	assert(!item_movement_transaction_player_busy(&actor));
-	pending_coin_uid = 999; // An unrelated pending coin does not block this move.
+	collector_pending_uid = 999; // An unrelated pending item does not block this move.
 	assert(item_movement_transaction_submit_batch(
 		&actor, roots, 2, NULL, room_owner, player_owner,
 		item_transfer_reason::player_get, first_roast.obj_uid,
@@ -1075,7 +1051,7 @@ int main()
     // All fixtures below are in-memory; no persistence service is connected.
     item_movement_transaction_reset_for_tests();
     item_ownership_runtime_reset();
-    pending_coin_uid = 0;
+    collector_pending_uid = 0;
     command_submitted = false;
     actor.carrying = nullptr;
     descriptor_data grant_descriptor = {};

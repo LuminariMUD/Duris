@@ -108,4 +108,17 @@ player_save_apply_result log_entry_repository_apply(MYSQL *connection,
 						    const log_entry_snapshot &entry);
 player_save_apply_result log_entry_repository_apply_from_pool(const log_entry_snapshot &entry);
 
+// A change to one account's bank on one side, added to what account_banks holds (the
+// characters of an account share its bank). The row is created when missing.
+struct bank_delta_snapshot
+{
+	std::string account_name;
+	int32_t racewar = 0;
+	std::array<int64_t, 4> delta = {};
+};
+
+player_save_apply_result bank_delta_repository_apply(MYSQL *connection,
+						     const bank_delta_snapshot &bank);
+player_save_apply_result bank_delta_repository_apply_from_pool(const bank_delta_snapshot &bank);
+
 #endif

@@ -53,8 +53,8 @@ class LiveItemMovementContractTests(unittest.TestCase):
 
     def test_audited_commands_defer_pointer_mutation(self):
         actobj = (SRC / "actobj.c").read_text()
-        for reason in ("player_get", "player_drop", "player_put", "player_give",
-                       "corpse_loot"):
+        # Coins move in memory, so no coin path names player_put any more.
+        for reason in ("player_get", "player_drop", "player_give", "corpse_loot"):
             self.assertIn(f"item_transfer_reason::{reason}", actobj)
         self.assertIn("item_movement_transaction_submit", actobj)
         self.assertIn("item_get_ack_publication", actobj)

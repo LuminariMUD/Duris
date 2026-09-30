@@ -79,7 +79,6 @@ bool item_ownership_runtime_apply(const item_transfer_payload &, const item_tran
     return true;
 }
 
-bool currency_transaction_coin_item_busy(uint64_t) { return false; }
 bool collector_transaction_item_busy(uint64_t) { return false; }
 
 bool collector_death_enrollment_attach(P_char, P_obj, const critical_operation_id &,

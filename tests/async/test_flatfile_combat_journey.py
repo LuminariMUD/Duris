@@ -464,19 +464,10 @@ def complete_npc_combat_journey(client: MudClient, reset_coins: bool = False) ->
     corpse = client.expect("banana", timeout=10)
     require("corpse" in corpse.lower(), "loot marker was not inside the corpse")
 
-    expected_coins = "You get 3s." if reset_coins else "You get 1c."
-    deadline = time.monotonic() + 15
-    while True:
-        client.send("get coins corpse")
-        result, _ = client.expect_any((expected_coins,
-            "The coin transfer did not commit; nothing changed.",
-            "The coin transfer could not start; nothing changed."), timeout=15)
-        if result == expected_coins:
-            break
-        require(time.monotonic() < deadline, "NPC coin retry never committed")
-        # Other reward commands can hold the player's currency fence while the
-        # room-only admission commits. Retry must use that admission, not mint.
-        time.sleep(0.1)
+    # The coins move into the wallet in memory, at once.
+    client.send("get coins corpse")
+    client.expect("There were: 3 silver coins." if reset_coins else
+                  "There were: 1 copper coin.", timeout=15)
 
     client.send("get banana corpse")
     client.expect("get a banana", timeout=10)

@@ -938,6 +938,26 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 		delivered_changed = retired == flatfile_shop_trade_materialization_result::ok;
 	}
+	// The wallet is memory's: a save that carries it writes it into the player's domain
+	// record. A new player's baseline above already holds it.
+	flatfile_authority_operation wallet;
+	std::array<uint64_t, 4> amounts = {};
+	const bool saves_wallet =
+		!new_player &&
+		snapshot_unsigned(snapshot, player_status_field::copper, &amounts[0]) &&
+		snapshot_unsigned(snapshot, player_status_field::silver, &amounts[1]) &&
+		snapshot_unsigned(snapshot, player_status_field::gold, &amounts[2]) &&
+		snapshot_unsigned(snapshot, player_status_field::platinum, &amounts[3]);
+	if (saves_wallet)
+	{
+		const auto prepared = flatfile_player_domain_prepare_saved_wallet(
+			root, *authority, static_cast<uint32_t>(snapshot.pid), amounts, &wallet,
+			error);
+		if (prepared == flatfile_player_domain_result::io_error)
+			return { player_save_apply_outcome::retryable_failure, 0, EIO };
+		if (prepared != flatfile_player_domain_result::ok)
+			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+	}
 	std::vector<flatfile_authority_operation> operations;
 	try
 	{
@@ -945,6 +965,8 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			operations.push_back(std::move(claimed));
 		if (delivered_changed)
 			operations.push_back(std::move(delivered));
+		if (saves_wallet)
+			operations.push_back(std::move(wallet));
 		if (snapshot.death)
 		{
 			operations.push_back({ flatfile_authority_store::player_deaths,
@@ -1057,6 +1079,37 @@ player_save_apply_result apply_world_snapshot(const std::string &root,
 	return { player_save_apply_outcome::applied, 0, 0 };
 }
 } // namespace
+
+player_save_apply_result flatfile_bank_delta_apply(const std::string &root,
+						   const std::string &account_name, int8_t racewar,
+						   const std::array<int64_t, 4> &delta,
+						   std::string *error)
+{
+	flatfile_authority_lock authority;
+	if (!authority.acquire(root, error))
+		return { player_save_apply_outcome::retryable_failure, 0, EIO };
+	const auto recovered = flatfile_authority_transaction_recover(root, authority, error);
+	if (recovered != flatfile_authority_transaction_result::ok)
+		return { recovered == flatfile_authority_transaction_result::io_error ?
+				 player_save_apply_outcome::retryable_failure :
+				 player_save_apply_outcome::terminal_failure,
+			 0, EIO };
+	std::vector<flatfile_authority_operation> operations(1);
+	const auto prepared = flatfile_player_domain_prepare_bank_delta(
+		root, authority, account_name, racewar, delta, &operations[0], error);
+	if (prepared == flatfile_player_domain_result::io_error)
+		return { player_save_apply_outcome::retryable_failure, 0, EIO };
+	if (prepared != flatfile_player_domain_result::ok)
+		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+	const auto committed = flatfile_authority_transaction_commit_operations(root, authority,
+										operations, error);
+	if (committed != flatfile_authority_transaction_result::ok)
+		return { committed == flatfile_authority_transaction_result::io_error ?
+				 player_save_apply_outcome::retryable_failure :
+				 player_save_apply_outcome::terminal_failure,
+			 0, EIO };
+	return { player_save_apply_outcome::applied, 0, 0 };
+}
 
 player_save_apply_result flatfile_corpse_snapshot_apply(const std::string &root,
 							const flatfile_corpse_record &corpse,

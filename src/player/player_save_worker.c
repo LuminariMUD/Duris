@@ -273,6 +273,8 @@ const char *persistence_job_kind_name(persistence_job_kind kind)
 		return "log";
 	case persistence_job_kind::critical:
 		return "critical";
+	case persistence_job_kind::bank:
+		return "bank";
 	}
 	return "unknown";
 }

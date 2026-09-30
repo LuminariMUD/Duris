@@ -85,7 +85,6 @@ bool player_load_item_graph_materialize_creation(const item_transfer_payload &,
 }
 void __free(void *p, const char *, int) { free(p); }
 [[noreturn]] int panic_corruption_int(const char *, const char *, ...) { abort(); }
-bool currency_transaction_coin_item_busy(uint64_t) { return false; }
 void send_to_char(const char *text, P_char ch)
 {
     if (ch && ch->desc) fixture_messages += text;

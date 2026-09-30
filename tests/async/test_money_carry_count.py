@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Execute the production direct/bulk pickup gates at and above the count cap.
 
-Currency commit/rollback is covered separately by test_currency_input_queue.py;
-this harness checks which objects reach that existing transaction path.
+Money moving in memory is covered separately by test_currency_in_memory.py;
+this harness checks which objects reach the pickup.
 """
 
 from pathlib import Path

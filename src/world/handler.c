@@ -2001,62 +2001,6 @@ void obj_from_char(P_obj object)
 	object->next_content = NULL;
 }
 
-namespace
-{
-bool money_inventory_completion(P_char ch, bool committed, const coin_transfer_payload &payload,
-				const coin_transfer_result &result, unsigned int error_code,
-				const uint8_t *context, size_t context_size)
-{
-	if (!context || context_size != sizeof(uint64_t))
-		return false;
-	if (committed && error_code == EOWNERDEAD)
-		return true;
-	uint64_t uid = 0;
-	memcpy(&uid, context, sizeof(uid));
-	P_obj money = nullptr;
-	for (P_obj object = object_list; object; object = object->next)
-		if (object->obj_uid == uid)
-		{
-			money = object;
-			break;
-		}
-	if (!committed)
-	{
-		if (money && OBJ_NOWHERE(money))
-			extract_obj(money, FALSE);
-		return true;
-	}
-	item_transfer_payload pile;
-	if (!item_transfer_command_decode_payload(payload.destination.change, &pile) ||
-	    result.piles[1].item_count != 1 || result.piles[1].max_item_revision != 1)
-		return false;
-	item_ownership_runtime_entry current = {};
-	if (item_ownership_runtime_lookup(uid, &current))
-	{
-		if (current.item_revision > 1)
-			return true;
-		if (!item_owner_identity_equal(current.owner, pile.to_owner) ||
-		    current.root_item_uid != uid || current.parent_item_uid ||
-		    current.state != item_custody_state::active)
-			return false;
-	}
-	else if (!item_ownership_runtime_apply(pile, result.piles[1]))
-		return false;
-	// An offline owner loads the committed pile from its custody payload.
-	if (!ch)
-	{
-		if (money && OBJ_NOWHERE(money))
-			extract_obj(money, FALSE);
-		return true;
-	}
-	if (!money)
-		return false;
-	if (OBJ_NOWHERE(money))
-		obj_to_char(money, ch);
-	return OBJ_CARRIED_BY(money, ch);
-}
-}
-
 bool money_to_inventory(P_char ch)
 {
 	if (!ch)
@@ -2073,65 +2017,15 @@ bool money_to_inventory(P_char ch)
 	}
 	if (!value)
 		return true;
-	if (IS_PC(ch) && !currency_transaction_can_submit_nonrebasable(ch))
-		return false;
 	P_obj money = create_money(cash[0], cash[1], cash[2], cash[3]);
 	if (!money)
 		return false;
-	if (IS_NPC(ch))
-	{
-		std::fill(std::begin(ch->points.cash), std::end(ch->points.cash), 0);
-		obj_to_char(money, ch);
-		return true;
-	}
-
-	// Wallet and pile custody share one commit. Neither is published on admission.
-	coin_transfer_payload transfer;
-	item_transfer_payload pile = {};
-	pile.from_owner = { item_owner_type::system, 0, 0 };
-	pile.to_owner = { item_owner_type::player, static_cast<uint64_t>(GET_PID(ch)), 0 };
-	pile.reason = item_transfer_reason::creation;
-	pile.selected_item_uid = pile.target_root_item_uid = money->obj_uid;
-	pile.item_count = 1;
-	pile.items[0] = { money->obj_uid,
-			  money->obj_uid,
-			  0,
-			  ITEM_TRANSFER_ABSENT_REVISION,
-			  VOBJ_COINS,
-			  item_custody_state::absent };
-	std::vector<player_item_snapshot> snapshots;
-	std::vector<uint8_t> bytes;
-	critical_operation_id operation;
-	bool prepared =
-		currency_transaction_coin_wallet(ch, -value, &transfer.source) &&
-		item_ownership_runtime_owner_revision(pile.from_owner,
-						      &pile.expected_from_revision) &&
-		item_ownership_runtime_owner_revision(pile.to_owner, &pile.expected_to_revision) &&
-		player_item_snapshot_tree_capture(money, &snapshots, nullptr) ==
-			player_snapshot_capture_result::ok &&
-		player_item_snapshot_list_encode(snapshots, &bytes) ==
-			player_snapshot_codec_result::ok &&
-		bytes.size() <= pile.item_blob.size() && critical_operation_id_generate(&operation);
-	if (prepared)
-	{
-		pile.item_blob_size = bytes.size();
-		std::copy(bytes.begin(), bytes.end(), pile.item_blob.begin());
-		transfer.destination.after = cash;
-		prepared =
-			item_transfer_command_build(&transfer.destination.change, operation, pile,
-						    critical_source_site::command,
-						    critical_deadline_class::interactive) &&
-			currency_transaction_submit_coin(ch, transfer, money_inventory_completion,
-							 &money->obj_uid, sizeof(money->obj_uid));
-	}
-	if (!prepared)
-	{
-		extract_obj(money, FALSE);
-		persistence_alert(AVATAR, "currency", "wallet_conversion", "none", "none",
-				  "submit_rejected", "pid=%d value=%lld", GET_PID(ch),
-				  (long long)value);
-	}
-	return prepared;
+	std::fill(std::begin(ch->points.cash), std::end(ch->points.cash), 0);
+	obj_to_char(money, ch);
+	if (IS_PC(ch))
+		mark_player_dirty_components(GET_PID(ch),
+					     PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_INVENTORY);
+	return true;
 }
 
 void equip_char(P_char ch, P_obj obj, int pos, int nodrop)

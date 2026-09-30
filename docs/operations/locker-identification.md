@@ -1,6 +1,6 @@
 # Locker identification
 
-Paid locker `stat <item>` captures the selected item's description and charges the configured copper value through the critical currency pipeline. It does not add a fixed recovery timer or clear existing combat/skill waits. Ordinary lore and legend-lore recovery remain unchanged. Fighting, ownership and level-based identification restrictions are checked before accepting the request.
+Paid locker `stat <item>` captures the selected item's description and charges the configured copper value from the wallet, in memory; the player's save writes it. It does not add a fixed recovery timer or clear existing combat/skill waits. Ordinary lore and legend-lore recovery remain unchanged. Fighting, ownership and level-based identification restrictions are checked before accepting the request.
 
 The captured description belongs to the selection at request time. Renaming, moving or extracting that item while payment is pending does not change the purchased description. The deferred service retains no object or character pointers.
 
@@ -34,7 +34,7 @@ Every crash boundary also runs with 40 online players without receipts queued be
 
 With `TEST_DB_HOST`, `TEST_DB_USER` and `TEST_DB_PASSWORD` set to a disposable test server, the same runner creates a unique temporary schema, applies the existing schema and runs the identical crash matrix using the real MariaDB repository. It drops only that schema and never reads `.env`.
 
-`test_locker_identify.py` checks the actual lore renderer for weapons, armor, totems, potions and wands. `test_currency_input_queue.py` checks prepared-command encoding and existing currency gates under ASan/UBSan on both builds; `test_currency_transaction_contract.py` retains schema and source contracts. These controlled tests do not constitute a live multiplayer latency benchmark.
+`test_locker_identify.py` checks the actual lore renderer for weapons, armor, totems, potions and wands. `test_currency_in_memory.py` applies a prepared payment the way the receipt service submits it; `test_currency_transaction_contract.py` retains schema and source contracts. These controlled tests do not constitute a live multiplayer latency benchmark.
 
 ## Backup and restore qualification
 

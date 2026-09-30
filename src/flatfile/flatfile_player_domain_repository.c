@@ -1398,6 +1398,62 @@ flatfile_player_domain_result flatfile_player_domain_prepare_resurrection_wallet
 	return flatfile_player_domain_result::ok;
 }
 
+flatfile_player_domain_result flatfile_player_domain_prepare_saved_wallet(
+	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
+	const std::array<uint64_t, 4> &wallet, flatfile_authority_operation *operation,
+	std::string *error)
+{
+	if (!operation || !pid || !lock.matches(root))
+		return flatfile_player_domain_result::invalid;
+	const auto recovered = recover_authority(root, lock, error);
+	if (recovered != flatfile_player_domain_result::ok)
+		return recovered;
+	player_authority player;
+	const auto loaded = load_player_authority(root, pid, &player, error);
+	if (loaded != flatfile_player_domain_result::ok)
+		return loaded;
+	player.record.domains.wallet = wallet;
+	*operation = {};
+	operation->filename = player_filename(pid);
+	return encode_player_authority(player, &operation->bytes) ?
+		       flatfile_player_domain_result::ok :
+		       flatfile_player_domain_result::invalid;
+}
+
+flatfile_player_domain_result flatfile_player_domain_prepare_bank_delta(
+	const std::string &root, const flatfile_authority_lock &lock,
+	const std::string &account_name, int8_t racewar, const std::array<int64_t, 4> &delta,
+	flatfile_authority_operation *operation, std::string *error)
+{
+	std::string account;
+	if (!operation || !lock.matches(root) || !canonical_account(account_name, &account))
+		return flatfile_player_domain_result::invalid;
+	const auto recovered = recover_authority(root, lock, error);
+	if (recovered != flatfile_player_domain_result::ok)
+		return recovered;
+	bank_record bank;
+	const auto loaded = load_bank(root, account, racewar, &bank, error);
+	if (loaded == flatfile_player_domain_result::not_found)
+	{
+		bank.account_name = account;
+		bank.racewar = racewar;
+	}
+	else if (loaded != flatfile_player_domain_result::ok)
+		return loaded;
+	for (size_t index = 0; index < bank.balances.size(); ++index)
+	{
+		// A debit the record cannot cover is refused rather than wrapped.
+		if (delta[index] < 0 && bank.balances[index] < static_cast<uint64_t>(-delta[index]))
+			return flatfile_player_domain_result::conflict;
+		bank.balances[index] += delta[index];
+	}
+	++bank.revision;
+	*operation = {};
+	operation->filename = bank_filename(account, racewar);
+	return encode_bank_record(bank, &operation->bytes) ? flatfile_player_domain_result::ok :
+							     flatfile_player_domain_result::invalid;
+}
+
 flatfile_player_domain_result flatfile_player_domain_prepare_base_stat(
 	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
 	uint8_t stat_index, bool apply_increment, flatfile_base_stat_mutation *mutation,

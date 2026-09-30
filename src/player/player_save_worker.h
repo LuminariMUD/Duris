@@ -37,6 +37,8 @@ enum class persistence_job_kind : uint8_t
 	log,
 	// A critical command (critical_command_coordinator.c), in capture order with the saves.
 	critical,
+	// A change to an account's bank, added to what the database holds.
+	bank,
 };
 
 enum class player_save_apply_outcome : uint8_t

@@ -1858,7 +1858,6 @@ void enter_game(P_desc d)
 	}
 	epic_transaction_player_ready(ch);
 	zone_touch_transaction_player_ready(ch);
-	currency_transaction_player_ready(ch);
 	locker_identify_replay(ch);
 	item_movement_transaction_player_ready(ch);
 	shop_trade_transaction_player_ready(ch);
@@ -2492,7 +2491,6 @@ void reconnect(P_desc d, P_char tmp_ch)
 	(void)telemetry_runtime_game_context(tmp_ch, d);
 	epic_transaction_player_ready(tmp_ch);
 	zone_touch_transaction_player_ready(tmp_ch);
-	currency_transaction_player_ready(tmp_ch);
 	locker_identify_replay(tmp_ch);
 	item_movement_transaction_player_ready(tmp_ch);
 	shop_trade_transaction_player_ready(tmp_ch);

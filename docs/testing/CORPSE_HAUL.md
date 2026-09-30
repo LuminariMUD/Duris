@@ -35,9 +35,9 @@ following focused checks passed:
 ```sh
 python3 tests/async/test_corpse_haul.py
 python3 tests/async/test_bulk_get_publication.py
-python3 tests/async/test_coin_get_completion.py
+python3 tests/async/test_take_coins.py
 python3 tests/async/test_get_all_durable_chain.py
-python3 tests/async/test_currency_input_queue.py
+python3 tests/async/test_transaction_input_queue.py
 python3 tests/async/test_combat_movement_feedback.py
 ```
 

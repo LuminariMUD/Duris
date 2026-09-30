@@ -57,10 +57,10 @@ class ItemCommandPipelineContractTests(unittest.TestCase):
             ACTOBJ.count("item_command_uses_durable_ownership("), 10
         )
         self.assertGreaterEqual(
-            ACTOBJ.count("item_get_source_owner("), 6
+            ACTOBJ.count("item_get_source_owner("), 4
         )
         self.assertEqual(ACTOBJ.count("locker_owner_for_room("), 0)
-        self.assertEqual(ACTOBJ.count("locker_owner_for_container("), 1)
+        self.assertEqual(ACTOBJ.count("locker_owner_for_container("), 0)
         self.assertEqual(ACTOBJ.count("item_command_resolve_drop_destination("), 2)
         self.assertEqual(ACTOBJ.count("item_command_resolve_put_destination("), 6)
 

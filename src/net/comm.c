@@ -274,7 +274,6 @@ static void critical_gameplay_handle_completions(const critical_completion *comp
 						 size_t count)
 {
 	epic_transaction_handle_completions(completions, count);
-	currency_transaction_handle_completions(completions, count);
 	locker_identify_pulse();
 	corpse_lifecycle_transaction_handle_completions(completions, count);
 	item_movement_transaction_handle_completions(completions, count);
@@ -408,7 +407,7 @@ static int shutdown_writer_remaining_msec(int cap_msec)
 // are counted instead.
 static void report_unwritten_saves(const std::vector<persistence_job_owner> &owners)
 {
-	size_t log_rows = 0, commands = 0;
+	size_t log_rows = 0, commands = 0, bank_deltas = 0;
 	std::set<persistence_job_owner> named;
 	for (const persistence_job_owner &owner : owners)
 	{
@@ -420,6 +419,11 @@ static void report_unwritten_saves(const std::vector<persistence_job_owner> &own
 		if (owner.first == persistence_job_kind::critical)
 		{
 			++commands;
+			continue;
+		}
+		if (owner.first == persistence_job_kind::bank)
+		{
+			++bank_deltas;
 			continue;
 		}
 		// A save being written and a newer one queued behind it are one owner.
@@ -450,6 +454,9 @@ static void report_unwritten_saves(const std::vector<persistence_job_owner> &own
 	if (commands)
 		persistence_alert(AVATAR, "persistence_writer/critical", "shutdown", "none", "none",
 				  "not_written", "commands=%zu", commands);
+	if (bank_deltas)
+		persistence_alert(AVATAR, "persistence_writer/bank", "shutdown", "none", "none",
+				  "not_written", "deltas=%zu", bank_deltas);
 }
 
 static int recovered_mother_desc = -1;
@@ -1300,8 +1307,7 @@ static int get_playing_cmd_from_q(P_char character, struct txt_q *queue, char *d
 			bulk_get_player_busy(character) ||
 			collector_transaction_player_busy(character) ||
 			collector_service_player_busy(character),
-		currency_transaction_player_busy(character) ||
-			collector_transaction_player_busy(character) ||
+		collector_transaction_player_busy(character) ||
 			collector_service_player_busy(character));
 }
 
@@ -4210,7 +4216,6 @@ int process_output(P_desc t)
 	// Pager and string-editor prompts remain available while unrelated work is in flight.
 	bool defer_prompt = t->prompt_mode && realChar && !t->showstr_count && !t->str &&
 			    (item_movement_transaction_player_busy(realChar) ||
-			     currency_transaction_player_busy(realChar) ||
 			     collector_transaction_player_busy(realChar) ||
 			     collector_service_player_busy(realChar));
 	if (defer_prompt)

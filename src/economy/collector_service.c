@@ -125,14 +125,12 @@ void clear_purchase_save_fence_if_recovered(P_char character)
 
 bool purchase_transaction_busy(P_char character)
 {
-	return currency_transaction_player_busy(character) ||
-	       collector_transaction_player_busy(character) ||
+	return collector_transaction_player_busy(character) ||
 	       item_movement_transaction_player_busy(character) ||
 	       bulk_get_player_busy(character) ||
 	       (character && GET_PID(character) > 0 &&
 		(player_has_purchase_recovery(static_cast<uint32_t>(GET_PID(character))) ||
-		 player_has_purchase_save_fence(character))) ||
-	       !currency_transaction_can_submit_nonrebasable(character);
+		 player_has_purchase_save_fence(character)));
 }
 
 bool parse_listing(const char *text, uint64_t *listing)

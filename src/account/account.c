@@ -289,7 +289,6 @@ bool prepare_account_reconnect(P_char character, P_desc descriptor)
 	character->desc = descriptor;
 	epic_transaction_player_ready(character);
 	zone_touch_transaction_player_ready(character);
-	currency_transaction_player_ready(character);
 	locker_identify_replay(character);
 	item_movement_transaction_player_ready(character);
 	shop_trade_transaction_player_ready(character);

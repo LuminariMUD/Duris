@@ -175,16 +175,6 @@ bool movement_conflicts(const item_owner_identity &from_owner, const item_owner_
 			   });
 }
 
-bool coin_movement_pending(P_obj object)
-{
-	if (!object)
-		return false;
-	item_ownership_runtime_entry runtime = {};
-	return currency_transaction_coin_item_busy(object->obj_uid) ||
-	       (item_ownership_runtime_lookup(object->obj_uid, &runtime) &&
-		currency_transaction_coin_item_busy(runtime.root_item_uid));
-}
-
 bool coordinator_item_fenced(P_obj object)
 {
 	return object && object->obj_uid &&
@@ -1688,8 +1678,7 @@ bool item_movement_transaction_submit(P_char actor, P_obj root, P_obj target_con
 	if (mobile_actor && !adopted)
 		return reject_with(reject, item_movement_reject::owner_mismatch);
 	if (movement_conflicts(effective_from, effective_to) || coordinator_item_fenced(root) ||
-	    coordinator_item_fenced(target_container) || coin_movement_pending(root) ||
-	    coin_movement_pending(target_container))
+	    coordinator_item_fenced(target_container))
 		return reject_with(reject, item_movement_reject::pending_conflict);
 	if ((adopted && !item_owner_identity_equal(runtime.owner, from_owner)) ||
 	    (target_container &&
@@ -1850,8 +1839,7 @@ bool item_movement_transaction_submit_batch(
 		return reject_with(reject, item_movement_reject::invalid_request);
 	if (pending.size() >= ITEM_MOVEMENT_PENDING_MAX)
 		return reject_with(reject, item_movement_reject::queue_saturated);
-	if (movement_conflicts(from_owner, to_owner) || coordinator_item_fenced(target_container) ||
-	    coin_movement_pending(target_container))
+	if (movement_conflicts(from_owner, to_owner) || coordinator_item_fenced(target_container))
 		return reject_with(reject, item_movement_reject::pending_conflict);
 	item_ownership_runtime_entry target_runtime = {};
 	uint64_t from_revision = 0, to_revision = 0;
@@ -1885,7 +1873,7 @@ bool item_movement_transaction_submit_batch(
 			item_ownership_runtime_entry runtime = {};
 			if (!root || !root->obj_uid)
 				return reject_with(reject, item_movement_reject::owner_mismatch);
-			if (coordinator_item_fenced(root) || coin_movement_pending(root))
+			if (coordinator_item_fenced(root))
 				return reject_with(reject, item_movement_reject::pending_conflict);
 			if (creation)
 			{

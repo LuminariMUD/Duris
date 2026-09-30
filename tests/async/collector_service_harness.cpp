@@ -257,11 +257,6 @@ uint64_t item_collector_owner_id(uint64_t listing_id)
 	return listing_id;
 }
 
-bool currency_transaction_player_busy(P_char)
-{
-	return false;
-}
-
 bool collector_transaction_player_busy(P_char)
 {
 	return false;

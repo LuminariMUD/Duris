@@ -1770,7 +1770,7 @@ int slot_machine(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 	else
 	{
-		if (type < 0 || type > 3 || !currency_transaction_can_submit_nonrebasable(ch))
+		if (type < 0 || type > 3)
 		{
 			send_to_char("The slot machine could not accept that wager.\n", ch);
 			return TRUE;

@@ -8,8 +8,9 @@ Memory is the authority. The database is a copy that catches up through one writ
    clean again: the writer has it.
 3. The writer is a single background thread (`src/player/player_save_worker.c`). It
    applies every queued save in capture order: player saves (with their pets),
-   corpse saves, locker saves and saved room items. A newer save of the same owner
-   replaces its queued one and goes to the back of the queue.
+   corpse saves, locker saves, saved room items, bank deltas and critical commands.
+   A newer save of the same owner replaces its queued one and goes to the back of
+   the queue.
 4. The game pulse consumes typed completions. A lost connection never reaches it:
    the writer retries that job at the head of the queue, with a backoff capped at
    five seconds. Any other failure is reported once, the job is dropped, and the
@@ -22,6 +23,8 @@ not reached the database, at most one 30-second `dirty-player-checkpoint`.
 
 ## What a save writes
 
+A player save writes the wallet with the rest of the character; a bank change is its
+own `bank` job (see [Money lives in memory](CRITICAL_COMMAND_PIPELINE.md#money-lives-in-memory)).
 A save never refuses. In one transaction it writes what its owner holds in memory and
 makes `item_current_owner` agree (`claim_items()` in `src/item/item_claim_repository.c`;
 the flat-file backend does the same in `flatfile_item_repository_prepare_claim()` and
@@ -36,8 +39,8 @@ commits it with the player file):
   its contents are left out of the save and logged to `logs/log/dupes`. The economy
   still moves items through its own transactions until Phase 2 of the persistence
   reset, so the database is right about what it holds;
-- a coin pile keeps whatever ownership the currency transactions gave it: it is
-  written, and recorded if nobody has recorded it, but never taken or revived.
+- a coin pile is claimed like any item. A pile an older server's coin transaction
+  spent stays spent, like any destroyed item.
 
 The owner's revision, and the revision of each owner that lost an item, advances once
 per save that changes them. There is no revision fence: with one writer, every save is

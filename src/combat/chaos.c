@@ -224,7 +224,6 @@ static bool chaos_test_questroom(P_char ch, char *arg)
 		send_to_char("Quest-room test funds submission failed.\n", ch);
 		return true;
 	}
-	send_to_char("Quest-room test funds queued.\n", ch);
 	return true;
 }
 

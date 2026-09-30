@@ -43,9 +43,7 @@ There is no second generic lifecycle framework hidden behind the domain adapters
 | Queued on the writer | Coordinator plus the persistence writer | The operation is reserved in bounded memory and fenced on every key; the writer applies it in capture order through the typed domain adapter. A domain transaction/flat-file authority and its inbox/result are the durable evidence; the coordinator receives an exact revisioned completion. |
 | Retried by the writer | Persistence writer | A lost connection, lock wait or ambiguous commit is applied again with the same operation ID before anything queued after it, until it lands. The fence remains. A command whose outcome never becomes known is named at shutdown with what the writer could not write. |
 | Final notification retained | `critical_completion_delivery` plus coordinator pulse | The exact operation ID, outcome, and durable revision remain queued until the simulation-thread consumer supplies capacity. Consumer backpressure cannot cause a final result to be discarded; publication then releases or preserves the appropriate fence. |
-| Currency publication ready | Game-thread currency adapter | The adapter stages the coordinator receipt under the same operation ID, then publishes the committed wallet/bank revision. Database completion may therefore precede live publication without a replacement operation. |
-| Currency waiting / retrying / blocked | Game-thread currency adapter | An offline player waits, a transient callback retries within its bound, and an unresolved receipt remains blocked with its original continuation and ID. These are not coordinator retries and never become an automatic rejection or refund. |
-| Snapshot pending and outbox pending | Snapshot and outbox subsystems | Snapshot capture/replay and outbox delivery have their own owners, records, and recovery rules. They do not coalesce critical commands or substitute for live currency publication. |
+| Snapshot pending and outbox pending | Snapshot and outbox subsystems | Snapshot capture/replay and outbox delivery have their own owners, records, and recovery rules. They do not coalesce critical commands. |
 
 The writer applies commands one at a time in acceptance order, so conflicting commands
 never overlap. The fence exists from acceptance until the game thread takes the
@@ -144,79 +142,28 @@ only non-transactional in-memory assignments. Focused validation is
 `python3 tests/async/test_epic_transaction_contract.py` and, on a guarded development
 database, `tests/async/run_epic_transaction_schema_mysql.sh`.
 
-## Currency receipt and live-publication boundary
+## Money lives in memory
 
-The currency adapter gives every in-process continuation an explicit publication
-state: awaiting coordinator completion, ready, waiting for its player, retrying a
-bounded coin callback, or blocked on an unresolved receipt. It retains the
-original operation ID and continuation when a receipt is ambiguous,
-retry-exhausted, or acknowledges a commit whose result or live balances cannot
-be validated. These states are **not** terminal rejection; they must not trigger
-a failure/refund callback. A blocked entry is not scanned again on every pulse.
-It emits one operation-ID-bearing diagnostic and sleeps until the coordinator
-delivers another exact receipt. See [issue #380](https://github.com/Community-Duris/Duris/issues/380).
+Currency is no longer a critical command. `currency_transaction_submit()` and its
+variants change the character's wallet, and the bank view of every online character
+of its account and side, at once, then call their completion before returning:
+committed, or refused with `ENOSPC` when a balance would go below zero. The player's
+save writes the wallet. A bank change is queued on the one writer as a `bank` job
+holding the delta: MariaDB adds it to the `account_banks` row (creating it), flat-file
+to the account's bank domain. The bank job is queued after the player's save when the
+bank gains and before it when the bank loses, so a crash can lose money but never pay
+it twice. Shutdown names bank deltas the writer could not write
+(`persistence_writer/bank ... deltas=N`).
 
-Coordinator completion and live publication have different lifetimes. A
-non-rebasable debit must respect the domain's player/account busy state even
-after the coordinator releases its execution fence. Rebasable rewards may queue
-behind ordinary in-flight work because they do not read the live balance, but
-stop for an affected player/account once publication is blocked. This prevents
-a single unresolved receipt from filling the global `CURRENCY_PENDING_MAX`
-table. Unrelated accounts retain their existing admission behavior.
-Successful publication, or a known terminal rejection, removes the completed
-pending entry before invoking its continuation. An extracted node owns callback
-context across re-entrant submissions; no pending-map iterator survives that
-callback.
+Coins are ordinary items. Get, drop, give and put move the pile and the wallet in
+memory, the way they always did for NPCs, and `money_to_inventory()` does the same.
+When money moves between two saved owners, the owner it leaves is saved first
+(`currency_transaction_save_first()`): the giver before the receiver, the container a
+put fills after the player it leaves.
 
-A corrected exact receipt can finish a retained operation once without issuing a
-new debit/credit. This is not automatic reconciliation tooling: an unresolved
-receipt can continue to fence dependent gameplay until the original result is
-recovered or the underlying fault is repaired. The fence deliberately includes
-every online character for the same account and racewar: those characters share
-one bank row, so a timeout or per-character bypass could spend an unpublished
-balance. Do not clear the pending operation, add a timeout, or create a replacement
-operation ID to conceal the fault. This in-process retention does not claim that
-callback context becomes durable across restart; durable continuation ownership
-belongs to the larger persistence refactor.
-
-`world persistence` reports `currency_transactions` pending, retained-offline,
-blocked-publication, callback-retry, outcome, malformed, submission-failure, and
-abandoned-publication counts. Blocked, malformed, failed-submission, or abandoned
-states make that line degraded; it exposes no account, player, or operation ID.
-
-`python3 tests/async/test_currency_completion_retention.py` links the actual
-adapter and codecs with controlled coordinator/live endpoints under ASan/UBSan
-in both build modes. It covers malformed/ambiguous receipts, range validation,
-offline re-entry, corrected/duplicate delivery, payload-free known rejection,
-account/racewar guards, re-entrant callback chaining/rehashing, normal rebasable
-admission, and blocked-publication admission.
-`test_currency_input_queue.py` additionally covers real command-selection and coin
-publication adapters. These tests do not by themselves prove SQL/flatfile storage
-or complete player-journey parity.
-
-## Physical coin custody
-
-`coin_transfer_command` and the currency coordinator commit wallet and physical
-pile changes together on both SQL and flat-file authority. Payload amounts,
-UID/custody, owner revisions, conservation, overflow, and operation-ID replay
-are checked before publication. The SQL parent receipt identifies both child
-operation IDs in the same transaction. Saved item `coin_payload` preserves the
-pile denominations for reload; ordinary snapshots do not create custody.
-
-An untracked NPC-wallet or reset-created pile first passes the existing absent-item
-admission path. Admission grants no money: wallet credit follows the separate
-atomic pickup commit. Its continuation rechecks the original container UID,
-location/accessibility, and custody, so moving the source during admission cannot
-publish a stale pickup. Existing active/retired durable UID conflicts fail closed.
-
-Flat-file coin publication updates the affected room projection in the same
-authority transaction, including partial piles and container weights. Otherwise
-a successful coin pickup could advance custody while leaving the next ordinary
-item pickup unable to materialize the room revision.
-
-Coin publication callbacks have at most eight attempts. On permanent publication
-failure, `EOWNERDEAD` cleanup clears retained command context and retires pending
-work without refunding an already committed debit or reporting it as rejected.
-Durable custody and command evidence remain the recovery source. The focused
-`test_coin_custody_lifecycle.py` and `test_currency_input_queue.py` harnesses and
-`run_currency_transaction_schema_mysql.sh` cover this boundary.
+`world persistence` reports `currency_transactions` submitted, committed, rejected and
+queued bank delta counts. `test_currency_in_memory.py` links the real transaction and
+checks the order of what it queues; `test_take_coins.py` the coin pickup;
+`test_coin_command_transaction_contract.py` the command sources; and
+`test_transaction_input_queue.py` the input that still waits behind a collector
+transaction.

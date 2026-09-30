@@ -1174,3 +1174,59 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   and the journeys `test_area_coin_pickup.py`, `test_flatfile_combat_journey.py` and
   `run_corpse_haul_journey.py` (disposable MariaDB), whose coin, death and haul commands now run
   on the writer.
+
+### Step 2: money in memory (done)
+
+- The save writes the wallet. MariaDB `apply_status()` no longer skips copper to platinum;
+  `flatfile_player_snapshot_apply()` writes the wallet into the player's domain record in the
+  save's authority transaction whenever the snapshot carries all four fields (a partial status
+  save carries none and leaves it).
+- `currency_transaction_submit()` and its variants apply at once: the wallet, its revision, and
+  the bank view of every online character of the account and side
+  (`publish_account_bank_balances_revision()`), then the completion runs before the submit
+  returns. A change that would take a balance below zero (or above `INT_MAX`) is refused with
+  `ENOSPC` and changes nothing. The pending table, publication states, `player_ready()`, the
+  completion handler and `currency_publication.h` are gone; so are
+  `currency_transaction_can_submit_nonrebasable()`, `_player_busy()`, `_coin_item_busy()`,
+  `_coin_wallet()` and `_submit_coin()`. Input no longer waits behind money, and an item move is
+  no longer refused while a coin is pending.
+- A bank change is a `bank` job on the one writer (`persistence_job_kind::bank`, its own owner
+  per delta): MariaDB `bank_delta_repository_apply()` upserts the delta into `account_banks`
+  (`bank_revision` + 1; the unsigned columns make a debit the row cannot cover fail), flat-file
+  `flatfile_bank_delta_apply()` adds it to the bank domain
+  (`flatfile_player_domain_prepare_bank_delta()` refuses such a debit). A debit is queued before
+  the player's save, a credit after it. Shutdown names unwritten deltas
+  (`persistence_writer/bank ... deltas=N`).
+- Coins: get, drop, give and put take the in-memory branches NPCs took, for everyone
+  (`take_coins()` in `actobj.c`; the durable coin commands, their contexts and completions are
+  gone), and so does `money_to_inventory()`. Money that leaves one saved owner for another
+  queues the one it leaves first (`currency_transaction_save_first()`): the giver before a player
+  recipient, the player before a storage container or player corpse it put coins into.
+- The currency repository and the coin transfer command stay only for an older journal's replay
+  (Phase 3 deletes them). `world persistence` prints `currency_transactions state=ready
+  submitted= committed= rejected= bank_deltas=`.
+- Found while doing this, fixed in its own commit: both backends loaded a legacy coin pile's
+  amount from its custody row (`coin_payload`) instead of what the save wrote. With coins in
+  memory that value goes stale, so taking part of such a pile and logging in again gave the old
+  amount back. A pile now loads like any item; one an older server's coin transaction spent
+  stays spent. The MariaDB load lost its coin query (`PLAYER_LOAD_BASE_QUERY_MAX` 24 to 23).
+- Tests: `test_currency_in_memory.py` (links the real transaction: at once, refusals, the order
+  of saves and bank deltas, the shared bank view), `test_take_coins.py` (was
+  `test_coin_get_completion.py`), `test_transaction_input_queue.py` (was
+  `test_currency_input_queue.py`: only the collector still holds input), and a rewritten
+  `test_coin_command_transaction_contract.py`. The save-claim MariaDB leg and
+  `test_flatfile_player_repository.py` check that the save writes the wallet and that bank
+  deltas create, add and refuse; the player-load harness and `test_flatfile_item_repository.py`
+  load a legacy pile with a stale custody amount. `test_currency_completion_retention.py` and
+  `test_coin_custody_lifecycle.py` tested the removed publication and are deleted. The item
+  movement input-queue and prompt harnesses fence with the collector where they used a pending
+  coin; the coin-pickup, combat and auction coin-put journeys save before reading the wallet
+  from disk and expect the in-memory coin messages.
+- `docs/persistence/economy_accounting/writers.json` census re-anchored (the three coin writers
+  point at `begin_coin_give_credit`, `publish_coin_put` and `take_coins`).
+- `test_flatfile_auction_coin_put_journey.py` still fails its listing-fee check: the auction
+  repository writes the wallet until step 3.
+- Verified: `make -C src`, the flat-file build, `./scripts/format.sh --all --check`, the
+  validator, `make test-all` (every other test passed), `run_currency_transaction_schema_mysql.sh`
+  and `run_player_save_claim_mysql.sh` (disposable MariaDB), and the journeys
+  `test_area_coin_pickup.py` and `test_flatfile_combat_journey.py`.

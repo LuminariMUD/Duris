@@ -4446,27 +4446,12 @@ static void show_world_persistence(P_char ch)
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),
-		 "currency_transactions state=%s pending=%llu retained_offline=%llu "
-		 "publication_blocked=%llu publication_retrying=%llu submitted=%llu "
-		 "committed=%llu rejected=%llu submit_failures=%llu malformed=%llu "
-		 "publication_abandoned=%llu\n",
-		 currency_transactions.publication_blocked ||
-				 currency_transactions.publication_abandoned ||
-				 currency_transactions.malformed_completions ||
-				 currency_transactions.submission_failures ?
-			 "degraded" :
-		 currency_transactions.pending ? "pending" :
-						 "ready",
-		 (unsigned long long)currency_transactions.pending,
-		 (unsigned long long)currency_transactions.retained_offline,
-		 (unsigned long long)currency_transactions.publication_blocked,
-		 (unsigned long long)currency_transactions.publication_retrying,
+		 "currency_transactions state=ready submitted=%llu committed=%llu rejected=%llu "
+		 "bank_deltas=%llu\n",
 		 (unsigned long long)currency_transactions.submitted,
 		 (unsigned long long)currency_transactions.committed,
 		 (unsigned long long)currency_transactions.rejected,
-		 (unsigned long long)currency_transactions.submission_failures,
-		 (unsigned long long)currency_transactions.malformed_completions,
-		 (unsigned long long)currency_transactions.publication_abandoned);
+		 (unsigned long long)currency_transactions.bank_deltas);
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),

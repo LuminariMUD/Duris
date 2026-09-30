@@ -422,6 +422,38 @@ int main()
 		"a log row keeps its time and text: " +
 			scalar(test_connection, "SELECT message FROM log_entries"));
 
+	// Money lives in memory: the save writes the wallet, and a bank change is a delta
+	// added to the account's row, creating it. A debit the row cannot cover fails and
+	// leaves the row as it was.
+	player_snapshot wallet = snapshot_for(1, 40, "Claimer");
+	wallet.status_integers.push_back({ player_status_field::copper, 5, 0, false });
+	wallet.status_integers.push_back({ player_status_field::platinum, 2, 0, false });
+	applied = player_snapshot_repository_apply(test_connection, wallet);
+	require(applied.outcome == player_save_apply_outcome::applied &&
+			scalar(test_connection,
+			       "SELECT CONCAT(copper,':',silver,':',gold,':',"
+			       "platinum) FROM player_data WHERE pid=1") == "5:0:0:2",
+		"the save writes the wallet");
+	const auto bank = [&]
+	{
+		return scalar(test_connection,
+			      "SELECT CONCAT(bank_copper,':',bank_silver,':',bank_gold,':',"
+			      "bank_platinum,'@',bank_revision) FROM account_banks WHERE "
+			      "account_name='claim_probe' AND racewar=1");
+	};
+	require(bank_delta_repository_apply(test_connection, { "claim_probe", 1, { 7, 0, 3, 0 } })
+					.outcome == player_save_apply_outcome::applied &&
+			bank() == "7:0:3:0@0",
+		"a bank credit creates the account's row: " + bank());
+	require(bank_delta_repository_apply(test_connection, { "claim_probe", 1, { 1, 0, -3, 4 } })
+					.outcome == player_save_apply_outcome::applied &&
+			bank() == "8:0:0:4@1",
+		"a bank delta adds to the row: " + bank());
+	require(bank_delta_repository_apply(test_connection, { "claim_probe", 1, { -9, 0, 0, 0 } })
+					.outcome == player_save_apply_outcome::terminal_failure &&
+			bank() == "8:0:0:4@1",
+		"a debit the row cannot cover fails: " + bank());
+
 	mysql_close(test_connection);
 	mysql_library_end();
 	std::cout << "player save claim MariaDB leg passed\n";
