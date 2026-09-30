@@ -149,6 +149,8 @@ def run(server):
                         return client
                     client = create_erased()
                     erased = number("SELECT pid FROM player_data WHERE name='Vorlesk'")
+                    # The restart did not give the deleted character's pid out again.
+                    assert erased > pid, (erased, pid)
                     sql("CREATE TRIGGER deletion_fixture_refusal BEFORE DELETE ON accounts FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic deletion refusal'")
                     client.send('7'); client.expect('Re-enter your account password')
                     client.send(journey.PASSWORD); client.expect('PERMANENT ACCOUNT DELETION', timeout=30)

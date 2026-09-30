@@ -54,6 +54,7 @@ static inline int get_db_port(void)
 extern MYSQL *DB;
 MYSQL *sql_open_configured_connection(unsigned long client_flags);
 MYSQL_RES *db_query_at(struct persistence_query_site site, const char *format, ...);
+unsigned long long sql_next_auto_increment(const char *table);
 MYSQL_RES *db_query_nolog_at(struct persistence_query_site site, const char *format, ...);
 bool sql_observed_execute_at(MYSQL *conn, struct persistence_query_site site,
 			     enum persistence_query_context context, const char *sql, size_t len,

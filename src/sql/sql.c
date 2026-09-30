@@ -1652,6 +1652,22 @@ MYSQL_RES *db_query_at(struct persistence_query_site site, const char *format, .
 	return res;
 }
 
+/* The next id table's AUTO_INCREMENT gives, or 0 when it cannot be read. InnoDB keeps it
+ * past every id the table ever stored, deleted rows included, so an allocator seeded from
+ * it never gives a deleted row's id out again. */
+unsigned long long sql_next_auto_increment(const char *table)
+{
+	MYSQL_RES *result = db_query("SELECT AUTO_INCREMENT FROM information_schema.TABLES "
+				     "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='%s'",
+				     table);
+	if (!result)
+		return 0;
+	MYSQL_ROW row = mysql_fetch_row(result);
+	const unsigned long long next = row && row[0] ? strtoull(row[0], NULL, 10) : 0;
+	mysql_free_result(result);
+	return next;
+}
+
 /* Fail boot unless the database schema and required authority baselines are ready. */
 static bool sql_verify_boot_database(void)
 {

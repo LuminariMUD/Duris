@@ -989,6 +989,9 @@ bool sql_player_names_load(void)
 			named->second = pid;
 	}
 	mysql_free_result(result);
+	// Never a deleted character's pid again: rows keyed by pid outlive the character.
+	highest_pid =
+		std::max(highest_pid, static_cast<int>(sql_next_auto_increment("player_data")) - 1);
 	return true;
 }
 
