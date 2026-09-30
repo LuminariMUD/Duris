@@ -106,6 +106,13 @@ assert "P_member *link = &guild->members" in guild_forget
 assert "flatfile_association_list(root, &records, &error)" in guild_forget
 assert "guild->frags.frags = durable->frags" in guild_forget
 assert "guild->save()" not in guild_forget
+# On MariaDB the member leaves its guild as the deletion's statements did, and the guild is
+# saved again: a save queued while the deletion ran still held the member.
+mariadb_forget = guild_forget[guild_forget.index("#ifndef __NO_MYSQL__") : guild_forget.index("#else")]
+assert "guild->forget_deleted_member(character_name, 0);" in mariadb_forget
+member_forget = function_body(GUILD, "void Guild::forget_deleted_member(")
+saved = member_forget[member_forget.index("#ifndef __NO_MYSQL__") :]
+assert "\tsave();\n#endif" in saved
 
 # Compile-time backend selection prevents an accidental dual-authority delete.
 assert "#ifndef __NO_MYSQL__" in confirm_delete

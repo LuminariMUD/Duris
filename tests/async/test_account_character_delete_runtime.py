@@ -106,6 +106,7 @@ public:
     unsigned get_id() const { return 7; }
     std::vector<std::string> statements_without_member(P_char);
     void forget_deleted_member(const char *, long);
+    bool save();
 };
 struct acct_chars { char *charname; int pid; int last; acct_chars *next; };
 struct Account { acct_chars *acct_character_list=nullptr; int num_chars=0; char *acct_name=nullptr; };
@@ -119,11 +120,14 @@ struct Character { struct { char *name; int level; } player; int pid=1, sex=0, f
     Guild *assoc=nullptr; Descriptor *desc=nullptr; };
 static P_desc descriptor_list = nullptr;
 static int fail_stage=0, frees=0, menus=0, writes=0, audits=0, runtime_ships=0,
-    ship_rows=0, loads=0, backend_calls=0, load_requests=0, forgotten=0, guild_rows=0;
+    ship_rows=0, loads=0, backend_calls=0, load_requests=0, forgotten=0, guild_rows=0,
+    guild_saves=0;
 static bool async_loads=false, durable_active=true, in_game=false, loading=false;
 bool is_pid_online(int, bool) { return in_game; }
 bool player_load_pipeline_pid_pending(int) { return loading; }
 static Guild fixture_guild;
+// Saved again once memory has let go of the member, after the deletion committed.
+bool Guild::save() { assert(!durable_active && !members); ++guild_saves; return true; }
 Guild *get_guild_from_id(int id) { return id == 7 ? &fixture_guild : nullptr; }
 namespace zone_story_quest_runtime {
 bool erase_character(uint32_t, std::string *) { return true; }
@@ -199,7 +203,8 @@ main = r'''
 static void input(P_desc d,const char *s) { account_delete_char(d,const_cast<char*>(s)); }
 static void reset(Account &a,Descriptor &d) {
     fail_stage=frees=menus=writes=audits=runtime_ships=ship_rows=loads=backend_calls=0;
-    load_requests=forgotten=guild_rows=0; async_loads=in_game=loading=false; durable_active=true;
+    load_requests=forgotten=guild_rows=guild_saves=0; async_loads=in_game=loading=false;
+    durable_active=true;
     a.acct_character_list=(acct_chars*)calloc(1,sizeof(acct_chars));
     *a.acct_character_list={strdup("Fixture"),1,1,nullptr}; a.num_chars=1;
     d=Descriptor{}; d.account=&a; descriptor_list=&d;
@@ -210,13 +215,19 @@ static void reset(Account &a,Descriptor &d) {
 static void released(Descriptor &d) { assert(!d.character && frees==loads); assert(d.player_load_mode==0); assert(d.term_type==7); assert(menus>0); assert(!d.selected_char_name); assert(!d.writer_wait_id); }
 static void kept(Account &a) {
     // Nothing of the character was forgotten: it stays listed, in its guild, and loadable.
-    assert(a.num_chars==1 && !audits && !runtime_ships && !forgotten && !writes);
+    assert(a.num_chars==1 && !audits && !runtime_ships && !forgotten && !writes && !guild_saves);
     assert(fixture_guild.member_count==1 && fixture_guild.frags.frags==7 && fixture_guild.members);
 }
 static void deleted(Account &a) {
     assert(!durable_active && audits==2 && runtime_ships==1 && forgotten==3);
     assert(!a.acct_character_list && a.num_chars==0 && !writes);
     assert(!fixture_guild.members && fixture_guild.member_count==0 && fixture_guild.frags.frags==0);
+#ifndef __NO_MYSQL__
+    // A save of the guild queued while the job ran would write the member back.
+    assert(guild_saves==1);
+#else
+    assert(guild_saves==0);
+#endif
 }
 static void dispose(Account &a) {
     while(a.acct_character_list) {auto old=a.acct_character_list;a.acct_character_list=old->next;free(old->charname);free(old);}

@@ -521,6 +521,11 @@ int main()
 }
 '''
 
+# The guild roster follows in memory and each guild it changed is saved again: a save
+# queued while the rename ran still holds the old name, and this one lands after it.
+assert "if (renamed)\n\t\t\tguild->save();" in extract_function("assocs.c",
+                                                              "void rename_guild_member(")
+
 with tempfile.TemporaryDirectory(prefix="duris-rename-ship-") as directory:
     path = Path(directory)
     (path / "test.cpp").write_text(HARNESS, encoding="utf-8")

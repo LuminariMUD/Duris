@@ -57,8 +57,9 @@ P_Guild guild_list = NULL;
 /*
  * A character was renamed: carry their roster entry and any top-fragger
  * credit over to the new name.  The rename transaction has already changed
- * guild_members and guilds, so this only updates the live guilds, and a later
- * Guild::save() writes the same name.
+ * guild_members and guilds.  Each guild changed here is saved again: a save
+ * queued while the rename ran still holds the old name, and this one lands
+ * after it.
  */
 void rename_guild_member(const char *old_name, const char *new_name)
 {
@@ -67,13 +68,22 @@ void rename_guild_member(const char *old_name, const char *new_name)
 
 	for (P_Guild guild = guild_list; guild; guild = guild->next_guild)
 	{
+		bool renamed = false;
 		for (P_member member = guild->members; member; member = member->next)
 		{
 			if (!strcasecmp(member->name, old_name))
+			{
 				strlcpy(member->name, new_name, sizeof(member->name));
+				renamed = true;
+			}
 		}
 		if (!strcasecmp(guild->frags.topfragger, old_name))
+		{
 			strlcpy(guild->frags.topfragger, new_name, sizeof(guild->frags.topfragger));
+			renamed = true;
+		}
+		if (renamed)
+			guild->save();
 	}
 }
 
@@ -82,13 +92,16 @@ void forget_deleted_guild_member(const char *character_name)
 	if (!character_name || !character_name[0])
 		return;
 
-#ifdef __NO_MYSQL__
+#ifndef __NO_MYSQL__
+	// As the deletion did: the member leaves its guild, which is saved again.
+	for (P_Guild guild = guild_list; guild; guild = guild->next_guild)
+		guild->forget_deleted_member(character_name, 0);
+#else
 	std::vector<flatfile_association_record> records;
 	std::string error;
 	const char *root = persistence_mode_flatfile_root();
 	const bool have_durable_state = root && flatfile_association_list(root, &records, &error) ==
 							flatfile_association_result::ok;
-#endif
 
 	for (P_Guild guild = guild_list; guild; guild = guild->next_guild)
 	{
@@ -115,7 +128,6 @@ void forget_deleted_guild_member(const char *character_name)
 			guild->frags.top_frags = 0;
 		}
 
-#ifdef __NO_MYSQL__
 		if (!have_durable_state)
 			continue;
 		auto durable = std::lower_bound(records.begin(), records.end(), guild->id_number,
@@ -129,10 +141,8 @@ void forget_deleted_guild_member(const char *character_name)
 		guild->frags.top_frags = durable->top_frags;
 		if (durable->top_fragger.empty())
 			guild->frags.topfragger[0] = '\0';
-#endif
 	}
 
-#ifdef __NO_MYSQL__
 	if (!have_durable_state)
 		persistence_alert(AVATAR, "associations", "redacted", "none", "none",
 				  "delete_runtime_reconcile",
@@ -1423,6 +1433,11 @@ void Guild::forget_deleted_member(const char *name, long member_frags)
 		frags.top_frags = 0;
 	}
 	frags.frags -= member_frags;
+#ifndef __NO_MYSQL__
+	// A save of the guild queued while the deletion ran still holds the member; this one
+	// lands after it.
+	save();
+#endif
 }
 
 void Guild::kick(P_char ch)
