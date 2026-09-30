@@ -65,14 +65,13 @@ TEST_DB_HOST=127.0.0.1 TEST_DB_USER=... TEST_DB_PASSWORD=... \
 Use a disposable loopback database. The runner creates and drops a unique
 schema; it never reads checkout credentials. It creates three real accounts and
 characters. The looter kills Raoul through actual combat; a second player stays
-at the corpse and a third waits in the next room. A separate SQL connection
-locks `item_current_owner`, holding real worker acknowledgements while the looter
-walks north. It checks NPC stock adoption, then moves tracked equipment and an
-initially untracked NPC coin pile together from the exact corpse after the
-looter flees. After an actual player death, it repeats the mixed equipment-and-
-coin movement against the player's corpse. Each stage asserts message order,
-observer output, inventory/custody or wallet changes. A live reconnect retains
-the acquired inventory without replaying a completed haul, and saves succeed.
+at the corpse and a third waits in the next room. Coins and items move in memory,
+so the haul of Raoul's coins and banana completes at once: the second player sees
+it start and the third sees nothing. After an actual player death, it repeats the
+mixed equipment-and-coin movement against the player's corpse. Each stage asserts
+the haul, observer output, and the saved custody and wallet. A live reconnect
+retains the acquired inventory without replaying a completed haul, and saves
+succeed.
 
 Early integration attempts exposed fixture expectations rather than runtime
 failures: `Raoul` is capitalized, a linkdead reconnect skips the ordinary
