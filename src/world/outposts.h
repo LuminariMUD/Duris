@@ -38,6 +38,7 @@ void outpost_update_resources(P_char, int, int);
 void outpost_death(P_char, P_char);
 bool reset_one_outpost(Building *);
 void reset_outposts(P_char);
+bool clear_outposts();
 int outpost_rubble(P_obj, P_char, int, char *);
 void outpost_create_wall(int, int, int);
 int outpost_generate_walls(Building *, int, int);

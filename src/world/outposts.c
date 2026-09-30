@@ -47,6 +47,8 @@ using namespace std;
 #ifdef __NO_MYSQL__
 #include "flatfile/flatfile_association_repository.h"
 #include "persistence/persistence_mode.h"
+#else
+#include "sql/sql_async.h"
 #endif
 
 extern P_index mob_index;
@@ -151,6 +153,10 @@ runtime_outpost_record runtime_outpost(const flatfile_outpost_record &source)
 	record.scouts = source.scouts;
 	return record;
 }
+#else
+// The outposts, read at boot and kept current by the game's own writes, which are queued on
+// the writer: nothing else writes them while the game runs.
+std::vector<runtime_outpost_record> stored_outposts;
 #endif
 
 bool load_outpost_records(std::vector<runtime_outpost_record> *records, bool establish)
@@ -191,35 +197,39 @@ bool load_outpost_records(std::vector<runtime_outpost_record> *records, bool est
 	return true;
 #else
 	if (establish)
+	{
+		// Boot: the game loop is not running yet.
 		for (int id = 0; outpost_locations[id][0]; ++id)
 			if (!qry("INSERT IGNORE into outposts(id) VALUES(%d)", id))
 				return false;
-	if (!qry("SELECT id, owner_id, level, walls, archers, resources, applied_resources, hitpoints, territory, portal_room, golems, meurtriere, scouts FROM outposts ORDER BY id"))
-		return false;
-	MYSQL_RES *result = mysql_store_result(DB);
-	if (!result)
-		return false;
-	records->clear();
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(result)))
-	{
-		runtime_outpost_record record;
-		record.id = atoi(row[0]);
-		record.owner_id = atoi(row[1]);
-		record.level = atoi(row[2]);
-		record.walls = atoi(row[3]);
-		record.archers = atoi(row[4]);
-		record.resources = atoi(row[5]);
-		record.applied_resources = atoi(row[6]);
-		record.hitpoints = atoi(row[7]);
-		record.territory = atoi(row[8]);
-		record.portal_room = atoi(row[9]);
-		record.golems = atoi(row[10]);
-		record.meurtriere = atoi(row[11]);
-		record.scouts = atoi(row[12]);
-		records->push_back(record);
+		if (!qry("SELECT id, owner_id, level, walls, archers, resources, applied_resources, hitpoints, territory, portal_room, golems, meurtriere, scouts FROM outposts ORDER BY id"))
+			return false;
+		MYSQL_RES *result = mysql_store_result(DB);
+		if (!result)
+			return false;
+		stored_outposts.clear();
+		MYSQL_ROW row;
+		while ((row = mysql_fetch_row(result)))
+		{
+			runtime_outpost_record record;
+			record.id = atoi(row[0]);
+			record.owner_id = atoi(row[1]);
+			record.level = atoi(row[2]);
+			record.walls = atoi(row[3]);
+			record.archers = atoi(row[4]);
+			record.resources = atoi(row[5]);
+			record.applied_resources = atoi(row[6]);
+			record.hitpoints = atoi(row[7]);
+			record.territory = atoi(row[8]);
+			record.portal_room = atoi(row[9]);
+			record.golems = atoi(row[10]);
+			record.meurtriere = atoi(row[11]);
+			record.scouts = atoi(row[12]);
+			stored_outposts.push_back(record);
+		}
+		mysql_free_result(result);
 	}
-	mysql_free_result(result);
+	*records = stored_outposts;
 	return true;
 #endif
 }
@@ -252,6 +262,23 @@ bool save_outpost_record(const runtime_outpost_record &record, const char *opera
 	persistence_alert(AVATAR, "outposts", key.c_str(), "none", "none", operation,
 			  "flat outpost mutation failed: %s", error.c_str());
 	return false;
+}
+#else
+// Memory changes once the write is queued; the writer logs a failed write.
+bool save_outpost_record(const runtime_outpost_record &record, const char * /*operation*/)
+{
+	if (!sql_queue("UPDATE outposts SET owner_id = %u, level = %d, walls = %d, archers = %d, "
+		       "resources = %d, applied_resources = %d, hitpoints = %d, territory = %d, "
+		       "portal_room = %d, golems = %d, meurtriere = %d, scouts = %d WHERE id = %d",
+		       record.owner_id, record.level, record.walls, record.archers,
+		       record.resources, record.applied_resources, record.hitpoints,
+		       record.territory, record.portal_room, record.golems, record.meurtriere,
+		       record.scouts, record.id))
+		return false;
+	for (runtime_outpost_record &stored : stored_outposts)
+		if (stored.id == record.id)
+			stored = record;
+	return true;
 }
 #endif
 } // namespace
@@ -402,17 +429,11 @@ bool persist_outpost_owner(Building *building, P_Guild owner)
 {
 	if (!building || !building->get_id())
 		return false;
-	const unsigned int owner_id = owner ? owner->get_id() : 0;
-#ifdef __NO_MYSQL__
 	runtime_outpost_record record;
 	if (!load_outpost_record(building->get_id() - 1, &record))
 		return false;
-	record.owner_id = owner_id;
+	record.owner_id = owner ? owner->get_id() : 0;
 	return save_outpost_record(record, "owner");
-#else
-	return qry("UPDATE outposts SET owner_id = '%u' WHERE id = '%d'", owner_id,
-		   building->get_id() - 1);
-#endif
 }
 
 int get_outpost_resources(Building *building, int type)
@@ -508,7 +529,6 @@ int get_guild_resources(int id, int type)
 
 void set_current_outpost_hitpoints(Building *building)
 {
-#ifdef __NO_MYSQL__
 	if (!building)
 		return;
 	runtime_outpost_record record;
@@ -519,11 +539,6 @@ void set_current_outpost_hitpoints(Building *building)
 	}
 	record.hitpoints = (GET_HIT(building->get_mob()) < 0) ? 0 : GET_HIT(building->get_mob());
 	save_outpost_record(record, "hitpoints");
-#else
-	db_query("UPDATE outposts SET hitpoints='%d' WHERE id='%d'",
-		 ((GET_HIT(building->get_mob()) < 0) ? 0 : GET_HIT(building->get_mob())),
-		 building->get_id() - 1);
-#endif
 }
 
 void do_outpost(P_char ch, char *arg, int /*cmd*/)
@@ -794,17 +809,12 @@ void do_outpost(P_char ch, char *arg, int /*cmd*/)
 
 		if (building->generate_portals())
 		{
-#ifdef __NO_MYSQL__
 			runtime_outpost_record record;
 			if (load_outpost_record(building->get_id() - 1, &record))
 			{
 				record.portal_room = 1;
 				save_outpost_record(record, "portal");
 			}
-#else
-			db_query("UPDATE outposts SET portal_room = '1' WHERE id = '%d'",
-				 building->get_id() - 1);
-#endif
 			send_to_char("Your outpost now contains portals.\r\n", ch);
 		}
 		else
@@ -848,17 +858,12 @@ void do_outpost(P_char ch, char *arg, int /*cmd*/)
 
 		building->load_gateguard(building->get_golem_room(), OUTPOST_GATEGUARD_WAR,
 					 (get_outpost_golems(building)));
-#ifdef __NO_MYSQL__
 		runtime_outpost_record record;
 		if (load_outpost_record(building->get_id() - 1, &record))
 		{
 			record.golems = get_outpost_golems(building) + 1;
 			save_outpost_record(record, "golems");
 		}
-#else
-		db_query("UPDATE outposts SET golems = '%d' WHERE id = '%d'",
-			 (get_outpost_golems(building) + 1), building->get_id() - 1);
-#endif
 		send_to_char("You hire a new outpost gateguard.\r\n", ch);
 		return;
 	}
@@ -898,17 +903,12 @@ void do_outpost(P_char ch, char *arg, int /*cmd*/)
 			return;
 		}
 
-#ifdef __NO_MYSQL__
 		runtime_outpost_record record;
 		if (load_outpost_record(building->get_id() - 1, &record))
 		{
 			record.archers = 1;
 			save_outpost_record(record, "archers");
 		}
-#else
-		db_query("UPDATE outposts SET archers = '1' WHERE id = '%d'",
-			 building->get_id() - 1);
-#endif
 		send_to_char("You hire archers to defend your outpost.\r\n", ch);
 		return;
 	}
@@ -948,17 +948,12 @@ void do_outpost(P_char ch, char *arg, int /*cmd*/)
 			return;
 		}
 
-#ifdef __NO_MYSQL__
 		runtime_outpost_record record;
 		if (load_outpost_record(building->get_id() - 1, &record))
 		{
 			record.meurtriere = 1;
 			save_outpost_record(record, "meurtriere");
 		}
-#else
-		db_query("UPDATE outposts SET meurtriere = '1' WHERE id = '%d'",
-			 building->get_id() - 1);
-#endif
 		send_to_char("Your outpost gate now posseses a meurtriere.", ch);
 		return;
 	}
@@ -1190,18 +1185,11 @@ void update_outpost_golems(Building *building, int amount)
 		return;
 	}
 
-#ifdef __NO_MYSQL__
 	runtime_outpost_record record;
 	if (!load_outpost_record(building->get_id() - 1, &record))
 		return;
 	record.golems = BOUNDED(0, record.golems + amount, MAX_OUTPOST_GATEGUARDS);
 	save_outpost_record(record, "golems");
-#else
-	db_query("UPDATE outposts SET golems = '%d' WHERE id = '%d'",
-		 BOUNDED(0, (get_outpost_golems(building) + amount), MAX_OUTPOST_GATEGUARDS),
-		 building->get_id() - 1);
-#endif
-	return;
 }
 
 bool reset_one_outpost(Building *building)
@@ -1215,7 +1203,6 @@ bool reset_one_outpost(Building *building)
 	}
 	id = building->get_id() - 1;
 
-#ifdef __NO_MYSQL__
 	runtime_outpost_record record;
 	if (!load_outpost_record(id, &record))
 	{
@@ -1231,11 +1218,6 @@ bool reset_one_outpost(Building *building)
 	record.portal_room = 0;
 	if (!save_outpost_record(record, "reset"))
 		return false;
-#else
-	if (!qry("UPDATE outposts SET owner_id = '0', level = '8', walls = '1', archers = '0', meurtriere = '0', hitpoints = '%d', portal_room = '0' WHERE id = '%d'",
-		 building_types[BUILDING_OUTPOST - 1].hitpoints, id))
-		return false;
-#endif
 	building->set_guild(NULL);
 
 	GET_MAX_HIT(building->get_mob()) = building->get_mob()->points.base_hit =
@@ -1263,6 +1245,27 @@ void reset_outposts(P_char /*ch*/)
 		debug("resetting outpost #: %d", building->get_id() - 1);
 		reset_one_outpost(building);
 	}
+}
+
+// Staff: every outpost record back to an unowned tower (test clearoutposts).
+bool clear_outposts()
+{
+	std::vector<runtime_outpost_record> records;
+	if (!load_outpost_records(&records, false))
+		return false;
+	for (runtime_outpost_record record : records)
+	{
+		const int id = record.id;
+		record = runtime_outpost_record();
+		record.id = id;
+		record.level = 8;
+		record.walls = 1;
+		record.hitpoints = 300000;
+		record.applied_resources = 0;
+		if (!save_outpost_record(record, "clear"))
+			return false;
+	}
+	return true;
 }
 
 int outpost_rubble(P_obj obj, P_char /*ch*/, int cmd, char * /*arg*/)
