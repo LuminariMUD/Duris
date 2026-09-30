@@ -8,6 +8,8 @@
 #include "core/structs.h"
 
 #include <functional>
+#include <string>
+#include <vector>
 
 // ============================================================================
 // transaction helpers
@@ -263,6 +265,7 @@ bool sql_delete_ship(const char *owner_name);
 // guilds
 class Guild;
 bool sql_save_guild(Guild *guild);
+std::vector<std::string> sql_save_guild_statements(Guild *guild);
 Guild *sql_load_guild(unsigned int guild_id);
 bool sql_load_all_guilds(void);
 bool sql_delete_guild(unsigned int guild_id);

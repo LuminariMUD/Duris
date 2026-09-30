@@ -10177,143 +10177,63 @@ bool sql_delete_ship(const char *owner_name)
 	return true;
 }
 
-/* Write one guild -- its row, then its ranks and members -- returning true
- * only when all three landed. The ranks and members are replaced wholesale,
- * so they are wrapped in a transaction: the DELETEs run before the INSERTs,
- * and a failure mid-loop would otherwise leave the guild with stale or empty
- * ranks. When the caller already opened a transaction this JOINS it instead
- * of nesting, and then a failure returns false WITHOUT rolling back, leaving
- * that decision to the owner. */
+/* One guild's statements: its row, then its ranks and members, which are replaced
+ * wholesale (the DELETEs before the INSERTs), so they must run in one transaction. */
+std::vector<std::string> sql_save_guild_statements(Guild *guild)
+{
+	const unsigned int gid = guild->get_id();
+	const std::string name = escape_str(guild->name);
+	const std::string fragger = escape_str(guild->frags.topfragger);
+	std::vector<std::string> statements;
+	statements.push_back(sql_format(
+		"insert into guilds (id, name, racewar, bits, prestige, construction, "
+		"platinum, gold, silver, copper, frags, top_frags, topfragger) "
+		"values (%u, '%s', %u, %u, %lu, %lu, %u, %u, %u, %u, %ld, %ld, '%s') "
+		"on duplicate key update name='%s', racewar=%u, bits=%u, prestige=prestige, "
+		"construction=construction, platinum=%u, gold=%u, silver=%u, copper=%u, "
+		"frags=%ld, top_frags=%ld, topfragger='%s'",
+		gid, name.c_str(), guild->racewar, guild->bits, guild->prestige,
+		guild->construction, guild->platinum, guild->gold, guild->silver, guild->copper,
+		guild->frags.frags, guild->frags.top_frags, fragger.c_str(), name.c_str(),
+		guild->racewar, guild->bits, guild->platinum, guild->gold, guild->silver,
+		guild->copper, guild->frags.frags, guild->frags.top_frags, fragger.c_str()));
+
+	statements.push_back(sql_format("delete from guild_ranks where guild_id=%u", gid));
+	for (int i = 0; i < ASC_NUM_RANKS; i++)
+		statements.push_back(sql_format(
+			"insert into guild_ranks (guild_id, rank_index, title) values (%u, %d, '%s')",
+			gid, i, escape_str(guild->titles[i]).c_str()));
+
+	statements.push_back(sql_format("delete from guild_members where guild_id=%u", gid));
+	for (P_member mem = guild->members; mem; mem = mem->next)
+	{
+		const int pid = sql_get_player_pid(mem->name);
+		statements.push_back(sql_format(
+			"insert into guild_members (guild_id, player_name, player_pid, bits, debt) "
+			"values (%u, '%s', %s, %u, %u)",
+			gid, escape_str(mem->name).c_str(),
+			pid > 0 ? std::to_string(pid).c_str() : "NULL", mem->bits, mem->debt));
+	}
+	return statements;
+}
+
+/* Save one guild. Inside a caller's transaction (a character deletion) the statements
+ * join it on the game thread's connection, and a failure is the owner's to roll back;
+ * otherwise they are one writer job. */
 bool sql_save_guild(Guild *guild)
 {
 	if (!DB || !guild)
 		return false;
-
-	unsigned int gid = guild->get_id();
-	char *esc_name = sql_escape_string(guild->name);
-	char *esc_fragger = sql_escape_string(guild->frags.topfragger);
-
-	char query[1024];
-	snprintf(query, sizeof(query),
-		 "insert into guilds (id, name, racewar, bits, prestige, construction, "
-		 "platinum, gold, silver, copper, frags, top_frags, topfragger) "
-		 "values (%u, '%s', %u, %u, %lu, %lu, %u, %u, %u, %u, %ld, %ld, '%s') "
-		 "on duplicate key update name='%s', racewar=%u, bits=%u, prestige=prestige, "
-		 "construction=construction, platinum=%u, gold=%u, silver=%u, copper=%u, "
-		 "frags=%ld, top_frags=%ld, topfragger='%s'",
-		 gid, esc_name ? esc_name : "", guild->racewar, guild->bits, guild->prestige,
-		 guild->construction, guild->platinum, guild->gold, guild->silver, guild->copper,
-		 guild->frags.frags, guild->frags.top_frags, esc_fragger ? esc_fragger : "",
-		 esc_name ? esc_name : "", guild->racewar, guild->bits, guild->platinum,
-		 guild->gold, guild->silver, guild->copper, guild->frags.frags,
-		 guild->frags.top_frags, esc_fragger ? esc_fragger : "");
-
-	if (esc_name)
-		free(esc_name);
-	if (esc_fragger)
-		free(esc_fragger);
-
-	if (!sql_run_query(query))
-		return false;
-
-	// start transaction for ranks + members (DELETEs run before INSERTs, so a
-	// failure mid-loop would otherwise leave the guild with stale or empty
-	// ranks/members)
-	/* Join an enclosing transaction when the caller opened one -- the kingdom
-	 * upkeep sweep pairs this save with its realm record so a crash can never
-	 * separate a treasury debit from the payment it made -- and otherwise own
-	 * one. Inside a joined transaction a failure returns false WITHOUT rolling
-	 * back; the owner does that. Same pattern as sql_soft_delete_character(). */
-	const bool own_txn = !sql_in_transaction();
-	if (own_txn && !sql_begin_transaction())
-	{
-		logit(LOG_DEBUG, "sql_save_guild: failed to start transaction for guild %u", gid);
-		return false;
-	}
-
-	// save ranks
-	snprintf(query, sizeof(query), "delete from guild_ranks where guild_id=%u", gid);
-	if (!sql_run_query(query))
-	{
-		logit(LOG_DEBUG, "sql_save_guild: failed to delete old ranks for guild %u", gid);
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-	for (int i = 0; i < ASC_NUM_RANKS; i++)
-	{
-		char *esc_title = sql_escape_string(guild->titles[i]);
-		if (!esc_title)
-			continue;
-		snprintf(
-			query, sizeof(query),
-			"insert into guild_ranks (guild_id, rank_index, title) values (%u, %d, '%s')",
-			gid, i, esc_title);
-		bool ok = sql_run_query(query);
-		free(esc_title);
-		if (!ok)
+	const std::vector<std::string> statements = sql_save_guild_statements(guild);
+	if (!sql_in_transaction())
+		return sql_queue_statements(statements);
+	for (const std::string &statement : statements)
+		if (!sql_run_query(statement.c_str()))
 		{
-			logit(LOG_DEBUG, "sql_save_guild: failed to insert rank %d for guild %u", i,
-			      gid);
-			if (own_txn)
-				sql_rollback();
+			logit(LOG_DEBUG, "sql_save_guild: failed to save guild %u",
+			      guild->get_id());
 			return false;
 		}
-	}
-
-	// save members
-	snprintf(query, sizeof(query), "delete from guild_members where guild_id=%u", gid);
-	if (!sql_run_query(query))
-	{
-		logit(LOG_DEBUG, "sql_save_guild: failed to delete old members for guild %u", gid);
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-	for (P_member mem = guild->members; mem; mem = mem->next)
-	{
-		char *esc_mname = sql_escape_string(mem->name);
-		if (!esc_mname)
-			continue;
-		int pid = sql_get_player_pid(mem->name);
-		char pid_buf[32];
-		const char *pid_sql = "NULL";
-		if (pid > 0)
-		{
-			snprintf(pid_buf, sizeof(pid_buf), "%d", pid);
-			pid_sql = pid_buf;
-		}
-		snprintf(
-			query, sizeof(query),
-			"insert into guild_members (guild_id, player_name, player_pid, bits, debt) "
-			"values (%u, '%s', %s, %u, %u)",
-			gid, esc_mname, pid_sql, mem->bits, mem->debt);
-		bool ok = sql_run_query(query);
-		free(esc_mname);
-		if (!ok)
-		{
-			logit(LOG_DEBUG, "sql_save_guild: failed to insert member for guild %u",
-			      gid);
-			if (own_txn)
-				sql_rollback();
-			return false;
-		}
-	}
-
-	/* The own_txn test on the rollback is redundant TODAY -- only the owner
-	 * reaches sql_commit() -- and is kept on purpose. Every sql_rollback() in
-	 * this function is guarded by the same test, which is what makes "never
-	 * roll back a transaction an enclosing caller opened" checkable rather
-	 * than a property re-derived per branch; a contract test enforces it. If
-	 * the commit condition is ever widened, the guard is already right. */
-	if (own_txn && !sql_commit())
-	{
-		logit(LOG_DEBUG, "sql_save_guild: failed to commit for guild %u", gid);
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-
 	return true;
 }
 

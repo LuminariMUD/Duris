@@ -181,7 +181,7 @@
 #include "core/prototypes.h"
 #include "core/utility.h"
 #include "guild/assocs.h"
-#include "sql/sql_player.h" /* transaction helpers; stubs under __NO_MYSQL__ */
+#include "sql/sql_player.h"
 
 #include <climits>
 #include <cstdio>
@@ -446,13 +446,12 @@ static void hold_payment(kingdom_realm &realm, const char *why)
 /* Write the debited guild and this realm's record as ONE unit and report
  * whether they are durable. What each build mode guarantees:
  *
- *   MariaDB    If a transaction is already open the two writes JOIN it and
- *              true means both ran; commit or rollback is the owner's, and
- *              its rollback undoes both together. Otherwise this function
- *              owns one: guild, then realm, then commit, rolling back on any
- *              failure. If the transaction cannot be opened NOTHING is
- *              written -- never an unpaired write -- and the realm is held.
- *              On success the record is clean; no flush is needed.
+ *   MariaDB    The guild's statements and the realm's write are one job on
+ *              the persistence writer, run in one transaction: guild, then
+ *              realm. The debit is in memory already, so once queued the
+ *              record is clean; no flush is needed. A job that could not be
+ *              queued writes NOTHING -- never an unpaired write -- and the
+ *              realm is held.
  *
  *   flat-file  The guild and realm catalogue after-images share one recovery
  *              journal. The journal is durable before either image, so an
@@ -470,33 +469,9 @@ bool kingdom_persist_payment(Guild *guild, kingdom_realm &realm)
 	}
 
 #ifndef __NO_MYSQL__
-	bool ok;
-
-	if (sql_in_transaction())
+	if (!kingdom_db_save_payment_pair(sql_save_guild_statements(guild), realm))
 	{
-		/* Joining: Guild::save() -> sql_save_guild() joins the same open
-		 * transaction. A failed write here leaves the owner's transaction
-		 * half-applied, which is why it must roll back on our false. */
-		ok = guild->save() && kingdom_db_save_realm(realm);
-	}
-	else
-	{
-		if (!sql_begin_transaction())
-		{
-			hold_payment(realm, "could not open a transaction; nothing written");
-			return false;
-		}
-
-		ok = guild->save() && kingdom_db_save_realm(realm);
-		if (ok)
-			ok = sql_commit();
-		if (!ok)
-			sql_rollback(); /* sql_commit() keeps ownership on failure */
-	}
-
-	if (!ok)
-	{
-		hold_payment(realm, "guild or realm write failed; nothing committed");
+		hold_payment(realm, "the guild and realm write was not queued");
 		return false;
 	}
 

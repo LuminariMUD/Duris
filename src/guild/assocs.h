@@ -11,6 +11,8 @@
 
 #include "core/structs.h"
 #include <stdio.h>
+#include <string>
+#include <vector>
 
 /* DEFINES for assocs.c */
 
@@ -191,6 +193,7 @@ class Guild
 	friend void forget_deleted_guild_member(const char *character_name);
 	friend void rename_guild_member(const char *old_name, const char *new_name);
 	friend bool sql_save_guild(Guild *guild);
+	friend std::vector<std::string> sql_save_guild_statements(Guild *guild);
 	friend Guild *sql_load_guild(unsigned int guild_id);
 	friend bool sql_load_all_guilds();
 	friend int migrate_guilds_from_files(void);

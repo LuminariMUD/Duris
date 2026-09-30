@@ -65,6 +65,7 @@
 #else
 #include "sql/sql.h"
 #include "sql/sql_player.h"
+#include "sql/sql_async.h"
 
 #include <mysqld_error.h>
 #endif
@@ -340,16 +341,79 @@ bool kingdom_db_load_all(void)
 	return complete;
 }
 
-/* Upsert one realm's row, joining any open transaction (qry() runs on the
- * shared connection). False when the record fails record_is_sane() or the
- * statement fails; the caller's dirty flag is untouched either way.
+/* One realm's write, run on the writer: its row, then its garrison roster (the
+ * bought guards and the champion).
+ *
+ * assoc_id is the primary key, so one upsert covers both create and update and
+ * no caller has to know which it is doing. Guild ids are reused by found_asc(),
+ * which is exactly why kingdom_on_guild_deleted() must DELETE the row rather
+ * than leave it for the next holder of the id to inherit through this statement.
+ *
+ * The roster is replaced DELETE-THEN-INSERT rather than diffed: it is at most
+ * seventeen tiny rows and changes only on a hire, a promotion or a death.
+ *
+ * A MISSING kingdom_garrison IS NOT AN ERROR HERE, and that is deliberate: the
+ * table is outside the runtime contract's table list (see the migration and
+ * runtime_compatibility_contract.h), so a database at head 0008 still boots and
+ * still runs kingdoms -- it simply cannot keep a roster, and the realm's own row
+ * still lands. Only those exact server errors degrade; every other one fails the
+ * job. */
+static sql_work realm_work(const kingdom_realm &realm)
+{
+	const std::string upsert = sql_format(
+		"INSERT INTO kingdom_realms (%s) VALUES "
+		"(%d,%d,%d,%d,%ld,%ld,%ld,%ld,%lld,%d,%d) "
+		"ON DUPLICATE KEY UPDATE realm_id=VALUES(realm_id),"
+		"hall_vnum=VALUES(hall_vnum),highest_claim=VALUES(highest_claim),"
+		"res_mineral=VALUES(res_mineral),res_wood=VALUES(res_wood),"
+		"res_fibre=VALUES(res_fibre),res_water=VALUES(res_water),"
+		"upkeep_paid_through=VALUES(upkeep_paid_through),"
+		"arrears=VALUES(arrears),missed_cycles=VALUES(missed_cycles)",
+		kingdom_realm_columns, realm.assoc_id, realm.realm_id, realm.hall_vnum,
+		realm.highest_claim, realm.resources[KRES_MINERAL], realm.resources[KRES_WOOD],
+		realm.resources[KRES_FIBRE], realm.resources[KRES_WATER],
+		static_cast<long long>(realm.upkeep_paid_through), realm.arrears,
+		realm.missed_cycles);
+	std::vector<std::string> roster = { sql_format(
+		"DELETE FROM kingdom_garrison WHERE assoc_id=%d", realm.assoc_id) };
+	for (int slot = 0; slot < KINGDOM_GUARD_SLOTS; slot++)
+		if (realm.guards[slot].level > 0)
+			roster.push_back(sql_format(
+				"INSERT INTO kingdom_garrison (assoc_id,slot,guard_class,level) "
+				"VALUES (%d,%d,%d,%d)",
+				realm.assoc_id, slot, realm.guards[slot].guard_class,
+				realm.guards[slot].level));
+	if (realm.champion_class)
+		roster.push_back(
+			sql_format("INSERT INTO kingdom_garrison (assoc_id,slot,guard_class,level) "
+				   "VALUES (%d,%d,%d,%d)",
+				   realm.assoc_id, KINGDOM_CHAMPION_SLOT, realm.champion_class,
+				   KINGDOM_CHAMPION_LEVEL));
+
+	return [upsert, roster](MYSQL *connection) -> unsigned int
+	{
+		if (const unsigned int error_code = sql_execute(connection, upsert))
+			return error_code;
+		for (const std::string &statement : roster)
+			if (const unsigned int error_code = sql_execute(connection, statement))
+				return error_code == ER_NO_SUCH_TABLE ||
+						       error_code == ER_NO_SUCH_TABLE_IN_ENGINE ?
+					       0 :
+					       error_code;
+		return 0;
+	};
+}
+
+/* Queue one realm's row and roster on the writer. False when the record fails
+ * record_is_sane() or the job could not be queued; the caller's dirty flag is
+ * untouched either way.
  *
  * THIS PRIMITIVE DOES NOT TEST payment_pending, deliberately: it is what
- * kingdom_persist_payment() calls to publish a pending record together with
- * the guild debit that justifies it, so a guard here would deadlock that
- * pairing. The obligation is therefore the CALLER's -- every call to this
- * function from outside kingdom_db.c and kingdom_persist_payment() must be
- * guarded by !payment_pending and leave a pending record dirty for
+ * kingdom_persist_payment() pairs with the guild debit that justifies a pending
+ * record, so a guard here would deadlock that pairing. The obligation is
+ * therefore the CALLER's -- every call to this function from outside
+ * kingdom_db.c and kingdom_persist_payment() must be guarded by
+ * !payment_pending and leave a pending record dirty for
  * kingdom_upkeep_retry_pending() to carry. */
 bool kingdom_db_save_realm(const kingdom_realm &realm)
 {
@@ -361,133 +425,33 @@ bool kingdom_db_save_realm(const kingdom_realm &realm)
 		      realm.assoc_id, realm.highest_claim, realm.arrears);
 		return false;
 	}
-
-	/* assoc_id is the primary key, so one upsert covers both create and
-	 * update and no caller has to know which it is doing. Guild ids are
-	 * reused by found_asc(), which is exactly why kingdom_on_guild_deleted()
-	 * must DELETE the row rather than leave it for the next holder of the id
-	 * to inherit through this statement. */
-	if (!qry("INSERT INTO kingdom_realms (%s) VALUES "
-		 "(%d,%d,%d,%d,%ld,%ld,%ld,%ld,%lld,%d,%d) "
-		 "ON DUPLICATE KEY UPDATE realm_id=VALUES(realm_id),"
-		 "hall_vnum=VALUES(hall_vnum),highest_claim=VALUES(highest_claim),"
-		 "res_mineral=VALUES(res_mineral),res_wood=VALUES(res_wood),"
-		 "res_fibre=VALUES(res_fibre),res_water=VALUES(res_water),"
-		 "upkeep_paid_through=VALUES(upkeep_paid_through),"
-		 "arrears=VALUES(arrears),missed_cycles=VALUES(missed_cycles)",
-		 kingdom_realm_columns, realm.assoc_id, realm.realm_id, realm.hall_vnum,
-		 realm.highest_claim, realm.resources[KRES_MINERAL], realm.resources[KRES_WOOD],
-		 realm.resources[KRES_FIBRE], realm.resources[KRES_WATER],
-		 static_cast<long long>(realm.upkeep_paid_through), realm.arrears,
-		 realm.missed_cycles))
-	{
-		logit(LOG_KINGDOM, "kingdom_db_save_realm: upsert failed for association %d",
-		      realm.assoc_id);
-		return false;
-	}
-
-	return kingdom_db_save_roster(realm);
+	return sql_queue_work(realm_work(realm));
 }
 
-/*
- * Publish a realm's garrison roster: the bought guards and the champion.
- *
- * DELETE-THEN-INSERT rather than a row-by-row diff. The roster is at most
- * seventeen tiny rows, it changes only on a hire, a promotion or a death, and
- * the replacement is transactional. It joins the caller's paid-change
- * transaction when there is one; otherwise it owns a transaction around the
- * DELETE and INSERTs. No bookkeeping is needed to notice a slot that emptied.
- * A diff would be more code for less certainty.
- *
- * A MISSING TABLE IS NOT AN ERROR HERE, and that is deliberate:
- * kingdom_garrison is outside the runtime contract's table list (see the
- * migration and runtime_compatibility_contract.h), so a database at head 0008
- * still boots and still runs kingdoms -- it simply cannot keep a roster. The
- * failure is logged once per attempt and the realm's own row still lands,
- * which is the same graceful degradation kingdom_realms itself was given.
- */
-bool kingdom_db_save_roster(const kingdom_realm &realm)
+/* Queue the debited guild's statements and the realm's write as ONE writer job,
+ * in one transaction, so a crash can never separate a treasury debit from the
+ * realm record that explains it. */
+bool kingdom_db_save_payment_pair(std::vector<std::string> guild_statements,
+				  const kingdom_realm &realm)
 {
-	if (realm.assoc_id <= 0)
-		return false;
-
-	const bool own_transaction = !sql_in_transaction();
-	if (own_transaction && !sql_begin_transaction())
+	if (!record_is_sane(realm))
 	{
 		logit(LOG_KINGDOM,
-		      "kingdom_db_save_roster: could not open a transaction for association %d",
-		      realm.assoc_id);
+		      "kingdom_db_save_payment_pair: refusing to persist an invalid record for "
+		      "association %d (claim %d, arrears %d)",
+		      realm.assoc_id, realm.highest_claim, realm.arrears);
 		return false;
 	}
-
-	/* A database at migration 0008 intentionally has no roster table. Only
-	 * those exact server errors degrade to success; every other statement error
-	 * remains a failed save. A caller-owned transaction is never finalized here. */
-	const auto statement_failure = [&](const char *operation, int slot) -> bool
-	{
-		const unsigned int error_code = DB ? mysql_errno(DB) : 0;
-		const bool missing = error_code == ER_NO_SUCH_TABLE ||
-				     error_code == ER_NO_SUCH_TABLE_IN_ENGINE;
-
-		if (own_transaction && !sql_rollback())
+	return sql_queue_work(
+		[guild_statements = std::move(guild_statements),
+		 realm_write = realm_work(realm)](MYSQL *connection) -> unsigned int
 		{
-			logit(LOG_KINGDOM,
-			      "kingdom_db_save_roster: rollback failed after %s for association %d",
-			      operation, realm.assoc_id);
-			return false;
-		}
-		if (missing)
-		{
-			logit(LOG_KINGDOM,
-			      "kingdom_db_save_roster: kingdom_garrison is unavailable for "
-			      "association %d; realm saved without a durable roster",
-			      realm.assoc_id);
-			return true;
-		}
-
-		if (slot >= 0)
-			logit(LOG_KINGDOM,
-			      "kingdom_db_save_roster: %s failed for association %d slot %d",
-			      operation, realm.assoc_id, slot);
-		else
-			logit(LOG_KINGDOM, "kingdom_db_save_roster: %s failed for association %d",
-			      operation, realm.assoc_id);
-		return false;
-	};
-
-	if (!qry("DELETE FROM kingdom_garrison WHERE assoc_id=%d", realm.assoc_id))
-		return statement_failure("DELETE", -1);
-
-	for (int slot = 0; slot < KINGDOM_GUARD_SLOTS; slot++)
-	{
-		if (realm.guards[slot].level <= 0)
-			continue;
-
-		if (!qry("INSERT INTO kingdom_garrison (assoc_id,slot,guard_class,level) "
-			 "VALUES (%d,%d,%d,%d)",
-			 realm.assoc_id, slot, realm.guards[slot].guard_class,
-			 realm.guards[slot].level))
-			return statement_failure("INSERT", slot);
-	}
-
-	if (realm.champion_class)
-	{
-		if (!qry("INSERT INTO kingdom_garrison (assoc_id,slot,guard_class,level) "
-			 "VALUES (%d,%d,%d,%d)",
-			 realm.assoc_id, KINGDOM_CHAMPION_SLOT, realm.champion_class,
-			 KINGDOM_CHAMPION_LEVEL))
-			return statement_failure("champion INSERT", KINGDOM_CHAMPION_SLOT);
-	}
-
-	if (own_transaction && !sql_commit())
-	{
-		sql_rollback(); /* a failed commit retains transaction ownership */
-		logit(LOG_KINGDOM, "kingdom_db_save_roster: commit failed for association %d",
-		      realm.assoc_id);
-		return false;
-	}
-
-	return true;
+			for (const std::string &statement : guild_statements)
+				if (const unsigned int error_code =
+					    sql_execute(connection, statement))
+					return error_code;
+			return realm_write(connection);
+		});
 }
 
 /* Validate persisted class bits against the same curated table commands use.
@@ -600,8 +564,8 @@ static void kingdom_db_load_rosters(void)
 		logit(LOG_KINGDOM, "kingdom_db_load_rosters: loaded %zu guard(s)", loaded);
 }
 
-/* Delete the row for assoc_id. True when the statement ran, whether or not a
- * row matched; false for a non-positive id or a failed statement. */
+/* Queue the delete of the row for assoc_id, with its roster. True when queued;
+ * false for a non-positive id or a job that could not be queued. */
 bool kingdom_db_delete_realm(int assoc_id)
 {
 	if (assoc_id <= 0)
@@ -611,25 +575,25 @@ bool kingdom_db_delete_realm(int assoc_id)
 	}
 
 	/* Idempotent: a DELETE that matched nothing still succeeded, which is what
-	 * kingdom_on_guild_deleted() needs when the guild never had a realm. */
-	if (!qry("DELETE FROM kingdom_realms WHERE assoc_id=%d", assoc_id))
-	{
-		logit(LOG_KINGDOM, "kingdom_db_delete_realm: DELETE failed for association %d",
-		      assoc_id);
-		return false;
-	}
-
-	/* The roster goes with the realm, and for the same reason the realm's own
-	 * row does: association ids are reused, so a garrison left behind would
-	 * be inherited by whoever founds the next guild on that id. Its failure
-	 * does NOT fail the delete -- the realm is gone either way, and a
-	 * database at head 0008 has no such table to clear. */
-	if (!qry("DELETE FROM kingdom_garrison WHERE assoc_id=%d", assoc_id))
-		logit(LOG_KINGDOM,
-		      "kingdom_db_delete_realm: could not clear the roster for association %d",
-		      assoc_id);
-
-	return true;
+	 * kingdom_on_guild_deleted() needs when the guild never had a realm. The
+	 * roster goes with the realm, and for the same reason the realm's own row
+	 * does: association ids are reused, so a garrison left behind would be
+	 * inherited by whoever founds the next guild on that id. Its failure does
+	 * NOT fail the delete -- the realm is gone either way, and a database at
+	 * head 0008 has no such table to clear. */
+	return sql_queue_work(
+		[assoc_id](MYSQL *connection) -> unsigned int
+		{
+			if (const unsigned int error_code = sql_execute(
+				    connection,
+				    sql_format("DELETE FROM kingdom_realms WHERE assoc_id=%d",
+					       assoc_id)))
+				return error_code;
+			sql_execute(connection,
+				    sql_format("DELETE FROM kingdom_garrison WHERE assoc_id=%d",
+					       assoc_id));
+			return 0;
+		});
 }
 
 /* Upsert every dirty realm, one statement each, clearing dirty on success. A
@@ -1343,19 +1307,6 @@ bool kingdom_db_save_payment_pair(const std::string &root,
 		      realm.assoc_id, error && !error->empty() ? error->c_str() : "io error");
 		return false;
 	}
-	return true;
-}
-
-/* NOTHING TO DO, and that is the honest answer rather than a stub.
- *
- * The flat-file record IS the whole realm: encode_catalog() writes the roster
- * inline with the rest of the fields, so kingdom_db_save_realm() above has
- * already published it by the time anything could call this. It exists only
- * because the SQL half genuinely needs a separate statement against a separate
- * table, and one declaration must serve both builds. Answering true is
- * therefore correct, not optimistic: the roster is on disk. */
-bool kingdom_db_save_roster(const kingdom_realm & /*realm*/)
-{
 	return true;
 }
 
