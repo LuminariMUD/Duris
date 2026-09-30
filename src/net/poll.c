@@ -953,14 +953,14 @@ vector<poll_data> poll_get_all(bool active_only)
 	if (active_only)
 	{
 		res = db_query(
-			"SELECT id, question, created_by, UNIX_TIMESTAMP(created_at), UNIX_TIMESTAMP(expires_at), is_active, multi_select, max_choices "
-			"FROM polls WHERE is_active = 1 AND expires_at > FROM_UNIXTIME(%ld) ORDER BY id DESC",
+			"SELECT id, question, created_by, created_at, expires_at, is_active, multi_select, max_choices "
+			"FROM polls WHERE is_active = 1 AND expires_at > %ld ORDER BY id DESC",
 			(long)time(NULL));
 	}
 	else
 	{
 		res = db_query(
-			"SELECT id, question, created_by, UNIX_TIMESTAMP(created_at), UNIX_TIMESTAMP(expires_at), is_active, multi_select, max_choices "
+			"SELECT id, question, created_by, created_at, expires_at, is_active, multi_select, max_choices "
 			"FROM polls ORDER BY id DESC");
 	}
 
@@ -1015,7 +1015,7 @@ poll_data poll_get_by_id(int poll_id)
 	return get_flat_poll_by_id(poll_id, nullptr);
 #else
 	MYSQL_RES *res = db_query(
-		"SELECT id, question, created_by, UNIX_TIMESTAMP(created_at), UNIX_TIMESTAMP(expires_at), is_active, multi_select, max_choices "
+		"SELECT id, question, created_by, created_at, expires_at, is_active, multi_select, max_choices "
 		"FROM polls WHERE id = %d",
 		poll_id);
 
@@ -1101,7 +1101,7 @@ bool poll_create(poll_data *poll)
 	string creator_esc = escape_str(poll->created_by.c_str());
 
 	if (!qry("INSERT INTO polls (question, created_by, created_at, expires_at, is_active, multi_select, max_choices) "
-		 "VALUES ('%s', '%s', FROM_UNIXTIME(%ld), FROM_UNIXTIME(%ld), 1, %d, %d)",
+		 "VALUES ('%s', '%s', %ld, %ld, 1, %d, %d)",
 		 question_esc.c_str(), creator_esc.c_str(), (long)poll->created_at,
 		 (long)poll->expires_at, poll->multi_select ? 1 : 0, poll->max_choices))
 	{
@@ -1217,7 +1217,7 @@ void poll_check_expirations(void)
 #ifdef __NO_MYSQL__
 	expire_flat_polls();
 #else
-	qry("UPDATE polls SET is_active = 0 WHERE is_active = 1 AND expires_at < FROM_UNIXTIME(%ld)",
+	qry("UPDATE polls SET is_active = 0 WHERE is_active = 1 AND expires_at < %ld",
 	    (long)time(NULL));
 #endif
 }
@@ -1249,7 +1249,7 @@ int poll_record_votes(const char *acct_name, const char *char_name, int poll_id,
 			continue;
 
 		if (qry("INSERT IGNORE INTO poll_votes (poll_id, account_name, option_id, voted_at, char_name) "
-			"VALUES (%d, '%s', %d, FROM_UNIXTIME(%ld), '%s')",
+			"VALUES (%d, '%s', %d, %ld, '%s')",
 			poll_id, acct_esc.c_str(), option_id, (long)time(NULL), char_esc.c_str()))
 		{
 			votes_cast++;
