@@ -376,7 +376,9 @@ player_save_submit_result persistence_writer_submit(persistence_job_kind kind, u
 {
 	if (kind == persistence_job_kind::player || !owner || !write)
 		return player_save_submit_result::invalid;
-	queued_job job;
+	// Value-initialized: the job carries no snapshot, whose bool would otherwise be
+	// indeterminate when the job is moved.
+	queued_job job = {};
 	job.kind = kind;
 	job.owner = owner;
 	job.bytes = bytes;
