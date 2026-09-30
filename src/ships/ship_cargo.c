@@ -85,6 +85,7 @@
 #include "ships/ships.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "sql/sql_player.h"
 #include "world/timers.h"
 #ifdef __NO_MYSQL__
@@ -533,6 +534,40 @@ void initialize_ship_cargo()
 	cargo_maintenance_last_delayed_update = get_timer("update_delayed_cargo_prices");
 }
 
+#ifndef __NO_MYSQL__
+#define CARGO_MODS_QUERY "select type, port_id, cargo_type, modifier from ship_cargo_market_mods"
+
+/* Apply one stored market modifier row. */
+static void apply_cargo_mod(const char *type, const char *port, const char *cargo,
+			    const char *stored_modifier)
+{
+	if (!type || !port || !cargo || !stored_modifier)
+		return;
+	int port_id = atoi(port);
+	int cargo_type = atoi(cargo);
+	float modifier = atof(stored_modifier);
+
+	if (port_id < 0 || port_id >= NUM_PORTS || cargo_type < 0 || cargo_type >= NUM_PORTS ||
+	    !isfinite(modifier) || modifier < 0.0f || modifier > 1000.0f)
+	{
+		logit(LOG_DEBUG, "read_cargo(): invalid cargo record: (%s, %d, %d, %f)", type,
+		      port_id, cargo_type, modifier);
+		return;
+	}
+
+	if (!strcmp(type, "CARGO"))
+	{
+		ship_cargo_market_mod[port_id][cargo_type] = bound_market_mod(false, modifier);
+		ship_cargo_market_mod_delayed[port_id][cargo_type] =
+			ship_cargo_market_mod[port_id][cargo_type];
+	}
+	else if (!strcmp(type, "CONTRABAND"))
+	{
+		ship_contra_market_mod[port_id][cargo_type] = bound_market_mod(true, modifier);
+	}
+}
+#endif
+
 /*
  * Load every market modifier from persistent storage into the live matrices.
  *
@@ -565,8 +600,7 @@ int read_cargo()
 		replace_live_cargo(record);
 	return TRUE;
 #else
-
-	if (!qry("select type, port_id, cargo_type, modifier from ship_cargo_market_mods"))
+	if (!qry("%s", CARGO_MODS_QUERY))
 	{
 		logit(LOG_DEBUG, "read_cargo(): cargo query failed!");
 		return FALSE;
@@ -578,36 +612,7 @@ int read_cargo()
 
 	MYSQL_ROW row;
 	while ((row = mysql_fetch_row(res)))
-	{
-		if (!row[0] || !row[1] || !row[2] || !row[3])
-			continue;
-		char *type = row[0];
-		int port_id = atoi(row[1]);
-		int cargo_type = atoi(row[2]);
-		float modifier = atof(row[3]);
-
-		if (port_id < 0 || port_id >= NUM_PORTS || cargo_type < 0 ||
-		    cargo_type >= NUM_PORTS || !isfinite(modifier) || modifier < 0.0f ||
-		    modifier > 1000.0f)
-		{
-			logit(LOG_DEBUG, "read_cargo(): invalid cargo record: (%s, %d, %d, %f)",
-			      type, port_id, cargo_type, modifier);
-			continue;
-		}
-
-		if (!strcmp(type, "CARGO"))
-		{
-			ship_cargo_market_mod[port_id][cargo_type] =
-				bound_market_mod(false, modifier);
-			ship_cargo_market_mod_delayed[port_id][cargo_type] =
-				ship_cargo_market_mod[port_id][cargo_type];
-		}
-		else if (!strcmp(type, "CONTRABAND"))
-		{
-			ship_contra_market_mod[port_id][cargo_type] =
-				bound_market_mod(true, modifier);
-		}
-	}
+		apply_cargo_mod(row[0], row[1], row[2], row[3]);
 
 	mysql_free_result(res);
 
@@ -620,12 +625,10 @@ int read_cargo()
  * Persist the current market: both modifier matrices, plus a denormalised
  * price table for out-of-game reporting.
  *
- * Under MySQL this replaces both tables inside a transaction -- one it starts
- * itself only if the caller has not already opened one, so it nests safely
- * inside a larger ship transaction.  Under the flat-file backend it is a
- * single atomic record write.
+ * Under MySQL one writer job replaces both tables, in one transaction.  Under
+ * the flat-file backend it is a single atomic record write.
  *
- * Returns FALSE and rolls back its own transaction on any failure.
+ * Returns FALSE when the flat-file write fails.
  */
 int write_cargo()
 {
@@ -637,96 +640,32 @@ int write_cargo()
 	      error.empty() ? "authority failure" : error.c_str());
 	return FALSE;
 #else
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-		{
-			logit(LOG_DEBUG, "write_cargo(): failed to start transaction");
-			return FALSE;
-		}
-		own_txn = true;
-	}
-
-	if (!qry("delete from ship_cargo_market_mods; delete from ship_cargo_prices;"))
-	{
-		logit(LOG_DEBUG, "write_cargo(): cargo query failed!");
-		if (own_txn)
-			sql_rollback();
-		return FALSE;
-	}
-
-	// Known capacity limitation (issue #80): strncat() below limits source bytes,
-	// not remaining destination space.  The current 10x10 tuples of fixed labels,
-	// int prices and float modifiers fit each 16 KiB statement and the combined
-	// 64 KiB buffer.  Before increasing NUM_PORTS or tuple widths, make assembly
-	// capacity-aware, including the final combined statement.  The owner accepted
-	// documenting this limitation without changing persistence (2026-09-04).
-	char buffer[MAX_STRING_LENGTH] = { 0 };
-	char cargoPrices[MAX_STRING_LENGTH / 4] = { 0 };
-	char contrabandPrices[MAX_STRING_LENGTH / 4] = { 0 };
-	char cargoMarketMods[MAX_STRING_LENGTH / 4] = { 0 };
-	char contrabandMarketMods[MAX_STRING_LENGTH / 4] = { 0 };
-
-	// create 4 separate statements
-	snprintf(cargoPrices, ARRAY_SIZE(cargoPrices),
-		 "insert into ship_cargo_prices (type, port_id, cargo_type, price) values ");
-	snprintf(contrabandPrices, ARRAY_SIZE(contrabandPrices),
-		 "insert into ship_cargo_prices (type, port_id, cargo_type, price) values ");
-	snprintf(
-		cargoMarketMods, ARRAY_SIZE(cargoMarketMods),
-		"insert into ship_cargo_market_mods (type, port_id, cargo_type, modifier) values ");
-	snprintf(
-		contrabandMarketMods, ARRAY_SIZE(contrabandMarketMods),
-		"insert into ship_cargo_market_mods (type, port_id, cargo_type, modifier) values ");
-
-	bool isFirst = true;
-
+	std::string cargo_prices =
+		"insert into ship_cargo_prices (type, port_id, cargo_type, price) values ";
+	std::string contraband_prices = cargo_prices;
+	std::string cargo_mods =
+		"insert into ship_cargo_market_mods (type, port_id, cargo_type, modifier) values ";
+	std::string contraband_mods = cargo_mods;
 	for (int port = 0; port < NUM_PORTS; port++)
 	{
-		char buf[1024];
 		for (int type = 0; type < NUM_PORTS; type++)
 		{
+			const char *comma = port || type ? "," : "";
 			int price = port == type ? cargo_sell_price(port) :
 						   cargo_buy_price(port, type);
-
-			// insert into prices table
-			snprintf(buf, ARRAY_SIZE(buf), "%s('%s', %d, %d, %d)", isFirst ? "" : ",",
-				 "CARGO", port, type, price);
-			strncat(cargoPrices, buf, ARRAY_SIZE(buf));
-			snprintf(buf, ARRAY_SIZE(buf), "%s('%s', %d, %d, %d)", isFirst ? "" : ",",
-				 "CONTRABAND", port, type, price);
-			strncat(contrabandPrices, buf, ARRAY_SIZE(buf));
-
-			// insert into mods table
-			snprintf(buf, ARRAY_SIZE(buf), "%s('%s', %d, %d, %f)", isFirst ? "" : ",",
-				 "CARGO", port, type, ship_cargo_market_mod[port][type]);
-			strncat(cargoMarketMods, buf, ARRAY_SIZE(buf));
-			snprintf(buf, ARRAY_SIZE(buf), "%s('%s', %d, %d, %f)", isFirst ? "" : ",",
-				 "CONTRABAND", port, type, ship_contra_market_mod[port][type]);
-			strncat(contrabandMarketMods, buf, ARRAY_SIZE(buf));
-			isFirst = false;
+			cargo_prices +=
+				sql_format("%s('CARGO', %d, %d, %d)", comma, port, type, price);
+			contraband_prices += sql_format("%s('CONTRABAND', %d, %d, %d)", comma, port,
+							type, price);
+			cargo_mods += sql_format("%s('CARGO', %d, %d, %f)", comma, port, type,
+						 ship_cargo_market_mod[port][type]);
+			contraband_mods += sql_format("%s('CONTRABAND', %d, %d, %f)", comma, port,
+						      type, ship_contra_market_mod[port][type]);
 		}
 	}
-
-	// put all the statements into a single buffer
-	checked_snprintf(buffer, ARRAY_SIZE(buffer), "%s;%s;%s;%s;", cargoPrices, contrabandPrices,
-			 cargoMarketMods, contrabandMarketMods);
-
-	if (!qry(buffer))
-	{
-		logit(LOG_DEBUG, "write_cargo(): insert query failed!");
-		if (own_txn)
-			sql_rollback();
-		return FALSE;
-	}
-	sql_clear_results();
-	if (own_txn && !sql_commit())
-	{
-		logit(LOG_DEBUG, "write_cargo(): commit failed");
-		sql_rollback();
-		return FALSE;
-	}
+	sql_queue_statements({ "delete from ship_cargo_market_mods",
+			       "delete from ship_cargo_prices", cargo_prices, contraband_prices,
+			       cargo_mods, contraband_mods });
 	return TRUE;
 #endif
 }
@@ -1650,8 +1589,17 @@ void do_world_cargo(P_char ch, char *arg)
 	else if (is_abbrev(arg, "reload"))
 	{
 		send_to_char("Reloading cargo mods from persistent storage...\r\n", ch);
+#ifdef __NO_MYSQL__
 		if (!read_cargo())
 			send_to_char("FAILED!\r\n", ch);
+#else
+		sql_read_for(ch, CARGO_MODS_QUERY,
+			     [](P_char, const sql_rows &rows)
+			     {
+				     for (const sql_row &row : rows)
+					     apply_cargo_mod(row[0], row[1], row[2], row[3]);
+			     });
+#endif
 	}
 	else if (is_abbrev(arg, "reset"))
 	{

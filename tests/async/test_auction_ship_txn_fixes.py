@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression checks for auction bid transaction leak, cargo commit rollback, and ship db_id reset."""
+"""Regression checks for auction bid transaction leak and ship db_id reset."""
 from _paths import SRC
 from pathlib import Path
 import re
@@ -11,10 +11,6 @@ root = Path(__file__).resolve().parents[2]
 auction = (SRC / "auction_houses.c").read_text()
 assert contains(auction, "if (own_txn) sql_rollback();")
 assert auction.count("sql_rollback();") >= 10
-
-# 2. Cargo commit failure must attempt rollback
-cargo = (SRC / "ships/ship_cargo.c").read_text()
-assert contains(cargo, "logit(LOG_DEBUG, \"write_cargo(): commit failed\");\n\t\tsql_rollback();")
 
 # 3. A failed ship save resets db_id only when that save inserted the row: the
 # batch and batch-helper failures are guarded.  A failed commit may have stored
@@ -34,4 +30,4 @@ assert contains(sql_player, "update ships set owner_name='%s', ship_name='%s'")
 assert contains(auction, "UPDATE auctions SET status = %d WHERE id = '%d' AND status <> %d")
 assert contains(auction, "mysql_affected_rows(DB) != 1")
 
-print("auction bid leak, cargo rollback, and ship db_id reset checks passed")
+print("auction bid leak and ship db_id reset checks passed")
