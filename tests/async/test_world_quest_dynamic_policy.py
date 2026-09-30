@@ -119,6 +119,11 @@ def test_mariadb_world_quest_reads_fail_closed() -> None:
     # Until the character's history is read, both checks fail closed.
     assert "if (!history)" in db_done and "return -1;" in db_done
     assert "if (!history)" in quota and "return -1;" in quota
+    # The cached day counts UTC days, as the history query's TO_DAYS(NOW()) does on a
+    # connection the session contract puts in UTC.
+    assert "SET SESSION time_zone='+00:00'" in SQL
+    assert "return (long)(time(NULL) / 86400);" in SQL
+    assert "localtime_r" not in SQL[SQL.index("static long utc_day_number("):db_done_start]
 
 
 def test_temporary_mobile_load_failures_are_cleaned() -> None:

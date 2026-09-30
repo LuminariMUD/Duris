@@ -2947,8 +2947,8 @@ void sql_connectIP(P_char ch)
 struct world_quest_history
 {
 	std::unordered_set<int> targets;
-	// Quests finished today, by the level they were finished at, and the day (local
-	// time) they count for.
+	// Quests finished today, by the level they were finished at, and the UTC day they
+	// count for.
 	std::unordered_map<int, int> today_by_level;
 	int today_total = 0;
 	long day = 0;
@@ -2956,13 +2956,11 @@ struct world_quest_history
 static std::unordered_map<int, world_quest_history> world_quest_histories;
 static std::unordered_set<int> world_quest_histories_loading;
 
-// Days since the epoch in local time, as TO_DAYS(NOW()) counts them on this host.
-static long local_day_number(void)
+// Days since the epoch in UTC, as TO_DAYS(NOW()) counts them: every connection runs in
+// UTC (sql_apply_session_contract()).
+static long utc_day_number(void)
 {
-	const time_t now = time(NULL);
-	struct tm local;
-	localtime_r(&now, &local);
-	return (long)((now + local.tm_gmtoff) / 86400);
+	return (long)(time(NULL) / 86400);
 }
 
 void sql_world_quest_history_load(P_char ch)
@@ -2981,7 +2979,7 @@ void sql_world_quest_history_load(P_char ch)
 			      if (!ok)
 				      return;
 			      world_quest_history history;
-			      history.day = local_day_number();
+			      history.day = utc_day_number();
 			      for (const sql_row &row : rows)
 			      {
 				      if (row[0])
@@ -3006,11 +3004,11 @@ static world_quest_history *world_quest_history_of(P_char ch)
 		sql_world_quest_history_load(ch);
 		return NULL;
 	}
-	if (found->second.day != local_day_number())
+	if (found->second.day != utc_day_number())
 	{
 		found->second.today_by_level.clear();
 		found->second.today_total = 0;
-		found->second.day = local_day_number();
+		found->second.day = utc_day_number();
 	}
 	return &found->second;
 }
@@ -3622,7 +3620,7 @@ void send_offline_messages(P_char ch)
 }
 
 // Recent events per key (shop sales per item, quest rewards per giver), each kept as
-// the local day it happened on. They are read at boot and added to as they happen, so
+// the UTC day it happened on. They are read at boot and added to as they happen, so
 // prices and rewards never wait for the database.
 struct recent_counts
 {
@@ -3632,7 +3630,7 @@ struct recent_counts
 	void add(int key, long day)
 	{
 		std::vector<long> &events = days[key];
-		const long since = local_day_number() - window_days;
+		const long since = utc_day_number() - window_days;
 		events.erase(std::remove_if(events.begin(), events.end(),
 					    [since](long event) { return event < since; }),
 			     events.end());
@@ -3644,7 +3642,7 @@ struct recent_counts
 		const auto found = days.find(key);
 		if (found == days.end())
 			return 0;
-		const long since = local_day_number() - window_days;
+		const long since = utc_day_number() - window_days;
 		return (int)std::count_if(found->second.begin(), found->second.end(),
 					  [since](long event) { return event >= since; });
 	}
@@ -3655,7 +3653,7 @@ struct recent_counts
 		MYSQL_RES *db = db_query("%s", query);
 		if (!db)
 			return;
-		const long today = local_day_number();
+		const long today = utc_day_number();
 		while (MYSQL_ROW row = mysql_fetch_row(db))
 			if (row[0] && row[1])
 				days[atoi(row[0])].push_back(today - atol(row[1]));
@@ -3687,7 +3685,7 @@ int sql_shop_sell(P_char ch, P_obj obj, int value)
 	sql_queue(
 		"INSERT INTO shop_trophy (item, value, seller, timestamp) VALUES ('%d', '%d', %d, now())",
 		m_virtual, value, pid);
-	recent_shop_sales.add(m_virtual, local_day_number());
+	recent_shop_sales.add(m_virtual, utc_day_number());
 
 	return 1;
 }
@@ -3720,7 +3718,7 @@ int sql_quest_finish(P_char ch, P_char giver, int type, int value)
 	sql_queue(
 		"INSERT INTO quest_trophy (mob_vnum, pid, type, reward_value, timestamp) VALUES ('%d', '%d', %d, %d ,now())",
 		m_virtual, GET_PID(ch), type, value);
-	recent_quest_rewards.add(m_virtual, local_day_number());
+	recent_quest_rewards.add(m_virtual, utc_day_number());
 	return 1;
 }
 
