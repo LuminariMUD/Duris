@@ -325,11 +325,16 @@ considered and cut: ordering on the one writer gives the same guarantee without 
      writes above. Two variations: data that belongs to one character is read when it enters the
      game (the checks fail closed until it arrives), and data that the website edits rather than
      the game is also read again on a timer (`mud_info`, every minute).
-   - Loads that a connection waits for take the async path too: logging in to an account, and
-     loading an offline character for finger, lockers or artifacts. The connection waits in a loading state
-     while the game loop carries on, the way the Phase 1 player load already does
-     (`CON_PLAYER_LOAD`); a command gets its answer on a later pulse.
-   - Boot and shutdown may still query.
+   - Logging in to an account reads the account on the writer while the connection waits in a
+     loading state and the game loop carries on, the way the Phase 1 player load already does
+     (`CON_PLAYER_LOAD`). Saving an account is queued; the sessions of the same account get the
+     saved account copied from memory, not read back.
+   - An offline character (finger, disguise, lockers, artifacts, the websocket handlers) is loaded
+     through the Phase 1 player load pipeline and materialized, with a callback on a later pulse,
+     instead of converting `restoreCharOnly()`'s SQL. A lookup that only needs a pid reads a
+     name-to-pid index in memory, kept current when a character is created, renamed or deleted.
+   - Only code reachable after boot is converted. Boot and shutdown may still query, and a
+     function nothing calls never runs, so it waits for Phase 3 to delete it.
    - While the loop runs, every query on the game thread's connection is counted and each site is
      logged once, and a journey pins that the loop issues no query after boot.
 
@@ -418,6 +423,16 @@ These parts were cut:
   migration.
 - **A second job kind for reads (step 8).** One `sql` job kind carries writes and reads; a read's
   job copies its rows back to the game thread.
+- **Converting what never runs after boot (step 8).** A function nothing calls, or one only boot
+  calls, cannot make the loop wait. The first waits for Phase 3; the second may keep its query.
+- **Converting `restoreCharOnly()`'s SQL (step 8).** The Phase 1 player load pipeline already loads
+  and materializes a character off the loop; offline loads reuse it, and pid lookups use a
+  name-to-pid index instead of loading a whole character.
+- **Reading an account back after saving it (step 8).** Memory holds the account; its other
+  sessions get the saved copy from memory. The copy is still needed: a recovery reset saves a
+  scratch account, and a session left open must not write the old password back.
+- **A public multi-query read (step 8).** `sql_read_work()` has no caller outside
+  `sql_async.c`; it becomes private to it.
 
 ## Done when
 
@@ -1492,9 +1507,14 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   associations, kingdoms, the remaining artifact, boon, auction and nexus paths, epic zones
   and `get_zone_info()`, artifact bind data) is converted with its subsystem, whether the
   session reached it or not.
-- Order: account login and saves first (every player goes through them), then offline
-  character loads, the login-time reads, the periodic events, the command output subsystem by
-  subsystem, and last the journey that pins no query after boot.
+- Order, after the plan's ablation (see [What was cut](#what-was-cut-and-why)):
+  1. `sql_read_work()` private to `sql_async.c`.
+  2. Account login and saves (every player goes through them): one writer read for the account,
+     its repair, IPs and characters; a queued save; same-account sessions copied from memory.
+  3. The name-to-pid index, and offline character loads through the player load pipeline.
+  4. The login-time reads, the periodic events, then the command output subsystem by subsystem,
+     skipping what nothing calls and what only boot runs.
+  5. The journey that pins no query after boot.
 - Found on the way:
   - `sql_find_racewar_for_ip()` assigned `RACEWAR_NONE` to its pointer instead of the side,
     and leaked the result after an hour offline.
