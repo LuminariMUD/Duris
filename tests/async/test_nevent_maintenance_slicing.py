@@ -40,12 +40,16 @@ poof = function_body(artifact, "void event_artifact_check_poof_sql(")
 assert "ARTIFACT_EXPIRY_BATCH_SIZE = 1" in artifact
 assert "artifact_rows.upper_bound(cursor_vnum)" in poof
 assert "expired_rows.size() < ARTIFACT_EXPIRY_BATCH_SIZE" in poof
-assert "artifact_row_store(page_last_vnum," in poof
+assert "artifact_expire(page_last_vnum)" in poof
 assert "nevent_periodic_continue_after(1);" in poof
 assert "qry(" not in poof
-# An offline owner's remaining items were saved with it; extracting it must not drop them.
-offline_release = poof[poof.index("if (owner && owner_terminal_saved)"):]
-assert offline_release.index("nuke_eq(owner);") < offline_release.index("extract_char(owner);")
+# An offline owner loads off the loop; its items were saved with it and leave with it,
+# never onto the floor of its room.
+assert "poof_offline_artifact(vnum, location)" in poof
+loaded_owner = function_body(artifact, "static void poof_loaded_owner(")
+assert "release_offline_owner(owner);" in loaded_owner and "extract_char(" not in loaded_owner
+assert "player_load_items_discard(owner);" in function_body(
+    artifact, "static void release_offline_owner(")
 
 wars = function_body(artifact, "void event_artifact_wars_sql(")
 assert "ARTIFACT_WARS_OWNER_BATCH_SIZE = 4" in artifact

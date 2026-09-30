@@ -17,15 +17,19 @@
 #include "core/utils.h"
 #include <dirent.h>
 #include <stdio.h>
+#include <set>
 #include <string.h>
 #include <unistd.h>
 #include <vector>
 #include "core/files.h"
 #include "flatfile/flatfile_artifact_repository.h"
+#include "flatfile/flatfile_identity_repository.h"
 #include "flatfile/flatfile_item_repository.h"
 #include "core/mm.h"
 #include "classes/necromancy.h"
 #include "persistence/persistence_mode.h"
+#include "player/player_load_items.h"
+#include "player/player_load_offline.h"
 #include "redis/redis_report_cache.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
@@ -69,7 +73,6 @@ constexpr size_t ARTIFACT_EXPIRY_BATCH_SIZE = 1;
 constexpr size_t ARTIFACT_WARS_OWNER_BATCH_SIZE = 4;
 
 // forward declarations for redis cache
-P_char load_dummy_char(char *name);
 void nuke_eq(P_char ch);
 void arti_redis_cache(int type, bool Godlist);
 
@@ -425,7 +428,6 @@ void arti_swap_sql(P_char ch, char *arg);
 void arti_syncdb_sql(P_char ch);
 void arti_timer_sql(P_char ch, char *arg);
 void artifact_update_sql(P_obj arti, char owned, time_t timer);
-P_char load_dummy_char(char *name);
 void nuke_eq(P_char ch);
 
 /* This is an example of what the current artifacts table looks like. - 2/23/2015
@@ -842,17 +844,13 @@ void list_artifacts_sql(P_char ch, int type, bool Godlist, bool allArtis)
 		    record.location_type == ARTIFACT_ONCORPSE)
 		{
 			owner_name = get_player_name_from_pid(record.location);
-			if (owner_name)
-			{
-				P_char owner = load_dummy_char(owner_name);
-				if (owner)
-				{
-					racewar = GET_RACEWAR(owner);
-					nuke_eq(owner);
-					owner->in_room = NOWHERE;
-					extract_char(owner);
-				}
-			}
+			flatfile_identity_record owner;
+			std::string owner_error;
+			if (owner_name &&
+			    flatfile_identity_lookup_pid(persistence_mode_flatfile_root(),
+							 record.location, &owner, &owner_error) ==
+				    flatfile_identity_result::ok)
+				racewar = owner.racewar;
 		}
 		char location_buffer[MAX_STRING_LENGTH];
 		const char *location_name = NULL;
@@ -1839,32 +1837,12 @@ void artifact_feed_sql(P_char owner, P_obj arti, int feed_seconds, bool soulChec
 	artifact_update_sql(arti, 'Y', artidata.timer + feed_seconds);
 }
 
-// Loads up a dummy copy of char 'name'.
-P_char load_dummy_char(char *name)
+// Lets go of an artifact owner loaded off the loop (player_load_offline()): its items leave
+// with it and their artifact rows stay as they are, since its save holds them.
+static void release_offline_owner(P_char owner)
 {
-	P_char owner;
-
-	// Get the memory
-	owner = (P_char)mm_get(dead_mob_pool);
-	clear_char(owner);
-	ensure_pconly_pool();
-	owner->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-	owner->desc = NULL;
-
-	if (restoreCharOnly(owner, name) < 0)
-	{
-		logit(LOG_ARTIFACT, "load_dummy_char: %s has bad / missing pfile.\n\r", name);
-		free_char(owner);
-		return NULL;
-	}
-
-	updateArtis = FALSE;
-	restoreItemsOnly(owner, -1);
-	owner->next = character_list;
-	character_list = owner;
-	updateArtis = TRUE;
-
-	return owner;
+	player_load_items_discard(owner);
+	free_char(owner);
 }
 
 // Return a pointer to the first obj of vnum vnum on owner.
@@ -2273,6 +2251,35 @@ P_obj artifact_find(arti_data artidata)
 	return NULL;
 }
 
+// artifact files super: gives owner, loaded off the loop (null when it could not be), the
+// artifact vnum unless it holds one already, and saves it.
+static void arti_files_give(P_char ch, P_char owner, int vnum)
+{
+	P_obj arti;
+
+	if (!owner)
+		return;
+	// It entered the game while it loaded: its own saves hold it now.
+	if (is_pid_online(GET_PID(owner), TRUE))
+	{
+		send_to_char_f(ch, "%s is in the game now; artifact %d was not given.\n\r",
+			       GET_NAME(owner), vnum);
+		release_offline_owner(owner);
+		return;
+	}
+	if (!get_object_from_char(owner, vnum) && (arti = read_object(vnum, VIRTUAL)))
+	{
+		obj_to_char(arti, owner);
+		if (!writeCharacter(owner, RENT_CRASH, owner->in_room))
+		{
+			persistence_alert(AVATAR, "artifact", "offline_owner", "none", "none",
+					  "terminal_save_failed", "extract_refused=1");
+			return;
+		}
+	}
+	release_offline_owner(owner);
+}
+
 // This function transfers the data from the old file-based system into the DB.
 void arti_files_to_sql(P_char ch, char *arg)
 {
@@ -2284,7 +2291,7 @@ void arti_files_to_sql(P_char ch, char *arg)
 	struct dirent *dire;
 	FILE *f;
 	P_obj arti, obj, obj2;
-	P_char tmpch, owner;
+	P_char tmpch;
 	arti_data artidata;
 	bool super;
 
@@ -2455,42 +2462,99 @@ void arti_files_to_sql(P_char ch, char *arg)
 					    (temp == 0) ? ARTIFACT_ON_PC : ARTIFACT_ONCORPSE, pid,
 					    timer, type);
 
+			extract_obj(arti, FALSE);
+			// super: the owner loads off the loop and gets a copy there.
 			if (super)
-			{
-				owner = load_dummy_char(pname);
-				if (!owner)
-				{
-					extract_obj(arti, FALSE);
-				}
-				else
-				{
-					bool owner_saved = TRUE;
-					if (get_object_from_char(owner, vnum) == NULL)
-					{
-						obj_to_char(arti, owner);
-						owner_saved = writeCharacter(owner, RENT_CRASH,
-									     owner->in_room);
-					}
-					if (owner_saved)
-					{
-						nuke_eq(owner);
-						extract_char(owner);
-					}
-					else
-					{
-						persistence_alert(AVATAR, "artifact",
-								  "offline_owner", "none", "none",
-								  "terminal_save_failed",
-								  "extract_refused=1");
-					}
-				}
-			}
-			else
-				extract_obj(arti, FALSE);
+				player_load_offline_for(ch, pname, true,
+							[vnum](P_char staff, P_char owner)
+							{ arti_files_give(staff, owner, vnum); });
 		}
 	}
 
 	closedir(dir);
+}
+
+// Clears vnum's row if it is still owned and past its timer. False when that failed.
+static bool artifact_expire(int vnum)
+{
+#ifdef __NO_MYSQL__
+	std::string error;
+	const auto cleared = flatfile_artifact_expire(persistence_mode_flatfile_root(), vnum,
+						      time(NULL), &error);
+	if (cleared == flatfile_artifact_result::ok)
+		arti_cache_invalidate();
+	else if (cleared != flatfile_artifact_result::unchanged)
+	{
+		logit(LOG_ARTIFACT, "artifact_expire: flat artifact update failed for %d: %s", vnum,
+		      error.empty() ? "invalid artifact authority" : error.c_str());
+		return false;
+	}
+#else
+	const auto row = artifact_rows.find(vnum);
+	if (row != artifact_rows.end() && artifact_expired(row->second))
+		artifact_row_store(vnum, { false, ARTIFACT_NOTINGAME, -1, 0, row->second.type });
+#endif
+	return true;
+}
+
+// Expired artifacts whose offline owner is loading.
+static std::set<int> offline_poofs;
+
+// The expiry event's offline owner of vnum, loaded off the loop (null when it could not be):
+// poofs vnum from it, saves it and clears the expired row.
+static void poof_loaded_owner(int vnum, int pid, P_char owner)
+{
+	P_obj arti = NULL;
+
+	offline_poofs.erase(vnum);
+	if (!owner)
+		logit(LOG_ARTIFACT,
+		      "event_artifact_check_poof_sql: Could not load pfile of '%s' %d, to poof arti vnum %d.",
+		      get_player_name_from_pid(pid), pid, vnum);
+	// It entered the game while it loaded: the next pass poofs it there.
+	else if (is_pid_online(pid, TRUE))
+	{
+		release_offline_owner(owner);
+		return;
+	}
+	else if (!(arti = get_object_from_char(owner, vnum)))
+		logit(LOG_ARTIFACT,
+		      "event_artifact_check_poof_sql: Could not find artifact vnum %d on pfile of '%s' %d.",
+		      vnum, get_player_name_from_pid(pid), pid);
+	else
+	{
+		poof_artifact(arti);
+		if (!writeCharacter(owner, RENT_POOFARTI, owner->in_room))
+		{
+			// Kept, and its row too, as a character whose terminal save failed.
+			persistence_alert(AVATAR, "artifact", "offline_poof", "none", "none",
+					  "terminal_save_failed", "extract_refused=1");
+			return;
+		}
+		logit(LOG_ARTIFACT,
+		      "event_artifact_check_poof_sql: poofed vnum=%d for offline pid=%d ('%s')",
+		      vnum, pid, get_player_name_from_pid(pid));
+	}
+	if (owner)
+		release_offline_owner(owner);
+	artifact_expire(vnum);
+}
+
+// Loads vnum's offline owner pid to poof it there. False when the load could not be queued.
+static bool poof_offline_artifact(int vnum, int pid)
+{
+	const char *name = get_player_name_from_pid(pid);
+	logit(LOG_ARTIFACT,
+	      "event_artifact_check_poof_sql: poofing vnum=%d on offline pid=%d ('%s')", vnum, pid,
+	      name);
+	if (name && !player_load_offline(name, true, [vnum, pid](P_char owner)
+					 { poof_loaded_owner(vnum, pid, owner); }))
+		return false;
+	offline_poofs.insert(vnum);
+	// No such character: nothing to load.
+	if (!name)
+		poof_loaded_owner(vnum, pid, NULL);
+	return true;
 }
 
 void event_artifact_check_poof_sql(P_char /*ch*/, P_char /*vict*/, P_obj /*obj*/, void * /*arg*/)
@@ -2503,6 +2567,7 @@ void event_artifact_check_poof_sql(P_char /*ch*/, P_char /*vict*/, P_obj /*obj*/
 	bool found;
 	bool expired = FALSE;
 	bool save_failed = FALSE;
+	bool offline_pending = FALSE;
 	char *name;
 #ifndef __NO_MYSQL__
 	std::vector<std::pair<int, artifact_row>> expired_rows;
@@ -2551,7 +2616,6 @@ void event_artifact_check_poof_sql(P_char /*ch*/, P_char /*vict*/, P_obj /*obj*/
 		expired = TRUE;
 		for (size_t row_index = 0; row_index < row_count; ++row_index)
 		{
-			bool owner_terminal_saved = TRUE;
 #ifdef __NO_MYSQL__
 			vnum = flat_expired.vnum;
 			locType = flat_expired.location_type;
@@ -2664,65 +2728,13 @@ void event_artifact_check_poof_sql(P_char /*ch*/, P_char /*vict*/, P_obj /*obj*/
 			} // End if locType == ARTIFACT_ONGROUND.
 			else if (locType == ARTIFACT_ON_PC)
 			{
-				// Try to load the pfile if it's on a PC that isn't online.
+				// An offline owner loads off the loop; its callback poofs and clears the row.
 				if (!is_pid_online(location, TRUE))
 				{
-					logit(LOG_ARTIFACT,
-					      "event_artifact_check_poof_sql: poofing vnum=%d on offline pid=%d ('%s')",
-					      vnum, location, get_player_name_from_pid(location));
-
-					owner = load_dummy_char(get_player_name_from_pid(location));
-
-					if (owner)
-					{
-						arti = get_object_from_char(owner, vnum);
-					}
-					else
-					{
-						logit(LOG_ARTIFACT,
-						      "event_artifact_check_poof_sql: Could not load pfile of '%s' %d, to poof arti vnum %d.",
-						      get_player_name_from_pid(location), location,
-						      vnum);
-						arti = NULL;
-					}
-					if (arti)
-					{
-						poof_artifact(arti);
-						if (!writeCharacter(owner, RENT_POOFARTI,
-								    owner->in_room))
-						{
-							save_failed = TRUE;
-							owner_terminal_saved = FALSE;
-							persistence_alert(AVATAR, "artifact",
-									  "offline_poof", "none",
-									  "none",
-									  "terminal_save_failed",
-									  "extract_refused=1");
-						}
-						logit(LOG_ARTIFACT,
-						      "event_artifact_check_poof_sql: poofed vnum=%d for offline pid=%d ('%s')",
-						      vnum, location,
-						      get_player_name_from_pid(location));
-					}
-					else
-					{
-						if (owner)
-						{
-							// Nuke the eq off dummy char so it doesn't fall to the ground and get duped.
-							nuke_eq(owner);
-						}
-						logit(LOG_ARTIFACT,
-						      "event_artifact_check_poof_sql: Could not find artifact vnum %d on pfile of '%s' %d.",
-						      vnum, get_player_name_from_pid(location),
-						      location);
-					}
-					if (owner && owner_terminal_saved)
-					{
-						// Its items were saved with it: extract_char() must not drop
-						// them in its room.
-						nuke_eq(owner);
-						extract_char(owner);
-					}
+					offline_pending = TRUE;
+					if (!offline_poofs.count(vnum) &&
+					    !poof_offline_artifact(vnum, location))
+						save_failed = TRUE;
 				}
 				// PC online.
 				else
@@ -2946,27 +2958,12 @@ void event_artifact_check_poof_sql(P_char /*ch*/, P_char /*vict*/, P_obj /*obj*/
 		}
 	}
 
-	// Clear only the page that was processed.  Keeping this after the loop preserves
-	// the all-or-nothing behavior for offline owner saves within the page.
-	if (expired && !save_failed)
+	// Clear only the page that was processed, unless an offline owner's load will.
+	if (expired && !save_failed && !offline_pending && !artifact_expire(page_last_vnum))
 	{
-#ifdef __NO_MYSQL__
-		const auto cleared = flatfile_artifact_expire(persistence_mode_flatfile_root(),
-							      page_last_vnum, expiry_now, &error);
-		if (cleared == flatfile_artifact_result::ok)
-			arti_cache_invalidate();
-		else if (cleared != flatfile_artifact_result::unchanged)
-		{
-			nevent_periodic_retry_after(ARTIFACT_MAINTENANCE_RETRY_DELAY,
-						    "artifact-expiry flat update failed");
-			return;
-		}
-#else
-		const auto row = artifact_rows.find(page_last_vnum);
-		if (row != artifact_rows.end() && artifact_expired(row->second))
-			artifact_row_store(page_last_vnum,
-					   { false, ARTIFACT_NOTINGAME, -1, 0, row->second.type });
-#endif
+		nevent_periodic_retry_after(ARTIFACT_MAINTENANCE_RETRY_DELAY,
+					    "artifact-expiry update failed");
+		return;
 	}
 	else if (save_failed)
 	{
@@ -3206,18 +3203,188 @@ void event_arti_hunt_sql(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data
 	arti_hunt_sql(ch, (char *)data);
 }
 
+// artifact hunt: checks the artifacts of owner, the character name loaded off the loop (null
+// when it could not be), against the artifact data.
+static void arti_hunt_owner(P_char ch, const char *name, P_char owner)
+{
+	char buf[MAX_STRING_LENGTH];
+	int wearloc;
+	arti_data artidata;
+	P_char mob;
+	P_obj arti, arti2;
+
+	if (!owner)
+	{
+		snprintf(buf, MAX_STRING_LENGTH, "hunt_for_artis: %s has bad pfile.\n\r", name);
+		send_to_char(buf, ch);
+		return;
+	}
+	if (IS_TRUSTED(owner))
+	{
+		release_offline_owner(owner);
+		return;
+	}
+
+	/* For debugging only.. gets spammy on live mud.
+	snprintf(buf, MAX_STRING_LENGTH, "Hunting pfile of '%s'.\n", J_NAME(owner) );
+	send_to_char( buf, ch );
+	*/
+
+	// Search each pfile:
+	// Search Worn equipment.
+	for (wearloc = 0; wearloc < MAX_WEAR; wearloc++)
+	{
+		arti = owner->equipment[wearloc];
+		if (arti == NULL || !IS_ARTIFACT(arti))
+		{
+			continue;
+		}
+
+		snprintf(buf, MAX_STRING_LENGTH, "%-12s has %s&n (%6d) : ", J_NAME(owner),
+			 pad_ansi(arti->short_description, 35, TRUE).c_str(), OBJ_VNUM(arti));
+		send_to_char(buf, ch);
+
+		if (!get_artifact_data_sql(OBJ_VNUM(arti), &artidata))
+		{
+			send_to_char("&+WNot yet tracked - adding.&n\n", ch);
+			// If there's one in zone, pull it.
+			if ((arti2 = artifact_find(OBJ_VNUM(arti))))
+			{
+				send_to_char("&+WPulled artifact from zone.\n\r", ch);
+				extract_obj(arti2);
+			}
+			// If they managed to get it on pfile and not in DB, give them full timer.
+			artifact_update_sql(arti, 'Y',
+					    time(NULL) + ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY);
+		}
+		else if (artidata.locType == ARTIFACT_ON_PC ||
+			 artidata.locType == ARTIFACT_ONCORPSE)
+		{
+			if (artidata.location == GET_PID(owner))
+			{
+				send_to_char("Already tracked on char.\n", ch);
+			}
+			else
+			{
+				snprintf(buf, MAX_STRING_LENGTH, "&+ROn another char:&N %s\n",
+					 get_player_name_from_pid(artidata.location));
+				send_to_char(buf, ch);
+			}
+		}
+		else if (artidata.locType == ARTIFACT_ON_NPC)
+		{
+			mob = read_mobile(artidata.location, VIRTUAL);
+			snprintf(buf, MAX_STRING_LENGTH, "&+ROn a mob:&N '%s' %d.\n", J_NAME(mob),
+				 artidata.location);
+			extract_char(mob);
+			send_to_char(buf, ch);
+			// If there's one in zone, pull it.
+			if ((arti2 = artifact_find(OBJ_VNUM(arti))))
+			{
+				send_to_char("&+WPulled artifact from zone.\n\r", ch);
+				extract_obj(arti2);
+			}
+			artifact_update_location_sql(arti);
+		}
+		else if (artidata.locType == ARTIFACT_ONGROUND)
+		{
+			snprintf(buf, MAX_STRING_LENGTH, "&+ROn ground:&N '%s' %d.\n",
+				 world[real_room0(artidata.location)].name, artidata.location);
+			send_to_char(buf, ch);
+			// If there's one in zone, pull it.
+			if ((arti2 = artifact_find(OBJ_VNUM(arti))))
+			{
+				send_to_char("&+WPulled artifact from zone.\n\r", ch);
+				extract_obj(arti2);
+			}
+			artifact_update_location_sql(arti);
+		}
+		else if (artidata.locType == ARTIFACT_NOTINGAME)
+		{
+			send_to_char("&+WNot in game - updating.&n\n\r", ch);
+			artifact_update_location_sql(arti);
+		}
+		else
+		{
+			send_to_char("&+rUnknown location.&n\n\r", ch);
+		}
+	}
+	// Search inventory.
+	for (arti = owner->carrying; arti; arti = arti->next_content)
+	{
+		if (IS_ARTIFACT(arti))
+		{
+			snprintf(buf, MAX_STRING_LENGTH, "%-12s has %s&n (%6d) : ", J_NAME(owner),
+				 pad_ansi(arti->short_description, 35, TRUE).c_str(),
+				 obj_index[arti->R_num].virtual_number);
+			send_to_char(buf, ch);
+			if (!get_artifact_data_sql(OBJ_VNUM(arti), &artidata))
+			{
+				send_to_char("&+WNot yet tracked - adding.&n\n", ch);
+				// If they managed to get it on pfile and not in DB, give them full timer.
+				artifact_update_sql(arti, 'Y',
+						    time(NULL) + ARTIFACT_BLOOD_DAYS *
+									 SECS_PER_REAL_DAY);
+				// If there's one in zone, pull it.
+				if ((arti2 = artifact_find(OBJ_VNUM(arti))))
+				{
+					send_to_char("&+WPulled artifact from zone.\n\r", ch);
+					extract_obj(arti2);
+				}
+			}
+			else if (artidata.locType == ARTIFACT_ON_PC ||
+				 artidata.locType == ARTIFACT_ONCORPSE)
+			{
+				if (artidata.location == GET_PID(owner))
+				{
+					send_to_char("Already tracked on char.\n", ch);
+				}
+				else
+				{
+					snprintf(buf, MAX_STRING_LENGTH,
+						 "&+ROn another char:&N %s\n",
+						 get_player_name_from_pid(artidata.location));
+					send_to_char(buf, ch);
+				}
+			}
+			else if (artidata.locType == ARTIFACT_ON_NPC)
+			{
+				mob = read_mobile(artidata.location, VIRTUAL);
+				snprintf(buf, MAX_STRING_LENGTH, "&+ROn a mob:&N '%s' %d.\n",
+					 J_NAME(mob), artidata.location);
+				extract_char(mob);
+				send_to_char(buf, ch);
+			}
+			else if (artidata.locType == ARTIFACT_ONGROUND)
+			{
+				snprintf(buf, MAX_STRING_LENGTH, "&+ROn ground:&N '%s' %d.\n",
+					 world[real_room0(artidata.location)].name,
+					 artidata.location);
+				send_to_char(buf, ch);
+			}
+			else if (artidata.locType == ARTIFACT_NOTINGAME)
+			{
+				send_to_char("&+rNot in game - updating.&n\n\r", ch);
+				artifact_update_location_sql(arti);
+			}
+			else
+			{
+				send_to_char("&+rUnknown location.&n\n\r", ch);
+			}
+		}
+	}
+	release_offline_owner(owner);
+}
+
 // Searches through all pfiles with initial *arg for artis.
 void arti_hunt_sql(P_char ch, const char *arg)
 {
 	char buf[MAX_STRING_LENGTH];
 	char dname[256];
 	char initial;
-	int count, wearloc;
-	arti_data artidata;
+	int count;
 	struct dirent *dire;
 	DIR *dir;
-	P_char owner, mob;
-	P_obj arti, arti2;
 
 	if (atoi(arg) == 1)
 	{
@@ -3256,189 +3423,24 @@ void arti_hunt_sql(P_char ch, const char *arg)
 	}
 
 	// Loop through the directory files.
+	count = 0;
 	while ((dire = readdir(dir)))
 	{
 		// Skip backup/locker files/etc
 		if (strstr(dire->d_name, "."))
 			continue;
 
-		if ((owner = load_dummy_char(dire->d_name)) == NULL)
-		{
-			snprintf(buf, MAX_STRING_LENGTH, "hunt_for_artis: %s has bad pfile.\n\r",
-				 dire->d_name);
-			send_to_char(buf, ch);
-			continue;
-		}
-		if (IS_TRUSTED(owner))
-		{
-			nuke_eq(owner);
-			extract_char(owner);
-			continue;
-		}
-
-		/* For debugging only.. gets spammy on live mud.
-		snprintf(buf, MAX_STRING_LENGTH, "Hunting pfile of '%s'.\n", J_NAME(owner) );
-		send_to_char( buf, ch );
-		*/
-
-		// Search each pfile:
-		// Search Worn equipment.
-		for (wearloc = 0; wearloc < MAX_WEAR; wearloc++)
-		{
-			arti = owner->equipment[wearloc];
-			if (arti == NULL || !IS_ARTIFACT(arti))
-			{
-				continue;
-			}
-
-			snprintf(buf, MAX_STRING_LENGTH, "%-12s has %s&n (%6d) : ", J_NAME(owner),
-				 pad_ansi(arti->short_description, 35, TRUE).c_str(),
-				 OBJ_VNUM(arti));
-			send_to_char(buf, ch);
-
-			if (!get_artifact_data_sql(OBJ_VNUM(arti), &artidata))
-			{
-				send_to_char("&+WNot yet tracked - adding.&n\n", ch);
-				// If there's one in zone, pull it.
-				if ((arti2 = artifact_find(OBJ_VNUM(arti))))
-				{
-					send_to_char("&+WPulled artifact from zone.\n\r", ch);
-					extract_obj(arti2);
-				}
-				// If they managed to get it on pfile and not in DB, give them full timer.
-				artifact_update_sql(arti, 'Y',
-						    time(NULL) + ARTIFACT_BLOOD_DAYS *
-									 SECS_PER_REAL_DAY);
-			}
-			else if (artidata.locType == ARTIFACT_ON_PC ||
-				 artidata.locType == ARTIFACT_ONCORPSE)
-			{
-				if (artidata.location == GET_PID(owner))
-				{
-					send_to_char("Already tracked on char.\n", ch);
-				}
-				else
-				{
-					snprintf(buf, MAX_STRING_LENGTH,
-						 "&+ROn another char:&N %s\n",
-						 get_player_name_from_pid(artidata.location));
-					send_to_char(buf, ch);
-				}
-			}
-			else if (artidata.locType == ARTIFACT_ON_NPC)
-			{
-				mob = read_mobile(artidata.location, VIRTUAL);
-				snprintf(buf, MAX_STRING_LENGTH, "&+ROn a mob:&N '%s' %d.\n",
-					 J_NAME(mob), artidata.location);
-				extract_char(mob);
-				send_to_char(buf, ch);
-				// If there's one in zone, pull it.
-				if ((arti2 = artifact_find(OBJ_VNUM(arti))))
-				{
-					send_to_char("&+WPulled artifact from zone.\n\r", ch);
-					extract_obj(arti2);
-				}
-				artifact_update_location_sql(arti);
-			}
-			else if (artidata.locType == ARTIFACT_ONGROUND)
-			{
-				snprintf(buf, MAX_STRING_LENGTH, "&+ROn ground:&N '%s' %d.\n",
-					 world[real_room0(artidata.location)].name,
-					 artidata.location);
-				send_to_char(buf, ch);
-				// If there's one in zone, pull it.
-				if ((arti2 = artifact_find(OBJ_VNUM(arti))))
-				{
-					send_to_char("&+WPulled artifact from zone.\n\r", ch);
-					extract_obj(arti2);
-				}
-				artifact_update_location_sql(arti);
-			}
-			else if (artidata.locType == ARTIFACT_NOTINGAME)
-			{
-				send_to_char("&+WNot in game - updating.&n\n\r", ch);
-				artifact_update_location_sql(arti);
-			}
-			else
-			{
-				send_to_char("&+rUnknown location.&n\n\r", ch);
-			}
-		}
-		// Search inventory.
-		for (arti = owner->carrying; arti; arti = arti->next_content)
-		{
-			if (IS_ARTIFACT(arti))
-			{
-				snprintf(buf, MAX_STRING_LENGTH,
-					 "%-12s has %s&n (%6d) : ", J_NAME(owner),
-					 pad_ansi(arti->short_description, 35, TRUE).c_str(),
-					 obj_index[arti->R_num].virtual_number);
-				send_to_char(buf, ch);
-				if (!get_artifact_data_sql(OBJ_VNUM(arti), &artidata))
-				{
-					send_to_char("&+WNot yet tracked - adding.&n\n", ch);
-					// If they managed to get it on pfile and not in DB, give them full timer.
-					artifact_update_sql(arti, 'Y',
-							    time(NULL) + ARTIFACT_BLOOD_DAYS *
-										 SECS_PER_REAL_DAY);
-					// If there's one in zone, pull it.
-					if ((arti2 = artifact_find(OBJ_VNUM(arti))))
-					{
-						send_to_char("&+WPulled artifact from zone.\n\r",
-							     ch);
-						extract_obj(arti2);
-					}
-				}
-				else if (artidata.locType == ARTIFACT_ON_PC ||
-					 artidata.locType == ARTIFACT_ONCORPSE)
-				{
-					if (artidata.location == GET_PID(owner))
-					{
-						send_to_char("Already tracked on char.\n", ch);
-					}
-					else
-					{
-						snprintf(buf, MAX_STRING_LENGTH,
-							 "&+ROn another char:&N %s\n",
-							 get_player_name_from_pid(
-								 artidata.location));
-						send_to_char(buf, ch);
-					}
-				}
-				else if (artidata.locType == ARTIFACT_ON_NPC)
-				{
-					mob = read_mobile(artidata.location, VIRTUAL);
-					snprintf(buf, MAX_STRING_LENGTH,
-						 "&+ROn a mob:&N '%s' %d.\n", J_NAME(mob),
-						 artidata.location);
-					extract_char(mob);
-					send_to_char(buf, ch);
-				}
-				else if (artidata.locType == ARTIFACT_ONGROUND)
-				{
-					snprintf(buf, MAX_STRING_LENGTH,
-						 "&+ROn ground:&N '%s' %d.\n",
-						 world[real_room0(artidata.location)].name,
-						 artidata.location);
-					send_to_char(buf, ch);
-				}
-				else if (artidata.locType == ARTIFACT_NOTINGAME)
-				{
-					send_to_char("&+rNot in game - updating.&n\n\r", ch);
-					artifact_update_location_sql(arti);
-				}
-				else
-				{
-					send_to_char("&+rUnknown location.&n\n\r", ch);
-				}
-			}
-		}
-		nuke_eq(owner);
-		extract_char(owner);
+		// The pfile loads off the loop and is hunted there.
+		if (player_load_offline_for(ch, dire->d_name, true,
+					    [name = std::string(dire->d_name)](P_char staff,
+									       P_char owner)
+					    { arti_hunt_owner(staff, name.c_str(), owner); }))
+			++count;
 	}
 	// Close the directory!
 	closedir(dir);
-	snprintf(buf, MAX_STRING_LENGTH, "Arti hunted '%c' successfully!\n", *arg);
+	snprintf(buf, MAX_STRING_LENGTH, "Arti hunting '%c': %d pfiles are loading.\n", *arg,
+		 count);
 	send_to_char(buf, ch);
 }
 
@@ -3508,6 +3510,26 @@ void arti_clear_sql(P_char ch, char *arg)
 	extract_obj(arti);
 }
 
+// artifact poof: poofs vnum from its rented owner, loaded off the loop (null when it could not
+// be), which poof_artifact() saves.
+static void arti_poof_loaded(P_char ch, P_char owner, int vnum, const char *artishort)
+{
+	P_obj arti;
+
+	if (!owner)
+		send_to_char("Could not load that pfile.\n\r", ch);
+	else if (is_pid_online(GET_PID(owner), TRUE))
+		send_to_char_f(ch, "%s is in the game now; poof %s there.\n\r", GET_NAME(owner),
+			       artishort);
+	else if (!(arti = get_object_from_char(owner, vnum)))
+		send_to_char_f(ch, "Strange, arti '%s' %d was not on %s's pfile!\n\r", artishort,
+			       vnum, GET_NAME(owner));
+	else
+		poof_artifact(arti);
+	if (owner)
+		release_offline_owner(owner);
+}
+
 // This function is used to poof an arti that's either in game or on a rented char.
 // If the timer isn't ticking, this function won't do anything.
 void arti_poof_sql(P_char ch, char *arg)
@@ -3515,7 +3537,6 @@ void arti_poof_sql(P_char ch, char *arg)
 	char buf[MAX_STRING_LENGTH], artishort[MAX_STRING_LENGTH];
 	int vnum;
 	P_obj arti;
-	P_char owner;
 	arti_data artidata;
 
 	if (!*arg || !strcmp(arg, "?") || !strcmp(arg, "help"))
@@ -3565,7 +3586,6 @@ void arti_poof_sql(P_char ch, char *arg)
 		send_to_char(buf, ch);
 		return;
 	}
-	owner = NULL;
 	// If we can't find it in game.
 	if (!(arti = artifact_find(artidata)))
 	{
@@ -3577,31 +3597,18 @@ void arti_poof_sql(P_char ch, char *arg)
 			send_to_char(buf, ch);
 			return;
 		}
-		if (!(owner = load_dummy_char(get_player_name_from_pid(artidata.location))))
-		{
-			snprintf(buf, MAX_STRING_LENGTH, "Could not load pfile of %s.\n\r",
-				 get_player_name_from_pid(artidata.location));
-			send_to_char(buf, ch);
-			return;
-		}
-		if ((arti = get_object_from_char(owner, vnum)) == NULL)
-		{
-			checked_snprintf(buf, MAX_STRING_LENGTH,
-					 "Strange, arti '%s' %d was not on %s's pfile!\n\r",
-					 artishort, vnum,
-					 get_player_name_from_pid(artidata.location));
-			nuke_eq(owner);
-			extract_char(owner);
-			return;
-		}
+		// The rented owner loads off the loop and loses it there.
+		const char *owner_name = get_player_name_from_pid(artidata.location);
+		if (!owner_name)
+			send_to_char_f(ch, "Could not load pfile of %d.\n\r", artidata.location);
+		else
+			player_load_offline_for(
+				ch, owner_name, true,
+				[vnum, shown = std::string(artishort)](P_char staff, P_char owner)
+				{ arti_poof_loaded(staff, owner, vnum, shown.c_str()); });
+		return;
 	}
 	poof_artifact(arti);
-	// If arti was on rented character.
-	if (owner)
-	{
-		nuke_eq(owner);
-		extract_char(owner);
-	}
 }
 
 #define COMMAND_ADD 1
@@ -3801,16 +3808,162 @@ void arti_timer_sql(P_char ch, char *arg)
 	send_to_char(buf, ch);
 }
 
+// artifact swap: puts arti2 where arti1 is, on dummy (its rented owner, loaded off the loop)
+// or in the game, and pulls arti1.
+static void arti_swap_finish(P_char ch, P_obj arti1, P_obj arti2, P_char dummy, arti_data artidata,
+			     const char *artishort1, int vnum1, int vnum2)
+{
+	char buf[MAX_STRING_LENGTH];
+	int wearloc;
+	P_obj cont;
+	P_char owner1;
+
+	// Whoever holds arti1, directly or in a container.
+	cont = arti1;
+	while (OBJ_INSIDE(cont) && cont->loc.inside)
+		cont = cont->loc.inside;
+	owner1 = OBJ_WORN(cont) ? cont->loc.wearing : OBJ_CARRIED(cont) ? cont->loc.carrying : NULL;
+	// arti1 is in a valid location (I hope), and arti2 is ready for transfer.
+	// Put arti2 in the right spot.
+	switch (arti1->loc_p)
+	{
+	case LOC_CARRIED:
+		obj_to_char(arti2, arti1->loc.carrying);
+		break;
+	case LOC_WORN:
+		// Find it on their body.
+		for (wearloc = 0; wearloc < MAX_WEAR; wearloc++)
+		{
+			// And move it to their inventory (Also replace with arti2).
+			if (owner1->equipment[wearloc] == arti1)
+			{
+				obj_to_char(unequip_char(owner1, wearloc), owner1);
+				equip_char(owner1, arti2, wearloc, TRUE);
+			}
+		}
+		break;
+	case LOC_ROOM:
+		obj_to_room(arti2, arti1->loc.room);
+		break;
+	case LOC_INSIDE:
+		obj_to_obj(arti2, arti1->loc.inside);
+		break;
+	// Not in a valid location, so skip it.
+	case LOC_NOWHERE:
+		snprintf(buf, MAX_STRING_LENGTH,
+			 "&+WStrange, artifact '&+w%s&+W' &+w%d&+W has a bad location?!?&n\n\r",
+			 artishort1, vnum1);
+		send_to_char(buf, ch);
+		extract_obj(arti2);
+		if (dummy)
+			release_offline_owner(dummy);
+		return;
+	}
+	// Since arti2 is in position, can pull arti1.
+	extract_obj(arti1, TRUE); // Yes, we want to remove arti1 from owned artis.
+	// Updata artidata type with arti2 stats.
+	// The timer and owned don't change.  Nor does the locType / location since we put it in the same spot arti1 was in.
+	artidata.type = IS_IOUN(arti2) ? ARTIFACT_IOUN :
+					 (IS_UNIQUE(arti2) ? ARTIFACT_UNIQUE : ARTIFACT_MAJOR);
+	// Use the uber-generic update.
+	artifact_update_sql(vnum2, artidata.owned, artidata.locType, artidata.location,
+			    artidata.timer, artidata.type);
+	if (owner1 == dummy)
+	{
+		owner1 = NULL;
+	}
+	// Save pfile if applies.
+	if (dummy && writeCharacter(dummy, RENT_SWAPARTI, dummy->in_room))
+		release_offline_owner(dummy);
+	else if (dummy)
+	{
+		persistence_alert(AVATAR, "artifact", "offline_swap", "none", "none",
+				  "terminal_save_failed", "extract_refused=1");
+	}
+	// Save in-game owner if applies.
+	if (owner1)
+	{
+		snprintf(buf, MAX_STRING_LENGTH, "&+WYour %s&+W suddenly changes into %s&+W!&n\n\r",
+			 artishort1, OBJ_SHORT(arti2));
+		send_to_char(buf, owner1);
+		snprintf(buf, MAX_STRING_LENGTH, "&+W$n's %s&+W suddenly changes into %s&+W!&n\n\r",
+			 artishort1, OBJ_SHORT(arti2));
+		act(buf, FALSE, owner1, NULL, 0, TO_ROOM);
+		writeCharacter(owner1, RENT_CRASH, owner1->in_room);
+	}
+	// Save corpse if applies.
+	if (artidata.locType == ARTIFACT_ONCORPSE)
+	{
+		cont = arti2;
+		while (OBJ_INSIDE(cont) && cont->loc.inside)
+		{
+			cont = cont->loc.inside;
+			if (cont->type == ITEM_CORPSE &&
+			    IS_SET(cont->value[CORPSE_FLAGS], PC_CORPSE))
+			{
+				writeCorpse(cont);
+				break;
+			}
+		}
+	}
+	if (OBJ_ROOM(arti2))
+	{
+		snprintf(buf, MAX_STRING_LENGTH, "&+W%s&+W suddenly changes into %s&+W!&n\n\r",
+			 artishort1, OBJ_SHORT(arti2));
+		act(buf, FALSE, NULL, arti2, 0, TO_ROOM);
+	}
+
+	snprintf(buf, MAX_STRING_LENGTH,
+		 "&+WArtifact '&+w%s&+W' &+w%d&+W swapped with artifact '&+w%s&+W' &+w%d&+W.&n\n\r",
+		 artishort1, vnum1, OBJ_SHORT(arti2), vnum2);
+	send_to_char(buf, ch);
+}
+
+// artifact swap: finds vnum1 on its rented owner dummy, loaded off the loop (null when it
+// could not be), and swaps it there for vnum2.
+static void arti_swap_loaded(P_char ch, P_char dummy, int vnum1, int vnum2, const char *artishort1)
+{
+	arti_data artidata;
+	P_obj arti1, arti2;
+
+	if (!dummy)
+	{
+		send_to_char("Could not load that pfile.\n\r", ch);
+		return;
+	}
+	if (is_pid_online(GET_PID(dummy), TRUE))
+	{
+		send_to_char_f(ch, "%s is in the game now; swap it there.\n\r", GET_NAME(dummy));
+		release_offline_owner(dummy);
+		return;
+	}
+	if (!get_artifact_data_sql(vnum1, &artidata) ||
+	    !(arti1 = get_object_from_char(dummy, vnum1)))
+	{
+		send_to_char_f(ch,
+			       "&+WCould not find '&+w%s&+W' &+w%d&+W on &+w%s&+W's pfile.&n\n\r",
+			       artishort1, vnum1, GET_NAME(dummy));
+		release_offline_owner(dummy);
+		return;
+	}
+	if (!(arti2 = read_object(vnum2, VIRTUAL)))
+	{
+		release_offline_owner(dummy);
+		return;
+	}
+	arti_swap_finish(ch, arti1, arti2, dummy, artidata, artishort1, vnum1, vnum2);
+}
+
 // This function is designed to swap out one arti for another.
 void arti_swap_sql(P_char ch, char *arg)
 {
 	char buf[MAX_STRING_LENGTH];
 	char arg1[MAX_INPUT_LENGTH], arg2[MAX_INPUT_LENGTH];
 	char artishort1[256];
-	int vnum1, vnum2, wearloc;
-	bool found;
+	int vnum1, vnum2;
+	bool found = FALSE;
 	P_obj arti1, arti2, cont;
-	P_char owner1 = NULL, dummy;
+	P_char owner1;
 	arti_data artidata;
 
 	arg = one_argument(arg, arg1);
@@ -3959,21 +4112,20 @@ void arti_swap_sql(P_char ch, char *arg)
 			}
 		}
 	}
-	dummy = NULL;
-	// If it's on a PC, and the owner isn't online.
+	// If it's on a PC, and the owner isn't online, it's on their pfile: they load off the loop.
 	if (!found && artidata.locType == ARTIFACT_ON_PC && !is_pid_online(artidata.location, TRUE))
 	{
-		// Try to find it on their pfile.
-		dummy = load_dummy_char(get_player_name_from_pid(artidata.location));
-		if ((arti1 = get_object_from_char(dummy, vnum1)) == NULL)
-		{
-			snprintf(buf, MAX_STRING_LENGTH,
-				 "&+WCould not find '&+w%s&+W' &+w%d&+W on &+w%s&+W's pfile.&n\n\r",
-				 artishort1, vnum1, get_player_name_from_pid(artidata.location));
-			nuke_eq(dummy);
-			extract_char(dummy);
-			return;
-		}
+		extract_obj(arti2);
+		const char *owner_name = get_player_name_from_pid(artidata.location);
+		if (!owner_name)
+			send_to_char_f(ch, "Could not load pfile of %d.\n\r", artidata.location);
+		else
+			player_load_offline_for(
+				ch, owner_name, true,
+				[vnum1, vnum2, shown = std::string(artishort1)](P_char staff,
+										P_char dummy)
+				{ arti_swap_loaded(staff, dummy, vnum1, vnum2, shown.c_str()); });
+		return;
 	}
 	if (!arti1)
 	{
@@ -3982,115 +4134,10 @@ void arti_swap_sql(P_char ch, char *arg)
 			"&+WStrange, could not find artifact '&+w%s&+W' &+w%d&+W anywhere?!?&n\n\r",
 			artishort1, vnum1);
 		send_to_char(buf, ch);
-		if (dummy)
-		{
-			nuke_eq(dummy);
-			extract_char(dummy);
-		}
+		extract_obj(arti2);
 		return;
 	}
-	// At this point, we've found arti1 in a valid location (I hope), and have arti2 ready for transfer.
-	// Put arti2 in the right spot.
-	switch (arti1->loc_p)
-	{
-	case LOC_CARRIED:
-		owner1 = arti1->loc.carrying;
-		obj_to_char(arti2, arti1->loc.carrying);
-		break;
-	case LOC_WORN:
-		owner1 = cont->loc.wearing;
-		// Find it on their body.
-		for (wearloc = 0; wearloc < MAX_WEAR; wearloc++)
-		{
-			// And move it to their inventory (Also replace with arti2).
-			if (owner1->equipment[wearloc] == arti1)
-			{
-				obj_to_char(unequip_char(owner1, wearloc), owner1);
-				equip_char(owner1, arti2, wearloc, TRUE);
-			}
-		}
-		break;
-	case LOC_ROOM:
-		obj_to_room(arti2, arti1->loc.room);
-		break;
-	case LOC_INSIDE:
-		obj_to_obj(arti2, arti1->loc.inside);
-		break;
-	// Not in a valid location, so skip it.
-	case LOC_NOWHERE:
-		snprintf(buf, MAX_STRING_LENGTH,
-			 "&+WStrange, artifact '&+w%s&+W' &+w%d&+W has a bad location?!?&n\n\r",
-			 artishort1, vnum1);
-		send_to_char(buf, ch);
-		if (dummy)
-		{
-			nuke_eq(dummy);
-			extract_char(dummy);
-		}
-		return;
-		break;
-	}
-	// Since arti2 is in position, can pull arti1.
-	extract_obj(arti1, TRUE); // Yes, we want to remove arti1 from owned artis.
-	// Updata artidata type with arti2 stats.
-	// The timer and owned don't change.  Nor does the locType / location since we put it in the same spot arti1 was in.
-	artidata.type = IS_IOUN(arti2) ? ARTIFACT_IOUN :
-					 (IS_UNIQUE(arti2) ? ARTIFACT_UNIQUE : ARTIFACT_MAJOR);
-	// Use the uber-generic update.
-	artifact_update_sql(vnum2, artidata.owned, artidata.locType, artidata.location,
-			    artidata.timer, artidata.type);
-	if (owner1 == dummy)
-	{
-		owner1 = NULL;
-	}
-	// Save pfile if applies.
-	if (dummy && writeCharacter(dummy, RENT_SWAPARTI, dummy->in_room))
-	{
-		nuke_eq(dummy);
-		extract_char(dummy);
-	}
-	else if (dummy)
-	{
-		persistence_alert(AVATAR, "artifact", "offline_swap", "none", "none",
-				  "terminal_save_failed", "extract_refused=1");
-	}
-	// Save in-game owner if applies.
-	if (owner1)
-	{
-		snprintf(buf, MAX_STRING_LENGTH, "&+WYour %s&+W suddenly changes into %s&+W!&n\n\r",
-			 artishort1, OBJ_SHORT(arti2));
-		send_to_char(buf, owner1);
-		snprintf(buf, MAX_STRING_LENGTH, "&+W$n's %s&+W suddenly changes into %s&+W!&n\n\r",
-			 artishort1, OBJ_SHORT(arti2));
-		act(buf, FALSE, owner1, NULL, 0, TO_ROOM);
-		writeCharacter(owner1, RENT_CRASH, owner1->in_room);
-	}
-	// Save corpse if applies.
-	if (artidata.locType == ARTIFACT_ONCORPSE)
-	{
-		cont = arti2;
-		while (OBJ_INSIDE(cont) && cont->loc.inside)
-		{
-			cont = cont->loc.inside;
-			if (cont->type == ITEM_CORPSE &&
-			    IS_SET(cont->value[CORPSE_FLAGS], PC_CORPSE))
-			{
-				writeCorpse(cont);
-				break;
-			}
-		}
-	}
-	if (OBJ_ROOM(arti2))
-	{
-		snprintf(buf, MAX_STRING_LENGTH, "&+W%s&+W suddenly changes into %s&+W!&n\n\r",
-			 artishort1, OBJ_SHORT(arti2));
-		act(buf, FALSE, NULL, arti2, 0, TO_ROOM);
-	}
-
-	snprintf(buf, MAX_STRING_LENGTH,
-		 "&+WArtifact '&+w%s&+W' &+w%d&+W swapped with artifact '&+w%s&+W' &+w%d&+W.&n\n\r",
-		 artishort1, vnum1, OBJ_SHORT(arti2), vnum2);
-	send_to_char(buf, ch);
+	arti_swap_finish(ch, arti1, arti2, NULL, artidata, artishort1, vnum1, vnum2);
 }
 
 // This function walks through the artifact_bind table, gathers its info, then compares
