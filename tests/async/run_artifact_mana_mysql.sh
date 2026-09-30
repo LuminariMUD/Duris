@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMAGE="${ARTIFACT_MANA_DB_IMAGE:-mariadb:10.11}"
 NAME="duris-artifact-mana-test-$$"
 PASSWORD="disposable-mana-$$-$RANDOM"
-cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
+cleanup() { docker rm -fv "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 if [[ "$IMAGE" == mariadb:* ]]; then SECRET=MARIADB_ROOT_PASSWORD; else SECRET=MYSQL_ROOT_PASSWORD; fi
 docker run -d --name "$NAME" -p 127.0.0.1::3306 -e "$SECRET=$PASSWORD" "$IMAGE" >/dev/null

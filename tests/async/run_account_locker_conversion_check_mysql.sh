@@ -10,7 +10,7 @@ image="${ACCOUNT_LOCKER_CHECK_DB_IMAGE:-mysql:8.0}"
 
 # Remove only the uniquely named disposable database container.
 cleanup() {
-	docker rm -f "$container_name" >/dev/null 2>&1 || true
+	docker rm -fv "$container_name" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT HUP INT TERM
 

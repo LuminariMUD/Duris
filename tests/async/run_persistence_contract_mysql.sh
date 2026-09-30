@@ -8,7 +8,7 @@ DB_NAME="persistence_contract_test"
 REF_DB="persistence_contract_bootstrap_reference"
 
 cleanup() {
-    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    docker rm -fv "$NAME" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 

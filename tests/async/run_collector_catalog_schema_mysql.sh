@@ -8,7 +8,7 @@ NAME="duris-collector-catalog-$$-$RANDOM"
 PASSWORD="collector-catalog-$$-$RANDOM"
 FRESH_DB=collector_catalog_fresh
 UPGRADE_DB=collector_catalog_upgrade
-cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
+cleanup() { docker rm -fv "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT HUP INT TERM
 if [[ "$IMAGE" == mariadb:* ]]; then SECRET=MARIADB_ROOT_PASSWORD; else SECRET=MYSQL_ROOT_PASSWORD; fi
 docker run -d --name "$NAME" -e "$SECRET=$PASSWORD" "$IMAGE" >/dev/null

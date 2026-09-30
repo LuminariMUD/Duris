@@ -6,7 +6,7 @@ cd "$ROOT"
 NAME="duris-color-$$-$RANDOM"
 PASSWORD="color-$$-$RANDOM"
 IMAGE="${COLOR_DB_IMAGE:-mariadb:11.4}"
-cleanup() { docker rm -f -v "$NAME" >/dev/null 2>&1 || true; }
+cleanup() { docker rm -fv -v "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT HUP INT TERM
 if [[ "$IMAGE" == mariadb:* ]]; then PASSWORD_ENV=MARIADB_ROOT_PASSWORD; else PASSWORD_ENV=MYSQL_ROOT_PASSWORD; fi
 docker run -d --name "$NAME" -p 127.0.0.1::3306 -e "$PASSWORD_ENV=$PASSWORD" "$IMAGE" >/dev/null

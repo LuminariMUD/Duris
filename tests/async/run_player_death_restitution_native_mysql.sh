@@ -8,7 +8,7 @@ NAME="duris-pdr-native-$$"
 DB_NAME=duris_issue_331_test
 PASSWORD="pdr-native-$$-$RANDOM"
 cleanup() {
-    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    docker rm -fv "$NAME" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT HUP INT TERM
 

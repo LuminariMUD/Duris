@@ -7,7 +7,7 @@ cd "$ROOT"
 NAME="duris-collector-repository-$$-$RANDOM"
 PASSWORD="collector-repository-$$-$RANDOM"
 IMAGE="${COLLECTOR_REPOSITORY_DB_IMAGE:-mariadb:10.11}"
-cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
+cleanup() { docker rm -fv "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT HUP INT TERM
 if [[ "$IMAGE" == mariadb:* ]]; then
 	PASSWORD_ENV=MARIADB_ROOT_PASSWORD
