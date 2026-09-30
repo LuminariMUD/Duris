@@ -12,8 +12,8 @@
   [!4](https://gitlab.com/max757/duris/-/merge_requests/4)) is on `master` since `60f56fb5b`,
   after one review round. **Phase 2 is done.** See
   [Step 8](#step-8-game-thread-sql-off-the-loop-done).
-- **Phase 3** has not started. It continues on `fix/7-persistence-phase-3`; see
-  [Phase 3 progress](#phase-3-progress) for where it starts.
+- **Phase 3** is in progress on `fix/7-persistence-phase-3`; see
+  [Phase 3 progress](#phase-3-progress) for its steps and where they stand.
 
 See [Phase 1 progress](#phase-1-progress) and [Phase 2 progress](#phase-2-progress) for what each
 step did and how.
@@ -2195,7 +2195,8 @@ Verification for this round, on the final head:
 
 ## Phase 3 progress
 
-Not started. The branch is `fix/7-persistence-phase-3` (see [Review and branches](#review-and-branches)).
+In progress on `fix/7-persistence-phase-3` (see [Review and branches](#review-and-branches)); the
+steps below say where each stands.
 
 Decided on 2026-09-30, so nothing in Phase 3 waits on anyone:
 
@@ -2221,8 +2222,77 @@ Carried over from Phases 1 and 2, done in Phase 3:
   Phase 3 is on `master`, deploy it there, run the journeys in [Phase 1 tests](#phase-1-tests)
   and, after a day, the staging checks listed there.
 
-The first step: put the [Phase 3](#phase-3-delete-what-is-left-over) list, the "left for Phase 3"
-notes in the Phase 1 and 2 steps and the items above through ablation (`.agents/skills/ablation`),
-confirming each deletion has no caller left, and split them into steps. Each step does one
-area with its tests, in its own commits, and passes the gates: `make test-all`, `make test-db`,
-the flat-file and pfile builds and `./scripts/format.sh --all --check`.
+### Phase 3 steps
+
+The list, the "left for Phase 3" notes and the items above went through ablation on
+2026-10-01. What decides "nothing reaches it" is the linker, not a name: both server builds
+compiled with `-ffunction-sections -fdata-sections` and linked without `-rdynamic` but with
+`-Wl,--gc-sections -Wl,--print-gc-sections` name every function no path from `main()` reaches,
+and a function is dead only when both backends drop it (see
+[Finding dead code](#finding-dead-code)). Code behind a switch that always returns false
+(`item_command_uses_durable_ownership()`, `durable_corpse_lifecycle_enabled()`) looks reachable
+until the switch goes, so each step removes its switches first and then deletes what the linker
+drops.
+
+Changed from the list by the ablation:
+
+- `currency_transaction.c` is not dead: it is the in-memory wallet and bank API with 13 callers
+  (Phase 2 step 2). It keeps its live functions and loses the dead ones. Inlining it would copy
+  its delta, bank and save-first logic into every caller.
+- `item_movement_transaction.c` holds the creation grants, which stay a critical command on the
+  writer by design ("What must still commit in the database" in
+  [Phase 2](#phase-2-money-points-and-the-rest-of-the-loop)). Its movement transactions are dead
+  and go; the grants stay, and so does what they need of `item_transfer_command.c` and
+  `item_transfer_repository.c`.
+- Dead code outside the persistence reset (unregistered specs, spells, `nq`) is not part of it.
+
+The steps, in order (later ones delete what earlier ones leave unreachable):
+
+1. **The player-save journal** (todo): `player_save_journal.c`, the legacy replay in
+   `player_save_pipeline_init()` and its revision fence (`PLAYER_SAVE_LEGACY_REPLAY`), and
+   `PLAYER_SAVE_JOURNAL_DIR` in the server, scripts, backup policy, data lifecycle manifest,
+   docs and test fixtures.
+2. **The critical-command journal replay** (todo), and the command types only it executes:
+   `account_bank`, `wallet`, `coin_transfer`, `locker_transfer` and `economic_baseline`, with
+   the currency repository, the coin transfer command, the accounting bank commands and the
+   corpse lifecycle wallet, on both backends.
+3. **The death custody and restitution feature** (todo), with a new migration that drops its
+   tables.
+4. **The durable item movement** (todo): the durable branches in `actobj.c` behind
+   `item_command_uses_durable_ownership()`, the movement transactions, the synthetic transfer
+   adapter, `OBJ_RFLAG_CREATION_CANDIDATE`, and the crafts' wrapper
+   (`item_movement_transaction_submit_craft()`).
+5. **The durable corpse lifecycle** (todo): the paths behind `durable_corpse_lifecycle_enabled()`,
+   `corpse_lifecycle_*.c`, the terminal fences, `player_save_pipeline_terminal_death()`, the
+   death-disposition plumbing and the custody and degraded-load code.
+6. **The collector off the runtime cache** (todo): its death intake enrolled at `make_corpse()`
+   again, its collection and maintenance reading the live objects; then
+   `item_ownership_runtime.c` goes once nothing reads it.
+7. **The game thread's dead SQL** (todo): the functions
+   [What is left after step 8](#what-is-left-after-step-8) names, and whatever else of the
+   persistence code the linker drops after steps 1 to 6.
+8. **Flat-file lockers load their items** (todo).
+9. **The die, restart and loot journey** (todo).
+10. **Staging** (after Phase 3 is on `master`): the sign-off above.
+
+Each step does its area with its tests, in its own commits, and passes the gates:
+`make test-all`, `make test-db`, the flat-file and pfile builds and
+`./scripts/format.sh --all --check`.
+
+### Finding dead code
+
+```sh
+# Objects with one section per function, in their own directories (MariaDB, then flat-file).
+make -C src -j16 OBJDIR=$PWD/bin/analysis/objects SERVER_BIN_DIR=$PWD/bin/analysis \
+    DMS_BINARY=$PWD/bin/analysis/dms_new EXTRA_CFLAGS="-ffunction-sections -fdata-sections"
+make -C src -j16 PERSISTENCE_BACKEND=flatfile OBJDIR=$PWD/bin/analysis/flat-objects \
+    SERVER_BIN_DIR=$PWD/bin/analysis/flat DMS_BINARY=$PWD/bin/analysis/flat/dms_new \
+    EXTRA_CFLAGS="-ffunction-sections -fdata-sections"
+```
+
+Then take each build's final link line from the make output, drop `-rdynamic` (it exports every
+symbol, which keeps them all), append `-Wl,--gc-sections -Wl,--print-gc-sections` and run it
+from `src/`. Each `removing unused section '.text.<symbol>' in file '<object>'` line names a
+function nothing reaches in that build. A function is dead when every build that compiles it
+removes it; `c++filt` turns the symbols back into names. A function only a test calls counts as
+dead: its test goes with it.
