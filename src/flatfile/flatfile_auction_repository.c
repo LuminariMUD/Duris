@@ -1084,6 +1084,10 @@ critical_apply_result flatfile_auction_repository_apply(const std::string &root,
 					return { critical_apply_outcome::retryable_failure, 0,
 						 ENOMEM };
 			}
+			// A removed auction gives its winning bid back to the bidder.
+			else if (listing->winner_pid && !stage_money(&catalog, listing->winner_pid,
+								     listing->current_price))
+				return { critical_apply_outcome::retryable_failure, 0, ENOMEM };
 			result.auction_id = listing->id;
 			result.status = listing->status;
 			result.seller_pid = listing->seller_pid;

@@ -351,6 +351,14 @@ bool publish_flat_auction_event(const flatfile_auction_event_projection &event)
 		if (!stage_auction_event_message(event, event.result.seller_pid, message_index++,
 						 message))
 			return false;
+		snprintf(message, sizeof(message),
+			 "&+WAuction [%u] for %s was removed; your bid money is available for "
+			 "pickup.\r\n",
+			 event.result.auction_id, event.listing.object_short.c_str());
+		if (event.result.event_type == auction_event_type::removed &&
+		    !stage_auction_event_message(event, event.result.winner_pid, message_index++,
+						 message))
+			return false;
 	}
 	if (event.result.event_type == auction_event_type::listed)
 		ws_broadcast_auction_new(event.result.auction_id, event.listing.seller_name.c_str(),
@@ -1732,6 +1740,15 @@ bool auction_publish_committed_event(const auction_command_result &result,
 			 result.auction_id, object_short.c_str());
 		if (!send_to_pid(message, result.seller_pid))
 			send_to_pid_offline(message, result.seller_pid);
+		if (result.event_type == auction_event_type::removed && result.winner_pid)
+		{
+			snprintf(message, sizeof(message),
+				 "&+WAuction [%u] for %s was removed; your bid money is available "
+				 "for pickup.\r\n",
+				 result.auction_id, object_short.c_str());
+			if (!send_to_pid(message, result.winner_pid))
+				send_to_pid_offline(message, result.winner_pid);
+		}
 	}
 	logit(LOG_DEBUG, "Published auction outbox %llu for auction %u", outbox_id,
 	      result.auction_id);

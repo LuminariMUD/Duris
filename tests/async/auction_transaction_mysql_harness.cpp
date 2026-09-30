@@ -148,7 +148,20 @@ int main()
 	const uint32_t bidder = insert_player(2147000302U, "AuctionBidder", bidder_account);
 	const uint32_t buyer = insert_player(2147000303U, "AuctionBuyer", buyer_account);
 	const uint64_t item_uid = 990000001;
-	execute("DELETE FROM item_current_owner WHERE item_uid=" + std::to_string(item_uid));
+	// Clear what an earlier run that stopped part way may have left.
+	const std::string harness_items =
+		"BETWEEN " + std::to_string(item_uid) + " AND " + std::to_string(item_uid + 2);
+	execute("DELETE FROM auction_bid_history WHERE auction_id IN (SELECT auction_id FROM "
+		"auction_item_custody WHERE item_uid " +
+		harness_items + ")");
+	execute("DELETE FROM auctions WHERE id IN (SELECT auction_id FROM auction_item_custody "
+		"WHERE item_uid " +
+		harness_items + ")");
+	execute("DELETE FROM auction_item_custody WHERE item_uid " + harness_items);
+	execute("DELETE FROM item_ownership_ledger WHERE item_uid " + harness_items);
+	execute("DELETE FROM item_current_owner WHERE item_uid " + harness_items);
+	execute("DELETE FROM auction_money_pickups WHERE pid IN (" + std::to_string(seller) + "," +
+		std::to_string(bidder) + "," + std::to_string(buyer) + ")");
 	execute("DELETE FROM item_owner_revision WHERE owner_type IN (1,7) AND owner_id IN (" +
 		std::to_string(seller) + "," + std::to_string(buyer) + ")");
 	execute("INSERT INTO item_owner_revision(owner_type,owner_id,owner_context_id,revision) "
@@ -315,7 +328,43 @@ int main()
 	assert(scalar("SELECT owner_id FROM item_current_owner WHERE item_uid=" +
 		      std::to_string(expired_uid)) == seller);
 
-	execute("DELETE FROM auction_bid_history WHERE auction_id=" + std::to_string(auction_id));
+	// A removed auction gives the winning bid back to its bidder.
+	const uint64_t removed_uid = item_uid + 2;
+	execute("INSERT INTO item_current_owner(item_uid,root_item_uid,parent_item_uid,owner_type,"
+		"owner_id,owner_context_id,item_revision,vnum,state) VALUES(" +
+		std::to_string(removed_uid) + "," + std::to_string(removed_uid) + ",NULL,1," +
+		std::to_string(seller) + ",0,0,79,1)");
+	auction_command_payload removable = {};
+	removable.action = auction_action::list;
+	fill_actor(&removable, seller, seller_account, "AuctionSeller", 4);
+	removable.start_price = 1000;
+	removable.end_time = 2000000000;
+	removable.item_count = 1;
+	removable.items[0] = { removed_uid, 0, 79 };
+	memcpy(removable.object_blob.data(), "removed-blob", 13);
+	removable.object_blob_size = 13;
+	memcpy(removable.object_short.data(), "a removed blade", 15);
+	result = apply(command_for(removable, &operations));
+	const uint32_t removed_auction_id = result.auction_id;
+	auction_command_payload removed_bid = {};
+	removed_bid.action = auction_action::bid;
+	removed_bid.auction_id = removed_auction_id;
+	removed_bid.value = 2500;
+	fill_actor(&removed_bid, bidder, bidder_account, "AuctionBidder", 1);
+	apply(command_for(removed_bid, &operations));
+	const long long bidder_pickup = scalar(
+		"SELECT money FROM auction_money_pickups WHERE pid=" + std::to_string(bidder));
+	auction_command_payload remove = {};
+	remove.action = auction_action::remove;
+	remove.auction_id = removed_auction_id;
+	remove.closing_fee_basis_points = 300;
+	result = apply(command_for(remove, &operations));
+	assert(result.event_type == auction_event_type::removed && result.winner_pid == bidder);
+	assert(scalar("SELECT money FROM auction_money_pickups WHERE pid=" +
+		      std::to_string(bidder)) == bidder_pickup + 2500);
+
+	execute("DELETE FROM auction_bid_history WHERE auction_id IN (" +
+		std::to_string(auction_id) + "," + std::to_string(removed_auction_id) + ")");
 	for (const std::string &operation : operations)
 	{
 		execute("DELETE d FROM critical_outbox_delivery_dedupe d JOIN critical_outbox o ON "
@@ -332,9 +381,11 @@ int main()
 			operation + "')");
 	}
 	execute("DELETE FROM auction_item_custody WHERE auction_id IN (" +
-		std::to_string(auction_id) + "," + std::to_string(expired_auction_id) + ")");
+		std::to_string(auction_id) + "," + std::to_string(expired_auction_id) + "," +
+		std::to_string(removed_auction_id) + ")");
 	execute("DELETE FROM auctions WHERE id IN (" + std::to_string(auction_id) + "," +
-		std::to_string(expired_auction_id) + ")");
+		std::to_string(expired_auction_id) + "," + std::to_string(removed_auction_id) +
+		")");
 	execute("DELETE FROM auction_money_pickups WHERE pid IN (" + std::to_string(seller) + "," +
 		std::to_string(bidder) + "," + std::to_string(buyer) + ")");
 	execute("DELETE FROM currency_wallet_baseline WHERE pid IN (" + std::to_string(seller) +
@@ -342,11 +393,11 @@ int main()
 	execute("DELETE FROM currency_bank_baseline WHERE bank_id IN (SELECT id FROM account_banks "
 		"WHERE account_name LIKE 'auction_harness_%')");
 	execute("DELETE FROM item_current_owner WHERE item_uid IN (" + std::to_string(item_uid) +
-		"," + std::to_string(expired_uid) + ")");
+		"," + std::to_string(expired_uid) + "," + std::to_string(removed_uid) + ")");
 	execute("DELETE FROM item_owner_revision WHERE (owner_type=6 AND owner_id IN (" +
-		std::to_string(auction_id) + "," + std::to_string(expired_auction_id) +
-		")) OR (owner_type=1 AND owner_id IN (" + std::to_string(seller) + "," +
-		std::to_string(buyer) + "))");
+		std::to_string(auction_id) + "," + std::to_string(expired_auction_id) + "," +
+		std::to_string(removed_auction_id) + ")) OR (owner_type=1 AND owner_id IN (" +
+		std::to_string(seller) + "," + std::to_string(buyer) + "))");
 	for (const char *account : { seller_account, bidder_account, buyer_account })
 	{
 		execute("DELETE FROM player_data WHERE account_name='" + std::string(account) +

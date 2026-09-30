@@ -388,6 +388,18 @@ int main(int argc, char **argv)
 		"removable listing did not apply");
 	expect_event(root.string(), auction_event_type::listed, removable_result.auction_id,
 		     &error);
+	// A removed auction gives the winning bid back to its bidder.
+	auction_command_payload removed_bid = {};
+	removed_bid.action = auction_action::bid;
+	removed_bid.auction_id = removable_result.auction_id;
+	removed_bid.value = 2000;
+	removed_bid.closing_fee_basis_points = 1000;
+	actor(&removed_bid, 44, "buyer-account", "Buyer", 1, 2);
+	require(flatfile_auction_repository_apply(root.string(), command(removed_bid, 12)).outcome ==
+			critical_apply_outcome::applied,
+		"bid on the removable listing did not apply");
+	expect_event(root.string(), auction_event_type::bid_placed, removable_result.auction_id,
+		     &error);
 	auction_command_payload remove = {};
 	remove.action = auction_action::remove;
 	remove.auction_id = removable_result.auction_id;
@@ -395,8 +407,13 @@ int main(int argc, char **argv)
 	applied = flatfile_auction_repository_apply(root.string(), command(remove, 13));
 	require(applied.outcome == critical_apply_outcome::applied &&
 			result_of(applied).event_type == auction_event_type::removed &&
-			result_of(applied).winner_pid == 0,
+			result_of(applied).winner_pid == 44,
 		"open auction removal did not stage seller custody");
+	flatfile_auction_pickup_projection refunded_bidder;
+	require(flatfile_auction_find_pickup(root.string(), 44, &refunded_bidder, &error) ==
+				flatfile_auction_query_result::ok &&
+			refunded_bidder.money == 2000,
+		"a removed auction kept the winning bid");
 	expect_event(root.string(), auction_event_type::removed, removable_result.auction_id,
 		     &error);
 	auction_command_payload removed_claim = {};

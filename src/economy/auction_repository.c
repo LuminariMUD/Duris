@@ -538,7 +538,10 @@ bool auction_repository_execute(MYSQL *connection, const critical_command &comma
 			return false;
 		if (!auction.winner_pid || payload.action == auction_action::remove)
 		{
-			if (!stage_items(connection, auction.id, auction.seller_pid))
+			// A removed auction gives its winning bid back to the bidder.
+			if (!stage_items(connection, auction.id, auction.seller_pid) ||
+			    (auction.winner_pid &&
+			     !stage_money(connection, auction.winner_pid, auction.cur_price)))
 				return false;
 		}
 		else
