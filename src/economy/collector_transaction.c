@@ -33,6 +33,10 @@ struct pending_collector
 	critical_completion completed = {};
 	// A purchase's price, taken from the wallet at submit.
 	int64_t escrow = 0;
+	// A collected antiquity, detached at submit, and where it goes back on a refusal.
+	P_obj collected = nullptr;
+	uint64_t collected_from = 0;
+	int collected_room = NOWHERE;
 };
 
 struct completed_player_recovery
@@ -104,6 +108,17 @@ bool player_recovery_item_loaded(const completed_player_recovery &recovery, P_ch
 	return false;
 }
 
+void put_back(P_obj collected, uint64_t container_uid, int room)
+{
+	for (P_obj object = object_list; container_uid && object; object = object->next)
+		if (object->obj_uid == container_uid)
+		{
+			obj_to_obj(collected, object);
+			return;
+		}
+	obj_to_room(collected, room);
+}
+
 bool player_pending(uint32_t pid)
 {
 	return std::any_of(pending.begin(), pending.end(),
@@ -154,24 +169,21 @@ bool publish(std::unordered_map<std::string, pending_collector>::iterator found,
 		published = false;
 		publication_error = EBADMSG;
 	}
-	P_obj collected_item = nullptr;
-	if (published && committed && submitted_payload.action == collector_action::collect &&
-	    !collector_collection_live_matches(submitted_payload, &collected_item))
-	{
-		published = false;
-		publication_error = ESTALE;
-	}
 	if (published && committed && publishes_authority(submitted_payload) &&
 	    !item_ownership_runtime_apply_collector(submitted_payload, result))
 	{
 		published = false;
 		publication_error = ESTALE;
 	}
-	if (published && committed && submitted_payload.action == collector_action::collect &&
-	    !collector_collection_detach_live(collected_item))
+	// The antiquity left the world at submit: a collection that committed keeps it, one
+	// that did not puts it back where it was (in the room, if its container is gone).
+	if (entry.collected)
 	{
-		published = false;
-		publication_error = ESTALE;
+		if (durable_commit)
+			extract_obj(entry.collected, FALSE);
+		else
+			put_back(entry.collected, entry.collected_from, entry.collected_room);
+		entry.collected = nullptr;
 	}
 	// A refused purchase gives its price back, when the buyer returns if they left.
 	if (!durable_commit && entry.escrow)
@@ -251,6 +263,18 @@ bool submit(P_char character, const critical_operation_id &operation_id,
 			 listing.price_value > INT_MAX))
 		return false;
 	const int64_t escrow = purchase ? static_cast<int64_t>(listing.price_value) : 0;
+	// A collected antiquity leaves the world now, so no corpse or room save captured
+	// before the collection commits can claim it back from the collector.
+	P_obj collected = nullptr;
+	if (payload.action == collector_action::collect &&
+	    !collector_collection_live_matches(payload, &collected))
+		return false;
+	P_obj outer = collected;
+	while (outer && OBJ_INSIDE(outer))
+		outer = outer->loc.inside;
+	const uint64_t collected_from =
+		collected && OBJ_INSIDE(collected) ? collected->loc.inside->obj_uid : 0;
+	const int collected_room = outer && OBJ_ROOM(outer) ? outer->loc.room : NOWHERE;
 	std::string key;
 	try
 	{
@@ -262,12 +286,20 @@ bool submit(P_char character, const critical_operation_id &operation_id,
 								completion,
 								false,
 								{},
-								escrow });
+								escrow,
+								collected,
+								collected_from,
+								collected_room });
 		if (!inserted.second)
 			return false;
 	}
 	catch (const std::bad_alloc &)
 	{
+		return false;
+	}
+	if (collected && !collector_collection_detach_live(collected))
+	{
+		pending.erase(key);
 		return false;
 	}
 	if (escrow)
@@ -287,6 +319,8 @@ bool submit(P_char character, const critical_operation_id &operation_id,
 	if (!critical_submit_result_keeps_operation(submitted))
 	{
 		pending.erase(key);
+		if (collected)
+			put_back(collected, collected_from, collected_room);
 		if (escrow)
 			currency_transaction_submit_wallet_value(
 				character, escrow, currency_reason_type::refund,
