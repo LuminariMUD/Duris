@@ -27,6 +27,7 @@
 #include <new>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 #include "account/account.h"
@@ -214,6 +215,16 @@ int sql_get_player_pid(const char *name)
 	if (!flatfile_player_identity_pid(name, &pid, &error))
 		return -1;
 	return pid;
+}
+bool sql_player_names_load(void)
+{
+	return true;
+}
+void sql_player_names_set(int, const char *) {}
+void sql_player_names_forget(int) {}
+const char *sql_get_player_name(int)
+{
+	return nullptr;
 }
 bool sql_load_player_status(P_char ch, int pid)
 {
@@ -1065,29 +1076,85 @@ void sql_reset_for_child(MYSQL *child_conn)
 
 // player existence check
 
-bool sql_player_exists(const char *name)
+namespace
 {
-	if (!DB || !name)
-		return false;
+// Every player_data row's pid, name and active flag, read at boot and kept current by the
+// game's own writes (entry, renames, deletion), so a lookup never waits on the database.
+struct player_name
+{
+	std::string name;
+	bool active;
+};
+std::unordered_map<int, player_name> names_by_pid;
+// The lowercase name to the pid a lookup gives: the active character of that name.
+std::unordered_map<std::string, int> pids_by_name;
 
-	char *escaped_name = sql_escape_string(name);
-	if (!escaped_name)
-		return false;
+std::string lowercase(const char *name)
+{
+	std::string lower = name;
+	for (char &letter : lower)
+		letter = LOWER(letter);
+	return lower;
+}
+} // namespace
 
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "SELECT 1 FROM player_data WHERE LOWER(name)=LOWER('%s') LIMIT 1", escaped_name);
-	free(escaped_name);
-
-	MYSQL_RES *result = db_query("%s", query);
+bool sql_player_names_load(void)
+{
+	MYSQL_RES *result = db_query("SELECT pid, name, active FROM player_data");
 	if (!result)
 		return false;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	bool exists = (row != NULL);
+	names_by_pid.clear();
+	pids_by_name.clear();
+	while (MYSQL_ROW row = mysql_fetch_row(result))
+	{
+		if (!row[0] || !row[1])
+			continue;
+		const int pid = atoi(row[0]);
+		const bool active = row[2] && atoi(row[2]);
+		names_by_pid[pid] = { row[1], active };
+		auto [named, added] = pids_by_name.try_emplace(lowercase(row[1]), pid);
+		if (!added && active)
+			named->second = pid;
+	}
 	mysql_free_result(result);
+	return true;
+}
 
-	return exists;
+void sql_player_names_set(int pid, const char *name)
+{
+	if (pid <= 0 || !name)
+		return;
+	sql_player_names_forget(pid);
+	const std::string lower = lowercase(name);
+	// As at entry in the database: any other character of that name is inactive.
+	for (auto &[other, entry] : names_by_pid)
+		if (lowercase(entry.name.c_str()) == lower)
+			entry.active = false;
+	names_by_pid[pid] = { name, true };
+	pids_by_name[lower] = pid;
+}
+
+void sql_player_names_forget(int pid)
+{
+	auto found = names_by_pid.find(pid);
+	if (found == names_by_pid.end())
+		return;
+	auto named = pids_by_name.find(lowercase(found->second.name.c_str()));
+	if (named != pids_by_name.end() && named->second == pid)
+		pids_by_name.erase(named);
+	names_by_pid.erase(found);
+}
+
+const char *sql_get_player_name(int pid)
+{
+	auto found = names_by_pid.find(pid);
+	return found != names_by_pid.end() && found->second.active ? found->second.name.c_str() :
+								     nullptr;
+}
+
+bool sql_player_exists(const char *name)
+{
+	return name && pids_by_name.count(lowercase(name));
 }
 
 bool sql_player_rename(P_char ch, const char *new_name)
@@ -1240,29 +1307,10 @@ sql_commit_outcome sql_rename_character(P_char ch, const char *old_name, const c
 
 int sql_get_player_pid(const char *name)
 {
-	if (!DB || !name)
+	if (!name)
 		return -1;
-
-	char *escaped_name = sql_escape_string(name);
-	if (!escaped_name)
-		return -1;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "SELECT pid FROM player_data WHERE LOWER(name)=LOWER('%s') LIMIT 1", escaped_name);
-	free(escaped_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return -1;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	int pid = -1;
-	if (row && row[0])
-		pid = atoi(row[0]);
-	mysql_free_result(result);
-
-	return pid;
+	auto named = pids_by_name.find(lowercase(name));
+	return named != pids_by_name.end() ? named->second : -1;
 }
 
 static bool sql_try_get_player_pid(const char *name, int *pid_out)

@@ -127,6 +127,7 @@ void create_epic_skills() {}
 void delete_ship(char *) {}
 void delete_ship_runtime(const char *) {}
 void player_revision_forget(int) {}
+void sql_player_names_forget(int) {}
 bool sql_in_transaction()
 {
 	return false;

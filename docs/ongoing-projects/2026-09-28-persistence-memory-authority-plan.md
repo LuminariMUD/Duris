@@ -1606,6 +1606,25 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   fails with the character loads (`sql_get_player_pid()`, `sql_load_player_status()`, skills
   and affects).
 
+#### The name-to-pid index (done)
+
+- On MariaDB, `sql_player_exists()`, `sql_get_player_pid()` and the new
+  `sql_get_player_name()` answer from memory: every `player_data` row's pid, name and active
+  flag, read at boot in `initialize_mysql()` (`sql_player_names_load()`; the boot stops if it
+  cannot be read) and kept current where the game changes them: entry
+  (`sql_save_player_core()`, which also covers a rename, since the renamed character is
+  saved again; it deactivates any other character of that name, as the SQL does) and
+  deletion (`delete_character_result()`, once its transaction commits). Flat-file already
+  answered these from its identity store and keeps doing so.
+- `get_player_pid_from_name()` loaded the whole character to read its pid; it is now
+  `sql_get_player_pid()`. `get_player_name_from_pid()` reads the index (an active
+  character's name only, as its query did). `get_player_from_name()` had no caller and is
+  gone.
+- Left for character creation: `sql_try_get_player_pid()` in the first save of a new
+  character, which inserts the row and must not insert it twice.
+- Tests: `test_player_names_index.py` links the index and checks its rules; the game-loop
+  queries journey no longer lists `sql_player_exists`.
+
 ### Review round 1 (MR !3)
 
 The review of `c3ffc4b8a` (tag `persistence/phase-2-review-0`) found five defects. Each is fixed

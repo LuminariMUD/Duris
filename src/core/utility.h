@@ -32,7 +32,6 @@ const char *condition_str(P_char ch);
 string pad_ansi(const char *str, int length, bool trim_to_length = FALSE);
 void trim_and_end_colorless(char *orig, char *good, int length);
 
-P_char get_player_from_name(char *name);
 int get_player_pid_from_name(char *name);
 char *get_player_name_from_pid(int pid);
 

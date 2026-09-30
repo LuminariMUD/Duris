@@ -135,6 +135,7 @@ bool sql_delete_locker(int,int) { return cleanup(); }
 bool sql_delete_ship(const char*) { return cleanup(); }
 bool sql_delete_player(int, bool forget) { assert(!forget); return cleanup(); }
 void player_revision_forget(int) { assert(!durable_active && !in_tx); }
+void sql_player_names_forget(int) { assert(!durable_active && !in_tx); }
 bool sql_commit() { assert(in_tx); if(commit_ok || commit_landed) {durable_active=txn_active; durable_cleanup=txn_cleanup;} if(!commit_ok)return false; in_tx=false; return true; }
 bool sql_rollback() { assert(in_tx); in_tx=false; return rollback_ok; }
 void delete_ship_runtime(const char*) { assert(!durable_active && !in_tx); ++runtime_ships; }

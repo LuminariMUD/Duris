@@ -31,7 +31,7 @@ NOT_CONVERTED = {
     'event_artifact_check_poof_sql', 'event_artifact_wars_sql',
     'event_artifact_check_bind_sql',
     # character creation: the name check, the first save and its pid
-    'sql_player_exists', 'sql_try_get_player_pid', 'sql_begin_transaction', 'sql_commit',
+    'sql_try_get_player_pid', 'sql_begin_transaction', 'sql_commit',
     'sql_rollback', 'sql_run_query', 'sql_run_multi_query',
 }
 

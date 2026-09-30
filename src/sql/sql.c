@@ -1538,6 +1538,14 @@ int initialize_mysql()
 		}
 		return -1;
 	}
+	if (!sql_player_names_load())
+	{
+		logit(LOG_STATUS, "FATAL: the character names could not be read, aborting boot");
+		duris_sql_exclusion_guard_release();
+		mysql_close(DB);
+		DB = NULL;
+		return -1;
+	}
 	if (!sql_load_active_season_state())
 	{
 		logit(LOG_STATUS,
@@ -2304,6 +2312,7 @@ int sql_save_player_core(P_char ch)
 	}
 
 	// deactivate any other players with same name (handles renamed characters)
+	sql_player_names_set(GET_PID(ch), p->name);
 	snprintf(query, MAX_STRING_LENGTH,
 		 "UPDATE player_data SET active = 0 WHERE name = '%s' and pid != %d", p->name,
 		 GET_PID(ch));

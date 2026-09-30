@@ -105,6 +105,14 @@ bool sql_load_player_pets(P_char ch);
 // player delete
 // ============================================================================
 
+// The characters' pids and names, read at boot and kept current in memory (MariaDB; the
+// flat-file lookups read the identity store). sql_get_player_name() gives only an active
+// character's name.
+bool sql_player_names_load(void);
+void sql_player_names_set(int pid, const char *name);
+void sql_player_names_forget(int pid);
+const char *sql_get_player_name(int pid);
+
 // delete player from db (for pwipe, etc)
 // Transaction owners defer revision eviction until their commit is confirmed.
 bool sql_delete_player(int pid, bool forget_revision = true);

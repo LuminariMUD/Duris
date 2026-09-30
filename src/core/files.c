@@ -2067,6 +2067,7 @@ character_delete_result delete_character_result(P_char ch, bool bDeleteLocker)
 
 	// Durable cleanup has completed. These operations only release runtime state.
 	player_revision_forget(GET_PID(ch));
+	sql_player_names_forget(GET_PID(ch));
 	if (GET_ASSOC(ch))
 		GET_ASSOC(ch)->forget_deleted_member(ch);
 #ifdef USE_ACCOUNT
