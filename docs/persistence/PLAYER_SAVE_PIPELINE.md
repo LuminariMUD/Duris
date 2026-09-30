@@ -35,7 +35,7 @@ writer instead (`src/sql/sql_async.h`):
 Each `sql` job runs in one transaction. A lost connection is retried, and a commit whose
 outcome is unknown is reported instead of retried. Whatever still queries the game thread's
 connection while the loop runs is counted (`game_loop_queries` in `world persistence`) and
-logged once per site (`game loop query: ...` in `logs/log/status`).
+logged once per site (`game loop query site ...` in `logs/log/status`).
 
 ## What a save writes
 

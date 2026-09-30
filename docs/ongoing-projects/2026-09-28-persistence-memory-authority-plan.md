@@ -1406,7 +1406,7 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
     still in the game.
 - What still waits is named. While the loop runs, every query on the game thread's connection
   is counted (`game_loop_queries` in `world persistence`), and each site is logged once
-  (`game loop query: <file>:<line> <function> (<kind>)`).
+  (`game loop query site <file>:<line> <function> (<kind>)`).
 - `sql.c` is done:
   - Queued on the writer: the core save, the account-character projection (its lookup
     runs on the writer, just before the write it decides), the frag leaderboard, progress

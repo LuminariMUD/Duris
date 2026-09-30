@@ -3330,7 +3330,7 @@ bool sql_trace_exec_at(struct persistence_query_site source_site, const char *la
 	{
 		++game_loop_queries;
 		if (game_loop_query_sites.emplace(source_site.file, source_site.line).second)
-			logit(LOG_STATUS, "game loop query: %s:%d %s (%s)", source_site.file,
+			logit(LOG_STATUS, "game loop query site %s:%d %s (%s)", source_site.file,
 			      source_site.line, source_site.function,
 			      persistence_statement_kind_name(
 				      persistence_statement_kind_from_sql(sql)));
