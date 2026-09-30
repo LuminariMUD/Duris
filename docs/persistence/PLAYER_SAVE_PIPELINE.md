@@ -198,8 +198,10 @@ operating-system starvation. The controlled retry/crash modes are documented in
 A death happens at once (persistence reset step 5): `make_corpse()` moves the
 player's items into the corpse in memory, the corpse save claims them, the
 player's save follows, and the character is extracted. There is no recovery
-hold, corpse handoff batch or disputed-death disposition any more; a player's
-coins stay in the wallet until Phase 2. See
+hold, corpse handoff batch or disputed-death disposition any more. The wallet
+becomes a coin pile in the corpse (Phase 2 step 4); the player's save, with the
+wallet empty, is queued before the corpse's, so a crash between them can lose
+the coins but never leave them in both places. See
 [the persistence reset plan](../ongoing-projects/2026-09-28-persistence-memory-authority-plan.md)
 and `tests/async/test_deaths_happen_at_once.py`. Death evidence already stored by
 older servers (`player_death_disposition`, `player_death_custody`, flat-file

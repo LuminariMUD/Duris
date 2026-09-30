@@ -1260,11 +1260,29 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   collector repository harnesses (the wallet is left alone; the stale-wallet and
   insufficient-funds refusals the repositories no longer make are gone) and the source
   contracts. `test_flatfile_auction_coin_put_journey.py` passes again.
-- Found while doing this, fixed in its own commit: `run_auction_transaction_schema_mysql.sh`
-  no longer linked (the restitution command sources were missing). It runs against the
+- Found while doing this, fixed in their own commits: `run_auction_transaction_schema_mysql.sh`
+  no longer linked (the restitution command sources were missing); it runs against the
   `.env` development database, not a disposable one, so it is not part of `make test-db`.
+  And removing an auction with a winning bid gave the item back to the seller but kept the
+  bid: both repositories now stage it as the bidder's money pickup, and both publishers
+  tell the bidder.
 - Verified: `make -C src`, the flat-file build, `./scripts/format.sh --all --check`, the
   validator, the tests above and every other test that links the auction or collector code,
   `run_collector_repository_schema_mysql.sh` (disposable MariaDB),
   `run_auction_transaction_schema_mysql.sh` (local development database) and the auction
   coin-put journey.
+
+### Step 4: coins drop into corpses (done)
+
+- `make_corpse()` turns every wallet into a pile, players' too (`money_to_inventory()`), and
+  the pile goes into the corpse with the items. For a player, the save with the wallet empty
+  (`currency_transaction_save_first()`) is queued before the corpse's, so a crash between
+  them can lose the coins but never leave them in both the wallet and the corpse. Looting
+  them is an ordinary coin get from the corpse, which queues the corpse's save before the
+  looter's.
+- Tests: `test_deaths_happen_at_once.py` pins the order (the pile, the player's save, the
+  items, the corpse save). The flat-file and MariaDB combat journeys check that the death
+  saved an empty wallet and loot the coins back from the player's corpse.
+- Verified: `make -C src`, the flat-file build, `./scripts/format.sh --all --check`, the
+  validator, the death and corpse tests, and both combat journeys (all variants; MariaDB on a
+  disposable server).

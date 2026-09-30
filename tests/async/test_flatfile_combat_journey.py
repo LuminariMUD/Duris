@@ -597,7 +597,7 @@ def verify_npc_loot_and_die(port: int) -> None:
         client.close()
 
 
-def recover_player_corpse(port: int, reset_coins: bool = False) -> None:
+def recover_player_corpse(port: int, state_root: pathlib.Path, reset_coins: bool = False) -> None:
     client = reconnect_character(port, "You rejoin the land of the living")
     try:
         client.send("look")
@@ -605,8 +605,13 @@ def recover_player_corpse(port: int, reset_coins: bool = False) -> None:
         client.send(f"look in {CHARACTER}")
         corpse = client.expect("a banana", timeout=10)
         require(CHARACTER in corpse, "player corpse did not contain the saved loot marker")
-        # A player's coins stay in the wallet at death (persistence reset step 5).
-        require("coins" not in corpse, "player coins were put into the corpse")
+        # A player's coins go into the corpse at death, and the death saved the empty
+        # wallet (persistence reset phase 2 step 4).
+        require(inspect_authority(state_root)["wallet"] == [0, 0, 0, 0],
+                "the death did not save an empty wallet")
+        client.send(f"get coins {CHARACTER}")
+        client.expect("There were: 3 silver coins." if reset_coins else
+                      "There were: 1 copper coin.", timeout=15)
 
         client.send(f"get banana {CHARACTER}")
         client.expect("get a banana", timeout=15)
@@ -725,7 +730,7 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                     require(inspect_authority(state_root)["wallet"] == coin_balance,
                             "NPC pickup/save did not conserve coins")
                     verify_npc_loot_and_die(plain_port)
-                    recover_player_corpse(plain_port, reset_coins)
+                    recover_player_corpse(plain_port, state_root, reset_coins)
                     verify_recovered_loot(plain_port)
                     require(inspect_authority(state_root)["wallet"] == coin_balance,
                             "reconnect or corpse recovery changed the coin total")

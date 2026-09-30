@@ -4,7 +4,8 @@
 make_corpse() puts a player's items into the corpse in memory, as it does for an
 NPC, and the corpse save claims them. die() queues the corpse save, then the
 player's save, and extracts the character: there is no recovery hold, retry
-event or disputed-death disposition. A player's coins stay in the wallet.
+event or disputed-death disposition. A player's coins go into the corpse too, and
+the player's save, with the wallet empty, is queued before the corpse's.
 """
 from _paths import SRC
 
@@ -23,10 +24,13 @@ def body(source: str, signature: str, last: bool = False) -> str:
 FIGHT = (SRC / "fight.c").read_text()
 corpse = body(FIGHT, "P_obj make_corpse(P_char ch, int loss)")
 assert "corpse->contains = ch->carrying;" in corpse and "if (IS_NPC(ch))\n\t{\n\t\tcorpse->contains" not in corpse
-assert "if (IS_NPC(ch))\n\t\t(void)money_to_inventory(ch);" in corpse
+assert "if (IS_NPC(ch))\n\t\t(void)money_to_inventory(ch);" not in corpse
+money = corpse.index("(void)money_to_inventory(ch);")
+assert money < corpse.index("currency_transaction_save_first(ch);") < corpse.index(
+    "corpse->contains = ch->carrying;") < corpse.index("writeCorpse(corpse);")
 assert corpse.index("corpse->contains = ch->carrying;") < corpse.index("writeCorpse(corpse);")
 assert "collector_death_enrollment_begin" not in corpse
-print("[PASS] a player's items go into the corpse in memory and the coins stay in the wallet")
+print("[PASS] a player's items and coins go into the corpse; the empty wallet is saved first")
 
 death = body(FIGHT, "void die(P_char ch, P_char killer)")
 assert death.index("make_corpse(ch, loss)") < death.index(

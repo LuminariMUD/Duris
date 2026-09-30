@@ -69,6 +69,7 @@
 #include "persistence/corpse_lifecycle_transaction.h"
 #include "economy/collector_catalog_cache.h"
 #include "economy/collector_presence.h"
+#include "economy/currency_transaction.h"
 #include "player/player_save_pipeline.h"
 #include "persistence/persistence_observability.h"
 #include "item/item_ownership_runtime.h"
@@ -1525,10 +1526,12 @@ P_obj make_corpse(P_char ch, int loss)
 	 * things.)
 	 */
 
-	// A player's coins stay in the wallet: the currency transactions own it until
-	// Phase 2 of the persistence reset puts coins back into corpses.
-	if (IS_NPC(ch))
-		(void)money_to_inventory(ch);
+	// The wallet becomes a pile that goes into the corpse with everything else. A
+	// player's save, with the wallet empty, is queued before the corpse's, so a crash
+	// between them can lose the coins but never leave them in both.
+	(void)money_to_inventory(ch);
+	if (IS_PC(ch))
+		currency_transaction_save_first(ch);
 
 	corpse->value[CORPSE_LEVEL] = GET_LEVEL(ch); /* for animate dead */
 

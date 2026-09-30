@@ -131,6 +131,8 @@ def run(server, reset_coins=False, boons=False):
                     settle(lambda: number(f'SELECT COUNT(*) FROM item_current_owner WHERE item_uid IN ({uids}) AND owner_type=4 AND state=1')==len(captured),
                            lambda: 'the corpse did not claim the items: '+sql(f'SELECT item_uid,owner_type,owner_id,state FROM item_current_owner WHERE item_uid IN ({uids})'))
                     settle(lambda: number(f'SELECT numb_deaths FROM player_data WHERE pid={pid}')==before_deaths+1, 'the death was not saved')
+                    # The coins went into the corpse; the death saved the empty wallet.
+                    assert sql(f'SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}')=='0\t0\t0\t0'
                     assert number("SELECT COUNT(*) FROM corpse_items ci JOIN corpses c ON c.id=ci.corpse_id WHERE c.player_name='"+journey.CHARACTER+"'")>=len(captured)
                     print(f'MariaDB actual character: {len(captured)} items in the corpse, attack-to-menu {elapsed:.3f}s',flush=True)
                     # Minimal boot deliberately skips SQL corpse restoration.
@@ -140,6 +142,8 @@ def run(server, reset_coins=False, boons=False):
                     client=journey.reconnect_character(plain)
                     client.send('look'); client.expect('The corpse of a Human is lying here.')
                     client.send('look in '+journey.CHARACTER); client.expect('a banana')
+                    client.send('get coins '+journey.CHARACTER)
+                    client.expect('There were: 3 silver coins.' if reset_coins else 'There were: 1 copper coin.',timeout=15)
                     client.send('get banana '+journey.CHARACTER); client.expect('get a banana',timeout=15)
                     client.send('save'); client.expect('Save complete for '+journey.CHARACTER+'.')
                     client.send('quit'); client.expect('ACCOUNT MENU',timeout=30)
@@ -171,7 +175,7 @@ def run(server, reset_coins=False, boons=False):
                     settle(lambda: number(f'SELECT COUNT(*) FROM item_current_owner WHERE item_uid={banana} AND owner_type=4 AND state=1')==1, 'the corpse did not claim the banana')
                     settle(lambda: number(f'SELECT COUNT(*) FROM player_items WHERE pid={pid}')==0, 'the dead player still holds items')
                     settle(lambda: number(f'SELECT numb_deaths FROM player_data WHERE pid={pid}')==before_deaths+1, 'the second death was not saved')
-                    assert sql(f'SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}')==expected
+                    assert sql(f'SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}')=='0\t0\t0\t0'
                     before=stable_state(pid)
                     stop(); process=boot()
                     client=journey.reconnect_character(plain)
