@@ -256,14 +256,19 @@ void artifacts_forget_deleted_account_character(int pid)
 	arti_cache_invalidate();
 }
 
-void artifact_feed_published(int vnum, time_t timer, int bind_owner_pid, int bind_timer)
+// A guild feed committed timer for vnum, which it computed from captured_timer. Memory takes it
+// unless its timer changed since (a poof, the wars), and the row is queued again either way:
+// a move queued while the feed ran stored the timer memory held before it. The feed leaves
+// the soul as it found it.
+void artifact_feed_published(int vnum, time_t captured_timer, time_t timer)
 {
-	auto row = artifact_rows.find(vnum);
-	if (row != artifact_rows.end())
-		row->second.timer = timer;
-	artifact_binds[vnum] = { bind_owner_pid, bind_timer };
-	// The guild transaction invalidates the cache itself; no older list read may refill it.
-	++arti_cache_generation;
+	const auto row = artifact_rows.find(vnum);
+	if (row == artifact_rows.end())
+		return;
+	artifact_row fed = row->second;
+	if (fed.timer == captured_timer)
+		fed.timer = timer;
+	artifact_row_store(vnum, fed);
 }
 
 // The artifact's soul: owner_pid 0 and timer 0 when it has none yet.

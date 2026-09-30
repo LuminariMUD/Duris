@@ -137,7 +137,7 @@ void artifact_guild_transaction_handle_completions(const critical_completion *co
 			 completions[index].outcome == critical_apply_outcome::already_applied);
 		if (committed)
 		{
-			artifact_guild_state_publish(result);
+			artifact_guild_state_publish(result, found->second.payload);
 			publish_messages(find_player_by_pid(found->second.actor_pid),
 					 found->second.payload);
 			++health.committed;

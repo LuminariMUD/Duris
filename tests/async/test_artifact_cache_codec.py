@@ -74,9 +74,11 @@ assert "redis_invalidate_artifact_list" in listing
 assert "redis_cache_artifact_list(type, Godlist, listed)" in listing
 assert "generation == arti_cache_generation" in listing
 # Every change to the artifacts, the guild feed's included, outdates a list read in flight.
-for changed in ("static void arti_cache_invalidate(void)", "void artifact_feed_published("):
+for changed, outdates in (("static void arti_cache_invalidate(void)", "++arti_cache_generation;"),
+                          ("void artifact_row_store(", "arti_cache_invalidate();"),
+                          ("void artifact_feed_published(", "artifact_row_store(vnum, fed);")):
     start = artifact.index(changed)
-    assert "++arti_cache_generation;" in artifact[start : artifact.index("\n}\n", start)], changed
+    assert outdates in artifact[start : artifact.index("\n}\n", start)], changed
 assert "Artifact data is temporarily unavailable." in listing
 assert "Cache error." not in listing
 

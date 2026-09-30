@@ -208,16 +208,15 @@ artifact_guild_state_capture(P_char character, int epics, int epic_type,
 	return artifact_guild_capture_status::ready;
 }
 
-void artifact_guild_state_publish(const artifact_guild_result &result)
+void artifact_guild_state_publish(const artifact_guild_result &result,
+				  [[maybe_unused]] const artifact_guild_payload &payload)
 {
 #ifndef __NO_MYSQL__
-	// The transaction wrote the artifacts' timers and souls too.
+	// The transaction fed the timers the payload captured.
 	for (size_t index = 0; index < result.artifact_count; ++index)
-	{
-		const auto &entry = result.artifacts[index];
-		artifact_feed_published(entry.vnum, entry.timer, entry.bind_owner_pid,
-					static_cast<int>(entry.bind_timer));
-	}
+		artifact_feed_published(result.artifacts[index].vnum,
+					payload.artifacts[index].expected_timer,
+					result.artifacts[index].timer);
 #endif
 	if (result.guild_id)
 	{

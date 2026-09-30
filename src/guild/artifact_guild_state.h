@@ -16,7 +16,8 @@ artifact_guild_capture_status
 artifact_guild_state_capture(P_char character, int epics, int epic_type,
 			     const critical_operation_id &parent_operation_id,
 			     artifact_guild_payload *payload);
-void artifact_guild_state_publish(const artifact_guild_result &result);
+void artifact_guild_state_publish(const artifact_guild_result &result,
+				  const artifact_guild_payload &payload);
 bool artifact_guild_state_ready(void);
 void artifact_guild_state_reset_for_tests(void);
 
