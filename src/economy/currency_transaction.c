@@ -130,13 +130,13 @@ void queue_bank_delta(const std::string &account, int racewar, const currency_ve
 	{
 		const char *root = persistence_mode_flatfile_root();
 		if (root)
-			write = [path = std::string(root), account, racewar,
-				 amounts = delta.amount]()
+			write = [path = std::string(root), account, racewar, amounts = delta.amount,
+				 prepared = flatfile_authority_operation{}]() mutable
 			{
 				std::string error;
 				return flatfile_bank_delta_apply(path, account,
 								 static_cast<int8_t>(racewar),
-								 amounts, &error);
+								 amounts, &prepared, &error);
 			};
 	}
 	else

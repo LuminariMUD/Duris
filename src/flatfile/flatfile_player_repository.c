@@ -1087,6 +1087,7 @@ player_save_apply_result apply_world_snapshot(const std::string &root,
 player_save_apply_result flatfile_bank_delta_apply(const std::string &root,
 						   const std::string &account_name, int8_t racewar,
 						   const std::array<int64_t, 4> &delta,
+						   flatfile_authority_operation *prepared,
 						   std::string *error)
 {
 	flatfile_authority_lock authority;
@@ -1098,13 +1099,18 @@ player_save_apply_result flatfile_bank_delta_apply(const std::string &root,
 				 player_save_apply_outcome::retryable_failure :
 				 player_save_apply_outcome::terminal_failure,
 			 0, EIO };
-	std::vector<flatfile_authority_operation> operations(1);
-	const auto prepared = flatfile_player_domain_prepare_bank_delta(
-		root, authority, account_name, racewar, delta, &operations[0], error);
-	if (prepared == flatfile_player_domain_result::io_error)
-		return { player_save_apply_outcome::retryable_failure, 0, EIO };
-	if (prepared != flatfile_player_domain_result::ok)
-		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+	if (prepared->filename.empty())
+	{
+		flatfile_authority_operation operation;
+		const auto result = flatfile_player_domain_prepare_bank_delta(
+			root, authority, account_name, racewar, delta, &operation, error);
+		if (result == flatfile_player_domain_result::io_error)
+			return { player_save_apply_outcome::retryable_failure, 0, EIO };
+		if (result != flatfile_player_domain_result::ok)
+			return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+		*prepared = std::move(operation);
+	}
+	const std::vector<flatfile_authority_operation> operations = { *prepared };
 	const auto committed = flatfile_authority_transaction_commit_operations(root, authority,
 										operations, error);
 	if (committed != flatfile_authority_transaction_result::ok)

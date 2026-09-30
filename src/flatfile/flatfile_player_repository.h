@@ -45,10 +45,14 @@ player_save_apply_result flatfile_player_snapshot_apply_selected(const player_sn
 								 void *context);
 
 // A bank change (the characters of an account share its bank), added to the account's
-// bank record for that side in one authority transaction.
+// bank record for that side in one authority transaction. The record with the change
+// is prepared once, into *prepared (empty the first time): a retry after a commit that
+// may already have written it writes the same record again instead of adding the
+// change twice.
 player_save_apply_result flatfile_bank_delta_apply(const std::string &root,
 						   const std::string &account_name, int8_t racewar,
 						   const std::array<int64_t, 4> &delta,
+						   flatfile_authority_operation *prepared,
 						   std::string *error);
 
 // The flat-file corpse and saved-item saves: claim the items for their owner and

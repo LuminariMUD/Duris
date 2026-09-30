@@ -1428,10 +1428,11 @@ player_save_apply_result apply_bank_delta(MYSQL *connection, const bank_delta_sn
 		else if (bank.delta[index] < 0)
 			sql << ',' << columns[index] << '=' << columns[index] << '-'
 			    << -bank.delta[index];
-	const query_result result = execute(connection, sql.str());
-	if (!result.ok)
-		return failure(result.error_code);
-	return { player_save_apply_outcome::applied, 0, 0 };
+	// A delta written twice pays twice. In a transaction, a connection lost before
+	// the commit leaves nothing written, so the retry is safe; a commit whose outcome
+	// is unknown is reported instead of retried.
+	return apply_sql_work(connection, [&](MYSQL *transaction)
+			      { return execute(transaction, sql.str()).error_code; });
 }
 
 template <typename Apply> player_save_apply_result apply_with_pool(Apply apply)

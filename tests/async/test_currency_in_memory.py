@@ -47,7 +47,7 @@ persistence_mode persistence_mode_get(void) { return PERSISTENCE_MODE_MARIADB_PR
 const char *persistence_mode_flatfile_root(void) { return nullptr; }
 player_save_apply_result flatfile_bank_delta_apply(const std::string &, const std::string &,
                                                    int8_t, const std::array<int64_t, 4> &,
-                                                   std::string *)
+                                                   flatfile_authority_operation *, std::string *)
 {
     return {player_save_apply_outcome::applied, 0, 0};
 }

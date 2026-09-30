@@ -513,16 +513,23 @@ static void saved_wallet_matrix(const fs::path &path)
 			"bank domain load");
 		return domain.domains.bank;
 	};
-	require(flatfile_bank_delta_apply(root, "Account-One", 0, { 7, 0, 3, 0 }, &error).outcome ==
-				player_save_apply_outcome::applied &&
+	flatfile_authority_operation credit, delta, debit;
+	require(flatfile_bank_delta_apply(root, "Account-One", 0, { 7, 0, 3, 0 }, &credit, &error)
+					.outcome == player_save_apply_outcome::applied &&
 			(bank() == std::array<uint64_t, 4>{ 7, 0, 3, 0 }),
 		"a bank credit did not create the record: " + error);
-	require(flatfile_bank_delta_apply(root, "Account-One", 0, { 1, 0, -3, 4 }, &error).outcome ==
-				player_save_apply_outcome::applied &&
+	require(flatfile_bank_delta_apply(root, "Account-One", 0, { 1, 0, -3, 4 }, &delta, &error)
+					.outcome == player_save_apply_outcome::applied &&
 			(bank() == std::array<uint64_t, 4>{ 8, 0, 0, 4 }),
 		"a bank delta did not add to the record: " + error);
-	require(flatfile_bank_delta_apply(root, "Account-One", 0, { -9, 0, 0, 0 }, &error).outcome ==
-				player_save_apply_outcome::terminal_failure &&
+	// The writer retries a job whose commit may already have been written: the retry
+	// writes the record the job prepared, so the change is not added twice.
+	require(flatfile_bank_delta_apply(root, "Account-One", 0, { 1, 0, -3, 4 }, &delta, &error)
+					.outcome == player_save_apply_outcome::applied &&
+			(bank() == std::array<uint64_t, 4>{ 8, 0, 0, 4 }),
+		"a retried bank delta was added twice: " + error);
+	require(flatfile_bank_delta_apply(root, "Account-One", 0, { -9, 0, 0, 0 }, &debit, &error)
+					.outcome == player_save_apply_outcome::terminal_failure &&
 			(bank() == std::array<uint64_t, 4>{ 8, 0, 0, 4 }),
 		"a debit the record cannot cover changed it");
 	std::cout

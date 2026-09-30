@@ -157,7 +157,9 @@ save writes the wallet. A bank change is queued on the one writer as a `bank` jo
 holding the delta: MariaDB adds it to the `account_banks` row (creating it), flat-file
 to the account's bank domain. The bank job is queued after the player's save when the
 bank gains and before it when the bank loses, so a crash can lose money but never pay
-it twice. Shutdown names bank deltas the writer could not write
+it twice. A retried bank job never adds its delta twice either: MariaDB writes it in a
+transaction and reports a commit whose outcome is unknown instead of retrying it, and
+flat-file writes again the bank record it prepared the first time. Shutdown names bank deltas the writer could not write
 (`persistence_writer/bank ... deltas=N`).
 
 The economy's commands still run on the writer, but they no longer read or write a
