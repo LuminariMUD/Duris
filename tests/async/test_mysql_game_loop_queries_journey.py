@@ -46,6 +46,15 @@ COMMANDS = (
     ('boon shop', 'Stat points available: 0'),
     ('boon shop stat str', "You don't have any stat points available."),
     ('ctf score', 'No data'),
+    # Artifacts are held in memory: the drops write their rows, clear deletes one.
+    ('load obj 900', 'Pos: standing >'),
+    ('drop stone', 'You drop'),
+    ('load obj 901', 'Pos: standing >'),
+    ('drop stone', 'You drop'),
+    ('artifacts clear 901', 'cleared from the Immortal and Mortal lists'),
+    ('artifacts reset 900', 'Artifact vnum 900 has a hungry soul.'),
+    ('artifacts reset fixit', 'Empty set; no artifacts on PC'),
+    ('artifacts reset syncdb', 'Cleared 0, updated 0 artifact ownerships'),
 )
 REENTRY_COMMANDS = (
     ('divineclaim list', 'Copies'),
@@ -53,11 +62,7 @@ REENTRY_COMMANDS = (
 )
 
 # The functions this session still reaches with a query on the game loop.
-NOT_CONVERTED = {
-    # periodic artifact events
-    'event_artifact_check_poof_sql', 'event_artifact_wars_sql',
-    'event_artifact_check_bind_sql',
-}
+NOT_CONVERTED = set()
 
 
 def enter(client):
@@ -201,6 +206,12 @@ def run(server):
                                   text=True, env=environment, check=True,
                                   capture_output=True).stdout.strip()
             assert left == '0', f'{table} still holds {left} rows'
+        # The dropped stone's row landed through the writer (on the ground, or on Raoul if he
+        # picked it up); the cleared one is gone.
+        artifacts = subprocess.run(mysql + [database], text=True, env=environment, check=True,
+                                   capture_output=True,
+                                   input='SELECT vnum, owned, locType FROM artifacts').stdout.split()
+        assert artifacts in (['900', 'N', '4'], ['900', 'N', '2']), artifacts
 
         logs = output_path.read_text(errors='replace') + '\n'.join(
             path.read_text(errors='replace') for path in (runtime / 'logs/log').glob('*')

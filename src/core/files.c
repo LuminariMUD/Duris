@@ -2041,12 +2041,13 @@ character_delete_result delete_character_result(P_char ch, bool bDeleteLocker)
 		// while this transaction can still roll back.
 		if (sql_in_transaction() || !sql_begin_transaction())
 			return character_delete_result::refused;
-		const bool prepared =
-			sql_soft_delete_character(GET_PID(ch)) && remove_all_artifacts_sql(ch) &&
-			remove_all_locker_access(ch) &&
-			(!GET_ASSOC(ch) || GET_ASSOC(ch)->save_without_member(ch)) &&
-			(!bDeleteLocker || sql_delete_locker(GET_PID(ch), 0)) &&
-			sql_delete_ship(GET_NAME(ch)) && sql_delete_player(GET_PID(ch), false);
+		const bool prepared = sql_soft_delete_character(GET_PID(ch)) &&
+				      qry("%s", remove_all_artifacts_sql(GET_PID(ch)).c_str()) &&
+				      remove_all_locker_access(ch) &&
+				      (!GET_ASSOC(ch) || GET_ASSOC(ch)->save_without_member(ch)) &&
+				      (!bDeleteLocker || sql_delete_locker(GET_PID(ch), 0)) &&
+				      sql_delete_ship(GET_NAME(ch)) &&
+				      sql_delete_player(GET_PID(ch), false);
 		if (!prepared)
 		{
 			const bool rolled_back = sql_rollback();
@@ -2068,6 +2069,7 @@ character_delete_result delete_character_result(P_char ch, bool bDeleteLocker)
 	// Durable cleanup has completed. These operations only release runtime state.
 	player_revision_forget(GET_PID(ch));
 	sql_player_names_forget(GET_PID(ch));
+	artifacts_forget_deleted_character(GET_PID(ch));
 	if (GET_ASSOC(ch))
 		GET_ASSOC(ch)->forget_deleted_member(ch);
 #ifdef USE_ACCOUNT

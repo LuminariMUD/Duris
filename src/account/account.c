@@ -2952,7 +2952,11 @@ void verify_delete_account(P_desc d, char *arg)
 			    if (deleted)
 			    {
 				    for (const auto &identity : identities)
+				    {
 					    sql_player_names_forget(identity.pid);
+					    artifacts_forget_deleted_account_character(
+						    identity.pid);
+				    }
 				    account_rewards_forget_account(account_name.c_str());
 				    account_recovery_forget(account_name.c_str());
 			    }

@@ -128,7 +128,9 @@ bool sql_in_transaction() { return in_tx; }
 bool sql_begin_transaction() { ++backend_calls; assert(!in_tx); in_tx=true; stage=0; txn_active=durable_active; txn_cleanup=durable_cleanup; return true; }
 bool cleanup() { assert(in_tx); if(++stage==fail_stage) return false; ++txn_cleanup; return true; }
 bool sql_soft_delete_character(int) { if(!cleanup())return false; txn_active=false; return true; }
-bool remove_all_artifacts_sql(P_char) { return cleanup(); }
+std::string remove_all_artifacts_sql(int) { return "release artifacts"; }
+bool qry(const char *, const char *statement) { assert(!strcmp(statement, "release artifacts")); return cleanup(); }
+void artifacts_forget_deleted_character(int) { assert(!durable_active && !in_tx); }
 bool remove_all_locker_access(P_char) { return cleanup(); }
 bool Guild::save() { assert(members==nullptr && member_count==1 && frags.frags==0); return cleanup(); }
 bool sql_delete_locker(int,int) { return cleanup(); }

@@ -78,13 +78,14 @@ end = files_source.index("void PurgeCorpseFile", start)
 delete_body = files_source[start:end]
 runtime_calls = [
     "sql_soft_delete_character(GET_PID(ch))",
-    "remove_all_artifacts_sql(ch)",
+    "remove_all_artifacts_sql(GET_PID(ch))",
     "remove_all_locker_access(ch)",
     "GET_ASSOC(ch)->save_without_member(ch)",
     "sql_delete_locker(GET_PID(ch), 0)",
     "sql_delete_ship(GET_NAME(ch))",
     "sql_delete_player(GET_PID(ch), false)",
     "sql_commit()",
+    "artifacts_forget_deleted_character(GET_PID(ch))",
     "GET_ASSOC(ch)->forget_deleted_member(ch)",
     "remove_char_from_list(ch->desc->account",
     "delete_ship_runtime(GET_NAME(ch))",

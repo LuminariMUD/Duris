@@ -27,62 +27,28 @@ assert "combat_outcome_transaction_submit(payload, combat_outcome_committed, &op
 print("[PASS] combat mutations publish only through the transactional outcome command")
 
 assert "bool sql_get_bind_data(int vnum, int *owner_pid, int *timer);" in sql_header
+# On MariaDB the souls are held in memory with the artifacts (artifact.c): read there,
+# changed there at once and queued on the writer, never queried on the game loop.
+assert "artifact_bind WHERE vnum" not in sql_text and "INTO artifact_bind" not in sql_text
 bind_lookup = function(
-    sql_text,
+    artifact_text,
     "bool sql_get_bind_data(int vnum, int *owner_pid, int *timer)\n{",
     "void sql_update_bind_data",
 )
-query = 'qry("SELECT owner_pid, timer FROM artifact_bind WHERE vnum = %d", vnum)'
-query_failure = bind_lookup[bind_lookup.index(f"if (!{query})"):bind_lookup.index(
-    "MYSQL_RES *res"
-)]
-allocation_failure = bind_lookup[bind_lookup.index("if (!res)"):bind_lookup.index(
-    "if (mysql_num_rows"
-)]
-malformed_failure = bind_lookup[bind_lookup.index("if (!row ||"):bind_lookup.index(
-    "*owner_pid = parsed_owner_pid;"
-)]
+bind_update = function(artifact_text, "void sql_update_bind_data", "#else")
+store = function(artifact_text, "void artifact_bind_store(", "// Frees vnum's soul")
 checks = {
-    "rejects invalid output pointers": "if (!owner_pid || !timer)" in bind_lookup,
-    "initializes owner before query": bind_lookup.index("*owner_pid = 0;")
-    < bind_lookup.index(query),
-    "initializes timer before query": bind_lookup.index("*timer = 0;")
-    < bind_lookup.index(query),
-    "initializes provided outputs before pointer rejection": bind_lookup.index(
-        "*timer = 0;"
-    )
-    < bind_lookup.index("if (!owner_pid || !timer)"),
-    "query failure is explicit": "failed to read from database" in query_failure
-    and "return false;" in query_failure,
-    "allocation failure is checked": "if (!res)" in bind_lookup
-    and "mysql_store_result failed" in allocation_failure
-    and "return false;" in allocation_failure,
-    "no row is successful defaults": "if (mysql_num_rows(res) < 1)" in bind_lookup
-    and "mysql_free_result(res);\n\t\treturn true;" in bind_lookup,
-    "row fetch is checked": "if (!row ||" in bind_lookup,
-    "both columns are strictly parsed": "sql_parse_bind_int(row[0]" in bind_lookup
-    and "sql_parse_bind_int(row[1]" in bind_lookup,
-    "malformed row is explicit failure": "malformed database row" in malformed_failure
-    and "return false;" in malformed_failure,
-    "values publish atomically": bind_lookup.index("int parsed_owner_pid = 0;")
-    < bind_lookup.index("*owner_pid = parsed_owner_pid;")
-    and bind_lookup.index("int parsed_timer = 0;")
-    < bind_lookup.index("*timer = parsed_timer;"),
-    "valid row returns success after publication": bind_lookup.index(
-        "*timer = parsed_timer;"
-    )
-    < bind_lookup.rindex("return true;"),
+    "reads memory": "artifact_binds.find(vnum)" in bind_lookup and "qry(" not in bind_lookup,
+    "no soul yet is owner 0, timer 0": bind_lookup.count("? 0 :") == 2
+    and "return true;" in bind_lookup,
+    "update goes through the store": "artifact_bind_store(vnum, *owner_pid, *timer);" in bind_update,
+    "store changes memory, then queues": store.index("artifact_binds[vnum] =")
+    < store.index("sql_queue(")
+    and "ON DUPLICATE KEY UPDATE" in store,
 }
 for label, passed in checks.items():
-    print(f"[{'PASS' if passed else 'FAIL'}] bind lookup: {label}")
+    print(f"[{'PASS' if passed else 'FAIL'}] bind data: {label}")
 assert all(checks.values())
-
-parser = function(sql_text, "static bool sql_parse_bind_int", "bool sql_get_bind_data")
-assert "!isdigit((unsigned char)*digit)" in parser
-assert "errno == ERANGE" in parser
-assert "parsed < INT_MIN || parsed > INT_MAX" in parser
-assert "*result = (int)parsed;" in parser
-print("[PASS] malformed and out-of-range bind integers cannot publish")
 
 stub_start = sql_text.index("bool sql_get_bind_data(int vnum, int *owner_pid, int *timer)\n{")
 stub_end = sql_text.index("bool sql_pwipe", stub_start)
@@ -92,12 +58,10 @@ assert "*timer = 0;" in stub
 assert "return false;" in stub
 print("[PASS] no-MySQL bind lookup initializes outputs and reports failure")
 
-assert artifact_text.count("sql_get_bind_data(") == 3
-assert artifact_text.count("if (!sql_get_bind_data(") == 3
+assert artifact_text.count("if (!sql_get_bind_data(") == 2
 for caller, next_caller in (
     ("void artifact_switch_check", "void artifact_update_sql"),
     ("void artifact_feed_sql", "void poof_artifact"),
-    ("void arti_fixit_sql", "void arti_sync_sql"),
 ):
     body = function(artifact_text, caller, next_caller)
     failure = body.index("if (!sql_get_bind_data(")

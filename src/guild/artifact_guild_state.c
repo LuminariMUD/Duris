@@ -258,6 +258,11 @@ void artifact_guild_state_publish(const artifact_guild_result &result)
 		const auto &entry = result.artifacts[index];
 		artifacts[entry.vnum] = { entry.timer, entry.bind_owner_pid, entry.bind_timer,
 					  entry.revision };
+#ifndef __NO_MYSQL__
+		// The transaction wrote the artifact's timer and soul too.
+		artifact_feed_published(entry.vnum, entry.timer, entry.bind_owner_pid,
+					static_cast<int>(entry.bind_timer));
+#endif
 	}
 	if (result.guild_id)
 	{

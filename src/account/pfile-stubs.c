@@ -105,6 +105,7 @@ struct affected_type *get_spell_from_char(P_char, int, void *, int)
  * tool never reaches those paths, so stub them rather than pull the server in.
  */
 #include "persistence/persistence_mode.h"
+#include "persistence/persistence_observability.h"
 #include "flatfile/flatfile_character_delete.h"
 #include "guild/assocs.h"
 
@@ -129,6 +130,10 @@ void delete_ship_runtime(const char *) {}
 void player_revision_forget(int) {}
 void sql_player_names_forget(int) {}
 bool sql_in_transaction()
+{
+	return false;
+}
+bool qry_at(struct persistence_query_site, const char *, ...)
 {
 	return false;
 }
@@ -167,10 +172,11 @@ int ne_event_time(P_nevent)
 {
 	return 0;
 }
-bool remove_all_artifacts_sql(P_char)
+std::string remove_all_artifacts_sql(int)
 {
-	return true;
+	return {};
 }
+void artifacts_forget_deleted_character(int) {}
 bool remove_all_locker_access(P_char)
 {
 	return true;

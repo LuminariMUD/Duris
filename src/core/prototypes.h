@@ -709,8 +709,12 @@ void event_artifact_check_poof_sql(P_char ch, P_char vict, P_obj obj, void *arg)
 void event_artifact_wars_sql(P_char, P_char, P_obj, void *);
 bool get_artifact_data_sql(int vnum, P_arti artidata);
 bool remove_owned_artifact_sql(P_obj arti, int pid = -1);
-bool remove_all_artifacts_sql(P_char ch);
+std::string remove_all_artifacts_sql(int pid);
+void artifacts_forget_deleted_character(int pid);
 void setupMortArtiList_sql(void);
+bool artifacts_load(void);
+void artifacts_forget_deleted_account_character(int pid);
+void artifact_feed_published(int vnum, time_t timer, int bind_owner_pid, int bind_timer);
 
 /* artifact_old.c */
 void UpdateArtiBlood(P_char, P_obj, int);
