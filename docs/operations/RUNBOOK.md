@@ -623,15 +623,19 @@ selected database. Run them only after repeating the exact clone target qualific
 above; never use production as a development or validation target.
 
 ```bash
-./migrations/reconcile_epic_balances.sh
-./migrations/reconcile_currency_balances.sh
 ./migrations/reconcile_item_ownership.sh
 ./migrations/reconcile_auction_transactions.sh
-./migrations/reconcile_combat_frags.sh
 ./migrations/reconcile_artifact_guild_outcomes.sh
 ./migrations/reconcile_boon_reward_zone.sh
 ./migrations/reconcile_phase02_domains.sh
 ```
+
+Wallets, banks, epic points and frags are saved from memory since Phase 2 of the
+[persistence reset](../ongoing-projects/2026-09-28-persistence-memory-authority-plan.md);
+their ledgers are history, and money changes are no longer ledgered at all.
+`migrations/reconcile_currency_balances.sh`, `migrations/reconcile_epic_balances.sh` and
+`migrations/reconcile_combat_frags.sh` compare balances with those ledgers, so they report
+ordinary play as mismatches. Do not run them as integrity checks; Phase 3 removes them.
 
 A nonzero mismatch is an integrity incident, not permission to edit current rows.
 Stop the affected domain, preserve its journal, inbox, outbox, ledger, and report,
