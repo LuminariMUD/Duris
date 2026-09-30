@@ -71,7 +71,8 @@ listing = artifact[
 ]
 assert listing.count("redis_get_artifact_list") == 1
 assert "redis_invalidate_artifact_list" in listing
-assert "redis_cache_artifact_list(type, Godlist, json)" in listing
+assert "redis_cache_artifact_list(type, Godlist, listed)" in listing
+assert "generation == arti_cache_generation" in listing
 assert "Artifact data is temporarily unavailable." in listing
 assert "Cache error." not in listing
 

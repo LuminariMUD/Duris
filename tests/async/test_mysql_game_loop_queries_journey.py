@@ -51,6 +51,10 @@ COMMANDS = (
     ('drop stone', 'You drop'),
     ('load obj 901', 'Pos: standing >'),
     ('drop stone', 'You drop'),
+    # The lists are read on the writer and answer on a later pulse.
+    ('artifacts ioun all', '(#901)'),
+    ('artifacts ioun mortal', 'No artifacts found.'),
+    ('artifacts player ' + journey.CHARACTER, 'No artifacts found.'),
     ('artifacts clear 901', 'cleared from the Immortal and Mortal lists'),
     ('artifacts reset 900', 'Artifact vnum 900 has a hungry soul.'),
     ('artifacts reset fixit', 'Empty set; no artifacts on PC'),

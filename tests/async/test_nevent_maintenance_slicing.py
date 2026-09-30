@@ -51,7 +51,7 @@ wars = function_body(artifact, "void event_artifact_wars_sql(")
 assert "ARTIFACT_WARS_OWNER_BATCH_SIZE = 4" in artifact
 assert "row.location <= cursor_pid" in wars
 assert "owner_count < ARTIFACT_WARS_OWNER_BATCH_SIZE" in wars
-assert "row.timer = now + static_cast<time_t>(std::floor(" in wars
+assert "static_cast<double>(row.timer - now) *" in wars
 assert "nevent_periodic_continue_after(1);" in wars
 assert "qry(" not in wars
 assert "arti_list" not in artifact and "add_artidata_to_list" not in artifact

@@ -73,9 +73,17 @@ P_char load_dummy_char(char *name);
 void nuke_eq(P_char ch);
 void arti_redis_cache(int type, bool Godlist);
 
+#ifndef __NO_MYSQL__
+// Counts invalidations: a list read on the writer before the latest one is not cached.
+static unsigned int arti_cache_generation = 0;
+#endif
+
 // invalidate redis cache
 static void arti_cache_invalidate(void)
 {
+#ifndef __NO_MYSQL__
+	++arti_cache_generation;
+#endif
 	redis_invalidate_artifact_cache();
 }
 
@@ -271,27 +279,24 @@ void arti_cache_init(void)
 }
 
 #ifndef __NO_MYSQL__
-// json for redis/website
-static char *arti_generate_json(int type, bool Godlist)
+// The rows of a list (the Immortal or the Mortal one), each with its owner's side.
+static std::string artifact_list_query(int type, bool Godlist)
 {
-	MYSQL_RES *res;
-	MYSQL_ROW row;
+	return sql_format(
+		"SELECT a.vnum, a.locType, a.location, a.owned, UNIX_TIMESTAMP(a.timer), a.lastUpdate, "
+		"p.racewar FROM %s a LEFT JOIN player_data p ON p.pid = a.location AND a.locType IN (%d, %d) "
+		"WHERE a.type=%d",
+		Godlist ? "artifacts" : "artifacts_mortal", ARTIFACT_ON_PC, ARTIFACT_ONCORPSE,
+		type);
+}
+
+// json for redis/website, from the rows of artifact_list_query()
+static char *arti_generate_json(int type, bool Godlist, const sql_rows &rows)
+{
 	P_obj obj;
-	P_char owner = NULL;
 	char *locName;
 	int racewar;
 	cJSON *root, *arr, *item;
-
-	if (Godlist)
-		qry("SELECT vnum, locType, location, owned, UNIX_TIMESTAMP(timer), lastUpdate FROM artifacts WHERE type=%d",
-		    type);
-	else
-		qry("SELECT vnum, locType, location, owned FROM artifacts_mortal WHERE type=%d",
-		    type);
-
-	res = mysql_store_result(DB);
-	if (!res)
-		return NULL;
 
 	root = cJSON_CreateObject();
 	arr = cJSON_CreateArray();
@@ -301,7 +306,6 @@ static char *arti_generate_json(int type, bool Godlist)
 			cJSON_Delete(root);
 		if (arr)
 			cJSON_Delete(arr);
-		mysql_free_result(res);
 		return NULL;
 	}
 	cJSON_AddItemToObject(root, "artifacts", arr);
@@ -311,12 +315,12 @@ static char *arti_generate_json(int type, bool Godlist)
 
 	int articount[5] = { 0 };
 
-	while ((row = mysql_fetch_row(res)))
+	for (const sql_row &row : rows)
 	{
 		int vnum = atoi(row[0]);
 		int locType = atoi(row[1]);
-		int location = atoi(row[2]);
-		bool owned = (row[3][0] == 'Y');
+		int location = row[2] ? atoi(row[2]) : 0;
+		bool owned = row[3] && row[3][0] == 'Y';
 
 		obj = read_object(vnum, VIRTUAL);
 		if (!obj || !IS_ARTIFACT(obj))
@@ -330,7 +334,6 @@ static char *arti_generate_json(int type, bool Godlist)
 		if (!item)
 		{
 			extract_obj(obj, FALSE);
-			mysql_free_result(res);
 			cJSON_Delete(root);
 			return NULL;
 		}
@@ -353,14 +356,8 @@ static char *arti_generate_json(int type, bool Godlist)
 			if (locName)
 			{
 				cJSON_AddStringToObject(item, "ownerName", locName);
-				owner = load_dummy_char(locName);
-				if (owner)
-				{
-					racewar = GET_RACEWAR(owner);
-					nuke_eq(owner);
-					owner->in_room = NOWHERE;
-					extract_char(owner);
-				}
+				if (row[6])
+					racewar = atoi(row[6]);
 			}
 		}
 		cJSON_AddNumberToObject(item, "racewar", racewar);
@@ -368,15 +365,13 @@ static char *arti_generate_json(int type, bool Godlist)
 		if (owned && (locType == ARTIFACT_ON_PC || locType == ARTIFACT_ONCORPSE))
 		{
 			articount[RACEWAR_NONE]++;
-			if (racewar != RACEWAR_NONE)
+			if (racewar > RACEWAR_NONE && racewar <= RACEWAR_NEUTRAL)
 				articount[racewar]++;
 		}
 
 		cJSON_AddItemToArray(arr, item);
 		extract_obj(obj, FALSE);
 	}
-
-	mysql_free_result(res);
 
 	cJSON *summary = cJSON_CreateObject();
 	if (!summary)
@@ -394,17 +389,24 @@ static char *arti_generate_json(int type, bool Godlist)
 	return json;
 }
 
+// Rebuilds the cached list from a read on the writer, on a later pulse.
 void arti_redis_cache(int type, bool Godlist)
 {
 	if (!redis_report_cache_enabled())
 		return;
 
-	char *json = arti_generate_json(type, Godlist);
-	if (!json)
-		return;
-
-	redis_cache_artifact_list(type, Godlist, json);
-	free(json);
+	const unsigned int generation = arti_cache_generation;
+	sql_read(artifact_list_query(type, Godlist),
+		 [type, Godlist, generation](bool ok, const sql_rows &rows)
+		 {
+			 if (!ok || generation != arti_cache_generation)
+				 return;
+			 char *json = arti_generate_json(type, Godlist, rows);
+			 if (!json)
+				 return;
+			 redis_cache_artifact_list(type, Godlist, json);
+			 free(json);
+		 });
 }
 #else
 void arti_redis_cache(int /*type*/, bool /*Godlist*/) {}
@@ -567,68 +569,14 @@ void do_artifact_sql(P_char ch, char *arg, int /*cmd*/)
 		ch);
 }
 
-// display artifact list from redis cache
-void list_artifacts_sql(P_char ch, int type, bool Godlist, bool allArtis)
-{
 #ifndef __NO_MYSQL__
+// Shows ch the list in root, then deletes root.
+static void show_artifact_list(P_char ch, cJSON *root, int type, bool Godlist, bool allArtis)
+{
 	char buf[MAX_STRING_LENGTH];
-	char *json;
-	cJSON *root, *artifacts, *item;
+	cJSON *artifacts, *item;
 	int articount[5] = { 0 };
 	bool shownData = FALSE;
-
-	if (type != ARTIFACT_MAJOR && type != ARTIFACT_UNIQUE && type != ARTIFACT_IOUN)
-	{
-		send_to_char("Invalid artifact type.\n\r", ch);
-		return;
-	}
-
-	// Treat cache unavailability or malformed data as a miss. The SQL-generated
-	// payload is rendered directly; cache publication is best effort.
-	root = NULL;
-	if (redis_report_cache_enabled())
-	{
-		json = redis_get_artifact_list(type, Godlist);
-		if (json)
-		{
-			root = cJSON_Parse(json);
-			free(json);
-			if (!artifact_cache_payload_valid(root, type, Godlist))
-			{
-				if (root)
-					cJSON_Delete(root);
-				root = NULL;
-				redis_invalidate_artifact_list(type, Godlist);
-				logit(LOG_SYS,
-				      "redis: rejected malformed artifact cache type=%d godlist=%d",
-				      type, Godlist ? 1 : 0);
-			}
-		}
-	}
-	if (!root)
-	{
-		json = arti_generate_json(type, Godlist);
-		if (!json)
-		{
-			send_to_char("Artifact data is temporarily unavailable.\n\r", ch);
-			return;
-		}
-		root = cJSON_Parse(json);
-		if (!artifact_cache_payload_valid(root, type, Godlist))
-		{
-			free(json);
-			if (root)
-				cJSON_Delete(root);
-			logit(LOG_SYS,
-			      "artifact: generated invalid list payload type=%d godlist=%d", type,
-			      Godlist ? 1 : 0);
-			send_to_char("Artifact data is temporarily unavailable.\n\r", ch);
-			return;
-		}
-		if (redis_report_cache_enabled())
-			redis_cache_artifact_list(type, Godlist, json);
-		free(json);
-	}
 
 	artifacts = cJSON_GetObjectItem(root, "artifacts");
 
@@ -775,6 +723,74 @@ void list_artifacts_sql(P_char ch, int type, bool Godlist, bool allArtis)
 	checked_snprintf(buf + strlen(buf), MAX_STRING_LENGTH - strlen(buf),
 			 "         &+WTotal:        %d\r\n", articount[RACEWAR_NONE]);
 	send_to_char(buf, ch);
+}
+#endif
+
+// display artifact list from redis cache
+void list_artifacts_sql(P_char ch, int type, bool Godlist, bool allArtis)
+{
+#ifndef __NO_MYSQL__
+	char *json;
+	cJSON *root;
+
+	if (type != ARTIFACT_MAJOR && type != ARTIFACT_UNIQUE && type != ARTIFACT_IOUN)
+	{
+		send_to_char("Invalid artifact type.\n\r", ch);
+		return;
+	}
+
+	// Treat cache unavailability or malformed data as a miss. A miss reads the list on
+	// the writer and shows it on a later pulse; cache publication is best effort.
+	root = NULL;
+	if (redis_report_cache_enabled())
+	{
+		json = redis_get_artifact_list(type, Godlist);
+		if (json)
+		{
+			root = cJSON_Parse(json);
+			free(json);
+			if (!artifact_cache_payload_valid(root, type, Godlist))
+			{
+				if (root)
+					cJSON_Delete(root);
+				root = NULL;
+				redis_invalidate_artifact_list(type, Godlist);
+				logit(LOG_SYS,
+				      "redis: rejected malformed artifact cache type=%d godlist=%d",
+				      type, Godlist ? 1 : 0);
+			}
+		}
+	}
+	if (root)
+	{
+		show_artifact_list(ch, root, type, Godlist, allArtis);
+		return;
+	}
+	const unsigned int generation = arti_cache_generation;
+	if (!sql_read_for(
+		    ch, artifact_list_query(type, Godlist),
+		    [type, Godlist, allArtis, generation](P_char viewer, const sql_rows &rows)
+		    {
+			    char *listed = arti_generate_json(type, Godlist, rows);
+			    cJSON *parsed = listed ? cJSON_Parse(listed) : NULL;
+			    if (!artifact_cache_payload_valid(parsed, type, Godlist))
+			    {
+				    free(listed);
+				    if (parsed)
+					    cJSON_Delete(parsed);
+				    logit(LOG_SYS,
+					  "artifact: generated invalid list payload type=%d godlist=%d",
+					  type, Godlist ? 1 : 0);
+				    send_to_char("Artifact data is temporarily unavailable.\n\r",
+						 viewer);
+				    return;
+			    }
+			    if (redis_report_cache_enabled() && generation == arti_cache_generation)
+				    redis_cache_artifact_list(type, Godlist, listed);
+			    free(listed);
+			    show_artifact_list(viewer, parsed, type, Godlist, allArtis);
+		    }))
+		send_to_char("Artifact data is temporarily unavailable.\n\r", ch);
 #else
 	char buf[MAX_STRING_LENGTH];
 	int articount[5] = { 0 };
@@ -4689,13 +4705,8 @@ void addOnMobArtis_sql()
 void arti_player_sql(P_char ch, char *arg)
 {
 #ifndef __NO_MYSQL__
-	char buf[MAX_STRING_LENGTH], locationBuf[MAX_STRING_LENGTH], timeBuf[128], *name;
-	int pid, vnum, locType, minutes, hours;
-	long totalTime;
-	bool shownData, negTime;
-	P_obj arti;
-	MYSQL_RES *res;
-	MYSQL_ROW row;
+	char buf[MAX_STRING_LENGTH], *name;
+	int pid;
 
 	if ((pid = atoi(arg)) < 1)
 	{
@@ -4715,106 +4726,75 @@ void arti_player_sql(P_char ch, char *arg)
 		return;
 	}
 
-	snprintf(buf, MAX_STRING_LENGTH,
-		 "&+YOwner                  Time      Last Update           Artifact\r\n\r\n");
-	send_to_char(buf, ch);
-
-	if (!qry("SELECT vnum, locType, location, owned, UNIX_TIMESTAMP(timer), lastUpdate FROM artifacts WHERE location=%d",
-		 pid))
+	// The rows, with their last update, are read on the writer.
+	const auto show = [owner = std::string(name)](P_char viewer, const sql_rows &rows)
 	{
-		send_to_char("&+RError with query attempt.  Aborting...\n", ch);
-		return;
-	}
+		char line[MAX_STRING_LENGTH], locationBuf[MAX_STRING_LENGTH], timeBuf[128];
+		bool shownData = FALSE;
 
-	if (!(res = mysql_store_result(DB)))
-	{
-		send_to_char("&+RError storing query result.  Aborting...\n", ch);
-		return;
-	}
-
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		send_to_char("No artifacts found.\n\r", ch);
-		return;
-	}
-
-	shownData = FALSE;
-	while ((row = mysql_fetch_row(res)))
-	{
-		vnum = atoi(row[0]);
-		locType = atoi(row[1]);
-
-		// In case there's on in the room with vnum == pid or such.
-		if (locType != ARTIFACT_ON_PC && locType != ARTIFACT_ONCORPSE)
+		send_to_char(
+			"&+YOwner                  Time      Last Update           Artifact\r\n\r\n",
+			viewer);
+		for (const sql_row &row : rows)
 		{
-			continue;
-		}
+			const int vnum = atoi(row[0]);
+			const int locType = atoi(row[1]);
 
-		// Tryin' load a copy of the arti for display purposes.
-		arti = read_object(vnum, VIRTUAL);
-		if (!arti || !IS_ARTIFACT(arti))
-		{
-			debug("list_artifacts_sql: Non artifact on arti list: '%s' %d.",
-			      (arti == NULL) ? "NULL" : arti->short_description, vnum);
-			// Pull arti if it loaded.
-			if (arti)
+			// In case there's on in the room with vnum == pid or such.
+			if (locType != ARTIFACT_ON_PC && locType != ARTIFACT_ONCORPSE)
+				continue;
+
+			// Tryin' load a copy of the arti for display purposes.
+			P_obj arti = read_object(vnum, VIRTUAL);
+			if (!arti || !IS_ARTIFACT(arti))
 			{
-				extract_obj(arti);
+				debug("list_artifacts_sql: Non artifact on arti list: '%s' %d.",
+				      (arti == NULL) ? "NULL" : arti->short_description, vnum);
+				// Pull arti if it loaded.
+				if (arti)
+					extract_obj(arti);
+				continue;
 			}
-			continue;
-		}
 
-		if (locType == ARTIFACT_ON_PC)
-		{
-			snprintf(locationBuf, MAX_STRING_LENGTH, "%-21s", name);
-		}
-		else if (locType == ARTIFACT_ONCORPSE)
-		{
-			snprintf(buf, MAX_STRING_LENGTH, "%s's corpse", name);
-			checked_snprintf(locationBuf, MAX_STRING_LENGTH, "%-21s", buf);
-		}
-		else
-		{
-			snprintf(buf, MAX_STRING_LENGTH,
-				 "&+RError reading query result.  Skipping... '%s' %d.\n",
-				 OBJ_SHORT(arti), OBJ_VNUM(arti));
-			send_to_char(buf, ch);
-			extract_obj(arti);
-			continue;
-		}
+			if (locType == ARTIFACT_ON_PC)
+				snprintf(locationBuf, MAX_STRING_LENGTH, "%-21s", owner.c_str());
+			else
+			{
+				snprintf(line, MAX_STRING_LENGTH, "%s's corpse", owner.c_str());
+				checked_snprintf(locationBuf, MAX_STRING_LENGTH, "%-21s", line);
+			}
 
-		negTime = FALSE;
-		// totalTime (left to poof in sec) is the timer (time at which it poofs) - now.
-		if (atol(row[4]) == 0)
-		{
-			totalTime = 0;
+			// totalTime (left to poof in sec) is the timer (time at which it poofs) - now.
+			long totalTime = (row[4] ? atol(row[4]) : 0) - time(NULL);
+			const bool negTime = totalTime < 0;
+			if (negTime)
+				totalTime *= -1;
+			// Convert to minutes.
+			totalTime /= 60;
+			const int minutes = totalTime % 60;
+			// Convert to hours.
+			totalTime /= 60;
+			const int hours = totalTime % 24;
+
+			snprintf(timeBuf, sizeof timeBuf, "%c%2ld:%02d:%02d", negTime ? '-' : ' ',
+				 totalTime / 24, hours, minutes);
+
+			checked_snprintf(line, MAX_STRING_LENGTH, "%s&n%-11s %-22s%s (#%d)\r\n",
+					 locationBuf, timeBuf, row[5] ? row[5] : "",
+					 OBJ_SHORT(arti), vnum);
+			send_to_char(line, viewer);
+			shownData = TRUE;
+			extract_obj(arti, FALSE);
 		}
-		if ((totalTime = atol(row[4]) - time(NULL)) < 0)
-		{
-			negTime = TRUE;
-			totalTime *= -1;
-		}
-		// Convert to minutes.
-		totalTime /= 60;
-		minutes = totalTime % 60;
-		// Convert to hours.
-		totalTime /= 60;
-		hours = totalTime % 24;
-
-		snprintf(timeBuf, sizeof timeBuf, "%c%2ld:%02d:%02d", negTime ? '-' : ' ',
-			 totalTime / 24, hours, minutes);
-
-		checked_snprintf(buf, MAX_STRING_LENGTH, "%s&n%-11s %-22s%s (#%d)\r\n", locationBuf,
-				 timeBuf, row[5], OBJ_SHORT(arti), vnum);
-		send_to_char(buf, ch);
-		shownData = TRUE;
-		extract_obj(arti, FALSE);
-	}
-	mysql_free_result(res);
-
-	if (!shownData)
-		send_to_char("No artifacts found.\n\r", ch);
+		if (!shownData)
+			send_to_char("No artifacts found.\n\r", viewer);
+	};
+	if (!sql_read_for(ch,
+			  sql_format("SELECT vnum, locType, location, owned, UNIX_TIMESTAMP(timer), "
+				     "lastUpdate FROM artifacts WHERE location=%d",
+				     pid),
+			  show))
+		send_to_char("That is not available right now.\r\n", ch);
 #else
 	char buf[MAX_STRING_LENGTH], location_buffer[MAX_STRING_LENGTH], time_buffer[128];
 	int pid = atoi(arg);
