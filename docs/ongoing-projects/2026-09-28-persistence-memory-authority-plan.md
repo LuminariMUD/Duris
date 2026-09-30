@@ -362,19 +362,32 @@ shop and an auction by hand.
 
 ## Phase 3: delete what is left over
 
-Remove the code nothing calls any more:
+Remove the code nothing calls any more. Every server is treated as new (decided on 2026-09-30):
+none holds an older journal to replay or death records to keep, so the one-time journal replays
+and the death custody and restitution feature go too.
 
 - `item_movement_transaction.c`;
 - what is left of `item_transfer_command.c` and `item_transfer_repository.c`;
-- `item_ownership_runtime.c`;
+- `item_ownership_runtime.c`, once the collector no longer reads it (see
+  [Phase 3 progress](#phase-3-progress));
 - `corpse_lifecycle_*.c`;
-- the death restitution runtime;
-- `player_save_journal.c`;
 - the custody and degraded-load code;
 - `currency_transaction.c`;
 - the item and currency parts of `critical_command_*`;
-- the currency repository, the coin transfer command, the corpse lifecycle wallet and the
-  accounting bank commands, which Phase 2 kept only for an older journal's one-time replay;
+- the player-save journal: `player_save_journal.c`, the one-time legacy replay in
+  `player_save_pipeline_init()` with its revision fence (`PLAYER_SAVE_LEGACY_REPLAY`), and the
+  `PLAYER_SAVE_JOURNAL_DIR` setting in the configuration, scripts, backup policy and data
+  lifecycle manifest;
+- the critical-command journal's one-time replay, and what only it reaches: the currency
+  repository, the coin transfer command, the corpse lifecycle wallet, the accounting bank
+  commands and the record-only replay of epic, combat and stone commands.
+  `CRITICAL_COMMAND_JOURNAL_DIR` stays, because locker identification keeps its receipts there;
+- the death custody and restitution feature: the restitution runtime and its boot advisory
+  lock, the native restitution command, `scripts/player_death_restitution.py`, the restitution
+  locker notice and their docs; flat-file `player-deaths/`; and the tables
+  `player_death_disposition`, `player_death_custody` and `player_death_restitution_*`, dropped
+  by a new guarded, re-runnable migration (the existing ones are immutable), with their runtime
+  compatibility and data lifecycle entries;
 - the game-thread SQL functions nothing calls, found by step 8 (see
   [What is left after step 8](#what-is-left-after-step-8)): the `*_legacy` auction functions,
   `auction_money_pickup_committed()`, `auction_houses_activity()`, the dead boon, epic zone,
@@ -383,8 +396,8 @@ Remove the code nothing calls any more:
   that only the boot pfile migration still uses;
 - the flat-file equivalents of all of the above.
 
-That is roughly 20,000 to 30,000 lines. The death-custody tables stay until staff have resolved the
-records in them; dropping them is a separate owner decision.
+That is roughly 20,000 to 30,000 lines. A deployment that still holds an older journal starts
+without it (nothing reads it any more), and the migration drops its death records.
 
 ## What was cut, and why
 
@@ -453,6 +466,8 @@ These parts were cut:
   an empty `NOT_CONVERTED` list.)
 - The database cannot hold one item under two owners, and `logs/log/dupes` accounts for every item a
   save or load gave up.
+- After Phase 3, no code is left that nothing reaches, and staging has run the journeys and a day
+  of checks on the result.
 
 ## Phase 1 progress
 
@@ -735,13 +750,15 @@ taken back out (see "Removed in the ablation" below).
     saved room items a flat-file writer job. Flat-file lockers are not a gap of this step: the
     backend never loads a locker's items at all (`sql_load_locker()` is a stub there and nothing
     reads the locker records), so a save job would have nothing to feed. That is a missing
-    flat-file feature, not part of Phase 1.
+    flat-file feature, not part of Phase 1; it is carried into
+    [Phase 3 progress](#phase-3-progress).
   - A floor item is not an owner that saves: an item dropped in memory is gone after a restart on
     both backends (MariaDB never persisted floor drops either). `test_flatfile_full_world_boot.py`
     drops the mace, saves, picks it up and checks it survives the restart with the player.
   - The collector's scheduled collection of antiquities still prepares from the runtime cache
     (`collector_collection_prepare()`): an antiquity moved in memory since load is not collected
-    until a reboot refreshes the cache. It is economy code for Phase 2.
+    until a reboot refreshes the cache. It is economy code for Phase 2, which left it; it is
+    carried into [Phase 3 progress](#phase-3-progress).
   - World recovery (`world_recovery_pipeline.c`) still skips a room item whose cached owner is not
     the room. That is the safe side: it cannot restore a floor copy of an item its dropper's save
     still holds.
@@ -759,6 +776,7 @@ taken back out (see "Removed in the ablation" below).
   reports `conflict`, which the login turns into a component failure, and the test inspector's
   `inspect` fails. Flat-file banks are keyed by account and racewar, so the fix is a decision about
   which bank an immortal uses. `run_npc_container_claim_journey.py` hit it through the inspector.
+  (Resolved as the owner chose in `6e4934ab0`; see [Review round 1 (MR !2)](#review-round-1-mr-2).)
 - Tests: `test_items_move_in_memory.py` (contracts for all of the above), the rewritten
   `item_transfer_mysql_harness.cpp` (stale revisions no longer fence; a stale owner's record is
   taken with an audit row; an auction-held item and a destroyed item are refused; a grant claims its
@@ -818,7 +836,8 @@ taken back out (see "Removed in the ablation" below).
 - **Known gaps:**
   - The collector's death intake rode on the durable `corpse_create` transfer
     (`collector_death_enrollment_attach()`), so the collector no longer enrols player deaths.
-    Nothing is lost: antiquities simply stay in the corpse. Economy code for Phase 2.
+    Nothing is lost: antiquities simply stay in the corpse. Economy code for Phase 2, which left
+    it; Phase 3 restores it in memory (see [Phase 3 progress](#phase-3-progress)).
   - A flat-file corpse's items were persisted only by those durable transfers (the flat-file
     lifecycle upsert carries the corpse and its money, not its items), so on the flat-file backend
     a corpse's items did not survive a restart until step 6 added the flat-file corpse job.
@@ -898,7 +917,8 @@ taken back out (see "Removed in the ablation" below).
   `run_saved_item_recovery_journey.py`.
 - Left for the Phase 1 tests: a journey that dies, restarts with full-world corpse restoration
   and loots the restored corpse (the minimal-world journeys skip corpse restoration), and the
-  "raising, resurrecting and decaying make no database call" test.
+  "raising, resurrecting and decaying make no database call" test. The second is
+  `test_corpses_in_memory.py`; the first is carried into [Phase 3 progress](#phase-3-progress).
 - **Correction (made with step 8):** a flat-file boot restores corpse records and per-room records
   (`flatfile_room_item_record`), never the `saved_items` records, so the flat-file saved-item job
   now writes the item's graph into its room's record
@@ -977,7 +997,7 @@ taken back out (see "Removed in the ablation" below).
   `test_flatfile_auction_coin_put_journey.py`, `test_pet_restart_journey.py` and
   `run_npc_container_claim_journey.py`.
 
-### Phase 1 tests and journeys (in progress)
+### Phase 1 tests and journeys (done)
 
 - Covered by the step tests: claims with audit and a MariaDB leg, the auction left out and logged,
   stale rows skipped and logged (steps 2 and 3); deaths (`test_deaths_happen_at_once.py`, which
@@ -1010,9 +1030,9 @@ taken back out (see "Removed in the ablation" below).
   real server in `test_flatfile_combat_journey.py` / `test_mysql_combat_journey.py` and the corpse
   haul journey (death and loot) and in the item transfer legs (give).
 - Staging runs tagged `master`, so the staging journeys and the day of staging checks wait for this
-  branch to be merged.
+  branch to be merged. They are carried into [Phase 3 progress](#phase-3-progress).
 
-### Done-when review (in progress)
+### Done-when review (done)
 
 - Private locker chests: `sql_save_private_chest_items()` (run when a player leaves the locker
   room, from `LockerToPFile()`) wrote on the game thread. Outside a transaction it now queues a
@@ -1058,6 +1078,9 @@ taken back out (see "Removed in the ablation" below).
   3. production only with the owner's go-ahead. `duris_dev` and any other database need
      `python3 scripts/migration_runner.py run` for `0033_item_owner_audit` before this binary
      boots (the local boot applies it).
+
+  Staging still runs a build from 2026-09-23, so items 1 and 2 are carried into
+  [Phase 3 progress](#phase-3-progress); item 3 stands for every production deployment.
 - Known and accepted until Phase 2: creation grants and the economy (shops, auctions, collector,
   currency) still move items through their own transactions; the collector's death intake and
   its scheduled collection read the runtime cache; artifacts entering a player's corpse and
@@ -1065,7 +1088,8 @@ taken back out (see "Removed in the ablation" below).
   lockers never load items at all (a missing flat-file feature). Phase 3 deletes the dead durable
   paths (item movement transactions, the corpse lifecycle deferrals, terminal fences,
   `player_save_pipeline_terminal_death()`, the flat-file corpse lifecycle staging code in the
-  critical command path).
+  critical command path). Phase 2 moved the economy; the collector's two cache reads and the
+  flat-file lockers are carried into [Phase 3 progress](#phase-3-progress).
 
 ### Review round 1 (MR !2)
 
@@ -2173,20 +2197,32 @@ Verification for this round, on the final head:
 
 Not started. The branch is `fix/7-persistence-phase-3` (see [Review and branches](#review-and-branches)).
 
-Where it starts:
+Decided on 2026-09-30, so nothing in Phase 3 waits on anyone:
 
-- What to delete: the list in [Phase 3](#phase-3-delete-what-is-left-over), the dead functions named
-  in [What is left after step 8](#what-is-left-after-step-8), and the "left for Phase 3" notes in
-  the Phase 1 and Phase 2 steps.
-- A prerequisite for part of it: the currency repository, the coin transfer command, the corpse
-  lifecycle wallet, the accounting bank commands and the item and currency parts of
-  `critical_command_*` stay only for an older journal's one-time replay at boot. They can go once
-  every server that ran an earlier build (staging and production) has booted a Phase 2 build, which
-  replays and empties that journal. Where that cannot be confirmed, keeping the replay or dropping
-  the old journal is an owner decision.
-- The death-custody tables stay until staff have resolved the records in them (an owner decision).
+- **Every server is treated as new.** None holds an older player-save or critical-command
+  journal to replay or death-custody records to keep. The replays, what only they reach and the
+  death custody and restitution feature with its tables all go (see
+  [Phase 3](#phase-3-delete-what-is-left-over)).
+- **The collector's death intake is restored in memory** (the owner chose that over deleting
+  it). Since Phase 1 step 5 nothing enrols a player's death (`collector_death_enrollment_*()`
+  has no caller), so the collector, off by default behind `collector.enabled`, never collects
+  from a corpse. Phase 3 enrols the death at `make_corpse()` again, and moves the collector's
+  scheduled collection (`collector_collection_prepare()`) and its maintenance reads off the
+  runtime cache onto the live objects, before `item_ownership_runtime.c` goes.
 
-The first step: put the Phase 3 list through ablation (`.agents/skills/ablation`), confirming each
-item has no caller left, and split it into steps. Each step deletes one area with its tests, in its
-own commits, and passes the gates: `make test-all`, `make test-db`, the flat-file and pfile builds
-and `./scripts/format.sh --all --check`.
+Carried over from Phases 1 and 2, done in Phase 3:
+
+- Flat-file lockers never load their items: the backend's `sql_load_locker()` is a stub and
+  nothing reads the locker records it writes, so what a flat-file locker holds does not come
+  back after a restart. Phase 3 loads them.
+- The journey that dies, restarts with full-world corpse restoration and loots the restored
+  corpse (the minimal-world journeys skip corpse restoration).
+- The staging sign-off, which never ran: staging still runs a build from 2026-09-23. Once
+  Phase 3 is on `master`, deploy it there, run the journeys in [Phase 1 tests](#phase-1-tests)
+  and, after a day, the staging checks listed there.
+
+The first step: put the [Phase 3](#phase-3-delete-what-is-left-over) list, the "left for Phase 3"
+notes in the Phase 1 and 2 steps and the items above through ablation (`.agents/skills/ablation`),
+confirming each deletion has no caller left, and split them into steps. Each step does one
+area with its tests, in its own commits, and passes the gates: `make test-all`, `make test-db`,
+the flat-file and pfile builds and `./scripts/format.sh --all --check`.
