@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """Run a character rename's reference updates against MySQL/MariaDB tables.
 
-sql_rename_character() renames a character in one transaction, and
-sql_rename_character_references() carries over what else the old name keys:
+sql_rename_character() renames a character in one writer job, whose
+sql_rename_character_references() statements carry over what else the old name keys:
 the account mapping that login reads, a personal locker and its access list, the
 character's own locker grants, their guild roster row and top-fragger credit,
 and their leaderboard name.  Before, a rename left the account mapping under the
 old name, the next save added a second mapping for the new one, and the account
 could no longer load.
 
-This runs the real function against fixture tables shaped like production:
+This runs the real statements against fixture tables shaped like production:
 account_characters is unique on char_name only, not on pid.
 """
 
@@ -44,7 +44,7 @@ def body(text, signature):
     raise AssertionError(f"unterminated definition: {signature}")
 
 
-references = body(mysql_source_text, "static bool sql_rename_character_references(")
+references = body(mysql_source_text, "static std::vector<std::string> sql_rename_character_references(")
 
 harness = f'''\
 #include <mysql/mysql.h>
@@ -53,34 +53,45 @@ harness = f'''\
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cstdarg>
 #include <iostream>
 #include <string>
+#include <vector>
 
 MYSQL *DB = nullptr;
 
 /* Escape one value through the live client connection. */
-char *sql_escape_string(const char *value)
+std::string escape_str(const char *value)
 {{
-    if (!DB || !value)
-        return nullptr;
-    const size_t length = std::strlen(value);
-    char *escaped = static_cast<char *>(std::malloc(length * 2 + 1));
-    if (!escaped)
-        return nullptr;
-    mysql_real_escape_string(DB, escaped, value, length);
+    std::string escaped(std::strlen(value) * 2 + 1, '\\0');
+    escaped.resize(mysql_real_escape_string(DB, escaped.data(), value, std::strlen(value)));
     return escaped;
 }}
 
-/* Execute one extracted production statement. */
-static bool sql_run_query(const char *query)
+std::string sql_format(const char *format, ...)
 {{
-    if (mysql_query(DB, query) == 0)
-        return true;
-    std::cerr << "rename query failed: " << mysql_error(DB) << '\\n';
-    return false;
+    char statement[1024];
+    va_list arguments;
+    va_start(arguments, format);
+    std::vsnprintf(statement, sizeof statement, format, arguments);
+    va_end(arguments);
+    return statement;
 }}
 
 {references}
+
+/* Run one rename's reference statements, as its writer job does, until one fails. */
+static bool sql_rename_character_references_run(int pid, const char *old_name,
+                                                const char *new_name)
+{{
+    for (const std::string &statement : sql_rename_character_references(pid, old_name, new_name))
+        if (mysql_query(DB, statement.c_str()) != 0)
+        {{
+            std::cerr << "rename query failed: " << mysql_error(DB) << '\\n';
+            return false;
+        }}
+    return true;
+}}
 
 /* Return one required database setting for the isolated fixture. */
 static const char *required_env(const char *name)
@@ -167,7 +178,7 @@ int main()
     execute("INSERT INTO guilds VALUES (1,'Veridian'),(2,'Friend')");
     execute("INSERT INTO frag_leaderboard (pid,char_name) VALUES (7,'Veridian'),(8,'Friend')");
 
-    assert(sql_rename_character_references(7, "Veridian", "Qelvarin"));
+    assert(sql_rename_character_references_run(7, "Veridian", "Qelvarin"));
 
     // One login mapping, under the new name; nobody else's changes.
     assert(scalar("SELECT COUNT(*) FROM account_characters WHERE pid=7") == 1);
@@ -198,13 +209,13 @@ int main()
 
     // A roster row from before pids were stored is matched by name, and a
     // legacy locker without an owner pid by its name.
-    assert(sql_rename_character_references(9, "Nopidhero", "Newhero"));
+    assert(sql_rename_character_references_run(9, "Nopidhero", "Newhero"));
     assert(scalar("SELECT COUNT(*) FROM guild_members "
                   "WHERE guild_id=2 AND player_name='Newhero'") == 1);
     assert(scalar("SELECT COUNT(*) FROM lockers WHERE locker_name='Newhero.locker'") == 1);
 
     // A grant that also names an account is ambiguous, and stays with it.
-    assert(sql_rename_character_references(10, "Sharedname", "Newshared"));
+    assert(sql_rename_character_references_run(10, "Sharedname", "Newshared"));
     assert(scalar("SELECT COUNT(*) FROM locker_access "
                   "WHERE owner='Friend.locker' AND visitor='Sharedname'") == 1);
     assert(scalar("SELECT COUNT(*) FROM guild_members "
@@ -213,8 +224,8 @@ int main()
                   "WHERE pid=10 AND char_name='Newshared'") == 1);
 
     // A name another character's mapping holds cannot be taken: the statement
-    // fails, for the transaction around it to roll back.
-    assert(!sql_rename_character_references(8, "Friend", "Qelvarin"));
+    // fails, and the writer job's transaction rolls back.
+    assert(!sql_rename_character_references_run(8, "Friend", "Qelvarin"));
 
     mysql_close(DB);
     DB = nullptr;

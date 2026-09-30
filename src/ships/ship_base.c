@@ -1016,8 +1016,9 @@ bool rename_ship_owner(char *old_name, char *new_name)
 /*
  * Give `ship` the owner `new_owner` in memory only, keeping in `change` what
  * undo_ship_owner_change() needs to put it back without another write.
- * rename_character() stores the change in the same transaction as the
- * player row, then calls finish_ship_owner_change() if that committed.
+ * rename_character() builds the ship's statements under the new owner this way
+ * and puts it back; once the rename is stored it gives the ship its new owner
+ * again and calls finish_ship_owner_change().
  *
  * Returns FALSE, with the ship untouched, when `new_owner` is empty or the
  * old names cannot be copied.
@@ -1047,17 +1048,12 @@ bool begin_ship_owner_change(P_ship ship, const char *new_owner, ShipOwnerChange
 }
 
 /*
- * The owner change is stored: mark the ship saved, since the transaction
- * saved all of it, and drop the old owner's cached copies.
+ * The owner change is stored: drop the old owner's cached copies.  The ship's
+ * next save writes it again under its new owner.
  */
 void finish_ship_owner_change(ShipOwnerChange *change)
 {
-	P_ship ship = change->ship;
 	char path[MAX_STRING_LENGTH];
-
-	ship->save_pending = false;
-	ship->save_retry_after = 0;
-	ship->save_saved_signature = ship_save_signature(ship);
 
 	redis_invalidate_ship_snapshot(change->ownername);
 	snprintf(path, sizeof(path), "Ships/%s", change->ownername);

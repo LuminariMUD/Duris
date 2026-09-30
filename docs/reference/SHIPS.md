@@ -874,17 +874,17 @@ those legacy files (not part of the default build).
   write fails; `rename_ship()` does not roll back.
 - **Character rename.** `rename_character()` stores the player row, the ship
   the character owns (`get_ship_from_owner()`, wherever they stand) and
-  everything else their name keys in one transaction, `sql_rename_character()`.
-  That covers the account mapping login reads, a personal locker and its access
-  list, their locker grants, guild roster row and top-fragger credit, and their
-  leaderboard name. Corpses keep the name they were made under. The ship's new
-  owner is set in memory first (`begin_ship_owner_change()`). Unless the
-  transaction commits, it is put back from memory, with no further write, and
-  only a committed rename renames the live guild roster. A failed COMMIT is
-  settled by reading the player row back. If that read fails too, the rename is
-  reported as failed and staff are told it may have been stored, but every row
-  still carries the same name. The rename waits while the character's personal
-  locker is open, since that locker would otherwise save under the old name.
+  everything else their name keys in one writer job, so one transaction
+  (`sql_rename_character_statements()`). That covers the account mapping login
+  reads, a personal locker and its access list, their locker grants, guild roster
+  row and top-fragger credit, and their leaderboard name. Corpses keep the name
+  they were made under. The ship's statements are built under its new owner
+  (`begin_ship_owner_change()`, then `undo_ship_owner_change()` at once), so
+  memory keeps the old owner until the job is stored. Then, on a later pulse, the
+  ship, the guild roster, the name index, the character (if still in the game) and
+  every account list take the new name, and the requester is told; a failed job
+  changes nothing. The rename waits while the character's personal locker is open,
+  since that locker would otherwise save under the old name.
 - **Copyover.** `drain_pending_ship_saves()` ignores the retry gate. If any
   pending ship cannot be made durable, the copyover is aborted.
 - **Shutdown.** `shutdown_ships()` puts every passenger and loose object in a
@@ -1021,7 +1021,7 @@ The focused regressions live in `tests/async/`. Run them directly, for example
 | `test_ship_owner_rename_failure.py`, `run_ship_owner_rename_failure.sh` | `rename_ship_owner()` rollback. |
 | `test_ship_save_ids_in_memory.py`, `test_ship_shutdown_txn.py` | A new ship's id comes from memory and each save is one writer job (or joins a caller's transaction); the shutdown saves the same way (real `sql_save_ship()`). |
 | `test_ship_cargo_txn.py`, `test_auction_ship_txn_fixes.py` | The cargo market save is one writer job, and a ship save updates its owner by id. |
-| `test_character_rename_ship_ownership.py` | Character renames store the player row, everything the name keys and the owned ship in one transaction, and charge once. Faults are injected in each statement, the COMMIT, the ROLLBACK and the read-back, and a linkdead target and an open locker are covered (real `rename_character()`, rename hook and `sql_rename_character()`). |
+| `test_character_rename_ship_ownership.py` | Character renames store the player row, everything the name keys and the owned ship in one writer job, memory follows only once it is stored, and a paid rename is charged once, then. Faults are injected in each statement and a refused job, and a linkdead target, a target or requester who leaves before the reply, a never-stored ship and an open locker are covered (real `rename_character()`, rename hook and `sql_rename_character_statements()`). |
 | `run_character_rename_references_mysql.sh` | The rename's reference updates against MySQL/MariaDB tables shaped like production. |
 | `test_ship_load_clears_summon.py` | `load_ship()` drops a stale `SUMMONED`. |
 | `test_ship_boot_loads_every_row.py` | `sql_load_all_ships()` loads more than 512 rows and reads the highest ship id. |

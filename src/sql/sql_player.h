@@ -76,21 +76,12 @@ P_char sql_load_player(const char *name);
 // check if player exists in db
 bool sql_player_exists(const char *name);
 
-// character rename
-bool sql_player_rename(P_char ch, const char *new_name);
-
-// outcome of a transaction whose COMMIT may have been applied even though it failed
-enum class sql_commit_outcome
-{
-	committed,
-	rolled_back,
-	unknown,
-};
-
-// rename the character, everything their name keys, and the ship they own
-// (NULL for none, its owner already changed in memory) in one transaction
-sql_commit_outcome sql_rename_character(P_char ch, const char *old_name, const char *new_name,
-					struct ShipData *ship);
+// The statements of one rename, for one writer job: the player row, everything the name
+// keys, and the ship they own (NULL for none), saved as it is (under its new owner).
+// None on flat-file, which has no rename.
+std::vector<std::string> sql_rename_character_statements(int pid, const char *old_name,
+							 const char *new_name,
+							 struct ShipData *ship);
 
 // get player pid by name
 int sql_get_player_pid(const char *name);

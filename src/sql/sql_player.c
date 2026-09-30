@@ -392,14 +392,9 @@ bool sql_ensure_account_bank(const char *account_name, int racewar)
 	return false;
 }
 
-bool sql_player_rename(P_char /*ch*/, const char * /*new_name*/)
+std::vector<std::string> sql_rename_character_statements(int, const char *, const char *, P_ship)
 {
-	return false;
-}
-sql_commit_outcome sql_rename_character(P_char /*ch*/, const char * /*old_name*/,
-					const char * /*new_name*/, P_ship /*ship*/)
-{
-	return sql_commit_outcome::rolled_back;
+	return {};
 }
 
 bool sql_log_chest_activity(int /*locker_id*/, int /*chest_id*/, const char * /*char_name*/,
@@ -1040,152 +1035,74 @@ bool sql_player_exists(const char *name)
 	return name && pids_by_name.count(lowercase(name));
 }
 
-bool sql_player_rename(P_char ch, const char *new_name)
-{
-	if (!DB || !new_name || !ch)
-		return false;
-
-	char normalized_name[MAX_STRING_LENGTH];
-	strlcpy(normalized_name, new_name, sizeof(normalized_name));
-	normalize_player_name_case(normalized_name);
-
-	char *escaped_name = sql_escape_string(normalized_name);
-	if (!escaped_name)
-		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query), "UPDATE player_data SET name='%s' WHERE pid='%d'",
-		 escaped_name, GET_PID(ch));
-	free(escaped_name);
-
-	return sql_run_query(query);
-}
-
-/* Whether the player row for `pid` is named `name`: 1 if so, 0 if not, -1 if it cannot be read. */
-static int sql_player_row_named(int pid, const char *name)
-{
-	MYSQL_RES *result = db_query("SELECT name FROM player_data WHERE pid=%d", pid);
-	if (!result)
-		return -1;
-	MYSQL_ROW row = mysql_fetch_row(result);
-	const int named = row && row[0] && !strcasecmp(row[0], name) ? 1 : 0;
-	mysql_free_result(result);
-	return named;
-}
-
 /*
- * Carry over what else the character's name keys, besides the player row
- * and the ship: the account mapping that login reads, a personal locker and
- * its access list, the character's own grants on other lockers, their guild
- * roster row and top-fragger credit, and their leaderboard name.  Runs inside
- * the rename transaction.  Corpses keep the name they were made under, which
- * the corpse objects in the world also carry, and logs keep their history.
+ * What else the character's name keys, besides the player row and the ship: the
+ * account mapping that login reads, a personal locker and its access list, the
+ * character's own grants on other lockers, their guild roster row and top-fragger
+ * credit, and their leaderboard name.  Corpses keep the name they were made under,
+ * which the corpse objects in the world also carry, and logs keep their history.
  *
  * A grant naming an account as well as the character is ambiguous, and stays
  * with the account.  If the new name already holds a grant on a locker, the
  * old one is dropped.
  */
-static bool sql_rename_character_references(int pid, const char *old_name, const char *new_name)
+static std::vector<std::string> sql_rename_character_references(int pid, const char *old_name,
+								const char *new_name)
 {
-	char *esc_old = sql_escape_string(old_name);
-	char *esc_new = sql_escape_string(new_name);
-	if (!esc_old || !esc_new)
-	{
-		free(esc_old);
-		free(esc_new);
-		return false;
-	}
-
-	char queries[9][1024];
-	int count = 0;
-	/* Earlier renames could leave a second active mapping for the pid; keep
-	 * the oldest, so the one rename below cannot collide with itself. */
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "DELETE stale FROM account_characters stale JOIN account_characters keeper "
-		 "ON keeper.pid=stale.pid AND keeper.id<stale.id AND keeper.deleted_at IS NULL "
-		 "WHERE stale.pid=%d AND stale.deleted_at IS NULL",
-		 pid);
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "UPDATE account_characters SET char_name='%s' "
-		 "WHERE pid=%d AND deleted_at IS NULL",
-		 esc_new, pid);
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "UPDATE lockers SET locker_name=CONCAT('%s','.locker') "
-		 "WHERE locker_name=CONCAT('%s','.locker') AND (owner_pid=%d OR owner_pid IS NULL)",
-		 esc_new, esc_old, pid);
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "UPDATE locker_access SET owner=CONCAT('%s','.locker') "
-		 "WHERE owner=CONCAT('%s','.locker')",
-		 esc_new, esc_old);
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "UPDATE IGNORE locker_access SET visitor='%s' WHERE visitor='%s' "
-		 "AND NOT EXISTS (SELECT 1 FROM accounts WHERE account_name='%s')",
-		 esc_new, esc_old, esc_old);
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "DELETE FROM locker_access WHERE visitor='%s' "
-		 "AND NOT EXISTS (SELECT 1 FROM accounts WHERE account_name='%s')",
-		 esc_old, esc_old);
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "UPDATE guild_members SET player_name='%s' "
-		 "WHERE player_pid=%d OR (player_pid IS NULL AND player_name='%s')",
-		 esc_new, pid, esc_old);
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "UPDATE guilds SET topfragger='%s' WHERE topfragger='%s'", esc_new, esc_old);
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "UPDATE frag_leaderboard SET char_name='%s' WHERE pid=%d", esc_new, pid);
-	free(esc_old);
-	free(esc_new);
-
-	for (int i = 0; i < count; i++)
-	{
-		if (!sql_run_query(queries[i]))
-			return false;
-	}
-	return true;
+	const std::string old_escaped = escape_str(old_name);
+	const std::string new_escaped = escape_str(new_name);
+	const char *esc_old = old_escaped.c_str();
+	const char *esc_new = new_escaped.c_str();
+	return {
+		/* Earlier renames could leave a second active mapping for the pid; keep
+		 * the oldest, so the one rename below cannot collide with itself. */
+		sql_format(
+			"DELETE stale FROM account_characters stale JOIN account_characters keeper "
+			"ON keeper.pid=stale.pid AND keeper.id<stale.id AND keeper.deleted_at IS NULL "
+			"WHERE stale.pid=%d AND stale.deleted_at IS NULL",
+			pid),
+		sql_format("UPDATE account_characters SET char_name='%s' "
+			   "WHERE pid=%d AND deleted_at IS NULL",
+			   esc_new, pid),
+		sql_format(
+			"UPDATE lockers SET locker_name=CONCAT('%s','.locker') "
+			"WHERE locker_name=CONCAT('%s','.locker') AND (owner_pid=%d OR owner_pid IS NULL)",
+			esc_new, esc_old, pid),
+		sql_format("UPDATE locker_access SET owner=CONCAT('%s','.locker') "
+			   "WHERE owner=CONCAT('%s','.locker')",
+			   esc_new, esc_old),
+		sql_format("UPDATE IGNORE locker_access SET visitor='%s' WHERE visitor='%s' "
+			   "AND NOT EXISTS (SELECT 1 FROM accounts WHERE account_name='%s')",
+			   esc_new, esc_old, esc_old),
+		sql_format("DELETE FROM locker_access WHERE visitor='%s' "
+			   "AND NOT EXISTS (SELECT 1 FROM accounts WHERE account_name='%s')",
+			   esc_old, esc_old),
+		sql_format("UPDATE guild_members SET player_name='%s' "
+			   "WHERE player_pid=%d OR (player_pid IS NULL AND player_name='%s')",
+			   esc_new, pid, esc_old),
+		sql_format("UPDATE guilds SET topfragger='%s' WHERE topfragger='%s'", esc_new,
+			   esc_old),
+		sql_format("UPDATE frag_leaderboard SET char_name='%s' WHERE pid=%d", esc_new, pid),
+	};
 }
 
-/*
- * Rename `ch` from `old_name` to `new_name` in one transaction: the player
- * row, everything else the name keys (sql_rename_character_references()),
- * and `ship`, whose owner the caller has already changed in memory.  So a
- * character, their login, locker, guild entry and ship are never stored under
- * different names.  `ship` may be NULL.
- *
- * A ROLLBACK only fails when the connection is gone, and the server then
- * discards the transaction itself.  A failed COMMIT, however, may have been
- * applied with its reply lost, so the player row is read back to tell which;
- * sql_commit_outcome::unknown means it could not be read.
- */
-sql_commit_outcome sql_rename_character(P_char ch, const char *old_name, const char *new_name,
-					P_ship ship)
-{
-	if (!DB || !ch || !old_name || !new_name || sql_in_transaction() ||
-	    !sql_begin_transaction())
-		return sql_commit_outcome::rolled_back;
+static std::vector<std::string> sql_save_ship_statements(P_ship ship);
 
+std::vector<std::string> sql_rename_character_statements(int pid, const char *old_name,
+							 const char *new_name, P_ship ship)
+{
 	char stored_name[MAX_STRING_LENGTH];
 	strlcpy(stored_name, new_name, sizeof(stored_name));
 	normalize_player_name_case(stored_name);
-	if (!sql_player_rename(ch, new_name) ||
-	    !sql_rename_character_references(GET_PID(ch), old_name, stored_name) ||
-	    (ship && !sql_save_ship(ship)))
-	{
-		sql_rollback();
-		return sql_commit_outcome::rolled_back;
-	}
-	if (sql_commit())
-		return sql_commit_outcome::committed;
-
-	sql_rollback();
-	switch (sql_player_row_named(GET_PID(ch), new_name))
-	{
-	case 1:
-		return sql_commit_outcome::committed;
-	case 0:
-		return sql_commit_outcome::rolled_back;
-	default:
-		return sql_commit_outcome::unknown;
-	}
+	std::vector<std::string> statements = { sql_format(
+		"UPDATE player_data SET name='%s' WHERE pid=%d", escape_str(stored_name).c_str(),
+		pid) };
+	for (std::string &statement : sql_rename_character_references(pid, old_name, stored_name))
+		statements.push_back(std::move(statement));
+	if (ship)
+		for (std::string &statement : sql_save_ship_statements(ship))
+			statements.push_back(std::move(statement));
+	return statements;
 }
 
 int sql_get_player_pid(const char *name)
@@ -8335,24 +8252,13 @@ static std::vector<std::string> sql_save_ship_statements(P_ship ship)
 	return statements;
 }
 
-/* Save one ship. Inside a caller's transaction (a character rename) the statements join
- * it on the game thread's connection; otherwise they are one writer job. */
+/* Save one ship: its statements are one writer job. */
 bool sql_save_ship(P_ship ship)
 {
-	if (!DB || !ship || !ship->ownername)
+	if (!ship || !ship->ownername)
 		return false;
 	const std::vector<std::string> statements = sql_save_ship_statements(ship);
-	if (statements.empty())
-		return false;
-	if (!sql_in_transaction())
-		return sql_queue_statements(statements);
-	for (const std::string &statement : statements)
-		if (!sql_run_query(statement.c_str()))
-		{
-			sql_player_error("sql_save_ship");
-			return false;
-		}
-	return true;
+	return !statements.empty() && sql_queue_statements(statements);
 }
 
 /* The stored rows of one ship: its ships row, then its armor, crew and slot rows. */

@@ -5,8 +5,8 @@ sql_save_ship() inserted a new ship's row, read its id back, and wrote the armou
 crew and slot rows in a transaction on the game loop; a failed COMMIT left the id
 "unconfirmed" and the next save looked the row up again. Now a new ship takes its
 id from memory (the highest stored id, read at boot), and the save is one writer
-job that inserts or updates every row by that id. Inside a caller's transaction
-(a character rename) the statements join it on the game thread's connection.
+job that inserts or updates every row by that id. A character rename builds the same
+statements into its own writer job.
 
 This runs the real sql_save_ship() and its statement builder with the writer
 queue and the connection stubbed.
@@ -103,9 +103,9 @@ int main()
 	other.db_id = -1;
 	assert(sql_save_ship(&other) && other.db_id == 9);
 
-	// Inside a caller's transaction the statements join it instead of queueing.
+	// There is no caller's transaction to join any more: a save is always one job.
 	in_transaction = true;
-	assert(sql_save_ship(&ship) && queued.size() == 3 && (int)joined.size() == 1 + 4 + 1 + MAXSLOTS);
+	assert(sql_save_ship(&ship) && queued.size() == 4 && joined.empty());
 
 	puts("ship saves take their id from memory and queue one job");
 	return 0;

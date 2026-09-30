@@ -116,6 +116,8 @@ REENTRY_COMMANDS = (
     # A staff-made character's first save is queued like a player's; it is the newest
     # character, so it comes last, after every entry that selects the first one.
     ('newchar Vexmora 3 11 56 false', 'character saved.'),
+    # A rename is one writer job; the god renames himself and is told once it is stored.
+    ('rename char ' + journey.CHARACTER + ' Tavrenn', 'Name changed, old one deleted'),
 )
 
 # The functions this session still reaches with a query on the game loop.
@@ -294,7 +296,7 @@ def run(server):
                 mysql + [database], text=True, env=environment, check=True,
                 capture_output=True,
                 input=f"SELECT COUNT(*) FROM {table} t JOIN player_data pd ON pd.pid=t.pid "
-                      f"WHERE pd.name='{journey.CHARACTER}'").stdout.strip()
+                      "WHERE pd.name='Tavrenn'").stdout.strip()
             assert count == '1', f'{table} holds {count} rows for the new character'
         made = subprocess.run(
             mysql + [database], text=True, env=environment, check=True, capture_output=True,
@@ -302,6 +304,14 @@ def run(server):
                   "(SELECT COUNT(*) FROM account_characters WHERE char_name='Vexmora')"
             ).stdout.split()
         assert made == ['1', '1'], f'newchar stored {made}'
+        renamed = subprocess.run(
+            mysql + [database], text=True, env=environment, check=True, capture_output=True,
+            input="SELECT (SELECT COUNT(*) FROM player_data WHERE name='Tavrenn'), "
+                  "(SELECT COUNT(*) FROM account_characters WHERE char_name='Tavrenn' "
+                  "AND deleted_at IS NULL), "
+                  f"(SELECT COUNT(*) FROM account_characters WHERE char_name='{journey.CHARACTER}')"
+            ).stdout.split()
+        assert renamed == ['1', '1', '0'], f'the rename stored {renamed}'
         # Shutdown drained the writer: the revoked grant and its summon are gone, the
         # closed poll, its two options and the one vote are stored, and so is the one
         # whitelist entry left.
