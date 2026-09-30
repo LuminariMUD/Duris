@@ -2551,17 +2551,22 @@ static void poof_loaded_owner(int vnum, int pid, P_char owner)
 {
 	P_obj arti = NULL;
 
+	// Not loaded, as when its queued saves outlast the load: the row stays for the next
+	// pass, since clearing it would leave the artifact on a character with no row.
 	if (!owner)
+	{
 		logit(LOG_ARTIFACT,
 		      "event_artifact_check_poof_sql: Could not load pfile of '%s' %d, to poof arti vnum %d.",
 		      get_player_name_from_pid(pid), pid, vnum);
+		return;
+	}
 	// In the game now, or another copy of it is loading: the next pass poofs it.
-	else if (is_pid_online(pid, TRUE) || player_load_pipeline_pid_pending(pid))
+	if (is_pid_online(pid, TRUE) || player_load_pipeline_pid_pending(pid))
 	{
 		release_offline_owner(owner);
 		return;
 	}
-	else if (!(arti = get_object_from_char(owner, vnum)))
+	if (!(arti = get_object_from_char(owner, vnum)))
 		logit(LOG_ARTIFACT,
 		      "event_artifact_check_poof_sql: Could not find artifact vnum %d on pfile of '%s' %d.",
 		      vnum, get_player_name_from_pid(pid), pid);
@@ -2579,8 +2584,7 @@ static void poof_loaded_owner(int vnum, int pid, P_char owner)
 		      "event_artifact_check_poof_sql: poofed vnum=%d for offline pid=%d ('%s')",
 		      vnum, pid, get_player_name_from_pid(pid));
 	}
-	if (owner)
-		release_offline_owner(owner);
+	release_offline_owner(owner);
 	artifact_expire(vnum);
 }
 
@@ -2591,13 +2595,14 @@ static bool poof_offline_artifact(int vnum, int pid)
 	logit(LOG_ARTIFACT,
 	      "event_artifact_check_poof_sql: poofing vnum=%d on offline pid=%d ('%s')", vnum, pid,
 	      name ? name : "unknown");
-	if (name && !player_load_offline(name, true, [vnum, pid](P_char owner)
-					 { poof_loaded_owner(vnum, pid, owner); }))
-		return false;
-	// No such character: nothing to load.
+	// No such character: nothing holds it.
 	if (!name)
-		poof_loaded_owner(vnum, pid, NULL);
-	return true;
+	{
+		artifact_expire(vnum);
+		return true;
+	}
+	return player_load_offline(name, true, [vnum, pid](P_char owner)
+				   { poof_loaded_owner(vnum, pid, owner); });
 }
 
 void event_artifact_check_poof_sql(P_char /*ch*/, P_char /*vict*/, P_obj /*obj*/, void * /*arg*/)

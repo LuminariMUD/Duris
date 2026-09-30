@@ -46,6 +46,14 @@ assert "player_load_items_discard(owner);" in body("static void release_offline_
 # copies would each save back the artifact the other poofed. The callback clears the row.
 assert "!player_load_pipeline_pid_pending(location) &&" in body("void event_artifact_check_poof_sql(")
 assert "offline_poofs" not in artifact
+# An owner that could not be loaded keeps the row for the next pass: clearing it would leave
+# the artifact on a character whose row says it is gone. Only a missing character clears it.
+poof = body("static void poof_loaded_owner(")
+not_loaded = poof[poof.index("if (!owner)") : poof.index("return;", poof.index("if (!owner)"))]
+assert "artifact_expire" not in not_loaded and "release_offline_owner" not in not_loaded
+missing = body("static bool poof_offline_artifact(")
+assert missing.index("if (!name)") < missing.index("artifact_expire(vnum);") < missing.index(
+    "player_load_offline(")
 assert "artifact_expire(vnum);" in body("static void poof_loaded_owner(")
 
 # The lists read each owner's side with the rows (MariaDB) or from its identity (flat-file).
