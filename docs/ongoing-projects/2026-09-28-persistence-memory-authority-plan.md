@@ -1521,6 +1521,13 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   and `quit` closed the connection instead of returning to the menu. The restore now uses the
   account name the player load returns (`9a4c3bcfd`); `run_copyover_runtime_journey.py`
   quits after the real exec and expects the account menu.
+- Found on the way (the rest of step 8): the MariaDB account read parsed its DATETIME columns
+  (`last_good_char`, `last_evil_char`, `last_login`, and the characters' `last_login` and
+  `last_save`) with `atol()`, which gives the year. So any account save after a login wrote
+  back 1970 for the racewar side timestamps, and the side-switch cooldown did not survive a
+  relog (`duris_dev` held `1970-01-01 02:32:50`). The read now selects `UNIX_TIMESTAMP()`;
+  the stalled-writer journey logs in to the menu, disconnects, and checks the timestamp
+  once that save has landed (the previous binary lost it).
 - Found on the way (the `sql.c` part):
   - `sql_find_racewar_for_ip()` assigned `RACEWAR_NONE` to its pointer instead of the side,
     and leaked the result after an hour offline.

@@ -5165,7 +5165,8 @@ bool sql_load_account(const char *name, std::function<void(bool ok, P_acct loade
 				    connection,
 				    sql_format(
 					    "select account_name, email, password, confirmation_code, confirmed, confirmation_sent, "
-					    "blocked, last_login, last_good_char, last_evil_char, flags1, flags2, flags3, flags4 "
+					    "blocked, UNIX_TIMESTAMP(last_login), UNIX_TIMESTAMP(last_good_char), "
+					    "UNIX_TIMESTAMP(last_evil_char), flags1, flags2, flags3, flags4 "
 					    "from accounts where account_name='%s'",
 					    account.c_str()),
 				    &rows->account))
@@ -5180,8 +5181,9 @@ bool sql_load_account(const char *name, std::function<void(bool ok, P_acct loade
 			return sql_select(
 				connection,
 				sql_format(
-					"select ac.pid, ac.char_name, ac.login_count, ac.last_login, ac.blocked, ac.racewar, "
-					"pd.level, pd.race, pd.m_class, pd.secondary_class, pd.last_room, pd.last_save "
+					"select ac.pid, ac.char_name, ac.login_count, UNIX_TIMESTAMP(ac.last_login), "
+					"ac.blocked, ac.racewar, pd.level, pd.race, pd.m_class, pd.secondary_class, "
+					"pd.last_room, UNIX_TIMESTAMP(pd.last_save) "
 					"from account_characters ac "
 					"left join player_data pd on ac.pid = pd.pid "
 					"where LOWER(ac.account_name)=LOWER('%s') and ac.deleted_at is null",
