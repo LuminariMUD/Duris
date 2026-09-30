@@ -103,18 +103,21 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
         for forbidden in ("qry(", "db_query", "mysql_", "redis_", "fopen("):
             self.assertNotIn(forbidden, callback)
 
-    def test_flat_boon_shop_submits_before_live_or_sql_mutation(self):
+    def test_boon_shop_spends_the_point_before_the_stat_rises(self):
+        # Flat-file submits the purchase; MariaDB spends the point on the writer and
+        # raises the stat in the callback, giving the point back at 100.
         source = (SRC / "boon.c").read_text()
         start = source.index("void boon_shop(P_char")
         end = source.index("struct flat_boon_display_filters", start)
         shop = source[start:end]
-        branch = shop.index("PERSISTENCE_MODE_FLATFILE_PRIMARY")
-        submit = shop.index("boon_shop_transaction_submit", branch)
-        live = shop.index("bshop.stats--", submit)
-        sql = shop.index('qry("UPDATE boons_shop', live)
-        self.assertLess(branch, submit)
-        self.assertLess(submit, live)
-        self.assertLess(live, sql)
+        submit = shop.index("boon_shop_transaction_submit")
+        spend = shop.index("UPDATE boons_shop SET stats = stats - 1", submit)
+        self.assertLess(submit, spend)
+        self.assertIn("stats > 0", shop)
+        self.assertIn("mysql_affected_rows(connection) == 1", shop)
+        self.assertLess(spend, shop.index("boon_shop_raise_stat(buyer, stat)"))
+        self.assertIn("UPDATE boons_shop SET stats = stats + 1", shop)
+        self.assertNotIn("qry(", shop)
         comm = (SRC / "comm.c").read_text()
         self.assertIn("boon_shop_transaction_handle_completions(completions, count)", comm)
 
@@ -188,32 +191,56 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
         self.assertEqual(nanny.count("boon_reward_transaction_player_ready("), 2)
 
     def test_flat_boon_query_helpers_route_before_sql(self):
+        # Step 8: MariaDB reads the boons on the writer, so these helpers are flat-file only.
         boon = (SRC / "boon.c").read_text()
-        for function, flat_token, sql_token in (
-            ("int is_boon_valid", "flatfile_boon_load_definitions", "qry("),
-            ("int count_boons", "flatfile_boon_load_definitions", "qry("),
-            ("bool get_boon_data", "flatfile_boon_load_definitions", "qry("),
-            ("bool get_boon_progress_data", "flatfile_boon_load_progress", "qry("),
-            ("bool get_boon_shop_data", "flatfile_boon_load_player", "qry("),
+        for function, flat_token in (
+            ("int is_boon_valid", "flatfile_boon_load_definitions"),
+            ("int count_boons", "flatfile_boon_load_definitions"),
+            ("bool get_boon_data", "flatfile_boon_load_definitions"),
+            ("bool get_boon_shop_data", "flatfile_boon_load_player"),
         ):
             start = boon.index(function)
             next_function = boon.find("\n}\n", start) + 3
             body = boon[start:next_function]
             self.assertIn("flat_boon_root", body)
-            self.assertLess(body.index(flat_token), body.index(sql_token))
+            self.assertIn(flat_token, body)
+            self.assertNotIn("qry(", body)
+        start = boon.index("bool get_boon_progress_data")
+        body = boon[start:boon.find("\n}\n", start) + 3]
+        self.assertLess(body.index("flatfile_boon_load_progress"), body.index("qry("))
 
     def test_flat_boon_definition_mutations_route_before_sql(self):
+        # Flat-file writes its catalog; MariaDB creates, removes and extends on the writer.
         boon = (SRC / "boon.c").read_text()
         for function, flat_token, sql_token in (
-            ("int create_boon", "flatfile_boon_create", "qry("),
-            ("int remove_boon", "flatfile_boon_deactivate", "qry("),
-            ("int extend_boon", "flatfile_boon_extend", "qry("),
+            ("int create_boon", "flatfile_boon_create", "sql_read_work("),
+            ("int remove_boon", "flatfile_boon_deactivate", "sql_queue("),
         ):
             start = boon.index(function)
             next_function = boon.find("\n}\n", start) + 3
             body = boon[start:next_function]
             self.assertIn("flat_boon_root", body)
-            self.assertLess(body.index(flat_token), body.index(sql_token))
+            self.assertIn(flat_token, body)
+            self.assertIn(sql_token, body)
+            self.assertNotIn("qry(", body)
+        start = boon.index("int extend_boon(")
+        body = boon[start:boon.find("\n}\n", start) + 3]
+        self.assertIn("flatfile_boon_extend", body)
+        self.assertNotIn("qry(", body)
+
+    def test_mysql_boon_commands_leave_the_game_loop(self):
+        # Step 8: the boon commands read and write the boons on the writer.
+        boon = (SRC / "boon.c").read_text()
+        live = boon[boon.index("static void extend_boon_on_writer("):
+                    boon.index("int create_boon_progress(")]
+        for forbidden in ("qry(", "boon_store_result", "mysql_store_result",
+                          "mysql_insert_id"):
+            self.assertNotIn(forbidden, live)
+        for token in ("sql_read_work_for(", "sql_read_for(", "sql_read_work(",
+                      "SELECT LAST_INSERT_ID()", "SELECT COUNT(*) FROM boons WHERE active = 1",
+                      "boon_notify_snapshot(id, boon.racewar, boon.pid, BN_CREATE)",
+                      "BN_EXTEND : BN_REACTIVATE"):
+            self.assertIn(token, live)
 
     def test_flat_boon_maintenance_enumerates_the_catalog(self):
         boon = (SRC / "boon.c").read_text()
@@ -232,7 +259,7 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
         start = boon.index("int boon_display(P_char")
         end = boon.index("int create_boon(BoonData", start)
         display = boon[start:end]
-        self.assertLess(display.index("boon_display_flat"), display.index("qry(dbqry)"))
+        self.assertLess(display.index("boon_display_flat"), display.index("sql_read_for(ch, dbqry"))
         for token in (
             "flat_filters.player_ids",
             "flat_filters.authors",
@@ -256,7 +283,7 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
             "Displaying %d result(s)",
         ):
             self.assertIn(token, flat_display)
-        self.assertIn("boon_display_row(ch, boon)", display)
+        self.assertIn("boon_display_rows(viewer, rows)", display)
         renderer_start = boon.index("static const char *boon_affect_label")
         renderer = boon[renderer_start:flat_start]
         for token in (

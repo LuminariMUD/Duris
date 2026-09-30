@@ -2470,7 +2470,7 @@ void sql_check_level_cap(long max_frags, int racewar)
 			bdata.bonus = frag_cap_config_boon_bonus();
 			bdata.active = 1;
 			bdata.repeat = 1;
-			create_boon(&bdata);
+			create_boon(&bdata, nullptr);
 
 			int next_level = old_level + config->cap_level_step;
 			if (next_level > config->cap_maximum_level)

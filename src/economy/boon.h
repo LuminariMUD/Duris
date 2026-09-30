@@ -166,7 +166,7 @@ int parse_boon_args(P_char, struct BoonData *bd, char *);
 void do_boon(P_char, char *, int);
 void boon_shop(P_char, char *);
 int boon_display(P_char, char *);
-int create_boon(struct BoonData *bd);
+int create_boon(struct BoonData *bd, P_char ch);
 int create_boon_progress(BoonProgress *bp);
 int create_boon_shop_entry(BoonShop *bs);
 int remove_boon(int);

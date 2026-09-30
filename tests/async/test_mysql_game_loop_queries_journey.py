@@ -38,6 +38,13 @@ COMMANDS = (
     ('auction info 1', 'There is no auction with that id!'),
     ('auction pickup', 'You have no items or money to pickup!'),
     ('nexus', 'Nexus Stones'),
+    ('boon add all epic 10 level 50 60', 'Boon successfully created.'),
+    ('boon list', 'Displaying 1 result(s).'),
+    ('boon list u nobody', 'No results.'),
+    ('boon extend 1 30', 'Boon # 1 has been extended for 30 minutes.'),
+    ('boon remove 1', 'Successfully removed boon # 1.'),
+    ('boon shop', 'Stat points available: 0'),
+    ('boon shop stat str', "You don't have any stat points available."),
 )
 REENTRY_COMMANDS = (
     ('divineclaim list', 'Copies'),
