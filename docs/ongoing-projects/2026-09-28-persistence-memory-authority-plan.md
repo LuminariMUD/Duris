@@ -1447,3 +1447,31 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   save-claim MariaDB leg checks the transaction and the copied rows. The source contracts
   for the converted functions follow them. A local session as the `.env` account confirmed
   that the converted commands answer, and that their sites no longer log as loop queries.
+
+### Review round 1 (MR !3)
+
+The review of `c3ffc4b8a` (tag `persistence/phase-2-review-0`) found five defects. Each is fixed
+in its own commit on `fix/7-persistence-phase-2`, with a regression test that fails without it.
+The fixed head is tagged `persistence/phase-2-review-1`.
+
+| Finding | Fix | Commit |
+|---|---|---|
+| 1. P1: a newer save of an owner removed its queued save and went to the back, past a job that relied on it. A deposit's [wallet debit, bank credit] became [bank credit, newer wallet save], so a crash between them kept the old wallet and the credited bank. | A newer save replaces the queued one only when that one is the last job queued; otherwise it is queued behind, so saves apply in capture order exactly. `test_player_save_worker.py` and `test_player_save_pipeline.py` queue a save behind another owner's job. | `d887fc6d3` |
+| 2. P1: a retried bank delta could be added twice: flat-file recovered a journaled commit and then added the delta again; MariaDB retried a relative autocommit update after a lost acknowledgement. | Flat-file prepares the bank record once and writes that same record on a retry. MariaDB writes the delta in a transaction: a connection lost before the commit leaves nothing written, and a commit whose outcome is unknown is reported instead of retried. | `f4d512451` |
+| 3. P1: a player's `get coins` emptied the pile and then added it up in an `int`; a pile worth more than `INT_MAX` copper overflowed and the coins were lost. | `credit_coins()` adds the 64-bit total to the purse first and says whether it took them; the pile gives up its coins only then, on both pickup paths. `test_take_coins.py` keeps a pile the purse cannot hold. | `363b75a97` |
+| 4. P2: the writer refuses owner 0, so every save of shop 0 was refused and its stock restored stale after a restart. | The shopkeeper job is keyed by the shop number plus one. The shopkeeper save test's writer stub now refuses owner 0 like the writer. | `bdd152f35` |
+| 5. P2: the quest history and trophy caches counted local days while every connection counts UTC days, so a UTC+3 server reset the daily world quest allowance three hours early. | The caches count UTC days. | `44a678df4` |
+
+`a5492e45c` re-anchors the economy writer census after these fixes.
+
+Verification for this round, on the final head:
+
+- `make -C src`, the flat-file build and `./scripts/format.sh --all --check`;
+  `scripts/validate_economy_accounting.py`.
+- Each new regression test fails on `persistence/phase-2-review-0` (a throwaway worktree with the
+  new tests): the worker and pipeline tests see the newer save replace the queued one, the
+  flat-file repository test adds a retried delta twice, `test_take_coins.py` and the save-claim,
+  shopkeeper and world quest contracts fail on the old code.
+- The save-claim MariaDB leg (disposable server) and the coin journeys
+  (`test_area_coin_pickup.py`, `test_flatfile_auction_coin_put_journey.py`).
+- `make test-all`: 702 of 702 (653 s). `make test-db`: 35 of 35 (191 s).
