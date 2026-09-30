@@ -23,6 +23,8 @@ namespace
 {
 zone_story_quest_feature::service tracker;
 bool tracker_ready = false;
+// No state was stored when the boot looked. Nothing stores any while the catalog is off.
+bool state_absent_at_boot = false;
 std::atomic<uint64_t> transaction_sequence{ 0 };
 
 bool fail(std::string *error, const char *message)
@@ -63,7 +65,7 @@ bool load_persisted_state(std::string *error)
 	return tracker.deserialize_state(encoded, error);
 }
 
-// True when no zone-story state has ever been stored.
+// True when no zone-story state has ever been stored. Boot only.
 bool persisted_state_absent(std::string *error)
 {
 	std::string encoded;
@@ -159,6 +161,12 @@ uint32_t content_revision()
 	return zone_story_quest_production::ZONE_STORY_QUEST_PRODUCTION_CONTENT_REVISION;
 }
 
+void note_stored_state()
+{
+	std::string error;
+	state_absent_at_boot = persisted_state_absent(&error);
+}
+
 bool bootstrap(std::string *error)
 {
 	std::string production_error;
@@ -224,7 +232,7 @@ bool erase_character(uint32_t pid, std::string *error)
 	// With the catalog disabled at boot nothing is tracked. A character has nothing to
 	// erase unless an earlier boot stored state, which only the catalog can rewrite.
 	if (!ready())
-		return persisted_state_absent(error) ||
+		return state_absent_at_boot ||
 		       fail(error, "zone-story catalog is disabled and stored state needs "
 				   "reconciliation");
 	const std::string before = tracker.serialize_state(error);

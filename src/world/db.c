@@ -47,6 +47,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include "world/object_template.h"
+#include "world/zone_story_quest_runtime.h"
 #include "account/newbie_kit_plan.h"
 
 /*
@@ -633,6 +634,7 @@ void boot_db(int mini_mode)
 		fprintf(stderr, "-- Room special procedures.\r\n");
 		assign_rooms();
 	}
+	zone_story_quest_runtime::note_stored_state();
 
 	fprintf(stderr, "Assigning command pointers from interpreter.\r\n");
 
