@@ -1,64 +1,39 @@
 #!/usr/bin/env python3
+"""The MariaDB alliance save replaces the list in one writer job (persistence reset
+phase 2, step 8): the DELETE and every INSERT, with its tribute, go to
+sql_queue_statements(), and nothing runs on the game thread's connection."""
 from _paths import SRC
-from pathlib import Path
 import sys
 
 text = (SRC / "alliances.c").read_text()
 
 start = text.find('void save_alliances()')
-if start == -1:
-    print('missing save_alliances')
-    sys.exit(1)
+mariadb = text.find('#else', start)
+end = text.find('#endif', mariadb)
+body = text[mariadb:end] if -1 not in (start, mariadb, end) else ''
 
-own_txn = text.find('bool own_txn = false;', start)
-begin_txn = text.find('sql_begin_transaction()', start)
-delete_stmt = text.find('DELETE FROM alliances', start)
-insert_stmt = text.find('INSERT INTO alliances', start)
-commit_stmt = text.find('sql_commit()', start)
-rollback_stmt = text.find('sql_rollback()', start)
-insert_columns = text.find(
-    'INSERT INTO alliances (forging_assoc_id, joining_assoc_id, tribute_owed)',
-    start,
-)
-insert_values = text.find("VALUES ('%d', '%d', '%d')", insert_stmt)
-tribute_argument = text.find('alliances[i].tribute_owed', insert_values)
+delete_stmt = body.find('"DELETE FROM alliances"')
+insert_stmt = body.find(
+    "INSERT INTO alliances (forging_assoc_id, joining_assoc_id, tribute_owed) VALUES ('%d', '%d', '%d')")
+tribute_argument = body.find('alliance.tribute_owed', insert_stmt)
+queued = body.find('sql_queue_statements(statements)', tribute_argument)
 loader_select = text.find(
-    'SELECT forging_assoc_id, joining_assoc_id, tribute_owed FROM alliances'
-)
+    'SELECT forging_assoc_id, joining_assoc_id, tribute_owed FROM alliances')
 loader_assignment = text.find('alliance.tribute_owed = atoi(row[2]);')
 
-print(f'start={start} own_txn={own_txn} begin_txn={begin_txn} delete={delete_stmt} insert={insert_stmt} commit={commit_stmt} rollback={rollback_stmt}')
-
 ok = True
-for label, value in [
-    ('own_txn', own_txn),
-    ('begin_txn', begin_txn),
-    ('delete_stmt', delete_stmt),
-    ('insert_stmt', insert_stmt),
-    ('commit_stmt', commit_stmt),
-    ('rollback_stmt', rollback_stmt),
-    ('insert_columns', insert_columns),
-    ('insert_values', insert_values),
-    ('tribute_argument', tribute_argument),
-    ('loader_select', loader_select),
-    ('loader_assignment', loader_assignment),
-]:
-    if value == -1:
-        print(f'missing {label}')
+if not body:
+    print('missing the MariaDB save_alliances branch')
+    ok = False
+elif not (-1 < delete_stmt < insert_stmt < tribute_argument < queued):
+    print('the alliance save does not queue DELETE then INSERTs with tribute_owed')
+    ok = False
+for call in ('qry(', 'sql_begin_transaction', 'sql_commit', 'sql_rollback'):
+    if call in body:
+        print(f'save_alliances still calls {call} on the game thread')
         ok = False
-
-if ok:
-    if not (start < own_txn < delete_stmt < insert_stmt < commit_stmt):
-        print('transaction wrapper order is wrong')
-        ok = False
-    if rollback_stmt < delete_stmt:
-        print('rollback handling not present in save_alliances failure path')
-        ok = False
-    if not (insert_stmt == insert_columns < insert_values < tribute_argument):
-        print('MySQL alliance INSERT does not persist tribute_owed')
-        ok = False
-    if loader_select == -1 or loader_assignment == -1:
-        print('MySQL alliance loader no longer exposes tribute_owed')
-        ok = False
+if loader_select == -1 or loader_assignment == -1:
+    print('MySQL alliance loader no longer exposes tribute_owed')
+    ok = False
 
 sys.exit(0 if ok else 1)
