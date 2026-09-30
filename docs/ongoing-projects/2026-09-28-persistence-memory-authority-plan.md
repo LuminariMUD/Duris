@@ -1877,6 +1877,65 @@ zone reset key fix to `3ce8e7cf9`).
   `test_whitelist_in_memory.py`, `test_whois_reads.py` and
   `test_newchar_account_link_queued.py`.
 
+#### Guilds, guildhalls, alliances, kingdoms and ships (done)
+
+Converted on `step8/guilds` by an agent and applied to this branch (`5c321bf41` to
+`197280c92`, with the lockers below).
+
+- Guildhall saves and deletes are queued. New hall and room ids come from memory:
+  `load_guildhalls()` reads the highest at boot. `Guildhall::reload()` rebuilds its rooms
+  from memory on both backends; `load_guildhall()` is gone.
+- `save_alliances()` and `write_cargo()` are one writer job each. The staff `cargo reload`
+  reads on the writer.
+- `sql_save_guild()` queues `sql_save_guild_statements()`; inside a caller's transaction
+  (character deletion, until it moves to the writer) it still joins it.
+- A kingdom realm's row and roster are one writer step (`realm_work()`); a missing
+  `kingdom_garrison` still only skips the roster. `kingdom_persist_payment()` queues the
+  guild's statements and the realm as one job (`kingdom_db_save_payment_pair()`).
+  `kingdom_db_save_roster()` had no other caller and is gone.
+- `found_asc()` and the ledger lines are queued. `Guild::ledger()` reads on the writer.
+  `do_prestige()` sorts the guilds in memory on both backends.
+- A new ship takes its id from memory (the highest is read at boot), and each save is one
+  job of upserts by id, so `db_id_unconfirmed` and `sql_ship_row_exists()` are gone. The
+  boot keeps the rows of ships it could not place and places them later from memory
+  (`sql_place_ship()`, `sql_ship_stored()`, `sql_ship_from_rows()`). `shutdown_ships()`
+  queues like every other save. `sql_delete_ship()` queues its delete (its statement is
+  `sql_delete_ship_statement()`).
+- Found on the way: the MariaDB prestige list read `associations.prestige`, which nothing
+  writes.
+- Left: boot-only `sql_load_all_guilds()`, `sql_load_guild()`, `load_guildhalls()`,
+  `load_guildhall_rooms()`, `load_alliances()`, `kingdom_db_load_all()`,
+  `kingdom_db_load_rosters()`, `read_cargo()` (boot), `sql_load_all_ships()`,
+  `sql_read_ship_rows()` and `sql_update_assoc_table()`; dead (Phase 3)
+  `sql_delete_guild()` and `sql_delete_locker_by_name()`.
+- Tests: the game-loop queries journey founds a guild, lists prestige and reads the ledger,
+  then checks the rows after shutdown; `test_guildhall_writer_saves.py` and
+  `test_ship_save_ids_in_memory.py` are new (the latter replaces
+  `test_ship_save_failure_keeps_db_id.py` and `test_ship_nested_transaction.py`);
+  `docs/reference/SHIPS.md` follows.
+
+#### Lockers (done)
+
+- Entering a locker is one writer read. It also creates a missing account or guild locker
+  and its public chest, and answers the grant check; the items are built from its rows by
+  `sql_locker_items_from_rows()`. A locker with a read in flight counts as in use, so no
+  second copy is loaded and its rows never predate a save.
+- The grant commands (`list`, `add`, `remove`, `transfer`) are writer jobs. A grant reads the
+  named character's side by pid instead of calling `restoreCharOnly()`.
+- Private chests and their password hashes live in memory while the locker is open; every
+  change is queued, and a new chest's row is made on the writer (the chest now shows at
+  once). The activity log is read on the writer and its lines are queued.
+- Gone: `sql_load_locker*()`, `sql_locker_exists*()`, `sql_locker_owner_can_access()`, the
+  private-chest SQL helpers and the `locker_access_*` query helpers. The item ownership
+  check is split into `sql_persistence_item_owner_fields_match()` and shared column macros.
+- Found on the way: top-level private-chest items loaded without bitvectors and material
+  (fixed by the shared row builder), and minimal-world MariaDB runs never started the async
+  locker writer, so their lockers saved on the game loop (`comm.c`, covered by
+  `test_minimal_boot.py`).
+- The journey no longer boots with `-s`, so the locker counter's proc runs.
+- Tests: the game-loop queries journey adds locker rooms and a counter and does a full
+  round trip (enter, chest, items, leave, re-enter), checking the rows after shutdown.
+
 #### Account deletion (done)
 
 - On MariaDB `verify_delete_account()` drained every persistence queue on the game loop and
