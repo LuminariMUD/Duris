@@ -29,16 +29,14 @@ def policy(base):
                 rpo_seconds=7200, hourly=48, daily=14, weekly=8, max_bytes=20 * 1024**3,
                 min_free_bytes=0, drill_seconds=604800, root=base / "backups",
                 restore_root=base / "restore", live_roots=[base / "live"], replica_root=None,
-                journal_roots={"players": base / "journals/players",
-                               "critical": base / "journals/critical"})
+                journal_roots={"critical": base / "journals/critical"})
 
 
 def provision(root):
     for directory in ("identities/names", "identities/accounts", "players", "domains"):
         (root / directory).mkdir(parents=True, mode=0o700, exist_ok=True)
     journal_root = root.parent / "journals"
-    for directory in ("players", "critical"):
-        (journal_root / directory).mkdir(parents=True, mode=0o700, exist_ok=True)
+    (journal_root / "critical").mkdir(parents=True, mode=0o700, exist_ok=True)
     for relative in ("identities/names/catalog.identity", "identities/accounts/synthetic.acct",
                      "players/42", "domains/player_42", "domains/locker_catalog"):
         (root / relative).write_bytes(("synthetic:" + relative).encode())
@@ -65,7 +63,6 @@ class Fixture(unittest.TestCase):
         provision(self.base / "live")
         self.env = mock.patch.dict(os.environ, {
             "FLATFILE_STATE_DIR": str(self.base / "live"),
-            "PLAYER_SAVE_JOURNAL_DIR": str(self.base / "journals/players"),
             "CRITICAL_COMMAND_JOURNAL_DIR": str(self.base / "journals/critical"),
         })
         self.env.start()
@@ -438,25 +435,23 @@ class CapacityAndInputTests(Fixture):
         self.assertTrue(child.stdout.closed)
         self.assertLess(time.monotonic() - started, 5)
 
-    def test_journals_are_complete_and_churn_blocks_publication(self):
-        journal = self.base / "synthetic-player-wal"
-        journal.mkdir(mode=0o700)
-        (journal / "player-save.journal").write_bytes(b"synthetic-journal-bytes")
-        self.p["journal_roots"] = {"players": journal}
+    def test_receipts_are_complete_and_churn_blocks_publication(self):
         critical = self.base / "critical-journal"
-        critical.mkdir(mode=0o700)
-        with mock.patch.dict(os.environ, {
-            "PLAYER_SAVE_JOURNAL_DIR": str(journal),
-            "CRITICAL_COMMAND_JOURNAL_DIR": str(critical),
-        }):
-            self.p["journal_roots"] = {"players": journal, "critical": critical}
+        receipts = critical / "locker-identification"
+        receipts.mkdir(mode=0o700, parents=True)
+        critical.chmod(0o700)
+        receipt = receipts / "42.receipt"
+        receipt.write_bytes(b"synthetic-receipt-bytes")
+        receipt.chmod(0o600)
+        with mock.patch.dict(os.environ, {"CRITICAL_COMMAND_JOURNAL_DIR": str(critical)}):
+            self.p["journal_roots"] = {"critical": critical}
             generation = self.create()
-            self.assertEqual(backup.inventory(journal), backup.inventory(generation / "journals/players"))
+            self.assertEqual(backup.inventory(critical), backup.inventory(generation / "journals/critical"))
             captured = backup.inventory(generation)
             original = backup.flatfile_capture
             def changed_capture(stage, p, capacity_base=None):
                 result = original(stage, p, capacity_base)
-                (journal / "player-save.journal").write_bytes(b"synthetic-new-journal-bytes")
+                receipt.write_bytes(b"synthetic-new-receipt-bytes")
                 return result
             with mock.patch.object(backup, "flatfile_capture", changed_capture):
                 with self.assertRaisesRegex(backup.BackupError, "journal_changed"):

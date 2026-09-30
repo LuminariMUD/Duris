@@ -105,11 +105,6 @@ struct player_save_worker_health
 	bool stop_pending;
 };
 
-// The apply context of the one-time replay of a journal left by an older server,
-// the only apply that keeps the revision fence.
-inline char player_save_legacy_replay_marker = 0;
-#define PLAYER_SAVE_LEGACY_REPLAY (static_cast<void *>(&player_save_legacy_replay_marker))
-
 using player_save_apply_fn = player_save_apply_result (*)(const player_snapshot &snapshot,
 							  void *context);
 // Writes one sealed corpse, locker, saved room item or log job on the writer thread.

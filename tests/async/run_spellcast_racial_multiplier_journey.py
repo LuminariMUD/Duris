@@ -138,7 +138,6 @@ def run_case(binary: pathlib.Path, factor: float, inspector: pathlib.Path) -> fl
                 "ENVIRONMENT": "local",
                 "PERSISTENCE_MODE": "flatfile-primary",
                 "FLATFILE_STATE_DIR": str(state_root),
-                "PLAYER_SAVE_JOURNAL_DIR": str(journal_root / "players"),
                 "CRITICAL_COMMAND_JOURNAL_DIR": str(journal_root / "critical"),
                 "LISTEN_ADDRESS": "127.0.0.1",
                 "DURIS_TLS_PORT": str(tls_port),

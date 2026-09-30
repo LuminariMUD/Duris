@@ -2248,14 +2248,15 @@ Changed from the list by the ablation:
 
 The steps, in order (later ones delete what earlier ones leave unreachable):
 
-1. **The player-save journal** (todo): `player_save_journal.c`, the legacy replay in
-   `player_save_pipeline_init()` and its revision fence (`PLAYER_SAVE_LEGACY_REPLAY`), and
-   `PLAYER_SAVE_JOURNAL_DIR` in the server, scripts, backup policy, data lifecycle manifest,
-   docs and test fixtures.
-2. **The critical-command journal replay** (todo), and the command types only it executes:
-   `account_bank`, `wallet`, `coin_transfer`, `locker_transfer` and `economic_baseline`, with
+1. **The journals** (done, see [Step 1](#step-1-the-journals-done)): both one-time replays
+   and everything about the journals in the server, scripts, backup and restore tooling,
+   manifests, docs and test fixtures.
+2. **What only the critical-command replay reached** (todo): the command types no live code
+   submits (`account_bank`, `wallet`, `coin_transfer`, `locker_transfer`, `economic_baseline`
+   and the schema-2 accounting commands the coordinator's extension validator admits), with
    the currency repository, the coin transfer command, the accounting bank commands and the
-   corpse lifecycle wallet, on both backends.
+   corpse lifecycle wallet, on both backends. The linker keeps them alive only through the
+   repository's dispatch and the validator; those go first.
 3. **The death custody and restitution feature** (todo), with a new migration that drops its
    tables.
 4. **The durable item movement** (todo): the durable branches in `actobj.c` behind
@@ -2278,6 +2279,43 @@ The steps, in order (later ones delete what earlier ones leave unreachable):
 Each step does its area with its tests, in its own commits, and passes the gates:
 `make test-all`, `make test-db`, the flat-file and pfile builds and
 `./scripts/format.sh --all --check`.
+
+#### Step 1: the journals (done)
+
+- The player-save journal: `player_save_journal.c`, `player_save_pipeline_init()`'s legacy
+  replay and its health fields, the revision fence both backends kept for it
+  (`PLAYER_SAVE_LEGACY_REPLAY`, `replay_fence()`) and `PLAYER_SAVE_JOURNAL_DIR` are gone.
+  `player_save_pipeline_init()` takes no argument.
+- The critical-command journal: `critical_command_journal.c`, the coordinator's replay (the
+  `replayed` state, checkpoints, the replay observer) and the journal's health line in
+  `world persistence` are gone, and so are the coordinator's admission-era health fields
+  (`awaiting_durability`, `admission_*`, `append_inflight`), which nothing set.
+  `critical_command_coordinator_init()` takes the apply function, its context and the
+  extension validator. `CRITICAL_COMMAND_JOURNAL_DIR` remains the directory of the locker
+  identification receipts, as decided.
+- Backups: the policy's `journal_roots` holds `critical` alone (a policy naming `players` is
+  refused, so an existing deployment's policy loses that key), the capture takes only the
+  receipts and their empty service lock, and restore qualifies the receipts
+  (`qualify_flatfile_restore --receipts`) instead of draining journals. The data lifecycle
+  manifest loses the two player-save journal stores, and `file:critical_command_journal`
+  describes the receipts. `.env.example`, `compose.yaml` and the Dockerfile lose the player
+  journal directory (`.gitignore` keeps ignoring it, since existing checkouts still have one).
+- Deleted with them, as tests of the replay alone: `test_player_save_journal.py`,
+  `test_critical_command_journal_faults.py`, `test_economic_accounting_replay.py`,
+  `test_economic_flatfile_admission_native.py`, `run_player_death_disposition_mysql.sh` and
+  the flat-file death disposition cases (deaths only arrived through the journal; the death
+  snapshot code itself goes in step 3). The pipeline, coordinator, backup, remediation,
+  flat-file repository and restore integration tests lost their replay cases; about 40
+  journeys stopped creating a player journal directory.
+- Found on the way (fixed in its own commit, `f2534ed63`): `persistence_writer_submit()`
+  left its job default-initialized, so the unused snapshot of every corpse, locker, sql and
+  critical job carried an indeterminate bool that moving the job read. UBSan caught it in
+  the economic admission test once the coordinator's layout changed.
+- Verified: both server builds and pfile build, the format check and the census pass,
+  `make test-db` passes 36 of 36, and `make test-all` passed but for seven tests that still
+  counted the removed manifest entries or called the removed replay argument; each was fixed
+  and passes alone. `test_persistence_backup_integration.py` needs a privileged container and
+  runs after step 2, which changes the same restore fixture.
 
 ### Finding dead code
 

@@ -48,10 +48,11 @@ another process running under that UID can alter its backups.
 Set BACKUP_POLICY_FILE in the protected environment file. The launcher reads
 literal dotenv assignments only; it never evaluates shell commands, expansions,
 or substitutions. Quote values containing spaces. Explicitly configure all live
-authority roots, plus journal_roots.players and journal_roots.critical.
-A configured runtime journal environment path must agree with policy. An empty
-journal mapping is only appropriate when both pipelines are explicitly unused,
-such as a synthetic fixture.
+authority roots, plus journal_roots.critical: the `CRITICAL_COMMAND_JOURNAL_DIR`
+directory, which holds nothing but the locker identification receipts since the
+persistence reset (neither journal is kept any more, and a policy that still names
+`journal_roots.players` is refused). A configured `CRITICAL_COMMAND_JOURNAL_DIR` must
+agree with the policy. An empty mapping is only appropriate for a synthetic fixture.
 
 MariaDB uses one full transactional dump, including schema, migration history,
 lifecycle tables, and all runtime tables. Nontransactional tables are rejected.
@@ -72,13 +73,10 @@ Flatfile capture preserves identity
 ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ critical authority ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ account locking, pending-transaction evidence, and the
 complete durable file tree.
 
-Journal trees are copied before the authority snapshot and compared again after
-it. A changing/compacted WAL rejects the generation, preventing an old SQL
-snapshot from being paired with already-truncated replay evidence. Busy hosts
-must arrange a quiet snapshot window or a brief operator-controlled writer
-quiescence; repeated churn is an RPO incident, not a successful backup. Restores
-copy and replay these same journal directories. Historical generations are
-never edited.
+The receipt tree is copied before the authority snapshot and compared again after
+it; a receipt that changes meanwhile rejects the generation. Anything in that
+directory other than receipts and their empty service lock also rejects it. Restores
+copy the same tree. Historical generations are never edited.
 
 ## Commands and scheduling
 
@@ -107,7 +105,7 @@ policy and verify that the failure reaches the responsible operator.
 
 stdout/stderr contain JSON with fixed result/error codes, generation IDs,
 aggregate age/bytes/counts, and separate replica status. Recovery-point age starts
-before journal and authority capture, so dump duration cannot hide an RPO breach. No credentials, account
+before receipt and authority capture, so dump duration cannot hide an RPO breach. No credentials, account
 names, hosts, or player values are telemetry. Alert on any nonzero job result,
 rpo_exceeded, capacity failures, interrupted work, or missing/overdue drill
 receipts. Monitor timer/unit availability too: a stopped scheduler cannot
@@ -196,15 +194,12 @@ the runtime schema, recomputes the complete migration history, and reconciles
 account/character, wallet, bank, and epic evidence. Runtime boot uses only the
 new socket. Flatfile restore verifies copied bytes before mutation, runs native
 authority replay, and validates existing account, snapshot, and world catalog bytes.
-Full player/domain loads run after WAL replay, allowing a durable first snapshot
-to materialize its missing projection. These loads reject lossy topology repair.
-Before boot, both journal types are scanned with the production codecs. Any
-corrupt/unsupported frame, quarantine evidence, or interrupted temporary journal
-blocks qualification. Both modes then boot the matching server against copied mini-world assets in a
-new user/network/PID namespace, exercise HTTP readiness, reject persistence startup
-failure messages, wait for both journals to drain, and require clean shutdown.
-Native postflight requires zero remaining records and no corruption/quarantine;
-authority reconciliation runs again after replay. Namespaces must be available;
+Full player/domain loads reject lossy topology repair. Before boot, every copied
+locker receipt is decoded with the production codec; anything else in the receipt
+directory, or a receipt that fails, blocks qualification. Both modes then boot the
+matching server against copied mini-world assets in a new user/network/PID namespace,
+exercise HTTP readiness, reject persistence startup failure messages and require
+clean shutdown; authority reconciliation runs again after the boot. Namespaces must be available;
 there is no fallback to a host-network boot.
 The server executable and qualification script are copied into the private
 candidate before entering the namespace, so recovery also works from a checkout
@@ -229,14 +224,14 @@ Review the recorded generation/result and schedule at least weekly.
    independent incident evidence; a checksum alone proves neither correctness
    of the source nor the desired incident time.
 3. Recheck the current erasure ledger immediately before any cutover. Prepare
-   an explicit promotion plan covering the selected authority, journal paths,
+   an explicit promotion plan covering the selected authority, receipt path,
    matching binary/schema, caches, listeners, and old-state rollback location.
    Stop writers, preserve a fresh full backup, and obtain host-owner cutover
    approval. These tools deliberately provide no production promotion command.
 4. Publish one complete authority/candidate, rebuild caches only from that
    authority, perform load/value checks, then reopen access under observation.
    If validation fails, stop again and return the *whole* previous authority,
-   journal set and matching binary/configuration; never mix generations.
+   receipts and matching binary/configuration; never mix generations.
 
 Exceptional selective extraction is a private forensic operation on another
 qualified clone. Review identity/ownership/value dependencies and record any

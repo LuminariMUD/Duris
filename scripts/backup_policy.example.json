@@ -18,7 +18,6 @@
   ],
   "replica_root": null,
   "journal_roots": {
-    "players": "/var/lib/duris/player-journal",
     "critical": "/var/lib/duris/critical-command-journal"
   }
 }

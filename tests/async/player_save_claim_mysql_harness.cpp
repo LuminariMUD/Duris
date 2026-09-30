@@ -232,21 +232,6 @@ int main()
 			scalar(test_connection, "SELECT COUNT(*) FROM player_items WHERE pid=1") ==
 				"0",
 		"an ordinary save is never fenced by revision");
-	// Only the one-time replay of an older server's journal keeps the fence.
-	execute(test_connection, "UPDATE player_data SET save_revision=10 WHERE pid=1");
-	player_snapshot replayed = snapshot_for(1, 9, "Claimer");
-	replayed.items = { item(1001, 501, PLAYER_SNAPSHOT_NO_PARENT) };
-	applied = player_snapshot_repository_apply_from_pool(replayed, PLAYER_SAVE_LEGACY_REPLAY);
-	require(applied.outcome == player_save_apply_outcome::stale_revision &&
-			scalar(test_connection, "SELECT COUNT(*) FROM player_items WHERE pid=1") ==
-				"0",
-		"a legacy replay older than the database is skipped");
-	replayed.revision = 11;
-	applied = player_snapshot_repository_apply_from_pool(replayed, PLAYER_SAVE_LEGACY_REPLAY);
-	require(applied.outcome == player_save_apply_outcome::applied &&
-			scalar(test_connection, "SELECT COUNT(*) FROM player_items WHERE pid=1") ==
-				"1",
-		"a newer legacy replay is applied");
 
 	// A character with no player_data row yet gets one instead of failing.
 	player_snapshot unbased = snapshot_for(3, 1, "Newcomer");

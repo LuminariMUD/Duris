@@ -50,7 +50,6 @@ RUNTIME_ID=$(docker create --name "$RUNTIME_CONTAINER" --restart=no --network "$
   -e "DB_ALLOWED_TARGETS=127.0.0.1/$DB_NAME" \
   -e DB_TLS=FALSE \
   -e REDIS=FALSE \
-  -e PLAYER_SAVE_JOURNAL_DIR=/work/issue331/journals/player \
   -e CRITICAL_COMMAND_JOURNAL_DIR=/work/issue331/journals/critical \
   -e LISTEN_ADDRESS=0.0.0.0 \
   "$IMAGE" sleep infinity)

@@ -1751,8 +1751,7 @@
         "tests/async/run_currency_transaction_schema_mysql.sh",
         "tests/async/test_currency_transaction_contract.py",
         "tests/async/test_flatfile_first_session_currency.py",
-        "tests/async/test_flatfile_accounting_bank.py",
-        "tests/async/test_economic_flatfile_admission_native.py"
+        "tests/async/test_flatfile_accounting_bank.py"
       ],
       "sites": [],
       "evidence": []
@@ -1786,8 +1785,7 @@
         "tests/async/run_currency_transaction_schema_mysql.sh",
         "tests/async/test_currency_transaction_contract.py",
         "tests/async/test_flatfile_first_session_currency.py",
-        "tests/async/test_flatfile_accounting_bank.py",
-        "tests/async/test_economic_flatfile_admission_native.py"
+        "tests/async/test_flatfile_accounting_bank.py"
       ],
       "sites": [],
       "evidence": []
@@ -1939,8 +1937,7 @@
       },
       "test_candidates": [
         "tests/async/test_flatfile_player_domain_repository.py",
-        "tests/async/test_flatfile_accounting_bank.py",
-        "tests/async/test_economic_flatfile_admission_native.py"
+        "tests/async/test_flatfile_accounting_bank.py"
       ],
       "sites": [],
       "evidence": []
@@ -3830,8 +3827,8 @@
     {"path": "src/classes/sillusionist.c", "line": 1656, "family": "item_lifecycle", "excerpt": "shell = read_object(1300, VIRTUAL);"},
     {"path": "src/classes/sillusionist.c", "line": 1748, "family": "item_lifecycle", "excerpt": "extract_obj(t_obj, TRUE); // Not gonna be an arti."},
     {"path": "src/classes/sillusionist.c", "line": 1706, "family": "item_publication", "excerpt": "obj_to_room(shell, ch->in_room);"},
-    {"path": "src/cmd/actinf.c", "line": 4978, "family": "item_lifecycle", "excerpt": "if ((t_obj = read_object(obj_index[i].virtual_number, VIRTUAL)))"},
-    {"path": "src/cmd/actinf.c", "line": 4986, "family": "item_lifecycle", "excerpt": "extract_obj(t_obj, FALSE);"},
+    {"path": "src/cmd/actinf.c", "line": 4946, "family": "item_lifecycle", "excerpt": "if ((t_obj = read_object(obj_index[i].virtual_number, VIRTUAL)))"},
+    {"path": "src/cmd/actinf.c", "line": 4954, "family": "item_lifecycle", "excerpt": "extract_obj(t_obj, FALSE);"},
     {"path": "src/cmd/actmove.c", "line": 73, "family": "item_lifecycle", "excerpt": "extract_obj(key, TRUE);"},
     {"path": "src/cmd/actmove.c", "line": 2182, "family": "item_lifecycle", "excerpt": "ice = read_object(VOBJ_PATH_OF_FROST_ICE, VIRTUAL);"},
     {"path": "src/cmd/actmove.c", "line": 2194, "family": "item_lifecycle", "excerpt": "extract_obj(ice, FALSE);"},
@@ -5314,8 +5311,8 @@
     {"path": "src/player/player_load_materialize.c", "line": 487, "family": "coin_assignment", "excerpt": "GET_BALANCE_PLATINUM(ch) = result.domains.bank[3];"},
     {"path": "src/player/player_load_repository.c", "line": 526, "family": "direct_cash_assignment", "excerpt": "result->domains.bank[index] = unsigned_value(row[index]);"},
     {"path": "src/player/player_snapshot_repository.c", "line": 948, "family": "sql_economy", "excerpt": "\"UPDATE item_current_owner AS current_item SET item_revision=item_revision+1,state=\" +"},
-    {"path": "src/player/player_snapshot_repository.c", "line": 1230, "family": "sql_economy", "excerpt": "query_result result = execute(connection, \"DELETE FROM saved_items WHERE item_key=\" + key);"},
-    {"path": "src/player/player_snapshot_repository.c", "line": 1445, "family": "sql_economy", "excerpt": "sql << \"INSERT INTO account_banks (account_name,racewar,bank_copper,bank_silver,bank_gold,\""},
+    {"path": "src/player/player_snapshot_repository.c", "line": 1191, "family": "sql_economy", "excerpt": "query_result result = execute(connection, \"DELETE FROM saved_items WHERE item_key=\" + key);"},
+    {"path": "src/player/player_snapshot_repository.c", "line": 1406, "family": "sql_economy", "excerpt": "sql << \"INSERT INTO account_banks (account_name,racewar,bank_copper,bank_silver,bank_gold,\""},
     {"path": "src/ships/ship_base.c", "line": 128, "family": "money_helper", "excerpt": "extern bool insert_money_pickup(int pid, int money);"},
     {"path": "src/ships/ship_base.c", "line": 162, "family": "money_helper", "excerpt": "if (!insert_money_pickup(context.pid, context.platinum * 1000))"},
     {"path": "src/ships/ship_base.c", "line": 3177, "family": "money_helper", "excerpt": "if (!insert_money_pickup(get_player_pid_from_name(SHIP_OWNER(ship)),"},

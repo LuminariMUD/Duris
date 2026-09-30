@@ -1004,36 +1004,7 @@ query_result insert_opening_baselines(MYSQL *connection, int pid)
 	return result;
 }
 
-// Only the one-time replay of a journal left by an older server keeps the revision
-// fence: a record the database already has, or has something newer than, is skipped.
-player_save_apply_result replay_fence(MYSQL *connection, const player_snapshot &snapshot,
-				      bool *skip)
-{
-	*skip = false;
-	const query_result query =
-		execute(connection, "SELECT save_revision FROM player_data "
-				    "WHERE pid=" +
-					    std::to_string(snapshot.pid) + " FOR UPDATE");
-	if (!query.ok)
-		return failure(query.error_code);
-	MYSQL_RES *result = mysql_store_result(connection);
-	if (!result)
-		return failure(mysql_errno(connection));
-	MYSQL_ROW row = mysql_fetch_row(result);
-	const unsigned long long durable = row && row[0] ? std::strtoull(row[0], nullptr, 10) : 0;
-	mysql_free_result(result);
-	if (durable >= snapshot.revision)
-	{
-		*skip = true;
-		return { durable == snapshot.revision ? player_save_apply_outcome::already_applied :
-							player_save_apply_outcome::stale_revision,
-			 durable, 0 };
-	}
-	return { player_save_apply_outcome::applied, durable, 0 };
-}
-
-player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot &snapshot,
-					bool legacy_replay)
+player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot &snapshot)
 {
 	if (!connection || snapshot.pid <= 0 || !snapshot.revision || !snapshot.components ||
 	    (snapshot.components & ~PLAYER_CHECKPOINT_COMPONENT_ALL))
@@ -1049,16 +1020,6 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 	query_result query = execute(connection, "START TRANSACTION");
 	if (!query.ok)
 		return failure(query.error_code);
-	if (legacy_replay)
-	{
-		bool skip = false;
-		const player_save_apply_result fenced = replay_fence(connection, snapshot, &skip);
-		if (skip || fenced.outcome != player_save_apply_outcome::applied)
-		{
-			execute(connection, "ROLLBACK");
-			return fenced;
-		}
-	}
 	std::vector<claimed_graph> claims;
 	bool created = false;
 	query = ensure_player_row(connection, snapshot, &created);
@@ -1500,17 +1461,14 @@ bool player_snapshot_repository_write_pets(MYSQL *connection, const player_snaps
 player_save_apply_result player_snapshot_repository_apply(MYSQL *connection,
 							  const player_snapshot &snapshot)
 {
-	return apply_snapshot(connection, snapshot, false);
+	return apply_snapshot(connection, snapshot);
 }
 
 player_save_apply_result player_snapshot_repository_apply_from_pool(const player_snapshot &snapshot,
-								    void *context)
+								    void * /*context*/)
 {
-	return apply_with_pool(
-		[&](MYSQL *connection) {
-			return apply_snapshot(connection, snapshot,
-					      context == PLAYER_SAVE_LEGACY_REPLAY);
-		});
+	return apply_with_pool([&](MYSQL *connection)
+			       { return apply_snapshot(connection, snapshot); });
 }
 
 player_save_apply_result corpse_snapshot_repository_apply(MYSQL *connection,

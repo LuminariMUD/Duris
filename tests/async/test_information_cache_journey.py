@@ -180,13 +180,11 @@ def run(binary, backend):
         zone.write_text(re.sub(r"^[MG] .*\n", "", zone.read_text(), flags=re.M))
         journey.generate_certificate(runtime)
         (runtime / "logs/log").mkdir(parents=True)
-        for name in ("players", "critical"):
-            (runtime / "journals" / name).mkdir(parents=True, mode=0o700)
+        (runtime / "journals" / "critical").mkdir(parents=True, mode=0o700)
         with authority(backend, runtime) as (environment, publish):
             publish("v1")
             plain, tls, websocket = journey.available_ports()
             environment.update(
-                PLAYER_SAVE_JOURNAL_DIR=str(runtime / "journals/players"),
                 CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
                 DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_PORT=str(websocket),
             )

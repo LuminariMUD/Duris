@@ -331,7 +331,6 @@ OBJS =  $(SHIP_OBJS) \
 				 persistence/corpse_lifecycle_transaction.o \
 				 persistence/corpse_lifecycle_repository.o \
 				 persistence/critical_command.o \
-				 persistence/critical_command_journal.o \
 				 persistence/critical_command_coordinator.o \
 				 persistence/economic_accounting_repository.o \
 				 persistence/economic_sql_baseline_transaction.o \
@@ -430,7 +429,6 @@ OBJS =  $(SHIP_OBJS) \
 				 economy/currency_transaction.o \
 				 player/player_revision_state.o \
 				 player/player_save_worker.o \
-				 player/player_save_journal.o \
 				 player/player_save_pipeline.o \
 				 player/player_death_restitution_runtime.o \
 				 player/player_death_restitution_adapter.o \

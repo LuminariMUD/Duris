@@ -1010,14 +1010,12 @@ int run_the_game(int port, int sslport)
 	// A minimal world on MariaDB saves its lockers through the writer too.
 	if (!mini_mode || sql_pool_is_active())
 		locker_async_init();
-	// Only a journal left behind by an older server is read, once.
-	if (!player_save_pipeline_init(getenv("PLAYER_SAVE_JOURNAL_DIR")))
+	if (!player_save_pipeline_init())
 	{
 		logit(LOG_STATUS, "Persistence writer unavailable; saves are not written.");
 		persistence_alert(AVATAR, "player_save", "pipeline", "none", "none", "start_failed",
 				  "writer thread did not start");
 	}
-	const char *critical_journal_directory = getenv("CRITICAL_COMMAND_JOURNAL_DIR");
 	critical_apply_fn critical_apply = critical_command_repository_apply_from_pool;
 	critical_extension_validator_fn critical_extension_validator =
 		economic_command_admission_supported;
@@ -1031,10 +1029,8 @@ int run_the_game(int port, int sslport)
 #ifndef __NO_MYSQL__
 		!critical_outbox_ready ||
 #endif
-		!critical_command_coordinator_init(
-			critical_journal_directory, critical_apply, NULL,
-			player_death_restitution_runtime_restore_replayed_command, NULL,
-			critical_extension_validator))
+		!critical_command_coordinator_init(critical_apply, NULL,
+						   critical_extension_validator))
 	{
 		player_death_restitution_runtime_abort_all();
 		critical_command_coordinator_shutdown();
@@ -1042,7 +1038,7 @@ int run_the_game(int port, int sslport)
 		logit(LOG_STATUS,
 		      "Critical command pipeline unavailable; critical gameplay fails closed.");
 		persistence_alert(AVATAR, "critical_command", "pipeline", "none", "none",
-				  "start_failed", "check critical schema and journal");
+				  "start_failed", "check critical schema");
 	}
 	if (!collector_catalog_cache_refresh())
 		logit(LOG_STATUS,
@@ -1050,7 +1046,9 @@ int run_the_game(int port, int sslport)
 	if (!collector_listing_pipeline_init())
 		logit(LOG_STATUS,
 		      "Collector listing pipeline unavailable; collector commands fail closed.");
-	if (!locker_identify_init(critical_journal_directory))
+	// The directory is named for the critical-command journal it held before the
+	// persistence reset; locker identification keeps its receipts there.
+	if (!locker_identify_init(getenv("CRITICAL_COMMAND_JOURNAL_DIR")))
 		logit(LOG_STATUS,
 		      "Locker identification unavailable: receipt storage could not initialize.");
 	critical_command_coordinator_set_drain_observer(critical_gameplay_handle_completions);

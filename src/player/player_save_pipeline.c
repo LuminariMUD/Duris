@@ -6,7 +6,6 @@
 #include "core/prototypes.h"
 #include "core/files.h"
 #include "flatfile/flatfile_player_repository.h"
-#include "player/player_save_journal.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_repository.h"
@@ -118,42 +117,6 @@ allocate_target_save_login_fence_locked(int pid, player_revision_t expected_revi
 	return nullptr;
 }
 
-/**
- * Replay a player-save journal left behind by a server that still journaled, then
- * retire it. The journal is never written again, so a record left in it after this
- * boot could only ever roll a character back.
- */
-void replay_legacy_journal(const char *directory)
-{
-	if (!directory || directory[0] != '/')
-		return;
-	if (!player_save_journal_init(directory))
-	{
-		logit(LOG_STATUS, "Legacy player-save journal unavailable; nothing replayed.");
-		return;
-	}
-	const player_save_journal_result replayed =
-		player_save_journal_replay(selected_snapshot_apply(), PLAYER_SAVE_LEGACY_REPLAY);
-	const player_save_journal_health journal = player_save_journal_health_copy();
-	bool retired = false;
-	if (journal.records)
-		retired = player_save_journal_retire();
-	player_save_journal_shutdown();
-	{
-		std::lock_guard<std::mutex> lock(pipeline_mutex);
-		health.legacy_journal_replayed = journal.replayed;
-		health.legacy_journal_retired = retired;
-	}
-	logit(LOG_STATUS,
-	      "Legacy player-save journal: replayed=%llu remaining=%llu result=%u retired=%d",
-	      (unsigned long long)journal.replayed, (unsigned long long)journal.records,
-	      (unsigned)replayed, retired ? 1 : 0);
-	if (journal.records)
-		persistence_alert(AVATAR, "player_save", "legacy_journal", "none", "none",
-				  "replay_incomplete", "remaining=%llu retired=%d",
-				  (unsigned long long)journal.records, retired ? 1 : 0);
-}
-
 P_char live_player(int pid)
 {
 	for (P_char ch = character_list; ch; ch = ch->next)
@@ -247,7 +210,7 @@ player_save_pipeline_result submit_snapshot(player_snapshot snapshot)
 }
 } // namespace
 
-bool player_save_pipeline_init(const char *legacy_journal_directory)
+bool player_save_pipeline_init(void)
 {
 	{
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
@@ -255,7 +218,6 @@ bool player_save_pipeline_init(const char *legacy_journal_directory)
 			return false;
 		health = {};
 	}
-	replay_legacy_journal(legacy_journal_directory);
 	if (!player_save_worker_init(selected_snapshot_apply(), nullptr))
 		return false;
 	std::lock_guard<std::mutex> lock(pipeline_mutex);

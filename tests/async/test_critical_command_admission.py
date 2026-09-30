@@ -82,13 +82,11 @@ static unsigned long long percentile(std::vector<unsigned long long> values,
     return values[index];
 }
 
-int main(int argc, char **argv)
+int main()
 {
-    assert(argc == 2);
     submitter = std::this_thread::get_id();
     assert(player_save_worker_init(apply_save, nullptr));
-    // A journal directory is only read for an older server's journal.
-    assert(critical_command_coordinator_init(argv[1], apply, nullptr));
+    assert(critical_command_coordinator_init(apply, nullptr));
     {
         std::lock_guard<std::mutex> lock(hold_mutex);
         hold = true;
@@ -111,7 +109,6 @@ int main(int argc, char **argv)
     assert(critical_command_coordinator_durability(submitted[0].operation_id) ==
            critical_command_durability::awaiting_durability);
     assert(submitter_file_io == 0);
-    assert(critical_command_journal_health_copy().records == 0);
     assert(percentile(submit_latencies, 95) < 40000);
     printf("stalled_writer_submit: n=%zu p50_us=%llu p95_us=%llu p99_us=%llu file_io=%u\n",
            submit_latencies.size(), percentile(submit_latencies, 50),
@@ -126,7 +123,6 @@ int main(int argc, char **argv)
     assert(applied == 33);
     assert(critical_command_coordinator_durability(submitted[0].operation_id) ==
            critical_command_durability::durable);
-    assert(critical_command_journal_health_copy().records == 0);
     critical_command_coordinator_shutdown();
     player_save_worker_reset_for_tests();
 }
@@ -143,15 +139,14 @@ with tempfile.TemporaryDirectory(prefix="duris-critical-admission-") as director
             "g++", "-std=c++20", "-g", "-Og", "-Wall", "-Wextra", "-Wpedantic",
             "-Werror", "-pthread", "-fsanitize=address,undefined",
             "-fno-omit-frame-pointer", "-fno-pie", "-no-pie", "-Isrc", str(source),
-            rel("critical_command.c"), rel("critical_command_journal.c"),
-            rel("critical_command_coordinator.c"), rel("player_save_worker.c"),
+            rel("critical_command.c"), rel("critical_command_coordinator.c"), rel("player_save_worker.c"),
             rel("persistence_observability.c"), "-lz", "-lcrypto", "-lmysqlclient",
             "-Wl,--wrap=fsync", "-Wl,--wrap=write", "-o", str(binary),
         ],
         cwd=ROOT,
         check=True,
     )
-    subprocess.run([str(binary), str(temporary / "journal")], check=True, timeout=60)
+    subprocess.run([str(binary)], check=True, timeout=60)
 
 # Every domain adapter keeps its pending state for each result that keeps the operation.
 for relative in (

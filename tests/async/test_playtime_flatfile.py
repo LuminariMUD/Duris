@@ -36,8 +36,8 @@ int main(int argc, char **argv) {
         baseline.status_integers.push_back({tag, value, 0, false});
     }
     baseline.status_strings.push_back({player_status_string_field::name, "Player"});
-    auto apply = [&](const player_snapshot &s, bool legacy_replay = false) {
-        auto result = flatfile_player_snapshot_apply(root, s, &error, legacy_replay);
+    auto apply = [&](const player_snapshot &s) {
+        auto result = flatfile_player_snapshot_apply(root, s, &error);
         if (result.outcome == player_save_apply_outcome::terminal_failure)
             std::cerr << error << '\n';
         return result.outcome;
@@ -63,15 +63,9 @@ int main(int argc, char **argv) {
     // Writing the same save again is harmless.
     assert(apply(elapsed) == player_save_apply_outcome::applied);
     assert(read_total() == 4200);
-    // Only the one-time replay of an older server's journal can bring a stale
-    // revision, and it keeps the fence.
-    assert(apply(elapsed, true) == player_save_apply_outcome::already_applied);
-    assert(read_total() == 4200);
-    assert(apply(baseline, true) == player_save_apply_outcome::stale_revision);
-    assert(read_total() == 4200);
     const auto loaded = static_cast<unsigned int>(read_total());
     assert(player_playtime_total(loaded, 100000, 100010) == 4210);
-    std::cout << "[PASS] flat-file baseline/status merge, repeated and stale revisions, reload with new session clock\n";
+    std::cout << "[PASS] flat-file baseline/status merge, repeated revision, reload with new session clock\n";
 }
 '''
 

@@ -5895,70 +5895,12 @@
       "dependencies": []
     },
     {
-      "id": "file:player_save_journal",
-      "kind": "journal",
-      "locator": "PLAYER_SAVE_JOURNAL_DIR/player-save.journal",
-      "data_category": "personal_or_mixed_durable_store",
-      "data_subject_key": "player_id",
-      "technical_purpose": "revisioned player-save retry and recovery",
-      "controller_decision": {
-        "status": "pending",
-        "reference": "PENDING-CONTROLLER-DECISION"
-      },
-      "export_rule": {
-        "disposition": "pending",
-        "subject_route": "non_database",
-        "decision": {
-          "status": "pending",
-          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
-        },
-        "excluded_fields": [],
-        "shared_fields": []
-      },
-      "season_action": "retain",
-      "active_retention": "pending_controller_decision",
-      "archive_retention": "pending_controller_decision",
-      "terminal_action": "retain",
-      "exception": "protected_recovery_replay_or_restore_horizon",
-      "protected_record": true,
-      "dependencies": []
-    },
-    {
-      "id": "file:player_save_quarantine",
-      "kind": "quarantine",
-      "locator": "PLAYER_SAVE_JOURNAL_DIR/player-save.journal.quarantine",
-      "data_category": "personal_or_mixed_durable_store",
-      "data_subject_key": "player_id",
-      "technical_purpose": "corrupt player-save evidence and operator repair",
-      "controller_decision": {
-        "status": "pending",
-        "reference": "PENDING-CONTROLLER-DECISION"
-      },
-      "export_rule": {
-        "disposition": "pending",
-        "subject_route": "non_database",
-        "decision": {
-          "status": "pending",
-          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
-        },
-        "excluded_fields": [],
-        "shared_fields": []
-      },
-      "season_action": "retain",
-      "active_retention": "pending_controller_decision",
-      "archive_retention": "pending_controller_decision",
-      "terminal_action": "retain",
-      "exception": "protected_recovery_replay_or_restore_horizon",
-      "protected_record": true,
-      "dependencies": []
-    },
-    {
       "id": "file:critical_command_journal",
       "kind": "journal",
       "locator": "CRITICAL_COMMAND_JOURNAL_DIR",
       "data_category": "personal_or_mixed_durable_store",
       "data_subject_key": "operation_id_with_domain_subject",
-      "technical_purpose": "critical command replay and reconciliation, including durable locker identification receipts in locker-identification/<pid>.receipt",
+      "technical_purpose": "durable locker identification receipts in locker-identification/<pid>.receipt (the directory held the critical-command journal before the persistence reset)",
       "controller_decision": {
         "status": "pending",
         "reference": "PENDING-CONTROLLER-DECISION"
@@ -5971,7 +5913,6 @@
           "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
         },
         "excluded_fields": [
-          "command_payload",
           "locker_identification_receipt_text"
         ],
         "shared_fields": []

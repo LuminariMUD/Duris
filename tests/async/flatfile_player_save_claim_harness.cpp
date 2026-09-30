@@ -213,7 +213,7 @@ int main(int argc, char **argv)
 	require(text_of(path / "logs/log/dupes").find("uid=1006") == std::string::npos,
 		"nothing the save claimed is in the dupe log");
 
-	// No revision fence: an older ordinary save is written; a legacy replay is not.
+	// No revision fence: an older ordinary save is written.
 	player_snapshot older = snapshot_for(1);
 	require(flatfile_player_snapshot_apply(root, older, &error).outcome ==
 				player_save_apply_outcome::applied &&
@@ -221,15 +221,6 @@ int main(int argc, char **argv)
 				flatfile_player_load_result::ok &&
 			stored.items.empty(),
 		"an ordinary save is never fenced by revision");
-	player_snapshot replay = snapshot_for(1);
-	replay.items = { item(1001, 501, PLAYER_SNAPSHOT_NO_PARENT) };
-	require(flatfile_player_snapshot_apply(root, replay, &error, true).outcome ==
-			player_save_apply_outcome::already_applied,
-		"a legacy replay the file already has is skipped");
-	replay.revision = 2;
-	require(flatfile_player_snapshot_apply(root, replay, &error, true).outcome ==
-			player_save_apply_outcome::applied,
-		"a newer legacy replay is applied");
 	// A new player's first save records its owner even when it holds nothing, so the
 	// game can hydrate the owner revision straight after creation.
 	require(flatfile_identity_claim(root, 41, "Newcomer", "Account-Two", &error) ==

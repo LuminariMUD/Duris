@@ -155,9 +155,8 @@ player_save_apply_result apply_save(const player_snapshot &snapshot, void *)
     return {player_save_apply_outcome::applied, snapshot.revision, 0};
 }
 
-int main(int argc, char **argv)
+int main()
 {
-    assert(argc == 2);
     index_data index = {};
     index.virtual_number = 42;
     obj_index = &index;
@@ -186,7 +185,7 @@ int main(int argc, char **argv)
     runtime_entry.state = item_custody_state::active;
 
     assert(player_save_worker_init(apply_save, nullptr));
-    assert(critical_command_coordinator_init(argv[1], apply_transfer, nullptr));
+    assert(critical_command_coordinator_init(apply_transfer, nullptr));
     item_movement_reject reject = item_movement_reject::none;
     const item_owner_identity destination = {item_owner_type::player, 1001, 0};
     if (!item_movement_transaction_submit(
@@ -284,16 +283,14 @@ with tempfile.TemporaryDirectory(prefix="duris-publication-retention-") as tempo
             "-D__NO_MYSQL__", "-pthread", "-ffunction-sections", "-fdata-sections",
             "-Isrc", "-Isrc/no_mysql", str(source),
             rel("item/item_movement_transaction.c"), rel("item/item_transfer_command.c"),
-            rel("critical_command.c"), rel("persistence/critical_command_journal.c"),
-            rel("persistence/critical_command_coordinator.c"), rel("player_save_worker.c"),
+            rel("critical_command.c"), rel("persistence/critical_command_coordinator.c"), rel("player_save_worker.c"),
             rel("persistence_observability.c"),
             "-Wl,--gc-sections", "-lz", "-lcrypto", "-o", str(binary),
         ],
         cwd=ROOT,
         check=True,
     )
-    journal = temp / "journal"
-    subprocess.run([str(binary), str(journal)], check=True, timeout=30)
+    subprocess.run([str(binary)], check=True, timeout=30)
 
 print("shared item movement publication retention passed")
 ''

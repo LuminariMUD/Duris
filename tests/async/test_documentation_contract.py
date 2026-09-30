@@ -203,7 +203,6 @@ class DocumentationContractTest(unittest.TestCase):
             "DB_ALLOWED_TARGETS",
             "DB_SSL_CA",
             "DURIS_WEBSOCKET_PORT",
-            "PLAYER_SAVE_JOURNAL_DIR",
             "CRITICAL_COMMAND_JOURNAL_DIR",
             "MAINTENANCE_STATE_FILE",
             "REDIS",

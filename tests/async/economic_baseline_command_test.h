@@ -10,19 +10,7 @@ critical_apply_result baseline_must_not_execute(const critical_command &, void *
 	assert(false && "baseline preparation must never become executable");
 	return { critical_apply_outcome::terminal_failure, 0, EINVAL };
 }
-struct baseline_journal_observation
-{
-	const critical_command *expected;
-	unsigned calls = 0;
-};
-bool baseline_observe_retained(critical_command command, void *context)
-{
-	auto &observation = *static_cast<baseline_journal_observation *>(context);
-	assert(critical_command_equal(command, *observation.expected));
-	++observation.calls;
-	return true;
-}
-void baseline_coordinator_refusal(const critical_command &command, const std::string &path)
+void baseline_coordinator_refusal(const critical_command &command)
 {
 	// Neither the default coordinator nor its explicit bank-only extension may
 	// admit baseline preparation, even though its wire envelope is valid.
@@ -30,38 +18,19 @@ void baseline_coordinator_refusal(const critical_command &command, const std::st
 	     { static_cast<critical_extension_validator_fn>(nullptr),
 	       economic_command_admission_supported })
 	{
-		assert(critical_command_coordinator_init(path.c_str(), baseline_must_not_execute,
-							 nullptr, nullptr, nullptr, validator));
+		assert(critical_command_coordinator_init(baseline_must_not_execute, nullptr,
+							 validator));
 		assert(critical_command_coordinator_submit(command) ==
 		       critical_submit_result::invalid);
 		assert(critical_command_coordinator_submit_for_publication(command) ==
 		       critical_submit_result::invalid);
-		assert(critical_command_journal_health_copy().records == 0 &&
-		       critical_command_journal_health_copy().checkpoints == 0 &&
-		       baseline_execution_calls == 0);
+		assert(baseline_execution_calls == 0);
 		critical_command_coordinator_shutdown();
 	}
-	// A durable but unsupported envelope must survive refused startup exactly,
-	// without forwarding or checkpointing it as completed work.
-	assert(critical_command_journal_init(path.c_str()));
-	assert(critical_command_journal_append(command) == critical_command_journal_result::ok);
-	critical_command_journal_shutdown();
-	assert(!critical_command_coordinator_init(path.c_str(), baseline_must_not_execute, nullptr,
-						  nullptr, nullptr,
-						  economic_command_admission_supported));
-	critical_command_coordinator_shutdown();
-	assert(critical_command_journal_init(path.c_str()));
-	assert(critical_command_journal_health_copy().checkpoints == 0 &&
-	       baseline_execution_calls == 0);
-	baseline_journal_observation observation{ &command };
-	assert(critical_command_journal_replay(baseline_observe_retained, &observation) ==
-		       critical_command_journal_result::ok &&
-	       observation.calls == 1);
-	critical_command_journal_shutdown();
 	std::cout
-		<< "baseline coordinator: fresh/publication admission and durable replay refused without execution or checkpoint\n";
+		<< "baseline coordinator: fresh/publication admission refused without execution\n";
 }
-void command_tests(const std::string &journal_path)
+void command_tests()
 {
 	static_assert(static_cast<uint16_t>(critical_command_type::player_death_restitution) == 19);
 	static_assert(static_cast<uint16_t>(critical_command_type::economic_baseline) == 20);
@@ -69,7 +38,7 @@ void command_tests(const std::string &journal_path)
 	critical_command command;
 	assert(economic_baseline_command_build(*prepared, 123456, &command) == error::ok);
 	assert(command.payload == REFERENCE_COMMAND_PAYLOAD);
-	baseline_coordinator_refusal(command, journal_path);
+	baseline_coordinator_refusal(command);
 	assert(command.accounting_intent.size() == ECONOMIC_INTENT_HEADER_BYTES);
 	assert(critical_command_envelope_valid(command));
 	assert(!critical_command_valid(command) && !economic_command_admission_supported(command));

@@ -218,7 +218,6 @@ def runtime_environment(backend: str, state_root: pathlib.Path, player_journal: 
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "ENVIRONMENT": "local",
         "PERSISTENCE_MODE": "flatfile-primary" if backend == "flatfile" else "mariadb-primary",
-        "PLAYER_SAVE_JOURNAL_DIR": str(player_journal),
         "CRITICAL_COMMAND_JOURNAL_DIR": str(critical_journal),
         "LISTEN_ADDRESS": "127.0.0.1",
         "DURIS_TLS_PORT": str(tls_port),

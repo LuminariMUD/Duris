@@ -9,7 +9,6 @@
 #include <cerrno>
 #include <condition_variable>
 #include <cstring>
-#include <filesystem>
 #include <iostream>
 #include <mutex>
 #include <thread>
@@ -127,11 +126,6 @@ template <class Predicate> void wait_for(Predicate predicate)
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 }
-bool retained(critical_command command, void *context)
-{
-	assert(critical_command_equal(command, *static_cast<critical_command *>(context)));
-	return true;
-}
 bool wrong_backend(const critical_command &) noexcept
 {
 	return false;
@@ -141,14 +135,14 @@ critical_apply_result must_not_apply(const critical_command &, void *)
 	assert(false && "backend without accounting support received a command");
 	return { critical_apply_outcome::terminal_failure, 0, EINVAL };
 }
-void exercise(const std::string &path, critical_command command, bool assign_acceptance = false)
+void exercise(critical_command command, bool assign_acceptance = false)
 {
 	malformed(command);
 	if (assign_acceptance)
 		command.accepted_at_usec = 0;
 	execution state;
 	state.expected = command;
-	assert(critical_command_coordinator_init(nullptr, apply, &state, nullptr, nullptr,
+	assert(critical_command_coordinator_init(apply, &state,
 						 economic_command_admission_supported));
 	auto bad = command;
 	bad.accounting_intent[12] ^= 1;
@@ -211,56 +205,16 @@ void exercise(const std::string &path, critical_command command, bool assign_acc
 	       critical_submit_result::identity_conflict);
 	critical_command_coordinator_shutdown();
 	// Shutdown must clear the extension registration, including fresh admission.
-	assert(critical_command_coordinator_init(nullptr, apply, &state));
+	assert(critical_command_coordinator_init(apply, &state));
 	assert(critical_command_coordinator_submit(command) == critical_submit_result::invalid);
 	critical_command_coordinator_shutdown();
-	assert(critical_command_coordinator_init(nullptr, must_not_apply, nullptr, nullptr, nullptr,
-						 wrong_backend));
+	assert(critical_command_coordinator_init(must_not_apply, nullptr, wrong_backend));
 	assert(critical_command_coordinator_submit(command) == critical_submit_result::invalid);
 	assert(critical_command_coordinator_submit_for_publication(command) ==
 	       critical_submit_result::invalid);
 	for (const auto &key : command.keys)
 		assert(!critical_command_coordinator_is_fenced(key, nullptr));
 	critical_command_coordinator_shutdown();
-	// A journal an older server left replays only through a matching executor.
-	assert(critical_command_journal_init(path.c_str()));
-	assert(critical_command_journal_append(command) == critical_command_journal_result::ok);
-	critical_command_journal_shutdown();
-	assert(!critical_command_coordinator_init(path.c_str(), must_not_apply, nullptr, nullptr,
-						  nullptr, wrong_backend));
-	critical_command_coordinator_shutdown();
-	assert(!critical_command_coordinator_init(path.c_str(), apply, &state));
-	critical_command_coordinator_shutdown();
-	assert(critical_command_journal_init(path.c_str()));
-	assert(critical_command_journal_health_copy().checkpoints == 0);
-	assert(critical_command_journal_replay(retained, &command) ==
-	       critical_command_journal_result::ok);
-	critical_command_journal_shutdown();
-	state.calls = 0;
-	assert(critical_command_coordinator_init(path.c_str(), apply, &state, nullptr, nullptr,
-						 economic_command_admission_supported));
-	wait_for([&] { return critical_command_coordinator_pulse(&completed, 1) == 1; });
-	assert(completed.outcome == critical_apply_outcome::already_applied &&
-	       completed.durable_revision == 11);
-	assert(state.calls == 1);
-	assert(critical_command_journal_health_copy().records == 0);
-	for (const auto &key : command.keys)
-		assert(!critical_command_coordinator_is_fenced(key, nullptr));
-	critical_command_coordinator_shutdown();
-	const std::string unsupported = path + "-unsupported";
-	assert(critical_command_journal_init(unsupported.c_str()));
-	// Journal input retains the assigned envelope timestamp even when its intent is invalid.
-	bad.accepted_at_usec = command.accepted_at_usec;
-	assert(critical_command_journal_append(bad) == critical_command_journal_result::ok);
-	critical_command_journal_shutdown();
-	assert(!critical_command_coordinator_init(unsupported.c_str(), apply, &state, nullptr,
-						  nullptr, economic_command_admission_supported));
-	critical_command_coordinator_shutdown();
-	assert(critical_command_journal_init(unsupported.c_str()));
-	assert(critical_command_journal_health_copy().checkpoints == 0);
-	assert(critical_command_journal_replay(retained, &bad) ==
-	       critical_command_journal_result::ok);
-	critical_command_journal_shutdown();
 }
 void publication_acknowledgement()
 {
@@ -268,7 +222,7 @@ void publication_acknowledgement()
 	execution state;
 	state.expected = command;
 	state.release = true;
-	assert(critical_command_coordinator_init(nullptr, apply, &state, nullptr, nullptr,
+	assert(critical_command_coordinator_init(apply, &state,
 						 economic_command_admission_supported));
 	assert(critical_command_coordinator_submit_for_publication(command) ==
 	       critical_submit_result::accepted);
@@ -306,17 +260,14 @@ player_save_apply_result apply_save(const player_snapshot &snapshot, void *)
 {
 	return { player_save_apply_outcome::applied, snapshot.revision, 0 };
 }
-int main(int argc, char **argv)
+int main()
 {
-	assert(argc == 2);
-	const std::string path = argv[1];
-	std::filesystem::create_directories(path);
 	assert(player_save_worker_init(apply_save, nullptr));
-	exercise(path + "/deposit", bank(false));
-	exercise(path + "/withdraw", bank(true));
-	exercise(path + "/assigned-time", bank(false), true);
+	exercise(bank(false));
+	exercise(bank(true));
+	exercise(bank(false), true);
 	publication_acknowledgement();
 	player_save_worker_reset_for_tests();
 	std::cout
-		<< "bank accounting coordinator: typed admission, backend refusal, attachment/conflict, unresolved fences, assigned timestamp replay and publication acknowledgement passed\n";
+		<< "bank accounting coordinator: typed admission, backend refusal, attachment/conflict, unresolved fences, assigned timestamp and publication acknowledgement passed\n";
 }

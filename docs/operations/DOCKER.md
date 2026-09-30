@@ -72,8 +72,8 @@ docker compose --env-file .env.docker build --pull game
 docker compose --env-file .env.docker up --detach --wait
 ```
 
-The game launcher takes a database backup before each boot. Backups, player-save
-and critical-command journals, maintenance state, and the local TLS key are in
+The game launcher takes a database backup before each boot. Backups, the locker
+identification receipts, maintenance state, and the local TLS key are in
 the `duris-runtime` volume. Filesystem-backed player state such as lockers,
 crafting recipes, aliases, and death-object configuration is in `duris-players`.
 Game logs are in `duris-logs`, and MariaDB data is in `mariadb-data`.
@@ -99,7 +99,7 @@ values interpolated from `.env.docker`.
 
 Ordinary `down`, rebuild, and image removal preserve the named volumes. The
 following command permanently deletes the Docker database, filesystem-backed
-player state, backups, journals, certificate, logs, and socket volume for this
+player state, backups, receipts, certificate, logs, and socket volume for this
 Compose project:
 
 ```bash

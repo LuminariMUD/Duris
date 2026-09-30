@@ -44,13 +44,11 @@ $~"""))
             zone_path.write_text(zone.replace(
                 "\nS\n", "\nO 0 48 1 22800 100 0 0 0 * takeable container\n"
                          "P 1 11 1 48 100 0 0 0 * nested ordinary item\nS\n"))
-            for name in ("players", "critical"):
-                (game / "journals" / name).mkdir(parents=True, mode=0o700)
+            (game / "journals" / "critical").mkdir(parents=True, mode=0o700)
             port, tls_port, ws_port = journey.available_ports()
             env = dict(PATH=os.environ.get("PATH", "/usr/bin:/bin"),
                        ENVIRONMENT="local", PERSISTENCE_MODE="flatfile-primary",
                        FLATFILE_STATE_DIR=str(state),
-                       PLAYER_SAVE_JOURNAL_DIR=str(game / "journals/players"),
                        CRITICAL_COMMAND_JOURNAL_DIR=str(game / "journals/critical"),
                        LISTEN_ADDRESS="127.0.0.1", DURIS_TLS_PORT=str(tls_port),
                        DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1",

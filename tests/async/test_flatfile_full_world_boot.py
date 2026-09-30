@@ -398,7 +398,6 @@ with tempfile.TemporaryDirectory(prefix="full-world-build-", dir=ROOT / "bin") a
                     "ENVIRONMENT": "local",
                     "PERSISTENCE_MODE": "flatfile-primary",
                     "FLATFILE_STATE_DIR": str(state_root),
-                    "PLAYER_SAVE_JOURNAL_DIR": str(player_journal),
                     "CRITICAL_COMMAND_JOURNAL_DIR": str(critical_journal),
                     "LISTEN_ADDRESS": "127.0.0.1",
                     "DURIS_TLS_PORT": str(tls_port),

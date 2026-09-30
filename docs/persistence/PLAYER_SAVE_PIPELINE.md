@@ -20,9 +20,8 @@ Memory is the authority. The database is a copy that catches up through one writ
    owner is marked dirty so its next save carries the state again.
 
 The game-thread checkpoint and completion paths perform no MySQL, Redis, or filesystem
-operation. Nothing is journaled; see [Player Save Journal](PLAYER_SAVE_JOURNAL.md) for
-the one-time replay of a journal left by an older server. A crash loses whatever had
-not reached the database, at most one 30-second `dirty-player-checkpoint`.
+operation. Nothing is journaled. A crash loses whatever had not reached the database,
+at most one 30-second `dirty-player-checkpoint`.
 
 ## Game-thread SQL
 
@@ -67,7 +66,7 @@ commits it with the player file):
 The owner's revision, and the revision of each owner that lost an item, advances once
 per save that changes them. There is no revision fence: with one writer, every save is
 newer than the last one for that owner. A character with no `player_data` row yet gets
-one. Only the one-time replay of an older server's journal keeps the fence.
+one.
 
 `logs/log/dupes` has one line per item a save left out or a load skipped, naming the
 item, its vnum, the owner that lost it and the owner that has it.
@@ -103,7 +102,7 @@ cannot be reopened while its save slot is dirty or in flight.
 
 The writer needs no configuration. `world persistence` reports the pipeline (marks,
 captures, replacements, unchanged checkpoints, write failures, terminal waits, drain
-failures, legacy journal replay) and the writer (queued and in-flight jobs, bytes,
+failures) and the writer (queued and in-flight jobs, bytes,
 oldest age, high-water marks, connection retries, failures, capture-to-apply and apply
 latency). Output contains no player identity or snapshot value.
 

@@ -1,8 +1,6 @@
 #include "flatfile/flatfile_player_domain_repository.h"
-#include "player/player_save_journal.h"
 #include "item/locker_receipt.h"
 #include "item/artifact_mana_store.h"
-#include "persistence/critical_command_journal.h"
 #include "flatfile/flatfile_account_repository.h"
 #include "flatfile/flatfile_identity_repository.h"
 #include "flatfile/flatfile_player_repository.h"
@@ -76,8 +74,8 @@ static std::string account_name(const std::string &stem)
 	return name;
 }
 
-// Locker identification stores durable payment receipts alongside the critical
-// WAL. The service lock is empty runtime metadata; receipts must survive restore
+// Locker identification stores durable payment receipts in the critical-command journal
+// directory. The service lock is empty runtime metadata; receipts must survive restore
 // and pass the same bounded decoder used when a player claims their result.
 static void qualify_locker_receipts(const std::filesystem::path &directory)
 {
@@ -107,57 +105,27 @@ static void qualify_locker_receipts(const std::filesystem::path &directory)
 	}
 }
 
-// Init uses the production codecs and may quarantine a corrupt player frame.
-// This runs only on copied candidate journals; any quarantine is a hard failure.
-static void qualify_journals(const std::filesystem::path &candidate, bool drained)
+// The critical-command journal directory holds nothing but the locker receipts.
+static void qualify_receipts(const std::filesystem::path &candidate)
 {
 	require(candidate.is_absolute() &&
 		std::filesystem::is_regular_file(candidate / "ISOLATED_RESTORE"));
-	for (const char *name : { "players", "critical" })
+	const auto directory = candidate / "journals/critical";
+	std::filesystem::create_directories(directory);
+	for (const auto &entry : std::filesystem::directory_iterator(directory))
 	{
-		const auto directory = candidate / "journals" / name;
-		std::filesystem::create_directories(directory);
-		const std::string filename = std::string(name) == "players" ?
-						     "player-save.journal" :
-						     "critical-command.journal";
-		for (const auto &entry : std::filesystem::directory_iterator(directory))
-		{
-			if (std::string(name) == "critical" &&
-			    entry.path().filename() == "locker-identification")
-			{
-				qualify_locker_receipts(entry.path());
-				continue;
-			}
-			require(entry.is_regular_file() && !entry.is_symlink());
-			require(entry.path().filename() == filename ||
-				(entry.path().filename() == "player-save.journal.quarantine" &&
-				 entry.file_size() == 0));
-		}
+		require(entry.path().filename() == "locker-identification");
+		qualify_locker_receipts(entry.path());
 	}
-	require(player_save_journal_init((candidate / "journals/players").c_str()));
-	const auto player = player_save_journal_health_copy();
-	player_save_journal_shutdown();
-	require(player.initialized && player.corrupt_records == 0 &&
-		player.unsupported_records == 0 && player.quarantined_bytes == 0 &&
-		(!drained || player.records == 0));
-	require(critical_command_journal_init((candidate / "journals/critical").c_str()));
-	const auto critical = critical_command_journal_health_copy();
-	critical_command_journal_shutdown();
-	require(critical.initialized && critical.corrupt_records == 0 &&
-		critical.last_result == critical_command_journal_result::ok &&
-		(!drained || critical.records == 0));
-	std::cout << "{\"player_records\":" << player.records
-		  << ",\"critical_records\":" << critical.records << "}\n";
 }
 
 int main(int argc, char **argv)
 {
 	try
 	{
-		if (argc == 3 && (std::string(argv[1]) == "--journals-preflight" ||
-				  std::string(argv[1]) == "--journals-drained"))
+		if (argc == 3 && std::string(argv[1]) == "--receipts")
 		{
-			qualify_journals(argv[2], std::string(argv[1]) == "--journals-drained");
+			qualify_receipts(argv[2]);
 			return 0;
 		}
 		const bool preflight = argc == 3 && std::string(argv[1]) == "--state-preflight";

@@ -33,12 +33,10 @@ def run(binary):
         prototype = re.search(r"^#1201\n.*?(?=^#|^\$)", source, re.M | re.S).group()
         mobile.write_text(mobile.read_text().replace("$~", prototype + "$~"))
         journey.generate_certificate(runtime)
-        for directory in ("players", "critical"):
-            (runtime / "journals" / directory).mkdir(parents=True, mode=0o700)
+        (runtime / "journals" / "critical").mkdir(parents=True, mode=0o700)
         port, tls, websocket = journey.available_ports()
         env = dict(PATH=os.environ.get("PATH", "/usr/bin:/bin"), ENVIRONMENT="local",
                    PERSISTENCE_MODE="flatfile-primary", FLATFILE_STATE_DIR=str(state),
-                   PLAYER_SAVE_JOURNAL_DIR=str(runtime / "journals/players"),
                    CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
                    LISTEN_ADDRESS="127.0.0.1", DURIS_TLS_PORT=str(tls),
                    DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1", DURIS_WEBSOCKET_PORT=str(websocket),

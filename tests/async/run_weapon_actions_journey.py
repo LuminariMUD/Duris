@@ -127,7 +127,6 @@ def run_case(binary: Path, inspector: Path, enabled: bool, react: bool, family: 
         env = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "ENVIRONMENT": "local",
             "PERSISTENCE_MODE": "flatfile-primary", "FLATFILE_STATE_DIR": str(state),
-            "PLAYER_SAVE_JOURNAL_DIR": str(journal / "players"),
             "CRITICAL_COMMAND_JOURNAL_DIR": str(journal / "critical"),
             "LISTEN_ADDRESS": "127.0.0.1", "DURIS_TLS_PORT": str(tls),
             "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1", "DURIS_WEBSOCKET_PORT": str(websocket),

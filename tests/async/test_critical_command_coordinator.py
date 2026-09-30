@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Identity, journal, capture order on the writer, fence, replay and bound contracts."""
+"""Identity, capture order on the writer, fence and bound contracts."""
 
 from _paths import SRC, rel
 import subprocess
@@ -9,7 +9,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 COMMAND = (SRC / "critical_command.c").read_text()
-JOURNAL = (SRC / "critical_command_journal.c").read_text()
 COORDINATOR = (SRC / "critical_command_coordinator.c").read_text()
 HEADER = (SRC / "critical_command_coordinator.h").read_text()
 COMPLETION = (SRC / "persistence/critical_command_completion.h").read_text()
@@ -112,17 +111,6 @@ player_snapshot save_of(int pid)
     return snapshot;
 }
 
-struct replay_state
-{
-    std::vector<critical_command> commands;
-};
-
-bool collect_replay(critical_command command, void *raw)
-{
-    static_cast<replay_state *>(raw)->commands.push_back(std::move(command));
-    return true;
-}
-
 template <typename Predicate> void wait_until(Predicate predicate)
 {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
@@ -140,10 +128,8 @@ void release(bool apply_state::*flag, bool value)
     state.changed.notify_all();
 }
 
-int main(int argc, char **argv)
+int main()
 {
-    assert(argc == 3);
-
     std::set<std::string> identities;
     for (unsigned int index = 0; index < 512; ++index)
     {
@@ -181,46 +167,9 @@ int main(int argc, char **argv)
     assert(critical_command_decode(malformed.data(), malformed.size(), &decoded) ==
            critical_command_codec_result::invalid);
 
-    // The journal itself: append, replay once per identity, checkpoint, corruption.
-    assert(critical_command_journal_init(argv[1]));
-    critical_command first = make_command(8, {{critical_entity_type::player, 8}});
-    first.accepted_at_usec = 1700000000000001ULL;
-    assert(critical_command_normalize(&first));
-    critical_command second = make_command(9, {{critical_entity_type::account, 9}});
-    second.accepted_at_usec = 1700000000000002ULL;
-    assert(critical_command_normalize(&second));
-    assert(critical_command_journal_append(first) == critical_command_journal_result::ok);
-    assert(critical_command_journal_append(second) == critical_command_journal_result::ok);
-    assert(critical_command_journal_append(first) == critical_command_journal_result::ok);
-    replay_state replay;
-    assert(critical_command_journal_replay(collect_replay, &replay) ==
-           critical_command_journal_result::ok);
-    assert(replay.commands.size() == 2);
-    assert(critical_command_journal_health_copy().duplicates == 1);
-    assert(critical_command_journal_checkpoint(first.operation_id) ==
-           critical_command_journal_result::ok);
-    replay.commands.clear();
-    assert(critical_command_journal_replay(collect_replay, &replay) ==
-           critical_command_journal_result::ok);
-    assert(replay.commands.size() == 1);
-    assert(critical_operation_id_equal(replay.commands[0].operation_id, second.operation_id));
-    critical_command_journal_shutdown();
-    const std::string journal_path = std::string(argv[1]) + "/critical-command.journal";
-    int fd = open(journal_path.c_str(), O_RDWR);
-    assert(fd >= 0);
-    unsigned char byte = 0;
-    assert(pread(fd, &byte, 1, 50) == 1);
-    byte ^= 0x5a;
-    assert(pwrite(fd, &byte, 1, 50) == 1);
-    assert(fsync(fd) == 0);
-    close(fd);
-    assert(!critical_command_journal_init(argv[1]));
-    critical_command_journal_reset_for_tests();
-
     // Commands run on the one writer, in capture order with the saves around them.
-    // No journal directory is needed: new commands are not journaled.
     assert(player_save_worker_init(apply_save, nullptr));
-    assert(critical_command_coordinator_init(nullptr, apply, &state));
+    assert(critical_command_coordinator_init(apply, &state));
     release(&apply_state::hold_save, true);
     assert(player_save_worker_submit(save_of(1)) == player_save_submit_result::accepted);
     wait_until([] { std::lock_guard<std::mutex> lock(state.mutex); return state.save_held; });
@@ -329,7 +278,7 @@ int main(int argc, char **argv)
     assert(critical_command_coordinator_submit(late) == critical_submit_result::accepted);
     critical_command_coordinator_shutdown();
     apply_state after;
-    assert(critical_command_coordinator_init(nullptr, apply, &after));
+    assert(critical_command_coordinator_init(apply, &after));
     release(&apply_state::hold_save, false);
     assert(persistence_writer_wait_idle(5000));
     assert(state.attempts[5] == 1);
@@ -337,32 +286,10 @@ int main(int argc, char **argv)
     assert(critical_command_coordinator_health_copy().stale_completions == 0);
     critical_command_coordinator_shutdown();
 
-    // A journal left by an older server is replayed once, on the writer, and each of
-    // its commands is checkpointed there once it lands.
-    assert(critical_command_journal_init(argv[2]));
-    critical_command recovery = make_command(10, {{critical_entity_type::corpse, 10}});
-    recovery.accepted_at_usec = 1700000000000010ULL;
-    assert(critical_command_normalize(&recovery));
-    assert(critical_command_journal_append(recovery) == critical_command_journal_result::ok);
-    critical_command_journal_shutdown();
-    apply_state recovery_state;
-    assert(critical_command_coordinator_init(argv[2], apply, &recovery_state));
-    wait_until([&] {
-        critical_command_coordinator_pulse(completions, 16);
-        return critical_command_coordinator_health_copy().completed == 1;
-    });
-    assert(recovery_state.attempts[10] == 1);
-    assert(critical_command_journal_health_copy().records == 0);
-    critical_command next = make_command(11, {{critical_entity_type::corpse, 11}});
-    assert(critical_command_coordinator_submit(next) == critical_submit_result::accepted);
-    assert(persistence_writer_wait_idle(5000));
-    assert(critical_command_journal_health_copy().records == 0);
-    critical_command_coordinator_shutdown();
-
     // Bounds: accepted work is never dropped because the writer is behind.
     apply_state capacity;
     capacity.hold_all = true;
-    assert(critical_command_coordinator_init(nullptr, apply, &capacity));
+    assert(critical_command_coordinator_init(apply, &capacity));
     for (size_t index = 0; index < CRITICAL_COORDINATOR_MAX_OPERATIONS; ++index)
     {
         critical_command command = make_command(
@@ -386,7 +313,7 @@ int main(int argc, char **argv)
     // A command whose outcome never becomes known is retried until shutdown, keeps
     // its fences, and is named with what the writer could not write.
     apply_state uncertain;
-    assert(critical_command_coordinator_init(nullptr, apply, &uncertain));
+    assert(critical_command_coordinator_init(apply, &uncertain));
     const uint64_t retries_before = player_save_worker_health_copy().connection_retries;
     critical_command unknown = make_command(16, {{critical_entity_type::item, 16}});
     assert(critical_command_coordinator_submit_for_publication(unknown) ==
@@ -416,20 +343,18 @@ with tempfile.TemporaryDirectory(prefix="duris-critical-command-") as temporary:
         [
             "g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
             "-pthread", "-Isrc", str(source), rel("critical_command.c"),
-            rel("critical_command_journal.c"), rel("critical_command_coordinator.c"),
+            rel("critical_command_coordinator.c"),
             rel("player_save_worker.c"), rel("persistence_observability.c"),
             "-lz", "-lcrypto", "-lmysqlclient", "-o", str(binary),
         ],
         cwd=ROOT,
         check=True,
     )
-    directories = [temp / name for name in ("journal", "replay")]
-    subprocess.run([str(binary), *(str(path) for path in directories)], check=True, timeout=60)
+    subprocess.run([str(binary)], check=True, timeout=60)
 print("[PASS] commands run on the one writer, in capture order with the saves around them")
 print("[PASS] a fenced command stays fenced until its completion; attach and conflict hold")
 print("[PASS] the writer retries an ambiguous commit; an unknown outcome is named at shutdown")
 print("[PASS] a command held for publication keeps its fences until acknowledged")
-print("[PASS] only a journal left by an older server is replayed, once, and checkpointed")
 
 for contract in (
     "CRITICAL_COORDINATOR_MAX_OPERATIONS = 1024",
@@ -445,10 +370,10 @@ for contract in (
 ):
     assert contract in COMPLETION or contract in COORDINATOR
 assert "critical," in WORKER
-# The coordinator no longer runs threads of its own or journals new commands.
+# The coordinator runs no threads of its own and journals nothing.
 for retired in (
     "admission_worker", "worker_main", "pending_admission", "keys_available",
-    "critical_command_journal_append", "std::thread admission", "std::vector<std::thread>",
+    "critical_command_journal", "std::thread admission", "std::vector<std::thread>",
 ):
     assert retired not in COORDINATOR
 assert "persistence_writer_submit(persistence_job_kind::critical" in COORDINATOR
@@ -458,7 +383,6 @@ for forbidden in ("P_char", "P_obj", "MYSQL", "redis", "sql_"):
     assert forbidden not in COORDINATOR
 assert "critical_completion_delivery completion_delivery" in COORDINATOR
 assert "getrandom(" in COMMAND and "rand(" not in COMMAND
-assert "fsync(fd)" in JOURNAL and "crc32(" in JOURNAL and "O_NOFOLLOW" in JOURNAL
 
 MAKEFILE = (SRC / "Makefile").read_text()
 COMM = (SRC / "comm.c").read_text()
@@ -466,7 +390,6 @@ COPYOVER = (SRC / "copyover.c").read_text()
 ACTINF = (SRC / "actinf.c").read_text()
 for object_name in (
     "critical_command.o",
-    "critical_command_journal.o",
     "critical_command_coordinator.o",
 ):
     assert object_name in MAKEFILE
@@ -497,4 +420,4 @@ for state in (
 assert "Currency publication ready" not in PIPELINE and "## Money lives in memory" in PIPELINE
 assert "There is no second generic lifecycle framework" in PIPELINE
 
-print("critical command identity, journal, ordering, replay, fence, and bound contracts passed")
+print("critical command identity, ordering, fence, and bound contracts passed")

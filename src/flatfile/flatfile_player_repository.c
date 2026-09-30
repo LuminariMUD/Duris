@@ -783,7 +783,7 @@ flatfile_player_snapshot_prepare_remove(const std::string &root,
 
 player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 							const player_snapshot &snapshot,
-							std::string *error, bool legacy_replay)
+							std::string *error)
 {
 	if (!valid_snapshot(snapshot) || !replace_items_together(snapshot.components))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
@@ -844,12 +844,6 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	}
 	else
 	{
-		// Only the one-time replay of an older server's journal keeps the fence.
-		if (legacy_replay && materialized.revision >= snapshot.revision)
-			return { materialized.revision == snapshot.revision ?
-					 player_save_apply_outcome::already_applied :
-					 player_save_apply_outcome::stale_revision,
-				 materialized.revision, 0 };
 		if (!merge_snapshot(snapshot, &materialized))
 			return { player_save_apply_outcome::terminal_failure, materialized.revision,
 				 EINVAL };
@@ -1165,13 +1159,11 @@ flatfile_saved_item_snapshot_apply(const std::string &root,
 }
 
 player_save_apply_result flatfile_player_snapshot_apply_selected(const player_snapshot &snapshot,
-								 void *context)
+								 void * /*context*/)
 {
-	(void)context;
 	const char *root = persistence_mode_flatfile_root();
 	if (!root)
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	std::string error;
-	return flatfile_player_snapshot_apply(root, snapshot, &error,
-					      context == PLAYER_SAVE_LEGACY_REPLAY);
+	return flatfile_player_snapshot_apply(root, snapshot, &error);
 }

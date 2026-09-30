@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory(prefix='duris-baseline-') as temporary:
             'src/economy/economic_baseline_command.c','src/economy/economic_baseline_adapter.c','src/economy/economic_baseline_codec.c','src/economy/economic_accounting_intent.c',
             'src/economy/economic_accounting_plan.c','src/economy/economic_accounting_types.c',
             'src/economy/economic_command_admission.c','src/economy/economic_currency_adapter.c',
-            'src/persistence/critical_command_coordinator.c','src/persistence/critical_command_journal.c',
+            'src/persistence/critical_command_coordinator.c',
             'src/player/player_save_worker.c','src/persistence/persistence_observability.c',
             'src/flatfile/flatfile_accounting_store.c','src/flatfile/flatfile_authority_transaction.c','src/flatfile/flatfile_store.c',
             'src/economy/currency_command.c','src/persistence/critical_command.c','src/item/item_transfer_command.c','src/player/player_snapshot_codec.c')]
@@ -55,5 +55,5 @@ with tempfile.TemporaryDirectory(prefix='duris-baseline-') as temporary:
         command+=['-o',str(executable)]
         subprocess.run(command,check=True)
         environment=dict(os.environ,ASAN_OPTIONS='detect_leaks=1:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1')
-        subprocess.run([str(executable), str(Path(temporary)/(mode+'-journal'))],check=True,env=environment,timeout=120)
+        subprocess.run([str(executable)],check=True,env=environment,timeout=120)
         print(mode+' baseline preparation passed',flush=True)

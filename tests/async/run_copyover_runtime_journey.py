@@ -65,8 +65,7 @@ def run(binary, compressed, nonroot=False):
         runtime.mkdir(); (runtime / 'logs/log').mkdir(parents=True)
         (runtime / 'logs/log/.gitignore').write_text('*\n')
         journey.make_fixture(runtime); journey.generate_certificate(runtime)
-        for name in ('players', 'critical'):
-            (runtime / 'journals' / name).mkdir(parents=True, mode=0o700)
+        (runtime / 'journals' / 'critical').mkdir(parents=True, mode=0o700)
         (runtime / 'bin/server').mkdir(parents=True)
         shutil.copy2(binary, runtime / 'bin/server/dms')
         shutil.copy2(binary, runtime / 'bin/server/dms_new')
@@ -74,7 +73,6 @@ def run(binary, compressed, nonroot=False):
         port, tls, websocket = journey.available_ports()
         env = dict(PATH=os.environ.get('PATH', '/usr/bin:/bin'), ENVIRONMENT='local',
                    PERSISTENCE_MODE='flatfile-primary', FLATFILE_STATE_DIR=str(state),
-                   PLAYER_SAVE_JOURNAL_DIR=str(runtime / 'journals/players'),
                    CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / 'journals/critical'),
                    COPYOVER_STATE_FILE=str(path), LISTEN_ADDRESS='127.0.0.1',
                    DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_LISTEN_ADDRESS='127.0.0.1',

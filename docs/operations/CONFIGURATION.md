@@ -140,8 +140,7 @@ per-operation authority transfer is not supported.
 | `DB_SOCKET` | Optional, local role only | Protected local Unix socket used instead of remote transport. |
 | `DB_TLS` | Required as `TRUE` for non-loopback hosts | Enforce encrypted database transport. |
 | `DB_SSL_CA` | Required for non-loopback hosts | Regular CA file used to verify the database server certificate. |
-| `PLAYER_SAVE_JOURNAL_DIR` | Optional | Where an older server kept its player-save journal. A leftover journal is replayed once at boot and then renamed `player-save.journal.retired-<ms>`; nothing new is written. |
-| `CRITICAL_COMMAND_JOURNAL_DIR` | Required outside mini mode | Absolute server-user-owned `0700` directory. Holds locker identification receipts; a critical-command journal left there by an older server is replayed once at boot (new commands run on the persistence writer and are not journaled). |
+| `CRITICAL_COMMAND_JOURNAL_DIR` | Required outside mini mode | Absolute server-user-owned `0700` directory for the locker identification receipts. It is named for the critical-command journal it held before the persistence reset; nothing is journaled any more. |
 | `MAINTENANCE_STATE_FILE` | Optional; `bin/server/maintenance-scheduler.state` | Durable scheduler cursor/completion state; parent directory must be server-user controlled. |
 
 `scripts/cycle_mud.sh --check-config` validates the selected mode without starting the
@@ -177,17 +176,17 @@ explicit local-role socket are treated as protected local transport. Any other h
 requires enforced TLS, CA verification, and a negotiated cipher. Boot also requires a
 supported MySQL 8.0 or MariaDB 10.11 normalized metadata fingerprint before mutation.
 
-Both journal directories are mandatory for normal operation. They must be absolute,
-owned by the server user, and mode `0700` or stricter; their files are permission
-checked, checksummed, size bounded, and fail closed on corruption or quota exhaustion.
-Do not place either directory under a shared or automatically cleaned temporary path.
+The receipt directory is mandatory for normal operation. It must be absolute, owned by
+the server user, and mode `0700` or stricter; receipts are permission checked,
+checksummed and size bounded. Do not place it under a shared or automatically cleaned
+temporary path.
 
 ## Redis
 
 Redis is optional. It is disabled unless `REDIS=TRUE` (case-insensitive).
 When enabled, it stores floor-drop recovery data, object UID state, caches, and
 optional immutable world-recovery generations. Player dirty state remains local to the
-revisioned player-save pipeline and typed journal.
+player-save pipeline.
 
 | Variable | Default | Accepted values / range | Meaning |
 | --- | --- | --- | --- |
@@ -335,7 +334,7 @@ confirmation, or a failed postflight returns nonzero.
 
 Redis uses a 250 ms connect timeout and 100 ms command timeout. A cache failure may
 degrade a report, while a world-generation failure preserves the prior generation and
-floor deltas. Neither case authorizes a synchronous player save or journal deletion.
+floor deltas. Neither case authorizes a synchronous player save.
 
 Presence login/logout updates use a dedicated worker with a fixed 1,024-job queue, bounded
 timeouts, and exponential reconnect backoff. Gameplay paths only encode the bounded JSON

@@ -115,7 +115,6 @@ def make_gold_fixture(run_root: pathlib.Path) -> pathlib.Path:
     })
     (run_root / "logs/log").mkdir(parents=True)
     (run_root / "logs/log/.gitignore").write_text("*\n!.gitignore\n")
-    (run_root / "journals/players").mkdir(parents=True, mode=0o700)
     (run_root / "journals/critical").mkdir(mode=0o700)
     generate_certificate(run_root)
     return run_root / "server.out"
@@ -128,7 +127,6 @@ def environment(state_root: pathlib.Path, run_root: pathlib.Path,
         "ENVIRONMENT": "local",
         "PERSISTENCE_MODE": "flatfile-primary",
         "FLATFILE_STATE_DIR": str(state_root),
-        "PLAYER_SAVE_JOURNAL_DIR": str(run_root / "journals/players"),
         "CRITICAL_COMMAND_JOURNAL_DIR": str(run_root / "journals/critical"),
         "LISTEN_ADDRESS": "127.0.0.1",
         "DURIS_TLS_PORT": str(tls_port),

@@ -69,7 +69,7 @@ Focused tests are automatically discovered by the normal regression runner:
   rejection cleanup, refused admission/retry and pre-entry grants, with ASan/UBSan.
 
 The lifecycle test fails against the old descriptor-based publication code.
-Snapshot pipeline, critical-command journal/retry and disposable flat-file
+Snapshot pipeline, critical-command retry and disposable flat-file
 ownership-replay regressions also pass. `make -C src` passes with the repository's
 strict warning profile. These are synthetic and local checks, not a live latency
 benchmark or production database test. Replay guarantees remain per accepted

@@ -160,7 +160,7 @@ assert "redis_world_recovery_drain(3000)" in COMM
 assert "redis_world_recovery_drain(3000)" in COPYOVER
 
 for existing_gate in (
-    "test_player_save_journal.py", "test_player_save_worker.py",
+    "test_player_save_worker.py",
     "test_terminal_save_safety.py", "test_world_recovery_pipeline.py",
 ):
     assert (ROOT / "tests/async" / existing_gate).is_file()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bank-only pure transport admission and durable replay; no database execution."""
+"""Bank-only pure transport admission; no database execution."""
 import os
 from pathlib import Path
 import shlex
@@ -18,12 +18,10 @@ SOURCES = (
     "src/item/item_transfer_command.c",
     "src/player/player_snapshot_codec.c",
     "src/persistence/critical_command.c",
-    "src/persistence/critical_command_journal.c",
     "src/persistence/critical_command_coordinator.c",
     "src/player/player_save_worker.c",
     "src/persistence/persistence_observability.c",
 )
-# Native temporary storage preserves the private directory modes used by journals.
 with tempfile.TemporaryDirectory(prefix="duris-bank-admission-") as temporary:
     work = Path(temporary)
     for mode in ("sql", "client-free"):
@@ -41,6 +39,6 @@ with tempfile.TemporaryDirectory(prefix="duris-bank-admission-") as temporary:
         subprocess.run(command, check=True)
         environment = dict(os.environ, ASAN_OPTIONS="detect_leaks=1:halt_on_error=1",
                            UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1")
-        subprocess.run([str(executable), str(work / (mode + "-journal"))],
+        subprocess.run([str(executable)],
                        env=environment, check=True, timeout=45)
         print(mode + " pure bank transport passed", flush=True)

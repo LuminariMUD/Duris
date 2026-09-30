@@ -40,9 +40,8 @@ docs/
 | Document | Purpose |
 |----------|---------|
 | [PLAYER_SAVE_PIPELINE.md](persistence/PLAYER_SAVE_PIPELINE.md) | Revisioned checkpoint coordinator and completion boundary. |
-| [PLAYER_SAVE_JOURNAL.md](persistence/PLAYER_SAVE_JOURNAL.md) | Journal permissions, bounds, replay, and diagnostics. |
 | [WORLD_RECOVERY_PIPELINE.md](persistence/WORLD_RECOVERY_PIPELINE.md) | Immutable world generations and exact acknowledgement. |
-| [CRITICAL_COMMAND_PIPELINE.md](persistence/CRITICAL_COMMAND_PIPELINE.md) | Operation identity, transaction, journal, outbox, replay, and fences. |
+| [CRITICAL_COMMAND_PIPELINE.md](persistence/CRITICAL_COMMAND_PIPELINE.md) | Operation identity, transaction, outbox, and fences. |
 | [IMMUTABLE_MIGRATIONS.md](persistence/IMMUTABLE_MIGRATIONS.md) | Honest baseline adoption and checksummed ordered migration history. |
 | [RUNTIME_COMPATIBILITY.md](persistence/RUNTIME_COMPATIBILITY.md) | Pre-write schema verification and atomic lookup publication. |
 | [DATA_LIFECYCLE.md](persistence/DATA_LIFECYCLE.md) | Complete store inventory and pending-policy boundary. |

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Player saves go straight to the one writer; nothing is journaled any more."""
+"""Player saves go straight to the one writer; nothing is journaled."""
 
 from _paths import SRC, rel
 import subprocess
@@ -26,7 +26,6 @@ def section(text: str, start: str, end: str) -> str:
 
 HARNESS = r'''
 #include "player/player_save_pipeline.h"
-#include "player/player_save_journal.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_capture.h"
 #include "persistence/persistence_observability.h"
@@ -134,17 +133,6 @@ void wait_until_held()
     state.changed.wait(lock, [] { return state.holding; });
 }
 
-player_snapshot journal_record(int pid, player_revision_t revision)
-{
-    player_snapshot snapshot = {};
-    snapshot.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
-    snapshot.pid = pid;
-    snapshot.revision = revision;
-    snapshot.components = PLAYER_COMPONENT_STATUS;
-    snapshot.encoded_size_bound = 128;
-    return snapshot;
-}
-
 std::vector<std::string> take_order()
 {
     std::lock_guard<std::mutex> lock(state.mutex);
@@ -153,42 +141,9 @@ std::vector<std::string> take_order()
     return order;
 }
 
-int main(int argc, char **argv)
+int main()
 {
-    assert(argc == 2);
-    const std::string root = argv[1];
-    namespace fs = std::filesystem;
-
-    // A journal left by an older server is replayed once at boot.
-    const std::string replayed = root + "/replayed";
-    assert(player_save_journal_init(replayed.c_str()));
-    assert(player_save_journal_append(journal_record(42, 5)) == player_save_journal_result::ok);
-    assert(player_save_journal_append(journal_record(41, 3)) == player_save_journal_result::ok);
-    player_save_journal_shutdown();
-    assert(player_save_pipeline_init(replayed.c_str()));
-    assert((take_order() == std::vector<std::string>{"41:3", "42:5"}));
-    player_save_pipeline_health health = player_save_pipeline_health_copy();
-    assert(health.legacy_journal_replayed == 2 && !health.legacy_journal_retired);
-    player_save_pipeline_reset_for_tests();
-
-    // Whatever it cannot apply is retired, never to be replayed over newer saves.
-    const std::string blocked = root + "/blocked";
-    assert(player_save_journal_init(blocked.c_str()));
-    assert(player_save_journal_append(journal_record(43, 9)) == player_save_journal_result::ok);
-    player_save_journal_shutdown();
-    state.failures[43] = 1;
-    assert(player_save_pipeline_init(blocked.c_str()));
-    health = player_save_pipeline_health_copy();
-    assert(health.legacy_journal_retired && alerts == 1);
-    bool retired_file = false;
-    for (const auto &entry : fs::directory_iterator(blocked))
-        retired_file |= entry.path().filename().string().rfind("player-save.journal.retired-", 0) == 0;
-    assert(retired_file && !fs::exists(blocked + "/player-save.journal"));
-    take_order();
-    player_save_pipeline_reset_for_tests();
-
-    // No journal directory at all is fine: nothing is journaled any more.
-    assert(player_save_pipeline_init(nullptr));
+    assert(player_save_pipeline_init());
     player alice(41), bob(42), carol(44);
     alice.ch.next = &bob.ch;
     bob.ch.next = &carol.ch;
@@ -252,7 +207,7 @@ int main(int argc, char **argv)
     assert(alerts == alerts_before + 1);
     assert(player_revision_snapshot_copy(44, &revision));
     assert(revision.dirty_components == PLAYER_COMPONENT_TIMERS);
-    health = player_save_pipeline_health_copy();
+    player_save_pipeline_health health = player_save_pipeline_health_copy();
     assert(health.write_failures == 1);
     assert(player_save_pipeline_checkpoint_dirty(&carol.ch, 1, 3001) ==
            player_save_pipeline_result::queued);
@@ -297,7 +252,6 @@ with tempfile.TemporaryDirectory(prefix="duris-player-save-pipeline-") as temp_d
             str(source),
             rel("player_save_pipeline.c"),
             rel("player_save_worker.c"),
-            rel("player_save_journal.c"),
             rel("player_snapshot_codec.c"),
             rel("player_revision_state.c"),
             rel("persistence_observability.c"),
@@ -310,10 +264,7 @@ with tempfile.TemporaryDirectory(prefix="duris-player-save-pipeline-") as temp_d
         capture_output=True,
         text=True,
     )
-    work = Path(temp_dir) / "journals"
-    work.mkdir(mode=0o700)
-    subprocess.run([str(binary), str(work)], check=True, timeout=60)
-print("[PASS] a leftover journal is replayed once at boot and retired if anything is left")
+    subprocess.run([str(binary)], check=True, timeout=60)
 print("[PASS] a queued save leaves its owner clean; a newer save replaces the queued one")
 print("[PASS] a failed write is reported and marks its owner dirty again")
 print("[PASS] drain waits for the writer within its bound")
@@ -361,12 +312,12 @@ assert '"dirty-player-checkpoint", event_flush_dirty_players' in event_init
 assert "nevent_periodic_policy::fixed_delay, true" in event_init
 print("[PASS] autosave is local and the Redis dirty-save fork is retired")
 
-assert 'player_save_pipeline_init(getenv("PLAYER_SAVE_JOURNAL_DIR"))' in COMM
+assert "player_save_pipeline_init()" in COMM
 assert "player_save_pipeline_pulse();" in COMM
 assert "player_save_pipeline_finish(shutdown_writer_deadline_usec," in COMM
 assert "player_save_pipeline_shutdown();" in section(
     (SRC / "player_save_pipeline.c").read_text(), "std::vector<persistence_job_owner> player_save_pipeline_finish(",
     "player_save_pipeline_health player_save_pipeline_health_copy(void)")
-print("[PASS] the pipeline starts without a journal directory and shutdown finishes it")
+print("[PASS] the pipeline starts at boot and shutdown finishes it")
 
 print("player save pipeline contracts passed")

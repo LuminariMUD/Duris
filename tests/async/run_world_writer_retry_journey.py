@@ -113,12 +113,10 @@ def run(binary: Path, expect_stuck: bool, outage: bool, cancel: bool,
                 (game / "logs/log").mkdir(parents=True)
                 journey.make_fixture(game)
                 journey.generate_certificate(game)
-                for kind in ("players", "critical"):
-                    (game / "journals" / kind).mkdir(parents=True, mode=0o700)
+                (game / "journals" / "critical").mkdir(parents=True, mode=0o700)
                 port, tls, websocket = journey.available_ports()
                 env.update(DURIS_TLS_PORT=str(tls),
                            DURIS_WEBSOCKET_PORT=str(websocket),
-                           PLAYER_SAVE_JOURNAL_DIR=str(game / "journals/players"),
                            CRITICAL_COMMAND_JOURNAL_DIR=str(game / "journals/critical"))
                 output_path = game / "server.out"
                 with output_path.open("w") as output:

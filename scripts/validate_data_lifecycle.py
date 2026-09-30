@@ -83,10 +83,6 @@ REQUIRED_NON_DATABASE_STORES = {
     "file:economic-authority-native-index": ("recovery_state", "FLATFILE_ROOT/economic-evidence/native-*.ean"),
     "file:economic-accounting-index": ("recovery_state", "FLATFILE_ROOT/economic-evidence/*.eai"),
     "file:economic-accounting-segment": ("recovery_state", "FLATFILE_ROOT/economic-evidence/*.eas"),
-    "file:player_save_journal": ("journal", "PLAYER_SAVE_JOURNAL_DIR/player-save.journal"),
-    "file:player_save_quarantine": (
-        "quarantine", "PLAYER_SAVE_JOURNAL_DIR/player-save.journal.quarantine",
-    ),
     "file:critical_command_journal": ("journal", "CRITICAL_COMMAND_JOURNAL_DIR"),
     "file:persistence_fallback": ("fallback", "legacy persistence fallback file"),
     "file:persistence_fallback_quarantine": (
@@ -125,7 +121,7 @@ REQUIRED_SECRET_EXCLUSIONS = {
     "file:runtime_accounts": {"password", "confirmation_code"},
     "file:server_logs": {"raw_security_events"},
     "file:player_logs": {"raw_security_events"},
-    "file:critical_command_journal": {"command_payload"},
+    "file:critical_command_journal": {"locker_identification_receipt_text"},
 }
 
 

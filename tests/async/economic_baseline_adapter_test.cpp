@@ -84,9 +84,8 @@ void rejected(const economic_baseline_batch &value, error expected)
 #include "economic_baseline_command_test.h"
 #include "economic_baseline_codec_test.h"
 
-int main(int argc, char **argv)
+int main()
 {
-	assert(argc == 2);
 	static_assert(!std::is_default_constructible_v<economic_prepared_baseline>);
 	static_assert(!std::is_aggregate_v<economic_prepared_baseline>);
 	auto input = fixture();
@@ -244,7 +243,7 @@ int main(int argc, char **argv)
 	}
 	assert(failed > 20 && failed < 1023);
 	codec_tests();
-	command_tests(argv[1]);
+	command_tests();
 	std::cout
 		<< "baseline preparation: exact openings, zero/empty holdings, unchanged custody, source binding, limits and "
 		<< failed << " allocation failures passed\n";

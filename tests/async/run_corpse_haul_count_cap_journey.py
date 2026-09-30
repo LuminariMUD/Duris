@@ -114,11 +114,9 @@ def run(binary, backend):
             add_stock(runtime)
             journey.generate_certificate(runtime)
             (runtime / "logs/log").mkdir(parents=True)
-            for name in ("players", "critical"):
-                (runtime / "journals" / name).mkdir(parents=True, mode=0o700)
+            (runtime / "journals" / "critical").mkdir(parents=True, mode=0o700)
             game_port, tls_port, ws_port = journey.available_ports()
-            env.update(PLAYER_SAVE_JOURNAL_DIR=str(runtime / "journals/players"),
-                       CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
+            env.update(CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
                        DURIS_TLS_PORT=str(tls_port), DURIS_WEBSOCKET_PORT=str(ws_port))
             output = (runtime / "server.out").open("w")
             process = None

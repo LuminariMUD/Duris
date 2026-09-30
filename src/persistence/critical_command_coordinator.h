@@ -2,7 +2,6 @@
 #define CRITICAL_COMMAND_COORDINATOR_H
 
 #include "persistence/critical_command_completion.h"
-#include "persistence/critical_command_journal.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -68,21 +67,13 @@ struct critical_coordinator_health
 	uint64_t terminal_failures;
 	uint64_t stale_completions;
 	uint64_t overloads;
-	uint64_t awaiting_durability;
-	uint64_t admission_queue_bytes;
-	uint64_t durable_admissions;
-	uint64_t admission_failures;
-	uint64_t admission_uncertain;
 	bool initialized;
 	bool accepting;
 	bool running;
-	bool admission_worker_running;
-	bool append_inflight;
 };
 
 using critical_apply_fn = critical_apply_result (*)(const critical_command &command, void *context);
 using critical_drain_observer_fn = void (*)(const critical_completion *completions, size_t count);
-using critical_replay_observer_fn = bool (*)(const critical_command &command, void *context);
 
 // Optional support for canonical schema-2 commands. The validator must be pure,
 // bounded and noexcept; it verifies typed immutable evidence, never current
@@ -92,11 +83,9 @@ using critical_replay_observer_fn = bool (*)(const critical_command &command, vo
 using critical_extension_validator_fn = bool (*)(const critical_command &) noexcept;
 
 // Commands run on the one persistence writer (player_save_worker.h), which must be
-// running. `journal_directory` is only read for a journal an older server left: its
-// commands are replayed once, onto the writer. New commands are not journaled.
+// running.
 bool critical_command_coordinator_init(
-	const char *journal_directory, critical_apply_fn apply, void *context,
-	critical_replay_observer_fn replay_observer = nullptr, void *replay_context = nullptr,
+	critical_apply_fn apply, void *context,
 	critical_extension_validator_fn extension_validator = nullptr);
 void critical_command_coordinator_shutdown(void);
 critical_submit_result critical_command_coordinator_submit(critical_command command);
@@ -111,9 +100,8 @@ critical_command_coordinator_durability(const critical_operation_id &operation_i
 bool critical_command_coordinator_recover_uncertain(void);
 bool critical_command_coordinator_get_completed(const critical_operation_id &operation_id,
 						critical_completion *completion);
-// Release a publication-held operation only after the live callback succeeded (and, for
-// a command replayed from an older journal, its checkpoint). A false result leaves the
-// operation fenced.
+// Release a publication-held operation only after the live callback succeeded. A false
+// result leaves the operation fenced.
 bool critical_command_coordinator_acknowledge_publication(const critical_operation_id &operation_id);
 size_t critical_command_coordinator_pulse(critical_completion *completions, size_t capacity);
 bool critical_command_coordinator_is_fenced(const critical_entity_key &key,

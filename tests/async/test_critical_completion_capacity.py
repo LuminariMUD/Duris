@@ -61,7 +61,7 @@ static player_save_apply_result apply_save(const player_snapshot &snapshot, void
     return {player_save_apply_outcome::applied, snapshot.revision, 0};
 }
 static void capacity_case(size_t capacity) {
-    assert(critical_command_coordinator_init(nullptr, apply, nullptr));
+    assert(critical_command_coordinator_init(apply, nullptr));
     // Fill the output with mixed successful and terminal results, then one more.
     std::map<std::string, critical_apply_outcome> expected;
     for (size_t i = 0; i < capacity; ++i) {
@@ -109,7 +109,7 @@ static void capacity_case(size_t capacity) {
     critical_command_coordinator_shutdown();
 }
 static void large_result_case() {
-    assert(critical_command_coordinator_init(nullptr, apply, nullptr));
+    assert(critical_command_coordinator_init(apply, nullptr));
     for (unsigned int tag : {200, 202}) {
         const auto large = command(tag);
         assert(critical_command_coordinator_submit(large) == critical_submit_result::accepted);
@@ -148,7 +148,7 @@ with tempfile.TemporaryDirectory(prefix="duris-completion-capacity-") as directo
         "g++", "-std=c++20", "-g", "-Og", "-Wall", "-Wextra", "-Werror", "-pthread",
         "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
         "-Isrc", str(source), "src/persistence/critical_command.c",
-        "src/persistence/critical_command_journal.c", "src/player/player_save_worker.c",
+        "src/player/player_save_worker.c",
         "src/persistence/persistence_observability.c", "-lz", "-lcrypto", "-lmysqlclient",
         "-o", str(binary),
     ], cwd=ROOT, check=True)

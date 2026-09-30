@@ -68,8 +68,7 @@ def run(binary):
             (runtime/'logs/log').mkdir(parents=True)
             for name in ('players','critical'): (runtime/'journals'/name).mkdir(parents=True,mode=0o700)
             port,tls,ws=journey.available_ports()
-            env.update(PLAYER_SAVE_JOURNAL_DIR=str(runtime/'journals/players'),
-                       CRITICAL_COMMAND_JOURNAL_DIR=str(runtime/'journals/critical'),
+            env.update(CRITICAL_COMMAND_JOURNAL_DIR=str(runtime/'journals/critical'),
                        DURIS_TLS_PORT=str(tls),DURIS_WEBSOCKET_PORT=str(ws))
             clients=[]; process=None
             output=(runtime/'server.out').open('w')

@@ -49,15 +49,11 @@ struct player_save_pipeline_health
 	uint64_t terminal_database_acks;
 	uint64_t terminal_timeouts;
 	uint64_t drain_failures;
-	uint64_t legacy_journal_replayed;
-	bool legacy_journal_retired;
 	bool initialized;
 	bool accepting;
 };
 
-// A leftover player-save journal from an older server is replayed once, then
-// retired. legacy_journal_directory may be null; nothing new is journaled.
-bool player_save_pipeline_init(const char *legacy_journal_directory);
+bool player_save_pipeline_init(void);
 void player_save_pipeline_shutdown(void);
 bool player_save_pipeline_mark(int pid, player_component_mask_t components);
 player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int save_intent,

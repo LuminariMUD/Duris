@@ -35,12 +35,9 @@ player_load_result flatfile_player_load_repository_execute(const std::string &ro
 							   const player_load_request &request);
 player_load_result
 flatfile_player_load_repository_execute_selected(const player_load_request &request, void *context);
-// legacy_replay keeps the revision fence for the one-time replay of an older
-// server's journal; every other save is applied as it is.
 player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 							const player_snapshot &snapshot,
-							std::string *error,
-							bool legacy_replay = false);
+							std::string *error);
 player_save_apply_result flatfile_player_snapshot_apply_selected(const player_snapshot &snapshot,
 								 void *context);
 
