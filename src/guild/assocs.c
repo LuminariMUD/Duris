@@ -21,6 +21,7 @@
 #include "economy/nexus_stones.h"
 #include "sql/sql.h"
 #include "sql/sql_player.h"
+#include "sql/sql_async.h"
 #include "core/safe_format.h"
 
 #ifdef __NO_MYSQL__
@@ -699,9 +700,9 @@ bool found_asc(P_char god, P_char leader, const char *bits, char *asc_name)
 	guild_list = pNewGuild;
 
 #ifndef __NO_MYSQL__
-	mysql_real_escape_string(DB, buf, asc_name, strlen(asc_name));
-	qry("INSERT INTO associations (id, name, active) VALUES (%d, '%s', 1) ON DUPLICATE KEY UPDATE name = VALUES(name), active = VALUES(active)",
-	    i, buf);
+	sql_queue(
+		"INSERT INTO associations (id, name, active) VALUES (%d, '%s', 1) ON DUPLICATE KEY UPDATE name = VALUES(name), active = VALUES(active)",
+		i, escape_str(asc_name).c_str());
 #endif
 
 	send_to_char("Ok, new association is set up.\n", god);
@@ -2263,7 +2264,6 @@ void do_gmotd(P_char ch, char *argument, int /*cmd*/)
 
 void do_prestige(P_char ch, char * /*argument*/, int /*cmd*/)
 {
-#ifdef __NO_MYSQL__
 	std::vector<P_Guild> guilds;
 	for (P_Guild guild = guild_list; guild; guild = guild->next())
 		guilds.push_back(guild);
@@ -2296,64 +2296,6 @@ void do_prestige(P_char ch, char * /*argument*/, int /*cmd*/)
 		else
 			send_to_char_f(ch, "%s\n", name.c_str());
 	}
-	return;
-#else
-	MYSQL_RES *res;
-	MYSQL_ROW row;
-	char buf[MAX_STRING_LENGTH];
-	int id, prestige, cps, threshold;
-	string name;
-
-	if (!qry("SELECT id, name, prestige, construction_points FROM associations WHERE active = 1 ORDER BY prestige DESC, id ASC"))
-	{
-		send_to_char("Disabled.\n", ch);
-		return;
-	}
-
-	res = mysql_store_result(DB);
-	if (!res)
-	{
-		logit(LOG_DEBUG, "%s: mysql_store_result failed", __func__);
-		return;
-	}
-
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		send_to_char("There are no prestigious associations.\n", ch);
-		return;
-	}
-
-	threshold = get_property("prestige.list.viewThreshold", 500);
-
-	send_to_char("&+bPrestigious Associations\n"
-		     "&+W--------------------------------------------------------------\n",
-		     ch);
-
-	while ((row = mysql_fetch_row(res)))
-	{
-		id = atoi(row[0]);
-		name = pad_ansi(trim(string(row[1]), " \t\n").c_str(), 40);
-		prestige = atoi(row[2]);
-		cps = atoi(row[3]);
-		if (IS_TRUSTED(ch))
-		{
-			snprintf(buf, MAX_STRING_LENGTH, "&+W%2d. &n%s &n(&+b%8d&n:&+W%8d&n)\n", id,
-				 name.c_str(), prestige, cps);
-		}
-		else
-		{
-			if (prestige < threshold)
-			{
-				continue;
-			}
-
-			snprintf(buf, MAX_STRING_LENGTH, "%s\n", name.c_str());
-		}
-		send_to_char(buf, ch);
-	}
-	mysql_free_result(res);
-#endif
 }
 
 // This converts a string to money values.
@@ -2941,8 +2883,9 @@ void Guild::write_transaction_to_ledger(const char *name, const char *trans_type
 		persistence_alert(AVATAR, "association_ledger", this->name, "none", "none",
 				  "append", "flat guild ledger append failed: %s", error.c_str());
 #else
-	qry("INSERT INTO guild_transactions (date, soc_id, transaction_info) VALUES (unix_timestamp(), %d, '&+y%s %s %s&+y.&n')",
-	    id_number, name, trans_type, coin_str);
+	sql_queue(
+		"INSERT INTO guild_transactions (date, soc_id, transaction_info) VALUES (unix_timestamp(), %d, '&+y%s %s %s&+y.&n')",
+		id_number, name, trans_type, coin_str);
 #endif
 }
 
@@ -3197,35 +3140,8 @@ void Guild::ledger(P_char member, char *args)
 		args++;
 	}
 
-#ifdef __NO_MYSQL__
-	bool system_entries = false;
-#endif
-	if (is_abbrev(args, "player"))
-	{
-#ifndef __NO_MYSQL__
-		if (!qry("SELECT transaction_info FROM guild_transactions WHERE soc_id = %d AND transaction_info NOT LIKE '%%System withdrew%%' ORDER BY date DESC LIMIT 100",
-			 id_number))
-		{
-			send_to_char("No transactions found..\n", member);
-			return;
-		}
-#endif
-	}
-	else if (is_abbrev(args, "system") || is_abbrev(args, "guild"))
-	{
-#ifdef __NO_MYSQL__
-		system_entries = true;
-#endif
-#ifndef __NO_MYSQL__
-		if (!qry("SELECT transaction_info FROM guild_transactions WHERE soc_id = %d AND (transaction_info LIKE '%%System %%') ORDER BY date DESC LIMIT 100",
-			 id_number))
-		{
-			send_to_char("No transactions found...\n", member);
-			return;
-		}
-#endif
-	}
-	else
+	const bool system_entries = !is_abbrev(args, "player");
+	if (system_entries && !is_abbrev(args, "system") && !is_abbrev(args, "guild"))
 	{
 		send_to_char("&+YSyntax: &+wsoc l [player|system|guild]&n\n", member);
 		send_to_char("  Player - for a list of player transactions.\n", member);
@@ -3233,9 +3149,8 @@ void Guild::ledger(P_char member, char *args)
 		return;
 	}
 
-	send_to_char("&+YGuild Ledger:\r\n------------------------------\r\n", member);
-
 #ifdef __NO_MYSQL__
+	send_to_char("&+YGuild Ledger:\r\n------------------------------\r\n", member);
 	std::string error;
 	std::vector<std::string> messages;
 	const char *root = persistence_mode_flatfile_root();
@@ -3258,29 +3173,22 @@ void Guild::ledger(P_char member, char *args)
 	for (const auto &message : messages)
 		send_to_char_f(member, "%s\r\n", message.c_str());
 #else
-	char buff[MAX_STRING_LENGTH];
-	MYSQL_RES *res;
-	MYSQL_ROW row;
-	res = mysql_store_result(DB);
-	if (!res)
-	{
-		logit(LOG_DEBUG, "%s: mysql_store_result failed", __func__);
-		return;
-	}
-
-	if (mysql_num_rows(res) < 1)
-	{
-		send_to_char("&+yNo transactions on record.\r\n", member);
-		mysql_free_result(res);
-		return;
-	}
-	while ((row = mysql_fetch_row(res)))
-	{
-		snprintf(buff, MAX_STRING_LENGTH, "%s\r\n", row[0]);
-		send_to_char(buff, member);
-	}
-
-	mysql_free_result(res);
+	// The ledger is read on the writer, behind the entries queued before it.
+	sql_read_for(
+		member,
+		sql_format(
+			"SELECT transaction_info FROM guild_transactions WHERE soc_id = %d AND %s ORDER BY date DESC LIMIT 100",
+			id_number,
+			system_entries ? "(transaction_info LIKE '%System %')" :
+					 "transaction_info NOT LIKE '%System withdrew%'"),
+		[](P_char ch, const sql_rows &rows)
+		{
+			send_to_char("&+YGuild Ledger:\r\n------------------------------\r\n", ch);
+			if (rows.empty())
+				send_to_char("&+yNo transactions on record.\r\n", ch);
+			for (const sql_row &row : rows)
+				send_to_char_f(ch, "%s\r\n", row[0] ? row[0] : "");
+		});
 #endif
 }
 

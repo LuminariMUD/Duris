@@ -86,6 +86,10 @@ COMMANDS = (
     ('artifacts reset 900', 'Artifact vnum 900 has a hungry soul.'),
     ('artifacts reset fixit', 'Empty set; no artifacts on PC'),
     ('artifacts reset syncdb', 'Cleared 0, updated 0 artifact ownerships'),
+    # an association: founded, saved, listed by prestige, its ledger read
+    ('supervise found ' + journey.CHARACTER + ' n Journeyguild', 'new association is set up'),
+    ('prestige', 'Prestigious Associations'),
+    ('society ledger', 'Guild Ledger:'),
 )
 REENTRY_COMMANDS = (
     ('epic bonus', 'benefiting from the Experience Bonus'),
@@ -276,6 +280,11 @@ def run(server):
         whitelist = scalar('SELECT pattern, player, admin, created_on IS NOT NULL '
                            'FROM multiplay_whitelist')
         assert whitelist.split('\t') == ['10.2.*.*', 'guests', journey.CHARACTER, '1'], whitelist
+        for query, expected in (
+                ("SELECT COUNT(*) FROM guilds WHERE TRIM(name)='Journeyguild'", '1'),
+                ("SELECT COUNT(*) FROM associations WHERE TRIM(name)='Journeyguild'", '1')):
+            got = scalar(query)
+            assert got == expected, f'{query}: {got}, expected {expected}'
 
         logs = output_path.read_text(errors='replace') + '\n'.join(
             path.read_text(errors='replace') for path in (runtime / 'logs/log').glob('*')
