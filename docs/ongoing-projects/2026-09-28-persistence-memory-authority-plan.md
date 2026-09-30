@@ -8,9 +8,9 @@
   7 and the foundation of step 8** ([!3](https://gitlab.com/max757/duris/-/merge_requests/3)) are
   on `master`, merged together in `7887bf1d6` after two and one review rounds (see
   [Review and branches](#review-and-branches)).
-- **The rest of Phase 2 step 8** (the game thread's remaining SQL) is in progress on
-  `fix/7-persistence-phase-2-step-8`. Phase 2 is done when it lands. See
-  [Step 8](#step-8-game-thread-sql-off-the-loop-in-progress).
+- **The rest of Phase 2 step 8** (the game thread's remaining SQL) is done on
+  `fix/7-persistence-phase-2-step-8` and waits for review in its own MR to `master`; Phase 2 is
+  done when it lands. See [Step 8](#step-8-game-thread-sql-off-the-loop-done).
 - **Phase 3** has not started.
 
 See [Phase 1 progress](#phase-1-progress) and [Phase 2 progress](#phase-2-progress) for what each
@@ -373,9 +373,12 @@ Remove the code nothing calls any more:
 - the item and currency parts of `critical_command_*`;
 - the currency repository, the coin transfer command, the corpse lifecycle wallet and the
   accounting bank commands, which Phase 2 kept only for an older journal's one-time replay;
-- the game-thread SQL functions nothing calls, found by the step 8 survey: the `*_legacy` auction
-  functions, `check_boon_completion_legacy()`, `poll_check_expirations()`,
-  `update_epic_zone_mods()`, `get_epic_zone_frequency_mod()` and `event_write_statistic()`;
+- the game-thread SQL functions nothing calls, found by step 8 (see
+  [What is left after step 8](#what-is-left-after-step-8)): the `*_legacy` auction functions,
+  `auction_money_pickup_committed()`, `auction_houses_activity()`, the dead boon, epic zone,
+  outpost, poll, spellbook, guild, locker and artifact functions listed there,
+  `event_write_statistic()`, the account bank functions, and the legacy player load and save
+  that only the boot pfile migration still uses;
 - the flat-file equivalents of all of the above.
 
 That is roughly 20,000 to 30,000 lines. The death-custody tables stay until staff have resolved the
@@ -444,8 +447,8 @@ These parts were cut:
 - Shutdown and copyover never wait on a failing save.
 - After Phase 1, saves, logouts, deaths and corpses never wait on the database from the game loop.
   After Phase 2, nothing on the loop does: the game-loop query count stays at zero after boot. (On
-  `master` since `7887bf1d6`, `sql.c` meets this; the rest of the game thread's SQL follows with
-  the rest of step 8.)
+  `master` since `7887bf1d6`, `sql.c` meets this; the rest of step 8 meets it for the whole game
+  thread, and the game-loop queries journey pins it with an empty `NOT_CONVERTED` list.)
 - The database cannot hold one item under two owners, and `logs/log/dupes` accounts for every item a
   save or load gave up.
 
@@ -1449,7 +1452,7 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   `run_item_transfer_schema_mysql.sh` and `run_collector_repository_schema_mysql.sh` ran on
   disposable servers.
 
-### Step 8: game-thread SQL off the loop (in progress)
+### Step 8: game-thread SQL off the loop (done)
 
 - The way off the loop (`src/sql/sql_async.{h,c}`):
   - `sql_queue()`, `sql_queue_statements()` and `sql_queue_work()` build SQL on the game
@@ -1486,7 +1489,8 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   the step was split: the foundation above and `sql.c` went to `master` with !3 (in
   `7887bf1d6`), and the rest follows in its own MR from `fix/7-persistence-phase-2-step-8`,
   subsystem by subsystem, each its own commit with its test.
-- What is left. A session as the `.env` account (log in, the account menu, character entry, then
+- What was left when the rest of step 8 began. A session as the `.env` account (log in, the
+  account menu, character entry, then
   `finger`, `trophy`, `fraglist`, `epic`, `boon`, `nexus`, `arti`, `auction`, `poll`, `outpost`,
   `kingdom`, `hardcore`, `leaderboard`, `prestige`, `ledger`, `save` and `quit`) still logged
   33 sites:
@@ -1519,7 +1523,7 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
      a new character's first save (**done**), then the periodic events and the command
      output, subsystem by subsystem, skipping what nothing calls and what only boot runs.
   4. The journey that pins no query after boot: `test_mysql_game_loop_queries_journey.py`,
-     in `make test-db` since the account screens; its `NOT_CONVERTED` list must end empty.
+     in `make test-db` since the account screens. **Done**: its `NOT_CONVERTED` list is empty.
 - How the rest was split (2026-09-30, the user allowed up to five subagents): four agents
   work in their own worktrees under `/home/aiwithapex/projects/duris-issue-7-wt/`, each on a
   branch from `96714d824`: `step8/artifacts` (`artifact.c`, `artifact_guild_state.c`, the
@@ -1533,9 +1537,9 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   `newchar`). They do not edit this document or the census; the coordinator merges each
   branch into `fix/7-persistence-phase-2-step-8`, regenerates the census, records each
   subsystem here and runs the gates. The coordinator keeps character and account deletion
-  (both websocket deletions too; account deletion is **done**), renames and the leftovers
-  in `sql.c` and `sql_player.c`. If a session takes over mid-way: `git worktree list` shows the branches;
-  a branch with commits not yet merged still needs merging and a section here.
+  (both websocket deletions too), renames and the leftovers in `sql.c` and `sql_player.c`.
+  All four branches are merged (their sections are below) and their worktrees and branches
+  removed; the coordinator's parts are done too.
 - Found on the way (the rest of step 8): copyover restored each preserved session's account
   under the character's name, so unless the two names matched the session lost its account
   and `quit` closed the connection instead of returning to the menu. The restore now uses the
@@ -1643,7 +1647,7 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
 - Tests: `test_player_names_index.py` links the index and checks its rules; the game-loop
   queries journey no longer lists `sql_player_exists`.
 
-#### Offline character loads (in progress)
+#### Offline character loads (done)
 
 - `player_load_offline()` (`src/player/player_load_offline.{h,c}`) loads a character that is
   not in the game through the player load pipeline, by name, without its pets and, unless
@@ -1657,11 +1661,11 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   staff `load char`, which now brings the character in with its items: on MariaDB
   `restoreItemsOnly()` skipped them, so a loaded character held nothing, and its next save
   would have written that.
-- Still on `restoreCharOnly()`, each converted with its subsystem: the locker access check
-  (lockers), the artifact owner loads (`load_dummy_char()`, artifacts), and the websocket
-  character deletions (deletion). Then `restoreCharOnly()` loses its SQL branch and stays
-  the pfile reader that `lookup pfile`, `purge pfiles` and the `pfile` tool use; no MariaDB
-  deployment has pfiles, so those two commands reach no query.
+- The last `restoreCharOnly()` loads went with their subsystems: the locker access check
+  (lockers), the artifact owner loads (`load_dummy_char()`, artifacts) and the websocket
+  character deletions (character deletion). Then `restoreCharOnly()` lost its SQL branch
+  (`435c3db2a`) and stays the pfile reader that `lookup pfile`, `purge pfiles`, the boot pfile
+  migration and the `pfile` tool use. The pfile test pins that it reads no database.
 - The game-loop queries journey promotes its character to a god between sessions (after
   the camp's log row lands, so the queued quit save cannot undo it) and runs `finger`.
 
@@ -1976,6 +1980,108 @@ Converted on `step8/guilds` by an agent and applied to this branch (`5c321bf41` 
 - Left for Phase 3 in `sql_player.c`: `sql_load_account_bank()` (only the non-account menu,
   compiled out by `USE_ACCOUNT`, reaches it) and the account bank deposit and withdraw
   functions, which nothing calls since the bank moved to critical commands.
+
+#### Terminal saves and the synchronous save paths (done)
+
+- On MariaDB `writeCharacter()` queued only non-terminal saves; a terminal type (the offline
+  artifact poof and swap save their loaded owner that way) ran the legacy synchronous player
+  save on the game loop. It is queued like any other now, as
+  `persistence_save_character_terminal()` does, and the caller disposes of the character.
+- The locker code saved synchronously whenever the async locker writer refused a job: a
+  first-time personal locker, a refused save and the deferred leave event went through
+  `writeCharacter()` to `sql_save_locker()`, and a private chest fell back to its own
+  transaction. A refused save is now the failure the callers already report, the deferred
+  leave event asks the async writer again every second (the locker character keeps its items
+  meanwhile), and a new locker is stored once it holds something or its user leaves.
+- Gone with them: the synchronous tail of `writeCharacter()`, `sql_save_locker()`, the locker
+  item writers, the chest id lookups, `sql_update_money/playtime/epics()`,
+  `writeShapechangeData()`, the flat pfile fallback and
+  `persistence_should_extract_terminal_inventory()` (`35bc25443`).
+- Tests: the save pipeline, terminal-save, locker and item contracts pin the queued paths; the
+  game-loop queries (locker round trip), MariaDB combat and deletion journeys pass.
+
+#### Character deletion (done)
+
+- Every character deletion (the account menu, both websocket deletions, hardcore death,
+  `terminate`, a forger's delete, `newchar`'s cleanup) ran one transaction on the game
+  thread's connection. `delete_character()` (`files.c`) now builds its statements on the game
+  thread, from the builders the artifact, locker, guild and ship conversions left
+  (`remove_all_artifacts_sql()`, `remove_all_locker_access_statement()`,
+  `Guild::statements_without_member()`, `sql_delete_locker_statement()`,
+  `sql_delete_ship_statement()`), and runs them as one writer job, so one transaction behind
+  every save queued before it (`a67ceb11a`).
+- What memory must forget is captured when the deletion starts and let go only once it
+  commits (`forget_deleted_character()`): a refused deletion leaves the character playable,
+  and a character extracted meanwhile is still forgotten. The account menu waits for the
+  reply with its input held (`wait_for_writer()` / `writer_replied()`, now shared in
+  `account.h`); the websocket deletions load the character through the player load pipeline
+  and delete it the same way. A deleted character's name leaves every live session's account
+  list (names are unique), and its artifacts are released in `artifact_domain_state` too.
+- Gone: `delete_character_result()`, `deleteCharacter()`, `sql_soft_delete_character()`,
+  `sql_delete_player()`, `sql_delete_player_by_name()`, `sql_delete_locker()`,
+  `remove_all_locker_access()`, `Guild::save_without_member()`, the transaction-joining
+  branches of `sql_save_guild()` and `sql_delete_ship()`, the pfile tool's stubs for them and
+  `test_soft_delete_statement_runtime.py`. `docs/persistence/CHARACTER_DELETION.md` describes
+  the new flow.
+- Tests: `test_account_character_delete_runtime.py` holds the queued job, refuses it at every
+  statement, retries, and closes a session before the reply, on both backends. The MariaDB
+  deletion journey's refusals, retry and restart pass, and it now fails on any game-loop query
+  site.
+
+#### Renames (done)
+
+- A rename ran one transaction on the game thread's connection and, when its COMMIT failed,
+  read the player row back. It is one writer job now (`sql_rename_character_statements()`):
+  the player row, what the name keys and the ship, whose statements are built under its new
+  owner while memory keeps the old one (`9ea831ded`).
+- Memory follows only once the job is stored, on a later pulse: the ship's owner, the guild
+  roster, the name index, the character if still in the game, and every live session's
+  account list. A failed job changes nothing. That matters: a name the account mapping still
+  holds would otherwise split the login mapping from the character, as the rename lockout of
+  2026-09-27 did. The requester is told either way, and the paid rename charges only a stored
+  rename. The ship is left for its own next save instead of being marked saved, since the
+  reply comes after the job.
+- Gone: `sql_player_rename()`, `sql_player_row_named()`, `sql_commit_outcome` and the
+  transaction-joining branch of `sql_save_ship()`.
+- Tests: `test_character_rename_ship_ownership.py` holds the job until a pulse, fails each
+  statement, refuses the job, and lets the target or the requester leave before the reply; the
+  references harness runs the statements on MariaDB; the game-loop queries journey renames its
+  god and checks the stored rows.
+
+#### What is left after step 8
+
+A scan of every remaining query on the game thread's connection (`qry()`, `db_query()`,
+`sql_run_query()`, `sql_trace_exec()`, `sql_run_multi_query()`, the transaction calls and
+`mysql_query(DB, ...)`) finds only:
+
+- **Boot only:** the loaders (`sql_player_names_load()`, `account_rewards_load()`,
+  `sql_player_recipes_load()`, `artifacts_load()` and the artifact lists, `polls_load()`,
+  `sql_spellbooks_load()`, `whitelist_load()`, `sql_load_zones()` and `update_zone_db()`,
+  `load_nexus_stones()`, `load_outpost_records()`, guilds, guildhalls, alliances, kingdoms,
+  cargo, ships, corpses, saved items and shopkeepers, `get_timer()`, the epic task catalog, the
+  zone-story state, `artifact_guild_state_hydrate()`, `ctf_populate_boons()`), the boot checks
+  in `sql.c`, the item owner reconciliation of world recovery (before counting starts) and the
+  boot pfile migration (`sql_migrate_all_players()`, with the legacy `sql_save_player()` and
+  `sql_load_player()` it uses).
+- **Shutdown only:** `sql_pwipe()` and `account_bound_rewards_on_successful_pwipe()`.
+- **Dead, for Phase 3** (nothing reaches them, or only other dead code): the `*_legacy`
+  auction functions, `auction_money_pickup_committed()`, `auction_houses_activity()`,
+  `check_boon_completion_legacy()`, `boon_maintenance()`, `boon_random_maintenance()`,
+  `get_boon_progress_data()`, `create_boon_progress()`, `create_boon_shop_entry()`,
+  `epic_zone_balance()`, `update_epic_zone_alignment()`, `update_epic_zone_mods()`,
+  `update_epic_zone_frequency()`, `get_epic_zone_frequency_mod()`, `update_zone_epic_level()`,
+  `get_guild_resources()`, `outpost_update_resources()`, `poll_check_expirations()`,
+  `sql_delete_guild()`, `sql_delete_locker_by_name()`, `sql_delete_spellbook_mobs()`,
+  `arti_remove_sql()`, `restoreItemsOnly()` (only the non-snapshot entry reaches it, which
+  accounts never use) with `readShapechangeData()`, `sql_load_account_bank()` (only the
+  non-account menu, compiled out) and the account bank deposit and withdraw functions,
+  `sql_delete_shopkeeper()` and `sql_restore_shopkeeper()` (their wrappers have no caller),
+  `update_nexus_stat_mods()` (returns before its query) and `event_write_statistic()` (its
+  body is under `#if 0`).
+- The game-loop queries journey (a god in the minimal world, 150-odd commands across three
+  sessions, including character creation, `newchar`, a rename, lockers, guilds, artifacts,
+  polls, the economy and the account screens) and the MariaDB deletion journey (character
+  and account deletion with refusals) run with no game-loop query site at all.
 
 ### Review round 1 (MR !3)
 
