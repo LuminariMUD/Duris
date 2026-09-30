@@ -42,8 +42,10 @@ for callback in ("static void poof_loaded_owner(", "static void arti_poof_loaded
     assert "player_load_pipeline_pid_pending(" in loaded, callback
     assert "extract_char(" not in loaded, callback
 assert "player_load_items_discard(owner);" in body("static void release_offline_owner(")
-# The expiry event loads an owner once, and its callback clears the row.
-assert "offline_poofs.count(vnum)" in body("void event_artifact_check_poof_sql(")
+# The expiry event loads an owner once at a time, even for two of its artifacts: two
+# copies would each save back the artifact the other poofed. The callback clears the row.
+assert "!player_load_pipeline_pid_pending(location) &&" in body("void event_artifact_check_poof_sql(")
+assert "offline_poofs" not in artifact
 assert "artifact_expire(vnum);" in body("static void poof_loaded_owner(")
 
 # The lists read each owner's side with the rows (MariaDB) or from its identity (flat-file).

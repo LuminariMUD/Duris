@@ -17,7 +17,6 @@
 #include "core/utils.h"
 #include <dirent.h>
 #include <stdio.h>
-#include <set>
 #include <string.h>
 #include <unistd.h>
 #include <vector>
@@ -2546,16 +2545,12 @@ static bool artifact_expire(int vnum)
 	return true;
 }
 
-// Expired artifacts whose offline owner is loading.
-static std::set<int> offline_poofs;
-
 // The expiry event's offline owner of vnum, loaded off the loop (null when it could not be):
 // poofs vnum from it, saves it and clears the expired row.
 static void poof_loaded_owner(int vnum, int pid, P_char owner)
 {
 	P_obj arti = NULL;
 
-	offline_poofs.erase(vnum);
 	if (!owner)
 		logit(LOG_ARTIFACT,
 		      "event_artifact_check_poof_sql: Could not load pfile of '%s' %d, to poof arti vnum %d.",
@@ -2599,7 +2594,6 @@ static bool poof_offline_artifact(int vnum, int pid)
 	if (name && !player_load_offline(name, true, [vnum, pid](P_char owner)
 					 { poof_loaded_owner(vnum, pid, owner); }))
 		return false;
-	offline_poofs.insert(vnum);
 	// No such character: nothing to load.
 	if (!name)
 		poof_loaded_owner(vnum, pid, NULL);
@@ -2778,10 +2772,12 @@ void event_artifact_check_poof_sql(P_char /*ch*/, P_char /*vict*/, P_obj /*obj*/
 			else if (locType == ARTIFACT_ON_PC)
 			{
 				// An offline owner loads off the loop; its callback poofs and clears the row.
+				// One load of an owner at a time: two copies would each save back the
+				// artifact the other poofed.
 				if (!is_pid_online(location, TRUE))
 				{
 					offline_pending = TRUE;
-					if (!offline_poofs.count(vnum) &&
+					if (!player_load_pipeline_pid_pending(location) &&
 					    !poof_offline_artifact(vnum, location))
 						save_failed = TRUE;
 				}
