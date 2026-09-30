@@ -318,16 +318,16 @@ static void shop_trade_completion(P_char ch, bool committed, const shop_trade_re
 	const bool selling = payload.action == shop_trade_action::sell_store ||
 			     payload.action == shop_trade_action::sell_destroy;
 	const bool cleanup = payload.action == shop_trade_action::discard_invalid;
-	const bool correct_location =
-		object && (payload.action != shop_trade_action::sell_store || keeper) &&
-		((produced && keeper && OBJ_NOWHERE(object) &&
-		  (!payload.target_parent_item_uid ||
-		   (destination && OBJ_CARRIED_BY(destination, ch) &&
-		    GET_ITEM_TYPE(destination) == ITEM_CONTAINER))) ||
-		 (!produced && buying && keeper && OBJ_CARRIED(object) &&
-		  object->loc.carrying == keeper) ||
-		 (cleanup && keeper && OBJ_CARRIED_BY(object, keeper)) ||
-		 (selling && OBJ_CARRIED(object) && object->loc.carrying == ch));
+	const bool correct_location = object &&
+				      (payload.action != shop_trade_action::sell_store || keeper) &&
+				      ((produced && keeper && OBJ_NOWHERE(object) &&
+					(!payload.target_parent_item_uid ||
+					 (destination && OBJ_CARRIED_BY(destination, ch) &&
+					  GET_ITEM_TYPE(destination) == ITEM_CONTAINER))) ||
+				       (!produced && buying && keeper && OBJ_CARRIED(object) &&
+					object->loc.carrying == keeper) ||
+				       (cleanup && keeper && OBJ_CARRIED_BY(object, keeper)) ||
+				       (selling && OBJ_NOWHERE(object)));
 	const bool exact_object = correct_location &&
 				  shop_trade_runtime_object_matches_payload(object, payload);
 	if (!committed || !exact_object)
@@ -442,7 +442,7 @@ static void shop_trade_completion(P_char ch, bool committed, const shop_trade_re
 	snprintf(message, MAX_STRING_LENGTH, "The shopkeeper gives you %s.\r\n",
 		 coin_stringv(payload.price));
 	send_to_char(message, ch);
-	obj_from_char(object);
+	// The sale took the item out of the seller's inventory when it was submitted.
 	if (payload.action == shop_trade_action::sell_destroy)
 		extract_obj(object, TRUE);
 	else
