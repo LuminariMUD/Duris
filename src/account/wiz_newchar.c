@@ -280,14 +280,12 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 		newch->base_stats[stat_index] = 100;
 	newch->curr_stats = newch->base_stats;
 
-	// init_char does pid assignment, skill setup, hp/mana/vitality etc
+	// init_char does pid assignment (the name is taken from then on), skill setup,
+	// hp/mana/vitality etc
 	init_char(newch);
 
 	// override level after init_char (it may reset to 1)
 	newch->player.level = level;
-
-	// override pid to 0 to force db insert
-	newch->only.pc->pid = 0;
 
 	// set default player flags and prompt (init_char doesn't do this)
 	newch->specials.act = (PLR_PETITION | PLR_ECHO | PLR_SNOTIFY | PLR_PAGING_ON | PLR_MAP);
@@ -344,18 +342,11 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 		}
 	}
 
-	// save character to db - this assigns auto-increment pid
-	if (!writeCharacter(newch, RENT_QUIT, NOWHERE))
+	// The first save is queued like any other: the writer inserts the player row.
+	if (GET_PID(newch) <= 0 || !writeCharacter(newch, RENT_QUIT, NOWHERE))
 	{
 		send_to_char("failed to save character to database.\r\n", ch);
-		free_char(newch);
-		return;
-	}
-
-	// now we have a valid pid from db auto-increment
-	if (GET_PID(newch) <= 0)
-	{
-		send_to_char("failed to save character to database.\r\n", ch);
+		sql_player_names_forget(GET_PID(newch));
 		free_char(newch);
 		return;
 	}
@@ -384,11 +375,17 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 		struct acct_chars *c;
 		CREATE(c, struct acct_chars, 1, MEM_TAG_OTHER);
 		memset(c, 0, sizeof(struct acct_chars));
+		c->pid = GET_PID(newch);
 		c->charname = str_dup(newch->player.name);
 		c->count = 1;
 		c->last = time(NULL);
 		c->racewar = account_admission_racewar(GET_RACEWAR(newch), false);
 		c->player_racewar = GET_RACEWAR(newch);
+		c->level = GET_LEVEL(newch);
+		c->race = GET_RACE(newch);
+		c->m_class = newch->player.m_class;
+		c->secondary_class = newch->player.secondary_class;
+		c->spec = newch->player.spec;
 		c->next = ch->desc->account->acct_character_list;
 		ch->desc->account->acct_character_list = c;
 		ch->desc->account->num_chars++;

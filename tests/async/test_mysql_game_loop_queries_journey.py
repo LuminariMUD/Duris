@@ -91,6 +91,9 @@ REENTRY_COMMANDS = (
     ('epic bonus', 'benefiting from the Experience Bonus'),
     ('divineclaim list', 'Copies'),
     ('divineclaim remove 1', 'Revoked 1 divine account reward'),
+    # A staff-made character's first save is queued like a player's; it is the newest
+    # character, so it comes last, after every entry that selects the first one.
+    ('newchar Vexmora 3 11 56 false', 'character saved.'),
 )
 
 # The functions this session still reaches with a query on the game loop.
@@ -232,6 +235,12 @@ def run(server):
                 input=f"SELECT COUNT(*) FROM {table} t JOIN player_data pd ON pd.pid=t.pid "
                       f"WHERE pd.name='{journey.CHARACTER}'").stdout.strip()
             assert count == '1', f'{table} holds {count} rows for the new character'
+        made = subprocess.run(
+            mysql + [database], text=True, env=environment, check=True, capture_output=True,
+            input="SELECT (SELECT COUNT(*) FROM player_data WHERE name='Vexmora'), "
+                  "(SELECT COUNT(*) FROM account_characters WHERE char_name='Vexmora')"
+            ).stdout.split()
+        assert made == ['1', '1'], f'newchar stored {made}'
         # Shutdown drained the writer: the revoked grant and its summon are gone, the
         # closed poll, its two options and the one vote are stored, and so is the one
         # whitelist entry left.
