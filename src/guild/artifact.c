@@ -30,6 +30,7 @@
 #include "persistence/persistence_mode.h"
 #include "player/player_load_items.h"
 #include "player/player_load_offline.h"
+#include "player/player_load_pipeline.h"
 #include "redis/redis_report_cache.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
@@ -2307,8 +2308,8 @@ static void arti_files_give(P_char ch, P_char owner, int vnum)
 
 	if (!owner)
 		return;
-	// It entered the game while it loaded: its own saves hold it now.
-	if (is_pid_online(GET_PID(owner), TRUE))
+	// In the game now, or another copy of it is loading, whose saves would undo this one's.
+	if (is_pid_online(GET_PID(owner), TRUE) || player_load_pipeline_pid_pending(GET_PID(owner)))
 	{
 		send_to_char_f(ch, "%s is in the game now; artifact %d was not given.\n\r",
 			       GET_NAME(owner), vnum);
@@ -2559,8 +2560,8 @@ static void poof_loaded_owner(int vnum, int pid, P_char owner)
 		logit(LOG_ARTIFACT,
 		      "event_artifact_check_poof_sql: Could not load pfile of '%s' %d, to poof arti vnum %d.",
 		      get_player_name_from_pid(pid), pid, vnum);
-	// It entered the game while it loaded: the next pass poofs it there.
-	else if (is_pid_online(pid, TRUE))
+	// In the game now, or another copy of it is loading: the next pass poofs it.
+	else if (is_pid_online(pid, TRUE) || player_load_pipeline_pid_pending(pid))
 	{
 		release_offline_owner(owner);
 		return;
@@ -3566,7 +3567,9 @@ static void arti_poof_loaded(P_char ch, P_char owner, int vnum, const char *arti
 
 	if (!owner)
 		send_to_char("Could not load that pfile.\n\r", ch);
-	else if (is_pid_online(GET_PID(owner), TRUE))
+	// In the game now, or another copy of it is loading, whose saves would undo this one's.
+	else if (is_pid_online(GET_PID(owner), TRUE) ||
+		 player_load_pipeline_pid_pending(GET_PID(owner)))
 		send_to_char_f(ch, "%s is in the game now; poof %s there.\n\r", GET_NAME(owner),
 			       artishort);
 	else if (!(arti = get_object_from_char(owner, vnum)))
@@ -3979,7 +3982,8 @@ static void arti_swap_loaded(P_char ch, P_char dummy, int vnum1, int vnum2, cons
 		send_to_char("Could not load that pfile.\n\r", ch);
 		return;
 	}
-	if (is_pid_online(GET_PID(dummy), TRUE))
+	// In the game now, or another copy of it is loading, whose saves would undo this one's.
+	if (is_pid_online(GET_PID(dummy), TRUE) || player_load_pipeline_pid_pending(GET_PID(dummy)))
 	{
 		send_to_char_f(ch, "%s is in the game now; swap it there.\n\r", GET_NAME(dummy));
 		release_offline_owner(dummy);

@@ -647,8 +647,8 @@ player_load_result flatfile_player_load_repository_execute(const std::string &ro
 		result.failed_component = "identity";
 		return result;
 	}
-	if (identity.blocked ||
-	    (request.pid > 0 && !same_authority_key(request.account_name, identity.account)))
+	if (identity.blocked || (!request.account_name.empty() &&
+				 !same_authority_key(request.account_name, identity.account)))
 	{
 		result.outcome = player_load_outcome::component_failure;
 		result.error_code = EACCES;

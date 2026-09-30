@@ -38,6 +38,8 @@ for callback in ("static void poof_loaded_owner(", "static void arti_poof_loaded
                  "static void arti_swap_loaded(", "static void arti_files_give("):
     loaded = body(callback)
     assert "is_pid_online(" in loaded and "release_offline_owner(" in loaded, callback
+    # Another copy of the owner that is loading would save over this one.
+    assert "player_load_pipeline_pid_pending(" in loaded, callback
     assert "extract_char(" not in loaded, callback
 assert "player_load_items_discard(owner);" in body("static void release_offline_owner(")
 # The expiry event loads an owner once, and its callback clears the row.

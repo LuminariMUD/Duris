@@ -26,7 +26,7 @@ namespace fs = std::filesystem;
 
 bool player_load_request_valid(const player_load_request &request, uint64_t now)
 {
-	const bool pid_identity = request.pid > 0 && !request.account_name.empty() &&
+	const bool pid_identity = request.pid > 0 &&
 				  request.account_name.size() <= PLAYER_LOAD_ACCOUNT_MAX;
 	const bool name_identity = request.pid == 0 && !request.player_name.empty() &&
 				   request.player_name.size() <= PLAYER_LOAD_NAME_MAX;
@@ -761,6 +761,11 @@ int main(int argc, char **argv)
 			load_result.error_code == EACCES &&
 			std::string(load_result.failed_component) == "identity",
 		"account/PID mismatch was accepted");
+	// An offline load (player_load_offline()) names the character by pid and no account.
+	load_request.account_name.clear();
+	load_result = flatfile_player_load_repository_execute(root.string(), load_request);
+	require(load_result.pid == 42 && load_result.outcome == player_load_outcome::applied,
+		"an offline load by pid alone was refused");
 	load_request = {};
 	load_request.request_id = 3;
 	load_request.player_name = "pLaYeR";

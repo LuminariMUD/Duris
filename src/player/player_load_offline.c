@@ -6,6 +6,7 @@
 #include "persistence/persistence_observability.h"
 #include "player/player_load_materialize.h"
 #include "player/player_load_pipeline.h"
+#include "sql/sql_player.h"
 
 #include <unordered_map>
 
@@ -47,7 +48,13 @@ bool player_load_offline(const char *name, bool include_items, std::function<voi
 		return false;
 	player_load_request request = {};
 	request.request_id = player_load_pipeline_next_request_id();
-	request.player_name = name;
+	// By pid when the character exists: the load then waits for its queued saves, as a
+	// login does, so a copy that is saved back is never older than them.
+	const int pid = sql_get_player_pid(name);
+	if (pid > 0)
+		request.pid = pid;
+	else
+		request.player_name = name;
 	request.include_items = include_items;
 	request.include_pets = false;
 	request.deadline_usec = persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
