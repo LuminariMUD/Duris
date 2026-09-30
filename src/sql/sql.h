@@ -211,9 +211,19 @@ struct zone_info
 	int suggested_group_size;
 	int epic_payout;
 	int difficulty;
+	int alignment;
+	long last_touch;
+	int stonecount;
+	int reset_perc;
 };
 
+// The zones rows, in memory (sql.c): read at boot, and their alignments, last touches and
+// rarity read again on the writer by sql_zones_refresh().
+void sql_load_zones(void);
+void sql_zones_refresh(void);
+const vector<zone_info> &sql_zones(void);
 bool get_zone_info(int zone_number, struct zone_info *info);
+void sql_set_zone_reset_perc(int zone_number, int reset_perc);
 
 bool sql_get_bind_data(int vnum, int *owner_pid, int *timer);
 void sql_update_bind_data(int vnum, int *owner_pid, int *timer);

@@ -646,10 +646,18 @@ void sql_log(P_char ch, const char *kind, const char *format, ...)
 	      safe_ip, GET_PID(ch), safe_name, zone_number, room_vnum, message);
 }
 
+void sql_load_zones(void) {}
+void sql_zones_refresh(void) {}
+const std::vector<zone_info> &sql_zones(void)
+{
+	static const std::vector<zone_info> none;
+	return none;
+}
 bool get_zone_info(int /*zone_number*/, struct zone_info * /*info*/)
 {
 	return FALSE;
 }
+void sql_set_zone_reset_perc(int /*zone_number*/, int /*reset_perc*/) {}
 
 string escape_str(const char *str)
 {
@@ -1525,6 +1533,7 @@ int initialize_mysql()
 	sql_load_level_cap();
 	sql_load_recent_counts();
 	sql_load_mud_info();
+	sql_load_zones();
 
 	if (!sql_verify_boot_database())
 	{
@@ -4017,6 +4026,8 @@ void update_zone_db()
 			    zone_table[zone_id].number);
 		}
 	}
+	// Boot: memory takes the rows just written.
+	sql_load_zones();
 }
 
 void update_zone_epic_level(int zone_number, int level)
@@ -4129,44 +4140,90 @@ void sql_log(P_char ch, const char *kind, const char *format, ...)
 		      buff);
 }
 
+// The zones rows, read at boot and kept in memory, so the epic stones, zone resets and the
+// epic zone lists never wait for the database. A no-reset zone's reset chance changes here
+// and is queued. Alignments, last touches and rarity change on other connections (a stone
+// touch, the maintenance jobs), so those three are read again on the writer after each.
+static std::vector<zone_info> zones;
+
+static zone_info *zone_row(int zone_number)
+{
+	for (zone_info &zone : zones)
+		if (zone.number == zone_number)
+			return &zone;
+	return nullptr;
+}
+
+// Boot only: the game loop is not running yet.
+void sql_load_zones(void)
+{
+	MYSQL_RES *res = db_query(
+		"SELECT number, name, epic_type, frequency_mod, zone_freq_mod, epic_level, task_zone, "
+		"quest_zone, trophy_zone, suggested_group_size, epic_payout, difficulty, alignment, "
+		"UNIX_TIMESTAMP(last_touch), stonecount, reset_perc FROM zones ORDER BY id");
+	if (!res)
+		return;
+	zones.clear();
+	while (MYSQL_ROW row = mysql_fetch_row(res))
+	{
+		zone_info zone = {};
+		zone.number = row[0] ? atoi(row[0]) : 0;
+		zone.name = row[1] ? row[1] : "";
+		zone.epic_type = row[2] ? atoi(row[2]) : 0;
+		zone.frequency_mod = row[3] ? atof(row[3]) : 0;
+		zone.zone_freq_mod = row[4] ? atof(row[4]) : 0;
+		zone.epic_level = row[5] ? atoi(row[5]) : 0;
+		zone.task_zone = row[6] && atoi(row[6]);
+		zone.quest_zone = row[7] && atoi(row[7]);
+		zone.trophy_zone = row[8] && atoi(row[8]);
+		zone.suggested_group_size = row[9] ? atoi(row[9]) : 0;
+		zone.epic_payout = row[10] ? atoi(row[10]) : 0;
+		zone.difficulty = row[11] ? atoi(row[11]) : 0;
+		zone.alignment = row[12] ? atoi(row[12]) : 0;
+		zone.last_touch = row[13] ? atol(row[13]) : 0;
+		zone.stonecount = row[14] ? atoi(row[14]) : 1;
+		zone.reset_perc = row[15] ? atoi(row[15]) : 0;
+		zones.push_back(zone);
+	}
+	mysql_free_result(res);
+}
+
+void sql_zones_refresh(void)
+{
+	sql_read("SELECT number, frequency_mod, alignment, UNIX_TIMESTAMP(last_touch) FROM zones",
+		 [](bool ok, const sql_rows &rows)
+		 {
+			 if (!ok)
+				 return;
+			 for (const sql_row &row : rows)
+				 if (zone_info *zone = row[0] ? zone_row(atoi(row[0])) : nullptr)
+				 {
+					 zone->frequency_mod = row[1] ? atof(row[1]) : 0;
+					 zone->alignment = row[2] ? atoi(row[2]) : 0;
+					 zone->last_touch = row[3] ? atol(row[3]) : 0;
+				 }
+		 });
+}
+
+const std::vector<zone_info> &sql_zones(void)
+{
+	return zones;
+}
+
 bool get_zone_info(int zone_number, struct zone_info *info)
 {
-	if (!info)
-	{
+	const zone_info *zone = zone_row(zone_number);
+	if (!info || !zone)
 		return FALSE;
-	}
-
-	if (!qry("SELECT number, name, epic_type, frequency_mod, zone_freq_mod, epic_level, task_zone, quest_zone, trophy_zone, suggested_group_size, epic_payout, difficulty FROM zones WHERE number = %d",
-		 zone_number))
-	{
-		return FALSE;
-	}
-
-	MYSQL_RES *res = mysql_store_result(DB);
-
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		return FALSE;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-
-	info->number = atoi(row[0]);
-	info->name = string(row[1]);
-	info->epic_type = atoi(row[2]);
-	info->frequency_mod = atof(row[3]);
-	info->zone_freq_mod = atof(row[4]);
-	info->epic_level = atoi(row[5]);
-	info->task_zone = (bool)atoi(row[6]);
-	info->quest_zone = (bool)atoi(row[7]);
-	info->trophy_zone = (bool)atoi(row[8]);
-	info->suggested_group_size = atoi(row[9]);
-	info->epic_payout = atoi(row[10]);
-	info->difficulty = atoi(row[11]);
-
-	mysql_free_result(res);
+	*info = *zone;
 	return TRUE;
+}
+
+void sql_set_zone_reset_perc(int zone_number, int reset_perc)
+{
+	if (zone_info *zone = zone_row(zone_number))
+		zone->reset_perc = reset_perc;
+	sql_queue("UPDATE zones SET reset_perc = %d WHERE number = %d", reset_perc, zone_number);
 }
 
 // mud_info, read at boot, every minute (so a creation lock set in the database takes hold

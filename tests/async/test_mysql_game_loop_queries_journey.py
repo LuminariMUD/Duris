@@ -32,6 +32,8 @@ COMMANDS = (
     ('fraglist', 'Lowest Fraggers'),
     ('fraglist warrior', 'Lowest Fraggers'),
     ('load obj 677', 'Pos: standing >'),
+    ('epic zones', 'already completed this boot'),
+    ('stat zone', 'Zone flags:'),
     ('divineclaim mace ' + journey.ACCOUNT + ' days 1', 'Created divine reward #1'),
     ('divineclaim list ' + journey.ACCOUNT, 'Active Divine Account Rewards'),
     ('auction list', 'No auctions to list!'),

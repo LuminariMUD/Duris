@@ -225,6 +225,13 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 						     static_cast<int>(result.values[1]),
 						     static_cast<int>(result.values[2]), BN_CREATE);
 		}
+		// The jobs that change zone alignments and rarity: memory reads them again.
+		if ((result.job_id == maintenance_job_id::epic_zone_balance ||
+		     result.job_id == maintenance_job_id::epic_zone_modifiers) &&
+		    (result.outcome == maintenance_outcome::complete ||
+		     result.outcome == maintenance_outcome::more) &&
+		    result.rows > 0)
+			sql_zones_refresh();
 		if (result.job_id == maintenance_job_id::boon_scan &&
 		    (result.outcome == maintenance_outcome::complete ||
 		     result.outcome == maintenance_outcome::more) &&

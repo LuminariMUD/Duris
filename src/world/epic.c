@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <list>
 #include <math.h>
 #include <stdio.h>
@@ -1308,6 +1309,10 @@ void epic_publish_zone_touch(const zone_touch_result &result)
 {
 	epic_zone_completions.push_back(epic_zone_completion(
 		static_cast<int>(result.zone_number), result.touched_at, result.alignment_delta));
+	// The touch changed the zone's row: its alignment and last touch are read again.
+	if (result.reset_requested)
+		sql_set_zone_reset_perc(static_cast<int>(result.zone_number), 1);
+	sql_zones_refresh();
 	if (P_char toucher = find_player_by_pid(static_cast<int>(result.toucher_pid)))
 		(void)telemetry_runtime_game_encounter_complete(
 			toucher, telemetry_encounter_outcome::success,
@@ -1783,27 +1788,8 @@ void epic_zone_erase_touch(int zone_number)
 
 bool epic_zone_done_now(int zone_number)
 {
-	int count = 1;
-
-	// All this to set count to a value in zones.
-	if (qry("SELECT stonecount FROM zones WHERE number = %d", zone_number))
-	{
-		MYSQL_RES *res = mysql_store_result(DB);
-		if (!res)
-		{
-			logit(LOG_DEBUG, "%s: mysql_store_result failed", __func__);
-			return FALSE;
-		}
-		if (mysql_num_rows(res) >= 1)
-		{
-			MYSQL_ROW row = mysql_fetch_row(res);
-			if (row)
-			{
-				count = atoi(row[0]);
-			}
-		}
-		mysql_free_result(res);
-	}
+	zone_info zone;
+	int count = get_zone_info(zone_number, &zone) ? zone.stonecount : 1;
 
 	for (vector<epic_zone_completion>::iterator it = epic_zone_completions.begin();
 	     it != epic_zone_completions.end(); it++)
@@ -2214,39 +2200,12 @@ void update_epic_zone_alignment(int zone_number, int delta)
 // Should return a number 0.0 or greater. (0.0: no epics, 1.0: full epics, 2.0: double epics, etc).
 float get_epic_zone_alignment_mod(int zone_number, ubyte racewar)
 {
-#ifdef __NO_MYSQL__
-	(void)zone_number;
-	(void)racewar;
-	return 1.0;
-#else
-
 	float mod = 1.0, minPercentage;
-	int alignment = 0;
+	zone_info zone;
 
-	if (!qry("SELECT alignment FROM zones WHERE number = %d", zone_number))
+	if (!get_zone_info(zone_number, &zone))
 		return mod;
-
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (!res)
-	{
-		logit(LOG_DEBUG, "%s: mysql_store_result failed", __func__);
-		return mod;
-	}
-
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		return 1.0;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-
-	if (row)
-	{
-		alignment = atoi(row[0]);
-	}
-
-	mysql_free_result(res);
+	const int alignment = zone.alignment;
 
 	if ((alignment < 0 && racewar == RACEWAR_GOOD) ||
 	    (alignment > 0 && racewar == RACEWAR_EVIL))
@@ -2277,8 +2236,6 @@ float get_epic_zone_alignment_mod(int zone_number, ubyte racewar)
 	      (int)racewar, mod);
 
 	return mod;
-
-#endif
 }
 
 // called from timers.c
@@ -2359,36 +2316,22 @@ float get_epic_zone_frequency_mod(int zone_number)
 
 vector<epic_zone_data> get_epic_zones()
 {
+	vector<zone_info> epic;
+	for (const zone_info &zone : sql_zones())
+		if (zone.epic_type > 0)
+			epic.push_back(zone);
+	// sql_zones() is in id order, so equal values keep it.
+	stable_sort(epic.begin(), epic.end(),
+		    [](const zone_info &a, const zone_info &b) {
+			    return a.suggested_group_size * a.epic_payout <
+				   b.suggested_group_size * b.epic_payout;
+		    });
+
 	vector<epic_zone_data> zones;
-
-#ifdef __NO_MYSQL__
+	for (const zone_info &zone : epic)
+		zones.push_back(epic_zone_data(zone.number, zone.name, zone.frequency_mod,
+					       zone.alignment, zone.last_touch));
 	return zones;
-#else
-
-	if (!qry("SELECT number, name, frequency_mod, alignment, UNIX_TIMESTAMP(last_touch) FROM zones WHERE epic_type > 0 ORDER BY (suggested_group_size*epic_payout), id"))
-	{
-		return zones;
-	}
-
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (!res)
-	{
-		logit(LOG_DEBUG, "%s: mysql_store_result failed", __func__);
-		return zones;
-	}
-
-	MYSQL_ROW row;
-
-	while ((row = mysql_fetch_row(res)))
-	{
-		zones.push_back(epic_zone_data(atoi(row[0]), string(row[1]), atof(row[2]),
-					       atoi(row[3]), row[4] ? atol(row[4]) : 0));
-	}
-
-	mysql_free_result(res);
-
-	return zones;
-#endif
 }
 
 // referenced in actwiz.c for existing chars - Drannak

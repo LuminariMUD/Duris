@@ -3191,8 +3191,8 @@ P_obj read_object(int nr, int type)
  */
 void no_reset_zone_reset(int zone_number)
 {
-	if (!qry("SELECT reset_perc FROM zones WHERE number = '%d'",
-		 zone_table[zone_number].number))
+	zone_info zone;
+	if (!get_zone_info(zone_table[zone_number].number, &zone))
 	{
 		logit(LOG_DEBUG,
 		      "no_reset_zone_reset: could not find zone information for zone id %d",
@@ -3200,33 +3200,19 @@ void no_reset_zone_reset(int zone_number)
 		return;
 	}
 
-	MYSQL_RES *res = mysql_store_result(DB);
-
-	if (mysql_num_rows(res) < 1)
-	{
-		logit(LOG_DEBUG, "No data retrieved from DB for no_reset_zone_reset...");
-		mysql_free_result(res);
-		return;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-
-	if (epic_zone_done_now(zone_table[zone_number].number) && atoi(row[0]) > number(0, 99))
+	if (epic_zone_done_now(zone.number) && zone.reset_perc > number(0, 99))
 	{
 		// zone_purge(zone_number);
 		reset_zone(zone_number, 0);
-		db_query("UPDATE zones SET reset_perc = '%d' WHERE number = '%d'", 0,
-			 zone_table[zone_number].number);
+		sql_set_zone_reset_perc(zone.number, 0);
 		// epic_zone_erase_touch(zone_table[zone_number].number);
 	}
 	else
 	{
 		add_event(event_reset_zone, WAIT_MIN * 60, 0, 0, 0, 0, &zone_number,
 			  sizeof(zone_number));
-		db_query("UPDATE zones SET reset_perc = '%d' WHERE number = '%d'", atoi(row[0]) + 1,
-			 zone_table[zone_number].number);
+		sql_set_zone_reset_perc(zone.number, zone.reset_perc + 1);
 	}
-	mysql_free_result(res);
 }
 
 #define ZCMD zone_table[zone].cmd[cmd_no]
