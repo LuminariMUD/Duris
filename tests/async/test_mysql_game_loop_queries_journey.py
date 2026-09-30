@@ -37,6 +37,7 @@ COMMANDS = (
     ('auction list', 'No auctions to list!'),
     ('auction info 1', 'There is no auction with that id!'),
     ('auction pickup', 'You have no items or money to pickup!'),
+    ('nexus', 'Nexus Stones'),
 )
 REENTRY_COMMANDS = (
     ('divineclaim list', 'Copies'),

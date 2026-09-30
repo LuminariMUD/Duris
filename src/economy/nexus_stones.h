@@ -103,6 +103,7 @@ struct NexusStoneInfo
 	int align;
 	int stat_affect;
 	int affect_amount;
+	int bonus;
 	int last_touched_at;
 };
 
