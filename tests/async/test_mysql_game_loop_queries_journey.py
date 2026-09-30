@@ -34,6 +34,9 @@ COMMANDS = (
     ('load obj 677', 'Pos: standing >'),
     ('divineclaim mace ' + journey.ACCOUNT + ' days 1', 'Created divine reward #1'),
     ('divineclaim list ' + journey.ACCOUNT, 'Active Divine Account Rewards'),
+    ('auction list', 'No auctions to list!'),
+    ('auction info 1', 'There is no auction with that id!'),
+    ('auction pickup', 'You have no items or money to pickup!'),
 )
 REENTRY_COMMANDS = (
     ('divineclaim list', 'Copies'),

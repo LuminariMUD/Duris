@@ -864,6 +864,7 @@ bool auction_publish_committed_event(const auction_command_result & /*result*/,
 }
 #else
 #include <mysql.h>
+#include "sql/sql_async.h"
 
 // auction status values (match DB column)
 #define AUCTION_STATUS_OPEN 1
@@ -1431,58 +1432,45 @@ bool auction_resort(P_char ch, char *args)
 		return TRUE;
 	}
 
-	if (!qry("SELECT id, obj_short, obj_blob_str FROM auctions"))
-	{
-		return FALSE;
-	}
-
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (!res)
-		return FALSE;
-
-	if (mysql_num_rows(res) < 1)
-	{
-		send_to_char("No auctions to resort!\r\n", ch);
-		mysql_free_result(res);
-		return TRUE;
-	}
-
-	MYSQL_ROW row;
-
-	int count = 0;
-	while ((row = mysql_fetch_row(res)))
-	{
-		int auction_id = atoi(row[0]);
-		string obj_short(row[1]);
-		char *obj_str = row[2];
-
-		P_obj tmp_obj = read_one_object(obj_str);
-
-		if (!tmp_obj)
-			continue;
-
-		string keywords = sorter->getSortFlagsString(tmp_obj);
-		snprintf(buff, MAX_STRING_LENGTH, "%s: %s\r\n", obj_short.c_str(),
-			 keywords.c_str());
-		send_to_char(buff, ch);
-
-		if (keywords.length() > 0)
+	// Read on the writer; the new keywords are queued back there.
+	return sql_read_for(
+		ch, "SELECT id, obj_short, obj_blob_str FROM auctions",
+		[](P_char viewer, const sql_rows &rows)
 		{
-			if (!qry("UPDATE auctions SET id_keywords = '%s' WHERE id = '%d'",
-				 keywords.c_str(), auction_id))
-				return FALSE;
-		}
+			if (rows.empty())
+			{
+				send_to_char("No auctions to resort!\r\n", viewer);
+				return;
+			}
+			std::vector<std::string> updates;
+			int count = 0;
+			for (const sql_row &row : rows)
+			{
+				P_obj tmp_obj =
+					row[2] ? read_one_object(const_cast<char *>(row[2])) :
+						 nullptr;
+				if (!tmp_obj)
+					continue;
 
-		extract_obj(tmp_obj);
-		count++;
-	}
+				string keywords = sorter->getSortFlagsString(tmp_obj);
+				snprintf(buff, MAX_STRING_LENGTH, "%s: %s\r\n",
+					 row[1] ? row[1] : "", keywords.c_str());
+				send_to_char(buff, viewer);
 
-	snprintf(buff, MAX_STRING_LENGTH, "&+W%d items resorted.", count);
-	send_to_char(buff, ch);
+				if (keywords.length() > 0)
+					updates.push_back(sql_format(
+						"UPDATE auctions SET id_keywords = '%s' WHERE id = '%d'",
+						keywords.c_str(), atoi(row[0])));
 
-	mysql_free_result(res);
+				extract_obj(tmp_obj);
+				count++;
+			}
+			if (!updates.empty())
+				sql_queue_statements(std::move(updates));
 
-	return TRUE;
+			snprintf(buff, MAX_STRING_LENGTH, "&+W%d items resorted.", count);
+			send_to_char(buff, viewer);
+		});
 }
 
 namespace
@@ -1623,32 +1611,17 @@ void auction_item_claim_completed(P_char ch, bool committed, const auction_comma
 }
 } // namespace
 
-bool auction_publish_committed_event(const auction_command_result &result,
-				     unsigned long long outbox_id)
+// Broadcasts a committed auction event and tells the players it concerns, from the
+// auction's row.
+static void auction_publish_event(const auction_command_result &result,
+				  unsigned long long outbox_id, const sql_row &row)
 {
-	if (result.event_type == auction_event_type::money_claimed ||
-	    result.event_type == auction_event_type::item_claimed)
-		return true;
-	if (!result.auction_id ||
-	    !qry("SELECT seller_name,obj_short,winning_bidder_name,UNIX_TIMESTAMP(end_time),"
-		 "cur_price,buy_price FROM auctions WHERE id=%u LIMIT 1",
-		 result.auction_id))
-		return false;
-	MYSQL_RES *query = mysql_store_result(DB);
-	MYSQL_ROW row = query ? mysql_fetch_row(query) : nullptr;
-	if (!row)
-	{
-		if (query)
-			mysql_free_result(query);
-		return false;
-	}
 	const string seller_name = row[0] ? row[0] : "";
 	const string object_short = row[1] ? row[1] : "item";
 	const string winner_name = row[2] ? row[2] : "";
 	const int end_time = row[3] ? atoi(row[3]) : 0;
 	const int current_price = row[4] ? atoi(row[4]) : 0;
 	const int buy_price = row[5] ? atoi(row[5]) : 0;
-	mysql_free_result(query);
 	if (result.event_type == auction_event_type::listed)
 		ws_broadcast_auction_new(result.auction_id, seller_name.c_str(),
 					 object_short.c_str(), current_price, buy_price, end_time);
@@ -1708,7 +1681,33 @@ bool auction_publish_committed_event(const auction_command_result &result,
 	}
 	logit(LOG_DEBUG, "Published auction outbox %llu for auction %u", outbox_id,
 	      result.auction_id);
-	return true;
+}
+
+// The auction's row is read on the writer, behind the command that committed the event,
+// and the event is published on a later pulse.
+bool auction_publish_committed_event(const auction_command_result &result,
+				     unsigned long long outbox_id)
+{
+	if (result.event_type == auction_event_type::money_claimed ||
+	    result.event_type == auction_event_type::item_claimed)
+		return true;
+	if (!result.auction_id)
+		return false;
+	return sql_read(
+		sql_format("SELECT seller_name,obj_short,winning_bidder_name,"
+			   "UNIX_TIMESTAMP(end_time),cur_price,buy_price FROM auctions "
+			   "WHERE id=%u LIMIT 1",
+			   result.auction_id),
+		[result, outbox_id](bool ok, const sql_rows &rows)
+		{
+			if (ok && !rows.empty())
+				auction_publish_event(result, outbox_id, rows.front());
+			else
+				logit(LOG_DEBUG,
+				      "Auction outbox %llu for auction %u was not published: "
+				      "the auction could not be read",
+				      outbox_id, result.auction_id);
+		});
 }
 
 // syntax: auction offer item [starting price] [buy it now price]
@@ -2068,18 +2067,90 @@ bool auction_offer_legacy(P_char ch, char *args)
 	return TRUE;
 }
 
+// One line of `auction list`.
+static void auction_list_row(P_char ch, const sql_row &row)
+{
+	const char *auction_id = row[0];
+	long secs_remaining = atol(row[2]);
+	int cur_price = atoi(row[3]);
+	int buy_price = atoi(row[4]);
+	const char *obj_short = row[5];
+	int obj_vnum = atoi(row[6]);
+	int winning_bidder_pid = row[7] ? atoi(row[7]) : 0;
+	int seller_pid = atoi(row[9]);
+	int quantity = atoi(row[10]);
+
+	// if( cur_price < 1 ) cur_price = 1;
+	if (cur_price < 1000)
+		cur_price = 1000; // change to copper
+
+	char buf[128];
+	snprintf(buf, 128, "&+W%dp", (int)(cur_price / 1000));
+	string cur_price_str(buf);
+
+	snprintf(buf, 128, "&+W%dp", (int)(buy_price / 1000));
+	string buy_price_str(buf);
+
+	char mine_flag[] = " ";
+	if (GET_PID(ch) == seller_pid || GET_PID(ch) == winning_bidder_pid)
+		strcpy(mine_flag, "*");
+
+	// Only display Buy it now price if there is one.
+	if (buy_price > 0)
+	{
+		// Display vnum for gods.
+		if (IS_TRUSTED(ch))
+			snprintf(
+				buff, MAX_STRING_LENGTH,
+				"&+W%s)&+W%s&n[&+B%6d&n] %d &n%s&n [%s&n] &+WBid: &n%s&+W Buy: &n%s\r\n",
+				auction_id, mine_flag, obj_vnum, quantity,
+				pad_ansi(obj_short, 45, TRUE).c_str(),
+				format_time(secs_remaining).c_str(),
+				pad_ansi(cur_price_str.c_str(), 7).c_str(),
+				pad_ansi(buy_price_str.c_str(), 7).c_str());
+		else
+			snprintf(buff, MAX_STRING_LENGTH,
+				 "&+W%s)&+W%s&n %d %s&n [%s&n] &+WBid: &n%s&+W Buy: &n%s\r\n",
+				 auction_id, mine_flag, quantity,
+				 pad_ansi(obj_short, 45, TRUE).c_str(),
+				 format_time(secs_remaining).c_str(),
+				 pad_ansi(cur_price_str.c_str(), 6).c_str(),
+				 pad_ansi(buy_price_str.c_str(), 6).c_str());
+	}
+	else
+	{
+		if (IS_TRUSTED(ch))
+			snprintf(buff, MAX_STRING_LENGTH,
+				 "&+W%s)&+W%s&n[&+B%6d&n] %d &n%s&n [%s&n] &+WBid: &n%s&+W\r\n",
+				 auction_id, mine_flag, obj_vnum, quantity,
+				 pad_ansi(obj_short, 45, TRUE).c_str(),
+				 format_time(secs_remaining).c_str(),
+				 pad_ansi(cur_price_str.c_str(), 6).c_str());
+		else
+			snprintf(buff, MAX_STRING_LENGTH,
+				 "&+W%s)&+W%s&n %d %s&n [%s&n] &+WBid: &n%s&+W\r\n", auction_id,
+				 mine_flag, quantity, pad_ansi(obj_short, 45, TRUE).c_str(),
+				 format_time(secs_remaining).c_str(),
+				 pad_ansi(cur_price_str.c_str(), 6).c_str());
+	}
+
+	send_to_char(buff, ch);
+}
+
 // syntax: auction list
 bool auction_list(P_char ch, char *args)
 {
 	char list_arg[MAX_STRING_LENGTH];
 	char where_str[MAX_STRING_LENGTH];
 	int i, count;
+	// Shown with the rows, which come on a later pulse.
+	string heading;
 
 	half_chop(args, list_arg, args);
 	*where_str = '\0';
 
 	if (isname(list_arg, "all a") || strlen(list_arg) < 1)
-		send_to_char("&+WAuctions closing soon:\r\n", ch);
+		heading = "&+WAuctions closing soon:\r\n";
 	else if (isname(list_arg, "player p"))
 	{
 		half_chop(args, list_arg, args);
@@ -2093,7 +2164,7 @@ bool auction_list(P_char ch, char *args)
 		list_arg[0] = toupper(list_arg[0]);
 
 		snprintf(buff, MAX_STRING_LENGTH, "&+WAuctions by &n%.100s&+W:\r\n", list_arg);
-		send_to_char(buff, ch);
+		heading = buff;
 
 		mysql_real_escape_string(DB, buff, list_arg, strlen(list_arg));
 
@@ -2132,7 +2203,7 @@ bool auction_list(P_char ch, char *args)
 
 			snprintf(buff, MAX_STRING_LENGTH, "&+WAuctions for items &+y%s&+W:&n\n",
 				 sorter->getDescString(list_arg).c_str());
-			send_to_char(buff, ch);
+			heading += buff;
 
 			mysql_real_escape_string(DB, buff, list_arg, strlen(list_arg));
 			list_args.back() = string(buff);
@@ -2145,7 +2216,7 @@ bool auction_list(P_char ch, char *args)
 			strcat(where_str, buff);
 		}
 
-		send_to_char("\r\n", ch);
+		heading += "\r\n";
 	}
 	else
 	{
@@ -2166,125 +2237,28 @@ bool auction_list(P_char ch, char *args)
 		return TRUE;
 	}
 
-	if (!qry("SELECT id, seller_name, UNIX_TIMESTAMP(end_time) - UNIX_TIMESTAMP() as secs_remaining, cur_price, buy_price, obj_short, obj_vnum, winning_bidder_pid, winning_bidder_name, seller_pid, "
-		 "quantity from auctions where status = %d %s order by secs_remaining asc",
-		 AUCTION_STATUS_OPEN, where_str))
-		return FALSE;
-
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (!res)
-		return FALSE;
-
-	if (mysql_num_rows(res) < 1)
-	{
-		if (!*list_arg)
-			send_to_char("&+yNo auctions to list!\r\n", ch);
-		else
-			send_to_char("&+yNo auctions found!\r\n", ch);
-	}
-
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(res)))
-	{
-		char *auction_id = row[0];
-		long secs_remaining = atol(row[2]);
-		int cur_price = atoi(row[3]);
-		int buy_price = atoi(row[4]);
-		char *obj_short = row[5];
-		int obj_vnum = atoi(row[6]);
-		int winning_bidder_pid = row[7] ? atoi(row[7]) : 0;
-		int seller_pid = atoi(row[9]);
-		int quantity = atoi(row[10]);
-
-		// if( cur_price < 1 ) cur_price = 1;
-		if (cur_price < 1000)
-			cur_price = 1000; // change to copper
-
-		char buf[128];
-		snprintf(buf, 128, "&+W%dp", (int)(cur_price / 1000));
-		string cur_price_str(buf);
-
-		snprintf(buf, 128, "&+W%dp", (int)(buy_price / 1000));
-		string buy_price_str(buf);
-
-		char mine_flag[] = " ";
-		if (GET_PID(ch) == seller_pid || GET_PID(ch) == winning_bidder_pid)
-			strcpy(mine_flag, "*");
-
-		// Only display Buy it now price if there is one.
-		if (buy_price > 0)
+	const bool filtered = *list_arg;
+	return sql_read_for(
+		ch,
+		sql_format(
+			"SELECT id, seller_name, UNIX_TIMESTAMP(end_time) - UNIX_TIMESTAMP() as secs_remaining, cur_price, buy_price, obj_short, obj_vnum, winning_bidder_pid, winning_bidder_name, seller_pid, "
+			"quantity from auctions where status = %d %s order by secs_remaining asc",
+			AUCTION_STATUS_OPEN, where_str),
+		[heading, filtered](P_char viewer, const sql_rows &rows)
 		{
-			// Display vnum for gods.
-			if (IS_TRUSTED(ch))
-				snprintf(
-					buff, MAX_STRING_LENGTH,
-					"&+W%s)&+W%s&n[&+B%6d&n] %d &n%s&n [%s&n] &+WBid: &n%s&+W Buy: &n%s\r\n",
-					auction_id, mine_flag, obj_vnum, quantity,
-					pad_ansi(obj_short, 45, TRUE).c_str(),
-					format_time(secs_remaining).c_str(),
-					pad_ansi(cur_price_str.c_str(), 7).c_str(),
-					pad_ansi(buy_price_str.c_str(), 7).c_str());
-			else
-				snprintf(
-					buff, MAX_STRING_LENGTH,
-					"&+W%s)&+W%s&n %d %s&n [%s&n] &+WBid: &n%s&+W Buy: &n%s\r\n",
-					auction_id, mine_flag, quantity,
-					pad_ansi(obj_short, 45, TRUE).c_str(),
-					format_time(secs_remaining).c_str(),
-					pad_ansi(cur_price_str.c_str(), 6).c_str(),
-					pad_ansi(buy_price_str.c_str(), 6).c_str());
-		}
-		else
-		{
-			if (IS_TRUSTED(ch))
-				snprintf(
-					buff, MAX_STRING_LENGTH,
-					"&+W%s)&+W%s&n[&+B%6d&n] %d &n%s&n [%s&n] &+WBid: &n%s&+W\r\n",
-					auction_id, mine_flag, obj_vnum, quantity,
-					pad_ansi(obj_short, 45, TRUE).c_str(),
-					format_time(secs_remaining).c_str(),
-					pad_ansi(cur_price_str.c_str(), 6).c_str());
-			else
-				snprintf(buff, MAX_STRING_LENGTH,
-					 "&+W%s)&+W%s&n %d %s&n [%s&n] &+WBid: &n%s&+W\r\n",
-					 auction_id, mine_flag, quantity,
-					 pad_ansi(obj_short, 45, TRUE).c_str(),
-					 format_time(secs_remaining).c_str(),
-					 pad_ansi(cur_price_str.c_str(), 6).c_str());
-		}
-
-		send_to_char(buff, ch);
-	}
-
-	mysql_free_result(res);
-	return TRUE;
+			send_to_char(heading.c_str(), viewer);
+			if (rows.empty())
+				send_to_char(filtered ? "&+yNo auctions found!\r\n" :
+							"&+yNo auctions to list!\r\n",
+					     viewer);
+			for (const sql_row &row : rows)
+				auction_list_row(viewer, row);
+		});
 }
 
-// syntax: auction info <auction id>
-bool auction_info(P_char ch, char *args)
+// The answer to `auction info`, from the auction's row.
+static void auction_info_show(P_char ch, int auction_id, const sql_row &row)
 {
-	char arg[MAX_STRING_LENGTH];
-
-	half_chop(args, arg, args);
-
-	int auction_id = atoi(arg);
-
-	if (!qry("SELECT seller_name, UNIX_TIMESTAMP(end_time) - UNIX_TIMESTAMP() as secs_remaining, cur_price, buy_price, obj_short, obj_vnum, winning_bidder_pid, winning_bidder_name, obj_blob_str, "
-		 "quantity FROM auctions WHERE id = '%d' and status = %d",
-		 auction_id, AUCTION_STATUS_OPEN))
-		return FALSE;
-
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (!res)
-		return FALSE;
-	MYSQL_ROW row = mysql_fetch_row(res);
-	if (!row)
-	{
-		send_to_char("&+WThere is no auction with that id!\r\n", ch);
-		mysql_free_result(res);
-		return TRUE;
-	}
-
 	string seller_name(row[0] ? row[0] : "");
 	long secs_remaining = atol(row[1]);
 	int cur_price = atoi(row[2]);
@@ -2293,20 +2267,20 @@ bool auction_info(P_char ch, char *args)
 	int obj_vnum = atoi(row[5]);
 	int winning_bidder_pid = row[6] ? atoi(row[6]) : 0;
 	string winning_bidder_name(row[7] ? row[7] : "");
-	char *obj_str = row[8];
+	const char *obj_str = row[8];
 	int quantity = atoi(row[9]);
 
 	string cur_price_str(coin_stringv(cur_price));
 	string buy_price_str(coin_stringv(buy_price));
 
-	P_obj tmp_obj = read_one_object(obj_str);
-	mysql_free_result(res);
+	P_obj tmp_obj = obj_str ? read_one_object(const_cast<char *>(obj_str)) : nullptr;
 
 	if (!tmp_obj)
 	{
 		logit(LOG_DEBUG, "auction_info(): problem retrieving item in auction [%d].\r\n",
 		      auction_id);
-		return FALSE;
+		auction_error(ch);
+		return;
 	}
 
 	snprintf(buff, MAX_STRING_LENGTH, "&+WAuction &+W%d\r\n", auction_id);
@@ -2362,7 +2336,32 @@ bool auction_info(P_char ch, char *args)
 	}
 
 	extract_obj(tmp_obj);
-	return TRUE;
+}
+
+// syntax: auction info <auction id>
+bool auction_info(P_char ch, char *args)
+{
+	char arg[MAX_STRING_LENGTH];
+
+	half_chop(args, arg, args);
+
+	int auction_id = atoi(arg);
+
+	return sql_read_for(
+		ch,
+		sql_format(
+			"SELECT seller_name, UNIX_TIMESTAMP(end_time) - UNIX_TIMESTAMP() as secs_remaining, cur_price, buy_price, obj_short, obj_vnum, winning_bidder_pid, winning_bidder_name, obj_blob_str, "
+			"quantity FROM auctions WHERE id = '%d' and status = %d",
+			auction_id, AUCTION_STATUS_OPEN),
+		[auction_id](P_char viewer, const sql_rows &rows)
+		{
+			if (rows.empty())
+			{
+				send_to_char("&+WThere is no auction with that id!\r\n", viewer);
+				return;
+			}
+			auction_info_show(viewer, auction_id, rows.front());
+		});
 }
 
 // syntax: auction remove <auction id>
@@ -2776,6 +2775,65 @@ bool auction_bid_legacy(P_char ch, char *args)
 	return TRUE;
 }
 
+// Submits the claim for what the writer found waiting for ch: its money first, else the
+// items of its oldest auction.
+static void auction_pickup_claim(P_char ch, const sql_rows &rows)
+{
+	if (auction_transaction_player_busy(ch))
+	{
+		send_to_char("Your previous auction request is still being committed.\r\n", ch);
+		return;
+	}
+	auction_command_payload payload = {};
+	if (!auction_fill_actor(ch, &payload))
+	{
+		auction_error(ch);
+		return;
+	}
+	if (!rows.empty() && rows.front()[0] && !strcmp(rows.front()[0], "money"))
+	{
+		payload.action = auction_action::claim_money;
+		if (!auction_transaction_submit(ch, payload, auction_money_claim_completed))
+			send_to_char("The auction house is busy; your money remains staged.\r\n",
+				     ch);
+		else
+			send_to_char("Your auction money pickup is being committed.\r\n", ch);
+		return;
+	}
+	payload.action = auction_action::claim_item;
+	for (const sql_row &row : rows)
+	{
+		if (payload.item_count >= payload.items.size())
+			break;
+		if (!row[1] || !row[2] || !row[3] || !row[4] || !row[5])
+			continue;
+		if (!payload.auction_id)
+		{
+			const std::string &blob = *row.fields[5];
+			if (blob.size() >= payload.object_blob.size())
+			{
+				auction_error(ch);
+				return;
+			}
+			payload.auction_id = static_cast<uint32_t>(strtoul(row[1], nullptr, 10));
+			memcpy(payload.object_blob.data(), blob.data(), blob.size());
+			payload.object_blob_size = blob.size();
+		}
+		payload.items[payload.item_count++] = { strtoull(row[2], nullptr, 10),
+							strtoull(row[3], nullptr, 10),
+							atoi(row[4]) };
+	}
+	if (!payload.item_count)
+	{
+		send_to_char("&+WYou have no items or money to pickup!&n\r\n", ch);
+		return;
+	}
+	if (!auction_transaction_submit(ch, payload, auction_item_claim_completed))
+		send_to_char("The auction house is busy; your items remain staged.\r\n", ch);
+	else
+		send_to_char("Your auction item pickup is being committed.\r\n", ch);
+}
+
 // syntax: auction pickup
 bool auction_pickup(P_char ch, char *args)
 {
@@ -2791,76 +2849,33 @@ bool auction_pickup(P_char ch, char *args)
 		send_to_char("Your previous auction request is still being committed.\r\n", ch);
 		return true;
 	}
-	if (!qry("SELECT money FROM auction_money_pickups WHERE pid=%d AND money>0 LIMIT 1",
-		 GET_PID(ch)))
-		return false;
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (!res)
-		return false;
-	MYSQL_ROW row = mysql_fetch_row(res);
-	const bool has_money = row && row[0] && strtoull(row[0], nullptr, 10) > 0;
-	mysql_free_result(res);
-	if (has_money)
-	{
-		auction_command_payload payload = {};
-		payload.action = auction_action::claim_money;
-		if (!auction_fill_actor(ch, &payload))
-			return false;
-		if (!auction_transaction_submit(ch, payload, auction_money_claim_completed))
-			send_to_char("The auction house is busy; your money remains staged.\r\n",
-				     ch);
-		else
-			send_to_char("Your auction money pickup is being committed.\r\n", ch);
-		return true;
-	}
-	if (!qry("SELECT auction_id,item_uid,item_revision,vnum,obj_blob FROM "
-		 "auction_item_custody WHERE claim_pid=%d AND claimed_at IS NULL AND "
-		 "auction_id=(SELECT claim_auction FROM (SELECT MIN(auction_id) AS claim_auction "
-		 "FROM auction_item_custody WHERE claim_pid=%d AND claimed_at IS NULL) pending) "
-		 "ORDER BY slot LIMIT %d",
-		 GET_PID(ch), GET_PID(ch), static_cast<int>(AUCTION_COMMAND_MAX_ITEMS)))
-		return false;
-	res = mysql_store_result(DB);
-	if (!res)
-		return false;
-	auction_command_payload payload = {};
-	payload.action = auction_action::claim_item;
-	if (!auction_fill_actor(ch, &payload))
-	{
-		mysql_free_result(res);
-		return false;
-	}
-	while (payload.item_count < payload.items.size() && (row = mysql_fetch_row(res)))
-	{
-		unsigned long *lengths = mysql_fetch_lengths(res);
-		if (!row[0] || !row[1] || !row[2] || !row[3] || !row[4] || !lengths)
-			continue;
-		if (!payload.auction_id)
+	// What waits for ch is read on the writer: its money, or else its oldest auction's items.
+	const int pid = GET_PID(ch);
+	return sql_read_work_for(
+		ch,
+		[pid](MYSQL *connection, sql_rows *rows) -> unsigned int
 		{
-			payload.auction_id = static_cast<uint32_t>(strtoul(row[0], nullptr, 10));
-			if (lengths[4] >= payload.object_blob.size())
-			{
-				mysql_free_result(res);
-				return false;
-			}
-			memcpy(payload.object_blob.data(), row[4], lengths[4]);
-			payload.object_blob_size = lengths[4];
-		}
-		payload.items[payload.item_count++] = { strtoull(row[1], nullptr, 10),
-							strtoull(row[2], nullptr, 10),
-							atoi(row[3]) };
-	}
-	mysql_free_result(res);
-	if (!payload.item_count)
-	{
-		send_to_char("&+WYou have no items or money to pickup!&n\r\n", ch);
-		return true;
-	}
-	if (!auction_transaction_submit(ch, payload, auction_item_claim_completed))
-		send_to_char("The auction house is busy; your items remain staged.\r\n", ch);
-	else
-		send_to_char("Your auction item pickup is being committed.\r\n", ch);
-	return true;
+			if (const unsigned int error_code = sql_select(
+				    connection,
+				    sql_format("SELECT 'money' FROM auction_money_pickups "
+					       "WHERE pid=%d AND money>0 LIMIT 1",
+					       pid),
+				    rows))
+				return error_code;
+			if (!rows->empty())
+				return 0;
+			return sql_select(
+				connection,
+				sql_format(
+					"SELECT 'item',auction_id,item_uid,item_revision,vnum,obj_blob FROM "
+					"auction_item_custody WHERE claim_pid=%d AND claimed_at IS NULL AND "
+					"auction_id=(SELECT claim_auction FROM (SELECT MIN(auction_id) AS "
+					"claim_auction FROM auction_item_custody WHERE claim_pid=%d AND "
+					"claimed_at IS NULL) pending) ORDER BY slot LIMIT %d",
+					pid, pid, static_cast<int>(AUCTION_COMMAND_MAX_ITEMS)),
+				rows);
+		},
+		auction_pickup_claim);
 }
 
 bool auction_pickup_legacy(P_char ch, char *args)
@@ -3234,10 +3249,12 @@ fail:
 	return FALSE;
 }
 
+// Queued on the writer, behind whatever was queued before it.
 bool insert_money_pickup(int pid, int money)
 {
-	if (!qry("INSERT INTO auction_money_pickups (pid, money) VALUES ('%d', '%d') ON DUPLICATE KEY UPDATE money = money + VALUES(money)",
-		 pid, money))
+	if (!sql_queue(
+		    "INSERT INTO auction_money_pickups (pid, money) VALUES ('%d', '%d') ON DUPLICATE KEY UPDATE money = money + VALUES(money)",
+		    pid, money))
 		return FALSE;
 
 	logit(LOG_STATUS, "PID %d picked up %d", pid, money);

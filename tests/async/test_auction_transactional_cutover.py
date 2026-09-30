@@ -104,7 +104,7 @@ class AuctionTransactionalCutoverTests(unittest.TestCase):
         routes = {
             "bool auction_offer(P_char": "bool auction_offer_legacy",
             "bool auction_bid(P_char": "bool auction_bid_legacy",
-            "bool auction_pickup(P_char": "bool auction_pickup_legacy",
+            "static void auction_pickup_claim(P_char": "bool auction_pickup_legacy",
             "bool auction_remove(P_char": "bool auction_remove_legacy",
             "bool finalize_auction(int": "bool finalize_auction_legacy",
         }
@@ -125,7 +125,7 @@ class AuctionTransactionalCutoverTests(unittest.TestCase):
         self.assertLess(submit.index("currency_transaction_save_first(character)"),
                         submit.index("critical_command_coordinator_submit"))
         self.assertNotIn("ws_broadcast_auction_new", offer_callback)
-        publication = section(source, "bool auction_publish_committed_event(",
+        publication = section(source, "static void auction_publish_event(",
                               "// syntax: auction offer")
         self.assertIn("ws_broadcast_auction_new", publication)
         self.assertIn("ws_broadcast_auction_bid", publication)
@@ -133,6 +133,35 @@ class AuctionTransactionalCutoverTests(unittest.TestCase):
         transaction = (SRC / "auction_transaction.c").read_text()
         self.assertIn("auction_transaction_outbox_delivery", transaction)
         self.assertIn("outbox_publication_state::published", transaction)
+
+    def test_mysql_reads_and_bookkeeping_leave_the_game_loop(self):
+        # Step 8: the listings, an auction's details, what waits for pickup, the resort and
+        # the committed event's row are read on the writer; money pickups are queued there.
+        source = (SRC / "auction_houses.c").read_text()
+        source = source[source.index("#else", source.index("#ifdef __NO_MYSQL__")) :]
+        routes = {
+            "static void auction_publish_event(": "// syntax: auction offer",
+            "static void auction_list_row(P_char": "// syntax: auction remove",
+            "static void auction_pickup_claim(P_char": "bool auction_pickup_legacy",
+            "// syntax: auction resort": "namespace\n{\nbool auction_copy_text",
+            "bool insert_money_pickup(int": "string format_time(",
+        }
+        for start, end in routes.items():
+            body = section(source, start, end)
+            for forbidden in ("qry(", "mysql_store_result", "db_query"):
+                self.assertNotIn(forbidden, body)
+        self.assertIn("sql_read(", section(source, "bool auction_publish_committed_event(",
+                                           "// syntax: auction offer"))
+        self.assertIn("sql_read_for(", section(source, "bool auction_list(P_char",
+                                               "// syntax: auction info"))
+        self.assertIn("sql_read_for(", section(source, "bool auction_info(P_char",
+                                               "// syntax: auction remove"))
+        self.assertIn("sql_read_work_for(", section(source, "bool auction_pickup(P_char",
+                                                    "bool auction_pickup_legacy"))
+        self.assertIn("sql_queue_statements(", section(source, "// syntax: auction resort",
+                                                       "namespace\n{\nbool auction_copy_text"))
+        self.assertIn("sql_queue(", section(source, "bool insert_money_pickup(int",
+                                            "string format_time("))
 
     def test_client_free_read_and_pickup_routes_use_flat_catalog(self):
         source = (SRC / "auction_houses.c").read_text()

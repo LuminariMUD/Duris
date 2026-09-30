@@ -65,7 +65,7 @@ assert settle.index("const bool committed") < settle.index("extract_obj(object)"
 assert "critical_apply_outcome::applied" in auction_transaction
 assert "auction_transaction_publish_outbox" in auction_transaction
 publisher = auction[
-    auction.rindex("bool auction_publish_committed_event"):
+    auction.rindex("static void auction_publish_event("):
     auction.rindex("// syntax: auction offer")
 ]
 assert "ws_broadcast_auction_bid" in publisher
