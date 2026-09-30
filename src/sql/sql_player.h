@@ -7,6 +7,8 @@
 
 #include "core/structs.h"
 
+#include <functional>
+
 // ============================================================================
 // transaction helpers
 // ============================================================================
@@ -112,18 +114,14 @@ bool sql_delete_player_by_name(const char *name);
 // account functions
 // ============================================================================
 
-// save account to db
+// Queues the account's save on the writer.
 bool sql_save_account(struct acct_entry *acc);
 
-// load account from db by name
-struct acct_entry *sql_load_account(const char *name);
-
-// rebuild active, non-deleted account mappings from player_data.account_name
-// returns affected rows, or -1 on failure
-int sql_repair_account_character_projection(const char *account_name);
-
-// check if account exists
-bool sql_account_exists(const char *name);
+// Reads the account on the writer, behind every save queued before it: its character
+// projection is repaired first, then the account, its IPs and its characters are read.
+// done runs on the game thread with the loaded account, which it then owns, or null
+// when there is none; ok is false when the read failed.
+bool sql_load_account(const char *name, std::function<void(bool ok, P_acct loaded)> done);
 
 // permanently remove one fenced account and all of its live character state
 bool sql_delete_account(const char *name);
@@ -226,12 +224,6 @@ char *sql_escape_string(const char *str);
 
 // log a redacted SQL failure with a stable call-site label
 void sql_player_error(const char *site);
-
-// account ips
-struct acct_ip;
-bool sql_save_account_ips(const char *account_name, struct acct_ip *ips);
-struct acct_ip *sql_load_account_ips(const char *account_name);
-bool sql_delete_account_ips(const char *account_name);
 
 // corpses
 bool sql_save_corpse(P_obj corpse);

@@ -15,6 +15,7 @@
 #include <time.h>
 
 struct descriptor_data;
+struct acct_entry;
 
 /* Canonical account name: ASCII tolower of the name read_account accepted, 1..64 bytes. */
 #define ACCOUNT_RECOVERY_NAME_MAX 64
@@ -108,10 +109,12 @@ account_recovery_request(const char *acct_name, const char *acct_email_or_null, 
 account_recovery_check_outcome
 account_recovery_check(const char *acct_name, const char *typed_code,
 		       char normalized_out[ACCOUNT_RECOVERY_CODE_BUF]);
+/* fresh is the account the caller has just read (account_read()), or null. */
 account_recovery_complete_outcome account_recovery_complete(const char *acct_name,
 							    const char *normalized_code,
 							    const char *new_bcrypt_hash,
-							    struct descriptor_data *keep_session);
+							    struct descriptor_data *keep_session,
+							    struct acct_entry *fresh);
 void account_recovery_invalidate(const char *acct_name);
 void account_recovery_forget(const char *acct_name);
 size_t account_recovery_pulse(void);

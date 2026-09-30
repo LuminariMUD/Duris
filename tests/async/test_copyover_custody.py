@@ -115,7 +115,7 @@ void free_char(P_char) { std::abort(); }
 void nonblock(int) { std::abort(); }
 void check_cp437(P_desc) { std::abort(); }
 acct_entry *allocate_account() { std::abort(); }
-int read_account(acct_entry *) { std::abort(); }
+void account_read(P_desc, const char *, account_read_done) { std::abort(); }
 acct_entry *free_account(acct_entry *) { std::abort(); }
 bool char_to_room(P_char, int, int) { std::abort(); }
 P_char read_mobile(int, int) { std::abort(); }

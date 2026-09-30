@@ -9,6 +9,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <functional>
+
 #ifndef _DE_
 #include "core/structs.h"
 #endif
@@ -103,7 +105,6 @@ struct acct_list_entry
 };
 
 void cleanup_temp_char(struct char_data *ch);
-bool account_exists(const char *dir, char *name);
 int is_valid_email(const char *email);
 bool is_email_taken(const char *email);
 
@@ -123,10 +124,18 @@ bool account_login_password_pulse(struct descriptor_data *d);
 /* Close every session on acct_name except one, sending notice (may be NULL) first. */
 void close_account_sessions_named(const char *acct_name, struct descriptor_data *except,
 				  const char *notice);
-/* Account recovery: fresh read, fence + fingerprint checks, hash swap, write, kick others. */
+/* Account recovery on a freshly read account: fence + fingerprint checks, hash swap,
+ * write, kick others. */
 account_recovery_apply_outcome account_apply_recovered_password(
-	const char *acct_name, const char *bcrypt_hash,
+	struct acct_entry *fresh, const char *bcrypt_hash,
 	const unsigned char expected_fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN],
 	struct descriptor_data *keep_session);
+/* Reads the named account: on the writer, behind the saves queued before it, while d
+ * waits with its input held (MariaDB), or at once (flat-file). done runs while d is still
+ * connected, with the account, which it then owns, or null when there is none; ok is
+ * false when the read failed. */
+using account_read_done =
+	std::function<void(struct descriptor_data *d, bool ok, struct acct_entry *account)>;
+void account_read(struct descriptor_data *d, const char *name, account_read_done done);
 
 #endif // DURIS_ACCOUNT_H

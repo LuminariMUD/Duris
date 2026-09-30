@@ -3,7 +3,7 @@
 
 No live DB, account, or player data. The native harness preserves separate durable
 and transaction state, checks post-commit publication, and drives numeric selection,
-confirmation, cancel, refresh, rollback, retry, and uncertain commit responses.
+confirmation, cancel, rollback, retry, and uncertain commit responses.
 """
 from pathlib import Path
 import subprocess
@@ -102,11 +102,11 @@ struct Descriptor { Character *character=nullptr; Account *account=nullptr; int 
 using P_desc = Descriptor*;
 struct Character { struct { char *name; int level; } player; int pid=1, sex=0, frags=7;
     Guild *assoc=nullptr; Descriptor *desc=nullptr; };
-static int mode=0, fail_stage=0, stage=0, frees=0, menus=0, refreshes=0, writes=0,
+static int mode=0, fail_stage=0, stage=0, frees=0, menus=0, writes=0,
     audits=0, runtime_ships=0, loads=0, backend_calls=0, load_requests=0;
 static bool async_loads=false;
 static bool in_tx=false, durable_active=true, txn_active=true, rollback_ok=true,
-    commit_ok=true, refresh_ok=true, commit_landed=false;
+    commit_ok=true, commit_landed=false;
 static int durable_cleanup=0, txn_cleanup=0;
 static Guild fixture_guild;
 constexpr int PERSISTENCE_MODE_FLATFILE_PRIMARY=1;
@@ -139,20 +139,6 @@ bool sql_commit() { assert(in_tx); if(commit_ok || commit_landed) {durable_activ
 bool sql_rollback() { assert(in_tx); in_tx=false; return rollback_ok; }
 void delete_ship_runtime(const char*) { assert(!durable_active && !in_tx); ++runtime_ships; }
 int write_account(P_acct) { ++writes; return 1; }
-int read_account(P_acct a) {
-    assert(!in_tx); ++refreshes;
-    if(!refresh_ok) return -1;
-    // Model a backend refresh hiding a committed tombstone after a lost COMMIT reply.
-    if(!durable_active) {
-        auto link=&a->acct_character_list;
-        while(*link) {
-            if((*link)->pid==1) {
-                auto old=*link; *link=old->next; free(old->charname);free(old);--a->num_chars;
-            } else link=&(*link)->next;
-        }
-    }
-    return 1;
-}
 void free_char(P_char ch) { assert(!ch->desc); assert(!ch->assoc || fixture_guild.members); ++frees; free(ch->player.name); delete ch; }
 void display_account_menu(P_desc d, char*) { assert(!d->character); assert(STATE(d)==CON_DISPLAY_ACCT_MENU); ++menus; }
 void display_delete_character_list(P_desc) {}
@@ -170,9 +156,9 @@ void account_delete_char_loaded(P_desc);
 main = r'''
 static void input(P_desc d,const char *s) { account_delete_char(d,const_cast<char*>(s)); }
 static void reset(Account &a,Descriptor &d) {
-    mode=fail_stage=stage=frees=menus=refreshes=writes=audits=runtime_ships=loads=backend_calls=0;
+    mode=fail_stage=stage=frees=menus=writes=audits=runtime_ships=loads=backend_calls=0;
     load_requests=0; async_loads=false;
-    in_tx=false; durable_active=txn_active=rollback_ok=commit_ok=refresh_ok=true;
+    in_tx=false; durable_active=txn_active=rollback_ok=commit_ok=true;
     commit_landed=false; durable_cleanup=txn_cleanup=0;
     a.acct_character_list=(acct_chars*)calloc(1,sizeof(acct_chars));
     *a.acct_character_list={strdup("Fixture"),1,1,nullptr}; a.num_chars=1;
@@ -194,10 +180,10 @@ int main() {
         assert(a.num_chars==1 && durable_active && durable_cleanup==0 && !audits && !runtime_ships && !writes);
         assert(fixture_guild.member_count==1 && fixture_guild.frags.frags==7);
         assert(d.output.find("did not complete")!=std::string::npos);
-        assert(d.output.find("successfully")==std::string::npos && refreshes==1);
+        assert(d.output.find("successfully")==std::string::npos);
         fail_stage=0; input(&d,"1"); input(&d,"yes"); released(d);
         assert(!durable_active && durable_cleanup==7 && audits==2 && runtime_ships==1);
-        assert(!a.acct_character_list && a.num_chars==0 && !writes && refreshes==2);
+        assert(!a.acct_character_list && a.num_chars==0 && !writes);
         assert(!fixture_guild.members && fixture_guild.member_count==0 && fixture_guild.frags.frags==0);
         int calls=backend_calls; input(&d,"yes"); assert(backend_calls==calls && audits==2);
         dispose(a);
@@ -220,14 +206,12 @@ int main() {
     assert(!durable_active && audits==2 && !a.num_chars); dispose(a);
     for(bool landed:{false,true}) {
         reset(a,d); commit_ok=false; commit_landed=landed; input(&d,"1"); input(&d,"yes"); released(d);
-        assert(!audits && !runtime_ships && !writes && refreshes==1);
-        assert(a.num_chars==(landed ? 0 : 1));
+        // Memory keeps the character until the outcome is known.
+        assert(!audits && !runtime_ships && !writes && a.num_chars==1);
         assert(d.output.find("Some cleanup may have completed")!=std::string::npos); dispose(a);
     }
     reset(a,d); fail_stage=7; rollback_ok=false; input(&d,"1"); input(&d,"yes"); released(d);
     assert(!audits && d.output.find("could not be confirmed")!=std::string::npos); dispose(a);
-    reset(a,d); refresh_ok=false; input(&d,"1"); input(&d,"yes"); released(d);
-    assert(d.output.find("could not be refreshed")!=std::string::npos); dispose(a);
     for(bool at_head:{false,true}) {
         reset(a,d);
         auto other=(acct_chars*)calloc(1,sizeof(acct_chars));

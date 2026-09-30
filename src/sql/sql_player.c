@@ -22,6 +22,8 @@
 #include <time.h>
 #include <algorithm>
 #include <chrono>
+#include <functional>
+#include <memory>
 #include <new>
 #include <string>
 #include <thread>
@@ -43,6 +45,7 @@
 #include "redis/redis_ship_legacy.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "player/player_name.h"
 #include "account/password_hash.h"
 #include "player/player_revision_state.h"
@@ -260,18 +263,6 @@ bool sql_save_account(struct acct_entry *acc)
 {
 	return false;
 }
-struct acct_entry *sql_load_account(const char *name)
-{
-	return NULL;
-}
-int sql_repair_account_character_projection(const char *account_name)
-{
-	return 0;
-}
-bool sql_account_exists(const char *name)
-{
-	return false;
-}
 bool sql_delete_account(const char *name)
 {
 	return false;
@@ -396,18 +387,6 @@ bool sql_delete_saved_item(const char *item_key)
 	return false;
 }
 void sql_restore_saved_items(void) {}
-bool sql_save_account_ips(const char *account_name, struct acct_ip *ips)
-{
-	return false;
-}
-struct acct_ip *sql_load_account_ips(const char *account_name)
-{
-	return NULL;
-}
-bool sql_delete_account_ips(const char *account_name)
-{
-	return false;
-}
 bool sql_save_ship(P_ship ship)
 {
 	return false;
@@ -4901,394 +4880,218 @@ P_char sql_load_player(const char *name)
 	return ch;
 }
 
-static bool sql_save_account_characters(struct acct_entry *acc);
-static bool sql_account_ips_query_failed = false;
-static bool sql_account_chars_query_failed = false;
-static void free_acct_ip_list(struct acct_ip *ips);
-static void free_acct_char_list(struct acct_chars *chars);
-static struct acct_chars *sql_load_account_characters(const char *account_name);
-
 bool sql_save_account(struct acct_entry *acc)
 {
 	if (!DB || !acc || !acc->acct_name)
 		return false;
 
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-			return false;
-		own_txn = true;
-	}
-
-	char *esc_name = sql_escape_string(acc->acct_name);
-	char *esc_email = sql_escape_string(acc->acct_email ? acc->acct_email : "");
-	char *esc_pass = sql_escape_string(acc->acct_password ? acc->acct_password : "");
-	char *esc_conf = sql_escape_string(acc->acct_confirmation ? acc->acct_confirmation : "");
-
-	if (!esc_name || !esc_email || !esc_pass || !esc_conf)
-	{
-		if (esc_name)
-			free(esc_name);
-		if (esc_email)
-			free(esc_email);
-		if (esc_pass)
-			free(esc_pass);
-		if (esc_conf)
-			free(esc_conf);
-		return false;
-	}
-
-	char query[2048];
-	snprintf(
-		query, sizeof(query),
+	const std::string name = escape_str(acc->acct_name);
+	const std::string email = escape_str(acc->acct_email ? acc->acct_email : "");
+	const std::string password = escape_str(acc->acct_password ? acc->acct_password : "");
+	const std::string confirmation =
+		escape_str(acc->acct_confirmation ? acc->acct_confirmation : "");
+	std::vector<std::string> statements;
+	statements.push_back(sql_format(
 		"insert into accounts (account_name, email, password, confirmation_code, "
 		"confirmed, confirmation_sent, blocked, last_login, last_good_char, last_evil_char, "
 		"flags1, flags2, flags3, flags4) values ('%s', '%s', '%s', '%s', %d, %d, %d, FROM_UNIXTIME(NULLIF(%ld,0)), FROM_UNIXTIME(NULLIF(%ld,0)), FROM_UNIXTIME(NULLIF(%ld,0)), %lu, %lu, %lu, %lu) "
 		"on duplicate key update email='%s', password='%s', confirmation_code='%s', "
 		"confirmed=%d, confirmation_sent=%d, blocked=%d, last_login=FROM_UNIXTIME(NULLIF(%ld,0)), last_good_char=FROM_UNIXTIME(NULLIF(%ld,0)), last_evil_char=FROM_UNIXTIME(NULLIF(%ld,0)), "
 		"flags1=%lu, flags2=%lu, flags3=%lu, flags4=%lu",
-		esc_name, esc_email, esc_pass, esc_conf, acc->acct_confirmed,
-		acc->acct_confirmation_sent, acc->acct_blocked, acc->acct_last, acc->acct_good,
-		acc->acct_evil, acc->acct_flags1, acc->acct_flags2, acc->acct_flags3,
-		acc->acct_flags4, esc_email, esc_pass, esc_conf, acc->acct_confirmed,
-		acc->acct_confirmation_sent, acc->acct_blocked, acc->acct_last, acc->acct_good,
-		acc->acct_evil, acc->acct_flags1, acc->acct_flags2, acc->acct_flags3,
-		acc->acct_flags4);
+		name.c_str(), email.c_str(), password.c_str(), confirmation.c_str(),
+		acc->acct_confirmed, acc->acct_confirmation_sent, acc->acct_blocked, acc->acct_last,
+		acc->acct_good, acc->acct_evil, acc->acct_flags1, acc->acct_flags2,
+		acc->acct_flags3, acc->acct_flags4, email.c_str(), password.c_str(),
+		confirmation.c_str(), acc->acct_confirmed, acc->acct_confirmation_sent,
+		acc->acct_blocked, acc->acct_last, acc->acct_good, acc->acct_evil, acc->acct_flags1,
+		acc->acct_flags2, acc->acct_flags3, acc->acct_flags4));
+	statements.push_back(
+		sql_format("DELETE FROM account_ips WHERE account_name='%s'", name.c_str()));
+	for (struct acct_ip *ip = acc->acct_unique_ips; ip; ip = ip->next)
+		statements.push_back(sql_format(
+			"INSERT INTO account_ips (account_name, hostname, ip_address, count) "
+			"VALUES ('%s', '%s', '%s', %lu)",
+			name.c_str(), escape_str(ip->hostname ? ip->hostname : "").c_str(),
+			escape_str(ip->ip_address ? ip->ip_address : "").c_str(), ip->count));
 
-	free(esc_name);
-	free(esc_email);
-	free(esc_pass);
-	free(esc_conf);
-
-	if (!sql_run_query(query))
+	struct mapping
 	{
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-
-	// save ips
-	if (!sql_save_account_ips(acc->acct_name, acc->acct_unique_ips))
-	{
-		logit(LOG_DEBUG, "sql_save_account: component=ips outcome=failure");
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-
-	// save characters
-	if (!sql_save_account_characters(acc))
-	{
-		logit(LOG_DEBUG, "sql_save_account: component=characters outcome=failure");
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-
-	if (own_txn && !sql_commit())
-	{
-		sql_rollback();
-		return false;
-	}
-
-	return true;
-}
-
-/*
- * Resolve an existing account_characters row id for a character, or 0 when
- * the mapping is absent, so the steady-state projection can be an UPDATE that
- * allocates no identity value.  The character's active mapping is found by
- * pid first, preferring one that already has its name, so a renamed
- * character updates its row instead of inserting a second one; then any row
- * with its name.
- */
-static long sql_find_account_character_mapping(int pid, const char *escaped_char_name)
-{
-	if (!DB || !escaped_char_name)
-		return 0;
-
-	MYSQL_RES *result = db_query("SELECT id FROM account_characters "
-				     "WHERE pid=%d AND deleted_at IS NULL "
-				     "ORDER BY char_name='%s' DESC, id LIMIT 1",
-				     pid, escaped_char_name);
-	MYSQL_ROW row = result ? mysql_fetch_row(result) : NULL;
-	const long by_pid = (row && row[0]) ? atol(row[0]) : 0;
-	if (result)
-		mysql_free_result(result);
-	if (by_pid > 0)
-		return by_pid;
-
-	result = db_query("SELECT id FROM account_characters WHERE char_name='%s' LIMIT 1",
-			  escaped_char_name);
-	if (!result)
-		return 0;
-
-	row = mysql_fetch_row(result);
-	long mapping_id = (row && row[0]) ? atol(row[0]) : 0;
-	mysql_free_result(result);
-	return mapping_id;
-}
-
-/*
- * Project an account's character list into account_characters.
- *
- * Each character is resolved to its existing mapping row and updated in place,
- * so a repeated save allocates no identity value; only a genuinely new mapping
- * inserts. The caller owns the surrounding transaction, and any write failure
- * is reported so that transaction can roll back rather than leave an account
- * half projected.
- */
-static bool sql_save_account_characters(struct acct_entry *acc)
-{
-	if (!DB || !acc || !acc->acct_name)
-		return false;
-
-	char *esc_name = sql_escape_string(acc->acct_name);
-	if (!esc_name)
-		return false;
-
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-		{
-			free(esc_name);
-			return false;
-		}
-		own_txn = true;
-	}
-
+		std::string name;
+		unsigned long count;
+		long last;
+		int blocked;
+		int racewar;
+	};
+	std::vector<mapping> characters;
 	for (struct acct_chars *ch = acc->acct_character_list; ch; ch = ch->next)
-	{
-		if (!ch->charname)
-			continue;
+		if (ch->charname)
+			characters.push_back({ escape_str(ch->charname), ch->count, ch->last,
+					       ch->blocked, ch->racewar });
 
-		char *esc_char = sql_escape_string(ch->charname);
-		if (!esc_char)
-			continue;
-
-		int pid = sql_get_player_pid(ch->charname);
-		if (pid <= 0)
+	// Each character's mapping is resolved on the writer, just before the write it
+	// decides.
+	return sql_queue_work(
+		[name, statements = std::move(statements),
+		 characters = std::move(characters)](MYSQL *connection) -> unsigned int
 		{
-			/* A brand new character has no player_data row yet, so its pid is
-			   not resolvable here.  account_characters.pid is NOT NULL, so
-			   writing NULL aborts the whole account save (losing the accounts
-			   and account_ips writes with it).  Skip the row instead: the
-			   mapping is written by sql_update_account_character() on the
-			   first player save, once the pid exists. */
-			logit(LOG_DEBUG,
-			      "sql_save_account_characters: component=mapping outcome=deferred");
-			free(esc_char);
-			continue;
-		}
-
-		char pid_buf[32];
-		snprintf(pid_buf, sizeof(pid_buf), "%d", pid);
-		const char *pid_sql = pid_buf;
-
-		/* Update an existing mapping in place. MySQL consumes an
-		   account_characters identity value on every INSERT ... ON DUPLICATE
-		   KEY UPDATE attempt, so projecting the same character on each account
-		   save advanced the signed INT counter without adding a row. */
-		const long mapping_id = sql_find_account_character_mapping(pid, esc_char);
-
-		char query[512];
-		if (mapping_id > 0)
-			snprintf(
-				query, sizeof(query),
-				"update account_characters set login_count=%lu, last_login=FROM_UNIXTIME(NULLIF(%ld,0)), blocked=%d, racewar=%d, deleted_at=NULL, pid=%s, account_name='%s', char_name='%s' where id=%ld",
-				ch->count, ch->last, ch->blocked, ch->racewar, pid_sql, esc_name,
-				esc_char, mapping_id);
-		else
-			/* A genuinely new mapping must allocate once; the duplicate-key
-			   branch still converges against a concurrent insert of the same
-			   unique char_name. */
-			snprintf(
-				query, sizeof(query),
-				"insert into account_characters (account_name, char_name, pid, login_count, last_login, blocked, racewar) "
-				"values ('%s', '%s', %s, %lu, FROM_UNIXTIME(NULLIF(%ld,0)), %d, %d) "
-				"on duplicate key update login_count=%lu, last_login=FROM_UNIXTIME(NULLIF(%ld,0)), blocked=%d, racewar=%d, deleted_at=NULL, pid=VALUES(pid), account_name=VALUES(account_name), char_name=VALUES(char_name)",
-				esc_name, esc_char, pid_sql, ch->count, ch->last, ch->blocked,
-				ch->racewar, ch->count, ch->last, ch->blocked, ch->racewar);
-
-		bool ok = sql_run_query(query);
-		free(esc_char);
-		if (!ok)
-		{
-			free(esc_name);
-			if (own_txn)
-				sql_rollback();
-			return false;
-		}
-	}
-
-	free(esc_name);
-	if (own_txn && !sql_commit())
-	{
-		sql_rollback();
-		return false;
-	}
-	return true;
+			for (const std::string &statement : statements)
+				if (const unsigned int error_code =
+					    sql_execute(connection, statement))
+					return error_code;
+			for (const mapping &character : characters)
+			{
+				sql_rows rows;
+				if (const unsigned int error_code = sql_select(
+					    connection,
+					    sql_format("SELECT pid FROM player_data "
+						       "WHERE LOWER(name)=LOWER('%s') LIMIT 1",
+						       character.name.c_str()),
+					    &rows))
+					return error_code;
+				/* A brand new character has no player_data row yet, and
+				   account_characters.pid is NOT NULL. Its first save writes the
+				   mapping (sql_update_account_character()). */
+				const long pid = !rows.empty() && rows[0][0] ? atol(rows[0][0]) : 0;
+				if (pid <= 0)
+					continue;
+				/* Update an existing mapping in place. MySQL consumes an
+				   account_characters identity value on every INSERT ... ON DUPLICATE
+				   KEY UPDATE attempt, so projecting the same character on each account
+				   save advanced the signed INT counter without adding a row. */
+				long mapping_id = 0;
+				if (const unsigned int error_code = sql_find_account_character_id(
+					    connection, pid, character.name, &mapping_id))
+					return error_code;
+				if (const unsigned int error_code = sql_execute(
+					    connection,
+					    mapping_id > 0 ?
+						    sql_format(
+							    "update account_characters set login_count=%lu, last_login=FROM_UNIXTIME(NULLIF(%ld,0)), blocked=%d, racewar=%d, deleted_at=NULL, pid=%ld, account_name='%s', char_name='%s' where id=%ld",
+							    character.count, character.last,
+							    character.blocked, character.racewar,
+							    pid, name.c_str(),
+							    character.name.c_str(), mapping_id) :
+						    /* A genuinely new mapping must allocate once; the
+						       duplicate-key branch still converges against a
+						       concurrent insert of the same unique char_name. */
+						    sql_format(
+							    "insert into account_characters (account_name, char_name, pid, login_count, last_login, blocked, racewar) "
+							    "values ('%s', '%s', %ld, %lu, FROM_UNIXTIME(NULLIF(%ld,0)), %d, %d) "
+							    "on duplicate key update login_count=%lu, last_login=FROM_UNIXTIME(NULLIF(%ld,0)), blocked=%d, racewar=%d, deleted_at=NULL, pid=VALUES(pid), account_name=VALUES(account_name), char_name=VALUES(char_name)",
+							    name.c_str(), character.name.c_str(),
+							    pid, character.count, character.last,
+							    character.blocked, character.racewar,
+							    character.count, character.last,
+							    character.blocked, character.racewar)))
+					return error_code;
+			}
+			return 0;
+		});
 }
 
-/* Repair selectable account mappings only after safe opening baselines exist. */
-int sql_repair_account_character_projection(const char *account_name)
+/* Repair selectable account mappings only after safe opening baselines exist.
+ * Returns 0 or the MySQL error; *repaired counts the mappings it changed. */
+static unsigned int sql_repair_account_character_projection(MYSQL *connection,
+							    const std::string &escaped_account,
+							    int *repaired)
 {
-	if (!DB || !account_name || !account_name[0])
-		return -1;
-
-	char *escaped_account = sql_escape_string(account_name);
-	if (!escaped_account)
-		return -1;
-
-	char query[4096];
-	char eligibility[1024];
-	const int eligibility_written = snprintf(
-		eligibility, sizeof(eligibility),
+	const std::string eligibility = sql_format(
 		"pd.active=1 AND LOWER(pd.account_name)=LOWER('%s') AND NOT EXISTS ("
 		"SELECT 1 FROM account_characters tombstone WHERE tombstone.deleted_at IS NOT NULL "
 		"AND (tombstone.pid=pd.pid OR LOWER(tombstone.char_name)=LOWER(pd.name)))",
-		escaped_account);
-	if (eligibility_written < 0 ||
-	    static_cast<size_t>(eligibility_written) >= sizeof(eligibility))
-	{
-		free(escaped_account);
-		return -1;
-	}
-	int written = snprintf(
-		query, sizeof(query),
-		"INSERT INTO currency_wallet_baseline(pid,opening_copper,opening_silver,"
-		"opening_gold,opening_platinum,opening_revision) "
-		"SELECT pd.pid,pd.copper,pd.silver,pd.gold,pd.platinum,pd.wallet_revision "
-		"FROM player_data pd WHERE %s AND pd.wallet_revision=0 "
-		"AND NOT EXISTS (SELECT 1 FROM currency_ledger ledger WHERE ledger.pid=pd.pid) "
-		"AND NOT EXISTS (SELECT 1 FROM currency_wallet_baseline baseline "
-		"WHERE baseline.pid=pd.pid)",
-		eligibility);
-	if (written < 0 || static_cast<size_t>(written) >= sizeof(query) || !sql_run_query(query))
-	{
-		free(escaped_account);
-		return -1;
-	}
-	written = snprintf(
-		query, sizeof(query),
-		"INSERT INTO epic_balance_baseline(pid,opening_balance,opening_revision) "
-		"SELECT pd.pid,pd.epics,pd.epic_revision FROM player_data pd WHERE %s "
-		"AND pd.epic_revision=0 AND NOT EXISTS (SELECT 1 FROM epic_ledger ledger "
-		"WHERE ledger.pid=pd.pid) AND NOT EXISTS (SELECT 1 FROM epic_balance_baseline "
-		"baseline WHERE baseline.pid=pd.pid)",
-		eligibility);
-	if (written < 0 || static_cast<size_t>(written) >= sizeof(query) || !sql_run_query(query))
-	{
-		free(escaped_account);
-		return -1;
-	}
-	written = snprintf(
-		query, sizeof(query),
-		"INSERT INTO combat_frag_baseline(pid,opening_frags,opening_revision) "
-		"SELECT pd.pid,pd.frags,pd.frag_revision FROM player_data pd WHERE %s "
-		"AND pd.frag_revision=0 AND NOT EXISTS (SELECT 1 FROM combat_frag_ledger ledger "
-		"WHERE ledger.pid=pd.pid) AND NOT EXISTS (SELECT 1 FROM combat_frag_baseline "
-		"baseline WHERE baseline.pid=pd.pid)",
-		eligibility);
-	if (written < 0 || static_cast<size_t>(written) >= sizeof(query) || !sql_run_query(query))
-	{
-		free(escaped_account);
-		return -1;
-	}
+		escaped_account.c_str());
+	const std::string baselines[] = {
+		sql_format(
+			"INSERT INTO currency_wallet_baseline(pid,opening_copper,opening_silver,"
+			"opening_gold,opening_platinum,opening_revision) "
+			"SELECT pd.pid,pd.copper,pd.silver,pd.gold,pd.platinum,pd.wallet_revision "
+			"FROM player_data pd WHERE %s AND pd.wallet_revision=0 "
+			"AND NOT EXISTS (SELECT 1 FROM currency_ledger ledger WHERE ledger.pid=pd.pid) "
+			"AND NOT EXISTS (SELECT 1 FROM currency_wallet_baseline baseline "
+			"WHERE baseline.pid=pd.pid)",
+			eligibility.c_str()),
+		sql_format(
+			"INSERT INTO epic_balance_baseline(pid,opening_balance,opening_revision) "
+			"SELECT pd.pid,pd.epics,pd.epic_revision FROM player_data pd WHERE %s "
+			"AND pd.epic_revision=0 AND NOT EXISTS (SELECT 1 FROM epic_ledger ledger "
+			"WHERE ledger.pid=pd.pid) AND NOT EXISTS (SELECT 1 FROM epic_balance_baseline "
+			"baseline WHERE baseline.pid=pd.pid)",
+			eligibility.c_str()),
+		sql_format(
+			"INSERT INTO combat_frag_baseline(pid,opening_frags,opening_revision) "
+			"SELECT pd.pid,pd.frags,pd.frag_revision FROM player_data pd WHERE %s "
+			"AND pd.frag_revision=0 AND NOT EXISTS (SELECT 1 FROM combat_frag_ledger ledger "
+			"WHERE ledger.pid=pd.pid) AND NOT EXISTS (SELECT 1 FROM combat_frag_baseline "
+			"baseline WHERE baseline.pid=pd.pid)",
+			eligibility.c_str())
+	};
+	for (const std::string &statement : baselines)
+		if (const unsigned int error_code = sql_execute(connection, statement))
+			return error_code;
 
 	/* A character renamed before renames carried their mapping along has two
 	 * active mappings, and the repair below would then give both the same
 	 * unique name.  Keep the one with the current name, or else the oldest. */
-	written = snprintf(
-		query, sizeof(query),
-		"DELETE stale FROM account_characters stale "
-		"JOIN player_data pd ON pd.pid=stale.pid "
-		"JOIN account_characters keeper ON keeper.pid=stale.pid AND keeper.id<>stale.id "
-		"AND keeper.deleted_at IS NULL "
-		"AND (LOWER(keeper.char_name)=LOWER(pd.name) OR keeper.id<stale.id) "
-		"WHERE stale.deleted_at IS NULL AND LOWER(stale.char_name)<>LOWER(pd.name) "
-		"AND LOWER(pd.account_name)=LOWER('%s')",
-		escaped_account);
-	if (written < 0 || static_cast<size_t>(written) >= sizeof(query) || !sql_run_query(query))
-	{
-		free(escaped_account);
-		return -1;
-	}
-	const my_ulonglong duplicates = mysql_affected_rows(DB);
+	if (const unsigned int error_code = sql_execute(
+		    connection,
+		    sql_format("DELETE stale FROM account_characters stale "
+			       "JOIN player_data pd ON pd.pid=stale.pid "
+			       "JOIN account_characters keeper ON keeper.pid=stale.pid "
+			       "AND keeper.id<>stale.id AND keeper.deleted_at IS NULL "
+			       "AND (LOWER(keeper.char_name)=LOWER(pd.name) OR keeper.id<stale.id) "
+			       "WHERE stale.deleted_at IS NULL "
+			       "AND LOWER(stale.char_name)<>LOWER(pd.name) "
+			       "AND LOWER(pd.account_name)=LOWER('%s')",
+			       escaped_account.c_str())))
+		return error_code;
+	const my_ulonglong duplicates = mysql_affected_rows(connection);
 
-	written =
-		snprintf(query, sizeof(query),
-			 "INSERT INTO account_characters "
-			 "(id, account_name, pid, char_name, created_at, deleted_at) "
-			 "SELECT active_mapping.id, pd.account_name, pd.pid, pd.name, NOW(), NULL "
-			 "FROM player_data pd "
-			 "LEFT JOIN account_characters active_mapping "
-			 "ON active_mapping.pid=pd.pid AND active_mapping.deleted_at IS NULL "
-			 "JOIN currency_wallet_baseline wallet ON wallet.pid=pd.pid "
-			 "JOIN epic_balance_baseline epic ON epic.pid=pd.pid "
-			 "JOIN combat_frag_baseline combat ON combat.pid=pd.pid "
-			 "WHERE pd.active=1 AND LOWER(pd.account_name)=LOWER('%s') "
-			 "AND NOT EXISTS ("
-			 "SELECT 1 FROM account_characters tombstone "
-			 "WHERE tombstone.deleted_at IS NOT NULL "
-			 "AND (tombstone.pid=pd.pid OR LOWER(tombstone.char_name)=LOWER(pd.name))) "
-			 "ON DUPLICATE KEY UPDATE "
-			 "account_name=VALUES(account_name), pid=VALUES(pid), "
-			 "char_name=VALUES(char_name), deleted_at=NULL",
-			 escaped_account);
-	free(escaped_account);
-	if (written < 0 || static_cast<size_t>(written) >= sizeof(query))
-		return -1;
-	if (!sql_run_query(query))
-		return -1;
+	if (const unsigned int error_code = sql_execute(
+		    connection,
+		    sql_format("INSERT INTO account_characters "
+			       "(id, account_name, pid, char_name, created_at, deleted_at) "
+			       "SELECT active_mapping.id, pd.account_name, pd.pid, pd.name, NOW(), "
+			       "NULL FROM player_data pd "
+			       "LEFT JOIN account_characters active_mapping "
+			       "ON active_mapping.pid=pd.pid AND active_mapping.deleted_at IS NULL "
+			       "JOIN currency_wallet_baseline wallet ON wallet.pid=pd.pid "
+			       "JOIN epic_balance_baseline epic ON epic.pid=pd.pid "
+			       "JOIN combat_frag_baseline combat ON combat.pid=pd.pid "
+			       "WHERE pd.active=1 AND LOWER(pd.account_name)=LOWER('%s') "
+			       "AND NOT EXISTS ("
+			       "SELECT 1 FROM account_characters tombstone "
+			       "WHERE tombstone.deleted_at IS NOT NULL "
+			       "AND (tombstone.pid=pd.pid "
+			       "OR LOWER(tombstone.char_name)=LOWER(pd.name))) "
+			       "ON DUPLICATE KEY UPDATE "
+			       "account_name=VALUES(account_name), pid=VALUES(pid), "
+			       "char_name=VALUES(char_name), deleted_at=NULL",
+			       escaped_account.c_str())))
+		return error_code;
 
-	const my_ulonglong affected = mysql_affected_rows(DB) + duplicates;
-	return affected > static_cast<my_ulonglong>(INT_MAX) ? INT_MAX : static_cast<int>(affected);
+	const my_ulonglong affected = mysql_affected_rows(connection) + duplicates;
+	*repaired = affected > static_cast<my_ulonglong>(INT_MAX) ? INT_MAX :
+								    static_cast<int>(affected);
+	return 0;
 }
 
-struct acct_entry *sql_load_account(const char *name)
+namespace
 {
-	if (!DB || !name)
-		return NULL;
+// An account's rows, read on the writer.
+struct account_rows
+{
+	int repaired = 0;
+	sql_rows account;
+	sql_rows ips;
+	sql_rows characters;
+};
 
-	char *esc_name = sql_escape_string(name);
-	if (!esc_name)
-		return NULL;
-
-	char query[512];
-	snprintf(
-		query, sizeof(query),
-		"select account_name, email, password, confirmation_code, confirmed, confirmation_sent, "
-		"blocked, last_login, last_good_char, last_evil_char, flags1, flags2, flags3, flags4 "
-		"from accounts where account_name='%s'",
-		esc_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-	{
-		free(esc_name);
-		return NULL;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (!row)
-	{
-		mysql_free_result(result);
-		free(esc_name);
-		return NULL;
-	}
-
-	struct acct_entry *acc = (struct acct_entry *)malloc(sizeof(struct acct_entry));
-	if (!acc)
-	{
-		mysql_free_result(result);
-		free(esc_name);
-		return NULL;
-	}
-	memset(acc, 0, sizeof(struct acct_entry));
-
+P_acct account_from_rows(const account_rows &rows)
+{
+	if (rows.account.empty())
+		return nullptr;
+	const sql_row &row = rows.account[0];
+	P_acct acc = allocate_account();
 	acc->acct_name = str_dup(row[0] ? row[0] : "");
 	acc->acct_email = str_dup(row[1] ? row[1] : "");
 	acc->acct_password = str_dup(row[2] ? row[2] : "");
@@ -5304,150 +5107,94 @@ struct acct_entry *sql_load_account(const char *name)
 	acc->acct_flags3 = row[12] ? strtoul(row[12], NULL, 10) : 0;
 	acc->acct_flags4 = row[13] ? strtoul(row[13], NULL, 10) : 0;
 
-	mysql_free_result(result);
-
-	// load ips
-	sql_account_ips_query_failed = false;
-	acc->acct_unique_ips = sql_load_account_ips(name);
-	if (sql_account_ips_query_failed)
+	struct acct_ip **ip_tail = &acc->acct_unique_ips;
+	for (const sql_row &ip_row : rows.ips)
 	{
-		free_acct_ip_list(acc->acct_unique_ips);
-		free(esc_name);
-		free(acc);
-		return NULL;
-	}
-	acc->num_ips = 0;
-	for (struct acct_ip *ip = acc->acct_unique_ips; ip; ip = ip->next)
+		struct acct_ip *ip;
+		CREATE(ip, struct acct_ip, 1, MEM_TAG_OTHER);
+		ip->hostname = str_dup(ip_row[0] ? ip_row[0] : "");
+		ip->ip_address = str_dup(ip_row[1] ? ip_row[1] : "");
+		ip->count = ip_row[2] ? strtoul(ip_row[2], NULL, 10) : 0;
+		*ip_tail = ip;
+		ip_tail = &ip->next;
 		acc->num_ips++;
-
-	// load characters
-	sql_account_chars_query_failed = false;
-	acc->acct_character_list =
-		sql_load_account_characters(acc->acct_name ? acc->acct_name : name);
-	if (sql_account_chars_query_failed)
-	{
-		free_acct_ip_list(acc->acct_unique_ips);
-		free_acct_char_list(acc->acct_character_list);
-		free(esc_name);
-		free(acc);
-		return NULL;
-	}
-	acc->num_chars = 0;
-	for (struct acct_chars *ch = acc->acct_character_list; ch; ch = ch->next)
-		acc->num_chars++;
-
-	free(esc_name);
-	return acc;
-}
-
-static void free_acct_ip_list(struct acct_ip *ips)
-{
-	while (ips)
-	{
-		struct acct_ip *next = ips->next;
-		ips->hostname = check_and_clear(ips->hostname);
-		ips->ip_address = check_and_clear(ips->ip_address);
-		FREE(ips);
-		ips = next;
-	}
-}
-
-static void free_acct_char_list(struct acct_chars *chars)
-{
-	while (chars)
-	{
-		struct acct_chars *next = chars->next;
-		chars->charname = check_and_clear(chars->charname);
-		FREE(chars);
-		chars = next;
-	}
-}
-
-static struct acct_chars *sql_load_account_characters(const char *account_name)
-{
-	if (!DB || !account_name)
-		return NULL;
-
-	char *esc_name = sql_escape_string(account_name);
-	if (!esc_name)
-		return NULL;
-
-	char query[512];
-	snprintf(
-		query, sizeof(query),
-		"select ac.pid, ac.char_name, ac.login_count, ac.last_login, ac.blocked, ac.racewar, "
-		"pd.level, pd.race, pd.m_class, pd.secondary_class, pd.last_room, pd.last_save "
-		"from account_characters ac "
-		"left join player_data pd on ac.pid = pd.pid "
-		"where LOWER(ac.account_name)=LOWER('%s') and ac.deleted_at is null",
-		esc_name);
-	free(esc_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-
-	if (!result)
-	{
-		sql_account_chars_query_failed = true;
-		logit(LOG_DEBUG, "sql_load_account_characters: outcome=query_failure");
-		return NULL;
 	}
 
-	struct acct_chars *head = NULL;
-	struct acct_chars *tail = NULL;
-	MYSQL_ROW row;
-
-	while ((row = mysql_fetch_row(result)))
+	struct acct_chars **character_tail = &acc->acct_character_list;
+	for (const sql_row &character_row : rows.characters)
 	{
 		struct acct_chars *ch;
 		CREATE(ch, struct acct_chars, 1, MEM_TAG_OTHER);
-
-		ch->pid = row[0] ? atoi(row[0]) : 0;
-		ch->charname = str_dup(row[1] ? row[1] : "");
-		ch->count = row[2] ? strtoul(row[2], NULL, 10) : 0;
-		ch->last = row[3] ? atol(row[3]) : 0;
-		ch->blocked = row[4] ? atoi(row[4]) : 0;
-		ch->racewar = row[5] ? atoi(row[5]) : 0;
-		ch->level = row[6] ? atoi(row[6]) : 0;
-		ch->race = row[7] ? atoi(row[7]) : 0;
-		ch->m_class = row[8] ? (unsigned int)strtoul(row[8], NULL, 10) : 0;
-		ch->secondary_class = row[9] ? (unsigned int)strtoul(row[9], NULL, 10) : 0;
-		ch->last_room = row[10] ? atoi(row[10]) : 0;
-		ch->last_save = row[11] ? atol(row[11]) : 0;
-		ch->next = NULL;
-
-		if (!head)
-			head = ch;
-		else
-			tail->next = ch;
-		tail = ch;
+		ch->pid = character_row[0] ? atoi(character_row[0]) : 0;
+		ch->charname = str_dup(character_row[1] ? character_row[1] : "");
+		ch->count = character_row[2] ? strtoul(character_row[2], NULL, 10) : 0;
+		ch->last = character_row[3] ? atol(character_row[3]) : 0;
+		ch->blocked = character_row[4] ? atoi(character_row[4]) : 0;
+		ch->racewar = character_row[5] ? atoi(character_row[5]) : 0;
+		ch->level = character_row[6] ? atoi(character_row[6]) : 0;
+		ch->race = character_row[7] ? atoi(character_row[7]) : 0;
+		ch->m_class = character_row[8] ? (unsigned int)strtoul(character_row[8], NULL, 10) :
+						 0;
+		ch->secondary_class =
+			character_row[9] ? (unsigned int)strtoul(character_row[9], NULL, 10) : 0;
+		ch->last_room = character_row[10] ? atoi(character_row[10]) : 0;
+		ch->last_save = character_row[11] ? atol(character_row[11]) : 0;
+		*character_tail = ch;
+		character_tail = &ch->next;
+		acc->num_chars++;
 	}
-
-	mysql_free_result(result);
-	return head;
+	return acc;
 }
+} // namespace
 
-bool sql_account_exists(const char *name)
+bool sql_load_account(const char *name, std::function<void(bool ok, P_acct loaded)> done)
 {
-	if (!DB || !name)
+	if (!DB || !name || !done)
 		return false;
-
-	char *escaped_name = sql_escape_string(name);
-	if (!escaped_name)
-		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query), "SELECT 1 FROM accounts WHERE account_name='%s' LIMIT 1",
-		 escaped_name);
-	free(escaped_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	bool exists = (row != NULL);
-	mysql_free_result(result);
-	return exists;
+	const std::string account = escape_str(name);
+	auto rows = std::make_shared<account_rows>();
+	return sql_read_work(
+		[account, rows](MYSQL *connection, sql_rows *) -> unsigned int
+		{
+			// A retried read starts over.
+			*rows = account_rows();
+			if (const unsigned int error_code = sql_repair_account_character_projection(
+				    connection, account, &rows->repaired))
+				return error_code;
+			if (const unsigned int error_code = sql_select(
+				    connection,
+				    sql_format(
+					    "select account_name, email, password, confirmation_code, confirmed, confirmation_sent, "
+					    "blocked, last_login, last_good_char, last_evil_char, flags1, flags2, flags3, flags4 "
+					    "from accounts where account_name='%s'",
+					    account.c_str()),
+				    &rows->account))
+				return error_code;
+			if (const unsigned int error_code = sql_select(
+				    connection,
+				    sql_format("SELECT hostname, ip_address, count FROM account_ips "
+					       "WHERE account_name='%s'",
+					       account.c_str()),
+				    &rows->ips))
+				return error_code;
+			return sql_select(
+				connection,
+				sql_format(
+					"select ac.pid, ac.char_name, ac.login_count, ac.last_login, ac.blocked, ac.racewar, "
+					"pd.level, pd.race, pd.m_class, pd.secondary_class, pd.last_room, pd.last_save "
+					"from account_characters ac "
+					"left join player_data pd on ac.pid = pd.pid "
+					"where LOWER(ac.account_name)=LOWER('%s') and ac.deleted_at is null",
+					account.c_str()),
+				&rows->characters);
+		},
+		[rows, done = std::move(done)](bool ok, const sql_rows &)
+		{
+			if (ok && rows->repaired > 0)
+				statuslog(56, "account character projection repaired (affected=%d)",
+					  rows->repaired);
+			done(ok, ok ? account_from_rows(*rows) : nullptr);
+		});
 }
 
 constexpr unsigned int ACCOUNT_LOCKER_SLOT_COUNT = 5;
@@ -7629,143 +7376,6 @@ int sql_migrate_all_players(void)
 	      success_count, fail_count, skip_count);
 
 	return success_count;
-}
-
-// account ips
-
-bool sql_save_account_ips(const char *account_name, struct acct_ip *ips)
-{
-	if (!DB || !account_name)
-		return false;
-
-	char *escaped_name = sql_escape_string(account_name);
-	if (!escaped_name)
-		return false;
-
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-			return false;
-		own_txn = true;
-	}
-
-	char del_query[256];
-	snprintf(del_query, sizeof(del_query), "DELETE FROM account_ips WHERE account_name='%s'",
-		 escaped_name);
-	if (!sql_run_query(del_query))
-	{
-		free(escaped_name);
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-
-	for (struct acct_ip *ip = ips; ip; ip = ip->next)
-	{
-		char *escaped_hostname = sql_escape_string(ip->hostname ? ip->hostname : "");
-		char *escaped_ip = sql_escape_string(ip->ip_address ? ip->ip_address : "");
-
-		if (escaped_hostname && escaped_ip)
-		{
-			char query[512];
-			snprintf(
-				query, sizeof(query),
-				"INSERT INTO account_ips (account_name, hostname, ip_address, count) "
-				"VALUES ('%s', '%s', '%s', %lu)",
-				escaped_name, escaped_hostname, escaped_ip, ip->count);
-			if (!sql_run_query(query))
-			{
-				if (escaped_hostname)
-					free(escaped_hostname);
-				if (escaped_ip)
-					free(escaped_ip);
-				free(escaped_name);
-				if (own_txn)
-					sql_rollback();
-				return false;
-			}
-		}
-
-		if (escaped_hostname)
-			free(escaped_hostname);
-		if (escaped_ip)
-			free(escaped_ip);
-	}
-
-	free(escaped_name);
-	if (own_txn && !sql_commit())
-	{
-		sql_rollback();
-		return false;
-	}
-	return true;
-}
-
-struct acct_ip *sql_load_account_ips(const char *account_name)
-{
-	if (!DB || !account_name)
-		return NULL;
-
-	char *escaped_name = sql_escape_string(account_name);
-	if (!escaped_name)
-		return NULL;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "SELECT hostname, ip_address, count FROM account_ips WHERE account_name='%s'",
-		 escaped_name);
-	free(escaped_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-	{
-		sql_account_ips_query_failed = true;
-		logit(LOG_DEBUG, "sql_load_account_ips: outcome=query_failure");
-		return NULL;
-	}
-
-	struct acct_ip *head = NULL;
-	struct acct_ip *tail = NULL;
-	MYSQL_ROW row;
-
-	while ((row = mysql_fetch_row(result)))
-	{
-		struct acct_ip *ip = NULL;
-		CREATE(ip, struct acct_ip, 1, MEM_TAG_OTHER);
-		if (!ip)
-			continue;
-
-		ip->hostname = str_dup(row[0] ? row[0] : "");
-		ip->ip_address = str_dup(row[1] ? row[1] : "");
-		ip->count = row[2] ? strtoul(row[2], NULL, 10) : 0;
-
-		if (!head)
-			head = ip;
-		else
-			tail->next = ip;
-		tail = ip;
-	}
-
-	mysql_free_result(result);
-	return head;
-}
-
-bool sql_delete_account_ips(const char *account_name)
-{
-	if (!DB || !account_name)
-		return false;
-
-	char *escaped_name = sql_escape_string(account_name);
-	if (!escaped_name)
-		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query), "DELETE FROM account_ips WHERE account_name='%s'",
-		 escaped_name);
-	free(escaped_name);
-
-	return sql_run_query(query);
 }
 
 static bool sql_save_corpse_item_affects(int item_id, P_obj obj)

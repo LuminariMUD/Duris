@@ -2514,8 +2514,8 @@ void sql_check_level_cap(long max_frags, int racewar)
  * therefore advanced the counter far past the surviving row count. Resolving the
  * row first keeps the steady-state path an UPDATE, which allocates nothing.
  */
-static unsigned int sql_find_account_character_id(MYSQL *connection, long pid,
-						  const std::string &escaped_char_name, long *id)
+unsigned int sql_find_account_character_id(MYSQL *connection, long pid,
+					   const std::string &escaped_char_name, long *id)
 {
 	/* The character's active mapping by pid first, preferring one that already
 	 * has its name, so a renamed character updates its row instead of adding a

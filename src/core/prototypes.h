@@ -100,10 +100,6 @@ void add_account_to_list(P_acct);
 void remove_account_from_list(P_acct);
 char *check_and_clear(char *);
 char is_account_confirmed(P_desc);
-void write_unique_ip(P_acct, FILE *);
-void read_unique_ip(P_acct, FILE *);
-void write_character_list(P_acct, FILE *);
-void read_character_list(P_acct, FILE *);
 void update_account_iplist(P_desc);
 void update_character_list(P_desc, char *);
 void add_ip_entry(P_acct, P_desc);
@@ -120,7 +116,6 @@ void add_char_to_account(P_desc);
 int sync_account_character_projection(P_char, int, int);
 void remove_char_from_list(P_acct, char *, bool persist = true);
 int write_account(P_acct);
-int read_account(P_acct);
 const char *get_account_name_safe(P_char);
 
 /* poll.c */

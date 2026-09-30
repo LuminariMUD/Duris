@@ -1235,42 +1235,32 @@ void ws_cmd_login(struct descriptor_data *d, cJSON *data)
 		tmp_name[i] = tolower(tmp_name[i]);
 	}
 
-	/* check if account exists */
-	if (!account_exists("Accounts", tmp_name))
-	{
-		ws_send_auth_failed(d, "Invalid account or password");
-		return;
-	}
-
-	/* allocate and load account - if one exists, free it first */
 	if (d->account)
 	{
 		d->account = free_account(d->account);
 	}
-	d->account = allocate_account();
-	if (!d->account)
-	{
-		ws_send_auth_failed(d, "Failed to allocate account");
-		return;
-	}
-
-	d->account->acct_name = str_dup(tmp_name);
-
-	if (read_account(d->account) == -1)
-	{
-		ws_send_auth_failed(d, "Invalid account or password");
-		d->account = free_account(d->account);
-		return;
-	}
-
-	/* Password work must not block the game loop, including native web logins. */
-	d->login_password_websocket = true;
-	d->login_password_job = password_login_submit(password, d->account->acct_password, 0);
-	if (!d->login_password_job)
-	{
-		ws_send_auth_failed(d, "Login is busy; try again later");
-		d->account = free_account(d->account);
-	}
+	account_read(d, tmp_name,
+		     [password = std::string(password)](P_desc reader, bool, P_acct loaded) mutable
+		     {
+			     if (!loaded)
+			     {
+				     OPENSSL_cleanse(password.data(), password.size());
+				     ws_send_auth_failed(reader, "Invalid account or password");
+				     return;
+			     }
+			     reader->account = loaded;
+			     /* Password work must not block the game loop, including native web
+			      * logins. */
+			     reader->login_password_websocket = true;
+			     reader->login_password_job = password_login_submit(
+				     password.c_str(), reader->account->acct_password, 0);
+			     OPENSSL_cleanse(password.data(), password.size());
+			     if (!reader->login_password_job)
+			     {
+				     ws_send_auth_failed(reader, "Login is busy; try again later");
+				     reader->account = free_account(reader->account);
+			     }
+		     });
 }
 
 void ws_finish_login(struct descriptor_data *d, int password_valid)
@@ -1618,13 +1608,6 @@ void ws_cmd_register(struct descriptor_data *d, cJSON *data)
 		}
 	}
 
-	/* check if account already exists */
-	if (account_exists("Accounts", tmp_name))
-	{
-		ws_send_auth_failed(d, "Unable to create account with those details");
-		return;
-	}
-
 	/* validate email format */
 	if (!is_valid_email(email_json->valuestring))
 	{
@@ -1666,42 +1649,57 @@ void ws_cmd_register(struct descriptor_data *d, cJSON *data)
 	if (!password_async_start(
 		    d, password_work_submit(password_json->valuestring, nullptr, nullptr, 0, 0),
 		    nullptr,
-		    [](P_desc completed_desc, int, const char *hash)
+		    [](P_desc hashed_desc, int, const char *hash)
 		    {
-			    if (account_exists("Accounts", completed_desc->account->acct_name) ||
-				is_email_taken(completed_desc->account->acct_email))
-			    {
-				    ws_send_auth_failed(
-					    completed_desc,
-					    "Unable to create account with those details");
-				    completed_desc->account = free_account(completed_desc->account);
-				    return;
-			    }
 			    if (!hash)
 			    {
-				    ws_send_auth_failed(completed_desc,
+				    ws_send_auth_failed(hashed_desc,
 							"Failed to hash password - server error");
-				    completed_desc->account = free_account(completed_desc->account);
+				    hashed_desc->account = free_account(hashed_desc->account);
 				    return;
 			    }
-			    completed_desc->account->acct_password = str_dup(hash);
+			    /* The name is checked on the writer, behind every account save queued
+			     * before it. */
+			    account_read(
+				    hashed_desc, hashed_desc->account->acct_name,
+				    [hash = std::string(hash)](P_desc completed_desc, bool ok,
+							       P_acct existing)
+				    {
+					    if (!ok || existing ||
+						is_email_taken(completed_desc->account->acct_email))
+					    {
+						    free_account(existing);
+						    ws_send_auth_failed(
+							    completed_desc,
+							    "Unable to create account with those details");
+						    completed_desc->account =
+							    free_account(completed_desc->account);
+						    return;
+					    }
+					    completed_desc->account->acct_password =
+						    str_dup(hash.c_str());
 
-			    /* mark account as confirmed (skip email verification for web clients) */
-			    completed_desc->account->acct_confirmed = 1;
+					    /* mark account as confirmed (skip email verification for web clients) */
+					    completed_desc->account->acct_confirmed = 1;
 
-			    /* save account to disk */
-			    if (write_account(completed_desc->account) == -1)
-			    {
-				    ws_send_auth_failed(completed_desc,
-							"Failed to save account - server error");
-				    statuslog(56, "&+RALERT&n: WebSocket account write failed");
-				    completed_desc->account = free_account(completed_desc->account);
-				    return;
-			    }
+					    /* save account to disk */
+					    if (write_account(completed_desc->account) == -1)
+					    {
+						    ws_send_auth_failed(
+							    completed_desc,
+							    "Failed to save account - server error");
+						    statuslog(
+							    56,
+							    "&+RALERT&n: WebSocket account write failed");
+						    completed_desc->account =
+							    free_account(completed_desc->account);
+						    return;
+					    }
 
-			    statuslog(56, "WebSocket: New account created");
+					    statuslog(56, "WebSocket: New account created");
 
-			    ws_send_auth_success(completed_desc, "registered");
+					    ws_send_auth_success(completed_desc, "registered");
+				    });
 		    }))
 	{
 		ws_send_auth_failed(d, "Password service is busy; try again later");
@@ -2961,10 +2959,6 @@ void ws_cmd_request_reset(struct descriptor_data *d, cJSON *data)
 	cJSON *account_json;
 	const char *account_name;
 	char lower_name[ACCOUNT_RECOVERY_NAME_BUF];
-	unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN];
-	uint64_t request_id = 0;
-	account_recovery_request_outcome outcome;
-	P_acct tmp;
 
 	if (d && (d->durisweb_verified || d->durisweb_backend))
 	{
@@ -3004,33 +2998,28 @@ void ws_cmd_request_reset(struct descriptor_data *d, cJSON *data)
 		lower_name[i] = (char)tolower((unsigned char)lower_name[i]);
 	}
 
-	if (!account_exists("Accounts", lower_name))
-	{
-		ws_request_reset_decoy(d, lower_name);
-		return;
-	}
-
-	tmp = allocate_account();
-	if (!tmp)
-	{
-		ws_request_reset_decoy(d, lower_name);
-		return;
-	}
-	tmp->acct_name = str_dup(lower_name);
-	if (read_account(tmp) == -1)
-	{
-		tmp = free_account(tmp);
-		ws_request_reset_decoy(d, lower_name);
-		return;
-	}
-
-	/* The fingerprint lets completion notice a password or email change made after
-	 * the code was issued, whichever path made the change. */
-	account_recovery_credential_fingerprint(tmp->acct_password, tmp->acct_email, fingerprint);
-	outcome = account_recovery_request(tmp->acct_name, tmp->acct_email, tmp->acct_blocked,
-					   fingerprint, d->host, &request_id);
-	tmp = free_account(tmp);
-	ws_request_reset_reply(d, outcome);
+	account_read(d, lower_name,
+		     [name = std::string(lower_name)](P_desc reader, bool, P_acct account)
+		     {
+			     if (!account)
+			     {
+				     ws_request_reset_decoy(reader, name.c_str());
+				     return;
+			     }
+			     /* The fingerprint lets completion notice a password or email change
+			      * made after the code was issued, whichever path made the change. */
+			     unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN];
+			     uint64_t request_id = 0;
+			     account_recovery_credential_fingerprint(
+				     account->acct_password, account->acct_email, fingerprint);
+			     const account_recovery_request_outcome outcome =
+				     account_recovery_request(account->acct_name,
+							      account->acct_email,
+							      account->acct_blocked, fingerprint,
+							      reader->host, &request_id);
+			     free_account(account);
+			     ws_request_reset_reply(reader, outcome);
+		     });
 }
 
 /*
@@ -3124,30 +3113,41 @@ void ws_cmd_complete_reset(struct descriptor_data *d, cJSON *data)
 				    return;
 			    }
 
-			    auto outcome = account_recovery_complete(name.c_str(), code.get(), hash,
-								     completed_desc);
-
-			    switch (outcome)
-			    {
-			    case account_recovery_complete_outcome::ok:
-				    completed_desc->account_recovery_attempts = 0;
-				    /* Not logged in here: the client follows up with an ordinary login. */
-				    ws_send_account_message(completed_desc, "reset_completed", NULL,
-							    NULL);
-				    break;
-			    case account_recovery_complete_outcome::load_failed:
-			    case account_recovery_complete_outcome::write_failed:
-				    ws_send_account_message(completed_desc, "error", NULL,
+			    /* The account is read afresh, behind every save queued before it. */
+			    account_read(
+				    completed_desc, name.c_str(),
+				    [name, code, hash = std::string(hash)](P_desc reader, bool,
+									   P_acct fresh)
+				    {
+					    const auto outcome = account_recovery_complete(
+						    name.c_str(), code.get(), hash.c_str(), reader,
+						    fresh);
+					    free_account(fresh);
+					    switch (outcome)
+					    {
+					    case account_recovery_complete_outcome::ok:
+						    reader->account_recovery_attempts = 0;
+						    /* Not logged in here: the client follows up with an
+						     * ordinary login. */
+						    ws_send_account_message(
+							    reader, "reset_completed", NULL, NULL);
+						    break;
+					    case account_recovery_complete_outcome::load_failed:
+					    case account_recovery_complete_outcome::write_failed:
+						    ws_send_account_message(
+							    reader, "error", NULL,
 							    "Failed to save password change");
-				    break;
-			    case account_recovery_complete_outcome::rejected:
-			    case account_recovery_complete_outcome::fenced:
-			    case account_recovery_complete_outcome::superseded:
-			    case account_recovery_complete_outcome::bad_hash:
-				    ws_send_account_message(completed_desc, "error", NULL,
+						    break;
+					    case account_recovery_complete_outcome::rejected:
+					    case account_recovery_complete_outcome::fenced:
+					    case account_recovery_complete_outcome::superseded:
+					    case account_recovery_complete_outcome::bad_hash:
+						    ws_send_account_message(
+							    reader, "error", NULL,
 							    "Invalid or expired reset code");
-				    break;
-			    }
+						    break;
+					    }
+				    });
 		    }))
 		ws_send_account_message(d, "error", NULL,
 					"Password service is busy; try again later");
@@ -3346,108 +3346,19 @@ static void ws_send_admin_delete_response(struct descriptor_data *d, int success
 }
 
 /* admin delete a character (durisweb service only) */
-void ws_cmd_admin_delete_character(struct descriptor_data *d, cJSON *data)
+/* The rest of an admin delete, once the target account has been read. */
+static void admin_delete_character_loaded(P_desc d, P_acct target_acct, const char *account_name,
+					  const char *char_name, int char_pid,
+					  const char *deleted_by, const char *request_id)
 {
-	cJSON *account_json, *name_json, *deleted_by_json, *request_id_json, *pid_json;
-	const char *account_name, *char_name, *deleted_by, *request_id;
-	int char_pid;
 	struct acct_chars *c, *prev;
 	P_char ch;
-	P_acct target_acct;
 
-	/* only durisweb service can call this */
-	if (!d->durisweb_verified)
-	{
-		ws_send_admin_delete_response(d, 0, NULL, NULL, NULL, "Not authorized");
-		return;
-	}
-
-	if (!data || !cJSON_IsObject(data))
-	{
-		ws_send_admin_delete_response(d, 0, NULL, NULL, NULL, "Missing data");
-		return;
-	}
-
-	/* Extract and validate requestId before the hook gate so an authenticated
-	   caller receives a correlated refusal instead of timing out. */
-	request_id_json = cJSON_GetObjectItem(data, "requestId");
-	if (!request_id_json || !cJSON_IsString(request_id_json) ||
-	    request_id_json->valuestring[0] == '\0' || strlen(request_id_json->valuestring) > 128)
-	{
-		ws_send_admin_delete_response(d, 0, NULL, NULL, NULL, "Invalid request id");
-		return;
-	}
-	request_id = request_id_json->valuestring;
-
-	/* This request path refuses explicitly when disabled because its caller is
-	   waiting on a response. Authorization and correlation validation above
-	   still precede disclosure of hook state. */
-	if (!durisweb_hook_enabled("admin_delete_character"))
-	{
-		ws_send_admin_delete_response(d, 0, NULL, NULL, request_id,
-					      "admin_delete_character hook is disabled on the MUD");
-		return;
-	}
-
-	account_json = cJSON_GetObjectItem(data, "account");
-	name_json = cJSON_GetObjectItem(data, "name");
-	pid_json = cJSON_GetObjectItem(data, "pid");
-	deleted_by_json = cJSON_GetObjectItem(data, "deletedBy");
-
-	if (!account_json || !cJSON_IsString(account_json))
-	{
-		ws_send_admin_delete_response(d, 0, NULL, NULL, request_id, "Missing account name");
-		return;
-	}
-
-	if (!name_json || !cJSON_IsString(name_json))
-	{
-		ws_send_admin_delete_response(d, 0, NULL, NULL, request_id,
-					      "Missing character name");
-		return;
-	}
-
-	if (!pid_json || !cJSON_IsNumber(pid_json))
-	{
-		ws_send_admin_delete_response(d, 0, NULL, NULL, request_id,
-					      "Missing character PID");
-		return;
-	}
-
-	account_name = account_json->valuestring;
-	char_name = name_json->valuestring;
-	char_pid = pid_json->valueint;
-	deleted_by = deleted_by_json && cJSON_IsString(deleted_by_json) ?
-			     deleted_by_json->valuestring :
-			     "admin";
-
-	/* send initial progress */
-	{
-		char msg[256];
-		snprintf(msg, sizeof(msg), "Starting deletion of %s from account %s", char_name,
-			 account_name);
-		ws_send_admin_delete_progress(d, request_id, msg, "info");
-	}
-
-	/* allocate and load target account */
-	ws_send_admin_delete_progress(d, request_id, "Loading account data...", "info");
-	target_acct = allocate_account();
 	if (!target_acct)
-	{
-		ws_send_admin_delete_progress(d, request_id, "Failed to allocate account", "error");
-		ws_send_admin_delete_response(d, 0, account_name, char_name, request_id,
-					      "Failed to allocate account");
-		return;
-	}
-
-	target_acct->acct_name = str_dup(account_name);
-
-	if (read_account(target_acct) == -1)
 	{
 		ws_send_admin_delete_progress(d, request_id, "Account not found", "error");
 		ws_send_admin_delete_response(d, 0, account_name, char_name, request_id,
 					      "Account not found");
-		free_account(target_acct);
 		return;
 	}
 
@@ -3645,6 +3556,99 @@ void ws_cmd_admin_delete_character(struct descriptor_data *d, cJSON *data)
 	/* send success response */
 	ws_send_admin_delete_progress(d, request_id, "Character deletion completed", "success");
 	ws_send_admin_delete_response(d, 1, account_name, char_name, request_id, NULL);
+}
+
+void ws_cmd_admin_delete_character(struct descriptor_data *d, cJSON *data)
+{
+	cJSON *account_json, *name_json, *deleted_by_json, *request_id_json, *pid_json;
+	const char *account_name, *char_name, *deleted_by, *request_id;
+	int char_pid;
+
+	/* only durisweb service can call this */
+	if (!d->durisweb_verified)
+	{
+		ws_send_admin_delete_response(d, 0, NULL, NULL, NULL, "Not authorized");
+		return;
+	}
+
+	if (!data || !cJSON_IsObject(data))
+	{
+		ws_send_admin_delete_response(d, 0, NULL, NULL, NULL, "Missing data");
+		return;
+	}
+
+	/* Extract and validate requestId before the hook gate so an authenticated
+	   caller receives a correlated refusal instead of timing out. */
+	request_id_json = cJSON_GetObjectItem(data, "requestId");
+	if (!request_id_json || !cJSON_IsString(request_id_json) ||
+	    request_id_json->valuestring[0] == '\0' || strlen(request_id_json->valuestring) > 128)
+	{
+		ws_send_admin_delete_response(d, 0, NULL, NULL, NULL, "Invalid request id");
+		return;
+	}
+	request_id = request_id_json->valuestring;
+
+	/* This request path refuses explicitly when disabled because its caller is
+	   waiting on a response. Authorization and correlation validation above
+	   still precede disclosure of hook state. */
+	if (!durisweb_hook_enabled("admin_delete_character"))
+	{
+		ws_send_admin_delete_response(d, 0, NULL, NULL, request_id,
+					      "admin_delete_character hook is disabled on the MUD");
+		return;
+	}
+
+	account_json = cJSON_GetObjectItem(data, "account");
+	name_json = cJSON_GetObjectItem(data, "name");
+	pid_json = cJSON_GetObjectItem(data, "pid");
+	deleted_by_json = cJSON_GetObjectItem(data, "deletedBy");
+
+	if (!account_json || !cJSON_IsString(account_json))
+	{
+		ws_send_admin_delete_response(d, 0, NULL, NULL, request_id, "Missing account name");
+		return;
+	}
+
+	if (!name_json || !cJSON_IsString(name_json))
+	{
+		ws_send_admin_delete_response(d, 0, NULL, NULL, request_id,
+					      "Missing character name");
+		return;
+	}
+
+	if (!pid_json || !cJSON_IsNumber(pid_json))
+	{
+		ws_send_admin_delete_response(d, 0, NULL, NULL, request_id,
+					      "Missing character PID");
+		return;
+	}
+
+	account_name = account_json->valuestring;
+	char_name = name_json->valuestring;
+	char_pid = pid_json->valueint;
+	deleted_by = deleted_by_json && cJSON_IsString(deleted_by_json) ?
+			     deleted_by_json->valuestring :
+			     "admin";
+
+	/* send initial progress */
+	{
+		char msg[256];
+		snprintf(msg, sizeof(msg), "Starting deletion of %s from account %s", char_name,
+			 account_name);
+		ws_send_admin_delete_progress(d, request_id, msg, "info");
+	}
+
+	/* load target account */
+	ws_send_admin_delete_progress(d, request_id, "Loading account data...", "info");
+	account_read(d, account_name,
+		     [account = std::string(account_name), character = std::string(char_name),
+		      char_pid, by = std::string(deleted_by),
+		      request = std::string(request_id)](P_desc reader, bool, P_acct target_acct)
+		     {
+			     admin_delete_character_loaded(reader, target_acct, account.c_str(),
+							   character.c_str(), char_pid, by.c_str(),
+							   request.c_str());
+		     });
 }
 
 /* get rested bonus status for all characters */
@@ -3995,7 +3999,7 @@ void ws_cmd_poll_vote(struct descriptor_data *d, cJSON *data)
 void ws_handle_command(struct descriptor_data *d, const char *cmd, cJSON *data)
 {
 	/* No account mutation or entry may overtake password verification. */
-	if (d && (d->login_password_job || d->password_request))
+	if (d && (d->login_password_job || d->password_request || d->account_read_id))
 		return;
 	static const struct
 	{

@@ -179,6 +179,9 @@ string escape_str(const char *str);
 
 #ifndef __NO_MYSQL__
 void sql_clear_results_on(MYSQL *conn);
+// For the writer: the id of the character's account_characters row, or 0.
+unsigned int sql_find_account_character_id(MYSQL *connection, long pid,
+					   const std::string &escaped_char_name, long *id);
 #endif
 
 #include <vector>

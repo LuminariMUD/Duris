@@ -642,14 +642,15 @@ account_recovery_check(const char *acct_name, const char *typed_code,
 account_recovery_complete_outcome account_recovery_complete(const char *acct_name,
 							    const char *normalized_code,
 							    const char *new_bcrypt_hash,
-							    struct descriptor_data *keep_session)
+							    struct descriptor_data *keep_session,
+							    struct acct_entry *fresh)
 {
 	if (!is_bcrypt_hash(new_bcrypt_hash))
 		return account_recovery_complete_outcome::bad_hash;
 
-	/* The apply helper's write_account re-reads and reallocates every same-name descriptor's
-	 * account strings, and on telnet acct_name IS one of them: canonicalise first, and after
-	 * the call touch only this buffer and the store. */
+	/* The apply helper's write_account reallocates every same-name descriptor's account
+	 * strings, and on telnet acct_name IS one of them: canonicalise first, and after the
+	 * call touch only this buffer and the store. */
 	char name[ACCOUNT_RECOVERY_NAME_BUF];
 	if (!account_recovery_canonical_name(acct_name, name))
 	{
@@ -673,8 +674,8 @@ account_recovery_complete_outcome account_recovery_complete(const char *acct_nam
 
 	unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN];
 	memcpy(fingerprint, found->second.fingerprint, sizeof fingerprint);
-	const account_recovery_apply_outcome applied = account_apply_recovered_password(
-		acct_name, new_bcrypt_hash, fingerprint, keep_session);
+	const account_recovery_apply_outcome applied =
+		account_apply_recovered_password(fresh, new_bcrypt_hash, fingerprint, keep_session);
 
 	/* The same stack hygiene the module's other two fingerprint copies keep. */
 	OPENSSL_cleanse(fingerprint, sizeof fingerprint);

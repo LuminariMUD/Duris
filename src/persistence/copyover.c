@@ -1337,15 +1337,9 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 
 #ifdef USE_ACCOUNT
 				// restore account for preserved telnet connections
-				d->account = allocate_account();
-				if (d->account)
-				{
-					d->account->acct_name = str_dup(account_name.c_str());
-					if (read_account(d->account) == -1)
-					{
-						d->account = free_account(d->account);
-					}
-				}
+				account_read(d, account_name.c_str(),
+					     [](P_desc reader, bool, P_acct loaded)
+					     { reader->account = loaded; });
 #endif
 
 				// make them alive

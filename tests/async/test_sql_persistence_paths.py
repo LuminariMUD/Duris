@@ -27,9 +27,14 @@ checks.append(("IP row creation is idempotent", "INSERT IGNORE INTO ip_info (pid
 checks.append(("sql_player.c uses the canonical validated connector", "sql_open_configured_connection(CLIENT_MULTI_STATEMENTS)" in sql_player_c and "mysql_real_connect" not in sql_player_c))
 checks.append(("sql_pool.c uses the canonical validated connector", "sql_open_configured_connection(CLIENT_MULTI_STATEMENTS)" in sql_pool_c and "mysql_real_connect" not in sql_pool_c))
 checks.append(("only sql.c constructs raw MySQL connections", "mysql_real_connect" in sql_c))
-checks.append(("sql_save_account wraps account/ips/characters in a transaction", "bool own_txn = false;" in sql_player_c and "sql_save_account: component=characters outcome=failure" in sql_player_c and "if (own_txn && !sql_commit())" in sql_player_c))
-checks.append(("sql_save_account_characters fails hard on insert errors", "sql_save_account_characters" in sql_player_c and "if (!ok)" in sql_player_c and "sql_rollback();" in sql_player_c))
-checks.append(("write_unique_ip logs failed ip saves", "write_unique_ip: account IP save failed" in account_c and "if (!sql_save_account_ips" in account_c))
+# The MariaDB definition follows the flat-file stub.
+save_account = sql_player_c[sql_player_c.rindex("\nbool sql_save_account(struct acct_entry *acc)\n{"):]
+save_account = save_account[: save_account.index("\n}\n")]
+checks.append(("sql_save_account queues account/ips/characters as one writer job",
+               "return sql_queue_work(" in save_account and "DELETE FROM account_ips" in save_account
+               and "insert into account_characters" in save_account))
+checks.append(("the account save fails hard on any write error",
+               save_account.count("return error_code;") >= 4))
 checks.append(("sql_restore_saved_items durably acknowledges before retiring roots",
                "saved_item_recovery_handoff" in sql_player_c and
                "source_id_digest" in sql_player_c and

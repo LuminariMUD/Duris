@@ -89,12 +89,12 @@ struct descriptor_data *applied_keep = nullptr;
 
 /* account.c's helper, scripted: records what the core handed it and answers as told. */
 account_recovery_apply_outcome account_apply_recovered_password(
-	const char *acct_name, const char *bcrypt_hash,
+	struct acct_entry *fresh, const char *bcrypt_hash,
 	const unsigned char expected_fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN],
 	struct descriptor_data *keep_session)
 {
 	++apply_calls;
-	applied_name = acct_name ? acct_name : "";
+	applied_name = fresh && fresh->acct_name ? fresh->acct_name : "";
 	applied_hash = bcrypt_hash ? bcrypt_hash : "";
 	if (expected_fingerprint)
 		memcpy(applied_fingerprint, expected_fingerprint, sizeof applied_fingerprint);
@@ -308,7 +308,10 @@ account_recovery_check_outcome check(const std::string &name, const std::string 
 account_recovery_complete_outcome complete(const std::string &name, const char *normalized,
 					   const char *hash)
 {
-	return account_recovery_complete(name.c_str(), normalized, hash, nullptr);
+	/* The account the caller has just read, handed through to the apply helper. */
+	acct_entry fresh = {};
+	fresh.acct_name = const_cast<char *>(name.c_str());
+	return account_recovery_complete(name.c_str(), normalized, hash, nullptr, &fresh);
 }
 
 /* The 8-8-8-8 form the mail body carries, back to the 32 hex digits the core checks. */

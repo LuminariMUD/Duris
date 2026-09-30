@@ -1364,7 +1364,8 @@ struct game_loop_pulse_context
 
 static bool session_input_authentication_pending(P_desc descriptor)
 {
-	return password_async_pulse(descriptor) || account_login_password_pulse(descriptor);
+	return password_async_pulse(descriptor) || account_login_password_pulse(descriptor) ||
+	       descriptor->account_read_id;
 }
 
 static void repair_session_command_gate(P_char character)

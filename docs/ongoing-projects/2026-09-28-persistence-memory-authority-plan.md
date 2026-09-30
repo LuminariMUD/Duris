@@ -325,10 +325,10 @@ considered and cut: ordering on the one writer gives the same guarantee without 
      writes above. Two variations: data that belongs to one character is read when it enters the
      game (the checks fail closed until it arrives), and data that the website edits rather than
      the game is also read again on a timer (`mud_info`, every minute).
-   - Logging in to an account reads the account on the writer while the connection waits in a
-     loading state and the game loop carries on, the way the Phase 1 player load already does
-     (`CON_PLAYER_LOAD`). Saving an account is queued; the sessions of the same account get the
-     saved account copied from memory, not read back.
+   - Logging in to an account reads the account on the writer while the connection waits with
+     its input held and the game loop carries on, the way the Phase 1 player load already
+     waits (`CON_PLAYER_LOAD`). Saving an account is queued; the sessions of the same account
+     get the saved account copied from memory, not read back.
    - An offline character (finger, disguise, lockers, artifacts, the websocket handlers) is loaded
      through the Phase 1 player load pipeline and materialized, with a callback on a later pulse,
      instead of converting `restoreCharOnly()`'s SQL. A lookup that only needs a pid reads a
@@ -431,8 +431,9 @@ These parts were cut:
 - **Reading an account back after saving it (step 8).** Memory holds the account; its other
   sessions get the saved copy from memory. The copy is still needed: a recovery reset saves a
   scratch account, and a session left open must not write the old password back.
-- **A public multi-query read (step 8).** `sql_read_work()` has no caller outside
-  `sql_async.c`; it becomes private to it.
+- **A public multi-query read (step 8).** Cut first because `sql_read_work()` had no caller
+  outside `sql_async.c`, then kept: the account read is a multi-query read for a connection,
+  not a character, so it is the first caller.
 
 ## Done when
 
@@ -1508,14 +1509,19 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   and `get_zone_info()`, artifact bind data) is converted with its subsystem, whether the
   session reached it or not.
 - Order, after the plan's ablation (see [What was cut](#what-was-cut-and-why)):
-  1. `sql_read_work()` private to `sql_async.c`.
-  2. Account login and saves (every player goes through them): one writer read for the account,
+  1. Account login and saves (every player goes through them): one writer read for the account,
      its repair, IPs and characters; a queued save; same-account sessions copied from memory.
-  3. The name-to-pid index, and offline character loads through the player load pipeline.
-  4. The login-time reads, the periodic events, then the command output subsystem by subsystem,
+     **Done**, see [Account login and saves](#account-login-and-saves-done).
+  2. The name-to-pid index, and offline character loads through the player load pipeline.
+  3. The login-time reads, the periodic events, then the command output subsystem by subsystem,
      skipping what nothing calls and what only boot runs.
-  5. The journey that pins no query after boot.
-- Found on the way:
+  4. The journey that pins no query after boot.
+- Found on the way (the rest of step 8): copyover restored each preserved session's account
+  under the character's name, so unless the two names matched the session lost its account
+  and `quit` closed the connection instead of returning to the menu. The restore now uses the
+  account name the player load returns (`9a4c3bcfd`); `run_copyover_runtime_journey.py`
+  quits after the real exec and expects the account menu.
+- Found on the way (the `sql.c` part):
   - `sql_find_racewar_for_ip()` assigned `RACEWAR_NONE` to its pointer instead of the side,
     and leaked the result after an hour offline.
   - The frag leaderboard upsert passed an `int` to `%ld` and a `long` to `%d`.
@@ -1527,6 +1533,44 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   save-claim MariaDB leg checks the transaction and the copied rows. The source contracts
   for the converted functions follow them. A local session as the `.env` account confirmed
   that the converted commands answer, and that their sites no longer log as loop queries.
+
+#### Account login and saves (done)
+
+- `account_read()` (`account.c`) replaces `read_account()` and `account_exists()`. On MariaDB
+  it queues one `sql_read_work()` job (`sql_load_account()` in `sql_player.c`): the account's
+  character projection repair (`sql_repair_account_character_projection()`, now on the
+  writer's connection), then the account, its IPs and its characters, in one transaction and
+  behind every save queued before it. The rows come back on a later pulse and become a live
+  account (`account_from_rows()`). The descriptor records the read (`account_read_id`), and
+  its input is held while that is set (`session_input_authentication_pending()` in `comm.c`,
+  the websocket command gate in `ws_handle_command()`); the result goes to the descriptor with
+  that id, so a closed connection just drops it. On flat-file the read happens at once, as
+  before. No new connection state was needed.
+- Callers continue in the read's callback: the telnet login (`select_accountname()`), the
+  websocket login and registration (registration checks the name once, on the writer, just
+  before its save, where it used to check before and after hashing), the websocket reset
+  request, both reset completions (`account_recovery_complete()` now takes the account the
+  caller has just read, and `account_apply_recovered_password()` checks and writes that one),
+  the websocket admin delete (its tail is `admin_delete_character_loaded()`, still with the
+  offline load and deletion SQL that later steps convert), and copyover restore.
+- `write_account()` queues the save on MariaDB (`sql_save_account()` builds the account and
+  IP statements on the game thread; each character's mapping lookup runs on the writer) and
+  then copies the saved account into the account's other sessions (`copy_account()`), instead
+  of reading it back into every one of them. The character deletion no longer reads the
+  account back either: it already removes the character from the account in memory.
+- Removed with them: `sql_account_exists()`, `sql_load_account_ips()`,
+  `sql_save_account_ips()`, `sql_delete_account_ips()`, `sql_find_account_character_mapping()`,
+  the flat-file reload repair, and the dead file helpers `write_unique_ip()`,
+  `read_unique_ip()`, `write_character_list()` and `read_character_list()`.
+- Tests: `test_mysql_stalled_writer_journey.py` locks `accounts` and checks that a login gets
+  no password prompt while the loop keeps answering a second connection, and gets it once the
+  table is free; on the previous binary the loop stalled for 10 s. The account projection
+  harness runs the writer-side repair on a disposable MariaDB. The recovery, projection,
+  persistence-path, boot-log, copyover-custody and character-delete tests follow the new
+  code.
+- Verified: `make -C src`, the flat-file build, `make test-db` (35 of 35), the flat-file
+  combat, copyover and account recovery journeys, and a local session as the `.env` account
+  (log in, `finger`, `save`, `quit`): no account site logs as a loop query any more.
 
 ### Review round 1 (MR !3)
 
