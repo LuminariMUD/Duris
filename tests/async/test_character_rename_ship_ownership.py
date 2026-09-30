@@ -189,7 +189,7 @@ static void pulse()
 // --- the ship registry, keyed by the live ship's owner -------------------------
 static ShipData ships[2];
 static obj_data hulls[2];
-static std::string invalidated, guild_renamed, indexed;
+static std::string invalidated, guild_renamed, indexed, held;
 
 P_ship get_ship_from_owner(char *name)
 {
@@ -207,8 +207,19 @@ void rename_guild_member(const char *from, const char *to)
 }
 void sql_player_names_set(int pid, const char *name)
 {
-	assert(pid == PID && durable.player == name);
+	assert(pid == PID && durable.player == name && held == name);
 	indexed = name;
+}
+// The new name is held from the moment the rename is queued until it is stored or refused.
+void sql_player_names_hold(int pid, const char *name)
+{
+	assert(pid == PID && held.empty() && !pending);
+	held = name;
+}
+void sql_player_names_release(int pid, const char *name)
+{
+	assert(pid == PID && held == name && durable.player != name);
+	held.clear();
 }
 // --- the rest of the rename ----------------------------------------------------
 static bool locker_open = false;
@@ -362,6 +373,7 @@ static void reset(bool owns_ship = true)
 	invalidated.clear();
 	guild_renamed.clear();
 	indexed.clear();
+	held.clear();
 	told.clear();
 }
 
@@ -395,7 +407,7 @@ int main()
 	// list, and the immortal is told.
 	reset();
 	assert(rename_by_immortal());
-	assert(jobs == 1 && !replied && !strcmp(ships[0].ownername, "Oldname"));
+	assert(jobs == 1 && !replied && !strcmp(ships[0].ownername, "Oldname") && held == "Newname");
 	assert(!strcmp(GET_NAME(&owner), "Oldname") && durable.player == "Oldname");
 	pulse();
 	check_owned_by("Newname");
@@ -442,13 +454,14 @@ int main()
 		pulse();
 		check_owned_by("Oldname");
 		assert(replied && !replied_renamed && guild_renamed.empty() && indexed.empty());
+		assert(held.empty());
 		assert(told.find("Failed to rename character in DB!") != std::string::npos);
 	}
 
 	// A job the writer will not take: refused at once, the ship's owner put back.
 	reset();
 	refuse_queue = true;
-	assert(!rename_by_immortal());
+	assert(!rename_by_immortal() && held.empty());
 	assert(told.find("Failed to rename character in DB!") != std::string::npos);
 	check_owned_by("Oldname");
 

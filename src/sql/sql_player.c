@@ -223,6 +223,8 @@ bool sql_player_names_load(void)
 }
 void sql_player_names_set(int, const char *) {}
 void sql_player_names_forget(int) {}
+void sql_player_names_hold(int, const char *) {}
+void sql_player_names_release(int, const char *) {}
 const char *sql_get_player_name(int)
 {
 	return nullptr;
@@ -1024,6 +1026,18 @@ void sql_player_names_forget(int pid)
 	if (named != pids_by_name.end() && named->second == pid)
 		pids_by_name.erase(named);
 	names_by_pid.erase(found);
+}
+
+void sql_player_names_hold(int pid, const char *name)
+{
+	pids_by_name.try_emplace(lowercase(name), pid);
+}
+
+void sql_player_names_release(int pid, const char *name)
+{
+	auto named = pids_by_name.find(lowercase(name));
+	if (named != pids_by_name.end() && named->second == pid)
+		pids_by_name.erase(named);
 }
 
 const char *sql_get_player_name(int pid)

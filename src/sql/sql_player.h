@@ -107,6 +107,10 @@ bool sql_load_player_pets(P_char ch);
 bool sql_player_names_load(void);
 void sql_player_names_set(int pid, const char *name);
 void sql_player_names_forget(int pid);
+// A rename in flight holds its new name for pid, so no other character takes it before the
+// rename is stored; a refused rename releases it.
+void sql_player_names_hold(int pid, const char *name);
+void sql_player_names_release(int pid, const char *name);
 const char *sql_get_player_name(int pid);
 // The highest pid any character has had, for allocating the next one.
 int sql_highest_player_pid(void);

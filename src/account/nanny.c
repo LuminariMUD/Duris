@@ -3884,6 +3884,16 @@ void select_keepchar(P_desc d, char *arg)
 		;
 	switch (LOWER(*arg))
 	{
+	case 'y':
+		// The name was free at its prompt; another character may have taken it since.
+		if (!sql_player_exists(GET_NAME(d->character)))
+		{
+			SEND_TO_Q("\r\n\r\nWelcome to Duris, Land of Bloodlust!\r\n\r\n", d);
+			STATE(d) = CON_RMOTD;
+			break;
+		}
+		SEND_TO_Q("\r\n\r\nAnother character has taken that name meanwhile.", d);
+		[[fallthrough]];
 	case 'n':
 		SEND_TO_Q("\r\n\r\nDiscarding this character.\r\n", d);
 #ifdef USE_ACCOUNT
@@ -3903,10 +3913,6 @@ void select_keepchar(P_desc d, char *arg)
 	case 'q':
 		SEND_TO_Q("\r\n\r\nCome back again real soon.\r\n", d);
 		STATE(d) = CON_FLUSH;
-		break;
-	case 'y':
-		SEND_TO_Q("\r\n\r\nWelcome to Duris, Land of Bloodlust!\r\n\r\n", d);
-		STATE(d) = CON_RMOTD;
 		break;
 	default:
 		SEND_TO_Q("\r\nPlease select Y (keep), N (discard), or Q (quit).\r\n", d);

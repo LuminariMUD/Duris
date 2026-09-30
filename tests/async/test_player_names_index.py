@@ -6,7 +6,8 @@ an index read at boot and kept current by entry, renames and deletion, so a look
 waits on the database. This links the production index functions and checks its rules:
 case-insensitive lookups, only an active character has a name by pid, entry under a
 name deactivates the other characters of that name, a rename moves the name, and a
-deleted character is forgotten.
+deleted character is forgotten. A rename in flight holds its new name, and a character whose
+name was taken while it was being created is discarded when creation ends.
 """
 from pathlib import Path
 import subprocess
@@ -26,6 +27,9 @@ exists = mysql[mysql.index("\nbool sql_player_exists(const char *name)\n{"):]
 exists = exists[:exists.index("\n}\n") + 3]
 get_pid = mysql[mysql.index("\nint sql_get_player_pid(const char *name)\n{"):]
 get_pid = get_pid[:get_pid.index("\n}\n") + 3]
+nanny = (SRC / "nanny.c").read_text()
+keepchar = nanny[nanny.index("void select_keepchar(P_desc d, char *arg)\n{"):]
+keepchar = keepchar[:keepchar.index("\n}\n") + 3]
 
 harness = f'''
 #include <cassert>
@@ -41,6 +45,21 @@ void sql_player_names_forget(int pid);
 {functions}
 {exists}
 {get_pid}
+
+// The end of character creation, on the account menu.
+#define USE_ACCOUNT
+enum {{ CON_DISPLAY_ACCT_MENU = 1, CON_FLUSH, CON_RMOTD }};
+struct Character {{ const char *name; }};
+using P_char = Character *;
+struct Descriptor {{ P_char character; int state; std::string output; }};
+using P_desc = Descriptor *;
+#define GET_NAME(ch) ((ch)->name)
+#define STATE(d) ((d)->state)
+#define SEND_TO_Q(text, d) ((d)->output += (text))
+static const char keepchar[] = "Keep this character? ";
+void free_char(P_char ch) {{ delete ch; }}
+void display_account_menu(P_desc, char *) {{}}
+{keepchar}
 
 int main()
 {{
@@ -61,6 +80,35 @@ int main()
     // A deleted character is forgotten.
     sql_player_names_forget(9);
     assert(!sql_player_exists("Gamma") && !sql_get_player_name(9));
+
+    // A rename in flight holds its new name, the character keeping its own until the
+    // rename is stored; a refused rename releases the name.
+    sql_player_names_set(11, "Delta");
+    sql_player_names_hold(11, "Omega");
+    assert(sql_player_exists("omega") && sql_get_player_pid("Omega") == 11);
+    assert(!strcmp(sql_get_player_name(11), "Delta") && sql_player_exists("Delta"));
+    sql_player_names_hold(12, "Omega");
+    assert(sql_get_player_pid("Omega") == 11);
+    sql_player_names_release(12, "Omega");
+    assert(sql_get_player_pid("Omega") == 11);
+    sql_player_names_release(11, "Omega");
+    assert(!sql_player_exists("Omega") && sql_get_player_pid("Delta") == 11);
+    // A stored rename takes the held name for good.
+    sql_player_names_hold(11, "Omega");
+    sql_player_names_set(11, "Omega");
+    assert(sql_get_player_pid("omega") == 11 && !sql_player_exists("Delta"));
+
+    // Two creations passed the name prompt with the same name: the one finishing second
+    // is discarded, since the first took the name when it finished.
+    char yes[] = "y";
+    Descriptor taken{{ new Character{{ "Omega" }}, 0, "" }};
+    select_keepchar(&taken, yes);
+    assert(STATE(&taken) == CON_DISPLAY_ACCT_MENU && !taken.character);
+    assert(taken.output.find("taken that name") != std::string::npos);
+    Descriptor fresh{{ new Character{{ "Kappa" }}, 0, "" }};
+    select_keepchar(&fresh, yes);
+    assert(STATE(&fresh) == CON_RMOTD && fresh.character);
+    delete fresh.character;
     return 0;
 }}
 '''

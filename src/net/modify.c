@@ -1594,7 +1594,9 @@ static bool store_character_name(P_char doofus, const char *from, const char *to
 	char stored[MAX_STRING_LENGTH];
 	strlcpy(stored, to, sizeof(stored));
 	CAP(stored);
-	return sql_read_work(
+	// Nobody else takes the new name while the job runs.
+	sql_player_names_hold(GET_PID(doofus), stored);
+	const bool queued = sql_read_work(
 		[statements](MYSQL *connection, sql_rows *) -> unsigned int
 		{
 			for (const std::string &statement : statements)
@@ -1608,6 +1610,7 @@ static bool store_character_name(P_char doofus, const char *from, const char *to
 		{
 			if (!ok)
 			{
+				sql_player_names_release(pid, new_name.c_str());
 				renamed(false);
 				return;
 			}
@@ -1639,6 +1642,9 @@ static bool store_character_name(P_char doofus, const char *from, const char *to
 			}
 			renamed(true);
 		});
+	if (!queued)
+		sql_player_names_release(GET_PID(doofus), stored);
+	return queued;
 }
 
 /* ------------------------------------------------------------------------------ */
