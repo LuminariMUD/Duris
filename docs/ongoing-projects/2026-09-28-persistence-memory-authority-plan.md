@@ -1770,6 +1770,48 @@ Converted on `step8/economy` by an agent and rebased onto this branch (`7fcb189d
   (all three variants) passes. Recipe learning happens through an object proc the minimal
   world cannot reach, so only its contract covers it.
 
+#### Artifacts (done)
+
+Converted on `step8/artifacts` by an agent and applied to this branch (`d3dbaf0aa` to
+`f1890fc7a`).
+
+- Every artifact move, a zone reset's owned check, feeding and a death into a corpse read
+  and wrote `artifacts` and `artifact_bind` on the game loop, and the expiry, wars and soul
+  events paged both tables every few seconds. On MariaDB `artifacts_load()` now reads both
+  tables at boot (`initialize_mysql()`; the boot stops if it cannot), and the game reads and
+  changes them in memory, queuing each change on the writer as an upsert
+  (`artifact_row_store()`, `artifact_bind_store()`, `artifact_binds_reset()`). The bind
+  functions moved from `sql.c` to `artifact.c`.
+- The corpse lifecycle writes the same rows the game writes when it moves the items. The
+  artifact guild feed publishes its committed timers and souls into memory
+  (`artifact_feed_published()`). Account deletion releases its characters' rows in memory on
+  success (`artifacts_forget_deleted_account_character()`).
+- The lists (`artifacts major|unique|ioun`, `artifacts player`) read on the writer and answer
+  on a later pulse. The list query joins `player_data` for each owner's side, so it loads no
+  character. A list read that an invalidation overtook is shown but not cached.
+  `reset syncdb` runs its statements in one writer job and reloads memory from its result.
+- Offline owners (expiry, poof, swap, hunt, files) load through `player_load_offline()`;
+  `load_dummy_char()` is gone, and `artifact.c` no longer calls `restoreCharOnly()`.
+- For character deletion `remove_all_artifacts_sql(pid)` returns its statement, and
+  `artifacts_forget_deleted_character(pid)` follows the commit.
+- Left: boot-only `setupMortArtiList_sql()`, `addOnGroundArtis_sql()`,
+  `addOnMobArtis_sql()` (the latter two also in the loop's recovery fallback, before
+  counting starts) and `artifact_guild_state_hydrate()`; `arti_remove_sql()` has no body or
+  caller (Phase 3).
+- Found on the way: the expiry event extracted an offline owner without removing its items,
+  so they fell to its room while its save kept them (`d3dbaf0aa`); `reset fixit` extracted
+  each display copy before naming it and then again, a use-after-free and double free
+  (`00efb191f`); `swap` on an offline owner read a null container for a worn artifact and an
+  uninitialized flag and never showed its messages, and `poof` never showed its own (fixed
+  with the offline loads).
+- Two small windows where memory and the tables disagree until that artifact's next write:
+  a game write queued between a guild feed's capture and its publish, and a game change made
+  while a `syncdb` job is in flight.
+- Tests: the game-loop queries journey drops two artifacts, lists them, clears one, resets a
+  soul and runs `fixit` and `syncdb`, then checks the rows after shutdown; its
+  `NOT_CONVERTED` list is empty from here. `test_artifact_offline_owner_loads.py` is new; the
+  event, bind, cache and deletion contracts follow the memory version.
+
 #### Account deletion (done)
 
 - On MariaDB `verify_delete_account()` drained every persistence queue on the game loop and
