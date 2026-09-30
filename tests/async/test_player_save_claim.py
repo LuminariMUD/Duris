@@ -5,6 +5,7 @@ The flat-file leg runs here. The MariaDB leg, tests/async/run_player_save_claim_
 runs under `make test-db` because it needs Docker.
 """
 
+import re
 from _paths import SRC, rel
 import pathlib
 import subprocess
@@ -91,7 +92,7 @@ LOAD_REPOSITORY = (SRC / "player_load_repository.c").read_text()
 SQL = (SRC / "sql.c").read_text()
 # Loads take a row only when the ownership table has no row for it or names the
 # loading owner; any other owner's row is skipped and logged, in every loader.
-assert 'dupe_log_item("load_skipped"' in LOAD_REPOSITORY
+assert re.search(r'dupe_log_item\(\s*"load_skipped"', LOAD_REPOSITORY)
 assert 'dupe_log_item("load_skipped"' in FLAT_PLAYER
 assert 'dupe_log_item("load_skipped", item_uid, entry.vnum, expected, entry.owner)' in SQL
 RUNNER = (ROOT / "tests/async/run_player_save_claim_mysql.sh").read_text()

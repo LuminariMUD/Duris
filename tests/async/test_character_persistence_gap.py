@@ -232,13 +232,9 @@ require(
     "a skipped in-memory ownership hydration must be logged",
 )
 
-# Full loads reconstruct coin payloads with one owner-scoped query, outside the
-# per-item loop; adding inventory items must not add per-item SQL requests.
-coin_load = section(LOAD_REPOSITORY, "const std::string coin_sql =", "while (MYSQL_ROW row = mysql_fetch_row(coin_rows.get()))")
-require(coin_load.count("query(connection, coin_sql, result)") == 1,
-        "coin payloads must use one batched query")
-require("own.owner_id=" in coin_load and "own.coin_payload IS NOT NULL" in coin_load,
-        "coin payload fetch must be scoped to the player's authoritative piles")
+# A coin pile loads with the other items, from what the save wrote: no per-item or
+# coin-specific query.
+require("coin_sql" not in LOAD_REPOSITORY, "coin piles must load with the other items")
 
 menu = section(ACCOUNT, "void display_account_menu(P_desc d, char *arg)", "\n}\n")
 require(

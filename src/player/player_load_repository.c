@@ -1099,14 +1099,12 @@ bool load_items(MYSQL *connection, player_load_result *result)
 	const std::string pid = std::to_string(result->pid);
 	std::unordered_map<uint64_t, size_t> item_by_database_id;
 	std::unordered_map<uint64_t, size_t> item_by_uid;
-	std::unordered_set<uint64_t> stale_database_ids;
 	// Rows with no ownership row, placed from the payload once every row is read.
 	std::vector<size_t> unrecorded;
 	try
 	{
 		item_by_database_id.reserve(PLAYER_LOAD_ITEM_MAX);
 		item_by_uid.reserve(PLAYER_LOAD_ITEM_MAX);
-		stale_database_ids.reserve(PLAYER_LOAD_ITEM_MAX);
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -1123,148 +1121,67 @@ bool load_items(MYSQL *connection, player_load_result *result)
 		"pi.obj_uid,pi.item_condition,own.item_uid,own.root_item_uid,"
 		"own.parent_item_uid,own.owner_type,own.owner_id,own.owner_context_id,"
 		"own.item_revision,own.vnum,own.state,owner_revision.revision,"
-		"(own.coin_payload IS NOT NULL OR ((own.vnum=3 OR "
-		"(pi.item_type=20 AND own.vnum=pi.vnum)) AND own.state=2 AND "
-		"own.owner_type=8 AND own.owner_id=0 AND own.owner_context_id=0)) FROM player_items pi "
+		"((own.vnum=3 OR (pi.item_type=20 AND own.vnum=pi.vnum)) AND own.state=2 AND "
+		"own.owner_type=8 AND own.owner_id=0 AND own.owner_context_id=0) FROM player_items pi "
 		"LEFT JOIN item_current_owner own ON own.item_uid=pi.obj_uid LEFT JOIN "
 		"item_owner_revision owner_revision ON owner_revision.owner_type=own.owner_type "
 		"AND owner_revision.owner_id=own.owner_id AND "
 		"owner_revision.owner_context_id=own.owner_context_id WHERE pi.pid=" +
 		pid + " ORDER BY pi.id";
-	if (!load_rows(
-		    connection, item_sql, result,
-		    [&](MYSQL_ROW row)
-		    {
-			    if (row[41] && !strcmp(row[41], "1"))
-			    {
-				    uint64_t database_id = 0;
-				    if (!parse_unsigned(row[0], UINT64_MAX, &database_id))
-					    return false;
-				    // A snapshot may predate the coin commit. Its amount and
-				    // metadata must not override the authoritative payload below.
-				    // Explicitly destroyed coins are completed pickups, not
-				    // stale rows.
-				    stale_database_ids.insert(database_id);
-				    return true;
-			    }
-			    if (result->snapshot.items.size() >= PLAYER_LOAD_ITEM_MAX)
-			    {
-				    result->outcome = player_load_outcome::limit_exceeded;
-				    return false;
-			    }
-			    player_item_snapshot item = {};
-			    player_load_item_identity identity = {};
-			    const item_row_outcome parsed =
-				    parse_item_payload(row, result, &item, &identity);
-			    if (parsed == item_row_outcome::invalid &&
-				result->outcome == player_load_outcome::limit_exceeded)
-				    return false;
-			    // A row another owner holds, or one that cannot be read, is left
-			    // behind; the character's next save no longer writes it.
-			    const bool duplicate =
-				    parsed == item_row_outcome::accepted &&
-				    (item_by_database_id.count(identity.database_id) ||
-				     item_by_uid.count(identity.item_uid));
-			    if (parsed != item_row_outcome::accepted || duplicate)
-			    {
-				    if (parsed == item_row_outcome::foreign)
-					    dupe_log_item("load_skipped", item.object_uid,
-							  item.vnum,
-							  { item_owner_type::player,
-							    static_cast<uint64_t>(result->pid), 0 },
-							  identity.owner);
-				    try
-				    {
-					    stale_database_ids.insert(identity.database_id);
-					    ++result->stale_item_rows;
-				    }
-				    catch (const std::bad_alloc &)
-				    {
-					    result->outcome =
-						    player_load_outcome::retryable_failure;
-					    return false;
-				    }
-				    return true;
-			    }
-			    try
-			    {
-				    const size_t index = result->snapshot.items.size();
-				    item_by_database_id.emplace(identity.database_id, index);
-				    item_by_uid.emplace(identity.item_uid, index);
-				    if (!row[31])
-					    unrecorded.push_back(index);
-				    result->snapshot.items.push_back(std::move(item));
-				    result->item_identities.push_back(identity);
-			    }
-			    catch (const std::bad_alloc &)
-			    {
-				    result->outcome = player_load_outcome::retryable_failure;
-				    return false;
-			    }
-			    return true;
-		    }))
+	if (!load_rows(connection, item_sql, result,
+		       [&](MYSQL_ROW row)
+		       {
+			       // A pile an older server's coin transaction spent stays spent. Any
+			       // other pile is an ordinary item: the save wrote its amount.
+			       if (row[41] && !strcmp(row[41], "1"))
+				       return true;
+			       if (result->snapshot.items.size() >= PLAYER_LOAD_ITEM_MAX)
+			       {
+				       result->outcome = player_load_outcome::limit_exceeded;
+				       return false;
+			       }
+			       player_item_snapshot item = {};
+			       player_load_item_identity identity = {};
+			       const item_row_outcome parsed =
+				       parse_item_payload(row, result, &item, &identity);
+			       if (parsed == item_row_outcome::invalid &&
+				   result->outcome == player_load_outcome::limit_exceeded)
+				       return false;
+			       // A row another owner holds, or one that cannot be read, is left
+			       // behind; the character's next save no longer writes it.
+			       const bool duplicate =
+				       parsed == item_row_outcome::accepted &&
+				       (item_by_database_id.count(identity.database_id) ||
+					item_by_uid.count(identity.item_uid));
+			       if (parsed != item_row_outcome::accepted || duplicate)
+			       {
+				       if (parsed == item_row_outcome::foreign)
+					       dupe_log_item(
+						       "load_skipped", item.object_uid, item.vnum,
+						       { item_owner_type::player,
+							 static_cast<uint64_t>(result->pid), 0 },
+						       identity.owner);
+				       ++result->stale_item_rows;
+				       return true;
+			       }
+			       try
+			       {
+				       const size_t index = result->snapshot.items.size();
+				       item_by_database_id.emplace(identity.database_id, index);
+				       item_by_uid.emplace(identity.item_uid, index);
+				       if (!row[31])
+					       unrecorded.push_back(index);
+				       result->snapshot.items.push_back(std::move(item));
+				       result->item_identities.push_back(identity);
+			       }
+			       catch (const std::bad_alloc &)
+			       {
+				       result->outcome = player_load_outcome::retryable_failure;
+				       return false;
+			       }
+			       return true;
+		       }))
 		return false;
-
-	// A pile's amount comes from its custody row, which the currency transactions
-	// keep. Only a pile the character's own saved rows hold is loaded: one it gave
-	// away or dropped in memory is no longer its own.
-	const std::string coin_sql =
-		"SELECT own.item_uid,own.root_item_uid,COALESCE(own.parent_item_uid,0),"
-		"own.item_revision,revision.revision,own.coin_payload,own.vnum FROM item_current_owner own "
-		"JOIN item_owner_revision revision ON revision.owner_type=own.owner_type "
-		"AND revision.owner_id=own.owner_id AND revision.owner_context_id=own.owner_context_id "
-		"WHERE own.owner_type=1 AND own.owner_id=" +
-		pid +
-		" AND own.owner_context_id=0 AND own.state=1 AND own.coin_payload IS NOT NULL AND "
-		"EXISTS (SELECT 1 FROM player_items held WHERE held.pid=" +
-		pid + " AND held.obj_uid=own.item_uid) ORDER BY own.item_uid";
-	std::unique_ptr<MYSQL_RES, decltype(&mysql_free_result)> coin_rows(
-		query(connection, coin_sql, result), mysql_free_result);
-	if (!coin_rows)
-		return false;
-	uint64_t next_database_id = 0;
-	for (const auto &entry : item_by_database_id)
-		next_database_id = std::max(next_database_id, entry.first);
-	for (uint64_t database_id : stale_database_ids)
-		next_database_id = std::max(next_database_id, database_id);
-	while (MYSQL_ROW row = mysql_fetch_row(coin_rows.get()))
-	{
-		if (result->snapshot.items.size() >= PLAYER_LOAD_ITEM_MAX ||
-		    next_database_id == UINT64_MAX ||
-		    !add_result_budget(coin_rows.get(), row, result))
-		{
-			result->outcome = player_load_outcome::limit_exceeded;
-			return false;
-		}
-		player_load_item_identity identity;
-		identity.database_id = ++next_database_id;
-		identity.quantity = 1;
-		identity.override_mask = PLAYER_LOAD_ITEM_OVERRIDE_ALL;
-		identity.owner = { item_owner_type::player, static_cast<uint64_t>(result->pid), 0 };
-		identity.state = item_custody_state::active;
-		const auto *lengths = mysql_fetch_lengths(coin_rows.get());
-		std::vector<player_item_snapshot> items;
-		if (!parse_unsigned(row[0], UINT64_MAX, &identity.item_uid) ||
-		    !parse_unsigned(row[1], UINT64_MAX, &identity.root_item_uid) ||
-		    !parse_unsigned(row[2], UINT64_MAX, &identity.parent_item_uid) ||
-		    !parse_unsigned(row[3], UINT64_MAX, &identity.item_revision) ||
-		    !parse_unsigned(row[4], UINT64_MAX, &identity.owner_revision) || !lengths ||
-		    !row[5] ||
-		    player_item_snapshot_list_decode(reinterpret_cast<const uint8_t *>(row[5]),
-						     lengths[5],
-						     &items) != player_snapshot_codec_result::ok ||
-		    items.size() != 1 || items[0].object_uid != identity.item_uid || !row[6] ||
-		    std::to_string(items[0].vnum) != row[6] || items[0].type != ITEM_MONEY ||
-		    item_by_uid.count(identity.item_uid))
-		{
-			++result->stale_item_rows;
-			continue;
-		}
-		const size_t index = result->snapshot.items.size();
-		item_by_uid.emplace(identity.item_uid, index);
-		result->snapshot.items.push_back(std::move(items[0]));
-		result->item_identities.push_back(identity);
-	}
 
 	// An item nobody has recorded sits where its payload row puts it.
 	for (size_t index : unrecorded)
@@ -1285,10 +1202,9 @@ bool load_items(MYSQL *connection, player_load_result *result)
 
 	const std::string ownership_summary_sql =
 		"SELECT COALESCE(owner_revision.revision,0),COUNT(own.item_uid),"
-		"COALESCE(SUM(CASE WHEN own.item_uid IS NOT NULL AND own.coin_payload IS NULL "
-		"AND payload.obj_uid IS NULL THEN 1 ELSE 0 END),0),owner_revision.owner_id IS NOT NULL,"
-		"COALESCE(SUM(own.item_uid IS NOT NULL AND (own.coin_payload IS NOT NULL OR "
-		"payload.obj_uid IS NOT NULL)),0) FROM "
+		"COALESCE(SUM(CASE WHEN own.item_uid IS NOT NULL AND payload.obj_uid IS NULL "
+		"THEN 1 ELSE 0 END),0),owner_revision.owner_id IS NOT NULL,"
+		"COALESCE(SUM(own.item_uid IS NOT NULL AND payload.obj_uid IS NOT NULL),0) FROM "
 		"(SELECT 1) singleton LEFT JOIN "
 		"item_owner_revision owner_revision ON owner_revision.owner_type=" +
 		std::to_string(static_cast<unsigned int>(item_owner_type::player)) +

@@ -533,17 +533,6 @@ bool normalize_items(const std::vector<player_item_snapshot> &original,
 			    !positions.emplace(item.object_uid, nodes.size()).second)
 				return false;
 			nodes.push_back({ item, parent_uid });
-			if (owner != owned.end() && !owner->second.coin_payload.empty())
-			{
-				std::vector<player_item_snapshot> coins;
-				if (player_item_snapshot_list_decode(
-					    owner->second.coin_payload.data(),
-					    owner->second.coin_payload.size(),
-					    &coins) != player_snapshot_codec_result::ok ||
-				    coins.size() != 1 || coins[0].object_uid != item.object_uid)
-					return false;
-				nodes.back().item = std::move(coins[0]);
-			}
 		}
 		for (const auto &item : additions)
 		{
@@ -946,24 +935,8 @@ flatfile_shop_trade_materialization_result flatfile_shop_trade_materialization_r
 				if (!owner_records.emplace(record.item_uid, record).second)
 					return flatfile_shop_trade_materialization_result::invalid;
 		}
-		// A pile's amount comes from its custody payload. Only a pile the player
-		// file holds is loaded: one given away or dropped in memory is no longer
-		// the player's.
-		std::unordered_set<uint64_t> held;
-		for (const auto &item : snapshot->items)
-			held.insert(item.object_uid);
-		for (const auto &record : owned)
-			if (!record.coin_payload.empty() && held.contains(record.item_uid))
-			{
-				std::vector<player_item_snapshot> coins;
-				if (player_item_snapshot_list_decode(
-					    record.coin_payload.data(), record.coin_payload.size(),
-					    &coins) != player_snapshot_codec_result::ok ||
-				    coins.size() != 1 || coins[0].object_uid != record.item_uid)
-					return flatfile_shop_trade_materialization_result::invalid;
-				mentioned.insert(record.item_uid);
-				latest_inbound[record.item_uid] = std::move(coins[0]);
-			}
+		// A pile is an ordinary item: the save wrote its amount. Only one an older
+		// server's coin transaction spent is dropped.
 		std::vector<uint64_t> saved_coins;
 		auto collect_coins = [&](const std::vector<player_item_snapshot> &items)
 		{

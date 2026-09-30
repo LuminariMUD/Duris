@@ -1,4 +1,6 @@
 #include "player/player_load_repository.h"
+#include "player/player_snapshot_codec.h"
+#include "core/defines.h"
 #include "item/trophy_state.h"
 #include "persistence/persistence_observability.h"
 
@@ -623,6 +625,40 @@ int main()
 	       orphan_payload.item_identities[0].item_uid == 900101);
 	assert(orphan_payload.stale_item_rows == 0 && orphan_payload.missing_payload_rows == 0);
 	assert(orphan_payload.authoritative_item_count == 1);
+
+	// A coin pile whose custody row still holds the amount an older server's coin
+	// transaction wrote loads the amount the save wrote: memory has moved coins since.
+	player_item_snapshot legacy_pile = {};
+	legacy_pile.object_uid = 900102;
+	legacy_pile.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	legacy_pile.vnum = 3;
+	legacy_pile.type = ITEM_MONEY;
+	legacy_pile.name = "coins";
+	legacy_pile.values[0] = 5;
+	std::vector<uint8_t> legacy_payload;
+	assert(player_item_snapshot_list_encode({ legacy_pile }, &legacy_payload) ==
+	       player_snapshot_codec_result::ok);
+	std::string legacy_hex;
+	for (uint8_t byte : legacy_payload)
+	{
+		static const char digits[] = "0123456789abcdef";
+		legacy_hex += digits[byte >> 4];
+		legacy_hex += digits[byte & 15];
+	}
+	execute_sql(connection,
+		    "INSERT INTO player_items(id,pid,vnum,equip_slot,quantity,item_type,value0,"
+		    "name,obj_uid) VALUES(2002," +
+			    std::to_string(pid) + ",3,0,1,20,3,'coins',900102)");
+	execute_sql(
+		connection,
+		"INSERT INTO item_current_owner(item_uid,root_item_uid,owner_type,owner_id,"
+		"owner_context_id,item_revision,vnum,state,coin_payload) VALUES(900102,900102,1," +
+			std::to_string(pid) + ",0,4,3,1,UNHEX('" + legacy_hex + "'))");
+	player_load_result legacy_coins = execute_load(connection, request, 96);
+	assert(legacy_coins.outcome == player_load_outcome::applied &&
+	       legacy_coins.snapshot.items.size() == 2 && legacy_coins.stale_item_rows == 0);
+	assert(legacy_coins.snapshot.items[1].object_uid == 900102 &&
+	       legacy_coins.snapshot.items[1].values[0] == 3);
 
 	request.request_id = 0;
 	assert(!player_load_request_valid(request, persistence_observability_now_usec()));

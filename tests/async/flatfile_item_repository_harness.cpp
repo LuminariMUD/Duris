@@ -479,7 +479,9 @@ static void coin_matrix(const fs::path &path, int coin_vnum)
 			"coin durable payload");
 		return decoded[0].values[0];
 	};
-	auto reload = [&](int32_t expected, const std::vector<uint64_t> &old_coins)
+	// The save's own amount loads, whatever an older server's coin transaction left
+	// in custody; only a pile such a transaction spent is dropped.
+	auto reload = [&](bool kept, const std::vector<uint64_t> &old_coins)
 	{
 		player_snapshot snapshot;
 		snapshot.pid = 42;
@@ -495,6 +497,7 @@ static void coin_matrix(const fs::path &path, int coin_vnum)
 			old.object_uid = uid;
 			old.vnum = coin_vnum;
 			old.type = ITEM_MONEY;
+			old.name = "coins";
 			old.values[0] = 1;
 			old.parent_index = 0;
 			snapshot.items.push_back(old);
@@ -507,14 +510,14 @@ static void coin_matrix(const fs::path &path, int coin_vnum)
 									      &snapshot, &error) ==
 					flatfile_shop_trade_materialization_result::ok,
 			"coin snapshot recovery failed: " + error);
-		require(snapshot.items.size() == (expected ? 2u : 1u),
+		require(snapshot.items.size() == (kept ? 2u : 1u),
 			"coin recovery duplicated or retained consumed piles");
-		if (expected)
+		if (kept)
 			require(snapshot.items[1].object_uid == pile_uid &&
-					snapshot.items[1].values[0] == expected &&
+					snapshot.items[1].values[0] == 1 &&
 					snapshot.items[1].parent_index == 0 &&
 					snapshot.items[1].name == "coins",
-				"stale coin projection won over authority");
+				"a custody amount replaced the saved one");
 	};
 	auto put = command(wallet(42, 1000, 900), pile(pile_uid, 0, 100));
 	setenv("DURIS_FLATFILE_TEST_FAIL_BEFORE_AUTHORITY_COMMIT", "1", 1);
@@ -531,9 +534,9 @@ static void coin_matrix(const fs::path &path, int coin_vnum)
 		"coin creation lost value");
 	require(apply(put).outcome == critical_apply_outcome::already_applied,
 		"coin creation replay");
-	// Only a pile the player file holds is loaded; its amount comes from custody.
-	reload(0, {});
-	reload(100, { pile_uid });
+	// Only a pile the player file holds is loaded, with the amount its save wrote.
+	reload(false, {});
+	reload(true, { pile_uid });
 	auto merge = command(wallet(42, 900, 700), pile(pile_uid, 100, 300));
 	setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_IMAGE", "1", 1);
 	require(apply(merge).outcome == critical_apply_outcome::retryable_failure,
@@ -543,7 +546,7 @@ static void coin_matrix(const fs::path &path, int coin_vnum)
 		"coin interrupted commit did not recover");
 	require(domain(42).domains.wallet[0] == 700 && amount(pile_uid) == 300,
 		"coin recovery duplicated/lost value");
-	reload(300, { pile_uid });
+	reload(true, { pile_uid });
 	auto stale = command(wallet(42, 700, 650), pile(pile_uid, 299, 349));
 	require(apply(stale).error_code == ESTALE && apply(stale).error_code == ESTALE,
 		"coin stale amount was accepted");
@@ -569,7 +572,7 @@ static void coin_matrix(const fs::path &path, int coin_vnum)
 		"consumed pile remains in bag custody");
 	ownership({ item_owner_type::destruction, 0, 0 }, &remaining);
 	require(remaining.empty(), "destroyed coins were returned as active items");
-	reload(0, { pile_uid, pile_uid + 1 });
+	reload(false, { pile_uid, pile_uid + 1 });
 	std::vector<uint64_t> consumed;
 	for (size_t index = 0; index <= 32; ++index)
 	{
@@ -582,7 +585,7 @@ static void coin_matrix(const fs::path &path, int coin_vnum)
 			"repeated coin pickup");
 		consumed.push_back(uid);
 	}
-	reload(0, consumed);
+	reload(false, consumed);
 	baseline.pid = 43;
 	baseline.domains.wallet = {};
 	require(flatfile_player_domain_establish(root, baseline, &error) ==

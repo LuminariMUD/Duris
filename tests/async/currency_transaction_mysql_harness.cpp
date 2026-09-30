@@ -333,8 +333,6 @@ void coin_failure_matrix()
 	assert(scalar("SELECT COUNT(*) FROM player_items WHERE obj_uid=900000002 AND container_id=" +
 		      std::to_string(bag_row)) == 1);
 	verify_reload(900, 100);
-	// A later stale projection must not replace the committed amount or metadata.
-	execute("UPDATE player_items SET value0=1,name='stale coins' WHERE obj_uid=900000002");
 
 	critical_command merge = make_put(900, 100, 200);
 	assert(critical_command_repository_apply(connection, merge).outcome ==
