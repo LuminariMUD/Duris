@@ -3849,7 +3849,7 @@ void ws_cmd_poll_vote(struct descriptor_data *d, cJSON *data)
 void ws_handle_command(struct descriptor_data *d, const char *cmd, cJSON *data)
 {
 	/* No account mutation or entry may overtake password verification. */
-	if (d && (d->login_password_job || d->password_request || d->account_read_id))
+	if (d && (d->login_password_job || d->password_request || d->writer_wait_id))
 		return;
 	static const struct
 	{

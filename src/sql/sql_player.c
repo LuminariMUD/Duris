@@ -278,10 +278,6 @@ bool sql_save_account(struct acct_entry *acc)
 {
 	return false;
 }
-bool sql_delete_account(const char *name)
-{
-	return false;
-}
 bool sql_save_locker(P_char locker_ch, int owner_pid, int owner_assoc_id)
 {
 	return false;
@@ -5262,453 +5258,316 @@ static bool sql_format_account_locker_name_list(char *output, size_t output_size
 	return true;
 }
 
-bool sql_delete_account(const char *name)
+bool sql_delete_account(const char *name, std::function<void(bool deleted)> done)
 {
-	if (!DB || !name || !name[0])
+	if (!DB || !name || !name[0] || !done)
 		return false;
 
-	char *escaped_account = sql_escape_string(name);
-	if (!escaped_account)
+	const std::string account = escape_str(name);
+	char locker_names_buffer[2048];
+	if (!sql_format_account_locker_name_list(locker_names_buffer, sizeof(locker_names_buffer),
+						 account.c_str()))
 		return false;
-	char account_locker_names[2048];
-	if (!sql_format_account_locker_name_list(account_locker_names, sizeof(account_locker_names),
-						 escaped_account))
-	{
-		free(escaped_account);
-		return false;
-	}
-	if (sql_in_transaction())
-	{
-		free(escaped_account);
-		return false;
-	}
-	std::vector<std::pair<int, std::string>> identities;
-	if (!sql_begin_transaction())
-	{
-		free(escaped_account);
-		return false;
-	}
+	const std::string locker_names = locker_names_buffer;
+	// Refusals the database raises no error for: the transaction rolls back.
+	constexpr unsigned int refused = EPERM;
 
-	char query[4096];
-	MYSQL_ROW row = NULL;
-	snprintf(query, sizeof(query),
-		 "SELECT blocked FROM accounts WHERE LOWER(account_name)=LOWER('%s') FOR UPDATE",
-		 escaped_account);
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		goto fail;
-	row = mysql_fetch_row(result);
-	if (!row)
-	{
-		mysql_free_result(result);
-		snprintf(
-			query, sizeof(query),
-			"SELECT (SELECT COUNT(*) FROM accounts WHERE LOWER(account_name)=LOWER('%s'))+"
-			"(SELECT COUNT(*) FROM player_data WHERE LOWER(account_name)=LOWER('%s'))+"
-			"(SELECT COUNT(*) FROM account_characters WHERE LOWER(account_name)=LOWER('%s'))",
-			escaped_account, escaped_account, escaped_account);
-		result = db_query("%s", query);
-		if (!result)
-			goto fail;
-		row = mysql_fetch_row(result);
-		const bool already_deleted = row && row[0] && strtoull(row[0], NULL, 10) == 0 &&
-					     !mysql_fetch_row(result);
-		mysql_free_result(result);
-		if (!already_deleted)
-			goto fail;
-		sql_rollback();
-		free(escaped_account);
-		return true;
-	}
-	if (!row[0] || atoi(row[0]) != ACCOUNT_BLOCK_DELETION || mysql_fetch_row(result))
-	{
-		mysql_free_result(result);
-		goto fail;
-	}
-	mysql_free_result(result);
-
-	/* player_data is the durable ownership source, while account_characters can
-	 * retain a still-active projection after an interrupted legacy deletion. */
-	snprintf(query, sizeof(query),
-		 "SELECT pd.pid,pd.name FROM player_data pd "
-		 "WHERE LOWER(pd.account_name)=LOWER('%s') "
-		 "UNION SELECT ac.pid,COALESCE(pd.name,ac.char_name) "
-		 "FROM account_characters ac LEFT JOIN player_data pd ON pd.pid=ac.pid "
-		 "WHERE LOWER(ac.account_name)=LOWER('%s') AND ac.deleted_at IS NULL",
-		 escaped_account, escaped_account);
-	result = db_query("%s", query);
-	if (!result)
-		goto fail;
-	while ((row = mysql_fetch_row(result)))
-	{
-		const int pid = row[0] ? atoi(row[0]) : 0;
-		if (pid <= 0 || !row[1] || !row[1][0] || identities.size() >= 1024)
+	return sql_read_work(
+		[account, locker_names](MYSQL *connection, sql_rows *) -> unsigned int
 		{
-			mysql_free_result(result);
-			goto fail;
-		}
-		const auto duplicate = std::find_if(identities.begin(), identities.end(),
-						    [pid](const auto &identity)
-						    { return identity.first == pid; });
-		if (duplicate == identities.end())
-			try
+			sql_rows rows;
+			if (const unsigned int error_code = sql_select(
+				    connection,
+				    sql_format("SELECT blocked FROM accounts WHERE "
+					       "LOWER(account_name)=LOWER('%s') FOR UPDATE",
+					       account.c_str()),
+				    &rows))
+				return error_code;
+			if (rows.empty())
 			{
-				identities.emplace_back(pid, row[1]);
+				// Already gone: nothing of it may be left anywhere.
+				sql_rows left;
+				if (const unsigned int error_code = sql_select(
+					    connection,
+					    sql_format(
+						    "SELECT (SELECT COUNT(*) FROM accounts WHERE LOWER(account_name)=LOWER('%s'))+"
+						    "(SELECT COUNT(*) FROM player_data WHERE LOWER(account_name)=LOWER('%s'))+"
+						    "(SELECT COUNT(*) FROM account_characters WHERE LOWER(account_name)=LOWER('%s'))",
+						    account.c_str(), account.c_str(),
+						    account.c_str()),
+					    &left))
+					return error_code;
+				return left.size() == 1 && left[0][0] &&
+						       strtoull(left[0][0], NULL, 10) == 0 ?
+					       0 :
+					       refused;
 			}
-			catch (const std::bad_alloc &)
-			{
-				mysql_free_result(result);
-				goto fail;
-			}
-		else if (strcasecmp(duplicate->second.c_str(), row[1]))
-		{
-			mysql_free_result(result);
-			goto fail;
-		}
-	}
-	mysql_free_result(result);
+			if (rows.size() != 1 || !rows[0][0] ||
+			    atoi(rows[0][0]) != ACCOUNT_BLOCK_DELETION)
+				return refused;
 
-	{
-		/* Snapshot persistence never writes custody authority. Resolve the exact
-		 * player, corpse, and locker owners here, then let the item repository move
-		 * their complete topology to ledgered destruction inside this transaction. */
-		std::vector<item_owner_identity> item_owners;
-		const auto collect_item_owners = [&](MYSQL_RES *owner_result)
-		{
-			MYSQL_ROW owner_row = NULL;
-			while ((owner_row = mysql_fetch_row(owner_result)))
+			/* player_data is the durable ownership source, while account_characters can
+			 * retain a still-active projection after an interrupted legacy deletion. */
+			rows.clear();
+			if (const unsigned int error_code = sql_select(
+				    connection,
+				    sql_format(
+					    "SELECT pd.pid,pd.name FROM player_data pd "
+					    "WHERE LOWER(pd.account_name)=LOWER('%s') "
+					    "UNION SELECT ac.pid,COALESCE(pd.name,ac.char_name) "
+					    "FROM account_characters ac LEFT JOIN player_data pd ON pd.pid=ac.pid "
+					    "WHERE LOWER(ac.account_name)=LOWER('%s') AND ac.deleted_at IS NULL",
+					    account.c_str(), account.c_str()),
+				    &rows))
+				return error_code;
+			std::vector<std::pair<int, std::string>> identities;
+			for (const sql_row &row : rows)
 			{
-				if (!owner_row[0] || !owner_row[1] || !owner_row[2] ||
-				    item_owners.size() >= 4096)
-					return false;
-				const unsigned long owner_type = strtoul(owner_row[0], NULL, 10);
-				item_owner_identity owner = {
-					static_cast<item_owner_type>(owner_type),
-					strtoull(owner_row[1], NULL, 10),
-					strtoull(owner_row[2], NULL, 10),
+				const int pid = row[0] ? atoi(row[0]) : 0;
+				if (pid <= 0 || !row[1] || !row[1][0] || identities.size() >= 1024)
+					return refused;
+				const auto duplicate =
+					std::find_if(identities.begin(), identities.end(),
+						     [pid](const auto &identity)
+						     { return identity.first == pid; });
+				if (duplicate == identities.end())
+					identities.emplace_back(pid, row[1]);
+				else if (strcasecmp(duplicate->second.c_str(), row[1]))
+					return refused;
+			}
+
+			{
+				/* Snapshot persistence never writes custody authority. Resolve the exact
+				 * player, corpse, and locker owners here, then let the item repository move
+				 * their complete topology to ledgered destruction inside this transaction. */
+				std::vector<item_owner_identity> item_owners;
+				const auto collect_item_owners = [&](const sql_rows &owner_rows)
+				{
+					for (const sql_row &owner_row : owner_rows)
+					{
+						if (!owner_row[0] || !owner_row[1] ||
+						    !owner_row[2] || item_owners.size() >= 4096)
+							return false;
+						const unsigned long owner_type =
+							strtoul(owner_row[0], NULL, 10);
+						item_owner_identity owner = {
+							static_cast<item_owner_type>(owner_type),
+							strtoull(owner_row[1], NULL, 10),
+							strtoull(owner_row[2], NULL, 10),
+						};
+						if (owner_type > UINT8_MAX ||
+						    !item_owner_identity_valid(owner))
+							return false;
+						const auto duplicate = std::find_if(
+							item_owners.begin(), item_owners.end(),
+							[&](const auto &candidate) {
+								return item_owner_identity_equal(
+									candidate, owner);
+							});
+						if (duplicate == item_owners.end())
+							item_owners.push_back(owner);
+					}
+					return true;
 				};
-				if (owner_type > UINT8_MAX || !item_owner_identity_valid(owner))
-					return false;
-				const auto duplicate = std::find_if(
-					item_owners.begin(), item_owners.end(),
-					[&](const auto &candidate)
-					{ return item_owner_identity_equal(candidate, owner); });
-				if (duplicate == item_owners.end())
-					try
-					{
-						item_owners.push_back(owner);
-					}
-					catch (const std::bad_alloc &)
-					{
-						return false;
-					}
+				for (const auto &[pid, character_name] : identities)
+				{
+					(void)character_name;
+					sql_rows owners;
+					if (const unsigned int error_code = sql_select(
+						    connection,
+						    sql_format(
+							    "SELECT DISTINCT owner_type,owner_id,owner_context_id "
+							    "FROM item_current_owner WHERE "
+							    "(owner_type=1 AND owner_id=%d) OR "
+							    "(owner_type=4 AND (owner_id >> 32)=%d) OR "
+							    "(owner_type=5 AND owner_id IN "
+							    "(SELECT id FROM lockers WHERE owner_pid=%d))",
+							    pid, pid, pid),
+						    &owners))
+						return error_code;
+					if (!collect_item_owners(owners))
+						return refused;
+				}
+				sql_rows owners;
+				if (const unsigned int error_code = sql_select(
+					    connection,
+					    sql_format(
+						    "SELECT DISTINCT ico.owner_type,ico.owner_id,ico.owner_context_id "
+						    "FROM item_current_owner ico JOIN lockers l ON l.id=ico.owner_id "
+						    "WHERE ico.owner_type=5 AND LOWER(l.locker_name) IN (%s)",
+						    locker_names.c_str()),
+					    &owners))
+					return error_code;
+				if (!collect_item_owners(owners))
+					return refused;
+				if (!item_transfer_repository_destroy_owners(
+					    connection, item_owners.data(), item_owners.size()))
+					return mysql_errno(connection) ? mysql_errno(connection) :
+									 refused;
 			}
-			return true;
-		};
-		for (const auto &[pid, character_name] : identities)
-		{
-			(void)character_name;
-			snprintf(query, sizeof(query),
-				 "SELECT DISTINCT owner_type,owner_id,owner_context_id "
-				 "FROM item_current_owner WHERE "
-				 "(owner_type=1 AND owner_id=%d) OR "
-				 "(owner_type=4 AND (owner_id >> 32)=%d) OR "
-				 "(owner_type=5 AND owner_id IN "
-				 "(SELECT id FROM lockers WHERE owner_pid=%d))",
-				 pid, pid, pid);
-			result = db_query("%s", query);
-			if (!result)
-				goto fail;
-			const bool collected = collect_item_owners(result);
-			mysql_free_result(result);
-			if (!collected)
-				goto fail;
-		}
-		int written =
-			snprintf(query, sizeof(query),
-				 "SELECT DISTINCT ico.owner_type,ico.owner_id,ico.owner_context_id "
-				 "FROM item_current_owner ico JOIN lockers l ON l.id=ico.owner_id "
-				 "WHERE ico.owner_type=5 AND LOWER(l.locker_name) IN (%s)",
-				 account_locker_names);
-		if (written < 0 || static_cast<size_t>(written) >= sizeof(query))
-			goto fail;
-		result = db_query("%s", query);
-		if (!result)
-			goto fail;
-		const bool account_lockers_collected = collect_item_owners(result);
-		mysql_free_result(result);
-		if (!account_lockers_collected ||
-		    !item_transfer_repository_destroy_owners(DB, item_owners.data(),
-							     item_owners.size()))
-			goto fail;
-	}
 
-	for (const auto &[pid, character_name] : identities)
-	{
-		char *escaped_character = sql_escape_string(character_name.c_str());
-		if (!escaped_character)
-			goto fail;
-
-		/* Auction custody can belong to another player. Refuse to erase through
-		 * an unsettled listing instead of silently destroying shared value. */
-		snprintf(query, sizeof(query),
-			 "SELECT 1 FROM auctions WHERE status=1 AND "
-			 "(seller_pid=%d OR winning_bidder_pid=%d) LIMIT 1 FOR UPDATE",
-			 pid, pid);
-		result = db_query("%s", query);
-		if (!result)
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		const bool unsettled_auction = mysql_fetch_row(result) != NULL;
-		mysql_free_result(result);
-		if (unsettled_auction)
-		{
-			free(escaped_character);
-			goto fail;
-		}
-
-		/* Release current artifact ownership before deleting the identity. The
-		 * legacy and revisioned representations must move together. */
-		snprintf(query, sizeof(query),
-			 "UPDATE artifacts SET owned='N',location=0,timer=NULL,locType=1,"
-			 "lastUpdate=NOW() WHERE location=%d AND locType IN (3,5)",
-			 pid);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "UPDATE artifacts_mortal SET owned='N',location=0,timer=NULL,locType=1,"
-			 "lastUpdate=NOW() WHERE location=%d AND locType IN (3,5)",
-			 pid);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "UPDATE artifact_bind SET owner_pid=-1,timer=0 WHERE owner_pid=%d", pid);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "UPDATE artifact_domain_state SET owned=0,loc_type=1,location=0,"
-			 "bind_timer_epoch=IF(bind_owner_pid=%d,0,bind_timer_epoch),"
-			 "bind_owner_pid=IF(bind_owner_pid=%d,-1,bind_owner_pid),timer_epoch=0,"
-			 "revision=revision+1 WHERE (location=%d AND loc_type IN (3,5)) OR "
-			 "bind_owner_pid=%d",
-			 pid, pid, pid, pid);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-
-		struct pid_delete_spec
-		{
-			const char *table;
-			const char *column;
-		};
-		const pid_delete_spec pid_deletes[] = {
-			{ "account_bound_reward_summons", "pid" },
-			{ "auction_item_pickups", "pid" },
-			{ "auction_money_pickups", "pid" },
-			{ "boons_progress", "pid" },
-			{ "boons_shop", "pid" },
-			{ "ctf_data", "pid" },
-			{ "epic_bonus", "pid" },
-			{ "epic_gain", "pid" },
-			{ "ip_info", "pid" },
-			{ "lockers", "owner_pid" },
-			{ "offline_messages", "pid" },
-			{ "pkill_info", "pid" },
-			{ "player_recipes", "pid" },
-			{ "player_shapechanges", "pid" },
-			{ "progress", "pid" },
-			{ "quest_trophy", "pid" },
-			{ "shop_trophy", "seller" },
-			{ "zone_trophy", "pid" },
-		};
-		bool character_ok = true;
-		for (const auto &spec : pid_deletes)
-		{
-			snprintf(query, sizeof(query), "DELETE FROM %s WHERE %s=%d", spec.table,
-				 spec.column, pid);
-			if (!sql_run_query(query))
+			for (const auto &[pid, character_name] : identities)
 			{
-				character_ok = false;
-				break;
+				std::string character(character_name.size() * 2 + 1, '\0');
+				character.resize(mysql_real_escape_string(
+					connection, character.data(), character_name.c_str(),
+					character_name.size()));
+
+				/* Auction custody can belong to another player. Refuse to erase through
+				 * an unsettled listing instead of silently destroying shared value. */
+				sql_rows unsettled;
+				if (const unsigned int error_code = sql_select(
+					    connection,
+					    sql_format(
+						    "SELECT 1 FROM auctions WHERE status=1 AND "
+						    "(seller_pid=%d OR winning_bidder_pid=%d) LIMIT 1 FOR UPDATE",
+						    pid, pid),
+					    &unsettled))
+					return error_code;
+				if (!unsettled.empty())
+					return refused;
+
+				std::vector<std::string> statements = {
+					/* Release current artifact ownership before deleting the identity. The
+					 * legacy and revisioned representations must move together. */
+					sql_format(
+						"UPDATE artifacts SET owned='N',location=0,timer=NULL,locType=1,"
+						"lastUpdate=NOW() WHERE location=%d AND locType IN (3,5)",
+						pid),
+					sql_format(
+						"UPDATE artifacts_mortal SET owned='N',location=0,timer=NULL,locType=1,"
+						"lastUpdate=NOW() WHERE location=%d AND locType IN (3,5)",
+						pid),
+					sql_format(
+						"UPDATE artifact_bind SET owner_pid=-1,timer=0 WHERE owner_pid=%d",
+						pid),
+					sql_format(
+						"UPDATE artifact_domain_state SET owned=0,loc_type=1,location=0,"
+						"bind_timer_epoch=IF(bind_owner_pid=%d,0,bind_timer_epoch),"
+						"bind_owner_pid=IF(bind_owner_pid=%d,-1,bind_owner_pid),timer_epoch=0,"
+						"revision=revision+1 WHERE (location=%d AND loc_type IN (3,5)) OR "
+						"bind_owner_pid=%d",
+						pid, pid, pid, pid),
+				};
+				static const char *const pid_deletes[][2] = {
+					{ "account_bound_reward_summons", "pid" },
+					{ "auction_item_pickups", "pid" },
+					{ "auction_money_pickups", "pid" },
+					{ "boons_progress", "pid" },
+					{ "boons_shop", "pid" },
+					{ "ctf_data", "pid" },
+					{ "epic_bonus", "pid" },
+					{ "epic_gain", "pid" },
+					{ "ip_info", "pid" },
+					{ "lockers", "owner_pid" },
+					{ "offline_messages", "pid" },
+					{ "pkill_info", "pid" },
+					{ "player_recipes", "pid" },
+					{ "player_shapechanges", "pid" },
+					{ "progress", "pid" },
+					{ "quest_trophy", "pid" },
+					{ "shop_trophy", "seller" },
+					{ "zone_trophy", "pid" },
+				};
+				for (const auto &spec : pid_deletes)
+					statements.push_back(
+						sql_format("DELETE FROM %s WHERE %s=%d", spec[0],
+							   spec[1], pid));
+				statements.push_back(sql_format(
+					"UPDATE boons SET pid=0,active=0 WHERE pid=%d", pid));
+				statements.push_back(sql_format(
+					"UPDATE frag_leaderboard SET deleted_at=COALESCE(deleted_at,NOW()),"
+					"last_updated=NOW() WHERE pid=%d",
+					pid));
+				statements.push_back(sql_format(
+					"UPDATE guilds g JOIN guild_members gm ON gm.guild_id=g.id SET "
+					"g.top_frags=IF(LOWER(g.topfragger)=LOWER('%s'),0,g.top_frags),"
+					"g.topfragger=IF(LOWER(g.topfragger)=LOWER('%s'),'',g.topfragger) "
+					"WHERE gm.player_pid=%d OR LOWER(gm.player_name)=LOWER('%s')",
+					character.c_str(), character.c_str(), pid,
+					character.c_str()));
+				statements.push_back(sql_format(
+					"DELETE FROM guild_members WHERE player_pid=%d OR "
+					"LOWER(player_name)=LOWER('%s')",
+					pid, character.c_str()));
+				statements.push_back(sql_format(
+					"DELETE FROM locker_access WHERE LOWER(visitor)=LOWER('%s')",
+					character.c_str()));
+				statements.push_back(sql_format(
+					"DELETE FROM locker_access WHERE LOWER(owner)=LOWER(CONCAT('%s','.locker'))",
+					character.c_str()));
+				/* A corpse keeps the name it was made under, so one from before a
+				 * rename is found by its owner pid. */
+				statements.push_back(sql_format(
+					"DELETE FROM corpses WHERE LOWER(player_name)=LOWER('%s') "
+					"OR (value3=%d AND (value1 & %u)<>0)",
+					character.c_str(), pid, PC_CORPSE));
+				statements.push_back(sql_format(
+					"DELETE FROM world_quest_accomplished WHERE pid='%d' OR "
+					"LOWER(player_name)=LOWER('%s')",
+					pid, character.c_str()));
+				statements.push_back(sql_format(
+					"DELETE FROM ships WHERE LOWER(owner_name)=LOWER('%s')",
+					character.c_str()));
+				statements.push_back(
+					sql_format("DELETE FROM player_data WHERE pid=%d", pid));
+				for (const std::string &statement : statements)
+					if (const unsigned int error_code =
+						    sql_execute(connection, statement))
+						return error_code;
 			}
-		}
-		if (!character_ok)
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query), "UPDATE boons SET pid=0,active=0 WHERE pid=%d", pid);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "UPDATE frag_leaderboard SET deleted_at=COALESCE(deleted_at,NOW()),"
-			 "last_updated=NOW() WHERE pid=%d",
-			 pid);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "UPDATE guilds g JOIN guild_members gm ON gm.guild_id=g.id SET "
-			 "g.top_frags=IF(LOWER(g.topfragger)=LOWER('%s'),0,g.top_frags),"
-			 "g.topfragger=IF(LOWER(g.topfragger)=LOWER('%s'),'',g.topfragger) "
-			 "WHERE gm.player_pid=%d OR LOWER(gm.player_name)=LOWER('%s')",
-			 escaped_character, escaped_character, pid, escaped_character);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "DELETE FROM guild_members WHERE player_pid=%d OR "
-			 "LOWER(player_name)=LOWER('%s')",
-			 pid, escaped_character);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "DELETE FROM locker_access WHERE LOWER(visitor)=LOWER('%s')",
-			 escaped_character);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(
-			query, sizeof(query),
-			"DELETE FROM locker_access WHERE LOWER(owner)=LOWER(CONCAT('%s','.locker'))",
-			escaped_character);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		/* A corpse keeps the name it was made under, so one from before a
-		 * rename is found by its owner pid. */
-		snprintf(query, sizeof(query),
-			 "DELETE FROM corpses WHERE LOWER(player_name)=LOWER('%s') "
-			 "OR (value3=%d AND (value1 & %u)<>0)",
-			 escaped_character, pid, PC_CORPSE);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "DELETE FROM world_quest_accomplished WHERE pid='%d' OR "
-			 "LOWER(player_name)=LOWER('%s')",
-			 pid, escaped_character);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "DELETE FROM ships WHERE LOWER(owner_name)=LOWER('%s')",
-			 escaped_character);
-		free(escaped_character);
-		if (!sql_run_query(query))
-			goto fail;
-		snprintf(query, sizeof(query), "DELETE FROM player_data WHERE pid=%d", pid);
-		if (!sql_run_query(query))
-			goto fail;
-	}
 
-	{
-		/* Account lockers in the live locker subsystem are keyed by this exact
-		 * finite set of names and do not carry an account foreign key. */
-		int written = snprintf(query, sizeof(query),
-				       "DELETE FROM locker_access WHERE LOWER(owner) IN (%s)",
-				       account_locker_names);
-		if (written < 0 || static_cast<size_t>(written) >= sizeof(query))
-			goto fail;
-		if (!sql_run_query(query))
-			goto fail;
-		written = snprintf(query, sizeof(query),
-				   "DELETE FROM lockers WHERE LOWER(locker_name) IN (%s)",
-				   account_locker_names);
-		if (written < 0 || static_cast<size_t>(written) >= sizeof(query))
-			goto fail;
-		if (!sql_run_query(query))
-			goto fail;
+			/* Account lockers in the live locker subsystem are keyed by this exact
+			 * finite set of names and do not carry an account foreign key. */
+			std::vector<std::string> statements = {
+				sql_format("DELETE FROM locker_access WHERE LOWER(owner) IN (%s)",
+					   locker_names.c_str()),
+				sql_format("DELETE FROM lockers WHERE LOWER(locker_name) IN (%s)",
+					   locker_names.c_str()),
+			};
+			static const char *const account_deletes[][2] = {
+				{ "account_locker_access", "visitor_account" },
+				{ "locker_kickouts", "account_name" },
+				{ "locker_session_state", "account_name" },
+				{ "poll_votes", "account_name" },
+				{ "account_characters", "account_name" },
+			};
+			for (const auto &spec : account_deletes)
+				statements.push_back(
+					sql_format("DELETE FROM %s WHERE LOWER(%s)=LOWER('%s')",
+						   spec[0], spec[1], account.c_str()));
+			for (const std::string &statement : statements)
+				if (const unsigned int error_code =
+					    sql_execute(connection, statement))
+					return error_code;
 
-		struct account_delete_spec
-		{
-			const char *table;
-			const char *column;
-		};
-		const account_delete_spec account_deletes[] = {
-			{ "account_locker_access", "visitor_account" },
-			{ "locker_kickouts", "account_name" },
-			{ "locker_session_state", "account_name" },
-			{ "poll_votes", "account_name" },
-			{ "account_characters", "account_name" },
-		};
-		for (const auto &spec : account_deletes)
-		{
-			snprintf(query, sizeof(query), "DELETE FROM %s WHERE LOWER(%s)=LOWER('%s')",
-				 spec.table, spec.column, escaped_account);
-			if (!sql_run_query(query))
-				goto fail;
-		}
+			/* ON DELETE CASCADE removes banks, IPs, account lockers, and account-bound
+			 * rewards. The credential is intentionally the last destructive write. */
+			if (const unsigned int error_code = sql_execute(
+				    connection,
+				    sql_format(
+					    "DELETE FROM accounts WHERE LOWER(account_name)=LOWER('%s')",
+					    account.c_str())))
+				return error_code;
+			if (mysql_affected_rows(connection) != 1)
+				return refused;
 
-		/* ON DELETE CASCADE removes banks, IPs, account lockers, and account-bound
-		 * rewards. The credential is intentionally the last destructive write. */
-		snprintf(query, sizeof(query),
-			 "DELETE FROM accounts WHERE LOWER(account_name)=LOWER('%s')",
-			 escaped_account);
-		if (!sql_run_query(query) || mysql_affected_rows(DB) != 1)
-			goto fail;
-
-		snprintf(
-			query, sizeof(query),
-			"SELECT (SELECT COUNT(*) FROM accounts WHERE LOWER(account_name)=LOWER('%s'))+"
-			"(SELECT COUNT(*) FROM player_data WHERE LOWER(account_name)=LOWER('%s'))+"
-			"(SELECT COUNT(*) FROM account_characters WHERE LOWER(account_name)=LOWER('%s'))",
-			escaped_account, escaped_account, escaped_account);
-		result = db_query("%s", query);
-		if (!result)
-			goto fail;
-		row = mysql_fetch_row(result);
-		const bool reconciled = row && row[0] && strtoull(row[0], NULL, 10) == 0 &&
-					!mysql_fetch_row(result);
-		mysql_free_result(result);
-		if (!reconciled)
-			goto fail;
-	}
-
-	if (!sql_commit())
-	{
-		sql_rollback();
-		free(escaped_account);
-		return false;
-	}
-	free(escaped_account);
-	return true;
-
-fail:
-	sql_rollback();
-	free(escaped_account);
-	return false;
+			sql_rows left;
+			if (const unsigned int error_code = sql_select(
+				    connection,
+				    sql_format(
+					    "SELECT (SELECT COUNT(*) FROM accounts WHERE LOWER(account_name)=LOWER('%s'))+"
+					    "(SELECT COUNT(*) FROM player_data WHERE LOWER(account_name)=LOWER('%s'))+"
+					    "(SELECT COUNT(*) FROM account_characters WHERE LOWER(account_name)=LOWER('%s'))",
+					    account.c_str(), account.c_str(), account.c_str()),
+				    &left))
+				return error_code;
+			return left.size() == 1 && left[0][0] &&
+					       strtoull(left[0][0], NULL, 10) == 0 ?
+				       0 :
+				       refused;
+		},
+		[done = std::move(done)](bool ok, const sql_rows &) { done(ok); });
 }
 
 // locker functions

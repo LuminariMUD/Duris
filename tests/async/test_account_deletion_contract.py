@@ -40,7 +40,8 @@ drain_guard = ACCOUNT[
         "void remove_deleted_account_runtime"
     )
 ]
-sql_delete = function_body(SQL_PLAYER, "bool sql_delete_account(", last=True)
+sql_delete = function_body(SQL_PLAYER, "bool sql_delete_account(const char *name", last=True)
+finish_delete = function_body(ACCOUNT, "static void finish_account_deletion(")
 flat_delete = function_body(FLAT_DELETE, "flatfile_account_delete_result flatfile_account_delete(")
 guild_forget = function_body(GUILD, "void forget_deleted_guild_member(")
 ship_runtime_remove = function_body(SHIP, "void delete_ship_runtime(")
@@ -86,6 +87,7 @@ for call in (
 ):
     assert call in drain_guard
 assert "drain_pending_ship_saves()" in confirm_delete
+assert confirm_delete.index("account_deletion_drain_guard drain_guard") > confirm_delete.index("#else")
 runtime_remove = function_body(ACCOUNT, "void remove_deleted_account_runtime(")
 detach_character = runtime_remove.index("character->desc = NULL")
 detach_descriptor = runtime_remove.index("character_desc->character = NULL")
@@ -110,54 +112,33 @@ assert "#ifndef __NO_MYSQL__" in confirm_delete
 assert "#else" in confirm_delete
 assert "flatfile_account_delete(" in confirm_delete
 
-# MariaDB locks the fence and owns one transaction. Credentials are removed last,
-# reconciled absent, and only then committed.
-assert "if (sql_in_transaction())" in sql_delete
-assert sql_delete.index("sql_begin_transaction()") < sql_delete.index("FOR UPDATE")
-assert contains(sql_delete, "atoi(row[0]) != ACCOUNT_BLOCK_DELETION")
-fence_lock = index(sql_delete, '"SELECT blocked FROM accounts')
-missing_account = index(sql_delete, "if (!row)", fence_lock)
-fence_check = index(sql_delete, "atoi(row[0]) != ACCOUNT_BLOCK_DELETION", missing_account)
+# MariaDB deletes on the persistence writer, one job and so one transaction, behind the
+# account's queued saves: it locks the fence, removes the credential last, reconciles
+# it absent, and the session learns the outcome in the job's reply.
+assert "sql_read_work(" in sql_delete and "DB, " not in sql_delete
+assert "qry(" not in sql_delete and "sql_begin_transaction()" not in sql_delete
+fence_lock = index(sql_delete, '"LOWER(account_name)=LOWER(\'%s\') FOR UPDATE"')
+missing_account = index(sql_delete, "if (rows.empty())", fence_lock)
+fence_check = index(sql_delete, "atoi(rows[0][0]) != ACCOUNT_BLOCK_DELETION", missing_account)
 already_deleted = sql_delete[missing_account:fence_check]
-assert contains(already_deleted, "strtoull(row[0], NULL, 10) == 0")
-assert contains(already_deleted, "if (!already_deleted) goto fail;")
-assert contains(already_deleted, "return true;")
-account_locker_remove = sql_delete[
-    index(sql_delete, "/* Account lockers in the live locker subsystem") : index(
-        sql_delete, "struct account_delete_spec"
-    )
-]
-assert source_count(
-    account_locker_remove,
-    "written < 0 || static_cast<size_t>(written) >= sizeof(query)",
-) == 2
-assert source_count(
-    sql_delete, "written < 0 || static_cast<size_t>(written) >= sizeof(query)"
-) == 3
+assert contains(already_deleted, "strtoull(left[0][0], NULL, 10) == 0")
 assert "ACCOUNT_LOCKER_SLOT_COUNT = 5" in SQL_PLAYER
 assert "slot < ACCOUNT_LOCKER_SLOT_COUNT" in format_account_lockers
-assert "sql_format_account_locker_name_list(account_locker_names" in sql_delete
+assert "sql_format_account_locker_name_list(locker_names_buffer" in sql_delete
 assert ".0.locker" not in sql_delete
 player_remove = sql_delete.index('"DELETE FROM player_data WHERE pid=%d"')
 projection_remove = index(sql_delete, '{ "account_characters", "account_name" }')
 credential_remove = sql_delete.index('"DELETE FROM accounts WHERE LOWER(account_name)')
 reconcile = sql_delete.index('"SELECT (SELECT COUNT(*) FROM accounts', credential_remove)
-commit = sql_delete.index("sql_commit()")
-assert player_remove < projection_remove < credential_remove < reconcile < commit
-assert contains(sql_delete, "mysql_affected_rows(DB) != 1")
+assert player_remove < projection_remove < credential_remove < reconcile
+assert contains(sql_delete, "mysql_affected_rows(connection) != 1")
 assert "status=1" in sql_delete
 assert "(owner_type=4 AND (owner_id >> 32)=%d)" in sql_delete
 assert "(owner_type=5 AND owner_id IN" in sql_delete
-identity_allocation = sql_delete[
-    sql_delete.index("identities.emplace_back") : sql_delete.index(
-        "else if (strcasecmp", sql_delete.index("identities.emplace_back")
-    )
-]
-assert "catch (const std::bad_alloc &)" in identity_allocation
-assert "mysql_free_result(result);" in identity_allocation
-assert "goto fail;" in identity_allocation
+# Character names are escaped on the writer's own connection.
+assert "mysql_real_escape_string(\n\t\t\t\t\tconnection, character.data()" in sql_delete
 assert "UPDATE item_current_owner" not in sql_delete
-assert "item_transfer_repository_destroy_owners" in sql_delete
+assert "item_transfer_repository_destroy_owners(\n\t\t\t\t\t    connection," in sql_delete
 assert "item_transfer_reason::destruction" in destroy_item_owners
 assert "item_transfer_command_build" in destroy_item_owners
 assert "item_transfer_repository_execute" in destroy_item_owners
@@ -165,6 +146,21 @@ assert "UPDATE guilds g JOIN guild_members gm" in sql_delete
 assert sql_delete.index("UPDATE guilds g JOIN guild_members gm") < sql_delete.index(
     "DELETE FROM guild_members"
 )
+
+# The account's characters leave memory before the deletion is queued, so no save of
+# theirs lands after it; the session waits for the reply with its input held.
+mariadb = confirm_delete[confirm_delete.index("#ifndef __NO_MYSQL__") : confirm_delete.index("#else")]
+assert mariadb.index("remove_deleted_account_runtime(d, identities)") < mariadb.index(
+    "sql_delete_account("
+)
+# A refused deletion rolls back, so the names and grants leave memory only on success.
+succeeded = mariadb[mariadb.index("if (deleted)") : mariadb.index("writer_replied(id))")]
+assert "sql_player_names_forget(identity.pid)" in succeeded
+assert "account_rewards_forget_account(account_name.c_str())" in succeeded
+assert mariadb.index("wait_for_writer(d)") < mariadb.index("sql_delete_account(")
+assert "writer_replied(id)" in mariadb
+assert "finish_account_deletion(" in mariadb
+assert "drain_guard" not in mariadb
 
 # Flat-file deletion tombstones every character first, then publishes identity and
 # credential removal through the recoverable authority journal, credential last.
@@ -177,8 +173,10 @@ identity_check = flat_delete.rindex("flatfile_identity_list_account(")
 assert character_remove < identity_remove < credential_prepare < authority_commit
 assert authority_commit < credential_check < identity_check
 
-# Success destroys the live session credential and closes the connection.
-assert "d->account = free_account(d->account)" in confirm_delete
-assert "STATE(d) = CON_FLUSH" in confirm_delete
+# Success destroys the live session credential and closes the connection; failure keeps
+# the fence for a retry.
+assert "d->account = free_account(d->account)" in finish_delete
+assert "STATE(d) = CON_FLUSH" in finish_delete
+assert "display_account_deletion_confirmation(d, true)" in finish_delete
 
 print("account deletion safety contracts passed")

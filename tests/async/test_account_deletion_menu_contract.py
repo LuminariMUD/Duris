@@ -35,6 +35,6 @@ assert contains(case_7, "delete_account(d, NULL);")
 assert contains(delete, "password_login_submit(arg, d->account->acct_password, 0)")
 assert contains(delete, "STATE(completed_desc) = CON_ACCT_VERIFY_DELETE_ACCT;")
 assert contains(verify, "d->account->acct_blocked = ACCOUNT_BLOCK_DELETION")
-assert contains(verify, "sql_delete_account(account_name.c_str())")
+assert contains(verify, "sql_delete_account(account_name.c_str(),")
 
 print("account deletion is reachable and guarded from the account menu")

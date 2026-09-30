@@ -1727,7 +1727,7 @@ struct descriptor_data
 	bool login_password_websocket;
 	char *selected_char_name; /* temporary storage for character selection confirmation */
 	uint64_t player_load_request_id;
-	uint64_t account_read_id; /* nonzero while account_read() waits for the writer */
+	uint64_t writer_wait_id; /* nonzero while the session waits for the writer (account.c) */
 	int player_load_pid;
 	unsigned char player_load_mode;
 	/* Account recovery by email (account/account_recovery_nanny.c). Zeroed with the

@@ -528,6 +528,17 @@ static void forget_grant(unsigned long long grant_id)
 							   std::next(summon);
 }
 
+void account_rewards_forget_account(const char *account)
+{
+	for (auto grant = stored_grants.begin(); grant != stored_grants.end();)
+	{
+		auto next = std::next(grant);
+		if (!strcasecmp(grant->second.grant.account.c_str(), account))
+			forget_grant(grant->first);
+		grant = next;
+	}
+}
+
 static void set_recovery_ready(unsigned long long grant_id, int pid)
 {
 	auto summon = reward_summons.find({ grant_id, pid });

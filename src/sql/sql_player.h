@@ -135,8 +135,10 @@ bool sql_save_account(struct acct_entry *acc);
 // when there is none; ok is false when the read failed.
 bool sql_load_account(const char *name, std::function<void(bool ok, P_acct loaded)> done);
 
-// permanently remove one fenced account and all of its live character state
-bool sql_delete_account(const char *name);
+// Permanently removes one fenced account and all of its live character state, on the
+// writer in one transaction, behind the saves queued before it. done(deleted) runs on
+// the game thread; an account already gone counts as deleted. False when not queued.
+bool sql_delete_account(const char *name, std::function<void(bool deleted)> done);
 
 // link player to account (updates player_data.account_name)
 

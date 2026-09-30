@@ -25,6 +25,7 @@
 #include "core/safe_format.h"
 #include "account/account.h"
 #include "account/account_recovery.h"
+#include "account/account_reward.h"
 #include "account/creation_availability_config.h"
 #include "account/login_mode_banner.h"
 #include "account/password_hash.h"
@@ -2820,6 +2821,50 @@ void delete_account(P_desc d, char *arg)
 	OPENSSL_cleanse(arg, strlen(arg));
 }
 
+/* Tells the session how its account deletion went: gone, or still fenced for a retry. */
+static void finish_account_deletion(P_desc d, bool deleted, size_t characters)
+{
+	if (!deleted)
+	{
+		persistence_alert(AVATAR, "account_delete", "redacted", "fenced", "none",
+				  "delete_failed", NULL);
+		SEND_TO_Q("\r\nAccount deletion did not complete. The account remains fenced; "
+			  "please retry or contact an immortal.\r\n",
+			  d);
+		display_account_deletion_confirmation(d, true);
+		return;
+	}
+	statuslog(56, "account deletion completed (account=redacted characters=%zu)", characters);
+	SEND_TO_Q("\r\n&+GYour account and all of its characters were permanently deleted.&n\r\n",
+		  d);
+	d->account = free_account(d->account);
+	STATE(d) = CON_FLUSH;
+}
+
+#ifndef __NO_MYSQL__
+/* A session waiting for the writer holds its input (comm.c) until the reply, which finds
+ * it by this id, so a connection closed meanwhile just drops the reply. */
+static uint64_t wait_for_writer(P_desc d)
+{
+	static uint64_t sequence = 0;
+	d->writer_wait_id = ++sequence;
+	return d->writer_wait_id;
+}
+
+static P_desc writer_replied(uint64_t id)
+{
+	for (P_desc d = descriptor_list; d; d = d->next)
+		if (d->writer_wait_id == id)
+		{
+			d->writer_wait_id = 0;
+			// Output queued here arrives without input.
+			d->prompt_mode = TRUE;
+			return d;
+		}
+	return nullptr;
+}
+#endif
+
 void verify_delete_account(P_desc d, char *arg)
 {
 	if (!d || !d->account || !d->account->acct_name)
@@ -2894,15 +2939,37 @@ void verify_delete_account(P_desc d, char *arg)
 	}
 	close_other_account_sessions(d);
 
+#ifndef __NO_MYSQL__
+	// Memory goes first: the account's characters leave the game before the deletion, so
+	// no save of theirs can land after it. The deletion runs on the writer, behind the
+	// account's queued saves (its fence among them), while this session waits.
+	remove_deleted_account_runtime(d, identities);
+	const uint64_t id = wait_for_writer(d);
+	if (!sql_delete_account(
+		    account_name.c_str(),
+		    [id, account_name, identities](bool deleted)
+		    {
+			    if (deleted)
+			    {
+				    for (const auto &identity : identities)
+					    sql_player_names_forget(identity.pid);
+				    account_rewards_forget_account(account_name.c_str());
+				    account_recovery_forget(account_name.c_str());
+			    }
+			    if (P_desc reader = writer_replied(id))
+				    finish_account_deletion(reader, deleted, identities.size());
+		    }))
+	{
+		writer_replied(id);
+		finish_account_deletion(d, false, identities.size());
+	}
+#else
 	bool deleted = false;
 	{
 		account_deletion_drain_guard drain_guard;
 		flush_pending_ship_saves();
 		if (drain_pending_ship_saves() && drain_guard.drain())
 		{
-#ifndef __NO_MYSQL__
-			deleted = sql_delete_account(account_name.c_str());
-#else
 			std::string error;
 			const auto result = flatfile_account_delete(
 				persistence_mode_flatfile_root(), account_name, &error);
@@ -2912,32 +2979,15 @@ void verify_delete_account(P_desc d, char *arg)
 				logit(LOG_FILE, "flat-file account deletion failed: %s",
 				      error.empty() ? "unspecified authority failure" :
 						      error.c_str());
-#endif
-			if (deleted)
-			{
-				remove_deleted_account_runtime(d, identities);
-				account_recovery_forget(account_name.c_str());
-			}
 		}
 	}
-
-	if (!deleted)
+	if (deleted)
 	{
-		persistence_alert(AVATAR, "account_delete", "redacted", "fenced", "none",
-				  "delete_failed", NULL);
-		SEND_TO_Q("\r\nAccount deletion did not complete. The account remains fenced; "
-			  "please retry or contact an immortal.\r\n",
-			  d);
-		display_account_deletion_confirmation(d, true);
-		return;
+		remove_deleted_account_runtime(d, identities);
+		account_recovery_forget(account_name.c_str());
 	}
-
-	statuslog(56, "account deletion completed (account=redacted characters=%zu)",
-		  identities.size());
-	SEND_TO_Q("\r\n&+GYour account and all of its characters were permanently deleted.&n\r\n",
-		  d);
-	d->account = free_account(d->account);
-	STATE(d) = CON_FLUSH;
+	finish_account_deletion(d, deleted, identities.size());
+#endif
 }
 
 /* Gives `to` a copy of what `from` holds. */
@@ -3034,29 +3084,22 @@ void account_read(P_desc d, const char *name, account_read_done done)
 	flatfile_account_state_release(loaded);
 	done(d, true, account);
 #else
-	static uint64_t sequence = 0;
-	const uint64_t id = ++sequence;
-	d->account_read_id = id;
+	const uint64_t id = wait_for_writer(d);
 	if (!sql_load_account(name,
 			      [id, done](bool ok, P_acct loaded)
 			      {
-				      P_desc reader = descriptor_list;
-				      while (reader && reader->account_read_id != id)
-					      reader = reader->next;
+				      P_desc reader = writer_replied(id);
 				      if (!reader)
 				      {
 					      free_account(loaded);
 					      return;
 				      }
-				      reader->account_read_id = 0;
 				      if (!ok)
 					      logit(LOG_FILE, "account read failed");
-				      // Output queued here arrives without input.
-				      reader->prompt_mode = TRUE;
 				      done(reader, ok, loaded);
 			      }))
 	{
-		d->account_read_id = 0;
+		writer_replied(id);
 		logit(LOG_FILE, "account read not queued");
 		done(d, false, nullptr);
 	}

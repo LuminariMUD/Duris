@@ -1533,8 +1533,8 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   `newchar`). They do not edit this document or the census; the coordinator merges each
   branch into `fix/7-persistence-phase-2-step-8`, regenerates the census, records each
   subsystem here and runs the gates. The coordinator keeps character and account deletion
-  (both websocket deletions too), renames and the leftovers in `sql.c` and
-  `sql_player.c`. If a session takes over mid-way: `git worktree list` shows the branches;
+  (both websocket deletions too; account deletion is **done**), renames and the leftovers
+  in `sql.c` and `sql_player.c`. If a session takes over mid-way: `git worktree list` shows the branches;
   a branch with commits not yet merged still needs merging and a section here.
 - Found on the way (the rest of step 8): copyover restored each preserved session's account
   under the character's name, so unless the two names matched the session lost its account
@@ -1568,7 +1568,7 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   character projection repair (`sql_repair_account_character_projection()`, now on the
   writer's connection), then the account, its IPs and its characters, in one transaction and
   behind every save queued before it. The rows come back on a later pulse and become a live
-  account (`account_from_rows()`). The descriptor records the read (`account_read_id`), and
+  account (`account_from_rows()`). The descriptor records the read (`writer_wait_id`), and
   its input is held while that is set (`session_input_authentication_pending()` in `comm.c`,
   the websocket command gate in `ws_handle_command()`); the result goes to the descriptor with
   that id, so a closed connection just drops it. On flat-file the read happens at once, as
@@ -1769,6 +1769,32 @@ Converted on `step8/economy` by an agent and rebased onto this branch (`7fcb189d
   contracts pin the writer reads, memory answers and queued writes. The MariaDB combat journey
   (all three variants) passes. Recipe learning happens through an object proc the minimal
   world cannot reach, so only its contract covers it.
+
+#### Account deletion (done)
+
+- On MariaDB `verify_delete_account()` drained every persistence queue on the game loop and
+  then ran `sql_delete_account()` there: the fence lock, the item custody destruction, each
+  character's rows and the credential, in one transaction on the game thread's connection.
+  It is one writer job now (`sql_read_work()`, with `sql_select()` and `sql_execute()` on
+  the writer's connection): still one transaction, still refusing an account that is not
+  fenced for deletion or has an unsettled auction. It runs behind the account's queued
+  saves, the fence among them, so the drain is gone. The account's characters leave the
+  game first (`remove_deleted_account_runtime()`), so no save of theirs can follow it.
+- The session waits for the reply with its input held, as the account read does:
+  `wait_for_writer()` and `writer_replied()` in `account.c`; the descriptor field is now
+  `writer_wait_id` (was `account_read_id`). `finish_account_deletion()` tells the session
+  either way. On success the characters' names leave the index, the account's grants leave
+  the reward memory (`account_rewards_forget_account()`) and its recovery state goes. A
+  refusal rolls back and keeps all of that and the fence, and the session can retry.
+- Flat-file keeps its synchronous deletion with the drain. The flat-file
+  `sql_delete_account()` stub had no caller and is gone.
+- Found on the way: account deletion never told the name index, so a deleted account's
+  character names stayed taken until the next boot.
+- Tests: `run_mysql_deletion_journey.py` (in `make test-db`) now also deletes an account
+  with a character. A trigger refuses the first try (the fence and the rows stay), the
+  retry deletes it, a new account takes the same account and character names, and no
+  account site logs as a game-loop query. The deletion contracts pin the writer job, the
+  order and the forgets on success.
 
 ### Review round 1 (MR !3)
 
