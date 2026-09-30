@@ -28,7 +28,9 @@ frag counters are staged without the member, then restored at once.
 
 After the commit, memory lets go of the character (`forget_deleted_character()`): its
 revision state, name-index entry and artifacts, its guild membership (without
-`Guild::kick()`, which changes departure penalties and writes the character), its entry
+`Guild::kick()`, which changes departure penalties and writes the character; the guild is
+saved again, so its save lands after any queued while the job ran, which still held the
+member), its entry
 in every live session's account list (names are unique, so only its account lists it),
 its ship and stored ship rows, and its zone-story state. The account list removal skips
 the account save: the deletion's tombstone already records it.
@@ -36,7 +38,9 @@ the account save: the deletion's tombstone already records it.
 The account menu waits for the reply with its input held (`wait_for_writer()`); a
 connection closed meanwhile drops the reply, and the deletion still completes. The
 websocket deletions load the character through the player load pipeline and delete it
-the same way.
+the same way. All three refuse, before anything is queued, a character that is in the game
+(linkdead included) or being loaded to enter it: it would play on with nothing saved.
+Hardcore death and `terminate` delete the character they extract themselves.
 
 The flat-file coordinator retains its atomic authority operation, then the same memory
 release.
@@ -52,13 +56,14 @@ menu, `delete_character()`, the memory release, account-list removal and the gui
 staging against test doubles under ASan and UBSan, once per backend. On MariaDB it holds
 the queued job, fails it at each of its statements (nothing is forgotten, the session is
 told and released), retries successfully, and closes a session before the reply. It also
-covers flat-file failure and success, repeated confirmation, cancellation, replacement
-selection and list removal at either end.
+covers flat-file failure and success, the refusal of a character in the game or loading,
+repeated confirmation, cancellation, replacement selection and list removal at either end.
 
 `tests/async/run_mysql_deletion_journey.py` (in `make test-db`) deletes a real character
 on a disposable MariaDB: triggers refuse the tombstone and the player-row deletion (the
-mapping and inventory stay, the character reconnects and plays), the retry deletes it
-once, and a restart does not bring it back.
+mapping and inventory stay, the character reconnects and plays), a linkdead character is
+refused, the retry deletes it once, a restart does not bring it back, and the next
+character created does not get its pid.
 
 The flat-file character-deletion harness separately exercises the real journal and
 repository coordinator.

@@ -1650,7 +1650,9 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
 #### Offline character loads (done)
 
 - `player_load_offline()` (`src/player/player_load_offline.{h,c}`) loads a character that is
-  not in the game through the player load pipeline, by name, without its pets and, unless
+  not in the game through the player load pipeline, by its pid from the name index (so the
+  load waits for the character's queued saves, since the MR !4 review) or else by name,
+  without its pets and, unless
   asked, its items, and hands it to a callback on a later pulse (`comm.c` gives it every
   load no descriptor claims). `player_load_offline_for()` is the command form: the callback
   runs only while the requester is still in the game, and a load that cannot be queued
@@ -1723,7 +1725,9 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
   baselines (`insert_opening_baselines()`: wallet, epics and frags, from the row it has just
   written), which the legacy save did.
 - The pid comes from memory: `getNewPCidNumb()` takes the name index's highest pid plus one
-  (`sql_highest_player_pid()`) and `init_char()` records the new name and pid in the index
+  (`sql_highest_player_pid()`, seeded at boot past `player_data`'s AUTO_INCREMENT since the
+  MR !4 review, so a deleted character's pid is not given out again) and `init_char()`
+  records the new name and pid in the index
   at once. The old `Players/pc_idnumb` counter had fallen far behind the rows (22 against
   3306 in `duris_dev`) because the legacy insert ignored it; in a fresh runtime it could not
   be written at all, so the pid was -1 until that insert. Flat-file keeps its identity
@@ -1808,9 +1812,9 @@ Converted on `step8/artifacts` by an agent and applied to this branch (`d3dbaf0a
   (`00efb191f`); `swap` on an offline owner read a null container for a worn artifact and an
   uninitialized flag and never showed its messages, and `poof` never showed its own (fixed
   with the offline loads).
-- Two small windows where memory and the tables disagree until that artifact's next write:
-  a game write queued between a guild feed's capture and its publish, and a game change made
-  while a `syncdb` job is in flight.
+- A small window where memory and the tables disagree until that artifact's next write: a
+  game change made while a `syncdb` job is in flight. (A game write queued between a guild
+  feed's capture and its publish was a second one, closed in the MR !4 review.)
 - Found on the way (fixed in `ae6ac52e0`): every epic gain submits one transaction for the
   guild's prestige and the feeding of the worn artifacts. It took each artifact's expected
   timer, soul and revision from a copy of `artifact_domain_state` read at boot, and nothing
@@ -1949,7 +1953,9 @@ Converted on `step8/guilds` by an agent and applied to this branch (`5c321bf41` 
   the writer's connection): still one transaction, still refusing an account that is not
   fenced for deletion or has an unsettled auction. It runs behind the account's queued
   saves, the fence among them, so the drain is gone. The account's characters leave the
-  game first (`remove_deleted_account_runtime()`), so no save of theirs can follow it.
+  game first (`remove_deleted_account_characters()`), so no save of theirs can follow it;
+  memory lets go of them only on success (`forget_deleted_account_characters()`, since the
+  MR !4 review).
 - The session waits for the reply with its input held, as the account read does:
   `wait_for_writer()` and `writer_replied()` in `account.c`; the descriptor field is now
   `writer_wait_id` (was `account_read_id`). `finish_account_deletion()` tells the session
@@ -2110,3 +2116,48 @@ Verification for this round, on the final head:
 - The save-claim MariaDB leg (disposable server) and the coin journeys
   (`test_area_coin_pickup.py`, `test_flatfile_auction_coin_put_journey.py`).
 - `make test-all`: 702 of 702 (653 s). `make test-db`: 35 of 35 (191 s).
+
+### Review round 1 (MR !4)
+
+The review of `4611514ce` (tag `persistence/phase-2-step-8-review-0`) found seven defects. Each
+is fixed in its own commit on `fix/7-persistence-phase-2-step-8`, with a regression test that
+fails without it. The fixed head is tagged `persistence/phase-2-step-8-review-1`.
+
+| Finding | Fix | Commit |
+|---|---|---|
+| 1. High: the pid allocator started past the highest pid among the `player_data` rows left, so after a restart a new character could take a deleted character's pid and inherit its pid-keyed rows (opening baselines, currency ledger, item ownership). Reward grant ids had the same flaw. | Both allocators also start past their table's AUTO_INCREMENT (`sql_next_auto_increment()`), which InnoDB keeps past deleted rows. The MariaDB deletion journey creates a character after deleting one and restarting. | `7d895f6e0` |
+| 2. High: none of the three character deletions (account menu, web client, web admin) checked that the character had left the game, so a linkdead character could be deleted and play on unsaved, its artifacts released and its name free. | Each refuses a character in the game (linkdead too) or being loaded to enter it, before anything is queued. The deletion runtime harness and the MariaDB deletion journey (a linkdead character) check it. | `c23ab95a5` |
+| 3. Medium: offline loads named the character only by name, so the load worker never held them behind its queued saves, and the artifact expiry, `arti swap`, `arti poof` and `arti` files give saved a copy older than the terminal save. | An offline load carries the pid from the name index, so it waits like a login; a pid load from a session still names its account, an offline one none. The callbacks that save the copy back also give up while another load of the character is pending. | `6c9d610c4` |
+| 4. Medium: a refused account deletion had already forgotten its characters' guild memberships, ships, revision and item ownership state, so the next guild save dropped them. | `remove_deleted_account_characters()` takes them out of the game before the job; `forget_deleted_account_characters()` runs only once it committed. | `1e12e2108` |
+| 5. Medium-low: a guild save queued while a deletion or rename ran rewrote `guild_members` from memory that still held the old member, and landed after the job. | The guild is saved again once memory lets go of the member or renames it, so that save lands last. | `8322d0453` |
+| 6. Medium-low: an artifact move queued during a guild feed stored the old timer behind the feed, so later feeds were refused as stale until another store. | The publication takes the fed timer only if memory still holds the one the feed captured, and queues the row again either way; it no longer writes the captured soul back over memory. | `7d836cd45` |
+| 7. Low: two creations that passed the name prompt, or a creation during a queued rename to that name, stored two characters with one name, and the later one took over the other's account mapping. | The end of creation checks the name again; a rename holds its new name in the index from the moment it is queued and releases it if refused. With both, the mapping write's fallback only ever meets a deleted character's tombstone, so the suggested defensive change to it was left out. | `25194f948` |
+
+Found while fixing finding 3, fixed in their own commits:
+
+- `94c408502`: the artifact expiry event loaded an owner holding two expired artifacts twice.
+  When both copies were read before either saved, the later save put back the artifact the
+  earlier one had poofed, after its row was cleared. The event starts no load for an owner
+  that has one pending, which replaces its per-artifact set of loads in flight.
+- `4fec76b30`: when the expiry event could not load an owner, it cleared the artifact's row
+  while the artifact stayed on the character, so a zone reset could load a second copy. The
+  row now stays for the next pass. Offline loads that wait for queued saves made this more
+  likely under a writer running behind.
+
+`868408da4` re-anchors the economy writer census after these fixes.
+
+Verification for this round, on the final head:
+
+- `make -C src`, the flat-file build and `make -C src pfile`; `./scripts/format.sh --all
+  --check`; `scripts/validate_economy_accounting.py`.
+- Each new regression test fails on the code before its fix: the deletion journey gave the
+  new character the deleted one's pid (both 1); the deletion runtime harness deleted a
+  character in the game; the flat-file repository harness refused a load by pid alone; the
+  feed publication harness, the name index test (a creation whose name was taken) and the
+  rename harness (the held name), and the web deletion, account deletion, load pipeline and
+  artifact offline-owner contracts fail on the previous code.
+- `make test-all`: 718 of 718 (663 s, with another project's CI loading the machine).
+  `make test-db`: 36 of 36 (359 s).
+- Journeys: the MariaDB deletion journey (a linkdead character refused, a new pid after the
+  restart, the account deletion refused and retried) and the game-loop queries journey
+  (`finger` through an offline load by pid with no account).
