@@ -46,6 +46,7 @@
 #include "persistence/persistence_observability.h"
 #include "redis/redis_world_runtime.h"
 #include "world/world_recovery_pipeline.h"
+#include "world/epic_bonus.h"
 #include "telemetry/telemetry_runtime.h"
 #include <new>
 #include <type_traits>
@@ -1358,6 +1359,7 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 				ch->in_room = NOWHERE;
 				char_to_room(ch, save_room, FALSE);
 				player_load_pets_place(ch);
+				epic_bonus_hydrate(ch);
 
 				// stash fighting info for later restoration
 				ch->specials.copyover_fighting_type = desc_entry.fighting_type;

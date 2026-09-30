@@ -73,6 +73,7 @@
 #include "world/vnum.obj.h"
 #include "world/vnum.room.h"
 #include "world/handler.h"
+#include "world/epic_bonus.h"
 #include "net/ws_handlers.h"
 #include "core/safe_format.h"
 
@@ -1847,6 +1848,7 @@ void enter_game(P_desc d)
 #endif
 	sql_connectIP(ch);
 	sql_world_quest_history_load(ch);
+	epic_bonus_hydrate(ch);
 	displayShutdownMsg(ch);
 
 	/* initialize infobar */

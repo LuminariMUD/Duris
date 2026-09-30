@@ -106,6 +106,7 @@ bool player_load_pipeline_wait(player_load_request, player_load_result *, uint64
 bool player_load_pipeline_execute_sync(player_load_request, player_load_result *) { std::abort(); }
 bool player_load_materialize(P_char, const player_load_result &) { std::abort(); }
 void player_load_pets_place(P_char) { std::abort(); }
+void epic_bonus_hydrate(P_char) { std::abort(); }
 void *_mm_get(mm_ds *, const char *, int) { std::abort(); }
 unsigned mm_find_best_chunk(int, int, int) { std::abort(); }
 mm_ds *mm_create(const char *, size_t, size_t, unsigned) { std::abort(); }

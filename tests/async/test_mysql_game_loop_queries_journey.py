@@ -26,7 +26,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 # What the god runs in the game, and a line of each answer: the answer comes on a later
 # pulse when the command reads the database. The next entry summons the divine reward
-# granted here, and REENTRY_COMMANDS revoke it.
+# granted here and reads back the epic bonus chosen here, and REENTRY_COMMANDS show the
+# bonus and revoke the reward.
 COMMANDS = (
     ('finger ' + journey.CHARACTER, 'PID:'),
     ('fraglist', 'Lowest Fraggers'),
@@ -81,6 +82,7 @@ COMMANDS = (
     ('artifacts reset syncdb', 'Cleared 0, updated 0 artifact ownerships'),
 )
 REENTRY_COMMANDS = (
+    ('epic bonus', 'benefiting from the Experience Bonus'),
     ('divineclaim list', 'Copies'),
     ('divineclaim remove 1', 'Revoked 1 divine account reward'),
 )

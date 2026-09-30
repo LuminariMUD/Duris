@@ -38,7 +38,6 @@
 #include "flatfile/flatfile_locker_repository.h"
 #include "flatfile/flatfile_recipe_repository.h"
 #include "flatfile/flatfile_spellbook_repository.h"
-#include "world/epic_bonus.h"
 #include "world/world_singletons.h"
 #include "core/mm.h"
 #include "classes/necromancy.h"
@@ -235,11 +234,6 @@ bool sql_load_player_status(P_char ch, int pid)
 	return false;
 }
 
-bool sql_load_player_epic_bonus(P_char ch)
-{
-	(void)ch;
-	return false;
-}
 bool sql_load_player_skills(P_char ch)
 {
 	return false;
@@ -4830,11 +4824,6 @@ bool sql_load_player_items(P_char ch)
 	return true;
 }
 
-bool sql_load_player_epic_bonus(P_char ch)
-{
-	return epic_bonus_hydrate(ch);
-}
-
 P_char sql_load_player(const char *name)
 {
 	if (!name || !DB)
@@ -4873,11 +4862,6 @@ P_char sql_load_player(const char *name)
 		free(ch->only.pc);
 		free(ch);
 		return NULL;
-	}
-
-	if (!sql_load_player_epic_bonus(ch))
-	{
-		logit(LOG_DEBUG, "sql_load_player: component=epic_bonus outcome=unavailable");
 	}
 
 	if (!sql_load_player_skills(ch))
