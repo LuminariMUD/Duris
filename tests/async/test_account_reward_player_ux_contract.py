@@ -62,8 +62,7 @@ assert "UPDATE account_bound_reward_summons" not in dismiss_slice
 # Login chooses only the newest successfully summoned active grant for this PID,
 # falling back to the first active list entry when no history exists.
 assert "login_reward" in source
-assert "s.last_summoned_at DESC" in source
-assert "LIMIT 1" in source
+assert "summon->second.last_summoned_at > selected_at" in source
 assert "grants.front()" in source
 assert "summon_one(ch,selected,true)" in source or "summon_one(ch, selected, true)" in source
 

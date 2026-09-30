@@ -25,15 +25,23 @@ import test_flatfile_combat_journey as journey
 ROOT = Path(__file__).resolve().parents[2]
 
 # What the god runs in the game, and a line of each answer: the answer comes on a later
-# pulse when the command reads the database.
+# pulse when the command reads the database. The next entry summons the divine reward
+# granted here, and REENTRY_COMMANDS revoke it.
 COMMANDS = (
     ('finger ' + journey.CHARACTER, 'PID:'),
+    ('load obj 677', 'Pos: standing >'),
+    ('divineclaim mace ' + journey.ACCOUNT + ' days 1', 'Created divine reward #1'),
+    ('divineclaim list ' + journey.ACCOUNT, 'Active Divine Account Rewards'),
+)
+REENTRY_COMMANDS = (
+    ('divineclaim list', 'Copies'),
+    ('divineclaim remove 1', 'Revoked 1 divine account reward'),
 )
 
 # The functions this session still reaches with a query on the game loop.
 NOT_CONVERTED = {
     # login-time reads
-    'query_grants', 'check_frag_position', 'player_death_restitution_locker_notice',
+    'check_frag_position', 'player_death_restitution_locker_notice',
     # periodic artifact events
     'event_artifact_check_poof_sql', 'event_artifact_wars_sql',
     'event_artifact_check_bind_sql',
@@ -41,6 +49,21 @@ NOT_CONVERTED = {
     'sql_try_get_player_pid', 'sql_begin_transaction', 'sql_commit',
     'sql_rollback', 'sql_run_query', 'sql_run_multi_query',
 }
+
+
+def enter(client):
+    client.send('1')
+    client.expect(journey.CHARACTER, timeout=15)
+    client.send('1')
+    client.expect('Play as', timeout=15)
+    client.send('y')
+    client.expect('The Regression Arena', timeout=30)
+
+
+def run_commands(client, commands):
+    for command, answer in commands:
+        client.send(command)
+        client.expect(answer, timeout=30)
 
 
 def run(server):
@@ -124,15 +147,13 @@ def run(server):
             client.expect('Which character do you want to', timeout=15)
             client.send('0')
             client.expect('Please select an option', timeout=15)
-            client.send('1')
-            client.expect(journey.CHARACTER, timeout=15)
-            client.send('1')
-            client.expect('Play as', timeout=15)
-            client.send('y')
-            client.expect('The Regression Arena', timeout=30)
-            for command, answer in COMMANDS:
-                client.send(command)
-                client.expect(answer, timeout=30)
+            enter(client)
+            run_commands(client, COMMANDS)
+            client.send('quit')
+            client.expect('Please select an option', timeout=60)
+            enter(client)
+            client.expect('A divine account reward begins to materialize', timeout=30)
+            run_commands(client, REENTRY_COMMANDS)
             client.send('quit')
             client.expect('Please select an option', timeout=60)
             client.send('0')
@@ -154,6 +175,13 @@ def run(server):
                 process.kill()
                 process.wait()
             output.close()
+
+        # Shutdown drained the writer: the revoked grant and its summon are gone.
+        for table in ('account_bound_rewards', 'account_bound_reward_summons'):
+            left = subprocess.run(mysql + [database], input='SELECT COUNT(*) FROM ' + table,
+                                  text=True, env=environment, check=True,
+                                  capture_output=True).stdout.strip()
+            assert left == '0', f'{table} still holds {left} rows'
 
         logs = output_path.read_text(errors='replace') + '\n'.join(
             path.read_text(errors='replace') for path in (runtime / 'logs/log').glob('*')

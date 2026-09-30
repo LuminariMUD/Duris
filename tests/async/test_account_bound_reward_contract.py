@@ -54,7 +54,8 @@ assert "verify_account_bound_rewards.sh" in runner
 assert "CMD_N(CMD_DIVINECLAIM, STAT_DEAD + POS_PRONE, do_divineclaim, 0, TRUE);" in interp_c
 
 assert "mysql_real_escape_string" in reward
-assert "canonical_account" in reward
+# Staff name accounts by any case; the stored name is read on the writer.
+assert "with_account" in reward and "LOWER(account_name)=LOWER(" in reward
 assert "insert_exact_grant" in reward
 assert "assign_legacy_grant" in reward
 assert "account_reward_snapshot_serialize" in reward

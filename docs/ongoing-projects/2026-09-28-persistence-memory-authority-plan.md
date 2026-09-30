@@ -1647,6 +1647,25 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
 - The game-loop queries journey promotes its character to a god between sessions (after
   the camp's log row lands, so the queued quit save cannot undo it) and runs `finger`.
 
+#### Account-bound rewards (done)
+
+- Every login ran the divine reward queries (`query_grants()`, the expiry purge, the login
+  summon's choice, the cooldown), and `divineclaim` ran them and its writes in transactions
+  on the game loop. Only the game writes these tables (the pwipe policy runs at shutdown),
+  so memory holds them now: `account_rewards_load()` reads every grant and summon at boot
+  (`initialize_mysql()`), and every change is made in memory at once and queued on the
+  writer. New grants take their id from memory (`record_grant()`). A revocation, whether
+  expiry, staff removal or a dismissed or duplicate copy, queues one writer job that retires
+  the saved copies' custody and rows (`clear_saved_grant()` now returns that work,
+  `revoke_grants()` queues it), then removes the live copies at once. The staff account
+  lookup (`with_account()`) reads the account's stored name on the writer and continues in
+  its callback, since accounts are not in memory.
+- The "records are temporarily unavailable" and "status unavailable" branches went with the
+  queries they reported on.
+- Tests: the game-loop queries journey's god grants the starter mace to the account, lists
+  it, enters again so the login summons it, lists and revokes it, and after shutdown finds
+  both tables empty; the six reward source contracts follow the memory version.
+
 ### Review round 1 (MR !3)
 
 The review of `c3ffc4b8a` (tag `persistence/phase-2-review-0`) found five defects. Each is fixed
