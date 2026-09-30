@@ -58,8 +58,10 @@ list_completion = auction[
     auction.rindex("void auction_list_completed"):
     auction.rindex("void auction_bid_completed")
 ]
-assert list_completion.index("if (!committed)") < list_completion.index("obj_from_char")
-assert list_completion.index("if (!committed)") < list_completion.index("extract_obj")
+# The listed items leave the inventory at submit; the committed completion extracts them.
+assert "obj_from_char" not in list_completion and "extract_obj" not in list_completion
+settle = auction_transaction[auction_transaction.index("bool publish(std::unordered_map"):]
+assert settle.index("const bool committed") < settle.index("extract_obj(object)")
 assert "critical_apply_outcome::applied" in auction_transaction
 assert "auction_transaction_publish_outbox" in auction_transaction
 publisher = auction[

@@ -60,6 +60,11 @@ bool currency_transaction_submit_wallet_value(P_char, int64_t value, currency_re
     return true;
 }
 void currency_transaction_save_first(P_char) { order.push_back("save"); }
+// Where the listed item is: in the seller's inventory, held by the auction, or gone.
+static std::string item_place = "inventory";
+void obj_from_char(P_obj) { item_place = "held"; order.push_back("item:held"); }
+void obj_to_char(P_obj, P_char) { item_place = "inventory"; order.push_back("item:back"); }
+void extract_obj(P_obj, int = 0) { item_place = "gone"; order.push_back("item:gone"); }
 critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
     queued = command;
@@ -68,6 +73,7 @@ critical_submit_result critical_command_coordinator_submit(critical_command comm
 }
 ''' + declarations + function(source, "std::string operation_key(") + \
     function(source, "bool publish(std::unordered_map<std::string, pending_auction>::iterator") + \
+    function(source, "P_obj carried_item(P_char character, uint64_t item_uid)") + \
     function(source, "bool submit(P_char character, const auction_command_payload &payload,") + r'''
 
 static auction_command_payload request(auction_action action)
@@ -113,6 +119,9 @@ int main()
     pc_only_data pc = {};
     ch.only.pc = &pc;
     pc.pid = 42;
+    obj_data listed = {};
+    listed.obj_uid = 200;
+    ch.carrying = &listed;
 
     // A bid leaves the wallet before the command, and the player's save goes first.
     wallet = 6000;
@@ -142,23 +151,33 @@ int main()
     coordinator_result = critical_submit_result::unavailable;
     assert(!submit(&ch, list, nullptr, critical_source_site::command,
                    critical_deadline_class::interactive));
-    assert(wallet == 10000 && pending.empty());
-    assert((order == std::vector<std::string>{"wallet:-1020", "save", "command",
-                                              "wallet:1020"}));
+    assert(wallet == 10000 && pending.empty() && item_place == "inventory");
+    assert((order == std::vector<std::string>{"wallet:-1020", "item:held", "save", "command",
+                                              "item:back", "wallet:1020"}));
     order.clear();
     coordinator_result = critical_submit_result::accepted;
 
-    // A refused listing gives the whole fee back; a committed one keeps it.
+    // The listed item leaves the inventory before the seller's save, so no save can
+    // claim it back from the auction. A refused listing gives item and fee back; a
+    // committed one extracts the item and keeps the fee.
     assert(submit(&ch, list, nullptr, critical_source_site::command,
                   critical_deadline_class::interactive));
+    assert(item_place == "held");
     complete(&ch, false, 0);
-    assert(wallet == 10000);
+    assert(wallet == 10000 && item_place == "inventory");
     order.clear();
     assert(submit(&ch, list, nullptr, critical_source_site::command,
                   critical_deadline_class::interactive));
     complete(&ch, true, -1020);
-    assert(wallet == 8980 && (order == std::vector<std::string>{"wallet:-1020", "save", "command"}));
+    assert(wallet == 8980 && item_place == "gone");
+    assert((order == std::vector<std::string>{"wallet:-1020", "item:held", "save", "command",
+                                              "item:gone"}));
     order.clear();
+    // A listing of an item the seller no longer carries is refused before anything moves.
+    ch.carrying = nullptr;
+    assert(!submit(&ch, list, nullptr, critical_source_site::command,
+                   critical_deadline_class::interactive));
+    assert(wallet == 8980 && order.empty() && pending.empty());
 
     // A money claim takes nothing at submit and brings its money at completion.
     auction_command_payload claim = request(auction_action::claim_money);

@@ -114,14 +114,6 @@ bool parse_auction_platinum(const char *text, int64_t *value)
 	return true;
 }
 
-P_obj find_live_auction_item(uint64_t item_uid)
-{
-	for (P_obj object = object_list; object; object = object->next)
-		if (object->obj_uid == item_uid)
-			return object;
-	return nullptr;
-}
-
 bool text_equal_folded(const std::string &left, const char *right)
 {
 	if (!right || left.size() != strlen(right))
@@ -175,21 +167,7 @@ void flat_list_completed(P_char ch, bool committed, const auction_command_result
 			     ch);
 		return;
 	}
-	for (size_t index = 0; index < payload.item_count; ++index)
-	{
-		P_obj object = find_live_auction_item(payload.items[index].item_uid);
-		if (!object || !OBJ_CARRIED_BY(object, ch))
-		{
-			persistence_alert(
-				AVATAR, "auction", "player", "unknown", "list_publish",
-				"stale_live_topology", "auction_id=%u item_uid=%llu",
-				result.auction_id,
-				static_cast<unsigned long long>(payload.items[index].item_uid));
-			continue;
-		}
-		obj_from_char(object);
-		extract_obj(object);
-	}
+	// The auction took the listed items out of the inventory at submit.
 	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS |
 							  PLAYER_COMPONENT_EQUIPMENT |
 							  PLAYER_COMPONENT_INVENTORY);
@@ -1549,14 +1527,6 @@ bool auction_fill_actor(P_char ch, auction_command_payload *payload)
 	return true;
 }
 
-P_obj auction_find_live_item(uint64_t item_uid)
-{
-	for (P_obj object = object_list; object; object = object->next)
-		if (object->obj_uid == item_uid)
-			return object;
-	return nullptr;
-}
-
 void auction_list_completed(P_char ch, bool committed, const auction_command_result &result,
 			    unsigned int, const auction_command_payload &payload)
 {
@@ -1568,21 +1538,7 @@ void auction_list_completed(P_char ch, bool committed, const auction_command_res
 			     ch);
 		return;
 	}
-	for (size_t index = 0; index < payload.item_count; ++index)
-	{
-		P_obj object = auction_find_live_item(payload.items[index].item_uid);
-		if (!object || !OBJ_CARRIED_BY(object, ch))
-		{
-			persistence_alert(
-				AVATAR, "auction", "player", "unknown", "list_publish",
-				"stale_live_topology", "auction_id=%u item_uid=%llu",
-				result.auction_id,
-				static_cast<unsigned long long>(payload.items[index].item_uid));
-			continue;
-		}
-		obj_from_char(object);
-		extract_obj(object);
-	}
+	// The auction took the listed items out of the inventory at submit.
 	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS |
 							  PLAYER_COMPONENT_EQUIPMENT |
 							  PLAYER_COMPONENT_INVENTORY);

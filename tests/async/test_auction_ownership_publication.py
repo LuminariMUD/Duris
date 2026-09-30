@@ -38,6 +38,8 @@ harness = r'''
 bool currency_transaction_submit_wallet_value(P_char, int64_t, currency_reason_type, int64_t,
     critical_source_site, critical_deadline_class, currency_completion_fn, const void *,
     size_t) { return true; }
+void obj_to_char(P_obj, P_char) {}
+void extract_obj(P_obj, int = 0) {}
 ''' + declarations + publication + r'''
 
 static uint64_t revision(item_owner_identity owner) {

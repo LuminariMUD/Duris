@@ -113,10 +113,17 @@ class AuctionTransactionalCutoverTests(unittest.TestCase):
             self.assertIn("auction_transaction_submit", body)
             self.assertNotIn("SUB_MONEY", body)
             self.assertNotIn("sql_begin_transaction", body)
+        # The listed items leave the inventory at submit and are extracted when the
+        # listing commits (auction_transaction.c); the callback only reports it.
         offer_callback = section(source, "void auction_list_completed(",
                                  "void auction_bid_completed(")
-        self.assertLess(offer_callback.index("if (!committed)"),
-                        offer_callback.index("obj_from_char"))
+        self.assertNotIn("obj_from_char", offer_callback)
+        transaction = (SRC / "auction_transaction.c").read_text()
+        submit = transaction[transaction.index("bool submit(P_char character"):]
+        self.assertLess(submit.index("obj_from_char(object)"),
+                        submit.index("currency_transaction_save_first(character)"))
+        self.assertLess(submit.index("currency_transaction_save_first(character)"),
+                        submit.index("critical_command_coordinator_submit"))
         self.assertNotIn("ws_broadcast_auction_new", offer_callback)
         publication = section(source, "bool auction_publish_committed_event(",
                               "// syntax: auction offer")
