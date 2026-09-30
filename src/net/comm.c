@@ -93,6 +93,7 @@
 #include "account/creation_availability_config.h"
 #include "item/material_rarity.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "sql/sql_player.h"
 #include "net/telnet.h"
 #include "world/timers.h"
@@ -137,6 +138,12 @@
 #include "world/epic_transaction.h"
 #include "world/vnum.mob.h"
 #include "player/player_save_pipeline.h"
+#include "persistence/persistence_observability.h"
+#include "sql/sql_pool.h"
+
+#include <algorithm>
+#include <set>
+#include "player/player_save_worker.h"
 #include "player/player_load_pipeline.h"
 #include "player/player_death_restitution_adapter.h"
 #if !defined(__NO_TESTS__) || defined(TEST_REAL_PERSISTENCE)
@@ -209,6 +216,7 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 		if (result.job_id == maintenance_job_id::level_cap &&
 		    result.outcome == maintenance_outcome::complete && result.rows > 0)
 		{
+			sql_level_cap_reload();
 			redis_invalidate_fraglist();
 			if (result.value_count == 3 && result.values[0] > 0 &&
 			    result.values[0] <= INT32_MAX)
@@ -267,8 +275,6 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 static void critical_gameplay_handle_completions(const critical_completion *completions,
 						 size_t count)
 {
-	epic_transaction_handle_completions(completions, count);
-	currency_transaction_handle_completions(completions, count);
 	locker_identify_pulse();
 	corpse_lifecycle_transaction_handle_completions(completions, count);
 	item_movement_transaction_handle_completions(completions, count);
@@ -381,6 +387,79 @@ int no_ferries = 0;
 
 // copyover support
 int copyover_boot = 0;
+// The writer's shutdown bound: game_loop() starts it, run_the_game() enforces it.
+constexpr uint64_t SHUTDOWN_WRITER_SECONDS = 30;
+static uint64_t shutdown_writer_deadline_usec = 0;
+
+// What is left of the writer's shutdown bound, at most cap_msec: once it has passed, a
+// drain only queues and does not wait for a writer that is not writing.
+static int shutdown_writer_remaining_msec(int cap_msec)
+{
+	const uint64_t now = persistence_observability_now_usec();
+	if (!shutdown_writer_deadline_usec || now >= shutdown_writer_deadline_usec)
+		return 0;
+	return static_cast<int>(
+		std::min<uint64_t>(cap_msec, (shutdown_writer_deadline_usec - now) / 1000));
+}
+
+// Names every save shutdown could not write, once per owner, with its kind in the
+// domain (persistence_writer/player, .../locker, ...). A public locker save is also
+// logged by the locker's name and a private chest by its locker and chest; log rows
+// are counted instead.
+static void report_unwritten_saves(const std::vector<persistence_job_owner> &owners)
+{
+	size_t log_rows = 0, commands = 0, bank_deltas = 0;
+	std::set<persistence_job_owner> named;
+	for (const persistence_job_owner &owner : owners)
+	{
+		if (owner.first == persistence_job_kind::log)
+		{
+			++log_rows;
+			continue;
+		}
+		if (owner.first == persistence_job_kind::critical)
+		{
+			++commands;
+			continue;
+		}
+		if (owner.first == persistence_job_kind::bank)
+		{
+			++bank_deltas;
+			continue;
+		}
+		// A save being written and a newer one queued behind it are one owner.
+		if (!named.insert(owner).second)
+			continue;
+		const std::string domain =
+			std::string("persistence_writer/") + persistence_job_kind_name(owner.first);
+		const bool chest = owner.first == persistence_job_kind::locker &&
+				   (owner.second >> 32);
+		if (chest)
+			persistence_alert(AVATAR, domain.c_str(), "shutdown", "none", "none",
+					  "not_written", "locker_id=%llu chest_id=%llu",
+					  static_cast<unsigned long long>(owner.second &
+									  0xffffffffULL),
+					  static_cast<unsigned long long>(owner.second >> 32));
+		else
+			persistence_alert(AVATAR, domain.c_str(), "shutdown", "none", "none",
+					  "not_written", "owner=%llu",
+					  static_cast<unsigned long long>(owner.second));
+		if (owner.first == persistence_job_kind::locker && !chest)
+			if (const char *name = locker_async_job_name(owner.second))
+				logit(LOG_FILE, "persistence_writer: locker %s was not written",
+				      name);
+	}
+	if (log_rows)
+		persistence_alert(AVATAR, "persistence_writer/log", "shutdown", "none", "none",
+				  "not_written", "rows=%zu", log_rows);
+	if (commands)
+		persistence_alert(AVATAR, "persistence_writer/critical", "shutdown", "none", "none",
+				  "not_written", "commands=%zu", commands);
+	if (bank_deltas)
+		persistence_alert(AVATAR, "persistence_writer/bank", "shutdown", "none", "none",
+				  "not_written", "deltas=%zu", bank_deltas);
+}
+
 static int recovered_mother_desc = -1;
 static int recovered_mother_desc_ssl = -1;
 static int recovered_ws_desc = -1;
@@ -905,7 +984,8 @@ int run_the_game(int port, int sslport)
 	 * and turning a controlled configuration failure into SIGABRT. */
 	if (!player_load_pipeline_init())
 		logit(LOG_STATUS,
-		      "Player load pipeline unavailable; existing-character login will use synchronous fallback.");
+		      "Player load pipeline unavailable; existing characters cannot log in.");
+	player_load_pipeline_set_hold(player_save_pipeline_load_held);
 	/* Same rule for the mail worker: joinable thread only after the fatal loads. */
 	if (!account_recovery_init())
 		logit(LOG_STATUS,
@@ -921,13 +1001,12 @@ int run_the_game(int port, int sslport)
 	logit(LOG_STATUS, "Entering game loop.");
 	if (!mini_mode)
 		locker_async_init();
-	const char *journal_directory = getenv("PLAYER_SAVE_JOURNAL_DIR");
-	if (!player_save_pipeline_init(journal_directory))
+	// Only a journal left behind by an older server is read, once.
+	if (!player_save_pipeline_init(getenv("PLAYER_SAVE_JOURNAL_DIR")))
 	{
-		logit(LOG_STATUS,
-		      "Player save pipeline unavailable; nonterminal saves fail closed.");
+		logit(LOG_STATUS, "Persistence writer unavailable; saves are not written.");
 		persistence_alert(AVATAR, "player_save", "pipeline", "none", "none", "start_failed",
-				  "check PLAYER_SAVE_JOURNAL_DIR");
+				  "writer thread did not start");
 	}
 	const char *critical_journal_directory = getenv("CRITICAL_COMMAND_JOURNAL_DIR");
 	critical_apply_fn critical_apply = critical_command_repository_apply_from_pool;
@@ -945,7 +1024,6 @@ int run_the_game(int port, int sslport)
 #endif
 		!critical_command_coordinator_init(
 			critical_journal_directory, critical_apply, NULL,
-			CRITICAL_COORDINATOR_DEFAULT_WORKERS,
 			player_death_restitution_runtime_restore_replayed_command, NULL,
 			critical_extension_validator))
 	{
@@ -1025,8 +1103,16 @@ int run_the_game(int port, int sslport)
 	critical_outbox_shutdown();
 	if (!_pwipe)
 	{
+		// The last lockers are queued here. Nothing queues a write after this: the
+		// writer gets what is left of its 30 s, a query still running then is cut off,
+		// and every save it could not write is named.
+		if (!shutdown_writer_deadline_usec)
+			shutdown_writer_deadline_usec = persistence_observability_now_usec() +
+							SHUTDOWN_WRITER_SECONDS * 1000000ULL;
+		locker_async_drain(shutdown_writer_remaining_msec(2000));
+		report_unwritten_saves(player_save_pipeline_finish(shutdown_writer_deadline_usec,
+								   sql_pool_interrupt_borrowed));
 		locker_async_shutdown();
-		player_save_pipeline_shutdown();
 	}
 
 	/* Don't need this anymore, as dropped artis are handled in real time on the DB.
@@ -1222,8 +1308,7 @@ static int get_playing_cmd_from_q(P_char character, struct txt_q *queue, char *d
 			bulk_get_player_busy(character) ||
 			collector_transaction_player_busy(character) ||
 			collector_service_player_busy(character),
-		currency_transaction_player_busy(character) ||
-			collector_transaction_player_busy(character) ||
+		collector_transaction_player_busy(character) ||
 			collector_service_player_busy(character));
 }
 
@@ -2026,7 +2111,6 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 					"integrity_failure", "operation metadata redacted");
 		player_save_pipeline_pulse();
 		persistence_pulse_character_saves();
-		death_extract_retry_pulse();
 		player_load_result load_completions[32] = {};
 		const size_t load_completion_count =
 			player_load_pipeline_pulse(load_completions, 32);
@@ -2064,6 +2148,9 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 				     latency_trace_elapsed_us(gmcp_begin_us, loop_monotonic_us()),
 				     loop_tick);
 	}
+	sql_async_pulse();
+	if (!(pulse % (WAIT_SEC * 60)))
+		sql_mud_info_refresh();
 	maintenance_result maintenance_results[MAINTENANCE_COMPLETION_MAX] = {};
 	const size_t maintenance_count = maintenance_scheduler_pulse(
 		ne_event_tick, maintenance_results, MAINTENANCE_COMPLETION_MAX);
@@ -2476,6 +2563,7 @@ void game_loop(int port, int sslport)
 	long last_desc_per_hour_reset = time(0);
 	/* Main loop */
 resume_game_loop:
+	sql_game_loop_running(true);
 	while (!shutdownflag)
 	{
 		const uint64_t loop_time_begin_us = loop_monotonic_us();
@@ -2513,6 +2601,7 @@ resume_game_loop:
 		run_combat_phase(context);
 		run_pulse_reset_phase(context);
 	}
+	sql_game_loop_running(false);
 
 	if (_copyover)
 	{
@@ -2530,10 +2619,11 @@ resume_game_loop:
 		 * realms still marked dirty), so the eventual kingdom_shutdown()
 		 * after a failed copyover re-flushes nothing. */
 		kingdom_flush_persistent_state();
+		// Copyover goes once the writer has drained; otherwise it is called off.
 		if (!copyover_save(s, S, WS))
 		{
 			persistence_alert(AVATAR, "player_save", "copyover", "none", "none",
-					  "terminal_save_failed", "shutdown_cancelled=1");
+					  "copyover_failed", "copyover_cancelled=1");
 			shutdownflag = 0;
 			_reboot = 0;
 			_copyover = 0;
@@ -2543,102 +2633,36 @@ resume_game_loop:
 		return;
 	}
 
+	// Shutdown always goes (persistence reset step 8). Each drain is bounded and a
+	// failure is reported, never a reason to keep running. The writer gets 30 s for
+	// what is queued; run_the_game() names whatever it could not write once nothing
+	// else can queue a write.
 	if (!_pwipe && item_creation_grant_batches_pending())
-	{
 		persistence_alert(AVATAR, "starter_grant", "shutdown", "none", "none",
-				  "kit_pending",
-				  "shutdown_cancelled=1 retry_after_kit_completion=1");
-		shutdownflag = 0;
-		_reboot = 0;
-		_autoboot = 0;
-		goto resume_game_loop;
-	}
-
+				  "kit_pending", "shutdown_cancelled=0");
 	critical_command_coordinator_quiesce();
 	critical_outbox_quiesce();
 	if (!_pwipe && !critical_command_coordinator_drain(3000))
-	{
-		critical_command_coordinator_resume();
-		critical_outbox_resume();
 		persistence_alert(AVATAR, "critical_command", "shutdown", "none", "none",
-				  "pipeline_drain_failed", "shutdown_cancelled=1");
-		shutdownflag = 0;
-		_reboot = 0;
-		_autoboot = 0;
-		goto resume_game_loop;
-	}
+				  "pipeline_drain_failed", "shutdown_cancelled=0");
 	if (!_pwipe && !critical_outbox_drain(3000))
-	{
-		critical_command_coordinator_resume();
-		critical_outbox_resume();
 		persistence_alert(AVATAR, "critical_outbox", "shutdown", "none", "none",
-				  "pipeline_drain_failed", "shutdown_cancelled=1");
-		shutdownflag = 0;
-		_reboot = 0;
-		_autoboot = 0;
-		goto resume_game_loop;
-	}
-	if (!_pwipe && !persistence_save_all_characters_terminal(RENT_CRASH))
+				  "pipeline_drain_failed", "shutdown_cancelled=0");
+	if (!_pwipe)
 	{
-		critical_command_coordinator_resume();
-		critical_outbox_resume();
-		persistence_alert(AVATAR, "player_save", "shutdown", "none", "none",
-				  "terminal_save_failed", "shutdown_cancelled=1");
-		for (P_desc pending_desc = descriptor_list; pending_desc;
-		     pending_desc = pending_desc->next)
-			if (pending_desc->descriptor > 0 && pending_desc->connected == CON_PLAYING)
-				write_to_descriptor(
-					pending_desc,
-					"\r\nShutdown cancelled because a character save failed.\r\n");
-		shutdownflag = 0;
-		_reboot = 0;
-		_autoboot = 0;
-		goto resume_game_loop;
-	}
-	if (!_pwipe && !player_save_pipeline_drain(3000))
-	{
-		critical_command_coordinator_resume();
-		critical_outbox_resume();
-		player_save_pipeline_resume();
-		persistence_alert(AVATAR, "player_save", "shutdown", "none", "none",
-				  "pipeline_drain_failed", "shutdown_cancelled=1");
-		shutdownflag = 0;
-		_reboot = 0;
-		_autoboot = 0;
-		goto resume_game_loop;
-	}
-	if (!_pwipe && !redis_world_recovery_drain(3000))
-	{
-		critical_command_coordinator_resume();
-		critical_outbox_resume();
-		player_save_pipeline_resume();
-		persistence_alert(AVATAR, "world_recovery", "shutdown", "none", "none",
-				  "pipeline_drain_failed", "shutdown_cancelled=1");
-		shutdownflag = 0;
-		_reboot = 0;
-		_autoboot = 0;
-		goto resume_game_loop;
-	}
-	if (!_pwipe && !save_dirty_shopkeepers(true))
-	{
-		/* Dirty shopkeeper state is authoritative inventory.  Do not extract
-		 * characters or tear down services while a forced save is unresolved. */
-		critical_command_coordinator_resume();
-		critical_outbox_resume();
-		player_save_pipeline_resume();
-		persistence_alert(AVATAR, "shopkeeper_save", "shutdown", "none", "none",
-				  "dirty_save_failed", "shutdown_cancelled=1");
-		shutdownData.eShutdownType = TimedShutdownData::NONE;
-		for (P_desc pending_desc = descriptor_list; pending_desc;
-		     pending_desc = pending_desc->next)
-			if (pending_desc->descriptor > 0 && pending_desc->connected == CON_PLAYING)
-				write_to_descriptor(
-					pending_desc,
-					"\r\nShutdown cancelled because shopkeeper inventory could not be saved.\r\n");
-		shutdownflag = 0;
-		_reboot = 0;
-		_autoboot = 0;
-		goto resume_game_loop;
+		persistence_save_all_characters_terminal(RENT_CRASH);
+		// Queue every dirty locker's and shopkeeper's save now, so this drain covers
+		// them too.
+		locker_async_drain(0);
+		if (!save_dirty_shopkeepers(true))
+			persistence_alert(AVATAR, "shopkeeper_save", "shutdown", "none", "none",
+					  "dirty_save_failed", "shutdown_cancelled=0");
+		shutdown_writer_deadline_usec =
+			persistence_observability_now_usec() + SHUTDOWN_WRITER_SECONDS * 1000000ULL;
+		player_save_pipeline_drain(SHUTDOWN_WRITER_SECONDS * 1000ULL);
+		if (!redis_world_recovery_drain(3000))
+			persistence_alert(AVATAR, "world_recovery", "shutdown", "none", "none",
+					  "pipeline_drain_failed", "shutdown_cancelled=0");
 	}
 
 	PROFILES(SAVE);
@@ -2650,7 +2674,7 @@ resume_game_loop:
 	if (!_pwipe)
 	{
 		flush_pending_ship_saves();
-		locker_async_drain(2000);
+		locker_async_drain(shutdown_writer_remaining_msec(2000));
 
 		if (no_ferries == 0)
 		{
@@ -3376,14 +3400,7 @@ void close_socket(struct descriptor_data *d)
 					 GET_NAME(GET_PLYR(d->character)), d->host, Gbuf1);
 				sql_log(d->character, CONNECTLOG, "Lost Link");
 			}
-			if (!persistence_save_character_terminal(d->character, RENT_CRASH))
-			{
-				persistence_alert(AVATAR, "player_save", "link_loss", "none",
-						  "none", "terminal_save_failed",
-						  "retry_scheduled=1");
-				persistence_schedule_character_save(d->character, RENT_CRASH, 4,
-								    "link-loss-retry");
-			}
+			persistence_save_character_terminal(d->character, RENT_CRASH);
 			d->character->desc = 0;
 		}
 		else
@@ -4206,7 +4223,6 @@ int process_output(P_desc t)
 	// Pager and string-editor prompts remain available while unrelated work is in flight.
 	bool defer_prompt = t->prompt_mode && realChar && !t->showstr_count && !t->str &&
 			    (item_movement_transaction_player_busy(realChar) ||
-			     currency_transaction_player_busy(realChar) ||
 			     collector_transaction_player_busy(realChar) ||
 			     collector_service_player_busy(realChar));
 	if (defer_prompt)

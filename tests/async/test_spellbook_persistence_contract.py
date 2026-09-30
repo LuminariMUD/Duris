@@ -49,8 +49,11 @@ assert contains(saved_contents, 'sql_load_item_extra_descr_from_table(item_id, o
 saved_restore = last_body(SQL, "void sql_restore_saved_items(", "#define SHIP_SQL_BATCH_SIZE")
 assert contains(saved_restore, 'sql_load_item_extra_descr_from_table(item_id, obj, "saved_item")')
 
-shop_writer = body(SQL, "static int sql_save_shopkeeper_item(", "static bool sql_save_shopkeeper_affects(")
-assert contains(shop_writer, 'sql_save_item_extra_descr(item_id, obj, "shopkeeper_item_extra_descr")')
+# A shopkeeper is saved from its capture on the writer, through the same item rows the
+# player save writes, so its spellbooks keep their bitmaps the same way.
+shop_writer = last_body(SQL, "bool sql_save_shopkeeper(", "shopkeeper_snapshot_repository_apply_from_pool(shop)")
+assert contains(shop_writer, "flatfile_shopkeeper_capture(")
+assert contains(REPOSITORY, '"shopkeeper_item_extra_descr"')
 shop_loader = body(SQL, "static bool sql_restore_shopkeeper_catalog(", "bool sql_restore_shopkeepers(")
 assert contains(shop_loader, 'sql_load_item_extra_descr_from_table(item_id, obj, "shopkeeper_item")')
 
@@ -59,9 +62,11 @@ assert contains(extra_descr_save, "spellbook_bits")
 assert contains(extra_descr_save, "spellbook_emitted")
 assert contains(extra_descr_save, "char query[32768]")
 assert contains(extra_descr_save, "static_cast<size_t>(written) >= sizeof(query)")
-assert contains(LOCKER_ASYNC, "spellbook_bits")
-assert contains(LOCKER_ASYNC, "spellbook_emitted")
-assert contains(LOCKER_ASYNC, "sql_encode_item_extra_descr(source_keyword, source_description")
+# A public locker is saved from its snapshot, like every writer-thread save: the capture
+# merges an item's spellbook markers and the repository encodes the one that remains.
+assert contains(LOCKER_ASYNC, "player_item_snapshot_list_capture(")
+assert "sql_encode_item_extra_descr" not in LOCKER_ASYNC
+assert contains(CAPTURE, "spellbook_index")
 
 assert contains(REPOSITORY, "canonicalize_snapshot_extra_description")
 assert contains(REPOSITORY, 'sql_decode_stored_spellbook("SPELLBOOK"')

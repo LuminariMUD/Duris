@@ -8,22 +8,23 @@
 #include <cstddef>
 #include <cstdint>
 
-constexpr size_t EPIC_PENDING_MAX = 1024;
+// The size callers keep their completion context within.
 constexpr size_t EPIC_PENDING_CONTEXT_MAX_BYTES = 256;
 
+// Epic points live in memory: a submit changes the balance at once and calls its
+// completion before returning (refused with ENOSPC when a purchase needs more than the
+// balance). The save writes the balance; the command only adds an epic ledger row.
 using epic_completion_fn = void (*)(P_char character, bool committed,
 				    const epic_command_result &result, unsigned int error_code,
 				    const uint8_t *context, size_t context_size);
 
 struct epic_transaction_health
 {
-	uint64_t pending;
-	uint64_t retained_offline;
 	uint64_t submitted;
 	uint64_t committed;
 	uint64_t rejected;
+	// Ledger rows the coordinator would not queue.
 	uint64_t submission_failures;
-	uint64_t malformed_completions;
 };
 
 bool epic_transaction_submit(P_char character, int64_t delta, epic_reason_type reason,
@@ -36,10 +37,7 @@ bool epic_transaction_submit_identified(P_char character, const critical_operati
 					critical_deadline_class deadline_class,
 					epic_completion_fn completion, const void *context,
 					size_t context_size);
-void epic_transaction_handle_completions(const critical_completion *completions, size_t count);
-void epic_transaction_player_ready(P_char character);
 epic_transaction_health epic_transaction_health_copy(void);
 void epic_transaction_reset_for_tests(void);
-bool epic_transaction_publish_balance(P_char character, int64_t balance, uint64_t revision);
 
 #endif

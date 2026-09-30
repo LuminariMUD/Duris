@@ -1239,7 +1239,6 @@ struct pc_only_data
 	OutputPreferenceState output_preferences;
 	player_held_pet_state *held_pets; // owned snapshots; never active followers
 	int pid; // replacement for PC's ->nr
-	uint32_t load_degraded_components; // runtime-only admission disposition; never persisted
 
 	char *poofIn;
 	char *poofOut;
@@ -1261,17 +1260,6 @@ struct pc_only_data
 	int spare4;
 	uint64_t bank_revision; /* Transactional shared account-bank domain revision. */
 	uint64_t wallet_revision; /* Transactional carried-wallet domain revision. */
-	bool death_custody_disputed; /* Runtime-only refused corpse handoff. */
-	uint64_t death_retry_corpse_uid; /* Runtime-only event admission fallback. */
-	uint64_t death_retry_due_usec;
-	int death_retry_delay;
-	/* Runtime-only custody-wait clock. Monotonic microseconds at the first
-	 * poll that found a handoff in flight, how many stall alerts that wait
-	 * has already produced, and how many polls it has taken -- the last of
-	 * those is diagnostic only, never a measure of time. */
-	uint64_t death_custody_wait_since_usec;
-	int death_custody_wait_alerts;
-	int death_custody_wait_polls;
 
 	long frags; /* Pkill counter                           */
 	long oldfrags; /* Pkill counter                           */
@@ -1675,6 +1663,7 @@ struct txt_q
 #define PLAYER_LOAD_MODE_NONE 0
 #define PLAYER_LOAD_MODE_ACCOUNT 1
 #define PLAYER_LOAD_MODE_LEGACY 2
+#define PLAYER_LOAD_MODE_ACCOUNT_DELETE 3
 
 #define TOTAL_CON 92
 

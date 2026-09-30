@@ -1274,7 +1274,7 @@ static void kingdom_store_buy(P_char ch, kingdom_realm &realm, P_Guild guild, un
 		}
 	}
 
-	if (item_movement_transaction_player_busy(ch) || currency_transaction_player_busy(ch))
+	if (item_movement_transaction_player_busy(ch))
 	{
 		send_to_char(
 			"You are still settling or receiving something; try again in a moment.\r\n",
@@ -1333,14 +1333,9 @@ static void kingdom_store_buy(P_char ch, kingdom_realm &realm, P_Guild guild, un
 		return;
 	}
 
+	// The payment's completion has already delivered the piece.
 	if (price > 0)
-	{
-		send_to_char_f(ch,
-			       "Your payment of &+W%ld&n platinum is settling; the workshops will "
-			       "deliver the piece shortly.\r\n",
-			       bill.platinum);
 		return;
-	}
 
 	/* A free configured purchase has no currency command to await. It follows
 	 * the same delivery path synchronously, including the material draw and all

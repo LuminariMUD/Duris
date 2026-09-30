@@ -103,6 +103,23 @@ flatfile_player_domain_result flatfile_player_domain_prepare_resurrection_wallet
 	uint64_t expected_wallet_revision, const std::array<int32_t, 4> &expected_wallet,
 	const std::array<int32_t, 4> &replacement_wallet, flatfile_wallet_mutation *mutation,
 	std::string *error);
+// The balances a player save carries, written into the player's domain record.
+struct flatfile_saved_balances
+{
+	std::array<uint64_t, 4> wallet = {};
+	int64_t epics = 0;
+	int64_t frags = 0;
+	int64_t old_frags = 0;
+};
+flatfile_player_domain_result flatfile_player_domain_prepare_saved_balances(
+	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
+	const flatfile_saved_balances &balances, flatfile_authority_operation *operation,
+	std::string *error);
+// A change to one account's bank on one side, added to its record (created when missing).
+flatfile_player_domain_result flatfile_player_domain_prepare_bank_delta(
+	const std::string &root, const flatfile_authority_lock &lock,
+	const std::string &account_name, int8_t racewar, const std::array<int64_t, 4> &delta,
+	flatfile_authority_operation *operation, std::string *error);
 flatfile_player_domain_result flatfile_player_domain_prepare_base_stat(
 	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
 	uint8_t stat_index, bool apply_increment, flatfile_base_stat_mutation *mutation,

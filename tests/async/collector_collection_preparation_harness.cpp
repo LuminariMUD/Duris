@@ -224,6 +224,18 @@ void obj_to_room(P_obj object, int room)
 	world[room].contents = object;
 }
 
+void obj_from_room(P_obj object)
+{
+	assert(object && OBJ_ROOM(object));
+	P_obj *cursor = &world[object->loc.room].contents;
+	while (*cursor && *cursor != object)
+		cursor = &(*cursor)->next_content;
+	assert(*cursor == object);
+	*cursor = object->next_content;
+	object->next_content = nullptr;
+	object->loc_p = LOC_NOWHERE;
+}
+
 void extract_obj(P_obj object, int)
 {
 	assert(object && !object->contains);
@@ -275,8 +287,10 @@ int main()
 	assert(!collector_collection_live_matches(*payload, &live));
 	authority[102].parent_item_uid = 101;
 	assert(collector_collection_live_matches(*payload, &live));
+	// Detaching leaves the item out of the world; the transaction extracts it once the
+	// collection commits.
 	assert(collector_collection_detach_live(live));
-	assert(extracted && root.contains == &child && child.loc.inside == &root &&
+	assert(!extracted && root.contains == &child && child.loc.inside == &root &&
 	       child.next_content == &sibling && sibling.loc.inside == &root &&
 	       !selected.contains && OBJ_NOWHERE(&selected));
 

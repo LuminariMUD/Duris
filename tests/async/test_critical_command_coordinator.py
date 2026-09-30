@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Runtime identity, journal, ordering, fence, retry, replay, and bound contracts."""
+"""Identity, journal, capture order on the writer, fence, replay and bound contracts."""
 
 from _paths import SRC, rel
 import subprocess
@@ -13,11 +13,13 @@ JOURNAL = (SRC / "critical_command_journal.c").read_text()
 COORDINATOR = (SRC / "critical_command_coordinator.c").read_text()
 HEADER = (SRC / "critical_command_coordinator.h").read_text()
 COMPLETION = (SRC / "persistence/critical_command_completion.h").read_text()
+WORKER = (SRC / "player_save_worker.h").read_text()
 PIPELINE = (ROOT / "docs/persistence/CRITICAL_COMMAND_PIPELINE.md").read_text()
 
 
 HARNESS = r'''
 #include "persistence/critical_command_coordinator.h"
+#include "player/player_save_worker.h"
 
 #include <cassert>
 #include <chrono>
@@ -36,17 +38,17 @@ struct apply_state
     std::mutex mutex;
     std::condition_variable changed;
     std::map<unsigned int, unsigned int> attempts;
-    bool a_running = false;
-    bool c_started = false;
-    bool b_started_while_a = false;
-    bool release_a = false;
-    bool gate_running = false;
-    bool release_gate = false;
-    bool late_started = false;
+    // Everything the writer applied, saves and commands, in order.
+    std::vector<std::string> order;
+    bool hold_save = false;
+    bool save_held = false;
     bool hold_all = false;
     bool release_all = false;
     bool already_applied = false;
+    bool uncertain_started = false;
 };
+
+apply_state state;
 
 critical_command make_command(unsigned int tag, std::vector<critical_entity_key> keys)
 {
@@ -64,50 +66,50 @@ critical_command make_command(unsigned int tag, std::vector<critical_entity_key>
 
 critical_apply_result apply(const critical_command &command, void *raw)
 {
-    auto &state = *static_cast<apply_state *>(raw);
+    auto &applied = *static_cast<apply_state *>(raw);
     const unsigned int tag = command.payload[0];
-    std::unique_lock<std::mutex> lock(state.mutex);
-    const unsigned int attempt = ++state.attempts[tag];
-    if (state.hold_all)
-        state.changed.wait(lock, [&] { return state.release_all; });
-    if (tag == 1)
+    std::unique_lock<std::mutex> lock(applied.mutex);
+    const unsigned int attempt = ++applied.attempts[tag];
+    if (applied.hold_all)
+        applied.changed.wait(lock, [&] { return applied.release_all; });
+    applied.order.push_back("c" + std::to_string(tag));
+    applied.changed.notify_all();
+    // Tags 16 and 17 never learn their outcome.
+    if (tag == 16 || tag == 17)
     {
-        state.a_running = true;
-        state.changed.notify_all();
-        state.changed.wait(lock, [&] { return state.release_a; });
-        state.a_running = false;
-        state.changed.notify_all();
-    }
-    else if (tag == 2)
-    {
-        state.b_started_while_a = state.a_running;
-        state.changed.notify_all();
-    }
-    else if (tag == 3)
-    {
-        state.c_started = true;
-        state.changed.notify_all();
-    }
-    else if (tag == 5)
-    {
-        state.gate_running = true;
-        state.changed.notify_all();
-        state.changed.wait(lock, [&] { return state.release_gate; });
-        state.gate_running = false;
-        state.changed.notify_all();
-    }
-    else if (tag == 7)
-    {
-        state.late_started = true;
-        state.changed.notify_all();
-    }
-    if (!state.already_applied && (tag == 16 || tag == 17))
+        applied.uncertain_started = true;
         return {tag == 16 ? critical_apply_outcome::ambiguous_commit :
                 critical_apply_outcome::retryable_failure, 0, 2013};
+    }
     if (tag == 4 && attempt == 1)
         return {critical_apply_outcome::ambiguous_commit, 0, 2013};
-    return {state.already_applied ? critical_apply_outcome::already_applied :
+    return {applied.already_applied ? critical_apply_outcome::already_applied :
             critical_apply_outcome::applied, 1, 0};
+}
+
+player_save_apply_result apply_save(const player_snapshot &snapshot, void *)
+{
+    std::unique_lock<std::mutex> lock(state.mutex);
+    if (state.hold_save)
+    {
+        state.save_held = true;
+        state.changed.notify_all();
+        state.changed.wait(lock, [] { return !state.hold_save; });
+    }
+    state.order.push_back("p" + std::to_string(snapshot.pid));
+    state.changed.notify_all();
+    return {player_save_apply_outcome::applied, snapshot.revision, 0};
+}
+
+player_snapshot save_of(int pid)
+{
+    player_snapshot snapshot = {};
+    snapshot.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
+    snapshot.pid = pid;
+    snapshot.revision = 1;
+    snapshot.components = PLAYER_CHECKPOINT_COMPONENT_ALL;
+    snapshot.encoded_size_bound = 128;
+    return snapshot;
 }
 
 struct replay_state
@@ -131,9 +133,16 @@ template <typename Predicate> void wait_until(Predicate predicate)
     }
 }
 
+void release(bool apply_state::*flag, bool value)
+{
+    std::lock_guard<std::mutex> lock(state.mutex);
+    state.*flag = value;
+    state.changed.notify_all();
+}
+
 int main(int argc, char **argv)
 {
-    assert(argc == 5);
+    assert(argc == 3);
 
     std::set<std::string> identities;
     for (unsigned int index = 0; index < 512; ++index)
@@ -172,6 +181,7 @@ int main(int argc, char **argv)
     assert(critical_command_decode(malformed.data(), malformed.size(), &decoded) ==
            critical_command_codec_result::invalid);
 
+    // The journal itself: append, replay once per identity, checkpoint, corruption.
     assert(critical_command_journal_init(argv[1]));
     critical_command first = make_command(8, {{critical_entity_type::player, 8}});
     first.accepted_at_usec = 1700000000000001ULL;
@@ -195,7 +205,6 @@ int main(int argc, char **argv)
     assert(replay.commands.size() == 1);
     assert(critical_operation_id_equal(replay.commands[0].operation_id, second.operation_id));
     critical_command_journal_shutdown();
-
     const std::string journal_path = std::string(argv[1]) + "/critical-command.journal";
     int fd = open(journal_path.c_str(), O_RDWR);
     assert(fd >= 0);
@@ -208,223 +217,162 @@ int main(int argc, char **argv)
     assert(!critical_command_journal_init(argv[1]));
     critical_command_journal_reset_for_tests();
 
-    apply_state state;
-    assert(critical_command_coordinator_init(argv[2], apply, &state, 2));
+    // Commands run on the one writer, in capture order with the saves around them.
+    // No journal directory is needed: new commands are not journaled.
+    assert(player_save_worker_init(apply_save, nullptr));
+    assert(critical_command_coordinator_init(nullptr, apply, &state));
+    release(&apply_state::hold_save, true);
+    assert(player_save_worker_submit(save_of(1)) == player_save_submit_result::accepted);
+    wait_until([] { std::lock_guard<std::mutex> lock(state.mutex); return state.save_held; });
     critical_command a = make_command(
         1, {{critical_entity_type::item, 10}, {critical_entity_type::player, 1}});
-    critical_command b = make_command(
-        2, {{critical_entity_type::player, 2}, {critical_entity_type::item, 10}});
-    critical_command c = make_command(3, {{critical_entity_type::player, 3}});
-    assert(critical_command_coordinator_submit(a) == critical_submit_result::awaiting_durability);
+    assert(critical_command_coordinator_submit(a) == critical_submit_result::accepted);
+    assert(player_save_worker_submit(save_of(2)) == player_save_submit_result::accepted);
+    critical_command b = make_command(2, {{critical_entity_type::player, 2}});
+    assert(critical_command_coordinator_submit(b) == critical_submit_result::accepted);
     assert(critical_command_coordinator_submit(a) == critical_submit_result::attached);
     critical_command mismatch = a;
     mismatch.payload = {99};
     assert(critical_command_coordinator_submit(mismatch) ==
            critical_submit_result::identity_conflict);
-    assert(critical_command_coordinator_submit(b) == critical_submit_result::awaiting_durability);
-    assert(critical_command_coordinator_submit(c) == critical_submit_result::awaiting_durability);
-    {
-        std::unique_lock<std::mutex> lock(state.mutex);
-        state.changed.wait(lock, [&] { return state.a_running && state.c_started; });
-        assert(!state.b_started_while_a);
-    }
+    // While a command waits on the writer its keys are fenced, and the operation is
+    // not yet durable.
     critical_operation_id fenced_by = {};
-    assert(critical_command_coordinator_is_fenced(
-        {critical_entity_type::item, 10}, &fenced_by));
+    assert(critical_command_coordinator_is_fenced({critical_entity_type::item, 10}, &fenced_by));
     assert(critical_operation_id_equal(fenced_by, a.operation_id));
+    assert(critical_command_coordinator_durability(a.operation_id) ==
+           critical_command_durability::awaiting_durability);
     critical_completion stale = {};
     stale.operation_id = a.operation_id;
     stale.outcome = critical_apply_outcome::applied;
-    stale.durable_revision = 1;
     stale.attempt = 99;
     assert(critical_command_coordinator_inject_completion_for_tests(stale));
     critical_completion completions[16] = {};
     assert(critical_command_coordinator_pulse(completions, 16) == 0);
     assert(critical_command_coordinator_health_copy().stale_completions == 1);
     assert(critical_command_coordinator_is_fenced({critical_entity_type::item, 10}, nullptr));
+    release(&apply_state::hold_save, false);
+    wait_until([&] {
+        critical_command_coordinator_pulse(completions, 16);
+        return critical_command_coordinator_health_copy().completed == 2;
+    });
     {
         std::lock_guard<std::mutex> lock(state.mutex);
-        state.release_a = true;
-        state.changed.notify_all();
+        assert((state.order == std::vector<std::string>{"p1", "c1", "p2", "c2"}));
+        state.order.clear();
     }
+    assert(!critical_command_coordinator_is_fenced({critical_entity_type::item, 10}, nullptr));
+    assert(critical_command_coordinator_durability(a.operation_id) ==
+           critical_command_durability::durable);
+
+    // An ambiguous commit is retried by the writer until it learns the outcome.
+    critical_command d = make_command(4, {{critical_entity_type::guild, 4}});
+    assert(critical_command_coordinator_submit(d) == critical_submit_result::accepted);
     wait_until([&] {
         critical_command_coordinator_pulse(completions, 16);
         return critical_command_coordinator_health_copy().completed == 3;
     });
-    assert(!state.b_started_while_a);
-    assert(!critical_command_coordinator_is_fenced({critical_entity_type::item, 10}, nullptr));
-
-    critical_command gate = make_command(5, {{critical_entity_type::account, 50}});
-    critical_command multi = make_command(
-        6, {{critical_entity_type::account, 50}, {critical_entity_type::item, 60}});
-    critical_command late = make_command(7, {{critical_entity_type::item, 60}});
-    assert(critical_command_coordinator_submit(gate) == critical_submit_result::awaiting_durability);
-    assert(critical_command_coordinator_submit(multi) == critical_submit_result::awaiting_durability);
-    assert(critical_command_coordinator_submit(late) == critical_submit_result::awaiting_durability);
-    {
-        std::unique_lock<std::mutex> lock(state.mutex);
-        state.changed.wait(lock, [&] { return state.gate_running; });
-        lock.unlock();
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        lock.lock();
-        assert(!state.late_started);
-        state.release_gate = true;
-        state.changed.notify_all();
-    }
-    wait_until([&] {
-        critical_command_coordinator_pulse(completions, 16);
-        return critical_command_coordinator_health_copy().completed == 6;
-    });
-    assert(state.late_started);
-
-    critical_command one = make_command(8, {{critical_entity_type::player, 80}});
-    critical_command two = make_command(9, {{critical_entity_type::player, 90}});
-    assert(critical_command_coordinator_submit(one) == critical_submit_result::awaiting_durability);
-    assert(critical_command_coordinator_submit(two) == critical_submit_result::awaiting_durability);
-    wait_until([&] {
-        std::lock_guard<std::mutex> lock(state.mutex);
-        return state.attempts[8] == 1 && state.attempts[9] == 1;
-    });
-    wait_until([&] { return critical_command_coordinator_pulse(completions, 1) == 1; });
-    assert(critical_command_coordinator_health_copy().completed == 7);
-    wait_until([&] { return critical_command_coordinator_pulse(completions, 1) == 1; });
-    assert(critical_command_coordinator_health_copy().completed == 8);
-
-    critical_command d = make_command(4, {{critical_entity_type::guild, 4}});
-    assert(critical_command_coordinator_submit(d) == critical_submit_result::awaiting_durability);
-    wait_until([&] {
-        critical_command_coordinator_pulse(completions, 16);
-        return critical_command_coordinator_health_copy().completed == 9;
-    });
     assert(state.attempts[4] == 2);
     critical_completion cached = {};
     assert(critical_command_coordinator_get_completed(d.operation_id, &cached));
-    assert(critical_operation_id_equal(cached.operation_id, d.operation_id));
     assert(cached.outcome == critical_apply_outcome::applied);
     auto health = critical_command_coordinator_health_copy();
     assert(health.ambiguous == 1 && health.retries == 1 && health.fenced_keys == 0);
     assert(critical_command_coordinator_submit(d) == critical_submit_result::attached);
 
+    // A command held for publication keeps its fences until the game thread
+    // acknowledges it. A later command on the same key still runs in order.
     critical_command publication = make_command(12, {{critical_entity_type::item, 120},
                                                        {critical_entity_type::player, 12}});
     assert(critical_command_coordinator_submit_for_publication(publication) ==
-           critical_submit_result::awaiting_durability);
+           critical_submit_result::accepted);
     assert(critical_command_coordinator_submit(publication) ==
            critical_submit_result::identity_conflict);
     assert(critical_command_coordinator_submit_for_publication(publication) ==
            critical_submit_result::attached);
-    critical_completion held = {};
     wait_until([&] {
-        const size_t count = critical_command_coordinator_pulse(completions, 16);
-        if (count != 1)
-            return false;
+        critical_command_coordinator_pulse(completions, 16);
         return critical_command_coordinator_health_copy().publication_pending == 1;
     });
-    assert(critical_command_coordinator_is_fenced(
-        {critical_entity_type::item, 120}, nullptr));
-    assert(critical_command_coordinator_is_fenced(
-        {critical_entity_type::player, 12}, nullptr));
+    critical_completion held = {};
     assert(critical_command_coordinator_get_completed(publication.operation_id, &held));
     assert(held.outcome == critical_apply_outcome::applied);
+    assert(critical_command_coordinator_is_fenced({critical_entity_type::item, 120}, nullptr));
     critical_operation_id invalid_publication_id = {};
     invalid_publication_id.bytes[0] = 1;
     assert(!critical_command_coordinator_acknowledge_publication(invalid_publication_id));
-    assert(critical_command_coordinator_health_copy().publication_pending == 1);
     assert(!critical_command_coordinator_drain(5));
-    // The fence must block actual worker execution, not just report busy.
     critical_command follower = make_command(14, {{critical_entity_type::item, 120}});
-    critical_command unrelated = make_command(15, {{critical_entity_type::item, 150}});
-    assert(critical_command_coordinator_submit(follower) ==
-           critical_submit_result::awaiting_durability);
-    assert(critical_command_coordinator_submit_for_publication(follower) ==
-           critical_submit_result::identity_conflict);
-    assert(critical_command_coordinator_submit(unrelated) ==
-           critical_submit_result::awaiting_durability);
-    wait_until([&] {
-        critical_command_coordinator_pulse(completions, 16);
-        return critical_command_coordinator_get_completed(unrelated.operation_id, &held);
-    });
-    {
-        std::lock_guard<std::mutex> guard(state.mutex);
-        assert(state.attempts[14] == 0);
-        assert(state.attempts[15] == 1);
-    }
-    assert(critical_command_coordinator_acknowledge_publication(publication.operation_id));
+    assert(critical_command_coordinator_submit(follower) == critical_submit_result::accepted);
     wait_until([&] {
         critical_command_coordinator_pulse(completions, 16);
         return critical_command_coordinator_get_completed(follower.operation_id, &held);
     });
-    {
-        std::lock_guard<std::mutex> guard(state.mutex);
-        assert(state.attempts[14] == 1);
-    }
-    assert(!critical_command_coordinator_is_fenced(
-        {critical_entity_type::item, 120}, nullptr));
-    assert(!critical_command_coordinator_is_fenced(
-        {critical_entity_type::player, 12}, nullptr));
+    assert(critical_command_coordinator_is_fenced({critical_entity_type::item, 120}, nullptr));
+    assert(critical_command_coordinator_acknowledge_publication(publication.operation_id));
+    assert(!critical_command_coordinator_is_fenced({critical_entity_type::item, 120}, nullptr));
+    assert(!critical_command_coordinator_is_fenced({critical_entity_type::player, 12}, nullptr));
     assert(critical_command_coordinator_health_copy().publication_pending == 0);
-
-    // The callback hold is process-local; after restart the journaled command
-    // replays against authoritative SQL (already_applied) and can checkpoint
-    // without inventing a stale actor/object callback.
-    critical_command restart_publication = make_command(
-        13, {{critical_entity_type::item, 130}, {critical_entity_type::player, 13}});
-    assert(critical_command_coordinator_submit_for_publication(restart_publication) ==
-           critical_submit_result::awaiting_durability);
-    wait_until([&] {
-        critical_command_coordinator_pulse(completions, 16);
-        return critical_command_coordinator_health_copy().publication_pending == 1;
-    });
-    assert(critical_command_coordinator_is_fenced(
-        {critical_entity_type::item, 130}, nullptr));
-    critical_command_coordinator_shutdown();
-    apply_state restart_state;
-    restart_state.already_applied = true;
-    assert(critical_command_coordinator_init(argv[2], apply, &restart_state, 1));
-    wait_until([&] {
-        critical_command_coordinator_pulse(completions, 16);
-        return critical_command_coordinator_health_copy().completed == 1;
-    });
-    assert(!critical_command_coordinator_is_fenced(
-        {critical_entity_type::item, 130}, nullptr));
-    assert(critical_command_journal_health_copy().records == 0);
 
     critical_command_coordinator_quiesce();
     critical_command rejected = make_command(6, {{critical_entity_type::player, 6}});
     assert(critical_command_coordinator_submit(rejected) == critical_submit_result::unavailable);
     critical_command_coordinator_resume();
     assert(critical_command_coordinator_drain(3000));
+
+    // A command queued before the coordinator stops still lands; its completion is
+    // not handed to the next coordinator.
+    release(&apply_state::hold_save, true);
+    assert(player_save_worker_submit(save_of(3)) == player_save_submit_result::accepted);
+    wait_until([] { std::lock_guard<std::mutex> lock(state.mutex); return state.save_held; });
+    critical_command late = make_command(5, {{critical_entity_type::account, 50}});
+    assert(critical_command_coordinator_submit(late) == critical_submit_result::accepted);
+    critical_command_coordinator_shutdown();
+    apply_state after;
+    assert(critical_command_coordinator_init(nullptr, apply, &after));
+    release(&apply_state::hold_save, false);
+    assert(persistence_writer_wait_idle(5000));
+    assert(state.attempts[5] == 1);
+    assert(critical_command_coordinator_pulse(completions, 16) == 0);
+    assert(critical_command_coordinator_health_copy().stale_completions == 0);
     critical_command_coordinator_shutdown();
 
-    assert(critical_command_journal_init(argv[3]));
+    // A journal left by an older server is replayed once, on the writer, and each of
+    // its commands is checkpointed there once it lands.
+    assert(critical_command_journal_init(argv[2]));
     critical_command recovery = make_command(10, {{critical_entity_type::corpse, 10}});
     recovery.accepted_at_usec = 1700000000000010ULL;
     assert(critical_command_normalize(&recovery));
     assert(critical_command_journal_append(recovery) == critical_command_journal_result::ok);
     critical_command_journal_shutdown();
     apply_state recovery_state;
-    assert(critical_command_coordinator_init(argv[3], apply, &recovery_state, 1));
+    assert(critical_command_coordinator_init(argv[2], apply, &recovery_state));
     wait_until([&] {
         critical_command_coordinator_pulse(completions, 16);
         return critical_command_coordinator_health_copy().completed == 1;
     });
     assert(recovery_state.attempts[10] == 1);
     assert(critical_command_journal_health_copy().records == 0);
+    critical_command next = make_command(11, {{critical_entity_type::corpse, 11}});
+    assert(critical_command_coordinator_submit(next) == critical_submit_result::accepted);
+    assert(persistence_writer_wait_idle(5000));
+    assert(critical_command_journal_health_copy().records == 0);
     critical_command_coordinator_shutdown();
 
+    // Bounds: accepted work is never dropped because the writer is behind.
     apply_state capacity;
     capacity.hold_all = true;
-    assert(critical_command_coordinator_init(argv[4], apply, &capacity, 2));
+    assert(critical_command_coordinator_init(nullptr, apply, &capacity));
     for (size_t index = 0; index < CRITICAL_COORDINATOR_MAX_OPERATIONS; ++index)
     {
         critical_command command = make_command(
             11, {{critical_entity_type::player, 10000 + index}});
-        assert(critical_command_coordinator_submit(command) == critical_submit_result::awaiting_durability);
+        assert(critical_command_coordinator_submit(command) == critical_submit_result::accepted);
     }
     critical_command overflow = make_command(11, {{critical_entity_type::player, 999999}});
     assert(critical_command_coordinator_submit(overflow) == critical_submit_result::overloaded);
     health = critical_command_coordinator_health_copy();
-    assert(health.queued + health.inflight == CRITICAL_COORDINATOR_MAX_OPERATIONS);
+    assert(health.inflight == CRITICAL_COORDINATOR_MAX_OPERATIONS);
     assert(health.high_water_operations == CRITICAL_COORDINATOR_MAX_OPERATIONS);
     assert(health.overloads == 1);
     {
@@ -432,33 +380,28 @@ int main(int argc, char **argv)
         capacity.release_all = true;
         capacity.changed.notify_all();
     }
+    assert(persistence_writer_wait_idle(10000));
     critical_command_coordinator_shutdown();
 
-    // Exhausted uncertainty is NOT a terminal result that publication may ack.
-    for (unsigned int tag : {16u, 17u}) {
-        const std::string directory = std::string(argv[2]) + "-uncertain-" + std::to_string(tag);
-        apply_state uncertain;
-        assert(critical_command_coordinator_init(directory.c_str(), apply, &uncertain, 1));
-        critical_command command = make_command(tag, {{critical_entity_type::item, tag}});
-        assert(critical_command_coordinator_submit_for_publication(command) ==
-               critical_submit_result::awaiting_durability);
-        wait_until([&] { return critical_command_coordinator_pulse(completions, 16) == 1; });
-        assert(critical_command_coordinator_is_fenced({critical_entity_type::item, tag}, nullptr));
-        assert(critical_command_journal_health_copy().records == 1);
-        assert(!critical_command_coordinator_acknowledge_publication(command.operation_id));
-        assert(critical_command_coordinator_health_copy().blocked == 1);
-        assert(critical_command_journal_health_copy().records == 1);
-        critical_command_coordinator_shutdown();
-        apply_state reconciled;
-        reconciled.already_applied = true;
-        assert(critical_command_coordinator_init(directory.c_str(), apply, &reconciled, 1));
-        wait_until([&] {
-            critical_command_coordinator_pulse(completions, 16);
-            return critical_command_coordinator_health_copy().completed == 1;
-        });
-        assert(critical_command_journal_health_copy().records == 0);
-        critical_command_coordinator_shutdown();
-    }
+    // A command whose outcome never becomes known is retried until shutdown, keeps
+    // its fences, and is named with what the writer could not write.
+    apply_state uncertain;
+    assert(critical_command_coordinator_init(nullptr, apply, &uncertain));
+    const uint64_t retries_before = player_save_worker_health_copy().connection_retries;
+    critical_command unknown = make_command(16, {{critical_entity_type::item, 16}});
+    assert(critical_command_coordinator_submit_for_publication(unknown) ==
+           critical_submit_result::accepted);
+    wait_until([&] {
+        return player_save_worker_health_copy().connection_retries >= retries_before + 2;
+    });
+    assert(critical_command_coordinator_pulse(completions, 16) == 0);
+    assert(critical_command_coordinator_is_fenced({critical_entity_type::item, 16}, nullptr));
+    player_save_worker_shutdown();
+    const auto left = persistence_writer_pending_owners();
+    assert(left.size() == 1 && left[0].first == persistence_job_kind::critical);
+    assert(std::string(persistence_job_kind_name(persistence_job_kind::critical)) == "critical");
+    critical_command_coordinator_shutdown();
+    player_save_worker_reset_for_tests();
     return 0;
 }
 '''
@@ -474,18 +417,23 @@ with tempfile.TemporaryDirectory(prefix="duris-critical-command-") as temporary:
             "g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
             "-pthread", "-Isrc", str(source), rel("critical_command.c"),
             rel("critical_command_journal.c"), rel("critical_command_coordinator.c"),
-            "-lz", "-lcrypto", "-o", str(binary),
+            rel("player_save_worker.c"), rel("persistence_observability.c"),
+            "-lz", "-lcrypto", "-lmysqlclient", "-o", str(binary),
         ],
         cwd=ROOT,
         check=True,
     )
-    directories = [temp / name for name in ("journal", "coordinator", "replay", "capacity")]
-    subprocess.run([str(binary), *(str(path) for path in directories)], check=True, timeout=30)
+    directories = [temp / name for name in ("journal", "replay")]
+    subprocess.run([str(binary), *(str(path) for path in directories)], check=True, timeout=60)
+print("[PASS] commands run on the one writer, in capture order with the saves around them")
+print("[PASS] a fenced command stays fenced until its completion; attach and conflict hold")
+print("[PASS] the writer retries an ambiguous commit; an unknown outcome is named at shutdown")
+print("[PASS] a command held for publication keeps its fences until acknowledged")
+print("[PASS] only a journal left by an older server is replayed, once, and checkpointed")
 
 for contract in (
     "CRITICAL_COORDINATOR_MAX_OPERATIONS = 1024",
     "CRITICAL_COORDINATOR_MAX_BYTES = 64 * 1024 * 1024",
-    "CRITICAL_COORDINATOR_MAX_RETRIES = 8",
     "CRITICAL_COORDINATOR_COMPLETED_CACHE_BYTES = 8 * 1024 * 1024",
     "critical_command_coordinator_get_completed",
 ):
@@ -494,41 +442,23 @@ for contract in (
     "CRITICAL_COORDINATOR_MAX_RESULTS = 2048",
     "critical_completion_delivery",
     "critical_completion_channel::execution",
-    "critical_completion_channel::admission_failure",
 ):
     assert contract in COMPLETION or contract in COORDINATOR
-for phase in (
-    "critical_operation_phase::awaiting_durability",
-    "critical_operation_phase::queued",
-    "critical_operation_phase::executing",
-    "critical_operation_phase::uncertain_admission",
-    "critical_operation_phase::blocked",
-    "critical_operation_phase::admission_failed",
+assert "critical," in WORKER
+# The coordinator no longer runs threads of its own or journals new commands.
+for retired in (
+    "admission_worker", "worker_main", "pending_admission", "keys_available",
+    "critical_command_journal_append", "std::thread admission", "std::vector<std::thread>",
 ):
-    assert phase in COORDINATOR
+    assert retired not in COORDINATOR
+assert "persistence_writer_submit(persistence_job_kind::critical" in COORDINATOR
 assert "struct critical_completion" in COMPLETION
 assert "struct critical_completion" not in HEADER
-for displaced_flag in (
-    "state->inflight",
-    "state->completed",
-    "state->blocked",
-    "state->admission_uncertain",
-    "state->awaiting_durability",
-    "state->admission_failed",
-):
-    assert displaced_flag not in COORDINATOR
 for forbidden in ("P_char", "P_obj", "MYSQL", "redis", "sql_"):
     assert forbidden not in COORDINATOR
-assert "raw_results" not in COORDINATOR
 assert "critical_completion_delivery completion_delivery" in COORDINATOR
 assert "getrandom(" in COMMAND and "rand(" not in COMMAND
 assert "fsync(fd)" in JOURNAL and "crc32(" in JOURNAL and "O_NOFOLLOW" in JOURNAL
-submit_start = COORDINATOR.index("critical_submit_result critical_command_coordinator_submit")
-submit_end = COORDINATOR.index("bool critical_command_coordinator_recover_uncertain")
-SUBMIT = COORDINATOR[submit_start:submit_end]
-assert "critical_command_journal_append" not in SUBMIT
-assert "pending_admission" in SUBMIT
-assert "critical_submit_result::awaiting_durability" in SUBMIT
 
 MAKEFILE = (SRC / "Makefile").read_text()
 COMM = (SRC / "comm.c").read_text()
@@ -554,28 +484,17 @@ assert (
     "\tplayer_save_pipeline_resume();"
 ) in COPYOVER
 assert '\"critical_commands state=%s' in ACTINF
-assert "awaiting=%llu" in ACTINF
-assert "admission_queue_bytes=%llu" in ACTINF
-assert "durable_admissions=%llu" in ACTINF
-assert "admission_uncertain=%llu" in ACTINF
 assert "publication_pending=%llu" in ACTINF
 assert "command.payload" not in ACTINF and "operation_id" not in ACTINF
 assert "critical_command_equal" in COORDINATOR and "identity_conflict" in COORDINATOR
-assert "keys_available" in COORDINATOR and "acquire_keys" in COORDINATOR
-assert "found->second->attempt != completion.attempt" in COORDINATOR
 for state in (
-    "Admitted / awaiting durability",
-    "Durable admission",
-    "Executing",
-    "Retry pending",
-    "Uncertain admission",
+    "Queued on the writer",
     "Final notification retained",
-    "Admission failed",
-    "Currency publication ready",
-    "Currency waiting / retrying / blocked",
     "Snapshot pending and outbox pending",
 ):
     assert state in PIPELINE
+# Money is no longer a critical command: it lives in memory.
+assert "Currency publication ready" not in PIPELINE and "## Money lives in memory" in PIPELINE
 assert "There is no second generic lifecycle framework" in PIPELINE
 
 print("critical command identity, journal, ordering, replay, fence, and bound contracts passed")

@@ -13,6 +13,8 @@ files = {
     "interp": (SRC / "interp.c").read_text(encoding="utf-8", errors="replace"),
     "comm": (SRC / "comm.c").read_text(encoding="utf-8", errors="replace"),
     "makefile": (SRC / "Makefile").read_text(encoding="utf-8", errors="replace"),
+    "repository": (SRC / "player_snapshot_repository.c").read_text(encoding="utf-8",
+                                                                   errors="replace"),
 }
 
 
@@ -32,22 +34,30 @@ def main():
                 "int locker_async_mark_dirty" in files["async_h"])
     ok &= check("pulse budget is 1",
                 "LOCKER_ASYNC_SNAPSHOTS_PER_PULSE 1" in files["async_h"])
-    ok &= check("max inflight is 1",
-                "LOCKER_ASYNC_MAX_INFLIGHT        1" in files["async_h"]
-                or "LOCKER_ASYNC_MAX_INFLIGHT 1" in files["async_h"])
+    ok &= check("no in-flight cap: each dirty locker queues its own writer job",
+                "LOCKER_ASYNC_MAX_INFLIGHT" not in files["async_h"]
+                and "g_inflight" not in files["async_c"])
+    ok &= check("the slot and result tables grow instead of refusing",
+                "std::deque<struct locker_async_slot> g_slots" in files["async_c"]
+                and "std::deque<struct locker_async_result> g_results" in files["async_c"]
+                and "LOCKER_ASYNC_SLOTS" not in files["async_c"])
     ok &= check("obj lock only while DIRTY",
-                "state == LCHK_DIRTY && g_slots[i].user_pid == pid" in files["async_c"])
+                "slot.state == LCHK_DIRTY && slot.user_pid == pid" in files["async_c"])
     ok &= check("terminal priority selection",
                 "oldest_terminal" in files["async_c"] and "start_one_snapshot(oldest_terminal)" in files["async_c"])
-    ok &= check("worker uses pool connection",
-                "sql_persistence_connection" in files["async_c"])
-    ok &= check("worker never uses live P_obj walk for apply",
-                "apply_sql_script" in files["async_c"]
-                and "sql_observed_execute_at" in files["async_c"]
-                and "mysql_real_query" not in files["async_c"])
-    ok &= check("snapshot builds DELETE public then inserts",
-                "DELETE FROM locker_items WHERE locker_id=" in files["async_c"]
-                and "INSERT INTO locker_items" in files["async_c"])
+    ok &= check("the writer applies the captured snapshot through the repository",
+                "locker_snapshot_repository_apply_from_pool(*job.snapshot)" in files["async_c"]
+                and "player_item_snapshot_list_capture(" in files["async_c"])
+    ok &= check("the game thread makes no database call for a locker save",
+                all(token not in files["async_c"] for token in (
+                    "mysql_", "qry(", "db_query", "sql_get_", "sql_save_locker",
+                    "writeCharacter", "sql_persistence_connection", "INSERT INTO")))
+    ok &= check("the writer finds or creates the locker, deletes the public rows, then inserts",
+                "SELECT id FROM lockers WHERE locker_name=" in files["repository"]
+                and "INSERT INTO lockers (locker_name,owner_pid,owner_assoc_id,racewar,race)"
+                in files["repository"]
+                and "DELETE FROM locker_items WHERE locker_id=" in files["repository"]
+                and "insert_item_rows(connection, written, keys," in files["repository"])
     ok &= check("leave marks terminal dirty",
                 'locker_async_mark_dirty(chLocker, ch, 1, "leave-terminal")' in files["lockers"])
     ok &= check("save_locker_char marks nonterminal dirty",
@@ -73,10 +83,10 @@ def main():
                 and "locker_async_prepare_snapshot" in files["lockers"])
     ok &= check("inflight coalesce rebuild flag",
                 "rebuild_objects" in files["async_c"])
-    ok &= check("terminal extract requires durable_ok",
-                "terminal_not_durable" in files["async_c"] and
-                "refusing extract of locker char" in files["async_c"] and
-                "if (durable_ok && chLocker)" in files["async_c"])
+    ok &= check("terminal extract waits for a landed save; a failure retries through the writer",
+                "if (r->ok && chLocker && !s->rebuild_objects)" in files["async_c"] and
+                "slot_retry_later(s);" in files["async_c"] and
+                "s->retry_at > now" in files["async_c"])
     ok &= check("ambiguity prefers non-descriptor locker char",
                 "name lookup ambiguous" in files["async_c"] and
                 "!ch->desc" in files["async_c"])

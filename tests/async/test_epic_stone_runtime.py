@@ -15,10 +15,11 @@ HARNESS = r'''
 #include "core/prototypes.h"
 #include "world/zone_touch_transaction.h"
 #include "world/epic.h"
-#include "world/epic_transaction.h"
+#include "persistence/persistence_checkpoint.h"
 #include "guild/artifact_guild_transaction.h"
 #include "persistence/persistence_mode.h"
 #include <cassert>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -47,8 +48,9 @@ P_char find_player_by_pid(int pid)
 void send_to_char(const char *text, P_char) { captured_messages += text; }
 void logit(const char *, const char *, ...) {}
 bool redis_invalidate_epic_zones() { return true; }
-bool epic_transaction_publish_balance(P_char ch, int64_t balance, uint64_t revision)
-{ ch->only.pc->epics=balance; ch->only.pc->epic_revision=revision; return true; }
+static int dirty_saves = 0;
+void mark_player_dirty_components(int, player_component_mask_t) { ++dirty_saves; }
+[[noreturn]] int panic_corruption_int(const char *, const char *, ...) { abort(); }
 bool artifact_guild_transaction_submit(P_char ch, const critical_operation_id &operation,
                                        int amount, int type)
 { artifacts.push_back({static_cast<uint32_t>(ch->only.pc->pid),operation,amount,type}); return true; }
@@ -160,10 +162,11 @@ int main()
  zone_touch_transaction_handle_completions(&success,1);
  assert(effects==1 && zone_publications==1 && artifacts.size()==1);
  online[1]=true;
- // Reconnect hydration must not be overwritten by an older award receipt.
+ // Epic points are memory's: a player who returns gets the committed award added,
+ // once, on top of what they loaded, and the save writes it.
  pcs[1].epics=200; pcs[1].epic_revision=3;
  zone_touch_transaction_player_ready(&characters[1]);
- assert(effects==2 && pcs[1].epics==200 && pcs[1].epic_revision==3);
+ assert(effects==2 && pcs[1].epics==220 && pcs[1].epic_revision==4 && dirty_saves==2);
  assert(artifacts.size()==2); assert_artifact(1,1);
  zone_touch_transaction_player_ready(&characters[1]);
  assert(effects==2 && artifacts.size()==2);

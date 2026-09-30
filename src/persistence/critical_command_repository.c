@@ -696,10 +696,15 @@ bool execute_epic_state(MYSQL *connection, const critical_command &command,
 	static const char BASELINE_SQL[] =
 		"INSERT IGNORE INTO epic_balance_baseline(pid,opening_balance,opening_revision) "
 		"SELECT pid,epics,epic_revision FROM player_data WHERE pid=?";
+	// The balance is memory's and the player's save writes it: the command only records
+	// the change, continuing the ledger from its last row (or from the saved balance
+	// when the player has none), and advances the revision the rows are keyed on.
 	static const char LOCK_SQL[] =
 		"SELECT epics,epic_revision FROM player_data WHERE pid=? FOR UPDATE";
+	static const char TAIL_SQL[] =
+		"SELECT balance_after FROM epic_ledger WHERE pid=? AND epic_revision=?";
 	static const char UPDATE_SQL[] =
-		"UPDATE player_data SET epics=?,epic_revision=? WHERE pid=? AND epic_revision=?";
+		"UPDATE player_data SET epic_revision=? WHERE pid=? AND epic_revision=?";
 	static const char LEDGER_SQL[] =
 		"INSERT INTO epic_ledger(operation_id,pid,delta,balance_after,epic_revision,"
 		"reason_type,reason_id,source_site) VALUES(?,?,?,?,?,?,?,?)";
@@ -742,21 +747,19 @@ bool execute_epic_state(MYSQL *connection, const critical_command &command,
 	mysql_stmt_close(statement);
 	if (!found)
 		return false;
+	MYSQL_BIND tail_key[2] = {};
+	tail_key[0] = pid_binding;
+	tail_key[1] = state[1];
+	MYSQL_BIND tail = {};
+	tail.buffer_type = MYSQL_TYPE_LONGLONG;
+	tail.buffer = &balance;
+	if (!prepare(&statement, connection, TAIL_SQL) ||
+	    mysql_stmt_bind_param(statement, tail_key) != 0 || mysql_stmt_execute(statement) != 0 ||
+	    mysql_stmt_store_result(statement) != 0 ||
+	    mysql_stmt_bind_result(statement, &tail) != 0 || mysql_stmt_fetch(statement) == 1)
+		return statement_failure(statement);
+	mysql_stmt_close(statement);
 	*result = { .balance = balance, .revision = revision, .delta = payload.delta };
-	const uint64_t expected = command.expected_revisions[0].revision;
-	if (expected != std::numeric_limits<uint64_t>::max() && expected != revision)
-	{
-		*result_code = ESTALE;
-		*mutation_applied = false;
-		return true;
-	}
-	if (payload.delta < 0 && (payload.flags & EPIC_COMMAND_REQUIRE_FUNDS) &&
-	    balance < -payload.delta)
-	{
-		*result_code = ENOSPC;
-		*mutation_applied = false;
-		return true;
-	}
 	if ((payload.delta > 0 && balance > std::numeric_limits<int64_t>::max() - payload.delta) ||
 	    (payload.delta < 0 && balance < std::numeric_limits<int64_t>::min() - payload.delta) ||
 	    revision == std::numeric_limits<uint64_t>::max())
@@ -768,16 +771,14 @@ bool execute_epic_state(MYSQL *connection, const critical_command &command,
 	uint64_t prior_revision = revision;
 	balance += payload.delta;
 	++revision;
-	MYSQL_BIND update[4] = {};
+	MYSQL_BIND update[3] = {};
 	update[0].buffer_type = MYSQL_TYPE_LONGLONG;
-	update[0].buffer = &balance;
-	update[1].buffer_type = MYSQL_TYPE_LONGLONG;
-	update[1].buffer = &revision;
-	update[1].is_unsigned = true;
-	update[2] = pid_binding;
-	update[3].buffer_type = MYSQL_TYPE_LONGLONG;
-	update[3].buffer = &prior_revision;
-	update[3].is_unsigned = true;
+	update[0].buffer = &revision;
+	update[0].is_unsigned = true;
+	update[1] = pid_binding;
+	update[2].buffer_type = MYSQL_TYPE_LONGLONG;
+	update[2].buffer = &prior_revision;
+	update[2].is_unsigned = true;
 	if (!prepare(&statement, connection, UPDATE_SQL) ||
 	    mysql_stmt_bind_param(statement, update) != 0 || mysql_stmt_execute(statement) != 0 ||
 	    mysql_stmt_affected_rows(statement) != 1)

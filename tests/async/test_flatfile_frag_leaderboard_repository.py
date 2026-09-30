@@ -57,7 +57,6 @@ for token in (
     "flatfile_frag_leaderboard_upsert",
     "record.total_frags = ch->only.pc->frags",
     "record.racewar = GET_RACEWAR(ch)",
-    "sql_update_frag_leaderboard(ch);",
     "persistence_alert(AVATAR, \"frag_leaderboard\"",
 ):
     if token not in no_mysql:

@@ -515,7 +515,11 @@ def run(binary: Path, count: int, expect_abort: bool, malformed: bool = False,
                     client.close()
                 if process.poll() is None:
                     process.terminate()
-                    process.wait(timeout=20)
+                    try:
+                        process.wait(timeout=20)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
     finally:
         sql("DROP DATABASE " + database, False)
 

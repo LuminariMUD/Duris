@@ -17,7 +17,10 @@ bodies = '\n'.join(extract(signature) for signature in [
     'static void show_information_page(', 'void do_credits(', 'void do_faq(', 'void do_wizlist('])
 assert 'get_mud_info' not in bodies and 'affect_timer' not in bodies and 'CharWait' not in bodies
 sql_source = (ROOT / 'src/sql/sql.c').read_text()
-assert 'SELECT content FROM mud_info' in sql_source  # unrelated freshness-sensitive reads remain direct
+# mud_info is read in the background every minute, so a creation lock set in the
+# database takes hold without the game waiting on a read.
+assert 'SELECT name, content FROM mud_info' in sql_source
+assert 'sql_mud_info_refresh();' in (ROOT / 'src/net/comm.c').read_text()
 nanny_source = (ROOT / 'src/account/nanny.c').read_text()
 assert 'get_mud_info("lock")' in nanny_source
 assert 'information_cache_get' not in nanny_source  # creation authorization stays fresh

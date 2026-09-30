@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Three real Telnet players; hold MariaDB item acknowledgements while looter moves.
+"""Three real Telnet players loot NPC and player corpses; coins and items move in memory.
 
 Requires a freshly built MariaDB server and TEST_DB_HOST/USER/PASSWORD pointing
 to a disposable loopback database. Creates and drops its own unique schema.
@@ -39,8 +39,8 @@ def reconnect_linkdead(port):
 def run(binary):
     database='haul_journey_'+uuid.uuid4().hex[:12]
     host=os.environ['TEST_DB_HOST']
-    port=os.environ.get('TEST_DB_PORT','3306')
     assert host in ('localhost','127.0.0.1')
+    port=os.environ.get('TEST_DB_PORT','3306')
     env=dict(PATH=os.environ.get('PATH','/usr/bin:/bin'), ENVIRONMENT='local',
              DB_HOST=host,DB_PORT=port,DB_NAME=database,DB_USER=os.environ['TEST_DB_USER'],
              DB_PASSWD=os.environ['TEST_DB_PASSWORD'],MYSQL_PWD=os.environ['TEST_DB_PASSWORD'],
@@ -71,7 +71,7 @@ def run(binary):
             env.update(PLAYER_SAVE_JOURNAL_DIR=str(runtime/'journals/players'),
                        CRITICAL_COMMAND_JOURNAL_DIR=str(runtime/'journals/critical'),
                        DURIS_TLS_PORT=str(tls),DURIS_WEBSOCKET_PORT=str(ws))
-            clients=[]; process=None; lock=None
+            clients=[]; process=None
             output=(runtime/'server.out').open('w')
             try:
                 process=subprocess.Popen([str(binary),'--minimal','-s','-d',str(runtime),str(port)],
@@ -102,74 +102,51 @@ def run(binary):
                 actor.send('save'); actor.expect('Save complete for Taverek.',timeout=30)
                 pid=int(sql("SELECT pid FROM player_data WHERE name='Taverek'"))
 
-                def held_departure(label, target='corpse', name='the corpse of Raoul'):
-                    nonlocal lock
+                def plain_haul(target='corpse', name='the corpse of Raoul'):
                     for c in clients: drain(c)
-                    lock=subprocess.Popen(mysql+[database],stdin=subprocess.PIPE,stdout=subprocess.PIPE,
-                                          stderr=subprocess.PIPE,text=True,env=env,bufsize=1)
-                    lock.stdin.write("LOCK TABLES item_current_owner WRITE; SELECT 'held';\n"); lock.stdin.flush()
-                    assert lock.stdout.readline().strip()=='held'
-                    actor.send('get all '+target); actor.expect('You begin pulling things from',timeout=20)
-                    before=drain(actor)
-                    assert 'Haul:' not in before and 'You get ' not in before,before
-                    actor.send('north'); actor.expect('The Observer Landing',timeout=15)
-                    # Observe room output while the durable acknowledgement is held.
-                    source_before=drain(source); dest_before=drain(dest)
-                    assert 'begins pulling things from' in source_before,source_before
-                    assert 'gets ' not in dest_before and 'pulling things' not in dest_before,dest_before
-                    lock.stdin.write('UNLOCK TABLES;\n'); lock.stdin.flush(); lock.stdin.close()
-                    assert lock.wait(timeout=15)==0; lock=None
+                    actor.send('get all '+target)
                     actor.expect('You finish sorting your haul from '+name,timeout=30)
                     final=drain(actor,1)
                     assert 'Haul:' in final,final
-                    destination=drain(dest)
-                    assert 'gets ' not in destination and 'pulling things' not in destination,destination
-                    assert 'You get ' not in final,final
-                    print(label+': '+final,flush=True)
-                    actor.send('south'); actor.expect('The Regression Arena')
                     return final
 
-                # The first missing-stock acknowledgement only adopts the banana
-                # at its source; departure prevents a new ownership transfer.
-                first=held_departure('stock adoption')
-                assert 'Nothing acquired.' in first and 'no longer available' in first,first
-                assert sql(f'SELECT COUNT(*) FROM item_current_owner WHERE owner_type=1 AND owner_id={pid} AND vnum=15')=='0'
-                assert sql('SELECT COUNT(*) FROM item_current_owner WHERE owner_type=3 AND owner_id=22800 AND vnum=15 AND state=1')=='1'
-                # The next attempt moves the tracked banana and the initially
-                # untracked NPC coin pile. Both must complete from the exact
-                # corpse after the actor flees.
-                second=held_departure('equipment and coin transfer')
-                assert 'a banana' in second and '3s' in second,second
-                assert 'Some contents were not acquired.' not in second,second
-                assert sql(f'SELECT COUNT(*) FROM item_current_owner WHERE owner_type=1 AND owner_id={pid} AND vnum=15 AND state=1')=='1'
-                assert sql(f'SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}')=='0\t3\t0\t0'
+                # Coins and items move in memory, so the haul completes at once. The
+                # room sees it start; the next room sees nothing.
+                first=plain_haul()
+                assert '3s' in first and 'a banana' in first,first
+                assert 'Some contents were not acquired.' not in first,first
+                observed=drain(source); elsewhere=drain(dest)
+                assert 'begins pulling things from' in observed,observed
+                assert 'gets ' not in elsewhere and 'pulling things' not in elsewhere,elsewhere
+                print('npc corpse haul: '+first,flush=True)
                 actor.send('inventory'); actor.expect('a banana')
                 actor.send('save'); actor.expect('Save complete for Taverek.',timeout=30)
+                assert sql(f'SELECT COUNT(*) FROM item_current_owner WHERE owner_type=1 AND owner_id={pid} AND vnum=15 AND state=1')=='1'
+                assert sql(f'SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}')=='0\t3\t0\t0'
                 actor.close(); clients.remove(actor)
                 # Reconnect to the same live player, verify inventory and save.
                 actor=reconnect_linkdead(port); clients.append(actor)
                 actor.send('inventory'); actor.expect('a banana')
                 actor.send('save'); actor.expect('Save complete for Taverek.',timeout=30)
                 assert 'finish sorting' not in drain(actor), 'completion replayed on reconnect'
-                # Repeat the accepted item and coin boundary against the actual
-                # player's corpse, including its lifecycle revision publication.
+                # The player's own corpse gives the banana back, and the wallet ends
+                # where it was whether the coins went into the corpse or stayed.
                 journey.attack_until_death(actor); actor.expect('ACCOUNT MENU',timeout=45)
                 actor.close(); clients.remove(actor)
                 actor=journey.reconnect_character(port); clients.append(actor)
                 actor.send('look'); actor.expect('The corpse of a Human is lying here.')
-                pc_items=held_departure('player corpse equipment','Taverek','the corpse of Taverek')
-                assert 'a banana' in pc_items and '3s' in pc_items,pc_items
-                assert 'Some contents were not acquired.' not in pc_items,pc_items
+                pc_items=plain_haul('Taverek','the corpse of Taverek')
+                assert 'a banana' in pc_items and 'Some contents were not acquired.' not in pc_items,pc_items
+                print('player corpse haul: '+pc_items,flush=True)
                 actor.send('save'); actor.expect('Save complete for Taverek.',timeout=30)
                 assert sql(f'SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}')=='0\t3\t0\t0'
-                print('PASS: actual three-player NPC/player corpse held SQL adoption/item/coin movement, observers, durable custody, wallet and reconnect',flush=True)
+                print('PASS: three-player NPC/player corpse hauls: coins and items in memory, observers, saved custody, wallet and reconnect',flush=True)
             except Exception:
                 print((runtime/'server.out').read_text(errors='replace')[-5000:])
                 print(journey.runtime_logs(runtime)[-12000:])
                 for c in clients: print(c.transcript.decode(errors='replace')[-7000:])
                 raise
             finally:
-                if lock and lock.poll() is None: lock.kill(); lock.wait()
                 for c in clients: c.close()
                 if process and process.poll() is None:
                     process.send_signal(signal.SIGTERM); process.wait(timeout=30)

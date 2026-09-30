@@ -23,6 +23,7 @@ prelude = r'''
 #include <cstdarg>
 #include <cctype>
 #include <cerrno>
+#include <climits>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -86,16 +87,13 @@ enum class item_transfer_reason { unknown, locker_withdraw, corpse_loot, player_
 enum class item_movement_reject { none, owner_mismatch, busy };
 struct item_ownership_runtime_entry { item_owner_identity owner; };
 struct item_transfer_result { int corpse_revision=0; };
-struct coin_transfer_endpoint { std::array<int32_t,4> before={}, after={}; };
-struct coin_transfer_payload { coin_transfer_endpoint source, destination; };
-struct coin_transfer_result { std::array<item_transfer_result,2> piles={}; };
 static struct { P_obj contents=nullptr; } world[8];
 static int top_of_objt=50;
 static std::unordered_map<uint64_t, P_obj> objects;
 static std::unordered_map<int, std::string> rooms;
 static std::string output;
 static int submissions=0, alerts=0, coin_attempts=0;
-static bool admitted=true, owned=true, fail_delivery=false, pile_ok=true;
+static bool admitted=true, owned=true, fail_delivery=false;
 static bool item_get_ack_publication=false, item_get_deferred=false, item_get_rejected=false;
 static P_obj find_live_item_uid(uint64_t uid) { auto i=objects.find(uid); return i==objects.end()?nullptr:i->second; }
 static void send_to_char(const char *s,P_char) { output+=s; }
@@ -143,9 +141,11 @@ static bool item_get_source_owner(P_char,P_obj,P_obj,item_owner_identity *o) { *
 static void checked_snprintf(char *b,size_t n,const char *f,...) { va_list a; va_start(a,f); vsnprintf(b,n,f,a); va_end(a); }
 static int scrap_attempts=0;
 static void MakeScrap(P_char,P_obj) { ++scrap_attempts; }
-static void mark_player_dirty_components(int,int) {}
 static void writeCorpse(P_obj) {}
-static bool publish_coin_pile(const coin_transfer_endpoint &,const item_transfer_result &,uint64_t) { return pile_ok; }
+static int wallet=0;
+static bool credit_coins(P_char,int64_t value) { wallet+=static_cast<int>(value); return value>0; }
+static void extract_obj(P_obj o,int) { objects.erase(o->obj_uid); o->location=0; }
+static void add_coins(P_obj,int,int,int,int) {}
 static const char *coins_to_string(int p,int g,int s,int c,const char *) {
  static char b[100]; snprintf(b,sizeof(b),"%dp %dg %ds %dc",p,g,s,c); return b;
 }
@@ -160,7 +160,10 @@ static void do_get_finalize_container_success(P_char ch,P_char,P_obj container,P
  if(object->type==ITEM_MONEY) {
   ++coin_attempts; coin_options_seen=options!=nullptr;
   if(options) last_coin_options=*options;
-  item_get_deferred=admitted; item_get_rejected=!admitted; return;
+  // The production finalizer takes a selected corpse pile in memory.
+  item_get_rejected=!(admitted && options && options->has_amount_limit &&
+                      take_coins(ch,object,container,TRUE,*options));
+  return;
  }
  publish_container_get(ch,object,container,TRUE,false); ++total; found=true;
 }
@@ -173,7 +176,7 @@ driver = r'''
 static void reset() {
  bulk_gets.clear(); objects.clear(); rooms.clear(); output.clear();
  submissions=alerts=coin_attempts=scrap_attempts=0; coin_options_seen=false; last_coin_options={};
- admitted=owned=pile_ok=true; fail_delivery=false;
+ admitted=owned=true; fail_delivery=false; wallet=0;
  held=nullptr; held_context.clear();
 }
 static void acknowledge(P_char actor,bool ok=true) {
@@ -205,11 +208,7 @@ int main() {
    assert(OBJ_CARRIED_BY(&dagger,&actor) && alerts==0);
    assert(coin_attempts==1 && coin_options_seen);
    assert(last_coin_options.allow_source_move && last_coin_options.has_amount_limit);
-   assert(last_coin_options.amount_limit[2]==4);
-   coin_pickup_context context={50,42,TRUE,true};
-   coin_transfer_payload payload; payload.source.before={0,0,4,0};
-   assert(coin_get_completion(&actor,true,payload,{},0,
-       (const uint8_t*)&context,sizeof(context)));
+   assert(last_coin_options.amount_limit[2]==4 && wallet==400);
    assert(output.find("You finish sorting your haul from the corpse of a frost giant.")!=std::string::npos);
    assert(output.find("Haul:\r\n  a dagger\r\n")!=std::string::npos);
    assert(output.find("  0p 4g 0s 0c")!=std::string::npos);
@@ -232,11 +231,7 @@ int main() {
    scrap.condition=0; durable.obj_uid=53; durable.location=2; durable.loc.inside=&corpse;
    durable.next_content=&scrap; corpse.contains=&durable; objects[53]=&durable;
    start_bulk_get(&actor,&corpse,nullptr,false); actor.in_room=2; acknowledge(&actor);
-   assert(scrap_attempts==0 && coin_attempts==1);
-   coin_pickup_context context={50,42,TRUE,true}; coin_transfer_payload payload;
-   payload.source.before={0,0,4,0};
-   assert(coin_get_completion(&actor,true,payload,{},0,
-       (const uint8_t*)&context,sizeof(context)));
+   assert(scrap_attempts==0 && coin_attempts==1 && wallet==400);
    assert(bulk_gets.empty());
   }
  // Adoption preserves source custody only; leaving before the transfer stops it.
@@ -263,11 +258,7 @@ int main() {
   first_item.next_content=&second_item; second_item.next_content=&later_coins;
   objects[53]=&second_item;
   start_bulk_get(&full_actor,&full_corpse,nullptr,player_corpse);
-  assert(coin_attempts==1 && output.find("carry any more")==std::string::npos);
-  coin_pickup_context full_context={50,42,TRUE,true};
-  coin_transfer_payload full_payload; full_payload.source.before={0,0,4,0};
-  assert(coin_get_completion(&full_actor,true,full_payload,{},0,
-      (const uint8_t*)&full_context,sizeof(full_context)));
+  assert(coin_attempts==1 && wallet==400);
   assert(output.find("  0p 4g 0s 0c")!=std::string::npos);
   assert(output.find("You can't carry any more.\r\n")!=std::string::npos);
   assert(output.find("You can't carry any more.\r\n") ==
@@ -307,35 +298,25 @@ int main() {
  // A failed live delivery is never listed in the haul.
  reset(); setup(&actor,&corpse,&dagger,nullptr); start_bulk_get(&actor,&corpse,nullptr,false);
  fail_delivery=true; acknowledge(&actor); assert(output.find("  a dagger")==std::string::npos);
- // Coin-only and mixed operations hold output across acknowledgements. The
- // actual committed denominations are copied before shared formatter reuse.
+ // Coin-only and mixed operations take the selected coins in memory and list them
+ // in the one haul report.
  for(bool mixed : {false,true}) {
   reset(); setup(&actor,&corpse,&dagger,&coins);
   if(!mixed) corpse.contains=&coins;
   start_bulk_get(&actor,&corpse,nullptr,false);
   if(mixed) acknowledge(&actor);
-  assert(coin_attempts==1 && output.find("Haul:")==std::string::npos);
-  actor.in_room=2;
-  coin_pickup_context context={50,42,TRUE,true};
-  coin_transfer_payload payload; payload.source.before={0,0,450,0}; payload.source.after={0,0,50,0};
-  assert(coin_get_completion(&actor,true,payload,{},0,(const uint8_t*)&context,sizeof(context)));
-  assert(output.find("  0p 400g 0s 0c")!=std::string::npos);
-  assert(output.find("couldn't carry")>output.find("Haul:"));
-  assert(rooms[2].empty() && bulk_gets.empty());
+  assert(coin_attempts==1 && wallet==400);
+  assert(output.find("  0p 4g 0s 0c")!=std::string::npos && bulk_gets.empty());
  }
- // A later coin failure keeps the already delivered equipment and first pile,
- // reports completion once, and never lists the rejected second pile.
+ // A later pile with nothing to take keeps the delivered equipment and first pile,
+ // reports once, and never lists the rejected second pile.
  reset(); setup(&actor,&corpse,&dagger,&coins); obj_data later;
  later.obj_uid=53; later.type=ITEM_MONEY; later.location=2; later.loc.inside=&corpse;
  coins.next_content=&later; objects[53]=&later;
  start_bulk_get(&actor,&corpse,nullptr,false); acknowledge(&actor);
- coin_pickup_context context={50,42,TRUE,true}; coin_transfer_payload first;
- first.source.before={0,0,7,0};
- assert(coin_get_completion(&actor,true,first,{},0,(const uint8_t*)&context,sizeof(context)));
- assert(coin_attempts==2 && output.find("Haul:")==std::string::npos);
- assert(coin_get_completion(&actor,false,{}, {},0,(const uint8_t*)&context,sizeof(context)));
- assert(output.find("  a dagger")!=std::string::npos && output.find("  0p 7g 0s 0c")!=std::string::npos);
- assert(output.find("sorting")<output.find("did not commit") && bulk_gets.empty());
+ assert(coin_attempts==2 && wallet==400);
+ assert(output.find("  a dagger")!=std::string::npos && output.find("  0p 4g 0s 0c")!=std::string::npos);
+ assert(output.find("Some contents were not acquired.")!=std::string::npos && bulk_gets.empty());
  // The helper is PC-only. The strict PID macro above aborts for a real NPC,
  // so this also protects every container/coin/artifact publication caller.
  reset(); char_data scavenger; scavenger.npc=true; obj_data npc_bag,npc_loot;
@@ -350,12 +331,16 @@ int main() {
 }
 '''
 
+# The forward declaration precedes the definition; select the latter explicitly.
+_coins = source.index('static bool take_coins(', source.index('// Take the selected coins'))
+take_coins = source[_coins:source.index('P_obj find_live_item_uid(', _coins)]
 parts = [prelude, take('struct synchronous_get_item')+';', take('struct bulk_get_state')+';',
          take('struct coin_get_submission_options')+';',
          take('struct bulk_movement_context')+';',
          'static std::unordered_map<uint32_t,bulk_get_state> bulk_gets;',
          take('static bulk_get_state *corpse_bulk_get('),
-         take('static void announce_corpse_bulk_get('), take('static void publish_container_get('), finalizers]
+         take('static void announce_corpse_bulk_get('), take_coins,
+         take('static void publish_container_get('), finalizers]
 for name in ['static bool bulk_get_source_matches(', 'static bool bulk_get_source_for_roots(',
              'static bool bulk_get_source_available(',
              'static bool bulk_get_corpse_source_available(',
@@ -372,7 +357,7 @@ end = source.index('/** Snapshot rejection text', start)
 parts.append(source[start:end])
 for name in ['static void reject_bulk_get_object(', 'static bool select_bulk_get_item(', 'static void start_bulk_get(']:
     parts.append(take(name))
-parts += [take('struct coin_pickup_context')+';', take('static bool coin_get_completion('), driver]
+parts += [driver]
 with tempfile.TemporaryDirectory(prefix='corpse-haul-') as directory:
     cpp=Path(directory)/'test.cpp'; binary=Path(directory)/'test'
     cpp.write_text('\n'.join(parts))

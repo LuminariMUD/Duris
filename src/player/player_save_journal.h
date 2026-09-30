@@ -51,6 +51,8 @@ player_save_journal_result player_save_journal_checkpoint(int pid,
 							  player_revision_t durable_revision);
 player_save_journal_result player_save_journal_replay(player_save_apply_fn apply, void *context);
 player_save_journal_health player_save_journal_health_copy(void);
+// Move the journal aside so it is never replayed again.
+bool player_save_journal_retire(void);
 
 bool player_save_journal_worker_append(const player_snapshot &snapshot, void *context);
 bool player_save_journal_worker_ack(int pid, player_revision_t revision, void *context);

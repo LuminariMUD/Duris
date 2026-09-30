@@ -66,12 +66,9 @@ checks = {
     "level intent coalesced": "slot->level_dirty = slot->level_dirty || level_dirty;" in actoth,
     "direct flush is truthful": "bool persistence_flush_character_saves(P_char ch)" in actoth,
     "global flush is truthful": "bool persistence_flush_all_character_saves(void)" in actoth,
-    "terminal helper consumes slot only after durability": "if (saved && slot)" in terminal_helper and
-                                                            "memset(slot, 0" in terminal_helper,
-    "failed terminal retains safe retry": "if (!saved)" in terminal_helper and
-                                           "persistence_schedule_character_save" in terminal_helper and
-                                           "RENT_CRASH" in terminal_helper,
-    "terminal failure queues safe retry": '"terminal-save-retry"' in actoth,
+    # The terminal save is queued and consumes the pending slot; there is no retry.
+    "terminal helper consumes slot once queued": "memset(slot, 0" in terminal_helper,
+    "no terminal retry": '"terminal-save-retry"' not in actoth,
     "dead pc retry remains eligible": "if (!ch || IS_NPC(ch) || !GET_NAME(ch))" in schedule_checkpoint,
 }
 

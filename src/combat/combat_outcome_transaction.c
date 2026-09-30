@@ -2,7 +2,7 @@
 
 #include "redis/redis_report_cache.h"
 #include "economy/currency_transaction.h"
-#include "world/epic_transaction.h"
+#include "persistence/persistence_checkpoint.h"
 #include "sql/sql_player.h"
 #include "core/utils.h"
 
@@ -42,33 +42,36 @@ std::string operation_key(const critical_operation_id &operation_id)
 			   operation_id.bytes.size());
 }
 
-void publish_live(const combat_outcome_result &result, const combat_outcome_payload &payload)
+// Frags, epic points and blood money live in memory: they change when the outcome is
+// submitted, and the players' saves write them. The command records the kill and the
+// frag and epic ledgers.
+void apply_live(const combat_outcome_payload &payload)
 {
-	for (size_t index = 0; index < result.participant_count; ++index)
+	for (size_t index = 0; index < payload.participant_count; ++index)
 	{
-		const auto &entry = result.participants[index];
-		P_char character = find_player_by_pid(entry.pid);
+		const auto &entry = payload.participants[index];
+		P_char character = find_player_by_pid(static_cast<int>(entry.pid));
 		if (!character || IS_NPC(character))
 			continue;
-		character->only.pc->oldfrags = character->only.pc->frags;
-		character->only.pc->frags = entry.frags;
-		character->only.pc->frag_revision = entry.frag_revision;
-		epic_transaction_publish_balance(character, entry.epics, entry.epic_revision);
-		if (entry.wallet_value >= 0)
+		if (entry.frag_delta)
 		{
-			currency_vector wallet = {};
-			int64_t value = entry.wallet_value;
-			wallet.amount[3] = value / 1000;
-			value %= 1000;
-			wallet.amount[2] = value / 100;
-			value %= 100;
-			wallet.amount[1] = value / 10;
-			wallet.amount[0] = value % 10;
-			currency_transaction_publish_balances(
-				character, payload.participants[index].account_name.data(),
-				payload.participants[index].racewar, wallet, entry.bank,
-				entry.wallet_revision, entry.bank_revision);
+			character->only.pc->oldfrags = character->only.pc->frags;
+			character->only.pc->frags += entry.frag_delta;
+			++character->only.pc->frag_revision;
 		}
+		if (entry.epic_delta)
+		{
+			character->only.pc->epics += entry.epic_delta;
+			++character->only.pc->epic_revision;
+		}
+		if (entry.frag_delta || entry.epic_delta)
+			mark_player_dirty_components(GET_PID(character), PLAYER_COMPONENT_STATUS);
+		if (entry.wallet_delta_copper > 0)
+			currency_transaction_submit_wallet_value(
+				character, entry.wallet_delta_copper,
+				currency_reason_type::wallet_reward, payload.victim_pid,
+				critical_source_site::combat, critical_deadline_class::interactive,
+				nullptr, nullptr, 0);
 	}
 }
 } // namespace
@@ -103,6 +106,7 @@ bool combat_outcome_transaction_submit(const combat_outcome_payload &payload,
 		return false;
 	}
 	++health.submitted;
+	apply_live(payload);
 	health.max_participants =
 		std::max<uint64_t>(health.max_participants, payload.participant_count);
 	health.pending = pending.size();
@@ -130,10 +134,7 @@ void combat_outcome_transaction_handle_completions(const critical_completion *co
 			(completions[index].outcome == critical_apply_outcome::applied ||
 			 completions[index].outcome == critical_apply_outcome::already_applied);
 		if (committed)
-		{
-			publish_live(result, found->second.payload);
 			++health.committed;
-		}
 		else
 		{
 			++health.rejected;

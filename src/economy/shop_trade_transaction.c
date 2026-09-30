@@ -21,6 +21,10 @@ struct pending_trade
 	shop_trade_completion_fn completion = nullptr;
 	bool completion_ready = false;
 	critical_completion completed = {};
+	// A purchase's price, taken from the wallet at submit.
+	int64_t escrow = 0;
+	// A sale's item, taken out of the seller's inventory at submit.
+	P_obj held = nullptr;
 };
 
 std::unordered_map<std::string, pending_trade> pending;
@@ -29,6 +33,17 @@ std::string operation_key(const critical_operation_id &operation_id)
 {
 	return std::string(reinterpret_cast<const char *>(operation_id.bytes.data()),
 			   operation_id.bytes.size());
+}
+
+bool buying(shop_trade_action action)
+{
+	return action == shop_trade_action::buy_existing ||
+	       action == shop_trade_action::buy_produced;
+}
+
+bool selling(shop_trade_action action)
+{
+	return action == shop_trade_action::sell_store || action == shop_trade_action::sell_destroy;
 }
 
 bool player_pending(uint32_t pid)
@@ -92,17 +107,16 @@ bool publish_ownership(const shop_trade_payload &payload, const shop_trade_resul
 					  payload.items[index].expected_item_revision,
 					  payload.items[index].vnum,
 					  payload.items[index].expected_state };
-	const bool buying = payload.action == shop_trade_action::buy_existing ||
-			    payload.action == shop_trade_action::buy_produced;
+	const bool buy = buying(payload.action);
 	const bool cleanup = payload.action == shop_trade_action::discard_invalid;
 	item_transfer_result transfer_result = {
 		.root_item_uid = payload.selected_item_uid,
 		.item_count = result.item_count,
 		.from_owner_revision = cleanup ? result.player_owner_revision :
-				       buying  ? result.counterparty_owner_revision :
+				       buy     ? result.counterparty_owner_revision :
 						 result.player_owner_revision,
 		.to_owner_revision = cleanup ? result.counterparty_owner_revision :
-				     buying  ? result.player_owner_revision :
+				     buy     ? result.player_owner_revision :
 					       result.counterparty_owner_revision,
 		.max_item_revision = 0,
 		.corpse_revision = 0,
@@ -127,16 +141,32 @@ bool publish(std::unordered_map<std::string, pending_trade>::iterator found, P_c
 		(!committed || shop_trade_runtime_can_advance(entry.payload.shop_id,
 							      entry.payload.expected_shop_revision,
 							      result.shop_revision));
-	if (published)
-		published = currency_transaction_publish_balances(
-			character, entry.payload.account_name.data(), entry.payload.racewar,
-			result.wallet, result.bank, result.wallet_revision, result.bank_revision);
+	// The wallet is memory's: a purchase paid at submit and gets its price back when
+	// refused; a sale is paid now.
+	const bool sold = !buying(entry.payload.action) &&
+			  entry.payload.action != shop_trade_action::discard_invalid;
+	const int64_t credit = !committed ? entry.escrow : sold ? entry.payload.price : 0;
+	if (credit > 0)
+		currency_transaction_submit_wallet_value(
+			character, credit,
+			committed ? currency_reason_type::wallet_reward :
+				    currency_reason_type::refund,
+			entry.payload.shop_id, critical_source_site::command,
+			critical_deadline_class::interactive, nullptr, nullptr, 0);
 	if (published && committed)
 		published = publish_ownership(entry.payload, result);
 	if (published && committed)
 		published = shop_trade_runtime_advance(entry.payload.shop_id,
 						       entry.payload.expected_shop_revision,
 						       result.shop_revision);
+	// A refused sale gives its item back; a committed one the completion hands to the
+	// shopkeeper, and one that cannot be published is gone from the seller either way.
+	// The item may have been extracted while it was held.
+	P_obj held = find_live_object(entry.held, entry.payload.selected_item_uid);
+	if (held && !committed)
+		obj_to_char(held, character);
+	else if (held && !published)
+		extract_obj(held, TRUE);
 	const auto completion = entry.completion;
 	const shop_trade_payload payload = entry.payload;
 	const unsigned int error_code = decoded ? entry.completed.error_code : EBADMSG;
@@ -163,20 +193,60 @@ bool shop_trade_transaction_submit(P_char character, const shop_trade_payload &p
 				      critical_source_site::command,
 				      critical_deadline_class::interactive))
 		return false;
+	// A purchase's price leaves the wallet now, and the buyer's save is queued before the
+	// command, so a crash between them loses the money instead of paying it twice.
+	const int64_t escrow = buying(payload.action) && payload.price > 0 ? payload.price : 0;
+	// A sale's item leaves the seller's inventory now too, so no save captured before the
+	// sale commits can claim it back from the shopkeeper.
+	P_obj held = nullptr;
+	if (selling(payload.action))
+	{
+		for (held = character->carrying; held && held->obj_uid != payload.selected_item_uid;
+		     held = held->next_content)
+			;
+		if (!held)
+			return false;
+	}
 	const std::string key = operation_key(operation_id);
 	try
 	{
 		pending.emplace(
-			key, pending_trade{ payload.player_pid, payload, completion, false, {} });
+			key,
+			pending_trade{
+				payload.player_pid, payload, completion, false, {}, escrow, held });
 	}
 	catch (const std::bad_alloc &)
 	{
 		return false;
 	}
+	if (held)
+	{
+		obj_from_char(held);
+		currency_transaction_save_first(character);
+	}
+	if (escrow)
+	{
+		if (!currency_transaction_submit_wallet_value(
+			    character, -escrow, currency_reason_type::wallet_spend, payload.shop_id,
+			    critical_source_site::command, critical_deadline_class::interactive,
+			    nullptr, nullptr, 0))
+		{
+			pending.erase(key);
+			return false;
+		}
+		currency_transaction_save_first(character);
+	}
 	const auto submitted = critical_command_coordinator_submit(std::move(command));
 	if (!critical_submit_result_keeps_operation(submitted))
 	{
 		pending.erase(key);
+		if (held)
+			obj_to_char(held, character);
+		if (escrow)
+			currency_transaction_submit_wallet_value(
+				character, escrow, currency_reason_type::refund, payload.shop_id,
+				critical_source_site::command, critical_deadline_class::interactive,
+				nullptr, nullptr, 0);
 		return false;
 	}
 	return true;

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Synthetic runtime and source contracts for linear player-item hydration."""
 
+import re
 from _paths import SRC, rel
 import subprocess
 import tempfile
@@ -1140,14 +1141,12 @@ for contract in (
 assert REPOSITORY.count("load_items(connection") == 1
 assert "player_load_items_materialize" in MATERIALIZE
 
-# Skipping a payload row the ownership ledger no longer backs deletes the item at the next
-# full save, so the tolerant path has to stay bounded: past the cap the load must be refused
-# rather than quietly destroying most of an inventory, and the wizlog alert must not repeat
-# on every retried login.
-REPOSITORY_HEADER = (SRC / "player_load_repository.h").read_text()
-assert "PLAYER_LOAD_ITEM_SKIP_MAX" in REPOSITORY_HEADER
-assert "result.stale_item_rows > PLAYER_LOAD_ITEM_SKIP_MAX" in MATERIALIZE
-assert "outcome=skip_limit_exceeded" in MATERIALIZE
+# A load takes a payload row when item_current_owner has no row for it or names this
+# owner. A row naming another owner is that owner's item: it is skipped and logged to
+# logs/log/dupes, and skipping never refuses the character, however many rows it is.
+assert "PLAYER_LOAD_ITEM_SKIP_MAX" not in MATERIALIZE
+assert re.search(r'dupe_log_item\(\s*"load_skipped"', REPOSITORY)
+assert "item_row_outcome::foreign" in REPOSITORY
 assert MATERIALIZE.count("wizlog(OVERLORD") == 1
 assert "alert_refusal_once(result.pid)" in MATERIALIZE
 assert "request.include_items = true" in COPYOVER

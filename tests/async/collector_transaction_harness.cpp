@@ -3,6 +3,7 @@
 #include "economy/collector_runtime.h"
 #include "economy/currency_transaction.h"
 #include "item/item_ownership_runtime.h"
+#include "core/utils.h"
 
 #include <algorithm>
 #include <array>
@@ -11,6 +12,8 @@
 #include <cstdarg>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <vector>
 
 namespace
 {
@@ -19,7 +22,10 @@ pc_only_data pc = {};
 bool player_online = true;
 critical_command submitted_command = {};
 size_t submit_count = 0;
-size_t wallet_publications = 0;
+// The buyer's wallet in memory, and the order of what a purchase queues.
+int64_t wallet = 0;
+std::vector<std::string> queued;
+collector::record listing_record = {};
 size_t ownership_publications = 0;
 size_t runtime_publications = 0;
 size_t outbox_publications = 0;
@@ -28,6 +34,9 @@ size_t catalog_invalidations = 0;
 size_t passthrough_deliveries = 0;
 size_t live_collection_validations = 0;
 size_t live_collection_detaches = 0;
+// The antiquity a collection takes: detached at submit, then extracted or put back.
+obj_data antiquity = {};
+size_t extracted = 0, put_back = 0;
 bool completion_called = false;
 bool completion_committed = false;
 P_char completion_character = nullptr;
@@ -169,6 +178,7 @@ critical_submit_result critical_command_coordinator_submit(critical_command comm
 {
 	submitted_command = std::move(command);
 	++submit_count;
+	queued.push_back("command");
 	return critical_submit_result::accepted;
 }
 
@@ -177,14 +187,29 @@ P_char find_player_by_pid(int pid)
 	return player_online && pid == 42 ? &character : nullptr;
 }
 
-bool currency_transaction_publish_balances(P_char published_character, const char *account_name,
-					   uint8_t racewar, const currency_vector &,
-					   const currency_vector &, uint64_t wallet_revision,
-					   uint64_t bank_revision)
+bool currency_transaction_submit_wallet_value(P_char buyer, int64_t value, currency_reason_type,
+					      int64_t, critical_source_site,
+					      critical_deadline_class, currency_completion_fn,
+					      const void *, size_t)
 {
-	assert(published_character == &character && !strcmp(account_name, "CollectorTester") &&
-	       racewar == 1 && wallet_revision == 11 && bank_revision == 12);
-	++wallet_publications;
+	assert(buyer == &character);
+	if (value < 0 && wallet < -value)
+		return false;
+	wallet += value;
+	return true;
+}
+
+void currency_transaction_save_first(P_char buyer)
+{
+	assert(buyer == &character);
+	queued.push_back("save");
+}
+
+bool collector_runtime_find(uint64_t listing, collector::record *entry)
+{
+	if (!listing || listing != listing_record.listing)
+		return false;
+	*entry = listing_record;
 	return true;
 }
 
@@ -200,15 +225,45 @@ bool collector_collection_live_matches(const collector_command_payload &payload,
 {
 	assert(payload.action == collector_action::collect && selected);
 	++live_collection_validations;
-	*selected = reinterpret_cast<P_obj>(static_cast<uintptr_t>(payload.selected_item_uid));
+	antiquity.obj_uid = payload.selected_item_uid;
+	antiquity.loc_p = LOC_ROOM;
+	antiquity.loc.room = 3;
+	*selected = &antiquity;
 	return true;
 }
 
 bool collector_collection_detach_live(P_obj selected)
 {
-	assert(selected);
+	assert(selected == &antiquity && OBJ_ROOM(selected));
 	++live_collection_detaches;
+	antiquity.loc_p = LOC_NOWHERE;
 	return true;
+}
+
+void extract_obj(P_obj object, int)
+{
+	assert(object == &antiquity && OBJ_NOWHERE(object));
+	++extracted;
+}
+
+// Whether the antiquity still exists; a case extracts it while it is held.
+bool antiquity_live = true;
+P_obj find_live_object(P_obj expected, uint64_t uid)
+{
+	return antiquity_live && expected == &antiquity && uid == antiquity.obj_uid ? expected :
+										      nullptr;
+}
+
+void obj_to_obj(P_obj, P_obj)
+{
+	assert(false && "the collected antiquity was in a room");
+}
+
+void obj_to_room(P_obj object, int room)
+{
+	assert(object == &antiquity && room == 3);
+	antiquity.loc_p = LOC_ROOM;
+	++put_back;
 }
 
 bool collector_runtime_publish(const collector_command_result &result)
@@ -255,13 +310,29 @@ int main()
 	auto available = available_record();
 	auto purchase = purchase_payload(available);
 	auto purchased = purchase_result(available);
+	const int64_t price = static_cast<int64_t>(available.price_value);
+	assert(price > 0);
 	critical_operation_id purchase_operation = {};
 	purchase_operation.bytes[0] = 0xa5;
 	critical_operation_id zero_operation = {};
 	assert(!collector_transaction_submit_identified(&character, zero_operation, purchase,
 							completed));
+	// A purchase needs the listing it was prepared from, and money for its price.
+	wallet = price - 1;
+	listing_record = available;
+	assert(!collector_transaction_submit_identified(&character, purchase_operation, purchase,
+							completed));
+	listing_record.revision++;
+	wallet = price;
+	assert(!collector_transaction_submit_identified(&character, purchase_operation, purchase,
+							completed));
+	assert(wallet == price && queued.empty());
+	listing_record = available;
+	// The price leaves the wallet, and the buyer's save is queued before the command.
+	wallet = price + 5;
 	assert(collector_transaction_submit_identified(&character, purchase_operation, purchase,
 						       completed));
+	assert(wallet == 5 && (queued == std::vector<std::string>{ "save", "command" }));
 	assert(critical_operation_id_equal(submitted_command.operation_id, purchase_operation));
 	assert(collector_transaction_player_busy(&character));
 	assert(collector_transaction_listing_busy(available.listing));
@@ -270,27 +341,45 @@ int main()
 	player_online = false;
 	collector_transaction_handle_completions(&purchase_completion, 1);
 	assert(!collector_transaction_player_busy(&character) && !completion_called &&
-	       !wallet_publications && ownership_publications == 1 && runtime_publications == 1 &&
-	       completion_error == 0 && completion_action == collector_action::unknown);
+	       ownership_publications == 1 && runtime_publications == 1 && completion_error == 0 &&
+	       completion_action == collector_action::unknown);
 	player_online = true;
 	collector_transaction_player_ready(&character);
 	assert(!collector_transaction_player_busy(&character) && completion_called &&
 	       completion_committed && completion_character == &character &&
 	       completion_error == 0 && completion_action == collector_action::purchase &&
-	       wallet_publications == 0 && ownership_publications == 1 &&
-	       runtime_publications == 1);
+	       ownership_publications == 1 && runtime_publications == 1);
 	assert(!collector_transaction_listing_busy(available.listing));
+	// The committed purchase kept its price.
+	assert(wallet == 5);
 
+	// A refused purchase gives the price back.
 	completion_called = completion_committed = false;
 	collector_command_result rejected;
 	rejected.action = collector_action::purchase;
+	wallet = price;
 	assert(collector_transaction_submit(&character, purchase, completed));
+	assert(wallet == 0);
 	auto rejected_completion =
 		completion(rejected, critical_apply_outcome::terminal_failure, EAGAIN);
 	collector_transaction_handle_completions(&rejected_completion, 1);
 	assert(completion_called && !completion_committed && completion_error == EAGAIN &&
-	       wallet_publications == 0 && ownership_publications == 1 &&
-	       runtime_publications == 1);
+	       ownership_publications == 1 && runtime_publications == 1 && wallet == price);
+
+	// A buyer who left before the refusal gets the price back on return.
+	completion_called = completion_committed = false;
+	assert(collector_transaction_submit(&character, purchase, completed));
+	assert(wallet == 0);
+	rejected_completion =
+		completion(rejected, critical_apply_outcome::terminal_failure, EAGAIN);
+	player_online = false;
+	collector_transaction_handle_completions(&rejected_completion, 1);
+	assert(wallet == 0 && !collector_transaction_player_busy(&character));
+	player_online = true;
+	collector_transaction_player_ready(&character);
+	assert(wallet == price);
+	collector_transaction_player_ready(&character);
+	assert(wallet == price);
 
 	completion_called = completion_committed = false;
 	collector::rules policy;
@@ -310,8 +399,8 @@ int main()
 	collector_transaction_handle_completions(&collect_completion, 1);
 	assert(completion_called && completion_committed &&
 	       completion_action == collector_action::collect && ownership_publications == 2 &&
-	       runtime_publications == 2 && wallet_publications == 0 &&
-	       live_collection_validations == 1 && live_collection_detaches == 1);
+	       runtime_publications == 2 && live_collection_validations == 1 &&
+	       live_collection_detaches == 1 && extracted == 1);
 	assert(!collector_transaction_listing_busy(candidate.listing));
 	assert(!collector_transaction_item_busy(candidate.uid));
 
@@ -334,8 +423,8 @@ int main()
 	collector_transaction_handle_completions(&recovery_completion, 1);
 	assert(completion_called && completion_committed && completion_error == ESTALE &&
 	       completion_action == collector_action::collect && ownership_publications == 3 &&
-	       runtime_publications == 2 && wallet_publications == 0 &&
-	       live_collection_validations == 2 && live_collection_detaches == 1);
+	       runtime_publications == 2 && live_collection_validations == 2 &&
+	       live_collection_detaches == 2 && extracted == 2);
 	ownership_publication_succeeds = true;
 
 	completion_called = completion_committed = false;
@@ -355,7 +444,35 @@ int main()
 	collector_transaction_handle_completions(&malformed_completion, 1);
 	assert(completion_called && completion_committed && completion_error == EBADMSG &&
 	       completion_action == collector_action::unknown && ownership_publications == 3 &&
-	       runtime_publications == 2 && wallet_publications == 0);
+	       runtime_publications == 2);
+
+	// A refused collection puts the antiquity back where it was.
+	completion_called = completion_committed = false;
+	auto refused_candidate = candidate;
+	refused_candidate.listing = 92;
+	refused_candidate.uid = 206;
+	auto refused_collect = collect_payload(refused_candidate);
+	refused_collect.listing = 92;
+	refused_collect.to_owner = { item_owner_type::collector, item_collector_owner_id(92), 0 };
+	refused_collect.selected_item_uid = 206;
+	refused_collect.items[0].item_uid = 206;
+	refused_collect.items[0].root_item_uid = 206;
+	assert(collector_transaction_submit_background(refused_collect, completed));
+	assert(OBJ_NOWHERE(&antiquity));
+	critical_completion refused_collection = {};
+	refused_collection.operation_id = submitted_command.operation_id;
+	refused_collection.outcome = critical_apply_outcome::terminal_failure;
+	refused_collection.error_code = ESTALE;
+	collector_transaction_handle_completions(&refused_collection, 1);
+	assert(completion_called && !completion_committed && put_back == 1 && extracted == 3 &&
+	       OBJ_ROOM(&antiquity));
+	// An antiquity extracted while it was held is left alone.
+	assert(collector_transaction_submit_background(refused_collect, completed));
+	antiquity_live = false;
+	refused_collection.operation_id = submitted_command.operation_id;
+	collector_transaction_handle_completions(&refused_collection, 1);
+	assert(put_back == 1 && extracted == 3);
+	antiquity_live = true;
 
 	// If the transactional outbox wins the race against the coordinator completion,
 	// publication must reuse the retained request so custody and the live graph are
@@ -387,8 +504,8 @@ int main()
 	collector_transaction_publish_outbox();
 	assert(completion_called && completion_committed && completion_error == 0 &&
 	       completion_action == collector_action::collect && ownership_publications == 4 &&
-	       runtime_publications == 3 && wallet_publications == 0 &&
-	       live_collection_validations == 3 && live_collection_detaches == 2 &&
+	       runtime_publications == 3 && live_collection_validations == 6 &&
+	       live_collection_detaches == 6 && extracted == 4 &&
 	       !collector_transaction_item_busy(205));
 	assert(!outbox_publications && outbox_resumes == 1);
 	assert(collector_transaction_outbox_delivery(pending_record, nullptr) ==
@@ -420,5 +537,5 @@ int main()
 	       passthrough_deliveries == 1);
 
 	collector_transaction_reset_for_tests();
-	assert(submit_count == 6);
+	assert(submit_count == 9);
 }

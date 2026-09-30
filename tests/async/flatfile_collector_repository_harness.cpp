@@ -659,9 +659,16 @@ int main(int argc, char **argv)
 	collector_command_result purchased = collector_result(applied);
 	require(applied.outcome == critical_apply_outcome::applied &&
 			purchased.entry.status == collector::state::purchased &&
-			purchased.entry.item_revision == 4 && purchased.wallet_revision == 1 &&
-			purchased.bank_revision == 2,
-		"beneficiary purchase did not atomically move item and payment");
+			purchased.entry.item_revision == 4,
+		"beneficiary purchase did not move the item");
+	// The wallet is memory's: the submit took the price, and the domain is left alone.
+	flatfile_player_domain_record after_purchase;
+	require(flatfile_player_domain_load(root_path, 42, "beneficiary", 1, &after_purchase,
+					    &error) == flatfile_player_domain_result::ok &&
+			after_purchase.domains.wallet == beneficiary.domains.wallet &&
+			after_purchase.domains.wallet_revision ==
+				beneficiary.domains.wallet_revision,
+		"a collector purchase wrote the wallet");
 
 	second = listing(root_path, 2, &error);
 	const item_owner_identity destruction = { item_owner_type::destruction, 0, 0 };

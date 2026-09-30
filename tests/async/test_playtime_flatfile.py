@@ -36,8 +36,8 @@ int main(int argc, char **argv) {
         baseline.status_integers.push_back({tag, value, 0, false});
     }
     baseline.status_strings.push_back({player_status_string_field::name, "Player"});
-    auto apply = [&](const player_snapshot &s) {
-        auto result = flatfile_player_snapshot_apply(root, s, &error);
+    auto apply = [&](const player_snapshot &s, bool legacy_replay = false) {
+        auto result = flatfile_player_snapshot_apply(root, s, &error, legacy_replay);
         if (result.outcome == player_save_apply_outcome::terminal_failure)
             std::cerr << error << '\n';
         return result.outcome;
@@ -60,9 +60,14 @@ int main(int argc, char **argv) {
             row.signed_value = player_playtime_total(3600, 10000, 10600);
     assert(apply(elapsed) == player_save_apply_outcome::applied);
     assert(read_total() == 4200);
-    assert(apply(elapsed) == player_save_apply_outcome::already_applied);
+    // Writing the same save again is harmless.
+    assert(apply(elapsed) == player_save_apply_outcome::applied);
     assert(read_total() == 4200);
-    assert(apply(baseline) == player_save_apply_outcome::stale_revision);
+    // Only the one-time replay of an older server's journal can bring a stale
+    // revision, and it keeps the fence.
+    assert(apply(elapsed, true) == player_save_apply_outcome::already_applied);
+    assert(read_total() == 4200);
+    assert(apply(baseline, true) == player_save_apply_outcome::stale_revision);
     assert(read_total() == 4200);
     const auto loaded = static_cast<unsigned int>(read_total());
     assert(player_playtime_total(loaded, 100000, 100010) == 4210);
@@ -72,7 +77,7 @@ int main(int argc, char **argv) {
 
 SOURCES = [
     "flatfile_player_repository.c", "player_load_topology.c", "flatfile_identity_repository.c",
-    "flatfile_item_repository.c", "coin_transfer_command.c", "flatfile_player_snapshot_file.c",
+    "flatfile_item_repository.c", "item_claim.c", "dupe_log.c", "coin_transfer_command.c", "flatfile_player_snapshot_file.c",
     "flatfile_corpse_repository.c", "flatfile_locker_repository.c", "flatfile_world_item_repository.c",
     "flatfile_artifact_repository.c", "flatfile_shop_trade_repository.c",
     "flatfile_shop_trade_materialization.c", "flatfile_shopkeeper_repository.c",

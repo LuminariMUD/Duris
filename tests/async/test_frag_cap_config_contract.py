@@ -89,14 +89,14 @@ assert "frag_cap_config_hardcore_level_cap" in limits
 assert "IS_HARDCORE(ch)" in limits
 assert "frag_cap_config_boon_duration_minutes" in impl
 assert "frag_cap_config_boon_bonus" in impl
-assert "sql_check_level_cap_periodic" in sql
-assert "sql_check_level_cap_periodic" in sql_h
-assert "sql_check_level_cap_periodic" not in comm
+# The maintenance job raises the cap; the game keeps the row in memory and reads it
+# again when the job changed it.
+assert "sql_check_level_cap_periodic" not in sql + sql_h + comm
 assert "maintenance_job_id::level_cap" in comm
+assert "sql_level_cap_reload();" in comm
 assert "frag_cap_config_cap_level_from_frags" in maintenance
 assert "frag_cap_config_timer_days" in maintenance
-assert "COALESCE(SUM(total_frags), 0)" in sql
-assert "if (gain >= 0)" in sql
+assert "COALESCE(SUM(total_frags),0)" in maintenance
 assert "FROM_UNIXTIME" in sql
 assert "frag_cap_config_reset_level" in sql
 assert "frag_cap_config_reset_timer_days" in sql

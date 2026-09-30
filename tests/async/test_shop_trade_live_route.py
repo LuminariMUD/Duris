@@ -14,7 +14,7 @@ for token in (
     "shop_trade_find_keeper(payload.shop_id)",
     "shop_trade_runtime_object_matches_payload(object, payload)",
     "object->loc.carrying == keeper",
-    "object->loc.carrying == ch",
+    "selling && OBJ_NOWHERE(object)",
     "shop_trade_action::buy_existing",
     "shop_trade_action::buy_produced",
     "shop_trade_action::sell_store",
@@ -76,10 +76,24 @@ if not callback.index("shop_trade_runtime_object_matches_payload") < cleanup_bra
     "extract_obj(object, TRUE)", cleanup_branch
 ):
     raise SystemExit("invalid shop stock is extracted before committed snapshot revalidation")
-if not TRANSACTION.index("currency_transaction_publish_balances(") < TRANSACTION.index(
+# A sale's item leaves the seller before the seller's save and the command; a refused sale
+# gets it back before the callback.
+submit = TRANSACTION[TRANSACTION.index("bool shop_trade_transaction_submit("):]
+if not submit.index("obj_from_char(held)") < submit.index(
+    "currency_transaction_save_first(character)", submit.index("obj_from_char(held)")
+) < submit.index("critical_command_coordinator_submit("):
+    raise SystemExit("a sale's item can still be saved with the seller after it is sold")
+if not TRANSACTION.index("obj_to_char(held, character)") < TRANSACTION.index(
     "completion(character, committed && published"
 ):
-    raise SystemExit("shop callback can run before authoritative runtime publication")
+    raise SystemExit("a refused sale's item comes back after the callback")
+# The wallet is memory's: a sale is paid, or a refused purchase refunded, before the callback.
+if not TRANSACTION.index("currency_transaction_submit_wallet_value(") < TRANSACTION.index(
+    "completion(character, committed && published"
+):
+    raise SystemExit("shop callback can run before the wallet is settled")
+if "currency_transaction_publish_balances" in TRANSACTION:
+    raise SystemExit("shop completion still publishes repository balances")
 for token in (
     "transfer.target_root_item_uid = payload.target_root_item_uid",
     "transfer.target_parent_item_uid = payload.target_parent_item_uid",

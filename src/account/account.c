@@ -287,9 +287,7 @@ bool prepare_account_reconnect(P_char character, P_desc descriptor)
 	// replay can report its result to the reconnecting player.  The caller only
 	// enters CON_PLAYING after this preflight succeeds.
 	character->desc = descriptor;
-	epic_transaction_player_ready(character);
 	zone_touch_transaction_player_ready(character);
-	currency_transaction_player_ready(character);
 	locker_identify_replay(character);
 	item_movement_transaction_player_ready(character);
 	shop_trade_transaction_player_ready(character);
@@ -305,13 +303,6 @@ bool prepare_account_reconnect(P_char character, P_desc descriptor)
 		return false;
 	}
 	return true;
-}
-
-bool account_load_outcome_needs_sync_retry(player_load_outcome outcome)
-{
-	return outcome == player_load_outcome::retryable_failure ||
-	       outcome == player_load_outcome::timed_out ||
-	       outcome == player_load_outcome::cancelled || outcome == player_load_outcome::stale;
 }
 
 bool build_account_load_request(P_desc d, struct acct_chars *c, player_load_request *request_out)
@@ -333,13 +324,6 @@ bool build_account_load_request(P_desc d, struct acct_chars *c, player_load_requ
 	return true;
 }
 
-bool execute_account_load_sync(P_desc d, struct acct_chars *c, player_load_result *result_out)
-{
-	player_load_request request = {};
-	if (!build_account_load_request(d, c, &request))
-		return false;
-	return player_load_pipeline_execute_sync(request, result_out);
-}
 } // namespace
 
 #define ACCT_SERIAL 1
@@ -2392,67 +2376,38 @@ P_char load_char_into_game(struct acct_chars *c, P_desc d)
 		return NULL;
 	if (!d->player_load_request_id)
 	{
+		// The load runs on the load worker; the game loop carries on and the
+		// descriptor waits in CON_PLAYER_LOAD until the result arrives.
 		player_load_request request = {};
 		if (!build_account_load_request(d, c, &request))
 			return NULL;
+		const bool deleting = STATE(d) == CON_ACCT_DELETE_CHAR;
+		if (player_load_pipeline_submit(request) != player_load_submit_outcome::accepted)
+		{
+			SEND_TO_Q(
+				"That character is temporarily unavailable; please try again shortly.\r\n",
+				d);
+			return NULL;
+		}
+		d->player_load_request_id = request.request_id;
 		d->player_load_pid = c->pid;
-		if (STATE(d) == CON_ACCT_CONFIRM_CHAR)
-		{
-			if (player_load_pipeline_submit(request) !=
-			    player_load_submit_outcome::accepted)
-			{
-				if (!player_load_pipeline_execute_sync(request, &loaded))
-				{
-					d->player_load_pid = 0;
-					return NULL;
-				}
-				d->player_load_pid = 0;
-				d->player_load_mode = PLAYER_LOAD_MODE_NONE;
-			}
-			else
-			{
-				d->player_load_request_id = request.request_id;
-				d->player_load_pid = c->pid;
-				d->player_load_mode = PLAYER_LOAD_MODE_ACCOUNT;
-				STATE(d) = CON_PLAYER_LOAD;
-				SEND_TO_Q("Loading character...\r\n", d);
-				return NULL;
-			}
-		}
-		else
-		{
-			player_load_result blocking = {};
-			if (player_load_pipeline_wait(request, &blocking,
-						      PLAYER_LOAD_TIMEOUT_USEC / 1000))
-				loaded = std::move(blocking);
-			else if (!execute_account_load_sync(d, c, &loaded))
-			{
-				d->player_load_pid = 0;
-				return NULL;
-			}
-			d->player_load_pid = 0;
-			d->player_load_mode = PLAYER_LOAD_MODE_NONE;
-		}
+		d->player_load_mode = deleting ? PLAYER_LOAD_MODE_ACCOUNT_DELETE :
+						 PLAYER_LOAD_MODE_ACCOUNT;
+		STATE(d) = CON_PLAYER_LOAD;
+		SEND_TO_Q("Loading character...\r\n", d);
+		return NULL;
 	}
-	else
+	auto ready = ready_player_loads.find(d->player_load_request_id);
+	if (ready == ready_player_loads.end())
+		return NULL;
+	loaded = std::move(ready->second);
+	ready_player_loads.erase(ready);
+	d->player_load_request_id = 0;
+	d->player_load_pid = 0;
+	if (loaded.outcome != player_load_outcome::applied)
 	{
-		auto ready = ready_player_loads.find(d->player_load_request_id);
-		if (ready == ready_player_loads.end())
-			return NULL;
-		loaded = std::move(ready->second);
-		ready_player_loads.erase(ready);
-		d->player_load_request_id = 0;
-		d->player_load_pid = 0;
-	}
-	if (account_load_outcome_needs_sync_retry(loaded.outcome))
-	{
-		player_load_result retry = {};
-		if (!execute_account_load_sync(d, c, &retry))
-		{
-			d->player_load_mode = PLAYER_LOAD_MODE_NONE;
-			return NULL;
-		}
-		loaded = std::move(retry);
+		d->player_load_mode = PLAYER_LOAD_MODE_NONE;
+		return NULL;
 	}
 	player = (P_char)mm_get(dead_mob_pool);
 	if (!player)
@@ -2484,7 +2439,8 @@ P_char load_char_into_game(struct acct_chars *c, P_desc d)
 		free_char(player);
 		return NULL;
 	}
-	d->player_load_mode = PLAYER_LOAD_MODE_ACCOUNT;
+	if (d->player_load_mode != PLAYER_LOAD_MODE_ACCOUNT_DELETE)
+		d->player_load_mode = PLAYER_LOAD_MODE_ACCOUNT;
 	// Preserve the trusted-character exemption in the account projection.
 	c->racewar = account_admission_racewar(GET_RACEWAR(player), IS_TRUSTED(player));
 	c->player_racewar = GET_RACEWAR(player);
@@ -2492,21 +2448,26 @@ P_char load_char_into_game(struct acct_chars *c, P_desc d)
 	return player;
 }
 
+static void release_delete_character(P_desc d);
+
 void account_player_load_complete(P_desc d, player_load_result result)
 {
-	if (!d || STATE(d) != CON_PLAYER_LOAD || d->player_load_mode != PLAYER_LOAD_MODE_ACCOUNT ||
+	if (!d || STATE(d) != CON_PLAYER_LOAD ||
+	    (d->player_load_mode != PLAYER_LOAD_MODE_ACCOUNT &&
+	     d->player_load_mode != PLAYER_LOAD_MODE_ACCOUNT_DELETE) ||
 	    !d->player_load_request_id || result.request_id != d->player_load_request_id)
 	{
 		player_load_pipeline_note_stale();
 		return;
 	}
+	const bool deleting = d->player_load_mode == PLAYER_LOAD_MODE_ACCOUNT_DELETE;
 	if (result.pid != d->player_load_pid)
 	{
 		player_load_pipeline_note_stale();
 		result.pid = d->player_load_pid;
 		result.outcome = player_load_outcome::stale;
 	}
-	if (d->player_load_pid <= 0)
+	if (d->player_load_pid <= 0 || result.outcome != player_load_outcome::applied)
 	{
 		d->player_load_request_id = 0;
 		d->player_load_pid = 0;
@@ -2514,18 +2475,16 @@ void account_player_load_complete(P_desc d, player_load_result result)
 		SEND_TO_Q(
 			"That character is temporarily unavailable; please try again shortly.\r\n",
 			d);
+		if (deleting)
+		{
+			release_delete_character(d);
+			STATE(d) = CON_DISPLAY_ACCT_MENU;
+			display_account_menu(d, NULL);
+			return;
+		}
 		STATE(d) = CON_ACCT_SELECT_CHAR;
 		display_character_list(d);
 		return;
-	}
-	if (!player_save_pipeline_save_admitted(d->player_load_pid) &&
-	    (result.outcome == player_load_outcome::applied ||
-	     result.outcome == player_load_outcome::degraded))
-	{
-		result.outcome = player_load_outcome::degraded;
-		result.degraded_components |= PLAYER_LOAD_DEGRADED_RECOVERY;
-		if (!result.failed_component)
-			result.failed_component = "recovery";
 	}
 	const uint64_t completed_request_id = result.request_id;
 	try
@@ -2543,12 +2502,23 @@ void account_player_load_complete(P_desc d, player_load_result result)
 			str_free(d->selected_char_name);
 			d->selected_char_name = NULL;
 		}
-		STATE(d) = CON_ACCT_SELECT_CHAR;
-		display_character_list(d);
+		STATE(d) = deleting ? CON_DISPLAY_ACCT_MENU : CON_ACCT_SELECT_CHAR;
+		if (deleting)
+			display_account_menu(d, NULL);
+		else
+			display_character_list(d);
 		return;
 	}
-	STATE(d) = CON_ACCT_CONFIRM_CHAR;
-	account_confirm_char(d, writable_arg("Y"));
+	if (deleting)
+	{
+		STATE(d) = CON_ACCT_DELETE_CHAR;
+		account_delete_char_loaded(d);
+	}
+	else
+	{
+		STATE(d) = CON_ACCT_CONFIRM_CHAR;
+		account_confirm_char(d, writable_arg("Y"));
+	}
 	if (ready_player_loads.erase(completed_request_id))
 	{
 		d->player_load_request_id = 0;
@@ -2761,7 +2731,6 @@ void account_delete_char(P_desc d, char *arg)
 	struct acct_chars *c = NULL;
 	struct acct_chars *sorted_chars[MAX_CHARS_PER_ACCOUNT];
 	struct acct_chars *temp;
-	char buf[256];
 	int selection, count = 0, i, j;
 
 	if (!arg)
@@ -2875,11 +2844,44 @@ void account_delete_char(P_desc d, char *arg)
 	// Get the selected character (adjust for 0-based indexing)
 	c = sorted_chars[selection - 1];
 	release_delete_character(d);
+	if (d->selected_char_name)
+		str_free(d->selected_char_name);
+	d->selected_char_name = str_dup(c->charname);
 	ch = load_char_into_game(c, d);
-
+	if (STATE(d) == CON_PLAYER_LOAD)
+		return;
 	if (!ch)
 	{
 		SEND_TO_Q("\r\n&+RCouldn't load that character!&n\r\n", d);
+		STATE(d) = CON_DISPLAY_ACCT_MENU;
+		display_account_menu(d, NULL);
+		return;
+	}
+	d->character = ch;
+	account_delete_char_loaded(d);
+}
+
+/** Ask for the final confirmation once the character to delete has loaded. */
+void account_delete_char_loaded(P_desc d)
+{
+	char buf[256];
+	struct acct_chars *c = NULL;
+	for (struct acct_chars *temp = d->account ? d->account->acct_character_list : NULL; temp;
+	     temp = temp->next)
+		if (d->selected_char_name && !strcasecmp(temp->charname, d->selected_char_name))
+			c = temp;
+	if (d->selected_char_name)
+	{
+		str_free(d->selected_char_name);
+		d->selected_char_name = NULL;
+	}
+	P_char ch = d->character;
+	if (!ch && c)
+		ch = load_char_into_game(c, d);
+	if (!c || !ch)
+	{
+		SEND_TO_Q("\r\n&+RCouldn't load that character!&n\r\n", d);
+		release_delete_character(d);
 		STATE(d) = CON_DISPLAY_ACCT_MENU;
 		display_account_menu(d, NULL);
 		return;
@@ -2901,7 +2903,6 @@ void account_delete_char(P_desc d, char *arg)
 		name_cap);
 	SEND_TO_Q(buf, d);
 	d->character = ch;
-	return;
 }
 
 void remove_char_from_list(P_acct acct, char *ch, bool persist)

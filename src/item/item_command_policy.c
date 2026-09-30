@@ -7,17 +7,11 @@
 
 extern P_room world;
 
-bool item_command_uses_durable_ownership(P_obj object)
+bool item_command_uses_durable_ownership(P_obj /*object*/)
 {
-	if (!object || object->obj_uid == 0 || object->type == ITEM_MONEY ||
-	    (object->type == ITEM_CORPSE && IS_SET(object->value[CORPSE_FLAGS], PC_CORPSE)))
-		return false;
-	if (!IS_SET(object->extra_flags, ITEM_TRANSIENT))
-		return true;
-
-	item_ownership_runtime_entry ownership = {};
-	return item_ownership_runtime_lookup(object->obj_uid, &ownership) &&
-	       ownership.state == item_custody_state::active;
+	// Memory is the authority: every command moves the object in memory, and the
+	// next save of each owner records where it went.
+	return false;
 }
 
 bool item_command_object_is_takeable(P_char actor, P_obj object)

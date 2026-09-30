@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 JOURNAL = (SRC / "player_save_journal.c").read_text()
 CODEC = (SRC / "player_snapshot_codec.c").read_text()
 WORKER = (SRC / "player_save_worker.c").read_text()
+PIPELINE = (SRC / "player_save_pipeline.c").read_text()
 DIAGNOSTICS = (SRC / "actinf.c").read_text()
 
 
@@ -483,21 +484,16 @@ assert JOURNAL.index("fdatasync(fd) == 0") < JOURNAL.index(
 )
 print("[PASS] corruption, atomic compaction, duplicate suppression, and ordered replay are bounded")
 
-for contract in (
-    "player_save_worker_set_journal_hooks",
-    "journal_append_callback",
-    "durably_spilled",
-    "journal_ack_callback",
-):
-    assert contract in WORKER
-for metric in (
-    "player_journal state=",
-    "quarantined_bytes",
-    "checkpoint_failures",
-    "quota_exceeded",
-    "age_limit_exceeded",
-):
-    assert metric in DIAGNOSTICS
-print("[PASS] worker durable-handoff hooks and redacted journal health are integrated")
+# The journal is only read now: a leftover one is replayed once at boot, then
+# retired. Nothing new is ever appended to it.
+for contract in ("journal_append_callback", "journal_ack_callback", "journal"):
+    assert contract not in WORKER
+assert "player_save_journal_append" not in PIPELINE
+assert "player_save_journal_replay(selected_snapshot_apply()" in PIPELINE
+assert "player_save_journal_retire()" in PIPELINE
+assert "bool player_save_journal_retire(void)" in JOURNAL
+assert "player_journal state=" not in DIAGNOSTICS
+assert "legacy_journal_replayed" in DIAGNOSTICS
+print("[PASS] the journal is replayed once at boot and never written again")
 
 print("typed player persistence journal contracts passed")

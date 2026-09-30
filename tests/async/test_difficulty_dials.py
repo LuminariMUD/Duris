@@ -198,7 +198,7 @@ def test_every_dial_reaches_its_hook() -> None:
     assert _flat("maximum = difficulty_scale_world_quest_allowance(maximum); "
                  "return std::max(maximum - completed_today, 0);") in sql
     assert _flat("returning_value = difficulty_scale_world_quest_allowance(returning_value); "
-                 "returning_value -= atoi(row[0]);") in sql
+                 "returning_value -= done_today;") in sql
 
     # The spell dial multiplies the final damage, after the profile's 2.0 "more" cap.
     spell = _flat(_body("combat/fight.c", "int spell_damage("))

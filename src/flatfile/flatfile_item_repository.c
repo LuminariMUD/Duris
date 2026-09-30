@@ -13,6 +13,7 @@
 #include "flatfile/flatfile_world_item_repository.h"
 #include "flatfile/flatfile_shop_trade_materialization.h"
 #include "flatfile/flatfile_shop_trade_repository.h"
+#include "persistence/dupe_log.h"
 #include "persistence/persistence_mode.h"
 #include "economy/coin_transfer_command.h"
 #include "player/player_snapshot_codec.h"
@@ -682,6 +683,66 @@ bool descendant_of(const std::vector<flatfile_item_ownership_record *> &root_ite
 	return false;
 }
 
+// The flat-file form of claim_transfer_item(): make the catalog name `holder` for an
+// item a transfer takes from memory. A missing record is added, another owner's
+// record is taken (logged to logs/log/item_claims), and a stale placement is
+// corrected. `parent_uid` null keeps the recorded parent. A destroyed record is never
+// revived: *refused is set instead.
+unsigned int claim_catalog_item(ownership_catalog *catalog, const item_owner_identity &holder,
+				uint64_t item_uid, uint64_t root_uid, const uint64_t *parent_uid,
+				int32_t vnum, uint64_t *revision, bool *refused)
+{
+	if (!catalog || !item_uid || !revision || !refused)
+		return EINVAL;
+	*refused = false;
+	flatfile_item_ownership_record *item = find_item(catalog, item_uid);
+	if (!item)
+	{
+		if (catalog->items.size() >= ownership_maximum_entries)
+			return ENOSPC;
+		try
+		{
+			const flatfile_item_ownership_record added = {
+				item_uid, root_uid, parent_uid ? *parent_uid : 0, holder,
+				1,	  vnum,	    item_custody_state::active
+			};
+			catalog->items.insert(std::upper_bound(catalog->items.begin(),
+							       catalog->items.end(), added,
+							       item_less),
+					      added);
+		}
+		catch (const std::bad_alloc &)
+		{
+			return ENOMEM;
+		}
+		*revision = 1;
+		return 0;
+	}
+	if (item_claim_leaves_out(item->state))
+	{
+		*refused = true;
+		return 0;
+	}
+	const uint64_t parent = parent_uid ? *parent_uid : item->parent_item_uid;
+	const int32_t wanted_vnum = vnum ? vnum : item->vnum;
+	const bool owned = item_owner_identity_equal(item->owner, holder);
+	*revision = item->item_revision;
+	if (owned && item->root_item_uid == root_uid && item->parent_item_uid == parent &&
+	    item->vnum == wanted_vnum && item->state == item_custody_state::active)
+		return 0;
+	if (item->item_revision == std::numeric_limits<uint64_t>::max())
+		return ERANGE;
+	if (!owned)
+		item_claim_log_item(item_uid, wanted_vnum, item->owner, holder);
+	item->owner = holder;
+	item->root_item_uid = root_uid;
+	item->parent_item_uid = parent;
+	item->vnum = wanted_vnum;
+	item->state = item_custody_state::active;
+	*revision = ++item->item_revision;
+	return 0;
+}
+
 unsigned int apply_transfer(ownership_catalog *catalog, const item_transfer_payload &payload,
 			    item_transfer_result *result)
 {
@@ -700,10 +761,42 @@ unsigned int apply_transfer(ownership_catalog *catalog, const item_transfer_payl
 		    to_owner->revision,
 		    0,
 		    0 };
-	if (from_owner->revision != payload.expected_from_revision ||
-	    to_owner->revision != payload.expected_to_revision)
+	// Memory is the authority for a player, room, corpse, locker or pet: saves move
+	// their revisions, so a transfer does not fence on them, and it takes the items
+	// from whatever the catalog still says.
+	const bool memory_held = item_claim_owner_is_memory_held(payload.from_owner.type);
+	if ((!memory_held && from_owner->revision != payload.expected_from_revision) ||
+	    (!item_claim_owner_is_memory_held(payload.to_owner.type) &&
+	     to_owner->revision != payload.expected_to_revision))
 		return ESTALE;
 	const bool creation = payload.from_owner.type == item_owner_type::system;
+	std::array<uint64_t, ITEM_TRANSFER_MAX_ITEMS> claimed_revisions = {};
+	if (!creation && memory_held)
+		for (size_t index = 0; index < payload.item_count; ++index)
+		{
+			const item_transfer_entry &entry = payload.items[index];
+			bool refused = false;
+			if (const unsigned int failed = claim_catalog_item(
+				    catalog, payload.from_owner, entry.item_uid,
+				    entry.root_item_uid, &entry.parent_item_uid, entry.vnum,
+				    &claimed_revisions[index], &refused))
+				return failed;
+			if (refused)
+				return ESTALE;
+		}
+	uint64_t target_parent_revision = payload.expected_target_parent_revision;
+	if (payload.target_parent_item_uid &&
+	    item_claim_owner_is_memory_held(payload.to_owner.type))
+	{
+		bool refused = false;
+		if (const unsigned int failed = claim_catalog_item(
+			    catalog, payload.to_owner, payload.target_parent_item_uid,
+			    payload.target_root_item_uid, nullptr, 0, &target_parent_revision,
+			    &refused))
+			return failed;
+		if (refused)
+			return ESTALE;
+	}
 	std::vector<flatfile_item_ownership_record *> root_items;
 	std::vector<flatfile_item_ownership_record *> selected;
 	try
@@ -765,12 +858,24 @@ unsigned int apply_transfer(ownership_catalog *catalog, const item_transfer_payl
 			const auto &expected = payload.items[index];
 			result->max_item_revision =
 				std::max(result->max_item_revision, stored.item_revision);
+			const auto claimed = std::find_if(
+				payload.items.begin(), payload.items.begin() + payload.item_count,
+				[&](const item_transfer_entry &item)
+				{ return item.item_uid == stored.item_uid; });
+			const uint64_t expected_revision =
+				memory_held && claimed !=
+							payload.items.begin() + payload.item_count ?
+					claimed_revisions[static_cast<size_t>(
+						claimed - payload.items.begin())] :
+					expected.expected_item_revision;
+			const item_custody_state expected_state =
+				memory_held ? item_custody_state::active : expected.expected_state;
 			if (stored.item_uid != expected.item_uid ||
 			    stored.root_item_uid != expected.root_item_uid ||
 			    stored.parent_item_uid != expected.parent_item_uid ||
 			    !item_owner_identity_equal(stored.owner, payload.from_owner) ||
-			    stored.item_revision != expected.expected_item_revision ||
-			    stored.vnum != expected.vnum || stored.state != expected.expected_state)
+			    stored.item_revision != expected_revision ||
+			    stored.vnum != expected.vnum || stored.state != expected_state)
 				return ESTALE;
 		}
 	}
@@ -779,7 +884,7 @@ unsigned int apply_transfer(ownership_catalog *catalog, const item_transfer_payl
 		const auto *parent = find_item(catalog, payload.target_parent_item_uid);
 		if (!parent || parent->root_item_uid != payload.target_root_item_uid ||
 		    !item_owner_identity_equal(parent->owner, payload.to_owner) ||
-		    parent->item_revision != payload.expected_target_parent_revision ||
+		    parent->item_revision != target_parent_revision ||
 		    parent->state != item_custody_state::active)
 			return ESTALE;
 	}
@@ -1033,6 +1138,52 @@ flatfile_item_repository_result flatfile_item_repository_load_owner_locked(
 	return flatfile_item_repository_result::ok;
 }
 
+flatfile_item_repository_result
+flatfile_item_repository_load_uids(const std::string &root, const std::vector<uint64_t> &uids,
+				   std::vector<flatfile_item_ownership_record> *records,
+				   std::string *error)
+{
+	if (!records)
+		return flatfile_item_repository_result::invalid;
+	std::lock_guard<std::mutex> guard(ownership_mutex);
+	flatfile_authority_lock authority;
+	if (!authority.acquire(root, error))
+		return flatfile_item_repository_result::io_error;
+	const auto recovered = flatfile_authority_transaction_recover(root, authority, error);
+	if (recovered != flatfile_authority_transaction_result::ok)
+		return recovered == flatfile_authority_transaction_result::io_error ?
+			       flatfile_item_repository_result::io_error :
+			       flatfile_item_repository_result::invalid;
+	return flatfile_item_repository_load_uids_locked(root, authority, uids, records, error);
+}
+
+flatfile_item_repository_result flatfile_item_repository_load_uids_locked(
+	const std::string &root, const flatfile_authority_lock &lock,
+	const std::vector<uint64_t> &uids, std::vector<flatfile_item_ownership_record> *records,
+	std::string *error)
+{
+	if (!lock.matches(root) || !records)
+		return flatfile_item_repository_result::invalid;
+	ownership_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	records->clear();
+	if (loaded == flatfile_item_repository_result::not_found)
+		return flatfile_item_repository_result::ok;
+	if (loaded != flatfile_item_repository_result::ok)
+		return loaded;
+	try
+	{
+		for (uint64_t uid : uids)
+			if (const auto *item = find_item(&catalog, uid); item)
+				records->push_back(*item);
+	}
+	catch (const std::bad_alloc &)
+	{
+		return flatfile_item_repository_result::io_error;
+	}
+	return flatfile_item_repository_result::ok;
+}
+
 // The caller selects ITEM_MONEY identities from the original snapshot. Include
 // their tombstones even though consumed records no longer have a coin payload.
 flatfile_item_repository_result flatfile_item_repository_load_coins_locked(
@@ -1125,8 +1276,12 @@ flatfile_item_repository_result flatfile_item_repository_prepare_collector_trans
 		return flatfile_item_repository_result::invalid;
 	mutation->from_owner_revision = from->revision;
 	mutation->to_owner_revision = to->revision;
-	if (from->revision != payload.expected_from_owner_revision ||
-	    to->revision != payload.expected_to_owner_revision)
+	// Memory is the authority for the player buying and for the room or corpse an
+	// antiquity is collected from: saves move their revisions.
+	if ((!item_claim_owner_is_memory_held(payload.from_owner.type) &&
+	     from->revision != payload.expected_from_owner_revision) ||
+	    (!item_claim_owner_is_memory_held(payload.to_owner.type) &&
+	     to->revision != payload.expected_to_owner_revision))
 	{
 		*result_code = ESTALE;
 		return flatfile_item_repository_result::ok;
@@ -1410,10 +1565,28 @@ flatfile_item_repository_result flatfile_item_repository_prepare_auction_transfe
 	for (size_t index = 0; index < payload.item_count; ++index)
 	{
 		const auto &expected = payload.items[index];
+		uint64_t expected_revision = expected.expected_item_revision;
+		if (to_auction)
+		{
+			// The seller holds it in memory: the listing takes it from whatever the
+			// catalog still says, as a save would.
+			const uint64_t no_parent = 0;
+			bool refused = false;
+			const unsigned int failed = claim_catalog_item(
+				&catalog, player_owner, expected.item_uid, expected.item_uid,
+				&no_parent, expected.vnum, &expected_revision, &refused);
+			if (failed == ENOMEM)
+				return flatfile_item_repository_result::io_error;
+			if (failed || refused)
+			{
+				*result_code = failed ? failed : ESTALE;
+				return flatfile_item_repository_result::ok;
+			}
+		}
 		flatfile_item_ownership_record *item = find_item(&catalog, expected.item_uid);
 		if (!item || item->root_item_uid != item->item_uid || item->parent_item_uid ||
 		    !item_owner_identity_equal(item->owner, from_owner) ||
-		    item->item_revision != expected.expected_item_revision ||
+		    item->item_revision != expected_revision ||
 		    item->item_revision == std::numeric_limits<uint64_t>::max() ||
 		    item->vnum != expected.vnum || item->state != item_custody_state::active)
 		{
@@ -2060,6 +2233,149 @@ flatfile_item_repository_result flatfile_item_repository_prepare_world_corpse_ra
 	if (!encode_catalog(catalog, catalog.revision + 1, &mutation->after_image.bytes))
 		return flatfile_item_repository_result::invalid;
 	return flatfile_item_repository_result::ok;
+}
+
+flatfile_item_repository_result flatfile_item_repository_prepare_claim(
+	const std::string &root, const flatfile_authority_lock &lock,
+	std::vector<flatfile_item_claim> *claims, flatfile_authority_operation *operation,
+	std::vector<flatfile_item_claim_audit> *audits, std::string *error)
+{
+	if (!claims || !operation || !audits || !lock.matches(root))
+		return flatfile_item_repository_result::invalid;
+	*operation = {};
+	ownership_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded != flatfile_item_repository_result::ok &&
+	    loaded != flatfile_item_repository_result::not_found)
+		return loaded;
+	bool changed = false;
+	std::vector<item_owner_identity> changed_owners;
+	try
+	{
+		for (flatfile_item_claim &claim : *claims)
+		{
+			if (!claim.items || !item_owner_identity_valid(claim.owner))
+				return flatfile_item_repository_result::invalid;
+			claim.outcome = {};
+			bool claimer_changed = false;
+			if (claim.establish)
+			{
+				owner_state *state = ensure_owner(&catalog, claim.owner);
+				if (!state)
+					return flatfile_item_repository_result::invalid;
+				claimer_changed = !state->revision;
+				changed = changed || claimer_changed;
+			}
+			const std::vector<player_item_snapshot> &items = *claim.items;
+			std::vector<uint64_t> roots(items.size(), 0);
+			for (size_t index = 0; index < items.size(); ++index)
+			{
+				const player_item_snapshot &item = items[index];
+				const bool nested = item.parent_index >= 0 &&
+						    static_cast<size_t>(item.parent_index) < index;
+				const uint64_t parent_uid =
+					nested ? items[item.parent_index].object_uid : 0;
+				roots[index] = nested && roots[item.parent_index] ?
+						       roots[item.parent_index] :
+						       item.object_uid;
+				if (!item.object_uid)
+					continue;
+				flatfile_item_ownership_record *record =
+					find_item(&catalog, item.object_uid);
+				if (parent_uid && claim.outcome.left_out.count(parent_uid))
+				{
+					const flatfile_item_ownership_record *holder =
+						find_item(&catalog, parent_uid);
+					claim.outcome.left_out.insert(item.object_uid);
+					claim.outcome.dupes.push_back({ item.object_uid, item.vnum,
+									record ? record->owner :
+									holder ? holder->owner :
+										 claim.owner });
+					continue;
+				}
+				if (record && item_claim_leaves_out(record->state))
+				{
+					claim.outcome.left_out.insert(item.object_uid);
+					claim.outcome.dupes.push_back(
+						{ item.object_uid, item.vnum, record->owner });
+					continue;
+				}
+				if (!ensure_owner(&catalog, claim.owner))
+					return flatfile_item_repository_result::invalid;
+				// ensure_owner() may insert; take the record again afterwards.
+				record = find_item(&catalog, item.object_uid);
+				if (!record)
+				{
+					if (catalog.items.size() >= ownership_maximum_entries)
+						return flatfile_item_repository_result::invalid;
+					const flatfile_item_ownership_record inserted = {
+						item.object_uid,
+						roots[index],
+						parent_uid,
+						claim.owner,
+						1,
+						item.vnum,
+						item_custody_state::active
+					};
+					catalog.items.insert(std::lower_bound(catalog.items.begin(),
+									      catalog.items.end(),
+									      inserted, item_less),
+							     inserted);
+					++claim.outcome.inserted;
+					changed = true;
+					claimer_changed = true;
+					continue;
+				}
+				const bool owned =
+					item_owner_identity_equal(record->owner, claim.owner);
+				if (owned && record->root_item_uid == roots[index] &&
+				    record->parent_item_uid == parent_uid &&
+				    record->vnum == item.vnum &&
+				    record->state == item_custody_state::active)
+					continue;
+				if (!owned)
+				{
+					audits->push_back({ item.object_uid, item.vnum,
+							    record->owner, claim.owner });
+					changed_owners.push_back(record->owner);
+					++claim.outcome.claimed;
+				}
+				record->owner = claim.owner;
+				record->root_item_uid = roots[index];
+				record->parent_item_uid = parent_uid;
+				record->vnum = item.vnum;
+				record->state = item_custody_state::active;
+				if (record->item_revision < UINT64_MAX)
+					++record->item_revision;
+				changed = true;
+				claimer_changed = true;
+			}
+			if (claimer_changed)
+				changed_owners.push_back(claim.owner);
+		}
+		// The holdings of each claimer and of every owner that lost an item changed:
+		// advance each of their revisions once.
+		std::sort(changed_owners.begin(), changed_owners.end(), owner_less);
+		changed_owners.erase(std::unique(changed_owners.begin(), changed_owners.end(),
+						 item_owner_identity_equal),
+				     changed_owners.end());
+		for (const item_owner_identity &owner : changed_owners)
+			if (owner_state *state = find_owner(&catalog, owner);
+			    state && state->revision < UINT64_MAX)
+				++state->revision;
+	}
+	catch (const std::bad_alloc &)
+	{
+		return flatfile_item_repository_result::io_error;
+	}
+	if (!changed)
+		return flatfile_item_repository_result::unchanged;
+	if (catalog.revision == UINT64_MAX)
+		return flatfile_item_repository_result::invalid;
+	operation->filename = ownership_filename;
+	return encode_catalog(catalog, catalog.revision + 1, &operation->bytes) ?
+		       flatfile_item_repository_result::ok :
+		       flatfile_item_repository_result::invalid;
 }
 
 flatfile_item_repository_result flatfile_item_repository_prepare_death_quarantine(

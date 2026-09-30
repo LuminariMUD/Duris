@@ -26,6 +26,7 @@
 #include "flatfile/flatfile_character_delete.h"
 #include "flatfile/flatfile_corpse_restore.h"
 #include "flatfile/flatfile_item_repository.h"
+#include "flatfile/flatfile_player_repository.h"
 #include "flatfile/flatfile_player_domain_repository.h"
 #include "flatfile/flatfile_shopkeeper_restore.h"
 #include "item/item_ownership_runtime.h"
@@ -36,6 +37,8 @@
 #include "economy/collector_service.h"
 #include "player/player_save_pipeline.h"
 #include "player/player_revision_state.h"
+#include "player/player_snapshot_capture.h"
+#include "player/player_snapshot_repository.h"
 #include "persistence/persistence_mode.h"
 #include "world/handler.h"
 #include "world/random.zone.h"
@@ -1257,80 +1260,74 @@ int write_one_object(P_obj obj, char *dest_buff, int include_persistent_uid)
 
 namespace
 {
-bool capture_corpse_money(P_obj object, std::array<int32_t, 4> *money)
+// The corpse save goes to the one writer, behind any save already queued there, so an
+// older save of its player cannot claim the items back after it. False leaves the
+// caller to write it the old way.
+bool queue_corpse_save(P_obj corpse, bool remove)
 {
-	if (!money)
+	if (!corpse->action_description || corpse->value[CORPSE_PID] <= 0 ||
+	    corpse->value[CORPSE_SAVEID] <= 0)
 		return false;
-	std::vector<P_obj> pending;
-	try
+	corpse_snapshot snapshot;
+	snapshot.owner = { item_owner_type::corpse,
+			   item_corpse_owner_id(static_cast<uint32_t>(corpse->value[CORPSE_PID]),
+						static_cast<uint32_t>(corpse->value[CORPSE_SAVEID])),
+			   0 };
+	snapshot.save_id = corpse->value[CORPSE_SAVEID];
+	snapshot.player_name = corpse->action_description;
+	snapshot.remove = remove;
+	if (!remove)
 	{
-		for (P_obj current = object; current; current = current->next_content)
-			pending.push_back(current);
-		while (!pending.empty())
+		if (OBJ_ROOM(corpse) && corpse->loc.room > NOWHERE &&
+		    corpse->loc.room <= top_of_world)
+			snapshot.room_vnum = world[corpse->loc.room].number;
+		else if (OBJ_CARRIED(corpse) && corpse->loc.carrying)
+			snapshot.room_vnum = world[corpse->loc.carrying->in_room].number;
+		snapshot.short_description = corpse->short_description ? corpse->short_description :
+									 "";
+		snapshot.description = corpse->description ? corpse->description : "";
+		snapshot.keywords = corpse->name ? corpse->name : "";
+		snapshot.weight = corpse->weight;
+		for (size_t index = 0; index < snapshot.values.size(); ++index)
+			snapshot.values[index] = corpse->value[index];
+		if (player_item_snapshot_contents_capture(corpse, &snapshot.items) !=
+		    player_snapshot_capture_result::ok)
+			return false;
+	}
+	persistence_job_write_fn write;
+	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+	{
+		const char *root = persistence_mode_flatfile_root();
+		if (!root)
+			return false;
+		flatfile_corpse_record record;
+		record.owner_pid = static_cast<uint32_t>(corpse->value[CORPSE_PID]);
+		record.owner_name = snapshot.player_name;
+		record.save_id = static_cast<uint32_t>(snapshot.save_id);
+		record.room_vnum = snapshot.room_vnum;
+		record.short_description = snapshot.short_description;
+		record.description = snapshot.description;
+		record.keywords = snapshot.keywords;
+		record.weight = snapshot.weight;
+		record.values = snapshot.values;
+		record.items = snapshot.items;
+		for (player_item_snapshot &item : record.items)
+			item.equipment_slot = -1;
+		write = [record, remove, path = std::string(root)]()
 		{
-			P_obj current = pending.back();
-			pending.pop_back();
-			// Custodied piles already have an exact item payload in the corpse.
-			// The legacy scalar stores only untracked money, or restore creates it twice.
-			item_ownership_runtime_entry custody = {};
-			if (GET_ITEM_TYPE(current) == ITEM_MONEY &&
-			    !item_ownership_runtime_lookup(current->obj_uid, &custody))
-				for (size_t denomination = 0; denomination < money->size();
-				     ++denomination)
-				{
-					if (current->value[denomination] < 0 ||
-					    (*money)[denomination] >
-						    std::numeric_limits<int32_t>::max() -
-							    current->value[denomination])
-						return false;
-					(*money)[denomination] += current->value[denomination];
-				}
-			for (P_obj child = current->contains; child; child = child->next_content)
-				pending.push_back(child);
-		}
+			std::string error;
+			return flatfile_corpse_snapshot_apply(path, record, remove, &error);
+		};
 	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	return true;
-}
-
-bool capture_corpse_lifecycle(P_obj corpse, corpse_lifecycle_action action,
-			      corpse_lifecycle_payload *payload)
-{
-	if (!corpse || !payload || !corpse->action_description || !*corpse->action_description ||
-	    corpse->value[CORPSE_PID] <= 0 || corpse->value[CORPSE_SAVEID] <= 0)
-		return false;
-	*payload = {};
-	payload->action = action;
-	payload->owner_pid = static_cast<uint32_t>(corpse->value[CORPSE_PID]);
-	payload->save_id = static_cast<uint32_t>(corpse->value[CORPSE_SAVEID]);
-	payload->owner_name = corpse->action_description;
-	if (action == corpse_lifecycle_action::remove)
-		return true;
-	int room = NOWHERE;
-	if (OBJ_ROOM(corpse))
-		room = corpse->loc.room;
-	else if (OBJ_CARRIED(corpse) && corpse->loc.carrying)
-		room = corpse->loc.carrying->in_room;
-	if (room <= NOWHERE || room > top_of_world)
-		return false;
-	payload->room_vnum = world[room].number;
-	payload->weight = corpse->weight;
-	for (size_t index = 0; index < payload->values.size(); ++index)
-		payload->values[index] = corpse->value[index];
-	payload->short_description = corpse->short_description ? corpse->short_description : "";
-	payload->description = corpse->description ? corpse->description : "";
-	payload->keywords = corpse->name ? corpse->name : "";
-	return capture_corpse_money(corpse->contains, &payload->money);
-}
-
-bool stage_corpse_lifecycle(P_obj corpse, corpse_lifecycle_action action)
-{
-	corpse_lifecycle_payload payload = {};
-	return capture_corpse_lifecycle(corpse, action, &payload) &&
-	       corpse_lifecycle_transaction_stage(payload);
+	else
+		write = [snapshot]()
+		{ return corpse_snapshot_repository_apply_from_pool(snapshot); };
+	const size_t bytes =
+		sizeof(snapshot) + snapshot.items.size() * sizeof(player_item_snapshot);
+	const player_save_submit_result submitted = persistence_writer_submit(
+		persistence_job_kind::corpse, snapshot.owner.id, bytes, std::move(write));
+	return submitted == player_save_submit_result::accepted ||
+	       submitted == player_save_submit_result::replaced;
 }
 } // namespace
 
@@ -1352,18 +1349,18 @@ void writeCorpse(P_obj corpse)
 		if (present && corpse->value[CORPSE_SAVEID] == 0)
 			corpse->value[CORPSE_SAVEID] = time(NULL);
 		if ((!present && !corpse->value[CORPSE_SAVEID]) ||
-		    stage_corpse_lifecycle(corpse, present ? corpse_lifecycle_action::upsert :
-							     corpse_lifecycle_action::remove))
+		    queue_corpse_save(corpse, !present))
 			return;
-		persistence_alert(AVATAR, "corpse", "flatfile_lifecycle", "none", "none",
-				  "stage_failed", "save_id=%d", corpse->value[CORPSE_SAVEID]);
+		persistence_alert(AVATAR, "corpse", "flatfile_save", "none", "none", "queue_failed",
+				  "save_id=%d", corpse->value[CORPSE_SAVEID]);
 		return;
 	}
 
 	// corpse not on ground = delete
 	if (!OBJ_ROOM(corpse) && !(OBJ_CARRIED(corpse) && corpse->loc.carrying != NULL))
 	{
-		if (corpse->action_description && corpse->value[CORPSE_SAVEID])
+		if (corpse->action_description && corpse->value[CORPSE_SAVEID] &&
+		    !queue_corpse_save(corpse, true))
 			sql_delete_corpse(corpse->action_description, corpse->value[CORPSE_SAVEID]);
 		return;
 	}
@@ -1371,6 +1368,8 @@ void writeCorpse(P_obj corpse)
 	if (corpse->value[CORPSE_SAVEID] == 0)
 		corpse->value[CORPSE_SAVEID] = time(NULL);
 
+	if (queue_corpse_save(corpse, false))
+		return;
 	if (!sql_save_corpse(corpse))
 	{
 		persistence_alert(AVATAR, "corpse", corpse->action_description, "none", "none",
@@ -1688,6 +1687,13 @@ int calculate_save_room(P_char ch, int type, int room)
 	return room;
 }
 
+void locker_post_save_hook(P_char ch)
+{
+	if (ch && ch->in_room != NOWHERE && IS_ROOM(ch->in_room, ROOM_LOCKER) &&
+	    world[ch->in_room].funct)
+		(*world[ch->in_room].funct)(ch->in_room, ch, (-81), NULL);
+}
+
 int writeCharacter(P_char ch, int type, int room)
 {
 	P_obj obj, obj2;
@@ -1712,16 +1718,6 @@ int writeCharacter(P_char ch, int type, int room)
 				    type == RENT_CAMPED || type == RENT_DEATH ||
 				    type == RENT_POOFARTI || type == RENT_SWAPARTI ||
 				    type == RENT_FIGHTARTI);
-	if (!is_locker_char && IS_SET(ch->runtime_flags, CHAR_RFLAG_LOAD_DEGRADED))
-	{
-		// A degraded load may have omitted durable inventory or sidecar state. Treat
-		// save as a safe no-op until a clean cold load can hydrate every component;
-		// publishing the partial runtime snapshot would destroy the unresolved rows.
-		logit(LOG_DEBUG,
-		      "writeCharacter: deferred degraded player save pid=%d components=0x%x",
-		      GET_PID(ch), ch->only.pc->load_degraded_components);
-		return 1;
-	}
 	if (!is_locker_char && GET_PID(ch) > 0 && !player_save_pipeline_save_admitted(GET_PID(ch)))
 		return 0;
 	const bool corpse_raise_save_pending = corpse_raise_player_save_fenced(ch);
@@ -1748,6 +1744,7 @@ int writeCharacter(P_char ch, int type, int room)
 		room = calculate_save_room(ch, type, room);
 		const player_save_pipeline_result queued = player_save_pipeline_request(
 			ch, PLAYER_CHECKPOINT_COMPONENT_ALL, type, room);
+		locker_post_save_hook(ch);
 		return queued == player_save_pipeline_result::queued ||
 		       queued == player_save_pipeline_result::coalesced;
 	}
@@ -1761,10 +1758,22 @@ int writeCharacter(P_char ch, int type, int room)
 		room = calculate_save_room(ch, type, room);
 		if (ch->desc)
 			ch->desc->rtype = type;
-		const player_save_terminal_result saved =
-			player_save_pipeline_terminal(ch, type, room, 5000, false);
-		if (saved != player_save_terminal_result::database_acknowledged)
-			return 0;
+		// A new player's first save must land before its domains are read back;
+		// any other terminal save is queued and the caller extracts at once.
+		if (establishing_baseline)
+		{
+			if (player_save_pipeline_terminal(ch, type, room, 5000) !=
+			    player_save_terminal_result::database_acknowledged)
+				return 0;
+		}
+		else
+		{
+			const player_save_pipeline_result queued = player_save_pipeline_request(
+				ch, PLAYER_CHECKPOINT_COMPONENT_ALL, type, room);
+			if (queued != player_save_pipeline_result::queued &&
+			    queued != player_save_pipeline_result::coalesced)
+				return 0;
+		}
 		if (establishing_baseline)
 		{
 			flatfile_player_domain_record domains;
@@ -1869,9 +1878,7 @@ int writeCharacter(P_char ch, int type, int room)
 			}
 			all_affects(ch, TRUE);
 		}
-		if (ch->in_room != NOWHERE && IS_ROOM(ch->in_room, ROOM_LOCKER) &&
-		    world[ch->in_room].funct)
-			(*world[ch->in_room].funct)(ch->in_room, ch, (-81), NULL);
+		locker_post_save_hook(ch);
 		return 1;
 	}
 #endif
@@ -1995,10 +2002,7 @@ int writeCharacter(P_char ch, int type, int room)
 	// reapply affects
 	all_affects(ch, TRUE);
 
-	// locker hook (post-save)
-	if (ch->in_room != NOWHERE && IS_ROOM(ch->in_room, ROOM_LOCKER) &&
-	    (world[ch->in_room].funct))
-		(*world[ch->in_room].funct)(ch->in_room, ch, (-81), NULL);
+	locker_post_save_hook(ch);
 
 	return result;
 }
@@ -2100,9 +2104,9 @@ void PurgeCorpseFile(P_obj corpse)
 	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
 	{
 		if (!skip_corpse_save && corpse->value[CORPSE_SAVEID] &&
-		    !stage_corpse_lifecycle(corpse, corpse_lifecycle_action::remove))
+		    !queue_corpse_save(corpse, true))
 			persistence_alert(AVATAR, "corpse", "flatfile_remove", "none", "none",
-					  "stage_failed", "save_id=%d",
+					  "queue_failed", "save_id=%d",
 					  corpse->value[CORPSE_SAVEID]);
 		return;
 	}
@@ -2121,7 +2125,13 @@ void PurgeCorpseFile(P_obj corpse)
 	unlink(Gbuf2);
 
 	if (corpse->action_description && corpse->value[CORPSE_SAVEID])
+	{
+#ifndef _PFILE_
+		if (queue_corpse_save(corpse, true))
+			return;
+#endif
 		sql_delete_corpse(corpse->action_description, corpse->value[CORPSE_SAVEID]);
+	}
 
 	return;
 }
@@ -4795,6 +4805,53 @@ static bool saved_item_uid_key(P_obj item, char *key, size_t size)
 	return length > 0 && static_cast<size_t>(length) < size;
 }
 
+// A saved room item's write goes to the one writer, like a corpse's. False leaves the
+// caller to write it the old way.
+static bool queue_saved_item_save(P_obj item, const char *item_key, bool remove)
+{
+	saved_item_snapshot snapshot;
+	snapshot.item_key = item_key;
+	snapshot.remove = remove;
+	snapshot.owner = { item_owner_type::room, 0, 0 };
+	if (!remove)
+	{
+		snapshot.room_vnum = world[item->loc.room].number;
+		snapshot.owner.id = static_cast<uint64_t>(snapshot.room_vnum);
+	}
+	// A flat-file removal takes the item's graph out of its room's record.
+	if ((!remove || persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY) &&
+	    player_item_snapshot_tree_capture(item, &snapshot.items, nullptr) !=
+		    player_snapshot_capture_result::ok)
+		return false;
+	persistence_job_write_fn write;
+	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+	{
+		const char *root = persistence_mode_flatfile_root();
+		if (!root)
+			return false;
+		flatfile_saved_world_item_record record;
+		record.item_key = snapshot.item_key;
+		record.room_vnum = snapshot.room_vnum;
+		record.items = snapshot.items;
+		for (player_item_snapshot &entry : record.items)
+			entry.equipment_slot = -1;
+		write = [record, remove, path = std::string(root)]()
+		{
+			std::string error;
+			return flatfile_saved_item_snapshot_apply(path, record, remove, &error);
+		};
+	}
+	else
+		write = [snapshot]()
+		{ return saved_item_snapshot_repository_apply_from_pool(snapshot); };
+	const size_t bytes =
+		sizeof(snapshot) + snapshot.items.size() * sizeof(player_item_snapshot);
+	const player_save_submit_result submitted = persistence_writer_submit(
+		persistence_job_kind::saved_item, item->obj_uid, bytes, std::move(write));
+	return submitted == player_save_submit_result::accepted ||
+	       submitted == player_save_submit_result::replaced;
+}
+
 void writeSavedItem(P_obj item)
 {
 	if (!item)
@@ -4802,26 +4859,6 @@ void writeSavedItem(P_obj item)
 
 	if (item->cost < 100 && item->db_item_id <= 0 && item->type != ITEM_STORAGE)
 		return;
-
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		item_ownership_runtime_entry runtime = {};
-		const bool tracked = item_ownership_runtime_lookup(item->obj_uid, &runtime);
-		const bool room_matches =
-			OBJ_ROOM(item) && item->loc.room > NOWHERE &&
-			item->loc.room <= top_of_world && tracked &&
-			runtime.state == item_custody_state::active &&
-			runtime.owner.type == item_owner_type::room &&
-			runtime.owner.id == static_cast<uint64_t>(world[item->loc.room].number) &&
-			!runtime.owner.context_id;
-		const bool destroyed = tracked && runtime.state == item_custody_state::destroyed &&
-				       runtime.owner.type == item_owner_type::destruction;
-		if (!room_matches && !destroyed)
-			persistence_alert(AVATAR, "saved_item", "flatfile_write", "none", "none",
-					  "untracked_live_mutation", "item_uid=%llu",
-					  static_cast<unsigned long long>(item->obj_uid));
-		return;
-	}
 
 	char item_key[MAX_STRING_LENGTH];
 	if (!saved_item_uid_key(item, item_key, sizeof item_key))
@@ -4831,16 +4868,28 @@ void writeSavedItem(P_obj item)
 		return;
 	}
 
+	const bool flatfile = persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY;
 	if (!OBJ_ROOM(item))
 	{
-		if (!sql_delete_saved_item(item_key))
-			logit(LOG_FILE, "sql_delete_saved_item failed");
+		if (queue_saved_item_save(item, item_key, true))
+			return;
+		if (flatfile || !sql_delete_saved_item(item_key))
+			logit(LOG_FILE, "saved item delete failed");
 		return;
 	}
 
 	if ((item->loc.room <= NOWHERE) || (item->loc.room > top_of_world))
 		return;
 
+	if (queue_saved_item_save(item, item_key, false))
+		return;
+	if (flatfile)
+	{
+		persistence_alert(AVATAR, "saved_item", "flatfile_write", "none", "none",
+				  "queue_failed", "item_uid=%llu",
+				  static_cast<unsigned long long>(item->obj_uid));
+		return;
+	}
 	if (!sql_save_saved_item(item, item_key))
 		logit(LOG_FILE, "sql_save_saved_item failed");
 }
@@ -4863,25 +4912,22 @@ void PurgeSavedItemFile(P_obj item)
 
 	if (!item)
 		return;
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		item_ownership_runtime_entry runtime = {};
-		if (!item_ownership_runtime_lookup(item->obj_uid, &runtime) ||
-		    runtime.state != item_custody_state::destroyed ||
-		    runtime.owner.type != item_owner_type::destruction)
-			persistence_alert(AVATAR, "saved_item", "flatfile_purge", "none", "none",
-					  "untracked_live_mutation", "item_uid=%llu",
-					  static_cast<unsigned long long>(item->obj_uid));
-		return;
-	}
-
 	if (!saved_item_uid_key(item, Gbuf2, sizeof Gbuf2))
 	{
 		persistence_alert(AVATAR, "saved_item", "sql_purge", "none", "none", "missing_uid",
 				  "item_vnum=%d", OBJ_VNUM(item));
 		return;
 	}
-	if (!sql_delete_saved_item(Gbuf2))
+	// A saved item leaving its room is deleted by the one writer.
+	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+	{
+		if (!queue_saved_item_save(item, Gbuf2, true))
+			persistence_alert(AVATAR, "saved_item", "flatfile_purge", "none", "none",
+					  "queue_failed", "item_uid=%llu",
+					  static_cast<unsigned long long>(item->obj_uid));
+		return;
+	}
+	if (!queue_saved_item_save(item, Gbuf2, true) && !sql_delete_saved_item(Gbuf2))
 		logit(LOG_FILE, "sql_delete_saved_item failed");
 
 	checked_snprintf(Gbuf1, MAX_STRING_LENGTH, "%s/SavedItems/%s", SAVE_DIR, Gbuf2);

@@ -153,41 +153,45 @@ int main()
 	command.accepted_at_usec = 1;
 	const critical_apply_result applied = critical_command_repository_apply(db, command);
 	assert(applied.outcome == critical_apply_outcome::applied);
-	assert(scalar(db, "SELECT frags FROM player_data WHERE pid=" +
-				  std::to_string(KILLER_PID)) == 300);
-	assert(scalar(db, "SELECT frags FROM player_data WHERE pid=" +
-				  std::to_string(VICTIM_PID)) == 200);
-	assert(scalar(db, "SELECT epics FROM player_data WHERE pid=" +
-				  std::to_string(KILLER_PID)) == 600);
-	assert(scalar(db, "SELECT platinum FROM player_data WHERE pid=" +
-				  std::to_string(KILLER_PID)) == 10);
+	// Frags, epic points and blood money are memory's: the submit changed them and the
+	// players' saves write them. The outcome leaves the balances alone and records the
+	// kill, the frag and epic ledgers (continued from their last rows) and the leaderboard.
+	const auto killer = std::to_string(KILLER_PID), victim = std::to_string(VICTIM_PID);
+	assert(scalar(db, "SELECT frags FROM player_data WHERE pid=" + killer) == 200);
+	assert(scalar(db, "SELECT epics FROM player_data WHERE pid=" + killer) == 100);
+	assert(scalar(db, "SELECT copper FROM player_data WHERE pid=" + killer) == 5);
+	assert(scalar(db, "SELECT frag_revision FROM player_data WHERE pid=" + killer) == 1);
 	assert(scalar(db, "SELECT COUNT(*) FROM combat_outcome_participant WHERE operation_id IN "
 			  "(SELECT operation_id FROM combat_outcome WHERE victim_pid=" +
-				  std::to_string(VICTIM_PID) + ")") == 2);
-	assert(scalar(db, "SELECT COUNT(*) FROM combat_frag_ledger WHERE pid IN (" +
-				  std::to_string(KILLER_PID) + "," + std::to_string(VICTIM_PID) +
-				  ")") == 2);
-	assert(scalar(db,
-		      "SELECT COUNT(*) FROM epic_ledger WHERE pid=" + std::to_string(KILLER_PID) +
-			      " AND reason_id=" + std::to_string(VICTIM_PID)) == 1);
-	assert(scalar(db, "SELECT COUNT(*) FROM currency_ledger WHERE pid=" +
-				  std::to_string(KILLER_PID) +
-				  " AND reason_id=" + std::to_string(VICTIM_PID)) == 1);
+				  victim + ")") == 2);
+	assert(scalar(db, "SELECT frags_after FROM combat_frag_ledger WHERE pid=" + killer) == 300);
+	assert(scalar(db, "SELECT frags_after FROM combat_frag_ledger WHERE pid=" + victim) == 200);
+	assert(scalar(db, "SELECT total_frags FROM frag_leaderboard WHERE pid=" + killer) == 300);
+	assert(scalar(db, "SELECT balance_after FROM epic_ledger WHERE pid=" + killer +
+				  " AND reason_id=" + victim) == 600);
+	assert(scalar(db, "SELECT COUNT(*) FROM currency_ledger WHERE pid=" + killer) == 0);
 
 	const critical_apply_result replay = critical_command_repository_apply(db, command);
 	assert(replay.outcome == critical_apply_outcome::already_applied);
-	critical_operation_id stale_id = {};
-	assert(critical_operation_id_generate(&stale_id));
-	critical_command stale = {};
-	assert(combat_outcome_command_build(&stale, stale_id, payload));
-	stale.accepted_at_usec = 2;
-	const critical_apply_result rejected = critical_command_repository_apply(db, stale);
-	assert(rejected.outcome == critical_apply_outcome::terminal_failure);
-	assert(rejected.error_code == ESTALE);
-	assert(scalar(db, "SELECT COUNT(*) FROM combat_outcome WHERE victim_pid=" +
-				  std::to_string(VICTIM_PID)) == 1);
+	// A second outcome is not fenced by the first: its ledger rows continue from the
+	// first's, whatever the saves wrote in between.
+	execute(db, "UPDATE player_data SET frags=900 WHERE pid=" + killer);
+	critical_operation_id second_id = {};
+	assert(critical_operation_id_generate(&second_id));
+	critical_command second = {};
+	assert(combat_outcome_command_build(&second, second_id, payload));
+	second.accepted_at_usec = 2;
+	assert(critical_command_repository_apply(db, second).outcome ==
+	       critical_apply_outcome::applied);
+	assert(scalar(db, "SELECT COUNT(*) FROM combat_outcome WHERE victim_pid=" + victim) == 2);
+	assert(scalar(db, "SELECT frags_after FROM combat_frag_ledger WHERE pid=" + killer +
+				  " AND frag_revision=2") == 400);
+	assert(scalar(db, "SELECT balance_after FROM epic_ledger WHERE pid=" + killer +
+				  " AND epic_revision=2") == 1100);
+	assert(scalar(db, "SELECT frags FROM player_data WHERE pid=" + killer) == 900);
 
 	cleanup(db);
 	mysql_close(db);
-	std::cout << "combat outcome atomic apply, replay, stale rejection, and ledgers passed\n";
+	std::cout
+		<< "combat outcome apply, replay, ledgers across saves, and the untouched balances passed\n";
 }

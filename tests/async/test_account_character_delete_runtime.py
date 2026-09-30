@@ -42,8 +42,9 @@ bodies = '\n'.join([
     function(account, 'void remove_char_from_list('),
     function(files, 'character_delete_result delete_character_result('),
     function(files, 'int deleteCharacter('),
-    function(account, 'static void release_delete_character('),
+    function(account, 'static void release_delete_character(P_desc d)\n'),
     function(account, 'void account_delete_char('),
+    function(account, 'void account_delete_char_loaded('),
 ])
 prelude = r'''
 #include <cassert>
@@ -61,6 +62,7 @@ prelude = r'''
 #define MAX_CHARS_PER_ACCOUNT 10
 #define CON_DISPLAY_ACCT_MENU 1
 #define CON_ACCT_DELETE_CHAR 2
+#define CON_PLAYER_LOAD 3
 #define PLAYER_LOAD_MODE_NONE 0
 #define LOG_DEBUG 0
 #define LOG_PLAYER 1
@@ -95,12 +97,14 @@ struct acct_chars { char *charname; int pid; int last; acct_chars *next; };
 struct Account { acct_chars *acct_character_list=nullptr; int num_chars=0; };
 using P_acct = Account*;
 struct Descriptor { Character *character=nullptr; Account *account=nullptr; int player_load_mode=7;
-    int state=CON_ACCT_DELETE_CHAR, term_type=7; char host[8]="fixture"; std::string output; };
+    int state=CON_ACCT_DELETE_CHAR, term_type=7; char host[8]="fixture"; std::string output;
+    char *selected_char_name=nullptr; };
 using P_desc = Descriptor*;
 struct Character { struct { char *name; int level; } player; int pid=1, sex=0, frags=7;
     Guild *assoc=nullptr; Descriptor *desc=nullptr; };
 static int mode=0, fail_stage=0, stage=0, frees=0, menus=0, refreshes=0, writes=0,
-    audits=0, runtime_ships=0, loads=0, backend_calls=0;
+    audits=0, runtime_ships=0, loads=0, backend_calls=0, load_requests=0;
+static bool async_loads=false;
 static bool in_tx=false, durable_active=true, txn_active=true, rollback_ok=true,
     commit_ok=true, refresh_ok=true, commit_landed=false;
 static int durable_cleanup=0, txn_cleanup=0;
@@ -153,13 +157,21 @@ void free_char(P_char ch) { assert(!ch->desc); assert(!ch->assoc || fixture_guil
 void display_account_menu(P_desc d, char*) { assert(!d->character); assert(STATE(d)==CON_DISPLAY_ACCT_MENU); ++menus; }
 void display_delete_character_list(P_desc) {}
 size_t strlcpy(char *out,const char *s,size_t n) { snprintf(out,n,"%s",s); return strlen(s); }
-P_char load_char_into_game(acct_chars *c,P_desc d) { ++loads; auto ch=new Character; ch->player={strdup(c->charname),10}; ch->desc=d; ch->assoc=&fixture_guild; return ch; }
+char *str_dup(const char *s) { return strdup(s); }
+void str_free(char *s) { free(s); }
+// An asynchronous load parks the descriptor on its first call and hands the
+// character over when account_delete_char_loaded() asks again.
+P_char load_char_into_game(acct_chars *c,P_desc d) {
+    if(async_loads && ++load_requests%2) { STATE(d)=CON_PLAYER_LOAD; return nullptr; }
+    ++loads; auto ch=new Character; ch->player={strdup(c->charname),10}; ch->desc=d; ch->assoc=&fixture_guild; return ch; }
 void remove_char_from_list(P_acct,char*,bool=true);
+void account_delete_char_loaded(P_desc);
 '''
 main = r'''
 static void input(P_desc d,const char *s) { account_delete_char(d,const_cast<char*>(s)); }
 static void reset(Account &a,Descriptor &d) {
     mode=fail_stage=stage=frees=menus=refreshes=writes=audits=runtime_ships=loads=backend_calls=0;
+    load_requests=0; async_loads=false;
     in_tx=false; durable_active=txn_active=rollback_ok=commit_ok=refresh_ok=true;
     commit_landed=false; durable_cleanup=txn_cleanup=0;
     a.acct_character_list=(acct_chars*)calloc(1,sizeof(acct_chars));
@@ -169,7 +181,7 @@ static void reset(Account &a,Descriptor &d) {
     fixture_guild.member_count=1; fixture_guild.frags.frags=7;
     fixture_guild.frags.top_frags=7; strcpy(fixture_guild.frags.topfragger,"Fixture");
 }
-static void released(Descriptor &d) { assert(!d.character && frees==loads); assert(d.player_load_mode==0); assert(d.term_type==7); assert(menus>0); }
+static void released(Descriptor &d) { assert(!d.character && frees==loads); assert(d.player_load_mode==0); assert(d.term_type==7); assert(menus>0); assert(!d.selected_char_name); }
 static void dispose(Account &a) {
     while(a.acct_character_list) {auto old=a.acct_character_list;a.acct_character_list=old->next;free(old->charname);free(old);}
     delete fixture_guild.members; fixture_guild.members=nullptr;
@@ -199,6 +211,13 @@ int main() {
         assert(!backend_calls && !audits && durable_active); dispose(a);
     }
     reset(a,d); input(&d,"1"); input(&d,"1"); assert(frees==1 && loads==2); input(&d,"no"); released(d); dispose(a);
+    // The load runs on the load worker: the menu waits, then asks for confirmation.
+    reset(a,d); async_loads=true; input(&d,"1");
+    assert(STATE(&d)==CON_PLAYER_LOAD && !d.character && !loads && d.selected_char_name);
+    STATE(&d)=CON_ACCT_DELETE_CHAR; account_delete_char_loaded(&d);
+    assert(d.character && loads==1 && !d.selected_char_name);
+    input(&d,"yes"); released(d);
+    assert(!durable_active && audits==2 && !a.num_chars); dispose(a);
     for(bool landed:{false,true}) {
         reset(a,d); commit_ok=false; commit_landed=landed; input(&d,"1"); input(&d,"yes"); released(d);
         assert(!audits && !runtime_ships && !writes && refreshes==1);

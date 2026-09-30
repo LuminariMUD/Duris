@@ -14,123 +14,33 @@ from _source_contract import function_body
 
 
 class TrustedStealCustodyContractTests(unittest.TestCase):
-    def test_trusted_steal_is_a_distinct_player_to_player_transfer_reason(self):
-        header = source("item/item_transfer_command.h").read_text()
-        command = source("item/item_transfer_command.c").read_text()
+    def test_a_player_victim_is_robbed_in_memory(self):
         actoth = source("cmd/actoth.c").read_text()
+        steal_item = function_body(actoth, r"static bool steal_player_item\(")
+        self.assertIn("trusted_steal_binding_allows_tree(thief, object)", steal_item)
+        self.assertIn("object->type == ITEM_MONEY", steal_item)
+        self.assertIn("steal_from_player(thief, victim, object, context);", steal_item)
+        self.assertNotIn("item_movement_transaction_submit", actoth)
+        self.assertNotIn("item_ownership_runtime_lookup", actoth)
 
-        self.assertIn("trusted_steal", header)
-        self.assertIn("case item_transfer_reason::trusted_steal:", command)
-        self.assertIn("item_transfer_reason::trusted_steal", actoth)
-        self.assertIn("item_owner_type::player", actoth)
-
-    def test_admission_precedes_both_inventory_and_equipment_detachment(self):
-        actoth = source("cmd/actoth.c").read_text()
-        submit = function_body(
-            source("cmd/actoth.c").read_text(), r"static bool submit_trusted_steal\("
-        )
-        self.assertIn("item_ownership_runtime_lookup", submit)
-        self.assertIn("ownership.state != item_custody_state::active", submit)
-        self.assertIn("item_movement_transaction_submit(", submit)
-        self.assertNotIn("obj_from_char", submit)
-        self.assertNotIn("unequip_char", submit)
-        self.assertNotIn("obj_to_char", submit)
-        self.assertNotIn("return false;", submit)
-
-        steal = function_body(source("cmd/actoth.c").read_text(), r"void do_steal\(")
+        steal = function_body(actoth, r"void do_steal\(")
         equipped = steal[steal.index("if (!failed && (trusted ||"):]
-        self.assertIn("submit_trusted_steal(ch, victim, obj, TRUE", equipped)
+        self.assertIn("steal_player_item(ch, victim, obj, TRUE", equipped)
         inventory = steal[steal.index("case 2:"):steal.index("case 3:")]
-        self.assertIn("submit_trusted_steal(ch, victim, obj, FALSE", inventory)
-        self.assertIn("return;", equipped[equipped.index("submit_trusted_steal"):])
-        self.assertIn("return;", inventory[inventory.index("submit_trusted_steal"):])
+        self.assertIn("steal_player_item(ch, victim, obj, FALSE", inventory)
+        self.assertIn("return;", equipped[equipped.index("steal_player_item"):])
+        self.assertIn("return;", inventory[inventory.index("steal_player_item"):])
 
-    def test_completion_uses_the_original_uid_and_only_publishes_after_commit(self):
+    def test_the_item_is_detached_before_the_thief_gets_it(self):
         actoth = source("cmd/actoth.c").read_text()
-        completion = function_body(
-            actoth, r"static void trusted_steal_completion\("
-        )
-        self.assertIn("uint64_t item_uid", actoth)
-        self.assertIn("uint32_t victim_pid", actoth)
-        self.assertIn("find_trusted_steal_item(context.item_uid)", completion)
-        self.assertLess(completion.index("if (!committed)"), completion.index("obj_from_char"))
-        self.assertLess(completion.index("if (!committed)"), completion.index("unequip_char"))
-        self.assertLess(completion.index("OBJ_CARRIED_BY(object, thief)"),
-                        completion.index('send_to_char("Got it!'))
-        self.assertIn("find_trusted_steal_player(context.victim_pid)", completion)
-        self.assertIn("OBJ_ROOM(object)", completion)
-        self.assertIn("OBJ_NOWHERE(object)", completion)
-        self.assertIn("reconnect to recover", completion)
-
-    def test_committed_publication_failure_remains_retryable(self):
-        movement = source("item/item_movement_transaction.c").read_text()
-        publish = function_body(movement, r"void publish\(")
-        self.assertIn("retain_trusted_steal", publish)
-        self.assertIn("trusted_steal_live_ready", movement)
-        self.assertIn("stale_live_publication", movement)
-        self.assertLess(
-            publish.index("!retain_creation_grant && !retain_trusted_steal"),
-            publish.index("completion_fn(actor, committed && registry_applied"),
-        )
-        self.assertIn("pending.find(pending_key)", publish)
-        self.assertIn("account_health();\n\t\t\treturn;", publish)
-
-    def test_trusted_steal_payload_is_scoped_to_distinct_player_owners(self):
-        command = source("item/item_transfer_command.c").read_text()
-        validate = function_body(command, r"bool validate_payload\(")
-        self.assertIn("const bool trusted_steal", validate)
-        self.assertIn("payload.from_owner.type != item_owner_type::player", validate)
-        self.assertIn("payload.to_owner.type != item_owner_type::player", validate)
-        self.assertIn("payload.from_owner.id == payload.to_owner.id", validate)
-        self.assertIn("payload.multi_root", validate)
-        self.assertIn("payload.reason_id", validate)
-
-    def test_refused_publication_only_discards_explicit_fresh_candidates(self):
-        defines = source("core/defines.h").read_text()
-        database = source("world/db.c").read_text()
-        handler = function_body(
-            source("world/handler.c").read_text(), r"void obj_to_char\("
-        )
-        self.assertIn("OBJ_RFLAG_CREATION_CANDIDATE", defines)
-        self.assertIn("SET_BIT(obj->runtime_flags, OBJ_RFLAG_CREATION_CANDIDATE)", database)
-        self.assertIn("creation_candidate", handler)
-        self.assertIn(
-            "!has_authoritative_ownership && creation_candidate &&\n\t\t\t    item_creation_grant_submit_to_player",
-            handler,
-        )
-        self.assertIn(
-            "if (!has_authoritative_ownership && creation_candidate)", handler
-        )
-        self.assertIn("REMOVE_BIT(object->runtime_flags, OBJ_RFLAG_CREATION_CANDIDATE)",
-                      source("player/player_load_items.c").read_text())
-
-    def test_shared_publication_refusal_does_not_extract_authoritative_graphs(self):
-        handler = function_body(
-            source("world/handler.c").read_text(), r"void obj_to_char\("
-        )
-        self.assertIn("has_authoritative_ownership", handler)
-        self.assertIn(
-            "!has_authoritative_ownership && creation_candidate &&\n\t\t\t    item_creation_grant_submit_to_player",
-            handler,
-        )
-        self.assertIn("if (!has_authoritative_ownership && creation_candidate)", handler)
-        self.assertIn("preserved non-candidate object", handler)
-
-        refused = handler[handler.index("if (!has_authoritative_ownership && creation_candidate)"):]
-        self.assertIn("extract_obj(object, FALSE)", refused)
-        self.assertLess(refused.index("if (!has_authoritative_ownership && creation_candidate)"),
-                        refused.index("extract_obj(object, FALSE)"))
-        self.assertNotIn("extract_obj(object, TRUE)", refused)
-
-    def test_recursive_capture_keeps_a_stolen_container_graph_atomic(self):
-        movement = source("item/item_movement_transaction.c").read_text()
-        capture = function_body(
-            movement, r"bool capture\(P_obj object"
-        )
-        self.assertIn("for (P_obj child = object->contains", capture)
-        self.assertIn("capture(child, root_uid, object->obj_uid, items)", capture)
-        self.assertIn("player_item_snapshot_tree_capture(root", movement)
-        self.assertIn("item_ownership_runtime_apply(entry.payload, result)", movement)
+        move = function_body(actoth, r"static void steal_from_player\(")
+        self.assertLess(move.index("unequip_char(victim, slot)"), move.index("obj_to_char(object, thief)"))
+        self.assertLess(move.index("obj_from_char(object)"), move.index("obj_to_char(object, thief)"))
+        # obj_to_char may crumble the item; it is found again by uid before any use.
+        after = move[move.index("obj_to_char(object, thief)"):]
+        self.assertLess(after.index("find_trusted_steal_item(context.item_uid)"),
+                        after.index('send_to_char("Got it!'))
+        self.assertIn("OBJ_CARRIED_BY(object, thief)", after)
 
     def test_trusted_steal_bypasses_legacy_random_and_cooldown_gates(self):
         steal = function_body(source("cmd/actoth.c").read_text(), r"void do_steal\(")

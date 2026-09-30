@@ -207,12 +207,10 @@ def inspect_authority(state_root: pathlib.Path) -> dict:
         [str(INSPECTOR), str(state_root), "inspect", "1"], text=True, timeout=15))
 
 
-def add_death_conflict(state_root: pathlib.Path, parent_uid: int) -> int:
-    """Add one durable-only descendant to the synthetic player's live root.
+def add_ghost_record(state_root: pathlib.Path, parent_uid: int) -> int:
+    """Add one ownership record with no payload item under the player's root.
 
-    Ordinary admission would advance the owner revision, producing ESTALE.
-    This fixture preserves revisions while introducing the exact subtree-count
-    disagreement that production rejects with EMSGSIZE. Never used on .env data.
+    Never used on .env data.
     """
     path = state_root / "domains/item_ownership"
     with (state_root / "domains/.critical-authority.lock").open("r+b") as lock:
@@ -275,7 +273,13 @@ def attack_until_death(client: MudClient) -> None:
         client.send("hit executioner")
 
 
-def disputed_death(port: int, state_root: pathlib.Path, run_root: pathlib.Path) -> dict:
+def ghost_ownership_record(port: int, state_root: pathlib.Path, run_root: pathlib.Path) -> dict:
+    """An ownership record whose payload item is gone is only counted at load.
+
+    Memory is the authority: the character loads every payload item the catalog
+    gives it, saves what it holds and leaves at once. Nothing is read-only and
+    nothing is refused over the record.
+    """
     client = reconnect_character(port)
     try:
         client.send("save")
@@ -286,53 +290,29 @@ def disputed_death(port: int, state_root: pathlib.Path, run_root: pathlib.Path) 
         client.expect("ACCOUNT MENU", timeout=30)
         client.send("0")
         client.close()
-        ghost = add_death_conflict(state_root, banana)
+        ghost = add_ghost_record(state_root, banana)
         require(any(item["uid"] == ghost and item["parent"] == banana
                     for item in inspect_authority(state_root)["player_items"]),
-                "conflicting durable custody was not installed")
-        # Cold-load the partial projection. The valid graph stays visible but
-        # read-only, and death enters the disposition path without relying on a
-        # particular live root to discover the payload-less descendant.
+                "ghost ownership record was not installed")
         client = reconnect_character(port)
         client.send("inventory")
         client.expect("a banana", timeout=15)
         deadline = time.monotonic() + 15
         while "outcome=missing_payload_rows" not in runtime_logs(run_root):
-            require(time.monotonic() < deadline, "payload gap was not reported at load")
+            require(time.monotonic() < deadline, "missing payload row was not reported at load")
             time.sleep(0.01)
-        require(any(item["uid"] == ghost and item["parent"] == banana
-                    for item in inspect_authority(state_root)["player_items"]),
-                "partial load rewrote durable custody")
-        attack_until_death(client)
-        deadline = time.monotonic() + 15
-        while "load_item_payload_gap_disposition" not in runtime_logs(run_root):
-            require(time.monotonic() < deadline, "payload-gap death did not enter disposition")
-            time.sleep(0.01)
-        refused_at = time.monotonic()
-        client.expect("ACCOUNT MENU", timeout=30)
-        elapsed = time.monotonic() - refused_at
-        require(not (state_root / "domains/.critical-authority-transaction").exists(),
-                "character released before death after-images completed")
+        client.send("save")
+        client.expect(f"Save complete for {CHARACTER}.")
         after = inspect_authority(state_root)
-        require(len(after["deaths"]) == 1, "death disposition missing at release")
-        death = after["deaths"][0]
-        require(any(item["uid"] == banana for item in death["items"]), "refused item payload lost")
-        require(any(item["uid"] == banana and item["owner_type"] == 1 and item["owner_id"] == 1
-                    for item in death["custody"]), "refused custody observation lost")
-        require(after["wallet"] == [0, 0, 0, 0], "death wallet was not cleared")
-        before_value = sum(amount * 10 ** denomination
-                           for denomination, amount in enumerate(before["wallet"]))
-        evidence_value = sum(amount * 10 ** denomination for item in death["items"]
-                             for denomination, amount in enumerate(item["coins"]))
-        require(before_value == evidence_value,
-                "refused-death wallet value was not conserved in recovery evidence")
-        require(not after["player_items"], "disputed custody remained active at release")
-        require(after["death_count"] == before["death_count"] + 1,
-                "refused death was counted more or less than once")
-        logs = runtime_logs(run_root)
-        require(logs.index("death_disposition_recorded") < logs.index("death_disposition_completed"),
-                "character released before disposition durability")
-        print(f"flatfile-primary payload-gap disposition-to-account-menu (n=1, isolated): {elapsed:.3f}s", flush=True)
+        require(any(item["uid"] == banana for item in after["player_items"]),
+                "the save after the load dropped a held item")
+        require(after["wallet"] == before["wallet"], "the load changed the wallet")
+        started = time.monotonic()
+        client.send("quit")
+        client.expect("ACCOUNT MENU", timeout=30)
+        elapsed = time.monotonic() - started
+        print(f"flatfile-primary ghost-record camp-to-account-menu (n=1, isolated): {elapsed:.3f}s",
+              flush=True)
         client.send("0")
         return after
     finally:
@@ -484,19 +464,10 @@ def complete_npc_combat_journey(client: MudClient, reset_coins: bool = False) ->
     corpse = client.expect("banana", timeout=10)
     require("corpse" in corpse.lower(), "loot marker was not inside the corpse")
 
-    expected_coins = "You get 3s." if reset_coins else "You get 1c."
-    deadline = time.monotonic() + 15
-    while True:
-        client.send("get coins corpse")
-        result, _ = client.expect_any((expected_coins,
-            "The coin transfer did not commit; nothing changed.",
-            "The coin transfer could not start; nothing changed."), timeout=15)
-        if result == expected_coins:
-            break
-        require(time.monotonic() < deadline, "NPC coin retry never committed")
-        # Other reward commands can hold the player's currency fence while the
-        # room-only admission commits. Retry must use that admission, not mint.
-        time.sleep(0.1)
+    # The coins move into the wallet in memory, at once.
+    client.send("get coins corpse")
+    client.expect("There were: 3 silver coins." if reset_coins else
+                  "There were: 1 copper coin.", timeout=15)
 
     client.send("get banana corpse")
     client.expect("get a banana", timeout=10)
@@ -626,7 +597,7 @@ def verify_npc_loot_and_die(port: int) -> None:
         client.close()
 
 
-def recover_player_corpse(port: int, reset_coins: bool = False) -> None:
+def recover_player_corpse(port: int, state_root: pathlib.Path, reset_coins: bool = False) -> None:
     client = reconnect_character(port, "You rejoin the land of the living")
     try:
         client.send("look")
@@ -634,11 +605,16 @@ def recover_player_corpse(port: int, reset_coins: bool = False) -> None:
         client.send(f"look in {CHARACTER}")
         corpse = client.expect("a banana", timeout=10)
         require(CHARACTER in corpse, "player corpse did not contain the saved loot marker")
+        # A player's coins go into the corpse at death, and the death saved the empty
+        # wallet (persistence reset phase 2 step 4).
+        require(inspect_authority(state_root)["wallet"] == [0, 0, 0, 0],
+                "the death did not save an empty wallet")
+        client.send(f"get coins {CHARACTER}")
+        client.expect("There were: 3 silver coins." if reset_coins else
+                      "There were: 1 copper coin.", timeout=15)
 
         client.send(f"get banana {CHARACTER}")
         client.expect("get a banana", timeout=15)
-        client.send(f"get coins {CHARACTER}")
-        client.expect("You get 3s." if reset_coins else "You get 1c.", timeout=15)
         client.send("save")
         client.expect(f"Save complete for {CHARACTER}.", timeout=15)
         client.send("quit")
@@ -754,11 +730,11 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                     require(inspect_authority(state_root)["wallet"] == coin_balance,
                             "NPC pickup/save did not conserve coins")
                     verify_npc_loot_and_die(plain_port)
-                    recover_player_corpse(plain_port, reset_coins)
+                    recover_player_corpse(plain_port, state_root, reset_coins)
                     verify_recovered_loot(plain_port)
                     require(inspect_authority(state_root)["wallet"] == coin_balance,
                             "reconnect or corpse recovery changed the coin total")
-                    disputed_death(plain_port, state_root, run_root)
+                    ghost_ownership_record(plain_port, state_root, run_root)
 
                     process.send_signal(signal.SIGTERM)
                     process.wait(timeout=30)
@@ -791,7 +767,7 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                         require(process.poll() is None and time.monotonic() < deadline,
                                 "combat server did not restart")
                         time.sleep(0.1)
-                    client = reconnect_character(plain_port, "You rejoin the land of the living")
+                    client = reconnect_character(plain_port)
                     client.send("save")
                     client.expect(f"Save complete for {CHARACTER}.")
                     client.send("quit")
@@ -807,8 +783,8 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                     require(death_files == {path.name: path.read_bytes()
                             for path in (state_root / "player-deaths").glob("*.death")},
                             "restart/re-entry rewrote death evidence")
-                    require(not after_restart["snapshot_uids"],
-                            "re-entry restored disputed inventory without recovery")
+                    require(after_restart["snapshot_uids"] == before_restart["snapshot_uids"],
+                            "restart/re-entry changed the inventory")
                     process.send_signal(signal.SIGTERM)
                     process.wait(timeout=30)
                     require(process.returncode == 0, "restarted server shutdown failed")

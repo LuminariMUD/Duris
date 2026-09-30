@@ -342,6 +342,9 @@ bool collector_collection_detach_live(P_obj selected)
 		    (!parent && !OBJ_IN_ROOM(child, room)))
 			return false;
 	}
-	extract_obj(selected, FALSE);
-	return true;
+	if (parent)
+		obj_from_obj(selected);
+	else
+		obj_from_room(selected);
+	return OBJ_NOWHERE(selected);
 }

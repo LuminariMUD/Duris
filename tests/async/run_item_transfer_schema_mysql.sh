@@ -46,7 +46,7 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
     "${MYSQL_CFLAGS[@]}" tests/async/item_transfer_mysql_harness.cpp \
     tests/async/item_extra_descr_codec_sql_escape_stub.cpp \
     src/persistence/critical_command.c src/world/epic_command.c src/economy/currency_command.c \
-    src/item/item_transfer_command.c src/item/item_transfer_repository.c \
+    src/item/item_transfer_command.c src/item/item_transfer_repository.c src/item/item_claim_repository.c src/persistence/persistence_observability.c src/item/item_claim.c src/persistence/dupe_log.c \
     src/sql/item_extra_descr_codec.c \
 	 src/economy/auction_command.c src/economy/auction_repository.c \
     src/combat/combat_outcome_command.c src/combat/combat_outcome_repository.c \
@@ -71,4 +71,4 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
     src/persistence/critical_command_repository.c "${MYSQL_LIBS[@]}" -lcrypto \
     -o "$ROOT/bin/tests/item_transfer_mysql_harness"
 "$ROOT/bin/tests/item_transfer_mysql_harness"
-printf 'item creation, subtree, stale, incomplete, replay, transfer, destruction, ledger, and outbox checks passed\n'
+printf 'item creation, claim, replay, transfer, destruction, ledger, and outbox checks passed\n'

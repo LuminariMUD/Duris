@@ -1,59 +1,37 @@
 #ifndef DURIS_ECONOMY_CURRENCY_TRANSACTION_H
 #define DURIS_ECONOMY_CURRENCY_TRANSACTION_H
 
-#include "persistence/critical_command_coordinator.h"
+#include "persistence/critical_command.h"
 #include "economy/currency_command.h"
-#include "economy/coin_transfer_command.h"
 #include "core/structs.h"
 
 #include <cstddef>
 #include <cstdint>
 
-constexpr size_t CURRENCY_PENDING_MAX = 1024;
+// The size callers keep their completion context within.
 constexpr size_t CURRENCY_PENDING_CONTEXT_MAX_BYTES = 64;
 
-// A final notification: false means an explicit terminal rejection, never an
-// ambiguous outcome or failure to publish an acknowledged commit. Unresolved
-// receipts retain this same continuation and block non-rebasable admission.
+// Money lives in memory. A transaction changes the character's wallet, and the bank of
+// every online character of its account and side, at once, then calls its completion
+// before returning: committed, or refused with ENOSPC when a balance would go below zero
+// (the submit still returns true). The save writes the wallet; a bank change is queued on
+// the one writer as a delta, after the player's save when the bank gains and before it
+// when the bank loses, so a crash can lose money but never pay it twice.
 using currency_completion_fn = void (*)(P_char character, bool committed,
 					const currency_command_result &result,
 					unsigned int error_code, const uint8_t *context,
 					size_t context_size);
 
-// Return false only when committed live publication needs another game pulse.
-using coin_completion_fn = bool (*)(P_char actor, bool committed,
-				    const coin_transfer_payload &payload,
-				    const coin_transfer_result &result, unsigned int error_code,
-				    const uint8_t *context, size_t context_size);
-
-// A committed callback receives EOWNERDEAD on its final cleanup notification if
-// bounded live publication fails. It must not refund or reapply committed money.
-constexpr unsigned int CURRENCY_COIN_PUBLICATION_MAX_ATTEMPTS = 8;
-
 struct currency_transaction_health
 {
-	uint64_t pending;
-	uint64_t retained_offline;
-	uint64_t publication_blocked;
-	uint64_t publication_retrying;
 	uint64_t submitted;
 	uint64_t committed;
 	uint64_t rejected;
-	uint64_t submission_failures;
-	uint64_t malformed_completions;
-	uint64_t publication_abandoned;
+	uint64_t bank_deltas;
 };
 
-// Guard for commands built from the character's current wallet or bank view:
-// valid identity/capacity, no coordinator fence, and no unpublished predecessor.
-bool currency_transaction_can_submit_nonrebasable(P_char character);
-bool currency_transaction_player_busy(P_char character);
-bool currency_transaction_coin_item_busy(uint64_t item_uid);
-bool currency_transaction_coin_wallet(P_char character, int64_t value_delta,
-				      coin_transfer_endpoint *endpoint);
-bool currency_transaction_submit_coin(P_char actor, const coin_transfer_payload &payload,
-				      coin_completion_fn completion, const void *context,
-				      size_t context_size);
+// Set a balance the database computed (the economy's transactions until they stop
+// writing balances).
 bool currency_transaction_publish_wallet(P_char character, const currency_vector &wallet,
 					 uint64_t wallet_revision);
 bool currency_transaction_publish_balances(P_char character, const char *account_name,
@@ -72,8 +50,8 @@ bool currency_transaction_submit_identified(
 	currency_reason_type reason, int64_t reason_id, critical_source_site source_site,
 	critical_deadline_class deadline_class, currency_completion_fn completion,
 	const void *context, size_t context_size);
-// Prepare an immutable locker payment without submitting it. A durable receipt
-// must store this exact command before submit_prepared is called.
+// Prepare a locker payment without applying it. A durable receipt stores this exact
+// command before submit_prepared applies it.
 bool currency_transaction_prepare_identify(P_char character, int64_t cost,
 					   critical_command *command);
 bool currency_transaction_submit_prepared(P_char character, const critical_command &command,
@@ -97,8 +75,9 @@ bool currency_transaction_submit_bank_payment(P_char character, int64_t value,
 					      critical_deadline_class deadline_class,
 					      currency_completion_fn completion,
 					      const void *context, size_t context_size);
-void currency_transaction_handle_completions(const critical_completion *completions, size_t count);
-void currency_transaction_player_ready(P_char character);
+// Queue the character's save now, before whatever the money it gave up moves into is
+// saved: when money leaves one saved owner for another, the one it leaves goes first.
+void currency_transaction_save_first(P_char character);
 currency_transaction_health currency_transaction_health_copy(void);
 void currency_transaction_reset_for_tests(void);
 

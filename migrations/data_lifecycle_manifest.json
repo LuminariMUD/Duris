@@ -2578,6 +2578,37 @@
       "dependencies": []
     },
     {
+      "id": "database:item_owner_audit",
+      "kind": "database_table",
+      "locator": "item_owner_audit",
+      "data_category": "reconciliation_or_replay_record",
+      "data_subject_key": "item_uid_with_owner_ids",
+      "technical_purpose": "audit of each save that took an item from another owner, for tracing an item's owners and duplicate investigation",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "operation_domain",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "pending_controller_decision",
+      "archive_retention": "pending_controller_decision",
+      "terminal_action": "retain",
+      "exception": "protected_reconciliation_or_replay_horizon",
+      "protected_record": true,
+      "dependencies": [
+        "database:item_current_owner"
+      ]
+    },
+    {
       "id": "database:item_owner_revision",
       "kind": "database_table",
       "locator": "item_owner_revision",

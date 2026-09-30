@@ -14,11 +14,21 @@ char_data character = {};
 pc_only_data pc = {};
 bool player_online = true;
 critical_command submitted_command = {};
-bool currency_published = false;
+// The buyer's wallet in memory, and how many saves were queued before a command.
+int64_t wallet = 1000;
+int saves = 0;
 item_transfer_payload published_transfer = {};
 item_transfer_result published_transfer_result = {};
 bool ownership_published = false;
 bool shop_revision_published = false;
+// The item offered for sale, and where it is.
+obj_data sold = {};
+enum class place
+{
+	inventory,
+	held,
+	gone
+} sold_place = place::inventory;
 bool completion_called = false;
 bool completion_committed = false;
 unsigned int completion_error = 0;
@@ -48,6 +58,13 @@ shop_trade_payload trade(shop_trade_action action, uint64_t uid)
 		payload.items[0] = { uid, uid,
 				     0,	  ITEM_TRANSFER_ABSENT_REVISION,
 				     800, item_custody_state::absent };
+	}
+	else if (action == shop_trade_action::buy_existing)
+	{
+		payload.stock_item_uid = uid;
+		payload.expected_stock_item_revision = 5;
+		payload.stock_vnum = 800;
+		payload.items[0] = { uid, uid, 0, 5, 800, item_custody_state::active };
 	}
 	else if (action == shop_trade_action::discard_invalid)
 	{
@@ -108,20 +125,53 @@ critical_submit_result critical_command_coordinator_submit(critical_command comm
 	return critical_submit_result::accepted;
 }
 
+bool currency_transaction_submit_wallet_value(P_char buyer, int64_t value, currency_reason_type,
+					      int64_t, critical_source_site,
+					      critical_deadline_class, currency_completion_fn,
+					      const void *, size_t)
+{
+	assert(buyer == &character);
+	if (value < 0 && wallet < -value)
+		return false;
+	wallet += value;
+	return true;
+}
+
+void currency_transaction_save_first(P_char buyer)
+{
+	assert(buyer == &character);
+	++saves;
+}
+
+void obj_from_char(P_obj object)
+{
+	assert(object == &sold && sold_place == place::inventory);
+	sold_place = place::held;
+	character.carrying = nullptr;
+}
+
+void obj_to_char(P_obj object, P_char seller)
+{
+	assert(object == &sold && seller == &character && sold_place == place::held);
+	sold_place = place::inventory;
+	character.carrying = &sold;
+}
+
+void extract_obj(P_obj object, int)
+{
+	assert(object == &sold && sold_place == place::held);
+	sold_place = place::gone;
+}
+
+P_obj find_live_object(P_obj expected, uint64_t uid)
+{
+	return expected == &sold && uid == sold.obj_uid && sold_place != place::gone ? expected :
+										       nullptr;
+}
+
 P_char find_player_by_pid(int pid)
 {
 	return player_online && pid == 42 ? &character : nullptr;
-}
-
-bool currency_transaction_publish_balances(P_char published_character, const char *account_name,
-					   uint8_t racewar, const currency_vector &,
-					   const currency_vector &, uint64_t wallet_revision,
-					   uint64_t bank_revision)
-{
-	assert(published_character == &character && !strcmp(account_name, "shop-account") &&
-	       racewar == 1 && wallet_revision == 3 && bank_revision == 4);
-	currency_published = true;
-	return true;
 }
 
 bool item_ownership_runtime_apply(const item_transfer_payload &payload,
@@ -160,13 +210,15 @@ int main()
 	produced.target_root_item_uid = 700;
 	produced.target_parent_item_uid = 700;
 	produced.expected_target_parent_revision = 5;
+	// The price leaves the wallet at submit, after the buyer's save is queued.
 	assert(shop_trade_transaction_submit(&character, produced, completed));
+	assert(wallet == 900 && saves == 1);
 	assert(shop_trade_transaction_player_busy(&character));
 	assert(!shop_trade_transaction_submit(&character, produced, completed));
 	critical_completion produced_completion =
 		completion(result(shop_trade_action::buy_produced, 300, 8, 6));
 	shop_trade_transaction_handle_completions(&produced_completion, 1);
-	assert(currency_published && ownership_published && shop_revision_published &&
+	assert(wallet == 900 && ownership_published && shop_revision_published &&
 	       completion_called && completion_committed && completion_error == 0 &&
 	       published_transfer.from_owner.type == item_owner_type::system &&
 	       published_transfer.to_owner.type == item_owner_type::player &&
@@ -177,34 +229,80 @@ int main()
 	       published_transfer_result.to_owner_revision == 8 &&
 	       !shop_trade_transaction_player_busy(&character));
 
-	currency_published = ownership_published = shop_revision_published = completion_called =
-		completion_committed = false;
+	// A refused purchase gives the price back.
+	completion_called = completion_committed = false;
+	assert(shop_trade_transaction_submit(
+		&character, trade(shop_trade_action::buy_existing, 303), completed));
+	assert(wallet == 800);
+	critical_completion refused =
+		completion(result(shop_trade_action::buy_existing, 303, 8, 6));
+	refused.outcome = critical_apply_outcome::terminal_failure;
+	shop_trade_transaction_handle_completions(&refused, 1);
+	assert(wallet == 900 && completion_called && !completion_committed);
+	// A purchase the wallet cannot cover is refused before anything is queued.
+	wallet = 50;
+	assert(!shop_trade_transaction_submit(
+		&character, trade(shop_trade_action::buy_existing, 304), completed));
+	assert(wallet == 50 && !shop_trade_transaction_player_busy(&character));
+	wallet = 900;
+
+	// A sale takes its item out of the inventory at submit, after the seller's save is
+	// queued; a refused sale gives it back before the callback.
+	sold.obj_uid = 301;
+	character.carrying = &sold;
+	completion_called = false;
+	saves = 0;
 	const shop_trade_payload destroyed = trade(shop_trade_action::sell_destroy, 301);
+	assert(shop_trade_transaction_submit(&character, destroyed, completed));
+	assert(sold_place == place::held && saves == 1);
+	critical_completion refused_sale =
+		completion(result(shop_trade_action::sell_destroy, 301, 9, 2));
+	refused_sale.outcome = critical_apply_outcome::terminal_failure;
+	shop_trade_transaction_handle_completions(&refused_sale, 1);
+	assert(sold_place == place::inventory && character.carrying == &sold && wallet == 900 &&
+	       completion_called && !completion_committed);
+	// An item extracted while it was held is not given back.
+	completion_called = false;
+	assert(shop_trade_transaction_submit(&character, destroyed, completed));
+	sold_place = place::gone;
+	refused_sale.operation_id = submitted_command.operation_id;
+	shop_trade_transaction_handle_completions(&refused_sale, 1);
+	assert(sold_place == place::gone && !character.carrying && completion_called);
+	sold_place = place::inventory;
+	character.carrying = &sold;
+	// An item the seller no longer carries cannot be sold.
+	assert(!shop_trade_transaction_submit(
+		&character, trade(shop_trade_action::sell_destroy, 399), completed));
+	assert(sold_place == place::inventory && !shop_trade_transaction_player_busy(&character));
+
+	ownership_published = shop_revision_published = completion_called = completion_committed =
+		false;
 	assert(shop_trade_transaction_submit(&character, destroyed, completed));
 	critical_completion destroyed_completion =
 		completion(result(shop_trade_action::sell_destroy, 301, 9, 2));
 	player_online = false;
 	shop_trade_transaction_handle_completions(&destroyed_completion, 1);
-	assert(shop_trade_transaction_player_busy(&character) && !currency_published &&
+	assert(shop_trade_transaction_player_busy(&character) && wallet == 900 &&
 	       !ownership_published && !completion_called);
 	player_online = true;
+	// A sale is paid when it commits; a seller who left is paid on return.
 	shop_trade_transaction_player_ready(&character);
-	assert(currency_published && ownership_published && shop_revision_published &&
-	       completion_called && completion_committed &&
+	assert(wallet == 1000 && ownership_published && shop_revision_published &&
+	       completion_called && completion_committed && sold_place == place::held &&
 	       published_transfer.from_owner.type == item_owner_type::player &&
 	       published_transfer.to_owner.type == item_owner_type::destruction &&
 	       published_transfer_result.from_owner_revision == 9 &&
 	       published_transfer_result.to_owner_revision == 2 &&
 	       !shop_trade_transaction_player_busy(&character));
 
-	currency_published = ownership_published = shop_revision_published = completion_called =
-		completion_committed = false;
+	ownership_published = shop_revision_published = completion_called = completion_committed =
+		false;
 	const shop_trade_payload cleanup = trade(shop_trade_action::discard_invalid, 302);
 	assert(shop_trade_transaction_submit(&character, cleanup, completed));
 	critical_completion cleanup_completion =
 		completion(result(shop_trade_action::discard_invalid, 302, 10, 3));
 	shop_trade_transaction_handle_completions(&cleanup_completion, 1);
-	assert(currency_published && ownership_published && shop_revision_published &&
+	assert(wallet == 1000 && ownership_published && shop_revision_published &&
 	       completion_called && completion_committed &&
 	       published_transfer.from_owner.type == item_owner_type::shopkeeper &&
 	       published_transfer.to_owner.type == item_owner_type::destruction &&

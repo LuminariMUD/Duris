@@ -1855,13 +1855,7 @@ void point_update(void)
 				if (i->desc)
 					close_socket(i->desc);
 				// writeCharacter(i, 5, reloghere);
-				if (!persistence_save_character_terminal(i, RENT_LINKDEAD))
-				{
-					persistence_alert(AVATAR, "player_save", "idle_rent",
-							  "none", "none", "terminal_save_failed",
-							  "extract_refused=1");
-					continue;
-				}
+				persistence_save_character_terminal(i, RENT_LINKDEAD);
 				// If it's not an immortal.
 				if (GET_LEVEL(i) < MINLVLIMMORTAL)
 				{

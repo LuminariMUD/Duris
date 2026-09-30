@@ -20580,7 +20580,6 @@ void spell_single_banish(int level, P_char ch, char * /*arg*/, int /*type*/, P_c
 			    FALSE, ch, 0, victim, TO_CHAR);
 			act("$N &+Lsuddenly becomes lifeless once more and crumbles to dust.&n",
 			    FALSE, ch, 0, victim, TO_NOTVICT);
-			check_saved_corpse(victim);
 			extract_char(victim);
 			return;
 		}
@@ -20636,7 +20635,6 @@ void spell_single_banish(int level, P_char ch, char * /*arg*/, int /*type*/, P_c
 			    TO_NOTVICT);
 			break;
 		}
-		check_saved_corpse(victim);
 		extract_char(victim);
 	}
 }
@@ -22458,34 +22456,6 @@ void remove_soulbind(P_char ch)
 
 void load_soulbind(P_char ch);
 
-struct soulbind_movement_context
-{
-	uint64_t item_uid;
-	uint32_t source_pid;
-	uint32_t victim_pid;
-	int32_t source_room;
-	int32_t victim_room;
-	uint8_t replace_existing;
-};
-
-static_assert(sizeof(soulbind_movement_context) <= ITEM_MOVEMENT_CONTEXT_MAX_BYTES);
-
-static P_char find_soulbind_player(uint32_t pid)
-{
-	for (P_char character = character_list; character; character = character->next)
-		if (IS_PC(character) && GET_PID(character) == static_cast<int>(pid))
-			return character;
-	return NULL;
-}
-
-static P_obj find_soulbind_item(uint64_t item_uid)
-{
-	for (P_obj object = object_list; object; object = object->next)
-		if (object->obj_uid == item_uid)
-			return object;
-	return NULL;
-}
-
 static bool soulbind_metadata_applied(P_char victim, P_obj obj)
 {
 	if (!victim || !obj)
@@ -22547,146 +22517,13 @@ static bool apply_soulbind_metadata(P_char victim, P_obj obj, bool require_durab
 	return true;
 }
 
-static bool publish_nonplayer_soulbind(P_char source, P_char victim, P_obj object)
+static bool give_soulbind_item(P_char source, P_char victim, P_obj object)
 {
 	if (!source || !victim || !object || !OBJ_CARRIED_BY(object, source))
 		return false;
 	obj_from_char(object);
 	obj_to_char(object, victim);
 	return OBJ_CARRIED_BY(object, victim);
-}
-
-static bool soulbind_transfer_publication(P_char /*callback_actor*/, bool committed,
-					  const item_transfer_result &result,
-					  unsigned int error_code, const uint8_t *encoded,
-					  size_t encoded_size)
-{
-	soulbind_movement_context context = {};
-	if (!encoded || encoded_size != sizeof(context))
-	{
-		persistence_alert(AVATAR, "item_movement", "soulbind_publish", "none", "none",
-				  "invalid_context", "uid=unknown");
-		return false;
-	}
-	memcpy(&context, encoded, sizeof(context));
-	P_char owner = find_soulbind_player(context.source_pid);
-	if (!committed)
-	{
-		if (owner)
-			send_to_char(
-				"The soulbind transfer did not commit; the item remains with you.\r\n",
-				owner);
-		logit(LOG_FILE,
-		      "item_movement: command=soulbind outcome=not_committed source_pid=%u "
-		      "victim_pid=%u uid=%llu error=%u",
-		      context.source_pid, context.victim_pid, (unsigned long long)context.item_uid,
-		      error_code);
-		return true;
-	}
-	if (result.root_item_uid != context.item_uid)
-	{
-		persistence_alert(AVATAR, "item_movement", "soulbind_publish", "none", "none",
-				  "result_identity_mismatch",
-				  "expected_uid=%llu result_uid=%llu source_pid=%u",
-				  (unsigned long long)context.item_uid,
-				  (unsigned long long)result.root_item_uid, context.source_pid);
-		return false;
-	}
-
-	P_char victim = find_soulbind_player(context.victim_pid);
-	P_obj object = find_soulbind_item(context.item_uid);
-	if (!owner || !victim || !object)
-	{
-		persistence_alert(AVATAR, "item_movement", "soulbind_publish", "none", "none",
-				  "stale_live_topology",
-				  "item_uid=%llu source_pid=%u victim_pid=%u",
-				  (unsigned long long)context.item_uid, context.source_pid,
-				  context.victim_pid);
-		return false;
-	}
-	if (owner->in_room != context.source_room || victim->in_room != context.victim_room)
-		logit(LOG_FILE,
-		      "item_movement: command=soulbind recovering committed publication after room "
-		      "change source_pid=%u victim_pid=%u source_room=%d->%d victim_room=%d->%d",
-		      context.source_pid, context.victim_pid, context.source_room, owner->in_room,
-		      context.victim_room, victim->in_room);
-	if (OBJ_CARRIED_BY(object, victim) && soulbind_metadata_applied(victim, object))
-		return apply_soulbind_metadata(victim, object, true);
-	if (has_soulbind(victim) != 0 && !context.replace_existing)
-	{
-		persistence_alert(AVATAR, "item_movement", "soulbind_publish", "none", "none",
-				  "victim_already_soulbound", "item_uid=%llu victim_pid=%u",
-				  (unsigned long long)context.item_uid, context.victim_pid);
-		return false;
-	}
-	if (!OBJ_CARRIED_BY(object, victim))
-	{
-		if (!OBJ_NOWHERE(object) && (!owner || !OBJ_CARRIED_BY(object, owner)))
-		{
-			persistence_alert(AVATAR, "item_movement", "soulbind_publish", "none",
-					  "none", "source_not_carrying",
-					  "item_uid=%llu source_pid=%u",
-					  (unsigned long long)context.item_uid, context.source_pid);
-			return false;
-		}
-		if (total_carried_weight(victim) + GET_OBJ_WEIGHT(object) > CAN_CARRY_W(victim))
-		{
-			persistence_alert(AVATAR, "item_movement", "soulbind_publish", "none",
-					  "none", "destination_at_capacity",
-					  "item_uid=%llu victim_pid=%u",
-					  (unsigned long long)context.item_uid, context.victim_pid);
-			return false;
-		}
-		if (owner && OBJ_CARRIED_BY(object, owner))
-			obj_from_char(object);
-		obj_to_char(object, victim);
-		object = find_soulbind_item(context.item_uid);
-	}
-	if (!object || !OBJ_CARRIED_BY(object, victim))
-	{
-		persistence_alert(AVATAR, "item_movement", "soulbind_publish", "none", "none",
-				  "publication_refused", "item_uid=%llu victim_pid=%u",
-				  (unsigned long long)context.item_uid, context.victim_pid);
-		return false;
-	}
-
-	if (has_soulbind(victim) != 0)
-	{
-		if (!context.replace_existing)
-		{
-			persistence_alert(AVATAR, "item_movement", "soulbind_publish", "none",
-					  "none", "victim_already_soulbound",
-					  "item_uid=%llu victim_pid=%u",
-					  (unsigned long long)context.item_uid, context.victim_pid);
-			return false;
-		}
-		remove_soulbind(victim);
-		for (struct affected_type *findaf = victim->affected; findaf; findaf = findaf->next)
-			if (findaf->type == TAG_SOULBIND)
-			{
-				affect_remove(victim, findaf);
-				break;
-			}
-		if (owner)
-			send_to_char(
-				"Cleared the recipient's previous soulbind after the transfer committed.\r\n",
-				owner);
-	}
-	if (!apply_soulbind_metadata(victim, object, true))
-	{
-		persistence_alert(AVATAR, "item_movement", "soulbind_publish", "none", "none",
-				  "metadata_apply_failed", "item_uid=%llu victim_pid=%u",
-				  (unsigned long long)context.item_uid, context.victim_pid);
-		return false;
-	}
-	if (owner)
-		mark_player_dirty_components(GET_PID(owner), PLAYER_COMPONENT_STATUS |
-								     PLAYER_COMPONENT_EQUIPMENT |
-								     PLAYER_COMPONENT_INVENTORY);
-	mark_player_dirty_components(GET_PID(victim), PLAYER_COMPONENT_STATUS |
-							      PLAYER_COMPONENT_EQUIPMENT |
-							      PLAYER_COMPONENT_INVENTORY);
-	return true;
 }
 
 struct soulbind_reload_context
@@ -22865,24 +22702,8 @@ void do_soulbind(P_char ch, char *argument, int /*cmd*/)
 			return;
 		}
 
-		if (ch != victim && (!IS_PC(ch) || !IS_PC(victim)))
-		{
-			if (!publish_nonplayer_soulbind(ch, victim, obj) ||
-			    !apply_soulbind_metadata(victim, obj))
-			{
-				send_to_char("The soulbind could not be applied.\r\n", ch);
-			}
-			return;
-		}
-
 		if (ch != victim)
 		{
-			const item_owner_identity source = { item_owner_type::player,
-							     static_cast<uint64_t>(GET_PID(ch)),
-							     0 };
-			const item_owner_identity destination = {
-				item_owner_type::player, static_cast<uint64_t>(GET_PID(victim)), 0
-			};
 			if (total_carried_weight(victim) + GET_OBJ_WEIGHT(obj) >
 			    CAN_CARRY_W(victim))
 			{
@@ -22890,46 +22711,19 @@ void do_soulbind(P_char ch, char *argument, int /*cmd*/)
 					     ch);
 				return;
 			}
-			item_ownership_runtime_entry ownership = {};
-			if (!obj->obj_uid ||
-			    !item_ownership_runtime_lookup(obj->obj_uid, &ownership) ||
-			    ownership.state != item_custody_state::active ||
-			    !item_owner_identity_equal(ownership.owner, source))
+			if (replace_existing)
 			{
-				send_to_char(
-					"The item's ownership records do not permit this soulbind transfer.\r\n",
-					ch);
-				logit(LOG_FILE,
-				      "item_movement: command=soulbind outcome=owner_mismatch actor=%s uid=%llu",
-				      J_NAME(ch), (unsigned long long)obj->obj_uid);
-				return;
+				remove_soulbind(victim);
+				for (findaf = victim->affected; findaf; findaf = findaf->next)
+					if (findaf->type == TAG_SOULBIND)
+					{
+						affect_remove(victim, findaf);
+						break;
+					}
 			}
-			const soulbind_movement_context context = {
-				obj->obj_uid,
-				static_cast<uint32_t>(GET_PID(ch)),
-				static_cast<uint32_t>(GET_PID(victim)),
-				ch->in_room,
-				victim->in_room,
-				static_cast<uint8_t>(replace_existing)
-			};
-			item_movement_reject reject = item_movement_reject::none;
-			if (!item_movement_transaction_submit(
-				    ch, obj, NULL, source, destination,
-				    item_transfer_reason::soulbind, GET_PID(ch), NULL, &context,
-				    sizeof(context), NULL, &reject, soulbind_transfer_publication))
-			{
-				send_to_char(
-					"The soulbind transfer could not start; the item and recipient were unchanged.\r\n",
-					ch);
-				logit(LOG_FILE,
-				      "item_movement: command=soulbind outcome=%s actor=%s uid=%llu",
-				      item_movement_reject_name(reject), J_NAME(ch),
-				      (unsigned long long)obj->obj_uid);
-				return;
-			}
-			send_to_char(
-				"The soulbind transfer is pending; no item or soulbound metadata changes until it commits.\r\n",
-				ch);
+			if (!give_soulbind_item(ch, victim, obj) ||
+			    !apply_soulbind_metadata(victim, obj))
+				send_to_char("The soulbind could not be applied.\r\n", ch);
 			return;
 		}
 

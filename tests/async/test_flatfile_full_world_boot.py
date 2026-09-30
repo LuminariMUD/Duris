@@ -178,6 +178,20 @@ def inspect_authority(state_root):
     return snapshot
 
 
+def save_durably(client, state_root, timeout=15):
+    """Save and wait for the writer to land it; a save is written asynchronously."""
+    revision = inspect_authority(state_root)["revision"]
+    client.send("save")
+    client.expect(f"Save complete for {CHARACTER}.", timeout=45)
+    deadline = time.monotonic() + timeout
+    while True:
+        snapshot = inspect_authority(state_root)
+        if snapshot["revision"] > revision:
+            return snapshot
+        require(time.monotonic() < deadline, "the save did not reach the player file")
+        time.sleep(0.05)
+
+
 def assert_mace_owner(state_root, uid, owner):
     """Require the tracked mace UID to belong exclusively to the expected owner."""
     snapshot = inspect_authority(state_root)
@@ -201,11 +215,11 @@ def exercise_cancelled_camp(client, state_root, mace_uid):
             fcntl.flock(lock, fcntl.LOCK_UN)
             record("storage_lock_released")
     # Character remains online and the retry must save without a manual command.
-    client.send("look")
-    client.expect("A gnoby piece of wood, perhaps a small mace, lies here.")
+    client.send("inventory")
+    client.expect("a small wooden mace", timeout=10)
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
-        recovered = assert_mace_owner(state_root, mace_uid, "room_items")
+        recovered = assert_mace_owner(state_root, mace_uid, "player_items")
         if recovered["revision"] > baseline["revision"] and recovered["intent"] == 1:
             record("deferred_retry_durable", revision=recovered["revision"])
             return
@@ -414,17 +428,24 @@ with tempfile.TemporaryDirectory(prefix="full-world-build-", dir=ROOT / "bin") a
                         phase = "first_boot:character_creation"
                         client = MudClient(port)
                         create_character(client, expected_room=None)
-                        before_drop = inspect_authority(state_root)
+                        before_drop = save_durably(client, state_root)
+                        # Memory is the authority: the drop moves the mace at once, and
+                        # the next save simply no longer holds it.
                         client.send("drop mace")
                         client.expect("You drop a small wooden mace", timeout=20)
-                        after_drop = inspect_authority(state_root)
-                        removed = {item["uid"] for item in before_drop["player_items"]} - {
-                            item["uid"] for item in after_drop["player_items"]}
-                        require(len(removed) == 1, f"drop changed unexpected UIDs: {removed}")
-                        mace_uid = removed.pop()
-                        assert_mace_owner(state_root, mace_uid, "room_items")
+                        require(inspect_authority(state_root)["player_items"] ==
+                                before_drop["player_items"], "a drop wrote to the ownership catalog")
                         client.send("look")
                         client.expect("A gnoby piece of wood, perhaps a small mace, lies here.")
+                        after_drop = save_durably(client, state_root)
+                        removed = set(before_drop["snapshot_uids"]) - set(after_drop["snapshot_uids"])
+                        require(len(removed) == 1, f"drop changed unexpected UIDs: {removed}")
+                        mace_uid = removed.pop()
+                        # The starter kit fills a new character's hands; free them first.
+                        client.send("drop all")
+                        client.expect("You drop a steel long sword", timeout=45)
+                        client.send("get mace")
+                        client.expect("You get a small wooden mace", timeout=20)
                         phase = output_path.stem + ":manual_save"
                         if CRASH_PHASE == "before_ack":
                             crash_before_ack(client, process, state_root, run_root)
@@ -479,7 +500,8 @@ with tempfile.TemporaryDirectory(prefix="full-world-build-", dir=ROOT / "bin") a
                         phase = "first_boot" if output_path.name == "boot-first.out" else "second_boot"
                         record("phase_start")
                         wait_for_boot(process, output, output_path)
-                        recovered = assert_mace_owner(state_root, mace_uid, "room_items")
+                        recovered = assert_mace_owner(state_root, mace_uid, "player_items")
+                        require(mace_uid in recovered["snapshot_uids"], "the saved mace did not survive the restart")
                         if CRASH_PHASE:
                             require(recovered["wimpy"] == 5, "saved setting did not recover across intentional crash")
                         phase = "restart_recovery"
@@ -489,10 +511,10 @@ with tempfile.TemporaryDirectory(prefix="full-world-build-", dir=ROOT / "bin") a
                                             "You break camp and get ready to move on"),
                             expected_room=None,
                         )
-                        client.send("look")
-                        client.expect("A gnoby piece of wood, perhaps a small mace, lies here.")
+                        client.send("inventory")
+                        client.expect("a small wooden mace", timeout=10)
                         client.send("drop all")
-                        client.expect("You drop a steel long sword", timeout=45)
+                        client.expect("You drop a small wooden mace", timeout=45)
                         client.send("get mace")
                         client.expect("You get a small wooden mace", timeout=20)
                         assert_mace_owner(state_root, mace_uid, "player_items")

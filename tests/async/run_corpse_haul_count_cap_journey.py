@@ -183,9 +183,14 @@ def run(binary, backend):
                 print("NPC corpse with one free slot:", partial, flush=True)
                 assert partial.count("You can't carry any more.") == 1, partial
                 assert "Haul:\r\n  a " in partial, partial
-                assert owner_count(pid) == 1
+                # The haul moves the item in memory; the save makes the ownership
+                # table name the player (persistence reset step 4).
                 actor.send("save")
                 actor.expect("Save complete for Taverek.", timeout=30)
+                deadline = time.monotonic() + 20
+                while owner_count(pid) != 1:
+                    assert time.monotonic() < deadline, "the save did not claim the hauled item"
+                    time.sleep(0.1)
                 actor.send("quit")
                 actor.expect("ACCOUNT MENU", timeout=30)
                 actor.close()

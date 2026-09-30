@@ -5,6 +5,7 @@
 #include "flatfile/flatfile_item_repository.h"
 #include "economy/economic_command_admission.h"
 #include "persistence/persistence_mode.h"
+#include "player/player_save_worker.h"
 #include <atomic>
 #include <chrono>
 #include <mutex>
@@ -81,9 +82,14 @@ void journal_contains(const std::string &path, const critical_command &expected,
 	assert(observation.calls == count);
 	critical_command_journal_shutdown();
 }
+player_save_apply_result apply_save(const player_snapshot &snapshot, void *)
+{
+	return { player_save_apply_outcome::applied, snapshot.revision, 0 };
+}
 int main(int argc, char **argv)
 {
 	assert(argc == 2);
+	assert(player_save_worker_init(apply_save, nullptr));
 	const fs::path base = argv[1];
 	fs::create_directories(base);
 	fs::permissions(base, fs::perms::owner_all);
@@ -93,11 +99,10 @@ int main(int argc, char **argv)
 	const auto journal = (base / "journal").string();
 	auto cmd = command(execution.root, 100);
 	cmd.accepted_at_usec = 0;
-	assert(critical_command_coordinator_init(journal.c_str(), native_apply, &execution, 1,
-						 nullptr, nullptr,
-						 economic_command_admission_supported));
+	assert(critical_command_coordinator_init(journal.c_str(), native_apply, &execution, nullptr,
+						 nullptr, economic_command_admission_supported));
 	assert(critical_command_coordinator_submit_for_publication(cmd) ==
-	       critical_submit_result::awaiting_durability);
+	       critical_submit_result::accepted);
 	const auto first = await_completion();
 	assert(first.outcome == outcome::applied && execution.calls == 1);
 	const auto exact = executed(execution);
@@ -110,11 +115,15 @@ int main(int argc, char **argv)
 	for (const auto &key : exact.keys)
 		assert(critical_command_coordinator_is_fenced(key, nullptr));
 	critical_command_coordinator_shutdown(); // Deliberately no publication acknowledgement.
-	journal_contains(journal, exact, 1);
+	// New commands are not journaled.
+	journal_contains(journal, exact, 0);
 
-	assert(critical_command_coordinator_init(journal.c_str(), native_apply, &execution, 1,
-						 nullptr, nullptr,
-						 economic_command_admission_supported));
+	// A journal an older server left, holding the same command, replays it once.
+	assert(critical_command_journal_init(journal.c_str()));
+	assert(critical_command_journal_append(exact) == critical_command_journal_result::ok);
+	critical_command_journal_shutdown();
+	assert(critical_command_coordinator_init(journal.c_str(), native_apply, &execution, nullptr,
+						 nullptr, economic_command_admission_supported));
 	const auto replay = await_completion();
 	assert(replay.outcome == outcome::already_applied && execution.calls == 2);
 	assert(critical_command_equal(executed(execution), exact));
@@ -134,27 +143,25 @@ int main(int argc, char **argv)
 	critical_command_coordinator_shutdown();
 	journal_contains(journal, exact, 0);
 
-	assert(critical_command_coordinator_init(journal.c_str(), native_apply, &execution, 1,
-						 nullptr, nullptr,
-						 economic_command_admission_supported));
+	assert(critical_command_coordinator_init(journal.c_str(), native_apply, &execution, nullptr,
+						 nullptr, economic_command_admission_supported));
 	assert(execution.calls == 2);
 	auto fresh = command(execution.root, 101);
 	assert(critical_command_coordinator_submit_for_publication(fresh) ==
-	       critical_submit_result::awaiting_durability);
+	       critical_submit_result::accepted);
 	const auto fresh_result = await_completion();
 	assert(fresh_result.outcome == outcome::applied && execution.calls == 3);
 	const auto checkpoints = critical_command_journal_health_copy().checkpoints;
 	for (const auto &key : fresh.keys)
 		assert(critical_command_coordinator_is_fenced(key, nullptr));
 	assert(critical_command_coordinator_acknowledge_publication(fresh.operation_id));
-	assert(critical_command_journal_health_copy().checkpoints == checkpoints + 1);
+	assert(critical_command_journal_health_copy().checkpoints == checkpoints);
 	for (const auto &key : fresh.keys)
 		assert(!critical_command_coordinator_is_fenced(key, nullptr));
 	critical_command_coordinator_shutdown();
 	journal_contains(journal, fresh, 0);
-	assert(critical_command_coordinator_init(journal.c_str(), native_apply, &execution, 1,
-						 nullptr, nullptr,
-						 economic_command_admission_supported));
+	assert(critical_command_coordinator_init(journal.c_str(), native_apply, &execution, nullptr,
+						 nullptr, economic_command_admission_supported));
 	assert(execution.calls == 3);
 	critical_command_coordinator_shutdown();
 	const auto final_state = state(execution.root);
@@ -180,7 +187,7 @@ int main(int argc, char **argv)
 	assert(critical_command_journal_append(unsupported) == critical_command_journal_result::ok);
 	critical_command_journal_shutdown();
 	assert(!critical_command_coordinator_init(refused_journal.c_str(), native_apply, &execution,
-						  1, nullptr, nullptr,
+						  nullptr, nullptr,
 						  economic_command_admission_supported));
 	critical_command_coordinator_shutdown();
 	assert(execution.calls == 3);
@@ -193,7 +200,8 @@ int main(int argc, char **argv)
 	critical_command_journal_shutdown();
 	assert(state(execution.root).domains.wallet == final_state.domains.wallet);
 	std::cout
-		<< "native flatfile admission: exact original-ID replay changes balances once; fresh ack retires; unsupported durable work stays uncheckpointed\n";
+		<< "native flatfile admission: an older journal's exact original-ID replay changes balances once; fresh ack retires; unsupported durable work stays uncheckpointed\n";
 	std::cout
 		<< "known publication gap: replay auto-retires without restoring publication retention\n";
+	player_save_worker_reset_for_tests();
 }

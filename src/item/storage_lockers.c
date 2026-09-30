@@ -3330,9 +3330,9 @@ static int save_locker_char(P_char ch, int bTerminal)
 	      (ch->specials.was_in_room != NOWHERE) ? ch->specials.was_in_room : -1,
 	      sql_in_transaction() ? "existing" : "new");
 
-	/* Move room/chest contents onto locker char (private chests still SQL
-	 * sync inside LockerToPFile). Then mark async dirty and return.
-	 * Actual public inventory SQL runs on the locker async worker. */
+	/* Move room/chest contents onto locker char (LockerToPFile queues each
+	 * private chest on the persistence writer). Then mark async dirty and
+	 * return; the writer saves the public inventory from its snapshot. */
 	if (!pLocker->LockerToPFile())
 	{
 		locker_log_save_failure(pLocker, ch, chLocker, "locker-to-pfile",

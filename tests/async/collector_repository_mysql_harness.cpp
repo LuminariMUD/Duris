@@ -969,8 +969,9 @@ int main()
 		hex_bytes(blob.data(), blob.size()) +
 		"') WHERE listing_id=" + std::to_string(LISTING));
 
-	// Purchase debits carried currency, advances both revision fences, persists the exact
-	// recoverable item row, and transfers custody to the permanent beneficiary.
+	// Purchase advances the owner revisions, persists the exact recoverable item row and
+	// transfers custody to the permanent beneficiary. The wallet is memory's: the submit
+	// took the price, so the repository leaves the wallet and bank rows alone.
 	collector_command_payload purchase;
 	purchase.action = collector_action::purchase;
 	purchase.listing = LISTING;
@@ -999,9 +1000,9 @@ int main()
 	       entry.item_revision == 7 && result.materialized_item_id != 0);
 	assert(text("SELECT CONCAT(copper,':',silver,':',gold,':',platinum,':',wallet_revision) "
 		    "FROM player_data WHERE pid=" +
-		    std::to_string(PLAYER_PID)) == "0:0:5:0:1");
+		    std::to_string(PLAYER_PID)) == "0:0:10:0:0");
 	assert(scalar("SELECT bank_revision FROM account_banks WHERE account_name='" +
-		      std::string(ACCOUNT_NAME) + "' AND racewar=1") == 1);
+		      std::string(ACCOUNT_NAME) + "' AND racewar=1") == 0);
 	assert(text("SELECT CONCAT(vnum,':',weight,':',cost,':',value2,':',item_condition) FROM "
 		    "player_items WHERE obj_uid=" +
 		    std::to_string(ITEM_UID)) == "1002:5:250:7:77");
@@ -1014,9 +1015,8 @@ int main()
 	assert(scalar("SELECT COUNT(*) FROM player_item_extra_descr e JOIN player_items i ON "
 		      "i.id=e.item_id WHERE i.obj_uid=" +
 		      std::to_string(ITEM_UID) + " AND e.keyword='runes'") == 1);
-	assert(scalar("SELECT reason_type FROM currency_ledger WHERE operation_id=UNHEX('" +
-		      operation_hex(purchase_command.operation_id) + "')") ==
-	       static_cast<unsigned int>(currency_reason_type::collector_purchase));
+	assert(scalar("SELECT COUNT(*) FROM currency_ledger WHERE operation_id=UNHEX('" +
+		      operation_hex(purchase_command.operation_id) + "')") == 0);
 	const collector_command_result replayed_purchase =
 		apply(purchase_command, critical_apply_outcome::already_applied);
 	assert(replayed_purchase.materialized_item_id == materialized_item_id);

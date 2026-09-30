@@ -15,7 +15,8 @@ bool critical_command_repository_insert_outbox_event(MYSQL *, const critical_ope
 }
 
 bool critical_command_repository_finish_inbox(MYSQL *, const critical_command &, uint64_t,
-					      unsigned int, const uint8_t *, size_t)
+					      unsigned int, const uint8_t *, size_t,
+					      critical_failure_stage)
 {
 	return false;
 }

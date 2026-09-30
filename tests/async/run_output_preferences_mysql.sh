@@ -29,10 +29,9 @@ read -r -a MYSQL_CFLAGS <<< "$(mysql_config --cflags)"
 read -r -a MYSQL_LIBS <<< "$(mysql_config --libs)"
 g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fdata-sections -Isrc \
     "${MYSQL_CFLAGS[@]}" tests/async/output_preferences_mysql_harness.cpp \
-    src/player/player_snapshot_repository.c src/player/player_load_repository.c \
+    src/player/player_snapshot_repository.c src/item/item_claim_repository.c src/item/item_claim.c src/persistence/dupe_log.c src/player/player_load_repository.c \
     src/player/player_load_topology.c src/player/player_snapshot_codec.c \
-    src/sql/item_extra_descr_codec.c tests/async/item_extra_descr_codec_sql_escape_stub.cpp \
-    src/persistence/player_death_restitution_command.c \
+    src/sql/item_extra_descr_codec.c src/persistence/player_death_restitution_command.c \
     src/persistence/persistence_observability.c -Wl,--gc-sections "${MYSQL_LIBS[@]}" -lcrypto \
     -o bin/tests/output_preferences_mysql_harness
 bin/tests/output_preferences_mysql_harness

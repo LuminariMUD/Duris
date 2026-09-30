@@ -352,6 +352,9 @@ OBJS =  $(SHIP_OBJS) \
 				 economy/shop_trade_transaction.o \
 				 economy/shop_trade_runtime.o \
 				 item/item_transfer_repository.o \
+				 item/item_claim.o \
+				 item/item_claim_repository.o \
+				 persistence/dupe_log.o \
 				 item/item_transfer_synthetic.o \
 				 item/item_uid_allocator.o \
 				 persistence/critical_outbox.o \
@@ -509,6 +512,7 @@ OBJS =  $(SHIP_OBJS) \
 				 redis/wizredis.o \
 				 sql/sql.o \
 				 sql/sql_player.o \
+				 sql/sql_async.o \
 				 sql/item_extra_descr_codec.o \
 				 net/ssl.o \
 				 world/statistics.o \

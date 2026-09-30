@@ -19,6 +19,10 @@ player_item_snapshot_list_capture(P_char owner, bool equipment, bool inventory, 
 player_snapshot_capture_result
 player_item_snapshot_tree_capture(P_obj root, std::vector<player_item_snapshot> *items_out,
 				  size_t *estimated_bytes_out);
+// Every item inside container, as top-level rows in snapshot order.
+player_snapshot_capture_result
+player_item_snapshot_contents_capture(P_obj container,
+				      std::vector<player_item_snapshot> *items_out);
 
 // Capture an immutable death disposition without clearing cash or moving objects.
 // wallet_pile is an unattached pile representing the complete current wallet.

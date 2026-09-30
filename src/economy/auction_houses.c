@@ -94,8 +94,6 @@ bool fill_auction_actor(P_char ch, auction_command_payload *payload)
 		return false;
 	payload->actor_pid = static_cast<uint32_t>(GET_PID(ch));
 	payload->racewar = static_cast<uint8_t>(GET_RACEWAR(ch));
-	payload->expected_wallet_revision = ch->only.pc->wallet_revision;
-	payload->expected_bank_revision = ch->only.pc->bank_revision;
 	payload->closing_fee_basis_points =
 		static_cast<uint32_t>(std::max(0.0f, std::min(1.0f, flat_closing_fee)) * 10000.0f);
 	payload->bid_extension_seconds =
@@ -114,14 +112,6 @@ bool parse_auction_platinum(const char *text, int64_t *value)
 		return false;
 	*value = platinum * 1000;
 	return true;
-}
-
-P_obj find_live_auction_item(uint64_t item_uid)
-{
-	for (P_obj object = object_list; object; object = object->next)
-		if (object->obj_uid == item_uid)
-			return object;
-	return nullptr;
 }
 
 bool text_equal_folded(const std::string &left, const char *right)
@@ -177,21 +167,7 @@ void flat_list_completed(P_char ch, bool committed, const auction_command_result
 			     ch);
 		return;
 	}
-	for (size_t index = 0; index < payload.item_count; ++index)
-	{
-		P_obj object = find_live_auction_item(payload.items[index].item_uid);
-		if (!object || !OBJ_CARRIED_BY(object, ch))
-		{
-			persistence_alert(
-				AVATAR, "auction", "player", "unknown", "list_publish",
-				"stale_live_topology", "auction_id=%u item_uid=%llu",
-				result.auction_id,
-				static_cast<unsigned long long>(payload.items[index].item_uid));
-			continue;
-		}
-		obj_from_char(object);
-		extract_obj(object);
-	}
+	// The auction took the listed items out of the inventory at submit.
 	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS |
 							  PLAYER_COMPONENT_EQUIPMENT |
 							  PLAYER_COMPONENT_INVENTORY);
@@ -353,6 +329,14 @@ bool publish_flat_auction_event(const flatfile_auction_event_projection &event)
 		if (!stage_auction_event_message(event, event.result.seller_pid, message_index++,
 						 message))
 			return false;
+		snprintf(message, sizeof(message),
+			 "&+WAuction [%u] for %s was removed; your bid money is available for "
+			 "pickup.\r\n",
+			 event.result.auction_id, event.listing.object_short.c_str());
+		if (event.result.event_type == auction_event_type::removed &&
+		    !stage_auction_event_message(event, event.result.winner_pid, message_index++,
+						 message))
+			return false;
 	}
 	if (event.result.event_type == auction_event_type::listed)
 		ws_broadcast_auction_new(event.result.auction_id, event.listing.seller_name.c_str(),
@@ -512,6 +496,11 @@ bool auction_offer(P_char ch, char *args)
 	payload.buy_price = buy_price;
 	payload.listing_fee =
 		flat_listing_fee + static_cast<int64_t>(start_price * flat_start_price_fee);
+	if (GET_MONEY(ch) < payload.listing_fee)
+	{
+		send_to_char("&+WYou don't have enough money to list the item.\r\n", ch);
+		return true;
+	}
 	payload.end_time = static_cast<uint64_t>(time(nullptr)) + days * UINT64_C(86400);
 	P_obj current = object;
 	for (int index = 0; index < quantity; ++index)
@@ -521,16 +510,14 @@ bool auction_offer(P_char ch, char *args)
 			send_to_char("You do not have enough of that item.\r\n", ch);
 			return true;
 		}
-		item_ownership_runtime_entry runtime = {};
-		if (!current->obj_uid ||
-		    !item_ownership_runtime_lookup(current->obj_uid, &runtime) ||
-		    runtime.owner.type != item_owner_type::player ||
-		    runtime.owner.id != static_cast<uint64_t>(GET_PID(ch)))
+		// The seller holds it in memory; the listing claims it from whatever the
+		// ownership record still says.
+		if (!current->obj_uid)
 		{
-			send_to_char("That item's ownership is still being synchronized.\r\n", ch);
+			send_to_char("&+WYou can't sell that item.\r\n", ch);
 			return true;
 		}
-		payload.items[index] = { current->obj_uid, runtime.item_revision,
+		payload.items[index] = { current->obj_uid, 0,
 					 static_cast<int32_t>(OBJ_VNUM(current)) };
 		current = current->next_content;
 	}
@@ -576,6 +563,13 @@ bool auction_bid(P_char ch, char *args)
 	payload.value = bid;
 	if (!fill_auction_actor(ch, &payload))
 		return report_flat_query_failure(ch, "player auction identity is unavailable");
+	// The bid leaves the wallet until the auction settles it.
+	if (GET_MONEY(ch) < bid)
+	{
+		send_to_char_f(ch, "&+WYou don't have enough money!\r\nYou need: &n%s\r\n",
+			       coin_stringv(static_cast<int>(bid)));
+		return true;
+	}
 	if (!auction_transaction_submit(ch, payload, flat_bid_completed))
 		send_to_char("The auction house is busy; your money is unchanged.\r\n", ch);
 	else
@@ -1527,20 +1521,10 @@ bool auction_fill_actor(P_char ch, auction_command_payload *payload)
 		return false;
 	payload->actor_pid = static_cast<uint32_t>(GET_PID(ch));
 	payload->racewar = static_cast<uint8_t>(GET_RACEWAR(ch));
-	payload->expected_wallet_revision = ch->only.pc->wallet_revision;
-	payload->expected_bank_revision = ch->only.pc->bank_revision;
 	payload->closing_fee_basis_points = static_cast<uint32_t>(
 		std::max(0.0f, std::min(1.0f, AUCTION_CLOSING_PCT_FEE)) * 10000.0f);
 	payload->bid_extension_seconds = static_cast<uint32_t>(std::max(0, BID_TIME_EXTENSION));
 	return true;
-}
-
-P_obj auction_find_live_item(uint64_t item_uid)
-{
-	for (P_obj object = object_list; object; object = object->next)
-		if (object->obj_uid == item_uid)
-			return object;
-	return nullptr;
 }
 
 void auction_list_completed(P_char ch, bool committed, const auction_command_result &result,
@@ -1554,21 +1538,7 @@ void auction_list_completed(P_char ch, bool committed, const auction_command_res
 			     ch);
 		return;
 	}
-	for (size_t index = 0; index < payload.item_count; ++index)
-	{
-		P_obj object = auction_find_live_item(payload.items[index].item_uid);
-		if (!object || !OBJ_CARRIED_BY(object, ch))
-		{
-			persistence_alert(
-				AVATAR, "auction", "player", "unknown", "list_publish",
-				"stale_live_topology", "auction_id=%u item_uid=%llu",
-				result.auction_id,
-				static_cast<unsigned long long>(payload.items[index].item_uid));
-			continue;
-		}
-		obj_from_char(object);
-		extract_obj(object);
-	}
+	// The auction took the listed items out of the inventory at submit.
 	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS |
 							  PLAYER_COMPONENT_EQUIPMENT |
 							  PLAYER_COMPONENT_INVENTORY);
@@ -1726,6 +1696,15 @@ bool auction_publish_committed_event(const auction_command_result &result,
 			 result.auction_id, object_short.c_str());
 		if (!send_to_pid(message, result.seller_pid))
 			send_to_pid_offline(message, result.seller_pid);
+		if (result.event_type == auction_event_type::removed && result.winner_pid)
+		{
+			snprintf(message, sizeof(message),
+				 "&+WAuction [%u] for %s was removed; your bid money is available "
+				 "for pickup.\r\n",
+				 result.auction_id, object_short.c_str());
+			if (!send_to_pid(message, result.winner_pid))
+				send_to_pid_offline(message, result.winner_pid);
+		}
 	}
 	logit(LOG_DEBUG, "Published auction outbox %llu for auction %u", outbox_id,
 	      result.auction_id);
@@ -1789,6 +1768,11 @@ bool auction_offer(P_char ch, char *args)
 	payload.buy_price = buy_price;
 	payload.listing_fee = AUCTION_LISTING_FEE +
 			      static_cast<int64_t>(start_price * AUCTION_START_PRICE_PCT_FEE);
+	if (GET_MONEY(ch) < payload.listing_fee)
+	{
+		send_to_char("&+WYou don't have enough money to list the item.\r\n", ch);
+		return true;
+	}
 	payload.end_time = static_cast<uint64_t>(time(nullptr) + days * 86400);
 	P_obj current = object;
 	for (int index = 0; index < quantity; ++index)
@@ -1798,16 +1782,14 @@ bool auction_offer(P_char ch, char *args)
 			send_to_char("You do not have enough of that item.\r\n", ch);
 			return true;
 		}
-		item_ownership_runtime_entry runtime = {};
-		if (!current->obj_uid ||
-		    !item_ownership_runtime_lookup(current->obj_uid, &runtime) ||
-		    runtime.owner.type != item_owner_type::player ||
-		    runtime.owner.id != static_cast<uint64_t>(GET_PID(ch)))
+		// The seller holds it in memory; the listing claims it from whatever the
+		// ownership record still says.
+		if (!current->obj_uid)
 		{
-			send_to_char("That item's ownership is still being synchronized.\r\n", ch);
+			send_to_char("&+WYou can't sell that item.\r\n", ch);
 			return true;
 		}
-		payload.items[index] = { current->obj_uid, runtime.item_revision,
+		payload.items[index] = { current->obj_uid, 0,
 					 static_cast<int32_t>(OBJ_VNUM(current)) };
 		current = current->next_content;
 	}
@@ -2501,6 +2483,13 @@ bool auction_bid(P_char ch, char *args)
 	payload.value = bid;
 	if (!auction_fill_actor(ch, &payload))
 		return false;
+	// The bid leaves the wallet until the auction settles it.
+	if (GET_MONEY(ch) < bid)
+	{
+		send_to_char_f(ch, "&+WYou don't have enough money!\r\nYou need: &n%s\r\n",
+			       coin_stringv(static_cast<int>(bid)));
+		return true;
+	}
 	if (!auction_transaction_submit(ch, payload, auction_bid_completed))
 		send_to_char("The auction house is busy; your money is unchanged.\r\n", ch);
 	else

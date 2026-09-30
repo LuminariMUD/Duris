@@ -861,6 +861,15 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 			return false;
 		}
 	}
+	// Preserve custom shop item state that the basic NPC file record omits. The saves go
+	// to the writer, so they are queued before the drain below.
+	if (!mini_mode && !snapshot_shopkeepers_for_copyover())
+	{
+		critical_command_coordinator_resume();
+		logit(LOG_STATUS, "copyover: shopkeeper snapshot failed, aborting copyover");
+		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
+		return false;
+	}
 	if (!persistence_flush_all_character_saves())
 	{
 		critical_command_coordinator_resume();
@@ -869,7 +878,9 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 		return false;
 	}
 	player_save_pipeline_quiesce();
-	if (!player_save_pipeline_drain(3000))
+	// Copyover goes once the writer has written every queued save (persistence reset
+	// step 8); otherwise it is called off and the game keeps running.
+	if (!player_save_pipeline_drain(30000))
 	{
 		critical_command_coordinator_resume();
 		player_save_pipeline_resume();
@@ -893,14 +904,6 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	{
 		critical_command_coordinator_resume();
 		logit(LOG_STATUS, "copyover: world recovery drain failed, aborting copyover");
-		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
-		return false;
-	}
-
-	// Preserve custom shop item state that the basic NPC file record omits.
-	if (!mini_mode && !snapshot_shopkeepers_for_copyover())
-	{
-		logit(LOG_STATUS, "copyover: shopkeeper snapshot failed, aborting copyover");
 		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
 		return false;
 	}
@@ -1175,8 +1178,7 @@ static P_char copyover_load_player(const char *name, P_desc d)
 	const bool worker_loaded =
 		player_load_pipeline_wait(request, &result, PLAYER_LOAD_TIMEOUT_USEC / 1000);
 	if (!worker_loaded || result.request_id != request.request_id ||
-	    (result.outcome != player_load_outcome::applied &&
-	     result.outcome != player_load_outcome::degraded))
+	    result.outcome != player_load_outcome::applied)
 	{
 		player_load_result retry = {};
 		if (!player_load_pipeline_execute_sync(request, &retry) ||

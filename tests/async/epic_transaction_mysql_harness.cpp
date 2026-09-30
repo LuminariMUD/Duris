@@ -112,30 +112,27 @@ int main()
 	result = result_of(applied);
 	assert(result.balance == 85 && result.revision == 2 && result.delta == -40);
 
-	critical_command rejected = command_for(pid, -100, epic_reason_type::store_purchase,
-						EPIC_COMMAND_REQUIRE_FUNDS, 902);
-	operations.push_back(operation_hex(rejected.operation_id));
-	applied = critical_command_repository_apply(connection, rejected);
-	assert(applied.outcome == critical_apply_outcome::terminal_failure &&
-	       applied.error_code == ENOSPC);
+	// The balance is memory's and the player's save writes it; the command only records
+	// the change. A save between two commands does not move the ledger: it continues from
+	// its own last row, and the command leaves the saved balance alone.
+	execute("UPDATE player_data SET epics=500 WHERE pid=" + std::to_string(pid));
+	critical_command later = command_for(pid, 10, epic_reason_type::quest_award, 0, 78);
+	operations.push_back(operation_hex(later.operation_id));
+	applied = critical_command_repository_apply(connection, later);
+	assert(applied.outcome == critical_apply_outcome::applied);
 	result = result_of(applied);
-	assert(result.balance == 85 && result.revision == 2 && result.delta == -100);
-	duplicate = critical_command_repository_apply(connection, rejected);
-	assert(duplicate.outcome == critical_apply_outcome::terminal_failure &&
-	       duplicate.error_code == ENOSPC);
+	assert(result.balance == 95 && result.revision == 3 && result.delta == 10);
 
-	assert(scalar("SELECT epics FROM player_data WHERE pid=" + std::to_string(pid)) == 85);
+	assert(scalar("SELECT epics FROM player_data WHERE pid=" + std::to_string(pid)) == 500);
 	assert(scalar("SELECT epic_revision FROM player_data WHERE pid=" + std::to_string(pid)) ==
-	       2);
-	assert(scalar("SELECT COUNT(*) FROM epic_ledger WHERE pid=" + std::to_string(pid)) == 2);
+	       3);
+	assert(scalar("SELECT COUNT(*) FROM epic_ledger WHERE pid=" + std::to_string(pid)) == 3);
 	assert(scalar("SELECT opening_balance+COALESCE((SELECT SUM(delta) FROM epic_ledger l "
 		      "WHERE l.pid=b.pid),0) FROM epic_balance_baseline b WHERE pid=" +
-		      std::to_string(pid)) == 85);
+		      std::to_string(pid)) == 95);
 	assert(scalar("SELECT COUNT(*) FROM critical_outbox o JOIN epic_ledger l "
 		      "ON l.operation_id=o.operation_id WHERE l.pid=" +
-		      std::to_string(pid)) == 2);
-	assert(scalar("SELECT COUNT(*) FROM critical_outbox WHERE operation_id=UNHEX('" +
-		      operation_hex(rejected.operation_id) + "')") == 0);
+		      std::to_string(pid)) == 3);
 
 	for (const std::string &operation : operations)
 	{

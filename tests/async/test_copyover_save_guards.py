@@ -46,7 +46,7 @@ checks = {
         "persistence_save_character_terminal(d->character" not in body,
     "all saves precede publication": flush < publish,
     "pipeline drain precedes publication": flush < drain < publish,
-    "pipeline drain is bounded": "player_save_pipeline_drain(3000)" in body,
+    "pipeline drain is bounded": "player_save_pipeline_drain(30000)" in body,
     "copyover abort reopens pipeline": "player_save_pipeline_resume();" in
                                        copyover[copyover.index("static void notify_copyover_failure"):
                                                 copyover.index("static void raw_write_to_fd", copyover.index("static void notify_copyover_failure"))],
@@ -73,8 +73,8 @@ checks = {
     "copyover defers SQL saved-ground restoration":
         "if (!copyover_boot)" in db[db.index("Saved ground/storage objects"):
                                      db.index("-- Shopkeepers")],
-    "shutdown drain is fail closed": "!player_save_pipeline_drain(3000)" in comm and
-                                      "pipeline_drain_failed" in comm,
+    "shutdown names what it could not write":
+        "report_unwritten_saves(player_save_pipeline_finish(" in comm and "not_written" in comm,
     "no destructive restart fallback": "refusing fallback exit" in comm,
     "copyover reloads durable player inventory and pets":
         "request.include_items = true;" in recover and

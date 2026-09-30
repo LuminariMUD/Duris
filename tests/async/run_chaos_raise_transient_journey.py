@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cast Greater Dracolich against a disposable persisted player corpse."""
+"""Cast Greater Dracolich against a disposable persisted player corpse (raised in memory)."""
 import os
 from pathlib import Path
 import subprocess
@@ -449,6 +449,38 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                                f"owner_pid={pid}") == "0"
                     print("baseline chaos cast: ESTALE refusal retained full corpse graph",
                           flush=True)
+                elif not any(flag.startswith("--") for flag in sys.argv[2:]):
+                    # The raise runs in memory (persistence reset step 6): the caster
+                    # takes the corpse's items, the corpse leaves the world through a
+                    # queued delete, and the caster's next save records the items once.
+                    assert outcome.startswith("The corpse summons"), transcript
+                    after_cast = client.expect("Pos: standing >", timeout=20)
+                    if "NOT pleased" in transcript + after_cast:
+                        print("hostile raise; retrying a fresh fixture", flush=True)
+                        return False
+                    client.pending.clear()
+                    client.send("look")
+                    client.expect("Obvious exits", timeout=20)
+                    raised_room = client.expect("Pos: standing >", timeout=20)
+                    assert raised_room.lower().count("dracolich") == 1, raised_room
+                    deadline = time.monotonic() + 15
+                    while sql("SELECT COUNT(*) FROM corpses") != "0":
+                        assert time.monotonic() < deadline, "the raised corpse was not deleted"
+                        time.sleep(0.2)
+                    assert sql("SELECT COUNT(*) FROM corpse_items") == "0"
+                    client.pending.clear()
+                    client.send("save")
+                    client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+                    deadline = time.monotonic() + 15
+                    while sql("SELECT COUNT(*) FROM player_items WHERE "
+                              f"pid={pid} AND obj_uid IN ({UIDS[0]},{UIDS[1]})") != "2":
+                        assert time.monotonic() < deadline, "the caster's save lacks the items"
+                        time.sleep(0.2)
+                    assert sql("SELECT COUNT(*) FROM item_current_owner WHERE item_uid IN "
+                               f"({UIDS[0]},{UIDS[1]}) AND owner_type=1 AND owner_id={pid}") == "2"
+                    print("in-memory raise: corpse deleted, caster saved the items once",
+                          flush=True)
+                    return True
                 else:
                     assert outcome.startswith("The corpse summons"), transcript
                     assert receipt == "0", receipt
@@ -481,13 +513,10 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                     if pet_probe and "--expect-hostile" in sys.argv[2:]:
                         print("follower raise; retrying for hostile outcome", flush=True)
                         return False
-                    # A follower holds what its corpse held, under pet custody.
-                    pet_custody = pet_probe or sql(
-                        f"SELECT COUNT(*) FROM player_pets WHERE owner_pid={pid}") == "1"
-                    item_table = "player_pet_items" if pet_custody else "player_items"
+                    item_table = "player_pet_items" if pet_probe else "player_items"
                     assert sql(f"SELECT COUNT(*) FROM {item_table} WHERE "
                                f"obj_uid IN ({UIDS[0]},{UIDS[1]})") == "2"
-                    if pet_custody:
+                    if pet_probe:
                         assert sql("SELECT COUNT(*) FROM player_items WHERE "
                                    f"obj_uid IN ({UIDS[0]},{UIDS[1]})") == "0"
                         assert sql("SELECT CONCAT(owner_type,':',owner_id,':',"
@@ -896,6 +925,11 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
 
 
 if __name__ == "__main__":
+    # The option modes drove the durable raise and its receipts, which the persistence
+    # reset retired (step 6); only the default in-memory journey runs now.
+    if any(flag.startswith("--") for flag in sys.argv[2:]):
+        raise SystemExit("run_chaos_raise_transient_journey.py: option modes pinned the "
+                         "retired durable raise; run it without options")
     attempts = 20 if "--expect-hostile" in sys.argv[2:] else 5
     for attempt in range(attempts):
         if run(Path(sys.argv[1]).resolve(), "--expect-refusal" in sys.argv[2:],

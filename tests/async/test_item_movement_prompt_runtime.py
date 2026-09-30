@@ -39,7 +39,6 @@ ResolvedOutputProfile player_output_profile(P_char, OutputChannel channel, Outpu
 static critical_command submitted;
 static const char *publication_message;
 static bool publication_success;
-static bool publication_starts_currency;
 P_char character_list = nullptr;
 P_obj object_list = nullptr;
 static index_data indexes[1]{};
@@ -48,12 +47,10 @@ static room_data rooms[1]{};
 P_room world = rooms;
 int top_of_objt = 0;
 extern const int top_of_world = 0;
-static uint64_t busy_coin_uid;
-static bool currency_busy;
-bool currency_transaction_coin_item_busy(uint64_t uid) { return uid && uid == busy_coin_uid; }
-bool currency_transaction_player_busy(P_char) { return currency_busy; }
-bool collector_transaction_player_busy(P_char) { return false; }
-bool collector_transaction_item_busy(uint64_t) { return false; }
+static uint64_t busy_collector_uid;
+static bool collector_busy;
+bool collector_transaction_player_busy(P_char) { return collector_busy; }
+bool collector_transaction_item_busy(uint64_t uid) { return uid && uid == busy_collector_uid; }
 bool collector_service_player_busy(P_char) { return false; }
 bool collector_death_enrollment_attach(P_char, P_obj, const critical_operation_id &,
                                        const std::vector<player_item_snapshot> &,
@@ -94,7 +91,6 @@ static void publish(P_char actor, bool committed, const item_transfer_result &, 
     assert(committed == publication_success);
     assert(!item_movement_transaction_player_busy(actor));
     write_to_q(publication_message, &actor->desc->output, 1);
-    currency_busy = publication_starts_currency;
 }
 static std::string delivered;
 static std::vector<std::string> frames;
@@ -165,8 +161,7 @@ static std::string text_bytes(bool websocket, const char *text)
 }
 static std::string run(bool delayed, bool websocket, int flags, bool two_line,
                        bool fighting, const char *message, bool ambient = false,
-                       bool currency = false, bool switched = false, int auxiliary = 0,
-                       bool chained = false)
+                       bool collector = false, bool switched = false, int auxiliary = 0)
 {
     descriptor_data d{};
     char_data actor{}, body{}, enemy{};
@@ -198,8 +193,7 @@ static std::string run(bool delayed, bool websocket, int flags, bool two_line,
     d.prompt_mode = TRUE;
     d.websocket = websocket;
     delivered.clear(); frames.clear(); ambient_bytes.clear(); ga_count = 0;
-    currency_busy = false;
-    publication_starts_currency = chained;
+    collector_busy = false;
     item_movement_transaction_reset_for_tests();
     item_ownership_runtime_reset();
     pc.pid = 42;
@@ -240,8 +234,8 @@ static std::string run(bool delayed, bool websocket, int flags, bool two_line,
     {
         publication_message = message;
         publication_success = message[0] == 'Y';
-        if (currency)
-            currency_busy = true;
+        if (collector)
+            collector_busy = true;
         else if (count == 2)
             assert(item_movement_transaction_submit_batch(&actor, roots, count, nullptr,
                 source_owner, target_owner, item_transfer_reason::player_get, 100,
@@ -250,7 +244,7 @@ static std::string run(bool delayed, bool websocket, int flags, bool two_line,
             assert(item_movement_transaction_submit(&actor, items, nullptr,
                 source_owner, target_owner, item_transfer_reason::player_get, 100,
                 publish, nullptr, 0));
-        assert(currency_busy || item_movement_transaction_player_busy(&actor));
+        assert(collector_busy || item_movement_transaction_player_busy(&actor));
         if (auxiliary)
         {
             if (auxiliary == 1)
@@ -284,9 +278,9 @@ static std::string run(bool delayed, bool websocket, int flags, bool two_line,
             ambient_bytes = output_bytes(websocket);
             delivered.clear(); frames.clear();
         }
-        if (currency)
+        if (collector)
         {
-            currency_busy = false;
+            collector_busy = false;
             write_to_q(message, &d.output, 1);
         }
         else
@@ -309,27 +303,15 @@ static std::string run(bool delayed, bool websocket, int flags, bool two_line,
         if (message[0] != 'Y')
         {
             // A rejected submission must keep the ordinary immediate prompt.
-            busy_coin_uid = 100;
+            busy_collector_uid = 100;
             item_movement_reject rejected{};
             assert(!item_movement_transaction_submit_batch(&actor, roots, count, nullptr,
                 source_owner, target_owner, item_transfer_reason::player_get, 100,
                 publish, nullptr, 0, nullptr, &rejected));
             assert(rejected == item_movement_reject::pending_conflict);
             assert(!item_movement_transaction_player_busy(&actor));
-            busy_coin_uid = 0;
+            busy_collector_uid = 0;
         }
-        write_to_q(message, &d.output, 1);
-    }
-    if (chained)
-    {
-        // The item callback starts coin work before this pulse flushes its text.
-        assert(currency_busy);
-        assert(process_output(&d) == 1);
-        assert(output_bytes(websocket) == text_bytes(websocket, message));
-        assert(ga_count == 0 && d.prompt_mode && !d.output.head);
-        delivered.clear(); frames.clear();
-        currency_busy = false;
-        message = "You get 12 gold coins.\r\n";
         write_to_q(message, &d.output, 1);
     }
     assert(process_output(&d) == 1);
@@ -364,19 +346,9 @@ int main()
         if (smart == PLR_SMARTPROMPT)
             assert(ambient_bytes == text_bytes(ws, "Someone says hello.\r\n"));
     }
-    for (bool ws : {false, true})
-    for (bool compact : {false, true})
-    for (unsigned smart : {0u, PLR_SMARTPROMPT})
-    for (bool two : {false, true})
-    {
-        const int flags = smart | (compact ? PLR_COMPACT : 0);
-        const auto coins = run(false, ws, flags, two, false, "You get 12 gold coins.\r\n");
-        assert(run(true, ws, flags, two, false,
-            "You get sword from corpse.\r\nYou get shield from corpse.\r\n",
-            false, false, false, 0, true) == coins);
-    }
-    const auto synchronous = run(false, false, 0, false, false, "You get coins.\r\n");
-    assert(run(true, false, 0, false, false, "You get coins.\r\n", false, true) ==
+    // A collector transaction in flight holds the prompt the same way.
+    const auto synchronous = run(false, false, 0, false, false, "You get item.\r\n");
+    assert(run(true, false, 0, false, false, "You get item.\r\n", false, true) ==
            synchronous);
     assert(run(true, false, 0, false, false, "You get item.\r\n", false, false, true) ==
            run(false, false, 0, false, false, "You get item.\r\n", false, false, true));
@@ -388,7 +360,7 @@ int main()
         const auto colored = run(false, ws, 0, two, false, "You get item.\r\n");
         assert(run(true, ws, 0, two, false, "You get item.\r\n") == colored);
     }
-    puts("Deferred item/currency output, ambient bytes, auxiliary prompts, and switched descriptors passed");
+    puts("Deferred item/collector output, ambient bytes, auxiliary prompts, and switched descriptors passed");
 }
 '''
 

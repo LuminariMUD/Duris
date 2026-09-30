@@ -11,14 +11,12 @@ constexpr size_t CRITICAL_COORDINATOR_MAX_OPERATIONS = 1024;
 constexpr size_t CRITICAL_COORDINATOR_MAX_BYTES = 64 * 1024 * 1024;
 constexpr size_t CRITICAL_COORDINATOR_COMPLETED_CACHE_MAX = 256;
 constexpr size_t CRITICAL_COORDINATOR_COMPLETED_CACHE_BYTES = 8 * 1024 * 1024;
-constexpr unsigned int CRITICAL_COORDINATOR_MAX_RETRIES = 8;
-constexpr unsigned int CRITICAL_COORDINATOR_DEFAULT_WORKERS = 2;
 
 enum class critical_submit_result : uint8_t
 {
+	// Queued on the one persistence writer; durable once it has landed.
 	accepted,
-	// The operation is reserved in memory and queued for the journal worker.
-	// This result is not evidence that the command is durable or executable.
+	// No longer returned: new commands are not journaled.
 	awaiting_durability,
 	attached,
 	invalid,
@@ -93,9 +91,11 @@ using critical_replay_observer_fn = bool (*)(const critical_command &command, vo
 // The caller must pair it with an apply function supporting the same routes.
 using critical_extension_validator_fn = bool (*)(const critical_command &) noexcept;
 
+// Commands run on the one persistence writer (player_save_worker.h), which must be
+// running. `journal_directory` is only read for a journal an older server left: its
+// commands are replayed once, onto the writer. New commands are not journaled.
 bool critical_command_coordinator_init(
 	const char *journal_directory, critical_apply_fn apply, void *context,
-	unsigned int workers = CRITICAL_COORDINATOR_DEFAULT_WORKERS,
 	critical_replay_observer_fn replay_observer = nullptr, void *replay_context = nullptr,
 	critical_extension_validator_fn extension_validator = nullptr);
 void critical_command_coordinator_shutdown(void);
@@ -105,15 +105,15 @@ critical_submit_result critical_command_coordinator_submit(critical_command comm
 // entity fences remain held until critical_command_coordinator_acknowledge_publication().
 critical_submit_result
 critical_command_coordinator_submit_for_publication(critical_command command);
-// `awaiting_durability` is the only positive submit result before the admission
-// worker has acknowledged the journal append and fsync.
+// `awaiting_durability` while the command waits on the writer, `durable` once it landed.
 critical_command_durability
 critical_command_coordinator_durability(const critical_operation_id &operation_id);
 bool critical_command_coordinator_recover_uncertain(void);
 bool critical_command_coordinator_get_completed(const critical_operation_id &operation_id,
 						critical_completion *completion);
-// Release a publication-held operation only after the live callback succeeded and
-// the journal checkpoint was durable. A false result leaves the operation fenced.
+// Release a publication-held operation only after the live callback succeeded (and, for
+// a command replayed from an older journal, its checkpoint). A false result leaves the
+// operation fenced.
 bool critical_command_coordinator_acknowledge_publication(const critical_operation_id &operation_id);
 size_t critical_command_coordinator_pulse(critical_completion *completions, size_t capacity);
 bool critical_command_coordinator_is_fenced(const critical_entity_key &key,

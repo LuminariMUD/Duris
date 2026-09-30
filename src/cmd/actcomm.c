@@ -931,19 +931,16 @@ void do_page(P_char ch, char *argument, int /*cmd*/)
 #endif
 		return;
 	}
-	send_to_char("Re-reading news file...\r\n", ch);
-	logit(LOG_STATUS, "re-reading newsfile.");
-	news = get_mud_info("news");
-
-	send_to_char("Re-reading motd file...\r\n", ch);
-	logit(LOG_STATUS, "re-reading motd.");
-	motd = get_mud_info("motd");
-
-	send_to_char("Re-reading wiz motd file...\r\n", ch);
-	logit(LOG_STATUS, "re-reading wizmotd.");
-	wizmotd = get_mud_info("wizmotd");
-
-	send_to_char("&+WDone.&N\r\n", ch);
+	send_to_char("Re-reading news, motd and wiz motd...\r\n", ch);
+	logit(LOG_STATUS, "re-reading newsfile, motd and wizmotd.");
+	sql_mud_info_reload(ch,
+			    [](P_char live)
+			    {
+				    news = get_mud_info("news");
+				    motd = get_mud_info("motd");
+				    wizmotd = get_mud_info("wizmotd");
+				    send_to_char("&+WDone.&N\r\n", live);
+			    });
 }
 
 void do_shout(P_char ch, char *argument, int /*cmd*/)

@@ -36,18 +36,21 @@ assert cleanup.index("else") < cleanup.index("extract_obj")
 
 checks = {
     "failed save restores equipment": "persistence_should_extract_terminal_inventory" in cleanup and "equip_char" in cleanup,
-    "trusted quit gate": "if (!persistence_save_character_terminal(ch, RENT_INN))" in actoth,
-    "camp gate": "if (!persistence_save_character_terminal(ch, RENT_CAMPED))" in affects,
-    "death gate": "!persistence_save_character_terminal(ch, RENT_DEATH)" in fight,
-    "inn and heaven gates": rooms.count("persistence_save_character_terminal") >= 3,
-    "idle rent gate": "if (!persistence_save_character_terminal(i, RENT_LINKDEAD))" in limits,
-    "link loss retains retry": "link-loss-retry" in comm and "terminal_save_failed" in comm,
+    # Logging out never waits (persistence reset step 7): quit, rent, camp, death,
+    # idle rent, link loss and heaven queue the save and the character leaves.
+    "quit, rent and camp queue": "persistence_save_character_terminal(ch, RENT_INN);" in actoth
+                                 and "persistence_save_character_terminal(ch, RENT_CAMPED);" in affects,
+    "no caller refuses": all("if (!persistence_save_character_terminal" not in text
+                             for text in (actoth, affects, fight, rooms, limits, comm)),
+    "inn and heaven queue": rooms.count("persistence_save_character_terminal") >= 3,
+    "link loss has no retry": "link-loss-retry" not in comm,
     "ghost extraction gate": actoth.count("persistence_save_character_terminal(vict, RENT_LINKDEAD)") == 0,
     "copyover returns failure": "bool copyover_save(" in copyover and copyover.count("return false;") >= 10,
     "copyover saves before close": copyover.index("persistence_save_character_terminal") < copyover.index("close(d->descriptor)"),
     "copyover requires database-acknowledged terminal saves":
         "persistence_save_character_terminal_database_acknowledged(" in copyover,
-    "shutdown resumes": "goto resume_game_loop;" in comm and "shutdown_cancelled=1" in comm,
+    # Shutdown always goes (step 8); only a failed copyover resumes the game.
+    "shutdown always goes": "shutdown_cancelled=1" not in comm and "copyover_cancelled=1" in comm,
     "artifact dummy retention": artifact.count("extract_refused=1") >= 2,
     "legacy locker retention": "terminal_not_durable" in lockers and
                                lockers.index("terminal_not_durable", lockers.index("event_deferredTerminalSave")) <
@@ -64,37 +67,15 @@ terminal_helper = actoth[
     actoth.index("bool persistence_save_character_terminal"):
     actoth.index("bool persistence_save_all_characters_terminal")
 ]
-checks["terminal helper uses typed coordinator outcome"] = all(
-    token in terminal_helper
-    for token in (
-        "player_save_pipeline_terminal",
-        "database_acknowledged",
-        "journal_durable",
-        "terminal-save-retry",
-    )
-) and "do_save_silent" not in terminal_helper and "writeCharacter" not in terminal_helper
-
-database_terminal_start = actoth.find(
-    "bool persistence_save_character_terminal_database_acknowledged"
+checks["terminal helper queues and returns"] = (
+    "player_save_pipeline_request(ch, PLAYER_CHECKPOINT_COMPONENT_ALL, type, room)" in terminal_helper
+    and "player_save_pipeline_terminal" not in terminal_helper
+    and "terminal-save-retry" not in terminal_helper
+    and "do_save_silent" not in terminal_helper and "writeCharacter" not in terminal_helper
 )
-database_terminal_helper = (
-    actoth[database_terminal_start:
-           actoth.index("bool persistence_save_all_characters_terminal", database_terminal_start)]
-    if database_terminal_start >= 0 else ""
-)
-checks["database terminal helper rejects journal-only durability"] = (
-    database_terminal_start >= 0 and
-    "persistence_save_character_terminal_with_policy(ch, type, 5000, false)" in
-        database_terminal_helper and
-    "player_save_terminal_result::journal_durable" not in database_terminal_helper
-)
-
-checks["voluntary logout requires database acknowledgement"] = (
-    "if (type == RENT_INN || type == RENT_CAMPED)" in terminal_helper and
-    "persistence_save_character_terminal_with_policy(ch, type, 5000, false)" in
-        terminal_helper and
-    terminal_helper.index("if (type == RENT_INN || type == RENT_CAMPED)") <
-        terminal_helper.index("persistence_save_character_terminal_with_policy(ch, type, 2000, true)")
+checks["copyover drains the writer after queuing every save"] = (
+    copyover.index("persistence_save_character_terminal_database_acknowledged(") <
+    copyover.index("player_save_pipeline_drain(")
 )
 
 player_sql_start = files.index("if (!sql_save_player(ch, type, room))")
@@ -110,11 +91,13 @@ flat_terminal_start = files.index("#ifdef __NO_MYSQL__", files.index("int writeC
 flat_terminal = files[
     flat_terminal_start:files.index("#endif", flat_terminal_start)
 ]
-checks["flat terminal saves require the typed durable outcome"] = all(
+# Only a new player's first save waits, because its domains are read right after.
+checks["flat terminal saves queue except the first baseline"] = all(
     token in flat_terminal
     for token in (
+        "if (establishing_baseline)",
         "player_save_pipeline_terminal",
-        "player_save_terminal_result::database_acknowledged",
+        "player_save_pipeline_request(",
         "return 0;",
     )
 )
@@ -126,6 +109,21 @@ checks["ghost extraction gate"] = (
     actwiz.count("persistence_save_character_terminal(vict, RENT_LINKDEAD)") == 1
     and actwiz.index("persistence_save_character_terminal(vict, RENT_LINKDEAD)")
     < actwiz.index("extract_char_after_terminal_save(vict)")
+)
+
+# Every logout writes a log_entries row through sql_log(). The MariaDB build queues
+# it on the writer instead of inserting it on the game loop (MR !2 review finding 4);
+# test_mysql_stalled_writer_journey.py times the loop while log_entries is locked.
+sql = read("sql.c")
+sql_log = sql[sql.rindex("void sql_log(P_char ch, const char *kind, const char *format, ...)"):]
+sql_log = sql_log[:sql_log.index("\n}\n")]
+checks["logout log rows are queued, never inserted on the game loop"] = (
+    "persistence_job_kind::log" in sql_log
+    and "log_entry_repository_apply_from_pool(entry)" in sql_log
+    and "entry.logged_at = time(NULL);" in sql_log
+    and all(token not in sql_log for token in ("qry(", "db_query", "mysql_", "INSERT INTO"))
+    and "lock_tables('player_items WRITE, log_entries WRITE')" in
+    (root / "tests/async/test_mysql_stalled_writer_journey.py").read_text()
 )
 
 for name, passed in checks.items():

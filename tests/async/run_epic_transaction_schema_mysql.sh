@@ -28,7 +28,7 @@ read -r -a MYSQL_LIBS <<< "$(mysql_config --libs)"
 g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
     "${MYSQL_CFLAGS[@]}" tests/async/epic_transaction_mysql_harness.cpp \
     src/persistence/critical_command.c src/world/epic_command.c src/economy/currency_command.c \
-    src/item/item_transfer_command.c src/item/item_transfer_repository.c src/economy/auction_command.c \
+    src/item/item_transfer_command.c src/item/item_transfer_repository.c src/item/item_claim_repository.c src/persistence/persistence_observability.c src/item/item_claim.c src/persistence/dupe_log.c src/economy/auction_command.c \
     src/sql/item_extra_descr_codec.c tests/async/item_extra_descr_codec_sql_escape_stub.cpp \
     src/economy/auction_repository.c src/combat/combat_outcome_command.c src/combat/combat_outcome_repository.c \
     src/guild/artifact_guild_command.c src/guild/artifact_guild_repository.c \
@@ -39,6 +39,7 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
     src/economy/collector_command.c src/economy/collector_codec.c \
     src/economy/collector_policy.c src/economy/collector_repository.c \
     src/persistence/corpse_lifecycle_command.c src/persistence/corpse_lifecycle_repository.c \
+    src/persistence/player_death_restitution_command.c src/persistence/player_death_restitution_repository.c \
     src/persistence/economic_accounting_repository.c \
     src/persistence/economic_sql_bank_transaction.c \
     src/economy/economic_currency_adapter.c \
@@ -48,4 +49,4 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
     src/persistence/critical_command_repository.c \
     "${MYSQL_LIBS[@]}" -lcrypto -o "$ROOT/bin/tests/epic_transaction_mysql_harness"
 "$ROOT/bin/tests/epic_transaction_mysql_harness"
-printf 'epic award, spend, rejection, duplicate, ledger, and baseline checks passed\n'
+printf 'epic award, spend, duplicate, ledger across a save, and baseline checks passed\n'

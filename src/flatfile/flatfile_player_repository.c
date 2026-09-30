@@ -6,6 +6,7 @@
 #include "flatfile/flatfile_shop_trade_materialization.h"
 #include "flatfile/flatfile_store.h"
 #include "persistence/persistence_observability.h"
+#include "persistence/dupe_log.h"
 #include "persistence/persistence_mode.h"
 #include "player/player_snapshot_codec.h"
 
@@ -15,6 +16,7 @@
 #include <climits>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <new>
 #include <numeric>
@@ -153,44 +155,16 @@ player_load_result identity_failure(const player_load_request &request,
 	return result;
 }
 
-void mark_degraded(player_load_result *result, uint32_t component, const char *stage)
-{
-	if (!result)
-		return;
-	result->outcome = player_load_outcome::degraded;
-	result->degraded_components |= component;
-	if (!result->failed_component)
-		result->failed_component = stage;
-}
-
-void clear_items_and_pets(player_load_result *result)
-{
-	if (!result)
-		return;
-	result->snapshot.items.clear();
-	result->snapshot.pets.clear();
-	result->item_identities.clear();
-	result->pet_identities.clear();
-	result->item_owner_revision = 0;
-	result->authoritative_item_count = 0;
-	result->authoritative_pet_item_count = 0;
-	result->stale_item_rows = 0;
-	result->missing_payload_rows = 0;
-	result->promoted_item_rows = 0;
-	result->repaired_item_rows = 0;
-	result->snapshot.components = PLAYER_LOAD_SESSION01_COMPONENTS;
-}
-
-// The ownership file is authoritative. A payload item it does not list, or lists as
-// somebody else's or as inactive, is one skippable row: refusing it here would make the
-// character permanently unloadable over a single inconsistent entry. Skipped rows are
-// compacted out and the contents of a skipped container move to the top level.
-bool build_item_identities(std::vector<player_item_snapshot> *items,
-			   const std::unordered_map<uint64_t, flatfile_item_ownership_record> &owned,
-			   const item_owner_identity &owner, uint64_t owner_revision,
-			   uint64_t *next_database_id, std::unordered_set<uint64_t> *consumed,
-			   std::vector<player_load_item_identity> *identities,
-			   player_load_result *result)
+// A load takes a payload item when the ownership catalog has no record for it or
+// names this owner, whatever the record's state. A record naming anyone else makes
+// the item a stale or duplicate copy: it is skipped, logged to logs/log/dupes, and
+// the contents of a skipped container move to the top level.
+bool build_item_identities(
+	std::vector<player_item_snapshot> *items,
+	const std::unordered_map<uint64_t, flatfile_item_ownership_record> &catalog,
+	const item_owner_identity &owner, uint64_t owner_revision, uint64_t *next_database_id,
+	std::unordered_set<uint64_t> *consumed, std::vector<player_load_item_identity> *identities,
+	player_load_result *result)
 {
 	if (!items || !next_database_id || !consumed || !identities || !result)
 		return false;
@@ -207,8 +181,7 @@ bool build_item_identities(std::vector<player_item_snapshot> *items,
 		for (size_t index = 0; index < items->size(); ++index)
 		{
 			player_item_snapshot item = std::move((*items)[index]);
-			if (!item.object_uid || item.vnum <= 0 ||
-			    *next_database_id > static_cast<uint64_t>(INT_MAX))
+			if (*next_database_id > static_cast<uint64_t>(INT_MAX))
 				return false;
 			size_t parent_new = skipped_index;
 			if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
@@ -218,37 +191,47 @@ bool build_item_identities(std::vector<player_item_snapshot> *items,
 					return false;
 				parent_new = remap[static_cast<size_t>(item.parent_index)];
 			}
-			const auto found = owned.find(item.object_uid);
-			if (found == owned.end() ||
-			    !item_owner_identity_equal(found->second.owner, owner) ||
-			    found->second.state != item_custody_state::active)
+			const auto found = catalog.find(item.object_uid);
+			const bool recorded = found != catalog.end();
+			const bool elsewhere =
+				recorded && !item_owner_identity_equal(found->second.owner, owner);
+			if (!item.object_uid || item.vnum <= 0 || elsewhere ||
+			    consumed->count(item.object_uid))
 			{
+				if (elsewhere)
+					dupe_log_item("load_skipped", item.object_uid, item.vnum,
+						      owner, found->second.owner);
 				remap.push_back(skipped_index);
 				++result->stale_item_rows;
 				continue;
 			}
-			if (!consumed->insert(item.object_uid).second)
-				return false;
-			const flatfile_item_ownership_record &record = found->second;
+			consumed->insert(item.object_uid);
 			uint64_t serialized_parent = 0;
+			uint64_t parent_uid = 0;
 			if (parent_new != skipped_index)
+			{
 				serialized_parent = database_ids[parent_new];
-			else if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT &&
-				 !record.parent_item_uid)
+				parent_uid = kept[parent_new].object_uid;
+			}
+			else if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
 				++result->promoted_item_rows;
-			if (record.vnum != item.vnum)
-				return false;
+			// A recorded item keeps the catalog's placement; an unrecorded one sits
+			// where the player file puts it.
 			item.parent_index = parent_new == skipped_index ?
 						    PLAYER_SNAPSHOT_NO_PARENT :
 						    static_cast<int32_t>(parent_new);
 			const uint64_t database_id = (*next_database_id)++;
 			database_ids.push_back(database_id);
 			remap.push_back(kept.size());
-			identities->push_back({ database_id, serialized_parent, 1,
-						PLAYER_LOAD_ITEM_OVERRIDE_ALL, record.item_uid,
-						record.root_item_uid, record.parent_item_uid,
-						record.owner, record.item_revision, owner_revision,
-						record.state });
+			identities->push_back(
+				{ database_id, serialized_parent, 1, PLAYER_LOAD_ITEM_OVERRIDE_ALL,
+				  item.object_uid,
+				  recorded && found->second.root_item_uid ?
+					  found->second.root_item_uid :
+					  item.object_uid,
+				  recorded ? found->second.parent_item_uid : parent_uid, owner,
+				  recorded ? found->second.item_revision : 0, owner_revision,
+				  item_custody_state::active });
 			kept.push_back(std::move(item));
 		}
 		*items = std::move(kept);
@@ -291,14 +274,15 @@ bool reconcile_item_ownership(const std::string &root, player_load_result *resul
 	}
 	const flatfile_item_repository_result loaded = flatfile_item_repository_load_owner_locked(
 		root, authority, owner, &owner_revision, &records, &error);
-	if (loaded != flatfile_item_repository_result::ok)
+	// An owner nobody has recorded yet simply holds nothing in the catalog.
+	if (loaded != flatfile_item_repository_result::ok &&
+	    loaded != flatfile_item_repository_result::not_found)
 	{
 		result->outcome = loaded == flatfile_item_repository_result::io_error ?
 					  player_load_outcome::retryable_failure :
 					  player_load_outcome::component_failure;
-		result->error_code = loaded == flatfile_item_repository_result::not_found ? ENOENT :
-				     loaded == flatfile_item_repository_result::io_error  ? EIO :
-											    EILSEQ;
+		result->error_code = loaded == flatfile_item_repository_result::io_error ? EIO :
+											   EILSEQ;
 		result->failed_component = "item_ownership";
 		return false;
 	}
@@ -318,15 +302,36 @@ bool reconcile_item_ownership(const std::string &root, player_load_result *resul
 		result->failed_component = "shop_trade_materialization";
 		return false;
 	}
-	std::unordered_map<uint64_t, flatfile_item_ownership_record> owned;
+	// Every record the player file's items have, whoever it names.
+	std::unordered_map<uint64_t, flatfile_item_ownership_record> catalog;
 	std::unordered_set<uint64_t> consumed;
+	std::unordered_set<uint64_t> recorded_for_owner;
 	try
 	{
-		owned.reserve(records.size());
-		consumed.reserve(records.size());
+		std::vector<uint64_t> uids;
+		for (const player_item_snapshot &item : result->snapshot.items)
+			uids.push_back(item.object_uid);
+		for (const player_pet_snapshot &pet : result->snapshot.pets)
+			for (const player_item_snapshot &item : pet.items)
+				uids.push_back(item.object_uid);
+		std::vector<flatfile_item_ownership_record> found;
+		const auto looked_up = flatfile_item_repository_load_uids_locked(
+			root, authority, uids, &found, &error);
+		if (looked_up != flatfile_item_repository_result::ok)
+		{
+			result->outcome = looked_up == flatfile_item_repository_result::io_error ?
+						  player_load_outcome::retryable_failure :
+						  player_load_outcome::component_failure;
+			result->error_code =
+				looked_up == flatfile_item_repository_result::io_error ? EIO :
+											 EILSEQ;
+			result->failed_component = "item_ownership";
+			return false;
+		}
+		for (auto &record : found)
+			catalog.emplace(record.item_uid, std::move(record));
 		for (const auto &record : records)
-			if (!owned.emplace(record.item_uid, record).second)
-				return false;
+			recorded_for_owner.insert(record.item_uid);
 		result->pet_identities.resize(result->snapshot.pets.size());
 	}
 	catch (const std::bad_alloc &)
@@ -337,9 +342,9 @@ bool reconcile_item_ownership(const std::string &root, player_load_result *resul
 		return false;
 	}
 	uint64_t next_database_id = 1;
-	size_t pet_owned_count = 0;
 	size_t pet_materialized_count = 0;
-	if (!build_item_identities(&result->snapshot.items, owned, owner, owner_revision,
+	size_t legacy_pet_item_count = 0;
+	if (!build_item_identities(&result->snapshot.items, catalog, owner, owner_revision,
 				   &next_database_id, &consumed, &result->item_identities, result))
 		goto invalid;
 	for (size_t index = 0; index < result->snapshot.pets.size(); ++index)
@@ -350,13 +355,14 @@ bool reconcile_item_ownership(const std::string &root, player_load_result *resul
 						       static_cast<uint64_t>(result->pid) } :
 				  owner;
 		uint64_t pet_revision = owner_revision;
-		std::unordered_map<uint64_t, flatfile_item_ownership_record> pet_owned;
 		if (pet_uid)
 		{
 			std::vector<flatfile_item_ownership_record> pet_records;
+			pet_revision = 0;
 			const auto read = flatfile_item_repository_load_owner_locked(
 				root, authority, pet_owner, &pet_revision, &pet_records, &error);
-			if (read != flatfile_item_repository_result::ok)
+			if (read != flatfile_item_repository_result::ok &&
+			    read != flatfile_item_repository_result::not_found)
 			{
 				result->outcome =
 					read == flatfile_item_repository_result::io_error ?
@@ -368,12 +374,10 @@ bool reconcile_item_ownership(const std::string &root, player_load_result *resul
 				result->failed_component = "pet_ownership";
 				return false;
 			}
-			pet_owned_count += pet_records.size();
 			try
 			{
 				for (const auto &record : pet_records)
-					if (!pet_owned.emplace(record.item_uid, record).second)
-						goto invalid;
+					recorded_for_owner.insert(record.item_uid);
 			}
 			catch (const std::bad_alloc &)
 			{
@@ -387,23 +391,24 @@ bool reconcile_item_ownership(const std::string &root, player_load_result *resul
 		identity.database_id = index + 1;
 		identity.pet_uid = pet_uid;
 		identity.owner_revision = pet_revision;
-		if (!build_item_identities(&result->snapshot.pets[index].items,
-					   pet_uid ? pet_owned : owned, pet_owner, pet_revision,
-					   &next_database_id, &consumed, &identity.item_identities,
-					   result))
+		if (!build_item_identities(&result->snapshot.pets[index].items, catalog, pet_owner,
+					   pet_revision, &next_database_id, &consumed,
+					   &identity.item_identities, result))
 			goto invalid;
+		// A legacy pet without a UID carries items its owner holds.
 		if (pet_uid)
 			pet_materialized_count += identity.item_identities.size();
+		else
+			legacy_pet_item_count += identity.item_identities.size();
 	}
-	if (consumed.size() > records.size() + pet_owned_count ||
-	    pet_materialized_count > consumed.size())
-		goto invalid;
-	// An ownership record whose payload item is gone cannot be rebuilt, but it must not
-	// refuse the load either. Preserve it for explicit operator repair; snapshot saves are
-	// not allowed to rewrite authoritative custody.
-	result->missing_payload_rows = records.size() + pet_owned_count - consumed.size();
+	// A record whose payload item is gone is an item the player no longer holds; its
+	// next holder claims it. It is only counted.
+	result->missing_payload_rows = 0;
+	for (uint64_t uid : recorded_for_owner)
+		if (!consumed.count(uid))
+			++result->missing_payload_rows;
 	result->item_owner_revision = owner_revision;
-	result->authoritative_item_count = consumed.size() - pet_materialized_count;
+	result->authoritative_item_count = result->item_identities.size() + legacy_pet_item_count;
 	result->authoritative_pet_item_count = pet_materialized_count;
 	return true;
 
@@ -498,78 +503,6 @@ bool merge_snapshot(const player_snapshot &incoming, player_snapshot *materializ
 		materialized->trophies = incoming.trophies;
 	materialized->components = PLAYER_CHECKPOINT_COMPONENT_ALL;
 	return true;
-}
-
-bool append_baseline_items(const std::vector<player_item_snapshot> &items,
-			   const item_owner_identity &owner, std::unordered_set<uint64_t> *seen,
-			   std::vector<flatfile_item_ownership_record> *records)
-{
-	if (!seen || !records)
-		return false;
-	std::vector<uint64_t> roots;
-	try
-	{
-		roots.reserve(items.size());
-		for (size_t index = 0; index < items.size(); ++index)
-		{
-			const player_item_snapshot &item = items[index];
-			if (!item.object_uid || item.vnum <= 0 ||
-			    !seen->insert(item.object_uid).second)
-				return false;
-			uint64_t parent_uid = 0, root_uid = item.object_uid;
-			if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
-			{
-				if (item.parent_index < 0 ||
-				    static_cast<size_t>(item.parent_index) >= index)
-					return false;
-				const size_t parent = static_cast<size_t>(item.parent_index);
-				parent_uid = items[parent].object_uid;
-				root_uid = roots[parent];
-			}
-			roots.push_back(root_uid);
-			records->push_back({ item.object_uid, root_uid, parent_uid, owner, 1,
-					     item.vnum, item_custody_state::active });
-		}
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	return true;
-}
-
-flatfile_item_baseline_result establish_item_baseline(const std::string &root,
-						      const player_snapshot &snapshot,
-						      std::string *error)
-{
-	const item_owner_identity owner = { item_owner_type::player,
-					    static_cast<uint64_t>(snapshot.pid), 0 };
-	std::unordered_set<uint64_t> seen;
-	std::vector<flatfile_item_ownership_record> records;
-	try
-	{
-		const size_t pet_items =
-			std::accumulate(snapshot.pets.begin(), snapshot.pets.end(), size_t{ 0 },
-					[](size_t count, const player_pet_snapshot &pet)
-					{ return count + pet.items.size(); });
-		if (snapshot.items.size() > PLAYER_LOAD_ITEM_MAX ||
-		    pet_items > PLAYER_LOAD_ITEM_MAX - snapshot.items.size())
-			return flatfile_item_baseline_result::invalid;
-		seen.reserve(snapshot.items.size() + pet_items);
-		records.reserve(snapshot.items.size() + pet_items);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return flatfile_item_baseline_result::io_error;
-	}
-	if (!append_baseline_items(snapshot.items, owner, &seen, &records))
-		return flatfile_item_baseline_result::invalid;
-	for (const player_pet_snapshot &pet : snapshot.pets)
-		if (!append_baseline_items(pet.items, owner, &seen, &records))
-			return flatfile_item_baseline_result::invalid;
-	std::sort(records.begin(), records.end(), [](const auto &left, const auto &right)
-		  { return left.item_uid < right.item_uid; });
-	return flatfile_item_repository_establish_owner(root, owner, records, error);
 }
 
 flatfile_player_domain_result establish_domain_baseline(const std::string &root,
@@ -748,12 +681,7 @@ player_load_result flatfile_player_load_repository_execute(const std::string &ro
 		return result;
 	}
 	if (request.include_items && !reconcile_item_ownership(root, &result))
-	{
-		clear_items_and_pets(&result);
-		mark_degraded(&result, PLAYER_LOAD_DEGRADED_ITEMS, "item_ownership");
-		if (request.include_pets)
-			result.degraded_components |= PLAYER_LOAD_DEGRADED_PETS;
-	}
+		return result;
 	// The identity keeps the character's own racewar. One written before it did holds
 	// the account menu's immortal value (0) for an immortal instead; the snapshot's is
 	// the character's own, and the next save writes it back.
@@ -777,12 +705,11 @@ player_load_result flatfile_player_load_repository_execute(const std::string &ro
 			domains_loaded == flatfile_player_domain_result::not_found ? ENOENT :
 			domains_loaded == flatfile_player_domain_result::io_error  ? EIO :
 										     EILSEQ;
-		mark_degraded(&result, PLAYER_LOAD_DEGRADED_BANK | PLAYER_LOAD_DEGRADED_GAMEPLAY,
-			      "domains");
-		result.read_components = 0;
-		result.domains = {};
-		result.recent_pvp_deaths.clear();
-		result.completed_epic_zones.clear();
+		result.outcome = domains_loaded == flatfile_player_domain_result::io_error ?
+					 player_load_outcome::retryable_failure :
+					 player_load_outcome::component_failure;
+		result.failed_component = "domains";
+		return result;
 	}
 	else
 	{
@@ -810,8 +737,7 @@ player_load_result flatfile_player_load_repository_execute(const std::string &ro
 	result.metrics.byte_count = result.snapshot.encoded_size_bound;
 	result.metrics.row_count = 1;
 	result.metrics.transaction_usec = persistence_observability_now_usec() - started;
-	if (!result.degraded_components)
-		result.outcome = player_load_outcome::applied;
+	result.outcome = player_load_outcome::applied;
 	return result;
 }
 
@@ -857,27 +783,34 @@ flatfile_player_snapshot_prepare_remove(const std::string &root,
 
 player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 							const player_snapshot &snapshot,
-							std::string *error)
+							std::string *error, bool legacy_replay)
 {
 	if (!valid_snapshot(snapshot) || !replace_items_together(snapshot.components))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	flatfile_player_snapshot_lock snapshot_lock;
 	if (!snapshot_lock.acquire(root, snapshot.pid, error))
 		return { player_save_apply_outcome::retryable_failure, 0, EIO };
-	flatfile_authority_lock authority;
-	if (snapshot.death)
+	// The authority lock is not reentrant, and a new player's domain baseline takes it
+	// itself, so it is held around each step rather than for the whole save.
+	auto authority = std::make_unique<flatfile_authority_lock>();
+	const auto lock_authority = [&]() -> player_save_apply_result
 	{
-		if (!authority.acquire(root, error))
+		if (!authority->acquire(root, error))
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
 		const auto recovered =
-			flatfile_authority_transaction_recover(root, authority, error);
+			flatfile_authority_transaction_recover(root, *authority, error);
 		if (recovered != flatfile_authority_transaction_result::ok)
 			return { recovered == flatfile_authority_transaction_result::io_error ?
 					 player_save_apply_outcome::retryable_failure :
 					 player_save_apply_outcome::terminal_failure,
 				 0, EIO };
-	}
+		return { player_save_apply_outcome::applied, 0, 0 };
+	};
+	player_save_apply_result locked = lock_authority();
+	if (locked.outcome != player_save_apply_outcome::applied)
+		return locked;
 	player_snapshot materialized = {};
+	bool new_player = false;
 	const flatfile_player_load_result loaded =
 		flatfile_player_snapshot_read(root, snapshot.pid, &materialized, error);
 	if (loaded == flatfile_player_load_result::invalid)
@@ -888,19 +821,13 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	{
 		if (snapshot.death || snapshot.components != PLAYER_CHECKPOINT_COMPONENT_ALL)
 			return { player_save_apply_outcome::terminal_failure, 0, ENOENT };
-		const flatfile_item_baseline_result item_baseline =
-			establish_item_baseline(root, snapshot, error);
-		if (item_baseline == flatfile_item_baseline_result::io_error)
-			return { player_save_apply_outcome::retryable_failure, 0, EIO };
-		if (item_baseline != flatfile_item_baseline_result::applied &&
-		    item_baseline != flatfile_item_baseline_result::already_applied)
-			return { player_save_apply_outcome::terminal_failure, 0,
-				 static_cast<unsigned int>(
-					 item_baseline == flatfile_item_baseline_result::conflict ?
-						 EEXIST :
-						 EINVAL) };
+		new_player = true;
+		authority = std::make_unique<flatfile_authority_lock>();
 		const flatfile_player_domain_result domain_baseline =
 			establish_domain_baseline(root, snapshot, error);
+		locked = lock_authority();
+		if (locked.outcome != player_save_apply_outcome::applied)
+			return locked;
 		if (domain_baseline == flatfile_player_domain_result::io_error)
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
 		if (domain_baseline != flatfile_player_domain_result::ok)
@@ -917,7 +844,8 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	}
 	else
 	{
-		if (materialized.revision >= snapshot.revision)
+		// Only the one-time replay of an older server's journal keeps the fence.
+		if (legacy_replay && materialized.revision >= snapshot.revision)
 			return { materialized.revision == snapshot.revision ?
 					 player_save_apply_outcome::already_applied :
 					 player_save_apply_outcome::stale_revision,
@@ -926,6 +854,58 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			return { player_save_apply_outcome::terminal_failure, materialized.revision,
 				 EINVAL };
 	}
+
+	// Claim what the player and its pets hold, as one catalog write.
+	const item_owner_identity player_owner = { item_owner_type::player,
+						   static_cast<uint64_t>(snapshot.pid), 0 };
+	std::vector<flatfile_item_claim> claims;
+	std::vector<flatfile_item_claim_audit> audits;
+	flatfile_authority_operation claimed;
+	bool claim_changed = false;
+	if (snapshot.components &
+	    (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY | PLAYER_COMPONENT_PETS))
+	{
+		try
+		{
+			if (snapshot.components &
+			    (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY))
+				claims.push_back(
+					{ player_owner, &materialized.items, {}, new_player });
+			if (snapshot.components & PLAYER_COMPONENT_PETS)
+				for (const player_pet_snapshot &pet : materialized.pets)
+					claims.push_back(
+						{ pet.pet_uid ?
+							  item_owner_identity{
+								  item_owner_type::pet, pet.pet_uid,
+								  static_cast<uint64_t>(
+									  snapshot.pid) } :
+							  player_owner,
+						  &pet.items,
+						  {} });
+		}
+		catch (const std::bad_alloc &)
+		{
+			return { player_save_apply_outcome::retryable_failure, 0, ENOMEM };
+		}
+		const auto prepared = flatfile_item_repository_prepare_claim(
+			root, *authority, &claims, &claimed, &audits, error);
+		if (prepared == flatfile_item_repository_result::io_error)
+			return { player_save_apply_outcome::retryable_failure, 0, EIO };
+		if (prepared != flatfile_item_repository_result::ok &&
+		    prepared != flatfile_item_repository_result::unchanged)
+			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+		claim_changed = prepared == flatfile_item_repository_result::ok;
+		// Leave out what was destroyed, with its contents.
+		size_t claim = 0;
+		if (snapshot.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY))
+			materialized.items = item_claim_written_items(
+				materialized.items, claims[claim++].outcome.left_out);
+		if (snapshot.components & PLAYER_COMPONENT_PETS)
+			for (player_pet_snapshot &pet : materialized.pets)
+				pet.items = item_claim_written_items(
+					pet.items, claims[claim++].outcome.left_out);
+	}
+
 	std::vector<uint8_t> bytes;
 	// Keep the immutable evidence, quarantine and empty player projection in the
 	// same recoverable authority transaction. A failed commit leaves no evidence
@@ -941,51 +921,247 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	}
 	if (!encode_file(&materialized, &bytes))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
-	if (snapshot.death)
+	// A save that carries everything the player holds replaces what earlier
+	// transfers gave it, as a MariaDB save replaces the player_items rows they wrote.
+	constexpr player_component_mask_t held_components =
+		PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY | PLAYER_COMPONENT_PETS;
+	flatfile_authority_operation delivered;
+	bool delivered_changed = false;
+	if ((snapshot.components & held_components) == held_components)
 	{
-		std::vector<flatfile_authority_operation> operations;
-		operations.push_back({ flatfile_authority_store::player_deaths,
-				       flatfile_authority_operation_kind::write,
-				       death_filename(snapshot.pid, snapshot.revision),
-				       std::move(death_bytes) });
-		std::vector<uint64_t> custody_uids;
-		try
+		const auto retired = flatfile_shop_trade_materialization_prepare_player_remove(
+			root, *authority, static_cast<uint32_t>(snapshot.pid), &delivered, error);
+		if (retired == flatfile_shop_trade_materialization_result::io_error)
+			return { player_save_apply_outcome::retryable_failure, 0, EIO };
+		if (retired != flatfile_shop_trade_materialization_result::ok &&
+		    retired != flatfile_shop_trade_materialization_result::unchanged)
+			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+		delivered_changed = retired == flatfile_shop_trade_materialization_result::ok;
+	}
+	// The wallet, epic points and frags are memory's: a save that carries them writes
+	// them into the player's domain record. A new player's baseline above already holds
+	// them.
+	flatfile_authority_operation saved_balances;
+	flatfile_saved_balances balances;
+	const bool saves_balances =
+		!new_player &&
+		snapshot_unsigned(snapshot, player_status_field::copper, &balances.wallet[0]) &&
+		snapshot_unsigned(snapshot, player_status_field::silver, &balances.wallet[1]) &&
+		snapshot_unsigned(snapshot, player_status_field::gold, &balances.wallet[2]) &&
+		snapshot_unsigned(snapshot, player_status_field::platinum, &balances.wallet[3]) &&
+		snapshot_signed(snapshot, player_status_field::epics, &balances.epics) &&
+		snapshot_signed(snapshot, player_status_field::frags, &balances.frags) &&
+		snapshot_signed(snapshot, player_status_field::old_frags, &balances.old_frags);
+	if (saves_balances)
+	{
+		const auto prepared = flatfile_player_domain_prepare_saved_balances(
+			root, *authority, static_cast<uint32_t>(snapshot.pid), balances,
+			&saved_balances, error);
+		if (prepared == flatfile_player_domain_result::io_error)
+			return { player_save_apply_outcome::retryable_failure, 0, EIO };
+		if (prepared != flatfile_player_domain_result::ok)
+			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+	}
+	std::vector<flatfile_authority_operation> operations;
+	try
+	{
+		if (claim_changed)
+			operations.push_back(std::move(claimed));
+		if (delivered_changed)
+			operations.push_back(std::move(delivered));
+		if (saves_balances)
+			operations.push_back(std::move(saved_balances));
+		if (snapshot.death)
 		{
+			operations.push_back({ flatfile_authority_store::player_deaths,
+					       flatfile_authority_operation_kind::write,
+					       death_filename(snapshot.pid, snapshot.revision),
+					       std::move(death_bytes) });
+			std::vector<uint64_t> custody_uids;
 			custody_uids.reserve(snapshot.death->custody.size());
 			for (const auto &row : snapshot.death->custody)
 				if (row.item.item_uid)
 					custody_uids.push_back(row.item.item_uid);
+			flatfile_authority_operation quarantine;
+			const auto quarantined = flatfile_item_repository_prepare_death_quarantine(
+				root, *authority, snapshot.pid, custody_uids, &quarantine, error);
+			if (quarantined == flatfile_item_repository_result::ok)
+				operations.push_back(std::move(quarantine));
+			else if (quarantined != flatfile_item_repository_result::unchanged)
+				return { quarantined == flatfile_item_repository_result::io_error ?
+						 player_save_apply_outcome::retryable_failure :
+						 player_save_apply_outcome::terminal_failure,
+					 0, EIO };
 		}
-		catch (const std::bad_alloc &)
-		{
-			return { player_save_apply_outcome::retryable_failure, 0, ENOMEM };
-		}
-		flatfile_authority_operation quarantine;
-		const auto prepared = flatfile_item_repository_prepare_death_quarantine(
-			root, authority, snapshot.pid, custody_uids, &quarantine, error);
-		if (prepared == flatfile_item_repository_result::ok)
-			operations.push_back(std::move(quarantine));
-		else if (prepared != flatfile_item_repository_result::unchanged)
-			return { prepared == flatfile_item_repository_result::io_error ?
-					 player_save_apply_outcome::retryable_failure :
-					 player_save_apply_outcome::terminal_failure,
-				 0, EIO };
 		operations.push_back({ flatfile_authority_store::players,
 				       flatfile_authority_operation_kind::write,
 				       player_filename(snapshot.pid), std::move(bytes) });
-		const auto committed = flatfile_authority_transaction_commit_operations(
-			root, authority, operations, error);
-		if (committed != flatfile_authority_transaction_result::ok)
-			return { committed == flatfile_authority_transaction_result::io_error ?
-					 player_save_apply_outcome::retryable_failure :
-					 player_save_apply_outcome::terminal_failure,
-				 0, EIO };
-		return { player_save_apply_outcome::applied, snapshot.revision, 0 };
 	}
-	if (!flatfile_atomic_write(player_directory(root), player_filename(snapshot.pid), bytes,
-				   error))
-		return { player_save_apply_outcome::retryable_failure, 0, EIO };
+	catch (const std::bad_alloc &)
+	{
+		return { player_save_apply_outcome::retryable_failure, 0, ENOMEM };
+	}
+	const auto committed = flatfile_authority_transaction_commit_operations(root, *authority,
+										operations, error);
+	if (committed != flatfile_authority_transaction_result::ok)
+		return { committed == flatfile_authority_transaction_result::io_error ?
+				 player_save_apply_outcome::retryable_failure :
+				 player_save_apply_outcome::terminal_failure,
+			 0, EIO };
+	for (const flatfile_item_claim_audit &audit : audits)
+		item_claim_log_item(audit.item_uid, audit.vnum, audit.old_owner, audit.new_owner);
+	for (const flatfile_item_claim &claim : claims)
+		item_claim_log_dupes("save_left_out", claim.owner, claim.outcome);
 	return { player_save_apply_outcome::applied, snapshot.revision, 0 };
+}
+
+namespace
+{
+template <typename Prepare>
+player_save_apply_result apply_world_snapshot(const std::string &root,
+					      const item_owner_identity &owner,
+					      const std::vector<player_item_snapshot> *items,
+					      Prepare prepare, std::string *error)
+{
+	flatfile_authority_lock authority;
+	if (!authority.acquire(root, error))
+		return { player_save_apply_outcome::retryable_failure, 0, EIO };
+	const auto recovered = flatfile_authority_transaction_recover(root, authority, error);
+	if (recovered != flatfile_authority_transaction_result::ok)
+		return { recovered == flatfile_authority_transaction_result::io_error ?
+				 player_save_apply_outcome::retryable_failure :
+				 player_save_apply_outcome::terminal_failure,
+			 0, EIO };
+	std::vector<flatfile_item_claim> claims;
+	std::vector<flatfile_item_claim_audit> audits;
+	std::vector<flatfile_authority_operation> operations;
+	std::vector<player_item_snapshot> written;
+	try
+	{
+		if (items)
+		{
+			claims.push_back({ owner, items, {} });
+			flatfile_authority_operation claimed;
+			const auto prepared = flatfile_item_repository_prepare_claim(
+				root, authority, &claims, &claimed, &audits, error);
+			if (prepared == flatfile_item_repository_result::io_error)
+				return { player_save_apply_outcome::retryable_failure, 0, EIO };
+			if (prepared != flatfile_item_repository_result::ok &&
+			    prepared != flatfile_item_repository_result::unchanged)
+				return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+			if (prepared == flatfile_item_repository_result::ok)
+				operations.push_back(std::move(claimed));
+			// Leave out what was destroyed, with its contents.
+			written = item_claim_written_items(*items, claims[0].outcome.left_out);
+		}
+		flatfile_authority_operation world;
+		const flatfile_world_item_result prepared = prepare(authority, written, &world);
+		if (prepared == flatfile_world_item_result::io_error)
+			return { player_save_apply_outcome::retryable_failure, 0, EIO };
+		if (prepared == flatfile_world_item_result::ok)
+			operations.push_back(std::move(world));
+		else if (prepared != flatfile_world_item_result::unchanged)
+			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+	}
+	catch (const std::bad_alloc &)
+	{
+		return { player_save_apply_outcome::retryable_failure, 0, ENOMEM };
+	}
+	if (operations.empty())
+		return { player_save_apply_outcome::applied, 0, 0 };
+	const auto committed = flatfile_authority_transaction_commit_operations(root, authority,
+										operations, error);
+	if (committed != flatfile_authority_transaction_result::ok)
+		return { committed == flatfile_authority_transaction_result::io_error ?
+				 player_save_apply_outcome::retryable_failure :
+				 player_save_apply_outcome::terminal_failure,
+			 0, EIO };
+	for (const flatfile_item_claim_audit &audit : audits)
+		item_claim_log_item(audit.item_uid, audit.vnum, audit.old_owner, audit.new_owner);
+	for (const flatfile_item_claim &claim : claims)
+		item_claim_log_dupes("save_left_out", claim.owner, claim.outcome);
+	return { player_save_apply_outcome::applied, 0, 0 };
+}
+} // namespace
+
+player_save_apply_result flatfile_bank_delta_apply(const std::string &root,
+						   const std::string &account_name, int8_t racewar,
+						   const std::array<int64_t, 4> &delta,
+						   flatfile_authority_operation *prepared,
+						   std::string *error)
+{
+	flatfile_authority_lock authority;
+	if (!authority.acquire(root, error))
+		return { player_save_apply_outcome::retryable_failure, 0, EIO };
+	const auto recovered = flatfile_authority_transaction_recover(root, authority, error);
+	if (recovered != flatfile_authority_transaction_result::ok)
+		return { recovered == flatfile_authority_transaction_result::io_error ?
+				 player_save_apply_outcome::retryable_failure :
+				 player_save_apply_outcome::terminal_failure,
+			 0, EIO };
+	if (prepared->filename.empty())
+	{
+		flatfile_authority_operation operation;
+		const auto result = flatfile_player_domain_prepare_bank_delta(
+			root, authority, account_name, racewar, delta, &operation, error);
+		if (result == flatfile_player_domain_result::io_error)
+			return { player_save_apply_outcome::retryable_failure, 0, EIO };
+		if (result != flatfile_player_domain_result::ok)
+			return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+		*prepared = std::move(operation);
+	}
+	const std::vector<flatfile_authority_operation> operations = { *prepared };
+	const auto committed = flatfile_authority_transaction_commit_operations(root, authority,
+										operations, error);
+	if (committed != flatfile_authority_transaction_result::ok)
+		return { committed == flatfile_authority_transaction_result::io_error ?
+				 player_save_apply_outcome::retryable_failure :
+				 player_save_apply_outcome::terminal_failure,
+			 0, EIO };
+	return { player_save_apply_outcome::applied, 0, 0 };
+}
+
+player_save_apply_result flatfile_corpse_snapshot_apply(const std::string &root,
+							const flatfile_corpse_record &corpse,
+							bool remove, std::string *error)
+{
+	const item_owner_identity owner = { item_owner_type::corpse,
+					    item_corpse_owner_id(corpse.owner_pid, corpse.save_id),
+					    0 };
+	return apply_world_snapshot(
+		root, owner, remove ? nullptr : &corpse.items,
+		[&](const flatfile_authority_lock &lock,
+		    const std::vector<player_item_snapshot> &written,
+		    flatfile_authority_operation *operation)
+		{
+			flatfile_corpse_record record = corpse;
+			record.items = written;
+			return flatfile_world_item_prepare_corpse_snapshot(
+				root, lock, record, remove, operation, error);
+		},
+		error);
+}
+
+player_save_apply_result
+flatfile_saved_item_snapshot_apply(const std::string &root,
+				   const flatfile_saved_world_item_record &item, bool remove,
+				   std::string *error)
+{
+	const item_owner_identity owner = { item_owner_type::room,
+					    static_cast<uint64_t>(item.room_vnum), 0 };
+	return apply_world_snapshot(
+		root, owner, remove ? nullptr : &item.items,
+		[&](const flatfile_authority_lock &lock,
+		    const std::vector<player_item_snapshot> &written,
+		    flatfile_authority_operation *operation)
+		{
+			// A saved item whose every piece was destroyed leaves the room.
+			const bool drop = remove || written.empty();
+			return flatfile_world_item_prepare_room_item_snapshot(
+				root, lock, item.room_vnum, drop ? item.items : written, drop,
+				operation, error);
+		},
+		error);
 }
 
 player_save_apply_result flatfile_player_snapshot_apply_selected(const player_snapshot &snapshot,
@@ -996,5 +1172,6 @@ player_save_apply_result flatfile_player_snapshot_apply_selected(const player_sn
 	if (!root)
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	std::string error;
-	return flatfile_player_snapshot_apply(root, snapshot, &error);
+	return flatfile_player_snapshot_apply(root, snapshot, &error,
+					      context == PLAYER_SAVE_LEGACY_REPLAY);
 }

@@ -50,6 +50,7 @@
 #include "persistence/corpse_lifecycle_transaction.h"
 #include "item/item_transfer_command.h"
 #include "item/item_transfer_repository.h"
+#include "item/item_claim_repository.h"
 
 // external tables
 extern P_index obj_index;
@@ -633,7 +634,9 @@ bool sql_delete_spellbook_mobs(int pid)
 
 #else
 
+#include "flatfile/flatfile_shopkeeper_capture.h"
 #include "player/player_snapshot_capture.h"
+#include "player/player_snapshot_codec.h"
 #include "player/player_snapshot_repository.h"
 
 // globals
@@ -1350,14 +1353,6 @@ bool sql_save_player(P_char ch, int type, int room)
 		logit(LOG_DEBUG, "sql_save_player: invalid char or npc");
 		return false;
 	}
-	if (IS_SET(ch->runtime_flags, CHAR_RFLAG_LOAD_DEGRADED))
-	{
-		logit(LOG_DEBUG,
-		      "sql_save_player: deferred degraded player save pid=%d components=0x%x",
-		      GET_PID(ch), ch->only.pc->load_degraded_components);
-		return true;
-	}
-
 	if (!DB)
 	{
 		logit(LOG_DEBUG, "sql_save_player: db not initialized");
@@ -1574,13 +1569,13 @@ bool sql_save_player_status(P_char ch, int type, int room)
 			"base_int=%d, base_wis=%d, base_cha=%d, base_kar=%d, base_luk=%d, "
 			"mana=%d, base_mana=%d, hit_diff=%d, base_hit=%d, "
 			"vitality=%d, base_vitality=%d, spells_memmed_extra=%d, "
-			"copper=copper, silver=silver, gold=gold, platinum=platinum, "
+			"copper=%d, silver=%d, gold=%d, platinum=%d, "
 			"bank_copper=0, bank_silver=0, bank_gold=0, bank_platinum=0,"
-			"exp=%d, epics=epics, epic_skill_points=%ld, skillpoints=%d, spell_bind_used=%ld, "
+			"exp=%d, epics=%ld, epic_skill_points=%ld, skillpoints=%d, spell_bind_used=%ld, "
 			"act=%u, act2=%u, act3=%u, vote=%lu, alignment=%d,"
 			"prestige=%d, assoc_id=%d, guild_status=%u, "
 			"time_left_guild=FROM_UNIXTIME(NULLIF(%ld,0)), nb_left_guild=%d, time_unspecced=FROM_UNIXTIME(NULLIF(%ld,0)),"
-			"frags=frags, oldfrags=oldfrags, numb_deaths=%lu, "
+			"frags=%ld, oldfrags=%ld, numb_deaths=%lu, "
 			"condition_0=%d, condition_1=%d, condition_2=%d, condition_3=%d, condition_4=%d, "
 			"poof_in='%s', poof_out='%s', poof_in_sound='%s', poof_out_sound='%s', "
 			"echo_toggle=%d, prompt=%d, wiz_invis=%d, law_flags=%lu, "
@@ -1603,27 +1598,29 @@ bool sql_save_player_status(P_char ch, int type, int room)
 			ch->base_stats.Luk, GET_MANA(ch), ch->points.base_mana,
 			MAX(0, GET_MAX_HIT(ch) - GET_HIT(ch)), ch->points.base_hit,
 			GET_VITALITY(ch), ch->points.base_vitality,
-			ch->only.pc->spells_memmed[MAX_CIRCLE], GET_EXP(ch),
+			ch->only.pc->spells_memmed[MAX_CIRCLE], GET_COPPER(ch), GET_SILVER(ch),
+			GET_GOLD(ch), GET_PLATINUM(ch), GET_EXP(ch), ch->only.pc->epics,
 			ch->only.pc->epic_skill_points, ch->only.pc->skillpoints,
 			ch->only.pc->spell_bind_used, ch->specials.act, ch->specials.act2,
 			ch->specials.act3, ch->only.pc->vote, ch->specials.alignment,
 			ch->only.pc->prestige, GET_ASSOC_ID(ch), ch->specials.guild_status,
 			ch->only.pc->time_left_guild, ch->only.pc->nb_left_guild,
-			ch->only.pc->time_unspecced, ch->only.pc->numb_deaths,
-			ch->specials.conditions[0], ch->specials.conditions[1],
-			ch->specials.conditions[2], ch->specials.conditions[3],
-			ch->specials.conditions[4], esc_poofin, esc_poofout, esc_poofinsnd,
-			esc_poofoutsnd, ch->only.pc->echo_toggle, ch->only.pc->prompt,
-			ch->only.pc->wiz_invis, 0UL, ch->only.pc->wimpy, ch->only.pc->aggressive,
-			ch->only.pc->highest_level, ch->only.pc->screen_length,
-			ch->only.pc->quest_active, ch->only.pc->quest_mob_vnum,
-			ch->only.pc->quest_type, ch->only.pc->quest_accomplished,
-			ch->only.pc->quest_started, ch->only.pc->quest_zone_number,
-			ch->only.pc->quest_giver, ch->only.pc->quest_level,
-			ch->only.pc->quest_receiver, ch->only.pc->quest_shares_left,
-			ch->only.pc->quest_kill_how_many, ch->only.pc->quest_kill_original,
-			ch->only.pc->quest_map_room, ch->only.pc->quest_map_bought,
-			ch->only.pc->last_ip, output_preferences.c_str(), pid);
+			ch->only.pc->time_unspecced, ch->only.pc->frags, ch->only.pc->oldfrags,
+			ch->only.pc->numb_deaths, ch->specials.conditions[0],
+			ch->specials.conditions[1], ch->specials.conditions[2],
+			ch->specials.conditions[3], ch->specials.conditions[4], esc_poofin,
+			esc_poofout, esc_poofinsnd, esc_poofoutsnd, ch->only.pc->echo_toggle,
+			ch->only.pc->prompt, ch->only.pc->wiz_invis, 0UL, ch->only.pc->wimpy,
+			ch->only.pc->aggressive, ch->only.pc->highest_level,
+			ch->only.pc->screen_length, ch->only.pc->quest_active,
+			ch->only.pc->quest_mob_vnum, ch->only.pc->quest_type,
+			ch->only.pc->quest_accomplished, ch->only.pc->quest_started,
+			ch->only.pc->quest_zone_number, ch->only.pc->quest_giver,
+			ch->only.pc->quest_level, ch->only.pc->quest_receiver,
+			ch->only.pc->quest_shares_left, ch->only.pc->quest_kill_how_many,
+			ch->only.pc->quest_kill_original, ch->only.pc->quest_map_room,
+			ch->only.pc->quest_map_bought, ch->only.pc->last_ip,
+			output_preferences.c_str(), pid);
 	}
 	else
 	{
@@ -6306,12 +6303,45 @@ bool sql_save_locker(P_char locker_ch, int owner_pid, int owner_assoc_id)
 		return false;
 	}
 
-	return sql_save_locker_items(locker_ch, locker_id, public_chest_id, own_txn);
+	// The locker holds these in memory, so its save claims them.
+	const item_owner_identity chest = { item_owner_type::locker,
+					    static_cast<uint64_t>(locker_id),
+					    static_cast<uint64_t>(public_chest_id) };
+	std::vector<player_item_snapshot> held;
+	item_claim_outcome claim;
+	if (player_item_snapshot_list_capture(locker_ch, false, true, false, &held, nullptr) !=
+		    player_snapshot_capture_result::ok ||
+	    claim_items(DB, chest, held, &claim) != 0)
+	{
+		logit(LOG_DEBUG, "sql_save_locker: component=claim outcome=failure");
+		sql_rollback();
+		return false;
+	}
+	const bool saved = sql_save_locker_items(locker_ch, locker_id, public_chest_id, own_txn);
+	if (saved)
+		item_claim_log_dupes("save_left_out", chest, claim);
+	return saved;
 }
 
 static P_obj sql_load_locker_items(int locker_id, int public_chest_id, int container_id);
 
 #define MAX_CONTAINER_LOAD_DEPTH 64
+
+// Append a loaded object chain to the end of a list being built.
+static void append_loaded_objects(P_obj *first, P_obj *last, P_obj chain)
+{
+	while (chain)
+	{
+		P_obj next = chain->next_content;
+		if (!*first)
+			*first = chain;
+		else
+			(*last)->next_content = chain;
+		*last = chain;
+		chain->next_content = NULL;
+		chain = next;
+	}
+}
 
 static P_obj sql_load_locker_items_filtered(int locker_id, int container_id, int chest_id,
 					    int depth)
@@ -6459,10 +6489,13 @@ static P_obj sql_load_locker_items_filtered(int locker_id, int container_id, int
 				    static_cast<unsigned long long>(chest_id),
 				    "sql_load_locker_items"))
 			{
-				logit(LOG_DEBUG,
-				      "sql_load_locker_items_filtered: component=ownership "
-				      "outcome=mismatch");
+				// A stale copy another owner holds is left out, and what it
+				// contains moves up a level.
 				extract_obj(obj, FALSE);
+				append_loaded_objects(
+					&first_obj, &last_obj,
+					sql_load_locker_items_filtered(locker_id, item_id, chest_id,
+								       depth + 1));
 				continue;
 			}
 		}
@@ -7112,6 +7145,33 @@ bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)
 	if (!DB || locker_id <= 0 || chest_id <= 0 || !chest_obj)
 		return false;
 
+	// Outside a transaction the chest save goes to the one writer, behind any save still
+	// queued; inside one it stays part of the caller's.
+	if (!sql_in_transaction())
+	{
+		locker_chest_snapshot snapshot;
+		snapshot.locker_id = locker_id;
+		snapshot.chest_id = chest_id;
+		if (player_item_snapshot_contents_capture(chest_obj, &snapshot.items) ==
+		    player_snapshot_capture_result::ok)
+		{
+			// A private chest's key never matches its locker's public job.
+			const uint64_t owner = (static_cast<uint64_t>(chest_id) << 32) |
+					       static_cast<uint32_t>(locker_id);
+			const size_t bytes = sizeof(snapshot) +
+					     snapshot.items.size() * sizeof(player_item_snapshot);
+			const player_save_submit_result submitted = persistence_writer_submit(
+				persistence_job_kind::locker, owner, bytes,
+				[snapshot]() {
+					return locker_chest_snapshot_repository_apply_from_pool(
+						snapshot);
+				});
+			if (submitted == player_save_submit_result::accepted ||
+			    submitted == player_save_submit_result::replaced)
+				return true;
+		}
+	}
+
 	bool own_txn = false;
 	if (!sql_in_transaction())
 	{
@@ -7147,6 +7207,22 @@ bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)
 		return false;
 	}
 
+	// The chest holds these in memory, so its save claims them.
+	const item_owner_identity chest = { item_owner_type::locker,
+					    static_cast<uint64_t>(locker_id),
+					    static_cast<uint64_t>(chest_id) };
+	std::vector<player_item_snapshot> held;
+	item_claim_outcome claim;
+	if (player_item_snapshot_contents_capture(chest_obj, &held) !=
+		    player_snapshot_capture_result::ok ||
+	    claim_items(DB, chest, held, &claim) != 0)
+	{
+		logit(LOG_DEBUG, "sql_save_private_chest_items: component=claim outcome=failure");
+		if (own_txn)
+			sql_rollback();
+		return false;
+	}
+
 	// save all items in the chest - any failure rolls back the DELETE above
 	for (P_obj obj = chest_obj->contains; obj; obj = obj->next_content)
 	{
@@ -7167,7 +7243,7 @@ bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)
 		sql_rollback();
 		return false;
 	}
-
+	item_claim_log_dupes("save_left_out", chest, claim);
 	return true;
 }
 
@@ -7260,7 +7336,18 @@ void sql_load_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)
 			    static_cast<unsigned long long>(chest_id),
 			    "sql_load_private_chest_items"))
 		{
+			// A stale copy another owner holds is left out; what it contains
+			// goes into the chest.
 			extract_obj(obj, FALSE);
+			for (P_obj orphan = sql_load_locker_items_filtered(locker_id, item_id,
+									   chest_id, 1);
+			     orphan;)
+			{
+				P_obj next = orphan->next_content;
+				orphan->next_content = NULL;
+				obj_to_obj(orphan, chest_obj);
+				orphan = next;
+			}
 			continue;
 		}
 
@@ -8089,6 +8176,27 @@ bool sql_save_corpse(P_obj corpse)
 
 	int corpse_id = (int)mysql_insert_id(DB);
 
+	// The corpse holds these in memory, so its save claims them.
+	if (corpse->value[CORPSE_PID] > 0)
+	{
+		const item_owner_identity owner = {
+			item_owner_type::corpse,
+			item_corpse_owner_id(static_cast<uint32_t>(corpse->value[CORPSE_PID]),
+					     static_cast<uint32_t>(save_id)),
+			0
+		};
+		std::vector<player_item_snapshot> held;
+		item_claim_outcome claim;
+		if (player_item_snapshot_contents_capture(corpse, &held) !=
+			    player_snapshot_capture_result::ok ||
+		    claim_items(DB, owner, held, &claim) != 0)
+		{
+			logit(LOG_DEBUG, "sql_save_corpse: component=claim outcome=failure");
+			sql_rollback();
+			return false;
+		}
+	}
+
 	// save contained items atomically - any failure rolls back the whole corpse save
 	for (P_obj obj = corpse->contains; obj; obj = obj->next_content)
 	{
@@ -8423,12 +8531,13 @@ bool sql_load_all_corpses(void)
 				}
 #undef HASH_SIZE
 
-				// build top-level list
+				// build top-level list; an item whose container was skipped
+				// or cannot hold it lies loose in the corpse
 				P_obj first = NULL;
 				P_obj last_obj = NULL;
 				for (int i = 0; i < num_objs; i++)
 				{
-					if (container_map[i] == 0)
+					if (container_map[i] != -1)
 					{
 						if (!first)
 							first = obj_map[i];
@@ -8715,11 +8824,12 @@ bool sql_load_all_corpses(void)
 		}
 #undef HASH_SIZE
 
+		// An item whose container was skipped or cannot hold it lies loose in the corpse.
 		P_obj first = NULL;
 		P_obj last_obj = NULL;
 		for (int i = 0; i < num_objs; i++)
 		{
-			if (container_map[i] == 0)
+			if (container_map[i] != -1)
 			{
 				if (!first)
 					first = obj_map[i];
@@ -8952,177 +9062,6 @@ void log_shopkeeper_dirty_retry(int shop_nr, shopkeeper_save_reason reason, P_ch
 }
 }
 
-static bool sql_save_shopkeeper_item_affects(int item_id, P_obj obj)
-{
-	if (!obj || !DB || item_id <= 0)
-		return false;
-
-	for (int i = 0; i < MAX_OBJ_AFFECT; i++)
-	{
-		if (obj->affected[i].location != 0 || obj->affected[i].modifier != 0)
-		{
-			// skip duplicates
-			bool is_dup = false;
-			for (int j = 0; j < i; j++)
-			{
-				if (obj->affected[j].location == obj->affected[i].location &&
-				    obj->affected[j].modifier == obj->affected[i].modifier)
-				{
-					is_dup = true;
-					break;
-				}
-			}
-			if (is_dup)
-				continue;
-
-			char query[256];
-			snprintf(
-				query, sizeof(query),
-				"INSERT INTO shopkeeper_item_affects (item_id, location, modifier) VALUES (%d, %d, %d)",
-				item_id, obj->affected[i].location, obj->affected[i].modifier);
-			if (!sql_run_query(query))
-				return false;
-		}
-	}
-	return true;
-}
-
-static int sql_save_shopkeeper_item(int shopkeeper_id, P_obj obj, int equip_slot, int container_id)
-{
-	if (!obj || !DB || shopkeeper_id <= 0)
-		return 0;
-
-	int vnum = obj_index[obj->R_num].virtual_number;
-
-	char *esc_name = NULL;
-	char *esc_short = NULL;
-	char *esc_desc = NULL;
-	char *esc_action = NULL;
-
-	if (obj->str_mask & STRUNG_KEYS)
-		esc_name = sql_escape_string(obj->name ? obj->name : "");
-	if (obj->str_mask & STRUNG_DESC2)
-		esc_short = sql_escape_string(obj->short_description ? obj->short_description : "");
-	if (obj->str_mask & STRUNG_DESC1)
-		esc_desc = sql_escape_string(obj->description ? obj->description : "");
-	if (obj->str_mask & STRUNG_DESC3)
-		esc_action =
-			sql_escape_string(obj->action_description ? obj->action_description : "");
-
-	char container_str[32];
-	if (container_id > 0)
-		snprintf(container_str, sizeof(container_str), "%d", container_id);
-	else
-		strcpy(container_str, "NULL");
-
-	char name_str[1024], short_str[1024], desc_str[2048], action_str[2048];
-	if (esc_name)
-		snprintf(name_str, sizeof(name_str), "'%s'", esc_name);
-	else
-		strcpy(name_str, "NULL");
-	if (esc_short)
-		snprintf(short_str, sizeof(short_str), "'%s'", esc_short);
-	else
-		strcpy(short_str, "NULL");
-	if (esc_desc)
-		snprintf(desc_str, sizeof(desc_str), "'%s'", esc_desc);
-	else
-		strcpy(desc_str, "NULL");
-	if (esc_action)
-		snprintf(action_str, sizeof(action_str), "'%s'", esc_action);
-	else
-		strcpy(action_str, "NULL");
-
-	char query[8192];
-	// Shared helper formats wear_str, type_str, and bv1-5_str
-	// (NULL when matching the prototype) and frees the loaded prototype.
-	// See sql_format_item_diff_fields_and_free_proto().
-	char wear_str[32];
-	char type_str[16];
-	char material_str[16];
-	char bv1_str[32], bv2_str[32], bv3_str[32], bv4_str[32], bv5_str[32];
-	sql_format_item_diff_fields_and_free_proto(obj, wear_str, type_str, material_str, bv1_str,
-						   bv2_str, bv3_str, bv4_str, bv5_str);
-
-	snprintf(query, sizeof(query),
-		 "INSERT INTO shopkeeper_items ("
-		 "shopkeeper_id, vnum, equip_slot, container_id, quantity, "
-		 "weight, cost, timer, extra_flags, "
-		 "value0, value1, value2, value3, value4, value5, value6, value7, "
-		 "name, short_descr, description, action_descr, "
-		 "wear_flags, item_type, item_material, "
-		 "bitvector1, bitvector2, bitvector3, bitvector4, bitvector5"
-		 ") VALUES ("
-		 "%d, %d, %d, %s, 1, "
-		 "%d, %d, %ld, %lu, "
-		 "%d, %d, %d, %d, %d, %d, %d, %d, "
-		 "%s, %s, %s, %s, "
-		 "%s, %s, %s, "
-		 "%s, %s, %s, %s, %s"
-		 ")",
-		 shopkeeper_id, vnum, equip_slot, container_str, obj->weight, obj->cost,
-		 (long)obj->timer[0], (unsigned long)obj->extra_flags, obj->value[0], obj->value[1],
-		 obj->value[2], obj->value[3], obj->value[4], obj->value[5], obj->value[6],
-		 obj->value[7], name_str, short_str, desc_str, action_str, wear_str, type_str,
-		 material_str, bv1_str, bv2_str, bv3_str, bv4_str, bv5_str);
-
-	if (esc_name)
-		free(esc_name);
-	if (esc_short)
-		free(esc_short);
-	if (esc_desc)
-		free(esc_desc);
-	if (esc_action)
-		free(esc_action);
-
-	if (!sql_run_query(query))
-		return 0;
-
-	int item_id = (int)mysql_insert_id(DB);
-
-	if (!sql_save_shopkeeper_item_affects(item_id, obj))
-		return 0;
-	if (!sql_save_item_extra_descr(item_id, obj, "shopkeeper_item_extra_descr"))
-		return 0;
-
-	if (obj->contains)
-	{
-		for (P_obj content = obj->contains; content; content = content->next_content)
-		{
-			if (!sql_save_shopkeeper_item(shopkeeper_id, content, 0, item_id))
-				return 0;
-		}
-	}
-
-	return item_id;
-}
-
-static bool sql_save_shopkeeper_affects(int shopkeeper_id, P_char ch)
-{
-	if (!ch || !DB || shopkeeper_id <= 0)
-		return false;
-
-	for (struct affected_type *af = ch->affected; af; af = af->next)
-	{
-		if (IS_SET(af->flags, AFFTYPE_NOSAVE))
-			continue;
-
-		char query[512];
-		snprintf(
-			query, sizeof(query),
-			"INSERT INTO shopkeeper_affects (shopkeeper_id, type, duration, modifier, location, "
-			"bitvector1, bitvector2, bitvector3, bitvector4, bitvector5) "
-			"VALUES (%d, %d, %d, %d, %d, %lu, %lu, %lu, %lu, %lu)",
-			shopkeeper_id, af->type, af->duration, af->modifier, af->location,
-			af->bitvector, af->bitvector2, af->bitvector3, af->bitvector4,
-			af->bitvector5);
-		if (!sql_run_query(query))
-			return false;
-	}
-
-	return true;
-}
-
 bool sql_save_shopkeeper(P_char ch, int shop_nr)
 {
 	const shopkeeper_save_reason guard = validate_shopkeeper_save(ch, shop_nr);
@@ -9131,94 +9070,35 @@ bool sql_save_shopkeeper(P_char ch, int shop_nr)
 		log_shopkeeper_save_guard(ch, shop_nr, guard);
 		return false;
 	}
-
-	// start transaction
-	if (!sql_begin_transaction())
-	{
-		logit(LOG_DEBUG, "sql_save_shopkeeper: failed to start transaction for shop %d",
-		      shop_nr);
+	// The stock is captured now and written by the one persistence writer, in order
+	// with the saves around it.
+	flatfile_shopkeeper_record shop;
+	if (flatfile_shopkeeper_capture(ch, static_cast<uint32_t>(shop_nr), 1, time(0), &shop) !=
+	    player_snapshot_capture_result::ok)
 		return false;
-	}
-
-	int mob_vnum = mob_index[GET_RNUM(ch)].virtual_number;
-	// Fixed shops can be moved by game mechanics after binding. Their stock
-	// remains owned by that shop and cold-restores at its configured home;
-	// only roaming shops persist a changing location.
-	int room_vnum = shop_index[shop_nr].shop_is_roaming ? world[ch->in_room].number :
-							      shop_index[shop_nr].in_room;
-	long save_time = time(0);
-
-	char del_query[128];
-	snprintf(del_query, sizeof(del_query), "DELETE FROM shopkeepers WHERE shop_id=%d", shop_nr);
-	if (!sql_run_query(del_query))
-	{
-		logit(LOG_DEBUG, "sql_save_shopkeeper: failed to delete old shopkeeper %d",
-		      shop_nr);
-		sql_rollback();
-		return false;
-	}
-
-	char ins_query[256];
-	snprintf(
-		ins_query, sizeof(ins_query),
-		"INSERT INTO shopkeepers (shop_id, mob_vnum, room_vnum, save_time) VALUES (%d, %d, %d, FROM_UNIXTIME(NULLIF(%ld,0)))",
-		shop_nr, mob_vnum, room_vnum, save_time);
-
-	if (!sql_run_query(ins_query))
-	{
-		logit(LOG_DEBUG, "sql_save_shopkeeper: failed to insert shopkeeper %d", shop_nr);
-		sql_rollback();
-		return false;
-	}
-
-	int shopkeeper_id = (int)mysql_insert_id(DB);
-
-	if (!sql_save_shopkeeper_affects(shopkeeper_id, ch))
-	{
-		logit(LOG_DEBUG, "sql_save_shopkeeper: failed to save affects for shop %d",
-		      shop_nr);
-		sql_rollback();
-		return false;
-	}
-
-	for (int i = 0; i < MAX_WEAR; i++)
-	{
-		if (ch->equipment[i])
-		{
-			if (!sql_save_shopkeeper_item(shopkeeper_id, ch->equipment[i], i + 1, 0))
-			{
-				logit(LOG_DEBUG,
-				      "sql_save_shopkeeper: failed to save equip slot %d for shop %d",
-				      i, shop_nr);
-				sql_rollback();
-				return false;
-			}
-		}
-	}
-
+	// Fixed shops can be moved by game mechanics after binding. Their stock remains
+	// owned by that shop and cold-restores at its configured home; only roaming shops
+	// persist a changing location.
+	if (!shop_index[shop_nr].shop_is_roaming)
+		shop.room_vnum = shop_index[shop_nr].in_room;
+	// Producing stock is regenerated from the shop's definition, not saved.
 	for (P_obj obj = ch->carrying; obj; obj = obj->next_content)
-	{
-		// skip producing items - they're regenerated from zone definitions
 		if (shop_producing(obj, shop_nr))
-			continue;
-		if (!sql_save_shopkeeper_item(shopkeeper_id, obj, 0, 0))
 		{
-			logit(LOG_DEBUG,
-			      "sql_save_shopkeeper: failed to save inventory item for shop %d",
-			      shop_nr);
-			sql_rollback();
-			return false;
+			std::vector<player_item_snapshot> produced, rest;
+			if (player_item_snapshot_extract_subtree(shop.items, obj->obj_uid,
+								 &produced, &rest) !=
+			    player_snapshot_codec_result::ok)
+				return false;
+			shop.items = std::move(rest);
 		}
-	}
-
-	if (!sql_commit())
-	{
-		logit(LOG_DEBUG, "sql_save_shopkeeper: failed to commit for shop %d", shop_nr);
-		sql_rollback();
-		return false;
-	}
-
-	return true;
+	const size_t bytes = sizeof(shop) + shop.items.size() * sizeof(player_item_snapshot);
+	// The writer's owners are nonzero; shop numbers start at 0.
+	const player_save_submit_result submitted = persistence_writer_submit(
+		persistence_job_kind::shopkeeper, static_cast<uint64_t>(shop_nr) + 1, bytes,
+		[shop]() { return shopkeeper_snapshot_repository_apply_from_pool(shop); });
+	return submitted == player_save_submit_result::accepted ||
+	       submitted == player_save_submit_result::replaced;
 }
 
 bool sql_delete_shopkeeper(int shop_nr)
@@ -10271,8 +10151,13 @@ static P_obj sql_load_saved_item_contents(const char *item_key, int room_vnum, i
 		if (!sql_persistence_item_owner_matches(obj->obj_uid, "room", owner_ref,
 							"sql_load_saved_item_contents"))
 		{
-			*valid = false;
+			// A stale copy another owner holds is left out, and what it contains
+			// moves up a level; the rest of the container still loads.
 			extract_obj(obj, FALSE);
+			append_loaded_objects(&first_obj, &last_obj,
+					      sql_load_saved_item_contents(item_key, room_vnum,
+									   item_id, depth + 1,
+									   source_ids, valid));
 			continue;
 		}
 		obj->db_item_id = item_id;

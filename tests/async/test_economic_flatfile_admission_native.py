@@ -22,7 +22,9 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-admission-") as temporary:
                "src/world/epic_command.c", "src/combat/combat_outcome_command.c",
                "src/economy/economic_command_admission.c",
                "src/persistence/critical_command_coordinator.c",
-               "src/persistence/critical_command_journal.c", *SOURCES[1:]]
+               "src/persistence/critical_command_journal.c",
+               "src/player/player_save_worker.c",
+               "src/persistence/persistence_observability.c", *SOURCES[1:]]
     binary = work / "native"
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
                     "-O1", "-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer",

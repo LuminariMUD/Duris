@@ -22,7 +22,9 @@ def block(text, start):
 
 
 files = (ROOT / "src/core/files.c").read_text()
-start = files.index("if (establishing_baseline)")
+# The block that reads the new player's domains back (the one before it waits for
+# the first save to land).
+start = files.index("if (establishing_baseline)\n\t\t{\n\t\t\tflatfile_player_domain_record domains;")
 hydrate = "bool hydrate(P_char ch) " + block(files, start)
 hydrate = hydrate[:-1] + "return true;\n}"
 utility = (ROOT / "src/core/utility.c").read_text()

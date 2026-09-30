@@ -215,11 +215,10 @@ int main(int argc, char **argv)
 			fs::exists(domains / ".critical-authority-transaction"),
 		"interrupted listing did not preserve its cross-authority intent");
 	flatfile_player_domain_record loaded_player;
+	// The wallet is memory's: the listing reports its fee and leaves the domain alone.
 	require(flatfile_player_domain_load(root.string(), 42, "seller-account", 1, &loaded_player,
 					    &error) == flatfile_player_domain_result::ok &&
-			loaded_player.domains.wallet == std::array<uint64_t, 4>{ 0, 0, 9, 9 } &&
-			loaded_player.domains.wallet_revision == 1 &&
-			loaded_player.domains.bank_revision == 2 &&
+			loaded_player.domains.wallet == std::array<uint64_t, 4>{ 0, 0, 0, 10 } &&
 			!fs::exists(domains / ".critical-authority-transaction"),
 		"player load did not recover interrupted listing after-images");
 	applied = flatfile_auction_repository_apply(root.string(), list_command);
@@ -256,21 +255,11 @@ int main(int argc, char **argv)
 			owned[0].item_revision == 2,
 		"listing did not transfer authoritative custody");
 
-	auction_command_payload stale_bid = {};
-	stale_bid.action = auction_action::bid;
-	stale_bid.auction_id = listed.auction_id;
-	stale_bid.value = 3000;
-	stale_bid.closing_fee_basis_points = 1000;
-	actor(&stale_bid, 43, "bidder-account", "Bidder", 9, 1);
-	critical_command stale_command = command(stale_bid, 2);
-	applied = flatfile_auction_repository_apply(root.string(), stale_command);
-	require(applied.outcome == critical_apply_outcome::terminal_failure &&
-			applied.error_code == ESTALE &&
-			flatfile_auction_repository_apply(root.string(), stale_command).error_code ==
-				ESTALE,
-		"stale bid decision was not durably replayed");
-
-	auction_command_payload bid = stale_bid;
+	auction_command_payload bid = {};
+	bid.action = auction_action::bid;
+	bid.auction_id = listed.auction_id;
+	bid.value = 3000;
+	bid.closing_fee_basis_points = 1000;
 	actor(&bid, 43, "bidder-account", "Bidder", 0, 1);
 	applied = flatfile_auction_repository_apply(root.string(), command(bid, 3));
 	auction_command_result bid_result = result_of(applied);
@@ -399,18 +388,18 @@ int main(int argc, char **argv)
 		"removable listing did not apply");
 	expect_event(root.string(), auction_event_type::listed, removable_result.auction_id,
 		     &error);
-	auction_command_payload unaffordable = {};
-	unaffordable.action = auction_action::bid;
-	unaffordable.auction_id = removable_result.auction_id;
-	unaffordable.value = 6000;
-	unaffordable.closing_fee_basis_points = 1000;
-	actor(&unaffordable, 44, "buyer-account", "Buyer", 1, 2);
-	const critical_command unaffordable_command = command(unaffordable, 12);
-	require(flatfile_auction_repository_apply(root.string(), unaffordable_command).error_code ==
-				ENOSPC &&
-			flatfile_auction_repository_apply(root.string(), unaffordable_command)
-					.error_code == ENOSPC,
-		"insufficient auction bid was not rolled back and durably rejected");
+	// A removed auction gives the winning bid back to its bidder.
+	auction_command_payload removed_bid = {};
+	removed_bid.action = auction_action::bid;
+	removed_bid.auction_id = removable_result.auction_id;
+	removed_bid.value = 2000;
+	removed_bid.closing_fee_basis_points = 1000;
+	actor(&removed_bid, 44, "buyer-account", "Buyer", 1, 2);
+	require(flatfile_auction_repository_apply(root.string(), command(removed_bid, 12)).outcome ==
+			critical_apply_outcome::applied,
+		"bid on the removable listing did not apply");
+	expect_event(root.string(), auction_event_type::bid_placed, removable_result.auction_id,
+		     &error);
 	auction_command_payload remove = {};
 	remove.action = auction_action::remove;
 	remove.auction_id = removable_result.auction_id;
@@ -418,8 +407,13 @@ int main(int argc, char **argv)
 	applied = flatfile_auction_repository_apply(root.string(), command(remove, 13));
 	require(applied.outcome == critical_apply_outcome::applied &&
 			result_of(applied).event_type == auction_event_type::removed &&
-			result_of(applied).winner_pid == 0,
+			result_of(applied).winner_pid == 44,
 		"open auction removal did not stage seller custody");
+	flatfile_auction_pickup_projection refunded_bidder;
+	require(flatfile_auction_find_pickup(root.string(), 44, &refunded_bidder, &error) ==
+				flatfile_auction_query_result::ok &&
+			refunded_bidder.money == 2000,
+		"a removed auction kept the winning bid");
 	expect_event(root.string(), auction_event_type::removed, removable_result.auction_id,
 		     &error);
 	auction_command_payload removed_claim = {};

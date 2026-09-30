@@ -134,7 +134,8 @@ int main()
 
 SQL_SOURCES = [
     "persistence/critical_command.c", "world/epic_command.c", "economy/currency_command.c",
-    "item/item_transfer_command.c", "item/item_transfer_repository.c",
+    "item/item_transfer_command.c", "item/item_transfer_repository.c", "item/item_claim_repository.c", "item/item_claim.c",
+    "persistence/dupe_log.c", "persistence/persistence_observability.c",
     "economy/auction_command.c", "economy/auction_repository.c",
     "combat/combat_outcome_command.c", "combat/combat_outcome_repository.c",
     "guild/artifact_guild_command.c", "guild/artifact_guild_repository.c",

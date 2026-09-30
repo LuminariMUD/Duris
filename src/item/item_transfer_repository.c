@@ -1,4 +1,5 @@
 #include "item/item_transfer_repository.h"
+#include "item/item_claim_repository.h"
 #include "core/defines.h"
 #include "player/player_snapshot_codec.h"
 #include "core/structs.h"
@@ -457,20 +458,20 @@ bool materialize_direct_player_items(MYSQL *connection, const item_transfer_payl
 		}
 	}
 
+	// A container the player gained in memory may have no row yet; the item is then
+	// written loose, and the player's next save writes both where they are.
 	uint64_t external_parent_id = 0;
 	if (payload.target_parent_item_uid)
 	{
 		std::vector<uint64_t> row;
-		if (!one_row(connection,
-			     "SELECT id FROM player_items WHERE pid=" +
-				     std::to_string(payload.to_owner.id) + " AND obj_uid=" +
-				     std::to_string(payload.target_parent_item_uid) + " FOR UPDATE",
-			     &row))
-		{
-			errno = ESTALE;
+		if (one_row(connection,
+			    "SELECT id FROM player_items WHERE pid=" +
+				    std::to_string(payload.to_owner.id) + " AND obj_uid=" +
+				    std::to_string(payload.target_parent_item_uid) + " FOR UPDATE",
+			    &row))
+			external_parent_id = row[0];
+		else if (errno != EILSEQ)
 			return false;
-		}
-		external_parent_id = row[0];
 	}
 
 	// Lock and detach every selected physical row before changing owners or
@@ -1953,6 +1954,12 @@ bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critica
 		return false;
 	result->from_owner_revision = from_revision;
 	result->to_owner_revision = to_revision;
+	// Memory is the authority for a player, room, corpse, locker or pet: saves move
+	// their revisions, so a transfer does not fence on them.
+	if (item_claim_owner_is_memory_held(payload.from_owner.type))
+		payload.expected_from_revision = from_revision;
+	if (item_claim_owner_is_memory_held(payload.to_owner.type))
+		payload.expected_to_revision = to_revision;
 	if (from_revision != payload.expected_from_revision ||
 	    to_revision != payload.expected_to_revision)
 	{
@@ -1997,6 +2004,30 @@ bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critica
 	}
 	else
 	{
+		// Take the items from whatever the ownership record still says, as a save
+		// of their holder would.
+		if (item_claim_owner_is_memory_held(payload.from_owner.type))
+			for (size_t index = 0; index < payload.item_count; ++index)
+			{
+				item_transfer_entry &entry = payload.items[index];
+				uint64_t revision = 0;
+				bool refused = false;
+				if (const unsigned int failed = claim_transfer_item(
+					    connection, payload.from_owner, entry.item_uid,
+					    entry.root_item_uid, &entry.parent_item_uid, entry.vnum,
+					    &revision, &refused))
+				{
+					errno = static_cast<int>(failed);
+					return false;
+				}
+				if (refused)
+				{
+					*result_code = ESTALE;
+					return true;
+				}
+				entry.expected_item_revision = revision;
+				entry.expected_state = item_custody_state::active;
+			}
 		std::vector<uint64_t> source_roots;
 		try
 		{
@@ -2103,6 +2134,26 @@ bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critica
 				return true;
 			}
 		}
+	}
+	if (payload.target_parent_item_uid &&
+	    item_claim_owner_is_memory_held(payload.to_owner.type))
+	{
+		// The container the items go into is where memory holds it.
+		uint64_t revision = 0;
+		bool refused = false;
+		if (const unsigned int failed = claim_transfer_item(
+			    connection, payload.to_owner, payload.target_parent_item_uid,
+			    payload.target_root_item_uid, nullptr, 0, &revision, &refused))
+		{
+			errno = static_cast<int>(failed);
+			return false;
+		}
+		if (refused)
+		{
+			*result_code = ESTALE;
+			return true;
+		}
+		payload.expected_target_parent_revision = revision;
 	}
 	if (payload.target_parent_item_uid)
 	{

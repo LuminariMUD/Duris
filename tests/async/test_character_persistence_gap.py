@@ -102,59 +102,27 @@ require(
     "a new character with no live room must save the empty pet set at its resolved save room",
 )
 
-pulse = section(SAVE_PIPELINE, "void player_save_pipeline_pulse(void)", "\n}\n")
+completion = section(SAVE_PIPELINE, "void finish_completion(", "\n}\n")
 require(
-    "player_save_apply_outcome::terminal_failure" in pulse and "ENOENT" in pulse,
+    "completion.error_code == ENOENT" in completion,
     "the pulse must detect the missing-baseline apply failure",
 )
 require(
-    "SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE)" in pulse
-    and "outcome=missing_baseline" in pulse,
-    "a missing baseline row must re-arm the synchronous fallback and be logged",
+    "SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE)" in completion
+    and "write_failed" in completion,
+    "a missing baseline row must re-arm the synchronous fallback and be reported",
 )
 
-# --- 2. death terminal-save recovery ----------------------------------------------
+# --- 2. a death saves and leaves at once -----------------------------------------
 require(
-    "static void event_death_extract_retry(" in FIGHT
-    and "static void schedule_death_extract_retry(" in FIGHT,
-    "death recovery event is missing",
+    "event_death_extract_retry" not in FIGHT and "schedule_death_extract_retry" not in FIGHT,
+    "a death no longer holds the character for a recovery event",
 )
 die_body = section(FIGHT, "void die(P_char ch, P_char killer)", "\nvoid ")
 require(
-    "!persistence_save_character_terminal(ch, RENT_DEATH)" in die_body
-    and "schedule_death_extract_retry(ch, death_corpse_uid," in die_body,
-    "die() must schedule the recovery when the terminal save fails",
-)
-retry = section(FIGHT, "static void event_death_extract_retry(P_char ch, P_char victim", "\nvoid die(")
-require(
-    "persistence_save_character_terminal(ch, RENT_DEATH)" in retry,
-    "the recovery event must re-attempt the terminal save",
-)
-release = section(
-    FIGHT,
-    "static void release_after_terminal_death(P_char ch, const char *outcome)",
-    "\n/** Record the refused death disposition",
-)
-require(
-    "release_after_terminal_death(ch," in retry
-    and "extract_char_after_terminal_save(ch)" in release,
-    "the recovery event must complete saved-item extraction",
-)
-require(
-    "GET_STAT(ch) != STAT_DEAD" in retry,
-    "the recovery event must abandon extraction after resurrection",
-)
-require(
-    "schedule_death_extract_retry(ch, context.corpse_uid, previous_delay * 2)" in retry,
-    "a failed retry must reschedule with backoff",
-)
-require(
-    "NULL, NULL, 0, &context" in FIGHT and "uint64_t corpse_uid;" in FIGHT,
-    "the recovery event must retain corpse identity without binding its lifetime",
-)
-require(
-    "#define DEATH_EXTRACT_RETRY_MAX" in FIGHT,
-    "the retry backoff must be clamped",
+    die_body.index("persistence_save_character_terminal(ch, RENT_DEATH)")
+    < die_body.index("extract_char_after_terminal_save(ch)"),
+    "die() must queue the player's save before it extracts the character",
 )
 
 # --- 4. extra descriptions / affects are replaced, not appended -------------------
@@ -259,17 +227,14 @@ require(
     "the SESSION03 item graph failure must be logged",
 )
 require(
-    LOAD_MATERIALIZE.count("component=ownership") == 3,
-    "all three ownership hydration failures must be logged",
+    LOAD_MATERIALIZE.count("component=ownership") == 1
+    and "outcome=hydrate_skipped" in LOAD_MATERIALIZE,
+    "a skipped in-memory ownership hydration must be logged",
 )
 
-# Full loads reconstruct coin payloads with one owner-scoped query, outside the
-# per-item loop; adding inventory items must not add per-item SQL requests.
-coin_load = section(LOAD_REPOSITORY, "const std::string coin_sql =", "while (MYSQL_ROW row = mysql_fetch_row(coin_rows.get()))")
-require(coin_load.count("query(connection, coin_sql, result)") == 1,
-        "coin payloads must use one batched query")
-require("own.owner_id=" in coin_load and "own.coin_payload IS NOT NULL" in coin_load,
-        "coin payload fetch must be scoped to the player's authoritative piles")
+# A coin pile loads with the other items, from what the save wrote: no per-item or
+# coin-specific query.
+require("coin_sql" not in LOAD_REPOSITORY, "coin piles must load with the other items")
 
 menu = section(ACCOUNT, "void display_account_menu(P_desc d, char *arg)", "\n}\n")
 require(

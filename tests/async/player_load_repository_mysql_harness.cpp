@@ -1,4 +1,6 @@
 #include "player/player_load_repository.h"
+#include "player/player_snapshot_codec.h"
+#include "core/defines.h"
 #include "item/trophy_state.h"
 #include "persistence/persistence_observability.h"
 
@@ -306,12 +308,11 @@ int main()
 	assert(trophy.snapshot.trophies[1].experience == INT_MAX);
 	execute_sql(connection, "UPDATE zone_trophy SET exp=-1 WHERE pid=" + std::to_string(pid) +
 					" AND zone_number=12");
-	// Since #531 only status and identity can refuse a load: a trophy row that cannot be
-	// valid leaves the optional components out and degrades it.
+	// A trophy row that cannot be valid is left behind; the load still succeeds.
 	const auto bad_trophy = execute_load(connection, request, 811);
-	assert(bad_trophy.outcome == player_load_outcome::degraded &&
-	       (bad_trophy.degraded_components & PLAYER_LOAD_DEGRADED_COMPONENTS) &&
-	       bad_trophy.snapshot.trophies.empty());
+	assert(bad_trophy.outcome == player_load_outcome::applied &&
+	       bad_trophy.snapshot.trophies.size() == 1 &&
+	       bad_trophy.snapshot.trophies[0].experience == INT_MAX);
 	execute_sql(connection, "DELETE FROM zone_trophy WHERE pid=" + std::to_string(pid));
 	std::string trophy_rows = "INSERT INTO zone_trophy(pid,zone_number,exp) VALUES ";
 	for (size_t index = 0; index < ZONE_TROPHY_MAX_ZONES; ++index)
@@ -329,14 +330,11 @@ int main()
 	const uint64_t before_rows = session_rows_sent(connection);
 	const auto oversized_trophy = execute_load(connection, request, 814);
 	const uint64_t sent_rows = session_rows_sent(connection) - before_rows;
-	assert(oversized_trophy.outcome == player_load_outcome::degraded &&
-	       (oversized_trophy.degraded_components & PLAYER_LOAD_DEGRADED_COMPONENTS) &&
-	       oversized_trophy.snapshot.trophies.empty());
-	// Count rows sent by the server, not just rows visited by our callback:
-	// mysql_store_result must not buffer an unbounded result before the application
-	// detects the extra entry. The load goes on after the limit, and its single-row
-	// reads are not all visited by a callback, so the bound is the second batch.
-	assert(sent_rows < oversized_trophy.metrics.row_count + ZONE_TROPHY_MAX_ZONES);
+	assert(oversized_trophy.outcome == player_load_outcome::limit_exceeded);
+	// Count rows sent by the server, not just rows visited by our callback. The
+	// first status query itself contributes one row. mysql_store_result must not
+	// buffer an unbounded result before the application detects the extra entry.
+	assert(sent_rows <= oversized_trophy.metrics.row_count + 1);
 	execute_sql(connection, "DELETE FROM zone_trophy WHERE pid=" + std::to_string(pid));
 	trophy = execute_load(connection, request, 813);
 	assert(trophy.outcome == player_load_outcome::applied && trophy.snapshot.trophies.empty());
@@ -466,24 +464,20 @@ int main()
 		    "DELETE FROM item_owner_revision WHERE owner_type=3 AND owner_id=1200 AND "
 		    "owner_context_id=0");
 
-	// Losing a container's payload row must not take its contents down with it: item
-	// 1002 sits inside 1001, and orphaning 1001 promotes 1002 to the top level.
+	// A container with no ownership row is nobody else's: it loads where its payload row
+	// puts it and keeps its contents. Item 1002 sits inside 1001; a slot recorded for a
+	// nested item is dropped.
 	execute_sql(connection, "UPDATE player_items SET equip_slot=5 WHERE id=1002");
 	execute_sql(connection, "DELETE FROM item_current_owner WHERE item_uid=900001");
-	player_load_result promoted = execute_load(connection, request, 92);
-	assert(promoted.outcome == player_load_outcome::applied);
-	assert(promoted.snapshot.items.size() == 2 && promoted.authoritative_item_count == 2);
-	assert(promoted.stale_item_rows == 1 && promoted.promoted_item_rows == 1 &&
-	       promoted.repaired_item_rows == 1);
-	for (size_t index = 0; index < promoted.item_identities.size(); ++index)
-	{
-		assert(promoted.snapshot.items[index].parent_index == PLAYER_SNAPSHOT_NO_PARENT);
-		if (promoted.item_identities[index].item_uid == 900002)
-			assert(promoted.snapshot.items[index].equipment_slot == 0);
-		assert(!promoted.item_identities[index].parent_item_uid);
-		assert(promoted.item_identities[index].root_item_uid ==
-		       promoted.item_identities[index].item_uid);
-	}
+	player_load_result unrecorded = execute_load(connection, request, 92);
+	assert(unrecorded.outcome == player_load_outcome::applied);
+	assert(unrecorded.snapshot.items.size() == 3 && unrecorded.authoritative_item_count == 3);
+	assert(unrecorded.stale_item_rows == 0 && unrecorded.promoted_item_rows == 0 &&
+	       unrecorded.repaired_item_rows == 1);
+	assert(unrecorded.snapshot.items[1].parent_index == 0 &&
+	       unrecorded.snapshot.items[1].equipment_slot == 0 &&
+	       unrecorded.item_identities[1].root_item_uid == 900001);
+	execute_sql(connection, "UPDATE player_items SET equip_slot=0 WHERE id=1002");
 	execute_sql(connection,
 		    "INSERT INTO item_current_owner(item_uid,root_item_uid,parent_item_uid,"
 		    "owner_type,owner_id,owner_context_id,item_revision,vnum,state) VALUES"
@@ -549,15 +543,14 @@ int main()
 		    "DELETE FROM item_owner_revision WHERE owner_type=3 AND owner_id=1201 AND "
 		    "owner_context_id=0");
 
-	// Pet payload without any custody row at all is one skippable row, not a refusal:
-	// an orphan must never lock the owning character out of the game.
+	// A pet payload row nobody has recorded is the pet's owner's, and loads.
 	execute_sql(connection, "DELETE FROM item_current_owner WHERE item_uid=910002");
 	player_load_result pet_orphan = execute_load(connection, request, 89);
 	assert(pet_orphan.outcome == player_load_outcome::applied);
 	assert(pet_orphan.snapshot.pets.size() == 1 &&
-	       pet_orphan.snapshot.pets[0].items.size() == 1);
-	assert(pet_orphan.stale_item_rows == 1 && pet_orphan.missing_payload_rows == 0);
-	assert(pet_orphan.authoritative_item_count == 4);
+	       pet_orphan.snapshot.pets[0].items.size() == 2);
+	assert(pet_orphan.stale_item_rows == 0 && pet_orphan.missing_payload_rows == 0);
+	assert(pet_orphan.authoritative_item_count == 5);
 	// A retained legacy pet-item row may predate durable UIDs entirely. With no UID
 	// and no custody authority, it is the same skippable payload rather than a login
 	// refusal; the row remains available for a separate recovery disposition.
@@ -588,21 +581,19 @@ int main()
 		    "item_condition) VALUES(1003," +
 			    std::to_string(pid) + ",102,1,1,4,5,-1,0,0,0,0,0,0,0,0,0,900003,98)");
 
-	// Payload/custody vnum disagreement publishes no items, and degrades the load.
+	// The payload row is what the character's save wrote; an ownership row that names
+	// the character with another vnum does not refuse the load.
 	execute_sql(connection, "UPDATE item_current_owner SET vnum=999 WHERE item_uid=900003");
-	const auto vnum_drift = execute_load(connection, request, 83);
-	assert(vnum_drift.outcome == player_load_outcome::degraded &&
-	       (vnum_drift.degraded_components & PLAYER_LOAD_DEGRADED_ITEMS) &&
-	       vnum_drift.snapshot.items.empty());
+	player_load_result vnum_drift = execute_load(connection, request, 83);
+	assert(vnum_drift.outcome == player_load_outcome::applied &&
+	       vnum_drift.snapshot.items.size() == 3 && vnum_drift.snapshot.items[2].vnum == 102);
 	execute_sql(connection, "UPDATE item_current_owner SET vnum=102 WHERE item_uid=900003");
 
-	// More than four distinct static affects is over the limit: no items, a degraded load.
+	// More than four distinct static affects is an explicit limit outcome.
 	execute_sql(connection, "INSERT INTO player_item_affects(item_id,location,modifier) VALUES"
 				"(1002,3,1),(1002,4,1),(1002,5,1)");
-	const auto affect_limit = execute_load(connection, request, 84);
-	assert(affect_limit.outcome == player_load_outcome::degraded &&
-	       (affect_limit.degraded_components & PLAYER_LOAD_DEGRADED_ITEMS) &&
-	       affect_limit.snapshot.items.empty());
+	assert(execute_load(connection, request, 84).outcome ==
+	       player_load_outcome::limit_exceeded);
 	execute_sql(connection, "DELETE FROM player_item_affects WHERE location>=3");
 
 	// Empty ownership still carries and validates its owner revision.
@@ -621,17 +612,53 @@ int main()
 	assert(never_owned.item_owner_revision == 0 &&
 	       never_owned.metrics.query_count == PLAYER_LOAD_QUERY_MAX);
 
-	// Serialized payload without any custody row is the orphan that used to lock the
-	// character out for good. It is skipped and counted, and the load still applies.
+	// A payload row with no ownership row at all is an item nobody else has recorded:
+	// it loads, and the character's next save records it.
 	execute_sql(connection,
 		    "INSERT INTO player_items(id,pid,vnum,equip_slot,quantity,obj_uid) VALUES"
 		    "(2001," +
 			    std::to_string(pid) + ",101,0,1,900101)");
 	player_load_result orphan_payload = execute_load(connection, request, 87);
 	assert(orphan_payload.outcome == player_load_outcome::applied);
-	assert(orphan_payload.snapshot.items.empty() && orphan_payload.item_identities.empty());
-	assert(orphan_payload.stale_item_rows == 1 && orphan_payload.missing_payload_rows == 0);
-	assert(orphan_payload.authoritative_item_count == 0);
+	assert(orphan_payload.snapshot.items.size() == 1 &&
+	       orphan_payload.item_identities.size() == 1 &&
+	       orphan_payload.item_identities[0].item_uid == 900101);
+	assert(orphan_payload.stale_item_rows == 0 && orphan_payload.missing_payload_rows == 0);
+	assert(orphan_payload.authoritative_item_count == 1);
+
+	// A coin pile whose custody row still holds the amount an older server's coin
+	// transaction wrote loads the amount the save wrote: memory has moved coins since.
+	player_item_snapshot legacy_pile = {};
+	legacy_pile.object_uid = 900102;
+	legacy_pile.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	legacy_pile.vnum = 3;
+	legacy_pile.type = ITEM_MONEY;
+	legacy_pile.name = "coins";
+	legacy_pile.values[0] = 5;
+	std::vector<uint8_t> legacy_payload;
+	assert(player_item_snapshot_list_encode({ legacy_pile }, &legacy_payload) ==
+	       player_snapshot_codec_result::ok);
+	std::string legacy_hex;
+	for (uint8_t byte : legacy_payload)
+	{
+		static const char digits[] = "0123456789abcdef";
+		legacy_hex += digits[byte >> 4];
+		legacy_hex += digits[byte & 15];
+	}
+	execute_sql(connection,
+		    "INSERT INTO player_items(id,pid,vnum,equip_slot,quantity,item_type,value0,"
+		    "name,obj_uid) VALUES(2002," +
+			    std::to_string(pid) + ",3,0,1,20,3,'coins',900102)");
+	execute_sql(
+		connection,
+		"INSERT INTO item_current_owner(item_uid,root_item_uid,owner_type,owner_id,"
+		"owner_context_id,item_revision,vnum,state,coin_payload) VALUES(900102,900102,1," +
+			std::to_string(pid) + ",0,4,3,1,UNHEX('" + legacy_hex + "'))");
+	player_load_result legacy_coins = execute_load(connection, request, 96);
+	assert(legacy_coins.outcome == player_load_outcome::applied &&
+	       legacy_coins.snapshot.items.size() == 2 && legacy_coins.stale_item_rows == 0);
+	assert(legacy_coins.snapshot.items[1].object_uid == 900102 &&
+	       legacy_coins.snapshot.items[1].values[0] == 3);
 
 	request.request_id = 0;
 	assert(!player_load_request_valid(request, persistence_observability_now_usec()));

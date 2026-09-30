@@ -13903,7 +13903,6 @@ int necro_dracolich(P_char ch, P_char /*pl*/, int cmd, char * /*arg*/)
 
 	if (cmd == CMD_DEATH)
 	{
-		check_saved_corpse(ch);
 		for (t_obj = ch->carrying; t_obj; t_obj = next)
 		{
 			next = t_obj->next_content;

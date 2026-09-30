@@ -86,6 +86,7 @@ void account_select_char(P_desc, char *);
 void account_confirm_char(P_desc, char *);
 void account_new_char(P_desc, char *);
 void account_delete_char(P_desc, char *);
+void account_delete_char_loaded(P_desc);
 void account_display_info(P_desc, char *);
 void delete_account(P_desc, char *);
 void verify_delete_account(P_desc, char *);
@@ -1083,7 +1084,6 @@ void check_killer(P_char, P_char);
 void death_cry(P_char);
 void death_rattle(P_char);
 void die(P_char, P_char);
-void death_extract_retry_pulse(void);
 void do_trophy(P_char, char *, int);
 void group_gain(P_char, P_char);
 float group_exp_modifier(P_char ch);
@@ -1359,6 +1359,8 @@ void extract_obj(P_obj obj,
 // If it was actually in game, takeable by players,
 //   and it's going away completely, then use.
 void obj_from_char(P_obj);
+// The object a pointer kept across a wait still names, or NULL once it was extracted.
+P_obj find_live_object(P_obj expected, uint64_t uid);
 void obj_from_obj(P_obj);
 bool obj_can_nest(P_obj obj, P_obj obj_to);
 bool obj_is_in_container(P_obj obj, P_obj container);

@@ -10,7 +10,7 @@ from _paths import source
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCES = (
-    "flatfile_item_repository.c", "flatfile_collector_repository.c",
+    "flatfile_item_repository.c", "item_claim.c", "dupe_log.c", "flatfile_collector_repository.c",
     "collector_command.c", "collector_codec.c", "collector_policy.c",
     "coin_transfer_command.c", "flatfile_player_snapshot_file.c",
     "flatfile_corpse_repository.c", "flatfile_shop_trade_repository.c",

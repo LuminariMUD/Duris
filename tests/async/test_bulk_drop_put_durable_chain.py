@@ -78,19 +78,9 @@ ok &= check(
     and 'strcmp(obj_name, "all.coins")' in do_put,
 )
 ok &= check(
-    "active owned transients use durable movement while unowned transients stay synchronous",
-    normalize_cxx(ownership_filter_body)
-    == normalize_cxx(
-        """if (!object || object->obj_uid == 0 || object->type == ITEM_MONEY ||
-        (object->type == ITEM_CORPSE &&
-         IS_SET(object->value[CORPSE_FLAGS], PC_CORPSE)))
-            return false;
-        if (!IS_SET(object->extra_flags, ITEM_TRANSIENT))
-            return true;
-        item_ownership_runtime_entry ownership = {};
-        return item_ownership_runtime_lookup(object->obj_uid, &ownership) &&
-               ownership.state == item_custody_state::active;"""
-    ),
+    "memory is the authority: every item takes the in-memory branch",
+    "return false;" in ownership_filter_body
+    and "item_ownership_runtime_lookup" not in ownership_filter_body,
 )
 
 ok &= check(

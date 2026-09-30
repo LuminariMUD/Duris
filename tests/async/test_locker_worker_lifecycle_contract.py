@@ -1,13 +1,12 @@
 from _paths import SRC
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
 src = (SRC / "locker_async.c").read_text()
 
-assert "g_worker_created" in src
-assert "locker_async_worker_available" in src
+# Locker saves run on the one persistence writer; the locker module starts no
+# thread of its own and has none to join at shutdown.
+assert "pthread_create" not in src and "pthread_join" not in src
+assert "g_worker_created" not in src
+assert "return player_save_worker_health_copy().running;" in src
 assert "!g_inited || !locker_async_worker_available()" in src
-assert "join_created = g_worker_created" in src
-assert "pthread_join(g_worker_tid, NULL)" in src
-assert "g_worker_created = 0" in src
-assert "Creation succeeded, so join ownership" in src
+assert "persistence_job_kind::locker" in src
+print("locker saves use the one persistence writer")

@@ -1,32 +1,25 @@
-# Player Save Journal
+# Player Save Journal (retired)
 
-The revisioned player-save pipeline uses the absolute `PLAYER_SAVE_JOURNAL_DIR` path as
-its local durable handoff location. A typical checkout uses
-`runtime/player-journal/`; that directory is intentionally ignored by Git and must
-contain only runtime records. Never copy journal or quarantine files into commits,
-tickets, or logs. Startup fails closed when the variable is absent or not absolute.
+Player saves are no longer journaled. They go straight to the one persistence writer
+(see [Player Save Pipeline](PLAYER_SAVE_PIPELINE.md)); a queued save lives only in
+memory, and a crash loses at most the last 30-second checkpoint.
 
-## Safety Contract
+Servers before the persistence reset kept a journal in `PLAYER_SAVE_JOURNAL_DIR`. If
+that variable is still set, boot replays a leftover journal once through the normal
+save path, before the writer starts:
 
-- The directory must be owned by the server user with mode `0700`.
-- Journal, temporary, and quarantine files use mode `0600` and reject symbolic links.
-- The default journal quota is 256 MiB. New handoffs fail closed when the quota is full.
-- Records older than seven days set an operator backpressure alert; they are not deleted
-  without durable revision evidence.
-- Acknowledged revisions are removed through a synced temporary rewrite, atomic rename,
-  and parent-directory sync.
-- Corrupt, truncated, oversized, and unsupported records are copied to the protected
-  quarantine file before removal by a successful compaction.
+- Records are ordered by PID and revision; exact duplicates are skipped.
+- A record the database already holds, or holds a newer revision of, is skipped.
+- Anything that cannot be applied stays in the file, and the file is renamed
+  `player-save.journal.retired-<milliseconds>`. It is never replayed again, because
+  a later replay would roll the character back over newer saves. An alert names how
+  many records were left.
 
-`world persistence` reports only record counts, bytes, age, replay outcomes, corruption,
-and backpressure. It never prints player IDs or payload values.
+`world persistence` reports `legacy_journal_replayed` and `legacy_journal_retired`.
+Keep retired files: each may hold the only copy of a save that failed before the
+reset. Never copy journal, retired or quarantine files into commits, tickets or logs.
 
-## Recovery
-
-Replay validates framing, CRC32, payload schema, and every DTO bound before calling the
-typed repository. Records are ordered by PID and revision; exact duplicates are skipped.
-Applied, already-applied, and superseded records are checkpointed. A retryable database
-or worker failure stops replay and leaves all remaining records intact.
-
-Do not manually edit the journal. Preserve the protected directory for diagnosis when
-replay reports corruption or an unsupported format.
+The journal format and its safety rules (mode `0700` directory, `0600` files, CRC32
+framing, quarantine of corrupt records) are unchanged; the reader lives in
+`src/player/player_save_journal.c` until the code is removed in Phase 3 of the
+[persistence reset](../ongoing-projects/2026-09-28-persistence-memory-authority-plan.md).

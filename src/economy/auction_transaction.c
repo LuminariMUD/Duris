@@ -26,6 +26,10 @@ struct pending_auction
 	auction_completion_fn completion;
 	bool completion_ready;
 	critical_completion completed;
+	// What the submit took from the wallet: a listing's fee or a bid.
+	int64_t escrow;
+	// A listing's items, taken out of the seller's inventory at submit.
+	std::vector<P_obj> held;
 };
 
 std::unordered_map<std::string, pending_auction> pending;
@@ -62,16 +66,27 @@ bool publish(std::unordered_map<std::string, pending_auction>::iterator found, P
 	const bool committed = decoded &&
 			       (entry.completed.outcome == critical_apply_outcome::applied ||
 				entry.completed.outcome == critical_apply_outcome::already_applied);
-	if (committed && character && result.wallet_revision &&
-	    !currency_transaction_publish_balances(
-		    character, entry.payload.account_name.data(), entry.payload.racewar,
-		    result.wallet, result.bank, result.wallet_revision, result.bank_revision))
-	{
-		if (entry.completion)
-			entry.completion(character, false, {}, ERANGE, entry.payload);
-		pending.erase(found);
-		return false;
-	}
+	// The auction keeps what it charged of the fee or bid the submit took and gives the
+	// rest back, all of it when refused; a money claim brings its money.
+	const int64_t credit = entry.escrow + (committed ? result.wallet_value_delta : 0);
+	// A held item may have been extracted while the listing was in flight.
+	for (size_t index = 0; index < entry.held.size(); ++index)
+		if (P_obj object = find_live_object(entry.held[index],
+						    entry.payload.items[index].item_uid))
+		{
+			if (committed)
+				extract_obj(object);
+			else if (character)
+				obj_to_char(object, character);
+		}
+	if (character && credit > 0)
+		currency_transaction_submit_wallet_value(
+			character, credit,
+			committed && result.action == auction_action::claim_money ?
+				currency_reason_type::auction_pickup :
+				currency_reason_type::refund,
+			entry.payload.auction_id, critical_source_site::command,
+			critical_deadline_class::interactive, nullptr, nullptr, 0);
 	if (committed && result.item_count)
 	{
 		// Settlement advances both owners. Updating only the destination leaves
@@ -126,6 +141,14 @@ bool publish(std::unordered_map<std::string, pending_auction>::iterator found, P
 	return committed;
 }
 
+P_obj carried_item(P_char character, uint64_t item_uid)
+{
+	for (P_obj object = character->carrying; object; object = object->next_content)
+		if (object->obj_uid == item_uid)
+			return object;
+	return nullptr;
+}
+
 bool submit(P_char character, const auction_command_payload &payload,
 	    auction_completion_fn completion, critical_source_site source,
 	    critical_deadline_class deadline)
@@ -139,11 +162,32 @@ bool submit(P_char character, const auction_command_payload &payload,
 	if (!critical_operation_id_generate(&operation_id) ||
 	    !auction_command_build(&command, operation_id, payload, source, deadline))
 		return false;
+	// A listing's fee and a bid leave the wallet now, and the player's save is queued
+	// before the command, so a crash between them loses the money instead of paying it
+	// twice. The completion gives back what the auction did not keep.
+	const int64_t escrow = !payload.actor_pid		      ? 0 :
+			       payload.action == auction_action::list ? payload.listing_fee :
+			       payload.action == auction_action::bid  ? payload.value :
+									0;
+	// A listing's items leave the seller's inventory now too, so no save captured before
+	// the listing commits can claim them back from the auction. The completion extracts
+	// them, or gives them back when the listing is refused.
+	std::vector<P_obj> held;
+	if (payload.actor_pid && payload.action == auction_action::list)
+		for (size_t index = 0; index < payload.item_count; ++index)
+		{
+			P_obj object = carried_item(character, payload.items[index].item_uid);
+			if (!object)
+				return false;
+			held.push_back(object);
+		}
 	pending_auction entry = { .actor_pid = payload.actor_pid,
 				  .payload = payload,
 				  .completion = completion,
 				  .completion_ready = false,
-				  .completed = {} };
+				  .completed = {},
+				  .escrow = std::max<int64_t>(escrow, 0),
+				  .held = held };
 	const std::string key = operation_key(operation_id);
 	try
 	{
@@ -153,11 +197,32 @@ bool submit(P_char character, const auction_command_payload &payload,
 	{
 		return false;
 	}
+	if (escrow > 0 &&
+	    !currency_transaction_submit_wallet_value(
+		    character, -escrow,
+		    payload.action == auction_action::list ? currency_reason_type::auction_listing :
+							     currency_reason_type::auction_bid,
+		    payload.auction_id, source, deadline, nullptr, nullptr, 0))
+	{
+		pending.erase(key);
+		return false;
+	}
+	for (P_obj object : held)
+		obj_from_char(object);
+	if (escrow > 0 || !held.empty())
+		currency_transaction_save_first(character);
 	const critical_submit_result submitted =
 		critical_command_coordinator_submit(std::move(command));
 	if (!critical_submit_result_keeps_operation(submitted))
 	{
 		pending.erase(key);
+		for (P_obj object : held)
+			obj_to_char(object, character);
+		if (escrow > 0)
+			currency_transaction_submit_wallet_value(character, escrow,
+								 currency_reason_type::refund,
+								 payload.auction_id, source,
+								 deadline, nullptr, nullptr, 0);
 		return false;
 	}
 	return true;

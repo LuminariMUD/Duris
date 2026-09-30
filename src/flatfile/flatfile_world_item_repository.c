@@ -2042,3 +2042,161 @@ flatfile_world_item_result flatfile_world_item_prepare_world_corpse_raise(
 	mutation->catalog_revision = catalog.revision;
 	return flatfile_world_item_result::ok;
 }
+
+namespace
+{
+// Removes `taken` from a record's items; what they held and did not take along moves
+// to the top level.
+void strip_items(std::vector<player_item_snapshot> *items,
+		 const std::unordered_set<uint64_t> &taken)
+{
+	if (std::none_of(items->begin(), items->end(), [&](const player_item_snapshot &item)
+			 { return taken.contains(item.object_uid); }))
+		return;
+	std::vector<player_item_snapshot> kept;
+	std::vector<int32_t> remap(items->size(), PLAYER_SNAPSHOT_NO_PARENT);
+	for (size_t index = 0; index < items->size(); ++index)
+	{
+		player_item_snapshot item = std::move((*items)[index]);
+		if (taken.contains(item.object_uid))
+			continue;
+		const bool nested = item.parent_index >= 0 &&
+				    static_cast<size_t>(item.parent_index) < index;
+		item.parent_index = nested ? remap[static_cast<size_t>(item.parent_index)] :
+					     PLAYER_SNAPSHOT_NO_PARENT;
+		remap[index] = static_cast<int32_t>(kept.size());
+		kept.push_back(std::move(item));
+	}
+	*items = std::move(kept);
+}
+
+void strip_everywhere(world_item_catalog *catalog, const std::vector<player_item_snapshot> &items)
+{
+	std::unordered_set<uint64_t> taken;
+	for (const player_item_snapshot &item : items)
+		taken.insert(item.object_uid);
+	for (auto &corpse : catalog->corpses)
+		strip_items(&corpse.items, taken);
+	for (auto &room : catalog->rooms)
+		strip_items(&room.items, taken);
+	for (auto &saved : catalog->saved_items)
+		strip_items(&saved.items, taken);
+	std::erase_if(catalog->saved_items, [](const flatfile_saved_world_item_record &saved)
+		      { return saved.items.empty(); });
+}
+
+flatfile_world_item_result finish_snapshot(world_item_catalog *catalog,
+					   flatfile_authority_operation *operation)
+{
+	++catalog->revision;
+	std::vector<uint8_t> bytes;
+	if (!encode_catalog(*catalog, &bytes))
+		return flatfile_world_item_result::invalid;
+	*operation = { flatfile_authority_store::domains, flatfile_authority_operation_kind::write,
+		       catalog_filename, std::move(bytes) };
+	return flatfile_world_item_result::ok;
+}
+
+flatfile_world_item_result load_for_snapshot(const std::string &root, world_item_catalog *catalog,
+					     std::string *error)
+{
+	const auto loaded = load_catalog(root, catalog, error);
+	if (loaded == flatfile_world_item_result::not_found)
+		*catalog = {};
+	else if (loaded != flatfile_world_item_result::ok)
+		return loaded;
+	return catalog->revision == UINT64_MAX ? flatfile_world_item_result::conflict :
+						 flatfile_world_item_result::ok;
+}
+} // namespace
+
+flatfile_world_item_result flatfile_world_item_prepare_corpse_snapshot(
+	const std::string &root, const flatfile_authority_lock &lock,
+	const flatfile_corpse_record &corpse, bool remove, flatfile_authority_operation *operation,
+	std::string *error)
+{
+	if (root.empty() || !lock.matches(root) || !operation || !corpse.owner_pid ||
+	    !corpse.save_id)
+		return flatfile_world_item_result::invalid;
+	world_item_catalog catalog;
+	try
+	{
+		const auto loaded = load_for_snapshot(root, &catalog, error);
+		if (loaded != flatfile_world_item_result::ok)
+			return loaded;
+		auto found = std::lower_bound(catalog.corpses.begin(), catalog.corpses.end(),
+					      corpse, corpse_less);
+		const bool exists = found != catalog.corpses.end() &&
+				    found->owner_pid == corpse.owner_pid &&
+				    found->save_id == corpse.save_id;
+		if (remove)
+		{
+			if (!exists)
+				return flatfile_world_item_result::unchanged;
+			catalog.corpses.erase(found);
+			return finish_snapshot(&catalog, operation);
+		}
+		if (!exists && catalog.corpses.size() >= corpse_maximum)
+			return flatfile_world_item_result::conflict;
+		const uint64_t revision = exists ? found->revision + 1 : 1;
+		if (exists)
+			found->items.clear();
+		strip_everywhere(&catalog, corpse.items);
+		flatfile_corpse_record record = corpse;
+		record.owner_name = canonical_name(corpse.owner_name);
+		record.revision = revision;
+		if (exists)
+			*found = std::move(record);
+		else
+			catalog.corpses.insert(found, std::move(record));
+	}
+	catch (const std::bad_alloc &)
+	{
+		return flatfile_world_item_result::io_error;
+	}
+	return finish_snapshot(&catalog, operation);
+}
+
+flatfile_world_item_result flatfile_world_item_prepare_room_item_snapshot(
+	const std::string &root, const flatfile_authority_lock &lock, int32_t room_vnum,
+	const std::vector<player_item_snapshot> &items, bool remove,
+	flatfile_authority_operation *operation, std::string *error)
+{
+	if (root.empty() || !lock.matches(root) || !operation || items.empty() ||
+	    (!remove && room_vnum <= 0))
+		return flatfile_world_item_result::invalid;
+	world_item_catalog catalog;
+	try
+	{
+		const auto loaded = load_for_snapshot(root, &catalog, error);
+		if (loaded != flatfile_world_item_result::ok)
+			return loaded;
+		strip_everywhere(&catalog, items);
+		if (!remove)
+		{
+			flatfile_room_item_record key = {};
+			key.room_vnum = room_vnum;
+			auto found = std::lower_bound(catalog.rooms.begin(), catalog.rooms.end(),
+						      key, room_less);
+			if (found == catalog.rooms.end() || found->room_vnum != room_vnum)
+			{
+				if (catalog.rooms.size() >= room_maximum)
+					return flatfile_world_item_result::conflict;
+				found = catalog.rooms.insert(found, key);
+			}
+			++found->revision;
+			const int32_t base = static_cast<int32_t>(found->items.size());
+			for (player_item_snapshot item : items)
+			{
+				if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
+					item.parent_index += base;
+				found->items.push_back(std::move(item));
+			}
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		return flatfile_world_item_result::io_error;
+	}
+	return finish_snapshot(&catalog, operation);
+}

@@ -185,9 +185,10 @@ flatfile_corpse_restore_result materialize_corpse(const std::string &root,
 		return flatfile_corpse_restore_result::unknown_prototype;
 
 	uint64_t owner_revision = 0;
+	std::vector<player_item_snapshot> items;
 	std::vector<player_load_item_identity> identities;
-	const auto ownership = flatfile_corpse_load_item_ownership(root, record, &owner_revision,
-								   &identities, error);
+	const auto ownership = flatfile_corpse_load_item_ownership(
+		root, record, &items, &owner_revision, &identities, error);
 	if (ownership != flatfile_corpse_ownership_result::ok)
 		return ownership == flatfile_corpse_ownership_result::not_found ?
 			       flatfile_corpse_restore_result::item_failure :
@@ -199,13 +200,13 @@ flatfile_corpse_restore_result materialize_corpse(const std::string &root,
 	player_load_item_materialize_metrics metrics = {};
 	const item_owner_identity owner =
 		flatfile_corpse_item_owner(record.owner_pid, record.save_id);
-	if (!record.items.empty() &&
-	    !player_load_item_graph_materialize_detached(
-		    record.items, identities, owner, owner_revision, true, true, &roots, &metrics))
+	if (!items.empty() &&
+	    !player_load_item_graph_materialize_detached(items, identities, owner, owner_revision,
+							 true, true, &roots, &metrics))
 		return metrics.outcome == player_load_item_materialize_outcome::allocation_failure ?
 			       flatfile_corpse_restore_result::allocation_failure :
 			       flatfile_corpse_restore_result::item_failure;
-	if (record.items.empty() && owner_revision &&
+	if (items.empty() && owner_revision &&
 	    !item_ownership_runtime_hydrate_owner(owner, owner_revision))
 		return flatfile_corpse_restore_result::item_failure;
 
@@ -268,9 +269,10 @@ flatfile_corpse_restore_result materialize_room(const std::string &root,
 	const item_owner_identity owner = { item_owner_type::room,
 					    static_cast<uint64_t>(record.room_vnum), 0 };
 	uint64_t owner_revision = 0;
+	std::vector<player_item_snapshot> items;
 	std::vector<player_load_item_identity> identities;
-	const auto ownership = flatfile_room_load_item_ownership(root, record, &owner_revision,
-								 &identities, error);
+	const auto ownership = flatfile_room_load_item_ownership(
+		root, record, &items, &owner_revision, &identities, error);
 	if (ownership != flatfile_corpse_ownership_result::ok)
 		return ownership == flatfile_corpse_ownership_result::not_found ?
 			       flatfile_corpse_restore_result::item_failure :
@@ -279,13 +281,13 @@ flatfile_corpse_restore_result materialize_room(const std::string &root,
 			       flatfile_corpse_restore_result::invalid;
 	std::vector<P_obj> roots;
 	player_load_item_materialize_metrics metrics = {};
-	if (!record.items.empty() &&
-	    !player_load_item_graph_materialize_detached(
-		    record.items, identities, owner, owner_revision, true, true, &roots, &metrics))
+	if (!items.empty() &&
+	    !player_load_item_graph_materialize_detached(items, identities, owner, owner_revision,
+							 true, true, &roots, &metrics))
 		return metrics.outcome == player_load_item_materialize_outcome::allocation_failure ?
 			       flatfile_corpse_restore_result::allocation_failure :
 			       flatfile_corpse_restore_result::item_failure;
-	if (record.items.empty() && !item_ownership_runtime_hydrate_owner(owner, owner_revision))
+	if (items.empty() && !item_ownership_runtime_hydrate_owner(owner, owner_revision))
 		return flatfile_corpse_restore_result::item_failure;
 	P_obj money = nullptr;
 	if (std::any_of(record.money.begin(), record.money.end(),

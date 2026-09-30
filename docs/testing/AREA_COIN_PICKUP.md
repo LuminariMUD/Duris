@@ -18,26 +18,19 @@ grants still retain pending work until publication succeeds.
 
 ## Behavior
 
-- Coin transactions accept any `ITEM_MONEY` snapshot whose UID and vnum match
-  the item-transfer identity. Non-money snapshots and identity mismatches remain
-  invalid.
-- Pickup retains the original vnum in the request, durable payload, and runtime
-  custody record. Wallet credit and pile consumption/remainder still commit in
-  one transaction, with the existing revision and amount checks.
-- Both MariaDB and flat-file repositories handle new area piles and legacy
-  custody rows. Existing rows without a canonical coin payload read their
-  baseline from the recorded owner's saved item payload. No ledger reset or
-  migration is required.
-- Reload uses authoritative remainders and consumption tombstones for area
-  money. The legacy vnum-3 tombstone rule remains compatible with old SQL item
-  rows that did not populate `item_type`.
-- A rejected coin-command build reports its validation reason and player ID in
-  the debug log.
+Coins now move in memory (Phase 2 of the
+[persistence reset](../ongoing-projects/2026-09-28-persistence-memory-authority-plan.md)):
+
+- Get, take and put handle any `ITEM_MONEY` object by type, whatever its vnum, and
+  add a picked-up pile to the wallet at once. The player's save writes the wallet.
+- A pile a player keeps in a container is an ordinary item: the save writes it with
+  its amount and claims it, and a load reads that amount back. An older server kept a
+  pile's amount in its custody row (`coin_payload`); that value is no longer read, so
+  a pile changed in memory cannot come back at its old amount. A pile such a server's
+  coin transaction spent stays spent.
 
 The vnum-3 requirement for the pile created from a player's death wallet is
 unchanged: that check validates a specific generated object, not ordinary loot.
-The separate inventory-count restriction on taking money from containers is
-outside this fix.
 
 ## Regression checks
 
@@ -45,8 +38,8 @@ outside this fix.
 and copies the actual statue and hidden-money prototypes into the minimal world,
 changing only their vnums. An `O` reset places the statue and a `P` reset puts the
 coins inside it. Each fresh character searches the statue and picks up its coins
-using one of `get coins statue`, `get all.coins statue`, and `take all statue`.
-The test checks a durable ten-platinum wallet credit, an empty statue, and no
+using one of `get coins statue`, `get all.coins statue`, and `take all statue`,
+then saves. The test checks a durable ten-platinum wallet, an empty statue, and no
 additional credit on a repeated pickup. `--server /absolute/path/to/dms_new` can
 reuse an already built flat-file binary. All account, world, and authority data
 are synthetic and temporary; the checkout's `.env` is not read.
@@ -54,21 +47,13 @@ are synthetic and temporary; the checkout's `.env` is not read.
 Additional focused checks:
 
 ```sh
-python3 tests/async/test_coin_custody_lifecycle.py
-python3 tests/async/test_currency_input_queue.py
+python3 tests/async/test_take_coins.py
+python3 tests/async/test_currency_in_memory.py
 python3 tests/async/test_flatfile_item_repository.py
 bash tests/async/run_currency_transaction_schema_mysql.sh
-python3 tests/async/test_creation_grant_reconciliation.py
-python3 tests/async/test_creation_grant_batch_submission.py
 python3 tests/async/test_live_item_movement_contract.py
 ```
 
-The flat-file repository runs its full coin matrix with both vnum 3 and #402013.
-The SQL coin matrix uses #402013, including legacy player, room, corpse, and
-locker custody, partial pickup, replay, rollback, and reload. The command codec
-tests also reject non-money and mismatched-vnum snapshots and verify diagnostics.
-The currency input-queue harness backs `OBJ_VNUM` with real fixture index entries
-and preserves the prototype in captured and materialized snapshots. Its area-coin
-case holds a second pickup behind a pending transaction while allowing `score`,
-then checks rejection/retry, detached restoration of a partial remainder, and
-final consumption under ASan/UBSan in both backend configurations.
+`test_flatfile_item_repository.py` and the player-load harness in
+`run_currency_transaction_schema_mysql.sh` load a pile whose custody row still holds
+an older amount and check that the saved amount wins.

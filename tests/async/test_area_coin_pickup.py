@@ -15,7 +15,7 @@ import tempfile
 import time
 
 from test_flatfile_combat_journey import (
-    ROOT, INSPECTOR, MudClient, available_ports, build_flatfile_server,
+    CHARACTER, ROOT, INSPECTOR, MudClient, available_ports, build_flatfile_server,
     create_character, generate_certificate, inspect_authority, make_fixture,
     require, runtime_logs,
 )
@@ -101,11 +101,9 @@ def run(binary: Path, command: str) -> None:
                         "fixture started with money")
                 client.send(command)
                 client.expect("You get", timeout=30)
-                deadline = time.monotonic() + 15
-                while time.monotonic() < deadline:
-                    if inspect_authority(state)["wallet"] == [0, 0, 0, 10]:
-                        break
-                    time.sleep(0.1)
+                # The coins reach the wallet in memory; the save writes it.
+                client.send("save")
+                client.expect(f"Save complete for {CHARACTER}.", timeout=15)
                 authority = inspect_authority(state)
                 require(authority["wallet"] == [0, 0, 0, 10],
                         "area coin pickup did not durably credit ten platinum")
@@ -116,6 +114,8 @@ def run(binary: Path, command: str) -> None:
                 # Repeating pickup must not mint a second wallet credit.
                 client.send("get coins statue")
                 client.expect("does not contain the coins.", timeout=20)
+                client.send("save")
+                client.expect(f"Save complete for {CHARACTER}.", timeout=15)
                 require(inspect_authority(state)["wallet"] == [0, 0, 0, 10],
                         "repeated pickup duplicated area money")
                 process.send_signal(signal.SIGTERM)

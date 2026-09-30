@@ -1,25 +1,111 @@
 # Player Save Pipeline
 
-Ordinary player checkpoints use one revisioned pipeline:
+Memory is the authority. The database is a copy that catches up through one writer:
 
-1. The game thread marks the affected component bits and seals a bounded immutable
-   snapshot only when dirty work exists.
-2. A bounded dispatcher appends and syncs the typed journal record.
-3. The keyed worker applies the snapshot through the revision-guarded repository.
-4. The game pulse consumes typed completions; the worker checkpoints the journal only
-   after durable revision evidence.
+1. The game thread marks the affected component bits and seals an immutable snapshot
+   only when dirty work exists.
+2. The snapshot goes straight to the one persistence writer, and the character is
+   clean again: the writer has it.
+3. The writer is a single background thread (`src/player/player_save_worker.c`). It
+   applies every queued save in capture order: player saves (with their pets),
+   corpse saves, locker saves, saved room items, shopkeeper saves, bank deltas,
+   critical commands and the game thread's SQL (see below).
+   A newer save of the same owner replaces its queued one only when that is the last
+   job queued. Otherwise it is queued behind, because a job queued after the owner's
+   save may rely on it being written first (the owner money or an item leaves is
+   saved before the one it reaches).
+4. The game pulse consumes typed completions. A lost connection never reaches it:
+   the writer retries that job at the head of the queue, with a backoff capped at
+   five seconds. Any other failure is reported once, the job is dropped, and the
+   owner is marked dirty so its next save carries the state again.
 
 The game-thread checkpoint and completion paths perform no MySQL, Redis, or filesystem
-operation. Redis remains available for reconstructible caches but is not player-save
-durability state. The old Redis dirty set and player-save fork are disabled.
+operation. Nothing is journaled; see [Player Save Journal](PLAYER_SAVE_JOURNAL.md) for
+the one-time replay of a journal left by an older server. A crash loses whatever had
+not reached the database, at most one 30-second `dirty-player-checkpoint`.
+
+## Game-thread SQL
+
+Code on the game thread that needs the database does not query it. It queues the SQL on the
+writer instead (`src/sql/sql_async.h`):
+
+- `sql_queue()` queues a write. `sql_queue_statements()` queues several, and
+  `sql_queue_work()` queues work that reads before it writes.
+- `sql_read()` and `sql_read_for()` queue a read, which sees every write queued before it.
+  The writer copies the rows, and the game thread gets them on a later pulse.
+
+Each `sql` job runs in one transaction. A lost connection is retried, and a commit whose
+outcome is unknown is reported instead of retried. Whatever still queries the game thread's
+connection while the loop runs is counted (`game_loop_queries` in `world persistence`) and
+logged once per site (`game loop query site ...` in `logs/log/status`).
+
+## What a save writes
+
+A player save writes the wallet, epic points, frags and old frags with the rest of the
+character; a bank change is its own `bank` job (see
+[Money lives in memory](CRITICAL_COMMAND_PIPELINE.md#money-lives-in-memory) and
+[Epic points and frags live in memory](CRITICAL_COMMAND_PIPELINE.md#epic-points-and-frags-live-in-memory)).
+A save never refuses. In one transaction it writes what its owner holds in memory and
+makes `item_current_owner` agree (`claim_items()` in `src/item/item_claim_repository.c`;
+the flat-file backend does the same in `flatfile_item_repository_prepare_claim()` and
+commits it with the player file):
+
+- an item with no ownership row gets one;
+- a row naming this owner is corrected if the item moved;
+- a row naming anyone else (a player, corpse, locker, room, pet, auction, shopkeeper
+  or the collector) is taken, and an `item_owner_audit` row records the item, its
+  vnum, the old owner, the new owner and the time (flat-file: a line in
+  `logs/log/item_claims`). An auction listing, a sale and a collection take their
+  items out of memory before their command, so a save captured afterwards never
+  holds what the economy took;
+- a row that says the item was destroyed is left alone: the item and its contents are
+  left out of the save and logged to `logs/log/dupes`. Only a save captured before
+  the destruction can still hold it;
+- a coin pile is claimed like any item. A pile an older server's coin transaction
+  spent stays spent, like any destroyed item.
+
+The owner's revision, and the revision of each owner that lost an item, advances once
+per save that changes them. There is no revision fence: with one writer, every save is
+newer than the last one for that owner. A character with no `player_data` row yet gets
+one. Only the one-time replay of an older server's journal keeps the fence.
+
+`logs/log/dupes` has one line per item a save left out or a load skipped, naming the
+item, its vnum, the owner that lost it and the owner that has it.
+
+## What a load reads
+
+A load takes an item row only if `item_current_owner` has no row for that uid or names
+the loading owner, whatever the row's state. A row naming anyone else makes the item a
+stale or duplicate copy: it is skipped, logged to `logs/log/dupes` as `load_skipped`,
+and the owner's next save no longer writes it. What a skipped container holds moves up
+a level (to the top of the inventory, the corpse, the locker chest or the room item), so
+one stale row never takes the rest of the graph with it. A root that disagrees with the
+graph is corrected, not refused. The same rule applies to player and pet items
+(`player_load_repository.c`; flat-file: `flatfile_player_repository.c`), and to corpses,
+lockers and saved room items through `sql_persistence_item_owner_matches_identity()`.
+The flat-file corpse and room loaders still use their own reconciliation until those
+owners are saved through the writer.
+
+A load always succeeds with the rows that pass the filter; there is no degraded
+admission, no stale-row refusal threshold and no read-only quarantine. Logins never
+block the game loop: the account menu submits the load and the descriptor waits in
+`CON_PLAYER_LOAD` until the load worker answers. If the worker refuses the request, the
+player is asked to try again. Copyover restore, which runs before the game loop starts,
+is the only caller that still waits for a load.
+
+A character is not loaded while it still has a save queued on the writer, or while a
+staff target fence holds it (`player_save_pipeline_load_held()`): the load worker moves
+it to the back of its queue and loads the others meanwhile, so a quick relog always reads
+the latest state. A held load that reaches its deadline is answered `timed_out`. A locker
+cannot be reopened while its save slot is dirty or in flight.
 
 ## Configuration And Health
 
-`PLAYER_SAVE_JOURNAL_DIR` is required and must be an absolute, server-user-owned path.
-Startup fails closed when the journal or worker cannot start. `world persistence`
-reports bounded coordinator depth/bytes, high-water marks, captures, coalescing,
-unchanged checkpoints, append failures, overload, dispatch, completion, and replay
-state. Output contains no player identity or snapshot value.
+The writer needs no configuration. `world persistence` reports the pipeline (marks,
+captures, replacements, unchanged checkpoints, write failures, terminal waits, drain
+failures, legacy journal replay) and the writer (queued and in-flight jobs, bytes,
+oldest age, high-water marks, connection retries, failures, capture-to-apply and apply
+latency). Output contains no player identity or snapshot value.
 
 ## Persistence reporting severity
 
@@ -38,13 +124,8 @@ and numeric-only detail filtering; owner, item UID and event ID arguments are
 omitted from the output at every severity.
 
 Use `ok` after a successful durable operation and `info` for expected progress.
-Death recovery/disposition completion and durable disposition recording are `ok`.
-Ordinary custody waits, undisputed in-flight transfers and successfully submitted
-corpse-item restarts are `info`. Automatic raising skipped while corpse ownership
-is pending is also informational. Failed restart submissions, disputes, missing
-corpses, abandoned recovery, event scheduling failures and failed saves remain
-alerts. A custody wait still escalates after 30 seconds and once per subsequent
-30-second window; normal polls now use `outcome=info` in the file records.
+A death is quiet unless its terminal save fails (`terminal_save_failed` alerts); the
+character leaves at once either way.
 
 Successful deferred-save flushes, flat fallback writes and complete legacy replays
 also use `ok`; failed flushes and partial replays retain alerts. Retired raw-worker
@@ -85,8 +166,7 @@ is promised. Failure counts are also printed on ordinary shutdown.
 Validate bounded admission, blocked I/O, independent sink failures, rotation, and
 drain behavior with `python3 tests/async/test_persistence_log.py`.
 
-Validate routing and privacy with `python3 tests/async/test_persistence_severity.py`;
-`test_death_recovery_alert_level.py` also verifies the timed stall escalation.
+Validate routing and privacy with `python3 tests/async/test_persistence_severity.py`.
 
 ## Terminal Saves And Process Drain
 
@@ -135,61 +215,17 @@ journal handoff. These guarantees do not prevent legitimate storage timeouts or
 operating-system starvation. The controlled retry/crash modes are documented in
 [Testing](../guides/TESTING.md#full-world-save-diagnostics).
 
-## Disputed player deaths
+## Player deaths
 
-A refused corpse handoff records a per-player runtime dispute. The death retry
-captures the corpse, refused inventory, wallet-conversion evidence, and observed
-custody in one bounded death snapshot. SQL applies `player_death_disposition`,
-`player_death_custody`, quarantine of remaining player-owned custody, and the
-cleared player snapshot in one transaction. Flat-file authority publishes the
-same effects with `player-deaths/<pid>-<revision>.death` in its recoverable
-authority transaction. Successfully transferred corpse-owned items stay active;
-quarantine includes remaining durable-only descendants.
-
-Release requires durability for the death revision. Capture/admission failure,
-a missing corpse, or a failed durability fence retains live assets for retry.
-If event admission fails, the live player's fallback due time is serviced by the
-game pulse. A two-second terminal wait is one attempt's budget, not a bound on
-total death recovery. Restart replay applies journaled death evidence idempotently;
-the runtime dispute flag itself is not durable evidence before journal admission.
-
-A death disposition preserves evidence, not automatic restitution. Later ordinary
-saves cannot overwrite it. SQL and file death stores are protected recovery data
-in the [lifecycle manifest](../../migrations/data_lifecycle_manifest.json); retention
-continues until recovery is resolved and the controller approves a purge horizon.
-Do not treat these files as rotating logs. See `test_death_item_custody_contract.py`,
-`test_player_snapshot_capture.py`, `test_player_save_pipeline.py`, and the isolated
-`run_player_death_disposition_mysql.sh` suite for the relevant boundaries.
-
-### Corpse creation batches (#174)
-
-Registered carried roots and their nested contents are captured in one immutable
-`corpse_create` command, within the existing item count and payload size bounds.
-The command advances player/corpse custody revisions together. Publication checks
-every captured node and live containment link before advancing the registry or
-moving any root. A stale live topology retains the committed movement and its
-busy fence; it does not release the player or publish a partial corpse.
-
-After publication, the death callback writes the complete corpse once and advances
-the existing retry event to the next game pulse. The retry still checks currency
-and item work, disputes, and terminal-save durability before extraction. This
-avoids extracting the actor inside the coordinator completion dispatcher. Pending
-currency/reward work remains fenced, and event-admission failure retains the
-existing allocation-free pulse fallback.
-
-Legacy roots without runtime ownership entries retain the existing single-root
-adoption path before the remaining registered roots are batched. Non-transient
-admission refusal enters disputed-death disposition; transient admission conflicts
-remain retryable. Disposition is durable evidence, not automatic restitution.
-No absolute production latency guarantee follows from the batch change: database
-latency, pending currency, and the final corpse snapshot still contribute.
-
-`test_corpse_creation_batch.py` runs production admission, codec, registry, and
-publication code under ASan/UBSan with nested 1/15/100-root fixtures, refusals,
-pending coin work, stale topology, and duplicate completions. The combat journey
-also runs with boons enabled and checks ordinary recovery, conservation, disputed
-custody evidence before release, and exactly-once death consequences on restart.
-
-The [corpse batch verification guide](../operations/corpse-creation-batches.md)
-documents the real MariaDB character journey, isolated database setup, and the
-minimal-world restart coverage limits.
+A death happens at once (persistence reset step 5): `make_corpse()` moves the
+player's items into the corpse in memory, the corpse save claims them, the
+player's save follows, and the character is extracted. There is no recovery
+hold, corpse handoff batch or disputed-death disposition any more. The wallet
+becomes a coin pile in the corpse (Phase 2 step 4); the player's save, with the
+wallet empty, is queued before the corpse's, so a crash between them can lose
+the coins but never leave them in both places. See
+[the persistence reset plan](../ongoing-projects/2026-09-28-persistence-memory-authority-plan.md)
+and `tests/async/test_deaths_happen_at_once.py`. Death evidence already stored by
+older servers (`player_death_disposition`, `player_death_custody`, flat-file
+`player-deaths/`) remains protected recovery data in the
+[lifecycle manifest](../../migrations/data_lifecycle_manifest.json).

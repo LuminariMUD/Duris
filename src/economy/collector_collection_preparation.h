@@ -33,9 +33,9 @@ collector_collection_prepare_outcome
 collector_collection_prepare(const collector::record &entry, uint64_t observed_at,
 			     std::unique_ptr<collector_command_payload> *payload);
 
-// Transaction publication validates the same live topology immediately before
-// changing the runtime ledger. The selected pointer remains valid until the
-// game thread calls collector_collection_detach_live.
+// The submit checks the same live topology, then detaches the selected item: its
+// contents move up to where it was, and it leaves the world until the collection
+// commits (the transaction extracts it) or is refused (it goes back).
 bool collector_collection_live_matches(const collector_command_payload &payload, P_obj *selected);
 bool collector_collection_detach_live(P_obj selected);
 

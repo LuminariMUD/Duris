@@ -1,4 +1,5 @@
 #include "economy/collector_repository.h"
+#include "item/item_claim.h"
 
 #include "economy/collector_custody_boundary.h"
 #include "economy/collector_eligibility.h"
@@ -23,7 +24,6 @@
 
 namespace
 {
-constexpr std::array<int64_t, CURRENCY_DENOMINATION_COUNT> COIN_VALUES = { 1, 10, 100, 1000 };
 
 struct catalog_state
 {
@@ -54,16 +54,6 @@ struct physical_item
 	int64_t cost = 0;
 	int16_t condition = 100;
 	uint16_t quantity = 0;
-};
-
-struct wallet_state
-{
-	uint32_t pid = 0;
-	uint32_t bank_id = 0;
-	currency_vector wallet = {};
-	currency_vector bank = {};
-	uint64_t wallet_revision = 0;
-	uint64_t bank_revision = 0;
 };
 
 bool execute(MYSQL *connection, const std::string &sql)
@@ -990,183 +980,6 @@ bool held_authority(MYSQL *connection, const critical_command &command,
 				  from_revision + 1, to_revision + 1, reason, payload.listing) &&
 	       update_owner_revision(connection, payload.from_owner, from_revision) &&
 	       update_owner_revision(connection, payload.to_owner, to_revision);
-}
-
-int64_t wallet_value(const currency_vector &wallet)
-{
-	int64_t value = 0;
-	for (size_t index = 0; index < wallet.amount.size(); ++index)
-	{
-		if (wallet.amount[index] < 0 ||
-		    wallet.amount[index] > (INT64_MAX - value) / COIN_VALUES[index])
-			return -1;
-		value += wallet.amount[index] * COIN_VALUES[index];
-	}
-	return value;
-}
-
-currency_vector canonical_wallet(int64_t value)
-{
-	currency_vector result = {};
-	for (size_t index = COIN_VALUES.size(); index-- > 0;)
-	{
-		result.amount[index] = value / COIN_VALUES[index];
-		value %= COIN_VALUES[index];
-	}
-	return result;
-}
-
-bool lock_wallet(MYSQL *connection, const collector_command_payload &payload, wallet_state *state,
-		 unsigned int *result_code)
-{
-	const std::string account =
-		escape(connection, payload.account_name.data(),
-		       strnlen(payload.account_name.data(), payload.account_name.size()));
-	if (!execute(connection,
-		     "SELECT account_name,racewar,copper,silver,gold,platinum,wallet_revision "
-		     "FROM player_data WHERE pid=" +
-			     std::to_string(payload.actor_pid) + " FOR UPDATE"))
-		return false;
-	MYSQL_RES *rows = mysql_store_result(connection);
-	MYSQL_ROW row = rows ? mysql_fetch_row(rows) : nullptr;
-	uint64_t values[6] = {};
-	bool ok = row && mysql_num_rows(rows) == 1 && row[0] && row[1] &&
-		  !strcasecmp(row[0], payload.account_name.data()) &&
-		  parse_u64(row[1], &values[0]) && values[0] == payload.racewar;
-	for (size_t index = 2; ok && index < 7; ++index)
-		ok = parse_u64(row[index], &values[index - 1]);
-	if (rows)
-		mysql_free_result(rows);
-	if (!ok)
-	{
-		*result_code = ENOENT;
-		return true;
-	}
-	state->pid = payload.actor_pid;
-	for (size_t index = 0; index < state->wallet.amount.size(); ++index)
-	{
-		if (values[index + 1] > INT_MAX)
-		{
-			*result_code = ERANGE;
-			return true;
-		}
-		state->wallet.amount[index] = static_cast<int64_t>(values[index + 1]);
-	}
-	state->wallet_revision = values[5];
-	if (state->wallet_revision != payload.expected_wallet_revision)
-	{
-		*result_code = ESTALE;
-		return true;
-	}
-	if (!execute(connection,
-		     "SELECT id,bank_copper,bank_silver,bank_gold,bank_platinum,bank_revision "
-		     "FROM account_banks WHERE account_name='" +
-			     account + "' AND racewar=" + std::to_string(payload.racewar) +
-			     " FOR UPDATE"))
-		return false;
-	rows = mysql_store_result(connection);
-	row = rows ? mysql_fetch_row(rows) : nullptr;
-	uint64_t bank[6] = {};
-	ok = row && mysql_num_rows(rows) == 1;
-	for (size_t index = 0; ok && index < 6; ++index)
-		ok = parse_u64(row[index], &bank[index]);
-	if (rows)
-		mysql_free_result(rows);
-	if (!ok || bank[0] > UINT32_MAX)
-	{
-		*result_code = ENOENT;
-		return true;
-	}
-	state->bank_id = static_cast<uint32_t>(bank[0]);
-	for (size_t index = 0; index < state->bank.amount.size(); ++index)
-	{
-		if (bank[index + 1] > INT_MAX)
-		{
-			*result_code = ERANGE;
-			return true;
-		}
-		state->bank.amount[index] = static_cast<int64_t>(bank[index + 1]);
-	}
-	state->bank_revision = bank[5];
-	if (state->bank_revision != payload.expected_bank_revision)
-		*result_code = ESTALE;
-	return true;
-}
-
-bool apply_wallet_purchase(MYSQL *connection, const critical_command &command,
-			   const collector_command_payload &payload, uint64_t price,
-			   wallet_state *state)
-{
-	if (price > static_cast<uint64_t>(INT64_MAX))
-	{
-		errno = ERANGE;
-		return false;
-	}
-	const int64_t before_value = wallet_value(state->wallet);
-	if (before_value < 0 || before_value < static_cast<int64_t>(price) ||
-	    state->wallet_revision == UINT64_MAX || state->bank_revision == UINT64_MAX)
-	{
-		errno = ERANGE;
-		return false;
-	}
-	const currency_vector before = state->wallet;
-	const currency_vector after = canonical_wallet(before_value - static_cast<int64_t>(price));
-	std::string sql =
-		"INSERT IGNORE INTO currency_wallet_baseline(pid,opening_copper,opening_silver,"
-		"opening_gold,opening_platinum,opening_revision) VALUES(" +
-		std::to_string(state->pid);
-	for (int64_t amount : before.amount)
-		sql += "," + std::to_string(amount);
-	sql += "," + std::to_string(state->wallet_revision) + ")";
-	if (!execute(connection, sql))
-		return false;
-	sql = "INSERT IGNORE INTO currency_bank_baseline(bank_id,opening_copper,opening_silver,"
-	      "opening_gold,opening_platinum,opening_revision) VALUES(" +
-	      std::to_string(state->bank_id);
-	for (int64_t amount : state->bank.amount)
-		sql += "," + std::to_string(amount);
-	sql += "," + std::to_string(state->bank_revision) + ")";
-	if (!execute(connection, sql))
-		return false;
-	const uint64_t old_wallet_revision = state->wallet_revision++;
-	const uint64_t old_bank_revision = state->bank_revision++;
-	sql = "UPDATE player_data SET copper=" + std::to_string(after.amount[0]) +
-	      ",silver=" + std::to_string(after.amount[1]) +
-	      ",gold=" + std::to_string(after.amount[2]) +
-	      ",platinum=" + std::to_string(after.amount[3]) +
-	      ",wallet_revision=" + std::to_string(state->wallet_revision) +
-	      " WHERE pid=" + std::to_string(state->pid) +
-	      " AND wallet_revision=" + std::to_string(old_wallet_revision);
-	if (!execute(connection, sql) || mysql_affected_rows(connection) != 1)
-		return false;
-	sql = "UPDATE account_banks SET bank_revision=" + std::to_string(state->bank_revision) +
-	      " WHERE id=" + std::to_string(state->bank_id) +
-	      " AND bank_revision=" + std::to_string(old_bank_revision);
-	if (!execute(connection, sql) || mysql_affected_rows(connection) != 1)
-		return false;
-	state->wallet = after;
-	sql = "INSERT INTO currency_ledger(operation_id,pid,bank_id,wallet_delta_copper,"
-	      "wallet_delta_silver,wallet_delta_gold,wallet_delta_platinum,bank_delta_copper,"
-	      "bank_delta_silver,bank_delta_gold,bank_delta_platinum,wallet_after_copper,"
-	      "wallet_after_silver,wallet_after_gold,wallet_after_platinum,bank_after_copper,"
-	      "bank_after_silver,bank_after_gold,bank_after_platinum,wallet_revision,bank_revision,"
-	      "reason_type,reason_id,source_site) VALUES(UNHEX('" +
-	      operation_hex(command.operation_id) + "')," + std::to_string(state->pid) + "," +
-	      std::to_string(state->bank_id);
-	for (size_t index = 0; index < before.amount.size(); ++index)
-		sql += "," + std::to_string(after.amount[index] - before.amount[index]);
-	for (size_t index = 0; index < state->bank.amount.size(); ++index)
-		sql += ",0";
-	for (int64_t amount : after.amount)
-		sql += "," + std::to_string(amount);
-	for (int64_t amount : state->bank.amount)
-		sql += "," + std::to_string(amount);
-	sql += "," + std::to_string(state->wallet_revision) + "," +
-	       std::to_string(state->bank_revision) + "," +
-	       std::to_string(static_cast<unsigned int>(currency_reason_type::collector_purchase)) +
-	       "," + std::to_string(payload.listing) + "," +
-	       std::to_string(static_cast<unsigned int>(command.source_site)) + ")";
-	return execute(connection, sql);
 }
 
 std::string optional_string(MYSQL *connection, const player_item_snapshot &item, uint8_t mask,
@@ -2172,7 +1985,6 @@ bool collector_repository_execute(MYSQL *connection, const critical_command &com
 
 	collector::record updated = listing.entry;
 	std::vector<uint8_t> item_blob = listing.item_blob;
-	wallet_state wallet;
 	std::vector<authority_item> authority;
 	std::vector<physical_item> physical;
 	std::string physical_table;
@@ -2180,24 +1992,18 @@ bool collector_repository_execute(MYSQL *connection, const critical_command &com
 	uint64_t from_revision = 0, to_revision = 0;
 	int64_t own_weight = 0;
 
-	if (payload.action == collector_action::purchase)
-	{
-		if (!lock_wallet(connection, payload, &wallet, result_code))
-			return false;
-		result->wallet = wallet.wallet;
-		result->bank = wallet.bank;
-		result->wallet_revision = wallet.wallet_revision;
-		result->bank_revision = wallet.bank_revision;
-		if (*result_code)
-			return true;
-	}
-
 	if (payload.item_count)
 	{
 		if (!lock_owners(connection, payload, &from_revision, &to_revision))
 			return false;
 		result->from_owner_revision = from_revision;
 		result->to_owner_revision = to_revision;
+		// Memory is the authority for the player buying and for the room or corpse
+		// an antiquity is collected from: saves move their revisions.
+		if (item_claim_owner_is_memory_held(payload.from_owner.type))
+			payload.expected_from_owner_revision = from_revision;
+		if (item_claim_owner_is_memory_held(payload.to_owner.type))
+			payload.expected_to_owner_revision = to_revision;
 		if (from_revision != payload.expected_from_owner_revision ||
 		    to_revision != payload.expected_to_owner_revision)
 		{
@@ -2265,18 +2071,11 @@ bool collector_repository_execute(MYSQL *connection, const critical_command &com
 		policy = collector::activate(&updated, payload.expected_listing_revision,
 					     payload.observed_at);
 	else if (payload.action == collector_action::purchase)
-	{
-		const int64_t carried_value = wallet_value(wallet.wallet);
-		if (carried_value < 0)
-		{
-			*result_code = ERANGE;
-			return true;
-		}
+		// The wallet is memory's: the submit took the price of the listing at this
+		// revision, so the buyer carries exactly that.
 		policy = collector::purchase(&updated, payload.expected_listing_revision,
-					     payload.actor_pid,
-					     static_cast<uint64_t>(carried_value),
+					     payload.actor_pid, updated.price_value,
 					     payload.capacity_admitted, payload.observed_at);
-	}
 	else if (payload.action == collector_action::expire)
 		policy = collector::expire(&updated, payload.expected_listing_revision,
 					   payload.observed_at);
@@ -2313,13 +2112,6 @@ bool collector_repository_execute(MYSQL *connection, const critical_command &com
 				return false;
 			if (*result_code)
 				return true;
-			if (!apply_wallet_purchase(connection, command, payload,
-						   updated.price_value, &wallet))
-				return false;
-			result->wallet = wallet.wallet;
-			result->bank = wallet.bank;
-			result->wallet_revision = wallet.wallet_revision;
-			result->bank_revision = wallet.bank_revision;
 		}
 		if (!held_authority(connection, command, payload, authority[0], from_revision,
 				    to_revision))

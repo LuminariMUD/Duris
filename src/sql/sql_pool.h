@@ -37,6 +37,11 @@ extern "C"
  * Safe to call more than once. */
 	void sql_pool_shutdown(void);
 
+	/* Shutdown only: stop lending connections, and cut short any query a borrower
+ * is blocked in by shutting its socket down. The borrower sees a lost
+ * connection and returns the handle; sql_pool_shutdown() closes it. */
+	void sql_pool_interrupt_borrowed(void);
+
 	/* ---- Connection borrowing ---- */
 
 	/* Acquire a connection from the pool. Waits up to

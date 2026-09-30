@@ -58,7 +58,7 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
     tests/async/critical_command_repository_link_stubs.c \
     src/persistence/critical_command.c \
     src/world/epic_command.c src/economy/currency_command.c \
-    src/item/item_transfer_command.c src/item/item_transfer_repository.c \
+    src/item/item_transfer_command.c src/item/item_transfer_repository.c src/item/item_claim_repository.c src/persistence/persistence_observability.c src/item/item_claim.c src/persistence/dupe_log.c \
     src/sql/item_extra_descr_codec.c tests/async/item_extra_descr_codec_sql_escape_stub.cpp \
     src/economy/auction_command.c src/economy/auction_repository.c \
     src/combat/combat_outcome_command.c src/combat/combat_outcome_repository.c \

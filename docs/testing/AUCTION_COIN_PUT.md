@@ -75,3 +75,9 @@ sanitizer regression; existing auction transactional-cutover and coin-command
 contract tests; MariaDB and flat-file server builds; source formatting check.
 Live gameplay was exercised with the flat-file backend. A live SQL-backed server
 was not exercised. No production state was changed.
+
+Since Phase 2 of the
+[persistence reset](../ongoing-projects/2026-09-28-persistence-memory-authority-plan.md),
+money moves in memory: the listing fee leaves the wallet when the listing is submitted,
+and coins go into the bag at once. The journey now saves before it reads the wallet
+from disk, and `--expect-regression` only applies to a server from before that change.

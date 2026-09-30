@@ -52,10 +52,12 @@ $CXX $COMMON \
     "$ROOT/src/persistence/critical_command.c" \
     "$ROOT/src/persistence/critical_command_journal.c" \
     "$ROOT/src/persistence/critical_command_coordinator.c" \
+    "$ROOT/src/player/player_save_worker.c" \
+    "$ROOT/src/persistence/persistence_observability.c" \
     "$ROOT/src/player/player_death_restitution_runtime.c" \
     "$ROOT/src/player/player_death_restitution_adapter.c" \
     "$ROOT/tests/async/player_death_restitution_restart_harness.cpp" \
-    -lcrypto -lz -pthread -o "$BUILD/restart"
+    $MYSQL_FLAGS -lcrypto -lz -pthread -o "$BUILD/restart"
 RESTART_JOURNAL="$BUILD/restart-journal"
 rm -rf "$RESTART_JOURNAL"
 "$BUILD/restart" crash "$RESTART_JOURNAL"

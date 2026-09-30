@@ -26,12 +26,14 @@ class CollectorRepositoryTest(unittest.TestCase):
             "item_current_owner",
             "item_owner_revision",
             "item_ownership_ledger",
-            "currency_ledger",
             "player_items",
             "corpse_items",
             "saved_items",
         ):
             self.assertIn(token, source)
+        # The wallet is memory's: a purchase's price left the wallet at submit.
+        self.assertNotIn("currency_ledger", source)
+        self.assertNotIn("account_banks", source)
         self.assertIn("payload.listing >= catalog.next_listing", source)
         self.assertIn("mysql_affected_rows(connection) != 1", source)
 

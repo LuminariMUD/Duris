@@ -447,22 +447,15 @@ its longest tests are the economy accounting harness builds (up to 458 s).
 Three clean runs in a row, which "Done when" asks for, were dropped at the owner's request: one
 clean run of each gate is the evidence.
 
-### When the persistence branch merges
+### On the persistence branch
 
-1. `Makefile` will conflict in `test-db`. Keep master's recipe, and add the branch's three tests to
-   `tests/run_db_tests.sh`:
+Master was merged into `fix/7-persistence-phase-2` on 2026-09-29. Where both sides had changed a
+test, the branch's side was kept, because it describes the branch's server: the loader harness, the
+chaos raise journey, and the link lists of the trophy and output preferences legs. From master the
+branch keeps the `test-db` recipe, the `TEST_DB_PORT` lines, the combat variants, and the currency
+and trophy legs' own loader harness file.
 
-   ```
-   stalled_writer tests/async/run_mysql_stalled_writer_journey.sh
-   player_save_claim tests/async/run_player_save_claim_mysql.sh
-   sql_pool_interrupt tests/async/run_sql_pool_interrupt_mysql.sh
-   ```
-
-   Leave `run_player_load_repository_mysql.sh` out, as change 2 says.
-2. Point `test_player_save_claim.py` at `tests/run_db_tests.sh`.
-3. Where a test file conflicts, take the branch's side: it describes the branch's server. That is
-   the loader harness, the chaos raise journey, the item transfer leg, and the link lists of the
-   locker receipt, output preferences, trophy and currency legs. Keep from master the
-   `TEST_DB_PORT` lines, the combat variants, and the currency and trophy legs' own harness file.
-4. `handler.c` will conflict where master counts a corpse's coin piles. The branch raises in
-   memory and drops that code.
+The list there is 35 tests. It adds the branch's stalled-writer journey and its save claim and
+pool interrupt legs. `test_player_save_claim.py`, `test_items_move_in_memory.py` and
+`test_shutdown_writer_bound.py` look for their leg in the list, not in the `Makefile`.
+`run_player_load_repository_mysql.sh` stays out of it, as change 2 says.

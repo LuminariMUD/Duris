@@ -57,17 +57,19 @@ class ItemCommandPipelineContractTests(unittest.TestCase):
             ACTOBJ.count("item_command_uses_durable_ownership("), 10
         )
         self.assertGreaterEqual(
-            ACTOBJ.count("item_get_source_owner("), 6
+            ACTOBJ.count("item_get_source_owner("), 4
         )
         self.assertEqual(ACTOBJ.count("locker_owner_for_room("), 0)
-        self.assertEqual(ACTOBJ.count("locker_owner_for_container("), 1)
+        self.assertEqual(ACTOBJ.count("locker_owner_for_container("), 0)
         self.assertEqual(ACTOBJ.count("item_command_resolve_drop_destination("), 2)
         self.assertEqual(ACTOBJ.count("item_command_resolve_put_destination("), 6)
 
     def test_policy_has_explicit_boundaries_and_no_live_publication(self):
-        self.assertIn("ITEM_TRANSIENT", POLICY_C)
-        self.assertIn("item_custody_state::active", POLICY_C)
-        self.assertIn("owner_is_virtual_source", (SRC / "item/item_get_policy.c").read_text())
+        # Memory is the authority: commands take their in-memory branch.
+        policy = POLICY_C[POLICY_C.index("bool item_command_uses_durable_ownership("):]
+        policy = policy[: policy.index("\n}\n")]
+        self.assertIn("return false;", policy)
+        self.assertNotIn("item_ownership_runtime", (SRC / "item/item_get_policy.c").read_text())
         self.assertIn("ITEM_CORPSE", POLICY_C)
         self.assertIn("corpse", DOC)
         self.assertIn("item_transfer_reason::locker_deposit", POLICY_C)

@@ -42,6 +42,7 @@ std::thread worker;
 player_load_execute_fn execute_callback = nullptr;
 void *execute_context = nullptr;
 player_load_pipeline_health health = {};
+player_load_hold_fn hold_callback = nullptr;
 uint64_t inflight_id = 0;
 int inflight_pid = 0;
 bool stop_requested = false;
@@ -117,9 +118,6 @@ void record_result_locked(const player_load_result &result)
 	case player_load_outcome::applied:
 		++health.applied;
 		break;
-	case player_load_outcome::degraded:
-		++health.degraded;
-		break;
 	case player_load_outcome::retryable_failure:
 		++health.retryable_failures;
 		break;
@@ -178,11 +176,34 @@ void worker_main()
 	for (;;)
 	{
 		queued_load job = {};
+		bool held_past_deadline = false;
 		{
 			std::unique_lock<std::mutex> lock(pipeline_mutex);
 			work_available.wait(lock, [] { return stop_requested || !jobs.empty(); });
 			if (stop_requested && jobs.empty())
 				break;
+			// A character is not loaded while it still has a save queued, so a quick
+			// relog reads the latest state. Other logins go ahead meanwhile.
+			const player_load_hold_fn held = hold_callback;
+			size_t checked = 0;
+			while (held && checked < jobs.size() && jobs.front().request.pid > 0 &&
+			       !cancelled_ids.count(jobs.front().request.request_id) &&
+			       held(jobs.front().request.pid))
+			{
+				if (jobs.front().request.deadline_usec <= now_usec())
+				{
+					held_past_deadline = true;
+					break;
+				}
+				jobs.push_back(std::move(jobs.front()));
+				jobs.pop_front();
+				++checked;
+			}
+			if (checked && checked == jobs.size() && !held_past_deadline)
+			{
+				work_available.wait_for(lock, std::chrono::milliseconds(10));
+				continue;
+			}
 			job = std::move(jobs.front());
 			jobs.pop_front();
 			inflight_id = job.request.request_id;
@@ -197,12 +218,15 @@ void worker_main()
 			std::lock_guard<std::mutex> lock(pipeline_mutex);
 			if (cancelled_ids.count(job.request.request_id))
 				result.outcome = player_load_outcome::cancelled;
+			else if (held_past_deadline)
+				result.outcome = player_load_outcome::timed_out;
 		}
 		catch (...)
 		{
 			result.outcome = player_load_outcome::retryable_failure;
 		}
-		if (result.outcome != player_load_outcome::cancelled)
+		if (result.outcome != player_load_outcome::cancelled &&
+		    result.outcome != player_load_outcome::timed_out)
 			try
 			{
 				result = execute_callback(job.request, execute_context);
@@ -265,6 +289,13 @@ bool player_load_pipeline_init(player_load_execute_fn execute, void *context)
 		return false;
 	}
 	return true;
+}
+
+void player_load_pipeline_set_hold(player_load_hold_fn held)
+{
+	std::lock_guard<std::mutex> lock(pipeline_mutex);
+	hold_callback = held;
+	work_available.notify_all();
 }
 
 uint64_t player_load_pipeline_next_request_id(void)
@@ -479,11 +510,6 @@ bool player_load_pipeline_pid_pending(int pid)
 		if (result.pid == pid)
 			return true;
 	return false;
-}
-
-bool player_load_pipeline_login_admit(int pid)
-{
-	return pid > 0;
 }
 
 player_load_pipeline_health player_load_pipeline_health_copy(void)

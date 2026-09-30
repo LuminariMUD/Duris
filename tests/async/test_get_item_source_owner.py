@@ -18,7 +18,7 @@ harness = r'''
 #include "core/utils.h"
 #include "classes/necromancy.h"
 #include "item/item_get_policy.h"
-#include "item/item_ownership_runtime.h"
+#include "item/storage_lockers.h"
 #include <cassert>
 #include <cstring>
 #include <cstdlib>
@@ -28,17 +28,23 @@ P_room world = rooms;
 extern const int top_of_world = 0;
 int top_of_objt = 4;
 static int malformed_messages = 0;
-static bool runtime_found = false;
-static item_ownership_runtime_entry runtime_entry = {};
+static bool in_locker = false;
 [[noreturn]] int panic_corruption_int(const char *, const char *, ...)
 {
     std::abort();
 }
-bool item_ownership_runtime_lookup(uint64_t uid, item_ownership_runtime_entry *entry)
+bool locker_owner_for_room(P_char, item_owner_identity *owner)
 {
-    if (!runtime_found || !entry || uid != runtime_entry.item_uid)
+    if (!in_locker)
         return false;
-    *entry = runtime_entry;
+    *owner = { item_owner_type::locker, 9, 10 };
+    return true;
+}
+bool locker_owner_for_container(P_char, P_obj, item_owner_identity *owner)
+{
+    if (!in_locker)
+        return false;
+    *owner = { item_owner_type::locker, 9, 11 };
     return true;
 }
 void send_to_char(const char *message, P_char)
@@ -93,43 +99,35 @@ int main()
     assert(item_get_source_owner(&actor, &item, containers, &owner));
     assert(owner.type == item_owner_type::player && owner.id == 42);
 
-    // A recorded player owner must agree with the live floor placement.
+    // Memory is the authority: the source is wherever the object lies now.
     item.obj_uid = 77;
     item.loc_p = LOC_ROOM;
     item.loc.room = 0;
-    runtime_entry = {};
-    runtime_entry.item_uid = item.obj_uid;
-    runtime_entry.owner = { item_owner_type::player, 42, 0 };
-    runtime_entry.state = item_custody_state::active;
-    runtime_found = true;
-    assert(!item_get_source_owner(&actor, &item, nullptr, &owner));
-    runtime_entry.owner = { item_owner_type::room, 100, 0 };
     assert(item_get_source_owner(&actor, &item, nullptr, &owner));
     assert(owner.type == item_owner_type::room && owner.id == 100);
-
-    // A matching player placement remains eligible, while inactive custody does not.
     item.loc_p = LOC_CARRIED;
     item.loc.carrying = &actor;
-    runtime_entry.owner = { item_owner_type::player, 42, 0 };
     assert(item_get_source_owner(&actor, &item, nullptr, &owner));
-    runtime_entry.state = item_custody_state::destroyed;
-    assert(!item_get_source_owner(&actor, &item, nullptr, &owner));
-    runtime_entry.state = item_custody_state::active;
+    assert(owner.type == item_owner_type::player && owner.id == 42);
 
-    // Virtual locker custody is an intentional authority boundary, not room custody.
+    // In a locker room the floor is the public chest and a chest object its own chest.
+    in_locker = true;
     item.loc_p = LOC_ROOM;
     item.loc.room = 0;
-    runtime_entry.owner = { item_owner_type::locker, 9, 10 };
     assert(item_get_source_owner(&actor, &item, nullptr, &owner));
     assert(owner.type == item_owner_type::locker && owner.id == 9 && owner.context_id == 10);
+    containers[0].loc_p = LOC_ROOM;
+    containers[0].loc.room = 0;
+    item.loc_p = LOC_INSIDE;
+    item.loc.inside = containers;
+    assert(item_get_source_owner(&actor, &item, containers, &owner));
+    assert(owner.type == item_owner_type::locker && owner.context_id == 11);
+    in_locker = false;
 
-    // NPC custody has no durable source; stale player ownership fails closed.
+    // NPC custody has no source a player can take from.
     char_data npc = {};
     item.loc_p = LOC_CARRIED;
     item.loc.carrying = &npc;
-    runtime_entry.owner = { item_owner_type::player, 42, 0 };
-    assert(!item_get_source_owner(&actor, &item, nullptr, &owner));
-    runtime_entry.owner = { item_owner_type::locker, 9, 10 };
     assert(!item_get_source_owner(&actor, &item, nullptr, &owner));
 
     assert(!item_get_source_owner(nullptr, &item, containers, &owner));

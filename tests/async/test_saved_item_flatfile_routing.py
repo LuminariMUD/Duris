@@ -22,26 +22,20 @@ class SavedItemFlatfileRoutingTests(unittest.TestCase):
                         restore.index("sql_restore_saved_items"))
         self.assertLess(purge.index("PERSISTENCE_MODE_FLATFILE_PRIMARY"),
                         purge.index("sql_delete_saved_item"))
-        self.assertIn("item_ownership_runtime_lookup", write)
-        self.assertIn("item_custody_state::destroyed", purge)
+        # Saved items live in memory: their saves and deletes are writer jobs (step 6).
+        self.assertEqual(write.count("queue_saved_item_save("), 2)
+        self.assertEqual(purge.count("queue_saved_item_save(item, Gbuf2, true)"), 2)
 
-    def test_storage_admin_mutations_wait_for_item_transfer_ack(self):
+    def test_storage_admin_mutations_move_in_memory(self):
+        # Memory is the authority: the storage command changes the room at once on
+        # both backends, and the room's saved-item write records it.
         actwiz = (SRC / "actwiz.c").read_text()
-        storage = actwiz[actwiz.index("enum class flat_storage_action") :]
-        storage = storage[: storage.index("void newb_spellup")]
-        completion = storage[storage.index("void flat_storage_completion") :]
-        completion = completion[: completion.index("bool submit_flat_storage_destroy")]
-        self.assertIn("submit_flat_storage_establish", storage)
-        self.assertIn("submit_flat_storage_destroy", storage)
-        self.assertIn("submit_flat_storage_remove_next", storage)
-        self.assertIn("item_transfer_reason::operator_repair", storage)
-        self.assertIn("item_transfer_reason::destruction", storage)
-        self.assertLess(completion.index("if (!committed)"),
-                        completion.index("obj_to_room(storage"))
-        self.assertLess(completion.index("if (!committed)"),
-                        completion.index("obj_from_obj(item)"))
-        self.assertLess(completion.index("if (!committed)"),
-                        completion.index("extract_obj(storage"))
+        storage = actwiz[actwiz.index("void do_storage(") :]
+        storage = storage[: storage.index("\n}\n")]
+        self.assertNotIn("submit_flat_storage", actwiz)
+        self.assertNotIn("PERSISTENCE_MODE_FLATFILE_PRIMARY", storage)
+        self.assertLess(storage.index("obj_to_room(s_obj, ch->in_room)"),
+                        storage.index("writeSavedItem(s_obj)"))
 
     def test_room_repository_admits_only_the_bounded_storage_transfers(self):
         repository = (SRC / "flatfile_item_repository.c").read_text()

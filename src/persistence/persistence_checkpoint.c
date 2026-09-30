@@ -50,6 +50,8 @@ void flush_dirty_players(void)
 							     PLAYER_COMPONENT_STATUS);
 			player_save_pipeline_checkpoint_dirty(character, RENT_CRASH,
 							      room_vnum(character));
+			// A locker is checkpointed with the character inside it.
+			locker_post_save_hook(character);
 		}
 }
 
@@ -66,7 +68,7 @@ struct persistence_dirty_save_snapshot persistence_dirty_save_snapshot_copy(void
 	snapshot.enabled = 1;
 	snapshot.available = pipeline.initialized ? 1 : 0;
 	snapshot.active_count = player_save_pipeline_dirty_count();
-	snapshot.inflight_count = worker.inflight_pids;
+	snapshot.inflight_count = worker.queued_jobs + worker.inflight_jobs;
 	snapshot.inflight_oldest_age_msec = worker.oldest_age_msec;
 	return snapshot;
 }
@@ -110,6 +112,8 @@ void event_flush_dirty_players(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/, 
 							     PLAYER_COMPONENT_STATUS);
 			player_save_pipeline_checkpoint_dirty(character, RENT_CRASH,
 							      room_vnum(character));
+			// A locker is checkpointed with the character inside it.
+			locker_post_save_hook(character);
 		}
 	}
 

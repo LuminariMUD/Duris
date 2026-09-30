@@ -3559,7 +3559,6 @@ int camp(P_char ch)
 					if (IS_FIGHTING(ch))
 						stop_fighting(ch);
 					affect_from_char(ch, TAG_CAMP);
-					int previous_home = GET_HOME(ch);
 					if (IS_SHIP_ROOM(ch->in_room))
 					{
 						GET_HOME(ch) = GET_BIRTHPLACE(ch);
@@ -3569,14 +3568,7 @@ int camp(P_char ch)
 						GET_HOME(ch) = world[ch->in_room].number;
 					}
 
-					if (!persistence_save_character_terminal(ch, RENT_CAMPED))
-					{
-						GET_HOME(ch) = previous_home;
-						send_to_char(
-							"Your character could not be saved, so your camp is cancelled.\r\n",
-							ch);
-						return 1;
-					}
+					persistence_save_character_terminal(ch, RENT_CAMPED);
 
 					if (!IS_RACEWAR_UNDEAD(ch))
 					{

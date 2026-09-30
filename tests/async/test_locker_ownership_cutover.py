@@ -76,7 +76,7 @@ class LockerOwnershipCutoverTests(unittest.TestCase):
                         save.index("LockerToPFile()"))
         self.assertIn("std::any_of", self.movement)
         critical_drain = self.copyover.index("critical_command_coordinator_drain(3000)")
-        player_drain = self.copyover.index("player_save_pipeline_drain(3000)", critical_drain)
+        player_drain = self.copyover.index("player_save_pipeline_drain(30000)", critical_drain)
         final_locker_drain = self.copyover.index("locker_async_drain(3000)", player_drain)
         world_drain = self.copyover.index("redis_world_recovery_drain(3000)", player_drain)
         self.assertLess(critical_drain, player_drain)
@@ -109,19 +109,18 @@ class LockerOwnershipCutoverTests(unittest.TestCase):
         self.assertIn("item_transfer_reason::locker_withdraw", self.flat_items)
 
     def test_snapshot_is_not_ownership_authority_and_worker_is_pointer_free(self):
-        builder = function_body(self.snapshot, "static char *build_locker_snapshot_sql(",
-                                "/* ---------------- worker ---------------- */")
+        # The game thread only captures; the writer claims through the repository.
         for forbidden in (
             "item_current_owner",
             "item_owner_revision",
             "item_ownership_ledger",
             "item_ownership_baseline",
         ):
-            self.assertNotIn(forbidden, builder)
+            self.assertNotIn(forbidden, self.snapshot)
         job = function_body(self.snapshot, "struct locker_async_job", "struct locker_async_result")
         self.assertNotIn("P_obj", job)
         self.assertNotIn("P_char", job)
-        self.assertIn("char *sql", job)
+        self.assertIn("std::shared_ptr<locker_snapshot> snapshot", job)
 
     def test_cutover_is_guarded_rerunnable_and_non_destructive(self):
         migration = (ROOT / "migrations/locker_ownership_cutover.sql").read_text()

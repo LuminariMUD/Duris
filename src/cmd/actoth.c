@@ -54,8 +54,7 @@
 #include "specs/specs.winterhaven.h"
 #include "magic/spells.h"
 #include "item/item_command_policy.h"
-#include "item/item_movement_transaction.h"
-#include "item/item_ownership_runtime.h"
+#include "item/item_transfer_command.h"
 #include "sql/sql.h"
 #include "sql/sql_player.h"
 #include "economy/tradeskill.h"
@@ -313,13 +312,7 @@ void do_camp(P_char ch, char *arg, int /*cmd*/)
 		*(timestr + strlen(timestr) - 1) = '\0';
 		strcat(timestr, " EST");
 
-		if (!persistence_save_character_terminal(ch, RENT_INN))
-		{
-			send_to_char(
-				"Your character could not be saved, so you remain in the game.\r\n",
-				ch);
-			return;
-		}
+		persistence_save_character_terminal(ch, RENT_INN);
 
 		logit(LOG_COMM, "%s has quit in [%d] @ %s.", GET_NAME(ch),
 		      world[ch->in_room].number, timestr);
@@ -1707,12 +1700,7 @@ void do_quit(P_char ch, char * /*argument*/, int /*cmd*/)
 		ch->in_room = i;
 	}
 
-	if (!persistence_save_character_terminal(ch, RENT_INN))
-	{
-		send_to_char("Your character could not be saved, so you remain in the game.\r\n",
-			     ch);
-		return;
-	}
+	persistence_save_character_terminal(ch, RENT_INN);
 
 	act("Goodbye, friend.. Come back soon!", FALSE, ch, 0, 0, TO_CHAR);
 	act("$n has quit the game.", TRUE, ch, 0, 0, TO_ROOM);
@@ -2151,72 +2139,48 @@ bool persistence_flush_all_character_saves(void)
 	return all_saved;
 }
 
-/** Wait for terminal durability under the caller's database/journal policy. */
-static bool persistence_save_character_terminal_with_policy(P_char ch, int type,
-							    uint64_t timeout_msec,
-							    bool allow_journal_handoff)
+/*
+ * Logging out never waits: the terminal save is captured and queued on the one
+ * writer, and the caller extracts at once. Shutdown and copyover drain the writer.
+ * A save that cannot be queued is reported; the character still leaves.
+ */
+bool persistence_save_character_terminal(P_char ch, int type)
 {
-	struct deferred_save_slot *slot;
-
 	if (!ch || IS_NPC(ch) || !GET_NAME(ch))
 		return false;
 
 	const int room = calculate_save_room(ch, type, ch->in_room);
-#ifdef __NO_MYSQL__
-	allow_journal_handoff = false;
-#endif
-	const player_save_terminal_result terminal =
-		player_save_pipeline_terminal(ch, type, room, timeout_msec, allow_journal_handoff);
-	const bool saved =
-		terminal == player_save_terminal_result::database_acknowledged ||
-		(allow_journal_handoff && terminal == player_save_terminal_result::journal_durable);
-	slot = find_deferred_save_slot(GET_PID(ch));
-	if (saved && slot)
-		memset(slot, 0, sizeof(*slot));
-	if (saved)
-		clear_manual_save_status(GET_PID(ch));
-	if (!saved)
+	const player_save_pipeline_result queued =
+		player_save_pipeline_request(ch, PLAYER_CHECKPOINT_COMPONENT_ALL, type, room);
+	// A character leaving from inside a locker takes the locker's save with them.
+	locker_post_save_hook(ch);
+	if (queued == player_save_pipeline_result::queued ||
+	    queued == player_save_pipeline_result::coalesced)
 	{
-		logit(LOG_PLAYER,
-		      "terminal_save_failed: mono_us=%llu pid=%d intent=%d outcome=%u retry_requested=1",
-		      (unsigned long long)persistence_observability_now_usec(), GET_PID(ch), type,
-		      (unsigned)terminal);
-		persistence_schedule_character_save(
-			ch, RENT_CRASH, PERSISTENCE_DEFERRED_RETRY_INITIAL, "terminal-save-retry");
+		if (struct deferred_save_slot *slot = find_deferred_save_slot(GET_PID(ch)))
+			memset(slot, 0, sizeof(*slot));
+		clear_manual_save_status(GET_PID(ch));
 	}
-	return saved;
+	else
+		persistence_alert(AVATAR, "player_save", "terminal", "none", "none", "queue_failed",
+				  "pid=%d intent=%d outcome=%u", GET_PID(ch), type,
+				  (unsigned)queued);
+	return true;
 }
 
-/** Wait for terminal durability; retain a safe crash-save retry when logout cannot proceed. */
-bool persistence_save_character_terminal(P_char ch, int type)
-{
-	if (type == RENT_INN || type == RENT_CAMPED)
-		return persistence_save_character_terminal_with_policy(ch, type, 5000, false);
-	return persistence_save_character_terminal_with_policy(ch, type, 2000, true);
-}
-
-/** Require the terminal snapshot to be committed before an immediate process replacement. */
+/** Copyover drains the writer after queuing every save. */
 bool persistence_save_character_terminal_database_acknowledged(P_char ch, int type)
 {
-	return persistence_save_character_terminal_with_policy(ch, type, 5000, false);
+	return persistence_save_character_terminal(ch, type);
 }
 
-/** Attempt terminal durability for every live player and report whether all succeeded. */
+/** Queue a terminal save for every live player; the caller drains the writer. */
 bool persistence_save_all_characters_terminal(int type)
 {
-	P_char ch;
-	bool all_saved = true;
-
-	for (ch = character_list; ch; ch = ch->next)
-	{
-		if (!IS_PC(ch) || !GET_NAME(ch))
-			continue;
-		if (!persistence_save_character_terminal(ch, type))
-		{
-			all_saved = false;
-		}
-	}
-	return all_saved;
+	for (P_char ch = character_list; ch; ch = ch->next)
+		if (IS_PC(ch) && GET_NAME(ch))
+			persistence_save_character_terminal(ch, type);
+	return true;
 }
 
 /** Summarize deferred-save queue counts and oldest pending age on the game thread. */
@@ -3187,7 +3151,7 @@ static int location_mod[] = { 75, /* light */
  * stable identities and the original placement facts across the asynchronous
  * ownership transaction; never retain either character or object pointers.
  */
-struct trusted_steal_movement_context
+struct trusted_steal_context
 {
 	uint64_t item_uid;
 	uint32_t thief_pid;
@@ -3201,21 +3165,11 @@ struct trusted_steal_movement_context
 	uint8_t caught;
 };
 
-static_assert(sizeof(trusted_steal_movement_context) <= ITEM_MOVEMENT_CONTEXT_MAX_BYTES);
-
 static P_obj find_trusted_steal_item(uint64_t item_uid)
 {
 	for (P_obj object = object_list; object; object = object->next)
 		if (object->obj_uid == item_uid)
 			return object;
-	return NULL;
-}
-
-static P_char find_trusted_steal_player(uint32_t pid)
-{
-	for (P_char character = character_list; character; character = character->next)
-		if (IS_PC(character) && GET_PID(character) == static_cast<int>(pid))
-			return character;
 	return NULL;
 }
 
@@ -3236,22 +3190,8 @@ static void trusted_steal_attempt_delay(P_char thief, P_char victim)
 		startPvP(thief, GET_RACEWAR(thief) != GET_RACEWAR(victim));
 }
 
-static void report_trusted_steal_rejection(P_char thief, P_obj object, item_movement_reject reason)
-{
-	if (!thief)
-		return;
-	send_to_char(
-		item_movement_reject_is_transient(reason) ?
-			"The custody authority is busy; the item was not moved.\r\n" :
-			"The item's ownership records refused the theft; nothing was moved.\r\n",
-		thief);
-	logit(LOG_FILE, "item_movement: command=steal outcome=%s actor=%s uid=%llu vnum=%d",
-	      item_movement_reject_name(reason), J_NAME(thief),
-	      (unsigned long long)(object ? object->obj_uid : 0), object ? OBJ_VNUM(object) : -1);
-}
-
 static void report_trusted_steal_detection(P_char thief, P_char victim, P_obj object,
-					   const trusted_steal_movement_context &context)
+					   const trusted_steal_context &context)
 {
 	if (!context.caught)
 	{
@@ -3302,136 +3242,37 @@ static void report_trusted_steal_detection(P_char thief, P_char victim, P_obj ob
 	act("$n just stole $p from $N!", TRUE, thief, object, victim, TO_NOTVICT);
 }
 
-static void trusted_steal_completion(P_char thief, bool committed, const item_transfer_result &,
-				     unsigned int error_code, const uint8_t *encoded,
-				     size_t encoded_size)
+/** Move a stolen item from a player victim to the thief. */
+static void steal_from_player(P_char thief, P_char victim, P_obj object,
+			      const trusted_steal_context &context)
 {
-	trusted_steal_movement_context context = {};
-	if (!encoded || encoded_size != sizeof(context))
+	if (context.equipped)
 	{
-		persistence_alert(AVATAR, "item_movement", "steal_publish", "none", "none",
-				  "invalid_context", "uid=unknown");
-		return;
-	}
-	memcpy(&context, encoded, sizeof(context));
-	if (!thief || !IS_PC(thief) || GET_PID(thief) != static_cast<int>(context.thief_pid))
-		return;
-	if (!committed)
-	{
-		logit(LOG_FILE,
-		      "item_movement: command=steal outcome=not_committed actor=%s "
-		      "uid=%llu error=%u",
-		      J_NAME(thief), (unsigned long long)context.item_uid, error_code);
-		send_to_char(
-			"The custody transfer did not commit; the item remains with its owner.\r\n",
-			thief);
-		return;
-	}
-
-	P_obj object = find_trusted_steal_item(context.item_uid);
-	/* A linkdead character remains the authoritative live holder until extraction. */
-	P_char victim = find_trusted_steal_player(context.victim_pid);
-	if (!object)
-	{
-		persistence_alert(AVATAR, "item_movement", "steal_publish", "none", "none",
-				  "missing_live_item", "item_uid=%llu",
-				  (unsigned long long)context.item_uid);
-		send_to_char(
-			"The custody transfer committed; reconnect to recover the item view.\r\n",
-			thief);
-		return;
-	}
-
-	bool published = OBJ_CARRIED_BY(object, thief);
-	if (!published)
-	{
-		/*
-		 * The transfer owns the exact UID now.  Detach only that live root from
-		 * the original owner (or the room where extract_char placed it); never
-		 * select a replacement by name and never extract a mismatched graph.
-		 */
-		if (victim && OBJ_CARRIED_BY(object, victim))
+		int slot = context.equipment_slot;
+		if (slot < 0 || slot >= MAX_WEAR || victim->equipment[slot] != object)
 		{
-			obj_from_char(object);
-			published = true;
+			slot = 0;
+			while (slot < MAX_WEAR && victim->equipment[slot] != object)
+				++slot;
 		}
-		else if (victim && OBJ_WORN_BY(object, victim))
-		{
-			int actual_slot = context.equipment_slot;
-			if (actual_slot < 0 || actual_slot >= MAX_WEAR ||
-			    victim->equipment[actual_slot] != object)
-				actual_slot = -1;
-			if (actual_slot < 0)
-				for (int slot = 0; slot < MAX_WEAR; ++slot)
-					if (victim->equipment[slot] == object)
-					{
-						actual_slot = slot;
-						break;
-					}
-			if (actual_slot >= 0)
-			{
-				unequip_char(victim, actual_slot);
-				published = true;
-			}
-		}
-		else if (OBJ_ROOM(object) && object->loc.room > NOWHERE &&
-			 object->loc.room <= top_of_world)
-		{
-			/* extract_char may have moved the exact root to a different valid room. */
-			obj_from_room(object);
-			published = true;
-		}
-		else if (OBJ_NOWHERE(object))
-		{
-			/* A terminal extraction may have detached the root without freeing it. */
-			published = true;
-		}
+		if (slot >= MAX_WEAR)
+			return;
+		unequip_char(victim, slot);
 	}
-
-	if (!published)
-	{
-		persistence_alert(AVATAR, "item_movement", "steal_publish", "none", "none",
-				  "stale_live_topology", "item_uid=%llu victim_pid=%u",
-				  (unsigned long long)context.item_uid, context.victim_pid);
-		send_to_char(
-			"The custody transfer committed, but the live item topology changed; staff have been alerted.\r\n",
-			thief);
-		return;
-	}
-
-	object = find_trusted_steal_item(context.item_uid);
-	if (!object)
-	{
-		persistence_alert(AVATAR, "item_movement", "steal_publish", "none", "none",
-				  "item_disappeared_during_detach", "item_uid=%llu",
-				  (unsigned long long)context.item_uid);
-		send_to_char(
-			"The custody transfer committed, but publication needs staff recovery.\r\n",
-			thief);
-		return;
-	}
-	if (context.clear_perminvis && victim && IS_SET(object->bitvector, AFF_INVISIBLE) &&
+	else
+		obj_from_char(object);
+	if (context.clear_perminvis && IS_SET(object->bitvector, AFF_INVISIBLE) &&
 	    affected_by_spell(victim, TAG_PERMINVIS))
 		affect_from_char(victim, TAG_PERMINVIS);
 	if (context.release_artifact && IS_ARTIFACT(object) && !remove_owned_artifact_sql(object))
-		logit(LOG_ARTIFACT,
-		      "trusted steal artifact release deferred after custody commit (uid=%llu)",
+		logit(LOG_ARTIFACT, "trusted steal artifact release deferred (uid=%llu)",
 		      (unsigned long long)object->obj_uid);
 
-	/* obj_to_char is ownership-checked; re-find after it so a refusal/crumble is never dereferenced. */
-	if (!OBJ_CARRIED_BY(object, thief))
-		obj_to_char(object, thief);
+	/* obj_to_char may refuse or crumble the item; re-find it before touching it. */
+	obj_to_char(object, thief);
 	object = find_trusted_steal_item(context.item_uid);
 	if (!object || !OBJ_CARRIED_BY(object, thief))
-	{
-		persistence_alert(AVATAR, "item_movement", "steal_publish", "none", "none",
-				  "publication_refused", "item_uid=%llu",
-				  (unsigned long long)context.item_uid);
-		send_to_char(
-			"The custody transfer committed, but the item could not be published; staff have been alerted.\r\n",
-			thief);
 		return;
-	}
 
 	if (context.equipped)
 		act("You unequip $p and steal it.", FALSE, thief, object, 0, TO_CHAR);
@@ -3525,39 +3366,17 @@ static bool trusted_steal_binding_allows_tree(P_char thief, P_obj object)
 	return true;
 }
 
-static bool submit_trusted_steal(P_char thief, P_char victim, P_obj object, bool equipped,
-				 int equipment_slot, int percent)
+static bool steal_player_item(P_char thief, P_char victim, P_obj object, bool equipped,
+			      int equipment_slot, int percent)
 {
 	if (!object || !object->obj_uid || object->type == ITEM_MONEY || IS_PC_CORPSE(object) ||
-	    !item_command_uses_durable_ownership(object))
+	    !trusted_steal_binding_allows_tree(thief, object))
 	{
-		report_trusted_steal_rejection(thief, object,
-					       item_movement_reject::invalid_request);
+		send_to_char("You can't steal that.\r\n", thief);
 		trusted_steal_attempt_delay(thief, victim);
 		return true;
 	}
-	if (!trusted_steal_binding_allows_tree(thief, object))
-	{
-		report_trusted_steal_rejection(thief, object,
-					       item_movement_reject::invalid_request);
-		trusted_steal_attempt_delay(thief, victim);
-		return true;
-	}
-	const item_owner_identity source = { item_owner_type::player,
-					     static_cast<uint64_t>(GET_PID(victim)), 0 };
-	const item_owner_identity destination = { item_owner_type::player,
-						  static_cast<uint64_t>(GET_PID(thief)), 0 };
-	item_ownership_runtime_entry ownership = {};
-	if (!item_ownership_runtime_lookup(object->obj_uid, &ownership) ||
-	    ownership.state != item_custody_state::active ||
-	    !item_owner_identity_equal(ownership.owner, source))
-	{
-		report_trusted_steal_rejection(thief, object, item_movement_reject::owner_mismatch);
-		trusted_steal_attempt_delay(thief, victim);
-		return true;
-	}
-
-	const trusted_steal_movement_context context = {
+	const trusted_steal_context context = {
 		object->obj_uid,
 		static_cast<uint32_t>(GET_PID(thief)),
 		static_cast<uint32_t>(GET_PID(victim)),
@@ -3570,26 +3389,8 @@ static bool submit_trusted_steal(P_char thief, P_char victim, P_obj object, bool
 		static_cast<uint8_t>(equipped && IS_ARTIFACT(object)),
 		static_cast<uint8_t>(trusted_steal_was_caught(percent)),
 	};
-	item_movement_reject reject = item_movement_reject::none;
-	if (!item_movement_transaction_submit(thief, object, NULL, source, destination,
-					      item_transfer_reason::trusted_steal, GET_PID(victim),
-					      trusted_steal_completion, &context, sizeof(context),
-					      NULL, &reject))
-	{
-		report_trusted_steal_rejection(thief, object, reject);
-		trusted_steal_attempt_delay(thief, victim);
-		return true;
-	}
-
+	steal_from_player(thief, victim, object, context);
 	trusted_steal_attempt_delay(thief, victim);
-	if (reject == item_movement_reject::coordinator_journal_uncertain)
-		send_to_char(
-			"The custody authority is recovering; no item has moved until it confirms the transfer.\r\n",
-			thief);
-	else
-		send_to_char(
-			"The custody transfer is pending; no item has moved until it commits.\r\n",
-			thief);
 	return true;
 }
 
@@ -3889,7 +3690,7 @@ void do_steal(P_char ch, char *argument, int /*cmd*/)
 		if (!failed && (trusted || (roll && (GET_LEVEL(ch) > 40) && (roll < percent))))
 		{ /* success */
 			if (IS_PC(victim) &&
-			    submit_trusted_steal(ch, victim, obj, TRUE, eq_pos, percent))
+			    steal_player_item(ch, victim, obj, TRUE, eq_pos, percent))
 				return;
 			act("You unequip $p and steal it.", FALSE, ch, obj, 0, TO_CHAR);
 			obj = unequip_char(victim, eq_pos);
@@ -3949,7 +3750,7 @@ void do_steal(P_char ch, char *argument, int /*cmd*/)
 			if (!failed)
 			{
 				if (IS_PC(victim) &&
-				    submit_trusted_steal(ch, victim, obj, FALSE, -1, percent))
+				    steal_player_item(ch, victim, obj, FALSE, -1, percent))
 					return;
 				send_to_char("Got it!\r\n", ch);
 

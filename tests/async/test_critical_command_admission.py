@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the bounded asynchronous critical-command journal admission lane."""
+"""Submitting a critical command never waits: it queues on the writer with no file I/O."""
 
 from pathlib import Path
 import subprocess
@@ -9,49 +9,40 @@ from _paths import ROOT, rel
 
 
 HARNESS = r'''
-#include "persistence/critical_command_coordinator.c"
+#include "persistence/critical_command_coordinator.h"
+#include "player/player_save_worker.h"
 
 #include <algorithm>
 #include <atomic>
 #include <cassert>
-#include <cerrno>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
-#include <fcntl.h>
-#include <filesystem>
+#include <mutex>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
-static std::atomic<unsigned int> slow_fsyncs{0};
-static std::atomic<unsigned int> write_failures{0};
+static std::atomic<unsigned int> submitter_file_io{0};
 static std::atomic<unsigned int> applied{0};
 static std::thread::id submitter;
+static std::mutex hold_mutex;
+static std::condition_variable hold_changed;
+static bool hold = false;
 
 extern "C" int __real_fsync(int);
 extern "C" int __wrap_fsync(int fd)
 {
-    if (std::this_thread::get_id() != submitter)
-    {
-        unsigned int expected = slow_fsyncs.load();
-        while (expected &&
-               !slow_fsyncs.compare_exchange_weak(expected, expected - 1))
-        {
-        }
-        if (expected)
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
+    if (std::this_thread::get_id() == submitter)
+        ++submitter_file_io;
     return __real_fsync(fd);
 }
 
 extern "C" ssize_t __real_write(int, const void *, size_t);
 extern "C" ssize_t __wrap_write(int fd, const void *data, size_t size)
 {
-    const int flags = fcntl(fd, F_GETFL);
-    if (flags >= 0 && (flags & O_APPEND) && write_failures.exchange(0))
-    {
-        errno = ENOSPC;
-        return -1;
-    }
+    if (fd > 2 && std::this_thread::get_id() == submitter)
+        ++submitter_file_io;
     return __real_write(fd, data, size);
 }
 
@@ -69,20 +60,18 @@ static critical_command command(unsigned int tag)
     return result;
 }
 
+// The writer is stalled, as it is behind a locked table or a lost database.
 static critical_apply_result apply(const critical_command &, void *)
 {
+    std::unique_lock<std::mutex> lock(hold_mutex);
+    hold_changed.wait(lock, [] { return !hold; });
     ++applied;
     return {critical_apply_outcome::applied, 1, 0};
 }
 
-template <typename F> static void wait_for(F condition)
+static player_save_apply_result apply_save(const player_snapshot &snapshot, void *)
 {
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-    while (!condition())
-    {
-        assert(std::chrono::steady_clock::now() < deadline);
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+    return {player_save_apply_outcome::applied, snapshot.revision, 0};
 }
 
 static unsigned long long percentile(std::vector<unsigned long long> values,
@@ -97,95 +86,49 @@ int main(int argc, char **argv)
 {
     assert(argc == 2);
     submitter = std::this_thread::get_id();
-    std::filesystem::remove_all(argv[1]);
-
-    assert(critical_command_coordinator_init(argv[1], apply, nullptr, 1));
-    const critical_command slow = command(1);
-    slow_fsyncs = 1;
-    const auto begin = std::chrono::steady_clock::now();
-    assert(critical_command_coordinator_submit(slow) ==
-           critical_submit_result::awaiting_durability);
-    const auto submit_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                               std::chrono::steady_clock::now() - begin)
-                               .count();
-    auto health = critical_command_coordinator_health_copy();
-    assert(submit_ms < 40);
-    assert(health.awaiting_durability >= 1 && health.admission_queue_bytes > 0);
-    assert(critical_command_coordinator_durability(slow.operation_id) ==
-           critical_command_durability::awaiting_durability);
-
-    bool saw_awaiting_without_apply = false;
-    unsigned int simulation_pulses = 0;
-    wait_for([&] {
-        ++simulation_pulses;
-        critical_command_coordinator_pulse(nullptr, 0);
-        const auto durability =
-            critical_command_coordinator_durability(slow.operation_id);
-        if (durability == critical_command_durability::awaiting_durability)
-        {
-            saw_awaiting_without_apply = true;
-            assert(applied == 0);
-        }
-        return durability == critical_command_durability::durable;
-    });
-    assert(saw_awaiting_without_apply);
-    assert(simulation_pulses > 10);
-    assert(critical_command_coordinator_drain(5000));
-    assert(applied == 1);
-    printf("slow_append: submit_ms=%lld simulation_pulses_while_awaiting=%u\n",
-           static_cast<long long>(submit_ms), simulation_pulses);
-    critical_command_coordinator_shutdown();
-
-    std::filesystem::remove_all(argv[1]);
-    applied = 0;
-    assert(critical_command_coordinator_init(argv[1], apply, nullptr, 2));
-    slow_fsyncs = 32;
-    std::vector<unsigned long long> submit_latencies;
-    for (unsigned int tag = 2; tag < 34; ++tag)
+    assert(player_save_worker_init(apply_save, nullptr));
+    // A journal directory is only read for an older server's journal.
+    assert(critical_command_coordinator_init(argv[1], apply, nullptr));
     {
-        const auto request = command(tag);
+        std::lock_guard<std::mutex> lock(hold_mutex);
+        hold = true;
+    }
+    std::vector<critical_command> submitted;
+    std::vector<unsigned long long> submit_latencies;
+    for (unsigned int tag = 1; tag <= 33; ++tag)
+    {
+        submitted.push_back(command(tag));
         const auto started = std::chrono::steady_clock::now();
-        assert(critical_command_coordinator_submit(request) ==
-               critical_submit_result::awaiting_durability);
+        assert(critical_command_coordinator_submit(submitted.back()) ==
+               critical_submit_result::accepted);
         submit_latencies.push_back(static_cast<unsigned long long>(
             std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - started)
                 .count()));
     }
-    health = critical_command_coordinator_health_copy();
-    assert(health.awaiting_durability > 0 && health.admission_queue_bytes > 0);
-    printf("slow_append_distribution: n=%zu p50_us=%llu p95_us=%llu p99_us=%llu awaiting=%llu queue_bytes=%llu\n",
+    auto health = critical_command_coordinator_health_copy();
+    assert(health.inflight == 33);
+    assert(critical_command_coordinator_durability(submitted[0].operation_id) ==
+           critical_command_durability::awaiting_durability);
+    assert(submitter_file_io == 0);
+    assert(critical_command_journal_health_copy().records == 0);
+    assert(percentile(submit_latencies, 95) < 40000);
+    printf("stalled_writer_submit: n=%zu p50_us=%llu p95_us=%llu p99_us=%llu file_io=%u\n",
            submit_latencies.size(), percentile(submit_latencies, 50),
            percentile(submit_latencies, 95), percentile(submit_latencies, 99),
-           static_cast<unsigned long long>(health.awaiting_durability),
-           static_cast<unsigned long long>(health.admission_queue_bytes));
-    assert(percentile(submit_latencies, 95) < 40000);
+           submitter_file_io.load());
+    {
+        std::lock_guard<std::mutex> lock(hold_mutex);
+        hold = false;
+        hold_changed.notify_all();
+    }
     assert(critical_command_coordinator_drain(15000));
-    assert(applied == 32);
+    assert(applied == 33);
+    assert(critical_command_coordinator_durability(submitted[0].operation_id) ==
+           critical_command_durability::durable);
+    assert(critical_command_journal_health_copy().records == 0);
     critical_command_coordinator_shutdown();
-
-    std::filesystem::remove_all(argv[1]);
-    applied = 0;
-    assert(critical_command_coordinator_init(argv[1], apply, nullptr, 1));
-    const critical_command failed = command(99);
-    write_failures = 1;
-    assert(critical_command_coordinator_submit(failed) ==
-           critical_submit_result::awaiting_durability);
-    wait_for([&] {
-        return critical_command_coordinator_durability(failed.operation_id) ==
-               critical_command_durability::failed;
-    });
-    critical_completion completion = {};
-    assert(critical_command_coordinator_pulse(&completion, 1) == 1);
-    assert(critical_operation_id_equal(completion.operation_id, failed.operation_id));
-    assert(completion.outcome == critical_apply_outcome::terminal_failure);
-    assert(completion.error_code == EIO);
-    assert(!critical_command_coordinator_is_fenced(failed.keys[0], nullptr));
-    assert(applied == 0);
-    assert(critical_command_coordinator_drain(5000));
-    printf("append_failure: terminal_error=%u retained_until_delivery=1\n",
-           completion.error_code);
-    critical_command_coordinator_shutdown();
+    player_save_worker_reset_for_tests();
 }
 '''
 
@@ -201,12 +144,29 @@ with tempfile.TemporaryDirectory(prefix="duris-critical-admission-") as director
             "-Werror", "-pthread", "-fsanitize=address,undefined",
             "-fno-omit-frame-pointer", "-fno-pie", "-no-pie", "-Isrc", str(source),
             rel("critical_command.c"), rel("critical_command_journal.c"),
-            "-lz", "-lcrypto", "-Wl,--wrap=fsync", "-Wl,--wrap=write",
-            "-o", str(binary),
+            rel("critical_command_coordinator.c"), rel("player_save_worker.c"),
+            rel("persistence_observability.c"), "-lz", "-lcrypto", "-lmysqlclient",
+            "-Wl,--wrap=fsync", "-Wl,--wrap=write", "-o", str(binary),
         ],
         cwd=ROOT,
         check=True,
     )
     subprocess.run([str(binary), str(temporary / "journal")], check=True, timeout=60)
 
-print("asynchronous critical-command journal admission regression passed")
+# Every domain adapter keeps its pending state for each result that keeps the operation.
+for relative in (
+    "src/world/zone_touch_transaction.c",
+    "src/world/epic_transaction.c",
+    "src/economy/shop_trade_transaction.c",
+    "src/economy/auction_transaction.c",
+    "src/economy/boon_shop_transaction.c",
+    "src/economy/boon_reward_transaction.c",
+    "src/guild/artifact_guild_transaction.c",
+    "src/combat/combat_outcome_transaction.c",
+    "src/persistence/corpse_lifecycle_transaction.c",
+    "src/item/item_transfer_synthetic.c",
+    "src/account/session_audit_transaction.c",
+):
+    assert "critical_submit_result_keeps_operation" in (ROOT / relative).read_text()
+
+print("a critical command submitted to a stalled writer queues at once with no file I/O")

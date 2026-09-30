@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Issue #259: replay real SQL status snapshots against a connection-private table.
+"""Issue #259: apply real SQL status snapshots against a connection-private table.
 
 Requires the isolated journey DB environment. Called by test_mysql_playtime_journey;
 creates only a TEMPORARY player_data table shadowing the fixture schema's table.
@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 HARNESS = r'''
 #include "player/player_snapshot_repository.h"
 #include "player/player_playtime.h"
+#include "sql/sql_pool.h"
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
@@ -27,11 +28,17 @@ char *sql_escape_string(const char *text) {
     return copy;
 }
 
+MYSQL *db = nullptr;
+// The legacy replay path takes its connection from the pool.
+MYSQL *sql_pool_acquire(void) { return db; }
+void sql_pool_release(MYSQL *) {}
+MYSQL *sql_pool_replace_connection(MYSQL *) { return nullptr; }
+
 int main() {
     assert(std::string(std::getenv("DB_HOST")) == "127.0.0.1");
     const char *port_text = std::getenv("DB_PORT");
     const unsigned int port = port_text ? std::atoi(port_text) : 3306;
-    MYSQL *db = mysql_init(nullptr);
+    db = mysql_init(nullptr);
     assert(mysql_real_connect(db, "127.0.0.1", std::getenv("DB_USER"), std::getenv("DB_PASSWD"),
                               std::getenv("DB_NAME"), port, nullptr, 0));
     auto sql = [&](const char *text) {
@@ -63,15 +70,20 @@ int main() {
                   << " error=" << status_applied.error_code << '\n';
     assert(status_applied.outcome == player_save_apply_outcome::applied);
     assert(total() == 4200);
-    assert(player_snapshot_repository_apply(db, snapshot).outcome == player_save_apply_outcome::already_applied);
+    // Writing the same save again is harmless.
+    assert(player_snapshot_repository_apply(db, snapshot).outcome == player_save_apply_outcome::applied);
     assert(total() == 4200);
+    // Only the one-time replay of an older server's journal can bring an older
+    // revision, and it keeps the fence.
     snapshot.revision = 1;
     snapshot.status_integers[0].signed_value = 3600;
-    assert(player_snapshot_repository_apply(db, snapshot).outcome == player_save_apply_outcome::stale_revision);
+    assert(player_snapshot_repository_apply_from_pool(snapshot, PLAYER_SAVE_LEGACY_REPLAY).outcome ==
+           player_save_apply_outcome::stale_revision);
     assert(total() == 4200);
+    snapshot.revision = 2;
 
-    // A complete item replacement must prove exact equivalence with active
-    // custody before deleting the prior payload projection.
+    // An item graph is written as the player holds it, and the ownership table
+    // is made to agree.
     sql("CREATE TEMPORARY TABLE item_payload_shape LIKE player_items");
     sql("CREATE TEMPORARY TABLE player_items LIKE item_payload_shape");
     sql("CREATE TEMPORARY TABLE custody_shape LIKE item_current_owner");
@@ -102,23 +114,22 @@ int main() {
     assert(payload_count && std::atoi(payload_count[0]) == 2);
     mysql_free_result(payload_rows);
 
+    // A save that no longer holds an item is written, not refused.
     items.revision = 4;
     items.items.resize(1);
-    const auto rejected = player_snapshot_repository_apply(db, items);
-    assert(rejected.outcome == player_save_apply_outcome::terminal_failure);
-    assert(rejected.error_code == PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH);
+    assert(player_snapshot_repository_apply(db, items).outcome ==
+           player_save_apply_outcome::applied);
     assert(total() == 4200);
     sql("SELECT save_revision,COUNT(*) FROM player_data JOIN player_items USING(pid) "
         "WHERE pid=1 AND obj_uid IN (7001,7002) GROUP BY save_revision");
     payload_rows = mysql_store_result(db);
     assert(payload_rows);
     payload_count = mysql_fetch_row(payload_rows);
-    assert(payload_count && std::atoi(payload_count[0]) == 3 &&
-           std::atoi(payload_count[1]) == 2);
+    assert(payload_count && std::atoi(payload_count[0]) == 4 &&
+           std::atoi(payload_count[1]) == 1);
     mysql_free_result(payload_rows);
 
-    // Inline coin custody carries its own authoritative payload and is the only
-    // active-custody row allowed to omit player_items.
+    // Inline coin custody keeps its own payload and needs no player_items row.
     sql("INSERT INTO item_current_owner(item_uid,root_item_uid,parent_item_uid,"
         "owner_type,owner_id,owner_context_id,item_revision,vnum,state,coin_payload) "
         "VALUES(7003,7003,NULL,1,1,0,1,1,1,X'00')");
@@ -135,7 +146,7 @@ int main() {
     assert(payload_count && std::atoi(payload_count[0]) == 2);
     mysql_free_result(payload_rows);
     mysql_close(db);
-    std::cout << "[PASS] real SQL snapshot apply, rollback-safe custody guard, inline coin exception, duplicate ACK and stale revision\n";
+    std::cout << "[PASS] real SQL snapshot apply, claimed item graph, inline coin exception, repeat save and fenced legacy replay\n";
 }
 '''
 with tempfile.TemporaryDirectory(prefix="duris-playtime-sql-") as temporary:
@@ -144,6 +155,8 @@ with tempfile.TemporaryDirectory(prefix="duris-playtime-sql-") as temporary:
     subprocess.run(["g++", "-std=c++20", "-ffunction-sections", "-fdata-sections", "-Isrc",
                     "-I/usr/include/mysql", str(source), "src/player/player_snapshot_repository.c",
                     "src/player/player_snapshot_codec.c", "src/sql/item_extra_descr_codec.c",
+                    "src/item/item_claim_repository.c", "src/item/item_claim.c",
+                    "src/persistence/dupe_log.c",
                     "src/persistence/persistence_observability.c",
                     "-Wl,--gc-sections", "-lmysqlclient", "-pthread", "-o", str(binary)], cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True)

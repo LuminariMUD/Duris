@@ -1,4 +1,5 @@
 #include "flatfile/flatfile_identity_repository.h"
+#include "core/config.h"
 
 #include "flatfile/flatfile_store.h"
 
@@ -17,7 +18,7 @@
 
 namespace
 {
-constexpr uint32_t identity_format_version = 2;
+constexpr uint32_t identity_format_version = 3;
 constexpr size_t identity_maximum_bytes = 64 * 1024 * 1024;
 constexpr size_t identity_maximum_entries = 1000000;
 constexpr size_t identity_maximum_name = 64;
@@ -175,6 +176,7 @@ bool encode_payload(const identity_catalog &catalog, std::vector<uint8_t> *paylo
 		out.number<uint32_t>(entry.secondary_class);
 		out.number<int32_t>(entry.last_room);
 		out.number<int64_t>(entry.last_save);
+		out.number<uint8_t>(entry.trusted ? 1 : 0);
 	}
 	if (!out.valid || out.bytes.size() > identity_maximum_bytes)
 		return false;
@@ -206,6 +208,12 @@ bool decode_payload(const uint8_t *data, size_t size, uint32_t version, identity
 		     !in.number(&entry.secondary_class) || !in.number(&entry.last_room) ||
 		     !in.number(&entry.last_save)))
 			return false;
+		// A record written before version 3 is taken as trusted above mortal level, as
+		// it was read then; the account's next save writes the flag.
+		uint8_t trusted = entry.level > MAXLVLMORTAL ? 1 : 0;
+		if (version >= 3 && (!in.number(&trusted) || trusted > 1))
+			return false;
+		entry.trusted = trusted;
 	}
 	if (!in.valid || in.offset != in.size || !validate_catalog(decoded))
 		return false;
@@ -257,7 +265,7 @@ flatfile_identity_result load_catalog(const std::string &root, identity_catalog 
 	uint32_t version = 0, payload_size = 0;
 	uint64_t revision = 0;
 	if (!header.number(&version) || !header.number(&payload_size) ||
-	    !header.number(&revision) || (version != 1 && version != identity_format_version) ||
+	    !header.number(&revision) || version < 1 || version > identity_format_version ||
 	    !revision || payload_size != bytes.size() - header_size)
 		return flatfile_identity_result::invalid;
 	const uint8_t *stored_digest =

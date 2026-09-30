@@ -91,35 +91,26 @@ class CurrencyTransactionContractTests(unittest.TestCase):
         self.assertIn("currency_reason_type::boon_reward", boon)
         self.assertIn("currency_reason_type::ship_insurance", ship)
 
-    def test_positive_wallet_rewards_serialize_and_rebase(self):
-        command = (SRC / "currency_command.c").read_text()
+    def test_transactions_apply_in_memory_and_complete_at_once(self):
         transaction = (SRC / "currency_transaction.c").read_text()
-        repository = (SRC / "critical_command_repository.c").read_text()
-        self.assertIn("payload.reason != currency_reason_type::wallet_reward", command)
-        self.assertIn("payload.wallet_delta.amount[index] < 0", command)
-        self.assertIn("payload.bank_delta.amount[index]", command)
-        self.assertIn("!rebasable_reward &&", transaction)
-        self.assertIn("currency_command_is_rebasable_wallet_reward", command)
-        self.assertIn("currency_command_is_rebasable_bank_reward", command)
-        self.assertIn("currency_command_is_rebasable_reward", transaction)
-        self.assertIn("currency_command_is_rebasable_bank_reward", transaction)
-        self.assertIn("!rebase &&", command)
-        self.assertIn("currency_prepare_mutation", repository)
-        self.assertIn("currency_revision_policy::sql_legacy", repository)
+        self.assertNotIn("critical_command_coordinator_submit", transaction)
+        self.assertNotIn("pending", transaction)
+        self.assertIn("completion(character, true, result, 0, bytes, context_size);", transaction)
+        self.assertIn("completion(character, false, {}, ENOSPC, bytes, context_size);", transaction)
+        self.assertIn("mark_player_dirty_components(GET_PID(character), PLAYER_COMPONENT_STATUS);",
+                      transaction)
 
-    def test_checkpoint_handoff_captures_but_cannot_overwrite_currency(self):
+    def test_the_save_writes_the_wallet(self):
         capture = (SRC / "player_snapshot_capture.c").read_text()
         replay = (SRC / "player_snapshot_repository.c").read_text()
-        sql_player = (SRC / "sql_player.c").read_text()
-        for field in ("copper", "silver", "gold", "platinum"):
-            # A complete flat baseline needs the immutable opening value. Both SQL
-            # replay and load materialization still treat the transaction domain as
-            # authoritative after that handoff.
+        flatfile = (SRC / "flatfile_player_repository.c").read_text()
+        apply_status = replay[replay.index("query_result apply_status("):
+                              replay.index("template <typename Row, typename Append>")]
+        # The save writes the wallet, epic points and frags memory holds.
+        for field in ("copper", "silver", "gold", "platinum", "epics", "frags", "old_frags"):
             self.assertIn(f"ADD_STATUS({field},", capture)
-            self.assertIn(f"row.field == player_status_field::{field}", replay)
-        self.assertIn("copper=copper, silver=silver, gold=gold, platinum=platinum", sql_player)
-        self.assertIn("INSERT INTO currency_wallet_baseline", sql_player)
-        self.assertIn("currency_bank_baseline", sql_player)
+            self.assertNotIn(f"row.field == player_status_field::{field}", apply_status)
+        self.assertIn("flatfile_player_domain_prepare_saved_balances(", flatfile)
 
     def test_no_legacy_bank_delta_helper_remains_in_gameplay(self):
         call = re.compile(r"sql_account_bank_(?:deposit|withdraw)(?:_balances|_value)?\s*\(")
@@ -179,44 +170,30 @@ class CurrencyTransactionContractTests(unittest.TestCase):
                     violations.append(f"{path.relative_to(ROOT)}:{number}:{line.strip()}")
         self.assertEqual([], violations)
 
-    def test_completion_publication_and_lifecycle_are_game_thread_owned(self):
+    def test_bank_changes_reach_every_online_character_and_the_writer(self):
         transaction = (SRC / "currency_transaction.c").read_text()
         utility = (SRC / "utility.c").read_text()
         comm = (SRC / "comm.c").read_text()
         nanny = (SRC / "nanny.c").read_text()
-        self.assertIn("find_player_by_pid", transaction)
+        worker = (SRC / "player_save_worker.h").read_text()
         self.assertIn("publish_account_bank_balances_revision", transaction)
         self.assertIn("for (P_desc desc = descriptor_list", utility)
-        self.assertIn("currency_transaction_handle_completions", comm)
-        self.assertIn("currency_transaction_player_ready", nanny)
-        self.assertIn("critical_command_coordinator_is_fenced", transaction)
+        self.assertIn("persistence_writer_submit(persistence_job_kind::bank", transaction)
+        self.assertIn("bank,", worker)
+        # The save of the side the money leaves is queued first.
+        apply = transaction[transaction.index("bool apply(P_char character"):]
+        self.assertLess(apply.index("if (bank_loses)\n\t\tqueue_bank_delta"),
+                        apply.index("currency_transaction_save_first(character);"))
+        self.assertLess(apply.index("currency_transaction_save_first(character);"),
+                        apply.index("if (!bank_loses)\n\t\t\tqueue_bank_delta"))
+        self.assertNotIn("currency_transaction_handle_completions", comm)
+        self.assertNotIn("currency_transaction_player_ready", nanny)
 
-    def test_unresolved_publication_is_explicit_and_operator_visible(self):
-        header = (SRC / "economy/currency_transaction.h").read_text()
-        publication = (SRC / "economy/currency_publication.h").read_text()
-        transaction = (SRC / "economy/currency_transaction.c").read_text()
+    def test_world_status_reports_in_memory_counts(self):
         world_status = (SRC / "cmd/actinf.c").read_text()
-        for state in (
-            "awaiting_completion",
-            "waiting_for_player",
-            "retrying_callback",
-            "blocked_receipt",
-        ):
-            self.assertIn(state, publication)
-        self.assertIn("currency_publication_state_is_ready", publication)
-        self.assertIn("currency_publication_state_is_live_pending", publication)
-        self.assertIn("currency_publication_state_is_blocked", publication)
-        self.assertIn("stage_publication_receipt", transaction)
-        self.assertIn("currency_transaction_can_submit_nonrebasable", header)
-        self.assertNotIn("currency_transaction_can_submit(P_char", header)
-        for metric in (
-            "currency_transactions",
-            "retained_offline",
-            "publication_blocked",
-            "publication_retrying",
-            "publication_abandoned",
-        ):
-            self.assertIn(metric, world_status)
+        self.assertFalse((SRC / "economy/currency_publication.h").exists())
+        self.assertIn("currency_transactions state=ready submitted=%llu committed=%llu "
+                      "rejected=%llu \"\n\t\t \"bank_deltas=%llu", world_status)
 
 
 if __name__ == "__main__":

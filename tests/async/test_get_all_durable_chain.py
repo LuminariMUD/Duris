@@ -142,7 +142,7 @@ ok &= check(
     and "return false;" in after_commit
     and "state.synchronous_items.erase" in after_commit
     and "bulk_gets.emplace(actor_pid, std::move(state))" in start_bulk
-    and "submit_coin_get(ch, o_obj, s_obj, showit)" in single_get,
+    and "submit_coin_get(" not in single_get,
 )
 ok &= check(
     "single durable get rejects no-loot before ownership submission",

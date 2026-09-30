@@ -49,16 +49,20 @@ for path in sorted(SRC.rglob("*.c")) + sorted(SRC.rglob("*.h")):
 check("no source calls mysql_thread_init() directly: " + (", ".join(offenders) or "none"),
       not offenders)
 
+# Player and locker saves share the one writer thread in player_save_worker.c.
+for name in ["player_save_pipeline.c", "locker_async.c"]:
+    body = (SRC / name).read_text(encoding="utf-8", errors="replace")
+    check(f"{name} starts no thread of its own",
+          "std::thread" not in body and "pthread_create" not in body)
+
 # Each worker that spawns threads has to route through the helper.
 for name in [
     "player_save_worker.c",
-    "player_save_pipeline.c",
     "player_load_pipeline.c",
     "maintenance_scheduler.c",
     "critical_outbox.c",
     "critical_command_repository.c",
     "persistence_queue.c",
-    "locker_async.c",
 ]:
     body = (SRC / name).read_text(encoding="utf-8", errors="replace")
     check(f"{name} routes through the helper",

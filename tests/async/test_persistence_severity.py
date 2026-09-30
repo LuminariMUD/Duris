@@ -116,18 +116,12 @@ with tempfile.TemporaryDirectory(prefix='persistence-severity-') as temp:
     subprocess.run([str(binary)], check=True)
 print('[PASS] production reporter routing, fallback severity, legacy alerts, formatting and redaction')
 
-# Pin branch classifications, including failures sharing a progress call site.
 from contract_text import contains
-for snippet in [
-    'persistence_report(persistence_severity::ok, AVATAR, "player_save", "death", "none", "none", outcome,',
-    'persistence_report(durable ? persistence_severity::ok : persistence_severity::alert,',
-    'persistence_report(corpse_transfer_disputed(ch) ? persistence_severity::alert : persistence_severity::info,',
-]:
-    assert contains(fight, snippet), snippet
-assert len(re.findall(r'persistence_report\(\s*submitted\s*\?\s*persistence_severity::info\s*:\s*persistence_severity::alert', fight)) == 2
-for action in ['death_recovery_schedule_failed', 'terminal_save_failed', 'death_recovery_retry']:
-    assert re.search(r'persistence_alert\(AVATAR,\s*"player_save",\s*"death",\s*"none",\s*"none",\s*"' + action + '"', fight)
-print('[PASS] successful death completion/progress are quiet; disputes, refused submissions and save failures alert')
+actoth_source = (ROOT / 'src/cmd/actoth.c').read_text()
+# A death saves and leaves at once; a save that cannot be queued alerts where it is queued.
+assert 'death_recovery' not in fight and 'terminal_save_failed' not in fight
+assert '"queue_failed"' in actoth_source
+print('[PASS] a death is quiet; a terminal save that cannot be queued alerts')
 
 for file, snippet in [
     ('src/cmd/actoth.c', 'persistence_report(saved ? persistence_severity::ok : persistence_severity::alert,'),

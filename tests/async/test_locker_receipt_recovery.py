@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 COMMON = ['src/item/locker_receipt.c', 'src/flatfile/flatfile_store.c',
           'src/economy/currency_command.c', 'src/persistence/critical_command.c',
           'src/world/epic_command.c', 'src/combat/combat_outcome_command.c']
-SQL = ['src/item/item_transfer_command.c', 'src/item/item_transfer_repository.c',
+SQL = ['src/item/item_transfer_command.c', 'src/item/item_transfer_repository.c', 'src/item/item_claim_repository.c', 'src/item/item_claim.c',
        'src/economy/auction_command.c', 'src/economy/auction_repository.c',
        'src/combat/combat_outcome_repository.c', 'src/guild/artifact_guild_command.c',
        'src/guild/artifact_guild_repository.c', 'src/economy/boon_reward_command.c',
@@ -27,7 +27,7 @@ SQL = ['src/item/item_transfer_command.c', 'src/item/item_transfer_repository.c'
        'src/economy/collector_policy.c', 'src/economy/collector_repository.c',
        'src/persistence/corpse_lifecycle_command.c',
        'src/persistence/corpse_lifecycle_repository.c',
-       'src/player/player_snapshot_codec.c', 'src/player/player_load_repository.c',
+       'src/player/player_snapshot_codec.c', 'src/player/player_load_repository.c', 'src/persistence/dupe_log.c',
        'src/player/player_load_topology.c', 'src/persistence/persistence_observability.c',
        'src/persistence/economic_accounting_repository.c','src/persistence/economic_sql_bank_transaction.c','src/economy/economic_currency_adapter.c','src/economy/economic_accounting_types.c','src/economy/economic_accounting_plan.c','src/economy/economic_accounting_intent.c','src/persistence/critical_command_repository.c',
        'src/sql/item_extra_descr_codec.c', 'tests/async/item_extra_descr_codec_sql_escape_stub.cpp',

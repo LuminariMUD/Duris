@@ -28,7 +28,6 @@ struct player_load_pipeline_health
 	uint64_t cancelled = 0;
 	uint64_t stale = 0;
 	uint64_t applied = 0;
-	uint64_t degraded = 0;
 	uint64_t retryable_failures = 0;
 	uint64_t component_failures = 0;
 	uint64_t limit_exceeded = 0;
@@ -46,22 +45,23 @@ struct player_load_pipeline_health
 };
 
 using player_load_execute_fn = player_load_result (*)(const player_load_request &, void *);
+// True while a character must not be loaded yet, such as while its save is queued.
+using player_load_hold_fn = bool (*)(int pid);
 
 bool player_load_pipeline_init(player_load_execute_fn execute = nullptr, void *context = nullptr);
+// The worker holds a load while held(pid) is true, and times it out at its deadline.
+void player_load_pipeline_set_hold(player_load_hold_fn held);
 uint64_t player_load_pipeline_next_request_id(void);
 void player_load_pipeline_shutdown(void);
 player_load_submit_outcome player_load_pipeline_submit(player_load_request request);
 bool player_load_pipeline_cancel(uint64_t request_id);
 size_t player_load_pipeline_pulse(player_load_result *results_out, size_t capacity);
+// Blocking loads, for copyover restore only: it runs before the game loop starts.
+// Logins never wait on a load.
 bool player_load_pipeline_wait(player_load_request request, player_load_result *result_out,
 			       uint64_t timeout_msec);
-// Synchronous fallback used when the asynchronous worker is unavailable, saturated, or
-// timed out. It reads a consistent snapshot directly and never changes login admission policy.
 bool player_load_pipeline_execute_sync(player_load_request request, player_load_result *result_out);
 bool player_load_pipeline_pid_pending(int pid);
-// Identity sanity check only. Secondary persistence fences are represented as degraded
-// admission state and must not deny an otherwise valid player login.
-bool player_load_pipeline_login_admit(int pid);
 player_load_pipeline_health player_load_pipeline_health_copy(void);
 void player_load_pipeline_note_stale(void);
 void player_load_pipeline_reset_for_tests(void);

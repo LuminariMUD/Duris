@@ -355,7 +355,10 @@ static void inspect_authority(const std::string &root, int32_t pid)
 	std::cout << "]}\n";
 }
 
-static void coin_player_matrix(const fs::path &path)
+// A save claims what the player holds in the same authority transaction that writes
+// the player file, so the ownership catalog follows memory: whatever the player file
+// says after a save, the catalog says too, and nothing is left for a load to repair.
+static void item_consistency_matrix(const fs::path &path)
 {
 	const std::string root = path.string();
 	for (const auto &directory : { path, path / "players", path / "domains",
@@ -369,129 +372,168 @@ static void coin_player_matrix(const fs::path &path)
 	for (int32_t i = 1; i <= 42; ++i)
 		require(flatfile_identity_allocate_pid(root, &pid, &error) ==
 				flatfile_identity_result::ok,
-			"coin player identity allocation");
+			"consistency identity allocation");
 	require(flatfile_identity_claim(root, 42, "Player", "Account-One", &error) ==
 			flatfile_identity_result::ok,
-		"coin player identity claim");
-	auto snapshot = make_full(1);
-	snapshot.items[1].vnum = VOBJ_COINS;
-	snapshot.items[1].type = ITEM_MONEY;
-	snapshot.items[1].values[0] = 50;
-	snapshot.items[1].name = "legacy coins";
-	snapshot.items[1].string_mask = 1;
-	require(flatfile_player_snapshot_apply(root, snapshot, &error).outcome ==
+		"consistency identity claim");
+	require(flatfile_player_snapshot_apply(root, make_full(1), &error).outcome ==
 			player_save_apply_outcome::applied,
-		"coin player snapshot baseline: " + error);
-	const item_owner_identity owner = { item_owner_type::player, 42, 0 };
-	for (int32_t before : { 50, 20 })
+		"consistency baseline: " + error);
+	auto reload = [&](const player_snapshot &snapshot, uint64_t request_id)
 	{
-		const int32_t after = before == 50 ? 20 : 0;
+		require(flatfile_player_snapshot_apply(root, snapshot, &error).outcome ==
+				player_save_apply_outcome::applied,
+			"item-consistency fixture save failed: " + error);
+		player_load_request items_request = {};
+		items_request.request_id = request_id;
+		items_request.pid = 42;
+		items_request.account_name = "account-one";
+		items_request.deadline_usec =
+			persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
+		return flatfile_player_load_repository_execute(root, items_request);
+	};
+	player_item_snapshot orphan = {};
+	orphan.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	orphan.object_uid = 103;
+	orphan.vnum = 503;
+
+	// The child taken out of its container stays out: the catalog moved with it.
+	player_snapshot moved = make_full(2);
+	moved.items[1].parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	player_load_result loaded = reload(moved, 9);
+	require(loaded.outcome == player_load_outcome::applied && loaded.repaired_item_rows == 0 &&
+			loaded.stale_item_rows == 0 &&
+			loaded.snapshot.items[1].parent_index == PLAYER_SNAPSHOT_NO_PARENT &&
+			!loaded.item_identities[1].parent_item_uid,
+		"a moved item did not load where the save put it");
+
+	// An item nobody had recorded is recorded by the save that holds it.
+	player_snapshot extra = make_full(3);
+	extra.items.push_back(orphan);
+	loaded = reload(extra, 10);
+	require(loaded.outcome == player_load_outcome::applied &&
+			loaded.snapshot.items.size() == 3 && loaded.stale_item_rows == 0 &&
+			loaded.missing_payload_rows == 0 &&
+			// The legacy pet has no UID, so its item is the player's too.
+			loaded.authoritative_item_count == 4,
+		"a newly held item was not recorded by the save");
+
+	// A container's contents follow it into another container.
+	player_snapshot nested = make_full(4);
+	nested.items.insert(nested.items.begin(), orphan);
+	nested.items[1].parent_index = 0;
+	nested.items[2].parent_index = 1;
+	loaded = reload(nested, 11);
+	require(loaded.outcome == player_load_outcome::applied &&
+			loaded.snapshot.items.size() == 3 && loaded.stale_item_rows == 0 &&
+			loaded.promoted_item_rows == 0 &&
+			loaded.snapshot.items[1].parent_index == 0 &&
+			loaded.snapshot.items[2].parent_index == 1 &&
+			loaded.item_identities[1].root_item_uid == 103 &&
+			loaded.item_identities[1].parent_item_uid == 103 &&
+			loaded.item_identities[2].root_item_uid == 103,
+		"nested contents did not load under their new container");
+
+	// An item the player no longer holds stays recorded until its next holder claims
+	// it; the load simply has no payload for it.
+	player_snapshot dropped = make_full(5);
+	dropped.items.pop_back();
+	loaded = reload(dropped, 12);
+	require(loaded.outcome == player_load_outcome::applied &&
+			loaded.snapshot.items.size() == 1 && loaded.stale_item_rows == 0 &&
+			loaded.missing_payload_rows == 2,
+		"an item the player dropped refused the load");
+}
+
+// The wallet, epic points and frags are memory's: every save writes the ones it carries
+// into the domain record.
+static void saved_wallet_matrix(const fs::path &path)
+{
+	const std::string root = path.string();
+	for (const auto &directory : { path, path / "players", path / "domains",
+				       path / "identities", path / "identities/names" })
+	{
+		fs::create_directories(directory);
+		fs::permissions(directory, fs::perms::owner_all, fs::perm_options::replace);
+	}
+	std::string error;
+	int32_t pid = 0;
+	for (int32_t i = 1; i <= 42; ++i)
+		require(flatfile_identity_allocate_pid(root, &pid, &error) ==
+				flatfile_identity_result::ok,
+			"wallet player identity allocation");
+	require(flatfile_identity_claim(root, 42, "Player", "Account-One", &error) ==
+			flatfile_identity_result::ok,
+		"wallet player identity claim");
+	auto snapshot = make_full(1);
+	for (const std::array<int64_t, 4> &wallet :
+	     { std::array<int64_t, 4>{ 11, 12, 13, 14 }, std::array<int64_t, 4>{ 5, 0, 0, 1 },
+	       std::array<int64_t, 4>{ 0, 0, 0, 0 } })
+	{
+		for (player_snapshot_integer &row : snapshot.status_integers)
+			if (row.field == player_status_field::copper)
+				row.signed_value = wallet[0];
+			else if (row.field == player_status_field::silver)
+				row.signed_value = wallet[1];
+			else if (row.field == player_status_field::gold)
+				row.signed_value = wallet[2];
+			else if (row.field == player_status_field::platinum)
+				row.signed_value = wallet[3];
+			else if (row.field == player_status_field::epics)
+				row.signed_value = wallet[0] * 100 - 5;
+			else if (row.field == player_status_field::frags)
+				row.signed_value = wallet[1] - 3;
+			else if (row.field == player_status_field::old_frags)
+				row.signed_value = wallet[2] + 1;
+		require(flatfile_player_snapshot_apply(root, snapshot, &error).outcome ==
+				player_save_apply_outcome::applied,
+			"wallet player save: " + error);
+		++snapshot.revision;
+		flatfile_player_domain_record domain;
+		require(flatfile_player_domain_load(root, 42, "Account-One", 0, &domain, &error) ==
+					flatfile_player_domain_result::ok &&
+				domain.domains.wallet ==
+					std::array<uint64_t, 4>{
+						static_cast<uint64_t>(wallet[0]),
+						static_cast<uint64_t>(wallet[1]),
+						static_cast<uint64_t>(wallet[2]),
+						static_cast<uint64_t>(wallet[3]) } &&
+				domain.domains.epics == wallet[0] * 100 - 5 &&
+				domain.domains.frags == wallet[1] - 3 &&
+				domain.domains.old_frags == wallet[2] + 1,
+			"the save did not write the wallet, epics and frags it carries");
+	}
+	// A bank change is a delta added to the account's record for its side, created
+	// when missing; a debit the record cannot cover is refused and changes nothing.
+	const auto bank = [&]
+	{
 		flatfile_player_domain_record domain;
 		require(flatfile_player_domain_load(root, 42, "Account-One", 0, &domain, &error) ==
 				flatfile_player_domain_result::ok,
-			"coin player domain load");
-		uint64_t owner_revision = 0, destroyed_revision = 0;
-		std::vector<flatfile_item_ownership_record> owned, destroyed;
-		require(flatfile_item_repository_load_owner(root, owner, &owner_revision, &owned,
-							    &error) ==
-				flatfile_item_repository_result::ok,
-			"coin player custody load");
-		flatfile_item_repository_load_owner(root, { item_owner_type::destruction, 0, 0 },
-						    &destroyed_revision, &destroyed, &error);
-		const auto found = std::find_if(owned.begin(), owned.end(), [](const auto &item)
-						{ return item.item_uid == 101; });
-		require(found != owned.end(), "coin player pile custody missing");
-		coin_transfer_payload payload;
-		payload.source.before[0] = before;
-		payload.source.after[0] = after;
-		item_transfer_payload pile = {};
-		pile.from_owner = owner;
-		pile.to_owner = after ? owner :
-					item_owner_identity{ item_owner_type::destruction, 0, 0 };
-		pile.expected_from_revision = owner_revision;
-		pile.expected_to_revision = after ? owner_revision : destroyed_revision;
-		pile.reason = after ? item_transfer_reason::player_put :
-				      item_transfer_reason::destruction;
-		pile.selected_item_uid = 101;
-		pile.target_root_item_uid = after ? 100 : 101;
-		pile.target_parent_item_uid = after ? 100 : 0;
-		pile.expected_target_parent_revision = after ? 1 : 0;
-		pile.item_count = 1;
-		pile.items[0] = { 101,	      100,
-				  100,	      found->item_revision,
-				  VOBJ_COINS, item_custody_state::active };
-		auto item = snapshot.items[1];
-		item.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
-		item.equipment_slot = -1;
-		item.values[0] = after ? after : before;
-		std::vector<uint8_t> blob;
-		require(player_item_snapshot_list_encode({ item }, &blob) ==
-				player_snapshot_codec_result::ok,
-			"coin player encode");
-		pile.item_blob_size = blob.size();
-		std::copy(blob.begin(), blob.end(), pile.item_blob.begin());
-		critical_operation_id id;
-		require(critical_operation_id_generate(&id), "coin player operation id");
-		require(item_transfer_command_build(&payload.source.change, id, pile,
-						    critical_source_site::command,
-						    critical_deadline_class::interactive),
-			"coin player pile command");
-		currency_command_payload currency = {};
-		currency.pid = 42;
-		currency.reason = currency_reason_type::coin_transfer;
-		strcpy(currency.account_name.data(), "Account-One");
-		currency.wallet_delta.amount[0] = before - after;
-		for (size_t denomination = 0; denomination < 4; ++denomination)
-			payload.destination.before[denomination] =
-				payload.destination.after[denomination] =
-					domain.domains.wallet[denomination];
-		payload.destination.after[0] += before - after;
-		require(currency_command_build(&payload.destination.change, id, currency,
-					       domain.domains.wallet_revision,
-					       domain.domains.bank_revision,
-					       critical_source_site::command,
-					       critical_deadline_class::interactive),
-			"coin player wallet command");
-		critical_command command;
-		require(coin_transfer_command_build(&command, id, payload,
-						    critical_source_site::command,
-						    critical_deadline_class::interactive),
-			"coin player command");
-		command.accepted_at_usec = 1;
-		auto apply = [&]()
-		{
-			return flatfile_critical_command_repository_apply_selected(
-				command, const_cast<char *>(root.c_str()));
-		};
-		const auto applied = apply();
-		require(applied.outcome == critical_apply_outcome::applied &&
-				apply().outcome == critical_apply_outcome::already_applied,
-			"coin player pickup failed: " + std::to_string(applied.error_code));
-		// Saving an old projection cannot undo either the durable remainder or retirement.
-		++snapshot.revision;
-		require(flatfile_player_snapshot_apply(root, snapshot, &error).outcome ==
-				player_save_apply_outcome::applied,
-			"coin stale snapshot write");
-		player_load_request request = {};
-		request.request_id = 1;
-		request.pid = 42;
-		request.account_name = "Account-One";
-		request.deadline_usec =
-			persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
-		const auto loaded = flatfile_player_load_repository_execute(root, request);
-		require(loaded.outcome == player_load_outcome::applied && !loaded.stale_item_rows &&
-				loaded.domains.wallet[0] == static_cast<uint64_t>(61 - after) &&
-				loaded.snapshot.items.size() == (after ? 2u : 1u) &&
-				loaded.snapshot.pets[0].items.size() == 1,
-			"coin player re-entry failed or restored old money: " +
-				std::to_string(loaded.error_code));
-		if (after)
-			require(loaded.snapshot.items[1].object_uid == 101 &&
-					loaded.snapshot.items[1].values[0] == after &&
-					loaded.snapshot.items[1].parent_index == 0,
-				"coin player re-entry lost authoritative remainder/topology");
-	}
-	std::cout << "flatfile legacy player coin pickup, replay and re-entry passed\n";
+			"bank domain load");
+		return domain.domains.bank;
+	};
+	flatfile_authority_operation credit, delta, debit;
+	require(flatfile_bank_delta_apply(root, "Account-One", 0, { 7, 0, 3, 0 }, &credit, &error)
+					.outcome == player_save_apply_outcome::applied &&
+			(bank() == std::array<uint64_t, 4>{ 7, 0, 3, 0 }),
+		"a bank credit did not create the record: " + error);
+	require(flatfile_bank_delta_apply(root, "Account-One", 0, { 1, 0, -3, 4 }, &delta, &error)
+					.outcome == player_save_apply_outcome::applied &&
+			(bank() == std::array<uint64_t, 4>{ 8, 0, 0, 4 }),
+		"a bank delta did not add to the record: " + error);
+	// The writer retries a job whose commit may already have been written: the retry
+	// writes the record the job prepared, so the change is not added twice.
+	require(flatfile_bank_delta_apply(root, "Account-One", 0, { 1, 0, -3, 4 }, &delta, &error)
+					.outcome == player_save_apply_outcome::applied &&
+			(bank() == std::array<uint64_t, 4>{ 8, 0, 0, 4 }),
+		"a retried bank delta was added twice: " + error);
+	require(flatfile_bank_delta_apply(root, "Account-One", 0, { -9, 0, 0, 0 }, &debit, &error)
+					.outcome == player_save_apply_outcome::terminal_failure &&
+			(bank() == std::array<uint64_t, 4>{ 8, 0, 0, 4 }),
+		"a debit the record cannot cover changed it");
+	std::cout
+		<< "flatfile saves write the wallet, epics and frags they carry; bank deltas add up\n";
 }
 
 /** Inspect synthetic authority on request, otherwise exercise player repository durability and recovery. */
@@ -643,7 +685,7 @@ int main(int argc, char **argv)
 	}
 	require(argc == 2, "state root argument required");
 	const fs::path root = argv[1];
-	coin_player_matrix(root / "coin-player");
+	saved_wallet_matrix(root / "saved-wallet");
 	const fs::path players = root / "players";
 	const fs::path identities = root / "identities/names";
 	const fs::path domains = root / "domains";
@@ -733,10 +775,11 @@ int main(int argc, char **argv)
 	require(load_result.outcome == player_load_outcome::timed_out &&
 			load_result.error_code == ETIMEDOUT,
 		"expired flat-file load request was accepted");
-	applied = flatfile_player_snapshot_apply(root.string(), full, &error);
+	// Only the one-time replay of an older server's journal keeps the revision fence.
+	applied = flatfile_player_snapshot_apply(root.string(), full, &error, true);
 	require(applied.outcome == player_save_apply_outcome::already_applied &&
 			applied.durable_revision == 1,
-		"duplicate revision was not idempotent");
+		"duplicate legacy replay was not idempotent");
 
 	player_snapshot trophy_checkpoint = make_status(2, 51, 1202);
 	trophy_checkpoint.components |= PLAYER_COMPONENT_TROPHIES;
@@ -753,10 +796,10 @@ int main(int argc, char **argv)
 			loaded.trophies[0].experience == 645 &&
 			loaded.trophies[1].experience == 678 && loaded.output_preferences.empty(),
 		"partial status merge discarded an untouched component");
-	applied = flatfile_player_snapshot_apply(root.string(), full, &error);
+	applied = flatfile_player_snapshot_apply(root.string(), full, &error, true);
 	require(applied.outcome == player_save_apply_outcome::stale_revision &&
 			applied.durable_revision == 2,
-		"stale player revision was accepted");
+		"stale legacy replay was accepted");
 
 	player_snapshot torn_items = {};
 	torn_items.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
@@ -804,80 +847,20 @@ int main(int argc, char **argv)
 		require(wait(&status) > 0 && WIFEXITED(status) && WEXITSTATUS(status) == 0,
 			"concurrent player writer failed");
 	}
+	// Saves carry no revision fence any more: the one writer applies them in capture
+	// order, so two processes racing leave whichever committed last. The authority lock
+	// still makes each write whole: the file holds one snapshot, never a mix of two.
 	require(flatfile_player_snapshot_load(root.string(), 42, &loaded, &error) ==
 				flatfile_player_load_result::ok &&
-			loaded.revision == 5 && loaded.status_integers[0].signed_value == 55,
-		"concurrent player writers lost the highest revision");
+			(loaded.revision == 4 || loaded.revision == 5) &&
+			loaded.status_integers[0].signed_value ==
+				50 + static_cast<int64_t>(loaded.revision),
+		"concurrent player writers left a torn player file");
 
-	// The ownership catalog is written once, at baseline, so a later save can leave the
-	// two files disagreeing. None of these disagreements may lock the character out.
-	auto reload = [&](const player_snapshot &snapshot, uint64_t request_id)
-	{
-		require(flatfile_player_snapshot_apply(root.string(), snapshot, &error).outcome ==
-				player_save_apply_outcome::applied,
-			"item-consistency fixture save failed: " + error);
-		player_load_request items_request = {};
-		items_request.request_id = request_id;
-		items_request.pid = 42;
-		items_request.account_name = "account-one";
-		items_request.deadline_usec =
-			persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
-		return flatfile_player_load_repository_execute(root.string(), items_request);
-	};
-	player_item_snapshot orphan = {};
-	orphan.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
-	orphan.object_uid = 103;
-	orphan.vnum = 503;
-
-	// A stale projection that still shows an authoritative child at top level heals
-	// back into its container instead of refusing the character.
-	player_snapshot stale_parent = make_full(6);
-	stale_parent.items[1].parent_index = PLAYER_SNAPSHOT_NO_PARENT;
-	player_load_result recovered = reload(stale_parent, 9);
-	require(recovered.outcome == player_load_outcome::applied &&
-			recovered.repaired_item_rows == 1 &&
-			recovered.snapshot.items[1].parent_index == 0 &&
-			recovered.item_identities[1].serialized_parent_id ==
-				recovered.item_identities[0].database_id,
-		"stale flat-file item placement refused the load");
-
-	player_snapshot extra_payload = make_full(7);
-	extra_payload.items.push_back(orphan);
-	recovered = reload(extra_payload, 10);
-	require(recovered.outcome == player_load_outcome::applied &&
-			recovered.snapshot.items.size() == 2 && recovered.stale_item_rows == 1 &&
-			recovered.missing_payload_rows == 0 &&
-			recovered.authoritative_item_count == 3,
-		"a payload item missing from the ownership catalog refused the load");
-
-	player_snapshot dropped_payload = make_full(8);
-	dropped_payload.items.pop_back();
-	recovered = reload(dropped_payload, 11);
-	require(recovered.outcome == player_load_outcome::applied &&
-			recovered.snapshot.items.size() == 1 &&
-			recovered.missing_payload_rows == 1 && recovered.stale_item_rows == 0 &&
-			recovered.authoritative_item_count == 2,
-		"an ownership record without its payload item refused the load");
-
-	// The orphan is the container this time: its contents load at the top level rather
-	// than disappearing with it.
-	player_snapshot orphan_container = make_full(9);
-	orphan_container.items.insert(orphan_container.items.begin(), orphan);
-	orphan_container.items[1].parent_index = 0;
-	orphan_container.items[2].parent_index = 1;
-	recovered = reload(orphan_container, 12);
-	require(recovered.outcome == player_load_outcome::applied &&
-			recovered.snapshot.items.size() == 2 && recovered.stale_item_rows == 1 &&
-			recovered.promoted_item_rows == 1 && recovered.missing_payload_rows == 0 &&
-			recovered.snapshot.items[0].parent_index == PLAYER_SNAPSHOT_NO_PARENT &&
-			recovered.snapshot.items[1].parent_index == 0 &&
-			recovered.item_identities[0].root_item_uid == 100 &&
-			!recovered.item_identities[0].parent_item_uid &&
-			recovered.item_identities[1].root_item_uid == 100,
-		"contents of an orphaned container did not survive the load");
+	item_consistency_matrix(root / "consistency");
 	require(flatfile_player_snapshot_apply(root.string(), make_full(10), &error).outcome ==
 			player_save_apply_outcome::applied,
-		"could not restore the consistent item fixture: " + error);
+		"could not save the item fixture: " + error);
 
 	// A refused corpse handoff is finalized through the durable disposition. It has
 	// to leave the player empty-handed for normal re-entry while every refused
@@ -887,7 +870,7 @@ int main(int argc, char **argv)
 	fs::create_directories(deaths);
 	fs::permissions(deaths, fs::perms::owner_all, fs::perm_options::replace);
 	setenv("DURIS_FLATFILE_TEST_FAIL_BEFORE_AUTHORITY_COMMIT", "1", 1);
-	require(flatfile_player_snapshot_apply(root.string(), death_record, &error).outcome ==
+	require(flatfile_player_snapshot_apply(root.string(), death_record, &error, true).outcome ==
 			player_save_apply_outcome::retryable_failure,
 		"death acknowledged a failed authority commit");
 	unsetenv("DURIS_FLATFILE_TEST_FAIL_BEFORE_AUTHORITY_COMMIT");
@@ -904,11 +887,11 @@ int main(int argc, char **argv)
 			!retained_items.empty(),
 		"failed death commit changed active inventory or custody");
 	setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_IMAGE", "1", 1);
-	require(flatfile_player_snapshot_apply(root.string(), death_record, &error).outcome ==
+	require(flatfile_player_snapshot_apply(root.string(), death_record, &error, true).outcome ==
 			player_save_apply_outcome::retryable_failure,
 		"death acknowledged an interrupted authority commit");
 	unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_IMAGE");
-	require(flatfile_player_snapshot_apply(root.string(), death_record, &error).outcome ==
+	require(flatfile_player_snapshot_apply(root.string(), death_record, &error, true).outcome ==
 			player_save_apply_outcome::already_applied,
 		"death retry did not recover its custody and player after-images: " + error);
 	require(flatfile_player_snapshot_load(root.string(), 42, &loaded, &error) ==
@@ -955,7 +938,7 @@ int main(int argc, char **argv)
 			disposition.death->custody[2].item.expected_state ==
 				item_custody_state::absent,
 		"the death disposition lost corpse identity, wallet or custody evidence");
-	require(flatfile_player_snapshot_apply(root.string(), death_record, &error).outcome ==
+	require(flatfile_player_snapshot_apply(root.string(), death_record, &error, true).outcome ==
 			player_save_apply_outcome::already_applied,
 		"replaying the death repeated its consequences: " + error);
 	uint64_t replay_owner_revision = 0;

@@ -498,6 +498,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "97f27800708a4492bd157b353010988811de10486c0f06ae14df370995ed5ee3",
       "verify_checksum": "6cb06fc24dc98b3e14151fdf9676aece96e3501cd7cafe7896201dd8f1dde602"
+    },
+    {
+      "id": "0033_item_owner_audit",
+      "sequence": 33,
+      "description": "Add the item owner audit written when a save takes an item from another owner",
+      "apply": "immutable/0033_item_owner_audit.sql",
+      "apply_checksum": "9b88eb689a7c252a0bd04ee290dc35c2db3f7b811d6b8daee9bbb8fec8a198cb",
+      "verify": "immutable/0033_item_owner_audit.sh",
+      "verify_checksum": "944bc34d6b18ab85218e44762d639d2ab18ac582f59d549d6e4a75fd22b856b9",
+      "compatibility": "mysql8-mariadb10"
     }
   ]
 }

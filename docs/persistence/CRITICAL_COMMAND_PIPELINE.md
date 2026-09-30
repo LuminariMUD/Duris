@@ -9,94 +9,85 @@ paths, account names, or character names.
 The generic destination stores command identity and result in an InnoDB inbox, applies
 a typed test-domain mutation, and creates its notification in the same transaction.
 Production gameplay producers remain disabled until their individual Phase 02 domain
-sessions. Outside mini mode, startup requires `CRITICAL_COMMAND_JOURNAL_DIR` and the
-verified critical-command schema; failure leaves critical gameplay stopped.
+sessions. Outside mini mode, startup requires the verified critical-command schema;
+failure leaves critical gameplay stopped.
 
 ## Acceptance and execution
 
 The coordinator validates and normalizes an envelope before admission. Entity keys
-are sorted and duplicates are rejected. It reserves bounded memory and queues the
-encoded command on a serialized admission lane. `submit()` returns
-`awaiting_durability` while that lane owns the independent checksummed journal append
-and `fsync`; a RAM enqueue is not durable evidence and never publishes the command to
-the execution queue. Only the worker's successful append acknowledgement crosses the
-durability boundary. Records are never coalesced or replaced by a newer command.
+are sorted and duplicates are rejected. It reserves bounded memory, fences the
+command's keys, and queues it on the one persistence writer
+(`persistence_job_kind::critical`), the same thread that applies every save. A command
+therefore lands in capture order with the saves around it: a save captured before the
+command is applied before it, one captured after, after it. `submit()` returns
+`accepted`; the command is durable once the writer has applied it. New commands are not
+journaled: like a save, a command that had not reached the database is lost in a crash
+(see the persistence reset plan, "What a crash costs"). Records are never coalesced or
+replaced by a newer command.
 
-The admission lane is bounded by the same 1,024-operation/64 MiB coordinator limits
-as execution, and its queue plus one in-flight append are exposed as byte-counted
-health fields. The coordinator mutex is not held while the worker waits on journal
-I/O. A definitive append failure retains a terminal failure notification without
-executing the command; an uncertain append retains the operation and fence until
-replay/sync reconciliation either proves the record durable or produces a terminal
-failure. The operation ID, sorted-key fences, exact acknowledgement, and original
-command bytes are retained throughout.
+The writer job carries its own copy of the command and of the apply function, so a
+command queued before shutdown still lands after the coordinator has stopped; its
+completion is then not delivered. The writer retries a lost connection, a lock wait or an
+ambiguous commit at the head of its queue, before anything queued after the command,
+exactly as it retries a save. Any other outcome is handed to the coordinator's
+completion channel.
 
 The state and transition table is deliberately split between the coordinator's
-durable-command lifecycle and a domain's live-publication lifecycle. The
+command lifecycle and a domain's live-publication lifecycle. The
 `critical_completion_delivery` boundary owns bounded completion retention and
-queue operations; the coordinator still owns retry, fencing, and terminal
-transitions. There is no second generic lifecycle framework hidden behind the
-domain adapters.
+queue operations; the coordinator owns fencing and terminal transitions.
+There is no second generic lifecycle framework hidden behind the domain adapters.
 
 | State | Owner | Durable evidence and allowed transition |
 | --- | --- | --- |
-| Admitted / awaiting durability | Coordinator admission lane | The operation is reserved in bounded memory and its original bytes are queued; `awaiting_durability` is not success. A synced journal append leads to `Durable admission`; definitive failure leads to `Admission failed`; append uncertainty leads to `Uncertain admission`. |
-| Durable admission | Coordinator admission worker | The journal frame was appended and `fsync` completed for this operation ID. The execution lane may now enter `Executing`; no gameplay or live-publication success is implied. |
-| Executing | Coordinator execution worker plus typed domain adapter | The command is fenced and runs only after all affected keys are available. A domain transaction/flat-file authority and its inbox/result/checkpoint are the domain's durable evidence; the coordinator receives an exact revisioned completion. |
-| Retry pending | Coordinator retry transition | Retryable failure requeues the same immutable operation ID and journal record after releasing only the execution slot. The key fence remains, the attempt increases, and the bounded retry count is observable; exhaustion becomes `Blocked uncertainty` with a final notification. |
-| Uncertain admission | Coordinator recovery lane | The original command and fence remain retained while replay and journal sync determine whether the append exists. An exact replay permits `Durable admission`; a definitive failure becomes `Admission failed`; uncertainty never returns a false success. |
-| Final notification retained | `critical_completion_delivery` plus coordinator pulse | The exact operation ID, attempt, outcome, and durable revision remain queued (or retained in the operation state for an admission failure) until the simulation-thread consumer supplies capacity. Consumer backpressure cannot cause a final result to be discarded; publication then releases or preserves the appropriate fence. |
-| Admission failed | Coordinator admission-failure state | The command never executes. Its terminal error is retained and delivered once; only delivery retires the operation and removes its fences. |
-| Currency publication ready | Game-thread currency adapter | The adapter stages the coordinator receipt under the same operation ID, then publishes the committed wallet/bank revision. Database completion may therefore precede live publication without a replacement operation. |
-| Currency waiting / retrying / blocked | Game-thread currency adapter | An offline player waits, a transient callback retries within its bound, and an unresolved receipt remains blocked with its original continuation and ID. These are not coordinator retries and never become an automatic rejection or refund. |
-| Snapshot pending and outbox pending | Snapshot and outbox subsystems | Snapshot capture/replay and outbox delivery have their own owners, records, and recovery rules. They do not coalesce critical commands, acknowledge journal admission, or substitute for live currency publication. |
+| Queued on the writer | Coordinator plus the persistence writer | The operation is reserved in bounded memory and fenced on every key; the writer applies it in capture order through the typed domain adapter. A domain transaction/flat-file authority and its inbox/result are the durable evidence; the coordinator receives an exact revisioned completion. |
+| Retried by the writer | Persistence writer | A lost connection, lock wait or ambiguous commit is applied again with the same operation ID before anything queued after it, until it lands. The fence remains. A command whose outcome never becomes known is named at shutdown with what the writer could not write. |
+| Final notification retained | `critical_completion_delivery` plus coordinator pulse | The exact operation ID, outcome, and durable revision remain queued until the simulation-thread consumer supplies capacity. Consumer backpressure cannot cause a final result to be discarded; publication then releases or preserves the appropriate fence. |
+| Snapshot pending and outbox pending | Snapshot and outbox subsystems | Snapshot capture/replay and outbox delivery have their own owners, records, and recovery rules. They do not coalesce critical commands. |
 
-Conflicting commands are admitted in acceptance order for every affected key. A
-command may execute only when it is first for all its keys, which avoids deadlock while
-letting unrelated keys run on separate workers. The fence exists from acceptance until
-an exact terminal completion. Retryable and ambiguous results retain the same ID,
-journal record, and fence. A completion with the wrong operation ID or attempt is stale
-and cannot release anything.
+The writer applies commands one at a time in acceptance order, so conflicting commands
+never overlap. The fence exists from acceptance until the game thread takes the
+completion, or, for a command held for publication, until it acknowledges the
+publication. `critical_command_coordinator_is_fenced()` reports it, so callers do not
+build a command from a view another command is changing. A completion with the wrong
+operation ID or attempt is stale and cannot release anything.
 
 An identical duplicate submission attaches to the active operation or the bounded
 recent-completion cache. Reusing an ID with different bytes fails closed. Accepted
-commands cannot be cancelled. A terminal destination failure is checkpointed and
-reported; exhausted retryable work stays blocked and fenced for operator recovery.
+commands cannot be cancelled. A terminal destination failure is reported once.
 
-## Journal and recovery
+## Journal of an older server
+
+Only a journal an older server left is read, once, at boot, from
+`CRITICAL_COMMAND_JOURNAL_DIR`. Every record is validated first: a record this server
+cannot execute stops the boot with nothing applied and the journal untouched. The
+commands are then queued on the writer in journal order, and each is checkpointed once it
+lands (a command held for publication, once its publication is acknowledged). Replay
+retains the original operation ID; a command replayed again after a crash finds its
+inbox row and returns `already_applied`.
 
 The journal directory must be owned by the server user and mode `0700`; its regular
 file is mode `0600` and opened without following symlinks. Records have magic, version,
-length, operation ID, canonical command bytes, and CRC32. Appends are synchronized and
-durable before returning. Exact checkpoint rewrites a temporary file, syncs it, renames
-it, and syncs the directory.
-
-Startup validates the complete journal before replay. Truncation, bad framing,
+length, operation ID, canonical command bytes, and CRC32. Exact checkpoint rewrites a
+temporary file, syncs it, renames it, and syncs the directory. Truncation, bad framing,
 unsupported versions, checksum mismatch, unsafe ownership or permissions, I/O failure,
 or quota exhaustion fails closed. Identical repeated frames replay once; conflicting
-bytes for one operation ID are corruption. Replay retains the original operation ID.
+bytes for one operation ID are corruption.
 
 Default bounds are 1,024 active operations, 64 MiB of command memory, 2,048 pending
-completion records, 4,096 journal records, a 256 MiB journal, eight retries, and a
-256-operation/8 MiB recent-completion cache. The admission queue counts against the
-active-operation and command-memory bounds; accepted work is never dropped merely
-because the worker is behind.
+completion records, and a 256-operation/8 MiB recent-completion cache. Accepted work is
+never dropped because the writer is behind.
 
 ## Lifecycle and diagnostics
 
 Copyover and ordinary shutdown quiesce admission and require a three-second drain
-before later persistence gates. The drain covers admission, execution, retry, and
-retained terminal notifications. Any failed transition resumes admission and leaves
-the live server running. The game loop drains typed completions every two pulses.
-Normal submission, pulse, and uncertain-recovery signaling perform no journal file
-I/O; journal append, `fsync`, replay, and reconciliation are owned by the admission
-worker. Shutdown joins that worker after the admission lane has drained, so no
-detached append can outlive the coordinator or its journal lock.
+before later persistence gates. The drain covers commands on the writer and retained
+terminal notifications. Any failed transition resumes admission and leaves the live
+server running. The game loop drains typed completions every two pulses. Submission
+and pulse perform no file or database I/O on the game thread.
 
 `world persistence` exposes one metadata-only `critical_commands` line: state,
-awaiting-durability and admission-queue bytes, admission-worker and append-in-flight
-status, durable admissions, admission failures and uncertain admissions, execution queue
-and in-flight counts, blocked count, retained bytes, fences, recent completions,
+in-flight and publication-pending counts, retained bytes, fences, recent completions,
 high-water marks, accepts, attachments, outcomes, retries, ambiguous results, stale
 completions, overloads, oldest age, and journal counts/bytes/status. It never prints
 command payloads or entity identities.
@@ -119,112 +110,82 @@ totals, and high-water records/bytes. `critical_outbox_reconcile()` is the typed
 read-only discrepancy interface. `critical_outbox_retry_dead_letter(id)` is the sole
 repair action: it can only reset one numeric dead-letter ID and never accepts SQL.
 
-Treat `blocked>0`, growing oldest age, `journal=corrupt`, `journal=io_failure`, or
+Treat a growing oldest age, `journal=corrupt`, `journal=io_failure`, or
 `journal_quota=1` as a stop condition for copyover/shutdown and affected gameplay.
 Restore the underlying storage or destination, preserve the journal, and investigate
 before restarting. Never delete or edit the journal to clear a fence.
 
 Focused validation is `python3 tests/async/test_critical_command_admission.py`,
 `python3 tests/async/test_critical_command_coordinator.py`,
-`python3 tests/async/test_critical_command_journal_uncertain.py`,
 `python3 tests/async/test_critical_completion_capacity.py`,
-`python3 tests/async/test_critical_transaction_contract.py`, and, on an explicitly
-guarded local development database, `tests/async/run_critical_command_schema_mysql.sh`.
+`python3 tests/async/test_critical_transaction_contract.py`, and, on a disposable
+database, `tests/async/run_critical_command_schema_mysql.sh`.
 
-## Epic balance destination
+## Epic points and frags live in memory
 
-Epic awards and spends use command type `epic` with one player key, a signed delta,
-typed reason, optional reason ID, and a funds-required flag. The repository creates a
-baseline lazily when needed, locks `player_data`, validates the revision and funds,
-updates balance/revision, inserts one immutable ledger row, stores the exact result,
-and emits its outbox row in the same transaction. Duplicate and ambiguous replay return
-the stored balance/revision without another delta.
+`epic_transaction_submit()` changes the balance at once and calls its completion before
+returning: committed, or refused with `ENOSPC` when a purchase needs more than the
+balance (`ERANGE` on overflow). The player's save writes epics, frags and old frags, on
+both backends. The command still goes to the one writer as type `epic`, where it only
+records history: MariaDB adds an `epic_ledger` row whose balance and revision continue
+from the player's last row (or the saved balance when there is none) and advances
+`player_data.epic_revision`, which the rows are keyed on; it never writes the balance.
+Zone trophies, the epic bonus window and the completed-zone reads at login read that
+ledger. Flat-file records the operation only.
 
-The game thread owns a bounded operation-keyed continuation table. It publishes the
-exact committed balance and revision before invoking a typed staged effect. Offline
-completions remain retained until the player enters or reconnects. `world persistence`
-reports aggregate `epic_transactions` pending, retained, outcome, submission-failure,
-and malformed-completion counters without operation or player identity.
+A PvP outcome changes the participants' frags, epics and blood money when it is submitted.
+Its command records the kill (`pkill_event`, `pkill_info`, `combat_outcome`), continues the
+frag and epic ledgers the same way, and updates the frag leaderboard; it is no longer fenced
+on the participants' revisions. An epic stone's awards are added in memory when the touch
+commits, once per participant (a participant who left gets theirs on return), and the
+repository records them in the epic ledger with the stone claim.
 
-Player checkpoints, legacy flat-file replay, and ordinary status updates do not write
-the epic balance. New-character initialization and authoritative SQL hydration are the
-only non-transactional in-memory assignments. Focused validation is
-`python3 tests/async/test_epic_transaction_contract.py` and, on a guarded development
-database, `tests/async/run_epic_transaction_schema_mysql.sh`.
+`world persistence` reports `epic_transactions` submitted, committed, rejected and ledger
+rows the coordinator would not queue. Focused validation is
+`python3 tests/async/test_epic_transaction_contract.py`,
+`python3 tests/async/test_epic_stone_runtime.py` and, on a guarded development database,
+`tests/async/run_epic_transaction_schema_mysql.sh` and
+`tests/async/run_combat_outcome_schema_mysql.sh`.
 
-## Currency receipt and live-publication boundary
+## Money lives in memory
 
-The currency adapter gives every in-process continuation an explicit publication
-state: awaiting coordinator completion, ready, waiting for its player, retrying a
-bounded coin callback, or blocked on an unresolved receipt. It retains the
-original operation ID and continuation when a receipt is ambiguous,
-retry-exhausted, or acknowledges a commit whose result or live balances cannot
-be validated. These states are **not** terminal rejection; they must not trigger
-a failure/refund callback. A blocked entry is not scanned again on every pulse.
-It emits one operation-ID-bearing diagnostic and sleeps until the coordinator
-delivers another exact receipt. See [issue #380](https://github.com/Community-Duris/Duris/issues/380).
+Currency is no longer a critical command. `currency_transaction_submit()` and its
+variants change the character's wallet, and the bank view of every online character
+of its account and side, at once, then call their completion before returning:
+committed, or refused with `ENOSPC` when a balance would go below zero. The player's
+save writes the wallet. A bank change is queued on the one writer as a `bank` job
+holding the delta: MariaDB adds it to the `account_banks` row (creating it), flat-file
+to the account's bank domain. The bank job is queued after the player's save when the
+bank gains and before it when the bank loses, so a crash can lose money but never pay
+it twice. A retried bank job never adds its delta twice either: MariaDB writes it in a
+transaction and reports a commit whose outcome is unknown instead of retrying it, and
+flat-file writes again the bank record it prepared the first time. Shutdown names bank deltas the writer could not write
+(`persistence_writer/bank ... deltas=N`).
 
-Coordinator completion and live publication have different lifetimes. A
-non-rebasable debit must respect the domain's player/account busy state even
-after the coordinator releases its execution fence. Rebasable rewards may queue
-behind ordinary in-flight work because they do not read the live balance, but
-stop for an affected player/account once publication is blocked. This prevents
-a single unresolved receipt from filling the global `CURRENCY_PENDING_MAX`
-table. Unrelated accounts retain their existing admission behavior.
-Successful publication, or a known terminal rejection, removes the completed
-pending entry before invoking its continuation. An extracted node owns callback
-context across re-entrant submissions; no pending-map iterator survives that
-callback.
+The economy's commands still run on the writer, but they no longer read or write a
+balance. An auction listing fee or bid and a collector purchase price leave the wallet
+at submit, with the player's save queued before the command. The completion gives back
+what the command did not charge: all of it when refused, and the rest of a bid that was
+capped at the buy-now price or only raised the bidder's own bid. A money claim brings
+its money at completion. A refund for a collector buyer who has left is given when they
+return. A flat-file shop purchase pays its price the same way, and a sale is paid when
+it commits.
 
-A corrected exact receipt can finish a retained operation once without issuing a
-new debit/credit. This is not automatic reconciliation tooling: an unresolved
-receipt can continue to fence dependent gameplay until the original result is
-recovered or the underlying fault is repaired. The fence deliberately includes
-every online character for the same account and racewar: those characters share
-one bank row, so a timeout or per-character bypass could spend an unpublished
-balance. Do not clear the pending operation, add a timeout, or create a replacement
-operation ID to conceal the fault. This in-process retention does not claim that
-callback context becomes durable across restart; durable continuation ownership
-belongs to the larger persistence refactor.
+Items the economy takes leave memory the same way: a listing's items, a flat-file sale's
+item and a collected antiquity are taken out at submit, before the owner's save. A
+committed command extracts them (a sale hands its item to the shopkeeper); a refused
+one puts them back. So a save captured afterwards never holds them, and saves claim
+whatever their owner holds, the economy's records included.
 
-`world persistence` reports `currency_transactions` pending, retained-offline,
-blocked-publication, callback-retry, outcome, malformed, submission-failure, and
-abandoned-publication counts. Blocked, malformed, failed-submission, or abandoned
-states make that line degraded; it exposes no account, player, or operation ID.
+Coins are ordinary items. Get, drop, give and put move the pile and the wallet in
+memory, the way they always did for NPCs, and `money_to_inventory()` does the same.
+When money moves between two saved owners, the owner it leaves is saved first
+(`currency_transaction_save_first()`): the giver before the receiver, the container a
+put fills after the player it leaves.
 
-`python3 tests/async/test_currency_completion_retention.py` links the actual
-adapter and codecs with controlled coordinator/live endpoints under ASan/UBSan
-in both build modes. It covers malformed/ambiguous receipts, range validation,
-offline re-entry, corrected/duplicate delivery, payload-free known rejection,
-account/racewar guards, re-entrant callback chaining/rehashing, normal rebasable
-admission, and blocked-publication admission.
-`test_currency_input_queue.py` additionally covers real command-selection and coin
-publication adapters. These tests do not by themselves prove SQL/flatfile storage
-or complete player-journey parity.
-
-## Physical coin custody
-
-`coin_transfer_command` and the currency coordinator commit wallet and physical
-pile changes together on both SQL and flat-file authority. Payload amounts,
-UID/custody, owner revisions, conservation, overflow, and operation-ID replay
-are checked before publication. The SQL parent receipt identifies both child
-operation IDs in the same transaction. Saved item `coin_payload` preserves the
-pile denominations for reload; ordinary snapshots do not create custody.
-
-An untracked NPC-wallet or reset-created pile first passes the existing absent-item
-admission path. Admission grants no money: wallet credit follows the separate
-atomic pickup commit. Its continuation rechecks the original container UID,
-location/accessibility, and custody, so moving the source during admission cannot
-publish a stale pickup. Existing active/retired durable UID conflicts fail closed.
-
-Flat-file coin publication updates the affected room projection in the same
-authority transaction, including partial piles and container weights. Otherwise
-a successful coin pickup could advance custody while leaving the next ordinary
-item pickup unable to materialize the room revision.
-
-Coin publication callbacks have at most eight attempts. On permanent publication
-failure, `EOWNERDEAD` cleanup clears retained command context and retires pending
-work without refunding an already committed debit or reporting it as rejected.
-Durable custody and command evidence remain the recovery source. The focused
-`test_coin_custody_lifecycle.py` and `test_currency_input_queue.py` harnesses and
-`run_currency_transaction_schema_mysql.sh` cover this boundary.
+`world persistence` reports `currency_transactions` submitted, committed, rejected and
+queued bank delta counts. `test_currency_in_memory.py` links the real transaction and
+checks the order of what it queues; `test_take_coins.py` the coin pickup;
+`test_coin_command_transaction_contract.py` the command sources; and
+`test_transaction_input_queue.py` the input that still waits behind a collector
+transaction.

@@ -2,7 +2,6 @@
 
 #include "flatfile/flatfile_authority_transaction.h"
 #include "flatfile/flatfile_item_repository.h"
-#include "flatfile/flatfile_player_domain_repository.h"
 #include "flatfile/flatfile_shopkeeper_repository.h"
 #include "flatfile/flatfile_shop_trade_materialization.h"
 #include "flatfile/flatfile_store.h"
@@ -297,30 +296,18 @@ critical_apply_result flatfile_shop_trade_repository_apply(const std::string &ro
 	    catalog.revision == std::numeric_limits<uint64_t>::max())
 		return { critical_apply_outcome::terminal_failure, catalog.revision, ENOSPC };
 
-	flatfile_wallet_mutation wallet;
+	// The wallet is memory's: a purchase paid at submit and a sale is paid at commit.
 	flatfile_item_shop_trade_mutation items;
 	flatfile_shopkeeper_trade_mutation shop;
 	flatfile_shop_trade_materialization_mutation materialization;
 	unsigned int result_code = 0;
-	const auto wallet_read = flatfile_player_domain_prepare_wallet(
-		root, lock, payload.player_pid, payload.account_name.data(), payload.racewar,
-		payload.expected_wallet_revision, payload.expected_bank_revision, 0, false, &wallet,
-		&result_code, &error);
-	if (wallet_read != flatfile_player_domain_result::ok)
+	const auto item_prepared = flatfile_item_repository_prepare_shop_trade(
+		root, lock, payload, &items, &result_code, &error);
+	if (item_prepared != flatfile_item_repository_result::ok)
 		return repository_failure(
-			wallet_read == flatfile_player_domain_result::io_error,
-			wallet_read == flatfile_player_domain_result::not_found ? ENOENT : EILSEQ);
-	if (!result_code)
-	{
-		const auto item_prepared = flatfile_item_repository_prepare_shop_trade(
-			root, lock, payload, &items, &result_code, &error);
-		if (item_prepared != flatfile_item_repository_result::ok)
-			return repository_failure(
-				item_prepared == flatfile_item_repository_result::io_error,
-				item_prepared == flatfile_item_repository_result::not_found ?
-					ENOENT :
-					EILSEQ);
-	}
+			item_prepared == flatfile_item_repository_result::io_error,
+			item_prepared == flatfile_item_repository_result::not_found ? ENOENT :
+										      EILSEQ);
 	if (!result_code)
 	{
 		const auto shop_prepared = flatfile_shopkeeper_prepare_trade(
@@ -340,31 +327,8 @@ critical_apply_result flatfile_shop_trade_repository_apply(const std::string &ro
 				prepared == flatfile_shop_trade_materialization_result::io_error,
 				EILSEQ);
 	}
-	if (!result_code && payload.action != shop_trade_action::discard_invalid)
-	{
-		const int64_t value_delta =
-			payload.action == shop_trade_action::buy_existing ||
-					payload.action == shop_trade_action::buy_produced ?
-				-payload.price :
-				payload.price;
-		const auto wallet_prepared = flatfile_player_domain_prepare_wallet(
-			root, lock, payload.player_pid, payload.account_name.data(),
-			payload.racewar, payload.expected_wallet_revision,
-			payload.expected_bank_revision, value_delta, true, &wallet, &result_code,
-			&error);
-		if (wallet_prepared != flatfile_player_domain_result::ok)
-			return repository_failure(
-				wallet_prepared == flatfile_player_domain_result::io_error,
-				wallet_prepared == flatfile_player_domain_result::not_found ?
-					ENOENT :
-					EILSEQ);
-	}
 	shop_trade_result result = {};
 	result.action = payload.action;
-	result.wallet = wallet.wallet;
-	result.bank = wallet.bank;
-	result.wallet_revision = wallet.wallet_revision;
-	result.bank_revision = wallet.bank_revision;
 	if (!result_code)
 	{
 		result.shop_revision = shop.shop_revision;
@@ -401,11 +365,7 @@ critical_apply_result flatfile_shop_trade_repository_apply(const std::string &ro
 			images.push_back(std::move(shop.after_image));
 			images.push_back(std::move(items.after_image));
 			if (payload.action != shop_trade_action::discard_invalid)
-			{
 				images.push_back(std::move(materialization.after_image));
-				for (auto &image : wallet.after_images)
-					images.push_back(std::move(image));
-			}
 		}
 	}
 	catch (const std::bad_alloc &)

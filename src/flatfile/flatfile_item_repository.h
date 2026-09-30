@@ -7,6 +7,7 @@
 #include "flatfile/flatfile_locker_repository.h"
 #include "flatfile/flatfile_world_item_repository.h"
 #include "persistence/critical_command_coordinator.h"
+#include "item/item_claim.h"
 #include "item/item_transfer_command.h"
 #include "item/item_ownership_runtime.h"
 #include "economy/shop_trade_command.h"
@@ -89,6 +90,32 @@ struct flatfile_item_collector_mutation
 	uint64_t item_revision = 0;
 };
 
+// One owner's claim over the items it holds in memory; see claim_items() in
+// item/item_claim_repository.h for the rules. outcome is filled in.
+struct flatfile_item_claim
+{
+	item_owner_identity owner = { item_owner_type::unknown, 0, 0 };
+	const std::vector<player_item_snapshot> *items = nullptr;
+	item_claim_outcome outcome;
+	// A new player's first save records the owner even when it holds nothing.
+	bool establish = false;
+};
+
+struct flatfile_item_claim_audit
+{
+	uint64_t item_uid = 0;
+	int32_t vnum = 0;
+	item_owner_identity old_owner = { item_owner_type::unknown, 0, 0 };
+	item_owner_identity new_owner = { item_owner_type::unknown, 0, 0 };
+};
+
+// Build the one catalog write that makes every claim's owner hold its items.
+// Returns unchanged when the catalog already agrees.
+flatfile_item_repository_result flatfile_item_repository_prepare_claim(
+	const std::string &root, const flatfile_authority_lock &lock,
+	std::vector<flatfile_item_claim> *claims, flatfile_authority_operation *operation,
+	std::vector<flatfile_item_claim_audit> *audits, std::string *error);
+
 flatfile_item_repository_result flatfile_item_repository_load_owner(
 	const std::string &root, const item_owner_identity &owner, uint64_t *owner_revision,
 	std::vector<flatfile_item_ownership_record> *items, std::string *error);
@@ -96,6 +123,15 @@ flatfile_item_repository_result flatfile_item_repository_load_owner_locked(
 	const std::string &root, const flatfile_authority_lock &lock,
 	const item_owner_identity &owner, uint64_t *owner_revision,
 	std::vector<flatfile_item_ownership_record> *items, std::string *error);
+// The record of each uid that has one, whoever it names.
+flatfile_item_repository_result
+flatfile_item_repository_load_uids(const std::string &root, const std::vector<uint64_t> &uids,
+				   std::vector<flatfile_item_ownership_record> *records,
+				   std::string *error);
+flatfile_item_repository_result flatfile_item_repository_load_uids_locked(
+	const std::string &root, const flatfile_authority_lock &lock,
+	const std::vector<uint64_t> &uids, std::vector<flatfile_item_ownership_record> *records,
+	std::string *error);
 flatfile_item_repository_result flatfile_item_repository_load_coins_locked(
 	const std::string &root, const flatfile_authority_lock &lock,
 	const std::vector<uint64_t> &uids, std::vector<flatfile_item_ownership_record> *coins,

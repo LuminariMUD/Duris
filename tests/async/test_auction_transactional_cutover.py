@@ -113,10 +113,17 @@ class AuctionTransactionalCutoverTests(unittest.TestCase):
             self.assertIn("auction_transaction_submit", body)
             self.assertNotIn("SUB_MONEY", body)
             self.assertNotIn("sql_begin_transaction", body)
+        # The listed items leave the inventory at submit and are extracted when the
+        # listing commits (auction_transaction.c); the callback only reports it.
         offer_callback = section(source, "void auction_list_completed(",
                                  "void auction_bid_completed(")
-        self.assertLess(offer_callback.index("if (!committed)"),
-                        offer_callback.index("obj_from_char"))
+        self.assertNotIn("obj_from_char", offer_callback)
+        transaction = (SRC / "auction_transaction.c").read_text()
+        submit = transaction[transaction.index("bool submit(P_char character"):]
+        self.assertLess(submit.index("obj_from_char(object)"),
+                        submit.index("currency_transaction_save_first(character)"))
+        self.assertLess(submit.index("currency_transaction_save_first(character)"),
+                        submit.index("critical_command_coordinator_submit"))
         self.assertNotIn("ws_broadcast_auction_new", offer_callback)
         publication = section(source, "bool auction_publish_committed_event(",
                               "// syntax: auction offer")
@@ -155,7 +162,9 @@ class AuctionTransactionalCutoverTests(unittest.TestCase):
         self.assertIn("flatfile_auction_find_pending_event", expiry)
         self.assertIn("publish_flat_auction_event", expiry)
         self.assertIn("flatfile_auction_acknowledge_event", expiry)
-        self.assertIn("item_ownership_runtime_lookup", offer)
+        # The seller holds the item in memory; the listing claims it in the repository.
+        self.assertNotIn("item_ownership_runtime_lookup", offer)
+        self.assertNotIn("ownership is still being synchronized", offer)
         self.assertIn("write_one_object", offer)
         for route in (offer, bid, remove):
             self.assertIn("auction_transaction_submit", route)
@@ -172,11 +181,15 @@ class AuctionTransactionalCutoverTests(unittest.TestCase):
         repository = (SRC / "auction_repository.c").read_text()
         generic = (SRC / "critical_command_repository.c").read_text()
         for token in (
-            "FOR UPDATE", "apply_wallet_delta", "transition_items", "stage_money",
+            "FOR UPDATE", "transition_items", "stage_money",
             "stage_items", "auction_item_custody", "auction_ledger",
             "claim_operation_id", "claimed_at=CURRENT_TIMESTAMP(6)",
         ):
             self.assertIn(token, repository)
+        # The wallet is memory's: the repository reports what it charged or paid.
+        for token in ("UPDATE player_data", "account_banks", "currency_ledger"):
+            self.assertNotIn(token, repository)
+        self.assertIn("wallet_value_delta", repository)
         auction_branch = generic[generic.index("if (auction_command)"):]
         self.assertLess(auction_branch.index("insert_outbox"),
                         auction_branch.index('execute(connection, "COMMIT")'))
