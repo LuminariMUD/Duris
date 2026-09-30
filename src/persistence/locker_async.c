@@ -213,7 +213,7 @@ static void locker_owner(P_char chLocker, locker_snapshot *snapshot)
 	}
 }
 
-/* Each locker keeps one writer key, so a newer save replaces its queued one. Keys
+/* Each locker keeps one writer key, so a newer save can replace its queued one. Keys
  * stay below 2^32 and never match a private chest's (chest_id << 32 | locker_id). */
 static uint64_t locker_job_key(const char *name)
 {

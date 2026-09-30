@@ -213,10 +213,13 @@ int main(int argc, char **argv)
     assert(revision.current_revision == 8 && revision.acknowledged_revision == 8);
     assert(!revision.unacknowledged_components && !revision.dirty_components);
     assert(player_save_pipeline_target_save_pending(41));
-    // A newer save replaces the queued one and moves to the back.
+    // A newer save queues behind what was queued after the owner's save, and replaces
+    // the owner's save only when that is the last one queued.
     assert(player_save_pipeline_request(&carol.ch, PLAYER_COMPONENT_STATUS, 1, 3001) ==
            player_save_pipeline_result::queued);
     assert(player_save_pipeline_request(&alice.ch, PLAYER_COMPONENT_AFFECTS, 1, 3001) ==
+           player_save_pipeline_result::queued);
+    assert(player_save_pipeline_request(&alice.ch, PLAYER_COMPONENT_SKILLS, 1, 3001) ==
            player_save_pipeline_result::coalesced);
     // Equipment and inventory are one item graph.
     assert(player_save_pipeline_mark(42, PLAYER_COMPONENT_INVENTORY));
@@ -236,7 +239,7 @@ int main(int argc, char **argv)
     hold_writer(false);
     assert(persistence_writer_wait_idle(5000));
     // Bob's first save was being written; everything else in capture order.
-    assert((take_order() == std::vector<std::string>{"42:1", "44:1", "41:9", "42:2"}));
+    assert((take_order() == std::vector<std::string>{"42:1", "41:8", "44:1", "41:10", "42:2"}));
     assert(!player_save_pipeline_target_save_pending(42));
 
     // A failed write is reported and its owner is dirty again.

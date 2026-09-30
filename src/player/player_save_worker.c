@@ -133,8 +133,13 @@ void writer_main()
 			job_available.wait(lock, [] { return stop_requested || !queue.empty(); });
 			if (stop_requested)
 				break;
+			// An owner can have an older save queued ahead of its newest one; the
+			// index names the newest.
+			const auto owned =
+				queued_by_owner.find({ queue.front().kind, queue.front().owner });
+			if (owned != queued_by_owner.end() && owned->second == queue.begin())
+				queued_by_owner.erase(owned);
 			inflight = std::make_unique<queued_job>(std::move(queue.front()));
-			queued_by_owner.erase({ inflight->kind, inflight->owner });
 			queue.pop_front();
 			queued_bytes -= inflight->bytes;
 			update_depth_health_locked();
@@ -226,10 +231,14 @@ player_save_submit_result enqueue(queued_job job)
 	bool replaced = false;
 	try
 	{
+		// The newer capture carries everything the queued one did, but it takes the
+		// queued one's place only while nothing is queued behind it. A job queued
+		// later may rely on this owner being written first (the owner money or an
+		// item leaves is saved before the one it reaches), so the newer save then
+		// waits behind that job.
 		const auto found = queued_by_owner.find(key);
-		if (found != queued_by_owner.end())
+		if (found != queued_by_owner.end() && found->second == std::prev(queue.end()))
 		{
-			// The newer capture carries everything the queued one did.
 			queued_bytes -= found->second->bytes;
 			queue.erase(found->second);
 			queued_by_owner.erase(found);
@@ -238,7 +247,7 @@ player_save_submit_result enqueue(queued_job job)
 		job.queued_at_usec = now_usec();
 		const size_t bytes = job.bytes;
 		queue.push_back(std::move(job));
-		queued_by_owner.emplace(key, std::prev(queue.end()));
+		queued_by_owner.insert_or_assign(key, std::prev(queue.end()));
 		queued_bytes += bytes;
 	}
 	catch (const std::bad_alloc &)

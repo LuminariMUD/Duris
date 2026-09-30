@@ -13,9 +13,9 @@
  * The one persistence writer. A single background thread applies every queued
  * save in the order it was captured: player saves (with their pets), corpse
  * saves, locker saves, saved room items, log_entries rows and critical commands.
- * A newer save of the same owner replaces its queued one and goes to the back of
- * the queue; each log row and each command is its own owner, so none replaces
- * another.
+ * A newer save of the same owner replaces its queued one when that one is the last
+ * job queued; otherwise it is queued behind, so no job overtakes one it may rely on.
+ * Each log row and each command is its own owner, so none replaces another.
  *
  * A lost connection is retried at the head of the queue. Any other failure is
  * reported through the completion and the job is dropped; the caller marks the

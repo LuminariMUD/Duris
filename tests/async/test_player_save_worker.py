@@ -154,8 +154,10 @@ int main()
     // A newer save of an owner being written queues behind it; it replaces nothing.
     assert(player_save_worker_submit(snapshot_for(1, 2)) == player_save_submit_result::accepted);
     assert(player_save_worker_submit(snapshot_for(3, 1)) == player_save_submit_result::accepted);
-    // A newer save of a queued owner replaces it and moves to the back.
-    assert(player_save_worker_submit(snapshot_for(2, 2)) == player_save_submit_result::replaced);
+    // A newer save of a queued owner does not overtake what was queued after that
+    // owner's save: it queues behind. Only the last job queued is replaced.
+    assert(player_save_worker_submit(snapshot_for(2, 2)) == player_save_submit_result::accepted);
+    assert(player_save_worker_submit(snapshot_for(2, 3)) == player_save_submit_result::replaced);
     assert(persistence_writer_pending(persistence_job_kind::locker, 7));
     assert(!persistence_writer_pending(persistence_job_kind::corpse, 7));
     assert(persistence_writer_submit(persistence_job_kind::player, 4, 1, locker_job(4)) ==
@@ -163,9 +165,10 @@ int main()
     assert(player_save_worker_submit(snapshot_for(0, 1)) == player_save_submit_result::invalid);
 
     const auto owners = persistence_writer_pending_owners();
-    assert(owners.size() == 5);
+    assert(owners.size() == 6);
     assert(owners[0] == persistence_job_owner(persistence_job_kind::player, 1));
-    assert(owners[4] == persistence_job_owner(persistence_job_kind::player, 2));
+    assert(owners[1] == persistence_job_owner(persistence_job_kind::player, 2));
+    assert(owners[5] == persistence_job_owner(persistence_job_kind::player, 2));
     {
         std::lock_guard<std::mutex> lock(state.mutex);
         state.release_first = true;
@@ -174,16 +177,18 @@ int main()
     assert(persistence_writer_wait_idle(5000));
     {
         std::lock_guard<std::mutex> lock(state.mutex);
-        const std::vector<std::string> expected = {"p1:1", "l7:0", "p1:2", "p3:1", "p2:2"};
+        const std::vector<std::string> expected = {"p1:1", "p2:1", "l7:0", "p1:2",
+                                                   "p3:1", "p2:3"};
         assert(state.order == expected);
     }
     assert(!player_save_worker_pid_pending(1));
     auto completions = drain();
-    assert(completions.size() == 5);
-    assert(completions[1].kind == persistence_job_kind::locker && completions[1].owner == 7);
-    assert(completions[4].pid == 2 && completions[4].revision == 2);
+    assert(completions.size() == 6);
+    assert(completions[1].pid == 2 && completions[1].revision == 1);
+    assert(completions[2].kind == persistence_job_kind::locker && completions[2].owner == 7);
+    assert(completions[5].pid == 2 && completions[5].revision == 3);
     player_save_worker_health health = player_save_worker_health_copy();
-    assert(health.submitted == 5 && health.replaced == 1 && health.applied == 5);
+    assert(health.submitted == 6 && health.replaced == 1 && health.applied == 6);
     assert(health.queued_jobs == 0 && health.inflight_jobs == 0 && health.queued_bytes == 0);
     assert(health.high_water_jobs >= 5);
 

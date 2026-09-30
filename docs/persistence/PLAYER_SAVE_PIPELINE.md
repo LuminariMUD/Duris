@@ -10,8 +10,10 @@ Memory is the authority. The database is a copy that catches up through one writ
    applies every queued save in capture order: player saves (with their pets),
    corpse saves, locker saves, saved room items, shopkeeper saves, bank deltas,
    critical commands and the game thread's SQL (see below).
-   A newer save of the same owner replaces its queued one and goes to the back of
-   the queue.
+   A newer save of the same owner replaces its queued one only when that is the last
+   job queued. Otherwise it is queued behind, because a job queued after the owner's
+   save may rely on it being written first (the owner money or an item leaves is
+   saved before the one it reaches).
 4. The game pulse consumes typed completions. A lost connection never reaches it:
    the writer retries that job at the head of the queue, with a backoff capped at
    five seconds. Any other failure is reported once, the job is dropped, and the

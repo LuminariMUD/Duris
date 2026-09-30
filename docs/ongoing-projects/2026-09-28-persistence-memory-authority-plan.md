@@ -64,8 +64,9 @@ A single background thread writes everything to the database, in the order it wa
 This writer is the existing player save worker, cut from two threads to one
 (`PLAYER_SAVE_WORKER_DEFAULT_THREADS`), with four new job kinds.
 
-- **Order:** a newer save of the same owner replaces its queued one and goes to the back of the
-  queue. Saves are therefore always applied in capture order.
+- **Order:** saves are applied in capture order. A newer save of the same owner replaces its
+  queued one only when that is the last job queued; otherwise it is queued behind, so it never
+  overtakes a job that relies on the owner's earlier save (see the MR !3 review round 1).
 - **Failures:** if the connection is lost, the writer retries the job at the head of the queue. Any
   other failure is logged, the job is dropped, and the owner is marked dirty so its next save carries
   the state again. The game is never told to wait or to refuse.
