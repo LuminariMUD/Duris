@@ -35,24 +35,37 @@ checkpoint = source(rel("persistence_checkpoint.c"))
 ship_base = source(rel("ship_base.c"))
 events = source(rel("new_events.c"))
 
+# On MariaDB the three artifact events page the artifacts held in memory: no query.
 poof = function_body(artifact, "void event_artifact_check_poof_sql(")
 assert "ARTIFACT_EXPIRY_BATCH_SIZE = 1" in artifact
-assert "ORDER BY vnum LIMIT %zu" in poof
-assert "AND vnum = %d" in poof
+assert "artifact_rows.upper_bound(cursor_vnum)" in poof
+assert "expired_rows.size() < ARTIFACT_EXPIRY_BATCH_SIZE" in poof
+assert "artifact_expire(page_last_vnum)" in poof
 assert "nevent_periodic_continue_after(1);" in poof
+assert "qry(" not in poof
+# An offline owner loads off the loop; its items were saved with it and leave with it,
+# never onto the floor of its room.
+assert "poof_offline_artifact(vnum, location)" in poof
+loaded_owner = function_body(artifact, "static void poof_loaded_owner(")
+assert "release_offline_owner(owner);" in loaded_owner and "extract_char(" not in loaded_owner
+assert "player_load_items_discard(owner);" in function_body(
+    artifact, "static void release_offline_owner(")
 
 wars = function_body(artifact, "void event_artifact_wars_sql(")
 assert "ARTIFACT_WARS_OWNER_BATCH_SIZE = 4" in artifact
-assert "GROUP BY location HAVING" in wars
-assert "ORDER BY location LIMIT %zu" in wars
-assert "UPDATE artifacts SET timer = FROM_UNIXTIME" in wars
+assert "row.location <= cursor_pid" in wars
+assert "owner_count < ARTIFACT_WARS_OWNER_BATCH_SIZE" in wars
+assert "static_cast<double>(row.timer - now) *" in wars
 assert "nevent_periodic_continue_after(1);" in wars
+assert "qry(" not in wars
 assert "arti_list" not in artifact and "add_artidata_to_list" not in artifact
 
 binding = function_body(artifact, "void event_artifact_check_bind_sql(")
 assert "ARTIFACT_BIND_BATCH_SIZE = 8" in artifact
-assert "WHERE vnum > %d ORDER BY vnum LIMIT %zu" in binding
+assert "artifact_binds.upper_bound(cursor_vnum)" in binding
+assert "row_count < ARTIFACT_BIND_BATCH_SIZE" in binding
 assert "nevent_periodic_continue_after(1);" in binding
+assert "qry(" not in binding
 
 dirty = function_body(checkpoint, "void event_flush_dirty_players(P_char /*ch*/")
 assert "DIRTY_PLAYER_BATCH_SIZE = 8" in dirty

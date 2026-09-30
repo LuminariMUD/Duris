@@ -5752,7 +5752,7 @@ void broadcast_to_arena(const char *msg, P_char ch, P_char vict, int rm)
  * get_class_string
  */
 
-char *get_class_string(P_char ch, char *strn)
+char *class_string(unsigned int m_class, unsigned int secondary_class, int spec, char *strn)
 {
 	int i = 0;
 	bool found;
@@ -5762,25 +5762,25 @@ char *get_class_string(P_char ch, char *strn)
 	// Display all classes (multiple -> ch is a NPC).
 	for (i = 0; i <= CLASS_COUNT; i++)
 	{
-		if (ch->player.m_class & (1 << i))
+		if (m_class & (1 << i))
 		{
 			snprintf(strn + strlen(strn), MAX_STRING_LENGTH - strlen(strn), "%s%s",
 				 found ? " " : "", class_names_table[i + 1].ansi);
 			found = TRUE;
 		}
 	}
-	if (IS_SPECIALIZED(ch))
+	if (spec)
 	{
 		snprintf(strn + strlen(strn), MAX_STRING_LENGTH - strlen(strn), "&n / %s",
-			 GET_SPEC_NAME(ch->player.m_class, ch->player.spec - 1));
+			 GET_SPEC_NAME(m_class, spec - 1));
 	}
 
-	if (IS_MULTICLASS_PC(ch))
+	if (secondary_class > 0 && secondary_class != BIT_32)
 	{
 		for (i = 0; i <= CLASS_COUNT; i++)
 		{
 			{
-				if (ch->player.secondary_class & (1 << i))
+				if (secondary_class & (1 << i))
 				{
 					snprintf(strn + strlen(strn),
 						 MAX_STRING_LENGTH - strlen(strn), " %s",
@@ -5791,6 +5791,12 @@ char *get_class_string(P_char ch, char *strn)
 	}
 
 	return strn;
+}
+
+char *get_class_string(P_char ch, char *strn)
+{
+	return class_string(ch->player.m_class, IS_PC(ch) ? ch->player.secondary_class : 0,
+			    ch->player.spec, strn);
 }
 
 int flag2idx(int flag)
@@ -6828,78 +6834,19 @@ P_char find_player_by_name(const char *name)
 }
 
 // Doesn't have to be logged in
-P_char get_player_from_name(char *name)
-{
-	P_char player;
-
-	player = (struct char_data *)mm_get(dead_mob_pool);
-	ensure_pconly_pool();
-	player->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-
-	if (restoreCharOnly(player, skip_spaces(name)) < 0 || !player)
-	{
-		if (player)
-			free_char(player);
-		return NULL;
-	}
-	return player;
-}
-
-// Doesn't have to be logged in
 int get_player_pid_from_name(char *name)
 {
-	P_char player;
-	int pid = 0;
-
-	player = (struct char_data *)mm_get(dead_mob_pool);
-	ensure_pconly_pool();
-	player->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-
-	if (restoreCharOnly(player, skip_spaces(name)) < 0 || !player)
-	{
-		if (player)
-			free_char(player);
-		return 0;
-	}
-	if (player)
-	{
-		pid = GET_PID(player);
-		free_char(player);
-	}
-	return pid;
+	const int pid = sql_get_player_pid(skip_spaces(name));
+	return pid > 0 ? pid : 0;
 }
 
 char *get_player_name_from_pid(int pid)
 {
 	static char name[MAX_STRING_LENGTH];
-
-	if (!pid)
+	const char *found = sql_get_player_name(pid);
+	if (!found)
 		return NULL;
-
-	if (!qry("SELECT name FROM player_data WHERE pid = '%d' AND active=1", pid))
-	{
-		debug("get_player_name_from_pid(): cant read from db");
-		return NULL;
-	}
-
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (!res)
-	{
-		return 0;
-	}
-
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		return NULL;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-
-	snprintf(name, MAX_STRING_LENGTH, "%s", row[0]);
-
-	mysql_free_result(res);
-
+	snprintf(name, MAX_STRING_LENGTH, "%s", found);
 	return name;
 }
 

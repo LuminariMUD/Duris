@@ -20,10 +20,13 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <functional>
+#include <string>
 #include "core/mm.h"
 #include "ships/ships.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "sql/sql_player.h"
 #include "guild/assocs.h"
 
@@ -69,7 +72,8 @@ const char *string_fields[] = { "name", // 1
 /* maximum length for text field x+1 */
 const int length[] = { 80, 80, 256, 240, 80 };
 
-bool rename_character(P_char ch, char *old_name, char *new_name);
+bool rename_character(P_char ch, char *old_name, char *new_name,
+		      std::function<void(P_char ch, bool renamed)> done);
 
 /************************************************************************
  *  modification of malloc'ed strings                                   *
@@ -1402,15 +1406,18 @@ void do_rename(P_char ch, char *arg, int /*cmd*/)
 			{
 				strcpy(new_name, strip_ansi(new_name).c_str());
 
-				if (rename_character(ch, who_to_rename, new_name) == TRUE)
-				{
-					send_to_char("Name changed, old one deleted. Good job!\r\n",
-						     ch);
-				}
-				else
-				{
+				if (!rename_character(
+					    ch, who_to_rename, new_name,
+					    [](P_char staff, bool renamed)
+					    {
+						    send_to_char(
+							    renamed ?
+								    "Name changed, old one deleted. "
+								    "Good job!\r\n" :
+								    "Character name change failed!\r\n",
+							    staff);
+					    }))
 					send_to_char("Character name change failed!\r\n", ch);
-				}
 			}
 		}
 		else if (is_abbrev(type, "ship"))
@@ -1490,22 +1497,28 @@ int mob_do_rename_hook(P_char npc, P_char ch, int cmd, char *arg)
 
 		// Bad names and ship ownership are handled in rename_character.
 		strcpy(old_name, GET_NAME(ch));
-		if (!rename_character(ch, old_name, new_name))
-		{
-			return TRUE;
-		}
-		SUB_MONEY(ch, renamePrice, 0);
-
-		snprintf(buffer, MAX_STRING_LENGTH,
-			 "&+WCongratulations! From now on you will be known as %s!\r\n",
-			 GET_NAME(ch));
-		send_to_char(buffer, ch);
-
-		wizlog(AVATAR, "%s renamed %sself to %s\r\n", old_name,
-		       GET_SEX(ch) == SEX_MALE ? "him" : "her", new_name);
-		logit(LOG_PLAYER, "%s renamed %sself to %s\r\n", old_name,
-		      GET_SEX(ch) == SEX_MALE ? "him" : "her", new_name);
-		sql_log(ch, PLAYERLOG, "Renamed self from %s to %s\r\n", old_name, new_name);
+		// The rename is paid for once it is stored.
+		rename_character(
+			ch, old_name, new_name,
+			[renamePrice, old = std::string(old_name)](P_char renamed_ch, bool renamed)
+			{
+				if (!renamed)
+					return;
+				SUB_MONEY(renamed_ch, renamePrice, 0);
+				send_to_char_f(
+					renamed_ch,
+					"&+WCongratulations! From now on you will be known as "
+					"%s!\r\n",
+					GET_NAME(renamed_ch));
+				wizlog(AVATAR, "%s renamed %sself to %s\r\n", old.c_str(),
+				       GET_SEX(renamed_ch) == SEX_MALE ? "him" : "her",
+				       GET_NAME(renamed_ch));
+				logit(LOG_PLAYER, "%s renamed %sself to %s\r\n", old.c_str(),
+				      GET_SEX(renamed_ch) == SEX_MALE ? "him" : "her",
+				      GET_NAME(renamed_ch));
+				sql_log(renamed_ch, PLAYERLOG, "Renamed self from %s to %s\r\n",
+					old.c_str(), GET_NAME(renamed_ch));
+			});
 		return TRUE;
 	}
 
@@ -1557,43 +1570,93 @@ bool rename_craftlist(char *old_name, char *new_name)
 }
 
 /*
- * Store `doofus` under `to` instead of `from` in one transaction, with the
- * ship they own (NULL for none) and everything else their name keys.  The
- * ship's owner changes in memory first, and goes back unless the transaction
- * committed; a committed rename also renames their guild roster entry.
+ * Store `doofus` under `to` instead of `from`: the player row, the ship they own and
+ * everything else their name keys, in one writer job, so one transaction.  Memory follows
+ * only once it is stored, on a later pulse: the ship's owner, the guild roster, the name
+ * index, the character if still in the game, and every account list naming them.
+ * `renamed` then gets whether it was stored.  False when the job could not be queued.
  */
-static sql_commit_outcome store_character_name(P_char doofus, P_ship ship, const char *from,
-					       const char *to)
+static bool store_character_name(P_char doofus, const char *from, const char *to,
+				 bool deny_old_name, std::function<void(bool stored)> renamed)
 {
+	// The ship's statements carry its new owner; memory keeps the old one until then.
+	P_ship ship = get_ship_from_owner(const_cast<char *>(from));
 	ShipOwnerChange change;
 	if (ship && !begin_ship_owner_change(ship, to, &change))
-		return sql_commit_outcome::rolled_back;
-
-	const sql_commit_outcome outcome = sql_rename_character(doofus, from, to, ship);
+		return false;
+	const std::vector<std::string> statements =
+		sql_rename_character_statements(GET_PID(doofus), from, to, ship);
 	if (ship)
-	{
-		if (outcome == sql_commit_outcome::committed)
-			finish_ship_owner_change(&change);
-		else
-			undo_ship_owner_change(&change);
-	}
-	if (outcome == sql_commit_outcome::committed)
-	{
-		char stored[MAX_STRING_LENGTH];
-		strlcpy(stored, to, sizeof(stored));
-		CAP(stored);
-		rename_guild_member(from, stored);
-	}
-	return outcome;
+		undo_ship_owner_change(&change);
+	if (statements.empty())
+		return false;
+
+	char stored[MAX_STRING_LENGTH];
+	strlcpy(stored, to, sizeof(stored));
+	CAP(stored);
+	// Nobody else takes the new name while the job runs.
+	sql_player_names_hold(GET_PID(doofus), stored);
+	const bool queued = sql_read_work(
+		[statements](MYSQL *connection, sql_rows *) -> unsigned int
+		{
+			for (const std::string &statement : statements)
+				if (const unsigned int error = sql_execute(connection, statement))
+					return error;
+			return 0;
+		},
+		[runtime_id = doofus->runtime_id, pid = GET_PID(doofus),
+		 old_name = std::string(from), new_name = std::string(stored), deny_old_name,
+		 renamed](bool ok, const sql_rows &)
+		{
+			if (!ok)
+			{
+				sql_player_names_release(pid, new_name.c_str());
+				renamed(false);
+				return;
+			}
+			// Its rows are stored under the new owner; its next save writes them again.
+			ShipOwnerChange moved;
+			if (P_ship owned =
+				    get_ship_from_owner(const_cast<char *>(old_name.c_str()));
+			    owned && begin_ship_owner_change(owned, new_name.c_str(), &moved))
+				finish_ship_owner_change(&moved);
+			rename_guild_member(old_name.c_str(), new_name.c_str());
+			if (deny_old_name)
+				deny_name(const_cast<char *>(old_name.c_str()));
+			moveToBackup(const_cast<char *>(old_name.c_str()));
+			sql_player_names_set(pid, new_name.c_str());
+			for (P_desc d = descriptor_list; d; d = d->next)
+				if (struct acct_chars *listed =
+					    d->account ? find_char_in_list(
+								 d->account->acct_character_list,
+								 old_name.c_str()) :
+							 NULL)
+				{
+					FREE(listed->charname);
+					listed->charname = str_dup(new_name.c_str());
+				}
+			if (P_char character = find_character_by_runtime_id(runtime_id))
+			{
+				GET_NAME(character) = str_dup(new_name.c_str());
+				writeCharacter(character, 1, character->in_room);
+			}
+			renamed(true);
+		});
+	if (!queued)
+		sql_player_names_release(GET_PID(doofus), stored);
+	return queued;
 }
 
 /* ------------------------------------------------------------------------------ */
 /* pure char rename function, to be called from rename hooks or command functions */
 /* ------------------------------------------------------------------------------ */
-bool rename_character(P_char ch, char *old_name, char *new_name)
+/* Renames the character named old_name, who is in the game, to new_name for ch.  False
+ * when refused at once (ch is told why); otherwise done runs on a later pulse, while ch is
+ * still in the game, with whether the rename is stored. */
+bool rename_character(P_char ch, char *old_name, char *new_name,
+		      std::function<void(P_char ch, bool renamed)> done)
 {
 	char buf[256];
-	struct acct_chars *c = NULL;
 	P_char doofus;
 
 	// Validate new name (sets new_name to all lowercase)
@@ -1686,71 +1749,23 @@ bool rename_character(P_char ch, char *old_name, char *new_name)
 				ch);
 			return FALSE;
 		}
-		P_ship ship = get_ship_from_owner(current_name);
-
-		const sql_commit_outcome renamed =
-			store_character_name(doofus, ship, current_name, new_name);
-		if (renamed != sql_commit_outcome::committed)
+		if (!store_character_name(
+			    doofus, current_name, new_name, IS_TRUSTED(ch),
+			    [runtime_id = ch->runtime_id, done](bool stored)
+			    {
+				    if (P_char requester = find_character_by_runtime_id(runtime_id))
+				    {
+					    if (!stored)
+						    send_to_char(
+							    "Failed to rename character in DB!\r\n",
+							    requester);
+					    done(requester, stored);
+				    }
+			    }))
 		{
 			send_to_char("Failed to rename character in DB!\r\n", ch);
-			if (renamed == sql_commit_outcome::unknown)
-			{
-				wizlog(AVATAR,
-				       "Rename of %s to %s may have been stored: its COMMIT failed. Everything their name keys is stored under the same one of the two names.",
-				       current_name, new_name);
-				logit(LOG_PLAYER,
-				      "Rename of %s to %s may have been stored: its COMMIT failed.",
-				      current_name, new_name);
-			}
 			return FALSE;
 		}
-
-		/* if GOD changing someones name, put old one to deny list */
-		if (IS_TRUSTED(ch))
-		{
-			deny_name(GET_NAME(doofus));
-		}
-
-		moveToBackup(GET_NAME(doofus));
-
-		/* put new name and save char file */
-		CAP(new_name);
-		GET_NAME(doofus) = str_dup(new_name);
-		/* The rename itself is stored by now, so a failure below is reported
-		 * but does not undo it, or stop the account list following it. */
-		if (!sql_save_player_core(doofus))
-		{
-			send_to_char(
-				"&+RWarning:&n failed to save the renamed character to the database.\r\n",
-				ch);
-			statuslog(56, "&+RALERT&n: renamed character core save failed");
-			persistence_alert(AVATAR, "player", "redacted", "none", "none",
-					  "sql_save_failed", NULL);
-		}
-		writeCharacter(doofus, 1, doofus->in_room);
-
-#ifdef USE_ACCOUNT
-		/* A linkdead character has no descriptor; their account menu is read
-		 * back from the renamed mapping at their next login. */
-		c = doofus->desc && doofus->desc->account ?
-			    find_char_in_list(doofus->desc->account->acct_character_list,
-					      current_name) :
-			    NULL;
-		if (c)
-		{
-			FREE(c->charname);
-			c->charname = str_dup(new_name);
-			if (-1 == write_account(doofus->desc->account))
-			{
-				send_to_char(
-					"&+RWarning:&n failed to update the account character list.\r\n",
-					ch);
-				statuslog(56, "&+RALERT&n: rename account update failed");
-				persistence_alert(AVATAR, "account", "redacted", "none", "none",
-						  "write_failed", NULL);
-			}
-		}
-#endif
 	}
 	else
 	{

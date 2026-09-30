@@ -126,4 +126,11 @@ assert "Problem restoring save file of: testchar" in scan.stderr, (
     f"stdout={scan.stdout!r} stderr={scan.stderr!r}"
 )
 
+# restoreCharOnly() reads the pfile only: the staff pfile commands, the boot migration
+# and this tool mean the pfile, and a database read here would wait on the game loop.
+files = (ROOT / "src/core/files.c").read_text()
+restore = files[files.index("int restoreCharOnly(P_char ch, char *name)\n{"):]
+restore = restore[: restore.index("\n}\n")]
+assert "sql_" not in restore, "restoreCharOnly() still reads the database"
+
 print("pfile tool contracts hold")

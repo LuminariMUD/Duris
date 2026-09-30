@@ -6,7 +6,7 @@ NAME="duris-account-reward-schema-$$"
 PASSWORD=$(printf 'account-reward-%s-%s' "$$" "$RANDOM")
 LEGACY_DB="account_reward_legacy"
 FRESH_DB="account_reward_fresh"
-cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
+cleanup() { docker rm -fv "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 docker run -d --name "$NAME" -e MYSQL_ROOT_PASSWORD="$PASSWORD" mysql:8.0 >/dev/null

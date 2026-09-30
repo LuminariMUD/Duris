@@ -47,6 +47,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include "world/object_template.h"
+#include "world/zone_story_quest_runtime.h"
 #include "account/newbie_kit_plan.h"
 
 /*
@@ -633,6 +634,7 @@ void boot_db(int mini_mode)
 		fprintf(stderr, "-- Room special procedures.\r\n");
 		assign_rooms();
 	}
+	zone_story_quest_runtime::note_stored_state();
 
 	fprintf(stderr, "Assigning command pointers from interpreter.\r\n");
 
@@ -3191,7 +3193,8 @@ P_obj read_object(int nr, int type)
  */
 void no_reset_zone_reset(int zone_number)
 {
-	if (!qry("SELECT reset_perc FROM zones WHERE id = '%d'", zone_number))
+	zone_info zone;
+	if (!get_zone_info(zone_table[zone_number].number, &zone))
 	{
 		logit(LOG_DEBUG,
 		      "no_reset_zone_reset: could not find zone information for zone id %d",
@@ -3199,32 +3202,19 @@ void no_reset_zone_reset(int zone_number)
 		return;
 	}
 
-	MYSQL_RES *res = mysql_store_result(DB);
-
-	if (mysql_num_rows(res) < 1)
-	{
-		logit(LOG_DEBUG, "No data retrieved from DB for no_reset_zone_reset...");
-		mysql_free_result(res);
-		return;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-
-	if (epic_zone_done_now(zone_table[zone_number].number) && atoi(row[0]) > number(0, 99))
+	if (epic_zone_done_now(zone.number) && zone.reset_perc > number(0, 99))
 	{
 		// zone_purge(zone_number);
 		reset_zone(zone_number, 0);
-		db_query("UPDATE zones SET reset_perc = '%d' WHERE id = '%d'", 0, zone_number);
+		sql_set_zone_reset_perc(zone.number, 0);
 		// epic_zone_erase_touch(zone_table[zone_number].number);
 	}
 	else
 	{
 		add_event(event_reset_zone, WAIT_MIN * 60, 0, 0, 0, 0, &zone_number,
 			  sizeof(zone_number));
-		db_query("UPDATE zones SET reset_perc = '%d' WHERE id = '%d'", atoi(row[0]) + 1,
-			 zone_number);
+		sql_set_zone_reset_perc(zone.number, zone.reset_perc + 1);
 	}
-	mysql_free_result(res);
 }
 
 #define ZCMD zone_table[zone].cmd[cmd_no]

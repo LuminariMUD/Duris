@@ -215,7 +215,7 @@ for token in (
     "record.meurtriere = 1",
     "record.hitpoints = (",
     "record.level = 8",
-    "record.owner_id = owner_id",
+    "record.owner_id = owner ? owner->get_id() : 0",
     "persist_outpost_owner(this, new_guild)",
     "void event_outposts_upkeep(",
 ):

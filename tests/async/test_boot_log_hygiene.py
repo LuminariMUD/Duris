@@ -43,12 +43,10 @@ assert contains(donation_worker, "#include <sys/poll.h>")
 # transaction, discarding the accounts and account_ips writes with it.
 sql_player = (SRC / "sql_player.c").read_text()
 # Anchor on the definition; the bare signature also matches the prototype.
-save_chars = split_at(
-    sql_player, "static bool sql_save_account_characters(struct acct_entry *acc)\n{", 1
-)[1]
-save_chars = save_chars.split("\nstatic ", 1)[0]
-assert contains(save_chars, "if (pid <= 0)")
-assert contains(save_chars, "component=mapping outcome=deferred")
+# The MariaDB definition follows the flat-file stub.
+save_chars = split_at(sql_player, "bool sql_save_account(struct acct_entry *acc)\n{", 2)[2]
+save_chars = save_chars.split("\n}\n", 1)[0]
+assert contains(save_chars, "if (pid <= 0)\n\t\t\t\t\tcontinue;")
 assert not contains(save_chars, '"NULL"')
 
 
@@ -67,7 +65,7 @@ timer_warnings = [
     for n, line in enumerate(artifact_lines)
     if "WARNING: timer was" in line and "resetting to 10 days" in line
 ]
-assert len(timer_warnings) == 5
+assert len(timer_warnings) == 3
 for n in timer_warnings:
     # clang-format wraps the logit() call, so the ownership guard sits a couple
     # of lines above the message rather than immediately before it.

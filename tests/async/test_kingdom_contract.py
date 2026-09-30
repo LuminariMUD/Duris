@@ -306,16 +306,16 @@ def _loader_fields_by_row_index(sql_half: str, res_cols: list) -> dict:
 
 
 def _upsert_value_fields(sql_half: str) -> list:
-    """The realm fields kingdom_db_save_realm hands the INSERT, in argument
+    """The realm fields realm_work() hands the INSERT, in argument
     order, normalised to column names: realm.assoc_id -> assoc_id,
     realm.resources[KRES_WOOD] -> res_wood, static_cast<..>(realm.x) -> x."""
     bodies = function_bodies(
-        sql_half, r"\bbool\s+kingdom_db_save_realm\s*\(\s*const\s+kingdom_realm\s*&\s*realm\s*\)"
+        sql_half, r"\bstatic\s+sql_work\s+realm_work\s*\(\s*const\s+kingdom_realm\s*&\s*realm\s*\)"
     )
     if not bodies:
         return None
     body = bodies[0]
-    call = re.search(r"qry\s*\(\s*((?:\"[^\"]*\"\s*)+)(.*?)\)\s*\)\s*\n", body, re.S)
+    call = re.search(r"sql_format\s*\(\s*((?:\"[^\"]*\"\s*)+)(.*?)\)\s*;", body, re.S)
     if not call:
         return None
     args = call.group(2)
@@ -409,11 +409,11 @@ def test_sql_columns_match_loader_upsert_and_migration() -> None:
 
     # (b) the INSERT's VALUES arguments, in order, are the same token list.
     upsert = _upsert_value_fields(sql_half)
-    check(upsert is not None, "the upsert's qry() argument list was parsed")
+    check(upsert is not None, "the upsert's sql_format() argument list was parsed")
     if upsert is not None:
         check(
             upsert == cols,
-            "kingdom_db_save_realm's VALUES arguments follow kingdom_realm_columns in order",
+            "realm_work()'s VALUES arguments follow kingdom_realm_columns in order",
             f"columns={cols}\n      values ={upsert}",
         )
         fmt = re.search(r'VALUES\s*"\s*"\(([^)]*)\)', sql_half)
@@ -634,42 +634,31 @@ def test_kingdom_help_is_two_entries_that_agree() -> None:
 
 def test_payment_durability_is_one_write() -> None:
     """A treasury debit and the realm record that explains it must land
-    together. Under MariaDB that is one transaction which Guild::save() joins;
-    under the flat-file build both catalogue after-images share one recovery
+    together. Under MariaDB that is one writer job, in one transaction; under
+    the flat-file build both catalogue after-images share one recovery
     journal. A failure is remembered as payment_pending so the generic flush
     cannot publish the realm's 'paid' mark ahead of the guild's debit."""
     sql_player = read("src/sql/sql_player.c")
     # Two definitions exist: the __NO_MYSQL__ stub and the real one. The real
-    # one is the body that runs queries; pin the join pattern there.
+    # one builds the statements; pin how it runs them there.
     bodies = [
         b
         for b in function_bodies(sql_player, r"\bbool\s+sql_save_guild\s*\(\s*Guild\s*\*\s*\w+\s*\)")
-        if "sql_run_query(" in b
+        if "sql_save_guild_statements(" in b
     ]
     check(len(bodies) == 1, "the MariaDB sql_save_guild definition was found", f"{len(bodies)}")
     if bodies:
-        body = bodies[0]
+        body = strip_comments(bodies[0])
         check(
-            re.search(r"const\s+bool\s+own_txn\s*=\s*!\s*sql_in_transaction\s*\(\s*\)", body)
-            is not None,
-            "sql_save_guild joins an enclosing transaction: "
-            "const bool own_txn = !sql_in_transaction()",
+            "sql_queue_statements(sql_save_guild_statements(" in body
+            and "sql_in_transaction" not in body,
+            "sql_save_guild queues its statements as one writer job",
         )
         check(
-            re.search(r"own_txn\s*&&\s*!\s*sql_begin_transaction\s*\(\s*\)", body) is not None,
-            "sql_save_guild opens its own transaction only when it owns one",
-        )
-        check(
-            re.search(r"own_txn\s*&&\s*!\s*sql_commit\s*\(\s*\)", body) is not None,
-            "sql_save_guild commits only the transaction it owns: own_txn && !sql_commit()",
-        )
-        rollbacks = re.findall(r"sql_rollback\s*\(\s*\)", body)
-        guarded = re.findall(r"if\s*\(\s*own_txn\s*\)\s*\n?\s*sql_rollback\s*\(\s*\)", body)
-        check(
-            rollbacks and len(rollbacks) == len(guarded),
-            "every sql_rollback() in sql_save_guild is guarded by own_txn "
-            "(a joined transaction is the owner's to roll back)",
-            f"rollbacks={len(rollbacks)}, guarded={len(guarded)}",
+            "sql_begin_transaction(" not in body and "sql_commit(" not in body
+            and "sql_rollback(" not in body,
+            "inside a caller's transaction sql_save_guild joins it and never commits or "
+            "rolls back the owner's transaction",
         )
 
     assocs_h = strip_comments(read("src/guild/assocs.h"))
@@ -719,41 +708,6 @@ def test_payment_durability_is_one_write() -> None:
     )
     if persist:
         body = persist[0]
-        sig = re.search(
-            r"\bbool\s+kingdom_persist_payment\s*\(\s*(?:P_Guild|Guild\s*\*)\s*(\w+)\s*,\s*kingdom_realm\s*&\s*(\w+)\s*\)",
-            strip_comments(upkeep),
-        )
-        guild, realm = sig.group(1), sig.group(2)
-        save_at = [m.start() for m in re.finditer(guild + r"\s*->\s*save\s*\(\s*\)", body)]
-        realm_at = [m.start() for m in re.finditer(r"kingdom_db_save_realm\s*\(", body)]
-        check(
-            bool(save_at) and bool(realm_at),
-            f"kingdom_persist_payment writes both {guild}->save() and kingdom_db_save_realm()",
-            f"save()={len(save_at)}, save_realm={len(realm_at)}",
-        )
-        # EVERY branch, not just the first. Comparing min() to min() only
-        # pinned the join branch, which happens to be spelled first, so the
-        # own-transaction branch could have been reversed
-        # (`ok = kingdom_db_save_realm(realm) && guild->save();`) and still
-        # passed -- and that reversal is exactly the half-state this whole
-        # design exists to prevent. Each realm write must be preceded by a
-        # guild write inside its OWN innermost block.
-        unpaired = [
-            at
-            for at in realm_at
-            if not any(block_start(body, at) <= s < at for s in save_at)
-        ]
-        check(
-            bool(save_at) and bool(realm_at) and not unpaired,
-            f"EVERY kingdom_persist_payment branch writes the guild ({guild}->save()) "
-            "BEFORE the realm record",
-            f"realm writes with no preceding guild write in their block: {unpaired}",
-        )
-        # The MariaDB branch must refuse to write when it cannot open the
-        # transaction: an unpaired write is exactly the double-bill window.
-        # The refusal has to be branch-specific, because under __NO_MYSQL__
-        # sql_begin_transaction() is a stub answering false and an unguarded
-        # refusal would make every flat-file payment fail.
         split = re.search(r"#ifndef\s+__NO_MYSQL__(.*?)#else", body, re.S)
         check(
             split is not None,
@@ -766,25 +720,10 @@ def test_payment_durability_is_one_write() -> None:
             "the flat-file payment path journals the guild and realm through "
             "Guild::save_with_kingdom",
         )
-        refuse = re.search(r"!\s*sql_begin_transaction\s*\(\s*\)", mariadb)
         check(
-            refuse is not None,
-            "the MariaDB branch of kingdom_persist_payment tests !sql_begin_transaction()",
-        )
-        # From the refusal, the next write on that path must be preceded by a
-        # return: nothing may be saved on the path where no transaction opened.
-        # (A join branch that writes into an ALREADY-open transaction may sit
-        # before the refusal; it never begins one, so it is not this path.)
-        next_write = [
-            m.start()
-            for m in re.finditer(guild + r"\s*->\s*save\s*\(|kingdom_db_save_realm\s*\(", mariadb)
-            if refuse is not None and m.start() > refuse.end()
-        ]
-        check(
-            refuse is not None
-            and bool(next_write)
-            and re.search(r"\breturn\b", mariadb[refuse.end() : min(next_write)]) is not None,
-            "kingdom_persist_payment returns without writing when it cannot begin a transaction",
+            re.search(r"kingdom_db_save_payment_pair\s*\(\s*sql_save_guild_statements\s*\(",
+                      mariadb) is not None,
+            "the MariaDB payment path queues the guild's statements and the realm as one job",
         )
         # A failed pair must leave the realm payment_pending, either set here
         # or by a helper in this file whose body sets it.
@@ -798,68 +737,47 @@ def test_payment_durability_is_one_write() -> None:
                 for b in function_bodies(upkeep, r"\bstatic\s+\w[\w\s\*&]*?\b" + name + r"\s*\(")
             )
         ]
-        marks_direct = re.search(realm + r"\s*\.\s*payment_pending\s*=\s*true", body) is not None
-        marks_via = bool(setters) and re.search(
-            r"\b(?:" + "|".join(sorted(set(setters))) + r")\s*\(", body
-        ) is not None
         check(
-            marks_direct or marks_via,
-            "kingdom_persist_payment marks the realm payment_pending when the pair did not land "
-            "(directly, or through a helper that sets it)",
+            bool(setters)
+            and all(
+                re.search(r"\b(?:" + "|".join(sorted(set(setters))) + r")\s*\(", branch)
+                for branch in (mariadb, flatfile)
+            ),
+            "both payment paths mark the realm payment_pending when the pair did not land",
             f"setters in file={sorted(set(setters))}",
-        )
-        check(
-            "sql_commit(" in mariadb and "sql_rollback(" in mariadb,
-            "kingdom_persist_payment commits its own transaction and rolls back on failure",
         )
     db = read("src/kingdom/kingdom_db.c")
     paired = function_bodies(db, r"\bbool\s+kingdom_db_save_payment_pair\s*\(")
-    check(len(paired) == 1, "the flat-file paid-pair writer is defined", f"{len(paired)}")
-    if paired:
-        code = strip_comments(paired[0])
+    flat_pair = [b for b in paired if "flatfile_association_prepare_save(" in b]
+    check(len(flat_pair) == 1, "the flat-file paid-pair writer is defined", f"{len(paired)}")
+    if flat_pair:
+        code = strip_comments(flat_pair[0])
         check(
             "flatfile_association_prepare_save(" in code
             and "flatfile_authority_store::metadata" in code
             and "flatfile_authority_transaction_commit_operations(" in code,
             "the guild and realm catalogue after-images share one authority transaction",
         )
-    roster_bodies = function_bodies(db, r"\bbool\s+kingdom_db_save_roster\s*\(")
-    mariadb_roster = next(
-        (body for body in roster_bodies if "DELETE FROM kingdom_garrison" in body), ""
-    )
-    check(
-        bool(mariadb_roster),
-        "the MariaDB garrison roster writer is defined",
-        f"save_roster definitions={len(roster_bodies)}",
-    )
-    if mariadb_roster:
-        roster_code = strip_comments(mariadb_roster)
+    sql_pair = [b for b in paired if "sql_queue_work(" in b]
+    check(len(sql_pair) == 1, "the MariaDB paid-pair writer is defined", f"{len(paired)}")
+    if sql_pair:
+        code = strip_comments(sql_pair[0])
+        guild_at = code.find("guild_statements)")
+        realm_at = code.find("realm_write(connection)")
         check(
-            "sql_in_transaction(" in roster_code
-            and "sql_begin_transaction(" in roster_code
-            and "sql_commit(" in roster_code
-            and "sql_rollback(" in roster_code,
-            "a direct MariaDB roster replacement owns a transaction while an enclosing "
-            "payment transaction remains caller-owned",
+            -1 < guild_at < realm_at,
+            "the one writer job applies the guild's statements before the realm's write",
         )
+    realm_writer = function_bodies(db, r"\bstatic\s+sql_work\s+realm_work\s*\(")
+    check(len(realm_writer) == 1, "the MariaDB realm and roster writer is defined")
+    if realm_writer:
+        code = strip_comments(realm_writer[0])
         check(
-            "mysql_errno(" in roster_code
-            and "ER_NO_SUCH_TABLE" in roster_code
-            and "ER_NO_SUCH_TABLE_IN_ENGINE" in roster_code,
+            "DELETE FROM kingdom_garrison" in code
+            and "ER_NO_SUCH_TABLE" in code
+            and "ER_NO_SUCH_TABLE_IN_ENGINE" in code
+            and re.search(r"\?\s*0\s*:\s*error_code", code) is not None,
             "only the two missing-table server errors trigger rosterless degradation",
-        )
-        failure_helper = re.search(
-            r"statement_failure\s*=\s*\[.*?\]\s*\([^)]*\)\s*->\s*bool\s*(\{.*?\n\s*\});",
-            mariadb_roster,
-            re.S,
-        )
-        failure_code = strip_comments(failure_helper.group(1)) if failure_helper else ""
-        check(
-            bool(failure_code)
-            and re.search(r"if\s*\(\s*missing\s*\).*?return\s+true\s*;", failure_code, re.S)
-            is not None
-            and re.search(r"return\s+false\s*;\s*\}", failure_code, re.S) is not None,
-            "a missing garrison table is accepted but every other roster statement error fails",
         )
     retry = function_bodies(upkeep, r"\bvoid\s+kingdom_upkeep_retry_pending\s*\(\s*void\s*\)")
     check(
@@ -958,9 +876,9 @@ def test_payment_durability_is_one_write() -> None:
 
 def test_pending_write_rule_is_obeyed_by_every_call_site() -> None:
     """THE PENDING-WRITE RULE: kingdom_db_save_realm() is a primitive that does
-    NOT test payment_pending, so every caller outside kingdom_db.c -- except
-    kingdom_persist_payment(), which is the one function allowed to publish a
-    pending record together with the guild debit that justifies it -- must be
+    NOT test payment_pending, so every caller outside kingdom_db.c -- whereas
+    kingdom_persist_payment() publishes a pending record together with the guild
+    debit that justifies it through kingdom_db_save_payment_pair() -- must be
     guarded by !payment_pending and leave a pending record dirty for
     kingdom_upkeep_retry_pending() to carry.
 
@@ -972,7 +890,6 @@ def test_pending_write_rule_is_obeyed_by_every_call_site() -> None:
     expected_sites = {
         ("kingdom.c", "kingdom_rehome_realm"),
         ("kingdom_claim.c", "kingdom_persist_realm"),
-        ("kingdom_upkeep.c", "kingdom_persist_payment"),
         ("kingdom_upkeep.c", "kingdom_upkeep_event"),
     }
     found = set()
@@ -994,7 +911,7 @@ def test_pending_write_rule_is_obeyed_by_every_call_site() -> None:
     check(
         found == expected_sites,
         "the kingdom_db_save_realm() call sites outside kingdom_db.c are exactly the "
-        "four the pending-write rule was written for",
+        "three the pending-write rule was written for",
         f"found   ={sorted(found)}\n      expected={sorted(expected_sites)}",
     )
     check(

@@ -36,11 +36,21 @@ normal = SQL_PLAYER[flat_end:]
 for token in (
     "INSERT IGNORE INTO player_recipes",
     "DELETE FROM player_recipes",
-    "SELECT 1 FROM player_recipes",
-    "SELECT recipe_vnum FROM player_recipes",
+    "SELECT pid, recipe_vnum FROM player_recipes ORDER BY id",
 ):
     if token not in normal:
         raise SystemExit(f"MariaDB recipe behavior lost: {token}")
+
+# Step 8: MariaDB reads every character's recipes at boot and answers from memory; learning
+# or forgetting changes memory at once and is queued on the writer.
+recipes = normal[normal.index("bool sql_add_player_recipe"):normal.index("// player load functions")]
+for forbidden in ("db_query", "sql_run_query", "qry(", "mysql_store_result"):
+    if forbidden in recipes:
+        raise SystemExit(f"MariaDB recipes still query the game loop: {forbidden}")
+if recipes.count("sql_queue(") != 2 or "recipes_by_pid" not in recipes:
+    raise SystemExit("MariaDB recipes must answer from memory and queue their writes")
+if "sql_player_recipes_load()" not in (SRC / "sql.c").read_text():
+    raise SystemExit("MariaDB recipes are not read at boot")
 
 if "flatfile_recipe_repository.o" not in MAKEFILE:
     raise SystemExit("flat recipe repository is missing from server build")

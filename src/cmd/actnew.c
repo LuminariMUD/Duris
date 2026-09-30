@@ -30,6 +30,7 @@
 #include "core/mm.h"
 #include "item/objmisc.h"
 #include "magic/spells.h"
+#include "player/player_load_offline.h"
 #include "sql/sql.h"
 #include "world/vnum.obj.h"
 #include "economy/crafting.h"
@@ -2552,13 +2553,65 @@ char *get_str_zone(P_obj obj)
 	return zone_table[zone - 1].name;
 }
 
+/* What a lorer recalls about a character, once it is loaded (null when there is none). */
+static void lore_character(P_char ch, P_char target, int lore_power, int cmd)
+{
+	char Gbuf1[MAX_STRING_LENGTH], Gbuf3[256];
+
+	if (!target)
+	{
+		send_to_char("You can't recall any legends or stories ever told about that!\r\n",
+			     ch);
+		return;
+	}
+
+	int skl_lvl = GET_CHAR_SKILL(ch, SKILL_LORE);
+	if (IS_TRUSTED(ch) || cmd == 999)
+		skl_lvl = 200;
+
+	if (number(1, 101) > skl_lvl)
+	{
+		notch_skill(ch, SKILL_LORE, 3);
+		send_to_char("You can't recall any legends or stories ever told about that!\r\n",
+			     ch);
+		CharWait(ch, 1);
+		free_char(target);
+		return;
+	}
+
+	if (GET_LEVEL(target) >= AVATAR)
+	{
+		snprintf(Gbuf1, MAX_STRING_LENGTH, "You know that %s %s is a God of Duris\r\n",
+			 GET_NAME(target), GET_TITLE(target) == NULL ? "" : GET_TITLE(target));
+		send_to_char(Gbuf1, ch);
+	}
+	else if ((GET_LEVEL(target) >= 50 &&
+		  lore_power > 1) || // regular bards know only famous persons
+		 (GET_LEVEL(target) >= 40 && lore_power > 2) // masters knows more
+	)
+	{
+		snprintf(
+			Gbuf1, MAX_STRING_LENGTH,
+			"Using your abilities to cast your knowledge far into the realm,\nyou glean that it is %s (%s) %s %s\n",
+			GET_NAME(target), race_names_table[(int)GET_RACE(target)].ansi,
+			get_class_string(target, Gbuf3),
+			GET_TITLE(target) == NULL ? "" : GET_TITLE(target));
+		send_to_char(Gbuf1, ch);
+	}
+	else
+	{
+		send_to_char("You haven't heard anything about that person!\n", ch);
+	}
+	free_char(target);
+	CharWait(ch, 3);
+}
+
 void do_lore(P_char ch, char *arg, int cmd)
 {
 	int percent = 0, skl_lvl;
-	char Gbuf1[MAX_STRING_LENGTH], Gbuf3[256];
+	char Gbuf1[MAX_STRING_LENGTH];
 	char name[MAX_STRING_LENGTH];
 	P_obj obj = NULL;
-	P_char target = NULL;
 	//---------------------------------------------
 	// 1-only inv obj, 2-players, 3-something nice
 	int lore_power = 1;
@@ -2612,22 +2665,10 @@ void do_lore(P_char ch, char *arg, int cmd)
 		}
 		//---------------------------------------
 
-		target = (struct char_data *)mm_get(dead_mob_pool);
-		ensure_pconly_pool();
-		target->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-
-		if ((restoreCharOnly(target, name) < 0) || !target)
-		{
-			if (target)
-			{
-				free_char(target);
-				target = NULL;
-			}
-			send_to_char(
-				"You can't recall any legends or stories ever told about that!\r\n",
-				ch);
-			return;
-		}
+		player_load_offline_for(ch, name, false,
+					[lore_power, cmd](P_char lorer, P_char target)
+					{ lore_character(lorer, target, lore_power, cmd); });
+		return;
 	}
 
 	skl_lvl = GET_CHAR_SKILL(ch, SKILL_LORE);
@@ -2636,62 +2677,19 @@ void do_lore(P_char ch, char *arg, int cmd)
 
 	percent = number(1, 101);
 
-	if (obj)
-	{
-		snprintf(Gbuf1, MAX_STRING_LENGTH, "This item is from the zone: %s.\n",
-			 get_str_zone(obj));
-		send_to_char(Gbuf1, ch);
-	}
+	snprintf(Gbuf1, MAX_STRING_LENGTH, "This item is from the zone: %s.\n", get_str_zone(obj));
+	send_to_char(Gbuf1, ch);
 
 	if (percent > skl_lvl)
 	{
 		notch_skill(ch, SKILL_LORE, 3);
-		if (obj)
-			send_to_char("That's all you can recall about this item.\r\n", ch);
-		else
-			send_to_char(
-				"You can't recall any legends or stories ever told about that!\r\n",
-				ch);
+		send_to_char("That's all you can recall about this item.\r\n", ch);
 		CharWait(ch, 1);
 		return;
 	}
 
-	if (target)
-	{
-		if (GET_LEVEL(target) >= AVATAR)
-		{
-			snprintf(Gbuf1, MAX_STRING_LENGTH,
-				 "You know that %s %s is a God of Duris\r\n", GET_NAME(target),
-				 GET_TITLE(target) == NULL ? "" : GET_TITLE(target));
-			send_to_char(Gbuf1, ch);
-		}
-		else if ((GET_LEVEL(target) >= 50 &&
-			  lore_power > 1) || // regular bards know only famous persons
-			 (GET_LEVEL(target) >= 40 && lore_power > 2) // masters knows more
-		)
-		{
-			snprintf(
-				Gbuf1, MAX_STRING_LENGTH,
-				"Using your abilities to cast your knowledge far into the realm,\nyou glean that it is %s (%s) %s %s\n",
-				GET_NAME(target), race_names_table[(int)GET_RACE(target)].ansi,
-				get_class_string(target, Gbuf3),
-				GET_TITLE(target) == NULL ? "" : GET_TITLE(target));
-			send_to_char(Gbuf1, ch);
-		}
-		else
-		{
-			send_to_char("You haven't heard anything about that person!\n", ch);
-		}
-		if (target)
-			free_char(target);
-		CharWait(ch, 3);
-		return;
-	}
-	if (obj)
-	{
-		lore_item(ch, obj);
-		CharWait(ch, 3);
-	}
+	lore_item(ch, obj);
+	CharWait(ch, 3);
 }
 
 static void render_item_lore(P_char ch, P_obj obj, std::string *captured)

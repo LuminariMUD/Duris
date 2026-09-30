@@ -16,6 +16,7 @@
 #include <string.h>
 #include "core/config.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include <errno.h>
 #include <limits.h>
 #include <math.h>
@@ -109,9 +110,12 @@ void epic_bonus_set(P_char ch, int type)
 	if (!IS_PC(ch) || type < EPIC_BONUS_NONE || type > EPIC_BONUS_MOVE_REG)
 		return;
 
-	if (!qry("INSERT INTO epic_bonus (pid, type, time) VALUES ('%i', '%i', NOW()) "
-		 "ON DUPLICATE KEY UPDATE type=VALUES(type), time=VALUES(time)",
-		 GET_PID(ch), type))
+	// Queued on the writer; the selection time is the one the character keeps.
+	const time_t now = time(NULL);
+	if (!sql_queue(
+		    "INSERT INTO epic_bonus (pid, type, time) VALUES ('%i', '%i', FROM_UNIXTIME(%ld)) "
+		    "ON DUPLICATE KEY UPDATE type=VALUES(type), time=VALUES(time)",
+		    GET_PID(ch), type, (long)now))
 	{
 		send_to_char(
 			"Your epic bonus could not be changed right now. Please try again.\r\n",
@@ -123,8 +127,8 @@ void epic_bonus_set(P_char ch, int type)
 	double contribution_cap = 0.0;
 	double maximum_modifier = 0.0;
 	if (!epic_bonus_config(type, &window_days, &contribution_cap, &maximum_modifier) ||
-	    !epic_bonus_state_select(&ch->only.pc->epic_bonus_state, type, time(NULL),
-				     contribution_cap, maximum_modifier))
+	    !epic_bonus_state_select(&ch->only.pc->epic_bonus_state, type, now, contribution_cap,
+				     maximum_modifier))
 		epic_bonus_state_mark_unavailable(&ch->only.pc->epic_bonus_state);
 	else
 		ch->only.pc->epic_bonus_state.window_days = window_days;
@@ -251,87 +255,43 @@ static bool epic_bonus_expiry(time_t when, int window_days, time_t *expires_at)
 	return true;
 }
 
-bool epic_bonus_hydrate(P_char ch)
+// The state the rows of the hydration read give: the selection, then each day's gains.
+static bool epic_bonus_publish_rows(struct EpicBonusState *state, int window_days,
+				    const sql_rows &rows)
 {
-	if (!IS_PC(ch) || GET_PID(ch) <= 0 || !DB)
-		return false;
-
-	struct EpicBonusState *state = &ch->only.pc->epic_bonus_state;
-	int window_days = 0;
 	double contribution_cap = 0.0;
 	double maximum_modifier = 0.0;
-	const double configured_window = get_property("epic.bonus.time", 7.0);
-	if (!isfinite(configured_window) || configured_window < 1.0 ||
-	    configured_window > EPIC_BONUS_STATE_MAX_WINDOW_DAYS ||
-	    configured_window != floor(configured_window))
+	if (rows.empty())
 	{
-		epic_bonus_state_mark_unavailable(state);
-		logit(LOG_DEBUG, "epic_bonus_hydrate: outcome=invalid_window");
-		return false;
-	}
-	window_days = (int)configured_window;
-
-	MYSQL_RES *res = db_query(
-		"SELECT eb.type, UNIX_TIMESTAMP(eb.time), "
-		"UNIX_TIMESTAMP(CASE WHEN TIME(gained.time) = '00:00:00' "
-		"THEN DATE_ADD(DATE(gained.time), INTERVAL %d DAY) "
-		"ELSE DATE_ADD(DATE(gained.time), INTERVAL %d DAY) END) AS expires_at, "
-		"SUM(gained.amount) FROM epic_bonus eb LEFT JOIN ("
-		"SELECT pid,epics AS amount,time FROM epic_gain WHERE type != %d AND epics > 0 "
-		"UNION ALL SELECT pid,delta AS amount,created_at AS time FROM epic_ledger "
-		"WHERE reason_type != %d AND delta > 0) gained ON gained.pid=eb.pid "
-		"AND gained.time > DATE_SUB(CURDATE(), INTERVAL %d DAY) "
-		"AND gained.time > eb.time WHERE eb.pid=%d "
-		"GROUP BY eb.type, eb.time, expires_at ORDER BY expires_at",
-		window_days, window_days + 1, EPIC_BOTTLE, (int)epic_reason_type::bottle_award,
-		window_days, GET_PID(ch));
-	if (!res)
-	{
-		epic_bonus_state_mark_unavailable(state);
-		logit(LOG_DEBUG, "epic_bonus_hydrate: outcome=query_failure");
-		return false;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-	if (!row)
-	{
-		mysql_free_result(res);
 		if (!epic_bonus_config(EPIC_BONUS_NONE, &window_days, &contribution_cap,
 				       &maximum_modifier) ||
 		    !epic_bonus_state_publish(state, EPIC_BONUS_NONE, 0, contribution_cap,
 					      maximum_modifier, NULL, 0, time(NULL)))
-		{
-			epic_bonus_state_mark_unavailable(state);
 			return false;
-		}
 		state->window_days = window_days;
 		return true;
 	}
 
 	int64_t parsed_type = 0;
 	int64_t selected_at = 0;
-	if (!parse_int64(row[0], &parsed_type) || !parse_int64(row[1], &selected_at) ||
+	if (!parse_int64(rows[0][0], &parsed_type) || !parse_int64(rows[0][1], &selected_at) ||
 	    parsed_type < EPIC_BONUS_NONE || parsed_type > EPIC_BONUS_MOVE_REG || selected_at < 0 ||
 	    !epic_bonus_config((int)parsed_type, &window_days, &contribution_cap,
 			       &maximum_modifier))
 	{
-		mysql_free_result(res);
-		epic_bonus_state_mark_unavailable(state);
 		logit(LOG_DEBUG, "epic_bonus_hydrate: outcome=invalid_header");
 		return false;
 	}
 
 	struct EpicBonusContributionBucket buckets[EPIC_BONUS_STATE_MAX_BUCKETS] = {};
 	int bucket_count = 0;
-	do
+	for (const sql_row &row : rows)
 	{
 		int64_t row_type = 0;
 		int64_t row_selected_at = 0;
 		if (!parse_int64(row[0], &row_type) || !parse_int64(row[1], &row_selected_at) ||
 		    row_type != parsed_type || row_selected_at != selected_at)
 		{
-			mysql_free_result(res);
-			epic_bonus_state_mark_unavailable(state);
 			logit(LOG_DEBUG, "epic_bonus_hydrate: outcome=inconsistent_rows");
 			return false;
 		}
@@ -344,8 +304,6 @@ bool epic_bonus_hydrate(P_char ch)
 			    !parse_int64(row[3], &amount) || expires_at <= 0 || amount <= 0 ||
 			    bucket_count >= EPIC_BONUS_STATE_MAX_BUCKETS)
 			{
-				mysql_free_result(res);
-				epic_bonus_state_mark_unavailable(state);
 				logit(LOG_DEBUG, "epic_bonus_hydrate: outcome=invalid_bucket");
 				return false;
 			}
@@ -353,19 +311,66 @@ bool epic_bonus_hydrate(P_char ch)
 			buckets[bucket_count].amount = amount;
 			bucket_count++;
 		}
-	} while ((row = mysql_fetch_row(res)));
-	mysql_free_result(res);
+	}
 
 	if (!epic_bonus_state_publish(state, (int)parsed_type, (time_t)selected_at,
 				      contribution_cap, maximum_modifier, buckets, bucket_count,
 				      time(NULL)))
 	{
-		epic_bonus_state_mark_unavailable(state);
 		logit(LOG_DEBUG, "epic_bonus_hydrate: outcome=publish_failure");
 		return false;
 	}
 	state->window_days = window_days;
 	return true;
+}
+
+// Read on the writer when a character comes into the game; the state stays uninitialized
+// (no bonus) until the rows arrive, and a selection made before then is kept.
+void epic_bonus_hydrate(P_char ch)
+{
+	if (!IS_PC(ch) || GET_PID(ch) <= 0)
+		return;
+
+	const double configured_window = get_property("epic.bonus.time", 7.0);
+	if (!isfinite(configured_window) || configured_window < 1.0 ||
+	    configured_window > EPIC_BONUS_STATE_MAX_WINDOW_DAYS ||
+	    configured_window != floor(configured_window))
+	{
+		epic_bonus_state_mark_unavailable(&ch->only.pc->epic_bonus_state);
+		logit(LOG_DEBUG, "epic_bonus_hydrate: outcome=invalid_window");
+		return;
+	}
+	const int window_days = (int)configured_window;
+
+	const uint64_t runtime_id = ch->runtime_id;
+	sql_read(
+		sql_format(
+			"SELECT eb.type, UNIX_TIMESTAMP(eb.time), "
+			"UNIX_TIMESTAMP(CASE WHEN TIME(gained.time) = '00:00:00' "
+			"THEN DATE_ADD(DATE(gained.time), INTERVAL %d DAY) "
+			"ELSE DATE_ADD(DATE(gained.time), INTERVAL %d DAY) END) AS expires_at, "
+			"SUM(gained.amount) FROM epic_bonus eb LEFT JOIN ("
+			"SELECT pid,epics AS amount,time FROM epic_gain WHERE type != %d AND epics > 0 "
+			"UNION ALL SELECT pid,delta AS amount,created_at AS time FROM epic_ledger "
+			"WHERE reason_type != %d AND delta > 0) gained ON gained.pid=eb.pid "
+			"AND gained.time > DATE_SUB(CURDATE(), INTERVAL %d DAY) "
+			"AND gained.time > eb.time WHERE eb.pid=%d "
+			"GROUP BY eb.type, eb.time, expires_at ORDER BY expires_at",
+			window_days, window_days + 1, EPIC_BOTTLE,
+			(int)epic_reason_type::bottle_award, window_days, GET_PID(ch)),
+		[runtime_id, window_days](bool ok, const sql_rows &rows)
+		{
+			P_char live = find_character_by_runtime_id(runtime_id);
+			if (!live || !IS_PC(live) ||
+			    live->only.pc->epic_bonus_state.status !=
+				    EPIC_BONUS_STATE_UNINITIALIZED)
+				return;
+			struct EpicBonusState *state = &live->only.pc->epic_bonus_state;
+			if (!ok)
+				logit(LOG_DEBUG, "epic_bonus_hydrate: outcome=query_failure");
+			if (!ok || !epic_bonus_publish_rows(state, window_days, rows))
+				epic_bonus_state_mark_unavailable(state);
+		});
 }
 
 void epic_bonus_record_gain(P_char ch, int type, int amount)

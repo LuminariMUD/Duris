@@ -117,7 +117,7 @@ check(
 check(
     "the modifier scales a cut to each hoarded artifact's timer",
     "float burn = modifier * (float)punish_level;" in wars
-    and "UPDATE artifacts SET timer = FROM_UNIXTIME" in wars,
+    and "static_cast<double>(row.timer - now) *" in wars,
 )
 
 # 6. Functions that ignored an argument their caller still supplied.

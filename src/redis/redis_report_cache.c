@@ -14,6 +14,7 @@
 #include "persistence/report_cache_codec.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "core/utility.h"
 #include "core/utils.h"
 
@@ -263,11 +264,10 @@ char *generate_named_report(void)
 	return output;
 }
 
-char *generate_fraglist_cache_payload(void)
+#ifndef __NO_REDIS__
+/* The cached fraglist, from the leaderboard rows fraglist_leaders() reads. */
+static char *fraglist_cache_payload(const sql_rows &rows)
 {
-#ifdef __NO_REDIS__
-	return NULL;
-#else
 	char *output = static_cast<char *>(malloc(65536));
 	if (!output)
 		return NULL;
@@ -279,8 +279,6 @@ char *generate_fraglist_cache_payload(void)
 	int cap_level, cap_racewar, cap_others;
 	long cap_frags;
 	time_t cap_deadline;
-	MYSQL_RES *res;
-	MYSQL_ROW row;
 
 	get_level_cap_info(&cap_frags, &cap_racewar, &cap_level, &cap_deadline);
 	if (cap_frags < 0 || cap_racewar < 0 || cap_racewar >= MAX_RACEWAR + 2 || cap_deadline <= 0)
@@ -306,68 +304,46 @@ char *generate_fraglist_cache_payload(void)
 	snprintf(output, 65536, " &+YFrags needed:&+w %.2f&n\n\n&+WTop Fraggers\n\n",
 		 frag_cap_config_frags_for_level(cap_level + 1));
 
-	res = db_query("SELECT char_name, total_frags FROM frag_leaderboard "
-		       "WHERE deleted_at IS NULL ORDER BY total_frags DESC LIMIT %d",
-		       max_frag_size);
-	if (res)
+	count = 0;
+	for (const sql_row &row : rows)
 	{
-		count = 0;
-		while ((row = mysql_fetch_row(res)) && count < max_frag_size)
-		{
-			if (row[0] && row[1])
-			{
-				strlcpy(name, row[0], sizeof name);
-				name[0] = toupper(name[0]);
-				frags = atoi(row[1]);
-				fragnum = frags / 100.0;
-				snprintf(buf, sizeof(buf), "   &+Y%-30s             &+R% 6.2f\r\n",
-					 name, fragnum);
-				strcat(output, buf);
-				count++;
-			}
-		}
-		mysql_free_result(res);
-
-		while (count < max_frag_size)
-		{
-			snprintf(buf, sizeof(buf), "   &+Y%-30s             &+R% 6.2f\r\n",
-				 "Nobody", 0.0);
-			strcat(output, buf);
-			count++;
-		}
+		if (strcmp(row[0], "top") || !row[1] || !row[2] || count >= max_frag_size)
+			continue;
+		strlcpy(name, row[1], sizeof name);
+		name[0] = toupper(name[0]);
+		frags = atoi(row[2]);
+		fragnum = frags / 100.0;
+		snprintf(buf, sizeof(buf), "   &+Y%-30s             &+R% 6.2f\r\n", name, fragnum);
+		strcat(output, buf);
+		count++;
+	}
+	while (count < max_frag_size)
+	{
+		snprintf(buf, sizeof(buf), "   &+Y%-30s             &+R% 6.2f\r\n", "Nobody", 0.0);
+		strcat(output, buf);
+		count++;
 	}
 
 	strcat(output, "\r\n\r\n&+LLowest Fraggers\r\n\r\n");
 
-	res = db_query("SELECT char_name, total_frags FROM frag_leaderboard "
-		       "WHERE deleted_at IS NULL ORDER BY total_frags ASC LIMIT %d",
-		       max_frag_size);
-	if (res)
+	count = 0;
+	for (const sql_row &row : rows)
 	{
-		count = 0;
-		while ((row = mysql_fetch_row(res)) && count < max_frag_size)
-		{
-			if (row[0] && row[1])
-			{
-				strlcpy(name, row[0], sizeof name);
-				name[0] = toupper(name[0]);
-				frags = atoi(row[1]);
-				fragnum = frags / 100.0;
-				snprintf(buf, sizeof(buf), "   &+Y%-30s             &+R% 6.2f\r\n",
-					 name, fragnum);
-				strcat(output, buf);
-				count++;
-			}
-		}
-		mysql_free_result(res);
-
-		while (count < max_frag_size)
-		{
-			snprintf(buf, sizeof(buf), "   &+Y%-30s             &+R% 6.2f\r\n",
-				 "Nobody", 0.0);
-			strcat(output, buf);
-			count++;
-		}
+		if (strcmp(row[0], "low") || !row[1] || !row[2] || count >= max_frag_size)
+			continue;
+		strlcpy(name, row[1], sizeof name);
+		name[0] = toupper(name[0]);
+		frags = atoi(row[2]);
+		fragnum = frags / 100.0;
+		snprintf(buf, sizeof(buf), "   &+Y%-30s             &+R% 6.2f\r\n", name, fragnum);
+		strcat(output, buf);
+		count++;
+	}
+	while (count < max_frag_size)
+	{
+		snprintf(buf, sizeof(buf), "   &+Y%-30s             &+R% 6.2f\r\n", "Nobody", 0.0);
+		strcat(output, buf);
+		count++;
 	}
 
 	strcat(output, "\r\n");
@@ -376,9 +352,27 @@ char *generate_fraglist_cache_payload(void)
 						      static_cast<uint64_t>(cap_deadline));
 	free(output);
 	return payload;
-#endif
 }
+#endif
+
 } // namespace
+
+bool fraglist_leaders(MYSQL *connection, const char *filter, sql_rows *rows)
+{
+	const std::string where = filter && *filter ? std::string(" AND ") + filter : "";
+	return !sql_select(
+		       connection,
+		       sql_format("SELECT 'top', char_name, total_frags FROM frag_leaderboard "
+				  "WHERE deleted_at IS NULL%s ORDER BY total_frags DESC LIMIT %d",
+				  where.c_str(), max_frag_size),
+		       rows) &&
+	       !sql_select(
+		       connection,
+		       sql_format("SELECT 'low', char_name, total_frags FROM frag_leaderboard "
+				  "WHERE deleted_at IS NULL%s ORDER BY total_frags ASC LIMIT %d",
+				  where.c_str(), max_frag_size),
+		       rows);
+}
 
 bool redis_report_cache_configure(const char *key_namespace, uint64_t epoch)
 {
@@ -492,18 +486,37 @@ bool redis_invalidate_named_report(void)
 	return cache_delete(REDIS_CACHE_NAMED);
 }
 
-void redis_cache_fraglist(void)
+bool redis_cache_fraglist(P_char ch)
 {
-#ifndef __NO_REDIS__
+#ifdef __NO_REDIS__
+	(void)ch;
+	return false;
+#else
 	if (!report_cache_enabled)
-		return;
-	char *output = generate_fraglist_cache_payload();
-	if (output)
-	{
-		cache_set_ex(REDIS_CACHE_FRAGLIST, fraglist_cache_ttl_seconds, output);
-		free(output);
-		logit(LOG_SYS, "redis: cached fraglist");
-	}
+		return false;
+	const uint64_t runtime_id = ch ? ch->runtime_id : 0;
+	return sql_read_work(
+		[](MYSQL *connection, sql_rows *rows) -> unsigned int
+		{
+			return fraglist_leaders(connection, NULL, rows) ?
+				       0 :
+				       (mysql_errno(connection) ? mysql_errno(connection) : EIO);
+		},
+		[runtime_id](bool ok, const sql_rows &rows)
+		{
+			char *output = ok ? fraglist_cache_payload(rows) : NULL;
+			if (!output)
+				return;
+			cache_set_ex(REDIS_CACHE_FRAGLIST, fraglist_cache_ttl_seconds, output);
+			free(output);
+			logit(LOG_SYS, "redis: cached fraglist");
+			P_char live = runtime_id ? find_character_by_runtime_id(runtime_id) : NULL;
+			if (char *cached = live && live->desc ? redis_get_fraglist() : NULL)
+			{
+				page_string(live->desc, cached, 1);
+				free(cached);
+			}
+		});
 #endif
 }
 

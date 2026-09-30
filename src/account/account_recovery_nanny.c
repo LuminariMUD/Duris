@@ -265,6 +265,60 @@ void account_recovery_new_password(P_desc d, char *arg)
 	OPENSSL_cleanse(arg, strlen(arg));
 }
 
+/* Completes the reset once the account has been read afresh. */
+static void finish_reset(P_desc completed_desc, P_acct fresh)
+{
+	const account_recovery_complete_outcome outcome = account_recovery_complete(
+		completed_desc->account->acct_name, completed_desc->account_recovery_code,
+		completed_desc->account_recovery_pending_hash, completed_desc, fresh);
+	free_account(fresh);
+
+	/* On success write_account copied the new password into
+	 * completed_desc->account and reallocated its strings; the acct_entry itself is still
+	 * ours.  Only descriptor-owned state is touched now. */
+	account_recovery_descriptor_cleanse(completed_desc);
+
+	switch (outcome)
+	{
+	case account_recovery_complete_outcome::ok:
+		completed_desc->account_recovery_attempts = 0;
+		SEND_TO_Q(
+			"\r\n&+GYour password has been changed.&n Any other connection using this "
+			"account has been disconnected.\r\n",
+			completed_desc);
+		send_account_password_prompt(completed_desc);
+		return;
+	case account_recovery_complete_outcome::rejected:
+	case account_recovery_complete_outcome::fenced:
+	case account_recovery_complete_outcome::superseded:
+		/* fenced and superseded share the text on purpose: no disclosure to a code
+		 * holder; the token is dead either way. */
+		SEND_TO_Q("\r\nYour reset code stopped being valid while you were typing (it "
+			  "expired, was cancelled, or a newer code was requested). Press ? at the "
+			  "password prompt to start again.\r\n",
+			  completed_desc);
+		send_account_password_prompt(completed_desc);
+		return;
+	case account_recovery_complete_outcome::write_failed:
+		/* Token kept by the core: '?' -> suppressed -> the same code still works. */
+		SEND_TO_Q(
+			"\r\nYour new password could not be saved. Nothing has changed and your "
+			"code is still valid: press ? at the password prompt to try again, or ask "
+			"an immortal.\r\n",
+			completed_desc);
+		send_account_password_prompt(completed_desc);
+		return;
+	case account_recovery_complete_outcome::load_failed:
+	case account_recovery_complete_outcome::bad_hash:
+		break;
+	}
+
+	SEND_TO_Q("\r\nThere is an error with your account, please notify an immortal!\r\n",
+		  completed_desc);
+	completed_desc->account = free_account(completed_desc->account);
+	STATE(completed_desc) = CON_FLUSH;
+}
+
 /* S4 CON_ACCT_RESET_NEWPW2. */
 void account_recovery_verify_new_password(P_desc d, char *arg)
 {
@@ -310,58 +364,10 @@ void account_recovery_verify_new_password(P_desc d, char *arg)
 				    return;
 			    }
 
-			    const account_recovery_complete_outcome outcome =
-				    account_recovery_complete(
-					    completed_desc->account->acct_name,
-					    completed_desc->account_recovery_code,
-					    completed_desc->account_recovery_pending_hash,
-					    completed_desc);
-
-			    /* On success write_account re-read completed_desc->account and reallocated its strings; the
-	 * acct_entry itself is still ours.  Only descriptor-owned state is touched now. */
-			    account_recovery_descriptor_cleanse(completed_desc);
-
-			    switch (outcome)
-			    {
-			    case account_recovery_complete_outcome::ok:
-				    completed_desc->account_recovery_attempts = 0;
-				    SEND_TO_Q(
-					    "\r\n&+GYour password has been changed.&n Any other connection using this "
-					    "account has been disconnected.\r\n",
-					    completed_desc);
-				    send_account_password_prompt(completed_desc);
-				    return;
-			    case account_recovery_complete_outcome::rejected:
-			    case account_recovery_complete_outcome::fenced:
-			    case account_recovery_complete_outcome::superseded:
-				    /* fenced and superseded share the text on purpose: no disclosure to a code
-		 * holder; the token is dead either way. */
-				    SEND_TO_Q(
-					    "\r\nYour reset code stopped being valid while you were typing (it "
-					    "expired, was cancelled, or a newer code was requested). Press ? at the "
-					    "password prompt to start again.\r\n",
-					    completed_desc);
-				    send_account_password_prompt(completed_desc);
-				    return;
-			    case account_recovery_complete_outcome::write_failed:
-				    /* Token kept by the core: '?' -> suppressed -> the same code still works. */
-				    SEND_TO_Q(
-					    "\r\nYour new password could not be saved. Nothing has changed and your "
-					    "code is still valid: press ? at the password prompt to try again, or ask "
-					    "an immortal.\r\n",
-					    completed_desc);
-				    send_account_password_prompt(completed_desc);
-				    return;
-			    case account_recovery_complete_outcome::load_failed:
-			    case account_recovery_complete_outcome::bad_hash:
-				    break;
-			    }
-
-			    SEND_TO_Q(
-				    "\r\nThere is an error with your account, please notify an immortal!\r\n",
-				    completed_desc);
-			    completed_desc->account = free_account(completed_desc->account);
-			    STATE(completed_desc) = CON_FLUSH;
+			    /* Read the account afresh, behind every save queued before it. */
+			    account_read(completed_desc, completed_desc->account->acct_name,
+					 [](P_desc reader, bool, P_acct fresh)
+					 { finish_reset(reader, fresh); });
 		    }))
 	{
 		SEND_TO_Q("Password service is busy; please try again.\r\n", d);

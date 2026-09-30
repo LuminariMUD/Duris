@@ -69,7 +69,15 @@ assert "establish_item_baseline" not in FLAT_PLAYER
 # Only the one-time legacy journal replay keeps the revision fence.
 assert "if (legacy_replay)" in REPOSITORY and "replay_fence(connection, snapshot, &skip)" in REPOSITORY
 assert "if (legacy_replay && materialized.revision >= snapshot.revision)" in FLAT_PLAYER
-assert "ensure_player_row(connection, snapshot)" in REPOSITORY
+assert "ensure_player_row(connection, snapshot, &created)" in REPOSITORY
+# A new character's first save goes through the writer: the row it creates gets the
+# opening baselines the accounting ledgers start from, and nanny no longer forces a
+# synchronous first save on MariaDB.
+assert "if (query.ok && created)\n\t\tquery = insert_opening_baselines(connection, snapshot.pid);" in REPOSITORY
+NANNY = (SRC / "nanny.c").read_text()
+new_player = NANNY[NANNY.index("ch->only.pc->pid = getNewPCidNumb();"):]
+new_player = new_player[:new_player.index("SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE);")]
+assert new_player.rstrip().endswith("#ifdef __NO_MYSQL__") or "#ifdef __NO_MYSQL__" in new_player.split("sql_player_names_set")[1]
 print("[PASS] custody checks and the revision fence are gone; a missing row is created")
 
 PIPELINE = (SRC / "player_save_pipeline.c").read_text()
@@ -113,17 +121,15 @@ assert "player_load_filter_mysql_harness" in RUNNER
 SQL_PLAYER = (SRC / "sql_player.c").read_text()
 assert SQL_PLAYER.count("if (container_map[i] != -1)") == 2
 assert "if (container_map[i] == 0)\n\t\t\t{" not in SQL_PLAYER
-locker = SQL_PLAYER[SQL_PLAYER.index("static P_obj sql_load_locker_items_filtered("):]
+locker = SQL_PLAYER[SQL_PLAYER.index("static P_obj locker_items_from_index("):]
 locker = locker[: locker.index("\n}\n")]
-assert "&first_obj, &last_obj,\n\t\t\t\t\tsql_load_locker_items_filtered(" in locker
+assert "append_loaded_objects(&first_obj, &last_obj, orphans);" in locker
+assert "obj_to_obj(orphans, chest_obj)" in locker
 room = SQL_PLAYER[SQL_PLAYER.index("static P_obj sql_load_saved_item_contents("):]
 room = room[: room.index("\n}\n")]
 assert "append_loaded_objects(&first_obj, &last_obj,\n" in room
 owner_check = room[room.index("sql_persistence_item_owner_matches(obj->obj_uid"):]
 assert "*valid = false" not in owner_check[: owner_check.index("continue;")]
-chest = SQL_PLAYER[SQL_PLAYER.index("void sql_load_private_chest_items(int locker_id"):]
-chest = chest[: chest.index("\n}\n")]
-assert "obj_to_obj(orphan, chest_obj)" in chest
 print("[PASS] player, pet, corpse, locker and saved-item loads use the same filter")
 
 assert "tests/async/run_player_save_claim_mysql.sh" in DATABASE_TESTS

@@ -20,6 +20,7 @@ using namespace std;
 #include "guild/assocs.h"
 #include "guild/guildhall.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 
 #ifdef __NO_MYSQL__
 #include "flatfile/flatfile_association_repository.h"
@@ -151,75 +152,20 @@ GuildhallRoom *make_guildhall_room(int type)
 	}
 }
 
+/* The ids come from memory: the boot load reads the highest stored ones, and -1
+ * means it could not, so no new hall or room is saved over a stored one. */
 int next_guildhall_id()
 {
-#ifndef __NO_MYSQL__
-	if (_next_guildhall_id == -1)
-	{
-		if (!qry("select coalesce(max(id), 0) from guildhalls"))
-		{
-			logit(LOG_GUILDHALLS, "next_guildhall_id(): query failed");
-			return -1;
-		}
-
-		MYSQL_RES *res = mysql_store_result(DB);
-		if (!res)
-		{
-			logit(LOG_DEBUG, "%s: mysql_store_result failed", __func__);
-			return FALSE;
-		}
-		MYSQL_ROW row = mysql_fetch_row(res);
-
-		if (!row[0])
-		{
-			_next_guildhall_id = 0;
-		}
-		else
-		{
-			_next_guildhall_id = atoi(row[0]);
-		}
-		mysql_free_result(res);
-	}
-#endif
-	_next_guildhall_id++;
-
-	return _next_guildhall_id;
+	if (_next_guildhall_id < 0)
+		return -1;
+	return ++_next_guildhall_id;
 }
 
 int next_guildhall_room_id()
 {
-#ifndef __NO_MYSQL__
-	if (_next_guildhall_room_id == -1)
-	{
-		if (!qry("select coalesce(max(id), 0) from guildhall_rooms"))
-		{
-			logit(LOG_GUILDHALLS, "next_guildhall_room_id(): query failed");
-			return -1;
-		}
-
-		MYSQL_RES *res = mysql_store_result(DB);
-		if (!res)
-		{
-			logit(LOG_DEBUG, "%s: mysql_store_result failed", __func__);
-			return FALSE;
-		}
-		MYSQL_ROW row = mysql_fetch_row(res);
-
-		if (!row[0])
-		{
-			_next_guildhall_room_id = 0;
-		}
-		else
-		{
-			_next_guildhall_room_id = atoi(row[0]);
-		}
-		mysql_free_result(res);
-	}
-#endif
-
-	_next_guildhall_room_id++;
-
-	return _next_guildhall_room_id;
+	if (_next_guildhall_room_id < 0)
+		return -1;
+	return ++_next_guildhall_room_id;
 }
 
 // find the next available vnum in the GH rooms block.
@@ -293,6 +239,26 @@ void load_guildhalls(vector<Guildhall *> &guildhalls)
 			_next_guildhall_room_id = std::max(_next_guildhall_room_id, room.room_id);
 	}
 #else
+	if (!qry("select (select coalesce(max(id), 0) from guildhalls), "
+		 "(select coalesce(max(id), 0) from guildhall_rooms)"))
+	{
+		logit(LOG_GUILDHALLS, "load_guildhalls(): id query failed");
+		return;
+	}
+	MYSQL_RES *ids = mysql_store_result(DB);
+	if (!ids)
+	{
+		logit(LOG_DEBUG, "%s: mysql_store_result failed", __func__);
+		return;
+	}
+	MYSQL_ROW max_ids = mysql_fetch_row(ids);
+	if (max_ids)
+	{
+		_next_guildhall_id = atoi(max_ids[0]);
+		_next_guildhall_room_id = atoi(max_ids[1]);
+	}
+	mysql_free_result(ids);
+
 	if (!qry("select id, assoc_id, type, outside_vnum, racewar from guildhalls order by id asc"))
 	{
 		logit(LOG_GUILDHALLS, "load_guildhalls(): query failed");
@@ -331,83 +297,6 @@ void load_guildhalls(vector<Guildhall *> &guildhalls)
 
 		guildhalls.push_back(gh);
 	}
-
-	mysql_free_result(res);
-#endif
-}
-
-void load_guildhall(int id, Guildhall *gh)
-{
-	if (!gh)
-	{
-		logit(LOG_GUILDHALLS, "load_guildhall(): invalid gh");
-		return;
-	}
-
-	if (gh->id <= 0)
-	{
-		logit(LOG_GUILDHALLS, "load_guildhall(%d): invalid id", id);
-		return;
-	}
-
-#ifdef __NO_MYSQL__
-	const char *root = persistence_mode_flatfile_root();
-	if (!root)
-	{
-		logit(LOG_GUILDHALLS, "load_guildhall(%d): flat-file state root unavailable", id);
-		return;
-	}
-	std::string error;
-	std::vector<flatfile_guildhall_record> records;
-	const auto listed = flatfile_guildhall_list(root, &records, &error);
-	if (listed != flatfile_association_result::ok)
-	{
-		logit(LOG_GUILDHALLS, "load_guildhall(%d): %s", id, error.c_str());
-		return;
-	}
-	const auto record = std::find_if(records.begin(), records.end(), [id](const auto &entry)
-					 { return entry.guildhall_id == id; });
-	if (record == records.end())
-	{
-		logit(LOG_GUILDHALLS, "load_guildhall(%d): guildhall not found", id);
-		return;
-	}
-	gh->id = record->guildhall_id;
-	gh->assoc_id = record->association_id;
-	gh->guild = get_guild_from_id(record->association_id);
-	gh->type = record->type;
-	gh->outside_vnum = record->outside_vnum;
-	gh->racewar = record->racewar;
-#else
-	if (!qry("select id, assoc_id, type, outside_vnum, racewar from guildhalls where id = %d",
-		 id))
-	{
-		logit(LOG_GUILDHALLS, "load_guildhall(%d): query failed", id);
-		return;
-	}
-
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (!res)
-	{
-		logit(LOG_DEBUG, "%s: mysql_store_result failed", __func__);
-		return;
-	}
-
-	MYSQL_ROW row;
-
-	if (!(row = mysql_fetch_row(res)))
-	{
-		logit(LOG_GUILDHALLS, "load_guildhall(%d): guildhall with id not found!", id);
-		mysql_free_result(res);
-		return;
-	}
-
-	gh->id = atoi(row[0]);
-	gh->assoc_id = atoi(row[1]);
-	gh->guild = get_guild_from_id(gh->assoc_id);
-	gh->type = atoi(row[2]);
-	gh->outside_vnum = atoi(row[3]);
-	gh->racewar = atoi(row[4]);
 
 	mysql_free_result(res);
 #endif
@@ -547,13 +436,9 @@ bool save_guildhall(Guildhall *gh)
 	}
 	return TRUE;
 #else
-	if (!qry("replace into guildhalls (id, assoc_id, type, outside_vnum, racewar) values (%d, %d, %d, %d, %d)",
-		 gh->id, gh->guild->get_id(), gh->type, gh->outside_vnum, gh->racewar))
-	{
-		logit(LOG_GUILDHALLS, "save_guildhall(): replace query failed!");
-		return FALSE;
-	}
-
+	sql_queue(
+		"replace into guildhalls (id, assoc_id, type, outside_vnum, racewar) values (%d, %d, %d, %d, %d)",
+		gh->id, gh->guild->get_id(), gh->type, gh->outside_vnum, gh->racewar);
 	return TRUE;
 #endif
 }
@@ -601,18 +486,14 @@ bool save_guildhall_room(GuildhallRoom *room)
 	}
 	return TRUE;
 #else
-	if (!qry("replace into guildhall_rooms (id, vnum, guildhall_id, name, type, value0, value1, value2, value3, value4, value5, value6, value7, exit0, exit1, exit2, exit3, exit4, exit5, exit6, "
-		 "exit7, exit8, exit9) values (%d, %d, %d, '%s', %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d)",
-		 room->id, room->vnum, room->guildhall->id, escape_str(room->name.c_str()).c_str(),
-		 room->type, room->value[0], room->value[1], room->value[2], room->value[3],
-		 room->value[4], room->value[5], room->value[6], room->value[7], room->exits[0],
-		 room->exits[1], room->exits[2], room->exits[3], room->exits[4], room->exits[5],
-		 room->exits[6], room->exits[7], room->exits[8], room->exits[9]))
-	{
-		logit(LOG_GUILDHALLS, "save_guildhall_room(): replace query failed!");
-		return FALSE;
-	}
-
+	sql_queue(
+		"replace into guildhall_rooms (id, vnum, guildhall_id, name, type, value0, value1, value2, value3, value4, value5, value6, value7, exit0, exit1, exit2, exit3, exit4, exit5, exit6, "
+		"exit7, exit8, exit9) values (%d, %d, %d, '%s', %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d)",
+		room->id, room->vnum, room->guildhall->id, escape_str(room->name.c_str()).c_str(),
+		room->type, room->value[0], room->value[1], room->value[2], room->value[3],
+		room->value[4], room->value[5], room->value[6], room->value[7], room->exits[0],
+		room->exits[1], room->exits[2], room->exits[3], room->exits[4], room->exits[5],
+		room->exits[6], room->exits[7], room->exits[8], room->exits[9]);
 	return TRUE;
 #endif
 }
@@ -644,12 +525,7 @@ bool delete_guildhall(Guildhall *gh)
 	}
 	return TRUE;
 #else
-	if (!qry("delete from guildhalls where id = %d", gh->id))
-	{
-		logit(LOG_GUILDHALLS, "delete_guildhall(): delete query failed!");
-		return FALSE;
-	}
-
+	sql_queue("delete from guildhalls where id = %d", gh->id);
 	return TRUE;
 #endif
 }
@@ -687,12 +563,7 @@ bool delete_guildhall_room(GuildhallRoom *room)
 	}
 	return TRUE;
 #else
-	if (!qry("delete from guildhall_rooms where id = %d", room->id))
-	{
-		logit(LOG_GUILDHALLS, "delete_guildhall_room(): delete query failed!");
-		return FALSE;
-	}
-
+	sql_queue("delete from guildhall_rooms where id = %d", room->id);
 	return TRUE;
 #endif
 }

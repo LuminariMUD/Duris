@@ -24,7 +24,6 @@ int next_guildhall_room_vnum();
 GuildhallRoom *make_guildhall_room(int type);
 
 void load_guildhalls(vector<Guildhall *> &);
-void load_guildhall(int id, Guildhall *);
 void load_guildhall_rooms(Guildhall *);
 vector<GuildhallRoom *> load_guildhall_rooms(int guildhall_id);
 

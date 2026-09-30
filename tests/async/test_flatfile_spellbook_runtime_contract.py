@@ -50,8 +50,7 @@ normal = SQL_PLAYER[flat_end:]
 for token in (
     "insert ignore into player_spellbooks",
     "delete from player_spellbooks where pid=%d and mob_vnum=%d",
-    "select 1 from player_spellbooks",
-    "select mob_vnum from player_spellbooks",
+    "select pid, mob_vnum from player_spellbooks",
     "delete from player_spellbooks where pid=%d",
 ):
     if token not in normal:

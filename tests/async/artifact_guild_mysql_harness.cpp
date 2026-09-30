@@ -170,8 +170,31 @@ int main()
 	assert(scalar(db, "SELECT COUNT(*) FROM artifact_guild_outcome WHERE actor_pid=" +
 				  std::to_string(ACTOR_PID)) == 1);
 
+	// Another ledgered transaction advanced the artifact's revision without changing its
+	// timer or soul: a feed captured from those still applies, on top of that revision.
+	execute(db, "UPDATE artifact_domain_state SET revision=revision+5 WHERE vnum=" +
+			    std::to_string(ARTIFACT_VNUM));
+	critical_operation_id later_parent = {};
+	assert(critical_operation_id_generate(&later_parent));
+	insert_parent(db, later_parent);
+	payload.parent_operation_id = later_parent;
+	payload.expected_guild_revision = 1;
+	payload.artifacts[0].expected_timer = OPENING_TIMER + 3600;
+	payload.artifacts[0].timer = OPENING_TIMER + 7200;
+	critical_operation_id later_child = {};
+	assert(critical_operation_id_derive(later_parent, 0x41475431, ACTOR_PID, &later_child));
+	critical_command later = {};
+	assert(artifact_guild_command_build(&later, later_child, payload));
+	later.accepted_at_usec = 3;
+	assert(critical_command_repository_apply(db, later).outcome ==
+	       critical_apply_outcome::applied);
+	assert(scalar(db, "SELECT timer_epoch FROM artifact_domain_state WHERE vnum=" +
+				  std::to_string(ARTIFACT_VNUM)) == OPENING_TIMER + 7200);
+	assert(scalar(db, "SELECT revision FROM artifact_domain_state WHERE vnum=" +
+				  std::to_string(ARTIFACT_VNUM)) == 7);
+
 	cleanup(db);
 	mysql_close(db);
 	std::cout
-		<< "artifact/guild atomic threshold apply, replay, stale rejection, and ledgers passed\n";
+		<< "artifact/guild atomic threshold apply, replay, stale rejection, revision advance, and ledgers passed\n";
 }

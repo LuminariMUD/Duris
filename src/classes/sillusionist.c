@@ -32,6 +32,7 @@
 #include "item/objmisc.h"
 #include "world/specs.prototypes.h"
 #include "magic/spells.h"
+#include "player/player_load_offline.h"
 #include "sql/sql.h"
 #include "world/vnum.mob.h"
 #include "world/weather.h"
@@ -755,31 +756,10 @@ void spell_reflection(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 	}
 }
 
-void spell_mask([[maybe_unused]] int level, P_char ch, char *arg, int /*type*/, P_char /*victim*/,
-		P_obj /*tar_obj*/)
+/* Masks ch as target, a loaded character (null when there is none), or back as itself. */
+static void mask_as(P_char ch, P_char target, bool casting_on_self)
 {
-	bool casting_on_self = FALSE;
-	P_char target = NULL;
 	char tbuf[MAX_STRING_LENGTH];
-
-	if (IS_NPC(ch))
-		return;
-
-	target = (struct char_data *)mm_get(dead_mob_pool);
-	ensure_pconly_pool();
-	target->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-
-	if (isname(arg, "me") || isname(arg, "self"))
-		casting_on_self = TRUE;
-
-	if ((restoreCharOnly(target, arg) < 0) || !target)
-	{
-		if (target)
-		{
-			free_char(target);
-			target = NULL;
-		}
-	}
 
 	if ((target && IS_PC(target) && GET_PID(target) == GET_PID(ch)) || casting_on_self)
 	{
@@ -876,6 +856,21 @@ void spell_mask([[maybe_unused]] int level, P_char ch, char *arg, int /*type*/, 
 		free_char(target);
 
 	return;
+}
+
+void spell_mask([[maybe_unused]] int level, P_char ch, char *arg, int /*type*/, P_char /*victim*/,
+		P_obj /*tar_obj*/)
+{
+	if (IS_NPC(ch))
+		return;
+
+	if (isname(arg, "me") || isname(arg, "self"))
+	{
+		mask_as(ch, NULL, TRUE);
+		return;
+	}
+	player_load_offline_for(ch, arg, false, [](P_char caster, P_char target)
+				{ mask_as(caster, target, FALSE); });
 }
 
 void spell_watching_wall(int level, P_char ch, char *arg, int /*type*/, P_char /*tar_ch*/,

@@ -10,7 +10,7 @@ BOOTSTRAP_DB="duris_fresh_bootstrap_test"
 CONFIG=$(mktemp)
 
 cleanup() {
-    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    docker rm -fv "$NAME" >/dev/null 2>&1 || true
     rm -f "$CONFIG"
 }
 trap cleanup EXIT HUP INT TERM

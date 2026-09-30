@@ -4,7 +4,9 @@
 A real server on a disposable MariaDB: with the writer stalled on locked tables
 (player_items and log_entries), quit reaches the account menu and the game loop keeps
 answering a second connection throughout; the save and the log row land once the tables
-are free, and a relog reads the save. Shutdown then exits within its bound and names the
+are free, and a relog reads the save. With accounts locked, a login waits for its
+account on the writer while the loop keeps answering, and gets its password prompt once
+the table is free (persistence reset phase 2, step 8). Shutdown then exits within its bound and names the
 save it could not write twice: while the writer is blocked inside a query on a locked
 table (the query is cut off at the deadline), and, on a second server, with the database
 stopped. Run through run_mysql_stalled_writer_journey.sh, which sets TEST_DB_* and
@@ -185,6 +187,59 @@ def run(server):
             print(f'camp on a stalled writer: menu after {quit_elapsed:.1f}s with the tables '
                   f'locked, slowest loop reply {slowest:.2f}s; the save and log row landed '
                   'after, and a relog read the save', flush=True)
+            client.send('quit')
+            client.expect('ACCOUNT MENU', timeout=60)
+            client.send('0')
+            client.close()
+            client = None
+            side_played = ("SELECT GREATEST(COALESCE(UNIX_TIMESTAMP(last_good_char),0),"
+                           "COALESCE(UNIX_TIMESTAMP(last_evil_char),0)) FROM accounts "
+                           "WHERE account_name='" + journey.ACCOUNT + "'")
+            logins = ("SELECT COALESCE(SUM(count),0) FROM account_ips "
+                      "WHERE account_name='" + journey.ACCOUNT + "'")
+            assert time.time() - int(sql(side_played)) < 3600
+            logins_before = int(sql(logins))
+
+            # Logging in reads the account on the writer: with accounts locked, a new
+            # connection waits for its password prompt while the loop keeps answering.
+            lock = lock_tables('accounts WRITE')
+            probe = LoopProbe(plain)
+            probe.start()
+            login = journey.MudClient(plain)
+            entry, _ = login.expect_any(('term type', 'account name'), timeout=20)
+            if entry == 'term type':
+                login.send('9')
+                login.expect('account name', timeout=20)
+            login.send(journey.ACCOUNT)
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                login._receive()
+            assert b'enter your password' not in login.transcript, \
+                'the account was read past the locked table'
+            slowest, replies = probe.finish()
+            assert replies >= 10 and slowest < 3, \
+                f'the game loop stalled: slowest reply {slowest:.1f}s over {replies}'
+            unlock(lock)
+            lock = None
+            login.expect('enter your password', timeout=30)
+            # The account menu saves the account it read (the login's IP count). The racewar
+            # cooldown's side timestamp survives that: the read once took the year of the
+            # stored time as its seconds.
+            login.send(journey.PASSWORD)
+            login.expect('PRESS RETURN', timeout=30)
+            login.send('')
+            login.expect('Please select an option', timeout=30)
+            login.send('0')
+            login.close()
+            deadline = time.monotonic() + 30
+            while int(sql(logins)) == logins_before:
+                assert time.monotonic() < deadline, 'the account save did not land'
+                time.sleep(0.2)
+            assert time.time() - int(sql(side_played)) < 3600, 'the side timestamp was lost'
+            client = journey.reconnect_character(plain)
+            print(f'login on a locked accounts table: no prompt while locked, slowest loop '
+                  f'reply {slowest:.2f}s; the prompt came after the unlock, and the account '
+                  'save kept the side timestamp', flush=True)
 
             # Shutdown while the writer is blocked inside a query on a locked table: the
             # database answers, but not for this table. At the deadline the query is cut

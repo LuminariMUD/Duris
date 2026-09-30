@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "sql/sql_work.h"
+
 struct redis_connection_settings;
 
 bool redis_report_cache_configure(const char *key_namespace, uint64_t epoch);
@@ -18,9 +20,14 @@ void redis_cache_named_report(void);
 char *redis_get_named_report(void);
 bool redis_invalidate_named_report(void);
 
-void redis_cache_fraglist(void);
+// Rebuilds the cached fraglist from the leaderboard, which the writer reads; ch, when
+// given, is shown the new list. False when the cache is off or the read not queued.
+bool redis_cache_fraglist(struct char_data *ch = nullptr);
 char *redis_get_fraglist(void);
 bool redis_invalidate_fraglist(void);
+// The leaderboard's top and lowest fraggers matching filter (SQL), as rows tagged 'top'
+// and 'low': the tag, char_name and total_frags. For the writer.
+bool fraglist_leaders(MYSQL *connection, const char *filter, sql_rows *rows);
 
 void redis_cache_epic_zones(void);
 void redis_cache_epic_zones_output(const char *output);

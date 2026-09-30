@@ -23,8 +23,8 @@ cleanup() {
     printf 'Retained task-only failure resources: runtime=%s db=%s network=%s\n' "$RUNTIME_ID" "$DB_ID" "$NETWORK_ID"
     return
   fi
-  if [[ -n "$RUNTIME_ID" ]]; then docker rm -f "$RUNTIME_ID" >/dev/null 2>&1; fi
-  if [[ -n "$DB_ID" ]]; then docker rm -f "$DB_ID" >/dev/null 2>&1; fi
+  if [[ -n "$RUNTIME_ID" ]]; then docker rm -fv "$RUNTIME_ID" >/dev/null 2>&1; fi
+  if [[ -n "$DB_ID" ]]; then docker rm -fv "$DB_ID" >/dev/null 2>&1; fi
   if [[ -n "$NETWORK_ID" ]]; then docker network rm "$NETWORK_ID" >/dev/null 2>&1; fi
 }
 trap cleanup EXIT INT TERM

@@ -18,8 +18,8 @@ assert "compact_duration(grant.age_seconds)" in listing
 assert "divineclaim_lifetime_text(grant)" in listing
 assert "std::to_string(instance_count)" in listing
 assert "send_divineclaim_instance_lines(ch, instances);" in listing
-assert "instance_count < 0" in listing
-assert "&+Runavailable&n" in listing
+# The instances come from memory, so they are always available.
+assert "for (const auto &[key, summon] : reward_summons)" in listing
 
 # The old unbounded key/value row should not return.
 assert "account=%s reward=%s" not in listing

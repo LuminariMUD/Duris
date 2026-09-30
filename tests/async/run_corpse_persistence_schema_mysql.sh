@@ -7,7 +7,7 @@ DATABASE="corpse_persistence_test"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 cleanup() {
-    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    docker rm -fv "$NAME" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 

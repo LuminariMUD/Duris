@@ -73,6 +73,7 @@
 #include "world/vnum.obj.h"
 #include "world/vnum.room.h"
 #include "world/handler.h"
+#include "world/epic_bonus.h"
 #include "net/ws_handlers.h"
 #include "core/safe_format.h"
 
@@ -123,8 +124,6 @@ extern char *greetinga3;
 extern char *greetinga4;
 extern int top_of_mobt;
 extern P_index mob_index;
-extern void GetMIA(char *playerName, char *returned);
-extern void GetMIA2(char *playerName, char *returned);
 extern struct time_info_data time_info;
 
 #define PLR_FLAGS(ch) ((ch)->specials.act)
@@ -252,21 +251,9 @@ int getNewPCidNumb(void)
 	highestPCidNumb = allocated;
 	return allocated;
 #else
-	FILE *file;
-
-	file = fopen(SAVE_DIR "/pc_idnumb", "wt");
-	if (!file)
-	{
-		logit(LOG_FILE, "could not open pc_idnumb file for writing");
-		return -1;
-	}
-	else
-	{
-		highestPCidNumb++;
-		fprintf(file, "%ld\n", highestPCidNumb);
-		fclose(file);
-	}
-
+	// Every character's pid is in memory (sql_player_names_load()). init_char() records
+	// the new one there at once, so the next allocation is past it.
+	highestPCidNumb = sql_highest_player_pid() + 1;
 	return highestPCidNumb;
 #endif
 }
@@ -284,27 +271,7 @@ void setNewPCidNumbfromFile(void)
 	}
 	highestPCidNumb = highest;
 #else
-	FILE *file;
-
-	file = fopen(SAVE_DIR "/pc_idnumb", "rt");
-	if (!file)
-	{
-		file = fopen(SAVE_DIR "/pc_idnumb", "wt");
-		if (!file)
-		{
-			logit(LOG_FILE, "could not open pc_idnumb file for writing");
-			highestPCidNumb = 1;
-			return;
-		}
-		fprintf(file, "1");
-		fclose(file);
-		highestPCidNumb = 1;
-	}
-	else
-	{
-		REQUIRED_FSCANF(file, "%ld\n", &highestPCidNumb);
-		fclose(file);
-	}
+	highestPCidNumb = sql_highest_player_pid();
 #endif
 
 	logit(LOG_STATUS, "highest PC number is %ld", highestPCidNumb);
@@ -1768,7 +1735,7 @@ void enter_game(P_desc d)
 		debug("'%s' getting rested bonus!", J_NAME(ch));
 	}
 
-	GetMIA(ch->player.name, Gbuf1);
+	GetMIA(ch->player.time.saved, Gbuf1);
 	// Convert to EST.
 	ct -= 4 * 60 * 60;
 	snprintf(timestr, MAX_STRING_LENGTH, "%s", asctime(localtime(&ct)));
@@ -1881,6 +1848,7 @@ void enter_game(P_desc d)
 #endif
 	sql_connectIP(ch);
 	sql_world_quest_history_load(ch);
+	epic_bonus_hydrate(ch);
 	displayShutdownMsg(ch);
 
 	/* initialize infobar */
@@ -2883,14 +2851,7 @@ void select_pwd(P_desc d, char *arg)
 		logit(LOG_PLAYER, "%s deleted %sself (%s).", GET_NAME(d->character),
 		      GET_SEX(d->character) == SEX_MALE ? "him" : "her", d->host);
 		sql_log(d->character, PLAYERLOG, "Deleted self");
-		if (!deleteCharacter(d->character))
-		{
-			SEND_TO_Q("\r\nCharacter deletion failed; please contact an immortal.\r\n",
-				  d);
-			logit(LOG_DEBUG, "nanny: deleteCharacter failed in CON_DELETE");
-			close_socket(d);
-			return;
-		}
+		delete_character(d->character);
 		STATE(d) = CON_FLUSH;
 		break;
 	}
@@ -3923,6 +3884,16 @@ void select_keepchar(P_desc d, char *arg)
 		;
 	switch (LOWER(*arg))
 	{
+	case 'y':
+		// The name was free at its prompt; another character may have taken it since.
+		if (!sql_player_exists(GET_NAME(d->character)))
+		{
+			SEND_TO_Q("\r\n\r\nWelcome to Duris, Land of Bloodlust!\r\n\r\n", d);
+			STATE(d) = CON_RMOTD;
+			break;
+		}
+		SEND_TO_Q("\r\n\r\nAnother character has taken that name meanwhile.", d);
+		[[fallthrough]];
 	case 'n':
 		SEND_TO_Q("\r\n\r\nDiscarding this character.\r\n", d);
 #ifdef USE_ACCOUNT
@@ -3942,10 +3913,6 @@ void select_keepchar(P_desc d, char *arg)
 	case 'q':
 		SEND_TO_Q("\r\n\r\nCome back again real soon.\r\n", d);
 		STATE(d) = CON_FLUSH;
-		break;
-	case 'y':
-		SEND_TO_Q("\r\n\r\nWelcome to Duris, Land of Bloodlust!\r\n\r\n", d);
-		STATE(d) = CON_RMOTD;
 		break;
 	default:
 		SEND_TO_Q("\r\nPlease select Y (keep), N (discard), or Q (quit).\r\n", d);
@@ -4496,17 +4463,16 @@ void init_char(P_char ch)
 	    !item_ownership_runtime_hydrate_owner(
 		    { item_owner_type::player, static_cast<uint64_t>(ch->only.pc->pid), 0 }, 0))
 		logit(LOG_FILE, "could not initialize new player item ownership state");
-#ifdef __NO_MYSQL__
 	if (ch->only.pc->pid > 0 && !player_revision_hydrate(ch->only.pc->pid, 0))
-		logit(LOG_FILE, "could not initialize flat-file player revision state");
-#endif
-	/*
-	 * getNewPCidNumb() allocates from the on-disk counter and touches no table, so a
-	 * brand new character has a positive pid but no player_data row. The async save
-	 * pipeline only ever UPDATEs, so it would fail with ENOENT forever. Force the
-	 * first save down the synchronous path, which is the only one that INSERTs.
-	 */
+		logit(LOG_FILE, "could not initialize new player revision state");
+	// The name is taken from now on.
+	sql_player_names_set(ch->only.pc->pid, GET_NAME(ch));
+#ifdef __NO_MYSQL__
+	/* The flat-file first save establishes the player's domains, which the save then
+	 * reads back, so it waits for the write. On MariaDB the first save is queued like
+	 * any other: the writer inserts the player_data row and its opening baselines. */
 	SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE);
+#endif
 	ch->only.pc->screen_length = DEFAULT_SCREEN_LENGTH;
 	ch->only.pc->wiz_invis = 0;
 	ch->only.pc->highest_level = 1;
@@ -4690,14 +4656,7 @@ void nanny(P_desc d, char *arg)
 		statuslog(d->character->player.level, "%s forced to delete character.",
 			  GET_NAME(d->character));
 		logit(LOG_PLAYER, "%s deleted by a forger.", GET_NAME(d->character));
-		if (!deleteCharacter(d->character))
-		{
-			SEND_TO_Q("\r\nCharacter deletion failed; please contact an immortal.\r\n",
-				  d);
-			logit(LOG_DEBUG, "nanny: deleteCharacter failed in CON_DELETE");
-			close_socket(d);
-			return;
-		}
+		delete_character(d->character);
 		STATE(d) = CON_FLUSH;
 		break;
 

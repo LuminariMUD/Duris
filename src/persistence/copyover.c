@@ -46,6 +46,7 @@
 #include "persistence/persistence_observability.h"
 #include "redis/redis_world_runtime.h"
 #include "world/world_recovery_pipeline.h"
+#include "world/epic_bonus.h"
 #include "telemetry/telemetry_runtime.h"
 #include <new>
 #include <type_traits>
@@ -1164,7 +1165,7 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 // find_player_by_name already declared in prototypes.h
 
 // load a player character for copyover recovery
-static P_char copyover_load_player(const char *name, P_desc d)
+static P_char copyover_load_player(const char *name, P_desc d, std::string *account_name)
 {
 	P_char player;
 	player_load_request request = {};
@@ -1218,6 +1219,7 @@ static P_char copyover_load_player(const char *name, P_desc d)
 		free_char(player);
 		return NULL;
 	}
+	*account_name = result.account_name;
 	return player;
 }
 
@@ -1326,7 +1328,8 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 		// load character
 		if (desc_entry.player_name[0])
 		{
-			ch = copyover_load_player(desc_entry.player_name, d);
+			std::string account_name;
+			ch = copyover_load_player(desc_entry.player_name, d, &account_name);
 			if (ch)
 			{
 				d->character = ch;
@@ -1335,15 +1338,9 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 
 #ifdef USE_ACCOUNT
 				// restore account for preserved telnet connections
-				d->account = allocate_account();
-				if (d->account)
-				{
-					d->account->acct_name = str_dup(desc_entry.player_name);
-					if (read_account(d->account) == -1)
-					{
-						d->account = free_account(d->account);
-					}
-				}
+				account_read(d, account_name.c_str(),
+					     [](P_desc reader, bool, P_acct loaded)
+					     { reader->account = loaded; });
 #endif
 
 				// make them alive
@@ -1362,6 +1359,7 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 				ch->in_room = NOWHERE;
 				char_to_room(ch, save_room, FALSE);
 				player_load_pets_place(ch);
+				epic_bonus_hydrate(ch);
 
 				// stash fighting info for later restoration
 				ch->specials.copyover_fighting_type = desc_entry.fighting_type;

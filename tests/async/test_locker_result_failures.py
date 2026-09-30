@@ -15,51 +15,38 @@ assert "bool is_owner = locker_char && esc_locker_name_matches_player" in source
 opening = source[source.index("static int locker_opencmd(P_char ch, char *arg)\n{"):source.index("static int locker_closecmd(P_char ch, char * /*arg*/)\n{")]
 assert "sql_verify_chest_password" not in opening
 assert "if (is_owner)" in opening
-assert "if (!sql_get_chest_password_hash(chest_id, &hash))" in opening
-lookup_failure = opening[opening.index("if (!sql_get_chest_password_hash"):opening.index("if (!hash || !arg2[0])")]
-assert "finish(ch->desc, 0, nullptr);" in lookup_failure
-assert "return TRUE;" in lookup_failure
-assert "finish(ch->desc, !hash && !arg2[0], nullptr);" in opening
+# The chest's password is held in memory while the locker is open.
+assert "PrivateChest *chest = pLocker->FindPrivateChest(arg1);" in opening
+assert "finish(ch->desc, hash.empty() && !arg2[0], nullptr);" in opening
 assert "password_async_start(" in opening
-assert "password_work_submit(arg2, hash, nullptr, 1, 1)" in opening
-assert "valid && sql_finish_chest_password(chest_id, expected.c_str()," in opening
-assert "sql_get_chest_id(locker_id, name.c_str()) != chest_id" in opening
+assert "password_work_submit(arg2, hash.c_str(), nullptr, 1, 1)" in opening
+# A racing password change fails closed, and a rehash only replaces what it checked.
+assert "current->GetPasswordHash() == hash" in opening
+assert "finish(completed_desc, valid && same, nullptr);" in opening
+assert "locker_chest_id(locker, name.c_str()) != chest_id" in opening
 assert opening.index("if (!valid)") < opening.index("locker->SetCurrentChestId(chest_id)")
 failed = opening[opening.index("if (!valid)"):opening.index("locker->SetCurrentChestId(chest_id)")]
 assert "CHEST_ACTION_FAIL" in failed and "return;" in failed
 assert "if (!submitted)" in opening
 assert "Password service is busy; try again later." in opening
 assert "strcpy(name, esc_locker_name);" not in source
-# locker_access_canAccess now uses db_query() instead of qry() + mysql_store_result
-assert "MYSQL_RES *res = db_query(\"%s\", query);" in source
-assert "if (!res)" in source
-# locker_access_show and locker_access_count still use qry() + mysql_store_result
-assert source.count("mysql_store_result(DB)") >= 2
-assert "count = mysql_num_rows(res);" in source
-assert "if (mysql_num_rows(res) >= 1)" in source
-# Personal-locker ownership is a stable PID/racewar decision. It is checked
-# before visitor grants for both idle and actively occupied lockers.
-assert "static bool locker_access_canEnter(P_char locker, P_char visitor)" in source
-assert "sql_locker_owner_can_access(GET_NAME(locker), GET_PID(visitor)" in source
-assert source.count("!locker_access_canEnter(") == 2
-sql_player = (SRC / "sql_player.c").read_text()
-owner_access = sql_player[sql_player.index("bool sql_locker_owner_can_access") :]
-assert "locker->owner_pid != owner_pid" in owner_access
-assert "locker->owner_assoc_id" in owner_access
-assert "identity.active && !identity.blocked && identity.racewar == racewar" in owner_access
-mariadb_owner_access = owner_access[owner_access.index("bool sql_locker_owner_can_access", 1) :]
-assert "JOIN account_characters ac ON ac.pid=l.owner_pid" in mariadb_owner_access
-assert "l.owner_pid=%d" in mariadb_owner_access
-assert "l.owner_assoc_id IS NULL" in mariadb_owner_access
-assert "ac.racewar=l.racewar" in mariadb_owner_access
-assert "ac.blocked=0" in mariadb_owner_access
-assert "ac.deleted_at IS NULL" in mariadb_owner_access
-# addAccess and remAccess now return bool
-assert "static bool locker_access_remAccess" in source
-assert "static bool locker_access_addAccess" in source
-# callers check return values
-assert "if (locker_access_addAccess(chLocker, arg2))" in source
-assert "if (locker_access_remAccess(chLocker, arg2))" in source
+# Personal-locker ownership is a stable PID/racewar decision, read on the writer with
+# the entry and checked before visitor grants; the verdict decides for both idle and
+# actively occupied lockers.
+entry = source[source.index("static unsigned int locker_entry_read("):source.index("static const sql_row *locker_row(")]
+assert "JOIN account_characters ac ON ac.pid=l.owner_pid" in entry
+assert "l.owner_pid=%d" in entry
+assert "l.owner_assoc_id IS NULL" in entry
+assert "ac.racewar=l.racewar" in entry
+assert "ac.blocked=0" in entry
+assert "ac.deleted_at IS NULL" in entry
+assert entry.index("l.owner_pid=%d") < entry.index("locker_granted(")
+assert source.count("&& !has_access)") == 2
+# grants are added and removed on the writer, and a failure is reported
+assert "static void locker_access_add(P_char ch, P_char locker, const char *name)" in source
+assert "static void locker_access_remove(P_char ch, P_char locker, const char *name)" in source
+assert "Failed to add access (database error)." in source
+assert "Failed to remove access (database error)." in source
 # guild locker authorization
 assert "locker_is_guild_member" in source
 assert "bool is_guild_member = locker_is_guild_member(pLocker, ch);" in source

@@ -8,7 +8,8 @@ every further ship unloaded, although MAXSHIPS is 2000 and the flat-file backend
 has no such cap.  Names were also cut to 63 bytes.
 
 This runs the real sql_load_all_ships() against a result of 700 rows, one of
-them with a NULL owner and one with a long owner name.
+them with a NULL owner and one with a long owner name, and checks it reads the
+highest ship id new ships count on.
 """
 
 from pathlib import Path
@@ -23,7 +24,9 @@ HARNESS = r'''
 #include "ships/ships.h"
 #include "sql/sql.h"
 #include "sql/sql_player.h"
+#include "sql/sql_work.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -37,8 +40,8 @@ static int handle = 0, result_handle = 0;
 MYSQL *DB = reinterpret_cast<MYSQL *>(&handle);
 const ShipTypeData ship_type_data[MAXSHIPCLASS] = {};
 
-static std::vector<std::string> names;
-static std::vector<char *> rows;
+static std::vector<std::string> names, ids;
+static std::vector<std::vector<char *>> rows;
 static size_t next_row = 0;
 static bool result_open = false;
 static std::vector<std::string> loaded;
@@ -56,9 +59,21 @@ MYSQL_RES *db_query_at(struct persistence_query_site, const char *, ...)
 }
 MYSQL_ROW mysql_fetch_row(MYSQL_RES *)
 {
-	return next_row < rows.size() ? &rows[next_row++] : nullptr;
+	return next_row < rows.size() ? rows[next_row++].data() : nullptr;
 }
 void mysql_free_result(MYSQL_RES *) { result_open = false; }
+
+struct ship_rows
+{
+	sql_rows ship, armor, crew, slots;
+};
+static std::vector<std::pair<std::string, ship_rows>> stored_ships;
+static int ship_next_db_id = -1;
+static bool sql_read_ship_rows(const char *, ship_rows *)
+{
+	assert(!result_open);
+	return true;
+}
 
 P_ship sql_place_ship(const char *owner_name, bool *unplaced)
 {
@@ -74,12 +89,18 @@ void note_unplaced_ship(const char *) { assert(false); }
 int main()
 {
 	names.reserve(ROWS);
+	ids.reserve(ROWS);
 	for (int i = 0; i < ROWS; i++)
+	{
 		names.push_back(i == LONG_ROW ? LONG_NAME : "Owner" + std::to_string(i));
+		ids.push_back(std::to_string(i == 42 ? 5000 : i + 1));
+	}
 	for (int i = 0; i < ROWS; i++)
-		rows.push_back(i == NULL_ROW ? nullptr : names[i].data());
+		rows.push_back({ i == NULL_ROW ? nullptr : names[i].data(), ids[i].data() });
 
 	assert(sql_load_all_ships());
+	// New ships take their ids from past the highest stored one.
+	assert(ship_next_db_id == 5000);
 	assert(loaded.size() == ROWS - 1);
 	assert(loaded.front() == "Owner0" && loaded.back() == "Owner699");
 	assert(loaded[LONG_ROW - 1] == LONG_NAME);

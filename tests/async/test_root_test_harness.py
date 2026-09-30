@@ -139,6 +139,11 @@ for wrapper in (ROOT / "tests" / "async").glob("run_*.sh"):
         assert "docker run --rm -d" not in source, (
             f"{wrapper.name} races Docker auto-removal against its cleanup trap"
         )
+        # The database images keep their data in an anonymous volume, which only
+        # `docker rm -v` removes with the container.
+        assert "docker rm -f " not in source, (
+            f"{wrapper.name} leaks its container's volume: use docker rm -fv"
+        )
 
 for script in ("m_slow", "m_quick", "make_all", "moveall", "make_lookup"):
     lines = (ROOT / "areas" / script).read_text().splitlines()

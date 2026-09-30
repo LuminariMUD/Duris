@@ -144,6 +144,7 @@
 #include <algorithm>
 #include <set>
 #include "player/player_save_worker.h"
+#include "player/player_load_offline.h"
 #include "player/player_load_pipeline.h"
 #include "player/player_death_restitution_adapter.h"
 #if !defined(__NO_TESTS__) || defined(TEST_REAL_PERSISTENCE)
@@ -224,6 +225,13 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 						     static_cast<int>(result.values[1]),
 						     static_cast<int>(result.values[2]), BN_CREATE);
 		}
+		// The jobs that change zone alignments and rarity: memory reads them again.
+		if ((result.job_id == maintenance_job_id::epic_zone_balance ||
+		     result.job_id == maintenance_job_id::epic_zone_modifiers) &&
+		    (result.outcome == maintenance_outcome::complete ||
+		     result.outcome == maintenance_outcome::more) &&
+		    result.rows > 0)
+			sql_zones_refresh();
 		if (result.job_id == maintenance_job_id::boon_scan &&
 		    (result.outcome == maintenance_outcome::complete ||
 		     result.outcome == maintenance_outcome::more) &&
@@ -999,7 +1007,8 @@ int run_the_game(int port, int sslport)
 
 	fprintf(stderr, "Entering game loop.\n\r");
 	logit(LOG_STATUS, "Entering game loop.");
-	if (!mini_mode)
+	// A minimal world on MariaDB saves its lockers through the writer too.
+	if (!mini_mode || sql_pool_is_active())
 		locker_async_init();
 	// Only a journal left behind by an older server is read, once.
 	if (!player_save_pipeline_init(getenv("PLAYER_SAVE_JOURNAL_DIR")))
@@ -1364,7 +1373,8 @@ struct game_loop_pulse_context
 
 static bool session_input_authentication_pending(P_desc descriptor)
 {
-	return password_async_pulse(descriptor) || account_login_password_pulse(descriptor);
+	return password_async_pulse(descriptor) || account_login_password_pulse(descriptor) ||
+	       descriptor->writer_wait_id;
 }
 
 static void repair_session_command_gate(P_char character)
@@ -2133,7 +2143,7 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 					delivered = true;
 					break;
 				}
-			if (!delivered)
+			if (!delivered && !player_load_offline_complete(load_completions[index]))
 				player_load_pipeline_note_stale();
 		}
 		information_cache_pulse();

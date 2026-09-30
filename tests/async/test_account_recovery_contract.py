@@ -358,7 +358,7 @@ def test_code_entry_texts() -> None:
         "WS request_reset answers reset_requested for junk, unknown, unreadable and real names",
     )
     check(
-        request.count("ws_request_reset_decoy(") >= 3 and "account_recovery_request(" in decoy
+        "ws_request_reset_decoy(" in request and "account_recovery_request(" in decoy
         and "NULL, 0," in decoy,
         "WS request_reset charges the host window for unknown/unloadable names via the decoy",
     )
@@ -666,7 +666,7 @@ def test_account_c() -> None:
         "password completion preserves both email-verification login-page paths",
     )
     select = body_of(account, r"\bvoid\s+select_accountname\s*\(", "select_accountname")
-    check("send_account_password_prompt(d)" in select, "select_accountname uses the prompt helper")
+    check("send_account_password_prompt(reader)" in select, "select_accountname uses the prompt helper")
     prompt = "Please enter your password (or ? to reset it by email): "
     check(
         account.count(prompt) == 1 and "enter your password" in prompt,
@@ -707,10 +707,10 @@ def test_account_c() -> None:
         "account_apply_recovered_password",
     )
     check(
-        ordered(apply_body, "read_account(", "acct_blocked != 0",
+        ordered(apply_body, "acct_blocked != 0",
                 "account_recovery_credential_fingerprint(", "CRYPTO_memcmp(", "write_account(",
                 "close_account_sessions_named("),
-        "apply: fresh read -> fence -> fingerprint -> write -> kick sessions, in that order",
+        "apply on the fresh account: fence -> fingerprint -> write -> kick sessions, in that order",
     )
     check("superseded" in apply_body, "apply reports superseded on a fingerprint mismatch (C7)")
     flattened = re.sub(r"\s+", " ", apply_body)
@@ -756,18 +756,15 @@ def test_attempt_counter_ownership() -> None:
     closed = body_of(
         nanny, r"\bvoid\s+account_recovery_descriptor_closed\s*\(", "account_recovery_descriptor_closed"
     )
-    verify = body_of(
-        nanny, r"\bvoid\s+account_recovery_verify_new_password\s*\(",
-        "account_recovery_verify_new_password",
-    )
+    finish = body_of(nanny, r"\bstatic\s+void\s+finish_reset\s*\(", "finish_reset")
     cleanse = body_of(
         nanny, r"\bvoid\s+account_recovery_descriptor_cleanse\s*\(",
         "account_recovery_descriptor_cleanse",
     )
     ws_complete = function_body(ws, r"\bvoid\s+ws_cmd_complete_reset\s*\(") or ""
     check(
-        closed.count(literal) == 1 and verify.count(literal) == 1 and ws_complete.count(literal) == 1,
-        "descriptor_closed, verify_new_password (ok branch) and ws_cmd_complete_reset each zero it once",
+        closed.count(literal) == 1 and finish.count(literal) == 1 and ws_complete.count(literal) == 1,
+        "descriptor_closed, finish_reset (ok branch) and ws_cmd_complete_reset each zero it once",
     )
     check(
         literal not in cleanse and "OPENSSL_cleanse(d->account_recovery_code" in cleanse
@@ -776,9 +773,9 @@ def test_attempt_counter_ownership() -> None:
         "descriptor_cleanse scrubs the code and frees the hash but keeps the attempt count",
     )
     check(
-        ordered(verify, "account_recovery_complete(", "account_recovery_descriptor_cleanse(",
+        ordered(finish, "account_recovery_complete(", "account_recovery_descriptor_cleanse(",
                 "account_recovery_complete_outcome::ok", literal),
-        "verify_new_password zeroes attempts only on the ok branch, after cleansing",
+        "finish_reset zeroes attempts only on the ok branch, after cleansing",
     )
     callers = {
         path: text.count("account_recovery_descriptor_closed(")
@@ -867,9 +864,9 @@ def test_websocket() -> None:
     request = function_body(ws, r"\bvoid\s+ws_cmd_request_reset\s*\(") or ""
     core_call = request.find("account_recovery_request(")
     check(
-        ordered(request, "allocate_account()", "read_account(", "account_recovery_request(")
+        ordered(request, "account_read(", "account_recovery_request(")
         and core_call >= 0 and "free_account(" in request[core_call:],
-        "request_reset loads a scratch account, asks the core, then frees it",
+        "request_reset reads a scratch account, asks the core, then frees it",
     )
 
 

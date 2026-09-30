@@ -176,15 +176,17 @@ pid_assignment = save_body.index("mysql_insert_id")
 initialization = save_body.index("player_revision_hydrate(pid, 0)")
 assert pid_assignment < initialization
 
-delete_start = SQL_PLAYER.rindex("bool sql_delete_player(int pid, bool forget_revision)")
-delete_end = SQL_PLAYER.index("bool sql_delete_player_by_name", delete_start)
-delete_body = SQL_PLAYER[delete_start:delete_end]
-assert delete_body.index("sql_run_query") < delete_body.index("player_revision_forget")
-assert SQL_PLAYER.count("player_revision_forget(pid);") == 1
+# A deleted character's revision state is forgotten once its deletion commits.
+FILES = (SRC / "files.c").read_text()
+forget = FILES[FILES.index("character_delete_result forget_deleted_character("):]
+assert "player_revision_forget(deleted.pid);" in forget[:forget.index("\n}\n")]
+delete = FILES[FILES.index("void delete_character(P_char ch, bool delete_locker,"):]
+assert delete.index("sql_read_work(") < delete.index("done(forget_deleted_character(deleted));", delete.index("sql_read_work("))
+assert "player_revision_forget" not in SQL_PLAYER
 
-rename_start = SQL_PLAYER.rindex("bool sql_player_rename(P_char ch, const char *new_name)")
-rename_end = SQL_PLAYER.index("int sql_get_player_pid", rename_start)
-rename_body = SQL_PLAYER[rename_start:rename_end]
+# A rename keeps the pid, so it leaves the revision state alone.
+rename_start = SQL_PLAYER.rindex("std::vector<std::string> sql_rename_character_statements(")
+rename_body = SQL_PLAYER[rename_start:SQL_PLAYER.index("\n}\n", rename_start)]
 assert "player_revision_forget" not in rename_body
 assert "player_revision_hydrate" not in rename_body
 print("[PASS] required load/new/delete lifecycle is PID-stable and fail-closed")

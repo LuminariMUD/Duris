@@ -28,9 +28,12 @@ structs = (SRC / "structs.h").read_text()
 
 read_body = function_body(bonus, "float get_epic_bonus(P_char ch, int type)")
 selection_body = function_body(bonus, "void epic_bonus_set(P_char ch, int type)")
-hydration_body = function_body(bonus, "bool epic_bonus_hydrate(P_char ch)")
+hydration_body = function_body(bonus, "void epic_bonus_hydrate(P_char ch)")
+publish_body = function_body(bonus, "static bool epic_bonus_publish_rows(")
 record_body = function_body(bonus, "void epic_bonus_record_gain(P_char ch, int type, int amount)")
-load_body = function_body(player, "P_char sql_load_player(const char *name)", last=True)
+nanny = (SRC / "nanny.c").read_text()
+entry_body = function_body(nanny, "void enter_game(P_desc d)")
+copyover = (SRC / "copyover.c").read_text()
 gain_body = function_body(epic, "void gain_epic(P_char ch, int type, int data, int amount)")
 award_ack_body = function_body(epic, "void epic_award_committed(")
 
@@ -51,13 +54,14 @@ checks = [
     ("read has no external or lazy work", all(token not in read_body for token in forbidden)),
     ("read refreshes cap and rejects window drift", "contribution_cap" in read_body and "state->window_days != window_days" in read_body),
     ("all active caller files inventoried", caller_files == expected_callers),
-    ("hydration is one grouped query", hydration_body.count("db_query(") == 1 and "GROUP BY" in hydration_body and "ORDER BY" in hydration_body),
+    ("hydration is one grouped read on the writer", hydration_body.count("sql_read(") == 1 and "db_query(" not in hydration_body and "GROUP BY" in hydration_body and "ORDER BY" in hydration_body),
+    ("hydration keeps a selection made while it was read", "EPIC_BONUS_STATE_UNINITIALIZED" in hydration_body and "find_character_by_runtime_id(runtime_id)" in hydration_body),
     ("hydration includes legacy and ledger non-bottle positive gains", "type != %d AND epics > 0" in hydration_body and "reason_type != %d AND delta > 0" in hydration_body and "EPIC_BOTTLE" in hydration_body),
     ("hydration uses selection and rolling cutoffs", "gained.time > eb.time" in hydration_body and "DATE_SUB(CURDATE()" in hydration_body),
     ("midnight expiry preserves strict cutoff", "TIME(gained.time) = '00:00:00'" in hydration_body and "exact_midnight" in bonus),
-    ("hydration has explicit unavailable outcomes", hydration_body.count("epic_bonus_state_mark_unavailable") >= 5),
-    ("login hydrates after status", load_body.index("sql_load_player_status") < load_body.index("sql_load_player_epic_bonus")),
-    ("selection persists before cache publication", selection_body.index("if (!qry(") < selection_body.index("epic_bonus_state_select")),
+    ("hydration has explicit unavailable outcomes", hydration_body.count("epic_bonus_state_mark_unavailable") >= 2 and publish_body.count("return false;") >= 5),
+    ("entry and copyover restore hydrate", "epic_bonus_hydrate(ch);" in entry_body and "epic_bonus_hydrate(ch);" in copyover and "sql_load_player_epic_bonus" not in player),
+    ("selection is queued before cache publication", selection_body.index("if (!sql_queue(") < selection_body.index("epic_bonus_state_select")),
     ("selection write is idempotent", "ON DUPLICATE KEY UPDATE" in selection_body),
     ("award submits immutable final amount", "epic_transaction_submit_identified(" in gain_body),
     ("award cache updates only from committed ack", "if (!committed" in award_ack_body and "epic_bonus_record_gain(ch, context.type, context.amount);" in award_ack_body),

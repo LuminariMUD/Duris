@@ -28,25 +28,27 @@ def last_body(text, signature, next_signature):
     return text[start:end]
 
 
-private_loader = last_body(SQL, "void sql_load_private_chest_items(", "mysql_free_result(result);")
-assert index(private_loader, "sql_load_item_affects_from_table(") < index(
-	private_loader, 'sql_load_item_extra_descr_from_table(item_id, obj, "locker_item")'
+# A locker's items are built from the rows its entry read on the writer: each item's
+# affects, then its extra descriptions (merging duplicate spellbook rows), before it
+# goes into a private chest.
+locker_loader = body(SQL, "static P_obj locker_items_from_index(", "P_obj sql_locker_items_from_rows(")
+assert index(locker_loader, "sql_set_item_affects(obj, stored)") < index(
+	locker_loader, 'sql_add_item_extra_descr(obj, (*extra)[2], (*extra)[3], "locker_item",'
 )
-assert index(private_loader, 'sql_load_item_extra_descr_from_table(item_id, obj, "locker_item")') < index(
-	private_loader, "obj_to_obj(obj, chest_obj)"
+assert index(locker_loader, 'sql_add_item_extra_descr(obj, (*extra)[2], (*extra)[3], "locker_item",') < index(
+	locker_loader, "obj_to_obj(obj, chest_obj)"
 )
-
-filtered_loader = body(SQL, "static P_obj sql_load_locker_items_filtered(", "static P_obj sql_load_locker_items(")
-assert contains(filtered_loader, 'sql_load_item_extra_descr_from_table(item_id, obj, "locker_item")')
-assert contains(filtered_loader, "obj->db_item_id = item_id")
+assert contains(locker_loader, "obj->db_item_id = item_id")
+add_extra = body(SQL, "static void sql_add_item_extra_descr(", "static bool sql_load_item_extra_descr_from_table(")
+assert contains(add_extra, "sql_merge_duplicate_spellbook(*loaded_spellbook, ed)")
 assert 'sql_load_item_extra_descr_from_table(item_id, obj, "locker_item_extra_descr")' not in SQL
 
-saved_writer = body(SQL, "static int sql_save_saved_item_recursive(", "bool sql_save_saved_item(")
+saved_writer = body(SQL, "static int sql_save_saved_item_recursive(", "struct shopkeeper_temp")
 assert contains(saved_writer, 'sql_save_item_extra_descr(item_id, obj, "saved_item_extra_descr")')
 
 saved_contents = body(SQL, "static P_obj sql_load_saved_item_contents(", "void sql_restore_saved_items(")
 assert contains(saved_contents, 'sql_load_item_extra_descr_from_table(item_id, obj, "saved_item")')
-saved_restore = last_body(SQL, "void sql_restore_saved_items(", "#define SHIP_SQL_BATCH_SIZE")
+saved_restore = last_body(SQL, "void sql_restore_saved_items(", "static int ship_next_db_id")
 assert contains(saved_restore, 'sql_load_item_extra_descr_from_table(item_id, obj, "saved_item")')
 
 # A shopkeeper is saved from its capture on the writer, through the same item rows the

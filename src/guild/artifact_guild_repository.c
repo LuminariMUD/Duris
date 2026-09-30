@@ -145,9 +145,10 @@ bool artifact_guild_repository_execute(MYSQL *connection, const critical_command
 		const auto &entry = payload.artifacts[index];
 		if (!load_artifact(connection, entry.vnum, &artifact_states[index]))
 			return false;
+		// The game holds an artifact's timer and soul, not its revision, which the other
+		// transactions that ledger artifact changes advance too.
 		const auto &state = artifact_states[index];
-		if (state.revision != entry.expected_revision ||
-		    state.timer != entry.expected_timer ||
+		if (state.timer != entry.expected_timer ||
 		    state.bind_owner_pid != entry.expected_bind_owner_pid ||
 		    state.bind_timer != entry.expected_bind_timer)
 		{
@@ -207,9 +208,9 @@ bool artifact_guild_repository_execute(MYSQL *connection, const critical_command
 				     std::to_string(entry.timer) +
 				     ",bind_owner_pid=" + std::to_string(entry.bind_owner_pid) +
 				     ",bind_timer_epoch=" + std::to_string(entry.bind_timer) +
-				     ",revision=" + std::to_string(revision) +
-				     " WHERE vnum=" + std::to_string(entry.vnum) +
-				     " AND revision=" + std::to_string(entry.expected_revision)) ||
+				     ",revision=" + std::to_string(revision) + " WHERE vnum=" +
+				     std::to_string(entry.vnum) + " AND revision=" +
+				     std::to_string(artifact_states[index].revision)) ||
 		    mysql_affected_rows(connection) != 1 ||
 		    !execute(connection, "UPDATE artifacts SET timer=FROM_UNIXTIME(" +
 						 std::to_string(entry.timer) +

@@ -13,6 +13,9 @@ struct quest_complete_data;
 
 namespace zone_story_quest_runtime
 {
+// Boot, whatever loads: whether any state is stored, which a character deletion needs
+// while the catalog is off.
+void note_stored_state();
 bool bootstrap(std::string *error = nullptr);
 bool ready();
 uint32_t current_season_id();

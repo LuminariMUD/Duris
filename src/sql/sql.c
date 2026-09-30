@@ -57,6 +57,8 @@
 #include <vector>
 #include "account/account.h"
 #include "account/account_reward.h"
+#include "net/poll.h"
+#include "account/multiplay_whitelist.h"
 #include "guild/assocs.h"
 #include "economy/boon.h"
 #include "world/epic.h"
@@ -204,9 +206,6 @@ void sql_insert_new_item(P_char /*ch*/, P_obj /*obj*/) {}
 
 void sql_webinfo_toggle(P_char /*ch*/) {}
 void sql_update_level(P_char /*ch*/) {}
-void sql_update_money(P_char /*ch*/) {}
-void sql_update_epics(P_char /*ch*/) {}
-void sql_update_playtime(P_char /*ch*/) {}
 void manual_log(P_char /*ch*/) {}
 void perform_wiki_search(P_char /*ch*/, const char * /*buf*/) {}
 int sql_quest_finish(P_char /*ch*/, P_char /*giver*/, int /*type*/, int /*value*/)
@@ -543,10 +542,6 @@ void sql_update_frag_leaderboard(P_char ch)
 				  "flat_write_failed", "pid=%d error=%s", GET_PID(ch),
 				  error.c_str());
 }
-bool sql_soft_delete_character(long /*pid*/)
-{
-	return false;
-}
 bool sql_trace_exec_at(struct persistence_query_site /*source_site*/, const char * /*label*/,
 		       const char * /*sql*/, size_t /*len*/, bool /*drain_before*/,
 		       bool /*drain_after*/)
@@ -646,10 +641,18 @@ void sql_log(P_char ch, const char *kind, const char *format, ...)
 	      safe_ip, GET_PID(ch), safe_name, zone_number, room_vnum, message);
 }
 
+void sql_load_zones(void) {}
+void sql_zones_refresh(void) {}
+const std::vector<zone_info> &sql_zones(void)
+{
+	static const std::vector<zone_info> none;
+	return none;
+}
 bool get_zone_info(int /*zone_number*/, struct zone_info * /*info*/)
 {
 	return FALSE;
 }
+void sql_set_zone_reset_perc(int /*zone_number*/, int /*reset_perc*/) {}
 
 string escape_str(const char *str)
 {
@@ -1525,6 +1528,7 @@ int initialize_mysql()
 	sql_load_level_cap();
 	sql_load_recent_counts();
 	sql_load_mud_info();
+	sql_load_zones();
 
 	if (!sql_verify_boot_database())
 	{
@@ -1536,6 +1540,18 @@ int initialize_mysql()
 			mysql_close(DB);
 			DB = NULL;
 		}
+		return -1;
+	}
+	if (!sql_player_names_load() || !account_rewards_load() || !sql_player_recipes_load() ||
+	    !artifacts_load() || !polls_load() || !sql_spellbooks_load() || !whitelist_load())
+	{
+		logit(LOG_STATUS,
+		      "FATAL: the character names, account rewards, recipes, artifacts, "
+		      "polls, spellbooks or multiplay whitelist could not be read, "
+		      "aborting boot");
+		duris_sql_exclusion_guard_release();
+		mysql_close(DB);
+		DB = NULL;
 		return -1;
 	}
 	if (!sql_load_active_season_state())
@@ -1634,6 +1650,22 @@ MYSQL_RES *db_query_at(struct persistence_query_site site, const char *format, .
 	res = mysql_store_result(DB);
 	free(buf);
 	return res;
+}
+
+/* The next id table's AUTO_INCREMENT gives, or 0 when it cannot be read. InnoDB keeps it
+ * past every id the table ever stored, deleted rows included, so an allocator seeded from
+ * it never gives a deleted row's id out again. */
+unsigned long long sql_next_auto_increment(const char *table)
+{
+	MYSQL_RES *result = db_query("SELECT AUTO_INCREMENT FROM information_schema.TABLES "
+				     "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='%s'",
+				     table);
+	if (!result)
+		return 0;
+	MYSQL_ROW row = mysql_fetch_row(result);
+	const unsigned long long next = row && row[0] ? strtoull(row[0], NULL, 10) : 0;
+	mysql_free_result(result);
+	return next;
 }
 
 /* Fail boot unless the database schema and required authority baselines are ready. */
@@ -2304,6 +2336,7 @@ int sql_save_player_core(P_char ch)
 	}
 
 	// deactivate any other players with same name (handles renamed characters)
+	sql_player_names_set(GET_PID(ch), p->name);
 	snprintf(query, MAX_STRING_LENGTH,
 		 "UPDATE player_data SET active = 0 WHERE name = '%s' and pid != %d", p->name,
 		 GET_PID(ch));
@@ -2459,7 +2492,7 @@ void sql_check_level_cap(long max_frags, int racewar)
 			bdata.bonus = frag_cap_config_boon_bonus();
 			bdata.active = 1;
 			bdata.repeat = 1;
-			create_boon(&bdata);
+			create_boon(&bdata, nullptr);
 
 			int next_level = old_level + config->cap_level_step;
 			if (next_level > config->cap_maximum_level)
@@ -2514,8 +2547,8 @@ void sql_check_level_cap(long max_frags, int racewar)
  * therefore advanced the counter far past the surviving row count. Resolving the
  * row first keeps the steady-state path an UPDATE, which allocates nothing.
  */
-static unsigned int sql_find_account_character_id(MYSQL *connection, long pid,
-						  const std::string &escaped_char_name, long *id)
+unsigned int sql_find_account_character_id(MYSQL *connection, long pid,
+					   const std::string &escaped_char_name, long *id)
 {
 	/* The character's active mapping by pid first, preferring one that already
 	 * has its name, so a renamed character updates its row instead of adding a
@@ -2702,53 +2735,6 @@ void sql_update_frag_leaderboard(P_char ch)
 	}
 }
 
-/* Soft delete a character from the leaderboard tables */
-bool sql_soft_delete_character(long pid)
-{
-	if (!DB || pid <= 0)
-		return false;
-
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-			return false;
-		own_txn = true;
-	}
-
-	// UPDATE has no result set, including when a retry changes zero rows.
-	char query[256];
-	checked_snprintf(
-		query, sizeof(query),
-		"UPDATE account_characters SET deleted_at = NOW() WHERE pid = %ld AND deleted_at IS NULL",
-		pid);
-	if (!sql_trace_exec("sql_soft_delete_character", query, strlen(query), true, false))
-	{
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-
-	checked_snprintf(
-		query, sizeof(query),
-		"UPDATE frag_leaderboard SET deleted_at = NOW() WHERE pid = %ld AND deleted_at IS NULL",
-		pid);
-	if (!sql_trace_exec("sql_soft_delete_character", query, strlen(query), true, false))
-	{
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-
-	if (own_txn && !sql_commit())
-	{
-		sql_rollback();
-		return false;
-	}
-
-	return true;
-}
-
 /* Save frags delta */
 void sql_insert_item(P_char /*ch*/, P_obj obj, char *desc)
 {
@@ -2793,30 +2779,6 @@ void sql_update_level(P_char ch)
 	if (!ch || !IS_PC(ch))
 		return;
 	// level already saved in player_data
-}
-
-/* Update money info */
-void sql_update_money(P_char ch)
-{
-	if (!ch || !IS_PC(ch))
-		return;
-	// money stored as copper/silver/gold/platinum in player_data
-}
-
-/* Update playtime info */
-void sql_update_playtime(P_char ch)
-{
-	if (!ch || !IS_PC(ch))
-		return;
-	// playtime is played_time in player_data
-}
-
-/* Update player's epics: We want to record their total epics gained not epics unused */
-void sql_update_epics(P_char ch)
-{
-	if (!ch || !IS_PC(ch))
-		return;
-	// epics already in player_data
 }
 
 void manual_log(P_char ch)
@@ -4004,6 +3966,8 @@ void update_zone_db()
 			    zone_table[zone_id].number);
 		}
 	}
+	// Boot: memory takes the rows just written.
+	sql_load_zones();
 }
 
 void update_zone_epic_level(int zone_number, int level)
@@ -4116,44 +4080,90 @@ void sql_log(P_char ch, const char *kind, const char *format, ...)
 		      buff);
 }
 
+// The zones rows, read at boot and kept in memory, so the epic stones, zone resets and the
+// epic zone lists never wait for the database. A no-reset zone's reset chance changes here
+// and is queued. Alignments, last touches and rarity change on other connections (a stone
+// touch, the maintenance jobs), so those three are read again on the writer after each.
+static std::vector<zone_info> zones;
+
+static zone_info *zone_row(int zone_number)
+{
+	for (zone_info &zone : zones)
+		if (zone.number == zone_number)
+			return &zone;
+	return nullptr;
+}
+
+// Boot only: the game loop is not running yet.
+void sql_load_zones(void)
+{
+	MYSQL_RES *res = db_query(
+		"SELECT number, name, epic_type, frequency_mod, zone_freq_mod, epic_level, task_zone, "
+		"quest_zone, trophy_zone, suggested_group_size, epic_payout, difficulty, alignment, "
+		"UNIX_TIMESTAMP(last_touch), stonecount, reset_perc FROM zones ORDER BY id");
+	if (!res)
+		return;
+	zones.clear();
+	while (MYSQL_ROW row = mysql_fetch_row(res))
+	{
+		zone_info zone = {};
+		zone.number = row[0] ? atoi(row[0]) : 0;
+		zone.name = row[1] ? row[1] : "";
+		zone.epic_type = row[2] ? atoi(row[2]) : 0;
+		zone.frequency_mod = row[3] ? atof(row[3]) : 0;
+		zone.zone_freq_mod = row[4] ? atof(row[4]) : 0;
+		zone.epic_level = row[5] ? atoi(row[5]) : 0;
+		zone.task_zone = row[6] && atoi(row[6]);
+		zone.quest_zone = row[7] && atoi(row[7]);
+		zone.trophy_zone = row[8] && atoi(row[8]);
+		zone.suggested_group_size = row[9] ? atoi(row[9]) : 0;
+		zone.epic_payout = row[10] ? atoi(row[10]) : 0;
+		zone.difficulty = row[11] ? atoi(row[11]) : 0;
+		zone.alignment = row[12] ? atoi(row[12]) : 0;
+		zone.last_touch = row[13] ? atol(row[13]) : 0;
+		zone.stonecount = row[14] ? atoi(row[14]) : 1;
+		zone.reset_perc = row[15] ? atoi(row[15]) : 0;
+		zones.push_back(zone);
+	}
+	mysql_free_result(res);
+}
+
+void sql_zones_refresh(void)
+{
+	sql_read("SELECT number, frequency_mod, alignment, UNIX_TIMESTAMP(last_touch) FROM zones",
+		 [](bool ok, const sql_rows &rows)
+		 {
+			 if (!ok)
+				 return;
+			 for (const sql_row &row : rows)
+				 if (zone_info *zone = row[0] ? zone_row(atoi(row[0])) : nullptr)
+				 {
+					 zone->frequency_mod = row[1] ? atof(row[1]) : 0;
+					 zone->alignment = row[2] ? atoi(row[2]) : 0;
+					 zone->last_touch = row[3] ? atol(row[3]) : 0;
+				 }
+		 });
+}
+
+const std::vector<zone_info> &sql_zones(void)
+{
+	return zones;
+}
+
 bool get_zone_info(int zone_number, struct zone_info *info)
 {
-	if (!info)
-	{
+	const zone_info *zone = zone_row(zone_number);
+	if (!info || !zone)
 		return FALSE;
-	}
-
-	if (!qry("SELECT number, name, epic_type, frequency_mod, zone_freq_mod, epic_level, task_zone, quest_zone, trophy_zone, suggested_group_size, epic_payout, difficulty FROM zones WHERE number = %d",
-		 zone_number))
-	{
-		return FALSE;
-	}
-
-	MYSQL_RES *res = mysql_store_result(DB);
-
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		return FALSE;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-
-	info->number = atoi(row[0]);
-	info->name = string(row[1]);
-	info->epic_type = atoi(row[2]);
-	info->frequency_mod = atof(row[3]);
-	info->zone_freq_mod = atof(row[4]);
-	info->epic_level = atoi(row[5]);
-	info->task_zone = (bool)atoi(row[6]);
-	info->quest_zone = (bool)atoi(row[7]);
-	info->trophy_zone = (bool)atoi(row[8]);
-	info->suggested_group_size = atoi(row[9]);
-	info->epic_payout = atoi(row[10]);
-	info->difficulty = atoi(row[11]);
-
-	mysql_free_result(res);
+	*info = *zone;
 	return TRUE;
+}
+
+void sql_set_zone_reset_perc(int zone_number, int reset_perc)
+{
+	if (zone_info *zone = zone_row(zone_number))
+		zone->reset_perc = reset_perc;
+	sql_queue("UPDATE zones SET reset_perc = %d WHERE number = %d", reset_perc, zone_number);
 }
 
 // mud_info, read at boot, every minute (so a creation lock set in the database takes hold
@@ -4223,115 +4233,6 @@ string get_mud_info(const char *name)
 void send_mud_info(const char *name, P_char ch)
 {
 	send_to_char(get_mud_info(name).c_str(), ch, LOG_NONE);
-}
-
-static bool sql_parse_bind_int(const char *value, int *result)
-{
-	if (!value || !result || !*value)
-	{
-		return false;
-	}
-
-	const char *digits = value;
-	if (*digits == '-' || *digits == '+')
-	{
-		digits++;
-	}
-	if (!*digits)
-	{
-		return false;
-	}
-	for (const char *digit = digits; *digit; digit++)
-	{
-		if (!isdigit((unsigned char)*digit))
-		{
-			return false;
-		}
-	}
-
-	errno = 0;
-	char *end = NULL;
-	long parsed = strtol(value, &end, 10);
-	if (errno == ERANGE || !end || *end || parsed < INT_MIN || parsed > INT_MAX)
-	{
-		return false;
-	}
-
-	*result = (int)parsed;
-	return true;
-}
-
-bool sql_get_bind_data(int vnum, int *owner_pid, int *timer)
-{
-	if (owner_pid)
-	{
-		*owner_pid = 0;
-	}
-	if (timer)
-	{
-		*timer = 0;
-	}
-	if (!owner_pid || !timer)
-	{
-		logit(LOG_DEBUG, "sql_get_bind_data(): invalid output pointer");
-		return false;
-	}
-
-	if (!qry("SELECT owner_pid, timer FROM artifact_bind WHERE vnum = %d", vnum))
-	{
-		logit(LOG_DEBUG, "sql_get_bind_data(): failed to read from database");
-		return false;
-	}
-
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (!res)
-	{
-		logit(LOG_DEBUG, "sql_get_bind_data(): mysql_store_result failed");
-		return false;
-	}
-
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		return true;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-	int parsed_owner_pid = 0;
-	int parsed_timer = 0;
-	if (!row || !sql_parse_bind_int(row[0], &parsed_owner_pid) ||
-	    !sql_parse_bind_int(row[1], &parsed_timer))
-	{
-		logit(LOG_DEBUG, "sql_get_bind_data(): malformed database row");
-		mysql_free_result(res);
-		return false;
-	}
-
-	*owner_pid = parsed_owner_pid;
-	*timer = parsed_timer;
-	mysql_free_result(res);
-	return true;
-}
-
-void sql_update_bind_data(int vnum, int *owner_pid, int *timer)
-{
-	if (!qry("select * from artifact_bind where vnum = %d", vnum))
-	{
-		logit(LOG_DEBUG, "sql_update_bind_data(): failed to read from database");
-		return;
-	}
-
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (mysql_num_rows(res) > 0)
-	{
-		qry("UPDATE artifact_bind SET owner_pid = %d, timer = %d WHERE vnum = %d",
-		    *owner_pid, *timer, vnum);
-	}
-	else
-	{
-		qry("INSERT INTO artifact_bind VALUES(%d, %d, %d)", vnum, *owner_pid, *timer);
-	}
-	mysql_free_result(res);
 }
 
 bool sql_clear_zone_trophy()
@@ -5589,6 +5490,59 @@ bool sql_persistence_write_large_event_line(const char *line)
 	return sql_persistence_execute_raw(line);
 }
 
+static item_owner_type sql_persistence_owner_type(const char *owner_type)
+{
+	if (!strcmp(owner_type, "player"))
+		return item_owner_type::player;
+	if (!strcmp(owner_type, "container"))
+		return item_owner_type::container;
+	if (!strcmp(owner_type, "room"))
+		return item_owner_type::room;
+	if (!strcmp(owner_type, "corpse"))
+		return item_owner_type::corpse;
+	if (!strcmp(owner_type, "locker"))
+		return item_owner_type::locker;
+	if (!strcmp(owner_type, "auction"))
+		return item_owner_type::auction;
+	if (!strcmp(owner_type, "shopkeeper"))
+		return item_owner_type::shopkeeper;
+	if (!strcmp(owner_type, "collector"))
+		return item_owner_type::collector;
+	return item_owner_type::unknown;
+}
+
+// The rule below for an item_current_owner row already read: root, parent (0 for
+// none), owner type, id and context, item revision, vnum, state and owner revision,
+// or NULL when the item has no row.
+static bool sql_persistence_owner_row_matches(unsigned long long item_uid,
+					      const item_owner_identity &expected,
+					      const char *const *row)
+{
+	if (!row)
+		return true;
+	item_ownership_runtime_entry entry = {
+		.item_uid = item_uid,
+		.root_item_uid = strtoull(row[0], NULL, 10),
+		.parent_item_uid = strtoull(row[1], NULL, 10),
+		.owner = { static_cast<item_owner_type>(strtoul(row[2], NULL, 10)),
+			   strtoull(row[3], NULL, 10), strtoull(row[4], NULL, 10) },
+		.item_revision = strtoull(row[5], NULL, 10),
+		.owner_revision = row[8] ? strtoull(row[8], NULL, 10) : 0,
+		.vnum = static_cast<int32_t>(strtol(row[6], NULL, 10)),
+		.state = static_cast<item_custody_state>(strtoul(row[7], NULL, 10)),
+	};
+	if (!item_owner_identity_equal(entry.owner, expected))
+	{
+		dupe_log_item("load_skipped", item_uid, entry.vnum, expected, entry.owner);
+		return false;
+	}
+	// The in-memory ownership catalog still serves item commands that have not moved
+	// to memory yet; it only takes an active row.
+	if (entry.state == item_custody_state::active && row[8])
+		item_ownership_runtime_hydrate(entry);
+	return true;
+}
+
 /*
  * A load takes an item when item_current_owner has no row for it or names the
  * loading owner, whatever the row's state. A row naming anyone else makes this a
@@ -5606,38 +5560,12 @@ bool sql_persistence_item_owner_matches_identity(unsigned long long item_uid,
 		return true;
 	if (!owner_type || !context || !DB)
 		return false;
-	item_owner_type expected_type = item_owner_type::unknown;
-	if (!strcmp(owner_type, "player"))
-		expected_type = item_owner_type::player;
-	else if (!strcmp(owner_type, "container"))
-		expected_type = item_owner_type::container;
-	else if (!strcmp(owner_type, "room"))
-		expected_type = item_owner_type::room;
-	else if (!strcmp(owner_type, "corpse"))
-		expected_type = item_owner_type::corpse;
-	else if (!strcmp(owner_type, "locker"))
-		expected_type = item_owner_type::locker;
-	else if (!strcmp(owner_type, "auction"))
-		expected_type = item_owner_type::auction;
-	else if (!strcmp(owner_type, "shopkeeper"))
-		expected_type = item_owner_type::shopkeeper;
-	else if (!strcmp(owner_type, "collector"))
-		expected_type = item_owner_type::collector;
-	if (expected_type == item_owner_type::unknown)
+	const item_owner_type expected_type = sql_persistence_owner_type(owner_type);
+	if (expected_type == item_owner_type::unknown || !expected_id)
 		return false;
-	if (!expected_id)
-		return false;
-	const item_owner_identity expected = { expected_type, expected_id, expected_context_id };
 	char query[512];
-	snprintf(
-		query, sizeof(query),
-		"SELECT current_item.root_item_uid,COALESCE(current_item.parent_item_uid,0),"
-		"current_item.owner_type,current_item.owner_id,current_item.owner_context_id,"
-		"current_item.item_revision,current_item.vnum,current_item.state,owner.revision "
-		"FROM item_current_owner current_item LEFT JOIN item_owner_revision owner ON "
-		"owner.owner_type=current_item.owner_type AND owner.owner_id=current_item.owner_id "
-		"AND owner.owner_context_id=current_item.owner_context_id WHERE current_item.item_uid=%llu",
-		item_uid);
+	snprintf(query, sizeof(query), "%s WHERE current_item.item_uid=%llu", SQL_ITEM_OWNER_SELECT,
+		 item_uid);
 	MYSQL_RES *result = db_query("%s", query);
 	if (!result)
 	{
@@ -5645,35 +5573,24 @@ bool sql_persistence_item_owner_matches_identity(unsigned long long item_uid,
 		      item_uid, context);
 		return true;
 	}
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (!row)
-	{
-		mysql_free_result(result);
-		return true;
-	}
-	item_ownership_runtime_entry entry = {
-		.item_uid = item_uid,
-		.root_item_uid = strtoull(row[0], NULL, 10),
-		.parent_item_uid = strtoull(row[1], NULL, 10),
-		.owner = { static_cast<item_owner_type>(strtoul(row[2], NULL, 10)),
-			   strtoull(row[3], NULL, 10), strtoull(row[4], NULL, 10) },
-		.item_revision = strtoull(row[5], NULL, 10),
-		.owner_revision = row[8] ? strtoull(row[8], NULL, 10) : 0,
-		.vnum = static_cast<int32_t>(strtol(row[6], NULL, 10)),
-		.state = static_cast<item_custody_state>(strtoul(row[7], NULL, 10)),
-	};
-	const bool revision_known = row[8] != NULL;
+	const bool matches = sql_persistence_owner_row_matches(
+		item_uid, { expected_type, expected_id, expected_context_id },
+		mysql_fetch_row(result));
 	mysql_free_result(result);
-	if (!item_owner_identity_equal(entry.owner, expected))
-	{
-		dupe_log_item("load_skipped", item_uid, entry.vnum, expected, entry.owner);
-		return false;
-	}
-	// The in-memory ownership catalog still serves item commands that have not moved
-	// to memory yet; it only takes an active row.
-	if (entry.state == item_custody_state::active && revision_known)
-		item_ownership_runtime_hydrate(entry);
-	return true;
+	return matches;
+}
+
+bool sql_persistence_item_owner_fields_match(unsigned long long item_uid, const char *owner_type,
+					     unsigned long long expected_id,
+					     unsigned long long expected_context_id,
+					     const char *const *row)
+{
+	if (item_uid == 0)
+		return true;
+	const item_owner_type expected_type = sql_persistence_owner_type(owner_type);
+	return expected_type != item_owner_type::unknown && expected_id &&
+	       sql_persistence_owner_row_matches(
+		       item_uid, { expected_type, expected_id, expected_context_id }, row);
 }
 
 bool sql_persistence_item_owner_matches(unsigned long long item_uid, const char *owner_type,

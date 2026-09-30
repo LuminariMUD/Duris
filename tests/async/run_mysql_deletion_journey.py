@@ -116,6 +116,24 @@ def run(server):
                         client.send('save'); client.expect('Save complete for '+journey.CHARACTER+'.', timeout=30)
                         client.send('quit'); client.expect('ACCOUNT MENU', timeout=30)
                         print(label + ': accurate refusal, mapping/inventory rollback and playable reconnect passed', flush=True)
+                    # A character in the game, here linkdead after a second login, is not
+                    # deleted: it would go on playing with nothing saved.
+                    client.send('0'); client.close()
+                    playing = journey.reconnect_character(plain)
+                    client = journey.MudClient(plain)
+                    client.expect('Please enter your account name:'); client.send(journey.ACCOUNT)
+                    client.expect('Please enter your password:'); client.send(journey.PASSWORD)
+                    client.expect('PRESS RETURN'); client.send('')
+                    client.expect('ACCOUNT MENU')
+                    playing.close()
+                    choose_delete(); client.send('yes')
+                    client.expect('it cannot be deleted now', timeout=30)
+                    client.expect('ACCOUNT MENU')
+                    assert number(f'SELECT COUNT(*) FROM account_characters WHERE pid={pid} AND deleted_at IS NULL') == 1
+                    client.send('1'); client.expect(journey.CHARACTER); client.send('1')
+                    client.expect('Reconnecting', timeout=30)
+                    client.send('quit'); client.expect('ACCOUNT MENU', timeout=30)
+                    print('in-game refusal: a linkdead character was not deleted', flush=True)
                     choose_delete(); client.send('yes')
                     client.expect('Character deleted successfully.', timeout=30)
                     client.expect('ACCOUNT MENU')
@@ -134,8 +152,44 @@ def run(server):
                     client.expect('ACCOUNT MENU'); client.send('3'); client.expect("don't have any characters to delete")
                     assert number(f'SELECT COUNT(*) FROM player_data WHERE pid={pid}') == 0
                     assert number(f'SELECT COUNT(*) FROM account_characters WHERE pid={pid} AND deleted_at IS NULL') == 0
-                    stop()
                     print('successful retry deleted the synthetic character exactly once; account remained usable after restart', flush=True)
+                    client.send('0'); client.close()
+
+                    # Account deletion runs on the writer while the session waits: a
+                    # refusal rolls back and keeps the fence for a retry, and the retry
+                    # removes the account and its character, in memory too.
+                    def create_erased():
+                        client = journey.MudClient(plain)
+                        journey.create_character(client, account='Erasedacct', character='Vorlesk',
+                                                 email='erased@example.invalid')
+                        client.send('save'); client.expect('Save complete for Vorlesk.', timeout=30)
+                        client.send('quit'); client.expect('ACCOUNT MENU', timeout=30)
+                        return client
+                    client = create_erased()
+                    erased = number("SELECT pid FROM player_data WHERE name='Vorlesk'")
+                    # The restart did not give the deleted character's pid out again.
+                    assert erased > pid, (erased, pid)
+                    sql("CREATE TRIGGER deletion_fixture_refusal BEFORE DELETE ON accounts FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic deletion refusal'")
+                    client.send('7'); client.expect('Re-enter your account password')
+                    client.send(journey.PASSWORD); client.expect('PERMANENT ACCOUNT DELETION', timeout=30)
+                    client.send('Erasedacct'); client.expect('Account deletion did not complete.', timeout=30)
+                    client.expect('to retry completion')
+                    assert number(f'SELECT COUNT(*) FROM player_data WHERE pid={erased}') == 1
+                    assert number("SELECT blocked FROM accounts WHERE account_name='Erasedacct'") == 2
+                    sql('DROP TRIGGER deletion_fixture_refusal')
+                    client.send('Erasedacct'); client.expect('permanently deleted', timeout=30)
+                    assert number("SELECT COUNT(*) FROM accounts WHERE account_name='Erasedacct'") == 0
+                    assert number(f'SELECT COUNT(*) FROM player_data WHERE pid={erased}') == 0
+                    client.close()
+                    client = create_erased()
+                    client.send('0'); client.close(); client = None
+                    # Neither deletion, nor anything else here, queries on the game loop.
+                    sites = [line for line in (runtime/'logs/log').rglob('*') if line.is_file()
+                             for line in line.read_text(errors='replace').splitlines()
+                             if 'game loop query site' in line]
+                    assert not sites, sites
+                    stop()
+                    print('account deletion: refusal kept the fence, the retry deleted it on the writer and freed its names; no game-loop query', flush=True)
                 except Exception as error:
                     raise AssertionError(str(error)+'\n'+output_path.read_text(errors='replace')[-10000:]+'\n'+journey.runtime_logs(runtime)) from error
                 finally:

@@ -288,9 +288,9 @@ bool load_status(MYSQL *connection, const player_load_request &request, player_l
 	++column;
 	if (result->pid <= 0 || result->account_name.empty() ||
 	    result->account_name.size() > PLAYER_LOAD_ACCOUNT_MAX ||
-	    (request.pid > 0 &&
-	     (result->pid != request.pid ||
-	      strcasecmp(result->account_name.c_str(), request.account_name.c_str()))))
+	    (request.pid > 0 && result->pid != request.pid) ||
+	    (!request.account_name.empty() &&
+	     strcasecmp(result->account_name.c_str(), request.account_name.c_str())))
 	{
 		mysql_free_result(rows);
 		return false;
@@ -1712,7 +1712,9 @@ bool load_gameplay_reads(MYSQL *connection, player_load_result *result)
 
 bool player_load_request_valid(const player_load_request &request, uint64_t now_usec)
 {
-	const bool pid_identity = request.pid > 0 && !request.account_name.empty() &&
+	// A session's load names the account that must own the character; an offline load
+	// (player_load_offline()) names none.
+	const bool pid_identity = request.pid > 0 &&
 				  request.account_name.size() <= PLAYER_LOAD_ACCOUNT_MAX;
 	const bool name_identity = request.pid == 0 && !request.player_name.empty() &&
 				   request.player_name.size() <= PLAYER_LOAD_NAME_MAX;

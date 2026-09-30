@@ -12,7 +12,7 @@ config="$temporary_root/test.env"
 
 # Remove only the uniquely named disposable container and temporary directory.
 cleanup() {
-	docker rm -f "$container_name" >/dev/null 2>&1 || true
+	docker rm -fv "$container_name" >/dev/null 2>&1 || true
 	rm -rf "$temporary_root"
 }
 trap cleanup EXIT HUP INT TERM

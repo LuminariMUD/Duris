@@ -25,6 +25,9 @@
 #include <sys/stat.h>
 #include <time.h>
 #include "account/account.h"
+#include "player/player_load_offline.h"
+#include "player/player_load_pipeline.h"
+#include "sql/sql_async.h"
 #include "account/account_recovery.h"
 #include "combat/chaos_config.h"
 #include "core/defines.h"
@@ -853,16 +856,6 @@ static void ws_cmd_request_wholist(struct descriptor_data *d, cJSON *data)
 	ws_send_wholist_to_client(d);
 }
 
-/* helper structure for character display */
-struct ws_char_info
-{
-	char name[32];
-	int level;
-	int race;
-	int hometown; /* Room index for last room name */
-	char class_str[256]; /* full class string (e.g., "cleric / zealot") */
-};
-
 static cJSON *ws_build_character_list(struct descriptor_data *d);
 
 /* find a race in restricted_races[], or NULL when it is not one */
@@ -957,55 +950,6 @@ static const char *ws_get_class_alignment(int value)
 }
 
 /* load basic character info for json response */
-static int ws_load_char_info(const char *charname, struct ws_char_info *info)
-{
-	P_char temp_ch;
-	int result;
-
-	temp_ch = (struct char_data *)malloc(sizeof(struct char_data));
-	if (!temp_ch)
-		return 0;
-
-	memset(temp_ch, 0, sizeof(struct char_data));
-
-	temp_ch->only.pc = (struct pc_only_data *)malloc(sizeof(struct pc_only_data));
-	if (!temp_ch->only.pc)
-	{
-		free(temp_ch);
-		return 0;
-	}
-
-	memset(temp_ch->only.pc, 0, sizeof(struct pc_only_data));
-
-	result = restoreCharOnly(temp_ch, (char *)charname);
-	if (result < 0)
-	{
-		if (temp_ch->only.pc)
-			free(temp_ch->only.pc);
-		free(temp_ch);
-		return 0;
-	}
-
-	strlcpy(info->name, GET_NAME(temp_ch), sizeof info->name);
-	/* capitalize first letter */
-	if (info->name[0])
-		info->name[0] = toupper(info->name[0]);
-
-	info->level = GET_LEVEL(temp_ch);
-	info->race = GET_RACE(temp_ch);
-	info->hometown = GET_HOME(temp_ch);
-
-	/* use get_class_string - handles spec and multiclass */
-	get_class_string(temp_ch, info->class_str);
-
-	cleanup_temp_char(temp_ch);
-	if (temp_ch->only.pc)
-		free(temp_ch->only.pc);
-	free(temp_ch);
-
-	return 1;
-}
-
 /* get race name string with ansi colors */
 static const char *ws_get_race_name(int race)
 {
@@ -1235,42 +1179,32 @@ void ws_cmd_login(struct descriptor_data *d, cJSON *data)
 		tmp_name[i] = tolower(tmp_name[i]);
 	}
 
-	/* check if account exists */
-	if (!account_exists("Accounts", tmp_name))
-	{
-		ws_send_auth_failed(d, "Invalid account or password");
-		return;
-	}
-
-	/* allocate and load account - if one exists, free it first */
 	if (d->account)
 	{
 		d->account = free_account(d->account);
 	}
-	d->account = allocate_account();
-	if (!d->account)
-	{
-		ws_send_auth_failed(d, "Failed to allocate account");
-		return;
-	}
-
-	d->account->acct_name = str_dup(tmp_name);
-
-	if (read_account(d->account) == -1)
-	{
-		ws_send_auth_failed(d, "Invalid account or password");
-		d->account = free_account(d->account);
-		return;
-	}
-
-	/* Password work must not block the game loop, including native web logins. */
-	d->login_password_websocket = true;
-	d->login_password_job = password_login_submit(password, d->account->acct_password, 0);
-	if (!d->login_password_job)
-	{
-		ws_send_auth_failed(d, "Login is busy; try again later");
-		d->account = free_account(d->account);
-	}
+	account_read(d, tmp_name,
+		     [password = std::string(password)](P_desc reader, bool, P_acct loaded) mutable
+		     {
+			     if (!loaded)
+			     {
+				     OPENSSL_cleanse(password.data(), password.size());
+				     ws_send_auth_failed(reader, "Invalid account or password");
+				     return;
+			     }
+			     reader->account = loaded;
+			     /* Password work must not block the game loop, including native web
+			      * logins. */
+			     reader->login_password_websocket = true;
+			     reader->login_password_job = password_login_submit(
+				     password.c_str(), reader->account->acct_password, 0);
+			     OPENSSL_cleanse(password.data(), password.size());
+			     if (!reader->login_password_job)
+			     {
+				     ws_send_auth_failed(reader, "Login is busy; try again later");
+				     reader->account = free_account(reader->account);
+			     }
+		     });
 }
 
 void ws_finish_login(struct descriptor_data *d, int password_valid)
@@ -1618,13 +1552,6 @@ void ws_cmd_register(struct descriptor_data *d, cJSON *data)
 		}
 	}
 
-	/* check if account already exists */
-	if (account_exists("Accounts", tmp_name))
-	{
-		ws_send_auth_failed(d, "Unable to create account with those details");
-		return;
-	}
-
 	/* validate email format */
 	if (!is_valid_email(email_json->valuestring))
 	{
@@ -1666,42 +1593,57 @@ void ws_cmd_register(struct descriptor_data *d, cJSON *data)
 	if (!password_async_start(
 		    d, password_work_submit(password_json->valuestring, nullptr, nullptr, 0, 0),
 		    nullptr,
-		    [](P_desc completed_desc, int, const char *hash)
+		    [](P_desc hashed_desc, int, const char *hash)
 		    {
-			    if (account_exists("Accounts", completed_desc->account->acct_name) ||
-				is_email_taken(completed_desc->account->acct_email))
-			    {
-				    ws_send_auth_failed(
-					    completed_desc,
-					    "Unable to create account with those details");
-				    completed_desc->account = free_account(completed_desc->account);
-				    return;
-			    }
 			    if (!hash)
 			    {
-				    ws_send_auth_failed(completed_desc,
+				    ws_send_auth_failed(hashed_desc,
 							"Failed to hash password - server error");
-				    completed_desc->account = free_account(completed_desc->account);
+				    hashed_desc->account = free_account(hashed_desc->account);
 				    return;
 			    }
-			    completed_desc->account->acct_password = str_dup(hash);
+			    /* The name is checked on the writer, behind every account save queued
+			     * before it. */
+			    account_read(
+				    hashed_desc, hashed_desc->account->acct_name,
+				    [hash = std::string(hash)](P_desc completed_desc, bool ok,
+							       P_acct existing)
+				    {
+					    if (!ok || existing ||
+						is_email_taken(completed_desc->account->acct_email))
+					    {
+						    free_account(existing);
+						    ws_send_auth_failed(
+							    completed_desc,
+							    "Unable to create account with those details");
+						    completed_desc->account =
+							    free_account(completed_desc->account);
+						    return;
+					    }
+					    completed_desc->account->acct_password =
+						    str_dup(hash.c_str());
 
-			    /* mark account as confirmed (skip email verification for web clients) */
-			    completed_desc->account->acct_confirmed = 1;
+					    /* mark account as confirmed (skip email verification for web clients) */
+					    completed_desc->account->acct_confirmed = 1;
 
-			    /* save account to disk */
-			    if (write_account(completed_desc->account) == -1)
-			    {
-				    ws_send_auth_failed(completed_desc,
-							"Failed to save account - server error");
-				    statuslog(56, "&+RALERT&n: WebSocket account write failed");
-				    completed_desc->account = free_account(completed_desc->account);
-				    return;
-			    }
+					    /* save account to disk */
+					    if (write_account(completed_desc->account) == -1)
+					    {
+						    ws_send_auth_failed(
+							    completed_desc,
+							    "Failed to save account - server error");
+						    statuslog(
+							    56,
+							    "&+RALERT&n: WebSocket account write failed");
+						    completed_desc->account =
+							    free_account(completed_desc->account);
+						    return;
+					    }
 
-			    statuslog(56, "WebSocket: New account created");
+					    statuslog(56, "WebSocket: New account created");
 
-			    ws_send_auth_success(completed_desc, "registered");
+					    ws_send_auth_success(completed_desc, "registered");
+				    });
 		    }))
 	{
 		ws_send_auth_failed(d, "Password service is busy; try again later");
@@ -2603,43 +2545,37 @@ static void ws_send_account_message(struct descriptor_data *d, const char *actio
 	cJSON_Delete(root);
 }
 
-/* build character list json array */
+/* build character list json array, from the account's characters */
 static cJSON *ws_build_character_list(struct descriptor_data *d)
 {
 	cJSON *characters = cJSON_CreateArray();
-	struct acct_chars *c;
 
-	if (d->account && d->account->acct_character_list)
+	for (struct acct_chars *c = d->account ? d->account->acct_character_list : nullptr; c;
+	     c = c->next)
 	{
-		c = d->account->acct_character_list;
-		while (c)
-		{
-			struct ws_char_info info;
-			if (ws_load_char_info(c->charname, &info))
-			{
-				cJSON *char_obj = cJSON_CreateObject();
-				cJSON_AddStringToObject(char_obj, "name", info.name);
-				cJSON_AddNumberToObject(char_obj, "level", info.level);
-				cJSON_AddStringToObject(char_obj, "race",
-							ws_get_race_name(info.race));
-				cJSON_AddStringToObject(char_obj, "class", info.class_str);
+		char name[32];
+		char class_str[MAX_STRING_LENGTH];
 
-				/* last room name */
-				if (info.hometown >= 0 && info.hometown < top_of_world &&
-				    world[info.hometown].name)
-				{
-					cJSON_AddStringToObject(char_obj, "lastRoom",
-								world[info.hometown].name);
-				}
-				else
-				{
-					cJSON_AddStringToObject(char_obj, "lastRoom", "Unknown");
-				}
+		strlcpy(name, c->charname, sizeof name);
+		/* capitalize first letter */
+		if (name[0])
+			name[0] = toupper(name[0]);
 
-				cJSON_AddItemToArray(characters, char_obj);
-			}
-			c = c->next;
-		}
+		cJSON *char_obj = cJSON_CreateObject();
+		cJSON_AddStringToObject(char_obj, "name", name);
+		cJSON_AddNumberToObject(char_obj, "level", c->level);
+		cJSON_AddStringToObject(char_obj, "race", ws_get_race_name(c->race));
+		cJSON_AddStringToObject(char_obj, "class",
+					class_string(c->m_class, c->secondary_class, c->spec,
+						     class_str));
+
+		/* last room name */
+		const int room = real_room(c->last_room);
+		cJSON_AddStringToObject(char_obj, "lastRoom",
+					room != NOWHERE && world[room].name ? world[room].name :
+									      "Unknown");
+
+		cJSON_AddItemToArray(characters, char_obj);
 	}
 
 	return characters;
@@ -2648,12 +2584,9 @@ static cJSON *ws_build_character_list(struct descriptor_data *d)
 /* get extended account information */
 void ws_cmd_account_info(struct descriptor_data *d, cJSON * /*data*/)
 {
-	cJSON *info_data, *characters, *char_obj;
+	cJSON *info_data;
 	char time_buf[64];
-	char class_str[256];
-	char name_cap[32];
 	struct acct_chars *c;
-	P_char temp_ch;
 	long total_playtime = 0;
 	int immortal_level = 0;
 
@@ -2682,75 +2615,17 @@ void ws_cmd_account_info(struct descriptor_data *d, cJSON * /*data*/)
 		cJSON_AddStringToObject(info_data, "lastLogin", "never");
 	}
 
-	/* single pass: collect playtime, immortal level, and character list */
-	characters = cJSON_CreateArray();
-	c = d->account->acct_character_list;
-	while (c)
+	for (c = d->account->acct_character_list; c; c = c->next)
 	{
-		temp_ch = (struct char_data *)malloc(sizeof(struct char_data));
-		if (temp_ch)
-		{
-			memset(temp_ch, 0, sizeof(struct char_data));
-			temp_ch->only.pc =
-				(struct pc_only_data *)malloc(sizeof(struct pc_only_data));
-			if (temp_ch->only.pc)
-			{
-				memset(temp_ch->only.pc, 0, sizeof(struct pc_only_data));
-				if (restoreCharOnly(temp_ch, c->charname) >= 0)
-				{
-					int level = GET_LEVEL(temp_ch);
-
-					/* accumulate playtime */
-					total_playtime += temp_ch->player.time.played;
-
-					/* track highest immortal level */
-					if (level >= 57 && level > immortal_level)
-					{
-						immortal_level = level;
-					}
-
-					/* build character json object */
-					strlcpy(name_cap, GET_NAME(temp_ch), sizeof name_cap);
-					if (name_cap[0])
-						name_cap[0] = toupper(name_cap[0]);
-
-					get_class_string(temp_ch, class_str);
-
-					char_obj = cJSON_CreateObject();
-					cJSON_AddStringToObject(char_obj, "name", name_cap);
-					cJSON_AddNumberToObject(char_obj, "level", level);
-					cJSON_AddStringToObject(
-						char_obj, "race",
-						ws_get_race_name(GET_RACE(temp_ch)));
-					cJSON_AddStringToObject(char_obj, "class", class_str);
-
-					/* last room name */
-					int hometown = GET_HOME(temp_ch);
-					if (hometown >= 0 && hometown < top_of_world &&
-					    world[hometown].name)
-					{
-						cJSON_AddStringToObject(char_obj, "lastRoom",
-									world[hometown].name);
-					}
-					else
-					{
-						cJSON_AddStringToObject(char_obj, "lastRoom",
-									"Unknown");
-					}
-
-					cJSON_AddItemToArray(characters, char_obj);
-				}
-				cleanup_temp_char(temp_ch);
-				free(temp_ch->only.pc);
-			}
-			free(temp_ch);
-		}
-		c = c->next;
+		total_playtime += c->played;
+		/* track highest immortal level */
+		if (c->level >= 57 && c->level > immortal_level)
+			immortal_level = c->level;
 	}
 
 	cJSON_AddNumberToObject(info_data, "totalPlaytime", total_playtime);
 	cJSON_AddNumberToObject(info_data, "immortalLevel", immortal_level);
-	cJSON_AddItemToObject(info_data, "characters", characters);
+	cJSON_AddItemToObject(info_data, "characters", ws_build_character_list(d));
 
 	ws_send_account_message(d, "info", info_data, NULL);
 }
@@ -2961,10 +2836,6 @@ void ws_cmd_request_reset(struct descriptor_data *d, cJSON *data)
 	cJSON *account_json;
 	const char *account_name;
 	char lower_name[ACCOUNT_RECOVERY_NAME_BUF];
-	unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN];
-	uint64_t request_id = 0;
-	account_recovery_request_outcome outcome;
-	P_acct tmp;
 
 	if (d && (d->durisweb_verified || d->durisweb_backend))
 	{
@@ -3004,33 +2875,28 @@ void ws_cmd_request_reset(struct descriptor_data *d, cJSON *data)
 		lower_name[i] = (char)tolower((unsigned char)lower_name[i]);
 	}
 
-	if (!account_exists("Accounts", lower_name))
-	{
-		ws_request_reset_decoy(d, lower_name);
-		return;
-	}
-
-	tmp = allocate_account();
-	if (!tmp)
-	{
-		ws_request_reset_decoy(d, lower_name);
-		return;
-	}
-	tmp->acct_name = str_dup(lower_name);
-	if (read_account(tmp) == -1)
-	{
-		tmp = free_account(tmp);
-		ws_request_reset_decoy(d, lower_name);
-		return;
-	}
-
-	/* The fingerprint lets completion notice a password or email change made after
-	 * the code was issued, whichever path made the change. */
-	account_recovery_credential_fingerprint(tmp->acct_password, tmp->acct_email, fingerprint);
-	outcome = account_recovery_request(tmp->acct_name, tmp->acct_email, tmp->acct_blocked,
-					   fingerprint, d->host, &request_id);
-	tmp = free_account(tmp);
-	ws_request_reset_reply(d, outcome);
+	account_read(d, lower_name,
+		     [name = std::string(lower_name)](P_desc reader, bool, P_acct account)
+		     {
+			     if (!account)
+			     {
+				     ws_request_reset_decoy(reader, name.c_str());
+				     return;
+			     }
+			     /* The fingerprint lets completion notice a password or email change
+			      * made after the code was issued, whichever path made the change. */
+			     unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN];
+			     uint64_t request_id = 0;
+			     account_recovery_credential_fingerprint(
+				     account->acct_password, account->acct_email, fingerprint);
+			     const account_recovery_request_outcome outcome =
+				     account_recovery_request(account->acct_name,
+							      account->acct_email,
+							      account->acct_blocked, fingerprint,
+							      reader->host, &request_id);
+			     free_account(account);
+			     ws_request_reset_reply(reader, outcome);
+		     });
 }
 
 /*
@@ -3124,30 +2990,41 @@ void ws_cmd_complete_reset(struct descriptor_data *d, cJSON *data)
 				    return;
 			    }
 
-			    auto outcome = account_recovery_complete(name.c_str(), code.get(), hash,
-								     completed_desc);
-
-			    switch (outcome)
-			    {
-			    case account_recovery_complete_outcome::ok:
-				    completed_desc->account_recovery_attempts = 0;
-				    /* Not logged in here: the client follows up with an ordinary login. */
-				    ws_send_account_message(completed_desc, "reset_completed", NULL,
-							    NULL);
-				    break;
-			    case account_recovery_complete_outcome::load_failed:
-			    case account_recovery_complete_outcome::write_failed:
-				    ws_send_account_message(completed_desc, "error", NULL,
+			    /* The account is read afresh, behind every save queued before it. */
+			    account_read(
+				    completed_desc, name.c_str(),
+				    [name, code, hash = std::string(hash)](P_desc reader, bool,
+									   P_acct fresh)
+				    {
+					    const auto outcome = account_recovery_complete(
+						    name.c_str(), code.get(), hash.c_str(), reader,
+						    fresh);
+					    free_account(fresh);
+					    switch (outcome)
+					    {
+					    case account_recovery_complete_outcome::ok:
+						    reader->account_recovery_attempts = 0;
+						    /* Not logged in here: the client follows up with an
+						     * ordinary login. */
+						    ws_send_account_message(
+							    reader, "reset_completed", NULL, NULL);
+						    break;
+					    case account_recovery_complete_outcome::load_failed:
+					    case account_recovery_complete_outcome::write_failed:
+						    ws_send_account_message(
+							    reader, "error", NULL,
 							    "Failed to save password change");
-				    break;
-			    case account_recovery_complete_outcome::rejected:
-			    case account_recovery_complete_outcome::fenced:
-			    case account_recovery_complete_outcome::superseded:
-			    case account_recovery_complete_outcome::bad_hash:
-				    ws_send_account_message(completed_desc, "error", NULL,
+						    break;
+					    case account_recovery_complete_outcome::rejected:
+					    case account_recovery_complete_outcome::fenced:
+					    case account_recovery_complete_outcome::superseded:
+					    case account_recovery_complete_outcome::bad_hash:
+						    ws_send_account_message(
+							    reader, "error", NULL,
 							    "Invalid or expired reset code");
-				    break;
-			    }
+						    break;
+					    }
+				    });
 		    }))
 		ws_send_account_message(d, "error", NULL,
 					"Password service is busy; try again later");
@@ -3159,9 +3036,7 @@ void ws_cmd_delete_character(struct descriptor_data *d, cJSON *data)
 {
 	cJSON *name_json, *confirm_json;
 	const char *char_name;
-	struct acct_chars *c, *prev;
-	P_char ch;
-	cJSON *result_data;
+	struct acct_chars *c;
 
 	if (!d->account)
 	{
@@ -3193,17 +3068,7 @@ void ws_cmd_delete_character(struct descriptor_data *d, cJSON *data)
 	char_name = name_json->valuestring;
 
 	/* find character in account list */
-	c = d->account->acct_character_list;
-	prev = NULL;
-	while (c)
-	{
-		if (strcasecmp(c->charname, char_name) == 0)
-		{
-			break;
-		}
-		prev = c;
-		c = c->next;
-	}
+	c = find_char_in_list(d->account->acct_character_list, char_name);
 
 	if (!c)
 	{
@@ -3211,92 +3076,66 @@ void ws_cmd_delete_character(struct descriptor_data *d, cJSON *data)
 		return;
 	}
 
-	/* load character for deletion */
-	ch = (struct char_data *)malloc(sizeof(struct char_data));
-	if (!ch)
-	{
-		ws_send_account_message(d, "error", NULL, "Failed to load character");
-		return;
-	}
-
-	memset(ch, 0, sizeof(struct char_data));
-	ch->only.pc = (struct pc_only_data *)malloc(sizeof(struct pc_only_data));
-	if (!ch->only.pc)
-	{
-		free(ch);
-		ws_send_account_message(d, "error", NULL, "Failed to load character");
-		return;
-	}
-
-	memset(ch->only.pc, 0, sizeof(struct pc_only_data));
-
-	if (restoreCharOnly(ch, (char *)char_name) < 0)
-	{
-		free(ch->only.pc);
-		free(ch);
-		ws_send_account_message(d, "error", NULL, "Failed to load character file");
-		return;
-	}
-
 	/* log the deletion */
-	statuslog(ch->player.level, "%s deleted %s via web client (%s).", d->account->acct_name,
-		  char_name, d->host);
+	statuslog(c->level, "%s deleted %s via web client (%s).", d->account->acct_name, char_name,
+		  d->host);
 	logit(LOG_PLAYER, "%s deleted %s via web client (%s).", d->account->acct_name, char_name,
 	      d->host);
 
-	if (!deleteCharacter(ch))
+	/* The character loads off the loop and is deleted on the writer while the session
+	 * waits; the deletion drops it from the account's character lists. */
+	const uint64_t id = wait_for_writer(d);
+	const std::string name = c->charname;
+	if (!player_load_offline(
+		    name.c_str(), false,
+		    [id, name](P_char loaded)
+		    {
+			    if (!loaded)
+			    {
+				    if (P_desc reader = writer_replied(id))
+					    ws_send_account_message(
+						    reader, "error", NULL,
+						    "Failed to load character file");
+				    return;
+			    }
+			    // One in the game, linkdead or entering it would go on playing, unsaved.
+			    if (is_pid_online(GET_PID(loaded), TRUE) ||
+				player_load_pipeline_pid_pending(GET_PID(loaded)))
+			    {
+				    free_char(loaded);
+				    if (P_desc reader = writer_replied(id))
+					    ws_send_account_message(reader, "error", NULL,
+								    "Character is in the game");
+				    return;
+			    }
+			    delete_character(
+				    loaded, true,
+				    [id, name](character_delete_result result)
+				    {
+					    P_desc reader = writer_replied(id);
+					    if (!reader)
+						    return;
+					    if (result != character_delete_result::deleted)
+					    {
+						    ws_send_account_message(
+							    reader, "error", NULL,
+							    "Failed to delete character database records");
+						    return;
+					    }
+					    cJSON *result_data = cJSON_CreateObject();
+					    cJSON_AddStringToObject(result_data, "name",
+								    name.c_str());
+					    cJSON_AddItemToObject(result_data, "characters",
+								  ws_build_character_list(reader));
+					    ws_send_account_message(reader, "character_deleted",
+								    result_data, NULL);
+				    });
+			    free_char(loaded);
+		    }))
 	{
-		ws_send_account_message(d, "error", NULL,
-					"Failed to delete character database records");
-		return;
+		writer_replied(id);
+		ws_send_account_message(d, "error", NULL, "Failed to load character");
 	}
-
-	/* free strings allocated by restoreCharOnly */
-	if (ch->player.name)
-		str_free(ch->player.name);
-	if (ch->player.title)
-		str_free(ch->player.title);
-	if (ch->player.short_descr)
-		str_free(ch->player.short_descr);
-	if (ch->player.long_descr)
-		str_free(ch->player.long_descr);
-	if (ch->player.description)
-		str_free(ch->player.description);
-	if (ch->only.pc->poofIn)
-		str_free(ch->only.pc->poofIn);
-	if (ch->only.pc->poofOut)
-		str_free(ch->only.pc->poofOut);
-	if (ch->only.pc->gcmd_arr)
-		FREE(ch->only.pc->gcmd_arr);
-
-	free(ch->only.pc);
-	free(ch);
-
-	/* remove from account character list */
-	if (prev)
-	{
-		prev->next = c->next;
-	}
-	else
-	{
-		d->account->acct_character_list = c->next;
-	}
-	FREE(c->charname);
-	FREE(c);
-	d->account->num_chars--;
-
-	if (-1 == write_account(d->account))
-	{
-		statuslog(56, "&+RALERT&n: deleted-character account update failed");
-		persistence_alert(AVATAR, "account", "redacted", "none", "none", "write_failed",
-				  NULL);
-	}
-
-	/* send success with updated character list */
-	result_data = cJSON_CreateObject();
-	cJSON_AddStringToObject(result_data, "name", char_name);
-	cJSON_AddItemToObject(result_data, "characters", ws_build_character_list(d));
-	ws_send_account_message(d, "character_deleted", result_data, NULL);
 }
 
 /* helper to send admin_delete_character progress update */
@@ -3346,14 +3185,125 @@ static void ws_send_admin_delete_response(struct descriptor_data *d, int success
 }
 
 /* admin delete a character (durisweb service only) */
+/* The rest of an admin delete, once the target account has been read. */
+static void admin_delete_character_loaded(P_desc d, P_acct target_acct, const char *account_name,
+					  const char *char_name, int char_pid,
+					  const char *deleted_by, const char *request_id)
+{
+	if (!target_acct)
+	{
+		ws_send_admin_delete_progress(d, request_id, "Account not found", "error");
+		ws_send_admin_delete_response(d, 0, account_name, char_name, request_id,
+					      "Account not found");
+		return;
+	}
+
+	ws_send_admin_delete_progress(d, request_id, "Account loaded successfully", "success");
+
+	/* find character in account list */
+	ws_send_admin_delete_progress(d, request_id, "Searching for character in account...",
+				      "info");
+	if (!find_char_in_list(target_acct->acct_character_list, char_name))
+	{
+		ws_send_admin_delete_progress(d, request_id, "Character not found in account",
+					      "error");
+		ws_send_admin_delete_response(d, 0, account_name, char_name, request_id,
+					      "Character not found in account");
+		free_account(target_acct);
+		return;
+	}
+
+	ws_send_admin_delete_progress(d, request_id, "Character found in account", "success");
+
+	free_account(target_acct);
+
+	/* The character loads off the loop and is deleted on the writer while the session
+	 * waits; the deletion drops it from the account's character lists. */
+	ws_send_admin_delete_progress(d, request_id, "Loading character save file...", "info");
+	const uint64_t id = wait_for_writer(d);
+	if (!player_load_offline(
+		    char_name, false,
+		    [id, char_pid, account = std::string(account_name),
+		     character = std::string(char_name), by = std::string(deleted_by),
+		     request = std::string(request_id)](P_char loaded)
+		    {
+			    if (!loaded)
+			    {
+				    /* An orphaned entry: its mapping and leaderboard row go. */
+				    logit(LOG_PLAYER,
+					  "ADMIN: %s deleted character %s (pid=%d) from account %s via web admin (character missing)",
+					  by.c_str(), character.c_str(), char_pid, account.c_str());
+				    const bool queued = sql_queue_statements(
+					    { sql_format(
+						      "UPDATE account_characters SET deleted_at = NOW() "
+						      "WHERE pid = %d AND deleted_at IS NULL",
+						      char_pid),
+					      sql_format(
+						      "UPDATE frag_leaderboard SET deleted_at = NOW() "
+						      "WHERE pid = %d AND deleted_at IS NULL",
+						      char_pid) });
+				    if (queued)
+					    for (P_desc s = descriptor_list; s; s = s->next)
+						    if (s->account)
+							    remove_char_from_list(s->account,
+										  character.c_str(),
+										  false);
+				    if (P_desc reader = writer_replied(id))
+					    ws_send_admin_delete_response(
+						    reader, queued, account.c_str(),
+						    character.c_str(), request.c_str(),
+						    queued ? NULL :
+							     "Failed to remove the orphaned entry");
+				    return;
+			    }
+			    // One in the game, linkdead or entering it would go on playing, unsaved.
+			    if (is_pid_online(GET_PID(loaded), TRUE) ||
+				player_load_pipeline_pid_pending(GET_PID(loaded)))
+			    {
+				    free_char(loaded);
+				    if (P_desc reader = writer_replied(id))
+					    ws_send_admin_delete_response(
+						    reader, 0, account.c_str(), character.c_str(),
+						    request.c_str(), "Character is in the game");
+				    return;
+			    }
+			    logit(LOG_PLAYER,
+				  "ADMIN: %s deleted character %s from account %s via web admin",
+				  by.c_str(), character.c_str(), account.c_str());
+			    delete_character(
+				    loaded, true,
+				    [id, account, character,
+				     request](character_delete_result result)
+				    {
+					    P_desc reader = writer_replied(id);
+					    if (!reader)
+						    return;
+					    const bool deleted = result ==
+								 character_delete_result::deleted;
+					    if (deleted)
+						    ws_send_admin_delete_progress(
+							    reader, request.c_str(),
+							    "Character deletion completed",
+							    "success");
+					    ws_send_admin_delete_response(
+						    reader, deleted, account.c_str(),
+						    character.c_str(), request.c_str(),
+						    deleted ? NULL : "Failed to delete character");
+				    });
+			    free_char(loaded);
+		    }))
+	{
+		writer_replied(id);
+		ws_send_admin_delete_response(d, 0, account_name, char_name, request_id,
+					      "Failed to load character");
+	}
+}
+
 void ws_cmd_admin_delete_character(struct descriptor_data *d, cJSON *data)
 {
 	cJSON *account_json, *name_json, *deleted_by_json, *request_id_json, *pid_json;
 	const char *account_name, *char_name, *deleted_by, *request_id;
 	int char_pid;
-	struct acct_chars *c, *prev;
-	P_char ch;
-	P_acct target_acct;
 
 	/* only durisweb service can call this */
 	if (!d->durisweb_verified)
@@ -3429,230 +3379,23 @@ void ws_cmd_admin_delete_character(struct descriptor_data *d, cJSON *data)
 		ws_send_admin_delete_progress(d, request_id, msg, "info");
 	}
 
-	/* allocate and load target account */
+	/* load target account */
 	ws_send_admin_delete_progress(d, request_id, "Loading account data...", "info");
-	target_acct = allocate_account();
-	if (!target_acct)
-	{
-		ws_send_admin_delete_progress(d, request_id, "Failed to allocate account", "error");
-		ws_send_admin_delete_response(d, 0, account_name, char_name, request_id,
-					      "Failed to allocate account");
-		return;
-	}
-
-	target_acct->acct_name = str_dup(account_name);
-
-	if (read_account(target_acct) == -1)
-	{
-		ws_send_admin_delete_progress(d, request_id, "Account not found", "error");
-		ws_send_admin_delete_response(d, 0, account_name, char_name, request_id,
-					      "Account not found");
-		free_account(target_acct);
-		return;
-	}
-
-	ws_send_admin_delete_progress(d, request_id, "Account loaded successfully", "success");
-
-	/* find character in account list */
-	ws_send_admin_delete_progress(d, request_id, "Searching for character in account...",
-				      "info");
-	c = target_acct->acct_character_list;
-	prev = NULL;
-	while (c)
-	{
-		if (strcasecmp(c->charname, char_name) == 0)
-		{
-			break;
-		}
-		prev = c;
-		c = c->next;
-	}
-
-	if (!c)
-	{
-		ws_send_admin_delete_progress(d, request_id, "Character not found in account",
-					      "error");
-		ws_send_admin_delete_response(d, 0, account_name, char_name, request_id,
-					      "Character not found in account");
-		free_account(target_acct);
-		return;
-	}
-
-	ws_send_admin_delete_progress(d, request_id, "Character found in account", "success");
-
-	/* load character for deletion */
-	ws_send_admin_delete_progress(d, request_id, "Loading character save file...", "info");
-	ch = (struct char_data *)malloc(sizeof(struct char_data));
-	if (!ch)
-	{
-		ws_send_admin_delete_progress(d, request_id, "Failed to allocate memory", "error");
-		ws_send_admin_delete_response(d, 0, account_name, char_name, request_id,
-					      "Failed to allocate character");
-		free_account(target_acct);
-		return;
-	}
-
-	memset(ch, 0, sizeof(struct char_data));
-	ch->only.pc = (struct pc_only_data *)malloc(sizeof(struct pc_only_data));
-	if (!ch->only.pc)
-	{
-		free(ch);
-		ws_send_admin_delete_progress(d, request_id, "Failed to allocate memory", "error");
-		ws_send_admin_delete_response(d, 0, account_name, char_name, request_id,
-					      "Failed to allocate character data");
-		free_account(target_acct);
-		return;
-	}
-
-	memset(ch->only.pc, 0, sizeof(struct pc_only_data));
-
-	int restore_result = restoreCharOnly(ch, (char *)char_name);
-	if (restore_result < 0)
-	{
-		/* pfile doesn't exist or is corrupted - still clean up account and database */
-		if (restore_result == -1)
-		{
-			ws_send_admin_delete_progress(
-				d, request_id, "Character save file not found (orphaned entry)",
-				"info");
-		}
-		else
-		{
-			ws_send_admin_delete_progress(d, request_id,
-						      "Character save file corrupted", "info");
-		}
-		free(ch->only.pc);
-		free(ch);
-
-		ws_send_admin_delete_progress(d, request_id,
-					      "Cleaning up orphaned character data...", "info");
-
-		/* log the deletion - audit trail */
-		logit(LOG_PLAYER,
-		      "ADMIN: %s deleted character %s (pid=%d) from account %s via web admin (pfile missing/corrupted)",
-		      deleted_by, char_name, char_pid, account_name);
-
-		/* soft delete from frag leaderboard tables using the provided PID */
-		ws_send_admin_delete_progress(d, request_id, "Removing from frag leaderboard...",
-					      "info");
-		if (!sql_soft_delete_character(char_pid))
-		{
-			ws_send_admin_delete_progress(
-				d, request_id, "Failed to remove from frag leaderboard", "error");
-			return;
-		}
-		ws_send_admin_delete_progress(d, request_id, "Removed from frag leaderboard",
-					      "success");
-
-		/* remove from account character list */
-		ws_send_admin_delete_progress(d, request_id,
-					      "Removing from account character list...", "info");
-		if (prev)
-		{
-			prev->next = c->next;
-		}
-		else
-		{
-			target_acct->acct_character_list = c->next;
-		}
-		FREE(c->charname);
-		FREE(c);
-		target_acct->num_chars--;
-
-		ws_send_admin_delete_progress(d, request_id, "Writing account file...", "info");
-		if (-1 == write_account(target_acct))
-		{
-			ws_send_admin_delete_progress(d, request_id,
-						      "Failed to update account file", "error");
-			statuslog(56, "&+RALERT&n: character-delete account update failed");
-			persistence_alert(AVATAR, "account", "redacted", "none", "none",
-					  "write_failed", NULL);
-			free_account(target_acct);
-			return;
-		}
-		free_account(target_acct);
-		ws_send_admin_delete_progress(d, request_id, "Account file updated", "success");
-
-		/* send success - web will soft-delete from database */
-		ws_send_admin_delete_progress(d, request_id, "Character deletion completed",
-					      "success");
-		ws_send_admin_delete_response(d, 1, account_name, char_name, request_id, NULL);
-		return;
-	}
-
-	ws_send_admin_delete_progress(d, request_id, "Character save file loaded", "success");
-
-	/* log the deletion - audit trail */
-	logit(LOG_PLAYER, "ADMIN: %s deleted character %s from account %s via web admin",
-	      deleted_by, char_name, account_name);
-
-	/* delete character file and free temp character */
-	ws_send_admin_delete_progress(d, request_id, "Deleting character save file...", "info");
-	deleteCharacter(ch);
-	ws_send_admin_delete_progress(d, request_id, "Character save file deleted", "success");
-
-	/* free strings allocated by restoreCharOnly */
-	if (ch->player.name)
-		str_free(ch->player.name);
-	if (ch->player.title)
-		str_free(ch->player.title);
-	if (ch->player.short_descr)
-		str_free(ch->player.short_descr);
-	if (ch->player.long_descr)
-		str_free(ch->player.long_descr);
-	if (ch->player.description)
-		str_free(ch->player.description);
-	if (ch->only.pc->poofIn)
-		str_free(ch->only.pc->poofIn);
-	if (ch->only.pc->poofOut)
-		str_free(ch->only.pc->poofOut);
-	if (ch->only.pc->gcmd_arr)
-		FREE(ch->only.pc->gcmd_arr);
-
-	free(ch->only.pc);
-	free(ch);
-
-	/* remove from account character list */
-	ws_send_admin_delete_progress(d, request_id, "Removing from account character list...",
-				      "info");
-	if (prev)
-	{
-		prev->next = c->next;
-	}
-	else
-	{
-		target_acct->acct_character_list = c->next;
-	}
-	FREE(c->charname);
-	FREE(c);
-	target_acct->num_chars--;
-	ws_send_admin_delete_progress(d, request_id, "Removed from account", "success");
-
-	ws_send_admin_delete_progress(d, request_id, "Writing account file...", "info");
-	if (-1 == write_account(target_acct))
-	{
-		ws_send_admin_delete_progress(d, request_id, "Failed to update account file",
-					      "error");
-		statuslog(56, "&+RALERT&n: character-delete account update failed");
-		persistence_alert(AVATAR, "account", "redacted", "none", "none", "write_failed",
-				  NULL);
-		free_account(target_acct);
-		return;
-	}
-	ws_send_admin_delete_progress(d, request_id, "Account file updated", "success");
-	free_account(target_acct);
-
-	/* send success response */
-	ws_send_admin_delete_progress(d, request_id, "Character deletion completed", "success");
-	ws_send_admin_delete_response(d, 1, account_name, char_name, request_id, NULL);
+	account_read(d, account_name,
+		     [account = std::string(account_name), character = std::string(char_name),
+		      char_pid, by = std::string(deleted_by),
+		      request = std::string(request_id)](P_desc reader, bool, P_acct target_acct)
+		     {
+			     admin_delete_character_loaded(reader, target_acct, account.c_str(),
+							   character.c_str(), char_pid, by.c_str(),
+							   request.c_str());
+		     });
 }
 
 /* get rested bonus status for all characters */
 void ws_cmd_rested_bonus(struct descriptor_data *d, cJSON * /*data*/)
 {
 	cJSON *result_data, *characters, *char_obj;
-	struct acct_chars *c;
-	P_char temp_ch;
 	time_t current_time;
 
 	if (!d->account)
@@ -3665,50 +3408,28 @@ void ws_cmd_rested_bonus(struct descriptor_data *d, cJSON * /*data*/)
 	characters = cJSON_CreateArray();
 	current_time = time(0);
 
-	c = d->account->acct_character_list;
-	while (c)
+	for (struct acct_chars *c = d->account->acct_character_list; c; c = c->next)
 	{
-		temp_ch = (struct char_data *)malloc(sizeof(struct char_data));
-		if (temp_ch)
-		{
-			memset(temp_ch, 0, sizeof(struct char_data));
-			temp_ch->only.pc =
-				(struct pc_only_data *)malloc(sizeof(struct pc_only_data));
-			if (temp_ch->only.pc)
-			{
-				memset(temp_ch->only.pc, 0, sizeof(struct pc_only_data));
-				if (restoreCharOnly(temp_ch, c->charname) >= 0)
-				{
-					time_t offline_seconds =
-						current_time - temp_ch->player.time.saved;
-					int offline_hours = offline_seconds / 3600;
-					int max_hours = 20; /* well-rested threshold */
-					int percent = (offline_hours * 100) / max_hours;
-					if (percent > 100)
-						percent = 100;
+		time_t offline_seconds = current_time - c->last_save;
+		int offline_hours = offline_seconds / 3600;
+		int max_hours = 20; /* well-rested threshold */
+		int percent = (offline_hours * 100) / max_hours;
+		if (percent > 100)
+			percent = 100;
 
-					/* capitalize name */
-					char name_cap[32];
-					strlcpy(name_cap, GET_NAME(temp_ch), sizeof name_cap);
-					if (name_cap[0])
-						name_cap[0] = toupper(name_cap[0]);
+		/* capitalize name */
+		char name_cap[32];
+		strlcpy(name_cap, c->charname, sizeof name_cap);
+		if (name_cap[0])
+			name_cap[0] = toupper(name_cap[0]);
 
-					char_obj = cJSON_CreateObject();
-					cJSON_AddStringToObject(char_obj, "name", name_cap);
-					cJSON_AddNumberToObject(char_obj, "restedPercent", percent);
-					cJSON_AddNumberToObject(char_obj, "restedHours",
-								offline_hours > max_hours ?
-									max_hours :
-									offline_hours);
-					cJSON_AddNumberToObject(char_obj, "maxHours", max_hours);
-					cJSON_AddItemToArray(characters, char_obj);
-				}
-				cleanup_temp_char(temp_ch);
-				free(temp_ch->only.pc);
-			}
-			free(temp_ch);
-		}
-		c = c->next;
+		char_obj = cJSON_CreateObject();
+		cJSON_AddStringToObject(char_obj, "name", name_cap);
+		cJSON_AddNumberToObject(char_obj, "restedPercent", percent);
+		cJSON_AddNumberToObject(char_obj, "restedHours",
+					offline_hours > max_hours ? max_hours : offline_hours);
+		cJSON_AddNumberToObject(char_obj, "maxHours", max_hours);
+		cJSON_AddItemToArray(characters, char_obj);
 	}
 
 	cJSON_AddItemToObject(result_data, "characters", characters);
@@ -3995,7 +3716,7 @@ void ws_cmd_poll_vote(struct descriptor_data *d, cJSON *data)
 void ws_handle_command(struct descriptor_data *d, const char *cmd, cJSON *data)
 {
 	/* No account mutation or entry may overtake password verification. */
-	if (d && (d->login_password_job || d->password_request))
+	if (d && (d->login_password_job || d->password_request || d->writer_wait_id))
 		return;
 	static const struct
 	{

@@ -170,19 +170,24 @@ assert "bcrypt_hash_password(" not in account + ws + storage + sql_player
 assert "bcrypt_verify_password(" not in account + ws + storage + sql_player
 print("[PASS] game-thread callers use the shared worker without synchronous bcrypt fallbacks")
 
-create = section(sql_player, "int sql_create_private_chest_hashed", "bool sql_delete_private_chest")
-setter = section(sql_player, "bool sql_set_chest_password_hash", "bool sql_get_chest_password_hash")
-verify = section(sql_player, "bool sql_get_chest_password_hash", "int sql_count_private_chests")
+# Private chests are held in memory while their locker is open; each write is
+# queued on the writer and carries only a bcrypt hash.
+chests = storage[storage.index("static int locker_chestcmd(P_char ch, char *arg)\n{"):
+                 storage.index("static int locker_closecmd(P_char ch, char * /*arg*/)\n{")]
+create = chests[chests.index('if (is_abbrev(arg1, "create"))'):chests.index('if (is_abbrev(arg1, "delete"))')]
+setter = chests[chests.index('if (is_abbrev(arg1, "password"))'):
+                chests.index("static int locker_opencmd(P_char ch, char *arg)\n{")]
+verify = chests[chests.index("static int locker_opencmd(P_char ch, char *arg)\n{"):]
 assert "SHA2(" not in create + setter + verify
 assert "is_bcrypt_hash(hash)" in create and "is_bcrypt_hash(hash)" in setter
-assert "sql_escape_string(hash)" in create and "sql_escape_string(hash)" in setter
-assert "sql_set_chest_password_hash(chest_id, NULL)" in storage
-assert "sql_set_chest_password_hash(chest_id, hash)" in storage
+assert "escape_str(hash)" in create and "escape_str(hash)" in setter
+assert "chest->SetPasswordHash(NULL)" in setter
+assert "UPDATE private_chests SET password_hash=NULL WHERE id=%d AND is_public=0" in setter
+assert "SetPasswordHash(hash)" in setter
 assert "Chest passwords must be at most 72 bytes." in storage
-assert "SELECT password_hash FROM private_chests WHERE id=%d" in verify
+assert "is_bcrypt_hash(upgrade)" in verify
 assert "WHERE id=%d AND password_hash='%s'" in verify
-assert "mysql_affected_rows(DB) == 1" in verify
-assert contains(storage, "sql_finish_chest_password(chest_id, expected.c_str(), upgrade)")
+assert "current->GetPasswordHash() == hash" in verify
 assert "SHA2(" not in storage
 print("[PASS] chest writes accept only hashes; opens recheck credentials and upgrades use compare-and-swap")
 

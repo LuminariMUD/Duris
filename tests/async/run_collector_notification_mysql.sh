@@ -6,7 +6,7 @@ NAME="duris-collector-notification-$$"
 PASSWORD=$(printf 'collector-notification-%s-%s' "$$" "$RANDOM")
 DB_NAME="collector_notification_test"
 DB_IMAGE="${COLLECTOR_NOTIFICATION_DB_IMAGE:-mysql:8.0}"
-cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
+cleanup() { docker rm -fv "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 if [[ "$DB_IMAGE" == mariadb:* ]]; then
     ROOT_PASSWORD_ENV="MARIADB_ROOT_PASSWORD"

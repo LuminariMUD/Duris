@@ -73,35 +73,49 @@ if not blockers and manifest.get("runtime_exposure") not in {"fenced", "enabled"
     raise SystemExit("complete character deletion has an invalid exposure state")
 
 files_source = (SRC / "files.c").read_text()
-start = files_source.index("character_delete_result delete_character_result(P_char ch, bool bDeleteLocker)")
+forget_start = files_source.index("character_delete_result forget_deleted_character(")
+forget_body = files_source[forget_start : files_source.index("\n}\n", forget_start)]
+start = files_source.index("void delete_character(P_char ch, bool delete_locker,")
 end = files_source.index("void PurgeCorpseFile", start)
 delete_body = files_source[start:end]
+# MariaDB: one writer job runs every statement in one transaction; memory lets go of
+# the character only once it commits.
 runtime_calls = [
-    "sql_soft_delete_character(GET_PID(ch))",
-    "remove_all_artifacts_sql(ch)",
-    "remove_all_locker_access(ch)",
-    "GET_ASSOC(ch)->save_without_member(ch)",
-    "sql_delete_locker(GET_PID(ch), 0)",
-    "sql_delete_ship(GET_NAME(ch))",
-    "sql_delete_player(GET_PID(ch), false)",
-    "sql_commit()",
-    "GET_ASSOC(ch)->forget_deleted_member(ch)",
-    "remove_char_from_list(ch->desc->account",
-    "delete_ship_runtime(GET_NAME(ch))",
+    "UPDATE account_characters SET deleted_at = NOW()",
+    "UPDATE frag_leaderboard SET deleted_at = NOW()",
+    "remove_all_locker_access_statement(deleted.name.c_str())",
+    "remove_all_artifacts_sql(deleted.pid)",
+    "GET_ASSOC(ch)->statements_without_member(ch)",
+    "sql_delete_locker_statement(deleted.pid, 0)",
+    "sql_delete_ship_statement(deleted.name.c_str())",
+    "DELETE FROM player_data WHERE pid=%d",
+    "sql_read_work(",
+    "sql_delete_ship(deleted.name.c_str())",
+    "done(forget_deleted_character(deleted));",
 ]
-positions = [delete_body.find(call) for call in runtime_calls]
-if any(position < 0 for position in positions) or positions != sorted(positions):
+forget_calls = [
+    "player_revision_forget(deleted.pid)",
+    "sql_player_names_forget(deleted.pid)",
+    "artifacts_forget_deleted_character(deleted.pid)",
+    "guild->forget_deleted_member(deleted.name.c_str(), deleted.frags)",
+    "remove_char_from_list(d->account, deleted.name.c_str(), false)",
+    "delete_ship_runtime(deleted.name.c_str())",
+]
+positions = [delete_body.find(call, delete_body.find("#else")) for call in runtime_calls]
+forget_positions = [forget_body.find(call) for call in forget_calls]
+if any(position < 0 for position in positions + forget_positions) or \
+        positions != sorted(positions) or forget_positions != sorted(forget_positions):
     raise SystemExit("live character-delete call graph drifted from the manifest")
 exposure = manifest.get("runtime_exposure")
 if exposure == "fenced" and "flatfile_character_delete" in delete_body:
     raise SystemExit("fenced flat character deletion was exposed through the live route")
 if exposure == "enabled":
     route_tokens = [
-        "persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY",
-        "!bDeleteLocker",
+        "#ifdef __NO_MYSQL__",
+        "!delete_locker",
         "flatfile_character_delete(persistence_mode_flatfile_root()",
-        "remove_char_from_list(ch->desc->account",
-        "return character_delete_result::deleted;",
+        "done(forget_deleted_character(deleted));",
+        "#else",
     ]
     route_positions = [delete_body.find(token) for token in route_tokens]
     if any(position < 0 for position in route_positions) or route_positions != sorted(route_positions):

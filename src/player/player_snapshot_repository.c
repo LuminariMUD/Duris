@@ -953,9 +953,11 @@ query_result apply_death(MYSQL *connection, const player_snapshot &snapshot)
 	return result;
 }
 
-// A character with no player_data row yet gets one. The rest of the save fills it in.
-query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapshot)
+// A character with no player_data row yet gets one (*created). The rest of the save fills
+// it in.
+query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapshot, bool *created)
 {
+	*created = false;
 	query_result result =
 		execute(connection, "SELECT save_revision FROM player_data WHERE pid=" +
 					    std::to_string(snapshot.pid) + " FOR UPDATE");
@@ -974,9 +976,32 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 				       { return row.field == player_status_string_field::name; });
 	if (name == snapshot.status_strings.end() || name->value.empty())
 		return { false, ENOENT };
+	*created = true;
 	return execute(connection, "INSERT INTO player_data (pid,name) VALUES (" +
 					   std::to_string(snapshot.pid) + "," +
 					   quote(connection, name->value) + ")");
+}
+
+// A new character's opening balances, from the row its first save has just written: the
+// accounting ledgers start from them.
+query_result insert_opening_baselines(MYSQL *connection, int pid)
+{
+	const std::string from = " FROM player_data WHERE pid=" + std::to_string(pid);
+	query_result result = execute(
+		connection, "INSERT IGNORE INTO currency_wallet_baseline(pid,opening_copper,"
+			    "opening_silver,opening_gold,opening_platinum,opening_revision) "
+			    "SELECT pid,copper,silver,gold,platinum,0" +
+				    from);
+	if (result.ok)
+		result =
+			execute(connection, "INSERT IGNORE INTO epic_balance_baseline(pid,"
+					    "opening_balance,opening_revision) SELECT pid,epics,0" +
+						    from);
+	if (result.ok)
+		result = execute(connection, "INSERT IGNORE INTO combat_frag_baseline(pid,"
+					     "opening_frags,opening_revision) SELECT pid,frags,0" +
+						     from);
+	return result;
 }
 
 // Only the one-time replay of a journal left by an older server keeps the revision
@@ -1035,9 +1060,12 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 		}
 	}
 	std::vector<claimed_graph> claims;
-	query = ensure_player_row(connection, snapshot);
+	bool created = false;
+	query = ensure_player_row(connection, snapshot, &created);
 	if (query.ok)
 		query = apply_components(connection, snapshot, &claims);
+	if (query.ok && created)
+		query = insert_opening_baselines(connection, snapshot.pid);
 	if (query.ok)
 		query = apply_death(connection, snapshot);
 	if (query.ok)

@@ -33,6 +33,11 @@ import tempfile
 
 from _paths import ROOT, extract_function, source
 
+# The stored-ship rows and the boot load, from their struct to sql_load_all_ships().
+SQL_PLAYER = source("sql_player.c").read_text(encoding="utf-8")
+SQL_SHIPS = SQL_PLAYER[SQL_PLAYER.index("/* The stored rows of one ship"):
+                       SQL_PLAYER.index("/* The statement that deletes `owner_name`'s ship")]
+
 FUNCTIONS = "\n\n".join(
     [
         extract_function("ship_utils.c", signature)
@@ -64,13 +69,7 @@ FUNCTIONS = "\n\n".join(
             "void retry_unplaced_ships(void)",
         )
     ]
-    + [
-        extract_function("sql_player.c", signature)
-        for signature in (
-            "P_ship sql_place_ship(const char *owner_name, bool *unplaced)",
-            "bool sql_load_all_ships()",
-        )
-    ]
+    + [SQL_SHIPS]
 )
 
 HARNESS = r'''
@@ -80,6 +79,9 @@ HARNESS = r'''
 #include "ships/ships.h"
 #include "sql/sql.h"
 #include "sql/sql_player.h"
+#include "sql/sql_work.h"
+
+#include <algorithm>
 
 #include <cassert>
 #include <cstdio>
@@ -161,32 +163,52 @@ void delete_ship(P_ship ship, bool keep_row)
 	delete ship;
 }
 
-// The `ships` table: owner names, then one ship per row as sql_load_ship()
-// builds it, with the flags it was saved with.
+// The `ships` table: owner names and ids, then one ships row per owner, with the
+// flags it was saved with.
 static int handle = 0, result_handle = 0;
 MYSQL *DB = reinterpret_cast<MYSQL *>(&handle);
-static std::vector<std::string> owners;
-static std::vector<char *> rows;
+static std::vector<std::string> owners, ids;
+static std::vector<std::vector<char *>> rows;
 static size_t next_row = 0;
+static int ship_next_db_id = -1;
 
 MYSQL_RES *db_query_at(struct persistence_query_site, const char *, ...)
 {
 	next_row = 0;
 	return reinterpret_cast<MYSQL_RES *>(&result_handle);
 }
-MYSQL_ROW mysql_fetch_row(MYSQL_RES *) { return next_row < rows.size() ? &rows[next_row++] : nullptr; }
+MYSQL_ROW mysql_fetch_row(MYSQL_RES *)
+{
+	return next_row < rows.size() ? rows[next_row++].data() : nullptr;
+}
 void mysql_free_result(MYSQL_RES *) {}
+std::string escape_str(const char *text) { return text; }
+char *str_dup(const char *text) { return strdup(text); }
+unsigned long long ship_save_signature(const P_ship) { return 0; }
 
-P_ship sql_load_ship(const char *owner)
+unsigned int sql_select(MYSQL *, const std::string &query, sql_rows *result)
+{
+	static const std::string by_owner = "from ships where owner_name='";
+	const size_t owner = query.find(by_owner);
+	if (owner == std::string::npos)
+		return 0; // no armour, crew or slot rows
+	const size_t start = owner + by_owner.size();
+	const std::string name = query.substr(start, query.size() - start - 1);
+	sql_row row;
+	for (const char *field : { "1", "", "", "0", "43220", "0", "0", "0", "0", "" })
+		row.fields.emplace_back(field);
+	row.fields[2] = std::to_string(strncmp(name.c_str(), "Sloop", 5) ? SH_FRIGATE : SH_SLOOP);
+	row.fields[9] = std::to_string(LOADED | DOCKED); // every saved ship was loaded when saved
+	result->push_back(row);
+	return 0;
+}
+
+P_ship new_ship(int m_class, bool)
 {
 	P_ship ship = new ShipData{};
 	ship->shipobj = new obj_data{};
 	ship->panel = new obj_data{};
-	ship->db_id = 1 + static_cast<int>(next_row);
-	ship->ownername = strdup(owner);
-	ship->m_class = strncmp(owner, "Sloop", 5) ? SH_FRIGATE : SH_SLOOP;
-	ship->anchor = ANCHOR_VNUM;
-	ship->flags = LOADED | DOCKED; // every saved ship was loaded when saved
+	ship->m_class = m_class;
 	init_ship_layout(ship);
 	set_ship_layout(ship, ship->m_class);
 	shipObjHash.add(ship);
@@ -195,13 +217,6 @@ P_ship sql_load_ship(const char *owner)
 
 ''' + FUNCTIONS + r'''
 
-int sql_ship_stored(const char *owner)
-{
-	for (auto &stored : owners)
-		if (!strcasecmp(stored.c_str(), owner))
-			return 1;
-	return 0;
-}
 P_ship get_ship_from_owner(char *owner)
 {
 	ShipVisitor svs;
@@ -232,8 +247,10 @@ int main()
 		owners.push_back("Frigate" + std::to_string(i));
 	for (int i = 0; i < SLOOPS; i++)
 		owners.push_back("Sloop" + std::to_string(i));
-	for (auto &owner : owners)
-		rows.push_back(owner.data());
+	for (size_t i = 0; i < owners.size(); i++)
+		ids.push_back(std::to_string(i + 1));
+	for (size_t i = 0; i < owners.size(); i++)
+		rows.push_back({ owners[i].data(), ids[i].data() });
 
 	assert(sql_load_all_ships());
 
@@ -271,7 +288,10 @@ int main()
 
 	// A frigate that cannot be placed gives back what it claimed, and keeps
 	// its room graph for a later try.
-	P_ship late = sql_load_ship("Frigate-late");
+	P_ship late = new_ship(SH_FRIGATE, false);
+	late->ownername = strdup("Frigate-late");
+	late->anchor = ANCHOR_VNUM;
+	late->flags = LOADED | DOCKED;
 	shipObjHash.erase(late);
 	assert(!set_ship_physical_layout(late));
 	assert(rooms_in_use() == pool && late->room_count == 9);

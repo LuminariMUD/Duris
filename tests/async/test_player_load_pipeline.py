@@ -2,6 +2,7 @@
 """Runtime and source contracts for the bounded consistent player-load pipeline."""
 
 from _paths import SRC, rel
+from contract_text import contains
 import subprocess
 import tempfile
 import shlex
@@ -297,6 +298,14 @@ assert "player_load_pipeline_execute_sync" not in ACCOUNT
 assert "player_load_pipeline_wait" not in ACCOUNT
 assert "PLAYER_LOAD_MODE_ACCOUNT_DELETE" in ACCOUNT
 assert "player_load_pipeline_set_hold(player_save_pipeline_load_held)" in COMM
+# An offline load names the character by pid when it exists, so the worker holds it behind
+# the character's queued saves like a login, and a copy saved back is never older.
+OFFLINE = (SRC / "player_load_offline.c").read_text()
+assert "const int pid = sql_get_player_pid(name);" in OFFLINE
+assert "request.pid = pid;" in OFFLINE and "request.player_name = name;" in OFFLINE
+validity = REPOSITORY[REPOSITORY.index("bool player_load_request_valid(") :]
+assert contains(validity, "request.pid > 0 && request.account_name.size() <= PLAYER_LOAD_ACCOUNT_MAX")
+assert contains(REPOSITORY, "(!request.account_name.empty() && strcasecmp(result->account_name.c_str()")
 assert "player_death_restitution_runtime_login_admit" not in ACCOUNT
 assert "STATE(d) = CON_PLAYER_LOAD" in ACCOUNT
 assert "player_load_materialize(player, loaded)" in ACCOUNT

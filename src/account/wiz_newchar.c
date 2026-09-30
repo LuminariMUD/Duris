@@ -16,6 +16,7 @@
 #include "core/mm.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "sql/sql_player.h"
 
 extern int class_table[LAST_RACE + 1][CLASS_COUNT + 1];
@@ -33,7 +34,6 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 	extern int writeCharacter(P_char ch, int type, int room);
 	extern void clear_char(P_char ch);
 	extern void init_char(P_char ch);
-	extern char *mysql_str(const char *str, char *buf);
 
 	char arg1[MAX_INPUT_LENGTH], arg2[MAX_INPUT_LENGTH];
 	char arg3[MAX_INPUT_LENGTH], arg4[MAX_INPUT_LENGTH], arg5[MAX_INPUT_LENGTH];
@@ -280,14 +280,12 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 		newch->base_stats[stat_index] = 100;
 	newch->curr_stats = newch->base_stats;
 
-	// init_char does pid assignment, skill setup, hp/mana/vitality etc
+	// init_char does pid assignment (the name is taken from then on), skill setup,
+	// hp/mana/vitality etc
 	init_char(newch);
 
 	// override level after init_char (it may reset to 1)
 	newch->player.level = level;
-
-	// override pid to 0 to force db insert
-	newch->only.pc->pid = 0;
 
 	// set default player flags and prompt (init_char doesn't do this)
 	newch->specials.act = (PLR_PETITION | PLR_ECHO | PLR_SNOTIFY | PLR_PAGING_ON | PLR_MAP);
@@ -344,41 +342,29 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 		}
 	}
 
-	// save character to db - this assigns auto-increment pid
-	if (!writeCharacter(newch, RENT_QUIT, NOWHERE))
+	// The first save is queued like any other: the writer inserts the player row.
+	if (GET_PID(newch) <= 0 || !writeCharacter(newch, RENT_QUIT, NOWHERE))
 	{
 		send_to_char("failed to save character to database.\r\n", ch);
+		sql_player_names_forget(GET_PID(newch));
 		free_char(newch);
 		return;
 	}
 
-	// now we have a valid pid from db auto-increment
-	if (GET_PID(newch) <= 0)
+	// link to account, queued on the writer behind the character's first save
 	{
-		send_to_char("failed to save character to database.\r\n", ch);
-		free_char(newch);
-		return;
-	}
-
-	// link to account via direct sql
-	{
-		char account_sql[MAX_STRING_LENGTH * 2 + 1];
-		char name_sql[MAX_STRING_LENGTH * 2 + 1];
-
-		mysql_str(ch->desc->account->acct_name, account_sql);
-		mysql_str(newch->player.name, name_sql);
-
-		if (!db_query(
+		if (!sql_queue(
 			    "INSERT INTO account_characters "
 			    "(account_name, pid, char_name, created_at, deleted_at) "
-			    "VALUES('%s', %ld, '%s', NOW(), NULL) "
+			    "VALUES('%s', %d, '%s', NOW(), NULL) "
 			    "ON DUPLICATE KEY UPDATE char_name = VALUES(char_name), deleted_at = NULL",
-			    account_sql, GET_PID(newch), name_sql))
+			    escape_str(ch->desc->account->acct_name).c_str(), GET_PID(newch),
+			    escape_str(newch->player.name).c_str()))
 		{
 			send_to_char("failed to link character to account.\r\n", ch);
 			logit(LOG_DEBUG, "wiz_newchar: failed to link %s to account %s",
 			      newch->player.name, ch->desc->account->acct_name);
-			deleteCharacter(newch, FALSE);
+			delete_character(newch, false);
 			free_char(newch);
 			return;
 		}
@@ -389,11 +375,17 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 		struct acct_chars *c;
 		CREATE(c, struct acct_chars, 1, MEM_TAG_OTHER);
 		memset(c, 0, sizeof(struct acct_chars));
+		c->pid = GET_PID(newch);
 		c->charname = str_dup(newch->player.name);
 		c->count = 1;
 		c->last = time(NULL);
 		c->racewar = account_admission_racewar(GET_RACEWAR(newch), false);
 		c->player_racewar = GET_RACEWAR(newch);
+		c->level = GET_LEVEL(newch);
+		c->race = GET_RACE(newch);
+		c->m_class = newch->player.m_class;
+		c->secondary_class = newch->player.secondary_class;
+		c->spec = newch->player.spec;
 		c->next = ch->desc->account->acct_character_list;
 		ch->desc->account->acct_character_list = c;
 		ch->desc->account->num_chars++;

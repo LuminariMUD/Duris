@@ -77,7 +77,7 @@ for token in (
     "flatfile_player_identity_pid(ship->ownername, &owner_pid, error)",
     "CAP(ship->ownername);",
     "const auto result = root ? flatfile_ship_remove(",
-    'panic_corruption("shutdown_ships", "flat write_ship failed")',
+    'panic_corruption("shutdown_ships", "write_ship failed")',
     'fatal_boot_error("ship_base", "flat ship authority could not be loaded")',
     'flatfile_ship_upsert(root ? root : "", &record, &error)',
     "flatfile_ship_list(root, &records, &error)",
@@ -101,12 +101,9 @@ for database_call in (
         raise SystemExit(f"client-free ship runtime retained database call: {database_call}")
 
 files_source = (SRC / "files.c").read_text()
-delete_start = files_source.index("character_delete_result delete_character_result(")
-flat_start = files_source.index(
-    "if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)", delete_start
-)
 flat_delete = files_source[
-    flat_start : files_source.index("void PurgeCorpseFile", flat_start)
+    files_source.index("character_delete_result forget_deleted_character(") :
+    files_source.index("void PurgeCorpseFile")
 ]
-if "delete_ship_runtime(GET_NAME(ch));" not in flat_delete:
+if "delete_ship_runtime(deleted.name.c_str());" not in flat_delete:
     raise SystemExit("flat character deletion does not remove the committed live ship")

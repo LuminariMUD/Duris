@@ -8,7 +8,7 @@ NAME="duris-collector-owner-$$-$RANDOM"
 PASSWORD="collector-owner-$$-$RANDOM"
 IMAGE="${COLLECTOR_OWNER_DB_IMAGE:-mariadb:10.11}"
 BIND_ADDRESS="${COLLECTOR_OWNER_BIND_ADDRESS:-127.0.0.1}"
-cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
+cleanup() { docker rm -fv "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT HUP INT TERM
 if [[ "$IMAGE" == mariadb:* ]]; then
     PASSWORD_ENV=MARIADB_ROOT_PASSWORD

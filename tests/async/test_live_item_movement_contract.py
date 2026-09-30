@@ -9,11 +9,15 @@ ROOT = Path(__file__).resolve().parents[2]
 class LiveItemMovementContractTests(unittest.TestCase):
     def test_runtime_hydrates_authoritative_rows_not_relative_events(self):
         sql = (SRC / "sql.c").read_text()
-        owner_check = sql[sql.rindex("bool sql_persistence_item_owner_matches_identity"):]
+        owner_check = sql[sql.index("static bool sql_persistence_owner_row_matches"):]
         owner_check = owner_check[:owner_check.index("bool sql_hydrate_item_owner_revisions")]
-        self.assertIn("FROM item_current_owner", owner_check)
-        self.assertIn("item_owner_revision", owner_check)
-        self.assertNotIn("persistence_item_events", owner_check)
+        header = (SRC / "sql.h").read_text()
+        select = header[header.index("#define SQL_ITEM_OWNER_COLUMNS"):]
+        select = select[:select.index("bool sql_persistence_item_owner_fields_match")]
+        self.assertIn("SQL_ITEM_OWNER_SELECT", owner_check)
+        self.assertIn("FROM item_current_owner", select)
+        self.assertIn("item_owner_revision", select)
+        self.assertNotIn("persistence_item_events", owner_check + select)
         self.assertIn("item_ownership_runtime_hydrate", owner_check)
 
     def test_pending_adapter_retains_scalars_and_publishes_after_commit(self):

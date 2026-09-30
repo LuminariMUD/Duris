@@ -80,10 +80,11 @@ assert contains(source, "divineclaim list [account]")
 assert contains(source, "divineclaim remove <claim-id>")
 assert contains(source, "The source item remains in your inventory")
 assert contains(source, "Each character on that account may summon one copy")
-assert contains(source, "canonical_account(first,&first_account) && (!*second || parse_positive(second,&legacy_vnum))")
+assert contains(source, "if (!*second || parse_positive(second, &legacy_vnum))")
+assert contains(source, "with_account(ch, first,")
 assert contains(source, "human_duration(grant.expires_seconds, true)")
 
-# Cooldown is persisted per claim/PID, not kept in process memory.
+# Cooldown is persisted per claim/PID, and memory keeps it between boots.
 assert contains(source, "last_summoned_at")
 assert contains(source, "account_bound_reward_summons")
 assert contains(source, "GET_PID(ch)")

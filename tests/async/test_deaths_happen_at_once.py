@@ -47,12 +47,11 @@ assert "death_retry" not in (SRC / "structs.h").read_text()
 assert corpse.index("writeCorpse(corpse);") > corpse.index("corpse->contains = ch->carrying;")
 FILES = (SRC / "files.c").read_text()
 write = body(FILES, "void writeCorpse(P_obj corpse)")
-assert write.index("queue_corpse_save(corpse, false)") < write.index("sql_save_corpse(corpse)")
+assert "queue_corpse_save(corpse, !present)" in write and "sql_" not in write
 print("[PASS] die() saves the corpse, then the player, and extracts at once")
 
-SQL_PLAYER = (SRC / "sql_player.c").read_text()
-save = body(SQL_PLAYER, "bool sql_save_corpse(P_obj corpse)\n{", True)
-assert "item_owner_type::corpse" in save and "claim_items(DB, owner, held, &claim)" in save
-assert save.index("claim_items(") < save.index("sql_save_corpse_item(") < save.index("sql_commit()")
+REPOSITORY = (SRC / "player_snapshot_repository.c").read_text()
+save = REPOSITORY[REPOSITORY.index('sql << "INSERT INTO corpses (player_name'):]
+assert save.index("mysql_insert_id(connection)") < save.index("claim_graph(connection, corpse.owner")
 print("[PASS] the corpse save claims what the corpse holds")
 print("deaths happen at once contracts passed")

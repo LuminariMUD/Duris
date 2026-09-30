@@ -1,78 +1,72 @@
 # Character deletion outcomes
 
-The account-menu confirmation calls `delete_character_result()`. The legacy
-`deleteCharacter()` API remains available and returns true only for `deleted`.
-Neither API consumes the loaded character.
+`delete_character()` (`src/core/files.c`) deletes a character's stored state and then lets
+memory forget it. It never consumes the character, and it reports the outcome to its
+callback on the game thread: at once on flat-file, on a later pulse on MariaDB, where the
+deletion is one writer job. The character may leave the game before the callback runs
+(hardcore death, `terminate`), so what memory must forget is captured when the deletion
+starts.
 
-- `deleted`: the selected backend confirmed the deletion. Only then are the
-  successful-deletion audit events and success message emitted.
-- `refused`: validation or backend cleanup failed. SQL cleanup is rolled back
-  before this result is returned; the character and account mapping remain
-  available for a fresh load and retry. Flat-file failures retain the existing
-  authority coordinator's journal/recovery contract. The message does not claim
-  that every byte of state is unchanged.
-- `reconciliation_required`: SQL rollback failed, or COMMIT was not acknowledged.
-  COMMIT can have reached the server even if its reply was lost. This is not
-  success, and a subsequent successful ROLLBACK is not proof that COMMIT failed.
-  The menu reports that cleanup may have completed, refreshes the account, and
-  asks the player to contact an immortal before retrying. Protected server logs
-  contain the stable PID for operator reconciliation.
+- `deleted`: the backend confirmed the deletion. Only then are the successful-deletion
+  audit events and success message emitted.
+- `refused`: validation or backend cleanup failed. On MariaDB the job's transaction rolls
+  back (a commit whose outcome is unknown is reported by the writer, not retried); the
+  character, its account mapping and everything memory holds of it remain, so a fresh load
+  and a retry work. Flat-file failures retain the authority coordinator's journal and
+  recovery contract.
+- `reconciliation_required`: the deletion committed but the zone-story state could not be
+  cleared. The menu asks the player to contact an immortal before retrying.
 
 ## Transaction and runtime boundaries
 
-SQL soft deletion, artifact release, visitor locker access removal, the guild
-projection without this member, personal locker deletion (when requested), ship
-row deletion, and player-row deletion share one owned transaction. An existing
-transaction is refused instead of committing another caller's work. The guild's
-live member links and frag counters are restored immediately after staging its
-SQL projection. A later cleanup failure therefore cannot repeat a guild penalty
-or strand a committed soft-delete mapping ahead of a still-live player row.
+On MariaDB the job runs, in one transaction on the writer's connection and behind every
+save queued before it: the account-character and frag-leaderboard tombstones, visitor
+locker access removal, artifact release (repeated in `artifact_domain_state`), the guild
+saved without this member, personal locker deletion (when requested), ship row deletion
+and player-row deletion. The guild's statements are built while its live member links and
+frag counters are staged without the member, then restored at once.
 
-After commit, runtime guild membership, account-list membership, ship state, and
-the player revision cache are released. This path does not call `Guild::kick()`:
-that routine changes departure penalties and writes the character. Account-list
-removal also skips the ordinary account save, because membership was already
-committed by the deletion backend.
+After the commit, memory lets go of the character (`forget_deleted_character()`): its
+revision state, name-index entry and artifacts, its guild membership (without
+`Guild::kick()`, which changes departure penalties and writes the character; the guild is
+saved again, so its save lands after any queued while the job ran, which still held the
+member), its entry
+in every live session's account list (names are unique, so only its account lists it),
+its ship and stored ship rows, and its zone-story state. The account list removal skips
+the account save: the deletion's tombstone already records it.
 
-The flat-file coordinator retains its existing atomic authority operation. Its
-successful result uses the same runtime-only publication path, avoiding a second
-ship deletion or account write after the authority transaction has completed.
+The account menu waits for the reply with its input held (`wait_for_writer()`); a
+connection closed meanwhile drops the reply, and the deletion still completes. The
+websocket deletions load the character through the player load pipeline and delete it
+the same way. All three refuse, before anything is queued, a character that is in the game
+(linkdead included) or being loaded to enter it: it would play on with nothing saved.
+Hardcore death and `terminate` delete the character they extract themselves.
 
-Confirmation loads exclude items and pets. Success, failure, cancellation, and
-replacement selection all detach both descriptor/character references and free
-the temporary metadata character. The negotiated terminal type is preserved.
-The account is refreshed after a deletion attempt; refresh failure is separately
-reported without changing the deletion outcome.
+The flat-file coordinator retains its atomic authority operation, then the same memory
+release.
+
+Confirmation loads exclude items and pets. Success, failure, cancellation and replacement
+selection all detach both descriptor/character references and free the temporary
+character. The negotiated terminal type is preserved.
 
 ## Verification
 
-`python3 tests/async/test_account_character_delete_runtime.py` compiles and
-executes the production menu, deletion coordinator, account-list removal, and
-guild staging/publication bodies with injected backend failures under ASan and
-UBSan. It covers soft-delete refusal, each later SQL cleanup stage, flat-file
-failure and success, retry, repeated confirmation, cancellation, replacement
-selection, uncertain commits, rollback failure, and refresh failure. It checks
-messages, audit ordering, references, list membership, revision eviction timing,
-and one-time guild/ship publication. Persistence adapters are test doubles;
-these are runtime control-flow tests, not a live database or Telnet journey.
+`python3 tests/async/test_account_character_delete_runtime.py` compiles the production
+menu, `delete_character()`, the memory release, account-list removal and the guild
+staging against test doubles under ASan and UBSan, once per backend. On MariaDB it holds
+the queued job, fails it at each of its statements (nothing is forgotten, the session is
+told and released), retries successfully, and closes a session before the reply. It also
+covers flat-file failure and success, the refusal of a character in the game or loading,
+repeated confirmation, cancellation, replacement selection and list removal at either end.
 
-The existing flat-file character-deletion harness separately exercises the real
-journal and repository coordinator.
+`tests/async/run_mysql_deletion_journey.py` (in `make test-db`) deletes a real character
+on a disposable MariaDB: triggers refuse the tombstone and the player-row deletion (the
+mapping and inventory stay, the character reconnects and plays), a linkdead character is
+refused, the retry deletes it once, a restart does not bring it back, and the next
+character created does not get its pid.
 
-`python3 tests/async/test_soft_delete_statement_runtime.py` executes the production
-SQL soft-delete body under ASan/UBSan. It checks successful non-result statements,
-zero-row retries, failure of either UPDATE, and owned versus enclosing transaction
-boundaries. Soft deletion uses `sql_trace_exec()`'s statement status: the absence
-of a result set from `db_query()` cannot distinguish a successful UPDATE from an
-error.
-
-The optional `--mariadb-fixture` mode uses an isolated disposable MariaDB server
-at `127.0.0.1:3306`, with passwordless root and database `pr204_fixture`. It creates
-connection-local temporary InnoDB tables, verifies both tombstones and untouched
-sibling rows, and checks rollback after a real SQL error. Never point this fixture
-at a shared server. This adapter regression does not cover the full server's
-account-menu/Telnet journey, player-row cascades, or historical cleanup; those
-remain separate integration/operator checks.
+The flat-file character-deletion harness separately exercises the real journal and
+repository coordinator.
 
 ## Protected operator follow-up for issue 200
 

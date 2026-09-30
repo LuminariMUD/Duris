@@ -7,6 +7,7 @@
 #include <limits>
 
 #ifndef __NO_MYSQL__
+#include "sql/sql_async.h"
 #include "sql/sql_player.h"
 
 #include <cstdlib>
@@ -28,6 +29,7 @@ sql_zone_story_quest_state_load(uint32_t expected_catalog_revision, std::string 
 		*error = "SQL state repository is unavailable in a flat-file build";
 	return sql_zone_story_quest_state_result::io_error;
 #else
+	// Boot only (zone_story_quest_runtime::bootstrap()).
 	MYSQL_RES *result = db_query("SELECT state_version,catalog_revision,state_blob "
 				     "FROM zone_story_quest_state WHERE state_id=1 LIMIT 1");
 	if (!result)
@@ -99,17 +101,18 @@ sql_zone_story_quest_state_result sql_zone_story_quest_state_save(uint32_t catal
 			*error = "zone-story SQL state could not be escaped";
 		return sql_zone_story_quest_state_result::io_error;
 	}
-	const bool saved = qry(
+	// Queued on the writer, in capture order with the saves; the writer logs a failure.
+	const bool queued = sql_queue(
 		"INSERT INTO zone_story_quest_state (state_id,state_version,catalog_revision,state_blob,updated_at) "
 		"VALUES (1,1,%u,'%s',UTC_TIMESTAMP(6)) "
 		"ON DUPLICATE KEY UPDATE state_version=VALUES(state_version), "
 		"catalog_revision=VALUES(catalog_revision),state_blob=VALUES(state_blob),updated_at=VALUES(updated_at)",
 		catalog_revision, escaped);
 	free(escaped);
-	if (!saved)
+	if (!queued)
 	{
 		if (error)
-			*error = "zone-story SQL state write failed";
+			*error = "zone-story SQL state write could not be queued";
 		return sql_zone_story_quest_state_result::io_error;
 	}
 	return sql_zone_story_quest_state_result::ok;

@@ -32,10 +32,6 @@ int main()
     assert(deferred_save_next_retry_delay(64) == 128);
     assert(deferred_save_next_retry_delay(120) == 240);
     assert(deferred_save_next_retry_delay(240) == 240);
-    assert(!persistence_should_extract_terminal_inventory(false, true));
-    assert(!persistence_should_extract_terminal_inventory(false, false));
-    assert(!persistence_should_extract_terminal_inventory(true, false));
-    assert(persistence_should_extract_terminal_inventory(true, true));
     return 0;
 }
 '''

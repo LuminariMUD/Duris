@@ -49,6 +49,7 @@
 #include "magic/spells.h"
 #include "sql/item_extra_descr_codec.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "sql/sql_player.h"
 #include "item/storage_lockers.h"
 #include "item/trophy.h"
@@ -1342,39 +1343,16 @@ void writeCorpse(P_obj corpse)
 		logit(LOG_DEBUG, "item wasn't a corpse in writeCorpse!");
 		return;
 	}
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		const bool present = OBJ_ROOM(corpse) ||
-				     (OBJ_CARRIED(corpse) && corpse->loc.carrying != NULL);
-		if (present && corpse->value[CORPSE_SAVEID] == 0)
-			corpse->value[CORPSE_SAVEID] = time(NULL);
-		if ((!present && !corpse->value[CORPSE_SAVEID]) ||
-		    queue_corpse_save(corpse, !present))
-			return;
-		persistence_alert(AVATAR, "corpse", "flatfile_save", "none", "none", "queue_failed",
-				  "save_id=%d", corpse->value[CORPSE_SAVEID]);
-		return;
-	}
-
-	// corpse not on ground = delete
-	if (!OBJ_ROOM(corpse) && !(OBJ_CARRIED(corpse) && corpse->loc.carrying != NULL))
-	{
-		if (corpse->action_description && corpse->value[CORPSE_SAVEID] &&
-		    !queue_corpse_save(corpse, true))
-			sql_delete_corpse(corpse->action_description, corpse->value[CORPSE_SAVEID]);
-		return;
-	}
-
-	if (corpse->value[CORPSE_SAVEID] == 0)
+	// The one writer saves the corpse, or deletes it once it is neither on the ground nor
+	// carried.
+	const bool present = OBJ_ROOM(corpse) ||
+			     (OBJ_CARRIED(corpse) && corpse->loc.carrying != NULL);
+	if (present && corpse->value[CORPSE_SAVEID] == 0)
 		corpse->value[CORPSE_SAVEID] = time(NULL);
-
-	if (queue_corpse_save(corpse, false))
+	if ((!present && !corpse->value[CORPSE_SAVEID]) || queue_corpse_save(corpse, !present))
 		return;
-	if (!sql_save_corpse(corpse))
-	{
-		persistence_alert(AVATAR, "corpse", corpse->action_description, "none", "none",
-				  "sql_save_failed", "save_id=%d", corpse->value[CORPSE_SAVEID]);
-	}
+	persistence_alert(AVATAR, "corpse", present ? "save" : "remove", "none", "none",
+			  "queue_failed", "save_id=%d", corpse->value[CORPSE_SAVEID]);
 }
 
 void persistence_refresh_restored_corpse(P_obj corpse, const char *source)
@@ -1446,151 +1424,6 @@ int writeItems(char *buf, P_char ch)
 	return (int)(ibuf - start);
 }
 
-static int persistence_write_character_flat_fallback(P_char ch, int type, int room)
-{
-	FILE *f;
-	char *buf, *skill_off, *affect_off, *item_off, *size_off, *witness_off, *tmp;
-	char Gbuf1[MAX_STRING_LENGTH], Gbuf2[MAX_STRING_LENGTH], dir[MAX_STRING_LENGTH];
-	int bak;
-	static char fallback_buff[SAV_MAXSIZE * 2];
-	struct stat statbuf;
-
-	if (!ch || !GET_NAME(ch))
-		return 0;
-
-	buf = fallback_buff;
-	ADD_BYTE(buf, (char)SAV_SAVEVERS);
-	ADD_BYTE(buf, (char)(short_size));
-	ADD_BYTE(buf, (char)(int_size));
-	ADD_BYTE(buf, (char)(long_size));
-	ADD_BYTE(buf, (char)type);
-
-	skill_off = buf;
-	ADD_INT(buf, (int)0);
-	witness_off = buf;
-	ADD_INT(buf, (int)0);
-	affect_off = buf;
-	ADD_INT(buf, (int)0);
-	item_off = buf;
-	ADD_INT(buf, (int)0);
-	size_off = buf;
-	ADD_INT(buf, (int)0);
-	ADD_INT(buf, (ch->specials.act3));
-	ADD_INT(buf, room);
-	ADD_LONG(buf, time(0));
-
-	buf += writeStatus(buf, ch,
-			   ((type != RENT_POOFARTI) && (type != RENT_SWAPARTI) &&
-			    (type != RENT_FIGHTARTI)) ?
-				   TRUE :
-				   FALSE);
-	ADD_INT(skill_off, (int)(buf - fallback_buff));
-	buf += writeSkills(buf, ch, MAX_SKILLS);
-#if 1
-	// remove on wipe
-	ADD_INT(witness_off, (int)(buf - fallback_buff));
-	ADD_BYTE(buf, (char)SAV_WTNSVERS);
-	ADD_INT(buf, 0);
-	buf += 1 + sizeof(int);
-#endif
-	ADD_INT(affect_off, (int)(buf - fallback_buff));
-	updateShortAffects(ch);
-	buf += writeAffects(buf, ch->affected);
-	ADD_INT(item_off, (int)(buf - fallback_buff));
-	buf += writeItems(buf, ch);
-	ADD_INT(size_off, (int)(buf - fallback_buff));
-
-	if ((int)(buf - fallback_buff) > SAV_MAXSIZE)
-	{
-		persistence_alert(AVATAR, "player_flat_fallback", "redacted", "none", "none",
-				  "fallback_too_large", "type=%d size=%d max=%d", type,
-				  (int)(buf - fallback_buff), SAV_MAXSIZE);
-		return 0;
-	}
-
-	snprintf(dir, sizeof(dir), "%s/%c", SAVE_DIR, LOWER(*ch->player.name));
-	mkdir(dir, 0775);
-	checked_snprintf(Gbuf1, sizeof(Gbuf1), "%s/", dir);
-	tmp = Gbuf1 + strlen(Gbuf1);
-	strncat(Gbuf1, GET_NAME(ch), sizeof(Gbuf1) - strlen(Gbuf1) - 1);
-	for (; *tmp; tmp++)
-		*tmp = LOWER(*tmp);
-	checked_snprintf(Gbuf2, sizeof(Gbuf2), "%s.bak", Gbuf1);
-
-	if (stat(Gbuf1, &statbuf) == 0)
-	{
-		if (rename(Gbuf1, Gbuf2) == -1)
-		{
-			persistence_alert(AVATAR, "player_flat_fallback", "redacted", "none",
-					  "none", "backup_failed", "errno=%d", errno);
-			return 0;
-		}
-		bak = 1;
-	}
-	else
-	{
-		if (errno != ENOENT)
-		{
-			persistence_alert(AVATAR, "player_flat_fallback", "redacted", "none",
-					  "none", "stat_failed", "errno=%d", errno);
-			return 0;
-		}
-		bak = 0;
-	}
-
-	f = fopen(Gbuf1, "wb");
-	if (!f)
-	{
-		persistence_alert(AVATAR, "player_flat_fallback", "redacted", "none", "none",
-				  "open_failed", "errno=%d", errno);
-		bak -= 2;
-	}
-	else
-	{
-		if (fwrite(fallback_buff, 1, (unsigned)(buf - fallback_buff), f) !=
-		    (size_t)(buf - fallback_buff))
-		{
-			persistence_alert(AVATAR, "player_flat_fallback", "redacted", "none",
-					  "none", "write_failed", "errno=%d", errno);
-			fclose(f);
-			bak -= 2;
-		}
-		else if (fclose(f))
-		{
-			persistence_alert(AVATAR, "player_flat_fallback", "redacted", "none",
-					  "none", "close_failed", "errno=%d", errno);
-			bak -= 2;
-		}
-	}
-
-	switch (bak)
-	{
-	case 1:
-		if (unlink(Gbuf2) == -1)
-			logit(LOG_FILE,
-			      "Could not delete backup pfile after fallback save errno=%d", errno);
-		[[fallthrough]];
-	case 0:
-		persistence_report(persistence_severity::ok, AVATAR, "player_flat_fallback",
-				   "redacted", "none", "none", "fallback_saved", "type=%d size=%d",
-				   type, (int)(buf - fallback_buff));
-		return 1;
-
-	case -1:
-		if (rename(Gbuf2, Gbuf1) == -1)
-		{
-			persistence_alert(AVATAR, "player_flat_fallback", "redacted", "none",
-					  "none", "restore_failed", "errno=%d", errno);
-		}
-		return 0;
-
-	case -2:
-		return 0;
-	}
-
-	return 0;
-}
-
 void delete_knownShapes(P_char ch)
 {
 	struct char_shapechange_data *curShape = ch->only.pc->knownShapes;
@@ -1602,15 +1435,6 @@ void delete_knownShapes(P_char ch)
 		FREE(pShape);
 	}
 	ch->only.pc->knownShapes = NULL;
-}
-
-void writeShapechangeData(P_char ch)
-{
-	if (IS_PC(ch) && has_innate(ch, INNATE_SHAPECHANGE))
-	{
-		if (!sql_save_player_shapechanges(ch))
-			logit(LOG_FILE, "writeShapechangeData: shapechange save failed");
-	}
 }
 
 void readShapechangeData(P_char ch)
@@ -1696,10 +1520,6 @@ void locker_post_save_hook(P_char ch)
 
 int writeCharacter(P_char ch, int type, int room)
 {
-	P_obj obj, obj2;
-	int i;
-	int result = 1;
-
 	if (!ch || !GET_NAME(ch))
 		return 0;
 
@@ -1714,10 +1534,6 @@ int writeCharacter(P_char ch, int type, int room)
 		return 0;
 
 	const bool is_locker_char = (strstr(GET_NAME(ch), ".locker") != NULL);
-	const bool terminal_type = (type == RENT_INN || type == RENT_LINKDEAD ||
-				    type == RENT_CAMPED || type == RENT_DEATH ||
-				    type == RENT_POOFARTI || type == RENT_SWAPARTI ||
-				    type == RENT_FIGHTARTI);
 	if (!is_locker_char && GET_PID(ch) > 0 && !player_save_pipeline_save_admitted(GET_PID(ch)))
 		return 0;
 	const bool corpse_raise_save_pending = corpse_raise_player_save_fenced(ch);
@@ -1737,9 +1553,16 @@ int writeCharacter(P_char ch, int type, int room)
 	    (world[ch->in_room].funct))
 		room = (*world[ch->in_room].funct)(ch->in_room, ch, (-80), NULL);
 
-	if (!is_locker_char && GET_PID(ch) > 0 && !sql_in_transaction() &&
-	    !IS_SET(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE) &&
-	    player_save_pipeline_is_nonterminal_type(type))
+#ifdef __NO_MYSQL__
+	const bool terminal_type = !player_save_pipeline_is_nonterminal_type(type);
+	const bool queued_save = !terminal_type;
+#else
+	// On MariaDB a terminal save is queued like any other; the caller disposes of the
+	// character (persistence_save_character_terminal() does the same).
+	const bool queued_save = true;
+#endif
+	if (!is_locker_char && GET_PID(ch) > 0 &&
+	    !IS_SET(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE) && queued_save)
 	{
 		room = calculate_save_room(ch, type, room);
 		const player_save_pipeline_result queued = player_save_pipeline_request(
@@ -1753,6 +1576,8 @@ int writeCharacter(P_char ch, int type, int room)
 	if (!is_locker_char &&
 	    (terminal_type || IS_SET(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE)))
 	{
+		P_obj obj, obj2;
+		int i;
 		const bool establishing_baseline =
 			IS_SET(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE);
 		room = calculate_save_room(ch, type, room);
@@ -1883,212 +1708,134 @@ int writeCharacter(P_char ch, int type, int room)
 	}
 #endif
 
-	if (!is_locker_char)
-	{
-		if (!sql_save_player_shapechanges(ch))
-		{
-			logit(LOG_FILE, "sql_save_player_shapechanges failed");
-			result = 0;
-		}
-		room = calculate_save_room(ch, type, room);
-
-		// skip locker characters for sql operations
-		sql_update_money(ch);
-		if ((type != RENT_POOFARTI) && (type != RENT_SWAPARTI) && (type != RENT_FIGHTARTI))
-			sql_update_playtime(ch);
-		sql_update_epics(ch);
-	}
-	else
-	{
-		room = calculate_save_room(ch, type, room);
-	}
-
-	if (ch->desc)
-		ch->desc->rtype = type;
-
-	// unequip everything and remove affects before saving
-	for (i = 0; i < MAX_WEAR; i++)
-		if (ch->equipment[i])
-			save_equip[i] = unequip_char(ch, i, TRUE);
-		else
-			save_equip[i] = NULL;
-
-	all_affects(ch, FALSE);
-	updateShortAffects(ch);
-
-	// save to database
-	if (strstr(GET_NAME(ch), ".locker"))
-	{
-		// save locker to database
-		int owner_pid = 0;
-		int owner_assoc_id = 0;
-
-		if (strncmp(GET_NAME(ch), "guild.", 6) == 0)
-		{
-			// guild locker: guild.X.locker - extract guild id
-			owner_assoc_id = atoi(GET_NAME(ch) + 6);
-		}
-		else if (strncmp(GET_NAME(ch), "account.", 8) == 0)
-		{
-			// account locker - stored by name, no pid
-			owner_pid = 0;
-		}
-		else
-		{
-			// player locker: playername.locker - get player's pid
-			char pname[MAX_NAME_LENGTH + 1];
-			strlcpy(pname, GET_NAME(ch), sizeof pname);
-			char *dot = strstr(pname, ".locker");
-			if (dot)
-				*dot = '\0';
-			owner_pid = sql_get_player_pid(pname);
-		}
-
-		if (!sql_save_locker(ch, owner_pid, owner_assoc_id))
-		{
-			logit(LOG_FILE, "sql_save_locker failed");
-			wizlog(AVATAR, "&+RERROR&N sql_save_locker failed");
-			persistence_alert(AVATAR, "locker", "redacted", "none", "none",
-					  "sql_save_failed", NULL);
-			if (!persistence_write_character_flat_fallback(ch, type, room))
-			{
-				persistence_alert(AVATAR, "locker", "redacted", "none", "none",
-						  "flat_fallback_failed", NULL);
-			}
-			result = 0;
-		}
-	}
-	else
-	{
-		if (!sql_save_player(ch, type, room))
-		{
-			logit(LOG_FILE, "sql_save_player failed");
-			wizlog(AVATAR, "&+RERROR&N sql_save_player failed");
-			persistence_alert(AVATAR, "player", "redacted", "none", "none",
-					  "sql_save_failed", "type=%d", type);
-			persistence_alert(AVATAR, "player", "redacted", "none", "none",
-					  "flat_fallback_retired", "journal_required=1");
-			result = 0;
-		}
-	}
-
-	// Failed saves always restore the live recovery source. Terminal inventory may
-	// be extracted only after the database save has succeeded; a flat fallback is
-	// recovery evidence, not authorization to destroy live state.
-	if (!persistence_should_extract_terminal_inventory(result != 0, terminal_type))
-	{
-		for (i = 0; i < MAX_WEAR; i++)
-			if (save_equip[i])
-				equip_char(ch, save_equip[i], i, 9);
-		for (i = 0; i < MAX_WEAR; i++)
-			save_equip[i] = NULL;
-	}
-	else
-	{
-		for (i = 0; i < MAX_WEAR; i++)
-			if (save_equip[i])
-			{
-				extract_obj(save_equip[i]);
-				save_equip[i] = NULL;
-			}
-		for (obj = ch->carrying; obj; obj = obj2)
-		{
-			obj2 = obj->next_content;
-			extract_obj(obj);
-			obj = NULL;
-		}
-	}
-
-	// reapply affects
-	all_affects(ch, TRUE);
-
-	locker_post_save_hook(ch);
-
-	return result;
+	logit(LOG_DEBUG, "writeCharacter: nothing saves %s (locker or no pid)", GET_NAME(ch));
+	return 0;
 }
 
 #endif
 
-int deleteCharacter(P_char ch, bool bDeleteLocker)
-{
-	return delete_character_result(ch, bDeleteLocker) == character_delete_result::deleted;
-}
-
-character_delete_result delete_character_result(P_char ch, bool bDeleteLocker)
-{
-	if (!ch || !GET_NAME(ch) || GET_PID(ch) <= 0)
-		return character_delete_result::refused;
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		if (!bDeleteLocker)
-			return character_delete_result::refused;
-		std::string error;
-		const auto result = flatfile_character_delete(persistence_mode_flatfile_root(),
-							      GET_PID(ch), GET_NAME(ch), &error);
-		if (result != flatfile_character_delete_result::ok &&
-		    result != flatfile_character_delete_result::already_deleted)
-		{
-			logit(LOG_DEBUG, "deleteCharacter(): flat deletion failed for pid %d: %s",
-			      GET_PID(ch),
-			      error.empty() ? "unspecified authority failure" : error.c_str());
-			return character_delete_result::refused;
-		}
-	}
-	else
-	{
-		// Own the transaction: a later cleanup failure must leave the mapping and
-		// player loadable for retry. Never publish or kick/save the live character
-		// while this transaction can still roll back.
-		if (sql_in_transaction() || !sql_begin_transaction())
-			return character_delete_result::refused;
-		const bool prepared =
-			sql_soft_delete_character(GET_PID(ch)) && remove_all_artifacts_sql(ch) &&
-			remove_all_locker_access(ch) &&
-			(!GET_ASSOC(ch) || GET_ASSOC(ch)->save_without_member(ch)) &&
-			(!bDeleteLocker || sql_delete_locker(GET_PID(ch), 0)) &&
-			sql_delete_ship(GET_NAME(ch)) && sql_delete_player(GET_PID(ch), false);
-		if (!prepared)
-		{
-			const bool rolled_back = sql_rollback();
-			logit(LOG_DEBUG, "deleteCharacter(): cleanup failed pid=%d rollback=%s",
-			      GET_PID(ch), rolled_back ? "confirmed" : "uncertain");
-			return rolled_back ? character_delete_result::refused :
-					     character_delete_result::reconciliation_required;
-		}
-		if (!sql_commit())
-		{
-			// COMMIT may have reached the server even when its reply was lost.
-			sql_rollback();
-			logit(LOG_DEBUG, "deleteCharacter(): commit outcome uncertain pid=%d",
-			      GET_PID(ch));
-			return character_delete_result::reconciliation_required;
-		}
-	}
-
-	// Durable cleanup has completed. These operations only release runtime state.
-	player_revision_forget(GET_PID(ch));
-	if (GET_ASSOC(ch))
-		GET_ASSOC(ch)->forget_deleted_member(ch);
-#ifdef USE_ACCOUNT
-	if (ch->desc && ch->desc->account)
-		remove_char_from_list(ch->desc->account, ch->player.name, false);
-#endif
-	delete_ship_runtime(GET_NAME(ch));
 #ifndef _PFILE_
+namespace
+{
+// What a deleted character leaves in memory, captured when its deletion starts: the
+// character itself may leave the game before the deletion commits.
+struct deleted_character
+{
+	int pid;
+	std::string name;
+	int guild_id;
+	long frags;
+};
+
+// The deletion committed: memory lets go of the character.
+character_delete_result forget_deleted_character(const deleted_character &deleted)
+{
+	player_revision_forget(deleted.pid);
+	sql_player_names_forget(deleted.pid);
+	artifacts_forget_deleted_character(deleted.pid);
+	if (Guild *guild = deleted.guild_id ? get_guild_from_id(deleted.guild_id) : nullptr)
+		guild->forget_deleted_member(deleted.name.c_str(), deleted.frags);
+#ifdef USE_ACCOUNT
+	// Names are unique: only the live sessions of the character's account list it.
+	for (P_desc d = descriptor_list; d; d = d->next)
+		if (d->account)
+			remove_char_from_list(d->account, deleted.name.c_str(), false);
+#endif
+	delete_ship_runtime(deleted.name.c_str());
 	std::string zone_story_error;
-	if (!zone_story_quest_runtime::erase_character(static_cast<uint32_t>(GET_PID(ch)),
+	if (!zone_story_quest_runtime::erase_character(static_cast<uint32_t>(deleted.pid),
 						       &zone_story_error))
 	{
 		logit(LOG_DEBUG,
-		      "deleteCharacter(): zone-story state cleanup requires reconciliation pid=%d: %s",
-		      GET_PID(ch),
+		      "delete_character(): zone-story state cleanup requires reconciliation pid=%d: %s",
+		      deleted.pid,
 		      zone_story_error.empty() ? "unspecified persistence failure" :
 						 zone_story_error.c_str());
 		return character_delete_result::reconciliation_required;
 	}
-#endif
 	return character_delete_result::deleted;
 }
+} // namespace
+
+void delete_character(P_char ch, bool delete_locker,
+		      std::function<void(character_delete_result)> done)
+{
+	if (!done)
+		done = [](character_delete_result) {};
+	if (!ch || !GET_NAME(ch) || GET_PID(ch) <= 0)
+	{
+		done(character_delete_result::refused);
+		return;
+	}
+	const deleted_character deleted = {
+		GET_PID(ch), GET_NAME(ch),
+		GET_ASSOC(ch) ? static_cast<int>(GET_ASSOC(ch)->get_id()) : 0, GET_FRAGS(ch)
+	};
+#ifdef __NO_MYSQL__
+	if (!delete_locker)
+	{
+		done(character_delete_result::refused);
+		return;
+	}
+	std::string error;
+	const auto result = flatfile_character_delete(persistence_mode_flatfile_root(), deleted.pid,
+						      deleted.name, &error);
+	if (result != flatfile_character_delete_result::ok &&
+	    result != flatfile_character_delete_result::already_deleted)
+	{
+		logit(LOG_DEBUG, "delete_character(): flat deletion failed for pid %d: %s",
+		      deleted.pid, error.empty() ? "unspecified authority failure" : error.c_str());
+		done(character_delete_result::refused);
+		return;
+	}
+	done(forget_deleted_character(deleted));
+#else
+	// One writer job, so one transaction: a failure anywhere leaves the character's
+	// rows, mapping and memory as they were, and loadable for a retry.
+	std::vector<std::string> statements = {
+		sql_format("UPDATE account_characters SET deleted_at = NOW() WHERE pid = %d AND "
+			   "deleted_at IS NULL",
+			   deleted.pid),
+		sql_format("UPDATE frag_leaderboard SET deleted_at = NOW() WHERE pid = %d AND "
+			   "deleted_at IS NULL",
+			   deleted.pid),
+		remove_all_locker_access_statement(deleted.name.c_str()),
+	};
+	for (std::string &statement : remove_all_artifacts_sql(deleted.pid))
+		statements.push_back(std::move(statement));
+	if (GET_ASSOC(ch))
+		for (std::string &statement : GET_ASSOC(ch)->statements_without_member(ch))
+			statements.push_back(std::move(statement));
+	if (delete_locker)
+		statements.push_back(sql_delete_locker_statement(deleted.pid, 0));
+	statements.push_back(sql_delete_ship_statement(deleted.name.c_str()));
+	statements.push_back(sql_format("DELETE FROM player_data WHERE pid=%d", deleted.pid));
+	if (!sql_read_work(
+		    [statements](MYSQL *connection, sql_rows *) -> unsigned int
+		    {
+			    for (const std::string &statement : statements)
+				    if (const unsigned int error =
+						sql_execute(connection, statement))
+					    return error;
+			    return 0;
+		    },
+		    [deleted, done](bool ok, const sql_rows &)
+		    {
+			    if (!ok)
+			    {
+				    logit(LOG_DEBUG, "delete_character(): refused pid=%d",
+					  deleted.pid);
+				    done(character_delete_result::refused);
+				    return;
+			    }
+			    // The ship's stored rows and Redis key follow its deleted row.
+			    sql_delete_ship(deleted.name.c_str());
+			    done(forget_deleted_character(deleted));
+		    }))
+		done(character_delete_result::refused);
+#endif
+}
+#endif
 
 void PurgeCorpseFile(P_obj corpse)
 {
@@ -2124,16 +1871,12 @@ void PurgeCorpseFile(P_obj corpse)
 	unlink(Gbuf1);
 	unlink(Gbuf2);
 
-	if (corpse->action_description && corpse->value[CORPSE_SAVEID])
-	{
 #ifndef _PFILE_
-		if (queue_corpse_save(corpse, true))
-			return;
+	if (corpse->action_description && corpse->value[CORPSE_SAVEID] &&
+	    !queue_corpse_save(corpse, true))
+		persistence_alert(AVATAR, "corpse", "remove", "none", "none", "queue_failed",
+				  "save_id=%d", corpse->value[CORPSE_SAVEID]);
 #endif
-		sql_delete_corpse(corpse->action_description, corpse->value[CORPSE_SAVEID]);
-	}
-
-	return;
 }
 
 /*
@@ -3042,24 +2785,6 @@ int restoreCharOnly(P_char ch, char *name)
 	{
 		return -1;
 	}
-
-#ifndef __NO_MYSQL__
-	// try loading from sql first
-	int pid = sql_get_player_pid(name);
-	if (pid > 0)
-	{
-		if (sql_load_player_status(ch, pid))
-		{
-			sql_load_player_skills(ch);
-			sql_load_player_affects(ch);
-			//sql_load_player_items(ch);
-			sql_load_player_shapechanges(ch);
-			return 0;
-		}
-		return -2;
-	}
-	// player not in sql, fall through to pfile loading
-#endif
 
 	strcpy(buff, name);
 	for (buf = buff; *buf; buf++)
@@ -4868,12 +4593,9 @@ void writeSavedItem(P_obj item)
 		return;
 	}
 
-	const bool flatfile = persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY;
 	if (!OBJ_ROOM(item))
 	{
-		if (queue_saved_item_save(item, item_key, true))
-			return;
-		if (flatfile || !sql_delete_saved_item(item_key))
+		if (!queue_saved_item_save(item, item_key, true))
 			logit(LOG_FILE, "saved item delete failed");
 		return;
 	}
@@ -4881,17 +4603,9 @@ void writeSavedItem(P_obj item)
 	if ((item->loc.room <= NOWHERE) || (item->loc.room > top_of_world))
 		return;
 
-	if (queue_saved_item_save(item, item_key, false))
-		return;
-	if (flatfile)
-	{
-		persistence_alert(AVATAR, "saved_item", "flatfile_write", "none", "none",
-				  "queue_failed", "item_uid=%llu",
-				  static_cast<unsigned long long>(item->obj_uid));
-		return;
-	}
-	if (!sql_save_saved_item(item, item_key))
-		logit(LOG_FILE, "sql_save_saved_item failed");
+	if (!queue_saved_item_save(item, item_key, false))
+		persistence_alert(AVATAR, "saved_item", "write", "none", "none", "queue_failed",
+				  "item_uid=%llu", static_cast<unsigned long long>(item->obj_uid));
 }
 
 void restoreSavedItems(void)
@@ -4919,16 +4633,11 @@ void PurgeSavedItemFile(P_obj item)
 		return;
 	}
 	// A saved item leaving its room is deleted by the one writer.
+	if (!queue_saved_item_save(item, Gbuf2, true))
+		persistence_alert(AVATAR, "saved_item", "purge", "none", "none", "queue_failed",
+				  "item_uid=%llu", static_cast<unsigned long long>(item->obj_uid));
 	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		if (!queue_saved_item_save(item, Gbuf2, true))
-			persistence_alert(AVATAR, "saved_item", "flatfile_purge", "none", "none",
-					  "queue_failed", "item_uid=%llu",
-					  static_cast<unsigned long long>(item->obj_uid));
 		return;
-	}
-	if (!queue_saved_item_save(item, Gbuf2, true) && !sql_delete_saved_item(Gbuf2))
-		logit(LOG_FILE, "sql_delete_saved_item failed");
 
 	checked_snprintf(Gbuf1, MAX_STRING_LENGTH, "%s/SavedItems/%s", SAVE_DIR, Gbuf2);
 	strcpy(Gbuf2, Gbuf1);

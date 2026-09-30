@@ -42,10 +42,12 @@
 #include "core/mm.h"
 #include "item/objmisc.h"
 #include "persistence/persistence_mode.h"
+#include "player/player_load_offline.h"
 #include "ships/ships.h"
 #include "world/specs.prototypes.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "sql/sql_player.h"
 #include "item/trophy.h"
 #include "world/vnum.obj.h"
@@ -474,28 +476,15 @@ void test_load_all_chars(P_char ch)
 }
 
 /* Load a player manually from save files */
-void do_read_player(P_char ch, char *arg, int /*cmd*/)
+/* Brings vict, a character loaded with its items (null when there is none), before ch. */
+static void read_player_loaded(P_char ch, P_char vict)
 {
-	P_char vict = NULL;
-	int tmp;
-
-	if (!*arg)
-	{
-		send_to_char("Syntax: load char <name> or load <m|c|o|i> <vnum>\n", ch);
-		return;
-	}
-
-	vict = (P_char)mm_get(dead_mob_pool);
-	clear_char(vict);
-	vict->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-	vict->only.pc->aggressive = -1;
-	vict->desc = NULL;
-	if ((tmp = restoreCharOnly(vict, arg)) < 0)
+	if (!vict)
 	{
 		send_to_char("&=RlDanger Will Robinson! Bad pfile!!&n\n", ch);
 		return;
 	}
-	tmp = restoreItemsOnly(vict, 100);
+	vict->only.pc->aggressive = -1;
 
 	if (!strstr(GET_NAME(vict), ".locker"))
 	{
@@ -531,6 +520,16 @@ void do_read_player(P_char ch, char *arg, int /*cmd*/)
 	logit(LOG_WIZ, "%s loaded %s's char into the game [%d]", GET_NAME(ch), GET_NAME(vict),
 	      world[ch->in_room].number);
 	sql_log(ch, WIZLOG, "Loaded char %s", GET_NAME(vict));
+}
+
+void do_read_player(P_char ch, char *arg, int /*cmd*/)
+{
+	if (!*arg)
+	{
+		send_to_char("Syntax: load char <name> or load <m|c|o|i> <vnum>\n", ch);
+		return;
+	}
+	player_load_offline_for(ch, arg, true, read_player_loaded);
 }
 
 void do_release(P_char ch, char *argument, int /*cmd*/)
@@ -5445,7 +5444,7 @@ void do_purge(P_char ch, char *argument, int /*cmd*/)
 				if (((timegone > 1440) && ((timegone / 1440) > 60)) &&
 				    (GET_LEVEL(vict) <= 56))
 				{
-					deleteCharacter(vict);
+					delete_character(vict);
 				}
 				if (vict)
 					free_char(vict);
@@ -7672,31 +7671,10 @@ void do_ptell(P_char ch, char *arg, int /*cmd*/)
 	return;
 }
 
-void GetMIA(char *playerName, char *returned)
+// How long ago `laston` was, as the login log and finger show it.
+void GetMIA(time_t laston, char *returned)
 {
-	unsigned long laston, minutesgone;
-	P_char finger_foo;
-
-	if (!playerName || !*playerName)
-	{
-		snprintf(returned, MAX_STRING_LENGTH, "NoArgs");
-		return;
-	}
-
-	finger_foo = (struct char_data *)mm_get(dead_mob_pool);
-	ensure_pconly_pool();
-	finger_foo->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-
-	if (restoreCharOnly(finger_foo, skip_spaces(playerName)) < 0 || !finger_foo)
-	{
-		if (finger_foo)
-			free_char(finger_foo);
-		snprintf(returned, MAX_STRING_LENGTH, "NoPfile: '%s'.", playerName);
-		return;
-	}
-
-	laston = finger_foo->player.time.saved;
-	minutesgone = (time(0) - laston) / 60;
+	unsigned long minutesgone = (time(0) - laston) / 60;
 
 	snprintf(returned, MAX_STRING_LENGTH, "  &n(&+cMIA: &+w");
 	if (minutesgone > 0)
@@ -7737,84 +7715,16 @@ void GetMIA(char *playerName, char *returned)
 	return;
 }
 
-// Same as GetMIA but includes seconds and no "  (" to start..
-void GetMIA2(char *playerName, char *returned)
-{
-	unsigned long timegone;
-	int days, hours, minutes, seconds;
-	time_t laston;
-	P_char finger_foo;
-
-	finger_foo = (struct char_data *)mm_get(dead_mob_pool);
-	ensure_pconly_pool();
-	finger_foo->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-	if (restoreCharOnly(finger_foo, skip_spaces(playerName)) < 0 || !finger_foo)
-	{
-		if (finger_foo)
-			free_char(finger_foo);
-		debug("Pfile does not exist or is invalid.\n");
-		return;
-	}
-
-	laston = finger_foo->player.time.saved;
-	timegone = time(0) - laston;
-
-	days = (timegone) / (3600 * 24);
-	hours = (timegone % (3600 * 24)) / (3600);
-	minutes = (timegone % (3600)) / (60);
-	seconds = (timegone % (60));
-
-	snprintf(returned, MAX_STRING_LENGTH, "&+cMIA:&n ");
-
-	if (days)
-	{
-		snprintf(returned + strlen(returned), MAX_STRING_LENGTH - strlen(returned),
-			 "%d day%s%s", days, (days > 1) ? "s" : "", (hours || minutes) ? ", " : "");
-	}
-	if (hours)
-	{
-		snprintf(returned + strlen(returned), MAX_STRING_LENGTH - strlen(returned),
-			 "%d hour%s%s", hours, (hours > 1) ? "s" : "",
-			 (minutes || seconds) ? ", " : "");
-	}
-	if (minutes)
-	{
-		snprintf(returned + strlen(returned), MAX_STRING_LENGTH - strlen(returned),
-			 "%d minute%s%s", minutes, (minutes > 1) ? "s" : "", (seconds) ? ", " : "");
-	}
-	// display seconds only if there are no days/hours/minutes
-	if (seconds)
-	{
-		snprintf(returned + strlen(returned), MAX_STRING_LENGTH - strlen(returned),
-			 "%d second%s", seconds, (seconds > 1) ? "s" : "");
-	}
-	snprintf(returned + strlen(returned), MAX_STRING_LENGTH - strlen(returned),
-		 " - %ld mud hour%s.", timegone / SECS_PER_MUD_HOUR,
-		 (timegone / SECS_PER_MUD_HOUR) > 1 ? "s" : "");
-}
-
-void do_finger(P_char ch, char *arg, int /*cmd*/)
+static void finger_loaded(P_char ch, P_char finger_foo)
 {
 	unsigned long timegone;
 	time_t laston;
 	char Gbuf1[MAX_STRING_LENGTH], Gbuf2[512];
-	P_char finger_foo;
 	bool in_game;
 	int pid;
 
-	if (!*arg)
+	if (!finger_foo)
 	{
-		send_to_char("Usage:\n  finger playername.\n", ch);
-		return;
-	}
-	finger_foo = (struct char_data *)mm_get(dead_mob_pool);
-	ensure_pconly_pool();
-	finger_foo->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-
-	if (restoreCharOnly(finger_foo, skip_spaces(arg)) < 0 || !finger_foo)
-	{
-		if (finger_foo)
-			free_char(finger_foo);
 		send_to_char("Pfile does not exist or is invalid.\n", ch);
 		return;
 	}
@@ -7897,7 +7807,7 @@ void do_finger(P_char ch, char *arg, int /*cmd*/)
 		  timegone = lastDisconnect;
 		*/
 
-		GetMIA(finger_foo->player.name, Gbuf1);
+		GetMIA(finger_foo->player.time.saved, Gbuf1);
 		send_to_char(Gbuf1, ch);
 		Gbuf1[0] = '\0';
 	}
@@ -7909,8 +7819,17 @@ void do_finger(P_char ch, char *arg, int /*cmd*/)
 		world[real_room0(GET_HOME(finger_foo))].name, GET_HOME(finger_foo),
 		world[real_room0(GET_BIRTHPLACE(finger_foo))].name, GET_BIRTHPLACE(finger_foo));
 	send_to_char(Gbuf1, ch);
-	if (finger_foo)
-		free_char(finger_foo);
+	free_char(finger_foo);
+}
+
+void do_finger(P_char ch, char *arg, int /*cmd*/)
+{
+	if (!*arg)
+	{
+		send_to_char("Usage:\n  finger playername.\n", ch);
+		return;
+	}
+	player_load_offline_for(ch, skip_spaces(arg), false, finger_loaded);
 }
 
 void do_decline(P_char ch, char *arg, int /*cmd*/)
@@ -9770,7 +9689,7 @@ void do_terminate(P_char ch, char *argument, int /*cmd*/)
 	{
 		update_ingame_racewar(-GET_RACEWAR(ch));
 	}
-	deleteCharacter(victim);
+	delete_character(victim);
 	extract_char(victim); // extract_char also calls free_char
 	victim = NULL;
 	return;
@@ -11743,78 +11662,43 @@ void which_stat(P_char ch, char *argument)
 	}
 }
 
+// The names that logged in from the address (% as a wildcard), read on the writer.
 void whois_ip(P_char ch, char *ip_address)
 {
 #ifndef __NO_MYSQL__
-	MYSQL_RES *res;
-	MYSQL_ROW row;
-	P_char targ;
-
-	if (!(res = db_query(
-		      "SELECT player_name FROM log_entries WHERE ip_address LIKE '%s' GROUP BY player_name ORDER BY player_name",
-		      escape_str(ip_address).c_str())))
-	{
-		send_to_char_f(ch, "Could not find ip_address '%s' in database.\n", ip_address);
-		return;
-	}
-	if (!(row = mysql_fetch_row(res)))
-	{
-		send_to_char_f(ch, "Could not find any names matching ip address '%s'.\n",
-			       ip_address);
-		mysql_free_result(res);
-		return;
-	}
-	send_to_char("&+YNames:&N ", ch);
-	if ((targ = get_char_online(row[0])) != NULL)
-	{
-		if (targ->desc != NULL)
+	const std::string address = ip_address;
+	sql_read_for(
+		ch,
+		sql_format(
+			"SELECT player_name FROM log_entries WHERE ip_address LIKE '%s' GROUP BY player_name ORDER BY player_name",
+			escape_str(ip_address).c_str()),
+		[address](P_char live, const sql_rows &rows)
 		{
-			send_to_char_f(ch, "&+C%s&n", row[0]);
-		}
-		else
-		{
-			send_to_char_f(ch, "&+B%s&n", row[0]);
-		}
-	}
-	else
-	{
-		// If they're not in game per above check, but have a desc, then they're at menu somewhere.
-		if (get_descriptor_from_name(row[0]))
-		{
-			send_to_char_f(ch, "&+y%s&n", row[0]);
-		}
-		else
-		{
-			send_to_char_f(ch, "%s", row[0]);
-		}
-	}
-	while ((row = mysql_fetch_row(res)))
-	{
-		if ((targ = get_char_online(row[0])) != NULL)
-		{
-			if (targ->desc != NULL)
+			if (rows.empty())
 			{
-				send_to_char_f(ch, ", &+C%s&n", row[0]);
+				send_to_char_f(
+					live,
+					"Could not find any names matching ip address '%s'.\n",
+					address.c_str());
+				return;
 			}
-			else
+			send_to_char("&+YNames:&N ", live);
+			for (size_t index = 0; index < rows.size(); ++index)
 			{
-				send_to_char_f(ch, ", &+B%s&n", row[0]);
+				std::string name = rows[index][0] ? rows[index][0] : "";
+				const char *separator = index ? ", " : "";
+				P_char targ = get_char_online(name.data());
+				if (targ)
+					send_to_char_f(live, targ->desc ? "%s&+C%s&n" : "%s&+B%s&n",
+						       separator, name.c_str());
+				// Not in the game but with a descriptor: at the menu somewhere.
+				else if (get_descriptor_from_name(name.data()))
+					send_to_char_f(live, "%s&+y%s&n", separator, name.c_str());
+				else
+					send_to_char_f(live, "%s%s", separator, name.c_str());
 			}
-		}
-		else
-		{
-			if (get_descriptor_from_name(row[0]))
-			{
-				send_to_char_f(ch, ", &+y%s&n", row[0]);
-			}
-			else
-			{
-				send_to_char_f(ch, ", %s", row[0]);
-			}
-		}
-	}
-	mysql_free_result(res);
-	send_to_char(".\n", ch);
+			send_to_char(".\n", live);
+		});
 #else
 	(void)ip_address;
 	send_to_char("This command requires MySQL support which is not compiled in.\n", ch);
@@ -11825,11 +11709,6 @@ void do_whois(P_char ch, char *arg, int /*cmd*/)
 {
 	char ip_address[MAX_STRING_LENGTH];
 	char name[MAX_INPUT_LENGTH];
-#ifndef __NO_MYSQL__
-	int pid;
-	MYSQL_RES *res;
-	MYSQL_ROW row;
-#endif
 
 	arg = one_argument(arg, name);
 
@@ -11857,51 +11736,65 @@ void do_whois(P_char ch, char *arg, int /*cmd*/)
 			send_to_char("Please enter a valid ip address.\n", ch);
 			return;
 		}
-	}
-	else
-	{
 #ifndef __NO_MYSQL__
-		if ((pid = get_player_pid_from_name(name)) < 1)
-		{
-			send_to_char_f(ch, "Name '%s' not found.\n", name);
-			return;
-		}
-		if ((res = db_query(
-			     "SELECT ip_address FROM log_entries WHERE pid=%d AND ip_address!=\"\" GROUP BY ip_address ORDER BY date DESC",
-			     pid)) != NULL)
-		{
-			CAP(name);
-			send_to_char_f(ch, "&=LWIP Addresses used by %s:&N\n", name);
-			while ((row = mysql_fetch_row(res)))
-			{
-				send_to_char_f(ch, "%s, ", row[0]);
-			}
-			mysql_free_result(res);
-			send_to_char("\n\n", ch);
-		}
-		if (!(res = db_query("SELECT last_ip FROM ip_info WHERE pid = %d", pid)))
-		{
-			send_to_char_f(ch, "Could not find pid %d in database!\n", pid);
-			return;
-		}
-		if (!(row = mysql_fetch_row(res)))
-		{
-			send_to_char_f(ch, "Could not find last_ip in database (pid = %d)!\n", pid);
-			mysql_free_result(res);
-			return;
-		}
-		strcpy(ip_address, row[0]);
-		mysql_free_result(res);
-#else
-		send_to_char("This command requires MySQL support which is not compiled in.\n", ch);
-		return;
+		send_to_char_f(ch, "&=LWIP Address: '%s'&N\n", ip_address);
 #endif
+		whois_ip(ch, ip_address);
+		return;
 	}
-
 #ifndef __NO_MYSQL__
-	send_to_char_f(ch, "&=LWIP Address: '%s'&N\n", ip_address);
-
-	whois_ip(ch, ip_address);
+	const int pid = get_player_pid_from_name(name);
+	if (pid < 1)
+	{
+		send_to_char_f(ch, "Name '%s' not found.\n", name);
+		return;
+	}
+	// The addresses the character used, then its last one, read on the writer.
+	CAP(name);
+	const std::string shown = name;
+	sql_read_work_for(
+		ch,
+		[pid](MYSQL *connection, sql_rows *rows) -> unsigned int
+		{
+			if (const unsigned int error = sql_select(
+				    connection,
+				    sql_format(
+					    "SELECT 'used', ip_address FROM log_entries WHERE pid=%d AND ip_address!=\"\" GROUP BY ip_address ORDER BY date DESC",
+					    pid),
+				    rows))
+				return error;
+			return sql_select(
+				connection,
+				sql_format("SELECT 'last', last_ip FROM ip_info WHERE pid = %d",
+					   pid),
+				rows);
+		},
+		[pid, shown](P_char live, const sql_rows &rows)
+		{
+			send_to_char_f(live, "&=LWIP Addresses used by %s:&N\n", shown.c_str());
+			std::string last;
+			bool found = false;
+			for (const sql_row &row : rows)
+				if (row[0] && !strcmp(row[0], "used"))
+					send_to_char_f(live, "%s, ", row[1] ? row[1] : "");
+				else if (row[0] && !strcmp(row[0], "last"))
+				{
+					last = row[1] ? row[1] : "";
+					found = true;
+				}
+			send_to_char("\n\n", live);
+			if (!found)
+			{
+				send_to_char_f(live,
+					       "Could not find last_ip in database (pid = %d)!\n",
+					       pid);
+				return;
+			}
+			send_to_char_f(live, "&=LWIP Address: '%s'&N\n", last.c_str());
+			whois_ip(live, last.data());
+		});
+#else
+	send_to_char("This command requires MySQL support which is not compiled in.\n", ch);
 #endif
 }
 

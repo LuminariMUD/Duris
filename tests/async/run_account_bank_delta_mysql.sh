@@ -6,7 +6,7 @@ PASSWORD=$(printf 'bank-delta-%s-%s' "$$" "$RANDOM")
 DB_NAME="account_bank_delta_test"
 
 cleanup() {
-    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    docker rm -fv "$NAME" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 

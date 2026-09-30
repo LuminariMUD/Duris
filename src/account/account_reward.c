@@ -12,6 +12,7 @@
 #include "world/vnum.obj.h"
 #ifndef __NO_MYSQL__
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "sql/sql_player.h"
 #endif
 
@@ -19,10 +20,12 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <map>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <string>
+#include <utility>
 #include <vector>
 
 extern P_obj object_list;
@@ -228,28 +231,33 @@ static bool promote_reward_contents(P_obj container)
 /** Retire one persisted reward before removing its live duplicate.
  *
  * extract_obj() intentionally has no persistence side effects.  Reward
- * deduplication is a real destruction transition, so it must retire custody and
- * remove the matching player projection in one transaction before extraction.
+ * deduplication is a real destruction transition, so the writer retires custody and
+ * removes the matching player projection in one transaction, queued before the
+ * extraction's save.
  */
 static bool retire_saved_reward_instance(P_char ch, P_obj obj)
 {
 	if (!ch || !obj || !obj->obj_uid)
 		return ch && obj;
 	const uint64_t uid = obj->obj_uid;
-	if (!sql_begin_transaction())
-		return false;
-	bool ok =
-		item_transfer_repository_revoke_roots_preserving_children(DB, &uid, 1) &&
-		qry("UPDATE player_items child JOIN player_items reward ON child.container_id=reward.id SET child.container_id=reward.container_id WHERE reward.pid=%d AND reward.obj_uid=%llu",
-		    GET_PID(ch), (unsigned long long)uid) &&
-		qry("DELETE FROM player_items WHERE pid=%d AND obj_uid=%llu", GET_PID(ch),
-		    (unsigned long long)uid);
-	if (!ok || !sql_commit())
-	{
-		sql_rollback();
-		return false;
-	}
-	return true;
+	const int pid = GET_PID(ch);
+	return sql_queue_work(
+		[uid, pid](MYSQL *connection) -> unsigned int
+		{
+			if (!item_transfer_repository_revoke_roots_preserving_children(connection,
+										       &uid, 1))
+				return mysql_errno(connection) ? mysql_errno(connection) : EIO;
+			if (const unsigned int error_code = sql_execute(
+				    connection,
+				    sql_format(
+					    "UPDATE player_items child JOIN player_items reward ON child.container_id=reward.id SET child.container_id=reward.container_id WHERE reward.pid=%d AND reward.obj_uid=%llu",
+					    pid, (unsigned long long)uid)))
+				return error_code;
+			return sql_execute(
+				connection,
+				sql_format("DELETE FROM player_items WHERE pid=%d AND obj_uid=%llu",
+					   pid, (unsigned long long)uid));
+		});
 }
 
 static std::string human_duration(long long seconds, bool round_up = false)
@@ -401,53 +409,38 @@ static void send_divineclaim_instance_lines(P_char ch, const std::vector<std::st
 		send_to_char_f(ch, "                  &+w%s&n\r\n", line.c_str());
 }
 
-static bool canonical_account(const char *requested, std::string *canonical)
+/* The grants and their summons, read at boot and kept current by the game's own writes,
+ * which are queued on the writer. Game thread only. */
+struct StoredGrant
 {
-	MYSQL_RES *res;
-	MYSQL_ROW row;
-	std::string escaped;
-	if (!requested || !*requested || !canonical)
-		return false;
-	escaped = escape_sql(requested);
-	res = db_query(
-		"SELECT account_name FROM accounts WHERE LOWER(account_name)=LOWER('%s') LIMIT 1",
-		escaped.c_str());
-	if (!res)
-		return false;
-	row = mysql_fetch_row(res);
-	if (row && row[0])
-		*canonical = row[0];
-	mysql_free_result(res);
-	return row != NULL;
-}
+	RewardGrant grant; // age_seconds and expires_seconds are worked out when read
+	time_t created_at;
+	time_t expires_at; // 0: never
+};
+struct RewardSummon
+{
+	time_t last_summoned_at;
+	bool recovery_ready;
+};
+static std::map<unsigned long long, StoredGrant> stored_grants;
+static std::map<std::pair<unsigned long long, int>, RewardSummon> reward_summons;
+static unsigned long long next_grant_id = 1;
 
-static std::vector<RewardGrant> query_grants(const char *account, bool expired_only,
-					     bool *query_ok = NULL)
+bool account_rewards_load(void)
 {
-	std::vector<RewardGrant> grants;
-	MYSQL_RES *res;
-	MYSQL_ROW row;
-	if (query_ok)
-		*query_ok = false;
-	std::string where =
-		expired_only ?
-			"expires_at IS NOT NULL AND expires_at<=NOW()" :
-			"(expires_at IS NULL OR expires_at>NOW()) AND (remaining_pwipes IS NULL OR remaining_pwipes>0)";
-	if (account && *account)
-		where += " AND account_name='" + escape_sql(account) + "'";
-	res = db_query(
+	MYSQL_RES *res = db_query(
 		"SELECT id,account_name,reward_vnum,template_version,template_json,display_name,granted_by,"
-		"GREATEST(0,TIMESTAMPDIFF(SECOND,created_at,NOW())),"
-		"CASE WHEN expires_at IS NULL THEN -1 ELSE GREATEST(0,TIMESTAMPDIFF(SECOND,NOW(),expires_at)) END,"
-		"COALESCE(remaining_pwipes,0) FROM account_bound_rewards WHERE %s ORDER BY account_name,id",
-		where.c_str());
+		"UNIX_TIMESTAMP(created_at),COALESCE(UNIX_TIMESTAMP(expires_at),0),"
+		"COALESCE(remaining_pwipes,0) FROM account_bound_rewards");
 	if (!res)
-		return grants;
-	if (query_ok)
-		*query_ok = true;
+		return false;
+	stored_grants.clear();
+	next_grant_id = 1;
+	MYSQL_ROW row;
 	while ((row = mysql_fetch_row(res)) != NULL)
 	{
-		RewardGrant grant;
+		StoredGrant stored = {};
+		RewardGrant &grant = stored.grant;
 		grant.id = row[0] ? strtoull(row[0], NULL, 10) : 0;
 		grant.account = row[1] ? row[1] : "";
 		grant.vnum = row[2] ? atoi(row[2]) : 0;
@@ -455,83 +448,231 @@ static std::vector<RewardGrant> query_grants(const char *account, bool expired_o
 		grant.template_json = row[4] ? row[4] : "";
 		grant.display_name = row[5] ? row[5] : "";
 		grant.granted_by = row[6] ? row[6] : "";
-		grant.age_seconds = row[7] ? strtoll(row[7], NULL, 10) : 0;
-		grant.expires_seconds = row[8] ? strtoll(row[8], NULL, 10) : -1;
+		stored.created_at = row[7] ? strtoll(row[7], NULL, 10) : 0;
+		stored.expires_at = row[8] ? strtoll(row[8], NULL, 10) : 0;
 		grant.remaining_pwipes = row[9] ? atoi(row[9]) : 0;
+		if (grant.id >= next_grant_id)
+			next_grant_id = grant.id + 1;
 		if (grant.id > 0 && grant.vnum > 0)
-			grants.push_back(grant);
+			stored_grants[grant.id] = stored;
 	}
 	mysql_free_result(res);
+	// Never a revoked or purged grant's id again: its reward items still carry it.
+	next_grant_id = std::max(next_grant_id, sql_next_auto_increment("account_bound_rewards"));
+
+	res = db_query("SELECT grant_id,pid,UNIX_TIMESTAMP(last_summoned_at),recovery_ready "
+		       "FROM account_bound_reward_summons");
+	if (!res)
+		return false;
+	reward_summons.clear();
+	while ((row = mysql_fetch_row(res)) != NULL)
+		if (row[0] && row[1])
+			reward_summons[{ strtoull(row[0], NULL, 10), atoi(row[1]) }] = {
+				row[2] ? strtoll(row[2], NULL, 10) : 0, row[3] && atoi(row[3]) != 0
+			};
+	mysql_free_result(res);
+	return true;
+}
+
+/* Finds the account's stored name on the writer; done runs while ch is still in the game,
+ * with null when there is no such account. */
+static void with_account(P_char ch, const char *requested,
+			 std::function<void(P_char, const std::string *)> done)
+{
+	const bool queued = sql_read_for(ch,
+					 sql_format("SELECT account_name FROM accounts WHERE "
+						    "LOWER(account_name)=LOWER('%s') LIMIT 1",
+						    escape_sql(requested).c_str()),
+					 [done = std::move(done)](P_char live, const sql_rows &rows)
+					 {
+						 if (rows.empty() || !rows[0][0])
+						 {
+							 done(live, NULL);
+							 return;
+						 }
+						 const std::string account = rows[0][0];
+						 done(live, &account);
+					 });
+	if (!queued)
+		send_to_char("That is not available right now.\r\n", ch);
+}
+
+/* The account's live grants (every account's when account is null), or the expired ones,
+ * ordered by account and id. */
+static std::vector<RewardGrant> query_grants(const char *account, bool expired_only)
+{
+	std::vector<RewardGrant> grants;
+	const time_t now = time(NULL);
+	for (const auto &[id, stored] : stored_grants)
+	{
+		const bool expired = stored.expires_at && stored.expires_at <= now;
+		if (expired != expired_only ||
+		    (account && *account && strcasecmp(stored.grant.account.c_str(), account)))
+			continue;
+		RewardGrant grant = stored.grant;
+		grant.age_seconds = std::max<long long>(0, now - stored.created_at);
+		grant.expires_seconds =
+			stored.expires_at ? std::max<long long>(0, stored.expires_at - now) : -1;
+		grants.push_back(grant);
+	}
+	std::stable_sort(grants.begin(), grants.end(),
+			 [](const RewardGrant &a, const RewardGrant &b)
+			 { return strcasecmp(a.account.c_str(), b.account.c_str()) < 0; });
 	return grants;
 }
 
-static bool clear_saved_grant(const RewardGrant &grant)
+/* Forgets a grant and its summons, as the database's cascade does. */
+static void forget_grant(unsigned long long grant_id)
+{
+	stored_grants.erase(grant_id);
+	for (auto summon = reward_summons.begin(); summon != reward_summons.end();)
+		summon = summon->first.first == grant_id ? reward_summons.erase(summon) :
+							   std::next(summon);
+}
+
+void account_rewards_forget_account(const char *account)
+{
+	for (auto grant = stored_grants.begin(); grant != stored_grants.end();)
+	{
+		auto next = std::next(grant);
+		if (!strcasecmp(grant->second.grant.account.c_str(), account))
+			forget_grant(grant->first);
+		grant = next;
+	}
+}
+
+static void set_recovery_ready(unsigned long long grant_id, int pid)
+{
+	auto summon = reward_summons.find({ grant_id, pid });
+	if (summon != reward_summons.end())
+		summon->second.recovery_ready = true;
+	if (!sql_queue(
+		    "UPDATE account_bound_reward_summons SET recovery_ready=1 WHERE grant_id=%llu AND pid=%d",
+		    grant_id, pid))
+		logit(LOG_WIZ,
+		      "divineclaim: failed to queue the recovery reset for grant %llu pid %d",
+		      grant_id, pid);
+}
+
+static void revoke_live_grant(const RewardGrant &grant);
+
+/* The writer's part of revoking a grant: every saved copy's custody retired and its rows
+ * removed, the live copies' custody too. The live uids are captured now. */
+static sql_work clear_saved_grant(const RewardGrant &grant)
 {
 	char stable_marker[256];
 	snprintf(stable_marker, sizeof(stable_marker), "%s%llu:%s ", ACCOUNT_REWARD_MARKER,
 		 grant.id, grant.account.c_str());
 	std::string stable_q = escape_sql(stable_marker);
-	std::vector<uint64_t> custody_uids;
+	std::vector<uint64_t> live_uids;
 	for (P_obj obj = object_list; obj; obj = obj->next)
 		if (grant_marker_matches(obj, grant) && obj->obj_uid)
-			custody_uids.push_back(obj->obj_uid);
-	auto collect_saved_uids = [&](MYSQL_RES *rows) -> bool
-	{
-		if (!rows)
-			return false;
-		MYSQL_ROW row;
-		while ((row = mysql_fetch_row(rows)) != NULL)
-			if (row[0])
-			{
-				uint64_t uid = strtoull(row[0], NULL, 10);
-				if (uid)
-					custody_uids.push_back(uid);
-			}
-		mysql_free_result(rows);
-		return true;
-	};
+			live_uids.push_back(obj->obj_uid);
+	std::string legacy_q, account_q;
 	if (grant.template_version == 0)
 	{
 		char legacy_marker[256];
 		snprintf(legacy_marker, sizeof(legacy_marker), "%s%s ", ACCOUNT_REWARD_MARKER,
 			 grant.account.c_str());
-		std::string legacy_q = escape_sql(legacy_marker),
-			    account_q = escape_sql(grant.account.c_str());
-		if (!collect_saved_uids(db_query(
-			    "SELECT pi.obj_uid FROM player_items pi JOIN player_data pd ON pd.pid=pi.pid WHERE (pd.account_name='%s' OR EXISTS (SELECT 1 FROM account_characters ac WHERE ac.char_name=pd.name AND ac.account_name='%s')) AND (LEFT(pi.name,CHAR_LENGTH('%s'))='%s' OR LEFT(pi.name,CHAR_LENGTH('%s'))='%s') AND pi.vnum=%d FOR UPDATE",
-			    account_q.c_str(), account_q.c_str(), stable_q.c_str(),
-			    stable_q.c_str(), legacy_q.c_str(), legacy_q.c_str(), grant.vnum)))
-			return false;
+		legacy_q = escape_sql(legacy_marker);
+		account_q = escape_sql(grant.account.c_str());
+	}
+	const int vnum = grant.vnum;
+	const bool legacy = grant.template_version == 0;
+	return [stable_q, legacy_q, account_q, vnum, legacy,
+		live_uids](MYSQL *connection) -> unsigned int
+	{
+		std::vector<uint64_t> custody_uids = live_uids;
+		sql_rows saved;
+		if (const unsigned int error_code = sql_select(
+			    connection,
+			    legacy ?
+				    sql_format(
+					    "SELECT pi.obj_uid FROM player_items pi JOIN player_data pd ON pd.pid=pi.pid WHERE (pd.account_name='%s' OR EXISTS (SELECT 1 FROM account_characters ac WHERE ac.char_name=pd.name AND ac.account_name='%s')) AND (LEFT(pi.name,CHAR_LENGTH('%s'))='%s' OR LEFT(pi.name,CHAR_LENGTH('%s'))='%s') AND pi.vnum=%d FOR UPDATE",
+					    account_q.c_str(), account_q.c_str(), stable_q.c_str(),
+					    stable_q.c_str(), legacy_q.c_str(), legacy_q.c_str(),
+					    vnum) :
+				    sql_format(
+					    "SELECT obj_uid FROM player_items WHERE LEFT(name,CHAR_LENGTH('%s'))='%s' FOR UPDATE",
+					    stable_q.c_str(), stable_q.c_str()),
+			    &saved))
+			return error_code;
+		for (const sql_row &row : saved)
+			if (row[0])
+				if (uint64_t uid = strtoull(row[0], NULL, 10))
+					custody_uids.push_back(uid);
 		std::sort(custody_uids.begin(), custody_uids.end());
 		custody_uids.erase(std::unique(custody_uids.begin(), custody_uids.end()),
 				   custody_uids.end());
 		if (!item_transfer_repository_revoke_roots_preserving_children(
-			    DB, custody_uids.data(), custody_uids.size()))
-			return false;
-		if (!qry("UPDATE player_items child JOIN player_items reward ON child.container_id=reward.id JOIN player_data pd ON pd.pid=reward.pid SET child.container_id=reward.container_id WHERE (pd.account_name='%s' OR EXISTS (SELECT 1 FROM account_characters ac WHERE ac.char_name=pd.name AND ac.account_name='%s')) AND (LEFT(reward.name,CHAR_LENGTH('%s'))='%s' OR LEFT(reward.name,CHAR_LENGTH('%s'))='%s') AND reward.vnum=%d",
-			 account_q.c_str(), account_q.c_str(), stable_q.c_str(), stable_q.c_str(),
-			 legacy_q.c_str(), legacy_q.c_str(), grant.vnum))
-			return false;
-		return qry(
-			"DELETE pi FROM player_items pi JOIN player_data pd ON pd.pid=pi.pid WHERE (pd.account_name='%s' OR EXISTS (SELECT 1 FROM account_characters ac WHERE ac.char_name=pd.name AND ac.account_name='%s')) AND (LEFT(pi.name,CHAR_LENGTH('%s'))='%s' OR LEFT(pi.name,CHAR_LENGTH('%s'))='%s') AND pi.vnum=%d",
-			account_q.c_str(), account_q.c_str(), stable_q.c_str(), stable_q.c_str(),
-			legacy_q.c_str(), legacy_q.c_str(), grant.vnum);
+			    connection, custody_uids.data(), custody_uids.size()))
+			return mysql_errno(connection) ? mysql_errno(connection) : EIO;
+		if (legacy)
+		{
+			if (const unsigned int error_code = sql_execute(
+				    connection,
+				    sql_format(
+					    "UPDATE player_items child JOIN player_items reward ON child.container_id=reward.id JOIN player_data pd ON pd.pid=reward.pid SET child.container_id=reward.container_id WHERE (pd.account_name='%s' OR EXISTS (SELECT 1 FROM account_characters ac WHERE ac.char_name=pd.name AND ac.account_name='%s')) AND (LEFT(reward.name,CHAR_LENGTH('%s'))='%s' OR LEFT(reward.name,CHAR_LENGTH('%s'))='%s') AND reward.vnum=%d",
+					    account_q.c_str(), account_q.c_str(), stable_q.c_str(),
+					    stable_q.c_str(), legacy_q.c_str(), legacy_q.c_str(),
+					    vnum)))
+				return error_code;
+			return sql_execute(
+				connection,
+				sql_format(
+					"DELETE pi FROM player_items pi JOIN player_data pd ON pd.pid=pi.pid WHERE (pd.account_name='%s' OR EXISTS (SELECT 1 FROM account_characters ac WHERE ac.char_name=pd.name AND ac.account_name='%s')) AND (LEFT(pi.name,CHAR_LENGTH('%s'))='%s' OR LEFT(pi.name,CHAR_LENGTH('%s'))='%s') AND pi.vnum=%d",
+					account_q.c_str(), account_q.c_str(), stable_q.c_str(),
+					stable_q.c_str(), legacy_q.c_str(), legacy_q.c_str(),
+					vnum));
+		}
+		if (const unsigned int error_code = sql_execute(
+			    connection,
+			    sql_format(
+				    "UPDATE player_items child JOIN player_items reward ON child.container_id=reward.id SET child.container_id=reward.container_id WHERE LEFT(reward.name,CHAR_LENGTH('%s'))='%s'",
+				    stable_q.c_str(), stable_q.c_str())))
+			return error_code;
+		return sql_execute(
+			connection,
+			sql_format(
+				"DELETE FROM player_items WHERE LEFT(name,CHAR_LENGTH('%s'))='%s'",
+				stable_q.c_str(), stable_q.c_str()));
+	};
+}
+
+/* Revokes grants: their saved copies and rows go on the writer, in one transaction, and
+ * their live copies go now. */
+static int revoke_grants(const std::vector<RewardGrant> &grants)
+{
+	std::vector<sql_work> clears;
+	std::vector<unsigned long long> ids;
+	for (const RewardGrant &grant : grants)
+	{
+		clears.push_back(clear_saved_grant(grant));
+		ids.push_back(grant.id);
 	}
-	if (!collect_saved_uids(db_query(
-		    "SELECT obj_uid FROM player_items WHERE LEFT(name,CHAR_LENGTH('%s'))='%s' FOR UPDATE",
-		    stable_q.c_str(), stable_q.c_str())))
-		return false;
-	std::sort(custody_uids.begin(), custody_uids.end());
-	custody_uids.erase(std::unique(custody_uids.begin(), custody_uids.end()),
-			   custody_uids.end());
-	if (!item_transfer_repository_revoke_roots_preserving_children(DB, custody_uids.data(),
-								       custody_uids.size()))
-		return false;
-	if (!qry("UPDATE player_items child JOIN player_items reward ON child.container_id=reward.id SET child.container_id=reward.container_id WHERE LEFT(reward.name,CHAR_LENGTH('%s'))='%s'",
-		 stable_q.c_str(), stable_q.c_str()))
-		return false;
-	return qry("DELETE FROM player_items WHERE LEFT(name,CHAR_LENGTH('%s'))='%s'",
-		   stable_q.c_str(), stable_q.c_str());
+	if (!sql_queue_work(
+		    [clears, ids](MYSQL *connection) -> unsigned int
+		    {
+			    for (size_t index = 0; index < ids.size(); ++index)
+			    {
+				    if (const unsigned int error_code = clears[index](connection))
+					    return error_code;
+				    if (const unsigned int error_code = sql_execute(
+						connection,
+						sql_format(
+							"DELETE FROM account_bound_rewards WHERE id=%llu",
+							ids[index])))
+					    return error_code;
+			    }
+			    return 0;
+		    }))
+		return -1;
+	for (const RewardGrant &grant : grants)
+	{
+		forget_grant(grant.id);
+		revoke_live_grant(grant);
+	}
+	return (int)grants.size();
 }
 
 static void revoke_live_grant(const RewardGrant &grant)
@@ -570,53 +711,20 @@ static void revoke_live_grant(const RewardGrant &grant)
 
 static void purge_expired_grants(void)
 {
-	bool lookup_ok = false;
-	std::vector<RewardGrant> expired = query_grants(NULL, true, &lookup_ok);
-	if (!lookup_ok)
-	{
-		logit(LOG_WIZ, "divineclaim: expired grant lookup failed");
-		return;
-	}
-	for (const RewardGrant &grant : expired)
-	{
-		if (!sql_begin_transaction())
-		{
-			logit(LOG_WIZ, "divineclaim: failed to begin expiry cleanup for grant %llu",
-			      grant.id);
-			continue;
-		}
-		if (!clear_saved_grant(grant) ||
-		    !qry("DELETE FROM account_bound_rewards WHERE id=%llu", grant.id))
-		{
-			sql_rollback();
-			logit(LOG_WIZ,
-			      "divineclaim: failed to purge expired grant %llu; grant retained for retry",
-			      grant.id);
-			continue;
-		}
-		if (!sql_commit())
-		{
-			sql_rollback();
-			logit(LOG_WIZ,
-			      "divineclaim: failed to commit expiry cleanup for grant %llu",
-			      grant.id);
-			continue;
-		}
-		revoke_live_grant(grant);
-	}
+	std::vector<RewardGrant> expired = query_grants(NULL, true);
+	if (!expired.empty() && revoke_grants(expired) < 0)
+		logit(LOG_WIZ, "divineclaim: failed to queue the purge of %zu expired grants",
+		      expired.size());
 }
 
+/* How long until the grant can be summoned again by pid; 0 when it can be now. */
 static long long cooldown_remaining(unsigned long long grant_id, int pid)
 {
-	MYSQL_RES *res = db_query(
-		"SELECT CASE WHEN recovery_ready<>0 THEN 0 ELSE GREATEST(0,%d-TIMESTAMPDIFF(SECOND,last_summoned_at,NOW())) END FROM account_bound_reward_summons WHERE grant_id=%llu AND pid=%d",
-		account_reward_config_cooldown_seconds(), grant_id, pid);
-	if (!res)
-		return -1;
-	MYSQL_ROW row = mysql_fetch_row(res);
-	long long remaining = (row && row[0]) ? strtoll(row[0], NULL, 10) : 0;
-	mysql_free_result(res);
-	return remaining;
+	auto summon = reward_summons.find({ grant_id, pid });
+	if (summon == reward_summons.end() || summon->second.recovery_ready)
+		return 0;
+	return std::max<long long>(0, account_reward_config_cooldown_seconds() -
+					      (time(NULL) - summon->second.last_summoned_at));
 }
 
 static P_obj existing_character_instance(P_char ch, const RewardGrant &grant,
@@ -671,17 +779,6 @@ static bool summon_one(P_char ch, const RewardGrant &grant, bool explain)
 		return false;
 	}
 	long long remaining = cooldown_remaining(grant.id, GET_PID(ch));
-	if (remaining < 0)
-	{
-		logit(LOG_WIZ, "divineclaim: cooldown lookup failed for grant %llu pid %d",
-		      grant.id, GET_PID(ch));
-		if (explain)
-			send_to_char_f(
-				ch,
-				"The divine records for %s are temporarily unavailable. Nothing was created or changed; please try again later.\r\n",
-				name);
-		return false;
-	}
 	if (remaining > 0)
 	{
 		if (explain)
@@ -710,19 +807,20 @@ static bool summon_one(P_char ch, const RewardGrant &grant, bool explain)
 	if (obj->type == ITEM_CONTAINER)
 		REMOVE_BIT(obj->value[1], CONT_CLOSED);
 	mark_reward_item(obj, grant.account.c_str(), grant.id);
-	if (!qry("INSERT INTO account_bound_reward_summons(grant_id,pid,last_summoned_at,recovery_ready) VALUES(%llu,%d,NOW(),0) ON DUPLICATE KEY UPDATE last_summoned_at=NOW(),recovery_ready=0",
-		 grant.id, GET_PID(ch)))
+	const time_t now = time(NULL);
+	if (!sql_queue(
+		    "INSERT INTO account_bound_reward_summons(grant_id,pid,last_summoned_at,recovery_ready) VALUES(%llu,%d,FROM_UNIXTIME(%ld),0) ON DUPLICATE KEY UPDATE last_summoned_at=VALUES(last_summoned_at),recovery_ready=0",
+		    grant.id, GET_PID(ch), (long)now))
 	{
 		extract_obj(obj, FALSE);
 		logit(LOG_WIZ, "divineclaim: failed to reserve grant %llu for %s", grant.id,
 		      GET_NAME(ch));
 		return false;
 	}
+	reward_summons[{ grant.id, GET_PID(ch) }] = { now, false };
 	if (!item_creation_grant_submit_to_player(ch, obj, ch))
 	{
-		(void)qry(
-			"UPDATE account_bound_reward_summons SET recovery_ready=1 WHERE grant_id=%llu AND pid=%d",
-			grant.id, GET_PID(ch));
+		set_recovery_ready(grant.id, GET_PID(ch));
 		extract_obj(obj, FALSE);
 		logit(LOG_WIZ, "divineclaim: failed to submit grant %llu for %s", grant.id,
 		      GET_NAME(ch));
@@ -754,16 +852,7 @@ static bool player_grants(P_char ch, std::vector<RewardGrant> *grants)
 	if (!account || !grants)
 		return false;
 	purge_expired_grants();
-	bool lookup_ok = false;
-	*grants = query_grants(account, false, &lookup_ok);
-	if (!lookup_ok)
-	{
-		logit(LOG_WIZ, "divineclaim: grant lookup failed for account %s", account);
-		send_to_char(
-			"The divine account-reward records are temporarily unavailable. Nothing was created or changed; please try again later.\r\n",
-			ch);
-		return false;
-	}
+	*grants = query_grants(account, false);
 	return true;
 }
 
@@ -813,9 +902,7 @@ static void list_player_grants(P_char ch)
 		else
 		{
 			long long remaining = cooldown_remaining(grant.id, GET_PID(ch));
-			if (remaining < 0)
-				status = "Status unavailable";
-			else if (remaining > 0)
+			if (remaining > 0)
 				status = "Recovering: " + cooldown_countdown(remaining);
 			else
 				status = "Ready";
@@ -937,10 +1024,8 @@ static void dismiss_player_grant(P_char ch, const RewardGrant &selected)
 	if (remaining > 0)
 		send_to_char_f(ch, "It may be summoned again in %s.\r\n",
 			       cooldown_countdown(remaining).c_str());
-	else if (remaining == 0)
-		send_to_char("It is ready to summon again now.\r\n", ch);
 	else
-		send_to_char("Its recovery countdown is temporarily unavailable.\r\n", ch);
+		send_to_char("It is ready to summon again now.\r\n", ch);
 	if (!saved)
 		logit(LOG_WIZ, "divineclaim: failed to save dismissed reward #%llu for %s",
 		      selected.id, GET_NAME(ch));
@@ -984,30 +1069,20 @@ static bool summon_login_reward(P_char ch)
 	std::vector<RewardGrant> grants;
 	if (!player_grants(ch, &grants) || grants.empty())
 		return false;
-	const char *account = reward_account(ch);
-	std::string account_q = escape_sql(account);
-	MYSQL_RES *res = db_query(
-		"SELECT abr.id FROM account_bound_rewards abr LEFT JOIN account_bound_reward_summons s "
-		"ON s.grant_id=abr.id AND s.pid=%d WHERE abr.account_name='%s' "
-		"AND (abr.expires_at IS NULL OR abr.expires_at>NOW()) "
-		"AND (abr.remaining_pwipes IS NULL OR abr.remaining_pwipes>0) "
-		"ORDER BY s.last_summoned_at IS NULL, s.last_summoned_at DESC, abr.id LIMIT 1",
-		GET_PID(ch), account_q.c_str());
-	if (!res)
-	{
-		logit(LOG_WIZ, "divineclaim: login reward selection failed for %s", GET_NAME(ch));
-		return false;
-	}
-	MYSQL_ROW row = mysql_fetch_row(res);
-	unsigned long long selected_id = (row && row[0]) ? strtoull(row[0], NULL, 10) : 0;
-	mysql_free_result(res);
+	// The grant this character summoned last, else the oldest.
 	RewardGrant selected = grants.front();
+	time_t selected_at = 0;
 	for (const RewardGrant &grant : grants)
-		if (grant.id == selected_id)
+	{
+		auto summon = reward_summons.find({ grant.id, GET_PID(ch) });
+		if (summon != reward_summons.end() &&
+		    (summon->second.last_summoned_at > selected_at ||
+		     (summon->second.last_summoned_at == selected_at && grant.id < selected.id)))
 		{
 			selected = grant;
-			break;
+			selected_at = summon->second.last_summoned_at;
 		}
+	}
 	if (!active_reward_capacity_allows(ch, selected))
 		return false;
 	bool summoned = summon_one(ch, selected, true);
@@ -1031,80 +1106,82 @@ static bool parse_positive(const char *text, int *value)
 	return true;
 }
 
+/* Records a grant in memory and queues its row, under the id memory gives it. */
+static unsigned long long record_grant(const std::string &account, int vnum, int template_version,
+				       const std::string &template_json,
+				       const std::string &display_name, const char *granted_by,
+				       time_t expires_at, int remaining_pwipes)
+{
+	const unsigned long long id = next_grant_id;
+	const time_t now = time(NULL);
+	char expires[48] = "NULL", pwipes[16] = "NULL";
+	if (expires_at)
+		snprintf(expires, sizeof(expires), "FROM_UNIXTIME(%ld)", (long)expires_at);
+	if (remaining_pwipes)
+		snprintf(pwipes, sizeof(pwipes), "%d", remaining_pwipes);
+	if (!sql_queue(
+		    "INSERT INTO account_bound_rewards(id,account_name,reward_vnum,template_version,template_json,display_name,granted_by,created_at,expires_at,remaining_pwipes) VALUES(%llu,'%s',%d,%d,%s%s%s,'%s','%s',FROM_UNIXTIME(%ld),%s,%s)",
+		    id, escape_sql(account.c_str()).c_str(), vnum, template_version,
+		    template_version ? "'" : "",
+		    template_version ? escape_sql(template_json.c_str()).c_str() : "NULL",
+		    template_version ? "'" : "", escape_sql(display_name.c_str()).c_str(),
+		    escape_sql(granted_by).c_str(), (long)now, expires, pwipes))
+		return 0;
+	++next_grant_id;
+	StoredGrant stored = {};
+	stored.grant.id = id;
+	stored.grant.account = account;
+	stored.grant.vnum = vnum;
+	stored.grant.template_version = template_version;
+	stored.grant.template_json = template_json;
+	stored.grant.display_name = display_name;
+	stored.grant.granted_by = granted_by;
+	stored.grant.remaining_pwipes = remaining_pwipes;
+	stored.created_at = now;
+	stored.expires_at = expires_at;
+	stored_grants[id] = stored;
+	return id;
+}
+
 static bool insert_exact_grant(P_char ch, P_obj source, const std::string &account,
 			       const char *mode, int amount, unsigned long long *new_id)
 {
 	char *json = account_reward_snapshot_serialize(source);
 	if (!json)
 		return false;
-	std::string account_q = escape_sql(account.c_str()), granter_q = escape_sql(GET_NAME(ch)),
-		    json_q = escape_sql(json),
-		    display_q = escape_sql(source->short_description ? source->short_description :
-								       "a divine reward");
+	const std::string template_json = json;
 	free(json);
-	bool ok;
-	if (!strcasecmp(mode, "days"))
-		ok = qry(
-			"INSERT INTO account_bound_rewards(account_name,reward_vnum,template_version,template_json,display_name,granted_by,expires_at,remaining_pwipes) VALUES('%s',%d,%d,'%s','%s','%s',NOW()+INTERVAL %d DAY,NULL)",
-			account_q.c_str(), OBJ_VNUM(source), ACCOUNT_REWARD_TEMPLATE_VERSION,
-			json_q.c_str(), display_q.c_str(), granter_q.c_str(), amount);
-	else if (!strcasecmp(mode, "wipes"))
-		ok = qry(
-			"INSERT INTO account_bound_rewards(account_name,reward_vnum,template_version,template_json,display_name,granted_by,expires_at,remaining_pwipes) VALUES('%s',%d,%d,'%s','%s','%s',NULL,%d)",
-			account_q.c_str(), OBJ_VNUM(source), ACCOUNT_REWARD_TEMPLATE_VERSION,
-			json_q.c_str(), display_q.c_str(), granter_q.c_str(), amount);
-	else
-		ok = qry(
-			"INSERT INTO account_bound_rewards(account_name,reward_vnum,template_version,template_json,display_name,granted_by,expires_at,remaining_pwipes) VALUES('%s',%d,%d,'%s','%s','%s',NULL,NULL)",
-			account_q.c_str(), OBJ_VNUM(source), ACCOUNT_REWARD_TEMPLATE_VERSION,
-			json_q.c_str(), display_q.c_str(), granter_q.c_str());
-	if (ok && new_id)
-		*new_id = mysql_insert_id(DB);
-	return ok && (!new_id || *new_id > 0);
+	const bool days = !strcasecmp(mode, "days"), wipes = !strcasecmp(mode, "wipes");
+	*new_id = record_grant(
+		account, OBJ_VNUM(source), ACCOUNT_REWARD_TEMPLATE_VERSION, template_json,
+		source->short_description ? source->short_description : "a divine reward",
+		GET_NAME(ch), days ? time(NULL) + (time_t)amount * 86400 : 0, wipes ? amount : 0);
+	return *new_id > 0;
 }
 
 static bool assign_legacy_grant(const std::string &account, const char *granter, int vnum,
 				unsigned long long *id)
 {
-	std::string account_q = escape_sql(account.c_str()), granter_q = escape_sql(granter);
-	MYSQL_RES *res = db_query(
-		"SELECT id FROM account_bound_rewards WHERE account_name='%s' AND reward_vnum=%d AND template_version=0 ORDER BY id LIMIT 1",
-		account_q.c_str(), vnum);
-	if (!res)
-		return false;
-	MYSQL_ROW row = mysql_fetch_row(res);
-	unsigned long long existing = (row && row[0]) ? strtoull(row[0], NULL, 10) : 0;
-	mysql_free_result(res);
-	if (existing)
-	{
-		if (!qry("UPDATE account_bound_rewards SET granted_by='%s',updated_at=CURRENT_TIMESTAMP WHERE id=%llu",
-			 granter_q.c_str(), existing))
-			return false;
-		if (id)
+	for (auto &[existing, stored] : stored_grants)
+		if (!strcasecmp(stored.grant.account.c_str(), account.c_str()) &&
+		    stored.grant.vnum == vnum && stored.grant.template_version == 0)
+		{
+			if (!sql_queue(
+				    "UPDATE account_bound_rewards SET granted_by='%s',updated_at=CURRENT_TIMESTAMP WHERE id=%llu",
+				    escape_sql(granter).c_str(), existing))
+				return false;
+			stored.grant.granted_by = granter;
 			*id = existing;
-		return true;
-	}
-	if (!qry("INSERT INTO account_bound_rewards(account_name,reward_vnum,template_version,display_name,granted_by) VALUES('%s',%d,0,'','%s')",
-		 account_q.c_str(), vnum, granter_q.c_str()))
-		return false;
-	if (id)
-		*id = mysql_insert_id(DB);
-	return !id || *id > 0;
+			return true;
+		}
+	*id = record_grant(account, vnum, 0, "", "", granter, 0, 0);
+	return *id > 0;
 }
 
 static bool list_grants(P_char ch, const char *account)
 {
 	purge_expired_grants();
-	bool lookup_ok = false;
-	std::vector<RewardGrant> grants = query_grants(account, false, &lookup_ok);
-	if (!lookup_ok)
-	{
-		logit(LOG_WIZ, "divineclaim: staff grant listing query failed");
-		send_to_char(
-			"The divine account-reward records are temporarily unavailable. Nothing was changed.\r\n",
-			ch);
-		return true;
-	}
+	std::vector<RewardGrant> grants = query_grants(account, false);
 	if (grants.empty())
 		return false;
 	send_to_char_f(ch, "&+WActive &+CDivine Account Rewards &+Y(%zu)&n\r\n", grants.size());
@@ -1125,31 +1202,19 @@ static bool list_grants(P_char ch, const char *account)
 		for (size_t i = group_start; i < group_end; ++i)
 		{
 			const RewardGrant &grant = grants[i];
-			std::vector<std::string> instances;
-			int instance_count = -1;
-			MYSQL_RES *res = db_query(
-				"SELECT pd.name,GREATEST(0,TIMESTAMPDIFF(SECOND,s.last_summoned_at,NOW())) FROM account_bound_reward_summons s LEFT JOIN player_data pd ON pd.pid=s.pid WHERE s.grant_id=%llu ORDER BY pd.name",
-				grant.id);
-			if (res)
-			{
-				MYSQL_ROW row;
-				instance_count = 0;
-				while ((row = mysql_fetch_row(res)) != NULL)
+			std::vector<std::pair<std::string, long long>> summoned;
+			for (const auto &[key, summon] : reward_summons)
+				if (key.first == grant.id)
 				{
-					std::string name = row[0] && *row[0] ? row[0] : "unknown";
-					long long age = row[1] ? strtoll(row[1], NULL, 10) : 0;
-					instances.push_back(name + " (" + compact_duration(age) +
-							    " ago)");
-					++instance_count;
+					const char *name = sql_get_player_name(key.second);
+					summoned.emplace_back(name ? name : "unknown",
+							      time(NULL) - summon.last_summoned_at);
 				}
-				mysql_free_result(res);
-			}
-			else
-			{
-				logit(LOG_WIZ,
-				      "divineclaim: instance listing failed for grant %llu",
-				      grant.id);
-			}
+			std::sort(summoned.begin(), summoned.end());
+			std::vector<std::string> instances;
+			for (const auto &[name, age] : summoned)
+				instances.push_back(name + " (" + compact_duration(age) + " ago)");
+			const int instance_count = (int)instances.size();
 
 			std::string id = "#" + std::to_string(grant.id);
 			std::string reward_name = grant.display_name.empty() ?
@@ -1161,14 +1226,12 @@ static bool list_grants(P_char ch, const char *account)
 			std::string granted_by = divineclaim_table_field(granted_by_name, 9);
 			std::string age = compact_duration(grant.age_seconds);
 			std::string lifetime = divineclaim_lifetime_text(grant);
-			std::string copies = instance_count < 0 ? "?" :
-								  std::to_string(instance_count);
+			std::string copies = std::to_string(instance_count);
 			const char *lifetime_color =
 				grant.remaining_pwipes > 0 ?
 					"&+Y" :
 					(grant.expires_seconds >= 0 ? "&+C" : "&+G");
-			const char *copies_color =
-				instance_count < 0 ? "&+R" : (instance_count > 0 ? "&+G" : "&+w");
+			const char *copies_color = instance_count > 0 ? "&+G" : "&+w";
 
 			send_to_char_f(
 				ch,
@@ -1179,8 +1242,6 @@ static bool list_grants(P_char ch, const char *account)
 
 			if (instance_count > 0)
 				send_divineclaim_instance_lines(ch, instances);
-			else if (instance_count < 0)
-				send_to_char("       &+Linstances:&n &+Runavailable&n\r\n", ch);
 		}
 		group_start = group_end;
 	}
@@ -1188,59 +1249,13 @@ static bool list_grants(P_char ch, const char *account)
 }
 
 static std::vector<RewardGrant> grants_for_removal(const char *account, int vnum, bool all,
-						   unsigned long long id, bool *lookup_ok)
+						   unsigned long long id)
 {
-	if (lookup_ok)
-		*lookup_ok = false;
-	if (id > 0)
-	{
-		bool ok = false;
-		std::vector<RewardGrant> all_grants = query_grants(NULL, false, &ok), result;
-		if (lookup_ok)
-			*lookup_ok = ok;
-		for (const RewardGrant &g : all_grants)
-			if (g.id == id)
-				result.push_back(g);
-		return result;
-	}
-	bool ok = false;
-	std::vector<RewardGrant> candidates = query_grants(account, false, &ok), result;
-	if (lookup_ok)
-		*lookup_ok = ok;
-	for (const RewardGrant &g : candidates)
-		if (all || g.vnum == vnum)
+	std::vector<RewardGrant> result;
+	for (const RewardGrant &g : query_grants(id > 0 ? NULL : account, false))
+		if (id > 0 ? g.id == id : (all || g.vnum == vnum))
 			result.push_back(g);
 	return result;
-}
-
-static int remove_grants(const std::vector<RewardGrant> &grants)
-{
-	std::vector<RewardGrant> revoked;
-	if (!sql_begin_transaction())
-		return -1;
-	for (const RewardGrant &grant : grants)
-	{
-		if (!clear_saved_grant(grant))
-		{
-			sql_rollback();
-			return -1;
-		}
-		if (!qry("DELETE FROM account_bound_rewards WHERE id=%llu", grant.id))
-		{
-			sql_rollback();
-			return -1;
-		}
-		if (mysql_affected_rows(DB) > 0)
-			revoked.push_back(grant);
-	}
-	if (!sql_commit())
-	{
-		sql_rollback();
-		return -1;
-	}
-	for (const RewardGrant &grant : revoked)
-		revoke_live_grant(grant);
-	return (int)revoked.size();
 }
 #endif
 
@@ -1332,13 +1347,7 @@ static void dissolve_reward_containers(P_char ch, P_obj parent, const std::strin
 			continue;
 		}
 
-		bool recovery_ready = qry(
-			"UPDATE account_bound_reward_summons SET recovery_ready=1 WHERE grant_id=%llu AND pid=%d",
-			marker.grant_id, GET_PID(ch));
-		if (!recovery_ready)
-			logit(LOG_WIZ,
-			      "divineclaim: failed to reset death recovery for grant %llu pid %d",
-			      marker.grant_id, GET_PID(ch));
+		set_recovery_ready(marker.grant_id, GET_PID(ch));
 
 		act("&+WThe divinely bound $p&+W fades from existence, leaving its contents behind.&n",
 		    TRUE, ch, obj, 0, TO_CHAR);
@@ -1388,6 +1397,114 @@ static void divineclaim_help(P_char ch)
 		"Each character on that account may summon one copy.\r\n",
 		ch);
 }
+
+static void remove_divineclaim(P_char ch, const std::vector<RewardGrant> &grants)
+{
+	if (grants.empty())
+	{
+		send_to_char(
+			"No active divine reward matched that request. Use DIVINECLAIM LIST to see claim IDs.\r\n",
+			ch);
+		return;
+	}
+	int removed = revoke_grants(grants);
+	if (removed < 0)
+		send_to_char(
+			"The reward revocation failed; check the server log before retrying.\r\n",
+			ch);
+	else
+		send_to_char_f(
+			ch,
+			"Revoked %d divine account reward%s and removed all saved or live copies.\r\n",
+			removed, removed == 1 ? "" : "s");
+}
+
+static void assign_legacy_divineclaim(P_char ch, const std::string &account, int legacy_vnum)
+{
+	if (!legacy_vnum)
+		legacy_vnum = DEFAULT_ACCOUNT_REWARD_VNUM;
+	if (real_object(legacy_vnum) < 0)
+	{
+		send_to_char("That legacy reward vnum does not exist.\r\n", ch);
+		return;
+	}
+	unsigned long long id = 0;
+	if (!assign_legacy_grant(account, GET_NAME(ch), legacy_vnum, &id))
+	{
+		send_to_char("The legacy divine reward could not be recorded.\r\n", ch);
+		return;
+	}
+	send_to_char_f(
+		ch,
+		"Legacy divine reward #%llu assigned to account %s using vnum %d. It is permanent; each account character may summon one copy.\r\n",
+		id, account.c_str(), legacy_vnum);
+}
+
+static void create_exact_divineclaim(P_char ch, const char *item, const std::string &account,
+				     const char *mode, int amount)
+{
+	P_obj source = get_obj_in_list_vis(ch, item, ch->carrying);
+	if (!source)
+	{
+		send_to_char_f(
+			ch,
+			"You are not carrying an item matching '%s'. Put the exact source item in your inventory and try again.\r\n",
+			item);
+		return;
+	}
+	RewardMarker marker;
+	if (parse_reward_marker(source, &marker))
+	{
+		send_to_char(
+			"That item is already an account reward. Use its original source item instead.\r\n",
+			ch);
+		return;
+	}
+	if (IS_ARTIFACT(source))
+	{
+		send_to_char(
+			"Artifacts and globally unique items cannot become account rewards because each account character receives an independent copy. The source item was not changed.\r\n",
+			ch);
+		return;
+	}
+	if (source->contains)
+	{
+		send_to_char(
+			"That container is not empty. Empty it first; DIVINECLAIM snapshots one exact item and never duplicates or silently omits contents.\r\n",
+			ch);
+		return;
+	}
+	unsigned long long id = 0;
+	if (!insert_exact_grant(ch, source, account, mode, amount, &id))
+	{
+		send_to_char(
+			"The exact divine reward could not be recorded. The source item remains unchanged.\r\n",
+			ch);
+		return;
+	}
+	const char *display = source->short_description ? source->short_description :
+							  "a divine reward";
+	if (!strcasecmp(mode, "days"))
+		send_to_char_f(
+			ch,
+			"Created divine reward #%llu for account %s from the exact item %s.&n It expires in %d day%s.\r\n",
+			id, account.c_str(), display, amount, amount == 1 ? "" : "s");
+	else if (!strcasecmp(mode, "wipes"))
+		send_to_char_f(
+			ch,
+			"Created divine reward #%llu for account %s from the exact item %s.&n It expires after %d successful player wipe%s.\r\n",
+			id, account.c_str(), display, amount, amount == 1 ? "" : "s");
+	else
+		send_to_char_f(
+			ch,
+			"Created permanent divine reward #%llu for account %s from the exact item %s.&n\r\n",
+			id, account.c_str(), display);
+	send_to_char(
+		"The source item remains in your inventory. Each character on that account may summon one copy with DIVINECLAIM.\r\n",
+		ch);
+	logit(LOG_WIZ, "%s created exact divineclaim #%llu vnum %d for account %s (%s)", J_NAME(ch),
+	      id, OBJ_VNUM(source), account.c_str(), mode);
+}
 #endif
 
 void do_divineclaim(P_char ch, char *argument, int cmd)
@@ -1422,157 +1539,84 @@ void do_divineclaim(P_char ch, char *argument, int cmd)
 
 	if (!strcasecmp(first, "list"))
 	{
-		std::string account;
-		const char *filter = NULL;
-		if (*second)
+		if (!*second)
 		{
-			if (!canonical_account(second, &account))
-			{
-				send_to_char(
-					"No account by that name exists. Use DIVINECLAIM LIST with no account to see every grant.\r\n",
-					ch);
-				return;
-			}
-			filter = account.c_str();
+			if (!list_grants(ch, NULL))
+				send_to_char("No active divine account rewards exist.\r\n", ch);
+			return;
 		}
-		if (!list_grants(ch, filter))
-			send_to_char(filter ? "That account has no active divine rewards.\r\n" :
-					      "No active divine account rewards exist.\r\n",
-				     ch);
+		with_account(
+			ch, second,
+			[](P_char staff, const std::string *account)
+			{
+				if (!account)
+					send_to_char(
+						"No account by that name exists. Use DIVINECLAIM LIST with no account to see every grant.\r\n",
+						staff);
+				else if (!list_grants(staff, account->c_str()))
+					send_to_char(
+						"That account has no active divine rewards.\r\n",
+						staff);
+			});
 		return;
 	}
 
 	if (!strcasecmp(first, "remove"))
 	{
-		std::vector<RewardGrant> grants;
-		bool removal_lookup_ok = false;
 		int numeric = 0;
 		if (*second && !*third && parse_positive(second, &numeric))
-			grants = grants_for_removal(NULL, 0, false, (unsigned long long)numeric,
-						    &removal_lookup_ok);
-		else if (*second && *third)
 		{
-			std::string account;
-			if (!canonical_account(second, &account))
-			{
-				send_to_char("No account by that name exists.\r\n", ch);
-				return;
-			}
-			bool all = !strcasecmp(third, "all");
-			int vnum = 0;
-			if (!all && !parse_positive(third, &vnum))
-			{
-				send_to_char(
-					"Use a positive reward vnum or ALL. For exact grants, prefer DIVINECLAIM REMOVE <claim-id>.\r\n",
-					ch);
-				return;
-			}
-			grants = grants_for_removal(account.c_str(), vnum, all, 0,
-						    &removal_lookup_ok);
+			remove_divineclaim(ch, grants_for_removal(NULL, 0, false,
+								  (unsigned long long)numeric));
+			return;
 		}
-		else
+		if (!*second || !*third)
 		{
 			send_to_char(
 				"Syntax: divineclaim remove <claim-id>\r\n        divineclaim remove <account> <reward vnum|all>\r\n",
 				ch);
 			return;
 		}
-		if (!removal_lookup_ok)
+		const bool all = !strcasecmp(third, "all");
+		int vnum = 0;
+		if (!all && !parse_positive(third, &vnum))
 		{
 			send_to_char(
-				"The divine account-reward records are temporarily unavailable. Nothing was removed.\r\n",
+				"Use a positive reward vnum or ALL. For exact grants, prefer DIVINECLAIM REMOVE <claim-id>.\r\n",
 				ch);
 			return;
 		}
-		if (grants.empty())
-		{
-			send_to_char(
-				"No active divine reward matched that request. Use DIVINECLAIM LIST to see claim IDs.\r\n",
-				ch);
-			return;
-		}
-		int removed = remove_grants(grants);
-		if (removed < 0)
-			send_to_char(
-				"The reward revocation failed; check the server log before retrying.\r\n",
-				ch);
-		else
-			send_to_char_f(
-				ch,
-				"Revoked %d divine account reward%s and removed all saved or live copies.\r\n",
-				removed, removed == 1 ? "" : "s");
+		with_account(ch, second,
+			     [all, vnum](P_char staff, const std::string *account)
+			     {
+				     if (!account)
+					     send_to_char("No account by that name exists.\r\n",
+							  staff);
+				     else
+					     remove_divineclaim(staff,
+								grants_for_removal(account->c_str(),
+										   vnum, all, 0));
+			     });
 		return;
 	}
 
-	std::string first_account;
 	int legacy_vnum = 0;
-	if (canonical_account(first, &first_account) &&
-	    (!*second || parse_positive(second, &legacy_vnum)))
+	if (!*second || parse_positive(second, &legacy_vnum))
 	{
-		if (!legacy_vnum)
-			legacy_vnum = DEFAULT_ACCOUNT_REWARD_VNUM;
-		if (real_object(legacy_vnum) < 0)
-		{
-			send_to_char("That legacy reward vnum does not exist.\r\n", ch);
-			return;
-		}
-		unsigned long long id = 0;
-		if (!assign_legacy_grant(first_account, GET_NAME(ch), legacy_vnum, &id))
-		{
-			send_to_char("The legacy divine reward could not be recorded.\r\n", ch);
-			return;
-		}
-		send_to_char_f(
-			ch,
-			"Legacy divine reward #%llu assigned to account %s using vnum %d. It is permanent; each account character may summon one copy.\r\n",
-			id, first_account.c_str(), legacy_vnum);
+		// divineclaim <account> [reward vnum]: a legacy vnum grant.
+		with_account(ch, first,
+			     [legacy_vnum](P_char staff, const std::string *account)
+			     {
+				     if (!account)
+					     divineclaim_help(staff);
+				     else
+					     assign_legacy_divineclaim(staff, *account,
+								       legacy_vnum);
+			     });
 		return;
 	}
 
-	if (!*second)
-	{
-		divineclaim_help(ch);
-		return;
-	}
-	P_obj source = get_obj_in_list_vis(ch, first, ch->carrying);
-	if (!source)
-	{
-		send_to_char_f(
-			ch,
-			"You are not carrying an item matching '%s'. Put the exact source item in your inventory and try again.\r\n",
-			first);
-		return;
-	}
-	RewardMarker marker;
-	if (parse_reward_marker(source, &marker))
-	{
-		send_to_char(
-			"That item is already an account reward. Use its original source item instead.\r\n",
-			ch);
-		return;
-	}
-	if (IS_ARTIFACT(source))
-	{
-		send_to_char(
-			"Artifacts and globally unique items cannot become account rewards because each account character receives an independent copy. The source item was not changed.\r\n",
-			ch);
-		return;
-	}
-	if (source->contains)
-	{
-		send_to_char(
-			"That container is not empty. Empty it first; DIVINECLAIM snapshots one exact item and never duplicates or silently omits contents.\r\n",
-			ch);
-		return;
-	}
-	std::string account;
-	if (!canonical_account(second, &account))
-	{
-		send_to_char(
-			"No account by that name exists. The item was not consumed or changed.\r\n",
-			ch);
-		return;
-	}
+	// divineclaim <inventory item> <account> [lifetime]: an exact grant.
 	const char *mode = "permanent";
 	int amount = 0;
 	if (*third)
@@ -1604,35 +1648,18 @@ void do_divineclaim(P_char ch, char *argument, int cmd)
 			return;
 		}
 	}
-	unsigned long long id = 0;
-	if (!insert_exact_grant(ch, source, account, mode, amount, &id))
-	{
-		send_to_char(
-			"The exact divine reward could not be recorded. The source item remains unchanged.\r\n",
-			ch);
-		return;
-	}
-	const char *display = source->short_description ? source->short_description :
-							  "a divine reward";
-	if (!strcasecmp(mode, "days"))
-		send_to_char_f(
-			ch,
-			"Created divine reward #%llu for account %s from the exact item %s.&n It expires in %d day%s.\r\n",
-			id, account.c_str(), display, amount, amount == 1 ? "" : "s");
-	else if (!strcasecmp(mode, "wipes"))
-		send_to_char_f(
-			ch,
-			"Created divine reward #%llu for account %s from the exact item %s.&n It expires after %d successful player wipe%s.\r\n",
-			id, account.c_str(), display, amount, amount == 1 ? "" : "s");
-	else
-		send_to_char_f(
-			ch,
-			"Created permanent divine reward #%llu for account %s from the exact item %s.&n\r\n",
-			id, account.c_str(), display);
-	send_to_char(
-		"The source item remains in your inventory. Each character on that account may summon one copy with DIVINECLAIM.\r\n",
-		ch);
-	logit(LOG_WIZ, "%s created exact divineclaim #%llu vnum %d for account %s (%s)", J_NAME(ch),
-	      id, OBJ_VNUM(source), account.c_str(), mode);
+	with_account(
+		ch, second,
+		[item = std::string(first), mode = std::string(mode),
+		 amount](P_char staff, const std::string *account)
+		{
+			if (!account)
+				send_to_char(
+					"No account by that name exists. The item was not consumed or changed.\r\n",
+					staff);
+			else
+				create_exact_divineclaim(staff, item.c_str(), *account,
+							 mode.c_str(), amount);
+		});
 #endif
 }

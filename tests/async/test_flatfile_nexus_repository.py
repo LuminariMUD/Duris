@@ -98,18 +98,24 @@ for database_call in (
 
 source = (SRC / "nexus_stones.c").read_text()
 for database_call in (
-    'SELECT id, name, room_vnum, align FROM nexus_stones',
-    'UPDATE nexus_stones SET align',
-    'SELECT id, align FROM nexus_stones',
+    'SELECT id, name, room_vnum, align, stat_affect, affect_amount, bonus, ',
+    '"UPDATE nexus_stones SET align = \'%d\', last_touched_at = NOW() WHERE id = \'%d\'"',
+    '"UPDATE nexus_stones SET align = 0, last_touched_at = NULL WHERE id = \'%d\'"',
 ):
     if database_call not in source:
         raise SystemExit(f"MariaDB nexus behavior was removed: {database_call}")
-for mapping in (
-    "info->affect_amount = atoi(row[4]);",
-    "info->last_touched_at = row[5] ? atoi(row[5]) : 0;",
-):
-    if mapping not in source:
-        raise SystemExit(f"MariaDB nexus info mapping is incomplete: {mapping}")
+# Step 8: MariaDB reads the rows once at boot (nexus_rows) and answers from them; its
+# updates change them at once and are queued on the writer. Only the boot load queries
+# (and the stat modifiers, which return before theirs).
+runtime = source[source.index("bool nexus_stone_info("):]
+stat_mods = runtime[runtime.index("void update_nexus_stat_mods()"):
+                    runtime.index("int update_nexus_stone_align(")]
+runtime = runtime.replace(stat_mods, "")
+for forbidden in ("qry(", "mysql_store_result", "db_query"):
+    if forbidden in runtime:
+        raise SystemExit(f"MariaDB nexus runtime still queries the game loop: {forbidden}")
+if runtime.count("sql_queue(") != 2 or "nexus_rows" not in runtime:
+    raise SystemExit("MariaDB nexus runtime must answer from memory and queue its updates")
 
 makefile = (SRC / "Makefile").read_text()
 if "flatfile_nexus_repository.o" not in makefile:

@@ -25,6 +25,7 @@
 #include "core/safe_format.h"
 #include "account/account.h"
 #include "account/account_recovery.h"
+#include "account/account_reward.h"
 #include "account/creation_availability_config.h"
 #include "account/login_mode_banner.h"
 #include "account/password_hash.h"
@@ -43,6 +44,7 @@
 #include "magic/spells.h"
 #include "sql/sql_player.h"
 #include "player/player_name.h"
+#include "player/player_playtime.h"
 #include "player/player_load_materialize.h"
 #include "player/player_load_pipeline.h"
 #include "player/player_revision_state.h"
@@ -57,6 +59,7 @@
 #include "persistence/persistence_mode.h"
 #include "ships/ships.h"
 #include "guild/assocs.h"
+#include "net/poll.h"
 #include "net/ws_handlers.h"
 #include "redis/redis_ship_legacy.h"
 
@@ -207,17 +210,10 @@ class account_deletion_drain_guard
 	bool player_quiesced_ = false;
 };
 
-void remove_deleted_account_runtime(P_desc deleting_session,
-				    const std::vector<account_deletion_identity> &identities)
+// The account's characters leave the game. Closing their sessions queued their terminal saves.
+void remove_deleted_account_characters(P_desc deleting_session,
+				       const std::vector<account_deletion_identity> &identities)
 {
-	for (const auto &identity : identities)
-	{
-		item_ownership_runtime_forget_player_domain(identity.pid);
-		player_revision_forget(identity.pid);
-		redis_invalidate_ship_snapshot(identity.name.c_str());
-		forget_deleted_guild_member(identity.name.c_str());
-		delete_ship_runtime(identity.name.c_str());
-	}
 	for (P_char character = character_list, next = NULL; character; character = next)
 	{
 		next = character->next;
@@ -237,6 +233,19 @@ void remove_deleted_account_runtime(P_desc deleting_session,
 				extract_char_after_terminal_save(character);
 				break;
 			}
+	}
+}
+
+// The account's deletion committed: memory lets go of its characters.
+void forget_deleted_account_characters(const std::vector<account_deletion_identity> &identities)
+{
+	for (const auto &identity : identities)
+	{
+		item_ownership_runtime_forget_player_domain(identity.pid);
+		player_revision_forget(identity.pid);
+		redis_invalidate_ship_snapshot(identity.name.c_str());
+		forget_deleted_guild_member(identity.name.c_str());
+		delete_ship_runtime(identity.name.c_str());
 	}
 }
 
@@ -329,7 +338,6 @@ bool build_account_load_request(P_desc d, struct acct_chars *c, player_load_requ
 #define ACCT_SERIAL 1
 #define ACCOUNT_EMAIL_DB "Accounts/email.db"
 
-bool account_exists(const char *, char *);
 void check_rested_bonus(P_desc);
 
 // Email validation function with strict RFC compliance
@@ -485,62 +493,43 @@ void send_account_password_prompt(P_desc d)
 }
 
 /*
- * Applies a password chosen through account recovery.  Works on a scratch account
- * read fresh from the store so a fence or credential change made after the code
- * was issued is honoured.  write_account re-reads every same-name descriptor's
- * account (including the requester's, whose acct_name may be the acct_name
- * argument), so after that call only scratch's own strings are dereferenced.
+ * Applies a password chosen through account recovery to `fresh`, the account the
+ * caller has just read from the store, so a fence or credential change made after the
+ * code was issued is honoured.  write_account copies it into every same-name session,
+ * the requester's included.
  */
 account_recovery_apply_outcome account_apply_recovered_password(
-	const char *acct_name, const char *bcrypt_hash,
+	P_acct fresh, const char *bcrypt_hash,
 	const unsigned char expected_fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN],
 	P_desc keep_session)
 {
-	if (!acct_name || !*acct_name || !bcrypt_hash || !*bcrypt_hash || !expected_fingerprint)
+	if (!fresh || !bcrypt_hash || !*bcrypt_hash || !expected_fingerprint)
 		return account_recovery_apply_outcome::load_failed;
 
-	P_acct scratch = allocate_account();
-	if (!scratch)
-		return account_recovery_apply_outcome::load_failed;
-	scratch->acct_name = str_dup(acct_name);
-
-	if (read_account(scratch) == -1)
-	{
-		free_account(scratch);
-		return account_recovery_apply_outcome::load_failed;
-	}
-
-	if (scratch->acct_blocked != 0)
-	{
-		free_account(scratch);
+	if (fresh->acct_blocked != 0)
 		return account_recovery_apply_outcome::fenced;
-	}
 
 	unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN];
-	account_recovery_credential_fingerprint(scratch->acct_password, scratch->acct_email,
+	account_recovery_credential_fingerprint(fresh->acct_password, fresh->acct_email,
 						fingerprint);
 	const int fingerprint_differs =
 		CRYPTO_memcmp(fingerprint, expected_fingerprint, ACCOUNT_RECOVERY_FINGERPRINT_LEN);
 	OPENSSL_cleanse(fingerprint, sizeof(fingerprint));
 	if (fingerprint_differs != 0)
-	{
-		free_account(scratch);
 		return account_recovery_apply_outcome::superseded;
-	}
 
-	FREE(scratch->acct_password);
-	scratch->acct_password = str_dup(bcrypt_hash);
+	FREE(fresh->acct_password);
+	fresh->acct_password = str_dup(bcrypt_hash);
 
-	/* scratch is attached to no descriptor, so write_account's re-read loop never
-	 * touches it: this string stays valid until free_account(scratch) below. */
-	const char *const owner_name = scratch->acct_name;
+	/* fresh is attached to no descriptor, so write_account's copy loop never touches
+	 * it: this string stays valid until the caller frees fresh. */
+	const char *const owner_name = fresh->acct_name;
 
-	if (write_account(scratch) != 1)
+	if (write_account(fresh) != 1)
 	{
 		statuslog(56, "&+RALERT&n: account recovery save failed");
 		persistence_alert(AVATAR, "account", "redacted", "none", "none", "write_failed",
 				  NULL);
-		free_account(scratch);
 		return account_recovery_apply_outcome::write_failed;
 	}
 
@@ -548,7 +537,6 @@ account_recovery_apply_outcome account_apply_recovered_password(
 		owner_name, keep_session,
 		"\r\nThe password for this account was just reset from another connection. "
 		"Disconnecting.\r\n");
-	free_account(scratch);
 	return account_recovery_apply_outcome::ok;
 }
 
@@ -589,26 +577,31 @@ void select_accountname(P_desc d, char *arg)
 
 	d->account->acct_name = str_dup(tmp_name);
 
-	if (account_exists("Accounts", tmp_name))
-	{
-		if (read_account(d->account) == -1)
+	account_read(
+		d, tmp_name,
+		[](P_desc reader, bool ok, P_acct loaded)
 		{
-			SEND_TO_Q(
-				"There is an error with your account, please notify an immortal!\r\n",
-				d);
-			statuslog(56, "&+RALERT&n:  Account corrupt: %s", tmp_name);
-			d->account = free_account(d->account);
-			STATE(d) = CON_FLUSH;
-			return;
-		}
-
-		send_account_password_prompt(d);
-		return;
-	}
-
-	verify_account_name(d, NULL);
-	STATE(d) = CON_VERIFY_NEW_ACCT_NAME;
-	return;
+			if (!ok)
+			{
+				SEND_TO_Q("There is an error with your account, please notify an "
+					  "immortal!\r\n",
+					  reader);
+				statuslog(56, "&+RALERT&n:  Account unreadable: %s",
+					  reader->account->acct_name);
+				reader->account = free_account(reader->account);
+				STATE(reader) = CON_FLUSH;
+				return;
+			}
+			if (loaded)
+			{
+				free_account(reader->account);
+				reader->account = loaded;
+				send_account_password_prompt(reader);
+				return;
+			}
+			verify_account_name(reader, NULL);
+			STATE(reader) = CON_VERIFY_NEW_ACCT_NAME;
+		});
 }
 
 void get_account_password(P_desc d, char *arg)
@@ -1553,203 +1546,40 @@ void account_confirm_char(P_desc d, char *arg)
 	return;
 }
 
-// Helper structure for character display data
-struct char_display_info
-{
-	char charname[32];
-	int level;
-	int race;
-	unsigned int m_class;
-	unsigned int secondary_class;
-	char *rested_status; // "Well-Rested", "Rested", or "None"
-	int hometown; // Last room character was in
-	long last_login;
-};
-
-// cleanup temp char loaded via restoreCharOnly before freeing
-// handles items, affects, events, strings
-// NOTE: does NOT free the char struct itself or pc_only_data - caller must do that
-void cleanup_temp_char(P_char ch)
-{
-	extern struct mm_ds *dead_affect_pool;
-
-	if (!ch)
-		return;
-
-	// unequip and extract all equipment
-	for (int i = 0; i < MAX_WEAR; i++)
-	{
-		if (ch->equipment[i])
-		{
-			P_obj obj = unequip_char(ch, i);
-			extract_obj(obj, FALSE);
-		}
-	}
-
-	// remove and extract all carried items
-	while (ch->carrying)
-	{
-		P_obj obj = ch->carrying;
-		obj_from_char(obj);
-		extract_obj(obj, FALSE);
-	}
-
-	// release affects directly to pool (don't use affect_remove - it schedules events)
-	while (ch->affected)
-	{
-		struct affected_type *af = ch->affected;
-		ch->affected = af->next;
-		if (dead_affect_pool)
-			mm_release(dead_affect_pool, af);
-	}
-
-	// clear any scheduled events
-	disarm_char_nevents(ch, NULL);
-
-	// free strings allocated by sql_row_str/getString
-	if (ch->player.name)
-		str_free(ch->player.name);
-	if (ch->player.title)
-		str_free(ch->player.title);
-	if (ch->player.short_descr)
-		str_free(ch->player.short_descr);
-	if (ch->player.long_descr)
-		str_free(ch->player.long_descr);
-	if (ch->player.description)
-		str_free(ch->player.description);
-
-	// free pc-only strings and data
-	if (IS_PC(ch) && ch->only.pc)
-	{
-		if (ch->only.pc->poofIn)
-			str_free(ch->only.pc->poofIn);
-		if (ch->only.pc->poofOut)
-			str_free(ch->only.pc->poofOut);
-		if (ch->only.pc->gcmd_arr)
-			FREE(ch->only.pc->gcmd_arr);
-	}
-}
-
-// Helper function to load character display data
-// Returns 1 on success, 0 on failure
-int load_char_display_data(char *charname, struct char_display_info *info)
-{
-	P_char temp_ch;
-	int result;
-
-	// Create temporary character structure using malloc (like pfile.c does)
-	temp_ch = (struct char_data *)malloc(sizeof(struct char_data));
-	if (!temp_ch)
-		return 0;
-
-	memset(temp_ch, 0, sizeof(struct char_data));
-
-	temp_ch->only.pc = (struct pc_only_data *)malloc(sizeof(struct pc_only_data));
-	if (!temp_ch->only.pc)
-	{
-		free(temp_ch);
-		return 0;
-	}
-
-	memset(temp_ch->only.pc, 0, sizeof(struct pc_only_data));
-
-	// Load character data
-	result = restoreCharOnly(temp_ch, charname);
-	if (result < 0)
-	{
-		if (temp_ch->only.pc)
-			free(temp_ch->only.pc);
-		free(temp_ch);
-		return 0;
-	}
-
-	// Extract display data
-	strlcpy(info->charname, GET_NAME(temp_ch), sizeof info->charname);
-	info->level = GET_LEVEL(temp_ch);
-	info->race = GET_RACE(temp_ch);
-	info->m_class = temp_ch->player.m_class;
-	info->secondary_class = temp_ch->player.secondary_class;
-	info->hometown = GET_HOME(temp_ch);
-
-	// Calculate rested status based on offline time (same logic as nanny.c)
-	time_t current_time = time(0);
-	time_t offline_seconds = current_time - temp_ch->player.time.saved;
-	int offline_hours = offline_seconds / 3600;
-	char rested_buf[128];
-
-	if (offline_hours >= 20)
-	{
-		// Well-rested bonus
-		snprintf(rested_buf, 128, "&+Wwell-rested&n bonus (&+G%d&n hours offline)",
-			 offline_hours);
-		info->rested_status = str_dup(rested_buf);
-	}
-	else if (offline_hours >= 9)
-	{
-		// Rested bonus
-		snprintf(rested_buf, 128, "&+Grested&n bonus (&+Y%d&n hours offline)",
-			 offline_hours);
-		info->rested_status = str_dup(rested_buf);
-	}
-	else
-	{
-		// No bonus yet - show how many more hours needed
-		int hours_needed = 9 - offline_hours;
-		snprintf(rested_buf, 128, "&+LNone&n (&+R%d&n more hour%s needed)", hours_needed,
-			 hours_needed == 1 ? "" : "s");
-		info->rested_status = str_dup(rested_buf);
-	}
-
-	cleanup_temp_char(temp_ch);
-
-	// free the temp char struct
-	if (temp_ch->only.pc)
-		free(temp_ch->only.pc);
-	free(temp_ch);
-
-	return 1;
-}
-
-// Helper function to get race name from character display info
-void get_race_name_from_info(struct char_display_info *info, char *race_str, int max_len)
-{
-	extern const struct race_names race_names_table[];
-	if (info->race >= 0 && info->race < LAST_RACE)
-		strlcpy(race_str, race_names_table[info->race].normal, max_len);
-	else
-		strlcpy(race_str, "Unknown", max_len);
-}
-
 void check_rested_bonus(P_desc d)
 {
-	struct acct_chars *c = d->account->acct_character_list;
 	char buf[512];
 	int count = 0;
 
 	SEND_TO_Q("\r\n&+y===== &+WRESTED BONUS STATUS&+y =====&n\r\n\r\n", d);
 
-	while (c)
+	for (struct acct_chars *c = d->account->acct_character_list; c; c = c->next, count++)
 	{
-		struct char_display_info info;
+		// Capitalize character name
+		char name_cap[32];
+		strlcpy(name_cap, c->charname, sizeof name_cap);
+		if (name_cap[0])
+			name_cap[0] = toupper(name_cap[0]);
 
-		if (load_char_display_data(c->charname, &info))
+		// Rested status from the time offline (same logic as nanny.c)
+		const int offline_hours = (time(0) - c->last_save) / 3600;
+		char rested[128];
+		if (offline_hours >= 20)
+			snprintf(rested, sizeof rested,
+				 "&+Wwell-rested&n bonus (&+G%d&n hours offline)", offline_hours);
+		else if (offline_hours >= 9)
+			snprintf(rested, sizeof rested, "&+Grested&n bonus (&+Y%d&n hours offline)",
+				 offline_hours);
+		else
 		{
-			// Capitalize character name
-			char name_cap[32];
-			strlcpy(name_cap, info.charname, sizeof name_cap);
-			if (name_cap[0])
-				name_cap[0] = toupper(name_cap[0]);
-
-			snprintf(buf, 512, "&+C%-12s&n: %s\r\n", name_cap,
-				 info.rested_status ? info.rested_status : "&+LNone&n");
-			SEND_TO_Q(buf, d);
-
-			if (info.rested_status)
-				str_free(info.rested_status);
-
-			count++;
+			// No bonus yet - show how many more hours needed
+			const int hours_needed = 9 - offline_hours;
+			snprintf(rested, sizeof rested, "&+LNone&n (&+R%d&n more hour%s needed)",
+				 hours_needed, hours_needed == 1 ? "" : "s");
 		}
-		c = c->next;
+
+		snprintf(buf, 512, "&+C%-12s&n: %s\r\n", name_cap, rested);
+		SEND_TO_Q(buf, d);
 	}
 
 	if (count == 0)
@@ -1856,39 +1686,32 @@ void display_delete_character_list(P_desc d)
 	// Display sorted characters in red
 	for (i = 0; i < count; i++)
 	{
-		struct char_display_info info;
+		struct acct_chars *ch = sorted_chars[i];
 		char name_capitalized[32];
 		char race_str[32];
 		char class_str[64];
 		char level_str[16];
 		char line_buf[512];
 
-		// Load character display data
-		if (!load_char_display_data(sorted_chars[i]->charname, &info))
-		{
-			snprintf(
-				line_buf, 512,
-				"&+R|&n &+R%d&n &+R|&n &+R%-12s&n &+R|&n &+R%-5s&n &+R|&n &+R%-12s&n &+R|&n &+R%-12s&n &+R|&n\r\n",
-				i + 1, sorted_chars[i]->charname, "?", "?", "?");
-			SEND_TO_Q(line_buf, d);
-			continue;
-		}
-
 		// Capitalize character name
-		strlcpy(name_capitalized, info.charname, sizeof name_capitalized);
+		strlcpy(name_capitalized, ch->charname, sizeof name_capitalized);
 		if (name_capitalized[0])
 			name_capitalized[0] = toupper(name_capitalized[0]);
 
 		// Get race name
-		get_race_name_from_info(&info, race_str, 32);
+		extern const struct race_names race_names_table[];
+		if (ch->race >= 0 && ch->race < LAST_RACE)
+			strlcpy(race_str, race_names_table[ch->race].normal, sizeof race_str);
+		else
+			strlcpy(race_str, "Unknown", sizeof race_str);
 
 		// Get class name(s)
 		extern const struct class_names class_names_table[];
-		int primary_idx = flag2idx(info.m_class);
-		int secondary_idx = info.secondary_class ? flag2idx(info.secondary_class) : 0;
+		int primary_idx = flag2idx(ch->m_class);
+		int secondary_idx = ch->secondary_class ? flag2idx(ch->secondary_class) : 0;
 
-		snprintf(level_str, 16, "%d", info.level);
-		if (info.secondary_class && secondary_idx > 0)
+		snprintf(level_str, 16, "%d", ch->level);
+		if (ch->secondary_class && secondary_idx > 0)
 		{
 			// Multiclass
 			snprintf(class_str, sizeof class_str, "%s/%s",
@@ -1915,10 +1738,6 @@ void display_delete_character_list(P_desc d)
 			"&+R|&n %d &+R|&n &+R%-12s&n &+R|&n &+R%-5s&n &+R|&n &+R%-12s&n &+R|&n &+R%-12s&n &+R|&n\r\n",
 			i + 1, name_capitalized, level_str, race_str, class_str);
 		SEND_TO_Q(line_buf, d);
-
-		// Free rested status string
-		if (info.rested_status)
-			str_free(info.rested_status);
 	}
 
 	// Display table footer
@@ -2353,7 +2172,7 @@ int is_char_in_game(struct acct_chars *c, P_desc d)
 	return 1;
 }
 
-struct acct_chars *find_char_in_list(struct acct_chars *list, char *arg)
+struct acct_chars *find_char_in_list(struct acct_chars *list, const char *arg)
 {
 	if (!list)
 		return NULL;
@@ -2671,6 +2490,7 @@ void add_char_to_account(P_desc d)
 	c->race = GET_RACE(player);
 	c->m_class = player->player.m_class;
 	c->secondary_class = player->player.secondary_class;
+	c->spec = player->player.spec;
 	c->next = d->account->acct_character_list;
 	d->account->acct_character_list = c;
 
@@ -2682,10 +2502,9 @@ void add_char_to_account(P_desc d)
 				  "add character save failed");
 	}
 #else
-	/* The new pid has been allocated, but no player_data row exists yet. Writing the
-	 * account here skips that unresolved mapping and then reloads the account, which
-	 * discards this live entry until the next login. The first character save commits
-	 * player_data plus account_characters and publishes the completed projection. */
+	/* The new pid has been allocated, but no player_data row exists yet, so an account
+	 * save would skip this mapping. The first character save commits player_data plus
+	 * account_characters. */
 #endif
 }
 
@@ -2704,6 +2523,9 @@ int sync_account_character_projection(P_char player, int room, int persist)
 	character->race = GET_RACE(player);
 	character->m_class = player->player.m_class;
 	character->secondary_class = player->player.secondary_class;
+	character->spec = player->player.spec;
+	character->played = player_playtime_total(player->player.time.played,
+						  player->player.time.logon, time(NULL));
 	character->racewar = account_admission_racewar(GET_RACEWAR(player), IS_TRUSTED(player));
 	character->player_racewar = GET_RACEWAR(player);
 	if (room != NOWHERE)
@@ -2711,6 +2533,29 @@ int sync_account_character_projection(P_char player, int room, int persist)
 	character->last_save = time(NULL);
 
 	return !persist || write_account(player->desc->account) == 1;
+}
+
+/* A session waiting for the writer holds its input (comm.c) until the reply, which finds
+ * it by this id, so a connection closed meanwhile just drops the reply. On flat-file the
+ * reply comes at once. */
+uint64_t wait_for_writer(P_desc d)
+{
+	static uint64_t sequence = 0;
+	d->writer_wait_id = ++sequence;
+	return d->writer_wait_id;
+}
+
+P_desc writer_replied(uint64_t id)
+{
+	for (P_desc d = descriptor_list; d; d = d->next)
+		if (d->writer_wait_id == id)
+		{
+			d->writer_wait_id = 0;
+			// Output queued here arrives without input.
+			d->prompt_mode = TRUE;
+			return d;
+		}
+	return nullptr;
 }
 
 static void release_delete_character(P_desc d)
@@ -2723,6 +2568,31 @@ static void release_delete_character(P_desc d)
 		ch->desc = NULL;
 		free_char(ch);
 	}
+}
+
+/* Tells the session how its character deletion went, and returns it to the menu. */
+static void finish_character_deletion(P_desc d, character_delete_result result)
+{
+	if (result == character_delete_result::deleted)
+	{
+		statuslog(GET_LEVEL(d->character), "%s deleted %sself (%s).",
+			  GET_NAME(d->character), GET_SEX(d->character) == SEX_MALE ? "him" : "her",
+			  d->host);
+		logit(LOG_PLAYER, "%s deleted %sself (%s).", GET_NAME(d->character),
+		      GET_SEX(d->character) == SEX_MALE ? "him" : "her", d->host);
+		SEND_TO_Q("&+GCharacter deleted successfully.&n\r\n\r\n", d);
+	}
+	else if (result == character_delete_result::reconciliation_required)
+		SEND_TO_Q("&+RDeletion could not be confirmed. Some cleanup may have completed. "
+			  "Please contact an immortal before retrying.&n\r\n\r\n",
+			  d);
+	else
+		SEND_TO_Q(
+			"&+RCharacter deletion did not complete. Please try again later.&n\r\n\r\n",
+			d);
+	release_delete_character(d);
+	STATE(d) = CON_DISPLAY_ACCT_MENU;
+	display_account_menu(d, NULL);
 }
 
 void account_delete_char(P_desc d, char *arg)
@@ -2750,35 +2620,27 @@ void account_delete_char(P_desc d, char *arg)
 			display_account_menu(d, NULL);
 			return;
 		}
+		// One in the game, linkdead or entering it would go on playing, unsaved.
+		if (is_pid_online(GET_PID(d->character), TRUE) ||
+		    player_load_pipeline_pid_pending(GET_PID(d->character)))
+		{
+			SEND_TO_Q(
+				"\r\n&+RThat character is in the game; it cannot be deleted now.&n\r\n",
+				d);
+			release_delete_character(d);
+			STATE(d) = CON_DISPLAY_ACCT_MENU;
+			display_account_menu(d, NULL);
+			return;
+		}
 		SEND_TO_Q("\r\n&+RDeleting character...&n\r\n\r\n", d);
-		const auto result = delete_character_result(d->character);
-		if (result == character_delete_result::deleted)
-		{
-			statuslog(GET_LEVEL(d->character), "%s deleted %sself (%s).",
-				  GET_NAME(d->character),
-				  GET_SEX(d->character) == SEX_MALE ? "him" : "her", d->host);
-			logit(LOG_PLAYER, "%s deleted %sself (%s).", GET_NAME(d->character),
-			      GET_SEX(d->character) == SEX_MALE ? "him" : "her", d->host);
-			SEND_TO_Q("&+GCharacter deleted successfully.&n\r\n\r\n", d);
-		}
-		else if (result == character_delete_result::reconciliation_required)
-		{
-			SEND_TO_Q(
-				"&+RDeletion could not be confirmed. Some cleanup may have completed. "
-				"Please contact an immortal before retrying.&n\r\n\r\n",
-				d);
-		}
-		else
-			SEND_TO_Q(
-				"&+RCharacter deletion did not complete. Please try again later.&n\r\n\r\n",
-				d);
-		release_delete_character(d);
-		if (read_account(d->account) == -1)
-			SEND_TO_Q(
-				"&+RThe character list could not be refreshed. Please reconnect before trying again.&n\r\n",
-				d);
-		STATE(d) = CON_DISPLAY_ACCT_MENU;
-		display_account_menu(d, NULL);
+		// The session waits for the deletion, holding the character it confirmed.
+		const uint64_t id = wait_for_writer(d);
+		delete_character(d->character, true,
+				 [id](character_delete_result result)
+				 {
+					 if (P_desc reader = writer_replied(id))
+						 finish_character_deletion(reader, result);
+				 });
 		return;
 	}
 	else if (!strcasecmp(arg, "n") || !strcasecmp(arg, "no"))
@@ -2905,7 +2767,7 @@ void account_delete_char_loaded(P_desc d)
 	d->character = ch;
 }
 
-void remove_char_from_list(P_acct acct, char *ch, bool persist)
+void remove_char_from_list(P_acct acct, const char *ch, bool persist)
 {
 	struct acct_chars *c = NULL;
 	struct acct_chars *prev = NULL;
@@ -3010,6 +2872,26 @@ void delete_account(P_desc d, char *arg)
 	OPENSSL_cleanse(arg, strlen(arg));
 }
 
+/* Tells the session how its account deletion went: gone, or still fenced for a retry. */
+static void finish_account_deletion(P_desc d, bool deleted, size_t characters)
+{
+	if (!deleted)
+	{
+		persistence_alert(AVATAR, "account_delete", "redacted", "fenced", "none",
+				  "delete_failed", NULL);
+		SEND_TO_Q("\r\nAccount deletion did not complete. The account remains fenced; "
+			  "please retry or contact an immortal.\r\n",
+			  d);
+		display_account_deletion_confirmation(d, true);
+		return;
+	}
+	statuslog(56, "account deletion completed (account=redacted characters=%zu)", characters);
+	SEND_TO_Q("\r\n&+GYour account and all of its characters were permanently deleted.&n\r\n",
+		  d);
+	d->account = free_account(d->account);
+	STATE(d) = CON_FLUSH;
+}
+
 void verify_delete_account(P_desc d, char *arg)
 {
 	if (!d || !d->account || !d->account->acct_name)
@@ -3084,15 +2966,44 @@ void verify_delete_account(P_desc d, char *arg)
 	}
 	close_other_account_sessions(d);
 
+#ifndef __NO_MYSQL__
+	// The account's characters leave the game before the deletion, so no save of theirs
+	// can land after it. The deletion runs on the writer, behind the account's queued saves
+	// (its fence among them), while this session waits. Memory lets go of the characters
+	// only once it committed: a refusal leaves the account and its characters as they were.
+	remove_deleted_account_characters(d, identities);
+	const uint64_t id = wait_for_writer(d);
+	if (!sql_delete_account(
+		    account_name.c_str(),
+		    [id, account_name, identities](bool deleted)
+		    {
+			    if (deleted)
+			    {
+				    forget_deleted_account_characters(identities);
+				    for (const auto &identity : identities)
+				    {
+					    sql_player_names_forget(identity.pid);
+					    artifacts_forget_deleted_account_character(
+						    identity.pid);
+				    }
+				    account_rewards_forget_account(account_name.c_str());
+				    polls_forget_account(account_name.c_str());
+				    account_recovery_forget(account_name.c_str());
+			    }
+			    if (P_desc reader = writer_replied(id))
+				    finish_account_deletion(reader, deleted, identities.size());
+		    }))
+	{
+		writer_replied(id);
+		finish_account_deletion(d, false, identities.size());
+	}
+#else
 	bool deleted = false;
 	{
 		account_deletion_drain_guard drain_guard;
 		flush_pending_ship_saves();
 		if (drain_pending_ship_saves() && drain_guard.drain())
 		{
-#ifndef __NO_MYSQL__
-			deleted = sql_delete_account(account_name.c_str());
-#else
 			std::string error;
 			const auto result = flatfile_account_delete(
 				persistence_mode_flatfile_root(), account_name, &error);
@@ -3102,193 +3013,31 @@ void verify_delete_account(P_desc d, char *arg)
 				logit(LOG_FILE, "flat-file account deletion failed: %s",
 				      error.empty() ? "unspecified authority failure" :
 						      error.c_str());
-#endif
-			if (deleted)
-			{
-				remove_deleted_account_runtime(d, identities);
-				account_recovery_forget(account_name.c_str());
-			}
 		}
 	}
-
-	if (!deleted)
+	if (deleted)
 	{
-		persistence_alert(AVATAR, "account_delete", "redacted", "fenced", "none",
-				  "delete_failed", NULL);
-		SEND_TO_Q("\r\nAccount deletion did not complete. The account remains fenced; "
-			  "please retry or contact an immortal.\r\n",
-			  d);
-		display_account_deletion_confirmation(d, true);
-		return;
+		forget_deleted_account_characters(identities);
+		remove_deleted_account_characters(d, identities);
+		account_recovery_forget(account_name.c_str());
 	}
-
-	statuslog(56, "account deletion completed (account=redacted characters=%zu)",
-		  identities.size());
-	SEND_TO_Q("\r\n&+GYour account and all of its characters were permanently deleted.&n\r\n",
-		  d);
-	d->account = free_account(d->account);
-	STATE(d) = CON_FLUSH;
+	finish_account_deletion(d, deleted, identities.size());
+#endif
 }
 
-#ifndef __NO_MYSQL__
-/* Release a DTO from sql_load_account() whose contents were never transferred to
- * a live account. Its strings and list nodes come from the live-account allocator,
- * the container itself from malloc(). */
-static void free_acct_entry_shallow(struct acct_entry *loaded)
+/* Gives `to` a copy of what `from` holds. */
+static void copy_account(P_acct to, const struct acct_entry *from)
 {
-	if (!loaded)
-		return;
-	loaded->acct_name = check_and_clear(loaded->acct_name);
-	loaded->acct_email = check_and_clear(loaded->acct_email);
-	loaded->acct_password = check_and_clear(loaded->acct_password);
-	loaded->acct_confirmation = check_and_clear(loaded->acct_confirmation);
-	while (loaded->acct_unique_ips)
-	{
-		struct acct_ip *next = loaded->acct_unique_ips->next;
-		loaded->acct_unique_ips->hostname =
-			check_and_clear(loaded->acct_unique_ips->hostname);
-		loaded->acct_unique_ips->ip_address =
-			check_and_clear(loaded->acct_unique_ips->ip_address);
-		FREE(loaded->acct_unique_ips);
-		loaded->acct_unique_ips = next;
-	}
-	while (loaded->acct_character_list)
-	{
-		struct acct_chars *next = loaded->acct_character_list->next;
-		loaded->acct_character_list->charname =
-			check_and_clear(loaded->acct_character_list->charname);
-		FREE(loaded->acct_character_list);
-		loaded->acct_character_list = next;
-	}
-	free(loaded);
-}
-#endif
+	P_acct next = to->next;
+	clear_account(to);
+	to->next = next;
+	to->acct_name = str_dup(from->acct_name ? from->acct_name : "");
+	to->acct_email = str_dup(from->acct_email ? from->acct_email : "");
+	to->acct_password = str_dup(from->acct_password ? from->acct_password : "");
+	to->acct_confirmation = str_dup(from->acct_confirmation ? from->acct_confirmation : "");
 
-int read_account(P_acct acct) // returns -1 if error, 1 if no errors
-{
-	if (!acct || !acct->acct_name)
-		return -1;
-
-	char name_backup[256];
-	strlcpy(name_backup, acct->acct_name, sizeof(name_backup));
-
-#ifndef __NO_MYSQL__
-	/* Repair from durable player ownership before loading the account. Doing this
-	 * on every read also recovers one missing character from an otherwise healthy
-	 * multi-character account; soft-deleted mappings remain tombstoned. */
-	const int repaired = sql_repair_account_character_projection(name_backup);
-	if (repaired < 0)
-	{
-		statuslog(56, "&+RALERT&n: account character projection repair failed");
-		persistence_alert(AVATAR, "account", "redacted", "none", "none",
-				  "character_projection_repair_failed", NULL);
-		return -1;
-	}
-	struct acct_entry *loaded = sql_load_account(name_backup);
-#else
-	std::string flatfile_error;
-	struct acct_entry *loaded = flatfile_account_state_load(name_backup, &flatfile_error);
-#endif
-	if (!loaded)
-	{
-		logit(LOG_FILE, "account load failed");
-		return -1;
-	}
-
-	/* A positive repair must be visible to the immediately following load. */
-#ifndef __NO_MYSQL__
-	if (repaired > 0)
-	{
-		if (!loaded->acct_character_list)
-		{
-			free_acct_entry_shallow(loaded);
-			statuslog(56, "&+RALERT&n: repaired account projection did not reload");
-			persistence_alert(AVATAR, "account", "redacted", "none", "none",
-					  "character_projection_repair_unreadable", NULL);
-			return -1;
-		}
-		statuslog(56, "account character projection repaired (affected=%d)", repaired);
-	}
-#endif
-
-	/* Flat-file mode can atomically republish still-live membership when a reload
-	 * unexpectedly returns empty. */
-#ifdef __NO_MYSQL__
-	if (!loaded->acct_character_list)
-	{
-		if (acct->acct_character_list)
-		{
-			flatfile_account_state_release(loaded);
-			loaded = NULL;
-			flatfile_error.clear();
-			if (!flatfile_account_state_save(acct, &flatfile_error))
-			{
-				statuslog(56,
-					  "&+RALERT&n: account character projection repair failed");
-				persistence_alert(AVATAR, "account", "redacted", "none", "none",
-						  "character_projection_repair_failed", NULL);
-				return -1;
-			}
-			loaded = flatfile_account_state_load(name_backup, &flatfile_error);
-			if (!loaded || !loaded->acct_character_list)
-			{
-				if (loaded)
-					flatfile_account_state_release(loaded);
-				statuslog(56,
-					  "&+RALERT&n: repaired account projection did not reload");
-				persistence_alert(AVATAR, "account", "redacted", "none", "none",
-						  "character_projection_repair_unreadable", NULL);
-				return -1;
-			}
-		}
-	}
-#endif
-
-	// free old data
-	acct->acct_name = check_and_clear(acct->acct_name);
-	acct->acct_email = check_and_clear(acct->acct_email);
-	acct->acct_password = check_and_clear(acct->acct_password);
-	acct->acct_confirmation = check_and_clear(acct->acct_confirmation);
-
-	if (acct->acct_unique_ips)
-	{
-		struct acct_ip *curr_ip, *next_ip;
-		for (curr_ip = acct->acct_unique_ips; curr_ip; curr_ip = next_ip)
-		{
-			curr_ip->hostname = check_and_clear(curr_ip->hostname);
-			curr_ip->ip_address = check_and_clear(curr_ip->ip_address);
-			next_ip = curr_ip->next;
-			FREE(curr_ip);
-		}
-		acct->acct_unique_ips = NULL;
-	}
-	if (acct->acct_character_list)
-	{
-		struct acct_chars *curr_char, *next_char;
-		for (curr_char = acct->acct_character_list; curr_char; curr_char = next_char)
-		{
-			curr_char->charname = check_and_clear(curr_char->charname);
-			next_char = curr_char->next;
-			FREE(curr_char);
-		}
-		acct->acct_character_list = NULL;
-	}
-
-	/*
-	 * MariaDB materializes strings and list nodes through the live-account
-	 * allocator, so its pointers can transfer directly.  The flat-file adapter
-	 * returns an isolated standard-library DTO; copy that data before releasing
-	 * the DTO so the live account always has one allocator contract.
-	 */
-#ifdef __NO_MYSQL__
-	acct->acct_name = str_dup(loaded->acct_name ? loaded->acct_name : "");
-	acct->acct_email = str_dup(loaded->acct_email ? loaded->acct_email : "");
-	acct->acct_password = str_dup(loaded->acct_password ? loaded->acct_password : "");
-	acct->acct_confirmation =
-		str_dup(loaded->acct_confirmation ? loaded->acct_confirmation : "");
-
-	struct acct_ip **ip_tail = &acct->acct_unique_ips;
-	for (struct acct_ip *source = loaded->acct_unique_ips; source; source = source->next)
+	struct acct_ip **ip_tail = &to->acct_unique_ips;
+	for (struct acct_ip *source = from->acct_unique_ips; source; source = source->next)
 	{
 		struct acct_ip *copy;
 		CREATE(copy, struct acct_ip, 1, MEM_TAG_OTHER);
@@ -3300,8 +3049,8 @@ int read_account(P_acct acct) // returns -1 if error, 1 if no errors
 		ip_tail = &copy->next;
 	}
 
-	struct acct_chars **character_tail = &acct->acct_character_list;
-	for (struct acct_chars *source = loaded->acct_character_list; source; source = source->next)
+	struct acct_chars **character_tail = &to->acct_character_list;
+	for (struct acct_chars *source = from->acct_character_list; source; source = source->next)
 	{
 		struct acct_chars *copy;
 		CREATE(copy, struct acct_chars, 1, MEM_TAG_OTHER);
@@ -3317,40 +3066,79 @@ int read_account(P_acct acct) // returns -1 if error, 1 if no errors
 		copy->race = source->race;
 		copy->m_class = source->m_class;
 		copy->secondary_class = source->secondary_class;
+		copy->spec = source->spec;
 		copy->last_room = source->last_room;
 		copy->last_save = source->last_save;
+		copy->played = source->played;
 		*character_tail = copy;
 		character_tail = &copy->next;
 	}
-#else
-	acct->acct_name = loaded->acct_name;
-	acct->acct_email = loaded->acct_email;
-	acct->acct_password = loaded->acct_password;
-	acct->acct_confirmation = loaded->acct_confirmation;
-	acct->acct_unique_ips = loaded->acct_unique_ips;
-	acct->acct_character_list = loaded->acct_character_list;
-#endif
-	acct->num_ips = loaded->num_ips;
-	acct->num_chars = loaded->num_chars;
-	acct->acct_blocked = loaded->acct_blocked;
-	acct->acct_confirmed = loaded->acct_confirmed;
-	acct->acct_confirmation_sent = loaded->acct_confirmation_sent;
-	acct->acct_last = loaded->acct_last;
-	acct->acct_good = loaded->acct_good;
-	acct->acct_evil = loaded->acct_evil;
-	acct->acct_flags1 = loaded->acct_flags1;
-	acct->acct_flags2 = loaded->acct_flags2;
-	acct->acct_flags3 = loaded->acct_flags3;
-	acct->acct_flags4 = loaded->acct_flags4;
-	acct->persistence_revision = loaded->persistence_revision;
 
-	/* Release the DTO container with the allocator that created it. */
+	to->num_ips = from->num_ips;
+	to->num_chars = from->num_chars;
+	to->acct_blocked = from->acct_blocked;
+	to->acct_confirmed = from->acct_confirmed;
+	to->acct_confirmation_sent = from->acct_confirmation_sent;
+	to->acct_last = from->acct_last;
+	to->acct_good = from->acct_good;
+	to->acct_evil = from->acct_evil;
+	to->acct_flags1 = from->acct_flags1;
+	to->acct_flags2 = from->acct_flags2;
+	to->acct_flags3 = from->acct_flags3;
+	to->acct_flags4 = from->acct_flags4;
+	to->persistence_revision = from->persistence_revision;
+}
+
+void account_read(P_desc d, const char *name, account_read_done done)
+{
 #ifdef __NO_MYSQL__
+	std::string error;
+	bool exists = false;
+	if (!flatfile_account_state_exists(name, &exists, &error))
+	{
+		logit(LOG_FILE, "account read failed");
+		done(d, false, nullptr);
+		return;
+	}
+	if (!exists)
+	{
+		done(d, true, nullptr);
+		return;
+	}
+	P_acct loaded = flatfile_account_state_load(name, &error);
+	if (!loaded)
+	{
+		logit(LOG_FILE, "account read failed");
+		done(d, false, nullptr);
+		return;
+	}
+	/* The adapter returns an isolated standard-library DTO; the live account gets
+	 * a copy through the live-account allocator. */
+	P_acct account = allocate_account();
+	copy_account(account, loaded);
 	flatfile_account_state_release(loaded);
+	done(d, true, account);
 #else
-	free(loaded);
+	const uint64_t id = wait_for_writer(d);
+	if (!sql_load_account(name,
+			      [id, done](bool ok, P_acct loaded)
+			      {
+				      P_desc reader = writer_replied(id);
+				      if (!reader)
+				      {
+					      free_account(loaded);
+					      return;
+				      }
+				      if (!ok)
+					      logit(LOG_FILE, "account read failed");
+				      done(reader, ok, loaded);
+			      }))
+	{
+		writer_replied(id);
+		logit(LOG_FILE, "account read not queued");
+		done(d, false, nullptr);
+	}
 #endif
-	return 1;
 }
 
 int write_account(P_acct acct) // returns -1 if error, 1 if no errors
@@ -3375,139 +3163,14 @@ int write_account(P_acct acct) // returns -1 if error, 1 if no errors
 	}
 #endif
 
+	// The account's other sessions get what was saved from memory.
 	for (d = descriptor_list; d; d = d->next)
 	{
-		if (d->account && acct->acct_name && d->account->acct_name &&
+		if (d->account && d->account != acct && acct->acct_name && d->account->acct_name &&
 		    !strcasecmp(acct->acct_name, d->account->acct_name))
-			read_account(d->account);
+			copy_account(d->account, acct);
 	}
 	return 1;
-}
-
-void write_unique_ip(P_acct acct, FILE *f)
-{
-	int count = 0;
-	struct acct_ip *c = NULL;
-
-	if (acct->acct_name)
-	{
-		if (!sql_save_account_ips(acct->acct_name, acct->acct_unique_ips))
-			logit(LOG_DEBUG, "write_unique_ip: account IP save failed");
-	}
-
-	c = acct->acct_unique_ips;
-	if (!c)
-	{
-		fprintf(f, "0\n");
-		return;
-	}
-
-	while (c)
-	{
-		count++;
-		c = c->next;
-	}
-
-	fprintf(f, "%d\n", count);
-	c = acct->acct_unique_ips;
-	while (c)
-	{
-		fprintf(f, "%s\n%s\n%li\n", c->hostname, c->ip_address, c->count);
-		c = c->next;
-	}
-}
-
-void read_unique_ip(P_acct acct, FILE *f)
-{
-	int count = 0;
-	int i;
-	struct acct_ip *c = NULL;
-	struct acct_ip *d = NULL;
-	char buf[256];
-
-	REQUIRED_FSCANF(f, "%d\n", &count);
-	if (count == 0)
-		return;
-
-	for (i = 0; i < count; i++)
-	{
-		CREATE(c, struct acct_ip, 1, MEM_TAG_OTHER);
-		if (!c)
-			return;
-
-		REQUIRED_FSCANF(f, "%s\n", buf);
-		c->hostname = str_dup(buf);
-		REQUIRED_FSCANF(f, "%s\n", buf);
-		c->ip_address = str_dup(buf);
-		REQUIRED_FSCANF(f, "%lu\n", &c->count);
-		if (i == 0)
-			acct->acct_unique_ips = c;
-		if (d)
-			d->next = c;
-		d = c;
-	}
-}
-
-void write_character_list(P_acct acct, FILE *f)
-{
-	int count = 0;
-	struct acct_chars *c = NULL;
-
-	c = acct->acct_character_list;
-	if (!c)
-	{
-		fprintf(f, "0\n");
-		return;
-	}
-
-	while (c)
-	{
-		count++;
-		c = c->next;
-	}
-
-	fprintf(f, "%d\n", count);
-	c = acct->acct_character_list;
-	while (c)
-	{
-		fprintf(f, "%s\n%li %li %d %d\n", c->charname, c->count, c->last, c->blocked,
-			c->racewar);
-		c = c->next;
-	}
-}
-
-void read_character_list(P_acct acct, FILE *f)
-{
-	int count = 0;
-	int i;
-	int blocked;
-	int racewar_value;
-	struct acct_chars *c = NULL;
-	struct acct_chars *d = NULL;
-	char buf[256];
-
-	REQUIRED_FSCANF(f, "%d\n", &count);
-	if (count == 0)
-		return;
-
-	for (i = 0; i < count; i++)
-	{
-		CREATE(c, struct acct_chars, 1, MEM_TAG_OTHER);
-		if (!c)
-			return;
-
-		REQUIRED_FSCANF(f, "%s\n", buf);
-		c->charname = str_dup(buf);
-		REQUIRED_FSCANF(f, "%lu %ld %d %d\n", &c->count, &c->last, &blocked,
-				&racewar_value);
-		c->blocked = static_cast<char>(blocked);
-		c->racewar = static_cast<char>(racewar_value);
-		if (i == 0)
-			acct->acct_character_list = c;
-		if (d)
-			d->next = c;
-		d = c;
-	}
 }
 
 void generate_account_confirmation_code(P_desc d, char * /*arg*/)
@@ -3737,39 +3400,6 @@ void remove_account_from_list(P_acct acct)
 		i->next = acct->next;
 	}
 	return;
-}
-
-bool account_exists(const char *dir, char *name)
-{
-#ifndef __NO_MYSQL__
-	// check database first
-	if (sql_account_exists(name))
-		return TRUE;
-#else
-	bool exists = false;
-	std::string flatfile_error;
-	if (!flatfile_account_state_exists(name, &exists, &flatfile_error))
-		return FALSE;
-	return exists;
-#endif
-
-	// fallback to file check
-	char buf[256], *buff;
-	struct stat statbuf;
-	char Gbuf1[MAX_STRING_LENGTH];
-
-	strcpy(buf, name);
-	buff = buf;
-	for (; *buff; buff++)
-		*buff = LOWER(*buff);
-	snprintf(Gbuf1, MAX_STRING_LENGTH, "%s/%c/%s", dir, buf[0], buf);
-	if (stat(Gbuf1, &statbuf) != 0)
-	{
-		snprintf(Gbuf1, MAX_STRING_LENGTH, "%s/%c/%s", dir, buf[0], name);
-		if (stat(Gbuf1, &statbuf) != 0)
-			return FALSE;
-	}
-	return TRUE;
 }
 
 /* Helper function to get account name safely */

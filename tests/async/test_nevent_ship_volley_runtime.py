@@ -203,11 +203,11 @@ assert "redis_load_ship_snapshot" not in redis
 assert "redis_cache_ship_snapshot" not in redis
 
 sql_loader = sql_player[
-    sql_player.index("P_ship sql_load_ship(") : sql_player.index(
+    sql_player.index("P_ship sql_place_ship(") : sql_player.index(
         "bool sql_load_all_ships()"
     )
 ]
-failure = sql_loader[sql_loader.index('component=dependent_rows outcome=failure') :]
+failure = sql_loader[sql_loader.index('component=ship outcome=failure') :]
 assert failure.index("shipObjHash.erase(ship);") < failure.index("delete_ship(ship, true);")
 
 print("ship volley stable-reference tests passed under ASan/UBSan")

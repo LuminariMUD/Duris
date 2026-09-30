@@ -12,6 +12,7 @@ using namespace std;
 #include "magic/spells.h"
 #include "sql/sql.h"
 #include "sql/sql_player.h"
+#include "sql/sql_async.h"
 
 #ifdef __NO_MYSQL__
 #include "flatfile/flatfile_association_repository.h"
@@ -130,43 +131,14 @@ void save_alliances()
 				  "flat alliance save failed: %s", error.c_str());
 	return;
 #else
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-		{
-			logit(LOG_DEBUG, "save_alliances(): failed to start transaction");
-			return;
-		}
-		own_txn = true;
-	}
-
-	if (!qry("DELETE FROM alliances"))
-	{
-		logit(LOG_DEBUG, "save_alliances(): delete query failed");
-		if (own_txn)
-			sql_rollback();
-		return;
-	}
-
-	for (size_t i = 0; i < alliances.size(); i++)
-	{
-		if (!qry("INSERT INTO alliances (forging_assoc_id, joining_assoc_id, tribute_owed) VALUES ('%d', '%d', '%d')",
-			 alliances[i].forging_assoc->get_id(), alliances[i].joining_assoc->get_id(),
-			 alliances[i].tribute_owed))
-		{
-			logit(LOG_DEBUG, "save_alliances(): insert failed at index %zu", i);
-			if (own_txn)
-				sql_rollback();
-			return;
-		}
-	}
-
-	if (own_txn && !sql_commit())
-	{
-		logit(LOG_DEBUG, "save_alliances(): commit failed");
-		sql_rollback();
-	}
+	// One job replaces the whole list, in one transaction.
+	std::vector<std::string> statements = { "DELETE FROM alliances" };
+	for (const auto &alliance : alliances)
+		statements.push_back(sql_format(
+			"INSERT INTO alliances (forging_assoc_id, joining_assoc_id, tribute_owed) VALUES ('%d', '%d', '%d')",
+			alliance.forging_assoc->get_id(), alliance.joining_assoc->get_id(),
+			alliance.tribute_owed));
+	sql_queue_statements(statements);
 #endif // __NO_MYSQL__
 }
 

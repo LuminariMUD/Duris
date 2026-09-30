@@ -52,6 +52,7 @@ using namespace std;
 #include "persistence/persistence_mode.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "sql/sql_player.h"
 
 extern P_desc descriptor_list;
@@ -409,76 +410,33 @@ int get_valid_boon_option(char *arg)
 	return -1;
 }
 
+// Flat-file only: MariaDB reads the boon on the writer (do_boon).
 int is_boon_valid(int id)
 {
-	if (const char *root = flat_boon_root())
-	{
-		if (id <= 0)
-			return FALSE;
-		std::vector<flatfile_boon_definition> definitions;
-		std::string error;
-		if (flatfile_boon_load_definitions(root, &definitions, &error) !=
-		    flatfile_boon_result::ok)
-			return FALSE;
-		return std::any_of(definitions.begin(), definitions.end(),
-				   [&](const auto &definition)
-				   { return definition.id == static_cast<uint32_t>(id); });
-	}
-	if (!qry("SELECT id FROM boons WHERE id = '%d'", id))
-	{
+	const char *root = flat_boon_root();
+	if (!root || id <= 0)
 		return FALSE;
-	}
-
-	MYSQL_RES *res = boon_store_result("is_boon_valid");
-	if (!res)
-	{
+	std::vector<flatfile_boon_definition> definitions;
+	std::string error;
+	if (flatfile_boon_load_definitions(root, &definitions, &error) != flatfile_boon_result::ok)
 		return FALSE;
-	}
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		return FALSE;
-	}
-	mysql_free_result(res);
-	return TRUE;
+	return std::any_of(definitions.begin(), definitions.end(), [&](const auto &definition)
+			   { return definition.id == static_cast<uint32_t>(id); });
 }
 
+// Flat-file only: MariaDB counts the boons on the writer (create_boon()).
 int count_boons(int active, int random)
 {
-	if (const char *root = flat_boon_root())
-	{
-		std::vector<flatfile_boon_definition> definitions;
-		std::string error;
-		if (flatfile_boon_load_definitions(root, &definitions, &error) !=
-		    flatfile_boon_result::ok)
-			return 0;
-		return static_cast<int>(std::count_if(definitions.begin(), definitions.end(),
-						      [&](const auto &definition) {
-							      return (!active ||
-								      definition.active) &&
-								     (!random || definition.random);
-						      }));
-	}
-	char dbqry[MAX_STRING_LENGTH];
-	int count = 0;
-
-	snprintf(dbqry, MAX_STRING_LENGTH, "SELECT id FROM boons%s%s%s%s",
-		 (active || random ? " WHERE " : ""), (active ? "(active = 1) " : ""),
-		 (active && random ? "AND " : ""), (random ? "(random = 1) " : ""));
-
-	if (!qry(dbqry))
-	{
+	const char *root = flat_boon_root();
+	if (!root)
 		return 0;
-	}
-
-	MYSQL_RES *res = boon_store_result("count_boons");
-	if (!res)
-	{
+	std::vector<flatfile_boon_definition> definitions;
+	std::string error;
+	if (flatfile_boon_load_definitions(root, &definitions, &error) != flatfile_boon_result::ok)
 		return 0;
-	}
-	count = mysql_num_rows(res);
-	mysql_free_result(res);
-	return count;
+	return static_cast<int>(std::count_if(
+		definitions.begin(), definitions.end(), [&](const auto &definition)
+		{ return (!active || definition.active) && (!random || definition.random); }));
 }
 
 void zero_boon_data(BoonData *bdata)
@@ -505,71 +463,22 @@ void zero_boon_data(BoonData *bdata)
 	return;
 }
 
+// Flat-file only: MariaDB reads the boons on the writer.
 bool get_boon_data(int id, BoonData *bdata)
 {
-	if (!bdata)
+	const char *root = flat_boon_root();
+	if (!bdata || !root || id <= 0)
 		return FALSE;
-	if (const char *root = flat_boon_root())
-	{
-		if (id <= 0)
-			return FALSE;
-		std::vector<flatfile_boon_definition> definitions;
-		std::string error;
-		if (flatfile_boon_load_definitions(root, &definitions, &error) !=
-		    flatfile_boon_result::ok)
-			return FALSE;
-		const auto found = std::lower_bound(definitions.begin(), definitions.end(),
-						    static_cast<uint32_t>(id),
-						    [](const auto &definition, uint32_t key)
-						    { return definition.id < key; });
-		return found != definitions.end() && found->id == static_cast<uint32_t>(id) &&
-		       copy_flat_boon_definition(*found, bdata);
-	}
-
-	if (!qry("SELECT id, time, duration, racewar, type, opt, criteria, criteria2, bonus, bonus2, random, author, active, pid, rpt FROM boons WHERE id = '%d'",
-		 id))
-	{
-		debug("get_boon_data(): cant read from db");
+	std::vector<flatfile_boon_definition> definitions;
+	std::string error;
+	if (flatfile_boon_load_definitions(root, &definitions, &error) != flatfile_boon_result::ok)
 		return FALSE;
-	}
-
-	MYSQL_RES *res = boon_store_result("get_boon_data");
-	if (!res)
-	{
-		return FALSE;
-	}
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		return FALSE;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-	if (!row)
-	{
-		mysql_free_result(res);
-		return FALSE;
-	}
-
-	bdata->id = row[0] ? atoi(row[0]) : 0;
-	bdata->time = row[1] ? atoi(row[1]) : 0;
-	bdata->duration = row[2] ? atoi(row[2]) : 0;
-	bdata->racewar = row[3] ? atoi(row[3]) : 0;
-	bdata->type = row[4] ? atoi(row[4]) : 0;
-	bdata->option = row[5] ? atoi(row[5]) : 0;
-	bdata->criteria = row[6] ? atof(row[6]) : 0;
-	bdata->criteria2 = row[7] ? atof(row[7]) : 0;
-	bdata->bonus = row[8] ? atof(row[8]) : 0;
-	bdata->bonus2 = row[9] ? atof(row[9]) : 0;
-	bdata->random = row[10] ? atoi(row[10]) : 0;
-	bdata->author = row[11] ? row[11] : "";
-	bdata->active = row[12] ? atoi(row[12]) : 0;
-	bdata->pid = row[13] ? atoi(row[13]) : 0;
-	bdata->repeat = row[14] ? atoi(row[14]) : 0;
-
-	mysql_free_result(res);
-
-	return TRUE;
+	const auto found = std::lower_bound(definitions.begin(), definitions.end(),
+					    static_cast<uint32_t>(id),
+					    [](const auto &definition, uint32_t key)
+					    { return definition.id < key; });
+	return found != definitions.end() && found->id == static_cast<uint32_t>(id) &&
+	       copy_flat_boon_definition(*found, bdata);
 }
 
 bool get_boon_progress_data(int id, int pid, BoonProgress *bpg)
@@ -625,59 +534,22 @@ bool get_boon_progress_data(int id, int pid, BoonProgress *bpg)
 	return TRUE;
 }
 
+// Flat-file only: MariaDB reads the shop on the writer (boon_shop()).
 bool get_boon_shop_data(int pid, BoonShop *bshop)
 {
-	if (!bshop)
+	const char *root = flat_boon_root();
+	if (!bshop || !root || pid <= 0)
 		return FALSE;
-	if (const char *root = flat_boon_root())
-	{
-		if (pid <= 0)
-			return FALSE;
-		flatfile_boon_player_projection player;
-		std::string error;
-		if (flatfile_boon_load_player(root, static_cast<uint32_t>(pid), &player, &error) !=
-			    flatfile_boon_result::ok ||
-		    player.points < std::numeric_limits<int>::min() ||
-		    player.points > std::numeric_limits<int>::max() ||
-		    player.stats < std::numeric_limits<int>::min() ||
-		    player.stats > std::numeric_limits<int>::max())
-			return FALSE;
-		*bshop = { 0, pid, static_cast<int>(player.points), static_cast<int>(player.stats),
-			   0 };
-		return TRUE;
-	}
-
-	if (!qry("SELECT id, pid, points, stats from boons_shop WHERE pid = '%d'", pid))
-	{
-		debug("get_boon_shop_data(): cant read from db");
+	flatfile_boon_player_projection player;
+	std::string error;
+	if (flatfile_boon_load_player(root, static_cast<uint32_t>(pid), &player, &error) !=
+		    flatfile_boon_result::ok ||
+	    player.points < std::numeric_limits<int>::min() ||
+	    player.points > std::numeric_limits<int>::max() ||
+	    player.stats < std::numeric_limits<int>::min() ||
+	    player.stats > std::numeric_limits<int>::max())
 		return FALSE;
-	}
-
-	MYSQL_RES *res = boon_store_result("get_boon_shop_data");
-	if (!res)
-	{
-		return FALSE;
-	}
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		return FALSE;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-	if (!row)
-	{
-		mysql_free_result(res);
-		return FALSE;
-	}
-
-	bshop->id = row[0] ? atoi(row[0]) : 0;
-	bshop->pid = row[1] ? atoi(row[1]) : 0;
-	bshop->points = row[2] ? atoi(row[2]) : 0;
-	bshop->stats = row[3] ? atoi(row[3]) : 0;
-
-	mysql_free_result(res);
-
+	*bshop = { 0, pid, static_cast<int>(player.points), static_cast<int>(player.stats), 0 };
 	return TRUE;
 }
 
@@ -1722,6 +1594,67 @@ int parse_boon_args(P_char ch, BoonData *bdata, char *argument)
 	return TRUE;
 }
 
+// MariaDB `boon extend`: the boon is read and extended in one writer job, and ch hears on
+// a later pulse. A boon that never expires is left as it is.
+static void extend_boon_on_writer(P_char ch, int id, int extend)
+{
+	const std::string name = GET_NAME(ch);
+	sql_read_work_for(
+		ch,
+		[id, extend, name](MYSQL *connection, sql_rows *rows) -> unsigned int
+		{
+			sql_rows found;
+			if (const unsigned int error_code = sql_select(
+				    connection,
+				    sql_format(
+					    "SELECT time, duration, active, racewar, pid FROM boons "
+					    "WHERE id = %d",
+					    id),
+				    &found))
+				return error_code;
+			if (found.empty() || !found[0][0] || !found[0][1] || !found[0][2])
+				return 0;
+			if (atoi(found[0][1]) != -1)
+			{
+				const long now = time(nullptr);
+				const long ct = std::max(0L, atol(found[0][0]) +
+								     atol(found[0][1]) * 60 - now) +
+						now;
+				if (const unsigned int error_code = sql_execute(
+					    connection,
+					    sql_format(
+						    "UPDATE boons SET time = '%ld', duration = '%d', "
+						    "active = '1', author = '*%s' WHERE id = '%d'",
+						    ct, extend, name.c_str(), id)))
+					return error_code;
+			}
+			rows->push_back(std::move(found[0]));
+			return 0;
+		},
+		[id, extend](P_char god, const sql_rows &rows)
+		{
+			if (rows.empty())
+			{
+				send_to_char_f(god, "&+WBoon # %d does not exist.&n\r\n", id);
+				return;
+			}
+			const sql_row &boon = rows[0];
+			// -1 duration = !expiration, no need to extend
+			if (atoi(boon[1]) == -1)
+			{
+				debug("%s is trying to extend a boon that has no expiration.\r\n",
+				      GET_NAME(god));
+				send_to_char("Extension failed.\r\n", god);
+				return;
+			}
+			boon_notify_snapshot(id, boon[3] ? atoi(boon[3]) : 0,
+					     boon[4] ? atoi(boon[4]) : 0,
+					     atoi(boon[2]) ? BN_EXTEND : BN_REACTIVATE);
+			send_to_char_f(god, "Boon # %d has been extended for %d minutes.\r\n", id,
+				       extend);
+		});
+}
+
 void do_boon(P_char ch, char *argument, int /*cmd*/)
 {
 	char arg[MAX_STRING_LENGTH];
@@ -1786,17 +1719,7 @@ void do_boon(P_char ch, char *argument, int /*cmd*/)
 			}
 
 		// Ok, we should have everything we need, time to create the boon
-		if (create_boon(&bdata))
-		{
-			send_to_char("Boon successfully created.\r\n", ch);
-			return;
-		}
-		else
-		{
-			send_to_char("Something went wrong.  Boon failed to create.\r\n", ch);
-			return;
-		}
-		send_to_char("Something's wrong, how'd we get here?\r\n", ch);
+		create_boon(&bdata, ch);
 		return;
 	}
 	// Removing boons (essentially making them inactive)
@@ -1809,6 +1732,31 @@ void do_boon(P_char ch, char *argument, int /*cmd*/)
 			return;
 		}
 		id = atoi(arg);
+		if (!flat_boon_root())
+		{
+			// MariaDB: the boon is read on the writer and removed on a later pulse.
+			sql_read_for(
+				ch,
+				sql_format("SELECT racewar, pid FROM boons WHERE id = '%d'", id),
+				[id](P_char god, const sql_rows &rows)
+				{
+					if (rows.empty())
+					{
+						send_to_char_f(god,
+							       "&+WBoon # %d does not exist&n.\r\n",
+							       id);
+						return;
+					}
+					remove_boon(id);
+					boon_notify_snapshot(id, rows[0][0] ? atoi(rows[0][0]) : 0,
+							     rows[0][1] ? atoi(rows[0][1]) : 0,
+							     BN_VOID);
+					send_to_char_f(god,
+						       "&+WSuccessfully removed boon # %d.&n\r\n",
+						       id);
+				});
+			return;
+		}
 		if (!is_boon_valid(id))
 		{
 			send_to_char_f(ch, "&+WBoon # %d does not exist&n.\r\n", id);
@@ -1841,7 +1789,8 @@ void do_boon(P_char ch, char *argument, int /*cmd*/)
 			return;
 		}
 		id = atoi(arg);
-		if (!is_boon_valid(id))
+		// MariaDB checks the boon on the writer, as it extends it.
+		if (flat_boon_root() && !is_boon_valid(id))
 		{
 			send_to_char_f(ch, "&+WBoon # %d does not exist.&n\r\n", id);
 			return;
@@ -1857,6 +1806,11 @@ void do_boon(P_char ch, char *argument, int /*cmd*/)
 		}
 		duration = atoi(arg);
 		// debug("passing id %d duration %d", id, duration);
+		if (!flat_boon_root())
+		{
+			extend_boon_on_writer(ch, id, duration);
+			return;
+		}
 		if (extend_boon(id, duration, GET_NAME(ch)))
 			send_to_char_f(ch, "Boon # %d has been extended for %d minutes.\r\n", id,
 				       duration);
@@ -1963,6 +1917,79 @@ void do_boon(P_char ch, char *argument, int /*cmd*/)
 	return;
 }
 
+// Raises ch's stat by the point bought in the boon shop. Returns false, having said so,
+// when the stat is already at 100.
+static bool boon_shop_raise_stat(P_char ch, int stat)
+{
+	sh_int *value = nullptr;
+	const char *message = nullptr;
+	switch (stat)
+	{
+	case STR:
+		value = &ch->base_stats.Str;
+		message = "You feel stronger!\r\n";
+		break;
+	case DEX:
+		value = &ch->base_stats.Dex;
+		message = "You feel more dextrous!\r\n";
+		break;
+	case AGI:
+		value = &ch->base_stats.Agi;
+		message = "You feel more agile!\r\n";
+		break;
+	case CON:
+		value = &ch->base_stats.Con;
+		message = "You feel ten years younger!\r\n";
+		break;
+	case POW:
+		value = &ch->base_stats.Pow;
+		message = "Your mind suddenly feels ten times as powerful!\r\n";
+		break;
+	case INT:
+		value = &ch->base_stats.Int;
+		message = "You feel smarter! Man, you were a real dumbass before.\r\n";
+		break;
+	case WIS:
+		value = &ch->base_stats.Wis;
+		message = "You feel wiser!\r\n";
+		break;
+	case CHA:
+		value = &ch->base_stats.Cha;
+		message = "Suddenly one of the pimples on your face dissapears!\r\n";
+		break;
+	case LUCK:
+		value = &ch->base_stats.Luk;
+		message = "You feel as if you could roll Triple Tiamat's at the slots...\r\n";
+		break;
+	case KARMA:
+		value = &ch->base_stats.Kar;
+		message = "You feel strange.\r\n";
+		break;
+	default:
+		// well that's not suppose to happen...
+		return false;
+	}
+	if (*value >= 100)
+	{
+		send_to_char("You already have 100 points in that stat.\r\n", ch);
+		return false;
+	}
+	*value = BOUNDED(0, *value + 1, 100);
+	send_to_char(message, ch);
+	return true;
+}
+
+static void boon_shop_show(P_char ch, int points, int stats)
+{
+	send_to_char("&+WBoon Shop&n\r\n", ch);
+	send_to_char_f(ch, "&+CShop points available: %d\r\n", points);
+	send_to_char_f(ch, "&+CStat points available: %d\r\n", stats);
+	send_to_char("&+CItems available:\r\n", ch);
+	// send data
+	//  but for now...
+	send_to_char("No items available.\r\n", ch);
+}
+
 void boon_shop(P_char ch, char *argument)
 {
 	char arg[MAX_STRING_LENGTH];
@@ -1971,19 +1998,17 @@ void boon_shop(P_char ch, char *argument)
 
 	argument = one_argument(argument, arg);
 
-	BoonShop bshop;
-	if (!get_boon_shop_data(GET_PID(ch), &bshop))
-	{
-		bshop.id = 0;
-		bshop.pid = GET_PID(ch);
-		bshop.points = 0;
-		bshop.stats = 0;
-	}
+	// Flat-file reads the shop here; MariaDB reads it on the writer, where the boon
+	// rewards add the points.
+	const bool flat = flat_boon_root() != nullptr;
+	BoonShop bshop = { 0, GET_PID(ch), 0, 0, 0 };
+	if (flat && !get_boon_shop_data(GET_PID(ch), &bshop))
+		bshop = { 0, GET_PID(ch), 0, 0, 0 };
 
 	// handle arg's.. buy, etc...
 	if (!strcmp(arg, "stat") || !strcmp(arg, "stats"))
 	{
-		if (!bshop.stats)
+		if (flat && !bshop.stats)
 		{
 			send_to_char("You don't have any stat points available.\r\n", ch);
 			return;
@@ -2014,192 +2039,61 @@ void boon_shop(P_char ch, char *argument)
 				ch);
 			return;
 		}
-		if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+		if (flat)
 		{
 			if (!boon_shop_transaction_submit(ch, static_cast<uint8_t>(stat - 1)))
 				send_to_char("The boon shop is temporarily unavailable.\r\n", ch);
 			return;
 		}
-		else
-		{
-			bshop.stats--;
-			switch (stat)
-			{
-			case STR:
-			{
-				if (ch->base_stats.Str >= 100)
-				{
-					send_to_char(
-						"You already have 100 points in that stat.\r\n",
-						ch);
-					bshop.stats++;
-					break;
-				}
-				ch->base_stats.Str = BOUNDED(0, ch->base_stats.Str + 1, 100);
-				send_to_char("You feel stronger!\r\n", ch);
-				break;
-			}
-			case DEX:
-			{
-				if (ch->base_stats.Dex >= 100)
-				{
-					send_to_char(
-						"You already have 100 points in that stat.\r\n",
-						ch);
-					bshop.stats++;
-					break;
-				}
-				ch->base_stats.Dex = BOUNDED(0, ch->base_stats.Dex + 1, 100);
-				send_to_char("You feel more dextrous!\r\n", ch);
-				break;
-			}
-			case AGI:
-			{
-				if (ch->base_stats.Agi >= 100)
-				{
-					send_to_char(
-						"You already have 100 points in that stat.\r\n",
-						ch);
-					bshop.stats++;
-					break;
-				}
-				ch->base_stats.Agi = BOUNDED(0, ch->base_stats.Agi + 1, 100);
-				send_to_char("You feel more agile!\r\n", ch);
-				break;
-			}
-			case CON:
-			{
-				if (ch->base_stats.Con >= 100)
-				{
-					send_to_char(
-						"You already have 100 points in that stat.\r\n",
-						ch);
-					bshop.stats++;
-					break;
-				}
-				ch->base_stats.Con = BOUNDED(0, ch->base_stats.Con + 1, 100);
-				send_to_char("You feel ten years younger!\r\n", ch);
-				break;
-			}
-			case POW:
-			{
-				if (ch->base_stats.Pow >= 100)
-				{
-					send_to_char(
-						"You already have 100 points in that stat.\r\n",
-						ch);
-					bshop.stats++;
-					break;
-				}
-				ch->base_stats.Pow = BOUNDED(0, ch->base_stats.Pow + 1, 100);
-				send_to_char("Your mind suddenly feels ten times as powerful!\r\n",
-					     ch);
-				break;
-			}
-			case INT:
-			{
-				if (ch->base_stats.Int >= 100)
-				{
-					send_to_char(
-						"You already have 100 points in that stat.\r\n",
-						ch);
-					bshop.stats++;
-					break;
-				}
-				ch->base_stats.Int = BOUNDED(0, ch->base_stats.Int + 1, 100);
-				send_to_char(
-					"You feel smarter! Man, you were a real dumbass before.\r\n",
-					ch);
-				break;
-			}
-			case WIS:
-			{
-				if (ch->base_stats.Wis >= 100)
-				{
-					send_to_char(
-						"You already have 100 points in that stat.\r\n",
-						ch);
-					bshop.stats++;
-					break;
-				}
-				ch->base_stats.Wis = BOUNDED(0, ch->base_stats.Wis + 1, 100);
-				send_to_char("You feel wiser!\r\n", ch);
-				break;
-			}
-			case CHA:
-			{
-				if (ch->base_stats.Cha >= 100)
-				{
-					send_to_char(
-						"You already have 100 points in that stat.\r\n",
-						ch);
-					bshop.stats++;
-					break;
-				}
-				ch->base_stats.Cha = BOUNDED(0, ch->base_stats.Cha + 1, 100);
-				send_to_char(
-					"Suddenly one of the pimples on your face dissapears!\r\n",
-					ch);
-				break;
-			}
-			case LUCK:
-			{
-				if (ch->base_stats.Luk >= 100)
-				{
-					send_to_char(
-						"You already have 100 points in that stat.\r\n",
-						ch);
-					bshop.stats++;
-					break;
-				}
-				ch->base_stats.Luk = BOUNDED(0, ch->base_stats.Luk + 1, 100);
-				send_to_char(
-					"You feel as if you could roll Triple Tiamat's at the slots...\r\n",
-					ch);
-				break;
-			}
-			case KARMA:
-			{
-				if (ch->base_stats.Kar >= 100)
-				{
-					send_to_char(
-						"You already have 100 points in that stat.\r\n",
-						ch);
-					bshop.stats++;
-					break;
-				}
-				ch->base_stats.Kar = BOUNDED(0, ch->base_stats.Kar + 1, 100);
-				send_to_char("You feel strange.\r\n", ch);
-				break;
-			}
-			default:
-			{
-				// well that's not suppose to happen... add the stat back.
-				bshop.stats++;
-				break;
-			}
-			}
-			if (!qry("UPDATE boons_shop SET stats = '%d' WHERE pid = '%d'", bshop.stats,
-				 GET_PID(ch)))
-			{
-				debug("boon_shop(): failed to update shop DB entry");
-				return;
-			}
-		}
+		// MariaDB: the point is spent on the writer and the stat rises on a later pulse.
+		// A point spent on a stat already at 100 is given back.
+		const int pid = GET_PID(ch);
+		if (!sql_read_work_for(
+			    ch,
+			    [pid](MYSQL *connection, sql_rows *rows) -> unsigned int
+			    {
+				    if (const unsigned int error_code = sql_execute(
+						connection,
+						sql_format("UPDATE boons_shop SET stats = stats - 1 "
+							   "WHERE pid = %d AND stats > 0",
+							   pid)))
+					    return error_code;
+				    if (mysql_affected_rows(connection) == 1)
+					    rows->emplace_back();
+				    return 0;
+			    },
+			    [stat](P_char buyer, const sql_rows &rows)
+			    {
+				    if (rows.empty())
+					    send_to_char(
+						    "You don't have any stat points available.\r\n",
+						    buyer);
+				    else if (!boon_shop_raise_stat(buyer, stat))
+					    sql_queue(
+						    "UPDATE boons_shop SET stats = stats + 1 WHERE pid = %d",
+						    GET_PID(buyer));
+			    }))
+			send_to_char("The boon shop is temporarily unavailable.\r\n", ch);
+		return;
 	}
 
 	// no arguments
 	if (!*arg)
 	{
-		send_to_char("&+WBoon Shop&n\r\n", ch);
-		send_to_char_f(ch, "&+CShop points available: %d\r\n", bshop.points);
-		send_to_char_f(ch, "&+CStat points available: %d\r\n", bshop.stats);
-		send_to_char("&+CItems available:\r\n", ch);
-		// send data
-		//  but for now...
-		send_to_char("No items available.\r\n", ch);
-		// reclaiming stats
-		return;
+		if (flat)
+		{
+			boon_shop_show(ch, bshop.points, bshop.stats);
+			return;
+		}
+		sql_read_for(ch,
+			     sql_format("SELECT points, stats FROM boons_shop WHERE pid = %d",
+					GET_PID(ch)),
+			     [](P_char viewer, const sql_rows &rows)
+			     {
+				     const bool found = !rows.empty() && rows[0][0] && rows[0][1];
+				     boon_shop_show(viewer, found ? atoi(rows[0][0]) : 0,
+						    found ? atoi(rows[0][1]) : 0);
+			     });
 	}
 }
 
@@ -2564,11 +2458,74 @@ static int boon_display_flat(P_char ch, const flat_boon_display_filters &filters
 	return count ? TRUE : FALSE;
 }
 
+// The MariaDB boon list, from the boons read on the writer.
+static void boon_display_rows(P_char ch, const sql_rows &rows)
+{
+	int count = 0;
+
+	if (IS_TRUSTED(ch))
+		send_to_char_f(ch,
+			       "&+C%-6s   %-10s %-8s %-7s %-6s %-9s %9s %9s %10s %7s %-10s&n\r\n",
+			       "ID", "Random", "Duration", "Racewar", "Type", "Option", "Criteria",
+			       "Criteria2", "Bonus", "Bonus2", "Assigned");
+	else
+		send_to_char_f(ch, "&+C%-6s   %-8s %-7s %s&n\r\n", "ID", "Duration", "Racewar",
+			       "Description");
+
+	for (const sql_row &row : rows)
+	{
+		int id = atoi(row[0]);
+		int timethen = atoi(row[1]);
+		int duration = atoi(row[2]);
+		int racewar = atoi(row[3]);
+		int type = atoi(row[4]);
+		int option = atoi(row[5]);
+		double criteria = atof(row[6]);
+		double criteria2 = atof(row[7]);
+		double bonus = atof(row[8]);
+		double bonus2 = atof(row[9]);
+		int row_random = atoi(row[10]);
+		const char *author = row[11];
+		int pid = atoi(row[13]);
+		int repeat = atoi(row[14]);
+
+		if (type < 0 || type >= MAX_BTYPE || option < 0 || option >= MAX_BOPT)
+		{
+			continue;
+		}
+
+		// Should we display this line to ch?
+		if (!IS_TRUSTED(ch) && ((racewar != 0 && GET_RACEWAR(ch) != racewar) ||
+					(pid != 0 && GET_PID(ch) != pid)))
+			continue;
+
+		count++;
+		BoonData boon = { id,
+				  timethen,
+				  duration,
+				  racewar,
+				  type,
+				  option,
+				  criteria,
+				  criteria2,
+				  bonus,
+				  bonus2,
+				  row_random,
+				  1,
+				  author ? author : "",
+				  pid,
+				  repeat };
+		boon_display_row(ch, boon);
+	}
+
+	send_to_char_f(ch, "Displaying %d result(s).\r\n", count);
+}
+
 int boon_display(P_char ch, char *argument)
 {
 	char arg[MAX_STRING_LENGTH];
 	char dbqry[MAX_STRING_LENGTH];
-	int i, pid = 0, count = 0;
+	int i, pid = 0;
 	int active = 0, inactive = 0, random = 0, manual = 0;
 	char name[MAX_STRING_LENGTH], type[MAX_STRING_LENGTH], option[MAX_STRING_LENGTH];
 	char player[MAX_STRING_LENGTH];
@@ -2605,12 +2562,15 @@ int boon_display(P_char ch, char *argument)
 		case 'u':
 		{
 			argument = one_argument(argument, arg);
+			// Any player may filter by author: the name goes into the query escaped.
+			const string author = escape_str(arg);
 			if (*name)
 				checked_snprintf(name + strlen(name),
 						 MAX_STRING_LENGTH - strlen(name),
-						 "OR author LIKE '%s' ", arg);
+						 "OR author LIKE '%s' ", author.c_str());
 			else
-				checked_snprintf(name, MAX_STRING_LENGTH, "author LIKE '%s' ", arg);
+				checked_snprintf(name, MAX_STRING_LENGTH, "author LIKE '%s' ",
+						 author.c_str());
 			flat_filters.authors.emplace_back(arg);
 			break;
 		}
@@ -2716,11 +2676,13 @@ int boon_display(P_char ch, char *argument)
 	// debug("active: %d, inactive: %d, random: %d, manual: %d", active, inactive, random, manual);
 	// debug("name: %s, type: %s, option: %s", name, type, option);
 
-	send_to_char(
-		"&+WThe Gods of Duris have given you and your allies the following boons:&n\r\n",
-		ch);
+	const char *heading =
+		"&+WThe Gods of Duris have given you and your allies the following boons:&n\r\n";
 	if (flat_boon_root())
+	{
+		send_to_char(heading, ch);
 		return boon_display_flat(ch, flat_filters);
+	}
 	// zone_table[zone_count].number = zone number
 	// pad_ansi(zone_table[zone_count].name, 45].c_str() = zone name
 	// zone_table[zone_count].avg_mob_level = way to find out range of zone
@@ -2770,136 +2732,101 @@ int boon_display(P_char ch, char *argument)
 		(has_player_filter ? "( " : ""), (has_player_filter ? player : ""),
 		(has_player_filter ? ") " : ""));
 	// debug(dbqry);
-	if (!qry(dbqry))
-	{
-		debug("boon_display() can't read from db");
-		return -1;
-	}
-
-	MYSQL_RES *res = boon_store_result("boon_display");
-	if (!res)
-	{
-		return -1;
-	}
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		return FALSE;
-	}
-
-	if (IS_TRUSTED(ch))
-		send_to_char_f(ch,
-			       "&+C%-6s   %-10s %-8s %-7s %-6s %-9s %9s %9s %10s %7s %-10s&n\r\n",
-			       "ID", "Random", "Duration", "Racewar", "Type", "Option", "Criteria",
-			       "Criteria2", "Bonus", "Bonus2", "Assigned");
-	else
-		send_to_char_f(ch, "&+C%-6s   %-8s %-7s %s&n\r\n", "ID", "Duration", "Racewar",
-			       "Description");
-
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(res)))
-	{
-		int id = atoi(row[0]);
-		int timethen = atoi(row[1]);
-		int duration = atoi(row[2]);
-		int racewar = atoi(row[3]);
-		int type = atoi(row[4]);
-		int option = atoi(row[5]);
-		double criteria = atof(row[6]);
-		double criteria2 = atof(row[7]);
-		double bonus = atof(row[8]);
-		double bonus2 = atof(row[9]);
-		int row_random = atoi(row[10]);
-		char *author = row[11];
-		pid = atoi(row[13]);
-		int repeat = atoi(row[14]);
-
-		if (type < 0 || type >= MAX_BTYPE || option < 0 || option >= MAX_BOPT)
-		{
-			continue;
-		}
-
-		// Should we display this line to ch?
-		if (!IS_TRUSTED(ch) && ((racewar != 0 && GET_RACEWAR(ch) != racewar) ||
-					(pid != 0 && GET_PID(ch) != pid)))
-			continue;
-
-		count++;
-		BoonData boon = { id,
-				  timethen,
-				  duration,
-				  racewar,
-				  type,
-				  option,
-				  criteria,
-				  criteria2,
-				  bonus,
-				  bonus2,
-				  row_random,
-				  1,
-				  author ? author : "",
-				  pid,
-				  repeat };
-		boon_display_row(ch, boon);
-	}
-
-	send_to_char_f(ch, "Displaying %d result(s).\r\n", count);
-
-	mysql_free_result(res);
-
-	return TRUE;
+	// Read on the writer; the list follows on a later pulse.
+	return sql_read_for(ch, dbqry,
+			    [heading](P_char viewer, const sql_rows &rows)
+			    {
+				    send_to_char(heading, viewer);
+				    if (rows.empty())
+				    {
+					    send_to_char("No results.\r\n", viewer);
+					    return;
+				    }
+				    boon_display_rows(viewer, rows);
+			    }) ?
+		       TRUE :
+		       -1;
 }
 
-int create_boon(BoonData *bdata)
+static void boon_create_told(P_char ch, bool created)
+{
+	if (ch)
+		send_to_char(created ? "Boon successfully created.\r\n" :
+				       "Something went wrong.  Boon failed to create.\r\n",
+			     ch);
+}
+
+// Creates the boon and announces it. ch, when given, is told whether it was created: on
+// MariaDB on a later pulse, since the count, the insert and its id come from the writer.
+int create_boon(BoonData *bdata, P_char ch)
 {
 	if (!bdata)
 	{
 		debug("create_boon(): NULL bdata passed to function");
 		return FALSE;
 	}
+	const char *root = flat_boon_root();
+	if (!root)
+	{
+		const BoonData boon = *bdata;
+		const uint64_t runtime_id = ch ? ch->runtime_id : 0;
+		return sql_read_work(
+			[boon](MYSQL *connection, sql_rows *rows) -> unsigned int
+			{
+				sql_rows active;
+				if (const unsigned int error_code = sql_select(
+					    connection,
+					    "SELECT COUNT(*) FROM boons WHERE active = 1", &active))
+					return error_code;
+				if (active.empty() || !active[0][0] ||
+				    atoi(active[0][0]) >= MAX_BOONS)
+					return 0;
+				if (const unsigned int error_code = sql_execute(
+					    connection,
+					    sql_format(
+						    "INSERT INTO boons (time, duration, racewar, type, opt, criteria, criteria2, bonus, bonus2, random, author, active, pid, rpt) VALUES "
+						    "(%ld, %d, %d, %d, %d, %f, %f, %f, %f, %d, '%s', 1, '%d', '%d')",
+						    static_cast<long>(time(nullptr)), boon.duration,
+						    boon.racewar, boon.type, boon.option,
+						    boon.criteria, boon.criteria2, boon.bonus,
+						    boon.bonus2, boon.random, boon.author.c_str(),
+						    boon.pid, boon.repeat)))
+					return error_code;
+				return sql_select(connection, "SELECT LAST_INSERT_ID()", rows);
+			},
+			[boon, runtime_id](bool ok, const sql_rows &rows)
+			{
+				const int id =
+					ok && !rows.empty() && rows[0][0] ? atoi(rows[0][0]) : 0;
+				if (id > 0)
+					boon_notify_snapshot(id, boon.racewar, boon.pid, BN_CREATE);
+				else if (ok)
+					debug("Maximum number of boons has been reached.  Aborting create_boon().");
+				boon_create_told(find_character_by_runtime_id(runtime_id), id > 0);
+			});
+	}
 
 	if (count_boons(TRUE, FALSE) >= MAX_BOONS)
 	{
 		debug("Maximum number of boons has been reached.  Aborting create_boon().");
+		boon_create_told(ch, false);
 		return FALSE;
 	}
-	if (const char *root = flat_boon_root())
+	flatfile_boon_definition definition = copy_boon_definition_to_flat(*bdata, time(nullptr));
+	std::string error;
+	if (bdata->racewar < 0 || bdata->racewar > UINT8_MAX || bdata->type < 0 ||
+	    bdata->type > UINT8_MAX || bdata->option < 0 || bdata->option > UINT8_MAX ||
+	    bdata->pid < 0 ||
+	    flatfile_boon_create(root, &definition, &error) != flatfile_boon_result::ok ||
+	    definition.id > static_cast<uint32_t>(std::numeric_limits<int>::max()))
 	{
-		if (bdata->racewar < 0 || bdata->racewar > UINT8_MAX || bdata->type < 0 ||
-		    bdata->type > UINT8_MAX || bdata->option < 0 || bdata->option > UINT8_MAX ||
-		    bdata->pid < 0)
-			return FALSE;
-		flatfile_boon_definition definition =
-			copy_boon_definition_to_flat(*bdata, time(nullptr));
-		std::string error;
-		if (flatfile_boon_create(root, &definition, &error) != flatfile_boon_result::ok ||
-		    definition.id > static_cast<uint32_t>(std::numeric_limits<int>::max()))
-			return FALSE;
-		bdata->id = static_cast<int>(definition.id);
-		boon_notify(bdata->id, nullptr, BN_CREATE);
-		return TRUE;
+		boon_create_told(ch, false);
+		return FALSE;
 	}
-
-	if (qry("INSERT INTO boons (time, duration, racewar, type, opt, criteria, criteria2, bonus, bonus2, random, author, active, pid, rpt) VALUES "
-		"(%d, %d, %d, %d, %d, %f, %f, %f, %f, %d, '%s', 1, '%d', '%d')",
-		time(0), bdata->duration, bdata->racewar, bdata->type, bdata->option,
-		bdata->criteria, bdata->criteria2, bdata->bonus, bdata->bonus2, bdata->random,
-		bdata->author.c_str(), bdata->pid, bdata->repeat))
-	{
-		// Get the new ID from the INSERT we just performed.
-		bdata->id = (int)mysql_insert_id(DB);
-		if (bdata->id <= 0)
-		{
-			debug("create_boon(): mysql_insert_id returned invalid id");
-			return FALSE;
-		}
-
-		boon_notify(bdata->id, NULL, BN_CREATE);
-
-		return TRUE;
-	}
-
-	return FALSE;
+	bdata->id = static_cast<int>(definition.id);
+	boon_notify(bdata->id, nullptr, BN_CREATE);
+	boon_create_told(ch, true);
+	return TRUE;
 }
 
 int create_boon_progress(BoonProgress *bpg)
@@ -2947,82 +2874,22 @@ int remove_boon(int id)
 		return flatfile_boon_deactivate(root, static_cast<uint32_t>(id), &error) ==
 		       flatfile_boon_result::ok;
 	}
-	// if (!qry("DELETE FROM boons WHERE id = %d", id))
-	//  Gona leave boons on the DB for history lookup purposes
-	if (!qry("UPDATE boons SET active='0', duration='0' WHERE id='%d'", id))
-	{
-		return 0;
-	}
-	return 1;
+	// Gona leave boons on the DB for history lookup purposes. Queued on the writer.
+	return sql_queue("UPDATE boons SET active='0', duration='0' WHERE id='%d'", id);
 }
 
+// Flat-file only: MariaDB extends on the writer (extend_boon_on_writer()).
 int extend_boon(int id, int extend, const char *name)
 {
-	if (const char *root = flat_boon_root())
-	{
-		if (id <= 0 || extend < 0 || !name || !*name)
-			return FALSE;
-		bool was_active = false;
-		std::string error;
-		if (flatfile_boon_extend(root, static_cast<uint32_t>(id), extend, time(nullptr),
-					 name, &was_active, &error) != flatfile_boon_result::ok)
-			return FALSE;
-		boon_notify(id, nullptr, was_active ? BN_EXTEND : BN_REACTIVATE);
-		return TRUE;
-	}
-	if (!qry("SELECT time, duration, active FROM boons WHERE id = %d", id))
-	{
-		debug("extend_boon() can't read from db");
+	const char *root = flat_boon_root();
+	if (!root || id <= 0 || extend < 0 || !name || !*name)
 		return FALSE;
-	}
-
-	MYSQL_RES *res = boon_store_result("extend_boon");
-	if (!res)
-	{
+	bool was_active = false;
+	std::string error;
+	if (flatfile_boon_extend(root, static_cast<uint32_t>(id), extend, time(nullptr), name,
+				 &was_active, &error) != flatfile_boon_result::ok)
 		return FALSE;
-	}
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		return FALSE;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-	if (!row || !row[0] || !row[1] || !row[2])
-	{
-		mysql_free_result(res);
-		return FALSE;
-	}
-
-	int timethen = atoi(row[0]);
-	int duration = atoi(row[1]);
-	int active = atoi(row[2]);
-
-	mysql_free_result(res);
-
-	// -1 duration = !expiration, no need to extend
-	if (duration == -1)
-	{
-		debug("%s is trying to extend a boon that has no expiration.\r\n", name);
-		return FALSE;
-	}
-
-	int calculate = MAX(0, timethen + (duration * 60) - time(0));
-	int ct = calculate + time(0);
-	duration = extend;
-
-	if (!qry("UPDATE boons SET time = '%d', duration = '%d', active = '1', author = '*%s' WHERE id = '%d'",
-		 ct, duration, name, id))
-	{
-		debug("extend_boon(): failed to update boon");
-		return FALSE;
-	}
-
-	if (active)
-		boon_notify(id, NULL, BN_EXTEND);
-	else
-		boon_notify(id, NULL, BN_REACTIVATE);
-
+	boon_notify(id, nullptr, was_active ? BN_EXTEND : BN_REACTIVATE);
 	return TRUE;
 }
 
@@ -3184,7 +3051,8 @@ void boon_notify(int id, P_char ch, int action)
 
 void boon_notify_snapshot(int id, int racewar, int pid, int action)
 {
-	if (id <= 0 || (action != BN_CREATE && action != BN_VOID && action != BN_EXPIRE))
+	if (id <= 0 || (action != BN_CREATE && action != BN_VOID && action != BN_EXPIRE &&
+			action != BN_EXTEND && action != BN_REACTIVATE))
 		return;
 	for (P_desc descriptor = descriptor_list; descriptor; descriptor = descriptor->next)
 	{
@@ -3199,6 +3067,15 @@ void boon_notify_snapshot(int id, int racewar, int pid, int action)
 				character,
 				"&+CYou qualify for a new boon (#%d) that has been created.&n\r\n",
 				id);
+		else if (action == BN_REACTIVATE)
+			send_to_char_f(
+				character,
+				"&+CYou qualify for a boon (#%d) that has been reactivated.&n\r\n",
+				id);
+		else if (action == BN_EXTEND)
+			send_to_char_f(character,
+				       "&+CThe duration for Boon # %d has been extended.&n\r\n",
+				       id);
 		else if (action == BN_EXPIRE)
 			send_to_char_f(character, "&+CBoon # %d has expired.&n\r\n", id);
 		else

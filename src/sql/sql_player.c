@@ -22,9 +22,14 @@
 #include <time.h>
 #include <algorithm>
 #include <chrono>
+#include <functional>
+#include <map>
+#include <memory>
+#include <set>
 #include <new>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 #include "account/account.h"
@@ -35,7 +40,6 @@
 #include "flatfile/flatfile_locker_repository.h"
 #include "flatfile/flatfile_recipe_repository.h"
 #include "flatfile/flatfile_spellbook_repository.h"
-#include "world/epic_bonus.h"
 #include "world/world_singletons.h"
 #include "core/mm.h"
 #include "classes/necromancy.h"
@@ -43,6 +47,7 @@
 #include "redis/redis_ship_legacy.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "player/player_name.h"
 #include "account/password_hash.h"
 #include "player/player_revision_state.h"
@@ -212,16 +217,27 @@ int sql_get_player_pid(const char *name)
 		return -1;
 	return pid;
 }
+bool sql_player_names_load(void)
+{
+	return true;
+}
+void sql_player_names_set(int, const char *) {}
+void sql_player_names_forget(int) {}
+void sql_player_names_hold(int, const char *) {}
+void sql_player_names_release(int, const char *) {}
+const char *sql_get_player_name(int)
+{
+	return nullptr;
+}
+int sql_highest_player_pid(void)
+{
+	return 0;
+}
 bool sql_load_player_status(P_char ch, int pid)
 {
 	return false;
 }
 
-bool sql_load_player_epic_bonus(P_char ch)
-{
-	(void)ch;
-	return false;
-}
 bool sql_load_player_skills(P_char ch)
 {
 	return false;
@@ -247,84 +263,7 @@ bool sql_load_player_pets(P_char ch)
 	return false;
 }
 
-bool sql_delete_player(int pid, bool forget_revision)
-{
-	return false;
-}
-bool sql_delete_player_by_name(const char *name)
-{
-	return false;
-}
-
 bool sql_save_account(struct acct_entry *acc)
-{
-	return false;
-}
-struct acct_entry *sql_load_account(const char *name)
-{
-	return NULL;
-}
-int sql_repair_account_character_projection(const char *account_name)
-{
-	return 0;
-}
-bool sql_account_exists(const char *name)
-{
-	return false;
-}
-bool sql_delete_account(const char *name)
-{
-	return false;
-}
-bool sql_save_locker(P_char locker_ch, int owner_pid, int owner_assoc_id)
-{
-	return false;
-}
-P_char sql_load_locker(int owner_pid, int owner_assoc_id)
-{
-	return NULL;
-}
-P_char sql_load_locker_by_name(const char *locker_name)
-{
-	return NULL;
-}
-/* Flatfile mode does not use the legacy SQL owner-existence probe. */
-bool sql_locker_exists(int owner_pid, int owner_assoc_id)
-{
-	return false;
-}
-/* Flatfile mode does not use the legacy SQL name-existence probe. */
-bool sql_locker_exists_by_name(const char *locker_name)
-{
-	return false;
-}
-/* Validate a flatfile personal locker owner against the current identity authority. */
-bool sql_locker_owner_can_access(const char *locker_name, int owner_pid, int racewar)
-{
-	if (!locker_name || owner_pid <= 0)
-		return false;
-	const char *root = persistence_mode_flatfile_root();
-	if (!root)
-		return false;
-	std::string error;
-	std::vector<flatfile_locker_record> lockers;
-	std::vector<flatfile_locker_access_record> access;
-	if (flatfile_locker_list(root, &lockers, &access, &error) != flatfile_locker_result::ok)
-		return false;
-	/* Locate the one case-insensitive locker name supplied by the caller. */
-	auto locker =
-		std::find_if(lockers.begin(), lockers.end(), [locker_name](const auto &entry)
-			     { return strcasecmp(entry.locker_name.c_str(), locker_name) == 0; });
-	if (locker == lockers.end() || locker->owner_pid != owner_pid || locker->owner_assoc_id ||
-	    locker->racewar != racewar)
-		return false;
-	flatfile_identity_record identity;
-	return flatfile_identity_lookup_pid(root, owner_pid, &identity, &error) ==
-		       flatfile_identity_result::ok &&
-	       identity.active && !identity.blocked && identity.racewar == racewar;
-}
-/* Flatfile locker deletion is implemented by its repository-backed callers. */
-bool sql_delete_locker(int owner_pid, int owner_assoc_id)
 {
 	return false;
 }
@@ -352,14 +291,6 @@ char *sql_escape_string(const char *str)
 }
 void sql_player_error(const char *site) {}
 
-bool sql_save_corpse(P_obj corpse)
-{
-	return false;
-}
-bool sql_delete_corpse(const char *player_name, int save_id)
-{
-	return false;
-}
 bool sql_load_all_corpses(void)
 {
 	return false;
@@ -387,34 +318,10 @@ bool sql_save_dirty_shopkeepers(bool force)
 	return true;
 }
 
-bool sql_save_saved_item(P_obj item, const char *item_key)
-{
-	return false;
-}
-bool sql_delete_saved_item(const char *item_key)
-{
-	return false;
-}
 void sql_restore_saved_items(void) {}
-bool sql_save_account_ips(const char *account_name, struct acct_ip *ips)
-{
-	return false;
-}
-struct acct_ip *sql_load_account_ips(const char *account_name)
-{
-	return NULL;
-}
-bool sql_delete_account_ips(const char *account_name)
-{
-	return false;
-}
 bool sql_save_ship(P_ship ship)
 {
 	return false;
-}
-P_ship sql_load_ship(const char *owner_name)
-{
-	return NULL;
 }
 P_ship sql_place_ship(const char * /*owner_name*/, bool *unplaced)
 {
@@ -422,9 +329,9 @@ P_ship sql_place_ship(const char * /*owner_name*/, bool *unplaced)
 		*unplaced = false;
 	return NULL;
 }
-int sql_ship_stored(const char * /*owner_name*/)
+bool sql_ship_stored(const char * /*owner_name*/)
 {
-	return -1;
+	return false;
 }
 bool sql_load_all_ships(void)
 {
@@ -487,55 +394,11 @@ bool sql_ensure_account_bank(const char *account_name, int racewar)
 	return false;
 }
 
-bool sql_player_rename(P_char /*ch*/, const char * /*new_name*/)
+std::vector<std::string> sql_rename_character_statements(int, const char *, const char *, P_ship)
 {
-	return false;
-}
-sql_commit_outcome sql_rename_character(P_char /*ch*/, const char * /*old_name*/,
-					const char * /*new_name*/, P_ship /*ship*/)
-{
-	return sql_commit_outcome::rolled_back;
+	return {};
 }
 
-int sql_get_locker_id_by_name(const char * /*locker_name*/)
-{
-	return -1;
-}
-int sql_get_or_create_public_chest(int /*locker_id*/)
-{
-	return -1;
-}
-int sql_create_private_chest_hashed(int /*locker_id*/, const char * /*chest_name*/,
-				    const char * /*password*/)
-{
-	return 0;
-}
-bool sql_delete_private_chest(int /*chest_id*/)
-{
-	return false;
-}
-int sql_get_chest_id(int /*locker_id*/, const char * /*chest_name*/)
-{
-	return -1;
-}
-bool sql_set_chest_password_hash(int /*chest_id*/, const char * /*password*/)
-{
-	return false;
-}
-bool sql_get_chest_password_hash(int /*chest_id*/, char **hash)
-{
-	*hash = nullptr;
-	return false;
-}
-bool sql_finish_chest_password(int /*chest_id*/, const char * /*expected*/,
-			       const char * /*upgrade*/)
-{
-	return false;
-}
-int sql_count_private_chests(int /*locker_id*/)
-{
-	return -1;
-}
 bool sql_log_chest_activity(int /*locker_id*/, int /*chest_id*/, const char * /*char_name*/,
 			    int /*action_type*/, const char * /*item_short*/)
 {
@@ -545,7 +408,11 @@ bool sql_save_private_chest_items(int /*locker_id*/, int /*chest_id*/, P_obj /*c
 {
 	return false;
 }
-void sql_load_private_chest_items(int /*locker_id*/, int /*chest_id*/, P_obj /*chest_obj*/) {}
+P_obj sql_locker_items_from_rows(const sql_rows & /*rows*/, int /*locker_id*/, int /*chest_id*/,
+				 P_obj /*chest_obj*/)
+{
+	return NULL;
+}
 
 bool sql_add_spellbook_mob(int pid, int mob_vnum)
 {
@@ -642,11 +509,6 @@ bool sql_delete_spellbook_mobs(int pid)
 // globals
 
 extern MYSQL *DB;
-
-static int sql_count_obj_contents(P_obj obj);
-static int sql_save_locker_item(int locker_id, int chest_id, P_obj obj, int container_id);
-static bool sql_save_locker_item_children(int locker_id, int chest_id, P_obj obj, int item_id,
-					  bool own_txn);
 
 // track transaction state
 static bool in_transaction = false;
@@ -1086,204 +948,186 @@ void sql_reset_for_child(MYSQL *child_conn)
 
 // player existence check
 
+namespace
+{
+// Every player_data row's pid, name and active flag, read at boot and kept current by the
+// game's own writes (entry, renames, deletion), so a lookup never waits on the database.
+struct player_name
+{
+	std::string name;
+	bool active;
+};
+std::unordered_map<int, player_name> names_by_pid;
+int highest_pid = 0;
+// The lowercase name to the pid a lookup gives: the active character of that name.
+std::unordered_map<std::string, int> pids_by_name;
+
+std::string lowercase(const char *name)
+{
+	std::string lower = name;
+	for (char &letter : lower)
+		letter = LOWER(letter);
+	return lower;
+}
+} // namespace
+
+bool sql_player_names_load(void)
+{
+	MYSQL_RES *result = db_query("SELECT pid, name, active FROM player_data");
+	if (!result)
+		return false;
+	names_by_pid.clear();
+	pids_by_name.clear();
+	while (MYSQL_ROW row = mysql_fetch_row(result))
+	{
+		if (!row[0] || !row[1])
+			continue;
+		const int pid = atoi(row[0]);
+		const bool active = row[2] && atoi(row[2]);
+		names_by_pid[pid] = { row[1], active };
+		highest_pid = std::max(highest_pid, pid);
+		auto [named, added] = pids_by_name.try_emplace(lowercase(row[1]), pid);
+		if (!added && active)
+			named->second = pid;
+	}
+	mysql_free_result(result);
+	// Never a deleted character's pid again: rows keyed by pid outlive the character.
+	highest_pid =
+		std::max(highest_pid, static_cast<int>(sql_next_auto_increment("player_data")) - 1);
+	return true;
+}
+
+void sql_player_names_set(int pid, const char *name)
+{
+	if (pid <= 0 || !name)
+		return;
+	sql_player_names_forget(pid);
+	const std::string lower = lowercase(name);
+	// As at entry in the database: any other character of that name is inactive.
+	for (auto &[other, entry] : names_by_pid)
+		if (lowercase(entry.name.c_str()) == lower)
+			entry.active = false;
+	names_by_pid[pid] = { name, true };
+	pids_by_name[lower] = pid;
+	highest_pid = std::max(highest_pid, pid);
+}
+
+int sql_highest_player_pid(void)
+{
+	return highest_pid;
+}
+
+void sql_player_names_forget(int pid)
+{
+	auto found = names_by_pid.find(pid);
+	if (found == names_by_pid.end())
+		return;
+	auto named = pids_by_name.find(lowercase(found->second.name.c_str()));
+	if (named != pids_by_name.end() && named->second == pid)
+		pids_by_name.erase(named);
+	names_by_pid.erase(found);
+}
+
+void sql_player_names_hold(int pid, const char *name)
+{
+	pids_by_name.try_emplace(lowercase(name), pid);
+}
+
+void sql_player_names_release(int pid, const char *name)
+{
+	auto named = pids_by_name.find(lowercase(name));
+	if (named != pids_by_name.end() && named->second == pid)
+		pids_by_name.erase(named);
+}
+
+const char *sql_get_player_name(int pid)
+{
+	auto found = names_by_pid.find(pid);
+	return found != names_by_pid.end() && found->second.active ? found->second.name.c_str() :
+								     nullptr;
+}
+
 bool sql_player_exists(const char *name)
 {
-	if (!DB || !name)
-		return false;
-
-	char *escaped_name = sql_escape_string(name);
-	if (!escaped_name)
-		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "SELECT 1 FROM player_data WHERE LOWER(name)=LOWER('%s') LIMIT 1", escaped_name);
-	free(escaped_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	bool exists = (row != NULL);
-	mysql_free_result(result);
-
-	return exists;
-}
-
-bool sql_player_rename(P_char ch, const char *new_name)
-{
-	if (!DB || !new_name || !ch)
-		return false;
-
-	char normalized_name[MAX_STRING_LENGTH];
-	strlcpy(normalized_name, new_name, sizeof(normalized_name));
-	normalize_player_name_case(normalized_name);
-
-	char *escaped_name = sql_escape_string(normalized_name);
-	if (!escaped_name)
-		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query), "UPDATE player_data SET name='%s' WHERE pid='%d'",
-		 escaped_name, GET_PID(ch));
-	free(escaped_name);
-
-	return sql_run_query(query);
-}
-
-/* Whether the player row for `pid` is named `name`: 1 if so, 0 if not, -1 if it cannot be read. */
-static int sql_player_row_named(int pid, const char *name)
-{
-	MYSQL_RES *result = db_query("SELECT name FROM player_data WHERE pid=%d", pid);
-	if (!result)
-		return -1;
-	MYSQL_ROW row = mysql_fetch_row(result);
-	const int named = row && row[0] && !strcasecmp(row[0], name) ? 1 : 0;
-	mysql_free_result(result);
-	return named;
+	return name && pids_by_name.count(lowercase(name));
 }
 
 /*
- * Carry over what else the character's name keys, besides the player row
- * and the ship: the account mapping that login reads, a personal locker and
- * its access list, the character's own grants on other lockers, their guild
- * roster row and top-fragger credit, and their leaderboard name.  Runs inside
- * the rename transaction.  Corpses keep the name they were made under, which
- * the corpse objects in the world also carry, and logs keep their history.
+ * What else the character's name keys, besides the player row and the ship: the
+ * account mapping that login reads, a personal locker and its access list, the
+ * character's own grants on other lockers, their guild roster row and top-fragger
+ * credit, and their leaderboard name.  Corpses keep the name they were made under,
+ * which the corpse objects in the world also carry, and logs keep their history.
  *
  * A grant naming an account as well as the character is ambiguous, and stays
  * with the account.  If the new name already holds a grant on a locker, the
  * old one is dropped.
  */
-static bool sql_rename_character_references(int pid, const char *old_name, const char *new_name)
+static std::vector<std::string> sql_rename_character_references(int pid, const char *old_name,
+								const char *new_name)
 {
-	char *esc_old = sql_escape_string(old_name);
-	char *esc_new = sql_escape_string(new_name);
-	if (!esc_old || !esc_new)
-	{
-		free(esc_old);
-		free(esc_new);
-		return false;
-	}
-
-	char queries[9][1024];
-	int count = 0;
-	/* Earlier renames could leave a second active mapping for the pid; keep
-	 * the oldest, so the one rename below cannot collide with itself. */
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "DELETE stale FROM account_characters stale JOIN account_characters keeper "
-		 "ON keeper.pid=stale.pid AND keeper.id<stale.id AND keeper.deleted_at IS NULL "
-		 "WHERE stale.pid=%d AND stale.deleted_at IS NULL",
-		 pid);
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "UPDATE account_characters SET char_name='%s' "
-		 "WHERE pid=%d AND deleted_at IS NULL",
-		 esc_new, pid);
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "UPDATE lockers SET locker_name=CONCAT('%s','.locker') "
-		 "WHERE locker_name=CONCAT('%s','.locker') AND (owner_pid=%d OR owner_pid IS NULL)",
-		 esc_new, esc_old, pid);
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "UPDATE locker_access SET owner=CONCAT('%s','.locker') "
-		 "WHERE owner=CONCAT('%s','.locker')",
-		 esc_new, esc_old);
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "UPDATE IGNORE locker_access SET visitor='%s' WHERE visitor='%s' "
-		 "AND NOT EXISTS (SELECT 1 FROM accounts WHERE account_name='%s')",
-		 esc_new, esc_old, esc_old);
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "DELETE FROM locker_access WHERE visitor='%s' "
-		 "AND NOT EXISTS (SELECT 1 FROM accounts WHERE account_name='%s')",
-		 esc_old, esc_old);
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "UPDATE guild_members SET player_name='%s' "
-		 "WHERE player_pid=%d OR (player_pid IS NULL AND player_name='%s')",
-		 esc_new, pid, esc_old);
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "UPDATE guilds SET topfragger='%s' WHERE topfragger='%s'", esc_new, esc_old);
-	snprintf(queries[count++], sizeof(queries[0]),
-		 "UPDATE frag_leaderboard SET char_name='%s' WHERE pid=%d", esc_new, pid);
-	free(esc_old);
-	free(esc_new);
-
-	for (int i = 0; i < count; i++)
-	{
-		if (!sql_run_query(queries[i]))
-			return false;
-	}
-	return true;
+	const std::string old_escaped = escape_str(old_name);
+	const std::string new_escaped = escape_str(new_name);
+	const char *esc_old = old_escaped.c_str();
+	const char *esc_new = new_escaped.c_str();
+	return {
+		/* Earlier renames could leave a second active mapping for the pid; keep
+		 * the oldest, so the one rename below cannot collide with itself. */
+		sql_format(
+			"DELETE stale FROM account_characters stale JOIN account_characters keeper "
+			"ON keeper.pid=stale.pid AND keeper.id<stale.id AND keeper.deleted_at IS NULL "
+			"WHERE stale.pid=%d AND stale.deleted_at IS NULL",
+			pid),
+		sql_format("UPDATE account_characters SET char_name='%s' "
+			   "WHERE pid=%d AND deleted_at IS NULL",
+			   esc_new, pid),
+		sql_format(
+			"UPDATE lockers SET locker_name=CONCAT('%s','.locker') "
+			"WHERE locker_name=CONCAT('%s','.locker') AND (owner_pid=%d OR owner_pid IS NULL)",
+			esc_new, esc_old, pid),
+		sql_format("UPDATE locker_access SET owner=CONCAT('%s','.locker') "
+			   "WHERE owner=CONCAT('%s','.locker')",
+			   esc_new, esc_old),
+		sql_format("UPDATE IGNORE locker_access SET visitor='%s' WHERE visitor='%s' "
+			   "AND NOT EXISTS (SELECT 1 FROM accounts WHERE account_name='%s')",
+			   esc_new, esc_old, esc_old),
+		sql_format("DELETE FROM locker_access WHERE visitor='%s' "
+			   "AND NOT EXISTS (SELECT 1 FROM accounts WHERE account_name='%s')",
+			   esc_old, esc_old),
+		sql_format("UPDATE guild_members SET player_name='%s' "
+			   "WHERE player_pid=%d OR (player_pid IS NULL AND player_name='%s')",
+			   esc_new, pid, esc_old),
+		sql_format("UPDATE guilds SET topfragger='%s' WHERE topfragger='%s'", esc_new,
+			   esc_old),
+		sql_format("UPDATE frag_leaderboard SET char_name='%s' WHERE pid=%d", esc_new, pid),
+	};
 }
 
-/*
- * Rename `ch` from `old_name` to `new_name` in one transaction: the player
- * row, everything else the name keys (sql_rename_character_references()),
- * and `ship`, whose owner the caller has already changed in memory.  So a
- * character, their login, locker, guild entry and ship are never stored under
- * different names.  `ship` may be NULL.
- *
- * A ROLLBACK only fails when the connection is gone, and the server then
- * discards the transaction itself.  A failed COMMIT, however, may have been
- * applied with its reply lost, so the player row is read back to tell which;
- * sql_commit_outcome::unknown means it could not be read.
- */
-sql_commit_outcome sql_rename_character(P_char ch, const char *old_name, const char *new_name,
-					P_ship ship)
-{
-	if (!DB || !ch || !old_name || !new_name || sql_in_transaction() ||
-	    !sql_begin_transaction())
-		return sql_commit_outcome::rolled_back;
+static std::vector<std::string> sql_save_ship_statements(P_ship ship);
 
+std::vector<std::string> sql_rename_character_statements(int pid, const char *old_name,
+							 const char *new_name, P_ship ship)
+{
 	char stored_name[MAX_STRING_LENGTH];
 	strlcpy(stored_name, new_name, sizeof(stored_name));
 	normalize_player_name_case(stored_name);
-	if (!sql_player_rename(ch, new_name) ||
-	    !sql_rename_character_references(GET_PID(ch), old_name, stored_name) ||
-	    (ship && !sql_save_ship(ship)))
-	{
-		sql_rollback();
-		return sql_commit_outcome::rolled_back;
-	}
-	if (sql_commit())
-		return sql_commit_outcome::committed;
-
-	sql_rollback();
-	switch (sql_player_row_named(GET_PID(ch), new_name))
-	{
-	case 1:
-		return sql_commit_outcome::committed;
-	case 0:
-		return sql_commit_outcome::rolled_back;
-	default:
-		return sql_commit_outcome::unknown;
-	}
+	std::vector<std::string> statements = { sql_format(
+		"UPDATE player_data SET name='%s' WHERE pid=%d", escape_str(stored_name).c_str(),
+		pid) };
+	for (std::string &statement : sql_rename_character_references(pid, old_name, stored_name))
+		statements.push_back(std::move(statement));
+	if (ship)
+		for (std::string &statement : sql_save_ship_statements(ship))
+			statements.push_back(std::move(statement));
+	return statements;
 }
 
 int sql_get_player_pid(const char *name)
 {
-	if (!DB || !name)
+	if (!name)
 		return -1;
-
-	char *escaped_name = sql_escape_string(name);
-	if (!escaped_name)
-		return -1;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "SELECT pid FROM player_data WHERE LOWER(name)=LOWER('%s') LIMIT 1", escaped_name);
-	free(escaped_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return -1;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	int pid = -1;
-	if (row && row[0])
-		pid = atoi(row[0]);
-	mysql_free_result(result);
-
-	return pid;
+	auto named = pids_by_name.find(lowercase(name));
+	return named != pids_by_name.end() ? named->second : -1;
 }
 
 static bool sql_try_get_player_pid(const char *name, int *pid_out)
@@ -1317,31 +1161,6 @@ static bool sql_try_get_player_pid(const char *name, int *pid_out)
 	mysql_free_result(result);
 
 	return true;
-}
-
-// player delete
-
-bool sql_delete_player(int pid, bool forget_revision)
-{
-	if (!DB || pid <= 0)
-		return false;
-
-	char query[128];
-	snprintf(query, sizeof(query), "DELETE FROM player_data WHERE pid=%d", pid);
-
-	if (!sql_run_query(query))
-		return false;
-	if (forget_revision)
-		player_revision_forget(pid);
-	return true;
-}
-
-bool sql_delete_player_by_name(const char *name)
-{
-	int pid = sql_get_player_pid(name);
-	if (pid <= 0)
-		return false;
-	return sql_delete_player(pid);
 }
 
 // master save function
@@ -2514,6 +2333,35 @@ static int sql_batch_save_simple_items(int pid, int container_id, P_obj first_ob
 static bool sql_merge_duplicate_spellbook(struct extra_descr_data *existing,
 					  struct extra_descr_data *candidate);
 
+// Attach one stored extra description to obj. A second native spellbook row of the
+// same item is merged into the first (*loaded_spellbook) instead of attached.
+static void sql_add_item_extra_descr(P_obj obj, const char *keyword, const char *description,
+				     const char *table, int item_id,
+				     struct extra_descr_data **loaded_spellbook)
+{
+	struct extra_descr_data *ed;
+	CREATE(ed, extra_descr_data, 1, MEM_TAG_EXDESCD);
+
+	sql_load_item_extra_descr_values(keyword, description, ed, table, item_id);
+
+	if (sql_item_extra_descr_is_spellbook_marker(ed->keyword))
+	{
+		if (*loaded_spellbook && sql_merge_duplicate_spellbook(*loaded_spellbook, ed))
+		{
+			persistence_alert(
+				AVATAR, "item_extra_descr", table ? table : "unknown", "none",
+				"none", "duplicate_spellbook_rows",
+				"item_id=%d had duplicate native spellbook rows; merged their bitmaps",
+				item_id);
+			return;
+		}
+		*loaded_spellbook = ed;
+	}
+	ed->next = obj->ex_description;
+	obj->ex_description = ed;
+	obj->str_mask |= STRUNG_EDESC;
+}
+
 static bool sql_load_item_extra_descr_from_table(int item_id, P_obj obj, const char *table)
 {
 	char query[256];
@@ -2532,38 +2380,11 @@ static bool sql_load_item_extra_descr_from_table(int item_id, P_obj obj, const c
 	MYSQL_RES *result = db_query("%s", query);
 	if (!result)
 		return false;
-	if (result)
-	{
-		struct extra_descr_data *loaded_spellbook = NULL;
-		MYSQL_ROW row;
-		while ((row = mysql_fetch_row(result)))
-		{
-			struct extra_descr_data *ed;
-			CREATE(ed, extra_descr_data, 1, MEM_TAG_EXDESCD);
-
-			sql_load_item_extra_descr_values(row[0], row[1], ed, table, item_id);
-
-			if (sql_item_extra_descr_is_spellbook_marker(ed->keyword))
-			{
-				if (loaded_spellbook &&
-				    sql_merge_duplicate_spellbook(loaded_spellbook, ed))
-				{
-					persistence_alert(
-						AVATAR, "item_extra_descr",
-						table ? table : "unknown", "none", "none",
-						"duplicate_spellbook_rows",
-						"item_id=%d had duplicate native spellbook rows; merged their bitmaps",
-						item_id);
-					continue;
-				}
-				loaded_spellbook = ed;
-			}
-			ed->next = obj->ex_description;
-			obj->ex_description = ed;
-			obj->str_mask |= STRUNG_EDESC;
-		}
-		mysql_free_result(result);
-	}
+	struct extra_descr_data *loaded_spellbook = NULL;
+	MYSQL_ROW row;
+	while ((row = mysql_fetch_row(result)))
+		sql_add_item_extra_descr(obj, row[0], row[1], table, item_id, &loaded_spellbook);
+	mysql_free_result(result);
 	return true;
 }
 
@@ -2600,50 +2421,29 @@ static bool sql_merge_duplicate_spellbook(struct extra_descr_data *existing,
 	return true;
 }
 
-// load item affects from db into obj->affected[]
-// clears prototype affects if db has any custom affects
-static void sql_load_item_affects_from_table(int item_id, P_obj obj, const char *table)
+// Set obj's affects to its stored (location, modifier) rows. Any stored row replaces
+// the prototype's affects; duplicates are dropped.
+static void sql_set_item_affects(P_obj obj, const std::vector<std::pair<int, int>> &affects)
 {
-	if (!obj || !DB || item_id <= 0 || !table)
+	if (affects.empty())
 		return;
-
-	char query[256];
-	snprintf(query, sizeof(query), "SELECT location, modifier FROM %s WHERE item_id=%d", table,
-		 item_id);
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return;
-
-	MYSQL_ROW row;
-	int aff_idx = 0;
-	bool affects_cleared = false;
-
-	while ((row = mysql_fetch_row(result)) && aff_idx < MAX_OBJ_AFFECT)
+	for (int a = 0; a < MAX_OBJ_AFFECT; a++)
 	{
-		// clear prototype affects before loading first db affect
-		if (!affects_cleared)
-		{
-			for (int a = 0; a < MAX_OBJ_AFFECT; a++)
-			{
-				obj->affected[a].location = 0;
-				obj->affected[a].modifier = 0;
-			}
-			affects_cleared = true;
-		}
-
-		int loc = atoi(row[0]);
-		int mod = atoi(row[1]);
-
-		// skip duplicates from db
+		obj->affected[a].location = 0;
+		obj->affected[a].modifier = 0;
+	}
+	int aff_idx = 0;
+	for (const auto &[loc, mod] : affects)
+	{
+		if (aff_idx >= MAX_OBJ_AFFECT)
+			break;
 		bool is_dup = false;
 		for (int d = 0; d < aff_idx; d++)
-		{
 			if (obj->affected[d].location == loc && obj->affected[d].modifier == mod)
 			{
 				is_dup = true;
 				break;
 			}
-		}
 		if (!is_dup)
 		{
 			obj->affected[aff_idx].location = loc;
@@ -2651,7 +2451,6 @@ static void sql_load_item_affects_from_table(int item_id, P_obj obj, const char 
 			aff_idx++;
 		}
 	}
-	mysql_free_result(result);
 }
 
 static bool sql_save_item_extra_descr(int item_id, P_obj obj, const char *table)
@@ -3934,85 +3733,66 @@ bool sql_save_player_recipes(P_char ch)
 	return true;
 }
 
+namespace
+{
+// Every character's recipes, in the order learned: read at boot, changed here at once, and
+// written on the writer. Only the game writes player_recipes.
+std::unordered_map<int, std::vector<int>> recipes_by_pid;
+} // namespace
+
+bool sql_player_recipes_load(void)
+{
+	MYSQL_RES *result = db_query("SELECT pid, recipe_vnum FROM player_recipes ORDER BY id");
+	if (!result)
+		return false;
+	recipes_by_pid.clear();
+	while (MYSQL_ROW row = mysql_fetch_row(result))
+		if (row[0] && row[1])
+			recipes_by_pid[atoi(row[0])].push_back(atoi(row[1]));
+	mysql_free_result(result);
+	return true;
+}
+
 bool sql_add_player_recipe(int pid, int recipe_vnum)
 {
 	if (!DB || pid <= 0)
 		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "INSERT IGNORE INTO player_recipes (pid, recipe_vnum) VALUES (%d, %d)", pid,
-		 recipe_vnum);
-	return sql_run_query(query);
+	std::vector<int> &recipes = recipes_by_pid[pid];
+	if (std::find(recipes.begin(), recipes.end(), recipe_vnum) != recipes.end())
+		return true;
+	recipes.push_back(recipe_vnum);
+	return sql_queue("INSERT IGNORE INTO player_recipes (pid, recipe_vnum) VALUES (%d, %d)",
+			 pid, recipe_vnum);
 }
 
 bool sql_delete_player_recipes(int pid)
 {
 	if (!DB || pid <= 0)
 		return false;
-
-	char query[128];
-	snprintf(query, sizeof(query), "DELETE FROM player_recipes WHERE pid=%d", pid);
-	return sql_run_query(query);
+	recipes_by_pid.erase(pid);
+	return sql_queue("DELETE FROM player_recipes WHERE pid=%d", pid);
 }
 
 bool sql_has_player_recipe(int pid, int recipe_vnum)
 {
-	if (!DB || pid <= 0)
-		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "SELECT 1 FROM player_recipes WHERE pid=%d AND recipe_vnum=%d LIMIT 1", pid,
-		 recipe_vnum);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	bool has = (mysql_fetch_row(result) != NULL);
-	mysql_free_result(result);
-	return has;
+	const auto found = recipes_by_pid.find(pid);
+	return found != recipes_by_pid.end() &&
+	       std::find(found->second.begin(), found->second.end(), recipe_vnum) !=
+		       found->second.end();
 }
 
 // returns array of recipe vnums, sets count. caller must free array
 int *sql_get_player_recipes(int pid, int *count)
 {
 	*count = 0;
-	if (!DB || pid <= 0)
+	const auto found = recipes_by_pid.find(pid);
+	if (found == recipes_by_pid.end() || found->second.empty())
 		return NULL;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "SELECT recipe_vnum FROM player_recipes WHERE pid=%d ORDER BY id", pid);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return NULL;
-
-	int num_rows = mysql_num_rows(result);
-	if (num_rows == 0)
-	{
-		mysql_free_result(result);
-		return NULL;
-	}
-
-	int *recipes = (int *)malloc(num_rows * sizeof(int));
+	int *recipes = (int *)malloc(found->second.size() * sizeof(int));
 	if (!recipes)
-	{
-		mysql_free_result(result);
 		return NULL;
-	}
-
-	MYSQL_ROW row;
-	int i = 0;
-	while ((row = mysql_fetch_row(result)))
-	{
-		recipes[i++] = atoi(row[0]);
-	}
-
-	mysql_free_result(result);
-	*count = i;
+	std::copy(found->second.begin(), found->second.end(), recipes);
+	*count = static_cast<int>(found->second.size());
 	return recipes;
 }
 
@@ -4830,11 +4610,6 @@ bool sql_load_player_items(P_char ch)
 	return true;
 }
 
-bool sql_load_player_epic_bonus(P_char ch)
-{
-	return epic_bonus_hydrate(ch);
-}
-
 P_char sql_load_player(const char *name)
 {
 	if (!name || !DB)
@@ -4875,11 +4650,6 @@ P_char sql_load_player(const char *name)
 		return NULL;
 	}
 
-	if (!sql_load_player_epic_bonus(ch))
-	{
-		logit(LOG_DEBUG, "sql_load_player: component=epic_bonus outcome=unavailable");
-	}
-
 	if (!sql_load_player_skills(ch))
 	{
 		logit(LOG_DEBUG, "sql_load_player: component=skills outcome=failure");
@@ -4901,394 +4671,218 @@ P_char sql_load_player(const char *name)
 	return ch;
 }
 
-static bool sql_save_account_characters(struct acct_entry *acc);
-static bool sql_account_ips_query_failed = false;
-static bool sql_account_chars_query_failed = false;
-static void free_acct_ip_list(struct acct_ip *ips);
-static void free_acct_char_list(struct acct_chars *chars);
-static struct acct_chars *sql_load_account_characters(const char *account_name);
-
 bool sql_save_account(struct acct_entry *acc)
 {
 	if (!DB || !acc || !acc->acct_name)
 		return false;
 
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-			return false;
-		own_txn = true;
-	}
-
-	char *esc_name = sql_escape_string(acc->acct_name);
-	char *esc_email = sql_escape_string(acc->acct_email ? acc->acct_email : "");
-	char *esc_pass = sql_escape_string(acc->acct_password ? acc->acct_password : "");
-	char *esc_conf = sql_escape_string(acc->acct_confirmation ? acc->acct_confirmation : "");
-
-	if (!esc_name || !esc_email || !esc_pass || !esc_conf)
-	{
-		if (esc_name)
-			free(esc_name);
-		if (esc_email)
-			free(esc_email);
-		if (esc_pass)
-			free(esc_pass);
-		if (esc_conf)
-			free(esc_conf);
-		return false;
-	}
-
-	char query[2048];
-	snprintf(
-		query, sizeof(query),
+	const std::string name = escape_str(acc->acct_name);
+	const std::string email = escape_str(acc->acct_email ? acc->acct_email : "");
+	const std::string password = escape_str(acc->acct_password ? acc->acct_password : "");
+	const std::string confirmation =
+		escape_str(acc->acct_confirmation ? acc->acct_confirmation : "");
+	std::vector<std::string> statements;
+	statements.push_back(sql_format(
 		"insert into accounts (account_name, email, password, confirmation_code, "
 		"confirmed, confirmation_sent, blocked, last_login, last_good_char, last_evil_char, "
 		"flags1, flags2, flags3, flags4) values ('%s', '%s', '%s', '%s', %d, %d, %d, FROM_UNIXTIME(NULLIF(%ld,0)), FROM_UNIXTIME(NULLIF(%ld,0)), FROM_UNIXTIME(NULLIF(%ld,0)), %lu, %lu, %lu, %lu) "
 		"on duplicate key update email='%s', password='%s', confirmation_code='%s', "
 		"confirmed=%d, confirmation_sent=%d, blocked=%d, last_login=FROM_UNIXTIME(NULLIF(%ld,0)), last_good_char=FROM_UNIXTIME(NULLIF(%ld,0)), last_evil_char=FROM_UNIXTIME(NULLIF(%ld,0)), "
 		"flags1=%lu, flags2=%lu, flags3=%lu, flags4=%lu",
-		esc_name, esc_email, esc_pass, esc_conf, acc->acct_confirmed,
-		acc->acct_confirmation_sent, acc->acct_blocked, acc->acct_last, acc->acct_good,
-		acc->acct_evil, acc->acct_flags1, acc->acct_flags2, acc->acct_flags3,
-		acc->acct_flags4, esc_email, esc_pass, esc_conf, acc->acct_confirmed,
-		acc->acct_confirmation_sent, acc->acct_blocked, acc->acct_last, acc->acct_good,
-		acc->acct_evil, acc->acct_flags1, acc->acct_flags2, acc->acct_flags3,
-		acc->acct_flags4);
+		name.c_str(), email.c_str(), password.c_str(), confirmation.c_str(),
+		acc->acct_confirmed, acc->acct_confirmation_sent, acc->acct_blocked, acc->acct_last,
+		acc->acct_good, acc->acct_evil, acc->acct_flags1, acc->acct_flags2,
+		acc->acct_flags3, acc->acct_flags4, email.c_str(), password.c_str(),
+		confirmation.c_str(), acc->acct_confirmed, acc->acct_confirmation_sent,
+		acc->acct_blocked, acc->acct_last, acc->acct_good, acc->acct_evil, acc->acct_flags1,
+		acc->acct_flags2, acc->acct_flags3, acc->acct_flags4));
+	statements.push_back(
+		sql_format("DELETE FROM account_ips WHERE account_name='%s'", name.c_str()));
+	for (struct acct_ip *ip = acc->acct_unique_ips; ip; ip = ip->next)
+		statements.push_back(sql_format(
+			"INSERT INTO account_ips (account_name, hostname, ip_address, count) "
+			"VALUES ('%s', '%s', '%s', %lu)",
+			name.c_str(), escape_str(ip->hostname ? ip->hostname : "").c_str(),
+			escape_str(ip->ip_address ? ip->ip_address : "").c_str(), ip->count));
 
-	free(esc_name);
-	free(esc_email);
-	free(esc_pass);
-	free(esc_conf);
-
-	if (!sql_run_query(query))
+	struct mapping
 	{
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-
-	// save ips
-	if (!sql_save_account_ips(acc->acct_name, acc->acct_unique_ips))
-	{
-		logit(LOG_DEBUG, "sql_save_account: component=ips outcome=failure");
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-
-	// save characters
-	if (!sql_save_account_characters(acc))
-	{
-		logit(LOG_DEBUG, "sql_save_account: component=characters outcome=failure");
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-
-	if (own_txn && !sql_commit())
-	{
-		sql_rollback();
-		return false;
-	}
-
-	return true;
-}
-
-/*
- * Resolve an existing account_characters row id for a character, or 0 when
- * the mapping is absent, so the steady-state projection can be an UPDATE that
- * allocates no identity value.  The character's active mapping is found by
- * pid first, preferring one that already has its name, so a renamed
- * character updates its row instead of inserting a second one; then any row
- * with its name.
- */
-static long sql_find_account_character_mapping(int pid, const char *escaped_char_name)
-{
-	if (!DB || !escaped_char_name)
-		return 0;
-
-	MYSQL_RES *result = db_query("SELECT id FROM account_characters "
-				     "WHERE pid=%d AND deleted_at IS NULL "
-				     "ORDER BY char_name='%s' DESC, id LIMIT 1",
-				     pid, escaped_char_name);
-	MYSQL_ROW row = result ? mysql_fetch_row(result) : NULL;
-	const long by_pid = (row && row[0]) ? atol(row[0]) : 0;
-	if (result)
-		mysql_free_result(result);
-	if (by_pid > 0)
-		return by_pid;
-
-	result = db_query("SELECT id FROM account_characters WHERE char_name='%s' LIMIT 1",
-			  escaped_char_name);
-	if (!result)
-		return 0;
-
-	row = mysql_fetch_row(result);
-	long mapping_id = (row && row[0]) ? atol(row[0]) : 0;
-	mysql_free_result(result);
-	return mapping_id;
-}
-
-/*
- * Project an account's character list into account_characters.
- *
- * Each character is resolved to its existing mapping row and updated in place,
- * so a repeated save allocates no identity value; only a genuinely new mapping
- * inserts. The caller owns the surrounding transaction, and any write failure
- * is reported so that transaction can roll back rather than leave an account
- * half projected.
- */
-static bool sql_save_account_characters(struct acct_entry *acc)
-{
-	if (!DB || !acc || !acc->acct_name)
-		return false;
-
-	char *esc_name = sql_escape_string(acc->acct_name);
-	if (!esc_name)
-		return false;
-
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-		{
-			free(esc_name);
-			return false;
-		}
-		own_txn = true;
-	}
-
+		std::string name;
+		unsigned long count;
+		long last;
+		int blocked;
+		int racewar;
+	};
+	std::vector<mapping> characters;
 	for (struct acct_chars *ch = acc->acct_character_list; ch; ch = ch->next)
-	{
-		if (!ch->charname)
-			continue;
+		if (ch->charname)
+			characters.push_back({ escape_str(ch->charname), ch->count, ch->last,
+					       ch->blocked, ch->racewar });
 
-		char *esc_char = sql_escape_string(ch->charname);
-		if (!esc_char)
-			continue;
-
-		int pid = sql_get_player_pid(ch->charname);
-		if (pid <= 0)
+	// Each character's mapping is resolved on the writer, just before the write it
+	// decides.
+	return sql_queue_work(
+		[name, statements = std::move(statements),
+		 characters = std::move(characters)](MYSQL *connection) -> unsigned int
 		{
-			/* A brand new character has no player_data row yet, so its pid is
-			   not resolvable here.  account_characters.pid is NOT NULL, so
-			   writing NULL aborts the whole account save (losing the accounts
-			   and account_ips writes with it).  Skip the row instead: the
-			   mapping is written by sql_update_account_character() on the
-			   first player save, once the pid exists. */
-			logit(LOG_DEBUG,
-			      "sql_save_account_characters: component=mapping outcome=deferred");
-			free(esc_char);
-			continue;
-		}
-
-		char pid_buf[32];
-		snprintf(pid_buf, sizeof(pid_buf), "%d", pid);
-		const char *pid_sql = pid_buf;
-
-		/* Update an existing mapping in place. MySQL consumes an
-		   account_characters identity value on every INSERT ... ON DUPLICATE
-		   KEY UPDATE attempt, so projecting the same character on each account
-		   save advanced the signed INT counter without adding a row. */
-		const long mapping_id = sql_find_account_character_mapping(pid, esc_char);
-
-		char query[512];
-		if (mapping_id > 0)
-			snprintf(
-				query, sizeof(query),
-				"update account_characters set login_count=%lu, last_login=FROM_UNIXTIME(NULLIF(%ld,0)), blocked=%d, racewar=%d, deleted_at=NULL, pid=%s, account_name='%s', char_name='%s' where id=%ld",
-				ch->count, ch->last, ch->blocked, ch->racewar, pid_sql, esc_name,
-				esc_char, mapping_id);
-		else
-			/* A genuinely new mapping must allocate once; the duplicate-key
-			   branch still converges against a concurrent insert of the same
-			   unique char_name. */
-			snprintf(
-				query, sizeof(query),
-				"insert into account_characters (account_name, char_name, pid, login_count, last_login, blocked, racewar) "
-				"values ('%s', '%s', %s, %lu, FROM_UNIXTIME(NULLIF(%ld,0)), %d, %d) "
-				"on duplicate key update login_count=%lu, last_login=FROM_UNIXTIME(NULLIF(%ld,0)), blocked=%d, racewar=%d, deleted_at=NULL, pid=VALUES(pid), account_name=VALUES(account_name), char_name=VALUES(char_name)",
-				esc_name, esc_char, pid_sql, ch->count, ch->last, ch->blocked,
-				ch->racewar, ch->count, ch->last, ch->blocked, ch->racewar);
-
-		bool ok = sql_run_query(query);
-		free(esc_char);
-		if (!ok)
-		{
-			free(esc_name);
-			if (own_txn)
-				sql_rollback();
-			return false;
-		}
-	}
-
-	free(esc_name);
-	if (own_txn && !sql_commit())
-	{
-		sql_rollback();
-		return false;
-	}
-	return true;
+			for (const std::string &statement : statements)
+				if (const unsigned int error_code =
+					    sql_execute(connection, statement))
+					return error_code;
+			for (const mapping &character : characters)
+			{
+				sql_rows rows;
+				if (const unsigned int error_code = sql_select(
+					    connection,
+					    sql_format("SELECT pid FROM player_data "
+						       "WHERE LOWER(name)=LOWER('%s') LIMIT 1",
+						       character.name.c_str()),
+					    &rows))
+					return error_code;
+				/* A brand new character has no player_data row yet, and
+				   account_characters.pid is NOT NULL. Its first save writes the
+				   mapping (sql_update_account_character()). */
+				const long pid = !rows.empty() && rows[0][0] ? atol(rows[0][0]) : 0;
+				if (pid <= 0)
+					continue;
+				/* Update an existing mapping in place. MySQL consumes an
+				   account_characters identity value on every INSERT ... ON DUPLICATE
+				   KEY UPDATE attempt, so projecting the same character on each account
+				   save advanced the signed INT counter without adding a row. */
+				long mapping_id = 0;
+				if (const unsigned int error_code = sql_find_account_character_id(
+					    connection, pid, character.name, &mapping_id))
+					return error_code;
+				if (const unsigned int error_code = sql_execute(
+					    connection,
+					    mapping_id > 0 ?
+						    sql_format(
+							    "update account_characters set login_count=%lu, last_login=FROM_UNIXTIME(NULLIF(%ld,0)), blocked=%d, racewar=%d, deleted_at=NULL, pid=%ld, account_name='%s', char_name='%s' where id=%ld",
+							    character.count, character.last,
+							    character.blocked, character.racewar,
+							    pid, name.c_str(),
+							    character.name.c_str(), mapping_id) :
+						    /* A genuinely new mapping must allocate once; the
+						       duplicate-key branch still converges against a
+						       concurrent insert of the same unique char_name. */
+						    sql_format(
+							    "insert into account_characters (account_name, char_name, pid, login_count, last_login, blocked, racewar) "
+							    "values ('%s', '%s', %ld, %lu, FROM_UNIXTIME(NULLIF(%ld,0)), %d, %d) "
+							    "on duplicate key update login_count=%lu, last_login=FROM_UNIXTIME(NULLIF(%ld,0)), blocked=%d, racewar=%d, deleted_at=NULL, pid=VALUES(pid), account_name=VALUES(account_name), char_name=VALUES(char_name)",
+							    name.c_str(), character.name.c_str(),
+							    pid, character.count, character.last,
+							    character.blocked, character.racewar,
+							    character.count, character.last,
+							    character.blocked, character.racewar)))
+					return error_code;
+			}
+			return 0;
+		});
 }
 
-/* Repair selectable account mappings only after safe opening baselines exist. */
-int sql_repair_account_character_projection(const char *account_name)
+/* Repair selectable account mappings only after safe opening baselines exist.
+ * Returns 0 or the MySQL error; *repaired counts the mappings it changed. */
+static unsigned int sql_repair_account_character_projection(MYSQL *connection,
+							    const std::string &escaped_account,
+							    int *repaired)
 {
-	if (!DB || !account_name || !account_name[0])
-		return -1;
-
-	char *escaped_account = sql_escape_string(account_name);
-	if (!escaped_account)
-		return -1;
-
-	char query[4096];
-	char eligibility[1024];
-	const int eligibility_written = snprintf(
-		eligibility, sizeof(eligibility),
+	const std::string eligibility = sql_format(
 		"pd.active=1 AND LOWER(pd.account_name)=LOWER('%s') AND NOT EXISTS ("
 		"SELECT 1 FROM account_characters tombstone WHERE tombstone.deleted_at IS NOT NULL "
 		"AND (tombstone.pid=pd.pid OR LOWER(tombstone.char_name)=LOWER(pd.name)))",
-		escaped_account);
-	if (eligibility_written < 0 ||
-	    static_cast<size_t>(eligibility_written) >= sizeof(eligibility))
-	{
-		free(escaped_account);
-		return -1;
-	}
-	int written = snprintf(
-		query, sizeof(query),
-		"INSERT INTO currency_wallet_baseline(pid,opening_copper,opening_silver,"
-		"opening_gold,opening_platinum,opening_revision) "
-		"SELECT pd.pid,pd.copper,pd.silver,pd.gold,pd.platinum,pd.wallet_revision "
-		"FROM player_data pd WHERE %s AND pd.wallet_revision=0 "
-		"AND NOT EXISTS (SELECT 1 FROM currency_ledger ledger WHERE ledger.pid=pd.pid) "
-		"AND NOT EXISTS (SELECT 1 FROM currency_wallet_baseline baseline "
-		"WHERE baseline.pid=pd.pid)",
-		eligibility);
-	if (written < 0 || static_cast<size_t>(written) >= sizeof(query) || !sql_run_query(query))
-	{
-		free(escaped_account);
-		return -1;
-	}
-	written = snprintf(
-		query, sizeof(query),
-		"INSERT INTO epic_balance_baseline(pid,opening_balance,opening_revision) "
-		"SELECT pd.pid,pd.epics,pd.epic_revision FROM player_data pd WHERE %s "
-		"AND pd.epic_revision=0 AND NOT EXISTS (SELECT 1 FROM epic_ledger ledger "
-		"WHERE ledger.pid=pd.pid) AND NOT EXISTS (SELECT 1 FROM epic_balance_baseline "
-		"baseline WHERE baseline.pid=pd.pid)",
-		eligibility);
-	if (written < 0 || static_cast<size_t>(written) >= sizeof(query) || !sql_run_query(query))
-	{
-		free(escaped_account);
-		return -1;
-	}
-	written = snprintf(
-		query, sizeof(query),
-		"INSERT INTO combat_frag_baseline(pid,opening_frags,opening_revision) "
-		"SELECT pd.pid,pd.frags,pd.frag_revision FROM player_data pd WHERE %s "
-		"AND pd.frag_revision=0 AND NOT EXISTS (SELECT 1 FROM combat_frag_ledger ledger "
-		"WHERE ledger.pid=pd.pid) AND NOT EXISTS (SELECT 1 FROM combat_frag_baseline "
-		"baseline WHERE baseline.pid=pd.pid)",
-		eligibility);
-	if (written < 0 || static_cast<size_t>(written) >= sizeof(query) || !sql_run_query(query))
-	{
-		free(escaped_account);
-		return -1;
-	}
+		escaped_account.c_str());
+	const std::string baselines[] = {
+		sql_format(
+			"INSERT INTO currency_wallet_baseline(pid,opening_copper,opening_silver,"
+			"opening_gold,opening_platinum,opening_revision) "
+			"SELECT pd.pid,pd.copper,pd.silver,pd.gold,pd.platinum,pd.wallet_revision "
+			"FROM player_data pd WHERE %s AND pd.wallet_revision=0 "
+			"AND NOT EXISTS (SELECT 1 FROM currency_ledger ledger WHERE ledger.pid=pd.pid) "
+			"AND NOT EXISTS (SELECT 1 FROM currency_wallet_baseline baseline "
+			"WHERE baseline.pid=pd.pid)",
+			eligibility.c_str()),
+		sql_format(
+			"INSERT INTO epic_balance_baseline(pid,opening_balance,opening_revision) "
+			"SELECT pd.pid,pd.epics,pd.epic_revision FROM player_data pd WHERE %s "
+			"AND pd.epic_revision=0 AND NOT EXISTS (SELECT 1 FROM epic_ledger ledger "
+			"WHERE ledger.pid=pd.pid) AND NOT EXISTS (SELECT 1 FROM epic_balance_baseline "
+			"baseline WHERE baseline.pid=pd.pid)",
+			eligibility.c_str()),
+		sql_format(
+			"INSERT INTO combat_frag_baseline(pid,opening_frags,opening_revision) "
+			"SELECT pd.pid,pd.frags,pd.frag_revision FROM player_data pd WHERE %s "
+			"AND pd.frag_revision=0 AND NOT EXISTS (SELECT 1 FROM combat_frag_ledger ledger "
+			"WHERE ledger.pid=pd.pid) AND NOT EXISTS (SELECT 1 FROM combat_frag_baseline "
+			"baseline WHERE baseline.pid=pd.pid)",
+			eligibility.c_str())
+	};
+	for (const std::string &statement : baselines)
+		if (const unsigned int error_code = sql_execute(connection, statement))
+			return error_code;
 
 	/* A character renamed before renames carried their mapping along has two
 	 * active mappings, and the repair below would then give both the same
 	 * unique name.  Keep the one with the current name, or else the oldest. */
-	written = snprintf(
-		query, sizeof(query),
-		"DELETE stale FROM account_characters stale "
-		"JOIN player_data pd ON pd.pid=stale.pid "
-		"JOIN account_characters keeper ON keeper.pid=stale.pid AND keeper.id<>stale.id "
-		"AND keeper.deleted_at IS NULL "
-		"AND (LOWER(keeper.char_name)=LOWER(pd.name) OR keeper.id<stale.id) "
-		"WHERE stale.deleted_at IS NULL AND LOWER(stale.char_name)<>LOWER(pd.name) "
-		"AND LOWER(pd.account_name)=LOWER('%s')",
-		escaped_account);
-	if (written < 0 || static_cast<size_t>(written) >= sizeof(query) || !sql_run_query(query))
-	{
-		free(escaped_account);
-		return -1;
-	}
-	const my_ulonglong duplicates = mysql_affected_rows(DB);
+	if (const unsigned int error_code = sql_execute(
+		    connection,
+		    sql_format("DELETE stale FROM account_characters stale "
+			       "JOIN player_data pd ON pd.pid=stale.pid "
+			       "JOIN account_characters keeper ON keeper.pid=stale.pid "
+			       "AND keeper.id<>stale.id AND keeper.deleted_at IS NULL "
+			       "AND (LOWER(keeper.char_name)=LOWER(pd.name) OR keeper.id<stale.id) "
+			       "WHERE stale.deleted_at IS NULL "
+			       "AND LOWER(stale.char_name)<>LOWER(pd.name) "
+			       "AND LOWER(pd.account_name)=LOWER('%s')",
+			       escaped_account.c_str())))
+		return error_code;
+	const my_ulonglong duplicates = mysql_affected_rows(connection);
 
-	written =
-		snprintf(query, sizeof(query),
-			 "INSERT INTO account_characters "
-			 "(id, account_name, pid, char_name, created_at, deleted_at) "
-			 "SELECT active_mapping.id, pd.account_name, pd.pid, pd.name, NOW(), NULL "
-			 "FROM player_data pd "
-			 "LEFT JOIN account_characters active_mapping "
-			 "ON active_mapping.pid=pd.pid AND active_mapping.deleted_at IS NULL "
-			 "JOIN currency_wallet_baseline wallet ON wallet.pid=pd.pid "
-			 "JOIN epic_balance_baseline epic ON epic.pid=pd.pid "
-			 "JOIN combat_frag_baseline combat ON combat.pid=pd.pid "
-			 "WHERE pd.active=1 AND LOWER(pd.account_name)=LOWER('%s') "
-			 "AND NOT EXISTS ("
-			 "SELECT 1 FROM account_characters tombstone "
-			 "WHERE tombstone.deleted_at IS NOT NULL "
-			 "AND (tombstone.pid=pd.pid OR LOWER(tombstone.char_name)=LOWER(pd.name))) "
-			 "ON DUPLICATE KEY UPDATE "
-			 "account_name=VALUES(account_name), pid=VALUES(pid), "
-			 "char_name=VALUES(char_name), deleted_at=NULL",
-			 escaped_account);
-	free(escaped_account);
-	if (written < 0 || static_cast<size_t>(written) >= sizeof(query))
-		return -1;
-	if (!sql_run_query(query))
-		return -1;
+	if (const unsigned int error_code = sql_execute(
+		    connection,
+		    sql_format("INSERT INTO account_characters "
+			       "(id, account_name, pid, char_name, created_at, deleted_at) "
+			       "SELECT active_mapping.id, pd.account_name, pd.pid, pd.name, NOW(), "
+			       "NULL FROM player_data pd "
+			       "LEFT JOIN account_characters active_mapping "
+			       "ON active_mapping.pid=pd.pid AND active_mapping.deleted_at IS NULL "
+			       "JOIN currency_wallet_baseline wallet ON wallet.pid=pd.pid "
+			       "JOIN epic_balance_baseline epic ON epic.pid=pd.pid "
+			       "JOIN combat_frag_baseline combat ON combat.pid=pd.pid "
+			       "WHERE pd.active=1 AND LOWER(pd.account_name)=LOWER('%s') "
+			       "AND NOT EXISTS ("
+			       "SELECT 1 FROM account_characters tombstone "
+			       "WHERE tombstone.deleted_at IS NOT NULL "
+			       "AND (tombstone.pid=pd.pid "
+			       "OR LOWER(tombstone.char_name)=LOWER(pd.name))) "
+			       "ON DUPLICATE KEY UPDATE "
+			       "account_name=VALUES(account_name), pid=VALUES(pid), "
+			       "char_name=VALUES(char_name), deleted_at=NULL",
+			       escaped_account.c_str())))
+		return error_code;
 
-	const my_ulonglong affected = mysql_affected_rows(DB) + duplicates;
-	return affected > static_cast<my_ulonglong>(INT_MAX) ? INT_MAX : static_cast<int>(affected);
+	const my_ulonglong affected = mysql_affected_rows(connection) + duplicates;
+	*repaired = affected > static_cast<my_ulonglong>(INT_MAX) ? INT_MAX :
+								    static_cast<int>(affected);
+	return 0;
 }
 
-struct acct_entry *sql_load_account(const char *name)
+namespace
 {
-	if (!DB || !name)
-		return NULL;
+// An account's rows, read on the writer.
+struct account_rows
+{
+	int repaired = 0;
+	sql_rows account;
+	sql_rows ips;
+	sql_rows characters;
+};
 
-	char *esc_name = sql_escape_string(name);
-	if (!esc_name)
-		return NULL;
-
-	char query[512];
-	snprintf(
-		query, sizeof(query),
-		"select account_name, email, password, confirmation_code, confirmed, confirmation_sent, "
-		"blocked, last_login, last_good_char, last_evil_char, flags1, flags2, flags3, flags4 "
-		"from accounts where account_name='%s'",
-		esc_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-	{
-		free(esc_name);
-		return NULL;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (!row)
-	{
-		mysql_free_result(result);
-		free(esc_name);
-		return NULL;
-	}
-
-	struct acct_entry *acc = (struct acct_entry *)malloc(sizeof(struct acct_entry));
-	if (!acc)
-	{
-		mysql_free_result(result);
-		free(esc_name);
-		return NULL;
-	}
-	memset(acc, 0, sizeof(struct acct_entry));
-
+P_acct account_from_rows(const account_rows &rows)
+{
+	if (rows.account.empty())
+		return nullptr;
+	const sql_row &row = rows.account[0];
+	P_acct acc = allocate_account();
 	acc->acct_name = str_dup(row[0] ? row[0] : "");
 	acc->acct_email = str_dup(row[1] ? row[1] : "");
 	acc->acct_password = str_dup(row[2] ? row[2] : "");
@@ -5304,150 +4898,98 @@ struct acct_entry *sql_load_account(const char *name)
 	acc->acct_flags3 = row[12] ? strtoul(row[12], NULL, 10) : 0;
 	acc->acct_flags4 = row[13] ? strtoul(row[13], NULL, 10) : 0;
 
-	mysql_free_result(result);
-
-	// load ips
-	sql_account_ips_query_failed = false;
-	acc->acct_unique_ips = sql_load_account_ips(name);
-	if (sql_account_ips_query_failed)
+	struct acct_ip **ip_tail = &acc->acct_unique_ips;
+	for (const sql_row &ip_row : rows.ips)
 	{
-		free_acct_ip_list(acc->acct_unique_ips);
-		free(esc_name);
-		free(acc);
-		return NULL;
-	}
-	acc->num_ips = 0;
-	for (struct acct_ip *ip = acc->acct_unique_ips; ip; ip = ip->next)
+		struct acct_ip *ip;
+		CREATE(ip, struct acct_ip, 1, MEM_TAG_OTHER);
+		ip->hostname = str_dup(ip_row[0] ? ip_row[0] : "");
+		ip->ip_address = str_dup(ip_row[1] ? ip_row[1] : "");
+		ip->count = ip_row[2] ? strtoul(ip_row[2], NULL, 10) : 0;
+		*ip_tail = ip;
+		ip_tail = &ip->next;
 		acc->num_ips++;
-
-	// load characters
-	sql_account_chars_query_failed = false;
-	acc->acct_character_list =
-		sql_load_account_characters(acc->acct_name ? acc->acct_name : name);
-	if (sql_account_chars_query_failed)
-	{
-		free_acct_ip_list(acc->acct_unique_ips);
-		free_acct_char_list(acc->acct_character_list);
-		free(esc_name);
-		free(acc);
-		return NULL;
-	}
-	acc->num_chars = 0;
-	for (struct acct_chars *ch = acc->acct_character_list; ch; ch = ch->next)
-		acc->num_chars++;
-
-	free(esc_name);
-	return acc;
-}
-
-static void free_acct_ip_list(struct acct_ip *ips)
-{
-	while (ips)
-	{
-		struct acct_ip *next = ips->next;
-		ips->hostname = check_and_clear(ips->hostname);
-		ips->ip_address = check_and_clear(ips->ip_address);
-		FREE(ips);
-		ips = next;
-	}
-}
-
-static void free_acct_char_list(struct acct_chars *chars)
-{
-	while (chars)
-	{
-		struct acct_chars *next = chars->next;
-		chars->charname = check_and_clear(chars->charname);
-		FREE(chars);
-		chars = next;
-	}
-}
-
-static struct acct_chars *sql_load_account_characters(const char *account_name)
-{
-	if (!DB || !account_name)
-		return NULL;
-
-	char *esc_name = sql_escape_string(account_name);
-	if (!esc_name)
-		return NULL;
-
-	char query[512];
-	snprintf(
-		query, sizeof(query),
-		"select ac.pid, ac.char_name, ac.login_count, ac.last_login, ac.blocked, ac.racewar, "
-		"pd.level, pd.race, pd.m_class, pd.secondary_class, pd.last_room, pd.last_save "
-		"from account_characters ac "
-		"left join player_data pd on ac.pid = pd.pid "
-		"where LOWER(ac.account_name)=LOWER('%s') and ac.deleted_at is null",
-		esc_name);
-	free(esc_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-
-	if (!result)
-	{
-		sql_account_chars_query_failed = true;
-		logit(LOG_DEBUG, "sql_load_account_characters: outcome=query_failure");
-		return NULL;
 	}
 
-	struct acct_chars *head = NULL;
-	struct acct_chars *tail = NULL;
-	MYSQL_ROW row;
-
-	while ((row = mysql_fetch_row(result)))
+	struct acct_chars **character_tail = &acc->acct_character_list;
+	for (const sql_row &character_row : rows.characters)
 	{
 		struct acct_chars *ch;
 		CREATE(ch, struct acct_chars, 1, MEM_TAG_OTHER);
-
-		ch->pid = row[0] ? atoi(row[0]) : 0;
-		ch->charname = str_dup(row[1] ? row[1] : "");
-		ch->count = row[2] ? strtoul(row[2], NULL, 10) : 0;
-		ch->last = row[3] ? atol(row[3]) : 0;
-		ch->blocked = row[4] ? atoi(row[4]) : 0;
-		ch->racewar = row[5] ? atoi(row[5]) : 0;
-		ch->level = row[6] ? atoi(row[6]) : 0;
-		ch->race = row[7] ? atoi(row[7]) : 0;
-		ch->m_class = row[8] ? (unsigned int)strtoul(row[8], NULL, 10) : 0;
-		ch->secondary_class = row[9] ? (unsigned int)strtoul(row[9], NULL, 10) : 0;
-		ch->last_room = row[10] ? atoi(row[10]) : 0;
-		ch->last_save = row[11] ? atol(row[11]) : 0;
-		ch->next = NULL;
-
-		if (!head)
-			head = ch;
-		else
-			tail->next = ch;
-		tail = ch;
+		ch->pid = character_row[0] ? atoi(character_row[0]) : 0;
+		ch->charname = str_dup(character_row[1] ? character_row[1] : "");
+		ch->count = character_row[2] ? strtoul(character_row[2], NULL, 10) : 0;
+		ch->last = character_row[3] ? atol(character_row[3]) : 0;
+		ch->blocked = character_row[4] ? atoi(character_row[4]) : 0;
+		ch->racewar = character_row[5] ? atoi(character_row[5]) : 0;
+		ch->level = character_row[6] ? atoi(character_row[6]) : 0;
+		ch->race = character_row[7] ? atoi(character_row[7]) : 0;
+		ch->m_class = character_row[8] ? (unsigned int)strtoul(character_row[8], NULL, 10) :
+						 0;
+		ch->secondary_class =
+			character_row[9] ? (unsigned int)strtoul(character_row[9], NULL, 10) : 0;
+		ch->last_room = character_row[10] ? atoi(character_row[10]) : 0;
+		ch->last_save = character_row[11] ? atol(character_row[11]) : 0;
+		ch->spec = character_row[12] ? atoi(character_row[12]) : 0;
+		ch->played = character_row[13] ? atol(character_row[13]) : 0;
+		*character_tail = ch;
+		character_tail = &ch->next;
+		acc->num_chars++;
 	}
-
-	mysql_free_result(result);
-	return head;
+	return acc;
 }
+} // namespace
 
-bool sql_account_exists(const char *name)
+bool sql_load_account(const char *name, std::function<void(bool ok, P_acct loaded)> done)
 {
-	if (!DB || !name)
+	if (!DB || !name || !done)
 		return false;
-
-	char *escaped_name = sql_escape_string(name);
-	if (!escaped_name)
-		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query), "SELECT 1 FROM accounts WHERE account_name='%s' LIMIT 1",
-		 escaped_name);
-	free(escaped_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	bool exists = (row != NULL);
-	mysql_free_result(result);
-	return exists;
+	const std::string account = escape_str(name);
+	auto rows = std::make_shared<account_rows>();
+	return sql_read_work(
+		[account, rows](MYSQL *connection, sql_rows *) -> unsigned int
+		{
+			// A retried read starts over.
+			*rows = account_rows();
+			if (const unsigned int error_code = sql_repair_account_character_projection(
+				    connection, account, &rows->repaired))
+				return error_code;
+			if (const unsigned int error_code = sql_select(
+				    connection,
+				    sql_format(
+					    "select account_name, email, password, confirmation_code, confirmed, confirmation_sent, "
+					    "blocked, UNIX_TIMESTAMP(last_login), UNIX_TIMESTAMP(last_good_char), "
+					    "UNIX_TIMESTAMP(last_evil_char), flags1, flags2, flags3, flags4 "
+					    "from accounts where account_name='%s'",
+					    account.c_str()),
+				    &rows->account))
+				return error_code;
+			if (const unsigned int error_code = sql_select(
+				    connection,
+				    sql_format("SELECT hostname, ip_address, count FROM account_ips "
+					       "WHERE account_name='%s'",
+					       account.c_str()),
+				    &rows->ips))
+				return error_code;
+			return sql_select(
+				connection,
+				sql_format(
+					"select ac.pid, ac.char_name, ac.login_count, UNIX_TIMESTAMP(ac.last_login), "
+					"ac.blocked, ac.racewar, pd.level, pd.race, pd.m_class, pd.secondary_class, "
+					"pd.last_room, UNIX_TIMESTAMP(pd.last_save), pd.spec, pd.played_time "
+					"from account_characters ac "
+					"left join player_data pd on ac.pid = pd.pid "
+					"where LOWER(ac.account_name)=LOWER('%s') and ac.deleted_at is null",
+					account.c_str()),
+				&rows->characters);
+		},
+		[rows, done = std::move(done)](bool ok, const sql_rows &)
+		{
+			if (ok && rows->repaired > 0)
+				statuslog(56, "account character projection repaired (affected=%d)",
+					  rows->repaired);
+			done(ok, ok ? account_from_rows(*rows) : nullptr);
+		});
 }
 
 constexpr unsigned int ACCOUNT_LOCKER_SLOT_COUNT = 5;
@@ -5470,860 +5012,319 @@ static bool sql_format_account_locker_name_list(char *output, size_t output_size
 	return true;
 }
 
-bool sql_delete_account(const char *name)
+bool sql_delete_account(const char *name, std::function<void(bool deleted)> done)
 {
-	if (!DB || !name || !name[0])
+	if (!DB || !name || !name[0] || !done)
 		return false;
 
-	char *escaped_account = sql_escape_string(name);
-	if (!escaped_account)
+	const std::string account = escape_str(name);
+	char locker_names_buffer[2048];
+	if (!sql_format_account_locker_name_list(locker_names_buffer, sizeof(locker_names_buffer),
+						 account.c_str()))
 		return false;
-	char account_locker_names[2048];
-	if (!sql_format_account_locker_name_list(account_locker_names, sizeof(account_locker_names),
-						 escaped_account))
-	{
-		free(escaped_account);
-		return false;
-	}
-	if (sql_in_transaction())
-	{
-		free(escaped_account);
-		return false;
-	}
-	std::vector<std::pair<int, std::string>> identities;
-	if (!sql_begin_transaction())
-	{
-		free(escaped_account);
-		return false;
-	}
+	const std::string locker_names = locker_names_buffer;
+	// Refusals the database raises no error for: the transaction rolls back.
+	constexpr unsigned int refused = EPERM;
 
-	char query[4096];
-	MYSQL_ROW row = NULL;
-	snprintf(query, sizeof(query),
-		 "SELECT blocked FROM accounts WHERE LOWER(account_name)=LOWER('%s') FOR UPDATE",
-		 escaped_account);
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		goto fail;
-	row = mysql_fetch_row(result);
-	if (!row)
-	{
-		mysql_free_result(result);
-		snprintf(
-			query, sizeof(query),
-			"SELECT (SELECT COUNT(*) FROM accounts WHERE LOWER(account_name)=LOWER('%s'))+"
-			"(SELECT COUNT(*) FROM player_data WHERE LOWER(account_name)=LOWER('%s'))+"
-			"(SELECT COUNT(*) FROM account_characters WHERE LOWER(account_name)=LOWER('%s'))",
-			escaped_account, escaped_account, escaped_account);
-		result = db_query("%s", query);
-		if (!result)
-			goto fail;
-		row = mysql_fetch_row(result);
-		const bool already_deleted = row && row[0] && strtoull(row[0], NULL, 10) == 0 &&
-					     !mysql_fetch_row(result);
-		mysql_free_result(result);
-		if (!already_deleted)
-			goto fail;
-		sql_rollback();
-		free(escaped_account);
-		return true;
-	}
-	if (!row[0] || atoi(row[0]) != ACCOUNT_BLOCK_DELETION || mysql_fetch_row(result))
-	{
-		mysql_free_result(result);
-		goto fail;
-	}
-	mysql_free_result(result);
-
-	/* player_data is the durable ownership source, while account_characters can
-	 * retain a still-active projection after an interrupted legacy deletion. */
-	snprintf(query, sizeof(query),
-		 "SELECT pd.pid,pd.name FROM player_data pd "
-		 "WHERE LOWER(pd.account_name)=LOWER('%s') "
-		 "UNION SELECT ac.pid,COALESCE(pd.name,ac.char_name) "
-		 "FROM account_characters ac LEFT JOIN player_data pd ON pd.pid=ac.pid "
-		 "WHERE LOWER(ac.account_name)=LOWER('%s') AND ac.deleted_at IS NULL",
-		 escaped_account, escaped_account);
-	result = db_query("%s", query);
-	if (!result)
-		goto fail;
-	while ((row = mysql_fetch_row(result)))
-	{
-		const int pid = row[0] ? atoi(row[0]) : 0;
-		if (pid <= 0 || !row[1] || !row[1][0] || identities.size() >= 1024)
+	return sql_read_work(
+		[account, locker_names](MYSQL *connection, sql_rows *) -> unsigned int
 		{
-			mysql_free_result(result);
-			goto fail;
-		}
-		const auto duplicate = std::find_if(identities.begin(), identities.end(),
-						    [pid](const auto &identity)
-						    { return identity.first == pid; });
-		if (duplicate == identities.end())
-			try
+			sql_rows rows;
+			if (const unsigned int error_code = sql_select(
+				    connection,
+				    sql_format("SELECT blocked FROM accounts WHERE "
+					       "LOWER(account_name)=LOWER('%s') FOR UPDATE",
+					       account.c_str()),
+				    &rows))
+				return error_code;
+			if (rows.empty())
 			{
-				identities.emplace_back(pid, row[1]);
+				// Already gone: nothing of it may be left anywhere.
+				sql_rows left;
+				if (const unsigned int error_code = sql_select(
+					    connection,
+					    sql_format(
+						    "SELECT (SELECT COUNT(*) FROM accounts WHERE LOWER(account_name)=LOWER('%s'))+"
+						    "(SELECT COUNT(*) FROM player_data WHERE LOWER(account_name)=LOWER('%s'))+"
+						    "(SELECT COUNT(*) FROM account_characters WHERE LOWER(account_name)=LOWER('%s'))",
+						    account.c_str(), account.c_str(),
+						    account.c_str()),
+					    &left))
+					return error_code;
+				return left.size() == 1 && left[0][0] &&
+						       strtoull(left[0][0], NULL, 10) == 0 ?
+					       0 :
+					       refused;
 			}
-			catch (const std::bad_alloc &)
-			{
-				mysql_free_result(result);
-				goto fail;
-			}
-		else if (strcasecmp(duplicate->second.c_str(), row[1]))
-		{
-			mysql_free_result(result);
-			goto fail;
-		}
-	}
-	mysql_free_result(result);
+			if (rows.size() != 1 || !rows[0][0] ||
+			    atoi(rows[0][0]) != ACCOUNT_BLOCK_DELETION)
+				return refused;
 
-	{
-		/* Snapshot persistence never writes custody authority. Resolve the exact
-		 * player, corpse, and locker owners here, then let the item repository move
-		 * their complete topology to ledgered destruction inside this transaction. */
-		std::vector<item_owner_identity> item_owners;
-		const auto collect_item_owners = [&](MYSQL_RES *owner_result)
-		{
-			MYSQL_ROW owner_row = NULL;
-			while ((owner_row = mysql_fetch_row(owner_result)))
+			/* player_data is the durable ownership source, while account_characters can
+			 * retain a still-active projection after an interrupted legacy deletion. */
+			rows.clear();
+			if (const unsigned int error_code = sql_select(
+				    connection,
+				    sql_format(
+					    "SELECT pd.pid,pd.name FROM player_data pd "
+					    "WHERE LOWER(pd.account_name)=LOWER('%s') "
+					    "UNION SELECT ac.pid,COALESCE(pd.name,ac.char_name) "
+					    "FROM account_characters ac LEFT JOIN player_data pd ON pd.pid=ac.pid "
+					    "WHERE LOWER(ac.account_name)=LOWER('%s') AND ac.deleted_at IS NULL",
+					    account.c_str(), account.c_str()),
+				    &rows))
+				return error_code;
+			std::vector<std::pair<int, std::string>> identities;
+			for (const sql_row &row : rows)
 			{
-				if (!owner_row[0] || !owner_row[1] || !owner_row[2] ||
-				    item_owners.size() >= 4096)
-					return false;
-				const unsigned long owner_type = strtoul(owner_row[0], NULL, 10);
-				item_owner_identity owner = {
-					static_cast<item_owner_type>(owner_type),
-					strtoull(owner_row[1], NULL, 10),
-					strtoull(owner_row[2], NULL, 10),
+				const int pid = row[0] ? atoi(row[0]) : 0;
+				if (pid <= 0 || !row[1] || !row[1][0] || identities.size() >= 1024)
+					return refused;
+				const auto duplicate =
+					std::find_if(identities.begin(), identities.end(),
+						     [pid](const auto &identity)
+						     { return identity.first == pid; });
+				if (duplicate == identities.end())
+					identities.emplace_back(pid, row[1]);
+				else if (strcasecmp(duplicate->second.c_str(), row[1]))
+					return refused;
+			}
+
+			{
+				/* Snapshot persistence never writes custody authority. Resolve the exact
+				 * player, corpse, and locker owners here, then let the item repository move
+				 * their complete topology to ledgered destruction inside this transaction. */
+				std::vector<item_owner_identity> item_owners;
+				const auto collect_item_owners = [&](const sql_rows &owner_rows)
+				{
+					for (const sql_row &owner_row : owner_rows)
+					{
+						if (!owner_row[0] || !owner_row[1] ||
+						    !owner_row[2] || item_owners.size() >= 4096)
+							return false;
+						const unsigned long owner_type =
+							strtoul(owner_row[0], NULL, 10);
+						item_owner_identity owner = {
+							static_cast<item_owner_type>(owner_type),
+							strtoull(owner_row[1], NULL, 10),
+							strtoull(owner_row[2], NULL, 10),
+						};
+						if (owner_type > UINT8_MAX ||
+						    !item_owner_identity_valid(owner))
+							return false;
+						const auto duplicate = std::find_if(
+							item_owners.begin(), item_owners.end(),
+							[&](const auto &candidate) {
+								return item_owner_identity_equal(
+									candidate, owner);
+							});
+						if (duplicate == item_owners.end())
+							item_owners.push_back(owner);
+					}
+					return true;
 				};
-				if (owner_type > UINT8_MAX || !item_owner_identity_valid(owner))
-					return false;
-				const auto duplicate = std::find_if(
-					item_owners.begin(), item_owners.end(),
-					[&](const auto &candidate)
-					{ return item_owner_identity_equal(candidate, owner); });
-				if (duplicate == item_owners.end())
-					try
-					{
-						item_owners.push_back(owner);
-					}
-					catch (const std::bad_alloc &)
-					{
-						return false;
-					}
+				for (const auto &[pid, character_name] : identities)
+				{
+					(void)character_name;
+					sql_rows owners;
+					if (const unsigned int error_code = sql_select(
+						    connection,
+						    sql_format(
+							    "SELECT DISTINCT owner_type,owner_id,owner_context_id "
+							    "FROM item_current_owner WHERE "
+							    "(owner_type=1 AND owner_id=%d) OR "
+							    "(owner_type=4 AND (owner_id >> 32)=%d) OR "
+							    "(owner_type=5 AND owner_id IN "
+							    "(SELECT id FROM lockers WHERE owner_pid=%d))",
+							    pid, pid, pid),
+						    &owners))
+						return error_code;
+					if (!collect_item_owners(owners))
+						return refused;
+				}
+				sql_rows owners;
+				if (const unsigned int error_code = sql_select(
+					    connection,
+					    sql_format(
+						    "SELECT DISTINCT ico.owner_type,ico.owner_id,ico.owner_context_id "
+						    "FROM item_current_owner ico JOIN lockers l ON l.id=ico.owner_id "
+						    "WHERE ico.owner_type=5 AND LOWER(l.locker_name) IN (%s)",
+						    locker_names.c_str()),
+					    &owners))
+					return error_code;
+				if (!collect_item_owners(owners))
+					return refused;
+				if (!item_transfer_repository_destroy_owners(
+					    connection, item_owners.data(), item_owners.size()))
+					return mysql_errno(connection) ? mysql_errno(connection) :
+									 refused;
 			}
-			return true;
-		};
-		for (const auto &[pid, character_name] : identities)
-		{
-			(void)character_name;
-			snprintf(query, sizeof(query),
-				 "SELECT DISTINCT owner_type,owner_id,owner_context_id "
-				 "FROM item_current_owner WHERE "
-				 "(owner_type=1 AND owner_id=%d) OR "
-				 "(owner_type=4 AND (owner_id >> 32)=%d) OR "
-				 "(owner_type=5 AND owner_id IN "
-				 "(SELECT id FROM lockers WHERE owner_pid=%d))",
-				 pid, pid, pid);
-			result = db_query("%s", query);
-			if (!result)
-				goto fail;
-			const bool collected = collect_item_owners(result);
-			mysql_free_result(result);
-			if (!collected)
-				goto fail;
-		}
-		int written =
-			snprintf(query, sizeof(query),
-				 "SELECT DISTINCT ico.owner_type,ico.owner_id,ico.owner_context_id "
-				 "FROM item_current_owner ico JOIN lockers l ON l.id=ico.owner_id "
-				 "WHERE ico.owner_type=5 AND LOWER(l.locker_name) IN (%s)",
-				 account_locker_names);
-		if (written < 0 || static_cast<size_t>(written) >= sizeof(query))
-			goto fail;
-		result = db_query("%s", query);
-		if (!result)
-			goto fail;
-		const bool account_lockers_collected = collect_item_owners(result);
-		mysql_free_result(result);
-		if (!account_lockers_collected ||
-		    !item_transfer_repository_destroy_owners(DB, item_owners.data(),
-							     item_owners.size()))
-			goto fail;
-	}
 
-	for (const auto &[pid, character_name] : identities)
-	{
-		char *escaped_character = sql_escape_string(character_name.c_str());
-		if (!escaped_character)
-			goto fail;
-
-		/* Auction custody can belong to another player. Refuse to erase through
-		 * an unsettled listing instead of silently destroying shared value. */
-		snprintf(query, sizeof(query),
-			 "SELECT 1 FROM auctions WHERE status=1 AND "
-			 "(seller_pid=%d OR winning_bidder_pid=%d) LIMIT 1 FOR UPDATE",
-			 pid, pid);
-		result = db_query("%s", query);
-		if (!result)
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		const bool unsettled_auction = mysql_fetch_row(result) != NULL;
-		mysql_free_result(result);
-		if (unsettled_auction)
-		{
-			free(escaped_character);
-			goto fail;
-		}
-
-		/* Release current artifact ownership before deleting the identity. The
-		 * legacy and revisioned representations must move together. */
-		snprintf(query, sizeof(query),
-			 "UPDATE artifacts SET owned='N',location=0,timer=NULL,locType=1,"
-			 "lastUpdate=NOW() WHERE location=%d AND locType IN (3,5)",
-			 pid);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "UPDATE artifacts_mortal SET owned='N',location=0,timer=NULL,locType=1,"
-			 "lastUpdate=NOW() WHERE location=%d AND locType IN (3,5)",
-			 pid);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "UPDATE artifact_bind SET owner_pid=-1,timer=0 WHERE owner_pid=%d", pid);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "UPDATE artifact_domain_state SET owned=0,loc_type=1,location=0,"
-			 "bind_timer_epoch=IF(bind_owner_pid=%d,0,bind_timer_epoch),"
-			 "bind_owner_pid=IF(bind_owner_pid=%d,-1,bind_owner_pid),timer_epoch=0,"
-			 "revision=revision+1 WHERE (location=%d AND loc_type IN (3,5)) OR "
-			 "bind_owner_pid=%d",
-			 pid, pid, pid, pid);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-
-		struct pid_delete_spec
-		{
-			const char *table;
-			const char *column;
-		};
-		const pid_delete_spec pid_deletes[] = {
-			{ "account_bound_reward_summons", "pid" },
-			{ "auction_item_pickups", "pid" },
-			{ "auction_money_pickups", "pid" },
-			{ "boons_progress", "pid" },
-			{ "boons_shop", "pid" },
-			{ "ctf_data", "pid" },
-			{ "epic_bonus", "pid" },
-			{ "epic_gain", "pid" },
-			{ "ip_info", "pid" },
-			{ "lockers", "owner_pid" },
-			{ "offline_messages", "pid" },
-			{ "pkill_info", "pid" },
-			{ "player_recipes", "pid" },
-			{ "player_shapechanges", "pid" },
-			{ "progress", "pid" },
-			{ "quest_trophy", "pid" },
-			{ "shop_trophy", "seller" },
-			{ "zone_trophy", "pid" },
-		};
-		bool character_ok = true;
-		for (const auto &spec : pid_deletes)
-		{
-			snprintf(query, sizeof(query), "DELETE FROM %s WHERE %s=%d", spec.table,
-				 spec.column, pid);
-			if (!sql_run_query(query))
+			for (const auto &[pid, character_name] : identities)
 			{
-				character_ok = false;
-				break;
+				std::string character(character_name.size() * 2 + 1, '\0');
+				character.resize(mysql_real_escape_string(
+					connection, character.data(), character_name.c_str(),
+					character_name.size()));
+
+				/* Auction custody can belong to another player. Refuse to erase through
+				 * an unsettled listing instead of silently destroying shared value. */
+				sql_rows unsettled;
+				if (const unsigned int error_code = sql_select(
+					    connection,
+					    sql_format(
+						    "SELECT 1 FROM auctions WHERE status=1 AND "
+						    "(seller_pid=%d OR winning_bidder_pid=%d) LIMIT 1 FOR UPDATE",
+						    pid, pid),
+					    &unsettled))
+					return error_code;
+				if (!unsettled.empty())
+					return refused;
+
+				std::vector<std::string> statements = {
+					/* Release current artifact ownership before deleting the identity. The
+					 * legacy and revisioned representations must move together. */
+					sql_format(
+						"UPDATE artifacts SET owned='N',location=0,timer=NULL,locType=1,"
+						"lastUpdate=NOW() WHERE location=%d AND locType IN (3,5)",
+						pid),
+					sql_format(
+						"UPDATE artifacts_mortal SET owned='N',location=0,timer=NULL,locType=1,"
+						"lastUpdate=NOW() WHERE location=%d AND locType IN (3,5)",
+						pid),
+					sql_format(
+						"UPDATE artifact_bind SET owner_pid=-1,timer=0 WHERE owner_pid=%d",
+						pid),
+					sql_format(
+						"UPDATE artifact_domain_state SET owned=0,loc_type=1,location=0,"
+						"bind_timer_epoch=IF(bind_owner_pid=%d,0,bind_timer_epoch),"
+						"bind_owner_pid=IF(bind_owner_pid=%d,-1,bind_owner_pid),timer_epoch=0,"
+						"revision=revision+1 WHERE (location=%d AND loc_type IN (3,5)) OR "
+						"bind_owner_pid=%d",
+						pid, pid, pid, pid),
+				};
+				static const char *const pid_deletes[][2] = {
+					{ "account_bound_reward_summons", "pid" },
+					{ "auction_item_pickups", "pid" },
+					{ "auction_money_pickups", "pid" },
+					{ "boons_progress", "pid" },
+					{ "boons_shop", "pid" },
+					{ "ctf_data", "pid" },
+					{ "epic_bonus", "pid" },
+					{ "epic_gain", "pid" },
+					{ "ip_info", "pid" },
+					{ "lockers", "owner_pid" },
+					{ "offline_messages", "pid" },
+					{ "pkill_info", "pid" },
+					{ "player_recipes", "pid" },
+					{ "player_shapechanges", "pid" },
+					{ "progress", "pid" },
+					{ "quest_trophy", "pid" },
+					{ "shop_trophy", "seller" },
+					{ "zone_trophy", "pid" },
+				};
+				for (const auto &spec : pid_deletes)
+					statements.push_back(
+						sql_format("DELETE FROM %s WHERE %s=%d", spec[0],
+							   spec[1], pid));
+				statements.push_back(sql_format(
+					"UPDATE boons SET pid=0,active=0 WHERE pid=%d", pid));
+				statements.push_back(sql_format(
+					"UPDATE frag_leaderboard SET deleted_at=COALESCE(deleted_at,NOW()),"
+					"last_updated=NOW() WHERE pid=%d",
+					pid));
+				statements.push_back(sql_format(
+					"UPDATE guilds g JOIN guild_members gm ON gm.guild_id=g.id SET "
+					"g.top_frags=IF(LOWER(g.topfragger)=LOWER('%s'),0,g.top_frags),"
+					"g.topfragger=IF(LOWER(g.topfragger)=LOWER('%s'),'',g.topfragger) "
+					"WHERE gm.player_pid=%d OR LOWER(gm.player_name)=LOWER('%s')",
+					character.c_str(), character.c_str(), pid,
+					character.c_str()));
+				statements.push_back(sql_format(
+					"DELETE FROM guild_members WHERE player_pid=%d OR "
+					"LOWER(player_name)=LOWER('%s')",
+					pid, character.c_str()));
+				statements.push_back(sql_format(
+					"DELETE FROM locker_access WHERE LOWER(visitor)=LOWER('%s')",
+					character.c_str()));
+				statements.push_back(sql_format(
+					"DELETE FROM locker_access WHERE LOWER(owner)=LOWER(CONCAT('%s','.locker'))",
+					character.c_str()));
+				/* A corpse keeps the name it was made under, so one from before a
+				 * rename is found by its owner pid. */
+				statements.push_back(sql_format(
+					"DELETE FROM corpses WHERE LOWER(player_name)=LOWER('%s') "
+					"OR (value3=%d AND (value1 & %u)<>0)",
+					character.c_str(), pid, PC_CORPSE));
+				statements.push_back(sql_format(
+					"DELETE FROM world_quest_accomplished WHERE pid='%d' OR "
+					"LOWER(player_name)=LOWER('%s')",
+					pid, character.c_str()));
+				statements.push_back(sql_format(
+					"DELETE FROM ships WHERE LOWER(owner_name)=LOWER('%s')",
+					character.c_str()));
+				statements.push_back(
+					sql_format("DELETE FROM player_data WHERE pid=%d", pid));
+				for (const std::string &statement : statements)
+					if (const unsigned int error_code =
+						    sql_execute(connection, statement))
+						return error_code;
 			}
-		}
-		if (!character_ok)
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query), "UPDATE boons SET pid=0,active=0 WHERE pid=%d", pid);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "UPDATE frag_leaderboard SET deleted_at=COALESCE(deleted_at,NOW()),"
-			 "last_updated=NOW() WHERE pid=%d",
-			 pid);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "UPDATE guilds g JOIN guild_members gm ON gm.guild_id=g.id SET "
-			 "g.top_frags=IF(LOWER(g.topfragger)=LOWER('%s'),0,g.top_frags),"
-			 "g.topfragger=IF(LOWER(g.topfragger)=LOWER('%s'),'',g.topfragger) "
-			 "WHERE gm.player_pid=%d OR LOWER(gm.player_name)=LOWER('%s')",
-			 escaped_character, escaped_character, pid, escaped_character);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "DELETE FROM guild_members WHERE player_pid=%d OR "
-			 "LOWER(player_name)=LOWER('%s')",
-			 pid, escaped_character);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "DELETE FROM locker_access WHERE LOWER(visitor)=LOWER('%s')",
-			 escaped_character);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(
-			query, sizeof(query),
-			"DELETE FROM locker_access WHERE LOWER(owner)=LOWER(CONCAT('%s','.locker'))",
-			escaped_character);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		/* A corpse keeps the name it was made under, so one from before a
-		 * rename is found by its owner pid. */
-		snprintf(query, sizeof(query),
-			 "DELETE FROM corpses WHERE LOWER(player_name)=LOWER('%s') "
-			 "OR (value3=%d AND (value1 & %u)<>0)",
-			 escaped_character, pid, PC_CORPSE);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "DELETE FROM world_quest_accomplished WHERE pid='%d' OR "
-			 "LOWER(player_name)=LOWER('%s')",
-			 pid, escaped_character);
-		if (!sql_run_query(query))
-		{
-			free(escaped_character);
-			goto fail;
-		}
-		snprintf(query, sizeof(query),
-			 "DELETE FROM ships WHERE LOWER(owner_name)=LOWER('%s')",
-			 escaped_character);
-		free(escaped_character);
-		if (!sql_run_query(query))
-			goto fail;
-		snprintf(query, sizeof(query), "DELETE FROM player_data WHERE pid=%d", pid);
-		if (!sql_run_query(query))
-			goto fail;
-	}
 
-	{
-		/* Account lockers in the live locker subsystem are keyed by this exact
-		 * finite set of names and do not carry an account foreign key. */
-		int written = snprintf(query, sizeof(query),
-				       "DELETE FROM locker_access WHERE LOWER(owner) IN (%s)",
-				       account_locker_names);
-		if (written < 0 || static_cast<size_t>(written) >= sizeof(query))
-			goto fail;
-		if (!sql_run_query(query))
-			goto fail;
-		written = snprintf(query, sizeof(query),
-				   "DELETE FROM lockers WHERE LOWER(locker_name) IN (%s)",
-				   account_locker_names);
-		if (written < 0 || static_cast<size_t>(written) >= sizeof(query))
-			goto fail;
-		if (!sql_run_query(query))
-			goto fail;
+			/* Account lockers in the live locker subsystem are keyed by this exact
+			 * finite set of names and do not carry an account foreign key. */
+			std::vector<std::string> statements = {
+				sql_format("DELETE FROM locker_access WHERE LOWER(owner) IN (%s)",
+					   locker_names.c_str()),
+				sql_format("DELETE FROM lockers WHERE LOWER(locker_name) IN (%s)",
+					   locker_names.c_str()),
+			};
+			static const char *const account_deletes[][2] = {
+				{ "account_locker_access", "visitor_account" },
+				{ "locker_kickouts", "account_name" },
+				{ "locker_session_state", "account_name" },
+				{ "poll_votes", "account_name" },
+				{ "account_characters", "account_name" },
+			};
+			for (const auto &spec : account_deletes)
+				statements.push_back(
+					sql_format("DELETE FROM %s WHERE LOWER(%s)=LOWER('%s')",
+						   spec[0], spec[1], account.c_str()));
+			for (const std::string &statement : statements)
+				if (const unsigned int error_code =
+					    sql_execute(connection, statement))
+					return error_code;
 
-		struct account_delete_spec
-		{
-			const char *table;
-			const char *column;
-		};
-		const account_delete_spec account_deletes[] = {
-			{ "account_locker_access", "visitor_account" },
-			{ "locker_kickouts", "account_name" },
-			{ "locker_session_state", "account_name" },
-			{ "poll_votes", "account_name" },
-			{ "account_characters", "account_name" },
-		};
-		for (const auto &spec : account_deletes)
-		{
-			snprintf(query, sizeof(query), "DELETE FROM %s WHERE LOWER(%s)=LOWER('%s')",
-				 spec.table, spec.column, escaped_account);
-			if (!sql_run_query(query))
-				goto fail;
-		}
+			/* ON DELETE CASCADE removes banks, IPs, account lockers, and account-bound
+			 * rewards. The credential is intentionally the last destructive write. */
+			if (const unsigned int error_code = sql_execute(
+				    connection,
+				    sql_format(
+					    "DELETE FROM accounts WHERE LOWER(account_name)=LOWER('%s')",
+					    account.c_str())))
+				return error_code;
+			if (mysql_affected_rows(connection) != 1)
+				return refused;
 
-		/* ON DELETE CASCADE removes banks, IPs, account lockers, and account-bound
-		 * rewards. The credential is intentionally the last destructive write. */
-		snprintf(query, sizeof(query),
-			 "DELETE FROM accounts WHERE LOWER(account_name)=LOWER('%s')",
-			 escaped_account);
-		if (!sql_run_query(query) || mysql_affected_rows(DB) != 1)
-			goto fail;
-
-		snprintf(
-			query, sizeof(query),
-			"SELECT (SELECT COUNT(*) FROM accounts WHERE LOWER(account_name)=LOWER('%s'))+"
-			"(SELECT COUNT(*) FROM player_data WHERE LOWER(account_name)=LOWER('%s'))+"
-			"(SELECT COUNT(*) FROM account_characters WHERE LOWER(account_name)=LOWER('%s'))",
-			escaped_account, escaped_account, escaped_account);
-		result = db_query("%s", query);
-		if (!result)
-			goto fail;
-		row = mysql_fetch_row(result);
-		const bool reconciled = row && row[0] && strtoull(row[0], NULL, 10) == 0 &&
-					!mysql_fetch_row(result);
-		mysql_free_result(result);
-		if (!reconciled)
-			goto fail;
-	}
-
-	if (!sql_commit())
-	{
-		sql_rollback();
-		free(escaped_account);
-		return false;
-	}
-	free(escaped_account);
-	return true;
-
-fail:
-	sql_rollback();
-	free(escaped_account);
-	return false;
+			sql_rows left;
+			if (const unsigned int error_code = sql_select(
+				    connection,
+				    sql_format(
+					    "SELECT (SELECT COUNT(*) FROM accounts WHERE LOWER(account_name)=LOWER('%s'))+"
+					    "(SELECT COUNT(*) FROM player_data WHERE LOWER(account_name)=LOWER('%s'))+"
+					    "(SELECT COUNT(*) FROM account_characters WHERE LOWER(account_name)=LOWER('%s'))",
+					    account.c_str(), account.c_str(), account.c_str()),
+				    &left))
+				return error_code;
+			return left.size() == 1 && left[0][0] &&
+					       strtoull(left[0][0], NULL, 10) == 0 ?
+				       0 :
+				       refused;
+		},
+		[done = std::move(done)](bool ok, const sql_rows &) { done(ok); });
 }
 
 // locker functions
-
-static bool sql_save_locker_item_affects(int item_id, P_obj obj)
-{
-	if (!obj || !DB || item_id <= 0)
-		return false;
-
-	// Own_txn wrapper for standalone-call safety
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-			return false;
-		own_txn = true;
-	}
-
-	for (int i = 0; i < MAX_OBJ_AFFECT; i++)
-	{
-		if (obj->affected[i].location != 0 || obj->affected[i].modifier != 0)
-		{
-			// skip duplicates (same location+modifier already saved)
-			bool is_dup = false;
-			for (int j = 0; j < i; j++)
-			{
-				if (obj->affected[j].location == obj->affected[i].location &&
-				    obj->affected[j].modifier == obj->affected[i].modifier)
-				{
-					is_dup = true;
-					break;
-				}
-			}
-			if (is_dup)
-				continue;
-
-			char query[256];
-			snprintf(
-				query, sizeof(query),
-				"INSERT INTO locker_item_affects (item_id, location, modifier) VALUES (%d, %d, %d)",
-				item_id, obj->affected[i].location, obj->affected[i].modifier);
-			if (!sql_run_query(query))
-			{
-				if (own_txn)
-					sql_rollback();
-				return false;
-			}
-		}
-	}
-	if (own_txn)
-	{
-		if (!sql_commit())
-		{
-			sql_rollback();
-			return false;
-		}
-	}
-	return true;
-}
-
-static int sql_count_obj_contents(P_obj obj)
-{
-	int count = 0;
-	for (P_obj cur = obj ? obj->contains : NULL; cur; cur = cur->next_content)
-		++count;
-	return count;
-}
-
-static bool sql_save_locker_item_children(int locker_id, int chest_id, P_obj obj, int item_id,
-					  bool own_txn)
-{
-	if (!obj || !obj->contains)
-		return true;
-
-	for (P_obj content = obj->contains; content; content = content->next_content)
-	{
-		logit(LOG_DEBUG,
-		      "sql_save_locker_item: recurse child from item_id=%d parent_vnum=%d child_vnum=%d child_uid=%lu",
-		      item_id, (obj->R_num >= 0) ? obj_index[obj->R_num].virtual_number : -1,
-		      (content->R_num >= 0) ? obj_index[content->R_num].virtual_number : -1,
-		      content->obj_uid);
-		if (sql_save_locker_item(locker_id, chest_id, content, item_id) <= 0)
-		{
-			logit(LOG_DEBUG,
-			      "sql_save_locker_item: child save failed parent_item_id=%d parent_vnum=%d child_vnum=%d child_uid=%lu parent_contains=%d child_contains=%d",
-			      item_id,
-			      (obj->R_num >= 0) ? obj_index[obj->R_num].virtual_number : -1,
-			      (content->R_num >= 0) ? obj_index[content->R_num].virtual_number : -1,
-			      content->obj_uid, sql_count_obj_contents(obj),
-			      sql_count_obj_contents(content));
-			if (own_txn)
-				sql_rollback();
-			return false;
-		}
-	}
-
-	return true;
-}
-
-static int sql_save_locker_item(int locker_id, int chest_id, P_obj obj, int container_id)
-{
-	if (!obj || !DB || locker_id <= 0)
-		return 0;
-
-	// Own_txn wrapper for standalone-call safety
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-			return 0;
-		own_txn = true;
-	}
-
-	int vnum = obj_index[obj->R_num].virtual_number;
-
-	char *esc_name = NULL;
-	char *esc_short = NULL;
-	char *esc_desc = NULL;
-	char *esc_action = NULL;
-
-	if (obj->str_mask & STRUNG_KEYS)
-		esc_name = sql_escape_string(obj->name ? obj->name : "");
-	if (obj->str_mask & STRUNG_DESC2)
-		esc_short = sql_escape_string(obj->short_description ? obj->short_description : "");
-	if (obj->str_mask & STRUNG_DESC1)
-		esc_desc = sql_escape_string(obj->description ? obj->description : "");
-	if (obj->str_mask & STRUNG_DESC3)
-		esc_action =
-			sql_escape_string(obj->action_description ? obj->action_description : "");
-
-	char container_str[32];
-	if (container_id > 0)
-		snprintf(container_str, sizeof(container_str), "%d", container_id);
-	else
-		strcpy(container_str, "NULL");
-
-	char chest_id_str[32];
-	if (chest_id > 0)
-		snprintf(chest_id_str, sizeof(chest_id_str), "%d", chest_id);
-	else
-		strcpy(chest_id_str, "NULL");
-
-	char name_str[1024], short_str[1024], desc_str[2048], action_str[2048];
-	if (esc_name)
-		snprintf(name_str, sizeof(name_str), "'%s'", esc_name);
-	else
-		strcpy(name_str, "NULL");
-	if (esc_short)
-		snprintf(short_str, sizeof(short_str), "'%s'", esc_short);
-	else
-		strcpy(short_str, "NULL");
-	if (esc_desc)
-		snprintf(desc_str, sizeof(desc_str), "'%s'", esc_desc);
-	else
-		strcpy(desc_str, "NULL");
-	if (esc_action)
-		snprintf(action_str, sizeof(action_str), "'%s'", esc_action);
-	else
-		strcpy(action_str, "NULL");
-
-	char wear_str[32], type_str[16], material_str[16], bv1_str[32], bv2_str[32], bv3_str[32],
-		bv4_str[32], bv5_str[32];
-	/* type_str is unused here (locker INSERT formats item_type as %d) but the shared helper writes to it for signature uniformity */
-	sql_format_item_diff_fields_and_free_proto(obj, wear_str, type_str, material_str, bv1_str,
-						   bv2_str, bv3_str, bv4_str, bv5_str);
-	char query[8192];
-	snprintf(query, sizeof(query),
-		 "INSERT INTO locker_items ("
-		 "locker_id, chest_id, vnum, container_id, quantity, "
-		 "weight, cost, timer, extra_flags, wear_flags, item_type, "
-		 "value0, value1, value2, value3, value4, value5, value6, value7, "
-		 "name, short_descr, description, action_descr, "
-		 "bitvector1, bitvector2, bitvector3, bitvector4, bitvector5, "
-		 "item_material, obj_uid, item_condition"
-		 ") VALUES ("
-		 "%d, %s, %d, %s, 1, "
-		 "%d, %d, %ld, %lu, %s, %s, "
-		 "%d, %d, %d, %d, %d, %d, %d, %d, "
-		 "%s, %s, %s, %s, "
-		 "%s, %s, %s, %s, %s, "
-		 "%s, %lu, %d"
-		 ")",
-		 locker_id, chest_id_str, vnum, container_str, obj->weight, obj->cost,
-		 (long)obj->timer[0], (unsigned long)obj->extra_flags, wear_str, type_str,
-		 obj->value[0], obj->value[1], obj->value[2], obj->value[3], obj->value[4],
-		 obj->value[5], obj->value[6], obj->value[7], name_str, short_str, desc_str,
-		 action_str, bv1_str, bv2_str, bv3_str, bv4_str, bv5_str, material_str,
-		 obj->obj_uid, obj->condition);
-
-	if (esc_name)
-		free(esc_name);
-	if (esc_short)
-		free(esc_short);
-	if (esc_desc)
-		free(esc_desc);
-	if (esc_action)
-		free(esc_action);
-
-	if (!sql_run_query(query))
-	{
-		logit(LOG_DEBUG, "sql_save_locker_item: component=insert outcome=failure");
-		if (own_txn)
-			sql_rollback();
-		return 0;
-	}
-
-	int item_id = (int)mysql_insert_id(DB);
-	if (!sql_save_locker_item_affects(item_id, obj))
-	{
-		logit(LOG_DEBUG, "sql_save_locker_item: component=affects outcome=failure");
-		if (own_txn)
-			sql_rollback();
-		return 0;
-	}
-
-	if (!sql_save_item_extra_descr(item_id, obj, "locker_item_extra_descr"))
-	{
-		logit(LOG_DEBUG,
-		      "sql_save_locker_item: extra descr save failed item_id=%d locker_id=%d chest_id=%d container_id=%d vnum=%d uid=%lu",
-		      item_id, locker_id, chest_id, container_id,
-		      (obj->R_num >= 0) ? obj_index[obj->R_num].virtual_number : -1, obj->obj_uid);
-		if (own_txn)
-			sql_rollback();
-		return 0;
-	}
-
-	if (!sql_save_locker_item_children(locker_id, chest_id, obj, item_id, own_txn))
-		return 0;
-
-	if (own_txn)
-	{
-		if (!sql_commit())
-		{
-			sql_rollback();
-			return 0;
-		}
-	}
-	return item_id;
-}
-
-static bool sql_save_locker_upsert(P_char locker_ch, const char *locker_name, char *esc_name,
-				   int owner_pid, int owner_assoc_id, int *locker_id)
-{
-	int existing_locker_id = sql_get_locker_id_by_name(locker_name);
-
-	if (existing_locker_id > 0)
-	{
-		int carrying_count = 0;
-		for (P_obj cur = locker_ch->carrying; cur; cur = cur->next_content)
-			carrying_count++;
-		logit(LOG_DEBUG, "sql_save_locker: component=public_chest items=%d",
-		      carrying_count);
-
-		// locker exists - delete only PUBLIC chest items, keep private chest items
-		int public_id = sql_get_or_create_public_chest(existing_locker_id);
-		if (public_id <= 0)
-		{
-			logit(LOG_DEBUG,
-			      "sql_save_locker: component=public_chest outcome=lookup_failure");
-			sql_rollback();
-			return false;
-		}
-		char del_query[512];
-		snprintf(
-			del_query, sizeof(del_query),
-			"DELETE FROM locker_items WHERE locker_id=%d AND (chest_id IS NULL OR chest_id=%d)",
-			existing_locker_id, public_id);
-		if (!sql_run_query(del_query))
-		{
-			logit(LOG_DEBUG,
-			      "sql_save_locker: component=old_items outcome=delete_failure");
-			sql_rollback();
-			return false;
-		}
-		*locker_id = existing_locker_id;
-		return true;
-	}
-
-	// new locker - insert locker record
-	char owner_pid_str[32], owner_assoc_str[32];
-	if (owner_pid > 0)
-		snprintf(owner_pid_str, sizeof(owner_pid_str), "%d", owner_pid);
-	else
-		strcpy(owner_pid_str, "NULL");
-	if (owner_assoc_id > 0)
-		snprintf(owner_assoc_str, sizeof(owner_assoc_str), "%d", owner_assoc_id);
-	else
-		strcpy(owner_assoc_str, "NULL");
-
-	char ins_query[512];
-	snprintf(ins_query, sizeof(ins_query),
-		 "INSERT INTO lockers (locker_name, owner_pid, owner_assoc_id, racewar, race) "
-		 "VALUES ('%s', %s, %s, %d, %d)",
-		 esc_name, owner_pid_str, owner_assoc_str, GET_RACEWAR(locker_ch),
-		 GET_RACE(locker_ch));
-
-	if (!sql_run_query(ins_query))
-	{
-		logit(LOG_DEBUG, "sql_save_locker: component=insert outcome=failure");
-		sql_rollback();
-		return false;
-	}
-
-	*locker_id = (int)mysql_insert_id(DB);
-	return true;
-}
-
-static bool sql_save_locker_items(P_char locker_ch, int locker_id, int public_chest_id,
-				  bool own_txn)
-{
-	// save all items the locker char is carrying to public chest - any failure rolls back the whole locker save
-	for (P_obj obj = locker_ch->carrying; obj; obj = obj->next_content)
-	{
-		if (sql_save_locker_item(locker_id, public_chest_id, obj, 0) == 0)
-		{
-			logit(LOG_DEBUG, "sql_save_locker: component=item outcome=failure");
-			if (own_txn)
-				sql_rollback();
-			return false;
-		}
-	}
-
-	if (own_txn && !sql_commit())
-	{
-		logit(LOG_DEBUG, "sql_save_locker: component=commit outcome=failure");
-		sql_rollback();
-		return false;
-	}
-
-	return true;
-}
-
-bool sql_save_locker(P_char locker_ch, int owner_pid, int owner_assoc_id)
-{
-	if (!locker_ch || !DB)
-	{
-		logit(LOG_DEBUG, "sql_save_locker: outcome=unavailable");
-		return false;
-	}
-
-	const char *locker_name = GET_NAME(locker_ch);
-	if (!locker_name)
-	{
-		logit(LOG_DEBUG, "sql_save_locker: null locker name");
-		return false;
-	}
-
-	char *esc_name = sql_escape_string(locker_name);
-	if (!esc_name)
-	{
-		logit(LOG_DEBUG, "sql_save_locker: component=name_escape outcome=failure");
-		return false;
-	}
-
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		// start transaction (must succeed before any writes)
-		if (!sql_begin_transaction())
-		{
-			logit(LOG_DEBUG, "sql_save_locker: component=transaction outcome=failure");
-			free(esc_name);
-			return false;
-		}
-		own_txn = true;
-	}
-
-	int locker_id = 0;
-	if (!sql_save_locker_upsert(locker_ch, locker_name, esc_name, owner_pid, owner_assoc_id,
-				    &locker_id))
-	{
-		free(esc_name);
-		return false;
-	}
-
-	free(esc_name);
-
-	// get or create public chest for this locker
-	int public_chest_id = sql_get_or_create_public_chest(locker_id);
-	if (public_chest_id <= 0)
-	{
-		logit(LOG_DEBUG, "sql_save_locker: component=public_chest outcome=create_failure");
-		sql_rollback();
-		return false;
-	}
-
-	// The locker holds these in memory, so its save claims them.
-	const item_owner_identity chest = { item_owner_type::locker,
-					    static_cast<uint64_t>(locker_id),
-					    static_cast<uint64_t>(public_chest_id) };
-	std::vector<player_item_snapshot> held;
-	item_claim_outcome claim;
-	if (player_item_snapshot_list_capture(locker_ch, false, true, false, &held, nullptr) !=
-		    player_snapshot_capture_result::ok ||
-	    claim_items(DB, chest, held, &claim) != 0)
-	{
-		logit(LOG_DEBUG, "sql_save_locker: component=claim outcome=failure");
-		sql_rollback();
-		return false;
-	}
-	const bool saved = sql_save_locker_items(locker_ch, locker_id, public_chest_id, own_txn);
-	if (saved)
-		item_claim_log_dupes("save_left_out", chest, claim);
-	return saved;
-}
-
-static P_obj sql_load_locker_items(int locker_id, int public_chest_id, int container_id);
 
 #define MAX_CONTAINER_LOAD_DEPTH 64
 
@@ -6343,450 +5344,193 @@ static void append_loaded_objects(P_obj *first, P_obj *last, P_obj chain)
 	}
 }
 
-static P_obj sql_load_locker_items_filtered(int locker_id, int container_id, int chest_id,
-					    int depth)
+// The item rows of a locker entry read, by (chest, container), and their affect and
+// extra description rows by item.
+struct locker_row_index
 {
-	if (!DB || locker_id <= 0)
-		return NULL;
+	std::map<std::pair<int, int>, std::vector<const sql_row *>> items;
+	std::map<int, std::vector<const sql_row *>> affects, extras;
+};
 
-	logit(LOG_DEBUG,
-	      "sql_load_locker_items_filtered: begin locker_id=%d container_id=%d chest_id=%d depth=%d",
-	      locker_id, container_id, chest_id, depth);
-
+// Build the items of one chest level: its rows in order, each with its contents. An
+// item another owner holds is left out and what it contains moves up a level. With
+// chest_obj (a private chest) each item goes into the chest before its contents are
+// attached, so a full container is not refused by the chest's fit check.
+static P_obj locker_items_from_index(const locker_row_index &index, int locker_id, int chest_id,
+				     int container_id, int depth, P_obj chest_obj)
+{
 	if (depth > MAX_CONTAINER_LOAD_DEPTH)
 	{
 		logit(LOG_DEBUG,
-		      "sql_load_locker_items_filtered: component=container outcome=depth_limit");
+		      "sql_locker_items_from_rows: component=container outcome=depth_limit");
 		return NULL;
 	}
-
-	char query[1024];
-	char chest_filter[256] = "";
-	if (chest_id > 0)
-		snprintf(chest_filter, sizeof(chest_filter), " AND chest_id=%d", chest_id);
-	else
-		snprintf(chest_filter, sizeof(chest_filter),
-			 " AND (chest_id IS NULL OR chest_id NOT IN "
-			 "(SELECT id FROM private_chests WHERE locker_id=%d AND is_public=0))",
-			 locker_id);
-
-	if (container_id > 0)
-		snprintf(
-			query, sizeof(query),
-			"SELECT id, vnum, weight, cost, timer, extra_flags, wear_flags, item_type, "
-			"value0, value1, value2, value3, value4, value5, value6, value7, "
-			"name, short_descr, description, action_descr, obj_uid, item_condition, "
-			"bitvector1, bitvector2, bitvector3, bitvector4, bitvector5, item_material "
-			"FROM locker_items WHERE locker_id=%d AND container_id=%d%s",
-			locker_id, container_id, chest_filter);
-	else
-		snprintf(
-			query, sizeof(query),
-			"SELECT id, vnum, weight, cost, timer, extra_flags, wear_flags, item_type, "
-			"value0, value1, value2, value3, value4, value5, value6, value7, "
-			"name, short_descr, description, action_descr, obj_uid, item_condition, "
-			"bitvector1, bitvector2, bitvector3, bitvector4, bitvector5, item_material "
-			"FROM locker_items WHERE locker_id=%d AND container_id IS NULL%s",
-			locker_id, chest_filter);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
+	const auto level = index.items.find({ chest_id, container_id });
+	if (level == index.items.end())
 		return NULL;
 
 	P_obj first_obj = NULL;
 	P_obj last_obj = NULL;
-	MYSQL_ROW row;
-
-	while ((row = mysql_fetch_row(result)))
+	for (const sql_row *item : level->second)
 	{
-		int item_id = atoi(row[0]);
-		int vnum = atoi(row[1]);
-		int rnum = real_object(vnum);
-		logit(LOG_DEBUG,
-		      "sql_load_locker_items_filtered: row item_id=%d locker_id=%d container_id=%d chest_id=%d vnum=%d rnum=%d depth=%d",
-		      item_id, locker_id, container_id, chest_id, vnum, rnum, depth);
+		const sql_row &row = *item;
+		const int item_id = atoi(row[1]);
+		const int rnum = real_object(atoi(row[2]));
 		if (rnum < 0)
 		{
 			logit(LOG_DEBUG,
-			      "sql_load_locker_items_filtered: skip unknown vnum item_id=%d vnum=%d locker_id=%d chest_id=%d container_id=%d",
-			      item_id, vnum, locker_id, chest_id, container_id);
+			      "sql_locker_items_from_rows: skip unknown vnum item_id=%d vnum=%s locker_id=%d chest_id=%d",
+			      item_id, row[2], locker_id, chest_id);
 			continue;
 		}
-
 		P_obj obj = read_object(rnum, REAL);
 		if (!obj)
-		{
-			logit(LOG_DEBUG,
-			      "sql_load_locker_items_filtered: skip failed read_object item_id=%d vnum=%d rnum=%d locker_id=%d chest_id=%d container_id=%d",
-			      item_id, vnum, rnum, locker_id, chest_id, container_id);
 			continue;
-		}
 
-		if (row[2])
-			obj->weight = atoi(row[2]);
 		if (row[3])
-			obj->cost = atoi(row[3]);
+			obj->weight = atoi(row[3]);
 		if (row[4])
-			obj->timer[0] = atol(row[4]);
+			obj->cost = atoi(row[4]);
 		if (row[5])
-			obj->extra_flags = strtoul(row[5], NULL, 10);
+			obj->timer[0] = atol(row[5]);
 		if (row[6])
-			obj->wear_flags = atoi(row[6]);
+			obj->extra_flags = strtoul(row[6], NULL, 10);
 		if (row[7])
-			obj->type = sql_validate_loaded_item_type(obj, atoi(row[7]),
+			obj->wear_flags = atoi(row[7]);
+		if (row[8])
+			obj->type = sql_validate_loaded_item_type(obj, atoi(row[8]),
 								  "sql_load_locker_items");
-
-		obj->value[0] = row[8] ? atoi(row[8]) : obj->value[0];
-		obj->value[1] = row[9] ? atoi(row[9]) : obj->value[1];
-		obj->value[2] = row[10] ? atoi(row[10]) : obj->value[2];
-		obj->value[3] = row[11] ? atoi(row[11]) : obj->value[3];
-		obj->value[4] = row[12] ? atoi(row[12]) : obj->value[4];
-		obj->value[5] = row[13] ? atoi(row[13]) : obj->value[5];
-		obj->value[6] = row[14] ? atoi(row[14]) : obj->value[6];
-		obj->value[7] = row[15] ? atoi(row[15]) : obj->value[7];
-
-		if (row[16] && strlen(row[16]) > 0)
+		for (int v = 0; v < 8; v++)
+			if (row[9 + v])
+				obj->value[v] = atoi(row[9 + v]);
+		if (row[17] && *row[17])
 		{
-			obj->name = str_dup(row[16]);
+			obj->name = str_dup(row[17]);
 			obj->str_mask |= STRUNG_KEYS;
 		}
-		if (row[17] && strlen(row[17]) > 0)
+		if (row[18] && *row[18])
 		{
-			obj->short_description = str_dup(row[17]);
+			obj->short_description = str_dup(row[18]);
 			obj->str_mask |= STRUNG_DESC2;
 		}
-		if (row[18] && strlen(row[18]) > 0)
+		if (row[19] && *row[19])
 		{
-			obj->description = str_dup(row[18]);
+			obj->description = str_dup(row[19]);
 			obj->str_mask |= STRUNG_DESC1;
 		}
-		if (row[19] && strlen(row[19]) > 0)
+		if (row[20] && *row[20])
 		{
-			obj->action_description = str_dup(row[19]);
+			obj->action_description = str_dup(row[20]);
 			obj->str_mask |= STRUNG_DESC3;
 		}
-		if (row[22])
-			obj->bitvector = strtoul(row[22], NULL, 10);
 		if (row[23])
-			obj->bitvector2 = strtoul(row[23], NULL, 10);
+			obj->bitvector = strtoul(row[23], NULL, 10);
 		if (row[24])
-			obj->bitvector3 = strtoul(row[24], NULL, 10);
+			obj->bitvector2 = strtoul(row[24], NULL, 10);
 		if (row[25])
-			obj->bitvector4 = strtoul(row[25], NULL, 10);
+			obj->bitvector3 = strtoul(row[25], NULL, 10);
 		if (row[26])
-			obj->bitvector5 = strtoul(row[26], NULL, 10);
+			obj->bitvector4 = strtoul(row[26], NULL, 10);
 		if (row[27])
-			obj->material = atoi(row[27]);
+			obj->bitvector5 = strtoul(row[27], NULL, 10);
+		if (row[28])
+			obj->material = atoi(row[28]);
+		if (row[21] && strtoul(row[21], NULL, 10) > 0)
+			obj->obj_uid = strtoul(row[21], NULL, 10);
 
-		if (row[20] && strlen(row[20]) > 0)
+		const char *const owner[] = { row[31], row[32], row[33], row[34], row[35],
+					      row[36], row[37], row[38], row[39] };
+		if (!sql_persistence_item_owner_fields_match(
+			    obj->obj_uid, "locker", static_cast<unsigned long long>(locker_id),
+			    static_cast<unsigned long long>(chest_id), row[31] ? owner : NULL))
 		{
-			unsigned long saved_uid = strtoul(row[20], NULL, 10);
-			if (saved_uid > 0)
-				obj->obj_uid = saved_uid;
-			if (!sql_persistence_item_owner_matches_identity(
-				    obj->obj_uid, "locker",
-				    static_cast<unsigned long long>(locker_id),
-				    static_cast<unsigned long long>(chest_id),
-				    "sql_load_locker_items"))
+			// A stale copy another owner holds is left out, and what it contains
+			// moves up a level.
+			extract_obj(obj, FALSE);
+			P_obj orphans = locker_items_from_index(index, locker_id, chest_id, item_id,
+								depth + 1, NULL);
+			if (!chest_obj)
+				append_loaded_objects(&first_obj, &last_obj, orphans);
+			while (chest_obj && orphans)
 			{
-				// A stale copy another owner holds is left out, and what it
-				// contains moves up a level.
-				extract_obj(obj, FALSE);
-				append_loaded_objects(
-					&first_obj, &last_obj,
-					sql_load_locker_items_filtered(locker_id, item_id, chest_id,
-								       depth + 1));
-				continue;
+				P_obj next = orphans->next_content;
+				orphans->next_content = NULL;
+				obj_to_obj(orphans, chest_obj);
+				orphans = next;
 			}
+			continue;
 		}
-		if (row[21] && strlen(row[21]) > 0)
-			obj->condition = atoi(row[21]);
+		if (row[22] && *row[22])
+			obj->condition = atoi(row[22]);
 		obj->db_item_id = item_id;
 		REMOVE_BIT(obj->runtime_flags, OBJ_RFLAG_CREATION_CANDIDATE);
 
-		sql_load_item_affects_from_table(item_id, obj, "locker_item_affects");
-		sql_load_item_extra_descr_from_table(item_id, obj, "locker_item");
-
-		obj->contains =
-			sql_load_locker_items_filtered(locker_id, item_id, chest_id, depth + 1);
+		const auto affects = index.affects.find(item_id);
+		if (affects != index.affects.end())
 		{
-			int child_count = 0;
-			for (P_obj c = obj->contains; c; c = c->next_content)
-				child_count++;
-			logit(LOG_DEBUG, "sql_load_locker_items_filtered: children=%d",
-			      child_count);
+			std::vector<std::pair<int, int>> stored;
+			for (const sql_row *affect : affects->second)
+				stored.emplace_back(atoi((*affect)[2]), atoi((*affect)[3]));
+			sql_set_item_affects(obj, stored);
 		}
+		const auto extras = index.extras.find(item_id);
+		if (extras != index.extras.end())
+		{
+			struct extra_descr_data *loaded_spellbook = NULL;
+			for (const sql_row *extra : extras->second)
+				sql_add_item_extra_descr(obj, (*extra)[2], (*extra)[3],
+							 "locker_item", item_id, &loaded_spellbook);
+		}
+
+		if (chest_obj)
+			obj_to_obj(obj, chest_obj);
+		obj->contains = locker_items_from_index(index, locker_id, chest_id, item_id,
+							depth + 1, NULL);
 		for (P_obj c = obj->contains; c; c = c->next_content)
 		{
 			if (!obj_can_nest(c, obj))
 			{
 				logit(LOG_DEBUG,
-				      "sql_load_locker_items_filtered: component=container_link "
-				      "outcome=malformed");
+				      "sql_locker_items_from_rows: component=container_link outcome=malformed");
 				continue;
 			}
 			c->loc_p = LOC_INSIDE;
 			c->loc.inside = obj;
 		}
 
-		if (!first_obj)
-			first_obj = obj;
-		else
-			last_obj->next_content = obj;
-		last_obj = obj;
-		obj->next_content = NULL;
+		if (!chest_obj)
+			append_loaded_objects(&first_obj, &last_obj, obj);
 	}
-
-	mysql_free_result(result);
 	return first_obj;
 }
-static P_obj sql_load_locker_items(int locker_id, int public_chest_id, int container_id)
+
+P_obj sql_locker_items_from_rows(const sql_rows &rows, int locker_id, int chest_id, P_obj chest_obj)
 {
-	return sql_load_locker_items_filtered(locker_id, container_id, public_chest_id, 0);
+	locker_row_index index;
+	for (const sql_row &row : rows)
+	{
+		if (!row[0] || !row[1])
+			continue;
+		if (!strcmp(row[0], "item"))
+			index.items[{ row[29] ? atoi(row[29]) : 0, row[30] ? atoi(row[30]) : 0 }]
+				.push_back(&row);
+		else if (!strcmp(row[0], "affect"))
+			index.affects[atoi(row[1])].push_back(&row);
+		else if (!strcmp(row[0], "extra"))
+			index.extras[atoi(row[1])].push_back(&row);
+	}
+	return locker_items_from_index(index, locker_id, chest_id, 0, 0, chest_obj);
 }
 
-P_char sql_load_locker(int owner_pid, int owner_assoc_id)
+/* The statement that deletes the personal or association locker selected by its
+ * stable owner key (its chests and items cascade); empty without a key. */
+std::string sql_delete_locker_statement(int owner_pid, int owner_assoc_id)
 {
-	if (!DB)
-		return NULL;
-
-	char query[256];
 	if (owner_pid > 0)
-		snprintf(query, sizeof(query),
-			 "SELECT id, locker_name, racewar, race FROM lockers WHERE owner_pid=%d",
-			 owner_pid);
-	else if (owner_assoc_id > 0)
-		snprintf(
-			query, sizeof(query),
-			"SELECT id, locker_name, racewar, race FROM lockers WHERE owner_assoc_id=%d",
-			owner_assoc_id);
-	else
-		return NULL;
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return NULL;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (!row)
-	{
-		mysql_free_result(result);
-		return NULL;
-	}
-
-	int locker_id = atoi(row[0]);
-	const char *locker_name = row[1];
-	int racewar = atoi(row[2]);
-	int race = atoi(row[3]);
-
-	// allocate locker character
-	P_char ch = (P_char)mm_get(dead_mob_pool);
-	if (!ch)
-	{
-		mysql_free_result(result);
-		return NULL;
-	}
-	clear_char(ch);
-	ensure_pconly_pool();
-	ch->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-	if (!ch->only.pc)
-	{
-		mm_release(dead_mob_pool, ch);
-		mysql_free_result(result);
-		return NULL;
-	}
-	memset(ch->only.pc, 0, sizeof(struct pc_only_data));
-	ch->only.pc->aggressive = -1;
-	ch->only.pc->zone_trophy = NULL;
-	ch->desc = NULL;
-
-	ch->player.name = str_dup(locker_name);
-	GET_RACEWAR(ch) = racewar;
-	GET_RACE(ch) = race;
-
-	mysql_free_result(result);
-
-	// load items
-	const int public_chest_id = sql_get_or_create_public_chest(locker_id);
-	if (public_chest_id <= 0)
-	{
-		free_char(ch);
-		return NULL;
-	}
-	ch->carrying = sql_load_locker_items(locker_id, public_chest_id, 0);
-	{
-		int carry_count = 0;
-		for (P_obj obj = ch->carrying; obj; obj = obj->next_content)
-			carry_count++;
-		logit(LOG_DEBUG, "sql_load_locker: outcome=success items=%d", carry_count);
-	}
-	for (P_obj obj = ch->carrying; obj; obj = obj->next_content)
-	{
-		obj->loc_p = LOC_CARRIED;
-		obj->loc.carrying = ch;
-	}
-
-	return ch;
-}
-
-// load locker by name (used by storage_lockers.c)
-P_char sql_load_locker_by_name(const char *locker_name)
-{
-	if (!DB || !locker_name)
-		return NULL;
-
-	char *esc_name = sql_escape_string(locker_name);
-	if (!esc_name)
-		return NULL;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "SELECT id, racewar, race FROM lockers WHERE locker_name='%s'", esc_name);
-	free(esc_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return NULL;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (!row)
-	{
-		mysql_free_result(result);
-		return NULL;
-	}
-
-	int locker_id = atoi(row[0]);
-	int racewar = atoi(row[1]);
-	int race = atoi(row[2]);
-	mysql_free_result(result);
-
-	// allocate locker character
-	P_char ch = (P_char)mm_get(dead_mob_pool);
-	if (!ch)
-		return NULL;
-	clear_char(ch);
-	ensure_pconly_pool();
-	ch->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-	if (!ch->only.pc)
-	{
-		mm_release(dead_mob_pool, ch);
-		return NULL;
-	}
-	memset(ch->only.pc, 0, sizeof(struct pc_only_data));
-	ch->only.pc->aggressive = -1;
-	ch->only.pc->zone_trophy = NULL;
-	ch->desc = NULL;
-
-	ch->player.name = str_dup(locker_name);
-	GET_RACEWAR(ch) = racewar;
-	GET_RACE(ch) = race;
-
-	// load items
-	const int public_chest_id = sql_get_or_create_public_chest(locker_id);
-	if (public_chest_id <= 0)
-	{
-		free_char(ch);
-		return NULL;
-	}
-	ch->carrying = sql_load_locker_items(locker_id, public_chest_id, 0);
-	for (P_obj obj = ch->carrying; obj; obj = obj->next_content)
-	{
-		obj->loc_p = LOC_CARRIED;
-		obj->loc.carrying = ch;
-	}
-
-	return ch;
-}
-
-/* Report whether MariaDB contains the locker selected by a stable owner key. */
-bool sql_locker_exists(int owner_pid, int owner_assoc_id)
-{
-	if (!DB)
-		return false;
-
-	char query[128];
-	if (owner_pid > 0)
-		snprintf(query, sizeof(query), "SELECT 1 FROM lockers WHERE owner_pid=%d LIMIT 1",
-			 owner_pid);
-	else if (owner_assoc_id > 0)
-		snprintf(query, sizeof(query),
-			 "SELECT 1 FROM lockers WHERE owner_assoc_id=%d LIMIT 1", owner_assoc_id);
-	else
-		return false;
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	bool exists = (row != NULL);
-	mysql_free_result(result);
-	return exists;
-}
-
-/* Report whether MariaDB contains the named locker. */
-bool sql_locker_exists_by_name(const char *locker_name)
-{
-	if (!DB || !locker_name)
-		return false;
-
-	char *esc_name = sql_escape_string(locker_name);
-	if (!esc_name)
-		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query), "SELECT 1 FROM lockers WHERE locker_name='%s' LIMIT 1",
-		 esc_name);
-	free(esc_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	bool exists = (row != NULL);
-	mysql_free_result(result);
-	return exists;
-}
-
-/* Validate a MariaDB personal locker owner against its current identity mapping. */
-bool sql_locker_owner_can_access(const char *locker_name, int owner_pid, int racewar)
-{
-	if (!DB || !locker_name || owner_pid <= 0)
-		return false;
-	char *escaped_name = sql_escape_string(locker_name);
-	if (!escaped_name)
-		return false;
-	MYSQL_RES *result =
-		db_query("SELECT 1 FROM lockers l JOIN account_characters ac ON ac.pid=l.owner_pid "
-			 "WHERE l.locker_name='%s' AND l.owner_pid=%d AND l.owner_assoc_id IS NULL "
-			 "AND l.racewar=%d AND ac.racewar=l.racewar AND ac.blocked=0 "
-			 "AND ac.deleted_at IS NULL LIMIT 1",
-			 escaped_name, owner_pid, racewar);
-	free(escaped_name);
-	if (!result)
-		return false;
-	const bool allowed = mysql_num_rows(result) == 1;
-	mysql_free_result(result);
-	return allowed;
-}
-
-/* Delete the personal or association locker selected by its stable owner key. */
-bool sql_delete_locker(int owner_pid, int owner_assoc_id)
-{
-	if (!DB)
-		return false;
-
-	char query[128];
-	if (owner_pid > 0)
-		snprintf(query, sizeof(query), "DELETE FROM lockers WHERE owner_pid=%d", owner_pid);
-	else if (owner_assoc_id > 0)
-		snprintf(query, sizeof(query), "DELETE FROM lockers WHERE owner_assoc_id=%d",
-			 owner_assoc_id);
-	else
-		return false;
-
-	return sql_run_query(query);
+		return sql_format("DELETE FROM lockers WHERE owner_pid=%d", owner_pid);
+	if (owner_assoc_id > 0)
+		return sql_format("DELETE FROM lockers WHERE owner_assoc_id=%d", owner_assoc_id);
+	return {};
 }
 
 bool sql_delete_locker_by_name(const char *locker_name)
@@ -6809,573 +5553,42 @@ bool sql_delete_locker_by_name(const char *locker_name)
 // private chest functions
 // ============================================================================
 
-int sql_get_locker_id_by_name(const char *locker_name)
-{
-	if (!DB || !locker_name)
-		return 0;
-
-	char *esc_name = sql_escape_string(locker_name);
-	if (!esc_name)
-		return 0;
-
-	char query[256];
-	snprintf(query, sizeof(query), "SELECT id FROM lockers WHERE locker_name='%s'", esc_name);
-	free(esc_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return 0;
-
-	int locker_id = 0;
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (row)
-		locker_id = atoi(row[0]);
-	mysql_free_result(result);
-	return locker_id;
-}
-
-int sql_get_or_create_public_chest(int locker_id)
-{
-	if (!DB || locker_id <= 0)
-		return 0;
-
-	char query[512];
-	snprintf(query, sizeof(query),
-		 "SELECT id FROM private_chests WHERE locker_id=%d AND is_public=1", locker_id);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (result)
-	{
-		MYSQL_ROW row = mysql_fetch_row(result);
-		if (row)
-		{
-			int id = atoi(row[0]);
-			mysql_free_result(result);
-			return id;
-		}
-		mysql_free_result(result);
-	}
-
-	snprintf(
-		query, sizeof(query),
-		"INSERT INTO private_chests (locker_id, chest_name, is_public) VALUES (%d, 'public', 1)",
-		locker_id);
-
-	if (!sql_run_query(query))
-		return 0;
-
-	return (int)mysql_insert_id(DB);
-}
-
-int sql_create_private_chest_hashed(int locker_id, const char *chest_name, const char *hash)
-{
-	if (!DB || locker_id <= 0 || !chest_name)
-		return 0;
-	if (hash && !is_bcrypt_hash(hash))
-		return 0;
-
-	if (sql_count_private_chests(locker_id) >= 5)
-		return -1;
-
-	char *esc_name = sql_escape_string(chest_name);
-	if (!esc_name)
-		return 0;
-
-	char query[512];
-	if (hash && hash[0])
-	{
-		char *esc_hash = hash ? sql_escape_string(hash) : NULL;
-		if (!esc_hash)
-		{
-			free(esc_name);
-			return 0;
-		}
-		snprintf(
-			query, sizeof(query),
-			"INSERT INTO private_chests (locker_id, chest_name, password_hash, is_public) "
-			"VALUES (%d, '%s', '%s', 0)",
-			locker_id, esc_name, esc_hash);
-		free(esc_hash);
-	}
-	else
-	{
-		snprintf(
-			query, sizeof(query),
-			"INSERT INTO private_chests (locker_id, chest_name, is_public) VALUES (%d, '%s', 0)",
-			locker_id, esc_name);
-	}
-	free(esc_name);
-
-	if (!sql_run_query(query))
-		return 0;
-
-	return (int)mysql_insert_id(DB);
-}
-
-bool sql_delete_private_chest(int chest_id)
-{
-	if (!DB || chest_id <= 0)
-		return false;
-
-	char query[256];
-	MYSQL_RES *result = NULL;
-	MYSQL_ROW row = NULL;
-	bool is_private = false;
-	bool has_items = false;
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-			return false;
-		own_txn = true;
-	}
-
-	/* Lock the parent first. InnoDB foreign-key inserts must wait on this
-	 * lock, so the emptiness check and delete cannot race a child insert. */
-	snprintf(query, sizeof(query),
-		 "SELECT is_public FROM private_chests WHERE id=%d FOR UPDATE", chest_id);
-	result = db_query("%s", query);
-	if (!result)
-		goto fail;
-	row = mysql_fetch_row(result);
-	is_private = row && atoi(row[0]) == 0;
-	mysql_free_result(result);
-	if (!is_private)
-		goto fail;
-
-	snprintf(query, sizeof(query), "SELECT id FROM locker_items WHERE chest_id=%d FOR UPDATE",
-		 chest_id);
-	result = db_query("%s", query);
-	if (!result)
-		goto fail;
-	has_items = mysql_fetch_row(result) != NULL;
-	mysql_free_result(result);
-	if (has_items)
-		goto fail;
-
-	snprintf(query, sizeof(query), "DELETE FROM private_chests WHERE id=%d AND is_public=0",
-		 chest_id);
-	if (!sql_run_query(query) || mysql_affected_rows(DB) != 1)
-		goto fail;
-
-	if (own_txn && !sql_commit())
-		goto fail;
-	return true;
-
-fail:
-	if (own_txn)
-		sql_rollback();
-	return false;
-}
-
-int sql_get_chest_id(int locker_id, const char *chest_name)
-{
-	if (!DB || locker_id <= 0 || !chest_name)
-		return 0;
-
-	char *esc_name = sql_escape_string(chest_name);
-	if (!esc_name)
-		return 0;
-
-	char query[512];
-	snprintf(query, sizeof(query),
-		 "SELECT id FROM private_chests WHERE locker_id=%d AND chest_name='%s'", locker_id,
-		 esc_name);
-	free(esc_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return 0;
-
-	int id = 0;
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (row)
-		id = atoi(row[0]);
-	mysql_free_result(result);
-	return id;
-}
-
-bool sql_set_chest_password_hash(int chest_id, const char *hash)
-{
-	if (!DB || chest_id <= 0)
-		return false;
-
-	char query[512];
-	if (!hash || !hash[0])
-	{
-		snprintf(query, sizeof(query),
-			 "UPDATE private_chests SET password_hash=NULL WHERE id=%d AND is_public=0",
-			 chest_id);
-		if (!sql_run_query(query))
-			return false;
-		if (mysql_affected_rows(DB) == 1)
-			return true;
-
-		snprintf(
-			query, sizeof(query),
-			"SELECT id FROM private_chests WHERE id=%d AND is_public=0 AND password_hash IS NULL",
-			chest_id);
-		MYSQL_RES *result = db_query("%s", query);
-		if (!result)
-			return false;
-		bool found = mysql_fetch_row(result) != NULL;
-		mysql_free_result(result);
-		return found;
-	}
-	if (!is_bcrypt_hash(hash))
-		return false;
-
-	char *esc_hash = hash ? sql_escape_string(hash) : NULL;
-	if (!esc_hash)
-		return false;
-	snprintf(query, sizeof(query),
-		 "UPDATE private_chests SET password_hash='%s' WHERE id=%d AND is_public=0",
-		 esc_hash, chest_id);
-	free(esc_hash);
-	return sql_run_query(query) && mysql_affected_rows(DB) == 1;
-}
-
-/* Returns an owned copy; NULL is an unprotected chest, false is a read failure. */
-bool sql_get_chest_password_hash(int chest_id, char **hash)
-{
-	*hash = nullptr;
-	if (!DB || chest_id <= 0)
-		return false;
-	MYSQL_RES *result =
-		db_query("SELECT password_hash FROM private_chests WHERE id=%d", chest_id);
-	if (!result)
-		return false;
-	MYSQL_ROW row = mysql_fetch_row(result);
-	bool found = row != nullptr;
-	if (row && row[0])
-	{
-		*hash = strdup(row[0]);
-		if (!*hash)
-			found = false;
-	}
-	mysql_free_result(result);
-	return found;
-}
-
-bool sql_finish_chest_password(int chest_id, const char *expected, const char *upgrade)
-{
-	char *current = nullptr;
-	if (!sql_get_chest_password_hash(chest_id, &current))
-		return false;
-	bool same = (!current && !expected) || (current && expected && !strcmp(current, expected));
-	free(current);
-	if (!same)
-		return false;
-	if (!upgrade)
-		return true;
-	if (!expected || !is_bcrypt_hash(upgrade))
-		return false;
-	char *esc_hash = sql_escape_string(upgrade);
-	char *esc_old = sql_escape_string(expected);
-	if (!esc_hash || !esc_old)
-	{
-		free(esc_hash);
-		free(esc_old);
-		return false;
-	}
-	char query[512];
-	snprintf(query, sizeof(query),
-		 "UPDATE private_chests SET password_hash='%s' WHERE id=%d AND password_hash='%s'",
-		 esc_hash, chest_id, esc_old);
-	free(esc_hash);
-	free(esc_old);
-	// A racing password change fails closed; never re-run bcrypt on this thread.
-	return sql_run_query(query) && mysql_affected_rows(DB) == 1;
-}
-
-int sql_count_private_chests(int locker_id)
-{
-	if (!DB || locker_id <= 0)
-		return 0;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "SELECT COUNT(*) FROM private_chests WHERE locker_id=%d AND is_public=0",
-		 locker_id);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return 0;
-
-	int count = 0;
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (row)
-		count = atoi(row[0]);
-	mysql_free_result(result);
-	return count;
-}
-
 bool sql_log_chest_activity(int locker_id, int chest_id, const char *char_name, int action_type,
 			    const char *item_short)
 {
 	if (!DB || locker_id <= 0 || !char_name || action_type < 1)
 		return false;
-
-	char *esc_char = sql_escape_string(char_name);
-	char *esc_item = item_short ? sql_escape_string(item_short) : NULL;
-
-	char chest_str[32];
-	if (chest_id > 0)
-		snprintf(chest_str, sizeof(chest_str), "%d", chest_id);
-	else
-		strcpy(chest_str, "NULL");
-
-	char query[1024];
-	snprintf(
-		query, sizeof(query),
+	return sql_queue(
 		"INSERT INTO private_chest_log (locker_id, chest_id, char_name, action_type, item_short) "
-		"VALUES (%d, %s, '%s', %d, %s%s%s)",
-		locker_id, chest_str, esc_char, action_type, esc_item ? "'" : "",
-		esc_item ? esc_item : "NULL", esc_item ? "'" : "");
-
-	free(esc_char);
-	if (esc_item)
-		free(esc_item);
-
-	return sql_run_query(query);
+		"VALUES (%d, %s, '%s', %d, %s)",
+		locker_id, chest_id > 0 ? std::to_string(chest_id).c_str() : "NULL",
+		escape_str(char_name).c_str(), action_type,
+		item_short ? ("'" + escape_str(item_short) + "'").c_str() : "NULL");
 }
 
 bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)
 {
-	if (!DB || locker_id <= 0 || chest_id <= 0 || !chest_obj)
+	if (locker_id <= 0 || chest_id <= 0 || !chest_obj)
 		return false;
 
-	// Outside a transaction the chest save goes to the one writer, behind any save still
-	// queued; inside one it stays part of the caller's.
-	if (!sql_in_transaction())
-	{
-		locker_chest_snapshot snapshot;
-		snapshot.locker_id = locker_id;
-		snapshot.chest_id = chest_id;
-		if (player_item_snapshot_contents_capture(chest_obj, &snapshot.items) ==
-		    player_snapshot_capture_result::ok)
-		{
-			// A private chest's key never matches its locker's public job.
-			const uint64_t owner = (static_cast<uint64_t>(chest_id) << 32) |
-					       static_cast<uint32_t>(locker_id);
-			const size_t bytes = sizeof(snapshot) +
-					     snapshot.items.size() * sizeof(player_item_snapshot);
-			const player_save_submit_result submitted = persistence_writer_submit(
-				persistence_job_kind::locker, owner, bytes,
-				[snapshot]() {
-					return locker_chest_snapshot_repository_apply_from_pool(
-						snapshot);
-				});
-			if (submitted == player_save_submit_result::accepted ||
-			    submitted == player_save_submit_result::replaced)
-				return true;
-		}
-	}
-
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		// start transaction (must succeed before the DELETE - otherwise the chest
-		// could be left empty if the inserts fail, losing all stored items)
-		if (!sql_begin_transaction())
-		{
-			logit(LOG_DEBUG,
-			      "sql_save_private_chest_items: failed to start transaction for chest %d",
-			      chest_id);
-			return false;
-		}
-		own_txn = true;
-	}
-	else
-	{
-		logit(LOG_DEBUG,
-		      "sql_save_private_chest_items: joining existing transaction for chest %d",
-		      chest_id);
-	}
-
-	// delete existing items for this chest
-	char del_query[256];
-	snprintf(del_query, sizeof(del_query),
-		 "DELETE FROM locker_items WHERE locker_id=%d AND chest_id=%d", locker_id,
-		 chest_id);
-	if (!sql_run_query(del_query))
-	{
-		logit(LOG_DEBUG,
-		      "sql_save_private_chest_items: component=old_items outcome=delete_failure");
-		if (own_txn)
-			sql_rollback();
+	// The chest save goes to the one writer, behind any save still queued; a job it
+	// refuses is the caller's failure to report.
+	locker_chest_snapshot snapshot;
+	snapshot.locker_id = locker_id;
+	snapshot.chest_id = chest_id;
+	if (player_item_snapshot_contents_capture(chest_obj, &snapshot.items) !=
+	    player_snapshot_capture_result::ok)
 		return false;
-	}
-
-	// The chest holds these in memory, so its save claims them.
-	const item_owner_identity chest = { item_owner_type::locker,
-					    static_cast<uint64_t>(locker_id),
-					    static_cast<uint64_t>(chest_id) };
-	std::vector<player_item_snapshot> held;
-	item_claim_outcome claim;
-	if (player_item_snapshot_contents_capture(chest_obj, &held) !=
-		    player_snapshot_capture_result::ok ||
-	    claim_items(DB, chest, held, &claim) != 0)
-	{
-		logit(LOG_DEBUG, "sql_save_private_chest_items: component=claim outcome=failure");
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-
-	// save all items in the chest - any failure rolls back the DELETE above
-	for (P_obj obj = chest_obj->contains; obj; obj = obj->next_content)
-	{
-		if (sql_save_locker_item(locker_id, chest_id, obj, 0) == 0)
-		{
-			logit(LOG_DEBUG,
-			      "sql_save_private_chest_items: component=item outcome=failure");
-			if (own_txn)
-				sql_rollback();
-			return false;
-		}
-	}
-
-	if (own_txn && !sql_commit())
-	{
-		logit(LOG_DEBUG, "sql_save_private_chest_items: failed to commit for chest %d",
-		      chest_id);
-		sql_rollback();
-		return false;
-	}
-	item_claim_log_dupes("save_left_out", chest, claim);
-	return true;
-}
-
-void sql_load_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)
-{
-	if (!DB || locker_id <= 0 || chest_id <= 0 || !chest_obj)
-		return;
-
-	char query[1024];
-	snprintf(query, sizeof(query),
-		 "SELECT id, vnum, weight, cost, timer, extra_flags, wear_flags, item_type, "
-		 "value0, value1, value2, value3, value4, value5, value6, value7, "
-		 "name, short_descr, description, action_descr, obj_uid, item_condition, "
-		 "item_material "
-		 "FROM locker_items WHERE locker_id=%d AND container_id IS NULL AND chest_id=%d",
-		 locker_id, chest_id);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return;
-
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(result)))
-	{
-		int item_id = atoi(row[0]);
-		int vnum = atoi(row[1]);
-		int rnum = real_object(vnum);
-		if (rnum < 0)
-			continue;
-
-		P_obj obj = read_object(rnum, REAL);
-		if (!obj)
-			continue;
-
-		if (row[2])
-			obj->weight = atoi(row[2]);
-		if (row[3])
-			obj->cost = atoi(row[3]);
-		if (row[4])
-			obj->timer[0] = atol(row[4]);
-		if (row[5])
-			obj->extra_flags = strtoul(row[5], NULL, 10);
-		if (row[6])
-			obj->wear_flags = atoi(row[6]);
-		if (row[7])
-			obj->type = sql_validate_loaded_item_type(obj, atoi(row[7]),
-								  "sql_load_private_chest_items");
-
-		obj->value[0] = row[8] ? atoi(row[8]) : obj->value[0];
-		obj->value[1] = row[9] ? atoi(row[9]) : obj->value[1];
-		obj->value[2] = row[10] ? atoi(row[10]) : obj->value[2];
-		obj->value[3] = row[11] ? atoi(row[11]) : obj->value[3];
-		obj->value[4] = row[12] ? atoi(row[12]) : obj->value[4];
-		obj->value[5] = row[13] ? atoi(row[13]) : obj->value[5];
-		obj->value[6] = row[14] ? atoi(row[14]) : obj->value[6];
-		obj->value[7] = row[15] ? atoi(row[15]) : obj->value[7];
-
-		if (row[16] && strlen(row[16]) > 0)
-		{
-			obj->name = str_dup(row[16]);
-			obj->str_mask |= STRUNG_KEYS;
-		}
-		if (row[17] && strlen(row[17]) > 0)
-		{
-			obj->short_description = str_dup(row[17]);
-			obj->str_mask |= STRUNG_DESC2;
-		}
-		if (row[18] && strlen(row[18]) > 0)
-		{
-			obj->description = str_dup(row[18]);
-			obj->str_mask |= STRUNG_DESC1;
-		}
-		if (row[19] && strlen(row[19]) > 0)
-		{
-			obj->action_description = str_dup(row[19]);
-			obj->str_mask |= STRUNG_DESC3;
-		}
-		// restore obj_uid and condition
-		if (row[20] && strlen(row[20]) > 0)
-		{
-			unsigned long saved_uid = strtoul(row[20], NULL, 10);
-			if (saved_uid > 0)
-				obj->obj_uid = saved_uid;
-		}
-		if (row[21] && strlen(row[21]) > 0)
-			obj->condition = atoi(row[21]);
-
-		if (!sql_persistence_item_owner_matches_identity(
-			    obj->obj_uid, "locker", static_cast<unsigned long long>(locker_id),
-			    static_cast<unsigned long long>(chest_id),
-			    "sql_load_private_chest_items"))
-		{
-			// A stale copy another owner holds is left out; what it contains
-			// goes into the chest.
-			extract_obj(obj, FALSE);
-			for (P_obj orphan = sql_load_locker_items_filtered(locker_id, item_id,
-									   chest_id, 1);
-			     orphan;)
-			{
-				P_obj next = orphan->next_content;
-				orphan->next_content = NULL;
-				obj_to_obj(orphan, chest_obj);
-				orphan = next;
-			}
-			continue;
-		}
-
-		obj->db_item_id = item_id;
-		REMOVE_BIT(obj->runtime_flags, OBJ_RFLAG_CREATION_CANDIDATE);
-		sql_load_item_affects_from_table(item_id, obj, "locker_item_affects");
-		sql_load_item_extra_descr_from_table(item_id, obj, "locker_item");
-
-		// Put the chest item into the room before loading nested contents so
-		// nested containers do not get rejected by a fit check while still full.
-		obj_to_obj(obj, chest_obj);
-
-		// load contained items (bags inside the chest)
-		obj->contains = sql_load_locker_items_filtered(locker_id, item_id, chest_id, 1);
-		for (P_obj c = obj->contains; c; c = c->next_content)
-		{
-			if (!obj_can_nest(c, obj))
-			{
-				logit(LOG_DEBUG,
-				      "sql_load_private_chest_items: skipping malformed container link %d -> %d",
-				      c->db_item_id, obj->db_item_id);
-				continue;
-			}
-			c->loc_p = LOC_INSIDE;
-			c->loc.inside = obj;
-		}
-	}
-	mysql_free_result(result);
+	// A private chest's key never matches its locker's public job.
+	const uint64_t owner = (static_cast<uint64_t>(chest_id) << 32) |
+			       static_cast<uint32_t>(locker_id);
+	const size_t bytes =
+		sizeof(snapshot) + snapshot.items.size() * sizeof(player_item_snapshot);
+	const player_save_submit_result submitted = persistence_writer_submit(
+		persistence_job_kind::locker, owner, bytes, [snapshot]()
+		{ return locker_chest_snapshot_repository_apply_from_pool(snapshot); });
+	return submitted == player_save_submit_result::accepted ||
+	       submitted == player_save_submit_result::replaced;
 }
 
 // migration helpers
@@ -7629,713 +5842,6 @@ int sql_migrate_all_players(void)
 	      success_count, fail_count, skip_count);
 
 	return success_count;
-}
-
-// account ips
-
-bool sql_save_account_ips(const char *account_name, struct acct_ip *ips)
-{
-	if (!DB || !account_name)
-		return false;
-
-	char *escaped_name = sql_escape_string(account_name);
-	if (!escaped_name)
-		return false;
-
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-			return false;
-		own_txn = true;
-	}
-
-	char del_query[256];
-	snprintf(del_query, sizeof(del_query), "DELETE FROM account_ips WHERE account_name='%s'",
-		 escaped_name);
-	if (!sql_run_query(del_query))
-	{
-		free(escaped_name);
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-
-	for (struct acct_ip *ip = ips; ip; ip = ip->next)
-	{
-		char *escaped_hostname = sql_escape_string(ip->hostname ? ip->hostname : "");
-		char *escaped_ip = sql_escape_string(ip->ip_address ? ip->ip_address : "");
-
-		if (escaped_hostname && escaped_ip)
-		{
-			char query[512];
-			snprintf(
-				query, sizeof(query),
-				"INSERT INTO account_ips (account_name, hostname, ip_address, count) "
-				"VALUES ('%s', '%s', '%s', %lu)",
-				escaped_name, escaped_hostname, escaped_ip, ip->count);
-			if (!sql_run_query(query))
-			{
-				if (escaped_hostname)
-					free(escaped_hostname);
-				if (escaped_ip)
-					free(escaped_ip);
-				free(escaped_name);
-				if (own_txn)
-					sql_rollback();
-				return false;
-			}
-		}
-
-		if (escaped_hostname)
-			free(escaped_hostname);
-		if (escaped_ip)
-			free(escaped_ip);
-	}
-
-	free(escaped_name);
-	if (own_txn && !sql_commit())
-	{
-		sql_rollback();
-		return false;
-	}
-	return true;
-}
-
-struct acct_ip *sql_load_account_ips(const char *account_name)
-{
-	if (!DB || !account_name)
-		return NULL;
-
-	char *escaped_name = sql_escape_string(account_name);
-	if (!escaped_name)
-		return NULL;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "SELECT hostname, ip_address, count FROM account_ips WHERE account_name='%s'",
-		 escaped_name);
-	free(escaped_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-	{
-		sql_account_ips_query_failed = true;
-		logit(LOG_DEBUG, "sql_load_account_ips: outcome=query_failure");
-		return NULL;
-	}
-
-	struct acct_ip *head = NULL;
-	struct acct_ip *tail = NULL;
-	MYSQL_ROW row;
-
-	while ((row = mysql_fetch_row(result)))
-	{
-		struct acct_ip *ip = NULL;
-		CREATE(ip, struct acct_ip, 1, MEM_TAG_OTHER);
-		if (!ip)
-			continue;
-
-		ip->hostname = str_dup(row[0] ? row[0] : "");
-		ip->ip_address = str_dup(row[1] ? row[1] : "");
-		ip->count = row[2] ? strtoul(row[2], NULL, 10) : 0;
-
-		if (!head)
-			head = ip;
-		else
-			tail->next = ip;
-		tail = ip;
-	}
-
-	mysql_free_result(result);
-	return head;
-}
-
-bool sql_delete_account_ips(const char *account_name)
-{
-	if (!DB || !account_name)
-		return false;
-
-	char *escaped_name = sql_escape_string(account_name);
-	if (!escaped_name)
-		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query), "DELETE FROM account_ips WHERE account_name='%s'",
-		 escaped_name);
-	free(escaped_name);
-
-	return sql_run_query(query);
-}
-
-static bool sql_save_corpse_item_affects(int item_id, P_obj obj)
-{
-	if (!obj || !DB || item_id <= 0)
-		return false;
-
-	// Own_txn wrapper for standalone-call safety
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-			return false;
-		own_txn = true;
-	}
-
-	for (int i = 0; i < MAX_OBJ_AFFECT; i++)
-	{
-		if (obj->affected[i].location != 0 || obj->affected[i].modifier != 0)
-		{
-			// skip duplicates
-			bool is_dup = false;
-			for (int j = 0; j < i; j++)
-			{
-				if (obj->affected[j].location == obj->affected[i].location &&
-				    obj->affected[j].modifier == obj->affected[i].modifier)
-				{
-					is_dup = true;
-					break;
-				}
-			}
-			if (is_dup)
-				continue;
-
-			char query[256];
-			snprintf(
-				query, sizeof(query),
-				"INSERT INTO corpse_item_affects (item_id, location, modifier) VALUES (%d, %d, %d)",
-				item_id, obj->affected[i].location, obj->affected[i].modifier);
-			if (!sql_run_query(query))
-			{
-				if (own_txn)
-					sql_rollback();
-				return false;
-			}
-		}
-	}
-	if (own_txn)
-	{
-		if (!sql_commit())
-		{
-			sql_rollback();
-			return false;
-		}
-	}
-	return true;
-}
-
-static int sql_save_corpse_item(int corpse_id, int save_id, P_obj obj, int container_id)
-{
-	if (!obj || !DB || corpse_id <= 0)
-		return 0;
-
-	// Own_txn wrapper for standalone-call safety
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-			return 0;
-		own_txn = true;
-	}
-
-	int vnum = obj_index[obj->R_num].virtual_number;
-	char corpse_owner[64];
-	snprintf(corpse_owner, sizeof(corpse_owner), "corpse:%d", save_id);
-	logit(LOG_CORPSE, "Saved corpse custody through typed owner state: %s", corpse_owner);
-
-	char *esc_name = NULL;
-	char *esc_short = NULL;
-	char *esc_desc = NULL;
-	char *esc_action = NULL;
-
-	if (obj->str_mask & STRUNG_KEYS)
-		esc_name = sql_escape_string(obj->name ? obj->name : "");
-	if (obj->str_mask & STRUNG_DESC2)
-		esc_short = sql_escape_string(obj->short_description ? obj->short_description : "");
-	if (obj->str_mask & STRUNG_DESC1)
-		esc_desc = sql_escape_string(obj->description ? obj->description : "");
-	if (obj->str_mask & STRUNG_DESC3)
-		esc_action =
-			sql_escape_string(obj->action_description ? obj->action_description : "");
-
-	char container_str[32];
-	if (container_id > 0)
-		snprintf(container_str, sizeof(container_str), "%d", container_id);
-	else
-		strcpy(container_str, "NULL");
-
-	char name_str[1024], short_str[1024], desc_str[2048], action_str[2048];
-	if (esc_name)
-		snprintf(name_str, sizeof(name_str), "'%s'", esc_name);
-	else
-		strcpy(name_str, "NULL");
-	if (esc_short)
-		snprintf(short_str, sizeof(short_str), "'%s'", esc_short);
-	else
-		strcpy(short_str, "NULL");
-	if (esc_desc)
-		snprintf(desc_str, sizeof(desc_str), "'%s'", esc_desc);
-	else
-		strcpy(desc_str, "NULL");
-	if (esc_action)
-		snprintf(action_str, sizeof(action_str), "'%s'", esc_action);
-	else
-		strcpy(action_str, "NULL");
-
-	char query[8192];
-	// Shared helper formats wear_str, type_str, and bv1-5_str
-	// (NULL when matching the prototype) and frees the loaded prototype.
-	// See sql_format_item_diff_fields_and_free_proto().
-	char wear_str[32];
-	char type_str[16];
-	char material_str[16];
-	char bv1_str[32], bv2_str[32], bv3_str[32], bv4_str[32], bv5_str[32];
-	sql_format_item_diff_fields_and_free_proto(obj, wear_str, type_str, material_str, bv1_str,
-						   bv2_str, bv3_str, bv4_str, bv5_str);
-
-	snprintf(query, sizeof(query),
-		 "INSERT INTO corpse_items ("
-		 "corpse_id, vnum, container_id, quantity, "
-		 "weight, cost, timer, extra_flags, wear_flags, item_type, "
-		 "value0, value1, value2, value3, value4, value5, value6, value7, "
-		 "name, short_descr, description, action_descr, "
-		 "bitvector1, bitvector2, bitvector3, bitvector4, bitvector5, "
-		 "item_material, obj_uid, item_condition"
-		 ") VALUES ("
-		 "%d, %d, %s, 1, "
-		 "%d, %d, %ld, %lu, %s, %s, "
-		 "%d, %d, %d, %d, %d, %d, %d, %d, "
-		 "%s, %s, %s, %s, "
-		 "%s, %s, %s, %s, %s, "
-		 "%s, %lu, %d"
-		 ")",
-		 corpse_id, vnum, container_str, obj->weight, obj->cost, (long)obj->timer[0],
-		 (unsigned long)obj->extra_flags, wear_str, type_str, obj->value[0], obj->value[1],
-		 obj->value[2], obj->value[3], obj->value[4], obj->value[5], obj->value[6],
-		 obj->value[7], name_str, short_str, desc_str, action_str, bv1_str, bv2_str,
-		 bv3_str, bv4_str, bv5_str, material_str, obj->obj_uid, obj->condition);
-
-	if (esc_name)
-		free(esc_name);
-	if (esc_short)
-		free(esc_short);
-	if (esc_desc)
-		free(esc_desc);
-	if (esc_action)
-		free(esc_action);
-
-	if (!sql_run_query(query))
-	{
-		logit(LOG_DEBUG, "sql_save_corpse_item: component=insert outcome=failure");
-		if (own_txn)
-			sql_rollback();
-		return 0;
-	}
-
-	int item_id = (int)mysql_insert_id(DB);
-
-	if (!sql_save_corpse_item_affects(item_id, obj))
-	{
-		if (own_txn)
-			sql_rollback();
-		return 0;
-	}
-
-	if (!sql_save_item_extra_descr(item_id, obj, "corpse_item_extra_descr"))
-	{
-		if (own_txn)
-			sql_rollback();
-		return 0;
-	}
-
-	if (obj->contains)
-	{
-		for (P_obj content = obj->contains; content; content = content->next_content)
-		{
-			if (sql_save_corpse_item(corpse_id, save_id, content, item_id) <= 0)
-			{
-				if (own_txn)
-					sql_rollback();
-				return 0;
-			}
-		}
-	}
-
-	if (own_txn)
-	{
-		if (!sql_commit())
-		{
-			sql_rollback();
-			return 0;
-		}
-	}
-	return item_id;
-}
-
-bool sql_save_corpse(P_obj corpse)
-{
-	if (!corpse || !DB)
-		return false;
-
-	if (corpse->type != ITEM_CORPSE || !IS_SET(corpse->value[1], PC_CORPSE))
-	{
-		logit(LOG_DEBUG, "sql_save_corpse: not a PC corpse");
-		return false;
-	}
-
-	const char *player_name = corpse->action_description;
-	if (!player_name || !*player_name)
-	{
-		logit(LOG_DEBUG, "sql_save_corpse: missing player name");
-		return false;
-	}
-
-	int save_id = corpse->value[CORPSE_SAVEID];
-	if (save_id == 0)
-		save_id = time(NULL);
-
-	int room_vnum = 0;
-	if (OBJ_ROOM(corpse) && corpse->loc.room > NOWHERE && corpse->loc.room <= top_of_world)
-		room_vnum = world[corpse->loc.room].number;
-	else if (OBJ_CARRIED(corpse) && corpse->loc.carrying)
-		room_vnum = world[corpse->loc.carrying->in_room].number;
-
-	char *esc_name = sql_escape_string(player_name);
-	if (!esc_name)
-		return false;
-
-	char *esc_sdesc = sql_escape_string(corpse->short_description);
-	if (!esc_sdesc)
-	{
-		free(esc_name);
-		return false;
-	}
-
-	char *esc_desc = sql_escape_string(corpse->description);
-	if (!esc_desc)
-	{
-		free(esc_name);
-		free(esc_sdesc);
-		return false;
-	}
-
-	char *esc_keywords = sql_escape_string(corpse->name ? corpse->name : "");
-	if (!esc_keywords)
-	{
-		free(esc_name);
-		free(esc_sdesc);
-		free(esc_desc);
-		return false;
-	}
-
-	// start transaction (must succeed before any writes)
-	if (!sql_begin_transaction())
-	{
-		logit(LOG_DEBUG, "sql_save_corpse: failed to start transaction");
-		free(esc_name);
-		free(esc_sdesc);
-		free(esc_desc);
-		free(esc_keywords);
-		return false;
-	}
-
-	MYSQL_RES *catalog_rows = db_query(
-		"SELECT catalog_revision FROM corpse_catalog_state WHERE state_id=1 FOR UPDATE");
-	if (!catalog_rows)
-	{
-		free(esc_name);
-		free(esc_sdesc);
-		free(esc_desc);
-		free(esc_keywords);
-		sql_rollback();
-		return false;
-	}
-	MYSQL_ROW catalog_row = mysql_fetch_row(catalog_rows);
-	if (!catalog_row || !catalog_row[0] || mysql_fetch_row(catalog_rows))
-	{
-		mysql_free_result(catalog_rows);
-		free(esc_name);
-		free(esc_sdesc);
-		free(esc_desc);
-		free(esc_keywords);
-		sql_rollback();
-		return false;
-	}
-	const uint64_t catalog_revision = strtoull(catalog_row[0], NULL, 10);
-	mysql_free_result(catalog_rows);
-	if (!catalog_revision || catalog_revision == UINT64_MAX)
-	{
-		free(esc_name);
-		free(esc_sdesc);
-		free(esc_desc);
-		free(esc_keywords);
-		sql_rollback();
-		return false;
-	}
-
-	char revision_query[512];
-	const int revision_query_length = snprintf(
-		revision_query, sizeof(revision_query),
-		"SELECT corpse_revision FROM corpses WHERE player_name='%s' AND save_id=%d FOR UPDATE",
-		esc_name, save_id);
-	if (revision_query_length < 0 || (size_t)revision_query_length >= sizeof(revision_query))
-	{
-		free(esc_name);
-		free(esc_sdesc);
-		free(esc_desc);
-		free(esc_keywords);
-		sql_rollback();
-		return false;
-	}
-	MYSQL_RES *revision_rows = db_query("%s", revision_query);
-	if (!revision_rows)
-	{
-		free(esc_name);
-		free(esc_sdesc);
-		free(esc_desc);
-		free(esc_keywords);
-		sql_rollback();
-		return false;
-	}
-	MYSQL_ROW revision_row = mysql_fetch_row(revision_rows);
-	uint64_t corpse_revision = 1;
-	if (revision_row)
-	{
-		if (!revision_row[0] || mysql_fetch_row(revision_rows))
-		{
-			mysql_free_result(revision_rows);
-			free(esc_name);
-			free(esc_sdesc);
-			free(esc_desc);
-			free(esc_keywords);
-			sql_rollback();
-			return false;
-		}
-		corpse_revision = strtoull(revision_row[0], NULL, 10);
-		if (!corpse_revision || corpse_revision == UINT64_MAX)
-		{
-			mysql_free_result(revision_rows);
-			free(esc_name);
-			free(esc_sdesc);
-			free(esc_desc);
-			free(esc_keywords);
-			sql_rollback();
-			return false;
-		}
-		++corpse_revision;
-	}
-	mysql_free_result(revision_rows);
-
-	char del_query[256];
-	snprintf(del_query, sizeof(del_query),
-		 "DELETE FROM corpses WHERE player_name='%s' AND save_id=%d", esc_name, save_id);
-	if (!sql_run_query(del_query))
-	{
-		logit(LOG_DEBUG, "sql_save_corpse: component=old_corpse outcome=delete_failure");
-		free(esc_name);
-		free(esc_sdesc);
-		free(esc_desc);
-		free(esc_keywords);
-		sql_rollback();
-		return false;
-	}
-
-	char ins_query[8192];
-	int query_length = snprintf(
-		ins_query, sizeof(ins_query),
-		"INSERT INTO corpses ("
-		"player_name, save_id, corpse_revision, room_vnum, short_descr, description, name, weight, "
-		"value0, value1, value2, value3, value4, value5, value7"
-		") VALUES ("
-		"'%s', %d, %llu, %d, '%s', '%s', '%s', %d, "
-		"%d, %d, %d, %d, %d, %d, %d"
-		")",
-		esc_name, save_id, (unsigned long long)corpse_revision, room_vnum, esc_sdesc,
-		esc_desc, esc_keywords, corpse->weight, corpse->value[0], corpse->value[1],
-		corpse->value[2], corpse->value[3], corpse->value[4], corpse->value[5],
-		corpse->value[7]);
-	free(esc_name);
-	free(esc_sdesc);
-	free(esc_desc);
-	free(esc_keywords);
-
-	if (query_length < 0 || (size_t)query_length >= sizeof(ins_query))
-	{
-		logit(LOG_DEBUG, "sql_save_corpse: corpse insert query exceeded %zu bytes",
-		      sizeof(ins_query));
-		sql_rollback();
-		return false;
-	}
-
-	if (!sql_run_query(ins_query))
-	{
-		logit(LOG_DEBUG, "sql_save_corpse: component=insert outcome=failure");
-		sql_rollback();
-		return false;
-	}
-
-	int corpse_id = (int)mysql_insert_id(DB);
-
-	// The corpse holds these in memory, so its save claims them.
-	if (corpse->value[CORPSE_PID] > 0)
-	{
-		const item_owner_identity owner = {
-			item_owner_type::corpse,
-			item_corpse_owner_id(static_cast<uint32_t>(corpse->value[CORPSE_PID]),
-					     static_cast<uint32_t>(save_id)),
-			0
-		};
-		std::vector<player_item_snapshot> held;
-		item_claim_outcome claim;
-		if (player_item_snapshot_contents_capture(corpse, &held) !=
-			    player_snapshot_capture_result::ok ||
-		    claim_items(DB, owner, held, &claim) != 0)
-		{
-			logit(LOG_DEBUG, "sql_save_corpse: component=claim outcome=failure");
-			sql_rollback();
-			return false;
-		}
-	}
-
-	// save contained items atomically - any failure rolls back the whole corpse save
-	for (P_obj obj = corpse->contains; obj; obj = obj->next_content)
-	{
-		if (sql_save_corpse_item(corpse_id, save_id, obj, 0) == 0)
-		{
-			logit(LOG_DEBUG,
-			      "sql_save_corpse: failed to save contained item, rolling back");
-			sql_rollback();
-			return false;
-		}
-	}
-
-	char catalog_update[256];
-	snprintf(
-		catalog_update, sizeof(catalog_update),
-		"UPDATE corpse_catalog_state SET catalog_revision=%llu WHERE state_id=1 AND catalog_revision=%llu",
-		(unsigned long long)(catalog_revision + 1), (unsigned long long)catalog_revision);
-	if (!sql_run_query(catalog_update) || mysql_affected_rows(DB) != 1)
-	{
-		logit(LOG_DEBUG, "sql_save_corpse: component=catalog outcome=update_failure");
-		sql_rollback();
-		return false;
-	}
-
-	if (!sql_commit())
-	{
-		logit(LOG_DEBUG, "sql_save_corpse: component=commit outcome=failure");
-		sql_rollback();
-		return false;
-	}
-	if (corpse->value[CORPSE_PID] > 0)
-		corpse_lifecycle_transaction_note_item_transfer(
-			static_cast<uint32_t>(corpse->value[CORPSE_PID]),
-			static_cast<uint32_t>(save_id), corpse_revision);
-
-	return true;
-}
-
-bool sql_delete_corpse(const char *player_name, int save_id)
-{
-	if (!player_name || !DB || save_id <= 0)
-		return false;
-
-	char *esc_name = sql_escape_string(player_name);
-	if (!esc_name)
-		return false;
-
-	bool own_txn = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-		{
-			free(esc_name);
-			return false;
-		}
-		own_txn = true;
-	}
-	auto fail = [&]()
-	{
-		free(esc_name);
-		if (own_txn)
-			sql_rollback();
-		return false;
-	};
-
-	MYSQL_RES *catalog_rows = db_query(
-		"SELECT catalog_revision FROM corpse_catalog_state WHERE state_id=1 FOR UPDATE");
-	if (!catalog_rows)
-		return fail();
-	MYSQL_ROW catalog_row = mysql_fetch_row(catalog_rows);
-	if (!catalog_row || !catalog_row[0] || mysql_fetch_row(catalog_rows))
-	{
-		mysql_free_result(catalog_rows);
-		return fail();
-	}
-	const uint64_t catalog_revision = strtoull(catalog_row[0], NULL, 10);
-	mysql_free_result(catalog_rows);
-	if (!catalog_revision || catalog_revision == UINT64_MAX)
-		return fail();
-
-	char query[512];
-	const int query_length = snprintf(
-		query, sizeof(query),
-		"SELECT COALESCE(value3,0) FROM corpses WHERE player_name='%s' AND save_id=%d FOR UPDATE",
-		esc_name, save_id);
-	if (query_length < 0 || (size_t)query_length >= sizeof(query))
-		return fail();
-	MYSQL_RES *identity_rows = db_query("%s", query);
-	if (!identity_rows)
-		return fail();
-	MYSQL_ROW identity_row = mysql_fetch_row(identity_rows);
-	const bool corpse_found = identity_row != NULL;
-	uint32_t owner_pid = 0;
-	if (identity_row)
-	{
-		if (!identity_row[0] || mysql_fetch_row(identity_rows))
-		{
-			mysql_free_result(identity_rows);
-			return fail();
-		}
-		const unsigned long parsed_owner = strtoul(identity_row[0], NULL, 10);
-		if (!parsed_owner || parsed_owner > INT32_MAX)
-		{
-			mysql_free_result(identity_rows);
-			return fail();
-		}
-		owner_pid = static_cast<uint32_t>(parsed_owner);
-	}
-	mysql_free_result(identity_rows);
-
-	if (corpse_found)
-	{
-		const int delete_length =
-			snprintf(query, sizeof(query),
-				 "DELETE FROM corpses WHERE player_name='%s' AND save_id=%d",
-				 esc_name, save_id);
-		if (delete_length < 0 || (size_t)delete_length >= sizeof(query) ||
-		    !sql_run_query(query) || mysql_affected_rows(DB) != 1)
-			return fail();
-		char catalog_update[256];
-		snprintf(
-			catalog_update, sizeof(catalog_update),
-			"UPDATE corpse_catalog_state SET catalog_revision=%llu WHERE state_id=1 AND catalog_revision=%llu",
-			(unsigned long long)(catalog_revision + 1),
-			(unsigned long long)catalog_revision);
-		if (!sql_run_query(catalog_update) || mysql_affected_rows(DB) != 1)
-			return fail();
-	}
-
-	if (own_txn)
-	{
-		if (!sql_commit())
-			return fail();
-		if (corpse_found)
-			corpse_lifecycle_transaction_forget(owner_pid,
-							    static_cast<uint32_t>(save_id));
-	}
-	free(esc_name);
-	return true;
 }
 
 // single query corpse loading - all data in one query
@@ -9245,76 +6751,6 @@ static int sql_save_saved_item_recursive(const char *item_key, int room_vnum, P_
 	}
 
 	return item_id;
-}
-
-bool sql_save_saved_item(P_obj item, const char *item_key)
-{
-	if (!item || !item_key || !DB)
-		return false;
-
-	if (!OBJ_ROOM(item) || item->loc.room <= NOWHERE || item->loc.room > top_of_world)
-		return false;
-
-	int room_vnum = world[item->loc.room].number;
-
-	bool own_txn = false;
-	bool ok = false;
-	char *esc_key = sql_escape_string(item_key);
-	if (!esc_key)
-		return false;
-
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-		{
-			free(esc_key);
-			return false;
-		}
-		own_txn = true;
-	}
-
-	char del_query[256];
-	snprintf(del_query, sizeof(del_query), "DELETE FROM saved_items WHERE item_key='%s'",
-		 esc_key);
-	free(esc_key);
-	if (!sql_run_query(del_query))
-		goto done;
-
-	ok = sql_save_saved_item_recursive(item_key, room_vnum, item, 0) > 0;
-
-done:
-	if (own_txn)
-	{
-		if (ok)
-		{
-			if (!sql_commit())
-			{
-				sql_rollback();
-				return false;
-			}
-		}
-		else
-		{
-			sql_rollback();
-		}
-	}
-	return ok;
-}
-
-bool sql_delete_saved_item(const char *item_key)
-{
-	if (!item_key || !DB)
-		return false;
-
-	char *esc_key = sql_escape_string(item_key);
-	if (!esc_key)
-		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query), "DELETE FROM saved_items WHERE item_key='%s'", esc_key);
-	free(esc_key);
-
-	return sql_run_query(query);
 }
 
 struct shopkeeper_temp
@@ -10771,441 +8207,130 @@ void sql_restore_saved_items(void)
 	logit(LOG_DEBUG, "sql_restore_saved_items: loaded %d items", loaded);
 }
 
-#define SHIP_SQL_BATCH_SIZE (10 * 1024)
+/* The next ships row id: the boot load reads the highest stored one, and -1 means it
+ * could not, so no new ship is saved over a stored one. */
+static int ship_next_db_id = -1;
 
-static bool sql_save_ship_armor(P_ship ship, char *queryBuffer, int batchSize, int &bufferPosition)
+/* A ship's statements: its row (inserted or updated by its id), then its armor, crew
+ * and slots. A new ship takes its id from memory here. Empty when no id can be given. */
+static std::vector<std::string> sql_save_ship_statements(P_ship ship)
 {
-	if (!DB || !ship || ship->db_id == -1)
+	if (ship->db_id == -1)
 	{
-		logit(LOG_DEBUG, "sql_save_ship_armor: invalid parameters");
-		return false;
+		if (ship_next_db_id < 0)
+			return {};
+		ship->db_id = ++ship_next_db_id;
 	}
-
+	const std::string owner = escape_str(ship->ownername);
+	const std::string name = escape_str(ship->name ? ship->name : "");
+	std::vector<std::string> statements;
+	statements.push_back(sql_format(
+		"insert into ships (id, owner_name, ship_name, ship_class, frags, anchor_room, time_played, mainsail, race, money, flags) "
+		"values (%d, '%s', '%s', %d, %d, %d, %d, %d, %d, %d, %lu) "
+		"on duplicate key update owner_name=values(owner_name), ship_name=values(ship_name), "
+		"ship_class=values(ship_class), frags=values(frags), anchor_room=values(anchor_room), "
+		"time_played=values(time_played), mainsail=values(mainsail), race=values(race), "
+		"money=values(money), flags=values(flags)",
+		ship->db_id, owner.c_str(), name.c_str(), ship->m_class, ship->frags, ship->anchor,
+		ship->time, ship->mainsail, ship->race, ship->money, ship->flags));
 	for (int i = 0; i < 4; i++)
-	{
-		if (bufferPosition >= batchSize)
-		{
-			logit(LOG_DEBUG, "sql_save_ship_armor: buffer overflow");
-			return false;
-		}
-
-		bufferPosition +=
-			snprintf(queryBuffer + bufferPosition, batchSize - bufferPosition,
-				 "insert into ship_armor (ship_id, side, armor, internal) "
-				 "values (%d, %d, %d, %d) "
-				 "on duplicate key update armor=%d, internal=%d;",
-				 ship->db_id, i, ship->armor[i], ship->internal[i], ship->armor[i],
-				 ship->internal[i]);
-	}
-	return true;
-}
-
-static bool sql_save_ship_crew(P_ship ship, char *queryBuffer, int batchSize, int &bufferPosition)
-{
-	if (!DB || !ship || ship->db_id == -1)
-	{
-		logit(LOG_DEBUG, "sql_save_ship_crew: invalid parameters");
-		return false;
-	}
-
-	if (bufferPosition >= batchSize)
-	{
-		logit(LOG_DEBUG, "sql_save_ship_crew: buffer overflow");
-		return false;
-	}
-
-	bufferPosition += snprintf(
-		queryBuffer + bufferPosition, batchSize - bufferPosition,
+		statements.push_back(
+			sql_format("insert into ship_armor (ship_id, side, armor, internal) "
+				   "values (%d, %d, %d, %d) "
+				   "on duplicate key update armor=%d, internal=%d",
+				   ship->db_id, i, ship->armor[i], ship->internal[i],
+				   ship->armor[i], ship->internal[i]));
+	statements.push_back(sql_format(
 		"insert into ship_crew (ship_id, crew_index, sail_skill, guns_skill, rpar_skill, "
 		"sail_chief, guns_chief, rpar_chief) "
 		"values (%d, %d, %d, %d, %d, %d, %d, %d) "
 		"on duplicate key update crew_index=%d, sail_skill=%d, guns_skill=%d, rpar_skill=%d, "
-		"sail_chief=%d, guns_chief=%d, rpar_chief=%d;",
+		"sail_chief=%d, guns_chief=%d, rpar_chief=%d",
 		ship->db_id, ship->crew.index, (int)(ship->crew.sail_skill * 1000),
 		(int)(ship->crew.guns_skill * 1000), (int)(ship->crew.rpar_skill * 1000),
 		ship->crew.sail_chief, ship->crew.guns_chief, ship->crew.rpar_chief,
 		ship->crew.index, (int)(ship->crew.sail_skill * 1000),
 		(int)(ship->crew.guns_skill * 1000), (int)(ship->crew.rpar_skill * 1000),
-		ship->crew.sail_chief, ship->crew.guns_chief, ship->crew.rpar_chief);
-
-	return true;
-}
-
-static bool sql_save_ship_slots(P_ship ship, char *queryBuffer, int batchSize, int &bufferPosition)
-{
-	if (!DB || !ship || ship->db_id == -1)
-	{
-		logit(LOG_DEBUG, "sql_save_ship_slots: invalid parameters");
-		return false;
-	}
-
+		ship->crew.sail_chief, ship->crew.guns_chief, ship->crew.rpar_chief));
 	for (int i = 0; i < MAXSLOTS; i++)
-	{
-		if (bufferPosition >= batchSize)
-		{
-			logit(LOG_DEBUG, "sql_save_ship_slots: buffer overflow");
-			return false;
-		}
-
-		bufferPosition += snprintf(
-			queryBuffer + bufferPosition, batchSize - bufferPosition,
+		statements.push_back(sql_format(
 			"insert into ship_slots (ship_id, slot_index, slot_type, item_index, position, "
 			"timer, val0, val1, val2, val3, val4) "
 			"values (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d) "
 			"on duplicate key update slot_type=%d, item_index=%d, position=%d, "
-			"timer=%d, val0=%d, val1=%d, val2=%d, val3=%d, val4=%d;",
+			"timer=%d, val0=%d, val1=%d, val2=%d, val3=%d, val4=%d",
 			ship->db_id, i, ship->slot[i].type, ship->slot[i].index,
 			ship->slot[i].position, ship->slot[i].timer, ship->slot[i].val0,
 			ship->slot[i].val1, ship->slot[i].val2, ship->slot[i].val3,
 			ship->slot[i].val4, ship->slot[i].type, ship->slot[i].index,
 			ship->slot[i].position, ship->slot[i].timer, ship->slot[i].val0,
 			ship->slot[i].val1, ship->slot[i].val2, ship->slot[i].val3,
-			ship->slot[i].val4);
-	}
-	return true;
+			ship->slot[i].val4));
+	return statements;
 }
 
-/* Whether ships row `id` exists: 1 if it does, 0 if not, -1 if it cannot be read. */
-static int sql_ship_row_exists(int id)
-{
-	MYSQL_RES *result = db_query("select 1 from ships where id=%d", id);
-	if (!result)
-		return -1;
-	const int exists = mysql_fetch_row(result) ? 1 : 0;
-	mysql_free_result(result);
-	return exists;
-}
-
+/* Save one ship: its statements are one writer job. */
 bool sql_save_ship(P_ship ship)
 {
-	if (!DB || !ship || !ship->ownername)
+	if (!ship || !ship->ownername)
 		return false;
-
-	char *esc_owner = sql_escape_string(ship->ownername);
-	if (!esc_owner)
-		return false;
-
-	char *esc_name = sql_escape_string(ship->name ? ship->name : "");
-
-	int pos = 0;
-	char *batch = (char *)malloc(SHIP_SQL_BATCH_SIZE);
-	int batchSize = SHIP_SQL_BATCH_SIZE;
-	if (!batch)
-	{
-		free(esc_owner);
-		if (esc_name)
-			free(esc_name);
-		return false;
-	}
-	memset(batch, 0, batchSize);
-
-	/* Join an existing aggregate transaction when the caller owns one
-	 * (for example shutdown_ships()).  Starting a nested transaction would
-	 * fail and make an otherwise valid ship save look like a persistence
-	 * error.  Only the transaction owner may commit or roll back it. */
-	bool own_transaction = false;
-	if (!sql_in_transaction())
-	{
-		if (!sql_begin_transaction())
-		{
-			logit(LOG_DEBUG, "sql_save_ship: failed to start transaction");
-			free(batch);
-			free(esc_owner);
-			if (esc_name)
-				free(esc_name);
-			return false;
-		}
-		own_transaction = true;
-	}
-
-	/* A save whose COMMIT failed may still have stored its row, because the
-	 * server can apply a COMMIT and lose the reply.  Look for the row before
-	 * using the id, so the ship neither updates a row that was rolled back
-	 * nor inserts a second row for its owner. */
-	if (ship->db_id != -1 && ship->db_id_unconfirmed)
-	{
-		const int exists = sql_ship_row_exists(ship->db_id);
-		if (exists < 0)
-		{
-			sql_player_error("sql_save_ship/confirm");
-			free(batch);
-			free(esc_owner);
-			if (esc_name)
-				free(esc_name);
-			if (own_transaction)
-				sql_rollback();
-			return false;
-		}
-		if (!exists)
-			ship->db_id = -1;
-		ship->db_id_unconfirmed = false;
-	}
-
-	/* Only a row this call inserted is undone by a rollback.  An existing
-	 * ship keeps its id when its update fails, or its next save would take
-	 * the insert path and collide with UNIQUE(owner_name). */
-	bool inserted = false;
-	if (ship->db_id == -1)
-	{
-		char initQuery[1024];
-		snprintf(
-			initQuery, ARRAY_SIZE(initQuery),
-			"insert into ships (owner_name, ship_name, ship_class, frags, anchor_room, time_played, mainsail, race, money, flags) "
-			"values ('%s', '%s', %d, %d, %d, %d, %d, %d, %d, %lu) ",
-			esc_owner, esc_name, ship->m_class, ship->frags, ship->anchor, ship->time,
-			ship->mainsail, ship->race, ship->money, ship->flags);
-		// new ship
-		if (!sql_run_query(initQuery))
-		{
-			sql_player_error("sql_save_ship/init");
-			free(batch);
-			free(esc_owner);
-			if (esc_name)
-				free(esc_name);
-			if (own_transaction)
-				sql_rollback();
-			return false;
-		}
-
-		// get ship id
-		char query[200];
-		snprintf(query, ARRAY_SIZE(query), "select id from ships where owner_name='%s'",
-			 esc_owner);
-		MYSQL_RES *result = db_query("%s", query);
-		free(esc_owner);
-		if (esc_name)
-			free(esc_name);
-
-		if (!result)
-		{
-			sql_player_error("sql_save_ship/update");
-			free(batch);
-			if (own_transaction)
-				sql_rollback();
-			ship->db_id = -1;
-			return false;
-		}
-
-		MYSQL_ROW row = mysql_fetch_row(result);
-		if (!row)
-		{
-			free(batch);
-			mysql_free_result(result);
-			if (own_transaction)
-				sql_rollback();
-			ship->db_id = -1;
-			return false;
-		}
-
-		ship->db_id = atoi(row[0]);
-		inserted = true;
-
-		mysql_free_result(result);
-	}
-	else
-	{
-		pos += snprintf(
-			batch + pos, batchSize - pos,
-			"update ships set owner_name='%s', ship_name='%s', ship_class=%d, frags=%d, anchor_room=%d, time_played=%d, mainsail=%d, race=%d, money=%d, flags=%lu "
-			"where id=%d;",
-			esc_owner, esc_name, ship->m_class, ship->frags, ship->anchor, ship->time,
-			ship->mainsail, ship->race, ship->money, ship->flags, ship->db_id);
-
-		free(esc_owner);
-		if (esc_name)
-			free(esc_name);
-	}
-
-	if (!sql_save_ship_armor(ship, batch, batchSize, pos) ||
-	    !sql_save_ship_crew(ship, batch, batchSize, pos) ||
-	    !sql_save_ship_slots(ship, batch, batchSize, pos))
-	{
-		sql_player_error("sql_save_ship/transaction");
-		free(batch);
-		if (own_transaction)
-			sql_rollback();
-		if (inserted)
-			ship->db_id = -1;
-		return false;
-	}
-
-	MYSQL_RES *result = NULL;
-	if (!sql_trace_exec("sql_save_ship_batch", batch, strlen(batch), false, true))
-	{
-		sql_player_error("sql_save_ship/batch");
-		free(batch);
-		sql_clear_results();
-		if (own_transaction)
-			sql_rollback();
-		if (inserted)
-			ship->db_id = -1;
-		return false;
-	}
-	result = mysql_store_result(DB);
-	free(batch);
-	if (result)
-	{
-		mysql_free_result(result);
-	}
-	sql_clear_results(); // need to clear all of the batch results
-
-	if (own_transaction && !sql_commit())
-	{
-		logit(LOG_DEBUG, "sql_save_ship: failed to commit for ship %d", ship->db_id);
-		if (sql_in_transaction())
-			sql_rollback();
-		/* The row this call inserted may have been committed anyway.  Keep
-		 * its id, and let the next save check whether the row exists. */
-		if (inserted)
-			ship->db_id_unconfirmed = true;
-		return false;
-	}
-
-	logit(LOG_DEBUG, "sql_save_ship: finished saving ship %d", ship->db_id);
-
-	return true;
+	const std::vector<std::string> statements = sql_save_ship_statements(ship);
+	return !statements.empty() && sql_queue_statements(statements);
 }
 
-static bool sql_load_ship_armor(int ship_id, P_ship ship)
+/* The stored rows of one ship: its ships row, then its armor, crew and slot rows. */
+struct ship_rows
 {
-	if (!DB || !ship || ship_id <= 0)
-		return false;
+	sql_rows ship, armor, crew, slots;
+};
 
-	char query[128];
-	snprintf(query, sizeof(query),
-		 "select side, armor, internal from ship_armor where ship_id=%d", ship_id);
+/* Stored ships that are not in the world: the room pool could not hold them at boot, or
+ * their rows could not be read. place_stored_ship() tries them again from here. */
+static std::vector<std::pair<std::string, ship_rows>> stored_ships;
 
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(result)))
-	{
-		int side = atoi(row[0]);
-		if (side >= 0 && side < 4)
-		{
-			ship->armor[side] = atoi(row[1]);
-			ship->internal[side] = atoi(row[2]);
-		}
-	}
-
-	mysql_free_result(result);
-	return true;
+static std::vector<std::pair<std::string, ship_rows>>::iterator stored_ship(const char *owner_name)
+{
+	return std::find_if(stored_ships.begin(), stored_ships.end(),
+			    [owner_name](const auto &stored)
+			    { return !strcasecmp(stored.first.c_str(), owner_name); });
 }
 
-static bool sql_load_ship_crew(int ship_id, P_ship ship)
+/* Boot only: read one ship's rows. */
+static bool sql_read_ship_rows(const char *owner_name, ship_rows *rows)
 {
-	if (!DB || !ship || ship_id <= 0)
+	if (sql_select(
+		    DB,
+		    "select id, ship_name, ship_class, frags, anchor_room, time_played, mainsail, "
+		    "race, money, flags from ships where owner_name='" +
+			    escape_str(owner_name) + "'",
+		    &rows->ship) ||
+	    rows->ship.empty() || !rows->ship[0][0])
 		return false;
-
-	char query[256];
-	snprintf(
-		query, sizeof(query),
-		"select crew_index, sail_skill, guns_skill, rpar_skill, sail_chief, guns_chief, rpar_chief "
-		"from ship_crew where ship_id=%d",
-		ship_id);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (row)
-	{
-		ship->crew.index = atoi(row[0]);
-		ship->crew.sail_skill = (float)atoi(row[1]) / 1000.0f;
-		ship->crew.guns_skill = (float)atoi(row[2]) / 1000.0f;
-		ship->crew.rpar_skill = (float)atoi(row[3]) / 1000.0f;
-		ship->crew.sail_chief = atoi(row[4]);
-		ship->crew.guns_chief = atoi(row[5]);
-		ship->crew.rpar_chief = atoi(row[6]);
-	}
-
-	mysql_free_result(result);
-	return true;
+	const std::string where = std::string(" where ship_id=") + rows->ship[0][0];
+	return !sql_select(DB, "select side, armor, internal from ship_armor" + where,
+			   &rows->armor) &&
+	       !sql_select(DB,
+			   "select crew_index, sail_skill, guns_skill, rpar_skill, sail_chief, "
+			   "guns_chief, rpar_chief from ship_crew" +
+				   where,
+			   &rows->crew) &&
+	       !sql_select(DB,
+			   "select slot_index, slot_type, item_index, position, timer, val0, val1, "
+			   "val2, val3, val4 from ship_slots" +
+				   where,
+			   &rows->slots);
 }
 
-static bool sql_load_ship_slots(int ship_id, P_ship ship)
+static P_ship sql_ship_from_rows(const char *owner_name, const ship_rows &rows)
 {
-	if (!DB || !ship || ship_id <= 0)
-		return false;
-
-	char query[256];
-	snprintf(
-		query, sizeof(query),
-		"select slot_index, slot_type, item_index, position, timer, val0, val1, val2, val3, val4 "
-		"from ship_slots where ship_id=%d",
-		ship_id);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(result)))
-	{
-		int idx = atoi(row[0]);
-		if (idx >= 0 && idx < MAXSLOTS)
-		{
-			ship->slot[idx].type = atoi(row[1]);
-			ship->slot[idx].index = atoi(row[2]);
-			ship->slot[idx].position = atoi(row[3]);
-			ship->slot[idx].timer = atoi(row[4]);
-			ship->slot[idx].val0 = atoi(row[5]);
-			ship->slot[idx].val1 = atoi(row[6]);
-			ship->slot[idx].val2 = atoi(row[7]);
-			ship->slot[idx].val3 = atoi(row[8]);
-			ship->slot[idx].val4 = atoi(row[9]);
-		}
-	}
-
-	mysql_free_result(result);
-	return true;
-}
-
-P_ship sql_load_ship(const char *owner_name)
-{
-	if (!owner_name)
+	if (rows.ship.empty())
 		return NULL;
-
-	if (!DB)
-		return NULL;
-
-	char *esc_owner = sql_escape_string(owner_name);
-	if (!esc_owner)
-		return NULL;
-
-	char query[320];
-	snprintf(
-		query, sizeof(query),
-		"select id, ship_name, ship_class, frags, anchor_room, time_played, mainsail, race, money, flags "
-		"from ships where owner_name='%s'",
-		esc_owner);
-	free(esc_owner);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return NULL;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (!row)
-	{
-		mysql_free_result(result);
-		return NULL;
-	}
-
-	int ship_id = atoi(row[0]);
-	int ship_class = atoi(row[2]);
-
-	P_ship ship = new_ship(ship_class);
+	const sql_row &row = rows.ship[0];
+	P_ship ship = new_ship(atoi(row[2]));
 	if (!ship)
-	{
-		mysql_free_result(result);
 		return NULL;
-	}
 
-	ship->db_id = ship_id;
+	ship->db_id = atoi(row[0]);
 	ship->ownername = str_dup(owner_name);
 	ship->name = str_dup(row[1] ? row[1] : "");
 	ship->frags = atoi(row[3]);
@@ -11215,15 +8340,42 @@ P_ship sql_load_ship(const char *owner_name)
 	ship->race = atoi(row[7]);
 	ship->money = atoi(row[8]);
 	ship->flags = row[9] ? strtoul(row[9], NULL, 10) : 0;
-	mysql_free_result(result);
 
-	if (!sql_load_ship_armor(ship_id, ship) || !sql_load_ship_crew(ship_id, ship) ||
-	    !sql_load_ship_slots(ship_id, ship))
+	for (const sql_row &armor : rows.armor)
 	{
-		logit(LOG_DEBUG, "sql_load_ship: component=dependent_rows outcome=failure");
-		shipObjHash.erase(ship);
-		delete_ship(ship, true);
-		return NULL;
+		int side = atoi(armor[0]);
+		if (side >= 0 && side < 4)
+		{
+			ship->armor[side] = atoi(armor[1]);
+			ship->internal[side] = atoi(armor[2]);
+		}
+	}
+	if (!rows.crew.empty())
+	{
+		const sql_row &crew = rows.crew[0];
+		ship->crew.index = atoi(crew[0]);
+		ship->crew.sail_skill = (float)atoi(crew[1]) / 1000.0f;
+		ship->crew.guns_skill = (float)atoi(crew[2]) / 1000.0f;
+		ship->crew.rpar_skill = (float)atoi(crew[3]) / 1000.0f;
+		ship->crew.sail_chief = atoi(crew[4]);
+		ship->crew.guns_chief = atoi(crew[5]);
+		ship->crew.rpar_chief = atoi(crew[6]);
+	}
+	for (const sql_row &slot : rows.slots)
+	{
+		int idx = atoi(slot[0]);
+		if (idx >= 0 && idx < MAXSLOTS)
+		{
+			ship->slot[idx].type = atoi(slot[1]);
+			ship->slot[idx].index = atoi(slot[2]);
+			ship->slot[idx].position = atoi(slot[3]);
+			ship->slot[idx].timer = atoi(slot[4]);
+			ship->slot[idx].val0 = atoi(slot[5]);
+			ship->slot[idx].val1 = atoi(slot[6]);
+			ship->slot[idx].val2 = atoi(slot[7]);
+			ship->slot[idx].val3 = atoi(slot[8]);
+			ship->slot[idx].val4 = atoi(slot[9]);
+		}
 	}
 	ship->save_pending = false;
 	ship->save_retry_after = 0;
@@ -11233,26 +8385,28 @@ P_ship sql_load_ship(const char *owner_name)
 }
 
 /*
- * Load `owner_name`'s ship and put it in the world at its anchor.  Returns
- * the ship, or NULL with any part-built ship destroyed and its row kept.
- * `unplaced` says whether it was loaded but could not be placed, usually
- * because the ship-room pool is full.
+ * Put `owner_name`'s stored ship in the world at its anchor, from the rows the boot
+ * read.  Returns the ship, or NULL with any part-built ship destroyed and its rows kept.
+ * `unplaced` says whether it was built but could not be placed, usually because the
+ * ship-room pool is full.
  */
 P_ship sql_place_ship(const char *owner_name, bool *unplaced)
 {
 	*unplaced = false;
-	P_ship ship = sql_load_ship(owner_name);
+	const auto stored = stored_ship(owner_name);
+	P_ship ship = stored == stored_ships.end() ? NULL :
+						     sql_ship_from_rows(owner_name, stored->second);
 	if (!ship)
 	{
-		logit(LOG_FILE, "sql_load_all_ships: component=rows outcome=failure");
+		logit(LOG_FILE, "sql_place_ship: component=rows outcome=failure");
 		return NULL;
 	}
 
 	name_ship(ship->name, ship);
 	if (!load_ship(ship, real_room0(ship->anchor)))
 	{
-		/* An unplaced ship must not stay registered; the row is kept. */
-		logit(LOG_FILE, "sql_load_all_ships: component=ship outcome=failure");
+		/* An unplaced ship must not stay registered; its rows are kept. */
+		logit(LOG_FILE, "sql_place_ship: component=ship outcome=failure");
 		shipObjHash.erase(ship);
 		delete_ship(ship, true);
 		*unplaced = true;
@@ -11264,48 +8418,44 @@ P_ship sql_place_ship(const char *owner_name, bool *unplaced)
 	reset_crew_stamina(ship);
 	set_ship_armor(ship, false);
 	update_ship_status(ship);
+	stored_ships.erase(stored);
 	return ship;
 }
 
-/* Whether `owner_name` has a ships row: 1 if so, 0 if not, -1 if it cannot be read. */
-int sql_ship_stored(const char *owner_name)
+/* Whether `owner_name` has a stored ship that is not in the world. */
+bool sql_ship_stored(const char *owner_name)
 {
-	char *esc_owner = sql_escape_string(owner_name);
-	if (!esc_owner)
-		return -1;
-	MYSQL_RES *result = db_query("select 1 from ships where owner_name='%s'", esc_owner);
-	free(esc_owner);
-	if (!result)
-		return -1;
-	const int stored = mysql_fetch_row(result) ? 1 : 0;
-	mysql_free_result(result);
-	return stored;
+	return stored_ship(owner_name) != stored_ships.end();
 }
 
+/* Boot: read every ship, place the ones the room pool can hold, and keep the rows of
+ * the rest for place_stored_ship(). */
 bool sql_load_all_ships()
 {
 	if (!DB)
 		return false;
 
-	MYSQL_RES *result = db_query("select owner_name from ships");
+	MYSQL_RES *result = db_query("select owner_name, id from ships");
 	if (!result)
 		return false;
 
-	// collect owner names first to avoid nested queries
+	ship_next_db_id = 0;
 	std::vector<std::string> owner_names;
-
 	MYSQL_ROW row;
 	while ((row = mysql_fetch_row(result)))
 	{
-		if (!row[0])
-			continue;
-		owner_names.emplace_back(row[0]);
+		ship_next_db_id = std::max(ship_next_db_id, atoi(row[1]));
+		if (row[0])
+			owner_names.emplace_back(row[0]);
 	}
 	mysql_free_result(result);
 
-	// now load each ship; one the room pool cannot hold is placed later
 	for (const std::string &owner_name : owner_names)
 	{
+		ship_rows rows;
+		if (!sql_read_ship_rows(owner_name.c_str(), &rows))
+			rows = {};
+		stored_ships.emplace_back(owner_name, std::move(rows));
 		bool unplaced = false;
 		if (!sql_place_ship(owner_name.c_str(), &unplaced) && unplaced)
 			note_unplaced_ship(owner_name.c_str());
@@ -11314,164 +8464,69 @@ bool sql_load_all_ships()
 	return true;
 }
 
+/* The statement that deletes `owner_name`'s ship; its armor, crew and slots go with it. */
+std::string sql_delete_ship_statement(const char *owner_name)
+{
+	return "delete from ships where owner_name='" + escape_str(owner_name) + "'";
+}
+
+/* Delete a ship's rows on the writer, and forget its stored rows and snapshot. */
 bool sql_delete_ship(const char *owner_name)
 {
-	if (!DB || !owner_name)
+	if (!owner_name || !sql_queue("%s", sql_delete_ship_statement(owner_name).c_str()))
 		return false;
 
-	char *esc_owner = sql_escape_string(owner_name);
-	if (!esc_owner)
-		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query), "delete from ships where owner_name='%s'", esc_owner);
-	free(esc_owner);
-
-	if (!sql_run_query(query))
-		return false;
-
+	const auto stored = stored_ship(owner_name);
+	if (stored != stored_ships.end())
+		stored_ships.erase(stored);
 	redis_invalidate_ship_snapshot(owner_name);
 	return true;
 }
 
-/* Write one guild -- its row, then its ranks and members -- returning true
- * only when all three landed. The ranks and members are replaced wholesale,
- * so they are wrapped in a transaction: the DELETEs run before the INSERTs,
- * and a failure mid-loop would otherwise leave the guild with stale or empty
- * ranks. When the caller already opened a transaction this JOINS it instead
- * of nesting, and then a failure returns false WITHOUT rolling back, leaving
- * that decision to the owner. */
-bool sql_save_guild(Guild *guild)
+/* One guild's statements: its row, then its ranks and members, which are replaced
+ * wholesale (the DELETEs before the INSERTs), so they must run in one transaction. */
+std::vector<std::string> sql_save_guild_statements(Guild *guild)
 {
-	if (!DB || !guild)
-		return false;
+	const unsigned int gid = guild->get_id();
+	const std::string name = escape_str(guild->name);
+	const std::string fragger = escape_str(guild->frags.topfragger);
+	std::vector<std::string> statements;
+	statements.push_back(sql_format(
+		"insert into guilds (id, name, racewar, bits, prestige, construction, "
+		"platinum, gold, silver, copper, frags, top_frags, topfragger) "
+		"values (%u, '%s', %u, %u, %lu, %lu, %u, %u, %u, %u, %ld, %ld, '%s') "
+		"on duplicate key update name='%s', racewar=%u, bits=%u, prestige=prestige, "
+		"construction=construction, platinum=%u, gold=%u, silver=%u, copper=%u, "
+		"frags=%ld, top_frags=%ld, topfragger='%s'",
+		gid, name.c_str(), guild->racewar, guild->bits, guild->prestige,
+		guild->construction, guild->platinum, guild->gold, guild->silver, guild->copper,
+		guild->frags.frags, guild->frags.top_frags, fragger.c_str(), name.c_str(),
+		guild->racewar, guild->bits, guild->platinum, guild->gold, guild->silver,
+		guild->copper, guild->frags.frags, guild->frags.top_frags, fragger.c_str()));
 
-	unsigned int gid = guild->get_id();
-	char *esc_name = sql_escape_string(guild->name);
-	char *esc_fragger = sql_escape_string(guild->frags.topfragger);
-
-	char query[1024];
-	snprintf(query, sizeof(query),
-		 "insert into guilds (id, name, racewar, bits, prestige, construction, "
-		 "platinum, gold, silver, copper, frags, top_frags, topfragger) "
-		 "values (%u, '%s', %u, %u, %lu, %lu, %u, %u, %u, %u, %ld, %ld, '%s') "
-		 "on duplicate key update name='%s', racewar=%u, bits=%u, prestige=prestige, "
-		 "construction=construction, platinum=%u, gold=%u, silver=%u, copper=%u, "
-		 "frags=%ld, top_frags=%ld, topfragger='%s'",
-		 gid, esc_name ? esc_name : "", guild->racewar, guild->bits, guild->prestige,
-		 guild->construction, guild->platinum, guild->gold, guild->silver, guild->copper,
-		 guild->frags.frags, guild->frags.top_frags, esc_fragger ? esc_fragger : "",
-		 esc_name ? esc_name : "", guild->racewar, guild->bits, guild->platinum,
-		 guild->gold, guild->silver, guild->copper, guild->frags.frags,
-		 guild->frags.top_frags, esc_fragger ? esc_fragger : "");
-
-	if (esc_name)
-		free(esc_name);
-	if (esc_fragger)
-		free(esc_fragger);
-
-	if (!sql_run_query(query))
-		return false;
-
-	// start transaction for ranks + members (DELETEs run before INSERTs, so a
-	// failure mid-loop would otherwise leave the guild with stale or empty
-	// ranks/members)
-	/* Join an enclosing transaction when the caller opened one -- the kingdom
-	 * upkeep sweep pairs this save with its realm record so a crash can never
-	 * separate a treasury debit from the payment it made -- and otherwise own
-	 * one. Inside a joined transaction a failure returns false WITHOUT rolling
-	 * back; the owner does that. Same pattern as sql_soft_delete_character(). */
-	const bool own_txn = !sql_in_transaction();
-	if (own_txn && !sql_begin_transaction())
-	{
-		logit(LOG_DEBUG, "sql_save_guild: failed to start transaction for guild %u", gid);
-		return false;
-	}
-
-	// save ranks
-	snprintf(query, sizeof(query), "delete from guild_ranks where guild_id=%u", gid);
-	if (!sql_run_query(query))
-	{
-		logit(LOG_DEBUG, "sql_save_guild: failed to delete old ranks for guild %u", gid);
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
+	statements.push_back(sql_format("delete from guild_ranks where guild_id=%u", gid));
 	for (int i = 0; i < ASC_NUM_RANKS; i++)
-	{
-		char *esc_title = sql_escape_string(guild->titles[i]);
-		if (!esc_title)
-			continue;
-		snprintf(
-			query, sizeof(query),
+		statements.push_back(sql_format(
 			"insert into guild_ranks (guild_id, rank_index, title) values (%u, %d, '%s')",
-			gid, i, esc_title);
-		bool ok = sql_run_query(query);
-		free(esc_title);
-		if (!ok)
-		{
-			logit(LOG_DEBUG, "sql_save_guild: failed to insert rank %d for guild %u", i,
-			      gid);
-			if (own_txn)
-				sql_rollback();
-			return false;
-		}
-	}
+			gid, i, escape_str(guild->titles[i]).c_str()));
 
-	// save members
-	snprintf(query, sizeof(query), "delete from guild_members where guild_id=%u", gid);
-	if (!sql_run_query(query))
-	{
-		logit(LOG_DEBUG, "sql_save_guild: failed to delete old members for guild %u", gid);
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
+	statements.push_back(sql_format("delete from guild_members where guild_id=%u", gid));
 	for (P_member mem = guild->members; mem; mem = mem->next)
 	{
-		char *esc_mname = sql_escape_string(mem->name);
-		if (!esc_mname)
-			continue;
-		int pid = sql_get_player_pid(mem->name);
-		char pid_buf[32];
-		const char *pid_sql = "NULL";
-		if (pid > 0)
-		{
-			snprintf(pid_buf, sizeof(pid_buf), "%d", pid);
-			pid_sql = pid_buf;
-		}
-		snprintf(
-			query, sizeof(query),
+		const int pid = sql_get_player_pid(mem->name);
+		statements.push_back(sql_format(
 			"insert into guild_members (guild_id, player_name, player_pid, bits, debt) "
 			"values (%u, '%s', %s, %u, %u)",
-			gid, esc_mname, pid_sql, mem->bits, mem->debt);
-		bool ok = sql_run_query(query);
-		free(esc_mname);
-		if (!ok)
-		{
-			logit(LOG_DEBUG, "sql_save_guild: failed to insert member for guild %u",
-			      gid);
-			if (own_txn)
-				sql_rollback();
-			return false;
-		}
+			gid, escape_str(mem->name).c_str(),
+			pid > 0 ? std::to_string(pid).c_str() : "NULL", mem->bits, mem->debt));
 	}
+	return statements;
+}
 
-	/* The own_txn test on the rollback is redundant TODAY -- only the owner
-	 * reaches sql_commit() -- and is kept on purpose. Every sql_rollback() in
-	 * this function is guarded by the same test, which is what makes "never
-	 * roll back a transaction an enclosing caller opened" checkable rather
-	 * than a property re-derived per branch; a contract test enforces it. If
-	 * the commit condition is ever widened, the guard is already right. */
-	if (own_txn && !sql_commit())
-	{
-		logit(LOG_DEBUG, "sql_save_guild: failed to commit for guild %u", gid);
-		if (own_txn)
-			sql_rollback();
-		return false;
-	}
-
-	return true;
+/* Save one guild: its statements are one writer job. */
+bool sql_save_guild(Guild *guild)
+{
+	return guild && sql_queue_statements(sql_save_guild_statements(guild));
 }
 
 Guild *sql_load_guild(unsigned int guild_id)
@@ -11614,83 +8669,61 @@ bool sql_delete_guild(unsigned int guild_id)
 // spellbook (conjurable mobs) functions
 // ============================================================================
 
+// Every character's spellbook, read at boot and kept current by the game's own writes,
+// which are queued on the writer: only the game writes the spellbooks.
+static std::unordered_map<int, std::set<int>> spellbooks;
+
+bool sql_spellbooks_load(void)
+{
+	MYSQL_RES *result = db_query("select pid, mob_vnum from player_spellbooks");
+	if (!result)
+		return false;
+	spellbooks.clear();
+	while (MYSQL_ROW row = mysql_fetch_row(result))
+		if (row[0] && row[1])
+			spellbooks[atoi(row[0])].insert(atoi(row[1]));
+	mysql_free_result(result);
+	return true;
+}
+
 bool sql_add_spellbook_mob(int pid, int mob_vnum)
 {
-	if (!DB || pid <= 0)
+	if (!DB || pid <= 0 ||
+	    !sql_queue("insert ignore into player_spellbooks (pid, mob_vnum) values (%d, %d)", pid,
+		       mob_vnum))
 		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "insert ignore into player_spellbooks (pid, mob_vnum) values (%d, %d)", pid,
-		 mob_vnum);
-	return sql_run_query(query);
+	spellbooks[pid].insert(mob_vnum);
+	return true;
 }
 
 bool sql_remove_spellbook_mob(int pid, int mob_vnum)
 {
-	if (!DB || pid <= 0 || mob_vnum <= 0)
+	if (!DB || pid <= 0 || mob_vnum <= 0 ||
+	    !sql_queue("delete from player_spellbooks where pid=%d and mob_vnum=%d", pid, mob_vnum))
 		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query), "delete from player_spellbooks where pid=%d and mob_vnum=%d",
-		 pid, mob_vnum);
-	return sql_run_query(query);
+	spellbooks[pid].erase(mob_vnum);
+	return true;
 }
 
 bool sql_has_spellbook_mob(int pid, int mob_vnum)
 {
-	if (!DB || pid <= 0)
-		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "select 1 from player_spellbooks where pid=%d and mob_vnum=%d", pid, mob_vnum);
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	bool has = (mysql_num_rows(result) > 0);
-	mysql_free_result(result);
-	return has;
+	const auto book = spellbooks.find(pid);
+	return book != spellbooks.end() && book->second.count(mob_vnum);
 }
 
 // returns array of mob vnums, sets count. caller must free array.
 int *sql_get_spellbook_mobs(int pid, int *count)
 {
 	*count = 0;
-	if (!DB || pid <= 0)
+	const auto book = spellbooks.find(pid);
+	if (book == spellbooks.end() || book->second.empty())
 		return NULL;
 
-	char query[256];
-	snprintf(query, sizeof(query),
-		 "select mob_vnum from player_spellbooks where pid=%d order by mob_vnum", pid);
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return NULL;
-
-	int num = mysql_num_rows(result);
-	if (num == 0)
-	{
-		mysql_free_result(result);
-		return NULL;
-	}
-
-	int *mobs = (int *)malloc(sizeof(int) * num);
+	int *mobs = (int *)malloc(sizeof(int) * book->second.size());
 	if (!mobs)
-	{
-		mysql_free_result(result);
 		return NULL;
-	}
-
-	MYSQL_ROW row;
-	int i = 0;
-	while ((row = mysql_fetch_row(result)) && i < num)
-	{
-		mobs[i++] = atoi(row[0]);
-	}
-	mysql_free_result(result);
-
-	*count = i;
+	for (int mob_vnum : book->second)
+		mobs[(*count)++] = mob_vnum;
 	return mobs;
 }
 

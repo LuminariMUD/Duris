@@ -114,7 +114,7 @@ for token in (
     "redis_cache_store_delete",
     "redis_cache_store_seed",
     "generate_named_report",
-    "generate_fraglist_cache_payload",
+    "fraglist_cache_payload",
 ):
     assert token in REPORT_SOURCE
 for token in (

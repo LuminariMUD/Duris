@@ -517,7 +517,6 @@ struct ShipData
 	time_t save_retry_after; /* transient retry gate for failed ship saves */
 	bool save_pending; /* queued for deferred persistence */
 	unsigned long long save_saved_signature; /* signature of last persisted state */
-	bool db_id_unconfirmed; /* db_id is from a save whose COMMIT failed; the row may not exist */
 	ShipRuntimeRef runtime_ref; /* process-local slot and reuse generation */
 };
 
@@ -716,7 +715,6 @@ struct ShipOwnerChange
 {
 	P_ship ship;
 	char *ownername, *name; // the ship's previous owner and name
-	int db_id;
 };
 bool begin_ship_owner_change(P_ship ship, const char *new_owner, ShipOwnerChange *change);
 void finish_ship_owner_change(ShipOwnerChange *change);

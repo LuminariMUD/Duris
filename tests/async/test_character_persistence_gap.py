@@ -47,8 +47,17 @@ require(
 init_char = section(NANNY, "void init_char(P_char ch)", "\n}\n")
 require(
     "getNewPCidNumb()" in init_char
-    and "SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE)" in init_char,
-    "init_char must mark the file-allocated pid as having no database baseline",
+    and init_char.index("#ifdef __NO_MYSQL__")
+    < init_char.index("SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE);")
+    < init_char.index("#endif", init_char.index("#ifdef __NO_MYSQL__")),
+    "init_char must mark a flat-file character as having no database baseline",
+)
+# On MariaDB the first save is queued: the pid comes from the in-memory name index, and
+# the writer inserts the row (ensure_player_row()) and its opening baselines.
+require(
+    "sql_player_names_set(ch->only.pc->pid, GET_NAME(ch));" in init_char
+    and "highestPCidNumb = sql_highest_player_pid() + 1;" in NANNY,
+    "a MariaDB character's pid must come from the name index",
 )
 
 write_character = section(FILES, "int writeCharacter(P_char ch, int type, int room)", "\n}\n")

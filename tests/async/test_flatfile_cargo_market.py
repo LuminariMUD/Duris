@@ -119,7 +119,8 @@ if flat_apply > pool_acquire:
 database_source = (SRC / "ships/ship_cargo.c").read_text()
 for sql_token in (
     "select type, port_id, cargo_type, modifier from ship_cargo_market_mods",
-    "delete from ship_cargo_market_mods; delete from ship_cargo_prices;",
+    '"delete from ship_cargo_market_mods"',
+    '"delete from ship_cargo_prices"',
 ):
     if sql_token not in database_source:
         raise SystemExit(f"MariaDB cargo behavior lost {sql_token}")

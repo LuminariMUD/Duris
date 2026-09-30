@@ -38,7 +38,7 @@ def body(text, signature):
 
 repair = body(
     mysql_source_text,
-    "int sql_repair_account_character_projection(const char *account_name)",
+    "unsigned int sql_repair_account_character_projection(MYSQL *connection,",
 )
 
 harness = f'''\
@@ -46,6 +46,7 @@ harness = f'''\
 
 #include <cassert>
 #include <climits>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -54,29 +55,40 @@ harness = f'''\
 
 MYSQL *DB = nullptr;
 
-/* Escape one account value through the live client connection. */
-char *sql_escape_string(const char *value)
+std::string sql_format(const char *format, ...)
 {{
-    if (!DB || !value)
-        return nullptr;
-    const size_t length = std::strlen(value);
-    char *escaped = static_cast<char *>(std::malloc(length * 2 + 1));
-    if (!escaped)
-        return nullptr;
-    mysql_real_escape_string(DB, escaped, value, length);
-    return escaped;
+    va_list args;
+    va_start(args, format);
+    char text[8192];
+    const int size = std::vsnprintf(text, sizeof(text), format, args);
+    va_end(args);
+    assert(size >= 0 && static_cast<size_t>(size) < sizeof(text));
+    return text;
 }}
 
-/* Execute one extracted production repair statement. */
-bool sql_run_query(const char *query)
+/* Execute one extracted production repair statement, as the writer's sql_execute(). */
+unsigned int sql_execute(MYSQL *connection, const std::string &statement)
 {{
-    if (mysql_query(DB, query) == 0)
-        return true;
-    std::cerr << "repair query failed: " << mysql_error(DB) << '\\n';
-    return false;
+    if (mysql_query(connection, statement.c_str()) != 0)
+    {{
+        std::cerr << "repair query failed: " << mysql_error(connection) << '\\n';
+        return mysql_errno(connection);
+    }}
+    if (MYSQL_RES *result = mysql_store_result(connection))
+        mysql_free_result(result);
+    return mysql_errno(connection);
 }}
 
 {repair}
+
+/* The repair as the account read runs it: the mappings changed, or -1. */
+static int repair(const char *account)
+{{
+    char escaped[256];
+    mysql_real_escape_string(DB, escaped, account, std::strlen(account));
+    int repaired = 0;
+    return sql_repair_account_character_projection(DB, escaped, &repaired) ? -1 : repaired;
+}}
 
 /* Return one required database setting for the isolated fixture. */
 static const char *required_env(const char *name)
@@ -172,7 +184,7 @@ int main()
     execute("INSERT INTO combat_frag_baseline VALUES(102,77,0)");
     execute("INSERT INTO combat_frag_ledger VALUES(105)");
 
-    assert(sql_repair_account_character_projection("repairacct") > 0);
+    assert(repair("repairacct") > 0);
     assert(mysql_commit(DB) == 0);
 
     // These reload queries have no process-local account/character state. They
@@ -204,9 +216,9 @@ int main()
                   "WHERE pid=101 AND opening_frags=0 AND opening_revision=0") == 1);
     assert(scalar("SELECT opening_frags FROM combat_frag_baseline WHERE pid=102") == 77);
     assert(scalar("SELECT COUNT(*) FROM combat_frag_baseline WHERE pid=105") == 0);
-    assert(sql_repair_account_character_projection("RepairAcct") == 0);
+    assert(repair("RepairAcct") == 0);
     assert(scalar("SELECT opening_frags FROM combat_frag_baseline WHERE pid=102") == 77);
-    assert(sql_repair_account_character_projection("EmptyAcct") == 0);
+    assert(repair("EmptyAcct") == 0);
 
     mysql_close(DB);
     DB = nullptr;

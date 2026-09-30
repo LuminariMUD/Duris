@@ -30,12 +30,14 @@ locker_prepare_failure = locker_leave[
     locker_leave.index("\n\telse\n", locker_leave.index("else if (!pLocker->LockerToPFile())"))
 ]
 
-cleanup = files[files.index("// Failed saves always restore"):files.index("return result;", files.index("// Failed saves always restore"))]
-assert cleanup.index("if (!persistence_should_extract_terminal_inventory") < cleanup.index("equip_char") < cleanup.index("else")
-assert cleanup.index("else") < cleanup.index("extract_obj")
+deferred_locker = lockers[lockers.index("static void event_deferredTerminalSave(P_char chLocker, P_char /*ch*/"):]
+deferred_locker = deferred_locker[:deferred_locker.index("\n}\n")]
 
 checks = {
-    "failed save restores equipment": "persistence_should_extract_terminal_inventory" in cleanup and "equip_char" in cleanup,
+    # A MariaDB terminal save is queued like any other; the caller disposes of the
+    # character, so writeCharacter() extracts nothing there.
+    "terminal saves are queued": "const bool queued_save = true;" in files
+                                 and "persistence_should_extract_terminal_inventory" not in files,
     # Logging out never waits (persistence reset step 7): quit, rent, camp, death,
     # idle rent, link loss and heaven queue the save and the character leaves.
     "quit, rent and camp queue": "persistence_save_character_terminal(ch, RENT_INN);" in actoth
@@ -52,9 +54,12 @@ checks = {
     # Shutdown always goes (step 8); only a failed copyover resumes the game.
     "shutdown always goes": "shutdown_cancelled=1" not in comm and "copyover_cancelled=1" in comm,
     "artifact dummy retention": artifact.count("extract_refused=1") >= 2,
-    "legacy locker retention": "terminal_not_durable" in lockers and
-                               lockers.index("terminal_not_durable", lockers.index("event_deferredTerminalSave")) <
-                               lockers.index("return;", lockers.index("terminal_not_durable", lockers.index("event_deferredTerminalSave"))),
+    # A terminal locker save the async writer refused is asked for again; the locker
+    # character keeps its items meanwhile and nothing saves on the loop.
+    "refused locker save retries the writer":
+        'locker_async_mark_dirty(chLocker, NULL, 1, "deferred-terminal")' in deferred_locker
+        and "add_event(event_deferredTerminalSave" in deferred_locker
+        and "writeCharacter" not in deferred_locker and "extract_char" not in deferred_locker,
     "locker prepare failure vetoes leave": "return false;" in locker_prepare_failure and
                                             "PFileToLocker" not in locker_prepare_failure and
                                             "writeCharacter" not in locker_prepare_failure and
@@ -78,16 +83,14 @@ checks["copyover drains the writer after queuing every save"] = (
     copyover.index("player_save_pipeline_drain(")
 )
 
-player_sql_start = files.index("if (!sql_save_player(ch, type, room))")
-player_sql_failure = files[
-    player_sql_start:files.index("// Failed saves always restore", player_sql_start)
-]
-checks["player SQL failure flat fallback writes retired"] = (
-    "flat_fallback_retired" in player_sql_failure
-    and "persistence_write_character_flat_fallback" not in player_sql_failure
+# The legacy synchronous player save and its flat pfile fallback are gone.
+checks["legacy player save retired"] = (
+    "persistence_write_character_flat_fallback" not in files
+    and "if (!sql_save_player(ch, type, room))" not in files
 )
 
-flat_terminal_start = files.index("#ifdef __NO_MYSQL__", files.index("int writeCharacter"))
+flat_terminal_start = files.index("#ifdef __NO_MYSQL__\n\tif (!is_locker_char &&",
+                                  files.index("int writeCharacter"))
 flat_terminal = files[
     flat_terminal_start:files.index("#endif", flat_terminal_start)
 ]

@@ -413,6 +413,7 @@ OBJS =  $(SHIP_OBJS) \
 				 persistence/maintenance_repository.o \
 				 persistence/maintenance_snapshot.o \
 				 player/player_load_materialize.o \
+				 player/player_load_offline.o \
 				 persistence/presence_policy.o \
 				 redis/redis_cache_store.o \
 				 redis/redis_report_cache.o \

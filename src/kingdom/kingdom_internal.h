@@ -547,15 +547,15 @@ void kingdom_show_grid(struct char_data *ch, int hall_rnum, int racewar, int ign
  */
 bool kingdom_db_load_all(void);
 bool kingdom_db_save_realm(const kingdom_realm &realm);
-/* Publish the garrison roster. Called by kingdom_db_save_realm(), so no caller
- * outside kingdom_db.c needs it; declared because the flat-file backend
- * defines its own and the two must agree. */
-bool kingdom_db_save_roster(const kingdom_realm &realm);
 #ifdef __NO_MYSQL__
 /* Recoverably commit a flat guild debit and its paid realm after-image. */
 bool kingdom_db_save_payment_pair(const std::string &root,
 				  const flatfile_association_record &association,
 				  const kingdom_realm &realm, std::string *error);
+#else
+/* Queue a guild's statements and the realm's write as one writer job. */
+bool kingdom_db_save_payment_pair(std::vector<std::string> guild_statements,
+				  const kingdom_realm &realm);
 #endif
 bool kingdom_db_delete_realm(int assoc_id);
 void kingdom_db_flush_dirty(void);

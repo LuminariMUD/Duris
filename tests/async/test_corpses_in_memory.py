@@ -38,7 +38,7 @@ assert "persistence_job_kind::corpse" in queue
 assert "corpse_snapshot_repository_apply_from_pool" in queue
 assert "flatfile_corpse_snapshot_apply" in queue
 write = body(FILES, "void writeCorpse(P_obj corpse)")
-assert write.count("queue_corpse_save(corpse,") == 3
+assert write.count("queue_corpse_save(corpse,") == 1
 assert "stage_corpse_lifecycle" not in FILES
 purge = body(FILES, "void PurgeCorpseFile(P_obj corpse)")
 assert purge.count("queue_corpse_save(corpse, true)") == 2

@@ -11,6 +11,8 @@
 
 #include "core/structs.h"
 #include <stdio.h>
+#include <string>
+#include <vector>
 
 /* DEFINES for assocs.c */
 
@@ -191,6 +193,7 @@ class Guild
 	friend void forget_deleted_guild_member(const char *character_name);
 	friend void rename_guild_member(const char *old_name, const char *new_name);
 	friend bool sql_save_guild(Guild *guild);
+	friend std::vector<std::string> sql_save_guild_statements(Guild *guild);
 	friend Guild *sql_load_guild(unsigned int guild_id);
 	friend bool sql_load_all_guilds();
 	friend int migrate_guilds_from_files(void);
@@ -308,10 +311,11 @@ class Guild
 	 * declaration was removed with the retired kingdom surfaces; this is the
 	 * new module's, not a survivor of the old one. */
 	bool is_kingdom();
-	// Stage a deletion projection without changing the live guild. Caller owns SQL transaction.
-	bool save_without_member(P_char ch);
+	// The guild's save statements without ch, for ch's deletion job; the live guild is
+	// unchanged.
+	std::vector<std::string> statements_without_member(P_char ch);
 	// Publish an already durable deletion; never saves the player or guild.
-	void forget_deleted_member(P_char ch);
+	void forget_deleted_member(const char *name, long member_frags);
 	void kick(P_char victim);
 	void kick(P_char kicker, char *char_name);
 	bool sub_money(int p, int g, int s, int c);

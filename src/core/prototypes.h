@@ -19,8 +19,10 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <functional>
 #include <string>
 #include <type_traits>
+#include <vector>
 #include <utility>
 #include "account/account.h"
 #include "cmd/mail.h"
@@ -100,17 +102,13 @@ void add_account_to_list(P_acct);
 void remove_account_from_list(P_acct);
 char *check_and_clear(char *);
 char is_account_confirmed(P_desc);
-void write_unique_ip(P_acct, FILE *);
-void read_unique_ip(P_acct, FILE *);
-void write_character_list(P_acct, FILE *);
-void read_character_list(P_acct, FILE *);
 void update_account_iplist(P_desc);
 void update_character_list(P_desc, char *);
 void add_ip_entry(P_acct, P_desc);
 struct acct_ip *find_ip_entry(P_acct, P_desc);
 int can_connect(struct acct_chars *, P_desc);
 int is_char_in_game(struct acct_chars *, P_desc);
-struct acct_chars *find_char_in_list(struct acct_chars *, char *);
+struct acct_chars *find_char_in_list(struct acct_chars *, const char *);
 P_char load_char_into_game(struct acct_chars *, P_desc);
 void account_new_char_name(P_desc, char *);
 void display_character_list(P_desc, P_acct account = NULL);
@@ -118,9 +116,8 @@ void display_character_list_to_char(P_char ch, P_acct account);
 void display_delete_character_list(P_desc);
 void add_char_to_account(P_desc);
 int sync_account_character_projection(P_char, int, int);
-void remove_char_from_list(P_acct, char *, bool persist = true);
+void remove_char_from_list(P_acct, const char *, bool persist = true);
 int write_account(P_acct);
-int read_account(P_acct);
 const char *get_account_name_safe(P_char);
 
 /* poll.c */
@@ -580,7 +577,7 @@ void do_setbit(P_char, char *, int);
 
 void sprintbitde(ulong, const flagDef[], char *);
 char *comma_string(long);
-void GetMIA(char *, char *);
+void GetMIA(time_t, char *);
 char *where_obj(P_obj, int);
 int gr_idiotproof(P_char, P_char, char *, int);
 struct obj_data *clone_obj(P_obj);
@@ -714,8 +711,14 @@ void event_artifact_check_poof_sql(P_char ch, P_char vict, P_obj obj, void *arg)
 void event_artifact_wars_sql(P_char, P_char, P_obj, void *);
 bool get_artifact_data_sql(int vnum, P_arti artidata);
 bool remove_owned_artifact_sql(P_obj arti, int pid = -1);
-bool remove_all_artifacts_sql(P_char ch);
+std::vector<std::string> remove_all_artifacts_sql(int pid);
+void artifacts_forget_deleted_character(int pid);
 void setupMortArtiList_sql(void);
+bool artifacts_load(void);
+void artifacts_forget_deleted_account_character(int pid);
+void artifact_feed_published(int vnum, time_t captured_timer, time_t timer);
+// An artifact's timer and soul, as the game holds them; false for an unknown artifact.
+bool artifact_feed_state(int vnum, int64_t *timer, int32_t *bind_owner_pid, int64_t *bind_timer);
 
 /* artifact_old.c */
 void UpdateArtiBlood(P_char, P_obj, int);
@@ -1119,7 +1122,6 @@ bool can_hit_target(P_char, P_char);
 void moveToBackup(char *name);
 int writeCharacter(P_char, int, int);
 void restore_houses();
-void writeShapechangeData(P_char ch);
 int register_ship(int);
 int ship_registered(int);
 bool writeObjectlist(P_obj, int);
@@ -1134,9 +1136,12 @@ enum class character_delete_result
 	refused,
 	reconciliation_required
 };
-// Never consumes ch. Legacy callers receive TRUE only for confirmed completion.
-character_delete_result delete_character_result(P_char ch, bool bDeleteLocker = true);
-int deleteCharacter(P_char, bool bDeleteLocker = true);
+// Deletes ch's stored state and, once that is done, lets memory forget the character.
+// done gets the outcome on the game thread: at once on flat-file, on a later pulse on
+// MariaDB, where the deletion is one writer job. Never consumes ch, which may leave the
+// game before done runs.
+void delete_character(P_char ch, bool delete_locker = true,
+		      std::function<void(character_delete_result)> done = {});
 int deletePet(char *);
 int deleteShopKeeper(int);
 P_obj read_one_object(char *);
@@ -2993,6 +2998,8 @@ int GET_CLASS1(P_char, uint);
 int GET_ALT_SIZE(P_char);
 int GET_CHAR_SKILL_P(P_char, int);
 char *get_class_string(P_char, char *);
+// get_class_string() for a character that is not loaded, from its class fields.
+char *class_string(unsigned int m_class, unsigned int secondary_class, int spec, char *strn);
 void broadcast_to_arena(const char *, P_char, P_char, int);
 void remove_plushit_bits(P_char mob);
 int is_introd(P_char, P_char);

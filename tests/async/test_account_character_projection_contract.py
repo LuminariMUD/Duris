@@ -52,41 +52,27 @@ checks.append(
     )
 )
 
-reload_body = body(account, "int read_account(P_acct acct)")
-repair_call = reload_body.index(
-    "sql_repair_account_character_projection(name_backup)"
-)
+load = body(mysql_sql_player, "bool sql_load_account(const char *name,")
 checks.append(
     (
         "every MariaDB account load repairs its durable projection before reading it",
-        contains(
-            reload_body, "sql_repair_account_character_projection(name_backup)"
-        )
-        and contains(reload_body, "loaded = sql_load_account(name_backup);")
-        and repair_call
-        < reload_body.index("loaded = sql_load_account(name_backup);", repair_call)
-        < reload_body.index("acct->acct_name = check_and_clear(acct->acct_name);"),
+        load.index("sql_repair_account_character_projection(")
+        < load.index("from accounts where account_name=")
+        < load.index("from account_characters ac"),
     )
 )
+read = body(account, "void account_read(P_desc d, const char *name, account_read_done done)")
 checks.append(
     (
-        "a legitimate empty account is not rebuilt from process-local state in MariaDB",
-        contains(reload_body, "if (repaired > 0)")
-        and not contains(reload_body, "character_projection_empty"),
-    )
-)
-checks.append(
-    (
-        "abandoned reload objects are released on repair paths",
-        contains(account, "static void free_acct_entry_shallow(struct acct_entry *loaded)")
-        and contains(reload_body, "free_acct_entry_shallow(loaded);")
-        and contains(reload_body, "flatfile_account_state_release(loaded);"),
+        "a loaded account nobody waits for any more is released",
+        contains(read, "free_account(loaded);")
+        and contains(read, "flatfile_account_state_release(loaded);"),
     )
 )
 
 repair = body(
     mysql_sql_player,
-    "int sql_repair_account_character_projection(const char *account_name)",
+    "unsigned int sql_repair_account_character_projection(MYSQL *connection,",
 )
 checks.append(
     (

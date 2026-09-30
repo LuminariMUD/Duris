@@ -54,6 +54,7 @@ static inline int get_db_port(void)
 extern MYSQL *DB;
 MYSQL *sql_open_configured_connection(unsigned long client_flags);
 MYSQL_RES *db_query_at(struct persistence_query_site site, const char *format, ...);
+unsigned long long sql_next_auto_increment(const char *table);
 MYSQL_RES *db_query_nolog_at(struct persistence_query_site site, const char *format, ...);
 bool sql_observed_execute_at(MYSQL *conn, struct persistence_query_site site,
 			     enum persistence_query_context context, const char *sql, size_t len,
@@ -68,9 +69,6 @@ int sql_level_cap(int racewar_side);
 // void sql_save_progress( int pid, int delta, const char *type );
 void sql_webinfo_toggle(P_char ch);
 void sql_update_level(P_char ch);
-void sql_update_money(P_char ch);
-void sql_update_playtime(P_char ch);
-void sql_update_epics(P_char ch);
 void get_log(P_char ch, char *temp);
 void manual_log(P_char ch);
 void sql_insert_item(P_char ch, P_obj obj, char *desc);
@@ -121,6 +119,25 @@ bool sql_persistence_item_owner_matches_identity(unsigned long long item_uid,
 						 unsigned long long owner_id,
 						 unsigned long long owner_context_id,
 						 const char *context);
+/* The item_current_owner columns an owner check reads, joined as `current_item` with
+ * item_owner_revision as `owner`; a read elsewhere selects them in this order. */
+#define SQL_ITEM_OWNER_COLUMNS                                                         \
+	"current_item.root_item_uid,COALESCE(current_item.parent_item_uid,0),"         \
+	"current_item.owner_type,current_item.owner_id,current_item.owner_context_id," \
+	"current_item.item_revision,current_item.vnum,current_item.state,owner.revision"
+#define SQL_ITEM_OWNER_REVISION_JOIN                                                       \
+	"LEFT JOIN item_owner_revision owner ON owner.owner_type=current_item.owner_type " \
+	"AND owner.owner_id=current_item.owner_id "                                        \
+	"AND owner.owner_context_id=current_item.owner_context_id"
+#define SQL_ITEM_OWNER_SELECT            \
+	"SELECT " SQL_ITEM_OWNER_COLUMNS \
+	" FROM item_current_owner current_item " SQL_ITEM_OWNER_REVISION_JOIN
+/* The same check for those columns already read (row[0..8], or NULL when the item
+ * has no ownership row). */
+bool sql_persistence_item_owner_fields_match(unsigned long long item_uid, const char *owner_type,
+					     unsigned long long expected_id,
+					     unsigned long long expected_context_id,
+					     const char *const *row);
 bool sql_persistence_reconcile_world_recovery_items(const world_recovery_authority_item *items,
 						    size_t count,
 						    item_ownership_runtime_entry *authoritative,
@@ -166,7 +183,6 @@ void sql_update_frag_leaderboard(P_char ch);
 void sql_update_account_character(P_char ch);
 // Tells ch the account's total donations, if it has any.
 void show_total_donated(P_char ch, const char *account_name);
-bool sql_soft_delete_character(long pid);
 
 string get_mud_info(const char *name);
 // Reads mud_info again, then calls done while ch is still in the game.
@@ -179,6 +195,9 @@ string escape_str(const char *str);
 
 #ifndef __NO_MYSQL__
 void sql_clear_results_on(MYSQL *conn);
+// For the writer: the id of the character's account_characters row, or 0.
+unsigned int sql_find_account_character_id(MYSQL *connection, long pid,
+					   const std::string &escaped_char_name, long *id);
 #endif
 
 #include <vector>
@@ -208,9 +227,19 @@ struct zone_info
 	int suggested_group_size;
 	int epic_payout;
 	int difficulty;
+	int alignment;
+	long last_touch;
+	int stonecount;
+	int reset_perc;
 };
 
+// The zones rows, in memory (sql.c): read at boot, and their alignments, last touches and
+// rarity read again on the writer by sql_zones_refresh().
+void sql_load_zones(void);
+void sql_zones_refresh(void);
+const vector<zone_info> &sql_zones(void);
 bool get_zone_info(int zone_number, struct zone_info *info);
+void sql_set_zone_reset_perc(int zone_number, int reset_perc);
 
 bool sql_get_bind_data(int vnum, int *owner_pid, int *timer);
 void sql_update_bind_data(int vnum, int *owner_pid, int *timer);

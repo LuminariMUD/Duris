@@ -76,22 +76,22 @@ assert contains(corpse_hook, "marker.account") and contains(corpse_hook, "strcas
 prepare_start = corpse_end
 prepare_end = index(reward, "void account_bound_reward_on_login", prepare_start)
 assert contains(reward[prepare_start:prepare_end], "reward_account(ch)")
-assert index(corpse_hook, "promote_reward_contents") < index(corpse_hook, "recovery_ready=1") < index(corpse_hook, "extract_obj")
+assert index(corpse_hook, "promote_reward_contents") < index(corpse_hook, "set_recovery_ready(") < index(corpse_hook, "extract_obj")
 
 # Death recovery is distinct from last-summoned history.
 for text in (migration, bootstrap):
     assert "recovery_ready" in text
-assert contains(reward, "recovery_ready<>0") or contains(reward, "recovery_ready != 0")
+assert contains(reward, "summon->second.recovery_ready)")
 assert contains(reward, "recovery_ready=0")
 assert contains(reward, "recovery_ready=1")
-assert contains(reward, "last_summoned_at=NOW()")
+assert contains(reward, "last_summoned_at=VALUES(last_summoned_at)")
 
 # Saved forced removals reparent children before deleting marker-matching bags;
 # live forced removals use the same promotion helper before extraction.
 assert contains(reward, "UPDATE player_items child JOIN player_items reward")
 assert contains(reward, "SET child.container_id=reward.container_id")
-clear_start = index(reward, "static bool clear_saved_grant")
-clear_end = index(reward, "static void revoke_live_grant", clear_start)
+clear_start = index(reward, "static sql_work clear_saved_grant")
+clear_end = index(reward, "static int revoke_grants", clear_start)
 clear_saved = reward[clear_start:clear_end]
 assert index(clear_saved, "UPDATE player_items child") < clear_saved.rindex("DELETE")
 assert contains(clear_saved, "item_transfer_repository_revoke_roots_preserving_children")

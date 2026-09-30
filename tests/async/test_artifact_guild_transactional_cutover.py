@@ -112,8 +112,22 @@ class ArtifactGuildCutoverTests(unittest.TestCase):
 
     def test_hydration_schema_and_generic_save_protection(self):
         state = (SRC / "artifact_guild_state.c").read_text()
-        self.assertIn("next_artifacts", state)
-        self.assertIn("artifacts.swap(next_artifacts)", state)
+        # The guild revisions are hydrated; an artifact's timer and soul come from the
+        # artifact memory the game keeps current, and the repository locks the revision.
+        self.assertIn("guild_revisions.swap(next_guilds)", state)
+        self.assertIn("artifact_feed_state(vnum, &timer, &bind_owner_pid, &bind_timer)", state)
+        self.assertNotIn("artifact_domain_state", state)
+        repository = (SRC / "artifact_guild_repository.c").read_text()
+        self.assertNotIn("state.revision != entry.expected_revision", repository)
+        self.assertIn("std::to_string(artifact_states[index].revision)", repository)
+        # Every artifact change the game queues is repeated in artifact_domain_state.
+        artifact = (SRC / "artifact.c").read_text()
+        for store in ("void artifact_row_store(", "void artifact_bind_store(",
+                      "bool artifact_binds_reset("):
+            body = artifact[artifact.index(store):]
+            body = body[: body.index("\n}\n")]
+            self.assertIn("artifact_domain_mirror(vnum)", body)
+        self.assertIn('return qry("%s", artifact_domain_mirror(-1).c_str());', artifact)
         self.assertIn("artifact_guild_state_hydrate", (SRC / "comm.c").read_text())
         migration = (ROOT / "migrations/artifact_guild_outcome.sql").read_text()
         bootstrap = (ROOT / "migrations/bootstrap_multithread_safe.sql").read_text()
@@ -124,6 +138,84 @@ class ArtifactGuildCutoverTests(unittest.TestCase):
         save = (SRC / "sql_player.c").read_text()
         self.assertIn("prestige=prestige", save)
         self.assertIn("construction=construction", save)
+
+    def test_feed_publication_restores_the_timer_a_move_stored_meanwhile(self):
+        # The feed commits on the writer and memory learns its timer when the completion is
+        # published; a move queued in between stores the row from memory, with the old timer,
+        # behind the feed. The publication takes the fed timer unless memory changed it since
+        # the capture, and queues the row again so the tables end as memory is.
+        artifact = (SRC / "artifact.c").read_text()
+
+        def body(signature):
+            start = artifact.index(signature)
+            return artifact[start : artifact.index("\n}\n", start) + 3]
+
+        rows = artifact[artifact.index("struct artifact_row\n{") :
+                        artifact.index("const char ARTIFACT_ROWS_QUERY")]
+        harness = r"""
+#include <cassert>
+#include <cstdarg>
+#include <cstdio>
+#include <ctime>
+#include <map>
+#include <string>
+#include <vector>
+#define ARTIFACT_ON_PC 3
+#define ARTIFACT_NOTINGAME 5
+std::string sql_format(const char *format, ...)
+{
+    char out[1024];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(out, sizeof out, format, args);
+    va_end(args);
+    return out;
+}
+static std::vector<std::string> stored; // the last row queued
+bool sql_queue_statements(std::vector<std::string> statements)
+{
+    stored = statements;
+    return true;
+}
+std::string artifact_domain_mirror(int) { return "mirror"; }
+static int invalidated = 0;
+void arti_cache_invalidate() { ++invalidated; }
+""" + rows + body("void artifact_row_store(") + body("void artifact_feed_published(") + r"""
+static bool stored_timer(long timer)
+{
+    return stored.size() == 2 &&
+           stored[0].find("NULLIF(" + std::to_string(timer) + ", 0)") != std::string::npos;
+}
+int main()
+{
+    artifact_rows[900] = { true, ARTIFACT_ON_PC, 42, 1000, 1 };
+    // A feed captured 1000 and commits 1600; a move queued meanwhile stored 1000 behind it.
+    artifact_row_store(900, { true, ARTIFACT_ON_PC, 43, 1000, 1 });
+    artifact_feed_published(900, 1000, 1600);
+    assert(artifact_rows[900].timer == 1600 && artifact_rows[900].location == 43);
+    assert(stored_timer(1600) && invalidated == 2);
+    // Memory changed the timer since the capture (the artifact went): memory stands.
+    artifact_row_store(900, { false, ARTIFACT_NOTINGAME, -1, 0, 1 });
+    artifact_feed_published(900, 1600, 2200);
+    assert(artifact_rows[900].timer == 0 && !artifact_rows[900].owned && stored_timer(0));
+    // An artifact the game has no row for is left alone.
+    stored.clear();
+    artifact_feed_published(901, 0, 600);
+    assert(!artifact_rows.count(901) && stored.empty());
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "feed_publication.cpp"
+            binary = Path(directory) / "feed_publication"
+            source.write_text(harness)
+            subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-g",
+                            "-fsanitize=address,undefined", str(source), "-o", str(binary)],
+                           check=True)
+            subprocess.run([str(binary)], check=True)
+        state = (SRC / "artifact_guild_state.c").read_text()
+        self.assertIn("payload.artifacts[index].expected_timer", state)
+        transaction = (SRC / "artifact_guild_transaction.c").read_text()
+        self.assertIn("artifact_guild_state_publish(result, found->second.payload);", transaction)
 
 
 if __name__ == "__main__":

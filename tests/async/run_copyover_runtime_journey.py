@@ -151,7 +151,9 @@ def run(binary, compressed, nonroot=False):
             client.send('save'); client.expect(f'Save complete for {journey.CHARACTER}.', timeout=30)
             assert not path.exists() and process.poll() is None
             assert (runtime / 'server.out').read_text().count('Entering game loop.') == 2
-            print(f'{compressed=}, {nonroot=}: actual exec recovered the original socket, look and acknowledged save', flush=True)
+            # The session keeps its account across the exec, so quit returns to its menu.
+            client.send('quit'); client.expect('ACCOUNT MENU', timeout=30)
+            print(f'{compressed=}, {nonroot=}: actual exec recovered the original socket, look, acknowledged save and the account menu', flush=True)
         except Exception:
             print((runtime / 'server.out').read_text(errors='replace')[-7000:])
             print(journey.runtime_logs(runtime))

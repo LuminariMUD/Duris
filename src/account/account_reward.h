@@ -11,5 +11,9 @@ void account_bound_reward_on_login(P_char ch);
 void account_bound_reward_prepare_player_corpse(P_char ch, P_obj corpse);
 bool account_bound_reward_owner(P_char ch, P_obj obj);
 bool account_bound_rewards_on_successful_pwipe(void);
+// Reads the grants and their summons at boot; the game keeps them current in memory.
+bool account_rewards_load(void);
+// A deleted account's grants and summons leave memory, as the database's cascade does.
+void account_rewards_forget_account(const char *account);
 
 #endif

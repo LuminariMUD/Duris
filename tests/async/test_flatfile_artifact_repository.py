@@ -148,7 +148,10 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
     expiry_body = artifact_source[expiry_start:expiry_end]
     if "flatfile_artifact_find_next_expired(" not in expiry_body:
         raise AssertionError("client-free expiry event does not select from flat authority")
-    if "flatfile_artifact_expire(" not in expiry_body:
+    expire_start = artifact_source.index("static bool artifact_expire(int vnum)")
+    expire_body = artifact_source[expire_start:expiry_start]
+    if "artifact_expire(page_last_vnum)" not in expiry_body or \
+            "flatfile_artifact_expire(" not in expire_body:
         raise AssertionError("client-free expiry event does not clear flat authority")
 
     wars_start = artifact_source.index("void event_artifact_wars_sql(")
@@ -168,15 +171,10 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
         raise AssertionError("binding maintenance does not persist every binding outcome")
 
     remove_start = artifact_source.index("bool remove_owned_artifact_sql(")
-    remove_end = artifact_source.index("\nbool remove_all_artifacts_sql(", remove_start)
+    remove_end = artifact_source.index("\n// This is a wrapper function", remove_start)
     remove_body = artifact_source[remove_start:remove_end]
     if "flatfile_artifact_remove_owned(" not in remove_body:
         raise AssertionError("client-free owned artifact removal bypasses flat authority")
-
-    remove_all_start = artifact_source.index("bool remove_all_artifacts_sql(P_char ch)\n{")
-    remove_all_end = artifact_source.index("\n// This is a wrapper function", remove_all_start)
-    if "flatfile_artifact_release_player(" not in artifact_source[remove_all_start:remove_all_end]:
-        raise AssertionError("client-free bulk artifact removal bypasses flat authority")
 
     list_signature = "void list_artifacts_sql(P_char ch, int type, bool Godlist, bool allArtis)\n{"
     list_start = artifact_source.index(list_signature)
@@ -209,7 +207,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
         raise AssertionError("client-free minimum feed bypasses flat timer authority")
 
     feed_start = artifact_source.index("void artifact_feed_sql(")
-    feed_end = artifact_source.index("\nP_char load_dummy_char(", feed_start)
+    feed_end = artifact_source.index("\nstatic void release_offline_owner(", feed_start)
     feed_body = artifact_source[feed_start:feed_end]
     if "flatfile_artifact_gameplay_update(" not in feed_body:
         raise AssertionError("client-free missing-row feed bypasses flat authority")

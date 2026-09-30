@@ -7,6 +7,12 @@
 
 #include "core/structs.h"
 
+#include "sql/sql_work.h"
+
+#include <functional>
+#include <string>
+#include <vector>
+
 // ============================================================================
 // transaction helpers
 // ============================================================================
@@ -51,6 +57,8 @@ bool sql_save_player_items(P_char ch);
 bool sql_delete_player_items(int pid);
 bool sql_save_player_shapechanges(P_char ch);
 bool sql_save_player_recipes(P_char ch);
+// Every character's recipes, read at boot and kept in memory (MariaDB).
+bool sql_player_recipes_load(void);
 bool sql_add_player_recipe(int pid, int recipe_vnum);
 bool sql_delete_player_recipes(int pid);
 bool sql_has_player_recipe(int pid, int recipe_vnum);
@@ -68,28 +76,18 @@ P_char sql_load_player(const char *name);
 // check if player exists in db
 bool sql_player_exists(const char *name);
 
-// character rename
-bool sql_player_rename(P_char ch, const char *new_name);
-
-// outcome of a transaction whose COMMIT may have been applied even though it failed
-enum class sql_commit_outcome
-{
-	committed,
-	rolled_back,
-	unknown,
-};
-
-// rename the character, everything their name keys, and the ship they own
-// (NULL for none, its owner already changed in memory) in one transaction
-sql_commit_outcome sql_rename_character(P_char ch, const char *old_name, const char *new_name,
-					struct ShipData *ship);
+// The statements of one rename, for one writer job: the player row, everything the name
+// keys, and the ship they own (NULL for none), saved as it is (under its new owner).
+// None on flat-file, which has no rename.
+std::vector<std::string> sql_rename_character_statements(int pid, const char *old_name,
+							 const char *new_name,
+							 struct ShipData *ship);
 
 // get player pid by name
 int sql_get_player_pid(const char *name);
 
 // individual load functions (called by sql_load_player)
 bool sql_load_player_status(P_char ch, int pid);
-bool sql_load_player_epic_bonus(P_char ch);
 bool sql_load_player_skills(P_char ch);
 bool sql_load_player_affects(P_char ch);
 bool sql_load_player_items(P_char ch);
@@ -103,30 +101,40 @@ bool sql_load_player_pets(P_char ch);
 // player delete
 // ============================================================================
 
+// The characters' pids and names, read at boot and kept current in memory (MariaDB; the
+// flat-file lookups read the identity store). sql_get_player_name() gives only an active
+// character's name.
+bool sql_player_names_load(void);
+void sql_player_names_set(int pid, const char *name);
+void sql_player_names_forget(int pid);
+// A rename in flight holds its new name for pid, so no other character takes it before the
+// rename is stored; a refused rename releases it.
+void sql_player_names_hold(int pid, const char *name);
+void sql_player_names_release(int pid, const char *name);
+const char *sql_get_player_name(int pid);
+// The highest pid any character has had, for allocating the next one.
+int sql_highest_player_pid(void);
+
 // delete player from db (for pwipe, etc)
 // Transaction owners defer revision eviction until their commit is confirmed.
-bool sql_delete_player(int pid, bool forget_revision = true);
-bool sql_delete_player_by_name(const char *name);
 
 // ============================================================================
 // account functions
 // ============================================================================
 
-// save account to db
+// Queues the account's save on the writer.
 bool sql_save_account(struct acct_entry *acc);
 
-// load account from db by name
-struct acct_entry *sql_load_account(const char *name);
+// Reads the account on the writer, behind every save queued before it: its character
+// projection is repaired first, then the account, its IPs and its characters are read.
+// done runs on the game thread with the loaded account, which it then owns, or null
+// when there is none; ok is false when the read failed.
+bool sql_load_account(const char *name, std::function<void(bool ok, P_acct loaded)> done);
 
-// rebuild active, non-deleted account mappings from player_data.account_name
-// returns affected rows, or -1 on failure
-int sql_repair_account_character_projection(const char *account_name);
-
-// check if account exists
-bool sql_account_exists(const char *name);
-
-// permanently remove one fenced account and all of its live character state
-bool sql_delete_account(const char *name);
+// Permanently removes one fenced account and all of its live character state, on the
+// writer in one transaction, behind the saves queued before it. done(deleted) runs on
+// the game thread; an account already gone counts as deleted. False when not queued.
+bool sql_delete_account(const char *name, std::function<void(bool deleted)> done);
 
 // link player to account (updates player_data.account_name)
 
@@ -134,40 +142,11 @@ bool sql_delete_account(const char *name);
 // locker functions
 // ============================================================================
 
-// save locker to db
-// for personal locker: owner_pid set, owner_assoc_id = 0
-// for guild locker: owner_pid = 0, owner_assoc_id set
-bool sql_save_locker(P_char locker_ch, int owner_pid, int owner_assoc_id);
-
-// load locker from db
-// pass owner_pid for personal, owner_assoc_id for guild (other should be 0)
-P_char sql_load_locker(int owner_pid, int owner_assoc_id);
-
-// load locker by name (e.g. "playername.locker" or "guild.123.locker")
-P_char sql_load_locker_by_name(const char *locker_name);
-
-/* Report whether a locker exists for the supplied stable owner key. */
-bool sql_locker_exists(int owner_pid, int owner_assoc_id);
-/* Report whether a locker exists for the supplied display name. */
-bool sql_locker_exists_by_name(const char *locker_name);
-
-/* Validate personal-locker ownership through a current same-side identity mapping. */
-bool sql_locker_owner_can_access(const char *locker_name, int owner_pid, int racewar);
-
 // delete locker
-bool sql_delete_locker(int owner_pid, int owner_assoc_id);
+std::string sql_delete_locker_statement(int owner_pid, int owner_assoc_id);
 bool sql_delete_locker_by_name(const char *locker_name);
 
 // private chest functions
-int sql_get_locker_id_by_name(const char *locker_name);
-int sql_get_or_create_public_chest(int locker_id);
-int sql_create_private_chest_hashed(int locker_id, const char *chest_name, const char *hash);
-bool sql_delete_private_chest(int chest_id);
-int sql_get_chest_id(int locker_id, const char *chest_name);
-bool sql_set_chest_password_hash(int chest_id, const char *hash);
-bool sql_get_chest_password_hash(int chest_id, char **hash);
-bool sql_finish_chest_password(int chest_id, const char *expected, const char *upgrade);
-int sql_count_private_chests(int locker_id);
 // private_chest_log action_type values
 #define CHEST_ACTION_OPEN 1
 #define CHEST_ACTION_CLOSE 2
@@ -178,7 +157,10 @@ int sql_count_private_chests(int locker_id);
 bool sql_log_chest_activity(int locker_id, int chest_id, const char *char_name, int action_type,
 			    const char *item_short);
 bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj);
-void sql_load_private_chest_items(int locker_id, int chest_id, P_obj chest_obj);
+// A locker's items from the rows its entry read on the writer (storage_lockers.c):
+// the chain of chest `chest_id`, or, with chest_obj, placed in that private chest.
+P_obj sql_locker_items_from_rows(const sql_rows &rows, int locker_id, int chest_id,
+				 P_obj chest_obj);
 
 // account bank
 struct AccountBankBalances
@@ -227,15 +209,7 @@ char *sql_escape_string(const char *str);
 // log a redacted SQL failure with a stable call-site label
 void sql_player_error(const char *site);
 
-// account ips
-struct acct_ip;
-bool sql_save_account_ips(const char *account_name, struct acct_ip *ips);
-struct acct_ip *sql_load_account_ips(const char *account_name);
-bool sql_delete_account_ips(const char *account_name);
-
 // corpses
-bool sql_save_corpse(P_obj corpse);
-bool sql_delete_corpse(const char *player_name, int save_id);
 bool sql_load_all_corpses(void);
 
 // shopkeepers
@@ -246,27 +220,27 @@ bool sql_restore_shopkeepers(void);
 bool sql_save_dirty_shopkeepers(bool force = false);
 
 // saved items
-bool sql_save_saved_item(P_obj item, const char *item_key);
-bool sql_delete_saved_item(const char *item_key);
 void sql_restore_saved_items(void);
 
 // ships
 struct ShipData;
 bool sql_save_ship(struct ShipData *ship);
-struct ShipData *sql_load_ship(const char *owner_name);
 bool sql_load_all_ships(void);
 struct ShipData *sql_place_ship(const char *owner_name, bool *unplaced);
-int sql_ship_stored(const char *owner_name);
+bool sql_ship_stored(const char *owner_name);
+std::string sql_delete_ship_statement(const char *owner_name);
 bool sql_delete_ship(const char *owner_name);
 
 // guilds
 class Guild;
 bool sql_save_guild(Guild *guild);
+std::vector<std::string> sql_save_guild_statements(Guild *guild);
 Guild *sql_load_guild(unsigned int guild_id);
 bool sql_load_all_guilds(void);
 bool sql_delete_guild(unsigned int guild_id);
 
-// spellbooks (conjurable mobs)
+// spellbooks (conjurable mobs); on MariaDB read at boot and kept in memory
+bool sql_spellbooks_load(void);
 bool sql_add_spellbook_mob(int pid, int mob_vnum);
 bool sql_remove_spellbook_mob(int pid, int mob_vnum);
 bool sql_has_spellbook_mob(int pid, int mob_vnum);

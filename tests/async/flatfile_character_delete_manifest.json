@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "runtime_entry": "src/core/files.c:deleteCharacter",
+  "runtime_entry": "src/core/files.c:delete_character",
   "core_coordinator": "src/flatfile/flatfile_character_delete.c:flatfile_character_delete",
   "runtime_exposure": "enabled",
   "entries": [
@@ -16,7 +16,7 @@
       "source": "runtime-call",
       "key": "account+canonical-name",
       "disposition": "covered_by_identity",
-      "evidence": { "path": "src/core/files.c", "token": "remove_char_from_list(ch->desc->account" }
+      "evidence": { "path": "src/core/files.c", "token": "remove_char_from_list(d->account, deleted.name.c_str(), false)" }
     },
     {
       "id": "player_snapshot",

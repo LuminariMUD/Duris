@@ -12,6 +12,7 @@
 #include "ships/ships.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
+#include "world/outposts.h"
 #include "core/safe_format.h"
 using namespace std;
 
@@ -1108,8 +1109,7 @@ void do_test(P_char ch, char *arg, int cmd)
 			if (isname(arg, "confirm"))
 			{
 				send_to_char("&=GLResetting oupost information... .. .", ch);
-				if (qry("UPDATE outposts SET owner_id='0', level='8', walls='1', archers='0', hitpoints='300000', territory='0',"
-					" portal_room='0', resources='0', applied_resources='0', golems='0', meurtriere='0', scouts='0'"))
+				if (clear_outposts())
 				{
 					send_to_char("&=Bl success!&n\n\r", ch);
 				}

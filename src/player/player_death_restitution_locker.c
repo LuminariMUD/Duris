@@ -9,6 +9,7 @@
 
 #ifndef __NO_MYSQL__
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "sql/sql_player.h"
 #endif
 
@@ -91,34 +92,35 @@ void player_death_restitution_locker_notice(P_char ch)
 		static_cast<unsigned long>(ITEM_TRANSIENT), PLAYER_DEATH_RESTITUTION_BAG_MARKER);
 	if (written < 0 || static_cast<size_t>(written) >= sizeof(query))
 		return;
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return;
-	if (mysql_num_rows(result) == 0)
-	{
-		mysql_free_result(result);
-		return;
-	}
-
-	send_to_char(
-		"\r\n&+R=================================================================&n\r\n"
-		"&+W*** ITEM RESTITUTION IS WAITING IN YOUR ACCOUNT LOCKER ***&n\r\n"
-		"&+YStaff recovered equipment for a deleted character on this account.&n\r\n"
-		"&+YLook for the clearly named restitution lost items bag in the locker&n\r\n"
-		"&+Yfor that character's race-war side. The bag is TRANSIENT: if you take&n\r\n"
-		"&+Yit out and drop it, the bag will dissolve.&n\r\n",
-		ch);
-	MYSQL_ROW row = nullptr;
-	while ((row = mysql_fetch_row(result)))
-	{
-		const std::string character = safe_character_name(row[1]);
-		const int racewar = row[2] ? atoi(row[2]) : 0;
-		send_to_char_f(ch, "&+C  - Restitution bag for %s (account locker side %d)&n\r\n",
-			       character.c_str(), racewar);
-	}
-	send_to_char(
-		"&+R=================================================================&n\r\n\r\n",
-		ch);
-	mysql_free_result(result);
+	// Read on the writer; the notice follows on a later pulse, if ch is still here.
+	const uint64_t runtime_id = ch->runtime_id;
+	sql_read(
+		query,
+		[runtime_id](bool ok, const sql_rows &rows)
+		{
+			P_char live = find_character_by_runtime_id(runtime_id);
+			if (!ok || !live || rows.empty())
+				return;
+			send_to_char(
+				"\r\n&+R=================================================================&n\r\n"
+				"&+W*** ITEM RESTITUTION IS WAITING IN YOUR ACCOUNT LOCKER ***&n\r\n"
+				"&+YStaff recovered equipment for a deleted character on this account.&n\r\n"
+				"&+YLook for the clearly named restitution lost items bag in the locker&n\r\n"
+				"&+Yfor that character's race-war side. The bag is TRANSIENT: if you take&n\r\n"
+				"&+Yit out and drop it, the bag will dissolve.&n\r\n",
+				live);
+			for (const sql_row &row : rows)
+			{
+				const std::string character = safe_character_name(row[1]);
+				const int racewar = row[2] ? atoi(row[2]) : 0;
+				send_to_char_f(
+					live,
+					"&+C  - Restitution bag for %s (account locker side %d)&n\r\n",
+					character.c_str(), racewar);
+			}
+			send_to_char(
+				"&+R=================================================================&n\r\n\r\n",
+				live);
+		});
 #endif
 }

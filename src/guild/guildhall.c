@@ -85,9 +85,22 @@ bool Guildhall::reload()
 	if (!deinit())
 		return FALSE;
 
-	clear_rooms();
-	load_guildhall(id, this);
-	load_guildhall_rooms(this);
+	// Memory holds the hall: each room is built again as its type, which may
+	// have changed, from the fields it has.
+	vector<GuildhallRoom *> old_rooms;
+	old_rooms.swap(rooms);
+	for (GuildhallRoom *old_room : old_rooms)
+	{
+		GuildhallRoom *room = make_guildhall_room(old_room->type);
+		room->id = old_room->id;
+		room->vnum = old_room->vnum;
+		room->name = old_room->name;
+		room->type = old_room->type;
+		memcpy(room->value, old_room->value, sizeof(room->value));
+		memcpy(room->exits, old_room->exits, sizeof(room->exits));
+		delete old_room;
+		add_room(room);
+	}
 	guild = get_guild_from_id(assoc_id);
 
 	return this->init();

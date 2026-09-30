@@ -89,7 +89,7 @@ for symbol in (
 assert "pd.secondary_class" in hardcore_source
 assert "2147483648" in hardcore_source
 assert "pd.numb_deaths * %d" in hardcore_source
-assert "config->score_display_divisor" in hardcore_source
+assert "hardcore_config_get()->score_display_divisor" in hardcore_source
 assert "atof(row[1]) / 100.0" not in hardcore_source
 assert actoth.count("IS_HARDCORE(ch) && hardcore_config_get()->death_hall_of_fame") == 2
 assert "IS_PC(ch) && IS_HARDCORE(ch) && hardcore_config_get()->death_messages_enabled" in fight

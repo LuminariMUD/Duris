@@ -20,7 +20,7 @@ NETWORK_CREATED=0
 DB_CREATED=0
 
 cleanup() {
-    if [[ "$DB_CREATED" == 1 ]]; then docker rm -f "$DB_CONTAINER" >/dev/null 2>&1 || true; fi
+    if [[ "$DB_CREATED" == 1 ]]; then docker rm -fv "$DB_CONTAINER" >/dev/null 2>&1 || true; fi
     if [[ "$NETWORK_CREATED" == 1 ]]; then docker network rm "$NETWORK" >/dev/null 2>&1 || true; fi
     rm -rf "$TMP"
 }
