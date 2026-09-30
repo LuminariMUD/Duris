@@ -1807,10 +1807,75 @@ Converted on `step8/artifacts` by an agent and applied to this branch (`d3dbaf0a
 - Two small windows where memory and the tables disagree until that artifact's next write:
   a game write queued between a guild feed's capture and its publish, and a game change made
   while a `syncdb` job is in flight.
+- Found on the way (fixed in `ae6ac52e0`): every epic gain submits one transaction for the
+  guild's prestige and the feeding of the worn artifacts. It took each artifact's expected
+  timer, soul and revision from a copy of `artifact_domain_state` read at boot, and nothing
+  the game did kept that table current (it is empty unless a development baseline script
+  filled it: `duris_dev` held 0 rows for 97 artifacts). So a mortal wearing an artifact lost
+  the whole transaction, prestige included. Now every artifact row and soul change the game
+  queues is repeated in `artifact_domain_state` in the same job (`artifact_domain_mirror()`;
+  also at boot and after `syncdb`), the capture reads the timer and soul from the artifact
+  memory (`artifact_feed_state()`), and the repository locks the revision it reads instead of
+  one the game cannot know (the corpse, restitution and deletion transactions advance it
+  too). The guild MariaDB harness (`run_artifact_guild_schema_mysql.sh`, which had stopped
+  linking: `8087e080b`) applies a feed after another transaction advanced the revision, and
+  the game-loop queries journey checks the dropped artifact's domain row.
 - Tests: the game-loop queries journey drops two artifacts, lists them, clears one, resets a
   soul and runs `fixit` and `syncdb`, then checks the rows after shutdown; its
   `NOT_CONVERTED` list is empty from here. `test_artifact_offline_owner_loads.py` is new; the
   event, bind, cache and deletion contracts follow the memory version.
+
+#### World: zones, outposts, polls and the rest (done)
+
+Converted on `step8/world` by an agent and applied to this branch (16 commits, from the
+zone reset key fix to `3ce8e7cf9`).
+
+- Kept in memory, read at boot and kept current by the game's own writes (each queued on
+  the writer; memory changes once the write is queued):
+  - the `zones` rows (`sql_load_zones()`, again after `update_zone_db()`). A no-reset zone's
+    reset chance changes there (`sql_set_zone_reset_perc()`). Alignment, last touch and
+    rarity change on other connections, so `sql_zones_refresh()` reads them again on the
+    writer after a stone touch and after the `epic_zone_balance` and `epic_zone_modifiers`
+    jobs. Epic stones, `epic zones`, the boon and CTF lists and `stat zone` read memory.
+  - the outposts (both backends now load, change and save a record; `clear_outposts()`
+    serves `test clearoutposts`), the polls with their options and votes (a new poll takes
+    its ids from memory; a poll closes when it expires, as the maintenance job records),
+    the spellbooks and the multiplay whitelist. `polls_load()`, `sql_spellbooks_load()` and
+    `whitelist_load()` stop the boot if they fail.
+- Read on the writer, printed on a later pulse: `epic`, `epic trophy`, `hardcore`,
+  `leaderboard` and `whois`. The epic bonus is read in the background when a character
+  enters and at copyover restore.
+- Queued: `set_timer()`, the epic bonus selection, the hardcore `killed_by` (now escaped),
+  the zone-story state and `newchar`'s account link. Whether zone-story state is stored is
+  read once at every boot (`note_stored_state()` in `boot_db()`).
+- Found on the way:
+  - `no_reset_zone_reset()` keyed zones by the zone index, another zone's row; it now uses
+    the zone number, as the stone touch does.
+  - The poll columns are INT seconds, but the code wrote `FROM_UNIXTIME()` and read
+    `UNIX_TIMESTAMP()`: under strict mode every poll and vote insert failed, and the active
+    list was always empty.
+  - Nothing hydrated the epic bonus since the player load pipeline replaced
+    `sql_load_player()`, so every relog or copyover lost the chosen bonus.
+  - `newchar` passed an int pid to `%ld`; the whitelist and `killed_by` were unescaped.
+  - `newchar` reset the pid `init_char()` had allocated to 0, which sent its first save down
+    the legacy path that no longer inserts, so it always failed on MariaDB; it keeps the pid
+    now, its save is queued, and its account menu entry carries the level, race and class
+    the menu shows (`7c8fc92e7`). The journey runs it in its last session.
+- Dead, for Phase 3: `epic_zone_balance()`, `update_epic_zone_alignment()`,
+  `update_epic_zone_mods()`, `update_epic_zone_frequency()`,
+  `get_epic_zone_frequency_mod()`, `update_zone_epic_level()`, `get_guild_resources()`,
+  `outpost_update_resources()`, `poll_check_expirations()`, `event_write_statistic()`
+  (its body is under `#if 0`) and `sql_delete_spellbook_mobs()`.
+- Tests: the game-loop queries journey runs `epic zones`, `stat zone`, `epic`,
+  `epic trophy`, `epic bonus`, a poll created, voted, listed and closed, `hardcore`,
+  `leaderboard`, the whitelist and `whois`, and checks the poll, option, vote and whitelist
+  rows after shutdown, plus an epic bonus that survives re-entry. New source contracts:
+  `test_zones_in_memory.py`, `test_no_reset_zone_key.py`, `test_epic_command_reads.py`,
+  `test_outposts_in_memory.py`, `test_poll_int_times.py`, `test_polls_in_memory.py`,
+  `test_hardcore_boards_off_loop.py`, `test_timers_queued.py`,
+  `test_zone_story_state_queued.py`, `test_spellbooks_in_memory.py`,
+  `test_whitelist_in_memory.py`, `test_whois_reads.py` and
+  `test_newchar_account_link_queued.py`.
 
 #### Account deletion (done)
 
@@ -1825,9 +1890,10 @@ Converted on `step8/artifacts` by an agent and applied to this branch (`d3dbaf0a
 - The session waits for the reply with its input held, as the account read does:
   `wait_for_writer()` and `writer_replied()` in `account.c`; the descriptor field is now
   `writer_wait_id` (was `account_read_id`). `finish_account_deletion()` tells the session
-  either way. On success the characters' names leave the index, the account's grants leave
-  the reward memory (`account_rewards_forget_account()`) and its recovery state goes. A
-  refusal rolls back and keeps all of that and the fence, and the session can retry.
+  either way. On success the characters' names leave the index, their artifacts are released
+  in memory, the account's grants leave the reward memory (`account_rewards_forget_account()`),
+  its poll votes leave the poll memory (`polls_forget_account()`) and its recovery state
+  goes. A refusal rolls back and keeps all of that and the fence, and the session can retry.
 - Flat-file keeps its synchronous deletion with the drain. The flat-file
   `sql_delete_account()` stub had no caller and is gone.
 - Found on the way: account deletion never told the name index, so a deleted account's
@@ -1837,6 +1903,20 @@ Converted on `step8/artifacts` by an agent and applied to this branch (`d3dbaf0a
   retry deletes it, a new account takes the same account and character names, and no
   account site logs as a game-loop query. The deletion contracts pin the writer job, the
   order and the forgets on success.
+
+#### Corpse and saved-item fallbacks (done)
+
+- A corpse or saved-item job the writer would not take fell back to the legacy synchronous
+  SQL on the game thread's connection, out of order with the jobs already queued. For a
+  corpse removal it could only fail or do nothing: the queue refuses a corpse without an
+  owner pid, and `sql_delete_corpse()` refused the same row for the same reason. Both
+  backends now report a refused job (`queue_failed`), as flat-file already did, and
+  `sql_save_corpse()`, `sql_delete_corpse()`, `sql_save_saved_item()` and
+  `sql_delete_saved_item()` are deleted with their helpers (`8fdd54c6f`). MariaDB's
+  `PurgeCorpseFile()` still ignores `skip_corpse_save`, as before.
+- Left for Phase 3 in `sql_player.c`: `sql_load_account_bank()` (only the non-account menu,
+  compiled out by `USE_ACCOUNT`, reaches it) and the account bank deposit and withdraw
+  functions, which nothing calls since the bank moved to critical commands.
 
 ### Review round 1 (MR !3)
 
