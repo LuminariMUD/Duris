@@ -60,6 +60,8 @@ void do_poll(P_char ch, char *argument, int cmd);
 
 /* sql */
 bool polls_load(void);
+// A deleted account's votes leave memory, as account deletion removes their rows.
+void polls_forget_account(const char *account_name);
 bool poll_create(poll_data *poll);
 bool poll_close(int poll_id, P_char ch);
 bool poll_has_voted(const char *account_name, int poll_id);

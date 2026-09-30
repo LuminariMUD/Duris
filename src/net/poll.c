@@ -140,6 +140,12 @@ bool polls_load(void)
 	mysql_free_result(res);
 	return true;
 }
+
+void polls_forget_account(const char *account_name)
+{
+	std::erase_if(stored_votes, [account_name](const stored_vote &vote)
+		      { return !strcasecmp(vote.account_name.c_str(), account_name); });
+}
 #endif
 
 /* forward declarations */

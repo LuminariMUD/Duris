@@ -157,6 +157,7 @@ assert mariadb.index("remove_deleted_account_runtime(d, identities)") < mariadb.
 succeeded = mariadb[mariadb.index("if (deleted)") : mariadb.index("writer_replied(id))")]
 assert "sql_player_names_forget(identity.pid)" in succeeded
 assert "account_rewards_forget_account(account_name.c_str())" in succeeded
+assert "polls_forget_account(account_name.c_str())" in succeeded
 assert mariadb.index("wait_for_writer(d)") < mariadb.index("sql_delete_account(")
 assert "writer_replied(id)" in mariadb
 assert "finish_account_deletion(" in mariadb

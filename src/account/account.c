@@ -59,6 +59,7 @@
 #include "persistence/persistence_mode.h"
 #include "ships/ships.h"
 #include "guild/assocs.h"
+#include "net/poll.h"
 #include "net/ws_handlers.h"
 #include "redis/redis_ship_legacy.h"
 
@@ -2958,6 +2959,7 @@ void verify_delete_account(P_desc d, char *arg)
 						    identity.pid);
 				    }
 				    account_rewards_forget_account(account_name.c_str());
+				    polls_forget_account(account_name.c_str());
 				    account_recovery_forget(account_name.c_str());
 			    }
 			    if (P_desc reader = writer_replied(id))
