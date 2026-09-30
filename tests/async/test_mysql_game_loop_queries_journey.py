@@ -36,6 +36,19 @@ COMMANDS = (
     ('stat zone', 'Zone flags:'),
     ('epic', 'Evils'),
     ('epic trophy', 'Epic Trophy'),
+    # The poll wizard takes the lines that follow as its answers.
+    ('poll create', 'Enter the poll question'),
+    ('Which color should the arena be?', 'Allow multiple selections'),
+    ('no', 'Poll duration in hours'),
+    ('24', 'Enter option 1'),
+    ('Red', 'Enter option 2'),
+    ('Blue', 'Enter option 3'),
+    ('done', 'Create this poll'),
+    ('yes', 'Poll created successfully'),
+    ('poll vote 1 2', 'Your vote has been recorded'),
+    ('poll vote 1 1', 'already voted in this poll'),
+    ('poll list', 'Which color should the arena be?'),
+    ('poll close 1', 'has been closed by'),
     ('divineclaim mace ' + journey.ACCOUNT + ' days 1', 'Created divine reward #1'),
     ('divineclaim list ' + journey.ACCOUNT, 'Active Divine Account Rewards'),
     ('auction list', 'No auctions to list!'),
@@ -208,11 +221,14 @@ def run(server):
                 input=f"SELECT COUNT(*) FROM {table} t JOIN player_data pd ON pd.pid=t.pid "
                       f"WHERE pd.name='{journey.CHARACTER}'").stdout.strip()
             assert count == '1', f'{table} holds {count} rows for the new character'
-        # Shutdown drained the writer: the revoked grant and its summon are gone.
-        for table in ('account_bound_rewards', 'account_bound_reward_summons'):
-            left = subprocess.run(mysql + [database], input='SELECT COUNT(*) FROM ' + table,
-                                  text=True, env=environment, check=True,
+        # Shutdown drained the writer: the revoked grant and its summon are gone, and the
+        # closed poll, its two options and the one vote are stored.
+        def scalar(query):
+            return subprocess.run(mysql + [database], input=query, text=True,
+                                  env=environment, check=True,
                                   capture_output=True).stdout.strip()
+        for table in ('account_bound_rewards', 'account_bound_reward_summons'):
+            left = scalar('SELECT COUNT(*) FROM ' + table)
             assert left == '0', f'{table} still holds {left} rows'
         # The dropped stone's row landed through the writer (on the ground, or on Raoul if he
         # picked it up); the cleared one is gone.
@@ -227,6 +243,11 @@ def run(server):
                                       's.bind_owner_pid, s.bind_timer_epoch FROM artifact_domain_state s '
                                       'WHERE s.vnum=900').stdout.split()
         assert domain[:3] == ['900', '0', artifacts[2]], domain
+        poll = scalar('SELECT is_active, created_at > 0, expires_at - created_at, '
+                      '(SELECT COUNT(*) FROM poll_options WHERE poll_id=1), '
+                      '(SELECT COUNT(*) FROM poll_votes WHERE poll_id=1 AND option_id=2) '
+                      'FROM polls WHERE id=1')
+        assert poll.split() == ['0', '1', '86400', '2', '1'], poll
 
         logs = output_path.read_text(errors='replace') + '\n'.join(
             path.read_text(errors='replace') for path in (runtime / 'logs/log').glob('*')

@@ -34,19 +34,112 @@
 #include <limits>
 #include <openssl/sha.h>
 #include <sstream>
-#include <strings.h>
 #include <unordered_map>
 #include <unordered_set>
+#else
+#include "sql/sql_async.h"
 #endif
+#include <strings.h>
 
 using namespace std;
 
 /* in-memory wizard sessions */
 static map<P_char, poll_wizard_data> poll_wizards;
 
-/* external declarations */
 #ifndef __NO_MYSQL__
-extern MYSQL *DB;
+/* The polls, their options and their votes, read at boot (polls_load()) and kept current
+ * by the game's own writes, which are queued on the writer. The maintenance job closes an
+ * expired poll in the database; here a poll is closed once it expires. */
+namespace
+{
+struct stored_vote
+{
+	int poll_id;
+	int option_id;
+	string account_name;
+};
+vector<poll_data> stored_polls;
+vector<stored_vote> stored_votes;
+int next_poll_id = 1;
+int next_option_id = 1;
+
+/* The poll as the game shows it: its vote counts, and closed once it expires. */
+poll_data counted_poll(const poll_data &stored)
+{
+	poll_data poll = stored;
+	poll.is_active = poll.is_active && poll.expires_at > time(NULL);
+	vector<string> voters;
+	for (const stored_vote &vote : stored_votes)
+	{
+		if (vote.poll_id != poll.id)
+			continue;
+		for (poll_option &option : poll.options)
+			if (option.id == vote.option_id)
+				option.vote_count++;
+		bool counted = false;
+		for (const string &voter : voters)
+			counted = counted || !strcasecmp(voter.c_str(), vote.account_name.c_str());
+		if (!counted)
+			voters.push_back(vote.account_name);
+	}
+	poll.total_votes = static_cast<int>(voters.size());
+	return poll;
+}
+} // namespace
+
+// Boot only: the game loop is not running yet.
+bool polls_load(void)
+{
+	MYSQL_RES *res = db_query(
+		"SELECT id, question, created_by, created_at, expires_at, is_active, multi_select, max_choices "
+		"FROM polls ORDER BY id");
+	if (!res)
+		return false;
+	stored_polls.clear();
+	while (MYSQL_ROW row = mysql_fetch_row(res))
+	{
+		poll_data poll;
+		poll.id = atoi(row[0]);
+		poll.question = row[1] ? row[1] : "";
+		poll.created_by = row[2] ? row[2] : "";
+		poll.created_at = atol(row[3]);
+		poll.expires_at = atol(row[4]);
+		poll.is_active = (atoi(row[5]) == 1);
+		poll.multi_select = (atoi(row[6]) == 1);
+		poll.max_choices = atoi(row[7]);
+		poll.total_votes = 0;
+		stored_polls.push_back(poll);
+		next_poll_id = max(next_poll_id, poll.id + 1);
+	}
+	mysql_free_result(res);
+
+	res = db_query(
+		"SELECT id, poll_id, option_num, option_text FROM poll_options ORDER BY option_num");
+	if (!res)
+		return false;
+	while (MYSQL_ROW row = mysql_fetch_row(res))
+	{
+		poll_option option;
+		option.id = atoi(row[0]);
+		option.option_num = atoi(row[2]);
+		option.text = row[3] ? row[3] : "";
+		option.vote_count = 0;
+		next_option_id = max(next_option_id, option.id + 1);
+		for (poll_data &poll : stored_polls)
+			if (poll.id == atoi(row[1]))
+				poll.options.push_back(option);
+	}
+	mysql_free_result(res);
+
+	res = db_query("SELECT poll_id, option_id, account_name FROM poll_votes");
+	if (!res)
+		return false;
+	stored_votes.clear();
+	while (MYSQL_ROW row = mysql_fetch_row(res))
+		stored_votes.push_back({ atoi(row[0]), atoi(row[1]), row[2] ? row[2] : "" });
+	mysql_free_result(res);
+	return true;
+}
 #endif
 
 /* forward declarations */
@@ -924,19 +1017,10 @@ bool poll_has_voted(const char *account_name, int poll_id)
 #else
 	if (!account_name || !*account_name)
 		return false;
-
-	string acct_esc = escape_str(account_name);
-	MYSQL_RES *res = db_query(
-		"SELECT id FROM poll_votes WHERE poll_id = %d AND account_name = '%s' LIMIT 1",
-		poll_id, acct_esc.c_str());
-
-	if (!res)
-		return false;
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-	bool voted = (row != NULL);
-	mysql_free_result(res);
-	return voted;
+	for (const stored_vote &vote : stored_votes)
+		if (vote.poll_id == poll_id && !strcasecmp(vote.account_name.c_str(), account_name))
+			return true;
+	return false;
 #endif
 }
 
@@ -948,57 +1032,11 @@ vector<poll_data> poll_get_all(bool active_only)
 #ifdef __NO_MYSQL__
 	return get_flat_polls(active_only, nullptr);
 #else
-	MYSQL_RES *res;
-
-	if (active_only)
+	for (auto stored = stored_polls.rbegin(); stored != stored_polls.rend(); ++stored)
 	{
-		res = db_query(
-			"SELECT id, question, created_by, created_at, expires_at, is_active, multi_select, max_choices "
-			"FROM polls WHERE is_active = 1 AND expires_at > %ld ORDER BY id DESC",
-			(long)time(NULL));
-	}
-	else
-	{
-		res = db_query(
-			"SELECT id, question, created_by, created_at, expires_at, is_active, multi_select, max_choices "
-			"FROM polls ORDER BY id DESC");
-	}
-
-	if (!res)
-		return polls;
-
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(res)))
-	{
-		poll_data poll;
-		poll.id = atoi(row[0]);
-		poll.question = row[1] ? row[1] : "";
-		poll.created_by = row[2] ? row[2] : "";
-		poll.created_at = atol(row[3]);
-		poll.expires_at = atol(row[4]);
-		poll.is_active = (atoi(row[5]) == 1);
-		poll.multi_select = (atoi(row[6]) == 1);
-		poll.max_choices = atoi(row[7]);
-		poll.total_votes = 0;
-		polls.push_back(poll);
-	}
-	mysql_free_result(res);
-
-	/* vote counts */
-	for (size_t i = 0; i < polls.size(); i++)
-	{
-		res = db_query(
-			"SELECT COUNT(DISTINCT account_name) FROM poll_votes WHERE poll_id = %d",
-			polls[i].id);
-		if (res)
-		{
-			row = mysql_fetch_row(res);
-			if (row && row[0])
-			{
-				polls[i].total_votes = atoi(row[0]);
-			}
-			mysql_free_result(res);
-		}
+		poll_data poll = counted_poll(*stored);
+		if (!active_only || poll.is_active)
+			polls.push_back(poll);
 	}
 #endif
 
@@ -1014,78 +1052,9 @@ poll_data poll_get_by_id(int poll_id)
 #ifdef __NO_MYSQL__
 	return get_flat_poll_by_id(poll_id, nullptr);
 #else
-	MYSQL_RES *res = db_query(
-		"SELECT id, question, created_by, created_at, expires_at, is_active, multi_select, max_choices "
-		"FROM polls WHERE id = %d",
-		poll_id);
-
-	if (!res)
-		return poll;
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-	if (!row)
-	{
-		mysql_free_result(res);
-		return poll;
-	}
-
-	poll.id = atoi(row[0]);
-	poll.question = row[1] ? row[1] : "";
-	poll.created_by = row[2] ? row[2] : "";
-	poll.created_at = atol(row[3]);
-	poll.expires_at = atol(row[4]);
-	poll.is_active = (atoi(row[5]) == 1);
-	poll.multi_select = (atoi(row[6]) == 1);
-	poll.max_choices = atoi(row[7]);
-	poll.total_votes = 0;
-	mysql_free_result(res);
-
-	/* options */
-	res = db_query(
-		"SELECT id, option_num, option_text FROM poll_options WHERE poll_id = %d ORDER BY option_num",
-		poll_id);
-	if (res)
-	{
-		while ((row = mysql_fetch_row(res)))
-		{
-			poll_option opt;
-			opt.id = atoi(row[0]);
-			opt.option_num = atoi(row[1]);
-			opt.text = row[2] ? row[2] : "";
-			opt.vote_count = 0;
-			poll.options.push_back(opt);
-		}
-		mysql_free_result(res);
-	}
-
-	/* vote counts per option */
-	for (size_t i = 0; i < poll.options.size(); i++)
-	{
-		res = db_query("SELECT COUNT(*) FROM poll_votes WHERE option_id = %d",
-			       poll.options[i].id);
-		if (res)
-		{
-			row = mysql_fetch_row(res);
-			if (row && row[0])
-			{
-				poll.options[i].vote_count = atoi(row[0]);
-			}
-			mysql_free_result(res);
-		}
-	}
-
-	/* total voters */
-	res = db_query("SELECT COUNT(DISTINCT account_name) FROM poll_votes WHERE poll_id = %d",
-		       poll_id);
-	if (res)
-	{
-		row = mysql_fetch_row(res);
-		if (row && row[0])
-		{
-			poll.total_votes = atoi(row[0]);
-		}
-		mysql_free_result(res);
-	}
+	for (const poll_data &stored : stored_polls)
+		if (stored.id == poll_id)
+			return counted_poll(stored);
 #endif
 
 	return poll;
@@ -1097,28 +1066,31 @@ bool poll_create(poll_data *poll)
 #ifdef __NO_MYSQL__
 	return create_flat_poll(poll);
 #else
-	string question_esc = escape_str(poll->question.c_str());
-	string creator_esc = escape_str(poll->created_by.c_str());
-
-	if (!qry("INSERT INTO polls (question, created_by, created_at, expires_at, is_active, multi_select, max_choices) "
-		 "VALUES ('%s', '%s', %ld, %ld, 1, %d, %d)",
-		 question_esc.c_str(), creator_esc.c_str(), (long)poll->created_at,
-		 (long)poll->expires_at, poll->multi_select ? 1 : 0, poll->max_choices))
+	poll_data created = *poll;
+	created.id = next_poll_id;
+	created.total_votes = 0;
+	vector<string> statements = { sql_format(
+		"INSERT INTO polls (id, question, created_by, created_at, expires_at, is_active, multi_select, max_choices) "
+		"VALUES (%d, '%s', '%s', %ld, %ld, 1, %d, %d)",
+		created.id, escape_str(created.question.c_str()).c_str(),
+		escape_str(created.created_by.c_str()).c_str(), (long)created.created_at,
+		(long)created.expires_at, created.multi_select ? 1 : 0, created.max_choices) };
+	int option_id = next_option_id;
+	for (poll_option &option : created.options)
 	{
+		option.id = option_id++;
+		option.vote_count = 0;
+		statements.push_back(sql_format(
+			"INSERT INTO poll_options (id, poll_id, option_num, option_text) VALUES (%d, %d, %d, '%s')",
+			option.id, created.id, option.option_num,
+			escape_str(option.text.c_str()).c_str()));
+	}
+	if (!sql_queue_statements(std::move(statements)))
 		return false;
-	}
-
-	int poll_id = (int)mysql_insert_id(DB);
-	poll->id = poll_id;
-
-	/* options */
-	for (size_t i = 0; i < poll->options.size(); i++)
-	{
-		string opt_esc = escape_str(poll->options[i].text.c_str());
-		qry("INSERT INTO poll_options (poll_id, option_num, option_text) VALUES (%d, %d, '%s')",
-		    poll_id, poll->options[i].option_num, opt_esc.c_str());
-	}
-
+	next_poll_id++;
+	next_option_id = option_id;
+	stored_polls.push_back(created);
+	*poll = created;
 	return true;
 #endif
 }
@@ -1165,11 +1137,14 @@ bool poll_close(int poll_id, P_char ch)
 		return false;
 	}
 
-	if (!qry("UPDATE polls SET is_active = 0 WHERE id = %d", poll_id))
+	if (!sql_queue("UPDATE polls SET is_active = 0 WHERE id = %d", poll_id))
 	{
 		send_to_char("Failed to close poll.\r\n", ch);
 		return false;
 	}
+	for (poll_data &stored : stored_polls)
+		if (stored.id == poll_id)
+			stored.is_active = false;
 
 	char buf[MAX_STRING_LENGTH];
 	snprintf(buf, MAX_STRING_LENGTH, "&+W[POLL]&n Poll #%d has been closed by %s.\r\n", poll_id,
@@ -1230,9 +1205,6 @@ int poll_record_votes(const char *acct_name, const char *char_name, int poll_id,
 	(void)poll;
 	return record_flat_poll_votes(acct_name, char_name, poll_id, choices);
 #else
-	string acct_esc = escape_str(acct_name);
-	string char_esc = escape_str(char_name);
-
 	int votes_cast = 0;
 	for (size_t i = 0; i < choices.size(); i++)
 	{
@@ -1247,13 +1219,20 @@ int poll_record_votes(const char *acct_name, const char *char_name, int poll_id,
 		}
 		if (option_id == 0)
 			continue;
-
-		if (qry("INSERT IGNORE INTO poll_votes (poll_id, account_name, option_id, voted_at, char_name) "
-			"VALUES (%d, '%s', %d, %ld, '%s')",
-			poll_id, acct_esc.c_str(), option_id, (long)time(NULL), char_esc.c_str()))
-		{
-			votes_cast++;
-		}
+		bool duplicate = false;
+		for (const stored_vote &vote : stored_votes)
+			duplicate = duplicate ||
+				    (vote.poll_id == poll_id && vote.option_id == option_id &&
+				     !strcasecmp(vote.account_name.c_str(), acct_name));
+		if (duplicate ||
+		    !sql_queue(
+			    "INSERT IGNORE INTO poll_votes (poll_id, account_name, option_id, voted_at, char_name) "
+			    "VALUES (%d, '%s', %d, %ld, '%s')",
+			    poll_id, escape_str(acct_name).c_str(), option_id, (long)time(NULL),
+			    escape_str(char_name).c_str()))
+			continue;
+		stored_votes.push_back({ poll_id, option_id, acct_name });
+		votes_cast++;
 	}
 	return votes_cast;
 #endif

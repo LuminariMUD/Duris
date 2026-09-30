@@ -59,6 +59,7 @@ struct poll_wizard_data
 void do_poll(P_char ch, char *argument, int cmd);
 
 /* sql */
+bool polls_load(void);
 bool poll_create(poll_data *poll);
 bool poll_close(int poll_id, P_char ch);
 bool poll_has_voted(const char *account_name, int poll_id);
