@@ -48,7 +48,8 @@ registration = HANDLERS[
 ]
 assert '"Account not found"' not in login
 assert '"Invalid password"' not in login
-assert login.count('"Invalid account or password"') >= 4
+# A missing and an unreadable account get the same answer as a wrong password.
+assert login.count('"Invalid account or password"') >= 3
 assert '"An account with that name already exists"' not in registration
 assert '"Email address is already in use"' not in registration
 

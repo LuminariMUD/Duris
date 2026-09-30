@@ -12,7 +12,8 @@ ADAPTER = (SRC / "flatfile_account_adapter.c").read_text()
 FILES = (SRC / "files.c").read_text()
 
 assert "flatfile_account_state_release(loaded)" in ACCOUNT
-assert "str_dup(loaded->acct_name" in ACCOUNT
+assert "copy_account(account, loaded);" in ACCOUNT
+assert "str_dup(from->acct_name" in ACCOUNT
 assert "void flatfile_account_state_release" in ADAPTER
 assert "c->level = GET_LEVEL(player);" in ACCOUNT
 assert "c->race = GET_RACE(player);" in ACCOUNT
