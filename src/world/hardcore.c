@@ -30,6 +30,7 @@
 #include "ships/ships.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "world/weather.h"
 #include "world/zone_story_quest_runtime.h"
 
@@ -219,62 +220,61 @@ void insertHallEntry(char names[MAX_HALLOFFAME_SIZE][MAX_STRING_LENGTH],
 
 void displayHardCore(P_char ch, char * /*arg*/, int /*cmd*/)
 {
-	char name[MAX_STRING_LENGTH], buf[65536], buf2[2048];
-	float pts = 0;
-	MYSQL_RES *res;
-	MYSQL_ROW row;
 	const struct hardcore_config *config = hardcore_config_get();
 
 	if (!ch)
 		return;
 
 	// score follows getHardCorePts(); corrupted frags are excluded by policy.
-	res = db_query(
-		"SELECT pd.name, "
-		"  ((pd.level * %d) + (pd.exp / %d) + "
-		"   (CASE WHEN pd.frags < %d THEN pd.frags ELSE 0 END * %d)) * "
-		"  (CASE WHEN pd.secondary_class > 0 AND pd.secondary_class <> 2147483648 THEN %d ELSE 1 END) + "
-		"  (CASE WHEN pd.killed_by IS NOT NULL AND pd.killed_by <> 'Notdead' THEN %d ELSE 0 END) as score, "
-		"  COALESCE(pd.killed_by, 'Notdead') as killed_by "
-		"FROM player_data pd "
-		"WHERE (pd.act2 & 8192) > 0 OR pd.killed_by IS NOT NULL "
-		"ORDER BY score DESC "
-		"LIMIT %d",
-		config->score_level_points, config->score_experience_divisor,
-		config->score_invalid_frag_threshold, config->score_frag_points,
-		config->score_multiclass_multiplier, config->score_killer_bonus,
-		MAX_HALLOFFAME_SIZE);
-
-	if (!res)
-	{
-		send_to_char("&+RError: Couldn't query hall of fame from database.&n\r\n", ch);
-		return;
-	}
-
-	strcpy(buf, "\t\r\n&+r-= &+LHall Of&+L Fame&+r =-&n\r\n\r\n");
-	snprintf(buf2, 2048, "   &+w%-15s           &+w%s           &+w%-15s\r\n", "Name", "Points",
-		 "Deaths/Killed by");
-	strcat(buf, buf2);
-
-	while ((row = mysql_fetch_row(res)))
-	{
-		if (row[0] && row[1])
+	// Read on the writer; the hall of fame follows on a later pulse.
+	const bool queued = sql_read_for(
+		ch,
+		sql_format(
+			"SELECT pd.name, "
+			"  ((pd.level * %d) + (pd.exp / %d) + "
+			"   (CASE WHEN pd.frags < %d THEN pd.frags ELSE 0 END * %d)) * "
+			"  (CASE WHEN pd.secondary_class > 0 AND pd.secondary_class <> 2147483648 THEN %d ELSE 1 END) + "
+			"  (CASE WHEN pd.killed_by IS NOT NULL AND pd.killed_by <> 'Notdead' THEN %d ELSE 0 END) as score, "
+			"  COALESCE(pd.killed_by, 'Notdead') as killed_by "
+			"FROM player_data pd "
+			"WHERE (pd.act2 & 8192) > 0 OR pd.killed_by IS NOT NULL "
+			"ORDER BY score DESC "
+			"LIMIT %d",
+			config->score_level_points, config->score_experience_divisor,
+			config->score_invalid_frag_threshold, config->score_frag_points,
+			config->score_multiclass_multiplier, config->score_killer_bonus,
+			MAX_HALLOFFAME_SIZE),
+		[](P_char live, const sql_rows &rows)
 		{
-			strlcpy(name, row[0], sizeof name);
-			name[0] = toupper(name[0]);
-			pts = atof(row[1]) / (float)config->score_display_divisor;
-
-			checked_snprintf(buf2, 2048,
-					 "   &+L%-15s          &+r% 6.2f\t      &+W%-15s\r\n", name,
-					 pts, row[2] ? row[2] : "unknown");
+			char name[MAX_STRING_LENGTH], buf[65536], buf2[2048];
+			const float divisor = (float)hardcore_config_get()->score_display_divisor;
+			strcpy(buf, "\t\r\n&+r-= &+LHall Of&+L Fame&+r =-&n\r\n\r\n");
+			snprintf(buf2, 2048, "   &+w%-15s           &+w%s           &+w%-15s\r\n",
+				 "Name", "Points", "Deaths/Killed by");
 			strcat(buf, buf2);
-		}
-	}
-	mysql_free_result(res);
 
-	strcat(buf, "\r\n");
+			for (const sql_row &row : rows)
+			{
+				if (row[0] && row[1])
+				{
+					strlcpy(name, row[0], sizeof name);
+					name[0] = toupper(name[0]);
+					const float pts = atof(row[1]) / divisor;
 
-	page_string(ch->desc, buf, 1);
+					checked_snprintf(
+						buf2, 2048,
+						"   &+L%-15s          &+r% 6.2f\t      &+W%-15s\r\n",
+						name, pts, row[2] ? row[2] : "unknown");
+					strcat(buf, buf2);
+				}
+			}
+
+			strcat(buf, "\r\n");
+
+			page_string(live->desc, buf, 1);
+		});
+	if (!queued)
+		send_to_char("&+RError: Couldn't query hall of fame from database.&n\r\n", ch);
 }
 
 void checkHallOfFame(P_char ch, char killer[1024])
@@ -348,10 +348,6 @@ void displayLeader(P_char ch, char *arg, int /*cmd*/)
 		page_string(ch->desc, output.data(), 1);
 		return;
 	}
-	char name[MAX_STRING_LENGTH], buf[65536], buf2[2048];
-	float pts = 0;
-	MYSQL_RES *res;
-	MYSQL_ROW row;
 	const struct hardcore_config *config = hardcore_config_get();
 
 	if (!ch)
@@ -359,51 +355,54 @@ void displayLeader(P_char ch, char *arg, int /*cmd*/)
 
 	// score = (level * points) + (exp / divisor) + (shipfrags * frag points) + (frags * frag points) - (deaths * penalty)
 	// filter out corrupted frags (> threshold = overflow junk from migration)
-	res = db_query("SELECT pd.name, "
-		       "  (pd.level * %d) + (pd.exp / %d) + "
-		       "  (COALESCE(s.frags, 0) * %d) + "
-		       "  (CASE WHEN pd.frags < %d THEN pd.frags ELSE 0 END * %d) - "
-		       "  (pd.numb_deaths * %d) as score "
-		       "FROM player_data pd "
-		       "LEFT JOIN ships s ON LOWER(pd.name) = LOWER(s.owner_name) "
-		       "WHERE pd.frags < %d "
-		       "ORDER BY score DESC "
-		       "LIMIT %d",
-		       config->score_level_points, config->score_experience_divisor,
-		       config->score_frag_points, config->score_invalid_frag_threshold,
-		       config->score_frag_points, config->score_death_penalty_points,
-		       config->score_invalid_frag_threshold, MAX_LEADERBOARD_SIZE);
-
-	if (!res)
-	{
-		send_to_char("&+RError: Couldn't query leaderboard from database.&n\r\n", ch);
-		return;
-	}
-
-	strcpy(buf,
-	       "\r\n&+y=-=-=-=-=-=-=-=-=-=--= &+rDuris Mud &+WLeader Board&+y =-=-=-=-=-=-=-=-=-=-=-&n\r\n\r\n");
-	snprintf(buf2, 2048, "   &+W%-15s           &+Y%s\r\n", "Name", "Score");
-	strcat(buf, buf2);
-	snprintf(buf2, 2048, "   &+L%-15s           &+L%s\r\n", "----", "-----");
-	strcat(buf, buf2);
-
-	while ((row = mysql_fetch_row(res)))
-	{
-		if (row[0] && row[1])
+	// Read on the writer; the leader board follows on a later pulse.
+	const bool queued = sql_read_for(
+		ch,
+		sql_format("SELECT pd.name, "
+			   "  (pd.level * %d) + (pd.exp / %d) + "
+			   "  (COALESCE(s.frags, 0) * %d) + "
+			   "  (CASE WHEN pd.frags < %d THEN pd.frags ELSE 0 END * %d) - "
+			   "  (pd.numb_deaths * %d) as score "
+			   "FROM player_data pd "
+			   "LEFT JOIN ships s ON LOWER(pd.name) = LOWER(s.owner_name) "
+			   "WHERE pd.frags < %d "
+			   "ORDER BY score DESC "
+			   "LIMIT %d",
+			   config->score_level_points, config->score_experience_divisor,
+			   config->score_frag_points, config->score_invalid_frag_threshold,
+			   config->score_frag_points, config->score_death_penalty_points,
+			   config->score_invalid_frag_threshold, MAX_LEADERBOARD_SIZE),
+		[](P_char live, const sql_rows &rows)
 		{
-			strlcpy(name, row[0], sizeof name);
-			name[0] = toupper(name[0]);
-			pts = atof(row[1]) / (float)config->score_display_divisor;
-
-			checked_snprintf(buf2, 2048, "   &+w%-15s          &+Y%6.2f\t\r\n", name,
-					 pts);
+			char name[MAX_STRING_LENGTH], buf[65536], buf2[2048];
+			const float divisor = (float)hardcore_config_get()->score_display_divisor;
+			strcpy(buf,
+			       "\r\n&+y=-=-=-=-=-=-=-=-=-=--= &+rDuris Mud &+WLeader Board&+y =-=-=-=-=-=-=-=-=-=-=-&n\r\n\r\n");
+			snprintf(buf2, 2048, "   &+W%-15s           &+Y%s\r\n", "Name", "Score");
 			strcat(buf, buf2);
-		}
-	}
-	mysql_free_result(res);
+			snprintf(buf2, 2048, "   &+L%-15s           &+L%s\r\n", "----", "-----");
+			strcat(buf, buf2);
 
-	strcat(buf, "\r\n");
-	page_string(ch->desc, buf, 1);
+			for (const sql_row &row : rows)
+			{
+				if (row[0] && row[1])
+				{
+					strlcpy(name, row[0], sizeof name);
+					name[0] = toupper(name[0]);
+					const float pts = atof(row[1]) / divisor;
+
+					checked_snprintf(buf2, 2048,
+							 "   &+w%-15s          &+Y%6.2f\t\r\n",
+							 name, pts);
+					strcat(buf, buf2);
+				}
+			}
+
+			strcat(buf, "\r\n");
+			page_string(live->desc, buf, 1);
+		});
+	if (!queued)
+		send_to_char("&+RError: Couldn't query leaderboard from database.&n\r\n", ch);
 }
 
 // leaderboard is now computed from database on-the-fly, no need to write

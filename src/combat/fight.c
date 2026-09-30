@@ -59,6 +59,7 @@
 #include "classes/reavers.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "sql/sql_player.h"
 #include "mob/studioproc.h"
 #include "world/vnum.obj.h"
@@ -2757,9 +2758,9 @@ void die(P_char ch, P_char killer)
 					checkHallOfFame(ch, GET_NAME(killer));
 				// save killer to database for hall of fame
 				if (hardcore_config_get()->death_record_killer)
-					db_query(
+					sql_queue(
 						"UPDATE player_data SET killed_by = '%s' WHERE pid = %d",
-						GET_NAME(killer), GET_PID(ch));
+						escape_str(GET_NAME(killer)).c_str(), GET_PID(ch));
 				if (hardcore_config_get()->death_messages_enabled)
 				{
 					act("&+LThe &+rhand &+Lof &+WGod &+Lgrabs &+R$n &+Lby the &+cthroat&+L.&N",

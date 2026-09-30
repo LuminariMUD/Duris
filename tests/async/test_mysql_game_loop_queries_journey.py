@@ -49,6 +49,8 @@ COMMANDS = (
     ('poll vote 1 1', 'already voted in this poll'),
     ('poll list', 'Which color should the arena be?'),
     ('poll close 1', 'has been closed by'),
+    ('hardcore', 'Hall Of'),
+    ('leaderboard', 'Leader Board'),
     ('divineclaim mace ' + journey.ACCOUNT + ' days 1', 'Created divine reward #1'),
     ('divineclaim list ' + journey.ACCOUNT, 'Active Divine Account Rewards'),
     ('auction list', 'No auctions to list!'),
