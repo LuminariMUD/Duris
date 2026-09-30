@@ -2918,6 +2918,9 @@ void event_artifact_check_poof_sql(P_char /*ch*/, P_char /*vict*/, P_obj /*obj*/
 					}
 					if (owner && owner_terminal_saved)
 					{
+						// Its items were saved with it: extract_char() must not drop
+						// them in its room.
+						nuke_eq(owner);
 						extract_char(owner);
 					}
 				}

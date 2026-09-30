@@ -40,6 +40,9 @@ assert "ARTIFACT_EXPIRY_BATCH_SIZE = 1" in artifact
 assert "ORDER BY vnum LIMIT %zu" in poof
 assert "AND vnum = %d" in poof
 assert "nevent_periodic_continue_after(1);" in poof
+# An offline owner's remaining items were saved with it; extracting it must not drop them.
+offline_release = poof[poof.index("if (owner && owner_terminal_saved)"):]
+assert offline_release.index("nuke_eq(owner);") < offline_release.index("extract_char(owner);")
 
 wars = function_body(artifact, "void event_artifact_wars_sql(")
 assert "ARTIFACT_WARS_OWNER_BATCH_SIZE = 4" in artifact
