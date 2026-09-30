@@ -490,10 +490,11 @@ assert "critical_command_equal" in COORDINATOR and "identity_conflict" in COORDI
 for state in (
     "Queued on the writer",
     "Final notification retained",
-    "Currency publication ready",
     "Snapshot pending and outbox pending",
 ):
     assert state in PIPELINE
+# Money is no longer a critical command: it lives in memory.
+assert "Currency publication ready" not in PIPELINE and "## Money lives in memory" in PIPELINE
 assert "There is no second generic lifecycle framework" in PIPELINE
 
 print("critical command identity, journal, ordering, replay, fence, and bound contracts passed")
