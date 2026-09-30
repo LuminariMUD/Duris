@@ -57,6 +57,8 @@ COMMANDS = (
     ('whitelist add Guests 10.2.*.* A shared library', 'Host pattern added'),
     ('whitelist remove 10.1.*.*', 'Host pattern removed'),
     ('whitelist', 'A shared library'),
+    ('whois ' + journey.CHARACTER, 'IP Addresses used by'),
+    ('whois ip 127.%', 'IP Address:'),
     ('divineclaim mace ' + journey.ACCOUNT + ' days 1', 'Created divine reward #1'),
     ('divineclaim list ' + journey.ACCOUNT, 'Active Divine Account Rewards'),
     ('auction list', 'No auctions to list!'),
