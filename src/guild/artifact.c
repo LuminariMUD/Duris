@@ -223,6 +223,8 @@ void artifact_feed_published(int vnum, time_t timer, int bind_owner_pid, int bin
 	if (row != artifact_rows.end())
 		row->second.timer = timer;
 	artifact_binds[vnum] = { bind_owner_pid, bind_timer };
+	// The guild transaction invalidates the cache itself; no older list read may refill it.
+	++arti_cache_generation;
 }
 
 // The artifact's soul: owner_pid 0 and timer 0 when it has none yet.
@@ -2546,7 +2548,7 @@ static bool poof_offline_artifact(int vnum, int pid)
 	const char *name = get_player_name_from_pid(pid);
 	logit(LOG_ARTIFACT,
 	      "event_artifact_check_poof_sql: poofing vnum=%d on offline pid=%d ('%s')", vnum, pid,
-	      name);
+	      name ? name : "unknown");
 	if (name && !player_load_offline(name, true, [vnum, pid](P_char owner)
 					 { poof_loaded_owner(vnum, pid, owner); }))
 		return false;
