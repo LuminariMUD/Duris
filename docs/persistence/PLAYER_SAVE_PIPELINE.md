@@ -23,8 +23,10 @@ not reached the database, at most one 30-second `dirty-player-checkpoint`.
 
 ## What a save writes
 
-A player save writes the wallet with the rest of the character; a bank change is its
-own `bank` job (see [Money lives in memory](CRITICAL_COMMAND_PIPELINE.md#money-lives-in-memory)).
+A player save writes the wallet, epic points, frags and old frags with the rest of the
+character; a bank change is its own `bank` job (see
+[Money lives in memory](CRITICAL_COMMAND_PIPELINE.md#money-lives-in-memory) and
+[Epic points and frags live in memory](CRITICAL_COMMAND_PIPELINE.md#epic-points-and-frags-live-in-memory)).
 A save never refuses. In one transaction it writes what its owner holds in memory and
 makes `item_current_owner` agree (`claim_items()` in `src/item/item_claim_repository.c`;
 the flat-file backend does the same in `flatfile_item_repository_prepare_claim()` and

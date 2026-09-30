@@ -4,7 +4,7 @@
 #include "core/utils.h"
 #include "core/prototypes.h"
 #include "world/epic.h"
-#include "world/epic_transaction.h"
+#include "persistence/persistence_checkpoint.h"
 #include "guild/artifact_guild_transaction.h"
 #include "persistence/persistence_mode.h"
 #include "redis/redis_report_cache.h"
@@ -56,10 +56,11 @@ bool publish(pending_touch &entry)
 			logit(LOG_FILE,
 			      "epic_stone: component=artifact_effect outcome=unavailable actor=redacted");
 		entry.published[i] = true;
-		// A reconnect can already have loaded a newer authoritative balance.
-		if (entry.result.revisions[i] >= ch->only.pc->epic_revision)
-			epic_transaction_publish_balance(ch, entry.result.balances[i],
-							 entry.result.revisions[i]);
+		// Epic points live in memory: the committed award is added now, once, and the
+		// player's save writes it. The repository only recorded it in the ledger.
+		ch->only.pc->epics += entry.result.awards[i].amount;
+		++ch->only.pc->epic_revision;
+		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 		epic_publish_stone_award(ch, entry.result, i);
 	}
 	return std::all_of(entry.published.begin(),

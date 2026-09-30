@@ -287,7 +287,6 @@ bool prepare_account_reconnect(P_char character, P_desc descriptor)
 	// replay can report its result to the reconnecting player.  The caller only
 	// enters CON_PLAYING after this preflight succeeds.
 	character->desc = descriptor;
-	epic_transaction_player_ready(character);
 	zone_touch_transaction_player_ready(character);
 	locker_identify_replay(character);
 	item_movement_transaction_player_ready(character);

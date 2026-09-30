@@ -1856,7 +1856,6 @@ void enter_game(P_desc d)
 		schedule_chaos_starting_ledgers(ch);
 		schedule_chaos_starting_bank(ch);
 	}
-	epic_transaction_player_ready(ch);
 	zone_touch_transaction_player_ready(ch);
 	locker_identify_replay(ch);
 	item_movement_transaction_player_ready(ch);
@@ -2489,7 +2488,6 @@ void reconnect(P_desc d, P_char tmp_ch)
 	(void)telemetry_runtime_game_connection_transition(
 		tmp_ch, d, telemetry_connection_transition_kind::attached);
 	(void)telemetry_runtime_game_context(tmp_ch, d);
-	epic_transaction_player_ready(tmp_ch);
 	zone_touch_transaction_player_ready(tmp_ch);
 	locker_identify_replay(tmp_ch);
 	item_movement_transaction_player_ready(tmp_ch);

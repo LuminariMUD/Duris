@@ -49,4 +49,4 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
     src/persistence/critical_command_repository.c \
     "${MYSQL_LIBS[@]}" -lcrypto -o "$ROOT/bin/tests/epic_transaction_mysql_harness"
 "$ROOT/bin/tests/epic_transaction_mysql_harness"
-printf 'epic award, spend, rejection, duplicate, ledger, and baseline checks passed\n'
+printf 'epic award, spend, duplicate, ledger across a save, and baseline checks passed\n'

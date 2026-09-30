@@ -568,7 +568,8 @@ void legacy_capacity(const fs::path &seed, const fs::path &path)
 	const auto cmd = command(root, 2);
 	assert(flatfile_accounting_bank_transaction::apply(root, cmd).outcome == outcome::applied);
 	same(old, flatfile_player_domain_apply(root, first));
-	assert(state(root).domains.epics == 519);
+	// Epic commands are receipts only: the player's save writes the balance.
+	assert(state(root).domains.epics == 7);
 	std::cout
 		<< "bank root: 512 legacy receipts survive typed transfer without consuming a legacy slot\n";
 }

@@ -938,21 +938,25 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 		delivered_changed = retired == flatfile_shop_trade_materialization_result::ok;
 	}
-	// The wallet is memory's: a save that carries it writes it into the player's domain
-	// record. A new player's baseline above already holds it.
-	flatfile_authority_operation wallet;
-	std::array<uint64_t, 4> amounts = {};
-	const bool saves_wallet =
+	// The wallet, epic points and frags are memory's: a save that carries them writes
+	// them into the player's domain record. A new player's baseline above already holds
+	// them.
+	flatfile_authority_operation saved_balances;
+	flatfile_saved_balances balances;
+	const bool saves_balances =
 		!new_player &&
-		snapshot_unsigned(snapshot, player_status_field::copper, &amounts[0]) &&
-		snapshot_unsigned(snapshot, player_status_field::silver, &amounts[1]) &&
-		snapshot_unsigned(snapshot, player_status_field::gold, &amounts[2]) &&
-		snapshot_unsigned(snapshot, player_status_field::platinum, &amounts[3]);
-	if (saves_wallet)
+		snapshot_unsigned(snapshot, player_status_field::copper, &balances.wallet[0]) &&
+		snapshot_unsigned(snapshot, player_status_field::silver, &balances.wallet[1]) &&
+		snapshot_unsigned(snapshot, player_status_field::gold, &balances.wallet[2]) &&
+		snapshot_unsigned(snapshot, player_status_field::platinum, &balances.wallet[3]) &&
+		snapshot_signed(snapshot, player_status_field::epics, &balances.epics) &&
+		snapshot_signed(snapshot, player_status_field::frags, &balances.frags) &&
+		snapshot_signed(snapshot, player_status_field::old_frags, &balances.old_frags);
+	if (saves_balances)
 	{
-		const auto prepared = flatfile_player_domain_prepare_saved_wallet(
-			root, *authority, static_cast<uint32_t>(snapshot.pid), amounts, &wallet,
-			error);
+		const auto prepared = flatfile_player_domain_prepare_saved_balances(
+			root, *authority, static_cast<uint32_t>(snapshot.pid), balances,
+			&saved_balances, error);
 		if (prepared == flatfile_player_domain_result::io_error)
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
 		if (prepared != flatfile_player_domain_result::ok)
@@ -965,8 +969,8 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			operations.push_back(std::move(claimed));
 		if (delivered_changed)
 			operations.push_back(std::move(delivered));
-		if (saves_wallet)
-			operations.push_back(std::move(wallet));
+		if (saves_balances)
+			operations.push_back(std::move(saved_balances));
 		if (snapshot.death)
 		{
 			operations.push_back({ flatfile_authority_store::player_deaths,

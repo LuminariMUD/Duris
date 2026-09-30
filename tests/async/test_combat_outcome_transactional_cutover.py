@@ -116,8 +116,11 @@ class CombatOutcomeCutoverTests(unittest.TestCase):
         repository = (SRC / "combat_outcome_repository.c").read_text()
         generic = (SRC / "critical_command_repository.c").read_text()
         for token in ("FOR UPDATE", "combat_frag_ledger", "epic_ledger",
-                      "currency_ledger", "pkill_event", "pkill_info", "progress"):
+                      "pkill_event", "pkill_info", "progress"):
             self.assertIn(token, repository)
+        # The balances are memory's: the outcome records the kill and the ledgers.
+        for token in ("currency_ledger", "SET frags=", "SET epics=", "SET copper="):
+            self.assertNotIn(token, repository)
         branch = generic[generic.index("if (combat_command)"):]
         self.assertLess(branch.index("insert_outbox"), branch.index('execute(connection, "COMMIT")'))
         self.assertLess(branch.index("finish_inbox"), branch.index('execute(connection, "COMMIT")'))
@@ -132,10 +135,11 @@ class CombatOutcomeCutoverTests(unittest.TestCase):
             self.assertIn(token, migration)
             self.assertIn(token, bootstrap)
         self.assertIn("combat_outcome.sql", runner)
+        # The save writes the frags memory holds, on both save paths.
         snapshot = (SRC / "player_snapshot_repository.c").read_text()
-        self.assertIn("row.field == player_status_field::frags", snapshot)
+        self.assertNotIn("row.field == player_status_field::frags", snapshot)
         legacy = (SRC / "sql_player.c").read_text()
-        self.assertIn('"frags=frags, oldfrags=oldfrags', legacy)
+        self.assertIn('"frags=%ld, oldfrags=%ld', legacy)
         new_player = legacy[legacy.rindex("bool sql_save_player_status"):]
         self.assertIn("INSERT INTO combat_frag_baseline", new_player)
         self.assertLess(

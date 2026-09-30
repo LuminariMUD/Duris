@@ -1286,3 +1286,53 @@ This section is the hand-over log for Phase 2, in the same form as Phase 1's.
 - Verified: `make -C src`, the flat-file build, `./scripts/format.sh --all --check`, the
   validator, the death and corpse tests, and both combat journeys (all variants; MariaDB on a
   disposable server).
+
+### Step 5: epic points and frags in memory (done)
+
+- The save writes epics, frags and old frags: MariaDB `apply_status()` no longer skips any
+  status field, the legacy `sql_save_player_status()` writes memory's wallet, epics and frags
+  instead of keeping the stored ones, and the flat-file save writes them into the domain
+  record with the wallet (`flatfile_player_domain_prepare_saved_balances()`).
+- `epic_transaction_submit*()` changes the balance at once and calls its completion before
+  returning; a purchase beyond the balance is refused with `ENOSPC`, an overflow with
+  `ERANGE`. The pending table, `player_ready()`, the completion handler and
+  `epic_transaction_publish_balance()` are gone. The command is still queued afterwards, and
+  now only records history: MariaDB `execute_epic_state()` continues the `epic_ledger` from
+  the player's last row (or the saved balance when there is none), advances only
+  `player_data.epic_revision` (the ledger's unique key), and no longer checks funds or
+  revisions; flat-file records the operation. Zone trophies, the epic bonus window and the
+  completed-zone reads at login still read that ledger.
+- Why the command cannot keep writing the balance as well: a grant with a receipt (the CHAOS
+  starter epics clear their flag in the completion) needs its save queued before the command,
+  and a command that also added the delta after that save would count it twice.
+- PvP outcomes: `combat_outcome_transaction_submit()` applies the frags, epics and blood money
+  to the online participants when the command is accepted. Both repositories stop writing
+  those balances and stop fencing on the participants' revisions (in-memory currency and epic
+  changes had made every outcome after step 2 fail with `ESTALE`); MariaDB records the kill,
+  continues the frag and epic ledgers from their last rows, updates the leaderboard, and
+  writes no currency ledger; flat-file records the operation. A refused outcome now only
+  loses its history rows, so its effects and messages still happen.
+- Epic stones: a committed touch adds each participant's award in memory, once (a participant
+  who left gets it on return); the repository records it in the ledger with the stone claim
+  and no longer writes the balance.
+- An older journal's in-flight epic, combat or stone command replays as a record only: the
+  balance change it would have made is lost, the same class of loss as a crash.
+- Found while doing this, fixed in their own commits: `run_epic_transaction_schema_mysql.sh`
+  and `run_combat_outcome_schema_mysql.sh` no longer linked (the restitution sources);
+  `test_critical_command_coordinator.py` still required the currency publication row step 2
+  removed from the pipeline doc; and `test_player_load_items.py` and
+  `test_txn_publication_copyover_drain.py` still pinned source the load fix and step 3
+  changed. Restore qualification (`qualify_database_restore.py`) and the
+  runbook's balance reconciliations assumed the ledgers explain every balance; that commit
+  follows this step.
+- Tests: `test_epic_in_memory.py` (new: at once, refusals, completion before the ledger row),
+  the save-claim MariaDB leg and `test_flatfile_player_repository.py` (the save writes epics
+  and frags), the epic and combat outcome MariaDB legs (the ledgers continue across a save
+  and leave the balances alone; a second outcome is not fenced), `test_epic_stone_runtime.py`
+  (a returning participant's award is added once), `test_flatfile_player_domain_repository.py`
+  and `test_flatfile_accounting_bank.py` (record-only epic and combat commands), and the
+  source contracts.
+- Verified: `make -C src`, the flat-file build, `./scripts/format.sh --all --check`, the
+  validator, the tests above, `run_player_save_claim_mysql.sh` (disposable MariaDB),
+  `run_epic_transaction_schema_mysql.sh` and `run_combat_outcome_schema_mysql.sh` (local
+  development database), and `make test-all`.

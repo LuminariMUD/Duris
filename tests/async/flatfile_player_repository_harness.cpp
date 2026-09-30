@@ -445,7 +445,8 @@ static void item_consistency_matrix(const fs::path &path)
 		"an item the player dropped refused the load");
 }
 
-// The wallet is memory's: every save writes the one it carries into the domain record.
+// The wallet, epic points and frags are memory's: every save writes the ones it carries
+// into the domain record.
 static void saved_wallet_matrix(const fs::path &path)
 {
 	const std::string root = path.string();
@@ -478,6 +479,12 @@ static void saved_wallet_matrix(const fs::path &path)
 				row.signed_value = wallet[2];
 			else if (row.field == player_status_field::platinum)
 				row.signed_value = wallet[3];
+			else if (row.field == player_status_field::epics)
+				row.signed_value = wallet[0] * 100 - 5;
+			else if (row.field == player_status_field::frags)
+				row.signed_value = wallet[1] - 3;
+			else if (row.field == player_status_field::old_frags)
+				row.signed_value = wallet[2] + 1;
 		require(flatfile_player_snapshot_apply(root, snapshot, &error).outcome ==
 				player_save_apply_outcome::applied,
 			"wallet player save: " + error);
@@ -486,11 +493,15 @@ static void saved_wallet_matrix(const fs::path &path)
 		require(flatfile_player_domain_load(root, 42, "Account-One", 0, &domain, &error) ==
 					flatfile_player_domain_result::ok &&
 				domain.domains.wallet ==
-					std::array<uint64_t, 4>{ static_cast<uint64_t>(wallet[0]),
-								 static_cast<uint64_t>(wallet[1]),
-								 static_cast<uint64_t>(wallet[2]),
-								 static_cast<uint64_t>(wallet[3]) },
-			"the save did not write the wallet it carries");
+					std::array<uint64_t, 4>{
+						static_cast<uint64_t>(wallet[0]),
+						static_cast<uint64_t>(wallet[1]),
+						static_cast<uint64_t>(wallet[2]),
+						static_cast<uint64_t>(wallet[3]) } &&
+				domain.domains.epics == wallet[0] * 100 - 5 &&
+				domain.domains.frags == wallet[1] - 3 &&
+				domain.domains.old_frags == wallet[2] + 1,
+			"the save did not write the wallet, epics and frags it carries");
 	}
 	// A bank change is a delta added to the account's record for its side, created
 	// when missing; a debit the record cannot cover is refused and changes nothing.
@@ -514,7 +525,8 @@ static void saved_wallet_matrix(const fs::path &path)
 				player_save_apply_outcome::terminal_failure &&
 			(bank() == std::array<uint64_t, 4>{ 8, 0, 0, 4 }),
 		"a debit the record cannot cover changed it");
-	std::cout << "flatfile saves write the wallet they carry; bank deltas add up\n";
+	std::cout
+		<< "flatfile saves write the wallet, epics and frags they carry; bank deltas add up\n";
 }
 
 /** Inspect synthetic authority on request, otherwise exercise player repository durability and recovery. */

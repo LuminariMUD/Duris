@@ -428,12 +428,16 @@ int main()
 	player_snapshot wallet = snapshot_for(1, 40, "Claimer");
 	wallet.status_integers.push_back({ player_status_field::copper, 5, 0, false });
 	wallet.status_integers.push_back({ player_status_field::platinum, 2, 0, false });
+	wallet.status_integers.push_back({ player_status_field::epics, 77, 0, false });
+	wallet.status_integers.push_back({ player_status_field::frags, -12, 0, false });
+	wallet.status_integers.push_back({ player_status_field::old_frags, 10, 0, false });
 	applied = player_snapshot_repository_apply(test_connection, wallet);
 	require(applied.outcome == player_save_apply_outcome::applied &&
 			scalar(test_connection,
-			       "SELECT CONCAT(copper,':',silver,':',gold,':',"
-			       "platinum) FROM player_data WHERE pid=1") == "5:0:0:2",
-		"the save writes the wallet");
+			       "SELECT CONCAT(copper,':',silver,':',gold,':',platinum,':',epics,':',"
+			       "frags,':',oldfrags) FROM player_data WHERE pid=1") ==
+				"5:0:0:2:77:-12:10",
+		"the save writes the wallet, epics and frags");
 	const auto bank = [&]
 	{
 		return scalar(test_connection,

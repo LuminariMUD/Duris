@@ -106,11 +106,11 @@ class CurrencyTransactionContractTests(unittest.TestCase):
         flatfile = (SRC / "flatfile_player_repository.c").read_text()
         apply_status = replay[replay.index("query_result apply_status("):
                               replay.index("template <typename Row, typename Append>")]
-        for field in ("copper", "silver", "gold", "platinum"):
+        # The save writes the wallet, epic points and frags memory holds.
+        for field in ("copper", "silver", "gold", "platinum", "epics", "frags", "old_frags"):
             self.assertIn(f"ADD_STATUS({field},", capture)
             self.assertNotIn(f"row.field == player_status_field::{field}", apply_status)
-        self.assertIn("row.field == player_status_field::epics", apply_status)
-        self.assertIn("flatfile_player_domain_prepare_saved_wallet(", flatfile)
+        self.assertIn("flatfile_player_domain_prepare_saved_balances(", flatfile)
 
     def test_no_legacy_bank_delta_helper_remains_in_gameplay(self):
         call = re.compile(r"sql_account_bank_(?:deposit|withdraw)(?:_balances|_value)?\s*\(")

@@ -258,38 +258,33 @@ int main(int argc, char **argv)
 					    &error) == flatfile_player_domain_result::conflict,
 		"account mismatch was accepted during domain load");
 
+	// Epic points are memory's: the command is only recorded, and the player's save
+	// writes the balance.
+	flatfile_player_domain_record before_epic;
+	require(flatfile_player_domain_load(root.string(), 42, "account-one", 1, &before_epic,
+					    &error) == flatfile_player_domain_result::ok,
+		"could not read the balance before an epic command");
 	critical_command epic_gain = epic(5, 0, 1);
 	critical_apply_result applied = flatfile_player_domain_apply(root.string(), epic_gain);
 	epic_command_result epic_result = {};
 	require(applied.outcome == critical_apply_outcome::applied && applied.error_code == 0 &&
 			epic_command_decode_result(applied.result_payload.data(),
 						   applied.result_size, &epic_result) &&
-			epic_result.balance == 14 && epic_result.revision == 1,
-		"epic gain did not apply");
+			epic_result.delta == 5,
+		"epic command was not recorded");
 	require(flatfile_player_domain_load(root.string(), 42, "account-one", 1, &loaded, &error) ==
 				flatfile_player_domain_result::ok &&
-			loaded.domains.epics == 14 && loaded.domains.epic_revision == 1,
-		"epic authority did not load after mutation");
+			loaded.domains.epics == before_epic.domains.epics &&
+			loaded.domains.epic_revision == before_epic.domains.epic_revision,
+		"an epic command changed the saved balance");
 	applied = flatfile_player_domain_apply(root.string(), epic_gain);
 	require(applied.outcome == critical_apply_outcome::already_applied &&
 			epic_command_decode_result(applied.result_payload.data(),
 						   applied.result_size, &epic_result) &&
-			epic_result.balance == 14 && epic_result.revision == 1,
+			epic_result.delta == 5,
 		"epic command replay did not return its original result");
 	require(flatfile_player_domain_apply(root.string(), epic(6, 1, 1)).error_code == EEXIST,
 		"conflicting epic operation ID was accepted");
-	critical_command stale = epic(2, 0, 2);
-	applied = flatfile_player_domain_apply(root.string(), stale);
-	require(applied.outcome == critical_apply_outcome::terminal_failure &&
-			applied.error_code == ESTALE,
-		"stale epic revision was accepted");
-	require(flatfile_player_domain_apply(root.string(), stale).error_code == ESTALE,
-		"stale epic result was not replayed");
-	applied = flatfile_player_domain_apply(root.string(),
-					       epic(-99, 1, 3, EPIC_COMMAND_REQUIRE_FUNDS));
-	require(applied.outcome == critical_apply_outcome::terminal_failure &&
-			applied.error_code == ENOSPC,
-		"insufficient epic funds were accepted");
 
 	critical_command currency_move =
 		currency({ { 10, 0, 0, 0 } }, { { -2, 0, 0, 0 } }, 0, 1, 10);
@@ -348,60 +343,57 @@ int main(int argc, char **argv)
 	applied = flatfile_player_domain_apply(root.string(), interrupted_currency);
 	require(applied.outcome == critical_apply_outcome::already_applied,
 		"recovered currency transaction did not replay from its operation ledger");
+	// Frags, epic points and blood money are memory's: the outcome is only recorded, and
+	// leaves every saved balance alone.
+	flatfile_player_domain_record killer_before, victim_before;
+	require(flatfile_player_domain_load(root.string(), 42, "account-one", 1, &killer_before,
+					    &error) == flatfile_player_domain_result::ok &&
+			flatfile_player_domain_load(root.string(), 43, "account-one", 1,
+						    &victim_before,
+						    &error) == flatfile_player_domain_result::ok,
+		"could not read the balances before a combat outcome");
 	critical_command combat_outcome = combat(20);
-	setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_BANK", "1", 1);
-	applied = flatfile_player_domain_apply(root.string(), combat_outcome);
-	unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_BANK");
-	require(applied.outcome == critical_apply_outcome::retryable_failure &&
-			fs::exists(domains / ".player-domain-transaction"),
-		"combat interruption did not preserve its multi-record intent");
-	require(flatfile_player_domain_load(root.string(), 43, "account-one", 1, &loaded, &error) ==
-				flatfile_player_domain_result::ok &&
-			loaded.domains.frags == 8 && loaded.domains.old_frags == 10 &&
-			loaded.domains.frag_revision == 1 && loaded.domains.epics == 12 &&
-			loaded.domains.epic_revision == 1 &&
-			loaded.domains.wallet == std::array<uint64_t, 4>{ 8, 2, 3, 4 } &&
-			loaded.domains.wallet_revision == 1 && loaded.domains.bank_revision == 5 &&
-			!fs::exists(domains / ".player-domain-transaction"),
-		"domain load did not recover every combat after-image");
-	require(flatfile_player_domain_load(root.string(), 42, "account-one", 1, &loaded, &error) ==
-				flatfile_player_domain_result::ok &&
-			loaded.domains.frags == 15 && loaded.domains.old_frags == 10 &&
-			loaded.domains.frag_revision == 1 && loaded.domains.epics == 16 &&
-			loaded.domains.epic_revision == 2 &&
-			loaded.domains.wallet == std::array<uint64_t, 4>{ 3, 4, 3, 4 } &&
-			loaded.domains.wallet_revision == 3 && loaded.domains.bank_revision == 5,
-		"recovered combat state was incomplete");
 	applied = flatfile_player_domain_apply(root.string(), combat_outcome);
 	combat_outcome_result combat_result = {};
+	require(applied.outcome == critical_apply_outcome::applied &&
+			combat_outcome_command_decode_result(applied.result_payload.data(),
+							     applied.result_size, &combat_result) &&
+			combat_result.participant_count == 2 && combat_result.event_id != 0,
+		"combat outcome was not recorded");
+	for (const auto &[pid, before] :
+	     { std::pair{ 42, &killer_before }, std::pair{ 43, &victim_before } })
+		require(flatfile_player_domain_load(root.string(), pid, "account-one", 1, &loaded,
+						    &error) == flatfile_player_domain_result::ok &&
+				loaded.domains.frags == before->domains.frags &&
+				loaded.domains.epics == before->domains.epics &&
+				loaded.domains.wallet == before->domains.wallet &&
+				loaded.domains.bank_revision == before->domains.bank_revision,
+			"a combat outcome changed a saved balance");
+	applied = flatfile_player_domain_apply(root.string(), combat_outcome);
 	require(applied.outcome == critical_apply_outcome::already_applied &&
 			combat_outcome_command_decode_result(applied.result_payload.data(),
 							     applied.result_size, &combat_result) &&
-			combat_result.participant_count == 2 &&
-			combat_result.participants[0].frags == 15 &&
-			combat_result.participants[1].frags == 8 && combat_result.event_id != 0,
-		"recovered combat command did not replay its original result");
+			combat_result.participant_count == 2,
+		"combat command did not replay its original result");
 	require(flatfile_player_domain_apply(root.string(), combat(20, 1, 6)).error_code == EEXIST,
 		"conflicting combat operation ID was accepted");
-	critical_command stale_combat = combat(21);
-	require(flatfile_player_domain_apply(root.string(), stale_combat).error_code == ESTALE &&
-			flatfile_player_domain_apply(root.string(), stale_combat).error_code ==
-				ESTALE,
-		"stale combat decision was not durably replayed");
+	require(flatfile_player_domain_apply(root.string(), combat(21)).outcome ==
+			critical_apply_outcome::applied,
+		"a second combat outcome was fenced by the first");
 
-	critical_command coin_drop_debit = currency({ { -2, 0, 0, 0 } }, { { 0, 0, 0, 0 } }, 3, 5,
+	critical_command coin_drop_debit = currency({ { -2, 0, 0, 0 } }, { { 0, 0, 0, 0 } }, 2, 3,
 						    14, currency_reason_type::wallet_spend);
 	applied = flatfile_player_domain_apply(root.string(), coin_drop_debit);
 	require(applied.outcome == critical_apply_outcome::applied &&
 			currency_command_decode_result(applied.result_payload.data(),
 						       applied.result_size, &currency_result) &&
-			currency_result.wallet.amount[0] == 1 &&
-			currency_result.wallet_revision == 4 && currency_result.bank_revision == 6,
+			currency_result.wallet.amount[0] == 10 &&
+			currency_result.wallet_revision == 3 && currency_result.bank_revision == 4,
 		"coin-command wallet debit did not apply through flatfile currency authority");
 	require(flatfile_player_domain_load(root.string(), 42, "account-one", 1, &loaded, &error) ==
 				flatfile_player_domain_result::ok &&
-			loaded.domains.wallet[0] == 1 && loaded.domains.wallet_revision == 4 &&
-			loaded.domains.bank[0] == 4 && loaded.domains.bank_revision == 6,
+			loaded.domains.wallet[0] == 10 && loaded.domains.wallet_revision == 3 &&
+			loaded.domains.bank[0] == 4 && loaded.domains.bank_revision == 4,
 		"negative wallet adjustment did not survive established-player save/load");
 
 	convert_player_domain_to_v2(domains / "player-45.domain");

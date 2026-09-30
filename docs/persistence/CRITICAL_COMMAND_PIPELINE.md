@@ -121,26 +121,31 @@ Focused validation is `python3 tests/async/test_critical_command_admission.py`,
 `python3 tests/async/test_critical_transaction_contract.py`, and, on a disposable
 database, `tests/async/run_critical_command_schema_mysql.sh`.
 
-## Epic balance destination
+## Epic points and frags live in memory
 
-Epic awards and spends use command type `epic` with one player key, a signed delta,
-typed reason, optional reason ID, and a funds-required flag. The repository creates a
-baseline lazily when needed, locks `player_data`, validates the revision and funds,
-updates balance/revision, inserts one immutable ledger row, stores the exact result,
-and emits its outbox row in the same transaction. Duplicate and ambiguous replay return
-the stored balance/revision without another delta.
+`epic_transaction_submit()` changes the balance at once and calls its completion before
+returning: committed, or refused with `ENOSPC` when a purchase needs more than the
+balance (`ERANGE` on overflow). The player's save writes epics, frags and old frags, on
+both backends. The command still goes to the one writer as type `epic`, where it only
+records history: MariaDB adds an `epic_ledger` row whose balance and revision continue
+from the player's last row (or the saved balance when there is none) and advances
+`player_data.epic_revision`, which the rows are keyed on; it never writes the balance.
+Zone trophies, the epic bonus window and the completed-zone reads at login read that
+ledger. Flat-file records the operation only.
 
-The game thread owns a bounded operation-keyed continuation table. It publishes the
-exact committed balance and revision before invoking a typed staged effect. Offline
-completions remain retained until the player enters or reconnects. `world persistence`
-reports aggregate `epic_transactions` pending, retained, outcome, submission-failure,
-and malformed-completion counters without operation or player identity.
+A PvP outcome changes the participants' frags, epics and blood money when it is submitted.
+Its command records the kill (`pkill_event`, `pkill_info`, `combat_outcome`), continues the
+frag and epic ledgers the same way, and updates the frag leaderboard; it is no longer fenced
+on the participants' revisions. An epic stone's awards are added in memory when the touch
+commits, once per participant (a participant who left gets theirs on return), and the
+repository records them in the epic ledger with the stone claim.
 
-Player checkpoints, legacy flat-file replay, and ordinary status updates do not write
-the epic balance. New-character initialization and authoritative SQL hydration are the
-only non-transactional in-memory assignments. Focused validation is
-`python3 tests/async/test_epic_transaction_contract.py` and, on a guarded development
-database, `tests/async/run_epic_transaction_schema_mysql.sh`.
+`world persistence` reports `epic_transactions` submitted, committed, rejected and ledger
+rows the coordinator would not queue. Focused validation is
+`python3 tests/async/test_epic_transaction_contract.py`,
+`python3 tests/async/test_epic_stone_runtime.py` and, on a guarded development database,
+`tests/async/run_epic_transaction_schema_mysql.sh` and
+`tests/async/run_combat_outcome_schema_mysql.sh`.
 
 ## Money lives in memory
 

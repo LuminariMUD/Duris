@@ -1567,13 +1567,13 @@ bool sql_save_player_status(P_char ch, int type, int room)
 			"base_int=%d, base_wis=%d, base_cha=%d, base_kar=%d, base_luk=%d, "
 			"mana=%d, base_mana=%d, hit_diff=%d, base_hit=%d, "
 			"vitality=%d, base_vitality=%d, spells_memmed_extra=%d, "
-			"copper=copper, silver=silver, gold=gold, platinum=platinum, "
+			"copper=%d, silver=%d, gold=%d, platinum=%d, "
 			"bank_copper=0, bank_silver=0, bank_gold=0, bank_platinum=0,"
-			"exp=%d, epics=epics, epic_skill_points=%ld, skillpoints=%d, spell_bind_used=%ld, "
+			"exp=%d, epics=%ld, epic_skill_points=%ld, skillpoints=%d, spell_bind_used=%ld, "
 			"act=%u, act2=%u, act3=%u, vote=%lu, alignment=%d,"
 			"prestige=%d, assoc_id=%d, guild_status=%u, "
 			"time_left_guild=FROM_UNIXTIME(NULLIF(%ld,0)), nb_left_guild=%d, time_unspecced=FROM_UNIXTIME(NULLIF(%ld,0)),"
-			"frags=frags, oldfrags=oldfrags, numb_deaths=%lu, "
+			"frags=%ld, oldfrags=%ld, numb_deaths=%lu, "
 			"condition_0=%d, condition_1=%d, condition_2=%d, condition_3=%d, condition_4=%d, "
 			"poof_in='%s', poof_out='%s', poof_in_sound='%s', poof_out_sound='%s', "
 			"echo_toggle=%d, prompt=%d, wiz_invis=%d, law_flags=%lu, "
@@ -1596,27 +1596,29 @@ bool sql_save_player_status(P_char ch, int type, int room)
 			ch->base_stats.Luk, GET_MANA(ch), ch->points.base_mana,
 			MAX(0, GET_MAX_HIT(ch) - GET_HIT(ch)), ch->points.base_hit,
 			GET_VITALITY(ch), ch->points.base_vitality,
-			ch->only.pc->spells_memmed[MAX_CIRCLE], GET_EXP(ch),
+			ch->only.pc->spells_memmed[MAX_CIRCLE], GET_COPPER(ch), GET_SILVER(ch),
+			GET_GOLD(ch), GET_PLATINUM(ch), GET_EXP(ch), ch->only.pc->epics,
 			ch->only.pc->epic_skill_points, ch->only.pc->skillpoints,
 			ch->only.pc->spell_bind_used, ch->specials.act, ch->specials.act2,
 			ch->specials.act3, ch->only.pc->vote, ch->specials.alignment,
 			ch->only.pc->prestige, GET_ASSOC_ID(ch), ch->specials.guild_status,
 			ch->only.pc->time_left_guild, ch->only.pc->nb_left_guild,
-			ch->only.pc->time_unspecced, ch->only.pc->numb_deaths,
-			ch->specials.conditions[0], ch->specials.conditions[1],
-			ch->specials.conditions[2], ch->specials.conditions[3],
-			ch->specials.conditions[4], esc_poofin, esc_poofout, esc_poofinsnd,
-			esc_poofoutsnd, ch->only.pc->echo_toggle, ch->only.pc->prompt,
-			ch->only.pc->wiz_invis, 0UL, ch->only.pc->wimpy, ch->only.pc->aggressive,
-			ch->only.pc->highest_level, ch->only.pc->screen_length,
-			ch->only.pc->quest_active, ch->only.pc->quest_mob_vnum,
-			ch->only.pc->quest_type, ch->only.pc->quest_accomplished,
-			ch->only.pc->quest_started, ch->only.pc->quest_zone_number,
-			ch->only.pc->quest_giver, ch->only.pc->quest_level,
-			ch->only.pc->quest_receiver, ch->only.pc->quest_shares_left,
-			ch->only.pc->quest_kill_how_many, ch->only.pc->quest_kill_original,
-			ch->only.pc->quest_map_room, ch->only.pc->quest_map_bought,
-			ch->only.pc->last_ip, output_preferences.c_str(), pid);
+			ch->only.pc->time_unspecced, ch->only.pc->frags, ch->only.pc->oldfrags,
+			ch->only.pc->numb_deaths, ch->specials.conditions[0],
+			ch->specials.conditions[1], ch->specials.conditions[2],
+			ch->specials.conditions[3], ch->specials.conditions[4], esc_poofin,
+			esc_poofout, esc_poofinsnd, esc_poofoutsnd, ch->only.pc->echo_toggle,
+			ch->only.pc->prompt, ch->only.pc->wiz_invis, 0UL, ch->only.pc->wimpy,
+			ch->only.pc->aggressive, ch->only.pc->highest_level,
+			ch->only.pc->screen_length, ch->only.pc->quest_active,
+			ch->only.pc->quest_mob_vnum, ch->only.pc->quest_type,
+			ch->only.pc->quest_accomplished, ch->only.pc->quest_started,
+			ch->only.pc->quest_zone_number, ch->only.pc->quest_giver,
+			ch->only.pc->quest_level, ch->only.pc->quest_receiver,
+			ch->only.pc->quest_shares_left, ch->only.pc->quest_kill_how_many,
+			ch->only.pc->quest_kill_original, ch->only.pc->quest_map_room,
+			ch->only.pc->quest_map_bought, ch->only.pc->last_ip,
+			output_preferences.c_str(), pid);
 	}
 	else
 	{

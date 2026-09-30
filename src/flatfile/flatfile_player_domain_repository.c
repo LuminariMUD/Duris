@@ -1398,9 +1398,9 @@ flatfile_player_domain_result flatfile_player_domain_prepare_resurrection_wallet
 	return flatfile_player_domain_result::ok;
 }
 
-flatfile_player_domain_result flatfile_player_domain_prepare_saved_wallet(
+flatfile_player_domain_result flatfile_player_domain_prepare_saved_balances(
 	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
-	const std::array<uint64_t, 4> &wallet, flatfile_authority_operation *operation,
+	const flatfile_saved_balances &balances, flatfile_authority_operation *operation,
 	std::string *error)
 {
 	if (!operation || !pid || !lock.matches(root))
@@ -1412,7 +1412,10 @@ flatfile_player_domain_result flatfile_player_domain_prepare_saved_wallet(
 	const auto loaded = load_player_authority(root, pid, &player, error);
 	if (loaded != flatfile_player_domain_result::ok)
 		return loaded;
-	player.record.domains.wallet = wallet;
+	player.record.domains.wallet = balances.wallet;
+	player.record.domains.epics = balances.epics;
+	player.record.domains.frags = balances.frags;
+	player.record.domains.old_frags = balances.old_frags;
 	*operation = {};
 	operation->filename = player_filename(pid);
 	return encode_player_authority(player, &operation->bytes) ?
@@ -1626,29 +1629,12 @@ critical_apply_result apply_epic_command(const std::string &root, const critical
 	if (authority.operations.size() >= domain_maximum_operations)
 		return { critical_apply_outcome::terminal_failure,
 			 authority.record.domains.epic_revision, ENOSPC };
-	epic_command_result epic_result = { authority.record.domains.epics,
-					    authority.record.domains.epic_revision, payload.delta };
-	unsigned int result_code = 0;
-	const uint64_t expected = command.expected_revisions[0].revision;
-	if (expected != std::numeric_limits<uint64_t>::max() && expected != epic_result.revision)
-		result_code = ESTALE;
-	else if (payload.delta < 0 && (payload.flags & EPIC_COMMAND_REQUIRE_FUNDS) &&
-		 (payload.delta == std::numeric_limits<int64_t>::min() ||
-		  epic_result.balance < -payload.delta))
-		result_code = ENOSPC;
-	else if ((payload.delta > 0 &&
-		  epic_result.balance > std::numeric_limits<int64_t>::max() - payload.delta) ||
-		 (payload.delta < 0 &&
-		  epic_result.balance < std::numeric_limits<int64_t>::min() - payload.delta) ||
-		 epic_result.revision == std::numeric_limits<uint64_t>::max())
-		result_code = ERANGE;
-	else
-	{
-		epic_result.balance += payload.delta;
-		++epic_result.revision;
-		authority.record.domains.epics = epic_result.balance;
-		authority.record.domains.epic_revision = epic_result.revision;
-	}
+	// Epic points are memory's: the submit changed the balance and the player's save
+	// writes it. The command is only recorded.
+	const epic_command_result epic_result = { authority.record.domains.epics,
+						  authority.record.domains.epic_revision,
+						  payload.delta };
+	const unsigned int result_code = 0;
 	std::array<uint8_t, EPIC_RESULT_PAYLOAD_BYTES> encoded_result = {};
 	if (!epic_command_encode_result(epic_result, &encoded_result))
 		return { critical_apply_outcome::terminal_failure, epic_result.revision, EBADMSG };
@@ -1955,16 +1941,6 @@ critical_apply_result apply_combat_outcome_command(const std::string &root,
 					 loaded == flatfile_player_domain_result::io_error ?
 						 EIO :
 						 EILSEQ) };
-		if (payload.participants[index].wallet_delta_copper)
-		{
-			std::string account;
-			if (!canonical_account(payload.participants[index].account_name.data(),
-					       &account) ||
-			    player.record.account_name != account ||
-			    player.record.racewar !=
-				    static_cast<int8_t>(payload.participants[index].racewar))
-				return { critical_apply_outcome::terminal_failure, 0, EACCES };
-		}
 		try
 		{
 			players.push_back(std::move(player));
@@ -2013,251 +1989,40 @@ critical_apply_result apply_combat_outcome_command(const std::string &root,
 		if (player.operations.size() >= domain_maximum_operations)
 			return { critical_apply_outcome::terminal_failure, 0, ENOSPC };
 
-	struct combat_bank
-	{
-		bank_record record;
-	};
-	std::vector<combat_bank> banks;
-	try
-	{
-		banks.reserve(payload.participant_count);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return { critical_apply_outcome::retryable_failure, 0, ENOMEM };
-	}
-	for (size_t index = 0; index < payload.participant_count; ++index)
-	{
-		const auto &entry = payload.participants[index];
-		if (!entry.wallet_delta_copper)
-			continue;
-		const auto existing = std::find_if(
-			banks.begin(), banks.end(),
-			[&](const combat_bank &bank)
-			{
-				return bank.record.account_name ==
-					       players[index].record.account_name &&
-				       bank.record.racewar == players[index].record.racewar;
-			});
-		if (existing != banks.end())
-			continue;
-		combat_bank bank;
-		const auto loaded = load_bank(root, players[index].record.account_name,
-					      players[index].record.racewar, &bank.record, &error);
-		if (loaded != flatfile_player_domain_result::ok)
-			return { loaded == flatfile_player_domain_result::io_error ?
-					 critical_apply_outcome::retryable_failure :
-					 critical_apply_outcome::terminal_failure,
-				 0,
-				 static_cast<unsigned int>(
-					 loaded == flatfile_player_domain_result::not_found ?
-						 ENOENT :
-					 loaded == flatfile_player_domain_result::io_error ?
-						 EIO :
-						 EILSEQ) };
-		if (std::any_of(bank.record.balances.begin(), bank.record.balances.end(),
-				[](uint64_t balance) { return balance > INT_MAX; }))
-			return { critical_apply_outcome::terminal_failure, 0, EILSEQ };
-		try
-		{
-			banks.push_back(std::move(bank));
-		}
-		catch (const std::bad_alloc &)
-		{
-			return { critical_apply_outcome::retryable_failure, 0, ENOMEM };
-		}
-	}
-	const auto find_bank_for = [&](size_t index) -> bank_record *
-	{
-		auto found = std::find_if(
-			banks.begin(), banks.end(),
-			[&](combat_bank &bank)
-			{
-				return bank.record.account_name ==
-					       players[index].record.account_name &&
-				       bank.record.racewar == players[index].record.racewar;
-			});
-		return found == banks.end() ? nullptr : &found->record;
-	};
-
-	unsigned int result_code = 0;
-	for (size_t index = 0; index < payload.participant_count && !result_code; ++index)
-	{
-		const auto &entry = payload.participants[index];
-		const auto &domains = players[index].record.domains;
-		if (domains.frag_revision != entry.expected_frag_revision ||
-		    domains.epic_revision != entry.expected_epic_revision ||
-		    domains.wallet_revision != entry.expected_wallet_revision)
-			result_code = ESTALE;
-		else if (entry.wallet_delta_copper)
-		{
-			bank_record *bank = find_bank_for(index);
-			if (!bank || bank->revision != entry.expected_bank_revision)
-				result_code = ESTALE;
-		}
-	}
+	// Frags, epic points and blood money are memory's: the submit changed them and the
+	// players' saves write them. The outcome is only recorded.
 	std::vector<player_authority> candidates;
-	std::vector<combat_bank> bank_candidates;
 	try
 	{
 		candidates = players;
-		bank_candidates = banks;
 	}
 	catch (const std::bad_alloc &)
 	{
 		return { critical_apply_outcome::retryable_failure, 0, ENOMEM };
 	}
-	const auto candidate_bank_for = [&](size_t index) -> bank_record *
-	{
-		auto found = std::find_if(
-			bank_candidates.begin(), bank_candidates.end(),
-			[&](combat_bank &bank)
-			{
-				return bank.record.account_name ==
-					       candidates[index].record.account_name &&
-				       bank.record.racewar == candidates[index].record.racewar;
-			});
-		return found == bank_candidates.end() ? nullptr : &found->record;
-	};
+	const unsigned int result_code = 0;
 	combat_outcome_result combat_result = {};
-	if (!result_code)
+	std::array<uint8_t, SHA256_DIGEST_LENGTH> event_digest = {};
+	SHA256(command.operation_id.bytes.data(), command.operation_id.bytes.size(),
+	       event_digest.data());
+	for (size_t byte = 0; byte < sizeof(combat_result.event_id); ++byte)
+		combat_result.event_id |= static_cast<uint64_t>(event_digest[byte]) << (byte * 8);
+	if (!combat_result.event_id)
+		combat_result.event_id = 1;
+	combat_result.participant_count = payload.participant_count;
+	for (size_t index = 0; index < payload.participant_count; ++index)
 	{
-		std::array<uint8_t, SHA256_DIGEST_LENGTH> event_digest = {};
-		SHA256(command.operation_id.bytes.data(), command.operation_id.bytes.size(),
-		       event_digest.data());
-		for (size_t byte = 0; byte < sizeof(combat_result.event_id); ++byte)
-			combat_result.event_id |= static_cast<uint64_t>(event_digest[byte])
-						  << (byte * 8);
-		if (!combat_result.event_id)
-			combat_result.event_id = 1;
-		combat_result.participant_count = payload.participant_count;
+		const auto &domains = players[index].record.domains;
+		combat_result.participants[index] = { .pid = payload.participants[index].pid,
+						      .frags = domains.frags,
+						      .epics = domains.epics,
+						      .wallet_value = -1,
+						      .bank = {},
+						      .frag_revision = domains.frag_revision,
+						      .epic_revision = domains.epic_revision,
+						      .wallet_revision = 0,
+						      .bank_revision = 0 };
 	}
-	constexpr std::array<int64_t, CURRENCY_DENOMINATION_COUNT> coin_values = { 1, 10, 100,
-										   1000 };
-	for (size_t index = 0; index < payload.participant_count && !result_code; ++index)
-	{
-		const auto &entry = payload.participants[index];
-		auto &domains = candidates[index].record.domains;
-		if (domains.frag_revision == std::numeric_limits<uint64_t>::max() ||
-		    domains.epic_revision == std::numeric_limits<uint64_t>::max() ||
-		    domains.wallet_revision == std::numeric_limits<uint64_t>::max() ||
-		    (entry.frag_delta > 0 &&
-		     domains.frags > std::numeric_limits<int64_t>::max() - entry.frag_delta) ||
-		    (entry.frag_delta < 0 &&
-		     domains.frags < std::numeric_limits<int64_t>::min() - entry.frag_delta) ||
-		    (entry.epic_delta > 0 &&
-		     domains.epics > std::numeric_limits<int64_t>::max() - entry.epic_delta) ||
-		    (entry.epic_delta < 0 &&
-		     domains.epics < std::numeric_limits<int64_t>::min() - entry.epic_delta))
-		{
-			result_code = ERANGE;
-			break;
-		}
-		if (entry.frag_delta)
-		{
-			domains.old_frags = domains.frags;
-			domains.frags += entry.frag_delta;
-			++domains.frag_revision;
-		}
-		if (entry.epic_delta)
-		{
-			domains.epics += entry.epic_delta;
-			++domains.epic_revision;
-		}
-		int64_t wallet_value = 0;
-		bank_record *bank = nullptr;
-		if (entry.wallet_delta_copper)
-		{
-			bank = candidate_bank_for(index);
-			if (!bank || entry.wallet_delta_copper < 0 ||
-			    bank->revision == std::numeric_limits<uint64_t>::max())
-			{
-				result_code = ERANGE;
-				break;
-			}
-			for (size_t denomination = 0; denomination < domains.wallet.size();
-			     ++denomination)
-			{
-				if (domains.wallet[denomination] >
-				    static_cast<uint64_t>(
-					    (std::numeric_limits<int64_t>::max() - wallet_value) /
-					    coin_values[denomination]))
-				{
-					result_code = ERANGE;
-					break;
-				}
-				wallet_value += static_cast<int64_t>(domains.wallet[denomination]) *
-						coin_values[denomination];
-			}
-			if (result_code || wallet_value > std::numeric_limits<int64_t>::max() -
-								  entry.wallet_delta_copper)
-			{
-				result_code = ERANGE;
-				break;
-			}
-			wallet_value += entry.wallet_delta_copper;
-			std::array<uint64_t, CURRENCY_DENOMINATION_COUNT> canonical_wallet = {};
-			for (size_t denomination = domains.wallet.size(); denomination-- > 0;)
-			{
-				const int64_t amount = wallet_value / coin_values[denomination];
-				if (amount > INT_MAX)
-				{
-					result_code = ERANGE;
-					break;
-				}
-				canonical_wallet[denomination] = amount;
-				wallet_value %= coin_values[denomination];
-			}
-			if (result_code)
-				break;
-			domains.wallet = canonical_wallet;
-			wallet_value = 0;
-			for (size_t denomination = 0; denomination < domains.wallet.size();
-			     ++denomination)
-				wallet_value += static_cast<int64_t>(domains.wallet[denomination]) *
-						coin_values[denomination];
-			++domains.wallet_revision;
-			++bank->revision;
-		}
-		combat_result.participants[index] = {
-			.pid = entry.pid,
-			.frags = domains.frags,
-			.epics = domains.epics,
-			.wallet_value = entry.wallet_delta_copper ? wallet_value : -1,
-			.bank = {},
-			.frag_revision = domains.frag_revision,
-			.epic_revision = domains.epic_revision,
-			.wallet_revision = domains.wallet_revision,
-			.bank_revision = bank ? bank->revision : entry.expected_bank_revision
-		};
-		if (bank)
-			for (size_t denomination = 0; denomination < bank->balances.size();
-			     ++denomination)
-				combat_result.participants[index].bank.amount[denomination] =
-					bank->balances[denomination];
-	}
-	if (result_code)
-	{
-		try
-		{
-			candidates = players;
-		}
-		catch (const std::bad_alloc &)
-		{
-			return { critical_apply_outcome::retryable_failure, 0, ENOMEM };
-		}
-		bank_candidates.clear();
-		combat_result = {};
-	}
-	else
-		for (size_t index = 0; index < payload.participant_count; ++index)
-			if (payload.participants[index].wallet_delta_copper)
-			{
-				bank_record *bank = candidate_bank_for(index);
-				if (bank)
-					combat_result.participants[index].bank_revision =
-						bank->revision;
-			}
 	std::array<uint8_t, COMBAT_OUTCOME_RESULT_BYTES> encoded_result = {};
 	if (!combat_outcome_command_encode_result(combat_result, &encoded_result))
 		return { critical_apply_outcome::terminal_failure, 0, EBADMSG };
@@ -2280,18 +2045,10 @@ critical_apply_result apply_combat_outcome_command(const std::string &root,
 	try
 	{
 		transaction.players.reserve(candidates.size());
-		transaction.banks.reserve(bank_candidates.size());
 		for (const player_authority &candidate : candidates)
 		{
 			transaction.players.push_back({ candidate.record.pid, {} });
 			if (!encode_player_authority(candidate, &transaction.players.back().bytes))
-				return { critical_apply_outcome::terminal_failure, 0, ENOSPC };
-		}
-		for (const combat_bank &candidate : bank_candidates)
-		{
-			transaction.banks.push_back(
-				{ candidate.record.account_name, candidate.record.racewar, {} });
-			if (!encode_bank_record(candidate.record, &transaction.banks.back().bytes))
 				return { critical_apply_outcome::terminal_failure, 0, ENOSPC };
 		}
 	}
@@ -2326,8 +2083,6 @@ critical_apply_result apply_combat_outcome_command(const std::string &root,
 			std::max({ durable_revision, candidate.record.domains.frag_revision,
 				   candidate.record.domains.epic_revision,
 				   candidate.record.domains.wallet_revision });
-	for (const combat_bank &candidate : bank_candidates)
-		durable_revision = std::max(durable_revision, candidate.record.revision);
 	critical_apply_result result = { result_code ? critical_apply_outcome::terminal_failure :
 						       critical_apply_outcome::applied,
 					 durable_revision, result_code };

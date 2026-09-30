@@ -237,14 +237,9 @@ query_result apply_status(MYSQL *connection, const player_snapshot &snapshot)
 	std::ostringstream sql;
 	sql << "UPDATE player_data SET last_room=" << snapshot.room_vnum << ",last_save=NOW()";
 	sql << ",output_preferences=" << quote(connection, snapshot.output_preferences);
+	// The wallet, epic points and frags are memory's, and the save writes them.
 	for (const player_snapshot_integer &row : snapshot.status_integers)
 	{
-		// The wallet is memory's and the save writes it; epics and frags still belong
-		// to their transactions.
-		if (row.field == player_status_field::epics ||
-		    row.field == player_status_field::frags ||
-		    row.field == player_status_field::old_frags)
-			continue;
 		const char *column = status_column(row.field);
 		if (!column)
 			return { false, EINVAL };

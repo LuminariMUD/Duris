@@ -859,14 +859,11 @@ static void combat_outcome_committed(bool committed, const combat_outcome_result
 	if (victim && payload.gameplay_read_token)
 		gameplay_read_state_finish_provisional(&victim->only.pc->gameplay_reads,
 						       payload.gameplay_read_token, committed);
+	// The frags, epics and blood money changed when the outcome was submitted; a
+	// refusal only loses its history rows.
 	if (!committed)
-	{
-		if (victim)
-			send_to_char(
-				"The PvP outcome could not be recorded; no rewards were applied.\r\n",
-				victim);
-		return;
-	}
+		logit(LOG_DEBUG, "combat outcome for victim %u was not recorded",
+		      payload.victim_pid);
 	for (size_t index = 0; index < payload.participant_count; ++index)
 	{
 		const auto &entry = payload.participants[index];

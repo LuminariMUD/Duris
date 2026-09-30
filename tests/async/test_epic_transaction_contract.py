@@ -40,32 +40,37 @@ class EpicTransactionContractTests(unittest.TestCase):
         self.assertIn("numeric_limits<int64_t>::min()", implementation)
         self.assertIn("command.expected_revisions.size() == 1", implementation)
 
-    def test_repository_commits_balance_ledger_result_and_outbox_together(self):
+    def test_repository_commits_ledger_result_and_outbox_together(self):
+        # The balance is memory's: the command continues the ledger and advances the
+        # revision its rows are keyed on; the save writes the balance.
         repository = (SRC / "critical_command_repository.c").read_text()
         start = repository.index("bool execute_epic_state")
         apply = repository.index("critical_apply_result critical_command_repository_apply")
         epic_state = repository[start:apply]
         for token in (
             "FOR UPDATE",
-            "EPIC_COMMAND_REQUIRE_FUNDS",
-            "UPDATE player_data SET epics=?,epic_revision=?",
+            "SELECT balance_after FROM epic_ledger",
+            "UPDATE player_data SET epic_revision=?",
             "INSERT INTO epic_ledger",
         ):
             self.assertIn(token, epic_state)
+        for token in ("EPIC_COMMAND_REQUIRE_FUNDS", "SET epics="):
+            self.assertNotIn(token, epic_state)
         epic_apply = repository[apply:]
         epic_branch = epic_apply[epic_apply.index("if (epic_command)"):epic_apply.index("int64_t value")]
         commit = epic_branch.index('execute(connection, "COMMIT")')
         self.assertLess(epic_branch.index("insert_outbox"), commit)
         self.assertLess(epic_branch.index("finish_inbox"), commit)
 
-    def test_checkpoint_and_flat_file_replay_cannot_overwrite_epics(self):
+    def test_the_save_writes_epics(self):
         capture = (SRC / "player_snapshot_capture.c").read_text()
         replay = (SRC / "player_snapshot_repository.c").read_text()
         sql_player = (SRC / "sql_player.c").read_text()
         flat_file = (SRC / "files.c").read_text()
         self.assertNotRegex(capture, r"snapshot\s*->\s*epics")
-        self.assertIn("row.field == player_status_field::epics", replay)
-        self.assertIn("epics=epics", sql_player)
+        self.assertIn("ADD_STATUS(epics,", capture)
+        self.assertNotIn("row.field == player_status_field::epics", replay)
+        self.assertIn("epics=%ld", sql_player)
         self.assertIn("INSERT INTO epic_balance_baseline", sql_player)
         self.assertIn("Legacy flat-file epic balance is parsed", flat_file)
 
@@ -76,6 +81,8 @@ class EpicTransactionContractTests(unittest.TestCase):
         allowed = {
             "critical_command_repository.c",
             "epic_transaction.c",
+            "zone_touch_transaction.c",  # a committed stone award, in memory
+            "combat_outcome_transaction.c",  # a PvP award, in memory
             "nanny.c",       # new-character initialization only
             "sql_player.c",  # authoritative hydration only
             "player_load_materialize.c",  # authoritative worker snapshot hydration
@@ -99,9 +106,10 @@ class EpicTransactionContractTests(unittest.TestCase):
         self.assertIn("epic_transaction_submit_identified(", epic)
         self.assertIn("epic_award_committed", epic)
         self.assertIn("FROM epic_ledger", bonus)
-        self.assertIn("find_player_by_pid", transaction)
-        self.assertIn("epic_transaction_handle_completions", comm)
-        self.assertIn("epic_transaction_player_ready", (SRC / "nanny.c").read_text())
+        # The change happens at once; nothing waits for a completion.
+        self.assertIn("completion(character, true, result", transaction)
+        self.assertNotIn("epic_transaction_handle_completions", comm)
+        self.assertNotIn("epic_transaction_player_ready", (SRC / "nanny.c").read_text())
 
 
 if __name__ == "__main__":

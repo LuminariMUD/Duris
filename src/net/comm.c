@@ -273,7 +273,6 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 static void critical_gameplay_handle_completions(const critical_completion *completions,
 						 size_t count)
 {
-	epic_transaction_handle_completions(completions, count);
 	locker_identify_pulse();
 	corpse_lifecycle_transaction_handle_completions(completions, count);
 	item_movement_transaction_handle_completions(completions, count);

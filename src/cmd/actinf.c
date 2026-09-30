@@ -4455,19 +4455,13 @@ static void show_world_persistence(P_char ch)
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),
-		 "epic_transactions state=%s pending=%llu retained_offline=%llu submitted=%llu "
-		 "committed=%llu rejected=%llu submit_failures=%llu malformed=%llu\n",
-		 epic_transactions.malformed_completions || epic_transactions.submission_failures ?
-			 "degraded" :
-		 epic_transactions.pending ? "pending" :
-					     "ready",
-		 (unsigned long long)epic_transactions.pending,
-		 (unsigned long long)epic_transactions.retained_offline,
+		 "epic_transactions state=%s submitted=%llu committed=%llu rejected=%llu "
+		 "ledger_failures=%llu\n",
+		 epic_transactions.submission_failures ? "degraded" : "ready",
 		 (unsigned long long)epic_transactions.submitted,
 		 (unsigned long long)epic_transactions.committed,
 		 (unsigned long long)epic_transactions.rejected,
-		 (unsigned long long)epic_transactions.submission_failures,
-		 (unsigned long long)epic_transactions.malformed_completions);
+		 (unsigned long long)epic_transactions.submission_failures);
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),
