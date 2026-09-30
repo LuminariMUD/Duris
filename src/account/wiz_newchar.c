@@ -16,6 +16,7 @@
 #include "core/mm.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "sql/sql_player.h"
 
 extern int class_table[LAST_RACE + 1][CLASS_COUNT + 1];
@@ -33,7 +34,6 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 	extern int writeCharacter(P_char ch, int type, int room);
 	extern void clear_char(P_char ch);
 	extern void init_char(P_char ch);
-	extern char *mysql_str(const char *str, char *buf);
 
 	char arg1[MAX_INPUT_LENGTH], arg2[MAX_INPUT_LENGTH];
 	char arg3[MAX_INPUT_LENGTH], arg4[MAX_INPUT_LENGTH], arg5[MAX_INPUT_LENGTH];
@@ -360,20 +360,15 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	// link to account via direct sql
+	// link to account, queued on the writer behind the character's first save
 	{
-		char account_sql[MAX_STRING_LENGTH * 2 + 1];
-		char name_sql[MAX_STRING_LENGTH * 2 + 1];
-
-		mysql_str(ch->desc->account->acct_name, account_sql);
-		mysql_str(newch->player.name, name_sql);
-
-		if (!db_query(
+		if (!sql_queue(
 			    "INSERT INTO account_characters "
 			    "(account_name, pid, char_name, created_at, deleted_at) "
-			    "VALUES('%s', %ld, '%s', NOW(), NULL) "
+			    "VALUES('%s', %d, '%s', NOW(), NULL) "
 			    "ON DUPLICATE KEY UPDATE char_name = VALUES(char_name), deleted_at = NULL",
-			    account_sql, GET_PID(newch), name_sql))
+			    escape_str(ch->desc->account->acct_name).c_str(), GET_PID(newch),
+			    escape_str(newch->player.name).c_str()))
 		{
 			send_to_char("failed to link character to account.\r\n", ch);
 			logit(LOG_DEBUG, "wiz_newchar: failed to link %s to account %s",
