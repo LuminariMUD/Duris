@@ -1342,39 +1342,16 @@ void writeCorpse(P_obj corpse)
 		logit(LOG_DEBUG, "item wasn't a corpse in writeCorpse!");
 		return;
 	}
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		const bool present = OBJ_ROOM(corpse) ||
-				     (OBJ_CARRIED(corpse) && corpse->loc.carrying != NULL);
-		if (present && corpse->value[CORPSE_SAVEID] == 0)
-			corpse->value[CORPSE_SAVEID] = time(NULL);
-		if ((!present && !corpse->value[CORPSE_SAVEID]) ||
-		    queue_corpse_save(corpse, !present))
-			return;
-		persistence_alert(AVATAR, "corpse", "flatfile_save", "none", "none", "queue_failed",
-				  "save_id=%d", corpse->value[CORPSE_SAVEID]);
-		return;
-	}
-
-	// corpse not on ground = delete
-	if (!OBJ_ROOM(corpse) && !(OBJ_CARRIED(corpse) && corpse->loc.carrying != NULL))
-	{
-		if (corpse->action_description && corpse->value[CORPSE_SAVEID] &&
-		    !queue_corpse_save(corpse, true))
-			sql_delete_corpse(corpse->action_description, corpse->value[CORPSE_SAVEID]);
-		return;
-	}
-
-	if (corpse->value[CORPSE_SAVEID] == 0)
+	// The one writer saves the corpse, or deletes it once it is neither on the ground nor
+	// carried.
+	const bool present = OBJ_ROOM(corpse) ||
+			     (OBJ_CARRIED(corpse) && corpse->loc.carrying != NULL);
+	if (present && corpse->value[CORPSE_SAVEID] == 0)
 		corpse->value[CORPSE_SAVEID] = time(NULL);
-
-	if (queue_corpse_save(corpse, false))
+	if ((!present && !corpse->value[CORPSE_SAVEID]) || queue_corpse_save(corpse, !present))
 		return;
-	if (!sql_save_corpse(corpse))
-	{
-		persistence_alert(AVATAR, "corpse", corpse->action_description, "none", "none",
-				  "sql_save_failed", "save_id=%d", corpse->value[CORPSE_SAVEID]);
-	}
+	persistence_alert(AVATAR, "corpse", present ? "save" : "remove", "none", "none",
+			  "queue_failed", "save_id=%d", corpse->value[CORPSE_SAVEID]);
 }
 
 void persistence_refresh_restored_corpse(P_obj corpse, const char *source)
@@ -2127,16 +2104,12 @@ void PurgeCorpseFile(P_obj corpse)
 	unlink(Gbuf1);
 	unlink(Gbuf2);
 
-	if (corpse->action_description && corpse->value[CORPSE_SAVEID])
-	{
 #ifndef _PFILE_
-		if (queue_corpse_save(corpse, true))
-			return;
+	if (corpse->action_description && corpse->value[CORPSE_SAVEID] &&
+	    !queue_corpse_save(corpse, true))
+		persistence_alert(AVATAR, "corpse", "remove", "none", "none", "queue_failed",
+				  "save_id=%d", corpse->value[CORPSE_SAVEID]);
 #endif
-		sql_delete_corpse(corpse->action_description, corpse->value[CORPSE_SAVEID]);
-	}
-
-	return;
 }
 
 /*
@@ -4871,12 +4844,9 @@ void writeSavedItem(P_obj item)
 		return;
 	}
 
-	const bool flatfile = persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY;
 	if (!OBJ_ROOM(item))
 	{
-		if (queue_saved_item_save(item, item_key, true))
-			return;
-		if (flatfile || !sql_delete_saved_item(item_key))
+		if (!queue_saved_item_save(item, item_key, true))
 			logit(LOG_FILE, "saved item delete failed");
 		return;
 	}
@@ -4884,17 +4854,9 @@ void writeSavedItem(P_obj item)
 	if ((item->loc.room <= NOWHERE) || (item->loc.room > top_of_world))
 		return;
 
-	if (queue_saved_item_save(item, item_key, false))
-		return;
-	if (flatfile)
-	{
-		persistence_alert(AVATAR, "saved_item", "flatfile_write", "none", "none",
-				  "queue_failed", "item_uid=%llu",
-				  static_cast<unsigned long long>(item->obj_uid));
-		return;
-	}
-	if (!sql_save_saved_item(item, item_key))
-		logit(LOG_FILE, "sql_save_saved_item failed");
+	if (!queue_saved_item_save(item, item_key, false))
+		persistence_alert(AVATAR, "saved_item", "write", "none", "none", "queue_failed",
+				  "item_uid=%llu", static_cast<unsigned long long>(item->obj_uid));
 }
 
 void restoreSavedItems(void)
@@ -4922,16 +4884,11 @@ void PurgeSavedItemFile(P_obj item)
 		return;
 	}
 	// A saved item leaving its room is deleted by the one writer.
+	if (!queue_saved_item_save(item, Gbuf2, true))
+		persistence_alert(AVATAR, "saved_item", "purge", "none", "none", "queue_failed",
+				  "item_uid=%llu", static_cast<unsigned long long>(item->obj_uid));
 	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		if (!queue_saved_item_save(item, Gbuf2, true))
-			persistence_alert(AVATAR, "saved_item", "flatfile_purge", "none", "none",
-					  "queue_failed", "item_uid=%llu",
-					  static_cast<unsigned long long>(item->obj_uid));
 		return;
-	}
-	if (!queue_saved_item_save(item, Gbuf2, true) && !sql_delete_saved_item(Gbuf2))
-		logit(LOG_FILE, "sql_delete_saved_item failed");
 
 	checked_snprintf(Gbuf1, MAX_STRING_LENGTH, "%s/SavedItems/%s", SAVE_DIR, Gbuf2);
 	strcpy(Gbuf2, Gbuf1);

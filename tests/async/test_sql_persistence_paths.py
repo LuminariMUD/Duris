@@ -41,7 +41,7 @@ checks.append(("sql_restore_saved_items durably acknowledges before retiring roo
                "sql_acknowledge_saved_item_handoff" in sql_player_c and
                "sql_retire_saved_item_source" in sql_player_c and
                "sql_saved_item_source_rows_match" in sql_player_c))
-checks.append(("sql_save_saved_item wraps delete+reinsert in a transaction", "bool own_txn = false;" in sql_player_c and "sql_save_saved_item_recursive(item_key, room_vnum, item, 0) > 0;" in sql_player_c and "sql_commit()" in sql_player_c and "sql_rollback();" in sql_player_c))
+checks.append(("saved items are written only by the one writer", "bool sql_save_saved_item(" not in sql_player_c and "bool sql_delete_saved_item(" not in sql_player_c))
 
 release_fn = re.search(r"void sql_pool_release\(MYSQL \*conn\)\n\{.*?\n\}", sql_pool_c, re.S)
 if not release_fn:

@@ -32,7 +32,10 @@ def body(text, signature, last=False):
 
 # sql_player.c has a no-database stub first; inspect the real implementation.
 loader = body(sql_player, "bool sql_load_all_corpses(void)\n{", last=True)
-saver = body(sql_player, "bool sql_save_corpse(P_obj corpse)", last=True)
+# The one writer saves a corpse (persistence reset phase 1).
+repository = (SRC / "player_snapshot_repository.c").read_text()
+saver = repository[index(repository, 'sql << "INSERT INTO corpses (player_name') :]
+saver = saver[: index(saver, "mysql_insert_id(connection)")]
 identity_start = index(sql_player, "static void sql_restore_corpse_identity(")
 identity_end = index(sql_player, "bool sql_load_all_corpses(void)", identity_start)
 identity = sql_player[identity_start:identity_end]
@@ -69,11 +72,10 @@ for column in outer_columns:
 assert contains(runner, '"$SCRIPT_DIR/corpse_persistence_state.sql"')
 assert mysql_schema_test.exists(), "database-backed corpse schema regression is missing"
 assert contains(database_tests, "tests/async/run_corpse_persistence_schema_mysql.sh")
-assert contains(saver, "name, weight, ")
-assert contains(saver, "value0, value1, value2, value3, value4, value5, value7")
-for value_index in range(6):
-    assert contains(saver, f"corpse->value[{value_index}]")
-assert contains(saver, "corpse->value[7]")
+assert contains(saver, "name,weight,value0,value1,value2,value3,value4,")
+assert contains(saver, "value5,value7) VALUES (")
+assert contains(saver, "for (size_t index : { 0, 1, 2, 3, 4, 5, 7 })")
+assert contains(saver, "corpse.values[index]")
 assert contains(loader, "c.short_descr, c.description, c.name, c.weight")
 assert contains(loader, "c.value0, c.value1, c.value2, c.value3, c.value4, c.value5, c.value7")
 assert contains(loader, "row[CORPSE_COL_WEIGHT]")

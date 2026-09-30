@@ -16,15 +16,16 @@ class SavedItemFlatfileRoutingTests(unittest.TestCase):
         restore = restore[: restore.index("void PurgeSavedItemFile")]
         purge = files[files.index("void PurgeSavedItemFile") :]
         purge = purge[: purge.index("int writeShopKeeper")]
-        self.assertLess(write.index("PERSISTENCE_MODE_FLATFILE_PRIMARY"),
-                        write.index("sql_save_saved_item"))
         self.assertLess(restore.index("PERSISTENCE_MODE_FLATFILE_PRIMARY"),
                         restore.index("sql_restore_saved_items"))
-        self.assertLess(purge.index("PERSISTENCE_MODE_FLATFILE_PRIMARY"),
-                        purge.index("sql_delete_saved_item"))
-        # Saved items live in memory: their saves and deletes are writer jobs (step 6).
+        # Saved items live in memory: their saves and deletes are writer jobs (step 6) on
+        # both backends, and a job the writer refuses is reported, not run on the loop.
         self.assertEqual(write.count("queue_saved_item_save("), 2)
-        self.assertEqual(purge.count("queue_saved_item_save(item, Gbuf2, true)"), 2)
+        self.assertEqual(purge.count("queue_saved_item_save(item, Gbuf2, true)"), 1)
+        self.assertNotIn("sql_save_saved_item", write)
+        self.assertNotIn("sql_delete_saved_item", write + purge)
+        self.assertIn('"queue_failed"', write)
+        self.assertIn('"queue_failed"', purge)
 
     def test_storage_admin_mutations_move_in_memory(self):
         # Memory is the authority: the storage command changes the room at once on

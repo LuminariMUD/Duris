@@ -240,8 +240,6 @@ char *sql_escape_string(const char *str);
 void sql_player_error(const char *site);
 
 // corpses
-bool sql_save_corpse(P_obj corpse);
-bool sql_delete_corpse(const char *player_name, int save_id);
 bool sql_load_all_corpses(void);
 
 // shopkeepers
@@ -252,8 +250,6 @@ bool sql_restore_shopkeepers(void);
 bool sql_save_dirty_shopkeepers(bool force = false);
 
 // saved items
-bool sql_save_saved_item(P_obj item, const char *item_key);
-bool sql_delete_saved_item(const char *item_key);
 void sql_restore_saved_items(void);
 
 // ships

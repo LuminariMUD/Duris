@@ -41,7 +41,7 @@ assert contains(filtered_loader, 'sql_load_item_extra_descr_from_table(item_id, 
 assert contains(filtered_loader, "obj->db_item_id = item_id")
 assert 'sql_load_item_extra_descr_from_table(item_id, obj, "locker_item_extra_descr")' not in SQL
 
-saved_writer = body(SQL, "static int sql_save_saved_item_recursive(", "bool sql_save_saved_item(")
+saved_writer = body(SQL, "static int sql_save_saved_item_recursive(", "struct shopkeeper_temp")
 assert contains(saved_writer, 'sql_save_item_extra_descr(item_id, obj, "saved_item_extra_descr")')
 
 saved_contents = body(SQL, "static P_obj sql_load_saved_item_contents(", "void sql_restore_saved_items(")

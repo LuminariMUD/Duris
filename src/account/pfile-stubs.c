@@ -197,10 +197,6 @@ flatfile_character_delete_result flatfile_character_delete(const std::string &, 
 	return flatfile_character_delete_result::ok;
 }
 
-bool sql_delete_corpse(const char *, int)
-{
-	return true;
-}
 bool sql_delete_locker(int, int)
 {
 	return true;

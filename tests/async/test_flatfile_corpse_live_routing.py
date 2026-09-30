@@ -84,11 +84,11 @@ create_greater_dracolich = body(NECROMANCY, "void spell_create_greater_dracolich
 raise_completion = body(NECROMANCY, "void complete_corpse_raise_after_commit(",
                         "void spell_create_dracolich(")
 
-assert "PERSISTENCE_MODE_FLATFILE_PRIMARY" in write_corpse
-# Corpses live in memory: the flat-file corpse save is a writer job (step 6).
+# Corpses live in memory: the corpse save is a writer job on both backends (step 6), and
+# a job the writer refuses is reported, not run on the loop.
 assert "queue_corpse_save(corpse, !present)" in write_corpse
-assert write_corpse.index("PERSISTENCE_MODE_FLATFILE_PRIMARY") < write_corpse.index(
-    "sql_save_corpse")
+assert "sql_" not in write_corpse and '"queue_failed"' in write_corpse
+assert "sql_delete_corpse" not in purge_corpse
 assert "PERSISTENCE_MODE_FLATFILE_PRIMARY" in purge_corpse
 assert "skip_corpse_save" in purge_corpse
 assert "queue_corpse_save(corpse, true)" in purge_corpse
