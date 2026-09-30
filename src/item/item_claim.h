@@ -11,12 +11,12 @@
 
 /*
  * A save claims what its owner holds in memory: it writes those items and makes
- * the ownership record agree, whoever the record named before. Two kinds of item
- * are left out, with their contents: those the economy holds (an auction, a
- * shopkeeper or the collector), because the economy still moves items through its
- * own transactions until Phase 2 of the persistence reset, and those whose record
- * says they were destroyed, because only a save captured before the destruction can
- * still hold them. Both backends use these rules: claim_items() in
+ * the ownership record agree, whoever the record named before, the economy
+ * included: an auction listing, a sale and a collection take their items out of
+ * memory before their command, so no later save holds them. Only items whose record
+ * says they were destroyed are left out, with their contents, because only a save
+ * captured before the destruction can still hold them. Both backends use these
+ * rules: claim_items() in
  * item_claim_repository.c for MariaDB, and flatfile_item_repository_prepare_claim()
  * for the flat-file backend.
  */
@@ -38,7 +38,6 @@ struct item_claim_outcome
 	size_t claimed = 0;
 };
 
-bool item_claim_owner_is_economy(item_owner_type type);
 // Owners whose holdings memory is the authority for: players, rooms, corpses, lockers
 // and pets. A transfer out of or into one of them does not check that owner's revision
 // or the item's recorded owner; it claims the items the way a save does.
@@ -49,15 +48,15 @@ inline bool item_claim_owner_is_memory_held(item_owner_type type)
 	       type == item_owner_type::pet;
 }
 
-// True when a save must leave out an item with this record: the economy holds it, or
-// it was destroyed. A destroyed item stays destroyed, so an item sold to a shop for
-// destruction, or a coin pile the currency transactions spent, never comes back from
-// a save captured before that committed. A live coin pile is claimed like any item,
-// so coins follow the bag that holds them.
-bool item_claim_leaves_out(const item_owner_identity &owner, item_custody_state state);
+// True when a save must leave out an item with this record: it was destroyed. A
+// destroyed item stays destroyed, so an item sold to a shop for destruction, or a coin
+// pile the currency transactions spent, never comes back from a save captured before
+// that committed. A live coin pile is claimed like any item, so coins follow the bag
+// that holds them.
+bool item_claim_leaves_out(item_custody_state state);
 
-// The items a save writes after its claim: all of them except those left with the
-// economy. Parent indexes are renumbered for the items that remain.
+// The items a save writes after its claim: all of them except those left out.
+// Parent indexes are renumbered for the items that remain.
 std::vector<player_item_snapshot>
 item_claim_written_items(const std::vector<player_item_snapshot> &items,
 			 const std::unordered_set<uint64_t> &left_out);

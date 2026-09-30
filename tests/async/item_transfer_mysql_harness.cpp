@@ -444,9 +444,9 @@ void check_restitution_runtime_transfer(MYSQL *connection)
 }
 } // namespace
 
-// What memory says a player holds is what a transfer takes: another player's
-// record is taken, an item the economy holds is never taken, and the container a
-// grant goes into is claimed for the player holding it.
+// What memory says a player holds is what a transfer takes: another player's or an
+// auction's record is taken, and the container a grant goes into is claimed for the
+// player holding it.
 void check_memory_claims(MYSQL *connection)
 {
 	const item_owner_identity system = { item_owner_type::system, 0, 0 };
@@ -484,7 +484,7 @@ void check_memory_claims(MYSQL *connection)
 				   " AND old_owner_id=4000000002 AND new_owner_id=4000000001")
 					  .c_str()) == 1);
 
-	// An item the auction holds stays with the auction.
+	// An item the record gives to an auction is taken too.
 	execute(connection,
 		"INSERT INTO item_current_owner (item_uid,root_item_uid,parent_item_uid,"
 		"owner_type,owner_id,owner_context_id,item_revision,vnum,state) VALUES (" +
@@ -494,12 +494,16 @@ void check_memory_claims(MYSQL *connection)
 	critical_apply_result taken =
 		apply(connection, 19,
 		      payload(player_one, room, item_transfer_reason::player_drop, 0, 0, 1, 1));
-	assert(taken.outcome == critical_apply_outcome::terminal_failure &&
-	       taken.error_code == ESTALE);
-	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid=" +
-				   std::to_string(held_by_auction) +
-				   " AND owner_type=6 AND owner_id=900 AND item_revision=3")
-					  .c_str()) == 1);
+	assert(taken.outcome == critical_apply_outcome::applied);
+	assert(scalar(connection,
+		      ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid=" +
+		       std::to_string(held_by_auction) + " AND owner_type=3 AND owner_id=3001")
+			      .c_str()) == 1);
+	assert(scalar(connection,
+		      ("SELECT COUNT(*) FROM item_owner_audit WHERE item_uid=" +
+		       std::to_string(held_by_auction) +
+		       " AND old_owner_type=6 AND old_owner_id=900 AND new_owner_id=4000000001")
+			      .c_str()) == 1);
 
 	// A grant goes into a pack the record still gives to another player.
 	root_uid = pack;

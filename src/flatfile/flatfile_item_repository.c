@@ -687,7 +687,7 @@ bool descendant_of(const std::vector<flatfile_item_ownership_record *> &root_ite
 // item a transfer takes from memory. A missing record is added, another owner's
 // record is taken (logged to logs/log/item_claims), and a stale placement is
 // corrected. `parent_uid` null keeps the recorded parent. A destroyed record is never
-// revived and an item the economy holds is never taken: *refused is set instead.
+// revived: *refused is set instead.
 unsigned int claim_catalog_item(ownership_catalog *catalog, const item_owner_identity &holder,
 				uint64_t item_uid, uint64_t root_uid, const uint64_t *parent_uid,
 				int32_t vnum, uint64_t *revision, bool *refused)
@@ -718,8 +718,7 @@ unsigned int claim_catalog_item(ownership_catalog *catalog, const item_owner_ide
 		*revision = 1;
 		return 0;
 	}
-	if (item->state == item_custody_state::destroyed ||
-	    item_claim_owner_is_economy(item->owner.type))
+	if (item_claim_leaves_out(item->state))
 	{
 		*refused = true;
 		return 0;
@@ -2294,7 +2293,7 @@ flatfile_item_repository_result flatfile_item_repository_prepare_claim(
 										 claim.owner });
 					continue;
 				}
-				if (record && item_claim_leaves_out(record->owner, record->state))
+				if (record && item_claim_leaves_out(record->state))
 				{
 					claim.outcome.left_out.insert(item.object_uid);
 					claim.outcome.dupes.push_back(

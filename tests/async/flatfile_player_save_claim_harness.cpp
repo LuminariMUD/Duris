@@ -1,8 +1,8 @@
 // The flat-file backend claims exactly as MariaDB does: a player save writes what
 // the player holds in memory and makes the ownership catalog agree in the same
 // authority transaction. Items other owners held are taken and logged to
-// logs/log/item_claims; an item an auction holds, or one the catalog says was
-// destroyed, is left out with its contents and logged to logs/log/dupes; nothing
+// logs/log/item_claims, an auction's included; an item the catalog says was
+// destroyed is left out with its contents and logged to logs/log/dupes; nothing
 // refuses the save.
 #include "flatfile/flatfile_identity_repository.h"
 #include "flatfile/flatfile_item_repository.h"
@@ -158,7 +158,7 @@ int main(int argc, char **argv)
 		item(1003, 503, 0), // the room item, in the bag
 		item(1001, 501, PLAYER_SNAPSHOT_NO_PARENT),
 		item(1004, 504, PLAYER_SNAPSHOT_NO_PARENT),
-		item(1006, 506, PLAYER_SNAPSHOT_NO_PARENT), // held by an auction
+		item(1006, 506, PLAYER_SNAPSHOT_NO_PARENT), // an auction's, by the catalog
 		item(1007, 507, 4),
 	};
 	player_pet_snapshot follower = {};
@@ -177,16 +177,16 @@ int main(int argc, char **argv)
 	std::vector<uint64_t> uids;
 	for (const auto &record : mine)
 		uids.push_back(record.item_uid);
-	require((uids == std::vector<uint64_t>{ 1001, 1003, 1004, 1010 }),
-		"the player now holds the corpse, room and other player's items and the bag");
+	require((uids == std::vector<uint64_t>{ 1001, 1003, 1004, 1006, 1007, 1010 }),
+		"the player now holds the corpse, room, other player's and auction's items and "
+		"the bag");
 	for (const auto &record : mine)
 		if (record.item_uid == 1003)
 			require(record.root_item_uid == 1010 && record.parent_item_uid == 1010,
 				"the room item sits in the bag");
 	require(held_by(root, corpse).empty() && held_by(root, room).empty() &&
-			held_by(root, other).empty(),
+			held_by(root, other).empty() && held_by(root, auction).empty(),
 		"the old owners no longer hold the claimed items");
-	require(held_by(root, auction).size() == 2, "the auction keeps what it holds");
 	const auto pet_items = held_by(root, pet);
 	require(pet_items.size() == 1 && pet_items[0].item_uid == 1005,
 		"the pet holds its own item");
@@ -198,22 +198,20 @@ int main(int argc, char **argv)
 	uids.clear();
 	for (const auto &entry : stored.items)
 		uids.push_back(entry.object_uid);
-	require((uids == std::vector<uint64_t>{ 1010, 1003, 1001, 1004 }),
-		"the auction's container and its contents are left out of the player file");
+	require((uids == std::vector<uint64_t>{ 1010, 1003, 1001, 1004, 1006, 1007 }),
+		"the player file holds every claimed item");
 	require(stored.items[1].parent_index == 0, "the room item is written inside the bag");
 
 	const std::string claims = text_of(path / "logs/log/item_claims");
 	for (const char *line : { "claimed uid=1001 vnum=501 from=corpse:9001:0 to=player:42:0",
 				  "claimed uid=1003 vnum=503 from=room:3001:0 to=player:42:0",
-				  "claimed uid=1004 vnum=504 from=player:7:0 to=player:42:0" })
+				  "claimed uid=1004 vnum=504 from=player:7:0 to=player:42:0",
+				  "claimed uid=1006 vnum=506 from=auction:12:0 to=player:42:0",
+				  "claimed uid=1007 vnum=507 from=auction:12:0 to=player:42:0" })
 		require(claims.find(line) != std::string::npos,
 			std::string("claim log is missing: ") + line + "\n" + claims);
-	const std::string dupes = text_of(path / "logs/log/dupes");
-	require(dupes.find("save_left_out uid=1006 vnum=506 lost_by=player:42:0 "
-			   "held_by=auction:12:0") != std::string::npos &&
-			dupes.find("save_left_out uid=1007 vnum=507 lost_by=player:42:0 "
-				   "held_by=auction:12:0") != std::string::npos,
-		"the dupe log names both left-out items: " + dupes);
+	require(text_of(path / "logs/log/dupes").find("uid=1006") == std::string::npos,
+		"nothing the save claimed is in the dupe log");
 
 	// No revision fence: an older ordinary save is written; a legacy replay is not.
 	player_snapshot older = snapshot_for(1);

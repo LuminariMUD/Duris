@@ -2,15 +2,9 @@
 
 #include "persistence/dupe_log.h"
 
-bool item_claim_owner_is_economy(item_owner_type type)
+bool item_claim_leaves_out(item_custody_state state)
 {
-	return type == item_owner_type::auction || type == item_owner_type::shopkeeper ||
-	       type == item_owner_type::collector;
-}
-
-bool item_claim_leaves_out(const item_owner_identity &owner, item_custody_state state)
-{
-	return item_claim_owner_is_economy(owner.type) || state == item_custody_state::destroyed;
+	return state == item_custody_state::destroyed;
 }
 
 std::vector<player_item_snapshot>

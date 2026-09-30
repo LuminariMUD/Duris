@@ -12,8 +12,8 @@
  *   - no row: insert one;
  *   - a row naming this owner: correct its placement if it moved;
  *   - a row naming anyone else: take it, and write an item_owner_audit row;
- *   - a row naming an auction, shopkeeper or the collector: leave the item and its
- *     contents out of the save and report it in outcome->dupes.
+ *   - a destroyed row: leave the item and its contents out of the save and report
+ *     it in outcome->dupes.
  * Returns 0, or the MySQL error code of the statement that failed.
  */
 unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,
@@ -23,8 +23,7 @@ unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,
 // Make item_current_owner name `holder` for one item a transfer takes from memory:
 // a missing row is inserted, another owner's row is taken with an item_owner_audit
 // row, and a stale placement is corrected. `parent_uid` null keeps the recorded
-// parent. A destroyed row is never revived and an item the economy holds is never
-// taken: *refused is set instead. *revision is the item's revision afterwards.
+// parent. A destroyed row is never revived: *refused is set instead. *revision is the item's revision afterwards.
 // Returns 0, or the MySQL error code of the statement that failed.
 unsigned int claim_transfer_item(MYSQL *connection, const item_owner_identity &holder,
 				 uint64_t item_uid, uint64_t root_uid, const uint64_t *parent_uid,

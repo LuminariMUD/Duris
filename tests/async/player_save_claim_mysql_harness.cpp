@@ -1,8 +1,8 @@
 // A save never refuses. It writes what its owner holds in memory and makes
 // item_current_owner agree: an item the table gives to a corpse, a locker, a room,
-// another player or a pet is taken, with an audit row per change; an item an
-// auction holds, or one the table says was destroyed, is left out with its contents
-// and logged to the dupe log; the rest of the save commits. This drives
+// another player, a pet or an auction is taken, with an audit row per change; an item
+// the table says was destroyed is left out with its contents and logged to the dupe
+// log; the rest of the save commits. This drives
 // player_snapshot_repository_apply() against a real server.
 #include "persistence/dupe_log.h"
 #include "player/player_save_worker.h"
@@ -153,7 +153,7 @@ int main()
 		item(1002, 502, PLAYER_SNAPSHOT_NO_PARENT),
 		item(1004, 504, PLAYER_SNAPSHOT_NO_PARENT),
 		item(1005, 505, PLAYER_SNAPSHOT_NO_PARENT),
-		item(1006, 506, PLAYER_SNAPSHOT_NO_PARENT), // 6: held by an auction
+		item(1006, 506, PLAYER_SNAPSHOT_NO_PARENT), // 6: an auction's, by the table
 		item(1007, 507, 6),
 		item(1008, 508, PLAYER_SNAPSHOT_NO_PARENT), // no row at all
 		item(1009, 509, PLAYER_SNAPSHOT_NO_PARENT),
@@ -167,33 +167,34 @@ int main()
 	require(applied.outcome == player_save_apply_outcome::applied,
 		"a save whose items other owners hold must still commit");
 
-	for (const uint64_t uid : { 1001, 1002, 1004, 1005, 1008, 1009, 1010, 1011 })
+	for (const uint64_t uid : { 1001, 1002, 1004, 1005, 1006, 1008, 1009, 1010, 1011 })
 		require(owner_of(uid) == "1:1:0:1:" + std::to_string(uid) + ":0",
 			"item " + std::to_string(uid) + " must now be pid 1's: " + owner_of(uid));
 	require(owner_of(1003) == "1:1:0:1:1010:1010",
 		"the room item must be pid 1's, inside the bag: " + owner_of(1003));
-	require(owner_of(1006) == "6:12:0:1:1006:0" && owner_of(1007) == "6:12:0:1:1006:1006",
-		"the auction keeps what it holds");
+	require(owner_of(1007) == "1:1:0:1:1006:1006",
+		"the auctioned container's contents must be pid 1's: " + owner_of(1007));
 	require(owner_of(1050) == "8:0:0:2:1050:0" && owner_of(1051) == "8:0:0:2:1050:1050" &&
 			owner_of(1053) == "1:1:0:1:1053:0",
 		"a destroyed item stays destroyed, and what it held is not moved: " +
 			owner_of(1050) + " " + owner_of(1051) + " " + owner_of(1053));
 
-	require(scalar(test_connection, "SELECT COUNT(*) FROM item_owner_audit") == "5",
+	require(scalar(test_connection, "SELECT COUNT(*) FROM item_owner_audit") == "7",
 		"one audit row per item taken from another owner");
 	require(scalar(test_connection,
 		       "SELECT GROUP_CONCAT(CONCAT(item_uid,'=',old_owner_type,':',old_owner_id,':',"
 		       "old_owner_context_id,'>',new_owner_type,':',new_owner_id,':',"
 		       "new_owner_context_id,'@',vnum) ORDER BY item_uid) FROM item_owner_audit") ==
 			"1001=4:9001:0>1:1:0@501,1002=5:77:0>1:1:0@502,1003=3:3001:0>1:1:0@503,"
-			"1004=1:2:0>1:1:0@504,1005=11:88:2>1:1:0@505",
+			"1004=1:2:0>1:1:0@504,1005=11:88:2>1:1:0@505,1006=6:12:0>1:1:0@506,"
+			"1007=6:12:0>1:1:0@507",
 		"the audit names each item, its vnum, the old owner and the new one");
 
-	require(scalar(test_connection, "SELECT COUNT(*) FROM player_items WHERE pid=1") == "9",
-		"every held item except the auction's and the destroyed graphs is written");
+	require(scalar(test_connection, "SELECT COUNT(*) FROM player_items WHERE pid=1") == "11",
+		"every held item except the destroyed graph is written");
 	require(scalar(test_connection, "SELECT COUNT(*) FROM player_items WHERE pid=1 AND obj_uid "
-					"IN (1006,1007,1050,1051,1053,1099)") == "0",
-		"the save leaves out the auction's and the destroyed items and drops the stale row");
+					"IN (1050,1051,1053,1099)") == "0",
+		"the save leaves out the destroyed items and drops the stale row");
 	require(scalar(test_connection,
 		       "SELECT COUNT(*) FROM player_items child JOIN player_items bag ON "
 		       "bag.id=child.container_id WHERE child.obj_uid=1003 AND bag.obj_uid=1010") ==
@@ -210,9 +211,7 @@ int main()
 	lines << log.rdbuf();
 	const std::string text = lines.str();
 	for (const char *line :
-	     { "save_left_out uid=1006 vnum=506 lost_by=player:1:0 held_by=auction:12:0",
-	       "save_left_out uid=1007 vnum=507 lost_by=player:1:0 held_by=auction:12:0",
-	       "save_left_out uid=1050 vnum=550 lost_by=player:1:0 held_by=destruction:0:0",
+	     { "save_left_out uid=1050 vnum=550 lost_by=player:1:0 held_by=destruction:0:0",
 	       "save_left_out uid=1051 vnum=551 lost_by=player:1:0 held_by=destruction:0:0",
 	       "save_left_out uid=1053 vnum=553 lost_by=player:1:0 held_by=player:1:0" })
 		require(text.find(line) != std::string::npos,
@@ -223,7 +222,7 @@ int main()
 	save.revision = 6;
 	applied = player_snapshot_repository_apply(test_connection, save);
 	require(applied.outcome == player_save_apply_outcome::applied, "a repeat save commits");
-	require(scalar(test_connection, "SELECT COUNT(*) FROM item_owner_audit") == "5",
+	require(scalar(test_connection, "SELECT COUNT(*) FROM item_owner_audit") == "7",
 		"a repeat save writes no audit rows");
 
 	// No revision fence: an ordinary save with a lower revision is still written.

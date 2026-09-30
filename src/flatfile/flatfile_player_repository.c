@@ -895,7 +895,7 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		    prepared != flatfile_item_repository_result::unchanged)
 			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 		claim_changed = prepared == flatfile_item_repository_result::ok;
-		// Leave out what the economy holds, with its contents.
+		// Leave out what was destroyed, with its contents.
 		size_t claim = 0;
 		if (snapshot.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY))
 			materialized.items = item_claim_written_items(
@@ -1051,7 +1051,7 @@ player_save_apply_result apply_world_snapshot(const std::string &root,
 				return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 			if (prepared == flatfile_item_repository_result::ok)
 				operations.push_back(std::move(claimed));
-			// Leave out what the economy holds, with its contents.
+			// Leave out what was destroyed, with its contents.
 			written = item_claim_written_items(*items, claims[0].outcome.left_out);
 		}
 		flatfile_authority_operation world;
@@ -1149,7 +1149,7 @@ flatfile_saved_item_snapshot_apply(const std::string &root,
 		    const std::vector<player_item_snapshot> &written,
 		    flatfile_authority_operation *operation)
 		{
-			// A saved item whose every piece the economy holds leaves the room.
+			// A saved item whose every piece was destroyed leaves the room.
 			const bool drop = remove || written.empty();
 			return flatfile_world_item_prepare_room_item_snapshot(
 				root, lock, item.room_vnum, drop ? item.items : written, drop,

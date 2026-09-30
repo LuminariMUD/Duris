@@ -146,7 +146,7 @@ unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,
 		const auto found = rows.find(item.object_uid);
 		if (parent_uid && outcome->left_out.count(parent_uid))
 		{
-			// Its container stays with the economy, so it does too.
+			// Its container is left out, so it is too.
 			outcome->left_out.insert(item.object_uid);
 			const auto holder = rows.find(parent_uid);
 			outcome->dupes.push_back({ item.object_uid, item.vnum,
@@ -156,8 +156,7 @@ unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,
 			continue;
 		}
 		if (found != rows.end() &&
-		    item_claim_leaves_out(found->second.owner,
-					  static_cast<item_custody_state>(found->second.state)))
+		    item_claim_leaves_out(static_cast<item_custody_state>(found->second.state)))
 		{
 			outcome->left_out.insert(item.object_uid);
 			outcome->dupes.push_back(
@@ -282,8 +281,7 @@ unsigned int claim_transfer_item(MYSQL *connection, const item_owner_identity &h
 				       std::to_string(wanted_vnum) + ',' + active + ')');
 	}
 	const item_owner_identity current = { static_cast<item_owner_type>(type), id, context };
-	if (state == static_cast<uint64_t>(item_custody_state::destroyed) ||
-	    item_claim_owner_is_economy(current.type))
+	if (item_claim_leaves_out(static_cast<item_custody_state>(state)))
 	{
 		*refused = true;
 		return 0;

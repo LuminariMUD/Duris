@@ -64,7 +64,10 @@ for owner in ("auction", "shopkeeper", "collector", "system", "destruction"):
     assert f"item_owner_type::{owner}" not in held, owner
 CLAIM_REPOSITORY = (SRC / "item_claim_repository.c").read_text()
 claim = body(CLAIM_REPOSITORY, "unsigned int claim_transfer_item(")
-assert "item_custody_state::destroyed" in claim and "item_claim_owner_is_economy" in claim
+assert "item_claim_leaves_out(" in claim
+# The economy takes its items out of memory before its command, so a save or a transfer
+# claims whatever its owner holds, the economy's records included.
+assert "item_claim_owner_is_economy" not in (SRC / "item_claim.h").read_text()
 assert "INSERT INTO item_owner_audit" in claim
 TRANSFER = (SRC / "item_transfer_repository.c").read_text()
 execute = body(TRANSFER, "bool item_transfer_repository_execute_at_offset(")
@@ -110,7 +113,7 @@ print("[PASS] locker and private chest saves claim what the chest holds; a priva
 # item, stays destroyed and is left out, and a login loads the amount the save wrote,
 # never an older custody amount.
 leaves = body((SRC / "item_claim.c").read_text(), "bool item_claim_leaves_out(")
-assert "state == item_custody_state::destroyed" in leaves and "ITEM_MONEY" not in leaves
+assert "return state == item_custody_state::destroyed;" in leaves and "ITEM_MONEY" not in leaves
 assert "item_claim_leaves_owner_alone" not in (SRC / "item_claim_repository.c").read_text()
 LOAD = (SRC / "player_load_repository.c").read_text()
 assert "coin_payload" not in LOAD
