@@ -234,12 +234,7 @@ All but the last hold now.
 
 ## What is left
 
-1. **Bring `docs/reference/DATABASE.md` up to date** (the ledger reconcilers are
-   [done](persistence-done.md#the-ledger-reconcilers-done), with two defects found on the way).
-   "Critical transactions and current item ownership" still calls the table the authority and
-   requires a transfer for every reparenting, and "Consistent player load" still checks a
-   durable revision Phase 1 removed. Rewrite both to [How it works](#how-it-works).
-2. **The gate on this worktree's head:** `./scripts/format.sh --all --check`, then
+1. **The gate on this worktree's head:** `./scripts/format.sh --all --check`, then
    `make test-all -j16 TEST_JOBS=16` alone, then `make test-db` and `npm test --prefix site` side
    by side. Fix each failure in its own commit, with a regression test where behavior changes,
    rerun what failed, and push the branch.

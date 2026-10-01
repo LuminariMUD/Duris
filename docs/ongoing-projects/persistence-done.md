@@ -2173,3 +2173,13 @@ Found along the way, each fixed in its own commit:
   keys. `run_combat_baseline_repair_mysql.sh` (manual, not in test-db) gives an unrelated
   character ledgerless balances: before, the safe apply rolled back; after, it passes with the
   conflict and history refusals intact. `test_combat_baseline_repair_workflow.py` passes.
+
+### DATABASE.md (done)
+
+What is left's second fix. Besides the two sections the ablation named ("Consistent player
+load" and "Critical transactions and current item ownership"), the connection notes, the
+execution boundaries table and its journal paragraphs, the item row of "Tables worth
+knowing", the epic read model's balance sentence and "Revisioned player checkpoints and
+terminal saves" (now "Player checkpoints and terminal saves") still described the database as
+the authority, so all of them were rewritten to [How it works](persistence-plan.md#how-it-works).
+The documentation and siege removal contracts, which read the file, pass. Commit: `838c0e827`.
