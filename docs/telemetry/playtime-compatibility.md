@@ -42,7 +42,7 @@ persist elapsed time; no new timer or telemetry writer is introduced.
 The scheduler starts this job after five seconds and repeats it after thirty
 seconds, plus continuation/scheduler delay. Under healthy operation a crash can
 lose the still-uncaptured tail since the last checkpoint. This is not a hard
-thirty-second durability guarantee: capture refusal, journal/DB backlog, or an
+thirty-second durability guarantee: capture refusal, writer backlog, or an
 unhealthy scheduler can enlarge the exposure. Existing queue/health diagnostics
 remain authoritative. This change does not add main-loop I/O or a new durability
 fence. Terminal save and copyover durability policies remain unchanged.

@@ -28,7 +28,7 @@ explicit bounds.
 
 After preparation, the entire kit enters the existing multi-root creation
 transaction. All roots stay detached until durable success. There is one
-creation operation, rather than one journal/admission operation per root.
+creation operation, rather than one admission operation per root.
 Transient admission refusal retains the complete staged kit for retry. A
 preparation error or terminal transaction failure discards the whole staged kit.
 Successful completion uses the existing ownership-revision checks and committed
@@ -41,34 +41,20 @@ not discarded when the kit fails. They resume after the kit settles.
 The recipient's normal prompt and command dequeue remain held while the kit is
 pending, then resume after complete publication or failure. Other players remain
 playable. Orderly maintenance sees the pending batch fence; a pre-entry
-disconnect cancels only unsubmitted work and preserves an already journaled
+disconnect cancels only unsubmitted work and keeps an already submitted
 batch. This does not make `toggle newbie` one-time or exempt Chaos characters.
 
-## Admission failure and uncertain durability
+## Admission failure
 
 Admission results must not be collapsed into one retryable rejection. Invalid
-commands, identity conflicts, and definite journal non-admission terminate the
-staged kit and restore its prompt. Unavailable/overloaded admission retains the
-kit for retry.
+commands and identity conflicts terminate the staged kit and restore its prompt.
+Unavailable/overloaded admission retains the kit for retry.
 
-An append error does not by itself prove non-admission: a complete frame may
-remain after a failed `fsync()` or `close()`. The journal attempts a durable
-rollback under its mutex. If rollback cannot be confirmed, it closes admission
-with an uncertainty gate. The coordinator and transaction caller retain the
-original operation identity, pending state, and ownership fences. Disconnect
-must not cancel these roots as if they were unsubmitted.
-
-Production pulse recovery validates the journal, synchronizes it, refreshes
-journal health, and resumes the same operation identity. Failed recovery backs
-off from one to thirty seconds. Corrupt journals remain fail-closed; this is not
-a promise of automatic recovery from permanent storage damage. Recovery still
-performs synchronous journal I/O, so backoff limits frequency, not worst-case
-I/O latency. Normal shutdown/copyover must honor failed drain; forced process
-exit or a direct shutdown that bypasses drain cannot preserve RAM-only state.
-
-All coordinator callers use the same retained-operation predicate for uncertain
-admission. This means responsibility is retained, not that durable success has
-already occurred; publication still waits for completion.
+An accepted kit is queued on the one persistence writer, which retries a lost
+connection itself; publication still waits for the completion. Nothing is
+journaled, so a crash before the kit reaches the database loses it, like any
+save. Copyover is called off while a kit is pending; shutdown reports it and
+goes ahead.
 
 ## Verification
 

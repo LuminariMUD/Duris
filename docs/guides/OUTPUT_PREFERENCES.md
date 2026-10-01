@@ -21,8 +21,7 @@ The preferences service requests the existing asynchronous STATUS checkpoint.
 Queued/coalesced updates take effect in memory for future messages. The result is
 **pending save**, not a claim of completed durability. An admission failure restores
 the previous in-memory preferences; no-op updates request no additional write.
-The normal worker, revision guard, journal replay, and retry semantics determine
-durability. Rendering performs no database access.
+The one persistence writer and its retry semantics determine durability. Rendering performs no database access.
 
 The compact representation is empty for defaults, or `v1` followed by independent
 semicolon-delimited fields, for example `v1;m=1;1=3;12=27`. Numeric channel IDs come
@@ -43,13 +42,13 @@ SQL checkpoint and load repositories carry the field in the existing status quer
 and transaction. Legacy SQL character load/save paths also carry it. Flatfile
 STATUS merges replace it; unrelated component merges retain it. The player
 snapshot wire versions are 5 (normal) and 6 (death). Readers still accept versions
-1–4 with empty preferences, including their original journal envelopes; old
-executables cannot read the new snapshot versions. Rollback therefore requires a
-compatible reader or restoration of pre-upgrade snapshot/journal files, in addition
+1–4 with empty preferences; old executables cannot read the new snapshot
+versions. Rollback therefore requires a compatible reader or restoration of
+pre-upgrade snapshot files, in addition
 to the normal deployment backup process. The additive SQL column can remain.
 
 Preferences follow the existing `database:player_data` lifecycle entry, associated
-character snapshots, journals, backup, recovery, and export/erasure policy. They
+character snapshots, backup, recovery, and export/erasure policy. They
 contain display choices only, no credentials, message content, or independent
 identity. This change creates no new retention store or policy decision.
 
@@ -57,8 +56,8 @@ identity. This change creates no new retention store or policy decision.
 
 Run `python3 tests/async/test_output_preferences.py` for the preference codec,
 ownership, reset, motion, admission, and reconnect contracts. Existing snapshot,
-journal, pet restore, and flatfile repository tests cover the extended saved state
-and compatibility with previous normal/death snapshots and journal records.
+pet restore, and flatfile repository tests cover the extended saved state and
+compatibility with previous normal/death snapshots.
 
 `tests/async/run_output_preferences_mysql.sh` creates and removes a disposable
 database without reading `.env`. Set `COLOR_DB_IMAGE=mysql:8.0` or

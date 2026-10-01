@@ -93,8 +93,9 @@ collector repository executes collect, activate, purchase, expire, cancel,
 pause, and resume inside the caller's critical-operation transaction. Collection
 rechecks the complete source root, detaches only the selected shell, reparents
 its children, preserves the exact singleton item snapshot, and transfers its UID
-to collector custody. Purchase atomically verifies capacity admission and all
-revision fences, debits carried currency, restores the exact player-item rows,
+to collector custody. Purchase atomically verifies capacity admission and the
+listing and catalog revisions, records the price in the collector ledger (the
+buyer's coins change in memory, not here), restores the exact player-item rows,
 and transfers custody to the permanent beneficiary. Expiry and held-item cancel
 move the UID to terminal custody. The repository emits the canonical result to
 outbox destination 11 before the encompassing transaction commits.
