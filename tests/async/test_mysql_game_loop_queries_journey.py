@@ -26,8 +26,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 # What the god runs in the game, and a line of each answer: the answer comes on a later
 # pulse when the command reads the database. The next entry summons the divine reward
-# granted here and reads back the epic bonus chosen here, and REENTRY_COMMANDS show the
-# bonus and revoke the reward.
+# granted here and reads back the epic bonus chosen here, and REENTRY_COMMANDS revoke the
+# reward.
 COMMANDS = (
     ('finger ' + journey.CHARACTER, 'PID:'),
     ('fraglist', 'Lowest Fraggers'),
@@ -110,7 +110,6 @@ LOCKER_COMMANDS = (
     ('drop mace', 'Pos: standing >'),
 )
 REENTRY_COMMANDS = (
-    ('epic bonus', 'benefiting from the Experience Bonus'),
     ('divineclaim list', 'Copies'),
     ('divineclaim remove 1', 'Revoked 1 divine account reward'),
     # A staff-made character's first save is queued like a player's; it is the newest
@@ -263,6 +262,16 @@ def run(server):
             client.expect('Please select an option', timeout=60)
             enter(client)
             client.expect('A divine account reward begins to materialize', timeout=30)
+            # The bonus is read on the writer after entry; until it arrives the game says so.
+            for _ in range(30):
+                client.send('epic bonus')
+                matched, _ = client.expect_any(
+                    ('benefiting from the Experience Bonus', 'still loading'), timeout=30)
+                if matched != 'still loading':
+                    break
+                time.sleep(1)
+            else:
+                raise AssertionError('the epic bonus never finished loading')
             run_commands(client, REENTRY_COMMANDS)
             client.send('quit')
             client.expect('Please select an option', timeout=60)
