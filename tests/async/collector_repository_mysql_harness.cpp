@@ -250,14 +250,8 @@ critical_command death_transfer(uint32_t save_id, uint64_t eligible_uid, uint64_
 	payload.item_blob_size = static_cast<uint32_t>(blob.size());
 	std::copy(blob.begin(), blob.end(), payload.item_blob.begin());
 	payload.corpse = corpse_metadata(save_id);
-	payload.collector.present = true;
-	payload.collector.beneficiary_pid = PLAYER_PID;
-	payload.collector.death_time = save_id;
-	payload.collector.policy = { 10, 20, 30, 250, 7 };
-	payload.collector.eligible_item_uids = { eligible_uid };
 	critical_command command = {};
 	const critical_operation_id id = operation();
-	payload.collector.death_operation = id;
 	assert(item_transfer_command_build(&command, id, payload, critical_source_site::combat,
 					   critical_deadline_class::interactive));
 	command.accepted_at_usec = 1;
@@ -316,18 +310,35 @@ critical_command tree_death_transfer(uint32_t save_id, uint64_t root_uid, uint64
 	payload.item_blob_size = static_cast<uint32_t>(blob.size());
 	std::copy(blob.begin(), blob.end(), payload.item_blob.begin());
 	payload.corpse = corpse_metadata(save_id);
-	payload.collector.present = true;
-	payload.collector.beneficiary_pid = PLAYER_PID;
-	payload.collector.death_time = save_id;
-	payload.collector.policy = { 10, 20, 30, 250, 7 };
-	payload.collector.eligible_item_uids = { root_uid, child_uid };
 	critical_command command = {};
 	const critical_operation_id id = operation();
-	payload.collector.death_operation = id;
 	assert(item_transfer_command_build(&command, id, payload, critical_source_site::combat,
 					   critical_deadline_class::interactive));
 	command.accepted_at_usec = 1;
 	return command;
+}
+
+// The corpse save enrols a death in its own transaction; here the enrolment runs alone,
+// keyed by the death handoff's operation.
+collector_death_snapshot death_record(const critical_operation_id &id, uint32_t save_id)
+{
+	collector_death_snapshot death;
+	death.operation_id = id;
+	death.beneficiary_pid = PLAYER_PID;
+	death.death_time = save_id;
+	death.policy = { true, 10, 20, 30, 250, 7 };
+	return death;
+}
+
+void enroll_death(const critical_command &handoff, uint32_t save_id,
+		  const std::vector<uint64_t> &uids)
+{
+	execute("START TRANSACTION");
+	unsigned int refused = 0;
+	const bool enrolled = collector_repository_enroll_death(
+		database, death_record(handoff.operation_id, save_id), uids, &refused);
+	assert(enrolled && !refused);
+	execute("COMMIT");
 }
 
 critical_command tree_corpse_loot_transfer(uint32_t save_id, uint64_t root_uid, uint64_t child_uid,
@@ -541,8 +552,8 @@ int main()
 	item_transfer_result transfer_result = {};
 	assert(item_transfer_command_decode_result(item_applied.result_payload.data(),
 						   item_applied.result_size, &transfer_result));
-	assert(transfer_result.item_count == 2 && transfer_result.max_item_revision == 5 &&
-	       transfer_result.collector_catalog_changed);
+	assert(transfer_result.item_count == 2 && transfer_result.max_item_revision == 5);
+	enroll_death(enrollment, ENROLL_SAVE_ID, { ENROLL_UID });
 	assert(scalar("SELECT COUNT(*) FROM collector_deaths WHERE death_operation_id=UNHEX('" +
 		      operation_hex(enrollment.operation_id) + "')") == 1);
 	assert(text("SELECT CONCAT(beneficiary_pid,':',death_time,':',collection_delay,':',"
@@ -554,7 +565,7 @@ int main()
 		    "due_at,':',listing_revision,':',item_revision) FROM collector_listings "
 		    "WHERE death_operation_id=UNHEX('" +
 		    operation_hex(enrollment.operation_id) + "')") ==
-	       "20000:2147000801:901000001:1:1700000110:1:5");
+	       "20000:2147000801:901000001:1:1700000110:1:1");
 	assert(text("SELECT GROUP_CONCAT(CONCAT(item_uid,':',owner_type,':',owner_id,':',"
 		    "item_revision) ORDER BY item_uid) FROM item_current_owner WHERE item_uid IN (" +
 		    std::to_string(ENROLL_UID) + "," + std::to_string(EXCLUDED_UID) + ")") ==
@@ -628,16 +639,8 @@ int main()
 	item_applied = critical_command_repository_apply(database, tree_death);
 	const bool tree_death_decoded = item_transfer_command_decode_result(
 		item_applied.result_payload.data(), item_applied.result_size, &transfer_result);
-	if (item_applied.outcome != critical_apply_outcome::applied || !tree_death_decoded ||
-	    !transfer_result.collector_catalog_changed)
-		fprintf(stderr,
-			"tree death outcome=%u error=%u decoded=%u changed=%u mysql=%u %s\n",
-			static_cast<unsigned int>(item_applied.outcome), item_applied.error_code,
-			tree_death_decoded ? 1U : 0U,
-			transfer_result.collector_catalog_changed ? 1U : 0U, mysql_errno(database),
-			mysql_error(database));
-	assert(item_applied.outcome == critical_apply_outcome::applied && tree_death_decoded &&
-	       transfer_result.collector_catalog_changed);
+	assert(item_applied.outcome == critical_apply_outcome::applied && tree_death_decoded);
+	enroll_death(tree_death, TREE_SAVE_ID, { TREE_ROOT_UID, TREE_CHILD_UID });
 	const critical_command tree_loot =
 		tree_corpse_loot_transfer(TREE_SAVE_ID, TREE_ROOT_UID, TREE_CHILD_UID, 5);
 	execute("CREATE TRIGGER fail_collector_boundary BEFORE INSERT ON collector_ledger "
@@ -683,7 +686,8 @@ int main()
 	assert(item_applied.outcome == critical_apply_outcome::applied &&
 	       item_transfer_command_decode_result(item_applied.result_payload.data(),
 						   item_applied.result_size, &transfer_result) &&
-	       transfer_result.collector_catalog_changed && transfer_result.max_item_revision == 7);
+	       transfer_result.max_item_revision == 7);
+	enroll_death(tree_redeath, TREE_REDEATH_SAVE_ID, { TREE_ROOT_UID, TREE_CHILD_UID });
 	assert(text("SELECT GROUP_CONCAT(status ORDER BY listing_id) FROM collector_listings "
 		    "WHERE item_uid=" +
 		    std::to_string(TREE_CHILD_UID)) == "5,1");
@@ -739,30 +743,21 @@ int main()
 	assert(scalar("SELECT COUNT(*) FROM collector_ledger WHERE operation_id=UNHEX('" +
 		      operation_hex(tree_mobile_claim.operation_id) + "')") == 2);
 
-	// A repository failure after the custody write must roll back the item rows,
-	// death, listing, ownership ledger, outbox, and operation receipt together.
+	// A database failure inside the enrolment leaves no death behind once the corpse
+	// save's transaction rolls back.
 	constexpr uint32_t ROLLBACK_SAVE_ID = 1700000200;
 	constexpr uint64_t ROLLBACK_UID = 902000001, ROLLBACK_EXCLUDED_UID = 902000002;
-	seed_authority(ROLLBACK_UID, 1701, player_owner, 7);
-	seed_authority(ROLLBACK_EXCLUDED_UID, 1702, player_owner, 7);
-	const critical_command rollback_enrollment =
-		death_transfer(ROLLBACK_SAVE_ID, ROLLBACK_UID, ROLLBACK_EXCLUDED_UID, 7);
+	const collector_death_snapshot rollback_death = death_record(operation(), ROLLBACK_SAVE_ID);
 	execute("CREATE TRIGGER fail_collector_enrollment BEFORE INSERT ON collector_listings "
 		"FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='forced enrollment failure'");
-	item_applied = critical_command_repository_apply(database, rollback_enrollment);
-	assert(item_applied.outcome == critical_apply_outcome::terminal_failure &&
-	       item_applied.error_code != 0);
+	execute("START TRANSACTION");
+	unsigned int rollback_refused = 0;
+	assert(!collector_repository_enroll_death(database, rollback_death, { ROLLBACK_UID },
+						  &rollback_refused));
+	execute("ROLLBACK");
 	execute("DROP TRIGGER fail_collector_enrollment");
-	assert(text("SELECT GROUP_CONCAT(CONCAT(item_uid,':',owner_type,':',owner_id,':',"
-		    "item_revision) ORDER BY item_uid) FROM item_current_owner WHERE item_uid IN (" +
-		    std::to_string(ROLLBACK_UID) + "," + std::to_string(ROLLBACK_EXCLUDED_UID) +
-		    ")") == "902000001:1:2147000801:7,902000002:1:2147000801:7");
 	assert(scalar("SELECT COUNT(*) FROM collector_deaths WHERE death_operation_id=UNHEX('" +
-		      operation_hex(rollback_enrollment.operation_id) + "')") == 0);
-	assert(scalar("SELECT COUNT(*) FROM critical_operation_inbox WHERE operation_id=UNHEX('" +
-		      operation_hex(rollback_enrollment.operation_id) + "')") == 0);
-	assert(scalar("SELECT COUNT(*) FROM item_ownership_ledger WHERE operation_id=UNHEX('" +
-		      operation_hex(rollback_enrollment.operation_id) + "')") == 0);
+		      operation_hex(rollback_death.operation_id) + "')") == 0);
 
 	// Remove the isolated intake fixtures so the existing lifecycle matrix keeps
 	// its intentionally simple catalog revision baseline.

@@ -773,7 +773,6 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 	}
 	if (item_command)
 	{
-		collector_enrollment_repository_plan enrollment;
 		collector_item_boundary_repository_plan boundary;
 		item_transfer_result item_result = {
 			item_transfer_result_root(item_payload), item_payload.item_count, 0, 0, 0, 0
@@ -782,11 +781,8 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 		uint64_t collector_revision = 0;
 		unsigned int result_code = 0;
 		bool mutation_applied = false;
-		bool repository_ok = collector_repository_prepare_death_enrollment(
-			connection, item_payload, &enrollment, &result_code);
-		if (repository_ok && !result_code)
-			repository_ok = collector_repository_prepare_item_boundary(
-				connection, item_payload, &boundary, &result_code);
+		bool repository_ok = collector_repository_prepare_item_boundary(
+			connection, item_payload, &boundary, &result_code);
 		if (repository_ok && !result_code)
 			repository_ok = item_transfer_repository_execute(
 				connection, command, &item_result, &result_code, &mutation_applied);
@@ -796,18 +792,6 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 				connection, command, boundary, &collector_revision,
 				&collector_events);
 			item_result.collector_catalog_changed = repository_ok;
-		}
-		if (repository_ok && !result_code && mutation_applied && enrollment.active)
-		{
-			if (!boundary.entries.empty())
-				enrollment.catalog_revision = collector_revision;
-			repository_ok = collector_repository_apply_death_enrollment(
-				connection, command, item_payload, item_result, enrollment);
-			if (repository_ok &&
-			    (!enrollment.death_exists || !enrollment.new_items.empty()))
-				item_result.collector_catalog_changed = true;
-			if (repository_ok && !enrollment.new_items.empty())
-				collector_revision = enrollment.catalog_revision + 1;
 		}
 		if (!repository_ok)
 		{

@@ -287,27 +287,10 @@ int main(int argc, char **argv)
 	death.corpse.short_description = "the corpse of a collector beneficiary";
 	death.corpse.description = "A collector authority test corpse lies here.";
 	death.corpse.keywords = "corpse beneficiary _pcorpse_";
-	death.collector.present = true;
-	death.collector.death_operation = operation(1);
-	death.collector.beneficiary_pid = 42;
-	death.collector.death_time = 1000;
-	death.collector.policy = { 10, 20, 100, 200, 100 };
-	death.collector.eligible_item_uids = { 101, 102, 103 };
 	const critical_command death_handoff = item_command(death, 1);
 	{
 		flatfile_authority_lock lock;
-		require(lock.acquire(root_path, &error),
-			"could not acquire enrollment preflight lock");
-		flatfile_collector_enrollment_mutation mutation;
-		unsigned int result_code = 0;
-		const item_transfer_result transfer = { 100, 4, 2, 1, 2, 1 };
-		const auto prepared = flatfile_collector_prepare_death_enrollment(
-			root_path, lock, death, transfer, &mutation, &result_code, &error);
-		require(prepared == flatfile_collector_repository_result::ok && !result_code &&
-				!mutation.after_image.bytes.empty(),
-			"death enrollment preflight failed (result " +
-				std::to_string(static_cast<unsigned int>(prepared)) + ", code " +
-				std::to_string(result_code) + "): " + error);
+		require(lock.acquire(root_path, &error), "could not acquire death preflight lock");
 		flatfile_corpse_transfer_mutation corpse;
 		const auto world = flatfile_world_item_prepare_corpse_transfer(
 			root_path, lock, death, &corpse, &error);
@@ -332,17 +315,43 @@ int main(int argc, char **argv)
 				std::to_string(static_cast<unsigned int>(materialized)) +
 				"): " + error);
 	}
-	setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_IMAGE", "1", 1);
 	critical_apply_result applied = flatfile_item_repository_apply(root_path, death_handoff);
-	unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_IMAGE");
-	require(applied.outcome == critical_apply_outcome::retryable_failure &&
-			fs::exists(root / "domains" / ".critical-authority-transaction"),
-		"interrupted death enrollment did not preserve authority intent (outcome " +
-			std::to_string(static_cast<unsigned int>(applied.outcome)) + ", error " +
-			std::to_string(applied.error_code) + ", journal " +
-			std::to_string(
-				fs::exists(root / "domains" / ".critical-authority-transaction")) +
-			")");
+	require(applied.outcome == critical_apply_outcome::applied,
+		"the death handoff did not move the items into the corpse");
+
+	// The corpse save enrols the death; its collector image commits with the corpse's,
+	// and an interrupted commit recovers whole.
+	collector_death_snapshot enrolled_death;
+	enrolled_death.operation_id = operation(1);
+	enrolled_death.beneficiary_pid = 42;
+	enrolled_death.death_time = 1000;
+	enrolled_death.policy = { true, 10, 20, 100, 200, 100 };
+	{
+		flatfile_authority_lock lock;
+		require(lock.acquire(root_path, &error), "could not acquire enrollment lock");
+		flatfile_collector_enrollment_mutation mutation;
+		unsigned int result_code = 0;
+		const auto prepared = flatfile_collector_prepare_death_enrollment(
+			root_path, lock, enrolled_death, { 101, 102, 103 }, &mutation, &result_code,
+			&error);
+		require(prepared == flatfile_collector_repository_result::ok && !result_code &&
+				!mutation.after_image.bytes.empty(),
+			"death enrollment preflight failed (result " +
+				std::to_string(static_cast<unsigned int>(prepared)) + ", code " +
+				std::to_string(result_code) + "): " + error);
+		const std::vector<flatfile_authority_operation> operations = {
+			{ flatfile_authority_store::domains,
+			  flatfile_authority_operation_kind::write, mutation.after_image.filename,
+			  mutation.after_image.bytes }
+		};
+		setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_IMAGE", "1", 1);
+		const auto committed = flatfile_authority_transaction_commit_operations(
+			root_path, lock, operations, &error);
+		unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_IMAGE");
+		require(committed != flatfile_authority_transaction_result::ok &&
+				fs::exists(root / "domains" / ".critical-authority-transaction"),
+			"interrupted death enrollment did not preserve authority intent");
+	}
 	collector_bootstrap_snapshot bootstrap;
 	require(flatfile_collector_repository_read_bootstrap(root_path, &bootstrap, &error) ==
 				flatfile_collector_repository_result::ok &&
@@ -350,9 +359,19 @@ int main(int argc, char **argv)
 			bootstrap.catalog.records.size() == 3 && bootstrap.held_items.empty() &&
 			!fs::exists(root / "domains" / ".critical-authority-transaction"),
 		"collector bootstrap did not recover death enrollment atomically: " + error);
-	applied = flatfile_item_repository_apply(root_path, death_handoff);
-	require(applied.outcome == critical_apply_outcome::already_applied,
-		"death enrollment did not replay exactly");
+	{
+		// A later save of the same corpse finds everything listed.
+		flatfile_authority_lock lock;
+		require(lock.acquire(root_path, &error), "could not acquire re-enrollment lock");
+		flatfile_collector_enrollment_mutation mutation;
+		unsigned int result_code = 0;
+		require(flatfile_collector_prepare_death_enrollment(root_path, lock, enrolled_death,
+								    { 101, 102, 103 }, &mutation,
+								    &result_code, &error) ==
+					flatfile_collector_repository_result::unchanged &&
+				!result_code,
+			"a later corpse save enrolled the death again");
+	}
 	std::vector<flatfile_corpse_record> corpses;
 	std::vector<flatfile_saved_world_item_record> saved;
 	require(flatfile_world_item_list(root_path, &corpses, &saved, &error) ==
@@ -510,20 +529,33 @@ int main(int argc, char **argv)
 	std::copy(claim_blob.begin(), claim_blob.end(), redeath.item_blob.begin());
 	redeath.corpse = death.corpse;
 	redeath.corpse.values[6] = 1001;
-	redeath.collector.present = true;
-	redeath.collector.death_operation = operation(41);
-	redeath.collector.beneficiary_pid = 42;
-	redeath.collector.death_time = 1001;
-	redeath.collector.policy = death.collector.policy;
-	redeath.collector.eligible_item_uids = { 103 };
 	const critical_command redeath_command = item_command(redeath, 41);
 	applied = flatfile_item_repository_apply(root_path, redeath_command);
-	item_transfer_result redeath_result = {};
-	require(applied.outcome == critical_apply_outcome::applied &&
-			item_transfer_command_decode_result(applied.result_payload.data(),
-							    applied.result_size, &redeath_result) &&
-			redeath_result.collector_catalog_changed,
-		"later death did not enroll the reused durable UID");
+	require(applied.outcome == critical_apply_outcome::applied,
+		"later death did not move the reused durable UID into its corpse");
+	collector_death_snapshot second_death = enrolled_death;
+	second_death.operation_id = operation(41);
+	second_death.death_time = 1001;
+	{
+		flatfile_authority_lock lock;
+		require(lock.acquire(root_path, &error), "could not acquire later enrollment lock");
+		flatfile_collector_enrollment_mutation mutation;
+		unsigned int result_code = 0;
+		require(flatfile_collector_prepare_death_enrollment(
+				root_path, lock, second_death, { 103 }, &mutation, &result_code,
+				&error) == flatfile_collector_repository_result::ok &&
+				!result_code,
+			"later death did not enroll the reused durable UID");
+		const std::vector<flatfile_authority_operation> operations = {
+			{ flatfile_authority_store::domains,
+			  flatfile_authority_operation_kind::write, mutation.after_image.filename,
+			  mutation.after_image.bytes }
+		};
+		require(flatfile_authority_transaction_commit_operations(root_path, lock,
+									 operations, &error) ==
+				flatfile_authority_transaction_result::ok,
+			"later death enrollment did not commit: " + error);
+	}
 	const collector_listing_detail repeated = listing(root_path, 4, &error);
 	require(repeated.entry.uid == third.entry.uid &&
 			repeated.entry.status == collector::state::candidate &&

@@ -311,13 +311,13 @@ int main()
 					    critical_source_site::command,
 					    critical_deadline_class::interactive));
 
-	// Version 6 batch commands remain replayable: v7 adds one trailing collector
-	// context length, which is absent from the older wire contract.
+	// Version 6 batch commands remain replayable: v7 adds one trailing length (of a
+	// former collector section, now always empty), absent from the older wire contract.
 	auto version_six = batch_command;
 	version_six.payload_version = ITEM_TRANSFER_BATCH_PAYLOAD_VERSION;
 	version_six.payload.resize(version_six.payload.size() - sizeof(uint32_t));
 	assert(item_transfer_command_decode_payload(version_six, &decoded));
-	assert(decoded.multi_root && decoded.item_count == 2 && !decoded.collector.present);
+	assert(decoded.multi_root && decoded.item_count == 2);
 
 	item_transfer_payload death = {};
 	death.from_owner = { item_owner_type::player, 42, 0 };
@@ -341,45 +341,16 @@ int main()
 	death.corpse.short_description = "the corpse of Hero";
 	death.corpse.description = "The corpse of Hero is lying here.";
 	death.corpse.keywords = "hero corpse _pcorpse_";
-	death.collector.present = true;
-	death.collector.death_operation = operation();
-	death.collector.beneficiary_pid = 42;
-	death.collector.death_time = 1700000000;
-	death.collector.policy = { 10, 20, 30, 200, 100 };
-	death.collector.eligible_item_uids = { 100, 200 };
-	assert(item_transfer_command_build(&command, death.collector.death_operation, death,
+	assert(item_transfer_command_build(&command, operation(), death,
 					   critical_source_site::combat,
 					   critical_deadline_class::interactive));
 	command.accepted_at_usec = 4;
 	assert(critical_command_valid(command));
-	assert(command.keys.size() == 5 && command.expected_revisions.size() == 5);
-	const auto collector_fence = std::find_if(
-		command.expected_revisions.begin(), command.expected_revisions.end(),
-		[](const critical_expected_revision &revision) {
-			return revision.key.type == critical_entity_type::collector &&
-			       revision.key.id == UINT64_MAX;
-		});
-	assert(collector_fence != command.expected_revisions.end() &&
-	       collector_fence->revision == 0);
+	assert(command.keys.size() == 4 && command.expected_revisions.size() == 4);
 	assert(item_transfer_command_decode_payload(command, &decoded));
-	assert(decoded.collector.present &&
-	       critical_operation_id_equal(decoded.collector.death_operation,
-					   death.collector.death_operation) &&
-	       decoded.collector.beneficiary_pid == 42 &&
-	       decoded.collector.death_time == 1700000000 &&
-	       decoded.collector.policy.sale_delay == 20 &&
-	       decoded.collector.eligible_item_uids ==
-		       std::vector<uint64_t>({ 100, 200 }));
-	auto invalid_death = death;
-	invalid_death.collector.eligible_item_uids = { 200, 100 };
-	assert(!item_transfer_command_build(&command, operation(), invalid_death,
-					    critical_source_site::combat,
-					    critical_deadline_class::interactive));
-	invalid_death = death;
-	invalid_death.collector.eligible_item_uids = { 999 };
-	assert(!item_transfer_command_build(&command, operation(), invalid_death,
-					    critical_source_site::combat,
-					    critical_deadline_class::interactive));
+	auto with_collector_section = command;
+	with_collector_section.payload.back() = 1;
+	assert(!item_transfer_command_decode_payload(with_collector_section, &decoded));
 	return 0;
 }
 '''
@@ -418,4 +389,4 @@ with tempfile.TemporaryDirectory(prefix="duris-item-transfer-version-") as temp_
     )
     subprocess.run([str(binary)], check=True)
 
-print("[PASS] item-transfer v2-v7 compatibility, corpse and collector contexts")
+print("[PASS] item-transfer v2-v7 compatibility and corpse context")

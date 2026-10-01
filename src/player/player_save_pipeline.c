@@ -5,6 +5,7 @@
 
 #include "core/prototypes.h"
 #include "core/files.h"
+#include "economy/collector_death_enrollment.h"
 #include "flatfile/flatfile_player_repository.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_capture.h"
@@ -87,6 +88,8 @@ void finish_completion(const player_save_completion &completion)
 	{
 		if (completion.kind == persistence_job_kind::player)
 			player_revision_record_written(completion.pid, completion.revision);
+		if (completion.kind == persistence_job_kind::corpse)
+			collector_death_enrollment_saved(completion.owner, completion.error_code);
 		return;
 	}
 	if (completion.kind != persistence_job_kind::player)

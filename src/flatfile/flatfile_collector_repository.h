@@ -26,7 +26,6 @@ struct flatfile_collector_enrollment_mutation
 {
 	flatfile_authority_after_image after_image;
 	uint64_t catalog_revision = 0;
-	size_t enrolled = 0;
 	size_t cancelled = 0;
 };
 
@@ -37,17 +36,19 @@ flatfile_collector_repository_read_listing(const std::string &root, uint64_t lis
 					   collector_listing_detail *detail, bool *found,
 					   std::string *error);
 
-// Called while the item repository owns the shared authority lock. The returned
-// catalog image must be committed with the already-prepared corpse/item images.
+// Records a player's death and its eligible corpse items as collector candidates. Called
+// by the corpse save under the shared authority lock; the returned catalog image is
+// committed with the corpse's. A later save of the same corpse adds only items not yet
+// listed.
 flatfile_collector_repository_result flatfile_collector_prepare_death_enrollment(
 	const std::string &root, const flatfile_authority_lock &lock,
-	const item_transfer_payload &payload, const item_transfer_result &transfer,
+	const collector_death_snapshot &death, const std::vector<uint64_t> &item_uids,
 	flatfile_collector_enrollment_mutation *mutation, unsigned int *result_code,
 	std::string *error);
 
-// Compose candidate cancellation (including every captured container child)
-// with optional death enrollment into one collector after-image. The item
-// repository commits this image with custody and all other domain images.
+// Compose candidate cancellation (including every captured container child) into one
+// collector after-image. The item repository commits this image with custody and all
+// other domain images.
 flatfile_collector_repository_result flatfile_collector_prepare_item_boundary(
 	const std::string &root, const flatfile_authority_lock &lock,
 	const item_transfer_payload &payload, const item_transfer_result &transfer,

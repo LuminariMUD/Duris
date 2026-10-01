@@ -3,7 +3,6 @@
 #include "item/item_ownership_runtime.h"
 #include "economy/currency_transaction.h"
 #include "economy/collector_catalog_cache.h"
-#include "economy/collector_death_enrollment.h"
 #include "economy/collector_transaction.h"
 #include "classes/necromancy.h"
 #include "persistence/persistence_checkpoint.h"
@@ -1303,13 +1302,6 @@ void publish(std::unordered_map<std::string, pending_movement>::iterator found, 
 		account_health();
 		return;
 	}
-	if (committed && entry.payload.reason == item_transfer_reason::corpse_create &&
-	    entry.payload.collector.present)
-	{
-		P_obj corpse = entry.requested_corpse_uid ? find_item(entry.requested_corpse_uid) :
-							    NULL;
-		collector_death_enrollment_note_committed(corpse, entry.payload);
-	}
 	if (!entry.creation_batch && entry.completion == creation_grant_completion && committed &&
 	    entry.payload.reason == item_transfer_reason::creation)
 	{
@@ -1569,8 +1561,7 @@ bool item_movement_transaction_submit(P_char actor, P_obj root, P_obj target_con
 		.items = {},
 		.item_blob_size = 0,
 		.item_blob = {},
-		.corpse = {},
-		.collector = {}
+		.corpse = {}
 	};
 	for (size_t index = 0; index < items.size(); ++index)
 		payload.items[index] = items[index];
@@ -1591,8 +1582,6 @@ bool item_movement_transaction_submit(P_char actor, P_obj root, P_obj target_con
 	critical_operation_id operation_id = {};
 	critical_command command = {};
 	if (!critical_operation_id_generate(&operation_id) ||
-	    !collector_death_enrollment_attach(actor, corpse_context, operation_id, snapshots,
-					       &payload) ||
 	    !item_transfer_command_build(&command, operation_id, payload,
 					 critical_source_site::command,
 					 critical_deadline_class::interactive))
@@ -1771,8 +1760,7 @@ bool item_movement_transaction_submit_batch(
 		.items = {},
 		.item_blob_size = 0,
 		.item_blob = {},
-		.corpse = {},
-		.collector = {}
+		.corpse = {}
 	};
 	for (size_t index = 0; index < items.size(); ++index)
 		payload.items[index] = items[index];
@@ -1791,8 +1779,6 @@ bool item_movement_transaction_submit_batch(
 	critical_operation_id operation_id = {};
 	critical_command command = {};
 	if (!critical_operation_id_generate(&operation_id) ||
-	    !collector_death_enrollment_attach(actor, corpse_context, operation_id, snapshots,
-					       &payload) ||
 	    !item_transfer_command_build(&command, operation_id, payload,
 					 critical_source_site::command,
 					 critical_deadline_class::interactive))

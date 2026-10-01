@@ -1,6 +1,8 @@
 #include "player/player_snapshot_repository.h"
 
 #include "core/defines.h"
+#include "economy/collector_eligibility.h"
+#include "economy/collector_repository.h"
 #include "item/item_claim_repository.h"
 #include "persistence/persistence_observability.h"
 #include "player/player_snapshot_codec.h"
@@ -893,8 +895,32 @@ query_result read_value(MYSQL *connection, const std::string &sql, bool *found, 
 	return { true, 0 };
 }
 
+// Record the player's death and the corpse's eligible items as collector candidates. A
+// refusal (a full catalog, a death recorded differently) leaves the corpse saved without,
+// and is set in refused.
+query_result enroll_collector_death(MYSQL *connection, const collector_death_snapshot &death,
+				    const std::vector<player_item_snapshot> &items,
+				    unsigned int *refused)
+{
+	std::vector<uint64_t> eligible;
+	try
+	{
+		for (const player_item_snapshot &item : items)
+			if (collector_death_item_snapshot_eligible(item))
+				eligible.push_back(item.object_uid);
+	}
+	catch (const std::bad_alloc &)
+	{
+		return { false, ENOMEM };
+	}
+	std::sort(eligible.begin(), eligible.end());
+	if (!collector_repository_enroll_death(connection, death, eligible, refused))
+		return { false, errno ? static_cast<unsigned int>(errno) : EIO };
+	return { true, 0 };
+}
+
 query_result write_corpse(MYSQL *connection, const corpse_snapshot &corpse,
-			  std::vector<claimed_graph> *claims)
+			  std::vector<claimed_graph> *claims, unsigned int *collector_refused)
 {
 	bool found = false;
 	uint64_t catalog_revision = 0;
@@ -946,6 +972,11 @@ query_result write_corpse(MYSQL *connection, const corpse_snapshot &corpse,
 						corpse_item_tables))
 			     .ok)
 			return result;
+		if (!critical_operation_id_is_zero(corpse.collector_death.operation_id) &&
+		    !(result = enroll_collector_death(connection, corpse.collector_death, written,
+						      collector_refused))
+			     .ok)
+			return result;
 	}
 	result = execute(connection, "UPDATE corpse_catalog_state SET catalog_revision=" +
 					     std::to_string(catalog_revision + 1) +
@@ -992,8 +1023,14 @@ player_save_apply_result apply_corpse(MYSQL *connection, const corpse_snapshot &
 	if (!connection || corpse.owner.type != item_owner_type::corpse || !corpse.owner.id ||
 	    corpse.save_id <= 0 || corpse.player_name.empty())
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
-	return apply_owner_write(connection, [&](std::vector<claimed_graph> *claims)
-				 { return write_corpse(connection, corpse, claims); });
+	unsigned int collector_refused = 0;
+	player_save_apply_result result = apply_owner_write(
+		connection, [&](std::vector<claimed_graph> *claims)
+		{ return write_corpse(connection, corpse, claims, &collector_refused); });
+	// A corpse saved without its death says why.
+	if (result.outcome == player_save_apply_outcome::applied)
+		result.error_code = collector_refused;
+	return result;
 }
 
 query_result write_saved_item(MYSQL *connection, const saved_item_snapshot &item,

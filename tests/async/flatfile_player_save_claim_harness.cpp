@@ -285,7 +285,7 @@ int main(int argc, char **argv)
 	dead.description = "The corpse of Newcomer is lying here.";
 	dead.keywords = "newcomer corpse _pcorpse_";
 	dead.items = { loose(1001, 501, PLAYER_SNAPSHOT_NO_PARENT), loose(1030, 530, 0) };
-	require(flatfile_corpse_snapshot_apply(root, dead, false, &error).outcome ==
+	require(flatfile_corpse_snapshot_apply(root, dead, false, {}, &error).outcome ==
 			player_save_apply_outcome::applied,
 		"corpse save: " + error);
 	const item_owner_identity dead_corpse = { item_owner_type::corpse,
@@ -320,7 +320,7 @@ int main(int argc, char **argv)
 				flatfile_world_item_result::ok &&
 			rooms.size() == 1 && rooms[0].items.empty(),
 		"a saved item leaving the room leaves its record");
-	require(flatfile_corpse_snapshot_apply(root, dead, true, &error).outcome ==
+	require(flatfile_corpse_snapshot_apply(root, dead, true, {}, &error).outcome ==
 				player_save_apply_outcome::applied &&
 			flatfile_world_item_list(root, &corpses, &saved_items, &error) ==
 				flatfile_world_item_result::ok &&

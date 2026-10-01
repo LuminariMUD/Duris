@@ -25,8 +25,6 @@ constexpr size_t TARGET_ROOT_OFFSET = 72;
 constexpr size_t TARGET_PARENT_OFFSET = 80;
 constexpr size_t TARGET_PARENT_REVISION_OFFSET = 88;
 constexpr uint32_t CORPSE_CONTEXT_VERSION = 1;
-constexpr uint32_t COLLECTOR_CONTEXT_VERSION = 1;
-constexpr uint64_t COLLECTOR_CATALOG_KEY = UINT64_MAX;
 constexpr size_t CORPSE_PID_VALUE_INDEX = 3;
 constexpr size_t CORPSE_RACEWAR_VALUE_INDEX = 5;
 constexpr size_t CORPSE_SAVE_ID_VALUE_INDEX = 6;
@@ -196,112 +194,6 @@ bool decode_corpse_context(const uint8_t *encoded, size_t size, item_corpse_meta
 	       offset == size;
 }
 
-bool encode_collector_context(const item_collector_death_enrollment &collector,
-			      std::vector<uint8_t> *encoded)
-{
-	if (!encoded)
-		return false;
-	encoded->clear();
-	if (!collector.present)
-		return true;
-	constexpr size_t fixed_size = sizeof(uint32_t) + CRITICAL_COMMAND_ID_BYTES +
-				      sizeof(uint32_t) + sizeof(uint64_t) * 6 + sizeof(uint32_t);
-	if (collector.eligible_item_uids.size() > UINT32_MAX ||
-	    collector.eligible_item_uids.size() >
-		    (CRITICAL_COMMAND_MAX_PAYLOAD_BYTES - fixed_size) / sizeof(uint64_t))
-		return false;
-	try
-	{
-		encoded->assign(fixed_size + collector.eligible_item_uids.size() * sizeof(uint64_t),
-				0);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	size_t offset = 0;
-	put_u32(encoded->data() + offset, COLLECTOR_CONTEXT_VERSION);
-	offset += sizeof(uint32_t);
-	std::copy(collector.death_operation.bytes.begin(), collector.death_operation.bytes.end(),
-		  encoded->begin() + offset);
-	offset += CRITICAL_COMMAND_ID_BYTES;
-	put_u32(encoded->data() + offset, collector.beneficiary_pid);
-	offset += sizeof(uint32_t);
-	put_u64(encoded->data() + offset, collector.death_time);
-	offset += sizeof(uint64_t);
-	put_u64(encoded->data() + offset, collector.policy.collection_delay);
-	offset += sizeof(uint64_t);
-	put_u64(encoded->data() + offset, collector.policy.sale_delay);
-	offset += sizeof(uint64_t);
-	put_u64(encoded->data() + offset, collector.policy.holding_duration);
-	offset += sizeof(uint64_t);
-	put_u64(encoded->data() + offset, collector.policy.price_percent);
-	offset += sizeof(uint64_t);
-	put_u64(encoded->data() + offset, collector.policy.minimum_value);
-	offset += sizeof(uint64_t);
-	put_u32(encoded->data() + offset,
-		static_cast<uint32_t>(collector.eligible_item_uids.size()));
-	offset += sizeof(uint32_t);
-	for (uint64_t uid : collector.eligible_item_uids)
-	{
-		put_u64(encoded->data() + offset, uid);
-		offset += sizeof(uint64_t);
-	}
-	return offset == encoded->size();
-}
-
-bool decode_collector_context(const uint8_t *encoded, size_t size,
-			      item_collector_death_enrollment *collector)
-{
-	if (!collector || (!encoded && size))
-		return false;
-	*collector = {};
-	if (!size)
-		return true;
-	constexpr size_t fixed_size = sizeof(uint32_t) + CRITICAL_COMMAND_ID_BYTES +
-				      sizeof(uint32_t) + sizeof(uint64_t) * 6 + sizeof(uint32_t);
-	if (size < fixed_size || get_u32(encoded) != COLLECTOR_CONTEXT_VERSION)
-		return false;
-	size_t offset = sizeof(uint32_t);
-	std::copy_n(encoded + offset, collector->death_operation.bytes.size(),
-		    collector->death_operation.bytes.begin());
-	offset += collector->death_operation.bytes.size();
-	collector->beneficiary_pid = get_u32(encoded + offset);
-	offset += sizeof(uint32_t);
-	collector->death_time = get_u64(encoded + offset);
-	offset += sizeof(uint64_t);
-	collector->policy.collection_delay = get_u64(encoded + offset);
-	offset += sizeof(uint64_t);
-	collector->policy.sale_delay = get_u64(encoded + offset);
-	offset += sizeof(uint64_t);
-	collector->policy.holding_duration = get_u64(encoded + offset);
-	offset += sizeof(uint64_t);
-	collector->policy.price_percent = get_u64(encoded + offset);
-	offset += sizeof(uint64_t);
-	collector->policy.minimum_value = get_u64(encoded + offset);
-	offset += sizeof(uint64_t);
-	const uint32_t count = get_u32(encoded + offset);
-	offset += sizeof(uint32_t);
-	if (count > ITEM_TRANSFER_MAX_ITEMS ||
-	    size - offset != static_cast<size_t>(count) * sizeof(uint64_t))
-		return false;
-	try
-	{
-		collector->eligible_item_uids.reserve(count);
-		for (uint32_t index = 0; index < count; ++index)
-		{
-			collector->eligible_item_uids.push_back(get_u64(encoded + offset));
-			offset += sizeof(uint64_t);
-		}
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	collector->present = true;
-	return offset == size;
-}
-
 void encode_owner(uint8_t *output, const item_owner_identity &owner)
 {
 	output[0] = static_cast<uint8_t>(owner.type);
@@ -408,33 +300,6 @@ uint64_t selected_root_for(const item_transfer_payload &payload, uint64_t item_u
 	return 0;
 }
 
-bool valid_collector_context(const item_transfer_payload &payload, uint16_t payload_version)
-{
-	const item_collector_death_enrollment &collector = payload.collector;
-	if (!collector.present)
-		return collector.eligible_item_uids.empty();
-	if (payload_version < ITEM_TRANSFER_PAYLOAD_VERSION ||
-	    payload.reason != item_transfer_reason::corpse_create || !payload.corpse.present ||
-	    critical_operation_id_is_zero(collector.death_operation) ||
-	    !collector.beneficiary_pid || !collector.death_time ||
-	    collector.beneficiary_pid != static_cast<uint32_t>(payload.to_owner.id >> 32) ||
-	    collector.death_time != static_cast<uint32_t>(payload.to_owner.id) ||
-	    !collector.policy.collection_delay ||
-	    collector.policy.sale_delay < collector.policy.collection_delay ||
-	    !collector.policy.holding_duration || !collector.policy.price_percent ||
-	    !collector.policy.minimum_value ||
-	    collector.eligible_item_uids.size() > payload.item_count ||
-	    !std::is_sorted(collector.eligible_item_uids.begin(),
-			    collector.eligible_item_uids.end()) ||
-	    std::adjacent_find(collector.eligible_item_uids.begin(),
-			       collector.eligible_item_uids.end()) !=
-		    collector.eligible_item_uids.end())
-		return false;
-	return std::all_of(collector.eligible_item_uids.begin(), collector.eligible_item_uids.end(),
-			   [&](uint64_t uid)
-			   { return find_payload_item(payload, uid) != nullptr; });
-}
-
 bool target_topology_for(const item_transfer_payload &payload, uint64_t item_uid,
 			 uint64_t *root_item_uid, uint64_t *parent_item_uid)
 {
@@ -458,8 +323,7 @@ bool validate_payload(const item_transfer_payload &payload, uint16_t payload_ver
 	     payload.item_count > ITEM_TRANSFER_LEGACY_MAX_ITEMS) ||
 	    payload.item_blob_size > payload.item_blob.size() ||
 	    payload.from_owner.type == item_owner_type::collector ||
-	    payload.to_owner.type == item_owner_type::collector ||
-	    !valid_collector_context(payload, payload_version))
+	    payload.to_owner.type == item_owner_type::collector)
 		return false;
 	const bool corpse_create = payload.reason == item_transfer_reason::corpse_create;
 	const bool corpse_loot = payload.reason == item_transfer_reason::corpse_loot;
@@ -810,15 +674,6 @@ bool populate_command_entities(critical_command *command, const item_transfer_pa
 		command->expected_revisions.push_back(
 			{ parent_key, payload.expected_target_parent_revision });
 	}
-	if (payload.collector.present)
-	{
-		const critical_entity_key catalog_key = { critical_entity_type::collector,
-							  COLLECTOR_CATALOG_KEY };
-		command->keys.push_back(catalog_key);
-		// The SQL repository takes the current catalog row lock before any item
-		// lock; zero is a serialization key, not an optimistic catalog fence.
-		command->expected_revisions.push_back({ catalog_key, 0 });
-	}
 	std::sort(command->keys.begin(), command->keys.end(), critical_entity_key_less);
 	if (std::adjacent_find(command->keys.begin(), command->keys.end(),
 			       critical_entity_key_equal) != command->keys.end())
@@ -835,16 +690,13 @@ bool item_transfer_command_encode_payload(const item_transfer_payload &payload,
 					  std::vector<uint8_t> *encoded)
 {
 	std::vector<uint8_t> corpse_context;
-	std::vector<uint8_t> collector_context;
 	if (!encoded || !validate_payload(payload, ITEM_TRANSFER_PAYLOAD_VERSION) ||
-	    !encode_corpse_context(payload.corpse, &corpse_context) ||
-	    !encode_collector_context(payload.collector, &collector_context))
+	    !encode_corpse_context(payload.corpse, &corpse_context))
 		return false;
 	const size_t item_section_size =
 		ITEM_TRANSFER_HEADER_BYTES + payload.item_count * ITEM_TRANSFER_ENTRY_BYTES;
 	const size_t payload_size = item_section_size + sizeof(uint32_t) + payload.item_blob_size +
-				    sizeof(uint32_t) + corpse_context.size() + sizeof(uint32_t) +
-				    collector_context.size();
+				    sizeof(uint32_t) + corpse_context.size() + sizeof(uint32_t);
 	if (payload_size > CRITICAL_COMMAND_MAX_PAYLOAD_BYTES)
 		return false;
 	encoded->assign(payload_size, 0);
@@ -887,12 +739,7 @@ bool item_transfer_command_encode_payload(const item_transfer_payload &payload,
 	put_u32(encoded->data() + corpse_size_offset, static_cast<uint32_t>(corpse_context.size()));
 	std::copy(corpse_context.begin(), corpse_context.end(),
 		  encoded->begin() + corpse_size_offset + sizeof(uint32_t));
-	const size_t collector_size_offset =
-		corpse_size_offset + sizeof(uint32_t) + corpse_context.size();
-	put_u32(encoded->data() + collector_size_offset,
-		static_cast<uint32_t>(collector_context.size()));
-	std::copy(collector_context.begin(), collector_context.end(),
-		  encoded->begin() + collector_size_offset + sizeof(uint32_t));
+	// The payload ends with the length of a former collector section, always zero.
 	return true;
 }
 
@@ -993,16 +840,9 @@ bool item_transfer_command_decode_payload(const critical_command &command,
 			}
 			else
 			{
-				if (command.payload.size() < corpse_end + sizeof(uint32_t))
-					return false;
-				const uint32_t collector_size =
-					get_u32(command.payload.data() + corpse_end);
-				if (collector_size > CRITICAL_COMMAND_MAX_PAYLOAD_BYTES ||
-				    command.payload.size() !=
-					    corpse_end + sizeof(uint32_t) + collector_size ||
-				    !decode_collector_context(command.payload.data() + corpse_end +
-								      sizeof(uint32_t),
-							      collector_size, &payload->collector))
+				// The former collector section is always empty.
+				if (command.payload.size() != corpse_end + sizeof(uint32_t) ||
+				    get_u32(command.payload.data() + corpse_end))
 					return false;
 			}
 		}

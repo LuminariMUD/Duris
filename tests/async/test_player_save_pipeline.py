@@ -48,6 +48,7 @@ P_char character_list = nullptr;
 int alerts = 0;
 
 void logit(const char *, const char *, ...) {}
+void collector_death_enrollment_saved(uint64_t, unsigned int) {}
 void persistence_alert(int, const char *, const char *, const char *, const char *,
                        const char *, const char *, ...)
 {

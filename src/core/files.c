@@ -33,6 +33,7 @@
 #include "combat/justice.h"
 #include "core/mm.h"
 #include "classes/necromancy.h"
+#include "economy/collector_death_enrollment.h"
 #include "economy/collector_service.h"
 #include "player/player_save_pipeline.h"
 #include "player/player_revision_state.h"
@@ -1293,6 +1294,7 @@ bool queue_corpse_save(P_obj corpse, bool remove)
 		if (player_item_snapshot_contents_capture(corpse, &snapshot.items) !=
 		    player_snapshot_capture_result::ok)
 			return false;
+		collector_death_enrollment_for(corpse, &snapshot.collector_death);
 	}
 	persistence_job_write_fn write;
 	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
@@ -1313,10 +1315,11 @@ bool queue_corpse_save(P_obj corpse, bool remove)
 		record.items = snapshot.items;
 		for (player_item_snapshot &item : record.items)
 			item.equipment_slot = -1;
-		write = [record, remove, path = std::string(root)]()
+		write = [record, remove, death = snapshot.collector_death,
+			 path = std::string(root)]()
 		{
 			std::string error;
-			return flatfile_corpse_snapshot_apply(path, record, remove, &error);
+			return flatfile_corpse_snapshot_apply(path, record, remove, death, &error);
 		};
 	}
 	else

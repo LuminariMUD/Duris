@@ -68,7 +68,8 @@ assert "payload.expected_to_revision = to_revision;" in execute
 assert execute.count("claim_transfer_item(") == 2
 assert "claim_transfer_item(" in (SRC / "auction_repository.c").read_text()
 COLLECTOR = (SRC / "collector_repository.c").read_text()
-assert COLLECTOR.count("item_claim_owner_is_memory_held(payload.") == 2
+# The owners' revisions, and the collected items' revisions, come from what is stored.
+assert COLLECTOR.count("item_claim_owner_is_memory_held(payload.") == 3
 FLAT = (SRC / "flatfile_item_repository.c").read_text()
 flat_transfer = body(FLAT, "unsigned int apply_transfer(ownership_catalog *catalog,")
 assert flat_transfer.count("claim_catalog_item(") == 2

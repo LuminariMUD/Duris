@@ -224,25 +224,12 @@ static void test_saved_root_collection(const fs::path &root)
 	{
 		flatfile_authority_lock lock;
 		require(lock.acquire(root.string(), &error),
-			"could not lock saved container authority");
-		flatfile_collector_world_mutation mutation;
-		unsigned int result_code = 0;
-		payload.expected_from_owner_revision = saved.revision + 1;
-		require(flatfile_world_item_prepare_collector_transfer(
-				root.string(), lock, payload, &mutation, &result_code, &error) ==
-					flatfile_world_item_result::ok &&
-				result_code == ESTALE && !mutation.changed,
-			"flat-file collection accepted a stale source-owner revision");
-		require(read_catalog(root) == before,
-			"stale collection attempt changed the saved-item catalog");
-	}
-	{
-		flatfile_authority_lock lock;
-		require(lock.acquire(root.string(), &error),
 			"could not reacquire saved container authority");
 		flatfile_collector_world_mutation mutation;
 		unsigned int result_code = 1;
-		payload.expected_from_owner_revision = saved.revision;
+		// The room is memory's: its saves move the record's revision, so the
+		// collection takes the record as it stands.
+		payload.expected_from_owner_revision = saved.revision + 1;
 		require(flatfile_world_item_prepare_collector_transfer(
 				root.string(), lock, payload, &mutation, &result_code, &error) ==
 					flatfile_world_item_result::ok &&

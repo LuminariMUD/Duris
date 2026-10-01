@@ -369,7 +369,8 @@ and the death custody and restitution feature go too.
 - `item_movement_transaction.c`;
 - what is left of `item_transfer_command.c` and `item_transfer_repository.c`;
 - `item_ownership_runtime.c`, once the collector no longer reads it (see
-  [Phase 3 progress](#phase-3-progress));
+  [Phase 3 progress](#phase-3-progress); it stays: step 6 found shops, auctions and the creation
+  grants reading it for the items the economy holds);
 - `corpse_lifecycle_*.c`;
 - the custody and degraded-load code;
 - `currency_transaction.c`;
@@ -2214,9 +2215,9 @@ Decided on 2026-09-30, so nothing in Phase 3 waits on anyone:
 - **The collector's death intake is restored in memory** (the owner chose that over deleting
   it). Since Phase 1 step 5 nothing enrols a player's death (`collector_death_enrollment_*()`
   has no caller), so the collector, off by default behind `collector.enabled`, never collects
-  from a corpse. Phase 3 enrols the death at `make_corpse()` again, and moves the collector's
-  scheduled collection (`collector_collection_prepare()`) and its maintenance reads off the
-  runtime cache onto the live objects, before `item_ownership_runtime.c` goes.
+  from a corpse. Phase 3 enrols the death at `make_corpse()` again and moves the collector's
+  scheduled collection (`collector_collection_prepare()`) off the runtime cache onto the live
+  objects (done in [step 6](#step-6-the-collectors-death-intake-done)).
 
 Carried over from Phases 1 and 2, done in Phase 3:
 
@@ -2274,9 +2275,10 @@ The steps, in order (later ones delete what earlier ones leave unreachable):
    `durable_corpse_lifecycle_enabled()`, `corpse_lifecycle_*.c` and their flat-file backend, the
    corpse raise save fence, the corpse wallet and the currency repository it called, and the
    terminal save's fence table.
-6. **The collector off the runtime cache** (todo): its death intake enrolled at `make_corpse()`
-   again, its collection and maintenance reading the live objects; then
-   `item_ownership_runtime.c` goes once nothing reads it.
+6. **The collector's death intake** (done, see
+   [Step 6](#step-6-the-collectors-death-intake-done)): the death enrolled with the corpse's save
+   again, and collection reading the live corpse. `item_ownership_runtime.c` stays: shops,
+   auctions and the creation grants still rely on it (see the step).
 7. **The game thread's dead SQL** (todo): the functions
    [What is left after step 8](#what-is-left-after-step-8) names, and whatever else of the
    persistence code the linker drops after steps 1 to 6.
@@ -2495,6 +2497,45 @@ Each step does its area with its tests, in its own commits, and passes the gates
 - Verified: both server builds, the pfile build, the restore qualifier build, the format check,
   `make test-all` (677 of 677) and `make test-db` (33 of 33; the corpse lifecycle schema leg is
   gone).
+
+#### Step 6: the collector's death intake (done)
+
+- `make_corpse()` begins the death's intake (`collector_death_enrollment_begin()`, with the
+  feature's policy as it stands then), and every save of that corpse carries the death until
+  one is written. The writer records the death and the corpse's eligible items as collector
+  candidates in the corpse save's own transaction: MariaDB in `write_corpse()` through
+  `collector_repository_enroll_death()`, flat-file in `flatfile_corpse_snapshot_apply()`
+  through `flatfile_collector_prepare_death_enrollment()`, whose catalog image commits with the
+  corpse's. A written save completes the intake (`collector_death_enrollment_saved()`), which
+  invalidates the collector's catalog cache; a refusal (a full catalog, a death recorded
+  differently) leaves the corpse saved without it, comes back as the save's error code and is
+  logged. A later save of the same corpse adds only items not yet listed. Listings record
+  item revision 1, the floor the collect policy compares against.
+- Collection reads the live world: `collector_collection_prepare()` finds the player corpse
+  that holds the antiquity and captures its tree from the live objects; anywhere else it was
+  claimed. The repositories take the stored item revisions for a corpse or room source (its
+  saves move them), as they already did for the owner revisions, and the flat-file world-item
+  check of the corpse record's revision is gone for the same reason.
+- The intake no longer rides on an item transfer: `item_transfer_payload`'s collector context,
+  its codec (the payload keeps a zero-length section so its layout holds), the item command
+  path's enrolment on both backends and the movement transaction's attach and note are gone.
+- Kept: `item_ownership_runtime.c`. The plan expected it to go once the collector stopped
+  reading it, but shops (stock), auctions, the creation grants and the collector's own
+  purchases and expiries read it for items the economy holds (shopkeeper, auction, collector
+  and system custody), whose revisions only economy commands move. Those reads are live
+  fencing, not dead code. Its entries for memory-held owners (players, rooms, corpses) are
+  stale since saves claim items; nothing that decides custody for those owners reads them.
+- Tests: `test_collector_death_enrollment.py` and its harness, the collection preparation
+  harness, both collector repository harnesses and the item-transfer version test follow the
+  new shape; `test_flatfile_collector_intake_journey.py` (test-all) and
+  `run_mysql_collector_intake_journey.py` (test-db) die with the collector on and wait for it
+  to take the banana from the live corpse while the coins stay.
+- Verified: both server builds, the format check, `make test-all` (676 of 678: the flat-file
+  world-item test still expected the removed revision refusal, and the save pipeline harness
+  lacked a stub for the new completion hook; both pass alone after the fix) and
+  `make test-db` (33 of 34: the save-claim leg's build list lacked the collector repository the
+  corpse writer now calls; it passes alone after the fix). The new MariaDB collector journey
+  passed in that run.
 
 ### Finding dead code
 

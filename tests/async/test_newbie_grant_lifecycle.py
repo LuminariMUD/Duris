@@ -166,13 +166,6 @@ bool critical_command_coordinator_is_fenced(const critical_entity_key &, critica
     return false;
 }
 bool collector_transaction_item_busy(uint64_t) { return false; }
-bool collector_death_enrollment_attach(P_char, P_obj, const critical_operation_id &,
-                                       const std::vector<player_item_snapshot> &,
-                                       item_transfer_payload *)
-{
-    return true;
-}
-void collector_death_enrollment_note_committed(P_obj, const item_transfer_payload &) {}
 void collector_catalog_cache_invalidate(void) {}
 void command_interpreter(P_char ch, char *input)
 {

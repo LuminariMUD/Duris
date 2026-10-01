@@ -1,6 +1,7 @@
 #ifndef DURIS_FLATFILE_PLAYER_REPOSITORY_H
 #define DURIS_FLATFILE_PLAYER_REPOSITORY_H
 
+#include "economy/collector_storage.h"
 #include "flatfile/flatfile_authority_transaction.h"
 #include "flatfile/flatfile_player_snapshot_file.h"
 #include "flatfile/flatfile_world_item_repository.h"
@@ -54,10 +55,13 @@ player_save_apply_result flatfile_bank_delta_apply(const std::string &root,
 
 // The flat-file corpse and saved-item saves: claim the items for their owner and
 // write the corpse record, or the item's graph into its room's record, as memory holds
-// it (or remove it), in one authority transaction.
+// it (or remove it), in one authority transaction. A corpse save carrying a death (a
+// nonzero operation id) also enrols it with the collector.
 player_save_apply_result flatfile_corpse_snapshot_apply(const std::string &root,
 							const flatfile_corpse_record &corpse,
-							bool remove, std::string *error);
+							bool remove,
+							const collector_death_snapshot &death,
+							std::string *error);
 player_save_apply_result
 flatfile_saved_item_snapshot_apply(const std::string &root,
 				   const flatfile_saved_world_item_record &item, bool remove,

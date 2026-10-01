@@ -1,5 +1,7 @@
 #include "flatfile/flatfile_player_repository.h"
 
+#include "economy/collector_eligibility.h"
+#include "flatfile/flatfile_collector_repository.h"
 #include "flatfile/flatfile_identity_repository.h"
 #include "flatfile/flatfile_item_repository.h"
 #include "flatfile/flatfile_player_domain_repository.h"
@@ -1012,13 +1014,12 @@ player_save_apply_result apply_world_snapshot(const std::string &root,
 			// Leave out what was destroyed, with its contents.
 			written = item_claim_written_items(*items, claims[0].outcome.left_out);
 		}
-		flatfile_authority_operation world;
-		const flatfile_world_item_result prepared = prepare(authority, written, &world);
+		const flatfile_world_item_result prepared =
+			prepare(authority, written, &operations);
 		if (prepared == flatfile_world_item_result::io_error)
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
-		if (prepared == flatfile_world_item_result::ok)
-			operations.push_back(std::move(world));
-		else if (prepared != flatfile_world_item_result::unchanged)
+		if (prepared != flatfile_world_item_result::ok &&
+		    prepared != flatfile_world_item_result::unchanged)
 			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 	}
 	catch (const std::bad_alloc &)
@@ -1081,23 +1082,58 @@ player_save_apply_result flatfile_bank_delta_apply(const std::string &root,
 
 player_save_apply_result flatfile_corpse_snapshot_apply(const std::string &root,
 							const flatfile_corpse_record &corpse,
-							bool remove, std::string *error)
+							bool remove,
+							const collector_death_snapshot &death,
+							std::string *error)
 {
 	const item_owner_identity owner = { item_owner_type::corpse,
 					    item_corpse_owner_id(corpse.owner_pid, corpse.save_id),
 					    0 };
-	return apply_world_snapshot(
+	unsigned int refused = 0;
+	player_save_apply_result result = apply_world_snapshot(
 		root, owner, remove ? nullptr : &corpse.items,
 		[&](const flatfile_authority_lock &lock,
 		    const std::vector<player_item_snapshot> &written,
-		    flatfile_authority_operation *operation)
+		    std::vector<flatfile_authority_operation> *operations)
 		{
 			flatfile_corpse_record record = corpse;
 			record.items = written;
-			return flatfile_world_item_prepare_corpse_snapshot(
-				root, lock, record, remove, operation, error);
+			flatfile_authority_operation operation;
+			const auto prepared = flatfile_world_item_prepare_corpse_snapshot(
+				root, lock, record, remove, &operation, error);
+			if (prepared == flatfile_world_item_result::ok)
+				operations->push_back(std::move(operation));
+			if (remove || critical_operation_id_is_zero(death.operation_id) ||
+			    (prepared != flatfile_world_item_result::ok &&
+			     prepared != flatfile_world_item_result::unchanged))
+				return prepared;
+			// The death and the corpse's eligible items become collector
+			// candidates with the corpse; a refusal leaves the corpse saved without.
+			std::vector<uint64_t> eligible;
+			for (const player_item_snapshot &item : written)
+				if (collector_death_item_snapshot_eligible(item))
+					eligible.push_back(item.object_uid);
+			std::sort(eligible.begin(), eligible.end());
+			flatfile_collector_enrollment_mutation enrollment;
+			const auto enrolled = flatfile_collector_prepare_death_enrollment(
+				root, lock, death, eligible, &enrollment, &refused, error);
+			if (enrolled == flatfile_collector_repository_result::io_error)
+				return flatfile_world_item_result::io_error;
+			if (enrolled == flatfile_collector_repository_result::ok && !refused)
+				operations->push_back({ flatfile_authority_store::domains,
+							flatfile_authority_operation_kind::write,
+							enrollment.after_image.filename,
+							std::move(enrollment.after_image.bytes) });
+			else if (enrolled != flatfile_collector_repository_result::unchanged &&
+				 !refused)
+				refused = EILSEQ;
+			return flatfile_world_item_result::ok;
 		},
 		error);
+	// A corpse saved without its death says why.
+	if (result.outcome == player_save_apply_outcome::applied)
+		result.error_code = refused;
+	return result;
 }
 
 player_save_apply_result
@@ -1111,13 +1147,17 @@ flatfile_saved_item_snapshot_apply(const std::string &root,
 		root, owner, remove ? nullptr : &item.items,
 		[&](const flatfile_authority_lock &lock,
 		    const std::vector<player_item_snapshot> &written,
-		    flatfile_authority_operation *operation)
+		    std::vector<flatfile_authority_operation> *operations)
 		{
 			// A saved item whose every piece was destroyed leaves the room.
 			const bool drop = remove || written.empty();
-			return flatfile_world_item_prepare_room_item_snapshot(
+			flatfile_authority_operation operation;
+			const auto prepared = flatfile_world_item_prepare_room_item_snapshot(
 				root, lock, item.room_vnum, drop ? item.items : written, drop,
-				operation, error);
+				&operation, error);
+			if (prepared == flatfile_world_item_result::ok)
+				operations->push_back(std::move(operation));
+			return prepared;
 		},
 		error);
 }

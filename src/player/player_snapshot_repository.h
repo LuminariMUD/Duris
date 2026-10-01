@@ -1,6 +1,7 @@
 #ifndef PLAYER_SNAPSHOT_REPOSITORY_H
 #define PLAYER_SNAPSHOT_REPOSITORY_H
 
+#include "economy/collector_storage.h"
 #include "flatfile/flatfile_shopkeeper_repository.h"
 #include "item/item_claim.h"
 #include "player/player_save_worker.h"
@@ -34,6 +35,9 @@ struct corpse_snapshot
 	int32_t weight = 0;
 	std::array<int32_t, 8> values = {};
 	std::vector<player_item_snapshot> items;
+	// Set while the player's death waits to enter collector intake (a zero operation id:
+	// none); the save records it with the corpse.
+	collector_death_snapshot collector_death;
 };
 
 // Replaces a shopkeeper's row, affects and stock in one transaction.
