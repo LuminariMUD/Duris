@@ -377,11 +377,11 @@ database and save health. Repeating the command takes new snapshots; it does not
 cache output or mutate queue, Redis, deferred-save, or query state.
 
 The report includes up to eight deterministically ranked query source sites,
-total calls and failures, registry overflow, item/scalar/large queue counters,
-player capture/journal/worker depths and ages, exact revision progress, world capture
+total calls and failures, registry overflow, the persistence writer's queue, bytes,
+age, retries and failures, dirty and deferred player saves, world capture
 and publication health, redacted shared Redis boot/recovery/maintenance calls, failures,
 timeouts, maximum latency and reconnect transitions, per-worker Redis operation latency,
-failure streak, and last-success age, critical-command queue/journal/fence health, flat
+failure streak, and last-success age, critical-command queue and fence health, flat
 shop materialization event/byte capacity and reclaimable counts, and the oldest aggregate
 save age. Output is metadata-only and
 must not be copied into a workflow that expects SQL, player, account, item, IP, or path
@@ -406,15 +406,17 @@ The displayed query operation IDs and any `SQL_TRACE` operation IDs are scoped
 to the current process. They are correlation aids, not durable transaction or
 idempotency identifiers.
 
-For `critical_commands`, `blocked>0`, a growing oldest age, journal corruption or I/O
-failure, or journal quota exhaustion must stop the affected gameplay and any process
-transition. Restore the storage or destination and preserve the journal for replay.
-Never delete or edit the journal to clear a fence. See
+For `writer` and `critical_commands`, a growing `oldest_age_ms` with rising
+`connection_retries` or `retries` means the database is unreachable: the writer keeps
+that job at the head of its queue and the game carries on. Restore the database. Nothing
+is journaled, so a crash before then loses what was queued. `failures` counts jobs
+dropped on any other error; their owners are marked dirty and saved again. See
+[PLAYER_SAVE_PIPELINE.md](../persistence/PLAYER_SAVE_PIPELINE.md) and
 [CRITICAL_COMMAND_PIPELINE.md](../persistence/CRITICAL_COMMAND_PIPELINE.md).
 
 For `critical_outbox`, pending age may briefly rise during destination recovery.
 `dead_letter>0`, `incomplete_inbox>0`, or `committed_without_outbox>0` is an integrity
-incident. Preserve the journal and database rows, stop affected domain cutovers, and run
+incident. Preserve the database rows, stop affected domain cutovers, and run
 the typed reconciliation report. After correcting the destination, retry only the
 specific numeric dead-letter ID through the guarded repair API; never edit payloads or
 execute SQL copied from a command.
@@ -426,27 +428,27 @@ flat-primary shop trades, and investigate the storage or catalog before attempti
 repair. The health read is lock-scoped and on demand; it never prints player, item, or
 path data.
 
-### Retained terminal-save failures
+### Save alerts
 
 `deferred_save_retry_scheduled` means the live character remains the recovery source;
 the alert includes only delay and aggregate counters. Let the bounded retry run and
 watch `world persistence` for pending age and failure growth.
 
-`terminal_save_failed` or `terminal_not_durable` with `extract_refused=1` means camp,
-rent, death cleanup, ghost extraction, an offline artifact transition, or a locker
-transition deliberately kept its live object graph. Do not manually extract that
-character or locker. Restore database availability, retry the originating action or a
-trusted save, and verify the pending count clears.
+Camp, rent, death cleanup and ghost extraction never keep a character for its save. A
+`terminal` alert with `queue_failed` means a leaving character's save could not be
+queued; the character left anyway and its state since the last written save is lost.
+`terminal_save_failed` with `extract_refused=1` means an offline artifact transition
+could not queue the owner's save and kept the offline owner; retry the artifact action.
 
-`terminal_not_durable` with `leave_vetoed=1` means locker snapshot preparation did
-not complete. The occupant and dynamic locker room remain live; do not purge either.
-Restore database availability and have the occupant retry departure.
+`terminal_not_durable` with `leave_vetoed=1` means the locker could not be prepared for
+saving in memory. The occupant and dynamic locker room remain live; do not purge either.
+Check the locker log and have the occupant retry departure.
 
-A copyover or shutdown alert with `shutdown_cancelled=1` means the process deliberately
-returned to the live game loop. No fallback restart should be forced. Correct the
-database failure, confirm every pending age is falling or stable, then request the
-copyover/shutdown again. A `fallback_saved` player-pfile alert is recovery evidence
-only; it does not mean MySQL committed and is not automatically replayed.
+A copyover alert with `copyover_cancelled=1` means the writer could not drain within 30
+seconds and the process returned to the live game loop. No fallback restart should be
+forced. Correct the database failure, confirm the writer's age is falling, then request
+the copyover again. Shutdown alerts carry `shutdown_cancelled=0`: shutdown went ahead,
+and the log names any save it could not write.
 
 ## Restart and crash recovery
 
@@ -471,8 +473,8 @@ verify player integrity before reopening. The rejected generation and floor data
 cleared by the failed restore.
 
 For queue or dependency incidents, use `world persistence` and the detailed `redis`
-status command. Do not clear a player save queue: player state is owned by the local
-revision coordinator and journal, not a Redis dirty set. A world generation publish
+status command. Do not clear a player save queue: player state is owned by memory and
+the persistence writer's queue, not a Redis dirty set. A world generation publish
 failure preserves the prior current generation and retains floor deltas for retry.
 
 Account password recovery keeps no durable state. Reset codes, their per-account cooldown

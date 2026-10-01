@@ -410,8 +410,9 @@ next save carries the state again. Dirty players are checkpointed every 30 secon
 
 Camp, rent, death, idle/link-loss cleanup, ghost extraction, locker departure, copyover,
 shutdown, and reboot queue the final save and release the character at once; none of them
-waits on the database. Copyover and shutdown write every queued job first, but never wait
-on a failing one: a write still retrying is cut short and named in the log.
+waits on the database. Shutdown gives the writer 30 seconds for what is queued and always
+goes; a write it could not finish is named in the log. Copyover waits the same 30 seconds
+and is called off, leaving the game running, when the writer cannot drain.
 
 ## Player replacement components
 

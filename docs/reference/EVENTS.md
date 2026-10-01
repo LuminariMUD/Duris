@@ -230,7 +230,7 @@ durability classes:
   their dependency and recovery phase permit enablement.
 
 Persistence-critical player, ship, artifact, and world state uses its
-authoritative MySQL, journal, or Redis recovery pipeline. Those pipelines do
+MySQL or Redis persistence pipeline. Those pipelines do
 not depend on a one-shot nevent record surviving a restart. There are currently
 no durable one-shot nevents. A future deadline that must survive restart must
 persist domain state plus the deadline and reconstruct a new process-local

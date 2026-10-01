@@ -169,33 +169,18 @@ Validate routing and privacy with `python3 tests/async/test_persistence_severity
 
 ## Terminal Saves And Process Drain
 
-Destructive player transitions mark and capture a fresh full revision with the
-current terminal intent and room behind a fixed-capacity terminal fence. An ACKed
-nonterminal retry or an older pending full snapshot cannot authorize a new camp.
-A caller may extract the character only after the exact
-revision receives a database acknowledgement or, where explicitly allowed, after its
-journal record has been synced. Older completions cannot release a newer fence. A
-deadline failure keeps the fence and dirty revision retryable; later mutations advance
-that same fence instead of becoming untracked.
+Logging out never waits. Camp, rent, quit, death, idle and link-loss cleanup capture a
+full save with the terminal intent and room, queue it on the writer like any other, and
+extract the character at once (`persistence_save_character_terminal()` in
+`src/cmd/actoth.c`). A save that cannot be queued is reported; the character still
+leaves. On flat-file only, a new character's first save is written before its domains
+are read back, within five seconds.
 
-Copyover and ordinary shutdown quiesce new checkpoint admission and wait to a bounded
-deadline until every accepted snapshot is journal-durable. The drain includes a record
-currently owned by the journal dispatcher, not only records still visible in its queue.
-If the deadline expires, the transition is cancelled and the live server resumes
-checkpoint admission.
-
-`world persistence` reports admission, append-in-flight, terminal outcome, timeout,
-and drain-failure counters without player identity. New legacy player flat-fallback
-writes are retired; existing files remain untouched for compatibility and operator
-recovery. Locker fallback behavior remains a separate compatibility boundary.
-
-## Compatibility Boundary
-
-New characters without a durable PID, locker characters, and Phase 02 critical
-transactions retain their explicit legacy compatibility route for now. Synchronous
-transactional compatibility saves advance `save_revision` in the same transaction,
-fencing every older immutable snapshot. They are not treated as an exactly-once
-gameplay command; Phase 02 replaces them with operation-keyed domains.
+Shutdown queues every player's save, gives the writer 30 seconds for what is queued and
+always goes; a write it could not finish is named in the log. Copyover waits the same
+30 seconds and is called off, resuming the game loop, when the writer cannot drain.
+`world persistence` reports the writer's queue, retries, failures and drain failures
+without player identity.
 
 ## Deferred and manual saves
 
@@ -210,10 +195,9 @@ revision (`player_revision_record_written()`). The revision the pipeline acknowl
 when the writer accepts a save only marks the character clean. A save not written
 within 30 seconds is reported as failed.
 
-A failed camp retains the live character and permits automatic nonterminal retry;
-a later camp must capture its own intent again. Terminal saves wait for the
-writer to write them. These guarantees do not prevent legitimate storage timeouts or
-operating-system starvation. The controlled retry/crash modes are documented in
+Terminal saves are queued and the character leaves at once (see above). These
+guarantees do not prevent legitimate storage timeouts or operating-system
+starvation. The controlled retry/crash modes are documented in
 [Testing](../guides/TESTING.md#full-world-save-diagnostics).
 
 ## Player deaths

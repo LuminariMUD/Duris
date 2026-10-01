@@ -17,16 +17,15 @@ fork-per-connection, player-save fork, or world-save fork; all socket I/O is
 multiplexed in a single `select()` loop. Concurrency includes:
 
 - One bounded player-load worker that owns a pooled connection and returns typed rows.
-- A private player-journal append dispatcher and keyed revisioned-save workers.
-- A non-coalescing critical-command coordinator, typed repository workers, and outbox
-  dispatcher for economy, ownership, auction, and gameplay-outcome operations.
+- One persistence writer (`src/player/player_save_worker.c`) that writes every save,
+  critical command, bank delta and game-thread `sql` job one at a time, in capture order.
+- A non-coalescing critical-command coordinator, whose commands run on that writer, and an
+  outbox dispatcher for economy, ownership, auction, and gameplay-outcome operations.
 - One bounded maintenance worker for staggered recurring database and snapshot work.
 - One immutable world-recovery publisher worker when Redis recovery is enabled.
 - One bounded best-effort mail worker (libcurl SMTP) for account password recovery. It is
   not in the shutdown drain chain, is joined at shutdown (each send is bounded to 10 s
   connect / 20 s total, no retry), and is disabled unless `MAIL_ENABLED=TRUE`.
-- Legacy item, scalar, and large-payload queue modules for remaining compatibility
-  producers; they are not the player snapshot or critical-operation authority.
 - The main game loop blocking signals (including `SIGSEGV`, handled internally)
   around each iteration so workers cannot interrupt pulse processing.
 
@@ -203,26 +202,25 @@ does not silently convert the action to an unrelated raw SQL queue.
 MySQL/MariaDB with InnoDB is the durable authority, but persistence is not one generic
 queue. Each correctness domain has its own ordering, idempotency, and failure boundary.
 The shared bounded connection pool (`src/sql/sql_pool.c`) establishes the same connection
-contract as the main connection. When the pool is unavailable, typed load, snapshot,
-critical-command, and maintenance routes report unavailable/retryable outcomes or fence
-the affected action; only explicitly retained legacy compatibility producers can use
-their historical synchronous fallback.
+contract as the main connection. When no connection can be had, the writer retries the
+job at the head of its queue and a login waits; the game loop carries on.
 
 Existing-character login uses `src/player/player_load_pipeline.c` and
 `src/player/player_load_repository.c`. A worker opens one consistent read transaction, fetches
 required player, skill, affect, item-owner, item metadata, and pet graph rows in bounded
-sets, and returns owned typed data. The game thread validates request identity, revision,
-limits, graph integrity, and materializes in linear time. Any required-component or
-stale result fails login cleanly; a partial character is never published.
+sets, and returns owned typed data. A character is not loaded while it has a save queued,
+and an item row another owner holds in `item_current_owner` is skipped and logged to
+`logs/log/dupes`. The game thread validates request identity, limits and graph integrity,
+and materializes in linear time. Any required-component or stale result fails login
+cleanly; a partial character is never published.
 
-Player checkpoints are captured into immutable, revisioned DTOs on the game thread.
-A bounded append dispatcher durably frames them in the typed journal, then keyed
-workers apply them transactionally with per-PID ordering and exact revision ACKs.
-Ordinary mutation and checkpoint routes perform no MySQL, Redis, or filesystem I/O on
-the simulation thread. Terminal transitions drain to a bounded deadline and require the
-matching durable outcome before live state may be destroyed; a failed terminal save
-retains the character and inventory for retry. The journal handoff is durable recovery
-evidence, not a claim that the database already committed.
+Memory is the authority; the database is a copy that catches up. Player checkpoints are
+captured into immutable DTOs on the game thread and queued on the one writer, which applies
+each in one transaction that claims the items its owner holds and writes the owner's rows
+from memory. Ordinary mutation and checkpoint routes perform no MySQL, Redis, or filesystem
+I/O on the simulation thread. Terminal transitions queue the final save and destroy live
+state at once. Queued jobs live only in memory: a crash loses at most one 30-second
+checkpoint. See [PLAYER_SAVE_PIPELINE.md](../persistence/PLAYER_SAVE_PIPELINE.md).
 
 Redis complements MySQL with floor-delta tracking and immutable world-recovery
 generations (`src/world/world_recovery_pipeline.c`, `src/redis/redis.c`). World graph capture is
@@ -235,16 +233,16 @@ runtime custody, and applies doors/zones last. Floor and world item trees share 
 
 Non-idempotent gameplay effects use a separate critical-command coordinator
 (`src/persistence/critical_command_coordinator.c`). Its immutable, non-coalescing commands carry a
-stable 128-bit operation ID and sorted entity-key set. Conflicting key sets execute in
-acceptance order, unrelated sets may run concurrently, and exact typed completion is
-required to release a gameplay fence. A checksummed local journal preserves accepted
-commands through retry and restart. A typed prepared-statement repository applies each
+stable 128-bit operation ID and sorted entity-key set. Each runs on the one writer, in
+capture order with the saves around it, and its typed completion on the game thread
+releases its entity fences. Nothing is journaled: like a save, a command that had not
+reached the database is lost in a crash. A typed prepared-statement repository applies each
 operation through one InnoDB inbox/state/outbox transaction, resolves duplicate or
 ambiguous commits by stable operation ID, and classifies retryable database errors. A
 bounded at-least-once dispatcher retains typed outbox rows through delivery, retry,
-dead-letter, restart, and operator reconciliation. Epic, account/wallet, item movement,
-locker, auction, combat, artifact/guild, boon/reward, and zone-touch domains use typed
-repositories rather than unrestricted durable raw SQL messages.
+dead-letter, restart, and operator reconciliation. Auctions, the collector, item grants,
+repairs and destruction, boons, artifacts, combat outcomes and zone touches use typed
+repositories; wallets, banks, epic points and frags change in memory and are saved.
 
 Recurring database work uses `src/persistence/maintenance_scheduler.c`. Stable per-instance offsets
 replace aligned modulus spikes; every job has row and time budgets, continuation state,
