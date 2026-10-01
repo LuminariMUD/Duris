@@ -43,7 +43,6 @@ game_loop_queries $DB python3 tests/async/test_mysql_game_loop_queries_journey.p
 chaos_raise $DB python3 tests/async/run_chaos_raise_transient_journey.py $SERVER
 world_writer_retry $DB python3 tests/async/run_world_writer_retry_journey.py $SERVER
 corpse_lifecycle_repository tests/async/run_corpse_lifecycle_repository_schema_mysql.sh
-currency_transaction tests/async/run_currency_transaction_schema_mysql.sh
 collector_repository tests/async/run_collector_repository_schema_mysql.sh
 account_bound_reward tests/async/run_account_bound_reward_schema_mysql.sh
 pet_repository tests/async/run_pet_repository_mysql.sh

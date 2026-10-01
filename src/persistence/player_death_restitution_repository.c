@@ -1385,7 +1385,7 @@ bool player_death_restitution_repository_execute(MYSQL *connection, const critic
 						 player_death_restitution_result *result,
 						 unsigned int *result_code, bool *mutation_applied)
 {
-	if (!critical_command_legacy_execution_supported(command))
+	if (!critical_command_valid(command))
 	{
 		errno = EPROTONOSUPPORT;
 		return false;
@@ -1604,7 +1604,7 @@ critical_apply_result
 player_death_restitution_repository_apply_in_transaction(MYSQL *connection,
 							 const critical_command &command)
 {
-	if (!critical_command_legacy_execution_supported(command))
+	if (!critical_command_valid(command))
 		return { critical_apply_outcome::retryable_failure, 0, EPROTONOSUPPORT };
 
 	player_death_restitution_result result = {};

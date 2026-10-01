@@ -5,7 +5,6 @@
 #include "flatfile/flatfile_artifact_repository.h"
 #include "flatfile/flatfile_player_domain_repository.h"
 #include "persistence/persistence_observability.h"
-#include "economy/coin_transfer_command.h"
 #include "player/player_snapshot_codec.h"
 #include "classes/necromancy.h"
 #include "core/defines.h"
@@ -477,23 +476,12 @@ int main(int argc, char **argv)
 		require(flatfile_player_domain_establish(argv[1], seed, &error) ==
 				flatfile_player_domain_result::ok,
 			"seed creation bank: " + error);
-		currency_command_payload payload = {};
-		payload.pid = seed.pid;
-		payload.racewar = seed.racewar;
-		payload.reason = currency_reason_type::bank_reward;
-		strcpy(payload.account_name.data(), seed.account_name.c_str());
-		payload.bank_delta.amount[0] = 2;
-		critical_operation_id id = {};
-		id.bytes[0] = 201;
-		critical_command command;
-		require(currency_command_build(&command, id, payload, 0, 1,
-					       critical_source_site::command,
-					       critical_deadline_class::interactive),
-			"seed bank command");
-		command.accepted_at_usec = 1;
-		require(flatfile_player_domain_apply(argv[1], command).outcome ==
-				critical_apply_outcome::applied,
-			"advance creation bank revision");
+		// A deposit lands the way the writer's bank job writes it, at bank revision two.
+		flatfile_authority_operation deposit;
+		require(flatfile_bank_delta_apply(argv[1], seed.account_name, seed.racewar,
+						  { 2, 0, 0, 0 }, &deposit, &error)
+					.outcome == player_save_apply_outcome::applied,
+			"advance creation bank revision: " + error);
 		return 0;
 	}
 	if (argc == 3 && std::string(argv[2]) == "seed-combat")

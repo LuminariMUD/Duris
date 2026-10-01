@@ -273,8 +273,7 @@ def flatfile_capture(stage, p, capacity_base=None):
         require(before == inventory(target) == inventory(source, exclude_locks=True),
                 "flatfile_generation_changed")
     return {"pending_transaction": any((target / "domains" / name).exists() for name in
-                                       (".critical-authority-transaction", ".currency-transaction",
-                                        ".player-domain-transaction"))}
+                                       (".critical-authority-transaction", ".player-domain-transaction"))}
 
 
 def db_connection():

@@ -228,30 +228,6 @@ bool currency_command_decode_payload(const critical_command &command,
 	       critical_entity_key_equal(command.expected_revisions[1].key, account_key);
 }
 
-bool currency_command_encode_result(const currency_command_result &result,
-				    std::array<uint8_t, CURRENCY_RESULT_PAYLOAD_BYTES> *encoded)
-{
-	if (!encoded || !vector_valid(result.wallet) || !vector_valid(result.bank))
-		return false;
-	encode_vector(encoded->data(), result.wallet);
-	encode_vector(encoded->data() + 32, result.bank);
-	put_u64(encoded->data() + 64, result.wallet_revision);
-	put_u64(encoded->data() + 72, result.bank_revision);
-	return true;
-}
-
-bool currency_command_decode_result(const uint8_t *encoded, size_t size,
-				    currency_command_result *result)
-{
-	if (!encoded || size != CURRENCY_RESULT_PAYLOAD_BYTES || !result)
-		return false;
-	*result = { .wallet = decode_vector(encoded),
-		    .bank = decode_vector(encoded + 32),
-		    .wallet_revision = get_u64(encoded + 64),
-		    .bank_revision = get_u64(encoded + 72) };
-	return vector_valid(result->wallet) && vector_valid(result->bank);
-}
-
 bool currency_command_build(critical_command *command, critical_operation_id operation_id,
 			    const currency_command_payload &payload,
 			    uint64_t expected_wallet_revision, uint64_t expected_bank_revision,

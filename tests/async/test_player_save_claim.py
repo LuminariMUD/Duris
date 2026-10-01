@@ -22,7 +22,7 @@ DATABASE_TESTS = (ROOT / "tests/run_db_tests.sh").read_text()
 SOURCES = [
     "flatfile_player_repository.c", "player_load_topology.c", "flatfile_identity_repository.c",
     "flatfile_item_repository.c", "item_claim.c", "dupe_log.c", "flatfile_collector_repository.c",
-    "collector_command.c", "collector_codec.c", "collector_policy.c", "coin_transfer_command.c",
+    "collector_command.c", "collector_codec.c", "collector_policy.c",
     "flatfile_player_snapshot_file.c", "flatfile_corpse_repository.c",
     "flatfile_locker_repository.c", "flatfile_world_item_repository.c",
     "flatfile_artifact_repository.c", "flatfile_shop_trade_repository.c",
@@ -133,8 +133,7 @@ print("[PASS] player, pet, corpse, locker and saved-item loads use the same filt
 assert "tests/async/run_player_save_claim_mysql.sh" in DATABASE_TESTS
 # Every leg that links the player loader runs there too, so a loader change
 # cannot leave one of them unbuildable again.
-for leg in ("run_currency_transaction_schema_mysql.sh", "run_experience_trophy_mysql.sh",
-            "run_output_preferences_mysql.sh"):
+for leg in ("run_experience_trophy_mysql.sh", "run_output_preferences_mysql.sh"):
     assert "tests/async/" + leg in DATABASE_TESTS, leg
 print("[PASS] the MariaDB claim and loader legs run under make test-db")
 print("player save claim contracts passed")

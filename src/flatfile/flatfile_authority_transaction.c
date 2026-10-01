@@ -1,7 +1,6 @@
 #include "flatfile/flatfile_authority_transaction.h"
 
 #include "flatfile/flatfile_store.h"
-#include "flatfile/flatfile_accounting_store.h"
 
 #include <array>
 #include <cerrno>
@@ -47,8 +46,6 @@ std::string operation_directory(const std::string &root, flatfile_authority_stor
 		return root + "/metadata";
 	case flatfile_authority_store::player_deaths:
 		return root + "/player-deaths";
-	case flatfile_authority_store::economic_evidence:
-		return root + "/economic-evidence";
 	}
 	return {};
 }
@@ -417,10 +414,9 @@ flatfile_authority_transaction_commit(const std::string &root, const flatfile_au
 	return flatfile_authority_transaction_commit_operations(root, lock, operations, error);
 }
 
-flatfile_authority_transaction_result
-flatfile_accounting_storage::commit(const std::string &root, const flatfile_authority_lock &lock,
-				    const std::vector<flatfile_authority_operation> &operations,
-				    std::string *error)
+flatfile_authority_transaction_result flatfile_authority_transaction_commit_operations(
+	const std::string &root, const flatfile_authority_lock &lock,
+	const std::vector<flatfile_authority_operation> &operations, std::string *error)
 try
 {
 	std::vector<uint8_t> bytes;
@@ -474,14 +470,4 @@ catch (const std::bad_alloc &)
 {
 	errno = ENOMEM;
 	return flatfile_authority_transaction_result::io_error;
-}
-
-flatfile_authority_transaction_result flatfile_authority_transaction_commit_operations(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const std::vector<flatfile_authority_operation> &operations, std::string *error)
-{
-	for (const auto &operation : operations)
-		if (operation.store == flatfile_authority_store::economic_evidence)
-			return flatfile_authority_transaction_result::invalid;
-	return flatfile_accounting_storage::commit(root, lock, operations, error);
 }

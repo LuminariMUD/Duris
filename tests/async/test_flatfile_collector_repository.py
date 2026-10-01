@@ -19,7 +19,6 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-collector-") as temporary:
         rel("flatfile_item_repository.c"),
         rel("item_claim.c"),
         rel("dupe_log.c"),
-        rel("coin_transfer_command.c"),
         rel("flatfile_player_snapshot_file.c"),
         rel("flatfile_corpse_repository.c"),
         rel("flatfile_locker_repository.c"),

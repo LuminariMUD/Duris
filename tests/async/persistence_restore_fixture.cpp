@@ -16,35 +16,6 @@ static std::vector<uint8_t> fixture_bytes(const char *text)
 	return { text, text + std::strlen(text) };
 }
 
-static critical_command fixture_currency_command(bool deposit = false)
-{
-	currency_command_payload payload = {};
-	payload.pid = 42;
-	payload.racewar = 0;
-	payload.reason = deposit ? currency_reason_type::atm_deposit :
-				   currency_reason_type::wallet_reward;
-	std::strcpy(payload.account_name.data(), "Account-One");
-	payload.wallet_delta.amount[0] = deposit ? -5 : 5;
-	payload.bank_delta.amount[0] = deposit ? 5 : 0;
-	critical_operation_id operation = {};
-	operation.bytes[0] = deposit ? 0xa4 : 0xa3;
-	critical_command command;
-	// The baseline seeded below has wallet revision 0 and bank revision 1.
-	// Do not load it here: that would replay the pending authority transaction.
-	require(currency_command_build(&command, operation, payload, 0, 1,
-				       critical_source_site::command,
-				       critical_deadline_class::interactive),
-		"synthetic currency encoding failed");
-	command.accepted_at_usec = 1;
-	require(critical_command_normalize(&command), "synthetic currency normalization failed");
-	return command;
-}
-static std::vector<uint8_t> fixture_read_bytes(const fs::path &path)
-{
-	std::ifstream input(path, std::ios::binary);
-	require(input.good(), "synthetic authority file missing");
-	return { std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>() };
-}
 int main(int argc, char **argv)
 {
 	require(argc == 3, "fixture mode and root required");
@@ -76,32 +47,7 @@ int main(int argc, char **argv)
 			"synthetic receipt write failed");
 		return 0;
 	}
-	if (mode == "seed-bank-interrupted" || mode == "seed-legacy-bank-interrupted")
-	{
-		const auto player = root / "domains/player-42.domain";
-		const auto bank = root / "domains/bank-account-one-0.domain";
-		const auto player_before = fixture_read_bytes(player);
-		const auto bank_before = fixture_read_bytes(bank);
-		const bool legacy = mode == "seed-legacy-bank-interrupted";
-		if (legacy)
-			setenv("DURIS_FLATFILE_TEST_LEGACY_TRANSACTION", "1", 1);
-		setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_BANK", "1", 1);
-		const auto applied =
-			flatfile_player_domain_apply(root.string(), fixture_currency_command(true));
-		unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_BANK");
-		unsetenv("DURIS_FLATFILE_TEST_LEGACY_TRANSACTION");
-		require(applied.outcome == critical_apply_outcome::retryable_failure,
-			"native bank transaction did not interrupt");
-		require(fs::exists(
-				root / "domains" /
-				(legacy ? ".currency-transaction" : ".player-domain-transaction")),
-			"interrupted bank transaction lost its durable intent");
-		require(fixture_read_bytes(player) == player_before &&
-				fixture_read_bytes(bank) != bank_before,
-			"bank interruption did not leave bank-after/player-before state");
-		return 0;
-	}
-	if (mode == "verify" || mode == "verify-bank")
+	if (mode == "verify")
 	{
 		flatfile_account_record account;
 		require(flatfile_account_load(root.string(), "Account-One", &account, &error) ==
@@ -117,25 +63,10 @@ int main(int argc, char **argv)
 		const auto loaded = flatfile_player_load_repository_execute(root.string(), request);
 		require(loaded.outcome == player_load_outcome::applied &&
 				loaded.domains.wallet ==
-					std::array<uint64_t, 4>{ mode == "verify-bank" ? 6u : 11u,
-								 12, 13, 14 } &&
+					std::array<uint64_t, 4>{ 11, 12, 13, 14 } &&
 				loaded.domains.epics == 15 && loaded.snapshot.revision == 1 &&
 				loaded.item_identities.size() == 2,
 			"restored synthetic player/domain mismatch");
-		if (mode == "verify-bank")
-		{
-			require(loaded.domains.bank == std::array<uint64_t, 4>{ 5, 0, 0, 0 } &&
-					loaded.domains.wallet_revision == 1 &&
-					loaded.domains.bank_revision == 2,
-				"bank transaction after-images or revisions were not recovered");
-			require(!fs::exists(root / "domains/.player-domain-transaction") &&
-					!fs::exists(root / "domains/.currency-transaction"),
-				"bank transaction intent was not retired");
-			require(flatfile_player_domain_apply(root.string(),
-							     fixture_currency_command(true))
-						.outcome == critical_apply_outcome::already_applied,
-				"bank transfer recovery did not persist its deduplication ledger");
-		}
 		for (const char *name : { "restore-probe-one", "restore-probe-two" })
 		{
 			std::ifstream stream(root / "domains" / name);

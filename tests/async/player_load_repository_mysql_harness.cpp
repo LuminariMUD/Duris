@@ -280,8 +280,7 @@ int main()
 		{
 			// Only the wrapper's disposable schema may use real fixtures. MySQL 8
 			// cannot reopen a temporary table in the loader's batched UNION query.
-			assert(std::string(std::getenv("DB_NAME")) == "currency_coin_test" ||
-			       std::string(std::getenv("DB_NAME")) == "experience_trophy_test");
+			assert(std::string(std::getenv("DB_NAME")) == "experience_trophy_test");
 			execute_sql(connection,
 				    "RENAME TABLE " + std::string(table) + " TO " + temporary);
 			execute_sql(connection,

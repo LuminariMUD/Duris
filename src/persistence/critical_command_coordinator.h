@@ -75,18 +75,9 @@ struct critical_coordinator_health
 using critical_apply_fn = critical_apply_result (*)(const critical_command &command, void *context);
 using critical_drain_observer_fn = void (*)(const critical_completion *completions, size_t count);
 
-// Optional support for canonical schema-2 commands. The validator must be pure,
-// bounded and noexcept; it verifies typed immutable evidence, never current
-// authority or activation state (retained receipts must remain replayable).
-// It runs under the coordinator mutex and must not call coordinator APIs.
-// The caller must pair it with an apply function supporting the same routes.
-using critical_extension_validator_fn = bool (*)(const critical_command &) noexcept;
-
 // Commands run on the one persistence writer (player_save_worker.h), which must be
 // running.
-bool critical_command_coordinator_init(
-	critical_apply_fn apply, void *context,
-	critical_extension_validator_fn extension_validator = nullptr);
+bool critical_command_coordinator_init(critical_apply_fn apply, void *context);
 void critical_command_coordinator_shutdown(void);
 critical_submit_result critical_command_coordinator_submit(critical_command command);
 // Opt-in path for commands whose durable result is not complete until the game

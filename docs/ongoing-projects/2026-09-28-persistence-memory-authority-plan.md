@@ -2204,6 +2204,13 @@ Decided on 2026-09-30, so nothing in Phase 3 waits on anyone:
   journal to replay or death-custody records to keep. The replays, what only they reach and the
   death custody and restitution feature with its tables all go (see
   [Phase 3](#phase-3-delete-what-is-left-over)).
+- **The economy accounting foundation goes** (decided on 2026-10-01; the owner chose that over
+  keeping it as a separate project). Nothing live reached it: the schema-2 command envelope,
+  the typed intent and plan, the baseline command and its storage, both bank transactions,
+  the flat-file accounting store and the SQL source snapshot, about 29,000 lines of code,
+  tests and docs. Its bank transaction committed wallet and bank changes in the database,
+  which memory authority no longer does. Its tables are dropped by the same migration as the
+  death custody tables (step 3).
 - **The collector's death intake is restored in memory** (the owner chose that over deleting
   it). Since Phase 1 step 5 nothing enrols a player's death (`collector_death_enrollment_*()`
   has no caller), so the collector, off by default behind `collector.enabled`, never collects
@@ -2251,21 +2258,27 @@ The steps, in order (later ones delete what earlier ones leave unreachable):
 1. **The journals** (done, see [Step 1](#step-1-the-journals-done)): both one-time replays
    and everything about the journals in the server, scripts, backup and restore tooling,
    manifests, docs and test fixtures.
-2. **What only the critical-command replay reached** (todo): the command types no live code
-   submits (`account_bank`, `wallet`, `coin_transfer`, `locker_transfer`, `economic_baseline`
-   and the schema-2 accounting commands the coordinator's extension validator admits), with
-   the currency repository, the coin transfer command, the accounting bank commands and the
-   corpse lifecycle wallet, on both backends. The linker keeps them alive only through the
-   repository's dispatch and the validator; those go first.
+2. **What only the critical-command replay reached** (done, see
+   [Step 2](#step-2-what-only-the-replay-reached-done)): the coin transfer and bank commands,
+   schema 2 and the whole economy accounting foundation, on both backends.
 3. **The death custody and restitution feature** (todo), with a new migration that drops its
-   tables.
+   tables and the economy accounting tables (`economic_*`, the baseline tables), with their
+   runtime compatibility, data lifecycle and verification entries.
 4. **The durable item movement** (todo): the durable branches in `actobj.c` behind
    `item_command_uses_durable_ownership()`, the movement transactions, the synthetic transfer
    adapter, `OBJ_RFLAG_CREATION_CANDIDATE`, and the crafts' wrapper
-   (`item_movement_transaction_submit_craft()`).
+   (`item_movement_transaction_submit_craft()`). Then the coordinator's journal-era submit
+   results (`awaiting_durability`, `journal_failure`, `journal_uncertain`) and the functions no
+   path reaches since step 1 (`critical_command_coordinator_durability()`, `_get_completed()`,
+   `_recover_uncertain()`): restitution and the movement transactions still name them.
 5. **The durable corpse lifecycle** (todo): the paths behind `durable_corpse_lifecycle_enabled()`,
    `corpse_lifecycle_*.c`, the terminal fences, `player_save_pipeline_terminal_death()`, the
-   death-disposition plumbing and the custody and degraded-load code.
+   death-disposition plumbing and the custody and degraded-load code. The corpse lifecycle's
+   wallet and the currency repository it calls (`currency_repository_execute()`,
+   `execute_currency_state()`, the currency outbox record) go with it: the linker still
+   reaches them through the corpse lifecycle dispatch. So do the currency reasons
+   `coin_transfer` and `corpse_lifecycle` (give the remaining reasons explicit numbers: they
+   are stored in receipts and ledger rows).
 6. **The collector off the runtime cache** (todo): its death intake enrolled at `make_corpse()`
    again, its collection and maintenance reading the live objects; then
    `item_ownership_runtime.c` goes once nothing reads it.
@@ -2317,6 +2330,59 @@ Each step does its area with its tests, in its own commits, and passes the gates
   and passes alone. `test_persistence_backup_integration.py` needs a privileged container and
   runs after step 2, which changes the same restore fixture.
 
+#### Step 2: what only the replay reached (done)
+
+- The coin transfer command (`coin_transfer_command.c`), both repositories' coin and bank
+  (`account_bank` currency command) branches, the item repository's coin leg
+  (`item_transfer_repository_execute_coin()`), the flat-file coin apply and coin readers, the
+  flat-file domain's bank command (`apply_currency_command()`) and wallet preparation, and the
+  currency result codec. A currency command is still the payload of the in-memory charge
+  (`currency_transaction_submit_prepared()`, locker identification receipts) and of the corpse
+  lifecycle's wallet (step 5).
+- Schema 2: the coordinator's extension validator, `critical_command_envelope_valid()`,
+  `critical_command_legacy_execution_supported()` (now just `critical_command_valid()`),
+  `accounting_intent` and the codec's schema-2 framing. Command types no code submits are
+  gone (`wallet`, `locker_transfer`, `coin_transfer`, `guild`, `economic_baseline`); the
+  others keep their numbers, which are stored, and `critical_command_valid()` checks the type
+  by a switch.
+- The coin failure stages (`critical_failure_stage`, `item_transfer_failure_stage`): the
+  completion, the apply result and the inbox no longer carry one, and the boot schema probe no
+  longer requires `critical_operation_inbox.failure_stage` (34 columns). The column stays
+  (default 0).
+- The economy accounting foundation (see the decision above): `src/economy/economic_*`,
+  `src/persistence/economic_*`, `src/flatfile/flatfile_accounting_*`, the two mutation writers,
+  `flatfile_accounting_dispatch.c`, `economic_command_admission.c`, the flat-file authority
+  store `economic_evidence` and its `economic-evidence/` directory (the authority commit is
+  `flatfile_authority_transaction_commit_operations()` again), the accounting-only flat-file
+  domain helpers (`_load_locked()`, `_recover_locked()`, `_legacy_receipt_locked()`), 44
+  tests, `docs/persistence/ECONOMY_ACCOUNTING.md` and `docs/persistence/economy_accounting/`
+  with its census (`writers.json`) and `scripts/validate_economy_accounting.py`, which is no
+  longer a gate. The data lifecycle manifest loses the nine flat-file accounting stores (239
+  entries); the tables wait for step 3's migration.
+- The flat-file domain transaction no longer carries banks (its bank count is written as 0 and
+  must read 0), and the legacy `.currency-transaction` recovery is gone; the backup and the
+  restore verifier no longer name that file, and the restore fixture's interrupted-bank modes
+  and their integration test are deleted (the pending authority transaction case covers a
+  pending transaction). `run_currency_transaction_schema_mysql.sh` and its harness tested only
+  the deleted commands and leave `make test-db`; the player-load harness it also ran still
+  runs in the experience-trophy leg. `docs/issue-505-stale-coin-transfer-investigation.md`
+  described only the coin transfer and is deleted.
+- Two fixtures moved a stored bank with the deleted bank command and now deposit through the
+  writer's bank job (`flatfile_bank_delta_apply()`): the new-player bank hydration test and the
+  journey inspector's `seed-creation-bank` (`test_flatfile_first_session_currency.py`).
+- Verified: both server builds, the format check, and `make test-all` (692 of 698; the six
+  failures were four source contracts naming removed code and the two fixtures above, each
+  fixed and passing alone). `make test-db` and the backup-recovery container job run on the
+  committed step.
+- Found on the way (fixed in its own commit, `61d3eaf01`): the locker identification crash
+  test still charged through the repository's bank command, so it proved a ledger
+  deduplication that ended when money moved into memory, and the service kept an
+  unreachable "unknown payment outcome" retry. `paid()` records paid or failed; the harness
+  charges an in-memory purse and saves it after the completion; the test is no longer a
+  MariaDB leg; `docs/operations/locker-identification.md` says a prepared receipt is charged
+  again on recovery, twice only if the player's save landed between the charge and the paid
+  marker before the server stopped.
+
 ### Finding dead code
 
 ```sh
@@ -2332,5 +2398,7 @@ Then take each build's final link line from the make output, drop `-rdynamic` (i
 symbol, which keeps them all), append `-Wl,--gc-sections -Wl,--print-gc-sections` and run it
 from `src/`. Each `removing unused section '.text.<symbol>' in file '<object>'` line names a
 function nothing reaches in that build. A function is dead when every build that compiles it
-removes it; `c++filt` turns the symbols back into names. A function only a test calls counts as
+removes it; `c++filt` turns the symbols back into names. Compare demangled names with
+`st_mysql` read as `MYSQL`: the flat-file build stubs `MYSQL`, so a function taking a
+connection has a different mangled name in each build. A function only a test calls counts as
 dead: its test goes with it.

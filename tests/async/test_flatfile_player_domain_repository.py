@@ -20,7 +20,6 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-player-domain-test-") as tem
             "-Wpedantic",
             "-Werror",
             "-D__NO_MYSQL__",
-            "-DDURIS_FLATFILE_TRANSACTION_FAULT_TEST",
             "-Isrc",
             "-Isrc/no_mysql",
             "tests/async/flatfile_player_domain_repository_harness.cpp",

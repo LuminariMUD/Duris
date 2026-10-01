@@ -51,9 +51,8 @@ assert "critical_command_repository_reconcile(connection, command)" in REPOSITOR
 # The per-thread setup goes through the shared helper so the client library
 # is initialised first; MySQL 8 fails mysql_thread_init() without it.
 assert "sql_worker_thread_init()" in REPOSITORY and "mysql_thread_end()" in REPOSITORY
-# Reconcile reads ordinary operations without locking; only accounted bank
-# roots take the locking read inside their own transaction.
-assert "read_operation(connection, command.operation_id, accounted_bank" in REPOSITORY
+# Reconcile reads the operation without locking.
+assert "read_operation(connection, command.operation_id, false" in REPOSITORY
 assert "error == 1205" in REPOSITORY and "error == 1213" in REPOSITORY
 assert "EEXIST" in REPOSITORY and "ERANGE" in REPOSITORY
 assert "command.payload.data()" not in REPOSITORY

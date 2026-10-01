@@ -555,7 +555,6 @@ with tempfile.TemporaryDirectory(prefix="full-world-build-", dir=ROOT / "bin") a
                     "domains",
                     "manifests",
                     "player-deaths",
-                    "economic-evidence",
                 }
                 actual_dirs = {
                     str(path.relative_to(state_root))

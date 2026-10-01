@@ -50,10 +50,9 @@ Additional focused checks:
 python3 tests/async/test_take_coins.py
 python3 tests/async/test_currency_in_memory.py
 python3 tests/async/test_flatfile_item_repository.py
-bash tests/async/run_currency_transaction_schema_mysql.sh
+bash tests/async/run_experience_trophy_mysql.sh
 python3 tests/async/test_live_item_movement_contract.py
 ```
 
-`test_flatfile_item_repository.py` and the player-load harness in
-`run_currency_transaction_schema_mysql.sh` load a pile whose custody row still holds
-an older amount and check that the saved amount wins.
+The player-load harness in `run_experience_trophy_mysql.sh` loads a pile whose custody
+row still holds an older amount and checks that the saved amount wins.

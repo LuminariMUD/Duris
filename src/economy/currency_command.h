@@ -10,7 +10,6 @@
 constexpr uint16_t CURRENCY_COMMAND_PAYLOAD_VERSION = 1;
 constexpr size_t CURRENCY_ACCOUNT_NAME_MAX_BYTES = 50;
 constexpr size_t CURRENCY_COMMAND_PAYLOAD_BYTES = 136;
-constexpr size_t CURRENCY_RESULT_PAYLOAD_BYTES = 80;
 constexpr size_t CURRENCY_DENOMINATION_COUNT = 4;
 
 enum class currency_reason_type : uint16_t
@@ -110,10 +109,6 @@ bool currency_command_encode_payload(const currency_command_payload &payload,
 				     std::vector<uint8_t> *encoded);
 bool currency_command_decode_payload(const critical_command &command,
 				     currency_command_payload *payload);
-bool currency_command_encode_result(const currency_command_result &result,
-				    std::array<uint8_t, CURRENCY_RESULT_PAYLOAD_BYTES> *encoded);
-bool currency_command_decode_result(const uint8_t *encoded, size_t size,
-				    currency_command_result *result);
 bool currency_command_build(critical_command *command, critical_operation_id operation_id,
 			    const currency_command_payload &payload,
 			    uint64_t expected_wallet_revision, uint64_t expected_bank_revision,

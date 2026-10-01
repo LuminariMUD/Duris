@@ -31,7 +31,6 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-character-delete-test-") as 
         rel("collector_command.c"),
         rel("collector_codec.c"),
         rel("collector_policy.c"),
-        rel("coin_transfer_command.c"),
         rel("flatfile_player_snapshot_file.c"),
         rel("flatfile_corpse_repository.c"),
         rel("flatfile_shop_trade_repository.c"),

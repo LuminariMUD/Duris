@@ -461,10 +461,6 @@ critical_outbox_test_destination(const critical_outbox_record &record, void *con
 				 record.payload_version == 1 && !record.payload.empty();
 	const bool auction_record = record.destination == 5 && record.event_type == 1 &&
 				    record.payload_version == 1 && !record.payload.empty();
-	const bool coin_receipt = record.destination == CRITICAL_OUTBOX_COIN_RECEIPT_DESTINATION &&
-				  record.event_type == CRITICAL_OUTBOX_COIN_RECEIPT_EVENT &&
-				  record.payload_version == 1 &&
-				  record.payload.size() == CRITICAL_OUTBOX_COIN_RECEIPT_BYTES;
 	const bool collector_record = record.destination == COLLECTOR_OUTBOX_DESTINATION &&
 				      record.event_type == COLLECTOR_OUTBOX_EVENT_MUTATED &&
 				      record.payload_version == COLLECTOR_COMMAND_RESULT_VERSION &&
@@ -477,7 +473,7 @@ critical_outbox_test_destination(const critical_outbox_record &record, void *con
 									  record.payload.size(),
 									  &corpse_result);
 	return test_record || epic_record || currency_record || item_record || auction_record ||
-			       coin_receipt || collector_record || corpse_record ?
+			       collector_record || corpse_record ?
 		       critical_outbox_delivery_result::delivered :
 		       critical_outbox_delivery_result::terminal_failure;
 }

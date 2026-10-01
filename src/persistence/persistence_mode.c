@@ -24,7 +24,7 @@ static const char *active_flatfile_root;
 static const char *const flatfile_directories[] = {
 	"metadata",  "identities",    "identities/accounts", "identities/names",
 	"players",   "operations",    "operations/wal",	     "domains",
-	"manifests", "player-deaths", "economic-evidence",
+	"manifests", "player-deaths",
 };
 #endif
 

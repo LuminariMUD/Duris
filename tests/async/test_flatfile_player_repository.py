@@ -38,7 +38,6 @@ with tempfile.TemporaryDirectory(prefix="flat-player-test-", dir=ROOT / "bin/tes
             rel("collector_command.c"),
             rel("collector_codec.c"),
             rel("collector_policy.c"),
-            rel("coin_transfer_command.c"),
             rel("flatfile_player_snapshot_file.c"),
             rel("flatfile_corpse_repository.c"),
             rel("flatfile_locker_repository.c"),

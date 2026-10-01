@@ -1446,7 +1446,7 @@ bool insert_craft_ledger(MYSQL *connection, const critical_command &command,
 bool execute_craft(MYSQL *connection, const critical_command &command,
 		   const item_transfer_payload &payload, uint16_t event_index_base,
 		   uint64_t owner_revision, item_transfer_result *result, unsigned int *result_code,
-		   bool *mutation_applied, item_transfer_failure_stage *failure_stage)
+		   bool *mutation_applied)
 {
 	if (!connection || !result || !result_code || !mutation_applied ||
 	    payload.reason != item_transfer_reason::craft ||
@@ -1461,8 +1461,6 @@ bool execute_craft(MYSQL *connection, const critical_command &command,
 	};
 	*result_code = 0;
 	*mutation_applied = false;
-	if (failure_stage)
-		*failure_stage = item_transfer_failure_stage::none;
 	if (!sync_restitution_runtime_payload(connection, payload))
 		return false;
 	std::vector<player_item_snapshot> outputs;
@@ -1560,9 +1558,6 @@ bool execute_craft(MYSQL *connection, const critical_command &command,
 			std::max(result->max_item_revision, stored.item_revision);
 		if (stale)
 		{
-			if (failure_stage &&
-			    stored.item_revision != expected.expected_item_revision)
-				*failure_stage = item_transfer_failure_stage::item_revision;
 			*result_code = ESTALE;
 			return true;
 		}
@@ -1904,10 +1899,9 @@ bool item_transfer_repository_advance_owner(MYSQL *connection, const item_owner_
 bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critical_command &command,
 						uint16_t event_index_base,
 						item_transfer_result *result,
-						unsigned int *result_code, bool *mutation_applied,
-						item_transfer_failure_stage *failure_stage)
+						unsigned int *result_code, bool *mutation_applied)
 {
-	if (!critical_command_legacy_execution_supported(command))
+	if (!critical_command_valid(command))
 	{
 		errno = EPROTONOSUPPORT;
 		return false;
@@ -1923,8 +1917,6 @@ bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critica
 	*result = { item_transfer_result_root(payload), payload.item_count, 0, 0, 0, 0 };
 	*result_code = 0;
 	*mutation_applied = false;
-	if (failure_stage)
-		*failure_stage = item_transfer_failure_stage::none;
 	if (static_cast<size_t>(event_index_base) + payload.item_count > UINT16_MAX)
 	{
 		*result_code = E2BIG;
@@ -1963,23 +1955,12 @@ bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critica
 	if (from_revision != payload.expected_from_revision ||
 	    to_revision != payload.expected_to_revision)
 	{
-		if (failure_stage)
-		{
-			uint8_t stage = 0;
-			if (from_revision != payload.expected_from_revision)
-				stage |= static_cast<uint8_t>(
-					item_transfer_failure_stage::from_owner_revision);
-			if (to_revision != payload.expected_to_revision)
-				stage |= static_cast<uint8_t>(
-					item_transfer_failure_stage::to_owner_revision);
-			*failure_stage = static_cast<item_transfer_failure_stage>(stage);
-		}
 		*result_code = ESTALE;
 		return true;
 	}
 	if (payload.reason == item_transfer_reason::craft)
 		return execute_craft(connection, command, payload, event_index_base, from_revision,
-				     result, result_code, mutation_applied, failure_stage);
+				     result, result_code, mutation_applied);
 	std::vector<current_item> current;
 	const bool creation = payload.from_owner.type == item_owner_type::system;
 	if (creation)
@@ -2112,8 +2093,6 @@ bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critica
 		{
 			const current_item &stored = selected[index];
 			const item_transfer_entry &expected = payload.items[index];
-			const bool item_revision_mismatch = stored.item_revision !=
-							    expected.expected_item_revision;
 			result->max_item_revision =
 				std::max(result->max_item_revision, stored.item_revision);
 			if (stored.item_uid != expected.item_uid ||
@@ -2122,14 +2101,10 @@ bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critica
 			    stored.owner_type != static_cast<uint8_t>(payload.from_owner.type) ||
 			    stored.owner_id != payload.from_owner.id ||
 			    stored.owner_context_id != payload.from_owner.context_id ||
-			    item_revision_mismatch || stored.vnum != expected.vnum ||
+			    stored.item_revision != expected.expected_item_revision ||
+			    stored.vnum != expected.vnum ||
 			    stored.state != static_cast<uint8_t>(expected.expected_state))
 			{
-				if (failure_stage && item_revision_mismatch)
-					*failure_stage = static_cast<item_transfer_failure_stage>(
-						static_cast<uint8_t>(*failure_stage) |
-						static_cast<uint8_t>(
-							item_transfer_failure_stage::item_revision));
 				*result_code = ESTALE;
 				return true;
 			}
@@ -2177,12 +2152,6 @@ bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critica
 		    parent.item_revision != payload.expected_target_parent_revision ||
 		    parent.state != static_cast<uint8_t>(item_custody_state::active))
 		{
-			if (failure_stage && parent_found &&
-			    parent.item_revision != payload.expected_target_parent_revision)
-				*failure_stage = static_cast<item_transfer_failure_stage>(
-					static_cast<uint8_t>(*failure_stage) |
-					static_cast<uint8_t>(
-						item_transfer_failure_stage::target_parent_revision));
 			*result_code = ESTALE;
 			return true;
 		}
@@ -2248,163 +2217,10 @@ bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critica
 
 bool item_transfer_repository_execute(MYSQL *connection, const critical_command &command,
 				      item_transfer_result *result, unsigned int *result_code,
-				      bool *mutation_applied,
-				      item_transfer_failure_stage *failure_stage)
+				      bool *mutation_applied)
 {
-	return item_transfer_repository_execute_at_offset(
-		connection, command, 0, result, result_code, mutation_applied, failure_stage);
-}
-
-bool item_transfer_repository_execute_coin(MYSQL *connection, const critical_command &command,
-					   const std::array<int32_t, 4> &before,
-					   item_transfer_result *result, unsigned int *result_code,
-					   bool *mutation_applied,
-					   item_transfer_failure_stage *failure_stage)
-{
-	if (!critical_command_legacy_execution_supported(command))
-	{
-		errno = EPROTONOSUPPORT;
-		return false;
-	}
-
-	item_transfer_payload payload = {};
-	if (!connection || !result || !result_code || !mutation_applied ||
-	    !item_transfer_command_decode_payload(command, &payload) || payload.item_count != 1 ||
-	    !payload.item_blob_size)
-	{
-		errno = EINVAL;
-		return false;
-	}
-	*mutation_applied = false;
-	*result_code = 0;
-	if (failure_stage)
-		*failure_stage = item_transfer_failure_stage::none;
-	const uint64_t uid = payload.selected_item_uid;
-	if (payload.from_owner.type != item_owner_type::system)
-	{
-		const std::string query =
-			"SELECT coin_payload FROM item_current_owner WHERE item_uid=" +
-			std::to_string(uid) + " FOR UPDATE";
-		if (mysql_real_query(connection, query.data(), query.size()) != 0)
-		{
-			errno = mysql_errno(connection);
-			return false;
-		}
-		MYSQL_RES *rows = mysql_store_result(connection);
-		if (!rows)
-		{
-			errno = mysql_errno(connection);
-			return false;
-		}
-		MYSQL_ROW row = mysql_fetch_row(rows);
-		const bool found = row != nullptr;
-		const bool has_payload = row && row[0];
-		if (has_payload)
-		{
-			const unsigned long *lengths = mysql_fetch_lengths(rows);
-			std::vector<player_item_snapshot> snapshots;
-			if (!lengths ||
-			    player_item_snapshot_list_decode(
-				    reinterpret_cast<const uint8_t *>(row[0]), lengths[0],
-				    &snapshots) != player_snapshot_codec_result::ok ||
-			    snapshots.size() != 1 || snapshots[0].object_uid != uid ||
-			    snapshots[0].vnum != payload.items[0].vnum ||
-			    snapshots[0].type != ITEM_MONEY)
-				*result_code = EBADMSG;
-			else if (!std::equal(before.begin(), before.end(),
-					     snapshots[0].values.begin()))
-			{
-				*result_code = ESTALE;
-				if (failure_stage)
-					*failure_stage =
-						item_transfer_failure_stage::coin_payload_revision;
-			}
-		}
-		mysql_free_result(rows);
-		if (!found)
-			*result_code = ENOENT;
-		if (*result_code)
-			return true;
-		if (!has_payload)
-		{
-			// Existing piles get a baseline only from a unique payload belonging
-			// to their recorded owner. A missing row is not evidence of consumption.
-			std::string source;
-			const auto &owner = payload.from_owner;
-			switch (owner.type)
-			{
-			case item_owner_type::player:
-				source = "player_items p WHERE p.pid=" + std::to_string(owner.id);
-				break;
-			case item_owner_type::room:
-				source = "saved_items p WHERE p.room_vnum=" +
-					 std::to_string(owner.id);
-				break;
-			case item_owner_type::corpse:
-				source =
-					"corpse_items p JOIN corpses c ON c.id=p.corpse_id "
-					"JOIN player_data player ON player.name=c.player_name WHERE player.pid=" +
-					std::to_string(owner.id >> 32) + " AND c.save_id=" +
-					std::to_string(static_cast<uint32_t>(owner.id));
-				break;
-			case item_owner_type::locker:
-				source = "locker_items p WHERE p.locker_id=" +
-					 std::to_string(owner.id) +
-					 " AND p.chest_id=" + std::to_string(owner.context_id);
-				break;
-			default:
-				*result_code = EOPNOTSUPP;
-				return true;
-			}
-			const std::string baseline =
-				"SELECT p.value0,p.value1,p.value2,p.value3 FROM " + source +
-				" AND p.vnum=" + std::to_string(payload.items[0].vnum) +
-				" AND p.obj_uid=" + std::to_string(uid) + " FOR UPDATE";
-			if (mysql_real_query(connection, baseline.data(), baseline.size()) != 0)
-			{
-				errno = mysql_errno(connection);
-				return false;
-			}
-			rows = mysql_store_result(connection);
-			if (!rows)
-			{
-				errno = mysql_errno(connection);
-				return false;
-			}
-			row = mysql_fetch_row(rows);
-			if (!row || mysql_num_rows(rows) != 1)
-				*result_code = row ? EMSGSIZE : ENOENT;
-			for (size_t index = 0; !*result_code && index < before.size(); ++index)
-			{
-				char *end = nullptr;
-				errno = 0;
-				const int64_t amount = row[index] ? strtoll(row[index], &end, 10) :
-								    -1;
-				if (!end || end == row[index] || *end || errno ||
-				    amount != before[index])
-				{
-					*result_code = ESTALE;
-					if (failure_stage)
-						*failure_stage = item_transfer_failure_stage::
-							coin_payload_revision;
-				}
-			}
-			mysql_free_result(rows);
-			if (*result_code)
-				return true;
-		}
-	}
-	item_transfer_failure_stage nested_stage = item_transfer_failure_stage::none;
-	if (!item_transfer_repository_execute(connection, command, result, result_code,
-					      mutation_applied, &nested_stage))
-		return false;
-	if (failure_stage && *result_code == ESTALE)
-		*failure_stage = nested_stage;
-	if (!*mutation_applied)
-		return true;
-
-	return payload.from_owner.type == item_owner_type::system ||
-	       update_coin_payload(connection, payload, result->max_item_revision);
+	return item_transfer_repository_execute_at_offset(connection, command, 0, result,
+							  result_code, mutation_applied);
 }
 
 bool item_transfer_repository_destroy_owners(MYSQL *connection, const item_owner_identity *owners,

@@ -52,7 +52,6 @@ std::unordered_map<std::string, completed_state> completed_cache;
 std::deque<std::string> completed_order;
 size_t completed_cache_bytes = 0;
 critical_apply_fn apply_callback = nullptr;
-critical_extension_validator_fn extension_validator_callback = nullptr;
 void *apply_context = nullptr;
 critical_drain_observer_fn drain_observer = nullptr;
 critical_coordinator_health health = {};
@@ -178,15 +177,6 @@ void remember_completed(const std::string &identity, const critical_command &com
 	}
 }
 
-bool execution_supported(const critical_command &command)
-{
-	if (critical_command_valid(command))
-		return true;
-	return command.schema_version == CRITICAL_COMMAND_ACCOUNTING_SCHEMA_VERSION &&
-	       critical_command_envelope_valid(command) && extension_validator_callback &&
-	       extension_validator_callback(command);
-}
-
 struct writer_job
 {
 	critical_command command;
@@ -232,7 +222,6 @@ player_save_apply_result execute(const writer_job &job)
 						 .queued_at_usec = job.queued_at_usec,
 						 .started_at_usec = started,
 						 .completed_at_usec = now_usec(),
-						 .failure_stage = applied.failure_stage,
 						 .result_size = applied.result_size,
 						 .result_payload = applied.result_payload };
 	std::lock_guard<std::mutex> lock(coordinator_mutex);
@@ -305,8 +294,7 @@ bool queue_on_writer(const std::string &identity, writer_job job)
 
 } // namespace
 
-bool critical_command_coordinator_init(critical_apply_fn apply, void *context,
-				       critical_extension_validator_fn extension_validator)
+bool critical_command_coordinator_init(critical_apply_fn apply, void *context)
 {
 	if (!apply)
 		return false;
@@ -321,7 +309,6 @@ bool critical_command_coordinator_init(critical_apply_fn apply, void *context,
 	completed_cache_bytes = 0;
 	health = {};
 	apply_callback = apply;
-	extension_validator_callback = extension_validator;
 	apply_context = context;
 	++generation;
 	health.initialized = true;
@@ -341,7 +328,6 @@ void critical_command_coordinator_shutdown(void)
 	completed_cache_bytes = 0;
 	health = {};
 	apply_callback = nullptr;
-	extension_validator_callback = nullptr;
 	apply_context = nullptr;
 	++generation;
 }
@@ -352,18 +338,12 @@ critical_submit_result critical_command_coordinator_submit_internal(critical_com
 	const bool supplied_acceptance_time = command.accepted_at_usec != 0;
 	if (!supplied_acceptance_time)
 		command.accepted_at_usec = wall_now_usec();
-	// Frozen accounting commands are already canonical. Sorting after binding
-	// would silently change the immutable admission decision.
-	if (command.schema_version == CRITICAL_COMMAND_ACCOUNTING_SCHEMA_VERSION ?
-		    !critical_command_envelope_valid(command) :
-		    !critical_command_normalize(&command))
+	if (!critical_command_normalize(&command))
 		return critical_submit_result::invalid;
 	const std::string identity = operation_key(command.operation_id);
 	writer_job job = {};
 	{
 		std::lock_guard<std::mutex> lock(coordinator_mutex);
-		if (!execution_supported(command))
-			return critical_submit_result::invalid;
 		if (!health.initialized || !health.accepting)
 			return critical_submit_result::unavailable;
 		auto completed = completed_cache.find(identity);

@@ -183,7 +183,7 @@ bool boon_reward_repository_execute(MYSQL *connection, const critical_command &c
 				    boon_reward_result *result, unsigned int *result_code,
 				    bool *mutation_applied)
 {
-	if (!critical_command_legacy_execution_supported(command))
+	if (!critical_command_valid(command))
 	{
 		errno = EPROTONOSUPPORT;
 		return false;

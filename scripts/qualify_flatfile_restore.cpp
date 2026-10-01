@@ -256,8 +256,7 @@ int main(int argc, char **argv)
 				artifact_mana_read::found);
 		}
 		for (const auto *pending :
-		     { ".critical-authority-transaction", ".currency-transaction",
-		       ".player-domain-transaction" })
+		     { ".critical-authority-transaction", ".player-domain-transaction" })
 			require(!std::filesystem::exists(root + "/domains/" + pending));
 		std::cout << "{\"accounts\":" << accounts << ",\"identities\":" << identities
 			  << ",\"players_loaded\":" << loaded << ",\"snapshots\":" << snapshots

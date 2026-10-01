@@ -112,7 +112,6 @@
 #include "persistence/maintenance_scheduler.h"
 #include "persistence/maintenance_snapshot.h"
 #include "persistence/critical_command_coordinator.h"
-#include "economy/economic_command_admission.h"
 #include "persistence/critical_command_repository.h"
 #include "persistence/critical_outbox.h"
 #include "persistence/corpse_lifecycle_transaction.h"
@@ -122,7 +121,6 @@
 #include "economy/shop_trade_transaction.h"
 #include "item/item_uid_allocator.h"
 #include "flatfile/flatfile_item_repository.h"
-#include "flatfile/flatfile_accounting_dispatch.h"
 #include "economy/auction_transaction.h"
 #include "economy/collector_catalog_cache.h"
 #include "economy/collector_listing_pipeline.h"
@@ -1017,10 +1015,8 @@ int run_the_game(int port, int sslport)
 				  "writer thread did not start");
 	}
 	critical_apply_fn critical_apply = critical_command_repository_apply_from_pool;
-	critical_extension_validator_fn critical_extension_validator =
-		economic_command_admission_supported;
 #ifdef __NO_MYSQL__
-	critical_apply = flatfile_accounting_apply_selected;
+	critical_apply = flatfile_critical_command_repository_apply_selected;
 #else
 	const bool critical_outbox_ready =
 		critical_outbox_init(critical_gameplay_outbox_delivery, NULL);
@@ -1029,8 +1025,7 @@ int run_the_game(int port, int sslport)
 #ifndef __NO_MYSQL__
 		!critical_outbox_ready ||
 #endif
-		!critical_command_coordinator_init(critical_apply, NULL,
-						   critical_extension_validator))
+		!critical_command_coordinator_init(critical_apply, NULL))
 	{
 		player_death_restitution_runtime_abort_all();
 		critical_command_coordinator_shutdown();
@@ -2112,11 +2107,9 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 		for (size_t index = 0; index < critical_completion_count; ++index)
 			if (critical_completions[index].outcome ==
 			    critical_apply_outcome::terminal_failure)
-				persistence_alert(
-					AVATAR, "critical_command", "completion", "none",
-					critical_failure_stage_name(
-						critical_completions[index].failure_stage),
-					"integrity_failure", "operation metadata redacted");
+				persistence_alert(AVATAR, "critical_command", "completion", "none",
+						  "none", "integrity_failure",
+						  "operation metadata redacted");
 		player_save_pipeline_pulse();
 		persistence_pulse_character_saves();
 		player_load_result load_completions[32] = {};

@@ -74,15 +74,6 @@ DESTRUCTIVE_ACTIONS = {
 }
 REQUIRED_NON_DATABASE_STORES = {
     "file:flatfile-authority-journal": ("recovery_state", "FLATFILE_ROOT/domains/.critical-authority-transaction"),
-    "file:economic-baseline-control": ("recovery_state", "FLATFILE_ROOT/economic-evidence/baseline-*.ebc"),
-    "file:economic-baseline-reservations": ("recovery_state", "FLATFILE_ROOT/economic-evidence/baseline-*.ebi"),
-    "file:economic-baseline-witness": ("recovery_state", "FLATFILE_ROOT/economic-evidence/baseline-*.eab"),
-    "file:economic-authority-control": ("recovery_state", "FLATFILE_ROOT/economic-evidence/authority.eal"),
-    "file:economic-authority-epoch": ("recovery_state", "FLATFILE_ROOT/economic-evidence/epochs.eae"),
-    "file:economic-authority-mapping": ("recovery_state", "FLATFILE_ROOT/economic-evidence/mapping-*.eam"),
-    "file:economic-authority-native-index": ("recovery_state", "FLATFILE_ROOT/economic-evidence/native-*.ean"),
-    "file:economic-accounting-index": ("recovery_state", "FLATFILE_ROOT/economic-evidence/*.eai"),
-    "file:economic-accounting-segment": ("recovery_state", "FLATFILE_ROOT/economic-evidence/*.eas"),
     "file:critical_command_journal": ("journal", "CRITICAL_COMMAND_JOURNAL_DIR"),
     "file:persistence_fallback": ("fallback", "legacy persistence fallback file"),
     "file:persistence_fallback_quarantine": (

@@ -1305,7 +1305,7 @@ bool collector_repository_apply_item_boundary(MYSQL *connection, const critical_
 					      uint64_t *catalog_revision,
 					      std::vector<collector_command_result> *events)
 {
-	if (!critical_command_legacy_execution_supported(command))
+	if (!critical_command_valid(command))
 	{
 		errno = EPROTONOSUPPORT;
 		return false;
@@ -1523,7 +1523,7 @@ bool collector_repository_apply_death_enrollment(MYSQL *connection, const critic
 						 const item_transfer_result &transfer,
 						 const collector_enrollment_repository_plan &plan)
 {
-	if (!critical_command_legacy_execution_supported(command))
+	if (!critical_command_valid(command))
 	{
 		errno = EPROTONOSUPPORT;
 		return false;
@@ -1933,7 +1933,7 @@ bool collector_repository_execute(MYSQL *connection, const critical_command &com
 				  collector_command_result *result, unsigned int *result_code,
 				  bool *mutation_applied)
 {
-	if (!critical_command_legacy_execution_supported(command))
+	if (!critical_command_valid(command))
 	{
 		errno = EPROTONOSUPPORT;
 		return false;

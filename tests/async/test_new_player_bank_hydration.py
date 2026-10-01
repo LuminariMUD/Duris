@@ -147,30 +147,25 @@ int main(int argc, char **argv)
         assert(GET_BALANCE_PLATINUM(&actor) == (populated ? 47 : 0));
         assert(GET_BALANCE_COPPER(&sibling) == GET_BALANCE_COPPER(&actor));
         assert(opposite_pc.bank_revision == 0 && GET_BALANCE_COPPER(&opposite) == 0);
-        // First-session command uses the actual hydrated revision, and replay cannot mint.
-        currency_command_payload payload = {};
-        payload.pid = 1; payload.racewar = 1; payload.reason = currency_reason_type::wallet_reward;
-        strcpy(payload.account_name.data(), account_name); payload.wallet_delta.amount[0] = 7;
-        critical_operation_id id = {}; id.bytes[0] = 201;
-        critical_command command;
-        assert(currency_command_build(&command, id, payload, pc.wallet_revision, pc.bank_revision,
-            critical_source_site::command, critical_deadline_class::interactive));
-        command.accepted_at_usec = 1;
-        assert(flatfile_player_domain_apply(root, command).outcome == critical_apply_outcome::applied);
-        assert(flatfile_player_domain_apply(root, command).outcome == critical_apply_outcome::already_applied);
+        // A deposit lands the way the writer's bank job writes it, at bank revision two.
+        {
+            flatfile_authority_lock authority;
+            assert(authority.acquire(root, &error));
+            flatfile_authority_operation deposit;
+            assert(flatfile_player_domain_prepare_bank_delta(root, authority, account_name, 1,
+                       {7, 0, 0, 0}, &deposit, &error) == flatfile_player_domain_result::ok);
+            assert(flatfile_authority_transaction_commit_operations(root, authority, {deposit},
+                       &error) == flatfile_authority_transaction_result::ok);
+        }
         flatfile_player_domain_record loaded;
         assert(flatfile_player_domain_load(root, 1, account_name, 1, &loaded, &error) ==
                flatfile_player_domain_result::ok);
-        assert(loaded.domains.wallet[0] == 9 && loaded.domains.wallet_revision == 1);
         assert(loaded.domains.bank_revision == 2);
-        assert(loaded.domains.bank[0] == static_cast<uint64_t>(populated ? 19 : 0));
-        // Hydration retry reads revision two, preserves authority, and refreshes the sibling.
+        assert(loaded.domains.bank[0] == static_cast<uint64_t>(populated ? 26 : 7));
+        // Hydration retry reads revision two and refreshes the sibling.
         assert(hydrate(&actor) && pc.bank_revision == 2 && sibling_pc.bank_revision == 2);
-        assert(pc.wallet_revision == 1 && GET_COPPER(&actor) == 9);
-        assert(flatfile_player_domain_apply(root, command).outcome == critical_apply_outcome::already_applied);
-        assert(flatfile_player_domain_load(root, 1, account_name, 1, &loaded, &error) ==
-               flatfile_player_domain_result::ok && loaded.domains.wallet[0] == 9 &&
-               loaded.domains.bank_revision == 2);
+        assert(GET_BALANCE_COPPER(&sibling) == (populated ? 26 : 7));
+        assert(pc.wallet_revision == 0 && GET_COPPER(&actor) == 2);
         sibling_pc.bank_revision = 3; GET_BALANCE_COPPER(&sibling) = 99;
         assert(hydrate(&actor) && sibling_pc.bank_revision == 3 && GET_BALANCE_COPPER(&sibling) == 99);
         auto oversized = initial; oversized.pid = 3; oversized.racewar = 2;
@@ -188,11 +183,11 @@ int main(int argc, char **argv)
         assert(flatfile_player_domain_establish(root, oversized, &error) ==
                flatfile_player_domain_result::ok);
         pc.pid = 4; actor.player.racewar = 0;
-        assert(!hydrate(&actor) && pc.wallet_revision == 1 && GET_COPPER(&actor) == 9);
+        assert(!hydrate(&actor) && pc.wallet_revision == 0 && GET_COPPER(&actor) == 2);
         assert(pc.bank_revision == 2 && GET_BALANCE_COPPER(&actor) == before);
         assert(last_status.find("currency balance overflow") != std::string::npos);
     }
-    std::cout << "new-player bank hydration, failure, online siblings and replay passed\n";
+    std::cout << "new-player bank hydration, failure and online siblings passed\n";
 }
 '''
 

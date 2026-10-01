@@ -38,7 +38,6 @@ class CurrencyTransactionContractTests(unittest.TestCase):
         header = (SRC / "currency_command.h").read_text()
         implementation = (SRC / "currency_command.c").read_text()
         self.assertIn("CURRENCY_COMMAND_PAYLOAD_BYTES = 136", header)
-        self.assertIn("CURRENCY_RESULT_PAYLOAD_BYTES = 80", header)
         self.assertIn("std::array<int64_t, CURRENCY_DENOMINATION_COUNT>", header)
         self.assertIn("atm_deposit", header)
         self.assertIn("auction_pickup", header)
@@ -46,7 +45,7 @@ class CurrencyTransactionContractTests(unittest.TestCase):
         self.assertIn("std::numeric_limits<int64_t>::min()", implementation)
         self.assertIn("command.expected_revisions.size() == 2", implementation)
 
-    def test_repository_commits_both_states_ledger_result_and_outbox(self):
+    def test_repository_writes_both_states_and_the_ledger(self):
         repository = (SRC / "critical_command_repository.c").read_text()
         start = repository.index("bool write_currency_state")
         apply = repository.index("critical_apply_result critical_command_repository_apply")
@@ -68,11 +67,6 @@ class CurrencyTransactionContractTests(unittest.TestCase):
             "FROM account_banks WHERE account_name=? AND racewar=? FOR UPDATE"
         )
         self.assertLess(bank_ensure, bank_lock)
-        branch = repository[apply:]
-        currency = branch[branch.index("if (currency_command || accounted_bank)") :]
-        commit = currency.index('execute(connection, "COMMIT")')
-        self.assertLess(currency.index("insert_outbox"), commit)
-        self.assertLess(currency.index("finish_inbox"), commit)
 
     def test_atm_and_audited_producers_use_the_ack_boundary(self):
         atm = (SRC / "actoth.c").read_text()
