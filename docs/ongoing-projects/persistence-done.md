@@ -49,8 +49,8 @@ must pick up.
   `player_save_pipeline_init()` takes the old `PLAYER_SAVE_JOURNAL_DIR` only to replay a leftover
   journal once, synchronously on the main thread before the writer starts, and then renames it
   `player-save.journal.retired-<ms>` if anything could not be applied
-  (`player_save_journal_retire()`). This is the upgrade path: on staging the stuck characters'
-  newest state exists only in that journal. **Step 2 must keep the replay revision-fenced**
+  (`player_save_journal_retire()`). This is the upgrade path: a stuck character's newest state
+  can exist only in that journal. **Step 2 must keep the replay revision-fenced**
   (skip records whose revision is not newer than `player_data.save_revision`) even though
   ordinary saves lose the fence, or a replay could roll a character back.
 - Locker saves: `locker_async.c` keeps its per-locker slots and game-thread completion handling,
@@ -210,9 +210,10 @@ must pick up.
   `recover_player_corpse` (passed on rerun). Steps 2 to 6 must ship together.
 - Environment limitation: `run_player_load_repository_spellbook_mysql.sh` needs the
   `duris-issue-213-tools` Docker image, which is not available here; its link line was updated but
-  it was not run.
-- Open: `test_flatfile_full_world_boot.py` aborted once in nine runs (SIGABRT at the first
-  connection, before character creation). It did not reproduce; if it recurs, run it under gdb.
+  it was not run. It was deleted with the restitution feature in Phase 3 step 3.
+- Closed on 2026-10-02: `test_flatfile_full_world_boot.py` aborted once in nine runs (SIGABRT at
+  the first connection, before character creation). It did not reproduce, and no full run since
+  has failed it.
 
 ### Step 4: items move in memory (done)
 
@@ -446,7 +447,7 @@ taken back out (see "Removed in the ablation" below).
   unique across corpse, saved-item and room records, so a write strips its items from any other
   record that still lists them (the last save to claim an item wins; a saved item left empty is
   dropped). A corpse's coin piles are items in the record and its scalar `money` stays zero, so a
-  restore cannot create them twice. The flat-file corpse lifecycle staging
+  restore cannot create them twice. The flat-file corpse lifecycle capture
   (`stage_corpse_lifecycle()`, `capture_corpse_lifecycle()`, `capture_corpse_money()`) is gone.
 - Tests: `test_corpses_in_memory.py`; `player_save_claim_mysql_harness.cpp` and
   `flatfile_player_save_claim_harness.cpp` now also save, replace and remove a corpse and a saved
@@ -576,9 +577,6 @@ taken back out (see "Removed in the ablation" below).
   second character online, and the `.env` account allows one session at a time. Both run on a
   real server in `test_flatfile_combat_journey.py` / `test_mysql_combat_journey.py` and the corpse
   haul journey (death and loot) and in the item transfer legs (give).
-- Staging runs tagged `master`, so the staging journeys and the day of staging checks wait for this
-  branch to be merged. They are carried into
-  [Phase 3](persistence-plan.md#phase-3-delete-what-is-left-over).
 
 ### Done-when review (done)
 
@@ -616,28 +614,16 @@ taken back out (see "Removed in the ablation" below).
   `make test-all` (688 of 692 at the time; the 4 failures were fixed in `599f70c5d` and pass),
   `make test-db`, the flat-file build and full-world boot, the journeys listed under each step,
   and the local `.env`-account session.
-- Left for Phase 1 sign-off, in this order:
-  1. merge the branch (staging runs tagged `master`) and run the staging journeys (die and loot
-     your own corpse, raise corpses as a necromancer, give an item to another player, rent, quit
-     and relog, shut down with players online);
-  2. after a day on staging, check the logs: no custody, terminal-save, death-recovery or
-     corpse-raise alerts; `rent` and `quit` gone from `COMMAND OP SLOW`; no 2-second
-     `NEVENT SLOW` stalls;
-  3. production only with the owner's go-ahead. `duris_dev` and any other database need
-     `python3 scripts/migration_runner.py run` for `0033_item_owner_audit` before this binary
-     boots (the local boot applies it).
-
-  Staging still runs a build from 2026-09-23, so items 1 and 2 are carried into
-  [Phase 3](persistence-plan.md#phase-3-delete-what-is-left-over); item 3 stands for every
-  production deployment.
+- A database needs migration `0033_item_owner_audit` before this binary boots; the local boot
+  applies it.
 - Known and accepted until Phase 2: creation grants and the economy (shops, auctions, collector,
   currency) still move items through their own transactions; the collector's death intake and
   its scheduled collection read the runtime cache; artifacts entering a player's corpse and
   divinely bound reward containers still make one synchronous call each at death; flat-file
   lockers never load items at all (a missing flat-file feature). Phase 3 deletes the dead durable
   paths (item movement transactions, the corpse lifecycle deferrals, terminal fences,
-  `player_save_pipeline_terminal_death()`, the flat-file corpse lifecycle staging code in the
-  critical command path). Phase 2 moved the economy; the collector's two cache reads and the
+  `player_save_pipeline_terminal_death()`, the flat-file corpse lifecycle code in the critical
+  command path). Phase 2 moved the economy; the collector's two cache reads and the
   flat-file lockers are carried into [Phase 3 progress](#phase-3-progress).
 
 ### Review round 1 (MR !2)
@@ -1747,7 +1733,7 @@ step list, its decisions and the gates are in the plan. Steps 1 to 9 are done, t
   extension validator. `CRITICAL_COMMAND_JOURNAL_DIR` remains the directory of the locker
   identification receipts, as decided.
 - Backups: the policy's `journal_roots` holds `critical` alone (a policy naming `players` is
-  refused, so an existing deployment's policy loses that key), the capture takes only the
+  refused, so an existing policy must drop that key), the capture takes only the
   receipts and their empty service lock, and restore qualifies the receipts
   (`qualify_flatfile_restore --receipts`) instead of draining journals. The data lifecycle
   manifest loses the two player-save journal stores, and `file:critical_command_journal`
@@ -2046,20 +2032,22 @@ Each item is its own commit on `fix/7-persistence-phase-3`; the found bugs are f
     (`mud_info` `lock` set to `create`); the account path honored only the in-game toggle and
     WebSocket creation neither. Both creation paths now refuse a new character under either
     lock (`381ff8783`).
-- Left for a decision, not done: since the accounting foundation went, the opening baselines
+- Not part of the reset (decided on 2026-10-02, see
+  [What was cut, and why](persistence-plan.md#what-was-cut-and-why)): since the accounting
+  foundation went, the opening baselines
   (`currency_wallet_baseline`, `epic_balance_baseline`, `combat_frag_baseline`) are written for
   every player but read only by the boot coverage probes and the account projection repair,
   and nothing writes the event log's tables any more (`sql_pwipe()` still empties them).
   Removing either is a schema change: a migration, the bootstrap, the probes, the lifecycle
   manifest and `scripts/import_legacy_dump.py`.
-- Also left for a decision: dead branches behind live dispatchers, which the linker cannot
-  see. Nothing submits a locker deposit or withdrawal any more (step 4), so the flat-file item
+- Done after step 9, as Phase 3's item 10: dead branches behind live dispatchers, which the
+  linker cannot see. Nothing submits a locker deposit or withdrawal any more (step 4), so the flat-file item
   repository's locker transfer branch and `flatfile_locker_prepare_item_transfer()` never run;
   `item_movement_transaction.c` now submits only creation grants (and operator repairs), so its
   corpse batch and trusted-steal paths are unreachable, and both item transfer repositories
   still handle reasons no command sends. Cutting them reshapes live creation-grant and economy
-  code, so it was not folded into this step. (It was started after step 9 without being asked;
-  see [After step 9](#after-step-9-the-dead-transfer-branches-not-asked-for).)
+  code, so it was not folded into this step; see
+  [After step 9](#after-step-9-the-dead-transfer-branches-not-asked-for).
 - Tests: the event log's tests (13 files and `test_persistence.{c,h}`), the legacy writer's
   (`test_sql_player_dirty_bits.py`, `test_player_replacement_state.py`,
   `test_playtime_legacy_sql.py`) and `test_flatfile_shopkeeper_save.py` are deleted; the mixed
@@ -2111,9 +2099,9 @@ then pass alone; both new journeys passed under the parallel load, 151 s and 171
 
 ### After step 9: the dead transfer branches (not asked for)
 
-After step 9 the dead transfer branches listed under step 7 were cut, without being asked. Nothing
-in Phase 3's done-when needs this; it waits on the owner's decision (see
-[What is left](persistence-plan.md#what-is-left)).
+After step 9 the dead transfer branches listed under step 7 were cut, without being asked. Since
+the 2026-10-02 ablation they are Phase 3's item 10, because they delete what its list says goes
+(see [What was cut, and why](persistence-plan.md#what-was-cut-and-why)).
 
 - `4621a6c8a` (committed): `item_movement_transaction.c` keeps only the creation grants
   (the generic and batch movement submits, corpse metadata, mobile claims, trusted-steal
@@ -2133,4 +2121,14 @@ in Phase 3's done-when needs this; it waits on the owner's decision (see
   both server builds, the pfile build, the 58 tests that name the changed code, and both
   MariaDB harnesses (collector repository, item transfer schema). Not run: the full gates
   and the format check over every file.
-- Both are pushed; the full gates have not run on them yet.
+- Both are pushed; the full gates run with the MR (see
+  [What is left](persistence-plan.md#what-is-left)).
+
+### Local backup policy (done)
+
+This worktree's backup policy still named `players` in `journal_roots`, and its critical journal
+directory still held the old, empty `critical-command.journal`, so the backup refused it
+(`./scripts/backup_pfiles.sh status` failed with `invalid_journal_roots`) and a scripted local
+boot could not pass its backup. On 2026-10-02 `players` was taken out of the policy and the empty
+file deleted; `status` now gets past the policy (it reports `rpo_exceeded` until the next backup).
+The main checkout has no backup policy, so it needs nothing.
