@@ -85,7 +85,14 @@ print("[PASS] item and auction transfers claim what memory holds and collector t
 
 LOCKER = (SRC / "locker_async.c").read_text()
 locker_job = body(LOCKER, "static player_save_apply_result locker_write_job(")
-assert "locker_snapshot_repository_apply_from_pool(*job.snapshot)" in locker_job
+assert "write_locker(*job.snapshot)" in locker_job
+write_locker = body(LOCKER, "static player_save_apply_result write_locker(")
+assert "locker_snapshot_repository_apply_from_pool(snapshot)" in write_locker
+# On flat-file the locker's items are claimed with its catalog record, as a corpse's are.
+assert "flatfile_locker_snapshot_apply(root, save, &error)" in write_locker
+FLAT_PLAYER = (SRC / "flatfile_player_repository.c").read_text()
+assert "apply_world_snapshot(" in body(
+    FLAT_PLAYER, "player_save_apply_result flatfile_locker_snapshot_apply(")
 # The writer finds the locker, then deletes, claims and writes in one transaction.
 REPOSITORY = (SRC / "player_snapshot_repository.c").read_text()
 apply_locker = body(REPOSITORY, "player_save_apply_result apply_locker(MYSQL")

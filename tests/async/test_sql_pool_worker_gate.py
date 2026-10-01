@@ -10,6 +10,7 @@ locker = (SRC / "locker_async.c").read_text()
 
 assert "int sql_pool_is_active(void)" in pool_h
 assert "active = pool != NULL" in pool_c
-assert "if (!sql_pool_is_active())" in locker
+# The locker worker starts only with a pool to write through, or on flat-file.
+assert "if (!sql_pool_is_active() && !persistence_mode_flatfile_root())" in locker
 
 print("pool availability worker-gating checks passed")
