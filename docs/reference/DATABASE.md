@@ -38,15 +38,14 @@ credential, and a disposable database for all development.
 
 Connection architecture:
 
-- **Main connection** - owns boot verification and remaining synchronous legacy or
-  administrative queries. It is not the normal player checkpoint, critical-command,
-  maintenance, or existing-character login path.
+- **Main connection** - owns boot verification and the queries boot and shutdown still
+  make. The game loop issues no query after boot: writes, command reads and account logins
+  run on the one persistence writer, character loads on the player load worker.
 - **Connection pool** (`src/sql/sql_pool.c`) - bounded, individually owned connections used
   by typed load, snapshot, critical-command, outbox, maintenance, locker, and retained
   compatibility workers. Acquire/release is mutex and condition-variable based.
-- **Failure behavior** - typed routes return unavailable, retryable, or fenced outcomes
-  when a connection cannot be acquired. Only explicitly retained legacy item/scalar/
-  large compatibility producers have the historical synchronous fallback.
+- **Failure behavior** - the writer retries a lost connection at the head of its queue,
+  and a login waits for one; the game loop carries on in both cases.
 
 Every connection uses `utf8mb4`, UTC, READ-COMMITTED isolation, strict SQL modes, and
 10-second connect/read/write deadlines. Remote targets require enforced TLS and CA
@@ -57,15 +56,14 @@ verification; a protected local loopback/socket path is the only plaintext excep
 | Boundary | Identity and ordering | Durable unit | Failure behavior |
 |----------|-----------------------|--------------|------------------|
 | Player load | Unique request ID, one PID | One consistent read transaction returning owned typed rows | Required-component, limit, timeout, cancellation, or stale result publishes no character |
-| Player checkpoint | PID plus monotonic revision | Journaled immutable snapshot and revision-guarded component transaction | Retry/coalesce by PID; exact ACK only; terminal action retains live state on failure |
-| Critical command | Stable 128-bit operation ID plus sorted entity keys | Inbox, typed domain rows/ledgers, result, and outbox in one transaction | Duplicate/ambiguity rereads result; affected gameplay stays fenced through retry |
-| Item ownership | Operation ID plus item UID | Current owner, immutable ownership ledger, both revisions, and outbox | Guarded expected-owner mismatch fails without partial movement |
+| Player checkpoint | Owner, in capture order on the one writer | One transaction: claim the items the owner holds, then write its rows from memory | Lost connection retries at the head of the queue; any other failure drops the job and marks the owner dirty; nothing waits or refuses |
+| Critical command | Stable 128-bit operation ID plus sorted entity keys, in capture order on the one writer | Inbox, typed domain rows/ledgers, result, and outbox in one transaction | Lost connection or ambiguous commit retries on the writer and rereads a committed result; entity keys stay fenced until the game thread takes the completion |
+| Item ownership | Item UID (`PRIMARY KEY`), one owner | Claimed by the holder's save; a takeover writes `item_owner_audit` | A load skips a row another owner holds; `logs/log/dupes` records each item a save or load gave up |
 | Maintenance | Stable job/work ID plus continuation | Bounded row/time batch and success-last cursor | Retryable failure retains cursor; permanent failure is visible; lifecycle slot is disabled |
 | World recovery | Sequence, checksum, and item UID graph | Immutable Redis generation plus current-pointer publication; SQL custody remains authoritative | Floor and generation trees are planned together; every UID/root/parent/VNUM/room/state is reconciled before rollback-capable materialization |
 
-The typed player and critical journals contain schema versions, checksums, bounds, and
-restrictive-permission checks. Unrestricted raw SQL is not accepted as a new durable
-message contract.
+Queued jobs live only in memory. A clean shutdown or copyover writes them first; a crash
+loses what had not reached the database, at most one 30-second checkpoint.
 
 Redis is not an authority for player dirty state. It holds floor-delta recovery data
 and optional sequence-numbered world generations used after graceful restart or an unclean exit
@@ -73,9 +71,9 @@ and optional sequence-numbered world generations used after graceful restart or 
 an exact active room-owned graph before creating entities. A generation is cleared only
 after successful validated recovery and atomic runtime-custody hydration.
 
-Critical gameplay commands are distinct from coalesced checkpoints. Each accepted
-command is independently journaled with one stable operation ID and remains fenced
-through retry or ambiguous completion. The generic transaction stores canonical
+Critical gameplay commands are not coalesced like checkpoints. Each accepted command has
+one stable operation ID and is queued on the writer at submit, so it lands in capture order
+with the saves around it. The generic transaction stores canonical
 identity/result metadata in `critical_operation_inbox`, applies typed state, and inserts
 `critical_outbox` rows before one commit. Duplicate and ambiguous execution reread the
 inbox. Delivery is at least once with `(consumer_id,outbox_id)` dedupe, bounded retry,
@@ -211,7 +209,7 @@ Rules of thumb (enforced by repo conventions):
 | `player_data`, player component tables, `accounts`, `account_characters` | Character/account state and identity |
 | `pages`, `mud_info` | Help system content, MOTD/news/wizlist (see [HELP_SYSTEM.md](../content/HELP_SYSTEM.md)) |
 | `critical_operation_inbox` result fields, `critical_outbox` | Idempotent critical operations and delivery state |
-| `item_current_owner`, `item_ownership_ledger` | Authoritative item custody and immutable ownership history |
+| `item_current_owner`, `item_owner_audit`, `item_ownership_ledger` | One owner per item, the items a save took from another owner, and the transfers that still commit as critical commands |
 | player revision/domain tables | Current revisioned snapshot and transactional gameplay state |
 | archive/export/erasure tables | Guarded lifecycle job, evidence, package, request, and tombstone state |
 | `mud_schema_baselines`, `mud_schema_history`, `mud_schema_migration_state`, `lookup_dataset_state` | Migration and runtime compatibility identity |
@@ -266,9 +264,16 @@ affects, current item ownership, item metadata, pet rows, and pet item metadata 
 loaded in bounded set-based queries into owned DTOs. The worker never creates or
 traverses live `P_char` or `P_obj` instances.
 
+A character is not loaded while it has a save queued, so a quick relog reads the latest
+state; the login waits while the game loop carries on. An item row is taken only if
+`item_current_owner` has no row for it or names this owner. Any other row is a stale or
+duplicate copy: it is skipped, logged to `logs/log/dupes` and removed by the owner's next
+save. Where the ownership row and the saved `container_id` disagree about nesting, the
+ownership row stands and the next save rewrites both.
+
 The game thread accepts a completion only when request identity and PID still match,
-the durable revision is current, every required component succeeded, all configured
-row/byte/depth limits hold, and the item/pet graphs validate. ID maps provide linear
+every required component succeeded, all configured row/byte/depth limits hold, and the
+item/pet graphs validate. ID maps provide linear
 assembly. Cancellation, timeout, missing component, malformed graph, overflow, and
 stale completion all discard the DTO and fail login cleanly; no partial character is
 published. The standalone database harness is
@@ -283,26 +288,26 @@ stores the canonical result, and inserts any outbox record. Duplicate delivery r
 the stored result. If commit acknowledgement is ambiguous, the coordinator rereads by
 operation ID instead of replaying an unidentifiable mutation.
 
-`item_current_owner` is the authoritative custody row for each item UID.
-`item_ownership_ledger` records immutable transfers, and ownership operations also
-advance the affected inventory/domain revisions and outbox state in the same critical
-transaction. Expected-owner mismatch, missing parent, invalid containment, duplicate
-operation identity, or write failure rolls back without publishing in-memory movement.
-Use the read-only reconciliation scripts in `migrations/reconcile_*.sh`; do not repair
-ledgers by hand.
+Memory is the authority for items. They move in memory at once, and `item_current_owner`
+is a copy that catches up: `PRIMARY KEY (item_uid)` lets it record one owner per item, and
+each save claims what its owner holds in the same transaction as the owner's rows. No row:
+insert one. A row naming this owner: nothing to do. A row naming any other owner: set it to
+this owner and write an `item_owner_audit` row. A row that says the item was destroyed is
+final: the save leaves the item and its contents out and logs them to `logs/log/dupes`.
+The claim writes `root_item_uid` and `parent_item_uid` from memory too, so moving an item,
+including into a container of the same owner, needs no transfer. Auctions, shops and the
+collector take what they trade out of memory at submit, so a later save never holds it.
 
-`root_item_uid` and `parent_item_uid` make containment part of that authority, not a
-derived convenience. A transfer refuses any subtree whose recorded nesting disagrees
-with the live object tree, and player load rebuilds nesting from these columns rather
-than from the saved custody rows, so a command that moves an item into a container
-without submitting a transfer strands the container: it can no longer be given or
-dropped, and its contents un-nest on the next login. Every command that reparents a
-generic-ownership item must therefore submit a transfer, including a move within a
-single owner. `migrations/reconcile_item_ownership.sh` reports such drift as
-`nesting_mismatch`, and `migrations/repair_item_nesting.sh` repairs it from the saved
-container linkage (`--check` reports without writing). The repair rewrites only
-`parent_item_uid` and `root_item_uid`, never ownership or `item_revision`, which stay
-ledger-derived.
+`item_ownership_ledger` keeps the transfers that still commit as critical commands
+(creation grants, operator repair and destruction, auctions and the collector). A claim
+writes no ledger row, so the ledger does not explain `item_revision` and nothing reconciles
+the two; do not repair ledgers by hand.
+
+Nesting drift from before the persistence reset (a container filled without a transfer)
+loads where `item_current_owner` puts it and is settled by the owner's next save.
+`migrations/repair_item_nesting.sh` settles it without a login, from the saved container
+linkage (`--check` reports without writing). The repair rewrites only `parent_item_uid`
+and `root_item_uid`, never ownership or `item_revision`.
 
 For production-safe read-only classification, use:
 
@@ -343,7 +348,7 @@ Any production correction requires explicit owner authorization, a fresh validat
 backup, the same protected artifact digest, writer quiescence, exact transactional row
 guards, and captured rollback evidence. Never relax the mutation script's production
 refusal. Before restart, require zero foreign-key violations and run the UID allocator,
-item ownership, nesting, runtime compatibility, health, and log checks. Restore the exact
+nesting, runtime compatibility, health, and log checks. Restore the exact
 backup on any discrepancy; do not regenerate UIDs, delete rows, reassign owners, or
 disable foreign keys to force a clean report.
 
@@ -387,30 +392,26 @@ the next login because already-expired history cannot be reconstructed without I
 Selection and qualifying award ACK paths update this state on the game thread. Daily
 contributions expire locally at the same calendar boundary represented by the former
 `CURDATE()` predicate. The state is an active-player read model, not a new durability
-boundary. The materialized balance is `epic_balance_baseline.opening_balance` plus all
-committed `epic_ledger.delta` values. `player_data.epics` and `epic_revision` are updated
-atomically with each ledger row and are authoritative at login.
+boundary. The balance itself is memory's: `player_data.epics` is what the last save wrote,
+and `epic_ledger` is history, not a sum that must match it.
 
-## Revisioned player checkpoints and terminal saves
+## Player checkpoints and terminal saves
 
-Each player owns a monotonic revision plus per-component dirty, queued, inflight, and
-acknowledged state. The game thread captures a bounded immutable snapshot without
-unequipping objects or removing affects. A private append dispatcher writes typed,
-checksummed journal records with restrictive permissions; only journaled snapshots are
-submitted to the bounded 256-PID keyed worker queue. Same-PID work is ordered and
-coalesced, while different PIDs may apply concurrently.
+Each player keeps per-component dirty state. The game thread captures a bounded immutable
+snapshot without unequipping objects or removing affects and queues it on the one
+persistence writer (`src/player/player_save_worker.c`), which writes player saves with
+their pets, corpse, locker and saved-room-item saves, critical commands, bank deltas and the
+game thread's `sql` jobs one at a time, in capture order. A newer save of an owner replaces
+its queued one only when that is the last job queued; otherwise it queues behind it, so it
+never overtakes a job that relies on the earlier save. With one writer every save is newer
+than the last, so there is no revision fence. A lost connection is retried at the head of
+the queue; any other failure is logged, the job dropped and the owner marked dirty, so its
+next save carries the state again. Dirty players are checkpointed every 30 seconds.
 
-The repository locks the durable revision before replacing component rows. A stale
-revision cannot replace a newer one. Ambiguous commits are reconciled by rereading the
-durable revision, and exact completion alone clears the matching component state and
-journal record. Replay suppresses duplicate PID/revision records, quarantines corrupt
-frames, and stops fail-closed when durable application cannot proceed.
-
-Camp, rent, death, idle/link-loss cleanup, ghost extraction, locker departure,
-copyover, shutdown, and reboot use the same terminal fence. Live state may be released
-only after the exact database ACK or an explicit durable journal handoff. Copyover and
-shutdown quiesce and drain both player and world pipelines; failure cancels the
-transition and resumes the live game loop.
+Camp, rent, death, idle/link-loss cleanup, ghost extraction, locker departure, copyover,
+shutdown, and reboot queue the final save and release the character at once; none of them
+waits on the database. Copyover and shutdown write every queued job first, but never wait
+on a failing one: a write still retrying is cut short and named in the log.
 
 ## Player replacement components
 
