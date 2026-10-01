@@ -34,8 +34,8 @@ class ItemOwnershipContractTests(unittest.TestCase):
         collector_owner = (ROOT / "migrations/collector_item_owner.sql").read_text()
         self.assertEqual(collector_owner.count("CHECK (owner_type BETWEEN 1 AND 10)"), 6)
         self.assertEqual(bootstrap.count("owner_type` between 1 and 10"), 3)
-        for script in ("baseline_item_ownership.sh", "reconcile_item_ownership.sh",
-                       "verify_item_ownership_schema.sh", "verify_collector_item_owner.sh"):
+        for script in ("baseline_item_ownership.sh", "verify_item_ownership_schema.sh",
+                       "verify_collector_item_owner.sh"):
             self.assertTrue((ROOT / "migrations" / script).stat().st_mode & 0o111)
         self.assertTrue(
             (ROOT / "tests/async/run_collector_item_owner_schema_mysql.sh").stat().st_mode

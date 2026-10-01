@@ -623,22 +623,20 @@ selected database. Run them only after repeating the exact clone target qualific
 above; never use production as a development or validation target.
 
 ```bash
-./migrations/reconcile_item_ownership.sh
 ./migrations/reconcile_auction_transactions.sh
 ./migrations/reconcile_artifact_guild_outcomes.sh
 ./migrations/reconcile_boon_reward_zone.sh
 ./migrations/reconcile_phase02_domains.sh
 ```
 
-Wallets, banks, epic points and frags are saved from memory since Phase 2 of the
-[persistence reset](../ongoing-projects/persistence-plan.md);
-their ledgers are history, and money changes are no longer ledgered at all.
-`migrations/reconcile_currency_balances.sh`, `migrations/reconcile_epic_balances.sh` and
-`migrations/reconcile_combat_frags.sh` compare balances with those ledgers, so they report
-ordinary play as mismatches. Do not run them as integrity checks; Phase 3 removes them.
+Wallets, banks, epic points, frags and item ownership are saved from memory since the
+[persistence reset](../ongoing-projects/persistence-plan.md): a save writes balances
+without a ledger row and claims the items it holds without a transfer, so no ledger
+explains them and no reconciler checks them. `item_owner_audit` records each item a save
+took from another owner, and `logs/log/dupes` each item a save or load gave up.
 
 A nonzero mismatch is an integrity incident, not permission to edit current rows.
-Stop the affected domain, preserve its journal, inbox, outbox, ledger, and report,
+Stop the affected domain, preserve its inbox, outbox, ledger, and report,
 then trace the stable operation identity. Use only the domain's guarded retry or
 repair interface after the cause is known.
 
@@ -731,8 +729,8 @@ WRITERS_QUIESCED=TRUE COIN_CUSTODY_BACKUP_ID='<backup-generation>' \
 
 Preserve the owner-only receipt and rollback evidence. Before any separately authorized
 production repair, prove the same preconditions under row locks, retain reviewed DML and
-the exact backup, and run the player materializer plus item-ownership, currency, schema,
-and FK reconciliation on the clone. Rollback is the inverse UID update to the exact payload
+the exact backup, and run the player materializer plus schema and FK reconciliation on
+the clone. Rollback is the inverse UID update to the exact payload
 row and is safe only before the repaired player is loaded or saved again.
 
 ### Maintenance, lifecycle, export, and erasure
@@ -779,20 +777,6 @@ any restored service is published. Verify that every completed tombstone remains
 uncredentialed and unloadable and that all domain reconciliation reports pass. If a
 tombstone set is missing, stale, unverifiable, or cannot cover a source class, abandon
 that restore candidate; do not reopen it and do not alter historical backups in place.
-
-### Epic ledger cutover and reconciliation
-
-Before enabling transactional epic producers on a guarded development clone, apply
-`migrations/epic_ledger_balance.sql`, run `migrations/verify_epic_ledger_schema.sh`,
-then capture opening balances once with `migrations/baseline_epic_balances.sh --apply`.
-The baseline command refuses when any ledger row or advanced epic revision exists and
-preserves existing baseline rows.
-
-`migrations/reconcile_epic_balances.sh` is read-only. A healthy result reports zero
-missing baselines, balance mismatches, and latest-result mismatches. Stop affected epic
-gameplay if any count is nonzero, preserve the inbox/outbox/ledger rows, and investigate
-the operation history. Do not edit the ledger, invent historical operation IDs, or
-rerun the baseline against an active ledger.
 
 The backup command selects the explicit persistence mode and applies the
 operator-approved shared policy. See [BACKUPS.md](BACKUPS.md) for independent

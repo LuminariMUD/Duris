@@ -6,15 +6,13 @@
 # Before the durable single-item put landed, `put <item> <container>` into a
 # container the actor already owned moved the object live without submitting an
 # ownership transfer.  The saved custody rows recorded the nesting, the ledger
-# did not, and the ledger is what capture() checks before a give or drop and
-# what player load rebuilds nesting from.  A container filled that way can
-# therefore never be given or dropped, and spills its contents on the next
-# login, until its rows are reconciled.
+# did not, and player load rebuilds nesting from the ledger, so such a container
+# spills its contents on the next login.  Since the persistence reset every save
+# rewrites the nesting from memory, so only owners not saved since keep the drift.
 #
 # Additive and re-runnable: it only rewrites parent_item_uid and root_item_uid,
 # only where the ledger already agrees with the custody row about the owner, and
-# it never touches ownership or item_revision (revisions are ledger-derived and
-# reconcile_item_ownership.sh checks them against the event count).
+# it never touches ownership or item_revision.
 #
 # Usage: repair_item_nesting.sh [--check]
 #        --check reports the drift count and exits non-zero if any remains.

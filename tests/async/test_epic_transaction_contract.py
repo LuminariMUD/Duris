@@ -26,7 +26,6 @@ class EpicTransactionContractTests(unittest.TestCase):
         self.assertIn("verify_epic_ledger_schema.sh", runner)
         for script in (
             "baseline_epic_balances.sh",
-            "reconcile_epic_balances.sh",
             "verify_epic_ledger_schema.sh",
         ):
             self.assertTrue((ROOT / "migrations" / script).stat().st_mode & 0o111)

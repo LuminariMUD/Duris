@@ -53,12 +53,11 @@ class Phase02RawQueueRetirementTests(unittest.TestCase):
         for forbidden in ("qry(", "db_query", "host", "account", "client_name"):
             self.assertNotIn(forbidden, body)
 
-    def test_schema_reconciliation_and_operator_contract_are_wired(self):
+    def test_schema_and_operator_contract_are_wired(self):
         for path, token in (
             ("migrations/session_audit_outcome.sql", "session_audit_outcome"),
             ("migrations/bootstrap_multithread_safe.sql", "session_audit_outcome"),
             ("migrations/run_migration.sh", "verify_session_audit_schema.sh"),
-            ("migrations/reconcile_phase02_domains.sh", "reconcile_item_ownership.sh"),
         ):
             self.assertIn(token, (ROOT / path).read_text())
 

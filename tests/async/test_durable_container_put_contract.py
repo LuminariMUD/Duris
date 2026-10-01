@@ -58,8 +58,7 @@ exit "${FAKE_MYSQL_STATUS:-0}"
 """
 
 
-def run_copied_script(script_name, env_text, *, arguments=(), repair_body=None,
-                      mysql_output="0\n"):
+def run_copied_script(script_name, env_text, *, arguments=(), mysql_output="0\n"):
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         migrations = root / "migrations"
@@ -73,8 +72,6 @@ def run_copied_script(script_name, env_text, *, arguments=(), repair_body=None,
         # through text mode keeps the shebang executable without touching the
         # production script under test.
         write_executable(copied_script, copied_script.read_text())
-        if repair_body is not None:
-            write_executable(migrations / "repair_item_nesting.sh", repair_body)
         (root / ".env").write_text(env_text)
         write_executable(binary / "mysql", fake_mysql())
         process_env = os.environ.copy()
@@ -160,29 +157,6 @@ class DurableContainerPutContractTests(unittest.TestCase):
         repair = (ROOT / "migrations/repair_item_nesting.sh").read_text()
         self.assertNotIn("--ssl-mode=PREFERRED", repair)
         self.assertNotIn("--skip-ssl", repair)
-
-    def test_reconcile_preserves_a_valid_nonzero_nesting_count(self):
-        checker = """#!/usr/bin/env bash
-printf 'nesting_mismatch=3\\n'
-exit 1
-"""
-        result, _ = run_copied_script(
-            "reconcile_item_ownership.sh", script_environment(),
-            repair_body=checker)
-        self.assertEqual(result.returncode, 1, result.stderr)
-        self.assertIn("nesting_mismatch=3", result.stdout)
-
-    def test_reconcile_propagates_checker_failure_instead_of_reporting_zero(self):
-        checker = """#!/usr/bin/env bash
-echo 'database unavailable' >&2
-exit 42
-"""
-        result, _ = run_copied_script(
-            "reconcile_item_ownership.sh", script_environment(),
-            repair_body=checker)
-        self.assertEqual(result.returncode, 42)
-        self.assertIn("database unavailable", result.stderr)
-        self.assertNotIn("nesting_mismatch=0", result.stdout)
 
 
 if __name__ == "__main__":
