@@ -297,7 +297,7 @@ Every test still runs, and `make test-db` now also runs the 12 MariaDB journeys 
 
 ## What was cut, and why
 
-The plan was put through [plan ablation](../../.agents/skills/plan-ablation/SKILL.md): each part was
+The plan was put through [plan ablation](../../.agents/skills/ablation/SKILL.md): each part was
 removed in turn, and it stayed only if a requirement or a concrete risk failed without it. These were
 cut:
 

@@ -1,117 +1,112 @@
 ---
 name: ablation
 description: >-
-  Simplify implementation plans and changes while preserving the full requested outcome. Use
-  after planning and before implementation, for scope reviews, or when work accumulates
-  speculative layers, workarounds, or unrelated changes.
+  Simplify a plan or change to what the requested outcome needs, then implement and prove it
+  without dropping any requirement. Use after planning and before implementation, when
+  implementing a feature or fix without over-engineering, for scope reviews, or when work
+  accumulates speculative layers, workarounds, or unrelated changes.
 ---
 
 # Ablation
 
-Deliver the complete requested outcome through the simplest correct implementation. Reduce
-unnecessary machinery and work without reducing the user's ambition or acceptance criteria.
-Fewer lines, fewer files, and green tests alone do not establish a better solution.
+Deliver the complete requested outcome through the simplest correct change. Cut machinery and
+work, never the outcome or its acceptance criteria. Fewer lines, fewer files, or green tests do
+not by themselves make a solution better.
 
-Ablation is a counterfactual check: mentally remove or replace a meaningful part, then trace
-what would fail. It does not require building multiple implementations or running an experiment
-for every decision. Apply it to a plan before editing and to an implementation when new evidence
-changes the plan or scope starts to grow.
+Ablation is a counterfactual check: mentally remove or replace a part, then trace what would
+fail. It needs no alternative implementations or experiments. Apply it to a plan before editing,
+and again whenever new evidence changes the plan or the work starts to grow.
 
 ## Establish what must survive
 
-- Read the actual request, relevant prior decisions, and acceptance criteria. Separate required
-  outcomes and constraints from suggested implementation choices and assumptions. Preserve the
-  whole objective; difficulty, elapsed effort, or existing test coverage cannot redefine it.
-- Inspect the relevant code, callers, tests, configuration, and repository instructions. Trace
-  the affected path far enough to establish behavior and dependencies; names and snippets are
-  insufficient. Investigate uncertainties that could change correctness, scope, or the approach.
-- Inspect existing changes before editing. Distinguish task-owned work from unrelated user work
-  so that later simplification removes only work this task owns.
-- For substantial work, briefly state the outcome, scope boundaries, likely files or execution
-  path, and proof needed. Reuse the current plan or conversation. For small changes, a sentence
-  is enough; do not create a separate report, checklist, or approval stage.
+- Read the request, earlier decisions, and acceptance criteria. Separate required outcomes and
+  constraints from suggested approaches and assumptions. Difficulty, effort spent, or existing
+  test coverage never redefine the objective.
+- Inspect the relevant code, callers, tests, configuration, and repository instructions
+  directly; names, snippets, guesses, and unverified premises are not enough. Trace the affected
+  path far enough to know its behavior and dependencies, and investigate any uncertainty that
+  could change correctness, scope, or the approach.
+- Inspect existing changes before editing, so later pruning removes only work this task owns.
+- State the **Outcome, Non-goals, Files, and Proof** in the current plan or conversation; a
+  sentence covers a small task. Do not create a separate report, checklist, or approval stage.
 
-## Challenge the proposed work
+## Ablate the plan
 
-For each meaningful change, abstraction, dependency, configuration option, fallback, or check,
-ask: **If this is omitted, which requirement or concrete failure becomes unaddressed, and what
-evidence supports that answer?** A requirement, traced consumer, reproduced defect, or applicable
-repository rule is a reason to retain work. Hypothetical future use is not.
-
-Choose a disposition based on that evidence:
+For each meaningful change, abstraction, dependency, configuration option, fallback, and check,
+ask: **if this is omitted, which requirement or concrete failure goes unaddressed, and what
+evidence shows it?** A requirement, a traced consumer, a reproduced defect, or a repository rule
+justifies work. Hypothetical future use does not.
 
 | Decision | When it fits |
-| -- | -- |
+| --- | --- |
 | Keep | It supplies required behavior, compatibility, safety, recovery, or verification. |
-| Simplify | The obligation is real, but an existing path or smaller mechanism can satisfy it. |
-| Drop | It has no requirement or demonstrated current risk to address. |
-| Investigate | Missing evidence could change the decision; inspect or reproduce the specific uncertainty. |
+| Simplify | The need is real, but an existing path or a smaller mechanism can meet it. |
+| Drop | No requirement or demonstrated current risk depends on it. |
+| Investigate | Missing evidence could change the decision; check that specific uncertainty. |
 
-Evaluate related parts together. A framework can appear necessary only because its adapter,
-configuration, and tests depend on it. Check whether the entire cluster can be removed or
-replaced. Conversely, retain supporting changes needed for a required migration, integration,
-or recovery path even when they do not expose a separate user feature.
+- Judge related parts together. A framework can look necessary only because its adapter,
+  configuration, and tests depend on it, so test whether the whole cluster can go. Keep the
+  supporting changes a required migration, integration, or recovery path needs, even when they
+  expose no feature of their own.
+- Prefer the existing path, fix the root cause, and preserve unrelated behavior. Reuse helpers,
+  patterns, and tests. Keep one implementation unless truly independent responsibilities or
+  required compatibility justify more. Add an abstraction, adapter, or configuration surface
+  only for an explicit requirement, a second real caller, or a demonstrated correctness
+  boundary, never to make a small change look general.
+- Compare total complexity: branches, state, dependencies, public interfaces, operational
+  burden, and maintenance. A shorter patch that hides behavior, stacks workarounds, or leaves
+  two competing paths may be worse; a necessary multi-file repair belongs in scope even when a
+  local symptom patch would be smaller.
+- Check both directions: every retained change has a concrete purpose, and every requirement
+  still has an implementation path and proof.
 
-Prefer the existing implementation path and fix the root cause. Reuse helpers, patterns, and
-tests; keep one implementation unless independent responsibilities or required compatibility
-justify more. Add an abstraction, adapter, or configuration surface only for an explicit
-requirement, a real additional consumer, or a demonstrated current correctness boundary.
-Do not introduce such layers solely to make a small change look general.
+Say briefly what was removed or simplified and why, then update the plan. If nothing can go,
+say why the plan is already minimal; do not manufacture a deletion quota.
 
-Compare total complexity: branches, state, dependencies, public interfaces, operational burden,
-and future maintenance. A shorter patch that hides behavior, piles on workarounds, or leaves
-two competing paths may be worse. A necessary multi-file repair belongs in scope even when a
-local symptom patch would be smaller. Preserve unrelated behavior.
+## Implement within scope
 
-Before proceeding, check both directions: every retained change has a concrete purpose, and
-every requirement still has an implementation path and appropriate proof. Briefly state what
-was removed or simplified and why, then update the plan. If nothing can be removed, say why
-the plan is already minimal. Do not manufacture a deletion quota.
+- A request to review or simplify a plan authorizes that review, not the implementation.
+  Read-only discovery is allowed throughout.
+- The request authorizes the local edits and checks its outcome needs, including requested API
+  or schema changes; do not add confirmation steps for routine choices. Drop optional extras
+  such as unrelated or repository-wide cleanup, future-use layers, new services, or general test
+  infrastructure instead of stopping to ask about them.
+- Ask only when the request leaves open a consequential choice about behavior, compatibility,
+  or data, or when the next action exceeds existing authorization; keep doing independent work
+  while waiting. Deleting or overwriting data, mutating production, discarding user work, and
+  rewriting history need explicit permission for that action; this skill grants none.
+- When new evidence exposes a missing requirement or a defect blocking the requested workflow,
+  include the repair and update the plan. Any other real defect found along the way is separate
+  work: fix it as its own change instead of folding it in or only reporting it.
+- If the work starts growing fallback paths, workaround stacks, duplicate implementations, or
+  unstated tests, stop, find the cause, and shrink the plan back to what the task needs.
+- Remove code, callers, and configuration this task made obsolete; keep an old path only for an
+  identified compatibility obligation. Read the actual diff before pruning, especially where
+  user changes share a file.
 
-## Keep the implementation aligned
+## Prove the whole outcome, then stop
 
-Carry out the revised plan when implementation is authorized. A request to review or simplify
-a plan authorizes that review; it does not by itself authorize implementing the proposed code.
-Read-only discovery can resolve scope questions without creating an implementation commitment.
+- Run the narrowest relevant existing checks while working, and every required completion check
+  at the end. Extend existing tests before adding files or infrastructure. Add a test only where
+  changed observable behavior, an acceptance criterion, or a concrete regression risk is not
+  already covered, never to restate the implementation or add unrelated coverage.
+- Match proof to the claim: a helper test does not prove a feature is reachable through its
+  command, API, or workflow, so check the real path when acceptance depends on it. Update the
+  documentation, help, manifests, or migrations the behavior needs alongside it.
+- Reuse valid results. Repeat or widen verification only for relevant changes, failures,
+  unresolved risks, or required gates; once the evidence holds, finish instead of rerunning
+  green suites or starting a hardening phase.
+- Passing tests justify neither extra scope nor a missing requirement. Missing, skipped, or
+  indirect evidence leaves its claim unverified.
 
-When new evidence exposes a missing requirement or a defect blocking the requested workflow,
-include the necessary repair and update the plan. Unrelated cleanup, future-use layers, new
-services, or general test infrastructure need their own justification. If they are optional,
-omit them rather than interrupting delivery to seek approval for extra work.
+Done means:
 
-If work starts accumulating fallback paths, workaround layers, duplicate implementations, or
-unstated tests, reassess the cause and simplify the task-owned changes. Remove replaced code,
-stale callers, and configuration made obsolete by this task; retain old paths only for an
-identified compatibility obligation. Inspect the actual diff before pruning, including when
-user changes share a file. Do not discard unrelated work or required recovery evidence.
-
-Use authorization already present in the conversation for necessary local edits and checks,
-including requested API or schema changes. Do not add a confirmation step for routine choices.
-Ask only when a consequential unresolved choice would change the promised outcome or the next
-action exceeds existing authorization. Destructive data operations, production mutation,
-discarding user work, and history rewriting require explicit authorization for that action;
-this skill supplies none. Continue independent authorized work while a required answer is pending.
-
-## Prove the whole outcome and stop
-
-- Run the narrowest relevant existing checks during implementation and all required completion
-  checks. Reuse or extend existing tests before adding files or infrastructure. Add tests for
-  changed observable behavior, acceptance criteria, or a concrete regression risk; avoid tests
-  that merely repeat the implementation or add unrelated coverage.
-- Match proof to the claim. A helper test does not prove a feature is reachable through its
-  command, API, or workflow. Check the real integration path when that is part of acceptance.
-  Update required documentation, help, manifests, or migrations alongside the behavior they serve.
-- Reuse valid results. Repeat or broaden verification when relevant changes, failures, unresolved
-  risks, or required gates justify it. Once the required evidence holds, finish delivery instead
-  of rerunning green suites or inventing a new hardening phase.
-- Audit the current result against every original requirement and accepted scope change. Missing,
-  skipped, or indirect evidence leaves the corresponding claim unverified. Passing a smaller
-  suite cannot justify dropping a requirement or declaring a partial implementation complete.
-- Inspect the final diff: every task-owned file and change must be necessary; replaced machinery
-  and task-created scratch/debug artifacts must be absent from the deliverable. Preserve unrelated
-  work and required recovery evidence. Do not perform repository-wide cleanup to achieve tidiness.
-
-Report the concrete outcome and useful simplifications, the exact verification commands and
-results, and any material assumptions, limitations, or unverified runtime behavior. Mention
-preserved unrelated work or recovery evidence when it affects review or follow-up. Completion
-means the requested outcome is proven and delivered, with no required work left open.
+- every original requirement and accepted scope change is implemented and proven, with no
+  required work left open;
+- the final diff holds only necessary changes: every touched file is needed, and nothing is
+  unrelated;
+- no replaced code or task-created debug, backup, or scratch files remain, while unrelated work
+  and required recovery evidence are preserved;
+- the report gives the outcome, useful simplifications, and the exact verification commands and
+  results, and plainly states assumptions, limitations, unverified runtime behavior, and any
+  preserved unrelated work that matters for review.
