@@ -198,6 +198,14 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 		     result.outcome == maintenance_outcome::permanent_failure))
 			cargo_maintenance_complete(result.work_id,
 						   result.outcome == maintenance_outcome::complete);
+#ifdef __NO_MYSQL__
+		if (result.job_id == maintenance_job_id::auction_due_scan &&
+		    result.outcome == maintenance_outcome::complete)
+			auction_houses_activity();
+		if (result.job_id == maintenance_job_id::boon_scan &&
+		    result.outcome == maintenance_outcome::complete)
+			boon_maintenance();
+#endif
 		if (result.job_id == maintenance_job_id::auction_due_scan &&
 		    (result.outcome == maintenance_outcome::complete ||
 		     result.outcome == maintenance_outcome::more))

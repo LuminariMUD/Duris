@@ -15,6 +15,7 @@ using namespace std;
 
 void init_auction_houses();
 void shutdown_auction_houses();
+// Flat-file's auction expiry and notices, run when the auction_due_scan maintenance job is due.
 void auction_houses_activity();
 int auction_house_room_proc(int room_num, P_char ch, int cmd, char *arg);
 void new_ah_call(P_char ch, char *arg, int cmd);

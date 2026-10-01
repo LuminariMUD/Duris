@@ -250,10 +250,8 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
         maintenance = boon[start:end]
         self.assertIn("flatfile_boon_load_definitions", maintenance)
         self.assertIn("definition.active", maintenance)
-        self.assertLess(
-            maintenance.index("flatfile_boon_load_definitions"),
-            maintenance.index('qry("SELECT id FROM boons'),
-        )
+        # MariaDB's boon_scan maintenance job expires its boons on the writer.
+        self.assertNotIn("qry(", maintenance)
 
     def test_flat_boon_display_routes_before_sql_with_all_filters(self):
         boon = (SRC / "boon.c").read_text()

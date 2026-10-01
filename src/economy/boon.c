@@ -152,27 +152,6 @@ static MYSQL_RES *boon_store_result(const char *where)
 	return res;
 }
 
-static void boon_collect_ids(MYSQL_RES *res, int *id, const char *where)
-{
-	MYSQL_ROW row;
-	int i = 0;
-
-	if (!res || !id)
-	{
-		return;
-	}
-	while ((row = mysql_fetch_row(res)) && i < (MAX_BOONS - 1))
-	{
-		id[i++] = row[0] ? atoi(row[0]) : 0;
-	}
-	id[i] = 0;
-	if (row)
-	{
-		logit(LOG_DEBUG, "%s: active boon list truncated at MAX_BOONS",
-		      where ? where : "boon");
-	}
-}
-
 static const char *flat_boon_root()
 {
 	return persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY ?
@@ -3055,44 +3034,25 @@ void boon_randomize(P_char ch, char *argument)
 	return;
 }
 
-// Called from game loop
+// Flat-file's boon expiry, run when the boon_scan maintenance job is due (MariaDB's job
+// does this on the writer).
 void boon_maintenance()
 {
 	BoonData bdata;
 	int expire;
-	int id[MAX_BOONS];
 	std::vector<int> active_ids;
 
-	for (int i = 0; i < MAX_BOONS; i++)
-		id[i] = 0;
-
-	if (const char *root = flat_boon_root())
-	{
-		std::vector<flatfile_boon_definition> definitions;
-		std::string error;
-		if (flatfile_boon_load_definitions(root, &definitions, &error) !=
-		    flatfile_boon_result::ok)
-			return;
-		for (const auto &definition : definitions)
-			if (definition.active &&
-			    definition.id <= static_cast<uint32_t>(std::numeric_limits<int>::max()))
-				active_ids.push_back(static_cast<int>(definition.id));
-	}
-	else
-	{
-		if (!qry("SELECT id FROM boons WHERE active = '1'"))
-		{
-			debug("boon_maintenance(): can't read from db");
-			return;
-		}
-		MYSQL_RES *res = boon_store_result("boon_maintenance");
-		if (!res)
-			return;
-		boon_collect_ids(res, id, "boon_maintenance");
-		mysql_free_result(res);
-		for (int i = 0; id[i]; ++i)
-			active_ids.push_back(id[i]);
-	}
+	const char *root = flat_boon_root();
+	if (!root)
+		return;
+	std::vector<flatfile_boon_definition> definitions;
+	std::string error;
+	if (flatfile_boon_load_definitions(root, &definitions, &error) != flatfile_boon_result::ok)
+		return;
+	for (const auto &definition : definitions)
+		if (definition.active &&
+		    definition.id <= static_cast<uint32_t>(std::numeric_limits<int>::max()))
+			active_ids.push_back(static_cast<int>(definition.id));
 
 	for (int boon_id : active_ids)
 	{

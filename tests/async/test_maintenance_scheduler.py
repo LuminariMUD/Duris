@@ -255,11 +255,17 @@ for contract in (
 
 assert "J_NAME" not in SOURCE and "account_name" not in SOURCE
 
-for aligned_callback in (
-    "auction_houses_activity();", "timers_activity();", "web_info();",
-    "epic_zone_balance();", "update_epic_zone_mods();", "boon_maintenance();",
-):
+for aligned_callback in ("timers_activity();", "web_info();"):
     assert aligned_callback not in COMM
+# Flat-file runs its auction and boon expiry on the game thread when the scheduler says the
+# job is due; its worker completes the job without the SQL pool.
+completions = COMM[COMM.index("static void maintenance_handle_completions("):]
+completions = completions[:completions.index("\n}\n")]
+flat_completions = completions[completions.index("#ifdef __NO_MYSQL__"):completions.index("#endif")]
+for flat_callback in ("auction_houses_activity();", "boon_maintenance();"):
+    assert COMM.count(flat_callback) == 1 and flat_callback in flat_completions
+flat_execute = REPOSITORY[REPOSITORY.index("#ifdef __NO_MYSQL__\n\t// Flat-file expires"):]
+assert flat_execute.index("maintenance_job_id::boon_scan") < flat_execute.index("sql_pool_acquire()")
 assert "add_event(0, 0, 0, event_write_statistic" not in NEW_EVENTS
 for forbidden_io in ("mysql_", "qry(", "redis_", "open(", "write(", "rename(", "fsync("):
     assert forbidden_io not in SNAPSHOT

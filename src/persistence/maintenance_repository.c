@@ -975,6 +975,11 @@ maintenance_result maintenance_repository_execute(const maintenance_request &req
 	if (request.job_id == maintenance_job_id::web_status)
 		return execute_web_status(request);
 #ifdef __NO_MYSQL__
+	// Flat-file expires its auctions and boons on the game thread when these are due
+	// (maintenance_handle_completions()).
+	if (request.job_id == maintenance_job_id::auction_due_scan ||
+	    request.job_id == maintenance_job_id::boon_scan)
+		return failure(request, maintenance_outcome::complete, 0);
 	if (request.job_id == maintenance_job_id::cargo_market)
 	{
 		if (!flatfile_cargo_maintenance_apply(request.values.data(), request.value_count))
