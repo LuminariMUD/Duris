@@ -14,13 +14,6 @@ bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critica
 						uint16_t event_index_base,
 						item_transfer_result *result,
 						unsigned int *result_code, bool *mutation_applied);
-// Transaction-scoped owner primitives used by compound authority commands.
-// Callers must acquire every participating owner in canonical identity order.
-bool item_transfer_repository_ensure_owner(MYSQL *connection, const item_owner_identity &owner);
-bool item_transfer_repository_lock_owner(MYSQL *connection, const item_owner_identity &owner,
-					 uint64_t *revision);
-bool item_transfer_repository_advance_owner(MYSQL *connection, const item_owner_identity &owner,
-					    uint64_t prior_revision);
 bool item_transfer_repository_destroy_owners(MYSQL *connection, const item_owner_identity *owners,
 					     size_t owner_count);
 // Retire selected container/item roots while preserving their contents with the

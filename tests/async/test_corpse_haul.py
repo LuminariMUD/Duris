@@ -99,7 +99,6 @@ static void obj_to_char(P_obj o,P_char ch) {
  o->location=3; o->carrier=ch;
 }
 static bool item_movement_transaction_player_busy(P_char) { return false; }
-static bool corpse_lifecycle_transaction_busy(uint32_t,uint32_t) { return false; }
 static bool isname(const char *a,const char *b) { return !strcmp(a,b); }
 static bool account_bound_reward_owner(P_char,P_obj) { return false; }
 static bool item_command_object_is_takeable(P_char,P_obj o) { return o->weight>=0; }

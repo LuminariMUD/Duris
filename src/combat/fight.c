@@ -67,7 +67,6 @@
 #include "world/world_quest.h"
 #include "net/ws_handlers.h"
 #include "guild/artifact_guild_transaction.h"
-#include "persistence/corpse_lifecycle_transaction.h"
 #include "economy/collector_catalog_cache.h"
 #include "economy/collector_presence.h"
 #include "economy/currency_transaction.h"

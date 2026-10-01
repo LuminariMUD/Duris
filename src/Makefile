@@ -295,7 +295,6 @@ OBJS =  $(SHIP_OBJS) \
 				 flatfile/flatfile_item_repository.o \
 				 flatfile/flatfile_collector_repository.o \
 				 flatfile/flatfile_artifact_repository.o \
-				 flatfile/flatfile_corpse_repository.o \
 				 flatfile/flatfile_corpse_ownership.o \
 				 flatfile/flatfile_corpse_restore.o \
 				 flatfile/flatfile_association_repository.o \
@@ -322,12 +321,9 @@ OBJS =  $(SHIP_OBJS) \
 				 flatfile/flatfile_shop_trophy_history.o \
 				 flatfile/flatfile_world_item_repository.o \
 				 flatfile/flatfile_world_quest_history.o \
-				 persistence/corpse_lifecycle_transaction.o \
-				 persistence/corpse_lifecycle_repository.o \
 				 persistence/critical_command.o \
 				 persistence/critical_command_coordinator.o \
 				 persistence/critical_command_repository.o \
-				 persistence/corpse_lifecycle_command.o \
 				 item/item_transfer_command.o \
 				 item/item_ownership_runtime.o \
 				 item/item_command_policy.o \

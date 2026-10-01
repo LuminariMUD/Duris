@@ -45,7 +45,7 @@ struct player_save_pipeline_health
 	uint64_t submit_failures;
 	uint64_t completions;
 	uint64_t write_failures;
-	uint64_t terminal_fences;
+	uint64_t terminal_saves;
 	uint64_t terminal_database_acks;
 	uint64_t terminal_timeouts;
 	uint64_t drain_failures;

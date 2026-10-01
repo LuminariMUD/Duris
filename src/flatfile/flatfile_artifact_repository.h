@@ -132,19 +132,5 @@ flatfile_artifact_result flatfile_artifact_prepare_room_transfer(
 	const std::string &root, const flatfile_authority_lock &lock,
 	const item_transfer_payload &payload, uint64_t accepted_at_usec,
 	flatfile_artifact_transfer_mutation *mutation, std::string *error);
-flatfile_artifact_result flatfile_artifact_prepare_corpse_release(
-	const std::string &root, const flatfile_authority_lock &lock, uint32_t corpse_pid,
-	int32_t room_vnum, uint64_t accepted_at_usec,
-	const std::vector<player_item_snapshot> &items,
-	flatfile_artifact_transfer_mutation *mutation, std::string *error);
-flatfile_artifact_result flatfile_artifact_prepare_corpse_destruction(
-	const std::string &root, const flatfile_authority_lock &lock, uint32_t corpse_pid,
-	uint64_t accepted_at_usec, const std::vector<player_item_snapshot> &items,
-	flatfile_artifact_transfer_mutation *mutation, std::string *error);
-flatfile_artifact_result flatfile_artifact_prepare_corpse_resurrection(
-	const std::string &root, const flatfile_authority_lock &lock, uint32_t corpse_pid,
-	uint32_t player_pid, uint64_t accepted_at_usec,
-	const std::vector<player_item_snapshot> &items,
-	flatfile_artifact_transfer_mutation *mutation, std::string *error);
 
 #endif

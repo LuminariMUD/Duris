@@ -22,7 +22,6 @@
 #include "guild/assocs.h"
 #include "core/config.h"
 #include "persistence/deferred_save_policy.h"
-#include "persistence/corpse_lifecycle_transaction.h"
 #include "flatfile/flatfile_character_delete.h"
 #include "flatfile/flatfile_corpse_restore.h"
 #include "flatfile/flatfile_item_repository.h"
@@ -1534,14 +1533,9 @@ int writeCharacter(P_char ch, int type, int room)
 		return 0;
 
 	const bool is_locker_char = (strstr(GET_NAME(ch), ".locker") != NULL);
-	const bool corpse_raise_save_pending = corpse_raise_player_save_fenced(ch);
-	const bool collector_save_pending = !collector_service_recover_player(ch);
-	if (!is_locker_char && GET_PID(ch) > 0 &&
-	    (corpse_raise_save_pending || collector_save_pending))
+	if (!is_locker_char && GET_PID(ch) > 0 && !collector_service_recover_player(ch))
 	{
-		persistence_alert(AVATAR, corpse_raise_save_pending ? "corpse" : "collector",
-				  "player", "redacted",
-				  corpse_raise_save_pending ? "durable_raise" : "purchase_publish",
+		persistence_alert(AVATAR, "collector", "player", "redacted", "purchase_publish",
 				  "save_deferred", "live_materialization_pending=1");
 		return 0;
 	}

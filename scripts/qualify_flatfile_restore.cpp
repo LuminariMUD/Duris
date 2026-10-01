@@ -13,7 +13,6 @@
 #include "flatfile/flatfile_ship_repository.h"
 #include "flatfile/flatfile_association_repository.h"
 #include "flatfile/flatfile_nexus_repository.h"
-#include "flatfile/flatfile_corpse_repository.h"
 #include "flatfile/flatfile_shop_trade_repository.h"
 #include "flatfile/flatfile_boon_repository.h"
 #include "flatfile/flatfile_item_repository.h"
@@ -145,7 +144,6 @@ int main(int argc, char **argv)
 			flatfile_player_domain_result::ok);
 		// Mini-world boot does not materialize every persistent world domain.
 		// Exercise their native decoders before any qualification receipt.
-		require(flatfile_corpse_repository_validate(root, &error));
 		require(flatfile_shop_trade_repository_validate(root, &error));
 		require(kingdom_flatfile_restore_validate(root, &error));
 		std::vector<flatfile_boon_definition> boons;

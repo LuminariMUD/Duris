@@ -30,14 +30,6 @@ struct currency_transaction_health
 	uint64_t bank_deltas;
 };
 
-// Set a balance the database computed (the economy's transactions until they stop
-// writing balances).
-bool currency_transaction_publish_wallet(P_char character, const currency_vector &wallet,
-					 uint64_t wallet_revision);
-bool currency_transaction_publish_balances(P_char character, const char *account_name,
-					   uint8_t racewar, const currency_vector &wallet,
-					   const currency_vector &bank, uint64_t wallet_revision,
-					   uint64_t bank_revision);
 bool currency_transaction_submit(P_char character, const currency_vector &wallet_delta,
 				 const currency_vector &bank_delta, currency_reason_type reason,
 				 int64_t reason_id, critical_source_site source_site,

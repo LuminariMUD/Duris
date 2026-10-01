@@ -29,14 +29,9 @@ PRELUDE = r'''
 #define ITEM_STORAGE 16
 #define ITEM_QUIVER 17
 #define ITEM_MISSILE 18
-#define ITEM_CORPSE 24
 #define ITEM_NODROP 1
 #define ITEM_ARTIFACT 2
 #define CONT_CLOSED 4
-#define PC_CORPSE 1
-#define CORPSE_FLAGS 1
-#define CORPSE_PID 2
-#define CORPSE_SAVEID 3
 #define PLAYER_COMPONENT_STATUS 1
 #define PLAYER_COMPONENT_EQUIPMENT 2
 #define PLAYER_COMPONENT_INVENTORY 4
@@ -77,7 +72,6 @@ static void act(const char *text, int, P_char, P_obj, P_obj, int) { output += te
 static P_char training_dummy_item_owner(P_obj) { return nullptr; }
 static bool item_command_container_is_valid(P_obj o) { return o->type != 0; }
 static bool item_movement_transaction_player_busy(P_char) { return false; }
-static bool corpse_lifecycle_transaction_busy(uint32_t, uint32_t) { return false; }
 static int64_t container_total_weight(P_obj container)
 {
     int64_t total = 0;

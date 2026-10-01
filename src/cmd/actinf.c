@@ -4522,7 +4522,7 @@ static void show_world_persistence(P_char ch)
 		 (unsigned long long)player_pipeline.completions,
 		 (unsigned long long)player_pipeline.write_failures,
 		 player_pipeline.accepting ? 1 : 0,
-		 (unsigned long long)player_pipeline.terminal_fences,
+		 (unsigned long long)player_pipeline.terminal_saves,
 		 (unsigned long long)player_pipeline.terminal_database_acks,
 		 (unsigned long long)player_pipeline.terminal_timeouts,
 		 (unsigned long long)player_pipeline.drain_failures);

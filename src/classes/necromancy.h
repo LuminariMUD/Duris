@@ -76,32 +76,11 @@ struct golem_description
 	int cost;
 };
 
-enum class corpse_raise_kind : uint8_t
-{
-	undead,
-	titan,
-	dracolich,
-	golem,
-	avatar,
-	greater_dracolich,
-};
-
 void schedule_pet_death(P_char pet, int delay);
 
 void spell_corpseform(int, P_char, char *, int, P_char, P_obj);
 void event_corpseform_wearoff(P_char, P_char, P_obj, void *);
 void spell_compact_corpse(int, P_char, char *, int, P_char, P_obj);
 bool complete_corpse_wall_of_bones(P_char caster, P_obj corpse, int level, int exit_dir);
-bool persistence_defer_corpse_raise(P_obj corpse, P_char caster, P_char follower,
-				    corpse_raise_kind kind, int level, int variant, bool globe,
-				    const char *message);
-bool prepare_corpse_raise_pet_state(P_obj corpse, P_char caster, P_char follower,
-				    corpse_raise_kind kind, bool globe, int32_t *charm_duration,
-				    std::string *restore_state);
-void complete_corpse_raise_after_commit(P_char caster, P_char follower, P_obj corpse,
-					corpse_raise_kind kind, int level, int variant,
-					const char *message, uint64_t pet_uid, bool hostile,
-					int32_t prepared_duration, const std::string &restore_state,
-					bool preserve_coin_piles);
 
 #endif // __NECROMANCY_H__

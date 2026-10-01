@@ -2269,16 +2269,11 @@ The steps, in order (later ones delete what earlier ones leave unreachable):
    `item_command_uses_durable_ownership()` and the switch itself, the craft path, the synthetic
    transfer adapter, `OBJ_RFLAG_CREATION_CANDIDATE`, and the coordinator's journal-era submit
    results and functions.
-5. **The durable corpse lifecycle** (todo): the paths behind `durable_corpse_lifecycle_enabled()`
-   (they are the last callers of `item_movement_transaction_submit()` outside the creation
-   grants),
-   `corpse_lifecycle_*.c`, the terminal fences, and the custody and degraded-load code (the death
-   snapshot and `player_save_pipeline_terminal_death()` went with step 3). The corpse lifecycle's
-   wallet and the currency repository it calls (`currency_repository_execute()`,
-   `execute_currency_state()`, the currency outbox record) go with it: the linker still
-   reaches them through the corpse lifecycle dispatch. So do the currency reasons
-   `coin_transfer` and `corpse_lifecycle` (give the remaining reasons explicit numbers: they
-   are stored in receipts and ledger rows).
+5. **The durable corpse lifecycle** (done, see
+   [Step 5](#step-5-the-durable-corpse-lifecycle-done)): the paths behind
+   `durable_corpse_lifecycle_enabled()`, `corpse_lifecycle_*.c` and their flat-file backend, the
+   corpse raise save fence, the corpse wallet and the currency repository it called, and the
+   terminal save's fence table.
 6. **The collector off the runtime cache** (todo): its death intake enrolled at `make_corpse()`
    again, its collection and maintenance reading the live objects; then
    `item_ownership_runtime.c` goes once nothing reads it.
@@ -2463,6 +2458,43 @@ Each step does its area with its tests, in its own commits, and passes the gates
   `test_password_async_runtime.py` missed a timing bound under the parallel load; each passes
   alone after the fixes) and `make test-db` (33 of 34: `game_loop_queries` hit a race in the
   epic bonus display, fixed in its own commit).
+
+#### Step 5: the durable corpse lifecycle (done)
+
+- Every `persistence_defer_corpse_*()` returned false since Phase 1 step 6, so its 17 callers
+  (and `Decay()`) ran the in-memory code that follows; the calls, the deferrals and everything
+  behind them in `handler.c` are gone (about 1,700 lines), with `corpse_lifecycle_command.c`,
+  `_repository.c`, `_transaction.c` and the flat-file corpse repository. So is what only they
+  reached: the corpse operation and outbox route (critical command type 16 is retired), the
+  game-thread completions and pulse, the boot hydration of corpse revisions on both backends
+  (the corpse loader no longer reads `corpse_revision`; the corpse save still maintains it),
+  the corpse busy checks in `actobj.c`, the ownership runtime's corpse transitions, the
+  world-item, artifact, item and collector repositories' corpse lifecycle preparations, the
+  resurrection materialization and wallet, and the raise helpers in `necromancy.c` and
+  `magic.c` (`corpse_raise_kind` included).
+- The corpse raise save fence (`CHAR_RFLAG_CORPSE_RAISE_SAVE_FENCE`,
+  `corpse_raise_player_save_fenced()` and `_ready()`) was set only by the durable raise.
+- The currency repository (`currency_repository_execute()`, `execute_currency_state()`,
+  `write_currency_state()`) was reached only through the corpse lifecycle's wallet; with it go
+  the currency outbox record and route, the prepared mutation and rebase helpers and the
+  publish functions. Currency commands survive as the payment inside locker-identify receipts,
+  applied in memory. Their reasons are stored there, so the enum spells out every value;
+  `coin_transfer` (16) and `corpse_lifecycle` (18) are retired.
+- The terminal save (`player_save_pipeline_terminal()`, kept for a new flat-file player's
+  first save) waited on its own fence table. It now waits for the written revision the
+  revision state already records (step 3), and the table is gone; the status line counts
+  terminal saves.
+- The flat-file restore qualifier no longer builds or runs the corpse repository's validator,
+  and the backup integration test no longer corrupts the deleted `corpse_operation_catalog`.
+- Tests: the corpse lifecycle command, repository (both backends) and transaction tests, the
+  MariaDB schema leg and the fresh-corpse adoption contract are deleted; the build lists of
+  the flat-file and schema harnesses drop the deleted sources; the corpse routing,
+  corpses-in-memory, restore, runtime and currency contracts keep only what is live.
+  `docs/testing/FIRST_FLATFILE_CORPSE.md` described a fix inside the deleted upsert path and
+  is gone.
+- Verified: both server builds, the pfile build, the restore qualifier build, the format check,
+  `make test-all` (677 of 677) and `make test-db` (33 of 33; the corpse lifecycle schema leg is
+  gone).
 
 ### Finding dead code
 

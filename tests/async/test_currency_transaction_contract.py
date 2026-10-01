@@ -45,29 +45,6 @@ class CurrencyTransactionContractTests(unittest.TestCase):
         self.assertIn("std::numeric_limits<int64_t>::min()", implementation)
         self.assertIn("command.expected_revisions.size() == 2", implementation)
 
-    def test_repository_writes_both_states_and_the_ledger(self):
-        repository = (SRC / "critical_command_repository.c").read_text()
-        start = repository.index("bool write_currency_state")
-        apply = repository.index("critical_apply_result critical_command_repository_apply")
-        state = repository[start:apply]
-        for token in (
-            "FOR UPDATE",
-            "INSERT IGNORE INTO account_banks(account_name,racewar) VALUES(?,?)",
-            "UPDATE player_data SET copper=?,silver=?,gold=?,platinum=?,wallet_revision=?",
-            "UPDATE account_banks SET bank_copper=?,bank_silver=?,bank_gold=?,bank_platinum=?,",
-            "INSERT INTO currency_ledger",
-            "currency_wallet_baseline",
-            "currency_bank_baseline",
-        ):
-            self.assertIn(token, state)
-        bank_ensure = state.index(
-            "INSERT IGNORE INTO account_banks(account_name,racewar) VALUES(?,?)"
-        )
-        bank_lock = state.index(
-            "FROM account_banks WHERE account_name=? AND racewar=? FOR UPDATE"
-        )
-        self.assertLess(bank_ensure, bank_lock)
-
     def test_atm_and_audited_producers_use_the_ack_boundary(self):
         atm = (SRC / "actoth.c").read_text()
         utility = (SRC / "utility.c").read_text()

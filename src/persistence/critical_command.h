@@ -60,7 +60,6 @@ enum class critical_command_type : uint16_t
 	session_audit = 13,
 	boon_shop = 14,
 	shop_trade = 15,
-	corpse_lifecycle = 16,
 	collector = 18,
 };
 

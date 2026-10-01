@@ -2,7 +2,7 @@
 """Corpses in memory (step 6 of the persistence reset).
 
 A raise, resurrection, release, unmaking, wall of bones, compaction or destruction
-runs the in-memory code that follows each deferral. writeCorpse(), the purge of a
+runs in memory. writeCorpse(), the purge of a
 corpse leaving the world and writeSavedItem() queue a job on the one writer, so an
 older save of a player cannot claim the items back after them; the job claims what
 the corpse or the room holds, on both backends.
@@ -21,16 +21,15 @@ def body(source: str, signature: str) -> str:
     raise AssertionError(signature)
 
 
-HANDLER = (SRC / "handler.c").read_text()
-assert "return false;" in body(HANDLER, "bool durable_corpse_lifecycle_enabled()")
-for name in ("raise", "resurrection", "room_release", "unmaking", "wall_of_bones", "compaction",
-             "destruction"):
-    deferral = body(HANDLER, f"bool persistence_defer_corpse_{name}(")
-    assert "durable_corpse_lifecycle_enabled()" in deferral, name
+# A raise, resurrection, release, unmaking, wall of bones, compaction or destruction is
+# its in-memory code alone; the durable corpse lifecycle is gone.
+for name in ("handler.c", "necromancy.c", "magic.c", "specs.undermountain.c",
+             "specs.verzanan.c", "specs.mobile.c", "specs.lohrr.c"):
+    assert "persistence_defer_corpse_" not in (SRC / name).read_text(), name
 # The in-memory raise gives the corpse's items to the caster; the stored clone it used
 # to leave in the corpse storage room was a second, persisted set of the items.
 assert "create_saved_corpse" not in (SRC / "necromancy.c").read_text()
-print("[PASS] every corpse deferral falls through to its in-memory code")
+print("[PASS] every corpse action runs in memory")
 
 FILES = (SRC / "files.c").read_text()
 queue = body(FILES, "bool queue_corpse_save(P_obj corpse, bool remove)")

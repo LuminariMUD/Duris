@@ -37,7 +37,6 @@
 #include "world/vnum.obj.h"
 #include "combat/chaos_materials.h"
 #include "combat/training_dummy.h"
-#include "persistence/corpse_lifecycle_transaction.h"
 #include "item/item_movement_transaction.h"
 #include "item/item_command_parser.h"
 #include "item/item_command_policy.h"
@@ -449,13 +448,6 @@ void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 		logit(LOG_EXIT, "call to get with NULL obj or ch");
 		GETDBG_LOG("GETDBG[get-null-args]: ch=%p obj=%p container=%p showit=%d", (void *)ch,
 			   (void *)o_obj, (void *)s_obj, showit ? 1 : 0);
-		return;
-	}
-	if (s_obj && s_obj->type == ITEM_CORPSE && IS_SET(s_obj->value[CORPSE_FLAGS], PC_CORPSE) &&
-	    corpse_lifecycle_transaction_busy(static_cast<uint32_t>(s_obj->value[CORPSE_PID]),
-					      static_cast<uint32_t>(s_obj->value[CORPSE_SAVEID])))
-	{
-		send_to_char("That corpse is settling into the world; try again shortly.\r\n", ch);
 		return;
 	}
 
@@ -1497,15 +1489,6 @@ static void start_bulk_get(P_char actor, P_obj container, const char *filter, bo
 	if (item_movement_transaction_player_busy(actor))
 	{
 		send_to_char("You are already moving an item; try again in a moment.\r\n", actor);
-		return;
-	}
-	if (corpse && container &&
-	    corpse_lifecycle_transaction_busy(
-		    static_cast<uint32_t>(container->value[CORPSE_PID]),
-		    static_cast<uint32_t>(container->value[CORPSE_SAVEID])))
-	{
-		send_to_char("That corpse is settling into the world; try again shortly.\r\n",
-			     actor);
 		return;
 	}
 	bulk_get_state state = {
@@ -2722,10 +2705,7 @@ bool publish_transient_coin_put(P_char actor, P_obj container, P_obj old_money,
 bool publish_pc_corpse_coin_put(P_char actor, P_obj container, P_obj old_money,
 				const coin_debit_context &context)
 {
-	if (corpse_lifecycle_transaction_busy(
-		    static_cast<uint32_t>(container->value[CORPSE_PID]),
-		    static_cast<uint32_t>(container->value[CORPSE_SAVEID])) ||
-	    !publish_transient_coin_put(actor, container, old_money, context))
+	if (!publish_transient_coin_put(actor, container, old_money, context))
 		return false;
 	// The coins leave the actor's save before they reach the corpse's.
 	currency_transaction_save_first(actor);
@@ -3396,15 +3376,6 @@ void start_bulk_put(P_char actor, P_obj container, const char *filter, bool alld
 		send_to_char("It is not an open container.\r\n", actor);
 		return;
 	}
-	if (container->type == ITEM_CORPSE && IS_SET(container->value[CORPSE_FLAGS], PC_CORPSE) &&
-	    corpse_lifecycle_transaction_busy(
-		    static_cast<uint32_t>(container->value[CORPSE_PID]),
-		    static_cast<uint32_t>(container->value[CORPSE_SAVEID])))
-	{
-		send_to_char("That corpse is settling into the world; try again shortly.\r\n",
-			     actor);
-		return;
-	}
 	bulk_put_state state = { filter ? filter : "", 0, false, alldot };
 	// Count only what landed: put() also returns TRUE for a candidate it refused.
 	// obj_to_obj() neither merges nor frees, so the object is still live to inspect.
@@ -3709,17 +3680,6 @@ void do_put(P_char ch, char *argument, int /*cmd*/)
 bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 {
 	char Gbuf3[MAX_STRING_LENGTH];
-
-	if (s_obj && s_obj->type == ITEM_CORPSE && IS_SET(s_obj->value[CORPSE_FLAGS], PC_CORPSE) &&
-	    corpse_lifecycle_transaction_busy(static_cast<uint32_t>(s_obj->value[CORPSE_PID]),
-					      static_cast<uint32_t>(s_obj->value[CORPSE_SAVEID])))
-	{
-		if (showit)
-			send_to_char(
-				"That corpse is settling into the world; try again shortly.\r\n",
-				ch);
-		return FALSE;
-	}
 
 	if (IS_ARTIFACT(o_obj) && !IS_TRUSTED(ch))
 	{
@@ -7602,14 +7562,6 @@ void start_empty(P_char actor, P_obj source, P_obj target)
 		send_to_char(
 			"The empty operation could not start; both containers must be open and accessible.\r\n",
 			actor);
-		return;
-	}
-	if (target->type == ITEM_CORPSE && IS_SET(target->value[CORPSE_FLAGS], PC_CORPSE) &&
-	    corpse_lifecycle_transaction_busy(static_cast<uint32_t>(target->value[CORPSE_PID]),
-					      static_cast<uint32_t>(target->value[CORPSE_SAVEID])))
-	{
-		send_to_char("That corpse is settling into the world; try again shortly.\r\n",
-			     actor);
 		return;
 	}
 	for (P_obj content = source->contains; content; content = content->next_content)

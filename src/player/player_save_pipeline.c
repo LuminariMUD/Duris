@@ -47,38 +47,6 @@ player_save_apply_fn selected_snapshot_apply()
 #endif
 }
 
-struct terminal_fence
-{
-	int pid = 0;
-	player_revision_t revision = 0;
-	bool acknowledged = false;
-};
-
-std::array<terminal_fence, PLAYER_SAVE_PIPELINE_MAX_SNAPSHOTS> terminal_fences = {};
-
-/** Find a player durability fence; the caller must hold pipeline_mutex. */
-terminal_fence *find_terminal_fence_locked(int pid)
-{
-	for (terminal_fence &fence : terminal_fences)
-		if (fence.pid == pid)
-			return &fence;
-	return nullptr;
-}
-
-terminal_fence *allocate_terminal_fence_locked(int pid)
-{
-	if (terminal_fence *existing = find_terminal_fence_locked(pid))
-		return existing;
-	for (terminal_fence &fence : terminal_fences)
-		if (!fence.pid)
-		{
-			fence.pid = pid;
-			++health.terminal_fences;
-			return &fence;
-		}
-	return nullptr;
-}
-
 P_char live_player(int pid)
 {
 	for (P_char ch = character_list; ch; ch = ch->next)
@@ -114,11 +82,6 @@ void finish_completion(const player_save_completion &completion)
 		++health.completions;
 		if (!succeeded)
 			++health.write_failures;
-		if (terminal_fence *fence = completion.kind == persistence_job_kind::player ?
-						    find_terminal_fence_locked(completion.pid) :
-						    nullptr;
-		    fence && succeeded && completion.revision >= fence->revision)
-			fence->acknowledged = true;
 	}
 	if (succeeded)
 	{
@@ -198,13 +161,12 @@ void player_save_pipeline_shutdown(void)
 {
 	player_save_worker_shutdown();
 	std::lock_guard<std::mutex> lock(pipeline_mutex);
-	terminal_fences.fill({});
 	accepting = false;
 	health.accepting = false;
 	health.initialized = false;
 }
 
-/** Mark player components dirty and advance any outstanding terminal fence to the new revision. */
+/** Mark player components dirty. */
 bool player_save_pipeline_mark(int pid, player_component_mask_t components)
 {
 	/* Equipment and inventory are one item graph: a save writes both halves. */
@@ -216,11 +178,6 @@ bool player_save_pipeline_mark(int pid, player_component_mask_t components)
 	player_revision_t revision = 0;
 	if (!player_revision_mark(pid, components, &revision))
 		return false;
-	if (terminal_fence *fence = find_terminal_fence_locked(pid))
-	{
-		fence->revision = revision;
-		fence->acknowledged = false;
-	}
 	++health.marked;
 	return true;
 }
@@ -276,54 +233,42 @@ player_save_pipeline_result player_save_pipeline_request(P_char ch,
 	return player_save_pipeline_checkpoint_dirty(ch, save_intent, room_vnum);
 }
 
-namespace
+/** Capture fresh terminal intent and wait for it to be written within the caller timeout. */
+player_save_terminal_result player_save_pipeline_terminal(P_char ch, int save_intent, int room_vnum,
+							  uint64_t timeout_msec)
 {
-/** Reserve this player's durability fence and mark the revision the caller will wait on. */
-bool begin_terminal_fence(int pid, player_revision_t *revision)
-{
+	if (!ch || IS_NPC(ch) || GET_PID(ch) <= 0 || !timeout_msec)
+		return player_save_terminal_result::invalid;
+	const int pid = GET_PID(ch);
 	{
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
 		if (!health.initialized)
-			return false;
-		if (!allocate_terminal_fence_locked(pid))
-			return false;
+			return player_save_terminal_result::unavailable;
+		++health.terminal_saves;
 	}
 	// Every terminal call captures the caller's current intent and room.
-	if (!player_revision_mark(pid, PLAYER_CHECKPOINT_COMPONENT_ALL, revision))
-	{
-		std::lock_guard<std::mutex> lock(pipeline_mutex);
-		if (terminal_fence *fence = find_terminal_fence_locked(pid))
-			*fence = {};
-		return false;
-	}
-	std::lock_guard<std::mutex> lock(pipeline_mutex);
-	terminal_fence *fence = find_terminal_fence_locked(pid);
-	if (!fence)
-		return false;
-	*fence = { pid, *revision, false };
-	return true;
-}
-
-/** Pump the pipeline until this player revision is written or the deadline passes. */
-player_save_terminal_result await_terminal_fence(int pid, player_revision_t revision,
-						 uint64_t timeout_msec)
-{
+	player_revision_t revision = 0;
+	if (!player_revision_mark(pid, PLAYER_CHECKPOINT_COMPONENT_ALL, &revision))
+		return player_save_terminal_result::unavailable;
+	const auto checkpoint = player_save_pipeline_checkpoint_dirty(ch, save_intent, room_vnum);
+	if (trace_player_saves())
+		logit(LOG_STATUS,
+		      "PLAYER SAVE TRACE: stage=terminal_begin mono_us=%llu pid=%d revision=%llu checkpoint=%u intent=%d timeout_ms=%llu",
+		      (unsigned long long)persistence_observability_now_usec(), pid,
+		      (unsigned long long)revision, (unsigned)checkpoint, save_intent,
+		      (unsigned long long)timeout_msec);
 	const auto deadline =
 		std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_msec);
 	while (std::chrono::steady_clock::now() < deadline)
 	{
 		player_save_pipeline_pulse();
+		player_revision_snapshot written = {};
+		if (player_revision_snapshot_copy(pid, &written) &&
+		    written.written_revision >= revision)
 		{
 			std::lock_guard<std::mutex> lock(pipeline_mutex);
-			terminal_fence *fence = find_terminal_fence_locked(pid);
-			if (!fence || fence->revision != revision)
-				return player_save_terminal_result::unavailable;
-			if (fence->acknowledged)
-			{
-				++health.terminal_database_acks;
-				*fence = {};
-				return player_save_terminal_result::database_acknowledged;
-			}
+			++health.terminal_database_acks;
+			return player_save_terminal_result::database_acknowledged;
 		}
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
@@ -335,27 +280,6 @@ player_save_terminal_result await_terminal_fence(int pid, player_revision_t revi
 		      (unsigned long long)revision);
 	++health.terminal_timeouts;
 	return player_save_terminal_result::timed_out;
-}
-} // namespace
-
-/** Capture fresh terminal intent and wait for it to be written within the caller timeout. */
-player_save_terminal_result player_save_pipeline_terminal(P_char ch, int save_intent, int room_vnum,
-							  uint64_t timeout_msec)
-{
-	if (!ch || IS_NPC(ch) || GET_PID(ch) <= 0 || !timeout_msec)
-		return player_save_terminal_result::invalid;
-	const int pid = GET_PID(ch);
-	player_revision_t revision = 0;
-	if (!begin_terminal_fence(pid, &revision))
-		return player_save_terminal_result::unavailable;
-	const auto checkpoint = player_save_pipeline_checkpoint_dirty(ch, save_intent, room_vnum);
-	if (trace_player_saves())
-		logit(LOG_STATUS,
-		      "PLAYER SAVE TRACE: stage=terminal_begin mono_us=%llu pid=%d revision=%llu checkpoint=%u intent=%d timeout_ms=%llu",
-		      (unsigned long long)persistence_observability_now_usec(), pid,
-		      (unsigned long long)revision, (unsigned)checkpoint, save_intent,
-		      (unsigned long long)timeout_msec);
-	return await_terminal_fence(pid, revision, timeout_msec);
 }
 
 /** Account for every writer completion on the game thread. */
@@ -453,5 +377,4 @@ void player_save_pipeline_reset_for_tests(void)
 	std::lock_guard<std::mutex> lock(pipeline_mutex);
 	health = {};
 	accepting = false;
-	terminal_fences.fill({});
 }

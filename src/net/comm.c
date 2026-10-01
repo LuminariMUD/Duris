@@ -114,7 +114,6 @@
 #include "persistence/critical_command_coordinator.h"
 #include "persistence/critical_command_repository.h"
 #include "persistence/critical_outbox.h"
-#include "persistence/corpse_lifecycle_transaction.h"
 #include "economy/currency_transaction.h"
 #include "item/item_movement_transaction.h"
 #include "item/item_ownership_runtime.h"
@@ -281,7 +280,6 @@ static void critical_gameplay_handle_completions(const critical_completion *comp
 						 size_t count)
 {
 	locker_identify_pulse();
-	corpse_lifecycle_transaction_handle_completions(completions, count);
 	item_movement_transaction_handle_completions(completions, count);
 	shop_trade_transaction_handle_completions(completions, count);
 	auction_transaction_handle_completions(completions, count);
@@ -307,8 +305,6 @@ critical_gameplay_outbox_delivery(const critical_outbox_record &record, void *co
 		return zone_touch_transaction_outbox_delivery(record, context);
 	if (record.destination == COLLECTOR_OUTBOX_DESTINATION)
 		return collector_transaction_outbox_delivery(record, context);
-	if (record.destination == CORPSE_LIFECYCLE_OUTBOX_DESTINATION)
-		return corpse_lifecycle_transaction_outbox_delivery(record, context);
 	return auction_transaction_outbox_delivery(record, context);
 }
 #endif
@@ -2088,14 +2084,12 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 		flush_pending_ship_saves();
 		retry_unplaced_ships();
 		locker_async_pulse();
-		corpse_lifecycle_transaction_pulse();
 		critical_completion critical_completions[64] = {};
 		const size_t critical_completion_count =
 			critical_command_coordinator_pulse(critical_completions, 64);
 		critical_gameplay_handle_completions(critical_completions,
 						     critical_completion_count);
 		auction_transaction_publish_outbox();
-		corpse_lifecycle_transaction_publish_outbox();
 		collector_transaction_publish_outbox();
 		combat_outcome_transaction_publish_outbox();
 		artifact_guild_transaction_publish_outbox();

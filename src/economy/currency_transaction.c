@@ -230,45 +230,6 @@ bool apply(P_char character, const currency_command_payload &payload,
 }
 } // namespace
 
-bool currency_transaction_publish_balances(P_char character, const char *account_name,
-					   uint8_t racewar, const currency_vector &wallet,
-					   const currency_vector &bank, uint64_t wallet_revision,
-					   uint64_t bank_revision)
-{
-	if (!character || !character->only.pc || !account_name)
-		return false;
-	for (int64_t amount : bank.amount)
-		if (amount < 0 || amount > INT_MAX)
-			return false;
-	if (!currency_transaction_publish_wallet(character, wallet, wallet_revision))
-		return false;
-	const AccountBankBalances balances = { static_cast<int>(bank.amount[0]),
-					       static_cast<int>(bank.amount[1]),
-					       static_cast<int>(bank.amount[2]),
-					       static_cast<int>(bank.amount[3]) };
-	publish_account_bank_balances_revision(account_name, racewar, &balances, bank_revision);
-	return true;
-}
-
-bool currency_transaction_publish_wallet(P_char character, const currency_vector &wallet,
-					 uint64_t wallet_revision)
-{
-	if (!character || !character->only.pc)
-		return false;
-	for (int64_t amount : wallet.amount)
-		if (amount < 0 || amount > INT_MAX)
-			return false;
-	if (wallet_revision < character->only.pc->wallet_revision)
-		return true;
-	GET_COPPER(character) = static_cast<int>(wallet.amount[0]);
-	GET_SILVER(character) = static_cast<int>(wallet.amount[1]);
-	GET_GOLD(character) = static_cast<int>(wallet.amount[2]);
-	GET_PLATINUM(character) = static_cast<int>(wallet.amount[3]);
-	character->only.pc->wallet_revision = wallet_revision;
-	gmcp_char_vitals(character);
-	return true;
-}
-
 bool currency_transaction_submit(P_char character, const currency_vector &wallet_delta,
 				 const currency_vector &bank_delta, currency_reason_type reason,
 				 int64_t reason_id, critical_source_site source_site,

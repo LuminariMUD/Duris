@@ -694,9 +694,6 @@ void raise_undead(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 	}
 
 	summoned_pet_mark(undead, static_cast<summoned_pet_kind>(typ + 1));
-	if (persistence_defer_corpse_raise(obj, ch, undead, corpse_raise_kind::undead, level, typ,
-					   globe != nullptr, nullptr))
-		return;
 
 	if (IS_SET(obj->value[CORPSE_FLAGS], PC_CORPSE))
 	{
@@ -1154,9 +1151,6 @@ void spell_call_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 	}
 
 	summoned_pet_mark(mob, summoned_pet_kind::titan);
-	if (persistence_defer_corpse_raise(obj, ch, mob, corpse_raise_kind::titan, level, sum,
-					   globe != nullptr, summons[sum].message))
-		return;
 
 	char_to_room(mob, ch->in_room, 0);
 
@@ -1236,303 +1230,6 @@ void spell_call_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 			schedule_pet_death(mob, (duration + 1) * 60 * 4);
 		}
 	}
-}
-
-namespace
-{
-void discard_nested_raise_exclusions(P_obj container, bool preserve_coin_piles)
-{
-	for (P_obj item = container ? container->contains : nullptr, next = nullptr; item;
-	     item = next)
-	{
-		next = item->next_content;
-		if (IS_SET(item->extra_flags, ITEM_TRANSIENT) ||
-		    (!preserve_coin_piles && GET_ITEM_TYPE(item) == ITEM_MONEY))
-		{
-			obj_from_obj(item);
-			extract_obj(item);
-		}
-		else
-			discard_nested_raise_exclusions(item, preserve_coin_piles);
-	}
-}
-
-bool corpse_raise_exceeds_carry_capacity(P_char caster, P_obj corpse)
-{
-	if (!caster || !corpse)
-		return false;
-	int64_t incoming_weight = 0;
-	int64_t incoming_count = 0;
-	for (P_obj item = corpse->contains; item; item = item->next_content)
-	{
-		if (GET_ITEM_TYPE(item) == ITEM_MONEY || IS_SET(item->extra_flags, ITEM_TRANSIENT))
-			continue;
-		const int64_t weight = GET_OBJ_WEIGHT(item);
-		if (incoming_weight > std::numeric_limits<int64_t>::max() - weight)
-			return true;
-		incoming_weight += weight;
-		if (incoming_count == std::numeric_limits<int64_t>::max())
-			return true;
-		++incoming_count;
-	}
-	return incoming_weight > std::numeric_limits<int64_t>::max() -
-					 static_cast<int64_t>(total_carried_weight(caster)) ||
-	       incoming_count > std::numeric_limits<int64_t>::max() -
-					static_cast<int64_t>(IS_CARRYING_N(caster)) ||
-	       static_cast<int64_t>(total_carried_weight(caster)) + incoming_weight >
-		       static_cast<int64_t>(CAN_CARRY_W(caster)) ||
-	       static_cast<int64_t>(IS_CARRYING_N(caster)) + incoming_count >
-		       static_cast<int64_t>(CAN_CARRY_N(caster));
-}
-} // namespace
-
-bool prepare_corpse_raise_pet_state(P_obj corpse, P_char caster, P_char follower,
-				    corpse_raise_kind kind, bool globe, int32_t *charm_duration,
-				    std::string *restore_state)
-{
-	if (!corpse || !caster || !follower || !charm_duration || !restore_state)
-		return false;
-	int time_to_decay = 0;
-	if (struct obj_affect *decay = get_obj_affect(corpse, TAG_OBJ_DECAY))
-		time_to_decay = obj_affect_time(corpse, decay) / (60 * WAIT_SEC);
-	int duration = kind == corpse_raise_kind::undead ?
-			       MAX(4, time_to_decay) :
-			       time_to_decay / 2 + 6000 / STAT_INDEX(GET_C_INT(follower));
-	if (globe || has_innate(caster, INNATE_UNHOLY_ALLIANCE))
-		duration = -1;
-	*charm_duration = duration;
-	if (!summoned_pet_capture(follower, restore_state))
-		return false;
-	if (restore_state->empty())
-		return true;
-	pet_restore_state state;
-	if (!pet_restore_state_decode(*restore_state, &state))
-		return false;
-	if (duration >= 0)
-	{
-		const int64_t now = time(nullptr);
-		const int extra = kind == corpse_raise_kind::greater_dracolich ||
-						  kind == corpse_raise_kind::dracolich ?
-					  1 :
-					  number(1, 10) + 1;
-		state.charm_expires_at = now + static_cast<int64_t>(duration) * 60;
-		state.death_expires_at = now + (static_cast<int64_t>(duration) + extra) * 60;
-	}
-	else
-		state.charm_expires_at = state.death_expires_at = 0;
-	return pet_restore_state_encode(state, restore_state);
-}
-
-void complete_corpse_raise_after_commit(P_char caster, P_char follower, P_obj corpse,
-					corpse_raise_kind kind, int level, int variant,
-					const char *message, uint64_t pet_uid, bool hostile,
-					int32_t prepared_duration, const std::string &restore_state,
-					bool preserve_coin_piles)
-{
-	if (!caster || !follower || !corpse || caster->in_room <= NOWHERE)
-		return;
-	follower->durable_pet_uid = pet_uid;
-	follower->durable_pet_owner_pid = pet_uid && IS_PC(caster) ? GET_PID(caster) : 0;
-
-	const char *raise_name = nullptr;
-	switch (kind)
-	{
-	case corpse_raise_kind::undead:
-		raise_name = "raised while equipped";
-		break;
-	case corpse_raise_kind::titan:
-		raise_name = "raised as titan";
-		break;
-	case corpse_raise_kind::dracolich:
-		raise_name = "raised as dracolich";
-		break;
-	case corpse_raise_kind::avatar:
-		raise_name = "raised as avatar while equipped";
-		break;
-	case corpse_raise_kind::greater_dracolich:
-		raise_name = "raised as greater dracolich while equipped";
-		break;
-	case corpse_raise_kind::golem:
-		break;
-	}
-	if (raise_name)
-	{
-		logit(LOG_CORPSE, "%s got %s ( by %s in room %d ).", corpse->short_description,
-		      raise_name, GET_NAME(caster), world[caster->in_room].number);
-		wizlog(57, "%s got %s ( by %s in room %d ).", corpse->short_description, raise_name,
-		       GET_NAME(caster), world[caster->in_room].number);
-	}
-
-	int timeToDecay = 0;
-	if (struct obj_affect *afDecay = get_obj_affect(corpse, TAG_OBJ_DECAY))
-		timeToDecay = obj_affect_time(corpse, afDecay) / (60 * WAIT_SEC);
-	if (kind == corpse_raise_kind::dracolich && corpse_trace_enabled())
-		logit(LOG_DEBUG,
-		      "corpse_trace dracolich_prepare corpse_vnum=%d corpse_level=%d remaining_minutes=%d caster_level=%d",
-		      OBJ_VNUM(corpse), corpse->value[CORPSE_LEVEL], timeToDecay, level);
-	// Remove dissolving objects before measuring the durable inventory. A raise
-	// cannot roll the committed transfer back merely because live carry limits
-	// changed while it was in flight. Coin piles remain physical inventory.
-	for (P_obj item = corpse->contains, next = nullptr; item; item = next)
-	{
-		next = item->next_content;
-		if (IS_SET(item->extra_flags, ITEM_TRANSIENT) ||
-		    (!preserve_coin_piles && GET_ITEM_TYPE(item) == ITEM_MONEY))
-		{
-			obj_from_obj(item);
-			extract_obj(item);
-		}
-		else
-			discard_nested_raise_exclusions(item, preserve_coin_piles);
-	}
-
-	if (!pet_uid && !hostile && corpse_raise_exceeds_carry_capacity(caster, corpse))
-	{
-		send_to_char(
-			"The recovered equipment leaves you overburdened. Drop something before fighting or moving.\r\n",
-			caster);
-		// The committed rows must stay with the player, but an automatic raise
-		// should not turn that recovery edge into an immediate hostile attack.
-		if (hostile)
-		{
-			hostile = false;
-			send_to_char(
-				"The awakened spirit remains bound while you recover your footing.\r\n",
-				caster);
-		}
-	}
-
-	while (corpse->contains)
-	{
-		P_obj item = corpse->contains;
-		if (raise_name)
-			logit(LOG_CORPSE, "%s raised with eq: [%d] %s", corpse->short_description,
-			      obj_index[item->R_num].virtual_number, item->name);
-		obj_from_obj(item);
-		if (IS_SET(item->extra_flags, ITEM_TRANSIENT) ||
-		    (!preserve_coin_piles && GET_ITEM_TYPE(item) == ITEM_MONEY))
-			extract_obj(item);
-		else
-		{
-			discard_nested_raise_exclusions(item, preserve_coin_piles);
-			obj_to_char_at_end(item, (pet_uid || hostile) ? follower : caster);
-		}
-	}
-
-	if (kind == corpse_raise_kind::undead)
-	{
-		if (variant >= THEURPET_START && variant <= THEURPET_END)
-		{
-			act("After a short &+yr&+Yi&+Wtu&+Ya&+yl&n, the &+Wsoul&n of $N&n is called to inhabit the $p.",
-			    FALSE, caster, corpse, follower, TO_CHAR);
-			act("The $p &+btr&+Ban&+Csf&+Bor&+bms&n into $N&n and awaits instructions from &n&n.",
-			    FALSE, caster, corpse, follower, TO_ROOM);
-		}
-		else
-		{
-			act("You breathe life into $p with the awesome power of your art.", FALSE,
-			    caster, corpse, 0, TO_CHAR);
-			act("You see $p take a deep breath, and suddenly come to life again.",
-			    FALSE, caster, corpse, 0, TO_NOTVICT);
-		}
-	}
-
-	extract_obj(corpse);
-	char_to_room(follower, caster->in_room, 0);
-
-	if (kind != corpse_raise_kind::undead)
-		remove_plushit_bits(follower);
-	if (kind == corpse_raise_kind::golem)
-		SET_BIT(follower->only.npc->aggro_flags, AGGR_ALL);
-	if (kind != corpse_raise_kind::undead)
-		balance_affects(follower);
-	if (message)
-		act(message, TRUE, follower, 0, 0, TO_ROOM);
-
-	int duration = -1;
-	if (hostile)
-	{
-		act("$N is NOT pleased at being returned to life!", TRUE, caster, 0, follower,
-		    TO_ROOM);
-		act("$N is NOT pleased with you at all!", TRUE, caster, 0, follower, TO_CHAR);
-		schedule_pet_death(follower, (4 + number(1, 6)) * WAIT_SEC);
-		MobStartFight(follower, caster);
-	}
-	else if (kind == corpse_raise_kind::undead)
-	{
-		duration = setup_pet(follower, caster,
-				     pet_uid ? prepared_duration : MAX(4, timeToDecay), PET_NOCASH);
-		add_follower(follower, caster);
-	}
-	else if (kind == corpse_raise_kind::golem)
-	{
-		duration = setup_pet(follower, caster,
-				     pet_uid ? prepared_duration :
-					       (timeToDecay / 2) +
-						       (6000 / STAT_INDEX(GET_C_INT(follower))),
-				     PET_NOCASH);
-		act("&+LDark shadows engulf the &+bcorpse &+Las you weave a spell of &+Wreanimation&+L,\r\n"
-		    "&+Ltransforming the corpse into an &+wundead &+rminion&+L.",
-		    FALSE, caster, 0, 0, TO_CHAR);
-		act("&+LDark shadows fill the room as $n &+Lchants and descend upon the\r\n"
-		    "&+wrecently &+Wdeceased &+Ltransforming the corpse into an &+wundead &+rminion&+L.",
-		    FALSE, caster, 0, 0, TO_ROOM);
-		add_follower(follower, caster);
-	}
-	else
-	{
-		act("&+W$N roars to the sky 'I LIVE!!!'", TRUE, caster, 0, follower, TO_ROOM);
-		act("&+W$N roars to the sky 'I LIVE!!!'", TRUE, caster, 0, follower, TO_CHAR);
-		if (kind == corpse_raise_kind::titan || kind == corpse_raise_kind::dracolich)
-			radiate_message_from_room(
-				caster->in_room, "&+cYou hear a loud roar in the distance.\r\n", 3,
-				(RMFR_FLAGS)(RMFR_RADIATE_ALL_DIRS | RMFR_PASS_WALL |
-					     RMFR_PASS_DOOR | RMFR_CROSS_ZONE_BARRIER),
-				0);
-		if (kind == corpse_raise_kind::titan)
-			GET_AC(follower) -= 50;
-		else if (kind == corpse_raise_kind::dracolich)
-			GET_AC(follower) -= GET_LEVEL(caster) * 7;
-		else if (kind == corpse_raise_kind::greater_dracolich)
-			GET_AC(follower) -= level * 4;
-		duration = setup_pet(follower, caster,
-				     pet_uid ? prepared_duration :
-					       timeToDecay / 2 +
-						       (6000 / STAT_INDEX(GET_C_INT(follower))),
-				     PET_NOCASH);
-		if (kind == corpse_raise_kind::dracolich && corpse_trace_enabled())
-			logit(LOG_DEBUG,
-			      "corpse_trace dracolich_created mob_vnum=%d charm_minutes=%d corpse_remaining_minutes=%d",
-			      GET_VNUM(follower), duration, timeToDecay);
-		add_follower(follower, caster);
-	}
-
-	if (duration >= 0)
-	{
-		pet_restore_state state;
-		if (pet_uid && pet_restore_state_decode(restore_state, &state) &&
-		    state.death_expires_at > 0)
-		{
-			follower->only.npc->pet_charm_expires_at = state.charm_expires_at;
-			const int64_t remaining =
-				std::max<int64_t>(1, state.death_expires_at - time(nullptr));
-			const int seconds =
-				static_cast<int>(std::min<int64_t>(remaining, INT_MAX / WAIT_SEC));
-			schedule_pet_death(follower, seconds * WAIT_SEC);
-			follower->only.npc->pet_death_expires_at = state.death_expires_at;
-		}
-		else if (kind == corpse_raise_kind::greater_dracolich ||
-			 kind == corpse_raise_kind::dracolich)
-			schedule_pet_death(follower, (duration + 1) * 60 * WAIT_SEC);
-		else
-		{
-			duration += number(1, 10);
-			schedule_pet_death(follower, (duration + 1) * 60 * WAIT_SEC);
-		}
-	}
-	if (!writeCharacter(caster, RENT_CRASH, caster->in_room))
-		logit(LOG_FILE, "Could not checkpoint %s after raising a corpse.",
-		      GET_NAME(caster));
 }
 
 void spell_create_dracolich(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -1701,9 +1398,6 @@ void spell_create_dracolich(int level, P_char ch, char * /*arg*/, [[maybe_unused
 	}
 
 	summoned_pet_mark(mob, summoned_pet_kind::dracolich);
-	if (persistence_defer_corpse_raise(obj, ch, mob, corpse_raise_kind::dracolich, level, sum,
-					   globe != nullptr, summons[sum].message))
-		return;
 
 	char_to_room(mob, ch->in_room, 0);
 
@@ -1978,9 +1672,6 @@ void create_golem(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 	mob->points.damnodice = (mob->points.damnodice / 2 + 2);
 
 	summoned_pet_mark(mob, static_cast<summoned_pet_kind>(which_type + 15));
-	if (persistence_defer_corpse_raise(obj, ch, mob, corpse_raise_kind::golem, level,
-					   which_type, globe != nullptr, nullptr))
-		return;
 
 	char_to_room(mob, ch->in_room, 0);
 
@@ -2188,9 +1879,6 @@ void spell_call_avatar(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 	}
 
 	summoned_pet_mark(mob, summoned_pet_kind::avatar);
-	if (persistence_defer_corpse_raise(obj, ch, mob, corpse_raise_kind::avatar, level, sum,
-					   globe != nullptr, summons[sum].message))
-		return;
 
 	char_to_room(mob, ch->in_room, 0);
 
@@ -2434,9 +2122,6 @@ void spell_create_greater_dracolich(int level, P_char ch, char * /*arg*/, [[mayb
 	}
 
 	summoned_pet_mark(mob, summoned_pet_kind::greater_dracolich);
-	if (persistence_defer_corpse_raise(obj, ch, mob, corpse_raise_kind::greater_dracolich,
-					   level, sum, globe != nullptr, summons[sum].message))
-		return;
 
 	char_to_room(mob, ch->in_room, 0);
 
@@ -3305,9 +2990,6 @@ void spell_wall_of_bones(int level, P_char ch, char *arg, [[maybe_unused]] int t
 		return;
 	}
 
-	if (corpse && persistence_defer_corpse_wall_of_bones(corpse, ch, level, exit_dir))
-		return;
-
 	if (corpse && complete_corpse_wall_of_bones(ch, corpse, level, exit_dir))
 	{
 		for (obj_in_corpse = corpse->contains; obj_in_corpse; obj_in_corpse = next_obj)
@@ -3365,8 +3047,6 @@ void spell_compact_corpse(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unus
 		send_to_char("This corpse is too mutilated.\n", ch);
 		return;
 	}
-	if (persistence_defer_corpse_compaction(obj, ch))
-		return;
 
 	while ((content = obj->contains) != NULL)
 	{

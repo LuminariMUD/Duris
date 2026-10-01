@@ -54,16 +54,6 @@ flatfile_collector_repository_result flatfile_collector_prepare_item_boundary(
 	flatfile_collector_enrollment_mutation *mutation, unsigned int *result_code,
 	std::string *error);
 
-// Compose candidate cancellation with a corpse lifecycle mutation. The caller
-// supplies the exact post-mutation item revisions prepared by the ownership
-// repository and commits the returned image in that same authority transaction.
-flatfile_collector_repository_result flatfile_collector_prepare_corpse_boundary(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const corpse_lifecycle_payload &payload,
-	const std::vector<collector_custody_boundary_item> &items,
-	flatfile_collector_enrollment_mutation *mutation, unsigned int *result_code,
-	std::string *error);
-
 critical_apply_result flatfile_collector_repository_apply(const std::string &root,
 							  const critical_command &command);
 

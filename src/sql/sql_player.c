@@ -52,7 +52,6 @@
 #include "account/password_hash.h"
 #include "player/player_revision_state.h"
 #include "persistence/persistence_mode.h"
-#include "persistence/corpse_lifecycle_transaction.h"
 #include "item/item_transfer_command.h"
 #include "item/item_transfer_repository.h"
 #include "item/item_claim_repository.h"
@@ -5852,7 +5851,6 @@ enum corpse_load_column
 	CORPSE_COL_ID,
 	CORPSE_COL_PLAYER_NAME,
 	CORPSE_COL_SAVE_ID,
-	CORPSE_COL_REVISION,
 	CORPSE_COL_ROOM_VNUM,
 	CORPSE_COL_OWNER_PID,
 	CORPSE_COL_ITEM_ID,
@@ -5939,7 +5937,6 @@ bool sql_load_all_corpses(void)
 	int cur_room = 0;
 	uint32_t cur_owner_pid = 0;
 	uint32_t cur_save_id = 0;
-	uint64_t cur_corpse_revision = 0;
 	uint64_t cur_corpse_owner_id = 0;
 	P_obj obj_map[MAX_CORPSE_ITEMS];
 	int id_map[MAX_CORPSE_ITEMS];
@@ -5955,7 +5952,7 @@ bool sql_load_all_corpses(void)
 
 	// one query gets everything: corpses + items + affects
 	result = db_query(
-		"SELECT c.id, c.player_name, c.save_id, c.corpse_revision, c.room_vnum, "
+		"SELECT c.id, c.player_name, c.save_id, c.room_vnum, "
 		"COALESCE(c.value3,0), "
 		"ci.id, COALESCE(ci.container_id, 0), ci.vnum, COALESCE(ci.item_type, 0), "
 		"ci.weight, ci.cost, ci.timer, "
@@ -6057,13 +6054,6 @@ bool sql_load_all_corpses(void)
 					o->loc_p = LOC_INSIDE;
 					o->loc.inside = cur_corpse;
 				}
-				if (!corpse_lifecycle_transaction_hydrate(
-					    cur_owner_pid, cur_save_id, cur_corpse_revision))
-				{
-					extract_obj(cur_corpse, FALSE);
-					cur_corpse = NULL;
-					goto cleanup;
-				}
 				obj_to_room(cur_corpse, cur_room);
 				persistence_refresh_restored_corpse(cur_corpse,
 								    "sql_load_all_corpses");
@@ -6072,13 +6062,6 @@ bool sql_load_all_corpses(void)
 			else if (cur_corpse)
 			{
 				// corpse with no items
-				if (!corpse_lifecycle_transaction_hydrate(
-					    cur_owner_pid, cur_save_id, cur_corpse_revision))
-				{
-					extract_obj(cur_corpse, FALSE);
-					cur_corpse = NULL;
-					goto cleanup;
-				}
 				obj_to_room(cur_corpse, cur_room);
 				persistence_refresh_restored_corpse(cur_corpse,
 								    "sql_load_all_corpses");
@@ -6097,9 +6080,8 @@ bool sql_load_all_corpses(void)
 				strtoul(row[CORPSE_COL_SAVE_ID], NULL, 10);
 			const unsigned long parsed_owner_pid =
 				strtoul(row[CORPSE_COL_OWNER_PID], NULL, 10);
-			cur_corpse_revision = strtoull(row[CORPSE_COL_REVISION], NULL, 10);
 			if (!parsed_save_id || parsed_save_id > INT32_MAX || !parsed_owner_pid ||
-			    parsed_owner_pid > INT32_MAX || !cur_corpse_revision)
+			    parsed_owner_pid > INT32_MAX)
 				goto cleanup;
 			int save_id = static_cast<int>(parsed_save_id);
 			cur_save_id = static_cast<uint32_t>(parsed_save_id);
@@ -6348,26 +6330,12 @@ bool sql_load_all_corpses(void)
 			o->loc_p = LOC_INSIDE;
 			o->loc.inside = cur_corpse;
 		}
-		if (!corpse_lifecycle_transaction_hydrate(cur_owner_pid, cur_save_id,
-							  cur_corpse_revision))
-		{
-			extract_obj(cur_corpse, FALSE);
-			cur_corpse = NULL;
-			goto cleanup;
-		}
 		obj_to_room(cur_corpse, cur_room);
 		persistence_refresh_restored_corpse(cur_corpse, "sql_load_all_corpses");
 		loaded++;
 	}
 	else if (cur_corpse)
 	{
-		if (!corpse_lifecycle_transaction_hydrate(cur_owner_pid, cur_save_id,
-							  cur_corpse_revision))
-		{
-			extract_obj(cur_corpse, FALSE);
-			cur_corpse = NULL;
-			goto cleanup;
-		}
 		obj_to_room(cur_corpse, cur_room);
 		persistence_refresh_restored_corpse(cur_corpse, "sql_load_all_corpses");
 		loaded++;

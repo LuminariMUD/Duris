@@ -34,7 +34,6 @@ bool valid_command_type(critical_command_type type)
 	case critical_command_type::session_audit:
 	case critical_command_type::boon_shop:
 	case critical_command_type::shop_trade:
-	case critical_command_type::corpse_lifecycle:
 	case critical_command_type::collector:
 		return true;
 	}

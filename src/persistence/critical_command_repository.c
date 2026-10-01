@@ -2,9 +2,6 @@
 #include "sql/sql_thread_init.h"
 
 #include "economy/currency_command.h"
-#include "economy/currency_repository.h"
-#include "persistence/corpse_lifecycle_command.h"
-#include "persistence/corpse_lifecycle_repository.h"
 #include "persistence/critical_outbox.h"
 #include "world/epic_command.h"
 #include "economy/auction_command.h"
@@ -46,8 +43,6 @@ constexpr uint16_t OUTBOX_DESTINATION_TEST = 1;
 constexpr uint16_t OUTBOX_EVENT_TEST_MUTATED = 1;
 constexpr uint16_t OUTBOX_DESTINATION_EPIC = 2;
 constexpr uint16_t OUTBOX_EVENT_EPIC_BALANCE = 1;
-constexpr uint16_t OUTBOX_DESTINATION_CURRENCY = 3;
-constexpr uint16_t OUTBOX_EVENT_CURRENCY_BALANCE = 1;
 constexpr uint16_t OUTBOX_DESTINATION_ITEM_OWNERSHIP = 4;
 constexpr uint16_t OUTBOX_EVENT_ITEM_TRANSFERRED = 1;
 constexpr uint16_t OUTBOX_DESTINATION_AUCTION = 5;
@@ -456,11 +451,6 @@ bool insert_outbox(MYSQL *connection, const critical_command &command, const uin
 		destination = OUTBOX_DESTINATION_EPIC;
 		event_type = OUTBOX_EVENT_EPIC_BALANCE;
 	}
-	else if (command.type == critical_command_type::account_bank)
-	{
-		destination = OUTBOX_DESTINATION_CURRENCY;
-		event_type = OUTBOX_EVENT_CURRENCY_BALANCE;
-	}
 	else if (command.type == critical_command_type::item_transfer)
 	{
 		destination = OUTBOX_DESTINATION_ITEM_OWNERSHIP;
@@ -496,12 +486,6 @@ bool insert_outbox(MYSQL *connection, const critical_command &command, const uin
 		destination = COLLECTOR_OUTBOX_DESTINATION;
 		event_type = COLLECTOR_OUTBOX_EVENT_MUTATED;
 		payload_version = COLLECTOR_COMMAND_RESULT_VERSION;
-	}
-	else if (command.type == critical_command_type::corpse_lifecycle)
-	{
-		destination = CORPSE_LIFECYCLE_OUTBOX_DESTINATION;
-		event_type = CORPSE_LIFECYCLE_OUTBOX_EVENT_MUTATED;
-		payload_version = CORPSE_LIFECYCLE_RESULT_VERSION;
 	}
 	return insert_outbox_event(connection, command.operation_id, 0, destination, event_type,
 				   payload_version, payload, payload_size);
@@ -671,308 +655,7 @@ bool execute_epic_state(MYSQL *connection, const critical_command &command,
 	return true;
 }
 
-bool write_currency_state(MYSQL *connection, const critical_command &command,
-			  const currency_prepared_mutation &prepared, uint32_t bank_id)
-{
-	static const char WALLET_BASELINE_SQL[] =
-		"INSERT IGNORE INTO currency_wallet_baseline(pid,opening_copper,opening_silver,"
-		"opening_gold,opening_platinum,opening_revision) VALUES(?,?,?,?,?,?)";
-	static const char BANK_BASELINE_SQL[] =
-		"INSERT IGNORE INTO currency_bank_baseline(bank_id,opening_copper,opening_silver,"
-		"opening_gold,opening_platinum,opening_revision) VALUES(?,?,?,?,?,?)";
-	static const char PLAYER_UPDATE_SQL[] =
-		"UPDATE player_data SET copper=?,silver=?,gold=?,platinum=?,wallet_revision=? "
-		"WHERE pid=? AND wallet_revision=?";
-	static const char BANK_UPDATE_SQL[] =
-		"UPDATE account_banks SET bank_copper=?,bank_silver=?,bank_gold=?,bank_platinum=?,"
-		"bank_revision=? WHERE id=? AND bank_revision=?";
-	static const char LEDGER_SQL[] =
-		"INSERT INTO currency_ledger(operation_id,pid,bank_id,wallet_delta_copper,"
-		"wallet_delta_silver,wallet_delta_gold,wallet_delta_platinum,bank_delta_copper,"
-		"bank_delta_silver,bank_delta_gold,bank_delta_platinum,wallet_after_copper,"
-		"wallet_after_silver,wallet_after_gold,wallet_after_platinum,bank_after_copper,"
-		"bank_after_silver,bank_after_gold,bank_after_platinum,wallet_revision,bank_revision,"
-		"reason_type,reason_id,source_site) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
-	currency_command_payload payload = prepared.payload();
-	uint32_t pid = payload.pid;
-	MYSQL_BIND pid_binding = {};
-	pid_binding.buffer_type = MYSQL_TYPE_LONG;
-	pid_binding.buffer = &pid;
-	pid_binding.is_unsigned = true;
-	MYSQL_STMT *statement = nullptr;
-	auto wallet = prepared.before().wallet;
-	auto bank = prepared.before().bank;
-	auto wallet_revision = prepared.before().wallet_revision;
-	auto bank_revision = prepared.before().bank_revision;
-	MYSQL_BIND wallet_baseline[6] = {};
-	wallet_baseline[0] = pid_binding;
-	for (size_t index = 0; index < CURRENCY_DENOMINATION_COUNT; ++index)
-	{
-		wallet_baseline[index + 1].buffer_type = MYSQL_TYPE_LONGLONG;
-		wallet_baseline[index + 1].buffer = &wallet.amount[index];
-	}
-	wallet_baseline[5].buffer_type = MYSQL_TYPE_LONGLONG;
-	wallet_baseline[5].buffer = &wallet_revision;
-	wallet_baseline[5].is_unsigned = true;
-	if (!prepare(&statement, connection, WALLET_BASELINE_SQL) ||
-	    mysql_stmt_bind_param(statement, wallet_baseline) != 0 ||
-	    mysql_stmt_execute(statement) != 0)
-		return statement_failure(statement);
-	mysql_stmt_close(statement);
-	MYSQL_BIND bank_baseline[6] = {};
-	bank_baseline[0].buffer_type = MYSQL_TYPE_LONG;
-	bank_baseline[0].buffer = &bank_id;
-	bank_baseline[0].is_unsigned = true;
-	for (size_t index = 0; index < CURRENCY_DENOMINATION_COUNT; ++index)
-	{
-		bank_baseline[index + 1].buffer_type = MYSQL_TYPE_LONGLONG;
-		bank_baseline[index + 1].buffer = &bank.amount[index];
-		bank_baseline[index + 1].is_unsigned = true;
-	}
-	bank_baseline[5].buffer_type = MYSQL_TYPE_LONGLONG;
-	bank_baseline[5].buffer = &bank_revision;
-	bank_baseline[5].is_unsigned = true;
-	if (!prepare(&statement, connection, BANK_BASELINE_SQL) ||
-	    mysql_stmt_bind_param(statement, bank_baseline) != 0 ||
-	    mysql_stmt_execute(statement) != 0)
-		return statement_failure(statement);
-	mysql_stmt_close(statement);
-	const uint64_t prior_wallet_revision = wallet_revision;
-	const uint64_t prior_bank_revision = bank_revision;
-	wallet = prepared.after().wallet;
-	bank = prepared.after().bank;
-	wallet_revision = prepared.after().wallet_revision;
-	bank_revision = prepared.after().bank_revision;
-	MYSQL_BIND wallet_update[7] = {};
-	for (size_t index = 0; index < CURRENCY_DENOMINATION_COUNT; ++index)
-	{
-		wallet_update[index].buffer_type = MYSQL_TYPE_LONGLONG;
-		wallet_update[index].buffer = &wallet.amount[index];
-	}
-	wallet_update[4].buffer_type = MYSQL_TYPE_LONGLONG;
-	wallet_update[4].buffer = &wallet_revision;
-	wallet_update[4].is_unsigned = true;
-	wallet_update[5] = pid_binding;
-	wallet_update[6].buffer_type = MYSQL_TYPE_LONGLONG;
-	wallet_update[6].buffer = const_cast<uint64_t *>(&prior_wallet_revision);
-	wallet_update[6].is_unsigned = true;
-	if (!prepare(&statement, connection, PLAYER_UPDATE_SQL) ||
-	    mysql_stmt_bind_param(statement, wallet_update) != 0 ||
-	    mysql_stmt_execute(statement) != 0 || mysql_stmt_affected_rows(statement) != 1)
-		return statement_failure(statement);
-	mysql_stmt_close(statement);
-	MYSQL_BIND bank_update[7] = {};
-	for (size_t index = 0; index < CURRENCY_DENOMINATION_COUNT; ++index)
-	{
-		bank_update[index].buffer_type = MYSQL_TYPE_LONGLONG;
-		bank_update[index].buffer = &bank.amount[index];
-		bank_update[index].is_unsigned = true;
-	}
-	bank_update[4].buffer_type = MYSQL_TYPE_LONGLONG;
-	bank_update[4].buffer = &bank_revision;
-	bank_update[4].is_unsigned = true;
-	bank_update[5].buffer_type = MYSQL_TYPE_LONG;
-	bank_update[5].buffer = &bank_id;
-	bank_update[5].is_unsigned = true;
-	bank_update[6].buffer_type = MYSQL_TYPE_LONGLONG;
-	bank_update[6].buffer = const_cast<uint64_t *>(&prior_bank_revision);
-	bank_update[6].is_unsigned = true;
-	if (!prepare(&statement, connection, BANK_UPDATE_SQL) ||
-	    mysql_stmt_bind_param(statement, bank_update) != 0 ||
-	    mysql_stmt_execute(statement) != 0 || mysql_stmt_affected_rows(statement) != 1)
-		return statement_failure(statement);
-	mysql_stmt_close(statement);
-	uint16_t reason = static_cast<uint16_t>(payload.reason);
-	uint16_t source = static_cast<uint16_t>(command.source_site);
-	unsigned long operation_length = command.operation_id.bytes.size();
-	MYSQL_BIND ledger[24] = {};
-	ledger[0].buffer_type = MYSQL_TYPE_BLOB;
-	ledger[0].buffer = const_cast<uint8_t *>(command.operation_id.bytes.data());
-	ledger[0].buffer_length = operation_length;
-	ledger[0].length = &operation_length;
-	ledger[1] = pid_binding;
-	ledger[2].buffer_type = MYSQL_TYPE_LONG;
-	ledger[2].buffer = &bank_id;
-	ledger[2].is_unsigned = true;
-	for (size_t index = 0; index < CURRENCY_DENOMINATION_COUNT; ++index)
-	{
-		ledger[3 + index].buffer_type = MYSQL_TYPE_LONGLONG;
-		ledger[3 + index].buffer = &payload.wallet_delta.amount[index];
-		ledger[7 + index].buffer_type = MYSQL_TYPE_LONGLONG;
-		ledger[7 + index].buffer = &payload.bank_delta.amount[index];
-		ledger[11 + index].buffer_type = MYSQL_TYPE_LONGLONG;
-		ledger[11 + index].buffer = &wallet.amount[index];
-		ledger[15 + index].buffer_type = MYSQL_TYPE_LONGLONG;
-		ledger[15 + index].buffer = &bank.amount[index];
-		ledger[15 + index].is_unsigned = true;
-	}
-	ledger[19].buffer_type = MYSQL_TYPE_LONGLONG;
-	ledger[19].buffer = &wallet_revision;
-	ledger[19].is_unsigned = true;
-	ledger[20].buffer_type = MYSQL_TYPE_LONGLONG;
-	ledger[20].buffer = &bank_revision;
-	ledger[20].is_unsigned = true;
-	ledger[21].buffer_type = MYSQL_TYPE_SHORT;
-	ledger[21].buffer = &reason;
-	ledger[21].is_unsigned = true;
-	ledger[22].buffer_type = MYSQL_TYPE_LONGLONG;
-	ledger[22].buffer = &payload.reason_id;
-	ledger[23].buffer_type = MYSQL_TYPE_SHORT;
-	ledger[23].buffer = &source;
-	ledger[23].is_unsigned = true;
-	if (!prepare(&statement, connection, LEDGER_SQL) ||
-	    mysql_stmt_bind_param(statement, ledger) != 0 || mysql_stmt_execute(statement) != 0)
-		return statement_failure(statement);
-	mysql_stmt_close(statement);
-	return true;
-}
-
-bool execute_currency_state(MYSQL *connection, const critical_command &command,
-			    currency_command_result *result, unsigned int *result_code,
-			    bool *mutation_applied)
-{
-	static const char PLAYER_LOCK_SQL[] =
-		"SELECT account_name,racewar,copper,silver,gold,platinum,wallet_revision "
-		"FROM player_data WHERE pid=? FOR UPDATE";
-	static const char BANK_ENSURE_SQL[] =
-		"INSERT IGNORE INTO account_banks(account_name,racewar) VALUES(?,?)";
-	static const char BANK_LOCK_SQL[] =
-		"SELECT id,bank_copper,bank_silver,bank_gold,bank_platinum,bank_revision "
-		"FROM account_banks WHERE account_name=? AND racewar=? FOR UPDATE";
-	if (!result || !result_code || !mutation_applied)
-		return false;
-	currency_command_payload payload = {};
-	if (!currency_command_decode_payload(command, &payload))
-	{
-		errno = EINVAL;
-		return false;
-	}
-	uint32_t pid = payload.pid;
-	MYSQL_BIND pid_binding = {};
-	pid_binding.buffer_type = MYSQL_TYPE_LONG;
-	pid_binding.buffer = &pid;
-	pid_binding.is_unsigned = true;
-	MYSQL_STMT *statement = nullptr;
-	if (!prepare(&statement, connection, PLAYER_LOCK_SQL) ||
-	    mysql_stmt_bind_param(statement, &pid_binding) != 0 ||
-	    mysql_stmt_execute(statement) != 0 || mysql_stmt_store_result(statement) != 0)
-		return statement_failure(statement);
-	std::array<char, CURRENCY_ACCOUNT_NAME_MAX_BYTES + 1> player_account = {};
-	unsigned long player_account_length = 0;
-	uint8_t player_racewar = 0;
-	currency_vector wallet = {};
-	uint64_t wallet_revision = 0;
-	MYSQL_BIND player_state[7] = {};
-	player_state[0].buffer_type = MYSQL_TYPE_STRING;
-	player_state[0].buffer = player_account.data();
-	player_state[0].buffer_length = player_account.size();
-	player_state[0].length = &player_account_length;
-	player_state[1].buffer_type = MYSQL_TYPE_TINY;
-	player_state[1].buffer = &player_racewar;
-	player_state[1].is_unsigned = true;
-	for (size_t index = 0; index < CURRENCY_DENOMINATION_COUNT; ++index)
-	{
-		player_state[index + 2].buffer_type = MYSQL_TYPE_LONGLONG;
-		player_state[index + 2].buffer = &wallet.amount[index];
-	}
-	player_state[6].buffer_type = MYSQL_TYPE_LONGLONG;
-	player_state[6].buffer = &wallet_revision;
-	player_state[6].is_unsigned = true;
-	const bool player_found = mysql_stmt_bind_result(statement, player_state) == 0 &&
-				  mysql_stmt_fetch(statement) == 0 &&
-				  player_account_length < player_account.size();
-	if (!player_found)
-		last_statement_error = mysql_stmt_errno(statement) ? mysql_stmt_errno(statement) :
-								     ENOENT;
-	mysql_stmt_close(statement);
-	if (!player_found)
-		return false;
-	player_account[player_account_length] = '\0';
-	if (player_racewar != payload.racewar ||
-	    strcasecmp(player_account.data(), payload.account_name.data()))
-	{
-		errno = EACCES;
-		return false;
-	}
-	unsigned long account_length =
-		strnlen(payload.account_name.data(), CURRENCY_ACCOUNT_NAME_MAX_BYTES);
-	MYSQL_BIND bank_key[2] = {};
-	bank_key[0].buffer_type = MYSQL_TYPE_STRING;
-	bank_key[0].buffer = payload.account_name.data();
-	bank_key[0].buffer_length = account_length;
-	bank_key[0].length = &account_length;
-	bank_key[1].buffer_type = MYSQL_TYPE_TINY;
-	bank_key[1].buffer = &payload.racewar;
-	bank_key[1].is_unsigned = true;
-	if (!prepare(&statement, connection, BANK_ENSURE_SQL) ||
-	    mysql_stmt_bind_param(statement, bank_key) != 0 || mysql_stmt_execute(statement) != 0)
-		return statement_failure(statement);
-	mysql_stmt_close(statement);
-	if (!prepare(&statement, connection, BANK_LOCK_SQL) ||
-	    mysql_stmt_bind_param(statement, bank_key) != 0 || mysql_stmt_execute(statement) != 0 ||
-	    mysql_stmt_store_result(statement) != 0)
-		return statement_failure(statement);
-	uint32_t bank_id = 0;
-	currency_vector bank = {};
-	uint64_t bank_revision = 0;
-	MYSQL_BIND bank_state[6] = {};
-	bank_state[0].buffer_type = MYSQL_TYPE_LONG;
-	bank_state[0].buffer = &bank_id;
-	bank_state[0].is_unsigned = true;
-	for (size_t index = 0; index < CURRENCY_DENOMINATION_COUNT; ++index)
-	{
-		bank_state[index + 1].buffer_type = MYSQL_TYPE_LONGLONG;
-		bank_state[index + 1].buffer = &bank.amount[index];
-		bank_state[index + 1].is_unsigned = true;
-	}
-	bank_state[5].buffer_type = MYSQL_TYPE_LONGLONG;
-	bank_state[5].buffer = &bank_revision;
-	bank_state[5].is_unsigned = true;
-	const bool bank_found = mysql_stmt_bind_result(statement, bank_state) == 0 &&
-				mysql_stmt_fetch(statement) == 0;
-	if (!bank_found)
-		last_statement_error = mysql_stmt_errno(statement) ? mysql_stmt_errno(statement) :
-								     ENOENT;
-	mysql_stmt_close(statement);
-	if (!bank_found)
-		return false;
-	*result = { .wallet = wallet,
-		    .bank = bank,
-		    .wallet_revision = wallet_revision,
-		    .bank_revision = bank_revision };
-	std::optional<currency_prepared_mutation> prepared;
-	const auto preparation_result =
-		currency_prepare_mutation(payload, *result, command.expected_revisions[0].revision,
-					  command.expected_revisions[1].revision,
-					  currency_revision_policy::sql_legacy, &prepared);
-	if (preparation_result)
-	{
-		*result_code = preparation_result;
-		*mutation_applied = false;
-		return true;
-	}
-	if (!write_currency_state(connection, command, *prepared, bank_id))
-		return false;
-	*result = prepared->after();
-	*result_code = 0;
-	*mutation_applied = true;
-	return true;
-}
-
 } // namespace
-
-bool currency_repository_execute(MYSQL *connection, const critical_command &command,
-				 currency_command_result *result, unsigned int *result_code,
-				 bool *mutation_applied)
-{
-	if (!critical_command_valid(command))
-	{
-		errno = EPROTONOSUPPORT;
-		return false;
-	}
-
-	return execute_currency_state(connection, command, result, result_code, mutation_applied);
-}
 
 critical_apply_result critical_command_repository_apply(MYSQL *connection,
 							const critical_command &command)
@@ -987,12 +670,9 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 	boon_reward_payload boon_payload = {};
 	zone_touch_payload zone_payload = {};
 	session_audit_payload audit_payload = {};
-	corpse_lifecycle_payload corpse_payload = {};
 	const bool test_command = command.type == critical_command_type::test &&
 				  command.payload.size() == 8;
 	const bool epic_command = epic_command_decode_payload(command, &epic_payload);
-	const bool corpse_command =
-		corpse_lifecycle_command_decode_payload(command, &corpse_payload);
 	const bool item_command = item_transfer_command_decode_payload(command, &item_payload);
 	const bool auction_command = auction_command_decode_payload(command, &auction_payload);
 	const bool collector_command =
@@ -1004,9 +684,9 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 	const bool zone_command = zone_touch_command_decode_payload(command, &zone_payload);
 	const bool audit_command = session_audit_command_decode_payload(command, &audit_payload);
 	if (!connection ||
-	    (!test_command && !epic_command && !corpse_command && !item_command &&
-	     !auction_command && !collector_command && !combat_command && !artifact_guild_command &&
-	     !boon_command && !zone_command && !audit_command) ||
+	    (!test_command && !epic_command && !item_command && !auction_command &&
+	     !collector_command && !combat_command && !artifact_guild_command && !boon_command &&
+	     !zone_command && !audit_command) ||
 	    !critical_command_valid(command))
 		return { critical_apply_outcome::terminal_failure, 0, EINVAL };
 	std::array<uint8_t, SHA256_DIGEST_LENGTH> command_hash = {}, keys_hash = {};
@@ -1089,82 +769,6 @@ critical_apply_result critical_command_repository_apply(MYSQL *connection,
 		applied.result_size = result_payload.size();
 		std::copy(result_payload.begin(), result_payload.end(),
 			  applied.result_payload.begin());
-		return applied;
-	}
-	if (corpse_command)
-	{
-		corpse_lifecycle_result corpse_result = {};
-		std::vector<collector_command_result> collector_events;
-		uint64_t collector_revision = 0;
-		unsigned int result_code = 0;
-		bool mutation_applied = false;
-		if (!corpse_lifecycle_repository_execute(connection, command, &corpse_result,
-							 &result_code, &mutation_applied,
-							 &collector_revision, &collector_events))
-		{
-			const unsigned int database_failure = database_error(connection);
-			const unsigned int error = database_failure ? database_failure : errno;
-			rollback(connection);
-			return failure(error ? error : EIO);
-		}
-		std::array<uint8_t, CORPSE_LIFECYCLE_RESULT_BYTES> result_payload = {};
-		const size_t result_size = result_code ? 0 : result_payload.size();
-		uint64_t durable_revision = 0;
-		if (result_code == ESTALE)
-			// On a rejected corpse action the result payload is intentionally
-			// empty. Carry the revision read under the corpse lock so the live
-			// transaction can reconcile once before fencing the action.
-			durable_revision = corpse_result.corpse_revision;
-		else if (!result_code)
-			durable_revision = std::max(
-				{ corpse_result.corpse_revision, corpse_result.catalog_revision,
-				  corpse_result.corpse_owner_revision,
-				  corpse_result.room_owner_revision,
-				  corpse_result.player_owner_revision,
-				  corpse_result.wallet_revision, corpse_result.bank_revision,
-				  corpse_result.max_item_revision, collector_revision });
-		bool outbox_ok =
-			result_code ||
-			corpse_lifecycle_command_encode_result(corpse_result, &result_payload);
-		if (outbox_ok && mutation_applied)
-			outbox_ok = insert_outbox(connection, command, result_payload.data(),
-						  result_payload.size());
-		for (size_t index = 0; outbox_ok && index < collector_events.size(); ++index)
-		{
-			std::array<uint8_t, COLLECTOR_COMMAND_RESULT_BYTES> encoded = {};
-			outbox_ok = collector_command_encode_result(collector_events[index],
-								    &encoded) &&
-				    insert_outbox_event(connection, command.operation_id,
-							static_cast<uint16_t>(index + 1),
-							COLLECTOR_OUTBOX_DESTINATION,
-							COLLECTOR_OUTBOX_EVENT_MUTATED,
-							COLLECTOR_COMMAND_RESULT_VERSION,
-							encoded.data(), encoded.size());
-		}
-		if (!outbox_ok || !finish_inbox(connection, command, durable_revision, result_code,
-						result_payload.data(), result_size))
-		{
-			const unsigned int database_failure = database_error(connection);
-			const unsigned int error = database_failure ? database_failure : errno;
-			rollback(connection);
-			return failure(error ? error : EIO);
-		}
-		if (!execute(connection, "COMMIT"))
-		{
-			const unsigned int error = mysql_errno(connection);
-			if (!connection_error(error))
-				rollback(connection);
-			return { connection_error(error) ?
-					 critical_apply_outcome::ambiguous_commit :
-					 failure(error).outcome,
-				 durable_revision, error };
-		}
-		critical_apply_result applied = { result_code ?
-							  critical_apply_outcome::terminal_failure :
-							  critical_apply_outcome::applied,
-						  durable_revision, result_code };
-		applied.result_size = static_cast<uint16_t>(result_size);
-		std::copy_n(result_payload.begin(), result_size, applied.result_payload.begin());
 		return applied;
 	}
 	if (item_command)

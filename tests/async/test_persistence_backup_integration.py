@@ -228,7 +228,7 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
         backup.write_json(proof / "ISOLATED_RESTORE", {"synthetic": True})
         shutil.copytree(live, proof / "state")
         backup.run([str(ROOT / "bin/tools/qualify_flatfile_restore"), str(proof / "state")])
-        for relative in ("domains/corpse_operation_catalog", "domains/shop_trade_operations",
+        for relative in ("domains/shop_trade_operations",
                          "metadata/kingdom_realms", "domains/locker_catalog",
                          "domains/artifact-mana-81"):
             with self.subTest(catalog=relative):

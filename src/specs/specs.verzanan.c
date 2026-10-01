@@ -744,8 +744,6 @@ int dog_one(P_char ch, P_char pl, int cmd, char * /*arg*/)
 				if (af && (obj_affect_time(i, af) > 2550))
 					return TRUE;
 			}
-			if (persistence_defer_corpse_room_release(i))
-				return TRUE;
 			for (temp = i->contains; temp; temp = next_obj)
 			{
 				next_obj = temp->next_content;
@@ -821,8 +819,6 @@ int dog_two(P_char ch, P_char pl, int cmd, char * /*arg*/)
 				if (af && (obj_affect_time(i, af) > 2550))
 					return TRUE;
 			}
-			if (persistence_defer_corpse_room_release(i))
-				return TRUE;
 			for (temp = i->contains; temp; temp = next_obj)
 			{
 				next_obj = temp->next_content;

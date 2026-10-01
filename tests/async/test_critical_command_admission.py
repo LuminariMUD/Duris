@@ -154,7 +154,6 @@ for relative in (
     "src/economy/boon_reward_transaction.c",
     "src/guild/artifact_guild_transaction.c",
     "src/combat/combat_outcome_transaction.c",
-    "src/persistence/corpse_lifecycle_transaction.c",
     "src/account/session_audit_transaction.c",
 ):
     assert "critical_submit_result_keeps_operation" in (ROOT / relative).read_text()
