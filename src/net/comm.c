@@ -142,9 +142,6 @@
 #include "player/player_save_worker.h"
 #include "player/player_load_offline.h"
 #include "player/player_load_pipeline.h"
-#if !defined(__NO_TESTS__) || defined(TEST_REAL_PERSISTENCE)
-#include "core/test_async.h"
-#endif
 
 void account_player_load_complete(P_desc d, player_load_result result);
 
@@ -1046,25 +1043,9 @@ int run_the_game(int port, int sslport)
 			      "Maintenance scheduler unavailable; recurring external jobs fail closed.");
 	}
 
-	/* Boot-time scalar queue flood test: overflows the queue so the
-	 * latency_trace instrumentation can capture scalar_enq_ok/drop
-	 * and fallback_file_write statistics in the next periodic dump.
-	 * Reset the process-global trace before the test so data is clean. */
+	// Start the game loop with a clean process-global latency trace.
 	latency_trace_init();
 	latency_trace_reset();
-#ifndef __NO_TESTS__
-	test_persistence_run_one("queue_flood_scalar");
-	test_persistence_run_one("queue_routes_oversize_scalar_to_large");
-	test_persistence_run_one("queue_routes_oversize_item_to_large");
-	test_persistence_run_one("worker_scalar_fallback");
-	test_persistence_run_one("worker_scalar_fifo_after_retry");
-	test_persistence_run_one("worker_item_fifo");
-	test_persistence_run_one("worker_large_roundtrip");
-#endif
-#ifdef TEST_REAL_PERSISTENCE
-	test_real_persistence_run_all();
-	test_real_persistence_print_summary();
-#endif
 
 	game_loop(port, sslport);
 	/* Flush dirty realms and reap the placed resource nodes while the

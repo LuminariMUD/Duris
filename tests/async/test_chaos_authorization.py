@@ -33,7 +33,6 @@ def preprocessed_chaos(*defines: str) -> str:
     command = [
         "g++",
         "-std=c++20",
-        "-D__NO_TESTS__",
         *(f"-D{name}" for name in defines),
         "-I.",
         "-I../tests/async",
@@ -54,7 +53,6 @@ def expanded_trusted_expression() -> str:
     command = [
         "g++",
         "-std=c++20",
-        "-D__NO_TESTS__",
         "-I.",
         "-I../tests/async",
         "-E",

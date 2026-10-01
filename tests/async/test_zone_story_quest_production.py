@@ -19,7 +19,6 @@ with tempfile.TemporaryDirectory(prefix="duris-zone-story-quest-production-") as
             "-Werror",
             "-D__NO_MYSQL__",
             "-DTEST_MUD",
-            "-D__NO_TESTS__",
             "-Isrc",
             "tests/async/zone_story_quest_production_harness.cpp",
             "src/world/zone_story_quest_tracking.c",

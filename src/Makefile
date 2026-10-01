@@ -35,7 +35,6 @@ CFLAGS += -DTEST_MUD
 else ifneq ($(BUILD_PROFILE),production)
 $(error BUILD_PROFILE must be development or production)
 endif
-CFLAGS += -D__NO_TESTS__    # exclude built-in test hooks from maintained builds
 CFLAGS += $(EXTRA_CFLAGS)
 LDFLAGS += $(EXTRA_LDFLAGS)
 
@@ -52,7 +51,7 @@ endif
 
 #CFLAGS += -DCTF_MUD=1
 
-INCLUDES	= -I. -I../tests/async -I/usr/include/libxml2 $(MYSQL_INCLUDES)
+INCLUDES	= -I. -I/usr/include/libxml2 $(MYSQL_INCLUDES)
 
 GENERAL_LIBS    = -lm -lstdc++ -lz -lxml2 -lcrypt $(MYSQL_LIBS) -lgnutls -lssl -lcrypto -lcjson -lhiredis -lhiredis_ssl -lbsd -lcurl -pthread
 
@@ -515,7 +514,6 @@ OBJS =  $(SHIP_OBJS) \
 				 world/makeexit.o \
 				 combat/racewar_stat_mods.o \
 				 economy/nexus_stones.o \
-				 core/test_async.o \
 				 cmd/testcmd.o \
 				 cmd/wikihelp.o \
 				 cmd/information_cache.o \
