@@ -1,22 +1,9 @@
 // The driver injects the production service at SERVICE_BODY below. Currency
-// scheduling and networking are controlled; receipts and payment repositories
-// are real. Separate process invocations discard every in-memory callback.
+// scheduling and networking are controlled; receipts are real. The payment is an
+// in-memory charge, as the live service makes it, and the player's next save is
+// modeled by writing the purse once the completion ran. Separate process
+// invocations discard every in-memory callback and every unsaved charge.
 #include "item/locker_receipt.h"
-#ifdef __NO_MYSQL__
-#include "flatfile/flatfile_player_domain_repository.h"
-#else
-#include "persistence/critical_command_repository.h"
-#include <mysql.h>
-extern "C" MYSQL *sql_pool_acquire()
-{
-	return nullptr;
-}
-extern "C" void sql_pool_release(MYSQL *) {}
-extern "C" MYSQL *sql_pool_replace_connection(MYSQL *)
-{
-	return nullptr;
-}
-#endif
 #include <cassert>
 #include <atomic>
 #include <cerrno>
@@ -72,7 +59,8 @@ bool bank_purchase = false, admit = true;
 unsigned submissions = 0;
 completion_fn completion = nullptr;
 std::vector<uint8_t> completion_context;
-critical_apply_result applied;
+currency_command_result charged{};
+unsigned charge_error = 0;
 std::atomic<bool> hold_writes = false, write_entered = false, fail_writes = false;
 bool test_receipt_write(const std::string &directory, const locker_receipt &receipt)
 {
@@ -101,103 +89,34 @@ std::string item_lore_description(P_char, P_obj obj)
 	return obj->text;
 }
 
-#ifndef __NO_MYSQL__
-MYSQL *db;
-void sql(const std::string &query)
+// The purse in memory, and the purse the player's last save wrote.
+currency_command_result purse{};
+std::string saved_purse()
 {
-	if (mysql_query(db, query.c_str()))
-	{
-		std::cerr << mysql_error(db) << '\n';
-		abort();
-	}
+	return root + "/saved-purse";
 }
-int64_t scalar(const std::string &query)
+void save()
 {
-	sql(query);
-	MYSQL_RES *result = mysql_store_result(db);
-	assert(result);
-	MYSQL_ROW row = mysql_fetch_row(result);
-	assert(row && row[0]);
-	int64_t value = strtoll(row[0], nullptr, 10);
-	mysql_free_result(result);
-	return value;
+	std::ofstream file(saved_purse(), std::ios::trunc);
+	file << purse.wallet.amount[0] << ' ' << purse.bank.amount[0] << '\n';
+	assert(file.good());
 }
-#endif
-currency_command_result balances(P_char ch)
-{
-	currency_command_result result{};
-#ifdef __NO_MYSQL__
-	flatfile_player_domain_record record;
-	std::string error;
-	assert(flatfile_player_domain_load(root + "/authority", ch->pid, ch->account, 1, &record,
-					   &error) == flatfile_player_domain_result::ok);
-	for (size_t n = 0; n < 4; ++n)
-	{
-		result.wallet.amount[n] = record.domains.wallet[n];
-		result.bank.amount[n] = record.domains.bank[n];
-	}
-	result.wallet_revision = record.domains.wallet_revision;
-	result.bank_revision = record.domains.bank_revision;
-#else
-	const std::string pid = std::to_string(ch->pid);
-	result.wallet.amount[0] = scalar("SELECT copper FROM player_data WHERE pid=" + pid);
-	result.bank.amount[0] =
-		scalar("SELECT bank_copper FROM account_banks WHERE account_name='" + ch->account +
-		       "' AND racewar=1");
-	result.wallet_revision = scalar("SELECT wallet_revision FROM player_data WHERE pid=" + pid);
-	result.bank_revision =
-		scalar("SELECT bank_revision FROM account_banks WHERE account_name='" +
-		       ch->account + "' AND racewar=1");
-#endif
-	return result;
-}
-void baseline(P_char ch)
+void baseline(P_char)
 {
 	std::filesystem::create_directories(root);
 	chmod(root.c_str(), 0700);
-#ifdef __NO_MYSQL__
-	if (!std::filesystem::exists(root + "/authority"))
+	std::ifstream file(saved_purse());
+	if (!(file >> purse.wallet.amount[0] >> purse.bank.amount[0]))
 	{
-		std::filesystem::create_directory(root + "/authority");
-		chmod((root + "/authority").c_str(), 0700);
-		std::filesystem::create_directory(root + "/authority/domains");
-		chmod((root + "/authority/domains").c_str(), 0700);
-		flatfile_player_domain_record record;
-		record.pid = ch->pid;
-		record.account_name = ch->account;
-		record.racewar = 1;
-		record.domains.wallet = { 1000, 0, 0, 0 };
-		record.domains.bank = { 1000, 0, 0, 0 };
-		std::string error;
-		assert(flatfile_player_domain_establish(root + "/authority", record, &error) ==
-		       flatfile_player_domain_result::ok);
+		purse.wallet.amount[0] = 1000;
+		purse.bank.amount[0] = 1000;
+		save();
 	}
-#else
-	assert(getenv("LOCKER_TEST_DATABASE") && getenv("TEST_DB_HOST"));
-	db = mysql_init(nullptr);
-	assert(db);
-	assert(mysql_real_connect(db, getenv("TEST_DB_HOST"), getenv("TEST_DB_USER"),
-				  getenv("TEST_DB_PASSWORD"), getenv("LOCKER_TEST_DATABASE"),
-				  getenv("TEST_DB_PORT") ? atoi(getenv("TEST_DB_PORT")) : 3306,
-				  nullptr, 0));
-	// The runner creates a dedicated disposable schema; each scenario gets its own account.
-	ch->account = "receipt_" + std::to_string(std::hash<std::string>{}(root));
-	sql("INSERT IGNORE INTO accounts(account_name,password) VALUES('" + ch->account + "','')");
-	if (!scalar("SELECT COUNT(*) FROM player_data WHERE account_name='" + ch->account + "'"))
-	{
-		sql("INSERT INTO player_data(name,account_name,racewar,copper) VALUES('" +
-		    ch->account + "','" + ch->account + "',1,1000)");
-		sql("INSERT INTO account_banks(account_name,racewar,bank_copper) VALUES('" +
-		    ch->account + "',1,1000)");
-	}
-	ch->pid = scalar("SELECT pid FROM player_data WHERE account_name='" + ch->account + "'");
-#endif
 }
 bool currency_transaction_prepare_identify(P_char ch, int64_t cost, critical_command *command)
 {
 	if (cost <= 0)
 		return false;
-	auto state = balances(ch);
 	currency_command_payload payload{};
 	payload.pid = ch->pid;
 	payload.racewar = 1;
@@ -207,8 +126,7 @@ bool currency_transaction_prepare_identify(P_char ch, int64_t cost, critical_com
 	(bank_purchase ? payload.bank_delta : payload.wallet_delta).amount[0] = -cost;
 	critical_operation_id id;
 	assert(critical_operation_id_generate(&id));
-	assert(currency_command_build(command, id, payload, state.wallet_revision,
-				      state.bank_revision, critical_source_site::command,
+	assert(currency_command_build(command, id, payload, 0, 0, critical_source_site::command,
 				      critical_deadline_class::interactive));
 	command->accepted_at_usec = 123456789;
 	return critical_command_normalize(command);
@@ -231,11 +149,16 @@ bool currency_transaction_submit_prepared(P_char ch, const critical_command &com
 	++submissions;
 	if (mode == "before-payment")
 		_exit(77);
-#ifdef __NO_MYSQL__
-	applied = flatfile_player_domain_apply(root + "/authority", command);
-#else
-	applied = critical_command_repository_apply(db, command);
-#endif
+	// As currency_transaction_submit_prepared() does: charge memory at once, or refuse
+	// with ENOSPC and change nothing.
+	currency_command_payload payment{};
+	assert(currency_command_decode_payload(command, &payment));
+	charged = purse;
+	charged.wallet.amount[0] += payment.wallet_delta.amount[0];
+	charged.bank.amount[0] += payment.bank_delta.amount[0];
+	charge_error = charged.wallet.amount[0] < 0 || charged.bank.amount[0] < 0 ? ENOSPC : 0;
+	if (!charge_error)
+		purse = charged;
 	if (mode == "after-payment")
 		_exit(78);
 	completion = callback;
@@ -258,18 +181,13 @@ template <class Predicate> void until(Predicate predicate)
 		tick();
 	assert(predicate());
 }
-void finish(unsigned override_error = 0)
+void finish()
 {
 	assert(completion);
-	currency_command_result result{};
-	bool committed = applied.outcome == critical_apply_outcome::applied ||
-			 applied.outcome == critical_apply_outcome::already_applied;
-	if (committed)
-		assert(currency_command_decode_result(applied.result_payload.data(),
-						      applied.result_size, &result));
-	completion(live, committed && !override_error, result,
-		   override_error ? override_error : applied.error_code, completion_context.data(),
-		   completion_context.size());
+	completion(live, !charge_error, charge_error ? currency_command_result{} : charged,
+		   charge_error, completion_context.data(), completion_context.size());
+	// The player's next save writes the charged purse.
+	save();
 }
 void drained()
 {
@@ -393,31 +311,20 @@ int main(int argc, char **argv)
 		tick();
 		assert(output.empty());
 	}
-	auto state = balances(&ch);
-	assert(state.wallet.amount[0] == (bank_purchase ? 1000 : 825));
-	assert(state.bank.amount[0] == (bank_purchase ? 825 : 1000));
+	assert(purse.wallet.amount[0] == (bank_purchase ? 1000 : 825));
+	assert(purse.bank.amount[0] == (bank_purchase ? 825 : 1000));
 	locker_receipt saved;
 	assert(locker_receipt_read(receipt_directory, ch.pid, &saved) == flatfile_read_result::ok);
 	assert(saved.state == locker_receipt_state::delivered);
 	if (mode == "normal")
 	{
-		// Unknown payment results retain prepared evidence, never publish lore.
+		// A reread during a purchase is fulfilled by its single display.
 		output.clear();
 		obj.owner = &ch;
 		obj.text = "SECOND";
 		locker_identify(&ch, &obj, 100);
 		until([] { return submissions == 2; });
-		finish(EIO);
-		assert(output.find("SECOND") == std::string::npos);
-		live = nullptr;
-		drained();
-		live = &ch;
-		output.clear();
-		// A reread during this recovery is fulfilled by its single display.
-		locker_identify_replay(&ch);
 		locker_identify_receipt(&ch);
-		until([] { return submissions == 3; });
-		assert(applied.outcome == critical_apply_outcome::already_applied);
 		finish();
 		drained();
 		assert(output.find("SECOND") != std::string::npos);
@@ -435,7 +342,7 @@ int main(int argc, char **argv)
 		admit = false;
 		locker_identify(&ch, &obj, 1);
 		until([&] { return requests.at(ch.pid)->stage == phase::submitting; });
-		assert(submissions == 3);
+		assert(submissions == 2);
 		live = nullptr;
 		drained();
 		live = &ch;
@@ -443,7 +350,7 @@ int main(int argc, char **argv)
 		output.clear();
 		obj.text = "UNPURCHASED REPLACEMENT";
 		locker_identify(&ch, &obj, 2);
-		until([] { return submissions == 4; });
+		until([] { return submissions == 3; });
 		finish();
 		drained();
 		assert(output.find("UNPURCHASED REPLACEMENT") == std::string::npos);
@@ -473,8 +380,8 @@ int main(int argc, char **argv)
 		output.clear();
 		obj.text = "TOO EXPENSIVE";
 		locker_identify(&ch, &obj, 100000);
-		until([] { return submissions == 5; });
-		assert(applied.error_code == ENOSPC);
+		until([] { return submissions == 4; });
+		assert(charge_error == ENOSPC);
 		finish();
 		drained();
 		assert(output.find("TOO EXPENSIVE") == std::string::npos);
@@ -484,12 +391,12 @@ int main(int argc, char **argv)
 		output.clear();
 		locker_identify_replay(&ch);
 		drained();
-		assert(submissions == 5);
+		assert(submissions == 4);
 		assert(output.empty());
 		locker_identify_replay(&ch);
 		locker_identify_receipt(&ch);
 		drained();
-		assert(submissions == 5);
+		assert(submissions == 4);
 		assert(output.find("The identification payment failed") != std::string::npos);
 		output.clear();
 		ch.fighting = true;
@@ -512,12 +419,12 @@ int main(int argc, char **argv)
 		for (int n = 0; n < 10000; ++n)
 			locker_identify_pulse();
 		assert(std::chrono::steady_clock::now() - start < std::chrono::milliseconds(100));
-		assert(submissions == 5);
+		assert(submissions == 4);
 		// A failed prepare write never submits payment.
 		fail_writes = true;
 		hold_writes = false;
 		until([&] { return !requests.at(ch.pid)->io.valid(); });
-		assert(submissions == 5);
+		assert(submissions == 4);
 		live = nullptr;
 		drained();
 		live = &ch;
@@ -542,7 +449,7 @@ int main(int argc, char **argv)
 		ch.desc = nullptr;
 		output.clear();
 		drained();
-		assert(output.empty() && submissions == 5);
+		assert(output.empty() && submissions == 4);
 		ch.desc = &descriptor;
 		// An explicit read can claim a waiting ID when a slot has opened. It
 		// consumes the deferred entry instead of scheduling a second recovery.
@@ -564,7 +471,7 @@ int main(int argc, char **argv)
 		locker_identify_receipt(&ch);
 		assert(deferred_replays.count(ch.pid) == 0);
 		drained();
-		assert(submissions == 5);
+		assert(submissions == 4);
 		assert(output.find("The identification payment failed") != std::string::npos);
 		assert(output.find("The identification payment failed") ==
 		       output.rfind("The identification payment failed"));
@@ -575,9 +482,6 @@ int main(int argc, char **argv)
 	}
 	locker_identify_shutdown();
 	assert(requests.empty() && deferred_replays.empty());
-#ifndef __NO_MYSQL__
-	mysql_close(db);
-#endif
 	std::cout << (saturated ? "saturated-" : "") << mode << " "
 		  << (bank_purchase ? "bank" : "wallet") << " receipt/payment checks passed\n";
 }
