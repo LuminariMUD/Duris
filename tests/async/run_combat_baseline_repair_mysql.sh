@@ -41,13 +41,15 @@ MYSQL=(mysql -h127.0.0.1 -P"$db_port" -uroot -N -B "$database_name")
 MYSQL_PWD="$password" mysql -h127.0.0.1 -P"$db_port" -uroot \
 	-e "CREATE DATABASE $database_name;"
 MYSQL_PWD="$password" "${MYSQL[@]}" <"$ROOT/migrations/bootstrap_multithread_safe.sql"
+# UnrelatedHero has played since its baselines: saves write balances from memory
+# without ledger rows, so they differ from the openings and nothing explains them.
 MYSQL_PWD="$password" "${MYSQL[@]}" <<'SQL'
 INSERT INTO player_data
   (pid,name,account_name,active,copper,silver,gold,platinum,wallet_revision,
    epics,epic_revision,frags,frag_revision)
 VALUES
   (101,'SafeHero','Fixture',1,1,2,3,4,0,5,0,7,0),
-  (200,'UnrelatedHero','Other',0,9,8,7,6,0,4,0,3,0);
+  (200,'UnrelatedHero','Other',0,19,8,7,6,0,14,0,13,0);
 INSERT INTO account_characters(account_name,pid,char_name,blocked,deleted_at)
 VALUES ('Fixture',101,'SafeHero',0,NULL);
 INSERT INTO currency_wallet_baseline

@@ -680,8 +680,9 @@ WRITERS_QUIESCED=TRUE COMBAT_BASELINE_BACKUP_ID='<backup-generation>' \
 ```
 
 The insert-only transaction preserves existing baselines, verifies locked player and
-ledger state, fails on a conflicting baseline, and rolls back unless character readiness
-plus combat, currency, epic, item-ownership, and required-FK reconciliation all pass.
+ledger state, fails on a conflicting baseline, and rolls back unless character readiness,
+wallet, bank and epic baseline coverage, and the required foreign keys all pass. Balances
+are saved from memory without ledger rows, so it does not compare them with the ledgers.
 It writes those aggregate results to an owner-only receipt. The required rollback file
 must contain reviewed inverse DML limited to the artifact's exact PIDs, values, and
 revisions, with guards rejecting any subsequent combat revision or ledger activity. A
@@ -689,7 +690,7 @@ repeat is idempotent only when the existing row exactly matches the reviewed ope
 This command refuses production targets; it is rehearsal evidence, not permission to
 repair production. Before any separately authorized production repair, retain the
 backup, protected per-PID decisions, reviewed forward and rollback DML, all digests, and
-the rehearsal receipt. Afterwards rerun the same full reconciliation set. Never delete
+the rehearsal receipt. Afterwards rerun the same checks. Never delete
 or rewrite ledger history to make readiness pass.
 
 Loopback combat-baseline clone targets are permitted directly. A remote clone additionally

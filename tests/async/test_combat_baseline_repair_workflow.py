@@ -25,7 +25,7 @@ def environment(tool_dir: pathlib.Path, classification: str) -> dict[str, str]:
             "ENVIRONMENT": "test",
             "CLASSIFICATION_ROWS": classification,
             "CHECK_ROW": "1\t0\t0\t0",
-            "RECONCILIATION_ROW": "0\t0\t0\t0\t0\t0\t0\t0\t0\t0",
+            "RECONCILIATION_ROW": "0\t0\t0\t0",
             "MYSQL_HELP": "--ssl-mode",
         }
     )
@@ -130,7 +130,7 @@ with tempfile.TemporaryDirectory(prefix="duris-combat-baseline-") as temporary:
     assert (private / "safe.tsv.applied").stat().st_mode & 0o077 == 0
     receipt = (private / "safe.tsv.applied").read_text()
     assert "rollback_evidence_sha256=" in receipt
-    assert "combat_mismatch=0" in receipt
+    assert "bank_missing=0" in receipt
     assert "fk_invalid=0" in receipt
 
     repeated = subprocess.run(
@@ -178,6 +178,9 @@ assert "COMBAT_BASELINE_ROLLBACK_EVIDENCE" in source
 assert "DB_ALLOWED_TARGETS" in source
 assert 'approved_target="$DB_HOST:$db_port/$DB_NAME"' in source
 assert "reconciliation_predicate" in source
+# Saves write balances from memory without ledger rows, so ledger arithmetic
+# would refuse every repair on a database that has been played.
+assert "FROM currency_ledger" not in source and "FROM epic_ledger" not in source
 assert "information_schema.referential_constraints" in source
 assert "--ssl-mode=VERIFY_IDENTITY" in source
 assert "--ssl-verify-server-cert" in source
