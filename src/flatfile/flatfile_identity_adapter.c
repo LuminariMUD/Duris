@@ -58,12 +58,3 @@ bool flatfile_player_identity_highest(int32_t *pid, std::string *error)
 	return root && flatfile_identity_current_highest_pid(root, pid, error) ==
 			       flatfile_identity_result::ok;
 }
-
-bool flatfile_player_identity_claim(int32_t pid, const char *name, const char *account,
-				    std::string *error)
-{
-	const char *root = state_root();
-	return root && name && account &&
-	       flatfile_identity_claim(root, pid, name, account, error) ==
-		       flatfile_identity_result::ok;
-}

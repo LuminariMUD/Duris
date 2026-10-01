@@ -542,38 +542,6 @@ flatfile_identity_result flatfile_identity_lookup_pid(const std::string &root, i
 }
 
 flatfile_identity_result
-flatfile_identity_lookup_pid_locked(const std::string &root,
-				    const flatfile_identity_lock &identity_lock,
-				    const flatfile_authority_lock &authority_lock, int32_t pid,
-				    flatfile_identity_record *record, std::string *error)
-{
-	if (!record || pid <= 0 || !identity_lock.matches(root) || !authority_lock.matches(root))
-		return flatfile_identity_result::invalid;
-	try
-	{
-		const auto recovered =
-			flatfile_authority_transaction_recover(root, authority_lock, error);
-		if (recovered != flatfile_authority_transaction_result::ok)
-			return recovered == flatfile_authority_transaction_result::io_error ?
-				       flatfile_identity_result::io_error :
-				       flatfile_identity_result::invalid;
-		identity_catalog catalog;
-		const auto result = load_catalog(root, &catalog, error);
-		if (result != flatfile_identity_result::ok)
-			return result;
-		auto *entry = find_pid(&catalog, pid);
-		if (!entry)
-			return flatfile_identity_result::not_found;
-		*record = std::move(*entry);
-		return flatfile_identity_result::ok;
-	}
-	catch (const std::bad_alloc &)
-	{
-		return flatfile_identity_result::io_error;
-	}
-}
-
-flatfile_identity_result
 flatfile_identity_list_account(const std::string &root, const std::string &account,
 			       std::vector<flatfile_identity_record> *records, std::string *error)
 {
@@ -646,77 +614,6 @@ flatfile_identity_result flatfile_identity_prepare_sync_account(
 	operation->filename = identity_filename;
 	operation->bytes = std::move(bytes);
 	return flatfile_identity_result::ok;
-}
-
-flatfile_identity_result flatfile_identity_rename(const std::string &root, int32_t pid,
-						  const std::string &expected_name,
-						  const std::string &new_name, std::string *error)
-{
-	std::string expected_key, new_key;
-	if (pid <= 0 || !canonical_name(expected_name, &expected_key) ||
-	    !canonical_name(new_name, &new_key))
-		return flatfile_identity_result::invalid;
-	return mutate_catalog(
-		root,
-		[&](identity_catalog *catalog)
-		{
-			flatfile_identity_record *entry = find_pid(catalog, pid);
-			std::string current_key;
-			if (!entry || !entry->active)
-				return flatfile_identity_result::not_found;
-			if (!canonical_name(entry->name, &current_key) ||
-			    current_key != expected_key)
-				return flatfile_identity_result::conflict;
-			flatfile_identity_record *collision = find_active_name(catalog, new_name);
-			if (collision && collision->pid != pid)
-				return flatfile_identity_result::conflict;
-			entry->name = new_name;
-			return flatfile_identity_result::ok;
-		},
-		error);
-}
-
-flatfile_identity_result flatfile_identity_set_blocked(const std::string &root, int32_t pid,
-						       bool blocked, std::string *error)
-{
-	if (pid <= 0)
-		return flatfile_identity_result::invalid;
-	return mutate_catalog(
-		root,
-		[&](identity_catalog *catalog)
-		{
-			flatfile_identity_record *entry = find_pid(catalog, pid);
-			if (!entry || !entry->active)
-				return flatfile_identity_result::not_found;
-			entry->blocked = blocked;
-			return flatfile_identity_result::ok;
-		},
-		error);
-}
-
-flatfile_identity_result flatfile_identity_remove(const std::string &root, int32_t pid,
-						  const std::string &expected_name,
-						  std::string *error)
-{
-	std::string expected_key;
-	if (pid <= 0 || !canonical_name(expected_name, &expected_key))
-		return flatfile_identity_result::invalid;
-	return mutate_catalog(
-		root,
-		[&](identity_catalog *catalog)
-		{
-			flatfile_identity_record *entry = find_pid(catalog, pid);
-			std::string current_key;
-			if (!entry || !entry->active)
-				return flatfile_identity_result::not_found;
-			if (!canonical_name(entry->name, &current_key) ||
-			    current_key != expected_key)
-				return flatfile_identity_result::conflict;
-			entry->active = false;
-			entry->blocked = true;
-			return flatfile_identity_result::ok;
-		},
-		error);
 }
 
 flatfile_identity_result

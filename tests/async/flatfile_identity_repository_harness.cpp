@@ -104,32 +104,6 @@ int main(int argc, char **argv)
 			memberships[0].last_save == 700,
 		"account membership metadata did not round trip");
 
-	require(flatfile_identity_rename(root.string(), alpha_pid, "Alpha", "Gamma", &error) ==
-			flatfile_identity_result::ok,
-		"identity rename failed: " + error);
-	require(flatfile_identity_lookup_name(root.string(), "Alpha", &record, &error) ==
-			flatfile_identity_result::not_found,
-		"old identity name remained active");
-	require(flatfile_identity_rename(root.string(), alpha_pid, "Gamma", "Beta", &error) ==
-			flatfile_identity_result::conflict,
-		"rename collision was accepted");
-	require(flatfile_identity_set_blocked(root.string(), alpha_pid, true, &error) ==
-			flatfile_identity_result::ok,
-		"identity block failed: " + error);
-	require(flatfile_identity_lookup_pid(root.string(), alpha_pid, &record, &error) ==
-				flatfile_identity_result::ok &&
-			record.blocked,
-		"blocked state did not round trip");
-	require(flatfile_identity_remove(root.string(), beta_pid, "Beta", &error) ==
-			flatfile_identity_result::ok,
-		"identity removal failed: " + error);
-	require(flatfile_identity_lookup_name(root.string(), "Beta", &record, &error) ==
-			flatfile_identity_result::not_found,
-		"removed name remained active");
-	require(flatfile_identity_lookup_pid(root.string(), beta_pid, &record, &error) ==
-				flatfile_identity_result::ok &&
-			!record.active && record.blocked,
-		"PID tombstone was not retained");
 	{
 		flatfile_identity_lock identity_lock;
 		flatfile_authority_lock authority_lock;
@@ -138,7 +112,7 @@ int main(int argc, char **argv)
 				authority_lock.acquire(root.string(), &error),
 			"could not acquire prepared-removal locks: " + error);
 		require(flatfile_identity_prepare_remove(
-				root.string(), identity_lock, authority_lock, alpha_pid, "Gamma",
+				root.string(), identity_lock, authority_lock, alpha_pid, "Alpha",
 				&operation, &error) == flatfile_identity_result::ok &&
 				operation.store == flatfile_authority_store::identities &&
 				operation.kind == flatfile_authority_operation_kind::write &&
