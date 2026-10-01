@@ -2183,3 +2183,36 @@ knowing", the epic read model's balance sentence and "Revisioned player checkpoi
 terminal saves" (now "Player checkpoints and terminal saves") still described the database as
 the authority, so all of them were rewritten to [How it works](persistence-plan.md#how-it-works).
 The documentation and siege removal contracts, which read the file, pass. Commit: `838c0e827`.
+
+### The rest of the docs and a dead branch (done)
+
+Found while bringing DATABASE.md up to date, each in its own commit:
+
+- **The persistence reference docs** (`cb740d18d`). ARCHITECTURE.md, PLAYER_SAVE_PIPELINE.md,
+  the runbook and EVENTS.md still described the journal dispatcher, revision-fenced keyed
+  save workers, terminal saves that keep the character until the database acknowledges, the
+  legacy compatibility queues, operator steps to preserve and replay journals, and alerts the
+  server no longer raises (`fallback_saved`, `shutdown_cancelled=1`). They now describe the
+  one writer; terminal saves that queue and leave at once; a shutdown that gives the writer
+  30 seconds and always goes; a copyover that waits the same 30 seconds and is called off
+  when the writer cannot drain (`copyover_save()`); and the save alerts raised now. This also
+  corrects DATABASE.md, which had said copyover never waits on a failing save.
+- **The remaining docs** (`9b91a4533`): CONVENTIONS.md (it told developers a failed terminal
+  save must keep the character), incident response, the starter grants (journal admission
+  and the uncertainty gate), CHAOS mode, output preferences, epic stone recovery, the
+  telemetry storage design (it cited a `critical_command_journal.c` that no longer exists),
+  playtime and the collector design (its purchase no longer debits the wallet). Kept: the
+  flat-file authority journal (`flatfile_authority_transaction.c`), backup contents, and the
+  dated records (`docs/adr`, `docs/records`, `docs/gates`,
+  `docs/testing/CRITICAL_COMPLETION_CAPACITY.md`).
+- **The zone touch's dead retry branch** (`7a1613c21`). The coordinator hands a retryable or
+  ambiguous result back to the writer, which retries it, so the game thread only receives
+  final completions; `zone_touch_transaction_handle_completions()` still had an "awaiting
+  recovery" branch that only the stone runtime test's injected completion reached. The
+  linker pass cannot see a dead branch inside a live function. Grepping the game-side
+  completion handlers for `critical_apply_outcome::retryable_failure` and `ambiguous_commit`
+  found no other.
+
+On the way, a flat-file-only wait was checked and kept: a new character's first save waits
+up to five seconds for the local write (`writeCharacter()` in `src/core/files.c`), because
+its domains are read back right after. It is a file write, not a database query.
