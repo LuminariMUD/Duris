@@ -17,9 +17,6 @@ enter_game = extract_function("nanny.c", "void enter_game(P_desc d)")
 account_load = extract_function(
     "account.c", "P_char load_char_into_game(struct acct_chars *c, P_desc d)"
 )
-legacy_complete = extract_function(
-    "nanny.c", "void nanny_player_load_complete(P_desc d, player_load_result result)"
-)
 die = extract_function("fight.c", "void die(P_char ch, P_char killer)")
 
 # The terminal save must remain before the live-character 1 HP assignment: a
@@ -40,10 +37,9 @@ assert ": MAX(0, GET_MAX_HIT(ch) - GET_HIT(ch))" in compact_capture
 assert "GET_HIT(ch) = hit_difference;" in materialize
 assert "GET_HIT(ch) = GET_MAX_HIT(ch) - hit_difference;" not in materialize
 
-# Account and legacy logins must both preserve the save intent for room routing,
-# messaging, and the no-offline-regeneration death branch.
+# The login must preserve the save intent for room routing, messaging, and the
+# no-offline-regeneration death branch.
 assert "d->rtype = loaded.snapshot.save_intent;" in account_load
-assert "d->rtype = result.snapshot.save_intent;" in legacy_complete
 assert "d->rtype == RENT_DEATH" in enter_game
 assert "r_room = real_room(GET_BIRTHPLACE(ch));" in enter_game
 assert "You rejoin the land of the living" in enter_game

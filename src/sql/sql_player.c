@@ -358,10 +358,6 @@ bool sql_delete_guild(unsigned int guild_id)
 	return false;
 }
 
-bool sql_load_account_bank(const char *account_name, int racewar, P_char ch)
-{
-	return false;
-}
 bool sql_account_bank_deposit_balances(const char *account_name, int racewar,
 				       const AccountBankBalances *amounts,
 				       AccountBankBalances *committed)
@@ -8731,56 +8727,6 @@ bool sql_ensure_account_bank(const char *account_name, int racewar)
 }
 
 static bool sql_parse_account_bank_balance(const char *value, int *balance);
-
-bool sql_load_account_bank(const char *account_name, int racewar, P_char ch)
-{
-	if (!DB || !account_name || !*account_name || !ch)
-		return false;
-	GET_BALANCE_COPPER(ch) = 0;
-	GET_BALANCE_SILVER(ch) = 0;
-	GET_BALANCE_GOLD(ch) = 0;
-	GET_BALANCE_PLATINUM(ch) = 0;
-	ch->only.pc->bank_revision = 0;
-
-	char *esc_name = sql_escape_string(account_name);
-	if (!esc_name)
-		return false;
-
-	char query[512];
-	snprintf(query, sizeof(query),
-		 "select bank_copper, bank_silver, bank_gold, bank_platinum, bank_revision "
-		 "from account_banks where account_name='%s' and racewar=%d",
-		 esc_name, racewar);
-
-	free(esc_name);
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	if (row)
-	{
-		AccountBankBalances parsed = {};
-		bool valid = sql_parse_account_bank_balance(row[0], &parsed.copper) &&
-			     sql_parse_account_bank_balance(row[1], &parsed.silver) &&
-			     sql_parse_account_bank_balance(row[2], &parsed.gold) &&
-			     sql_parse_account_bank_balance(row[3], &parsed.platinum);
-		const uint64_t bank_revision = sql_row_ulong(row, 4, 0);
-		mysql_free_result(result);
-		if (!valid)
-			return false;
-		GET_BALANCE_COPPER(ch) = parsed.copper;
-		GET_BALANCE_SILVER(ch) = parsed.silver;
-		GET_BALANCE_GOLD(ch) = parsed.gold;
-		GET_BALANCE_PLATINUM(ch) = parsed.platinum;
-		ch->only.pc->bank_revision = bank_revision;
-		return true;
-	}
-
-	mysql_free_result(result);
-	return false;
-}
 
 static bool sql_parse_account_bank_balance(const char *value, int *balance)
 {

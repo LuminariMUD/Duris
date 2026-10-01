@@ -171,7 +171,6 @@ struct AccountBankBalances
 	int platinum;
 };
 
-bool sql_load_account_bank(const char *account_name, int racewar, P_char ch);
 long long sql_account_bank_deposit(const char *account_name, int racewar, int coin_type,
 				   int amount);
 bool sql_account_bank_deposit_balances(const char *account_name, int racewar,

@@ -147,7 +147,6 @@
 #endif
 
 void account_player_load_complete(P_desc d, player_load_result result);
-void nanny_player_load_complete(P_desc d, player_load_result result);
 
 /* external variables */
 
@@ -2111,14 +2110,8 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 				if (descriptor->player_load_request_id ==
 				    load_completions[index].request_id)
 				{
-					if (descriptor->player_load_mode == PLAYER_LOAD_MODE_LEGACY)
-						nanny_player_load_complete(
-							descriptor,
-							std::move(load_completions[index]));
-					else
-						account_player_load_complete(
-							descriptor,
-							std::move(load_completions[index]));
+					account_player_load_complete(
+						descriptor, std::move(load_completions[index]));
 					delivered = true;
 					break;
 				}

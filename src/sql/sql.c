@@ -351,44 +351,6 @@ const char *sql_select_IP_info(P_char ch, char *buf, size_t bufSize, time_t *las
 	return buf;
 }
 
-int sql_find_racewar_for_ip(char *ip, int *racewar_side)
-{
-	if (racewar_side)
-		*racewar_side = RACEWAR_NONE;
-	if (!ip || !*ip || !racewar_side)
-		return -1;
-
-	flatfile_ip_activity_record record;
-	std::string error;
-	const auto loaded = flatfile_ip_activity_find_latest(persistence_mode_flatfile_root(), ip,
-							     &record, &error);
-	if (loaded == flatfile_ip_activity_result::not_found)
-		return 0;
-	if (loaded != flatfile_ip_activity_result::ok)
-	{
-		logit(LOG_DEBUG, "sql_find_racewar_for_ip: failed to load IP activity: %s",
-		      error.c_str());
-		return -1;
-	}
-
-	*racewar_side = record.racewar_side;
-	const int64_t now = static_cast<int64_t>(time(nullptr));
-	const int64_t hour_ago = now - 60 * 60;
-	if (record.last_disconnect > record.last_connect && record.last_disconnect <= hour_ago)
-	{
-		*racewar_side = RACEWAR_NONE;
-		return 0;
-	}
-	if (record.last_disconnect < record.last_connect)
-		return 60 * 60;
-	const int64_t remaining = record.last_disconnect - hour_ago;
-	if (remaining <= 0)
-	{
-		*racewar_side = RACEWAR_NONE;
-		return 0;
-	}
-	return static_cast<int>(std::min<int64_t>(remaining, 60 * 60));
-}
 bool qry_at(struct persistence_query_site site, const char *format, ...)
 {
 	(void)site;
@@ -3056,34 +3018,6 @@ const char *sql_select_IP_info(P_char ch, char *buf, size_t bufSize, time_t *las
 		*lastDisconnect =
 			found->second.last_disconnect ? now - found->second.last_disconnect : 0;
 	return buf;
-}
-
-// Returns the time needed *in seconds) to timeout the racewar side associated with an ip.
-// Or 0 if no character has been on within an hour.
-int sql_find_racewar_for_ip(char *ip, int *racewar_side)
-{
-	const ip_activity *latest = NULL;
-	for (const auto &entry : ip_activity_by_pid)
-		if (entry.second.ip == ip &&
-		    (!latest || entry.second.last_connect > latest->last_connect))
-			latest = &entry.second;
-	if (!latest)
-		return RACEWAR_NONE;
-
-	const time_t last_connect = latest->last_connect;
-	const time_t last_disconnect = latest->last_disconnect;
-	const time_t hour_ago = time(NULL) - 60 * 60;
-	*racewar_side = latest->racewar_side;
-
-	// If they've been offline for an hour or more, return a 0 timer.
-	if (last_disconnect > last_connect && last_disconnect <= hour_ago)
-	{
-		*racewar_side = RACEWAR_NONE;
-		return 0;
-	}
-
-	// Return an hour if they're still online, or time delta to an hour offline.
-	return (last_disconnect < last_connect) ? 60 * 60 : last_disconnect - hour_ago;
 }
 
 void perform_wiki_search(P_char ch, const char *query)
