@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-28
 
-**Status (2026-09-30):**
+**Status (2026-10-01):**
 
 - **Phase 1** ([!2](https://gitlab.com/max757/duris/-/merge_requests/2)) and **Phase 2 steps 1 to
   7 and the foundation of step 8** ([!3](https://gitlab.com/max757/duris/-/merge_requests/3)) are
@@ -12,7 +12,7 @@
   [!4](https://gitlab.com/max757/duris/-/merge_requests/4)) is on `master` since `60f56fb5b`,
   after one review round. **Phase 2 is done.** See
   [Step 8](#step-8-game-thread-sql-off-the-loop-done).
-- **Phase 3** is in progress on `fix/7-persistence-phase-3`; see
+- **Phase 3** is in progress on `fix/7-persistence-phase-3` (steps 1 to 7 done); see
   [Phase 3 progress](#phase-3-progress) for its steps and where they stand.
 
 See [Phase 1 progress](#phase-1-progress) and [Phase 2 progress](#phase-2-progress) for what each
@@ -2279,7 +2279,8 @@ The steps, in order (later ones delete what earlier ones leave unreachable):
    [Step 6](#step-6-the-collectors-death-intake-done)): the death enrolled with the corpse's save
    again, and collection reading the live corpse. `item_ownership_runtime.c` stays: shops,
    auctions and the creation grants still rely on it (see the step).
-7. **The game thread's dead SQL** (todo): the functions
+7. **The game thread's dead SQL** (done, see
+   [Step 7](#step-7-the-game-threads-dead-sql-done)): the functions
    [What is left after step 8](#what-is-left-after-step-8) names, and whatever else of the
    persistence code the linker drops after steps 1 to 6.
 8. **Flat-file lockers load their items** (todo).
@@ -2537,6 +2538,87 @@ Each step does its area with its tests, in its own commits, and passes the gates
   corpse writer now calls; it passes alone after the fix). The new MariaDB collector journey
   passed in that run.
 
+#### Step 7: the game thread's dead SQL (done)
+
+Each item is its own commit on `fix/7-persistence-phase-3`; the found bugs are fixed in theirs.
+
+- **The legacy event log** (`24c5aeb78`): the item, scalar and large-event queues
+  (`persistence_queue.c`), their workers, heartbeat check and flat fallback log
+  (`logs/log/events`, `LOG_EVENT`), the raw SQL executor (`sql_persistence_raw.c`), the SQL event
+  writers and the persistence connection they borrowed, the pwipe quiescence and fallback
+  quarantine, the three queue lines in `world persistence`, and
+  `scripts/inspect_legacy_persistence_fallback.sh`. Then the boot-time stress hooks that ran
+  the queue's tests in a build without `__NO_TESTS__` (`src/core/test_async.*`, the define and
+  the `tests/async` include path; `2f8a6349d`).
+- **The non-account login path** (`c382052a3`): `USE_ACCOUNT` is always defined, so
+  `select_name()`, `select_pwd()`, `select_main_menu()`, their reconnect, one-hour and multiplay
+  checks, `PLAYER_LOAD_MODE_LEGACY` and its completion never ran; nor did `enter_game()`'s
+  non-snapshot entry (the bank load, `reset_char()`, the item restores) for a character with a
+  level. Gone with them: `sql_load_account_bank()`, `restorePasswdOnly()`,
+  `sql_find_racewar_for_ip()` and the flat-file IP lookup.
+- **The pfile import and the legacy player writer** (`d62c44713`): `--migrate-all`, and the
+  synchronous `sql_save_player()` and `sql_load_player()` with their components, the batched
+  item writer, the row readers and the verifier, and the account-menu cache those saves queued
+  at commit.
+- **The listed game-thread SQL** (`d0d59ce10`): the MariaDB auction expiry and `*_legacy`
+  auction commands, the boon progress and shop inserts, the epic zone balance, alignment,
+  frequency and modifier updates, the outpost resources, the poll expiry sweep, the guild,
+  locker, spellbook and shopkeeper deletes and the shopkeeper restore, `arti_remove_sql()`, the
+  account bank functions, `update_nexus_stat_mods()`, `event_write_statistic()`, the other
+  `sql.c` functions nothing calls and the unused pfile writers, pet and ship registry functions
+  in `files.c`. Then the boon progress notice only the deleted legacy completion sent, whose
+  `get_boon_progress_data()` queried MariaDB on the game thread (`c37ec9d0d`).
+- **Linker-dead persistence code** (`9920cef74`, `13cdb55a6`, `21017b01a`, `2ad78293e`): the
+  flat-file identity mutations (deletion and accounts use the prepared operations); the
+  inflight revision API and the state only it and tests read (the revision state keeps the
+  current, acknowledged and written revisions, the unacknowledged components, the
+  per-component revisions and the overflow flag); the collector catalog codec, the critical
+  outbox's reconcile and dead-letter retry (nothing exposed them), the all-component dirty mark
+  and the unsliced dirty flush, the pool counters, the session audit result decoder, the
+  flat-file artifact release and combined player/locker removal, the flat-file shopkeeper save
+  module, three copyover buffer helpers and the random boon routine (it returned at once); and
+  `apply_items()`'s half-graph branch, which only the deleted journal records could reach.
+- Kept, though nothing in the server calls them: test-only API (the reset, count, health and
+  status hooks, the fixture builders such as the `establish` and `list` functions and
+  `flatfile_identity_claim()`, the MariaDB harnesses' connection-level `*_repository_apply()`
+  and `player_snapshot_repository_write_pets()`, the copyover mob encoder the singleton harness
+  pairs with the live decoder), and `restoreItemsOnly()` with its helpers, which the pfile tool
+  reads old pfiles with. Dead code outside the persistence reset stays out of scope.
+- Found and fixed while doing this:
+  - A save that failed with `ENOENT` set `CHAR_RFLAG_NO_DB_BASELINE` on both backends; on
+    MariaDB, which has no synchronous first save, that made every later save of the character
+    do nothing. The re-arm is flat-file only (`41f93988d`).
+  - Nothing has called the poll expiry sweep since the maintenance scheduler, and on flat-file
+    it was the only thing that closed an expired poll (`poll vote` still counted votes). The
+    flat-file readers now close a poll once it expires, as MariaDB's memory does
+    (`ecbfad024`).
+  - The scheduler's `auction_due_scan` and `boon_scan` jobs only ever ran against MariaDB: on
+    flat-file they asked for a SQL connection and retried forever, and the flat-file auction
+    activity (expiry and its recoverable notices, written a day after the scheduler) and the
+    flat-file boon expiry never had a caller. On flat-file the worker now completes those two
+    jobs at once and the game thread runs the flat-file activity when the result arrives
+    (`9b1c519dd`). The other SQL jobs (epic zones, level cap, task catalog, statistics) never
+    had a flat-file implementation; they still fail retryably there, as before.
+  - Only the non-account login path, which never ran, honored the database creation lock
+    (`mud_info` `lock` set to `create`); the account path honored only the in-game toggle and
+    WebSocket creation neither. Both creation paths now refuse a new character under either
+    lock (`381ff8783`).
+- Left for a decision, not done: since the accounting foundation went, the opening baselines
+  (`currency_wallet_baseline`, `epic_balance_baseline`, `combat_frag_baseline`) are written for
+  every player but read only by the boot coverage probes and the account projection repair,
+  and nothing writes the event log's tables any more (`sql_pwipe()` still empties them).
+  Removing either is a schema change: a migration, the bootstrap, the probes, the lifecycle
+  manifest and `scripts/import_legacy_dump.py`.
+- Tests: the event log's tests (13 files and `test_persistence.{c,h}`), the legacy writer's
+  (`test_sql_player_dirty_bits.py`, `test_player_replacement_state.py`,
+  `test_playtime_legacy_sql.py`) and `test_flatfile_shopkeeper_save.py` are deleted; the mixed
+  contracts and harnesses keep their other checks or follow the new shape.
+- Verified: both server builds, the pfile build, `./scripts/format.sh --all --check`,
+  `make test-db` (34 of 34) and `make test-all` (642 of 661). The 19 failures were contracts that
+  still named deleted code: three went with it, 16 were updated and pass alone
+  (`67962c4da`); the information cache contract's check also found the creation lock bug
+  above.
+
 ### Finding dead code
 
 ```sh
@@ -2555,4 +2637,7 @@ function nothing reaches in that build. A function is dead when every build that
 removes it; `c++filt` turns the symbols back into names. Compare demangled names with
 `st_mysql` read as `MYSQL`: the flat-file build stubs `MYSQL`, so a function taking a
 connection has a different mangled name in each build. A function only a test calls counts as
-dead: its test goes with it.
+dead and goes with its test, unless it is test API (a reset, count or health hook, a fixture
+builder or a harness's seam): those stay. The list is a lead, not proof: read the source
+before cutting (a function reached only through a dead branch shows as live, and an inlined
+one as dead).
