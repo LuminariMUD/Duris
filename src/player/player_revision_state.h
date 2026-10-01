@@ -41,6 +41,9 @@ struct player_revision_snapshot
 	int pid;
 	player_revision_t current_revision;
 	player_revision_t acknowledged_revision;
+	// The newest revision the writer has written. acknowledged_revision moves when the
+	// writer accepts a save; this one when the save has landed.
+	player_revision_t written_revision;
 	player_revision_t queued_revision;
 	player_revision_t inflight_revision;
 	player_component_mask_t dirty_components;
@@ -63,6 +66,7 @@ bool player_revision_acknowledge_durable(int pid, player_revision_t revision,
 					 player_component_mask_t components);
 bool player_revision_fail_inflight(int pid, player_revision_t revision,
 				   player_component_mask_t components);
+bool player_revision_record_written(int pid, player_revision_t revision);
 bool player_revision_snapshot_copy(int pid, struct player_revision_snapshot *snapshot_out);
 void player_revision_forget(int pid);
 void player_revision_reset_for_tests(void);

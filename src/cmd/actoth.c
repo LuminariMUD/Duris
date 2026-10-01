@@ -1832,7 +1832,7 @@ static void begin_manual_save_status_wait(P_char ch)
 	status->revision = revision.current_revision;
 }
 
-/** Report durability or timeout to the original live character, then retire its status. */
+/** Report the save landing, or a timeout, to the original live character, then retire its status. */
 static void check_manual_character_save_status(struct manual_save_status_slot *status)
 {
 	const int pid = status->pid;
@@ -1845,7 +1845,7 @@ static void check_manual_character_save_status(struct manual_save_status_slot *s
 		return;
 	}
 	if (status->revision && player_revision_snapshot_copy(pid, &revision) &&
-	    revision.acknowledged_revision >= status->revision)
+	    revision.written_revision >= status->revision)
 	{
 		PlayerOutputMessage(ch, OutputChannel::SystemFeedback, OutputRole::Success)
 			.literal("Save complete for ")

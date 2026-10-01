@@ -167,6 +167,8 @@ int main()
     assert(player_revision_snapshot_copy(41, &revision));
     assert(revision.current_revision == 8 && revision.acknowledged_revision == 8);
     assert(!revision.unacknowledged_components && !revision.dirty_components);
+    // Accepted is not written: `save` reports completion on the written revision.
+    assert(revision.written_revision == 7);
     assert(player_save_pipeline_target_save_pending(41));
     // A newer save queues behind what was queued after the owner's save, and replaces
     // the owner's save only when that is the last one queued.
@@ -196,6 +198,8 @@ int main()
     // Bob's first save was being written; everything else in capture order.
     assert((take_order() == std::vector<std::string>{"42:1", "41:8", "44:1", "41:10", "42:2"}));
     assert(!player_save_pipeline_target_save_pending(42));
+    player_save_pipeline_pulse();
+    assert(player_revision_snapshot_copy(41, &revision) && revision.written_revision == 10);
 
     // A failed write is reported and its owner is dirty again.
     state.failures[44] = 1;
@@ -207,6 +211,7 @@ int main()
     assert(alerts == alerts_before + 1);
     assert(player_revision_snapshot_copy(44, &revision));
     assert(revision.dirty_components == PLAYER_COMPONENT_TIMERS);
+    assert(revision.written_revision == 1);
     player_save_pipeline_health health = player_save_pipeline_health_copy();
     assert(health.write_failures == 1);
     assert(player_save_pipeline_checkpoint_dirty(&carol.ch, 1, 3001) ==

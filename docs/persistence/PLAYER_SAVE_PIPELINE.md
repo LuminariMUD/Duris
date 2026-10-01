@@ -204,13 +204,15 @@ and manual acknowledgement checks from the game-loop persistence path, independe
 of world-event debt. It attempts at most 32 due deferred saves per call with a
 round-robin cursor and checks the bounded 512-slot manual-status table. Deferred
 slots use monotonic due times and character runtime identities so storage reuse
-cannot apply work to a different character. Manual completion still requires
-acknowledgement within the existing 30-second deadline.
+cannot apply work to a different character. `save` says `Save complete` once the
+writer has written the save: the writer's completion advances the player's written
+revision (`player_revision_record_written()`). The revision the pipeline acknowledges
+when the writer accepts a save only marks the character clean. A save not written
+within 30 seconds is reported as failed.
 
 A failed camp retains the live character and permits automatic nonterminal retry;
-a later camp must capture its own intent again. Flat-file terminal saves require
-authority acknowledgement; SQL-backed callers may explicitly permit a synced
-journal handoff. These guarantees do not prevent legitimate storage timeouts or
+a later camp must capture its own intent again. Terminal saves wait for the
+writer to write them. These guarantees do not prevent legitimate storage timeouts or
 operating-system starvation. The controlled retry/crash modes are documented in
 [Testing](../guides/TESTING.md#full-world-save-diagnostics).
 

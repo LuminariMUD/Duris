@@ -14,6 +14,7 @@ struct player_revision_entry
 {
 	player_revision_t current_revision = 0;
 	player_revision_t acknowledged_revision = 0;
+	player_revision_t written_revision = 0;
 	player_revision_t queued_revision = 0;
 	player_revision_t inflight_revision = 0;
 	player_component_mask_t dirty_components = 0;
@@ -68,6 +69,7 @@ bool player_revision_hydrate(int pid, player_revision_t durable_revision)
 			return false;
 		state->current_revision = durable_revision;
 		state->acknowledged_revision = durable_revision;
+		state->written_revision = durable_revision;
 		state->component_revisions.fill(durable_revision);
 		return true;
 	}
@@ -80,6 +82,7 @@ bool player_revision_hydrate(int pid, player_revision_t durable_revision)
 		player_revision_entry entry;
 		entry.current_revision = durable_revision;
 		entry.acknowledged_revision = durable_revision;
+		entry.written_revision = durable_revision;
 		entry.component_revisions.fill(durable_revision);
 		revision_states.emplace(pid, entry);
 	}
@@ -199,6 +202,16 @@ bool player_revision_fail_inflight(int pid, player_revision_t revision,
 	return true;
 }
 
+bool player_revision_record_written(int pid, player_revision_t revision)
+{
+	player_revision_entry *state = find_state(pid);
+	if (!state)
+		return false;
+	if (revision > state->written_revision)
+		state->written_revision = revision;
+	return true;
+}
+
 bool player_revision_snapshot_copy(int pid, struct player_revision_snapshot *snapshot_out)
 {
 	const player_revision_entry *state = find_state(pid);
@@ -209,6 +222,7 @@ bool player_revision_snapshot_copy(int pid, struct player_revision_snapshot *sna
 		.pid = pid,
 		.current_revision = state->current_revision,
 		.acknowledged_revision = state->acknowledged_revision,
+		.written_revision = state->written_revision,
 		.queued_revision = state->queued_revision,
 		.inflight_revision = state->inflight_revision,
 		.dirty_components = state->dirty_components,

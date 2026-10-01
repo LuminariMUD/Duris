@@ -159,7 +159,11 @@ void finish_completion(const player_save_completion &completion)
 			fence->acknowledged = true;
 	}
 	if (succeeded)
+	{
+		if (completion.kind == persistence_job_kind::player)
+			player_revision_record_written(completion.pid, completion.revision);
 		return;
+	}
 	if (completion.kind != persistence_job_kind::player)
 	{
 		persistence_alert(AVATAR, "persistence_writer",
