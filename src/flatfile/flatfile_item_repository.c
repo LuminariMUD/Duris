@@ -2370,69 +2370,6 @@ flatfile_item_repository_result flatfile_item_repository_prepare_claim(
 		       flatfile_item_repository_result::invalid;
 }
 
-flatfile_item_repository_result flatfile_item_repository_prepare_death_quarantine(
-	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
-	const std::vector<uint64_t> &custody_uids, flatfile_authority_operation *operation,
-	std::string *error)
-{
-	if (!operation || !pid || !lock.matches(root))
-		return flatfile_item_repository_result::invalid;
-	*operation = {};
-	ownership_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_item_repository_result::ok)
-		return loaded;
-	const item_owner_identity player = { item_owner_type::player, pid, 0 };
-	owner_state *owner = find_owner(&catalog, player);
-	if (!owner)
-		return flatfile_item_repository_result::not_found;
-	std::unordered_set<uint64_t> retained;
-	std::unordered_set<uint64_t> retained_roots;
-	try
-	{
-		retained.reserve(custody_uids.size());
-		retained_roots.reserve(custody_uids.size());
-		for (uint64_t uid : custody_uids)
-			if (uid)
-				retained.insert(uid);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return flatfile_item_repository_result::io_error;
-	}
-	for (const auto &item : catalog.items)
-		if (item.state == item_custody_state::active &&
-		    item_owner_identity_equal(item.owner, player) &&
-		    retained.contains(item.item_uid))
-			retained_roots.insert(item.root_item_uid);
-	bool changed = false;
-	for (auto &item : catalog.items)
-	{
-		if (item.state != item_custody_state::active ||
-		    !item_owner_identity_equal(item.owner, player) ||
-		    (!retained.contains(item.item_uid) &&
-		     !retained_roots.contains(item.root_item_uid)))
-			continue;
-		if (item.item_revision == UINT64_MAX)
-			return flatfile_item_repository_result::invalid;
-		// Keep identity, parentage and payload for the captured death graph and
-		// any additional authoritative rows attached to one of its roots. Live
-		// player-owned objects under unrelated roots remain active and usable.
-		item.state = item_custody_state::quarantined;
-		++item.item_revision;
-		changed = true;
-	}
-	if (!changed)
-		return flatfile_item_repository_result::unchanged;
-	if (owner->revision == UINT64_MAX || catalog.revision == UINT64_MAX)
-		return flatfile_item_repository_result::invalid;
-	++owner->revision;
-	operation->filename = ownership_filename;
-	return encode_catalog(catalog, catalog.revision + 1, &operation->bytes) ?
-		       flatfile_item_repository_result::ok :
-		       flatfile_item_repository_result::invalid;
-}
-
 flatfile_item_repository_result flatfile_item_repository_prepare_player_remove(
 	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
 	flatfile_authority_operation *operation, std::string *error)

@@ -898,7 +898,7 @@ extern unsigned int game_locked_level;
 #define CMD_ITEMMANA 860
 #define CMD_PULSE 861
 #define CMD_COLLECTOR 862
-#define CMD_RESTITUTION 863 // Submit an approved death-restitution command
+#define CMD_RETIRED_863 863 // Reserved retired command slot; do not reuse.
 #define CMD_DUMMY 864
 
 /* The CMD_s below are not real commands, they are used in item special procedures to identify

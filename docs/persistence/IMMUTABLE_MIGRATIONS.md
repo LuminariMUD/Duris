@@ -113,6 +113,12 @@ owner foreign key or cascade: extraction and old snapshots must not remove its
 replay fence. See [artifact mana](../reference/ARTIFACT_MANA.md) for the resource,
 crash-window and rollback contracts.
 
+Migration 0034 is the one step that removes data: it drops the death custody and
+restitution tables (0011, 0020) and the economy accounting tables (0031, 0032), which
+nothing reads since the persistence reset treats every server as new. It is guarded
+and re-runnable (`DROP TABLE IF EXISTS`). Back up a database that may still hold that
+evidence before running it.
+
 ## Post-baseline migration contract
 
 Files live under `migrations/immutable/` and are listed explicitly in the manifest.

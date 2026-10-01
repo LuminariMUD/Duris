@@ -55,7 +55,6 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fd
     src/player/player_load_repository.c src/player/player_load_topology.c \
     src/player/player_snapshot_repository.c src/player/player_snapshot_codec.c \
     src/item/item_claim_repository.c src/item/item_claim.c src/persistence/dupe_log.c \
-    src/persistence/player_death_restitution_command.c \
     src/sql/item_extra_descr_codec.c src/persistence/persistence_observability.c \
     -Wl,--gc-sections "${MYSQL_LIBS[@]}" -lcrypto \
     -o "$ROOT/bin/tests/player_load_filter_mysql_harness"

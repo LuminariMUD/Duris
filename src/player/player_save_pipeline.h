@@ -63,13 +63,6 @@ player_save_pipeline_result player_save_pipeline_request(P_char ch,
 							 int save_intent, int room_vnum);
 player_save_terminal_result player_save_pipeline_terminal(P_char ch, int save_intent, int room_vnum,
 							  uint64_t timeout_msec);
-// Capture the immutable death disposition for ch and wait for it to become
-// durable. wallet_pile may be null; when the wallet still holds coins it must be
-// an unattached pile carrying the complete remaining wallet.
-player_save_terminal_result
-player_save_pipeline_terminal_death(P_char ch, P_obj corpse, P_obj wallet_pile,
-				    const critical_operation_id &operation_id, int room_vnum,
-				    uint64_t timeout_msec);
 void player_save_pipeline_pulse(void);
 void player_save_pipeline_quiesce(void);
 void player_save_pipeline_resume(void);
@@ -84,16 +77,7 @@ std::vector<persistence_job_owner> player_save_pipeline_finish(uint64_t deadline
 player_save_pipeline_health player_save_pipeline_health_copy(void);
 size_t player_save_pipeline_dirty_count(void);
 bool player_save_pipeline_is_nonterminal_type(int save_intent);
-// Exact-PID save/login barrier used by offline critical commands.  A target
-// fence rejects new saves for that PID without quiescing unrelated players.
-bool player_save_pipeline_target_save_pending(int pid);
-bool player_save_pipeline_acquire_target_save_login_fence(int pid,
-							  player_revision_t expected_revision);
-void player_save_pipeline_release_target_save_login_fence(int pid,
-							  player_revision_t expected_revision);
-bool player_save_pipeline_target_save_login_fenced(int pid);
-bool player_save_pipeline_save_admitted(int pid);
-// A load of this character waits: its save is queued or a staff fence holds it.
+// A load of this character waits while its save is queued.
 bool player_save_pipeline_load_held(int pid);
 void player_save_pipeline_reset_for_tests(void);
 

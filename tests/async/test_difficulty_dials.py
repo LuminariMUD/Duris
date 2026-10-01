@@ -277,7 +277,7 @@ def test_breath_money_regen_and_corpse_hooks_are_complete() -> None:
 
 def test_command_is_registered() -> None:
     interp = source("cmd/interp.c").read_text()
-    assert '"difficulty",\n\t"itemmana",\n\t"pulse",\n\t"collector",\n\t"restitution",\n\t"dummy",\n\t"\\n" /* MAX_CMD = 865, MAX_CMD_LIST = 1000 */' in interp
+    assert '"difficulty",\n\t"itemmana",\n\t"pulse",\n\t"collector",\n\t"_retired_863",\n\t"dummy",\n\t"\\n" /* MAX_CMD = 865, MAX_CMD_LIST = 1000 */' in interp
     assert "CMD_GRT(CMD_DIFFICULTY, STAT_DEAD + POS_PRONE, do_difficulty, LESSER_G);" in interp
     assert "#define CMD_DIFFICULTY 859" in source("cmd/interp.h").read_text()
     # The command-name table is sized by MAX_CMD, which counts its terminating entry.

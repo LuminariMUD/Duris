@@ -23,7 +23,6 @@ DEFAULT_SCHEMA_FILES = (
     ROOT / "migrations" / "immutable" / "0004_server_reboots.sql",
     ROOT / "migrations" / "immutable" / "0006_kingdom_realms.sql",
     ROOT / "migrations" / "immutable" / "0009_kingdom_garrison.sql",
-    ROOT / "migrations" / "immutable" / "0011_player_death_disposition.sql",
     ROOT / "migrations" / "immutable" / "0014_telemetry_storage.sql",
     ROOT / "migrations" / "immutable" / "0012_epic_stone_claim.sql",
     ROOT / "migrations" / "immutable" / "0016_artifact_mana.sql",
@@ -33,8 +32,6 @@ DEFAULT_SCHEMA_FILES = (
     ROOT / "migrations" / "immutable" / "0026_zone_story_quest_state.sql",
     ROOT / "migrations" / "immutable" / "0027_saved_item_recovery_handoff.sql",
     ROOT / "migrations" / "immutable" / "0030_telemetry_quarantine.sql",
-    ROOT / "migrations" / "immutable" / "0031_economy_accounting.sql",
-    ROOT / "migrations" / "economic_baseline.sql",
     ROOT / "migrations" / "immutable" / "0033_item_owner_audit.sql",
 )
 
@@ -79,7 +76,6 @@ REQUIRED_NON_DATABASE_STORES = {
     "file:persistence_fallback_quarantine": (
         "quarantine", "legacy persistence fallback quarantine",
     ),
-    "file:player-deaths": ("recovery_state", "FLATFILE_ROOT/player-deaths/*.death"),
     "file:zone-story-quests": (
         "recovery_state", "FLATFILE_ROOT/domains/zone-story-quests.state",
     ),

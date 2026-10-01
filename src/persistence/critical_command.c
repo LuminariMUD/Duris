@@ -36,7 +36,6 @@ bool valid_command_type(critical_command_type type)
 	case critical_command_type::shop_trade:
 	case critical_command_type::corpse_lifecycle:
 	case critical_command_type::collector:
-	case critical_command_type::player_death_restitution:
 		return true;
 	}
 	return false;

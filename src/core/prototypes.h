@@ -632,7 +632,6 @@ void do_reinitphys(P_char, char *, int);
 void do_release(P_char, char *, int);
 void do_reroll(P_char, char *, int);
 void do_restore(P_char, char *, int);
-void do_restitution(P_char, char *, int);
 void do_return(P_char, char *, int);
 void do_revoke(P_char, char *, int);
 /*void do_revoketitle(P_char, char *, int);*/

@@ -2261,9 +2261,9 @@ The steps, in order (later ones delete what earlier ones leave unreachable):
 2. **What only the critical-command replay reached** (done, see
    [Step 2](#step-2-what-only-the-replay-reached-done)): the coin transfer and bank commands,
    schema 2 and the whole economy accounting foundation, on both backends.
-3. **The death custody and restitution feature** (todo), with a new migration that drops its
-   tables and the economy accounting tables (`economic_*`, the baseline tables), with their
-   runtime compatibility, data lifecycle and verification entries.
+3. **The death custody and restitution feature** (done, see
+   [Step 3](#step-3-death-custody-and-restitution-done)), with migration 0034 dropping its tables
+   and the economy accounting tables.
 4. **The durable item movement** (todo): the durable branches in `actobj.c` behind
    `item_command_uses_durable_ownership()`, the movement transactions, the synthetic transfer
    adapter, `OBJ_RFLAG_CREATION_CANDIDATE`, and the crafts' wrapper
@@ -2272,8 +2272,8 @@ The steps, in order (later ones delete what earlier ones leave unreachable):
    path reaches since step 1 (`critical_command_coordinator_durability()`, `_get_completed()`,
    `_recover_uncertain()`): restitution and the movement transactions still name them.
 5. **The durable corpse lifecycle** (todo): the paths behind `durable_corpse_lifecycle_enabled()`,
-   `corpse_lifecycle_*.c`, the terminal fences, `player_save_pipeline_terminal_death()`, the
-   death-disposition plumbing and the custody and degraded-load code. The corpse lifecycle's
+   `corpse_lifecycle_*.c`, the terminal fences, and the custody and degraded-load code (the death
+   snapshot and `player_save_pipeline_terminal_death()` went with step 3). The corpse lifecycle's
    wallet and the currency repository it calls (`currency_repository_execute()`,
    `execute_currency_state()`, the currency outbox record) go with it: the linker still
    reaches them through the corpse lifecycle dispatch. So do the currency reasons
@@ -2370,10 +2370,17 @@ Each step does its area with its tests, in its own commits, and passes the gates
 - Two fixtures moved a stored bank with the deleted bank command and now deposit through the
   writer's bank job (`flatfile_bank_delta_apply()`): the new-player bank hydration test and the
   journey inspector's `seed-creation-bank` (`test_flatfile_first_session_currency.py`).
-- Verified: both server builds, the format check, and `make test-all` (692 of 698; the six
+- Verified: both server builds, the format check, `make test-all` (692 of 698; the six
   failures were four source contracts naming removed code and the two fixtures above, each
-  fixed and passing alone). `make test-db` and the backup-recovery container job run on the
-  committed step.
+  fixed and passing alone) and `make test-db` (34 of 34, after the fix below).
+- Found on the way (fixed in its own commit, `b9a78afe6`): `save` said `Save complete` once the
+  writer had accepted the save, not once it had written it. Phase 1 made the pipeline
+  acknowledge a revision at submit ("a character is clean once the writer has its save"), and
+  the save command kept comparing against that revision, so its 30-second failure report could
+  never fire. Under load three MariaDB journeys read the database right after `Save complete`
+  and missed the save (`corpse_haul`, `corpse_haul_count_cap`, `game_loop_queries`, each
+  passing alone). The writer's completion now advances the player's written revision
+  (`player_revision_record_written()`), and `save` reports against it.
 - Found on the way (fixed in its own commit, `61d3eaf01`): the locker identification crash
   test still charged through the repository's bank command, so it proved a ledger
   deduplication that ended when money moved into memory, and the service kept an
@@ -2382,6 +2389,40 @@ Each step does its area with its tests, in its own commits, and passes the gates
   MariaDB leg; `docs/operations/locker-identification.md` says a prepared receipt is charged
   again on recovery, twice only if the player's save landed between the charge and the paid
   marker before the server stopped.
+
+#### Step 3: death custody and restitution (done)
+
+- Gone: the restitution runtime, adapter, locker notice, staff path and `restitution` command
+  (its number, 863, is a reserved `_retired_863` slot like the other retired commands), the
+  native restitution command and repository and their critical command type (19), the
+  restitution sidecars in the item transfer, player save and player load repositories (the
+  load query cap is 23 again), `scripts/player_death_restitution*.py` and its codec, the issue
+  331 journeys, 31 restitution test files, the spellbook overlay harness and the restitution
+  docs.
+- The death snapshot went too: `apply_death()` wrote the disposition tables, and only the
+  journal (step 1) carried death snapshots, so the snapshot's `death` section, its capture,
+  `player_save_pipeline_terminal_death()`, the codec's death wire versions, the flat-file
+  `player-deaths/` store and its death quarantine are gone.
+- The save pipeline's per-player "target save login fence" existed for restitution's offline
+  delivery; with nothing taking it, `player_save_pipeline_save_admitted()` is gone and a load
+  waits only while the player's save is queued.
+- Kept, renamed: the database exclusion lock the server takes at boot
+  (`sql_exclusion_guard.h`). It was named for restitution, but it is also what refuses a second
+  server on the same database, which the one writer relies on. It is now
+  `duris.runtime.<database>`.
+- Migration `0034_retire_death_custody_and_accounting` drops the six death tables and the twelve
+  accounting tables, and the accounting reference index 0031 put on `item_ownership_ledger`
+  (guarded, re-runnable; the verifier checks nothing of them is left). The fresh bootstrap no
+  longer creates them, the runtime contract covers 198 tables (fingerprints measured on clean
+  `mysql:8.0` and `mariadb:10.11` with bootstrap and every migration; the same method reproduced
+  the previous head's sealed values first), the lifecycle manifest has 220 entries, and the
+  unused non-immutable copies `migrations/economy_accounting.sql`, `economic_baseline.sql` and
+  their two verifiers are deleted. **An existing database needs
+  `python3 scripts/migration_runner.py run` before this binary boots.**
+- Verified: both server builds, the format check, `make test-all` (679 of 689; the ten failures
+  were a blank line the cut left, two contracts naming removed code, and the journey
+  inspector's death report, which broke its build for the seven tests that share it; each was
+  fixed and passes alone) and `make test-db` (34 of 34, including the migration replay).
 
 ### Finding dead code
 

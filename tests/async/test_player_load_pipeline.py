@@ -33,7 +33,6 @@ HARNESS = r'''
 #include <mutex>
 #include <thread>
 
-bool player_save_pipeline_save_admitted(int) { return true; }
 
 extern "C" MYSQL *sql_pool_acquire(void) { return nullptr; }
 extern "C" void sql_pool_release(MYSQL *) {}
@@ -306,7 +305,6 @@ assert "request.pid = pid;" in OFFLINE and "request.player_name = name;" in OFFL
 validity = REPOSITORY[REPOSITORY.index("bool player_load_request_valid(") :]
 assert contains(validity, "request.pid > 0 && request.account_name.size() <= PLAYER_LOAD_ACCOUNT_MAX")
 assert contains(REPOSITORY, "(!request.account_name.empty() && strcasecmp(result->account_name.c_str()")
-assert "player_death_restitution_runtime_login_admit" not in ACCOUNT
 assert "STATE(d) = CON_PLAYER_LOAD" in ACCOUNT
 assert "player_load_materialize(player, loaded)" in ACCOUNT
 assert "d->rtype = loaded.snapshot.save_intent;" in ACCOUNT
@@ -334,7 +332,6 @@ assert "player_load_pipeline_execute_sync" not in NANNY
 assert "player_load_pipeline_wait" not in NANNY
 assert "degraded" not in (SRC / "player_load_repository.h").read_text()
 assert "degraded" not in (SRC / "player_load_pipeline.h").read_text()
-assert "player_death_restitution_runtime_login_admit" not in NANNY
 assert "d->rtype = result.snapshot.save_intent;" in NANNY
 assert "const bool snapshot_load = d->player_load_mode != PLAYER_LOAD_MODE_NONE;" in NANNY
 assert NANNY.count("if (!snapshot_load)\n\t\t\t\tcost = restoreItemsOnly") == 7

@@ -225,60 +225,7 @@ static void inspect_authority(const std::string &root, int32_t pid)
 								    ",\"room_owner_revision\":")
 			<< revision;
 	}
-	std::cout << ",\"deaths\":[";
-	bool first_death = true;
-	const fs::path deaths = flatfile_player_snapshot_file::death_directory(root);
-	if (fs::exists(deaths))
-		for (const auto &file : fs::directory_iterator(deaths))
-		{
-			if (!file.path().filename().string().starts_with(std::to_string(pid) +
-									 "-") ||
-			    file.path().extension() != ".death")
-				continue;
-			player_snapshot disposition;
-			require(flatfile_player_snapshot_read_file(
-					deaths.string(), file.path().filename().string(), pid,
-					&disposition, &error) == flatfile_player_load_result::ok &&
-					disposition.death,
-				"inspect death: " + error);
-			if (!first_death)
-				std::cout << ',';
-			first_death = false;
-			std::cout << "{\"revision\":" << disposition.revision << ",\"items\":[";
-			bool first_item = true;
-			for (const auto &item : disposition.death->corpse)
-			{
-				if (!first_item)
-					std::cout << ',';
-				first_item = false;
-				std::cout << "{\"uid\":" << item.object_uid
-					  << ",\"vnum\":" << item.vnum
-					  << ",\"parent\":" << item.parent_index << ",\"coins\":[";
-				for (size_t i = 0; i < 4; ++i)
-				{
-					if (i)
-						std::cout << ',';
-					std::cout << (item.type == ITEM_MONEY ? item.values[i] : 0);
-				}
-				std::cout << "]}";
-			}
-			std::cout << "],\"custody\":[";
-			first_item = true;
-			for (const auto &item : disposition.death->custody)
-			{
-				if (!first_item)
-					std::cout << ',';
-				first_item = false;
-				std::cout << "{\"uid\":" << item.item.item_uid
-					  << ",\"root\":" << item.item.root_item_uid
-					  << ",\"parent\":" << item.item.parent_item_uid
-					  << ",\"owner_type\":"
-					  << static_cast<unsigned>(item.owner.type)
-					  << ",\"owner_id\":" << item.owner.id << '}';
-			}
-			std::cout << "]}";
-		}
-	std::cout << "]}\n";
+	std::cout << "}\n";
 }
 
 // A save claims what the player holds in the same authority transaction that writes

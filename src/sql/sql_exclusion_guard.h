@@ -2,7 +2,8 @@
 #define DURIS_SQL_EXCLUSION_GUARD_H
 
 /*
- * Database-native exclusion for player-death restitution.
+ * Database-native exclusion: one server per database, the one writer that memory
+ * authority assumes.
  *
  * The lock is session-owned by MySQL/MariaDB.  It therefore survives COMMIT,
  * but is released by the server when the owning connection disappears.  The
@@ -23,7 +24,7 @@
 #include <mysql.h>
 #endif
 
-#define DURIS_SQL_EXCLUSION_LOCK_EXPRESSION "CONCAT('duris.player.death.restitution.',DATABASE())"
+#define DURIS_SQL_EXCLUSION_LOCK_EXPRESSION "CONCAT('duris.runtime.',DATABASE())"
 
 struct duris_sql_exclusion_guard_state
 {

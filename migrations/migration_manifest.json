@@ -508,6 +508,16 @@
       "verify": "immutable/0033_item_owner_audit.sh",
       "verify_checksum": "944bc34d6b18ab85218e44762d639d2ab18ac582f59d549d6e4a75fd22b856b9",
       "compatibility": "mysql8-mariadb10"
+    },
+    {
+      "id": "0034_retire_death_custody_and_accounting",
+      "sequence": 34,
+      "description": "Drop the death custody and restitution tables and the economy accounting tables nothing reads",
+      "apply": "immutable/0034_retire_death_custody_and_accounting.sql",
+      "apply_checksum": "b50dc5f47f9c818b507543375c66acb76b7292718f418db06929c4b02ab3661c",
+      "verify": "immutable/0034_retire_death_custody_and_accounting.sh",
+      "verify_checksum": "5c0645486e25718c196ca5b39f796d8400b893cac116165e0618a67adc4422ee",
+      "compatibility": "mysql8-mariadb10"
     }
   ]
 }

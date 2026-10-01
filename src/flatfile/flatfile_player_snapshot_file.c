@@ -43,16 +43,6 @@ std::string player_filename(int32_t pid)
 {
 	return std::to_string(pid) + ".snapshot";
 }
-
-std::string death_directory(const std::string &root)
-{
-	return root + "/player-deaths";
-}
-
-std::string death_filename(int32_t pid, uint64_t revision)
-{
-	return std::to_string(pid) + "-" + std::to_string(revision) + ".death";
-}
 }
 
 using namespace flatfile_player_snapshot_file;

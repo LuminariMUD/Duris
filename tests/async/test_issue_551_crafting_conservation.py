@@ -45,17 +45,12 @@ require_in_order(
 )
 
 assert "bool execute_craft" in repository_c
-assert "sync_restitution_runtime_payload(connection, payload)" in repository_c
 assert "payload.reason == item_transfer_reason::craft" in repository_c
-assert "Craft payloads carry output snapshots" in repository_c
 assert "event_index_base + index" in repository_c
 assert "insert_craft_snapshot_rows" in repository_c
 assert "update_owner_revision(connection, payload.from_owner" in repository_c
 assert "src/sql/item_extra_descr_codec.c" in mysql_runner
 assert "tests/async/item_extra_descr_codec_sql_escape_stub.cpp" in mysql_runner
-assert "src/persistence/player_death_restitution_command.c" in mysql_runner
-assert "src/persistence/player_death_restitution_repository.c" in mysql_runner
-assert "item_transfer_reason::craft" in (ROOT / "tests/async/item_transfer_mysql_harness.cpp").read_text()
 assert "payload.reason == item_transfer_reason::craft" in runtime_c
 assert "item_ownership_runtime_hydrate_many_atomic" in runtime_c
 

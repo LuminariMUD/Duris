@@ -62,7 +62,6 @@ enum class critical_command_type : uint16_t
 	shop_trade = 15,
 	corpse_lifecycle = 16,
 	collector = 18,
-	player_death_restitution = 19,
 };
 
 enum class critical_source_site : uint16_t

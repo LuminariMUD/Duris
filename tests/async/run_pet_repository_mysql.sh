@@ -34,7 +34,7 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fd
 	src/player/player_snapshot_repository.c src/item/item_claim_repository.c src/item/item_claim.c src/persistence/dupe_log.c src/player/player_load_repository.c \
 	src/player/player_load_topology.c src/player/player_snapshot_codec.c \
 	src/player/pet_restore_state.c src/persistence/persistence_observability.c \
-	src/persistence/player_death_restitution_command.c src/sql/item_extra_descr_codec.c \
+	src/sql/item_extra_descr_codec.c \
 	src/sql/sql_player.c src/sql/sql_pool.c \
 	-Wl,--gc-sections "${MYSQL_LIBS[@]}" -lcrypto -o bin/tests/pet_repository_mysql_harness
 TEST_DB_HOST="$TEST_DB_HOST" TEST_DB_PORT="$TEST_DB_PORT" \

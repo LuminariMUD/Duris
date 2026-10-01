@@ -102,13 +102,6 @@ player_snapshot_capture_result player_snapshot_capture(P_char ch, player_revisio
     return player_snapshot_capture_result::ok;
 }
 
-player_snapshot_capture_result player_death_snapshot_capture(
-    P_char, P_obj, P_obj, const critical_operation_id &, player_revision_t, int,
-    const std::vector<critical_operation_id> &, player_snapshot *)
-{
-    return player_snapshot_capture_result::malformed_source;
-}
-
 struct player
 {
     char_data ch = {};
@@ -169,7 +162,6 @@ int main()
     assert(!revision.unacknowledged_components && !revision.dirty_components);
     // Accepted is not written: `save` reports completion on the written revision.
     assert(revision.written_revision == 7);
-    assert(player_save_pipeline_target_save_pending(41));
     // A newer save queues behind what was queued after the owner's save, and replaces
     // the owner's save only when that is the last one queued.
     assert(player_save_pipeline_request(&carol.ch, PLAYER_COMPONENT_STATUS, 1, 3001) ==
@@ -197,7 +189,6 @@ int main()
     assert(persistence_writer_wait_idle(5000));
     // Bob's first save was being written; everything else in capture order.
     assert((take_order() == std::vector<std::string>{"42:1", "41:8", "44:1", "41:10", "42:2"}));
-    assert(!player_save_pipeline_target_save_pending(42));
     player_save_pipeline_pulse();
     assert(player_revision_snapshot_copy(41, &revision) && revision.written_revision == 10);
 

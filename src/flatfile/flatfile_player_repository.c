@@ -56,13 +56,11 @@ std::string player_lock_filename(int32_t pid)
 
 bool valid_snapshot(const player_snapshot &snapshot)
 {
-	const uint32_t required = snapshot.death ? PLAYER_SNAPSHOT_DEATH_SCHEMA_VERSION :
-						   PLAYER_SNAPSHOT_SCHEMA_VERSION;
-	return snapshot.schema_version == required && snapshot.pid > 0 && snapshot.revision &&
-	       snapshot.components && !(snapshot.components & ~PLAYER_CHECKPOINT_COMPONENT_ALL) &&
+	return snapshot.schema_version == PLAYER_SNAPSHOT_SCHEMA_VERSION && snapshot.pid > 0 &&
+	       snapshot.revision && snapshot.components &&
+	       !(snapshot.components & ~PLAYER_CHECKPOINT_COMPONENT_ALL) &&
 	       snapshot.encoded_size_bound &&
-	       snapshot.encoded_size_bound <= PLAYER_SNAPSHOT_MAX_BYTES &&
-	       (!snapshot.death || !snapshot.death->corpse.empty());
+	       snapshot.encoded_size_bound <= PLAYER_SNAPSHOT_MAX_BYTES;
 }
 
 bool same_authority_key(const std::string &left, const std::string &right)
@@ -819,7 +817,7 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		return { player_save_apply_outcome::retryable_failure, 0, EIO };
 	if (loaded == flatfile_player_load_result::not_found)
 	{
-		if (snapshot.death || snapshot.components != PLAYER_CHECKPOINT_COMPONENT_ALL)
+		if (snapshot.components != PLAYER_CHECKPOINT_COMPONENT_ALL)
 			return { player_save_apply_outcome::terminal_failure, 0, ENOENT };
 		new_player = true;
 		authority = std::make_unique<flatfile_authority_lock>();
@@ -901,18 +899,6 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	}
 
 	std::vector<uint8_t> bytes;
-	// Keep the immutable evidence, quarantine and empty player projection in the
-	// same recoverable authority transaction. A failed commit leaves no evidence
-	// claiming a disposition that never took effect.
-	std::vector<uint8_t> death_bytes;
-	if (snapshot.death)
-	{
-		player_snapshot disposition = snapshot;
-		if (!encode_file(&disposition, &death_bytes))
-			return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
-		materialized.death.reset();
-		materialized.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
-	}
 	if (!encode_file(&materialized, &bytes))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	// A save that carries everything the player holds replaces what earlier
@@ -965,28 +951,6 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			operations.push_back(std::move(delivered));
 		if (saves_balances)
 			operations.push_back(std::move(saved_balances));
-		if (snapshot.death)
-		{
-			operations.push_back({ flatfile_authority_store::player_deaths,
-					       flatfile_authority_operation_kind::write,
-					       death_filename(snapshot.pid, snapshot.revision),
-					       std::move(death_bytes) });
-			std::vector<uint64_t> custody_uids;
-			custody_uids.reserve(snapshot.death->custody.size());
-			for (const auto &row : snapshot.death->custody)
-				if (row.item.item_uid)
-					custody_uids.push_back(row.item.item_uid);
-			flatfile_authority_operation quarantine;
-			const auto quarantined = flatfile_item_repository_prepare_death_quarantine(
-				root, *authority, snapshot.pid, custody_uids, &quarantine, error);
-			if (quarantined == flatfile_item_repository_result::ok)
-				operations.push_back(std::move(quarantine));
-			else if (quarantined != flatfile_item_repository_result::unchanged)
-				return { quarantined == flatfile_item_repository_result::io_error ?
-						 player_save_apply_outcome::retryable_failure :
-						 player_save_apply_outcome::terminal_failure,
-					 0, EIO };
-		}
 		operations.push_back({ flatfile_authority_store::players,
 				       flatfile_authority_operation_kind::write,
 				       player_filename(snapshot.pid), std::move(bytes) });

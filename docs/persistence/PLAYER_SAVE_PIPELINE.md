@@ -226,7 +226,7 @@ becomes a coin pile in the corpse (Phase 2 step 4); the player's save, with the
 wallet empty, is queued before the corpse's, so a crash between them can lose
 the coins but never leave them in both places. See
 [the persistence reset plan](../ongoing-projects/2026-09-28-persistence-memory-authority-plan.md)
-and `tests/async/test_deaths_happen_at_once.py`. Death evidence already stored by
-older servers (`player_death_disposition`, `player_death_custody`, flat-file
-`player-deaths/`) remains protected recovery data in the
-[lifecycle manifest](../../migrations/data_lifecycle_manifest.json).
+and `tests/async/test_deaths_happen_at_once.py`. Every server is treated as new, so
+the death evidence older servers stored is gone: migration 0034 drops
+`player_death_disposition` and `player_death_custody`, and the flat-file
+`player-deaths/` store is no longer created.

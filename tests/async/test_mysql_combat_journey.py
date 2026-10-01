@@ -99,7 +99,6 @@ def run(server, reset_coins=False, boons=False):
                 def stable_state(pid):
                     return (
                         sql(f'SELECT copper,silver,gold,platinum,wallet_revision,numb_deaths,exp,level FROM player_data WHERE pid={pid}'),
-                        sql(f'SELECT save_revision,HEX(operation_id),SHA2(payload,256) FROM player_death_disposition WHERE pid={pid} ORDER BY save_revision'),
                         sql(f'SELECT item_uid,owner_type,owner_id,state FROM item_current_owner WHERE owner_type=1 AND owner_id={pid} ORDER BY item_uid'),
                     )
 
