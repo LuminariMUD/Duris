@@ -607,11 +607,15 @@ vector<poll_data> get_flat_polls(bool active_only, bool *loaded_ok)
 		log_flat_poll_error("read", error);
 		return {};
 	}
+	// A poll is closed once it expires, whatever its record says.
 	vector<poll_data> polls;
 	const time_t now = time(NULL);
-	for (const poll_data &poll : catalog.polls)
-		if (!active_only || (poll.is_active && poll.expires_at > now))
+	for (poll_data poll : catalog.polls)
+	{
+		poll.is_active = poll.is_active && poll.expires_at > now;
+		if (!active_only || poll.is_active)
 			polls.push_back(poll);
+	}
 	apply_flat_poll_vote_counts(catalog, &polls);
 	sort(polls.begin(), polls.end(),
 	     [](const poll_data &left, const poll_data &right) { return left.id > right.id; });
@@ -636,6 +640,7 @@ poll_data get_flat_poll_by_id(int poll_id, bool *loaded_ok)
 		if (stored.id != poll_id)
 			continue;
 		vector<poll_data> one{ stored };
+		one.front().is_active = stored.is_active && stored.expires_at > time(NULL);
 		apply_flat_poll_vote_counts(catalog, &one);
 		return one.front();
 	}
