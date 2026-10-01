@@ -163,12 +163,6 @@ flatfile_item_repository_result flatfile_item_repository_prepare_collector_trans
 flatfile_item_repository_result flatfile_item_repository_prepare_player_remove(
 	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
 	flatfile_authority_operation *operation, std::string *error);
-/* Retain refused death custody without allowing normal inventory materialization. */
-/* Prepare player and verified locker-custody removal as one authority image. */
-flatfile_item_repository_result flatfile_item_repository_prepare_player_and_locker_remove(
-	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
-	const std::vector<flatfile_locker_custody_owner> &locker_custody,
-	flatfile_authority_operation *operation, std::string *error);
 /* Prepare removal of verified locker custody without a player owner. */
 flatfile_item_repository_result flatfile_item_repository_prepare_locker_remove(
 	const std::string &root, const flatfile_authority_lock &lock,

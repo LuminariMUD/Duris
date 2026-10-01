@@ -17,7 +17,7 @@ for signature in ("void redis_log_floor_drop(P_obj obj, int room_vnum)",):
     start = floor.index(signature)
     body = floor[start:floor.index("\n}", start) + 2]
     assert contains(body, "if (_pwipe)"), signature
-signature = "void mark_player_dirty(int pid)"
+signature = "void mark_player_dirty_components(int pid, player_component_mask_t components)"
 start = checkpoint.index(signature)
 body = checkpoint[start:checkpoint.index("\n}", start) + 2]
 assert contains(body, "if (_pwipe)"), signature

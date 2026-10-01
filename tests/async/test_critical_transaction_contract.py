@@ -66,8 +66,6 @@ assert "SELECT outbox_id,operation_id,destination" in OUTBOX
 assert "record.operation_id.bytes.data()" in OUTBOX
 assert "critical_outbox_delivery_dedupe" in OUTBOX
 assert "dead_lettered_at" in OUTBOX
-assert "critical_outbox_reconcile" in OUTBOX
-assert "critical_outbox_retry_dead_letter" in OUTBOX
 assert "sql_pool_replace_connection" in OUTBOX
 assert "sql_worker_thread_init()" in OUTBOX and "mysql_thread_end()" in OUTBOX
 assert "critical_command_repository_apply_from_pool" in COMM

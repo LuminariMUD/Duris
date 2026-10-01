@@ -149,8 +149,6 @@ void copyover_clear_boot(void);
 // helper to clear fd_cloexec on accepted sockets
 void copyover_prepare_socket(int fd);
 
-// exposed helpers for crash recovery (redis world state saves)
-void copyover_count_items(int *num_mobs, int *num_objs, int *num_rooms);
 int copyover_write_mob_to_buffer(P_char mob, char *buf, size_t max_len);
 int copyover_write_obj_to_buffer(P_obj obj, char *buf, size_t max_len);
 int copyover_write_door_to_buffer(int room_rnum, int dir, char *buf, size_t max_len);
@@ -159,7 +157,5 @@ int copyover_write_zone_age_to_buffer(int zone_rnum, char *buf, size_t max_len);
 // buffer-based restore helpers
 P_char copyover_restore_mob_from_buffer(const char *buf, size_t len, size_t *bytes_read);
 P_obj copyover_restore_obj_from_buffer(const char *buf, size_t len, size_t *bytes_read);
-int copyover_restore_door_from_buffer(const char *buf, size_t len, size_t *bytes_read);
-int copyover_restore_zone_age_from_buffer(const char *buf, size_t len, size_t *bytes_read);
 
 #endif /* _COPYOVER_H_ */

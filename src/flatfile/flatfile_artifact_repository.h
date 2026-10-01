@@ -119,8 +119,6 @@ flatfile_artifact_repair_player_binding(const std::string &root, int32_t vnum,
 flatfile_artifact_result flatfile_artifact_prepare_player_release(
 	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
 	flatfile_authority_operation *operation, std::string *error);
-flatfile_artifact_result flatfile_artifact_release_player(const std::string &root, uint32_t pid,
-							  std::string *error);
 flatfile_artifact_result flatfile_artifact_reconcile_players(
 	const std::string &root, const std::vector<flatfile_artifact_player_item> &items,
 	int64_t reconciled_at, flatfile_artifact_reconcile_result *result, std::string *error);

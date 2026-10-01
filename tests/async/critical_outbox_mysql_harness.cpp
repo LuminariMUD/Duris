@@ -154,8 +154,6 @@ int main()
 		      "AND operation_id=UNHEX('00000000000000000000000000000002')") == 1);
 
 	clear_rows();
-	critical_reconciliation_report baseline = {};
-	assert(critical_outbox_reconcile(&baseline));
 	insert_record(3);
 	state = { .calls = 0, .retry_first = false, .terminal = true };
 	assert(critical_outbox_init(deliver, &state));
@@ -163,18 +161,6 @@ int main()
 	critical_outbox_shutdown();
 	assert(scalar("SELECT COUNT(*) FROM critical_outbox WHERE status=2 AND operation_id="
 		      "UNHEX('00000000000000000000000000000003')") == 1);
-	const uint64_t dead_id =
-		scalar("SELECT outbox_id FROM critical_outbox WHERE status=2 AND operation_id="
-		       "UNHEX('00000000000000000000000000000003')");
-	assert(critical_outbox_retry_dead_letter(dead_id));
-	assert(scalar("SELECT COUNT(*) FROM critical_outbox WHERE status=0 AND attempt_count=0 "
-		      "AND operation_id=UNHEX('00000000000000000000000000000003')") == 1);
-	critical_reconciliation_report report = {};
-	assert(critical_outbox_reconcile(&report));
-	assert(report.incomplete_inbox == baseline.incomplete_inbox &&
-	       report.committed_without_outbox == baseline.committed_without_outbox &&
-	       report.pending_outbox == baseline.pending_outbox + 1 &&
-	       report.dead_letter_outbox == baseline.dead_letter_outbox);
 
 	clear_rows();
 	mysql_close(database_connection);

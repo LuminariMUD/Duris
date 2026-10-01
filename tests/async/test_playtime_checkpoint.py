@@ -64,7 +64,8 @@ int main() {
     event_flush_dirty_players(nullptr,nullptr,nullptr,nullptr);
     event_flush_dirty_players(nullptr,nullptr,nullptr,nullptr);
     assert(captured == 20 && continuations == 2);
-    flush_dirty_players();
+    event_flush_dirty_players(nullptr,nullptr,nullptr,nullptr);
+    event_flush_dirty_players(nullptr,nullptr,nullptr,nullptr);
     assert(captured == 30);
     // Each checkpoint also saves the locker a character is in (the hook checks).
     assert(locker_hooks == 30);

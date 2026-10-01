@@ -915,7 +915,7 @@ FALLBACK_SUPPORT = FALLBACK_SUPPORT.replace(
 HARNESS = HARNESS.replace("int main()", FALLBACK_SUPPORT + "\nint main()", 1)
 
 
-COPYOVER_HELPERS = section(COPYOVER, "int copyover_write_obj_to_buffer", "int copyover_write_door_to_buffer") + section(COPYOVER, "P_obj copyover_restore_obj_from_buffer", "int copyover_restore_door_from_buffer") + section(COPYOVER, "static int write_obj_entry", "// raw write to socket fd")
+COPYOVER_HELPERS = section(COPYOVER, "int copyover_write_obj_to_buffer", "int copyover_write_door_to_buffer") + COPYOVER[COPYOVER.index("P_obj copyover_restore_obj_from_buffer"):] + section(COPYOVER, "static int write_obj_entry", "// raw write to socket fd")
 TAKEABILITY = section(
     (SRC / "item/item_command_policy.c").read_text(),
     "bool item_command_object_is_takeable",
@@ -1098,8 +1098,6 @@ assert "GET_GOLD(mob)" not in mob_capture
 assert "std::fill" in mob_capture and "equipment_vnums" in mob_capture
 assert "copyover_write_mob_to_buffer" not in mob_capture
 assert "mob->carrying" not in mob_capture
-assert "copyover_restore_door_from_buffer" not in restore
-assert "copyover_restore_zone_age_from_buffer" not in restore
 print("[PASS] recovery publication is atomic and restore accepts only validated framed generations")
 
 FLOOR_RUNTIME = (SRC / "redis_floor_runtime.c").read_text(encoding="ascii")

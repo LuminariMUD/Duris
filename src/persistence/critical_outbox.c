@@ -397,53 +397,6 @@ critical_outbox_health critical_outbox_health_copy(void)
 	return health;
 }
 
-bool critical_outbox_reconcile(critical_reconciliation_report *report)
-{
-	if (!report)
-		return false;
-	MYSQL *connection = sql_pool_acquire();
-	if (!connection)
-		return false;
-	static const char SQL[] =
-		"SELECT (SELECT COUNT(*) FROM critical_operation_inbox WHERE status<>1),"
-		"(SELECT COUNT(*) FROM critical_operation_inbox i WHERE status=1 AND NOT EXISTS "
-		"(SELECT 1 FROM critical_outbox o WHERE o.operation_id=i.operation_id)),"
-		"(SELECT COUNT(*) FROM critical_outbox WHERE status=0),"
-		"(SELECT COUNT(*) FROM critical_outbox WHERE status=2)";
-	bool ok = execute(connection, SQL);
-	MYSQL_RES *result = ok ? mysql_store_result(connection) : nullptr;
-	MYSQL_ROW row = result ? mysql_fetch_row(result) : nullptr;
-	uint64_t values[4] = {};
-	for (unsigned int index = 0; row && index < 4; ++index)
-		ok = ok && parse_u64(row[index], &values[index]);
-	const bool had_row = row != nullptr;
-	if (result)
-		mysql_free_result(result);
-	release_after_query(connection, ok && had_row);
-	if (!ok || !had_row)
-		return false;
-	*report = { values[0], values[1], values[2], values[3] };
-	return true;
-}
-
-bool critical_outbox_retry_dead_letter(uint64_t outbox_id)
-{
-	if (!outbox_id)
-		return false;
-	MYSQL *connection = sql_pool_acquire();
-	if (!connection)
-		return false;
-	const std::string sql =
-		"UPDATE critical_outbox SET status=0,attempt_count=0,next_attempt_at=CURRENT_TIMESTAMP(6),"
-		"dead_lettered_at=NULL,last_error_code=0 WHERE status=2 AND outbox_id=" +
-		std::to_string(outbox_id);
-	const bool ok = execute(connection, sql) && mysql_affected_rows(connection) == 1;
-	release_after_query(connection, ok);
-	if (ok)
-		critical_outbox_resume();
-	return ok;
-}
-
 critical_outbox_delivery_result
 critical_outbox_test_destination(const critical_outbox_record &record, void *context)
 {

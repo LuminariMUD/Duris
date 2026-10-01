@@ -942,28 +942,6 @@ flatfile_artifact_result flatfile_artifact_prepare_player_release(
 	return flatfile_artifact_result::ok;
 }
 
-flatfile_artifact_result flatfile_artifact_release_player(const std::string &root, uint32_t pid,
-							  std::string *error)
-{
-	if (root.empty() || !pid)
-		return flatfile_artifact_result::invalid;
-	flatfile_authority_lock lock;
-	if (!lock.acquire(root, error))
-		return flatfile_artifact_result::io_error;
-	flatfile_authority_operation operation;
-	const auto prepared =
-		flatfile_artifact_prepare_player_release(root, lock, pid, &operation, error);
-	if (prepared != flatfile_artifact_result::ok)
-		return prepared;
-	const auto committed =
-		flatfile_authority_transaction_commit_operations(root, lock, { operation }, error);
-	if (committed == flatfile_authority_transaction_result::ok)
-		return flatfile_artifact_result::ok;
-	return committed == flatfile_authority_transaction_result::io_error ?
-		       flatfile_artifact_result::io_error :
-		       flatfile_artifact_result::invalid;
-}
-
 flatfile_artifact_result flatfile_artifact_reconcile_players(
 	const std::string &root, const std::vector<flatfile_artifact_player_item> &items,
 	int64_t reconciled_at, flatfile_artifact_reconcile_result *result, std::string *error)

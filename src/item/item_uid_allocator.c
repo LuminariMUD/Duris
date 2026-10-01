@@ -103,12 +103,6 @@ uint64_t item_uid_allocator_next(void)
 	return allocated;
 }
 
-uint64_t item_uid_allocator_remaining(void)
-{
-	std::lock_guard<std::mutex> guard(range_mutex);
-	return range_end >= range_next ? range_end - range_next : 0;
-}
-
 void item_uid_allocator_reset_for_tests(void)
 {
 	std::lock_guard<std::mutex> guard(range_mutex);

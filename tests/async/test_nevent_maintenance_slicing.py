@@ -72,7 +72,6 @@ assert "DIRTY_PLAYER_BATCH_SIZE = 8" in dirty
 assert "character->runtime_id" in dirty
 assert "find_character_by_runtime_id" in dirty
 assert "nevent_periodic_continue_after(1);" in dirty
-assert "flush_dirty_players();" not in dirty
 
 surnames = function_body(drannak, "void event_update_surnames(")
 assert "SURNAME_UPDATE_BATCH_SIZE = 4" in surnames

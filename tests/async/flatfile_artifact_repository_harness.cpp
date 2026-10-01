@@ -398,17 +398,6 @@ int main(int argc, char **argv)
 			reconcile_root.string(), { { 900, 42 }, { 903, 43 }, { 999, 44 } }, 2000,
 			&reconcile_counts, &error) == flatfile_artifact_result::unchanged,
 		"identical artifact reconciliation was not idempotent");
-	require(flatfile_artifact_release_player(reconcile_root.string(), 42, &error) ==
-			flatfile_artifact_result::ok,
-		"standalone player artifact release failed: " + error);
-	flatfile_artifact_record reconcile_record;
-	require(flatfile_artifact_get(reconcile_root.string(), 900, &reconcile_record, &error) ==
-				flatfile_artifact_result::ok &&
-			!reconcile_record.owned &&
-			reconcile_record.location_type == FLATFILE_ARTIFACT_NOT_IN_GAME &&
-			reconcile_record.location == 0 && reconcile_record.timer == 0 &&
-			reconcile_record.bind_owner_pid == -1 && reconcile_record.bind_timer == 0,
-		"standalone player artifact release wrote incorrect authority");
 
 	const fs::path bind_root = fs::path(argv[1]) / "bind";
 	prepare_root(bind_root);
@@ -752,9 +741,6 @@ int main(int argc, char **argv)
 	require(flatfile_artifact_ensure(root.string(), &error) ==
 			flatfile_artifact_result::invalid,
 		"artifact ensure accepted or overwrote corrupt authority");
-	require(flatfile_artifact_release_player(root.string(), 42, &error) ==
-			flatfile_artifact_result::invalid,
-		"corrupt artifact authority was accepted by standalone player release");
 	require(flatfile_artifact_reconcile_players(root.string(), { { 100, 42 } }, 2000,
 						    &reconcile_counts,
 						    &error) == flatfile_artifact_result::invalid,

@@ -6,18 +6,15 @@ from pathlib import Path
 
 text = (SRC / "persistence_checkpoint.c").read_text()
 
-flush_start = text.index("void flush_dirty_players(void)")
-flush_end = text.index("int get_dirty_player_count(void)", flush_start)
-flush = text[flush_start:flush_end]
+mark_start = text.index("void mark_player_dirty_components(int pid")
+mark = text[mark_start:text.index("int get_dirty_player_count(void)", mark_start)]
 
-mark_start = text.index("void mark_player_dirty(int pid)")
-mark = text[mark_start:flush_start]
+# The player checkpoint loop; the event goes on to flush Redis floor drops.
+flush_start = text.index("void event_flush_dirty_players(")
+flush = text[flush_start:text.index("if (cursor < character_ids.size())", flush_start)]
 
 checks = {
-    "dirty marks are local and cumulative": (
-        "mark_player_dirty_components(pid, PLAYER_CHECKPOINT_COMPONENT_ALL)" in mark
-        and "player_save_pipeline_mark(pid, components)" in mark
-    ),
+    "dirty marks are local and cumulative": "player_save_pipeline_mark(pid, components)" in mark,
     "autosave scans online PCs": "for (P_char character = character_list" in flush,
     "autosave captures only dirty state": "player_save_pipeline_checkpoint_dirty" in flush,
     "Redis is not a durability dependency": "redis_" not in flush,

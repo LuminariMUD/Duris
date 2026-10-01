@@ -1984,16 +1984,6 @@ flatfile_item_repository_result flatfile_item_repository_prepare_player_and_cust
 				      error);
 }
 
-/* Prepare removal of one player plus verified locker custody. */
-flatfile_item_repository_result flatfile_item_repository_prepare_player_and_locker_remove(
-	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
-	const std::vector<flatfile_locker_custody_owner> &locker_custody,
-	flatfile_authority_operation *operation, std::string *error)
-{
-	return flatfile_item_repository_prepare_player_and_custody_remove(
-		root, lock, pid, locker_custody, {}, operation, error);
-}
-
 /* Prepare removal of verified locker custody without requiring a player owner. */
 flatfile_item_repository_result flatfile_item_repository_prepare_locker_remove(
 	const std::string &root, const flatfile_authority_lock &lock,

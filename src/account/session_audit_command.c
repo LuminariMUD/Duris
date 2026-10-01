@@ -89,19 +89,3 @@ bool session_audit_command_encode_result(const session_audit_result &result,
 	std::copy(command.payload.begin(), command.payload.end(), encoded->begin());
 	return true;
 }
-
-bool session_audit_command_decode_result(const uint8_t *encoded, size_t size,
-					 session_audit_result *result)
-{
-	if (!encoded || !result || size != SESSION_AUDIT_RESULT_BYTES)
-		return false;
-	*result = {};
-	const uint8_t *cursor = encoded;
-	const uint8_t *end = encoded + size;
-	uint8_t event = 0;
-	if (!read_le(&cursor, end, &result->pid) || !read_le(&cursor, end, &event) ||
-	    !read_le(&cursor, end, &result->occurred_at))
-		return false;
-	result->event = static_cast<session_audit_event>(event);
-	return std::all_of(cursor, end, [](uint8_t byte) { return byte == 0; }) && valid(*result);
-}

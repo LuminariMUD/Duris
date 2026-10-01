@@ -10,8 +10,6 @@ namespace collector
 {
 namespace
 {
-constexpr char catalog_magic[] = "DCAT";
-
 template <typename T>
 bool put(std::array<uint8_t, encoded_record_bytes> *output, size_t *offset, T value)
 {
@@ -22,14 +20,6 @@ bool put(std::array<uint8_t, encoded_record_bytes> *output, size_t *offset, T va
 	for (size_t byte = 0; byte < sizeof(T); ++byte)
 		(*output)[(*offset)++] = static_cast<uint8_t>(bits >> (byte * 8));
 	return true;
-}
-
-template <typename T> void append(std::vector<uint8_t> *output, T value)
-{
-	using unsigned_type = std::make_unsigned_t<T>;
-	const unsigned_type bits = static_cast<unsigned_type>(value);
-	for (size_t byte = 0; byte < sizeof(T); ++byte)
-		output->push_back(static_cast<uint8_t>(bits >> (byte * 8)));
 }
 
 struct reader
@@ -182,86 +172,5 @@ codec_result record_decode(const uint8_t *encoded, size_t size, record *entry)
 		return codec_result::invalid;
 	*entry = candidate;
 	return codec_result::ok;
-}
-
-codec_result catalog_encode(const catalog &value, std::vector<uint8_t> *encoded)
-{
-	if (!encoded)
-		return codec_result::invalid;
-	if (value.records.size() > catalog_max_records)
-		return codec_result::too_many_records;
-	if (!valid_catalog(value))
-		return codec_result::invalid;
-	try
-	{
-		std::vector<uint8_t> candidate;
-		candidate.reserve(catalog_header_bytes +
-				  value.records.size() * encoded_record_bytes);
-		candidate.insert(candidate.end(), catalog_magic, catalog_magic + 4);
-		append<uint16_t>(&candidate, catalog_codec_version);
-		append<uint16_t>(&candidate, 0);
-		append<uint64_t>(&candidate, value.revision);
-		append<uint64_t>(&candidate, value.next_listing);
-		append<uint32_t>(&candidate, static_cast<uint32_t>(value.records.size()));
-		for (const record &entry : value.records)
-		{
-			std::array<uint8_t, encoded_record_bytes> record_bytes = {};
-			const codec_result result = record_encode(entry, &record_bytes);
-			if (result != codec_result::ok)
-				return result;
-			candidate.insert(candidate.end(), record_bytes.begin(), record_bytes.end());
-		}
-		*encoded = std::move(candidate);
-		return codec_result::ok;
-	}
-	catch (const std::bad_alloc &)
-	{
-		return codec_result::allocation_failure;
-	}
-}
-
-codec_result catalog_decode(const uint8_t *encoded, size_t size, catalog *value)
-{
-	if (!value)
-		return codec_result::invalid;
-	if (!encoded || size < catalog_header_bytes || memcmp(encoded, catalog_magic, 4))
-		return codec_result::malformed;
-	reader input{ encoded + 4, encoded + size };
-	uint16_t version = 0, reserved = 0;
-	uint32_t count = 0;
-	catalog candidate;
-	if (!input.get(&version))
-		return codec_result::malformed;
-	if (version != catalog_codec_version)
-		return codec_result::unsupported_version;
-	if (!input.get(&reserved) || reserved || !input.get(&candidate.revision) ||
-	    !input.get(&candidate.next_listing) || !input.get(&count))
-		return codec_result::malformed;
-	if (count > catalog_max_records)
-		return codec_result::too_many_records;
-	if (size != catalog_header_bytes + static_cast<size_t>(count) * encoded_record_bytes)
-		return codec_result::malformed;
-	try
-	{
-		candidate.records.reserve(count);
-		for (uint32_t index = 0; index < count; ++index)
-		{
-			record entry;
-			const codec_result result =
-				record_decode(input.cursor, encoded_record_bytes, &entry);
-			if (result != codec_result::ok)
-				return result;
-			input.cursor += encoded_record_bytes;
-			candidate.records.push_back(std::move(entry));
-		}
-		if (input.cursor != input.end || !valid_catalog(candidate))
-			return codec_result::invalid;
-		*value = std::move(candidate);
-		return codec_result::ok;
-	}
-	catch (const std::bad_alloc &)
-	{
-		return codec_result::allocation_failure;
-	}
 }
 }

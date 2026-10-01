@@ -136,7 +136,6 @@ void sql_world_quest_history_load(P_char ch);
 int sql_world_quest_done_already(P_char ch, int number);
 int sql_world_quest_can_do_another(P_char ch);
 void sql_clear_results();
-bool sql_run_multi_query(const char *query);
 
 #define db_query(...) db_query_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)
 #define db_query_nolog(...) db_query_nolog_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)

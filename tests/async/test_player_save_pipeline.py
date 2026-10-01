@@ -298,8 +298,8 @@ init_char = section(NANNY, "void init_char(P_char ch)", "int approve_mode")
 assert "player_revision_hydrate(ch->only.pc->pid, 0)" in init_char
 print("[PASS] ordinary direct and manual saves branch before legacy mutation and I/O")
 
-mark = section(CHECKPOINT, "void mark_player_dirty(int pid)", "void flush_dirty_players(void)")
-flush = section(CHECKPOINT, "void flush_dirty_players(void)", "int get_dirty_player_count(void)")
+mark = section(CHECKPOINT, "void mark_player_dirty_components(int pid", "int get_dirty_player_count(void)")
+flush = section(CHECKPOINT, "void event_flush_dirty_players(", "\n}\n")
 assert "player_save_pipeline_mark" in mark
 assert "player_save_pipeline_checkpoint_dirty" in flush
 for retired in ("redis_command", "redis_reconnect", "sql_save_player", "fork("):

@@ -133,28 +133,9 @@ int main(int argc, char **argv)
 	require(flatfile_shopkeeper_establish(root.string(), { conflicting, second }, &error) ==
 			flatfile_shopkeeper_result::invalid,
 		"conflicting shopkeeper establishment was accepted");
-	auto replacement = records[1];
-	replacement.revision = 3;
-	replacement.saved_at++;
-	replacement.room_vnum++;
-	require(flatfile_shopkeeper_replace(root.string(), replacement, 2, &error) ==
-			flatfile_shopkeeper_result::ok,
-		"revision-guarded shopkeeper replacement failed: " + error);
-	require(flatfile_shopkeeper_list(root.string(), &records, &error) ==
-				flatfile_shopkeeper_result::ok &&
-			records[1].revision == 3 && records[1].room_vnum == replacement.room_vnum,
-		"shopkeeper replacement did not round trip");
-	require(flatfile_shopkeeper_replace(root.string(), replacement, 2, &error) ==
-			flatfile_shopkeeper_result::stale,
-		"stale shopkeeper replacement was accepted");
-	auto skipped_revision = replacement;
-	skipped_revision.revision = 5;
-	require(flatfile_shopkeeper_replace(root.string(), skipped_revision, 3, &error) ==
-			flatfile_shopkeeper_result::invalid,
-		"nonconsecutive shopkeeper revision was accepted");
 
 	auto produced_item = item(300, PLAYER_SNAPSHOT_NO_PARENT, 0, 402);
-	auto produced = trade(shop_trade_action::buy_produced, 2, 3, produced_item,
+	auto produced = trade(shop_trade_action::buy_produced, 2, 2, produced_item,
 			      ITEM_TRANSFER_ABSENT_REVISION, 102, 7);
 	flatfile_shopkeeper_trade_mutation mutation;
 	unsigned int result_code = 0;
@@ -164,7 +145,7 @@ int main(int argc, char **argv)
 		require(flatfile_shopkeeper_prepare_trade(root.string(), lock, produced, &mutation,
 							  &result_code, &error) ==
 					flatfile_shopkeeper_result::ok &&
-				result_code == 0 && mutation.shop_revision == 4 &&
+				result_code == 0 && mutation.shop_revision == 3 &&
 				!mutation.after_image.bytes.empty(),
 			"produced trade mutation did not prepare: " + error);
 		require(flatfile_authority_transaction_commit(root.string(), lock,
@@ -174,18 +155,18 @@ int main(int argc, char **argv)
 	}
 	require(flatfile_shopkeeper_list(root.string(), &records, &error) ==
 				flatfile_shopkeeper_result::ok &&
-			records[1].revision == 4 && records[1].items.size() == 3,
+			records[1].revision == 3 && records[1].items.size() == 3,
 		"produced trade changed persistent exemplar inventory");
 
 	auto purchased_item = item(102, PLAYER_SNAPSHOT_NO_PARENT, 0, 402);
-	auto purchase = trade(shop_trade_action::buy_existing, 2, 4, purchased_item, 8, 102, 8);
+	auto purchase = trade(shop_trade_action::buy_existing, 2, 3, purchased_item, 8, 102, 8);
 	{
 		flatfile_authority_lock lock;
 		require(lock.acquire(root.string(), &error), "could not acquire purchase lock");
 		require(flatfile_shopkeeper_prepare_trade(root.string(), lock, purchase, &mutation,
 							  &result_code, &error) ==
 					flatfile_shopkeeper_result::ok &&
-				result_code == 0 && mutation.shop_revision == 5,
+				result_code == 0 && mutation.shop_revision == 4,
 			"existing purchase mutation did not prepare: " + error);
 		require(flatfile_authority_transaction_commit(root.string(), lock,
 							      { mutation.after_image }, &error) ==
@@ -194,13 +175,13 @@ int main(int argc, char **argv)
 	}
 	require(flatfile_shopkeeper_list(root.string(), &records, &error) ==
 				flatfile_shopkeeper_result::ok &&
-			records[1].revision == 5 && records[1].items.size() == 2 &&
+			records[1].revision == 4 && records[1].items.size() == 2 &&
 			records[1].items[0].object_uid == 100 &&
 			records[1].items[1].parent_index == 0,
 		"existing purchase did not remove exactly its authoritative subtree");
 
 	auto unsupported_item = item(399, PLAYER_SNAPSHOT_NO_PARENT, 0, 699);
-	auto unsupported_sale = trade(shop_trade_action::sell_store, 2, 5, unsupported_item, 9);
+	auto unsupported_sale = trade(shop_trade_action::sell_store, 2, 4, unsupported_item, 9);
 	{
 		flatfile_authority_lock lock;
 		require(lock.acquire(root.string(), &error),
@@ -213,14 +194,14 @@ int main(int argc, char **argv)
 	}
 	auto sold_item = item(400, PLAYER_SNAPSHOT_NO_PARENT, 0, 700);
 	sold_item.dynamic_affects.clear();
-	auto sale = trade(shop_trade_action::sell_store, 2, 5, sold_item, 9);
+	auto sale = trade(shop_trade_action::sell_store, 2, 4, sold_item, 9);
 	{
 		flatfile_authority_lock lock;
 		require(lock.acquire(root.string(), &error), "could not acquire sale lock");
 		require(flatfile_shopkeeper_prepare_trade(root.string(), lock, sale, &mutation,
 							  &result_code, &error) ==
 					flatfile_shopkeeper_result::ok &&
-				result_code == 0 && mutation.shop_revision == 6,
+				result_code == 0 && mutation.shop_revision == 5,
 			"stored sale mutation did not prepare: " + error);
 		require(flatfile_authority_transaction_commit(root.string(), lock,
 							      { mutation.after_image }, &error) ==
@@ -229,19 +210,19 @@ int main(int argc, char **argv)
 	}
 	require(flatfile_shopkeeper_list(root.string(), &records, &error) ==
 				flatfile_shopkeeper_result::ok &&
-			records[1].revision == 6 && records[1].items.size() == 3 &&
+			records[1].revision == 5 && records[1].items.size() == 3 &&
 			records[1].items.back().object_uid == 400,
 		"stored sale did not append the transferred graph");
 
 	auto destroyed_item = item(500, PLAYER_SNAPSHOT_NO_PARENT, 0, 800);
-	auto destruction = trade(shop_trade_action::sell_destroy, 2, 6, destroyed_item, 2);
+	auto destruction = trade(shop_trade_action::sell_destroy, 2, 5, destroyed_item, 2);
 	{
 		flatfile_authority_lock lock;
 		require(lock.acquire(root.string(), &error), "could not acquire destruction lock");
 		require(flatfile_shopkeeper_prepare_trade(root.string(), lock, destruction,
 							  &mutation, &result_code, &error) ==
 					flatfile_shopkeeper_result::ok &&
-				result_code == 0 && mutation.shop_revision == 7,
+				result_code == 0 && mutation.shop_revision == 6,
 			"destroyed sale mutation did not prepare: " + error);
 		require(flatfile_authority_transaction_commit(root.string(), lock,
 							      { mutation.after_image }, &error) ==
@@ -250,7 +231,7 @@ int main(int argc, char **argv)
 	}
 	require(flatfile_shopkeeper_list(root.string(), &records, &error) ==
 				flatfile_shopkeeper_result::ok &&
-			records[1].revision == 7 && records[1].items.size() == 3,
+			records[1].revision == 6 && records[1].items.size() == 3,
 		"destroyed sale changed shop inventory");
 	{
 		flatfile_authority_lock lock;

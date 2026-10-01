@@ -314,7 +314,6 @@ OBJS =  $(SHIP_OBJS) \
 				 flatfile/flatfile_shopkeeper_ownership.o \
 				 flatfile/flatfile_shopkeeper_materialize.o \
 				 flatfile/flatfile_shopkeeper_restore.o \
-				 flatfile/flatfile_shopkeeper_save.o \
 				 flatfile/flatfile_shop_trade_repository.o \
 				 flatfile/flatfile_shop_trade_materialization.o \
 				 flatfile/flatfile_shop_trophy_history.o \

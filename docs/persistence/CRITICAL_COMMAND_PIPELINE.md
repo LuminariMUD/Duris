@@ -88,9 +88,7 @@ shutdown drain commands first and outbox records second.
 
 `world persistence` adds cached `critical_outbox` counts for pending age, dead letters,
 incomplete inbox rows, committed operations missing outbox rows, delivery/retry/error
-totals, and high-water records/bytes. `critical_outbox_reconcile()` is the typed
-read-only discrepancy interface. `critical_outbox_retry_dead_letter(id)` is the sole
-repair action: it can only reset one numeric dead-letter ID and never accepts SQL.
+totals, and high-water records/bytes.
 
 Treat a growing oldest age as a stop condition for copyover/shutdown and affected
 gameplay: restore the underlying database or destination and investigate before

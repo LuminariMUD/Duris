@@ -25,7 +25,6 @@ int main()
     assert(decoded.pid == 42 && decoded.event == session_audit_event::login);
     std::array<uint8_t, SESSION_AUDIT_RESULT_BYTES> result = {};
     assert(session_audit_command_encode_result(payload, &result));
-    assert(session_audit_command_decode_result(result.data(), result.size(), &decoded));
     command.keys[0].id = 43;
     assert(!session_audit_command_decode_payload(command, &decoded));
 }

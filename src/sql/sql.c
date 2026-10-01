@@ -3028,27 +3028,6 @@ void sql_clear_results()
 	sql_clear_results_on(DB);
 }
 
-/* Execute a semicolon-separated multi-statement query.
- * Uses the observed executor with CLIENT_MULTI_STATEMENTS and drains all
- * result sets. */
-bool sql_run_multi_query(const char *query)
-{
-	if (!DB || !query || !*query)
-		return false;
-
-	if (!sql_trace_exec("sql_run_multi_query", query, strlen(query), true, false))
-	{
-		sql_player_error("sql_run_multi_query");
-		// Drain any partial result sets from statements that succeeded
-		// before the failing one (multi-statement with CLIENT_MULTI_STATEMENTS).
-		sql_clear_results();
-		return false;
-	}
-
-	sql_clear_results();
-	return true;
-}
-
 bool qry_at(struct persistence_query_site site, const char *format, ...)
 {
 	char buf[MAX_STRING_LENGTH];

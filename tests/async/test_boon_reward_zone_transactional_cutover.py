@@ -246,7 +246,7 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
     def test_flat_boon_maintenance_enumerates_the_catalog(self):
         boon = (SRC / "boon.c").read_text()
         start = boon.index("void boon_maintenance()")
-        end = boon.index("void boon_random_maintenance()", start)
+        end = boon.index("void check_boon_completion(", start)
         maintenance = boon[start:end]
         self.assertIn("flatfile_boon_load_definitions", maintenance)
         self.assertIn("definition.active", maintenance)

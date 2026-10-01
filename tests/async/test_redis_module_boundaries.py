@@ -32,9 +32,7 @@ MAKEFILE = (SRC / "Makefile").read_text(encoding="ascii")
 
 
 CHECKPOINT_API = (
-    "mark_player_dirty",
     "mark_player_dirty_components",
-    "flush_dirty_players",
     "get_dirty_player_count",
     "persistence_dirty_save_snapshot_copy",
     "event_flush_dirty_players",
