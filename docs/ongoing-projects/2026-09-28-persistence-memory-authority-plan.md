@@ -12,8 +12,11 @@
   [!4](https://gitlab.com/max757/duris/-/merge_requests/4)) is on `master` since `60f56fb5b`,
   after one review round. **Phase 2 is done.** See
   [Step 8](#step-8-game-thread-sql-off-the-loop-done).
-- **Phase 3** is in progress on `fix/7-persistence-phase-3` (steps 1 to 7 done); see
-  [Phase 3 progress](#phase-3-progress) for its steps and where they stand.
+- **Phase 3** is on `fix/7-persistence-phase-3`: steps 1 to 9 are done and passed the gates at
+  `c6e0219da` (plus `ae53636ff`, two contract fixes); step 10 (staging) follows the merge. Not
+  pushed since `c551f5d05`, and no MR is open yet. After step 9 a cleanup nobody asked for was
+  started (`4621a6c8a` and `01a345b84`); it is pushed without the full gates, which still have to
+  run on it. See [Where Phase 3 stands](#where-phase-3-stands-2026-10-01).
 
 See [Phase 1 progress](#phase-1-progress) and [Phase 2 progress](#phase-2-progress) for what each
 step did and how.
@@ -1218,8 +1221,8 @@ Verification for this round, on the final head:
   `persistence/phase-2-step-8-review-0` and `-1`. It landed on 2026-09-30 in `60f56fb5b`, one
   `--no-ff` merge of the `-1` head, with no rebase. The branch is deleted.
 - Phase 3 continues on `fix/7-persistence-phase-3`, branched from `60f56fb5b`. Its MR targets
-  `master` and is opened once it holds work; its review rounds are tagged
-  `persistence/phase-3-review-<n>`.
+  `master` and is not open yet; its review rounds
+  will be tagged `persistence/phase-3-review-<n>`.
 
 ## Phase 2 progress
 
@@ -2283,8 +2286,10 @@ The steps, in order (later ones delete what earlier ones leave unreachable):
    [Step 7](#step-7-the-game-threads-dead-sql-done)): the functions
    [What is left after step 8](#what-is-left-after-step-8) names, and whatever else of the
    persistence code the linker drops after steps 1 to 6.
-8. **Flat-file lockers load their items** (todo).
-9. **The die, restart and loot journey** (todo).
+8. **Flat-file lockers load their items** (done, see
+   [Step 8](#step-8-flat-file-lockers-keep-their-items-done)).
+9. **The die, restart and loot journey** (done, see
+   [Step 9](#step-9-the-die-restart-and-loot-journey-done)).
 10. **Staging** (after Phase 3 is on `master`): the sign-off above.
 
 Each step does its area with its tests, in its own commits, and passes the gates:
@@ -2609,6 +2614,14 @@ Each item is its own commit on `fix/7-persistence-phase-3`; the found bugs are f
   and nothing writes the event log's tables any more (`sql_pwipe()` still empties them).
   Removing either is a schema change: a migration, the bootstrap, the probes, the lifecycle
   manifest and `scripts/import_legacy_dump.py`.
+- Also left for a decision: dead branches behind live dispatchers, which the linker cannot
+  see. Nothing submits a locker deposit or withdrawal any more (step 4), so the flat-file item
+  repository's locker transfer branch and `flatfile_locker_prepare_item_transfer()` never run;
+  `item_movement_transaction.c` now submits only creation grants (and operator repairs), so its
+  corpse batch and trusted-steal paths are unreachable, and both item transfer repositories
+  still handle reasons no command sends. Cutting them reshapes live creation-grant and economy
+  code, so it was not folded into this step. (It was started after step 9 without being asked;
+  see [Where Phase 3 stands](#where-phase-3-stands-2026-10-01).)
 - Tests: the event log's tests (13 files and `test_persistence.{c,h}`), the legacy writer's
   (`test_sql_player_dirty_bits.py`, `test_player_replacement_state.py`,
   `test_playtime_legacy_sql.py`) and `test_flatfile_shopkeeper_save.py` are deleted; the mixed
@@ -2618,6 +2631,72 @@ Each item is its own commit on `fix/7-persistence-phase-3`; the found bugs are f
   still named deleted code: three went with it, 16 were updated and pass alone
   (`67962c4da`); the information cache contract's check also found the creation lock bug
   above.
+
+#### Step 8: flat-file lockers keep their items (done)
+
+- On flat-file the locker writer never started (`locker_async_init()` wanted a SQL pool, and
+  a minimal world did not call it), so every locker save was refused, and entering a locker
+  passed no rows: whatever was left in one was gone once it closed, and after a restart.
+- The writer now saves a locker's public chest on flat-file too (`write_locker()` in
+  `locker_async.c`): `flatfile_locker_snapshot_apply()` claims the chest's items for it and
+  writes its locker catalog record in one authority transaction, through the same
+  `apply_world_snapshot()` corpses and saved items use, which now names its owner under the
+  lock (`flatfile_locker_public_owner()` gives the stored locker's ids or a new locker's, and
+  `flatfile_locker_prepare_public_save()` creates a new account or guild locker). A player's
+  own named locker is entered only when it exists, so none is ever new.
+- Entering a locker reads its record (`flatfile_locker_find()`), keeps the items no other
+  owner holds (`flatfile_world_load_item_ownership()`, the corpse restore's filter, now
+  public), and materializes them onto the locker character after the access checks; a locker
+  that cannot be read or materialized is not opened, so its next save cannot empty it.
+- Private chests stay MariaDB's: creating one needs the database.
+- `test_flatfile_locker_journey.py` (test-all) promotes the character to a god (lockers are
+  otherwise for towns), leaves the banana in the account locker, restarts, takes it back and
+  restarts again, and reopens a guild locker once its save has landed (a minimal world loads
+  no guilds after a restart). The locker pipeline, leave-during-save, minimal boot, items in
+  memory and pool worker gate contracts follow the new routing.
+- Commits: `3a3d1c3e6`, and `ae53636ff` for the two contracts the step 8 commit missed.
+
+#### Step 9: the die, restart and loot journey (done)
+
+- `test_flatfile_death_restart_journey.py` (test-all, about 70 s) runs the full world on
+  flat-file, which restores corpses at boot: a new character takes its own life, the server
+  restarts and restores the corpse where it died, the character loots its mace and saves,
+  and after another restart the mace is still the character's and no longer in the corpse.
+  It found no defect. Commit: `c6e0219da`.
+
+#### Steps 8 and 9 verified
+
+At `c6e0219da`: both server builds, the pfile build, `./scripts/format.sh --all --check`,
+`make test-all` (658 of 660: the two failures were the contracts fixed in `ae53636ff`, which
+then pass alone; both new journeys passed under the parallel load, 151 s and 171 s),
+`make test-db` (34 of 34) and the backup-recovery container replay (passed).
+
+### Where Phase 3 stands (2026-10-01)
+
+- **Done:** steps 1 to 9, through `ae53636ff`, verified as above.
+- **Not asked for, waiting on the owner's decision:** after step 9, the dead transfer branches
+  listed under step 7 were cut. Nothing in Phase 3's done-when needs this.
+  - `4621a6c8a` (committed): `item_movement_transaction.c` keeps only the creation grants
+    (the generic and batch movement submits, corpse metadata, mobile claims, trusted-steal
+    retention and the opt-in publication callbacks are gone), and the coordinator loses its
+    publication phase (`submit_for_publication`, `acknowledge_publication`,
+    `publication_pending`). The tests that read or link those files pass;
+    `test_publication_retention_runtime.py` is deleted. The full gates were not run on it.
+  - `01a345b84` (committed): item transfer commands accept only creation, operator
+    repair and destruction, at payload version 7 only, without the corpse context; the MariaDB
+    repository loses the pet move; the flat-file repositories lose the locker and corpse
+    transfer prepares, the artifact transfer prepares become
+    `flatfile_artifact_room_transfer_allowed()`, and the materialization loses its pet branch;
+    the collector boundary loses the mobile-claim and raise-pet cases. The repository harnesses
+    are reworked (the flat-file collector harness now sets up corpses through
+    `flatfile_corpse_snapshot_apply()`), `test_item_transfer_version_compatibility.py` becomes
+    `test_item_transfer_codec.py` (with `quality.yml` and the collector design doc). Verified:
+    both server builds, the pfile build, the 58 tests that name the changed code, and both
+    MariaDB harnesses (collector repository, item transfer schema). Not run: the full gates
+    and the format check over every file.
+  - Both are pushed; the full gates have not run on them yet.
+- **Next:** run the full gates on the cleanup, open the Phase 3 MR (tag
+  `persistence/phase-3-review-0`), and after the merge step 10, staging.
 
 ### Finding dead code
 
