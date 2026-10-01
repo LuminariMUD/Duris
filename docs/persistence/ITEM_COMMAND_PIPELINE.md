@@ -2,7 +2,7 @@
 
 Item commands (get, drop, put, give, empty) move the object in memory at once. The next save of
 each owner records where it went; nothing waits on the database (see
-[the persistence reset plan](../ongoing-projects/2026-09-28-persistence-memory-authority-plan.md)).
+[the persistence reset plan](../ongoing-projects/persistence-plan.md)).
 
 src/item/item_command_parser.h owns only the GET grammar. It turns the legacy
 forms into a typed command kind while preserving the existing six behaviors:

@@ -19,7 +19,7 @@ grants still retain pending work until publication succeeds.
 ## Behavior
 
 Coins now move in memory (Phase 2 of the
-[persistence reset](../ongoing-projects/2026-09-28-persistence-memory-authority-plan.md)):
+[persistence reset](../ongoing-projects/persistence-plan.md)):
 
 - Get, take and put handle any `ITEM_MONEY` object by type, whatever its vnum, and
   add a picked-up pile to the wallet at once. The player's save writes the wallet.

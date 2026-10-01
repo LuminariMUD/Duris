@@ -631,7 +631,7 @@ above; never use production as a development or validation target.
 ```
 
 Wallets, banks, epic points and frags are saved from memory since Phase 2 of the
-[persistence reset](../ongoing-projects/2026-09-28-persistence-memory-authority-plan.md);
+[persistence reset](../ongoing-projects/persistence-plan.md);
 their ledgers are history, and money changes are no longer ledgered at all.
 `migrations/reconcile_currency_balances.sh`, `migrations/reconcile_epic_balances.sh` and
 `migrations/reconcile_combat_frags.sh` compare balances with those ledgers, so they report
