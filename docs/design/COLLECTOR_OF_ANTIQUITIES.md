@@ -174,8 +174,8 @@ MariaDB and flat-file builds remain required after every integration change;
 the flat-file collector journey exercises the corresponding authority and
 recovery paths directly.
 
-Run `python3 tests/async/test_item_transfer_version_compatibility.py` for the
-collector ownership/fence codec boundary. Run
+Run `python3 tests/async/test_item_transfer_codec.py` for the collector
+ownership/fence codec boundary. Run
 `tests/async/run_collector_item_owner_schema_mysql.sh` against its default
 MariaDB image and again with `COLLECTOR_OWNER_DB_IMAGE=mysql:8.0`; the isolated
 upgrade test proves type-9 preservation, type-10 admission across all three

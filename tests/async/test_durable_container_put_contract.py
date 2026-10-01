@@ -113,15 +113,15 @@ class DurableContainerPutContractTests(unittest.TestCase):
             self.assertNotIn("return false;", body,
                              f"{signature} still refuses without naming a reason")
 
-    def test_both_ownership_backends_cover_exactly_once_populated_give(self):
+    def test_both_ownership_backends_cover_exactly_once_populated_move(self):
         mysql = (ROOT / "tests/async/item_transfer_mysql_harness.cpp").read_text()
         flatfile = (ROOT / "tests/async/flatfile_item_repository_harness.cpp").read_text()
         for backend in (mysql, flatfile):
-            self.assertIn("item_transfer_reason::player_give", backend)
+            self.assertIn("item_transfer_reason::operator_repair", backend)
             self.assertIn("critical_apply_outcome::already_applied", backend)
         self.assertIn("created_result.item_count == 2", mysql)
         self.assertIn("move.item_count = 2", flatfile)
-        self.assertIn("cross-owner give must apply exactly once", mysql)
+        self.assertIn("cross-owner move must apply exactly once", mysql)
 
     def test_nesting_repair_filters_ambiguous_quarantined_evidence(self):
         repair = (ROOT / "migrations/repair_item_nesting.sh").read_text()

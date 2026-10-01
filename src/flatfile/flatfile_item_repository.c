@@ -507,127 +507,25 @@ bool generic_materialization_owner(item_owner_type type)
 	       type == item_owner_type::destruction;
 }
 
-bool locker_transfer(const item_transfer_payload &payload)
-{
-	return (payload.from_owner.type == item_owner_type::player &&
-		payload.to_owner.type == item_owner_type::locker &&
-		payload.reason == item_transfer_reason::locker_deposit) ||
-	       (payload.from_owner.type == item_owner_type::locker &&
-		payload.to_owner.type == item_owner_type::player &&
-		payload.reason == item_transfer_reason::locker_withdraw);
-}
-
-bool corpse_loot_transfer(const item_transfer_payload &payload)
-{
-	return payload.from_owner.type == item_owner_type::corpse &&
-	       payload.to_owner.type == item_owner_type::player &&
-	       payload.reason == item_transfer_reason::corpse_loot;
-}
-
-bool corpse_create_transfer(const item_transfer_payload &payload)
-{
-	return payload.from_owner.type == item_owner_type::player &&
-	       payload.to_owner.type == item_owner_type::corpse &&
-	       payload.reason == item_transfer_reason::corpse_create;
-}
-
+// A grant creates items in a room; an operator repair moves them to its floor.
 bool room_transfer(const item_transfer_payload &payload)
 {
-	const bool deposit = payload.from_owner.type == item_owner_type::player &&
-			     payload.to_owner.type == item_owner_type::room &&
-			     ((payload.reason == item_transfer_reason::player_drop &&
-			       !payload.target_parent_item_uid) ||
-			      (payload.reason == item_transfer_reason::player_put &&
-			       payload.target_parent_item_uid));
-	const bool withdraw = payload.from_owner.type == item_owner_type::room &&
-			      payload.to_owner.type == item_owner_type::player &&
-			      payload.reason == item_transfer_reason::player_get &&
-			      !payload.target_parent_item_uid;
 	const bool create = payload.from_owner.type == item_owner_type::system &&
 			    payload.to_owner.type == item_owner_type::room &&
 			    payload.reason == item_transfer_reason::creation &&
 			    !payload.target_parent_item_uid;
-	const bool destroy = payload.from_owner.type == item_owner_type::room &&
-			     payload.to_owner.type == item_owner_type::destruction &&
-			     payload.reason == item_transfer_reason::destruction &&
-			     !payload.target_parent_item_uid;
 	const bool reparent = item_owner_identity_equal(payload.from_owner, payload.to_owner) &&
 			      payload.from_owner.type == item_owner_type::room &&
 			      payload.reason == item_transfer_reason::operator_repair &&
 			      !payload.target_parent_item_uid;
-	return static_cast<unsigned int>(deposit) + static_cast<unsigned int>(withdraw) +
-		       static_cast<unsigned int>(create) + static_cast<unsigned int>(destroy) +
-		       static_cast<unsigned int>(reparent) ==
-	       1;
+	return create || reparent;
 }
 
-bool generic_transfer_supported(const item_transfer_payload &payload, uint16_t payload_version)
+bool generic_transfer_supported(const item_transfer_payload &payload)
 {
-	const bool mobile_claim = payload.reason == item_transfer_reason::mobile_claim &&
-				  item_owner_identity_equal(payload.from_owner, payload.to_owner) &&
-				  !payload.multi_root && !payload.target_parent_item_uid;
-	const bool pet_give = payload.reason == item_transfer_reason::pet_give &&
-			      payload.from_owner.type == item_owner_type::player &&
-			      payload.to_owner.type == item_owner_type::pet &&
-			      payload.from_owner.id == payload.to_owner.context_id &&
-			      !payload.multi_root && !payload.target_parent_item_uid;
-	const bool pet_return = payload.reason == item_transfer_reason::pet_return &&
-				payload.from_owner.type == item_owner_type::pet &&
-				payload.to_owner.type == item_owner_type::player &&
-				payload.from_owner.context_id == payload.to_owner.id &&
-				!payload.multi_root && !payload.target_parent_item_uid;
 	return (generic_materialization_owner(payload.from_owner.type) &&
 		generic_materialization_owner(payload.to_owner.type)) ||
-	       mobile_claim || pet_give || pet_return || locker_transfer(payload) ||
-	       corpse_loot_transfer(payload) ||
-	       (payload_version >= ITEM_TRANSFER_EXACT_PAYLOAD_VERSION && room_transfer(payload)) ||
-	       (payload_version >= ITEM_TRANSFER_CORPSE_PAYLOAD_VERSION &&
-		corpse_create_transfer(payload));
-}
-
-bool locker_custody_matches(ownership_catalog &catalog, const item_owner_identity &owner,
-			    const std::vector<flatfile_locker_custody_item> &expected)
-{
-	if (!find_owner(&catalog, owner))
-		return false;
-	size_t index = 0;
-	for (const auto &item : catalog.items)
-	{
-		if (item.state != item_custody_state::active ||
-		    !item_owner_identity_equal(item.owner, owner))
-			continue;
-		if (index >= expected.size() || expected[index].item_uid != item.item_uid ||
-		    expected[index].vnum != item.vnum)
-			return false;
-		++index;
-	}
-	return index == expected.size();
-}
-
-bool corpse_custody_matches(ownership_catalog &catalog, const item_owner_identity &owner,
-			    const std::vector<flatfile_corpse_custody_item> &expected, bool created)
-{
-	const owner_state *stored_owner = find_owner(&catalog, owner);
-	if (!stored_owner)
-		// writeCorpse() publishes the empty aggregate before the first item handoff.
-		// In that ordering the world corpse exists while its custody owner does not;
-		// the first transfer is what creates that owner.  A non-empty aggregate still
-		// requires matching custody and therefore remains fail-closed here.
-		return expected.empty();
-	if (created && (stored_owner->revision || !expected.empty()))
-		return false;
-	size_t index = 0;
-	for (const auto &item : catalog.items)
-	{
-		if (item.state != item_custody_state::active ||
-		    !item_owner_identity_equal(item.owner, owner))
-			continue;
-		if (index >= expected.size() || expected[index].item_uid != item.item_uid ||
-		    expected[index].vnum != item.vnum)
-			return false;
-		++index;
-	}
-	return index == expected.size();
+	       room_transfer(payload);
 }
 
 bool room_custody_matches(ownership_catalog &catalog, const item_owner_identity &owner,
@@ -2056,8 +1954,7 @@ critical_apply_result flatfile_item_repository_apply(const std::string &root,
 	unsigned int result_code = apply_transfer(&candidate, payload, &result);
 	if (result_code == ENOMEM || result_code == EILSEQ)
 		return { critical_apply_outcome::retryable_failure, catalog.revision, result_code };
-	if (!result_code && command.payload_version >= ITEM_TRANSFER_EXACT_PAYLOAD_VERSION &&
-	    !generic_transfer_supported(payload, command.payload_version))
+	if (!result_code && !generic_transfer_supported(payload))
 	{
 		try
 		{
@@ -2077,44 +1974,6 @@ critical_apply_result flatfile_item_repository_apply(const std::string &root,
 			   0,
 			   0 };
 		result_code = EOPNOTSUPP;
-	}
-	if (!result_code && command.payload_version == ITEM_TRANSFER_EXACT_PAYLOAD_VERSION &&
-	    corpse_loot_transfer(payload))
-	{
-		flatfile_artifact_transfer_mutation ignored;
-		const auto artifacts = flatfile_artifact_prepare_corpse_transfer(
-			root, authority, payload, command.accepted_at_usec, &ignored, &error);
-		if (artifacts == flatfile_artifact_result::conflict)
-		{
-			try
-			{
-				candidate = catalog;
-			}
-			catch (const std::bad_alloc &)
-			{
-				return { critical_apply_outcome::retryable_failure,
-					 catalog.revision, ENOMEM };
-			}
-			const owner_state *from = find_owner(&catalog, payload.from_owner);
-			const owner_state *to = find_owner(&catalog, payload.to_owner);
-			result = { item_transfer_result_root(payload),
-				   payload.item_count,
-				   from ? from->revision : 0,
-				   to ? to->revision : 0,
-				   0,
-				   0 };
-			result_code = EOPNOTSUPP;
-		}
-		else if (artifacts != flatfile_artifact_result::ok &&
-			 artifacts != flatfile_artifact_result::unchanged)
-			return { artifacts == flatfile_artifact_result::io_error ?
-					 critical_apply_outcome::retryable_failure :
-					 critical_apply_outcome::terminal_failure,
-				 catalog.revision,
-				 static_cast<unsigned int>(
-					 artifacts == flatfile_artifact_result::io_error ?
-						 EIO :
-						 EILSEQ) };
 	}
 	flatfile_collector_enrollment_mutation collector_mutation;
 	bool include_collector_mutation = false;
@@ -2169,63 +2028,13 @@ critical_apply_result flatfile_item_repository_apply(const std::string &root,
 		return { critical_apply_outcome::retryable_failure, catalog.revision, ENOMEM };
 	}
 	flatfile_shop_trade_materialization_mutation materialization;
-	flatfile_locker_transfer_mutation locker;
-	flatfile_corpse_transfer_mutation corpse;
 	flatfile_room_transfer_mutation room;
-	flatfile_artifact_transfer_mutation corpse_artifacts;
-	flatfile_artifact_transfer_mutation room_artifacts;
-	bool include_locker = false;
-	if (!result_code && command.payload_version >= ITEM_TRANSFER_EXACT_PAYLOAD_VERSION &&
-	    locker_transfer(payload))
-	{
-		const auto prepared = flatfile_locker_prepare_item_transfer(
-			root, authority, payload, &locker, &error);
-		if (prepared != flatfile_locker_result::ok)
-			return { prepared == flatfile_locker_result::io_error ?
-					 critical_apply_outcome::retryable_failure :
-					 critical_apply_outcome::terminal_failure,
-				 catalog.revision,
-				 static_cast<unsigned int>(
-					 prepared == flatfile_locker_result::io_error ? EIO :
-											EILSEQ) };
-		if (!locker_custody_matches(catalog,
-					    payload.from_owner.type == item_owner_type::locker ?
-						    payload.from_owner :
-						    payload.to_owner,
-					    locker.expected_items))
-			return { critical_apply_outcome::terminal_failure, catalog.revision,
-				 EILSEQ };
-		include_locker = true;
-	}
-	bool include_corpse = false;
-	if (!result_code && command.payload_version >= ITEM_TRANSFER_EXACT_PAYLOAD_VERSION &&
-	    (corpse_loot_transfer(payload) || corpse_create_transfer(payload)))
-	{
-		const auto prepared = flatfile_world_item_prepare_corpse_transfer(
-			root, authority, payload, &corpse, &error);
-		if (prepared != flatfile_world_item_result::ok)
-			return { prepared == flatfile_world_item_result::io_error ?
-					 critical_apply_outcome::retryable_failure :
-					 critical_apply_outcome::terminal_failure,
-				 catalog.revision,
-				 static_cast<unsigned int>(
-					 prepared == flatfile_world_item_result::io_error ?
-						 EIO :
-						 EILSEQ) };
-		const item_owner_identity &corpse_owner =
-			corpse_create_transfer(payload) ? payload.to_owner : payload.from_owner;
-		if (!corpse_custody_matches(catalog, corpse_owner, corpse.expected_items,
-					    corpse.created))
-			return { critical_apply_outcome::terminal_failure, catalog.revision,
-				 EILSEQ };
-		result.corpse_revision = corpse.corpse_revision;
-		candidate.operations.back().result = result;
-		include_corpse = true;
-	}
 	bool include_room = false;
-	if (!result_code && command.payload_version >= ITEM_TRANSFER_EXACT_PAYLOAD_VERSION &&
-	    room_transfer(payload))
+	if (!result_code && room_transfer(payload))
 	{
+		if (!flatfile_artifact_room_transfer_allowed(payload))
+			return { critical_apply_outcome::terminal_failure, catalog.revision,
+				 EILSEQ };
 		const auto prepared = flatfile_world_item_prepare_room_transfer(
 			root, authority, payload, &room, &error);
 		if (prepared != flatfile_world_item_result::ok)
@@ -2249,45 +2058,8 @@ critical_apply_result flatfile_item_repository_apply(const std::string &root,
 				 EILSEQ };
 		include_room = true;
 	}
-	bool include_corpse_artifacts = false;
-	if (!result_code && command.payload_version == ITEM_TRANSFER_PAYLOAD_VERSION &&
-	    (corpse_loot_transfer(payload) || corpse_create_transfer(payload)))
-	{
-		const auto prepared = flatfile_artifact_prepare_corpse_transfer(
-			root, authority, payload, command.accepted_at_usec, &corpse_artifacts,
-			&error);
-		if (prepared != flatfile_artifact_result::ok &&
-		    prepared != flatfile_artifact_result::unchanged)
-			return { prepared == flatfile_artifact_result::io_error ?
-					 critical_apply_outcome::retryable_failure :
-					 critical_apply_outcome::terminal_failure,
-				 catalog.revision,
-				 static_cast<unsigned int>(
-					 prepared == flatfile_artifact_result::io_error ? EIO :
-											  EILSEQ) };
-		include_corpse_artifacts = prepared == flatfile_artifact_result::ok;
-	}
-	bool include_room_artifacts = false;
-	if (!result_code && command.payload_version >= ITEM_TRANSFER_EXACT_PAYLOAD_VERSION &&
-	    room_transfer(payload))
-	{
-		const auto prepared = flatfile_artifact_prepare_room_transfer(
-			root, authority, payload, command.accepted_at_usec, &room_artifacts,
-			&error);
-		if (prepared != flatfile_artifact_result::ok &&
-		    prepared != flatfile_artifact_result::unchanged)
-			return { prepared == flatfile_artifact_result::io_error ?
-					 critical_apply_outcome::retryable_failure :
-					 critical_apply_outcome::terminal_failure,
-				 catalog.revision,
-				 static_cast<unsigned int>(
-					 prepared == flatfile_artifact_result::io_error ? EIO :
-											  EILSEQ) };
-		include_room_artifacts = prepared == flatfile_artifact_result::ok;
-	}
 	bool include_materialization = false;
-	if (!result_code && command.payload_version >= ITEM_TRANSFER_EXACT_PAYLOAD_VERSION &&
-	    payload.item_blob_size)
+	if (!result_code && payload.item_blob_size)
 	{
 		const auto prepared = flatfile_item_transfer_materialization_prepare(
 			root, authority, command.operation_id, payload, &materialization, &error);
@@ -2312,16 +2084,8 @@ critical_apply_result flatfile_item_repository_apply(const std::string &root,
 	try
 	{
 		images.push_back({ ownership_filename, std::move(encoded) });
-		if (include_locker)
-			images.push_back(std::move(locker.after_image));
-		if (include_corpse)
-			images.push_back(std::move(corpse.after_image));
 		if (include_room)
 			images.push_back(std::move(room.after_image));
-		if (include_corpse_artifacts)
-			images.push_back(std::move(corpse_artifacts.after_image));
-		if (include_room_artifacts)
-			images.push_back(std::move(room_artifacts.after_image));
 		if (include_materialization)
 			images.push_back(std::move(materialization.after_image));
 		if (include_collector_mutation)

@@ -77,14 +77,6 @@ struct flatfile_locker_player_removal
 	std::vector<flatfile_locker_custody_owner> custody;
 };
 
-struct flatfile_locker_transfer_mutation
-{
-	flatfile_authority_after_image after_image;
-	std::vector<flatfile_locker_custody_item> expected_items;
-	uint64_t locker_revision = 0;
-	uint64_t chest_revision = 0;
-};
-
 enum class flatfile_locker_result
 {
 	ok,
@@ -130,10 +122,5 @@ flatfile_locker_result
 flatfile_locker_prepare_account_remove(const std::string &root, const flatfile_authority_lock &lock,
 				       const std::string &account_name,
 				       flatfile_locker_player_removal *removal, std::string *error);
-flatfile_locker_result
-flatfile_locker_prepare_item_transfer(const std::string &root, const flatfile_authority_lock &lock,
-				      const item_transfer_payload &payload,
-				      flatfile_locker_transfer_mutation *mutation,
-				      std::string *error);
 
 #endif

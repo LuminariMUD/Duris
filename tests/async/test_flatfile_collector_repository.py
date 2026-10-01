@@ -14,6 +14,10 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-collector-") as temporary:
     sources = [
         "tests/async/flatfile_collector_repository_harness.cpp",
         rel("flatfile_collector_repository.c"),
+        rel("flatfile_player_repository.c"),
+        rel("player_load_topology.c"),
+        rel("flatfile_identity_repository.c"),
+        rel("persistence_observability.c"),
         rel("flatfile_auction_repository.c"),
         rel("flatfile_boon_repository.c"),
         rel("flatfile_item_repository.c"),

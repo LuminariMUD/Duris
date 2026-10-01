@@ -954,8 +954,7 @@ bool submit_grant(P_char actor, P_obj root, P_obj target_container,
 		.item_count = 0,
 		.items = {},
 		.item_blob_size = 0,
-		.item_blob = {},
-		.corpse = {}
+		.item_blob = {}
 	};
 	const uint64_t item_uid = root->obj_uid;
 	return submit_transfer(actor, payload, items, snapshots, false, creation_grant_completion,
@@ -1029,8 +1028,7 @@ bool submit_grant_batch(P_char actor, const std::vector<P_obj> &roots,
 					  .item_count = 0,
 					  .items = {},
 					  .item_blob_size = 0,
-					  .item_blob = {},
-					  .corpse = {} };
+					  .item_blob = {} };
 	const uint32_t actor_pid = static_cast<uint32_t>(GET_PID(actor));
 	return submit_transfer(actor, payload, items, snapshots, true,
 			       creation_grant_batch_completion, &actor_pid, sizeof(actor_pid),

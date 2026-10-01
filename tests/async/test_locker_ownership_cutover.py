@@ -74,17 +74,10 @@ class LockerOwnershipCutoverTests(unittest.TestCase):
         self.assertIn('sql_persistence_item_owner_fields_match(\n\t\t\t    obj->obj_uid, "locker"',
                       locker_restore)
 
-    def test_flat_transfer_composes_locker_and_ownership_after_images(self):
-        self.assertIn("flatfile_locker_prepare_item_transfer", self.flat_lockers)
-        apply = self.flat_items[self.flat_items.index(
-            "critical_apply_result flatfile_item_repository_apply") :]
-        prepare = apply.index("flatfile_locker_prepare_item_transfer")
-        locker_image = apply.index("locker.after_image", prepare)
-        commit = apply.index("flatfile_authority_transaction_commit", locker_image)
-        self.assertLess(prepare, locker_image)
-        self.assertLess(locker_image, commit)
-        self.assertIn("item_transfer_reason::locker_deposit", self.flat_items)
-        self.assertIn("item_transfer_reason::locker_withdraw", self.flat_items)
+    def test_flat_locker_is_saved_from_its_snapshot(self):
+        # No item transfer moves items into or out of a locker: its save claims them.
+        self.assertNotIn("locker_deposit", self.flat_items)
+        self.assertIn("flatfile_locker_prepare_public_save", self.flat_lockers)
 
     def test_snapshot_is_not_ownership_authority_and_worker_is_pointer_free(self):
         # The game thread only captures; the writer claims through the repository.

@@ -236,7 +236,7 @@ void check_memory_claims(MYSQL *connection)
 	const uint64_t gift = item_uid_allocator_next();
 
 	// The record still gives the bag and its ring to another player; memory says
-	// player one holds them and drops them.
+	// player one holds them, and an operator repair moves them to the room.
 	root_uid = bag;
 	child_uid = ring;
 	assert(apply(connection, 17,
@@ -246,7 +246,7 @@ void check_memory_claims(MYSQL *connection)
 		       .outcome == critical_apply_outcome::applied);
 	critical_apply_result dropped =
 		apply(connection, 18,
-		      payload(player_one, room, item_transfer_reason::player_drop, 0, 0, 1));
+		      payload(player_one, room, item_transfer_reason::operator_repair, 0, 0, 1));
 	assert(dropped.outcome == critical_apply_outcome::applied);
 	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid IN (" +
 				   std::to_string(bag) + "," + std::to_string(ring) +
@@ -267,7 +267,7 @@ void check_memory_claims(MYSQL *connection)
 	root_uid = held_by_auction;
 	critical_apply_result taken =
 		apply(connection, 19,
-		      payload(player_one, room, item_transfer_reason::player_drop, 0, 0, 1, 1));
+		      payload(player_one, room, item_transfer_reason::operator_repair, 0, 0, 1, 1));
 	assert(taken.outcome == critical_apply_outcome::applied);
 	assert(scalar(connection,
 		      ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid=" +
@@ -384,11 +384,11 @@ int main()
 
 	uint64_t player_two_revision = owner_revision(connection, player_two);
 	// Memory is the authority for a player: a stale owner or item revision no longer
-	// refuses the move. The items go where the game put them.
-	const auto give_payload = payload(player_one, player_two, item_transfer_reason::player_give,
-					  created_result.to_owner_revision - 1,
-					  player_two_revision + 5, 7);
-	critical_apply_result moved = apply(connection, 4, give_payload);
+	// refuses the move. The items go where the repair puts them.
+	const auto move_payload =
+		payload(player_one, player_two, item_transfer_reason::operator_repair,
+			created_result.to_owner_revision - 1, player_two_revision + 5, 7);
+	critical_apply_result moved = apply(connection, 4, move_payload);
 	assert(moved.outcome == critical_apply_outcome::applied);
 	item_transfer_result moved_result = {};
 	assert(item_transfer_command_decode_result(moved.result_payload.data(), moved.result_size,
@@ -402,20 +402,20 @@ int main()
 		      ("SELECT COUNT(*) FROM player_items WHERE pid=4000000001 AND obj_uid IN (" +
 		       std::to_string(root_uid) + "," + std::to_string(child_uid) + ")")
 			      .c_str()) == 0);
-	// The record already named the giver, so nothing was claimed from anyone else.
+	// The record already named the first player, so nothing was claimed from anyone else.
 	assert(scalar(connection, ("SELECT COUNT(*) FROM item_owner_audit WHERE item_uid IN (" +
 				   std::to_string(root_uid) + "," + std::to_string(child_uid) + ")")
 					  .c_str()) == 0);
-	critical_apply_result replayed_give = apply(connection, 4, give_payload);
-	item_transfer_result replayed_give_result = {};
-	// The populated cross-owner give must apply exactly once when its operation is replayed.
-	assert(replayed_give.outcome == critical_apply_outcome::already_applied &&
-	       item_transfer_command_decode_result(replayed_give.result_payload.data(),
-						   replayed_give.result_size,
-						   &replayed_give_result) &&
-	       replayed_give_result.from_owner_revision == moved_result.from_owner_revision &&
-	       replayed_give_result.to_owner_revision == moved_result.to_owner_revision &&
-	       replayed_give_result.max_item_revision == moved_result.max_item_revision);
+	critical_apply_result replayed_move = apply(connection, 4, move_payload);
+	item_transfer_result replayed_move_result = {};
+	// The populated cross-owner move must apply exactly once when its operation is replayed.
+	assert(replayed_move.outcome == critical_apply_outcome::already_applied &&
+	       item_transfer_command_decode_result(replayed_move.result_payload.data(),
+						   replayed_move.result_size,
+						   &replayed_move_result) &&
+	       replayed_move_result.from_owner_revision == moved_result.from_owner_revision &&
+	       replayed_move_result.to_owner_revision == moved_result.to_owner_revision &&
+	       replayed_move_result.max_item_revision == moved_result.max_item_revision);
 
 	uint64_t destruction_revision = owner_revision(connection, destroyed);
 	execute(connection, ("UPDATE item_current_owner SET item_revision=18446744073709551615 "
@@ -429,7 +429,7 @@ int main()
 			      std::numeric_limits<uint64_t>::max()));
 	assert(overflow.outcome == critical_apply_outcome::terminal_failure &&
 	       overflow.error_code == ERANGE);
-	// The record still names the giver, as when the receiver's save has not landed:
+	// The record still names the first player, as when the receiver's save has not landed:
 	// the destruction takes the items from it and audits the claim.
 	execute(connection, ("UPDATE item_current_owner SET item_revision=2,owner_id=4000000001 "
 			     "WHERE root_item_uid=" +
@@ -451,9 +451,9 @@ int main()
 		       "new_owner_type=1 AND new_owner_id=4000000002")
 			      .c_str()) == 2);
 	// A destroyed item is never revived by a later claim.
-	critical_apply_result revived =
-		apply(connection, 22,
-		      payload(player_two, player_one, item_transfer_reason::player_give, 0, 0, 4));
+	critical_apply_result revived = apply(
+		connection, 22,
+		payload(player_two, player_one, item_transfer_reason::operator_repair, 0, 0, 4));
 	assert(revived.outcome == critical_apply_outcome::terminal_failure &&
 	       revived.error_code == ESTALE);
 	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner WHERE root_item_uid=" +
@@ -577,7 +577,7 @@ int main()
 
 	root_uid = container_uid - 2;
 	child_uid = container_uid - 1;
-	auto reparent = payload(player_one, player_one, item_transfer_reason::player_put,
+	auto reparent = payload(player_one, player_one, item_transfer_reason::operator_repair,
 				nested_created_result.to_owner_revision,
 				nested_created_result.to_owner_revision, 1);
 	reparent.selected_item_uid = root_uid;
@@ -605,7 +605,7 @@ int main()
 	item_transfer_payload detach = {};
 	detach.from_owner = player_one;
 	detach.to_owner = player_one;
-	detach.reason = item_transfer_reason::player_get;
+	detach.reason = item_transfer_reason::operator_repair;
 	detach.reason_id = 78;
 	detach.expected_from_revision = reparented_result.to_owner_revision;
 	detach.expected_to_revision = reparented_result.to_owner_revision;

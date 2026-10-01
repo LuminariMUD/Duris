@@ -139,19 +139,23 @@ int main()
     too_many.item_count = ITEM_TRANSFER_MAX_ITEMS + 1;
     assert(!builds(too_many, 9));
 
-    // Existing adopted multi-root movement remains a separate valid shape.
-    auto adopted = payload;
-    adopted.from_owner = { item_owner_type::player, 42, 0 };
-    adopted.to_owner = { item_owner_type::room, 500, 0 };
-    adopted.reason = item_transfer_reason::player_drop;
-    adopted.expected_from_revision = 7;
-    adopted.expected_to_revision = 4;
-    for (size_t index = 0; index < adopted.item_count; ++index)
+    // Destroying a deleted owner's items is the other batch; moving active items is not.
+    auto destroyed = payload;
+    destroyed.from_owner = { item_owner_type::player, 42, 0 };
+    destroyed.to_owner = { item_owner_type::destruction, 0, 0 };
+    destroyed.reason = item_transfer_reason::destruction;
+    destroyed.expected_from_revision = 7;
+    destroyed.expected_to_revision = 0;
+    for (size_t index = 0; index < destroyed.item_count; ++index)
     {
-        adopted.items[index].expected_item_revision = 5 + index;
-        adopted.items[index].expected_state = item_custody_state::active;
+        destroyed.items[index].expected_item_revision = 5 + index;
+        destroyed.items[index].expected_state = item_custody_state::active;
     }
-    assert(builds(adopted, 8));
+    assert(builds(destroyed, 8));
+    auto moved = destroyed;
+    moved.to_owner = { item_owner_type::room, 500, 0 };
+    moved.reason = item_transfer_reason::operator_repair;
+    assert(!builds(moved, 10));
 
     return 0;
 }

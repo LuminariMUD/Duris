@@ -25,11 +25,6 @@ int main()
 	assert(decoded.corpse_revision == 7 && decoded.collector_catalog_changed);
 	encoded[10] = 2;
 	assert(!item_transfer_command_decode_result(encoded.data(), encoded.size(), &decoded));
-	encoded[10] = 0;
-	assert(item_transfer_command_decode_result(encoded.data(),
-					   ITEM_TRANSFER_LEGACY_RESULT_BYTES, &decoded));
-	assert(decoded.corpse_revision == 0 && decoded.max_item_revision == 6 &&
-	       !decoded.collector_catalog_changed);
 	item_ownership_runtime_reset();
 	{
 		const item_owner_identity batch_player = { item_owner_type::player, 900, 0 };
@@ -143,7 +138,7 @@ int main()
 	item_transfer_payload batch = {};
 	batch.from_owner = player;
 	batch.to_owner = room;
-	batch.reason = item_transfer_reason::player_drop;
+	batch.reason = item_transfer_reason::operator_repair;
 	batch.expected_from_revision = 12;
 	batch.expected_to_revision = 1;
 	batch.multi_root = true;

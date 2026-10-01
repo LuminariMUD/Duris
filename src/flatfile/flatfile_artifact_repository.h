@@ -31,11 +31,6 @@ struct flatfile_artifact_record
 	bool operator==(const flatfile_artifact_record &) const = default;
 };
 
-struct flatfile_artifact_transfer_mutation
-{
-	flatfile_authority_after_image after_image;
-};
-
 struct flatfile_artifact_war_owner
 {
 	int32_t pid = 0;
@@ -122,13 +117,8 @@ flatfile_artifact_result flatfile_artifact_prepare_player_release(
 flatfile_artifact_result flatfile_artifact_reconcile_players(
 	const std::string &root, const std::vector<flatfile_artifact_player_item> &items,
 	int64_t reconciled_at, flatfile_artifact_reconcile_result *result, std::string *error);
-flatfile_artifact_result flatfile_artifact_prepare_corpse_transfer(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const item_transfer_payload &payload, uint64_t accepted_at_usec,
-	flatfile_artifact_transfer_mutation *mutation, std::string *error);
-flatfile_artifact_result flatfile_artifact_prepare_room_transfer(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const item_transfer_payload &payload, uint64_t accepted_at_usec,
-	flatfile_artifact_transfer_mutation *mutation, std::string *error);
+// A grant cannot create an artifact in a room; an operator repair within a room leaves the
+// artifact catalog as it is.
+bool flatfile_artifact_room_transfer_allowed(const item_transfer_payload &payload);
 
 #endif

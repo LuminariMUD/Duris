@@ -682,13 +682,6 @@ flatfile_shop_trade_materialization_result flatfile_item_transfer_materializatio
 	};
 	const bool from_player = payload.from_owner.type == item_owner_type::player;
 	const bool to_player = payload.to_owner.type == item_owner_type::player;
-	const bool from_pet = payload.from_owner.type == item_owner_type::pet;
-	const bool to_pet = payload.to_owner.type == item_owner_type::pet;
-	if ((from_pet || to_pet) &&
-	    (payload.from_owner.context_id != payload.to_owner.context_id &&
-	     !(from_player && payload.from_owner.id == payload.to_owner.context_id) &&
-	     !(to_player && payload.to_owner.id == payload.from_owner.context_id)))
-		return flatfile_shop_trade_materialization_result::invalid;
 	if (from_player && to_player && payload.from_owner.id == payload.to_owner.id)
 	{
 		if (!add(payload.to_owner.id, shop_trade_action::buy_existing))
@@ -700,8 +693,6 @@ flatfile_shop_trade_materialization_result flatfile_item_transfer_materializatio
 			return flatfile_shop_trade_materialization_result::io_error;
 		if (to_player && !add(payload.to_owner.id, shop_trade_action::buy_existing))
 			return flatfile_shop_trade_materialization_result::io_error;
-		if (to_pet && !add(payload.to_owner.context_id, pet_receive_action))
-			return flatfile_shop_trade_materialization_result::io_error;
 	}
 	if (additions.empty())
 		return flatfile_shop_trade_materialization_result::unchanged;
@@ -709,25 +700,6 @@ flatfile_shop_trade_materialization_result flatfile_item_transfer_materializatio
 	const auto loaded = load_catalog(root, &catalog, error);
 	if (loaded != flatfile_shop_trade_materialization_result::ok)
 		return loaded;
-	if (from_pet || to_pet)
-	{
-		const uint64_t pet_uid = from_pet ? payload.from_owner.id : payload.to_owner.id;
-		const uint32_t owner_pid = static_cast<uint32_t>(
-			from_pet ? payload.from_owner.context_id : payload.to_owner.context_id);
-		bool established = false;
-		for (const auto &event : catalog.events)
-		{
-			if (event.action != pet_raise_action || event.player_pid != owner_pid)
-				continue;
-			player_pet_snapshot pet = {};
-			std::vector<player_item_snapshot> raised_items;
-			if (!decode_pet_event(event, &pet, &raised_items))
-				return flatfile_shop_trade_materialization_result::invalid;
-			established |= pet.pet_uid == pet_uid;
-		}
-		if (!established)
-			return flatfile_shop_trade_materialization_result::invalid;
-	}
 	if (std::any_of(
 		    catalog.events.begin(), catalog.events.end(), [&](const auto &existing)
 		    { return critical_operation_id_equal(existing.operation_id, operation_id); }) ||
