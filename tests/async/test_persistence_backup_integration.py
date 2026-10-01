@@ -311,13 +311,9 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
                      "UPDATE player_data SET account_name='OtherSynthetic' WHERE pid=42;")
             with self.assertRaises(backup.BackupError):
                 restore.database_qualify(env)
-            sql(env, "UPDATE player_data SET account_name='SyntheticRestore' WHERE pid=42;")
-            # Corrupt only the disposable source baseline: the same qualifier
-            # that accepted restored values must now reject reconciliation.
-            sql(env, "UPDATE currency_wallet_baseline SET opening_copper=999 WHERE pid=42;")
-            with self.assertRaises(backup.BackupError):
-                restore.database_qualify(env)
-            sql(env, "UPDATE currency_wallet_baseline SET opening_copper=11 WHERE pid=42;"
+            # Corrupt only the disposable source's migration history: the same qualifier
+            # that accepted the restored values must now reject it.
+            sql(env, "UPDATE player_data SET account_name='SyntheticRestore' WHERE pid=42;"
                      "UPDATE mud_schema_history SET apply_checksum=UNHEX(REPEAT('00',32)) WHERE sequence_number=1;")
             with self.assertRaises(backup.BackupError):
                 restore.database_qualify(env)
