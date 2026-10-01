@@ -24,7 +24,7 @@ checks.append(("account-character upsert reuses an existing mapping row",
                "ON DUPLICATE KEY UPDATE" in sql_c))
 checks.append(("frag leaderboard upsert is queued on the writer", "\"INSERT INTO frag_leaderboard \"" in sql_c and "if (!sql_queue(" in sql_c))
 checks.append(("IP row creation is idempotent", "INSERT IGNORE INTO ip_info (pid) VALUES (%d)" in sql_c))
-checks.append(("sql_player.c uses the canonical validated connector", "sql_open_configured_connection(CLIENT_MULTI_STATEMENTS)" in sql_player_c and "mysql_real_connect" not in sql_player_c))
+checks.append(("sql_player.c opens no connection of its own", "sql_open_configured_connection" not in sql_player_c and "mysql_real_connect" not in sql_player_c))
 checks.append(("sql_pool.c uses the canonical validated connector", "sql_open_configured_connection(CLIENT_MULTI_STATEMENTS)" in sql_pool_c and "mysql_real_connect" not in sql_pool_c))
 checks.append(("only sql.c constructs raw MySQL connections", "mysql_real_connect" in sql_c))
 # The MariaDB definition follows the flat-file stub.

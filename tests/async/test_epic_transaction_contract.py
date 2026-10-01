@@ -65,13 +65,12 @@ class EpicTransactionContractTests(unittest.TestCase):
     def test_the_save_writes_epics(self):
         capture = (SRC / "player_snapshot_capture.c").read_text()
         replay = (SRC / "player_snapshot_repository.c").read_text()
-        sql_player = (SRC / "sql_player.c").read_text()
         flat_file = (SRC / "files.c").read_text()
         self.assertNotRegex(capture, r"snapshot\s*->\s*epics")
         self.assertIn("ADD_STATUS(epics,", capture)
         self.assertNotIn("row.field == player_status_field::epics", replay)
-        self.assertIn("epics=%ld", sql_player)
-        self.assertIn("INSERT INTO epic_balance_baseline", sql_player)
+        self.assertIn('"epics",', replay)
+        self.assertIn("INSERT IGNORE INTO epic_balance_baseline", replay)
         self.assertIn("Legacy flat-file epic balance is parsed", flat_file)
 
     def test_no_gameplay_file_directly_mutates_epic_balance(self):

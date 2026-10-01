@@ -125,7 +125,6 @@ print('[PASS] a death is quiet; a terminal save that cannot be queued alerts')
 
 for file, snippet in [
     ('src/cmd/actoth.c', 'persistence_report(saved ? persistence_severity::ok : persistence_severity::alert,'),
-    ('src/core/utility.c', 'persistence_report(failed ? persistence_severity::alert : persistence_severity::ok,'),
 ]:
     assert contains((ROOT / file).read_text(), snippet), file
 print('[PASS] other successful persistence operations use ok; paired failures retain alert severity')

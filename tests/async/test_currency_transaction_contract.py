@@ -58,7 +58,8 @@ class CurrencyTransactionContractTests(unittest.TestCase):
         self.assertEqual(1, deposit_all.count("currency_transaction_submit("))
         self.assertIn("currency_transaction_submit_bank_payment", utility)
         self.assertIn("currency_transaction_submit_wallet_value", utility)
-        self.assertIn("currency_reason_type::auction_pickup", auction)
+        self.assertIn("currency_reason_type::auction_pickup",
+                      (SRC / "auction_transaction.c").read_text())
         self.assertIn("currency_reason_type::boon_reward", boon)
         self.assertIn("currency_reason_type::ship_insurance", ship)
 
