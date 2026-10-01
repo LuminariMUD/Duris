@@ -2027,51 +2027,6 @@ bool item_movement_transaction_submit_batch(
 	return true;
 }
 
-// Memory is the authority: a craft retires its inputs and gives its outputs to the
-// crafter at once, and the crafter's next save records both.
-bool item_movement_transaction_submit_craft(P_char actor, P_obj const *inputs, size_t input_count,
-					    P_obj const *outputs, size_t output_count,
-					    int64_t /*recipe_id*/,
-					    item_movement_completion_fn completion,
-					    const void *context, size_t context_size,
-					    item_movement_reject *reject)
-{
-	item_movement_reject discarded = item_movement_reject::none;
-	if (!reject)
-		reject = &discarded;
-	*reject = item_movement_reject::none;
-	if (!actor || !IS_PC(actor) || GET_PID(actor) <= 0 || !inputs || !input_count ||
-	    input_count > ITEM_TRANSFER_MAX_ITEMS ||
-	    (output_count && (!outputs || output_count > ITEM_TRANSFER_MAX_ITEMS)) ||
-	    context_size > ITEM_MOVEMENT_CONTEXT_MAX_BYTES || (context_size && !context))
-		return reject_with(reject, item_movement_reject::invalid_request);
-	for (size_t index = 0; index < input_count; ++index)
-	{
-		if (!inputs[index] || !object_belongs_to_actor(inputs[index], actor))
-			return reject_with(reject, item_movement_reject::topology_mismatch);
-		for (size_t other = 0; other < index; ++other)
-			if (inputs[other] == inputs[index])
-				return reject_with(reject, item_movement_reject::topology_mismatch);
-	}
-	for (size_t index = 0; index < output_count; ++index)
-		if (!outputs[index] || !OBJ_NOWHERE(outputs[index]))
-			return reject_with(reject, item_movement_reject::topology_mismatch);
-
-	item_transfer_result result = {};
-	result.root_item_uid = output_count ? outputs[0]->obj_uid : inputs[0]->obj_uid;
-	result.item_count = static_cast<uint16_t>(input_count + output_count);
-	for (size_t index = 0; index < input_count; ++index)
-		extract_obj(inputs[index]);
-	for (size_t index = 0; index < output_count; ++index)
-		obj_to_char(outputs[index], actor);
-	mark_player_dirty_components(GET_PID(actor),
-				     PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY);
-	if (completion)
-		completion(actor, true, result, 0, static_cast<const uint8_t *>(context),
-			   context_size);
-	return true;
-}
-
 const char *item_movement_reject_name(item_movement_reject reason)
 {
 	switch (reason)

@@ -33,15 +33,10 @@ print("[PASS] obj_to_char places an object without asking the ownership catalog"
 
 # Every other command moves the object directly.
 for name in ("rogues.c", "actmove.c", "actoth.c", "actwiz.c", "magic.c", "chaos_materials.c",
-             "forced_weapon_drop.c"):
+             "forced_weapon_drop.c", "salchemist.c", "drannak.c"):
     source = (SRC / name).read_text()
     assert "item_movement_transaction_submit" not in source, name
     assert "item_ownership_runtime_lookup" not in source or name == "magic.c", name
-MOVEMENT = (SRC / "item_movement_transaction.c").read_text()
-craft = body(MOVEMENT, "bool item_movement_transaction_submit_craft(")
-assert "critical_command_coordinator" not in craft and "pending" not in craft
-assert "extract_obj(inputs[index])" in craft and "obj_to_char(outputs[index], actor)" in craft
-assert craft.index("obj_to_char(outputs[index], actor)") < craft.index("completion(actor, true")
 print("[PASS] slip, steal, soulbind, key break, storage, load, pouch, weapon drop and crafts "
       "move in memory")
 
