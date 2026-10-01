@@ -429,14 +429,28 @@ int main()
 			      "bank_platinum,'@',bank_revision) FROM account_banks WHERE "
 			      "account_name='claim_probe' AND racewar=1");
 	};
-	require(bank_delta_repository_apply(test_connection, { "claim_probe", 1, { 7, 0, 3, 0 } })
-					.outcome == player_save_apply_outcome::applied &&
-			bank() == "7:0:3:0@0",
-		"a bank credit creates the account's row: " + bank());
-	require(bank_delta_repository_apply(test_connection, { "claim_probe", 1, { 1, 0, -3, 4 } })
-					.outcome == player_save_apply_outcome::applied &&
-			bank() == "8:0:0:4@1",
-		"a bank delta adds to the row: " + bank());
+	// Boot refuses a bank without an opening baseline, so the delta that creates the
+	// row writes one from it, and later deltas leave it alone.
+	const auto bank_baseline = [&]
+	{
+		return scalar(
+			test_connection,
+			"SELECT CONCAT(opening_copper,':',opening_silver,':',opening_gold,':',"
+			"opening_platinum,'@',opening_revision) FROM currency_bank_baseline "
+			"JOIN account_banks bank ON bank.id=bank_id WHERE "
+			"account_name='claim_probe' AND racewar=1");
+	};
+	applied =
+		bank_delta_repository_apply(test_connection, { "claim_probe", 1, { 7, 0, 3, 0 } });
+	require(applied.outcome == player_save_apply_outcome::applied && bank() == "7:0:3:0@0" &&
+			bank_baseline() == "7:0:3:0@0",
+		"a bank credit creates the account's row and its baseline: " + bank() + " " +
+			bank_baseline());
+	applied =
+		bank_delta_repository_apply(test_connection, { "claim_probe", 1, { 1, 0, -3, 4 } });
+	require(applied.outcome == player_save_apply_outcome::applied && bank() == "8:0:0:4@1" &&
+			bank_baseline() == "7:0:3:0@0",
+		"a bank delta adds to the row: " + bank() + " " + bank_baseline());
 	require(bank_delta_repository_apply(test_connection, { "claim_probe", 1, { -9, 0, 0, 0 } })
 					.outcome == player_save_apply_outcome::terminal_failure &&
 			bank() == "8:0:0:4@1",

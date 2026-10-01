@@ -1262,11 +1262,25 @@ player_save_apply_result apply_bank_delta(MYSQL *connection, const bank_delta_sn
 		else if (bank.delta[index] < 0)
 			sql << ',' << columns[index] << '=' << columns[index] << '-'
 			    << -bank.delta[index];
+	// Boot refuses a bank without an opening baseline, so the delta that creates the
+	// row writes one from it, as a new character's first save does.
+	const std::string baseline =
+		"INSERT IGNORE INTO currency_bank_baseline(bank_id,opening_copper,opening_silver,"
+		"opening_gold,opening_platinum,opening_revision) SELECT id,bank_copper,bank_silver,"
+		"bank_gold,bank_platinum,bank_revision FROM account_banks WHERE account_name=" +
+		quote(connection, bank.account_name) +
+		" AND racewar=" + std::to_string(bank.racewar);
 	// A delta written twice pays twice. In a transaction, a connection lost before
 	// the commit leaves nothing written, so the retry is safe; a commit whose outcome
 	// is unknown is reported instead of retried.
-	return apply_sql_work(connection, [&](MYSQL *transaction)
-			      { return execute(transaction, sql.str()).error_code; });
+	return apply_sql_work(connection,
+			      [&](MYSQL *transaction)
+			      {
+				      const unsigned int error_code =
+					      execute(transaction, sql.str()).error_code;
+				      return error_code ? error_code :
+							  execute(transaction, baseline).error_code;
+			      });
 }
 
 template <typename Apply> player_save_apply_result apply_with_pool(Apply apply)
