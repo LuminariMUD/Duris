@@ -8,8 +8,8 @@ This file is the plan: the rules, the design, the three phases, what was cut and
 (what landed, decisions, tests, verification, commits, bugs found) goes there and the item leaves
 the list. A decision that changes the framework is written here.
 
-**Status (2026-10-02):** Phases 1 and 2 are on `master`. Phase 3 steps 1 to 9 are done on
-`fix/7-persistence-phase-3`, which is pushed; no MR is open yet.
+**Status (2026-10-02):** Phases 1 and 2 are done. Phase 3 steps 1 to 9 are done in this worktree,
+on `fix/7-persistence-phase-3`, which is pushed.
 
 **Work items:** #7 (player saves and deaths), and the persistence causes behind #5 (game freezes),
 #3 (the player-save journal breaking backups) and #6 (persistence alert storms).
@@ -111,13 +111,13 @@ MariaDB a bank delta or `sql` job whose commit outcome is unknown is reported, n
 
 ## Phase 1: end the problems
 
-Done and on `master` ([record](persistence-done.md#phase-1-progress)): one writer; saves never
+Done ([record](persistence-done.md#phase-1-progress)): one writer; saves never
 refuse; loads filter on the ownership table; items move in memory; deaths happen at once; corpses
 in memory; logging out never waits; shutdown and copyover always go; the dupe log.
 
 ## Phase 2: money, points and the rest of the loop
 
-Done and on `master` ([record](persistence-done.md#phase-2-progress)): critical commands on the
+Done ([record](persistence-done.md#phase-2-progress)): critical commands on the
 one writer; money, epic points and frags in memory; the economy stops writing balances; coins drop
 into corpses; shops in memory; no economy exception in the claim; the game thread's SQL off the
 loop.
@@ -210,12 +210,11 @@ if a requirement or a concrete risk failed without it. Cut:
   qualifier.
 - **A second backup-recovery container run:** it passed at `c6e0219da`, and nothing since touches
   what the restore qualifier runs.
-- **Waiting on the owner for item 10 of Phase 3:** it deletes what Phase 3 said goes, and the MR's
-  gate and review cover it.
+- **Waiting on the owner for item 10 of Phase 3:** it deletes what Phase 3 said goes, and the gate
+  covers it.
 - **Dropping the opening baselines and the event log tables:** nothing in
   [Done when](#done-when) needs it, and it is a schema change across a migration, the bootstrap,
   the boot probes, the lifecycle manifest and the legacy dump import.
-- **A gate run before the review:** the gate runs while the review reads the same head.
 - **Watching `test_flatfile_full_world_boot.py`:** one abort in nine runs during Phase 1, none
   since.
 
@@ -229,7 +228,7 @@ if a requirement or a concrete risk failed without it. Cut:
 - The game loop issues no query after boot.
 - The database cannot hold one item under two owners, and `logs/log/dupes` accounts for every
   item a save or load gave up.
-- No persistence code is left that nothing reaches, and Phase 3 is on `master`.
+- No persistence code is left that nothing reaches, and the branch passes the gate.
 
 All but the last hold now.
 
@@ -253,20 +252,7 @@ All but the last hold now.
      reparenting, and "Consistent player load" still checks a durable revision Phase 1 removed.
      Rewrite both to [How it works](#how-it-works), and drop the runbook's "Epic ledger cutover
      and reconciliation" section.
-2. **The MR**, `fix/7-persistence-phase-3` to `master`:
-   - Merge `origin/master` in first. Its one new commit, `28988484c`, is already on the branch as
-     `aa612e016`, so only `persistence-done.md` conflicts: keep the branch's side.
-   - Tag the head `persistence/phase-3-review-0`, push it, open the MR and review it while the
-     gate runs on that head: `./scripts/format.sh --all --check`, then
-     `make test-all -j16 TEST_JOBS=16` alone, then side by side `make test-db`,
-     `npm test --prefix site` and CodeQL with Trivy (the branch touches docs, the Dockerfile and
-     login code; see `docs/guides/TESTING.md`).
-   - Fix each finding and failure in its own commit, with a regression test where behavior
-     changes, and tag the fixed head `persistence/phase-3-review-1`. Rerun `make test-all` and
-     `make test-db` only if the fixes changed code.
-   - Land one `--no-ff` merge of the reviewed head, with no rebase, so the review tags still name
-     what was reviewed. Push `master` once, as a fast-forward, and post the merge note on the MR
-     at least two minutes after the last GitLab write.
-
-Both local checkouts share `duris_dev`, which is at 0033. The first scripted local boot of the
-branch applies 0034, and from then on `master` boots against it only once the MR has landed.
+2. **The gate on this worktree's head:** `./scripts/format.sh --all --check`, then
+   `make test-all -j16 TEST_JOBS=16` alone, then `make test-db` and `npm test --prefix site` side
+   by side. Fix each failure in its own commit, with a regression test where behavior changes,
+   rerun what failed, and push the branch.

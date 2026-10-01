@@ -2121,8 +2121,8 @@ the 2026-10-02 ablation they are Phase 3's item 10, because they delete what its
   both server builds, the pfile build, the 58 tests that name the changed code, and both
   MariaDB harnesses (collector repository, item transfer schema). Not run: the full gates
   and the format check over every file.
-- Both are pushed; the full gates run with the MR (see
-  [What is left](persistence-plan.md#what-is-left)).
+- Both are pushed; the full gates are in
+  [What is left](persistence-plan.md#what-is-left).
 
 ### Local backup policy (done)
 
@@ -2131,4 +2131,3 @@ directory still held the old, empty `critical-command.journal`, so the backup re
 (`./scripts/backup_pfiles.sh status` failed with `invalid_journal_roots`) and a scripted local
 boot could not pass its backup. On 2026-10-02 `players` was taken out of the policy and the empty
 file deleted; `status` now gets past the policy (it reports `rpo_exceeded` until the next backup).
-The main checkout has no backup policy, so it needs nothing.
