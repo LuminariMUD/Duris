@@ -160,7 +160,7 @@ int main()
     player_revision_snapshot revision = {};
     assert(player_revision_snapshot_copy(41, &revision));
     assert(revision.current_revision == 8 && revision.acknowledged_revision == 8);
-    assert(!revision.unacknowledged_components && !revision.dirty_components);
+    assert(!revision.unacknowledged_components);
     // Accepted is not written: `save` reports completion on the written revision.
     assert(revision.written_revision == 7);
     // A newer save queues behind what was queued after the owner's save, and replaces
@@ -174,7 +174,7 @@ int main()
     // Equipment and inventory are one item graph.
     assert(player_save_pipeline_mark(42, PLAYER_COMPONENT_INVENTORY));
     assert(player_revision_snapshot_copy(42, &revision));
-    assert(revision.dirty_components ==
+    assert(revision.unacknowledged_components ==
            (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY));
     assert(player_save_pipeline_checkpoint_dirty(&bob.ch, 1, 3001) ==
            player_save_pipeline_result::queued);
@@ -202,7 +202,7 @@ int main()
     player_save_pipeline_pulse();
     assert(alerts == alerts_before + 1);
     assert(player_revision_snapshot_copy(44, &revision));
-    assert(revision.dirty_components == PLAYER_COMPONENT_TIMERS);
+    assert(revision.unacknowledged_components == PLAYER_COMPONENT_TIMERS);
     assert(revision.written_revision == 1);
     player_save_pipeline_health health = player_save_pipeline_health_copy();
     assert(health.write_failures == 1);

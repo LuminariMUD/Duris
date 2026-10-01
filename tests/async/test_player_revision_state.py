@@ -39,7 +39,6 @@ int main()
     assert(player_revision_queue(7, &revision, &components));
     assert(revision == 6);
     assert(components == PLAYER_COMPONENT_STATUS);
-    assert(player_revision_begin_inflight(7, revision, components));
 
     assert(player_revision_mark(7, PLAYER_COMPONENT_INVENTORY, &revision));
     assert(revision == 7);
@@ -47,52 +46,34 @@ int main()
     assert(revision == 7);
     assert(components == (PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_INVENTORY));
 
-    assert(!player_revision_acknowledge(7, 5, PLAYER_COMPONENT_STATUS));
-    assert(player_revision_acknowledge(7, 6, PLAYER_COMPONENT_STATUS));
+    // Revision 6 lands: only the components marked by then are clean.
+    assert(!player_revision_acknowledge_durable(7, 4, PLAYER_COMPONENT_STATUS));
+    assert(!player_revision_acknowledge_durable(7, 8, PLAYER_COMPONENT_STATUS));
+    assert(player_revision_acknowledge_durable(
+        7, 6, PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_INVENTORY));
     assert(player_revision_snapshot_copy(7, &snapshot));
     assert(snapshot.acknowledged_revision == 6);
     assert(snapshot.unacknowledged_components == PLAYER_COMPONENT_INVENTORY);
-    assert(snapshot.queued_components == PLAYER_COMPONENT_INVENTORY);
+    assert(player_revision_dirty_count() == 1);
 
-    assert(player_revision_begin_inflight(7, 7, PLAYER_COMPONENT_INVENTORY));
-    assert(player_revision_mark(7, PLAYER_COMPONENT_INVENTORY, &revision));
-    assert(revision == 8);
-    assert(player_revision_acknowledge(7, 7, PLAYER_COMPONENT_INVENTORY));
+    // While a save is outstanding, only the acknowledged revision hydrates again.
+    assert(player_revision_hydrate(7, 6));
+    assert(!player_revision_hydrate(7, 7));
+
+    assert(player_revision_acknowledge_durable(7, 7, PLAYER_COMPONENT_INVENTORY));
     assert(player_revision_snapshot_copy(7, &snapshot));
-    assert(snapshot.unacknowledged_components == PLAYER_COMPONENT_INVENTORY);
-    assert(snapshot.dirty_components == PLAYER_COMPONENT_INVENTORY);
-
-    assert(player_revision_queue(7, &revision, &components));
-    assert(player_revision_begin_inflight(7, revision, components));
-    assert(player_revision_fail_inflight(7, revision, components));
-    assert(player_revision_snapshot_copy(7, &snapshot));
-    assert(snapshot.inflight_components == 0);
-    assert(snapshot.queued_components == PLAYER_COMPONENT_INVENTORY);
-
-    assert(player_revision_hydrate(9, 4));
-    assert(player_revision_mark(9, PLAYER_COMPONENT_STATUS, &revision));
-    assert(player_revision_queue(9, &revision, &components));
-    assert(player_revision_begin_inflight(9, revision, components));
-    assert(player_revision_mark(9, PLAYER_COMPONENT_INVENTORY, &revision));
-    assert(player_revision_queue(9, &revision, &components));
-    assert(player_revision_mark(9, PLAYER_CHECKPOINT_COMPONENT_ALL, &revision));
-    assert(revision == 7);
-    assert(player_revision_acknowledge_durable(
-        9, revision, PLAYER_CHECKPOINT_COMPONENT_ALL));
-    assert(player_revision_snapshot_copy(9, &snapshot));
-    assert(snapshot.current_revision == 7);
-    assert(snapshot.acknowledged_revision == 7);
-    assert(snapshot.dirty_components == 0);
     assert(snapshot.unacknowledged_components == 0);
-    assert(snapshot.queued_components == 0);
-    assert(snapshot.inflight_components == 0);
-    assert(player_revision_hydrate(9, 7));
-    player_revision_forget(9);
+    assert(player_revision_dirty_count() == 0);
+    assert(!player_revision_queue(7, &revision, &components));
+    assert(player_revision_record_written(7, 7));
+    assert(player_revision_snapshot_copy(7, &snapshot));
+    assert(snapshot.written_revision == 7);
 
-    assert(player_revision_hydrate(7, 7));
     assert(!player_revision_hydrate(7, 6));
-    assert(!player_revision_hydrate(7, 9));
-    assert(!player_revision_mark(7, PLAYER_PHASE2_ECONOMY_BOUNDARY, nullptr));
+    assert(player_revision_hydrate(7, 9));
+    assert(player_revision_snapshot_copy(7, &snapshot));
+    assert(snapshot.current_revision == 9 && snapshot.acknowledged_revision == 9);
+    assert(!player_revision_mark(7, UINT64_C(1) << 62, nullptr));
 
     assert(player_revision_hydrate(8, std::numeric_limits<player_revision_t>::max()));
     assert(!player_revision_mark(8, PLAYER_COMPONENT_STATUS, nullptr));
@@ -137,8 +118,6 @@ assert "std::unordered_map<int, player_revision_entry>" in SOURCE
 assert "MAX_PLAYER_REVISION_STATES" in SOURCE
 assert "component_revisions" in SOURCE
 assert "numeric_limits<player_revision_t>::max()" in SOURCE
-assert "PLAYER_PHASE2_ECONOMY_BOUNDARY" in HEADER
-assert "PLAYER_PHASE2_OWNERSHIP_BOUNDARY" in HEADER
 print("[PASS] PID-keyed runtime state is monotonic, cumulative, exact, and overflow-safe")
 
 schemas = (
