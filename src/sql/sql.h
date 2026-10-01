@@ -83,9 +83,6 @@ int sql_find_racewar_for_ip(char *ip, int *racewar_side);
 // to log disconnect times...
 void sql_disconnectIP(P_char ch);
 bool qry_at(struct persistence_query_site site, const char *format, ...);
-bool sql_persistence_write_item_event_line(const char *line);
-bool sql_persistence_write_scalar_event_line(const char *line);
-bool sql_persistence_write_large_event_line(const char *line);
 bool sql_trace_exec_at(struct persistence_query_site source_site, const char *label,
 		       const char *sql, size_t len, bool drain_before, bool drain_after);
 void sql_trace_panic(void);
@@ -108,10 +105,7 @@ uint64_t sql_game_loop_query_count(void);
 const char *sql_persistence_db_name(void);
 
 #ifndef __NO_MYSQL__
-MYSQL *sql_persistence_connection(void);
-void sql_persistence_release_connection(MYSQL *conn);
 #endif
-bool sql_persistence_execute_raw(const char *sql);
 bool sql_persistence_item_owner_matches(unsigned long long item_uid, const char *owner_type,
 					const char *owner_ref, const char *context);
 bool sql_persistence_item_owner_matches_identity(unsigned long long item_uid,

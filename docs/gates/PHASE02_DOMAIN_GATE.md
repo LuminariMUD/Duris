@@ -21,21 +21,7 @@ current state, immutable ledgers/outcomes, and any durable outbox record.
 | Session audit | `session_audit_outcome` | player | committed inbox result |
 
 The Phase 01 player/world snapshot journals remain typed recovery routes. The legacy
-item/scalar/large queues are not started, and arbitrary SQL execution returns failure.
-Boot and copyover do not replay legacy flat records.
-
-## Legacy fallback handling
-
-Never execute a legacy fallback record or synthesize an operation ID for it. Use:
-
-```bash
-scripts/inspect_legacy_persistence_fallback.sh /explicit/path/to/file
-scripts/inspect_legacy_persistence_fallback.sh --quarantine /explicit/path/to/file
-```
-
-The tool reports only a SHA-256 digest, byte size, and record-class counts. Quarantine
-moves the explicit regular file beside itself with mode `0600`; it does not parse or
-execute record payloads. Preserve the reported digest in the incident record.
+item/scalar/large queues, their flat fallback log and the raw SQL executor are gone.
 
 ## Reconciliation and recovery
 

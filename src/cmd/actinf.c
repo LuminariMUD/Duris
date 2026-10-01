@@ -51,7 +51,6 @@ using namespace std;
 #include "persistence/persistence_checkpoint.h"
 #include "persistence/persistence_observability.h"
 #include "persistence/persistence_mode.h"
-#include "persistence/persistence_queue.h"
 #include "persistence/critical_command_coordinator.h"
 #include "persistence/critical_outbox.h"
 #include "player/player_save_worker.h"
@@ -4048,33 +4047,6 @@ static uint64_t world_persistence_max(uint64_t left, uint64_t right)
 	return left > right ? left : right;
 }
 
-static void show_world_persistence_queue(P_char ch, const char *name,
-					 const struct persistence_queue_health_snapshot *snapshot)
-{
-	char line[MAX_STRING_LENGTH];
-	const char *state = snapshot->pending == 0 ? "empty" : "pending";
-
-	if (!snapshot->heartbeat_available)
-		snprintf(line, sizeof(line),
-			 "queue name=%s state=%s pending=%llu dropped=%llu written=%llu "
-			 "failures=%llu running=%d stop_pending=%d heartbeat=unavailable\n",
-			 name, state, (unsigned long long)snapshot->pending,
-			 (unsigned long long)snapshot->dropped,
-			 (unsigned long long)snapshot->written,
-			 (unsigned long long)snapshot->failures, snapshot->running,
-			 snapshot->stop_pending);
-	else
-		snprintf(line, sizeof(line),
-			 "queue name=%s state=%s pending=%llu dropped=%llu written=%llu "
-			 "failures=%llu running=%d stop_pending=%d heartbeat_age_ms=%llu\n",
-			 name, state, (unsigned long long)snapshot->pending,
-			 (unsigned long long)snapshot->dropped,
-			 (unsigned long long)snapshot->written,
-			 (unsigned long long)snapshot->failures, snapshot->running,
-			 snapshot->stop_pending, (unsigned long long)snapshot->heartbeat_age_msec);
-	send_to_char(line, ch);
-}
-
 static void show_world_redis_operation(P_char ch, const char *name, const char *state,
 				       uint64_t connection_failures, uint64_t reconnects,
 				       const redis_worker_operation_health *operations)
@@ -4136,12 +4108,6 @@ static void show_world_persistence(P_char ch)
 	struct persistence_query_metric metrics[PERSISTENCE_QUERY_SITE_CAPACITY];
 	const struct persistence_query_snapshot query =
 		persistence_query_snapshot_copy(metrics, PERSISTENCE_QUERY_SITE_CAPACITY);
-	const struct persistence_queue_health_snapshot item_queue =
-		persistence_item_event_health_snapshot_copy();
-	const struct persistence_queue_health_snapshot scalar_queue =
-		persistence_scalar_event_health_snapshot_copy();
-	const struct persistence_queue_health_snapshot large_queue =
-		persistence_large_event_health_snapshot_copy();
 	const struct persistence_dirty_save_snapshot dirty = persistence_dirty_save_snapshot_copy();
 	const struct persistence_deferred_save_snapshot deferred =
 		persistence_deferred_save_snapshot_copy();
@@ -4374,10 +4340,6 @@ static void show_world_persistence(P_char ch)
 			 (unsigned long long)metric->latency_buckets[7]);
 		send_to_char(line, ch);
 	}
-
-	show_world_persistence_queue(ch, "item", &item_queue);
-	show_world_persistence_queue(ch, "scalar", &scalar_queue);
-	show_world_persistence_queue(ch, "large", &large_queue);
 
 	if (!dirty.enabled)
 		snprintf(line, sizeof(line),

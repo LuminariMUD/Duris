@@ -2234,7 +2234,6 @@ struct mob_prog_data
 #define LOG_HOUSE "logs/log/house"
 #define LOG_MOB "logs/log/mob"
 #define LOG_OBJ "logs/log/obj"
-#define LOG_EVENT "logs/log/events"
 #define LOG_DONATION "logs/log/donation"
 #define LOG_PETITION "logs/log/petition"
 #define LOG_EPIC "logs/log/epic"

@@ -22,10 +22,9 @@ There is no design that proves literally zero slowdown on shared hardware. This 
 | `src/persistence/critical_command_coordinator.c:537`, `critical_command_journal.c:396` | Acceptance invokes journal append and `fsync`; operations have entity fences and recovery obligations | High-frequency observations do not belong in the critical-command lane. That would give analytics the failure semantics of money and ownership. |
 | `src/player/player_save_worker.h` | Coalesced snapshots, PID/revision ordering, journal acceptance and retained results | Analytics history is not a player snapshot component. Coalescing would erase history or require incompatible special cases. |
 | `src/persistence/maintenance_scheduler.h`, `.c` | One worker, twelve registered jobs, bounded row/time budgets and durable continuation state | Use the scheduling discipline as a model. Large rollup scans should not share the worker with auctions, world balancing or other maintenance. A budget checked between operations cannot preempt an already slow SQL statement. |
-| `src/persistence/persistence_queue.h` | Legacy string/large-payload compatibility queues | Do not expand pipe-delimited SQL compatibility messages into the new analytics protocol. |
 | `src/persistence/critical_outbox.c:176` | Delivery updates one destination/dedupe result and row status; it is part of critical delivery/draining | This is not an independent analytics subscription log. Reusing a delivered flag as analytics progress would mix responsibilities. |
 
-Only the telemetry worker may use its `MYSQL*`; no pool release API accepts ownership of that handle. If the worker cannot connect, it remains degraded and retries with capped backoff. It never borrows the main handle or falls back to `sql_persistence_connection()`.
+Only the telemetry worker may use its `MYSQL*`; no pool release API accepts ownership of that handle. If the worker cannot connect, it remains degraded and retries with capped backoff. It never borrows the main handle or a pool connection.
 
 ## Alternatives and when they become justified
 

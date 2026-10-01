@@ -1744,7 +1744,6 @@ void event_autosave(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/
 		      (ch == NULL) ? "NULL" : J_NAME(ch));
 		return;
 	}
-	persistence_flush_item_events(64);
 	persistence_schedule_character_save(ch, 1, 2, "autosave");
 	add_event(event_autosave, 1200, ch, 0, 0, 0, 0, 0);
 }

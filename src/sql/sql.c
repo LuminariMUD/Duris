@@ -71,7 +71,6 @@
 #include "sql/sql_player.h"
 #include "combat/frag_cap_config.h"
 #include "world/timers.h"
-#include "persistence/persistence_queue.h"
 #include "core/utility.h"
 #include <errno.h>
 #include <limits.h>
@@ -770,12 +769,6 @@ static bool sql_verify_boot_database(void);
 // The global database handler
 MYSQL *DB;
 
-/* persistenceDB replaced by connection pool (sql_pool.c).
- * persistence_sql_mutex kept for backward compatibility -- no longer
- * needed for connection serialisation but still referenced by
- * sql_persistence_raw.c for now. */
-MYSQL *persistenceDB = NULL;
-pthread_mutex_t persistence_sql_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool pwipe_crossed_boundary = false;
 static uint64_t current_season_epoch = 0;
 
@@ -1597,11 +1590,6 @@ int initialize_mysql()
 void shutdown_mysql(void)
 {
 	sql_pool_shutdown();
-	if (persistenceDB)
-	{
-		mysql_close(persistenceDB);
-		persistenceDB = NULL;
-	}
 	if (DB)
 	{
 		duris_sql_exclusion_guard_release();
@@ -5309,185 +5297,6 @@ void sql_log_player_login(P_char ch, const char *status)
 	if (!session_audit_transaction_submit(ch, event))
 		logit(LOG_FILE,
 		      "session_audit: component=submit outcome=unavailable actor=redacted");
-}
-
-/* ---- Persistence DB connection ---- */
-MYSQL *sql_persistence_connection(void)
-{
-	/* Prefer the connection pool. Only fall back to the legacy singleton
-	 * when no active pool exists (bootstrap/early-start). If an active pool
-	 * is exhausted, fail closed so callers can alert/retry without blocking
-	 * the main loop or creating an unscheduled fifth connection. */
-	int pool_was_active = 0;
-	MYSQL *conn = sql_pool_acquire_with_status(&pool_was_active);
-	if (conn)
-		return conn;
-	if (pool_was_active)
-		return NULL;
-
-	/* Legacy fallback: lazy-initialise the singleton.
-	 * Kept for bootstrap / early-start paths that run before
-	 * the pool is initialised (e.g. sql_populate_lookup_tables).
-	 * Must use the shared db-name resolver so pool/fallback never
-	 * disagrees with the main DB connection about which database
-	 * is the production one. */
-	if (!persistenceDB)
-	{
-		pthread_mutex_lock(&persistence_sql_mutex);
-		if (!persistenceDB)
-		{
-			persistenceDB = sql_open_configured_connection(0);
-			if (!persistenceDB)
-			{
-				pthread_mutex_unlock(&persistence_sql_mutex);
-				return NULL;
-			}
-		}
-		pthread_mutex_unlock(&persistence_sql_mutex);
-	}
-	return persistenceDB;
-}
-
-/* Return a connection previously acquired via
- * sql_persistence_connection().  Pool connections go back to the pool;
- * legacy singleton connections are a no-op (they're owned by the
- * caller indefinitely). */
-void sql_persistence_release_connection(MYSQL *conn)
-{
-	if (!conn)
-		return;
-
-	/* If this connection came from the pool, release it.  The pool
-	 * checks pointer equality against its slots, so passing a
-	 * non-pool connection is harmless -- it simply won't match. */
-	sql_pool_release(conn);
-}
-
-static bool persistence_decimal_field(const char *value, bool allow_negative)
-{
-	char *end = NULL;
-	if (!value || !*value)
-		return false;
-	errno = 0;
-	if (allow_negative)
-		(void)strtol(value, &end, 10);
-	else
-		(void)strtoull(value, &end, 10);
-	return errno == 0 && end && *end == '\0';
-}
-
-bool sql_persistence_write_item_event_line(const char *line)
-{
-	const char *item_event_prefix = "PERSISTENCE_ITEM_EVENT|";
-	char record[2048];
-	char *saveptr = NULL;
-	char *field;
-	char *value;
-	char event[128] = "";
-	char ts_usec[32] = "0";
-	char item_uid[32] = "0";
-	char vnum[32] = "-1";
-	char item[256] = "";
-	char actor[128] = "";
-	char actor_id[32] = "-1";
-	char source[256] = "";
-	char target[256] = "";
-	char note[256] = "";
-	char event_q[256], item_q[64], vnum_q[32], item_text_q[512];
-	char actor_q[256], actor_id_q[32], source_q[512], target_q[512], note_q[512];
-	int seen_ts = 0, seen_event = 0, seen_item_uid = 0;
-	int seen_vnum = 0, seen_actor_id = 0;
-	char query[4096];
-	int query_len;
-
-	if (!line || strncmp(line, item_event_prefix, strlen(item_event_prefix)))
-		return false;
-	if (strlen(line) >= sizeof(record))
-		return false;
-	strcpy(record, line);
-
-	field = strtok_r(record, "|", &saveptr);
-	while ((field = strtok_r(NULL, "|", &saveptr)) != NULL)
-	{
-		value = strchr(field, '=');
-		if (!value)
-			return false;
-		*value++ = '\0';
-		if (!strcmp(field, "ts"))
-		{
-			seen_ts = 1;
-			snprintf(ts_usec, sizeof(ts_usec), "%s", value);
-		}
-		else if (!strcmp(field, "event"))
-		{
-			seen_event = 1;
-			snprintf(event, sizeof(event), "%s", value);
-		}
-		else if (!strcmp(field, "item_uid"))
-		{
-			seen_item_uid = 1;
-			snprintf(item_uid, sizeof(item_uid), "%s", value);
-		}
-		else if (!strcmp(field, "vnum"))
-		{
-			seen_vnum = 1;
-			snprintf(vnum, sizeof(vnum), "%s", value);
-		}
-		else if (!strcmp(field, "item"))
-			snprintf(item, sizeof(item), "%s", value);
-		else if (!strcmp(field, "actor"))
-			snprintf(actor, sizeof(actor), "%s", value);
-		else if (!strcmp(field, "actor_id"))
-		{
-			seen_actor_id = 1;
-			snprintf(actor_id, sizeof(actor_id), "%s", value);
-		}
-		else if (!strcmp(field, "source"))
-			snprintf(source, sizeof(source), "%s", value);
-		else if (!strcmp(field, "target"))
-			snprintf(target, sizeof(target), "%s", value);
-		else if (!strcmp(field, "note"))
-			snprintf(note, sizeof(note), "%s", value);
-	}
-
-	if (!seen_ts || !seen_event || !seen_item_uid || !seen_vnum || !seen_actor_id ||
-	    !persistence_decimal_field(ts_usec, false) ||
-	    !persistence_decimal_field(item_uid, false) || !persistence_decimal_field(vnum, true) ||
-	    !persistence_decimal_field(actor_id, true))
-		return false;
-
-	persistence_sql_escape_field(event, event_q, sizeof(event_q));
-	persistence_sql_escape_field(item, item_text_q, sizeof(item_text_q));
-	persistence_sql_escape_field(actor, actor_q, sizeof(actor_q));
-	persistence_sql_escape_field(source, source_q, sizeof(source_q));
-	persistence_sql_escape_field(target, target_q, sizeof(target_q));
-	persistence_sql_escape_field(note, note_q, sizeof(note_q));
-	snprintf(item_q, sizeof(item_q), "%s", item_uid);
-	snprintf(vnum_q, sizeof(vnum_q), "%s", vnum);
-	snprintf(actor_id_q, sizeof(actor_id_q), "%s", actor_id);
-	query_len = checked_snprintf(
-		query, sizeof(query),
-		"INSERT INTO persistence_item_events "
-		"(ts_usec,event_type,item_uid,vnum,item,actor,actor_id,source,target,note,dedupe_key) "
-		"VALUES (%s,'%s',%s,%s,'%s','%s',%s,'%s','%s','%s',"
-		"SHA2(CONCAT_WS('|',%s,'%s',%s,%s,'%s','%s',%s,'%s','%s','%s'),256)) "
-		"ON DUPLICATE KEY UPDATE id=id",
-		ts_usec, event_q, item_q, vnum_q, item_text_q, actor_q, actor_id_q, source_q,
-		target_q, note_q, ts_usec, event_q, item_q, vnum_q, item_text_q, actor_q,
-		actor_id_q, source_q, target_q, note_q);
-	if (query_len < 0 || query_len >= (int)sizeof(query))
-		return false;
-	return sql_persistence_execute_raw(query);
-}
-
-bool sql_persistence_write_scalar_event_line(const char *line)
-{
-	return sql_persistence_execute_raw(line);
-}
-
-bool sql_persistence_write_large_event_line(const char *line)
-{
-	return sql_persistence_execute_raw(line);
 }
 
 static item_owner_type sql_persistence_owner_type(const char *owner_type)

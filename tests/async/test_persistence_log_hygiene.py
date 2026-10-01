@@ -9,7 +9,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 REVIEWED = [
     "sql.c",
-    "sql_persistence_raw.c",
     "locker_async.c",
     "sql_player.c",
     "sql_pool.c",
@@ -38,9 +37,7 @@ checks = [
         "raw MySQL execution remains confined to sql.c",
         bool(direct_sites) and all(name == "sql.c" for name, _line in direct_sites),
     ),
-    ("raw persistence execution is disabled while typed workers remain observed",
-     "return false;" in texts["sql_persistence_raw.c"] and
-     "sql_observed_execute_at" not in texts["sql_persistence_raw.c"] and
+    ("typed workers remain observed",
      "mysql_" not in texts["locker_async.c"] and
      "locker_snapshot_repository_apply_from_pool" in texts["locker_async.c"] and
      "persistence_query_record(PERSISTENCE_QUERY_SITE,\n\t\t\t\t PERSISTENCE_QUERY_CONTEXT_PLAYER_SAVE_WORKER"
