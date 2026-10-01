@@ -75,10 +75,12 @@ require(
     "completion.error_code == ENOENT" in completion,
     "the pulse must detect the missing-baseline apply failure",
 )
+rearm = completion.index("SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE)")
 require(
-    "SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE)" in completion
+    completion.rfind("#ifdef __NO_MYSQL__", 0, rearm) > completion.rfind("#endif", 0, rearm)
     and "write_failed" in completion,
-    "a missing baseline row must re-arm the synchronous fallback and be reported",
+    "a missing flat-file baseline must re-arm the synchronous save and be reported; "
+    "on MariaDB the flag would stop every later save",
 )
 
 # --- 2. a death saves and leaves at once -----------------------------------------

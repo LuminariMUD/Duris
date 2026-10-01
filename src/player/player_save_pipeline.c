@@ -102,8 +102,12 @@ void finish_completion(const player_save_completion &completion)
 	}
 	// The job is gone. Mark the owner dirty so its next save carries the state again.
 	P_char ch = live_player(completion.pid);
+#ifdef __NO_MYSQL__
+	// The player's records are missing: the next save establishes them synchronously.
+	// (MariaDB has no such save; its writer inserts a missing row from the status.)
 	if (ch && completion.error_code == ENOENT)
 		SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE);
+#endif
 	const bool remarked = ch &&
 			      player_save_pipeline_mark(completion.pid, completion.components);
 	persistence_alert(AVATAR, "player_save", "redacted", "none", "none", "write_failed",
