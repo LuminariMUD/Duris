@@ -40,14 +40,6 @@ struct BoonData
 	int repeat;
 };
 
-struct BoonProgress
-{
-	int id;
-	int boonid;
-	int pid;
-	double counter;
-};
-
 struct BoonShop
 {
 	int id;
@@ -145,7 +137,6 @@ struct boon_options_struct
 #define BN_CREATE 1
 #define BN_REACTIVATE 2
 #define BN_EXTEND 3
-#define BN_NOTCH 4
 #define BN_COMPLETE 5
 #define BN_VOID 6
 #define BN_EXPIRE 7
@@ -159,7 +150,6 @@ int is_boon_valid(int);
 int count_boons(int, int);
 void zero_boon_data(struct BoonData *bd);
 bool get_boon_data(int, struct BoonData *bd);
-bool get_boon_progress_data(int, int, struct BoonProgress *bp);
 bool get_boon_shop_data(int, struct BoonShop *);
 int validate_boon_data(struct BoonData *bd, int);
 int parse_boon_args(P_char, struct BoonData *bd, char *);

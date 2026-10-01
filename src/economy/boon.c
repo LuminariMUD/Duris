@@ -141,17 +141,6 @@ static void cash_boon_committed(P_char ch, bool committed,
 	send_to_char_f(ch, "Your bank receives a deposit of %s&n.\r\n", coin_stringv(context.cash));
 }
 
-static MYSQL_RES *boon_store_result(const char *where)
-{
-	MYSQL_RES *res = mysql_store_result(DB);
-
-	if (!res)
-	{
-		logit(LOG_DEBUG, "%s: mysql_store_result failed", where ? where : "boon");
-	}
-	return res;
-}
-
 static const char *flat_boon_root()
 {
 	return persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY ?
@@ -458,59 +447,6 @@ bool get_boon_data(int id, BoonData *bdata)
 					    { return definition.id < key; });
 	return found != definitions.end() && found->id == static_cast<uint32_t>(id) &&
 	       copy_flat_boon_definition(*found, bdata);
-}
-
-bool get_boon_progress_data(int id, int pid, BoonProgress *bpg)
-{
-	if (!bpg)
-		return FALSE;
-	if (const char *root = flat_boon_root())
-	{
-		if (id <= 0 || pid <= 0)
-			return FALSE;
-		std::string error;
-		double counter = 0;
-		if (flatfile_boon_load_progress(root, static_cast<uint32_t>(id),
-						static_cast<uint32_t>(pid), &counter,
-						&error) != flatfile_boon_result::ok)
-			return FALSE;
-		*bpg = { 0, id, pid, counter };
-		return TRUE;
-	}
-
-	if (!qry("SELECT id, boonid, pid, counter FROM boons_progress WHERE boonid = '%d' AND pid = '%d'",
-		 id, pid))
-	{
-		debug("get_boon_progress_data(): cant read from db");
-		return FALSE;
-	}
-
-	MYSQL_RES *res = boon_store_result("get_boon_progress_data");
-	if (!res)
-	{
-		return FALSE;
-	}
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		return FALSE;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-	if (!row)
-	{
-		mysql_free_result(res);
-		return FALSE;
-	}
-
-	bpg->id = row[0] ? atoi(row[0]) : 0;
-	bpg->boonid = row[1] ? atoi(row[1]) : 0;
-	bpg->pid = row[2] ? atoi(row[2]) : 0;
-	bpg->counter = row[3] ? atof(row[3]) : 0;
-
-	mysql_free_result(res);
-
-	return TRUE;
 }
 
 // Flat-file only: MariaDB reads the shop on the writer (boon_shop()).
@@ -2924,48 +2860,6 @@ void boon_notify(int id, P_char ch, int action)
 				snprintf(buff, MAX_STRING_LENGTH,
 					 "&+CThe duration for Boon # %d has been extended.&n\r\n",
 					 bdata.id);
-				break;
-			case BN_NOTCH: // Progress notification
-				BoonProgress bpg;
-				if (!get_boon_progress_data(bdata.id, GET_PID(d->character), &bpg))
-				{
-					continue;
-				}
-				if (bdata.option == BOPT_RACE)
-				{
-					char tmp[MAX_STRING_LENGTH];
-
-					boon_race_label((int)bdata.criteria2, tmp, sizeof(tmp));
-					checked_snprintf(
-						buff, MAX_STRING_LENGTH,
-						"&+CYou have killed %d of %d %s&+C(s) for boon # %d.&n\r\n",
-						(int)bpg.counter, (int)bdata.criteria, tmp,
-						bdata.id);
-				}
-				else if (bdata.option == BOPT_MOB)
-				{
-					char tmp[MAX_STRING_LENGTH];
-
-					boon_mob_label((int)bdata.criteria2, tmp, sizeof(tmp),
-						       FALSE);
-					checked_snprintf(
-						buff, MAX_STRING_LENGTH,
-						"&+CYou have killed %d of %d %s&+C(s) for boon # %d.&n\r\n",
-						(int)bpg.counter, (int)bdata.criteria, tmp,
-						bdata.id);
-				}
-				else if (bdata.option == BOPT_FRAGS)
-				{
-					snprintf(
-						buff, MAX_STRING_LENGTH,
-						"&+CYou have obtained %.2f out of %.2f frags for boon # %d.&n\r\n",
-						bpg.counter, bdata.criteria, bdata.id);
-				}
-				else if (bdata.option == BOPT_NONE) // neverending progression
-				{
-					snprintf(buff, MAX_STRING_LENGTH,
-						 "&+CYou gain some bonus experience.&n\r\n");
-				}
 				break;
 			case BN_COMPLETE: // Completion notification
 				snprintf(buff, MAX_STRING_LENGTH,

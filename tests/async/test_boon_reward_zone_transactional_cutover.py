@@ -206,9 +206,6 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
             self.assertIn("flat_boon_root", body)
             self.assertIn(flat_token, body)
             self.assertNotIn("qry(", body)
-        start = boon.index("bool get_boon_progress_data")
-        body = boon[start:boon.find("\n}\n", start) + 3]
-        self.assertLess(body.index("flatfile_boon_load_progress"), body.index("qry("))
 
     def test_flat_boon_definition_mutations_route_before_sql(self):
         # Flat-file writes its catalog; MariaDB creates, removes and extends on the writer.
