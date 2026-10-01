@@ -21,9 +21,11 @@ sql_source = (ROOT / 'src/sql/sql.c').read_text()
 # database takes hold without the game waiting on a read.
 assert 'SELECT name, content FROM mud_info' in sql_source
 assert 'sql_mud_info_refresh();' in (ROOT / 'src/net/comm.c').read_text()
-nanny_source = (ROOT / 'src/account/nanny.c').read_text()
-assert 'get_mud_info("lock")' in nanny_source
-assert 'information_cache_get' not in nanny_source  # creation authorization stays fresh
+# Both creation paths honor the in-game and the database creation lock, read fresh.
+for creation in ('src/account/account.c', 'src/net/ws_handlers.c'):
+    creation_source = (ROOT / creation).read_text()
+    assert 'IS_SET(game_locked, LOCK_CREATION) || get_mud_info("lock") == "create"' in creation_source
+    assert 'information_cache_get' not in creation_source
 prefix = r'''
 #include <string>
 #include <cassert>

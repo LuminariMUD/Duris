@@ -30,6 +30,7 @@
 #include "sql/sql_async.h"
 #include "account/account_recovery.h"
 #include "combat/chaos_config.h"
+#include "cmd/interp.h"
 #include "core/defines.h"
 #include "core/files.h"
 #include "net/gmcp.h"
@@ -2026,6 +2027,11 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 	{
 		ws_send_system(d, "error",
 			       "New character creation is not permitted from this site");
+		return;
+	}
+	if (IS_SET(game_locked, LOCK_CREATION) || get_mud_info("lock") == "create")
+	{
+		ws_send_system(d, "error", "The game is not allowing new characters right now");
 		return;
 	}
 

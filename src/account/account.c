@@ -12,6 +12,7 @@
 #include "world/handler.h"
 #include "world/zone_touch_transaction.h"
 #include "cmd/interp.h"
+#include "sql/sql.h"
 #include "economy/auction_transaction.h"
 #include "economy/boon_reward_transaction.h"
 #include "economy/collector_service.h"
@@ -2398,7 +2399,7 @@ void account_new_char_name(P_desc d, char *arg)
 		SEND_TO_Q("That name has been declined before, and would be now too!\r\nName:", d);
 		return;
 	}
-	if (IS_SET(game_locked, LOCK_CREATION))
+	if (IS_SET(game_locked, LOCK_CREATION) || get_mud_info("lock") == "create")
 	{
 		SEND_TO_Q("Game is currently not allowing creation of new characters.\r\n"
 			  "Please use an existing character, or try again later.\r\n\r\n",
