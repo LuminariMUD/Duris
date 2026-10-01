@@ -45,10 +45,6 @@ class SavedItemFlatfileRoutingTests(unittest.TestCase):
         self.assertIn("item_owner_type::system", room)
         self.assertIn("item_owner_type::destruction", room)
         self.assertIn("item_transfer_reason::operator_repair", room)
-        movement = (SRC / "item_movement_transaction.c").read_text()
-        self.assertIn("adoption_only", movement)
-        self.assertLess(movement.index("if (entry.adoption_only)"),
-                        movement.index("item_movement_transaction_submit(actor, root"))
 
 
 if __name__ == "__main__":

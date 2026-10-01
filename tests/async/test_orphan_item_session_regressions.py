@@ -181,7 +181,8 @@ grant_publication = grant_publication[:grant_publication.index("void creation_gr
 grant_completion = movement[movement.index("void creation_grant_completion("):]
 grant_completion = grant_completion[:grant_completion.index("void creation_grant_batch_completion(")]
 check("container grants commit their durable parent before live publication",
-      "actor, object, target_container, source, owner" in grant_start
+      "submit_grant(actor, object, target_container, creation_grant_owner(request), reject)"
+      in grant_start
       and "obj_from_char(object);" in grant_publication
       and "obj_to_obj(object, container);" in grant_publication
       and "publish_creation_grant(actor, request)" in grant_completion

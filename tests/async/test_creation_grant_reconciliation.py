@@ -44,7 +44,7 @@ MATERIALIZE = function_body(
 
 # A transient conflict must leave the gameplay-created object in the queue.  Returning
 # true tells callers not to extract it; pump_creation_grants() retries it later.
-transient = QUEUE_GRANT.find("if (item_movement_reject_is_transient(reject))")
+transient = QUEUE_GRANT.find("if (reject_is_transient(reject))")
 pop = QUEUE_GRANT.find("queue.requests.pop_back()")
 check("queue_creation_grant retains transient rejections", transient >= 0 and transient < pop)
 check("queue_creation_grant retains the queued request on transient conflict",
@@ -61,17 +61,15 @@ check("single completion erases pending by stable key after callback",
       "const std::string pending_key = found->first;" in MOVEMENT and
       "pending.erase(pending_key);" in MOVEMENT and
       "pending.erase(found);" not in SINGLE_COMPLETE)
+PUBLISH = function_body(MOVEMENT, "void publish(")
 check("single missing graphs use detached reconciliation",
-      "!entry.creation_batch && entry.completion == creation_grant_completion && committed &&" in MOVEMENT and
-      re.search(r"reconcile_creation_grant_batch\(actor, entry, queue_found->second, result,\s*false\)",
-                MOVEMENT, re.S) is not None)
+      "reconcile_creation_grant_batch(actor, entry, queue, result)" in PUBLISH and
+      "if (entry.creation_batch)\n\t\tfor (P_obj root : roots)" in RECONCILE)
 
 check("single reconciliation is scoped to one request",
-      re.search(r"!entry\.creation_batch.*?entry\.payload\.reason == item_transfer_reason::creation",
-                MOVEMENT, re.S) is not None and
-      "roots.size() != request_count" in RECONCILE and
-      re.search(r"creation_grant_request_live_ready\(actor,\s*queue_found->second\.requests\.front\(\)\)",
-                MOVEMENT, re.S) is not None)
+      "else if (entry.payload.reason == item_transfer_reason::creation)" in PUBLISH and
+      "creation_grant_request_live_ready(actor, queue.requests.front())" in PUBLISH and
+      "roots.size() != request_count" in RECONCILE)
 
 # A partially published batch must be verified as actually carried, not merely
 # present in NOWHERE, before its queue/pending completion is discarded.

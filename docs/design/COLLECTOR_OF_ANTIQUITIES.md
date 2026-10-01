@@ -143,10 +143,8 @@ enablement rather than an unimplemented service entry point:
    another action is admitted, and operators should inspect the existing health,
    quarantine, and age metrics.
 
-NPC acquisition is supported by `item_movement_transaction_submit()` through the
-`mobile_claim` reason. It requires an already-authoritative item and an
-owner-preserving transfer; it cannot synthesize missing custody or silently
-leave a collector candidate behind after a mobile receives an item.
+An item a mobile or pet takes from a corpse is not collected: collection looks
+for the live item, and one no longer in the player's corpse counts as claimed.
 
 ## Validation and promotion evidence
 

@@ -27,33 +27,25 @@ class LiveItemMovementContractTests(unittest.TestCase):
         self.assertNotIn("P_obj", pending)
         self.assertNotIn("P_char", pending)
         self.assertIn("critical_command_coordinator_submit", movement)
-        self.assertIn("critical_command_coordinator_submit_for_publication", movement)
-        self.assertIn("critical_command_coordinator_acknowledge_publication", movement)
         self.assertIn("critical_command_coordinator_is_fenced", movement)
         self.assertIn("item_ownership_runtime_apply", movement)
-        self.assertIn("publication_status", movement)
-        self.assertIn("ITEM_MOVEMENT_PUBLICATION_MAX_ATTEMPTS", movement)
-        batch = extract_function(
-            "item_movement_transaction.c", "bool item_movement_transaction_submit_batch("
-        )
-        self.assertIn("movement_conflicts(from_owner, to_owner)", batch)
-        self.assertLess(
-            batch.index("movement_conflicts(from_owner, to_owner)"),
-            batch.index("critical_command_coordinator_submit"),
-        )
+        batch = extract_function("item_movement_transaction.c", "bool submit_grant_batch(")
+        self.assertLess(batch.index("movement_conflicts(system_owner_identity, owner)"),
+                        batch.index("submit_transfer("))
         self.assertLess(movement.index("const bool committed"),
                         movement.index("item_ownership_runtime_apply"))
 
     def test_transfer_captures_exact_snapshot_before_submission(self):
-        movement = (SRC / "item_movement_transaction.c").read_text()
-        capture = movement.index("player_item_snapshot_tree_capture")
-        encode = movement.index("player_item_snapshot_list_encode")
-        build = movement.index("item_transfer_command_build")
-        submit = movement.index("critical_command_coordinator_submit")
-        self.assertLess(capture, encode)
+        grant = extract_function("item_movement_transaction.c", "bool submit_grant(")
+        self.assertLess(grant.index("player_item_snapshot_tree_capture"),
+                        grant.index("submit_transfer("))
+        transfer = extract_function("item_movement_transaction.c", "bool submit_transfer(")
+        encode = transfer.index("player_item_snapshot_list_encode")
+        build = transfer.index("item_transfer_command_build")
+        submit = transfer.index("critical_command_coordinator_submit")
         self.assertLess(encode, build)
         self.assertLess(build, submit)
-        self.assertIn("payload.item_blob_size", movement)
+        self.assertIn("payload.item_blob_size", transfer)
 
     def test_death_puts_the_items_in_the_corpse_in_memory(self):
         fight = (SRC / "fight.c").read_text()
@@ -111,10 +103,8 @@ class LiveItemMovementContractTests(unittest.TestCase):
         repository = (SRC / "flatfile_item_repository.c").read_text()
         world = (SRC / "flatfile_world_item_repository.c").read_text()
         artifact = (SRC / "flatfile_artifact_repository.c").read_text()
-        movement = (SRC / "item_movement_transaction.c").read_text()
         self.assertIn("flatfile_world_item_prepare_corpse_transfer", world)
         self.assertIn("flatfile_artifact_prepare_corpse_transfer", artifact)
-        self.assertIn("capture_corpse_metadata", movement)
         self.assertIn("corpse_loot_transfer(payload)", repository)
         self.assertIn("corpse_create_transfer(payload)", repository)
         apply = repository[repository.index(
@@ -154,19 +144,15 @@ class LiveItemMovementContractTests(unittest.TestCase):
         self.assertLess(artifact_prepare, artifact_image)
         self.assertLess(image, commit)
         self.assertLess(artifact_image, commit)
-    def test_failed_publication_is_bounded_and_not_erased(self):
-        movement = (SRC / "item_movement_transaction.c").read_text()
-        failure = movement[movement.index("if (!published)"):]
-        failure = failure[:failure.index("if (!critical_command_coordinator_acknowledge_publication")]
-        self.assertIn("retain_publication_failure", failure)
-        self.assertNotIn("pending.erase", failure)
-        self.assertIn("publication_status", movement)
-        self.assertIn("ITEM_MOVEMENT_PUBLICATION_MAX_ATTEMPTS", movement)
-        coordinator = (SRC / "persistence/critical_command_coordinator.c").read_text()
-        self.assertIn("publication_pending", coordinator)
-        self.assertIn("state.retain_until_publication", coordinator)
-        self.assertIn("!snapshot.publication_pending", coordinator)
-
+    def test_unpublished_commit_is_retained_not_erased(self):
+        publish = extract_function("item_movement_transaction.c", "void publish(")
+        registry = publish[publish.index("if (committed && !entry.registry_applied)\n\t{"):]
+        registry = registry[:registry.index("return;")]
+        self.assertIn("++health.stale_publications", registry)
+        self.assertNotIn("pending.erase", registry)
+        retained = publish[publish.index("if (committed)\n\t{"):]
+        self.assertLess(retained.index("queue_found->second.publication_failed"),
+                        retained.index("pending.erase(pending_key)"))
 
 if __name__ == "__main__":
     unittest.main()

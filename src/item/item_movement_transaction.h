@@ -25,8 +25,8 @@ void item_creation_grant_prepare_pulse(void);
 
 constexpr size_t ITEM_MOVEMENT_PENDING_MAX = 1024;
 constexpr size_t ITEM_MOVEMENT_CONTEXT_MAX_BYTES = 128;
-// Creation batches are held in the same bounded admission queue as movement
-// transactions, so admission must never promise more roots than submission can carry.
+// A starter kit's roots are held in the same bounded queue as every other grant, so
+// admission must never promise more roots than one transfer can carry.
 constexpr size_t ITEM_CREATION_GRANT_MAX_ROOTS =
 	ITEM_MOVEMENT_PENDING_MAX < ITEM_TRANSFER_MAX_ITEMS ? ITEM_MOVEMENT_PENDING_MAX :
 							      ITEM_TRANSFER_MAX_ITEMS;
@@ -36,39 +36,6 @@ using item_movement_completion_fn = void (*)(P_char actor, bool committed,
 					     const item_transfer_result &result,
 					     unsigned int error_code, const uint8_t *context,
 					     size_t context_size);
-// Opt-in callbacks are the publication boundary: returning false retains the
-// movement entry and the coordinator's entity fences for a later attempt.
-using item_movement_publication_fn = bool (*)(P_char actor, bool committed,
-					      const item_transfer_result &result,
-					      unsigned int error_code, const uint8_t *context,
-					      size_t context_size);
-constexpr unsigned int ITEM_MOVEMENT_PUBLICATION_MAX_ATTEMPTS = 8;
-
-// A submission can be refused for reasons that are operationally very different: a
-// transient conflict the player should simply retry, versus ledger state that disagrees
-// with live topology and will never resolve on its own. Callers map this onto both the
-// player-facing text and the structured diagnostic, so the two classes stay separable.
-enum class item_movement_reject
-{
-	none,
-	invalid_request,
-	queue_saturated,
-	pending_conflict,
-	owner_mismatch,
-	missing_owner_revision,
-	topology_mismatch,
-	snapshot_failure,
-	allocation_failure,
-	command_build_failure,
-	coordinator_unavailable,
-	coordinator_overloaded,
-	coordinator_invalid,
-	coordinator_identity_conflict,
-	coordinator_rejected,
-};
-
-bool item_movement_reject_is_transient(item_movement_reject reason);
-
 struct item_movement_health
 {
 	uint64_t pending;
@@ -78,28 +45,8 @@ struct item_movement_health
 	uint64_t rejected;
 	uint64_t submission_failures;
 	uint64_t stale_publications;
-	uint64_t publication_retrying;
-	uint64_t publication_blocked;
-	uint64_t publication_ack_pending;
 };
 
-bool item_movement_transaction_submit(P_char actor, P_obj root, P_obj target_container,
-				      const item_owner_identity &from_owner,
-				      const item_owner_identity &to_owner,
-				      item_transfer_reason reason, int64_t reason_id,
-				      item_movement_completion_fn completion, const void *context,
-				      size_t context_size, P_obj corpse_context = NULL,
-				      item_movement_reject *reject = NULL,
-				      item_movement_publication_fn publication = nullptr);
-// A corpse_create batch validates and publishes all captured live roots before
-// invoking completion. Its callback persists/finalizes the corpse, not the moves.
-// Stale topology retains the movement and busy fence without calling completion.
-bool item_movement_transaction_submit_batch(
-	P_char actor, P_obj const *roots, size_t root_count, P_obj target_container,
-	const item_owner_identity &from_owner, const item_owner_identity &to_owner,
-	item_transfer_reason reason, int64_t reason_id, item_movement_completion_fn completion,
-	const void *context, size_t context_size, P_obj corpse_context = NULL,
-	item_movement_reject *reject = NULL, item_movement_publication_fn publication = nullptr);
 bool item_creation_grant_submit_to_player(P_char actor, P_obj object, P_char recipient,
 					  P_obj target_container = NULL);
 /* As above, but invoke `completion` only after the ownership authority has

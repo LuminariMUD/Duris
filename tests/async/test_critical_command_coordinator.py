@@ -221,42 +221,6 @@ int main()
     assert(health.ambiguous == 1 && health.retries == 1 && health.fenced_keys == 0);
     assert(critical_command_coordinator_submit(d) == critical_submit_result::attached);
 
-    // A command held for publication keeps its fences until the game thread
-    // acknowledges it. A later command on the same key still runs in order.
-    critical_command publication = make_command(12, {{critical_entity_type::item, 120},
-                                                       {critical_entity_type::player, 12}});
-    assert(critical_command_coordinator_submit_for_publication(publication) ==
-           critical_submit_result::accepted);
-    assert(critical_command_coordinator_submit(publication) ==
-           critical_submit_result::identity_conflict);
-    assert(critical_command_coordinator_submit_for_publication(publication) ==
-           critical_submit_result::attached);
-    wait_until([&] {
-        critical_command_coordinator_pulse(completions, 16);
-        return critical_command_coordinator_health_copy().publication_pending == 1;
-    });
-    assert(critical_command_coordinator_is_fenced({critical_entity_type::item, 120}, nullptr));
-    critical_operation_id invalid_publication_id = {};
-    invalid_publication_id.bytes[0] = 1;
-    assert(!critical_command_coordinator_acknowledge_publication(invalid_publication_id));
-    assert(!critical_command_coordinator_drain(5));
-    critical_command follower = make_command(14, {{critical_entity_type::item, 120}});
-    assert(critical_command_coordinator_submit(follower) == critical_submit_result::accepted);
-    bool follower_done = false;
-    wait_until([&] {
-        const size_t count = critical_command_coordinator_pulse(completions, 16);
-        for (size_t index = 0; index < count; ++index)
-            follower_done = follower_done ||
-                            critical_operation_id_equal(completions[index].operation_id,
-                                                        follower.operation_id);
-        return follower_done;
-    });
-    assert(critical_command_coordinator_is_fenced({critical_entity_type::item, 120}, nullptr));
-    assert(critical_command_coordinator_acknowledge_publication(publication.operation_id));
-    assert(!critical_command_coordinator_is_fenced({critical_entity_type::item, 120}, nullptr));
-    assert(!critical_command_coordinator_is_fenced({critical_entity_type::player, 12}, nullptr));
-    assert(critical_command_coordinator_health_copy().publication_pending == 0);
-
     critical_command_coordinator_quiesce();
     critical_command rejected = make_command(6, {{critical_entity_type::player, 6}});
     assert(critical_command_coordinator_submit(rejected) == critical_submit_result::unavailable);
@@ -310,8 +274,7 @@ int main()
     assert(critical_command_coordinator_init(apply, &uncertain));
     const uint64_t retries_before = player_save_worker_health_copy().connection_retries;
     critical_command unknown = make_command(16, {{critical_entity_type::item, 16}});
-    assert(critical_command_coordinator_submit_for_publication(unknown) ==
-           critical_submit_result::accepted);
+    assert(critical_command_coordinator_submit(unknown) == critical_submit_result::accepted);
     wait_until([&] {
         return player_save_worker_health_copy().connection_retries >= retries_before + 2;
     });
@@ -348,7 +311,6 @@ with tempfile.TemporaryDirectory(prefix="duris-critical-command-") as temporary:
 print("[PASS] commands run on the one writer, in capture order with the saves around them")
 print("[PASS] a fenced command stays fenced until its completion; attach and conflict hold")
 print("[PASS] the writer retries an ambiguous commit; an unknown outcome is named at shutdown")
-print("[PASS] a command held for publication keeps its fences until acknowledged")
 
 for contract in (
     "CRITICAL_COORDINATOR_MAX_OPERATIONS = 1024",
@@ -400,7 +362,6 @@ assert (
     "\tplayer_save_pipeline_resume();"
 ) in COPYOVER
 assert '\"critical_commands state=%s' in ACTINF
-assert "publication_pending=%llu" in ACTINF
 assert "command.payload" not in ACTINF and "operation_id" not in ACTINF
 assert "critical_command_equal" in COORDINATOR and "identity_conflict" in COORDINATOR
 for state in (

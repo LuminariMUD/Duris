@@ -18,12 +18,6 @@
 // fences until the game thread takes its completion.
 namespace
 {
-enum class critical_operation_phase : uint8_t
-{
-	executing,
-	publication_pending,
-};
-
 struct operation_state
 {
 	critical_command command;
@@ -32,9 +26,6 @@ struct operation_state
 	// The writer retries a command itself, so every completion is the first attempt's.
 	unsigned int attempt;
 	uint64_t attachments;
-	critical_operation_phase phase;
-	bool retain_until_publication;
-	critical_completion publication_completion;
 };
 
 struct completed_state
@@ -117,24 +108,19 @@ void update_depth()
 	health.queued = 0;
 	health.inflight = 0;
 	health.blocked = 0;
-	health.publication_pending = 0;
 	health.retained_bytes = 0;
 	uint64_t oldest = 0;
 	const uint64_t now = now_usec();
 	for (const auto &[identity, state] : operations)
 	{
 		(void)identity;
-		if (state->phase == critical_operation_phase::publication_pending)
-			++health.publication_pending;
-		else
-			++health.inflight;
+		++health.inflight;
 		health.retained_bytes += state->retained_bytes;
 		if (!oldest || state->queued_at_usec < oldest)
 			oldest = state->queued_at_usec;
 	}
 	health.oldest_age_msec = oldest && now > oldest ? (now - oldest) / 1000 : 0;
-	health.high_water_operations = std::max(health.high_water_operations,
-						health.inflight + health.publication_pending);
+	health.high_water_operations = std::max(health.high_water_operations, health.inflight);
 	health.high_water_bytes = std::max(health.high_water_bytes, health.retained_bytes);
 	health.completed_cache = completed_cache.size();
 }
@@ -179,7 +165,6 @@ struct writer_job
 	void *context;
 	uint64_t queued_at_usec;
 	uint64_t generation;
-	bool retain_until_publication;
 };
 
 // Runs on the persistence writer thread.
@@ -229,8 +214,7 @@ player_save_apply_result execute(const writer_job &job)
 
 // Reserve the operation and its fences. The caller queues it on the writer.
 critical_submit_result reserve_locked(const std::string &identity, const critical_command &command,
-				      size_t encoded_size, bool retain_until_publication,
-				      writer_job *job)
+				      size_t encoded_size, writer_job *job)
 {
 	try
 	{
@@ -240,10 +224,8 @@ critical_submit_result reserve_locked(const std::string &identity, const critica
 		state->queued_at_usec = now_usec();
 		state->attempt = 1;
 		state->attachments = 0;
-		state->phase = critical_operation_phase::executing;
-		state->retain_until_publication = retain_until_publication;
-		*job = { command,    apply_callback,	      apply_context, state->queued_at_usec,
-			 generation, retain_until_publication };
+		*job = { command, apply_callback, apply_context, state->queued_at_usec,
+			 generation };
 		operations.emplace(identity, std::move(state));
 		add_fences(identity, command);
 	}
@@ -327,8 +309,7 @@ void critical_command_coordinator_shutdown(void)
 	++generation;
 }
 
-critical_submit_result critical_command_coordinator_submit_internal(critical_command command,
-								    bool retain_until_publication)
+critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
 	const bool supplied_acceptance_time = command.accepted_at_usec != 0;
 	if (!supplied_acceptance_time)
@@ -359,8 +340,6 @@ critical_submit_result critical_command_coordinator_submit_internal(critical_com
 				command.accepted_at_usec = found->second->command.accepted_at_usec;
 			if (!critical_command_equal(found->second->command, command))
 				return critical_submit_result::identity_conflict;
-			if (retain_until_publication != found->second->retain_until_publication)
-				return critical_submit_result::identity_conflict;
 			++found->second->attachments;
 			++health.attached;
 			return critical_submit_result::attached;
@@ -374,42 +353,13 @@ critical_submit_result critical_command_coordinator_submit_internal(critical_com
 			++health.overloads;
 			return critical_submit_result::overloaded;
 		}
-		const critical_submit_result reserved = reserve_locked(
-			identity, command, encoded.size(), retain_until_publication, &job);
+		const critical_submit_result reserved =
+			reserve_locked(identity, command, encoded.size(), &job);
 		if (reserved != critical_submit_result::accepted)
 			return reserved;
 	}
 	return queue_on_writer(identity, std::move(job)) ? critical_submit_result::accepted :
 							   critical_submit_result::unavailable;
-}
-
-critical_submit_result critical_command_coordinator_submit(critical_command command)
-{
-	return critical_command_coordinator_submit_internal(std::move(command), false);
-}
-
-critical_submit_result critical_command_coordinator_submit_for_publication(critical_command command)
-{
-	return critical_command_coordinator_submit_internal(std::move(command), true);
-}
-
-bool critical_command_coordinator_acknowledge_publication(const critical_operation_id &operation_id)
-{
-	if (critical_operation_id_is_zero(operation_id))
-		return false;
-	std::lock_guard<std::mutex> lock(coordinator_mutex);
-	const std::string identity = operation_key(operation_id);
-	auto found = operations.find(identity);
-	if (found == operations.end() ||
-	    found->second->phase != critical_operation_phase::publication_pending)
-		return false;
-	operation_state &state = *found->second;
-	remove_fences(identity, state.command);
-	remember_completed(identity, state.command);
-	operations.erase(found);
-	++health.completed;
-	update_depth();
-	return true;
 }
 
 size_t critical_command_coordinator_pulse(critical_completion *completions, size_t capacity)
@@ -429,9 +379,7 @@ size_t critical_command_coordinator_pulse(critical_completion *completions, size
 		completion_delivery.pop_front(critical_completion_channel::execution);
 		const std::string identity = operation_key(completion.operation_id);
 		auto found = operations.find(identity);
-		if (found == operations.end() ||
-		    found->second->phase != critical_operation_phase::executing ||
-		    found->second->attempt != completion.attempt)
+		if (found == operations.end() || found->second->attempt != completion.attempt)
 		{
 			++health.stale_completions;
 			continue;
@@ -440,12 +388,6 @@ size_t critical_command_coordinator_pulse(critical_completion *completions, size
 		if (completion.outcome == critical_apply_outcome::terminal_failure)
 			++health.terminal_failures;
 		completions[published++] = completion;
-		if (state.retain_until_publication)
-		{
-			state.phase = critical_operation_phase::publication_pending;
-			state.publication_completion = completion;
-			continue;
-		}
 		remove_fences(identity, state.command);
 		remember_completed(identity, state.command);
 		++health.completed;
@@ -502,7 +444,7 @@ bool critical_command_coordinator_drain(uint64_t timeout_msec)
 			observer(completions, completed);
 		const critical_coordinator_health snapshot =
 			critical_command_coordinator_health_copy();
-		if (!snapshot.inflight && !snapshot.publication_pending)
+		if (!snapshot.inflight)
 			return true;
 		if (std::chrono::steady_clock::now() >= deadline)
 			return false;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise production queue/dispatch boundaries around held item publication.
+"""Exercise production queue/dispatch boundaries around held creation grants.
 
 The compiled harness links the real transaction runtime and supplies focused
 command fixtures behind the production playing-state dispatcher so inventory
@@ -270,17 +270,6 @@ P_char find_player_by_pid(int pid)
 	abort();
 }
 
-critical_submit_result critical_command_coordinator_submit_for_publication(critical_command)
-{
-    assert(false && "default caller unexpectedly requested publication retention");
-    return critical_submit_result::unavailable;
-}
-bool critical_command_coordinator_acknowledge_publication(const critical_operation_id &)
-{
-    assert(false && "default caller unexpectedly acknowledged publication");
-    return false;
-}
-
 critical_submit_result critical_command_coordinator_submit(critical_command queued)
 {
 	assert(!command_submitted);
@@ -355,8 +344,6 @@ static P_obj published_roots[2] = {};
 static P_obj published_bow = NULL;
 static P_obj published_cloak = NULL;
 static int publication_count = 0;
-static int bow_publication_count = 0;
-static int cloak_publication_count = 0;
 static int score_dispatches = 0;
 static int put_dispatches = 0;
 static int repair_dispatches = 0;
@@ -367,101 +354,17 @@ static int wear_failures = 0;
 static int wear_successes = 0;
 static int wield_dispatches = 0;
 static int fire_dispatches = 0;
-static int stale_completion_callbacks = 0;
-static int mobile_publications = 0;
-static int vanished_mobile_callbacks = 0;
 static P_obj fixture_backpack = NULL;
 
-static void held_bulk_get_completion(P_char actor, bool committed,
-				     const item_transfer_result &result, unsigned int error_code,
-				     const uint8_t *, size_t)
+// A grant has put its object in the actor's inventory when its completion runs.
+static void held_grant_completion(P_char actor, bool committed, const item_transfer_result &result,
+				  unsigned int error_code, const uint8_t *, size_t)
 {
-	assert(actor && committed && error_code == 0 && result.item_count == 2);
+	assert(actor && committed && error_code == 0 && result.item_count == 1);
 	item_ownership_runtime_entry ownership = {};
-	for (P_obj root : published_roots)
-	{
-		assert(root);
-		assert(item_ownership_runtime_lookup(root->obj_uid, &ownership));
-		assert(ownership.owner.type == item_owner_type::player);
-		root->loc_p = LOC_CARRIED;
-		root->loc.carrying = actor;
-	}
-	published_roots[0]->next_content = published_roots[1];
-	published_roots[1]->next_content = actor->carrying;
-	actor->carrying = published_roots[0];
-	world[0].contents = NULL;
+	assert(item_ownership_runtime_lookup(result.root_item_uid, &ownership));
+	assert(ownership.owner.type == item_owner_type::player);
 	++publication_count;
-}
-
-static void held_bow_get_completion(P_char actor, bool committed,
-				    const item_transfer_result &result, unsigned int error_code,
-				    const uint8_t *, size_t)
-{
-	assert(actor && committed && error_code == 0 && result.item_count == 1);
-	item_ownership_runtime_entry ownership = {};
-	assert(published_bow);
-	assert(item_ownership_runtime_lookup(published_bow->obj_uid, &ownership));
-	assert(ownership.owner.type == item_owner_type::player);
-	published_bow->loc_p = LOC_CARRIED;
-	published_bow->loc.carrying = actor;
-	published_bow->next_content = actor->carrying;
-	actor->carrying = published_bow;
-	world[0].contents = NULL;
-	++bow_publication_count;
-}
-
-static void held_cloak_get_completion(P_char actor, bool committed,
-				      const item_transfer_result &result, unsigned int error_code,
-				      const uint8_t *, size_t)
-{
-	assert(actor && committed && error_code == 0 && result.item_count == 1);
-	item_ownership_runtime_entry ownership = {};
-	assert(published_cloak);
-	assert(item_ownership_runtime_lookup(published_cloak->obj_uid, &ownership));
-	assert(ownership.owner.type == item_owner_type::player);
-	published_cloak->loc_p = LOC_CARRIED;
-	published_cloak->loc.carrying = actor;
-	published_cloak->next_content = actor->carrying;
-	actor->carrying = published_cloak;
-	world[0].contents = NULL;
-	++cloak_publication_count;
-}
-
-static void stale_registry_completion(P_char, bool, const item_transfer_result &, unsigned int,
-				      const uint8_t *, size_t)
-{
-	++stale_completion_callbacks;
-}
-
-static void held_mobile_get_completion(P_char actor, bool committed,
-				       const item_transfer_result &result,
-				       unsigned int error_code, const uint8_t *encoded,
-				       size_t encoded_size)
-{
-	assert(committed && error_code == 0 && result.item_count == 1);
-	assert(encoded && encoded_size == sizeof(uint64_t));
-	uint64_t item_uid = 0;
-	memcpy(&item_uid, encoded, sizeof(item_uid));
-	item_ownership_runtime_entry ownership = {};
-	assert(item_ownership_runtime_lookup(item_uid, &ownership));
-	assert(ownership.owner.type == item_owner_type::room);
-	assert(ownership.item_revision == 2);
-	if (!actor)
-	{
-		++vanished_mobile_callbacks;
-		return;
-	}
-	P_obj object = NULL;
-	for (P_obj candidate = object_list; candidate; candidate = candidate->next)
-		if (candidate->obj_uid == item_uid)
-			object = candidate;
-	assert(object && OBJ_ROOM(object));
-	object->loc_p = LOC_CARRIED;
-	object->loc.carrying = actor;
-	object->next_content = actor->carrying;
-	actor->carrying = object;
-	world[0].contents = NULL;
-	++mobile_publications;
 }
 
 static int carried_count(P_char actor)
@@ -487,13 +390,13 @@ void command_interpreter(P_char actor, char *input)
 	}
 	if (!strcmp(input, "repair pick"))
 	{
-		assert(publication_count == 1 && actor->carrying == published_roots[0]);
+		assert(publication_count == 2 && actor->carrying == published_roots[0]);
 		++repair_dispatches;
 		return;
 	}
 	if (!strcmp(input, "value pick"))
 	{
-		assert(publication_count == 1 && actor->carrying == published_roots[0]);
+		assert(publication_count == 2 && actor->carrying == published_roots[0]);
 		++value_dispatches;
 		return;
 	}
@@ -516,7 +419,7 @@ void command_interpreter(P_char actor, char *input)
 	}
 	if (!strcmp(input, "equipment"))
 	{
-		assert(publication_count == 1 && fixture_backpack->contains == published_roots[0]);
+		assert(publication_count == 2 && fixture_backpack->contains == published_roots[0]);
 		++equipment_dispatches;
 		return;
 	}
@@ -579,28 +482,19 @@ int main()
 	obj_data first_roast = {};
 	first_roast.obj_uid = 100;
 	first_roast.R_num = 0;
-	first_roast.loc_p = LOC_ROOM;
-	first_roast.loc.room = 0;
+	first_roast.loc_p = LOC_NOWHERE;
 	obj_data second_roast = {};
 	second_roast.obj_uid = 101;
 	second_roast.R_num = 0;
-	second_roast.loc_p = LOC_ROOM;
-	second_roast.loc.room = 0;
+	second_roast.loc_p = LOC_NOWHERE;
 	obj_data bow = {};
 	bow.obj_uid = 102;
 	bow.R_num = 1;
-	bow.loc_p = LOC_ROOM;
-	bow.loc.room = 0;
+	bow.loc_p = LOC_NOWHERE;
 	obj_data cloak = {};
 	cloak.obj_uid = 103;
 	cloak.R_num = 2;
-	cloak.loc_p = LOC_ROOM;
-	cloak.loc.room = 0;
-	obj_data fault = {};
-	fault.obj_uid = 104;
-	fault.R_num = 3;
-	fault.loc_p = LOC_ROOM;
-	fault.loc.room = 0;
+	cloak.loc_p = LOC_NOWHERE;
 	obj_data backpack = {};
 	backpack.obj_uid = 200;
 	backpack.R_num = 0;
@@ -610,12 +504,9 @@ int main()
 	first_roast.next = &second_roast;
 	second_roast.next = &bow;
 	bow.next = &cloak;
-	cloak.next = &fault;
-	fault.next = &backpack;
-	first_roast.next_content = &second_roast;
+	cloak.next = &backpack;
 	object_list = &first_roast;
 	world[0].number = 500;
-	world[0].contents = &first_roast;
 	published_roots[0] = &first_roast;
 	published_roots[1] = &second_roast;
 	published_bow = &bow;
@@ -624,67 +515,34 @@ int main()
 
 	item_ownership_runtime_reset();
 	item_movement_transaction_reset_for_tests();
-	const item_owner_identity room_owner = { item_owner_type::room, 500, 0 };
-	const item_owner_identity player_owner = { item_owner_type::player, 42, 0 };
-	const item_ownership_runtime_entry room_items[] = {
-		{ 100, 100, 0, room_owner, 1, 3, 100, item_custody_state::active },
-		{ 101, 101, 0, room_owner, 1, 3, 100, item_custody_state::active },
+	auto completion_for = [&](uint64_t root_uid, bool collector_changed)
+	{
+		const item_transfer_result result = { root_uid, 1, 1, 8, 1, 0, collector_changed };
+		critical_completion completion = {};
+		completion.operation_id = submitted_command.operation_id;
+		completion.outcome = critical_apply_outcome::applied;
+		std::array<uint8_t, ITEM_TRANSFER_RESULT_BYTES> encoded = {};
+		assert(item_transfer_command_encode_result(result, &encoded));
+		completion.result_size = encoded.size();
+		std::copy(encoded.begin(), encoded.end(), completion.result_payload.begin());
+		return completion;
 	};
-	assert(item_ownership_runtime_hydrate_batch(room_items, 2));
-	assert(item_ownership_runtime_hydrate_owner(player_owner, 7));
-	P_obj roots[] = { &first_roast, &second_roast };
-	// A committed coin change may still await live placement. Guard just its
-	// affected tree before capturing either a single move or a bulk move.
-	item_movement_reject reject = item_movement_reject::none;
-	// Collector collection and other custody commands hold coordinator item
-	// fences until their live publication has completed.
-	fenced_item_uid = first_roast.obj_uid;
-	assert(!item_movement_transaction_submit(
-		&actor, &first_roast, NULL, room_owner, player_owner,
-		item_transfer_reason::player_get, first_roast.obj_uid,
-		held_bulk_get_completion, NULL, 0, NULL, &reject));
-	assert(reject == item_movement_reject::pending_conflict && !command_submitted);
-	assert(!item_movement_transaction_submit_batch(
-		&actor, roots, 2, NULL, room_owner, player_owner,
-		item_transfer_reason::player_get, first_roast.obj_uid,
-		held_bulk_get_completion, NULL, 0, NULL, &reject));
-	assert(reject == item_movement_reject::pending_conflict && !command_submitted);
-	fenced_item_uid = backpack.obj_uid;
-	assert(!item_movement_transaction_submit(
-		&actor, &first_roast, &backpack, room_owner, player_owner,
-		item_transfer_reason::player_put, first_roast.obj_uid,
-		held_bulk_get_completion, NULL, 0, NULL, &reject));
-	assert(reject == item_movement_reject::pending_conflict && !command_submitted);
+	// A grant whose object a coordinator command or a collector transaction still fences
+	// waits in its queue, holding the player, until the fence clears.
+	fenced_item_uid = second_roast.obj_uid;
+	assert(item_creation_grant_submit_to_player_with_completion(&actor, &second_roast, &actor,
+								    held_grant_completion, NULL, 0));
+	assert(!command_submitted && item_movement_transaction_player_busy(&actor));
 	fenced_item_uid = 0;
-	collector_pending_uid = first_roast.obj_uid;
-	assert(!item_movement_transaction_submit(
-		&actor, &first_roast, NULL, room_owner, player_owner,
-		item_transfer_reason::player_get, first_roast.obj_uid,
-		held_bulk_get_completion, NULL, 0, NULL, &reject));
-	assert(reject == item_movement_reject::pending_conflict && !command_submitted);
-	assert(!item_movement_transaction_submit_batch(
-		&actor, roots, 2, NULL, room_owner, player_owner,
-		item_transfer_reason::player_get, first_roast.obj_uid,
-		held_bulk_get_completion, NULL, 0, NULL, &reject));
-	assert(reject == item_movement_reject::pending_conflict && !command_submitted);
-	collector_pending_uid = backpack.obj_uid;
-	assert(!item_movement_transaction_submit(
-		&actor, &first_roast, &backpack, room_owner, player_owner,
-		item_transfer_reason::player_put, first_roast.obj_uid,
-		held_bulk_get_completion, NULL, 0, NULL, &reject));
-	assert(reject == item_movement_reject::pending_conflict && !command_submitted);
-	assert(!item_movement_transaction_submit_batch(
-		&actor, roots, 2, &backpack, room_owner, player_owner,
-		item_transfer_reason::player_put, first_roast.obj_uid,
-		held_bulk_get_completion, NULL, 0, NULL, &reject));
-	assert(reject == item_movement_reject::pending_conflict && !command_submitted);
-	assert(!item_movement_transaction_player_busy(&actor));
-	collector_pending_uid = 999; // An unrelated pending item does not block this move.
-	assert(item_movement_transaction_submit_batch(
-		&actor, roots, 2, NULL, room_owner, player_owner,
-		item_transfer_reason::player_get, first_roast.obj_uid,
-		held_bulk_get_completion, NULL, 0));
+	collector_pending_uid = second_roast.obj_uid;
+	item_creation_grant_prepare_pulse();
+	assert(!command_submitted);
+	collector_pending_uid = 999; // An unrelated pending item does not hold it.
+	item_creation_grant_prepare_pulse();
 	assert(command_submitted);
+	// A second grant waits behind the first.
+	assert(item_creation_grant_submit_to_player_with_completion(&actor, &first_roast, &actor,
+								    held_grant_completion, NULL, 0));
 	assert(item_movement_transaction_player_busy(&actor));
 	assert(actor.carrying == &backpack && publication_count == 0);
 
@@ -714,8 +572,8 @@ int main()
 	assert(input_allowed_while_item_moving("say still here"));
 	assert(!input_allowed_while_item_moving(NULL));
 
-	/* The real movement transaction is pending while its captured coordinator
-	   command is held. Dependent commands remain queued while score can run. */
+	/* The real grant is pending while its captured coordinator command is held.
+	   Dependent commands remain queued while score can run. */
 	push(&q, "repair pick");
 	push(&q, "score");
 	push(&q, "value pick");
@@ -734,19 +592,12 @@ int main()
 	assert(!get_playing_cmd_from_q(&actor, &q, dest));
 	expect_text(dest, "sentinel", "dependent-only queue is untouched");
 
-	/* Release the captured production command through the real item-movement
-	   completion handler. Registry publication precedes the bulk-get callback. */
-	item_transfer_result result = { 100, 2, 4, 8, 2, 0, true };
-	critical_completion completion = {};
-	completion.operation_id = submitted_command.operation_id;
-	completion.outcome = critical_apply_outcome::applied;
-	std::array<uint8_t, ITEM_TRANSFER_RESULT_BYTES> encoded = {};
-	assert(item_transfer_command_encode_result(result, &encoded));
-	completion.result_size = encoded.size();
-	std::copy(encoded.begin(), encoded.end(), completion.result_payload.begin());
-	/* Offline completions retain the operation without invoking a null-actor
-	   callback. Re-entry publishes once and releases the dependent queue. */
+	/* Release the captured production command through the real completion handler.
+	   Offline completions are retained; re-entry publishes once, and the grant
+	   queued behind it starts. */
+	critical_completion completion = completion_for(second_roast.obj_uid, true);
 	character_list = NULL;
+	command_submitted = false;
 	item_movement_transaction_handle_completions(&completion, 1);
 	assert(publication_count == 0);
 	assert(collector_invalidations == 1);
@@ -754,11 +605,16 @@ int main()
 	assert(item_movement_transaction_player_busy(&actor));
 	character_list = &actor;
 	item_movement_transaction_player_ready(&actor);
-	assert(publication_count == 1);
+	assert(publication_count == 1 && command_submitted);
 	assert(collector_invalidations == 1);
 	item_movement_transaction_player_ready(&actor);
 	assert(publication_count == 1);
 	assert(item_movement_transaction_health_copy().retained_offline == 0);
+	assert(item_movement_transaction_player_busy(&actor));
+	completion = completion_for(first_roast.obj_uid, false);
+	command_submitted = false;
+	item_movement_transaction_handle_completions(&completion, 1);
+	assert(publication_count == 2);
 	assert(!item_movement_transaction_player_busy(&actor));
 	assert(carried_count(&actor) == 3);
 
@@ -785,38 +641,19 @@ int main()
 	assert(wear_failures == 1);
 	assert(actor.carrying == &backpack && backpack.contains == &first_roast);
 
-	/* A second held get proves fire cannot jump ahead of wield while the bow is
+	/* A second held grant proves fire cannot jump ahead of wield while the bow is
 	   unpublished, then executes both through the normal dispatcher in FIFO. */
-	const item_ownership_runtime_entry bow_entry = {
-		102, 102, 0, room_owner, 1, 4, 101, item_custody_state::active
-	};
-	assert(item_ownership_runtime_hydrate(bow_entry));
-	bow.loc_p = LOC_ROOM;
-	bow.loc.room = 0;
-	world[0].contents = &bow;
 	command_submitted = false;
-	submitted_command = {};
-	P_obj bow_root[] = { &bow };
-	assert(item_movement_transaction_submit_batch(
-		&actor, bow_root, 1, NULL, room_owner, player_owner,
-		item_transfer_reason::player_get, bow.obj_uid,
-		held_bow_get_completion, NULL, 0));
+	assert(item_creation_grant_submit_to_player_with_completion(&actor, &bow, &actor,
+								    held_grant_completion, NULL, 0));
 	assert(item_movement_transaction_player_busy(&actor));
 	push(&q, "wield bow");
 	push(&q, "fire target");
 	assert(!get_playing_cmd_from_q(&actor, &q, dest));
 	assert(wield_dispatches == 0 && fire_dispatches == 0);
-
-	result = { 102, 1, 5, 9, 2, 0 };
-	completion = {};
-	completion.operation_id = submitted_command.operation_id;
-	completion.outcome = critical_apply_outcome::applied;
-	encoded = {};
-	assert(item_transfer_command_encode_result(result, &encoded));
-	completion.result_size = encoded.size();
-	std::copy(encoded.begin(), encoded.end(), completion.result_payload.begin());
+	completion = completion_for(bow.obj_uid, false);
 	item_movement_transaction_handle_completions(&completion, 1);
-	assert(bow_publication_count == 1);
+	assert(publication_count == 3);
 	assert(!item_movement_transaction_player_busy(&actor));
 
 	assert(get_playing_cmd_from_q(&actor, &q, dest));
@@ -830,37 +667,18 @@ int main()
 	assert(wield_dispatches == 1 && fire_dispatches == 1);
 	assert(actor.equipment[0] == &bow);
 
-	/* A direct get-then-wear sequence succeeds after publication, separately
+	/* A direct grant-then-wear sequence succeeds after publication, separately
 	   from the intentional wear failure after the earlier put command. */
-	const item_ownership_runtime_entry cloak_entry = {
-		103, 103, 0, room_owner, 1, 5, 102, item_custody_state::active
-	};
-	assert(item_ownership_runtime_hydrate(cloak_entry));
-	cloak.loc_p = LOC_ROOM;
-	cloak.loc.room = 0;
-	world[0].contents = &cloak;
 	command_submitted = false;
-	submitted_command = {};
-	P_obj cloak_root[] = { &cloak };
-	assert(item_movement_transaction_submit_batch(
-		&actor, cloak_root, 1, NULL, room_owner, player_owner,
-		item_transfer_reason::player_get, cloak.obj_uid,
-		held_cloak_get_completion, NULL, 0));
+	assert(item_creation_grant_submit_to_player_with_completion(&actor, &cloak, &actor,
+								    held_grant_completion, NULL, 0));
 	assert(item_movement_transaction_player_busy(&actor));
 	push(&q, "wear cloak");
 	assert(!get_playing_cmd_from_q(&actor, &q, dest));
 	assert(wear_successes == 0);
-
-	result = { 103, 1, 6, 10, 2, 0 };
-	completion = {};
-	completion.operation_id = submitted_command.operation_id;
-	completion.outcome = critical_apply_outcome::applied;
-	encoded = {};
-	assert(item_transfer_command_encode_result(result, &encoded));
-	completion.result_size = encoded.size();
-	std::copy(encoded.begin(), encoded.end(), completion.result_payload.begin());
+	completion = completion_for(cloak.obj_uid, false);
 	item_movement_transaction_handle_completions(&completion, 1);
-	assert(cloak_publication_count == 1);
+	assert(publication_count == 4);
 	assert(!item_movement_transaction_player_busy(&actor));
 
 	assert(get_playing_cmd_from_q(&actor, &q, dest));
@@ -883,159 +701,6 @@ int main()
 	expect_text(dest, "score", "append after tail extraction");
 	check_intact(&q);
 	drain(&q);
-
-	/* Memory is the authority for the room an item came from: a committed
-	   completion whose cached revision is stale teaches the cache the committed
-	   state and calls back, releasing the dependent queue hold. */
-	const item_ownership_runtime_entry fault_entry = {
-		104, 104, 0, room_owner, 1, 6, 103, item_custody_state::active
-	};
-	assert(item_ownership_runtime_hydrate(fault_entry));
-	fault.loc_p = LOC_ROOM;
-	fault.loc.room = 0;
-	world[0].contents = &fault;
-	command_submitted = false;
-	submitted_command = {};
-	P_obj fault_root[] = { &fault };
-	assert(item_movement_transaction_submit_batch(
-		&actor, fault_root, 1, NULL, room_owner, player_owner,
-		item_transfer_reason::player_get, fault.obj_uid,
-		stale_registry_completion, NULL, 0));
-	assert(item_movement_transaction_player_busy(&actor));
-	const item_ownership_runtime_entry stale_fault_entry = {
-		104, 104, 0, room_owner, 2, 6, 103, item_custody_state::active
-	};
-	assert(item_ownership_runtime_hydrate(stale_fault_entry));
-	result = { 104, 1, 7, 11, 2, 0 };
-	completion = {};
-	completion.operation_id = submitted_command.operation_id;
-	completion.outcome = critical_apply_outcome::applied;
-	encoded = {};
-	assert(item_transfer_command_encode_result(result, &encoded));
-	completion.result_size = encoded.size();
-	std::copy(encoded.begin(), encoded.end(), completion.result_payload.begin());
-	item_movement_transaction_handle_completions(&completion, 1);
-	const item_movement_health movement_health = item_movement_transaction_health_copy();
-	assert(movement_health.pending == 0 && movement_health.stale_publications == 0);
-	assert(stale_completion_callbacks == 1);
-	assert(!item_movement_transaction_player_busy(&actor));
-	item_ownership_runtime_entry learned = {};
-	assert(item_ownership_runtime_lookup(104, &learned) && learned.item_revision == 2 &&
-	       item_owner_identity_equal(learned.owner, player_owner));
-	item_movement_transaction_reset_for_tests();
-	assert(!item_movement_transaction_player_busy(&actor));
-
-	/* NPC and pet pickup is a same-owner durable claim: no live handoff occurs
-	   before commit, the item/owner revisions advance once, and collector cache
-	   invalidation is replay-safe. A vanished mobile still publishes authority
-	   and releases the pending operation without receiving the live object. */
-	item_ownership_runtime_reset();
-	command_submitted = false;
-	submitted_command = {};
-	char_data mobile = {};
-	SET_BIT(mobile.specials.act, ACT_ISNPC);
-	mobile.runtime_id = 9001;
-	mobile.in_room = 0;
-	character_list = &mobile;
-	obj_data mobile_loot = {};
-	mobile_loot.obj_uid = 105;
-	mobile_loot.R_num = 3;
-	mobile_loot.loc_p = LOC_ROOM;
-	mobile_loot.loc.room = 0;
-	object_list = &mobile_loot;
-	world[0].contents = &mobile_loot;
-	assert(!item_movement_transaction_submit(
-		&mobile, &mobile_loot, NULL, room_owner, room_owner,
-		item_transfer_reason::mobile_claim, 0, held_mobile_get_completion,
-		&mobile_loot.obj_uid, sizeof(mobile_loot.obj_uid), NULL, &reject));
-	assert(reject == item_movement_reject::owner_mismatch && !command_submitted);
-	const item_ownership_runtime_entry mobile_entry = {
-		105, 105, 0, room_owner, 1, 3, 103, item_custody_state::active
-	};
-	assert(item_ownership_runtime_hydrate(mobile_entry));
-	assert(!item_movement_transaction_submit(
-		&mobile, &mobile_loot, NULL, room_owner, room_owner,
-		item_transfer_reason::player_get, 0, held_mobile_get_completion,
-		&mobile_loot.obj_uid, sizeof(mobile_loot.obj_uid), NULL, &reject));
-	assert(reject == item_movement_reject::invalid_request && !command_submitted);
-	assert(item_movement_transaction_submit(
-		&mobile, &mobile_loot, NULL, room_owner, room_owner,
-		item_transfer_reason::mobile_claim, 0, held_mobile_get_completion,
-		&mobile_loot.obj_uid, sizeof(mobile_loot.obj_uid), NULL, &reject));
-	assert(command_submitted && OBJ_ROOM(&mobile_loot));
-	item_transfer_payload mobile_payload = {};
-	assert(item_transfer_command_decode_payload(submitted_command, &mobile_payload));
-	assert(mobile_payload.reason == item_transfer_reason::mobile_claim);
-	assert(item_owner_identity_equal(mobile_payload.from_owner, room_owner));
-	assert(item_owner_identity_equal(mobile_payload.to_owner, room_owner));
-	item_transfer_result mobile_result = {105, 1, 4, 4, 2, 0, true};
-	critical_completion mobile_completion = {};
-	mobile_completion.operation_id = submitted_command.operation_id;
-	mobile_completion.outcome = critical_apply_outcome::applied;
-	std::array<uint8_t, ITEM_TRANSFER_RESULT_BYTES> mobile_encoded = {};
-	assert(item_transfer_command_encode_result(mobile_result, &mobile_encoded));
-	mobile_completion.result_size = mobile_encoded.size();
-	std::copy(mobile_encoded.begin(), mobile_encoded.end(),
-		  mobile_completion.result_payload.begin());
-	const unsigned invalidations_before_mobile = collector_invalidations;
-	command_submitted = false;
-	item_movement_transaction_handle_completions(&mobile_completion, 1);
-	item_movement_transaction_handle_completions(&mobile_completion, 1);
-	assert(mobile_publications == 1 && OBJ_CARRIED_BY(&mobile_loot, &mobile));
-	assert(collector_invalidations == invalidations_before_mobile + 1);
-	assert(item_movement_transaction_health_copy().pending == 0);
-	item_ownership_runtime_entry mobile_after = {};
-	assert(item_ownership_runtime_lookup(105, &mobile_after));
-	assert(mobile_after.item_revision == 2 && mobile_after.owner_revision == 4);
-
-	item_movement_transaction_reset_for_tests();
-	item_ownership_runtime_reset();
-	command_submitted = false;
-	submitted_command = {};
-	mobile.carrying = NULL;
-	obj_data abandoned_loot = {};
-	abandoned_loot.obj_uid = 106;
-	abandoned_loot.R_num = 3;
-	abandoned_loot.loc_p = LOC_ROOM;
-	abandoned_loot.loc.room = 0;
-	object_list = &abandoned_loot;
-	world[0].contents = &abandoned_loot;
-	assert(item_ownership_runtime_hydrate(
-		{106, 106, 0, room_owner, 1, 9, 103, item_custody_state::active}));
-	assert(item_movement_transaction_submit(
-		&mobile, &abandoned_loot, NULL, room_owner, room_owner,
-		item_transfer_reason::mobile_claim, 0, held_mobile_get_completion,
-		&abandoned_loot.obj_uid, sizeof(abandoned_loot.obj_uid), NULL, &reject));
-	mobile_result = {106, 1, 10, 10, 2, 0, true};
-	mobile_completion = {};
-	mobile_completion.operation_id = submitted_command.operation_id;
-	mobile_completion.outcome = critical_apply_outcome::applied;
-	mobile_encoded = {};
-	assert(item_transfer_command_encode_result(mobile_result, &mobile_encoded));
-	mobile_completion.result_size = mobile_encoded.size();
-	std::copy(mobile_encoded.begin(), mobile_encoded.end(),
-		  mobile_completion.result_payload.begin());
-	character_list = NULL;
-	command_submitted = false;
-	item_movement_transaction_handle_completions(&mobile_completion, 1);
-	assert(vanished_mobile_callbacks == 1 && OBJ_ROOM(&abandoned_loot));
-	assert(item_movement_transaction_health_copy().pending == 0);
-	assert(item_ownership_runtime_lookup(106, &mobile_after));
-	assert(mobile_after.item_revision == 2 && mobile_after.owner_revision == 10);
-	character_list = &actor;
-	// A vanished scavenger never becomes an aggregate owner: the durable claim
-	// advances the room revision in place, so the same live object remains
-	// immediately available to a player under that new revision.
-	assert(item_ownership_runtime_hydrate(
-		{107, 107, 0, player_owner, 1, 3, 103, item_custody_state::active}));
-	assert(item_movement_transaction_submit(
-		&actor, &abandoned_loot, NULL, room_owner, player_owner,
-		item_transfer_reason::player_get, 0, NULL, NULL, 0, NULL, &reject));
-	item_transfer_payload abandoned_player_get = {};
-	assert(item_transfer_command_decode_payload(submitted_command, &abandoned_player_get));
-	assert(item_owner_identity_equal(abandoned_player_get.from_owner, room_owner) &&
-	       item_owner_identity_equal(abandoned_player_get.to_owner, player_owner) &&
-	       abandoned_player_get.expected_from_revision == 10);
 
     // CHAOS pre-entry multi-root admission stages every root before any command.
     // All fixtures below are in-memory; no persistence service is connected.
@@ -1130,12 +795,8 @@ int main()
     system_created.next = &gameplay_created;
     gameplay_created.next = nullptr;
     object_list = &system_created;
-    const item_owner_identity system_creation_owner = { item_owner_type::system, 0, 0 };
     P_obj system_roots[] = {&system_created};
-    item_movement_reject system_reject = item_movement_reject::none;
-    assert(item_movement_transaction_submit_batch(
-        &actor, system_roots, 1, NULL, system_creation_owner, player_owner,
-        item_transfer_reason::creation, 0, NULL, NULL, 0, NULL, &system_reject));
+    assert(item_creation_grant_submit_batch_to_player_before_entry(&actor, system_roots, 1, &actor));
     assert(command_submitted);
     assert(item_creation_grant_submit_to_player(&actor, &gameplay_created, &actor, NULL));
     assert(item_movement_transaction_player_busy(&actor));
@@ -1442,12 +1103,9 @@ int main()
     actor.next = &concurrent_actor;
     concurrent_actor.next = nullptr;
     character_list = &actor;
-    const item_owner_identity creation_system_owner = { item_owner_type::system, 0, 0 };
     P_obj first_pending_root[] = { &grant_first };
-    item_movement_reject conflict_reject = item_movement_reject::none;
-    assert(item_movement_transaction_submit_batch(
-        &actor, first_pending_root, 1, NULL, creation_system_owner, player_owner,
-        item_transfer_reason::creation, 0, NULL, NULL, 0, NULL, &conflict_reject));
+    assert(item_creation_grant_submit_batch_to_player_before_entry(&actor, first_pending_root, 1,
+                                                                   &actor));
     assert(command_submitted);
     P_obj concurrent_roots[] = { &concurrent_first, &concurrent_second };
     assert(item_creation_grant_submit_batch_to_player_before_entry(

@@ -148,15 +148,15 @@ owner records where the items went.
 
 ## Asynchronous completion prompts
 
-`src/net/comm.c::process_output()` leaves an ordinary command prompt pending
-while item movement or currency publication reports the player busy, including
-inbound transfers covered by those coordinators. Queued text and unrelated
-asynchronous output still flush. Pager and string-editor prompts retain their
-own behavior. The leading newline is chosen using the deferred-prompt state so
-a delayed pickup preserves the synchronous byte ordering.
+Item commands move objects in memory and print at once. `src/net/comm.c::process_output()`
+leaves an ordinary command prompt pending while a creation grant or a collector
+transaction reports the player busy, including a grant made to them by someone
+else. Queued text and unrelated asynchronous output still flush. Pager and
+string-editor prompts retain their own behavior. The leading newline is chosen
+using the deferred-prompt state so deferred output preserves the synchronous
+byte ordering.
 
 `test_item_movement_prompt_runtime.py` exercises real prompt generation and
-Telnet/WebSocket text serialization with held coordinator completions, compact
-and smart-prompt variants, combat, pager/editor and switched descriptors. It
-uses fixture pickup text and transport endpoints; it is not a full browser
-network or `do_get()` journey.
+Telnet/WebSocket text serialization with a held grant completion, compact and
+smart-prompt variants, combat, pager/editor and switched descriptors. It uses
+fixture text and transport endpoints; it is not a full browser network journey.

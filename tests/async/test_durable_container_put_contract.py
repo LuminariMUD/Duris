@@ -98,22 +98,18 @@ class DurableContainerPutContractTests(unittest.TestCase):
         self.assertIn("live(root=", capture)
 
     def test_every_submission_refusal_carries_a_reason(self):
-        header = (SRC / "item_movement_transaction.h").read_text()
         movement = (SRC / "item_movement_transaction.c").read_text()
         for reason in ("invalid_request", "queue_saturated", "pending_conflict",
                        "owner_mismatch", "missing_owner_revision", "topology_mismatch",
                        "snapshot_failure", "allocation_failure", "command_build_failure",
                        "coordinator_rejected"):
-            self.assertIn(f"\t{reason},", header)
+            self.assertIn(f"\t{reason},", movement)
             self.assertIn(f"item_movement_reject::{reason}", movement)
-        self.assertIn("item_movement_reject *reject = NULL", header)
         for signature, terminator in (
-                ("bool item_movement_transaction_submit(P_char actor",
-                 "\nbool item_movement_reject_is_transient"),
-                ("bool item_movement_transaction_submit_batch(",
-                 "\nbool item_movement_reject_is_transient")):
+                ("bool submit_transfer(", "\nbool submit_grant("),
+                ("bool submit_grant(", "\nbool submit_grant_batch("),
+                ("bool submit_grant_batch(", "\nbool start_creation_grant(")):
             body = function_body(movement, signature, terminator)
-            body = body[:body.index("\n}\n")] if "\n}\n" in body else body
             self.assertNotIn("return false;", body,
                              f"{signature} still refuses without naming a reason")
 

@@ -33,7 +33,6 @@ struct critical_coordinator_health
 	uint64_t queued;
 	uint64_t inflight;
 	uint64_t blocked;
-	uint64_t publication_pending;
 	uint64_t retained_bytes;
 	uint64_t completed_cache;
 	uint64_t fenced_keys;
@@ -61,14 +60,6 @@ using critical_drain_observer_fn = void (*)(const critical_completion *completio
 bool critical_command_coordinator_init(critical_apply_fn apply, void *context);
 void critical_command_coordinator_shutdown(void);
 critical_submit_result critical_command_coordinator_submit(critical_command command);
-// Opt-in path for commands whose durable result is not complete until the game
-// thread has safely published its live projection. The operation and all of its
-// entity fences remain held until critical_command_coordinator_acknowledge_publication().
-critical_submit_result
-critical_command_coordinator_submit_for_publication(critical_command command);
-// Release a publication-held operation only after the live callback succeeded. A false
-// result leaves the operation fenced.
-bool critical_command_coordinator_acknowledge_publication(const critical_operation_id &operation_id);
 size_t critical_command_coordinator_pulse(critical_completion *completions, size_t capacity);
 bool critical_command_coordinator_is_fenced(const critical_entity_key &key,
 					    critical_operation_id *operation_id);

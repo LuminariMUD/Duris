@@ -26,22 +26,21 @@ def function_body(source: str, signature: str, *, last: bool = False) -> str:
     raise AssertionError(f"unterminated function: {signature}")
 
 
-BATCH_SUBMIT = function_body(MOVEMENT, "bool item_movement_transaction_submit_batch(")
+BATCH_SUBMIT = function_body(MOVEMENT, "bool submit_grant_batch(")
 START_GRANT = function_body(MOVEMENT, "bool start_creation_grant(", last=True)
 PRE_ENTRY_BATCH = function_body(
     MOVEMENT, "bool item_creation_grant_submit_batch_to_player_before_entry("
 )
 CANCEL = function_body(MOVEMENT, "void item_creation_grant_cancel_batch_before_entry(")
 
-assert "const bool creation =" in BATCH_SUBMIT
 assert "capture_absent(" in BATCH_SUBMIT
 assert "item_transfer_reason::creation" in BATCH_SUBMIT
-assert "creation_grant_batch_completion" in START_GRANT
-assert "item_movement_transaction_submit_batch(" in START_GRANT
+assert "creation_grant_batch_completion" in BATCH_SUBMIT
+assert "submit_grant_batch(" in START_GRANT
 assert "creation_grant_conflicts" in START_GRANT
 assert "reconcile_creation_grant_batch" in MOVEMENT
 assert "player_load_item_graph_materialize_creation" in MOVEMENT
-assert "item_movement_reject_is_transient" in PRE_ENTRY_BATCH
+assert "reject_is_transient" in PRE_ENTRY_BATCH
 assert "queue.batch_submission = true" in PRE_ENTRY_BATCH
 assert "queue.batch_submission ? queue.requests.size()" in CANCEL
 assert "ITEM_CREATION_GRANT_MAX_ROOTS" in MOVEMENT_HEADER

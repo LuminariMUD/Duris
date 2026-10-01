@@ -4416,18 +4416,16 @@ static void show_world_persistence(P_char ch)
 
 	snprintf(line, sizeof(line),
 		 "critical_commands state=%s queued=%llu inflight=%llu "
-		 "blocked=%llu publication_pending=%llu bytes=%llu "
+		 "blocked=%llu bytes=%llu "
 		 "fences=%llu completed_cache=%llu high_water=%llu/%llu accepted=%llu "
 		 "attached=%llu completed=%llu retries=%llu ambiguous=%llu terminal=%llu "
 		 "stale=%llu overloads=%llu oldest_age_ms=%llu\n",
-		 !critical.initialized						      ? "stopped" :
-		 critical.blocked						      ? "blocked" :
-		 critical.queued || critical.inflight || critical.publication_pending ? "pending" :
-											"ready",
+		 !critical.initialized		      ? "stopped" :
+		 critical.blocked		      ? "blocked" :
+		 critical.queued || critical.inflight ? "pending" :
+							"ready",
 		 (unsigned long long)critical.queued, (unsigned long long)critical.inflight,
-		 (unsigned long long)critical.blocked,
-		 (unsigned long long)critical.publication_pending,
-		 (unsigned long long)critical.retained_bytes,
+		 (unsigned long long)critical.blocked, (unsigned long long)critical.retained_bytes,
 		 (unsigned long long)critical.fenced_keys,
 		 (unsigned long long)critical.completed_cache,
 		 (unsigned long long)critical.high_water_operations,
