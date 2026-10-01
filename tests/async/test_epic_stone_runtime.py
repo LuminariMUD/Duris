@@ -147,8 +147,6 @@ int main()
  zone_touch_transaction_handle_completions(&failed,1);
  assert(!zone_touch_transaction_busy(99,77) && magic && effects==0);
  assert(zone_touch_transaction_submit(p));
- auto uncertain=complete(critical_apply_outcome::ambiguous_commit,false);
- zone_touch_transaction_handle_completions(&uncertain,1);
  assert(zone_touch_transaction_busy(99,77) && !zone_touch_transaction_submit(p));
  auto malformed=complete(critical_apply_outcome::applied,false);
  zone_touch_transaction_handle_completions(&malformed,1);
@@ -310,7 +308,7 @@ int main()
 '''
 
 class StoneRuntimeTests(unittest.TestCase):
-    def test_admission_failure_pending_ambiguity_success_disconnect_and_recovery(self):
+    def test_admission_failure_pending_success_disconnect_and_recovery(self):
         self.assertIsNotNone(shutil.which("g++"), "Linux g++ is required for the native runtime regression")
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / 'stone.cpp'

@@ -1481,8 +1481,8 @@ void item_creation_grant_cancel_batch_before_entry(P_char actor)
 	      "item creation grant batch cancelled before entry (pid=%d retained_active=%d "
 	      "extracted_tail=%zu)",
 	      GET_PID(actor), retained ? 1 : 0, extracted);
-	// An active head is already journaled. Keep its deferred completion so
-	// durable ownership/revision publication is never silently abandoned.
+	// An active head is already submitted. Keep its deferred completion so its
+	// publication is never silently abandoned.
 	queue.stop_on_failure = false;
 	queue.blocks_actor_commands = false;
 	queue.announce_on_completion = false;
