@@ -1301,12 +1301,13 @@ void do_encrust(P_char ch, char *argument, int /*cmd*/)
 	}
 	if (virtual_jewel)
 	{
-		// Pouch usage has its own durable accounting path. Refuse the virtual
-		// material until it can participate in this same craft receipt.
-		extract_obj(jewel);
-		act("Virtual Chaos-pouch encrust is temporarily unavailable while its durable receipt is prepared.",
-		    FALSE, ch, 0, 0, TO_CHAR);
-		return;
+		const chaos_material_pouch_usage generated = { OBJ_VNUM(jewel), 1 };
+		if (!chaos_material_pouch_record_generated(ch, &generated, 1))
+		{
+			chaos_material_pouch_report_generated_failure(ch, "encrust");
+			extract_obj(jewel);
+			return;
+		}
 	}
 
 	craftsmanship = item->craftsmanship;

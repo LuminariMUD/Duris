@@ -31,5 +31,8 @@ assert contains(failure, "extract_obj(item); extract_obj(jewel);")
 assert "obj_to_char" not in failure
 assert contains(encrust, "extract_obj(item); extract_obj(jewel); obj_to_char(new_item, ch);")
 assert contains(pvp, "for (P_obj shard : shards) extract_obj(shard); obj_to_char(orb, pl);")
+# A Chaos-pouch jewel is recorded on the pouch's scoreboard and encrusts like any other.
+assert contains(encrust, "chaos_material_pouch_record_generated(ch, &generated, 1)")
+assert "temporarily unavailable" not in encrust
 
 print("Issue 551 crafting conservation contract passed")
