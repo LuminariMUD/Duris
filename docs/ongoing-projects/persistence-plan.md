@@ -8,8 +8,8 @@ This file is the plan: the rules, the design, the three phases, what was cut and
 (what landed, decisions, tests, verification, commits, bugs found) goes there and the item leaves
 the list. A decision that changes the framework is written here.
 
-**Status (2026-10-02):** Phases 1 and 2 are done. Phase 3 steps 1 to 9 are done in this worktree,
-on `fix/7-persistence-phase-3`, which is pushed.
+**Status (2026-10-02):** Phases 1, 2 and 3 are done on `fix/7-persistence-phase-3`, which is
+pushed and tagged `persistence/phase-3-review-0` for review. The gate passed on `0b90e5fc1`.
 
 **Work items:** #7 (player saves and deaths), and the persistence causes behind #5 (game freezes),
 #3 (the player-save journal breaking backups) and #6 (persistence alert storms).
@@ -155,6 +155,9 @@ Done, each with its tests in its own commits, through the gate:
 9. [The die, restart and loot journey](persistence-done.md#step-9-the-die-restart-and-loot-journey-done).
 10. [The movement transactions and the transfer branches only they used](persistence-done.md#after-step-9-the-dead-transfer-branches-not-asked-for)
     (`4621a6c8a`, `01a345b84`).
+11. [The ledger reconcilers](persistence-done.md#the-ledger-reconcilers-done) and
+    [DATABASE.md](persistence-done.md#databasemd-done), with two defects found on the way, and
+    [the rest of the docs and a dead branch](persistence-done.md#the-rest-of-the-docs-and-a-dead-branch-done).
 
 ### Finding dead code
 
@@ -177,6 +180,10 @@ shows as live, an inlined one as dead).
 
 On 2026-10-02 the pass on `93d315d07` found nothing newly unreachable since the step 7 head
 (`c551f5d05`). Run it again only if a later change removes a caller.
+
+The linker cannot see a dead branch inside a live function. Completions are an example: the
+writer retries a retryable or ambiguous result itself, so a game-side branch for one is dead
+(the zone touch had the last, removed in `7a1613c21`).
 
 ## What was cut, and why
 
@@ -224,17 +231,17 @@ if a requirement or a concrete risk failed without it. Cut:
   without the game noticing.
 - No character is ever held after death, logout or idle rent.
 - No corpse raise, resurrection or decay can fail on the database.
-- Shutdown and copyover never wait on a failing save.
+- Shutdown and copyover never wait indefinitely on a failing save: after 30 seconds shutdown
+  goes and copyover is called off.
 - The game loop issues no query after boot.
 - The database cannot hold one item under two owners, and `logs/log/dupes` accounts for every
   item a save or load gave up.
 - No persistence code is left that nothing reaches, and the branch passes the gate.
 
-All but the last hold now.
+All hold: the gate passed on `0b90e5fc1`
+([record](persistence-done.md#the-gate-on-the-branch-head-done)).
 
 ## What is left
 
-1. **The gate on this worktree's head:** `./scripts/format.sh --all --check`, then
-   `make test-all -j16 TEST_JOBS=16` alone, then `make test-db` and `npm test --prefix site` side
-   by side. Fix each failure in its own commit, with a regression test where behavior changes,
-   rerun what failed, and push the branch.
+Nothing. The branch is ready for review; review rounds are recorded in
+[persistence-done.md](persistence-done.md) and tagged `persistence/phase-3-review-<n>`.

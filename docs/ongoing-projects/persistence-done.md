@@ -2216,3 +2216,15 @@ Found while bringing DATABASE.md up to date, each in its own commit:
 On the way, a flat-file-only wait was checked and kept: a new character's first save waits
 up to five seconds for the local write (`writeCharacter()` in `src/core/files.c`), because
 its domains are read back right after. It is a file write, not a database query.
+
+### The gate on the branch head (done)
+
+On `0b90e5fc1`, run once each: `./scripts/format.sh --all --check` (1030 files clean),
+`make test-all -j16 TEST_JOBS=16` alone (659 of 659, 461 s), then `make test-db` (34 of 34,
+197 s) and `npm test --prefix site` (14 tests) side by side. An earlier run of the same gate
+on `d737ada3e`, before the docs sweep and the dead branch, also passed (659, 34, 14). No
+failure needed a fix.
+
+Not run: a live deposit-and-reboot journey for the bank baseline fix (see
+[The ledger reconcilers](#the-ledger-reconcilers-done)), and the backup-recovery container
+replay, since nothing here touches what the restore qualifier runs.
