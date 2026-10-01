@@ -71,7 +71,7 @@ discovered = {path.name for path in runner.discover_tests(None)}
 assert not (runner.MANUAL_ONLY_TEST_NAMES & discovered)
 assert {
     "test_player_playtime_capture.py", "test_playtime_checkpoint.py",
-    "test_playtime_flatfile.py", "test_playtime_legacy_sql.py",
+    "test_playtime_flatfile.py",
 } <= discovered
 sample_tests = [
     Path("test_fast.py"),

@@ -135,17 +135,11 @@ class CombatOutcomeCutoverTests(unittest.TestCase):
             self.assertIn(token, migration)
             self.assertIn(token, bootstrap)
         self.assertIn("combat_outcome.sql", runner)
-        # The save writes the frags memory holds, on both save paths.
+        # The save writes the frags memory holds, and a new player's row opens its baseline.
         snapshot = (SRC / "player_snapshot_repository.c").read_text()
         self.assertNotIn("row.field == player_status_field::frags", snapshot)
-        legacy = (SRC / "sql_player.c").read_text()
-        self.assertIn('"frags=%ld, oldfrags=%ld', legacy)
-        new_player = legacy[legacy.rindex("bool sql_save_player_status"):]
-        self.assertIn("INSERT INTO combat_frag_baseline", new_player)
-        self.assertLess(
-            new_player.index("INSERT INTO combat_frag_baseline"),
-            new_player.index("UPDATE player_data SET account_name"),
-        )
+        self.assertIn('"frags",', snapshot)
+        self.assertIn("INSERT IGNORE INTO combat_frag_baseline", snapshot)
 
 
 if __name__ == "__main__":

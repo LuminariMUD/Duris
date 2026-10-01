@@ -161,21 +161,6 @@ assert "BIGINT UNSIGNED NOT NULL DEFAULT 0" in migration
 assert "ALTER TABLE player_data ADD COLUMN" in migration
 print("[PASS] additive guarded schema initializes legacy and new rows at revision zero")
 
-load_start = SQL_PLAYER.rindex("bool sql_load_player_status(P_char ch, int pid)")
-load_end = SQL_PLAYER.index("bool sql_load_player_skills", load_start)
-load_body = SQL_PLAYER[load_start:load_end]
-assert 'last_ip, save_revision, output_preferences "' in load_body
-assert "sql_row_revision" in load_body
-assert "!revision_valid || !player_revision_hydrate" in load_body
-assert "outcome=hydrate_failure" in load_body
-
-save_start = SQL_PLAYER.rindex("bool sql_save_player_status(P_char ch, int type, int room)")
-save_end = SQL_PLAYER.index("bool sql_save_player_skills", save_start)
-save_body = SQL_PLAYER[save_start:save_end]
-pid_assignment = save_body.index("mysql_insert_id")
-initialization = save_body.index("player_revision_hydrate(pid, 0)")
-assert pid_assignment < initialization
-
 # A deleted character's revision state is forgotten once its deletion commits.
 FILES = (SRC / "files.c").read_text()
 forget = FILES[FILES.index("character_delete_result forget_deleted_character("):]
@@ -197,12 +182,12 @@ production_sources = [
     if path.name != "player_revision_state.c"
 ]
 mark_callers = [path.name for path in production_sources if "player_revision_mark(" in path.read_text()]
-assert sorted(mark_callers) == ["player_save_pipeline.c", "sql_player.c"], (
+assert mark_callers == ["player_save_pipeline.c"], (
     f"uncontrolled production marks: {mark_callers}"
 )
 assert "writeCharacter" not in SOURCE
 assert "sql_save_player" not in SOURCE
 assert "player_save_pipeline_mark" in (SRC / "persistence_checkpoint.c").read_text()
-print("[PASS] production marks are limited to the pipeline and fenced legacy compatibility")
+print("[PASS] production marks are limited to the pipeline")
 
 print("player revision and component state contracts passed")

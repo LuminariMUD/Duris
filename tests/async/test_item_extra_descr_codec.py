@@ -11,20 +11,12 @@ SRC = ROOT / "src"
 sql_player = (SRC / "sql/sql_player.c").read_text()
 locker_async = (SRC / "persistence/locker_async.c").read_text()
 player_load_repository = (SRC / "player/player_load_repository.c").read_text()
-production_sql = sql_player[sql_player.index("#else"):]
-retired_pet_loader = production_sql[
-    production_sql.index("bool sql_load_player_pets(P_char /*ch*/)"):]
-retired_pet_loader = retired_pet_loader[:retired_pet_loader.index("\n}\n") + 2]
 assert "sql_encode_item_extra_descr(source_keyword, source_description" in sql_player
 # Locker saves go through the snapshot writer's encoder, not SQL built on the game thread.
 assert "sql_encode_item_extra_descr" not in locker_async
 assert "canonicalize_snapshot_extra_description(" in (SRC / "player/player_snapshot_repository.c").read_text()
-# One definition plus the two remaining SQL item loaders; retired pets use the
-# staged ownership-aware path rather than hydrating equipment here.
-assert sql_player.count("sql_load_item_extra_descr_values(") == 3
-assert "FROM player_pet_items" not in retired_pet_loader
-assert "equip_char" not in retired_pet_loader
-assert "player materialization" in retired_pet_loader
+# One definition plus the one remaining SQL item loader.
+assert sql_player.count("sql_load_item_extra_descr_values(") == 2
 assert "legacy_spellbook_corrupt" in sql_player
 assert "sql_decode_stored_spellbook(" in sql_player
 assert "sql_spellbook_decode_status::invalid" in sql_player

@@ -80,8 +80,8 @@ class LiveItemMovementContractTests(unittest.TestCase):
         self.assertNotIn("redis_check_floor_drop", recovery)
 
     def test_reconnect_replays_retained_completion(self):
-        nanny = (SRC / "nanny.c").read_text()
-        self.assertGreaterEqual(nanny.count("item_movement_transaction_player_ready"), 2)
+        for name in ("nanny.c", "account.c"):
+            self.assertIn("item_movement_transaction_player_ready", (SRC / name).read_text())
 
     def test_linkdead_actor_completion_publishes_while_character_is_live(self):
         movement = (SRC / "item_movement_transaction.c").read_text()

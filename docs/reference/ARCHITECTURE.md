@@ -50,7 +50,6 @@ interprets them to decide whether to restart (see [RUNBOOK.md](../operations/RUN
 | `-s` | Suppress special-procedure assignment. |
 | `-p` | Allow password change without the old password. |
 | `-d <dir>` | Data directory (default `.`). |
-| `--migrate-all` | Migration mode. |
 | `--material-rarity-report[=dir]` | Generate material rarity report and exit. |
 
 ## Ports

@@ -70,47 +70,6 @@ require(
 require("player_save_pipeline_is_nonterminal_type(type)" in gate, "async gate changed shape")
 require(async_branch, "async pipeline branch disappeared")
 
-status_save = section(
-    SQL_PLAYER,
-    "// status save (main player data)",
-    "\n// skills save",
-)
-require(
-    "REMOVE_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE)" not in status_save,
-    "the status component must not clear the flag before the complete save commits",
-)
-require(
-    "component=baseline outcome=inserted" in status_save,
-    "the baseline INSERT must be logged",
-)
-require(
-    "INSERT INTO player_data (" in status_save,
-    "the synchronous path must still be the one that inserts the baseline row",
-)
-complete_save = section(
-    SQL_PLAYER,
-    "// master save function\n\nbool sql_save_player(P_char ch, int type, int room)",
-    "\n// status save",
-)
-require(
-    "REMOVE_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE)" in complete_save,
-    "the complete synchronous save must clear the baseline flag after success",
-)
-require(
-    "sql_save_player_pets(ch, type, room)" in complete_save,
-    "the pet component must receive the resolved save room for a pre-entry baseline",
-)
-pet_save = section(
-    SQL_PLAYER,
-    "// pet save - save all player's pets with equipment",
-    "\n// All runtime callers use player_load_pets_stage",
-)
-require(
-    "pet_room_vnum = save_room_vnum" in pet_save
-    and "ch->in_room >= 0 && ch->in_room <= top_of_world" in pet_save,
-    "a new character with no live room must save the empty pet set at its resolved save room",
-)
-
 completion = section(SAVE_PIPELINE, "void finish_completion(", "\n}\n")
 require(
     "completion.error_code == ENOENT" in completion,
@@ -138,7 +97,7 @@ require(
 extra_descr = section(
     SQL_PLAYER,
     "static bool sql_save_item_extra_descr(int item_id, P_obj obj, const char *table)",
-    "\n// save a single item",
+    "\n}\n",
 )
 require(
     'DELETE FROM %s WHERE item_id = %d' in extra_descr,
@@ -156,24 +115,6 @@ require(
 require(
     "description_keys" in extra_descr,
     "the synchronous item save must skip duplicate in-memory descriptions",
-)
-
-item_affects = section(SQL_PLAYER, "static bool sql_save_item_affects(int item_id, P_obj obj)", "\n}\n")
-require(
-    "DELETE FROM player_item_affects WHERE item_id" in item_affects,
-    "item affects must be cleared before they are re-inserted",
-)
-pet_affects = section(SQL_PLAYER, "static bool sql_save_pet_item_affects(int item_id, P_obj obj)", "\n}\n")
-require(
-    "DELETE FROM player_pet_item_affects WHERE item_id" in pet_affects,
-    "pet item affects must be cleared before they are re-inserted",
-)
-require("is_dup" in pet_affects, "pet item affects must skip in-memory duplicates too")
-
-batch = section(SQL_PLAYER, "// ------ Step 5: save affects and extra descriptions", "\tfree(flat);")
-require(
-    "if (obj->ex_description)" not in batch,
-    "the batch path must call the description save unconditionally so stale rows are cleared",
 )
 
 for index in (

@@ -64,7 +64,6 @@ int initialize_mysql();
 void shutdown_mysql(void);
 bool sql_populate_lookup_tables();
 int sql_save_player_core(P_char ch);
-bool sql_load_player_items(P_char ch);
 int sql_level_cap(int racewar_side);
 // void sql_save_progress( int pid, int delta, const char *type );
 void sql_webinfo_toggle(P_char ch);

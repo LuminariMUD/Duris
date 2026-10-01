@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""Account projection recovery and post-extraction cache regressions."""
+"""Account projection recovery regressions."""
 
 from _paths import SRC
-import os
 from pathlib import Path
-import subprocess
 import sys
-import tempfile
 
 from contract_text import contains, index
 
@@ -105,51 +102,6 @@ checks.append(
     )
 )
 
-pending = body(mysql_sql_player, "struct pending_account_character_cache_update")
-checks.append(
-    (
-        "the queued cache update is an immutable account and character snapshot",
-        all(
-            contains(pending, field)
-            for field in (
-                "int pid;",
-                "int room;",
-                "int level;",
-                "char account_name[256];",
-                "char character_name[256];",
-            )
-        )
-        and not contains(pending, "P_char"),
-    )
-)
-
-sync = body(
-    mysql_sql_player,
-    "static void\nsql_sync_account_character_cache("
-    "const struct pending_account_character_cache_update &update)",
-)
-checks.append(
-    (
-        "commit-time cache publication targets surviving account objects",
-        contains(sync, "for (P_acct account = account_list;")
-        and contains(sync, "account->acct_character_list")
-        and not contains(sync, "for (P_char candidate = character_list;")
-        and not contains(sync, "P_char"),
-    )
-)
-
-save = body(
-    mysql_sql_player, "bool sql_save_player_status(P_char ch, int type, int room)"
-)
-checks.append(
-    (
-        "new-character cache snapshots use the database-assigned pid",
-        save.index("mysql_insert_id(DB)")
-        < save.index("sql_queue_account_character_cache_sync(ch, room)")
-        < save.rindex("if (own_txn)"),
-    )
-)
-
 add_character = body(account, "void add_char_to_account(P_desc d)")
 flatfile_add_character = add_character[
     add_character.index("#ifdef __NO_MYSQL__") : add_character.index("#else")
@@ -181,102 +133,4 @@ if failed:
         print(f"- {name}")
     sys.exit(1)
 
-cache_harness = f"""
-#include <cstdlib>
-#include <ctime>
-#include <strings.h>
-
-struct acct_chars
-{{
-    int pid;
-    char *charname;
-    int level;
-    int last_room;
-    long last_save;
-    struct acct_chars *next;
-}};
-
-struct acct_entry
-{{
-    char *acct_name;
-    struct acct_chars *acct_character_list;
-    struct acct_entry *next;
-}};
-
-using P_acct = struct acct_entry *;
-P_acct account_list = nullptr;
-
-{pending};
-
-{sync}
-
-static void require(bool condition, int code)
-{{
-    if (!condition)
-        std::exit(code);
-}}
-
-int main()
-{{
-    char account_name[] = "RepairAcct";
-    char other_account_name[] = "OtherAcct";
-    char character_name[] = "RepairHero";
-    char other_character_name[] = "OtherHero";
-    acct_chars hero = {{ 7, character_name, 12, 80, 1, nullptr }};
-    acct_chars other_hero = {{ 8, other_character_name, 13, 81, 2, nullptr }};
-    acct_entry other = {{ other_account_name, &other_hero, nullptr }};
-    acct_entry surviving_account = {{ account_name, &hero, &other }};
-    account_list = &surviving_account;
-
-    pending_account_character_cache_update update = {{}};
-    update.pid = 9001;
-    update.room = 4096;
-    update.level = 58;
-    __builtin_strcpy(update.account_name, account_name);
-    __builtin_strcpy(update.character_name, character_name);
-    const long before = std::time(nullptr);
-
-    // No character object or character_list exists in this harness: it models
-    // commit after extract_char() while the descriptor account menu survives.
-    sql_sync_account_character_cache(update);
-
-    require(hero.pid == 9001, 1);
-    require(hero.last_room == 4096, 2);
-    require(hero.level == 58, 3);
-    require(hero.last_save >= before, 4);
-    require(other_hero.pid == 8 && other_hero.last_room == 81, 5);
-    return 0;
-}}
-"""
-
-with tempfile.TemporaryDirectory(prefix="duris-account-cache-") as directory:
-    temp = Path(directory)
-    source = temp / "account_cache.cpp"
-    binary = temp / "account_cache"
-    source.write_text(cache_harness, encoding="utf-8")
-    compile_result = subprocess.run(
-        [
-            "g++",
-            "-std=c++20",
-            "-O1",
-            "-Wall",
-            "-Wextra",
-            "-Werror",
-            "-fsanitize=address,undefined",
-            "-fno-omit-frame-pointer",
-            str(source),
-            "-o",
-            str(binary),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert compile_result.returncode == 0, compile_result.stderr
-    environment = os.environ.copy()
-    environment["ASAN_OPTIONS"] = "detect_leaks=1:halt_on_error=1"
-    environment["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"
-    subprocess.run([str(binary)], check=True, env=environment)
-
-print("[PASS] post-extraction cache publication updates the surviving account menu")
 print("\nAll account character projection checks passed successfully.")
