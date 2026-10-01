@@ -630,6 +630,143 @@ flatfile_locker_result flatfile_locker_list(const std::string &root,
 	return flatfile_locker_result::ok;
 }
 
+flatfile_locker_result flatfile_locker_find(const std::string &root, const std::string &locker_name,
+					    flatfile_locker_record *locker, std::string *error)
+{
+	if (root.empty() || !locker)
+		return flatfile_locker_result::invalid;
+	flatfile_authority_lock lock;
+	if (!lock.acquire(root, error))
+		return flatfile_locker_result::io_error;
+	const auto recovered = recover(root, lock, error);
+	if (recovered != flatfile_locker_result::ok)
+		return recovered;
+	locker_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded != flatfile_locker_result::ok)
+		return loaded;
+	const std::string name = canonical_name(locker_name);
+	for (auto &entry : catalog.lockers)
+		if (entry.locker_name == name)
+		{
+			*locker = std::move(entry);
+			return flatfile_locker_result::ok;
+		}
+	return flatfile_locker_result::not_found;
+}
+
+flatfile_locker_result flatfile_locker_public_owner(const std::string &root,
+						    const flatfile_authority_lock &lock,
+						    const std::string &locker_name,
+						    item_owner_identity *owner, std::string *error)
+{
+	if (root.empty() || !lock.matches(root) || !owner)
+		return flatfile_locker_result::invalid;
+	locker_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded != flatfile_locker_result::ok && loaded != flatfile_locker_result::not_found)
+		return loaded;
+	const std::string name = canonical_name(locker_name);
+	uint32_t last_locker = 0, last_chest = 0;
+	for (const auto &locker : catalog.lockers)
+	{
+		last_locker = std::max(last_locker, locker.locker_id);
+		for (const auto &chest : locker.chests)
+		{
+			last_chest = std::max(last_chest, chest.chest_id);
+			if (locker.locker_name == name && chest.is_public)
+			{
+				*owner = { item_owner_type::locker, locker.locker_id,
+					   chest.chest_id };
+				return flatfile_locker_result::ok;
+			}
+		}
+	}
+	if (last_locker == UINT32_MAX || last_chest == UINT32_MAX)
+		return flatfile_locker_result::conflict;
+	*owner = { item_owner_type::locker, last_locker + 1ULL, last_chest + 1ULL };
+	return flatfile_locker_result::ok;
+}
+
+flatfile_locker_result
+flatfile_locker_prepare_public_save(const std::string &root, const flatfile_authority_lock &lock,
+				    const flatfile_locker_save &save,
+				    const item_owner_identity &owner,
+				    const std::vector<player_item_snapshot> &items,
+				    flatfile_authority_operation *operation, std::string *error)
+{
+	if (root.empty() || !lock.matches(root) || !operation ||
+	    owner.type != item_owner_type::locker || !owner.id || owner.id > UINT32_MAX ||
+	    !owner.context_id || owner.context_id > UINT32_MAX)
+		return flatfile_locker_result::invalid;
+	locker_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded != flatfile_locker_result::ok && loaded != flatfile_locker_result::not_found)
+		return loaded;
+	const std::string name = canonical_name(save.locker_name);
+	try
+	{
+		auto locker = std::find_if(catalog.lockers.begin(), catalog.lockers.end(),
+					   [&](const auto &entry)
+					   { return entry.locker_name == name; });
+		if (locker == catalog.lockers.end())
+		{
+			flatfile_locker_record created;
+			created.locker_id = static_cast<uint32_t>(owner.id);
+			created.locker_name = name;
+			created.owner_assoc_id = save.owner_assoc_id;
+			const std::string account_prefix = "account.", suffix = ".locker";
+			if (!name.compare(0, account_prefix.size(), account_prefix) &&
+			    name.size() > account_prefix.size() + suffix.size())
+			{
+				const std::string account_side = name.substr(
+					account_prefix.size(),
+					name.size() - account_prefix.size() - suffix.size());
+				const size_t dot = account_side.rfind('.');
+				if (dot == std::string::npos)
+					return flatfile_locker_result::invalid;
+				created.account_owner = flatfile_account_locker_identity{
+					account_side.substr(0, dot), save.racewar
+				};
+			}
+			created.racewar = save.racewar;
+			created.race = save.race;
+			flatfile_locker_chest_record chest;
+			chest.chest_id = static_cast<uint32_t>(owner.context_id);
+			chest.chest_name = "public";
+			chest.is_public = true;
+			created.chests.push_back(std::move(chest));
+			locker = catalog.lockers.insert(std::upper_bound(catalog.lockers.begin(),
+									 catalog.lockers.end(),
+									 created, locker_less),
+							std::move(created));
+		}
+		auto chest = std::find_if(
+			locker->chests.begin(), locker->chests.end(), [&](const auto &entry)
+			{ return entry.chest_id == owner.context_id && entry.is_public; });
+		if (locker->locker_id != owner.id || chest == locker->chests.end() ||
+		    catalog.revision == UINT64_MAX || locker->revision == UINT64_MAX ||
+		    chest->revision == UINT64_MAX)
+			return flatfile_locker_result::conflict;
+		chest->items = items;
+		++catalog.revision;
+		++locker->revision;
+		++chest->revision;
+	}
+	catch (const std::bad_alloc &)
+	{
+		return flatfile_locker_result::io_error;
+	}
+	std::vector<uint8_t> encoded;
+	if (!encode_catalog(catalog, &encoded))
+		return flatfile_locker_result::invalid;
+	operation->store = flatfile_authority_store::domains;
+	operation->kind = flatfile_authority_operation_kind::write;
+	operation->filename = catalog_filename;
+	operation->bytes = std::move(encoded);
+	return flatfile_locker_result::ok;
+}
+
 /* Prepare player-owned locker and visitor-grant removal with exact custody evidence. */
 flatfile_locker_result
 flatfile_locker_prepare_player_remove(const std::string &root, const flatfile_authority_lock &lock,

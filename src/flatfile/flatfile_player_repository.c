@@ -977,9 +977,26 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 
 namespace
 {
-template <typename Prepare>
-player_save_apply_result apply_world_snapshot(const std::string &root,
-					      const item_owner_identity &owner,
+// The owner_of of a save that knows its owner before the lock.
+auto known_owner(const item_owner_identity &owner)
+{
+	return [owner](const flatfile_authority_lock &, item_owner_identity *named)
+	{
+		*named = owner;
+		return flatfile_world_item_result::ok;
+	};
+}
+
+flatfile_world_item_result world_result(flatfile_locker_result result)
+{
+	return result == flatfile_locker_result::ok	  ? flatfile_world_item_result::ok :
+	       result == flatfile_locker_result::io_error ? flatfile_world_item_result::io_error :
+							    flatfile_world_item_result::invalid;
+}
+
+// owner_of(lock, &owner) names, under the lock, the owner the items are claimed for.
+template <typename Owner, typename Prepare>
+player_save_apply_result apply_world_snapshot(const std::string &root, Owner owner_of,
 					      const std::vector<player_item_snapshot> *items,
 					      Prepare prepare, std::string *error)
 {
@@ -998,6 +1015,12 @@ player_save_apply_result apply_world_snapshot(const std::string &root,
 	std::vector<player_item_snapshot> written;
 	try
 	{
+		item_owner_identity owner = {};
+		const flatfile_world_item_result named = owner_of(authority, &owner);
+		if (named == flatfile_world_item_result::io_error)
+			return { player_save_apply_outcome::retryable_failure, 0, EIO };
+		if (named != flatfile_world_item_result::ok)
+			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 		if (items)
 		{
 			claims.push_back({ owner, items, {} });
@@ -1091,7 +1114,7 @@ player_save_apply_result flatfile_corpse_snapshot_apply(const std::string &root,
 					    0 };
 	unsigned int refused = 0;
 	player_save_apply_result result = apply_world_snapshot(
-		root, owner, remove ? nullptr : &corpse.items,
+		root, known_owner(owner), remove ? nullptr : &corpse.items,
 		[&](const flatfile_authority_lock &lock,
 		    const std::vector<player_item_snapshot> &written,
 		    std::vector<flatfile_authority_operation> *operations)
@@ -1144,7 +1167,7 @@ flatfile_saved_item_snapshot_apply(const std::string &root,
 	const item_owner_identity owner = { item_owner_type::room,
 					    static_cast<uint64_t>(item.room_vnum), 0 };
 	return apply_world_snapshot(
-		root, owner, remove ? nullptr : &item.items,
+		root, known_owner(owner), remove ? nullptr : &item.items,
 		[&](const flatfile_authority_lock &lock,
 		    const std::vector<player_item_snapshot> &written,
 		    std::vector<flatfile_authority_operation> *operations)
@@ -1158,6 +1181,35 @@ flatfile_saved_item_snapshot_apply(const std::string &root,
 			if (prepared == flatfile_world_item_result::ok)
 				operations->push_back(std::move(operation));
 			return prepared;
+		},
+		error);
+}
+
+player_save_apply_result flatfile_locker_snapshot_apply(const std::string &root,
+							const flatfile_locker_save &locker,
+							std::string *error)
+{
+	item_owner_identity owner = {};
+	return apply_world_snapshot(
+		root,
+		[&](const flatfile_authority_lock &lock, item_owner_identity *named)
+		{
+			const auto found = flatfile_locker_public_owner(
+				root, lock, locker.locker_name, named, error);
+			owner = *named;
+			return world_result(found);
+		},
+		&locker.items,
+		[&](const flatfile_authority_lock &lock,
+		    const std::vector<player_item_snapshot> &written,
+		    std::vector<flatfile_authority_operation> *operations)
+		{
+			flatfile_authority_operation operation;
+			const auto prepared = flatfile_locker_prepare_public_save(
+				root, lock, locker, owner, written, &operation, error);
+			if (prepared == flatfile_locker_result::ok)
+				operations->push_back(std::move(operation));
+			return world_result(prepared);
 		},
 		error);
 }

@@ -986,9 +986,7 @@ int run_the_game(int port, int sslport)
 
 	fprintf(stderr, "Entering game loop.\n\r");
 	logit(LOG_STATUS, "Entering game loop.");
-	// A minimal world on MariaDB saves its lockers through the writer too.
-	if (!mini_mode || sql_pool_is_active())
-		locker_async_init();
+	locker_async_init();
 	if (!player_save_pipeline_init())
 	{
 		logit(LOG_STATUS, "Persistence writer unavailable; saves are not written.");

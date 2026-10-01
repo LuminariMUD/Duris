@@ -3,6 +3,7 @@
 
 #include "economy/collector_storage.h"
 #include "flatfile/flatfile_authority_transaction.h"
+#include "flatfile/flatfile_locker_repository.h"
 #include "flatfile/flatfile_player_snapshot_file.h"
 #include "flatfile/flatfile_world_item_repository.h"
 #include "player/player_load_repository.h"
@@ -66,6 +67,11 @@ player_save_apply_result
 flatfile_saved_item_snapshot_apply(const std::string &root,
 				   const flatfile_saved_world_item_record &item, bool remove,
 				   std::string *error);
+// Write a locker's public chest, claiming its items for it, creating a new locker, in one
+// authority transaction.
+player_save_apply_result flatfile_locker_snapshot_apply(const std::string &root,
+							const flatfile_locker_save &locker,
+							std::string *error);
 flatfile_player_load_result flatfile_player_snapshot_prepare_remove(
 	const std::string &root, const flatfile_player_snapshot_lock &snapshot_lock,
 	const flatfile_authority_lock &authority_lock, int32_t pid,

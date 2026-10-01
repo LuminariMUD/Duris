@@ -26,8 +26,14 @@ flatfile_world_filter_item_ownership(std::vector<player_item_snapshot> *items,
 				     const item_owner_identity &owner, uint64_t owner_revision,
 				     const std::vector<flatfile_item_ownership_record> &known,
 				     std::vector<player_load_item_identity> *identities);
-// Load what a corpse or room record holds through that filter; `items` receives the
+// Load what a world record holds for owner through that filter; `items` receives the
 // items to restore.
+flatfile_corpse_ownership_result flatfile_world_load_item_ownership(
+	const std::string &root, const item_owner_identity &owner,
+	const std::vector<player_item_snapshot> &source, std::vector<player_item_snapshot> *items,
+	uint64_t *owner_revision, std::vector<player_load_item_identity> *identities,
+	std::string *error);
+// The same for a corpse or room record.
 flatfile_corpse_ownership_result flatfile_corpse_load_item_ownership(
 	const std::string &root, const flatfile_corpse_record &record,
 	std::vector<player_item_snapshot> *items, uint64_t *owner_revision,

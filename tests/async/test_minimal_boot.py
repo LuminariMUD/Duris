@@ -74,8 +74,8 @@ assert "Skipping persistence worker startup in mini mode." not in COMM
 pipeline_startup = COMM[
     COMM.index('logit(LOG_STATUS, "Entering game loop.");') : COMM.index("latency_trace_reset();")
 ]
-# A minimal world on MariaDB saves its lockers through the writer like the full one.
-assert "if (!mini_mode || sql_pool_is_active())\n\t\tlocker_async_init();" in pipeline_startup
+# A minimal world saves its lockers through the writer like the full one, on both backends.
+assert "\tlocker_async_init();" in pipeline_startup
 assert "player_save_pipeline_init" in pipeline_startup
 assert "critical_command_coordinator_init" in pipeline_startup
 assert "Skipping zone database publication in mini mode." in COMM

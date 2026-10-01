@@ -94,12 +94,13 @@ flatfile_corpse_ownership_result map_result(flatfile_item_repository_result resu
 		       flatfile_corpse_ownership_result::io_error :
 		       flatfile_corpse_ownership_result::invalid;
 }
+} // namespace
 
-flatfile_corpse_ownership_result
-load_world_items(const std::string &root, const item_owner_identity &owner,
-		 const std::vector<player_item_snapshot> &source,
-		 std::vector<player_item_snapshot> *items, uint64_t *owner_revision,
-		 std::vector<player_load_item_identity> *identities, std::string *error)
+flatfile_corpse_ownership_result flatfile_world_load_item_ownership(
+	const std::string &root, const item_owner_identity &owner,
+	const std::vector<player_item_snapshot> &source, std::vector<player_item_snapshot> *items,
+	uint64_t *owner_revision, std::vector<player_load_item_identity> *identities,
+	std::string *error)
 {
 	if (!items || !owner_revision || !identities)
 		return flatfile_corpse_ownership_result::invalid;
@@ -137,7 +138,6 @@ load_world_items(const std::string &root, const item_owner_identity &owner,
 		*owner_revision = revision;
 	return filtered;
 }
-} // namespace
 
 flatfile_corpse_ownership_result flatfile_corpse_load_item_ownership(
 	const std::string &root, const flatfile_corpse_record &record,
@@ -146,8 +146,9 @@ flatfile_corpse_ownership_result flatfile_corpse_load_item_ownership(
 {
 	if (!record.revision)
 		return flatfile_corpse_ownership_result::invalid;
-	return load_world_items(root, flatfile_corpse_item_owner(record.owner_pid, record.save_id),
-				record.items, items, owner_revision, identities, error);
+	return flatfile_world_load_item_ownership(
+		root, flatfile_corpse_item_owner(record.owner_pid, record.save_id), record.items,
+		items, owner_revision, identities, error);
 }
 
 flatfile_corpse_ownership_result flatfile_room_load_item_ownership(
@@ -157,7 +158,7 @@ flatfile_corpse_ownership_result flatfile_room_load_item_ownership(
 {
 	if (record.room_vnum <= 0 || !record.revision)
 		return flatfile_corpse_ownership_result::invalid;
-	return load_world_items(
+	return flatfile_world_load_item_ownership(
 		root, { item_owner_type::room, static_cast<uint64_t>(record.room_vnum), 0 },
 		record.items, items, owner_revision, identities, error);
 }
