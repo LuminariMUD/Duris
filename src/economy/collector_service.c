@@ -127,7 +127,6 @@ bool purchase_transaction_busy(P_char character)
 {
 	return collector_transaction_player_busy(character) ||
 	       item_movement_transaction_player_busy(character) ||
-	       bulk_get_player_busy(character) ||
 	       (character && GET_PID(character) > 0 &&
 		(player_has_purchase_recovery(static_cast<uint32_t>(GET_PID(character))) ||
 		 player_has_purchase_save_fence(character)));

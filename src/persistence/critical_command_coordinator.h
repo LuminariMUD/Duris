@@ -15,37 +15,18 @@ enum class critical_submit_result : uint8_t
 {
 	// Queued on the one persistence writer; durable once it has landed.
 	accepted,
-	// No longer returned: new commands are not journaled.
-	awaiting_durability,
 	attached,
 	invalid,
 	identity_conflict,
 	overloaded,
-	journal_failure,
-	journal_uncertain,
 	unavailable,
 };
 
-// journal_uncertain retains the original coordinator operation and the caller's pending
-// state; it is not a durability success, but callers must not erase or retry it.
 inline bool critical_submit_result_keeps_operation(critical_submit_result result)
 {
 	return result == critical_submit_result::accepted ||
-	       result == critical_submit_result::awaiting_durability ||
-	       result == critical_submit_result::attached ||
-	       result == critical_submit_result::journal_uncertain;
+	       result == critical_submit_result::attached;
 }
-
-// This reports journal admission only.  `durable` does not imply that execution
-// or live publication has completed.
-enum class critical_command_durability : uint8_t
-{
-	unknown,
-	awaiting_durability,
-	durable,
-	uncertain,
-	failed,
-};
 
 struct critical_coordinator_health
 {
@@ -85,12 +66,6 @@ critical_submit_result critical_command_coordinator_submit(critical_command comm
 // entity fences remain held until critical_command_coordinator_acknowledge_publication().
 critical_submit_result
 critical_command_coordinator_submit_for_publication(critical_command command);
-// `awaiting_durability` while the command waits on the writer, `durable` once it landed.
-critical_command_durability
-critical_command_coordinator_durability(const critical_operation_id &operation_id);
-bool critical_command_coordinator_recover_uncertain(void);
-bool critical_command_coordinator_get_completed(const critical_operation_id &operation_id,
-						critical_completion *completion);
 // Release a publication-held operation only after the live callback succeeded. A false
 // result leaves the operation fenced.
 bool critical_command_coordinator_acknowledge_publication(const critical_operation_id &operation_id);

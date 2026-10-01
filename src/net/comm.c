@@ -1303,7 +1303,6 @@ static int get_playing_cmd_from_q(P_char character, struct txt_q *queue, char *d
 	return get_pending_transaction_cmd_from_q(
 		queue, dest,
 		item_movement_transaction_player_busy(character) ||
-			bulk_get_player_busy(character) ||
 			collector_transaction_player_busy(character) ||
 			collector_service_player_busy(character),
 		collector_transaction_player_busy(character) ||

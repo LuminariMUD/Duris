@@ -193,7 +193,7 @@ int main()
         item_transfer_reason::player_give, 2002, nullptr, nullptr, 0, nullptr,
         &reject, publication_callback))
     {
-        std::fprintf(stderr, "submit rejected: %s\\n", item_movement_reject_name(reject));
+        std::fprintf(stderr, "submit rejected: %d\\n", static_cast<int>(reject));
         return 2;
     }
 

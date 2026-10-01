@@ -184,13 +184,10 @@ int main()
     mismatch.payload = {99};
     assert(critical_command_coordinator_submit(mismatch) ==
            critical_submit_result::identity_conflict);
-    // While a command waits on the writer its keys are fenced, and the operation is
-    // not yet durable.
+    // While a command waits on the writer its keys are fenced.
     critical_operation_id fenced_by = {};
     assert(critical_command_coordinator_is_fenced({critical_entity_type::item, 10}, &fenced_by));
     assert(critical_operation_id_equal(fenced_by, a.operation_id));
-    assert(critical_command_coordinator_durability(a.operation_id) ==
-           critical_command_durability::awaiting_durability);
     critical_completion stale = {};
     stale.operation_id = a.operation_id;
     stale.outcome = critical_apply_outcome::applied;
@@ -211,8 +208,6 @@ int main()
         state.order.clear();
     }
     assert(!critical_command_coordinator_is_fenced({critical_entity_type::item, 10}, nullptr));
-    assert(critical_command_coordinator_durability(a.operation_id) ==
-           critical_command_durability::durable);
 
     // An ambiguous commit is retried by the writer until it learns the outcome.
     critical_command d = make_command(4, {{critical_entity_type::guild, 4}});
@@ -222,9 +217,6 @@ int main()
         return critical_command_coordinator_health_copy().completed == 3;
     });
     assert(state.attempts[4] == 2);
-    critical_completion cached = {};
-    assert(critical_command_coordinator_get_completed(d.operation_id, &cached));
-    assert(cached.outcome == critical_apply_outcome::applied);
     auto health = critical_command_coordinator_health_copy();
     assert(health.ambiguous == 1 && health.retries == 1 && health.fenced_keys == 0);
     assert(critical_command_coordinator_submit(d) == critical_submit_result::attached);
@@ -243,9 +235,6 @@ int main()
         critical_command_coordinator_pulse(completions, 16);
         return critical_command_coordinator_health_copy().publication_pending == 1;
     });
-    critical_completion held = {};
-    assert(critical_command_coordinator_get_completed(publication.operation_id, &held));
-    assert(held.outcome == critical_apply_outcome::applied);
     assert(critical_command_coordinator_is_fenced({critical_entity_type::item, 120}, nullptr));
     critical_operation_id invalid_publication_id = {};
     invalid_publication_id.bytes[0] = 1;
@@ -253,9 +242,14 @@ int main()
     assert(!critical_command_coordinator_drain(5));
     critical_command follower = make_command(14, {{critical_entity_type::item, 120}});
     assert(critical_command_coordinator_submit(follower) == critical_submit_result::accepted);
+    bool follower_done = false;
     wait_until([&] {
-        critical_command_coordinator_pulse(completions, 16);
-        return critical_command_coordinator_get_completed(follower.operation_id, &held);
+        const size_t count = critical_command_coordinator_pulse(completions, 16);
+        for (size_t index = 0; index < count; ++index)
+            follower_done = follower_done ||
+                            critical_operation_id_equal(completions[index].operation_id,
+                                                        follower.operation_id);
+        return follower_done;
     });
     assert(critical_command_coordinator_is_fenced({critical_entity_type::item, 120}, nullptr));
     assert(critical_command_coordinator_acknowledge_publication(publication.operation_id));
@@ -360,7 +354,6 @@ for contract in (
     "CRITICAL_COORDINATOR_MAX_OPERATIONS = 1024",
     "CRITICAL_COORDINATOR_MAX_BYTES = 64 * 1024 * 1024",
     "CRITICAL_COORDINATOR_COMPLETED_CACHE_BYTES = 8 * 1024 * 1024",
-    "critical_command_coordinator_get_completed",
 ):
     assert contract in HEADER
 for contract in (

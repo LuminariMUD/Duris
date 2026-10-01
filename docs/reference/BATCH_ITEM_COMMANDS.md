@@ -124,32 +124,14 @@ Other wallet batch operations do not pass through item ownership:
   `auction pickup` can return a listing's item batch. These use the auction
   transaction domain rather than the general movement adapter.
 
-## Atomicity and persistence
+## Moving and saving
 
-`get all`, `drop all`, and `put all`, including keyword, container, locker,
-and corpse variants, capture every eligible durable root as one multi-root
-forest and submit one ownership command. The command validates and moves the
-whole selected forest under one owner-revision transition. Publication starts
-only after every selected live root still matches its original source; a
-failure does not publish a partial durable batch.
-
-Selection performs cumulative capacity checks before submission. Binding,
-trap, hitch, no-loot, cursed, soulbound, quiver, weight, count, and space rules
-remain command-specific.
-
-Objects with active generic ownership participate in the durable forest,
-including a transient item whose UID has an active runtime ownership row.
-Money objects, UID-less or unowned transient objects, player-corpse roots, and
-get-side scrap remain on their lifecycle-specific synchronous paths, which run
-only after the durable part commits. `wear all`, `remove all`, `junk`, `bury`,
-`donate`, and `empty` remain synchronous loops rather than multi-root ownership
-commands.
-
-Item-transfer payload version 6 is the variable-length multi-root format.
-Versions 2 through 5 retain their fixed 12-entry compatibility layout. General
-item transfers accept the runtime's 3,000-item staff inventory ceiling within
-the existing 128 KiB snapshot limit; shop-trade payloads retain their 12-item
-bound.
+Every batch moves its items in memory at once. `get all`, `drop all`, `put all` and `empty`
+select their items first, apply cumulative weight, count, space and quiver capacity as they go,
+then move each selected item and report once. Binding, trap, hitch, no-loot, cursed, soulbound
+and quiver rules remain command-specific. `empty` refuses the whole move if any item may not go
+into the destination, and stops at the first item that does not fit. The next save of each
+owner records where the items went.
 
 ## Source and tests
 
@@ -160,9 +142,8 @@ bound.
 - Shops and auctions: `src/economy/shop.c`,
   `src/economy/auction_houses.c`
 - Canonical money prototypes: `areas/obj/limbo.obj`, `areas_mini/mini.obj`
-- Focused contracts: `tests/async/test_get_all_durable_chain.py`,
-  `tests/async/test_bulk_drop_put_durable_chain.py`,
-  `tests/async/test_actobj_get_limits.py`, and
+- Focused tests: `tests/async/test_bulk_get_publication.py`,
+  `tests/async/test_corpse_haul.py`, `tests/async/test_actobj_get_limits.py`, and
   `tests/async/test_wear_all_regression.py`
 
 ## Asynchronous completion prompts

@@ -614,48 +614,6 @@ bool corpse_lifecycle_transaction_hydrate(uint32_t owner_pid, uint32_t save_id,
 	return true;
 }
 
-bool corpse_lifecycle_transaction_note_item_transfer(uint32_t owner_pid, uint32_t save_id,
-						     uint64_t corpse_revision)
-{
-	const uint64_t key = corpse_key(owner_pid, save_id);
-	if (!key || !corpse_revision)
-		return false;
-	auto found = states.find(key);
-	if (found == states.end() && states.size() >= CORPSE_LIFECYCLE_PENDING_MAX)
-		return false;
-	try
-	{
-		if (found == states.end())
-		{
-			corpse_state created;
-			created.owner_pid = owner_pid;
-			created.save_id = save_id;
-			created.revision = corpse_revision;
-			found = states.emplace(key, std::move(created)).first;
-		}
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	corpse_state &state = found->second;
-	if (state.owner_pid != owner_pid || state.save_id != save_id ||
-	    corpse_revision < state.revision)
-		return false;
-	const bool advanced = corpse_revision > state.revision;
-	state.revision = corpse_revision;
-	if (advanced)
-	{
-		state.fenced = false;
-		state.stale_retries = 0;
-		state.retry_wait_pulses = 0;
-	}
-	if (state.dirty && !state.pending)
-		(void)submit(key, &state);
-	account_health();
-	return true;
-}
-
 bool corpse_lifecycle_transaction_forget(uint32_t owner_pid, uint32_t save_id)
 {
 	const uint64_t key = corpse_key(owner_pid, save_id);

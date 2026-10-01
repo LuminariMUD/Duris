@@ -40,7 +40,6 @@ struct operation_state
 struct completed_state
 {
 	critical_command command;
-	critical_completion completion;
 	size_t encoded_size;
 };
 
@@ -140,16 +139,13 @@ void update_depth()
 	health.completed_cache = completed_cache.size();
 }
 
-void remember_completed(const std::string &identity, const critical_command &command,
-			const critical_completion &completion)
+void remember_completed(const std::string &identity, const critical_command &command)
 {
 	std::vector<uint8_t> encoded;
 	if (critical_command_encode(command, &encoded) != critical_command_codec_result::ok)
 		return;
-	const size_t retained_size = encoded.size() + sizeof(critical_completion);
-	if (encoded.size() > CRITICAL_COORDINATOR_COMPLETED_CACHE_BYTES ||
-	    retained_size < encoded.size() ||
-	    retained_size > CRITICAL_COORDINATOR_COMPLETED_CACHE_BYTES)
+	const size_t retained_size = encoded.size();
+	if (retained_size > CRITICAL_COORDINATOR_COMPLETED_CACHE_BYTES)
 		return;
 	while (!completed_order.empty() &&
 	       (completed_cache.size() >= CRITICAL_COORDINATOR_COMPLETED_CACHE_MAX ||
@@ -166,7 +162,6 @@ void remember_completed(const std::string &identity, const critical_command &com
 	try
 	{
 		completed_cache.emplace(identity, completed_state{ .command = command,
-								   .completion = completion,
 								   .encoded_size = retained_size });
 		completed_order.push_back(identity);
 		completed_cache_bytes += retained_size;
@@ -398,51 +393,6 @@ critical_submit_result critical_command_coordinator_submit_for_publication(criti
 	return critical_command_coordinator_submit_internal(std::move(command), true);
 }
 
-critical_command_durability
-critical_command_coordinator_durability(const critical_operation_id &operation_id)
-{
-	if (critical_operation_id_is_zero(operation_id))
-		return critical_command_durability::unknown;
-	std::lock_guard<std::mutex> lock(coordinator_mutex);
-	const std::string identity = operation_key(operation_id);
-	if (completed_cache.find(identity) != completed_cache.end())
-		return critical_command_durability::durable;
-	auto found = operations.find(identity);
-	if (found == operations.end())
-		return critical_command_durability::unknown;
-	// Queued on the writer, the command is durable once it lands.
-	return found->second->phase == critical_operation_phase::publication_pending ?
-		       critical_command_durability::durable :
-		       critical_command_durability::awaiting_durability;
-}
-
-bool critical_command_coordinator_recover_uncertain(void)
-{
-	std::lock_guard<std::mutex> lock(coordinator_mutex);
-	return health.initialized;
-}
-
-bool critical_command_coordinator_get_completed(const critical_operation_id &operation_id,
-						critical_completion *completion)
-{
-	if (!completion || critical_operation_id_is_zero(operation_id))
-		return false;
-	std::lock_guard<std::mutex> lock(coordinator_mutex);
-	const std::string identity = operation_key(operation_id);
-	auto operation = operations.find(identity);
-	if (operation != operations.end() &&
-	    operation->second->phase == critical_operation_phase::publication_pending)
-	{
-		*completion = operation->second->publication_completion;
-		return true;
-	}
-	const auto found = completed_cache.find(identity);
-	if (found == completed_cache.end())
-		return false;
-	*completion = found->second.completion;
-	return true;
-}
-
 bool critical_command_coordinator_acknowledge_publication(const critical_operation_id &operation_id)
 {
 	if (critical_operation_id_is_zero(operation_id))
@@ -455,7 +405,7 @@ bool critical_command_coordinator_acknowledge_publication(const critical_operati
 		return false;
 	operation_state &state = *found->second;
 	remove_fences(identity, state.command);
-	remember_completed(identity, state.command, state.publication_completion);
+	remember_completed(identity, state.command);
 	operations.erase(found);
 	++health.completed;
 	update_depth();
@@ -497,7 +447,7 @@ size_t critical_command_coordinator_pulse(critical_completion *completions, size
 			continue;
 		}
 		remove_fences(identity, state.command);
-		remember_completed(identity, state.command, completion);
+		remember_completed(identity, state.command);
 		++health.completed;
 		operations.erase(found);
 	}

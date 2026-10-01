@@ -102,8 +102,6 @@ static void capacity_case(size_t capacity) {
     assert(health.terminal_failures == capacity / 2 + 1);
     assert(health.completed == capacity + 1);
     assert(!critical_command_coordinator_is_fenced(last.keys[0], nullptr));
-    critical_completion cached = {};
-    assert(critical_command_coordinator_get_completed(last.operation_id, &cached));
     assert(critical_command_coordinator_submit(last) == critical_submit_result::attached);
     printf("capacity=%zu: all %zu identities delivered once\n", capacity, seen.size());
     critical_command_coordinator_shutdown();
@@ -122,10 +120,6 @@ static void large_result_case() {
         assert(delivered.result_size == 4096 && delivered.durable_revision == 73);
         for (size_t n = 0; n < delivered.result_size; ++n)
             assert(delivered.result_payload[n] == static_cast<uint8_t>((n * 7 + 3) % 251));
-        critical_completion cached = {};
-        assert(critical_command_coordinator_get_completed(large.operation_id, &cached));
-        assert(cached.result_size == delivered.result_size);
-        assert(cached.result_payload == delivered.result_payload);
     }
     critical_command_coordinator_shutdown();
     puts("4096-byte fresh and replay completions survive delivery and retained lookup");

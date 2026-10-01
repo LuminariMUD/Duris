@@ -126,14 +126,6 @@ class ItemOwnershipContractTests(unittest.TestCase):
             self.assertNotIn("DELETE FROM item_current_owner", source)
             self.assertNotIn("UPDATE item_owner_revision", source)
 
-    def test_synthetic_adapter_is_pointer_free_and_coordinator_backed(self):
-        header = (SRC / "item_transfer_synthetic.h").read_text()
-        implementation = (SRC / "item_transfer_synthetic.c").read_text()
-        self.assertNotIn("P_obj", header)
-        self.assertNotIn("P_char", header)
-        self.assertIn("critical_command_coordinator_submit", implementation)
-        self.assertIn("item_transfer_command_decode_result", implementation)
-
 
 if __name__ == "__main__":
     unittest.main()

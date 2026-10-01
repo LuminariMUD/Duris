@@ -2264,14 +2264,14 @@ The steps, in order (later ones delete what earlier ones leave unreachable):
 3. **The death custody and restitution feature** (done, see
    [Step 3](#step-3-death-custody-and-restitution-done)), with migration 0034 dropping its tables
    and the economy accounting tables.
-4. **The durable item movement** (todo): the durable branches in `actobj.c` behind
-   `item_command_uses_durable_ownership()`, the movement transactions, the synthetic transfer
-   adapter, `OBJ_RFLAG_CREATION_CANDIDATE`, and the crafts' wrapper
-   (`item_movement_transaction_submit_craft()`). Then the coordinator's journal-era submit
-   results (`awaiting_durability`, `journal_failure`, `journal_uncertain`) and the functions no
-   path reaches since step 1 (`critical_command_coordinator_durability()`, `_get_completed()`,
-   `_recover_uncertain()`): restitution and the movement transactions still name them.
-5. **The durable corpse lifecycle** (todo): the paths behind `durable_corpse_lifecycle_enabled()`,
+4. **The durable item movement** (done, see
+   [Step 4](#step-4-the-durable-item-movement-done)): the durable branches in `actobj.c` behind
+   `item_command_uses_durable_ownership()` and the switch itself, the craft path, the synthetic
+   transfer adapter, `OBJ_RFLAG_CREATION_CANDIDATE`, and the coordinator's journal-era submit
+   results and functions.
+5. **The durable corpse lifecycle** (todo): the paths behind `durable_corpse_lifecycle_enabled()`
+   (they are the last callers of `item_movement_transaction_submit()` outside the creation
+   grants),
    `corpse_lifecycle_*.c`, the terminal fences, and the custody and degraded-load code (the death
    snapshot and `player_save_pipeline_terminal_death()` went with step 3). The corpse lifecycle's
    wallet and the currency repository it calls (`currency_repository_execute()`,
@@ -2423,6 +2423,46 @@ Each step does its area with its tests, in its own commits, and passes the gates
   were a blank line the cut left, two contracts naming removed code, and the journey
   inspector's death report, which broke its build for the seven tests that share it; each was
   fixed and passes alone) and `make test-db` (34 of 34, including the migration replay).
+
+#### Step 4: the durable item movement (done)
+
+- Crafts (`e8ff3e55b`): poison, mix, encrust and the PvP orb consume their inputs and hand over
+  their outputs in memory at the call site; `item_movement_transaction_submit_craft()` and the
+  crafts' completion contexts are gone. Encrusting a Chaos-pouch jewel works again
+  (`41c56e030`): it is recorded on the pouch's scoreboard like any other generated item.
+- Item commands: `item_command_uses_durable_ownership()` returned false since Phase 1, so every
+  get, drop, put, give and empty already moved the object in memory. The durable branches and
+  the switch are gone, with their completions, the bulk get/drop/put state machines that waited
+  on a commit, the pet and mobile claims and the bulk get busy gate. A bulk get, drop or put
+  selects, moves and reports in one pass; `empty` refuses the whole move if any item may not go
+  into the destination and stops at the first item that does not fit. `item_command_policy`
+  keeps only the two checks get, put and empty share; `item_get_policy` and the put/drop
+  destination resolvers are gone.
+- The craft path in the repositories (MariaDB and flat-file), the runtime cache, the
+  shop-trade materialization and the payload validation; the synthetic transfer adapter;
+  `OBJ_RFLAG_CREATION_CANDIDATE`.
+- The coordinator's journal-era submit results (`awaiting_durability`, `journal_failure`,
+  `journal_uncertain`) and the functions no path reached (`critical_command_coordinator_
+  durability()`, `_get_completed()`, `_recover_uncertain()`); its completed cache keeps only the
+  command it checks resubmissions against.
+- Dropped by the linker on both backends: the locker owner resolvers,
+  `item_movement_reject_name()`, `item_ownership_runtime_snapshot_owner()`, the single pre-entry
+  grant and `corpse_lifecycle_transaction_note_item_transfer()`.
+- Item transfer reasons are stored in ledger and audit rows, so the enum spells out every value;
+  `synthetic` (1) and `craft` (29) are retired and their numbers stay unused.
+- Kept: `item_movement_transaction_submit()` and `_submit_batch()`. The creation grants use
+  them, and the durable corpse lifecycle still calls them until step 5. The grants' stock
+  adoption (`operator_repair`) reads the runtime cache, so it goes with step 6.
+- Tests: the ones that pinned the durable mechanism are deleted (the bulk drop/put and get-all
+  chains, the put partition, the durable empty runtime, the pickup source owner and mixed-owner
+  selection, the NPC give boundary, the flat-file craft conservation); the bulk get, corpse
+  haul, money count, input queue, collector and coordinator harnesses run the new code;
+  `test_empty_command.py` covers `empty`.
+- Verified: both server builds, the pfile build, the format check, `make test-all` (679 of 682:
+  two contracts still counted the removed no-loot check and the encrust refusal, and
+  `test_password_async_runtime.py` missed a timing bound under the parallel load; each passes
+  alone after the fixes) and `make test-db` (33 of 34: `game_loop_queries` hit a race in the
+  epic bonus display, fixed in its own commit).
 
 ### Finding dead code
 

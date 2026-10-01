@@ -21,8 +21,6 @@
 // corpses are rejected by the unsorted chest so they remain visible on the
 // locker room floor rather than being hidden inside a sorting chest.
 bool locker_eq_type_fits_for_storage(::byte eqType, P_obj obj);
-bool locker_owner_for_room(P_char actor, item_owner_identity *owner);
-bool locker_owner_for_container(P_char actor, P_obj container, item_owner_identity *owner);
 
 int guild_locker_room_hook(int room, P_char ch, int cmd, char *arg);
 /* The statement that removes every locker grant `name` holds (a character deletion). */

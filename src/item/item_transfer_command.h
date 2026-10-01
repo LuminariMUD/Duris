@@ -47,42 +47,39 @@ enum class item_owner_type : uint8_t
 
 enum class item_transfer_reason : uint16_t
 {
+	// Stored in ledger and audit rows: never renumber a reason.
 	unknown = 0,
-	synthetic,
-	creation,
-	destruction,
-	operator_repair,
-	player_get,
-	player_drop,
-	player_put,
-	player_give,
-	corpse_create,
-	corpse_restore,
-	corpse_loot,
-	locker_deposit,
-	locker_withdraw,
-	auction_list,
-	auction_claim,
-	shop_buy,
-	shop_sell,
-	mobile_claim,
-	collector_collect,
-	collector_buyback,
-	collector_expire,
-	death_restitution,
-	corpse_raise_pet,
-	pet_give,
-	pet_return,
+	creation = 2,
+	destruction = 3,
+	operator_repair = 4,
+	player_get = 5,
+	player_drop = 6,
+	player_put = 7,
+	player_give = 8,
+	corpse_create = 9,
+	corpse_restore = 10,
+	corpse_loot = 11,
+	locker_deposit = 12,
+	locker_withdraw = 13,
+	auction_list = 14,
+	auction_claim = 15,
+	shop_buy = 16,
+	shop_sell = 17,
+	mobile_claim = 18,
+	collector_collect = 19,
+	collector_buyback = 20,
+	collector_expire = 21,
+	death_restitution = 22,
+	corpse_raise_pet = 23,
+	pet_give = 24,
+	pet_return = 25,
 	// Trusted theft is still a player-to-player custody move.  Keeping a
 	// distinct reason preserves the audit trail without weakening the generic
 	// player-owner validation used by the transfer repositories.
-	trusted_steal,
+	trusted_steal = 26,
 	// These existing-item handoffs have command-specific post-commit effects.
-	soulbind,
-	slip,
-	// Retire one or more input trees and admit detached output snapshots in
-	// the same authority transaction while reusing item-transfer journaling.
-	craft,
+	soulbind = 27,
+	slip = 28,
 };
 
 enum class item_custody_state : uint8_t

@@ -20,10 +20,11 @@ def body(source: str, signature: str, last: bool = False) -> str:
     raise AssertionError(signature)
 
 
-POLICY = (SRC / "item_command_policy.c").read_text()
-policy = body(POLICY, "bool item_command_uses_durable_ownership(")
-assert "return false;" in policy and "item_ownership_runtime_lookup" not in policy
-print("[PASS] get, drop, give, put and empty take their in-memory branches")
+ACTOBJ = (SRC / "actobj.c").read_text()
+for name in ("item_movement_transaction_submit", "item_ownership_runtime",
+             "item_command_uses_durable_ownership"):
+    assert name not in ACTOBJ, name
+print("[PASS] get, drop, give, put and empty move the object in memory")
 
 HANDLER = (SRC / "handler.c").read_text()
 to_char = body(HANDLER, "void obj_to_char(P_obj object, P_char ch)")
@@ -40,16 +41,12 @@ for name in ("rogues.c", "actmove.c", "actoth.c", "actwiz.c", "magic.c", "chaos_
 print("[PASS] slip, steal, soulbind, key break, storage, load, pouch, weapon drop and crafts "
       "move in memory")
 
-GET_POLICY = (SRC / "item_get_policy.c").read_text()
-assert "item_ownership_runtime" not in GET_POLICY
-source_owner = body(GET_POLICY, "bool item_get_source_owner(")
-assert "live_placement_owner(actor, object, container, source)" in source_owner
 AUCTION = (SRC / "auction_houses.c").read_text()
 assert "ownership is still being synchronized" not in AUCTION
 SHOP = (SRC / "shop_trade_runtime.c").read_text()
 assert "const bool player_held = !creates && !shop_owned(action);" in SHOP
 assert "!OBJ_CARRIED_BY(destination, player)" in SHOP
-print("[PASS] coin gets, auction listings and shop trades start from the object's real holder")
+print("[PASS] auction listings and shop trades start from the object's real holder")
 
 CLAIM = (SRC / "item_claim.h").read_text()
 held = body(CLAIM, "inline bool item_claim_owner_is_memory_held(")

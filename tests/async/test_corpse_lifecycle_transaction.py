@@ -426,11 +426,9 @@ int main()
 	externally_fenced = true;
 	assert(corpse_lifecycle_transaction_stage(upsert(43, 21, 900, 4)));
 	assert(submitted.size() == 5);
-	assert(corpse_lifecycle_transaction_note_item_transfer(43, 21, 5));
-	assert(submitted.size() == 5);
 	externally_fenced = false;
 	corpse_lifecycle_transaction_pulse();
-	assert(submitted.size() == 6 && decode(5).expected_corpse_revision == 5);
+	assert(submitted.size() == 6);
 	done = completion(5, corpse_lifecycle_action::upsert, 43, 21, 6, 15);
 	corpse_lifecycle_transaction_handle_completions(&done, 1);
 

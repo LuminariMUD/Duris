@@ -55,41 +55,6 @@ class LiveItemMovementContractTests(unittest.TestCase):
         self.assertLess(build, submit)
         self.assertIn("payload.item_blob_size", movement)
 
-    def test_audited_commands_defer_pointer_mutation(self):
-        actobj = (SRC / "actobj.c").read_text()
-        # Coins move in memory, so no coin path names player_put any more.
-        for reason in ("player_get", "player_drop", "player_give", "corpse_loot"):
-            self.assertIn(f"item_transfer_reason::{reason}", actobj)
-        self.assertIn("item_movement_transaction_submit", actobj)
-        self.assertIn("item_get_ack_publication", actobj)
-        self.assertIn("item_put_ack_publication", actobj)
-        self.assertIn("start_container_bulk_get", actobj)
-        self.assertIn("bulk_get_completion", actobj)
-        self.assertIn("start_bulk_drop", actobj)
-        self.assertIn("bulk_drop_completion", actobj)
-        self.assertIn("start_bulk_put", actobj)
-        self.assertIn("bulk_put_completion", actobj)
-        self.assertIn("item_movement_transaction_submit_batch", actobj)
-        # Each core bulk movement publishes one durable forest only after its
-        # shared commit.
-        self.assertNotIn("Durable container items must be collected one at a time", actobj)
-        self.assertNotIn("Durable items must be dropped one at a time", actobj)
-        self.assertNotIn("Durable items must be put away one at a time", actobj)
-
-    def test_pc_corpse_roots_bypass_generic_ownership_transfers(self):
-        actobj = (SRC / "actobj.c").read_text()
-        policy = (SRC / "item/item_command_policy.c").read_text()
-        # No item, player corpses included, takes a generic ownership transfer.
-        self.assertIn("return false;", policy)
-        self.assertGreaterEqual(
-            actobj.count("item_command_uses_durable_ownership("), 10
-        )
-        get_body = actobj[actobj.index("void get(P_char ch") :]
-        get_body = get_body[: get_body.index("int fight_in_room")]
-        self.assertIn(
-            "IS_PC(ch) && item_command_uses_durable_ownership(o_obj)", get_body
-        )
-
     def test_death_puts_the_items_in_the_corpse_in_memory(self):
         fight = (SRC / "fight.c").read_text()
         make_corpse = fight[fight.index("P_obj make_corpse"):]
@@ -131,16 +96,6 @@ class LiveItemMovementContractTests(unittest.TestCase):
         ]
         self.assertIn("find_live_player(found->second.actor_pid)", completions)
         self.assertNotIn("find_player_by_pid(found->second.actor_pid)", completions)
-
-    def test_give_completion_can_publish_to_a_linkdead_recipient(self):
-        actobj = (SRC / "actobj.c").read_text()
-        helper = actobj[actobj.index("P_char find_live_player_pid"):]
-        helper = helper[:helper.index("void item_get_completion")]
-        self.assertIn("character_list", helper)
-        give = actobj[actobj.index("void item_give_completion"):]
-        give = give[:give.index("void item_put_completion")]
-        self.assertIn("find_live_player_pid(context.recipient_pid)", give)
-        self.assertNotIn("find_player_by_pid(context.recipient_pid)", give)
 
     def test_same_owner_reparenting_is_authoritative(self):
         command = (SRC / "item_transfer_command.c").read_text()
@@ -199,21 +154,6 @@ class LiveItemMovementContractTests(unittest.TestCase):
         self.assertLess(artifact_prepare, artifact_image)
         self.assertLess(image, commit)
         self.assertLess(artifact_image, commit)
-    def test_523_retain_shared_fences_until_safe_callback(self):
-        actobj = (SRC / "actobj.c").read_text()
-        movement = (SRC / "item_movement_transaction.c").read_text()
-        movement_header = (SRC / "item/item_movement_transaction.h").read_text()
-        self.assertIn("using item_movement_publication_fn", movement_header)
-        self.assertIn("publication = nullptr", movement_header)
-        self.assertIn("const empty_movement_context context = { actor_pid, actor->runtime_id }", actobj)
-        self.assertIn("sizeof(context), NULL", actobj)
-        self.assertIn("&reject, empty_completion", actobj)
-        empty = extract_function("actobj.c", "bool empty_completion(")
-        self.assertIn("return false", empty)
-        self.assertIn("return true", empty)
-        self.assertIn("actor->runtime_id != context.actor_runtime_id", empty)
-        self.assertIn("critical_command_coordinator_acknowledge_publication", movement)
-
     def test_failed_publication_is_bounded_and_not_erased(self):
         movement = (SRC / "item_movement_transaction.c").read_text()
         failure = movement[movement.index("if (!published)"):]

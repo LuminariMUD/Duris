@@ -50,7 +50,6 @@ bool pipeline_accepts = true;
 bool transaction_accepts = true;
 bool materialization_succeeds = true;
 bool item_movement_busy = false;
-bool bulk_get_busy = false;
 bool result_ready = false;
 std::vector<std::string> output_messages;
 
@@ -267,11 +266,6 @@ bool item_movement_transaction_player_busy(P_char target)
 	return target == &character && item_movement_busy;
 }
 
-bool bulk_get_player_busy(P_char target)
-{
-	return target == &character && bulk_get_busy;
-}
-
 bool currency_transaction_can_submit_nonrebasable(P_char target)
 {
 	return target == &character;
@@ -393,12 +387,6 @@ int main()
 	assert(request_cursor == request_before_busy &&
 	       !collector_service_player_busy(&character) && saw("Another transaction"));
 	item_movement_busy = false;
-	clear_messages();
-	bulk_get_busy = true;
-	collector_service_command(&character, buy, CMD_COLLECTOR);
-	assert(request_cursor == request_before_busy &&
-	       !collector_service_player_busy(&character) && saw("Another transaction"));
-	bulk_get_busy = false;
 
 	// A movement can start while the detail worker is reading. The completion gate
 	// must reject that race before it snapshots currency, capacity, or ownership.

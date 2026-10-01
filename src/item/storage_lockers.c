@@ -608,39 +608,6 @@ StorageLocker::StorageLocker(int rroom, P_char chLocker, P_char chUser)
 	world[rroom].ex_description->next->next = NULL;
 };
 
-bool locker_owner_for_room(P_char actor, item_owner_identity *owner)
-{
-	if (!actor || !owner || actor->in_room == NOWHERE || !IS_ROOM(actor->in_room, ROOM_LOCKER))
-		return false;
-	StorageLocker *locker = GetChestList(actor->in_room);
-	if (!locker || locker->GetLockerUser() != actor || locker->GetLockerId() <= 0 ||
-	    locker->GetPublicChestId() <= 0)
-		return false;
-	*owner = { item_owner_type::locker, static_cast<uint64_t>(locker->GetLockerId()),
-		   static_cast<uint64_t>(locker->GetPublicChestId()) };
-	return true;
-}
-
-bool locker_owner_for_container(P_char actor, P_obj container, item_owner_identity *owner)
-{
-	if (!actor || !container || !owner || actor->in_room == NOWHERE ||
-	    !IS_ROOM(actor->in_room, ROOM_LOCKER))
-		return false;
-	StorageLocker *locker = GetChestList(actor->in_room);
-	if (!locker || locker->GetLockerUser() != actor || locker->GetLockerId() <= 0)
-		return false;
-	LockerChest *chest = locker->FindChestForObject(container);
-	if (!chest)
-		return false;
-	const int chest_id = chest->IsPrivateChest() ? chest->GetChestId() :
-						       locker->GetPublicChestId();
-	if (chest_id <= 0)
-		return false;
-	*owner = { item_owner_type::locker, static_cast<uint64_t>(locker->GetLockerId()),
-		   static_cast<uint64_t>(chest_id) };
-	return true;
-}
-
 StorageLocker::~StorageLocker(void)
 {
 	NukeLockerChests();

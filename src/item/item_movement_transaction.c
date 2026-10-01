@@ -147,12 +147,7 @@ item_movement_reject coordinator_reject_reason(critical_submit_result result)
 		return item_movement_reject::coordinator_invalid;
 	case critical_submit_result::identity_conflict:
 		return item_movement_reject::coordinator_identity_conflict;
-	case critical_submit_result::journal_failure:
-		return item_movement_reject::coordinator_journal_failure;
-	case critical_submit_result::journal_uncertain:
-		return item_movement_reject::coordinator_journal_uncertain;
 	case critical_submit_result::accepted:
-	case critical_submit_result::awaiting_durability:
 	case critical_submit_result::attached:
 		break;
 	}
@@ -374,141 +369,6 @@ void retain_trusted_steal_publication(pending_movement &entry, uint64_t item_uid
 bool retained_player_transfer_reason(item_transfer_reason reason)
 {
 	return reason == item_transfer_reason::soulbind || reason == item_transfer_reason::slip;
-}
-
-bool object_belongs_to_actor(P_obj object, P_char actor)
-{
-	if (!object || !actor)
-		return false;
-	for (size_t depth = 0; object && depth <= ITEM_TRANSFER_MAX_ITEMS; ++depth)
-	{
-		if (OBJ_CARRIED_BY(object, actor) || OBJ_WORN_BY(object, actor))
-			return true;
-		if (!OBJ_INSIDE(object) || !object->loc.inside)
-			return false;
-		object = object->loc.inside;
-	}
-	return false;
-}
-
-bool craft_output_roots(const item_transfer_payload &payload,
-			std::vector<player_item_snapshot> *outputs, std::vector<uint64_t> *roots)
-{
-	if (!outputs || !roots)
-		return false;
-	outputs->clear();
-	roots->clear();
-	if (!payload.item_blob_size)
-		return true;
-	try
-	{
-		if (player_item_snapshot_list_decode(payload.item_blob.data(),
-						     payload.item_blob_size,
-						     outputs) != player_snapshot_codec_result::ok ||
-		    outputs->empty())
-			return false;
-		for (const player_item_snapshot &output : *outputs)
-			if (output.parent_index == PLAYER_SNAPSHOT_NO_PARENT)
-				roots->push_back(output.object_uid);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	return !roots->empty();
-}
-
-bool craft_live_ready(P_char actor, const pending_movement &entry)
-{
-	if (!actor)
-		return false;
-	std::vector<player_item_snapshot> outputs;
-	std::vector<uint64_t> output_roots;
-	if (!craft_output_roots(entry.payload, &outputs, &output_roots))
-		return false;
-	std::unordered_set<uint64_t> input_roots;
-	try
-	{
-		for (size_t index = 0; index < entry.payload.item_count; ++index)
-			if (entry.payload.items[index].item_uid ==
-			    entry.payload.items[index].root_item_uid)
-				input_roots.insert(entry.payload.items[index].item_uid);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	for (uint64_t uid : input_roots)
-	{
-		P_obj object = find_item(uid);
-		if (object && !object_belongs_to_actor(object, actor))
-			return false;
-	}
-	for (uint64_t uid : output_roots)
-	{
-		P_obj object = find_item(uid);
-		if (!object || (!OBJ_NOWHERE(object) && !object_belongs_to_actor(object, actor)))
-			return false;
-	}
-	return true;
-}
-
-bool publish_craft(const pending_movement &entry, P_char actor)
-{
-	if (!craft_live_ready(actor, entry))
-		return false;
-	std::vector<player_item_snapshot> outputs;
-	std::vector<uint64_t> output_roots;
-	if (!craft_output_roots(entry.payload, &outputs, &output_roots))
-		return false;
-	std::unordered_set<uint64_t> input_roots;
-	try
-	{
-		for (size_t index = 0; index < entry.payload.item_count; ++index)
-			if (entry.payload.items[index].item_uid ==
-			    entry.payload.items[index].root_item_uid)
-				input_roots.insert(entry.payload.items[index].item_uid);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	for (uint64_t uid : input_roots)
-	{
-		P_obj object = find_item(uid);
-		if (!object)
-			continue;
-		if (!object_belongs_to_actor(object, actor))
-			return false;
-		extract_obj(object);
-	}
-	for (uint64_t uid : output_roots)
-	{
-		P_obj object = find_item(uid);
-		if (!object)
-			return false;
-		if (OBJ_NOWHERE(object))
-			obj_to_char(object, actor);
-		if (!object_belongs_to_actor(object, actor))
-			return false;
-	}
-	return true;
-}
-
-void discard_craft_outputs(const pending_movement &entry)
-{
-	if (entry.payload.reason != item_transfer_reason::craft || !entry.payload.item_blob_size)
-		return;
-	std::vector<player_item_snapshot> outputs;
-	std::vector<uint64_t> roots;
-	if (!craft_output_roots(entry.payload, &outputs, &roots))
-		return;
-	for (uint64_t uid : roots)
-	{
-		P_obj object = find_item(uid);
-		if (object && OBJ_NOWHERE(object))
-			extract_obj(object);
-	}
 }
 
 item_owner_identity creation_grant_owner(const pending_creation_grant &request)
@@ -1443,20 +1303,6 @@ void publish(std::unordered_map<std::string, pending_movement>::iterator found, 
 		account_health();
 		return;
 	}
-	const bool craft = entry.payload.reason == item_transfer_reason::craft;
-	if (committed && craft && !publish_craft(entry, actor))
-	{
-		if (!entry.publication_failed)
-		{
-			entry.publication_failed = true;
-			++health.stale_publications;
-			persistence_alert(AVATAR, "item_movement", "craft_publish", "none", "none",
-					  "stale_live_publication", "actor_pid=%u",
-					  entry.actor_pid);
-		}
-		account_health();
-		return;
-	}
 	if (committed && entry.payload.reason == item_transfer_reason::corpse_create &&
 	    entry.payload.collector.present)
 	{
@@ -1480,8 +1326,6 @@ void publish(std::unordered_map<std::string, pending_movement>::iterator found, 
 			return;
 		}
 	}
-	if (!committed && craft)
-		discard_craft_outputs(entry);
 	if (entry.creation_batch)
 	{
 		if (committed)
@@ -1793,18 +1637,7 @@ bool item_movement_transaction_submit(P_char actor, P_obj root, P_obj target_con
 		publication ?
 			critical_command_coordinator_submit_for_publication(std::move(command)) :
 			critical_command_coordinator_submit(std::move(command));
-	if (submitted == critical_submit_result::journal_uncertain)
-	{
-		++health.submission_failures;
-		*reject = coordinator_reject_reason(submitted);
-		account_health();
-		// The coordinator retained the original operation ID and fence because
-		// the journal rollback itself was uncertain. Keep the live pending entry
-		// and let the recovery/shutdown path resolve it; never mint a new ID.
-		return true;
-	}
 	if (submitted != critical_submit_result::accepted &&
-	    submitted != critical_submit_result::awaiting_durability &&
 	    submitted != critical_submit_result::attached)
 	{
 		pending.erase(key);
@@ -2004,18 +1837,7 @@ bool item_movement_transaction_submit_batch(
 		publication ?
 			critical_command_coordinator_submit_for_publication(std::move(command)) :
 			critical_command_coordinator_submit(std::move(command));
-	if (submitted == critical_submit_result::journal_uncertain)
-	{
-		++health.submission_failures;
-		*reject = coordinator_reject_reason(submitted);
-		account_health();
-		// The coordinator retained the original operation ID and fence because
-		// the journal rollback itself was uncertain. Keep the live pending entry
-		// and let the recovery/shutdown path resolve it; never mint a new ID.
-		return true;
-	}
 	if (submitted != critical_submit_result::accepted &&
-	    submitted != critical_submit_result::awaiting_durability &&
 	    submitted != critical_submit_result::attached)
 	{
 		pending.erase(key);
@@ -2025,48 +1847,6 @@ bool item_movement_transaction_submit_batch(
 	++health.submitted;
 	account_health();
 	return true;
-}
-
-const char *item_movement_reject_name(item_movement_reject reason)
-{
-	switch (reason)
-	{
-	case item_movement_reject::none:
-		return "none";
-	case item_movement_reject::invalid_request:
-		return "invalid_request";
-	case item_movement_reject::queue_saturated:
-		return "queue_saturated";
-	case item_movement_reject::pending_conflict:
-		return "pending_conflict";
-	case item_movement_reject::owner_mismatch:
-		return "owner_mismatch";
-	case item_movement_reject::missing_owner_revision:
-		return "missing_owner_revision";
-	case item_movement_reject::topology_mismatch:
-		return "topology_mismatch";
-	case item_movement_reject::snapshot_failure:
-		return "snapshot_failure";
-	case item_movement_reject::allocation_failure:
-		return "allocation_failure";
-	case item_movement_reject::command_build_failure:
-		return "command_build_failure";
-	case item_movement_reject::coordinator_unavailable:
-		return "coordinator_unavailable";
-	case item_movement_reject::coordinator_overloaded:
-		return "coordinator_overloaded";
-	case item_movement_reject::coordinator_invalid:
-		return "coordinator_invalid";
-	case item_movement_reject::coordinator_identity_conflict:
-		return "coordinator_identity_conflict";
-	case item_movement_reject::coordinator_journal_failure:
-		return "coordinator_journal_failure";
-	case item_movement_reject::coordinator_journal_uncertain:
-		return "coordinator_journal_uncertain";
-	case item_movement_reject::coordinator_rejected:
-		return "coordinator_rejected";
-	}
-	return "unknown";
 }
 
 // Transient rejections clear on their own once the in-flight work drains, so telling the
@@ -2215,12 +1995,6 @@ void item_creation_grant_prepare_pulse(void)
 			preparation_order.push_back(pid);
 	}
 	pump_creation_grants();
-}
-
-bool item_creation_grant_submit_to_player_before_entry(P_char actor, P_obj object, P_char recipient)
-{
-	return queue_creation_grant(actor, object, recipient, NOWHERE, NULL, false, true, nullptr,
-				    nullptr, 0, nullptr);
 }
 
 bool item_creation_grant_submit_batch_to_player_before_entry(P_char actor, P_obj const *objects,

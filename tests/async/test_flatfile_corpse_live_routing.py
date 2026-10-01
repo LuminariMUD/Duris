@@ -99,7 +99,6 @@ assert "corpse_lifecycle_transaction_handle_completions" in COMM
 assert "corpse_lifecycle_transaction_pulse();" in COMM
 assert COMM.index("corpse_lifecycle_transaction_pulse();") < COMM.index(
     "critical_command_coordinator_pulse(critical_completions")
-assert "corpse_lifecycle_transaction_note_item_transfer" in ACTOBJ
 assert "persistence_defer_corpse_room_release(obj)" in decay
 assert decay.index("persistence_defer_corpse_room_release(obj)") < decay.index(
     "if (OBJ_ROOM(obj))")

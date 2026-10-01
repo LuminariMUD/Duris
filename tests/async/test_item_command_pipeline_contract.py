@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contracts for the shared item command parser and ownership boundary."""
+"""Contracts for the shared item command parser and checks."""
 
 from pathlib import Path
 import shutil
@@ -16,7 +16,6 @@ PARSER_H = (SRC / "item/item_command_parser.h").read_text(encoding="utf-8")
 PARSER_C = (SRC / "item/item_command_parser.c").read_text(encoding="utf-8")
 POLICY_H = (SRC / "item/item_command_policy.h").read_text(encoding="utf-8")
 POLICY_C = (SRC / "item/item_command_policy.c").read_text(encoding="utf-8")
-DOC = (ROOT / "docs/persistence/ITEM_COMMAND_PIPELINE.md").read_text(encoding="utf-8")
 
 
 class ItemCommandPipelineContractTests(unittest.TestCase):
@@ -29,11 +28,8 @@ class ItemCommandPipelineContractTests(unittest.TestCase):
         for token in (
             "item_get_command_kind",
             "item_get_command_parse",
-            "item_command_uses_durable_ownership",
             "item_command_object_is_takeable",
             "item_command_container_is_valid",
-            "item_command_resolve_put_destination",
-            "item_command_resolve_drop_destination",
         ):
             self.assertIn(token, PARSER_H + PARSER_C + POLICY_H + POLICY_C)
 
@@ -48,39 +44,11 @@ class ItemCommandPipelineContractTests(unittest.TestCase):
         self.assertIn("type = static_cast<int>(parsed.kind)", do_get)
         self.assertIn("alldot = parsed.alldot", do_get)
 
-    def test_every_item_path_uses_shared_durable_eligibility_and_resolvers(self):
-        self.assertNotIn("static bool uses_generic_item_ownership", ACTOBJ)
-        self.assertNotIn("static bool get_item_source_owner", ACTOBJ)
+    def test_item_paths_use_the_shared_checks(self):
         self.assertNotIn("static bool do_get_obj_is_takeable", ACTOBJ)
         self.assertNotIn("static bool do_get_container_target_is_valid", ACTOBJ)
-        self.assertGreaterEqual(
-            ACTOBJ.count("item_command_uses_durable_ownership("), 10
-        )
-        self.assertGreaterEqual(
-            ACTOBJ.count("item_get_source_owner("), 4
-        )
-        self.assertEqual(ACTOBJ.count("locker_owner_for_room("), 0)
-        self.assertEqual(ACTOBJ.count("locker_owner_for_container("), 0)
-        self.assertEqual(ACTOBJ.count("item_command_resolve_drop_destination("), 2)
-        self.assertEqual(ACTOBJ.count("item_command_resolve_put_destination("), 6)
-
-    def test_policy_has_explicit_boundaries_and_no_live_publication(self):
-        # Memory is the authority: commands take their in-memory branch.
-        policy = POLICY_C[POLICY_C.index("bool item_command_uses_durable_ownership("):]
-        policy = policy[: policy.index("\n}\n")]
-        self.assertIn("return false;", policy)
-        self.assertNotIn("item_ownership_runtime", (SRC / "item/item_get_policy.c").read_text())
-        self.assertIn("ITEM_CORPSE", POLICY_C)
-        self.assertIn("corpse", DOC)
-        self.assertIn("item_transfer_reason::locker_deposit", POLICY_C)
-        self.assertIn("item_transfer_reason::player_put", POLICY_C)
-        self.assertIn("item_transfer_reason::player_drop", POLICY_C)
-        self.assertNotIn("obj_to_obj(", POLICY_C)
-        self.assertNotIn("obj_to_room(", POLICY_C)
-        self.assertIn("item_movement_transaction_submit", ACTOBJ)
-        self.assertIn("item_put_completion", ACTOBJ)
-        self.assertIn("item_drop_completion", ACTOBJ)
-        self.assertIn("completion callback publishes", DOC)
+        self.assertIn("item_command_object_is_takeable(", ACTOBJ)
+        self.assertIn("item_command_container_is_valid(", ACTOBJ)
 
     def test_parser_runtime_forms(self):
         if not shutil.which("g++"):

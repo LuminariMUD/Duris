@@ -133,7 +133,7 @@ int main()
  mysql_available=false;
  assert(!zone_touch_transaction_submit(p));
  mysql_available=true;
- for(auto rejection : {critical_submit_result::overloaded, critical_submit_result::journal_failure})
+ for(auto rejection : {critical_submit_result::overloaded, critical_submit_result::unavailable})
  {
   admission=rejection; assert(!zone_touch_transaction_submit(p));
   assert(!zone_touch_transaction_busy(99,77) && magic && effects==0);

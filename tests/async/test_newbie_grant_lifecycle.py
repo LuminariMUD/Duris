@@ -526,31 +526,11 @@ int main()
         assert(!item_creation_grant_blocks_commands(&f.actor));
         assert(!item_creation_grant_batches_pending() && f.desc.prompt_mode);
     }
-    // A post-write journal ambiguity is not a normal retry or terminal failure.
-    // Retain the original staged roots and gate until journal recovery resolves it.
-    {
-        fixture f;
-        assert(item_creation_grant_defer(&f.actor, [&](P_char, P_obj *root) {
-            *root = &f.bag;
-            return item_creation_prepare_result::ready;
-        }));
-        submit_result = critical_submit_result::journal_uncertain;
-        item_creation_grant_prepare_pulse();
-        assert(submitted.empty() && extractions.empty());
-        assert(item_movement_transaction_player_busy(&f.actor));
-        assert(item_creation_grant_blocks_commands(&f.actor));
-        assert(item_creation_grant_batches_pending());
-        assert(!f.desc.prompt_mode);
-        item_movement_transaction_handle_completions(nullptr, 0);
-        assert(submitted.empty() && extractions.empty());
-        assert(item_movement_transaction_player_busy(&f.actor));
-    }
-    // Invalid identity, identity conflicts, and journal failures are terminal
+    // Invalid identity and identity conflicts are terminal
     // admission results. They must release every staged kit root and the command
     // gate, but a separately queued reward must survive and make progress.
     for (const critical_submit_result terminal_admission :
-         {critical_submit_result::invalid, critical_submit_result::identity_conflict,
-          critical_submit_result::journal_failure})
+         {critical_submit_result::invalid, critical_submit_result::identity_conflict})
     {
         fixture f;
         int calls = 0;
@@ -594,7 +574,7 @@ int main()
         }));
         item_creation_grant_prepare_pulse();
         assert(item_creation_grant_submit_to_player(&f.actor, &f.child, &f.actor, &f.bag));
-        submit_result = critical_submit_result::journal_failure;
+        submit_result = critical_submit_result::invalid;
         item_creation_grant_prepare_pulse();
         assert(extractions[100] == 1 && extractions[101] == 1 && extractions[103] == 0);
         assert(item_movement_transaction_player_busy(&f.actor));
@@ -628,7 +608,8 @@ int main()
     {
         fixture f;
         character_list = &f.other; f.desc.connected = CON_GET_RACE;
-        assert(item_creation_grant_submit_to_player_before_entry(&f.actor, &f.bag, &f.actor));
+        const P_obj kit[] = { &f.bag };
+        assert(item_creation_grant_submit_batch_to_player_before_entry(&f.actor, kit, 1, &f.actor));
         const auto completed = next_completion(critical_apply_outcome::applied);
         deliver(completed);
         assert(publications.empty() && item_movement_transaction_player_busy(&f.actor));

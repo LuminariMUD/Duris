@@ -18,7 +18,6 @@ def main() -> None:
     assert comm.count("collector_service_player_busy") >= 3
     service = (ROOT / "src/economy/collector_service.c").read_text()
     assert "item_movement_transaction_player_busy" in service
-    assert "bulk_get_player_busy" in service
     assert "COLLECTOR_PURCHASE_FALLBACK_MAX" in service
     assert "purchase_fallback_recoveries" in service
     assert "CHAR_RFLAG_COLLECTOR_SAVE_FENCE" in service

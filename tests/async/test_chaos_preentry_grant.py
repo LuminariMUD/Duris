@@ -32,7 +32,7 @@ schedule_helper = NANNY.split("void schedule_chaos_new_character_kit_before_entr
 approval_success = ACTWIZ.split("void do_approve", 1)[1].split("void do_invite", 1)[0]
 
 # The grant must have an explicit, non-blocking pre-entry mode.
-assert "item_creation_grant_submit_to_player_before_entry" in TRANSACTION_H
+assert "item_creation_grant_submit_batch_to_player_before_entry" in TRANSACTION_H
 assert "allow_pre_entry" in TRANSACTION_C
 assert "announce_on_completion" in TRANSACTION_C
 assert "Your Chaos Equipment has been prepared!!" in TRANSACTION_C

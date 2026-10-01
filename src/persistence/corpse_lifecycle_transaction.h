@@ -46,8 +46,6 @@ bool corpse_lifecycle_transaction_raise_world_follower(
 	corpse_lifecycle_release_completion_fn completion);
 bool corpse_lifecycle_transaction_hydrate(uint32_t owner_pid, uint32_t save_id,
 					  uint64_t corpse_revision);
-bool corpse_lifecycle_transaction_note_item_transfer(uint32_t owner_pid, uint32_t save_id,
-						     uint64_t corpse_revision);
 bool corpse_lifecycle_transaction_forget(uint32_t owner_pid, uint32_t save_id);
 void corpse_lifecycle_transaction_pulse(void);
 void corpse_lifecycle_transaction_handle_completions(const critical_completion *completions,

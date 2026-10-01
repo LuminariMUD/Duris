@@ -330,7 +330,6 @@ OBJS =  $(SHIP_OBJS) \
 				 persistence/corpse_lifecycle_command.o \
 				 item/item_transfer_command.o \
 				 item/item_ownership_runtime.o \
-				 item/item_get_policy.o \
 				 item/item_command_policy.o \
 				 item/item_command_parser.o \
 				 item/forced_weapon_drop.o \
@@ -341,7 +340,6 @@ OBJS =  $(SHIP_OBJS) \
 				 item/item_claim.o \
 				 item/item_claim_repository.o \
 				 persistence/dupe_log.o \
-				 item/item_transfer_synthetic.o \
 				 item/item_uid_allocator.o \
 				 persistence/critical_outbox.o \
 				 world/epic_command.o \

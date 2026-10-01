@@ -47,8 +47,8 @@ assert not contains(grab, "!isname(GET_NAME(ch),obj_object->name)")
 get_start = index(actobj, "void get(P_char")
 get_end = index(actobj, "int fight_in_room", get_start)
 get_body = actobj[get_start:get_end]
-assert get_body.count("ITEM2_NOLOOT") == 3
-assert count(get_body, "account_bound_reward_owner(ch,o_obj)") == 4
+assert get_body.count("ITEM2_NOLOOT") == 2
+assert count(get_body, "account_bound_reward_owner(ch,o_obj)") == 3
 
 bulk_start = index(actobj, "static bool select_bulk_get_item")
 bulk_end = index(actobj, "static void start_bulk_get", bulk_start)

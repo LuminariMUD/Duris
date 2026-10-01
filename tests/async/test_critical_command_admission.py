@@ -106,8 +106,6 @@ int main()
     }
     auto health = critical_command_coordinator_health_copy();
     assert(health.inflight == 33);
-    assert(critical_command_coordinator_durability(submitted[0].operation_id) ==
-           critical_command_durability::awaiting_durability);
     assert(submitter_file_io == 0);
     assert(percentile(submit_latencies, 95) < 40000);
     printf("stalled_writer_submit: n=%zu p50_us=%llu p95_us=%llu p99_us=%llu file_io=%u\n",
@@ -121,8 +119,6 @@ int main()
     }
     assert(critical_command_coordinator_drain(15000));
     assert(applied == 33);
-    assert(critical_command_coordinator_durability(submitted[0].operation_id) ==
-           critical_command_durability::durable);
     critical_command_coordinator_shutdown();
     player_save_worker_reset_for_tests();
 }
@@ -159,7 +155,6 @@ for relative in (
     "src/guild/artifact_guild_transaction.c",
     "src/combat/combat_outcome_transaction.c",
     "src/persistence/corpse_lifecycle_transaction.c",
-    "src/item/item_transfer_synthetic.c",
     "src/account/session_audit_transaction.c",
 ):
     assert "critical_submit_result_keeps_operation" in (ROOT / relative).read_text()

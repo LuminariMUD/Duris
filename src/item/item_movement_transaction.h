@@ -64,12 +64,9 @@ enum class item_movement_reject
 	coordinator_overloaded,
 	coordinator_invalid,
 	coordinator_identity_conflict,
-	coordinator_journal_failure,
-	coordinator_journal_uncertain,
 	coordinator_rejected,
 };
 
-const char *item_movement_reject_name(item_movement_reject reason);
 bool item_movement_reject_is_transient(item_movement_reject reason);
 
 struct item_movement_health
@@ -120,8 +117,6 @@ bool item_creation_grant_submit_to_player_with_completion(P_char actor, P_obj ob
 bool item_creation_grant_submit_to_player_with_completion(
 	P_char actor, P_obj object, P_char recipient, P_obj target_container,
 	item_creation_grant_completion_fn completion);
-bool item_creation_grant_submit_to_player_before_entry(P_char actor, P_obj object,
-						       P_char recipient);
 // Admit all detached roots before starting any ownership operation. A refused
 // batch leaves every object with the caller; an accepted batch owns every root.
 bool item_creation_grant_submit_batch_to_player_before_entry(P_char actor, P_obj const *objects,
