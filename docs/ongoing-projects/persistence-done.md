@@ -2131,3 +2131,45 @@ directory still held the old, empty `critical-command.journal`, so the backup re
 (`./scripts/backup_pfiles.sh status` failed with `invalid_journal_roots`) and a scripted local
 boot could not pass its backup. On 2026-10-02 `players` was taken out of the policy and the empty
 file deleted; `status` now gets past the policy (it reports `rpo_exceeded` until the next backup).
+
+### The ledger reconcilers (done)
+
+What is left's first fix. A save writes balances from memory without a ledger row and claims
+the items it holds without a transfer, so the currency, epic, frag and item ownership
+reconcilers reported ordinary play as drift (on `duris_dev`, `owner_revision_mismatch=4`;
+the three balance reconcilers passed there only because no money had moved since Phase 2).
+
+- `369eb5b33`: the four reconcilers are deleted and taken out of
+  `reconcile_phase02_domains.sh` (now artifact and boon), the runbook's Domain reconciliation
+  (which now says why nothing reconciles balances or item ownership) and coin-custody steps,
+  and the six contracts that named them. The runbook's "Epic ledger cutover and
+  reconciliation" section went with `reconcile_epic_balances.sh`. The header of
+  `repair_item_nesting.sh` no longer points at the item reconciler or at give/drop capture.
+  Verified: the six contracts, `reconcile_phase02_domains.sh` on `duris_dev` (passes).
+- Kept: `repair_item_nesting.sh`. On `duris_dev` it reports `nesting_mismatch=13`, all
+  Selwyn's (pid 3301, last saved 2026-09-01, before Phase 1): load places items where
+  `item_current_owner` says (`player_load_topology.c`), and the next save's claim rewrites
+  the nesting from memory, so it is history, not a live defect.
+
+Found along the way, each fixed in its own commit:
+
+- **A new account bank stopped the next boot** (`d09315a79`). Boot refuses an
+  `account_banks` row with no `currency_bank_baseline`, and since bank changes became deltas
+  the delta that creates a bank row wrote none, so an account's first deposit on a side made
+  the next boot fail ("currency bank baseline does not cover every account bank"). The delta
+  now writes the bank's opening baseline from the row it has just written, in the same
+  transaction (`INSERT IGNORE`, so it leaves an existing one alone and settles an older bank
+  on its next delta). `run_player_save_claim_mysql.sh` (test-db) failed on the new check
+  before the fix and passes after. Not run: a live deposit-and-reboot journey (the journey
+  fixture has no ATM, and every character of the `.env` account shares one side that already
+  has a bank). A database that created banks before this fix and has not touched them since
+  needs their baselines once:
+  `INSERT IGNORE INTO currency_bank_baseline(bank_id,opening_copper,opening_silver,opening_gold,opening_platinum,opening_revision) SELECT id,bank_copper,bank_silver,bank_gold,bank_platinum,bank_revision FROM account_banks;`
+  (`duris_dev` has none missing).
+- **The combat-baseline repair refused every played database** (`4e9137a14`).
+  `repair_missing_combat_baselines.sh` inlined the deleted reconcilers' ledger arithmetic in
+  its apply guard and receipt, so the reviewed insert rolled back wherever balances had moved.
+  It now checks readiness, wallet, bank and epic baseline coverage and the required foreign
+  keys. `run_combat_baseline_repair_mysql.sh` (manual, not in test-db) gives an unrelated
+  character ledgerless balances: before, the safe apply rolled back; after, it passes with the
+  conflict and history refusals intact. `test_combat_baseline_repair_workflow.py` passes.

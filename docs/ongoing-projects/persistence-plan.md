@@ -234,24 +234,11 @@ All but the last hold now.
 
 ## What is left
 
-1. **Two fixes the ablation found**, each in its own commit:
-   - **Delete the ledger reconcilers that memory authority broke.** A save claim bumps
-     `item_revision` and `item_owner_revision` with no ledger row (`item_claim_repository.c`),
-     and balances have no ledger that explains them. The runbook already says Phase 3 removes the
-     currency, epic and frag reconcilers; `reconcile_item_ownership.sh` has the same flaw (on
-     `duris_dev` it reports `owner_revision_mismatch=4`). Delete the four, and take them out of
-     `reconcile_phase02_domains.sh`,
-     [Domain reconciliation](../operations/RUNBOOK.md#domain-reconciliation), the header of
-     `repair_item_nesting.sh` and the contracts that name them
-     (`test_currency_transaction_contract.py`, `test_epic_transaction_contract.py`,
-     `test_documentation_contract.py`, `test_item_ownership_contract.py`,
-     `test_durable_container_put_contract.py`, `test_phase02_raw_queue_retirement.py`). The
-     auction, artifact and boon reconcilers stay; all three pass on `duris_dev`.
-   - **Bring `docs/reference/DATABASE.md` up to date.** "Critical transactions and current item
-     ownership" still calls the table the authority and requires a transfer for every
-     reparenting, and "Consistent player load" still checks a durable revision Phase 1 removed.
-     Rewrite both to [How it works](#how-it-works), and drop the runbook's "Epic ledger cutover
-     and reconciliation" section.
+1. **Bring `docs/reference/DATABASE.md` up to date** (the ledger reconcilers are
+   [done](persistence-done.md#the-ledger-reconcilers-done), with two defects found on the way).
+   "Critical transactions and current item ownership" still calls the table the authority and
+   requires a transfer for every reparenting, and "Consistent player load" still checks a
+   durable revision Phase 1 removed. Rewrite both to [How it works](#how-it-works).
 2. **The gate on this worktree's head:** `./scripts/format.sh --all --check`, then
    `make test-all -j16 TEST_JOBS=16` alone, then `make test-db` and `npm test --prefix site` side
    by side. Fix each failure in its own commit, with a regression test where behavior changes,
