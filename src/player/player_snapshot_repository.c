@@ -554,19 +554,15 @@ query_result claim_graph(MYSQL *connection, const item_owner_identity &owner,
 query_result apply_items(MYSQL *connection, const player_snapshot &snapshot,
 			 std::vector<claimed_graph> *claims)
 {
-	const bool equipment = snapshot.components & PLAYER_COMPONENT_EQUIPMENT;
-	const bool inventory = snapshot.components & PLAYER_COMPONENT_INVENTORY;
 	const item_owner_identity owner = { item_owner_type::player,
 					    static_cast<uint64_t>(snapshot.pid), 0 };
 	std::vector<player_item_snapshot> written;
 	query_result result = claim_graph(connection, owner, snapshot.items, claims, &written);
 	if (!result.ok)
 		return result;
-	std::string deletion = "DELETE FROM player_items WHERE pid=" + std::to_string(snapshot.pid);
-	// Legacy journal records may carry only one half of the item graph.
-	if (equipment != inventory)
-		deletion += equipment ? " AND equip_slot>0" : " AND equip_slot=0";
-	result = execute(connection, deletion);
+	// A save carries the whole item graph: the pipeline marks equipment and inventory together.
+	result = execute(connection,
+			 "DELETE FROM player_items WHERE pid=" + std::to_string(snapshot.pid));
 	if (!result.ok)
 		return result;
 	return insert_item_rows(connection, written, std::to_string(snapshot.pid),
