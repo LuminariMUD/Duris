@@ -205,10 +205,6 @@ bool sql_save_account(struct acct_entry *acc)
 {
 	return false;
 }
-bool sql_delete_locker_by_name(const char *locker_name)
-{
-	return false;
-}
 
 char *sql_escape_string(const char *str)
 {
@@ -224,14 +220,6 @@ bool sql_load_all_corpses(void)
 bool sql_save_shopkeeper(P_char ch, int shop_nr)
 {
 	return false;
-}
-bool sql_delete_shopkeeper(int shop_nr)
-{
-	return false;
-}
-P_char sql_restore_shopkeeper(int shop_nr)
-{
-	return NULL;
 }
 bool sql_restore_shopkeepers(void)
 {
@@ -276,41 +264,6 @@ Guild *sql_load_guild(unsigned int guild_id)
 	return NULL;
 }
 bool sql_load_all_guilds(void)
-{
-	return false;
-}
-bool sql_delete_guild(unsigned int guild_id)
-{
-	return false;
-}
-
-bool sql_account_bank_deposit_balances(const char *account_name, int racewar,
-				       const AccountBankBalances *amounts,
-				       AccountBankBalances *committed)
-{
-	if (committed)
-		*committed = {};
-	return false;
-}
-long long sql_account_bank_deposit(const char *account_name, int racewar, int coin_type, int amount)
-{
-	return -1;
-}
-long long sql_account_bank_withdraw(const char *account_name, int racewar, int coin_type,
-				    int amount)
-{
-	return -1;
-}
-int sql_account_bank_withdraw_value(const char *account_name, int racewar, int amount,
-				    AccountBankBalances *committed, int *change)
-{
-	if (committed)
-		*committed = {};
-	if (change)
-		*change = 0;
-	return -1;
-}
-bool sql_ensure_account_bank(const char *account_name, int racewar)
 {
 	return false;
 }
@@ -404,18 +357,6 @@ int *sql_get_spellbook_mobs(int pid, int *count)
 	std::copy(mobs.begin(), mobs.end(), result);
 	*count = static_cast<int>(mobs.size());
 	return result;
-}
-bool sql_delete_spellbook_mobs(int pid)
-{
-	const char *root = persistence_mode_flatfile_root();
-	std::string error;
-	const auto result = root ? flatfile_spellbook_clear(root, pid, &error) :
-				   flatfile_spellbook_result::invalid;
-	if (result == flatfile_spellbook_result::ok)
-		return true;
-	persistence_alert(AVATAR, "spellbooks", "redacted", "none", "none", "clear",
-			  "flat_write_failed", "pid=%d error=%s", pid, error.c_str());
-	return false;
 }
 
 #pragma GCC diagnostic pop
@@ -717,19 +658,6 @@ static void sql_load_item_extra_descr_values(const char *db_keyword, const char 
 
 	ed->keyword = db_keyword ? str_dup(db_keyword) : str_dup("");
 	ed->description = db_description ? str_dup(db_description) : NULL;
-}
-
-// for forked child process - needs its own db connection
-MYSQL *sql_create_child_connection(void)
-{
-	return sql_open_configured_connection(CLIENT_MULTI_STATEMENTS);
-}
-
-// child swaps in its own connection after fork
-void sql_reset_for_child(MYSQL *child_conn)
-{
-	DB = child_conn;
-	in_transaction = false;
 }
 
 // player existence check
@@ -2125,22 +2053,6 @@ std::string sql_delete_locker_statement(int owner_pid, int owner_assoc_id)
 	return {};
 }
 
-bool sql_delete_locker_by_name(const char *locker_name)
-{
-	if (!DB || !locker_name)
-		return false;
-
-	char *esc_name = sql_escape_string(locker_name);
-	if (!esc_name)
-		return false;
-
-	char query[256];
-	snprintf(query, sizeof(query), "DELETE FROM lockers WHERE locker_name='%s'", esc_name);
-	free(esc_name);
-
-	return sql_run_query(query);
-}
-
 // ============================================================================
 // private chest functions
 // ============================================================================
@@ -2912,16 +2824,6 @@ bool sql_save_shopkeeper(P_char ch, int shop_nr)
 		[shop]() { return shopkeeper_snapshot_repository_apply_from_pool(shop); });
 	return submitted == player_save_submit_result::accepted ||
 	       submitted == player_save_submit_result::replaced;
-}
-
-bool sql_delete_shopkeeper(int shop_nr)
-{
-	if (!DB || shop_nr < 0)
-		return false;
-
-	char query[128];
-	snprintf(query, sizeof(query), "DELETE FROM shopkeepers WHERE shop_id=%d", shop_nr);
-	return sql_run_query(query);
 }
 
 static bool sql_save_saved_item_affects(int item_id, P_obj obj)
@@ -3711,14 +3613,6 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored)
 bool sql_restore_shopkeepers(void)
 {
 	return sql_restore_shopkeeper_catalog(-1, nullptr);
-}
-
-P_char sql_restore_shopkeeper(int shop_nr)
-{
-	if (shop_nr < 0 || shop_nr >= number_of_shops)
-		return nullptr;
-	P_char restored = nullptr;
-	return sql_restore_shopkeeper_catalog(shop_nr, &restored) ? restored : nullptr;
 }
 
 bool sql_save_dirty_shopkeepers(bool force)
@@ -4959,16 +4853,6 @@ bool sql_load_all_guilds()
 	return true;
 }
 
-bool sql_delete_guild(unsigned int guild_id)
-{
-	if (!DB || guild_id == 0)
-		return false;
-
-	char query[128];
-	snprintf(query, sizeof(query), "delete from guilds where id=%u", guild_id);
-	return sql_run_query(query);
-}
-
 // ============================================================================
 // spellbook (conjurable mobs) functions
 // ============================================================================
@@ -5031,371 +4915,6 @@ int *sql_get_spellbook_mobs(int pid, int *count)
 	return mobs;
 }
 
-bool sql_delete_spellbook_mobs(int pid)
-{
-	if (!DB || pid <= 0)
-		return false;
-
-	char query[128];
-	snprintf(query, sizeof(query), "delete from player_spellbooks where pid=%d", pid);
-	return sql_run_query(query);
-}
-
 // account bank
-
-bool sql_ensure_account_bank(const char *account_name, int racewar)
-{
-	if (!DB || !account_name || !*account_name)
-		return false;
-
-	char *esc_name = sql_escape_string(account_name);
-	if (!esc_name)
-		return false;
-
-	char query[768];
-	snprintf(query, sizeof(query),
-		 "insert ignore into account_banks (account_name, racewar) values ('%s', %d)",
-		 esc_name, racewar);
-	if (!sql_run_query(query))
-	{
-		free(esc_name);
-		return false;
-	}
-	snprintf(
-		query, sizeof(query),
-		"insert ignore into currency_bank_baseline(bank_id,opening_copper,opening_silver,"
-		"opening_gold,opening_platinum,opening_revision) select id,bank_copper,bank_silver,"
-		"bank_gold,bank_platinum,bank_revision from account_banks where account_name='%s' "
-		"and racewar=%d",
-		esc_name, racewar);
-	free(esc_name);
-	return sql_run_query(query);
-}
-
-static bool sql_parse_account_bank_balance(const char *value, int *balance);
-
-static bool sql_parse_account_bank_balance(const char *value, int *balance)
-{
-	if (!value || !balance || !*value)
-		return false;
-
-	errno = 0;
-	char *end = NULL;
-	long long parsed = strtoll(value, &end, 10);
-	if (errno == ERANGE || end == value || *end != '\0' || parsed < 0 || parsed > INT_MAX)
-		return false;
-
-	*balance = (int)parsed;
-	return true;
-}
-
-static bool sql_read_account_bank_balances(const char *escaped_name, int racewar, bool lock_row,
-					   AccountBankBalances *balances)
-{
-	if (!escaped_name || !balances)
-		return false;
-
-	char query[512];
-	snprintf(query, sizeof(query),
-		 "select bank_copper, bank_silver, bank_gold, bank_platinum "
-		 "from account_banks where account_name='%s' and racewar=%d%s",
-		 escaped_name, racewar, lock_row ? " for update" : "");
-
-	MYSQL_RES *result = db_query("%s", query);
-	if (!result)
-		return false;
-
-	MYSQL_ROW row = mysql_fetch_row(result);
-	AccountBankBalances parsed = {};
-	bool valid = row && sql_parse_account_bank_balance(row[0], &parsed.copper) &&
-		     sql_parse_account_bank_balance(row[1], &parsed.silver) &&
-		     sql_parse_account_bank_balance(row[2], &parsed.gold) &&
-		     sql_parse_account_bank_balance(row[3], &parsed.platinum);
-	mysql_free_result(result);
-	if (!valid)
-		return false;
-
-	*balances = parsed;
-	return true;
-}
-
-static const char *sql_account_bank_coin_column(int coin_type)
-{
-	switch (coin_type)
-	{
-	case 0:
-		return "bank_copper";
-	case 1:
-		return "bank_silver";
-	case 2:
-		return "bank_gold";
-	case 3:
-		return "bank_platinum";
-	default:
-		return NULL;
-	}
-}
-
-static int sql_account_bank_selected_balance(const AccountBankBalances &balances, int coin_type)
-{
-	switch (coin_type)
-	{
-	case 0:
-		return balances.copper;
-	case 1:
-		return balances.silver;
-	case 2:
-		return balances.gold;
-	case 3:
-		return balances.platinum;
-	default:
-		return -1;
-	}
-}
-
-static void sql_account_bank_rollback(void)
-{
-	if (sql_in_transaction())
-		sql_rollback();
-}
-
-bool sql_account_bank_deposit_balances(const char *account_name, int racewar,
-				       const AccountBankBalances *amounts,
-				       AccountBankBalances *committed)
-{
-	if (committed)
-		*committed = {};
-	if (!DB || !account_name || !*account_name || !amounts || !committed ||
-	    amounts->copper < 0 || amounts->silver < 0 || amounts->gold < 0 ||
-	    amounts->platinum < 0 ||
-	    (amounts->copper == 0 && amounts->silver == 0 && amounts->gold == 0 &&
-	     amounts->platinum == 0) ||
-	    sql_in_transaction())
-		return false;
-
-	char *esc_name = sql_escape_string(account_name);
-	if (!esc_name)
-		return false;
-
-	if (!sql_begin_transaction())
-	{
-		free(esc_name);
-		return false;
-	}
-	if (!sql_ensure_account_bank(account_name, racewar))
-	{
-		free(esc_name);
-		sql_account_bank_rollback();
-		return false;
-	}
-
-	char query[512];
-	snprintf(query, sizeof(query),
-		 "update account_banks set bank_copper=bank_copper+%d, "
-		 "bank_silver=bank_silver+%d, bank_gold=bank_gold+%d, "
-		 "bank_platinum=bank_platinum+%d where account_name='%s' and racewar=%d",
-		 amounts->copper, amounts->silver, amounts->gold, amounts->platinum, esc_name,
-		 racewar);
-	if (!sql_run_query(query) || mysql_affected_rows(DB) != 1)
-	{
-		free(esc_name);
-		sql_account_bank_rollback();
-		return false;
-	}
-
-	AccountBankBalances result = {};
-	bool read_ok = sql_read_account_bank_balances(esc_name, racewar, false, &result);
-	free(esc_name);
-	if (!read_ok || !sql_commit())
-	{
-		sql_account_bank_rollback();
-		return false;
-	}
-
-	*committed = result;
-	return true;
-}
-
-long long sql_account_bank_deposit(const char *account_name, int racewar, int coin_type, int amount)
-{
-	if (!sql_account_bank_coin_column(coin_type) || amount <= 0)
-		return -1;
-
-	AccountBankBalances amounts = {};
-	switch (coin_type)
-	{
-	case 0:
-		amounts.copper = amount;
-		break;
-	case 1:
-		amounts.silver = amount;
-		break;
-	case 2:
-		amounts.gold = amount;
-		break;
-	case 3:
-		amounts.platinum = amount;
-		break;
-	default:
-		return -1;
-	}
-
-	AccountBankBalances committed = {};
-	if (!sql_account_bank_deposit_balances(account_name, racewar, &amounts, &committed))
-		return -1;
-	return sql_account_bank_selected_balance(committed, coin_type);
-}
-
-long long sql_account_bank_withdraw(const char *account_name, int racewar, int coin_type,
-				    int amount)
-{
-	const char *coin_col = sql_account_bank_coin_column(coin_type);
-	if (!DB || !account_name || !*account_name || !coin_col || amount <= 0 ||
-	    sql_in_transaction())
-		return -1;
-
-	char *esc_name = sql_escape_string(account_name);
-	if (!esc_name)
-		return -1;
-	if (!sql_begin_transaction())
-	{
-		free(esc_name);
-		return -1;
-	}
-	if (!sql_ensure_account_bank(account_name, racewar))
-	{
-		free(esc_name);
-		sql_account_bank_rollback();
-		return -1;
-	}
-
-	char query[512];
-	snprintf(
-		query, sizeof(query),
-		"update account_banks set %s = %s - %d where account_name='%s' and racewar=%d and %s >= %d",
-		coin_col, coin_col, amount, esc_name, racewar, coin_col, amount);
-
-	if (!sql_run_query(query))
-	{
-		free(esc_name);
-		sql_account_bank_rollback();
-		return -1;
-	}
-	if (mysql_affected_rows(DB) != 1)
-	{
-		AccountBankBalances current = {};
-		bool row_exists = sql_read_account_bank_balances(esc_name, racewar, true, &current);
-		free(esc_name);
-		sql_account_bank_rollback();
-		return row_exists ? -2 : -1;
-	}
-
-	AccountBankBalances result = {};
-	bool read_ok = sql_read_account_bank_balances(esc_name, racewar, false, &result);
-	free(esc_name);
-	if (!read_ok || !sql_commit())
-	{
-		sql_account_bank_rollback();
-		return -1;
-	}
-
-	return sql_account_bank_selected_balance(result, coin_type);
-}
-
-int sql_account_bank_withdraw_value(const char *account_name, int racewar, int amount,
-				    AccountBankBalances *committed, int *change)
-{
-	if (committed)
-		*committed = {};
-	if (change)
-		*change = 0;
-	if (!DB || !account_name || !*account_name || amount <= 0 || !committed || !change ||
-	    sql_in_transaction())
-		return -1;
-
-	char *esc_name = sql_escape_string(account_name);
-	if (!esc_name)
-		return -1;
-	if (!sql_begin_transaction())
-	{
-		free(esc_name);
-		return -1;
-	}
-	if (!sql_ensure_account_bank(account_name, racewar))
-	{
-		free(esc_name);
-		sql_account_bank_rollback();
-		return -1;
-	}
-
-	AccountBankBalances current = {};
-	if (!sql_read_account_bank_balances(esc_name, racewar, true, &current))
-	{
-		free(esc_name);
-		sql_account_bank_rollback();
-		return -1;
-	}
-
-	long long total = current.copper + (long long)current.silver * 10 +
-			  (long long)current.gold * 100 + (long long)current.platinum * 1000;
-	if (total < amount)
-	{
-		free(esc_name);
-		sql_account_bank_rollback();
-		return -2;
-	}
-
-	int remaining = amount;
-	AccountBankBalances used = {};
-	used.copper = current.copper < remaining ? current.copper : remaining;
-	remaining -= used.copper;
-	if (remaining > 0)
-	{
-		long long needed = (remaining + 9LL) / 10;
-		used.silver = current.silver < needed ? current.silver : (int)needed;
-		remaining -= used.silver * 10;
-	}
-	if (remaining > 0)
-	{
-		long long needed = (remaining + 99LL) / 100;
-		used.gold = current.gold < needed ? current.gold : (int)needed;
-		remaining -= used.gold * 100;
-	}
-	if (remaining > 0)
-	{
-		long long needed = (remaining + 999LL) / 1000;
-		used.platinum = current.platinum < needed ? current.platinum : (int)needed;
-		remaining -= used.platinum * 1000;
-	}
-
-	char query[768];
-	snprintf(query, sizeof(query),
-		 "update account_banks set bank_copper=bank_copper-%d, "
-		 "bank_silver=bank_silver-%d, bank_gold=bank_gold-%d, "
-		 "bank_platinum=bank_platinum-%d where account_name='%s' and racewar=%d "
-		 "and bank_copper >= %d and bank_silver >= %d and bank_gold >= %d and "
-		 "bank_platinum >= %d",
-		 used.copper, used.silver, used.gold, used.platinum, esc_name, racewar, used.copper,
-		 used.silver, used.gold, used.platinum);
-	if (!sql_run_query(query) || mysql_affected_rows(DB) != 1)
-	{
-		free(esc_name);
-		sql_account_bank_rollback();
-		return -1;
-	}
-
-	AccountBankBalances result = {};
-	bool read_ok = sql_read_account_bank_balances(esc_name, racewar, false, &result);
-	free(esc_name);
-	if (!read_ok || !sql_commit())
-	{
-		sql_account_bank_rollback();
-		return -1;
-	}
-
-	*committed = result;
-	*change = -remaining;
-	return 0;
-}
 
 #endif // __NO_MYSQL__

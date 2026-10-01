@@ -436,17 +436,6 @@ bool persist_outpost_owner(Building *building, P_Guild owner)
 	return save_outpost_record(record, "owner");
 }
 
-int get_outpost_resources(Building *building, int type)
-{
-	runtime_outpost_record record;
-	if (!building || !load_outpost_record(building->get_id() - 1, &record))
-	{
-		debug("get_outpost_resources() can't read persistence authority");
-		return FALSE;
-	}
-	return get_guild_resources(record.owner_id, type);
-}
-
 int get_outpost_golems(Building *building)
 {
 	runtime_outpost_record record;
@@ -478,53 +467,6 @@ int get_outpost_meurtriere(Building *building)
 		return FALSE;
 	}
 	return record.meurtriere;
-}
-
-int get_guild_resources(int id, int type)
-{
-	if ((type != WOOD) && (type != STONE))
-	{
-		debug("get_guild_resources() passed invalid type %d", type);
-		return FALSE;
-	}
-	if (!id)
-	{
-		debug("get_guild_resources() passed invalid guild id %d", id);
-		return FALSE;
-	}
-
-#ifdef __NO_MYSQL__
-	// The resource-harvest feature that used these legacy association fields is disabled.
-	return 0;
-#else
-	if (!qry("SELECT id, wood, stone FROM associations WHERE id = %d", id))
-	{
-		// WHY IS THIS FAILING?
-		debug("get_guild_resources() cant read from db");
-		return FALSE;
-	}
-
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (!res)
-	{
-		logit(LOG_DEBUG, "%s: mysql_store_result failed", __func__);
-		return FALSE;
-	}
-
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		return FALSE;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-
-	int resources = atoi(row[type]);
-
-	mysql_free_result(res);
-
-	return resources;
-#endif
 }
 
 void set_current_outpost_hitpoints(Building *building)
@@ -1134,47 +1076,6 @@ P_Guild get_killing_association(P_char ch)
 	}
 
 	return killer;
-}
-
-// Add resources to a player's guild's current resource pool
-void outpost_update_resources(P_char ch, int wood, int stone)
-{
-#ifdef __NO_MYSQL__
-	(void)ch;
-	(void)wood;
-	(void)stone;
-	// Resource harvesting is disabled in the live outpost rubble path.
-	return;
-#else
-	if (!qry("SELECT id, wood, stone FROM associations WHERE id = %d", GET_ASSOC(ch)))
-	{
-		debug("outpost_update_resources() cant read from db");
-		return;
-	}
-
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (!res)
-	{
-		logit(LOG_DEBUG, "%s: mysql_store_result failed", __func__);
-		return;
-	}
-
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		return;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-
-	int cur_wood = atoi(row[1]);
-	int cur_stone = atoi(row[2]);
-
-	mysql_free_result(res);
-
-	db_query("UPDATE associations SET wood='%d', stone='%d' WHERE id='%d'",
-		 (int)(wood + cur_wood), (int)(stone + cur_stone), GET_ASSOC(ch));
-#endif
 }
 
 void update_outpost_golems(Building *building, int amount)

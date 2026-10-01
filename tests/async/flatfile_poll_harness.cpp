@@ -107,11 +107,6 @@ int main(int argc, char **argv)
 	poll_data expired = make_poll("Already expired?", false, now - 7200, now - 3600);
 	require(poll_create(&expired), "expired poll fixture create failed");
 	require(poll_get_all(true).size() == 2, "expired poll appeared in the active list");
-	require(poll_get_by_id(expired.id).is_active,
-		"expiration fixture was closed before maintenance");
-	poll_check_expirations();
-	require(!poll_get_by_id(expired.id).is_active,
-		"expiration maintenance did not durably close the poll");
 
 	const fs::path record = metadata / "polls";
 	require(fs::is_regular_file(record), "poll authority record was not created");

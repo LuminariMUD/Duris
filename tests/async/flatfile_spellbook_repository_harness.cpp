@@ -116,14 +116,10 @@ int main(int argc, char **argv)
 				flatfile_authority_transaction_result::ok,
 			"prepared spellbook clear did not commit: " + error);
 	}
-	require(flatfile_spellbook_clear(root.string(), 42, &error) ==
-				flatfile_spellbook_result::ok &&
-			flatfile_spellbook_clear(root.string(), 42, &error) ==
-				flatfile_spellbook_result::ok &&
-			flatfile_spellbook_list(root.string(), 42, &mobs, &error) ==
+	require(flatfile_spellbook_list(root.string(), 42, &mobs, &error) ==
 				flatfile_spellbook_result::ok &&
 			mobs.empty(),
-		"prepared spellbook clear was not durable and idempotent");
+		"prepared spellbook clear was not durable");
 	std::vector<flatfile_spellbook_record> conflict = { { 43, { 901 } } };
 	require(flatfile_spellbook_establish(root.string(), conflict, &error) ==
 			flatfile_spellbook_result::invalid,

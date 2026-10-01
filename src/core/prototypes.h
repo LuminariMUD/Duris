@@ -122,7 +122,6 @@ const char *get_account_name_safe(P_char);
 
 /* poll.c */
 void do_poll(P_char, char *, int);
-void poll_check_expirations(void);
 bool poll_wizard_active(P_char);
 void poll_wizard_cancel(P_char);
 
@@ -1121,11 +1120,8 @@ bool can_hit_target(P_char, P_char);
 void moveToBackup(char *name);
 int writeCharacter(P_char, int, int);
 void restore_houses();
-int register_ship(int);
-int ship_registered(int);
 bool writeObjectlist(P_obj, int);
 char *getString(char **);
-int confiscate_item(P_char, int);
 int convert_stat(int);
 int countEquip(P_char);
 int countInven(P_obj);
@@ -1141,24 +1137,17 @@ enum class character_delete_result
 // game before done runs.
 void delete_character(P_char ch, bool delete_locker = true,
 		      std::function<void(character_delete_result)> done = {});
-int deletePet(char *);
-int deleteShopKeeper(int);
 P_obj read_one_object(char *);
 int restoreAffects(char *, P_char);
 int restoreCharOnly(P_char, char *);
-P_char restorePet(char *);
-P_char restoreShopKeeper(int);
 int restoreItemsOnly(P_char, int);
 P_obj restoreObjects(char *, P_char, int);
 int restoreSkills(char *, P_char, int);
 int restoreStatus(char *, P_char);
-int restorePetStatus(char *, P_char);
 int restoreWitnessed(char *, P_char);
 void updateShortAffects(P_char ch);
 int writeAffects(char *, struct affected_type *);
 int writeItems(char *, P_char);
-int writeSkills(char *, P_char, int);
-int writeStatus(char *, P_char, bool);
 int writePetStatus(char *, P_char);
 uint getInt(char **);
 long getLong(char **);
@@ -1166,7 +1155,6 @@ unsigned long long getUnsignedLongLong(char **);
 ulong ObjUniqueFlags(P_obj, P_obj);
 ush_int getShort(char **);
 void PurgeCorpseFile(P_obj);
-void confiscate_all(P_char);
 // void recalc_base_hits(P_char);
 void restoreCorpses(void);
 void writeCorpse(P_obj);
@@ -3037,10 +3025,6 @@ int STAT_INDEX_DAMAGE_PULSE(float);
 int STAT_INDEX_SPELL_PULSE(float);
 int SUB_MONEY(P_char, int, int);
 int SUB_BALANCE(P_char, int, int);
-void publish_account_bank_balance(const char *account_name, int racewar, int coin_type,
-				  int balance);
-void publish_account_bank_balances(const char *account_name, int racewar,
-				   const AccountBankBalances *balances);
 void publish_account_bank_balances_revision(const char *account_name, int racewar,
 					    const AccountBankBalances *balances,
 					    uint64_t bank_revision);
@@ -3136,8 +3120,6 @@ bool is_pid_online(int pid, bool includeLD);
 bool has_touch_stone(P_char ch);
 P_desc get_descriptor_from_name(char *name);
 
-/* statistcs.c */
-void event_write_statistic(P_char ch, P_char victim, P_obj obj, void *data);
 // void write_statistic(void);
 void do_statistic(P_char, char *, int);
 

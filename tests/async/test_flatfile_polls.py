@@ -43,7 +43,6 @@ assert "Database not available" not in websocket_source
 assert "return record_flat_poll_votes(acct_name, char_name, poll_id, choices);" in poll_source
 assert "return create_flat_poll(poll);" in poll_source
 assert "close_flat_poll(poll_id);" in poll_source
-assert "expire_flat_polls();" in poll_source
 
 preprocessed = subprocess.run(
     [

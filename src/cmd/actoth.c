@@ -2316,10 +2316,6 @@ void do_save(P_char ch, char *argument, int /*cmd*/)
 	{
 		send_to_char("Manual log disabled.\r\n", ch);
 		return;
-		send_to_char("Saving your log...\r\n", ch);
-		manual_log(ch);
-		CharWait(ch, 20);
-		return;
 	}
 
 	if (IS_HARDCORE(ch) && hardcore_config_get()->death_hall_of_fame)

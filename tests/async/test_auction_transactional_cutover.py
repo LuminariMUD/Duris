@@ -102,11 +102,11 @@ class AuctionTransactionalCutoverTests(unittest.TestCase):
         source = (SRC / "auction_houses.c").read_text()
         source = source[source.index("#else", source.index("#ifdef __NO_MYSQL__")) :]
         routes = {
-            "bool auction_offer(P_char": "bool auction_offer_legacy",
-            "bool auction_bid(P_char": "bool auction_bid_legacy",
-            "static void auction_pickup_claim(P_char": "bool auction_pickup_legacy",
-            "bool auction_remove(P_char": "bool auction_remove_legacy",
-            "bool finalize_auction(int": "bool finalize_auction_legacy",
+            "bool auction_offer(P_char": "static void auction_list_row(",
+            "bool auction_bid(P_char": "static void auction_pickup_claim(",
+            "static void auction_pickup_claim(P_char": "bool auction_help(",
+            "bool auction_remove(P_char": "// syntax: auction bid",
+            "bool finalize_auction(int": "bool insert_money_pickup(",
         }
         for start, end in routes.items():
             body = section(source, start, end)
@@ -142,7 +142,7 @@ class AuctionTransactionalCutoverTests(unittest.TestCase):
         routes = {
             "static void auction_publish_event(": "// syntax: auction offer",
             "static void auction_list_row(P_char": "// syntax: auction remove",
-            "static void auction_pickup_claim(P_char": "bool auction_pickup_legacy",
+            "static void auction_pickup_claim(P_char": "bool auction_help(",
             "// syntax: auction resort": "namespace\n{\nbool auction_copy_text",
             "bool insert_money_pickup(int": "string format_time(",
         }
@@ -157,7 +157,7 @@ class AuctionTransactionalCutoverTests(unittest.TestCase):
         self.assertIn("sql_read_for(", section(source, "bool auction_info(P_char",
                                                "// syntax: auction remove"))
         self.assertIn("sql_read_work_for(", section(source, "bool auction_pickup(P_char",
-                                                    "bool auction_pickup_legacy"))
+                                                    "bool auction_help("))
         self.assertIn("sql_queue_statements(", section(source, "// syntax: auction resort",
                                                        "namespace\n{\nbool auction_copy_text"))
         self.assertIn("sql_queue(", section(source, "bool insert_money_pickup(int",

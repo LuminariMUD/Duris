@@ -105,12 +105,8 @@ for database_call in (
     if database_call not in source:
         raise SystemExit(f"MariaDB nexus behavior was removed: {database_call}")
 # Step 8: MariaDB reads the rows once at boot (nexus_rows) and answers from them; its
-# updates change them at once and are queued on the writer. Only the boot load queries
-# (and the stat modifiers, which return before theirs).
+# updates change them at once and are queued on the writer. Only the boot load queries.
 runtime = source[source.index("bool nexus_stone_info("):]
-stat_mods = runtime[runtime.index("void update_nexus_stat_mods()"):
-                    runtime.index("int update_nexus_stone_align(")]
-runtime = runtime.replace(stat_mods, "")
 for forbidden in ("qry(", "mysql_store_result", "db_query"):
     if forbidden in runtime:
         raise SystemExit(f"MariaDB nexus runtime still queries the game loop: {forbidden}")

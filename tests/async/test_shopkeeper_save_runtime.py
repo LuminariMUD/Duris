@@ -15,7 +15,8 @@ baseline = "--baseline" in sys.argv
 sql = (subprocess.check_output(["git", "show", "440248b17:src/sql/sql_player.c"], cwd=ROOT, text=True)
        if baseline else (ROOT / "src/sql/sql_player.c").read_text())
 save_start = sql.rindex("bool sql_save_shopkeeper(P_char ch, int shop_nr)")
-save = sql[save_start:sql.index("bool sql_delete_shopkeeper", save_start)]
+save_end = "bool sql_delete_shopkeeper" if baseline else "static bool sql_save_saved_item_affects"
+save = sql[save_start:sql.index(save_end, save_start)]
 flush_marker = "void sql_save_dirty_shopkeepers(" if baseline else "bool sql_save_dirty_shopkeepers("
 flush_start = sql.index(flush_marker) if baseline else sql.rindex(flush_marker)
 flush = sql[flush_start:sql.index("static P_obj sql_load_saved_item_contents", flush_start)]
@@ -25,7 +26,8 @@ files = (subprocess.check_output(["git", "show", "440248b17:src/core/files.c"], 
 direct_start = files.index("int writeShopKeeper(P_char ch)") if baseline else files.index(
     "int writeShopKeeper(P_char ch, int shop_nr)"
 )
-direct = files[direct_start:files.index("int deleteShopKeeper(", direct_start)]
+direct_end = "int deleteShopKeeper(" if baseline else "void restore_shopkeepers("
+direct = files[direct_start:files.index(direct_end, direct_start)]
 preamble = r'''
 #include "economy/shopkeeper_save_policy.h"
 #include <cassert>

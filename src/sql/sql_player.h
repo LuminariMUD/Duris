@@ -31,11 +31,6 @@ bool sql_in_transaction(void);
 #ifndef __NO_MYSQL__
 #include <mysql.h>
 
-// for forked child - create separate db connection
-MYSQL *sql_create_child_connection(void);
-
-// child swaps globals after fork
-void sql_reset_for_child(MYSQL *child_conn);
 #endif
 
 // ============================================================================
@@ -115,7 +110,6 @@ bool sql_delete_account(const char *name, std::function<void(bool deleted)> done
 
 // delete locker
 std::string sql_delete_locker_statement(int owner_pid, int owner_assoc_id);
-bool sql_delete_locker_by_name(const char *locker_name);
 
 // private chest functions
 // private_chest_log action_type values
@@ -142,17 +136,6 @@ struct AccountBankBalances
 	int platinum;
 };
 
-long long sql_account_bank_deposit(const char *account_name, int racewar, int coin_type,
-				   int amount);
-bool sql_account_bank_deposit_balances(const char *account_name, int racewar,
-				       const AccountBankBalances *amounts,
-				       AccountBankBalances *committed);
-long long sql_account_bank_withdraw(const char *account_name, int racewar, int coin_type,
-				    int amount);
-int sql_account_bank_withdraw_value(const char *account_name, int racewar, int amount,
-				    AccountBankBalances *committed, int *change);
-bool sql_ensure_account_bank(const char *account_name, int racewar);
-
 // ============================================================================
 // utility
 // ============================================================================
@@ -169,8 +152,6 @@ bool sql_load_all_corpses(void);
 
 // shopkeepers
 bool sql_save_shopkeeper(P_char ch, int shop_nr);
-bool sql_delete_shopkeeper(int shop_nr);
-P_char sql_restore_shopkeeper(int shop_nr);
 bool sql_restore_shopkeepers(void);
 bool sql_save_dirty_shopkeepers(bool force = false);
 
@@ -192,7 +173,6 @@ bool sql_save_guild(Guild *guild);
 std::vector<std::string> sql_save_guild_statements(Guild *guild);
 Guild *sql_load_guild(unsigned int guild_id);
 bool sql_load_all_guilds(void);
-bool sql_delete_guild(unsigned int guild_id);
 
 // spellbooks (conjurable mobs); on MariaDB read at boot and kept in memory
 bool sql_spellbooks_load(void);
@@ -200,6 +180,5 @@ bool sql_add_spellbook_mob(int pid, int mob_vnum);
 bool sql_remove_spellbook_mob(int pid, int mob_vnum);
 bool sql_has_spellbook_mob(int pid, int mob_vnum);
 int *sql_get_spellbook_mobs(int pid, int *count);
-bool sql_delete_spellbook_mobs(int pid);
 
 #endif // __SQL_PLAYER_H_INCLUDED__

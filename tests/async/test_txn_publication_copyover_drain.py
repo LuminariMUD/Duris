@@ -27,13 +27,13 @@ assert "writeCharacter" not in locker_save
 # live objects. Durable database mutation, inbox/result, and outbox publication
 # share one coordinator-owned transaction.
 offer_start = auction.rindex("bool auction_offer(")
-offer = auction[offer_start : auction.index("bool auction_offer_legacy(", offer_start)]
+offer = auction[offer_start : auction.index("static void auction_list_row(", offer_start)]
 assert "payload.action = auction_action::list" in offer
 assert "auction_transaction_submit" in offer
 assert "obj_from_char" not in offer and "extract_obj" not in offer
 
 bid_start = auction.rindex("bool auction_bid(")
-bid = auction[bid_start : auction.index("bool auction_bid_legacy(", bid_start)]
+bid = auction[bid_start : auction.index("static void auction_pickup_claim(", bid_start)]
 assert "payload.action = auction_action::bid" in bid
 assert "auction_transaction_submit" in bid
 

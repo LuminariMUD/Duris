@@ -2102,51 +2102,6 @@ void ADD_MONEY(P_char ch, int amount)
 	gmcp_char_vitals(ch);
 }
 
-/* TOWARDS BANK MONEY
- * mode 0 = make change, return amount of change made
- * mode 1 = subtract extra, return extra amount subtracted
- * mode 2 = subtract as close as possible without going over, return amount short
- * modes 1 & 2 not supported yet
- */
-void publish_account_bank_balance(const char *account_name, int racewar, int coin_type, int balance)
-{
-	if (!account_name || !*account_name || balance < 0 || coin_type < 0 || coin_type > 3)
-		return;
-
-	for (P_desc desc = descriptor_list; desc; desc = desc->next)
-	{
-		P_char target = desc->original ? desc->original : desc->character;
-		if (desc->connected != CON_PLAYING || !target || IS_NPC(target) || !desc->account ||
-		    !desc->account->acct_name ||
-		    strcasecmp(desc->account->acct_name, account_name) ||
-		    GET_RACEWAR(target) != racewar)
-			continue;
-
-		switch (coin_type)
-		{
-		case 0:
-			GET_BALANCE_COPPER(target) = balance;
-			break;
-		case 1:
-			GET_BALANCE_SILVER(target) = balance;
-			break;
-		case 2:
-			GET_BALANCE_GOLD(target) = balance;
-			break;
-		case 3:
-			GET_BALANCE_PLATINUM(target) = balance;
-			break;
-		}
-		gmcp_char_vitals(target);
-	}
-}
-
-void publish_account_bank_balances(const char *account_name, int racewar,
-				   const AccountBankBalances *balances)
-{
-	publish_account_bank_balances_revision(account_name, racewar, balances, UINT64_MAX);
-}
-
 void publish_account_bank_balances_revision(const char *account_name, int racewar,
 					    const AccountBankBalances *balances,
 					    uint64_t bank_revision)

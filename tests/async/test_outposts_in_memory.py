@@ -28,10 +28,8 @@ assert len(saves) == 2, "each backend has its save"
 queued = saves[1]
 assert queued.index("sql_queue(") < queued.index("stored = record;"), queued
 
-# Outside the boot read, only the resource functions nothing calls still query.
+# Outside the boot read, nothing queries.
 rest = code.replace(strip_comments(load), "")
-for dead in ("get_guild_resources", "outpost_update_resources"):
-    rest = rest.replace(strip_comments(function_bodies(text, r"\b" + dead + r"\s*\([^;{]*\)")[0]), "")
 assert not QUERY.search(rest), QUERY.search(rest)
 assert "UPDATE outposts" not in strip_comments((SRC / "cmd/testcmd.c").read_text())
 assert "clear_outposts()" in (SRC / "cmd/testcmd.c").read_text()

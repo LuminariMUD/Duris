@@ -46,7 +46,7 @@ if "PERSISTENCE_MODE_FLATFILE_PRIMARY" not in db_sell or "flat_sql_shop_sell" no
     raise SystemExit("MySQL-capable flat-primary sale path still requires the database")
 
 db_trophy = sql_source[sql_source.index("int sql_shop_trophy(P_obj obj)", sql_source.index("#else")) :]
-db_trophy = db_trophy[: db_trophy.index("int sql_quest_finish")]
+db_trophy = db_trophy[: db_trophy.index("void do_sql(P_char ch")]
 if "PERSISTENCE_MODE_FLATFILE_PRIMARY" not in db_trophy or "flat_sql_shop_trophy" not in db_trophy:
     raise SystemExit("MySQL-capable flat-primary trophy lookup still requires the database")
 

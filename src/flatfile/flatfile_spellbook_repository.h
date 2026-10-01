@@ -37,8 +37,6 @@ flatfile_spellbook_result flatfile_spellbook_add(const std::string &root, uint32
 						 int32_t mob_vnum, std::string *error);
 flatfile_spellbook_result flatfile_spellbook_remove(const std::string &root, uint32_t pid,
 						    int32_t mob_vnum, std::string *error);
-flatfile_spellbook_result flatfile_spellbook_clear(const std::string &root, uint32_t pid,
-						   std::string *error);
 flatfile_spellbook_result flatfile_spellbook_prepare_clear(const std::string &root,
 							   const flatfile_authority_lock &lock,
 							   uint32_t pid,

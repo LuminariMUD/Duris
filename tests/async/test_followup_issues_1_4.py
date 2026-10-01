@@ -23,7 +23,7 @@ assert not contains(chest_body, "strcat(GBuf1, this->m_chestDescText);")
 # The active bid path must submit the typed command, whose MariaDB repository
 # reads mutable auction state under a row lock inside the coordinator transaction.
 bid_start = auction.rindex("bool auction_bid(")
-bid_end = auction.index("bool auction_bid_legacy(", bid_start)
+bid_end = auction.index("static void auction_pickup_claim(", bid_start)
 bid_body = auction[bid_start:bid_end]
 assert contains(bid_body, "payload.action = auction_action::bid")
 assert contains(bid_body, "auction_transaction_submit")

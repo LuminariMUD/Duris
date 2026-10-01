@@ -178,7 +178,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
 
     list_signature = "void list_artifacts_sql(P_char ch, int type, bool Godlist, bool allArtis)\n{"
     list_start = artifact_source.index(list_signature)
-    list_end = artifact_source.index("\nvoid arti_remove_sql(", list_start)
+    list_end = artifact_source.index("\nvoid setupMortArtiList_sql(", list_start)
     list_body = artifact_source[list_start:list_end]
     if "flatfile_artifact_list(" not in list_body:
         raise AssertionError("client-free artifact list bypasses flat authority")
@@ -227,11 +227,6 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
         raise AssertionError("client-free artifact syncdb bypasses saved item authority")
     if "flatfile_artifact_reconcile_players(" not in syncdb_body:
         raise AssertionError("client-free artifact syncdb bypasses artifact reconciliation")
-
-    remove_entry_start = artifact_source.index("void arti_remove_sql(int vnum, bool mortalToo)\n{")
-    remove_entry_end = artifact_source.index("\nvoid setupMortArtiList_sql(", remove_entry_start)
-    if "flatfile_artifact_erase(" not in artifact_source[remove_entry_start:remove_entry_end]:
-        raise AssertionError("client-free artifact removal bypasses catalog erase")
 
     clear_start = artifact_source.index("void arti_clear_sql(P_char ch, char *arg)\n{")
     clear_end = artifact_source.index("\nvoid arti_poof_sql(", clear_start)

@@ -19,7 +19,6 @@ for function, repository_call in (
     ("bool sql_remove_spellbook_mob", "flatfile_spellbook_remove"),
     ("bool sql_has_spellbook_mob", "flatfile_spellbook_contains"),
     ("int *sql_get_spellbook_mobs", "flatfile_spellbook_list"),
-    ("bool sql_delete_spellbook_mobs", "flatfile_spellbook_clear"),
 ):
     start = flat.index(function)
     end = flat.index("\n}", start)
@@ -51,7 +50,6 @@ for token in (
     "insert ignore into player_spellbooks",
     "delete from player_spellbooks where pid=%d and mob_vnum=%d",
     "select pid, mob_vnum from player_spellbooks",
-    "delete from player_spellbooks where pid=%d",
 ):
     if token not in normal:
         raise SystemExit(f"MariaDB spellbook behavior lost: {token}")

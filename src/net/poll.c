@@ -784,40 +784,6 @@ int record_flat_poll_votes(const char *account_name, const char *character_name,
 	return votes_cast;
 }
 
-void expire_flat_polls()
-{
-	flat_poll_lock lock;
-	string error;
-	if (!lock_flat_poll_catalog(&lock, &error))
-	{
-		log_flat_poll_error("expiration lock", error);
-		return;
-	}
-	flat_poll_catalog catalog;
-	const flat_poll_load_result loaded = load_flat_poll_catalog(&catalog, &error);
-	if (loaded == flat_poll_load_result::missing)
-		return;
-	if (loaded != flat_poll_load_result::ok)
-	{
-		log_flat_poll_error("expiration read", error);
-		return;
-	}
-	const time_t now = time(NULL);
-	bool changed = false;
-	for (poll_data &poll : catalog.polls)
-	{
-		if (poll.is_active && poll.expires_at < now)
-		{
-			poll.is_active = false;
-			changed = true;
-		}
-	}
-	if (!changed)
-		return;
-	++catalog.revision;
-	if (!save_flat_poll_catalog(catalog, &error))
-		log_flat_poll_error("expiration write", error);
-}
 } // namespace
 #endif
 
@@ -1190,17 +1156,6 @@ int poll_cast_vote(P_char ch, int poll_id, vector<int> &choices)
 	}
 
 	return votes_cast;
-}
-
-/* close expired polls */
-void poll_check_expirations(void)
-{
-#ifdef __NO_MYSQL__
-	expire_flat_polls();
-#else
-	qry("UPDATE polls SET is_active = 0 WHERE is_active = 1 AND expires_at < %ld",
-	    (long)time(NULL));
-#endif
 }
 
 /* record votes to db - shared by command and websocket */

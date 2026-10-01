@@ -167,8 +167,6 @@ void do_boon(P_char, char *, int);
 void boon_shop(P_char, char *);
 int boon_display(P_char, char *);
 int create_boon(struct BoonData *bd, P_char ch);
-int create_boon_progress(BoonProgress *bp);
-int create_boon_shop_entry(BoonShop *bs);
 int remove_boon(int);
 int extend_boon(int, int, const char *);
 void boon_notify(int, P_char, int);

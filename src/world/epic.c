@@ -1258,50 +1258,6 @@ void epic_publish_zone_touch(const zone_touch_result &result)
 	}
 }
 
-void epic_zone_balance()
-{
-	size_t i;
-	int alignment, delta;
-	long lt;
-	vector<epic_zone_data> epic_zones = get_epic_zones();
-
-	bool touch_last;
-
-	for (i = 0; i < epic_zones.size(); i++)
-	{
-		touch_last = false;
-		alignment = epic_zones[i].alignment;
-		lt = epic_zones[i].last_touch;
-
-		if (lt == 0)
-			touch_last = true;
-
-		if (alignment == 0)
-		{
-			if (touch_last)
-				db_query("UPDATE zones SET last_touch=NOW() WHERE number='%d'",
-					 epic_zones[i].number);
-			continue;
-		}
-
-		// debug("zone %d alignment %d", epic_zones[i].number, alignment);
-
-		if ((time(NULL) - lt) >
-		    ((int)get_property("epic.alignment.reset.hour", 7 * 24) * 60 * 60))
-		{
-			delta = alignment > 0 ? -1 : 1;
-
-			// debug("calling update_epic_zone_alignment");
-			touch_last = true;
-			update_epic_zone_alignment(epic_zones[i].number, delta);
-		}
-
-		if (touch_last)
-			db_query("UPDATE zones SET last_touch=NOW() WHERE number='%d'",
-				 epic_zones[i].number);
-	}
-}
-
 void epic_initialization()
 {
 	for (int i = 0; epic_teachers[i].vnum; i++)
@@ -1682,19 +1638,6 @@ void do_epic(P_char ch, char *arg, int cmd)
 		    },
 		    show_epic_players))
 		show_epic_players(ch, {});
-}
-
-void epic_zone_erase_touch(int zone_number)
-{
-	for (vector<epic_zone_completion>::iterator it = epic_zone_completions.begin();
-	     it != epic_zone_completions.end(); it++)
-	{
-		if (it->number == zone_number)
-		{
-			epic_zone_completions.erase(it);
-			break;
-		}
-	}
 }
 
 bool epic_zone_done_now(int zone_number)
@@ -2095,31 +2038,6 @@ void do_epic_trophy(P_char ch, char *arg, int /*cmd*/)
 		show(ch, {});
 }
 
-void update_epic_zone_alignment(int zone_number, int delta)
-{
-#ifdef __NO_MYSQL__
-	(void)zone_number;
-	(void)delta;
-	return;
-#else
-	// add alignment
-	qry("UPDATE zones SET alignment = alignment + (%d) WHERE number = %d AND epic_type > 0",
-	    delta, zone_number);
-
-	// if alignment delta resulted in 0, add one more so that it doesn't stay on 0
-	/* This is ruining the epic_zone_balance function causing it to go from good to evil instead of neutral.
-	  qry("UPDATE zones SET alignment = alignment + (%d) WHERE number = %d AND epic_type > 0 and alignment = 0", delta, zone_number);
-	 */
-	// min/max bounds on alignment
-	qry("UPDATE zones SET alignment = %d WHERE alignment > %d", EPIC_ZONE_ALIGNMENT_MAX,
-	    EPIC_ZONE_ALIGNMENT_MAX);
-	qry("UPDATE zones SET alignment = %d WHERE alignment < %d", EPIC_ZONE_ALIGNMENT_MIN,
-	    EPIC_ZONE_ALIGNMENT_MIN);
-
-	// debug("update_epic_zone_alignment(zone_number=%d, delta=%d)", zone_number, delta);
-#endif
-}
-
 // Should return a number 0.0 or greater. (0.0: no epics, 1.0: full epics, 2.0: double epics, etc).
 float get_epic_zone_alignment_mod(int zone_number, ubyte racewar)
 {
@@ -2159,82 +2077,6 @@ float get_epic_zone_alignment_mod(int zone_number, ubyte racewar)
 	      (int)racewar, mod);
 
 	return mod;
-}
-
-// called from timers.c
-void update_epic_zone_mods()
-{
-#ifdef __NO_MYSQL__
-	return;
-#else
-	int wait_secs = (int)get_property("epic.freqMod.tick.waitSecs", 3600);
-
-	if (!has_elapsed("epic_zone_mod", wait_secs))
-		return;
-
-	float add = (float)get_property("epic.freqMod.tick.add", 0.002);
-	float mod_max = (float)get_property("epic.freqMod.max", 2.00);
-	float mod_min = (float)get_property("epic.freqMod.min", 0.40);
-
-	qry("UPDATE zones SET frequency_mod = frequency_mod + (%f) WHERE epic_type > 0", add);
-	qry("UPDATE zones SET frequency_mod = %f WHERE frequency_mod > %f", mod_max, mod_max);
-	qry("UPDATE zones SET frequency_mod = %f WHERE frequency_mod < %f", mod_min, mod_min);
-
-	set_timer("epic_zone_mod");
-#endif
-}
-
-void update_epic_zone_frequency(int zone_number)
-{
-#ifdef __NO_MYSQL__
-	(void)zone_number;
-	return;
-#else
-	float sub = (float)get_property("epic.freqMod.touch.sub", 0.10);
-	float mod_min = (float)get_property("epic.freqMod.min", 0.40);
-
-	qry("UPDATE zones SET frequency_mod = frequency_mod - (%f * zone_freq_mod) WHERE number = %d AND epic_type > 0",
-	    sub, zone_number);
-	qry("UPDATE zones SET frequency_mod = %f WHERE frequency_mod < %f", mod_min, mod_min);
-
-	debug("update_epic_zone_frequency(zone_number=%d): -%f", zone_number, sub);
-#endif
-}
-
-float get_epic_zone_frequency_mod(int zone_number)
-{
-#ifdef __NO_MYSQL__
-	(void)zone_number;
-	return 1.0;
-#else
-
-	float mod = 1.0;
-
-	if (!qry("SELECT frequency_mod FROM zones WHERE number = %d", zone_number))
-		return mod;
-
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (!res)
-	{
-		logit(LOG_DEBUG, "%s: mysql_store_result failed", __func__);
-		return mod;
-	}
-
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		return mod;
-	}
-
-	MYSQL_ROW row = mysql_fetch_row(res);
-
-	if (row)
-		mod = atof(row[0]);
-
-	mysql_free_result(res);
-
-	return mod;
-#endif
 }
 
 vector<epic_zone_data> get_epic_zones()
