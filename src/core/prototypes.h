@@ -3060,6 +3060,8 @@ enum class persistence_severity
 	info,
 	alert
 };
+// The persistence log and the wizlog show the domain, action, outcome and a numeric detail.
+// Owner, item uid and event id are neither shown (they can name a player) nor grouped on.
 void persistence_report(persistence_severity severity, int level, const char *domain,
 			const char *owner, const char *item_uid, const char *event_id,
 			const char *action, const char *format, ...);

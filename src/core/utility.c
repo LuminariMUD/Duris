@@ -904,7 +904,7 @@ struct persistence_alert_rate_limit_decision
 struct persistence_alert_rate_limit_entry
 {
 	bool used = false;
-	char key[2048] = {};
+	char key[128] = {};
 	std::chrono::steady_clock::time_point next_allowed = {};
 	std::chrono::steady_clock::time_point suppressed_since = {};
 	unsigned int suppressed = 0;
@@ -912,29 +912,19 @@ struct persistence_alert_rate_limit_entry
 
 static std::mutex persistence_alert_rate_limit_mutex;
 
-static persistence_alert_rate_limit_decision
-persistence_alert_wizlog_decision(const char *domain, const char *owner, const char *item_uid,
-				  const char *event_id, const char *action, const char *alert)
+// Alerts of one domain and action share a 30-second window, whatever their detail: the
+// first reaches the wizlog, and the rest are counted and reported with the next one after.
+static persistence_alert_rate_limit_decision persistence_alert_wizlog_decision(const char *domain,
+									       const char *action)
 {
 	constexpr size_t slot_count = 256;
 	static persistence_alert_rate_limit_entry entries[slot_count] = {};
 	char safe_domain[64];
-	char safe_owner[64];
-	char safe_item_uid[64];
-	char safe_event_id[64];
 	char safe_action[64];
-	const char *domain_key =
-		persistence_alert_category(domain, safe_domain, sizeof(safe_domain));
-	const char *owner_key = persistence_alert_category(owner, safe_owner, sizeof(safe_owner));
-	const char *item_key =
-		persistence_alert_category(item_uid, safe_item_uid, sizeof(safe_item_uid));
-	const char *event_key =
-		persistence_alert_category(event_id, safe_event_id, sizeof(safe_event_id));
-	const char *action_key =
-		persistence_alert_category(action, safe_action, sizeof(safe_action));
-	char key[2048];
-	checked_snprintf(key, sizeof(key), "%s|%s|%s|%s|%s|%s", domain_key, owner_key, item_key,
-			 event_key, action_key, alert ? alert : "");
+	char key[sizeof(persistence_alert_rate_limit_entry::key)];
+	checked_snprintf(key, sizeof(key), "%s|%s",
+			 persistence_alert_category(domain, safe_domain, sizeof(safe_domain)),
+			 persistence_alert_category(action, safe_action, sizeof(safe_action)));
 
 	using clock = std::chrono::steady_clock;
 	const std::lock_guard<std::mutex> lock(persistence_alert_rate_limit_mutex);
@@ -989,7 +979,6 @@ persistence_alert_wizlog_decision(const char *domain, const char *owner, const c
 }
 
 static void persistence_vreport(persistence_severity severity, int level, const char *domain,
-				const char *owner, const char *item_uid, const char *event_id,
 				const char *action, const char *format, va_list args)
 {
 	char details[1024];
@@ -1018,8 +1007,7 @@ static void persistence_vreport(persistence_severity severity, int level, const 
 	persistence_log_submit(alert);
 	if (severity != persistence_severity::ok && severity != persistence_severity::info)
 	{
-		const auto decision = persistence_alert_wizlog_decision(domain, owner, item_uid,
-									event_id, action, alert);
+		const auto decision = persistence_alert_wizlog_decision(domain, action);
 		if (decision.allowed)
 		{
 			if (decision.suppressed)
@@ -1032,23 +1020,22 @@ static void persistence_vreport(persistence_severity severity, int level, const 
 }
 
 void persistence_report(persistence_severity severity, int level, const char *domain,
-			const char *owner, const char *item_uid, const char *event_id,
-			const char *action, const char *format, ...)
+			const char * /* owner */, const char * /* item_uid */,
+			const char * /* event_id */, const char *action, const char *format, ...)
 {
 	va_list args;
 	va_start(args, format);
-	persistence_vreport(severity, level, domain, owner, item_uid, event_id, action, format,
-			    args);
+	persistence_vreport(severity, level, domain, action, format, args);
 	va_end(args);
 }
 
-void persistence_alert(int level, const char *domain, const char *owner, const char *item_uid,
-		       const char *event_id, const char *action, const char *format, ...)
+void persistence_alert(int level, const char *domain, const char * /* owner */,
+		       const char * /* item_uid */, const char * /* event_id */, const char *action,
+		       const char *format, ...)
 {
 	va_list args;
 	va_start(args, format);
-	persistence_vreport(persistence_severity::alert, level, domain, owner, item_uid, event_id,
-			    action, format, args);
+	persistence_vreport(persistence_severity::alert, level, domain, action, format, args);
 	va_end(args);
 }
 
