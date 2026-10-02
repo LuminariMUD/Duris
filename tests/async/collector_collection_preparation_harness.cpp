@@ -36,8 +36,9 @@ collector::record candidate_record()
 	collector::rules rules;
 	rules.enabled = true;
 	collector::record entry;
+	// Player 42 died at 12, the save id of the corpse below.
 	assert(collector::enroll(77, "123456789abcdef0123456789abcdef0", 42, selected.obj_uid, 2,
-				 1000, rules, &entry) == collector::outcome::applied);
+				 12, rules, &entry) == collector::outcome::applied);
 	return entry;
 }
 
@@ -296,6 +297,16 @@ int main()
 	root.loc_p = LOC_ROOM;
 	root.loc.room = 0;
 	root.next_content = &corpse;
+	assert(collector_collection_prepare(claimed, claimed.collect_at, &payload) ==
+	       collector_collection_prepare_outcome::claimed);
+	// In another death's corpse (another player who looted it, or the beneficiary's
+	// own later corpse) it left the listed one: claimed, and nothing of that corpse goes.
+	seed_corpse_tree();
+	corpse.value[CORPSE_PID] = 77;
+	assert(collector_collection_prepare(claimed, claimed.collect_at, &payload) ==
+	       collector_collection_prepare_outcome::claimed);
+	seed_corpse_tree();
+	corpse.value[CORPSE_SAVEID] = 99;
 	assert(collector_collection_prepare(claimed, claimed.collect_at, &payload) ==
 	       collector_collection_prepare_outcome::claimed);
 	seed_corpse_tree();

@@ -226,10 +226,16 @@ collector_collection_prepare(const collector::record &entry, uint64_t observed_a
 		return collector_collection_prepare_outcome::missing_item;
 	if (!collector_collection_item_eligible(selected))
 		return collector_collection_prepare_outcome::excluded;
-	// The antiquity is collected from the player's corpse; anywhere else, it left it.
+	// The antiquity is collected from the corpse of the death that listed it (its death
+	// time is the corpse's save id); anywhere else, it left that corpse. The payload's
+	// owner is that corpse, so the commit and the live check hold to it as well.
 	item_owner_identity source = {};
 	P_obj root = corpse_root(selected, &source);
-	if (!root)
+	const item_owner_identity listed = {
+		item_owner_type::corpse,
+		item_corpse_owner_id(entry.beneficiary, static_cast<uint32_t>(entry.death_time)), 0
+	};
+	if (!root || !item_owner_identity_equal(source, listed))
 		return collector_collection_prepare_outcome::claimed;
 
 	std::vector<item_transfer_entry> items;
