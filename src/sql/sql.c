@@ -3663,7 +3663,7 @@ void sql_log(P_char ch, const char *kind, const char *format, ...)
 	log_entry_snapshot entry;
 	entry.logged_at = time(NULL);
 	entry.kind = log_entry_field(kind, 255);
-	entry.ip_address = log_entry_field(ch->desc ? ch->desc->host : "", 15);
+	entry.ip_address = log_entry_field(ch->desc ? ch->desc->host : "", 45);
 	entry.pid = GET_PID(ch);
 	entry.player_name = log_entry_field(GET_NAME(ch), 255);
 	if (world && ch->in_room >= 0 && ch->in_room <= top_of_world)

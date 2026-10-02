@@ -528,6 +528,16 @@
       "verify": "immutable/0035_backfill_bank_baselines.sh",
       "verify_checksum": "32e1f095c02fe726b58a5217176c31974bc35ec0bcbe747b928819b5802f8c4f",
       "compatibility": "mysql8-mariadb10"
+    },
+    {
+      "id": "0036_log_entries_ipv6",
+      "sequence": 36,
+      "description": "Widen log_entries.ip_address to VARCHAR(45) so an IPv6 address is not cut",
+      "apply": "immutable/0036_log_entries_ipv6.sql",
+      "apply_checksum": "7a7a9aecd7a12f61e907a6b6d01f9b0e51cfe10db86d7476be08ae9745f7c7a4",
+      "verify": "immutable/0036_log_entries_ipv6.sh",
+      "verify_checksum": "1c5f6a8ae3cb11b38de3e0f3c45d70eb877d5301f36c10dd68241c930c9c05cd",
+      "compatibility": "mysql8-mariadb10"
     }
   ]
 }

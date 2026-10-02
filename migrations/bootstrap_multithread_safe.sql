@@ -743,7 +743,7 @@ CREATE TABLE `log_entries` (
   `kind` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
   `player_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
   `pid` int NOT NULL DEFAULT '0',
-  `ip_address` varchar(15) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
+  `ip_address` varchar(45) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
   `room_vnum` int NOT NULL DEFAULT '0',
   `zone_number` int NOT NULL DEFAULT '0',
   `message` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',

@@ -58,9 +58,9 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'world_quest_accomplished','zone_story_quest_state','zone_touch_outcome',"
 	"'zone_touch_outcome_participant','zone_touches','zone_trophy','zones'";
 constexpr const char *RUNTIME_MYSQL8_METADATA_FINGERPRINT =
-	"7a5e6e50c875f6e31ef805ffe5625502a861dbc8a355c18241aa2de36a6c2b54";
+	"50652322d5472a3a0c0f3d947f742ff576e60bb8e2ab3d38b44557faaba61b03";
 constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
-	"940f9ad08f378e29626988d59b23d5740393f9d01ec8f81bf1917643eba9a788";
+	"18a28b058cc949c6d4d503160645f853d47eca92213cbadca0e385b889f36c15";
 /* Includes the six telemetry stores introduced by migration 0014, the two
  * rollup stores introduced by migration 0017, the five Collector authority
  * stores introduced by migration 0018, corpse catalog authority introduced by
@@ -76,16 +76,17 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * Migration 0033 adds the item owner audit a save writes when it takes an item, and
  * migration 0034 drops the death custody, restitution and economy accounting tables
  * (including those 0011, 0020, 0031 and 0032 added). Migration 0035 backfills the bank
- * opening baselines bank deltas did not write; it changes no table.
+ * opening baselines bank deltas did not write; it changes no table. Migration 0036 widens
+ * log_entries.ip_address to VARCHAR(45) for IPv6 addresses.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0035_backfill_bank_baselines";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 35;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0036_log_entries_ipv6";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 36;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"dee6c7f367bf00780bd541255fc9e93578adca9efec103df400c4a812a9f7862";
+	"7a7a9aecd7a12f61e907a6b6d01f9b0e51cfe10db86d7476be08ae9745f7c7a4";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"32e1f095c02fe726b58a5217176c31974bc35ec0bcbe747b928819b5802f8c4f";
+	"1c5f6a8ae3cb11b38de3e0f3c45d70eb877d5301f36c10dd68241c930c9c05cd";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"cf8b7ee2d19cc5b055e1290f8a40329ad3ba94b4751a4ace905151461d67f5a6";
+	"ee173f3657eac92cc620b4826c9e2c2df1241b4da46af6b474018aa57426bb8e";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";
