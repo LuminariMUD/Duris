@@ -122,7 +122,7 @@ int checked_substitute_strings(char *destination, size_t destination_size, const
 	if (required >= destination_size)
 		fprintf(stderr,
 			"checked_substitute_strings: output requires %zu bytes but destination holds %zu; truncated.\n",
-			required, destination_size ? destination_size - 1 : 0);
+			required + 1, destination_size);
 
 	return required > (size_t)INT_MAX ? INT_MAX : (int)required;
 }

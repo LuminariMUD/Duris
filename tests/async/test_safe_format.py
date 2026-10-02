@@ -21,6 +21,7 @@ int main(void)
 	char truncated[5];
 	char substituted[32];
 	char hostile[32];
+	char short_buffer[8];
 	const char *values[] = {"Alice", "10 gold"};
 
 	if (checked_snprintf(exact, sizeof exact, "%s-%d", "value", 7) != 7 ||
@@ -39,6 +40,10 @@ int main(void)
 	if (checked_substitute_strings(hostile, sizeof hostile, "%s says %n %x", values, 1) != 16 ||
 	    strcmp(hostile, "Alice says %n %x") != 0)
 		return 5;
+	if (checked_substitute_strings(short_buffer, sizeof short_buffer, "%s pays", values, 1) !=
+		    10 ||
+	    strcmp(short_buffer, "Alice p") != 0)
+		return 6;
 	return 0;
 }
 """
@@ -67,5 +72,7 @@ with tempfile.TemporaryDirectory(prefix="duris-safe-format-") as temp_dir:
         '\tif (checked_snprintf(truncated, sizeof truncated, "%s", "abcdef") != 6 ||') + 1
     assert (f"harness.cpp:{truncated_line}: checked_snprintf: output requires 7 bytes but "
             "destination holds 5; truncated.") in result.stderr, result.stderr
+    assert ("checked_substitute_strings: output requires 11 bytes but destination holds 8; "
+            "truncated.") in result.stderr, result.stderr
 
 print("safe formatting runtime tests passed")
