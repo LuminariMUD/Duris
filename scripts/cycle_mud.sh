@@ -352,7 +352,7 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
   nm --demangle "$RUNTIME_BINARY" | grep " T " | sed -e 's/[(].*//g' > lib/misc/event_names
 
 	if [ -f /usr/bin/sendemail ]; then
-		if [ -f "/logs/old-logs/$DATESTR/exit" ]; then
+		if [ -f "logs/old-logs/$DATESTR/exit" ]; then
 			/usr/bin/sendEmail -t alert@durismud.com \
 				-f mud@durismud.com -u "Duris Booting..." \
 				-m "Mud booting at ${DATESTR}, previous shutdown reason: ${STOP_REASON} [${RESULT}]." \
@@ -387,7 +387,13 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
 		55) STOP_REASON="pwipe shutdown";;
 		56) STOP_REASON="mud hung reboot";;
 		57) STOP_REASON="auto reboot with copyover";;
-		*) STOP_REASON="unknown";;
+		*)
+			# The shell reports a process a signal ended as 128 plus the signal.
+			if (( RESULT > 128 )) && SIGNAL_NAME=$(kill -l $((RESULT - 128)) 2>/dev/null); then
+				STOP_REASON="killed by SIG$SIGNAL_NAME"
+			else
+				STOP_REASON="unknown"
+			fi;;
 	esac
 
 	echo "Mud stopped, reason: ${STOP_REASON} [${RESULT}]"

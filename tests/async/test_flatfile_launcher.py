@@ -31,6 +31,22 @@ def run(script: pathlib.Path, env: dict[str, str], *arguments: str) -> subproces
 subprocess.run(["bash", "-n", str(SOURCE)], check=True)
 subprocess.run(["bash", "-n", str(ROOT / ".env.example")], check=True)
 
+# The stop reason the launcher reports for each exit code, from its own case block: a
+# signal exit (128 plus the signal) is named, not reported as unknown.
+cycle = SOURCE.read_text()
+reasons = cycle[cycle.index("case $RESULT in", cycle.index("# determine the reason")):]
+reasons = reasons[:reasons.index("esac") + len("esac")]
+for code, reason in (("0", "shutdown"), ("139", "crash"), ("137", "killed by SIGKILL"),
+                     ("143", "killed by SIGTERM"), ("134", "killed by SIGABRT"),
+                     ("200", "unknown"), ("3", "unknown")):
+    stopped = subprocess.run(["bash", "-c", f"RESULT={code}\n{reasons}\necho \"$STOP_REASON\""],
+                             text=True, capture_output=True, check=True).stdout.strip()
+    if stopped != reason:
+        raise AssertionError(f"exit {code} was reported as {stopped!r}, not {reason!r}")
+# The boot email attaches the previous run's exit log from the checkout's logs.
+if '"/logs/old-logs/' in cycle or '-f "logs/old-logs/$DATESTR/exit"' not in cycle:
+    raise AssertionError("the boot email looks for the exit log outside the checkout")
+
 example = (ROOT / ".env.example").read_text()
 if "GAME_ACCOUNT_PASSWORD=<password>" in example:
     raise AssertionError(".env.example contains a shell-redirection password placeholder")

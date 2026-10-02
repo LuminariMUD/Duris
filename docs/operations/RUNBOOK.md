@@ -60,6 +60,7 @@ production port 7777; the default remains 4000.
 | 56 | mud hung reboot | yes |
 | 57 | auto reboot with copyover | yes |
 | 139 | crash (SIGSEGV) | yes |
+| 128 + N | killed by signal N, named: 137 is `killed by SIGKILL` | yes |
 | other | unknown | yes |
 
 Graceful shutdown from inside the game: immortal `shutdown` command
