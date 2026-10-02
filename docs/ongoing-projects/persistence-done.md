@@ -2326,3 +2326,29 @@ database a running server wrote. It was at head 0033.
   quit.
 - A SIGTERM ended the game normally ("Normal termination of game", `shutdown [0]`). Nothing
   reached `logs/log/dupes` and no persistence alert was raised.
+
+### The work items closed out (done)
+
+On 2026-10-02 every open work item was checked against `master` (`21f65de2c`), and each
+description now records what the reset resolved:
+
+- #7 is closed. Each of its Done when items holds; the closing comment names the step and the
+  tests behind each. Its first comment linked the plan's old name and the deleted Phase 1
+  branch; both links are corrected.
+- #3: the journals behind section 2's backup failures are gone. Still open: every run
+  re-verifies every generation, failing backups raise no RPO alarm, the catch-all error code,
+  the restore drill and replica, and a narrow race left from section 2: a locker
+  identification receipt that changes during the dump still fails that run. Retitled.
+- #5: `rent`, `quit` and the hourly shop save no longer wait on the database, and the
+  2-second death-disposition callback is gone. Still open: the tick stalls under load,
+  unnamed callbacks, `-Og` production builds, MariaDB sizing and the backup job's CPU use.
+- #6: the corpse `commit_failed` alerts went with the durable corpse lifecycle. The
+  critical-command alert lost its failure stage in Phase 3 step 2 and now names nothing; it
+  stays open with the rest. The item claimed alerts were not aggregated; a 30-second wizlog
+  limiter exists, but it keys on the alert's detail, which is now stated.
+- #4 and #2 were checked too. On #4 the zone-story 64 KiB limit (`9fafc10dd`) and the mob
+  pickup retries (this reset) are fixed, and a full-length IPv4 address fits `sql_log()` since
+  `c8fba0087`; IPv6, the people-list desync and the corpse decay decision stay. Retitled. #2
+  is unchanged in code; its capture-expiry section now stands in the item itself.
+- At the owner's request, what is still open in #6, #4, #3, #5 and #2 became Phases 4 to 8 of the
+  plan, one phase per work item.

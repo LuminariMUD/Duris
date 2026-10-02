@@ -2,19 +2,22 @@
 
 **Date:** 2026-09-28
 
-This file is the plan: the rules, the design, the three phases, what was cut and
-[What is left](#what-is-left). Finished work is recorded in
+This file is the plan: the rules, the design, the three phases of the reset, Phases 4 to 8 for
+the open work items, what was cut and [What is left](#what-is-left). Finished work is recorded in
 [persistence-done.md](persistence-done.md): when an item of What is left is finished, its record
 (what landed, decisions, tests, verification, commits, bugs found) goes there and the item leaves
 the list. A decision that changes the framework is written here.
 
 **Status (2026-10-02):** Phases 1, 2 and 3 are done and on master. Phase 3 landed as
 [!5](https://gitlab.com/max757/duris/-/merge_requests/5) in `21f65de2c` after one review
-round ([record](persistence-done.md#phase-3-landed-done)). The reset is finished; one
-close-out step for its work items remains ([What is left](#what-is-left)).
+round ([record](persistence-done.md#phase-3-landed-done)). The reset is finished: #7 is closed,
+and #3, #5 and #6 record what it resolved
+([record](persistence-done.md#the-work-items-closed-out-done)). Phases 4 to 8 take the open work
+items, one phase each; none is started.
 
-**Work items:** #7 (player saves and deaths), and the persistence causes behind #5 (game freezes),
-#3 (the player-save journal breaking backups) and #6 (persistence alert storms).
+**Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
+behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
+storms). Phases 4 to 8 take what is still open in #6, #4, #3, #5 and #2.
 
 ## What was wrong
 
@@ -41,7 +44,7 @@ froze the whole game for 2 seconds, corpse raises failed and shutdowns were canc
 6. **The game loop never waits for the database.**
 7. **Corpses just work.** Raising, resurrecting, decaying and looting a corpse happen in memory and
    cannot fail on the database.
-8. **It ends.** Phase 1 removes every cause of the problems above. The later phases only simplify.
+8. **It ends.** Phase 1 removes every cause of the problems above. Phases 2 and 3 only simplify.
 
 ## How it works
 
@@ -187,6 +190,114 @@ The linker cannot see a dead branch inside a live function. Completions are an e
 writer retries a retryable or ambiguous result itself, so a game-side branch for one is dead
 (the zone touch had the last, removed in `7a1613c21`).
 
+## Phase 4: alerts and logs (#6)
+
+1. **Critical-command failures name nothing.** The `integrity_failure` alert in
+   `run_recurring_persistence_phase()` (`comm.c`) passes `none` and redacts its detail. Log the
+   command type and the refusal reason, without player data.
+2. **Repeated alerts are not grouped.** The wizlog limiter (`persistence_alert_wizlog_decision()`,
+   `utility.c`) keys on the full alert text, so alerts whose detail varies never group. Count
+   repeats per domain and action per interval.
+3. **`checked_snprintf()` names no caller** and reports both sizes one short (`safe_format.c`).
+   Take a call-site argument, and report bytes including the NUL.
+4. **Logs that never rotate.** `cycle_mud.sh` rotates only `logs/log/*` at boot. Rotate
+   `logs/player-log/*` and `logs/latency_trace.log` too, with a size cap, and send the latency
+   trace to one destination instead of the file and stdout.
+5. **Debug noise.** The `PFileToLocker`, `LockerToPFile` and `Locker save start` trace lines
+   (`storage_lockers.c`) and `sql_restore_shopkeepers: shop N` on every boot (`sql_player.c`) go
+   behind a debug flag.
+6. **`cycle_mud.sh` stop reports.** Decode a signal exit (128+N) into a reason instead of
+   `unknown [137]`. The boot email tests `/logs/old-logs/...`, with a leading slash, so it never
+   attaches the previous exit log.
+7. **Idle connections.** The logs show 57 connections MariaDB closed for `wait_timeout`. Prove
+   with a test that the SQL pool reconnects after one.
+
+Left on #6, as server configuration rather than code: the `mysql` client's charset warnings, the
+WebSocket warning on a MUD-only server, the stale `proxies_priv` grant, the game's database user
+name and the logins without a password.
+
+Done when: logs rotate with size caps and the latency trace has one destination; a
+critical-command failure names its command type and reason, and repeats are counted, not
+repeated; `checked_snprintf()` names its call site and reports bytes; the pool test survives an
+idle timeout.
+
+## Phase 5: bugs from the logs (#4)
+
+1. **IPv6 in `log_entries`.** `ip_address` is `varchar(15)`, and `sql_log()` cuts the address to
+   fit (`sql.c`). Add a guarded, re-runnable migration to `VARCHAR(45)`, as `account_ips` has,
+   raise the field limit with it, update what pins the schema head, and test an IPv6 address.
+2. **A zone-story state above 64 KiB.** The save was fixed in `9fafc10dd`; add the regression test
+   that stores one.
+3. **Characters missing from their room's people list.** `char_from_room()` (`handler.c`) logs and
+   returns when `in_room` and `world[].people` disagree: 19 times in the logs, 11 in inn rooms.
+   Reproduce it, find the path that sets `in_room` without `char_to_room()` (rent, camp and
+   reconnect restores are the leads), and fix it with a test.
+4. **Owner decision: restored corpse decay.** `persistence_refresh_restored_corpse()` (`files.c`)
+   gives a restored player corpse a fresh decay timer on every boot, so a server restarted more
+   often than that never lets one decay. Keep refreshing, or keep the remaining time with a
+   minimum?
+
+Done when: each bug has a fix and a focused test, the schema change is an additive migration,
+and item 4's decision is recorded here.
+
+## Phase 6: backups (#3)
+
+1. **Every run re-verifies every generation.** `generations()` in
+   `scripts/persistence_backup.py` calls `verify()` on each stored generation, which hashes every
+   file and decompresses and scans each dump; at 40 generations a run takes 3 to 4 CPU-minutes.
+   Verify a generation fully once, when it is published; `status` reads the manifests and the
+   receipt; full re-verification moves to the drill's slow cadence.
+2. **Failing backups raise no RPO alarm.** While `backup()` keeps failing, `schedule` never
+   reaches `status()`. Report the RPO age from the schedule path too.
+3. **A receipt that changes during the dump fails the run.** The capture compares the critical
+   directory after the dump. Copy the locker identification receipts at the dump's snapshot point,
+   or retry the receipt step without redoing the dump.
+4. **Failures lose their cause.** `operation_failed` is a catch-all. Log the exception class and
+   message, without secrets.
+
+Left on #3, as server configuration: whether a server runs restore drills, keeps an off-host
+replica and skips the pre-boot backup.
+
+Done when: a status run costs about the same with 1 generation or 40, and a test pins it; a backup
+completes while a receipt changes, with a test; failure records name the exception, and an RPO
+breach alerts even when every backup fails.
+
+## Phase 7: game-loop performance (#5)
+
+1. **Measure again.** The tick stalls, the event debt and the `rent`, `quit` and hourly timings in
+   #5 predate the reset, which took their database waits away. Measure them on a local full-world
+   boot under scripted load, find what is left in `ne_events`, and add an in-process test that
+   fails if `rent` blocks the loop past a budget.
+2. **Unnamed callbacks.** `cycle_mud.sh` builds `lib/misc/event_names` from global `T` symbols
+   only, so static functions and lambdas show as `unknown function`. Register names at
+   `add_event` time, or include local symbols.
+3. **Production builds at `-Og`.** `HARDENING_FLAGS` in `src/Makefile` puts `-Og` in every profile.
+   Build `BUILD_PROFILE=production` at `-O2`, and record the tick latency before and after on the
+   same load.
+4. **The backup job's CPU** competes with the loop; Phase 6 item 1 fixes it.
+
+Left on #5, as server configuration: the MariaDB buffer pool, left at its 128 MB default.
+
+Done when: `rent`, `quit` and the hourly event stay under a set budget under load, and a test pins
+it; every slow event names its callback; the production profile builds optimised, with the tick
+latency before and after recorded.
+
+## Phase 8: world recovery (#2)
+
+1. **Captures above 64 MiB fail.** `append_record()` (`world_recovery_pipeline.c`) refuses any
+   record past `WORLD_RECOVERY_MAX_BYTES`, and a world of about 55,000 mobs and 11,000 objects
+   passes it, so no generation publishes and a crash falls back to a full zone boot. Size the cap
+   from the world, or chunk and stream the generation.
+2. **Captures expire under load.** A capture takes 285 to 295 s of its 300 s budget. Measure it on
+   the Phase 7 build before changing the budget.
+3. **Nothing escalates.** Each failure is one `LOG_SYS` line. After a run of failed or expired
+   captures, raise one persistence alert with the reason and the last acknowledged sequence and
+   age, and report that age in runtime health.
+
+Done when: a capture of that size publishes, with a test above the old 64 MiB limit; it finishes
+within its budget under load; consecutive failures raise an alert with the age of the last good
+generation.
+
 ## What was cut, and why
 
 Each part was removed in turn ([ablation](../../.agents/skills/ablation/SKILL.md)) and stayed only
@@ -229,6 +340,8 @@ if a requirement or a concrete risk failed without it. Cut:
 
 ## Done when
 
+The reset (Phases 1 to 3) is done when:
+
 - A save cannot be rejected; its only failure is a lost connection, which the writer retries
   without the game noticing.
 - No character is ever held after death, logout or idle rent.
@@ -246,11 +359,12 @@ All hold: the gate passed on `0b90e5fc1`
 
 ## What is left
 
-1. **Close out the work items.** Check #7's Done when against master and close it. On #3, #5
-   and #6, record which items the reset resolved and which stay open. Leads to check:
-   - #3: the backup failures from journals changing during the capture (the journals are gone);
-   - #5: the `rent` and `quit` stalls, and the 2-second death-disposition freeze;
-   - #6: the critical-command and corpse-commit alert storms.
+In this order: alerts that name their cause first, so the later phases can be diagnosed; the
+backup job's cost before Phase 7 measures the loop; the world capture last, on the optimised
+build.
 
-   The other items in those issues are not persistence work and stay with them. Work on
-   `fix/7-persistence-closeout`.
+1. [Phase 4: alerts and logs (#6)](#phase-4-alerts-and-logs-6).
+2. [Phase 5: bugs from the logs (#4)](#phase-5-bugs-from-the-logs-4).
+3. [Phase 6: backups (#3)](#phase-6-backups-3).
+4. [Phase 7: game-loop performance (#5)](#phase-7-game-loop-performance-5).
+5. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2).
