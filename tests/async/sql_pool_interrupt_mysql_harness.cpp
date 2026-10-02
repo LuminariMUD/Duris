@@ -195,9 +195,12 @@ int main()
 	// lends nothing, says so once, and reports itself inactive, so /health fails.
 	execute(admin, ("KILL " + std::to_string(mysql_thread_id(owner))).c_str());
 	require(sql_pool_acquire() == nullptr, "the pool lent a connection without the lock");
+	require(sql_pool_acquire() == nullptr, "the pool lent a connection without the lock");
 	require(!sql_pool_is_active(), "the pool reported itself active without the lock");
-	require(logged.find("runtime database lock is lost") != std::string::npos,
-		"the pool did not log the lost lock");
+	const size_t lost = logged.find("runtime database lock is lost");
+	require(lost != std::string::npos &&
+			logged.find("runtime database lock is lost", lost + 1) == std::string::npos,
+		"the pool did not log the lost lock once");
 	sql_pool_shutdown();
 	duris_sql_exclusion_guard_release();
 	mysql_close(owner);
