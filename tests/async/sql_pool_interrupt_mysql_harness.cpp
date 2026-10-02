@@ -4,8 +4,8 @@
 // waits for the lock (here up to the 20 s lock_wait_timeout; on a live server, up to a
 // day). A borrower opening a replacement connection cannot be cut short, so the pool's
 // shutdown leaves it. A pooled connection the server closed for idling is replaced for
-// its next borrower, without losing the runtime lock. This drives the real pool against
-// a disposable server.
+// its next borrower, without losing the runtime lock; once the lock is lost, the pool
+// says so. This drives the real pool against a disposable server.
 #include "sql/sql.h"
 #include "sql/sql_exclusion_guard.h"
 #include "sql/sql_pool.h"
@@ -93,7 +93,11 @@ MYSQL *sql_open_configured_connection(unsigned long)
 			("SET SESSION wait_timeout=" + std::to_string(idle_seconds)).c_str());
 	return connection;
 }
-void logit(const char *, const char *, ...) {}
+std::string logged;
+void logit(const char *, const char *format, ...)
+{
+	logged += format;
+}
 
 int main()
 {
@@ -186,6 +190,14 @@ int main()
 	require(recovered != nullptr, "a failed reconnect lost its pool slot");
 	select_one(recovered);
 	sql_pool_release(recovered);
+
+	// Once the lock is lost (the server restarted, or ended the owner's session), the pool
+	// lends nothing, says so once, and reports itself inactive, so /health fails.
+	execute(admin, ("KILL " + std::to_string(mysql_thread_id(owner))).c_str());
+	require(sql_pool_acquire() == nullptr, "the pool lent a connection without the lock");
+	require(!sql_pool_is_active(), "the pool reported itself active without the lock");
+	require(logged.find("runtime database lock is lost") != std::string::npos,
+		"the pool did not log the lost lock");
 	sql_pool_shutdown();
 	duris_sql_exclusion_guard_release();
 	mysql_close(owner);

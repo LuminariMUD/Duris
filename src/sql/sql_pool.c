@@ -49,6 +49,8 @@ static int pool_closing = 0;
 /* Set by sql_pool_interrupt_borrowed(): a borrower still out after it is stuck opening
  * a connection, and shutdown leaves its handle to the process exit. */
 static int pool_interrupted = 0;
+/* Set once a borrower finds the runtime lock lost: nothing more can be written. */
+static int pool_lock_lost = 0;
 
 static MYSQL *sql_pool_create_connection(const char *site, int slot)
 {
@@ -88,6 +90,7 @@ int sql_pool_init(int size)
 	pool_size = size;
 	pool_closing = 0;
 	pool_interrupted = 0;
+	pool_lock_lost = 0;
 
 	for (int i = 0; i < size; i++)
 	{
@@ -232,6 +235,13 @@ MYSQL *sql_pool_acquire_with_status(int *pool_was_active)
 				if (duris_sql_exclusion_guard_state_ref().lost)
 				{
 					sql_pool_release(conn);
+					pthread_mutex_lock(&pool_mutex);
+					const int first = !pool_lock_lost;
+					pool_lock_lost = 1;
+					pthread_mutex_unlock(&pool_mutex);
+					if (first)
+						logit(LOG_STATUS,
+						      "SQL pool: the runtime database lock is lost; nothing more is written until the server restarts.");
 					return NULL;
 				}
 				return sql_pool_replace_connection(conn);
@@ -346,7 +356,7 @@ int sql_pool_is_active(void)
 {
 	int active;
 	pthread_mutex_lock(&pool_mutex);
-	active = pool != NULL;
+	active = pool != NULL && !pool_lock_lost;
 	pthread_mutex_unlock(&pool_mutex);
 	return active;
 }

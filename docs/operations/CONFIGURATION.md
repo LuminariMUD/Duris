@@ -180,7 +180,9 @@ The main connection holds the lock that keeps a second server off the database
 (`duris.runtime.<database>`). The game thread issues no query on it after boot, so it
 sets its session `wait_timeout` to 31536000 seconds, the most the server takes, and is
 never closed for idling. The pool's connections keep the server's `wait_timeout`: a
-borrower that finds its connection closed gets a new one.
+borrower that finds its connection closed gets a new one. If the lock itself is lost,
+because the database restarted or ended the session, nothing more is written: the status
+log says so once, and `/health` reports persistence unavailable until the game restarts.
 
 The receipt directory is mandatory for normal operation. It must be absolute, owned by
 the server user, and mode `0700` or stricter; receipts are permission checked,

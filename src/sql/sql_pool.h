@@ -66,7 +66,8 @@ extern "C"
  * must not use or release it. */
 	MYSQL *sql_pool_replace_connection(MYSQL *conn);
 
-	int sql_pool_is_active(void); /* whether a usable pool was initialised */
+	/* Whether a usable pool was initialised and the runtime lock is not lost. */
+	int sql_pool_is_active(void);
 
 #ifdef __cplusplus
 }
