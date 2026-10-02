@@ -36,6 +36,18 @@ static void write_u32(std::vector<uint8_t> *bytes, size_t offset, uint32_t value
 		(*bytes)[offset + byte] = static_cast<uint8_t>(value >> (byte * 8));
 }
 
+template <typename T> static void append(std::vector<uint8_t> *bytes, T value)
+{
+	for (size_t byte = 0; byte < sizeof(T); ++byte)
+		bytes->push_back(static_cast<uint8_t>(static_cast<uint64_t>(value) >> (byte * 8)));
+}
+
+static std::vector<uint8_t> file_bytes(const fs::path &path)
+{
+	std::ifstream input(path, std::ios::binary);
+	return { std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>() };
+}
+
 static void write_player_domain_fixture(const fs::path &path, std::vector<uint8_t> file,
 					const std::vector<uint8_t> &payload)
 {
@@ -331,6 +343,60 @@ int main(int argc, char **argv)
 							    &loaded, &error) == expected,
 				label + " did not preserve the native 2048-byte bound: " + error);
 		}
+	}
+
+	// An older server's currency command wrote the player and the account bank in one
+	// intent; a crash before it finished leaves both files stale. The next domain
+	// operation (this load) writes both and clears the intent.
+	{
+		const fs::path player_file = domains / "player-42.domain";
+		const fs::path bank_file = domains / "bank-account-one-1.domain";
+		const fs::path intent_file = domains / ".player-domain-transaction";
+		flatfile_player_domain_record before;
+		require(flatfile_player_domain_load(root.string(), 42, "account-one", 1, &before,
+						    &error) == flatfile_player_domain_result::ok,
+			"could not read the player before the older intent");
+		const std::vector<uint8_t> player_bytes = file_bytes(player_file);
+		const std::vector<uint8_t> bank_bytes = file_bytes(bank_file);
+		require(!player_bytes.empty() && !bank_bytes.empty(),
+			"the player and bank files were not where the intent expects them");
+		const std::string account = "account-one";
+		std::vector<uint8_t> payload;
+		append<uint16_t>(&payload, 1);
+		append<uint16_t>(&payload, 1);
+		append<int32_t>(&payload, 42);
+		append<uint32_t>(&payload, player_bytes.size());
+		payload.insert(payload.end(), player_bytes.begin(), player_bytes.end());
+		append<uint32_t>(&payload, account.size());
+		payload.insert(payload.end(), account.begin(), account.end());
+		append<int8_t>(&payload, 1);
+		append<uint32_t>(&payload, bank_bytes.size());
+		payload.insert(payload.end(), bank_bytes.begin(), bank_bytes.end());
+		std::vector<uint8_t> intent = { 'D', 'U', 'R', 'T', 'X', 'N', 0, 0 };
+		append<uint32_t>(&intent, 3);
+		append<uint32_t>(&intent, payload.size());
+		append<uint64_t>(&intent, 1);
+		std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
+		SHA256(payload.data(), payload.size(), digest.data());
+		intent.insert(intent.end(), digest.begin(), digest.end());
+		intent.insert(intent.end(), payload.begin(), payload.end());
+		{
+			std::ofstream output(intent_file, std::ios::binary | std::ios::trunc);
+			output.write(reinterpret_cast<const char *>(intent.data()), intent.size());
+			require(output.good(), "could not write the older intent");
+		}
+		fs::permissions(intent_file, fs::perms::owner_read | fs::perms::owner_write,
+				fs::perm_options::replace);
+		fs::remove(player_file);
+		fs::remove(bank_file);
+		require(flatfile_player_domain_load(root.string(), 42, "account-one", 1, &loaded,
+						    &error) == flatfile_player_domain_result::ok &&
+				loaded.domains.wallet == before.domains.wallet &&
+				loaded.domains.bank == before.domains.bank &&
+				loaded.domains.bank_revision == before.domains.bank_revision &&
+				file_bytes(player_file) == player_bytes &&
+				file_bytes(bank_file) == bank_bytes && !fs::exists(intent_file),
+			"an older server's player and bank intent was not finished: " + error);
 	}
 
 	const fs::path player = domains / "player-42.domain";
