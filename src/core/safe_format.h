@@ -7,14 +7,21 @@
  * snprintf-compatible formatting for fixed legacy buffers. The formatted
  * value is rendered separately before it is copied, so a destination may also
  * appear among the string arguments without invoking overlapping-buffer UB.
- * Truncation remains NUL-terminated and is reported on stderr.
+ * Truncation remains NUL-terminated and is reported on stderr with the call
+ * site, which the macro supplies.
  */
-int checked_snprintf(char *destination, size_t destination_size, const char *format, ...)
-	__attribute__((format(printf, 3, 4)));
+int checked_snprintf_at(const char *file, int line, char *destination, size_t destination_size,
+			const char *format, ...) __attribute__((format(printf, 5, 6)));
+#define checked_snprintf(destination, destination_size, ...) \
+	checked_snprintf_at(__FILE__, __LINE__, (destination), (destination_size), __VA_ARGS__)
 
 /* For vetted, data-driven format templates whose conversion types cannot be
  * checked at compile time. Prefer checked_snprintf for literal formats. */
-int checked_snprintf_runtime(char *destination, size_t destination_size, const char *format, ...);
+int checked_snprintf_runtime_at(const char *file, int line, char *destination,
+				size_t destination_size, const char *format, ...);
+#define checked_snprintf_runtime(destination, destination_size, ...)                       \
+	checked_snprintf_runtime_at(__FILE__, __LINE__, (destination), (destination_size), \
+				    __VA_ARGS__)
 
 /*
  * Expand data-driven templates containing only %s placeholders. Unlike

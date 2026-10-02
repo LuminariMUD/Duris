@@ -60,6 +60,12 @@ with tempfile.TemporaryDirectory(prefix="duris-safe-format-") as temp_dir:
         ],
         check=True,
     )
-    subprocess.run([str(binary)], check=True)
+    result = subprocess.run([str(binary)], check=True, capture_output=True, text=True)
+    # The truncated call names its own line and counts bytes with the NUL: "abcdef"
+    # needs 7, and the buffer holds 5.
+    truncated_line = HARNESS.splitlines().index(
+        '\tif (checked_snprintf(truncated, sizeof truncated, "%s", "abcdef") != 6 ||') + 1
+    assert (f"harness.cpp:{truncated_line}: checked_snprintf: output requires 7 bytes but "
+            "destination holds 5; truncated.") in result.stderr, result.stderr
 
 print("safe formatting runtime tests passed")
