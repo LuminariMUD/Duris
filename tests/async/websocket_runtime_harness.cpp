@@ -31,7 +31,8 @@ int bannedsite(char *, int)
 {
 	return 0;
 }
-int checked_snprintf(char *destination, size_t destination_size, const char *format, ...)
+int checked_snprintf_at(const char *, int, char *destination, size_t destination_size,
+			const char *format, ...)
 {
 	va_list arguments;
 	va_start(arguments, format);

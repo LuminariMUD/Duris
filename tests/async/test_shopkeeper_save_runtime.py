@@ -202,6 +202,9 @@ int main() {
     // A capture or a queue that fails never clears dirty; a forced flush reports it.
     capture_ok=false;
     assert(!sql_save_dirty_shopkeepers(true) && shops[0].dirty);
+    // The failed capture is named with its result, ahead of the retry line.
+    assert(logs.size()>=2 &&
+           logs[logs.size()-2].find("sql_save_shopkeeper: shop=0 capture_result=1") != std::string::npos);
     capture_ok=true; queue_ok=false;
     assert(!sql_save_dirty_shopkeepers(true) && shops[0].dirty);
     queue_ok=true; Object stock; keeper.carrying=&stock;

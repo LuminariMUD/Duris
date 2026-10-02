@@ -12,6 +12,9 @@ fight = (ROOT / 'src/combat/fight.c').read_text()
 severity = re.search(r'enum class persistence_severity\s*\{.*?\};', header, re.S).group()
 reporter = utility[utility.index('static int persistence_alert_format_is_numeric('):
                    utility.index('unsigned long long persistence_next_item_uid(')]
+# A 30-second wizlog window is too long to wait out here.
+assert reporter.count('std::chrono::seconds(30)') == 2
+reporter = reporter.replace('std::chrono::seconds(30)', 'std::chrono::milliseconds(300)')
 harness = r'''
 #include <cassert>
 #include <cctype>
@@ -22,6 +25,7 @@ harness = r'''
 #include <limits>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 #define MAX_STRING_LENGTH 256
 #define LOG_FILE "file"
@@ -57,33 +61,25 @@ void verify(const char *outcome, bool alert) {
     }
 }
 int main() {
-    const char *normal_events[] = {"severity_ok", "severity_info", "severity_alert",
-                                   "severity_unknown"};
-    const char *invalid_events[][5] = {
-        {"ok_null", "ok_empty", "ok_name", "ok_ptr", "ok_write"},
-        {"info_null", "info_empty", "info_name", "info_ptr", "info_write"},
-        {"alert_null", "alert_empty", "alert_name", "alert_ptr", "alert_write"},
-        {"unknown_null", "unknown_empty", "unknown_name", "unknown_ptr", "unknown_write"}
-    };
+    // Each severity reports its own action, so the wizlog does not group them.
+    const char *actions[] = {"severity_ok", "severity_info", "severity_alert",
+                             "severity_unknown"};
     size_t severity_index = 0;
     for (auto level : {persistence_severity::ok, persistence_severity::info,
                        persistence_severity::alert, static_cast<persistence_severity>(99)}) {
         logs.clear(); broadcasts.clear();
-        persistence_report(level, 57, "player_save", "secret_owner", "secret_uid",
-                           normal_events[severity_index], "death_recovery", "delay=%d count=%llu", 4, 8ULL);
+        persistence_report(level, 57, "player_save", "secret_owner", "secret_uid", "none",
+                           actions[severity_index], "delay=%d count=%llu", 4, 8ULL);
         verify(level == persistence_severity::ok ? "ok" :
                level == persistence_severity::info ? "info" : "alert",
                level != persistence_severity::ok && level != persistence_severity::info);
         assert(logs[0].text.find("detail=delay=4 count=8") != std::string::npos);
-        size_t event_index = 0;
         for (const char *format : {static_cast<const char *>(nullptr), "", "name=%s", "ptr=%p", "write=%n"}) {
             logs.clear(); broadcasts.clear();
-            persistence_report(level, 57, "bad category", "secret", "secret",
-                               invalid_events[severity_index][event_index],
+            persistence_report(level, 57, "bad category", "secret", "secret", "none",
                                "bad\naction", format, "secret");
             assert(logs[0].text.find("domain=unknown action=unknown") != std::string::npos);
             assert(logs[0].text.find("detail=") == std::string::npos);
-            ++event_index;
         }
         ++severity_index;
     }
@@ -100,12 +96,22 @@ int main() {
                       "rate_limit_action", "retry=%d", 1);
     assert(broadcasts.size() == 1);
     assert(logs.size() == 4); // throttling only affects wizlog, not durable log records
+    // Repeats are grouped by domain and action, whatever their detail, owner or event.
     persistence_alert(57, "corpse", "corpse_owner", "none", "rate_event",
                       "rate_limit_action", "retry=%d", 2);
-    assert(broadcasts.size() == 2); // distinct alert detail remains visible
-    persistence_alert(57, "corpse", "different_owner", "none", "rate_event",
+    persistence_alert(57, "corpse", "different_owner", "none", "other_event",
                       "rate_limit_action", "retry=%d", 3);
-    assert(broadcasts.size() == 3); // distinct failure key remains visible
+    assert(broadcasts.size() == 1);
+    assert(logs.size() == 8);
+    persistence_alert(57, "corpse", "corpse_owner", "none", "rate_event",
+                      "other_action", "retry=%d", 4);
+    assert(broadcasts.size() == 2); // another action is its own group
+    // The first after the window reports how many were held back.
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    persistence_alert(57, "corpse", "corpse_owner", "none", "rate_event",
+                      "rate_limit_action", "retry=%d", 5);
+    assert(broadcasts.size() == 3);
+    assert(broadcasts[2].find("detail=retry=5 (suppressed=3 age=") != std::string::npos);
 }
 '''
 with tempfile.TemporaryDirectory(prefix='persistence-severity-') as temp:
@@ -115,6 +121,7 @@ with tempfile.TemporaryDirectory(prefix='persistence-severity-') as temp:
     subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror', str(source), '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
 print('[PASS] production reporter routing, fallback severity, legacy alerts, formatting and redaction')
+print('[PASS] wizlog repeats are grouped by domain and action and counted')
 
 from contract_text import contains
 actoth_source = (ROOT / 'src/cmd/actoth.c').read_text()

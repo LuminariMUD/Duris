@@ -2062,12 +2062,16 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 		collector_transaction_publish_outbox();
 		combat_outcome_transaction_publish_outbox();
 		artifact_guild_transaction_publish_outbox();
+		// The command's type and its refusal reason (an errno, a database error or a
+		// command's result code) are numbers, which keeps player data out of the alert.
 		for (size_t index = 0; index < critical_completion_count; ++index)
 			if (critical_completions[index].outcome ==
 			    critical_apply_outcome::terminal_failure)
-				persistence_alert(AVATAR, "critical_command", "completion", "none",
-						  "none", "integrity_failure",
-						  "operation metadata redacted");
+				persistence_alert(
+					AVATAR, "critical_command", "completion", "none", "none",
+					"integrity_failure", "type=%u error=%u",
+					static_cast<unsigned int>(critical_completions[index].type),
+					critical_completions[index].error_code);
 		player_save_pipeline_pulse();
 		persistence_pulse_character_saves();
 		player_load_result load_completions[32] = {};
@@ -2319,8 +2323,6 @@ static void run_pulse_reset_phase(game_loop_pulse_context &ctx)
 			statuslog(56,
 				  "LATENCY TRACE: could not open logs/latency_trace.log: errno=%d",
 				  errno);
-		latency_trace_snapshot_dump(stderr, &snapshot);
-		fflush(stderr);
 	}
 	memcpy(&timeout, &opt_time, sizeof(timeout));
 	const suseconds_t usec_spent = (suseconds_t)MIN(

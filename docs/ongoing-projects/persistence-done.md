@@ -25,6 +25,11 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   on 2026-10-02 in `21f65de2c`, one `--no-ff` merge of the `-1` head, with no rebase or
   squash, so both tags still name what was reviewed. The branch is deleted
   ([record](#phase-3-landed-done)).
+- Phase 4 is reviewed as [!6](https://gitlab.com/max757/duris/-/merge_requests/6) (source
+  `fix/6-persistence-phase-4`, branched from `fix/7-persistence-closeout`, whose one commit
+  beyond master is the plan's Phases 4 to 8). The head the review reads is tagged
+  `persistence/phase-4-review-0`; a review round's fixes go on the branch and are tagged
+  `-1`, `-2` and so on.
 
 ## Phase 1 progress
 
@@ -2326,3 +2331,182 @@ database a running server wrote. It was at head 0033.
   quit.
 - A SIGTERM ended the game normally ("Normal termination of game", `shutdown [0]`). Nothing
   reached `logs/log/dupes` and no persistence alert was raised.
+
+### The work items closed out (done)
+
+On 2026-10-02 every open work item was checked against `master` (`21f65de2c`), and each
+description now records what the reset resolved:
+
+- #7 is closed. Each of its Done when items holds; the closing comment names the step and the
+  tests behind each. Its first comment linked the plan's old name and the deleted Phase 1
+  branch; both links are corrected.
+- #3: the journals behind section 2's backup failures are gone. Still open: every run
+  re-verifies every generation, failing backups raise no RPO alarm, the catch-all error code,
+  the restore drill and replica, and a narrow race left from section 2: a locker
+  identification receipt that changes during the dump still fails that run. Retitled.
+- #5: `rent`, `quit` and the hourly shop save no longer wait on the database, and the
+  2-second death-disposition callback is gone. Still open: the tick stalls under load,
+  unnamed callbacks, `-Og` production builds, MariaDB sizing and the backup job's CPU use.
+- #6: the corpse `commit_failed` alerts went with the durable corpse lifecycle. The
+  critical-command alert lost its failure stage in Phase 3 step 2 and now names nothing; it
+  stays open with the rest. The item claimed alerts were not aggregated; a 30-second wizlog
+  limiter exists, but it keys on the alert's detail, which is now stated.
+- #4 and #2 were checked too. On #4 the zone-story 64 KiB limit (`9fafc10dd`) and the mob
+  pickup retries (this reset) are fixed, and a full-length IPv4 address fits `sql_log()` since
+  `c8fba0087`; IPv6, the people-list desync and the corpse decay decision stay. Retitled. #2
+  is unchanged in code; its capture-expiry section now stands in the item itself.
+- At the owner's request, what is still open in #6, #4, #3, #5 and #2 became Phases 4 to 8 of the
+  plan, one phase per work item.
+
+## Phase 4 progress
+
+Phase 4 ([plan](persistence-plan.md#phase-4-alerts-and-logs-6)) is on `fix/6-persistence-phase-4`,
+branched on 2026-10-02 from `fix/7-persistence-closeout` (`6689c5f20`, the plan's Phases 4 to 8).
+
+### Idle connections (done)
+
+Item 7 asked for a test proving that the pool reconnects after MariaDB closes an idle
+connection. The test found that an idle timeout stopped every write, for two reasons, and a
+third defect behind them. Each is fixed in its own commit:
+
+| Defect | Fix | Commit |
+|---|---|---|
+| Every pool loan probes the runtime lock on the borrowed connection. On a connection MariaDB had closed for idling, the probe failed and the guard latched the lock as lost: the pool lent nothing again, so no save, load or command reached the database, though the main connection still held the lock. A reconnect that failed also dropped its pool slot for good, so a database restart could leave the pool empty. | A probe that fails says nothing of the lock; only an answer naming another owner loses it. The pool opens a new connection for that loan. A failed reconnect keeps the slot for the next loan. `sql_pool_replace_connection()` gives the slot back whenever it returns NULL, as every caller but `apply_with_pool()` already assumed. | `167f1f88a` |
+| The main connection holds the lock, and since Phase 2 step 8 the game thread issues no query on it after boot. MariaDB closes a connection idle past `wait_timeout` (8 hours by default), which released the lock: a server up for more than 8 hours stopped writing. | The main connection sets its session `wait_timeout` to 31536000 seconds before it takes the lock, and boot fails if it cannot. The pool's connections keep the server's timeout and are replaced as above. | `c3db1e6c4` |
+| Once the lock is truly lost (the database restarted or ended the session), nothing said so: `/health` answered ready and no log named the cause. | The first loan that finds the lock lost writes one status-log line, and the pool reports itself inactive, so `/health` answers 503. The server does not take the lock back by itself. | `69f168ed3` |
+
+Tests, each failing without its fix:
+
+- `run_sql_pool_interrupt_mysql.sh` (the real pool on a disposable MariaDB) gained an idle
+  section: the server closes a pooled connection after 1 second, the next loan gets a working
+  one with the lock kept, a refused reconnect keeps the slot, and the loan after it works. Then
+  the owner's session is killed: the next loan is refused, the pool reports itself inactive,
+  and the status log names the lost lock. On the old pool the section fails at the first loan;
+  with only the probe fixed, at the refused reconnect; without the report, at
+  `sql_pool_is_active()`.
+- `run_mysql_idle_timeout_journey.py`, a new `make test-db` journey: `wait_timeout` is 3
+  seconds; the server boots, a character is created and saved, and the server idles past the
+  timeout twice. The lock holds, a save lands, the character quits, logs in and saves again,
+  and the server shuts down cleanly. Without the fixes the starter kit (a command on the
+  writer) never arrives; with `wait_timeout` at 20 seconds, the lock is gone after the idle.
+
+The server does not take the lock back by itself after a database restart: the lock keeps a
+second server off the database, and taking it back could overwrite what another server wrote
+meanwhile. Restarting the game recovers.
+
+### Critical-command failures name their cause (done)
+
+A refused critical command raised `domain=critical_command action=integrity_failure
+detail=operation metadata redacted`. The completion now carries its command's type, and the
+alert's detail is `type=N error=N`: the type is the stable number `critical_command.h` assigns
+(stored with every command), and the error is the refusal reason, an errno, a database error or
+the command's own result code. The reporter allows numbers only in a detail, which keeps player
+data out, so the type is not spelt out by name. `3b9886f1e`.
+
+Tests: `test_critical_command_coordinator.py` refuses an auction command and checks that its
+completion carries the type and the error; `test_critical_transaction_contract.py` pins the
+alert.
+
+### Repeated alerts are grouped (done)
+
+The wizlog limiter keyed on the owner, item, event and full alert text, so alerts whose detail
+varied were never grouped. It now keys on domain and action: the first alert of a pair reaches
+the wizlog, the rest within 30 seconds are counted and reported with the next one after the
+window, as `(suppressed=N age=Ns)`. The persistence log still records every alert. Owner, item
+uid and event id fed only that key: `persistence_report()` and `persistence_alert()` keep them
+in their signatures and no longer read them. Dropping them from the 122 call sites and the test
+stubs was left out as churn that changes nothing. `7bccc5327`.
+
+Tests: `test_persistence_severity.py` sends repeats with other details, owners and events and
+gets one wizlog line; another action gets its own; with the window shortened in the extracted
+reporter, the next line reports `suppressed=3`. Its severity cases now use one action each,
+since they relied on distinct event ids to stay apart.
+
+### `checked_snprintf()` names its call site (done)
+
+`checked_snprintf()` and `checked_snprintf_runtime()` are macros passing `__FILE__` and
+`__LINE__` to `checked_snprintf_at()` and `checked_snprintf_runtime_at()`, so none of the
+call sites (about 570) changed and the format is still checked. A truncation reads `<file>:<line>:
+checked_snprintf: output requires N bytes but destination holds M`, both in bytes with the
+NUL; before, both were one short. `1c985b62c`. Found with it, in its own commit:
+`checked_substitute_strings()` reported the same off-by-one sizes (`756e1c9f7`).
+
+Tests: `test_safe_format.py` truncates into a 5-byte and an 8-byte buffer and checks both
+reports, the first with its own line. Three harnesses with their own stub now define
+`checked_snprintf_at()`. The pfile tool and the three `migrations/tools` binaries build.
+
+### Logs rotate with a cap (done)
+
+At boot `cycle_mud.sh` moves `logs/log/*`, `logs/player-log/*` and `logs/latency_trace.log`
+into `logs/old-logs/<date>/`, then deletes the oldest generations until `logs/old-logs` fits in
+`DURIS_LOG_ARCHIVE_MB` (1024 by default), always keeping the newest. The size cap is on the
+archive, as the work item asked (rotate at boot, with a size cap): a running server's files grow
+until the next boot. The pwipe's own player-log move went, since every boot does it. The latency trace goes to its file
+only, no longer to stderr as well. `cff347888`.
+
+Tests: `test_flatfile_launcher.py` boots with live logs and two old generations under a 1 MB cap:
+the logs move into the new generation and only the oldest generation goes (on the old script it
+fails at the move); `test_tick_latency_instrumentation.py` pins one dump, to the file.
+
+### Debug noise behind a switch (done)
+
+The `Locker save start`, `LockerToPFile` and `PFileToLocker` routine lines (`storage_lockers.c`)
+and the per-shop `sql_restore_shopkeepers` boot line (`sql_player.c`) are written only when
+`DURIS_PERSISTENCE_TRACE` is set. It is read once, like the corpse and zone-reset traces, and
+documented with them in `CONFIGURATION.md`. The locker failure lines stay on. `77ecc8d27`.
+
+Tests: `test_boot_log_hygiene.py` checks each routine line sits behind the switch and each
+failure line does not; the shopkeeper population harness turns it on.
+
+### `cycle_mud.sh` stop reports (done)
+
+An exit above 128 is named by its signal (`killed by SIGKILL [137]`); 139 stays `crash`. The
+boot email tested `/logs/old-logs/<date>/exit` and never attached the previous run's exit log;
+it tests `logs/old-logs/` in the checkout. `060890586`.
+
+Tests: `test_flatfile_launcher.py` runs the script's own stop-reason block for 0, 139, 137, 143,
+134, 200 and 3 (on the old script 137 reads `unknown`), and pins the email's path.
+
+### Found on the live boot (done)
+
+The live check of Phase 4 on the local server (`./scripts/start_mud.sh --dev`) raised
+`domain=shopkeeper_save action=dirty_save_failed` at every shutdown: four of the 544 shops
+failed every save and stayed dirty, as they had on the merged master build. Each cause is fixed
+in its own commit:
+
+| Defect | Fix | Commit |
+|---|---|---|
+| A failed shopkeeper save logged only `reason=save_failed`. | The capture or codec result is logged with the shop. | `73ccbd06f` |
+| Shops 4, 111 and 510: the stock capture refused any keeper whose mob does not run `shop_keeper`, and quest and tradeskill keepers run `world_quest` or `learn_tradeskill`. The save's validator already says identity is the shop's binding. | The capture no longer checks the procedure; its caller checks the binding. | `db503bf50` |
+| Shop 521, and any player: a save refused a string over 4096 bytes, and five objects in the world have an extra description up to 8411 bytes (18016, 132677, 132705, 139095, 139149). Every save of whoever held one failed, a player included, with only a capture-failure counter to show for it. | A saved string may be 16384 bytes. Loads, the codec and the `TEXT` columns check the same constant. | `9d14a0d6f` |
+| `make test-all` and `make test-db` wrote synthetic claims and dupes into the checkout's `logs/log/item_claims` and `logs/log/dupes`. | The three tests responsible run their harnesses from a temporary directory. | `52d3a84da` |
+
+Tests: the shopkeeper save test checks the cause line; the capture contract fails if the
+procedure check comes back; the item codec test round-trips an 8411-byte description and fails
+if any string in `areas/obj/*.obj` passes the limit. Live, after the fixes: the `.env`
+character saved holding object 139095, whose description failed shop 521's capture with
+`limit_exceeded` before (a player holding it was not tried on the old build), and the next
+shutdown saved all 544 shops, 4, 111, 510 and 521 included, with no alert.
+
+### The gate on the branch head (done)
+
+On `3b228a90c`, the code head with these records, run once each: `./scripts/format.sh --all
+--check` (1030 files clean), `make test-all -j16 TEST_JOBS=16` alone (659 of 659, 464 s), then
+`make test-db` (36 of 36, 196 s, with the new `idle_timeout` journey) and `npm test --prefix site`
+(14 tests) side by side. Neither suite left `logs/log/dupes` or `logs/log/item_claims` behind. An
+earlier run of the same gate on `77ecc8d27`, before the live boot's fixes, also passed (659, 36,
+14). The backup-recovery container replay was not run: nothing here touches what the restore
+qualifier runs.
+
+The live check on the local server, through `./scripts/start_mud.sh --dev` on `duris_dev`:
+
+- The boot moved the last run's `logs/log/*`, `logs/player-log/*` and `logs/latency_trace.log`
+  into `logs/old-logs/<date>/`, and `logs/player-log` kept only its `.gitignore`.
+- It wrote no `sql_restore_shopkeepers` or locker trace line (the boot before wrote 544
+  shopkeeper lines) and no latency table to the console, while `logs/latency_trace.log` filled.
+- `/health` answered `healthy`/`ready`; the `.env` character logged in, looked, saved, saved
+  holding object 139095, and quit.
+- A SIGKILL was reported as `Mud stopped, reason: killed by SIGKILL [137]`, and the launcher
+  rotated the logs again and booted a healthy server.
+- A SIGTERM ended it with `shutdown [0]` and "Normal termination of game"; all 544 shops saved
+  and no persistence alert was raised.

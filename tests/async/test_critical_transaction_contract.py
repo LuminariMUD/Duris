@@ -69,7 +69,10 @@ assert "dead_lettered_at" in OUTBOX
 assert "sql_pool_replace_connection" in OUTBOX
 assert "sql_worker_thread_init()" in OUTBOX and "mysql_thread_end()" in OUTBOX
 assert "critical_command_repository_apply_from_pool" in COMM
-assert '"integrity_failure"' in COMM and '"operation metadata redacted"' in COMM
+# A refused command's alert names its type and reason, as numbers only.
+assert '"integrity_failure", "type=%u error=%u"' in COMM
+assert "critical_completions[index].type" in COMM
+assert "critical_completions[index].error_code" in COMM
 assert 'getenv("CRITICAL_COMMAND_JOURNAL_DIR")' in COMM
 assert COMM.index("critical_command_coordinator_drain(3000)") < COMM.index(
     "critical_outbox_drain(3000)"

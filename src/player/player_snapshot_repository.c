@@ -1291,15 +1291,7 @@ template <typename Apply> player_save_apply_result apply_with_pool(Apply apply)
 	const player_save_apply_result applied = apply(connection);
 	if (applied.outcome == player_save_apply_outcome::ambiguous_commit ||
 	    connection_error(applied.error_code))
-	{
-		MYSQL *replacement = sql_pool_replace_connection(connection);
-		if (!replacement)
-		{
-			sql_pool_release(connection);
-			return applied;
-		}
-		connection = replacement;
-	}
+		connection = sql_pool_replace_connection(connection);
 	sql_pool_release(connection);
 	return applied;
 }

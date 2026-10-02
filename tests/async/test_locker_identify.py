@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'bin') as temp:
 #include <cassert>
 #include <cstdarg>
 #include <iostream>
-int checked_snprintf(char *out,size_t size,const char *format,...) {
+int checked_snprintf_at(const char *,int,char *out,size_t size,const char *format,...) {
  va_list args; va_start(args,format); int result=vsnprintf(out,size,format,args); va_end(args); return result; }
 const char *item_types[]={"type"}, *spells[]={"spell"}, *apply_types[]={"attribute"};
 const flagDef extra_bits[]={{}}, affected1_bits[]={{}}, affected2_bits[]={{}},

@@ -31,6 +31,22 @@ def run(script: pathlib.Path, env: dict[str, str], *arguments: str) -> subproces
 subprocess.run(["bash", "-n", str(SOURCE)], check=True)
 subprocess.run(["bash", "-n", str(ROOT / ".env.example")], check=True)
 
+# The stop reason the launcher reports for each exit code, from its own case block: a
+# signal exit (128 plus the signal) is named, not reported as unknown.
+cycle = SOURCE.read_text()
+reasons = cycle[cycle.index("case $RESULT in", cycle.index("# determine the reason")):]
+reasons = reasons[:reasons.index("esac") + len("esac")]
+for code, reason in (("0", "shutdown"), ("139", "crash"), ("137", "killed by SIGKILL"),
+                     ("143", "killed by SIGTERM"), ("134", "killed by SIGABRT"),
+                     ("200", "unknown"), ("3", "unknown")):
+    stopped = subprocess.run(["bash", "-c", f"RESULT={code}\n{reasons}\necho \"$STOP_REASON\""],
+                             text=True, capture_output=True, check=True).stdout.strip()
+    if stopped != reason:
+        raise AssertionError(f"exit {code} was reported as {stopped!r}, not {reason!r}")
+# The boot email attaches the previous run's exit log from the checkout's logs.
+if '"/logs/old-logs/' in cycle or '-f "logs/old-logs/$DATESTR/exit"' not in cycle:
+    raise AssertionError("the boot email looks for the exit log outside the checkout")
+
 example = (ROOT / ".env.example").read_text()
 if "GAME_ACCOUNT_PASSWORD=<password>" in example:
     raise AssertionError(".env.example contains a shell-redirection password placeholder")
@@ -230,9 +246,32 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
     if rejected.returncode == 0 or "refusing to boot" not in rejected.stdout:
         raise AssertionError("flat-file launcher ignored an unsafe backup target:\n" + rejected.stdout)
 
-    launched = run(script, flat_env, "--minimal")
+    # Every boot moves the last run's logs into logs/old-logs/<date>/ and drops the
+    # oldest generations until the archive fits its cap.
+    logs = project / "logs"
+    (logs / "log").mkdir(exist_ok=True)
+    (logs / "log/status").write_text("last run\n")
+    (logs / "player-log").mkdir(exist_ok=True)
+    (logs / "player-log/wizcmds").write_text("last run\n")
+    (logs / "latency_trace.log").write_text("last run\n")
+    (logs / "old-logs/2000.01.01-00.00.00").mkdir(parents=True)
+    (logs / "old-logs/2000.01.01-00.00.00/status").write_bytes(b"x" * (2 << 20))
+    (logs / "old-logs/2000.01.02-00.00.00").mkdir()
+    (logs / "old-logs/2000.01.02-00.00.00/status").write_text("kept\n")
+    capped_env = dict(flat_env, DURIS_LOG_ARCHIVE_MB="1")
+    launched = run(script, capped_env, "--minimal")
     if launched.returncode != 0 or "Mud stopped, reason: shutdown [0]" not in launched.stdout:
         raise AssertionError("flat-file launcher did not complete without DB tools:\n" + launched.stdout)
+    rotated = [path for path in (logs / "old-logs").iterdir()
+               if path.is_dir() and (path / "latency_trace.log").exists()]
+    if (len(rotated) != 1 or (rotated[0] / "status").read_text() != "last run\n"
+            or (rotated[0] / "player-log/wizcmds").read_text() != "last run\n"):
+        raise AssertionError("the boot did not move the last run's logs into old-logs")
+    if (logs / "latency_trace.log").exists() or any((logs / "player-log").iterdir()):
+        raise AssertionError("the boot left the last run's logs in place")
+    if (logs / "old-logs/2000.01.01-00.00.00").exists() or \
+            not (logs / "old-logs/2000.01.02-00.00.00").exists():
+        raise AssertionError("the archive cap did not drop only the oldest generation")
     forbidden = (
         "database migrations",
         "runtime database compatibility",

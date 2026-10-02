@@ -6,8 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int checked_vsnprintf(char *destination, size_t destination_size, const char *format,
-			     va_list args)
+static int checked_vsnprintf(const char *file, int line, char *destination, size_t destination_size,
+			     const char *format, va_list args)
 {
 	char *rendered;
 	int required;
@@ -45,27 +45,29 @@ static int checked_vsnprintf(char *destination, size_t destination_size, const c
 	}
 	if ((size_t)required >= destination_size)
 		fprintf(stderr,
-			"checked_snprintf: output requires %d bytes but destination holds %zu; truncated.\n",
-			required, destination_size ? destination_size - 1 : 0);
+			"%s:%d: checked_snprintf: output requires %zu bytes but destination holds %zu; truncated.\n",
+			file, line, (size_t)required + 1, destination_size);
 
 	free(rendered);
 	return required;
 }
 
-int checked_snprintf(char *destination, size_t destination_size, const char *format, ...)
+int checked_snprintf_at(const char *file, int line, char *destination, size_t destination_size,
+			const char *format, ...)
 {
 	va_list args;
 	va_start(args, format);
-	int required = checked_vsnprintf(destination, destination_size, format, args);
+	int required = checked_vsnprintf(file, line, destination, destination_size, format, args);
 	va_end(args);
 	return required;
 }
 
-int checked_snprintf_runtime(char *destination, size_t destination_size, const char *format, ...)
+int checked_snprintf_runtime_at(const char *file, int line, char *destination,
+				size_t destination_size, const char *format, ...)
 {
 	va_list args;
 	va_start(args, format);
-	int required = checked_vsnprintf(destination, destination_size, format, args);
+	int required = checked_vsnprintf(file, line, destination, destination_size, format, args);
 	va_end(args);
 	return required;
 }
@@ -120,7 +122,7 @@ int checked_substitute_strings(char *destination, size_t destination_size, const
 	if (required >= destination_size)
 		fprintf(stderr,
 			"checked_substitute_strings: output requires %zu bytes but destination holds %zu; truncated.\n",
-			required, destination_size ? destination_size - 1 : 0);
+			required + 1, destination_size);
 
 	return required > (size_t)INT_MAX ? INT_MAX : (int)required;
 }

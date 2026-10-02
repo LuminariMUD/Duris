@@ -2798,9 +2798,14 @@ bool sql_save_shopkeeper(P_char ch, int shop_nr)
 	// The stock is captured now and written by the one persistence writer, in order
 	// with the saves around it.
 	flatfile_shopkeeper_record shop;
-	if (flatfile_shopkeeper_capture(ch, static_cast<uint32_t>(shop_nr), 1, time(0), &shop) !=
-	    player_snapshot_capture_result::ok)
+	const player_snapshot_capture_result captured =
+		flatfile_shopkeeper_capture(ch, static_cast<uint32_t>(shop_nr), 1, time(0), &shop);
+	if (captured != player_snapshot_capture_result::ok)
+	{
+		logit(LOG_DEBUG, "sql_save_shopkeeper: shop=%d capture_result=%d", shop_nr,
+		      static_cast<int>(captured));
 		return false;
+	}
 	// Fixed shops can be moved by game mechanics after binding. Their stock remains
 	// owned by that shop and cold-restores at its configured home; only roaming shops
 	// persist a changing location.
@@ -2811,10 +2816,16 @@ bool sql_save_shopkeeper(P_char ch, int shop_nr)
 		if (shop_producing(obj, shop_nr))
 		{
 			std::vector<player_item_snapshot> produced, rest;
-			if (player_item_snapshot_extract_subtree(shop.items, obj->obj_uid,
-								 &produced, &rest) !=
-			    player_snapshot_codec_result::ok)
+			const player_snapshot_codec_result extracted =
+				player_item_snapshot_extract_subtree(shop.items, obj->obj_uid,
+								     &produced, &rest);
+			if (extracted != player_snapshot_codec_result::ok)
+			{
+				logit(LOG_DEBUG,
+				      "sql_save_shopkeeper: shop=%d produced_uid=%lu extract_result=%d",
+				      shop_nr, obj->obj_uid, static_cast<int>(extracted));
 				return false;
+			}
 			shop.items = std::move(rest);
 		}
 	const size_t bytes = sizeof(shop) + shop.items.size() * sizeof(player_item_snapshot);
@@ -3574,9 +3585,10 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored)
 				}
 				keeper2 = next;
 			}
-		logit(LOG_DEBUG,
-		      "sql_restore_shopkeepers: shop %d vnum %d incumbent_matches=%d extracted=%d",
-		      k->shop_nr, k->mob_vnum, incumbent_matches, extracted);
+		if (persistence_trace_enabled())
+			logit(LOG_DEBUG,
+			      "sql_restore_shopkeepers: shop %d vnum %d incumbent_matches=%d extracted=%d",
+			      k->shop_nr, k->mob_vnum, incumbent_matches, extracted);
 
 		if (restored)
 			*restored = k->mob;

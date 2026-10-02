@@ -102,9 +102,10 @@ if loop:
         not re.search(r'latency_trace_record\([^;]+,\s*pulse\);', loop, re.S)
     ))
     checks.append((
-        "periodic outputs reuse one captured reporting window",
+        "each reporting window goes to the trace file only, not stderr as well",
         contains(loop, "latency_trace_snapshot_take_and_reset(&snapshot);") and
-        loop.count("latency_trace_snapshot_dump(") == 2
+        loop.count("latency_trace_snapshot_dump(") == 1 and
+        contains(loop, "latency_trace_snapshot_dump(_ltf, &snapshot);")
     ))
     checks.append((
         "trace timing uses guarded integer microseconds throughout",

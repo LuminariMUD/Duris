@@ -38,8 +38,11 @@ production port 7777; the default remains 4000.
   binary in an outer loop. Set `DMS_BINARY_HISTORY_LIMIT` to change the limit.
   A `--production` launch refuses to promote or run anything except a stamped
   `PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=production` build.
-- On each restart it snapshots logs into `logs/old-logs/<timestamp>/`, writes
-  the stop reason, runs `scripts/backup_pfiles.sh`, and optionally emails an alert.
+- On each restart it moves `logs/log/*`, `logs/player-log/*` and
+  `logs/latency_trace.log` into `logs/old-logs/<timestamp>/`, then deletes the
+  oldest of those until `logs/old-logs` fits in `DURIS_LOG_ARCHIVE_MB` (1024 by
+  default; the newest is always kept). It writes the stop reason, runs
+  `scripts/backup_pfiles.sh`, and optionally emails an alert.
   Both modes publish verified full generations under the approved backup policy,
   including journal evidence. A backup failure stops the cycle before restart.
   Configure policy, scheduling, retention and isolated drills using
@@ -57,6 +60,7 @@ production port 7777; the default remains 4000.
 | 56 | mud hung reboot | yes |
 | 57 | auto reboot with copyover | yes |
 | 139 | crash (SIGSEGV) | yes |
+| 128 + N | killed by signal N, named: 137 is `killed by SIGKILL` | yes |
 | other | unknown | yes |
 
 Graceful shutdown from inside the game: immortal `shutdown` command
@@ -252,7 +256,8 @@ test noise.
 
 ## Logs
 
-All under `logs/`; rotated per-run into `logs/old-logs/<timestamp>/`.
+All under `logs/`; each boot moves the last run's into `logs/old-logs/<timestamp>/`,
+within the `DURIS_LOG_ARCHIVE_MB` cap.
 
 | File | Content |
 |------|---------|
@@ -326,9 +331,10 @@ affected producer/sequence range.
 
 ### Command and event latency
 
-Automatic 300-pulse windows in `logs/latency_trace.log` and stderr use the same
-immutable snapshot. Join command, slow-tick, and scheduler records by boot ID,
-absolute tick, and monotonic pulse-start time; the trace file spans boots.
+Automatic 300-pulse windows go to `logs/latency_trace.log` only. Join command,
+slow-tick, and scheduler records by boot ID, absolute tick, and monotonic
+pulse-start time; each boot moves the previous trace file into
+`logs/old-logs/<date>/`.
 Worker samples render unavailable ticks as `-`. Window counts/min/max/means and
 the exact bounded top ten describe that window, not process lifetime. Check
 `dropped_section_samples`, `dropped_contended_samples`, and

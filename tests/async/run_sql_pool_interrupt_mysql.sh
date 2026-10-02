@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Shutdown cuts off a writer query blocked on the database (MR !2 review finding 5) and
-# leaves a borrower stuck opening a connection (review round 2, finding 2):
-# the real connection pool against a disposable MariaDB. Never sources the checkout's
-# .env.
+# leaves a borrower stuck opening a connection (review round 2, finding 2), and a pooled
+# connection the server closed for idling is replaced (persistence Phase 4): the real
+# connection pool against a disposable MariaDB. Never sources the checkout's .env.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

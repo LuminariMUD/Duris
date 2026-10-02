@@ -6,7 +6,10 @@ cd "$ROOT"
 NAME="duris-trophy-$$-$RANDOM"
 PASSWORD="trophy-$$-$RANDOM"
 IMAGE="${TROPHY_DB_IMAGE:-mariadb:11.4}"
-cleanup() { docker rm -fv -v "$NAME" >/dev/null 2>&1 || true; }
+# The harnesses log claims and dupes to logs/log/, a relative path: they run from here,
+# not from the checkout, whose logs are the game's.
+WORK="$(mktemp -d)"
+cleanup() { docker rm -fv -v "$NAME" >/dev/null 2>&1 || true; rm -rf "$WORK"; }
 trap cleanup EXIT HUP INT TERM
 if [[ "$IMAGE" == mariadb:* ]]; then PASSWORD_ENV=MARIADB_ROOT_PASSWORD; else PASSWORD_ENV=MYSQL_ROOT_PASSWORD; fi
 docker run -d --name "$NAME" -p 127.0.0.1::3306 -e "$PASSWORD_ENV=$PASSWORD" "$IMAGE" >/dev/null
@@ -35,7 +38,7 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fd
     src/sql/item_extra_descr_codec.c \
     src/persistence/persistence_observability.c -Wl,--gc-sections "${MYSQL_LIBS[@]}" -lcrypto \
     -o bin/tests/experience_trophy_mysql_harness
-bin/tests/experience_trophy_mysql_harness
+(cd "$WORK" && "$ROOT/bin/tests/experience_trophy_mysql_harness")
 # Its own file: the currency leg builds the same harness, and the two run side by side.
 g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fdata-sections -Isrc \
     "${MYSQL_CFLAGS[@]}" tests/async/player_load_repository_mysql_harness.cpp \
@@ -43,4 +46,4 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fd
     src/player/player_snapshot_codec.c src/persistence/persistence_observability.c \
     src/persistence/dupe_log.c \
     -Wl,--gc-sections "${MYSQL_LIBS[@]}" -lcrypto -o bin/tests/experience_trophy_player_load_harness
-PLAYER_LOAD_DISPOSABLE_SCHEMA=1 bin/tests/experience_trophy_player_load_harness
+(cd "$WORK" && PLAYER_LOAD_DISPOSABLE_SCHEMA=1 "$ROOT/bin/tests/experience_trophy_player_load_harness")

@@ -176,6 +176,14 @@ explicit local-role socket are treated as protected local transport. Any other h
 requires enforced TLS, CA verification, and a negotiated cipher. Boot also requires a
 supported MySQL 8.0 or MariaDB 10.11 normalized metadata fingerprint before mutation.
 
+The main connection holds the lock that keeps a second server off the database
+(`duris.runtime.<database>`). The game thread issues no query on it after boot, so it
+sets its session `wait_timeout` to 31536000 seconds, the most the server takes, and is
+never closed for idling. The pool's connections keep the server's `wait_timeout`: a
+borrower that finds its connection closed gets a new one. If the lock itself is lost,
+because the database restarted or ended the session, nothing more is written: the status
+log says so once, and `/health` reports persistence unavailable until the game restarts.
+
 The receipt directory is mandatory for normal operation. It must be absolute, owned by
 the server user, and mode `0700` or stricter; receipts are permission checked,
 checksummed and size bounded. Do not place it under a shared or automatically cleaned
@@ -562,6 +570,7 @@ specific issue and restart the server after changing them.
 | `GET_TRACE` | any non-empty value except `0`, `false`, or `off` | Debug logging for object pickup paths. |
 | `DURIS_ZONE_RESET_TRACE` | positive integer | Zone-reset tracing. |
 | `DURIS_CORPSE_TRACE` | any non-empty value except `0` | Corpse decay tracing. |
+| `DURIS_PERSISTENCE_TRACE` | any non-empty value except `0` | Routine locker save and boot shopkeeper-restore lines in `logs/log/debug`. Their failure lines are always written. |
 | `DURIS_ACCEPT_DEBUG` | variable present, including an empty value | Connection-accept debug counters. |
 
 `SQL_TRACE` never writes query text, bound values, MySQL error prose, account or

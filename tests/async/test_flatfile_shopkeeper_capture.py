@@ -12,7 +12,6 @@ SOURCE = (SRC / "flatfile_shopkeeper_capture.c").read_text()
 for token in (
     "flatfile_shopkeeper_capture",
     "IS_PC(shopkeeper)",
-    "IS_SHOPKEEPER(shopkeeper)",
     "GET_RNUM(shopkeeper)",
     "shopkeeper->in_room",
     "AFFTYPE_NOSAVE",
@@ -24,6 +23,11 @@ for token in (
 ):
     if token not in SOURCE:
         raise SystemExit(f"shopkeeper capture contract is missing {token}")
+
+# Quest and tradeskill keepers run their own procedure; a check on it refused their stock
+# every save. The caller's binding check is the identity.
+if "IS_SHOPKEEPER" in SOURCE:
+    raise SystemExit("shopkeeper capture refuses a keeper by its command procedure")
 
 if SOURCE.index("player_item_snapshot_list_capture(") > SOURCE.index("*record_out = std::move(record);"):
     raise SystemExit("shopkeeper capture publishes before item traversal succeeds")

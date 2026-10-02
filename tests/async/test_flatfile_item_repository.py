@@ -69,9 +69,11 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-item-repository-test-") as t
         raise SystemExit(compile_result.stdout)
 
     state_root = temporary_path / "state"
+    # From the temporary directory: the claim log is relative, and from the checkout it
+    # wrote this test's claims into the game's logs/log/item_claims.
     run_result = subprocess.run(
         [str(binary), str(state_root)],
-        cwd=ROOT,
+        cwd=temporary_path,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

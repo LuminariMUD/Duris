@@ -3400,14 +3400,15 @@ static int save_locker_char(P_char ch, int bTerminal)
 		return 0;
 	}
 
-	logit(LOG_DEBUG,
-	      "Locker save start: phase=%s user=%s locker_char=%s locker_id=%d room=%d(%s) item_count=%d carried=%d was_in_room=%d txn=%s",
-	      bTerminal ? "terminal" : "async", GET_NAME(ch), GET_NAME(chLocker),
-	      pLocker->GetLockerId(), pLocker->GetRealRoom(),
-	      locker_room_name(pLocker->GetRealRoom()), pLocker->m_itemCount,
-	      locker_count_carried_objects(chLocker),
-	      (ch->specials.was_in_room != NOWHERE) ? ch->specials.was_in_room : -1,
-	      sql_in_transaction() ? "existing" : "new");
+	if (persistence_trace_enabled())
+		logit(LOG_DEBUG,
+		      "Locker save start: phase=%s user=%s locker_char=%s locker_id=%d room=%d(%s) item_count=%d carried=%d was_in_room=%d txn=%s",
+		      bTerminal ? "terminal" : "async", GET_NAME(ch), GET_NAME(chLocker),
+		      pLocker->GetLockerId(), pLocker->GetRealRoom(),
+		      locker_room_name(pLocker->GetRealRoom()), pLocker->m_itemCount,
+		      locker_count_carried_objects(chLocker),
+		      (ch->specials.was_in_room != NOWHERE) ? ch->specials.was_in_room : -1,
+		      sql_in_transaction() ? "existing" : "new");
 
 	/* Move room/chest contents onto locker char (LockerToPFile queues each
 	 * private chest on the persistence writer). Then mark async dirty and
@@ -3468,12 +3469,14 @@ bool StorageLocker::LockerToPFile(void)
 			int chest_contents = 0;
 			for (P_obj cur = chest_obj->contains; cur; cur = cur->next_content)
 				++chest_contents;
-			logit(LOG_DEBUG,
-			      "LockerToPFile: saving private chest locker_id=%d chest_id=%d chest_vnum=%d chest_uid=%lu contains=%d room=%d",
-			      m_lockerId, p->GetChestId(),
-			      (chest_obj->R_num >= 0) ? obj_index[chest_obj->R_num].virtual_number :
-							-1,
-			      chest_obj->obj_uid, chest_contents, m_realRoom);
+			if (persistence_trace_enabled())
+				logit(LOG_DEBUG,
+				      "LockerToPFile: saving private chest locker_id=%d chest_id=%d chest_vnum=%d chest_uid=%lu contains=%d room=%d",
+				      m_lockerId, p->GetChestId(),
+				      (chest_obj->R_num >= 0) ?
+					      obj_index[chest_obj->R_num].virtual_number :
+					      -1,
+				      chest_obj->obj_uid, chest_contents, m_realRoom);
 			if (!sql_save_private_chest_items(m_lockerId, p->GetChestId(), chest_obj))
 			{
 				logit(LOG_DEBUG,
@@ -3487,9 +3490,10 @@ bool StorageLocker::LockerToPFile(void)
 			}
 		}
 	}
-	logit(LOG_DEBUG,
-	      "LockerToPFile: private chest scan complete locker_id=%d room=%d private_chests=%d ok=%d",
-	      m_lockerId, m_realRoom, private_chest_count, ok ? 1 : 0);
+	if (persistence_trace_enabled())
+		logit(LOG_DEBUG,
+		      "LockerToPFile: private chest scan complete locker_id=%d room=%d private_chests=%d ok=%d",
+		      m_lockerId, m_realRoom, private_chest_count, ok ? 1 : 0);
 
 	if (!ok)
 	{
@@ -3510,16 +3514,19 @@ bool StorageLocker::LockerToPFile(void)
 			if (chest->IsPrivateChest())
 				continue;
 
-			int inner_count = 0;
-			for (P_obj cur = tmp_object->contains; cur; cur = cur->next_content)
-				++inner_count;
-			logit(LOG_DEBUG,
-			      "LockerToPFile: moving public chest contents locker_id=%d chest_id=%d chest_vnum=%d chest_uid=%lu contains=%d",
-			      m_lockerId, chest->GetChestId(),
-			      (tmp_object->R_num >= 0) ?
-				      obj_index[tmp_object->R_num].virtual_number :
-				      -1,
-			      tmp_object->obj_uid, inner_count);
+			if (persistence_trace_enabled())
+			{
+				int inner_count = 0;
+				for (P_obj cur = tmp_object->contains; cur; cur = cur->next_content)
+					++inner_count;
+				logit(LOG_DEBUG,
+				      "LockerToPFile: moving public chest contents locker_id=%d chest_id=%d chest_vnum=%d chest_uid=%lu contains=%d",
+				      m_lockerId, chest->GetChestId(),
+				      (tmp_object->R_num >= 0) ?
+					      obj_index[tmp_object->R_num].virtual_number :
+					      -1,
+				      tmp_object->obj_uid, inner_count);
+			}
 
 			// not a private chest, dump contents to locker char
 			for (P_obj innerObj = tmp_object->contains; tmp_object->contains;
@@ -3531,13 +3538,14 @@ bool StorageLocker::LockerToPFile(void)
 		}
 		else
 		{
-			logit(LOG_DEBUG,
-			      "LockerToPFile: moving loose room object locker_id=%d room=%d vnum=%d uid=%lu contains=%s",
-			      m_lockerId, m_realRoom,
-			      (tmp_object->R_num >= 0) ?
-				      obj_index[tmp_object->R_num].virtual_number :
-				      -1,
-			      tmp_object->obj_uid, tmp_object->contains ? "yes" : "no");
+			if (persistence_trace_enabled())
+				logit(LOG_DEBUG,
+				      "LockerToPFile: moving loose room object locker_id=%d room=%d vnum=%d uid=%lu contains=%s",
+				      m_lockerId, m_realRoom,
+				      (tmp_object->R_num >= 0) ?
+					      obj_index[tmp_object->R_num].virtual_number :
+					      -1,
+				      tmp_object->obj_uid, tmp_object->contains ? "yes" : "no");
 			obj_from_room(tmp_object);
 			obj_to_char(tmp_object, m_chLocker);
 		}
@@ -3553,11 +3561,15 @@ void StorageLocker::PFileToLocker(void)
 	for (P_obj tmp_object : locker_snapshot_char_carrying(m_chLocker))
 	{
 		++nCount;
-		logit(LOG_DEBUG,
-		      "PFileToLocker: moving carried object locker_id=%d room=%d vnum=%d uid=%lu type=%d contains=%s",
-		      m_lockerId, m_realRoom,
-		      (tmp_object->R_num >= 0) ? obj_index[tmp_object->R_num].virtual_number : -1,
-		      tmp_object->obj_uid, tmp_object->type, tmp_object->contains ? "yes" : "no");
+		if (persistence_trace_enabled())
+			logit(LOG_DEBUG,
+			      "PFileToLocker: moving carried object locker_id=%d room=%d vnum=%d uid=%lu type=%d contains=%s",
+			      m_lockerId, m_realRoom,
+			      (tmp_object->R_num >= 0) ?
+				      obj_index[tmp_object->R_num].virtual_number :
+				      -1,
+			      tmp_object->obj_uid, tmp_object->type,
+			      tmp_object->contains ? "yes" : "no");
 		obj_from_char(tmp_object);
 		if ((tmp_object->type == ITEM_MONEY) || !PutInProperChest(tmp_object))
 		{

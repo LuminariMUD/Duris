@@ -3060,12 +3060,16 @@ enum class persistence_severity
 	info,
 	alert
 };
+// The persistence log and the wizlog show the domain, action, outcome and a numeric detail.
+// Owner, item uid and event id are neither shown (they can name a player) nor grouped on.
 void persistence_report(persistence_severity severity, int level, const char *domain,
 			const char *owner, const char *item_uid, const char *event_id,
 			const char *action, const char *format, ...);
 // Compatibility entry point for failures: always emits alert severity.
 void persistence_alert(int level, const char *domain, const char *owner, const char *item_uid,
 		       const char *event_id, const char *action, const char *format, ...);
+// DURIS_PERSISTENCE_TRACE turns on the routine locker and shopkeeper-restore trace lines.
+bool persistence_trace_enabled(void);
 unsigned long long persistence_next_item_uid(void);
 void persistence_assign_item_uid(P_obj obj, const char *reason);
 void persistence_schedule_character_save(P_char ch, int type, int delay, const char *reason);
