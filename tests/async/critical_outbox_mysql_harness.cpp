@@ -114,17 +114,6 @@ template <typename Predicate> static void wait_until(Predicate predicate)
 
 int main()
 {
-	critical_outbox_record receipt = {};
-	receipt.destination = CRITICAL_OUTBOX_COIN_RECEIPT_DESTINATION;
-	receipt.event_type = CRITICAL_OUTBOX_COIN_RECEIPT_EVENT;
-	receipt.payload_version = 1;
-	receipt.payload.resize(CRITICAL_OUTBOX_COIN_RECEIPT_BYTES);
-	assert(critical_outbox_test_destination(receipt, nullptr) ==
-	       critical_outbox_delivery_result::delivered);
-	receipt.payload.pop_back();
-	assert(critical_outbox_test_destination(receipt, nullptr) ==
-	       critical_outbox_delivery_result::terminal_failure);
-
 	database_connection = mysql_init(nullptr);
 	assert(database_connection);
 	const char *port_text = getenv("DB_PORT");
@@ -165,8 +154,6 @@ int main()
 		      "AND operation_id=UNHEX('00000000000000000000000000000002')") == 1);
 
 	clear_rows();
-	critical_reconciliation_report baseline = {};
-	assert(critical_outbox_reconcile(&baseline));
 	insert_record(3);
 	state = { .calls = 0, .retry_first = false, .terminal = true };
 	assert(critical_outbox_init(deliver, &state));
@@ -174,18 +161,6 @@ int main()
 	critical_outbox_shutdown();
 	assert(scalar("SELECT COUNT(*) FROM critical_outbox WHERE status=2 AND operation_id="
 		      "UNHEX('00000000000000000000000000000003')") == 1);
-	const uint64_t dead_id =
-		scalar("SELECT outbox_id FROM critical_outbox WHERE status=2 AND operation_id="
-		       "UNHEX('00000000000000000000000000000003')");
-	assert(critical_outbox_retry_dead_letter(dead_id));
-	assert(scalar("SELECT COUNT(*) FROM critical_outbox WHERE status=0 AND attempt_count=0 "
-		      "AND operation_id=UNHEX('00000000000000000000000000000003')") == 1);
-	critical_reconciliation_report report = {};
-	assert(critical_outbox_reconcile(&report));
-	assert(report.incomplete_inbox == baseline.incomplete_inbox &&
-	       report.committed_without_outbox == baseline.committed_without_outbox &&
-	       report.pending_outbox == baseline.pending_outbox + 1 &&
-	       report.dead_letter_outbox == baseline.dead_letter_outbox);
 
 	clear_rows();
 	mysql_close(database_connection);

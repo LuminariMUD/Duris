@@ -1744,7 +1744,6 @@ void event_autosave(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/
 		      (ch == NULL) ? "NULL" : J_NAME(ch));
 		return;
 	}
-	persistence_flush_item_events(64);
 	persistence_schedule_character_save(ch, 1, 2, "autosave");
 	add_event(event_autosave, 1200, ch, 0, 0, 0, 0, 0);
 }
@@ -1832,7 +1831,7 @@ static void begin_manual_save_status_wait(P_char ch)
 	status->revision = revision.current_revision;
 }
 
-/** Report durability or timeout to the original live character, then retire its status. */
+/** Report the save landing, or a timeout, to the original live character, then retire its status. */
 static void check_manual_character_save_status(struct manual_save_status_slot *status)
 {
 	const int pid = status->pid;
@@ -1845,7 +1844,7 @@ static void check_manual_character_save_status(struct manual_save_status_slot *s
 		return;
 	}
 	if (status->revision && player_revision_snapshot_copy(pid, &revision) &&
-	    revision.acknowledged_revision >= status->revision)
+	    revision.written_revision >= status->revision)
 	{
 		PlayerOutputMessage(ch, OutputChannel::SystemFeedback, OutputRole::Success)
 			.literal("Save complete for ")
@@ -2231,8 +2230,6 @@ bool do_save_silent(P_char ch, int type)
 
 	if (!ch || !GET_NAME(ch) || (IS_NPC(ch) && !IS_MORPH(ch)))
 		return false;
-	if (GET_PID(ch) > 0 && !player_save_pipeline_save_admitted(GET_PID(ch)))
-		return false;
 
 	if (IS_HARDCORE(ch) && hardcore_config_get()->death_hall_of_fame)
 	{
@@ -2318,10 +2315,6 @@ void do_save(P_char ch, char *argument, int /*cmd*/)
 	if (!str_cmp("log", argument))
 	{
 		send_to_char("Manual log disabled.\r\n", ch);
-		return;
-		send_to_char("Saving your log...\r\n", ch);
-		manual_log(ch);
-		CharWait(ch, 20);
 		return;
 	}
 

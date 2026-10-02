@@ -155,170 +155,22 @@ int main(int argc, char **argv)
 	const flatfile_artifact_record corpse = {
 		400, true, FLATFILE_ARTIFACT_ON_CORPSE, 42, 5000, 1, 1003, 42, 4000, 1
 	};
-	const fs::path transfer_root = fs::path(argv[1]) / "corpse-transfer";
-	prepare_root(transfer_root);
-	require(flatfile_artifact_establish(transfer_root.string(), { corpse }, &error) ==
-			flatfile_artifact_result::ok,
-		"corpse transfer artifact establishment failed");
-	{
-		flatfile_authority_lock lock;
-		require(lock.acquire(transfer_root.string(), &error),
-			"could not acquire corpse artifact transfer authority");
-		item_transfer_payload loot = {};
-		loot.from_owner = { item_owner_type::corpse, item_corpse_owner_id(42, 20), 0 };
-		loot.to_owner = { item_owner_type::player, 77, 0 };
-		loot.reason = item_transfer_reason::corpse_loot;
-		set_transfer_item(&loot, 401, false);
-		flatfile_artifact_transfer_mutation mutation;
-		require(flatfile_artifact_prepare_corpse_transfer(
-				transfer_root.string(), lock, loot, 10000000000ULL, &mutation,
-				&error) == flatfile_artifact_result::unchanged,
-			"ordinary corpse loot did not leave artifact authority unchanged");
-		set_transfer_item(&loot, 401, true);
-		require(flatfile_artifact_prepare_corpse_transfer(
-				transfer_root.string(), lock, loot, 10000000000ULL, &mutation,
-				&error) == flatfile_artifact_result::conflict,
-			"artifact snapshot missing from the catalog did not fail closed");
-		set_transfer_item(&loot, 400, true);
-		require(flatfile_artifact_prepare_corpse_transfer(
-				transfer_root.string(), lock, loot, 10000000000ULL, &mutation,
-				&error) == flatfile_artifact_result::conflict,
-			"historical artifact-bearing corpse loot did not fail closed");
-		loot.corpse.present = true;
-		loot.corpse.actor_racewar = 2;
-		loot.corpse.values[5] = 1;
-		require(flatfile_artifact_prepare_corpse_transfer(
-				transfer_root.string(), lock, loot, 10000000000ULL, &mutation,
-				&error) == flatfile_artifact_result::ok &&
-				mutation.after_image.filename == "artifact_catalog",
-			"cross-race artifact loot did not prepare its authority image");
-		require(flatfile_authority_transaction_commit(transfer_root.string(), lock,
-							      { mutation.after_image }, &error) ==
-				flatfile_authority_transaction_result::ok,
-			"cross-race artifact loot transaction failed: " + error);
-	}
-	require(flatfile_artifact_list(transfer_root.string(), &records, &error) ==
-				flatfile_artifact_result::ok &&
-			records.size() == 1 && records[0].owned &&
-			records[0].location_type == FLATFILE_ARTIFACT_ON_PLAYER &&
-			records[0].location == 77 && records[0].timer == 442000 &&
-			records[0].last_update == 10000 && records[0].bind_owner_pid == -1 &&
-			records[0].bind_timer == 10000 && records[0].revision == 2,
-		"cross-race artifact loot did not preserve feed and binding semantics");
-
-	const fs::path room_transfer_root = fs::path(argv[1]) / "room-transfer";
-	prepare_root(room_transfer_root);
-	const flatfile_artifact_record room_artifact = {
-		500, true, FLATFILE_ARTIFACT_ON_PLAYER, 77, 9000, 1, 1000, 77, 8000, 1
-	};
-	require(flatfile_artifact_establish(room_transfer_root.string(), { room_artifact },
-					    &error) == flatfile_artifact_result::ok,
-		"room transfer artifact establishment failed");
-	item_transfer_payload room_drop = {};
-	room_drop.from_owner = { item_owner_type::player, 77, 0 };
-	room_drop.to_owner = { item_owner_type::room, 9001, 0 };
-	room_drop.reason = item_transfer_reason::player_drop;
-	set_transfer_item(&room_drop, 500, true);
-	{
-		flatfile_authority_lock lock;
-		require(lock.acquire(room_transfer_root.string(), &error),
-			"could not acquire room artifact transfer authority");
-		flatfile_artifact_transfer_mutation mutation;
-		require(flatfile_artifact_prepare_room_transfer(
-				room_transfer_root.string(), lock, room_drop, 11000000, &mutation,
-				&error) == flatfile_artifact_result::ok,
-			"artifact drop did not prepare its room authority image");
-		require(flatfile_authority_transaction_commit(room_transfer_root.string(), lock,
-							      { mutation.after_image }, &error) ==
-				flatfile_authority_transaction_result::ok,
-			"artifact drop transaction failed: " + error);
-	}
-	require(flatfile_artifact_list(room_transfer_root.string(), &records, &error) ==
-				flatfile_artifact_result::ok &&
-			records.size() == 1 && records[0].owned &&
-			records[0].location_type == FLATFILE_ARTIFACT_ON_GROUND &&
-			records[0].location == 9001 && records[0].last_update == 11 &&
-			records[0].bind_owner_pid == 77 && records[0].bind_timer == 8000 &&
-			records[0].revision == 2,
-		"artifact drop did not preserve binding state while moving to the room");
-	item_transfer_payload room_get = room_drop;
-	room_get.from_owner = room_drop.to_owner;
-	room_get.to_owner = { item_owner_type::player, 42, 0 };
-	room_get.reason = item_transfer_reason::player_get;
-	{
-		flatfile_authority_lock lock;
-		require(lock.acquire(room_transfer_root.string(), &error),
-			"could not reacquire room artifact transfer authority");
-		flatfile_artifact_transfer_mutation mutation;
-		require(flatfile_artifact_prepare_room_transfer(
-				room_transfer_root.string(), lock, room_get, 12000000, &mutation,
-				&error) == flatfile_artifact_result::ok,
-			"artifact get did not prepare its player authority image");
-		require(flatfile_authority_transaction_commit(room_transfer_root.string(), lock,
-							      { mutation.after_image }, &error) ==
-				flatfile_authority_transaction_result::ok,
-			"artifact get transaction failed: " + error);
-	}
-	require(flatfile_artifact_list(room_transfer_root.string(), &records, &error) ==
-				flatfile_artifact_result::ok &&
-			records.size() == 1 &&
-			records[0].location_type == FLATFILE_ARTIFACT_ON_PLAYER &&
-			records[0].location == 42 && records[0].last_update == 12 &&
-			records[0].bind_owner_pid == 77 && records[0].bind_timer == 8000 &&
-			records[0].revision == 3,
-		"artifact get did not atomically move room authority to the player");
-	room_drop.from_owner = room_get.to_owner;
-	{
-		flatfile_authority_lock lock;
-		require(lock.acquire(room_transfer_root.string(), &error),
-			"could not acquire second room artifact transfer authority");
-		flatfile_artifact_transfer_mutation mutation;
-		require(flatfile_artifact_prepare_room_transfer(
-				room_transfer_root.string(), lock, room_drop, 13000000, &mutation,
-				&error) == flatfile_artifact_result::ok &&
-				flatfile_authority_transaction_commit(
-					room_transfer_root.string(), lock, { mutation.after_image },
-					&error) == flatfile_authority_transaction_result::ok,
-			"second artifact drop did not commit: " + error);
-	}
-	item_transfer_payload room_reparent = room_drop;
-	room_reparent.from_owner = room_drop.to_owner;
-	room_reparent.to_owner = room_drop.to_owner;
-	room_reparent.reason = item_transfer_reason::operator_repair;
-	{
-		flatfile_authority_lock lock;
-		require(lock.acquire(room_transfer_root.string(), &error),
-			"could not acquire room artifact reparent authority");
-		flatfile_artifact_transfer_mutation mutation;
-		require(flatfile_artifact_prepare_room_transfer(
-				room_transfer_root.string(), lock, room_reparent, 14000000,
-				&mutation, &error) == flatfile_artifact_result::unchanged,
-			"same-room artifact reparent changed artifact location authority");
-	}
-	item_transfer_payload room_destroy = room_reparent;
-	room_destroy.to_owner = { item_owner_type::destruction, 0, 0 };
-	room_destroy.reason = item_transfer_reason::destruction;
-	{
-		flatfile_authority_lock lock;
-		require(lock.acquire(room_transfer_root.string(), &error),
-			"could not acquire room artifact destruction authority");
-		flatfile_artifact_transfer_mutation mutation;
-		require(flatfile_artifact_prepare_room_transfer(
-				room_transfer_root.string(), lock, room_destroy, 15000000,
-				&mutation, &error) == flatfile_artifact_result::ok &&
-				flatfile_authority_transaction_commit(
-					room_transfer_root.string(), lock, { mutation.after_image },
-					&error) == flatfile_authority_transaction_result::ok,
-			"room artifact destruction did not commit: " + error);
-	}
-	require(flatfile_artifact_list(room_transfer_root.string(), &records, &error) ==
-				flatfile_artifact_result::ok &&
-			records.size() == 1 && !records[0].owned &&
-			records[0].location_type == FLATFILE_ARTIFACT_NOT_IN_GAME &&
-			records[0].location == -1 && records[0].last_update == 15 &&
-			records[0].bind_owner_pid == -1 && records[0].bind_timer == 0 &&
-			records[0].revision == 5,
-		"room artifact destruction did not clear durable gameplay custody");
+	// A grant cannot create an artifact in a room; a repair within one changes nothing.
+	item_transfer_payload room_grant = {};
+	room_grant.from_owner = { item_owner_type::system, 0, 0 };
+	room_grant.to_owner = { item_owner_type::room, 9001, 0 };
+	room_grant.reason = item_transfer_reason::creation;
+	set_transfer_item(&room_grant, 500, false);
+	require(flatfile_artifact_room_transfer_allowed(room_grant),
+		"an ordinary room grant was refused");
+	set_transfer_item(&room_grant, 500, true);
+	require(!flatfile_artifact_room_transfer_allowed(room_grant),
+		"a room grant created an artifact");
+	item_transfer_payload room_repair = room_grant;
+	room_repair.from_owner = room_grant.to_owner;
+	room_repair.reason = item_transfer_reason::operator_repair;
+	require(flatfile_artifact_room_transfer_allowed(room_repair),
+		"a same-room artifact repair was refused");
 
 	const fs::path corpse_root = fs::path(argv[1]) / "corpse";
 	prepare_root(corpse_root);
@@ -398,17 +250,6 @@ int main(int argc, char **argv)
 			reconcile_root.string(), { { 900, 42 }, { 903, 43 }, { 999, 44 } }, 2000,
 			&reconcile_counts, &error) == flatfile_artifact_result::unchanged,
 		"identical artifact reconciliation was not idempotent");
-	require(flatfile_artifact_release_player(reconcile_root.string(), 42, &error) ==
-			flatfile_artifact_result::ok,
-		"standalone player artifact release failed: " + error);
-	flatfile_artifact_record reconcile_record;
-	require(flatfile_artifact_get(reconcile_root.string(), 900, &reconcile_record, &error) ==
-				flatfile_artifact_result::ok &&
-			!reconcile_record.owned &&
-			reconcile_record.location_type == FLATFILE_ARTIFACT_NOT_IN_GAME &&
-			reconcile_record.location == 0 && reconcile_record.timer == 0 &&
-			reconcile_record.bind_owner_pid == -1 && reconcile_record.bind_timer == 0,
-		"standalone player artifact release wrote incorrect authority");
 
 	const fs::path bind_root = fs::path(argv[1]) / "bind";
 	prepare_root(bind_root);
@@ -752,9 +593,6 @@ int main(int argc, char **argv)
 	require(flatfile_artifact_ensure(root.string(), &error) ==
 			flatfile_artifact_result::invalid,
 		"artifact ensure accepted or overwrote corrupt authority");
-	require(flatfile_artifact_release_player(root.string(), 42, &error) ==
-			flatfile_artifact_result::invalid,
-		"corrupt artifact authority was accepted by standalone player release");
 	require(flatfile_artifact_reconcile_players(root.string(), { { 100, 42 } }, 2000,
 						    &reconcile_counts,
 						    &error) == flatfile_artifact_result::invalid,

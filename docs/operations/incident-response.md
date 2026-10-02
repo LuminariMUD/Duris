@@ -14,9 +14,11 @@ values, or raw private gate output into tickets or commits.
 
 ## Persistence Dependency Failure
 
-1. Inspect the privileged in-game persistence status and aggregate queue/journal age.
-2. Keep retryable state and journals intact; do not delete or hand-edit recovery files.
-3. Follow the dependency and terminal-save procedures in the main runbook.
+1. Inspect `world persistence` for the writer's queue age, retries and failures.
+2. Restore the database before restarting: queued saves live only in memory, and a shutdown
+   that cannot write them within 30 seconds loses them. Do not hand-edit flat-file authority
+   journals or recovery files.
+3. Follow the persistence health and save alert procedures in the main runbook.
 4. Reconcile every affected durable domain before declaring recovery complete.
 
 ## DurisWeb Hook Mismatch Or Bridge Failure

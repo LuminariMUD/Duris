@@ -83,14 +83,6 @@ flatfile_identity_result flatfile_identity_lookup_name(const std::string &root,
 flatfile_identity_result flatfile_identity_lookup_pid(const std::string &root, int32_t pid,
 						      flatfile_identity_record *record,
 						      std::string *error);
-// Caller acquires identity before authority. Recover the authority journal and
-// read without reacquiring either lock. Retired identities remain readable;
-// caller enforces current activity/membership policy. Output is unchanged on error.
-flatfile_identity_result
-flatfile_identity_lookup_pid_locked(const std::string &root,
-				    const flatfile_identity_lock &identity_lock,
-				    const flatfile_authority_lock &authority_lock, int32_t pid,
-				    flatfile_identity_record *record, std::string *error);
 flatfile_identity_result
 flatfile_identity_list_account(const std::string &root, const std::string &account,
 			       std::vector<flatfile_identity_record> *records, std::string *error);
@@ -108,14 +100,6 @@ flatfile_identity_result flatfile_identity_prepare_sync_account(
 	const flatfile_authority_lock &authority_lock, const std::string &account,
 	const std::vector<flatfile_identity_record> &records,
 	flatfile_authority_operation *operation, std::string *error);
-flatfile_identity_result flatfile_identity_rename(const std::string &root, int32_t pid,
-						  const std::string &expected_name,
-						  const std::string &new_name, std::string *error);
-flatfile_identity_result flatfile_identity_set_blocked(const std::string &root, int32_t pid,
-						       bool blocked, std::string *error);
-flatfile_identity_result flatfile_identity_remove(const std::string &root, int32_t pid,
-						  const std::string &expected_name,
-						  std::string *error);
 flatfile_identity_result
 flatfile_identity_prepare_remove(const std::string &root,
 				 const flatfile_identity_lock &identity_lock,

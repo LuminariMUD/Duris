@@ -80,7 +80,7 @@ int main()
 }
 """
 
-CFLAGS = ["-std=c++20", "-w", "-D_PFILE_", "-DTEST_MUD", "-D__NO_TESTS__"]
+CFLAGS = ["-std=c++20", "-w", "-D_PFILE_", "-DTEST_MUD"]
 INCLUDES = ["-I" + str(SRC), "-I/usr/include/libxml2", "-I/usr/include/mysql"]
 
 with tempfile.TemporaryDirectory() as workspace:

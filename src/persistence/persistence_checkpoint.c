@@ -25,34 +25,11 @@ int room_vnum(P_char character)
 }
 } // namespace
 
-void mark_player_dirty(int pid)
-{
-	if (_pwipe)
-		return;
-	mark_player_dirty_components(pid, PLAYER_CHECKPOINT_COMPONENT_ALL);
-}
-
 void mark_player_dirty_components(int pid, player_component_mask_t components)
 {
 	if (_pwipe)
 		return;
 	player_save_pipeline_mark(pid, components);
-}
-
-void flush_dirty_players(void)
-{
-	for (P_char character = character_list; character; character = character->next)
-		if (IS_PC(character) && GET_PID(character) > 0)
-		{
-			// Session time advances even when no gameplay component changed.
-			if (character->player.time.logon > 0)
-				mark_player_dirty_components(GET_PID(character),
-							     PLAYER_COMPONENT_STATUS);
-			player_save_pipeline_checkpoint_dirty(character, RENT_CRASH,
-							      room_vnum(character));
-			// A locker is checkpointed with the character inside it.
-			locker_post_save_hook(character);
-		}
 }
 
 int get_dirty_player_count(void)

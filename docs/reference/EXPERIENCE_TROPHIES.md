@@ -60,7 +60,7 @@ SQL and creates no per-award save job.
 The existing `dirty-player-checkpoint` job runs on a 30-second fixed-delay cycle,
 processing eight characters per batch and continuing the remaining batch on
 later ticks. Only dirty components are captured. The existing immutable snapshot
-pipeline journals, coalesces pending saves, and sends them to background workers.
+pipeline queues them on the one persistence writer.
 Other explicit or terminal checkpoints can save earlier; a long cycle or queue
 backlog can save later. No second trophy timer or worker is introduced.
 
@@ -91,9 +91,8 @@ reserved, disabled in the registry, and completes without SQL even if dispatched
 cannot reactivate penalties or a competing database writer. Epic trophies are
 unaffected.
 
-Changes held only in memory can be lost before a durable checkpoint. The save
-journal protects captured snapshots after durable append; it cannot protect
-uncaptured XP events. Observe actual unacknowledged age through existing save
+Changes held only in memory can be lost before a durable checkpoint, and a crash
+loses a captured snapshot the writer had not yet applied. Observe actual unacknowledged age through existing save
 diagnostics rather than treating the nominal interval as a durability guarantee.
 
 ## Verification
@@ -104,7 +103,6 @@ python3 tests/async/test_experience_trophy.py
 python3 tests/async/test_player_revision_state.py
 python3 tests/async/test_player_save_worker.py
 python3 tests/async/test_player_save_pipeline.py
-python3 tests/async/test_player_save_journal.py
 python3 tests/async/test_player_load_pipeline.py
 python3 tests/async/test_flatfile_player_repository.py
 python3 tests/async/test_maintenance_scheduler.py

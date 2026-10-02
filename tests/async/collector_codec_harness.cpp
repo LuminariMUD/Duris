@@ -56,13 +56,6 @@ void same_record(const record &left, const record &right)
 	       left.policy.minimum_value == right.policy.minimum_value &&
 	       left.status == right.status && left.closed_reason == right.closed_reason);
 }
-
-void put_u32(std::vector<uint8_t> *bytes, size_t offset, uint32_t value)
-{
-	assert(bytes && offset <= bytes->size() && bytes->size() - offset >= sizeof(value));
-	for (size_t byte = 0; byte < sizeof(value); ++byte)
-		(*bytes)[offset + byte] = static_cast<uint8_t>(value >> (byte * 8));
-}
 }
 
 int main()
@@ -151,77 +144,10 @@ int main()
 	value.next_listing = 9;
 	value.records = states;
 	assert(valid_catalog(value));
-	std::vector<uint8_t> catalog_bytes;
-	assert(catalog_encode(value, &catalog_bytes) == codec_result::ok);
-	assert(catalog_bytes.size() ==
-		       catalog_header_bytes + states.size() * encoded_record_bytes &&
-	       std::equal(catalog_bytes.begin(), catalog_bytes.begin() + 4, "DCAT") &&
-	       catalog_bytes[4] == 1 && catalog_bytes[5] == 0 && catalog_bytes[6] == 0 &&
-	       catalog_bytes[7] == 0);
-	catalog round_trip;
-	assert(catalog_decode(catalog_bytes.data(), catalog_bytes.size(), &round_trip) ==
-	       codec_result::ok);
-	assert(round_trip.revision == value.revision &&
-	       round_trip.next_listing == value.next_listing &&
-	       round_trip.records.size() == value.records.size());
-	for (size_t index = 0; index < states.size(); ++index)
-		same_record(states[index], round_trip.records[index]);
-	std::vector<uint8_t> catalog_again;
-	assert(catalog_encode(round_trip, &catalog_again) == codec_result::ok &&
-	       catalog_again == catalog_bytes);
 
-	catalog sentinel;
-	sentinel.revision = 77;
-	auto malformed_catalog = catalog_bytes;
-	malformed_catalog[0] = 'X';
-	assert(catalog_decode(malformed_catalog.data(), malformed_catalog.size(), &sentinel) ==
-	       codec_result::malformed);
-	assert(sentinel.revision == 77);
-	malformed_catalog = catalog_bytes;
-	malformed_catalog[4] = 2;
-	assert(catalog_decode(malformed_catalog.data(), malformed_catalog.size(), &sentinel) ==
-	       codec_result::unsupported_version);
-	malformed_catalog = catalog_bytes;
-	malformed_catalog[6] = 1;
-	assert(catalog_decode(malformed_catalog.data(), malformed_catalog.size(), &sentinel) ==
-	       codec_result::malformed);
-	assert(catalog_decode(catalog_bytes.data(), catalog_bytes.size() - 1, &sentinel) ==
-	       codec_result::malformed);
-	malformed_catalog = catalog_bytes;
-	std::swap_ranges(malformed_catalog.begin() + catalog_header_bytes,
-			 malformed_catalog.begin() + catalog_header_bytes + encoded_record_bytes,
-			 malformed_catalog.begin() + catalog_header_bytes + encoded_record_bytes);
-	assert(catalog_decode(malformed_catalog.data(), malformed_catalog.size(), &sentinel) ==
-	       codec_result::invalid);
-	malformed_catalog.assign(catalog_bytes.begin(),
-				 catalog_bytes.begin() + catalog_header_bytes);
-	put_u32(&malformed_catalog, 24, catalog_max_records + 1);
-	assert(catalog_decode(malformed_catalog.data(), malformed_catalog.size(), &sentinel) ==
-	       codec_result::too_many_records);
-
-	catalog empty;
-	std::vector<uint8_t> empty_bytes;
-	assert(valid_catalog(empty) && catalog_encode(empty, &empty_bytes) == codec_result::ok &&
-	       empty_bytes.size() == catalog_header_bytes);
-	catalog empty_round_trip;
-	assert(catalog_decode(empty_bytes.data(), empty_bytes.size(), &empty_round_trip) ==
-	       codec_result::ok);
-
-	catalog large;
-	large.revision = 100000;
-	large.next_listing = 100001;
-	large.records.reserve(100000);
-	for (uint64_t listing = 1; listing <= 100000; ++listing)
-		large.records.push_back(candidate(listing, listing));
-	std::vector<uint8_t> large_bytes;
-	assert(catalog_encode(large, &large_bytes) == codec_result::ok &&
-	       large_bytes.size() == catalog_header_bytes + 100000 * encoded_record_bytes);
-	catalog large_decoded;
-	assert(catalog_decode(large_bytes.data(), large_bytes.size(), &large_decoded) ==
-	       codec_result::ok);
 	due_queue rebuilt;
-	for (const auto &entry : large_decoded.records)
-		assert(rebuilt.update(entry));
+	for (uint64_t listing = 1; listing <= 100000; ++listing)
+		assert(rebuilt.update(candidate(listing, listing)));
 	const auto first_batch = rebuilt.lease_due(44200, 64, 44230);
 	assert(rebuilt.size() == 100000 && first_batch.size() == 64 && first_batch.front() == 1 &&
 	       first_batch.back() == 64);

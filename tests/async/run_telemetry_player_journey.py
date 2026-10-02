@@ -93,14 +93,13 @@ def run(binary: Path, settings: Path) -> None:
         catalog.touch(mode=0o600)
         catalog.write_text("6f49b7e9b16055b6c7d48d83f4a9de789d89adeddabbb4bfc1f6d2c86f6b8792 265 265 1\n")
         env["TELEMETRY_PROPERTY_CATALOG_FILE"] = str(catalog)
-        for name in ("logs/log", "journals/players", "journals/critical", "bin/server"):
+        for name in ("logs/log", "journals/critical", "bin/server"):
             (runtime / name).mkdir(parents=True, exist_ok=True, mode=0o700)
         for name in ("dms", "dms_new"):
             shutil.copy2(binary, runtime / "bin/server" / name)
         state_file = root / "copyover-state/copyover.dat"
         port, tls, websocket = journey.available_ports()
         env.update(PERSISTENCE_MODE="mariadb-primary", PERSISTENCE_BACKEND="mariadb",
-                   PLAYER_SAVE_JOURNAL_DIR=str(runtime / "journals/players"),
                    CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
                    COPYOVER_STATE_FILE=str(state_file), LISTEN_ADDRESS="127.0.0.1",
                    DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1",

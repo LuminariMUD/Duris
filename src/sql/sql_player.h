@@ -1,6 +1,5 @@
 // sql_player.h
-// player save/load functions for mysql storage
-// part of pfile-to-db migration
+// MariaDB storage for players, accounts, lockers, corpses, shopkeepers and saved items
 
 #ifndef __SQL_PLAYER_H_INCLUDED__
 #define __SQL_PLAYER_H_INCLUDED__
@@ -32,31 +31,12 @@ bool sql_in_transaction(void);
 #ifndef __NO_MYSQL__
 #include <mysql.h>
 
-// for forked child - create separate db connection
-MYSQL *sql_create_child_connection(void);
-
-// child swaps globals after fork
-void sql_reset_for_child(MYSQL *child_conn);
 #endif
 
 // ============================================================================
 // player save functions
 // ============================================================================
 
-// master save function - saves entire player to db atomically
-// type: save type (RENT_CAMPED, RENT_RENTED, etc from defines.h)
-// room: room vnum to save
-// returns true on success
-bool sql_save_player(P_char ch, int type, int room);
-
-// individual save functions (called by sql_save_player)
-bool sql_save_player_status(P_char ch, int type, int room);
-bool sql_save_player_skills(P_char ch);
-bool sql_save_player_affects(P_char ch);
-bool sql_save_player_items(P_char ch);
-bool sql_delete_player_items(int pid);
-bool sql_save_player_shapechanges(P_char ch);
-bool sql_save_player_recipes(P_char ch);
 // Every character's recipes, read at boot and kept in memory (MariaDB).
 bool sql_player_recipes_load(void);
 bool sql_add_player_recipe(int pid, int recipe_vnum);
@@ -67,11 +47,6 @@ int *sql_get_player_recipes(int pid, int *count);
 // ============================================================================
 // player load functions
 // ============================================================================
-
-// master load function - loads entire player from db
-// name: player name to load
-// returns char_data pointer or NULL on failure
-P_char sql_load_player(const char *name);
 
 // check if player exists in db
 bool sql_player_exists(const char *name);
@@ -86,16 +61,7 @@ std::vector<std::string> sql_rename_character_statements(int pid, const char *ol
 // get player pid by name
 int sql_get_player_pid(const char *name);
 
-// individual load functions (called by sql_load_player)
-bool sql_load_player_status(P_char ch, int pid);
-bool sql_load_player_skills(P_char ch);
-bool sql_load_player_affects(P_char ch);
-bool sql_load_player_items(P_char ch);
 bool sql_load_player_shapechanges(P_char ch);
-
-// pet save/load for crash recovery
-bool sql_save_player_pets(P_char ch, int save_type, int save_room_vnum);
-bool sql_load_player_pets(P_char ch);
 
 // ============================================================================
 // player delete
@@ -144,7 +110,6 @@ bool sql_delete_account(const char *name, std::function<void(bool deleted)> done
 
 // delete locker
 std::string sql_delete_locker_statement(int owner_pid, int owner_assoc_id);
-bool sql_delete_locker_by_name(const char *locker_name);
 
 // private chest functions
 // private_chest_log action_type values
@@ -171,33 +136,6 @@ struct AccountBankBalances
 	int platinum;
 };
 
-bool sql_load_account_bank(const char *account_name, int racewar, P_char ch);
-long long sql_account_bank_deposit(const char *account_name, int racewar, int coin_type,
-				   int amount);
-bool sql_account_bank_deposit_balances(const char *account_name, int racewar,
-				       const AccountBankBalances *amounts,
-				       AccountBankBalances *committed);
-long long sql_account_bank_withdraw(const char *account_name, int racewar, int coin_type,
-				    int amount);
-int sql_account_bank_withdraw_value(const char *account_name, int racewar, int amount,
-				    AccountBankBalances *committed, int *change);
-bool sql_ensure_account_bank(const char *account_name, int racewar);
-
-// ============================================================================
-// migration helpers
-// ============================================================================
-
-// migrate single player from pfile to db
-// loads from pfile, saves to db, verifies
-bool sql_migrate_player(const char *name);
-
-// verify player data matches between pfile and db
-bool sql_verify_player(const char *name);
-
-// migrate all players from pfiles to db
-// returns count of successfully migrated players
-int sql_migrate_all_players(void);
-
 // ============================================================================
 // utility
 // ============================================================================
@@ -214,8 +152,6 @@ bool sql_load_all_corpses(void);
 
 // shopkeepers
 bool sql_save_shopkeeper(P_char ch, int shop_nr);
-bool sql_delete_shopkeeper(int shop_nr);
-P_char sql_restore_shopkeeper(int shop_nr);
 bool sql_restore_shopkeepers(void);
 bool sql_save_dirty_shopkeepers(bool force = false);
 
@@ -237,7 +173,6 @@ bool sql_save_guild(Guild *guild);
 std::vector<std::string> sql_save_guild_statements(Guild *guild);
 Guild *sql_load_guild(unsigned int guild_id);
 bool sql_load_all_guilds(void);
-bool sql_delete_guild(unsigned int guild_id);
 
 // spellbooks (conjurable mobs); on MariaDB read at boot and kept in memory
 bool sql_spellbooks_load(void);
@@ -245,6 +180,5 @@ bool sql_add_spellbook_mob(int pid, int mob_vnum);
 bool sql_remove_spellbook_mob(int pid, int mob_vnum);
 bool sql_has_spellbook_mob(int pid, int mob_vnum);
 int *sql_get_spellbook_mobs(int pid, int *count);
-bool sql_delete_spellbook_mobs(int pid);
 
 #endif // __SQL_PLAYER_H_INCLUDED__

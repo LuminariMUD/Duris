@@ -67,8 +67,8 @@
 #include "world/world_quest.h"
 #include "net/ws_handlers.h"
 #include "guild/artifact_guild_transaction.h"
-#include "persistence/corpse_lifecycle_transaction.h"
 #include "economy/collector_catalog_cache.h"
+#include "economy/collector_death_enrollment.h"
 #include "economy/collector_presence.h"
 #include "economy/currency_transaction.h"
 #include "player/player_save_pipeline.h"
@@ -1715,12 +1715,14 @@ P_obj make_corpse(P_char ch, int loss)
 		extract_obj(corpse);
 		corpse = NULL;
 	}
-	// The corpse holds the player's items in memory; its save claims them.
+	// The corpse holds the player's items in memory; its save claims them, and enrols the
+	// death with the collector.
 	if (corpse && IS_PC(ch))
 	{
 		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS |
 								  PLAYER_COMPONENT_EQUIPMENT |
 								  PLAYER_COMPONENT_INVENTORY);
+		collector_death_enrollment_begin(ch, corpse);
 		writeCorpse(corpse);
 	}
 

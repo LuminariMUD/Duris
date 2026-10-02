@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Run production corpse bulk callbacks with held acknowledgements and player movement.
+"""Run production corpse bulk gets: selection, coins, publication and the haul report.
 
-The item/currency services are controlled boundaries, not a substitute for a
-server/SQL journey. Real selection, admission continuation, publication and
-terminal reporting functions execute under ASan and UBSan.
+The world and wallet are stubs, not a substitute for a server journey. Real
+selection, pickup and reporting functions execute under ASan and UBSan.
 """
 from pathlib import Path
 import subprocess
@@ -81,20 +80,14 @@ struct obj_data {
  struct { int room=0; obj_data *inside=nullptr; } loc;
 };
 using P_obj = obj_data *;
-enum class item_owner_type { player, room, locker };
-struct item_owner_identity { item_owner_type type=item_owner_type::room; uint64_t id=1, extra=0; };
-enum class item_transfer_reason { unknown, locker_withdraw, corpse_loot, player_get };
-enum class item_movement_reject { none, owner_mismatch, busy };
-struct item_ownership_runtime_entry { item_owner_identity owner; };
-struct item_transfer_result { int corpse_revision=0; };
 static struct { P_obj contents=nullptr; } world[8];
 static int top_of_objt=50;
 static std::unordered_map<uint64_t, P_obj> objects;
 static std::unordered_map<int, std::string> rooms;
 static std::string output;
-static int submissions=0, alerts=0, coin_attempts=0;
-static bool admitted=true, owned=true, fail_delivery=false;
-static bool item_get_ack_publication=false, item_get_deferred=false, item_get_rejected=false;
+static int coin_attempts=0;
+static bool fail_delivery=false;
+static bool item_get_ack_publication=false, item_get_rejected=false;
 static P_obj find_live_item_uid(uint64_t uid) { auto i=objects.find(uid); return i==objects.end()?nullptr:i->second; }
 static void send_to_char(const char *s,P_char) { output+=s; }
 static void act(const char *s,int,P_char ch,P_obj,void *,int target) {
@@ -105,39 +98,12 @@ static void obj_to_char(P_obj o,P_char ch) {
  if(fail_delivery) { objects.erase(o->obj_uid); return; }
  o->location=3; o->carrier=ch;
 }
-static bool item_owner_identity_equal(item_owner_identity a,item_owner_identity b) { return a.type==b.type && a.id==b.id; }
-static bool item_owner_identity_valid(item_owner_identity a) { return a.id != 0; }
-static bool item_ownership_runtime_lookup(uint64_t,item_ownership_runtime_entry *r) { r->owner={}; return owned; }
 static bool item_movement_transaction_player_busy(P_char) { return false; }
-static bool corpse_lifecycle_transaction_busy(uint32_t,uint32_t) { return false; }
-static bool corpse_lifecycle_transaction_note_item_transfer(uint32_t,uint32_t,int) { return true; }
-static void persistence_alert(int,const char *,const char *,const char *,const char *,const char *,...) { ++alerts; }
-static void logit(int,const char *,...) {}
-static bool item_movement_reject_is_transient(item_movement_reject r) { return r==item_movement_reject::busy; }
-static const char *item_movement_reject_name(item_movement_reject) { return "refused"; }
-static void report_batch_movement_reject(P_char ch,item_movement_reject,const char *,const char *s) { send_to_char(s,ch); }
-using callback = void(*)(P_char,bool,const item_transfer_result &,unsigned,const uint8_t *,size_t);
-static callback held=nullptr;
-static std::vector<uint8_t> held_context;
-template<typename T> static bool hold(T cb,const void *data,size_t size) {
- if(!admitted) return false;
- ++submissions; held=cb; held_context.assign((const uint8_t*)data,(const uint8_t*)data+size); return true;
-}
-static bool item_movement_transaction_submit(P_char,P_obj,P_obj,item_owner_identity,item_owner_identity,
- item_transfer_reason,int64_t,callback cb,const void *data,size_t size,P_obj,item_movement_reject *r) {
- *r=item_movement_reject::busy; return hold(cb,data,size);
-}
-static bool item_movement_transaction_submit_batch(P_char,P_obj *,size_t,P_obj,item_owner_identity,item_owner_identity,
- item_transfer_reason,int64_t,callback cb,const void *data,size_t size,P_obj,item_movement_reject *r) {
- *r=item_movement_reject::busy; return hold(cb,data,size);
-}
 static bool isname(const char *a,const char *b) { return !strcmp(a,b); }
 static bool account_bound_reward_owner(P_char,P_obj) { return false; }
 static bool item_command_object_is_takeable(P_char,P_obj o) { return o->weight>=0; }
 static bool checkgetput(P_char,P_obj) { return false; }
-static bool item_command_uses_durable_ownership(P_obj o) { return o->type!=ITEM_MONEY; }
 static int64_t total_carried_weight(P_char) { return 0; }
-static bool item_get_source_owner(P_char,P_obj,P_obj,item_owner_identity *o) { *o={}; return true; }
 static void checked_snprintf(char *b,size_t n,const char *f,...) { va_list a; va_start(a,f); vsnprintf(b,n,f,a); va_end(a); }
 static int scrap_attempts=0;
 static void MakeScrap(P_char,P_obj) { ++scrap_attempts; }
@@ -152,16 +118,13 @@ static const char *coins_to_string(int p,int g,int s,int c,const char *) {
 '''.replace(' struct { P_obj_unused_placeholder; } unused;\n','')
 
 finalizers = r'''
-static bool coin_options_seen=false;
-static coin_get_submission_options last_coin_options = {};
 static void do_get_finalize_container_success(P_char ch,P_char,P_obj container,P_obj object,
  int &total,bool &found,bool,const char *,const coin_get_submission_options *options=nullptr) {
- item_get_deferred=false; item_get_rejected=false;
+ item_get_rejected=false;
  if(object->type==ITEM_MONEY) {
-  ++coin_attempts; coin_options_seen=options!=nullptr;
-  if(options) last_coin_options=*options;
+  ++coin_attempts;
   // The production finalizer takes a selected corpse pile in memory.
-  item_get_rejected=!(admitted && options && options->has_amount_limit &&
+  item_get_rejected=!(options && options->has_amount_limit &&
                       take_coins(ch,object,container,TRUE,*options));
   return;
  }
@@ -175,13 +138,7 @@ static void do_get_finalize_room_item(P_char ch,P_obj o,bool &found,int &total) 
 driver = r'''
 static void reset() {
  bulk_gets.clear(); objects.clear(); rooms.clear(); output.clear();
- submissions=alerts=coin_attempts=scrap_attempts=0; coin_options_seen=false; last_coin_options={};
- admitted=owned=true; fail_delivery=false; wallet=0;
- held=nullptr; held_context.clear();
-}
-static void acknowledge(P_char actor,bool ok=true) {
- auto cb=held; auto context=held_context; assert(cb);
- held=nullptr; cb(actor,ok,{},0,context.data(),context.size());
+ coin_attempts=scrap_attempts=0; fail_delivery=false; wallet=0;
 }
 static void setup(P_char ch,P_obj corpse,P_obj dagger,P_obj coins) {
  ch->in_room=1; corpse->obj_uid=50; corpse->type=ITEM_CORPSE;
@@ -193,58 +150,27 @@ static void setup(P_char ch,P_obj corpse,P_obj dagger,P_obj coins) {
   coins->location=2; coins->loc.inside=corpse; objects[52]=coins; }
 }
 int main() {
-  for(bool player_corpse : {false,true}) {
-   reset(); char_data actor; obj_data corpse,dagger,coins; setup(&actor,&corpse,&dagger,&coins);
-   start_bulk_get(&actor,&corpse,nullptr,player_corpse);
-  assert(submissions==1 && output.find("You begin pulling") == 0);
-  assert(output.find("Haul:")==std::string::npos && !rooms[1].empty());
-   const auto original=output; start_bulk_get(&actor,&corpse,nullptr,player_corpse);
-  assert(submissions==1 && output.find("already moving")!=std::string::npos);
-  output=original;
-  // Held durable transfer commits after departure. A corpse haul keeps the
-  // selected coin boundary and resumes; the ordinary-container case below stops.
-   actor.in_room=2; corpse.short_description="a replacement description";
-   acknowledge(&actor);
-   assert(OBJ_CARRIED_BY(&dagger,&actor) && alerts==0);
-   assert(coin_attempts==1 && coin_options_seen);
-   assert(last_coin_options.allow_source_move && last_coin_options.has_amount_limit);
-   assert(last_coin_options.amount_limit[2]==4 && wallet==400);
-   assert(output.find("You finish sorting your haul from the corpse of a frost giant.")!=std::string::npos);
-   assert(output.find("Haul:\r\n  a dagger\r\n")!=std::string::npos);
-   assert(output.find("  0p 4g 0s 0c")!=std::string::npos);
-   assert(output.find("Some contents were not acquired.")==std::string::npos);
-   assert(rooms[2].empty() && bulk_gets.empty());
-   auto terminal=output; finish_bulk_get(&actor,actor.pid); assert(output==terminal);
-  }
-  // A moved ordinary container never receives the corpse continuation
-  // exception, even though its selected coin admission is otherwise valid.
-  {
-   reset(); char_data actor; obj_data container,dagger,coins; setup(&actor,&container,&dagger,&coins);
-   container.type=0; start_bulk_get(&actor,&container,nullptr,false); actor.in_room=2;
-   acknowledge(&actor); assert(coin_attempts==0 && OBJ_CARRIED_BY(&dagger,&actor));
-   assert(bulk_gets.empty());
-  }
-  // A stable corpse exception applies only to selected coins. A non-money
-  // synchronous action such as scrap still requires the actor at the source.
-  {
-   reset(); char_data actor; obj_data corpse,scrap,coins,durable; setup(&actor,&corpse,&scrap,&coins);
-   scrap.condition=0; durable.obj_uid=53; durable.location=2; durable.loc.inside=&corpse;
-   durable.next_content=&scrap; corpse.contains=&durable; objects[53]=&durable;
-   start_bulk_get(&actor,&corpse,nullptr,false); actor.in_room=2; acknowledge(&actor);
-   assert(scrap_attempts==0 && coin_attempts==1 && wallet==400);
-   assert(bulk_gets.empty());
-  }
- // Adoption preserves source custody only; leaving before the transfer stops it.
- reset(); char_data actor; obj_data corpse,dagger,coins; setup(&actor,&corpse,&dagger,&coins);
- owned=false; start_bulk_get(&actor,&corpse,nullptr,false); actor.in_room=2;
- owned=true; acknowledge(&actor);
- assert(submissions==1 && OBJ_INSIDE(&dagger) && coin_attempts==0);
- assert(output.find("Nothing acquired.")!=std::string::npos && output.find("no longer available")!=std::string::npos);
- // No accepted work means no misleading start/finish.
- reset(); setup(&actor,&corpse,&dagger,nullptr); admitted=false;
- start_bulk_get(&actor,&corpse,nullptr,false);
- assert(output.find("You begin")==std::string::npos && output.find("sorting")==std::string::npos);
- assert(output.find("busy")!=std::string::npos && bulk_gets.empty());
+ for(bool player_corpse : {false,true}) {
+  reset(); char_data actor; obj_data corpse,dagger,coins; setup(&actor,&corpse,&dagger,&coins);
+  start_bulk_get(&actor,&corpse,nullptr,player_corpse);
+  assert(output.find("You begin pulling") == 0 && !rooms[1].empty());
+  assert(OBJ_CARRIED_BY(&dagger,&actor) && coin_attempts==1 && wallet==400);
+  assert(output.find("You finish sorting your haul from the corpse of a frost giant.")!=std::string::npos);
+  assert(output.find("Haul:\r\n  a dagger\r\n")!=std::string::npos);
+  assert(output.find("  0p 4g 0s 0c")!=std::string::npos);
+  assert(output.find("Some contents were not acquired.")==std::string::npos);
+  assert(bulk_gets.empty());
+ }
+ // A ruined item is scrapped where it lies; the rest of the haul still comes.
+ {
+  reset(); char_data actor; obj_data corpse,scrap,coins,dagger; setup(&actor,&corpse,&scrap,&coins);
+  scrap.condition=0; dagger.obj_uid=53; dagger.location=2; dagger.loc.inside=&corpse;
+  dagger.next_content=&scrap; corpse.contains=&dagger; objects[53]=&dagger;
+  start_bulk_get(&actor,&corpse,nullptr,false);
+  assert(scrap_attempts==1 && OBJ_CARRIED_BY(&dagger,&actor) && coin_attempts==1 && wallet==400);
+  assert(bulk_gets.empty());
+ }
+ char_data actor; obj_data corpse,dagger,coins;
  reset(); setup(&actor,&corpse,&dagger,nullptr); actor.count_limit=0;
  start_bulk_get(&actor,&corpse,nullptr,false);
  assert(output=="You can't carry any more.\r\n"); actor.count_limit=3;
@@ -280,31 +206,16 @@ int main() {
  start_bulk_get(&cycle_actor,&cycle_corpse,nullptr,false);
  assert(output=="You can't carry any more.\r\n" && bulk_gets.empty());
  assert(OBJ_INSIDE(&visible_root) && OBJ_INSIDE(&hidden_root));
- // Missing/moved source never falsely reports selected items as delivered.
- for(int missing=0;missing<3;++missing) {
-  reset(); setup(&actor,&corpse,&dagger,nullptr); start_bulk_get(&actor,&corpse,nullptr,false);
-  if(missing==0) objects.erase(50);
-  if(missing==1) corpse.loc.room=3;
-  if(missing==2) dagger.loc.inside=nullptr;
-  acknowledge(&actor); assert(alerts==1 && !OBJ_CARRIED_BY(&dagger,&actor));
-  assert(output.find("Nothing acquired.")!=std::string::npos && output.find("  a dagger")==std::string::npos);
- }
- // Failure is terminal and buffered after the completion, without fake loot.
- reset(); setup(&actor,&corpse,&dagger,nullptr); start_bulk_get(&actor,&corpse,nullptr,false);
- acknowledge(&actor,false); assert(output.find("sorting")<output.find("did not commit"));
- // A disconnected actor releases only transient reporting state.
- reset(); setup(&actor,&corpse,&dagger,nullptr); start_bulk_get(&actor,&corpse,nullptr,false);
- acknowledge(nullptr); assert(bulk_gets.empty());
  // A failed live delivery is never listed in the haul.
- reset(); setup(&actor,&corpse,&dagger,nullptr); start_bulk_get(&actor,&corpse,nullptr,false);
- fail_delivery=true; acknowledge(&actor); assert(output.find("  a dagger")==std::string::npos);
+ reset(); setup(&actor,&corpse,&dagger,nullptr); fail_delivery=true;
+ start_bulk_get(&actor,&corpse,nullptr,false);
+ assert(output.find("  a dagger")==std::string::npos);
  // Coin-only and mixed operations take the selected coins in memory and list them
  // in the one haul report.
  for(bool mixed : {false,true}) {
   reset(); setup(&actor,&corpse,&dagger,&coins);
   if(!mixed) corpse.contains=&coins;
   start_bulk_get(&actor,&corpse,nullptr,false);
-  if(mixed) acknowledge(&actor);
   assert(coin_attempts==1 && wallet==400);
   assert(output.find("  0p 4g 0s 0c")!=std::string::npos && bulk_gets.empty());
  }
@@ -313,7 +224,7 @@ int main() {
  reset(); setup(&actor,&corpse,&dagger,&coins); obj_data later;
  later.obj_uid=53; later.type=ITEM_MONEY; later.location=2; later.loc.inside=&corpse;
  coins.next_content=&later; objects[53]=&later;
- start_bulk_get(&actor,&corpse,nullptr,false); acknowledge(&actor);
+ start_bulk_get(&actor,&corpse,nullptr,false);
  assert(coin_attempts==2 && wallet==400);
  assert(output.find("  a dagger")!=std::string::npos && output.find("  0p 4g 0s 0c")!=std::string::npos);
  assert(output.find("Some contents were not acquired.")!=std::string::npos && bulk_gets.empty());
@@ -327,7 +238,7 @@ int main() {
  publish_container_get(&scavenger,&npc_loot,&npc_bag,TRUE,false);
  item_get_ack_publication=false;
  assert(OBJ_CARRIED_BY(&npc_loot,&scavenger) && bulk_gets.empty());
- puts("corpse haul: held transfer/adoption/coins, movement, rejection, stale source, disconnect and strict NPC publication passed");
+ puts("corpse haul: report, coins, scrap, count cap, cycle bound, failed delivery and strict NPC publication passed");
 }
 '''
 
@@ -336,26 +247,14 @@ _coins = source.index('static bool take_coins(', source.index('// Take the selec
 take_coins = source[_coins:source.index('P_obj find_live_item_uid(', _coins)]
 parts = [prelude, take('struct synchronous_get_item')+';', take('struct bulk_get_state')+';',
          take('struct coin_get_submission_options')+';',
-         take('struct bulk_movement_context')+';',
          'static std::unordered_map<uint32_t,bulk_get_state> bulk_gets;',
          take('static bulk_get_state *corpse_bulk_get('),
          take('static void announce_corpse_bulk_get('), take_coins,
          take('static void publish_container_get('), finalizers]
-for name in ['static bool bulk_get_source_matches(', 'static bool bulk_get_source_for_roots(',
-             'static bool bulk_get_source_available(',
-             'static bool bulk_get_corpse_source_available(',
-             'static void report_bulk_get(', 'static void finish_bulk_get(', 'static void fail_bulk_get(',
-             'static void reject_bulk_get_admission(', 'static P_obj resolve_synchronous_get_item(',
-             'static bool finish_bulk_get_after_commit(', 'static void bulk_get_completion(']:
-    parts.append(take(name))
-parts += ['static void continue_bulk_get(P_char actor,uint32_t actor_pid);',
-          take('static void bulk_get_adoption_completion(')]
-# The forward declaration precedes the definition; select the latter explicitly.
-pos = source.index('/** Adopt missing stock roots')
-start = source.index('static void continue_bulk_get(', pos)
-end = source.index('/** Snapshot rejection text', start)
-parts.append(source[start:end])
-for name in ['static void reject_bulk_get_object(', 'static bool select_bulk_get_item(', 'static void start_bulk_get(']:
+for name in ['static bool bulk_get_source_matches(', 'static void report_bulk_get(',
+             'static void finish_bulk_get(', 'static P_obj resolve_synchronous_get_item(',
+             'static void take_bulk_get_items(', 'static void reject_bulk_get_object(',
+             'static bool select_bulk_get_item(', 'static void start_bulk_get(']:
     parts.append(take(name))
 parts += [driver]
 with tempfile.TemporaryDirectory(prefix='corpse-haul-') as directory:

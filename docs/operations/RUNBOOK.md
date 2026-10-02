@@ -377,11 +377,11 @@ database and save health. Repeating the command takes new snapshots; it does not
 cache output or mutate queue, Redis, deferred-save, or query state.
 
 The report includes up to eight deterministically ranked query source sites,
-total calls and failures, registry overflow, item/scalar/large queue counters,
-player capture/journal/worker depths and ages, exact revision progress, world capture
+total calls and failures, registry overflow, the persistence writer's queue, bytes,
+age, retries and failures, dirty and deferred player saves, world capture
 and publication health, redacted shared Redis boot/recovery/maintenance calls, failures,
 timeouts, maximum latency and reconnect transitions, per-worker Redis operation latency,
-failure streak, and last-success age, critical-command queue/journal/fence health, flat
+failure streak, and last-success age, critical-command queue and fence health, flat
 shop materialization event/byte capacity and reclaimable counts, and the oldest aggregate
 save age. Output is metadata-only and
 must not be copied into a workflow that expects SQL, player, account, item, IP, or path
@@ -406,15 +406,17 @@ The displayed query operation IDs and any `SQL_TRACE` operation IDs are scoped
 to the current process. They are correlation aids, not durable transaction or
 idempotency identifiers.
 
-For `critical_commands`, `blocked>0`, a growing oldest age, journal corruption or I/O
-failure, or journal quota exhaustion must stop the affected gameplay and any process
-transition. Restore the storage or destination and preserve the journal for replay.
-Never delete or edit the journal to clear a fence. See
+For `writer` and `critical_commands`, a growing `oldest_age_ms` with rising
+`connection_retries` or `retries` means the database is unreachable: the writer keeps
+that job at the head of its queue and the game carries on. Restore the database. Nothing
+is journaled, so a crash before then loses what was queued. `failures` counts jobs
+dropped on any other error; their owners are marked dirty and saved again. See
+[PLAYER_SAVE_PIPELINE.md](../persistence/PLAYER_SAVE_PIPELINE.md) and
 [CRITICAL_COMMAND_PIPELINE.md](../persistence/CRITICAL_COMMAND_PIPELINE.md).
 
 For `critical_outbox`, pending age may briefly rise during destination recovery.
 `dead_letter>0`, `incomplete_inbox>0`, or `committed_without_outbox>0` is an integrity
-incident. Preserve the journal and database rows, stop affected domain cutovers, and run
+incident. Preserve the database rows, stop affected domain cutovers, and run
 the typed reconciliation report. After correcting the destination, retry only the
 specific numeric dead-letter ID through the guarded repair API; never edit payloads or
 execute SQL copied from a command.
@@ -426,27 +428,27 @@ flat-primary shop trades, and investigate the storage or catalog before attempti
 repair. The health read is lock-scoped and on demand; it never prints player, item, or
 path data.
 
-### Retained terminal-save failures
+### Save alerts
 
 `deferred_save_retry_scheduled` means the live character remains the recovery source;
 the alert includes only delay and aggregate counters. Let the bounded retry run and
 watch `world persistence` for pending age and failure growth.
 
-`terminal_save_failed` or `terminal_not_durable` with `extract_refused=1` means camp,
-rent, death cleanup, ghost extraction, an offline artifact transition, or a locker
-transition deliberately kept its live object graph. Do not manually extract that
-character or locker. Restore database availability, retry the originating action or a
-trusted save, and verify the pending count clears.
+Camp, rent, death cleanup and ghost extraction never keep a character for its save. A
+`terminal` alert with `queue_failed` means a leaving character's save could not be
+queued; the character left anyway and its state since the last written save is lost.
+`terminal_save_failed` with `extract_refused=1` means an offline artifact transition
+could not queue the owner's save and kept the offline owner; retry the artifact action.
 
-`terminal_not_durable` with `leave_vetoed=1` means locker snapshot preparation did
-not complete. The occupant and dynamic locker room remain live; do not purge either.
-Restore database availability and have the occupant retry departure.
+`terminal_not_durable` with `leave_vetoed=1` means the locker could not be prepared for
+saving in memory. The occupant and dynamic locker room remain live; do not purge either.
+Check the locker log and have the occupant retry departure.
 
-A copyover or shutdown alert with `shutdown_cancelled=1` means the process deliberately
-returned to the live game loop. No fallback restart should be forced. Correct the
-database failure, confirm every pending age is falling or stable, then request the
-copyover/shutdown again. A `fallback_saved` player-pfile alert is recovery evidence
-only; it does not mean MySQL committed and is not automatically replayed.
+A copyover alert with `copyover_cancelled=1` means the writer could not drain within 30
+seconds and the process returned to the live game loop. No fallback restart should be
+forced. Correct the database failure, confirm the writer's age is falling, then request
+the copyover again. Shutdown alerts carry `shutdown_cancelled=0`: shutdown went ahead,
+and the log names any save it could not write.
 
 ## Restart and crash recovery
 
@@ -471,8 +473,8 @@ verify player integrity before reopening. The rejected generation and floor data
 cleared by the failed restore.
 
 For queue or dependency incidents, use `world persistence` and the detailed `redis`
-status command. Do not clear a player save queue: player state is owned by the local
-revision coordinator and journal, not a Redis dirty set. A world generation publish
+status command. Do not clear a player save queue: player state is owned by memory and
+the persistence writer's queue, not a Redis dirty set. A world generation publish
 failure preserves the prior current generation and retains floor deltas for retry.
 
 Account password recovery keeps no durable state. Reset codes, their per-account cooldown
@@ -623,22 +625,20 @@ selected database. Run them only after repeating the exact clone target qualific
 above; never use production as a development or validation target.
 
 ```bash
-./migrations/reconcile_item_ownership.sh
 ./migrations/reconcile_auction_transactions.sh
 ./migrations/reconcile_artifact_guild_outcomes.sh
 ./migrations/reconcile_boon_reward_zone.sh
 ./migrations/reconcile_phase02_domains.sh
 ```
 
-Wallets, banks, epic points and frags are saved from memory since Phase 2 of the
-[persistence reset](../ongoing-projects/2026-09-28-persistence-memory-authority-plan.md);
-their ledgers are history, and money changes are no longer ledgered at all.
-`migrations/reconcile_currency_balances.sh`, `migrations/reconcile_epic_balances.sh` and
-`migrations/reconcile_combat_frags.sh` compare balances with those ledgers, so they report
-ordinary play as mismatches. Do not run them as integrity checks; Phase 3 removes them.
+Wallets, banks, epic points, frags and item ownership are saved from memory since the
+[persistence reset](../ongoing-projects/persistence-plan.md): a save writes balances
+without a ledger row and claims the items it holds without a transfer, so no ledger
+explains them and no reconciler checks them. `item_owner_audit` records each item a save
+took from another owner, and `logs/log/dupes` each item a save or load gave up.
 
 A nonzero mismatch is an integrity incident, not permission to edit current rows.
-Stop the affected domain, preserve its journal, inbox, outbox, ledger, and report,
+Stop the affected domain, preserve its inbox, outbox, ledger, and report,
 then trace the stable operation identity. Use only the domain's guarded retry or
 repair interface after the cause is known.
 
@@ -682,8 +682,9 @@ WRITERS_QUIESCED=TRUE COMBAT_BASELINE_BACKUP_ID='<backup-generation>' \
 ```
 
 The insert-only transaction preserves existing baselines, verifies locked player and
-ledger state, fails on a conflicting baseline, and rolls back unless character readiness
-plus combat, currency, epic, item-ownership, and required-FK reconciliation all pass.
+ledger state, fails on a conflicting baseline, and rolls back unless character readiness,
+wallet, bank and epic baseline coverage, and the required foreign keys all pass. Balances
+are saved from memory without ledger rows, so it does not compare them with the ledgers.
 It writes those aggregate results to an owner-only receipt. The required rollback file
 must contain reviewed inverse DML limited to the artifact's exact PIDs, values, and
 revisions, with guards rejecting any subsequent combat revision or ledger activity. A
@@ -691,7 +692,7 @@ repeat is idempotent only when the existing row exactly matches the reviewed ope
 This command refuses production targets; it is rehearsal evidence, not permission to
 repair production. Before any separately authorized production repair, retain the
 backup, protected per-PID decisions, reviewed forward and rollback DML, all digests, and
-the rehearsal receipt. Afterwards rerun the same full reconciliation set. Never delete
+the rehearsal receipt. Afterwards rerun the same checks. Never delete
 or rewrite ledger history to make readiness pass.
 
 Loopback combat-baseline clone targets are permitted directly. A remote clone additionally
@@ -731,103 +732,9 @@ WRITERS_QUIESCED=TRUE COIN_CUSTODY_BACKUP_ID='<backup-generation>' \
 
 Preserve the owner-only receipt and rollback evidence. Before any separately authorized
 production repair, prove the same preconditions under row locks, retain reviewed DML and
-the exact backup, and run the player materializer plus item-ownership, currency, schema,
-and FK reconciliation on the clone. Rollback is the inverse UID update to the exact payload
+the exact backup, and run the player materializer plus schema and FK reconciliation on
+the clone. Rollback is the inverse UID update to the exact payload
 row and is safe only before the repaired player is loaded or saved again.
-
-### Player death restitution: offline SQL and native live modes
-
-The audited restitution tool is evidence recovery, not an automatic reimbursement
-command. It reads the immutable `0020_player_death_restitution` contract and
-accepts only normalized death schema 8 after the native bridge has validated the
-raw wire version. Raw death wires 2, 4, 6, and the current writer's 8 are distinct
-inputs; an unknown or corrupt wire is refused.
-
-The production target probe is read-only. Native preparation uses a target-info
-artifact containing the exact database-name confirmation and actual server
-fingerprint; it does not require a stopped service or a maintenance boundary:
-
-```bash
-python3 scripts/player_death_restitution.py --env-file /secure/duris.env \
-  target-info --confirm-production-target <exact-db-name> \
-  --artifact /secure/restitution-target-info.json
-```
-
-Pass that artifact to `inspect --target-info` with the exact confirmation and
-fingerprint, and to `plan --target-info --preparation-mode native`. The native
-`inspect -> plan -> export` preparation is read-only and does not run backup,
-quiescence, service-stop, or SQL mutation code. It still carries the target
-fingerprint, actor/plan identity, explicit approval, expiration/deadline metadata,
-recipient-only native fence, and revision/custody evidence into the exported command.
-
-The offline SQL path has the stronger stopped-boundary probe. Use the installed
-system manager when the production unit is root-managed:
-
-```bash
-python3 scripts/player_death_restitution.py --env-file /secure/duris.env \
-  target-info --confirm-production-target <exact-db-name> \
-  --maintenance-kind systemd --maintenance-id duris-mud-production.service \
-  --artifact /secure/restitution-target-info.json
-```
-
-For the `.sbs` deployment, which is user-manager managed, run the probe as the
-service owner and bind the exact manager explicitly. The tool checks the owner
-UID, `user@UID.service` manager, manager/unit state and PIDs, the owner runtime
-socket, the real cgroup hierarchy, and visible cgroup processes. It does not
-stop or mask the unit; prepare that state through the approved service operation
-before probing, and treat any mismatch as a refusal. A masked inactive/dead unit
-may report `LoadState=masked` with `ControlGroup=` empty after systemd removes
-its dead cgroup; the probe records that empty value and accepts it only with
-zero service PIDs and complete owner-manager process visibility. It never
-invents a cgroup path for an absent group:
-
-```bash
-python3 scripts/player_death_restitution.py --env-file /secure/duris.env \
-  target-info --confirm-production-target <exact-db-name> \
-  --maintenance-kind systemd-user \
-  --maintenance-id duris-mud-production.service \
-  --maintenance-owner "$(id -u)" \
-  --artifact /secure/restitution-target-info.json
-```
-
-Do not substitute `--user` for `--system`, omit the owner, accept an active
-unit, or create an offline-proof file as a lifecycle attestation. The target
-fingerprint and maintenance record are carried into the backup, plan, apply,
-and verification artifacts; a changed manager, owner, unit, PID, cgroup, or
-SQL target makes the artifact stale.
-
-There are two intentionally separate execution modes:
-
-- The native live-runtime handoff uses `inspect`, `plan --preparation-mode native`,
-  and `export`. Production `inspect`/`plan` must carry the read-only target-info
-  artifact with exact target confirmation and server fingerprint; native `plan`
-  must not carry an offline backup or maintenance boundary. `export` requires the
-  exact SQL-derived evidence lineage, explicit staff approval, actor/reason, and
-  native revision fences, but does **not** require `--offline-proof` or a
-  server-wide stop. Submit the protected native payload through the existing
-  authorized staff command and wait for its durable native receipt/readback;
-  admission or queued output is not delivery proof.
-- Direct SQL `apply` is offline-only. It additionally requires the pinned target,
-  backup receipt, explicit approval, owner-only v3 offline context, process and
-  SQL-writer quiescence checks, and the existing advisory-lock/custody,
-  authorization, ownership, artifact, revision, and idempotency fences. The tool
-  never stops or masks a service automatically.
-
-Production `verify --plan` has two read-only policy branches and neither is a
-live-native verification mode. For an explicit native plan, the original plan and
-its digests are retained: supply a **fresh protected** `target-info` artifact bound
-to the same production target and server fingerprint, captured with the explicit
-stopped/masked maintenance boundary, plus the matching maintenance arguments.
-The verifier validates that boundary before any receipt/item read, performs the
-existing exact readback, does not require or inspect a plan-bound backup, does not
-replan or convert the native artifact, and never promotes receipt status. A native
-plan still refuses SQL `apply` and `--mark-verified`. For an `offline-sql` plan,
-the existing stopped-boundary, plan-bound backup, offline-proof, and explicit
-approval gates remain unchanged; `--mark-verified` remains its separate write.
-
-Use the dedicated restitution runbook for the complete inspect/plan/export or
-backup/apply/verify command sequence:
-[`PLAYER_DEATH_RESTITUTION.md`](../persistence/PLAYER_DEATH_RESTITUTION.md).
 
 ### Maintenance, lifecycle, export, and erasure
 
@@ -873,20 +780,6 @@ any restored service is published. Verify that every completed tombstone remains
 uncredentialed and unloadable and that all domain reconciliation reports pass. If a
 tombstone set is missing, stale, unverifiable, or cannot cover a source class, abandon
 that restore candidate; do not reopen it and do not alter historical backups in place.
-
-### Epic ledger cutover and reconciliation
-
-Before enabling transactional epic producers on a guarded development clone, apply
-`migrations/epic_ledger_balance.sql`, run `migrations/verify_epic_ledger_schema.sh`,
-then capture opening balances once with `migrations/baseline_epic_balances.sh --apply`.
-The baseline command refuses when any ledger row or advanced epic revision exists and
-preserves existing baseline rows.
-
-`migrations/reconcile_epic_balances.sh` is read-only. A healthy result reports zero
-missing baselines, balance mismatches, and latest-result mismatches. Stop affected epic
-gameplay if any count is nonzero, preserve the inbox/outbox/ledger rows, and investigate
-the operation history. Do not edit the ledger, invent historical operation IDs, or
-rerun the baseline against an active ledger.
 
 The backup command selects the explicit persistence mode and applies the
 operator-approved shared policy. See [BACKUPS.md](BACKUPS.md) for independent

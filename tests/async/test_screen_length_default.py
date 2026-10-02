@@ -11,7 +11,6 @@ sql_player = (SRC / "sql_player.c").read_text()
 assert "constexpr int DEFAULT_SCREEN_LENGTH = 40;" in structs
 
 assert "ch->only.pc->screen_length = DEFAULT_SCREEN_LENGTH;" in nanny
-assert "sql_row_int(row, col++, DEFAULT_SCREEN_LENGTH)" in sql_player
 assert actoth.count("ch->only.pc->screen_length = DEFAULT_SCREEN_LENGTH;") == 1
 assert 'snprintf(Gbuf3, MAX_STRING_LENGTH, "%d", DEFAULT_SCREEN_LENGTH);' in actoth
 assert 'snprintf(Gbuf3, MAX_INPUT_LENGTH, "%3d", DEFAULT_SCREEN_LENGTH);' in actoth

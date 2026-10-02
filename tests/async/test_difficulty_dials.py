@@ -241,14 +241,11 @@ def test_pet_loaders_do_not_apply_pre_link_gold() -> None:
         "classes/innates.c": "read_mobile(DEVIL_IMP, VIRTUAL, false)",
         "specs/specs.mobile.c": "read_mobile(real_mobile(mobnumb), REAL, false)",
         "combat/mobcombat.c": "read_mobile(1006, VIRTUAL, false)",
-        "core/files.c": "convertMob(ch, false)",
     }
     for name, expression in checks.items():
         assert expression in source(name).read_text(), (name, expression)
-    # The legacy SQL pet loader no longer loads pets at all; ownership-aware
-    # materialization in player_load_pets.c is the only restore path.
-    assert "pet load refused: use ownership-aware player materialization" in source(
-        "sql/sql_player.c").read_text()
+    # Ownership-aware materialization in player_load_pets.c is the only restore path.
+    assert "sql_load_player_pets" not in source("sql/sql_player.c").read_text()
 
 
 def test_breath_money_regen_and_corpse_hooks_are_complete() -> None:
@@ -277,7 +274,7 @@ def test_breath_money_regen_and_corpse_hooks_are_complete() -> None:
 
 def test_command_is_registered() -> None:
     interp = source("cmd/interp.c").read_text()
-    assert '"difficulty",\n\t"itemmana",\n\t"pulse",\n\t"collector",\n\t"restitution",\n\t"dummy",\n\t"\\n" /* MAX_CMD = 865, MAX_CMD_LIST = 1000 */' in interp
+    assert '"difficulty",\n\t"itemmana",\n\t"pulse",\n\t"collector",\n\t"_retired_863",\n\t"dummy",\n\t"\\n" /* MAX_CMD = 865, MAX_CMD_LIST = 1000 */' in interp
     assert "CMD_GRT(CMD_DIFFICULTY, STAT_DEAD + POS_PRONE, do_difficulty, LESSER_G);" in interp
     assert "#define CMD_DIFFICULTY 859" in source("cmd/interp.h").read_text()
     # The command-name table is sized by MAX_CMD, which counts its terminating entry.

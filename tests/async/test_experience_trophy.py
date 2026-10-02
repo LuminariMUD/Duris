@@ -106,7 +106,7 @@ int main()
     assert(pc.zone_trophy->size() == 2);
     assert(pc.zone_trophy->front().exp == 14); // No cross-zone decay writer.
 
-    // A snapshot in flight owns a copy, and acknowledging it cannot clear a
+    // A captured snapshot owns a copy, and acknowledging it cannot clear a
     // subsequent trophy/XP update. This uses the real revision and codec code.
     const auto mask = PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_TROPHIES;
     assert(player_revision_mark(7, mask, nullptr));
@@ -114,7 +114,6 @@ int main()
     player_component_mask_t components = 0;
     assert(player_revision_queue(7, &revision, &components));
     assert(components == mask);
-    assert(player_revision_begin_inflight(7, revision, components));
     player_snapshot snapshot{};
     snapshot.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
     snapshot.encoded_size_bound = 4096;
@@ -127,10 +126,10 @@ int main()
     assert(player_snapshot_encode(snapshot, &bytes) == player_snapshot_codec_result::ok);
     assert(record_zone_trophy_award(&ch, &mob, 7, EXP_KILL));
     assert(player_revision_mark(7, mask, nullptr));
-    assert(player_revision_acknowledge(7, revision, components));
+    assert(player_revision_acknowledge_durable(7, revision, components));
     player_revision_snapshot state{};
     assert(player_revision_snapshot_copy(7, &state));
-    assert(state.dirty_components == mask && state.unacknowledged_components == mask);
+    assert(state.unacknowledged_components == mask);
     player_snapshot restored{};
     assert(player_snapshot_decode(bytes.data(), bytes.size(), &restored) ==
            player_snapshot_codec_result::ok);
@@ -152,7 +151,7 @@ int main()
     clear_zone_trophy(&ch);
     assert(pc.zone_trophy->empty());
     assert(player_revision_snapshot_copy(7, &state));
-    assert(state.dirty_components & PLAYER_COMPONENT_TROPHIES);
+    assert(state.unacknowledged_components & PLAYER_COMPONENT_TROPHIES);
     delete pc.zone_trophy;
 }
 '''

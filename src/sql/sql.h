@@ -55,7 +55,6 @@ extern MYSQL *DB;
 MYSQL *sql_open_configured_connection(unsigned long client_flags);
 MYSQL_RES *db_query_at(struct persistence_query_site site, const char *format, ...);
 unsigned long long sql_next_auto_increment(const char *table);
-MYSQL_RES *db_query_nolog_at(struct persistence_query_site site, const char *format, ...);
 bool sql_observed_execute_at(MYSQL *conn, struct persistence_query_site site,
 			     enum persistence_query_context context, const char *sql, size_t len,
 			     uint64_t *operation_id);
@@ -64,28 +63,19 @@ int initialize_mysql();
 void shutdown_mysql(void);
 bool sql_populate_lookup_tables();
 int sql_save_player_core(P_char ch);
-bool sql_load_player_items(P_char ch);
 int sql_level_cap(int racewar_side);
-// void sql_save_progress( int pid, int delta, const char *type );
 void sql_webinfo_toggle(P_char ch);
 void sql_update_level(P_char ch);
 void get_log(P_char ch, char *temp);
-void manual_log(P_char ch);
 void sql_insert_item(P_char ch, P_obj obj, char *desc);
-void sql_insert_new_item(P_char ch, P_obj obj);
-void perform_wiki_search(P_char ch, const char *buf);
 // use to insert a players IP address into the SQL database
 void sql_connectIP(P_char ch);
 // used to retrieve the last used IP for a player.
 const char *sql_select_IP_info(P_char ch, char *buf, size_t bufSize, time_t *lastConnect = NULL,
 			       time_t *lastDisconnect = NULL);
-int sql_find_racewar_for_ip(char *ip, int *racewar_side);
 // to log disconnect times...
 void sql_disconnectIP(P_char ch);
 bool qry_at(struct persistence_query_site site, const char *format, ...);
-bool sql_persistence_write_item_event_line(const char *line);
-bool sql_persistence_write_scalar_event_line(const char *line);
-bool sql_persistence_write_large_event_line(const char *line);
 bool sql_trace_exec_at(struct persistence_query_site source_site, const char *label,
 		       const char *sql, size_t len, bool drain_before, bool drain_after);
 void sql_trace_panic(void);
@@ -108,10 +98,7 @@ uint64_t sql_game_loop_query_count(void);
 const char *sql_persistence_db_name(void);
 
 #ifndef __NO_MYSQL__
-MYSQL *sql_persistence_connection(void);
-void sql_persistence_release_connection(MYSQL *conn);
 #endif
-bool sql_persistence_execute_raw(const char *sql);
 bool sql_persistence_item_owner_matches(unsigned long long item_uid, const char *owner_type,
 					const char *owner_ref, const char *context);
 bool sql_persistence_item_owner_matches_identity(unsigned long long item_uid,
@@ -148,10 +135,7 @@ void sql_world_quest_finished(P_char ch, P_obj obj);
 void sql_world_quest_history_load(P_char ch);
 int sql_world_quest_done_already(P_char ch, int number);
 int sql_world_quest_can_do_another(P_char ch);
-void sql_zone_touch_finished(const char *event_key, int boot_time, int touched_at, int zone_number,
-			     int toucher_pid, int group_size, int epic_value, int alignment_delta);
 void sql_clear_results();
-bool sql_run_multi_query(const char *query);
 
 #define db_query(...) db_query_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)
 #define db_query_nolog(...) db_query_nolog_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)
@@ -167,14 +151,10 @@ void send_offline_messages(P_char ch);
 
 int sql_shop_sell(P_char ch, P_obj obj, int value);
 int sql_shop_trophy(P_obj obj);
-int sql_quest_finish(P_char ch, P_char giver, int type, int value);
-int sql_quest_trophy(P_char giver);
 
-void log_epic_gain(int pid, int type, int type_id, int epics);
 void do_sql(P_char ch, char *argument, int cmd);
 
 void update_zone_db();
-void update_zone_epic_level(int, int);
 
 void show_frag_trophy(P_char ch, P_char who);
 
@@ -189,7 +169,6 @@ string get_mud_info(const char *name);
 void sql_mud_info_reload(P_char ch, std::function<void(P_char)> done);
 // Reads mud_info again in the background.
 void sql_mud_info_refresh(void);
-void send_mud_info(const char *name, P_char ch);
 
 string escape_str(const char *str);
 
@@ -255,8 +234,5 @@ bool sql_verify_pwipe_manifest(void);
 bool sql_verify_persistence_schema(void);
 bool sql_verify_auction_engines(void);
 bool sql_clear_zone_trophy();
-/* ---- Persistence layer declarations ---- */
-/* (duplicate item/scalar event declarations removed; remaining: */
-void log_epic_gain_event(const char *event_key, int pid, int type, int type_id, int epics);
 
 #endif

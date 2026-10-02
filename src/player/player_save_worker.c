@@ -71,10 +71,9 @@ void update_max(uint64_t &target, uint64_t candidate)
 
 bool valid_snapshot(const player_snapshot &snapshot)
 {
-	const uint32_t required = snapshot.death ? PLAYER_SNAPSHOT_DEATH_SCHEMA_VERSION :
-						   PLAYER_SNAPSHOT_SCHEMA_VERSION;
-	return snapshot.schema_version == required && snapshot.pid > 0 && snapshot.revision &&
-	       snapshot.components && !(snapshot.components & ~PLAYER_CHECKPOINT_COMPONENT_ALL) &&
+	return snapshot.schema_version == PLAYER_SNAPSHOT_SCHEMA_VERSION && snapshot.pid > 0 &&
+	       snapshot.revision && snapshot.components &&
+	       !(snapshot.components & ~PLAYER_CHECKPOINT_COMPONENT_ALL) &&
 	       snapshot.encoded_size_bound &&
 	       snapshot.encoded_size_bound <= PLAYER_SNAPSHOT_MAX_BYTES;
 }
@@ -376,7 +375,9 @@ player_save_submit_result persistence_writer_submit(persistence_job_kind kind, u
 {
 	if (kind == persistence_job_kind::player || !owner || !write)
 		return player_save_submit_result::invalid;
-	queued_job job;
+	// Value-initialized: the job carries no snapshot, whose bool would otherwise be
+	// indeterminate when the job is moved.
+	queued_job job = {};
 	job.kind = kind;
 	job.owner = owner;
 	job.bytes = bytes;

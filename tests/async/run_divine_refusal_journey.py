@@ -168,8 +168,7 @@ def run_scenario(server_binary: Path, enabled: bool) -> None:
         runtime.mkdir()
         (runtime / "logs/log").mkdir(parents=True)
         configure_fixture(runtime, enabled)
-        for name in ("players", "critical"):
-            (runtime / "journals" / name).mkdir(parents=True, mode=0o700)
+        (runtime / "journals" / "critical").mkdir(parents=True, mode=0o700)
         (runtime / "bin/server").mkdir(parents=True)
         for name in ("dms", "dms_new"):
             shutil.copy2(server_binary, runtime / "bin/server" / name)
@@ -183,7 +182,6 @@ def run_scenario(server_binary: Path, enabled: bool) -> None:
             ENVIRONMENT="local",
             PERSISTENCE_MODE="flatfile-primary",
             FLATFILE_STATE_DIR=str(state),
-            PLAYER_SAVE_JOURNAL_DIR=str(runtime / "journals/players"),
             CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
             REDIS="FALSE",
             CHAOS_MUD="FALSE",

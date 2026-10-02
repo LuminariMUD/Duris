@@ -2,17 +2,14 @@
 #define PLAYER_SNAPSHOT_H
 
 #include "player/player_revision_state.h"
-#include "item/item_transfer_command.h"
 #include "player/pet_restore_state.h"
 
 #include <array>
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <vector>
 
 constexpr uint32_t PLAYER_SNAPSHOT_SCHEMA_VERSION = 7;
-constexpr uint32_t PLAYER_SNAPSHOT_DEATH_SCHEMA_VERSION = 8;
 constexpr size_t PLAYER_SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024;
 constexpr size_t PLAYER_SNAPSHOT_MAX_ROWS = 8192;
 constexpr size_t PLAYER_SNAPSHOT_MAX_OBJECTS = 4096;
@@ -227,30 +224,6 @@ struct player_trophy_snapshot
 	int32_t experience;
 };
 
-// Stored with the post-death terminal snapshot, outside active inventory. The
-// corpse tree includes every captured asset; custody records ownership evidence
-// for that captured graph, including an explicit absent row when its runtime
-// catalog entry is missing. Live observations outside the captured graph are
-// intentionally not retained as death custody.
-struct player_death_custody_snapshot
-{
-	item_transfer_entry item;
-	item_owner_identity owner;
-	uint64_t owner_revision;
-};
-
-struct player_death_snapshot
-{
-	critical_operation_id operation_id;
-	int32_t corpse_room_vnum;
-	uint64_t wallet_revision;
-	std::array<int32_t, 4> wallet_before;
-	uint64_t wallet_pile_uid;
-	std::vector<player_item_snapshot> corpse;
-	std::vector<player_death_custody_snapshot> custody;
-	std::vector<critical_operation_id> unresolved_operations;
-};
-
 struct player_snapshot
 {
 	uint32_t schema_version;
@@ -278,7 +251,6 @@ struct player_snapshot
 	std::vector<player_trophy_snapshot> trophies;
 	bool recipes_are_external;
 	std::string output_preferences;
-	std::optional<player_death_snapshot> death;
 };
 
 #endif

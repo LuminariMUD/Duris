@@ -20,9 +20,8 @@ Memory is the authority. The database is a copy that catches up through one writ
    owner is marked dirty so its next save carries the state again.
 
 The game-thread checkpoint and completion paths perform no MySQL, Redis, or filesystem
-operation. Nothing is journaled; see [Player Save Journal](PLAYER_SAVE_JOURNAL.md) for
-the one-time replay of a journal left by an older server. A crash loses whatever had
-not reached the database, at most one 30-second `dirty-player-checkpoint`.
+operation. Nothing is journaled. A crash loses whatever had not reached the database,
+at most one 30-second `dirty-player-checkpoint`.
 
 ## Game-thread SQL
 
@@ -67,7 +66,7 @@ commits it with the player file):
 The owner's revision, and the revision of each owner that lost an item, advances once
 per save that changes them. There is no revision fence: with one writer, every save is
 newer than the last one for that owner. A character with no `player_data` row yet gets
-one. Only the one-time replay of an older server's journal keeps the fence.
+one.
 
 `logs/log/dupes` has one line per item a save left out or a load skipped, naming the
 item, its vnum, the owner that lost it and the owner that has it.
@@ -103,7 +102,7 @@ cannot be reopened while its save slot is dirty or in flight.
 
 The writer needs no configuration. `world persistence` reports the pipeline (marks,
 captures, replacements, unchanged checkpoints, write failures, terminal waits, drain
-failures, legacy journal replay) and the writer (queued and in-flight jobs, bytes,
+failures) and the writer (queued and in-flight jobs, bytes,
 oldest age, high-water marks, connection retries, failures, capture-to-apply and apply
 latency). Output contains no player identity or snapshot value.
 
@@ -170,33 +169,18 @@ Validate routing and privacy with `python3 tests/async/test_persistence_severity
 
 ## Terminal Saves And Process Drain
 
-Destructive player transitions mark and capture a fresh full revision with the
-current terminal intent and room behind a fixed-capacity terminal fence. An ACKed
-nonterminal retry or an older pending full snapshot cannot authorize a new camp.
-A caller may extract the character only after the exact
-revision receives a database acknowledgement or, where explicitly allowed, after its
-journal record has been synced. Older completions cannot release a newer fence. A
-deadline failure keeps the fence and dirty revision retryable; later mutations advance
-that same fence instead of becoming untracked.
+Logging out never waits. Camp, rent, quit, death, idle and link-loss cleanup capture a
+full save with the terminal intent and room, queue it on the writer like any other, and
+extract the character at once (`persistence_save_character_terminal()` in
+`src/cmd/actoth.c`). A save that cannot be queued is reported; the character still
+leaves. On flat-file only, a new character's first save is written before its domains
+are read back, within five seconds.
 
-Copyover and ordinary shutdown quiesce new checkpoint admission and wait to a bounded
-deadline until every accepted snapshot is journal-durable. The drain includes a record
-currently owned by the journal dispatcher, not only records still visible in its queue.
-If the deadline expires, the transition is cancelled and the live server resumes
-checkpoint admission.
-
-`world persistence` reports admission, append-in-flight, terminal outcome, timeout,
-and drain-failure counters without player identity. New legacy player flat-fallback
-writes are retired; existing files remain untouched for compatibility and operator
-recovery. Locker fallback behavior remains a separate compatibility boundary.
-
-## Compatibility Boundary
-
-New characters without a durable PID, locker characters, and Phase 02 critical
-transactions retain their explicit legacy compatibility route for now. Synchronous
-transactional compatibility saves advance `save_revision` in the same transaction,
-fencing every older immutable snapshot. They are not treated as an exactly-once
-gameplay command; Phase 02 replaces them with operation-keyed domains.
+Shutdown queues every player's save, gives the writer 30 seconds for what is queued and
+always goes; a write it could not finish is named in the log. Copyover waits the same
+30 seconds and is called off, resuming the game loop, when the writer cannot drain.
+`world persistence` reports the writer's queue, retries, failures and drain failures
+without player identity.
 
 ## Deferred and manual saves
 
@@ -205,14 +189,15 @@ and manual acknowledgement checks from the game-loop persistence path, independe
 of world-event debt. It attempts at most 32 due deferred saves per call with a
 round-robin cursor and checks the bounded 512-slot manual-status table. Deferred
 slots use monotonic due times and character runtime identities so storage reuse
-cannot apply work to a different character. Manual completion still requires
-acknowledgement within the existing 30-second deadline.
+cannot apply work to a different character. `save` says `Save complete` once the
+writer has written the save: the writer's completion advances the player's written
+revision (`player_revision_record_written()`). The revision the pipeline acknowledges
+when the writer accepts a save only marks the character clean. A save not written
+within 30 seconds is reported as failed.
 
-A failed camp retains the live character and permits automatic nonterminal retry;
-a later camp must capture its own intent again. Flat-file terminal saves require
-authority acknowledgement; SQL-backed callers may explicitly permit a synced
-journal handoff. These guarantees do not prevent legitimate storage timeouts or
-operating-system starvation. The controlled retry/crash modes are documented in
+Terminal saves are queued and the character leaves at once (see above). These
+guarantees do not prevent legitimate storage timeouts or operating-system
+starvation. The controlled retry/crash modes are documented in
 [Testing](../guides/TESTING.md#full-world-save-diagnostics).
 
 ## Player deaths
@@ -224,8 +209,8 @@ hold, corpse handoff batch or disputed-death disposition any more. The wallet
 becomes a coin pile in the corpse (Phase 2 step 4); the player's save, with the
 wallet empty, is queued before the corpse's, so a crash between them can lose
 the coins but never leave them in both places. See
-[the persistence reset plan](../ongoing-projects/2026-09-28-persistence-memory-authority-plan.md)
-and `tests/async/test_deaths_happen_at_once.py`. Death evidence already stored by
-older servers (`player_death_disposition`, `player_death_custody`, flat-file
-`player-deaths/`) remains protected recovery data in the
-[lifecycle manifest](../../migrations/data_lifecycle_manifest.json).
+[the persistence reset plan](../ongoing-projects/persistence-plan.md)
+and `tests/async/test_deaths_happen_at_once.py`. Every server is treated as new, so
+the death evidence older servers stored is gone: migration 0034 drops
+`player_death_disposition` and `player_death_custody`, and the flat-file
+`player-deaths/` store is no longer created.

@@ -11,7 +11,6 @@ keepchar = source[
 ]
 discard = keepchar[keepchar.index("case 'n':") : keepchar.index("case 'q':")]
 
-assert "#ifdef USE_ACCOUNT" in discard
 assert "free_char(d->character);" in discard
 assert "d->character = NULL;" in discard
 assert "STATE(d) = CON_DISPLAY_ACCT_MENU;" in discard

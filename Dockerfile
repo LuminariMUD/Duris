@@ -62,7 +62,6 @@ RUN install -d -o duris -g duris -m 0700 \
         /var/lib/duris \
         /var/lib/duris/critical-command-journal \
         /var/lib/duris/db-backups \
-        /var/lib/duris/player-journal \
         /var/lib/duris/tls \
     && for letter in a b c d e f g h i j k l m n o p q r s t u v w x y z; do \
         install -d -o duris -g duris -m 0700 \

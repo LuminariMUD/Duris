@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """An empty nexus_stones table is a valid world state, not a boot failure.
 
-Both persistence backends must agree: zero stones loads cleanly and still
-publishes the stat modifiers. The MariaDB branch used to reject an empty
+Both persistence backends must agree: zero stones loads cleanly. The MariaDB
+branch used to reject an empty
 result set, which logged a spurious load failure on every boot of a world
 that simply has no nexus stones yet.
 """
@@ -23,12 +23,9 @@ flat, sql = loader.split("#else", 1)
 assert not contains(sql, "mysql_num_rows(res)<1"), \
     "empty nexus_stones result set must not be rejected as a load failure"
 
-# Both branches still publish the stat modifiers on the success path.
-for name, branch in (("flatfile", flat), ("mariadb", sql)):
-    assert contains(branch, "update_nexus_stat_mods();"), \
-        f"{name} nexus loader must refresh stat modifiers"
-    assert index(branch, "update_nexus_stat_mods();") < index(branch, "returnTRUE;"), \
-        f"{name} nexus loader must refresh stat modifiers before succeeding"
+# Both branches succeed with no stones.
+for branch in (flat, sql):
+    assert contains(branch, "returnTRUE;")
 
 # Genuine failures are still rejected.
 assert contains(sql, "if(!qry(") and contains(sql, "returnFALSE;")

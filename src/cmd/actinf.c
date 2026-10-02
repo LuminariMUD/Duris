@@ -51,14 +51,11 @@ using namespace std;
 #include "persistence/persistence_checkpoint.h"
 #include "persistence/persistence_observability.h"
 #include "persistence/persistence_mode.h"
-#include "persistence/persistence_queue.h"
 #include "persistence/critical_command_coordinator.h"
-#include "persistence/critical_command_journal.h"
 #include "persistence/critical_outbox.h"
 #include "player/player_save_worker.h"
 #include "player/player_save_pipeline.h"
 #include "player/player_load_pipeline.h"
-#include "player/player_death_restitution_adapter.h"
 #include "persistence/maintenance_scheduler.h"
 #include "world/world_recovery_pipeline.h"
 #include "redis/redis_cache_store.h"
@@ -4050,33 +4047,6 @@ static uint64_t world_persistence_max(uint64_t left, uint64_t right)
 	return left > right ? left : right;
 }
 
-static void show_world_persistence_queue(P_char ch, const char *name,
-					 const struct persistence_queue_health_snapshot *snapshot)
-{
-	char line[MAX_STRING_LENGTH];
-	const char *state = snapshot->pending == 0 ? "empty" : "pending";
-
-	if (!snapshot->heartbeat_available)
-		snprintf(line, sizeof(line),
-			 "queue name=%s state=%s pending=%llu dropped=%llu written=%llu "
-			 "failures=%llu running=%d stop_pending=%d heartbeat=unavailable\n",
-			 name, state, (unsigned long long)snapshot->pending,
-			 (unsigned long long)snapshot->dropped,
-			 (unsigned long long)snapshot->written,
-			 (unsigned long long)snapshot->failures, snapshot->running,
-			 snapshot->stop_pending);
-	else
-		snprintf(line, sizeof(line),
-			 "queue name=%s state=%s pending=%llu dropped=%llu written=%llu "
-			 "failures=%llu running=%d stop_pending=%d heartbeat_age_ms=%llu\n",
-			 name, state, (unsigned long long)snapshot->pending,
-			 (unsigned long long)snapshot->dropped,
-			 (unsigned long long)snapshot->written,
-			 (unsigned long long)snapshot->failures, snapshot->running,
-			 snapshot->stop_pending, (unsigned long long)snapshot->heartbeat_age_msec);
-	send_to_char(line, ch);
-}
-
 static void show_world_redis_operation(P_char ch, const char *name, const char *state,
 				       uint64_t connection_failures, uint64_t reconnects,
 				       const redis_worker_operation_health *operations)
@@ -4138,12 +4108,6 @@ static void show_world_persistence(P_char ch)
 	struct persistence_query_metric metrics[PERSISTENCE_QUERY_SITE_CAPACITY];
 	const struct persistence_query_snapshot query =
 		persistence_query_snapshot_copy(metrics, PERSISTENCE_QUERY_SITE_CAPACITY);
-	const struct persistence_queue_health_snapshot item_queue =
-		persistence_item_event_health_snapshot_copy();
-	const struct persistence_queue_health_snapshot scalar_queue =
-		persistence_scalar_event_health_snapshot_copy();
-	const struct persistence_queue_health_snapshot large_queue =
-		persistence_large_event_health_snapshot_copy();
 	const struct persistence_dirty_save_snapshot dirty = persistence_dirty_save_snapshot_copy();
 	const struct persistence_deferred_save_snapshot deferred =
 		persistence_deferred_save_snapshot_copy();
@@ -4155,11 +4119,7 @@ static void show_world_persistence(P_char ch)
 	const player_save_worker_health player_saves = player_save_worker_health_copy();
 	const player_save_pipeline_health player_pipeline = player_save_pipeline_health_copy();
 	const player_load_pipeline_health player_loads = player_load_pipeline_health_copy();
-	const player_death_restitution_runtime_live_health restitution =
-		player_death_restitution_runtime_live_health_copy();
 	const critical_coordinator_health critical = critical_command_coordinator_health_copy();
-	const critical_command_journal_health critical_journal =
-		critical_command_journal_health_copy();
 	const critical_outbox_health critical_outbox = critical_outbox_health_copy();
 	const epic_transaction_health epic_transactions = epic_transaction_health_copy();
 	const currency_transaction_health currency_transactions =
@@ -4194,8 +4154,6 @@ static void show_world_persistence(P_char ch)
 		world_persistence_max(oldest_save_age_msec, player_saves.oldest_age_msec);
 	oldest_save_age_msec =
 		world_persistence_max(oldest_save_age_msec, critical.oldest_age_msec);
-	oldest_save_age_msec =
-		world_persistence_max(oldest_save_age_msec, critical_journal.oldest_age_msec);
 	oldest_save_age_msec =
 		world_persistence_max(oldest_save_age_msec, critical_outbox.oldest_age_msec);
 	oldest_save_age_msec =
@@ -4355,13 +4313,6 @@ static void show_world_persistence(P_char ch)
 		 (unsigned long long)player_loads.last_completion_latency_usec,
 		 (unsigned long long)player_loads.max_completion_latency_usec);
 	send_to_char(line, ch);
-	snprintf(line, sizeof(line),
-		 "player_death_restitution state=%s pending_operations=%llu fenced_targets=%llu\n",
-		 restitution.pending_operations ? "pending" : "ready",
-		 (unsigned long long)restitution.pending_operations,
-		 (unsigned long long)restitution.fenced_targets);
-	send_to_char(line, ch);
-
 	snprintf(line, sizeof(line), "game_loop_queries count=%llu\n",
 		 (unsigned long long)sql_game_loop_query_count());
 	send_to_char(line, ch);
@@ -4389,10 +4340,6 @@ static void show_world_persistence(P_char ch)
 			 (unsigned long long)metric->latency_buckets[7]);
 		send_to_char(line, ch);
 	}
-
-	show_world_persistence_queue(ch, "item", &item_queue);
-	show_world_persistence_queue(ch, "scalar", &scalar_queue);
-	show_world_persistence_queue(ch, "large", &large_queue);
 
 	if (!dirty.enabled)
 		snprintf(line, sizeof(line),
@@ -4468,32 +4415,17 @@ static void show_world_persistence(P_char ch)
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),
-		 "critical_commands state=%s awaiting=%llu admission_queue_bytes=%llu "
-		 "admission_worker=%d append_inflight=%d durable_admissions=%llu "
-		 "admission_failures=%llu admission_uncertain=%llu queued=%llu inflight=%llu "
-		 "blocked=%llu publication_pending=%llu bytes=%llu "
+		 "critical_commands state=%s queued=%llu inflight=%llu "
+		 "blocked=%llu bytes=%llu "
 		 "fences=%llu completed_cache=%llu high_water=%llu/%llu accepted=%llu "
 		 "attached=%llu completed=%llu retries=%llu ambiguous=%llu terminal=%llu "
-		 "stale=%llu overloads=%llu oldest_age_ms=%llu journal=%s "
-		 "journal_records=%llu journal_bytes=%llu journal_corrupt=%llu journal_io=%llu "
-		 "journal_quota=%d\n",
-		 !critical.initialized	      ? "stopped" :
-		 critical.blocked	      ? "blocked" :
-		 critical.admission_uncertain ? "uncertain" :
-		 critical.awaiting_durability || critical.append_inflight || critical.queued ||
-				 critical.inflight || critical.publication_pending ?
-						"pending" :
-						"ready",
-		 (unsigned long long)critical.awaiting_durability,
-		 (unsigned long long)critical.admission_queue_bytes,
-		 critical.admission_worker_running ? 1 : 0, critical.append_inflight ? 1 : 0,
-		 (unsigned long long)critical.durable_admissions,
-		 (unsigned long long)critical.admission_failures,
-		 (unsigned long long)critical.admission_uncertain,
+		 "stale=%llu overloads=%llu oldest_age_ms=%llu\n",
+		 !critical.initialized		      ? "stopped" :
+		 critical.blocked		      ? "blocked" :
+		 critical.queued || critical.inflight ? "pending" :
+							"ready",
 		 (unsigned long long)critical.queued, (unsigned long long)critical.inflight,
-		 (unsigned long long)critical.blocked,
-		 (unsigned long long)critical.publication_pending,
-		 (unsigned long long)critical.retained_bytes,
+		 (unsigned long long)critical.blocked, (unsigned long long)critical.retained_bytes,
 		 (unsigned long long)critical.fenced_keys,
 		 (unsigned long long)critical.completed_cache,
 		 (unsigned long long)critical.high_water_operations,
@@ -4504,19 +4436,7 @@ static void show_world_persistence(P_char ch)
 		 (unsigned long long)critical.terminal_failures,
 		 (unsigned long long)critical.stale_completions,
 		 (unsigned long long)critical.overloads,
-		 (unsigned long long)critical.oldest_age_msec,
-		 critical_journal.initialized ?
-			 (critical_journal.append_uncertain ?
-				  "uncertain" :
-				  (critical_journal.quota_exceeded ? "full" : "ready")) :
-			 (critical_journal.last_result == critical_command_journal_result::ok ?
-				  "stopped" :
-				  critical_command_journal_result_name(
-					  critical_journal.last_result)),
-		 (unsigned long long)critical_journal.records,
-		 (unsigned long long)critical_journal.bytes,
-		 (unsigned long long)critical_journal.corrupt_records,
-		 (unsigned long long)critical_journal.io_failures, critical_journal.quota_exceeded);
+		 (unsigned long long)critical.oldest_age_msec);
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),
@@ -4551,7 +4471,7 @@ static void show_world_persistence(P_char ch)
 		 "player_pipeline state=%s marked=%llu captured=%llu coalesced=%llu unchanged=%llu "
 		 "capture_failures=%llu submit_failures=%llu completions=%llu "
 		 "write_failures=%llu accepting=%d terminal=%llu/%llu timeouts=%llu "
-		 "drain_failures=%llu legacy_journal_replayed=%llu legacy_journal_retired=%d\n",
+		 "drain_failures=%llu\n",
 		 !player_pipeline.initialized ? "stopped" : "ready",
 		 (unsigned long long)player_pipeline.marked,
 		 (unsigned long long)player_pipeline.captured,
@@ -4562,12 +4482,10 @@ static void show_world_persistence(P_char ch)
 		 (unsigned long long)player_pipeline.completions,
 		 (unsigned long long)player_pipeline.write_failures,
 		 player_pipeline.accepting ? 1 : 0,
-		 (unsigned long long)player_pipeline.terminal_fences,
+		 (unsigned long long)player_pipeline.terminal_saves,
 		 (unsigned long long)player_pipeline.terminal_database_acks,
 		 (unsigned long long)player_pipeline.terminal_timeouts,
-		 (unsigned long long)player_pipeline.drain_failures,
-		 (unsigned long long)player_pipeline.legacy_journal_replayed,
-		 player_pipeline.legacy_journal_retired ? 1 : 0);
+		 (unsigned long long)player_pipeline.drain_failures);
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),

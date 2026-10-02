@@ -75,6 +75,13 @@ void do_epic_bonus(P_char ch, char *arg, int /*cmd*/)
 // Display help on epic bonus
 void epic_bonus_help(P_char ch)
 {
+	// The stored bonus is read on the writer when the character enters; until it
+	// arrives, saying "none" would be wrong.
+	if (IS_PC(ch) && ch->only.pc->epic_bonus_state.status == EPIC_BONUS_STATE_UNINITIALIZED)
+	{
+		send_to_char("Your epic bonus is still loading; try again in a moment.\r\n", ch);
+		return;
+	}
 	EpicBonusData ebdata;
 	if (!get_epic_bonus_data(ch, &ebdata))
 	{

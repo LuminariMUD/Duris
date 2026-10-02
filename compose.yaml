@@ -50,7 +50,6 @@ services:
       DB_ALLOWED_TARGETS: localhost/duris_dev
       DB_SOCKET: /run/mysqld/mysqld.sock
       DB_TLS: "FALSE"
-      PLAYER_SAVE_JOURNAL_DIR: /var/lib/duris/player-journal
       CRITICAL_COMMAND_JOURNAL_DIR: /var/lib/duris/critical-command-journal
       DATABASE_BACKUP_DIR: /var/lib/duris/db-backups
       MAINTENANCE_STATE_FILE: /var/lib/duris/maintenance-scheduler.state

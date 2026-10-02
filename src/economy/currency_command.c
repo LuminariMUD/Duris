@@ -65,8 +65,29 @@ uint64_t get_u64(const uint8_t *input)
 
 bool valid_reason(currency_reason_type reason)
 {
-	return reason > currency_reason_type::unknown &&
-	       reason <= currency_reason_type::corpse_lifecycle;
+	switch (reason)
+	{
+	case currency_reason_type::atm_deposit:
+	case currency_reason_type::atm_withdraw:
+	case currency_reason_type::bank_payment:
+	case currency_reason_type::bank_reward:
+	case currency_reason_type::wallet_reward:
+	case currency_reason_type::wallet_spend:
+	case currency_reason_type::refund:
+	case currency_reason_type::auction_pickup:
+	case currency_reason_type::auction_listing:
+	case currency_reason_type::auction_bid:
+	case currency_reason_type::auction_claim:
+	case currency_reason_type::ship_insurance:
+	case currency_reason_type::boon_reward:
+	case currency_reason_type::operator_adjustment:
+	case currency_reason_type::chaos_starter_reward:
+	case currency_reason_type::collector_purchase:
+		return true;
+	case currency_reason_type::unknown:
+		return false;
+	}
+	return false;
 }
 
 bool valid_name(const char *name, size_t *length)
@@ -131,40 +152,6 @@ bool currency_account_key(const char *account_name, uint8_t racewar, critical_en
 	return true;
 }
 
-bool currency_command_is_rebasable_wallet_reward(const currency_command_payload &payload)
-{
-	if (payload.reason != currency_reason_type::wallet_reward)
-		return false;
-	bool positive = false;
-	for (size_t index = 0; index < CURRENCY_DENOMINATION_COUNT; ++index)
-	{
-		if (payload.wallet_delta.amount[index] < 0 || payload.bank_delta.amount[index])
-			return false;
-		positive = positive || payload.wallet_delta.amount[index] > 0;
-	}
-	return positive;
-}
-
-bool currency_command_is_rebasable_bank_reward(const currency_command_payload &payload)
-{
-	if (payload.reason != currency_reason_type::chaos_starter_reward)
-		return false;
-	bool positive_bank = false;
-	for (size_t index = 0; index < CURRENCY_DENOMINATION_COUNT; ++index)
-	{
-		if (payload.wallet_delta.amount[index] || payload.bank_delta.amount[index] < 0)
-			return false;
-		positive_bank = positive_bank || payload.bank_delta.amount[index] > 0;
-	}
-	return positive_bank;
-}
-
-bool currency_command_is_rebasable_reward(const currency_command_payload &payload)
-{
-	return currency_command_is_rebasable_wallet_reward(payload) ||
-	       currency_command_is_rebasable_bank_reward(payload);
-}
-
 bool currency_command_encode_payload(const currency_command_payload &payload,
 				     std::vector<uint8_t> *encoded)
 {
@@ -172,7 +159,7 @@ bool currency_command_encode_payload(const currency_command_payload &payload,
 	if (!encoded || !payload.pid || !valid_reason(payload.reason) ||
 	    !valid_name(payload.account_name.data(), &name_length) ||
 	    !vector_valid(payload.wallet_delta) || !vector_valid(payload.bank_delta) ||
-	    (!any_delta(payload) && payload.reason != currency_reason_type::corpse_lifecycle))
+	    !any_delta(payload))
 		return false;
 	encoded->assign(CURRENCY_COMMAND_PAYLOAD_BYTES, 0);
 	put_u32(encoded->data() + PID_OFFSET, payload.pid);
@@ -218,38 +205,13 @@ bool currency_command_decode_payload(const critical_command &command,
 	return payload->pid && valid_reason(payload->reason) &&
 	       valid_name(payload->account_name.data(), &checked_length) &&
 	       checked_length == name_length && vector_valid(payload->wallet_delta) &&
-	       vector_valid(payload->bank_delta) &&
-	       (any_delta(*payload) || payload->reason == currency_reason_type::corpse_lifecycle) &&
+	       vector_valid(payload->bank_delta) && any_delta(*payload) &&
 	       currency_account_key(payload->account_name.data(), payload->racewar, &account_key) &&
 	       command.keys.size() == 2 && command.expected_revisions.size() == 2 &&
 	       critical_entity_key_equal(command.keys[0], player_key) &&
 	       critical_entity_key_equal(command.keys[1], account_key) &&
 	       critical_entity_key_equal(command.expected_revisions[0].key, player_key) &&
 	       critical_entity_key_equal(command.expected_revisions[1].key, account_key);
-}
-
-bool currency_command_encode_result(const currency_command_result &result,
-				    std::array<uint8_t, CURRENCY_RESULT_PAYLOAD_BYTES> *encoded)
-{
-	if (!encoded || !vector_valid(result.wallet) || !vector_valid(result.bank))
-		return false;
-	encode_vector(encoded->data(), result.wallet);
-	encode_vector(encoded->data() + 32, result.bank);
-	put_u64(encoded->data() + 64, result.wallet_revision);
-	put_u64(encoded->data() + 72, result.bank_revision);
-	return true;
-}
-
-bool currency_command_decode_result(const uint8_t *encoded, size_t size,
-				    currency_command_result *result)
-{
-	if (!encoded || size != CURRENCY_RESULT_PAYLOAD_BYTES || !result)
-		return false;
-	*result = { .wallet = decode_vector(encoded),
-		    .bank = decode_vector(encoded + 32),
-		    .wallet_revision = get_u64(encoded + 64),
-		    .bank_revision = get_u64(encoded + 72) };
-	return vector_valid(result->wallet) && vector_valid(result->bank);
 }
 
 bool currency_command_build(critical_command *command, critical_operation_id operation_id,
@@ -280,66 +242,4 @@ bool currency_command_build(critical_command *command, critical_operation_id ope
 		.payload = std::move(encoded),
 	};
 	return true;
-}
-
-unsigned int currency_prepare_mutation(const currency_command_payload &payload,
-				       const currency_command_result &before,
-				       uint64_t expected_wallet_revision,
-				       uint64_t expected_bank_revision,
-				       currency_revision_policy revision_policy,
-				       std::optional<currency_prepared_mutation> *prepared)
-{
-	if (!prepared ||
-	    (revision_policy != currency_revision_policy::sql_legacy &&
-	     revision_policy != currency_revision_policy::flatfile_legacy) ||
-	    !vector_valid(payload.wallet_delta) || !vector_valid(payload.bank_delta))
-		return EINVAL;
-	for (size_t index = 0; index < CURRENCY_DENOMINATION_COUNT; ++index)
-		if (before.wallet.amount[index] < 0 || before.wallet.amount[index] > INT_MAX ||
-		    before.bank.amount[index] < 0 || before.bank.amount[index] > INT_MAX)
-			return EILSEQ;
-	const bool rebase = revision_policy == currency_revision_policy::sql_legacy &&
-			    currency_command_is_rebasable_reward(payload);
-	constexpr uint64_t wildcard = std::numeric_limits<uint64_t>::max();
-	if (!rebase && ((expected_wallet_revision != wildcard &&
-			 expected_wallet_revision != before.wallet_revision) ||
-			(expected_bank_revision != wildcard &&
-			 expected_bank_revision != before.bank_revision)))
-		return ESTALE;
-	auto after = before;
-	const auto apply = [](int64_t current, int64_t delta, int64_t *next) -> unsigned int
-	{
-		// The current value is bounded above, so subtraction avoids signed
-		// overflow even for an extreme positive delta. INT64_MIN is rejected.
-		if (delta < 0 && current < -delta)
-			return ENOSPC;
-		if (delta > 0 && current > static_cast<int64_t>(INT_MAX) - delta)
-			return ERANGE;
-		*next = current + delta;
-		return 0;
-	};
-	for (size_t index = 0; index < CURRENCY_DENOMINATION_COUNT; ++index)
-	{
-		const auto wallet_error = apply(before.wallet.amount[index],
-						payload.wallet_delta.amount[index],
-						&after.wallet.amount[index]);
-		const auto bank_error = apply(before.bank.amount[index],
-					      payload.bank_delta.amount[index],
-					      &after.bank.amount[index]);
-		// SQL historically reports either insufficient holding before either
-		// overflow at the same denomination. Flatfile checks wallet then bank.
-		if (revision_policy == currency_revision_policy::sql_legacy &&
-		    (wallet_error == ENOSPC || bank_error == ENOSPC))
-			return ENOSPC;
-		if (wallet_error)
-			return wallet_error;
-		if (bank_error)
-			return bank_error;
-	}
-	if (before.wallet_revision == wildcard || before.bank_revision == wildcard)
-		return ERANGE;
-	++after.wallet_revision;
-	++after.bank_revision;
-	*prepared = currency_prepared_mutation(payload, before, after);
-	return 0;
 }

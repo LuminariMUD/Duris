@@ -38,17 +38,13 @@ class SavedItemFlatfileRoutingTests(unittest.TestCase):
         self.assertLess(storage.index("obj_to_room(s_obj, ch->in_room)"),
                         storage.index("writeSavedItem(s_obj)"))
 
-    def test_room_repository_admits_only_the_bounded_storage_transfers(self):
+    def test_room_repository_admits_only_grants_and_repairs(self):
         repository = (SRC / "flatfile_item_repository.c").read_text()
         room = repository[repository.index("bool room_transfer") :]
         room = room[: room.index("bool generic_transfer_supported")]
-        self.assertIn("item_owner_type::system", room)
-        self.assertIn("item_owner_type::destruction", room)
+        self.assertIn("item_transfer_reason::creation", room)
         self.assertIn("item_transfer_reason::operator_repair", room)
-        movement = (SRC / "item_movement_transaction.c").read_text()
-        self.assertIn("adoption_only", movement)
-        self.assertLess(movement.index("if (entry.adoption_only)"),
-                        movement.index("item_movement_transaction_submit(actor, root"))
+        self.assertEqual(room.count("item_transfer_reason::"), 2)
 
 
 if __name__ == "__main__":

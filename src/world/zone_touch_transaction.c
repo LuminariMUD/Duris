@@ -128,13 +128,8 @@ void zone_touch_transaction_handle_completions(const critical_completion *comple
 			continue;
 		auto &entry = found->second;
 		const auto &completion = completions[index];
-		if (completion.outcome == critical_apply_outcome::retryable_failure ||
-		    completion.outcome == critical_apply_outcome::ambiguous_commit)
-		{
-			notify(entry.payload,
-			       "The stone reward is awaiting recovery. It has not been released for another touch.\r\n");
-			continue; // Coordinator retains the original journal operation and fences.
-		}
+		// The writer retries a lost connection or an ambiguous commit itself, so a
+		// completion is final.
 		const bool committed = completion.outcome == critical_apply_outcome::applied ||
 				       completion.outcome ==
 					       critical_apply_outcome::already_applied;

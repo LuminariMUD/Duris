@@ -102,17 +102,11 @@ void epic_stone_set_affect(P_char ch);
 int epic_stone_payout(P_obj obj, P_char ch);
 void epic_stone_absorb(P_obj obj);
 
-void update_epic_zone_alignment(int zone_number, int delta);
 float get_epic_zone_alignment_mod(int zone_number, ubyte racewar);
-void update_epic_zone_mods();
-void update_epic_zone_frequency(int zone_number);
 vector<epic_zone_data> get_epic_zones();
 char *generate_epic_zones_output(void);
-float get_epic_zone_frequency_mod(int zone_number);
-void epic_zone_erase_touch(int);
 bool epic_zone_done_now(int zone_number);
 bool epic_zone_done(int zone_number);
-void epic_zone_balance();
 size_t epic_zone_completion_snapshot(int64_t *values, size_t capacity);
 int zone2saveable(int zone_index);
 int saveable2zone(int saved_zone);

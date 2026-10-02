@@ -22,15 +22,15 @@ DATABASE_TESTS = (ROOT / "tests/run_db_tests.sh").read_text()
 SOURCES = [
     "flatfile_player_repository.c", "player_load_topology.c", "flatfile_identity_repository.c",
     "flatfile_item_repository.c", "item_claim.c", "dupe_log.c", "flatfile_collector_repository.c",
-    "collector_command.c", "collector_codec.c", "collector_policy.c", "coin_transfer_command.c",
-    "flatfile_player_snapshot_file.c", "flatfile_corpse_repository.c",
+    "collector_command.c", "collector_codec.c", "collector_policy.c",
+    "flatfile_player_snapshot_file.c",
     "flatfile_locker_repository.c", "flatfile_world_item_repository.c",
     "flatfile_artifact_repository.c", "flatfile_shop_trade_repository.c",
     "flatfile_shop_trade_materialization.c", "flatfile_shopkeeper_repository.c",
     "flatfile_auction_repository.c", "flatfile_boon_repository.c",
     "flatfile_player_domain_repository.c", "flatfile_authority_transaction.c",
     "player_snapshot_codec.c", "flatfile_store.c", "item_transfer_command.c",
-    "corpse_lifecycle_command.c", "shop_trade_command.c", "critical_command.c",
+    "shop_trade_command.c", "critical_command.c",
     "epic_command.c", "currency_command.c", "auction_command.c", "combat_outcome_command.c",
     "boon_reward_command.c", "boon_shop_command.c", "persistence_observability.c",
     "persistence_mode.c", "flatfile_ip_activity_repository.c",
@@ -66,9 +66,7 @@ assert "INSERT INTO item_owner_audit" in CLAIM
 assert "flatfile_item_repository_prepare_claim(" in FLAT_PLAYER
 assert "item_claim_leaves_out(record->state)" in FLAT_ITEMS
 assert "establish_item_baseline" not in FLAT_PLAYER
-# Only the one-time legacy journal replay keeps the revision fence.
-assert "if (legacy_replay)" in REPOSITORY and "replay_fence(connection, snapshot, &skip)" in REPOSITORY
-assert "if (legacy_replay && materialized.revision >= snapshot.revision)" in FLAT_PLAYER
+assert "replay_fence" not in REPOSITORY and "legacy_replay" not in FLAT_PLAYER
 assert "ensure_player_row(connection, snapshot, &created)" in REPOSITORY
 # A new character's first save goes through the writer: the row it creates gets the
 # opening baselines the accounting ledgers start from, and nanny no longer forces a
@@ -135,8 +133,7 @@ print("[PASS] player, pet, corpse, locker and saved-item loads use the same filt
 assert "tests/async/run_player_save_claim_mysql.sh" in DATABASE_TESTS
 # Every leg that links the player loader runs there too, so a loader change
 # cannot leave one of them unbuildable again.
-for leg in ("run_currency_transaction_schema_mysql.sh", "run_experience_trophy_mysql.sh",
-            "run_output_preferences_mysql.sh"):
+for leg in ("run_experience_trophy_mysql.sh", "run_output_preferences_mysql.sh"):
     assert "tests/async/" + leg in DATABASE_TESTS, leg
 print("[PASS] the MariaDB claim and loader legs run under make test-db")
 print("player save claim contracts passed")

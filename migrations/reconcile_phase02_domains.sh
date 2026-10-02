@@ -10,10 +10,6 @@ environment_name="${ENVIRONMENT:-${APP_ENV:-}}"
 [[ "${DB_NAME,,}" =~ (dev|local|test) ]] || { echo 'refusing Phase 02 reconciliation: database name is not development/local/test' >&2; exit 1; }
 
 for check in \
-    reconcile_epic_balances.sh \
-    reconcile_currency_balances.sh \
-    reconcile_item_ownership.sh \
-    reconcile_combat_frags.sh \
     reconcile_artifact_guild_outcomes.sh \
     reconcile_boon_reward_zone.sh
 do

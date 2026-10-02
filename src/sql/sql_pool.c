@@ -368,43 +368,6 @@ int sql_pool_is_active(void)
 	return active;
 }
 
-int sql_pool_available(void)
-{
-	int avail = 0;
-	pthread_mutex_lock(&pool_mutex);
-	if (pool)
-	{
-		for (int i = 0; i < pool_size; i++)
-			if (!pool[i].in_use && pool[i].conn)
-				avail++;
-	}
-	pthread_mutex_unlock(&pool_mutex);
-	return avail;
-}
-
-int sql_pool_in_use(void)
-{
-	int used = 0;
-	pthread_mutex_lock(&pool_mutex);
-	if (pool)
-	{
-		for (int i = 0; i < pool_size; i++)
-			if (pool[i].in_use)
-				used++;
-	}
-	pthread_mutex_unlock(&pool_mutex);
-	return used;
-}
-
-int sql_pool_total(void)
-{
-	int total;
-	pthread_mutex_lock(&pool_mutex);
-	total = pool_size;
-	pthread_mutex_unlock(&pool_mutex);
-	return total;
-}
-
 #else /* __NO_MYSQL__ */
 
 /* Stubs -- no MySQL available.  The pool is a no-op. */
@@ -443,18 +406,6 @@ MYSQL *sql_pool_replace_connection(MYSQL *conn)
 }
 
 int sql_pool_is_active(void)
-{
-	return 0;
-}
-int sql_pool_available(void)
-{
-	return 0;
-}
-int sql_pool_in_use(void)
-{
-	return 0;
-}
-int sql_pool_total(void)
 {
 	return 0;
 }

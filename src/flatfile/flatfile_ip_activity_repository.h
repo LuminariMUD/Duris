@@ -32,9 +32,6 @@ flatfile_ip_activity_result flatfile_ip_activity_disconnect(const char *root, ui
 flatfile_ip_activity_result flatfile_ip_activity_get(const char *root, uint32_t pid,
 						     flatfile_ip_activity_record *record,
 						     std::string *error);
-flatfile_ip_activity_result flatfile_ip_activity_find_latest(const char *root, const char *ip,
-							     flatfile_ip_activity_record *record,
-							     std::string *error);
 flatfile_ip_activity_result flatfile_ip_activity_reset_active(const char *root, int64_t occurred_at,
 							      std::string *error);
 

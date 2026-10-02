@@ -23,7 +23,6 @@ DEFAULT_SCHEMA_FILES = (
     ROOT / "migrations" / "immutable" / "0004_server_reboots.sql",
     ROOT / "migrations" / "immutable" / "0006_kingdom_realms.sql",
     ROOT / "migrations" / "immutable" / "0009_kingdom_garrison.sql",
-    ROOT / "migrations" / "immutable" / "0011_player_death_disposition.sql",
     ROOT / "migrations" / "immutable" / "0014_telemetry_storage.sql",
     ROOT / "migrations" / "immutable" / "0012_epic_stone_claim.sql",
     ROOT / "migrations" / "immutable" / "0016_artifact_mana.sql",
@@ -33,8 +32,6 @@ DEFAULT_SCHEMA_FILES = (
     ROOT / "migrations" / "immutable" / "0026_zone_story_quest_state.sql",
     ROOT / "migrations" / "immutable" / "0027_saved_item_recovery_handoff.sql",
     ROOT / "migrations" / "immutable" / "0030_telemetry_quarantine.sql",
-    ROOT / "migrations" / "immutable" / "0031_economy_accounting.sql",
-    ROOT / "migrations" / "economic_baseline.sql",
     ROOT / "migrations" / "immutable" / "0033_item_owner_audit.sql",
 )
 
@@ -74,25 +71,11 @@ DESTRUCTIVE_ACTIONS = {
 }
 REQUIRED_NON_DATABASE_STORES = {
     "file:flatfile-authority-journal": ("recovery_state", "FLATFILE_ROOT/domains/.critical-authority-transaction"),
-    "file:economic-baseline-control": ("recovery_state", "FLATFILE_ROOT/economic-evidence/baseline-*.ebc"),
-    "file:economic-baseline-reservations": ("recovery_state", "FLATFILE_ROOT/economic-evidence/baseline-*.ebi"),
-    "file:economic-baseline-witness": ("recovery_state", "FLATFILE_ROOT/economic-evidence/baseline-*.eab"),
-    "file:economic-authority-control": ("recovery_state", "FLATFILE_ROOT/economic-evidence/authority.eal"),
-    "file:economic-authority-epoch": ("recovery_state", "FLATFILE_ROOT/economic-evidence/epochs.eae"),
-    "file:economic-authority-mapping": ("recovery_state", "FLATFILE_ROOT/economic-evidence/mapping-*.eam"),
-    "file:economic-authority-native-index": ("recovery_state", "FLATFILE_ROOT/economic-evidence/native-*.ean"),
-    "file:economic-accounting-index": ("recovery_state", "FLATFILE_ROOT/economic-evidence/*.eai"),
-    "file:economic-accounting-segment": ("recovery_state", "FLATFILE_ROOT/economic-evidence/*.eas"),
-    "file:player_save_journal": ("journal", "PLAYER_SAVE_JOURNAL_DIR/player-save.journal"),
-    "file:player_save_quarantine": (
-        "quarantine", "PLAYER_SAVE_JOURNAL_DIR/player-save.journal.quarantine",
-    ),
     "file:critical_command_journal": ("journal", "CRITICAL_COMMAND_JOURNAL_DIR"),
     "file:persistence_fallback": ("fallback", "legacy persistence fallback file"),
     "file:persistence_fallback_quarantine": (
         "quarantine", "legacy persistence fallback quarantine",
     ),
-    "file:player-deaths": ("recovery_state", "FLATFILE_ROOT/player-deaths/*.death"),
     "file:zone-story-quests": (
         "recovery_state", "FLATFILE_ROOT/domains/zone-story-quests.state",
     ),
@@ -125,7 +108,7 @@ REQUIRED_SECRET_EXCLUSIONS = {
     "file:runtime_accounts": {"password", "confirmation_code"},
     "file:server_logs": {"raw_security_events"},
     "file:player_logs": {"raw_security_events"},
-    "file:critical_command_journal": {"command_payload"},
+    "file:critical_command_journal": {"locker_identification_receipt_text"},
 }
 
 

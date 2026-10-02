@@ -26,7 +26,6 @@ SCHEMA_FILES = (
     ROOT / "migrations" / "immutable" / "0004_server_reboots.sql",
     ROOT / "migrations" / "immutable" / "0006_kingdom_realms.sql",
     ROOT / "migrations" / "immutable" / "0009_kingdom_garrison.sql",
-    ROOT / "migrations" / "immutable" / "0011_player_death_disposition.sql",
     ROOT / "migrations" / "immutable" / "0014_telemetry_storage.sql",
     ROOT / "migrations" / "immutable" / "0016_artifact_mana.sql",
     ROOT / "migrations" / "immutable" / "0017_telemetry_rollup_support.sql",
@@ -35,8 +34,6 @@ SCHEMA_FILES = (
     ROOT / "migrations" / "immutable" / "0026_zone_story_quest_state.sql",
     ROOT / "migrations" / "immutable" / "0027_saved_item_recovery_handoff.sql",
     ROOT / "migrations" / "immutable" / "0030_telemetry_quarantine.sql",
-    ROOT / "migrations" / "immutable" / "0031_economy_accounting.sql",
-    ROOT / "migrations" / "immutable" / "0032_economic_baseline.sql",
     ROOT / "migrations" / "immutable" / "0033_item_owner_audit.sql",
 )
 VALIDATOR_SPEC = importlib.util.spec_from_file_location("validate_data_lifecycle", VALIDATOR)
@@ -99,8 +96,8 @@ class LifecycleManifestTest(unittest.TestCase):
         result = self.run_validator()
         self.assertEqual(result.returncode, 0, result.stderr)
         report = json.loads(result.stdout)
-        self.assertEqual(report["database_tables"], 216)
-        self.assertEqual(report["non_database_stores"], 34)
+        self.assertEqual(report["database_tables"], 198)
+        self.assertEqual(report["non_database_stores"], 22)
         self.assertEqual(report["redis_surfaces"], 42)
         self.assertFalse(report["destructive_rules_enabled"])
 

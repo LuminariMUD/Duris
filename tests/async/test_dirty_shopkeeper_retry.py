@@ -13,7 +13,7 @@ flush_end = sql.index("static P_obj sql_load_saved_item_contents", flush_start)
 flush = sql[flush_start:flush_end]
 
 save_start = sql.rindex("bool sql_save_shopkeeper(P_char ch, int shop_nr)")
-save_end = sql.index("bool sql_delete_shopkeeper", save_start)
+save_end = sql.index("static bool sql_save_saved_item_affects", save_start)
 save = sql[save_start:save_end]
 
 checks = {

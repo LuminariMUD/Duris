@@ -29,7 +29,6 @@ class CurrencyTransactionContractTests(unittest.TestCase):
         self.assertIn("verify_currency_ledger_schema.sh", runner)
         for script in (
             "baseline_currency_balances.sh",
-            "reconcile_currency_balances.sh",
             "verify_currency_ledger_schema.sh",
         ):
             self.assertTrue((ROOT / "migrations" / script).stat().st_mode & 0o111)
@@ -38,41 +37,12 @@ class CurrencyTransactionContractTests(unittest.TestCase):
         header = (SRC / "currency_command.h").read_text()
         implementation = (SRC / "currency_command.c").read_text()
         self.assertIn("CURRENCY_COMMAND_PAYLOAD_BYTES = 136", header)
-        self.assertIn("CURRENCY_RESULT_PAYLOAD_BYTES = 80", header)
         self.assertIn("std::array<int64_t, CURRENCY_DENOMINATION_COUNT>", header)
         self.assertIn("atm_deposit", header)
         self.assertIn("auction_pickup", header)
         self.assertIn("ship_insurance", header)
         self.assertIn("std::numeric_limits<int64_t>::min()", implementation)
         self.assertIn("command.expected_revisions.size() == 2", implementation)
-
-    def test_repository_commits_both_states_ledger_result_and_outbox(self):
-        repository = (SRC / "critical_command_repository.c").read_text()
-        start = repository.index("bool write_currency_state")
-        apply = repository.index("critical_apply_result critical_command_repository_apply")
-        state = repository[start:apply]
-        for token in (
-            "FOR UPDATE",
-            "INSERT IGNORE INTO account_banks(account_name,racewar) VALUES(?,?)",
-            "UPDATE player_data SET copper=?,silver=?,gold=?,platinum=?,wallet_revision=?",
-            "UPDATE account_banks SET bank_copper=?,bank_silver=?,bank_gold=?,bank_platinum=?,",
-            "INSERT INTO currency_ledger",
-            "currency_wallet_baseline",
-            "currency_bank_baseline",
-        ):
-            self.assertIn(token, state)
-        bank_ensure = state.index(
-            "INSERT IGNORE INTO account_banks(account_name,racewar) VALUES(?,?)"
-        )
-        bank_lock = state.index(
-            "FROM account_banks WHERE account_name=? AND racewar=? FOR UPDATE"
-        )
-        self.assertLess(bank_ensure, bank_lock)
-        branch = repository[apply:]
-        currency = branch[branch.index("if (currency_command || accounted_bank)") :]
-        commit = currency.index('execute(connection, "COMMIT")')
-        self.assertLess(currency.index("insert_outbox"), commit)
-        self.assertLess(currency.index("finish_inbox"), commit)
 
     def test_atm_and_audited_producers_use_the_ack_boundary(self):
         atm = (SRC / "actoth.c").read_text()
@@ -87,7 +57,8 @@ class CurrencyTransactionContractTests(unittest.TestCase):
         self.assertEqual(1, deposit_all.count("currency_transaction_submit("))
         self.assertIn("currency_transaction_submit_bank_payment", utility)
         self.assertIn("currency_transaction_submit_wallet_value", utility)
-        self.assertIn("currency_reason_type::auction_pickup", auction)
+        self.assertIn("currency_reason_type::auction_pickup",
+                      (SRC / "auction_transaction.c").read_text())
         self.assertIn("currency_reason_type::boon_reward", boon)
         self.assertIn("currency_reason_type::ship_insurance", ship)
 

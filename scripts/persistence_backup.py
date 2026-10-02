@@ -33,7 +33,11 @@ ROOT = Path(__file__).resolve().parents[1]
 MODES = {"flatfile-primary", "mariadb-primary"}
 GENERATION = re.compile(r"[0-9]{20}-[0-9a-f]{32}")
 LOCKS = {".identity.lock", ".critical-authority.lock", ".accounts.lock", ".artifact-mana.lock"}
-JOURNAL_FILES = {"players": "player-save.journal", "critical": "critical-command.journal"}
+# The critical-command journal directory now holds only locker identification receipts.
+JOURNAL_ROOTS = {"critical"}
+# The journal an older server kept in that directory. Nothing reads it any more; a backup
+# carries it as it is, so an upgraded server still backs up and an older generation restores.
+RETIRED_JOURNAL_FILES = {"critical-command.journal", "critical-command.journal.tmp"}
 LOCK_WAIT_SECONDS = 120
 CAPACITY_CHECK_INTERVAL = 32 * 1024 * 1024
 
@@ -156,7 +160,7 @@ def policy_load(path):
     # A DB datadir may belong to the database service UID; it is only a
     # forbidden destination, never a file source. Flatfile/journal sources
     # independently require custodian ownership before reading.
-    require(isinstance(p["journal_roots"], dict) and set(p["journal_roots"]) == set(JOURNAL_FILES),
+    require(isinstance(p["journal_roots"], dict) and set(p["journal_roots"]) == JOURNAL_ROOTS,
             "invalid_journal_roots")
     p["journal_roots"] = {key: secure_path(Path(value), True) for key, value in p["journal_roots"].items()}
     p["live_roots"] += list(p["journal_roots"].values())
@@ -222,34 +226,29 @@ def journal_capture(stage, p, capacity_base=None):
         secure_path(source, True)
         require(source.is_dir(), "journal_source_missing")
         snapshots[name] = inventory(source)
-        require(name in JOURNAL_FILES, "invalid_journal_roots")
-        allowed = {JOURNAL_FILES[name]}
-        if name == "players":
-            allowed.add("player-save.journal.quarantine")
+        require(name in JOURNAL_ROOTS, "invalid_journal_roots")
         for relative, metadata in snapshots[name].items():
             receipt = re.fullmatch(r"locker-identification/([1-9][0-9]{0,9})\.receipt", relative)
-            service_lock = name == "critical" and relative == "locker-identification/.service-lock"
-            if name == "critical" and receipt:
+            service_lock = relative == "locker-identification/.service-lock"
+            if receipt:
                 require(int(receipt[1]) <= 2147483647, "journal_receipt_pid")
                 # Match the native format's bound before copying. The restore
                 # qualifier validates the checksum, payment and filename identity.
                 require(0 < metadata["bytes"] <= 16 + 1024 + 64 * 1024 + 32,
                         "journal_receipt_size")
             else:
-                require(relative in allowed or service_lock, "journal_filename")
+                require(service_lock or relative in RETIRED_JOURNAL_FILES, "journal_filename")
             if service_lock:
                 require(metadata["bytes"] == 0, "journal_service_lock_nonempty")
-            if relative == "player-save.journal.quarantine":
-                require(metadata["bytes"] == 0, "journal_quarantine_nonempty")
         needed = sum(x["bytes"] for x in snapshots[name].values())
         existing = total_size(p["root"]) if capacity_base is None else capacity_base
         require(existing + total_size(stage) + needed < p["max_bytes"], "capacity_headroom_required")
         require(shutil.disk_usage(stage).free >= needed + p["min_free_bytes"], "low_free_capacity")
         shutil.copytree(source, target / name)
         require(inventory(target / name) == snapshots[name], "journal_changed_during_capture")
-    for variable, name in (("PLAYER_SAVE_JOURNAL_DIR", "players"), ("CRITICAL_COMMAND_JOURNAL_DIR", "critical")):
-        if os.environ.get(variable):
-            require(p["journal_roots"].get(name) == Path(os.environ[variable]), "journal_policy_mismatch")
+    if os.environ.get("CRITICAL_COMMAND_JOURNAL_DIR"):
+        require(p["journal_roots"]["critical"] == Path(os.environ["CRITICAL_COMMAND_JOURNAL_DIR"]),
+                "journal_policy_mismatch")
     return snapshots
 
 
@@ -277,8 +276,7 @@ def flatfile_capture(stage, p, capacity_base=None):
         require(before == inventory(target) == inventory(source, exclude_locks=True),
                 "flatfile_generation_changed")
     return {"pending_transaction": any((target / "domains" / name).exists() for name in
-                                       (".critical-authority-transaction", ".currency-transaction",
-                                        ".player-domain-transaction"))}
+                                       (".critical-authority-transaction", ".player-domain-transaction"))}
 
 
 def db_connection():

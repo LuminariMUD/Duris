@@ -73,14 +73,6 @@ int main() {
     // Writing the same save again is harmless.
     assert(player_snapshot_repository_apply(db, snapshot).outcome == player_save_apply_outcome::applied);
     assert(total() == 4200);
-    // Only the one-time replay of an older server's journal can bring an older
-    // revision, and it keeps the fence.
-    snapshot.revision = 1;
-    snapshot.status_integers[0].signed_value = 3600;
-    assert(player_snapshot_repository_apply_from_pool(snapshot, PLAYER_SAVE_LEGACY_REPLAY).outcome ==
-           player_save_apply_outcome::stale_revision);
-    assert(total() == 4200);
-    snapshot.revision = 2;
 
     // An item graph is written as the player holds it, and the ownership table
     // is made to agree.

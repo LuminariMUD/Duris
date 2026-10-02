@@ -224,25 +224,12 @@ static void test_saved_root_collection(const fs::path &root)
 	{
 		flatfile_authority_lock lock;
 		require(lock.acquire(root.string(), &error),
-			"could not lock saved container authority");
-		flatfile_collector_world_mutation mutation;
-		unsigned int result_code = 0;
-		payload.expected_from_owner_revision = saved.revision + 1;
-		require(flatfile_world_item_prepare_collector_transfer(
-				root.string(), lock, payload, &mutation, &result_code, &error) ==
-					flatfile_world_item_result::ok &&
-				result_code == ESTALE && !mutation.changed,
-			"flat-file collection accepted a stale source-owner revision");
-		require(read_catalog(root) == before,
-			"stale collection attempt changed the saved-item catalog");
-	}
-	{
-		flatfile_authority_lock lock;
-		require(lock.acquire(root.string(), &error),
 			"could not reacquire saved container authority");
 		flatfile_collector_world_mutation mutation;
 		unsigned int result_code = 1;
-		payload.expected_from_owner_revision = saved.revision;
+		// The room is memory's: its saves move the record's revision, so the
+		// collection takes the record as it stands.
+		payload.expected_from_owner_revision = saved.revision + 1;
 		require(flatfile_world_item_prepare_collector_transfer(
 				root.string(), lock, payload, &mutation, &result_code, &error) ==
 					flatfile_world_item_result::ok &&
@@ -392,109 +379,6 @@ int main(int argc, char **argv)
 			corpses[0].items.size() == 2 && saved_items.empty(),
 		"version one world item catalog did not decode with an empty money aggregate");
 
-	const fs::path transfer_root = fs::path(argv[1]) / "transfer";
-	prepare_root(transfer_root);
-	require(!fs::exists(transfer_root / "domains/world_item_catalog"),
-		"first item-bearing corpse fixture unexpectedly has a world catalog");
-	item_transfer_payload transfer = {};
-	transfer.from_owner = { item_owner_type::player, 9, 0 };
-	transfer.to_owner = { item_owner_type::corpse, item_corpse_owner_id(9, 33), 0 };
-	transfer.reason = item_transfer_reason::corpse_create;
-	transfer.selected_item_uid = 300;
-	transfer.target_root_item_uid = 300;
-	transfer.item_count = 1;
-	transfer.items[0] = { 300, 300, 0, 1, 500, item_custody_state::active };
-	std::vector<player_item_snapshot> transferred_items = { item(300, PLAYER_SNAPSHOT_NO_PARENT,
-								     500) };
-	transferred_items[0].equipment_slot = 0;
-	std::vector<uint8_t> transfer_blob;
-	require(player_item_snapshot_list_encode(transferred_items, &transfer_blob) ==
-			player_snapshot_codec_result::ok,
-		"could not encode corpse transfer item");
-	transfer.item_blob_size = static_cast<uint32_t>(transfer_blob.size());
-	std::copy(transfer_blob.begin(), transfer_blob.end(), transfer.item_blob.begin());
-	transfer.corpse.present = true;
-	transfer.corpse.room_vnum = 900;
-	transfer.corpse.weight = 55;
-	transfer.corpse.actor_racewar = 1;
-	transfer.corpse.values[3] = 9;
-	transfer.corpse.values[5] = 1;
-	transfer.corpse.values[6] = 33;
-	transfer.corpse.owner_name = "TransferOwner";
-	transfer.corpse.short_description = "the transfer corpse";
-	transfer.corpse.description = "The transfer corpse is lying here.";
-	transfer.corpse.keywords = "corpse transferowner _pcorpse_";
-	flatfile_corpse_transfer_mutation transfer_mutation;
-	{
-		flatfile_authority_lock lock;
-		require(lock.acquire(transfer_root.string(), &error),
-			"could not acquire corpse creation authority");
-		auto missing_update = transfer;
-		missing_update.expected_to_revision = 1;
-		require(flatfile_world_item_prepare_corpse_transfer(
-				transfer_root.string(), lock, missing_update, &transfer_mutation,
-				&error) == flatfile_world_item_result::not_found,
-			"missing corpse update initialized a catalog");
-		auto missing_loot = transfer;
-		missing_loot.from_owner = transfer.to_owner;
-		missing_loot.to_owner = transfer.from_owner;
-		missing_loot.reason = item_transfer_reason::corpse_loot;
-		require(flatfile_world_item_prepare_corpse_transfer(
-				transfer_root.string(), lock, missing_loot, &transfer_mutation,
-				&error) == flatfile_world_item_result::not_found,
-			"missing corpse loot initialized a catalog");
-		require(!fs::exists(transfer_root / "domains/world_item_catalog"),
-			"rejected corpse operation wrote a catalog");
-		require(flatfile_world_item_prepare_corpse_transfer(
-				transfer_root.string(), lock, transfer, &transfer_mutation,
-				&error) == flatfile_world_item_result::ok &&
-				transfer_mutation.created &&
-				transfer_mutation.expected_items.empty() &&
-				transfer_mutation.corpse_revision == 1,
-			"first corpse transfer did not prepare establishment");
-		require(flatfile_authority_transaction_commit(
-				transfer_root.string(), lock, { transfer_mutation.after_image },
-				&error) == flatfile_authority_transaction_result::ok,
-			"first corpse transfer did not commit: " + error);
-	}
-	corpses.clear();
-	saved_items.clear();
-	require(flatfile_world_item_list(transfer_root.string(), &corpses, &saved_items, &error) ==
-				flatfile_world_item_result::ok &&
-			corpses.size() == 1 && corpses[0].owner_name == "transferowner" &&
-			corpses[0].room_vnum == 900 && corpses[0].weight == 55 &&
-			corpses[0].items.size() == 1 && corpses[0].items[0].object_uid == 300 &&
-			corpses[0].items[0].equipment_slot == -1,
-		"first corpse transfer did not preserve metadata and item state");
-	transfer.from_owner = transfer.to_owner;
-	transfer.to_owner = { item_owner_type::player, 10, 0 };
-	transfer.reason = item_transfer_reason::corpse_loot;
-	transfer.corpse.weight = 40;
-	transfer.corpse.actor_racewar = 2;
-	{
-		flatfile_authority_lock lock;
-		require(lock.acquire(transfer_root.string(), &error),
-			"could not acquire corpse loot authority");
-		require(flatfile_world_item_prepare_corpse_transfer(
-				transfer_root.string(), lock, transfer, &transfer_mutation,
-				&error) == flatfile_world_item_result::ok &&
-				!transfer_mutation.created &&
-				transfer_mutation.expected_items.size() == 1 &&
-				transfer_mutation.expected_items[0].item_uid == 300 &&
-				transfer_mutation.corpse_revision == 2,
-			"corpse loot did not prepare exact prestate evidence");
-		require(flatfile_authority_transaction_commit(
-				transfer_root.string(), lock, { transfer_mutation.after_image },
-				&error) == flatfile_authority_transaction_result::ok,
-			"corpse loot did not commit: " + error);
-	}
-	corpses.clear();
-	require(flatfile_world_item_list(transfer_root.string(), &corpses, &saved_items, &error) ==
-				flatfile_world_item_result::ok &&
-			corpses.size() == 1 && corpses[0].revision == 2 &&
-			corpses[0].weight == 40 && corpses[0].items.empty(),
-		"corpse loot did not retain the empty metadata aggregate");
-
 	const fs::path invalid_root = fs::path(argv[1]) / "invalid";
 	prepare_root(invalid_root);
 	auto duplicate_uid = saved;
@@ -600,13 +484,24 @@ int main(int argc, char **argv)
 	{
 		flatfile_authority_lock lock;
 		require(lock.acquire(root.string(), &error), "could not lock corrupt catalog");
-		transfer.from_owner = { item_owner_type::player, 9, 0 };
-		transfer.to_owner = { item_owner_type::corpse, item_corpse_owner_id(9, 33), 0 };
-		transfer.reason = item_transfer_reason::corpse_create;
-		require(flatfile_world_item_prepare_corpse_transfer(root.string(), lock, transfer,
-								    &transfer_mutation, &error) ==
+		item_transfer_payload grant = {};
+		grant.from_owner = { item_owner_type::system, 0, 0 };
+		grant.to_owner = { item_owner_type::room, 900, 0 };
+		grant.reason = item_transfer_reason::creation;
+		grant.selected_item_uid = 300;
+		grant.target_root_item_uid = 300;
+		grant.item_count = 1;
+		grant.items[0] = { 300, 300,
+				   0,	ITEM_TRANSFER_ABSENT_REVISION,
+				   500, item_custody_state::absent };
+		const auto blob = encode_items({ item(300, PLAYER_SNAPSHOT_NO_PARENT, 500) });
+		grant.item_blob_size = static_cast<uint32_t>(blob.size());
+		std::copy(blob.begin(), blob.end(), grant.item_blob.begin());
+		flatfile_room_transfer_mutation mutation;
+		require(flatfile_world_item_prepare_room_transfer(root.string(), lock, grant,
+								  &mutation, &error) ==
 				flatfile_world_item_result::invalid,
-			"new corpse creation replaced a corrupt catalog");
+			"a room grant replaced a corrupt catalog");
 	}
 	std::cout << "flat-file world item repository passed\n";
 	return 0;

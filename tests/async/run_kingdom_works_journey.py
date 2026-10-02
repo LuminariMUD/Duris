@@ -357,7 +357,6 @@ def run(binary: pathlib.Path) -> None:
         (run_root / "logs/log/.gitignore").write_text("*\n!.gitignore\n")
         journey.make_fixture(run_root)
         journey.generate_certificate(run_root)
-        (run_root / "journals/players").mkdir(parents=True, mode=0o700)
         (run_root / "journals/critical").mkdir(mode=0o700)
 
         # The journey's own settings, on its own copy of the file.
@@ -376,7 +375,6 @@ def run(binary: pathlib.Path) -> None:
         environment = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "ENVIRONMENT": "local",
             "PERSISTENCE_MODE": "flatfile-primary", "FLATFILE_STATE_DIR": str(state_root),
-            "PLAYER_SAVE_JOURNAL_DIR": str(run_root / "journals/players"),
             "CRITICAL_COMMAND_JOURNAL_DIR": str(run_root / "journals/critical"),
             "LISTEN_ADDRESS": "127.0.0.1", "DURIS_TLS_PORT": str(tls_port),
             "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1", "DURIS_WEBSOCKET_PORT": str(websocket_port),

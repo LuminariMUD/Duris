@@ -24,12 +24,6 @@ constexpr size_t SELECTED_ITEM_OFFSET = 64;
 constexpr size_t TARGET_ROOT_OFFSET = 72;
 constexpr size_t TARGET_PARENT_OFFSET = 80;
 constexpr size_t TARGET_PARENT_REVISION_OFFSET = 88;
-constexpr uint32_t CORPSE_CONTEXT_VERSION = 1;
-constexpr uint32_t COLLECTOR_CONTEXT_VERSION = 1;
-constexpr uint64_t COLLECTOR_CATALOG_KEY = UINT64_MAX;
-constexpr size_t CORPSE_PID_VALUE_INDEX = 3;
-constexpr size_t CORPSE_RACEWAR_VALUE_INDEX = 5;
-constexpr size_t CORPSE_SAVE_ID_VALUE_INDEX = 6;
 
 void put_u16(uint8_t *output, uint16_t value)
 {
@@ -71,237 +65,6 @@ uint64_t get_u64(const uint8_t *input)
 	return value;
 }
 
-bool append_u32(std::vector<uint8_t> *output, uint32_t value)
-{
-	if (!output)
-		return false;
-	try
-	{
-		const size_t offset = output->size();
-		output->resize(offset + sizeof(value));
-		put_u32(output->data() + offset, value);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	return true;
-}
-
-bool append_text(std::vector<uint8_t> *output, const std::string &value)
-{
-	if (!output || value.size() > UINT32_MAX ||
-	    !append_u32(output, static_cast<uint32_t>(value.size())))
-		return false;
-	try
-	{
-		output->insert(output->end(), value.begin(), value.end());
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	return true;
-}
-
-bool read_u32(const uint8_t *input, size_t size, size_t *offset, uint32_t *value)
-{
-	if (!input || !offset || !value || *offset > size || size - *offset < sizeof(*value))
-		return false;
-	*value = get_u32(input + *offset);
-	*offset += sizeof(*value);
-	return true;
-}
-
-bool read_text(const uint8_t *input, size_t size, size_t *offset, size_t maximum,
-	       std::string *value)
-{
-	uint32_t length = 0;
-	if (!value || !read_u32(input, size, offset, &length) || length > maximum ||
-	    *offset > size || size - *offset < length)
-		return false;
-	try
-	{
-		value->assign(reinterpret_cast<const char *>(input + *offset), length);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	*offset += length;
-	return true;
-}
-
-bool valid_text(const std::string &value, size_t maximum, bool required)
-{
-	if ((required && value.empty()) || value.size() > maximum)
-		return false;
-	return std::all_of(value.begin(), value.end(), [](unsigned char character)
-			   { return character >= 0x20 && character != 0x7f; });
-}
-
-bool encode_corpse_context(const item_corpse_metadata &corpse, std::vector<uint8_t> *encoded)
-{
-	if (!encoded)
-		return false;
-	encoded->clear();
-	if (!corpse.present)
-		return true;
-	if (!append_u32(encoded, CORPSE_CONTEXT_VERSION) ||
-	    !append_u32(encoded, static_cast<uint32_t>(corpse.room_vnum)) ||
-	    !append_u32(encoded, static_cast<uint32_t>(corpse.weight)) ||
-	    !append_u32(encoded, corpse.actor_racewar))
-		return false;
-	for (int32_t value : corpse.values)
-		if (!append_u32(encoded, static_cast<uint32_t>(value)))
-			return false;
-	return append_text(encoded, corpse.owner_name) &&
-	       append_text(encoded, corpse.short_description) &&
-	       append_text(encoded, corpse.description) && append_text(encoded, corpse.keywords);
-}
-
-bool decode_corpse_context(const uint8_t *encoded, size_t size, item_corpse_metadata *corpse)
-{
-	if (!corpse || (!encoded && size))
-		return false;
-	*corpse = {};
-	if (!size)
-		return true;
-	size_t offset = 0;
-	uint32_t version = 0, room_vnum = 0, weight = 0, actor_racewar = 0;
-	if (!read_u32(encoded, size, &offset, &version) || version != CORPSE_CONTEXT_VERSION ||
-	    !read_u32(encoded, size, &offset, &room_vnum) ||
-	    !read_u32(encoded, size, &offset, &weight) ||
-	    !read_u32(encoded, size, &offset, &actor_racewar) || actor_racewar > UINT8_MAX)
-		return false;
-	corpse->present = true;
-	corpse->room_vnum = static_cast<int32_t>(room_vnum);
-	corpse->weight = static_cast<int32_t>(weight);
-	corpse->actor_racewar = static_cast<uint8_t>(actor_racewar);
-	for (int32_t &value : corpse->values)
-	{
-		uint32_t decoded = 0;
-		if (!read_u32(encoded, size, &offset, &decoded))
-			return false;
-		value = static_cast<int32_t>(decoded);
-	}
-	return read_text(encoded, size, &offset, ITEM_TRANSFER_CORPSE_NAME_MAX_BYTES,
-			 &corpse->owner_name) &&
-	       read_text(encoded, size, &offset, ITEM_TRANSFER_CORPSE_SHORT_DESCRIPTION_MAX_BYTES,
-			 &corpse->short_description) &&
-	       read_text(encoded, size, &offset, ITEM_TRANSFER_CORPSE_DESCRIPTION_MAX_BYTES,
-			 &corpse->description) &&
-	       read_text(encoded, size, &offset, ITEM_TRANSFER_CORPSE_KEYWORDS_MAX_BYTES,
-			 &corpse->keywords) &&
-	       offset == size;
-}
-
-bool encode_collector_context(const item_collector_death_enrollment &collector,
-			      std::vector<uint8_t> *encoded)
-{
-	if (!encoded)
-		return false;
-	encoded->clear();
-	if (!collector.present)
-		return true;
-	constexpr size_t fixed_size = sizeof(uint32_t) + CRITICAL_COMMAND_ID_BYTES +
-				      sizeof(uint32_t) + sizeof(uint64_t) * 6 + sizeof(uint32_t);
-	if (collector.eligible_item_uids.size() > UINT32_MAX ||
-	    collector.eligible_item_uids.size() >
-		    (CRITICAL_COMMAND_MAX_PAYLOAD_BYTES - fixed_size) / sizeof(uint64_t))
-		return false;
-	try
-	{
-		encoded->assign(fixed_size + collector.eligible_item_uids.size() * sizeof(uint64_t),
-				0);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	size_t offset = 0;
-	put_u32(encoded->data() + offset, COLLECTOR_CONTEXT_VERSION);
-	offset += sizeof(uint32_t);
-	std::copy(collector.death_operation.bytes.begin(), collector.death_operation.bytes.end(),
-		  encoded->begin() + offset);
-	offset += CRITICAL_COMMAND_ID_BYTES;
-	put_u32(encoded->data() + offset, collector.beneficiary_pid);
-	offset += sizeof(uint32_t);
-	put_u64(encoded->data() + offset, collector.death_time);
-	offset += sizeof(uint64_t);
-	put_u64(encoded->data() + offset, collector.policy.collection_delay);
-	offset += sizeof(uint64_t);
-	put_u64(encoded->data() + offset, collector.policy.sale_delay);
-	offset += sizeof(uint64_t);
-	put_u64(encoded->data() + offset, collector.policy.holding_duration);
-	offset += sizeof(uint64_t);
-	put_u64(encoded->data() + offset, collector.policy.price_percent);
-	offset += sizeof(uint64_t);
-	put_u64(encoded->data() + offset, collector.policy.minimum_value);
-	offset += sizeof(uint64_t);
-	put_u32(encoded->data() + offset,
-		static_cast<uint32_t>(collector.eligible_item_uids.size()));
-	offset += sizeof(uint32_t);
-	for (uint64_t uid : collector.eligible_item_uids)
-	{
-		put_u64(encoded->data() + offset, uid);
-		offset += sizeof(uint64_t);
-	}
-	return offset == encoded->size();
-}
-
-bool decode_collector_context(const uint8_t *encoded, size_t size,
-			      item_collector_death_enrollment *collector)
-{
-	if (!collector || (!encoded && size))
-		return false;
-	*collector = {};
-	if (!size)
-		return true;
-	constexpr size_t fixed_size = sizeof(uint32_t) + CRITICAL_COMMAND_ID_BYTES +
-				      sizeof(uint32_t) + sizeof(uint64_t) * 6 + sizeof(uint32_t);
-	if (size < fixed_size || get_u32(encoded) != COLLECTOR_CONTEXT_VERSION)
-		return false;
-	size_t offset = sizeof(uint32_t);
-	std::copy_n(encoded + offset, collector->death_operation.bytes.size(),
-		    collector->death_operation.bytes.begin());
-	offset += collector->death_operation.bytes.size();
-	collector->beneficiary_pid = get_u32(encoded + offset);
-	offset += sizeof(uint32_t);
-	collector->death_time = get_u64(encoded + offset);
-	offset += sizeof(uint64_t);
-	collector->policy.collection_delay = get_u64(encoded + offset);
-	offset += sizeof(uint64_t);
-	collector->policy.sale_delay = get_u64(encoded + offset);
-	offset += sizeof(uint64_t);
-	collector->policy.holding_duration = get_u64(encoded + offset);
-	offset += sizeof(uint64_t);
-	collector->policy.price_percent = get_u64(encoded + offset);
-	offset += sizeof(uint64_t);
-	collector->policy.minimum_value = get_u64(encoded + offset);
-	offset += sizeof(uint64_t);
-	const uint32_t count = get_u32(encoded + offset);
-	offset += sizeof(uint32_t);
-	if (count > ITEM_TRANSFER_MAX_ITEMS ||
-	    size - offset != static_cast<size_t>(count) * sizeof(uint64_t))
-		return false;
-	try
-	{
-		collector->eligible_item_uids.reserve(count);
-		for (uint32_t index = 0; index < count; ++index)
-		{
-			collector->eligible_item_uids.push_back(get_u64(encoded + offset));
-			offset += sizeof(uint64_t);
-		}
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	collector->present = true;
-	return offset == size;
-}
-
 void encode_owner(uint8_t *output, const item_owner_identity &owner)
 {
 	output[0] = static_cast<uint8_t>(owner.type);
@@ -341,82 +104,13 @@ critical_entity_type entity_type_for_owner(item_owner_type type)
 	}
 }
 
+// Item transfer commands create (grants), repair (operator repairs) and destroy
+// (character deletion): the other reasons are recorded only by the commands that own them.
 bool valid_reason(item_transfer_reason reason)
 {
-	switch (reason)
-	{
-	case item_transfer_reason::synthetic:
-	case item_transfer_reason::creation:
-	case item_transfer_reason::destruction:
-	case item_transfer_reason::operator_repair:
-	case item_transfer_reason::player_get:
-	case item_transfer_reason::player_drop:
-	case item_transfer_reason::player_put:
-	case item_transfer_reason::player_give:
-	case item_transfer_reason::corpse_create:
-	case item_transfer_reason::corpse_restore:
-	case item_transfer_reason::corpse_loot:
-	case item_transfer_reason::locker_deposit:
-	case item_transfer_reason::locker_withdraw:
-	case item_transfer_reason::auction_list:
-	case item_transfer_reason::auction_claim:
-	case item_transfer_reason::shop_buy:
-	case item_transfer_reason::shop_sell:
-	case item_transfer_reason::mobile_claim:
-	case item_transfer_reason::death_restitution:
-	case item_transfer_reason::corpse_raise_pet:
-	case item_transfer_reason::pet_give:
-	case item_transfer_reason::pet_return:
-	case item_transfer_reason::trusted_steal:
-	case item_transfer_reason::soulbind:
-	case item_transfer_reason::slip:
-	case item_transfer_reason::craft:
-		return true;
-	case item_transfer_reason::collector_collect:
-	case item_transfer_reason::collector_buyback:
-	case item_transfer_reason::collector_expire:
-	case item_transfer_reason::unknown:
-		return false;
-	}
-	return false;
-}
-
-bool decode_craft_outputs(const item_transfer_payload &payload,
-			  std::vector<player_item_snapshot> *outputs)
-{
-	if (!outputs || payload.reason != item_transfer_reason::craft ||
-	    payload.item_blob_size > payload.item_blob.size())
-		return false;
-	outputs->clear();
-	if (!payload.item_blob_size)
-		return true;
-	if (player_item_snapshot_list_decode(payload.item_blob.data(), payload.item_blob_size,
-					     outputs) != player_snapshot_codec_result::ok ||
-	    outputs->empty() || outputs->size() > ITEM_TRANSFER_MAX_ITEMS)
-		return false;
-	std::vector<uint64_t> uids;
-	try
-	{
-		uids.reserve(outputs->size());
-		for (size_t index = 0; index < outputs->size(); ++index)
-		{
-			const player_item_snapshot &output = (*outputs)[index];
-			if (!output.object_uid || output.vnum <= 0 ||
-			    output.parent_index >= static_cast<int32_t>(index) ||
-			    output.parent_index < PLAYER_SNAPSHOT_NO_PARENT ||
-			    (index == 0 && output.object_uid != payload.selected_item_uid) ||
-			    (index && output.parent_index == PLAYER_SNAPSHOT_NO_PARENT &&
-			     output.object_uid == payload.selected_item_uid))
-				return false;
-			uids.push_back(output.object_uid);
-		}
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	std::sort(uids.begin(), uids.end());
-	return std::adjacent_find(uids.begin(), uids.end()) == uids.end();
+	return reason == item_transfer_reason::creation ||
+	       reason == item_transfer_reason::operator_repair ||
+	       reason == item_transfer_reason::destruction;
 }
 
 const item_transfer_entry *find_payload_item(const item_transfer_payload &payload,
@@ -433,19 +127,6 @@ const item_transfer_entry *find_payload_item(const item_transfer_payload &payloa
 
 uint64_t selected_root_for(const item_transfer_payload &payload, uint64_t item_uid)
 {
-	if (payload.reason == item_transfer_reason::craft)
-	{
-		const item_transfer_entry *entry = find_payload_item(payload, item_uid);
-		for (size_t depth = 0; entry && depth <= payload.item_count; ++depth)
-		{
-			const item_transfer_entry *parent =
-				find_payload_item(payload, entry->parent_item_uid);
-			if (!parent)
-				return entry->item_uid;
-			entry = parent;
-		}
-		return 0;
-	}
 	if (!payload.multi_root)
 		return payload.selected_item_uid ? payload.selected_item_uid :
 						   payload.items[0].root_item_uid;
@@ -461,33 +142,6 @@ uint64_t selected_root_for(const item_transfer_payload &payload, uint64_t item_u
 	return 0;
 }
 
-bool valid_collector_context(const item_transfer_payload &payload, uint16_t payload_version)
-{
-	const item_collector_death_enrollment &collector = payload.collector;
-	if (!collector.present)
-		return collector.eligible_item_uids.empty();
-	if (payload_version < ITEM_TRANSFER_PAYLOAD_VERSION ||
-	    payload.reason != item_transfer_reason::corpse_create || !payload.corpse.present ||
-	    critical_operation_id_is_zero(collector.death_operation) ||
-	    !collector.beneficiary_pid || !collector.death_time ||
-	    collector.beneficiary_pid != static_cast<uint32_t>(payload.to_owner.id >> 32) ||
-	    collector.death_time != static_cast<uint32_t>(payload.to_owner.id) ||
-	    !collector.policy.collection_delay ||
-	    collector.policy.sale_delay < collector.policy.collection_delay ||
-	    !collector.policy.holding_duration || !collector.policy.price_percent ||
-	    !collector.policy.minimum_value ||
-	    collector.eligible_item_uids.size() > payload.item_count ||
-	    !std::is_sorted(collector.eligible_item_uids.begin(),
-			    collector.eligible_item_uids.end()) ||
-	    std::adjacent_find(collector.eligible_item_uids.begin(),
-			       collector.eligible_item_uids.end()) !=
-		    collector.eligible_item_uids.end())
-		return false;
-	return std::all_of(collector.eligible_item_uids.begin(), collector.eligible_item_uids.end(),
-			   [&](uint64_t uid)
-			   { return find_payload_item(payload, uid) != nullptr; });
-}
-
 bool target_topology_for(const item_transfer_payload &payload, uint64_t item_uid,
 			 uint64_t *root_item_uid, uint64_t *parent_item_uid)
 {
@@ -495,12 +149,6 @@ bool target_topology_for(const item_transfer_payload &payload, uint64_t item_uid
 	const uint64_t selected_root = selected_root_for(payload, item_uid);
 	if (!entry || !selected_root || !root_item_uid || !parent_item_uid)
 		return false;
-	if (payload.reason == item_transfer_reason::craft)
-	{
-		*root_item_uid = entry->root_item_uid;
-		*parent_item_uid = entry->parent_item_uid;
-		return true;
-	}
 	*root_item_uid = payload.target_parent_item_uid ? payload.target_root_item_uid :
 							  selected_root;
 	*parent_item_uid = item_uid == selected_root ? payload.target_parent_item_uid :
@@ -508,118 +156,17 @@ bool target_topology_for(const item_transfer_payload &payload, uint64_t item_uid
 	return *root_item_uid != 0;
 }
 
-bool validate_payload(const item_transfer_payload &payload, uint16_t payload_version)
+bool validate_payload(const item_transfer_payload &payload)
 {
 	if (!item_owner_identity_valid(payload.from_owner) ||
 	    !item_owner_identity_valid(payload.to_owner) || !valid_reason(payload.reason) ||
 	    !payload.item_count || payload.item_count > ITEM_TRANSFER_MAX_ITEMS ||
-	    (payload_version < ITEM_TRANSFER_BATCH_PAYLOAD_VERSION &&
-	     payload.item_count > ITEM_TRANSFER_LEGACY_MAX_ITEMS) ||
 	    payload.item_blob_size > payload.item_blob.size() ||
 	    payload.from_owner.type == item_owner_type::collector ||
 	    payload.to_owner.type == item_owner_type::collector ||
-	    !valid_collector_context(payload, payload_version))
+	    payload.from_owner.type == item_owner_type::pet ||
+	    payload.to_owner.type == item_owner_type::pet)
 		return false;
-	const bool corpse_create = payload.reason == item_transfer_reason::corpse_create;
-	const bool corpse_loot = payload.reason == item_transfer_reason::corpse_loot;
-	const bool corpse_raise_pet = payload.reason == item_transfer_reason::corpse_raise_pet;
-	const bool world_corpse_raise_pet =
-		corpse_raise_pet && payload.from_owner.type == item_owner_type::room &&
-		payload.from_owner.id && payload.from_owner.id <= INT32_MAX &&
-		!payload.from_owner.context_id && payload.to_owner.type == item_owner_type::pet &&
-		payload.to_owner.id && payload.to_owner.context_id &&
-		payload.to_owner.context_id <= INT32_MAX && payload.multi_root &&
-		!payload.target_root_item_uid && !payload.target_parent_item_uid &&
-		static_cast<uint64_t>(payload.reason_id) == payload.to_owner.id;
-	const bool pet_give = payload.reason == item_transfer_reason::pet_give;
-	const bool pet_return = payload.reason == item_transfer_reason::pet_return;
-	const bool trusted_steal = payload.reason == item_transfer_reason::trusted_steal;
-	const bool soulbind = payload.reason == item_transfer_reason::soulbind;
-	const bool slip = payload.reason == item_transfer_reason::slip;
-	const bool player_transfer = trusted_steal || soulbind || slip;
-	const bool craft = payload.reason == item_transfer_reason::craft;
-	if (player_transfer &&
-	    (payload_version < ITEM_TRANSFER_PAYLOAD_VERSION ||
-	     payload.from_owner.type != item_owner_type::player ||
-	     payload.to_owner.type != item_owner_type::player || !payload.from_owner.id ||
-	     !payload.to_owner.id || payload.from_owner.id > INT32_MAX ||
-	     payload.to_owner.id > INT32_MAX || payload.from_owner.context_id ||
-	     payload.to_owner.context_id || payload.from_owner.id == payload.to_owner.id ||
-	     payload.multi_root || payload.target_parent_item_uid ||
-	     payload.reason_id != static_cast<int64_t>(payload.from_owner.id)))
-		return false;
-	if (craft)
-	{
-		std::vector<player_item_snapshot> outputs;
-		if (payload_version < ITEM_TRANSFER_BATCH_PAYLOAD_VERSION ||
-		    payload.from_owner.type != item_owner_type::player ||
-		    payload.to_owner.type != item_owner_type::player ||
-		    !item_owner_identity_equal(payload.from_owner, payload.to_owner) ||
-		    !payload.from_owner.id || payload.from_owner.context_id ||
-		    payload.to_owner.context_id || !payload.multi_root ||
-		    !payload.selected_item_uid || payload.target_root_item_uid ||
-		    payload.target_parent_item_uid || payload.expected_target_parent_revision ||
-		    !decode_craft_outputs(payload, &outputs) ||
-		    (outputs.empty() && !find_payload_item(payload, payload.selected_item_uid)) ||
-		    payload.item_count + outputs.size() > CRITICAL_COMMAND_MAX_KEYS - 2)
-			return false;
-		for (const player_item_snapshot &output : outputs)
-			for (size_t index = 0; index < payload.item_count; ++index)
-				if (output.object_uid == payload.items[index].item_uid)
-					return false;
-	}
-	// Other commands do not update the pet's physical item projection.
-	if ((payload.from_owner.type == item_owner_type::pet ||
-	     payload.to_owner.type == item_owner_type::pet) &&
-	    !pet_give && !pet_return && !corpse_raise_pet)
-		return false;
-	if ((pet_give && (payload.from_owner.type != item_owner_type::player ||
-			  payload.to_owner.type != item_owner_type::pet ||
-			  payload.from_owner.id != payload.to_owner.context_id ||
-			  payload.reason_id != static_cast<int64_t>(payload.to_owner.id))) ||
-	    (pet_return && (payload.from_owner.type != item_owner_type::pet ||
-			    payload.to_owner.type != item_owner_type::player ||
-			    payload.from_owner.context_id != payload.to_owner.id ||
-			    payload.reason_id != static_cast<int64_t>(payload.from_owner.id))) ||
-	    ((pet_give || pet_return) && (payload.multi_root || payload.target_parent_item_uid)))
-		return false;
-	const bool corpse_context_required =
-		payload_version >= ITEM_TRANSFER_CORPSE_PAYLOAD_VERSION &&
-		(corpse_create || corpse_loot || (corpse_raise_pet && !world_corpse_raise_pet));
-	if (corpse_context_required != payload.corpse.present ||
-	    (corpse_create && (payload.from_owner.type != item_owner_type::player ||
-			       payload.to_owner.type != item_owner_type::corpse)) ||
-	    (corpse_loot && (payload.from_owner.type != item_owner_type::corpse ||
-			     payload.to_owner.type != item_owner_type::player)) ||
-	    (corpse_raise_pet && !world_corpse_raise_pet &&
-	     (payload.from_owner.type != item_owner_type::corpse ||
-	      payload.to_owner.type != item_owner_type::pet)))
-		return false;
-	if (payload.corpse.present)
-	{
-		const item_owner_identity &owner = corpse_create ? payload.to_owner :
-								   payload.from_owner;
-		const uint32_t owner_pid = static_cast<uint32_t>(owner.id >> 32);
-		const uint32_t save_id = static_cast<uint32_t>(owner.id);
-		if (!owner_pid || owner_pid > INT32_MAX || !save_id || save_id > INT32_MAX ||
-		    owner.context_id || payload.corpse.room_vnum < 0 ||
-		    payload.corpse.actor_racewar > 4 ||
-		    payload.corpse.values[CORPSE_PID_VALUE_INDEX] !=
-			    static_cast<int32_t>(owner_pid) ||
-		    payload.corpse.values[CORPSE_SAVE_ID_VALUE_INDEX] !=
-			    static_cast<int32_t>(save_id) ||
-		    payload.corpse.values[CORPSE_RACEWAR_VALUE_INDEX] < 0 ||
-		    payload.corpse.values[CORPSE_RACEWAR_VALUE_INDEX] > 4 ||
-		    !valid_text(payload.corpse.owner_name, ITEM_TRANSFER_CORPSE_NAME_MAX_BYTES,
-				true) ||
-		    !valid_text(payload.corpse.short_description,
-				ITEM_TRANSFER_CORPSE_SHORT_DESCRIPTION_MAX_BYTES, false) ||
-		    !valid_text(payload.corpse.description,
-				ITEM_TRANSFER_CORPSE_DESCRIPTION_MAX_BYTES, false) ||
-		    !valid_text(payload.corpse.keywords, ITEM_TRANSFER_CORPSE_KEYWORDS_MAX_BYTES,
-				false))
-			return false;
-	}
 	const bool creation = payload.from_owner.type == item_owner_type::system;
 	const bool destruction = payload.to_owner.type == item_owner_type::destruction;
 	if (payload.to_owner.type == item_owner_type::system ||
@@ -631,22 +178,9 @@ bool validate_payload(const item_transfer_payload &payload, uint16_t payload_ver
 		return false;
 	if (payload.multi_root)
 	{
-		const bool batch_reason =
-			payload.reason == item_transfer_reason::player_get ||
-			payload.reason == item_transfer_reason::player_drop ||
-			payload.reason == item_transfer_reason::player_put ||
-			payload.reason == item_transfer_reason::locker_deposit ||
-			payload.reason == item_transfer_reason::locker_withdraw ||
-			payload.reason == item_transfer_reason::corpse_loot ||
-			payload.reason == item_transfer_reason::corpse_raise_pet ||
-			payload.reason == item_transfer_reason::corpse_create ||
-			payload.reason == item_transfer_reason::destruction || craft;
-		const bool creation_batch = creation &&
-					    payload.reason == item_transfer_reason::creation;
-		if (payload_version < ITEM_TRANSFER_BATCH_PAYLOAD_VERSION ||
-		    (!craft && payload.selected_item_uid) || (!creation_batch && !batch_reason) ||
-		    (craft && (!payload.selected_item_uid || !payload.multi_root)) ||
-		    (creation_batch &&
+		// A starter kit is created, and a deleted owner's items destroyed, in one batch.
+		if (payload.selected_item_uid || (!creation && !destruction) ||
+		    (creation &&
 		     (payload.to_owner.type != item_owner_type::player ||
 		      payload.target_root_item_uid || payload.target_parent_item_uid)) ||
 		    (payload.target_parent_item_uid ? !payload.target_root_item_uid :
@@ -656,14 +190,14 @@ bool validate_payload(const item_transfer_payload &payload, uint16_t payload_ver
 		{
 			const item_transfer_entry &entry = payload.items[index];
 			if (!entry.item_uid || !entry.root_item_uid || entry.vnum <= 0 ||
-			    (creation_batch ? (entry.expected_item_revision !=
-						       ITEM_TRANSFER_ABSENT_REVISION ||
-					       entry.expected_state != item_custody_state::absent) :
-					      entry.expected_state != item_custody_state::active) ||
+			    (creation ? (entry.expected_item_revision !=
+						 ITEM_TRANSFER_ABSENT_REVISION ||
+					 entry.expected_state != item_custody_state::absent) :
+					entry.expected_state != item_custody_state::active) ||
 			    (index && payload.items[index - 1].item_uid >= entry.item_uid) ||
 			    entry.item_uid == payload.target_parent_item_uid)
 				return false;
-			if (creation_batch)
+			if (creation)
 			{
 				const uint64_t selected_root =
 					selected_root_for(payload, entry.item_uid);
@@ -782,8 +316,6 @@ bool item_transfer_selected_roots(const item_transfer_payload &payload,
 
 uint64_t item_transfer_result_root(const item_transfer_payload &payload)
 {
-	if (payload.reason == item_transfer_reason::craft)
-		return payload.selected_item_uid;
 	uint64_t result = 0;
 	for (size_t index = 0; index < payload.item_count; ++index)
 	{
@@ -893,29 +425,6 @@ bool populate_command_entities(critical_command *command, const item_transfer_pa
 		command->expected_revisions.push_back(
 			{ parent_key, payload.expected_target_parent_revision });
 	}
-	if (payload.reason == item_transfer_reason::craft)
-	{
-		std::vector<player_item_snapshot> outputs;
-		if (!decode_craft_outputs(payload, &outputs))
-			return false;
-		for (const player_item_snapshot &output : outputs)
-		{
-			const critical_entity_key output_key = { critical_entity_type::item,
-								 output.object_uid };
-			command->keys.push_back(output_key);
-			command->expected_revisions.push_back(
-				{ output_key, ITEM_TRANSFER_ABSENT_REVISION });
-		}
-	}
-	if (payload.collector.present)
-	{
-		const critical_entity_key catalog_key = { critical_entity_type::collector,
-							  COLLECTOR_CATALOG_KEY };
-		command->keys.push_back(catalog_key);
-		// The SQL repository takes the current catalog row lock before any item
-		// lock; zero is a serialization key, not an optimistic catalog fence.
-		command->expected_revisions.push_back({ catalog_key, 0 });
-	}
 	std::sort(command->keys.begin(), command->keys.end(), critical_entity_key_less);
 	if (std::adjacent_find(command->keys.begin(), command->keys.end(),
 			       critical_entity_key_equal) != command->keys.end())
@@ -931,17 +440,11 @@ bool populate_command_entities(critical_command *command, const item_transfer_pa
 bool item_transfer_command_encode_payload(const item_transfer_payload &payload,
 					  std::vector<uint8_t> *encoded)
 {
-	std::vector<uint8_t> corpse_context;
-	std::vector<uint8_t> collector_context;
-	if (!encoded || !validate_payload(payload, ITEM_TRANSFER_PAYLOAD_VERSION) ||
-	    !encode_corpse_context(payload.corpse, &corpse_context) ||
-	    !encode_collector_context(payload.collector, &collector_context))
+	if (!encoded || !validate_payload(payload))
 		return false;
 	const size_t item_section_size =
 		ITEM_TRANSFER_HEADER_BYTES + payload.item_count * ITEM_TRANSFER_ENTRY_BYTES;
-	const size_t payload_size = item_section_size + sizeof(uint32_t) + payload.item_blob_size +
-				    sizeof(uint32_t) + corpse_context.size() + sizeof(uint32_t) +
-				    collector_context.size();
+	const size_t payload_size = item_section_size + sizeof(uint32_t) + payload.item_blob_size;
 	if (payload_size > CRITICAL_COMMAND_MAX_PAYLOAD_BYTES)
 		return false;
 	encoded->assign(payload_size, 0);
@@ -952,11 +455,10 @@ bool item_transfer_command_encode_payload(const item_transfer_payload &payload,
 	put_u64(encoded->data() + REASON_ID_OFFSET, static_cast<uint64_t>(payload.reason_id));
 	put_u64(encoded->data() + FROM_REVISION_OFFSET, payload.expected_from_revision);
 	put_u64(encoded->data() + TO_REVISION_OFFSET, payload.expected_to_revision);
-	const uint64_t selected =
-		(payload.multi_root && payload.reason != item_transfer_reason::craft) ?
-			0 :
-			(payload.selected_item_uid ? payload.selected_item_uid :
-						     payload.items[0].root_item_uid);
+	const uint64_t selected = payload.multi_root ? 0 :
+						       (payload.selected_item_uid ?
+								payload.selected_item_uid :
+								payload.items[0].root_item_uid);
 	put_u64(encoded->data() + SELECTED_ITEM_OFFSET, selected);
 	put_u64(encoded->data() + TARGET_ROOT_OFFSET,
 		payload.multi_root ?
@@ -980,17 +482,6 @@ bool item_transfer_command_encode_payload(const item_transfer_payload &payload,
 	put_u32(encoded->data() + item_section_size, payload.item_blob_size);
 	std::copy_n(payload.item_blob.begin(), payload.item_blob_size,
 		    encoded->begin() + item_section_size + sizeof(uint32_t));
-	const size_t corpse_size_offset =
-		item_section_size + sizeof(uint32_t) + payload.item_blob_size;
-	put_u32(encoded->data() + corpse_size_offset, static_cast<uint32_t>(corpse_context.size()));
-	std::copy(corpse_context.begin(), corpse_context.end(),
-		  encoded->begin() + corpse_size_offset + sizeof(uint32_t));
-	const size_t collector_size_offset =
-		corpse_size_offset + sizeof(uint32_t) + corpse_context.size();
-	put_u32(encoded->data() + collector_size_offset,
-		static_cast<uint32_t>(collector_context.size()));
-	std::copy(collector_context.begin(), collector_context.end(),
-		  encoded->begin() + collector_size_offset + sizeof(uint32_t));
 	return true;
 }
 
@@ -998,16 +489,9 @@ bool item_transfer_command_decode_payload(const critical_command &command,
 					  item_transfer_payload *payload)
 {
 	if (!payload || command.type != critical_command_type::item_transfer ||
-	    (command.payload_version != ITEM_TRANSFER_PAYLOAD_VERSION &&
-	     command.payload_version != ITEM_TRANSFER_BATCH_PAYLOAD_VERSION &&
-	     command.payload_version != ITEM_TRANSFER_CORPSE_PAYLOAD_VERSION &&
-	     command.payload_version != ITEM_TRANSFER_EXACT_PAYLOAD_VERSION &&
-	     command.payload_version != ITEM_TRANSFER_PREVIOUS_PAYLOAD_VERSION &&
-	     command.payload_version != ITEM_TRANSFER_LEGACY_PAYLOAD_VERSION) ||
-	    (command.payload_version >= ITEM_TRANSFER_EXACT_PAYLOAD_VERSION ?
-		     command.payload.size() < ITEM_TRANSFER_HEADER_BYTES +
-						      ITEM_TRANSFER_ENTRY_BYTES + sizeof(uint32_t) :
-		     command.payload.size() != ITEM_TRANSFER_PAYLOAD_BYTES))
+	    command.payload_version != ITEM_TRANSFER_PAYLOAD_VERSION ||
+	    command.payload.size() <
+		    ITEM_TRANSFER_HEADER_BYTES + ITEM_TRANSFER_ENTRY_BYTES + sizeof(uint32_t))
 		return false;
 	*payload = {};
 	payload->from_owner = decode_owner(command.payload.data() + FROM_OFFSET);
@@ -1024,92 +508,34 @@ bool item_transfer_command_decode_payload(const critical_command &command,
 	payload->target_parent_item_uid = get_u64(command.payload.data() + TARGET_PARENT_OFFSET);
 	payload->expected_target_parent_revision =
 		get_u64(command.payload.data() + TARGET_PARENT_REVISION_OFFSET);
-	payload->multi_root =
-		command.payload_version >= ITEM_TRANSFER_BATCH_PAYLOAD_VERSION &&
-		(payload->selected_item_uid == 0 || payload->reason == item_transfer_reason::craft);
+	payload->multi_root = payload->selected_item_uid == 0;
 	if (!payload->item_count || payload->item_count > ITEM_TRANSFER_MAX_ITEMS)
 		return false;
-	const bool variable_items = command.payload_version >= ITEM_TRANSFER_BATCH_PAYLOAD_VERSION;
-	if (!variable_items && payload->item_count > ITEM_TRANSFER_LEGACY_MAX_ITEMS)
-		return false;
-	const size_t encoded_item_count = variable_items ? payload->item_count :
-							   ITEM_TRANSFER_LEGACY_MAX_ITEMS;
 	const size_t item_section_size =
-		ITEM_TRANSFER_HEADER_BYTES + encoded_item_count * ITEM_TRANSFER_ENTRY_BYTES;
-	if (command.payload.size() < item_section_size)
+		ITEM_TRANSFER_HEADER_BYTES + payload->item_count * ITEM_TRANSFER_ENTRY_BYTES;
+	if (command.payload.size() < item_section_size + sizeof(uint32_t))
 		return false;
-	for (size_t index = 0; index < encoded_item_count; ++index)
+	for (size_t index = 0; index < payload->item_count; ++index)
 	{
 		const uint8_t *input = command.payload.data() + ITEM_TRANSFER_HEADER_BYTES +
 				       index * ITEM_TRANSFER_ENTRY_BYTES;
-		if (index < payload->item_count)
-			payload->items[index] = { get_u64(input),
-						  get_u64(input + 8),
-						  get_u64(input + 16),
-						  get_u64(input + 24),
-						  static_cast<int32_t>(get_u32(input + 32)),
-						  static_cast<item_custody_state>(input[36]) };
-		else
-			for (size_t byte = 0; byte < ITEM_TRANSFER_ENTRY_BYTES; ++byte)
-				if (input[byte])
-					return false;
+		payload->items[index] = { get_u64(input),
+					  get_u64(input + 8),
+					  get_u64(input + 16),
+					  get_u64(input + 24),
+					  static_cast<int32_t>(get_u32(input + 32)),
+					  static_cast<item_custody_state>(input[36]) };
 		if (input[37] || input[38] || input[39])
 			return false;
 	}
-	if (command.payload_version >= ITEM_TRANSFER_EXACT_PAYLOAD_VERSION)
-	{
-		if (command.payload.size() < item_section_size + sizeof(uint32_t))
-			return false;
-		payload->item_blob_size = get_u32(command.payload.data() + item_section_size);
-		const size_t item_end =
-			item_section_size + sizeof(uint32_t) + payload->item_blob_size;
-		if (payload->item_blob_size > payload->item_blob.size() ||
-		    item_end > command.payload.size())
-			return false;
-		std::copy_n(command.payload.begin() + item_section_size + sizeof(uint32_t),
-			    payload->item_blob_size, payload->item_blob.begin());
-		if (command.payload_version == ITEM_TRANSFER_EXACT_PAYLOAD_VERSION)
-		{
-			if (command.payload.size() != item_end)
-				return false;
-		}
-		else
-		{
-			if (command.payload.size() < item_end + sizeof(uint32_t))
-				return false;
-			const uint32_t corpse_size = get_u32(command.payload.data() + item_end);
-			const size_t corpse_end = item_end + sizeof(uint32_t) + corpse_size;
-			if (corpse_size > CRITICAL_COMMAND_MAX_PAYLOAD_BYTES ||
-			    corpse_end > command.payload.size() ||
-			    !decode_corpse_context(command.payload.data() + item_end +
-							   sizeof(uint32_t),
-						   corpse_size, &payload->corpse))
-				return false;
-			if (command.payload_version < ITEM_TRANSFER_PAYLOAD_VERSION)
-			{
-				if (command.payload.size() != corpse_end)
-					return false;
-			}
-			else
-			{
-				if (command.payload.size() < corpse_end + sizeof(uint32_t))
-					return false;
-				const uint32_t collector_size =
-					get_u32(command.payload.data() + corpse_end);
-				if (collector_size > CRITICAL_COMMAND_MAX_PAYLOAD_BYTES ||
-				    command.payload.size() !=
-					    corpse_end + sizeof(uint32_t) + collector_size ||
-				    !decode_collector_context(command.payload.data() + corpse_end +
-								      sizeof(uint32_t),
-							      collector_size, &payload->collector))
-					return false;
-			}
-		}
-	}
-	if (!validate_payload(*payload, command.payload_version) ||
-	    (command.payload_version == ITEM_TRANSFER_LEGACY_PAYLOAD_VERSION &&
-	     payload->reason > item_transfer_reason::auction_claim) ||
-	    command.expected_revisions.size() != command.keys.size())
+	payload->item_blob_size = get_u32(command.payload.data() + item_section_size);
+	if (payload->item_blob_size > payload->item_blob.size() ||
+	    command.payload.size() !=
+		    item_section_size + sizeof(uint32_t) + payload->item_blob_size)
+		return false;
+	std::copy_n(command.payload.begin() + item_section_size + sizeof(uint32_t),
+		    payload->item_blob_size, payload->item_blob.begin());
+	if (!validate_payload(*payload) || command.expected_revisions.size() != command.keys.size())
 		return false;
 	critical_command expected = {};
 	if (!populate_command_entities(&expected, *payload))
@@ -1148,17 +574,11 @@ bool item_transfer_command_encode_result(const item_transfer_result &result,
 bool item_transfer_command_decode_result(const uint8_t *encoded, size_t size,
 					 item_transfer_result *result)
 {
-	if (!encoded ||
-	    (size != ITEM_TRANSFER_RESULT_BYTES && size != ITEM_TRANSFER_LEGACY_RESULT_BYTES) ||
-	    !result || encoded[10] > 1 || encoded[11] || encoded[12] || encoded[13] ||
-	    encoded[14] || encoded[15])
+	if (!encoded || size != ITEM_TRANSFER_RESULT_BYTES || !result || encoded[10] > 1 ||
+	    encoded[11] || encoded[12] || encoded[13] || encoded[14] || encoded[15])
 		return false;
-	*result = { get_u64(encoded),
-		    get_u16(encoded + 8),
-		    get_u64(encoded + 16),
-		    get_u64(encoded + 24),
-		    get_u64(encoded + 32),
-		    size == ITEM_TRANSFER_RESULT_BYTES ? get_u64(encoded + 40) : 0,
+	*result = { get_u64(encoded),	   get_u16(encoded + 8),  get_u64(encoded + 16),
+		    get_u64(encoded + 24), get_u64(encoded + 32), get_u64(encoded + 40),
 		    encoded[10] != 0 };
 	return result->root_item_uid && result->item_count &&
 	       result->item_count <= ITEM_TRANSFER_MAX_ITEMS;

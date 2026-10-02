@@ -30,7 +30,6 @@ class BackupReviewRemediationTests(Fixture):
     def setUp(self):
         super().setUp()
         self.journal_environment = mock.patch.dict(os.environ, {
-            "PLAYER_SAVE_JOURNAL_DIR": "",
             "CRITICAL_COMMAND_JOURNAL_DIR": "",
         })
         self.journal_environment.start()
@@ -48,34 +47,41 @@ class BackupReviewRemediationTests(Fixture):
         with self.assertRaisesRegex(backup.BackupError, "tombstone_evidence_stale"):
             restore.tombstone_preflight(path, self.p, now - self.p["rpo_seconds"])
 
-    def test_policy_requires_both_journal_roots(self):
+    def test_policy_requires_the_receipt_root_alone(self):
         value = policy(self.base)
-        value["journal_roots"] = {
-            "players": self.base / "player-journal",
-            "critical": self.base / "critical-journal",
-        }
-        for path in value["journal_roots"].values():
-            path.mkdir(mode=0o700)
+        value["journal_roots"] = {"critical": self.base / "critical-journal"}
+        value["journal_roots"]["critical"].mkdir(mode=0o700)
+        players = self.base / "player-journal"
+        players.mkdir(mode=0o700)
         config = self.base / "policy.json"
         config.write_text(json.dumps(value, default=str))
         config.chmod(0o600)
-        for roots in ({"players": value["journal_roots"]["players"]},
-                      {"critical": value["journal_roots"]["critical"]}, {}):
+        # The player-save journal is gone; a policy still naming it is refused.
+        for roots in ({"players": players, "critical": value["journal_roots"]["critical"]},
+                      {"players": players}, {}):
             with self.subTest(roots=roots), self.assertRaisesRegex(backup.BackupError,
                                                                     "invalid_journal_roots"):
                 broken = dict(value, journal_roots=roots)
                 config.write_text(json.dumps(broken, default=str))
                 backup.policy_load(config)
 
-    def test_journal_temp_file_never_enters_a_generation(self):
-        players = self.base / "player-journal"
+    def test_only_receipts_and_the_retired_journal_enter_a_generation(self):
         critical = self.base / "critical-journal"
-        players.mkdir(mode=0o700)
         critical.mkdir(mode=0o700)
-        (players / "player-save.journal.tmp").write_bytes(b"unfinished")
+        # An older server's journal and its rewrite file stay in the directory after an
+        # upgrade; the backup carries them as they are.
+        (critical / "critical-command.journal").write_bytes(b"left by an older server")
+        (critical / "critical-command.journal.tmp").touch(mode=0o600)
         stage = self.base / "stage"
         stage.mkdir(mode=0o700)
-        value = dict(self.p, journal_roots={"players": players, "critical": critical})
+        value = dict(self.p, journal_roots={"critical": critical})
+        captured = backup.journal_capture(stage, value)
+        self.assertEqual(set(captured["critical"]),
+                         {"critical-command.journal", "critical-command.journal.tmp"})
+        self.assertEqual(backup.inventory(stage / "journals/critical"), captured["critical"])
+        (critical / "player-save.journal").write_bytes(b"not a receipt")
+        stage = self.base / "stage-foreign"
+        stage.mkdir(mode=0o700)
         with self.assertRaisesRegex(backup.BackupError, "journal_filename"):
             backup.journal_capture(stage, value)
 

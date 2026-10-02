@@ -281,7 +281,6 @@ void process_candidate(const collector::record &entry, uint64_t now)
 	switch (prepared)
 	{
 	case collector_collection_prepare_outcome::missing_item:
-	case collector_collection_prepare_outcome::destroyed:
 		submit_candidate_cancellation(entry, collector::reason::destroyed, now);
 		return;
 	case collector_collection_prepare_outcome::claimed:

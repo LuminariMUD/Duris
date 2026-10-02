@@ -100,12 +100,10 @@ def run(binary: Path, count: int, expect_abort: bool, malformed: bool = False,
             (game / "logs/log").mkdir(parents=True)
             journey.make_fixture(game)
             journey.generate_certificate(game)
-            for kind in ("players", "critical"):
-                (game / "journals" / kind).mkdir(parents=True, mode=0o700)
+            (game / "journals" / "critical").mkdir(parents=True, mode=0o700)
             game_port, tls_port, websocket_port = journey.available_ports()
             env.update(DURIS_TLS_PORT=str(tls_port),
                        DURIS_WEBSOCKET_PORT=str(websocket_port),
-                       PLAYER_SAVE_JOURNAL_DIR=str(game / "journals/players"),
                        CRITICAL_COMMAND_JOURNAL_DIR=str(game / "journals/critical"))
             if fault_stage:
                 env["DURIS_SAVED_ITEM_RESTORE_FAULT_STAGE"] = fault_stage

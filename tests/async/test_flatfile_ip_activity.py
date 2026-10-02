@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from _paths import SRC, rel
+from _paths import rel
 import pathlib
 import subprocess
 import tempfile
@@ -39,9 +39,5 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-ip-activity-") as tempor
         check=True,
     )
     subprocess.run([str(binary), str(temporary_path / "state")], cwd=ROOT, check=True)
-
-    nanny = (SRC / "nanny.c").read_text()
-    if "if (timer < 0)" not in nanny or "Login history is temporarily unavailable" not in nanny:
-        raise AssertionError("one-hour rule does not fail closed when flat IP state is unavailable")
 
 print("flat-file IP activity runtime regression passed")

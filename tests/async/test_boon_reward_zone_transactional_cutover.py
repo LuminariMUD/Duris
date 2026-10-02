@@ -140,7 +140,7 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
         self.assertIn("zone_touch_transaction_submit", touch)
         for forbidden in ("zone_touches", "redis_invalidate_epic_zones", "UPDATE zones"):
             self.assertNotIn(forbidden, touch)
-        publish = source[end:source.index("void epic_zone_balance", end)]
+        publish = source[end:source.index("void epic_initialization", end)]
         self.assertNotIn("update_epic_zone_alignment", publish)
         self.assertNotIn("db_query", publish)
 
@@ -188,7 +188,8 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
         self.assertLess(publish, acknowledge)
         self.assertIn("flatfile_boon_find_pending_reward", ready)
 
-        self.assertEqual(nanny.count("boon_reward_transaction_player_ready("), 2)
+        self.assertEqual(nanny.count("boon_reward_transaction_player_ready("), 1)
+        self.assertIn("boon_reward_transaction_player_ready(", (SRC / "account.c").read_text())
 
     def test_flat_boon_query_helpers_route_before_sql(self):
         # Step 8: MariaDB reads the boons on the writer, so these helpers are flat-file only.
@@ -205,9 +206,6 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
             self.assertIn("flat_boon_root", body)
             self.assertIn(flat_token, body)
             self.assertNotIn("qry(", body)
-        start = boon.index("bool get_boon_progress_data")
-        body = boon[start:boon.find("\n}\n", start) + 3]
-        self.assertLess(body.index("flatfile_boon_load_progress"), body.index("qry("))
 
     def test_flat_boon_definition_mutations_route_before_sql(self):
         # Flat-file writes its catalog; MariaDB creates, removes and extends on the writer.
@@ -232,7 +230,7 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
         # Step 8: the boon commands read and write the boons on the writer.
         boon = (SRC / "boon.c").read_text()
         live = boon[boon.index("static void extend_boon_on_writer("):
-                    boon.index("int create_boon_progress(")]
+                    boon.index("int remove_boon(")]
         for forbidden in ("qry(", "boon_store_result", "mysql_store_result",
                           "mysql_insert_id"):
             self.assertNotIn(forbidden, live)
@@ -245,14 +243,12 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
     def test_flat_boon_maintenance_enumerates_the_catalog(self):
         boon = (SRC / "boon.c").read_text()
         start = boon.index("void boon_maintenance()")
-        end = boon.index("void boon_random_maintenance()", start)
+        end = boon.index("void check_boon_completion(", start)
         maintenance = boon[start:end]
         self.assertIn("flatfile_boon_load_definitions", maintenance)
         self.assertIn("definition.active", maintenance)
-        self.assertLess(
-            maintenance.index("flatfile_boon_load_definitions"),
-            maintenance.index('qry("SELECT id FROM boons'),
-        )
+        # MariaDB's boon_scan maintenance job expires its boons on the writer.
+        self.assertNotIn("qry(", maintenance)
 
     def test_flat_boon_display_routes_before_sql_with_all_filters(self):
         boon = (SRC / "boon.c").read_text()

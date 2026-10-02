@@ -1,7 +1,6 @@
 #include "flatfile/flatfile_authority_transaction.h"
 
 #include "flatfile/flatfile_store.h"
-#include "flatfile/flatfile_accounting_store.h"
 
 #include <array>
 #include <cerrno>
@@ -45,10 +44,6 @@ std::string operation_directory(const std::string &root, flatfile_authority_stor
 		return root + "/identities/accounts";
 	case flatfile_authority_store::metadata:
 		return root + "/metadata";
-	case flatfile_authority_store::player_deaths:
-		return root + "/player-deaths";
-	case flatfile_authority_store::economic_evidence:
-		return root + "/economic-evidence";
 	}
 	return {};
 }
@@ -139,6 +134,14 @@ struct decoder
 		return true;
 	}
 };
+
+// Stores only an older server wrote: the player death records (6) and the economy's
+// accounting evidence (7). Nothing reads them now, so recovery of an intent that names them
+// skips their operations and applies the rest; a new commit cannot name them.
+bool retired_store(flatfile_authority_store store)
+{
+	return static_cast<uint8_t>(store) == 6 || static_cast<uint8_t>(store) == 7;
+}
 
 bool valid_operation(const flatfile_authority_operation &operation)
 {
@@ -282,7 +285,7 @@ decode_transaction(const std::vector<uint8_t> &bytes,
 		}
 		if (image_size && !payload.raw(operation.bytes.data(), operation.bytes.size()))
 			return flatfile_authority_transaction_result::invalid;
-		if (!valid_operation(operation))
+		if (!retired_store(operation.store) && !valid_operation(operation))
 			return flatfile_authority_transaction_result::invalid;
 	}
 	return payload.offset == payload.size ? flatfile_authority_transaction_result::ok :
@@ -383,7 +386,7 @@ try
 	if (decoded != flatfile_authority_transaction_result::ok)
 		return decoded;
 	for (const auto &operation : operations)
-		if (!apply_operation(root, operation, error))
+		if (!retired_store(operation.store) && !apply_operation(root, operation, error))
 			return flatfile_authority_transaction_result::io_error;
 	return flatfile_atomic_remove(domains_directory(root), transaction_filename, false, error) ?
 		       flatfile_authority_transaction_result::ok :
@@ -417,10 +420,9 @@ flatfile_authority_transaction_commit(const std::string &root, const flatfile_au
 	return flatfile_authority_transaction_commit_operations(root, lock, operations, error);
 }
 
-flatfile_authority_transaction_result
-flatfile_accounting_storage::commit(const std::string &root, const flatfile_authority_lock &lock,
-				    const std::vector<flatfile_authority_operation> &operations,
-				    std::string *error)
+flatfile_authority_transaction_result flatfile_authority_transaction_commit_operations(
+	const std::string &root, const flatfile_authority_lock &lock,
+	const std::vector<flatfile_authority_operation> &operations, std::string *error)
 try
 {
 	std::vector<uint8_t> bytes;
@@ -474,14 +476,4 @@ catch (const std::bad_alloc &)
 {
 	errno = ENOMEM;
 	return flatfile_authority_transaction_result::io_error;
-}
-
-flatfile_authority_transaction_result flatfile_authority_transaction_commit_operations(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const std::vector<flatfile_authority_operation> &operations, std::string *error)
-{
-	for (const auto &operation : operations)
-		if (operation.store == flatfile_authority_store::economic_evidence)
-			return flatfile_authority_transaction_result::invalid;
-	return flatfile_accounting_storage::commit(root, lock, operations, error);
 }

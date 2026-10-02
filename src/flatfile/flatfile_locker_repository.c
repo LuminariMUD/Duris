@@ -502,29 +502,6 @@ bool catalog_equal(locker_catalog left, locker_catalog right)
 	       left_bytes == right_bytes;
 }
 
-bool payload_items_match(const item_transfer_payload &payload,
-			 const std::vector<player_item_snapshot> &items)
-{
-	if (items.empty() || items.size() != payload.item_count ||
-	    items.front().object_uid != item_transfer_result_root(payload))
-		return false;
-	std::unordered_set<uint64_t> expected;
-	try
-	{
-		expected.reserve(payload.item_count);
-		for (size_t index = 0; index < payload.item_count; ++index)
-			expected.insert(payload.items[index].item_uid);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	return expected.size() == items.size() &&
-	       std::all_of(items.begin(), items.end(),
-			   [&](const auto &item) { return expected.contains(item.object_uid); });
-}
-
-/* Collect sorted item-custody evidence for every chest in a locker. */
 bool collect_locker_custody(const flatfile_locker_record &locker,
 			    std::vector<flatfile_locker_custody_owner> *custody)
 {
@@ -630,31 +607,141 @@ flatfile_locker_result flatfile_locker_list(const std::string &root,
 	return flatfile_locker_result::ok;
 }
 
-flatfile_locker_result flatfile_locker_read_coin(const std::string &root,
-						 const flatfile_authority_lock &lock,
-						 const item_owner_identity &owner, uint64_t uid,
-						 player_item_snapshot *item, std::string *error)
+flatfile_locker_result flatfile_locker_find(const std::string &root, const std::string &locker_name,
+					    flatfile_locker_record *locker, std::string *error)
 {
-	if (!lock.matches(root) || !uid || !item || owner.type != item_owner_type::locker)
+	if (root.empty() || !locker)
 		return flatfile_locker_result::invalid;
+	flatfile_authority_lock lock;
+	if (!lock.acquire(root, error))
+		return flatfile_locker_result::io_error;
+	const auto recovered = recover(root, lock, error);
+	if (recovered != flatfile_locker_result::ok)
+		return recovered;
 	locker_catalog catalog;
 	const auto loaded = load_catalog(root, &catalog, error);
 	if (loaded != flatfile_locker_result::ok)
 		return loaded;
-	size_t matches = 0;
+	const std::string name = canonical_name(locker_name);
+	for (auto &entry : catalog.lockers)
+		if (entry.locker_name == name)
+		{
+			*locker = std::move(entry);
+			return flatfile_locker_result::ok;
+		}
+	return flatfile_locker_result::not_found;
+}
+
+flatfile_locker_result flatfile_locker_public_owner(const std::string &root,
+						    const flatfile_authority_lock &lock,
+						    const std::string &locker_name,
+						    item_owner_identity *owner, std::string *error)
+{
+	if (root.empty() || !lock.matches(root) || !owner)
+		return flatfile_locker_result::invalid;
+	locker_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded != flatfile_locker_result::ok && loaded != flatfile_locker_result::not_found)
+		return loaded;
+	const std::string name = canonical_name(locker_name);
+	uint32_t last_locker = 0, last_chest = 0;
 	for (const auto &locker : catalog.lockers)
-		if (locker.locker_id == owner.id)
-			for (const auto &chest : locker.chests)
-				if (chest.chest_id == owner.context_id)
-					for (const auto &candidate : chest.items)
-						if (candidate.object_uid == uid)
-						{
-							*item = candidate;
-							++matches;
-						}
-	return matches == 1 ? flatfile_locker_result::ok :
-	       matches	    ? flatfile_locker_result::conflict :
-			      flatfile_locker_result::not_found;
+	{
+		last_locker = std::max(last_locker, locker.locker_id);
+		for (const auto &chest : locker.chests)
+		{
+			last_chest = std::max(last_chest, chest.chest_id);
+			if (locker.locker_name == name && chest.is_public)
+			{
+				*owner = { item_owner_type::locker, locker.locker_id,
+					   chest.chest_id };
+				return flatfile_locker_result::ok;
+			}
+		}
+	}
+	if (last_locker == UINT32_MAX || last_chest == UINT32_MAX)
+		return flatfile_locker_result::conflict;
+	*owner = { item_owner_type::locker, last_locker + 1ULL, last_chest + 1ULL };
+	return flatfile_locker_result::ok;
+}
+
+flatfile_locker_result
+flatfile_locker_prepare_public_save(const std::string &root, const flatfile_authority_lock &lock,
+				    const flatfile_locker_save &save,
+				    const item_owner_identity &owner,
+				    const std::vector<player_item_snapshot> &items,
+				    flatfile_authority_operation *operation, std::string *error)
+{
+	if (root.empty() || !lock.matches(root) || !operation ||
+	    owner.type != item_owner_type::locker || !owner.id || owner.id > UINT32_MAX ||
+	    !owner.context_id || owner.context_id > UINT32_MAX)
+		return flatfile_locker_result::invalid;
+	locker_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded != flatfile_locker_result::ok && loaded != flatfile_locker_result::not_found)
+		return loaded;
+	const std::string name = canonical_name(save.locker_name);
+	try
+	{
+		auto locker = std::find_if(catalog.lockers.begin(), catalog.lockers.end(),
+					   [&](const auto &entry)
+					   { return entry.locker_name == name; });
+		if (locker == catalog.lockers.end())
+		{
+			flatfile_locker_record created;
+			created.locker_id = static_cast<uint32_t>(owner.id);
+			created.locker_name = name;
+			created.owner_assoc_id = save.owner_assoc_id;
+			const std::string account_prefix = "account.", suffix = ".locker";
+			if (!name.compare(0, account_prefix.size(), account_prefix) &&
+			    name.size() > account_prefix.size() + suffix.size())
+			{
+				const std::string account_side = name.substr(
+					account_prefix.size(),
+					name.size() - account_prefix.size() - suffix.size());
+				const size_t dot = account_side.rfind('.');
+				if (dot == std::string::npos)
+					return flatfile_locker_result::invalid;
+				created.account_owner = flatfile_account_locker_identity{
+					account_side.substr(0, dot), save.racewar
+				};
+			}
+			created.racewar = save.racewar;
+			created.race = save.race;
+			flatfile_locker_chest_record chest;
+			chest.chest_id = static_cast<uint32_t>(owner.context_id);
+			chest.chest_name = "public";
+			chest.is_public = true;
+			created.chests.push_back(std::move(chest));
+			locker = catalog.lockers.insert(std::upper_bound(catalog.lockers.begin(),
+									 catalog.lockers.end(),
+									 created, locker_less),
+							std::move(created));
+		}
+		auto chest = std::find_if(
+			locker->chests.begin(), locker->chests.end(), [&](const auto &entry)
+			{ return entry.chest_id == owner.context_id && entry.is_public; });
+		if (locker->locker_id != owner.id || chest == locker->chests.end() ||
+		    catalog.revision == UINT64_MAX || locker->revision == UINT64_MAX ||
+		    chest->revision == UINT64_MAX)
+			return flatfile_locker_result::conflict;
+		chest->items = items;
+		++catalog.revision;
+		++locker->revision;
+		++chest->revision;
+	}
+	catch (const std::bad_alloc &)
+	{
+		return flatfile_locker_result::io_error;
+	}
+	std::vector<uint8_t> encoded;
+	if (!encode_catalog(catalog, &encoded))
+		return flatfile_locker_result::invalid;
+	operation->store = flatfile_authority_store::domains;
+	operation->kind = flatfile_authority_operation_kind::write;
+	operation->filename = catalog_filename;
+	operation->bytes = std::move(encoded);
+	return flatfile_locker_result::ok;
 }
 
 /* Prepare player-owned locker and visitor-grant removal with exact custody evidence. */
@@ -783,111 +870,5 @@ flatfile_locker_prepare_account_remove(const std::string &root, const flatfile_a
 	removal->operation.kind = flatfile_authority_operation_kind::write;
 	removal->operation.filename = catalog_filename;
 	removal->operation.bytes = std::move(encoded);
-	return flatfile_locker_result::ok;
-}
-
-flatfile_locker_result
-flatfile_locker_prepare_item_transfer(const std::string &root, const flatfile_authority_lock &lock,
-				      const item_transfer_payload &payload,
-				      flatfile_locker_transfer_mutation *mutation,
-				      std::string *error)
-{
-	if (root.empty() || !lock.matches(root) || !mutation || !payload.item_blob_size ||
-	    payload.item_blob_size > payload.item_blob.size())
-		return flatfile_locker_result::invalid;
-	*mutation = {};
-	const bool deposit = payload.to_owner.type == item_owner_type::locker;
-	const bool withdraw = payload.from_owner.type == item_owner_type::locker;
-	if (deposit == withdraw ||
-	    (deposit && (payload.reason != item_transfer_reason::locker_deposit ||
-			 payload.from_owner.type != item_owner_type::player)) ||
-	    (withdraw && (payload.reason != item_transfer_reason::locker_withdraw ||
-			  payload.to_owner.type != item_owner_type::player)))
-		return flatfile_locker_result::invalid;
-	const item_owner_identity locker_owner = deposit ? payload.to_owner : payload.from_owner;
-	if (!locker_owner.id || locker_owner.id > UINT32_MAX || !locker_owner.context_id ||
-	    locker_owner.context_id > UINT32_MAX || payload.target_parent_item_uid)
-		return flatfile_locker_result::invalid;
-	std::vector<player_item_snapshot> exact_items;
-	if (player_item_snapshot_list_decode(payload.item_blob.data(), payload.item_blob_size,
-					     &exact_items) != player_snapshot_codec_result::ok ||
-	    !payload_items_match(payload, exact_items))
-		return flatfile_locker_result::invalid;
-	locker_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_locker_result::ok)
-		return loaded;
-	auto locker = std::find_if(catalog.lockers.begin(), catalog.lockers.end(),
-				   [&](const auto &entry)
-				   { return entry.locker_id == locker_owner.id; });
-	if (locker == catalog.lockers.end())
-		return flatfile_locker_result::not_found;
-	auto chest = std::find_if(locker->chests.begin(), locker->chests.end(),
-				  [&](const auto &entry)
-				  { return entry.chest_id == locker_owner.context_id; });
-	if (chest == locker->chests.end())
-		return flatfile_locker_result::not_found;
-	if (catalog.revision == UINT64_MAX || locker->revision == UINT64_MAX ||
-	    chest->revision == UINT64_MAX)
-		return flatfile_locker_result::conflict;
-	try
-	{
-		mutation->expected_items.reserve(chest->items.size());
-		for (const auto &item : chest->items)
-			mutation->expected_items.push_back({ item.object_uid, item.vnum });
-		std::sort(mutation->expected_items.begin(), mutation->expected_items.end(),
-			  [](const auto &left, const auto &right)
-			  { return left.item_uid < right.item_uid; });
-		if (deposit)
-		{
-			std::unordered_set<uint64_t> existing;
-			for (const auto &stored_locker : catalog.lockers)
-				for (const auto &stored_chest : stored_locker.chests)
-					for (const auto &item : stored_chest.items)
-						existing.insert(item.object_uid);
-			for (const auto &item : exact_items)
-				if (existing.contains(item.object_uid))
-					return flatfile_locker_result::conflict;
-			const int32_t offset = static_cast<int32_t>(chest->items.size());
-			for (auto item : exact_items)
-			{
-				if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
-					item.parent_index += offset;
-				chest->items.push_back(std::move(item));
-			}
-		}
-		else
-		{
-			std::vector<uint64_t> selected_roots;
-			std::vector<player_item_snapshot> selected;
-			std::vector<player_item_snapshot> remaining;
-			if (!item_transfer_selected_roots(payload, &selected_roots) ||
-			    player_item_snapshot_extract_forest(chest->items, selected_roots,
-								&selected, &remaining) !=
-				    player_snapshot_codec_result::ok)
-				return flatfile_locker_result::conflict;
-			std::vector<uint8_t> selected_blob;
-			if (player_item_snapshot_list_encode(selected, &selected_blob) !=
-				    player_snapshot_codec_result::ok ||
-			    selected_blob.size() != payload.item_blob_size ||
-			    !std::equal(selected_blob.begin(), selected_blob.end(),
-					payload.item_blob.begin()))
-				return flatfile_locker_result::conflict;
-			chest->items = std::move(remaining);
-		}
-	}
-	catch (const std::bad_alloc &)
-	{
-		return flatfile_locker_result::io_error;
-	}
-	++catalog.revision;
-	++locker->revision;
-	++chest->revision;
-	std::vector<uint8_t> encoded;
-	if (!encode_catalog(catalog, &encoded))
-		return flatfile_locker_result::invalid;
-	mutation->after_image = { catalog_filename, std::move(encoded) };
-	mutation->locker_revision = locker->revision;
-	mutation->chest_revision = chest->revision;
 	return flatfile_locker_result::ok;
 }

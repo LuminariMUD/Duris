@@ -59,7 +59,7 @@ assert contains(REPOSITORY, '"shopkeeper_item_extra_descr"')
 shop_loader = body(SQL, "static bool sql_restore_shopkeeper_catalog(", "bool sql_restore_shopkeepers(")
 assert contains(shop_loader, 'sql_load_item_extra_descr_from_table(item_id, obj, "shopkeeper_item")')
 
-extra_descr_save = body(SQL, "static bool sql_save_item_extra_descr(", "// save a single item")
+extra_descr_save = body(SQL, "static bool sql_save_item_extra_descr(", "// shapechange save/load")
 assert contains(extra_descr_save, "spellbook_bits")
 assert contains(extra_descr_save, "spellbook_emitted")
 assert contains(extra_descr_save, "char query[32768]")

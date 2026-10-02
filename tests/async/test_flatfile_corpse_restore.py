@@ -28,7 +28,6 @@ int skip_corpse_save = 0;
 bool updateArtis = true;
 static P_obj published = nullptr;
 static std::vector<P_obj> published_room_items;
-static uint64_t hydrated_revision = 0;
 static int refreshes = 0;
 static bool destruction_hydrated = false;
 
@@ -268,26 +267,13 @@ void item_ownership_runtime_forget_owner(const item_owner_identity &)
 {
 }
 
-bool corpse_lifecycle_transaction_hydrate(uint32_t owner_pid, uint32_t save_id,
-					  uint64_t revision)
-{
-	assert(owner_pid == 42 && save_id == 20);
-	hydrated_revision = revision;
-	return true;
-}
-
-bool corpse_lifecycle_transaction_forget(uint32_t, uint32_t)
-{
-	return true;
-}
-
 int main()
 {
 	std::string error;
 	assert(flatfile_corpse_restore_catalog("state", &error) ==
 	       flatfile_corpse_restore_result::ok);
 	assert(skip_corpse_save == 0 && updateArtis && published && refreshes == 1 &&
-	       hydrated_revision == 7 && destruction_hydrated);
+	       destruction_hydrated);
 	assert(published->type == ITEM_CORPSE && published->weight == 75 &&
 	       published->value[CORPSE_PID] == 42 && published->loc.room == 5);
 	assert(std::strcmp(published->action_description, "hero") == 0 &&

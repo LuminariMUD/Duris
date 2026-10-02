@@ -442,33 +442,6 @@ bool payload_items_match(const shop_trade_payload &payload,
 bool payload_items_match(const item_transfer_payload &payload,
 			 const std::vector<player_item_snapshot> &items)
 {
-	if (payload.reason == item_transfer_reason::craft)
-	{
-		if (items.empty() || items.front().object_uid != payload.selected_item_uid)
-			return false;
-		std::unordered_set<uint64_t> output_uids;
-		try
-		{
-			output_uids.reserve(items.size());
-			for (size_t index = 0; index < items.size(); ++index)
-			{
-				const auto &item = items[index];
-				if (!item.object_uid || item.vnum <= 0 ||
-				    !output_uids.insert(item.object_uid).second ||
-				    item.parent_index >= static_cast<int32_t>(index) ||
-				    item.parent_index < PLAYER_SNAPSHOT_NO_PARENT)
-					return false;
-				for (size_t input = 0; input < payload.item_count; ++input)
-					if (payload.items[input].item_uid == item.object_uid)
-						return false;
-			}
-		}
-		catch (const std::bad_alloc &)
-		{
-			return false;
-		}
-		return true;
-	}
 	if (items.empty() || items.size() != payload.item_count ||
 	    items.front().object_uid != item_transfer_result_root(payload))
 		return false;
@@ -709,13 +682,6 @@ flatfile_shop_trade_materialization_result flatfile_item_transfer_materializatio
 	};
 	const bool from_player = payload.from_owner.type == item_owner_type::player;
 	const bool to_player = payload.to_owner.type == item_owner_type::player;
-	const bool from_pet = payload.from_owner.type == item_owner_type::pet;
-	const bool to_pet = payload.to_owner.type == item_owner_type::pet;
-	if ((from_pet || to_pet) &&
-	    (payload.from_owner.context_id != payload.to_owner.context_id &&
-	     !(from_player && payload.from_owner.id == payload.to_owner.context_id) &&
-	     !(to_player && payload.to_owner.id == payload.from_owner.context_id)))
-		return flatfile_shop_trade_materialization_result::invalid;
 	if (from_player && to_player && payload.from_owner.id == payload.to_owner.id)
 	{
 		if (!add(payload.to_owner.id, shop_trade_action::buy_existing))
@@ -727,8 +693,6 @@ flatfile_shop_trade_materialization_result flatfile_item_transfer_materializatio
 			return flatfile_shop_trade_materialization_result::io_error;
 		if (to_player && !add(payload.to_owner.id, shop_trade_action::buy_existing))
 			return flatfile_shop_trade_materialization_result::io_error;
-		if (to_pet && !add(payload.to_owner.context_id, pet_receive_action))
-			return flatfile_shop_trade_materialization_result::io_error;
 	}
 	if (additions.empty())
 		return flatfile_shop_trade_materialization_result::unchanged;
@@ -736,25 +700,6 @@ flatfile_shop_trade_materialization_result flatfile_item_transfer_materializatio
 	const auto loaded = load_catalog(root, &catalog, error);
 	if (loaded != flatfile_shop_trade_materialization_result::ok)
 		return loaded;
-	if (from_pet || to_pet)
-	{
-		const uint64_t pet_uid = from_pet ? payload.from_owner.id : payload.to_owner.id;
-		const uint32_t owner_pid = static_cast<uint32_t>(
-			from_pet ? payload.from_owner.context_id : payload.to_owner.context_id);
-		bool established = false;
-		for (const auto &event : catalog.events)
-		{
-			if (event.action != pet_raise_action || event.player_pid != owner_pid)
-				continue;
-			player_pet_snapshot pet = {};
-			std::vector<player_item_snapshot> raised_items;
-			if (!decode_pet_event(event, &pet, &raised_items))
-				return flatfile_shop_trade_materialization_result::invalid;
-			established |= pet.pet_uid == pet_uid;
-		}
-		if (!established)
-			return flatfile_shop_trade_materialization_result::invalid;
-	}
 	if (std::any_of(
 		    catalog.events.begin(), catalog.events.end(), [&](const auto &existing)
 		    { return critical_operation_id_equal(existing.operation_id, operation_id); }) ||
@@ -768,79 +713,6 @@ flatfile_shop_trade_materialization_result flatfile_item_transfer_materializatio
 	try
 	{
 		catalog.events.insert(catalog.events.end(), additions.begin(), additions.end());
-	}
-	catch (const std::bad_alloc &)
-	{
-		return flatfile_shop_trade_materialization_result::io_error;
-	}
-	if (!compact_catalog(&catalog, &removed))
-		return flatfile_shop_trade_materialization_result::io_error;
-	++catalog.revision;
-	std::vector<uint8_t> bytes;
-	if (!encode_catalog(catalog, &bytes))
-		return flatfile_shop_trade_materialization_result::invalid;
-	mutation->after_image = { catalog_filename, std::move(bytes) };
-	return flatfile_shop_trade_materialization_result::ok;
-}
-
-flatfile_shop_trade_materialization_result flatfile_corpse_resurrection_materialization_prepare(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const critical_operation_id &operation_id, const corpse_lifecycle_payload &payload,
-	const std::vector<player_item_snapshot> &items,
-	flatfile_shop_trade_materialization_mutation *mutation, std::string *error)
-{
-	const uint32_t player_pid = payload.destination_player_pid;
-	const bool pet_raise = (payload.action == corpse_lifecycle_action::raise_follower ||
-				payload.action == corpse_lifecycle_action::raise_world_follower) &&
-			       payload.pet_uid;
-	if (root.empty() || !lock.matches(root) || critical_operation_id_is_zero(operation_id) ||
-	    !player_pid || !mutation)
-		return flatfile_shop_trade_materialization_result::invalid;
-	*mutation = {};
-	if (items.empty() && !pet_raise)
-		return flatfile_shop_trade_materialization_result::unchanged;
-	std::vector<uint8_t> item_blob;
-	if (player_item_snapshot_list_encode(items, &item_blob) !=
-		    player_snapshot_codec_result::ok ||
-	    item_blob.empty() || item_blob.size() > PLAYER_SNAPSHOT_MAX_BYTES)
-		return flatfile_shop_trade_materialization_result::invalid;
-	if (pet_raise)
-	{
-		encoder pet_blob;
-		pet_blob.raw(pet_blob_magic.data(), pet_blob_magic.size());
-		pet_blob.number(payload.pet_uid);
-		for (int32_t value :
-		     { payload.pet_mob_vnum, payload.pet_hit, payload.pet_max_hit, payload.pet_mana,
-		       payload.pet_max_mana, payload.pet_vitality, payload.pet_max_vitality,
-		       payload.pet_charm_duration, payload.room_vnum })
-			pet_blob.number(value);
-		pet_blob.number<uint32_t>(payload.pet_restore_state.size());
-		pet_blob.raw(reinterpret_cast<const uint8_t *>(payload.pet_restore_state.data()),
-			     payload.pet_restore_state.size());
-		pet_blob.number<uint32_t>(item_blob.size());
-		pet_blob.raw(item_blob.data(), item_blob.size());
-		if (!pet_blob.valid || pet_blob.bytes.size() > SHOP_TRADE_ITEM_BLOB_MAX_BYTES)
-			return flatfile_shop_trade_materialization_result::invalid;
-		item_blob = std::move(pet_blob.bytes);
-	}
-	materialization_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_shop_trade_materialization_result::ok)
-		return loaded;
-	if (std::any_of(
-		    catalog.events.begin(), catalog.events.end(), [&](const auto &existing)
-		    { return critical_operation_id_equal(existing.operation_id, operation_id); }) ||
-	    catalog.revision == std::numeric_limits<uint64_t>::max())
-		return flatfile_shop_trade_materialization_result::invalid;
-	size_t removed = 0;
-	if (!compact_catalog(&catalog, &removed) || catalog.events.size() >= catalog_maximum_events)
-		return flatfile_shop_trade_materialization_result::invalid;
-	try
-	{
-		catalog.events.push_back(
-			{ operation_id,
-			  pet_raise ? pet_raise_action : shop_trade_action::buy_existing,
-			  player_pid, std::move(item_blob) });
 	}
 	catch (const std::bad_alloc &)
 	{

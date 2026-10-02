@@ -56,18 +56,9 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
     src/account/session_audit_command.c src/account/session_audit_repository.c \
     src/item/item_uid_allocator.c src/flatfile/flatfile_item_uid_allocator.c src/flatfile/flatfile_store.c \
     src/persistence/persistence_mode.c \
-    src/economy/coin_transfer_command.c src/player/player_snapshot_codec.c \
+    src/player/player_snapshot_codec.c \
     src/economy/collector_command.c src/economy/collector_codec.c \
     src/economy/collector_policy.c src/economy/collector_repository.c \
-    src/persistence/corpse_lifecycle_command.c src/persistence/corpse_lifecycle_repository.c \
-    src/persistence/player_death_restitution_command.c \
-    src/persistence/player_death_restitution_repository.c \
-    src/persistence/economic_accounting_repository.c \
-    src/persistence/economic_sql_bank_transaction.c \
-    src/economy/economic_currency_adapter.c \
-    src/economy/economic_accounting_types.c \
-    src/economy/economic_accounting_plan.c \
-    src/economy/economic_accounting_intent.c \
     src/persistence/critical_command_repository.c "${MYSQL_LIBS[@]}" -lcrypto \
     -o "$ROOT/bin/tests/item_transfer_mysql_harness"
 "$ROOT/bin/tests/item_transfer_mysql_harness"

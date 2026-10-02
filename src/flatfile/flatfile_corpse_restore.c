@@ -1,6 +1,5 @@
 #include "flatfile/flatfile_corpse_restore.h"
 
-#include "persistence/corpse_lifecycle_transaction.h"
 #include "flatfile/flatfile_corpse_ownership.h"
 #include "flatfile/flatfile_item_repository.h"
 #include "flatfile/flatfile_world_item_repository.h"
@@ -46,9 +45,6 @@ struct staged_corpse
 {
 	P_obj object = nullptr;
 	int room_rnum = NOWHERE;
-	uint32_t owner_pid = 0;
-	uint32_t save_id = 0;
-	bool lifecycle_hydrated = false;
 };
 
 struct staged_room
@@ -92,8 +88,6 @@ void discard_staged(std::vector<staged_corpse> *staged,
 	{
 		staged_corpse &entry = (*staged)[index];
 		forget_record_items(records[index]);
-		if (entry.lifecycle_hydrated)
-			(void)corpse_lifecycle_transaction_forget(entry.owner_pid, entry.save_id);
 		if (entry.object)
 		{
 			clear_item_uids(entry.object->contains);
@@ -243,15 +237,7 @@ flatfile_corpse_restore_result materialize_corpse(const std::string &root,
 		}
 		attach_root(corpse, money, &tail);
 	}
-	if (!corpse_lifecycle_transaction_hydrate(record.owner_pid, record.save_id,
-						  record.revision))
-	{
-		forget_record_items(record);
-		clear_item_uids(corpse->contains);
-		extract_obj(corpse, FALSE);
-		return flatfile_corpse_restore_result::item_failure;
-	}
-	*output = { corpse, room_rnum, record.owner_pid, record.save_id, true };
+	*output = { corpse, room_rnum };
 	return flatfile_corpse_restore_result::ok;
 }
 
@@ -362,7 +348,6 @@ flatfile_corpse_restore_result flatfile_corpse_restore_catalog(const std::string
 		catch (const std::bad_alloc &)
 		{
 			forget_record_items(record);
-			(void)corpse_lifecycle_transaction_forget(record.owner_pid, record.save_id);
 			clear_item_uids(corpse.object->contains);
 			extract_obj(corpse.object, FALSE);
 			discard_staged(&staged, records);

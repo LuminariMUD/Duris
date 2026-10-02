@@ -20,10 +20,11 @@ def body(source: str, signature: str, last: bool = False) -> str:
     raise AssertionError(signature)
 
 
-POLICY = (SRC / "item_command_policy.c").read_text()
-policy = body(POLICY, "bool item_command_uses_durable_ownership(")
-assert "return false;" in policy and "item_ownership_runtime_lookup" not in policy
-print("[PASS] get, drop, give, put and empty take their in-memory branches")
+ACTOBJ = (SRC / "actobj.c").read_text()
+for name in ("item_movement_transaction_submit", "item_ownership_runtime",
+             "item_command_uses_durable_ownership"):
+    assert name not in ACTOBJ, name
+print("[PASS] get, drop, give, put and empty move the object in memory")
 
 HANDLER = (SRC / "handler.c").read_text()
 to_char = body(HANDLER, "void obj_to_char(P_obj object, P_char ch)")
@@ -33,28 +34,19 @@ print("[PASS] obj_to_char places an object without asking the ownership catalog"
 
 # Every other command moves the object directly.
 for name in ("rogues.c", "actmove.c", "actoth.c", "actwiz.c", "magic.c", "chaos_materials.c",
-             "forced_weapon_drop.c"):
+             "forced_weapon_drop.c", "salchemist.c", "drannak.c"):
     source = (SRC / name).read_text()
     assert "item_movement_transaction_submit" not in source, name
     assert "item_ownership_runtime_lookup" not in source or name == "magic.c", name
-MOVEMENT = (SRC / "item_movement_transaction.c").read_text()
-craft = body(MOVEMENT, "bool item_movement_transaction_submit_craft(")
-assert "critical_command_coordinator" not in craft and "pending" not in craft
-assert "extract_obj(inputs[index])" in craft and "obj_to_char(outputs[index], actor)" in craft
-assert craft.index("obj_to_char(outputs[index], actor)") < craft.index("completion(actor, true")
 print("[PASS] slip, steal, soulbind, key break, storage, load, pouch, weapon drop and crafts "
       "move in memory")
 
-GET_POLICY = (SRC / "item_get_policy.c").read_text()
-assert "item_ownership_runtime" not in GET_POLICY
-source_owner = body(GET_POLICY, "bool item_get_source_owner(")
-assert "live_placement_owner(actor, object, container, source)" in source_owner
 AUCTION = (SRC / "auction_houses.c").read_text()
 assert "ownership is still being synchronized" not in AUCTION
 SHOP = (SRC / "shop_trade_runtime.c").read_text()
 assert "const bool player_held = !creates && !shop_owned(action);" in SHOP
 assert "!OBJ_CARRIED_BY(destination, player)" in SHOP
-print("[PASS] coin gets, auction listings and shop trades start from the object's real holder")
+print("[PASS] auction listings and shop trades start from the object's real holder")
 
 CLAIM = (SRC / "item_claim.h").read_text()
 held = body(CLAIM, "inline bool item_claim_owner_is_memory_held(")
@@ -76,7 +68,8 @@ assert "payload.expected_to_revision = to_revision;" in execute
 assert execute.count("claim_transfer_item(") == 2
 assert "claim_transfer_item(" in (SRC / "auction_repository.c").read_text()
 COLLECTOR = (SRC / "collector_repository.c").read_text()
-assert COLLECTOR.count("item_claim_owner_is_memory_held(payload.") == 2
+# The owners' revisions, and the collected items' revisions, come from what is stored.
+assert COLLECTOR.count("item_claim_owner_is_memory_held(payload.") == 3
 FLAT = (SRC / "flatfile_item_repository.c").read_text()
 flat_transfer = body(FLAT, "unsigned int apply_transfer(ownership_catalog *catalog,")
 assert flat_transfer.count("claim_catalog_item(") == 2
@@ -92,7 +85,14 @@ print("[PASS] item and auction transfers claim what memory holds and collector t
 
 LOCKER = (SRC / "locker_async.c").read_text()
 locker_job = body(LOCKER, "static player_save_apply_result locker_write_job(")
-assert "locker_snapshot_repository_apply_from_pool(*job.snapshot)" in locker_job
+assert "write_locker(*job.snapshot)" in locker_job
+write_locker = body(LOCKER, "static player_save_apply_result write_locker(")
+assert "locker_snapshot_repository_apply_from_pool(snapshot)" in write_locker
+# On flat-file the locker's items are claimed with its catalog record, as a corpse's are.
+assert "flatfile_locker_snapshot_apply(root, save, &error)" in write_locker
+FLAT_PLAYER = (SRC / "flatfile_player_repository.c").read_text()
+assert "apply_world_snapshot(" in body(
+    FLAT_PLAYER, "player_save_apply_result flatfile_locker_snapshot_apply(")
 # The writer finds the locker, then deletes, claims and writes in one transaction.
 REPOSITORY = (SRC / "player_snapshot_repository.c").read_text()
 apply_locker = body(REPOSITORY, "player_save_apply_result apply_locker(MYSQL")

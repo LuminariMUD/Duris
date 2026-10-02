@@ -152,7 +152,6 @@ def run(server: Path, inspector: Path, report_path: Path | None) -> None:
         env = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "ENVIRONMENT": "local",
             "PERSISTENCE_MODE": "flatfile-primary", "FLATFILE_STATE_DIR": str(state),
-            "PLAYER_SAVE_JOURNAL_DIR": str(runtime / "journals/players"),
             "CRITICAL_COMMAND_JOURNAL_DIR": str(runtime / "journals/critical"),
             "LISTEN_ADDRESS": "127.0.0.1", "DURIS_TLS_PORT": str(tls),
             "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1", "DURIS_WEBSOCKET_PORT": str(web),

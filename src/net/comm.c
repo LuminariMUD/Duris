@@ -104,7 +104,6 @@
 #include "world/world_quest.h"
 #include "net/ws_handlers.h"
 #include "persistence/latency_trace.h"
-#include "persistence/persistence_queue.h"
 #include "persistence/persistence_mode.h"
 #include "core/env_file.h"
 #include "persistence/locker_async.h"
@@ -112,17 +111,14 @@
 #include "persistence/maintenance_scheduler.h"
 #include "persistence/maintenance_snapshot.h"
 #include "persistence/critical_command_coordinator.h"
-#include "economy/economic_command_admission.h"
 #include "persistence/critical_command_repository.h"
 #include "persistence/critical_outbox.h"
-#include "persistence/corpse_lifecycle_transaction.h"
 #include "economy/currency_transaction.h"
 #include "item/item_movement_transaction.h"
 #include "item/item_ownership_runtime.h"
 #include "economy/shop_trade_transaction.h"
 #include "item/item_uid_allocator.h"
 #include "flatfile/flatfile_item_repository.h"
-#include "flatfile/flatfile_accounting_dispatch.h"
 #include "economy/auction_transaction.h"
 #include "economy/collector_catalog_cache.h"
 #include "economy/collector_listing_pipeline.h"
@@ -146,13 +142,8 @@
 #include "player/player_save_worker.h"
 #include "player/player_load_offline.h"
 #include "player/player_load_pipeline.h"
-#include "player/player_death_restitution_adapter.h"
-#if !defined(__NO_TESTS__) || defined(TEST_REAL_PERSISTENCE)
-#include "core/test_async.h"
-#endif
 
 void account_player_load_complete(P_desc d, player_load_result result);
-void nanny_player_load_complete(P_desc d, player_load_result result);
 
 /* external variables */
 
@@ -204,6 +195,14 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 		     result.outcome == maintenance_outcome::permanent_failure))
 			cargo_maintenance_complete(result.work_id,
 						   result.outcome == maintenance_outcome::complete);
+#ifdef __NO_MYSQL__
+		if (result.job_id == maintenance_job_id::auction_due_scan &&
+		    result.outcome == maintenance_outcome::complete)
+			auction_houses_activity();
+		if (result.job_id == maintenance_job_id::boon_scan &&
+		    result.outcome == maintenance_outcome::complete)
+			boon_maintenance();
+#endif
 		if (result.job_id == maintenance_job_id::auction_due_scan &&
 		    (result.outcome == maintenance_outcome::complete ||
 		     result.outcome == maintenance_outcome::more))
@@ -284,7 +283,6 @@ static void critical_gameplay_handle_completions(const critical_completion *comp
 						 size_t count)
 {
 	locker_identify_pulse();
-	corpse_lifecycle_transaction_handle_completions(completions, count);
 	item_movement_transaction_handle_completions(completions, count);
 	shop_trade_transaction_handle_completions(completions, count);
 	auction_transaction_handle_completions(completions, count);
@@ -294,7 +292,6 @@ static void critical_gameplay_handle_completions(const critical_completion *comp
 	boon_reward_transaction_handle_completions(completions, count);
 	boon_shop_transaction_handle_completions(completions, count);
 	zone_touch_transaction_handle_completions(completions, count);
-	player_death_restitution_runtime_handle_completions(completions, count);
 }
 
 #ifndef __NO_MYSQL__
@@ -311,8 +308,6 @@ critical_gameplay_outbox_delivery(const critical_outbox_record &record, void *co
 		return zone_touch_transaction_outbox_delivery(record, context);
 	if (record.destination == COLLECTOR_OUTBOX_DESTINATION)
 		return collector_transaction_outbox_delivery(record, context);
-	if (record.destination == CORPSE_LIFECYCLE_OUTBOX_DESTINATION)
-		return corpse_lifecycle_transaction_outbox_delivery(record, context);
 	return auction_transaction_outbox_delivery(record, context);
 }
 #endif
@@ -497,7 +492,6 @@ int main(int argc, char **argv)
 	int port, sslport;
 	int pos = 1;
 	const char *dir;
-	int migrate_mode = 0;
 
 	port = DFLT_PORT;
 	dir = DFLT_DIR;
@@ -505,7 +499,6 @@ int main(int argc, char **argv)
 
 	randomize(0);
 
-	// check for --migrate-all before regular arg parsing
 	for (int i = 1; i < argc; i++)
 	{
 		if (!strncmp(argv[i], "--material-rarity-report",
@@ -518,11 +511,6 @@ int main(int argc, char **argv)
 				value = argv[++i];
 			material_rarity_report_dir = *value ? value : "material-rarity-report";
 			material_rarity_report_mode = TRUE;
-			break;
-		}
-		if (!strcmp(argv[i], "--migrate-all"))
-		{
-			migrate_mode = 1;
 			break;
 		}
 	}
@@ -684,15 +672,6 @@ int main(int argc, char **argv)
 		      "Authoritative item owner revisions unavailable; movement fails closed.");
 
 	redis_init();
-
-	// run migration and exit if requested
-	if (migrate_mode)
-	{
-		printf("running pfile migration...\n");
-		int count = sql_migrate_all_players();
-		printf("migration complete: %d players migrated\n", count);
-		return 0;
-	}
 
 	// Property hooks now also own main-thread item-action cancellation. Bind
 	// before loading them; the event pool is initialized later during world boot.
@@ -1007,22 +986,16 @@ int run_the_game(int port, int sslport)
 
 	fprintf(stderr, "Entering game loop.\n\r");
 	logit(LOG_STATUS, "Entering game loop.");
-	// A minimal world on MariaDB saves its lockers through the writer too.
-	if (!mini_mode || sql_pool_is_active())
-		locker_async_init();
-	// Only a journal left behind by an older server is read, once.
-	if (!player_save_pipeline_init(getenv("PLAYER_SAVE_JOURNAL_DIR")))
+	locker_async_init();
+	if (!player_save_pipeline_init())
 	{
 		logit(LOG_STATUS, "Persistence writer unavailable; saves are not written.");
 		persistence_alert(AVATAR, "player_save", "pipeline", "none", "none", "start_failed",
 				  "writer thread did not start");
 	}
-	const char *critical_journal_directory = getenv("CRITICAL_COMMAND_JOURNAL_DIR");
 	critical_apply_fn critical_apply = critical_command_repository_apply_from_pool;
-	critical_extension_validator_fn critical_extension_validator =
-		economic_command_admission_supported;
 #ifdef __NO_MYSQL__
-	critical_apply = flatfile_accounting_apply_selected;
+	critical_apply = flatfile_critical_command_repository_apply_selected;
 #else
 	const bool critical_outbox_ready =
 		critical_outbox_init(critical_gameplay_outbox_delivery, NULL);
@@ -1031,18 +1004,14 @@ int run_the_game(int port, int sslport)
 #ifndef __NO_MYSQL__
 		!critical_outbox_ready ||
 #endif
-		!critical_command_coordinator_init(
-			critical_journal_directory, critical_apply, NULL,
-			player_death_restitution_runtime_restore_replayed_command, NULL,
-			critical_extension_validator))
+		!critical_command_coordinator_init(critical_apply, NULL))
 	{
-		player_death_restitution_runtime_abort_all();
 		critical_command_coordinator_shutdown();
 		critical_outbox_shutdown();
 		logit(LOG_STATUS,
 		      "Critical command pipeline unavailable; critical gameplay fails closed.");
 		persistence_alert(AVATAR, "critical_command", "pipeline", "none", "none",
-				  "start_failed", "check critical schema and journal");
+				  "start_failed", "check critical schema");
 	}
 	if (!collector_catalog_cache_refresh())
 		logit(LOG_STATUS,
@@ -1050,7 +1019,9 @@ int run_the_game(int port, int sslport)
 	if (!collector_listing_pipeline_init())
 		logit(LOG_STATUS,
 		      "Collector listing pipeline unavailable; collector commands fail closed.");
-	if (!locker_identify_init(critical_journal_directory))
+	// The directory is named for the critical-command journal it held before the
+	// persistence reset; locker identification keeps its receipts there.
+	if (!locker_identify_init(getenv("CRITICAL_COMMAND_JOURNAL_DIR")))
 		logit(LOG_STATUS,
 		      "Locker identification unavailable: receipt storage could not initialize.");
 	critical_command_coordinator_set_drain_observer(critical_gameplay_handle_completions);
@@ -1070,25 +1041,9 @@ int run_the_game(int port, int sslport)
 			      "Maintenance scheduler unavailable; recurring external jobs fail closed.");
 	}
 
-	/* Boot-time scalar queue flood test: overflows the queue so the
-	 * latency_trace instrumentation can capture scalar_enq_ok/drop
-	 * and fallback_file_write statistics in the next periodic dump.
-	 * Reset the process-global trace before the test so data is clean. */
+	// Start the game loop with a clean process-global latency trace.
 	latency_trace_init();
 	latency_trace_reset();
-#ifndef __NO_TESTS__
-	test_persistence_run_one("queue_flood_scalar");
-	test_persistence_run_one("queue_routes_oversize_scalar_to_large");
-	test_persistence_run_one("queue_routes_oversize_item_to_large");
-	test_persistence_run_one("worker_scalar_fallback");
-	test_persistence_run_one("worker_scalar_fifo_after_retry");
-	test_persistence_run_one("worker_item_fifo");
-	test_persistence_run_one("worker_large_roundtrip");
-#endif
-#ifdef TEST_REAL_PERSISTENCE
-	test_real_persistence_run_all();
-	test_real_persistence_print_summary();
-#endif
 
 	game_loop(port, sslport);
 	/* Flush dirty realms and reap the placed resource nodes while the
@@ -1106,7 +1061,6 @@ int run_the_game(int port, int sslport)
 	help_cache_shutdown();
 	account_recovery_shutdown();
 	password_login_shutdown();
-	player_death_restitution_runtime_shutdown();
 	critical_command_coordinator_shutdown();
 	locker_identify_shutdown();
 	critical_outbox_shutdown();
@@ -1314,7 +1268,6 @@ static int get_playing_cmd_from_q(P_char character, struct txt_q *queue, char *d
 	return get_pending_transaction_cmd_from_q(
 		queue, dest,
 		item_movement_transaction_player_busy(character) ||
-			bulk_get_player_busy(character) ||
 			collector_transaction_player_busy(character) ||
 			collector_service_player_busy(character),
 		collector_transaction_player_busy(character) ||
@@ -2100,25 +2053,21 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 		flush_pending_ship_saves();
 		retry_unplaced_ships();
 		locker_async_pulse();
-		corpse_lifecycle_transaction_pulse();
 		critical_completion critical_completions[64] = {};
 		const size_t critical_completion_count =
 			critical_command_coordinator_pulse(critical_completions, 64);
 		critical_gameplay_handle_completions(critical_completions,
 						     critical_completion_count);
 		auction_transaction_publish_outbox();
-		corpse_lifecycle_transaction_publish_outbox();
 		collector_transaction_publish_outbox();
 		combat_outcome_transaction_publish_outbox();
 		artifact_guild_transaction_publish_outbox();
 		for (size_t index = 0; index < critical_completion_count; ++index)
 			if (critical_completions[index].outcome ==
 			    critical_apply_outcome::terminal_failure)
-				persistence_alert(
-					AVATAR, "critical_command", "completion", "none",
-					critical_failure_stage_name(
-						critical_completions[index].failure_stage),
-					"integrity_failure", "operation metadata redacted");
+				persistence_alert(AVATAR, "critical_command", "completion", "none",
+						  "none", "integrity_failure",
+						  "operation metadata redacted");
 		player_save_pipeline_pulse();
 		persistence_pulse_character_saves();
 		player_load_result load_completions[32] = {};
@@ -2132,14 +2081,8 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 				if (descriptor->player_load_request_id ==
 				    load_completions[index].request_id)
 				{
-					if (descriptor->player_load_mode == PLAYER_LOAD_MODE_LEGACY)
-						nanny_player_load_complete(
-							descriptor,
-							std::move(load_completions[index]));
-					else
-						account_player_load_complete(
-							descriptor,
-							std::move(load_completions[index]));
+					account_player_load_complete(
+						descriptor, std::move(load_completions[index]));
 					delivered = true;
 					break;
 				}

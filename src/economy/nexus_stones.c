@@ -212,7 +212,6 @@ int load_nexus_stones()
 		if (!load_nexus_stone(record.id, record.name.c_str(), record.room_vnum,
 				      record.align))
 			return FALSE;
-	update_nexus_stat_mods();
 	return TRUE;
 #else
 	// Boot only: the rows stay in memory (nexus_rows).
@@ -253,8 +252,6 @@ int load_nexus_stones()
 	}
 
 	mysql_free_result(res);
-
-	update_nexus_stat_mods();
 
 	return TRUE;
 #endif
@@ -356,52 +353,6 @@ int check_nexus_bonus(P_char ch, int amount, int type)
 	{
 		return amount;
 	}
-}
-
-void update_nexus_stat_mods()
-{
-	// Not using stat modifiers right now... -Venthix 3/29/09
-	return;
-
-#ifndef __NO_MYSQL__
-	if (!qry("SELECT align, stat_affect, affect_amount, FROM nexus_stones WHERE align in ('%d', '%d')",
-		 STONE_ALIGN_GOOD, STONE_ALIGN_EVIL))
-		return;
-
-	MYSQL_RES *res = mysql_store_result(DB);
-	if (!res)
-	{
-		logit(LOG_DEBUG, "%s: mysql_store_result failed", __func__);
-		return;
-	}
-
-	if (mysql_num_rows(res) < 1)
-	{
-		mysql_free_result(res);
-		return;
-	}
-
-	reset_racewar_stat_mods();
-
-	MYSQL_ROW row;
-	while ((row = mysql_fetch_row(res)))
-	{
-		int align = atoi(row[0]);
-		int stat_affect = atoi(row[1]);
-		int affect_amount = atoi(row[2]);
-
-		if (align == STONE_ALIGN_GOOD)
-		{
-			set_racewar_stat_mod(RACEWAR_GOOD, stat_affect, affect_amount, 0);
-		}
-		else if (align == STONE_ALIGN_EVIL)
-		{
-			set_racewar_stat_mod(RACEWAR_EVIL, stat_affect, affect_amount, 0);
-		}
-	}
-
-	mysql_free_result(res);
-#endif
 }
 
 int update_nexus_stone_align(int stone_id, int align)
@@ -617,8 +568,6 @@ bool nexus_stone_touch(P_obj stone, P_char ch)
 		else
 			check_boon_completion(ch, NULL, STONE_ID(stone), BOPT_NEXUS);
 	}
-
-	update_nexus_stat_mods();
 
 	// handle normal touch
 	if (!IS_TRUSTED(ch))
@@ -1334,94 +1283,6 @@ int nexus_sage(P_char ch, P_char pl, int cmd, char *arg)
 	return FALSE;
 }
 
-// load sage mob into a room, set the correct flags
-P_char load_sage(int stone_id, int rroom_id, int align)
-{
-	statuslog(57, "Nexus Sage [%d] loaded in [%d]", stone_id, ROOM_VNUM(rroom_id));
-	logit(LOG_STATUS, "Nexus Sage [%d] loaded in [%d]", stone_id, ROOM_VNUM(rroom_id));
-
-	int mob_id;
-	if (align < 0)
-	{
-		mob_id = MOB_EVIL_SAGE;
-	}
-	else
-	{
-		mob_id = MOB_GOOD_SAGE;
-	}
-
-	P_char mob = read_mobile(real_mobile(mob_id), REAL);
-
-	if (!mob)
-	{
-		logit(LOG_DEBUG, "load_sage():0 mob %d not loadable.", mob_id);
-		debug("load_sage(): mob %d not loadable.", mob_id);
-		return NULL;
-	}
-
-	SET_BIT(mob->specials.act, ACT_SPEC);
-	SET_BIT(mob->specials.act, ACT_SPEC_DIE);
-
-	GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit =
-		(int)get_property("nexusStones.sage.hitPoints", 6000);
-
-	GET_PLATINUM(mob) = 0;
-	GET_GOLD(mob) = 0;
-	GET_SILVER(mob) = 0;
-	GET_COPPER(mob) = 0;
-
-	GET_HOME(mob) = GET_BIRTHPLACE(mob) = GET_ORIG_BIRTHPLACE(mob) = world[rroom_id].number;
-
-	struct affected_type af;
-	memset(&af, 0, sizeof(af));
-	af.type = TAG_GUARD_NEXUS_STONE;
-	af.flags = AFFTYPE_PERM;
-	af.modifier = stone_id;
-	af.duration = -1;
-	affect_to_char(mob, &af);
-
-	NexusStoneInfo info;
-
-	if (!nexus_stone_info(stone_id, &info))
-	{
-		logit(LOG_DEBUG, "load_sage(): error reading nexus stone info.");
-		debug("load_sage(): error reading nexus stone info.");
-	}
-	else
-	{
-		char buff[MAX_STRING_LENGTH];
-		buff[0] = '\0';
-
-		if (align > 0)
-		{
-			// good
-			strcat(buff, "&+wthe &+WSage&+w of ");
-			strcat(buff, info.name.c_str());
-			mob->player.short_descr = str_dup(buff);
-		}
-		else
-		{
-			// evil
-			strcat(buff, "&+wthe &+LSage&+w of ");
-			strcat(buff, info.name.c_str());
-			mob->player.short_descr = str_dup(buff);
-		}
-	}
-
-	char_to_room(mob, rroom_id, 0);
-
-	if (align > 0)
-	{
-		act(ns_messages[_GOOD_SAGE_LOAD], FALSE, mob, 0, 0, TO_ROOM);
-	}
-	else
-	{
-		act(ns_messages[_EVIL_SAGE_LOAD], FALSE, mob, 0, 0, TO_ROOM);
-	}
-
-	return mob;
-}
-
 int remove_nexus_sage(int stone_id)
 {
 	for (P_char tch = character_list; tch; tch = tch->next)
@@ -1674,7 +1535,6 @@ void reset_nexus_stones(P_char ch)
 #else
 	for (const NexusStoneInfo &row : nexus_rows)
 		load_nexus_stone(row.id, row.name.c_str(), row.room_vnum, row.align);
-	update_nexus_stat_mods();
 #endif
 }
 
@@ -1725,8 +1585,6 @@ void reload_nexus_stone(P_char ch, int stone_id)
 #else
 	load_nexus_stone(row->id, row->name.c_str(), row->room_vnum, row->align);
 #endif
-
-	update_nexus_stat_mods();
 }
 
 bool nexus_stone_expired(int stone_id)
@@ -1812,8 +1670,6 @@ void expire_nexus_stone(int stone_id)
 #else
 	load_nexus_stone(row->id, row->name.c_str(), row->room_vnum, row->align);
 #endif
-
-	update_nexus_stat_mods();
 }
 
 P_obj get_random_enemy_nexus(P_char ch)

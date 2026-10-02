@@ -29,92 +29,18 @@ assert "set bank_copper=%d" not in sql
 print("[PASS] cached absolute account-bank save API and write are gone")
 
 assert "struct AccountBankBalances" in header
-assert "sql_account_bank_deposit_balances" in header
-assert "sql_account_bank_withdraw_value" in header
-parser = section(
-    sql,
-    "static bool sql_parse_account_bank_balance(const char *value, int *balance)\n{",
-    "static bool sql_read_account_bank_balances",
-)
-assert "errno == ERANGE" in parser
-assert "parsed < 0 || parsed > INT_MAX" in parser
-assert "*balance = (int)parsed;" in parser
-print("[PASS] committed balances are strict and legacy-cache representable")
-
-deposit = section(
-    sql,
-    "bool sql_account_bank_deposit_balances(const char *account_name, int racewar,",
-    "long long sql_account_bank_deposit(",
-)
-deposit_checks = {
-    "owns transaction": "sql_in_transaction()" in deposit
-    and "sql_begin_transaction()" in deposit,
-    "checks ensure": "if (!sql_ensure_account_bank" in deposit,
-    "uses arithmetic deltas": "bank_copper=bank_copper+%d" in deposit
-    and "bank_platinum=bank_platinum+%d" in deposit,
-    "checks update and affected row": "if (!sql_run_query(query) || mysql_affected_rows(DB) != 1)"
-    in deposit,
-    "queries result before commit": deposit.index("sql_read_account_bank_balances")
-    < deposit.index("sql_commit()"),
-    "publishes output after commit": deposit.index("sql_commit()")
-    < deposit.index("*committed = result;"),
-    "rolls back every transaction failure": deposit.count("sql_account_bank_rollback();")
-    >= 3,
-}
-for label, passed in deposit_checks.items():
-    print(f"[{'PASS' if passed else 'FAIL'}] deposit: {label}")
-assert all(deposit_checks.values())
-
-withdraw = section(
-    sql,
-    "long long sql_account_bank_withdraw(const char *account_name, int racewar, int coin_type,",
-    "int sql_account_bank_withdraw_value(",
-)
-update = withdraw.index("update account_banks set %s = %s - %d")
-read = withdraw.index("sql_read_account_bank_balances")
-commit = withdraw.index("sql_commit()")
-returned = withdraw.index("return sql_account_bank_selected_balance")
-assert "if (!sql_ensure_account_bank" in withdraw
-assert "and %s >= %d" in withdraw
-assert "mysql_affected_rows(DB) != 1" in withdraw
-assert "return row_exists ? -2 : -1;" in withdraw
-assert update < read < commit < returned
-print("[PASS] guarded withdrawal returns only its post-update committed balance")
-
-aggregate = section(
-    sql,
-    "int sql_account_bank_withdraw_value(const char *account_name, int racewar, int amount,",
-    "#endif // __NO_MYSQL__",
-)
-assert "true, &current" in aggregate
-assert "total < amount" in aggregate and "return -2;" in aggregate
-assert "bank_copper=bank_copper-%d" in aggregate
-assert "bank_platinum=bank_platinum-%d" in aggregate
-assert aggregate.index("sql_read_account_bank_balances(esc_name, racewar, true") < aggregate.index(
-    "update account_banks"
-)
-assert aggregate.index("sql_commit()") < aggregate.index("*committed = result;")
-assert "*change = -remaining;" in aggregate
-print("[PASS] aggregate payment locks authoritative state and applies one delta vector")
-
-single_publish = section(
+publish = section(
     utility,
-    "void publish_account_bank_balance(const char *account_name, int racewar, int coin_type,",
-    "void publish_account_bank_balances(",
+    "void publish_account_bank_balances_revision(const char *account_name, int racewar,",
+    "static void currency_adjustment_committed(",
 )
-vector_publish = section(
-    utility,
-    "void publish_account_bank_balances(const char *account_name, int racewar,",
-    "int SUB_BALANCE(",
-)
-for publisher in (single_publish, vector_publish):
-    assert "descriptor_list" in publisher
-    assert "desc->connected != CON_PLAYING" in publisher
-    assert "strcasecmp(desc->account->acct_name, account_name)" in publisher
-    assert "GET_RACEWAR(target) != racewar" in publisher
-    assert "gmcp_char_vitals(target);" in publisher
+assert "descriptor_list" in publish
+assert "desc->connected != CON_PLAYING" in publish
+assert "strcasecmp(desc->account->acct_name, account_name)" in publish
+assert "GET_RACEWAR(target) != racewar" in publish
+assert "gmcp_char_vitals(target);" in publish
 assert all(
-    field in vector_publish
+    field in publish
     for field in (
         "GET_BALANCE_COPPER(target) = balances->copper;",
         "GET_BALANCE_SILVER(target) = balances->silver;",
@@ -159,11 +85,5 @@ assert "currency_reason_type::ship_insurance" in insurance
 assert "GET_BALANCE_PLATINUM(owner) +=" not in insurance
 assert "insert_money_pickup" in insurance
 print("[PASS] boon and ship rewards use transactional credits with staged fallbacks")
-
-stub = sql[: sql.index("#else")]
-assert "sql_account_bank_deposit_balances" in stub
-assert "sql_account_bank_withdraw_value" in stub
-assert "return false;" in stub and "return -1;" in stub
-print("[PASS] no-MySQL bank helpers fail closed")
 
 print("account-bank delta safety source contracts passed")

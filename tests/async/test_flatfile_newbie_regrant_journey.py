@@ -143,7 +143,7 @@ def run(binary, chaos, class_name="Warrior"):
         plain, tls, websocket = journey.available_ports()
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
                "ENVIRONMENT": "local", "PERSISTENCE_MODE": "flatfile-primary",
-               "FLATFILE_STATE_DIR": str(state), "PLAYER_SAVE_JOURNAL_DIR": str(journals / "players"),
+               "FLATFILE_STATE_DIR": str(state),
                "CRITICAL_COMMAND_JOURNAL_DIR": str(journals / "critical"),
                "LISTEN_ADDRESS": "127.0.0.1", "DURIS_TLS_PORT": str(tls),
                "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",

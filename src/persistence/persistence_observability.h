@@ -100,18 +100,6 @@ struct persistence_dirty_save_snapshot
 	uint64_t inflight_oldest_age_msec;
 };
 
-struct persistence_queue_health_snapshot
-{
-	uint64_t pending;
-	uint64_t dropped;
-	uint64_t written;
-	uint64_t failures;
-	uint64_t heartbeat_age_msec;
-	int running;
-	int stop_pending;
-	int heartbeat_available;
-};
-
 uint64_t persistence_observability_now_usec(void);
 enum persistence_statement_kind persistence_statement_kind_from_sql(const char *sql);
 const char *persistence_query_context_name(enum persistence_query_context context);

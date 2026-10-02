@@ -67,7 +67,7 @@ with tempfile.TemporaryDirectory(prefix="duris-artifact-cache-") as temp:
 artifact = (SRC / "artifact.c").read_text(encoding="utf-8")
 listing_start = artifact.index("void list_artifacts_sql", artifact.index("void do_artifact_sql"))
 listing = artifact[
-    listing_start : artifact.index("void arti_remove_sql", listing_start)
+    listing_start : artifact.index("void setupMortArtiList_sql", listing_start)
 ]
 assert listing.count("redis_get_artifact_list") == 1
 assert "redis_invalidate_artifact_list" in listing

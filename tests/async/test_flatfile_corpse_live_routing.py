@@ -1,23 +1,10 @@
 #!/usr/bin/env python3
-"""Source contracts for live flat-file corpse lifecycle routing."""
+"""Source contracts for the live corpse save and restore routing."""
 
 from _paths import SRC
-from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
 FILES = (SRC / "files.c").read_text()
-COMM = (SRC / "comm.c").read_text()
-FIGHT = (SRC / "fight.c").read_text()
-ACTOBJ = (SRC / "actobj.c").read_text()
-HANDLER = (SRC / "world/handler.c").read_text()
-ACCOUNT = (SRC / "account/account.c").read_text()
-MOBILE_SPECS = (SRC / "specs.mobile.c").read_text()
-UNDERMOUNTAIN_SPECS = (SRC / "specs.undermountain.c").read_text()
-VERZANAN_SPECS = (SRC / "specs.verzanan.c").read_text()
-LOHRR_SPECS = (SRC / "specs.lohrr.c").read_text()
-MAGIC = (SRC / "magic.c").read_text()
-NECROMANCY = (SRC / "necromancy.c").read_text()
 
 
 def body(source: str, signature: str, next_signature: str) -> str:
@@ -30,62 +17,9 @@ write_corpse = body(FILES, "void writeCorpse(P_obj corpse)",
                     "void persistence_refresh_restored_corpse")
 purge_corpse = body(FILES, "void PurgeCorpseFile(P_obj corpse)", "ush_int getShort")
 restore_corpses = body(FILES, "void restoreCorpses(void)", "/** Pet only functions")
-decay = body(HANDLER, "void Decay(P_obj obj)", "void update_char_objects")
-deferred_release = body(HANDLER, "bool persistence_defer_corpse_room_release(",
-                        "void Decay(P_obj obj)")
-release_publication = body(HANDLER, "void publish_corpse_release(",
-                           "bool submit_corpse_release")
-nested_publication = body(HANDLER, "void publish_corpse_nested_release(",
-                          "bool submit_corpse_nested_release")
-nested_submission = body(HANDLER, "bool submit_corpse_nested_release(",
-                         "bool submit_corpse_destruction")
-destruction_publication = body(HANDLER, "void publish_corpse_destruction(",
-                               "bool submit_corpse_destruction")
-deferred_destruction = body(HANDLER, "bool persistence_defer_corpse_destruction(",
-                            "void Decay(P_obj obj)")
-deferred_compaction = body(HANDLER, "bool persistence_defer_corpse_compaction(",
-                           "bool persistence_defer_corpse_destruction(")
-durable_lifecycle = body(HANDLER, "bool durable_corpse_lifecycle_enabled()",
-                         "} // namespace")
-get_item = body(ACTOBJ, "void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)",
-                "int fight_in_room")
-put_item = body(ACTOBJ, "bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit)",
-                "void do_give")
-devour = body(MOBILE_SPECS, "int devour(", "void event_tentacles")
-dog_one = body(VERZANAN_SPECS, "int dog_one(", "int dog_two(")
-dog_two = body(VERZANAN_SPECS, "int dog_two(", "int drunk_one(")
-lightning_sword = body(UNDERMOUNTAIN_SPECS, "int lightning_sword(",
-                       "int um_goblin_leader(")
-flying_dagger = body(UNDERMOUNTAIN_SPECS, "int flying_dagger(", "int ochre_jelly(")
-ochre_jelly = body(UNDERMOUNTAIN_SPECS, "int ochre_jelly(", "int animated_sword(")
-very_angry = LOHRR_SPECS[LOHRR_SPECS.index("int very_angry_npc("):]
-unmaking = body(MAGIC, "void spell_unmaking(", "void spell_enchant_weapon(")
-wall_of_bones = body(NECROMANCY, "void spell_wall_of_bones(",
-                     "void spell_compact_corpse(")
-compact_corpse = NECROMANCY[NECROMANCY.index("void spell_compact_corpse("):]
-resurrect = body(MAGIC, "void spell_resurrect(", "void spell_preserve(")
-lesser_resurrect = body(MAGIC, "void spell_lesser_resurrect(",
-                        "void spell_mass_invisibility(")
-resurrection_publication = body(HANDLER, "void publish_corpse_resurrection(",
-                                "void continue_corpse_resurrection(")
-resurrection_item_publication = body(HANDLER, "void publish_corpse_resurrection_item(",
-                                     "void publish_corpse_resurrection(")
-raise_publication = body(HANDLER, "void publish_corpse_raise(",
-                         "P_obj find_resurrection_item(")
-raise_undead = body(NECROMANCY, "void raise_undead(", "#undef UNDEAD_TYPES")
-call_titan = body(NECROMANCY, "void spell_call_titan(", "void discard_nested_raise_exclusions(")
-create_dracolich = body(NECROMANCY, "void spell_create_dracolich(",
-                        "void spell_create_golem(")
-create_golem = body(NECROMANCY, "void create_golem(", "void spell_call_avatar(")
-call_avatar = body(NECROMANCY, "void spell_call_avatar(",
-                   "void spell_create_greater_dracolich(")
-create_greater_dracolich = body(NECROMANCY, "void spell_create_greater_dracolich(",
-                                "void do_exhume(")
-raise_completion = body(NECROMANCY, "void complete_corpse_raise_after_commit(",
-                        "void spell_create_dracolich(")
 
-# Corpses live in memory: the corpse save is a writer job on both backends (step 6), and
-# a job the writer refuses is reported, not run on the loop.
+# Corpses live in memory: the corpse save is a writer job on both backends, and a job
+# the writer refuses is reported, not run on the loop.
 assert "queue_corpse_save(corpse, !present)" in write_corpse
 assert "sql_" not in write_corpse and '"queue_failed"' in write_corpse
 assert "sql_delete_corpse" not in purge_corpse
@@ -94,157 +28,4 @@ assert "skip_corpse_save" in purge_corpse
 assert "queue_corpse_save(corpse, true)" in purge_corpse
 assert "flatfile_corpse_restore_catalog" in restore_corpses
 assert "fatal_boot_error" in restore_corpses
-
-assert "corpse_lifecycle_transaction_handle_completions" in COMM
-assert "corpse_lifecycle_transaction_pulse();" in COMM
-assert COMM.index("corpse_lifecycle_transaction_pulse();") < COMM.index(
-    "critical_command_coordinator_pulse(critical_completions")
-assert "corpse_lifecycle_transaction_note_item_transfer" in ACTOBJ
-assert "persistence_defer_corpse_room_release(obj)" in decay
-assert decay.index("persistence_defer_corpse_room_release(obj)") < decay.index(
-    "if (OBJ_ROOM(obj))")
-# The durable deferrals stay until Phase 3 but are switched off.
-assert "return false;" in durable_lifecycle
-assert "durable_corpse_lifecycle_enabled()" in deferred_release
-assert "corpse_lifecycle_transaction_busy" in deferred_release
-busy_check = deferred_release.index("corpse_lifecycle_transaction_busy")
-busy_return = deferred_release.index("return true;", busy_check)
-assert "rearm_corpse_release(corpse)" in deferred_release[busy_check:busy_return]
-assert "submit_corpse_release(corpse)" in deferred_release
-assert "OBJ_INSIDE(corpse) ? submit_corpse_nested_release(corpse)" in deferred_release
-assert "corpse_lifecycle_transaction_release(payload, publish_corpse_release)" in HANDLER
-assert "item_ownership_runtime_apply_corpse_release" in release_publication
-assert "validate_corpse_release_items(corpse, result, true)" in release_publication
-assert "apply_corpse_discarded_runtime(corpse, result, true)" in release_publication
-assert release_publication.index("discard_corpse_transient_items(corpse)") < \
-       release_publication.index("obj_to_room(item, room)")
-assert release_publication.index("item_ownership_runtime_apply_corpse_release") < \
-       release_publication.index("obj_from_obj(item)")
-assert release_publication.index("obj_from_obj(item)") < \
-       release_publication.index("extract_obj(corpse, TRUE)")
-assert "corpse_lifecycle_action::release_nested" in nested_submission
-assert "item_owner_type::player" in nested_submission
-assert "item_owner_type::room" in nested_submission
-assert "target_root_item_uid" in nested_submission
-assert "target_parent_item_uid" in nested_submission
-assert "expected_target_parent_revision" in nested_submission
-assert "corpse_lifecycle_transaction_release(payload, publish_corpse_nested_release)" in \
-       nested_submission
-assert "item_ownership_runtime_apply_corpse_nested_release" in nested_publication
-assert "apply_corpse_discarded_runtime(corpse, result," in nested_publication
-assert "discard_corpse_transient_items(corpse)" in nested_publication
-assert nested_publication.index("item_ownership_runtime_apply_corpse_nested_release") < \
-       nested_publication.index("obj_from_obj(item)")
-assert nested_publication.index("obj_to_obj(item, parent)") < \
-       nested_publication.index("extract_obj(corpse, TRUE)")
-assert "discard_corpse_release_money" in nested_publication
-assert "writeCharacter(carrier, RENT_CRASH" in nested_publication
-assert "corpse_lifecycle_transaction_destroy" in HANDLER
-assert "item_ownership_runtime_apply_corpse_destruction" in destruction_publication
-assert "apply_corpse_discarded_runtime(corpse, result, false)" in destruction_publication
-assert destruction_publication.index("item_ownership_runtime_apply_corpse_destruction") < \
-       destruction_publication.index("extract_obj(corpse, TRUE)")
-assert "durable_corpse_lifecycle_enabled()" in deferred_destruction
-assert "submit_corpse_destruction(corpse)" in deferred_destruction
-assert "persistence_defer_corpse_destruction(corpse)" in very_angry
-assert very_angry.index("persistence_defer_corpse_destruction(corpse)") < \
-       very_angry.index("extract_obj(corpse, TRUE)")
-assert "persistence_defer_corpse_unmaking(obj, ch, level, clevel)" in unmaking
-assert unmaking.index("persistence_defer_corpse_unmaking(obj, ch, level, clevel)") < \
-       unmaking.index("obj_from_obj(cobj)")
-assert "corpse_unmakings" in HANDLER
-assert "caster->runtime_id" in HANDLER
-assert "live_room != room" not in release_publication
-assert HANDLER.index("item_ownership_runtime_apply_corpse_release") < \
-       HANDLER.index("GET_HIT(caster) =")
-assert "persistence_defer_corpse_wall_of_bones(corpse, ch, level, exit_dir)" in wall_of_bones
-assert wall_of_bones.index("persistence_defer_corpse_wall_of_bones") < \
-       wall_of_bones.index("complete_corpse_wall_of_bones")
-assert wall_of_bones.index("persistence_defer_corpse_wall_of_bones") < \
-       wall_of_bones.index("obj_from_obj(obj_in_corpse)")
-assert "corpse_walls" in HANDLER
-assert release_publication.index("item_ownership_runtime_apply_corpse_release") < \
-       release_publication.index("complete_corpse_wall_of_bones")
-assert "persistence_defer_corpse_compaction(obj, ch)" in compact_corpse
-assert compact_corpse.index("persistence_defer_corpse_compaction") < \
-       compact_corpse.index("obj_from_obj(content)")
-assert "corpse_compactions" in HANDLER
-assert deferred_compaction.index("read_object(VOBJ_PILE_BONES, VIRTUAL)") < \
-       deferred_compaction.index("submit_corpse_release(corpse)")
-assert "extract_obj(pile)" in deferred_compaction
-assert release_publication.index("item_ownership_runtime_apply_corpse_release") < \
-       release_publication.index("obj_to_room(compact_pile, room)")
-assert "corpse_lifecycle_transaction_busy" in get_item
-assert "corpse_lifecycle_transaction_busy" in put_item
-for resurrection_spell in (resurrect, lesser_resurrect):
-    assert "persistence_defer_corpse_resurrection" in resurrection_spell
-    assert resurrection_spell.index("persistence_defer_corpse_resurrection") < \
-           resurrection_spell.index("stop_fighting(t_ch)")
-assert "corpse_lifecycle_transaction_resurrect" in HANDLER
-assert "item_ownership_runtime_apply_corpse_resurrection" in resurrection_publication
-assert "apply_corpse_discarded_runtime(corpse, result, false)" in resurrection_publication
-assert "target->in_room != context.old_room" not in resurrection_publication
-assert "caster->in_room != corpse_room" not in resurrection_publication
-assert "actor->in_room != context.old_room" not in resurrection_item_publication
-assert resurrection_publication.index("item_ownership_runtime_apply_corpse_resurrection") < \
-       resurrection_publication.index("complete_player_resurrection_after_commit")
-assert HANDLER.index("item_movement_transaction_submit(",
-                     HANDLER.index("void continue_corpse_resurrection(")) < \
-       HANDLER.index("corpse_lifecycle_transaction_resurrect(",
-                     HANDLER.index("void continue_corpse_resurrection("))
-for raise_spell in (raise_undead, call_titan, create_dracolich, create_golem,
-                    call_avatar, create_greater_dracolich):
-    assert "persistence_defer_corpse_raise" in raise_spell
-    assert raise_spell.index("persistence_defer_corpse_raise") < \
-           raise_spell.index("char_to_room")
-    # The stored clone of the raised corpse is gone (persistence reset step 6).
-    assert "create_saved_corpse" not in raise_spell
-assert "corpse_lifecycle_transaction_raise_follower" in HANDLER
-assert "item_ownership_runtime_apply_corpse_raise" in raise_publication
-assert "apply_corpse_discarded_runtime(corpse, result, false)" in raise_publication
-assert "caster->in_room != corpse_room" not in raise_publication
-assert raise_publication.index("item_ownership_runtime_apply_corpse_raise") < \
-       raise_publication.index("complete_corpse_raise_after_commit")
-assert "recover_committed_corpse_raise" in HANDLER
-assert "extract_obj(corpse, FALSE)" in HANDLER
-assert "(!payload.destination_player_pid && world[room].number != payload.room_vnum)" in \
-       nested_publication
-assert "publish_corpse_wallet" in raise_publication
-assert "publish_corpse_wallet" in resurrection_publication
-assert "publish_corpse_wallet" in nested_publication
-assert "discard_nested_raise_exclusions" in raise_completion
-assert "preserve_coin_piles" in raise_completion
-assert "corpse_raise_exceeds_carry_capacity" in raise_completion
-assert "The recovered equipment leaves you overburdened" in raise_completion
-assert "obj_to_char_at_end(item, (pet_uid || hostile) ? follower : caster)" in raise_completion
-assert "else if (destroy_equipment)" not in raise_completion
-assert "writeCharacter(caster, RENT_CRASH" in raise_completion
-assert "source_items_valid" in raise_publication
-assert "recover_corpse_raise_items" in HANDLER
-assert "CHAR_RFLAG_CORPSE_RAISE_SAVE_FENCE" in HANDLER
-assert "recover_committed_corpse_raise(key, corpse, follower, source_items_valid, false" in \
-       raise_publication
-assert "corpse_raise_player_save_fenced" in FILES
-assert "corpse_raise_player_ready" in HANDLER
-assert "collector_transaction_player_ready(character);" in ACCOUNT
-assert "collector_service_player_ready(character, false);" in ACCOUNT
-assert "corpse_raise_player_ready(character, false);" in ACCOUNT
-assert "collector_service_player_save_fenced(character)" in ACCOUNT
-assert "corpse_raise_player_save_fenced(character)" in ACCOUNT
-assert "extract_char_after_terminal_save(character);" in ACCOUNT
-assert ACCOUNT.index("collector_service_player_save_fenced(character)") < ACCOUNT.index(
-    "collector_transaction_player_ready(character);")
-assert "prepare_account_reconnect(ch, d)" in ACCOUNT
-
-for release_caller, first_mutation in (
-        (devour, "obj_from_obj(temp)"),
-        (dog_one, "obj_from_obj(temp)"),
-        (dog_two, "obj_from_obj(temp)"),
-        (lightning_sword, "obj_from_obj(temp)"),
-        (flying_dagger, "obj_from_obj(temp)"),
-        (ochre_jelly, "obj_from_obj(temp)")):
-    assert "persistence_defer_corpse_room_release" in release_caller
-    assert release_caller.index("persistence_defer_corpse_room_release") < \
-           release_caller.index(first_mutation)
-
-print("[PASS] live corpse save, remove, release, effects, destruction, restore, and revision routing are wired")
+print("[PASS] corpse saves, removals and the boot restore route through the writer and catalog")

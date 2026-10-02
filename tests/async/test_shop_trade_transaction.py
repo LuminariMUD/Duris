@@ -13,7 +13,8 @@ COMM = (SRC / "comm.c").read_text()
 NANNY = (SRC / "nanny.c").read_text()
 if "shop_trade_transaction_handle_completions(completions, count);" not in COMM:
     raise SystemExit("main loop does not dispatch shop trade completions")
-if NANNY.count("shop_trade_transaction_player_ready(") != 2:
+if ("shop_trade_transaction_player_ready(" not in NANNY or
+        "shop_trade_transaction_player_ready(" not in (SRC / "account.c").read_text()):
     raise SystemExit("login/reconnect do not release retained shop trade completions")
 
 with tempfile.TemporaryDirectory(prefix="duris-shop-trade-transaction-") as temporary:

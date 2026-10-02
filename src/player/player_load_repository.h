@@ -13,11 +13,7 @@
 constexpr uint32_t PLAYER_LOAD_SCHEMA_VERSION = 1;
 constexpr size_t PLAYER_LOAD_ACCOUNT_MAX = 50;
 constexpr size_t PLAYER_LOAD_NAME_MAX = 32;
-constexpr size_t PLAYER_LOAD_BASE_QUERY_MAX = 23;
-// Fixed-cost restitution table discovery and exact-state overlay, not per-item queries.
-constexpr size_t PLAYER_LOAD_RESTITUTION_QUERY_MAX = 2;
-constexpr size_t PLAYER_LOAD_QUERY_MAX =
-	PLAYER_LOAD_BASE_QUERY_MAX + PLAYER_LOAD_RESTITUTION_QUERY_MAX;
+constexpr size_t PLAYER_LOAD_QUERY_MAX = 23;
 constexpr uint64_t PLAYER_LOAD_TIMEOUT_USEC = UINT64_C(3000000);
 constexpr size_t PLAYER_LOAD_ITEM_MAX = PLAYER_SNAPSHOT_MAX_OBJECTS;
 constexpr size_t PLAYER_LOAD_ITEM_AFFECT_MAX = 4;

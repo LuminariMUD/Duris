@@ -1,7 +1,6 @@
 #include "persistence/critical_outbox.h"
 
 #include "economy/collector_command.h"
-#include "persistence/corpse_lifecycle_command.h"
 #include "sql/sql_thread_init.h"
 
 #include "sql/sql_pool.h"
@@ -398,53 +397,6 @@ critical_outbox_health critical_outbox_health_copy(void)
 	return health;
 }
 
-bool critical_outbox_reconcile(critical_reconciliation_report *report)
-{
-	if (!report)
-		return false;
-	MYSQL *connection = sql_pool_acquire();
-	if (!connection)
-		return false;
-	static const char SQL[] =
-		"SELECT (SELECT COUNT(*) FROM critical_operation_inbox WHERE status<>1),"
-		"(SELECT COUNT(*) FROM critical_operation_inbox i WHERE status=1 AND NOT EXISTS "
-		"(SELECT 1 FROM critical_outbox o WHERE o.operation_id=i.operation_id)),"
-		"(SELECT COUNT(*) FROM critical_outbox WHERE status=0),"
-		"(SELECT COUNT(*) FROM critical_outbox WHERE status=2)";
-	bool ok = execute(connection, SQL);
-	MYSQL_RES *result = ok ? mysql_store_result(connection) : nullptr;
-	MYSQL_ROW row = result ? mysql_fetch_row(result) : nullptr;
-	uint64_t values[4] = {};
-	for (unsigned int index = 0; row && index < 4; ++index)
-		ok = ok && parse_u64(row[index], &values[index]);
-	const bool had_row = row != nullptr;
-	if (result)
-		mysql_free_result(result);
-	release_after_query(connection, ok && had_row);
-	if (!ok || !had_row)
-		return false;
-	*report = { values[0], values[1], values[2], values[3] };
-	return true;
-}
-
-bool critical_outbox_retry_dead_letter(uint64_t outbox_id)
-{
-	if (!outbox_id)
-		return false;
-	MYSQL *connection = sql_pool_acquire();
-	if (!connection)
-		return false;
-	const std::string sql =
-		"UPDATE critical_outbox SET status=0,attempt_count=0,next_attempt_at=CURRENT_TIMESTAMP(6),"
-		"dead_lettered_at=NULL,last_error_code=0 WHERE status=2 AND outbox_id=" +
-		std::to_string(outbox_id);
-	const bool ok = execute(connection, sql) && mysql_affected_rows(connection) == 1;
-	release_after_query(connection, ok);
-	if (ok)
-		critical_outbox_resume();
-	return ok;
-}
-
 critical_outbox_delivery_result
 critical_outbox_test_destination(const critical_outbox_record &record, void *context)
 {
@@ -455,29 +407,15 @@ critical_outbox_test_destination(const critical_outbox_record &record, void *con
 	const bool epic_record = record.destination == OUTBOX_DESTINATION_EPIC &&
 				 record.event_type == OUTBOX_EVENT_EPIC_BALANCE &&
 				 record.payload_version == 1 && record.payload.size() == 24;
-	const bool currency_record = record.destination == 3 && record.event_type == 1 &&
-				     record.payload_version == 1 && record.payload.size() == 80;
 	const bool item_record = record.destination == 4 && record.event_type == 1 &&
 				 record.payload_version == 1 && !record.payload.empty();
 	const bool auction_record = record.destination == 5 && record.event_type == 1 &&
 				    record.payload_version == 1 && !record.payload.empty();
-	const bool coin_receipt = record.destination == CRITICAL_OUTBOX_COIN_RECEIPT_DESTINATION &&
-				  record.event_type == CRITICAL_OUTBOX_COIN_RECEIPT_EVENT &&
-				  record.payload_version == 1 &&
-				  record.payload.size() == CRITICAL_OUTBOX_COIN_RECEIPT_BYTES;
 	const bool collector_record = record.destination == COLLECTOR_OUTBOX_DESTINATION &&
 				      record.event_type == COLLECTOR_OUTBOX_EVENT_MUTATED &&
 				      record.payload_version == COLLECTOR_COMMAND_RESULT_VERSION &&
 				      record.payload.size() == COLLECTOR_COMMAND_RESULT_BYTES;
-	corpse_lifecycle_result corpse_result = {};
-	const bool corpse_record = record.destination == CORPSE_LIFECYCLE_OUTBOX_DESTINATION &&
-				   record.event_type == CORPSE_LIFECYCLE_OUTBOX_EVENT_MUTATED &&
-				   record.payload_version == CORPSE_LIFECYCLE_RESULT_VERSION &&
-				   corpse_lifecycle_command_decode_result(record.payload.data(),
-									  record.payload.size(),
-									  &corpse_result);
-	return test_record || epic_record || currency_record || item_record || auction_record ||
-			       coin_receipt || collector_record || corpse_record ?
+	return test_record || epic_record || item_record || auction_record || collector_record ?
 		       critical_outbox_delivery_result::delivered :
 		       critical_outbox_delivery_result::terminal_failure;
 }

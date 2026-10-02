@@ -180,16 +180,13 @@ assert "redis_command" not in dirty_count
 print("[PASS] dirty health and count use local revisioned pipeline state")
 
 mark = section(
-    "void mark_player_dirty(int pid)", "void flush_dirty_players(void)", checkpoint
+    "void mark_player_dirty_components(int pid", "int get_dirty_player_count(void)", checkpoint
 )
-assert "mark_player_dirty_components(pid, PLAYER_CHECKPOINT_COMPONENT_ALL)" in mark
 assert "player_save_pipeline_mark(pid, components)" in mark
 assert "sql_save_player" not in mark
 assert "sql_begin_transaction" not in mark
 assert "redis_command" not in mark and "redis_reconnect" not in mark
-flush = section(
-    "void flush_dirty_players(void)", "int get_dirty_player_count(void)", checkpoint
-)
+flush = section("void event_flush_dirty_players(", "\n}\n", checkpoint)
 assert "player_save_pipeline_checkpoint_dirty" in flush
 for forbidden in ("redis_command", "redis_reconnect", "sql_save_player", "fork("):
     assert forbidden not in flush

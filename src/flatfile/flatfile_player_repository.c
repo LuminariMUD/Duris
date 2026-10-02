@@ -1,5 +1,7 @@
 #include "flatfile/flatfile_player_repository.h"
 
+#include "economy/collector_eligibility.h"
+#include "flatfile/flatfile_collector_repository.h"
 #include "flatfile/flatfile_identity_repository.h"
 #include "flatfile/flatfile_item_repository.h"
 #include "flatfile/flatfile_player_domain_repository.h"
@@ -56,13 +58,11 @@ std::string player_lock_filename(int32_t pid)
 
 bool valid_snapshot(const player_snapshot &snapshot)
 {
-	const uint32_t required = snapshot.death ? PLAYER_SNAPSHOT_DEATH_SCHEMA_VERSION :
-						   PLAYER_SNAPSHOT_SCHEMA_VERSION;
-	return snapshot.schema_version == required && snapshot.pid > 0 && snapshot.revision &&
-	       snapshot.components && !(snapshot.components & ~PLAYER_CHECKPOINT_COMPONENT_ALL) &&
+	return snapshot.schema_version == PLAYER_SNAPSHOT_SCHEMA_VERSION && snapshot.pid > 0 &&
+	       snapshot.revision && snapshot.components &&
+	       !(snapshot.components & ~PLAYER_CHECKPOINT_COMPONENT_ALL) &&
 	       snapshot.encoded_size_bound &&
-	       snapshot.encoded_size_bound <= PLAYER_SNAPSHOT_MAX_BYTES &&
-	       (!snapshot.death || !snapshot.death->corpse.empty());
+	       snapshot.encoded_size_bound <= PLAYER_SNAPSHOT_MAX_BYTES;
 }
 
 bool same_authority_key(const std::string &left, const std::string &right)
@@ -783,7 +783,7 @@ flatfile_player_snapshot_prepare_remove(const std::string &root,
 
 player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 							const player_snapshot &snapshot,
-							std::string *error, bool legacy_replay)
+							std::string *error)
 {
 	if (!valid_snapshot(snapshot) || !replace_items_together(snapshot.components))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
@@ -819,7 +819,7 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		return { player_save_apply_outcome::retryable_failure, 0, EIO };
 	if (loaded == flatfile_player_load_result::not_found)
 	{
-		if (snapshot.death || snapshot.components != PLAYER_CHECKPOINT_COMPONENT_ALL)
+		if (snapshot.components != PLAYER_CHECKPOINT_COMPONENT_ALL)
 			return { player_save_apply_outcome::terminal_failure, 0, ENOENT };
 		new_player = true;
 		authority = std::make_unique<flatfile_authority_lock>();
@@ -844,12 +844,6 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	}
 	else
 	{
-		// Only the one-time replay of an older server's journal keeps the fence.
-		if (legacy_replay && materialized.revision >= snapshot.revision)
-			return { materialized.revision == snapshot.revision ?
-					 player_save_apply_outcome::already_applied :
-					 player_save_apply_outcome::stale_revision,
-				 materialized.revision, 0 };
 		if (!merge_snapshot(snapshot, &materialized))
 			return { player_save_apply_outcome::terminal_failure, materialized.revision,
 				 EINVAL };
@@ -907,18 +901,6 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	}
 
 	std::vector<uint8_t> bytes;
-	// Keep the immutable evidence, quarantine and empty player projection in the
-	// same recoverable authority transaction. A failed commit leaves no evidence
-	// claiming a disposition that never took effect.
-	std::vector<uint8_t> death_bytes;
-	if (snapshot.death)
-	{
-		player_snapshot disposition = snapshot;
-		if (!encode_file(&disposition, &death_bytes))
-			return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
-		materialized.death.reset();
-		materialized.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
-	}
 	if (!encode_file(&materialized, &bytes))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	// A save that carries everything the player holds replaces what earlier
@@ -971,28 +953,6 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			operations.push_back(std::move(delivered));
 		if (saves_balances)
 			operations.push_back(std::move(saved_balances));
-		if (snapshot.death)
-		{
-			operations.push_back({ flatfile_authority_store::player_deaths,
-					       flatfile_authority_operation_kind::write,
-					       death_filename(snapshot.pid, snapshot.revision),
-					       std::move(death_bytes) });
-			std::vector<uint64_t> custody_uids;
-			custody_uids.reserve(snapshot.death->custody.size());
-			for (const auto &row : snapshot.death->custody)
-				if (row.item.item_uid)
-					custody_uids.push_back(row.item.item_uid);
-			flatfile_authority_operation quarantine;
-			const auto quarantined = flatfile_item_repository_prepare_death_quarantine(
-				root, *authority, snapshot.pid, custody_uids, &quarantine, error);
-			if (quarantined == flatfile_item_repository_result::ok)
-				operations.push_back(std::move(quarantine));
-			else if (quarantined != flatfile_item_repository_result::unchanged)
-				return { quarantined == flatfile_item_repository_result::io_error ?
-						 player_save_apply_outcome::retryable_failure :
-						 player_save_apply_outcome::terminal_failure,
-					 0, EIO };
-		}
 		operations.push_back({ flatfile_authority_store::players,
 				       flatfile_authority_operation_kind::write,
 				       player_filename(snapshot.pid), std::move(bytes) });
@@ -1017,9 +977,26 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 
 namespace
 {
-template <typename Prepare>
-player_save_apply_result apply_world_snapshot(const std::string &root,
-					      const item_owner_identity &owner,
+// The owner_of of a save that knows its owner before the lock.
+auto known_owner(const item_owner_identity &owner)
+{
+	return [owner](const flatfile_authority_lock &, item_owner_identity *named)
+	{
+		*named = owner;
+		return flatfile_world_item_result::ok;
+	};
+}
+
+flatfile_world_item_result world_result(flatfile_locker_result result)
+{
+	return result == flatfile_locker_result::ok	  ? flatfile_world_item_result::ok :
+	       result == flatfile_locker_result::io_error ? flatfile_world_item_result::io_error :
+							    flatfile_world_item_result::invalid;
+}
+
+// owner_of(lock, &owner) names, under the lock, the owner the items are claimed for.
+template <typename Owner, typename Prepare>
+player_save_apply_result apply_world_snapshot(const std::string &root, Owner owner_of,
 					      const std::vector<player_item_snapshot> *items,
 					      Prepare prepare, std::string *error)
 {
@@ -1038,6 +1015,12 @@ player_save_apply_result apply_world_snapshot(const std::string &root,
 	std::vector<player_item_snapshot> written;
 	try
 	{
+		item_owner_identity owner = {};
+		const flatfile_world_item_result named = owner_of(authority, &owner);
+		if (named == flatfile_world_item_result::io_error)
+			return { player_save_apply_outcome::retryable_failure, 0, EIO };
+		if (named != flatfile_world_item_result::ok)
+			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 		if (items)
 		{
 			claims.push_back({ owner, items, {} });
@@ -1054,13 +1037,12 @@ player_save_apply_result apply_world_snapshot(const std::string &root,
 			// Leave out what was destroyed, with its contents.
 			written = item_claim_written_items(*items, claims[0].outcome.left_out);
 		}
-		flatfile_authority_operation world;
-		const flatfile_world_item_result prepared = prepare(authority, written, &world);
+		const flatfile_world_item_result prepared =
+			prepare(authority, written, &operations);
 		if (prepared == flatfile_world_item_result::io_error)
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
-		if (prepared == flatfile_world_item_result::ok)
-			operations.push_back(std::move(world));
-		else if (prepared != flatfile_world_item_result::unchanged)
+		if (prepared != flatfile_world_item_result::ok &&
+		    prepared != flatfile_world_item_result::unchanged)
 			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 	}
 	catch (const std::bad_alloc &)
@@ -1123,23 +1105,58 @@ player_save_apply_result flatfile_bank_delta_apply(const std::string &root,
 
 player_save_apply_result flatfile_corpse_snapshot_apply(const std::string &root,
 							const flatfile_corpse_record &corpse,
-							bool remove, std::string *error)
+							bool remove,
+							const collector_death_snapshot &death,
+							std::string *error)
 {
 	const item_owner_identity owner = { item_owner_type::corpse,
 					    item_corpse_owner_id(corpse.owner_pid, corpse.save_id),
 					    0 };
-	return apply_world_snapshot(
-		root, owner, remove ? nullptr : &corpse.items,
+	unsigned int refused = 0;
+	player_save_apply_result result = apply_world_snapshot(
+		root, known_owner(owner), remove ? nullptr : &corpse.items,
 		[&](const flatfile_authority_lock &lock,
 		    const std::vector<player_item_snapshot> &written,
-		    flatfile_authority_operation *operation)
+		    std::vector<flatfile_authority_operation> *operations)
 		{
 			flatfile_corpse_record record = corpse;
 			record.items = written;
-			return flatfile_world_item_prepare_corpse_snapshot(
-				root, lock, record, remove, operation, error);
+			flatfile_authority_operation operation;
+			const auto prepared = flatfile_world_item_prepare_corpse_snapshot(
+				root, lock, record, remove, &operation, error);
+			if (prepared == flatfile_world_item_result::ok)
+				operations->push_back(std::move(operation));
+			if (remove || critical_operation_id_is_zero(death.operation_id) ||
+			    (prepared != flatfile_world_item_result::ok &&
+			     prepared != flatfile_world_item_result::unchanged))
+				return prepared;
+			// The death and the corpse's eligible items become collector
+			// candidates with the corpse; a refusal leaves the corpse saved without.
+			std::vector<uint64_t> eligible;
+			for (const player_item_snapshot &item : written)
+				if (collector_death_item_snapshot_eligible(item))
+					eligible.push_back(item.object_uid);
+			std::sort(eligible.begin(), eligible.end());
+			flatfile_collector_enrollment_mutation enrollment;
+			const auto enrolled = flatfile_collector_prepare_death_enrollment(
+				root, lock, death, eligible, &enrollment, &refused, error);
+			if (enrolled == flatfile_collector_repository_result::io_error)
+				return flatfile_world_item_result::io_error;
+			if (enrolled == flatfile_collector_repository_result::ok && !refused)
+				operations->push_back({ flatfile_authority_store::domains,
+							flatfile_authority_operation_kind::write,
+							enrollment.after_image.filename,
+							std::move(enrollment.after_image.bytes) });
+			else if (enrolled != flatfile_collector_repository_result::unchanged &&
+				 !refused)
+				refused = EILSEQ;
+			return flatfile_world_item_result::ok;
 		},
 		error);
+	// A corpse saved without its death says why.
+	if (result.outcome == player_save_apply_outcome::applied)
+		result.error_code = refused;
+	return result;
 }
 
 player_save_apply_result
@@ -1150,28 +1167,59 @@ flatfile_saved_item_snapshot_apply(const std::string &root,
 	const item_owner_identity owner = { item_owner_type::room,
 					    static_cast<uint64_t>(item.room_vnum), 0 };
 	return apply_world_snapshot(
-		root, owner, remove ? nullptr : &item.items,
+		root, known_owner(owner), remove ? nullptr : &item.items,
 		[&](const flatfile_authority_lock &lock,
 		    const std::vector<player_item_snapshot> &written,
-		    flatfile_authority_operation *operation)
+		    std::vector<flatfile_authority_operation> *operations)
 		{
 			// A saved item whose every piece was destroyed leaves the room.
 			const bool drop = remove || written.empty();
-			return flatfile_world_item_prepare_room_item_snapshot(
+			flatfile_authority_operation operation;
+			const auto prepared = flatfile_world_item_prepare_room_item_snapshot(
 				root, lock, item.room_vnum, drop ? item.items : written, drop,
-				operation, error);
+				&operation, error);
+			if (prepared == flatfile_world_item_result::ok)
+				operations->push_back(std::move(operation));
+			return prepared;
+		},
+		error);
+}
+
+player_save_apply_result flatfile_locker_snapshot_apply(const std::string &root,
+							const flatfile_locker_save &locker,
+							std::string *error)
+{
+	item_owner_identity owner = {};
+	return apply_world_snapshot(
+		root,
+		[&](const flatfile_authority_lock &lock, item_owner_identity *named)
+		{
+			const auto found = flatfile_locker_public_owner(
+				root, lock, locker.locker_name, named, error);
+			owner = *named;
+			return world_result(found);
+		},
+		&locker.items,
+		[&](const flatfile_authority_lock &lock,
+		    const std::vector<player_item_snapshot> &written,
+		    std::vector<flatfile_authority_operation> *operations)
+		{
+			flatfile_authority_operation operation;
+			const auto prepared = flatfile_locker_prepare_public_save(
+				root, lock, locker, owner, written, &operation, error);
+			if (prepared == flatfile_locker_result::ok)
+				operations->push_back(std::move(operation));
+			return world_result(prepared);
 		},
 		error);
 }
 
 player_save_apply_result flatfile_player_snapshot_apply_selected(const player_snapshot &snapshot,
-								 void *context)
+								 void * /*context*/)
 {
-	(void)context;
 	const char *root = persistence_mode_flatfile_root();
 	if (!root)
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	std::string error;
-	return flatfile_player_snapshot_apply(root, snapshot, &error,
-					      context == PLAYER_SAVE_LEGACY_REPLAY);
+	return flatfile_player_snapshot_apply(root, snapshot, &error);
 }

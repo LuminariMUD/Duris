@@ -57,7 +57,6 @@
 #include "player/player_load_items.h"
 #include "player/player_load_pets.h"
 #include "player/player_load_pipeline.h"
-#include "player/player_death_restitution_locker.h"
 #include "player/player_save_pipeline.h"
 #include "persistence/persistence_observability.h"
 #include "player/player_revision_state.h"
@@ -180,7 +179,6 @@ static void release_preentry_character(P_desc d)
 
 static bool account_creation_side_allowed(P_desc d)
 {
-#ifdef USE_ACCOUNT
 	if (!d || !d->account || !d->character)
 		return true;
 	const account_racewar_admission admission = account_check_racewar_admission(
@@ -195,10 +193,6 @@ static bool account_creation_side_allowed(P_desc d)
 	STATE(d) = CON_DISPLAY_ACCT_MENU;
 	display_account_menu(d, NULL);
 	return false;
-#else
-	(void)d;
-	return true;
-#endif
 }
 
 void swapstat(P_desc d, char *arg);
@@ -991,13 +985,8 @@ bool valid_password(P_desc d, char *arg)
 	do
 	{
 		i++;
-#ifndef USE_ACCOUNT
-		name[i] = LOWER(*(d->character->player.name + i));
-	} while (*(d->character->player.name + i));
-#else
 		name[i] = LOWER(*(d->account->acct_name + i));
 	} while (*(d->account->acct_name + i));
-#endif
 
 	if (strstr(name, password) || strstr(password, name))
 	{
@@ -1217,7 +1206,6 @@ void schedule_pc_events(P_char ch)
 void enter_game(P_desc d)
 {
 	struct affected_type af1, *afp1, *afp2;
-	int cost;
 	int r_room = NOWHERE;
 	long time_gone = 0, hit_g, move_g, heal_time, rest;
 	time_t ct = time(NULL);
@@ -1334,71 +1322,42 @@ void enter_game(P_desc d)
 
 	if (GET_LEVEL(ch))
 	{
-		const bool snapshot_load = d->player_load_mode != PLAYER_LOAD_MODE_NONE;
 		ch->desc = d;
-		if (d->player_load_mode == PLAYER_LOAD_MODE_NONE)
-		{
-			const char *acct = get_account_name_safe(ch);
-			if (acct && strcmp(acct, "Unknown") != 0)
-				sql_load_account_bank(acct, GET_RACEWAR(ch), ch);
-		}
 		d->player_load_mode = PLAYER_LOAD_MODE_NONE;
-
-		if (!snapshot_load)
-			reset_char(ch);
-		else
-		{
-			player_load_items_activate_equipment(ch);
-			player_load_pets_place(ch);
-		}
-
-		cost = 0;
+		player_load_items_activate_equipment(ch);
+		player_load_pets_place(ch);
 
 		if ((d->rtype == RENT_CRASH) || (d->rtype == RENT_CRASH2))
 		{
 			send_to_char("\r\nRestoring items and pets from crash save info...\r\n",
 				     ch);
-			if (!snapshot_load)
-				cost = restoreItemsOnly(ch, 100);
 		}
 		else if (d->rtype == RENT_CAMPED)
 		{
 			send_to_char("\r\nYou break camp and get ready to move on...\r\n", ch);
-			if (!snapshot_load)
-				cost = restoreItemsOnly(ch, 0);
 		}
 		else if (d->rtype == RENT_INN)
 		{
 			send_to_char("\r\nRetrieving rented items from storage...\r\n", ch);
-			if (!snapshot_load)
-				cost = restoreItemsOnly(ch, 100);
 		}
 		else if (d->rtype == RENT_LINKDEAD)
 		{
 			send_to_char("\r\nRetrieving items from linkdead storage...\r\n", ch);
-			if (!snapshot_load)
-				cost = restoreItemsOnly(ch, 200);
 		}
 		else if (d->rtype == RENT_POOFARTI)
 		{
 			send_to_char("\r\nThe gods have taken your artifact...\r\n", ch);
-			if (!snapshot_load)
-				cost = restoreItemsOnly(ch, 100);
 		}
 		else if (d->rtype == RENT_FIGHTARTI)
 		{
 			nobonus = TRUE;
 			send_to_char("\r\nYour artifacts argued all night...\r\n", ch);
-			if (!snapshot_load)
-				cost = restoreItemsOnly(ch, 100);
 		}
 		else if (d->rtype == RENT_SWAPARTI)
 		{
 			send_to_char(
 				"\r\nThe gods have taken your artifact... and replaced it with another!\r\n",
 				ch);
-			if (!snapshot_load)
-				cost = restoreItemsOnly(ch, 100);
 		}
 		else if (d->rtype == RENT_DEATH)
 		{
@@ -1407,8 +1366,6 @@ void enter_game(P_desc d)
 					     ch);
 			else
 				send_to_char("\r\nYou rejoin the land of the living...\r\n", ch);
-			if (!snapshot_load)
-				restoreItemsOnly(ch, 0);
 		}
 		else if (d->rtype == 0)
 		{
@@ -1419,12 +1376,6 @@ void enter_game(P_desc d)
 			send_to_char("\r\nCouldn't find any items in storage for you...\r\n", ch);
 		}
 
-		if (cost == -2)
-		{
-			send_to_char("\r\nSomething is wrong with your saved items information - "
-				     "please talk to an Implementor.\r\n",
-				     ch);
-		}
 		/* to avoid problems if game is shutdown/crashed while they are in 'camp'
 		   mode, kill the affect if it's active here. */
 
@@ -1830,7 +1781,6 @@ void enter_game(P_desc d)
 	auction_transaction_player_ready(ch);
 	collector_transaction_player_ready(ch);
 	collector_service_player_ready(ch, true);
-	corpse_raise_player_ready(ch, true);
 	boon_reward_transaction_player_ready(ch);
 	if (!writeCharacter(ch, 1, NOWHERE))
 	{
@@ -1954,7 +1904,6 @@ void enter_game(P_desc d)
 
 	do_look(ch, 0, -4);
 	account_bound_reward_on_login(ch);
-	player_death_restitution_locker_notice(ch);
 
 	if (has_innate(ch, INNATE_SUMMON_BOOK))
 	{
@@ -2044,14 +1993,9 @@ void select_terminal(P_desc d, const char *arg)
 	}
 
 	/* if it gets here, we have a valid term type, carry on... */
-#ifndef USE_ACCOUNT
-	STATE(d) = CON_NAME;
-	SEND_TO_Q("By what name do you wish to be known? Type 'generate' to generate names.", d);
-#else
 	//  account stuff instead of name
 	STATE(d) = CON_GET_ACCT_NAME;
 	send_account_name_prompt(d);
-#endif
 }
 
 bool pfile_exists(const char *dir, char *name)
@@ -2108,848 +2052,6 @@ void approve_name(char *name)
 void deny_name(char *name)
 {
 	create_denied_file(BADNAME_DIR, name);
-}
-
-void select_name(P_desc d, char *arg, int flag)
-{
-	char tmp_name[MAX_INPUT_LENGTH];
-	char Gbuf1[MAX_STRING_LENGTH];
-	P_desc t_d = NULL;
-	int i = 1;
-
-	for (; isspace(*arg); arg++)
-		;
-	if (!*arg)
-	{
-		SEND_TO_Q("Bad name, please try another.\r\n", d);
-		SEND_TO_Q("Name: ", d);
-
-		//  close_socket(d);
-		return;
-	}
-	if (_parse_name(arg, tmp_name, true))
-	{
-		SEND_TO_Q("Illegal name, please try another.\r\n", d);
-		SEND_TO_Q("Name: ", d);
-		return;
-	}
-	else
-	{
-		for (t_d = descriptor_list; t_d; t_d = t_d->next)
-			if ((t_d != d) && t_d->character && t_d->connected &&
-			    !str_cmp(tmp_name, GET_NAME(t_d->character)))
-			{
-				close_socket(t_d);
-				break;
-				/*
-				SEND_TO_Q
-				  ("Your char is stuck at the menu. Try another name, and ask a god for help, or wait a few minutes for it to clear.",
-				   d);
-				SEND_TO_Q("Name: ", d);
-				return;
-				*/
-			}
-	}
-
-	/* capitalize the first letter of name */
-	*tmp_name = toupper(*tmp_name);
-
-	/* first time through here?  If so, let's latch on a character struct */
-	if (!d->character)
-	{
-		d->character = (struct char_data *)mm_get(dead_mob_pool);
-		clear_char(d->character);
-		if (!dead_pconly_pool)
-			dead_pconly_pool =
-				mm_create("PC_ONLY", sizeof(struct pc_only_data),
-					  offsetof(struct pc_only_data, switched),
-					  mm_find_best_chunk(sizeof(struct pc_only_data), 10, 25));
-		d->character->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-
-		d->character->only.pc->aggressive = -1;
-		d->character->desc = d;
-	}
-	/* get passwd */
-
-	if (isname("generate", tmp_name))
-	{
-		SEND_TO_Q("\nI'd suggest one of the following names for you:\n\n", d);
-		while (i < 13)
-		{
-			get_name(tmp_name);
-			SEND_TO_Q("&+W", d);
-			SEND_TO_Q(tmp_name, d);
-			if (i < 12)
-				SEND_TO_Q("&n, ", d);
-			else
-				SEND_TO_Q(".", d);
-			if (i == 4 || i == 8)
-				SEND_TO_Q("\n", d);
-			i++;
-		}
-		SEND_TO_Q("\n\r\n\r", d);
-		SEND_TO_Q("Enter a name or type 'generate' to generate more names.\n", d);
-		STATE(d) = CON_NAME;
-		return;
-	}
-
-	// WIPE2013 - Drannak
-	/* if (!pfile_exists("Players", tmp_name))
-	 {
-	   SEND_TO_Q
-	     ("Duris is currently undergoing a player wipe. We will re-open our doors on Monday, Sept. 9th at 9:00AM MST.\r\n Please see the DurisMUD forums for information at www.durismud.com.\r\nName:",
-	      d);
-	   return;
-	 }*/
-
-	if (!sql_player_exists(tmp_name) && pfile_exists(BADNAME_DIR, tmp_name))
-	{
-		SEND_TO_Q("That name has been declined before, and would be now too!\r\nName:", d);
-		return;
-	}
-
-	if (flag)
-	{
-		if ((d->rtype = restorePasswdOnly(d->character, tmp_name)) >= 0)
-		{
-			/* legal name for existing character */
-			SEND_TO_Q("Password: ", d);
-			STATE(d) = CON_PWD_NORM;
-			echo_off(d);
-			return;
-		}
-		else if (d->rtype == -2)
-		{
-			/* player file exists, but there is a problem reading it */
-			SEND_TO_Q(
-				"Seems to be a problem reading that player file.  Please choose another\r\n"
-				"name and report this problem to an Immortal.\r\n\r\n",
-				d);
-			if (d->character)
-			{
-				free_char(d->character);
-				d->character = NULL;
-			}
-			STATE(d) = CON_NAME;
-			return;
-		}
-	}
-	else if (sql_player_exists(tmp_name))
-	{
-		SEND_TO_Q("Name is in use already. Please enter new name.\r\nName:", d);
-		return;
-	}
-	else if (pfile_exists(BADNAME_DIR, tmp_name))
-	{
-		SEND_TO_Q("That name has been declined before, and would be now too!\r\nName:", d);
-		return;
-	}
-	/* new player */
-	if ((IS_SET(game_locked, LOCK_CREATION) ||
-	     !strcmp(get_mud_info("lock").c_str(), "create")) &&
-	    !pfile_exists("Players/Accepted", tmp_name))
-	{
-		if (!flag && d->character)
-		{
-			free_char(d->character);
-			d->character = NULL;
-		}
-		SEND_TO_Q(motd.c_str(), d);
-		STATE(d) = CON_NAME;
-		return;
-	}
-	else if (bannedsite(d->host, 1))
-	{
-		SEND_TO_Q(
-			"New characters have been banned from your site. If you want the ban lifted\r\n"
-			"mail duris@duris.org with a _LENGTHY_ explanation about\r\n"
-			"why, or who could have forced us to ban the site in the first place.\r\n"
-			"          - The Management \r\n\r\n"
-			"By what name do you wish to be known? ",
-			d);
-		banlog(AVATAR, "&+yNew Character reject from %s, banned.", d->host);
-		STATE(d) = CON_NAME;
-		return;
-	}
-	else if (IS_SET(game_locked, LOCK_CONNECTIONS))
-	{
-		SEND_TO_Q(
-			"Game is temporarily closed to new connections.  Please try again later.\r\n",
-			d);
-		STATE(d) = CON_FLUSH;
-		return;
-	}
-	else if (((IS_SET(game_locked, LOCK_MAX_PLAYERS)) &&
-		  (static_cast<unsigned int>(number_of_players()) > game_locked_players)))
-	{
-		snprintf(Gbuf1, MAX_STRING_LENGTH, "Game is temporarily locked to %u chars.\n",
-			 game_locked_players);
-		SEND_TO_Q(Gbuf1, d);
-		SEND_TO_Q("Game is temporarily full.  Please try again later.\r\n", d);
-		STATE(d) = CON_FLUSH;
-		return;
-	}
-	else
-	{
-		if (flag)
-		{
-			d->character->player.name = str_dup(tmp_name);
-			snprintf(Gbuf1, MAX_STRING_LENGTH, "You wish to be known as %s (Y/N)? ",
-				 tmp_name);
-			SEND_TO_Q(Gbuf1, d);
-			STATE(d) = CON_NAME_CONF;
-			return;
-		}
-		else
-		{
-			FREE(d->character->player.name);
-			d->character->player.name = str_dup(tmp_name);
-			STATE(d) = CON_ACCEPTWAIT;
-			SEND_TO_Q(
-				"Now you just have to wait for re-acceptance or declination of your char.\r\n",
-				d);
-			return;
-		}
-	}
-	/* should never get here!!! */
-	logit(LOG_EXIT, "create_name: should never get here!!");
-	return;
-}
-
-P_char find_ch_from_same_host(P_desc d)
-{
-	// first, run through descriptor list to see if they are connected
-	for (P_desc k = descriptor_list; k; k = k->next)
-	{
-		if (d == k || !k->character)
-			continue;
-
-		if (k->connected == CON_PLAYING && d->character != k->character &&
-		    !IS_TRUSTED(k->character) && *d->host && *k->host && !str_cmp(d->host, k->host))
-		{
-			// ch connected from same host
-			return k->character;
-		}
-	}
-
-	// next, run through character list to make sure they didn't just drop link
-	for (P_char tmp_ch = character_list; tmp_ch; tmp_ch = tmp_ch->next)
-	{
-		if (!tmp_ch->desc && IS_PC(tmp_ch) &&
-		    str_cmp(GET_NAME(tmp_ch), GET_NAME(d->character)) && !IS_TRUSTED(tmp_ch) &&
-		    tmp_ch->only.pc->last_ip == ip2ul(d->host))
-		{
-			return tmp_ch;
-		}
-	}
-
-	return NULL;
-}
-
-// Checks to see if they're violating the one hour rule.
-bool violating_one_hour_rule(P_desc d)
-{
-	int racewar_side;
-	int timer;
-
-	// Immortals don't violate the one hour rule, ever.
-	if (GET_LEVEL(d->character) >= MINLVLIMMORTAL)
-	{
-		return FALSE;
-	}
-
-	timer = sql_find_racewar_for_ip(d->host, &racewar_side);
-	if (timer < 0)
-	{
-		wizlog(AVATAR, "%s could not be checked against the one-hour rule.",
-		       GET_NAME(d->character));
-		send_to_char(
-			"\n\rLogin history is temporarily unavailable; please try again shortly.\n\r",
-			d->character);
-		return TRUE;
-	}
-
-	if (racewar_side < RACEWAR_NONE || racewar_side > MAX_RACEWAR)
-	{
-		return FALSE;
-	}
-
-	// If they haven't been on in an hour (or never before).
-	if (racewar_side == RACEWAR_NONE)
-		return FALSE;
-	// If they're on the same racewar side.
-	if (racewar_side == GET_RACEWAR(d->character))
-		return FALSE;
-	if (timer <= 0)
-		return FALSE;
-
-	wizlog(AVATAR, "%s tried to break the one-hour rule.", GET_NAME(d->character));
-	sql_log(d->character, PLAYERLOG, "Tried to break the one-hour rule.");
-
-	send_to_char_f(d->character,
-		       "\n\rYou need to wait longer before logging a character on a different"
-		       " racewar side.\n\rCurrent side: &+%c%s&n, Time to clear: %d:%02d\n\r",
-		       racewar_color[racewar_side].color, racewar_color[racewar_side].name,
-		       timer / 60, timer % 60);
-	return TRUE;
-}
-
-bool is_multiplaying(P_desc d)
-{
-	if (IS_TRUSTED(d->character))
-	{
-		return false;
-	}
-
-	if (P_char t_ch = find_ch_from_same_host(d))
-	{
-		if (whitelisted_host(d->host))
-		{
-			wizlog(AVATAR, "%s on multiplay whitelist, entering game.",
-			       GET_NAME(d->character));
-			sql_log(d->character, PLAYERLOG, "On multiplay whitelist, entering game.");
-
-			SEND_TO_Q(
-				"\r\nYou are on the approved list for multiple players from the same network.\r\n"
-				"&+RIf you abuse this privilege, you will be dealt with harshly when we catch you!&n\r\n"
-				"Otherwise, enjoy!\r\n",
-				d);
-			return false;
-		}
-		else
-		{
-			wizlog(AVATAR, "%s tried to enter the game while already logged on as %s",
-			       GET_NAME(d->character), GET_NAME(t_ch));
-			sql_log(d->character, PLAYERLOG,
-				"Tried to enter game while already logged on as %s",
-				GET_NAME(t_ch));
-
-			char buf[MAX_STRING_LENGTH];
-
-			snprintf(
-				buf, MAX_STRING_LENGTH,
-				"\r\nYou are already in the game as %s, and you need to rent or camp them before you can\r\n"
-				"enter the game with a new character.\r\n\r\n"
-				"If you are multiple people playing from the same location, please petition or send an email to multiplay@durismud.com\r\n"
-				"and if approved we can allow multiple connections from your location.\r\n\r\n",
-				GET_NAME(t_ch));
-
-			SEND_TO_Q(buf, d);
-			return true;
-		}
-	}
-
-	return false;
-}
-
-void reconnect(P_desc d, P_char tmp_ch)
-{
-	echo_on(d);
-	SEND_TO_Q("Reconnecting.\r\n", d);
-	free_char(d->character);
-	d->character = NULL;
-	tmp_ch->desc = d;
-	d->character = tmp_ch;
-	sql_connectIP(tmp_ch);
-	tmp_ch->only.pc->last_ip = ip2ul(d->host);
-	tmp_ch->specials.timer = 0;
-	STATE(d) = CON_PLAYING;
-	(void)telemetry_runtime_game_connection_transition(
-		tmp_ch, d, telemetry_connection_transition_kind::attached);
-	(void)telemetry_runtime_game_context(tmp_ch, d);
-	zone_touch_transaction_player_ready(tmp_ch);
-	locker_identify_replay(tmp_ch);
-	item_movement_transaction_player_ready(tmp_ch);
-	shop_trade_transaction_player_ready(tmp_ch);
-	auction_transaction_player_ready(tmp_ch);
-	collector_transaction_player_ready(tmp_ch);
-	collector_service_player_ready(tmp_ch, false);
-	corpse_raise_player_ready(tmp_ch, false);
-	boon_reward_transaction_player_ready(tmp_ch);
-	act("$n has reconnected.", TRUE, tmp_ch, 0, 0, TO_ROOM);
-	logit(LOG_COMM, "%s [%s] has reconnected.", GET_NAME(d->character), d->host);
-	loginlog(d->character->player.level, "%s [%s] has reconnected.", GET_NAME(d->character),
-		 d->host);
-	sql_log(d->character, CONNECTLOG, "Reconnected");
-	/* if they were morph'ed when they lost link, put them
-	 back... */
-	if (IS_SET(tmp_ch->specials.act, PLR_MORPH))
-	{
-		if (!tmp_ch->only.pc->switched || !IS_MORPH(tmp_ch->only.pc->switched) ||
-		    /*              (tmp_ch != ((P_char)
-		     tmp_ch->only.pc->switched->only.npc->memory))) */
-		    (tmp_ch != tmp_ch->only.pc->switched->only.npc->orig_char))
-		{
-			logit(LOG_EXIT,
-			      "Something fucked while trying to reconnect linkless morph");
-			REMOVE_BIT(tmp_ch->specials.act, PLR_MORPH);
-			tmp_ch->only.pc->switched = NULL;
-		}
-		else
-		{
-			d->original = tmp_ch;
-			d->character = tmp_ch->only.pc->switched;
-			d->character->desc = d;
-			tmp_ch->desc = NULL;
-		}
-	}
-	send_offline_messages(d->character);
-}
-
-static void finish_legacy_player_login(P_desc d)
-{
-	char buf[MAX_STRING_LENGTH];
-	if ((used_descs >= avail_descs) && (GET_LEVEL(d->character) < AVATAR))
-	{
-		SEND_TO_Q("Sorry, the game is almost full and the last slot is reserved...\r\n", d);
-		STATE(d) = CON_FLUSH;
-		return;
-	}
-	if (IS_SET(game_locked, LOCK_CONNECTIONS) && !IS_TRUSTED(d->character))
-	{
-		SEND_TO_Q("\r\nGame is temporarily closed to additional players.\r\n", d);
-		SEND_TO_Q("Please try again later.  -The Mgt\r\n", d);
-		STATE(d) = CON_FLUSH;
-		return;
-	}
-	if (IS_SET(game_locked, LOCK_MAX_PLAYERS) && !IS_TRUSTED(d->character) &&
-	    static_cast<unsigned int>(number_of_players()) > game_locked_players)
-	{
-		snprintf(buf, sizeof(buf), "Game is temporarily locked to %u chars.\n",
-			 game_locked_players);
-		SEND_TO_Q(buf, d);
-		SEND_TO_Q("\r\nGame is currently full.  Please try again later.\r\n", d);
-		STATE(d) = CON_FLUSH;
-		return;
-	}
-	if (IS_SET(game_locked, LOCK_LEVEL) &&
-	    static_cast<unsigned int>(GET_LEVEL(d->character)) < game_locked_level)
-	{
-		snprintf(
-			buf, sizeof(buf),
-			"Game is temporarily locked to your level (levels below %u).  Please try again later.\r\n",
-			game_locked_level);
-		SEND_TO_Q(buf, d);
-		STATE(d) = CON_FLUSH;
-		return;
-	}
-	if (is_multiplaying(d))
-	{
-		STATE(d) = CON_FLUSH;
-		return;
-	}
-
-	logit(LOG_COMM, "%s [%s] has connected.", GET_NAME(d->character), d->host);
-	sql_log(d->character, CONNECTLOG, "Connected");
-	if (IS_TRUSTED(d->character))
-	{
-		if (!wizconnectsite(d->host, GET_NAME(d->character), 0))
-		{
-			wizlog(AVATAR, "WARNING: %s connected from an invalid site: %s",
-			       GET_NAME(d->character), d->host);
-			SEND_TO_Q(
-				"Sorry, that host is not allowed to connect to this character.\r\n",
-				d);
-			STATE(d) = CON_FLUSH;
-			return;
-		}
-		SEND_TO_Q(wizmotd.c_str(), d);
-	}
-	else
-		SEND_TO_Q(motd.c_str(), d);
-	SEND_TO_Q("\r\n*** PRESS RETURN: ", d);
-	STATE(d) = CON_RMOTD;
-	echo_on(d);
-}
-
-void nanny_player_load_complete(P_desc d, player_load_result result)
-{
-	if (!d || STATE(d) != CON_PLAYER_LOAD || d->player_load_mode != PLAYER_LOAD_MODE_LEGACY ||
-	    !d->player_load_request_id || result.request_id != d->player_load_request_id)
-	{
-		player_load_pipeline_note_stale();
-		return;
-	}
-	d->player_load_request_id = 0;
-	d->player_load_pid = 0;
-	if (result.outcome != player_load_outcome::applied || result.pid <= 0)
-	{
-		d->player_load_mode = PLAYER_LOAD_MODE_NONE;
-		SEND_TO_Q(
-			"Seems to be a problem reading that player. Please choose another name.\r\n",
-			d);
-		if (d->character)
-		{
-			free_char(d->character);
-			d->character = NULL;
-		}
-		STATE(d) = CON_NAME;
-		return;
-	}
-	char password[sizeof(d->character->only.pc->pwd)] = {};
-	strlcpy(password, d->character->only.pc->pwd, sizeof(password));
-	P_char loaded = (P_char)mm_get(dead_mob_pool);
-	if (loaded)
-	{
-		clear_char(loaded);
-		ensure_pconly_pool();
-		loaded->only.pc = (struct pc_only_data *)mm_get(dead_pconly_pool);
-	}
-	if (!loaded || !loaded->only.pc || !player_load_materialize(loaded, result))
-	{
-		d->player_load_mode = PLAYER_LOAD_MODE_NONE;
-		if (loaded)
-		{
-			if (loaded->only.pc)
-				free_char(loaded);
-			else
-				mm_release(dead_mob_pool, loaded);
-		}
-		SEND_TO_Q(
-			"Seems to be a problem preparing that player. Please choose another name.\r\n",
-			d);
-		free_char(d->character);
-		d->character = NULL;
-		STATE(d) = CON_NAME;
-		return;
-	}
-	strlcpy(loaded->only.pc->pwd, password, sizeof(loaded->only.pc->pwd));
-	loaded->desc = d;
-	d->character->desc = NULL;
-	free_char(d->character);
-	d->character = loaded;
-	d->rtype = result.snapshot.save_intent;
-	finish_legacy_player_login(d);
-}
-
-void select_pwd(P_desc d, char *arg)
-{
-	P_char tmp_ch;
-	P_desc k;
-	char Gbuf1[MAX_STRING_LENGTH];
-
-	switch (STATE(d))
-	{
-		/* password for existing player */
-	case CON_PWD_NORM:
-		if (!*arg)
-		{
-			close_socket(d);
-		}
-		else
-		{
-			if ((d->character->only.pc->pwd[0] != '$' &&
-			     strn_cmp(CRYPT(arg, d->character->only.pc->pwd),
-				      d->character->only.pc->pwd, 10)) ||
-			    (d->character->only.pc->pwd[0] == '$' &&
-			     strcmp(CRYPT2(arg, d->character->only.pc->pwd),
-				    d->character->only.pc->pwd)))
-			{
-				SEND_TO_Q("Invalid password.\r\n", d);
-				SEND_TO_Q("Invalid password ... disconnecting.\r\n", d);
-				if (!IS_TRUSTED(d->character))
-				{
-					logit(LOG_PLAYER, "Invalid password for %s from %s.",
-					      GET_NAME(d->character), d->host);
-					sql_log(d->character, CONNECTLOG, "Invalid Password");
-				}
-				STATE(d) = CON_FLUSH;
-				return;
-			}
-
-			/* Check if already playing */
-			for (k = descriptor_list; k; k = k->next)
-			{
-				if ((k->character != d->character) && k->character)
-				{
-					if (k->original)
-					{
-						if (GET_NAME(k->original) &&
-						    (!str_cmp(GET_NAME(k->original),
-							      GET_NAME(d->character))))
-						{
-							SEND_TO_Q(
-								"Overriding old connection...\r\n",
-								d);
-							close_socket(k);
-						}
-					}
-					else
-					{ /* No switch has been made */
-						if (GET_NAME(k->character) &&
-						    (!str_cmp(GET_NAME(k->character),
-							      GET_NAME(d->character))))
-						{
-							SEND_TO_Q(
-								"Overriding old connection...\r\n",
-								d);
-							close_socket(k);
-						}
-					}
-				}
-			}
-
-			for (tmp_ch = character_list; tmp_ch; tmp_ch = tmp_ch->next)
-			{
-				if (!tmp_ch->desc && IS_PC(tmp_ch) &&
-				    !str_cmp(GET_NAME(d->character), GET_NAME(tmp_ch)))
-				{
-					reconnect(d, tmp_ch);
-					return;
-				}
-			}
-
-			if (d->character->only.pc->pwd[0] != '$')
-			{
-				SEND_TO_Q(
-					"\n\r\n\r&=LRUpgrading password - All characters now in use!&n\n\r\n\r",
-					d);
-				strlcpy(d->character->only.pc->pwd,
-					CRYPT2(arg, GET_NAME(d->character)),
-					sizeof(d->character->only.pc->pwd));
-			}
-			player_load_request request = {};
-			request.request_id = player_load_pipeline_next_request_id();
-			request.player_name = GET_NAME(d->character);
-			request.deadline_usec =
-				persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
-			d->player_load_pid = GET_PID(d->character);
-			if (player_load_pipeline_submit(request) !=
-			    player_load_submit_outcome::accepted)
-			{
-				d->player_load_pid = 0;
-				SEND_TO_Q(
-					"Player loading is temporarily unavailable. Please try again.\r\n",
-					d);
-				STATE(d) = CON_FLUSH;
-				return;
-			}
-			d->player_load_request_id = request.request_id;
-			d->player_load_mode = PLAYER_LOAD_MODE_LEGACY;
-			STATE(d) = CON_PLAYER_LOAD;
-			SEND_TO_Q("Loading character...\r\n", d);
-			return;
-		}
-		break;
-
-		/* password for a new player */
-	case CON_PWD_GET:
-		echo_on(d);
-		if (!valid_password(d, arg))
-		{
-			snprintf(Gbuf1, MAX_STRING_LENGTH,
-				 "Please enter a password for %s: ", GET_NAME(d->character));
-			SEND_TO_Q(Gbuf1, d);
-			echo_off(d);
-			return;
-		}
-		strcpy(d->character->only.pc->pwd, CRYPT2(arg, d->character->player.name));
-		echo_on(d);
-		SEND_TO_Q("\r\nPlease retype password: ", d);
-		echo_off(d);
-
-		STATE(d) = CON_PWD_CONF;
-		break;
-
-		/* confirmation of new password */
-	case CON_PWD_CONF:
-		if (strcmp(CRYPT2(arg, d->character->only.pc->pwd), d->character->only.pc->pwd))
-		{
-			echo_on(d);
-			snprintf(Gbuf1, MAX_STRING_LENGTH,
-				 "Passwords don't match.\r\nPlease enter a password for %s: ",
-				 GET_NAME(d->character));
-			SEND_TO_Q(Gbuf1, d);
-			echo_off(d);
-			STATE(d) = CON_PWD_GET;
-			return;
-		}
-		echo_on(d);
-
-		// send to "are you a newbie on duris?" question
-		SEND_TO_Q(
-			"\r\nAnswer the following question honestly, as you will either get help, or not.",
-			d);
-		SEND_TO_Q("\r\nAre you NEW to the World of Duris? (y/n) ", d);
-		STATE(d) = CON_NEWBIE;
-		/*    display_available_races(d);
-			    STATE(d) = CON_GET_RACE;*/
-		break;
-
-		/* new password for an existing player */
-	case CON_PWD_NEW:
-		if (strcmp(CRYPT2(arg, d->character->only.pc->pwd), d->character->only.pc->pwd))
-		{
-			echo_on(d);
-			SEND_TO_Q("\r\nInvalid password, password change aborted.\r\n", d);
-			STATE(d) = CON_MAIN_MENU;
-			SEND_TO_Q(MENU, d);
-			return;
-		}
-		echo_on(d);
-		SEND_TO_Q("\r\nEnter your new password: ", d);
-		echo_off(d);
-		STATE(d) = CON_PWD_GET_NEW;
-		break;
-
-		/* Retype new pw when changing */
-	case CON_PWD_GET_NEW:
-		echo_on(d);
-		if (!valid_password(d, arg))
-		{
-			SEND_TO_Q("\r\nPassword: ", d);
-			echo_off(d);
-			return;
-		}
-		strcpy(d->character->only.pc->pwd, CRYPT2(arg, d->character->player.name));
-		echo_on(d);
-		SEND_TO_Q("\r\nPlease retype your new password: ", d);
-		echo_off(d);
-		STATE(d) = CON_PWD_NO_CONF;
-		break;
-
-		/* Confirm pw for changing pw */
-	case CON_PWD_NO_CONF:
-		echo_on(d);
-		if (strcmp(CRYPT2(arg, d->character->only.pc->pwd), d->character->only.pc->pwd))
-		{
-			SEND_TO_Q("\r\nPasswords don't match.\r\nPassword change aborted\r\n", d);
-			/* restore old pwd */
-			strcpy(d->character->only.pc->pwd, d->old_pwd);
-			STATE(d) = CON_MAIN_MENU;
-			SEND_TO_Q(MENU, d);
-			return;
-		}
-		SEND_TO_Q(
-			"Password changed, you must enter game and save and/or rent for the change\r\n"
-			"to be made permanent.\r\n",
-			d);
-
-		STATE(d) = CON_MAIN_MENU;
-		SEND_TO_Q(MENU, d);
-		if (d->rtype > 20)
-			d->rtype -= 20; /* let them off the hook (for an expired password).  JAB */
-		break;
-
-		/* Confirm pw for deleting character */
-	case CON_PWD_D_CONF:
-		if (strcmp(CRYPT2(arg, d->character->only.pc->pwd), d->character->only.pc->pwd))
-		{
-			echo_on(d);
-			SEND_TO_Q("\r\nInvalid password, character delete aborted.\r\n", d);
-			STATE(d) = CON_MAIN_MENU;
-			SEND_TO_Q(MENU, d);
-			return;
-		}
-		SEND_TO_Q("\r\nDeleting character...\r\n\r\n", d);
-		statuslog(d->character->player.level, "%s deleted %sself (%s).",
-			  GET_NAME(d->character),
-			  GET_SEX(d->character) == SEX_MALE   ? "him" :
-			  GET_SEX(d->character) == SEX_FEMALE ? "her" :
-								"it",
-			  d->host);
-		logit(LOG_PLAYER, "%s deleted %sself (%s).", GET_NAME(d->character),
-		      GET_SEX(d->character) == SEX_MALE ? "him" : "her", d->host);
-		sql_log(d->character, PLAYERLOG, "Deleted self");
-		delete_character(d->character);
-		STATE(d) = CON_FLUSH;
-		break;
-	}
-}
-
-void select_main_menu(P_desc d, char *arg)
-{
-	/* skip whitespaces */
-	for (; isspace(*arg); arg++)
-		;
-
-	/* a little chicanery to force them to enter a valid password.  If they are in in CON_MAIN_MENU with a d->rtype
-	   greater than 20 (6 is normal max), they have to do the 'change password' thing.  JAB */
-
-	if (d->rtype > 20)
-	{
-		SEND_TO_Q("Your password has been expired.  Please enter your current password:",
-			  d);
-		echo_off(d);
-		strcpy(d->old_pwd, d->character->only.pc->pwd);
-		STATE(d) = CON_PWD_NEW;
-		return;
-	}
-	switch (*arg)
-	{
-	case '0': /* logoff */
-		close_socket(d);
-		break;
-	case '1': /* enter game */
-		if (is_multiplaying(d))
-		{
-			break;
-		}
-		// One hour rule check: if the user has had a char on a different racewar side w/in an hour.
-		if (violating_one_hour_rule(d))
-		{
-			SEND_TO_Q(MENU, d);
-			break;
-		}
-		enter_game(d);
-		STATE(d) = CON_PLAYING;
-		(void)telemetry_runtime_game_enter(d->character, d);
-		(void)telemetry_runtime_game_context(d->character, d);
-		d->prompt_mode = !item_creation_grant_blocks_commands(d->character);
-		break;
-	case '2': /* read background story */
-		SEND_TO_Q(BACKGR_STORY, d);
-		STATE(d) = CON_RMOTD;
-		break;
-	case '3': /* change password */
-		SEND_TO_Q("Enter current password.", d);
-		echo_off(d);
-		strcpy(d->old_pwd, d->character->only.pc->pwd);
-		STATE(d) = CON_PWD_NEW;
-		break;
-	case '4': /* change long description */
-		/* same deal here as with password, rather than adding complicated code
-			   to solve a minor problem, they must enter the game to save changes to
-			   their description.  Note that there is no 'case' for CON_GET_EXTRA_DESC, it
-			   is checked for, and STATE changed in string_add() in modify.c */
-		SEND_TO_Q("\r\nEnter your new description.\r\n\r\n", d);
-		SEND_TO_Q("(/s saves /h for help)\r\n", d);
-		if (d->character->player.description)
-		{
-			SEND_TO_Q("Current description:\r\n", d);
-			SEND_TO_Q(d->character->player.description, d);
-
-			/* don't free this now... so that the old description gets loaded */
-			/* as the current buffer in the editor */
-
-			/* DO free it now, screw the abort buffer */
-
-			FREE(d->character->player.description);
-			d->character->player.description = NULL;
-			/* BUT, do setup the ABORT buffer here */
-			/*      d->backstr = str_dup(d->character->player.description);*/
-			/*      FREE(d->character->player.description);
-				      d->character->player.description = NULL;*/
-		}
-		d->str = &d->character->player.description;
-		d->max_str = 1024;
-		STATE(d) = CON_GET_EXTRA_DESC;
-		break;
-	case '5': /* delete char */
-		if (GET_LEVEL(d->character) > 40)
-		{
-			SEND_TO_Q("Nope, i'm 2 tired to restore you, soo you're not..\r\n", d);
-			SEND_TO_Q(MENU, d);
-			break;
-		}
-		SEND_TO_Q("Confirm deletion with your password.\r\n", d);
-		STATE(d) = CON_PWD_D_CONF;
-		break;
-	default:
-		SEND_TO_Q("Wrong option.\r\n", d);
-		SEND_TO_Q(MENU, d);
-		break;
-	}
 }
 
 /*=========================================================================*/
@@ -3896,19 +2998,10 @@ void select_keepchar(P_desc d, char *arg)
 		[[fallthrough]];
 	case 'n':
 		SEND_TO_Q("\r\n\r\nDiscarding this character.\r\n", d);
-#ifdef USE_ACCOUNT
 		free_char(d->character);
 		d->character = NULL;
 		STATE(d) = CON_DISPLAY_ACCT_MENU;
 		display_account_menu(d, NULL);
-#else
-		STATE(d) = CON_NAME;
-		if (d->term_type == TERM_GENERIC)
-			SEND_TO_Q(GREETINGS, d);
-		else
-			SEND_TO_Q(greetinga, d);
-		SEND_TO_Q("\r\nBy what name do you wish to be known? ", d);
-#endif
 		break;
 	case 'q':
 		SEND_TO_Q("\r\n\r\nCome back again real soon.\r\n", d);
@@ -4669,7 +3762,6 @@ void nanny(P_desc d, char *arg)
 		close_socket(d);
 		return;
 
-#ifdef USE_ACCOUNT
 		// Select Account Name
 	case CON_GET_ACCT_NAME:
 		select_accountname(d, arg);
@@ -4779,17 +3871,6 @@ void nanny(P_desc d, char *arg)
 		account_recovery_verify_new_password(d, arg);
 		break;
 
-#else
-		/* Name of player */
-	case CON_NAME:
-		select_name(d, arg, 1);
-		break;
-
-	case CON_NEW_NAME:
-		select_name(d, arg, 0);
-		break;
-#endif
-
 		/* Name confirm for new player */
 	case CON_NAME_CONF:
 		/* skip whitespaces */
@@ -4808,14 +3889,7 @@ void nanny(P_desc d, char *arg)
 			{
 				FREE(d->character->player.name);
 				d->character->player.name = 0;
-#ifndef USE_ACCOUNT
-				SEND_TO_Q(
-					"\r\nOk, what IS it, then? Type 'generate' for name generator.",
-					d);
-				STATE(d) = CON_NAME;
-#else
 				account_new_char(d, NULL);
-#endif
 			}
 			else
 			{
@@ -4831,17 +3905,9 @@ void nanny(P_desc d, char *arg)
 			;
 		if (*arg == 'y' || *arg == 'Y')
 		{
-#ifndef USE_ACCOUNT
-			snprintf(Gbuf1, MAX_STRING_LENGTH,
-				 "\r\nPlease enter a password for %s: ", GET_NAME(d->character));
-			SEND_TO_Q(Gbuf1, d);
-			STATE(d) = CON_PWD_GET;
-			echo_off(d);
-#else
 			echo_on(d);
 			display_available_races(d);
 			STATE(d) = CON_GET_RACE;
-#endif
 			/*     } */
 		}
 		else
@@ -4850,14 +3916,7 @@ void nanny(P_desc d, char *arg)
 			{
 				FREE(d->character->player.name);
 				d->character->player.name = 0;
-#ifndef USE_ACCOUNT
-				SEND_TO_Q(
-					"Resetting...\r\n\r\nBy what name do you wish to be known? Type 'generate' to get to name generator.",
-					d);
-				STATE(d) = CON_NAME;
-#else
 				account_new_char(d, NULL);
-#endif
 			}
 			else
 			{
@@ -4865,48 +3924,6 @@ void nanny(P_desc d, char *arg)
 			}
 		}
 		break;
-#ifndef USE_ACCOUNT
-		/* PASSWORD handling */
-	case CON_PWD_GET:
-	case CON_PWD_CONF:
-	case CON_PWD_NEW:
-	case CON_PWD_GET_NEW:
-	case CON_PWD_NO_CONF:
-	case CON_PWD_D_CONF:
-	case CON_PWD_NORM:
-		/* skip whitespaces */
-		for (; isspace(*arg); arg++)
-			;
-
-		if (STATE(d) == CON_PWD_NEW || STATE(d) == CON_PWD_GET || STATE(d) == CON_PWD_NORM)
-		{
-			/*
-				 ** Since we have turned off echoing for telnet client,
-				 ** if a telnet client is indeed used, we need to skip the
-				 ** initial 3 bytes ( -1, -3, 1 ) if they are sent back by
-				 ** client program.
-				 */
-
-			if (*arg == -1)
-			{
-				if (arg[1] != '0' && arg[2] != '0')
-				{
-					if (arg[3] == '0')
-					{ /* Password on next read  */
-						return;
-					}
-					else
-					{ /* Password available */
-						arg = arg + 3;
-					}
-				}
-				else
-					close_socket(d);
-			}
-		}
-		select_pwd(d, arg);
-		break;
-#endif
 
 		/* Choose sex for new player */
 	case CON_GET_SEX:
@@ -4999,9 +4016,7 @@ void nanny(P_desc d, char *arg)
 			statuslog(d->character->player.level, "%s [%s] new player.",
 				  GET_NAME(d->character), d->host);
 			init_char(d->character);
-#ifdef USE_ACCOUNT
 			add_char_to_account(d);
-#endif
 			SEND_TO_Q(motd.c_str(), d);
 			/*
 			 * The character is complete.  There is no rules-agreement
@@ -5060,17 +4075,12 @@ void nanny(P_desc d, char *arg)
 
 	case CON_WELCOME:
 		writeCharacter(d->character, 2, NOWHERE);
-#ifdef USE_ACCOUNT
 		display_account_menu(d, arg);
-#else
-		SEND_TO_Q(MENU, d);
-#endif
 		STATE(d) = CON_MAIN_MENU;
 		break;
 
 	case CON_RMOTD:
 		// For new character creation, enter the game directly
-#ifdef USE_ACCOUNT
 		if (d->character)
 		{
 			account_racewar_admission admission = {};
@@ -5091,20 +4101,12 @@ void nanny(P_desc d, char *arg)
 			enter_game(d);
 			d->prompt_mode = !item_creation_grant_blocks_commands(d->character);
 		}
-#else
-		SEND_TO_Q(MENU, d);
-		STATE(d) = CON_MAIN_MENU;
-#endif
 		break;
 
 		/* Main menu */
 	case CON_MAIN_MENU:
 	case CON_DISPLAY_ACCT_MENU:
-#ifdef USE_ACCOUNT
 		display_account_menu(d, arg);
-#else
-		select_main_menu(d, arg);
-#endif
 		break;
 
 	case CON_HOST_LOOKUP:

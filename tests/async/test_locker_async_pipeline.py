@@ -45,8 +45,10 @@ def main():
                 "slot.state == LCHK_DIRTY && slot.user_pid == pid" in files["async_c"])
     ok &= check("terminal priority selection",
                 "oldest_terminal" in files["async_c"] and "start_one_snapshot(oldest_terminal)" in files["async_c"])
-    ok &= check("the writer applies the captured snapshot through the repository",
-                "locker_snapshot_repository_apply_from_pool(*job.snapshot)" in files["async_c"]
+    ok &= check("the writer applies the captured snapshot through the backend's repository",
+                "write_locker(*job.snapshot)" in files["async_c"]
+                and "locker_snapshot_repository_apply_from_pool(snapshot)" in files["async_c"]
+                and "flatfile_locker_snapshot_apply(root, save, &error)" in files["async_c"]
                 and "player_item_snapshot_list_capture(" in files["async_c"])
     ok &= check("the game thread makes no database call for a locker save",
                 all(token not in files["async_c"] for token in (

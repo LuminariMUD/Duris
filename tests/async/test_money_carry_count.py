@@ -55,7 +55,6 @@ struct bulk_get_state {
     std::vector<std::string> rejections;
     bool failed = false;
     bool count_limit_reported = false;
-    std::vector<uint64_t> durable_items;
     std::vector<synchronous_item> synchronous_items;
 };
 #define GET_ITEM_TYPE(o) ((o)->type)
@@ -82,7 +81,6 @@ bool isname(const char *filter, const char *name) { return !strcmp(filter, name)
 bool item_command_object_is_takeable(P_char, P_obj obj) { return obj->takeable; }
 bool account_bound_reward_owner(P_char, P_obj) { return true; }
 bool checkgetput(P_char, P_obj) { return false; }
-bool item_command_uses_durable_ownership(P_obj obj) { return obj->type != ITEM_MONEY; }
 void reject_bulk_get_object(bulk_get_state &state, P_obj, const char *) { state.failed = true; }
 '''
 
@@ -131,8 +129,7 @@ int main()
                     assert(carried == before_coins);
                     if (filter)
                         assert(state.rejections.empty());
-                    assert(state.synchronous_items.size() == 1);
-                    assert(state.durable_items.size() == (accepted ? 1u : 0u));
+                    assert(state.synchronous_items.size() == (accepted ? 2u : 1u));
                 }
                 // Other eligibility gates still reject money.
                 money.visible = false;

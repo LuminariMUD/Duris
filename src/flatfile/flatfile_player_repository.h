@@ -1,7 +1,9 @@
 #ifndef DURIS_FLATFILE_PLAYER_REPOSITORY_H
 #define DURIS_FLATFILE_PLAYER_REPOSITORY_H
 
+#include "economy/collector_storage.h"
 #include "flatfile/flatfile_authority_transaction.h"
+#include "flatfile/flatfile_locker_repository.h"
 #include "flatfile/flatfile_player_snapshot_file.h"
 #include "flatfile/flatfile_world_item_repository.h"
 #include "player/player_load_repository.h"
@@ -35,12 +37,9 @@ player_load_result flatfile_player_load_repository_execute(const std::string &ro
 							   const player_load_request &request);
 player_load_result
 flatfile_player_load_repository_execute_selected(const player_load_request &request, void *context);
-// legacy_replay keeps the revision fence for the one-time replay of an older
-// server's journal; every other save is applied as it is.
 player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 							const player_snapshot &snapshot,
-							std::string *error,
-							bool legacy_replay = false);
+							std::string *error);
 player_save_apply_result flatfile_player_snapshot_apply_selected(const player_snapshot &snapshot,
 								 void *context);
 
@@ -57,14 +56,22 @@ player_save_apply_result flatfile_bank_delta_apply(const std::string &root,
 
 // The flat-file corpse and saved-item saves: claim the items for their owner and
 // write the corpse record, or the item's graph into its room's record, as memory holds
-// it (or remove it), in one authority transaction.
+// it (or remove it), in one authority transaction. A corpse save carrying a death (a
+// nonzero operation id) also enrols it with the collector.
 player_save_apply_result flatfile_corpse_snapshot_apply(const std::string &root,
 							const flatfile_corpse_record &corpse,
-							bool remove, std::string *error);
+							bool remove,
+							const collector_death_snapshot &death,
+							std::string *error);
 player_save_apply_result
 flatfile_saved_item_snapshot_apply(const std::string &root,
 				   const flatfile_saved_world_item_record &item, bool remove,
 				   std::string *error);
+// Write a locker's public chest, claiming its items for it, creating a new locker, in one
+// authority transaction.
+player_save_apply_result flatfile_locker_snapshot_apply(const std::string &root,
+							const flatfile_locker_save &locker,
+							std::string *error);
 flatfile_player_load_result flatfile_player_snapshot_prepare_remove(
 	const std::string &root, const flatfile_player_snapshot_lock &snapshot_lock,
 	const flatfile_authority_lock &authority_lock, int32_t pid,

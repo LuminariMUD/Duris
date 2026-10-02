@@ -10,7 +10,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 HARNESS = r'''
+#include "flatfile/flatfile_player_repository.h"
 #include "persistence/locker_async.h"
+#include "persistence/persistence_mode.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_repository.h"
@@ -66,6 +68,16 @@ player_snapshot_capture_result player_item_snapshot_list_capture(
     items->assign(carried, player_item_snapshot{});
     *bytes = 0;
     return player_snapshot_capture_result::ok;
+}
+// MariaDB: the flat-file writer is never called.
+const char *persistence_mode_flatfile_root(void)
+{
+    return nullptr;
+}
+player_save_apply_result flatfile_locker_snapshot_apply(const std::string &,
+                                                        const flatfile_locker_save &, std::string *)
+{
+    std::abort();
 }
 player_save_apply_result locker_snapshot_repository_apply_from_pool(const locker_snapshot &locker)
 {

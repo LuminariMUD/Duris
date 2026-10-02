@@ -2459,8 +2459,6 @@ int devour(P_char ch, P_char /*pl*/, int cmd, char * /*arg*/)
 	{
 		if ((GET_ITEM_TYPE(i) == ITEM_FOOD) || (GET_ITEM_TYPE(i) == ITEM_CORPSE))
 		{
-			if (persistence_defer_corpse_room_release(i))
-				return TRUE;
 			if (GET_ITEM_TYPE(i) == ITEM_CORPSE)
 				for (temp = i->contains; temp; temp = next_obj)
 				{

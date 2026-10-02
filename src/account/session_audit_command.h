@@ -29,7 +29,5 @@ bool session_audit_command_decode_payload(const critical_command &command,
 					  session_audit_payload *payload);
 bool session_audit_command_encode_result(const session_audit_result &result,
 					 std::array<uint8_t, SESSION_AUDIT_RESULT_BYTES> *encoded);
-bool session_audit_command_decode_result(const uint8_t *encoded, size_t size,
-					 session_audit_result *result);
 
 #endif

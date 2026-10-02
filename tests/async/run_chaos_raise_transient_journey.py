@@ -68,10 +68,8 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
             (game / "logs/log").mkdir(parents=True)
             journey.make_fixture(game)
             journey.generate_certificate(game)
-            for kind in ("players", "critical"):
-                (game / "journals" / kind).mkdir(parents=True, mode=0o700)
-            env.update(PLAYER_SAVE_JOURNAL_DIR=str(game / "journals/players"),
-                       CRITICAL_COMMAND_JOURNAL_DIR=str(game / "journals/critical"))
+            (game / "journals" / "critical").mkdir(parents=True, mode=0o700)
+            env.update(CRITICAL_COMMAND_JOURNAL_DIR=str(game / "journals/critical"))
             output_path = game / "server.out"
 
             def start(chaos: bool) -> tuple[subprocess.Popen, int]:

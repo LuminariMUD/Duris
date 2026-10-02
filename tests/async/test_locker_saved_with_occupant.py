@@ -35,7 +35,7 @@ terminal = body((SRC / "cmd/actoth.c").read_text(), "bool persistence_save_chara
 assert terminal.index("player_save_pipeline_request(") < terminal.index("locker_post_save_hook(ch);")
 checkpoint = (SRC / "persistence/persistence_checkpoint.c").read_text()
 assert checkpoint.count("player_save_pipeline_checkpoint_dirty(") == \
-    checkpoint.count("locker_post_save_hook(character);") == 2
+    checkpoint.count("locker_post_save_hook(character);") == 1
 print("[PASS] terminal saves and checkpoints save the locker a character is in")
 
 locker = (SRC / "persistence/locker_async.c").read_text()

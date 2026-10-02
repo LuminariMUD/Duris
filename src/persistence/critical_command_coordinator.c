@@ -18,12 +18,6 @@
 // fences until the game thread takes its completion.
 namespace
 {
-enum class critical_operation_phase : uint8_t
-{
-	executing,
-	publication_pending,
-};
-
 struct operation_state
 {
 	critical_command command;
@@ -32,17 +26,11 @@ struct operation_state
 	// The writer retries a command itself, so every completion is the first attempt's.
 	unsigned int attempt;
 	uint64_t attachments;
-	critical_operation_phase phase;
-	bool retain_until_publication;
-	// Replayed from a journal an older server left; checkpointed there once it lands.
-	bool replayed;
-	critical_completion publication_completion;
 };
 
 struct completed_state
 {
 	critical_command command;
-	critical_completion completion;
 	size_t encoded_size;
 };
 
@@ -54,11 +42,9 @@ std::unordered_map<std::string, completed_state> completed_cache;
 std::deque<std::string> completed_order;
 size_t completed_cache_bytes = 0;
 critical_apply_fn apply_callback = nullptr;
-critical_extension_validator_fn extension_validator_callback = nullptr;
 void *apply_context = nullptr;
 critical_drain_observer_fn drain_observer = nullptr;
 critical_coordinator_health health = {};
-bool journal_open = false;
 // Each writer job has its own owner, so none replaces another.
 uint64_t writer_sequence = 0;
 // A job queued before a shutdown still lands, but its completion is not delivered to a
@@ -122,39 +108,30 @@ void update_depth()
 	health.queued = 0;
 	health.inflight = 0;
 	health.blocked = 0;
-	health.publication_pending = 0;
 	health.retained_bytes = 0;
-	health.awaiting_durability = 0;
 	uint64_t oldest = 0;
 	const uint64_t now = now_usec();
 	for (const auto &[identity, state] : operations)
 	{
 		(void)identity;
-		if (state->phase == critical_operation_phase::publication_pending)
-			++health.publication_pending;
-		else
-			++health.inflight;
+		++health.inflight;
 		health.retained_bytes += state->retained_bytes;
 		if (!oldest || state->queued_at_usec < oldest)
 			oldest = state->queued_at_usec;
 	}
 	health.oldest_age_msec = oldest && now > oldest ? (now - oldest) / 1000 : 0;
-	health.high_water_operations = std::max(health.high_water_operations,
-						health.inflight + health.publication_pending);
+	health.high_water_operations = std::max(health.high_water_operations, health.inflight);
 	health.high_water_bytes = std::max(health.high_water_bytes, health.retained_bytes);
 	health.completed_cache = completed_cache.size();
 }
 
-void remember_completed(const std::string &identity, const critical_command &command,
-			const critical_completion &completion)
+void remember_completed(const std::string &identity, const critical_command &command)
 {
 	std::vector<uint8_t> encoded;
 	if (critical_command_encode(command, &encoded) != critical_command_codec_result::ok)
 		return;
-	const size_t retained_size = encoded.size() + sizeof(critical_completion);
-	if (encoded.size() > CRITICAL_COORDINATOR_COMPLETED_CACHE_BYTES ||
-	    retained_size < encoded.size() ||
-	    retained_size > CRITICAL_COORDINATOR_COMPLETED_CACHE_BYTES)
+	const size_t retained_size = encoded.size();
+	if (retained_size > CRITICAL_COORDINATOR_COMPLETED_CACHE_BYTES)
 		return;
 	while (!completed_order.empty() &&
 	       (completed_cache.size() >= CRITICAL_COORDINATOR_COMPLETED_CACHE_MAX ||
@@ -171,7 +148,6 @@ void remember_completed(const std::string &identity, const critical_command &com
 	try
 	{
 		completed_cache.emplace(identity, completed_state{ .command = command,
-								   .completion = completion,
 								   .encoded_size = retained_size });
 		completed_order.push_back(identity);
 		completed_cache_bytes += retained_size;
@@ -182,15 +158,6 @@ void remember_completed(const std::string &identity, const critical_command &com
 	}
 }
 
-bool execution_supported(const critical_command &command)
-{
-	if (critical_command_valid(command))
-		return true;
-	return command.schema_version == CRITICAL_COMMAND_ACCOUNTING_SCHEMA_VERSION &&
-	       critical_command_envelope_valid(command) && extension_validator_callback &&
-	       extension_validator_callback(command);
-}
-
 struct writer_job
 {
 	critical_command command;
@@ -198,8 +165,6 @@ struct writer_job
 	void *context;
 	uint64_t queued_at_usec;
 	uint64_t generation;
-	bool replayed;
-	bool retain_until_publication;
 };
 
 // Runs on the persistence writer thread.
@@ -229,10 +194,6 @@ player_save_apply_result execute(const writer_job &job)
 		}
 		return { player_save_apply_outcome::retryable_failure, 0, applied.error_code };
 	}
-	// A replayed command that is not checkpointed replays again at the next boot, where
-	// its inbox row answers already_applied.
-	if (job.replayed && !job.retain_until_publication)
-		(void)critical_command_journal_checkpoint(job.command.operation_id);
 	const critical_completion completion = { .operation_id = job.command.operation_id,
 						 .outcome = applied.outcome,
 						 .durable_revision = applied.durable_revision,
@@ -241,7 +202,6 @@ player_save_apply_result execute(const writer_job &job)
 						 .queued_at_usec = job.queued_at_usec,
 						 .started_at_usec = started,
 						 .completed_at_usec = now_usec(),
-						 .failure_stage = applied.failure_stage,
 						 .result_size = applied.result_size,
 						 .result_payload = applied.result_payload };
 	std::lock_guard<std::mutex> lock(coordinator_mutex);
@@ -254,8 +214,7 @@ player_save_apply_result execute(const writer_job &job)
 
 // Reserve the operation and its fences. The caller queues it on the writer.
 critical_submit_result reserve_locked(const std::string &identity, const critical_command &command,
-				      size_t encoded_size, bool retain_until_publication,
-				      bool replayed, writer_job *job)
+				      size_t encoded_size, writer_job *job)
 {
 	try
 	{
@@ -265,11 +224,8 @@ critical_submit_result reserve_locked(const std::string &identity, const critica
 		state->queued_at_usec = now_usec();
 		state->attempt = 1;
 		state->attachments = 0;
-		state->phase = critical_operation_phase::executing;
-		state->retain_until_publication = retain_until_publication;
-		state->replayed = replayed;
-		*job = { command,    apply_callback, apply_context,	      state->queued_at_usec,
-			 generation, replayed,	     retain_until_publication };
+		*job = { command, apply_callback, apply_context, state->queued_at_usec,
+			 generation };
 		operations.emplace(identity, std::move(state));
 		add_fences(identity, command);
 	}
@@ -313,138 +269,28 @@ bool queue_on_writer(const std::string &identity, writer_job job)
 	return false;
 }
 
-struct replay_context
-{
-	critical_replay_observer_fn observer;
-	void *context;
-	std::vector<critical_command> *commands;
-};
-
-bool collect_replayed(critical_command command, void *context)
-{
-	auto *replay = static_cast<replay_context *>(context);
-	try
-	{
-		replay->commands->push_back(std::move(command));
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	return true;
-}
 } // namespace
 
-bool critical_command_coordinator_init(const char *journal_directory_path, critical_apply_fn apply,
-				       void *context, critical_replay_observer_fn replay_observer,
-				       void *replay_observer_context,
-				       critical_extension_validator_fn extension_validator)
+bool critical_command_coordinator_init(critical_apply_fn apply, void *context)
 {
 	if (!apply)
 		return false;
-	std::vector<critical_command> replayed;
-	{
-		std::lock_guard<std::mutex> lock(coordinator_mutex);
-		if (health.initialized)
-			return false;
-		operations.clear();
-		completion_delivery.clear();
-		fences.clear();
-		completed_cache.clear();
-		completed_order.clear();
-		completed_cache_bytes = 0;
-		health = {};
-		apply_callback = apply;
-		extension_validator_callback = extension_validator;
-		apply_context = context;
-		++generation;
-		// New commands are not journaled. Only a journal left by an older server is
-		// read, once, and each of its commands is checkpointed once it lands.
-		if (journal_directory_path && *journal_directory_path)
-		{
-			replay_context replay = { replay_observer, replay_observer_context,
-						  &replayed };
-			if (!critical_command_journal_init(journal_directory_path) ||
-			    critical_command_journal_replay(collect_replayed, &replay) !=
-				    critical_command_journal_result::ok)
-			{
-				critical_command_journal_shutdown();
-				apply_callback = nullptr;
-				extension_validator_callback = nullptr;
-				apply_context = nullptr;
-				return false;
-			}
-			journal_open = true;
-		}
-		health.initialized = true;
-		health.accepting = true;
-		health.running = true;
-	}
-	// Every replayed command is checked and reserved before any is queued: a journal
-	// holding a command this server cannot execute stops the boot with nothing applied.
-	std::vector<std::pair<std::string, writer_job>> queued;
-	for (critical_command &command : replayed)
-	{
-		std::vector<uint8_t> encoded;
-		writer_job job = {};
-		const std::string identity = operation_key(command.operation_id);
-		bool supported = false, reserved = false;
-		{
-			std::lock_guard<std::mutex> lock(coordinator_mutex);
-			supported = execution_supported(command) &&
-				    critical_command_encode(command, &encoded) ==
-					    critical_command_codec_result::ok;
-			reserved = supported && operations.find(identity) == operations.end() &&
-				   reserve_locked(identity, command, encoded.size(), false, true,
-						  &job) == critical_submit_result::accepted;
-		}
-		if (!supported)
-		{
-			critical_command_coordinator_shutdown();
-			return false;
-		}
-		if (!reserved)
-			continue;
-		bool observed = true;
-		if (replay_observer)
-		{
-			try
-			{
-				observed = replay_observer(command, replay_observer_context);
-			}
-			catch (...)
-			{
-				observed = false;
-			}
-		}
-		if (!observed)
-		{
-			std::lock_guard<std::mutex> lock(coordinator_mutex);
-			auto found = operations.find(identity);
-			if (found != operations.end())
-			{
-				remove_fences(identity, found->second->command);
-				operations.erase(found);
-			}
-			update_depth();
-			continue;
-		}
-		try
-		{
-			queued.emplace_back(identity, std::move(job));
-		}
-		catch (const std::bad_alloc &)
-		{
-			critical_command_coordinator_shutdown();
-			return false;
-		}
-	}
-	for (auto &[identity, job] : queued)
-		if (!queue_on_writer(identity, std::move(job)))
-		{
-			critical_command_coordinator_shutdown();
-			return false;
-		}
+	std::lock_guard<std::mutex> lock(coordinator_mutex);
+	if (health.initialized)
+		return false;
+	operations.clear();
+	completion_delivery.clear();
+	fences.clear();
+	completed_cache.clear();
+	completed_order.clear();
+	completed_cache_bytes = 0;
+	health = {};
+	apply_callback = apply;
+	apply_context = context;
+	++generation;
+	health.initialized = true;
+	health.accepting = true;
+	health.running = true;
 	return true;
 }
 
@@ -459,32 +305,21 @@ void critical_command_coordinator_shutdown(void)
 	completed_cache_bytes = 0;
 	health = {};
 	apply_callback = nullptr;
-	extension_validator_callback = nullptr;
 	apply_context = nullptr;
 	++generation;
-	if (journal_open)
-		critical_command_journal_shutdown();
-	journal_open = false;
 }
 
-critical_submit_result critical_command_coordinator_submit_internal(critical_command command,
-								    bool retain_until_publication)
+critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
 	const bool supplied_acceptance_time = command.accepted_at_usec != 0;
 	if (!supplied_acceptance_time)
 		command.accepted_at_usec = wall_now_usec();
-	// Frozen accounting commands are already canonical. Sorting after binding
-	// would silently change the immutable admission decision.
-	if (command.schema_version == CRITICAL_COMMAND_ACCOUNTING_SCHEMA_VERSION ?
-		    !critical_command_envelope_valid(command) :
-		    !critical_command_normalize(&command))
+	if (!critical_command_normalize(&command))
 		return critical_submit_result::invalid;
 	const std::string identity = operation_key(command.operation_id);
 	writer_job job = {};
 	{
 		std::lock_guard<std::mutex> lock(coordinator_mutex);
-		if (!execution_supported(command))
-			return critical_submit_result::invalid;
 		if (!health.initialized || !health.accepting)
 			return critical_submit_result::unavailable;
 		auto completed = completed_cache.find(identity);
@@ -505,8 +340,6 @@ critical_submit_result critical_command_coordinator_submit_internal(critical_com
 				command.accepted_at_usec = found->second->command.accepted_at_usec;
 			if (!critical_command_equal(found->second->command, command))
 				return critical_submit_result::identity_conflict;
-			if (retain_until_publication != found->second->retain_until_publication)
-				return critical_submit_result::identity_conflict;
 			++found->second->attachments;
 			++health.attached;
 			return critical_submit_result::attached;
@@ -520,90 +353,13 @@ critical_submit_result critical_command_coordinator_submit_internal(critical_com
 			++health.overloads;
 			return critical_submit_result::overloaded;
 		}
-		const critical_submit_result reserved = reserve_locked(
-			identity, command, encoded.size(), retain_until_publication, false, &job);
+		const critical_submit_result reserved =
+			reserve_locked(identity, command, encoded.size(), &job);
 		if (reserved != critical_submit_result::accepted)
 			return reserved;
 	}
 	return queue_on_writer(identity, std::move(job)) ? critical_submit_result::accepted :
 							   critical_submit_result::unavailable;
-}
-
-critical_submit_result critical_command_coordinator_submit(critical_command command)
-{
-	return critical_command_coordinator_submit_internal(std::move(command), false);
-}
-
-critical_submit_result critical_command_coordinator_submit_for_publication(critical_command command)
-{
-	return critical_command_coordinator_submit_internal(std::move(command), true);
-}
-
-critical_command_durability
-critical_command_coordinator_durability(const critical_operation_id &operation_id)
-{
-	if (critical_operation_id_is_zero(operation_id))
-		return critical_command_durability::unknown;
-	std::lock_guard<std::mutex> lock(coordinator_mutex);
-	const std::string identity = operation_key(operation_id);
-	if (completed_cache.find(identity) != completed_cache.end())
-		return critical_command_durability::durable;
-	auto found = operations.find(identity);
-	if (found == operations.end())
-		return critical_command_durability::unknown;
-	// Queued on the writer, the command is durable once it lands.
-	return found->second->phase == critical_operation_phase::publication_pending ?
-		       critical_command_durability::durable :
-		       critical_command_durability::awaiting_durability;
-}
-
-bool critical_command_coordinator_recover_uncertain(void)
-{
-	std::lock_guard<std::mutex> lock(coordinator_mutex);
-	return health.initialized;
-}
-
-bool critical_command_coordinator_get_completed(const critical_operation_id &operation_id,
-						critical_completion *completion)
-{
-	if (!completion || critical_operation_id_is_zero(operation_id))
-		return false;
-	std::lock_guard<std::mutex> lock(coordinator_mutex);
-	const std::string identity = operation_key(operation_id);
-	auto operation = operations.find(identity);
-	if (operation != operations.end() &&
-	    operation->second->phase == critical_operation_phase::publication_pending)
-	{
-		*completion = operation->second->publication_completion;
-		return true;
-	}
-	const auto found = completed_cache.find(identity);
-	if (found == completed_cache.end())
-		return false;
-	*completion = found->second.completion;
-	return true;
-}
-
-bool critical_command_coordinator_acknowledge_publication(const critical_operation_id &operation_id)
-{
-	if (critical_operation_id_is_zero(operation_id))
-		return false;
-	std::lock_guard<std::mutex> lock(coordinator_mutex);
-	const std::string identity = operation_key(operation_id);
-	auto found = operations.find(identity);
-	if (found == operations.end() ||
-	    found->second->phase != critical_operation_phase::publication_pending)
-		return false;
-	operation_state &state = *found->second;
-	if (state.replayed && critical_command_journal_checkpoint(operation_id) !=
-				      critical_command_journal_result::ok)
-		return false;
-	remove_fences(identity, state.command);
-	remember_completed(identity, state.command, state.publication_completion);
-	operations.erase(found);
-	++health.completed;
-	update_depth();
-	return true;
 }
 
 size_t critical_command_coordinator_pulse(critical_completion *completions, size_t capacity)
@@ -623,9 +379,7 @@ size_t critical_command_coordinator_pulse(critical_completion *completions, size
 		completion_delivery.pop_front(critical_completion_channel::execution);
 		const std::string identity = operation_key(completion.operation_id);
 		auto found = operations.find(identity);
-		if (found == operations.end() ||
-		    found->second->phase != critical_operation_phase::executing ||
-		    found->second->attempt != completion.attempt)
+		if (found == operations.end() || found->second->attempt != completion.attempt)
 		{
 			++health.stale_completions;
 			continue;
@@ -634,14 +388,8 @@ size_t critical_command_coordinator_pulse(critical_completion *completions, size
 		if (completion.outcome == critical_apply_outcome::terminal_failure)
 			++health.terminal_failures;
 		completions[published++] = completion;
-		if (state.retain_until_publication)
-		{
-			state.phase = critical_operation_phase::publication_pending;
-			state.publication_completion = completion;
-			continue;
-		}
 		remove_fences(identity, state.command);
-		remember_completed(identity, state.command, completion);
+		remember_completed(identity, state.command);
 		++health.completed;
 		operations.erase(found);
 	}
@@ -696,7 +444,7 @@ bool critical_command_coordinator_drain(uint64_t timeout_msec)
 			observer(completions, completed);
 		const critical_coordinator_health snapshot =
 			critical_command_coordinator_health_copy();
-		if (!snapshot.inflight && !snapshot.publication_pending)
+		if (!snapshot.inflight)
 			return true;
 		if (std::chrono::steady_clock::now() >= deadline)
 			return false;
@@ -727,5 +475,4 @@ void critical_command_coordinator_reset_for_tests(void)
 {
 	critical_command_coordinator_shutdown();
 	critical_command_coordinator_set_drain_observer(nullptr);
-	critical_command_journal_reset_for_tests();
 }

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Compare deferred pickup bytes with synchronous output using real prompt/renderers.
+"""Compare deferred output bytes with synchronous output using real prompt/renderers.
 
-Production item transactions are held at the coordinator boundary; their completion
-callback queues fixture pickup text. Real prompt, ANSI, Telnet and WebSocket
+A production creation grant is held at the coordinator boundary, and the prompt with it;
+its completion callback queues fixture text. Real prompt, ANSI, Telnet and WebSocket
 serialization run against an in-memory transport.
 """
 from pathlib import Path
@@ -47,35 +47,20 @@ static room_data rooms[1]{};
 P_room world = rooms;
 int top_of_objt = 0;
 extern const int top_of_world = 0;
-static uint64_t busy_collector_uid;
+
 static bool collector_busy;
 bool collector_transaction_player_busy(P_char) { return collector_busy; }
-bool collector_transaction_item_busy(uint64_t uid) { return uid && uid == busy_collector_uid; }
+bool collector_transaction_item_busy(uint64_t) { return false; }
 bool collector_service_player_busy(P_char) { return false; }
-bool collector_death_enrollment_attach(P_char, P_obj, const critical_operation_id &,
-                                       const std::vector<player_item_snapshot> &,
-                                       item_transfer_payload *) { return true; }
-void collector_death_enrollment_note_committed(P_obj, const item_transfer_payload &) {}
 void collector_catalog_cache_invalidate(void) {}
 void extract_obj(P_obj, int) {}
 void obj_from_char(P_obj) {}
-void obj_to_char(P_obj, P_char) {}
+void obj_to_char(P_obj object, P_char ch) { object->loc_p = LOC_CARRIED; object->loc.carrying = ch; }
 void obj_to_obj(P_obj, P_obj) {}
 void obj_to_room(P_obj, int) {}
 void mark_player_dirty_components(int, player_component_mask_t) {}
 P_char find_player_by_pid(int pid) { return character_list && GET_PID(character_list) == pid ? character_list : nullptr; }
 [[noreturn]] int panic_corruption_int(const char *, const char *, ...) { abort(); }
-critical_submit_result critical_command_coordinator_submit_for_publication(critical_command)
-{
-    assert(false && "default caller unexpectedly requested publication retention");
-    return critical_submit_result::unavailable;
-}
-bool critical_command_coordinator_acknowledge_publication(const critical_operation_id &)
-{
-    assert(false && "default caller unexpectedly acknowledged publication");
-    return false;
-}
-
 critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
     submitted = std::move(command);
@@ -89,7 +74,6 @@ static void publish(P_char actor, bool committed, const item_transfer_result &, 
                     const uint8_t *, size_t)
 {
     assert(committed == publication_success);
-    assert(!item_movement_transaction_player_busy(actor));
     write_to_q(publication_message, &actor->desc->output, 1);
 }
 static std::string delivered;
@@ -198,52 +182,24 @@ static std::string run(bool delayed, bool websocket, int flags, bool two_line,
     item_ownership_runtime_reset();
     pc.pid = 42;
     character_list = &actor;
-    obj_data items[2]{}, container{};
-    const bool in_container = strstr(message, "from") != nullptr;
+    obj_data item{};
     indexes[0].virtual_number = 100;
-    world[0].number = 500;
-    const item_owner_identity source_owner{item_owner_type::room, 500, 0};
-    const item_owner_identity target_owner{item_owner_type::player, 42, 0};
-    const int count = strstr(message, "shield") ? 2 : 1;
-    P_obj roots[] = {&items[0], &items[1]};
-    for (int i = 0; i < count; ++i)
-    {
-        items[i].obj_uid = 100 + i;
-        items[i].R_num = 0;
-        items[i].loc_p = in_container ? LOC_INSIDE : LOC_ROOM;
-        if (in_container) items[i].loc.inside = &container;
-        else items[i].loc.room = 0;
-        items[i].next = items[i].next_content = i + 1 < count ? &items[i + 1] : nullptr;
-        assert(item_ownership_runtime_hydrate({(uint64_t)(100+i),
-            in_container ? 200 : (uint64_t)(100+i), in_container ? 200u : 0u,
-            source_owner, 1, 3, 100, item_custody_state::active}));
-    }
-    if (in_container)
-    {
-        container.obj_uid = 200;
-        container.loc_p = LOC_ROOM;
-        container.loc.room = 0;
-        container.contains = items;
-        container.next = items;
-        assert(item_ownership_runtime_hydrate({200, 200, 0, source_owner, 1, 3, 100,
-                                              item_custody_state::active}));
-    }
-    object_list = world[0].contents = in_container ? &container : items;
-    assert(item_ownership_runtime_hydrate_owner(target_owner, 7));
+    item.obj_uid = 100;
+    item.R_num = 0;
+    // A grant takes a detached object; one lying in the room is refused at once.
+    item.loc_p = delayed || message[0] == 'Y' ? LOC_NOWHERE : LOC_ROOM;
+    object_list = &item;
+    assert(item_ownership_runtime_hydrate_owner({item_owner_type::system, 0, 0}, 1));
+    assert(item_ownership_runtime_hydrate_owner({item_owner_type::player, 42, 0}, 7));
     if (delayed)
     {
         publication_message = message;
         publication_success = message[0] == 'Y';
         if (collector)
             collector_busy = true;
-        else if (count == 2)
-            assert(item_movement_transaction_submit_batch(&actor, roots, count, nullptr,
-                source_owner, target_owner, item_transfer_reason::player_get, 100,
-                publish, nullptr, 0));
         else
-            assert(item_movement_transaction_submit(&actor, items, nullptr,
-                source_owner, target_owner, item_transfer_reason::player_get, 100,
-                publish, nullptr, 0));
+            assert(item_creation_grant_submit_to_player_with_completion(&actor, &item, &actor,
+                                                                        publish, nullptr, 0));
         assert(collector_busy || item_movement_transaction_player_busy(&actor));
         if (auxiliary)
         {
@@ -289,7 +245,7 @@ static std::string run(bool delayed, bool websocket, int flags, bool two_line,
             completion.operation_id = submitted.operation_id;
             completion.outcome = publication_success ? critical_apply_outcome::applied :
                                                       critical_apply_outcome::terminal_failure;
-            item_transfer_result result{100, (uint16_t)count, 4, 8, 2, 0};
+            item_transfer_result result{100, 1, 4, 8, 2, 0};
             std::array<uint8_t, ITEM_TRANSFER_RESULT_BYTES> encoded{};
             assert(item_transfer_command_encode_result(result, &encoded));
             completion.result_size = encoded.size();
@@ -302,15 +258,10 @@ static std::string run(bool delayed, bool websocket, int flags, bool two_line,
     {
         if (message[0] != 'Y')
         {
-            // A rejected submission must keep the ordinary immediate prompt.
-            busy_collector_uid = 100;
-            item_movement_reject rejected{};
-            assert(!item_movement_transaction_submit_batch(&actor, roots, count, nullptr,
-                source_owner, target_owner, item_transfer_reason::player_get, 100,
-                publish, nullptr, 0, nullptr, &rejected));
-            assert(rejected == item_movement_reject::pending_conflict);
+            // A refused grant must keep the ordinary immediate prompt.
+            assert(!item_creation_grant_submit_to_player_with_completion(&actor, &item, &actor,
+                                                                         publish, nullptr, 0));
             assert(!item_movement_transaction_player_busy(&actor));
-            busy_collector_uid = 0;
         }
         write_to_q(message, &d.output, 1);
     }

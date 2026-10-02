@@ -160,29 +160,8 @@ flatfile_item_repository_result flatfile_item_repository_prepare_collector_trans
 	const std::string &root, const flatfile_authority_lock &lock,
 	const collector_command_payload &payload, flatfile_item_collector_mutation *mutation,
 	unsigned int *result_code, std::string *error);
-flatfile_item_repository_result flatfile_item_repository_prepare_corpse_release(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const corpse_lifecycle_payload &payload,
-	const std::vector<flatfile_corpse_custody_item> &expected_items,
-	flatfile_item_corpse_release_mutation *mutation, std::string *error);
-flatfile_item_repository_result flatfile_item_repository_prepare_world_corpse_raise(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const corpse_lifecycle_payload &payload,
-	const std::vector<flatfile_corpse_custody_item> &expected_items,
-	const std::vector<uint64_t> &durable_uids, const std::vector<uint64_t> &discarded_uids,
-	flatfile_item_corpse_release_mutation *mutation, std::string *error);
 flatfile_item_repository_result flatfile_item_repository_prepare_player_remove(
 	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
-	flatfile_authority_operation *operation, std::string *error);
-/* Retain refused death custody without allowing normal inventory materialization. */
-flatfile_item_repository_result flatfile_item_repository_prepare_death_quarantine(
-	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
-	const std::vector<uint64_t> &custody_uids, flatfile_authority_operation *operation,
-	std::string *error);
-/* Prepare player and verified locker-custody removal as one authority image. */
-flatfile_item_repository_result flatfile_item_repository_prepare_player_and_locker_remove(
-	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
-	const std::vector<flatfile_locker_custody_owner> &locker_custody,
 	flatfile_authority_operation *operation, std::string *error);
 /* Prepare removal of verified locker custody without a player owner. */
 flatfile_item_repository_result flatfile_item_repository_prepare_locker_remove(

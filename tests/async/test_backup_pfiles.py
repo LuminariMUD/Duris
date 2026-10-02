@@ -78,7 +78,6 @@ else:
                                DB_ALLOWED_TARGETS="localhost/synthetic", DB_PORT="3306", DB_SOCKET="",
                                DUMP_MODE=mode, ADVERTISE="1" if advertised else "0", SYNTHETIC_DUMP=str(payload),
                                SYNTHETIC_SCHEMA=str(schema_path), RUNTIME_COMPATIBILITY_MANIFEST=str(schema_path),
-                               PLAYER_SAVE_JOURNAL_DIR=str(base / "journals/players"),
                                CRITICAL_COMMAND_JOURNAL_DIR=str(base / "journals/critical"))
                     result = subprocess.run(["bash", str(ROOT / "scripts/backup_pfiles.sh")], env=env,
                                             capture_output=True, text=True, timeout=30)

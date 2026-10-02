@@ -27,6 +27,8 @@
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_repository.h"
+#include "flatfile/flatfile_player_repository.h"
+#include "persistence/persistence_mode.h"
 #include "sql/sql_pool.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -238,12 +240,29 @@ const char *locker_async_job_name(unsigned long long key)
 
 /* ---------------- writer ---------------- */
 
+/* Flat-file writes the public chest into its locker catalog; MariaDB into its rows. */
+static player_save_apply_result write_locker(const locker_snapshot &snapshot)
+{
+	const char *root = persistence_mode_flatfile_root();
+	if (!root)
+		return locker_snapshot_repository_apply_from_pool(snapshot);
+	flatfile_locker_save save;
+	save.locker_name = snapshot.locker_name;
+	save.owner_assoc_id = snapshot.owner_assoc_id;
+	save.racewar = static_cast<int8_t>(snapshot.racewar);
+	save.race = static_cast<int8_t>(snapshot.race);
+	save.items = snapshot.items;
+	for (player_item_snapshot &item : save.items)
+		item.equipment_slot = -1;
+	std::string error;
+	return flatfile_locker_snapshot_apply(root, save, &error);
+}
+
 /* Runs on the persistence writer thread. A lost connection goes back to the
  * writer, which retries this job before any later save. */
 static player_save_apply_result locker_write_job(const struct locker_async_job &job)
 {
-	const player_save_apply_result applied =
-		locker_snapshot_repository_apply_from_pool(*job.snapshot);
+	const player_save_apply_result applied = write_locker(*job.snapshot);
 	if (applied.outcome == player_save_apply_outcome::retryable_failure ||
 	    applied.outcome == player_save_apply_outcome::ambiguous_commit)
 		return applied;
@@ -606,7 +625,7 @@ void locker_async_init(void)
 {
 	if (g_inited)
 		return;
-	if (!sql_pool_is_active())
+	if (!sql_pool_is_active() && !persistence_mode_flatfile_root())
 	{
 		logit(LOG_STATUS,
 		      "locker_async: connection pool unavailable; async locker saves disabled");

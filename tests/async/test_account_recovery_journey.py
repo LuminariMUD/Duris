@@ -366,7 +366,6 @@ class IsolatedServer:
             "ENVIRONMENT": "local",
             "PERSISTENCE_MODE": "flatfile-primary",
             "FLATFILE_STATE_DIR": str(self.state_root),
-            "PLAYER_SAVE_JOURNAL_DIR": str(journal_root / "players"),
             "CRITICAL_COMMAND_JOURNAL_DIR": str(journal_root / "critical"),
             "LISTEN_ADDRESS": "127.0.0.1",
             "DURIS_TLS_PORT": str(tls_port),

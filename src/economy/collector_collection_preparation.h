@@ -16,7 +16,6 @@ enum class collector_collection_prepare_outcome : uint8_t
 	not_due,
 	missing_item,
 	claimed,
-	destroyed,
 	excluded,
 	stale_custody,
 	invalid_topology,

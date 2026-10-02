@@ -62,7 +62,6 @@ for name in [
     "maintenance_scheduler.c",
     "critical_outbox.c",
     "critical_command_repository.c",
-    "persistence_queue.c",
 ]:
     body = (SRC / name).read_text(encoding="utf-8", errors="replace")
     check(f"{name} routes through the helper",

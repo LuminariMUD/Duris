@@ -26,9 +26,9 @@ session measure described by #258/#260.
   This work does not move the equipment-wipe/login workflow or infer missing
   historical offsets.
 
-`player/player_playtime.h` owns the shared calculation. Modern immutable capture
-and both legacy SQL status INSERT/UPDATE routes call it. A later synchronous
-compatibility write must not replace an elapsed total with the old live baseline.
+`player/player_playtime.h` owns the shared calculation, and the immutable capture
+calls it. A later write must not replace an elapsed total with the old live
+baseline.
 The retired regular-player flat-file fallback is not revived or redesigned.
 
 ## Checkpoint ownership and bounded loss
@@ -42,7 +42,7 @@ persist elapsed time; no new timer or telemetry writer is introduced.
 The scheduler starts this job after five seconds and repeats it after thirty
 seconds, plus continuation/scheduler delay. Under healthy operation a crash can
 lose the still-uncaptured tail since the last checkpoint. This is not a hard
-thirty-second durability guarantee: capture refusal, journal/DB backlog, or an
+thirty-second durability guarantee: capture refusal, writer backlog, or an
 unhealthy scheduler can enlarge the exposure. Existing queue/health diagnostics
 remain authoritative. This change does not add main-loop I/O or a new durability
 fence. Terminal save and copyover durability policies remain unchanged.
@@ -60,8 +60,6 @@ for this change's local evidence:
 python3 tests/async/test_player_playtime_capture.py
 python3 tests/async/test_playtime_checkpoint.py
 python3 tests/async/test_playtime_flatfile.py
-# Requires MySQL development headers and mysql_config (use the build container):
-python3 tests/async/test_playtime_legacy_sql.py
 ```
 
 - Controlled-clock capture: 3,600 + 600 = 4,200; repeat saves; terminal/death
@@ -69,9 +67,6 @@ python3 tests/async/test_playtime_legacy_sql.py
   staff baseline and wipe-offset arithmetic; unchanged live time fields.
 - Quiet checkpoint: no unrelated dirty components, repeated cycles, eight-player
   continuation boundary preserved.
-- Legacy SQL writer: extracted production INSERT/UPDATE with query capture and a
-  controlled clock; repeated saves preserve elapsed totals and live clock fields.
-  SQL services are stubbed here; the separate journey exercises the real database.
 - Real flat-file repository: full baseline, status-only elapsed update, duplicate
   and stale revisions, reload with a fresh session anchor.
 

@@ -9,23 +9,10 @@
 #include <vector>
 
 constexpr uint16_t ITEM_TRANSFER_PAYLOAD_VERSION = 7;
-constexpr uint16_t ITEM_TRANSFER_BATCH_PAYLOAD_VERSION = 6;
-constexpr uint16_t ITEM_TRANSFER_CORPSE_PAYLOAD_VERSION = 5;
-constexpr uint16_t ITEM_TRANSFER_EXACT_PAYLOAD_VERSION = 4;
-constexpr uint16_t ITEM_TRANSFER_PREVIOUS_PAYLOAD_VERSION = 3;
-constexpr uint16_t ITEM_TRANSFER_LEGACY_PAYLOAD_VERSION = 2;
-constexpr size_t ITEM_TRANSFER_LEGACY_MAX_ITEMS = 12;
 constexpr size_t ITEM_TRANSFER_MAX_ITEMS = 3000;
 constexpr size_t ITEM_TRANSFER_HEADER_BYTES = 96;
 constexpr size_t ITEM_TRANSFER_ENTRY_BYTES = 40;
-constexpr size_t ITEM_TRANSFER_PAYLOAD_BYTES =
-	ITEM_TRANSFER_HEADER_BYTES + ITEM_TRANSFER_LEGACY_MAX_ITEMS * ITEM_TRANSFER_ENTRY_BYTES;
 constexpr size_t ITEM_TRANSFER_ITEM_BLOB_MAX_BYTES = 128 * 1024;
-constexpr size_t ITEM_TRANSFER_CORPSE_NAME_MAX_BYTES = 255;
-constexpr size_t ITEM_TRANSFER_CORPSE_SHORT_DESCRIPTION_MAX_BYTES = 512;
-constexpr size_t ITEM_TRANSFER_CORPSE_DESCRIPTION_MAX_BYTES = 64 * 1024;
-constexpr size_t ITEM_TRANSFER_CORPSE_KEYWORDS_MAX_BYTES = 512;
-constexpr size_t ITEM_TRANSFER_LEGACY_RESULT_BYTES = 40;
 constexpr size_t ITEM_TRANSFER_RESULT_BYTES = 48;
 constexpr uint64_t ITEM_TRANSFER_ABSENT_REVISION = UINT64_MAX;
 
@@ -47,42 +34,39 @@ enum class item_owner_type : uint8_t
 
 enum class item_transfer_reason : uint16_t
 {
+	// Stored in ledger and audit rows: never renumber a reason.
 	unknown = 0,
-	synthetic,
-	creation,
-	destruction,
-	operator_repair,
-	player_get,
-	player_drop,
-	player_put,
-	player_give,
-	corpse_create,
-	corpse_restore,
-	corpse_loot,
-	locker_deposit,
-	locker_withdraw,
-	auction_list,
-	auction_claim,
-	shop_buy,
-	shop_sell,
-	mobile_claim,
-	collector_collect,
-	collector_buyback,
-	collector_expire,
-	death_restitution,
-	corpse_raise_pet,
-	pet_give,
-	pet_return,
+	creation = 2,
+	destruction = 3,
+	operator_repair = 4,
+	player_get = 5,
+	player_drop = 6,
+	player_put = 7,
+	player_give = 8,
+	corpse_create = 9,
+	corpse_restore = 10,
+	corpse_loot = 11,
+	locker_deposit = 12,
+	locker_withdraw = 13,
+	auction_list = 14,
+	auction_claim = 15,
+	shop_buy = 16,
+	shop_sell = 17,
+	mobile_claim = 18,
+	collector_collect = 19,
+	collector_buyback = 20,
+	collector_expire = 21,
+	death_restitution = 22,
+	corpse_raise_pet = 23,
+	pet_give = 24,
+	pet_return = 25,
 	// Trusted theft is still a player-to-player custody move.  Keeping a
 	// distinct reason preserves the audit trail without weakening the generic
 	// player-owner validation used by the transfer repositories.
-	trusted_steal,
+	trusted_steal = 26,
 	// These existing-item handoffs have command-specific post-commit effects.
-	soulbind,
-	slip,
-	// Retire one or more input trees and admit detached output snapshots in
-	// the same authority transaction while reusing item-transfer journaling.
-	craft,
+	soulbind = 27,
+	slip = 28,
 };
 
 enum class item_custody_state : uint8_t
@@ -110,41 +94,6 @@ struct item_transfer_entry
 	item_custody_state expected_state;
 };
 
-struct item_corpse_metadata
-{
-	bool present = false;
-	int32_t room_vnum = 0;
-	int32_t weight = 0;
-	uint8_t actor_racewar = 0;
-	std::array<int32_t, 8> values = {};
-	std::string owner_name;
-	std::string short_description;
-	std::string description;
-	std::string keywords;
-};
-
-// A player-death corpse handoff may carry a collector-intake sidecar. The
-// sidecar is committed in the same authority transaction as the custody move;
-// its eligible UIDs are an exact, sorted subset of this command's item rows.
-struct item_collector_death_policy
-{
-	uint64_t collection_delay = 0;
-	uint64_t sale_delay = 0;
-	uint64_t holding_duration = 0;
-	uint64_t price_percent = 0;
-	uint64_t minimum_value = 0;
-};
-
-struct item_collector_death_enrollment
-{
-	bool present = false;
-	critical_operation_id death_operation = {};
-	uint32_t beneficiary_pid = 0;
-	uint64_t death_time = 0;
-	item_collector_death_policy policy = {};
-	std::vector<uint64_t> eligible_item_uids;
-};
-
 struct item_transfer_payload
 {
 	item_owner_identity from_owner;
@@ -162,8 +111,6 @@ struct item_transfer_payload
 	std::array<item_transfer_entry, ITEM_TRANSFER_MAX_ITEMS> items;
 	uint32_t item_blob_size;
 	std::array<uint8_t, ITEM_TRANSFER_ITEM_BLOB_MAX_BYTES> item_blob;
-	item_corpse_metadata corpse;
-	item_collector_death_enrollment collector;
 };
 
 struct item_transfer_result
@@ -178,19 +125,6 @@ struct item_transfer_result
 	// metadata. The game thread uses this replay-safe flag to invalidate its
 	// asynchronous collector projection after the item result is published.
 	bool collector_catalog_changed = false;
-};
-
-// Internal classification returned by the SQL executor. The enclosing coin
-// command maps these bounded flags to source/destination stages before the
-// failure receipt is persisted.
-enum class item_transfer_failure_stage : uint8_t
-{
-	none = 0,
-	from_owner_revision = 1u << 0,
-	to_owner_revision = 1u << 1,
-	item_revision = 1u << 2,
-	target_parent_revision = 1u << 3,
-	coin_payload_revision = 1u << 4,
 };
 
 bool item_owner_identity_valid(const item_owner_identity &owner);

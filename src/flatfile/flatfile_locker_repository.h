@@ -40,6 +40,18 @@ struct flatfile_locker_record
 	std::vector<flatfile_locker_chest_record> chests;
 };
 
+// A locker's public chest as its save writes it. A new locker is created for its owner: the
+// guild owner_assoc_id, or the account and side its name ("account.<name>.<side>.locker")
+// gives. (A player's own locker is entered only when it exists, so none is new.)
+struct flatfile_locker_save
+{
+	std::string locker_name;
+	int32_t owner_assoc_id = 0;
+	int8_t racewar = 0;
+	int8_t race = 0;
+	std::vector<player_item_snapshot> items;
+};
+
 struct flatfile_locker_access_record
 {
 	std::string owner_name;
@@ -65,14 +77,6 @@ struct flatfile_locker_player_removal
 	std::vector<flatfile_locker_custody_owner> custody;
 };
 
-struct flatfile_locker_transfer_mutation
-{
-	flatfile_authority_after_image after_image;
-	std::vector<flatfile_locker_custody_item> expected_items;
-	uint64_t locker_revision = 0;
-	uint64_t chest_revision = 0;
-};
-
 enum class flatfile_locker_result
 {
 	ok,
@@ -87,14 +91,27 @@ enum class flatfile_locker_result
 flatfile_locker_result flatfile_locker_establish(
 	const std::string &root, const std::vector<flatfile_locker_record> &lockers,
 	const std::vector<flatfile_locker_access_record> &access, std::string *error);
-flatfile_locker_result flatfile_locker_read_coin(const std::string &root,
-						 const flatfile_authority_lock &lock,
-						 const item_owner_identity &owner, uint64_t uid,
-						 player_item_snapshot *item, std::string *error);
 flatfile_locker_result flatfile_locker_list(const std::string &root,
 					    std::vector<flatfile_locker_record> *lockers,
 					    std::vector<flatfile_locker_access_record> *access,
 					    std::string *error);
+// The stored locker named locker_name.
+flatfile_locker_result flatfile_locker_find(const std::string &root, const std::string &locker_name,
+					    flatfile_locker_record *locker, std::string *error);
+// Under the authority lock: the owner a save of locker_name's public chest claims its items
+// for, the stored locker's or the ids a new locker takes.
+flatfile_locker_result flatfile_locker_public_owner(const std::string &root,
+						    const flatfile_authority_lock &lock,
+						    const std::string &locker_name,
+						    item_owner_identity *owner, std::string *error);
+// Under the same lock: write items as the public chest of save.locker_name, creating the
+// locker with owner's ids when it is new.
+flatfile_locker_result
+flatfile_locker_prepare_public_save(const std::string &root, const flatfile_authority_lock &lock,
+				    const flatfile_locker_save &save,
+				    const item_owner_identity &owner,
+				    const std::vector<player_item_snapshot> &items,
+				    flatfile_authority_operation *operation, std::string *error);
 /* Prepare player-owned locker and visitor-grant removal under the authority lock. */
 flatfile_locker_result
 flatfile_locker_prepare_player_remove(const std::string &root, const flatfile_authority_lock &lock,
@@ -105,10 +122,5 @@ flatfile_locker_result
 flatfile_locker_prepare_account_remove(const std::string &root, const flatfile_authority_lock &lock,
 				       const std::string &account_name,
 				       flatfile_locker_player_removal *removal, std::string *error);
-flatfile_locker_result
-flatfile_locker_prepare_item_transfer(const std::string &root, const flatfile_authority_lock &lock,
-				      const item_transfer_payload &payload,
-				      flatfile_locker_transfer_mutation *mutation,
-				      std::string *error);
 
 #endif

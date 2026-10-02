@@ -34,8 +34,8 @@ class ItemOwnershipContractTests(unittest.TestCase):
         collector_owner = (ROOT / "migrations/collector_item_owner.sql").read_text()
         self.assertEqual(collector_owner.count("CHECK (owner_type BETWEEN 1 AND 10)"), 6)
         self.assertEqual(bootstrap.count("owner_type` between 1 and 10"), 3)
-        for script in ("baseline_item_ownership.sh", "reconcile_item_ownership.sh",
-                       "verify_item_ownership_schema.sh", "verify_collector_item_owner.sh"):
+        for script in ("baseline_item_ownership.sh", "verify_item_ownership_schema.sh",
+                       "verify_collector_item_owner.sh"):
             self.assertTrue((ROOT / "migrations" / script).stat().st_mode & 0o111)
         self.assertTrue(
             (ROOT / "tests/async/run_collector_item_owner_schema_mysql.sh").stat().st_mode
@@ -53,17 +53,9 @@ class ItemOwnershipContractTests(unittest.TestCase):
     def test_command_is_bounded_typed_revisioned_and_snapshot_capable(self):
         header = (SRC / "item_transfer_command.h").read_text()
         implementation = (SRC / "item_transfer_command.c").read_text()
-        self.assertIn("ITEM_TRANSFER_LEGACY_MAX_ITEMS = 12", header)
         self.assertIn("ITEM_TRANSFER_MAX_ITEMS = 3000", header)
-        self.assertIn("ITEM_TRANSFER_PAYLOAD_BYTES", header)
         self.assertIn("ITEM_TRANSFER_PAYLOAD_VERSION = 7", header)
-        self.assertIn("ITEM_TRANSFER_BATCH_PAYLOAD_VERSION = 6", header)
-        self.assertIn("ITEM_TRANSFER_CORPSE_PAYLOAD_VERSION = 5", header)
-        self.assertIn("ITEM_TRANSFER_EXACT_PAYLOAD_VERSION = 4", header)
-        self.assertIn("ITEM_TRANSFER_PREVIOUS_PAYLOAD_VERSION = 3", header)
-        self.assertIn("ITEM_TRANSFER_LEGACY_PAYLOAD_VERSION = 2", header)
         self.assertIn("ITEM_TRANSFER_ITEM_BLOB_MAX_BYTES", header)
-        self.assertIn("item_corpse_metadata", header)
         for owner in ("player", "container", "room", "corpse", "locker", "auction",
                       "system", "destruction", "shopkeeper", "collector"):
             self.assertIn(owner, header)
@@ -75,8 +67,10 @@ class ItemOwnershipContractTests(unittest.TestCase):
         self.assertIn("collector_expire", header)
         self.assertIn("payload.from_owner.type == item_owner_type::collector", implementation)
         self.assertIn("payload.to_owner.type == item_owner_type::collector", implementation)
-        self.assertIn("ITEM_TRANSFER_PREVIOUS_PAYLOAD_VERSION", implementation)
-        self.assertIn("ITEM_TRANSFER_LEGACY_PAYLOAD_VERSION", implementation)
+        # Only the reasons an item transfer command carries are valid in one.
+        valid = implementation[implementation.index("bool valid_reason("):]
+        valid = valid[:valid.index("\n}\n")]
+        self.assertEqual(valid.count("item_transfer_reason::"), 3)
         self.assertIn("critical_entity_key_less", implementation)
 
     def test_repository_locks_complete_root_and_commits_all_authorities(self):
@@ -122,24 +116,9 @@ class ItemOwnershipContractTests(unittest.TestCase):
     def test_snapshot_repositories_do_not_write_owner_authority(self):
         for name in ("player_snapshot_repository.c", "sql_player.c", "files.c"):
             source = (SRC / name).read_text()
-            if name == "player_snapshot_repository.c":
-                start = source.index("query_result apply_death(")
-                end = source.index("} // namespace", start)
-                death = source[start:end]
-                self.assertIn("snapshot.death", death)
-                self.assertIn("item_custody_state::quarantined", death)
-                source = source[:start] + source[end:]
             self.assertNotIn("UPDATE item_current_owner", source)
             self.assertNotIn("DELETE FROM item_current_owner", source)
             self.assertNotIn("UPDATE item_owner_revision", source)
-
-    def test_synthetic_adapter_is_pointer_free_and_coordinator_backed(self):
-        header = (SRC / "item_transfer_synthetic.h").read_text()
-        implementation = (SRC / "item_transfer_synthetic.c").read_text()
-        self.assertNotIn("P_obj", header)
-        self.assertNotIn("P_char", header)
-        self.assertIn("critical_command_coordinator_submit", implementation)
-        self.assertIn("item_transfer_command_decode_result", implementation)
 
 
 if __name__ == "__main__":

@@ -41,7 +41,7 @@ def run(binary, mode='file'):
         for name in ('dms','dms_new'): shutil.copy2(binary,runtime/'bin/server'/name)
         port,tls,ws=journey.available_ports()
         env=dict(PATH=os.environ.get('PATH','/usr/bin:/bin'),ENVIRONMENT='local',PERSISTENCE_MODE='flatfile-primary',
-                 FLATFILE_STATE_DIR=str(state),PLAYER_SAVE_JOURNAL_DIR=str(runtime/'journals/players'),
+                 FLATFILE_STATE_DIR=str(state),
                  CRITICAL_COMMAND_JOURNAL_DIR=str(runtime/'journals/critical'),REDIS='FALSE',CHAOS_MUD='FALSE',
                  LISTEN_ADDRESS='127.0.0.1',DURIS_TLS_PORT=str(tls),DURIS_WEBSOCKET_PORT=str(ws),
                  DURIS_WEBSOCKET_LISTEN_ADDRESS='127.0.0.1')

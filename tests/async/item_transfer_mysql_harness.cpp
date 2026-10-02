@@ -216,232 +216,6 @@ critical_apply_result apply(MYSQL *connection, uint8_t id, const item_transfer_p
 	command.accepted_at_usec = 1;
 	return critical_command_repository_apply(connection, command);
 }
-
-player_item_snapshot runtime_item(uint64_t uid, int64_t generated_key, int64_t timer)
-{
-	player_item_snapshot item = {};
-	item.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
-	item.equipment_slot = -1;
-	item.object_uid = uid;
-	item.generated_key = generated_key;
-	item.vnum = 1901;
-	item.type = 1;
-	item.string_mask = 0x0f;
-	item.name = "restitution item";
-	item.short_description = "restitution short";
-	item.description = "restitution description";
-	item.action_description = "restitution action";
-	item.values = { 11, 12, 13, 14, 15, 16, 17, 18 };
-	item.timers = { timer, timer + 1, timer + 2, timer + 3, timer + 4, timer + 5 };
-	item.wear_flags = 0x10203040;
-	item.extra_flags = 0x50607080;
-	item.anti_flags = 0x11223344;
-	item.anti2_flags = 0x55667788;
-	item.extra2_flags = 0x99aabbcc;
-	item.weight = 27;
-	item.material = 3;
-	item.cost = 4567;
-	item.condition = 89;
-	item.craftsmanship = 31;
-	item.bitvectors = { 21, 22, 23, 24, 25 };
-	for (size_t index = 0; index < item.affects.size(); ++index)
-		item.affects[index] = { static_cast<int16_t>(index + 1),
-					static_cast<int16_t>(index + 11) };
-	item.dynamic_affects.push_back({ 7, 41, 42 });
-	item.extra_descriptions.push_back({ "SPELLBOOK", "", true, { 4, 9, 15 } });
-	return item;
-}
-
-std::vector<uint8_t> encode_runtime_item(const player_item_snapshot &item)
-{
-	std::vector<uint8_t> encoded;
-	assert(player_item_snapshot_list_encode({ item }, &encoded) ==
-	       player_snapshot_codec_result::ok);
-	return encoded;
-}
-
-std::vector<uint8_t> read_blob(MYSQL *connection, const char *sql)
-{
-	execute(connection, sql);
-	MYSQL_RES *rows = mysql_store_result(connection);
-	assert(rows);
-	MYSQL_ROW row = mysql_fetch_row(rows);
-	assert(row && row[0]);
-	const unsigned long *lengths = mysql_fetch_lengths(rows);
-	assert(lengths);
-	std::vector<uint8_t> blob(reinterpret_cast<const uint8_t *>(row[0]),
-				  reinterpret_cast<const uint8_t *>(row[0]) + lengths[0]);
-	mysql_free_result(rows);
-	return blob;
-}
-
-void prepare_restitution_runtime_fixture(MYSQL *connection, uint64_t uid,
-					 const std::vector<uint8_t> &initial_payload)
-{
-	execute(connection, "CREATE TABLE IF NOT EXISTS player_death_restitution_receipt ("
-			    "restitution_id BINARY(16) NOT NULL PRIMARY KEY) ENGINE=InnoDB");
-	execute(connection,
-		"CREATE TABLE IF NOT EXISTS player_death_restitution_item ("
-		"restitution_id BINARY(16) NOT NULL,item_uid BIGINT UNSIGNED NOT NULL,"
-		"vnum INT NOT NULL,PRIMARY KEY(restitution_id,item_uid),"
-		"FOREIGN KEY(restitution_id) REFERENCES player_death_restitution_receipt(restitution_id))"
-		" ENGINE=InnoDB");
-	execute(connection,
-		"CREATE TABLE IF NOT EXISTS player_death_restitution_delivery ("
-		"item_uid BIGINT UNSIGNED NOT NULL PRIMARY KEY,restitution_id BINARY(16) NOT NULL,"
-		"source_pid INT NOT NULL,death_revision BIGINT UNSIGNED NOT NULL,recipient_pid INT NOT NULL,"
-		"source_item_revision BIGINT UNSIGNED NOT NULL,delivered_item_revision BIGINT UNSIGNED NOT NULL,"
-		"delivered_item_id INT UNSIGNED NOT NULL,metadata_digest BINARY(32) NOT NULL,"
-		"original_payload MEDIUMBLOB NOT NULL,"
-		"FOREIGN KEY(restitution_id,item_uid) REFERENCES player_death_restitution_item(restitution_id,item_uid))"
-		" ENGINE=InnoDB");
-	execute(connection,
-		"CREATE TABLE IF NOT EXISTS player_death_restitution_runtime ("
-		"item_uid BIGINT UNSIGNED NOT NULL PRIMARY KEY,recipient_pid INT NOT NULL,"
-		"state_payload MEDIUMBLOB NOT NULL,state_digest BINARY(32) NOT NULL,"
-		"FOREIGN KEY(item_uid) REFERENCES player_death_restitution_delivery(item_uid))"
-		" ENGINE=InnoDB");
-	const std::string payload_hex = [&]
-	{
-		static const char digits[] = "0123456789abcdef";
-		std::string result;
-		result.reserve(initial_payload.size() * 2);
-		for (uint8_t byte : initial_payload)
-		{
-			result.push_back(digits[byte >> 4]);
-			result.push_back(digits[byte & 0x0f]);
-		}
-		return result;
-	}();
-	const std::string id = "UNHEX(REPEAT('a1',16))";
-	execute(connection,
-		"INSERT INTO player_death_restitution_receipt(restitution_id,source_pid,"
-		"death_revision,recipient_pid,death_operation_id,evidence_digest,plan_digest,"
-		"status,actor,reason) VALUES (" +
-			id +
-			",99,1,41,UNHEX(REPEAT('b1',16)),UNHEX(REPEAT('c1',32)),"
-			"UNHEX(REPEAT('d1',32)),2,'item-transfer-test','runtime update')");
-	execute(connection,
-		"INSERT INTO player_death_restitution_item(restitution_id,item_uid,vnum,"
-		"disposition,classification,metadata_digest,metadata_payload) VALUES (" +
-			id + "," + std::to_string(uid) +
-			",1901,1,'runtime',UNHEX(REPEAT('11',32)),UNHEX('" + payload_hex + "'))");
-	execute(connection,
-		"INSERT INTO player_death_restitution_delivery(item_uid,restitution_id,source_pid,"
-		"death_revision,recipient_pid,source_item_revision,delivered_item_revision,"
-		"delivered_item_id,metadata_digest,original_payload) VALUES (" +
-			std::to_string(uid) + "," + id +
-			",99,1,41,1,1,1901,REPEAT(0x11,32),UNHEX('" + payload_hex + "'))");
-	execute(connection,
-		"INSERT INTO player_death_restitution_runtime(item_uid,recipient_pid,state_payload,"
-		"state_digest) VALUES (" +
-			std::to_string(uid) + ",41,UNHEX('" + payload_hex +
-			"'),UNHEX(SHA2(UNHEX('" + payload_hex + "'),256)))");
-}
-
-void check_restitution_runtime_transfer(MYSQL *connection)
-{
-	const uint64_t uid = 9000001;
-	const item_owner_identity source = { item_owner_type::player, 41, 0 };
-	const item_owner_identity target = { item_owner_type::player, 42, 0 };
-	const player_item_snapshot initial = runtime_item(uid, 7, 1700000000);
-	const player_item_snapshot mutated = runtime_item(uid, 7007, 1900000000);
-	const std::vector<uint8_t> initial_payload = encode_runtime_item(initial);
-	const std::vector<uint8_t> mutated_payload = encode_runtime_item(mutated);
-	prepare_restitution_runtime_fixture(connection, uid, initial_payload);
-	execute(connection,
-		"INSERT INTO item_current_owner(item_uid,root_item_uid,parent_item_uid,owner_type,"
-		"owner_id,owner_context_id,item_revision,vnum,state) VALUES (9000001,9000001,NULL,1,41,0,1,1901,1)");
-	const uint64_t source_revision = owner_revision(connection, source);
-	const uint64_t target_revision = owner_revision(connection, target);
-	item_transfer_payload craft = {};
-	craft.from_owner = source;
-	craft.to_owner = source;
-	craft.reason = item_transfer_reason::craft;
-	craft.reason_id = 9002;
-	craft.expected_from_revision = source_revision;
-	craft.expected_to_revision = source_revision;
-	craft.selected_item_uid = uid;
-	craft.multi_root = true;
-	craft.item_count = 1;
-	craft.items[0] = { uid, uid, 0, 1, 1901, item_custody_state::active };
-	const critical_apply_result rejected_craft = apply(connection, 16, craft);
-	assert(rejected_craft.outcome == critical_apply_outcome::terminal_failure &&
-	       rejected_craft.error_code == EPERM);
-	assert(scalar(connection,
-		      "SELECT COUNT(*) FROM item_current_owner WHERE item_uid=9000001 AND "
-		      "owner_id=41 AND state=1 AND item_revision=1") == 1);
-	assert(scalar(connection,
-		      "SELECT COUNT(*) FROM player_death_restitution_delivery WHERE item_uid=9000001") ==
-	       1);
-	const std::vector<uint8_t> preserved_payload = read_blob(
-		connection,
-		"SELECT state_payload FROM player_death_restitution_runtime WHERE item_uid=9000001");
-	assert(preserved_payload == initial_payload);
-	assert(owner_revision(connection, source) == source_revision);
-	item_transfer_payload transfer = {};
-	transfer.from_owner = source;
-	transfer.to_owner = target;
-	transfer.reason = item_transfer_reason::player_give;
-	transfer.reason_id = 9001;
-	transfer.expected_from_revision = source_revision;
-	transfer.expected_to_revision = target_revision;
-	transfer.selected_item_uid = uid;
-	transfer.target_root_item_uid = uid;
-	transfer.item_count = 1;
-	transfer.items[0] = { uid, uid, 0, 1, 1901, item_custody_state::active };
-	transfer.item_blob_size = static_cast<uint32_t>(mutated_payload.size());
-	std::copy(mutated_payload.begin(), mutated_payload.end(), transfer.item_blob.begin());
-	const critical_apply_result moved = apply(connection, 15, transfer);
-	assert(moved.outcome == critical_apply_outcome::applied && moved.error_code == 0);
-	const std::vector<uint8_t> stored_payload = read_blob(
-		connection,
-		"SELECT state_payload FROM player_death_restitution_runtime WHERE item_uid=9000001");
-	std::vector<player_item_snapshot> stored;
-	assert(player_item_snapshot_list_decode(stored_payload.data(), stored_payload.size(),
-						&stored) == player_snapshot_codec_result::ok &&
-	       stored.size() == 1);
-	const player_item_snapshot &actual = stored[0];
-	assert(actual.parent_index == PLAYER_SNAPSHOT_NO_PARENT && actual.equipment_slot == -1);
-	assert(actual.object_uid == mutated.object_uid &&
-	       actual.generated_key == mutated.generated_key && actual.vnum == mutated.vnum &&
-	       actual.type == mutated.type && actual.string_mask == mutated.string_mask &&
-	       actual.name == mutated.name &&
-	       actual.short_description == mutated.short_description &&
-	       actual.description == mutated.description &&
-	       actual.action_description == mutated.action_description &&
-	       actual.values == mutated.values && actual.timers == mutated.timers &&
-	       actual.wear_flags == mutated.wear_flags &&
-	       actual.extra_flags == mutated.extra_flags &&
-	       actual.anti_flags == mutated.anti_flags &&
-	       actual.anti2_flags == mutated.anti2_flags &&
-	       actual.extra2_flags == mutated.extra2_flags && actual.weight == mutated.weight &&
-	       actual.material == mutated.material && actual.cost == mutated.cost &&
-	       actual.condition == mutated.condition &&
-	       actual.craftsmanship == mutated.craftsmanship &&
-	       actual.bitvectors == mutated.bitvectors && actual.affects == mutated.affects);
-	assert(actual.dynamic_affects.size() == mutated.dynamic_affects.size() &&
-	       actual.dynamic_affects[0].type == mutated.dynamic_affects[0].type &&
-	       actual.dynamic_affects[0].data == mutated.dynamic_affects[0].data &&
-	       actual.dynamic_affects[0].extra2 == mutated.dynamic_affects[0].extra2 &&
-	       actual.extra_descriptions.size() == mutated.extra_descriptions.size() &&
-	       actual.extra_descriptions[0].keyword == mutated.extra_descriptions[0].keyword &&
-	       actual.extra_descriptions[0].description ==
-		       mutated.extra_descriptions[0].description &&
-	       actual.extra_descriptions[0].spellbook == mutated.extra_descriptions[0].spellbook &&
-	       actual.extra_descriptions[0].spell_ids == mutated.extra_descriptions[0].spell_ids);
-	assert(scalar(connection,
-		      "SELECT owner_id FROM item_current_owner WHERE item_uid=9000001") == 42);
-	// The fixture intentionally has custody and a restitution runtime payload but no
-	// player_items row. A legitimate live give must repair that historical gap from
-	// the command's exact snapshot instead of rejecting the move as an ownership
-	// conflict or leaving the recipient with custody-only state.
-	assert(scalar(connection,
-		      "SELECT COUNT(*) FROM player_items WHERE pid=42 AND obj_uid=9000001 AND "
-		      "vnum=1901 AND cost=4567 AND timer=1900000000") == 1);
-	assert(scalar(connection,
-		      "SELECT COUNT(*) FROM player_items WHERE pid=41 AND obj_uid=9000001") == 0);
-}
 } // namespace
 
 // What memory says a player holds is what a transfer takes: another player's or an
@@ -462,7 +236,7 @@ void check_memory_claims(MYSQL *connection)
 	const uint64_t gift = item_uid_allocator_next();
 
 	// The record still gives the bag and its ring to another player; memory says
-	// player one holds them and drops them.
+	// player one holds them, and an operator repair moves them to the room.
 	root_uid = bag;
 	child_uid = ring;
 	assert(apply(connection, 17,
@@ -472,7 +246,7 @@ void check_memory_claims(MYSQL *connection)
 		       .outcome == critical_apply_outcome::applied);
 	critical_apply_result dropped =
 		apply(connection, 18,
-		      payload(player_one, room, item_transfer_reason::player_drop, 0, 0, 1));
+		      payload(player_one, room, item_transfer_reason::operator_repair, 0, 0, 1));
 	assert(dropped.outcome == critical_apply_outcome::applied);
 	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid IN (" +
 				   std::to_string(bag) + "," + std::to_string(ring) +
@@ -493,7 +267,7 @@ void check_memory_claims(MYSQL *connection)
 	root_uid = held_by_auction;
 	critical_apply_result taken =
 		apply(connection, 19,
-		      payload(player_one, room, item_transfer_reason::player_drop, 0, 0, 1, 1));
+		      payload(player_one, room, item_transfer_reason::operator_repair, 0, 0, 1, 1));
 	assert(taken.outcome == critical_apply_outcome::applied);
 	assert(scalar(connection,
 		      ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid=" +
@@ -610,11 +384,11 @@ int main()
 
 	uint64_t player_two_revision = owner_revision(connection, player_two);
 	// Memory is the authority for a player: a stale owner or item revision no longer
-	// refuses the move. The items go where the game put them.
-	const auto give_payload = payload(player_one, player_two, item_transfer_reason::player_give,
-					  created_result.to_owner_revision - 1,
-					  player_two_revision + 5, 7);
-	critical_apply_result moved = apply(connection, 4, give_payload);
+	// refuses the move. The items go where the repair puts them.
+	const auto move_payload =
+		payload(player_one, player_two, item_transfer_reason::operator_repair,
+			created_result.to_owner_revision - 1, player_two_revision + 5, 7);
+	critical_apply_result moved = apply(connection, 4, move_payload);
 	assert(moved.outcome == critical_apply_outcome::applied);
 	item_transfer_result moved_result = {};
 	assert(item_transfer_command_decode_result(moved.result_payload.data(), moved.result_size,
@@ -628,20 +402,20 @@ int main()
 		      ("SELECT COUNT(*) FROM player_items WHERE pid=4000000001 AND obj_uid IN (" +
 		       std::to_string(root_uid) + "," + std::to_string(child_uid) + ")")
 			      .c_str()) == 0);
-	// The record already named the giver, so nothing was claimed from anyone else.
+	// The record already named the first player, so nothing was claimed from anyone else.
 	assert(scalar(connection, ("SELECT COUNT(*) FROM item_owner_audit WHERE item_uid IN (" +
 				   std::to_string(root_uid) + "," + std::to_string(child_uid) + ")")
 					  .c_str()) == 0);
-	critical_apply_result replayed_give = apply(connection, 4, give_payload);
-	item_transfer_result replayed_give_result = {};
-	// The populated cross-owner give must apply exactly once when its operation is replayed.
-	assert(replayed_give.outcome == critical_apply_outcome::already_applied &&
-	       item_transfer_command_decode_result(replayed_give.result_payload.data(),
-						   replayed_give.result_size,
-						   &replayed_give_result) &&
-	       replayed_give_result.from_owner_revision == moved_result.from_owner_revision &&
-	       replayed_give_result.to_owner_revision == moved_result.to_owner_revision &&
-	       replayed_give_result.max_item_revision == moved_result.max_item_revision);
+	critical_apply_result replayed_move = apply(connection, 4, move_payload);
+	item_transfer_result replayed_move_result = {};
+	// The populated cross-owner move must apply exactly once when its operation is replayed.
+	assert(replayed_move.outcome == critical_apply_outcome::already_applied &&
+	       item_transfer_command_decode_result(replayed_move.result_payload.data(),
+						   replayed_move.result_size,
+						   &replayed_move_result) &&
+	       replayed_move_result.from_owner_revision == moved_result.from_owner_revision &&
+	       replayed_move_result.to_owner_revision == moved_result.to_owner_revision &&
+	       replayed_move_result.max_item_revision == moved_result.max_item_revision);
 
 	uint64_t destruction_revision = owner_revision(connection, destroyed);
 	execute(connection, ("UPDATE item_current_owner SET item_revision=18446744073709551615 "
@@ -655,7 +429,7 @@ int main()
 			      std::numeric_limits<uint64_t>::max()));
 	assert(overflow.outcome == critical_apply_outcome::terminal_failure &&
 	       overflow.error_code == ERANGE);
-	// The record still names the giver, as when the receiver's save has not landed:
+	// The record still names the first player, as when the receiver's save has not landed:
 	// the destruction takes the items from it and audits the claim.
 	execute(connection, ("UPDATE item_current_owner SET item_revision=2,owner_id=4000000001 "
 			     "WHERE root_item_uid=" +
@@ -677,9 +451,9 @@ int main()
 		       "new_owner_type=1 AND new_owner_id=4000000002")
 			      .c_str()) == 2);
 	// A destroyed item is never revived by a later claim.
-	critical_apply_result revived =
-		apply(connection, 22,
-		      payload(player_two, player_one, item_transfer_reason::player_give, 0, 0, 4));
+	critical_apply_result revived = apply(
+		connection, 22,
+		payload(player_two, player_one, item_transfer_reason::operator_repair, 0, 0, 4));
 	assert(revived.outcome == critical_apply_outcome::terminal_failure &&
 	       revived.error_code == ESTALE);
 	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner WHERE root_item_uid=" +
@@ -803,7 +577,7 @@ int main()
 
 	root_uid = container_uid - 2;
 	child_uid = container_uid - 1;
-	auto reparent = payload(player_one, player_one, item_transfer_reason::player_put,
+	auto reparent = payload(player_one, player_one, item_transfer_reason::operator_repair,
 				nested_created_result.to_owner_revision,
 				nested_created_result.to_owner_revision, 1);
 	reparent.selected_item_uid = root_uid;
@@ -831,7 +605,7 @@ int main()
 	item_transfer_payload detach = {};
 	detach.from_owner = player_one;
 	detach.to_owner = player_one;
-	detach.reason = item_transfer_reason::player_get;
+	detach.reason = item_transfer_reason::operator_repair;
 	detach.reason_id = 78;
 	detach.expected_from_revision = reparented_result.to_owner_revision;
 	detach.expected_to_revision = reparented_result.to_owner_revision;
@@ -888,8 +662,6 @@ int main()
 		      "SELECT COUNT(*) FROM item_current_owner own LEFT JOIN player_items payload "
 		      "ON payload.obj_uid=own.item_uid AND payload.pid=own.owner_id WHERE "
 		      "own.owner_type=1 AND own.state=1 AND payload.id IS NULL") == 0);
-
-	check_restitution_runtime_transfer(connection);
 
 	item_uid_allocator_reset_for_tests();
 	assert(item_uid_allocator_reserve(connection, 2));

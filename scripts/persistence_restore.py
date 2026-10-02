@@ -24,7 +24,6 @@ def clean_environment(candidate):
     return {"PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin", "HOME": str(candidate),
             "ENVIRONMENT": "local", "REDIS": "FALSE",
             "TMPDIR": str(tmp),
-            "PLAYER_SAVE_JOURNAL_DIR": str(candidate / "journals/players"),
             "CRITICAL_COMMAND_JOURNAL_DIR": str(candidate / "journals/critical"),
             "LISTEN_ADDRESS": "127.0.0.1", "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
             "DURIS_WEBSOCKET_PORT": "4050"}
@@ -149,8 +148,7 @@ def service_load(candidate, mode, env):
         shutil.copytree(backup.ROOT / name, runtime / name, symlinks=False)
         for path in (runtime / name).rglob("*"):
             path.chmod(0o700 if path.is_dir() else 0o600)
-    for name in ("players", "critical"):
-        (candidate / "journals" / name).mkdir(mode=0o700, parents=True, exist_ok=True)
+    (candidate / "journals/critical").mkdir(mode=0o700, parents=True, exist_ok=True)
     backup.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-sha256", "-nodes",
                 "-days", "1", "-subj", "/CN=localhost", "-keyout", str(runtime / "duris.key"),
                 "-out", str(runtime / "duris.crt")], env=env)
@@ -209,7 +207,7 @@ def restore(p, generation_name, tombstones, drill=False):
             env = clean_environment(candidate)
             shutil.copytree(generation / "journals", candidate / "journals")
             qualifier = str(backup.ROOT / "bin/tools/qualify_flatfile_restore")
-            backup.run([qualifier, "--journals-preflight", str(candidate)], env=env)
+            backup.run([qualifier, "--receipts", str(candidate)], env=env)
             if meta["mode"] == "flatfile-primary":
                 shutil.copytree(generation / "state", candidate / "state")
                 backup.require(backup.inventory(generation / "state") == backup.inventory(candidate / "state"),
@@ -219,7 +217,6 @@ def restore(p, generation_name, tombstones, drill=False):
                                      "--state-preflight", str(candidate / "state")], env=env)
                 aggregates = json.loads(result)
                 service_load(candidate, meta["mode"], env)
-                backup.run([qualifier, "--journals-drained", str(candidate)], env=env)
                 aggregates = json.loads(backup.run([qualifier, str(candidate / "state")], env=env))
             else:
                 with private_database(candidate) as env:
@@ -227,7 +224,6 @@ def restore(p, generation_name, tombstones, drill=False):
                     database_qualify(env)
                     aggregates = {"schema_history_and_value_reconciliation": "ok"}
                     service_load(candidate, meta["mode"], env)
-                    backup.run([qualifier, "--journals-drained", str(candidate)], env=env)
                     database_qualify(env)
             backup.require(ledger_hash == tombstone_preflight(tombstones, p, meta["created"]),
                            "erasure_evidence_changed_during_restore")

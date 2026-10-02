@@ -40,14 +40,6 @@ struct BoonData
 	int repeat;
 };
 
-struct BoonProgress
-{
-	int id;
-	int boonid;
-	int pid;
-	double counter;
-};
-
 struct BoonShop
 {
 	int id;
@@ -145,7 +137,6 @@ struct boon_options_struct
 #define BN_CREATE 1
 #define BN_REACTIVATE 2
 #define BN_EXTEND 3
-#define BN_NOTCH 4
 #define BN_COMPLETE 5
 #define BN_VOID 6
 #define BN_EXPIRE 7
@@ -159,7 +150,6 @@ int is_boon_valid(int);
 int count_boons(int, int);
 void zero_boon_data(struct BoonData *bd);
 bool get_boon_data(int, struct BoonData *bd);
-bool get_boon_progress_data(int, int, struct BoonProgress *bp);
 bool get_boon_shop_data(int, struct BoonShop *);
 int validate_boon_data(struct BoonData *bd, int);
 int parse_boon_args(P_char, struct BoonData *bd, char *);
@@ -167,16 +157,12 @@ void do_boon(P_char, char *, int);
 void boon_shop(P_char, char *);
 int boon_display(P_char, char *);
 int create_boon(struct BoonData *bd, P_char ch);
-int create_boon_progress(BoonProgress *bp);
-int create_boon_shop_entry(BoonShop *bs);
 int remove_boon(int);
 int extend_boon(int, int, const char *);
 void boon_notify(int, P_char, int);
 void boon_notify_snapshot(int id, int racewar, int pid, int action);
 void boon_randomize(P_char, char *);
 void boon_maintenance();
-void boon_random_maintenance();
-int boon_get_random_zone(int);
 void check_boon_completion(P_char, P_char, double, int);
 void boon_publish_transaction_result(P_char ch, double event_data,
 				     const boon_reward_result &result);

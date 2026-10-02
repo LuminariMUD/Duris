@@ -46,6 +46,10 @@
 #include "sql/sql_async.h"
 #include "world/vnum.room.h"
 #include "persistence/locker_async.h"
+#include "persistence/persistence_mode.h"
+#include "flatfile/flatfile_corpse_ownership.h"
+#include "flatfile/flatfile_locker_repository.h"
+#include "player/player_load_items.h"
 #include "item/item_movement_transaction.h"
 
 extern P_index obj_index;
@@ -607,39 +611,6 @@ StorageLocker::StorageLocker(int rroom, P_char chLocker, P_char chUser)
 	world[rroom].ex_description->next->description = NULL;
 	world[rroom].ex_description->next->next = NULL;
 };
-
-bool locker_owner_for_room(P_char actor, item_owner_identity *owner)
-{
-	if (!actor || !owner || actor->in_room == NOWHERE || !IS_ROOM(actor->in_room, ROOM_LOCKER))
-		return false;
-	StorageLocker *locker = GetChestList(actor->in_room);
-	if (!locker || locker->GetLockerUser() != actor || locker->GetLockerId() <= 0 ||
-	    locker->GetPublicChestId() <= 0)
-		return false;
-	*owner = { item_owner_type::locker, static_cast<uint64_t>(locker->GetLockerId()),
-		   static_cast<uint64_t>(locker->GetPublicChestId()) };
-	return true;
-}
-
-bool locker_owner_for_container(P_char actor, P_obj container, item_owner_identity *owner)
-{
-	if (!actor || !container || !owner || actor->in_room == NOWHERE ||
-	    !IS_ROOM(actor->in_room, ROOM_LOCKER))
-		return false;
-	StorageLocker *locker = GetChestList(actor->in_room);
-	if (!locker || locker->GetLockerUser() != actor || locker->GetLockerId() <= 0)
-		return false;
-	LockerChest *chest = locker->FindChestForObject(container);
-	if (!chest)
-		return false;
-	const int chest_id = chest->IsPrivateChest() ? chest->GetChestId() :
-						       locker->GetPublicChestId();
-	if (chest_id <= 0)
-		return false;
-	*owner = { item_owner_type::locker, static_cast<uint64_t>(locker->GetLockerId()),
-		   static_cast<uint64_t>(chest_id) };
-	return true;
-}
 
 StorageLocker::~StorageLocker(void)
 {
@@ -1742,9 +1713,19 @@ static int create_new_locker(P_char ch, P_char locker, const sql_rows &rows);
 /* free memory associated with creating a new locker */
 static void free_locker(int roomNum);
 
-/* Load a locker character from its entry rows and optionally enforce entry authorization. */
+/* A flat-file locker's public chest: the items to restore, those no other owner holds. */
+struct flat_locker_chest
+{
+	item_owner_identity owner;
+	uint64_t owner_revision = 0;
+	std::vector<player_item_snapshot> items;
+	std::vector<player_load_item_identity> identities;
+};
+
+/* Load a locker character from its entry rows and optionally enforce entry authorization;
+ * a flat-file locker's public chest comes as flat. */
 static P_char load_locker_char(P_char ch, char *esc_locker_name, int bValidateAccess, bool busy,
-			       const sql_rows &rows);
+			       const sql_rows &rows, const flat_locker_chest *flat);
 static P_char create_locker_char(P_char chOwner, P_char newCh, char *esc_locker_name);
 static int save_locker_char(P_char chInLocker, int bTerminal);
 
@@ -2830,9 +2811,47 @@ static const sql_row *locker_row(const sql_rows &rows, const char *tag)
 	return NULL;
 }
 
+/* Flat-file: the stored locker named name as an entry read gives it (no rows when there is
+ * none), with its public chest. Private chests are MariaDB's. */
+static bool flat_locker_read(const std::string &name, sql_rows *rows, flat_locker_chest *chest)
+{
+	const char *root = persistence_mode_flatfile_root();
+	if (!root)
+		return false;
+	flatfile_locker_record locker;
+	std::string error;
+	const auto found = flatfile_locker_find(root, name, &locker, &error);
+	if (found == flatfile_locker_result::not_found)
+		return true;
+	const auto stored = std::find_if(locker.chests.begin(), locker.chests.end(),
+					 [](const auto &entry) { return entry.is_public; });
+	if (found == flatfile_locker_result::ok && stored != locker.chests.end())
+	{
+		chest->owner = { item_owner_type::locker, locker.locker_id, stored->chest_id };
+		if (flatfile_world_load_item_ownership(root, chest->owner, stored->items,
+						       &chest->items, &chest->owner_revision,
+						       &chest->identities, &error) ==
+		    flatfile_corpse_ownership_result::ok)
+		{
+			sql_row row = locker_outcome("locker");
+			for (const uint64_t field : { static_cast<uint64_t>(locker.locker_id),
+						      static_cast<uint64_t>(locker.racewar),
+						      static_cast<uint64_t>(locker.race),
+						      static_cast<uint64_t>(stored->chest_id) })
+				row.fields.push_back(std::to_string(field));
+			rows->push_back(std::move(row));
+			return true;
+		}
+	}
+	logit(LOG_FILE, "Flat locker %s could not be read: %s", name.c_str(),
+	      error.empty() ? "no public chest" : error.c_str());
+	return false;
+}
+
 /* The locker's rows have arrived: enter it if ch is still at the door and may. */
 static void locker_arrive(P_char ch, const std::string &name, int bValidate, bool busy, int room,
-			  const sql_rows &rows, const locker_entered &entered)
+			  const sql_rows &rows, const locker_entered &entered,
+			  const flat_locker_chest *flat = nullptr)
 {
 	if (ch->in_room != room)
 	{
@@ -2844,7 +2863,7 @@ static void locker_arrive(P_char ch, const std::string &name, int bValidate, boo
 
 	char locker_name[500];
 	strlcpy(locker_name, name.c_str(), sizeof(locker_name));
-	P_char chLocker = load_locker_char(ch, locker_name, bValidate, busy, rows);
+	P_char chLocker = load_locker_char(ch, locker_name, bValidate, busy, rows, flat);
 	if (!chLocker)
 		return;
 
@@ -2864,10 +2883,19 @@ static void locker_enter(P_char ch, const char *locker_name, int bValidate, lock
 	const bool busy = lockerName_is_inuse(const_cast<char *>(locker_name)) > 0;
 	const std::string name = locker_name;
 	const int room = ch->in_room;
-	// Without a database (the flat-file backend) no locker is stored.
+	// Flat-file reads the stored locker here.
 	if (!DB)
 	{
-		locker_arrive(ch, name, bValidate, busy, room, {}, entered);
+		sql_rows rows;
+		flat_locker_chest chest;
+		if (!flat_locker_read(name, &rows, &chest))
+		{
+			send_to_char(
+				"The locker could not be opened right now.  Please try later.\r\n",
+				ch);
+			return;
+		}
+		locker_arrive(ch, name, bValidate, busy, room, rows, entered, &chest);
 		return;
 	}
 	const bool god = GET_LEVEL(ch) >= OVERLORD || god_check(ch->player.name);
@@ -3110,7 +3138,7 @@ static void free_locker(int roomNum)
 /* Load a locker character from the rows its entry read, while preserving occupancy
  * privacy and access rules. `busy` says the locker was in use when they were read. */
 static P_char load_locker_char(P_char ch, char *esc_locker_name, int bValidateAccess, bool busy,
-			       const sql_rows &rows)
+			       const sql_rows &rows, const flat_locker_chest *flat)
 {
 	P_char vict = NULL;
 
@@ -3257,6 +3285,17 @@ static P_char load_locker_char(P_char ch, char *esc_locker_name, int bValidateAc
 		}
 
 		// the locker character holds the public chest's items
+		std::vector<P_obj> flat_items;
+		if (flat && !flat->items.empty() &&
+		    !player_load_item_graph_materialize_detached(flat->items, flat->identities,
+								 flat->owner, flat->owner_revision,
+								 false, true, &flat_items, nullptr))
+		{
+			send_to_char(
+				"The locker could not be opened right now.  Please try later.\r\n",
+				ch);
+			return NULL;
+		}
 		vict = (P_char)mm_get(dead_mob_pool);
 		if (!vict)
 			return NULL;
@@ -3270,8 +3309,15 @@ static P_char load_locker_char(P_char ch, char *esc_locker_name, int bValidateAc
 		// just in case their racewar side happened to change mysteriously..
 		GET_RACEWAR(vict) = bValidateAccess ? atoi((*locker)[2]) : GET_RACEWAR(ch);
 		GET_RACE(vict) = atoi((*locker)[3]);
-		vict->carrying = sql_locker_items_from_rows(rows, atoi((*locker)[1]),
-							    atoi((*locker)[4]), NULL);
+		if (flat)
+			for (auto item = flat_items.rbegin(); item != flat_items.rend(); ++item)
+			{
+				(*item)->next_content = vict->carrying;
+				vict->carrying = *item;
+			}
+		else
+			vict->carrying = sql_locker_items_from_rows(rows, atoi((*locker)[1]),
+								    atoi((*locker)[4]), NULL);
 		for (P_obj obj = vict->carrying; obj; obj = obj->next_content)
 		{
 			obj->loc_p = LOC_CARRIED;

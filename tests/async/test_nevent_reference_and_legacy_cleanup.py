@@ -79,7 +79,7 @@ for current_contract in (
     "observation-only",
     "process-local and are never persisted",
     "durable one-shot nevents",
-    "authoritative MySQL, journal, or Redis recovery pipeline",
+    "MySQL or Redis persistence pipeline",
 ):
     assert current_contract in reference
 

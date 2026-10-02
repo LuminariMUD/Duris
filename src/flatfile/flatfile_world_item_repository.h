@@ -1,7 +1,6 @@
 #ifndef DURIS_FLATFILE_WORLD_ITEM_REPOSITORY_H
 #define DURIS_FLATFILE_WORLD_ITEM_REPOSITORY_H
 
-#include "persistence/corpse_lifecycle_command.h"
 #include "flatfile/flatfile_authority_transaction.h"
 #include "item/item_transfer_command.h"
 #include "player/player_snapshot.h"
@@ -63,47 +62,12 @@ struct flatfile_world_item_player_removal
 	std::vector<flatfile_corpse_custody_owner> custody;
 };
 
-struct flatfile_corpse_transfer_mutation
-{
-	flatfile_authority_after_image after_image;
-	std::vector<flatfile_corpse_custody_item> expected_items;
-	uint64_t corpse_revision = 0;
-	bool created = false;
-};
-
 struct flatfile_room_transfer_mutation
 {
 	flatfile_authority_after_image after_image;
 	std::vector<flatfile_corpse_custody_item> expected_items;
 	uint64_t room_revision = 0;
 	bool created = false;
-};
-
-struct flatfile_corpse_lifecycle_mutation
-{
-	flatfile_authority_after_image after_image;
-	uint64_t corpse_revision = 0;
-	uint64_t catalog_revision = 0;
-};
-
-struct flatfile_corpse_release_mutation
-{
-	flatfile_authority_after_image after_image;
-	std::vector<flatfile_corpse_custody_item> expected_items;
-	std::vector<player_item_snapshot> items;
-	std::array<int32_t, 4> money = {};
-	uint64_t room_revision = 0;
-	uint64_t catalog_revision = 0;
-};
-
-struct flatfile_world_corpse_raise_mutation
-{
-	flatfile_authority_after_image after_image;
-	std::vector<flatfile_corpse_custody_item> expected_items;
-	std::vector<player_item_snapshot> pet_items;
-	std::vector<uint64_t> durable_uids;
-	std::vector<uint64_t> discarded_uids;
-	uint64_t catalog_revision = 0;
 };
 
 struct collector_command_payload;
@@ -135,18 +99,9 @@ flatfile_world_item_list(const std::string &root, std::vector<flatfile_corpse_re
 flatfile_world_item_result
 flatfile_world_item_list_rooms(const std::string &root,
 			       std::vector<flatfile_room_item_record> *rooms, std::string *error);
-flatfile_world_item_result flatfile_world_item_read_coin(const std::string &root,
-							 const flatfile_authority_lock &lock,
-							 const item_owner_identity &owner,
-							 uint64_t uid, player_item_snapshot *item,
-							 std::string *error);
 flatfile_world_item_result flatfile_world_item_prepare_player_remove(
 	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
 	const std::string &expected_name, flatfile_world_item_player_removal *removal,
-	std::string *error);
-flatfile_world_item_result flatfile_world_item_prepare_corpse_transfer(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const item_transfer_payload &payload, flatfile_corpse_transfer_mutation *mutation,
 	std::string *error);
 flatfile_world_item_result flatfile_world_item_prepare_room_transfer(
 	const std::string &root, const flatfile_authority_lock &lock,
@@ -156,25 +111,6 @@ flatfile_world_item_result flatfile_world_item_prepare_collector_transfer(
 	const std::string &root, const flatfile_authority_lock &lock,
 	const collector_command_payload &payload, flatfile_collector_world_mutation *mutation,
 	unsigned int *result_code, std::string *error);
-struct coin_transfer_payload;
-struct coin_transfer_result;
-flatfile_world_item_result
-flatfile_world_item_prepare_coin_rooms(const std::string &root, const flatfile_authority_lock &lock,
-				       const coin_transfer_payload &payload,
-				       const coin_transfer_result &result,
-				       flatfile_authority_after_image *image, std::string *error);
-flatfile_world_item_result flatfile_world_item_prepare_corpse_lifecycle(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const corpse_lifecycle_payload &payload, flatfile_corpse_lifecycle_mutation *mutation,
-	std::string *error);
-flatfile_world_item_result flatfile_world_item_prepare_corpse_release(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const corpse_lifecycle_payload &payload, flatfile_corpse_release_mutation *mutation,
-	std::string *error);
-flatfile_world_item_result flatfile_world_item_prepare_world_corpse_raise(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const corpse_lifecycle_payload &payload, flatfile_world_corpse_raise_mutation *mutation,
-	std::string *error);
 // Write a player corpse as memory holds it, or remove it (the persistence reset's
 // corpse save). Its items leave any other record that still lists them: the last save
 // to claim an item wins.

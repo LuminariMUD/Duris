@@ -73,7 +73,6 @@ close_log = body(debug, "void close_cmdlog(", "void cmdlog(")
 assert "fclose(cmdfile);" in close_log and "cmdfile = NULL;" in close_log
 mysql_shutdown = sql[sql.rindex("void shutdown_mysql("):]
 assert "sql_pool_shutdown();" in mysql_shutdown
-assert "mysql_close(persistenceDB);" in mysql_shutdown
 assert "mysql_close(DB);" in mysql_shutdown
 
 print("Valgrind clean-shutdown ownership contracts passed")

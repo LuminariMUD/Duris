@@ -43,7 +43,7 @@ for token in (
 
 # Step 8: MariaDB reads every character's recipes at boot and answers from memory; learning
 # or forgetting changes memory at once and is queued on the writer.
-recipes = normal[normal.index("bool sql_add_player_recipe"):normal.index("// player load functions")]
+recipes = normal[normal.index("bool sql_add_player_recipe"):normal.index("bool sql_save_account(")]
 for forbidden in ("db_query", "sql_run_query", "qry(", "mysql_store_result"):
     if forbidden in recipes:
         raise SystemExit(f"MariaDB recipes still query the game loop: {forbidden}")

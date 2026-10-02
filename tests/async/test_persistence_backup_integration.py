@@ -70,7 +70,7 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
             sources.append(str(found[0]))
         subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
                         "-D__NO_MYSQL__", "-DDURIS_FLATFILE_AUTHORITY_FAULT_TEST",
-                        "-DDURIS_FLATFILE_TRANSACTION_FAULT_TEST", "-Isrc", "-Isrc/no_mysql",
+                        "-Isrc", "-Isrc/no_mysql",
                         "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
                         "tests/async/persistence_restore_fixture.cpp", *sources, "-lcrypto", "-lz", "-pthread",
                         "-o", str(cls.fixture)], cwd=ROOT, check=True)
@@ -120,24 +120,18 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
             restore.service_load(candidate, "flatfile-primary", env)
         self.assertEqual(checkout.stat().st_uid, 65534)
         self.assertEqual(checkout.stat().st_mode & 0o777, 0o700)
-        for journal in ("players/player-save.journal", "critical/critical-command.journal"):
-            self.assertEqual((candidate / "journals" / journal).stat().st_size, 0)
 
-    def seed_wal(self, live, blocked=False):
-        backup.run([str(self.fixture), "seed-wal-blocked" if blocked else "seed-wal", str(live)])
-        journals = live.parent / "journals"
-        self.p["journal_roots"] = {name: journals / name for name in ("players", "critical")}
-        self.p["live_roots"] = [live, *self.p["journal_roots"].values()]
-        for relative in ("players/player-save.journal", "critical/critical-command.journal"):
-            self.assertGreater((journals / relative).stat().st_size, 0)
-        return journals
-    def test_flatfile_real_pending_replay_account_player_domain_load_and_boot(self):
+    def test_flatfile_pending_transaction_account_player_domain_receipt_and_boot(self):
         self.build_native_fixture()
         live = self.base / "live"
         backup.run([str(self.fixture), "seed", str(live)])
-        journals = self.seed_wal(live)
+        journals = live.parent / "journals"
         receipt_relative = "critical/locker-identification/42.receipt"
         backup.run([str(self.fixture), "seed-receipt", str(journals / "critical/locker-identification")])
+        journals.chmod(0o700)
+        (journals / "critical").chmod(0o700)
+        self.p["journal_roots"] = {"critical": journals / "critical"}
+        self.p["live_roots"] = [live, journals / "critical"]
         receipt_bytes = (journals / receipt_relative).read_bytes()
         journal_before = backup.inventory(journals)
         self.assertTrue((live / "domains/.critical-authority-transaction").exists())
@@ -154,12 +148,9 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
         self.assertEqual((candidate / "journals" / receipt_relative).read_bytes(), receipt_bytes)
         self.assertEqual((generation / "journals" / receipt_relative).read_bytes(), receipt_bytes)
         recovered_before_verify = backup.inventory(candidate / "state", exclude_locks=True)
-        backup.run([str(self.fixture), "verify-wal", str(candidate / "state")])
+        backup.run([str(self.fixture), "verify", str(candidate / "state")])
         self.assertEqual(backup.inventory(candidate / "state", exclude_locks=True), recovered_before_verify)
         self.assertEqual(backup.inventory(journals), journal_before)
-        for relative in ("players/player-save.journal", "critical/critical-command.journal"):
-            self.assertEqual((candidate / "journals" / relative).stat().st_size, 0)
-        backup.run([str(ROOT / "bin/tools/qualify_flatfile_restore"), "--journals-drained", str(candidate)])
         # Repeated native verification proves recovery is idempotent.
         recovered = backup.inventory(candidate / "state", exclude_locks=True)
         backup.run([str(ROOT / "bin/tools/qualify_flatfile_restore"), str(candidate / "state")])
@@ -170,9 +161,10 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
 
     def test_locker_receipt_qualification_rejects_corruption_and_unexpected_entries(self):
         self.build_native_fixture()
-        for case in ("valid", "corrupt", "wrong-pid", "zero-pid", "oversized", "extra-file",
-                     "nested-directory", "nonempty-lock", "public-file", "public-directory",
-                     "symlink-file", "symlink-directory", "hardlink-file"):
+        for case in ("valid", "retired-journal", "corrupt", "wrong-pid", "zero-pid", "oversized",
+                     "extra-file", "foreign-file", "nested-directory", "nonempty-lock",
+                     "public-file", "public-directory", "symlink-file", "symlink-directory",
+                     "hardlink-file"):
             with self.subTest(case=case):
                 candidate = self.p["restore_root"] / case
                 candidate.mkdir(mode=0o700)
@@ -188,8 +180,14 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
                     receipt.rename(store / ("43.receipt" if case == "wrong-pid" else "0.receipt"))
                 elif case == "oversized":
                     receipt.write_bytes(b"x" * (70 * 1024))
+                elif case == "retired-journal":
+                    # What an older server's critical-command journal left behind.
+                    (store.parent / "critical-command.journal").write_bytes(b"old records")
+                    (store.parent / "critical-command.journal.tmp").touch(mode=0o600)
                 elif case == "extra-file":
                     (store / "unexpected").touch(mode=0o600)
+                elif case == "foreign-file":
+                    (store.parent / "player-save.journal").touch(mode=0o600)
                 elif case == "nested-directory":
                     (store / "unexpected").mkdir(mode=0o700)
                 elif case == "nonempty-lock":
@@ -208,114 +206,13 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
                     store.symlink_to(target, target_is_directory=True)
                 elif case == "hardlink-file":
                     os.link(receipt, candidate / "alias")
-                for phase in ("--journals-preflight", "--journals-drained"):
-                    command = [str(ROOT / "bin/tools/qualify_flatfile_restore"), phase, str(candidate)]
-                    if case == "valid":
-                        backup.run(command)
-                    else:
-                        with self.assertRaises(backup.BackupError):
-                            backup.run(command)
-
-    def test_interrupted_bank_domain_and_legacy_transactions_restore_exactly_once(self):
-        self.build_native_fixture()
-        for legacy, intent in ((False, ".player-domain-transaction"), (True, ".currency-transaction")):
-            with self.subTest(intent=intent):
-                case_root = self.base / ("legacy-bank" if legacy else "domain-bank")
-                case_root.mkdir(mode=0o700)
-                live = case_root / "live"
-                backup.run([str(self.fixture), "seed", str(live)])
-                player_before = (live / "domains/player-42.domain").read_bytes()
-                bank_before = (live / "domains/bank-account-one-0.domain").read_bytes()
-                backup.run([str(self.fixture), "seed-legacy-bank-interrupted" if legacy else "seed-bank-interrupted", str(live)])
-                self.assertEqual((live / "domains/player-42.domain").read_bytes(), player_before)
-                self.assertNotEqual((live / "domains/bank-account-one-0.domain").read_bytes(), bank_before)
-                self.assertTrue((live / "domains" / intent).is_file())
-                self.p["root"] = case_root / "backups"
-                self.p["live_roots"] = [live]
-                self.p["journal_roots"] = {}
-                before = backup.inventory(live, exclude_locks=True)
-                with mock.patch.dict(os.environ, {"FLATFILE_STATE_DIR": str(live)}):
-                    result = backup.backup(self.p, "flatfile-primary")
-                generation = self.p["root"] / result["generation"]
-                manifest = backup.verify(generation)
-                self.assertIn("state/domains/" + intent, manifest["files"])
-                self.assertTrue(manifest["pending_transaction"])
-                captured = backup.inventory(generation)
-                receipt = restore.restore(self.p, result["generation"], self.ledger())
-                self.assertEqual(receipt["result"], "qualified")
-                candidate = self.p["restore_root"] / receipt["candidate"]
-                recovered = backup.inventory(candidate / "state", exclude_locks=True)
-                backup.run([str(self.fixture), "verify-bank", str(candidate / "state")])
-                self.assertEqual(backup.inventory(candidate / "state", exclude_locks=True), recovered)
-                self.assertEqual(backup.inventory(live, exclude_locks=True), before)
-                self.assertEqual(backup.inventory(generation), captured)
-    def test_first_player_snapshot_recovers_from_wal_without_persisted_baseline(self):
-        self.build_native_fixture()
-        live = self.base / "live"
-        backup.run([str(self.fixture), "seed-first-wal", str(live)])
-        self.assertFalse(list((live / "players").glob("*.snapshot")))
-        journals = self.base / "journals"
-        self.assertGreater((journals / "players/player-save.journal").stat().st_size, 0)
-        self.assertEqual((journals / "critical/critical-command.journal").stat().st_size, 0)
-        self.p["journal_roots"] = {name: journals / name for name in ("players", "critical")}
-        self.p["live_roots"] = [live, *self.p["journal_roots"].values()]
-        before = backup.inventory(live, exclude_locks=True)
-        journal_before = backup.inventory(journals)
-        with mock.patch.dict(os.environ, {"FLATFILE_STATE_DIR": str(live)}):
-            result = backup.backup(self.p, "flatfile-primary")
-        generation = self.p["root"] / result["generation"]
-        captured = backup.inventory(generation)
-        receipt = restore.restore(self.p, result["generation"], self.ledger())
-        self.assertEqual(receipt["result"], "qualified")
-        candidate = self.p["restore_root"] / receipt["candidate"]
-        backup.run([str(self.fixture), "verify", str(candidate / "state")])
-        self.assertEqual((candidate / "journals/players/player-save.journal").stat().st_size, 0)
-        self.assertEqual(backup.inventory(live, exclude_locks=True), before)
-        self.assertEqual(backup.inventory(journals), journal_before)
-        self.assertEqual(backup.inventory(generation), captured)
-    def test_corrupt_or_unreplayable_nonempty_wal_never_qualifies(self):
-        self.build_native_fixture()
-        actual_service = restore.service_load
-        for case, relative in (("player-corrupt", "players/player-save.journal"),
-                               ("critical-corrupt", "critical/critical-command.journal"),
-                               ("player-blocked", None)):
-            with self.subTest(case=case):
-                case_root = self.base / case
-                case_root.mkdir(mode=0o700)
-                live = case_root / "live"
-                backup.run([str(self.fixture), "seed", str(live)])
-                journals = self.seed_wal(live, blocked=relative is None)
-                # Prove both native records are structurally valid first. The
-                # blocked record is a partial update for a missing player PID.
-                proof = case_root / "preflight-proof"
-                proof.mkdir(mode=0o700)
-                backup.write_json(proof / "ISOLATED_RESTORE", {"synthetic": True})
-                shutil.copytree(journals, proof / "journals")
-                backup.run([str(ROOT / "bin/tools/qualify_flatfile_restore"), "--journals-preflight", str(proof)])
-                if relative is not None:
-                    path = journals / relative
-                    content = bytearray(path.read_bytes())
-                    content[-1] ^= 0x5a
-                    path.write_bytes(content)
-                self.p["root"] = case_root / "backups"
-                live_before = backup.inventory(live, exclude_locks=True)
-                journal_before = backup.inventory(journals)
-                with mock.patch.dict(os.environ, {"FLATFILE_STATE_DIR": str(live)}):
-                    result = backup.backup(self.p, "flatfile-primary")
-                generation = self.p["root"] / result["generation"]
-                captured = backup.inventory(generation)
-                backup.verify(generation)
-                with mock.patch.object(restore, "service_load", wraps=actual_service) as service:
+                command = [str(ROOT / "bin/tools/qualify_flatfile_restore"), "--receipts", str(candidate)]
+                if case in ("valid", "retired-journal"):
+                    backup.run(command)
+                else:
                     with self.assertRaises(backup.BackupError):
-                        restore.restore(self.p, result["generation"], self.ledger())
-                    if relative is None:
-                        service.assert_called_once()
-                    else:
-                        service.assert_not_called()
-                self.assertFalse(list(self.p["restore_root"].glob("candidate-*/QUALIFIED.json")))
-                self.assertEqual(backup.inventory(live, exclude_locks=True), live_before)
-                self.assertEqual(backup.inventory(journals), journal_before)
-                self.assertEqual(backup.inventory(generation), captured)
+                        backup.run(command)
+
     def test_valid_manifest_with_corrupt_lazy_catalog_never_qualifies(self):
         self.build_native_fixture()
         live = self.base / "live"
@@ -338,7 +235,7 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
         backup.write_json(proof / "ISOLATED_RESTORE", {"synthetic": True})
         shutil.copytree(live, proof / "state")
         backup.run([str(ROOT / "bin/tools/qualify_flatfile_restore"), str(proof / "state")])
-        for relative in ("domains/corpse_operation_catalog", "domains/shop_trade_operations",
+        for relative in ("domains/shop_trade_operations",
                          "metadata/kingdom_realms", "domains/locker_catalog",
                          "domains/artifact-mana-81"):
             with self.subTest(catalog=relative):
@@ -367,8 +264,7 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
         source = self.base / "live"
         source.mkdir(mode=0o700)
         with restore.private_database(source) as env:
-            self.p["journal_roots"] = {"players": Path(env["PLAYER_SAVE_JOURNAL_DIR"]),
-                                       "critical": Path(env["CRITICAL_COMMAND_JOURNAL_DIR"])}
+            self.p["journal_roots"] = {"critical": Path(env["CRITICAL_COMMAND_JOURNAL_DIR"])}
             for journal in self.p["journal_roots"].values():
                 journal.mkdir(mode=0o700, parents=True)
             sql(env, payload=(ROOT / "migrations/bootstrap_multithread_safe.sql").read_bytes())
@@ -422,13 +318,9 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
                      "UPDATE player_data SET account_name='OtherSynthetic' WHERE pid=42;")
             with self.assertRaises(backup.BackupError):
                 restore.database_qualify(env)
-            sql(env, "UPDATE player_data SET account_name='SyntheticRestore' WHERE pid=42;")
-            # Corrupt only the disposable source baseline: the same qualifier
-            # that accepted restored values must now reject reconciliation.
-            sql(env, "UPDATE currency_wallet_baseline SET opening_copper=999 WHERE pid=42;")
-            with self.assertRaises(backup.BackupError):
-                restore.database_qualify(env)
-            sql(env, "UPDATE currency_wallet_baseline SET opening_copper=11 WHERE pid=42;"
+            # Corrupt only the disposable source's migration history: the same qualifier
+            # that accepted the restored values must now reject it.
+            sql(env, "UPDATE player_data SET account_name='SyntheticRestore' WHERE pid=42;"
                      "UPDATE mud_schema_history SET apply_checksum=UNHEX(REPEAT('00',32)) WHERE sequence_number=1;")
             with self.assertRaises(backup.BackupError):
                 restore.database_qualify(env)

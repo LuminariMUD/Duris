@@ -5,7 +5,6 @@
 #include "player/player_load_repository.h"
 #include "persistence/critical_command_coordinator.h"
 #include "economy/currency_command.h"
-#include "economy/coin_transfer_command.h"
 
 #include <cstdint>
 #include <string>
@@ -60,49 +59,8 @@ flatfile_player_domain_result flatfile_player_domain_load(const std::string &roo
 							  int8_t racewar,
 							  flatfile_player_domain_record *record,
 							  std::string *error);
-// Borrow the authority lock; never acquire domain_mutex after it. These helpers
-// recover both the authority and legacy domain journals before reading. All
-// result outputs are unchanged on failure. They neither authorize nor stage writes.
-flatfile_player_domain_result
-flatfile_player_domain_recover_locked(const std::string &root, const flatfile_authority_lock &lock,
-				      std::string *error);
-flatfile_player_domain_result
-flatfile_player_domain_load_locked(const std::string &root, const flatfile_authority_lock &lock,
-				   int32_t pid, const std::string &account_name, int8_t racewar,
-				   flatfile_player_domain_record *record, std::string *error);
-// Exact legacy evidence, with no fabricated accounting plan or inferred schema-2
-// equivalence. Lookup uses PID/operation ID before current name/epoch policy.
-// Success with an empty optional means a valid player file without this ID;
-// not_found means the player file is missing. This is not a global ID fence.
-struct flatfile_legacy_domain_receipt
-{
-	critical_operation_id operation_id = {};
-	std::array<uint8_t, 32> command_digest = {};
-	unsigned int result_code = 0;
-	uint16_t result_size = 0;
-	std::array<uint8_t, CRITICAL_COMPLETION_RESULT_MAX_BYTES> result = {};
-};
-flatfile_player_domain_result flatfile_player_domain_legacy_receipt_locked(
-	const std::string &root, const flatfile_authority_lock &lock, int32_t pid,
-	const critical_operation_id &operation_id,
-	std::optional<flatfile_legacy_domain_receipt> *receipt, std::string *error);
 critical_apply_result flatfile_player_domain_apply(const std::string &root,
 						   const critical_command &command);
-flatfile_player_domain_result flatfile_player_domain_prepare_wallet(
-	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
-	const std::string &account_name, int8_t racewar, uint64_t expected_wallet_revision,
-	uint64_t expected_bank_revision, int64_t value_delta, bool apply_delta,
-	flatfile_wallet_mutation *mutation, unsigned int *result_code, std::string *error);
-flatfile_player_domain_result flatfile_player_domain_prepare_coin_wallets(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const coin_transfer_payload &payload, coin_transfer_result *result,
-	std::vector<flatfile_authority_after_image> *images, unsigned int *result_code,
-	std::string *error);
-flatfile_player_domain_result flatfile_player_domain_prepare_resurrection_wallet(
-	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
-	uint64_t expected_wallet_revision, const std::array<int32_t, 4> &expected_wallet,
-	const std::array<int32_t, 4> &replacement_wallet, flatfile_wallet_mutation *mutation,
-	std::string *error);
 // The balances a player save carries, written into the player's domain record.
 struct flatfile_saved_balances
 {

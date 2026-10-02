@@ -675,7 +675,6 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                 "ENVIRONMENT": "local",
                 "PERSISTENCE_MODE": "flatfile-primary",
                 "FLATFILE_STATE_DIR": str(state_root),
-                "PLAYER_SAVE_JOURNAL_DIR": str(journal_root / "players"),
                 "CRITICAL_COMMAND_JOURNAL_DIR": str(journal_root / "critical"),
                 "LISTEN_ADDRESS": "127.0.0.1",
                 "DURIS_TLS_PORT": str(tls_port),
@@ -752,11 +751,9 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                         "FATAL:" not in server_output and "assert:" not in server_output,
                         "combat journey logged a fatal/assertion failure:\n" + server_output[-8000:],
                     )
-                    # Boot again with the same authority and journals. Compare the
-                    # immutable evidence and wallet after re-entry and another save.
+                    # Boot again with the same authority. Compare the wallet and the
+                    # rest after re-entry and another save.
                     before_restart = inspect_authority(state_root)
-                    death_files = {path.name: path.read_bytes()
-                                   for path in (state_root / "player-deaths").glob("*.death")}
                     offset = output_path.stat().st_size
                     process = subprocess.Popen(
                         [str(binary), "--minimal", "-s", "-d", str(run_root), str(plain_port)],
@@ -776,13 +773,10 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                     client.close()
                     client = None
                     after_restart = inspect_authority(state_root)
-                    for field in ("wallet", "wallet_revision", "deaths", "player_items",
+                    for field in ("wallet", "wallet_revision", "player_items",
                                   "death_count", "experience", "level"):
                         require(after_restart[field] == before_restart[field],
                                 f"restart/re-entry changed {field}")
-                    require(death_files == {path.name: path.read_bytes()
-                            for path in (state_root / "player-deaths").glob("*.death")},
-                            "restart/re-entry rewrote death evidence")
                     require(after_restart["snapshot_uids"] == before_restart["snapshot_uids"],
                             "restart/re-entry changed the inventory")
                     process.send_signal(signal.SIGTERM)

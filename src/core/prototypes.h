@@ -122,7 +122,6 @@ const char *get_account_name_safe(P_char);
 
 /* poll.c */
 void do_poll(P_char, char *, int);
-void poll_check_expirations(void);
 bool poll_wizard_active(P_char);
 void poll_wizard_cancel(P_char);
 
@@ -632,7 +631,6 @@ void do_reinitphys(P_char, char *, int);
 void do_release(P_char, char *, int);
 void do_reroll(P_char, char *, int);
 void do_restore(P_char, char *, int);
-void do_restitution(P_char, char *, int);
 void do_return(P_char, char *, int);
 void do_revoke(P_char, char *, int);
 /*void do_revoketitle(P_char, char *, int);*/
@@ -1122,11 +1120,8 @@ bool can_hit_target(P_char, P_char);
 void moveToBackup(char *name);
 int writeCharacter(P_char, int, int);
 void restore_houses();
-int register_ship(int);
-int ship_registered(int);
 bool writeObjectlist(P_obj, int);
 char *getString(char **);
-int confiscate_item(P_char, int);
 int convert_stat(int);
 int countEquip(P_char);
 int countInven(P_obj);
@@ -1142,25 +1137,17 @@ enum class character_delete_result
 // game before done runs.
 void delete_character(P_char ch, bool delete_locker = true,
 		      std::function<void(character_delete_result)> done = {});
-int deletePet(char *);
-int deleteShopKeeper(int);
 P_obj read_one_object(char *);
 int restoreAffects(char *, P_char);
 int restoreCharOnly(P_char, char *);
-P_char restorePet(char *);
-P_char restoreShopKeeper(int);
 int restoreItemsOnly(P_char, int);
 P_obj restoreObjects(char *, P_char, int);
-int restorePasswdOnly(P_char, char *);
 int restoreSkills(char *, P_char, int);
 int restoreStatus(char *, P_char);
-int restorePetStatus(char *, P_char);
 int restoreWitnessed(char *, P_char);
 void updateShortAffects(P_char ch);
 int writeAffects(char *, struct affected_type *);
 int writeItems(char *, P_char);
-int writeSkills(char *, P_char, int);
-int writeStatus(char *, P_char, bool);
 int writePetStatus(char *, P_char);
 uint getInt(char **);
 long getLong(char **);
@@ -1168,7 +1155,6 @@ unsigned long long getUnsignedLongLong(char **);
 ulong ObjUniqueFlags(P_obj, P_obj);
 ush_int getShort(char **);
 void PurgeCorpseFile(P_obj);
-void confiscate_all(P_char);
 // void recalc_base_hits(P_char);
 void restoreCorpses(void);
 void writeCorpse(P_obj);
@@ -1325,11 +1311,6 @@ int generic_find(const char *, int, P_char, P_char *, P_obj *);
 int get_number(char **);
 int room_light(int, int);
 void resolve_poison(P_char, int);
-bool persistence_defer_corpse_room_release(P_obj corpse);
-bool persistence_defer_corpse_unmaking(P_obj corpse, P_char caster, int level, int corpse_level);
-bool persistence_defer_corpse_wall_of_bones(P_obj corpse, P_char caster, int level, int exit_dir);
-bool persistence_defer_corpse_compaction(P_obj corpse, P_char caster);
-bool persistence_defer_corpse_destruction(P_obj corpse);
 void Decay(P_obj);
 void ac_stopAllFromConsenting(P_char);
 void ac_stopAllFromIgnoring(P_char);
@@ -2119,9 +2100,6 @@ void select_class(P_desc, char *);
 void select_class_info(P_desc, char *);
 void select_hometown(P_desc, char *);
 void select_keepchar(P_desc, char *);
-void select_main_menu(P_desc, char *);
-void select_name(P_desc, char *, int);
-void select_pwd(P_desc, char *);
 void select_race(P_desc, char *);
 void select_reroll(P_desc, char *);
 void select_sex(P_desc, char *);
@@ -2410,7 +2388,6 @@ bool cmd_allowed_while_casting(P_char, int);
 bool input_allowed_while_casting(P_char, const char *);
 int get_casting_cmd_from_q(P_char, struct txt_q *, char *);
 bool cmd_depends_on_item_movement(int);
-bool bulk_get_player_busy(P_char);
 bool input_allowed_while_item_moving(const char *);
 int get_item_movement_cmd_from_q(struct txt_q *, char *);
 bool cmd_depends_on_currency_transaction(int);
@@ -2655,8 +2632,6 @@ void spell_remove_curse(int, P_char, char *, int, P_char, P_obj);
 void spell_remove_poison(int, P_char, char *, int, P_char, P_obj);
 void spell_resurrect(int, P_char, char *, int, P_char, P_obj);
 void spell_lesser_resurrect(int, P_char, char *, int, P_char, P_obj);
-bool persistence_defer_corpse_resurrection(P_obj, P_char, P_char, bool);
-void complete_player_resurrection_after_commit(P_char, P_char, P_obj, bool, int);
 void spell_sense_life(int, P_char, char *, int, P_char, P_obj);
 void spell_sense_follower(int, P_char, char *, int, P_char, P_obj);
 void spell_slow(int, P_char, char *, int, P_char, P_obj);
@@ -3050,10 +3025,6 @@ int STAT_INDEX_DAMAGE_PULSE(float);
 int STAT_INDEX_SPELL_PULSE(float);
 int SUB_MONEY(P_char, int, int);
 int SUB_BALANCE(P_char, int, int);
-void publish_account_bank_balance(const char *account_name, int racewar, int coin_type,
-				  int balance);
-void publish_account_bank_balances(const char *account_name, int racewar,
-				   const AccountBankBalances *balances);
 void publish_account_bank_balances_revision(const char *account_name, int racewar,
 					    const AccountBankBalances *balances,
 					    uint64_t bank_revision);
@@ -3097,27 +3068,6 @@ void persistence_alert(int level, const char *domain, const char *owner, const c
 		       const char *event_id, const char *action, const char *format, ...);
 unsigned long long persistence_next_item_uid(void);
 void persistence_assign_item_uid(P_obj obj, const char *reason);
-const char *persistence_item_uid_text(P_obj obj, char *buf, int buf_size);
-void persistence_record_item_event(const char *event_type, P_obj obj, P_char actor,
-				   const char *source, const char *target, const char *note);
-int persistence_flush_item_events(int max_events);
-int persistence_replay_fallback_events(void);
-int persistence_quarantine_fallback_events(void);
-int persistence_pending_item_events(void);
-unsigned long persistence_dropped_item_events(void);
-int persistence_start_item_event_worker(void);
-void persistence_stop_item_event_worker(void);
-int persistence_item_event_worker_active(void);
-int persistence_write_fallback_event_line(const char *line, const char *domain, const char *owner,
-					  const char *action);
-int persistence_start_scalar_event_worker(void);
-void persistence_stop_scalar_event_worker(void);
-int persistence_prepare_pwipe(void);
-int persistence_scalar_event_worker_active(void);
-int persistence_start_large_event_worker(void);
-void persistence_stop_large_event_worker(void);
-int persistence_pending_scalar_events(void);
-unsigned long persistence_dropped_scalar_events(void);
 void persistence_schedule_character_save(P_char ch, int type, int delay, const char *reason);
 void persistence_pulse_character_saves(void);
 void persistence_schedule_level_checkpoint(P_char ch, int type, int delay, const char *reason);
@@ -3170,8 +3120,6 @@ bool is_pid_online(int pid, bool includeLD);
 bool has_touch_stone(P_char ch);
 P_desc get_descriptor_from_name(char *name);
 
-/* statistcs.c */
-void event_write_statistic(P_char ch, P_char victim, P_obj obj, void *data);
 // void write_statistic(void);
 void do_statistic(P_char, char *, int);
 

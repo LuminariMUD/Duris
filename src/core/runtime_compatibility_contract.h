@@ -8,7 +8,7 @@ constexpr const char *RUNTIME_BASELINE_ID = "duris-schema-2026-08-27-session11";
 constexpr const char *RUNTIME_BASELINE_FINGERPRINT =
 	"db13d7a42bf82bcbd32bac8d83224913c755fefd000ade6d4e798b1bd4f494dd";
 constexpr unsigned RUNTIME_BASELINE_TABLE_COUNT = 170;
-constexpr unsigned RUNTIME_CURRENT_TABLE_COUNT = 216;
+constexpr unsigned RUNTIME_CURRENT_TABLE_COUNT = 198;
 constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'account_banks','account_bound_reward_pwipe_state','account_bound_reward_summons',"
 	"'account_bound_rewards','account_characters','account_erasure_evidence',"
@@ -19,34 +19,28 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'artifact_guild_outcome','artifact_guild_outcome_delta','artifact_mana','artifacts',"
 	"'artifacts_mortal','associations','auction_bid_history','auction_item_custody',"
 	"'auction_item_pickups','auction_ledger','auction_money_pickups',"
-	"'auction_reconciliation_quarantine','auctions','boon_reward_outcome','boon_reward_outcome_entry',"
-	"'boons','boons_progress','boons_shop','categories','changes','classes','collector_catalog_state',"
-	"'collector_deaths','collector_ledger','collector_listings','collector_reconciliation_quarantine',"
-	"'combat_frag_baseline','combat_frag_ledger','combat_outcome','combat_outcome_participant',"
-	"'corpse_catalog_state','corpse_item_affects','corpse_item_extra_descr','corpse_items','corpses',"
-	"'critical_operation_inbox','critical_outbox','critical_outbox_delivery_dedupe',"
-	"'critical_test_state','ctf_data','currency_bank_baseline','currency_ledger',"
-	"'currency_wallet_baseline','economic_account_mapping','economic_accounting_account_effect',"
-	"'economic_accounting_child','economic_accounting_coin_posting',"
-	"'economic_accounting_item_reference','economic_accounting_operation',"
-	"'economic_accounting_source_claim','economic_baseline_control','economic_baseline_reservation',"
-	"'economic_baseline_witness','economic_epoch','economic_lineage_state','epic_balance_baseline',"
-	"'epic_bonus','epic_gain','epic_ledger','epic_stone_claim','eq_drop','frag_leaderboard',"
-	"'guild_members','guild_outcome_ledger','guild_ranks','guild_transactions','guildhall_rooms',"
-	"'guildhalls','guilds','ip_info','item_current_owner','item_owner_audit','item_owner_revision',"
+	"'auction_reconciliation_quarantine','auctions','boon_reward_outcome',"
+	"'boon_reward_outcome_entry','boons','boons_progress','boons_shop','categories','changes',"
+	"'classes','collector_catalog_state','collector_deaths','collector_ledger','collector_listings',"
+	"'collector_reconciliation_quarantine','combat_frag_baseline','combat_frag_ledger',"
+	"'combat_outcome','combat_outcome_participant','corpse_catalog_state','corpse_item_affects',"
+	"'corpse_item_extra_descr','corpse_items','corpses','critical_operation_inbox','critical_outbox',"
+	"'critical_outbox_delivery_dedupe','critical_test_state','ctf_data','currency_bank_baseline',"
+	"'currency_ledger','currency_wallet_baseline','epic_balance_baseline','epic_bonus','epic_gain',"
+	"'epic_ledger','epic_stone_claim','eq_drop','frag_leaderboard','guild_members',"
+	"'guild_outcome_ledger','guild_ranks','guild_transactions','guildhall_rooms','guildhalls',"
+	"'guilds','ip_info','item_current_owner','item_owner_audit','item_owner_revision',"
 	"'item_ownership_baseline','item_ownership_ledger','item_ownership_quarantine',"
 	"'item_uid_allocator','items','kingdom_garrison','kingdom_land','kingdom_realms','level_cap',"
 	"'lifecycle_archive_batches','lifecycle_archive_evidence','lifecycle_archive_jobs',"
 	"'lifecycle_archive_rows','locker_access','locker_activity_log','locker_chests',"
 	"'locker_item_affects','locker_item_extra_descr','locker_items','locker_kickouts',"
 	"'locker_session_state','lockers','log_entries','lookup_dataset_state','mud_info',"
-	"'mud_schema_baselines','mud_schema_history','mud_schema_migration_state','mud_schema_migrations',"
-	"'multiplay_whitelist','nexus_stones','offline_message_receipts','offline_messages','outposts',"
-	"'pages','persistence_item_events','persistence_scalar_events','personal_data_export_audit',"
-	"'personal_data_export_requests','personal_data_export_sections','ping','pkill_event',"
-	"'pkill_info','player_affects','player_data','player_death_custody','player_death_disposition',"
-	"'player_death_restitution_delivery','player_death_restitution_item',"
-	"'player_death_restitution_receipt','player_death_restitution_runtime','player_forged_items',"
+	"'mud_schema_baselines','mud_schema_history','mud_schema_migration_state',"
+	"'mud_schema_migrations','multiplay_whitelist','nexus_stones','offline_message_receipts',"
+	"'offline_messages','outposts','pages','persistence_item_events','persistence_scalar_events',"
+	"'personal_data_export_audit','personal_data_export_requests','personal_data_export_sections',"
+	"'ping','pkill_event','pkill_info','player_affects','player_data','player_forged_items',"
 	"'player_granted_cmds','player_intros','player_item_affects','player_item_extra_descr',"
 	"'player_items','player_languages','player_pet_item_affects','player_pet_item_extra_descr',"
 	"'player_pet_items','player_pets','player_recipes','player_shapechanges','player_skills',"
@@ -64,9 +58,9 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'world_quest_accomplished','zone_story_quest_state','zone_touch_outcome',"
 	"'zone_touch_outcome_participant','zone_touches','zone_trophy','zones'";
 constexpr const char *RUNTIME_MYSQL8_METADATA_FINGERPRINT =
-	"63d11c8b24726bbf14cd539d7335d74963a2c649ac0a79a88be5620c07668c9b";
+	"7a5e6e50c875f6e31ef805ffe5625502a861dbc8a355c18241aa2de36a6c2b54";
 constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
-	"7ac07204e5dc4e75c9883994a587c78e47143faa73e54aeae93e65b0ecd1f080";
+	"940f9ad08f378e29626988d59b23d5740393f9d01ec8f81bf1917643eba9a788";
 /* Includes the six telemetry stores introduced by migration 0014, the two
  * rollup stores introduced by migration 0017, the five Collector authority
  * stores introduced by migration 0018, corpse catalog authority introduced by
@@ -79,18 +73,19 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * the saved-item recovery receipt introduced by migration 0027, and the durable
  * telemetry quarantine introduced by migration 0030. Migration 0029 adds the
  * additive critical-operation failure stage; it changes no runtime table count.
- * Migration 0031 adds retained accounting evidence and identity metadata.
- * Migration 0032 adds baseline witness retention and opening reservations.
- * Migration 0033 adds the item owner audit a save writes when it takes an item.
+ * Migration 0033 adds the item owner audit a save writes when it takes an item, and
+ * migration 0034 drops the death custody, restitution and economy accounting tables
+ * (including those 0011, 0020, 0031 and 0032 added). Migration 0035 backfills the bank
+ * opening baselines bank deltas did not write; it changes no table.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0033_item_owner_audit";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 33;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0035_backfill_bank_baselines";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 35;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"9b88eb689a7c252a0bd04ee290dc35c2db3f7b811d6b8daee9bbb8fec8a198cb";
+	"dee6c7f367bf00780bd541255fc9e93578adca9efec103df400c4a812a9f7862";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"944bc34d6b18ab85218e44762d639d2ab18ac582f59d549d6e4a75fd22b856b9";
+	"32e1f095c02fe726b58a5217176c31974bc35ec0bcbe747b928819b5802f8c4f";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"99e067a04c3cb0cb39aeb51168a87a7cef14240ac2f8d4d8cb1b6cde83e0b67d";
+	"cf8b7ee2d19cc5b055e1290f8a40329ad3ba94b4751a4ace905151461d67f5a6";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";

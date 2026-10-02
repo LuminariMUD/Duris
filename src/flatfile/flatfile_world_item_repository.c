@@ -3,7 +3,6 @@
 #include "flatfile/flatfile_authority_transaction.h"
 #include "flatfile/flatfile_store.h"
 #include "player/player_snapshot_codec.h"
-#include "economy/coin_transfer_command.h"
 #include "economy/collector_command.h"
 #include "core/defines.h"
 
@@ -517,37 +516,11 @@ bool canonicalize_detached_items(std::vector<player_item_snapshot> *items)
 	return true;
 }
 
-bool room_transfer_deposit(const item_transfer_payload &payload)
-{
-	return payload.from_owner.type == item_owner_type::player &&
-	       payload.to_owner.type == item_owner_type::room &&
-	       ((payload.reason == item_transfer_reason::player_drop &&
-		 !payload.target_parent_item_uid) ||
-		(payload.reason == item_transfer_reason::player_put &&
-		 payload.target_parent_item_uid));
-}
-
-bool room_transfer_withdraw(const item_transfer_payload &payload)
-{
-	return payload.from_owner.type == item_owner_type::room &&
-	       payload.to_owner.type == item_owner_type::player &&
-	       payload.reason == item_transfer_reason::player_get &&
-	       !payload.target_parent_item_uid;
-}
-
 bool room_transfer_create(const item_transfer_payload &payload)
 {
 	return payload.from_owner.type == item_owner_type::system &&
 	       payload.to_owner.type == item_owner_type::room &&
 	       payload.reason == item_transfer_reason::creation && !payload.target_parent_item_uid;
-}
-
-bool room_transfer_destroy(const item_transfer_payload &payload)
-{
-	return payload.from_owner.type == item_owner_type::room &&
-	       payload.to_owner.type == item_owner_type::destruction &&
-	       payload.reason == item_transfer_reason::destruction &&
-	       !payload.target_parent_item_uid;
 }
 
 bool room_transfer_reparent(const item_transfer_payload &payload)
@@ -604,23 +577,6 @@ size_t room_item_index(const std::vector<player_item_snapshot> &items, uint64_t 
 	return found == items.end() ? items.size() : static_cast<size_t>(found - items.begin());
 }
 
-bool room_item_root_matches(const std::vector<player_item_snapshot> &items, size_t index,
-			    uint64_t expected_root_uid)
-{
-	if (index >= items.size())
-		return false;
-	for (size_t depth = 0; depth <= items.size(); ++depth)
-	{
-		const auto &item = items[index];
-		if (item.parent_index == PLAYER_SNAPSHOT_NO_PARENT)
-			return item.object_uid == expected_root_uid;
-		if (item.parent_index < 0 || static_cast<size_t>(item.parent_index) >= items.size())
-			return false;
-		index = static_cast<size_t>(item.parent_index);
-	}
-	return false;
-}
-
 bool apply_room_weight_delta(std::vector<player_item_snapshot> *items, size_t index, int64_t delta)
 {
 	if (!items || index >= items->size())
@@ -644,57 +600,6 @@ bool apply_room_weight_delta(std::vector<player_item_snapshot> *items, size_t in
 	return !delta;
 }
 
-void apply_corpse_metadata(flatfile_corpse_record *corpse, const item_corpse_metadata &metadata)
-{
-	corpse->owner_name = canonical_name(metadata.owner_name);
-	corpse->room_vnum = metadata.room_vnum;
-	corpse->short_description = metadata.short_description;
-	corpse->description = metadata.description;
-	corpse->keywords = metadata.keywords;
-	corpse->weight = metadata.weight;
-	corpse->values = metadata.values;
-}
-
-void apply_corpse_lifecycle(flatfile_corpse_record *corpse, const corpse_lifecycle_payload &payload)
-{
-	corpse->owner_pid = payload.owner_pid;
-	corpse->owner_name = canonical_name(payload.owner_name);
-	corpse->save_id = payload.save_id;
-	corpse->room_vnum = payload.room_vnum;
-	corpse->short_description = payload.short_description;
-	corpse->description = payload.description;
-	corpse->keywords = payload.keywords;
-	corpse->weight = payload.weight;
-	corpse->values = payload.values;
-	corpse->money = payload.money;
-}
-
-bool valid_corpse_lifecycle(const corpse_lifecycle_payload &payload)
-{
-	if (!payload.owner_pid || payload.owner_pid > INT32_MAX || !payload.save_id ||
-	    payload.save_id > INT32_MAX ||
-	    !valid_printable(payload.owner_name, CORPSE_LIFECYCLE_OWNER_NAME_MAX_BYTES, true))
-		return false;
-	if (payload.action == corpse_lifecycle_action::remove)
-		return payload.expected_corpse_revision && !payload.room_vnum && !payload.weight &&
-		       std::all_of(payload.values.begin(), payload.values.end(),
-				   [](int32_t value) { return value == 0; }) &&
-		       std::all_of(payload.money.begin(), payload.money.end(),
-				   [](int32_t value) { return value == 0; }) &&
-		       payload.short_description.empty() && payload.description.empty() &&
-		       payload.keywords.empty();
-	return payload.action == corpse_lifecycle_action::upsert && payload.room_vnum >= 0 &&
-	       payload.values[3] == static_cast<int32_t>(payload.owner_pid) &&
-	       payload.values[5] >= 0 && payload.values[5] <= 4 &&
-	       payload.values[6] == static_cast<int32_t>(payload.save_id) &&
-	       std::all_of(payload.money.begin(), payload.money.end(),
-			   [](int32_t value) { return value >= 0; }) &&
-	       valid_printable(payload.short_description,
-			       CORPSE_LIFECYCLE_SHORT_DESCRIPTION_MAX_BYTES, false) &&
-	       valid_printable(payload.description, CORPSE_LIFECYCLE_DESCRIPTION_MAX_BYTES,
-			       false) &&
-	       valid_printable(payload.keywords, CORPSE_LIFECYCLE_KEYWORDS_MAX_BYTES, false);
-}
 } // namespace
 
 flatfile_world_item_result flatfile_world_item_establish(
@@ -785,49 +690,6 @@ flatfile_world_item_list(const std::string &root, std::vector<flatfile_corpse_re
 	return flatfile_world_item_result::ok;
 }
 
-flatfile_world_item_result flatfile_world_item_read_coin(const std::string &root,
-							 const flatfile_authority_lock &lock,
-							 const item_owner_identity &owner,
-							 uint64_t uid, player_item_snapshot *item,
-							 std::string *error)
-{
-	if (!lock.matches(root) || !uid || !item ||
-	    (owner.type != item_owner_type::room && owner.type != item_owner_type::corpse))
-		return flatfile_world_item_result::invalid;
-	world_item_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_world_item_result::ok)
-		return loaded;
-	size_t matches = 0;
-	auto inspect = [&](const std::vector<player_item_snapshot> &items)
-	{
-		for (const auto &candidate : items)
-			if (candidate.object_uid == uid)
-			{
-				*item = candidate;
-				++matches;
-			}
-	};
-	if (owner.type == item_owner_type::corpse)
-	{
-		for (const auto &corpse : catalog.corpses)
-			if (item_corpse_owner_id(corpse.owner_pid, corpse.save_id) == owner.id)
-				inspect(corpse.items);
-	}
-	else
-	{
-		for (const auto &room : catalog.rooms)
-			if (static_cast<uint64_t>(room.room_vnum) == owner.id)
-				inspect(room.items);
-		for (const auto &saved : catalog.saved_items)
-			if (static_cast<uint64_t>(saved.room_vnum) == owner.id)
-				inspect(saved.items);
-	}
-	return matches == 1 ? flatfile_world_item_result::ok :
-	       matches	    ? flatfile_world_item_result::conflict :
-			      flatfile_world_item_result::not_found;
-}
-
 flatfile_world_item_result flatfile_world_item_prepare_player_remove(
 	const std::string &root, const flatfile_authority_lock &lock, uint32_t pid,
 	const std::string &expected_name, flatfile_world_item_player_removal *removal,
@@ -891,226 +753,6 @@ flatfile_world_item_result flatfile_world_item_prepare_player_remove(
 	return flatfile_world_item_result::ok;
 }
 
-flatfile_world_item_result flatfile_world_item_prepare_corpse_lifecycle(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const corpse_lifecycle_payload &payload, flatfile_corpse_lifecycle_mutation *mutation,
-	std::string *error)
-{
-	if (root.empty() || !lock.matches(root) || !mutation || !valid_corpse_lifecycle(payload))
-		return flatfile_world_item_result::invalid;
-	*mutation = {};
-	world_item_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded == flatfile_world_item_result::not_found &&
-	    payload.action == corpse_lifecycle_action::upsert && !payload.expected_corpse_revision)
-		catalog = {};
-	else if (loaded != flatfile_world_item_result::ok)
-		return loaded;
-	flatfile_corpse_record key = {};
-	key.owner_pid = payload.owner_pid;
-	key.save_id = payload.save_id;
-	auto corpse =
-		std::lower_bound(catalog.corpses.begin(), catalog.corpses.end(), key, corpse_less);
-	const bool found = corpse != catalog.corpses.end() &&
-			   corpse->owner_pid == payload.owner_pid &&
-			   corpse->save_id == payload.save_id;
-	const std::string canonical_owner = canonical_name(payload.owner_name);
-	if (catalog.revision == UINT64_MAX)
-		return flatfile_world_item_result::conflict;
-	if (payload.action == corpse_lifecycle_action::upsert)
-	{
-		if ((!payload.expected_corpse_revision && found) ||
-		    (payload.expected_corpse_revision && !found))
-			return flatfile_world_item_result::conflict;
-		if ((!found && std::any_of(catalog.corpses.begin(), catalog.corpses.end(),
-					   [&](const auto &candidate) {
-						   return candidate.owner_pid !=
-								  payload.owner_pid &&
-							  candidate.owner_name == canonical_owner;
-					   })) ||
-		    (found &&
-		     (corpse->revision != payload.expected_corpse_revision ||
-		      corpse->revision == UINT64_MAX || corpse->owner_name != canonical_owner ||
-		      corpse->values[3] != payload.values[3] ||
-		      corpse->values[5] != payload.values[5] ||
-		      corpse->values[6] != payload.values[6])))
-			return flatfile_world_item_result::conflict;
-		if (!found && catalog.corpses.size() >= corpse_maximum)
-			return flatfile_world_item_result::conflict;
-		try
-		{
-			if (!found)
-			{
-				flatfile_corpse_record created = {};
-				apply_corpse_lifecycle(&created, payload);
-				created.revision = 1;
-				corpse = catalog.corpses.insert(corpse, std::move(created));
-			}
-			else
-			{
-				apply_corpse_lifecycle(&*corpse, payload);
-				++corpse->revision;
-			}
-		}
-		catch (const std::bad_alloc &)
-		{
-			return flatfile_world_item_result::io_error;
-		}
-		mutation->corpse_revision = corpse->revision;
-	}
-	else
-	{
-		if (!found)
-			return flatfile_world_item_result::not_found;
-		if (corpse->revision != payload.expected_corpse_revision ||
-		    corpse->owner_name != canonical_owner)
-			return flatfile_world_item_result::conflict;
-		if (!corpse->items.empty() ||
-		    std::any_of(corpse->money.begin(), corpse->money.end(),
-				[](int32_t value) { return value != 0; }))
-			return flatfile_world_item_result::not_empty;
-		catalog.corpses.erase(corpse);
-	}
-	++catalog.revision;
-	std::vector<uint8_t> encoded;
-	if (!encode_catalog(catalog, &encoded))
-		return flatfile_world_item_result::invalid;
-	mutation->after_image = { catalog_filename, std::move(encoded) };
-	mutation->catalog_revision = catalog.revision;
-	return flatfile_world_item_result::ok;
-}
-
-flatfile_world_item_result flatfile_world_item_prepare_corpse_transfer(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const item_transfer_payload &payload, flatfile_corpse_transfer_mutation *mutation,
-	std::string *error)
-{
-	if (root.empty() || !lock.matches(root) || !mutation || !payload.item_count ||
-	    payload.item_count > ITEM_TRANSFER_MAX_ITEMS || !payload.item_blob_size ||
-	    payload.item_blob_size > payload.item_blob.size() || payload.target_parent_item_uid)
-		return flatfile_world_item_result::invalid;
-	*mutation = {};
-	const bool create = payload.from_owner.type == item_owner_type::player &&
-			    payload.to_owner.type == item_owner_type::corpse &&
-			    payload.reason == item_transfer_reason::corpse_create;
-	const bool loot = payload.from_owner.type == item_owner_type::corpse &&
-			  payload.to_owner.type == item_owner_type::player &&
-			  payload.reason == item_transfer_reason::corpse_loot;
-	if (create == loot || (create && !payload.corpse.present))
-		return flatfile_world_item_result::invalid;
-	const item_owner_identity &corpse_owner = create ? payload.to_owner : payload.from_owner;
-	const uint32_t owner_pid = static_cast<uint32_t>(corpse_owner.id >> 32);
-	const uint32_t save_id = static_cast<uint32_t>(corpse_owner.id);
-	if (!owner_pid || !save_id || corpse_owner.id != item_corpse_owner_id(owner_pid, save_id) ||
-	    corpse_owner.context_id)
-		return flatfile_world_item_result::invalid;
-	std::vector<player_item_snapshot> exact_items;
-	if (player_item_snapshot_list_decode(payload.item_blob.data(), payload.item_blob_size,
-					     &exact_items) != player_snapshot_codec_result::ok ||
-	    !payload_items_match(payload, exact_items))
-		return flatfile_world_item_result::invalid;
-	std::vector<uint8_t> transport_blob;
-	if (player_item_snapshot_list_encode(exact_items, &transport_blob) !=
-		    player_snapshot_codec_result::ok ||
-	    transport_blob.size() != payload.item_blob_size ||
-	    !std::equal(transport_blob.begin(), transport_blob.end(), payload.item_blob.begin()) ||
-	    !canonicalize_detached_items(&exact_items))
-		return flatfile_world_item_result::invalid;
-	std::vector<uint8_t> exact_blob;
-	if (player_item_snapshot_list_encode(exact_items, &exact_blob) !=
-	    player_snapshot_codec_result::ok)
-		return flatfile_world_item_result::invalid;
-	world_item_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded == flatfile_world_item_result::not_found && create &&
-	    !payload.expected_to_revision)
-		catalog = {};
-	else if (loaded != flatfile_world_item_result::ok)
-		return loaded;
-	flatfile_corpse_record key = {};
-	key.owner_pid = owner_pid;
-	key.save_id = save_id;
-	auto corpse =
-		std::lower_bound(catalog.corpses.begin(), catalog.corpses.end(), key, corpse_less);
-	const bool found = corpse != catalog.corpses.end() && corpse->owner_pid == owner_pid &&
-			   corpse->save_id == save_id;
-	if (!found && loot)
-		return flatfile_world_item_result::not_found;
-	if (found && payload.corpse.present &&
-	    (corpse->owner_name != canonical_name(payload.corpse.owner_name) ||
-	     corpse->values[3] != payload.corpse.values[3] ||
-	     corpse->values[5] != payload.corpse.values[5] ||
-	     corpse->values[6] != payload.corpse.values[6]))
-		return flatfile_world_item_result::conflict;
-	if (catalog.revision == UINT64_MAX || (found && corpse->revision == UINT64_MAX) ||
-	    (!found && catalog.corpses.size() >= corpse_maximum))
-		return flatfile_world_item_result::conflict;
-	try
-	{
-		if (!found)
-		{
-			flatfile_corpse_record created = {};
-			created.owner_pid = owner_pid;
-			created.save_id = save_id;
-			created.revision = 1;
-			created.items = exact_items;
-			apply_corpse_metadata(&created, payload.corpse);
-			corpse = catalog.corpses.insert(corpse, std::move(created));
-			mutation->created = true;
-		}
-		else
-		{
-			mutation->expected_items.reserve(corpse->items.size());
-			for (const auto &item : corpse->items)
-				mutation->expected_items.push_back({ item.object_uid, item.vnum });
-			std::sort(mutation->expected_items.begin(), mutation->expected_items.end(),
-				  [](const auto &left, const auto &right)
-				  { return left.item_uid < right.item_uid; });
-			if (create)
-			{
-				const int32_t offset = static_cast<int32_t>(corpse->items.size());
-				for (auto item : exact_items)
-				{
-					if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
-						item.parent_index += offset;
-					corpse->items.push_back(std::move(item));
-				}
-			}
-			else
-			{
-				std::vector<uint64_t> selected_roots;
-				std::vector<player_item_snapshot> selected;
-				std::vector<player_item_snapshot> remaining;
-				if (!item_transfer_selected_roots(payload, &selected_roots) ||
-				    player_item_snapshot_extract_forest(
-					    corpse->items, selected_roots, &selected, &remaining) !=
-					    player_snapshot_codec_result::ok)
-					return flatfile_world_item_result::conflict;
-				std::vector<uint8_t> selected_blob;
-				if (player_item_snapshot_list_encode(selected, &selected_blob) !=
-					    player_snapshot_codec_result::ok ||
-				    selected_blob != exact_blob)
-					return flatfile_world_item_result::conflict;
-				corpse->items = std::move(remaining);
-			}
-			if (payload.corpse.present)
-				apply_corpse_metadata(&*corpse, payload.corpse);
-			++corpse->revision;
-		}
-	}
-	catch (const std::bad_alloc &)
-	{
-		return flatfile_world_item_result::io_error;
-	}
-	++catalog.revision;
-	std::vector<uint8_t> encoded;
-	if (!encode_catalog(catalog, &encoded))
-		return flatfile_world_item_result::invalid;
-	mutation->after_image = { catalog_filename, std::move(encoded) };
-	mutation->corpse_revision = corpse->revision;
-	return flatfile_world_item_result::ok;
-}
-
 flatfile_world_item_result flatfile_world_item_prepare_room_transfer(
 	const std::string &root, const flatfile_authority_lock &lock,
 	const item_transfer_payload &payload, flatfile_room_transfer_mutation *mutation,
@@ -1121,18 +763,11 @@ flatfile_world_item_result flatfile_world_item_prepare_room_transfer(
 	    payload.item_blob_size > payload.item_blob.size())
 		return flatfile_world_item_result::invalid;
 	*mutation = {};
-	const bool deposit = room_transfer_deposit(payload);
-	const bool withdraw = room_transfer_withdraw(payload);
+	// A grant creates items in a room; an operator repair moves them to its floor.
 	const bool create = room_transfer_create(payload);
-	const bool destroy = room_transfer_destroy(payload);
-	const bool reparent = room_transfer_reparent(payload);
-	if (static_cast<unsigned int>(deposit) + static_cast<unsigned int>(withdraw) +
-		    static_cast<unsigned int>(create) + static_cast<unsigned int>(destroy) +
-		    static_cast<unsigned int>(reparent) !=
-	    1)
+	if (create == room_transfer_reparent(payload))
 		return flatfile_world_item_result::invalid;
-	const bool append = deposit || create;
-	const item_owner_identity &room_owner = append ? payload.to_owner : payload.from_owner;
+	const item_owner_identity &room_owner = create ? payload.to_owner : payload.from_owner;
 	if (!room_owner.id || room_owner.id > INT32_MAX || room_owner.context_id)
 		return flatfile_world_item_result::invalid;
 	std::vector<player_item_snapshot> exact_items;
@@ -1156,7 +791,7 @@ flatfile_world_item_result flatfile_world_item_prepare_room_transfer(
 	const auto loaded = load_catalog(root, &catalog, error);
 	if (loaded == flatfile_world_item_result::not_found)
 	{
-		if (!append)
+		if (!create)
 			return flatfile_world_item_result::conflict;
 		catalog = {};
 	}
@@ -1166,9 +801,9 @@ flatfile_world_item_result flatfile_world_item_prepare_room_transfer(
 	key.room_vnum = static_cast<int32_t>(room_owner.id);
 	auto room = std::lower_bound(catalog.rooms.begin(), catalog.rooms.end(), key, room_less);
 	const bool found = room != catalog.rooms.end() && room->room_vnum == key.room_vnum;
-	const uint64_t expected_revision = append ? payload.expected_to_revision :
+	const uint64_t expected_revision = create ? payload.expected_to_revision :
 						    payload.expected_from_revision;
-	if ((!found && (!append || expected_revision)) ||
+	if ((!found && (!create || expected_revision)) ||
 	    (found && room->revision != expected_revision) || catalog.revision == UINT64_MAX ||
 	    (found && room->revision == UINT64_MAX) ||
 	    (!found && catalog.rooms.size() >= room_maximum))
@@ -1187,39 +822,12 @@ flatfile_world_item_result flatfile_world_item_prepare_room_transfer(
 		}
 		else
 			++room->revision;
-		if (append)
+		if (create)
 		{
-			const size_t parent_index =
-				payload.target_parent_item_uid ?
-					room_item_index(room->items,
-							payload.target_parent_item_uid) :
-					room->items.size();
-			if (payload.target_parent_item_uid)
-			{
-				int64_t selected_weight = 0;
-				for (const auto &item : exact_items)
-					if (item.parent_index == PLAYER_SNAPSHOT_NO_PARENT)
-					{
-						if (item.weight < 0 ||
-						    selected_weight > INT64_MAX - item.weight)
-							return flatfile_world_item_result::conflict;
-						selected_weight += item.weight;
-					}
-				if (parent_index == room->items.size() ||
-				    !room_item_root_matches(room->items, parent_index,
-							    payload.target_root_item_uid) ||
-				    !apply_room_weight_delta(&room->items, parent_index,
-							     selected_weight))
-					return flatfile_world_item_result::conflict;
-			}
 			const int32_t offset = static_cast<int32_t>(room->items.size());
-			for (size_t index = 0; index < exact_items.size(); ++index)
+			for (auto item : exact_items)
 			{
-				auto item = exact_items[index];
-				if (item.parent_index == PLAYER_SNAPSHOT_NO_PARENT &&
-				    payload.target_parent_item_uid)
-					item.parent_index = static_cast<int32_t>(parent_index);
-				else if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
+				if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
 					item.parent_index += offset;
 				room->items.push_back(std::move(item));
 			}
@@ -1259,15 +867,12 @@ flatfile_world_item_result flatfile_world_item_prepare_room_transfer(
 				    player_snapshot_codec_result::ok ||
 			    selected_blob != exact_blob)
 				return flatfile_world_item_result::conflict;
-			if (reparent)
+			const int32_t offset = static_cast<int32_t>(remaining.size());
+			for (auto item : selected)
 			{
-				const int32_t offset = static_cast<int32_t>(remaining.size());
-				for (auto item : selected)
-				{
-					if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
-						item.parent_index += offset;
-					remaining.push_back(std::move(item));
-				}
+				if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
+					item.parent_index += offset;
+				remaining.push_back(std::move(item));
 			}
 			room->items = std::move(remaining);
 		}
@@ -1558,11 +1163,8 @@ flatfile_world_item_result flatfile_world_item_prepare_collector_transfer(
 		*result_code = ERANGE;
 		return flatfile_world_item_result::ok;
 	}
-	if (*aggregate_revision != payload.expected_from_owner_revision)
-	{
-		*result_code = ESTALE;
-		return flatfile_world_item_result::ok;
-	}
+	// The corpse or room is memory's; its saves move the record's revision, which the
+	// collection advances from wherever it stands.
 	if (!collector_detach_snapshot(items, payload, decoded[0], result_code))
 		return errno == ENOMEM ? flatfile_world_item_result::io_error :
 					 flatfile_world_item_result::invalid;
@@ -1582,464 +1184,6 @@ flatfile_world_item_result flatfile_world_item_prepare_collector_transfer(
 	if (!encode_catalog(catalog, &mutation->after_image.bytes))
 		return flatfile_world_item_result::invalid;
 	mutation->changed = true;
-	return flatfile_world_item_result::ok;
-}
-
-// Coin custody is authoritative, but an existing room-transfer projection must
-// advance in the same transaction or the next ordinary loot command goes stale.
-flatfile_world_item_result
-flatfile_world_item_prepare_coin_rooms(const std::string &root, const flatfile_authority_lock &lock,
-				       const coin_transfer_payload &payload,
-				       const coin_transfer_result &result,
-				       flatfile_authority_after_image *image, std::string *error)
-{
-	if (root.empty() || !lock.matches(root) || !image)
-		return flatfile_world_item_result::invalid;
-	*image = {};
-	world_item_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded == flatfile_world_item_result::not_found)
-		return flatfile_world_item_result::unchanged;
-	if (loaded != flatfile_world_item_result::ok)
-		return loaded;
-	bool changed = false;
-	const coin_transfer_endpoint *endpoints[] = { &payload.source, &payload.destination };
-	for (size_t index = 0; index < 2; ++index)
-	{
-		const auto &endpoint = *endpoints[index];
-		if (endpoint.change.type != critical_command_type::item_transfer)
-			continue;
-		item_transfer_payload transfer;
-		if (!item_transfer_command_decode_payload(endpoint.change, &transfer) ||
-		    transfer.item_count != 1)
-			return flatfile_world_item_result::invalid;
-		const bool creation = transfer.from_owner.type == item_owner_type::system;
-		const auto &owner = creation ? transfer.to_owner : transfer.from_owner;
-		if (owner.type != item_owner_type::room)
-			continue;
-		auto room = std::find_if(
-			catalog.rooms.begin(), catalog.rooms.end(), [&](const auto &entry)
-			{ return static_cast<uint64_t>(entry.room_vnum) == owner.id; });
-		// Imported saved-item piles have no room-transfer projection. They retain
-		// the existing custody/coin-payload loading path.
-		if (room == catalog.rooms.end())
-			continue;
-		const uint64_t revision = creation ? result.piles[index].to_owner_revision :
-						     result.piles[index].from_owner_revision;
-		if (!revision || room->revision != revision - 1)
-			return flatfile_world_item_result::conflict;
-		std::vector<player_item_snapshot> exact;
-		if (player_item_snapshot_list_decode(transfer.item_blob.data(),
-						     transfer.item_blob_size,
-						     &exact) != player_snapshot_codec_result::ok ||
-		    exact.size() != 1 || !payload_items_match(transfer, exact) ||
-		    !canonicalize_detached_items(&exact))
-			return flatfile_world_item_result::invalid;
-		const uint64_t uid = transfer.selected_item_uid;
-		const size_t position = room_item_index(room->items, uid);
-		const bool consumed = transfer.to_owner.type == item_owner_type::destruction;
-		if (creation ? position != room->items.size() : position == room->items.size())
-			return flatfile_world_item_result::conflict;
-		int32_t parent = PLAYER_SNAPSHOT_NO_PARENT;
-		int64_t old_weight = 0;
-		if (!creation)
-		{
-			const auto &stored = room->items[position];
-			parent = stored.parent_index;
-			old_weight = stored.weight;
-			if (!std::equal(endpoint.before.begin(), endpoint.before.end(),
-					stored.values.begin()) ||
-			    !room_item_root_matches(room->items, position,
-						    transfer.items[0].root_item_uid) ||
-			    (parent == PLAYER_SNAPSHOT_NO_PARENT ?
-				     0 :
-				     room->items[parent].object_uid) !=
-				    transfer.items[0].parent_item_uid)
-				return flatfile_world_item_result::conflict;
-		}
-		else if (transfer.target_parent_item_uid)
-		{
-			const size_t found =
-				room_item_index(room->items, transfer.target_parent_item_uid);
-			if (found == room->items.size() ||
-			    !room_item_root_matches(room->items, found,
-						    transfer.target_root_item_uid))
-				return flatfile_world_item_result::conflict;
-			parent = static_cast<int32_t>(found);
-		}
-		const int64_t new_weight = consumed ? 0 : exact[0].weight;
-		if (parent != PLAYER_SNAPSHOT_NO_PARENT &&
-		    !apply_room_weight_delta(&room->items, static_cast<size_t>(parent),
-					     new_weight - old_weight))
-			return flatfile_world_item_result::conflict;
-		if (consumed)
-		{
-			std::vector<player_item_snapshot> selected, remaining;
-			if (player_item_snapshot_extract_forest(room->items, { uid }, &selected,
-								&remaining) !=
-				    player_snapshot_codec_result::ok ||
-			    selected.size() != 1)
-				return flatfile_world_item_result::conflict;
-			room->items = std::move(remaining);
-		}
-		else
-		{
-			exact[0].parent_index = parent;
-			if (creation)
-				room->items.push_back(std::move(exact[0]));
-			else
-				room->items[position] = std::move(exact[0]);
-		}
-		room->revision = revision;
-		changed = true;
-	}
-	if (!changed)
-		return flatfile_world_item_result::unchanged;
-	if (catalog.revision == UINT64_MAX)
-		return flatfile_world_item_result::conflict;
-	++catalog.revision;
-	image->filename = catalog_filename;
-	return encode_catalog(catalog, &image->bytes) ? flatfile_world_item_result::ok :
-							flatfile_world_item_result::invalid;
-}
-
-flatfile_world_item_result flatfile_world_item_prepare_corpse_release(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const corpse_lifecycle_payload &payload, flatfile_corpse_release_mutation *mutation,
-	std::string *error)
-{
-	const bool release = payload.action == corpse_lifecycle_action::release;
-	const bool destroy = payload.action == corpse_lifecycle_action::destroy;
-	const bool resurrect = payload.action == corpse_lifecycle_action::resurrect;
-	const bool raise_follower = payload.action == corpse_lifecycle_action::raise_follower;
-	const bool release_nested = payload.action == corpse_lifecycle_action::release_nested;
-	const bool nested_room = release_nested && !payload.destination_player_pid;
-	if (root.empty() || !lock.matches(root) || !mutation ||
-	    static_cast<unsigned int>(release) + static_cast<unsigned int>(destroy) +
-			    static_cast<unsigned int>(resurrect) +
-			    static_cast<unsigned int>(raise_follower) +
-			    static_cast<unsigned int>(release_nested) !=
-		    1 ||
-	    !payload.owner_pid || !payload.save_id || !payload.expected_corpse_revision ||
-	    payload.room_vnum <= 0 ||
-	    (resurrect && (!payload.destination_player_pid || payload.old_room_vnum <= 0 ||
-			   !payload.expected_player_revision ||
-			   std::any_of(payload.money.begin(), payload.money.end(),
-				       [](int32_t amount) { return amount < 0; }))) ||
-	    (raise_follower &&
-	     (!payload.destination_player_pid || payload.old_room_vnum ||
-	      !payload.expected_player_revision || payload.expected_room_revision ||
-	      std::any_of(payload.money.begin(), payload.money.end(),
-			  [](int32_t amount) { return amount < 0; }))) ||
-	    (release_nested &&
-	     (!payload.target_root_item_uid || !payload.target_parent_item_uid ||
-	      !payload.expected_target_parent_revision ||
-	      (payload.destination_player_pid ?
-		       (!payload.expected_player_revision || payload.expected_room_revision) :
-		       !payload.expected_room_revision))) ||
-	    !valid_printable(payload.owner_name, name_maximum, true))
-		return flatfile_world_item_result::invalid;
-	*mutation = {};
-	world_item_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_world_item_result::ok)
-		return loaded;
-	flatfile_corpse_record corpse_key = {};
-	corpse_key.owner_pid = payload.owner_pid;
-	corpse_key.save_id = payload.save_id;
-	auto corpse = std::lower_bound(catalog.corpses.begin(), catalog.corpses.end(), corpse_key,
-				       corpse_less);
-	if (corpse == catalog.corpses.end() || corpse->owner_pid != payload.owner_pid ||
-	    corpse->save_id != payload.save_id)
-		return flatfile_world_item_result::not_found;
-	if (corpse->revision != payload.expected_corpse_revision ||
-	    corpse->owner_name != canonical_name(payload.owner_name) ||
-	    corpse->room_vnum != payload.room_vnum || catalog.revision == UINT64_MAX)
-		return flatfile_world_item_result::conflict;
-	flatfile_room_item_record room_key = {};
-	room_key.room_vnum = resurrect ? payload.old_room_vnum : payload.room_vnum;
-	auto room =
-		std::lower_bound(catalog.rooms.begin(), catalog.rooms.end(), room_key, room_less);
-	const bool room_found = room != catalog.rooms.end() &&
-				room->room_vnum == room_key.room_vnum;
-	if ((release || resurrect || nested_room) &&
-	    ((room_found && room->revision != payload.expected_room_revision) ||
-	     (!room_found && payload.expected_room_revision) ||
-	     (room_found && room->revision == UINT64_MAX) ||
-	     (!room_found && catalog.rooms.size() >= room_maximum)))
-		return flatfile_world_item_result::conflict;
-	try
-	{
-		mutation->items = corpse->items;
-		mutation->money = corpse->money;
-		mutation->expected_items.reserve(corpse->items.size());
-		for (size_t index = 0; index < corpse->items.size(); ++index)
-		{
-			const auto &item = corpse->items[index];
-			uint64_t actual_root_uid = item.object_uid;
-			int32_t parent_index = item.parent_index;
-			while (parent_index != PLAYER_SNAPSHOT_NO_PARENT)
-			{
-				const auto &parent =
-					corpse->items[static_cast<size_t>(parent_index)];
-				actual_root_uid = parent.object_uid;
-				parent_index = parent.parent_index;
-			}
-			mutation->expected_items.push_back(
-				{ item.object_uid, item.vnum, actual_root_uid,
-				  item.parent_index == PLAYER_SNAPSHOT_NO_PARENT ?
-					  0 :
-					  corpse->items[static_cast<size_t>(item.parent_index)]
-						  .object_uid });
-		}
-		std::sort(mutation->expected_items.begin(), mutation->expected_items.end(),
-			  [](const auto &left, const auto &right)
-			  { return left.item_uid < right.item_uid; });
-		if (release || resurrect || nested_room)
-		{
-			if (!room_found)
-			{
-				if (nested_room)
-					return flatfile_world_item_result::conflict;
-				flatfile_room_item_record created = {};
-				created.room_vnum = room_key.room_vnum;
-				created.revision = 1;
-				room = catalog.rooms.insert(room, std::move(created));
-			}
-			else
-				++room->revision;
-			if (release)
-			{
-				const int32_t offset = static_cast<int32_t>(room->items.size());
-				for (auto item : corpse->items)
-				{
-					if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
-						item.parent_index += offset;
-					room->items.push_back(std::move(item));
-				}
-			}
-			else if (nested_room)
-			{
-				const size_t parent_index = room_item_index(
-					room->items, payload.target_parent_item_uid);
-				if (parent_index == room->items.size() ||
-				    !room_item_root_matches(room->items, parent_index,
-							    payload.target_root_item_uid))
-					return flatfile_world_item_result::conflict;
-				for (const auto &item : corpse->items)
-					if (item.parent_index == PLAYER_SNAPSHOT_NO_PARENT &&
-					    !apply_room_weight_delta(&room->items, parent_index,
-								     item.weight))
-						return flatfile_world_item_result::conflict;
-				const int32_t offset = static_cast<int32_t>(room->items.size());
-				for (auto item : corpse->items)
-				{
-					if (item.parent_index == PLAYER_SNAPSHOT_NO_PARENT)
-						item.parent_index =
-							static_cast<int32_t>(parent_index);
-					else
-						item.parent_index += offset;
-					room->items.push_back(std::move(item));
-				}
-			}
-			// Floor money is published to the live room after this commit, but is not
-			// part of the durable room aggregate.  Pickup uses the currency authority
-			// directly and cannot atomically withdraw this world-domain snapshot; if it
-			// were persisted, every reboot after pickup would recreate the same coins.
-			mutation->room_revision = room->revision;
-		}
-		catalog.corpses.erase(corpse);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return flatfile_world_item_result::io_error;
-	}
-	++catalog.revision;
-	std::vector<uint8_t> encoded;
-	if (!encode_catalog(catalog, &encoded))
-		return flatfile_world_item_result::invalid;
-	mutation->after_image = { catalog_filename, std::move(encoded) };
-	mutation->catalog_revision = catalog.revision;
-	return flatfile_world_item_result::ok;
-}
-
-flatfile_world_item_result flatfile_world_item_prepare_world_corpse_raise(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const corpse_lifecycle_payload &payload, flatfile_world_corpse_raise_mutation *mutation,
-	std::string *error)
-{
-	const uint64_t source_uid = (static_cast<uint64_t>(payload.owner_pid) << 32) |
-				    static_cast<uint64_t>(payload.save_id);
-	const bool hostile = payload.pet_uid == 0;
-	if (root.empty() || !lock.matches(root) || !mutation ||
-	    payload.action != corpse_lifecycle_action::raise_world_follower || !source_uid ||
-	    !payload.expected_corpse_revision || !payload.expected_room_revision ||
-	    !payload.destination_player_pid || !payload.expected_player_revision ||
-	    payload.room_vnum <= 0 || (!hostile && payload.pet_uid != source_uid))
-		return flatfile_world_item_result::invalid;
-	*mutation = {};
-	world_item_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded != flatfile_world_item_result::ok)
-		return loaded;
-	auto selected = catalog.saved_items.end();
-	size_t selected_root = 0;
-	for (auto saved = catalog.saved_items.begin(); saved != catalog.saved_items.end(); ++saved)
-	{
-		for (size_t index = 0; index < saved->items.size(); ++index)
-		{
-			if (saved->items[index].object_uid != source_uid)
-				continue;
-			if (selected != catalog.saved_items.end() ||
-			    saved->items[index].parent_index != PLAYER_SNAPSHOT_NO_PARENT)
-				return flatfile_world_item_result::conflict;
-			selected = saved;
-			selected_root = index;
-		}
-	}
-	if (selected == catalog.saved_items.end())
-		return flatfile_world_item_result::not_found;
-	if (selected->room_vnum != payload.room_vnum ||
-	    selected->items[selected_root].type != ITEM_CORPSE ||
-	    selected->items.size() > ITEM_TRANSFER_MAX_ITEMS || catalog.revision == UINT64_MAX)
-		return flatfile_world_item_result::conflict;
-
-	std::vector<bool> discarded;
-	std::vector<int32_t> pet_indexes;
-	try
-	{
-		discarded.resize(selected->items.size());
-		pet_indexes.assign(selected->items.size(), PLAYER_SNAPSHOT_NO_PARENT);
-		mutation->expected_items.reserve(selected->items.size());
-		mutation->pet_items.reserve(selected->items.size());
-		mutation->durable_uids.reserve(selected->items.size());
-		mutation->discarded_uids.reserve(selected->items.size());
-		for (size_t index = 0; index < selected->items.size(); ++index)
-		{
-			const auto &item = selected->items[index];
-			uint64_t parent_uid = 0;
-			if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
-			{
-				if (item.parent_index < 0 ||
-				    static_cast<size_t>(item.parent_index) >=
-					    selected->items.size())
-					return flatfile_world_item_result::invalid;
-				parent_uid = selected->items[static_cast<size_t>(item.parent_index)]
-						     .object_uid;
-			}
-			bool reaches_source = index == selected_root;
-			int32_t parent_index = item.parent_index;
-			for (size_t depth = 0;
-			     !reaches_source && parent_index != PLAYER_SNAPSHOT_NO_PARENT; ++depth)
-			{
-				if (depth >= selected->items.size() || parent_index < 0 ||
-				    static_cast<size_t>(parent_index) >= selected->items.size())
-					return flatfile_world_item_result::invalid;
-				const size_t parent = static_cast<size_t>(parent_index);
-				reaches_source = parent == selected_root;
-				parent_index = selected->items[parent].parent_index;
-			}
-			if (!reaches_source)
-				return flatfile_world_item_result::conflict;
-			mutation->expected_items.push_back(
-				{ item.object_uid, item.vnum, source_uid, parent_uid });
-			discarded[index] = index == selected_root ||
-					   (item.extra_flags & ITEM_TRANSIENT) != 0;
-			if ((item.extra_flags & ITEM_ARTIFACT) != 0)
-				return flatfile_world_item_result::conflict;
-			(discarded[index] ? mutation->discarded_uids : mutation->durable_uids)
-				.push_back(item.object_uid);
-		}
-		for (size_t index = 0; index < selected->items.size(); ++index)
-		{
-			if (discarded[index])
-				continue;
-			int32_t parent = selected->items[index].parent_index;
-			for (size_t depth = 0; parent != PLAYER_SNAPSHOT_NO_PARENT; ++depth)
-			{
-				if (depth >= selected->items.size() || parent < 0 ||
-				    static_cast<size_t>(parent) >= selected->items.size())
-					return flatfile_world_item_result::invalid;
-				const size_t parent_index = static_cast<size_t>(parent);
-				if (discarded[parent_index] && parent_index != selected_root)
-					return flatfile_world_item_result::conflict;
-				parent = selected->items[parent_index].parent_index;
-			}
-			pet_indexes[index] = static_cast<int32_t>(mutation->pet_items.size());
-			auto item = selected->items[index];
-			item.equipment_slot = -1;
-			mutation->pet_items.push_back(std::move(item));
-		}
-		for (size_t index = 0; index < selected->items.size(); ++index)
-		{
-			if (discarded[index])
-				continue;
-			auto &pet_item =
-				mutation->pet_items[static_cast<size_t>(pet_indexes[index])];
-			const int32_t parent = selected->items[index].parent_index;
-			pet_item.parent_index =
-				parent == PLAYER_SNAPSHOT_NO_PARENT ||
-						discarded[static_cast<size_t>(parent)] ?
-					PLAYER_SNAPSHOT_NO_PARENT :
-					pet_indexes[static_cast<size_t>(parent)];
-		}
-		for (size_t skipped = 0; skipped < selected->items.size(); ++skipped)
-		{
-			if (!discarded[skipped] || skipped == selected_root)
-				continue;
-			int32_t parent = selected->items[skipped].parent_index;
-			for (size_t depth = 0; parent != PLAYER_SNAPSHOT_NO_PARENT; ++depth)
-			{
-				if (depth >= selected->items.size() || parent < 0 ||
-				    static_cast<size_t>(parent) >= selected->items.size())
-					return flatfile_world_item_result::invalid;
-				const size_t parent_index = static_cast<size_t>(parent);
-				if (!discarded[parent_index])
-				{
-					auto &pet_parent = mutation->pet_items[static_cast<size_t>(
-						pet_indexes[parent_index])];
-					const int64_t adjusted =
-						static_cast<int64_t>(pet_parent.weight) -
-						selected->items[skipped].weight;
-					if (adjusted < INT32_MIN || adjusted > INT32_MAX)
-						return flatfile_world_item_result::conflict;
-					pet_parent.weight = static_cast<int32_t>(adjusted);
-				}
-				parent = selected->items[parent_index].parent_index;
-			}
-		}
-		std::sort(mutation->expected_items.begin(), mutation->expected_items.end(),
-			  [](const auto &left, const auto &right)
-			  { return left.item_uid < right.item_uid; });
-		std::sort(mutation->durable_uids.begin(), mutation->durable_uids.end());
-		std::sort(mutation->discarded_uids.begin(), mutation->discarded_uids.end());
-		if (hostile && !mutation->pet_items.empty())
-		{
-			const size_t boundary_count = static_cast<size_t>(std::count_if(
-				mutation->pet_items.begin(), mutation->pet_items.end(),
-				[](const player_item_snapshot &item)
-				{ return item.parent_index == PLAYER_SNAPSHOT_NO_PARENT; }));
-			if (payload.expected_room_revision > UINT64_MAX - boundary_count - 1)
-				return flatfile_world_item_result::conflict;
-			selected->revision = payload.expected_room_revision + boundary_count + 1;
-			selected->items = mutation->pet_items;
-		}
-		else
-			catalog.saved_items.erase(selected);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return flatfile_world_item_result::io_error;
-	}
-	if (mutation->discarded_uids.empty() || mutation->discarded_uids.front() > source_uid ||
-	    !std::binary_search(mutation->discarded_uids.begin(), mutation->discarded_uids.end(),
-				source_uid))
-		return flatfile_world_item_result::invalid;
-	++catalog.revision;
-	mutation->after_image.filename = catalog_filename;
-	if (!encode_catalog(catalog, &mutation->after_image.bytes))
-		return flatfile_world_item_result::invalid;
-	mutation->catalog_revision = catalog.revision;
 	return flatfile_world_item_result::ok;
 }
 

@@ -35,7 +35,6 @@ CFLAGS += -DTEST_MUD
 else ifneq ($(BUILD_PROFILE),production)
 $(error BUILD_PROFILE must be development or production)
 endif
-CFLAGS += -D__NO_TESTS__    # exclude built-in test hooks from maintained builds
 CFLAGS += $(EXTRA_CFLAGS)
 LDFLAGS += $(EXTRA_LDFLAGS)
 
@@ -52,7 +51,7 @@ endif
 
 #CFLAGS += -DCTF_MUD=1
 
-INCLUDES	= -I. -I../tests/async -I/usr/include/libxml2 $(MYSQL_INCLUDES)
+INCLUDES	= -I. -I/usr/include/libxml2 $(MYSQL_INCLUDES)
 
 GENERAL_LIBS    = -lm -lstdc++ -lz -lxml2 -lcrypt $(MYSQL_LIBS) -lgnutls -lssl -lcrypto -lcjson -lhiredis -lhiredis_ssl -lbsd -lcurl -pthread
 
@@ -135,7 +134,6 @@ OBJS =  $(SHIP_OBJS) \
 				 cmd/actset.o \
 				 cmd/actwiz.o \
 				 cmd/community_spellup.o \
-				 cmd/player_death_restitution.o \
 				 net/ansi.o net/chat_presentation.o \
 				 net/output_style.o \
 				 net/output_profiles.o \
@@ -283,11 +281,6 @@ OBJS =  $(SHIP_OBJS) \
 				 core/env_file.o \
 				 flatfile/flatfile_store.o \
 				 flatfile/flatfile_authority_transaction.o \
-				 flatfile/flatfile_accounting_store.o \
-				 flatfile/flatfile_accounting_authority.o \
-				 flatfile/flatfile_accounting_bank_transaction.o \
-				 flatfile/flatfile_accounting_dispatch.o \
-				 flatfile/flatfile_accounting_baseline.o \
 				 flatfile/flatfile_account_repository.o \
 				 flatfile/flatfile_account_delete.o \
 				 flatfile/flatfile_account_reward_summon_repository.o \
@@ -301,7 +294,6 @@ OBJS =  $(SHIP_OBJS) \
 				 flatfile/flatfile_item_repository.o \
 				 flatfile/flatfile_collector_repository.o \
 				 flatfile/flatfile_artifact_repository.o \
-				 flatfile/flatfile_corpse_repository.o \
 				 flatfile/flatfile_corpse_ownership.o \
 				 flatfile/flatfile_corpse_restore.o \
 				 flatfile/flatfile_association_repository.o \
@@ -322,29 +314,16 @@ OBJS =  $(SHIP_OBJS) \
 				 flatfile/flatfile_shopkeeper_ownership.o \
 				 flatfile/flatfile_shopkeeper_materialize.o \
 				 flatfile/flatfile_shopkeeper_restore.o \
-				 flatfile/flatfile_shopkeeper_save.o \
 				 flatfile/flatfile_shop_trade_repository.o \
 				 flatfile/flatfile_shop_trade_materialization.o \
 				 flatfile/flatfile_shop_trophy_history.o \
 				 flatfile/flatfile_world_item_repository.o \
 				 flatfile/flatfile_world_quest_history.o \
-				 persistence/corpse_lifecycle_transaction.o \
-				 persistence/corpse_lifecycle_repository.o \
 				 persistence/critical_command.o \
-				 persistence/critical_command_journal.o \
 				 persistence/critical_command_coordinator.o \
-				 persistence/economic_accounting_repository.o \
-				 persistence/economic_sql_baseline_transaction.o \
-				 persistence/economic_sql_source_snapshot.o \
-				 economy/economic_sql_source_normalize.o \
-				 persistence/economic_sql_bank_transaction.o \
 				 persistence/critical_command_repository.o \
-				 persistence/player_death_restitution_command.o \
-				 persistence/player_death_restitution_repository.o \
-				 persistence/corpse_lifecycle_command.o \
 				 item/item_transfer_command.o \
 				 item/item_ownership_runtime.o \
-				 item/item_get_policy.o \
 				 item/item_command_policy.o \
 				 item/item_command_parser.o \
 				 item/forced_weapon_drop.o \
@@ -355,21 +334,11 @@ OBJS =  $(SHIP_OBJS) \
 				 item/item_claim.o \
 				 item/item_claim_repository.o \
 				 persistence/dupe_log.o \
-				 item/item_transfer_synthetic.o \
 				 item/item_uid_allocator.o \
 				 persistence/critical_outbox.o \
 				 world/epic_command.o \
 				 world/epic_transaction.o \
 				 economy/currency_command.o \
-				 economy/coin_transfer_command.o \
-				 economy/economic_accounting_types.o \
-				 economy/economic_accounting_plan.o \
-				 economy/economic_accounting_intent.o \
-				 economy/economic_command_admission.o \
-				 economy/economic_baseline_adapter.o \
-				 economy/economic_baseline_codec.o \
-				 economy/economic_baseline_command.o \
-				 economy/economic_currency_adapter.o \
 				 economy/auction_command.o \
 				 economy/auction_repository.o \
 				 economy/auction_transaction.o \
@@ -430,20 +399,13 @@ OBJS =  $(SHIP_OBJS) \
 				 economy/currency_transaction.o \
 				 player/player_revision_state.o \
 				 player/player_save_worker.o \
-				 player/player_save_journal.o \
 				 player/player_save_pipeline.o \
-				 player/player_death_restitution_runtime.o \
-				 player/player_death_restitution_adapter.o \
-				 player/player_death_restitution_staff.o \
-				 player/player_death_restitution_locker.o \
 				 world/world_recovery_npc_items.o \
 				 world/world_recovery_pipeline.o \
 				 player/player_snapshot_repository.o \
 				 player/output_preferences.o player/output_message.o player/player_snapshot_capture.o \
 				 player/player_snapshot_codec.o \
-				 persistence/persistence_queue.o \
 				 persistence/latency_trace.o \
-				 sql/sql_persistence_raw.o \
 				 sql/sql_pool.o \
 				 item/plushit.o \
 				 net/poll.o \
@@ -551,7 +513,6 @@ OBJS =  $(SHIP_OBJS) \
 				 world/makeexit.o \
 				 combat/racewar_stat_mods.o \
 				 economy/nexus_stones.o \
-				 core/test_async.o \
 				 cmd/testcmd.o \
 				 cmd/wikihelp.o \
 				 cmd/information_cache.o \
@@ -685,9 +646,5 @@ valgrind: $(PROGS)
 # Auto-generated dependency files alongside objects
 DEPFILES := $(DMS_OBJS:.o=.d) $(PFILE_OBJS:.o=.d) $(SHARED_PFILE_OBJS:.o=.d)
 -include $(DEPFILES)
-
-# Scoped first-slice native restitution tests; no server or database is started.
-test-player-death-restitution-native:
-	../tests/async/build_player_death_restitution_native.sh
 
 # DO NOT DELETE THIS LINE -- make depend depends on it.

@@ -22,7 +22,7 @@ std::string bytes_hex(const uint8_t *bytes, size_t size)
 bool session_audit_repository_execute(MYSQL *connection, const critical_command &command,
 				      session_audit_result *result)
 {
-	if (!critical_command_legacy_execution_supported(command))
+	if (!critical_command_valid(command))
 	{
 		errno = EPROTONOSUPPORT;
 		return false;

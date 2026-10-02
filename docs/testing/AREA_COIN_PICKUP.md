@@ -19,7 +19,7 @@ grants still retain pending work until publication succeeds.
 ## Behavior
 
 Coins now move in memory (Phase 2 of the
-[persistence reset](../ongoing-projects/2026-09-28-persistence-memory-authority-plan.md)):
+[persistence reset](../ongoing-projects/persistence-plan.md)):
 
 - Get, take and put handle any `ITEM_MONEY` object by type, whatever its vnum, and
   add a picked-up pile to the wallet at once. The player's save writes the wallet.
@@ -50,10 +50,9 @@ Additional focused checks:
 python3 tests/async/test_take_coins.py
 python3 tests/async/test_currency_in_memory.py
 python3 tests/async/test_flatfile_item_repository.py
-bash tests/async/run_currency_transaction_schema_mysql.sh
+bash tests/async/run_experience_trophy_mysql.sh
 python3 tests/async/test_live_item_movement_contract.py
 ```
 
-`test_flatfile_item_repository.py` and the player-load harness in
-`run_currency_transaction_schema_mysql.sh` load a pile whose custody row still holds
-an older amount and check that the saved amount wins.
+The player-load harness in `run_experience_trophy_mysql.sh` loads a pile whose custody
+row still holds an older amount and checks that the saved amount wins.

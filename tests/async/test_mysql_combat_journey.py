@@ -62,11 +62,9 @@ def run(server, reset_coins=False, boons=False):
             journey.make_fixture(runtime, reset_coins)
             journey.generate_certificate(runtime)
             (runtime/'logs/log').mkdir(parents=True)
-            for name in ('players', 'critical'):
-                (runtime/'journals'/name).mkdir(parents=True, mode=0o700)
+            (runtime/'journals'/'critical').mkdir(parents=True, mode=0o700)
             plain, tls, websocket = journey.available_ports()
-            environment.update(PLAYER_SAVE_JOURNAL_DIR=str(runtime/'journals/players'),
-                               CRITICAL_COMMAND_JOURNAL_DIR=str(runtime/'journals/critical'),
+            environment.update(CRITICAL_COMMAND_JOURNAL_DIR=str(runtime/'journals/critical'),
                                DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_PORT=str(websocket))
             output_path = runtime/'server.out'
             process = None
@@ -101,7 +99,6 @@ def run(server, reset_coins=False, boons=False):
                 def stable_state(pid):
                     return (
                         sql(f'SELECT copper,silver,gold,platinum,wallet_revision,numb_deaths,exp,level FROM player_data WHERE pid={pid}'),
-                        sql(f'SELECT save_revision,HEX(operation_id),SHA2(payload,256) FROM player_death_disposition WHERE pid={pid} ORDER BY save_revision'),
                         sql(f'SELECT item_uid,owner_type,owner_id,state FROM item_current_owner WHERE owner_type=1 AND owner_id={pid} ORDER BY item_uid'),
                     )
 

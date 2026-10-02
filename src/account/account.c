@@ -12,6 +12,7 @@
 #include "world/handler.h"
 #include "world/zone_touch_transaction.h"
 #include "cmd/interp.h"
+#include "sql/sql.h"
 #include "economy/auction_transaction.h"
 #include "economy/boon_reward_transaction.h"
 #include "economy/collector_service.h"
@@ -262,10 +263,7 @@ bool prepare_account_reconnect(P_char character, P_desc descriptor)
 		return false;
 
 	const auto save_fenced = [character]()
-	{
-		return collector_service_player_save_fenced(character) ||
-		       corpse_raise_player_save_fenced(character);
-	};
+	{ return collector_service_player_save_fenced(character); };
 	const auto discard_stale_body = [character, descriptor]()
 	{
 		// Keep the account state machine attached to its menu descriptor.  A
@@ -283,9 +281,7 @@ bool prepare_account_reconnect(P_char character, P_desc descriptor)
 	};
 
 	// Never replay a retained purchase or any other ready hook into a body
-	// whose graph is already fenced.  In particular, a pending purchase replay
-	// must not materialize an item immediately before a corpse fence extracts
-	// the same stale graph.
+	// whose graph is already fenced.
 	if (save_fenced())
 	{
 		discard_stale_body();
@@ -303,7 +299,6 @@ bool prepare_account_reconnect(P_char character, P_desc descriptor)
 	auction_transaction_player_ready(character);
 	collector_transaction_player_ready(character);
 	collector_service_player_ready(character, false);
-	corpse_raise_player_ready(character, false);
 	boon_reward_transaction_player_ready(character);
 
 	if (save_fenced())
@@ -2404,7 +2399,7 @@ void account_new_char_name(P_desc d, char *arg)
 		SEND_TO_Q("That name has been declined before, and would be now too!\r\nName:", d);
 		return;
 	}
-	if (IS_SET(game_locked, LOCK_CREATION))
+	if (IS_SET(game_locked, LOCK_CREATION) || get_mud_info("lock") == "create")
 	{
 		SEND_TO_Q("Game is currently not allowing creation of new characters.\r\n"
 			  "Please use an existing character, or try again later.\r\n\r\n",

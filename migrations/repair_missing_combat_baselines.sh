@@ -213,54 +213,14 @@ NOT EXISTS (
   WHERE player.active=1 AND mapping.deleted_at IS NULL AND mapping.blocked=0
     AND (wallet.pid IS NULL OR epic.pid IS NULL OR combat.pid IS NULL))
 AND NOT EXISTS (
-  SELECT 1 FROM player_data player
-  JOIN combat_frag_baseline baseline ON baseline.pid=player.pid
-  LEFT JOIN (SELECT pid,SUM(delta) delta FROM combat_frag_ledger GROUP BY pid) ledger
-    ON ledger.pid=player.pid
-  WHERE baseline.opening_frags+COALESCE(ledger.delta,0)<>player.frags)
-AND NOT EXISTS (
-  SELECT 1 FROM combat_frag_ledger ledger JOIN player_data player ON player.pid=ledger.pid
-  WHERE ledger.frag_revision=player.frag_revision AND ledger.frags_after<>player.frags)
-AND NOT EXISTS (
   SELECT 1 FROM player_data player LEFT JOIN currency_wallet_baseline baseline
     ON baseline.pid=player.pid WHERE baseline.pid IS NULL)
 AND NOT EXISTS (
   SELECT 1 FROM account_banks bank LEFT JOIN currency_bank_baseline baseline
     ON baseline.bank_id=bank.id WHERE baseline.bank_id IS NULL)
 AND NOT EXISTS (
-  SELECT 1 FROM player_data player
-  JOIN currency_wallet_baseline baseline ON baseline.pid=player.pid
-  LEFT JOIN (SELECT pid,SUM(wallet_delta_copper) copper,
-                    SUM(wallet_delta_silver) silver,SUM(wallet_delta_gold) gold,
-                    SUM(wallet_delta_platinum) platinum
-             FROM currency_ledger GROUP BY pid) ledger ON ledger.pid=player.pid
-  WHERE baseline.opening_copper+COALESCE(ledger.copper,0)<>player.copper
-     OR baseline.opening_silver+COALESCE(ledger.silver,0)<>player.silver
-     OR baseline.opening_gold+COALESCE(ledger.gold,0)<>player.gold
-     OR baseline.opening_platinum+COALESCE(ledger.platinum,0)<>player.platinum)
-AND NOT EXISTS (
-  SELECT 1 FROM account_banks bank
-  JOIN currency_bank_baseline baseline ON baseline.bank_id=bank.id
-  LEFT JOIN (SELECT bank_id,SUM(bank_delta_copper) copper,
-                    SUM(bank_delta_silver) silver,SUM(bank_delta_gold) gold,
-                    SUM(bank_delta_platinum) platinum
-             FROM currency_ledger GROUP BY bank_id) ledger ON ledger.bank_id=bank.id
-  WHERE baseline.opening_copper+COALESCE(ledger.copper,0)<>bank.bank_copper
-     OR baseline.opening_silver+COALESCE(ledger.silver,0)<>bank.bank_silver
-     OR baseline.opening_gold+COALESCE(ledger.gold,0)<>bank.bank_gold
-     OR baseline.opening_platinum+COALESCE(ledger.platinum,0)<>bank.bank_platinum)
-AND NOT EXISTS (
   SELECT 1 FROM player_data player LEFT JOIN epic_balance_baseline baseline
     ON baseline.pid=player.pid WHERE baseline.pid IS NULL)
-AND NOT EXISTS (
-  SELECT 1 FROM player_data player JOIN epic_balance_baseline baseline
-    ON baseline.pid=player.pid
-  LEFT JOIN (SELECT pid,SUM(delta) delta FROM epic_ledger GROUP BY pid) ledger
-    ON ledger.pid=player.pid
-  WHERE baseline.opening_balance+COALESCE(ledger.delta,0)<>player.epics)
-AND NOT EXISTS (
-  SELECT 1 FROM epic_ledger ledger JOIN player_data player ON player.pid=ledger.pid
-  WHERE ledger.epic_revision=player.epic_revision AND ledger.balance_after<>player.epics)
 AND (SELECT COUNT(*) FROM information_schema.referential_constraints
      WHERE constraint_schema=DATABASE() AND update_rule='RESTRICT' AND delete_rule='RESTRICT'
        AND constraint_name IN ('combat_outcome_operation_fk','combat_participant_operation_fk',
@@ -297,59 +257,24 @@ readiness_output=$("$SCRIPT_DIR/check_character_baseline_readiness.sh") || {
     exit 1
 }
 reconciliation_query="SELECT
-(SELECT COUNT(*) FROM player_data player
- JOIN combat_frag_baseline baseline ON baseline.pid=player.pid
- LEFT JOIN (SELECT pid,SUM(delta) delta FROM combat_frag_ledger GROUP BY pid) ledger
-   ON ledger.pid=player.pid
- WHERE baseline.opening_frags+COALESCE(ledger.delta,0)<>player.frags),
-(SELECT COUNT(*) FROM combat_frag_ledger ledger JOIN player_data player ON player.pid=ledger.pid
- WHERE ledger.frag_revision=player.frag_revision AND ledger.frags_after<>player.frags),
 (SELECT COUNT(*) FROM player_data player LEFT JOIN currency_wallet_baseline baseline
    ON baseline.pid=player.pid WHERE baseline.pid IS NULL),
 (SELECT COUNT(*) FROM account_banks bank LEFT JOIN currency_bank_baseline baseline
    ON baseline.bank_id=bank.id WHERE baseline.bank_id IS NULL),
-(SELECT COUNT(*) FROM player_data player JOIN currency_wallet_baseline baseline
-   ON baseline.pid=player.pid
- LEFT JOIN (SELECT pid,SUM(wallet_delta_copper) copper,SUM(wallet_delta_silver) silver,
-                   SUM(wallet_delta_gold) gold,SUM(wallet_delta_platinum) platinum
-            FROM currency_ledger GROUP BY pid) ledger ON ledger.pid=player.pid
- WHERE baseline.opening_copper+COALESCE(ledger.copper,0)<>player.copper
-    OR baseline.opening_silver+COALESCE(ledger.silver,0)<>player.silver
-    OR baseline.opening_gold+COALESCE(ledger.gold,0)<>player.gold
-    OR baseline.opening_platinum+COALESCE(ledger.platinum,0)<>player.platinum),
-(SELECT COUNT(*) FROM account_banks bank JOIN currency_bank_baseline baseline
-   ON baseline.bank_id=bank.id
- LEFT JOIN (SELECT bank_id,SUM(bank_delta_copper) copper,SUM(bank_delta_silver) silver,
-                   SUM(bank_delta_gold) gold,SUM(bank_delta_platinum) platinum
-            FROM currency_ledger GROUP BY bank_id) ledger ON ledger.bank_id=bank.id
- WHERE baseline.opening_copper+COALESCE(ledger.copper,0)<>bank.bank_copper
-    OR baseline.opening_silver+COALESCE(ledger.silver,0)<>bank.bank_silver
-    OR baseline.opening_gold+COALESCE(ledger.gold,0)<>bank.bank_gold
-    OR baseline.opening_platinum+COALESCE(ledger.platinum,0)<>bank.bank_platinum),
 (SELECT COUNT(*) FROM player_data player LEFT JOIN epic_balance_baseline baseline
    ON baseline.pid=player.pid WHERE baseline.pid IS NULL),
-(SELECT COUNT(*) FROM player_data player JOIN epic_balance_baseline baseline
-   ON baseline.pid=player.pid
- LEFT JOIN (SELECT pid,SUM(delta) delta FROM epic_ledger GROUP BY pid) ledger
-   ON ledger.pid=player.pid
- WHERE baseline.opening_balance+COALESCE(ledger.delta,0)<>player.epics),
-(SELECT COUNT(*) FROM epic_ledger ledger JOIN player_data player ON player.pid=ledger.pid
- WHERE ledger.epic_revision=player.epic_revision AND ledger.balance_after<>player.epics),
 (SELECT COUNT(*)<>7 FROM information_schema.referential_constraints
  WHERE constraint_schema=DATABASE() AND update_rule='RESTRICT' AND delete_rule='RESTRICT'
    AND constraint_name IN ('combat_outcome_operation_fk','combat_participant_operation_fk',
      'combat_frag_operation_fk','currency_ledger_operation_fk','epic_ledger_operation_fk',
      'item_current_parent_fk','item_ownership_operation_fk'));"
 if ! reconciliation_output=$("${MYSQL[@]}" -e "$reconciliation_query"); then
-    echo 'full combat, currency, epic, item, and FK reconciliation query failed' >&2
+    echo 'baseline coverage and FK reconciliation query failed' >&2
     exit 1
 fi
-IFS=$'\t' read -r combat_mismatch combat_latest wallet_missing bank_missing \
-    wallet_mismatch bank_mismatch epic_missing epic_mismatch epic_latest fk_invalid \
+IFS=$'\t' read -r wallet_missing bank_missing epic_missing fk_invalid \
     <<<"$reconciliation_output"
-for value in "$combat_mismatch" "$combat_latest" "$wallet_missing" "$bank_missing" \
-    "$wallet_mismatch" "$bank_mismatch" "$epic_missing" "$epic_mismatch" \
-    "$epic_latest" "$fk_invalid"; do
+for value in "$wallet_missing" "$bank_missing" "$epic_missing" "$fk_invalid"; do
     [[ "$value" =~ ^[0-9]+$ ]] || {
         echo 'full baseline reconciliation returned malformed aggregate output' >&2
         exit 1
@@ -368,12 +293,8 @@ receipt_temporary=$(mktemp "$artifact_parent/.combat-baseline-receipt.XXXXXX")
         "$(printf '%s' "$COMBAT_BASELINE_BACKUP_ID" | sha256sum | cut -d' ' -f1)"
     printf 'rollback_evidence_sha256=%s\n' "$rollback_sha"
     printf 'approved_rows=%s\n' "$approved_count"
-    printf 'combat_mismatch=%s\ncombat_latest_mismatch=%s\n' \
-        "$combat_mismatch" "$combat_latest"
-    printf 'wallet_missing=%s\nbank_missing=%s\nwallet_mismatch=%s\nbank_mismatch=%s\n' \
-        "$wallet_missing" "$bank_missing" "$wallet_mismatch" "$bank_mismatch"
-    printf 'epic_missing=%s\nepic_mismatch=%s\nepic_latest_mismatch=%s\nfk_invalid=%s\n' \
-        "$epic_missing" "$epic_mismatch" "$epic_latest" "$fk_invalid"
+    printf 'wallet_missing=%s\nbank_missing=%s\nepic_missing=%s\nfk_invalid=%s\n' \
+        "$wallet_missing" "$bank_missing" "$epic_missing" "$fk_invalid"
     printf '%s\n' "$readiness_output"
 } >"$receipt_temporary"
 chmod 600 "$receipt_temporary"

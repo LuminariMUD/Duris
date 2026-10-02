@@ -607,11 +607,15 @@ vector<poll_data> get_flat_polls(bool active_only, bool *loaded_ok)
 		log_flat_poll_error("read", error);
 		return {};
 	}
+	// A poll is closed once it expires, whatever its record says.
 	vector<poll_data> polls;
 	const time_t now = time(NULL);
-	for (const poll_data &poll : catalog.polls)
-		if (!active_only || (poll.is_active && poll.expires_at > now))
+	for (poll_data poll : catalog.polls)
+	{
+		poll.is_active = poll.is_active && poll.expires_at > now;
+		if (!active_only || poll.is_active)
 			polls.push_back(poll);
+	}
 	apply_flat_poll_vote_counts(catalog, &polls);
 	sort(polls.begin(), polls.end(),
 	     [](const poll_data &left, const poll_data &right) { return left.id > right.id; });
@@ -636,6 +640,7 @@ poll_data get_flat_poll_by_id(int poll_id, bool *loaded_ok)
 		if (stored.id != poll_id)
 			continue;
 		vector<poll_data> one{ stored };
+		one.front().is_active = stored.is_active && stored.expires_at > time(NULL);
 		apply_flat_poll_vote_counts(catalog, &one);
 		return one.front();
 	}
@@ -784,40 +789,6 @@ int record_flat_poll_votes(const char *account_name, const char *character_name,
 	return votes_cast;
 }
 
-void expire_flat_polls()
-{
-	flat_poll_lock lock;
-	string error;
-	if (!lock_flat_poll_catalog(&lock, &error))
-	{
-		log_flat_poll_error("expiration lock", error);
-		return;
-	}
-	flat_poll_catalog catalog;
-	const flat_poll_load_result loaded = load_flat_poll_catalog(&catalog, &error);
-	if (loaded == flat_poll_load_result::missing)
-		return;
-	if (loaded != flat_poll_load_result::ok)
-	{
-		log_flat_poll_error("expiration read", error);
-		return;
-	}
-	const time_t now = time(NULL);
-	bool changed = false;
-	for (poll_data &poll : catalog.polls)
-	{
-		if (poll.is_active && poll.expires_at < now)
-		{
-			poll.is_active = false;
-			changed = true;
-		}
-	}
-	if (!changed)
-		return;
-	++catalog.revision;
-	if (!save_flat_poll_catalog(catalog, &error))
-		log_flat_poll_error("expiration write", error);
-}
 } // namespace
 #endif
 
@@ -1190,17 +1161,6 @@ int poll_cast_vote(P_char ch, int poll_id, vector<int> &choices)
 	}
 
 	return votes_cast;
-}
-
-/* close expired polls */
-void poll_check_expirations(void)
-{
-#ifdef __NO_MYSQL__
-	expire_flat_polls();
-#else
-	qry("UPDATE polls SET is_active = 0 WHERE is_active = 1 AND expires_at < %ld",
-	    (long)time(NULL));
-#endif
 }
 
 /* record votes to db - shared by command and websocket */

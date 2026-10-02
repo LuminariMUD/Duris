@@ -29,7 +29,9 @@ money = corpse.index("(void)money_to_inventory(ch);")
 assert money < corpse.index("currency_transaction_save_first(ch);") < corpse.index(
     "corpse->contains = ch->carrying;") < corpse.index("writeCorpse(corpse);")
 assert corpse.index("corpse->contains = ch->carrying;") < corpse.index("writeCorpse(corpse);")
-assert "collector_death_enrollment_begin" not in corpse
+# The death enters collector intake with the corpse's first save (Phase 3 step 6).
+assert corpse.index("collector_death_enrollment_begin(ch, corpse);") < corpse.index(
+    "writeCorpse(corpse);")
 print("[PASS] a player's items and coins go into the corpse; the empty wallet is saved first")
 
 death = body(FIGHT, "void die(P_char ch, P_char killer)")

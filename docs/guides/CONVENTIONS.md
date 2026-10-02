@@ -58,12 +58,15 @@
 ## Error Handling and Recovery
 
 - Classify external failures as retryable, terminal, ambiguous commit, or overload outcomes.
-- Retain dirty revisions and retry with bounded exponential backoff after retryable failure.
-- A failed terminal save must leave the live character and inventory intact and retryable.
-- Do not convert Redis, queue, or journal failure into a synchronous full save on the game thread.
+- Memory is the authority: change state in memory at once and let the save write it. Never
+  make the game wait for, or refuse on, the database.
+- A terminal save is queued and the character leaves at once; a save that cannot be queued
+  is reported, never a reason to hold the character.
+- Do not convert Redis or queue failure into a synchronous full save on the game thread.
 - Alerts and counters must report actual durable success, failure, retry, spill, and recovery state.
 - Recovery records require schema versions, checksums, unique IDs, atomic checkpoints, and idempotent replay.
-- Shutdown and copyover stop new mutations, drain to a documented deadline, spill remaining work, then exit.
+- Shutdown and copyover stop new mutations and drain to a documented deadline; shutdown always
+  exits, and copyover is called off when the drain fails.
 
 ## Database Layer
 
@@ -112,19 +115,20 @@
 ## Redis and Caching
 
 - Use Redis only for reconstructible cross-process or report cache data.
-- Keep player dirty state in game memory plus the durable journal, not Redis membership alone.
+- Keep player dirty state in game memory, not in Redis membership.
 - Give Redis connect and command operations bounded timeouts and guard every context before use.
 - Use namespaced and versioned keys, finite TTL with jitter, explicit invalidation, and single-flight rebuilds.
 - Monitor cache, dirty-state, and world-recovery domains independently.
 - Never put a Redis round trip in regeneration, XP, or another per-pulse hot path.
 
-## Queues and Journals
+## Queues
 
+- Database writes go to the one persistence writer, in capture order; do not add a second writer
+  or let a job overtake one queued before it.
 - Use typed bounded queues with byte limits, age limits, high/low watermarks, and explicit overload behavior.
 - Preallocate compact queue storage away from the hot producer path and batch compatible operations.
-- Spill durable idempotent records before memory limits; unrestricted raw SQL is not a durable message format.
-- Acknowledge only after destination commit and checkpoint replay only after the acknowledgement is durable.
-- Track pending, oldest age, high-water mark, retries, drops, spill bytes, replay duplicates, and end-to-end latency.
+- Acknowledge only after the destination commits.
+- Track pending, oldest age, high-water mark, retries, drops, and end-to-end latency.
 
 ## Testing
 
@@ -148,7 +152,7 @@
 
 - Record query and Redis counts, latency histograms, and errors by stable site ID without values.
 - Correlate external-I/O time with pulse and event-budget metrics.
-- Expose queue age, revision gap, last durable revision, journal age, replay state, reconnect state, deadlocks, and lock waits.
+- Expose queue age, retries, failures, reconnect state, deadlocks, and lock waits.
 - Remove unconditional `/tmp` and per-save traces from normal persistence paths.
 - Any diagnostic trace must be explicit, sampled, redacted, non-blocking, size-bounded, and rotated.
 - Never commit or disclose credentials, private keys, IPs, password hashes, player descriptions, logs, or player/account data.

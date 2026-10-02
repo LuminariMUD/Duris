@@ -70,7 +70,6 @@ int poll_record_votes(const char *acct_name, const char *char_name, int poll_id,
 		      std::vector<int> &choices);
 std::vector<poll_data> poll_get_all(bool active_only);
 poll_data poll_get_by_id(int poll_id);
-void poll_check_expirations(void);
 
 /* display */
 void poll_display_list(P_char ch, bool show_all);

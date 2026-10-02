@@ -10,12 +10,8 @@
 
 namespace collector
 {
-// V1 is a fixed-width little-endian metadata format. Catalogs begin with
-// "DCAT", the codec version, two reserved zero bytes, catalog revision,
-// next-listing cursor, and record count. Object payloads remain the transaction
-// layer's responsibility and are deliberately not embedded here.
-constexpr uint16_t catalog_codec_version = 1;
-constexpr size_t catalog_header_bytes = 28;
+// V1 is a fixed-width little-endian metadata format. Object payloads remain the
+// transaction layer's responsibility and are deliberately not embedded here.
 constexpr size_t encoded_record_bytes = 154;
 constexpr uint32_t catalog_max_records = 262144;
 
@@ -39,8 +35,6 @@ enum class codec_result : uint8_t
 bool valid_catalog(const catalog &value);
 codec_result record_encode(const record &entry, std::array<uint8_t, encoded_record_bytes> *encoded);
 codec_result record_decode(const uint8_t *encoded, size_t size, record *entry);
-codec_result catalog_encode(const catalog &value, std::vector<uint8_t> *encoded);
-codec_result catalog_decode(const uint8_t *encoded, size_t size, catalog *value);
 }
 
 #endif

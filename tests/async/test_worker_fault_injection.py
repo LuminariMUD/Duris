@@ -25,7 +25,6 @@ import sys
 import re
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-PERSISTENCE_QUEUE = str(source("persistence_queue.c"))
 SQL_POOL = str(source("sql_pool.c"))
 SQL_C = str(source("sql.c"))
 UTILITY_C = str(source("utility.c"))
@@ -39,22 +38,7 @@ def read_file(path):
         return f.read()
 
 
-# ── Test 1: Worker watchdog has heartbeat and quarantine ──
-pq_source = read_file(PERSISTENCE_QUEUE)
-
-if "heartbeat" not in pq_source:
-    errors.append("Worker heartbeat not found in persistence_queue.c")
-else:
-    checks_passed += 1
-    print("Worker heartbeat present: ok")
-
-if "stop_pending" in pq_source:
-    checks_passed += 1
-    print("Worker stop_pending quarantine flag present: ok")
-else:
-    errors.append("Worker stop_pending flag not found")
-
-# ── Test 2: Pool shutdown rejects new borrowers and waits for active ones ──
+# ── Test 1: Pool shutdown rejects new borrowers and waits for active ones ──
 pool_source = read_file(SQL_POOL)
 
 if "closing" in pool_source.lower() and "in_use" in pool_source:
@@ -70,30 +54,7 @@ if "pthread_cond_broadcast" in pool_source or "cond_broadcast" in pool_source:
 else:
     errors.append("Pool shutdown does not broadcast to blocked borrowers")
 
-# ── Test 3: Worker MySQL thread init/end lifecycle ──
-if "mysql_thread_init" in pq_source and "mysql_thread_end" in pq_source:
-    checks_passed += 1
-    print("Worker mysql_thread_init/end lifecycle present: ok")
-else:
-    errors.append("Worker mysql_thread_init/end not found in persistence_queue.c")
-
-# ── Test 4: Fallback path exists for item/scalar events when SQL fails ──
-util_source = read_file(UTILITY_C)
-
-if "persistence_write_fallback_event_line" in util_source:
-    checks_passed += 1
-    print("Shared fallback writer present: ok")
-else:
-    errors.append("Shared fallback writer not found")
-
-# Check that fallback writes are fsync'd
-if "fsync" in util_source:
-    checks_passed += 1
-    print("Fallback fsync durability present: ok")
-else:
-    errors.append("Fallback fsync not found")
-
-# ── Test 5: Pwipe fencing gates exist ──
+# ── Test 2: Pwipe fencing gates exist ──
 sql_source = read_file(SQL_C)
 comm_source = read_file(str(source("comm.c")))
 if "_pwipe" in comm_source and "shutdownflag" in comm_source:
@@ -102,21 +63,14 @@ if "_pwipe" in comm_source and "shutdownflag" in comm_source:
 else:
     errors.append("Pwipe fencing gates not found in comm.c")
 
-# ── Test 6: Redis pwipe invalidation is scoped (not FLUSHALL) ──
-if "FLUSHALL" in sql_source or "FLUSHALL" in util_source:
+# ── Test 3: Redis pwipe invalidation is scoped (not FLUSHALL) ──
+if "FLUSHALL" in sql_source or "FLUSHALL" in read_file(UTILITY_C):
     errors.append("Unscoped FLUSHALL found in SQL or utility source")
 else:
     checks_passed += 1
     print("No unscoped FLUSHALL: ok")
 
-# ── Test 7: Large-event fallback exists with PERSISTENCE_LARGE_EVENT prefix ──
-if "PERSISTENCE_LARGE_EVENT" in util_source:
-    checks_passed += 1
-    print("Large-event fallback prefix present: ok")
-else:
-    errors.append("Large-event fallback prefix not found")
-
-# ── Test 8: Preflight and postflight checks in sql_pwipe ──
+# ── Test 4: Preflight and postflight checks in sql_pwipe ──
 # Find the real sql_pwipe function
 pwipe_start = sql_source.rindex("bool sql_pwipe(int code_verify)")
 pwipe_end = sql_source.find("\n}", pwipe_start + 1)
@@ -143,14 +97,7 @@ if "postflight" in pwipe_body.lower() or "Postflight" in pwipe_body:
 else:
     errors.append("Pwipe postflight invariant check not found")
 
-# ── Test 9: Fallback quarantine during pwipe ──
-if "_pwipe" in util_source and "quarantine" in util_source.lower():
-    checks_passed += 1
-    print("Fallback pwipe quarantine present: ok")
-else:
-    errors.append("Fallback pwipe quarantine not found")
-
-# ── Test 10: COMMIT failure preserves transaction state ──
+# ── Test 5: COMMIT failure preserves transaction state ──
 sql_player_path = str(source("sql_player.c"))
 if os.path.exists(sql_player_path):
     sp_source = read_file(sql_player_path)

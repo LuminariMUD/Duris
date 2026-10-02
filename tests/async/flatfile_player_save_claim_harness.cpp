@@ -213,7 +213,7 @@ int main(int argc, char **argv)
 	require(text_of(path / "logs/log/dupes").find("uid=1006") == std::string::npos,
 		"nothing the save claimed is in the dupe log");
 
-	// No revision fence: an older ordinary save is written; a legacy replay is not.
+	// No revision fence: an older ordinary save is written.
 	player_snapshot older = snapshot_for(1);
 	require(flatfile_player_snapshot_apply(root, older, &error).outcome ==
 				player_save_apply_outcome::applied &&
@@ -221,15 +221,6 @@ int main(int argc, char **argv)
 				flatfile_player_load_result::ok &&
 			stored.items.empty(),
 		"an ordinary save is never fenced by revision");
-	player_snapshot replay = snapshot_for(1);
-	replay.items = { item(1001, 501, PLAYER_SNAPSHOT_NO_PARENT) };
-	require(flatfile_player_snapshot_apply(root, replay, &error, true).outcome ==
-			player_save_apply_outcome::already_applied,
-		"a legacy replay the file already has is skipped");
-	replay.revision = 2;
-	require(flatfile_player_snapshot_apply(root, replay, &error, true).outcome ==
-			player_save_apply_outcome::applied,
-		"a newer legacy replay is applied");
 	// A new player's first save records its owner even when it holds nothing, so the
 	// game can hydrate the owner revision straight after creation.
 	require(flatfile_identity_claim(root, 41, "Newcomer", "Account-Two", &error) ==
@@ -294,7 +285,7 @@ int main(int argc, char **argv)
 	dead.description = "The corpse of Newcomer is lying here.";
 	dead.keywords = "newcomer corpse _pcorpse_";
 	dead.items = { loose(1001, 501, PLAYER_SNAPSHOT_NO_PARENT), loose(1030, 530, 0) };
-	require(flatfile_corpse_snapshot_apply(root, dead, false, &error).outcome ==
+	require(flatfile_corpse_snapshot_apply(root, dead, false, {}, &error).outcome ==
 			player_save_apply_outcome::applied,
 		"corpse save: " + error);
 	const item_owner_identity dead_corpse = { item_owner_type::corpse,
@@ -329,7 +320,7 @@ int main(int argc, char **argv)
 				flatfile_world_item_result::ok &&
 			rooms.size() == 1 && rooms[0].items.empty(),
 		"a saved item leaving the room leaves its record");
-	require(flatfile_corpse_snapshot_apply(root, dead, true, &error).outcome ==
+	require(flatfile_corpse_snapshot_apply(root, dead, true, {}, &error).outcome ==
 				player_save_apply_outcome::applied &&
 			flatfile_world_item_list(root, &corpses, &saved_items, &error) ==
 				flatfile_world_item_result::ok &&

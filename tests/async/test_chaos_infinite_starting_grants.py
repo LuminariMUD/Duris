@@ -139,7 +139,7 @@ assert "if (chaos_mode && !chaos_starter_epic_skills_enabled())" in GUILD
 assert "chaos_starter_reward" in EPIC_COMMAND
 assert "reason <= epic_reason_type::chaos_starter_reward" in EPIC_CODEC
 assert "chaos_starter_reward" in CURRENCY_COMMAND
-assert "reason <= currency_reason_type::corpse_lifecycle" in CURRENCY_CODEC
+assert "case currency_reason_type::chaos_starter_reward:" in CURRENCY_CODEC
 
 assert "chaos_starter_frigate_enabled" in SHIP_SHOP
 assert "const int tattoo_reward_hull = chaos_frigate_reward ? SH_FRIGATE : SH_SLOOP;" in SHIP_SHOP
@@ -188,8 +188,9 @@ assert "chaos_material_pouch_is(item)" in SALCHEMIST
 assert "chaos_material_pouch_is(jewel)" in SALCHEMIST
 assert "read_object(static_cast<int>(jewel_vnum), VIRTUAL)" in SALCHEMIST
 assert "virtual_jewel" in SALCHEMIST
-# Virtual pouch encrust is refused until pouch usage can join the craft receipt.
-assert "Virtual Chaos-pouch encrust is temporarily unavailable" in SALCHEMIST
+# A virtual pouch jewel is recorded on the pouch's scoreboard and encrusts like any other.
+assert "Virtual Chaos-pouch encrust is temporarily unavailable" not in SALCHEMIST
+assert "chaos_material_pouch_record_generated(ch, &generated, 1)" in SALCHEMIST
 CHAOS = source("chaos.c").read_text(encoding="utf-8", errors="replace")
 ACTINF = source("actinf.c").read_text(encoding="utf-8", errors="replace")
 ACTOBJ = source("actobj.c").read_text(encoding="utf-8", errors="replace")

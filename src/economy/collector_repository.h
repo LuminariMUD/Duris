@@ -7,16 +7,6 @@
 #include <mysql/mysql.h>
 #include <vector>
 
-struct collector_enrollment_repository_plan
-{
-	bool active = false;
-	bool death_exists = false;
-	uint64_t catalog_revision = 0;
-	uint64_t next_listing = 0;
-	collector::rules policy = {};
-	std::vector<item_transfer_entry> new_items;
-};
-
 struct collector_item_boundary_repository_entry
 {
 	collector_listing_detail prior;
@@ -47,17 +37,13 @@ bool collector_repository_read_bootstrap(MYSQL *connection, collector_bootstrap_
 bool collector_repository_read_listing(MYSQL *connection, uint64_t listing,
 				       collector_listing_detail *detail, bool *found);
 
-// The prepare/apply pair runs inside an item-transfer transaction. Prepare
-// locks collector allocation state before item ownership rows are locked;
-// apply inserts candidate records only after the corpse custody move succeeds.
-bool collector_repository_prepare_death_enrollment(MYSQL *connection,
-						   const item_transfer_payload &payload,
-						   collector_enrollment_repository_plan *plan,
-						   unsigned int *result_code);
-bool collector_repository_apply_death_enrollment(MYSQL *connection, const critical_command &command,
-						 const item_transfer_payload &payload,
-						 const item_transfer_result &transfer,
-						 const collector_enrollment_repository_plan &plan);
+// Records a player's death and its eligible corpse items as collector candidates inside
+// the caller's transaction (the corpse save). A later save of the same corpse adds only
+// items not yet listed. A refusal sets result_code and changes nothing; a database
+// failure returns false with errno set.
+bool collector_repository_enroll_death(MYSQL *connection, const collector_death_snapshot &death,
+				       const std::vector<uint64_t> &item_uids,
+				       unsigned int *result_code);
 
 // Prepare is called before item ownership rows are changed. It protects the
 // indexed candidate ranges (including empty ranges) and, when candidates are

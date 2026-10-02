@@ -59,11 +59,6 @@ int main(int argc, char **argv)
 	require(flatfile_ip_activity_connect(state_root.c_str(), 2, "198.51.100.8", 2, 1200,
 					     &error) == flatfile_ip_activity_result::ok,
 		"second deterministic connection failed");
-	require(flatfile_ip_activity_find_latest(state_root.c_str(), "198.51.100.8", &record,
-						 &error) == flatfile_ip_activity_result::ok &&
-			record.pid == 2 && record.racewar_side == 2 &&
-			record.last_connect == 1200 && record.last_disconnect == 0,
-		"latest connection for a shared IP was not selected");
 	require(flatfile_ip_activity_reset_active(state_root.c_str(), 1300, &error) ==
 				flatfile_ip_activity_result::ok &&
 			flatfile_ip_activity_get(state_root.c_str(), 2, &record, &error) ==
@@ -93,14 +88,7 @@ int main(int argc, char **argv)
 					       &last_disconnect)) == "203.0.113.9" &&
 			last_connect <= 2 && last_disconnect == 0,
 		"SQL compatibility reader did not expose flat connection data");
-	int racewar_side = RACEWAR_NONE;
-	require(sql_find_racewar_for_ip(descriptor.host, &racewar_side) == 3600 &&
-			racewar_side == 3,
-		"active connection did not enforce the one-hour racewar rule");
 	sql_disconnectIP(&player);
-	const int remaining = sql_find_racewar_for_ip(descriptor.host, &racewar_side);
-	require(remaining >= 3598 && remaining <= 3600 && racewar_side == 3,
-		"recent disconnect did not enforce the remaining one-hour delay");
 	require(std::string(sql_select_IP_info(&player, ip, sizeof(ip), &last_connect,
 					       &last_disconnect)) == "203.0.113.9" &&
 			last_disconnect <= 2,
@@ -121,9 +109,6 @@ int main(int argc, char **argv)
 	corrupt.seekp(-1, std::ios::end);
 	corrupt.write(&byte, 1);
 	corrupt.close();
-	require(sql_find_racewar_for_ip(descriptor.host, &racewar_side) < 0 &&
-			racewar_side == RACEWAR_NONE,
-		"corrupt IP activity did not fail closed");
 	require(flatfile_ip_activity_connect(state_root.c_str(), 43, "203.0.113.10", 4, 1400,
 					     &error) == flatfile_ip_activity_result::corrupt,
 		"mutation overwrote a corrupt IP authority");

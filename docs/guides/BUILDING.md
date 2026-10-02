@@ -71,7 +71,6 @@ From the default build line:
 |------|---------|
 | `-std=c++20` | All `.c` files are compiled as C++20 with g++. |
 | `-DTEST_MUD` | Added only by `BUILD_PROFILE=development`; enables development-only commands and behavior. |
-| `-D__NO_TESTS__` | Excludes built-in test hooks from maintained development and production builds. |
 | `-D__NO_MYSQL__` | Selected by `PERSISTENCE_BACKEND=flatfile`; removes the client compile/link dependency. |
 
 Redis is optional at runtime, but Hiredis and OpenSSL remain build dependencies because
@@ -146,7 +145,7 @@ the non-default configurations as well - `REQUIRE_EMAIL_VERIFICATION`,
 `CTF_MUD=1`, and `MEMCHK` are the ones in use:
 
 ```bash
-g++ -fsyntax-only -std=c++20 -DTEST_MUD -D__NO_TESTS__ -DCTF_MUD=1 ... src/<file>.c
+g++ -fsyntax-only -std=c++20 -DTEST_MUD -DCTF_MUD=1 ... src/<file>.c
 ```
 
 ## Sanitizer build

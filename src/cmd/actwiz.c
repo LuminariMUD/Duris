@@ -4482,22 +4482,6 @@ void timedShutdown(P_char ch, P_char, P_obj, void * /*data*/)
 			send_to_all(buf);
 			logit(LOG_STATUS, "Shutdown pwipe called.");
 			shutdownflag = _pwipe = 1;
-			if (!persistence_prepare_pwipe())
-			{
-				send_to_all(
-					"&=GlPersistence workers did not quiesce; aborting destructive wipe.&n\n\r");
-				shutdownflag = _pwipe = 0;
-				shutdownData.eShutdownType = TimedShutdownData::NONE;
-				return;
-			}
-			if (!persistence_quarantine_fallback_events())
-			{
-				send_to_all(
-					"&=GlFallback persistence log could not be quarantined; aborting destructive wipe.&n\n\r");
-				shutdownflag = _pwipe = 0;
-				shutdownData.eShutdownType = TimedShutdownData::NONE;
-				return;
-			}
 			if (!sql_pwipe(1723699))
 			{
 				if (sql_pwipe_crossed_boundary())

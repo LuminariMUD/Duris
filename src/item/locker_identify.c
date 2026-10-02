@@ -97,7 +97,7 @@ void write_async(request &entry, phase next)
 	{ /* The durable prepared command remains recoverable. */
 	}
 }
-void paid(P_char ch, bool committed, const currency_command_result &, unsigned int error_code,
+void paid(P_char, bool committed, const currency_command_result &, unsigned int,
 	  const uint8_t *context, size_t size)
 {
 	if (!context || size != sizeof(payment_context))
@@ -112,19 +112,8 @@ void paid(P_char ch, bool committed, const currency_command_result &, unsigned i
 	auto &entry = *found->second;
 	if (entry.stage != phase::payment)
 		return; // duplicate completion cannot replace an in-flight receipt write
-	if (committed)
-		entry.value.state = locker_receipt_state::paid;
-	else if (error_code == ENOSPC || error_code == ESTALE)
-		entry.value.state = locker_receipt_state::failed; // definite no-mutation outcomes
-	else
-	{
-		// Unknown/malformed publication is not proof that the payment failed.
-		// Preserve the original operation for ledger reconciliation on retry.
-		notice(ch, entry);
-		entry.stage = phase::submitting;
-		entry.retry = clock_type::now() + std::chrono::seconds(5);
-		return;
-	}
+	// The charge is made in memory at once: it lands, or is refused and changes nothing.
+	entry.value.state = committed ? locker_receipt_state::paid : locker_receipt_state::failed;
 	write_async(entry, phase::recording);
 }
 void enqueue(P_char ch, std::optional<locker_receipt> candidate, bool requested = false)

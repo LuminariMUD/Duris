@@ -31,7 +31,6 @@
 #include "combat/justice.h"
 #include "core/mm.h"
 #include "item/objmisc.h"
-#include "item/item_movement_transaction.h"
 #include "world/specs.prototypes.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
@@ -64,60 +63,6 @@ int get_id_for(P_obj t_obj);
 
 namespace
 {
-struct alchemy_craft_context
-{
-	int skill;
-	int kind;
-	bool ingredients_consumed;
-};
-
-void alchemy_craft_completed(P_char ch, bool committed, const item_transfer_result &, unsigned int,
-			     const uint8_t *context, size_t context_size)
-{
-	alchemy_craft_context craft = {};
-	if (context && context_size == sizeof(craft))
-		memcpy(&craft, context, sizeof(craft));
-	if (!committed)
-	{
-		send_to_char(
-			"The craft could not be committed; your ingredients were preserved.\r\n",
-			ch);
-		return;
-	}
-	if (craft.kind >= 1 && craft.kind <= 3)
-		notch_skill(ch, craft.skill, 6.25);
-	if (craft.kind == 1)
-		send_to_char("You finish mixing the poison.\r\n", ch);
-	else if (craft.kind == 2)
-		send_to_char("You finish mixing the potion.\r\n", ch);
-	else if (craft.kind == 4)
-	{
-		act("...creating a real masterpiece!", TRUE, ch, 0, 0, TO_ROOM);
-		act("Hurrah! Hurrah!", FALSE, ch, 0, 0, TO_CHAR);
-		wizlog(56, "Encrust committed for %s.", GET_NAME(ch));
-	}
-	else if (craft.kind == 5)
-	{
-		act("You broke your item in the process.", FALSE, ch, 0, 0, TO_CHAR);
-		act("...and breaks it in the process.", TRUE, ch, 0, 0, TO_ROOM);
-		wizlog(56, "%s ruined an encrust attempt.", GET_NAME(ch));
-	}
-	else if (craft.kind == 3)
-	{
-		if (craft.ingredients_consumed)
-			send_to_char(
-				"The mixture consumes the ingredients without producing a potion.\r\n",
-				ch);
-		else
-			send_to_char(
-				"You ran out of bottles before the ingredients were consumed.\r\n",
-				ch);
-	}
-	else
-		send_to_char("The mixture consumes the ingredients without producing a potion.\r\n",
-			     ch);
-}
-
 bool collect_required_objects(P_char ch, const int required[], bool poison,
 			      std::vector<P_obj> *objects)
 {
@@ -880,20 +825,12 @@ void do_mixpoison(P_char ch, char *argument, int /*cmd*/)
 			inputs.reserve(ingredients.size() + 1);
 			inputs.push_back(vial);
 			inputs.insert(inputs.end(), ingredients.begin(), ingredients.end());
-			const alchemy_craft_context context = { SKILL_MIXPOISON, 1, true };
-			item_movement_reject reject = item_movement_reject::none;
-			if (!item_movement_transaction_submit_craft(
-				    ch, inputs.data(), inputs.size(), &poison_vial, 1,
-				    poison_data[i].vnum, alchemy_craft_completed, &context,
-				    sizeof(context), &reject))
-			{
-				extract_obj(poison_vial);
-				send_to_char(
-					"The poison craft service is busy; no ingredients were consumed.\r\n",
-					ch);
-			}
-			else
-				CharWait(ch, PULSE_VIOLENCE);
+			for (P_obj input : inputs)
+				extract_obj(input);
+			obj_to_char(poison_vial, ch);
+			notch_skill(ch, SKILL_MIXPOISON, 6.25);
+			send_to_char("You finish mixing the poison.\r\n", ch);
+			CharWait(ch, PULSE_VIOLENCE);
 			return;
 		}
 	}
@@ -1012,23 +949,22 @@ void do_mix(P_char ch, char *argument, int /*cmd*/)
 		std::vector<P_obj> inputs = consumed_bottles;
 		if (ingredients_consumed)
 			inputs.insert(inputs.end(), ingredients.begin(), ingredients.end());
-		const alchemy_craft_context context = { SKILL_MIX, produced_potion ? 2 : 3,
-							ingredients_consumed };
-		item_movement_reject reject = item_movement_reject::none;
-		if (!item_movement_transaction_submit_craft(
-			    ch, inputs.data(), inputs.size(),
-			    outputs.empty() ? nullptr : outputs.data(), outputs.size(),
-			    potion_data[i].spell_type, alchemy_craft_completed, &context,
-			    sizeof(context), &reject))
-		{
-			for (P_obj output : outputs)
-				extract_obj(output);
+		for (P_obj input : inputs)
+			extract_obj(input);
+		for (P_obj output : outputs)
+			obj_to_char(output, ch);
+		notch_skill(ch, SKILL_MIX, 6.25);
+		if (produced_potion)
+			send_to_char("You finish mixing the potion.\r\n", ch);
+		else if (ingredients_consumed)
 			send_to_char(
-				"The potion craft service is busy; no ingredients were consumed.\r\n",
+				"The mixture consumes the ingredients without producing a potion.\r\n",
 				ch);
-		}
 		else
-			CharWait(ch, PULSE_VIOLENCE * 2);
+			send_to_char(
+				"You ran out of bottles before the ingredients were consumed.\r\n",
+				ch);
+		CharWait(ch, PULSE_VIOLENCE * 2);
 		return;
 	}
 
@@ -1365,29 +1301,25 @@ void do_encrust(P_char ch, char *argument, int /*cmd*/)
 	}
 	if (virtual_jewel)
 	{
-		// Pouch usage has its own durable accounting path. Refuse the virtual
-		// material until it can participate in this same craft receipt.
-		extract_obj(jewel);
-		act("Virtual Chaos-pouch encrust is temporarily unavailable while its durable receipt is prepared.",
-		    FALSE, ch, 0, 0, TO_CHAR);
-		return;
+		const chaos_material_pouch_usage generated = { OBJ_VNUM(jewel), 1 };
+		if (!chaos_material_pouch_record_generated(ch, &generated, 1))
+		{
+			chaos_material_pouch_report_generated_failure(ch, "encrust");
+			extract_obj(jewel);
+			return;
+		}
 	}
 
 	craftsmanship = item->craftsmanship;
 	const bool succeeded = number(1, 110) <= skill;
 	if (!succeeded)
 	{
-		P_obj inputs[] = { item, jewel };
-		const alchemy_craft_context context = { skill, 5, false };
-		item_movement_reject reject = item_movement_reject::none;
-		if (!item_movement_transaction_submit_craft(
-			    ch, inputs, 2, nullptr, 0, OBJ_VNUM(jewel), alchemy_craft_completed,
-			    &context, sizeof(context), &reject))
-			send_to_char(
-				"The encrust service is busy; your item and jewel were preserved.\r\n",
-				ch);
-		else
-			CharWait(ch, PULSE_VIOLENCE);
+		extract_obj(item);
+		extract_obj(jewel);
+		act("You broke your item in the process.", FALSE, ch, 0, 0, TO_CHAR);
+		act("...and breaks it in the process.", TRUE, ch, 0, 0, TO_ROOM);
+		wizlog(56, "%s ruined an encrust attempt.", GET_NAME(ch));
+		CharWait(ch, PULSE_VIOLENCE);
 		return;
 	}
 
@@ -1459,19 +1391,13 @@ void do_encrust(P_char ch, char *argument, int /*cmd*/)
 		set_encrust_affect(new_item, jewel->value[6]);
 	if (IS_SET(new_item->extra2_flags, ITEM2_ENHANCED))
 		describe_encrusted_enhanced(new_item);
-	P_obj inputs[] = { item, jewel };
-	const alchemy_craft_context context = { skill, 4, false };
-	item_movement_reject reject = item_movement_reject::none;
-	if (!item_movement_transaction_submit_craft(ch, inputs, 2, &new_item, 1, OBJ_VNUM(jewel),
-						    alchemy_craft_completed, &context,
-						    sizeof(context), &reject))
-	{
-		extract_obj(new_item);
-		send_to_char("The encrust service is busy; your item and jewel were preserved.\r\n",
-			     ch);
-	}
-	else
-		CharWait(ch, PULSE_VIOLENCE);
+	extract_obj(item);
+	extract_obj(jewel);
+	obj_to_char(new_item, ch);
+	act("...creating a real masterpiece!", TRUE, ch, 0, 0, TO_ROOM);
+	act("Hurrah! Hurrah!", FALSE, ch, 0, 0, TO_CHAR);
+	wizlog(56, "Encrust committed for %s.", GET_NAME(ch));
+	CharWait(ch, PULSE_VIOLENCE);
 	return;
 }
 

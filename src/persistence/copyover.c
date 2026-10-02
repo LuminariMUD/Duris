@@ -1706,50 +1706,6 @@ void copyover_restore_combat(void)
 
 // buffer-based helpers for redis world state saves
 
-void copyover_count_items(int *num_mobs, int *num_objs, int *num_rooms)
-{
-	P_char ch;
-	P_obj obj;
-	int room, dir;
-
-	*num_mobs = 0;
-	*num_objs = 0;
-	*num_rooms = 0;
-
-	for (ch = character_list; ch; ch = ch->next)
-	{
-		if (IS_NPC(ch) && ch->in_room >= 0 && !GET_MASTER(ch) &&
-		    !ch->only.npc->summoned_instance && !copyover_training_dummy_is(ch))
-		{
-			(*num_mobs)++;
-		}
-	}
-
-	for (obj = object_list; obj; obj = obj->next)
-	{
-		if (OBJ_ROOM(obj))
-		{
-			int vnum = OBJ_VNUM(obj);
-			if (vnum == VOBJ_PANEL || vnum == VOBJ_ALL_SHIPS ||
-			    vnum == VOBJ_CARGO_CRATE)
-				continue;
-			(*num_objs)++;
-		}
-	}
-
-	for (room = 0; room <= top_of_world; room++)
-	{
-		for (dir = 0; dir < NUM_EXITS; dir++)
-		{
-			if (world[room].dir_option[dir] &&
-			    IS_SET(world[room].dir_option[dir]->exit_info, EX_ISDOOR))
-			{
-				(*num_rooms)++;
-			}
-		}
-	}
-}
-
 int copyover_write_mob_to_buffer(P_char mob, char *buf, size_t max_len)
 {
 	struct copyover_mob entry;
@@ -2123,52 +2079,4 @@ P_obj copyover_restore_obj_from_buffer(const char *buf, size_t len, size_t *byte
 	if (object)
 		*bytes_read = len;
 	return object;
-}
-
-int copyover_restore_door_from_buffer(const char *buf, size_t len, size_t *bytes_read)
-{
-	struct copyover_room room_entry;
-	int rnum;
-
-	if (len < sizeof(room_entry))
-	{
-		*bytes_read = 0;
-		return -1;
-	}
-
-	memcpy(&room_entry, buf, sizeof(room_entry));
-	*bytes_read = sizeof(room_entry);
-
-	rnum = real_room(room_entry.vnum);
-	if (rnum >= 0 && rnum <= top_of_world && room_entry.dir >= 0 &&
-	    room_entry.dir < NUM_EXITS && world[rnum].dir_option[room_entry.dir])
-	{
-		world[rnum].dir_option[room_entry.dir]->exit_info = room_entry.state;
-		return 0;
-	}
-	return -1;
-}
-
-int copyover_restore_zone_age_from_buffer(const char *buf, size_t len, size_t *bytes_read)
-{
-	struct zone_age_entry entry;
-
-	if (len < sizeof(entry))
-	{
-		*bytes_read = 0;
-		return -1;
-	}
-
-	memcpy(&entry, buf, sizeof(entry));
-	*bytes_read = sizeof(entry);
-
-	if (entry.zone_rnum >= 0 && entry.zone_rnum <= top_of_zone_table)
-	{
-		zone_table[entry.zone_rnum].age = entry.age;
-		zone_table[entry.zone_rnum].lifespan = entry.lifespan;
-		zone_table[entry.zone_rnum].fullreset_age = entry.fullreset_age;
-		zone_table[entry.zone_rnum].fullreset_lifespan = entry.fullreset_lifespan;
-		return 0;
-	}
-	return -1;
 }

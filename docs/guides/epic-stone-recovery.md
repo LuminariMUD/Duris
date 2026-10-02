@@ -20,7 +20,7 @@ Humming and touch feedback both honor zone eligibility and pending work.
 `epic_stone_claim` uses the globally allocated object UID, rather than a zone/boot
 counter. Re-touching a surviving claimed stone returns its original receipt and
 consumes the stone without another award. A newly loaded stone has a new UID.
-This also protects against a lost callback after the journal checkpoint. New
+This also protects against a lost callback after the claim commits. New
 recovery requests receive their own outbox receipt so reconciliation stays clean.
 
 ## Compatibility and rollout
@@ -33,7 +33,7 @@ recovery requests receive their own outbox receipt so reconciliation stays clean
   through season resets. Never delete claims or recycle object UIDs independently.
 - Version-1 zone commands and old 88-byte receipts remain metadata-only. New
   receipts are 512 bytes. Do not roll back to a binary that cannot read version-2
-  journal commands/receipts or migration 0012; retain a compatible recovery binary.
+  zone commands/receipts or migration 0012; retain a compatible recovery binary.
 - Flatfile mode has no atomic zone repository. Stone reward admission now reports
   unavailable and leaves rewards and effects untouched in that mode.
 - This does not reconstruct awards lost by older code. The reported player

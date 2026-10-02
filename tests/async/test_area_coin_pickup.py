@@ -46,14 +46,12 @@ def run(binary: Path, command: str) -> None:
         zone.write_text(text.replace(
             "\nS\n", "\nO 0 22801 1 22800 100 0 0 0\nP 1 22802 1 22801 100 0 0 0\nS\n"))
         generate_certificate(root)
-        for kind in ("players", "critical"):
-            (root / "journals" / kind).mkdir(parents=True, mode=0o700)
+        (root / "journals" / "critical").mkdir(parents=True, mode=0o700)
         port, tls, websocket = available_ports()
         env = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "ENVIRONMENT": "local", "PERSISTENCE_MODE": "flatfile-primary",
             "FLATFILE_STATE_DIR": str(state),
-            "PLAYER_SAVE_JOURNAL_DIR": str(root / "journals/players"),
             "CRITICAL_COMMAND_JOURNAL_DIR": str(root / "journals/critical"),
             "LISTEN_ADDRESS": "127.0.0.1", "DURIS_TLS_PORT": str(tls),
             "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",

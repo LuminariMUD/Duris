@@ -20,7 +20,7 @@ command's keys, and queues it on the one persistence writer
 (`persistence_job_kind::critical`), the same thread that applies every save. A command
 therefore lands in capture order with the saves around it: a save captured before the
 command is applied before it, one captured after, after it. `submit()` returns
-`accepted`; the command is durable once the writer has applied it. New commands are not
+`accepted`; the command is durable once the writer has applied it. Commands are not
 journaled: like a save, a command that had not reached the database is lost in a crash
 (see the persistence reset plan, "What a crash costs"). Records are never coalesced or
 replaced by a newer command.
@@ -56,24 +56,6 @@ An identical duplicate submission attaches to the active operation or the bounde
 recent-completion cache. Reusing an ID with different bytes fails closed. Accepted
 commands cannot be cancelled. A terminal destination failure is reported once.
 
-## Journal of an older server
-
-Only a journal an older server left is read, once, at boot, from
-`CRITICAL_COMMAND_JOURNAL_DIR`. Every record is validated first: a record this server
-cannot execute stops the boot with nothing applied and the journal untouched. The
-commands are then queued on the writer in journal order, and each is checkpointed once it
-lands (a command held for publication, once its publication is acknowledged). Replay
-retains the original operation ID; a command replayed again after a crash finds its
-inbox row and returns `already_applied`.
-
-The journal directory must be owned by the server user and mode `0700`; its regular
-file is mode `0600` and opened without following symlinks. Records have magic, version,
-length, operation ID, canonical command bytes, and CRC32. Exact checkpoint rewrites a
-temporary file, syncs it, renames it, and syncs the directory. Truncation, bad framing,
-unsupported versions, checksum mismatch, unsafe ownership or permissions, I/O failure,
-or quota exhaustion fails closed. Identical repeated frames replay once; conflicting
-bytes for one operation ID are corruption.
-
 Default bounds are 1,024 active operations, 64 MiB of command memory, 2,048 pending
 completion records, and a 256-operation/8 MiB recent-completion cache. Accepted work is
 never dropped because the writer is behind.
@@ -89,7 +71,7 @@ and pulse perform no file or database I/O on the game thread.
 `world persistence` exposes one metadata-only `critical_commands` line: state,
 in-flight and publication-pending counts, retained bytes, fences, recent completions,
 high-water marks, accepts, attachments, outcomes, retries, ambiguous results, stale
-completions, overloads, oldest age, and journal counts/bytes/status. It never prints
+completions, overloads and oldest age. It never prints
 command payloads or entity identities.
 
 The database inbox stores the canonical command/key hashes and authoritative result.
@@ -106,14 +88,11 @@ shutdown drain commands first and outbox records second.
 
 `world persistence` adds cached `critical_outbox` counts for pending age, dead letters,
 incomplete inbox rows, committed operations missing outbox rows, delivery/retry/error
-totals, and high-water records/bytes. `critical_outbox_reconcile()` is the typed
-read-only discrepancy interface. `critical_outbox_retry_dead_letter(id)` is the sole
-repair action: it can only reset one numeric dead-letter ID and never accepts SQL.
+totals, and high-water records/bytes.
 
-Treat a growing oldest age, `journal=corrupt`, `journal=io_failure`, or
-`journal_quota=1` as a stop condition for copyover/shutdown and affected gameplay.
-Restore the underlying storage or destination, preserve the journal, and investigate
-before restarting. Never delete or edit the journal to clear a fence.
+Treat a growing oldest age as a stop condition for copyover/shutdown and affected
+gameplay: restore the underlying database or destination and investigate before
+restarting.
 
 Focused validation is `python3 tests/async/test_critical_command_admission.py`,
 `python3 tests/async/test_critical_command_coordinator.py`,

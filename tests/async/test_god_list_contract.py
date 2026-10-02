@@ -30,7 +30,6 @@ calls = (
     ("account.c", r"\bvoid\s+account_new_char_name\s*\(", "_parse_name(arg, tmp_name, true)"),
     ("wiz_newchar.c", r"\bvoid\s+do_newchar\s*\(", "_parse_name(arg1, name_lower, true)"),
     ("modify.c", r"\bbool\s+rename_character\s*\(", "_parse_name(new_name, new_name, true)"),
-    ("nanny.c", r"\bvoid\s+select_name\s*\(", "_parse_name(arg, tmp_name, true)"),
 )
 for name, signature, call in calls:
     bodies = function_bodies((SRC / name).read_text(encoding="utf-8"), signature)

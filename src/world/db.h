@@ -110,14 +110,6 @@ void boot_material_rarity_objects(int mini_mode);
 #define QC_GREET "qc_nocorpse"
 #define QC_UNBLOCK "qc_unblock"
 
-struct ship_reg_node
-{
-	char *name;
-	int vnum;
-	struct ship_reg_node *next;
-};
-
-extern struct ship_reg_node *ship_reg_db;
 void no_reset_zone_reset(int);
 
 struct reboot_data

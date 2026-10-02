@@ -152,14 +152,9 @@ assert "PLAYER_SNAPSHOT_NO_PARENT" in CAPTURE
 assert "parent_index" in CAPTURE
 assert "row.string_mask=object->str_mask&(STRUNG_KEYS|STRUNG_DESC1|STRUNG_DESC2|STRUNG_DESC3)" in CAPTURE_COMPACT
 assert "STRUNG_DESC3|STRUNG_EDESC" in LOAD_ITEMS_COMPACT
-ordinary_capture, death_capture = CAPTURE[CAPTURE.index(
-    "player_snapshot_capture_result player_snapshot_capture("
-):].split("player_death_snapshot_capture(", 1)
-for capture in (ordinary_capture, death_capture):
-    assert capture.count("*snapshot_out = std::move(snapshot);") == 1
-    assert capture.index("player_snapshot snapshot") < capture.index(
-        "*snapshot_out = std::move(snapshot);"
-    )
+capture = CAPTURE[CAPTURE.index("player_snapshot_capture_result player_snapshot_capture("):]
+assert capture.count("*snapshot_out = std::move(snapshot);") == 1
+assert capture.index("player_snapshot snapshot") < capture.index("*snapshot_out = std::move(snapshot);")
 print("[PASS] capture is non-mutating, cycle-aware, and atomically publishes one complete DTO")
 
 for forbidden_route in (
@@ -188,9 +183,9 @@ print("[PASS] adapter accepts live state only at capture and performs no I/O or 
 print("immutable player snapshot capture contracts passed")
 
 
-# Exercise the complete production adapter and codec with live engine structures.
-# Engine-only services are inert; custody uses the real runtime implementation.
-DEATH_HARNESS = r"""
+# Exercise the production adapter and codec with live engine structures.
+# Engine-only services are inert.
+HELD_PETS_HARNESS = r"""
 #include "core/utils.h"
 #include "classes/necromancy.h"
 #include "core/files.h"
@@ -231,198 +226,6 @@ int main()
     pc_only_data pc = {};
     ch.only.pc = &pc;
     pc.pid = 42;
-    pc.wallet_revision = 7;
-    GET_GOLD(&ch) = 19;
-    GET_MAX_HIT(&ch) = 500;
-    GET_HIT(&ch) = -25;
-    indexes[0].virtual_number = VOBJ_CORPSE;
-    indexes[1].virtual_number = VOBJ_COINS;
-    indexes[2].virtual_number = 100;
-    rooms[0].number = 22800;
-    obj_data corpse = {}, content = {}, refused = {}, wallet = {};
-    corpse.obj_uid = 1;
-    corpse.type = ITEM_CORPSE;
-    corpse.value[CORPSE_PID] = 42;
-    corpse.value[CORPSE_SAVEID] = 3;
-    corpse.value[CORPSE_FLAGS] = PC_CORPSE;
-    corpse.loc_p = LOC_ROOM;
-    corpse.loc.room = 0;
-    corpse.contains = &content;
-    content.obj_uid = 2;
-    content.R_num = 2;
-    content.loc_p = LOC_INSIDE;
-    content.loc.inside = &corpse;
-    refused.obj_uid = 3;
-    refused.R_num = 2;
-    refused.loc_p = LOC_CARRIED;
-    refused.loc.carrying = &ch;
-    ch.carrying = &refused;
-    wallet.obj_uid = 4;
-    wallet.R_num = 1;
-    wallet.type = ITEM_MONEY;
-    wallet.value[2] = 19;
-    wallet.loc_p = LOC_NOWHERE;
-    const item_owner_identity owner{item_owner_type::player, 42, 0};
-    const item_ownership_runtime_entry observation{
-        3, 3, 0, owner, 1, 1, 100, item_custody_state::active};
-    assert(item_ownership_runtime_hydrate(observation));
-    critical_operation_id operation = {};
-    operation.bytes[0] = 1;
-    player_snapshot output = {};
-    auto capture = [&] {
-        return player_death_snapshot_capture(&ch, &corpse, &wallet, operation,
-                                              10, 22800, {}, &output);
-    };
-    auto live_intact = [&] {
-        assert(GET_GOLD(&ch) == 19 && pc.wallet_revision == 7);
-        assert(ch.carrying == &refused && corpse.contains == &content);
-        assert(content.loc.inside == &corpse && refused.loc.carrying == &ch);
-        assert(OBJ_NOWHERE(&wallet) && wallet.value[2] == 19);
-        item_ownership_runtime_entry row = {};
-        assert(item_ownership_runtime_lookup(3, &row));
-        assert(row.item_revision == 1 && row.owner.id == 42);
-    };
-    assert(capture() == player_snapshot_capture_result::ok);
-    live_intact();
-    assert(output.items.empty() && output.death->corpse.size() == 4);
-    assert(output.death->custody.size() == 3);
-    assert(output.death->wallet_before[2] == 19 && output.death->wallet_pile_uid == 4);
-    assert(output.death->corpse[0].parent_index == PLAYER_SNAPSHOT_NO_PARENT);
-    for (size_t i = 1; i < 4; ++i) assert(output.death->corpse[i].parent_index == 0);
-    for (const auto &row : output.status_integers)
-        if (row.field == player_status_field::gold) assert(row.signed_value == 0);
-    for (const auto &row : output.status_integers)
-        if (row.field == player_status_field::hit_difference)
-            assert(row.signed_value == 499);
-    std::vector<uint8_t> encoded;
-    assert(player_snapshot_encode(output, &encoded) == player_snapshot_codec_result::ok);
-    player_snapshot decoded;
-    assert(player_snapshot_decode(encoded.data(), encoded.size(), &decoded) ==
-           player_snapshot_codec_result::ok);
-    assert(decoded.death->corpse.size() == 4 && decoded.death->custody.size() == 3);
-    mob_indexes[0].virtual_number = 1201;
-    mob_indexes[1].virtual_number = 1202;
-    char_data pet = {}, unrelated = {};
-    npc_only_data pet_npc = {}, unrelated_npc = {};
-    pet.only.npc = &pet_npc;
-    unrelated.only.npc = &unrelated_npc;
-    SET_BIT(pet.specials.act, ACT_ISNPC);
-    SET_BIT(unrelated.specials.act, ACT_ISNPC);
-    pet_npc.R_num = 0;
-    unrelated_npc.R_num = 1;
-    pet.in_room = unrelated.in_room = ch.in_room = 0;
-    GET_HIT(&pet) = GET_MAX_HIT(&pet) = 100;
-    GET_HIT(&unrelated) = GET_MAX_HIT(&unrelated) = 100;
-    obj_data pet_item = {};
-    pet_item.obj_uid = 500;
-    pet_item.R_num = 2;
-    pet_item.loc_p = LOC_WORN;
-    pet_item.loc.wearing = &pet;
-    pet.equipment[0] = &pet_item;
-    char_link_data pet_link = {};
-    pet_link.type = LNK_PET;
-    pet_link.linking = &pet;
-    pet_link.linked = &ch;
-    pet.linking = &pet_link;
-    follow_type unrelated_follow{&unrelated, nullptr};
-    follow_type pet_follow{&pet, &unrelated_follow};
-    ch.followers = &pet_follow;
-    player_snapshot pets;
-    assert(player_snapshot_capture(&ch, 11, PLAYER_COMPONENT_PETS, RENT_CRASH,
-                                   22800, &pets) == player_snapshot_capture_result::ok);
-    assert(pets.pets.size() == 1);
-    assert(pets.pets[0].mob_vnum == 1201);
-    assert(pets.pets[0].items.size() == 1);
-    assert(pets.pets[0].items[0].object_uid == 500);
-    assert(pets.pets[0].items[0].equipment_slot == 1);
-    ch.followers = nullptr;
-    auto reject = [&] {
-        output.pid = 987;
-        assert(capture() == player_snapshot_capture_result::limit_exceeded);
-        assert(output.pid == 987 && output.death->corpse.size() == 4);
-        live_intact();
-    };
-
-    // One row budget includes status, corpse/refused/wallet objects and custody.
-    std::vector<int> commands(PLAYER_SNAPSHOT_MAX_ROWS -
-        output.status_integers.size() - output.status_strings.size() - 4);
-    pc.gcmd_arr = commands.data();
-    pc.numb_gcmd = commands.size();
-    player_snapshot ordinary;
-    assert(player_snapshot_capture(&ch, 10,
-        PLAYER_CHECKPOINT_COMPONENT_ALL & ~(PLAYER_COMPONENT_INVENTORY | PLAYER_COMPONENT_EQUIPMENT),
-        RENT_CRASH, 22800, &ordinary) == player_snapshot_capture_result::ok);
-    for (const auto &row : ordinary.status_integers)
-        if (row.field == player_status_field::hit_difference)
-            assert(row.signed_value == 525);
-    assert(player_snapshot_encode(ordinary, &encoded) == player_snapshot_codec_result::ok);
-    reject();
-    pc.gcmd_arr = nullptr;
-    pc.numb_gcmd = 0;
-
-    // Runtime rows outside the captured death graph must not consume the death
-    // custody budget or make an otherwise valid capture fail. This models live
-    // pet/floor/NPC-corpse assets observed under the same player owner.
-    for (uint64_t i = 0; i < PLAYER_SNAPSHOT_MAX_OBJECTS; ++i) {
-        auto row = observation;
-        row.item_uid = row.root_item_uid = 10000 + i;
-        row.owner = {item_owner_type::corpse, item_corpse_owner_id(42, 3), 0};
-        assert(item_ownership_runtime_hydrate(row));
-        if (i + 1 < PLAYER_SNAPSHOT_MAX_OBJECTS) {
-            row.item_uid = row.root_item_uid = 20000 + i;
-            row.owner = owner;
-            assert(item_ownership_runtime_hydrate(row));
-        }
-    }
-    assert(capture() == player_snapshot_capture_result::ok);
-    assert(output.pid == 42 && output.death->custody.size() == 3);
-    live_intact();
-    item_ownership_runtime_reset();
-    assert(item_ownership_runtime_hydrate(observation));
-
-    // These trees fit separately; adding refused inventory and wallet exceeds
-    // the common object budget (the original corpse/content remain included).
-    std::vector<obj_data> objects(PLAYER_SNAPSHOT_MAX_OBJECTS - 2);
-    for (size_t i = 0; i < objects.size(); ++i) {
-        objects[i].obj_uid = 100 + i;
-        objects[i].R_num = 2;
-        objects[i].next_content = i + 1 < objects.size() ? &objects[i + 1] : nullptr;
-    }
-    content.next_content = objects.data();
-    reject();
-    content.next_content = nullptr;
-
-    // All strings meet their own bound but the combined trees exceed bytes.
-    std::string text(PLAYER_SNAPSHOT_MAX_STRING_BYTES, 'x');
-    objects.resize(600);
-    for (size_t i = 0; i < objects.size(); ++i) {
-        objects[i].next_content = i + 1 < objects.size() ? &objects[i + 1] : nullptr;
-        objects[i].str_mask = STRUNG_KEYS | STRUNG_DESC1;
-        objects[i].name = objects[i].description = text.data();
-    }
-    content.next_content = objects.data();
-    reject();
-    content.next_content = nullptr;
-
-    // A refused root gains a corpse parent: that level counts toward depth.
-    objects.assign(PLAYER_SNAPSHOT_MAX_DEPTH - 1, {});
-    for (size_t i = 0; i < objects.size(); ++i) {
-        objects[i].obj_uid = 100 + i;
-        objects[i].R_num = 2;
-        objects[i].contains = i + 1 < objects.size() ? &objects[i + 1] : nullptr;
-    }
-    refused.contains = objects.data();
-    reject();
-    refused.contains = nullptr;
-
-    std::string oversized(PLAYER_SNAPSHOT_MAX_STRING_BYTES + 1, 'x');
-    wallet.str_mask = STRUNG_KEYS;
-    wallet.name = oversized.data();
-    reject();
-    wallet.str_mask = 0;
-    assert(capture() == player_snapshot_capture_result::ok);
-    live_intact();
-    std::cout << "[PASS] real death capture: combined record, row/object/byte/depth/string limits, atomic publication and live asset retention\n";
     player_held_pet_state held;
     player_pet_snapshot retained = {};
     retained.mob_vnum = 1201; retained.hit = retained.max_hit = 10;
@@ -446,18 +249,16 @@ int main()
         assert(player_snapshot_decode(encoded.data(), encoded.size(), &restored) == player_snapshot_codec_result::ok);
         assert(restored.pets[0].items[0].object_uid == 700);
     }
-    assert(capture() == player_snapshot_capture_result::ok);
-    assert(output.pets[0].hold_reason == pet_hold_reason::legacy_summon);
     pc.held_pets = nullptr;
-    std::cout << "[PASS] held pet assets survive crash, logout and atomic death snapshots\n";
+    std::cout << "[PASS] held pet assets survive crash, logout and death saves\n";
 }
 """
 
-build = ROOT / "bin/tests/player-death-capture"
+build = ROOT / "bin/tests/player-held-pet-capture"
 build.mkdir(parents=True, exist_ok=True)
 source = build / "regression.cpp"
 binary = build / "regression"
-source.write_text(DEATH_HARNESS)
+source.write_text(HELD_PETS_HARNESS)
 subprocess.run([
     "g++", "-std=c++20", "-g", "-O1", "-ffunction-sections", "-fdata-sections",
     "-Isrc", str(source), "src/player/player_snapshot_capture.c",

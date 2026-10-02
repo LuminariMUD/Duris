@@ -61,12 +61,12 @@ partially published kit. The CHAOS prepared message follows completion. A failed
 ownership operation stops the remaining grants and reports failure; any earlier
 committed roots remain durable. This is atomic queue admission, not a new
 kit-wide database transaction or durable retry receipt. Existing ownership and
-save/relog topology remain authoritative. Orderly copyover and shutdown cancel
-before quiescing while an accepted starter batch is pending; retry the operation
-after completion. An abrupt process loss still has the per-root recovery limits
+save/relog topology remain authoritative. Copyover is called off while an accepted
+starter batch is pending (retry it after completion); shutdown reports the batch and
+goes ahead. An abrupt process loss still has the per-root recovery limits
 of the existing ownership framework. Disconnecting before game entry cancels
-unsubmitted kit roots, retains any already-journaled head for existing durable
-recovery, and releases the maintenance fence without a success announcement. A
+unsubmitted kit roots, keeps any already submitted head until its completion, and
+releases the maintenance fence without a success announcement. A
 failed or interrupted partial grant may require staff recovery; it is not
 automatically duplicated on login.
 

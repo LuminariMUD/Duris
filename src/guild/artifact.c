@@ -475,7 +475,6 @@ void arti_files_to_sql(P_char ch, char *arg);
 void arti_hunt_sql(P_char ch, const char *arg);
 void arti_player_sql(P_char ch, char *arg);
 void arti_poof_sql(P_char ch, char *arg);
-void arti_remove_sql(int vnum, bool mortalToo);
 void arti_reset_sql(P_char ch, char *arg);
 void arti_swap_sql(P_char ch, char *arg);
 void arti_syncdb_sql(P_char ch);
@@ -1006,39 +1005,6 @@ void list_artifacts_sql(P_char ch, int type, bool Godlist, bool allArtis)
 	checked_snprintf(buf + strlen(buf), MAX_STRING_LENGTH - strlen(buf),
 			 "         &+WTotal:        %d\r\n", articount[RACEWAR_NONE]);
 	send_to_char(buf, ch);
-#endif
-}
-
-// Remove artifact entry from the artifacts table.
-//   mortalToo means that we remove the entry from the mortals' table too.
-// This is used for removing an arti from the game (I guess).
-void arti_remove_sql(int vnum, bool mortalToo)
-{
-	if (!updateArtis)
-	{
-		return;
-	}
-
-#ifdef __NO_MYSQL__
-	(void)mortalToo;
-	std::string error;
-	const auto removed =
-		flatfile_artifact_erase(persistence_mode_flatfile_root(), vnum, &error);
-	if (removed != flatfile_artifact_result::ok &&
-	    removed != flatfile_artifact_result::not_found)
-		logit(LOG_ARTIFACT, "arti_remove_sql: flat artifact erase failed for %d: %s", vnum,
-		      error.empty() ? "missing or invalid artifact authority" : error.c_str());
-	else
-		arti_cache_invalidate();
-#else
-	// Remove from artifacts table:
-	qry("DELETE FROM artifacts WHERE vnum = '%d'", vnum);
-	arti_cache_invalidate();
-	// Possibly remove from artifacts_mortal table:
-	if (mortalToo)
-	{
-		qry("DELETE FROM artifacts_mortal WHERE vnum = '%d'", vnum);
-	}
 #endif
 }
 

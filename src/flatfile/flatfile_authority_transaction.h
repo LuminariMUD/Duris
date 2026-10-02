@@ -27,9 +27,7 @@ enum class flatfile_authority_store : uint8_t
 	players = 2,
 	identities = 3,
 	accounts = 4,
-	metadata = 5,
-	player_deaths = 6,
-	economic_evidence = 7
+	metadata = 5
 };
 
 enum class flatfile_authority_operation_kind : uint8_t
@@ -69,7 +67,6 @@ class flatfile_authority_lock
 	struct state;
 	std::unique_ptr<state> state_;
 	bool owns(const std::string &root) const;
-	friend class flatfile_accounting_storage;
 	friend flatfile_authority_transaction_result
 	flatfile_authority_transaction_recover(const std::string &, const flatfile_authority_lock &,
 					       std::string *);

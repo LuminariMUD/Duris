@@ -72,7 +72,6 @@ int write_ship(P_ship ship)
 
 // --- the rest of a player save -------------------------------------------------
 static int character_writes = 0;
-bool player_save_pipeline_save_admitted(int) { return true; }
 bool player_save_pipeline_is_nonterminal_type(int type) { return type == 1; }
 player_save_pipeline_result player_save_pipeline_request(P_char, player_component_mask_t, int, int)
 {

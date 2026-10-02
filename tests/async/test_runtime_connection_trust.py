@@ -119,10 +119,9 @@ assert sql.count("mysql_real_connect(") == 1
 assert "mysql_real_connect(" not in pool
 assert "mysql_real_connect(" not in player
 assert "sql_open_configured_connection(CLIENT_MULTI_STATEMENTS)" in pool
-assert "return sql_open_configured_connection(CLIENT_MULTI_STATEMENTS);" in player
-assert "persistenceDB = sql_open_configured_connection(0);" in sql
+assert "sql_open_configured_connection" not in player
 assert "DB = sql_open_configured_connection(CLIENT_MULTI_STATEMENTS);" in sql
-print("[PASS] main, pool, child, and legacy connections share one constructor")
+print("[PASS] main and pool connections share one constructor")
 
 assert "bool runtime_listener_address(struct sockaddr_in6 *address);" in comm_h
 listener = section(comm, "bool runtime_listener_address(sockaddr_in6 *address)", "int init_socket")

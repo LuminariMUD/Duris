@@ -44,6 +44,18 @@ template <typename T> static void number(std::vector<uint8_t> *output, T value)
 	}
 }
 
+static std::vector<uint8_t> frame(uint32_t version, const std::vector<uint8_t> &payload)
+{
+	std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
+	SHA256(payload.data(), payload.size(), digest.data());
+	std::vector<uint8_t> journal = { 'D', 'U', 'R', 'A', 'U', 'T', 'H', 0 };
+	number<uint32_t>(&journal, version);
+	number<uint32_t>(&journal, payload.size());
+	journal.insert(journal.end(), digest.begin(), digest.end());
+	journal.insert(journal.end(), payload.begin(), payload.end());
+	return journal;
+}
+
 static std::vector<uint8_t>
 legacy_journal(const std::vector<flatfile_authority_after_image> &images)
 {
@@ -56,14 +68,32 @@ legacy_journal(const std::vector<flatfile_authority_after_image> &images)
 		number<uint32_t>(&payload, image.bytes.size());
 		payload.insert(payload.end(), image.bytes.begin(), image.bytes.end());
 	}
-	std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
-	SHA256(payload.data(), payload.size(), digest.data());
-	std::vector<uint8_t> journal = { 'D', 'U', 'R', 'A', 'U', 'T', 'H', 0 };
-	number<uint32_t>(&journal, 1);
-	number<uint32_t>(&journal, payload.size());
-	journal.insert(journal.end(), digest.begin(), digest.end());
-	journal.insert(journal.end(), payload.begin(), payload.end());
-	return journal;
+	return frame(1, payload);
+}
+
+struct older_operation
+{
+	uint8_t store;
+	uint8_t kind;
+	std::string filename;
+	std::vector<uint8_t> bytes;
+};
+
+// A version-2 intent with the store numbers an older server used.
+static std::vector<uint8_t> older_journal(const std::vector<older_operation> &operations)
+{
+	std::vector<uint8_t> payload;
+	number<uint16_t>(&payload, operations.size());
+	for (const auto &operation : operations)
+	{
+		payload.push_back(operation.store);
+		payload.push_back(operation.kind);
+		number<uint16_t>(&payload, operation.filename.size());
+		payload.insert(payload.end(), operation.filename.begin(), operation.filename.end());
+		number<uint32_t>(&payload, operation.bytes.size());
+		payload.insert(payload.end(), operation.bytes.begin(), operation.bytes.end());
+	}
+	return frame(2, payload);
 }
 
 int main(int argc, char **argv)
@@ -210,6 +240,42 @@ int main(int argc, char **argv)
 	require(read(domains / "legacy-one") == bytes("new-legacy") &&
 			!fs::exists(domains / ".critical-authority-transaction"),
 		"version-1 authority journal was not replayed and cleared");
+	// An older server's critical command or death save also named the player death
+	// records (store 6) and the accounting evidence (store 7). Recovery skips those
+	// operations, applies the rest and clears the intent.
+	require(flatfile_atomic_write(players.string(), "44", bytes("old-player"), &error) &&
+			flatfile_atomic_write(
+				domains.string(), ".critical-authority-transaction",
+				older_journal({ { 1, 1, "older-one", bytes("from-older-server") },
+						{ 6, 1, "44.death", bytes("death record") },
+						{ 7, 1, "evidence-1", bytes("accounting evidence") },
+						{ 2, 2, "44", {} } }),
+				&error),
+		"could not establish the older server's intent: " + error);
+	{
+		flatfile_authority_lock lock;
+		require(lock.acquire(root.string(), &error), "could not acquire older intent lock");
+		require(flatfile_authority_transaction_recover(root.string(), lock, &error) ==
+				flatfile_authority_transaction_result::ok,
+			"an older server's intent was not recovered: " + error);
+	}
+	require(read(domains / "older-one") == bytes("from-older-server") &&
+			!fs::exists(players / "44") && !fs::exists(root / "player-deaths") &&
+			!fs::exists(root / "economic-evidence") &&
+			!fs::exists(domains / ".critical-authority-transaction"),
+		"an older server's intent was not applied and cleared");
+	{
+		flatfile_authority_lock lock;
+		require(lock.acquire(root.string(), &error),
+			"could not acquire retired store lock");
+		require(flatfile_authority_transaction_commit_operations(
+				root.string(), lock,
+				{ { static_cast<flatfile_authority_store>(7),
+				    flatfile_authority_operation_kind::write, "evidence-2",
+				    bytes("accounting evidence") } },
+				&error) == flatfile_authority_transaction_result::invalid,
+			"a new commit named a retired store");
+	}
 	require(flatfile_atomic_write(domains.string(), "authority-one", bytes("old-one"),
 				      &error) &&
 			flatfile_atomic_write(domains.string(), "authority-two", bytes("old-two"),

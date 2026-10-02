@@ -39,7 +39,6 @@ int main()
     assert(player_revision_queue(7, &revision, &components));
     assert(revision == 6);
     assert(components == PLAYER_COMPONENT_STATUS);
-    assert(player_revision_begin_inflight(7, revision, components));
 
     assert(player_revision_mark(7, PLAYER_COMPONENT_INVENTORY, &revision));
     assert(revision == 7);
@@ -47,52 +46,34 @@ int main()
     assert(revision == 7);
     assert(components == (PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_INVENTORY));
 
-    assert(!player_revision_acknowledge(7, 5, PLAYER_COMPONENT_STATUS));
-    assert(player_revision_acknowledge(7, 6, PLAYER_COMPONENT_STATUS));
+    // Revision 6 lands: only the components marked by then are clean.
+    assert(!player_revision_acknowledge_durable(7, 4, PLAYER_COMPONENT_STATUS));
+    assert(!player_revision_acknowledge_durable(7, 8, PLAYER_COMPONENT_STATUS));
+    assert(player_revision_acknowledge_durable(
+        7, 6, PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_INVENTORY));
     assert(player_revision_snapshot_copy(7, &snapshot));
     assert(snapshot.acknowledged_revision == 6);
     assert(snapshot.unacknowledged_components == PLAYER_COMPONENT_INVENTORY);
-    assert(snapshot.queued_components == PLAYER_COMPONENT_INVENTORY);
+    assert(player_revision_dirty_count() == 1);
 
-    assert(player_revision_begin_inflight(7, 7, PLAYER_COMPONENT_INVENTORY));
-    assert(player_revision_mark(7, PLAYER_COMPONENT_INVENTORY, &revision));
-    assert(revision == 8);
-    assert(player_revision_acknowledge(7, 7, PLAYER_COMPONENT_INVENTORY));
+    // While a save is outstanding, only the acknowledged revision hydrates again.
+    assert(player_revision_hydrate(7, 6));
+    assert(!player_revision_hydrate(7, 7));
+
+    assert(player_revision_acknowledge_durable(7, 7, PLAYER_COMPONENT_INVENTORY));
     assert(player_revision_snapshot_copy(7, &snapshot));
-    assert(snapshot.unacknowledged_components == PLAYER_COMPONENT_INVENTORY);
-    assert(snapshot.dirty_components == PLAYER_COMPONENT_INVENTORY);
-
-    assert(player_revision_queue(7, &revision, &components));
-    assert(player_revision_begin_inflight(7, revision, components));
-    assert(player_revision_fail_inflight(7, revision, components));
-    assert(player_revision_snapshot_copy(7, &snapshot));
-    assert(snapshot.inflight_components == 0);
-    assert(snapshot.queued_components == PLAYER_COMPONENT_INVENTORY);
-
-    assert(player_revision_hydrate(9, 4));
-    assert(player_revision_mark(9, PLAYER_COMPONENT_STATUS, &revision));
-    assert(player_revision_queue(9, &revision, &components));
-    assert(player_revision_begin_inflight(9, revision, components));
-    assert(player_revision_mark(9, PLAYER_COMPONENT_INVENTORY, &revision));
-    assert(player_revision_queue(9, &revision, &components));
-    assert(player_revision_mark(9, PLAYER_CHECKPOINT_COMPONENT_ALL, &revision));
-    assert(revision == 7);
-    assert(player_revision_acknowledge_durable(
-        9, revision, PLAYER_CHECKPOINT_COMPONENT_ALL));
-    assert(player_revision_snapshot_copy(9, &snapshot));
-    assert(snapshot.current_revision == 7);
-    assert(snapshot.acknowledged_revision == 7);
-    assert(snapshot.dirty_components == 0);
     assert(snapshot.unacknowledged_components == 0);
-    assert(snapshot.queued_components == 0);
-    assert(snapshot.inflight_components == 0);
-    assert(player_revision_hydrate(9, 7));
-    player_revision_forget(9);
+    assert(player_revision_dirty_count() == 0);
+    assert(!player_revision_queue(7, &revision, &components));
+    assert(player_revision_record_written(7, 7));
+    assert(player_revision_snapshot_copy(7, &snapshot));
+    assert(snapshot.written_revision == 7);
 
-    assert(player_revision_hydrate(7, 7));
     assert(!player_revision_hydrate(7, 6));
-    assert(!player_revision_hydrate(7, 9));
-    assert(!player_revision_mark(7, PLAYER_PHASE2_ECONOMY_BOUNDARY, nullptr));
+    assert(player_revision_hydrate(7, 9));
+    assert(player_revision_snapshot_copy(7, &snapshot));
+    assert(snapshot.current_revision == 9 && snapshot.acknowledged_revision == 9);
+    assert(!player_revision_mark(7, UINT64_C(1) << 62, nullptr));
 
     assert(player_revision_hydrate(8, std::numeric_limits<player_revision_t>::max()));
     assert(!player_revision_mark(8, PLAYER_COMPONENT_STATUS, nullptr));
@@ -137,8 +118,6 @@ assert "std::unordered_map<int, player_revision_entry>" in SOURCE
 assert "MAX_PLAYER_REVISION_STATES" in SOURCE
 assert "component_revisions" in SOURCE
 assert "numeric_limits<player_revision_t>::max()" in SOURCE
-assert "PLAYER_PHASE2_ECONOMY_BOUNDARY" in HEADER
-assert "PLAYER_PHASE2_OWNERSHIP_BOUNDARY" in HEADER
 print("[PASS] PID-keyed runtime state is monotonic, cumulative, exact, and overflow-safe")
 
 schemas = (
@@ -161,21 +140,6 @@ assert "BIGINT UNSIGNED NOT NULL DEFAULT 0" in migration
 assert "ALTER TABLE player_data ADD COLUMN" in migration
 print("[PASS] additive guarded schema initializes legacy and new rows at revision zero")
 
-load_start = SQL_PLAYER.rindex("bool sql_load_player_status(P_char ch, int pid)")
-load_end = SQL_PLAYER.index("bool sql_load_player_skills", load_start)
-load_body = SQL_PLAYER[load_start:load_end]
-assert 'last_ip, save_revision, output_preferences "' in load_body
-assert "sql_row_revision" in load_body
-assert "!revision_valid || !player_revision_hydrate" in load_body
-assert "outcome=hydrate_failure" in load_body
-
-save_start = SQL_PLAYER.rindex("bool sql_save_player_status(P_char ch, int type, int room)")
-save_end = SQL_PLAYER.index("bool sql_save_player_skills", save_start)
-save_body = SQL_PLAYER[save_start:save_end]
-pid_assignment = save_body.index("mysql_insert_id")
-initialization = save_body.index("player_revision_hydrate(pid, 0)")
-assert pid_assignment < initialization
-
 # A deleted character's revision state is forgotten once its deletion commits.
 FILES = (SRC / "files.c").read_text()
 forget = FILES[FILES.index("character_delete_result forget_deleted_character("):]
@@ -197,12 +161,12 @@ production_sources = [
     if path.name != "player_revision_state.c"
 ]
 mark_callers = [path.name for path in production_sources if "player_revision_mark(" in path.read_text()]
-assert sorted(mark_callers) == ["player_save_pipeline.c", "sql_player.c"], (
+assert mark_callers == ["player_save_pipeline.c"], (
     f"uncontrolled production marks: {mark_callers}"
 )
 assert "writeCharacter" not in SOURCE
 assert "sql_save_player" not in SOURCE
 assert "player_save_pipeline_mark" in (SRC / "persistence_checkpoint.c").read_text()
-print("[PASS] production marks are limited to the pipeline and fenced legacy compatibility")
+print("[PASS] production marks are limited to the pipeline")
 
 print("player revision and component state contracts passed")

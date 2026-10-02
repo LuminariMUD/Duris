@@ -78,7 +78,7 @@ class CollectorRepositoryTest(unittest.TestCase):
         validation = (SRC / "currency_command.c").read_text()
         player_save = (SRC / "sql_player.c").read_text()
         self.assertIn("collector_purchase", currency)
-        self.assertIn("currency_reason_type::corpse_lifecycle", validation)
+        self.assertIn("case currency_reason_type::collector_purchase:", validation)
         self.assertIn("obj_uid", player_save)
 
     def test_disposable_journey_is_wired_into_database_tests(self) -> None:

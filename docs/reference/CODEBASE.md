@@ -56,8 +56,6 @@ Related: [ARCHITECTURE.md](ARCHITECTURE.md), [DATABASE.md](DATABASE.md).
 |-------|------|
 | `src/sql/sql.c`, `src/sql/sql.h` | Main MariaDB connection, target selection, boot schema checks, and retained synchronous queries. |
 | `src/sql/sql_pool.c` | Bounded connection pool used by typed persistence workers. |
-| `src/persistence/persistence_queue.c` | Retained item/scalar/large-payload compatibility queues and workers. |
-| `src/sql/sql_persistence_raw.c` | Raw SQL executor retained for large-payload compatibility producers. |
 | `src/sql/sql_player.c` | Character row mapping. |
 | `src/player/player_load_pipeline.c`, `src/player/player_save_pipeline.c` | Bounded typed player load and revisioned checkpoint orchestration. |
 | `src/persistence/critical_command_coordinator.c` | Non-coalescing critical gameplay operations and entity fencing. |

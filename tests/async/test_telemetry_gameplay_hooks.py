@@ -37,20 +37,12 @@ def main() -> None:
     assert "STATE(d) == CON_PLAYING" in enter
     assert "telemetry_runtime_game_enter(ch, d)" in enter
     assert "telemetry_runtime_game_context(ch, d)" in enter
-    legacy = function_slice(nanny, "void select_main_menu", "void nanny")
-    assert "STATE(d) = CON_PLAYING" in legacy
-    assert "telemetry_runtime_game_enter(d->character, d)" in legacy
-    assert "telemetry_runtime_game_context(d->character, d)" in legacy
 
     account = text("account/account.c")
     reconnect = function_slice(account, "int is_char_in_game", "struct acct_chars *find_char_in_list")
     assert "STATE(d) = CON_PLAYING" in reconnect
     assert "telemetry_connection_transition_kind::attached" in reconnect
     assert "telemetry_runtime_game_context(ch, d)" in reconnect
-    nanny_reconnect = function_slice(nanny, "void reconnect", "static void finish_legacy_player_login")
-    assert "STATE(d) = CON_PLAYING" in nanny_reconnect
-    assert "telemetry_connection_transition_kind::attached" in nanny_reconnect
-    assert "telemetry_runtime_game_context(tmp_ch, d)" in nanny_reconnect
     ws = text("net/ws_handlers.c")
     ws_attach = function_slice(ws, "if (online_char)", "/* success - show character selection */")
     assert "d->connected = CON_PLAYING" in ws_attach

@@ -570,16 +570,6 @@ recover(const std::string &root, const flatfile_authority_lock &lock, std::strin
 		       flatfile_collector_repository_result::invalid;
 }
 
-collector::rules enrollment_rules(const item_collector_death_policy &source)
-{
-	return { true,
-		 source.collection_delay,
-		 source.sale_delay,
-		 source.holding_duration,
-		 source.price_percent,
-		 source.minimum_value };
-}
-
 unsigned int policy_code(collector::outcome outcome)
 {
 	switch (outcome)
@@ -732,55 +722,17 @@ flatfile_collector_repository_read_listing(const std::string &root, uint64_t lis
 
 flatfile_collector_repository_result flatfile_collector_prepare_death_enrollment(
 	const std::string &root, const flatfile_authority_lock &lock,
-	const item_transfer_payload &payload, const item_transfer_result &transfer,
+	const collector_death_snapshot &death, const std::vector<uint64_t> &item_uids,
 	flatfile_collector_enrollment_mutation *mutation, unsigned int *result_code,
 	std::string *error)
 {
-	if (root.empty() || !lock.matches(root) || !mutation || !result_code)
+	if (root.empty() || !lock.matches(root) || !mutation || !result_code ||
+	    critical_operation_id_is_zero(death.operation_id) || !death.beneficiary_pid ||
+	    !death.death_time || !std::is_sorted(item_uids.begin(), item_uids.end()))
 		return flatfile_collector_repository_result::invalid;
 	*mutation = {};
 	*result_code = 0;
-	if (!payload.collector.present)
-		return flatfile_collector_repository_result::unchanged;
-	if (payload.reason != item_transfer_reason::corpse_create ||
-	    payload.to_owner.type != item_owner_type::corpse ||
-	    transfer.item_count != payload.item_count ||
-	    transfer.root_item_uid != item_transfer_result_root(payload) ||
-	    critical_operation_id_is_zero(payload.collector.death_operation))
-	{
-		*result_code = EBADMSG;
-		return flatfile_collector_repository_result::ok;
-	}
-	std::vector<player_item_snapshot> snapshots;
-	std::vector<uint64_t> eligible;
-	try
-	{
-		if (!payload.item_blob_size ||
-		    player_item_snapshot_list_decode(payload.item_blob.data(),
-						     payload.item_blob_size, &snapshots) !=
-			    player_snapshot_codec_result::ok ||
-		    snapshots.size() != payload.item_count)
-		{
-			*result_code = EBADMSG;
-			return flatfile_collector_repository_result::ok;
-		}
-		eligible.reserve(snapshots.size());
-		for (const player_item_snapshot &snapshot : snapshots)
-			if (collector_death_item_snapshot_eligible(snapshot))
-				eligible.push_back(snapshot.object_uid);
-		std::sort(eligible.begin(), eligible.end());
-	}
-	catch (const std::bad_alloc &)
-	{
-		return flatfile_collector_repository_result::io_error;
-	}
-	if (eligible != payload.collector.eligible_item_uids)
-	{
-		*result_code = EBADMSG;
-		return flatfile_collector_repository_result::ok;
-	}
-	const collector::rules policy = enrollment_rules(payload.collector.policy);
-	if (!collector::valid_rules(policy))
+	if (!collector::valid_rules(death.policy))
 	{
 		*result_code = EINVAL;
 		return flatfile_collector_repository_result::ok;
@@ -790,52 +742,30 @@ flatfile_collector_repository_result flatfile_collector_prepare_death_enrollment
 	if (loaded != flatfile_collector_repository_result::ok &&
 	    loaded != flatfile_collector_repository_result::not_found)
 		return loaded;
-	const collector::death_operation_id operation =
-		operation_text(payload.collector.death_operation);
+	const collector::death_operation_id operation = operation_text(death.operation_id);
 	const death_state *existing_death = find_death(catalog, operation);
-	if (existing_death && (existing_death->beneficiary != payload.collector.beneficiary_pid ||
-			       existing_death->death_time != payload.collector.death_time ||
-			       !same_rules(existing_death->policy, policy)))
+	if (existing_death && (existing_death->beneficiary != death.beneficiary_pid ||
+			       existing_death->death_time != death.death_time ||
+			       !same_rules(existing_death->policy, death.policy)))
 	{
 		*result_code = EEXIST;
 		return flatfile_collector_repository_result::ok;
 	}
-	std::vector<const item_transfer_entry *> additions;
+	// A later save of the same corpse adds only what is not listed yet.
+	std::vector<uint64_t> additions;
 	try
 	{
-		additions.reserve(eligible.size());
-		for (uint64_t uid : eligible)
-		{
-			auto expected = std::lower_bound(
-				payload.items.begin(), payload.items.begin() + payload.item_count,
-				uid, [](const item_transfer_entry &entry, uint64_t candidate)
-				{ return entry.item_uid < candidate; });
-			if (expected == payload.items.begin() + payload.item_count ||
-			    expected->item_uid != uid ||
-			    expected->expected_state != item_custody_state::active ||
-			    expected->expected_item_revision == UINT64_MAX)
-			{
-				*result_code = EBADMSG;
-				return flatfile_collector_repository_result::ok;
-			}
-			if (find_death_item(catalog, operation, uid))
-			{
-				continue;
-			}
-			additions.push_back(&*expected);
-		}
+		for (uint64_t uid : item_uids)
+			if (!find_death_item(catalog, operation, uid))
+				additions.push_back(uid);
 	}
 	catch (const std::bad_alloc &)
 	{
 		return flatfile_collector_repository_result::io_error;
 	}
 	if (additions.empty() && existing_death)
-	{
-		mutation->catalog_revision = catalog.catalog_revision;
 		return flatfile_collector_repository_result::unchanged;
-	}
-	if (!payload.collector.beneficiary_pid || !payload.collector.death_time ||
-	    (!existing_death && catalog.deaths.size() >= collector::catalog_max_records) ||
+	if ((!existing_death && catalog.deaths.size() >= collector::catalog_max_records) ||
 	    catalog.listings.size() > collector::catalog_max_records - additions.size() ||
 	    catalog.next_listing > UINT64_MAX - additions.size() ||
 	    catalog.file_revision == UINT64_MAX || catalog.catalog_revision == UINT64_MAX)
@@ -847,18 +777,18 @@ flatfile_collector_repository_result flatfile_collector_prepare_death_enrollment
 	{
 		if (!existing_death)
 		{
-			catalog.deaths.push_back({ operation, payload.collector.beneficiary_pid,
-						   payload.collector.death_time, policy });
+			catalog.deaths.push_back({ operation, death.beneficiary_pid,
+						   death.death_time, death.policy });
 			std::sort(catalog.deaths.begin(), catalog.deaths.end(), death_less);
 		}
-		for (const item_transfer_entry *item : additions)
+		for (uint64_t uid : additions)
 		{
+			// The corpse save just claimed the item; collection compares the
+			// item's revision then against this floor.
 			collector::record entry;
-			const collector::outcome enrolled =
-				collector::enroll(catalog.next_listing, operation.data(),
-						  payload.collector.beneficiary_pid, item->item_uid,
-						  item->expected_item_revision + 1,
-						  payload.collector.death_time, policy, &entry);
+			const collector::outcome enrolled = collector::enroll(
+				catalog.next_listing, operation.data(), death.beneficiary_pid, uid,
+				1, death.death_time, death.policy, &entry);
 			if (enrolled != collector::outcome::applied)
 			{
 				*result_code = policy_code(enrolled);
@@ -879,7 +809,6 @@ flatfile_collector_repository_result flatfile_collector_prepare_death_enrollment
 	if (!encode_catalog(catalog, &mutation->after_image.bytes))
 		return flatfile_collector_repository_result::invalid;
 	mutation->catalog_revision = catalog.catalog_revision;
-	mutation->enrolled = additions.size();
 	return flatfile_collector_repository_result::ok;
 }
 
@@ -896,44 +825,16 @@ flatfile_collector_repository_result flatfile_collector_prepare_item_boundary(
 	*mutation = {};
 	*result_code = 0;
 
-	flatfile_collector_enrollment_mutation enrollment;
-	flatfile_collector_repository_result enrollment_result =
-		flatfile_collector_repository_result::unchanged;
-	if (payload.collector.present)
-	{
-		enrollment_result = flatfile_collector_prepare_death_enrollment(
-			root, lock, payload, transfer, &enrollment, result_code, error);
-		if (enrollment_result != flatfile_collector_repository_result::ok &&
-		    enrollment_result != flatfile_collector_repository_result::unchanged)
-			return enrollment_result;
-		if (*result_code)
-			return flatfile_collector_repository_result::ok;
-	}
-
 	const collector::reason reason = collector_item_transfer_boundary_reason(payload);
 	if (reason == collector::reason::none)
-	{
-		*mutation = std::move(enrollment);
-		return enrollment_result;
-	}
+		return flatfile_collector_repository_result::unchanged;
 
 	collector_catalog catalog;
-	if (!enrollment.after_image.bytes.empty())
-	{
-		if (!decode_catalog(enrollment.after_image.bytes, &catalog))
-			return flatfile_collector_repository_result::invalid;
-	}
-	else
-	{
-		const auto loaded = load_catalog(root, &catalog, error);
-		if (loaded == flatfile_collector_repository_result::not_found)
-		{
-			*mutation = std::move(enrollment);
-			return enrollment_result;
-		}
-		if (loaded != flatfile_collector_repository_result::ok)
-			return loaded;
-	}
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded == flatfile_collector_repository_result::not_found)
+		return flatfile_collector_repository_result::unchanged;
+	if (loaded != flatfile_collector_repository_result::ok)
+		return loaded;
 
 	size_t cancelled_count = 0;
 	for (listing_state &listing : catalog.listings)
@@ -947,13 +848,6 @@ flatfile_collector_repository_result flatfile_collector_prepare_item_boundary(
 		if (item == payload.items.begin() + payload.item_count ||
 		    item->item_uid != listing.entry.uid)
 			continue;
-		if (payload.collector.present)
-		{
-			const auto current_death =
-				operation_text(payload.collector.death_operation);
-			if (death_equal(listing.entry.death_operation, current_death))
-				continue;
-		}
 		uint64_t post_item_revision = 0;
 		if (item->expected_state == item_custody_state::absent)
 		{
@@ -986,82 +880,6 @@ flatfile_collector_repository_result flatfile_collector_prepare_item_boundary(
 			return flatfile_collector_repository_result::ok;
 		}
 		listing.entry.item_revision = post_item_revision;
-		++cancelled_count;
-	}
-	if (!cancelled_count)
-	{
-		*mutation = std::move(enrollment);
-		return enrollment_result;
-	}
-	if (catalog.catalog_revision == UINT64_MAX || catalog.file_revision == UINT64_MAX)
-	{
-		*result_code = ERANGE;
-		return flatfile_collector_repository_result::ok;
-	}
-	++catalog.catalog_revision;
-	++catalog.file_revision;
-	mutation->after_image.filename = catalog_filename;
-	if (!encode_catalog(catalog, &mutation->after_image.bytes))
-		return flatfile_collector_repository_result::invalid;
-	mutation->catalog_revision = catalog.catalog_revision;
-	mutation->enrolled = enrollment.enrolled;
-	mutation->cancelled = cancelled_count;
-	return flatfile_collector_repository_result::ok;
-}
-
-flatfile_collector_repository_result flatfile_collector_prepare_corpse_boundary(
-	const std::string &root, const flatfile_authority_lock &lock,
-	const corpse_lifecycle_payload &payload,
-	const std::vector<collector_custody_boundary_item> &items,
-	flatfile_collector_enrollment_mutation *mutation, unsigned int *result_code,
-	std::string *error)
-{
-	if (root.empty() || !lock.matches(root) || !mutation || !result_code ||
-	    !std::is_sorted(items.begin(), items.end(), [](const auto &left, const auto &right)
-			    { return left.item_uid < right.item_uid; }))
-		return flatfile_collector_repository_result::invalid;
-	*mutation = {};
-	*result_code = 0;
-	for (size_t index = 0; index < items.size(); ++index)
-		if (!items[index].item_uid || !items[index].post_item_revision ||
-		    (index && items[index - 1].item_uid == items[index].item_uid))
-			return flatfile_collector_repository_result::invalid;
-
-	const collector::reason reason = collector_corpse_lifecycle_boundary_reason(payload);
-	if (reason == collector::reason::none || items.empty())
-		return flatfile_collector_repository_result::unchanged;
-
-	collector_catalog catalog;
-	const auto loaded = load_catalog(root, &catalog, error);
-	if (loaded == flatfile_collector_repository_result::not_found)
-		return flatfile_collector_repository_result::unchanged;
-	if (loaded != flatfile_collector_repository_result::ok)
-		return loaded;
-
-	size_t cancelled_count = 0;
-	for (listing_state &listing : catalog.listings)
-	{
-		if (listing.entry.status != collector::state::candidate)
-			continue;
-		const auto item = std::lower_bound(items.begin(), items.end(), listing.entry.uid,
-						   [](const collector_custody_boundary_item &entry,
-						      uint64_t uid)
-						   { return entry.item_uid < uid; });
-		if (item == items.end() || item->item_uid != listing.entry.uid)
-			continue;
-		if (item->post_item_revision < listing.entry.item_revision)
-		{
-			*result_code = ESTALE;
-			return flatfile_collector_repository_result::ok;
-		}
-		const collector::outcome outcome =
-			collector::cancel(&listing.entry, listing.entry.revision, reason);
-		if (outcome != collector::outcome::applied)
-		{
-			*result_code = policy_code(outcome);
-			return flatfile_collector_repository_result::ok;
-		}
-		listing.entry.item_revision = item->post_item_revision;
 		++cancelled_count;
 	}
 	if (!cancelled_count)
@@ -1251,6 +1069,45 @@ critical_apply_result flatfile_collector_repository_apply(const std::string &roo
 	if (!result_code && payload.item_count && !decode_singleton(payload, &exact, &result_code))
 		return { critical_apply_outcome::retryable_failure, catalog.catalog_revision,
 			 static_cast<unsigned int>(errno == ENOMEM ? ENOMEM : EIO) };
+	// Memory holds the corpse an antiquity is collected from: its saves move the items'
+	// revisions, so the collection takes the stored ones.
+	if (!result_code && payload.action == collector_action::collect &&
+	    item_claim_owner_is_memory_held(payload.from_owner.type))
+	{
+		std::vector<uint64_t> uids;
+		std::vector<flatfile_item_ownership_record> stored;
+		try
+		{
+			for (size_t index = 0; index < payload.item_count; ++index)
+				uids.push_back(payload.items[index].item_uid);
+		}
+		catch (const std::bad_alloc &)
+		{
+			return { critical_apply_outcome::retryable_failure,
+				 catalog.catalog_revision, ENOMEM };
+		}
+		const auto read = flatfile_item_repository_load_uids_locked(root, lock, uids,
+									    &stored, &error);
+		if (read != flatfile_item_repository_result::ok)
+			return { read == flatfile_item_repository_result::io_error ?
+					 critical_apply_outcome::retryable_failure :
+					 critical_apply_outcome::terminal_failure,
+				 catalog.catalog_revision,
+				 static_cast<unsigned int>(
+					 read == flatfile_item_repository_result::io_error ?
+						 EIO :
+						 EILSEQ) };
+		for (const flatfile_item_ownership_record &record : stored)
+		{
+			const auto item = std::lower_bound(
+				payload.items.begin(), payload.items.begin() + payload.item_count,
+				record.item_uid, [](const item_transfer_entry &entry, uint64_t uid)
+				{ return entry.item_uid < uid; });
+			if (item != payload.items.begin() + payload.item_count &&
+			    item->item_uid == record.item_uid)
+				item->expected_item_revision = record.item_revision;
+		}
+	}
 
 	collector::record updated = listing ? listing->entry : collector::record{};
 	collector::outcome policy = collector::outcome::invalid;

@@ -1,6 +1,5 @@
 #include "flatfile/flatfile_player_domain_repository.h"
 #include "combat/combat_outcome_command.h"
-#include "economy/currency_command.h"
 #include "world/epic_command.h"
 
 #include <cstdlib>
@@ -35,6 +34,18 @@ static void write_u32(std::vector<uint8_t> *bytes, size_t offset, uint32_t value
 {
 	for (size_t byte = 0; byte < 4; ++byte)
 		(*bytes)[offset + byte] = static_cast<uint8_t>(value >> (byte * 8));
+}
+
+template <typename T> static void append(std::vector<uint8_t> *bytes, T value)
+{
+	for (size_t byte = 0; byte < sizeof(T); ++byte)
+		bytes->push_back(static_cast<uint8_t>(static_cast<uint64_t>(value) >> (byte * 8)));
+}
+
+static std::vector<uint8_t> file_bytes(const fs::path &path)
+{
+	std::ifstream input(path, std::ios::binary);
+	return { std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>() };
 }
 
 static void write_player_domain_fixture(const fs::path &path, std::vector<uint8_t> file,
@@ -125,31 +136,6 @@ static critical_command epic(int64_t delta, uint64_t expected_revision, uint8_t 
 		"could not build epic command");
 	command.accepted_at_usec = 1;
 	require(critical_command_normalize(&command), "could not normalize epic command");
-	return command;
-}
-
-static critical_command
-currency(currency_vector wallet_delta, currency_vector bank_delta, uint64_t wallet_revision,
-	 uint64_t bank_revision, uint8_t operation,
-	 currency_reason_type reason = currency_reason_type::operator_adjustment)
-{
-	critical_operation_id operation_id = {};
-	operation_id.bytes[0] = operation;
-	currency_command_payload payload = {};
-	payload.pid = 42;
-	payload.racewar = 1;
-	payload.reason = reason;
-	payload.reason_id = 88;
-	strcpy(payload.account_name.data(), "account-one");
-	payload.wallet_delta = wallet_delta;
-	payload.bank_delta = bank_delta;
-	critical_command command;
-	require(currency_command_build(&command, operation_id, payload, wallet_revision,
-				       bank_revision, critical_source_site::command,
-				       critical_deadline_class::interactive),
-		"could not build currency command");
-	command.accepted_at_usec = 1;
-	require(critical_command_normalize(&command), "could not normalize currency command");
 	return command;
 }
 
@@ -286,63 +272,6 @@ int main(int argc, char **argv)
 	require(flatfile_player_domain_apply(root.string(), epic(6, 1, 1)).error_code == EEXIST,
 		"conflicting epic operation ID was accepted");
 
-	critical_command currency_move =
-		currency({ { 10, 0, 0, 0 } }, { { -2, 0, 0, 0 } }, 0, 1, 10);
-	applied = flatfile_player_domain_apply(root.string(), currency_move);
-	currency_command_result currency_result = {};
-	require(applied.outcome == critical_apply_outcome::applied &&
-			currency_command_decode_result(applied.result_payload.data(),
-						       applied.result_size, &currency_result) &&
-			currency_result.wallet.amount[0] == 11 &&
-			currency_result.bank.amount[0] == 3 &&
-			currency_result.wallet_revision == 1 && currency_result.bank_revision == 2,
-		"wallet/shared-bank transaction did not apply");
-	require(flatfile_player_domain_load(root.string(), 42, "account-one", 1, &loaded, &error) ==
-				flatfile_player_domain_result::ok &&
-			loaded.domains.wallet[0] == 11 && loaded.domains.bank[0] == 3 &&
-			loaded.domains.wallet_revision == 1 && loaded.domains.bank_revision == 2,
-		"wallet/shared-bank result did not load");
-	applied = flatfile_player_domain_apply(root.string(), currency_move);
-	require(applied.outcome == critical_apply_outcome::already_applied &&
-			currency_command_decode_result(applied.result_payload.data(),
-						       applied.result_size, &currency_result) &&
-			currency_result.wallet.amount[0] == 11 &&
-			currency_result.bank.amount[0] == 3,
-		"currency replay did not return its original result");
-	require(flatfile_player_domain_apply(root.string(), currency({ { 1, 0, 0, 0 } },
-								     { { 0, 0, 0, 0 } }, 1, 2, 10))
-				.error_code == EEXIST,
-		"conflicting currency operation ID was accepted");
-	critical_command stale_currency =
-		currency({ { 1, 0, 0, 0 } }, { { 0, 0, 0, 0 } }, 0, 2, 11);
-	require(flatfile_player_domain_apply(root.string(), stale_currency).error_code == ESTALE &&
-			flatfile_player_domain_apply(root.string(), stale_currency).error_code ==
-				ESTALE,
-		"stale currency decision was not durably replayed");
-	critical_command insufficient_currency =
-		currency({ { 0, 0, 0, 0 } }, { { -99, 0, 0, 0 } }, 1, 2, 12);
-	require(flatfile_player_domain_apply(root.string(), insufficient_currency).error_code ==
-			ENOSPC,
-		"insufficient bank funds were accepted");
-	critical_command interrupted_currency =
-		currency({ { 1, 0, 0, 0 } }, { { 1, 0, 0, 0 } }, 1, 2, 13);
-	setenv("DURIS_FLATFILE_TEST_LEGACY_TRANSACTION", "1", 1);
-	setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_BANK", "1", 1);
-	applied = flatfile_player_domain_apply(root.string(), interrupted_currency);
-	unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_BANK");
-	unsetenv("DURIS_FLATFILE_TEST_LEGACY_TRANSACTION");
-	require(applied.outcome == critical_apply_outcome::retryable_failure &&
-			fs::exists(domains / ".currency-transaction"),
-		"currency interruption did not preserve its legacy durable intent");
-	require(flatfile_player_domain_load(root.string(), 42, "account-one", 1, &loaded, &error) ==
-				flatfile_player_domain_result::ok &&
-			loaded.domains.wallet[0] == 12 && loaded.domains.bank[0] == 4 &&
-			loaded.domains.wallet_revision == 2 && loaded.domains.bank_revision == 3 &&
-			!fs::exists(domains / ".currency-transaction"),
-		"domain load did not recover the legacy currency transaction");
-	applied = flatfile_player_domain_apply(root.string(), interrupted_currency);
-	require(applied.outcome == critical_apply_outcome::already_applied,
-		"recovered currency transaction did not replay from its operation ledger");
 	// Frags, epic points and blood money are memory's: the outcome is only recorded, and
 	// leaves every saved balance alone.
 	flatfile_player_domain_record killer_before, victim_before;
@@ -381,21 +310,6 @@ int main(int argc, char **argv)
 			critical_apply_outcome::applied,
 		"a second combat outcome was fenced by the first");
 
-	critical_command coin_drop_debit = currency({ { -2, 0, 0, 0 } }, { { 0, 0, 0, 0 } }, 2, 3,
-						    14, currency_reason_type::wallet_spend);
-	applied = flatfile_player_domain_apply(root.string(), coin_drop_debit);
-	require(applied.outcome == critical_apply_outcome::applied &&
-			currency_command_decode_result(applied.result_payload.data(),
-						       applied.result_size, &currency_result) &&
-			currency_result.wallet.amount[0] == 10 &&
-			currency_result.wallet_revision == 3 && currency_result.bank_revision == 4,
-		"coin-command wallet debit did not apply through flatfile currency authority");
-	require(flatfile_player_domain_load(root.string(), 42, "account-one", 1, &loaded, &error) ==
-				flatfile_player_domain_result::ok &&
-			loaded.domains.wallet[0] == 10 && loaded.domains.wallet_revision == 3 &&
-			loaded.domains.bank[0] == 4 && loaded.domains.bank_revision == 4,
-		"negative wallet adjustment did not survive established-player save/load");
-
 	convert_player_domain_to_v2(domains / "player-45.domain");
 	require(flatfile_player_domain_load(root.string(), 45, "account-one", 1, &loaded, &error) ==
 				flatfile_player_domain_result::ok &&
@@ -429,6 +343,60 @@ int main(int argc, char **argv)
 							    &loaded, &error) == expected,
 				label + " did not preserve the native 2048-byte bound: " + error);
 		}
+	}
+
+	// An older server's currency command wrote the player and the account bank in one
+	// intent; a crash before it finished leaves both files stale. The next domain
+	// operation (this load) writes both and clears the intent.
+	{
+		const fs::path player_file = domains / "player-42.domain";
+		const fs::path bank_file = domains / "bank-account-one-1.domain";
+		const fs::path intent_file = domains / ".player-domain-transaction";
+		flatfile_player_domain_record before;
+		require(flatfile_player_domain_load(root.string(), 42, "account-one", 1, &before,
+						    &error) == flatfile_player_domain_result::ok,
+			"could not read the player before the older intent");
+		const std::vector<uint8_t> player_bytes = file_bytes(player_file);
+		const std::vector<uint8_t> bank_bytes = file_bytes(bank_file);
+		require(!player_bytes.empty() && !bank_bytes.empty(),
+			"the player and bank files were not where the intent expects them");
+		const std::string account = "account-one";
+		std::vector<uint8_t> payload;
+		append<uint16_t>(&payload, 1);
+		append<uint16_t>(&payload, 1);
+		append<int32_t>(&payload, 42);
+		append<uint32_t>(&payload, player_bytes.size());
+		payload.insert(payload.end(), player_bytes.begin(), player_bytes.end());
+		append<uint32_t>(&payload, account.size());
+		payload.insert(payload.end(), account.begin(), account.end());
+		append<int8_t>(&payload, 1);
+		append<uint32_t>(&payload, bank_bytes.size());
+		payload.insert(payload.end(), bank_bytes.begin(), bank_bytes.end());
+		std::vector<uint8_t> intent = { 'D', 'U', 'R', 'T', 'X', 'N', 0, 0 };
+		append<uint32_t>(&intent, 3);
+		append<uint32_t>(&intent, payload.size());
+		append<uint64_t>(&intent, 1);
+		std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
+		SHA256(payload.data(), payload.size(), digest.data());
+		intent.insert(intent.end(), digest.begin(), digest.end());
+		intent.insert(intent.end(), payload.begin(), payload.end());
+		{
+			std::ofstream output(intent_file, std::ios::binary | std::ios::trunc);
+			output.write(reinterpret_cast<const char *>(intent.data()), intent.size());
+			require(output.good(), "could not write the older intent");
+		}
+		fs::permissions(intent_file, fs::perms::owner_read | fs::perms::owner_write,
+				fs::perm_options::replace);
+		fs::remove(player_file);
+		fs::remove(bank_file);
+		require(flatfile_player_domain_load(root.string(), 42, "account-one", 1, &loaded,
+						    &error) == flatfile_player_domain_result::ok &&
+				loaded.domains.wallet == before.domains.wallet &&
+				loaded.domains.bank == before.domains.bank &&
+				loaded.domains.bank_revision == before.domains.bank_revision &&
+				file_bytes(player_file) == player_bytes &&
+				file_bytes(bank_file) == bank_bytes && !fs::exists(intent_file),
+			"an older server's player and bank intent was not finished: " + error);
 	}
 
 	const fs::path player = domains / "player-42.domain";

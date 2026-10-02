@@ -9,7 +9,6 @@ MATERIALIZE = (SRC / "player_load_materialize.c").read_text()
 PETS = (SRC / "player_load_pets.c").read_text()
 NANNY = (SRC / "nanny.c").read_text()
 COPYOVER = (SRC / "copyover.c").read_text()
-SQL_PLAYER = (SRC / "sql_player.c").read_text()
 
 for contract in (
     "FROM player_pets pp LEFT JOIN item_owner_revision rev",
@@ -41,16 +40,7 @@ for contract in (
 assert "request.include_pets = true" in COPYOVER
 assert "player_load_pets_place(ch);" in COPYOVER
 assert "setup_pet(pet, ch, -1" not in COPYOVER
-direct_pet_save = SQL_PLAYER[SQL_PLAYER.index("bool sql_save_player_pets(P_char ch, int save_type, int save_room_vnum)",
-                                             SQL_PLAYER.index("#else")):
-                                SQL_PLAYER.index("bool sql_load_player_pets(P_char /*ch*/)",
-                                                 SQL_PLAYER.index("#else"))]
-assert "player_snapshot_capture" in direct_pet_save
-assert "player_snapshot_repository_write_pets" in direct_pet_save
-assert "pet_room_vnum = save_room_vnum" in direct_pet_save
-assert "ch->in_room >= 0 && ch->in_room <= top_of_world" in direct_pet_save
 assert "player_load_pets_place(ch)" in NANNY
-assert "sql_load_player_pets(ch)" not in NANNY
 assert "DELETE FROM player_pets WHERE owner_pid" not in REPOSITORY
 
 print("batched pet graph hydration contracts passed")

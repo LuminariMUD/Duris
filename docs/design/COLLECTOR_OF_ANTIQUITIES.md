@@ -93,8 +93,9 @@ collector repository executes collect, activate, purchase, expire, cancel,
 pause, and resume inside the caller's critical-operation transaction. Collection
 rechecks the complete source root, detaches only the selected shell, reparents
 its children, preserves the exact singleton item snapshot, and transfers its UID
-to collector custody. Purchase atomically verifies capacity admission and all
-revision fences, debits carried currency, restores the exact player-item rows,
+to collector custody. Purchase atomically verifies capacity admission and the
+listing and catalog revisions, records the price in the collector ledger (the
+buyer's coins change in memory, not here), restores the exact player-item rows,
 and transfers custody to the permanent beneficiary. Expiry and held-item cancel
 move the UID to terminal custody. The repository emits the canonical result to
 outbox destination 11 before the encompassing transaction commits.
@@ -143,10 +144,8 @@ enablement rather than an unimplemented service entry point:
    another action is admitted, and operators should inspect the existing health,
    quarantine, and age metrics.
 
-NPC acquisition is supported by `item_movement_transaction_submit()` through the
-`mobile_claim` reason. It requires an already-authoritative item and an
-owner-preserving transfer; it cannot synthesize missing custody or silently
-leave a collector candidate behind after a mobile receives an item.
+An item a mobile or pet takes from a corpse is not collected: collection looks
+for the live item, and one no longer in the player's corpse counts as claimed.
 
 ## Validation and promotion evidence
 
@@ -176,8 +175,8 @@ MariaDB and flat-file builds remain required after every integration change;
 the flat-file collector journey exercises the corresponding authority and
 recovery paths directly.
 
-Run `python3 tests/async/test_item_transfer_version_compatibility.py` for the
-collector ownership/fence codec boundary. Run
+Run `python3 tests/async/test_item_transfer_codec.py` for the collector
+ownership/fence codec boundary. Run
 `tests/async/run_collector_item_owner_schema_mysql.sh` against its default
 MariaDB image and again with `COLLECTOR_OWNER_DB_IMAGE=mysql:8.0`; the isolated
 upgrade test proves type-9 preservation, type-10 admission across all three

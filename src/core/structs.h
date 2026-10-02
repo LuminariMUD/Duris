@@ -1662,7 +1662,6 @@ struct txt_q
 
 #define PLAYER_LOAD_MODE_NONE 0
 #define PLAYER_LOAD_MODE_ACCOUNT 1
-#define PLAYER_LOAD_MODE_LEGACY 2
 #define PLAYER_LOAD_MODE_ACCOUNT_DELETE 3
 
 #define TOTAL_CON 92
@@ -2234,7 +2233,6 @@ struct mob_prog_data
 #define LOG_HOUSE "logs/log/house"
 #define LOG_MOB "logs/log/mob"
 #define LOG_OBJ "logs/log/obj"
-#define LOG_EVENT "logs/log/events"
 #define LOG_DONATION "logs/log/donation"
 #define LOG_PETITION "logs/log/petition"
 #define LOG_EPIC "logs/log/epic"

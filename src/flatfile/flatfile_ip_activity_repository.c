@@ -384,33 +384,6 @@ flatfile_ip_activity_result flatfile_ip_activity_get(const char *root, uint32_t 
 	return flatfile_ip_activity_result::ok;
 }
 
-flatfile_ip_activity_result flatfile_ip_activity_find_latest(const char *root, const char *ip,
-							     flatfile_ip_activity_record *record,
-							     std::string *error)
-{
-	if (!record || !valid_ip(ip ? std::string(ip) : std::string(), false))
-	{
-		if (error)
-			*error = "invalid IP activity search";
-		return flatfile_ip_activity_result::invalid;
-	}
-	std::vector<flatfile_ip_activity_record> records;
-	const auto loaded = load_records(activity_directory(root), &records, error);
-	if (loaded != load_result::ok)
-		return public_result(loaded);
-	const flatfile_ip_activity_record *latest = nullptr;
-	for (const auto &candidate : records)
-		if (candidate.ip == ip &&
-		    (!latest || candidate.last_connect > latest->last_connect ||
-		     (candidate.last_connect == latest->last_connect &&
-		      candidate.pid > latest->pid)))
-			latest = &candidate;
-	if (!latest)
-		return flatfile_ip_activity_result::not_found;
-	*record = *latest;
-	return flatfile_ip_activity_result::ok;
-}
-
 flatfile_ip_activity_result flatfile_ip_activity_reset_active(const char *root, int64_t occurred_at,
 							      std::string *error)
 {

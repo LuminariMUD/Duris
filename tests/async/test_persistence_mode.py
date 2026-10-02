@@ -123,7 +123,6 @@ with tempfile.TemporaryDirectory(prefix="persistence-mode-") as directory:
         state / "operations/wal",
         state / "domains",
         state / "manifests",
-        state / "player-deaths",
     }
     assert all(path.is_dir() for path in expected)
     assert all((path.stat().st_mode & 0o777) == 0o700 for path in expected)

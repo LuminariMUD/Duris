@@ -7,11 +7,6 @@
 #include <cstdint>
 #include <vector>
 
-// Coin parents are audit receipts; their two child records publish the effects.
-constexpr uint16_t CRITICAL_OUTBOX_COIN_RECEIPT_DESTINATION = 10;
-constexpr uint16_t CRITICAL_OUTBOX_COIN_RECEIPT_EVENT = 1;
-constexpr size_t CRITICAL_OUTBOX_COIN_RECEIPT_BYTES = 32;
-
 constexpr size_t CRITICAL_OUTBOX_BATCH_MAX = 64;
 constexpr size_t CRITICAL_OUTBOX_RECORD_MAX_BYTES = 65535;
 constexpr size_t CRITICAL_OUTBOX_QUEUE_MAX_BYTES = 4 * 1024 * 1024;
@@ -56,14 +51,6 @@ struct critical_outbox_health
 	bool running;
 };
 
-struct critical_reconciliation_report
-{
-	uint64_t incomplete_inbox;
-	uint64_t committed_without_outbox;
-	uint64_t pending_outbox;
-	uint64_t dead_letter_outbox;
-};
-
 using critical_outbox_deliver_fn =
 	critical_outbox_delivery_result (*)(const critical_outbox_record &record, void *context);
 
@@ -73,8 +60,6 @@ void critical_outbox_quiesce(void);
 void critical_outbox_resume(void);
 bool critical_outbox_drain(uint64_t timeout_msec);
 critical_outbox_health critical_outbox_health_copy(void);
-bool critical_outbox_reconcile(critical_reconciliation_report *report);
-bool critical_outbox_retry_dead_letter(uint64_t outbox_id);
 critical_outbox_delivery_result
 critical_outbox_test_destination(const critical_outbox_record &record, void *context);
 

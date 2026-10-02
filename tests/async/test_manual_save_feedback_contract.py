@@ -15,7 +15,7 @@ status_event = source[
 assert '"Save already queued for %s.\\r\\n"' in manual_save
 assert '"Save queued for %s.\\r\\n"' in manual_save
 assert manual_save.index("find_manual_save_status") < manual_save.index("persistence_schedule_character_save")
-assert "revision.acknowledged_revision >= status->revision" in status_event
+assert "revision.written_revision >= status->revision" in status_event
 assert 'literal("Save complete for ")' in status_event
 assert 'literal("Save failed for ")' in status_event
 
@@ -101,11 +101,14 @@ int main() {
     persistence_pulse_character_saves();
     assert(saves == 1); // No world callback ran, but the save was submitted.
     assert(messages.find("Save complete") == std::string::npos);
+    // The writer accepting the save is not the save landing.
     player_revision_t revision = 0;
     player_component_mask_t components = 0;
     assert(player_revision_queue(1, &revision, &components));
-    assert(player_revision_begin_inflight(1, revision, components));
-    assert(player_revision_acknowledge(1, revision, components));
+    assert(player_revision_acknowledge_durable(1, revision, components));
+    persistence_pulse_character_saves();
+    assert(messages.find("Save complete") == std::string::npos);
+    assert(player_revision_record_written(1, revision));
     persistence_pulse_character_saves();
     assert(messages.find("Save complete") != std::string::npos);
     assert(last_feedback_role == OutputRole::Success);
@@ -160,4 +163,4 @@ subprocess.run([
 subprocess.run([str(binary)], check=True)
 comm = (SRC / "comm.c").read_text()
 assert "persistence_pulse_character_saves();" in comm
-print("[PASS] saves, ACK feedback, deadlines, retries, and lifetime checks work without world callbacks")
+print("[PASS] saves, written-save feedback, deadlines, retries, and lifetime checks work without world callbacks")

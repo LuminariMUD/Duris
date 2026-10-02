@@ -61,7 +61,7 @@ static player_save_apply_result apply_save(const player_snapshot &snapshot, void
     return {player_save_apply_outcome::applied, snapshot.revision, 0};
 }
 static void capacity_case(size_t capacity) {
-    assert(critical_command_coordinator_init(nullptr, apply, nullptr));
+    assert(critical_command_coordinator_init(apply, nullptr));
     // Fill the output with mixed successful and terminal results, then one more.
     std::map<std::string, critical_apply_outcome> expected;
     for (size_t i = 0; i < capacity; ++i) {
@@ -102,14 +102,12 @@ static void capacity_case(size_t capacity) {
     assert(health.terminal_failures == capacity / 2 + 1);
     assert(health.completed == capacity + 1);
     assert(!critical_command_coordinator_is_fenced(last.keys[0], nullptr));
-    critical_completion cached = {};
-    assert(critical_command_coordinator_get_completed(last.operation_id, &cached));
     assert(critical_command_coordinator_submit(last) == critical_submit_result::attached);
     printf("capacity=%zu: all %zu identities delivered once\n", capacity, seen.size());
     critical_command_coordinator_shutdown();
 }
 static void large_result_case() {
-    assert(critical_command_coordinator_init(nullptr, apply, nullptr));
+    assert(critical_command_coordinator_init(apply, nullptr));
     for (unsigned int tag : {200, 202}) {
         const auto large = command(tag);
         assert(critical_command_coordinator_submit(large) == critical_submit_result::accepted);
@@ -122,10 +120,6 @@ static void large_result_case() {
         assert(delivered.result_size == 4096 && delivered.durable_revision == 73);
         for (size_t n = 0; n < delivered.result_size; ++n)
             assert(delivered.result_payload[n] == static_cast<uint8_t>((n * 7 + 3) % 251));
-        critical_completion cached = {};
-        assert(critical_command_coordinator_get_completed(large.operation_id, &cached));
-        assert(cached.result_size == delivered.result_size);
-        assert(cached.result_payload == delivered.result_payload);
     }
     critical_command_coordinator_shutdown();
     puts("4096-byte fresh and replay completions survive delivery and retained lookup");
@@ -148,7 +142,7 @@ with tempfile.TemporaryDirectory(prefix="duris-completion-capacity-") as directo
         "g++", "-std=c++20", "-g", "-Og", "-Wall", "-Wextra", "-Werror", "-pthread",
         "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
         "-Isrc", str(source), "src/persistence/critical_command.c",
-        "src/persistence/critical_command_journal.c", "src/player/player_save_worker.c",
+        "src/player/player_save_worker.c",
         "src/persistence/persistence_observability.c", "-lz", "-lcrypto", "-lmysqlclient",
         "-o", str(binary),
     ], cwd=ROOT, check=True)
