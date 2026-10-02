@@ -16,7 +16,7 @@ python3 scripts/migration_runner.py run
 ./migrations/verify_runtime_compatibility.sh
 ```
 
-The current head is `0034_retire_death_custody_and_accounting`, and the contract
+The current head is `0035_backfill_bank_baselines`, and the contract
 describes 198 current tables: the 170-table baseline plus the post-baseline runtime tables created
 by immutable migrations. Migration 0029 adds the replay-safe
 `critical_operation_inbox.failure_stage` receipt field as `SMALLINT UNSIGNED NOT
@@ -30,7 +30,8 @@ Migration 0033 adds `item_owner_audit`, one row each time a save takes an item f
 another owner (see [Player Save Pipeline](PLAYER_SAVE_PIPELINE.md#what-a-save-writes)).
 It is additive, has no foreign keys, and an existing database must apply it before
 the updated binary boots. Migration 0034 drops the death custody, restitution and
-economy accounting tables (see [Immutable Migrations](IMMUTABLE_MIGRATIONS.md)).
+economy accounting tables (see [Immutable Migrations](IMMUTABLE_MIGRATIONS.md)), and
+migration 0035 gives every account bank the opening baseline boot requires.
 Fingerprints are measured on clean `mysql:8.0` and `mariadb:10.11` schemas with
 `tests/async/telemetry_rollup_schema_mysql.py --update-contract`; they must not be
 copied from a production-derived clone.

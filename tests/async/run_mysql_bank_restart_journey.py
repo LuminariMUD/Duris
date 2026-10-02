@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """A first ATM deposit creates a bank and its baseline, then survives a restart.
 
+The schema starts at migration head 0034 with a bank an older server created without an
+opening baseline; the upgrade's migration run (0035) gives it one, so the server boots.
 Run through with_disposable_mariadb.sh with the MariaDB server binary as the
 argument. Uses a fresh schema, account and runtime; never reads checkout .env.
 """
 from pathlib import Path
+import json
 import os
 import subprocess
 import sys
@@ -46,11 +49,34 @@ def run(server):
         ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci', False)
     try:
         sql((ROOT / 'migrations/bootstrap_multithread_safe.sql').read_text())
-        for args in (('adopt', '--kind', 'fresh_bootstrap'), ('run',)):
+
+        def migrate(*args):
             result = subprocess.run(['python3', 'scripts/migration_runner.py', *args],
                                     cwd=ROOT, env=environment, capture_output=True, text=True)
             assert result.returncode == 0, result.stdout + result.stderr
+
         (ROOT / 'bin/tests').mkdir(parents=True, exist_ok=True)
+        # The database an older server ran: at head 0034, with a bank its first delta
+        # created and no opening baseline for it.
+        manifest = json.loads((ROOT / 'migrations/migration_manifest.json').read_text())
+        manifest['migrations'] = [step for step in manifest['migrations']
+                                  if step['sequence'] <= 34]
+        with tempfile.TemporaryDirectory(prefix='mysql-bank-older-',
+                                         dir=ROOT / 'bin/tests') as older:
+            (Path(older) / 'immutable').symlink_to(ROOT / 'migrations/immutable')
+            older_manifest = Path(older) / 'migration_manifest.json'
+            older_manifest.write_text(json.dumps(manifest))
+            migrate('--manifest', str(older_manifest), 'adopt', '--kind', 'fresh_bootstrap')
+            migrate('--manifest', str(older_manifest), 'run')
+        sql("INSERT INTO accounts(account_name) VALUES('olderbank');"
+            "INSERT INTO account_banks(account_name,racewar,bank_platinum,bank_revision) "
+            "VALUES('olderbank',1,9,3);")
+        migrate('run')
+        assert sql('SELECT opening_platinum,opening_revision FROM currency_bank_baseline '
+                   'JOIN account_banks bank ON bank.id=bank_id '
+                   "WHERE bank.account_name='olderbank'").split() == ['9', '3'], \
+            "the migration run did not give the older server's bank its baseline"
+        print('[PASS] migration 0035 gave the older bank its opening baseline', flush=True)
         with tempfile.TemporaryDirectory(prefix='mysql-bank-restart-',
                                          dir=ROOT / 'bin/tests') as temporary:
             runtime = Path(temporary)
@@ -124,9 +150,11 @@ def run(server):
                     journey.create_character(client)
                     save()
                     initial_wallet = wallet()
-                    assert sql('SELECT COUNT(*) FROM account_banks') == '0', \
+                    assert sql("SELECT COUNT(*) FROM account_banks WHERE account_name='" +
+                               journey.ACCOUNT + "'") == '0', \
                         'the fixture already has a bank before its first deposit'
-                    assert sql('SELECT COUNT(*) FROM currency_bank_baseline') == '0'
+                    assert sql('SELECT COUNT(*) FROM currency_bank_baseline') == '1', \
+                        'only the older bank has a baseline before the first deposit'
                     client.send('balance')
                     client.expect('0 platinum, 0 gold, 0 silver, 0 copper coins.')
                     client.send('drop all')

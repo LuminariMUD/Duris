@@ -119,6 +119,13 @@ nothing reads since the persistence reset treats every server as new. It is guar
 and re-runnable (`DROP TABLE IF EXISTS`). Back up a database that may still hold that
 evidence before running it.
 
+Migration 0035 changes no table. Boot refuses an `account_banks` row without a
+`currency_bank_baseline`, and from the persistence reset's Phase 2 until the server
+wrote the baseline with the bank, the delta that created a bank wrote none. The step
+copies each such bank's current row into its baseline (`INSERT IGNORE ... SELECT`, so
+it leaves existing baselines alone and re-runs), and its verifier requires every bank
+to have one.
+
 ## Post-baseline migration contract
 
 Files live under `migrations/immutable/` and are listed explicitly in the manifest.

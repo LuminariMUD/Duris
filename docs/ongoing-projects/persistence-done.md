@@ -2161,10 +2161,10 @@ Found along the way, each fixed in its own commit:
   transaction (`INSERT IGNORE`, so it leaves an existing one alone and settles an older bank
   on its next delta). `run_player_save_claim_mysql.sh` (test-db) failed on the new check
   before the fix and passes after. The live first-deposit and restart journey now passes too
-  ([record](#a-first-bank-deposit-survives-a-restart-done)). A database that created banks
-  before this fix and has not touched them since needs their baselines once:
-  `INSERT IGNORE INTO currency_bank_baseline(bank_id,opening_copper,opening_silver,opening_gold,opening_platinum,opening_revision) SELECT id,bank_copper,bank_silver,bank_gold,bank_platinum,bank_revision FROM account_banks;`
-  (`duris_dev` has none missing).
+  ([record](#a-first-bank-deposit-survives-a-restart-done)). Every bank a server without
+  this fix created has no baseline, touched since or not, and boot refuses before a
+  delta could write one, so migration 0035 backfills them
+  ([review round 1](#review-round-1-mr-5)).
 - **The combat-baseline repair refused every played database** (`4e9137a14`).
   `repair_missing_combat_baselines.sh` inlined the deleted reconcilers' ledger arithmetic in
   its apply guard and receipt, so the reviewed insert rolled back wherever balances had moved.

@@ -75,16 +75,17 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * additive critical-operation failure stage; it changes no runtime table count.
  * Migration 0033 adds the item owner audit a save writes when it takes an item, and
  * migration 0034 drops the death custody, restitution and economy accounting tables
- * (including those 0011, 0020, 0031 and 0032 added).
+ * (including those 0011, 0020, 0031 and 0032 added). Migration 0035 backfills the bank
+ * opening baselines bank deltas did not write; it changes no table.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0034_retire_death_custody_and_accounting";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 34;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0035_backfill_bank_baselines";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 35;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"b50dc5f47f9c818b507543375c66acb76b7292718f418db06929c4b02ab3661c";
+	"dee6c7f367bf00780bd541255fc9e93578adca9efec103df400c4a812a9f7862";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"5c0645486e25718c196ca5b39f796d8400b893cac116165e0618a67adc4422ee";
+	"32e1f095c02fe726b58a5217176c31974bc35ec0bcbe747b928819b5802f8c4f";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"eb26ea5d14dfe6f9fabce284fdf8b2fb13bce9bb15ef176b81649d3eda144072";
+	"cf8b7ee2d19cc5b055e1290f8a40329ad3ba94b4751a4ace905151461d67f5a6";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";
