@@ -240,8 +240,10 @@ How each item is done (decided 2026-10-02):
    `CONFIGURATION.md`, gates the routine locker and shopkeeper-restore trace lines; their
    failure lines stay.
 6. A signal exit reads `killed by SIG<NAME>`; 139 stays `crash`.
-7. Item 7 found that an idle timeout stopped every write, and was fixed with its tests first
-   ([record](persistence-done.md#idle-connections-done)).
+7. Item 7 found that an idle timeout stopped every write, and was fixed with its tests first.
+
+Done: each item has its record under
+[Phase 4 progress](persistence-done.md#phase-4-progress).
 
 ## Phase 5: bugs from the logs (#4)
 

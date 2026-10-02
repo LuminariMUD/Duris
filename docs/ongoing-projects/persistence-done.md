@@ -2388,3 +2388,76 @@ Tests, each failing without its fix:
 The server does not take the lock back by itself after a database restart: the lock keeps a
 second server off the database, and taking it back could overwrite what another server wrote
 meanwhile. Restarting the game recovers.
+
+### Critical-command failures name their cause (done)
+
+A refused critical command raised `domain=critical_command action=integrity_failure
+detail=operation metadata redacted`. The completion now carries its command's type, and the
+alert's detail is `type=N error=N`: the type is the stable number `critical_command.h` assigns
+(stored with every command), and the error is the refusal reason, an errno, a database error or
+the command's own result code. The reporter allows numbers only in a detail, which keeps player
+data out, so the type is not spelt out by name. `3b9886f1e`.
+
+Tests: `test_critical_command_coordinator.py` refuses an auction command and checks that its
+completion carries the type and the error; `test_critical_transaction_contract.py` pins the
+alert.
+
+### Repeated alerts are grouped (done)
+
+The wizlog limiter keyed on the owner, item, event and full alert text, so alerts whose detail
+varied were never grouped. It now keys on domain and action: the first alert of a pair reaches
+the wizlog, the rest within 30 seconds are counted and reported with the next one after the
+window, as `(suppressed=N age=Ns)`. The persistence log still records every alert. Owner, item
+uid and event id fed only that key: `persistence_report()` and `persistence_alert()` keep them
+in their signatures and no longer read them. Dropping them from the 122 call sites and the test
+stubs was left out as churn that changes nothing. `7bccc5327`.
+
+Tests: `test_persistence_severity.py` sends repeats with other details, owners and events and
+gets one wizlog line; another action gets its own; with the window shortened in the extracted
+reporter, the next line reports `suppressed=3`. Its severity cases now use one action each,
+since they relied on distinct event ids to stay apart.
+
+### `checked_snprintf()` names its call site (done)
+
+`checked_snprintf()` and `checked_snprintf_runtime()` are macros passing `__FILE__` and
+`__LINE__` to `checked_snprintf_at()` and `checked_snprintf_runtime_at()`, so none of the
+call sites (about 570) changed and the format is still checked. A truncation reads `<file>:<line>:
+checked_snprintf: output requires N bytes but destination holds M`, both in bytes with the
+NUL; before, both were one short. `1c985b62c`. Found with it, in its own commit:
+`checked_substitute_strings()` reported the same off-by-one sizes (`756e1c9f7`).
+
+Tests: `test_safe_format.py` truncates into a 5-byte and an 8-byte buffer and checks both
+reports, the first with its own line. Three harnesses with their own stub now define
+`checked_snprintf_at()`. The pfile tool and the three `migrations/tools` binaries build.
+
+### Logs rotate with a cap (done)
+
+At boot `cycle_mud.sh` moves `logs/log/*`, `logs/player-log/*` and `logs/latency_trace.log`
+into `logs/old-logs/<date>/`, then deletes the oldest generations until `logs/old-logs` fits in
+`DURIS_LOG_ARCHIVE_MB` (1024 by default), always keeping the newest. The size cap is on the
+archive, as the work item asked (rotate at boot, with a size cap): a running server's files grow
+until the next boot. The pwipe's own player-log move went, since every boot does it. The latency trace goes to its file
+only, no longer to stderr as well. `cff347888`.
+
+Tests: `test_flatfile_launcher.py` boots with live logs and two old generations under a 1 MB cap:
+the logs move into the new generation and only the oldest generation goes (on the old script it
+fails at the move); `test_tick_latency_instrumentation.py` pins one dump, to the file.
+
+### Debug noise behind a switch (done)
+
+The `Locker save start`, `LockerToPFile` and `PFileToLocker` routine lines (`storage_lockers.c`)
+and the per-shop `sql_restore_shopkeepers` boot line (`sql_player.c`) are written only when
+`DURIS_PERSISTENCE_TRACE` is set. It is read once, like the corpse and zone-reset traces, and
+documented with them in `CONFIGURATION.md`. The locker failure lines stay on. `77ecc8d27`.
+
+Tests: `test_boot_log_hygiene.py` checks each routine line sits behind the switch and each
+failure line does not; the shopkeeper population harness turns it on.
+
+### `cycle_mud.sh` stop reports (done)
+
+An exit above 128 is named by its signal (`killed by SIGKILL [137]`); 139 stays `crash`. The
+boot email tested `/logs/old-logs/<date>/exit` and never attached the previous run's exit log;
+it tests `logs/old-logs/` in the checkout. `060890586`.
+
+Tests: `test_flatfile_launcher.py` runs the script's own stop-reason block for 0, 139, 137, 143,
+134, 200 and 3 (on the old script 137 reads `unknown`), and pins the email's path.
