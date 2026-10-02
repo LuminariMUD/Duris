@@ -20,9 +20,11 @@ player_snapshot_capture_result flatfile_shopkeeper_capture(P_char shopkeeper, ui
 {
 	if (!shopkeeper || !record_out || IS_PC(shopkeeper) || !revision || saved_at < 0)
 		return player_snapshot_capture_result::invalid_identity;
+	// The caller checks the shop's binding. The command procedure says nothing of it:
+	// quest and tradeskill keepers have their own.
 	const int mob_rnum = GET_RNUM(shopkeeper);
-	if (mob_rnum < 0 || mob_rnum > top_of_mobt || !IS_SHOPKEEPER(shopkeeper) ||
-	    shopkeeper->in_room <= NOWHERE || shopkeeper->in_room > top_of_world)
+	if (mob_rnum < 0 || mob_rnum > top_of_mobt || shopkeeper->in_room <= NOWHERE ||
+	    shopkeeper->in_room > top_of_world)
 		return player_snapshot_capture_result::invalid_identity;
 	try
 	{
