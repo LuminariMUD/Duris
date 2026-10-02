@@ -34,6 +34,7 @@ struct critical_apply_result
 struct critical_completion
 {
 	critical_operation_id operation_id;
+	critical_command_type type;
 	critical_apply_outcome outcome;
 	uint64_t durable_revision;
 	unsigned int error_code;

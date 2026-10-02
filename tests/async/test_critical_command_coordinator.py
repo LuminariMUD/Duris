@@ -82,6 +82,8 @@ critical_apply_result apply(const critical_command &command, void *raw)
     }
     if (tag == 4 && attempt == 1)
         return {critical_apply_outcome::ambiguous_commit, 0, 2013};
+    if (tag == 18)
+        return {critical_apply_outcome::terminal_failure, 0, 1062};
     return {applied.already_applied ? critical_apply_outcome::already_applied :
             critical_apply_outcome::applied, 1, 0};
 }
@@ -221,6 +223,15 @@ int main()
     assert(health.ambiguous == 1 && health.retries == 1 && health.fenced_keys == 0);
     assert(critical_command_coordinator_submit(d) == critical_submit_result::attached);
 
+    // A refused command's completion names its type and the reason, for the alert.
+    critical_command refused = make_command(18, {{critical_entity_type::item, 18}});
+    refused.type = critical_command_type::auction;
+    assert(critical_command_coordinator_submit(refused) == critical_submit_result::accepted);
+    wait_until([&] { return critical_command_coordinator_pulse(completions, 16) == 1; });
+    assert(completions[0].outcome == critical_apply_outcome::terminal_failure &&
+           completions[0].type == critical_command_type::auction &&
+           completions[0].error_code == 1062);
+
     critical_command_coordinator_quiesce();
     critical_command rejected = make_command(6, {{critical_entity_type::player, 6}});
     assert(critical_command_coordinator_submit(rejected) == critical_submit_result::unavailable);
@@ -311,6 +322,7 @@ with tempfile.TemporaryDirectory(prefix="duris-critical-command-") as temporary:
 print("[PASS] commands run on the one writer, in capture order with the saves around them")
 print("[PASS] a fenced command stays fenced until its completion; attach and conflict hold")
 print("[PASS] the writer retries an ambiguous commit; an unknown outcome is named at shutdown")
+print("[PASS] a refused command's completion carries its type and refusal reason")
 
 for contract in (
     "CRITICAL_COORDINATOR_MAX_OPERATIONS = 1024",

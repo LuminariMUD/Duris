@@ -195,6 +195,7 @@ player_save_apply_result execute(const writer_job &job)
 		return { player_save_apply_outcome::retryable_failure, 0, applied.error_code };
 	}
 	const critical_completion completion = { .operation_id = job.command.operation_id,
+						 .type = job.command.type,
 						 .outcome = applied.outcome,
 						 .durable_revision = applied.durable_revision,
 						 .error_code = applied.error_code,
