@@ -3,8 +3,11 @@
 // blocked on a locked table returns at once as a lost connection. Without it the query
 // waits for the lock (here up to the 20 s lock_wait_timeout; on a live server, up to a
 // day). A borrower opening a replacement connection cannot be cut short, so the pool's
-// shutdown leaves it. This drives the real pool against a disposable server.
+// shutdown leaves it. A pooled connection the server closed for idling is replaced for
+// its next borrower, without losing the runtime lock. This drives the real pool against
+// a disposable server.
 #include "sql/sql.h"
+#include "sql/sql_exclusion_guard.h"
 #include "sql/sql_pool.h"
 
 #include <chrono>
@@ -14,6 +17,7 @@
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -58,6 +62,16 @@ std::mutex connect_mutex;
 std::condition_variable connect_changed;
 bool hold_connects = false;
 bool connect_held = false;
+// When set, the server closes a new connection after this many idle seconds.
+int idle_seconds = 0;
+// While set, opening a connection fails, as it does while the server is down.
+bool refuse_connects = false;
+
+void select_one(MYSQL *connection)
+{
+	execute(connection, "SELECT 1");
+	mysql_free_result(mysql_store_result(connection));
+}
 } // namespace
 
 // The pool opens its connections through the game's factory; here they are plain
@@ -70,8 +84,13 @@ MYSQL *sql_open_configured_connection(unsigned long)
 		connect_changed.notify_all();
 		connect_changed.wait(lock, [] { return !hold_connects; });
 	}
+	if (refuse_connects)
+		return nullptr;
 	MYSQL *connection = open_connection();
 	execute(connection, "SET SESSION lock_wait_timeout=20");
+	if (idle_seconds)
+		execute(connection,
+			("SET SESSION wait_timeout=" + std::to_string(idle_seconds)).c_str());
 	return connection;
 }
 void logit(const char *, const char *, ...) {}
@@ -144,6 +163,32 @@ int main()
 	require(repair.get() == nullptr, "a replacement must not join a pool that has shut down");
 	sql_pool_release(repairing);
 	mysql_close(repairing);
+
+	// MariaDB closes a pooled connection left idle past wait_timeout. The runtime lock,
+	// held on another connection, is not lost when the guard's probe fails on it, and the
+	// borrower gets a new connection. A reconnect that fails keeps the slot for the next.
+	MYSQL *owner = open_connection();
+	require(duris_sql_exclusion_guard_acquire(owner), "the runtime lock was not taken");
+	idle_seconds = 1;
+	require(sql_pool_init(1) == 0, "the pool did not start again");
+	std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+	MYSQL *renewed = sql_pool_acquire();
+	require(renewed != nullptr, "the pool lent nothing after the server closed its connection");
+	select_one(renewed);
+	sql_pool_release(renewed);
+	std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+	refuse_connects = true;
+	require(sql_pool_acquire() == nullptr, "the pool lent a connection it could not open");
+	require(!duris_sql_exclusion_guard_state_ref().lost,
+		"a pooled connection the server closed lost the runtime lock");
+	refuse_connects = false;
+	MYSQL *recovered = sql_pool_acquire();
+	require(recovered != nullptr, "a failed reconnect lost its pool slot");
+	select_one(recovered);
+	sql_pool_release(recovered);
+	sql_pool_shutdown();
+	duris_sql_exclusion_guard_release();
+	mysql_close(owner);
 	mysql_close(admin);
 	mysql_library_end();
 	std::cout << "sql pool interrupt MariaDB leg passed\n";
