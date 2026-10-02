@@ -35,6 +35,9 @@ GENERATION = re.compile(r"[0-9]{20}-[0-9a-f]{32}")
 LOCKS = {".identity.lock", ".critical-authority.lock", ".accounts.lock", ".artifact-mana.lock"}
 # The critical-command journal directory now holds only locker identification receipts.
 JOURNAL_ROOTS = {"critical"}
+# The journal an older server kept in that directory. Nothing reads it any more; a backup
+# carries it as it is, so an upgraded server still backs up and an older generation restores.
+RETIRED_JOURNAL_FILES = {"critical-command.journal", "critical-command.journal.tmp"}
 LOCK_WAIT_SECONDS = 120
 CAPACITY_CHECK_INTERVAL = 32 * 1024 * 1024
 
@@ -234,7 +237,7 @@ def journal_capture(stage, p, capacity_base=None):
                 require(0 < metadata["bytes"] <= 16 + 1024 + 64 * 1024 + 32,
                         "journal_receipt_size")
             else:
-                require(service_lock, "journal_filename")
+                require(service_lock or relative in RETIRED_JOURNAL_FILES, "journal_filename")
             if service_lock:
                 require(metadata["bytes"] == 0, "journal_service_lock_nonempty")
         needed = sum(x["bytes"] for x in snapshots[name].values())

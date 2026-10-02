@@ -40,10 +40,12 @@ The backup preserves `locker-identification/<pid>.receipt` and its empty
 `.service-lock` under `journal_roots.critical`. Receipt filenames must
 contain a positive signed 32-bit player ID and files must fit the native codec's
 size bound. Existing ownership, permissions, symlink, hardlink and capture
-consistency checks still apply. Transient or unexpected files fail capture.
+consistency checks still apply. Transient or unexpected files fail capture, except
+the `critical-command.journal` and `critical-command.journal.tmp` an older server left
+beside the store, which are carried unread.
 
 The restore verifier (`qualify_flatfile_restore --receipts`) checks this directory
 before service boot. It accepts only an empty service lock and receipts that pass the
 production bounded decoder, including checksum, payment validity and matching player
-ID. Receipts remain available for the player to claim after recovery on either
+ID, plus those two retired journal files as regular files. Receipts remain available for the player to claim after recovery on either
 persistence backend.

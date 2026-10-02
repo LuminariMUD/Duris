@@ -104,7 +104,8 @@ static void qualify_locker_receipts(const std::filesystem::path &directory)
 	}
 }
 
-// The critical-command journal directory holds nothing but the locker receipts.
+// The critical-command journal directory holds the locker receipts and, from an older
+// server, the journal it was named for, which nothing reads any more.
 static void qualify_receipts(const std::filesystem::path &candidate)
 {
 	require(candidate.is_absolute() &&
@@ -113,7 +114,13 @@ static void qualify_receipts(const std::filesystem::path &candidate)
 	std::filesystem::create_directories(directory);
 	for (const auto &entry : std::filesystem::directory_iterator(directory))
 	{
-		require(entry.path().filename() == "locker-identification");
+		const auto name = entry.path().filename();
+		if (name == "critical-command.journal" || name == "critical-command.journal.tmp")
+		{
+			require(entry.is_regular_file() && !entry.is_symlink());
+			continue;
+		}
+		require(name == "locker-identification");
 		qualify_locker_receipts(entry.path());
 	}
 }

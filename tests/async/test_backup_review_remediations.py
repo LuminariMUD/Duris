@@ -65,13 +65,23 @@ class BackupReviewRemediationTests(Fixture):
                 config.write_text(json.dumps(broken, default=str))
                 backup.policy_load(config)
 
-    def test_anything_but_receipts_never_enters_a_generation(self):
+    def test_only_receipts_and_the_retired_journal_enter_a_generation(self):
         critical = self.base / "critical-journal"
         critical.mkdir(mode=0o700)
+        # An older server's journal and its rewrite file stay in the directory after an
+        # upgrade; the backup carries them as they are.
         (critical / "critical-command.journal").write_bytes(b"left by an older server")
+        (critical / "critical-command.journal.tmp").touch(mode=0o600)
         stage = self.base / "stage"
         stage.mkdir(mode=0o700)
         value = dict(self.p, journal_roots={"critical": critical})
+        captured = backup.journal_capture(stage, value)
+        self.assertEqual(set(captured["critical"]),
+                         {"critical-command.journal", "critical-command.journal.tmp"})
+        self.assertEqual(backup.inventory(stage / "journals/critical"), captured["critical"])
+        (critical / "player-save.journal").write_bytes(b"not a receipt")
+        stage = self.base / "stage-foreign"
+        stage.mkdir(mode=0o700)
         with self.assertRaisesRegex(backup.BackupError, "journal_filename"):
             backup.journal_capture(stage, value)
 

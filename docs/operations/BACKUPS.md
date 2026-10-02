@@ -49,9 +49,11 @@ Set BACKUP_POLICY_FILE in the protected environment file. The launcher reads
 literal dotenv assignments only; it never evaluates shell commands, expansions,
 or substitutions. Quote values containing spaces. Explicitly configure all live
 authority roots, plus journal_roots.critical: the `CRITICAL_COMMAND_JOURNAL_DIR`
-directory, which holds nothing but the locker identification receipts since the
-persistence reset (neither journal is kept any more, and a policy that still names
-`journal_roots.players` is refused). A configured `CRITICAL_COMMAND_JOURNAL_DIR` must
+directory, which holds the locker identification receipts since the persistence
+reset (neither journal is kept any more, and a policy that still names
+`journal_roots.players` is refused). The `critical-command.journal` and
+`critical-command.journal.tmp` an older server left there are carried as they are and
+never read; deleting them is optional. A configured `CRITICAL_COMMAND_JOURNAL_DIR` must
 agree with the policy. An empty mapping is only appropriate for a synthetic fixture.
 
 MariaDB uses one full transactional dump, including schema, migration history,

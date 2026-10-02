@@ -161,9 +161,10 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
 
     def test_locker_receipt_qualification_rejects_corruption_and_unexpected_entries(self):
         self.build_native_fixture()
-        for case in ("valid", "corrupt", "wrong-pid", "zero-pid", "oversized", "extra-file",
-                     "nested-directory", "nonempty-lock", "public-file", "public-directory",
-                     "symlink-file", "symlink-directory", "hardlink-file"):
+        for case in ("valid", "retired-journal", "corrupt", "wrong-pid", "zero-pid", "oversized",
+                     "extra-file", "foreign-file", "nested-directory", "nonempty-lock",
+                     "public-file", "public-directory", "symlink-file", "symlink-directory",
+                     "hardlink-file"):
             with self.subTest(case=case):
                 candidate = self.p["restore_root"] / case
                 candidate.mkdir(mode=0o700)
@@ -179,8 +180,14 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
                     receipt.rename(store / ("43.receipt" if case == "wrong-pid" else "0.receipt"))
                 elif case == "oversized":
                     receipt.write_bytes(b"x" * (70 * 1024))
+                elif case == "retired-journal":
+                    # What an older server's critical-command journal left behind.
+                    (store.parent / "critical-command.journal").write_bytes(b"old records")
+                    (store.parent / "critical-command.journal.tmp").touch(mode=0o600)
                 elif case == "extra-file":
                     (store / "unexpected").touch(mode=0o600)
+                elif case == "foreign-file":
+                    (store.parent / "player-save.journal").touch(mode=0o600)
                 elif case == "nested-directory":
                     (store / "unexpected").mkdir(mode=0o700)
                 elif case == "nonempty-lock":
@@ -200,7 +207,7 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
                 elif case == "hardlink-file":
                     os.link(receipt, candidate / "alias")
                 command = [str(ROOT / "bin/tools/qualify_flatfile_restore"), "--receipts", str(candidate)]
-                if case == "valid":
+                if case in ("valid", "retired-journal"):
                     backup.run(command)
                 else:
                     with self.assertRaises(backup.BackupError):
