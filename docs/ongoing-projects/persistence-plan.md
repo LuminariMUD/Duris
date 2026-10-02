@@ -8,14 +8,15 @@ the open work items, what was cut and [What is left](#what-is-left). Finished wo
 (what landed, decisions, tests, verification, commits, bugs found) goes there and the item leaves
 the list. A decision that changes the framework is written here.
 
-**Status (2026-10-02):** Phases 1, 2 and 3 are done and on master. Phase 3 landed as
+**Status (2026-10-02):** Phases 1 to 4 are done and on master. Phase 3 landed as
 [!5](https://gitlab.com/max757/duris/-/merge_requests/5) in `21f65de2c` after one review
 round ([record](persistence-done.md#phase-3-landed-done)). The reset is finished: #7 is closed,
 and #3, #5 and #6 record what it resolved
 ([record](persistence-done.md#the-work-items-closed-out-done)). Phases 4 to 8 take the open work
-items, one phase each. Phase 4 is done on `fix/6-persistence-phase-4` and in review as
-[!6](https://gitlab.com/max757/duris/-/merge_requests/6), tagged `persistence/phase-4-review-0`
-([record](persistence-done.md#phase-4-progress)); Phases 5 to 8 are not started.
+items, one phase each. Phase 4 landed as
+[!6](https://gitlab.com/max757/duris/-/merge_requests/6) in `d6952d701`, its review clean
+([record](persistence-done.md#phase-4-landed-done)). Phase 5 is next, on
+`fix/4-persistence-phase-5`; Phases 5 to 8 are not started.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
@@ -384,8 +385,7 @@ All hold: the gate passed on `0b90e5fc1`
 ## What is left
 
 In this order: the bugs from the logs; the backup job's cost before Phase 7 measures the loop;
-the world capture last, on the optimised build. Phase 4 (alerts and logs) is done and in review
-as [!6](https://gitlab.com/max757/duris/-/merge_requests/6).
+the world capture last, on the optimised build. Phase 4 (alerts and logs) is done and on master.
 
 1. [Phase 5: bugs from the logs (#4)](#phase-5-bugs-from-the-logs-4).
 2. [Phase 6: backups (#3)](#phase-6-backups-3).

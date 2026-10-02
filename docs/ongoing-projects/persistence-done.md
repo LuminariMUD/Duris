@@ -25,11 +25,14 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   on 2026-10-02 in `21f65de2c`, one `--no-ff` merge of the `-1` head, with no rebase or
   squash, so both tags still name what was reviewed. The branch is deleted
   ([record](#phase-3-landed-done)).
-- Phase 4 is reviewed as [!6](https://gitlab.com/max757/duris/-/merge_requests/6) (source
+- Phase 4 was reviewed as [!6](https://gitlab.com/max757/duris/-/merge_requests/6) (source
   `fix/6-persistence-phase-4`, branched from `fix/7-persistence-closeout`, whose one commit
-  beyond master is the plan's Phases 4 to 8). The head the review reads is tagged
-  `persistence/phase-4-review-0`; a review round's fixes go on the branch and are tagged
-  `-1`, `-2` and so on.
+  beyond master is the plan's Phases 4 to 8), tagged `persistence/phase-4-review-0`. The
+  review found nothing. It landed on 2026-10-02 in `d6952d701`, one `--no-ff` merge of that
+  head, with no rebase or squash. Both branches are deleted ([record](#phase-4-landed-done)).
+- Each later phase works the same way: a branch from master named for its work item, an MR,
+  the head the review reads tagged `persistence/phase-<n>-review-0`, a review round's fixes on
+  the branch tagged `-1`, `-2` and so on, then one `--no-ff` merge of the last tag.
 
 ## Phase 1 progress
 
@@ -2360,8 +2363,9 @@ description now records what the reset resolved:
 
 ## Phase 4 progress
 
-Phase 4 ([plan](persistence-plan.md#phase-4-alerts-and-logs-6)) is on `fix/6-persistence-phase-4`,
-branched on 2026-10-02 from `fix/7-persistence-closeout` (`6689c5f20`, the plan's Phases 4 to 8).
+Phase 4 ([plan](persistence-plan.md#phase-4-alerts-and-logs-6)) was done on
+`fix/6-persistence-phase-4`, branched on 2026-10-02 from `fix/7-persistence-closeout`
+(`6689c5f20`, the plan's Phases 4 to 8).
 
 ### Idle connections (done)
 
@@ -2510,3 +2514,16 @@ The live check on the local server, through `./scripts/start_mud.sh --dev` on `d
   rotated the logs again and booted a healthy server.
 - A SIGTERM ended it with `shutdown [0]` and "Normal termination of game"; all 544 shops saved
   and no persistence alert was raised.
+
+### Phase 4 landed (done)
+
+On 2026-10-02 !6 landed in `d6952d701`, one `--no-ff` merge of `6bba358b8`, the head the
+review read. The review found nothing, so `persistence/phase-4-review-0` is the phase's only
+tag and names what landed. Master had no commits the branch lacked, so the merge's tree is that
+head's; its last two commits only add records to this file and the plan after the gate on
+`3b228a90c`, so nothing was rerun for it. The merge also brought the work item close-out
+(`6689c5f20`, the plan's Phases 4 to 8). No migration, so `duris_dev` needed no upgrade.
+
+`fix/6-persistence-phase-4` and `fix/7-persistence-closeout` are deleted, and this worktree
+continues on `fix/4-persistence-phase-5`, branched from master after this record. #6 stays open
+for its server configuration items; its Status line now records what Phase 4 resolved.
