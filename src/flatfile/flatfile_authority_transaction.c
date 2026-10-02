@@ -135,6 +135,14 @@ struct decoder
 	}
 };
 
+// Stores only an older server wrote: the player death records (6) and the economy's
+// accounting evidence (7). Nothing reads them now, so recovery of an intent that names them
+// skips their operations and applies the rest; a new commit cannot name them.
+bool retired_store(flatfile_authority_store store)
+{
+	return static_cast<uint8_t>(store) == 6 || static_cast<uint8_t>(store) == 7;
+}
+
 bool valid_operation(const flatfile_authority_operation &operation)
 {
 	if (operation_directory("root", operation.store).empty() ||
@@ -277,7 +285,7 @@ decode_transaction(const std::vector<uint8_t> &bytes,
 		}
 		if (image_size && !payload.raw(operation.bytes.data(), operation.bytes.size()))
 			return flatfile_authority_transaction_result::invalid;
-		if (!valid_operation(operation))
+		if (!retired_store(operation.store) && !valid_operation(operation))
 			return flatfile_authority_transaction_result::invalid;
 	}
 	return payload.offset == payload.size ? flatfile_authority_transaction_result::ok :
@@ -378,7 +386,7 @@ try
 	if (decoded != flatfile_authority_transaction_result::ok)
 		return decoded;
 	for (const auto &operation : operations)
-		if (!apply_operation(root, operation, error))
+		if (!retired_store(operation.store) && !apply_operation(root, operation, error))
 			return flatfile_authority_transaction_result::io_error;
 	return flatfile_atomic_remove(domains_directory(root), transaction_filename, false, error) ?
 		       flatfile_authority_transaction_result::ok :
