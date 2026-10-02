@@ -1239,15 +1239,10 @@ void enter_game(P_desc d)
 		/* defaults to birthplace on quit/death */
 		r_room = real_room(GET_BIRTHPLACE(ch));
 	}
-	else if (d->rtype == RENT_CRASH)
-	{
-		r_room = real_room(ch->specials.was_in_room);
-	}
 	else
 	{
+		// The load leaves the character in no room and its saved room in was_in_room.
 		r_room = real_room(ch->specials.was_in_room);
-		if (r_room == NOWHERE)
-			r_room = ch->in_room;
 	}
 
 	if (ch->only.pc->pc_timer[PC_TIMER_HEAVEN] > ct)

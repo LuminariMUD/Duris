@@ -4,8 +4,9 @@
 A real server on a disposable MariaDB, in the combat journey's fixture world: a new
 account and character are created, the character plays, saves and quits, the account
 menu lists its characters, and the character, now a god, enters the game again, runs
-the commands the rest of step 8 moved off the loop, and quits. Every
-query the game thread issues while the loop runs logs its site once (`game loop query
+the commands the rest of step 8 moved off the loop, fingers and loads an offline
+character saved in its room (which must then be in the room's people list), and quits.
+Every query the game thread issues while the loop runs logs its site once (`game loop query
 site <file>:<line> <function> (<kind>)`). No site may appear except the functions
 NOT_CONVERTED still lists: the rest of step 8 empties it. Run it through
 with_disposable_mariadb.sh (make test-db); --server picks the executable.
@@ -117,6 +118,15 @@ REENTRY_COMMANDS = (
     ('newchar Vexmora 3 11 56 false', 'character saved.'),
     # A rename is one writer job; the god renames himself and is told once it is stored.
     ('rename char ' + journey.CHARACTER + ' Tavrenn', 'Name changed, old one deleted'),
+)
+# Vexmora, offline and saved in the god's room (22800): finger loads and frees it, and
+# load char brings it into the room. A load left in_room set to the saved room though the
+# character was in no room, so freeing it logged that it was missing from the room's people
+# list, and char_to_room() refused it: load char left it in the game but out of the room.
+OFFLINE_COMMANDS = (
+    ('finger Vexmora', 'PID:'),
+    ('load char Vexmora', 'appears before you'),
+    ('look', 'Vexmora'),
 )
 
 # The functions this session still reaches with a query on the game loop.
@@ -273,6 +283,16 @@ def run(server):
             else:
                 raise AssertionError('the epic bonus never finished loading')
             run_commands(client, REENTRY_COMMANDS)
+            deadline = time.monotonic() + 30
+            while subprocess.run(
+                    mysql + [database], text=True, env=environment, check=True,
+                    capture_output=True,
+                    input="SELECT COUNT(*) FROM player_data WHERE name='Vexmora'"
+                    ).stdout.strip() != '1':
+                assert time.monotonic() < deadline, 'newchar was not written'
+                time.sleep(0.2)
+            sql("UPDATE player_data SET last_room=22800 WHERE name='Vexmora'")
+            run_commands(client, OFFLINE_COMMANDS)
             client.send('quit')
             client.expect('Please select an option', timeout=60)
             client.send('0')
@@ -366,6 +386,8 @@ def run(server):
         logs = output_path.read_text(errors='replace') + '\n'.join(
             path.read_text(errors='replace') for path in (runtime / 'logs/log').glob('*')
             if path.is_file())
+        desync = re.findall(r'.*(?:people list|duplicate insertion).*', logs)
+        assert not desync, f'a character and its room disagree: {desync}'
         sites = sorted(set(re.findall(r'game loop query site (\S+) (\S+) \((\w+)\)', logs)))
         unexpected = [site for site in sites if site[1] not in NOT_CONVERTED]
         for site in sites:
