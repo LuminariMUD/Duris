@@ -2533,3 +2533,116 @@ for its server configuration items; its Status line now records what Phase 4 res
 Phase 5 ([plan](persistence-plan.md#phase-5-bugs-from-the-logs-4)) is done on
 `fix/4-persistence-phase-5`, branched on 2026-10-02 from master `b7105b7d4`. Each item below
 gets its record when it lands; an item without one is not done.
+
+### Characters missing from their room's people list (done)
+
+The cause was in both loads, `player_load_materialize()` and the legacy `restoreCharOnly()`:
+each set `in_room` to the saved room without `char_to_room()`, so the character named a room
+whose people list did not hold it. `enter_game()` read the room from `was_in_room` first and
+reset `in_room` before `char_to_room()`, so a login was fine; every other use of a loaded
+character was not:
+
+- A character freed without entering the game ran `char_from_room()` on that room from
+  `free_char()`. That logged `char_from_room: <name> (-1) not in room <r> (...) people list`,
+  told the room's procedure the character left, and, for a mortal, took one from its zone's
+  (or continent's) PvP misfire count for its side, which it had never been added to. Finger,
+  the artifact owner checks, disguise, illusion, the website's character deletions, an
+  account-menu back-out and the staff pfile scans all free a loaded character. Offline
+  characters rent at inns, which is why 11 of the 19 lines in #4 named inn rooms.
+- `load char <name>` put the loaded character in `character_list`, and `char_to_room()`, which
+  refuses a character that already has a room, logged `refusing duplicate insertion` and left
+  it there: in the game, listed in its saved room, missing from that room's people list.
+
+Reproduced first, on the unfixed build with the `.env` account: `finger Ratgapp` logged
+`char_from_room: Ratgapp (-1) not in room 63 (...) people list`, the line the 2026-09-30 log
+in this worktree holds, and `load char Ratgapp` said he appeared while `look` did not show him.
+
+Fix (`007b2893d`): a loaded character is in no room. The saved room stays in `was_in_room`
+(the locker redirect writes only that), so `enter_game()`'s fallback to `in_room` and its
+separate `RENT_CRASH` branch, which did the same as the default one, go, and so does `load
+char`'s copy of `in_room` into `was_in_room`. A save of a loaded character that never entered
+(the artifact owner's) finds its room through `calculate_save_room()`, which falls back to
+`was_in_room`, so it saves the same room as before. Under `_PFILE_` the pfile tool has no
+world (`world` is NULL, `real_room()` returns the vnum), so `restoreCharOnly()`'s locker check
+is compiled out there instead of reading `world[vnum]`. No legacy pfile exists locally, so
+`restoreCharOnly()` was compiled and its tool test run, but not fed a real pfile.
+
+Found with it, in its own commit (`eb52ead25`): `camp()` wrote the home room into the
+character `extract_char_after_terminal_save()` had just freed, for "the new nanny"; the menu
+loads the character again from its save, so nothing read it.
+
+Tests: the MariaDB game-loop journey (`make test-db`) sets the offline `Vexmora`'s
+`last_room` to the god's room once `newchar` has stored it, then runs `finger Vexmora`, `load
+char Vexmora` and `look`, and fails if any log holds `people list` or `duplicate insertion`.
+On the unfixed binary it stops at `look`, Vexmora missing from the room.
+`test_locker_boot_rooms.py` pins the redirect writing `was_in_room` only. Live on the fixed
+build: Ratgapp stands in the room after `load char`, and neither line is logged.
+
+Not this cause, and not claimed: #4's three `SanityCheck called from NumAttackers() for
+<name> at NOWHERE!` lines, a living character at `NOWHERE` reached from combat code. The
+loads do not produce one, and it was not reproduced.
+
+### IPv6 in `log_entries` (done)
+
+Migration `0036_log_entries_ipv6` widens `log_entries.ip_address` from `VARCHAR(15)` to
+`VARCHAR(45)`, as `account_ips` has. Its guard reads the column's length and issues no
+`ALTER` once it holds 45, and its verifier checks `VARCHAR(45) NOT NULL DEFAULT ''` on both
+engines (MariaDB reports the empty default as `''`). `sql_log()` keeps 45 bytes. The fresh
+bootstrap holds the new shape; the legacy upgrade path (`run_migration.sh` still creates 15)
+reaches it through 0036, and `run_legacy_migration_mysql.sh` compares the two. The runtime
+head, the history checksum and both engines' fingerprints move: the fingerprints were measured
+by running `run_runtime_compatibility_mysql.sh` on `mysql:8.0` and `mariadb:10.11` with the
+old values (each failed, printing the actual one), then written with the measuring script's
+own `update_contract()`, and both legs passed. `7ff4462f7`.
+
+A socket address prints at most 39 characters (`inet_ntop()` writes dotted IPv4 only for a
+mapped address, which `new_descriptor()` strips to IPv4); 45 also holds the embedded-IPv4
+form, as the work item asked.
+
+**An existing database needs `python3 scripts/migration_runner.py run` before this binary
+boots (COMPAT-E002 otherwise).** The local `duris_dev` was backed up first
+(`~/.local/share/duris-issue-7/duris_dev-before-0036-20261002-213628.sql.gz`), then migrated:
+all 159,541 rows kept, a second run and a rerun of the apply file did nothing, and
+`verify_runtime_compatibility.sh` passed.
+
+Tests: the save-claim MariaDB harness writes a 45-character IPv6 address through
+`log_entry_repository_apply()` and reads it back whole; on master's schema strict mode refuses
+the row. The three tests that pin the head (`test_immutable_migration_runner.py`,
+`test_runtime_boot_compatibility.py`, `test_collector_catalog_schema.py`) name 0036.
+
+Live, the real path: in a private network namespace (`unshare -rn`, its loopback given
+`fd12:3456:789a:bcde:f012:3456:789a:bcde`, the database reached through a socat bridge), the
+server listened on `::1` and the `.env` account logged in from that 39-character address and
+quit. Its `Entered Game` and `Quit Game` rows hold the whole address; the old code kept 15
+characters. The namespace is how a long address was had without opening the server to a
+network.
+
+### A zone-story state above 64 KiB (done)
+
+`9fafc10dd` queued the save on the writer, formatted at its real length, so `qry()`'s 64 KiB
+buffer no longer applies; nothing stored a state that large. `zone_story_state_mysql_harness.cpp`,
+run by `run_player_save_claim_mysql.sh` on the same schema, stores 96 KiB, with quotes,
+backslashes and newlines for the escaping to lengthen, through
+`sql_zone_story_quest_state_save()`, the real `sql_queue()` and the real `sql_execute()`
+(the writer stub runs each job at once on the harness's connection), and reads it back with
+`sql_zone_story_quest_state_load()`. `b131126d0`.
+
+The test cannot fail on the save before `9fafc10dd`: that save called `qry()`, which the
+harness does not link. It pins the path the fix made.
+
+### The gate on the branch head (done)
+
+On `b131126d0`, the code head, run once each: `./scripts/format.sh --all --check` (1031 files
+clean), `make test-all -j16 TEST_JOBS=16` alone (659 of 659, 470 s), then `make test-db` (36
+of 36, 187 s, the `game_loop_queries` journey and the `player_save_claim` leg extended, and
+`legacy_migration` running 0036's `ALTER` on a legacy-upgraded schema) and `npm test --prefix
+site` (14 tests) side by side. Neither suite left `logs/log/dupes` or `logs/log/item_claims`
+behind. `run_runtime_compatibility_mysql.sh` passed on `mysql:8.0` and `mariadb:10.11` with
+the new fingerprints. The backup-recovery container replay was not run: nothing here touches
+what the restore qualifier runs.
+
+The live check on the local server, through `./scripts/start_mud.sh --dev` on `duris_dev` at
+head 0036: `/health` answered `healthy`/`ready`; the `.env` character fingered and loaded
+Necrotest, whose saved room the 2026-09-30 log named, and Necrotest stood in the room with no
+desync or refusal line logged; the character quit, and a SIGTERM ended the server with
+`shutdown [0]` and "Normal termination of game", no persistence alert raised.

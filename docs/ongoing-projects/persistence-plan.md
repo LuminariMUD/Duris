@@ -274,14 +274,18 @@ How each item is done (decided 2026-10-02):
    with the boot load.
 3. The cause: both loads (`player_load_materialize()`, `restoreCharOnly()`) set `in_room` to
    the saved room without `char_to_room()`. A character freed without entering the game
-   (finger, the artifact owner checks, disguise, illusion, the website, an account-menu
-   back-out, the staff pfile scans) then ran `char_from_room()` on a room it was never in,
-   which logged the line and changed that room's light and its zone's count; and `load
-   char` stayed in the game listed in its saved room but missing from its people list,
-   because `char_to_room()` refuses a character that already has a room. Offline characters
-   rent at inns, hence the inn rooms. A loaded character is now in no room: the saved room
-   stays in `was_in_room`, where `enter_game()` already looks first. The MariaDB game-loop
-   journey fingers and loads an offline character saved in the god's room.
+   (finger, the artifact owner checks, disguise, illusion, the website's character
+   deletions, an account-menu back-out, the staff pfile scans) then ran `char_from_room()`
+   on a room it was never in, which logged the line and took a mortal off its zone's PvP
+   misfire count, which it had never been added to; and `load char` stayed in the game
+   listed in its saved room but missing from its people list, because `char_to_room()`
+   refuses a character that already has a room. Offline characters rent at inns, hence the
+   inn rooms. A loaded character is now in no room: the saved room stays in `was_in_room`,
+   where `enter_game()` already looks first. The MariaDB game-loop journey fingers and
+   loads an offline character saved in the god's room.
+
+Done: each item has its record under
+[Phase 5 progress](persistence-done.md#phase-5-progress).
 
 Not an item: a restored player corpse gets a fresh decay timer on every boot
 (`persistence_refresh_restored_corpse()`, `files.c`). That is game behaviour, and it stays
