@@ -15,8 +15,10 @@ and #3, #5 and #6 record what it resolved
 ([record](persistence-done.md#the-work-items-closed-out-done)). Phases 4 to 8 take the open work
 items, one phase each. Phase 4 landed as
 [!6](https://gitlab.com/max757/duris/-/merge_requests/6) in `d6952d701`, its review clean
-([record](persistence-done.md#phase-4-landed-done)). Phase 5 is in progress on
-`fix/4-persistence-phase-5` ([progress](persistence-done.md#phase-5-progress)); Phases 6
+([record](persistence-done.md#phase-4-landed-done)). Phase 5 is done on
+`fix/4-persistence-phase-5` and in review as
+[!7](https://gitlab.com/max757/duris/-/merge_requests/7), tagged
+`persistence/phase-5-review-0` ([progress](persistence-done.md#phase-5-progress)); Phases 6
 to 8 are not started.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
@@ -413,7 +415,9 @@ All hold: the gate passed on `0b90e5fc1`
 In this order: the bugs from the logs; the backup job's cost before Phase 7 measures the loop;
 the world capture last, on the optimised build. Phase 4 (alerts and logs) is done and on master.
 
-1. [Phase 5: bugs from the logs (#4)](#phase-5-bugs-from-the-logs-4).
+1. [Phase 5: bugs from the logs (#4)](#phase-5-bugs-from-the-logs-4): done, in review as
+   [!7](https://gitlab.com/max757/duris/-/merge_requests/7); it leaves this list when it
+   lands.
 2. [Phase 6: backups (#3)](#phase-6-backups-3).
 3. [Phase 7: game-loop performance (#5)](#phase-7-game-loop-performance-5).
 4. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2).

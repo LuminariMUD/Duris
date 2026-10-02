@@ -30,6 +30,9 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   beyond master is the plan's Phases 4 to 8), tagged `persistence/phase-4-review-0`. The
   review found nothing. It landed on 2026-10-02 in `d6952d701`, one `--no-ff` merge of that
   head, with no rebase or squash. Both branches are deleted ([record](#phase-4-landed-done)).
+- Phase 5 is reviewed as [!7](https://gitlab.com/max757/duris/-/merge_requests/7) (source
+  `fix/4-persistence-phase-5`, branched from master `b7105b7d4`), tagged
+  `persistence/phase-5-review-0` on the head with this line.
 - Each later phase works the same way: a branch from master named for its work item, an MR,
   the head the review reads tagged `persistence/phase-<n>-review-0`, a review round's fixes on
   the branch tagged `-1`, `-2` and so on, then one `--no-ff` merge of the last tag.
