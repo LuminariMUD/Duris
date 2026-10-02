@@ -2461,3 +2461,24 @@ it tests `logs/old-logs/` in the checkout. `060890586`.
 
 Tests: `test_flatfile_launcher.py` runs the script's own stop-reason block for 0, 139, 137, 143,
 134, 200 and 3 (on the old script 137 reads `unknown`), and pins the email's path.
+
+### Found on the live boot (done)
+
+The live check of Phase 4 on the local server (`./scripts/start_mud.sh --dev`) raised
+`domain=shopkeeper_save action=dirty_save_failed` at every shutdown: four of the 544 shops
+failed every save and stayed dirty, as they had on the merged master build. Each cause is fixed
+in its own commit:
+
+| Defect | Fix | Commit |
+|---|---|---|
+| A failed shopkeeper save logged only `reason=save_failed`. | The capture or codec result is logged with the shop. | `73ccbd06f` |
+| Shops 4, 111 and 510: the stock capture refused any keeper whose mob does not run `shop_keeper`, and quest and tradeskill keepers run `world_quest` or `learn_tradeskill`. The save's validator already says identity is the shop's binding. | The capture no longer checks the procedure; its caller checks the binding. | `db503bf50` |
+| Shop 521, and any player: a save refused a string over 4096 bytes, and five objects in the world have an extra description up to 8411 bytes (18016, 132677, 132705, 139095, 139149). Every save of whoever held one failed, a player included, with only a capture-failure counter to show for it. | A saved string may be 16384 bytes. Loads, the codec and the `TEXT` columns check the same constant. | `9d14a0d6f` |
+| `make test-all` and `make test-db` wrote synthetic claims and dupes into the checkout's `logs/log/item_claims` and `logs/log/dupes`. | The three tests responsible run their harnesses from a temporary directory. | `52d3a84da` |
+
+Tests: the shopkeeper save test checks the cause line; the capture contract fails if the
+procedure check comes back; the item codec test round-trips an 8411-byte description and fails
+if any string in `areas/obj/*.obj` passes the limit. Live, after the fixes: the `.env`
+character saved holding object 139095, whose description failed shop 521's capture with
+`limit_exceeded` before (a player holding it was not tried on the old build), and the next
+shutdown saved all 544 shops, 4, 111, 510 and 521 included, with no alert.
