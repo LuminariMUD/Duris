@@ -2160,10 +2160,9 @@ Found along the way, each fixed in its own commit:
   now writes the bank's opening baseline from the row it has just written, in the same
   transaction (`INSERT IGNORE`, so it leaves an existing one alone and settles an older bank
   on its next delta). `run_player_save_claim_mysql.sh` (test-db) failed on the new check
-  before the fix and passes after. Not run: a live deposit-and-reboot journey (the journey
-  fixture has no ATM, and every character of the `.env` account shares one side that already
-  has a bank). A database that created banks before this fix and has not touched them since
-  needs their baselines once:
+  before the fix and passes after. The live first-deposit and restart journey now passes too
+  ([record](#a-first-bank-deposit-survives-a-restart-done)). A database that created banks
+  before this fix and has not touched them since needs their baselines once:
   `INSERT IGNORE INTO currency_bank_baseline(bank_id,opening_copper,opening_silver,opening_gold,opening_platinum,opening_revision) SELECT id,bank_copper,bank_silver,bank_gold,bank_platinum,bank_revision FROM account_banks;`
   (`duris_dev` has none missing).
 - **The combat-baseline repair refused every played database** (`4e9137a14`).
@@ -2225,6 +2224,31 @@ On `0b90e5fc1`, run once each: `./scripts/format.sh --all --check` (1030 files c
 on `d737ada3e`, before the docs sweep and the dead branch, also passed (659, 34, 14). No
 failure needed a fix.
 
-Not run: a live deposit-and-reboot journey for the bank baseline fix (see
-[The ledger reconcilers](#the-ledger-reconcilers-done)), and the backup-recovery container
-replay, since nothing here touches what the restore qualifier runs.
+The live first-deposit and restart journey was verified after this gate
+([record](#a-first-bank-deposit-survives-a-restart-done)). The backup-recovery container replay
+was not repeated, since nothing here touches what the restore qualifier runs.
+
+### A first bank deposit survives a restart (done)
+
+On 2026-10-02, `run_mysql_bank_restart_journey.py` passed against the MariaDB server built
+from `2084cc2ff`. It uses a disposable MariaDB 10.11 container, a fresh schema and a new account
+and character, with an ATM and seven platinum in the existing journey fixture. It checks:
+
+- Neither a bank row nor an opening baseline exists before the first deposit.
+- The character picks up the coins and runs `deposit 5 platinum` through the real game
+  connection. The writer records five platinum in both the bank and its opening baseline,
+  with revision zero, and saves the wallet with five fewer platinum.
+- A clean shutdown and restart succeed without any intervening migration or repair. A real
+  login reports the five-platinum bank balance, and a subsequent save and shutdown preserve
+  the bank, wallet and opening baseline.
+
+No server fix was needed. The journey is registered as `bank_restart` in `make test-db`.
+The build (`make -C src -j16`) and this focused journey pass:
+
+```sh
+tests/async/with_disposable_mariadb.sh \
+    python3 tests/async/run_mysql_bank_restart_journey.py bin/server/dms_new
+```
+
+Python and shell syntax checks and `git diff --check` pass. The full gate above was not
+repeated for this test and documentation change.

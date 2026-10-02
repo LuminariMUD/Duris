@@ -9,7 +9,10 @@ This file is the plan: the rules, the design, the three phases, what was cut and
 the list. A decision that changes the framework is written here.
 
 **Status (2026-10-02):** Phases 1, 2 and 3 are done on `fix/7-persistence-phase-3`, which is
-pushed and tagged `persistence/phase-3-review-0` for review. The gate passed on `0b90e5fc1`.
+pushed for review; the review baseline is tagged `persistence/phase-3-review-0`. The gate
+passed on `0b90e5fc1`. The previously unrun live first-bank-deposit and restart journey also
+passes and is now in `make test-db`
+([record](persistence-done.md#a-first-bank-deposit-survives-a-restart-done)).
 
 **Work items:** #7 (player saves and deaths), and the persistence causes behind #5 (game freezes),
 #3 (the player-save journal breaking backups) and #6 (persistence alert storms).
