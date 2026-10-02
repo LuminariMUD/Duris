@@ -570,6 +570,7 @@ specific issue and restart the server after changing them.
 | `GET_TRACE` | any non-empty value except `0`, `false`, or `off` | Debug logging for object pickup paths. |
 | `DURIS_ZONE_RESET_TRACE` | positive integer | Zone-reset tracing. |
 | `DURIS_CORPSE_TRACE` | any non-empty value except `0` | Corpse decay tracing. |
+| `DURIS_PERSISTENCE_TRACE` | any non-empty value except `0` | Routine locker save and boot shopkeeper-restore lines in `logs/log/debug`. Their failure lines are always written. |
 | `DURIS_ACCEPT_DEBUG` | variable present, including an empty value | Connection-accept debug counters. |
 
 `SQL_TRACE` never writes query text, bound values, MySQL error prose, account or

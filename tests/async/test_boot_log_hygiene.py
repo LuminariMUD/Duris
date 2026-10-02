@@ -21,6 +21,29 @@ assert "! -name .gitignore" in cycle
 assert (ROOT / "logs/log/.gitignore").is_file()
 
 
+# --- routine persistence traces are opt-in ----------------------------------
+# A shopkeeper line for each shop on every boot, and locker moves on every save,
+# filled the debug log; DURIS_PERSISTENCE_TRACE turns them on, failures stay on.
+lockers = (SRC / "storage_lockers.c").read_text()
+shop_restore = (SRC / "sql_player.c").read_text()
+for text, line in [(shop_restore, "sql_restore_shopkeepers: shop %d"),
+                   (lockers, "Locker save start:"),
+                   (lockers, "LockerToPFile: saving private chest"),
+                   (lockers, "LockerToPFile: private chest scan complete"),
+                   (lockers, "LockerToPFile: moving public chest contents"),
+                   (lockers, "LockerToPFile: moving loose room object"),
+                   (lockers, "PFileToLocker: moving carried object")]:
+    before = text[:text.index(line)].splitlines()[-8:]
+    assert any("if (persistence_trace_enabled())" in row for row in before), line
+for line in ("LockerToPFile: missing chest object", "LockerToPFile: failed to save private chest",
+             "LockerToPFile: aborting before non-private chest moves"):
+    before = lockers[:lockers.index(line)].splitlines()[-3:]
+    assert not any("persistence_trace_enabled" in row for row in before), line
+utility = (SRC / "utility.c").read_text()
+assert contains(utility, 'getenv("DURIS_PERSISTENCE_TRACE")')
+assert "`DURIS_PERSISTENCE_TRACE`" in (ROOT / "docs/operations/CONFIGURATION.md").read_text()
+
+
 # --- the donation subscriber must not block the game loop --------------------
 # A blocking Redis subscriber socket stalled every idle pulse and showed up as
 # a once-per-second NEVENT SLOW entry in logs/log/status.

@@ -3574,9 +3574,10 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored)
 				}
 				keeper2 = next;
 			}
-		logit(LOG_DEBUG,
-		      "sql_restore_shopkeepers: shop %d vnum %d incumbent_matches=%d extracted=%d",
-		      k->shop_nr, k->mob_vnum, incumbent_matches, extracted);
+		if (persistence_trace_enabled())
+			logit(LOG_DEBUG,
+			      "sql_restore_shopkeepers: shop %d vnum %d incumbent_matches=%d extracted=%d",
+			      k->shop_nr, k->mob_vnum, incumbent_matches, extracted);
 
 		if (restored)
 			*restored = k->mob;

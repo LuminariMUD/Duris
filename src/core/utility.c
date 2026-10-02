@@ -1039,6 +1039,16 @@ void persistence_alert(int level, const char *domain, const char * /* owner */,
 	va_end(args);
 }
 
+bool persistence_trace_enabled(void)
+{
+	static const bool enabled = []
+	{
+		const char *value = getenv("DURIS_PERSISTENCE_TRACE");
+		return value && *value && strcmp(value, "0") != 0;
+	}();
+	return enabled;
+}
+
 unsigned long long persistence_next_item_uid(void)
 {
 	return item_uid_allocator_next();

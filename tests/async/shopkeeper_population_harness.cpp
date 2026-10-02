@@ -129,6 +129,10 @@ void bind_shopkeeper(P_char keeper, int shop_nr)
 		keeper->only.npc->shopkeeper_shop_id = shop_nr;
 }
 void logit(int, const char *, ...) {}
+bool persistence_trace_enabled()
+{
+	return true;
+}
 int real_mobile(int vnum)
 {
 	return vnum >= 100 && vnum <= 102 ? vnum - 100 : -1;
