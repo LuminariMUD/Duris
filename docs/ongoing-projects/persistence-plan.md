@@ -254,13 +254,13 @@ How each item is done (decided 2026-10-02):
    returns when `in_room` and `world[].people` disagree: 19 times in the logs, 11 in inn rooms.
    Reproduce it, find the path that sets `in_room` without `char_to_room()` (rent, camp and
    reconnect restores are the leads), and fix it with a test.
-4. **Owner decision: restored corpse decay.** `persistence_refresh_restored_corpse()` (`files.c`)
-   gives a restored player corpse a fresh decay timer on every boot, so a server restarted more
-   often than that never lets one decay. Keep refreshing, or keep the remaining time with a
-   minimum?
 
-Done when: each bug has a fix and a focused test, the schema change is an additive migration,
-and item 4's decision is recorded here.
+Done when: each bug has a fix and a focused test, and the schema change is an additive
+migration.
+
+Not an item: a restored player corpse gets a fresh decay timer on every boot
+(`persistence_refresh_restored_corpse()`, `files.c`). That is game behaviour, and it stays
+(owner, 2026-10-02).
 
 ## Phase 6: backups (#3)
 

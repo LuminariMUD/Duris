@@ -2385,6 +2385,6 @@ Tests, each failing without its fix:
   and the server shuts down cleanly. Without the fixes the starter kit (a command on the
   writer) never arrives; with `wait_timeout` at 20 seconds, the lock is gone after the idle.
 
-Taking the lock back after a database restart is left as it is: the lock exists to keep a
-second server off the database, and a server that took it back could overwrite what another
-wrote meanwhile. That would be an owner decision; until then a restart of the game recovers.
+The server does not take the lock back by itself after a database restart: the lock keeps a
+second server off the database, and taking it back could overwrite what another server wrote
+meanwhile. Restarting the game recovers.
