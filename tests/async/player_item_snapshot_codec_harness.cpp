@@ -130,6 +130,18 @@ int main()
 	require(player_item_snapshot_list_encode(too_deep, &encoded) ==
 			player_snapshot_codec_result::invalid_value,
 		"over-depth item tree was encoded");
+	// The world's longest item description, 8411 bytes, is saved like any other.
+	auto described = original;
+	described[0].extra_descriptions[0].spellbook = false;
+	described[0].extra_descriptions[0].spell_ids.clear();
+	described[0].extra_descriptions[0].description.assign(8411, 'x');
+	require(player_item_snapshot_list_encode(described, &encoded) ==
+				player_snapshot_codec_result::ok &&
+			player_item_snapshot_list_decode(encoded.data(), encoded.size(),
+							 &decoded) ==
+				player_snapshot_codec_result::ok &&
+			decoded[0].extra_descriptions[0].description.size() == 8411,
+		"an 8411-byte item description did not round trip");
 	auto oversized = original;
 	oversized[0].name.assign(PLAYER_SNAPSHOT_MAX_STRING_BYTES + 1, 'x');
 	require(player_item_snapshot_list_encode(oversized, &encoded) ==
