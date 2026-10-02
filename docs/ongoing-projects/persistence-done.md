@@ -2352,3 +2352,39 @@ description now records what the reset resolved:
   is unchanged in code; its capture-expiry section now stands in the item itself.
 - At the owner's request, what is still open in #6, #4, #3, #5 and #2 became Phases 4 to 8 of the
   plan, one phase per work item.
+
+## Phase 4 progress
+
+Phase 4 ([plan](persistence-plan.md#phase-4-alerts-and-logs-6)) is on `fix/6-persistence-phase-4`,
+branched on 2026-10-02 from `fix/7-persistence-closeout` (`6689c5f20`, the plan's Phases 4 to 8).
+
+### Idle connections (done)
+
+Item 7 asked for a test proving that the pool reconnects after MariaDB closes an idle
+connection. The test found that an idle timeout stopped every write, for two reasons, and a
+third defect behind them. Each is fixed in its own commit:
+
+| Defect | Fix | Commit |
+|---|---|---|
+| Every pool loan probes the runtime lock on the borrowed connection. On a connection MariaDB had closed for idling, the probe failed and the guard latched the lock as lost: the pool lent nothing again, so no save, load or command reached the database, though the main connection still held the lock. A reconnect that failed also dropped its pool slot for good, so a database restart could leave the pool empty. | A probe that fails says nothing of the lock; only an answer naming another owner loses it. The pool opens a new connection for that loan. A failed reconnect keeps the slot for the next loan. `sql_pool_replace_connection()` gives the slot back whenever it returns NULL, as every caller but `apply_with_pool()` already assumed. | `167f1f88a` |
+| The main connection holds the lock, and since Phase 2 step 8 the game thread issues no query on it after boot. MariaDB closes a connection idle past `wait_timeout` (8 hours by default), which released the lock: a server up for more than 8 hours stopped writing. | The main connection sets its session `wait_timeout` to 31536000 seconds before it takes the lock, and boot fails if it cannot. The pool's connections keep the server's timeout and are replaced as above. | `c3db1e6c4` |
+| Once the lock is truly lost (the database restarted or ended the session), nothing said so: `/health` answered ready and no log named the cause. | The first loan that finds the lock lost writes one status-log line, and the pool reports itself inactive, so `/health` answers 503. The server does not take the lock back by itself. | `69f168ed3` |
+
+Tests, each failing without its fix:
+
+- `run_sql_pool_interrupt_mysql.sh` (the real pool on a disposable MariaDB) gained an idle
+  section: the server closes a pooled connection after 1 second, the next loan gets a working
+  one with the lock kept, a refused reconnect keeps the slot, and the loan after it works. Then
+  the owner's session is killed: the next loan is refused, the pool reports itself inactive,
+  and the status log names the lost lock. On the old pool the section fails at the first loan;
+  with only the probe fixed, at the refused reconnect; without the report, at
+  `sql_pool_is_active()`.
+- `run_mysql_idle_timeout_journey.py`, a new `make test-db` journey: `wait_timeout` is 3
+  seconds; the server boots, a character is created and saved, and the server idles past the
+  timeout twice. The lock holds, a save lands, the character quits, logs in and saves again,
+  and the server shuts down cleanly. Without the fixes the starter kit (a command on the
+  writer) never arrives; with `wait_timeout` at 20 seconds, the lock is gone after the idle.
+
+Taking the lock back after a database restart is left as it is: the lock exists to keep a
+second server off the database, and a server that took it back could overwrite what another
+wrote meanwhile. That would be an owner decision; until then a restart of the game recovers.

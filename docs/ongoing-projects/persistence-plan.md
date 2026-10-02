@@ -13,7 +13,9 @@ the list. A decision that changes the framework is written here.
 round ([record](persistence-done.md#phase-3-landed-done)). The reset is finished: #7 is closed,
 and #3, #5 and #6 record what it resolved
 ([record](persistence-done.md#the-work-items-closed-out-done)). Phases 4 to 8 take the open work
-items, one phase each; none is started.
+items, one phase each. Phase 4 is in progress on `fix/6-persistence-phase-4`, branched from
+`fix/7-persistence-closeout` ([record](persistence-done.md#phase-4-progress)); Phases 5 to 8 are
+not started.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
@@ -220,6 +222,26 @@ Done when: logs rotate with size caps and the latency trace has one destination;
 critical-command failure names its command type and reason, and repeats are counted, not
 repeated; `checked_snprintf()` names its call site and reports bytes; the pool test survives an
 idle timeout.
+
+How each item is done (decided 2026-10-02):
+
+1. The completion carries its command's type. The alert's detail is `type=N error=N`: the
+   detail allows numbers only, which keeps player data out, and both numbers are stable (the
+   type is stored with every command, `critical_command.h`).
+2. The wizlog limiter keys on domain and action alone. The persistence log still gets every
+   alert.
+3. `checked_snprintf()` becomes a macro passing `__FILE__` and `__LINE__`, so its call sites
+   do not change and the format is still checked; `checked_snprintf_runtime()` the same.
+4. At boot `cycle_mud.sh` moves `logs/player-log/*` and `logs/latency_trace.log` into
+   `logs/old-logs/<date>/` with `logs/log/*`, then deletes the oldest generations until the
+   archive fits its cap. The pwipe's own player-log move goes, since every boot now does it. The
+   latency trace goes to its file only, not to stderr as well.
+5. One diagnostic switch in the environment, documented with the others in
+   `CONFIGURATION.md`, gates the routine locker and shopkeeper-restore trace lines; their
+   failure lines stay.
+6. A signal exit reads `killed by SIG<NAME>`; 139 stays `crash`.
+7. Item 7 found that an idle timeout stopped every write, and was fixed with its tests first
+   ([record](persistence-done.md#idle-connections-done)).
 
 ## Phase 5: bugs from the logs (#4)
 
