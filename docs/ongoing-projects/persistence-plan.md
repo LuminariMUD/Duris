@@ -13,9 +13,9 @@ the list. A decision that changes the framework is written here.
 round ([record](persistence-done.md#phase-3-landed-done)). The reset is finished: #7 is closed,
 and #3, #5 and #6 record what it resolved
 ([record](persistence-done.md#the-work-items-closed-out-done)). Phases 4 to 8 take the open work
-items, one phase each. Phase 4 is in progress on `fix/6-persistence-phase-4`, branched from
-`fix/7-persistence-closeout` ([record](persistence-done.md#phase-4-progress)); Phases 5 to 8 are
-not started.
+items, one phase each. Phase 4 is done on `fix/6-persistence-phase-4` and in review as
+[!6](https://gitlab.com/max757/duris/-/merge_requests/6), tagged `persistence/phase-4-review-0`
+([record](persistence-done.md#phase-4-progress)); Phases 5 to 8 are not started.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
@@ -383,12 +383,11 @@ All hold: the gate passed on `0b90e5fc1`
 
 ## What is left
 
-In this order: alerts that name their cause first, so the later phases can be diagnosed; the
-backup job's cost before Phase 7 measures the loop; the world capture last, on the optimised
-build.
+In this order: the bugs from the logs; the backup job's cost before Phase 7 measures the loop;
+the world capture last, on the optimised build. Phase 4 (alerts and logs) is done and in review
+as [!6](https://gitlab.com/max757/duris/-/merge_requests/6).
 
-1. [Phase 4: alerts and logs (#6)](#phase-4-alerts-and-logs-6).
-2. [Phase 5: bugs from the logs (#4)](#phase-5-bugs-from-the-logs-4).
-3. [Phase 6: backups (#3)](#phase-6-backups-3).
-4. [Phase 7: game-loop performance (#5)](#phase-7-game-loop-performance-5).
-5. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2).
+1. [Phase 5: bugs from the logs (#4)](#phase-5-bugs-from-the-logs-4).
+2. [Phase 6: backups (#3)](#phase-6-backups-3).
+3. [Phase 7: game-loop performance (#5)](#phase-7-game-loop-performance-5).
+4. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2).

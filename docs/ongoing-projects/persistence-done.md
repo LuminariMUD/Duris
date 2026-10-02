@@ -25,6 +25,11 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   on 2026-10-02 in `21f65de2c`, one `--no-ff` merge of the `-1` head, with no rebase or
   squash, so both tags still name what was reviewed. The branch is deleted
   ([record](#phase-3-landed-done)).
+- Phase 4 is reviewed as [!6](https://gitlab.com/max757/duris/-/merge_requests/6) (source
+  `fix/6-persistence-phase-4`, branched from `fix/7-persistence-closeout`, whose one commit
+  beyond master is the plan's Phases 4 to 8). The head the review reads is tagged
+  `persistence/phase-4-review-0`; a review round's fixes go on the branch and are tagged
+  `-1`, `-2` and so on.
 
 ## Phase 1 progress
 
@@ -2482,3 +2487,26 @@ if any string in `areas/obj/*.obj` passes the limit. Live, after the fixes: the 
 character saved holding object 139095, whose description failed shop 521's capture with
 `limit_exceeded` before (a player holding it was not tried on the old build), and the next
 shutdown saved all 544 shops, 4, 111, 510 and 521 included, with no alert.
+
+### The gate on the branch head (done)
+
+On `3b228a90c`, the code head with these records, run once each: `./scripts/format.sh --all
+--check` (1030 files clean), `make test-all -j16 TEST_JOBS=16` alone (659 of 659, 464 s), then
+`make test-db` (36 of 36, 196 s, with the new `idle_timeout` journey) and `npm test --prefix site`
+(14 tests) side by side. Neither suite left `logs/log/dupes` or `logs/log/item_claims` behind. An
+earlier run of the same gate on `77ecc8d27`, before the live boot's fixes, also passed (659, 36,
+14). The backup-recovery container replay was not run: nothing here touches what the restore
+qualifier runs.
+
+The live check on the local server, through `./scripts/start_mud.sh --dev` on `duris_dev`:
+
+- The boot moved the last run's `logs/log/*`, `logs/player-log/*` and `logs/latency_trace.log`
+  into `logs/old-logs/<date>/`, and `logs/player-log` kept only its `.gitignore`.
+- It wrote no `sql_restore_shopkeepers` or locker trace line (the boot before wrote 544
+  shopkeeper lines) and no latency table to the console, while `logs/latency_trace.log` filled.
+- `/health` answered `healthy`/`ready`; the `.env` character logged in, looked, saved, saved
+  holding object 139095, and quit.
+- A SIGKILL was reported as `Mud stopped, reason: killed by SIGKILL [137]`, and the launcher
+  rotated the logs again and booted a healthy server.
+- A SIGTERM ended it with `shutdown [0]` and "Normal termination of game"; all 544 shops saved
+  and no persistence alert was raised.
