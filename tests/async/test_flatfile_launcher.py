@@ -230,9 +230,32 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
     if rejected.returncode == 0 or "refusing to boot" not in rejected.stdout:
         raise AssertionError("flat-file launcher ignored an unsafe backup target:\n" + rejected.stdout)
 
-    launched = run(script, flat_env, "--minimal")
+    # Every boot moves the last run's logs into logs/old-logs/<date>/ and drops the
+    # oldest generations until the archive fits its cap.
+    logs = project / "logs"
+    (logs / "log").mkdir(exist_ok=True)
+    (logs / "log/status").write_text("last run\n")
+    (logs / "player-log").mkdir(exist_ok=True)
+    (logs / "player-log/wizcmds").write_text("last run\n")
+    (logs / "latency_trace.log").write_text("last run\n")
+    (logs / "old-logs/2000.01.01-00.00.00").mkdir(parents=True)
+    (logs / "old-logs/2000.01.01-00.00.00/status").write_bytes(b"x" * (2 << 20))
+    (logs / "old-logs/2000.01.02-00.00.00").mkdir()
+    (logs / "old-logs/2000.01.02-00.00.00/status").write_text("kept\n")
+    capped_env = dict(flat_env, DURIS_LOG_ARCHIVE_MB="1")
+    launched = run(script, capped_env, "--minimal")
     if launched.returncode != 0 or "Mud stopped, reason: shutdown [0]" not in launched.stdout:
         raise AssertionError("flat-file launcher did not complete without DB tools:\n" + launched.stdout)
+    rotated = [path for path in (logs / "old-logs").iterdir()
+               if path.is_dir() and (path / "latency_trace.log").exists()]
+    if (len(rotated) != 1 or (rotated[0] / "status").read_text() != "last run\n"
+            or (rotated[0] / "player-log/wizcmds").read_text() != "last run\n"):
+        raise AssertionError("the boot did not move the last run's logs into old-logs")
+    if (logs / "latency_trace.log").exists() or any((logs / "player-log").iterdir()):
+        raise AssertionError("the boot left the last run's logs in place")
+    if (logs / "old-logs/2000.01.01-00.00.00").exists() or \
+            not (logs / "old-logs/2000.01.02-00.00.00").exists():
+        raise AssertionError("the archive cap did not drop only the oldest generation")
     forbidden = (
         "database migrations",
         "runtime database compatibility",

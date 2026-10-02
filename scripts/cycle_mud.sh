@@ -96,10 +96,15 @@ STAGED_BUILD_STAMP="$SERVER_BIN_DIR/.dms_new-backend"
 RUNTIME_BUILD_STAMP="$SERVER_BIN_DIR/.dms-backend"
 BINARY_HISTORY_DIR="$SERVER_BIN_DIR/history"
 BINARY_HISTORY_LIMIT="${DMS_BINARY_HISTORY_LIMIT:-5}"
+LOG_ARCHIVE_LIMIT_MB="${DURIS_LOG_ARCHIVE_MB:-1024}"
 
 if ! [[ "$BINARY_HISTORY_LIMIT" =~ ^[0-9]+$ ]]; then
   echo "Warning: invalid DMS_BINARY_HISTORY_LIMIT; using 5"
   BINARY_HISTORY_LIMIT=5
+fi
+if ! [[ "$LOG_ARCHIVE_LIMIT_MB" =~ ^[0-9]+$ ]]; then
+  echo "Warning: invalid DURIS_LOG_ARCHIVE_MB; using 1024"
+  LOG_ARCHIVE_LIMIT_MB=1024
 fi
 
 mkdir -p "$BINARY_HISTORY_DIR"
@@ -273,19 +278,26 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
     fi
   fi
 
-  if [ -d logs/log ]; then
-    #LOGNAME=`date +%b%d-%H%M`
-    mkdir -p "logs/old-logs/$DATESTR"
-    find logs/log -mindepth 1 -maxdepth 1 ! -name .gitignore \
-      -exec mv -t "logs/old-logs/$DATESTR" {} +
-    if [ -f core ]; then
-      mv core "core.$DATESTR"
-    fi
+  # The last run's logs move into logs/old-logs/<date>/, and the oldest of those
+  # go until the archive fits in DURIS_LOG_ARCHIVE_MB. The game opens logs/log/*
+  # with fopen(), which fails silently when the directory is missing; every
+  # logit() write would be dropped.
+  mkdir -p logs/log logs/player-log "logs/old-logs/$DATESTR/player-log"
+  find logs/log -mindepth 1 -maxdepth 1 ! -name .gitignore \
+    -exec mv -t "logs/old-logs/$DATESTR" {} +
+  find logs/player-log -mindepth 1 -maxdepth 1 ! -name .gitignore \
+    -exec mv -t "logs/old-logs/$DATESTR/player-log" {} +
+  if [ -f logs/latency_trace.log ]; then
+    mv logs/latency_trace.log "logs/old-logs/$DATESTR/"
   fi
-
-  # The game opens logs/log/* with fopen(), which fails silently when the
-  # directory is missing; every logit() write would be dropped.
-  mkdir -p logs/log
+  mapfile -t OLD_LOGS < <(find logs/old-logs -mindepth 1 -maxdepth 1 -type d | sort)
+  while (( ${#OLD_LOGS[@]} > 1 && $(du -sm logs/old-logs | cut -f1) > LOG_ARCHIVE_LIMIT_MB )); do
+    rm -rf -- "${OLD_LOGS[0]}"
+    OLD_LOGS=("${OLD_LOGS[@]:1}")
+  done
+  if [ -f core ]; then
+    mv core "core.$DATESTR"
+  fi
 
   echo "Backing up authoritative persistence state..."
   BACKUP_OK=0
@@ -439,12 +451,6 @@ if [ "$RESULT" == 55 ]; then
   if ! ./Players/wipers/wipe_it_all; then
     echo "ERROR: filesystem wipe failed; refusing to report pwipe success" >&2
     exit 1
-  fi
-  echo "Moving player-logs to backup.."
-  if [ -d logs/player-log ]; then
-    #LOGNAME=`date +%b%d-%H%M`
-    mkdir "logs/player-log/$DATESTR"
-    mv logs/player-log/* "logs/player-log/$DATESTR"
   fi
   echo "Wiped!"
 fi

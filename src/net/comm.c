@@ -2323,8 +2323,6 @@ static void run_pulse_reset_phase(game_loop_pulse_context &ctx)
 			statuslog(56,
 				  "LATENCY TRACE: could not open logs/latency_trace.log: errno=%d",
 				  errno);
-		latency_trace_snapshot_dump(stderr, &snapshot);
-		fflush(stderr);
 	}
 	memcpy(&timeout, &opt_time, sizeof(timeout));
 	const suseconds_t usec_spent = (suseconds_t)MIN(
