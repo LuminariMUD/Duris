@@ -4,7 +4,8 @@
 The minimal-world journeys skip corpse restoration, so this one runs the full world: a new
 character takes its own life, the server restarts and restores the corpse where it died, and
 the character loots its mace from it. After another restart the mace is still the
-character's and no longer in the corpse.
+character's and no longer in the corpse. Put back into the corpse, the mace is there after
+a third restart, and the character loots it again.
 """
 
 import os
@@ -41,11 +42,11 @@ def stop(process):
     journey.require(process.returncode == 0, "the server did not stop normally")
 
 
-def corpse_contents(client):
-    # The say marks where the corpse's listing ends.
-    client.send("look in corpse")
-    client.send("say end of corpse")
-    return client.expect("end of corpse", timeout=10)
+def listing(client, command):
+    # The say marks where the listing ends.
+    client.send(command)
+    client.send("say end of listing")
+    return client.expect("end of listing", timeout=10)
 
 
 def run(binary: pathlib.Path) -> None:
@@ -55,8 +56,21 @@ def run(binary: pathlib.Path) -> None:
         run_root = pathlib.Path(run_tmp)
         state_root.chmod(0o700)
         (run_root / "logs/log").mkdir(parents=True)
-        for directory in ("areas", "areas_mini", "docs"):
+        for directory in ("areas_mini", "docs"):
             (run_root / directory).symlink_to(ROOT / directory, target_is_directory=True)
+        # A player corpse holds the weight its player carried, and its shell (object 2,
+        # weight 200) counts against that, so a new character could put nothing back into
+        # its corpse. This run's world gives the shell no weight.
+        (run_root / "areas").mkdir()
+        for entry in (ROOT / "areas").iterdir():
+            if entry.name != "world.obj":
+                (run_root / "areas" / entry.name).symlink_to(entry)
+        world = (ROOT / "areas/world.obj").read_bytes()
+        shell = b"#2\ncorpse~\n&+La corpse&N~\n&+LA corpse is here.&N~\n~\n" \
+                b"24 2 3 30 7 0 73728 0 0 0 0\n0 0 0 0 0 0 0 0\n200 0 100\n"
+        journey.require(world.count(shell) == 1, "corpse prototype fixture changed")
+        (run_root / "areas/world.obj").write_bytes(
+            world.replace(shell, shell.replace(b"\n200 0 100\n", b"\n0 0 100\n")))
         shutil.copytree(ROOT / "lib", run_root / "lib")
         # Quitting outside an inn camps; keep the camp short.
         properties = run_root / "lib/duris.properties"
@@ -98,7 +112,7 @@ def run(binary: pathlib.Path) -> None:
             process = boot(binary, run_root, environment, port, "second.out")
             client = journey.reconnect_character(port, "You rejoin the land of the living",
                                                  expected_room=None)
-            journey.require("a small wooden mace" in corpse_contents(client),
+            journey.require("a small wooden mace" in listing(client, "look in corpse"),
                             "the restored corpse lost the mace")
             client.send("get mace corpse")
             client.expect("You get a small wooden mace", timeout=10)
@@ -116,17 +130,36 @@ def run(binary: pathlib.Path) -> None:
                                                  expected_room=None)
             client.send("inventory")
             client.expect("a small wooden mace", timeout=10)
-            corpse = corpse_contents(client)
+            corpse = listing(client, "look in corpse")
             journey.require("corpse of taverek" in corpse.lower() and
                             "a small wooden mace" not in corpse,
                             "the looted mace came back in the corpse:\n" + corpse)
+            # An item put into a player corpse is the corpse's to save.
+            client.send("put mace corpse")
+            client.expect("Ok.", timeout=10)
+            client.send("quit")
+            client.expect("ACCOUNT MENU", timeout=30)
+            client.send("0")
+            client.close()
+            stop(process)
+
+            # The mace is in the corpse after a restart, not with the character.
+            process = boot(binary, run_root, environment, port, "fourth.out")
+            client = journey.reconnect_character(port, "You break camp and get ready to move on",
+                                                 expected_room=None)
+            journey.require("a small wooden mace" not in listing(client, "inventory"),
+                            "the mace put into the corpse came back to the character")
+            journey.require("a small wooden mace" in listing(client, "look in corpse"),
+                            "the mace put into the corpse was lost at the restart")
+            client.send("get mace corpse")
+            client.expect("You get a small wooden mace", timeout=10)
             client.send("quit")
             client.expect("ACCOUNT MENU", timeout=30)
             client.send("0")
             client.close()
             stop(process)
         except Exception:
-            for name in ("first.out", "second.out", "third.out"):
+            for name in ("first.out", "second.out", "third.out", "fourth.out"):
                 path = run_root / name
                 if path.exists():
                     print(f"==== {name}\n" + path.read_text(errors="replace")[-4000:])

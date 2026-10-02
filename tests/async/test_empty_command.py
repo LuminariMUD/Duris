@@ -29,6 +29,9 @@ PRELUDE = r'''
 #define ITEM_STORAGE 16
 #define ITEM_QUIVER 17
 #define ITEM_MISSILE 18
+#define ITEM_CORPSE 24
+#define CORPSE_FLAGS 1
+#define PC_CORPSE 1
 #define ITEM_NODROP 1
 #define ITEM_ARTIFACT 2
 #define CONT_CLOSED 4
@@ -98,6 +101,8 @@ static void char_light(P_char) {}
 static void room_light(int, int) {}
 static void mark_player_dirty_components(int, int) { ++saves; }
 static void writeSavedItem(P_obj) {}
+static P_obj corpse_saved = nullptr;
+static void writeCorpse(P_obj corpse) { corpse_saved = corpse; }
 '''
 
 DRIVER = r'''
@@ -125,7 +130,7 @@ int main()
     // Everything that fits moves at once and the owner is marked for its next save.
     fill(&source, items, 3);
     start_empty(&actor, &source, &target);
-    assert(count(&source) == 0 && count(&target) == 3 && saves == 1);
+    assert(count(&source) == 0 && count(&target) == 3 && saves == 1 && !corpse_saved);
     assert(output == "You moved 3 items from a bag to a chest.\n");
 
     // Capacity stops the move at the first item that does not fit.
@@ -161,12 +166,25 @@ int main()
     output.clear();
     start_empty(&actor, &closed_source, &closed_target);
     assert(count(&closed_source) == 1 && output.find("could not start") != std::string::npos);
-    puts("empty command: full move, capacity stop, refused item and closed target passed");
+
+    // A player corpse an empty fills is saved; the putter's own save drops the items.
+    obj_data corpse_source, corpse, h;
+    corpse_source.carrier = corpse.carrier = &actor;
+    corpse.type = ITEM_CORPSE;
+    corpse.value[0] = 10;
+    corpse.value[CORPSE_FLAGS] = PC_CORPSE;
+    P_obj loot[] = { &h };
+    fill(&corpse_source, loot, 1);
+    start_empty(&actor, &corpse_source, &corpse);
+    assert(count(&corpse) == 1 && corpse_saved == &corpse);
+    puts("empty command: full move, capacity stop, refused item, closed target and player "
+         "corpse passed");
 }
 '''
 
 parts = [PRELUDE]
-for signature in ("bool bulk_put_destination_available(", "bool bulk_put_permitted(",
+for signature in ("void save_filled_container(", "bool bulk_put_destination_available(",
+                  "bool bulk_put_permitted(",
                   "bool empty_source_available(", "bool empty_target_available(",
                   "bool empty_item_restrictions_allow(", "void start_empty("):
     parts.append(take(signature))

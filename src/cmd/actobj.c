@@ -3271,6 +3271,17 @@ void do_drop(P_char ch, char *argument, int cmd)
 
 namespace
 {
+// A put or empty saves the container it filled when that has a save of its own: a saved
+// item, or a player corpse, whose save takes the items from the putter.
+void save_filled_container(P_obj container)
+{
+	if (GET_ITEM_TYPE(container) == ITEM_STORAGE)
+		writeSavedItem(container);
+	else if (GET_ITEM_TYPE(container) == ITEM_CORPSE &&
+		 IS_SET(container->value[CORPSE_FLAGS], PC_CORPSE))
+		writeCorpse(container);
+}
+
 void report_bulk_put(P_char actor, const bulk_put_state &state, P_obj container)
 {
 	const int total = state.total;
@@ -3308,8 +3319,7 @@ void report_bulk_put(P_char actor, const bulk_put_state &state, P_obj container)
 	mark_player_dirty_components(GET_PID(actor), PLAYER_COMPONENT_STATUS |
 							     PLAYER_COMPONENT_EQUIPMENT |
 							     PLAYER_COMPONENT_INVENTORY);
-	if (GET_ITEM_TYPE(container) == ITEM_STORAGE)
-		writeSavedItem(container);
+	save_filled_container(container);
 }
 
 bool bulk_put_destination_available(P_char actor, P_obj container)
@@ -3667,8 +3677,7 @@ void do_put(P_char ch, char *argument, int /*cmd*/)
 			mark_player_dirty_components(
 				GET_PID(ch), PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_EQUIPMENT |
 						     PLAYER_COMPONENT_INVENTORY);
-		if (GET_ITEM_TYPE(s_obj) == ITEM_STORAGE)
-			writeSavedItem(s_obj);
+		save_filled_container(s_obj);
 	}
 }
 
@@ -7606,8 +7615,7 @@ void start_empty(P_char actor, P_obj source, P_obj target)
 							     PLAYER_COMPONENT_INVENTORY);
 	if (GET_ITEM_TYPE(source) == ITEM_STORAGE)
 		writeSavedItem(source);
-	if (GET_ITEM_TYPE(target) == ITEM_STORAGE)
-		writeSavedItem(target);
+	save_filled_container(target);
 }
 }
 
