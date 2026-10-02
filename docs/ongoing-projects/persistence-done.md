@@ -2527,3 +2527,9 @@ head's; its last two commits only add records to this file and the plan after th
 `fix/6-persistence-phase-4` and `fix/7-persistence-closeout` are deleted, and this worktree
 continues on `fix/4-persistence-phase-5`, branched from master after this record. #6 stays open
 for its server configuration items; its Status line now records what Phase 4 resolved.
+
+## Phase 5 progress
+
+Phase 5 ([plan](persistence-plan.md#phase-5-bugs-from-the-logs-4)) is done on
+`fix/4-persistence-phase-5`, branched on 2026-10-02 from master `b7105b7d4`. Each item below
+gets its record when it lands; an item without one is not done.
