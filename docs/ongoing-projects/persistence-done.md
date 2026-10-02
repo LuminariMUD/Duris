@@ -19,8 +19,9 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   (source `fix/7-persistence-phase-2-step-8`, branched from that merge), tagged
   `persistence/phase-2-step-8-review-0` and `-1`. It landed on 2026-09-30 in `60f56fb5b`, one
   `--no-ff` merge of the `-1` head, with no rebase. The branch is deleted.
-- Phase 3 continues on `fix/7-persistence-phase-3`, branched from `60f56fb5b`. Its MR is in
-  the plan's [What is left](persistence-plan.md#what-is-left).
+- Phase 3 is reviewed as [!5](https://gitlab.com/max757/duris/-/merge_requests/5) (source
+  `fix/7-persistence-phase-3`, branched from `60f56fb5b`), tagged
+  `persistence/phase-3-review-0` and `-1` ([review round 1](#review-round-1-mr-5)).
 
 ## Phase 1 progress
 
@@ -2252,3 +2253,51 @@ tests/async/with_disposable_mariadb.sh \
 
 Python and shell syntax checks and `git diff --check` pass. The full gate above was not
 repeated for this test and documentation change.
+
+### Review round 1 (MR !5)
+
+The review read `949e11dd0`, two commits past `persistence/phase-3-review-0`: a merge of
+master with an identical tree, and the bank restart journey. It found five defects. Each is
+fixed in its own commit on `fix/7-persistence-phase-3`, with a regression test that fails
+without it. The fixed head is tagged `persistence/phase-3-review-1`.
+
+| Finding | Fix | Commit |
+|---|---|---|
+| 1. High: master leaves `critical-command.journal` (and, after a crash during its rewrite, `critical-command.journal.tmp`) in `CRITICAL_COMMAND_JOURNAL_DIR`, which Phase 3 kept for the locker receipts and in which it refused anything else. On every upgraded host the pre-boot backup failed with `journal_filename`, so `cycle_mud.sh` refused to boot, and every generation taken before the upgrade failed the restore qualifier. | The backup and the restore qualifier carry those two files, unread, beside the receipt store; anything else is still refused. Deleting them at startup would not help, since the pre-boot backup runs before the server. `test_backup_review_remediations.py` and the integration test's receipt cases cover both files and a foreign one. | `a591dec4e` |
+| 2. Medium: the restored death intake collected a listed item from whichever player corpse held it. Once another player looted it and died, maintenance took it, and everything under the same root, from that player's corpse. | The preparation requires the listing's own corpse, which its beneficiary and death time name (the death time is the corpse's save id); anywhere else the listing is cancelled as claimed. The payload's owner is that corpse, and only the preparation builds a collect payload, so the repositories (which check the stored owner against it) and the live check need no check of their own: the suggested repository check was left out. The preparation harness covers another player's corpse and the beneficiary's later one. | `7cc9faea4` |
+| 3. Medium: an authority intent master left after a crash named its player death (6) and accounting evidence (7) stores. Recovery returned invalid and kept the intent, so every flat-file commit after it was refused. | Recovery skips those stores' operations, applies the rest and clears the intent; a new commit still cannot name them. The authority harness recovers such an intent. | `327f18e70` |
+| 4. Medium: every bank a server without `d09315a79` created has no opening baseline, touched since or not, and boot refuses before a delta could write one. The deploy note's "not touched since" was wrong. | Migration 0035 backfills them (`INSERT IGNORE ... SELECT`, re-runnable) and its verifier requires full coverage. It changes no table, so the fingerprints stay and the runtime head moves to 0035. The MariaDB bank journey starts at head 0034 with such a bank and checks its baseline after the migration run. | `1fef621ce` |
+| 5. Medium: an item put into a player corpse (`put`, `put all`, `empty`) was saved by neither the corpse nor anything else, so a restart lost it with nothing in the dupe log. | The three command endings save a filled player corpse where they already saved a filled saved item. Unlike coins, items need no putter save first: the ownership key keeps one owner whichever save lands first, and a crash between the two leaves the items in the corpse, so the suggested save-first was left out. The flat-file die, restart and loot journey puts the looted mace back, restarts and loots it again. | `bb497c374` |
+
+Found while fixing finding 3, fixed in its own commit:
+
+- `8a962ac37`: master's flat-file currency command also wrote the player and the account bank
+  in one `.player-domain-transaction` intent, and Phase 3 refused an intent that still held a
+  bank. After a crash mid-command, every player domain operation failed, and deleting the
+  intent would have kept one of the two writes without the other. Recovery decodes and writes
+  the banks again, before the players, as master did. The player-domain harness loads a
+  player through such an intent. No other intent file changed: master's `.currency-transaction`
+  was written only by test builds and recovered at boot.
+
+Left as it is, as game behaviour: a player corpse's capacity is the weight its player carried,
+and the corpse shell (object 2, weight 200) counts against it. A put into a player corpse
+therefore fits only once more than that weight has been looted, so finding 5 needs a corpse
+that has had over 200 looted from it. The journey's world gives the shell no weight.
+
+Verification for this round:
+
+- Each new regression test fails on `949e11dd0` (a throwaway worktree with the new tests):
+  the backup capture refuses the retired journal (`journal_filename`) and the old qualifier
+  exits 1 on it; the preparation harness collects from another player's corpse; the
+  authority and player-domain harnesses leave the older intents unrecovered; the bank
+  journey finds no baseline for the older bank after the migration run. With the old
+  `actobj.c`, the die, restart and loot journey loses the mace at the restart, and the empty
+  command test no longer saves the corpse it filled.
+- The gate, on `bb497c374` with this record: `./scripts/format.sh --all --check` (1030 files
+  clean); `make test-all -j16 TEST_JOBS=16`, 659 of 659 (459 s); then side by side
+  `make test-db`, 35 of 35 (292 s), `npm test --prefix site` (14 tests) and the
+  backup-recovery workflow replayed in a privileged `ubuntu:24.04` container (its policy
+  tests and all five integration tests, including the receipt matrix's retired-journal and
+  foreign-file cases). A first `make test-all` failed two tests, both fixed before the rerun:
+  `test_empty_command.py`, whose harness lifts `start_empty()` and lacked the new call, and the
+  documentation contract, on this record's anchor before the record existed.

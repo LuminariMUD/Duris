@@ -8,11 +8,11 @@ This file is the plan: the rules, the design, the three phases, what was cut and
 (what landed, decisions, tests, verification, commits, bugs found) goes there and the item leaves
 the list. A decision that changes the framework is written here.
 
-**Status (2026-10-02):** Phases 1, 2 and 3 are done on `fix/7-persistence-phase-3`, which is
-pushed for review; the review baseline is tagged `persistence/phase-3-review-0`. The gate
-passed on `0b90e5fc1`. The previously unrun live first-bank-deposit and restart journey also
-passes and is now in `make test-db`
-([record](persistence-done.md#a-first-bank-deposit-survives-a-restart-done)).
+**Status (2026-10-02):** Phases 1, 2 and 3 are done on `fix/7-persistence-phase-3`, in
+review as [!5](https://gitlab.com/max757/duris/-/merge_requests/5). Review round 1 fixed five
+findings and one more upgrade gap, and the gate passed on its head
+([record](persistence-done.md#review-round-1-mr-5)); the fixed head is tagged
+`persistence/phase-3-review-1`.
 
 **Work items:** #7 (player saves and deaths), and the persistence causes behind #5 (game freezes),
 #3 (the player-save journal breaking backups) and #6 (persistence alert storms).
@@ -242,7 +242,8 @@ if a requirement or a concrete risk failed without it. Cut:
 - No persistence code is left that nothing reaches, and the branch passes the gate.
 
 All hold: the gate passed on `0b90e5fc1`
-([record](persistence-done.md#the-gate-on-the-branch-head-done)).
+([record](persistence-done.md#the-gate-on-the-branch-head-done)) and again on review round
+1's head ([record](persistence-done.md#review-round-1-mr-5)).
 
 ## What is left
 
