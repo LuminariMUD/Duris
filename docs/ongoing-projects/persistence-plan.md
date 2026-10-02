@@ -8,11 +8,10 @@ This file is the plan: the rules, the design, the three phases, what was cut and
 (what landed, decisions, tests, verification, commits, bugs found) goes there and the item leaves
 the list. A decision that changes the framework is written here.
 
-**Status (2026-10-02):** Phases 1, 2 and 3 are done on `fix/7-persistence-phase-3`, in
-review as [!5](https://gitlab.com/max757/duris/-/merge_requests/5). Review round 1 fixed five
-findings and one more upgrade gap, and the gate passed on its head
-([record](persistence-done.md#review-round-1-mr-5)); the fixed head is tagged
-`persistence/phase-3-review-1`.
+**Status (2026-10-02):** Phases 1, 2 and 3 are done and on master. Phase 3 landed as
+[!5](https://gitlab.com/max757/duris/-/merge_requests/5) in `21f65de2c` after one review
+round ([record](persistence-done.md#phase-3-landed-done)). The reset is finished; one
+close-out step for its work items remains ([What is left](#what-is-left)).
 
 **Work items:** #7 (player saves and deaths), and the persistence causes behind #5 (game freezes),
 #3 (the player-save journal breaking backups) and #6 (persistence alert storms).
@@ -247,5 +246,11 @@ All hold: the gate passed on `0b90e5fc1`
 
 ## What is left
 
-Nothing. The branch is ready for review; review rounds are recorded in
-[persistence-done.md](persistence-done.md) and tagged `persistence/phase-3-review-<n>`.
+1. **Close out the work items.** Check #7's Done when against master and close it. On #3, #5
+   and #6, record which items the reset resolved and which stay open. Leads to check:
+   - #3: the backup failures from journals changing during the capture (the journals are gone);
+   - #5: the `rent` and `quit` stalls, and the 2-second death-disposition freeze;
+   - #6: the critical-command and corpse-commit alert storms.
+
+   The other items in those issues are not persistence work and stay with them. Work on
+   `fix/7-persistence-closeout`.

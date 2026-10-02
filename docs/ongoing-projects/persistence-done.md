@@ -19,9 +19,12 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   (source `fix/7-persistence-phase-2-step-8`, branched from that merge), tagged
   `persistence/phase-2-step-8-review-0` and `-1`. It landed on 2026-09-30 in `60f56fb5b`, one
   `--no-ff` merge of the `-1` head, with no rebase. The branch is deleted.
-- Phase 3 is reviewed as [!5](https://gitlab.com/max757/duris/-/merge_requests/5) (source
+- Phase 3 was reviewed as [!5](https://gitlab.com/max757/duris/-/merge_requests/5) (source
   `fix/7-persistence-phase-3`, branched from `60f56fb5b`), tagged
-  `persistence/phase-3-review-0` and `-1` ([review round 1](#review-round-1-mr-5)).
+  `persistence/phase-3-review-0` and `-1` ([review round 1](#review-round-1-mr-5)). It landed
+  on 2026-10-02 in `21f65de2c`, one `--no-ff` merge of the `-1` head, with no rebase or
+  squash, so both tags still name what was reviewed. The branch is deleted
+  ([record](#phase-3-landed-done)).
 
 ## Phase 1 progress
 
@@ -2301,3 +2304,25 @@ Verification for this round:
   foreign-file cases). A first `make test-all` failed two tests, both fixed before the rerun:
   `test_empty_command.py`, whose harness lifts `start_empty()` and lacked the new call, and the
   documentation contract, on this record's anchor before the record existed.
+
+### Phase 3 landed (done)
+
+On 2026-10-02 !5 landed in `21f65de2c`. Master had no commits the branch lacked, so the
+merge's tree is the gated review round 1 head's, `18f97f1e1`, and nothing was rerun for it.
+The branch is deleted, and this worktree continues on `fix/7-persistence-closeout`, branched
+from master after this record.
+
+The local `duris_dev` was upgraded the way the deploy note says, as a first upgrade of a
+database a running server wrote. It was at head 0033.
+
+- A `mysqldump` of it went to `~/.local/share/duris-issue-7/`.
+- `python3 scripts/migration_runner.py run` applied 0034 and 0035, and
+  `./migrations/verify_runtime_compatibility.sh` passes. The retired tables are gone. 0035 had
+  nothing to backfill: every bank already had a baseline.
+- `./scripts/start_mud.sh --dev` booted the merged build in about a minute, through the
+  pre-boot backup with the critical journal directory in place, and `/health` answered
+  `healthy`/`ready`.
+- The `.env` character logged in without a degraded load, answered `look` and `score`, and
+  quit.
+- A SIGTERM ended the game normally ("Normal termination of game", `shutdown [0]`). Nothing
+  reached `logs/log/dupes` and no persistence alert was raised.
