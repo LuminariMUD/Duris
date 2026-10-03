@@ -2798,3 +2798,36 @@ record, raised or returned, the same way. `1265b3ff9`.
 Test: `test_persistence_backup.py` fails a scheduled backup with `ENOSPC` an hour after the
 last generation, past the RPO, and with no generation, and compares each whole record. All
 three fail on the old code.
+
+### Receipts that change during the capture (done)
+
+The capture listed and hashed the receipt directory, copied it, required the copy to match the
+listing, ran the authority capture, and then required the directory to match the listing
+again, so a receipt written during the dump failed the run (`journal_changed_during_authority_capture`).
+Traced further, a receipt write failed it too: `flatfile_atomic_write()` writes to
+`.<pid>.receipt.tmp.<pid>.<n>` in the same directory and renames it over the receipt, and the
+listing refused that name (`journal_filename`), or lost it to the rename before hashing it
+(`FileNotFoundError`, an `operation_failed`). Nothing removes one a crash leaves behind, so a
+crash during a receipt write would have failed every backup after it.
+
+The comparison bought no consistency: a receipt is written at once, and the wallet it charges
+reaches the database with a later save. What matters on a restore is which way they disagree.
+A receipt older than the database can say `prepared` for a charge the database holds, and the
+player's next login charges it again; a receipt newer than the database says `paid` for a
+charge the database lacks, and the identification is free, the way a crash loses money rather
+than paying it twice. So the receipts are now copied after the authority capture (the dump
+snapshots at its start, the flat-file copy under its locks), and the copy is checked on its own
+instead of against the directory: a rename replaces a receipt whole, so each copied receipt is
+one whole version. The writer's temporary files are not copied (`RECEIPT_WRITE`). `copytree()`
+keeps symlinks as links, so the copy's own check still refuses one, as the old listing of the
+directory did. The check that `CRITICAL_COMMAND_JOURNAL_DIR` matches the policy moves into
+`backup()` before the capture, so a mismatch still costs no dump. `8277ddc64`.
+
+Tests (`test_persistence_backup.py`): in both modes, with a writer's temporary file in the
+directory, a receipt rewritten during the authority capture is published as rewritten, and the
+temporary file is left out; it pins the writer's name format in `flatfile_store.c`. On the old
+code the temporary file failed it with `journal_filename`, and without it the rewrite failed it
+with `journal_changed_during_authority_capture`. A policy naming another receipt directory than
+`CRITICAL_COMMAND_JOURNAL_DIR` fails before the authority capture is called.
+`test_backup_review_remediations.py` adds a symlinked receipt, refused as `symlink_rejected`,
+which fails with `copytree()`'s default of following links.
