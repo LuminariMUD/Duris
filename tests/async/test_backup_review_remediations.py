@@ -208,6 +208,22 @@ class BackupReviewRemediationTests(Fixture):
         self.assertEqual(retried["generation"], result["generation"])
         self.assertTrue((self.p["root"] / "schedule.json").exists())
 
+    def test_a_pending_replication_retry_verifies_the_generation(self):
+        replica = self.base / "replica"
+        replica.mkdir(mode=0o700)
+        self.p["replica_root"] = replica
+        with mock.patch.object(backup, "replicate",
+                               side_effect=backup.BackupError("replica_mount_missing")):
+            pending = backup.backup(self.p, "flatfile-primary")
+        generation = self.p["root"] / pending["generation"]
+        (generation / "state/players/42").write_bytes(b"corrupted while the replica was down")
+        self.p["replica_root"] = None
+        with self.assertRaisesRegex(backup.BackupError, "generation_checksum_mismatch"):
+            backup.backup(self.p, "flatfile-primary")
+        status = json.loads((self.p["root"] / "status.json").read_text())
+        self.assertEqual((status["generation"], status["result"]),
+                         (pending["generation"], "replication_pending"))
+
     def test_replication_stage_is_removed_when_publication_fails(self):
         source = self.create("flatfile-primary")
         replica = self.base / "replica"

@@ -110,7 +110,8 @@ before refusing to boot.
 Status and the schedule read the generations' manifests and the receipt, never
 their files, so a run costs the same however many generations are kept. A
 generation's checksums and dump are verified in full when it is published, by
-finalize, when it is restored and before it is pruned. Every drill verifies all
+finalize, before its pending replication is retried, when it is restored and
+before it is pruned. Every drill verifies all
 stored generations before it restores the newest, so a corrupted older generation
 fails the drill; `status --require-drill` is what then reports it.
 

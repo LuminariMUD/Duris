@@ -484,8 +484,8 @@ def verify(generation):
 
 def generations(root):
     # Manifests only: a generation is verified in full when it is published or finalized,
-    # restored or pruned, and by the drill. Hashing every stored one here made each run cost
-    # more as generations accumulated.
+    # before its pending replication is retried, when it is restored or pruned, and by the
+    # drill. Hashing every stored one here made each run cost more as generations accumulated.
     result = []
     for path in root.iterdir():
         if GENERATION.fullmatch(path.name):
@@ -631,6 +631,7 @@ def backup(p, mode):
             require(receipt.get("generation") == items[0][0].name,
                     "prior_backup_requires_finalization")
             if receipt.get("result") == "replication_pending":
+                verify(items[0][0])  # It may have changed since its publication.
                 return complete_generation(root, p, items[0][0], "backup")
             require(receipt.get("result") == "ok", "prior_backup_requires_finalization")
         keep = retained(items, p, int(time.time())) if items else set()
