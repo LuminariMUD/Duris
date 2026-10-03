@@ -750,8 +750,12 @@ def main():
                 last = read_json(receipt_path).get("completed", 0) if receipt_path.exists() else 0
                 if time.time() - last >= p["schedule_seconds"]:
                     result = backup(p, os.environ.get("PERSISTENCE_MODE", "mariadb-primary"))
-                    require(result.get("result") == "ok", "authority_not_initialized")
-                    write_json(receipt_path, {"completed": int(time.time())})
+                    # A pending replication is reported as it is; the next run's backup
+                    # retries it without a new capture.
+                    require(result["result"] in {"ok", "replication_pending"},
+                            "authority_not_initialized")
+                    if result["result"] == "ok":
+                        write_json(receipt_path, {"completed": int(time.time())})
                 else:
                     result = status(p)
         else:

@@ -164,6 +164,28 @@ class BackupReviewRemediationTests(Fixture):
         self.assertEqual(status["result"], "ok")
         self.assertEqual(status["replica"], "transport_and_readback_verified")
 
+    def test_schedule_reports_a_pending_replication_as_it_is(self):
+        replica = self.base / "replica"
+        replica.mkdir(mode=0o700)
+        self.p["replica_root"] = replica
+
+        def scheduled(replicated):
+            with mock.patch.object(backup, "replicate", **replicated), \
+                 mock.patch.object(backup, "policy_load", return_value=self.p), \
+                 mock.patch.object(sys, "argv", ["backup", "--policy", "/synthetic/policy", "schedule"]), \
+                 contextlib.redirect_stdout(io.StringIO()) as output:
+                code = backup.main()
+            return code, json.loads(output.getvalue())
+
+        code, result = scheduled({"side_effect": backup.BackupError("replica_mount_missing")})
+        self.assertEqual((code, result["result"]), (1, "replication_pending"))
+        self.assertEqual(result["replica_error"], {"code": "replica_mount_missing"})
+        self.assertFalse((self.p["root"] / "schedule.json").exists())
+        code, retried = scheduled({"return_value": "transport_and_readback_verified"})
+        self.assertEqual((code, retried["result"]), (0, "ok"))
+        self.assertEqual(retried["generation"], result["generation"])
+        self.assertTrue((self.p["root"] / "schedule.json").exists())
+
     def test_replication_stage_is_removed_when_publication_fails(self):
         source = self.create("flatfile-primary")
         replica = self.base / "replica"
