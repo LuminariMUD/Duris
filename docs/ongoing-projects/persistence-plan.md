@@ -19,8 +19,8 @@ items, one phase each. Phase 4 landed as
 [!7](https://gitlab.com/max757/duris/-/merge_requests/7) in `218d0640b` after one review
 round, and #4 is closed ([record](persistence-done.md#phase-5-landed-done)). Phase 6 is done
 on `fix/3-persistence-phase-6` and in review as
-[!8](https://gitlab.com/max757/duris/-/merge_requests/8), tagged
-`persistence/phase-6-review-0` ([progress](persistence-done.md#phase-6-progress)); Phases 7
+[!8](https://gitlab.com/max757/duris/-/merge_requests/8), with review round 1's fixes tagged
+`persistence/phase-6-review-1` ([progress](persistence-done.md#phase-6-progress)); Phases 7
 and 8 are not started.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes

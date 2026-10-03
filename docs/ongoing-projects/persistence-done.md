@@ -38,7 +38,7 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   ([record](#phase-5-landed-done)).
 - Phase 6 is reviewed as [!8](https://gitlab.com/max757/duris/-/merge_requests/8) (source
   `fix/3-persistence-phase-6`, branched from master `2d58826c4`), tagged
-  `persistence/phase-6-review-0` on the head with this line.
+  `persistence/phase-6-review-0` and `-1` ([review round 1](#review-round-1-mr-8)).
 - Each later phase works the same way: a branch from master named for its work item, an MR,
   the head the review reads tagged `persistence/phase-<n>-review-0`, a review round's fixes on
   the branch tagged `-1`, `-2` and so on, then one `--no-ff` merge of the last tag.
@@ -2902,3 +2902,10 @@ Verification for this round:
 - The live writer check again, on the fixed code: four loops of `seed-receipt` rewrote a paid
   receipt about 33,600 times while 5 of 5 real backups of `duris_dev` published, and each
   retained receipt passed `qualify_flatfile_restore --receipts`.
+- The gate on `09e267fff`, the fixed head with this round's record, run once each:
+  `./scripts/format.sh --all --check` (1031 files clean); `make test-all -j16 TEST_JOBS=16`
+  alone (659 of 659, 615 s); `npm test --prefix site` (14 tests); and the backup-recovery job
+  replayed in the privileged container on a clone of `09e267f` (the four policy and filesystem
+  tests, and `test_persistence_backup_integration.py` 5 of 5). Not run again: `make test-db`,
+  which runs nothing these fixes touch, and passed on the review's code head
+  ([record](#the-gate-on-the-branch-head-done-3)).
