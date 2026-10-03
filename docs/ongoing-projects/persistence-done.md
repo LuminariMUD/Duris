@@ -2715,3 +2715,9 @@ recorded (a restored player corpse keeps refreshing its decay). Its three `Sanit
 from NumAttackers() ... at NOWHERE!` lines were not reproduced and are not the loads'
 ([record](#characters-missing-from-their-rooms-people-list-done)); a new work item takes them
 if they recur on this build.
+
+## Phase 6 progress
+
+Phase 6 ([plan](persistence-plan.md#phase-6-backups-3)) is done on `fix/3-persistence-phase-6`,
+branched on 2026-10-03 from master `2d58826c4`. Each item below gets its record when it lands;
+an item without one is not done.
