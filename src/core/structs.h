@@ -1238,6 +1238,7 @@ struct pc_only_data
 { /* values only used by PCs        */
 	OutputPreferenceState output_preferences;
 	player_held_pet_state *held_pets; // owned snapshots; never active followers
+	uint64_t unloaded_components; // checkpoint components its load did not read; not saved
 	int pid; // replacement for PC's ->nr
 
 	char *poofIn;

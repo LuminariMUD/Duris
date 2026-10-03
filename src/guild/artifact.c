@@ -1933,11 +1933,6 @@ void poof_artifact(P_obj arti)
 			obj_from_obj(arti);
 			obj_to_char(arti, owner);
 		}
-		act("Your $p vanishes with a bright flash of light!", FALSE, owner, arti, 0,
-		    TO_CHAR);
-		act("$n's $p suddenly vanishes in a bright flash of light!", FALSE, owner, arti, 0,
-		    TO_ROOM);
-		do_shout(owner, writable_arg("Ouch!"), 0);
 		break;
 	case LOC_WORN:
 		owner = cont->loc.wearing;
@@ -1946,11 +1941,6 @@ void poof_artifact(P_obj arti)
 			obj_from_obj(arti);
 			obj_to_char(arti, owner);
 		}
-		act("Your $p vanishes with a bright flash of light!", FALSE, owner, arti, 0,
-		    TO_CHAR);
-		act("$n's $p suddenly vanishes in a bright flash of light!", FALSE, owner, arti, 0,
-		    TO_ROOM);
-		do_shout(owner, writable_arg("Ouch!"), 0);
 		break;
 	case LOC_INSIDE:
 		logit(LOG_ARTIFACT, "poof_artifact: Bad loc arti(%d)-container(%d) inside nothing.",
@@ -1958,6 +1948,16 @@ void poof_artifact(P_obj arti)
 	case LOC_NOWHERE:
 	default:
 		break;
+	}
+	// An owner loaded off the loop (player_load_offline()) is in no room and has no one to
+	// tell; do_shout() reads the shouter's room.
+	if (owner && owner->in_room != NOWHERE)
+	{
+		act("Your $p vanishes with a bright flash of light!", FALSE, owner, arti, 0,
+		    TO_CHAR);
+		act("$n's $p suddenly vanishes in a bright flash of light!", FALSE, owner, arti, 0,
+		    TO_ROOM);
+		do_shout(owner, writable_arg("Ouch!"), 0);
 	}
 	if (cont == arti)
 	{

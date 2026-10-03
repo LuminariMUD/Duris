@@ -385,11 +385,12 @@ int main()
 		"a guild locker's row names its guild");
 
 	// sql_log() queues its row on the writer: it is written with the time it was logged,
-	// and its text is escaped on the writer's connection.
+	// and its text is escaped on the writer's connection. An IPv6 address of the longest
+	// form (45 characters) is kept whole.
 	log_entry_snapshot entry;
 	entry.logged_at = 1700000000;
 	entry.kind = "CONNECTLOG";
-	entry.ip_address = "127.0.0.1";
+	entry.ip_address = "2001:0db8:85a3:0000:0000:8a2e:192.168.100.200";
 	entry.pid = 1;
 	entry.player_name = "Claimer";
 	entry.zone_number = 30;
@@ -401,7 +402,8 @@ int main()
 			       "SELECT CONCAT(UNIX_TIMESTAMP(date),'|',kind,'|',ip_address,'|',pid,'|',"
 			       "player_name,'|',zone_number,'|',room_vnum,'|',message) FROM "
 			       "log_entries") ==
-				"1700000000|CONNECTLOG|127.0.0.1|1|Claimer|30|3001|Quit Game: it's a "
+				"1700000000|CONNECTLOG|2001:0db8:85a3:0000:0000:8a2e:192.168.100.200|1|"
+				"Claimer|30|3001|Quit Game: it's a "
 				"\\ test",
 		"a log row keeps its time and text: " +
 			scalar(test_connection, "SELECT message FROM log_entries"));

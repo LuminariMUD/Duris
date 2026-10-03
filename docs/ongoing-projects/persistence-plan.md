@@ -15,8 +15,11 @@ and #3, #5 and #6 record what it resolved
 ([record](persistence-done.md#the-work-items-closed-out-done)). Phases 4 to 8 take the open work
 items, one phase each. Phase 4 landed as
 [!6](https://gitlab.com/max757/duris/-/merge_requests/6) in `d6952d701`, its review clean
-([record](persistence-done.md#phase-4-landed-done)). Phase 5 is next, on
-`fix/4-persistence-phase-5`; Phases 5 to 8 are not started.
+([record](persistence-done.md#phase-4-landed-done)). Phase 5 is done on
+`fix/4-persistence-phase-5` and in review as
+[!7](https://gitlab.com/max757/duris/-/merge_requests/7), tagged
+`persistence/phase-5-review-0` ([progress](persistence-done.md#phase-5-progress)); Phases 6
+to 8 are not started.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
@@ -261,6 +264,31 @@ Done: each item has its record under
 Done when: each bug has a fix and a focused test, and the schema change is an additive
 migration.
 
+How each item is done (decided 2026-10-02):
+
+1. Migration `0036_log_entries_ipv6` widens the column with a guard that issues no `ALTER`
+   once it holds 45; its verifier checks the shape. The bootstrap, the runtime head and both
+   engines' fingerprints (measured with `run_runtime_compatibility_mysql.sh` on `mysql:8.0`
+   and `mariadb:10.11`) move with it, and `sql_log()` keeps 45 bytes. The MariaDB save-claim
+   harness writes a 45-character IPv6 address.
+2. A harness on the save-claim leg's MariaDB stores a state above 64 KiB through
+   `sql_zone_story_quest_state_save()`, `sql_queue()` and `sql_execute()`, and reads it back
+   with the boot load.
+3. The cause: both loads (`player_load_materialize()`, `restoreCharOnly()`) set `in_room` to
+   the saved room without `char_to_room()`. A character freed without entering the game
+   (finger, the artifact owner checks, disguise, illusion, the website's character
+   deletions, an account-menu back-out, the staff pfile scans) then ran `char_from_room()`
+   on a room it was never in, which logged the line and took a mortal off its zone's PvP
+   misfire count, which it had never been added to; and `load char` stayed in the game
+   listed in its saved room but missing from its people list, because `char_to_room()`
+   refuses a character that already has a room. Offline characters rent at inns, hence the
+   inn rooms. A loaded character is now in no room: the saved room stays in `was_in_room`,
+   where `enter_game()` already looks first. The MariaDB game-loop journey fingers and
+   loads an offline character saved in the god's room.
+
+Done: each item has its record under
+[Phase 5 progress](persistence-done.md#phase-5-progress).
+
 Not an item: a restored player corpse gets a fresh decay timer on every boot
 (`persistence_refresh_restored_corpse()`, `files.c`). That is game behaviour, and it stays
 (owner, 2026-10-02).
@@ -387,7 +415,9 @@ All hold: the gate passed on `0b90e5fc1`
 In this order: the bugs from the logs; the backup job's cost before Phase 7 measures the loop;
 the world capture last, on the optimised build. Phase 4 (alerts and logs) is done and on master.
 
-1. [Phase 5: bugs from the logs (#4)](#phase-5-bugs-from-the-logs-4).
+1. [Phase 5: bugs from the logs (#4)](#phase-5-bugs-from-the-logs-4): done, in review as
+   [!7](https://gitlab.com/max757/duris/-/merge_requests/7); it leaves this list when it
+   lands.
 2. [Phase 6: backups (#3)](#phase-6-backups-3).
 3. [Phase 7: game-loop performance (#5)](#phase-7-game-loop-performance-5).
 4. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2).

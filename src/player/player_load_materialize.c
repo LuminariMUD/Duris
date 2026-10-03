@@ -446,6 +446,10 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 	for (const player_snapshot_integer &entry : result.snapshot.status_integers)
 		apply_integer(ch, entry, &hit_difference);
 	ch->only.pc->pid = result.pid;
+	// An offline load reads no pets (and some no items); its saves must not write them,
+	// since writing a component replaces every stored row of it.
+	ch->only.pc->unloaded_components = PLAYER_CHECKPOINT_COMPONENT_ALL &
+					   ~result.snapshot.components;
 	if (!gameplay_read_state_publish(
 		    &ch->only.pc->gameplay_reads, result.recent_pvp_deaths.data(),
 		    result.recent_pvp_deaths.size(), result.completed_epic_zones.data(),
@@ -456,11 +460,13 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 	}
 	ch->player.time.saved = result.saved_at;
 	ch->player.time.logon = time(nullptr);
+	// A loaded character is in no room until it enters the game (enter_game() starts from
+	// was_in_room). One left in in_room would be taken out of a room it never entered when
+	// it is freed, and char_to_room() refuses it.
 	ch->specials.was_in_room = result.snapshot.room_vnum;
-	ch->in_room = real_room(result.snapshot.room_vnum);
-	if (ch->in_room != NOWHERE && IS_ROOM(ch->in_room, ROOM_LOCKER))
+	const int locker_room = real_room(result.snapshot.room_vnum);
+	if (locker_room != NOWHERE && IS_ROOM(locker_room, ROOM_LOCKER))
 	{
-		const int locker_room = ch->in_room;
 		int exit_room = NOWHERE;
 		if (world[locker_room].dir_option[0] &&
 		    world[locker_room].dir_option[0]->to_room != NOWHERE)
@@ -474,7 +480,6 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 			logit(LOG_DEBUG,
 			      "player_load_materialize: location=locker outcome=redirected");
 			ch->specials.was_in_room = world[exit_room].number;
-			ch->in_room = exit_room;
 		}
 	}
 	GET_COPPER(ch) = result.domains.wallet[0];

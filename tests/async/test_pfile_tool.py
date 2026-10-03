@@ -132,5 +132,9 @@ files = (ROOT / "src/core/files.c").read_text()
 restore = files[files.index("int restoreCharOnly(P_char ch, char *name)\n{"):]
 restore = restore[: restore.index("\n}\n")]
 assert "sql_" not in restore, "restoreCharOnly() still reads the database"
+# The staff pfile commands take the character from mm_get(), which zeroes in_room to real
+# room 0, and free_char() it whether or not the load worked: it is in no room before the
+# first failure can return.
+assert restore.index("ch->in_room = NOWHERE;") < restore.index("if (stat(Gbuf1, &statbuf)")
 
 print("pfile tool contracts hold")

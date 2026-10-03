@@ -126,6 +126,11 @@ copies each such bank's current row into its baseline (`INSERT IGNORE ... SELECT
 it leaves existing baselines alone and re-runs), and its verifier requires every bank
 to have one.
 
+Migration 0036 widens `log_entries.ip_address` from `VARCHAR(15)` to `VARCHAR(45)`, as
+`account_ips` has: `sql_log()` cut every IPv6 address to fit. The guard reads the column's
+length and issues no `ALTER` once it holds 45, so the step re-runs, and its verifier checks
+the shape. An existing database must apply it before the updated binary boots.
+
 ## Post-baseline migration contract
 
 Files live under `migrations/immutable/` and are listed explicitly in the manifest.

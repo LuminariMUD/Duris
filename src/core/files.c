@@ -2402,6 +2402,10 @@ int restoreCharOnly(P_char ch, char *name)
 	{
 		return -1;
 	}
+	// A loaded character is in no room (see player_load_materialize()), a failed one too:
+	// the staff pfile commands take ch from mm_get(), whose zeroed in_room is a real room,
+	// and free it either way.
+	ch->in_room = NOWHERE;
 
 	strcpy(buff, name);
 	for (buf = buff; *buf; buf++)
@@ -2507,14 +2511,13 @@ int restoreCharOnly(P_char ch, char *name)
 	room = GET_INTE(buf); /*
 	                       * virtual room they saved/rented in
 	                       */
+	// was_in_room is the room it comes back to. The pfile tool has no world to look the room
+	// up in.
+	ch->specials.was_in_room = room;
 #ifndef _PFILE_
-	ch->in_room = real_room(room);
-#else
-	ch->in_room = room;
-#endif
-	if (ch->in_room != NOWHERE && IS_ROOM(ch->in_room, ROOM_LOCKER))
+	const int locker_room = real_room(room);
+	if (locker_room != NOWHERE && IS_ROOM(locker_room, ROOM_LOCKER))
 	{
-		int locker_room = ch->in_room;
 		int exit_room = NOWHERE;
 
 		if (world[locker_room].dir_option[0] &&
@@ -2543,9 +2546,9 @@ int restoreCharOnly(P_char ch, char *name)
 			      exit_room,
 			      (world[exit_room].name) ? world[exit_room].name : "<unnamed>");
 			ch->specials.was_in_room = world[exit_room].number;
-			ch->in_room = exit_room;
 		}
 	}
+#endif
 
 	GET_LONG(buf);
 	start = (int)(buf - buff);

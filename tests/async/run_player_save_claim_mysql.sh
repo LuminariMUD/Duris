@@ -63,3 +63,15 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fd
     -Wl,--gc-sections "${MYSQL_LIBS[@]}" -lcrypto \
     -o "$ROOT/bin/tests/player_load_filter_mysql_harness"
 "$ROOT/bin/tests/player_load_filter_mysql_harness"
+
+# The zone-story state is saved through sql_queue() on the writer: a state above 64 KiB
+# is stored whole on the same schema.
+g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fdata-sections \
+    -Isrc "${MYSQL_CFLAGS[@]}" tests/async/zone_story_state_mysql_harness.cpp \
+    src/sql/zone_story_quest_state_repository.c src/sql/sql_async.c \
+    src/player/player_snapshot_repository.c src/player/player_snapshot_codec.c \
+    src/item/item_claim_repository.c src/item/item_claim.c src/persistence/dupe_log.c \
+    src/sql/item_extra_descr_codec.c src/persistence/persistence_observability.c \
+    -Wl,--gc-sections "${MYSQL_LIBS[@]}" -lcrypto \
+    -o "$ROOT/bin/tests/zone_story_state_mysql_harness"
+"$ROOT/bin/tests/zone_story_state_mysql_harness"
