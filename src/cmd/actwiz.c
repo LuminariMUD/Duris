@@ -8613,21 +8613,6 @@ void concat_which_flagsde(const char *flagType, const flagDef flagNames[], char 
 	strcat(buf, "\n\n");
 }
 
-bool check_flags(int *value, const char **flagNames, const char *flagName)
-{
-	int i;
-
-	for (i = 0; str_cmp(flagNames[i], flagName) && (flagNames[i][0] != '\n'); i++)
-		;
-
-	if (flagNames[i][0] == '\n')
-		return FALSE;
-
-	*value = i;
-
-	return TRUE;
-}
-
 bool check_flagsde(int *value, const flagDef flagNames[], const char *flagName)
 {
 	int i;
