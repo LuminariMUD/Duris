@@ -20,8 +20,10 @@ items, one phase each. Phase 4 landed as
 round, and #4 is closed ([record](persistence-done.md#phase-5-landed-done)). Phase 6 landed as
 [!8](https://gitlab.com/max757/duris/-/merge_requests/8) in `1a4b15f9d` after one review
 round; #3 stays open for its server configuration
-([record](persistence-done.md#phase-6-landed-done)). Phase 7 is next, on
-`fix/5-persistence-phase-7`; Phases 7 and 8 are not started.
+([record](persistence-done.md#phase-6-landed-done)). Phase 7 is under way on
+`fix/5-persistence-phase-7`: items 1 and 2 are done, item 3 (the optimised production
+build) is in progress ([what is left](#what-is-left),
+[record](persistence-done.md#phase-7-progress)). Phase 8 is not started.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
@@ -374,6 +376,36 @@ Done when: `rent`, `quit` and the hourly event stay under a set budget under loa
 it; every slow event names its callback; the production profile builds optimised, with the tick
 latency before and after recorded.
 
+How each item is done (decided 2026-10-03):
+
+1. One journey is the measurement and the pin: `test_mysql_game_loop_budget_journey.py`, in
+   `make test-db`. It boots the full world on a disposable MariaDB; scripted mortals on their
+   own accounts play, camp out with `quit` and rent at an inn while the first hourly event
+   runs, and a god rents with 88 items. The budget is one pulse, 250 ms, for the rents, the
+   camps and the hourly event alike, and it is read from the loop's own records
+   (`MUD TICK TOOK TOO LONG`, the event analytics), not timed from outside. `--players` and
+   `--hours` scale it into the load a build is measured with; it prints the trace's tick,
+   event and command times, the deferred events and the costliest callbacks. What the
+   measurement found is fixed in this phase, each with its test:
+   - The hourly event still held the loop for 1.4 to 1.6 s, once after every boot. A boot
+     leaves every shop dirty, and the hourly save walked the whole character list for each
+     shop. It now finds every keeper in one walk.
+   - The event debt came from the default limit of 4000 callbacks a pulse, which ended
+     pulses at a tenth of the 25 ms time budget. The default is now no count limit: time is
+     the limit, as [ARCHITECTURE.md](../reference/ARCHITECTURE.md#event-wheel) already said
+     it should be. `DURIS_NEVENT_MAX_CALLBACKS` still sets one.
+   - The maintenance scheduler's worker retried a failed write of its state file without a
+     pause, and held a core for as long as it failed (every full-world test fixture, or a
+     full disk). It waits a second.
+   `rent`, `quit` and the camp's save were already inside the budget: the persistence reset
+   took their database waits away.
+2. The names file lists local and weak functions with the global ones, and keeps a name in
+   an anonymous namespace. Both launchers write it with `scripts/event_names.sh`. Registering
+   names at `add_event` time was not needed: it would touch every call site and misname a
+   callback passed through a wrapper.
+3. `-Og` stays the development level and production builds at `-O2`. The warning profile
+   holds at both levels: what `-O2` newly reports is fixed, not excepted.
+
 ## Phase 8: world recovery (#2)
 
 1. **Captures above 64 MiB fail.** `append_record()` (`world_recovery_pipeline.c`) refuses any
@@ -455,5 +487,25 @@ In this order: the game loop, measured now that the backup job no longer compete
 world capture last, on the optimised build. Phases 4 (alerts and logs), 5 (bugs from the logs)
 and 6 (backups) are done and on master.
 
-1. [Phase 7: game-loop performance (#5)](#phase-7-game-loop-performance-5).
+1. [Phase 7: game-loop performance (#5)](#phase-7-game-loop-performance-5), on
+   `fix/5-persistence-phase-7`. Items 1 and 2 are done
+   ([record](persistence-done.md#phase-7-progress)). Left, in this order:
+   1. **Item 3, the production build at `-O2`.** With `-O2` the warning profile reports 84
+      diagnostics at about 60 sites that `-Og` does not see (null dereference, maybe
+      uninitialised, format and string truncation, array bounds, strict overflow). To list
+      them: `make -C src -j16 -k BUILD_PROFILE=production EXTRA_CFLAGS=-O2
+      OBJDIR=$PWD/bin/analysis/prod-O2/objects SERVER_BIN_DIR=$PWD/bin/analysis/prod-O2
+      DMS_BINARY=$PWD/bin/analysis/prod-O2/dms_new`. Fix each at its cause, in both
+      backends (`PERSISTENCE_BACKEND=flatfile` too), then move `-Og` out of
+      `HARDENING_FLAGS` into the development profile, give production `-O2`, and update
+      `docs/guides/BUILDING.md`.
+   2. **The tick latency before and after**, on the same load: build production from the
+      final head at `-Og` (`EXTRA_CFLAGS=-Og`) and at `-O2`, and run each with
+      `tests/async/with_disposable_mariadb.sh python3
+      tests/async/test_mysql_game_loop_budget_journey.py --server <dms_new> --players 30
+      --hours 2`. Record both in persistence-done.md beside the run on the code before
+      this phase.
+   3. The gate on the branch head (`./scripts/format.sh --all --check`,
+      `make test-all -j16 TEST_JOBS=16`, `make test-db`), the head tagged
+      `persistence/phase-7-review-0`, and the MR.
 2. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2).
