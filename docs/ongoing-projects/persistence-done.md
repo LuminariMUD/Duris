@@ -30,9 +30,12 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   beyond master is the plan's Phases 4 to 8), tagged `persistence/phase-4-review-0`. The
   review found nothing. It landed on 2026-10-02 in `d6952d701`, one `--no-ff` merge of that
   head, with no rebase or squash. Both branches are deleted ([record](#phase-4-landed-done)).
-- Phase 5 is reviewed as [!7](https://gitlab.com/max757/duris/-/merge_requests/7) (source
+- Phase 5 was reviewed as [!7](https://gitlab.com/max757/duris/-/merge_requests/7) (source
   `fix/4-persistence-phase-5`, branched from master `b7105b7d4`), tagged
-  `persistence/phase-5-review-0` and `-1` ([review round 1](#review-round-1-mr-7)).
+  `persistence/phase-5-review-0` and `-1` ([review round 1](#review-round-1-mr-7)). It landed
+  on 2026-10-03 in `218d0640b`, one `--no-ff` merge of the `-1` head, with no rebase or
+  squash, so both tags still name what was reviewed. The branch is deleted
+  ([record](#phase-5-landed-done)).
 - Each later phase works the same way: a branch from master named for its work item, an MR,
   the head the review reads tagged `persistence/phase-<n>-review-0`, a review round's fixes on
   the branch tagged `-1`, `-2` and so on, then one `--no-ff` merge of the last tag.
@@ -2533,7 +2536,7 @@ for its server configuration items; its Status line now records what Phase 4 res
 
 ## Phase 5 progress
 
-Phase 5 ([plan](persistence-plan.md#phase-5-bugs-from-the-logs-4)) is done on
+Phase 5 ([plan](persistence-plan.md#phase-5-bugs-from-the-logs-4)) was done on
 `fix/4-persistence-phase-5`, branched on 2026-10-02 from master `b7105b7d4`. Each item below
 gets its record when it lands; an item without one is not done.
 
@@ -2693,3 +2696,22 @@ Verification for this round:
   `npm test --prefix site` (nothing under `site/` changed), `run_runtime_compatibility_mysql.sh`
   (no schema change: `unloaded_components` lives in memory) and the backup-recovery replay
   (nothing the restore qualifier runs changed).
+
+### Phase 5 landed (done)
+
+On 2026-10-03 !7 landed in `218d0640b`, one `--no-ff` merge of `0d3fcd4ee`, the review round 1
+head (`persistence/phase-5-review-1`). Master had no commits the branch lacked, so the merge's
+tree is that head's, gated in the round ([record](#review-round-1-mr-7)), and nothing was rerun
+for it.
+
+Migration 0036 comes with it: a database must run `python3 scripts/migration_runner.py run`
+before the merged binary boots. The local `duris_dev` has been at 0036 since the phase
+([record](#ipv6-in-logentries-done)).
+
+`fix/4-persistence-phase-5` is deleted, and this worktree continues on
+`fix/3-persistence-phase-6`, branched from master after this record. #4 is closed: sections 1
+to 3 are fixed and tested here, section 4 was fixed by the reset, and section 5's decision is
+recorded (a restored player corpse keeps refreshing its decay). Its three `SanityCheck called
+from NumAttackers() ... at NOWHERE!` lines were not reproduced and are not the loads'
+([record](#characters-missing-from-their-rooms-people-list-done)); a new work item takes them
+if they recur on this build.
