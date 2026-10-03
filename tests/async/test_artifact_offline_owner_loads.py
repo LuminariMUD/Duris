@@ -55,6 +55,11 @@ missing = body("static bool poof_offline_artifact(")
 assert missing.index("if (!name)") < missing.index("artifact_expire(vnum);") < missing.index(
     "player_load_offline(")
 assert "artifact_expire(vnum);" in body("static void poof_loaded_owner(")
+# A loaded owner is in no room. poof_artifact() tells and shouts only for an owner in one:
+# do_shout() reads the shouter's room, which for a loaded owner was world[-1].
+poofed = body("void poof_artifact(P_obj arti)\n{")
+assert poofed.count("do_shout(owner") == 1
+assert poofed.index("if (owner && owner->in_room != NOWHERE)") < poofed.index("do_shout(owner")
 
 # The lists read each owner's side with the rows (MariaDB) or from its identity (flat-file).
 assert "LEFT JOIN player_data p ON p.pid = a.location" in artifact
