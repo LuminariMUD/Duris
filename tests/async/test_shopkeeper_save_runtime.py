@@ -38,6 +38,7 @@ preamble = r'''
 #include <cstring>
 #include <ctime>
 #include <string>
+#include <unordered_map>
 #include <vector>
 constexpr int NOWHERE = -1, LOG_DEBUG = 0, MAX_WEAR = 2;
 struct Character;
@@ -46,10 +47,18 @@ struct Object { Object *next_content = nullptr; unsigned long obj_uid = 0; };
 using P_obj = Object *;
 using mob_proc = int (*)(P_char, P_char, int, char *);
 struct npc_data { int shopkeeper_shop_id = -1; };
+// Counts each step along the character list.
+int next_reads = 0;
+struct CountedNext {
+    Character *value = nullptr;
+    CountedNext &operator=(Character *character) { value = character; return *this; }
+    operator Character *() const { ++next_reads; return value; }
+};
 struct Character {
     int rnum = 0, in_room = 0, birthplace = 0;
     bool npc = true;
-    Character *next = nullptr, *next_in_room = nullptr, *master = nullptr;
+    CountedNext next;
+    Character *next_in_room = nullptr, *master = nullptr;
     npc_data npc_storage = {};
     struct { npc_data *npc; } only;
     P_obj equipment[MAX_WEAR] = {}, carrying = nullptr;
@@ -252,7 +261,17 @@ int main() {
     keeper.in_room=0; keeper.only.npc->shopkeeper_shop_id=-1; queue_ok=false;
     assert(writeShopKeeper(&keeper,0)==0 && shops[0].dirty);
     queue_ok=true; assert(writeShopKeeper(&keeper,0)==1 && !shops[0].dirty);
-    std::puts("production shopkeeper save/flush: explicit identity, non-shop procs, roaming room0, retained dirty, controlled exclusion, terminal failures PASS");
+    // One walk of the character list serves every dirty shop: a walk for each held the
+    // game loop for over a second at the first hourly save after a boot.
+    number_of_shops=2; shops[0].keeper=0; shops[1].keeper=1;
+    shops[0].shop_is_roaming=shops[1].shop_is_roaming=0;
+    shops[0].in_room=100; shops[1].in_room=101;
+    duplicate.rnum=1; duplicate.in_room=1;
+    keeper.next=&duplicate; character_list=&keeper;
+    shops[0].dirty=shops[1].dirty=1; next_reads=0;
+    assert(sql_save_dirty_shopkeepers(true) && !shops[0].dirty && !shops[1].dirty);
+    assert(next_reads==2);
+    std::puts("production shopkeeper save/flush: explicit identity, non-shop procs, roaming room0, retained dirty, controlled exclusion, terminal failures, one list walk PASS");
 }
 '''
 old_main = r'''
