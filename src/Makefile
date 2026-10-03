@@ -6,7 +6,7 @@ CC	= g++
 DEBUG	= -ggdb3
 #LDFLAGS	= -ggdb3
 
-HARDENING_FLAGS = -Og -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection
+HARDENING_FLAGS = -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection
 WARNING_FLAGS = -Wall -Wextra -Wpedantic -Werror \
 	-Wformat=2 -Wformat-overflow=2 -Wformat-truncation=2 \
 	-Wnull-dereference -Wduplicated-cond -Wduplicated-branches -Wlogical-op \
@@ -29,10 +29,15 @@ EXTRA_LDFLAGS =
 PERSISTENCE_BACKEND ?= mariadb
 BUILD_PROFILE ?= development
 
+# A development build stays debuggable at -Og; a production build is optimised.
+# The warning profile holds at both levels: -O2 follows values through inlined
+# code and reports what -Og does not see, so `make test-all` builds both.
 CFLAGS = -g -std=c++20 $(HARDENING_FLAGS) $(WARNING_FLAGS)
 ifeq ($(BUILD_PROFILE),development)
-CFLAGS += -DTEST_MUD
-else ifneq ($(BUILD_PROFILE),production)
+CFLAGS += -Og -DTEST_MUD
+else ifeq ($(BUILD_PROFILE),production)
+CFLAGS += -O2
+else
 $(error BUILD_PROFILE must be development or production)
 endif
 CFLAGS += $(EXTRA_CFLAGS)

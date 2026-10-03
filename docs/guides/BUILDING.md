@@ -27,8 +27,9 @@ make -C src PERSISTENCE_BACKEND=flatfile BUILD_PROFILE=development
 client library. Backend/profile-specific objects are kept under
 `bin/objects/server/<backend>/<profile>/`; the maintained `bin/server/dms_new` path is
 relinked when either selection changes, so the commands can be run sequentially without
-cleaning or reusing incompatible objects. `development` is the default and defines
-`TEST_MUD`; `production` omits all development-only behavior. The production launcher
+cleaning or reusing incompatible objects. `development` is the default, compiles at
+`-Og` and defines `TEST_MUD`; `production` compiles at `-O2` and omits all
+development-only behavior. The production launcher
 checks the build stamp before promoting or running a binary. Each binary accepts only
 its matching primary runtime mode. The legacy
 `mariadb-primary-flatfile-fallback` token remains recognized but fails closed because
@@ -70,16 +71,17 @@ From the default build line:
 | Flag | Meaning |
 |------|---------|
 | `-std=c++20` | All `.c` files are compiled as C++20 with g++. |
+| `-Og` / `-O2` | `BUILD_PROFILE=development` stays debuggable at `-Og`; `BUILD_PROFILE=production` is optimised at `-O2`. |
 | `-DTEST_MUD` | Added only by `BUILD_PROFILE=development`; enables development-only commands and behavior. |
 | `-D__NO_MYSQL__` | Selected by `PERSISTENCE_BACKEND=flatfile`; removes the client compile/link dependency. |
 
 Redis is optional at runtime, but Hiredis and OpenSSL remain build dependencies because
 one server binary supports both the enabled and disabled runtime configurations.
 
-`HARDENING_FLAGS` adds `-Og -D_FORTIFY_SOURCE=3 -fstack-protector-strong
--fstack-clash-protection`. `EXTRA_CFLAGS` / `EXTRA_LDFLAGS` are appended last
-and exist so a wrapper (notably `scripts/build-san.sh`) can add instrumentation
-without discarding the warning profile or the feature defines.
+`HARDENING_FLAGS` adds `-D_FORTIFY_SOURCE=3 -fstack-protector-strong
+-fstack-clash-protection` to both profiles. `EXTRA_CFLAGS` / `EXTRA_LDFLAGS` are
+appended last and exist so a wrapper (notably `scripts/build-san.sh`) can add
+instrumentation without discarding the warning profile or the feature defines.
 
 Link libraries: `mysqlclient`, `gnutls`, `ssl`, `crypto`, `cjson`, `hiredis`,
 `bsd`, `curl`, `xml2`, `z`, `crypt`, `pthread`. Both backends link `curl`
@@ -139,6 +141,16 @@ Note that `-Wformat-truncation=2` is fatal: `snprintf` into a fixed buffer must
 have a bound the compiler can narrow. Format each row into its own bounded
 buffer rather than appending at `buf + strlen(buf)` with a
 `MAX_STRING_LENGTH` bound.
+
+The warnings that follow values (`-Wnull-dereference`, `-Wmaybe-uninitialized`,
+`-Wformat-truncation`, `-Wstringop-overflow`, `-Warray-bounds`,
+`-Wstrict-overflow`) see further at `-O2`, through inlined code, so the
+production profile reports sites the development build does not. `make
+test-all` builds both: `make build-production` compiles the production profile
+into its own object directory and `bin/server/production/dms_new`, leaving
+`bin/server/dms_new` to the development build. Resolve what it reports the same
+way: the first `-O2` build found a staff command writing ten bytes over five
+and an event whose inverted check dereferenced NULL.
 
 When a change touches conditional code, compile-sweep the affected files under
 the non-default configurations as well - `REQUIRE_EMAIL_VERIFICATION`,
