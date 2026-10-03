@@ -20,9 +20,11 @@ items, one phase each. Phase 4 landed as
 round, and #4 is closed ([record](persistence-done.md#phase-5-landed-done)). Phase 6 landed as
 [!8](https://gitlab.com/max757/duris/-/merge_requests/8) in `1a4b15f9d` after one review
 round; #3 stays open for its server configuration
-([record](persistence-done.md#phase-6-landed-done)). Phase 7's items are done on
-`fix/5-persistence-phase-7` ([progress](persistence-done.md#phase-7-progress)); its gate
-and review are [what is left](#what-is-left). Phase 8 is not started.
+([record](persistence-done.md#phase-6-landed-done)). Phase 7 is done on
+`fix/5-persistence-phase-7` and in review as
+[!9](https://gitlab.com/max757/duris/-/merge_requests/9), tagged
+`persistence/phase-7-review-0` ([progress](persistence-done.md#phase-7-progress)); Phase 8
+is not started.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
@@ -510,9 +512,9 @@ In this order: the game loop, measured now that the backup job no longer compete
 world capture last, on the optimised build. Phases 4 (alerts and logs), 5 (bugs from the logs)
 and 6 (backups) are done and on master.
 
-1. [Phase 7: game-loop performance (#5)](#phase-7-game-loop-performance-5): its items are
-   done on `fix/5-persistence-phase-7` ([record](persistence-done.md#phase-7-progress)).
-   Left: the gate on the branch head (`./scripts/format.sh --all --check`,
-   `make test-all -j16 TEST_JOBS=16`, `make test-db`, and `npm test --prefix site` because
-   `docs/` changed), the head tagged `persistence/phase-7-review-0`, and the MR.
+1. [Phase 7: game-loop performance (#5)](#phase-7-game-loop-performance-5): done, in review
+   as [!9](https://gitlab.com/max757/duris/-/merge_requests/9); it leaves this list when it
+   lands. A review round's fixes go on `fix/5-persistence-phase-7`, each finding in its own
+   commit with its test, the fixed head tagged `persistence/phase-7-review-1`
+   ([how](persistence-done.md#review-and-branches)).
 2. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2).
