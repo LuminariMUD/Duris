@@ -90,6 +90,15 @@ invokes `test_playtime_mysql_repository.py` with that schema's environment. Both
 scripts are excluded from argument-free discovery; the database-independent
 playtime capture, checkpoint, legacy SQL, and flat-file tests remain in `make test-all`.
 
+The game loop budget journey (`test_mysql_game_loop_budget_journey.py`, in
+`make test-db`) boots the full world on MariaDB, has scripted players camp and rent
+while the first hourly event runs, and fails if a pulse runs past its 250 ms. It
+prints what the loop measured (tick, event and command times, deferred events, the
+costliest callbacks), so it is also the load to measure a build with:
+`tests/async/with_disposable_mariadb.sh python3
+tests/async/test_mysql_game_loop_budget_journey.py --server <dms_new> --players 30
+--hours 2`.
+
 MySQL fixtures that reuse a table within a statement must account for MySQL's
 `Can't reopen table` restriction on connection-local temporary tables; MariaDB
 may accept the same fixture. Use isolated ordinary tables with explicit cleanup
