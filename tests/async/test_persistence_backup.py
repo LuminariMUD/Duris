@@ -510,6 +510,27 @@ class FailureRecordTests(Fixture):
                 self.assertEqual(json.loads(output.getvalue()),
                                  {"event": "backup", "result": "failed", **cause})
 
+    def test_failing_schedule_reports_the_recovery_point_age(self):
+        now = int(time.time())
+        rpo = self.p["rpo_seconds"]
+        self.create("mariadb-primary", now - 3600)
+        full = OSError(errno.ENOSPC, "No space left on device", str(self.base / "private"))
+        cause = {"code": "operation_failed", "error": "OSError", "detail": "No space left on device"}
+        for root, late, record in (
+                ("backups", 0, {**cause, "age_seconds": 3600}),
+                ("backups", rpo, {"code": "rpo_exceeded", "age_seconds": 3600 + rpo, "backup": cause}),
+                ("never-backed-up", 0, {"code": "rpo_exceeded", "age_seconds": None, "backup": cause})):
+            self.p["root"] = self.base / root
+            with self.subTest(root=root, late=late), \
+                 mock.patch.object(backup.time, "time", return_value=now + late), \
+                 mock.patch.object(backup, "mariadb_capture", side_effect=full), \
+                 mock.patch.object(backup, "policy_load", return_value=self.p), \
+                 mock.patch.object(sys, "argv", ["backup", "--policy", "/synthetic/policy", "schedule"]), \
+                 contextlib.redirect_stderr(io.StringIO()) as output:
+                self.assertEqual(backup.main(), 1)
+                self.assertEqual(json.loads(output.getvalue()),
+                                 {"event": "schedule", "result": "failed", **record})
+
 class RestoreTests(Fixture):
     def setUp(self):
         super().setUp()

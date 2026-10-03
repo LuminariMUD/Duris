@@ -72,6 +72,11 @@ def failure(error):
     return record
 
 
+# What a job reports in a failure record; anything else is a defect and keeps its traceback.
+FAILURES = (BackupError, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError,
+            EOFError)
+
+
 def checkpoint(stage):
     """Fault-injection seam for unit tests; no operational environment switch."""
 
@@ -684,6 +689,38 @@ def status(p, require_drill=False):
                 "replica": receipt["replica"]}
 
 
+def schedule(p, mode):
+    # A minute timer evaluates the approved cadence; pre-cycle backups do not move the
+    # independently scheduled deadline.
+    mkdir(p["root"])
+    with lock(p["root"] / ".schedule.lock", wait=LOCK_WAIT_SECONDS):
+        receipt_path = p["root"] / "schedule.json"
+        last = read_json(receipt_path).get("completed", 0) if receipt_path.exists() else 0
+        if time.time() - last < p["schedule_seconds"]:
+            return status(p)
+        try:
+            result = backup(p, mode)
+            # A pending replication is reported as it is; the next run's backup retries it
+            # without a new capture.
+            require(result["result"] in {"ok", "replication_pending"}, "authority_not_initialized")
+        except FAILURES as error:
+            return failed_backup(p, error)
+        if result["result"] == "ok":
+            write_json(receipt_path, {"completed": int(time.time())})
+        return result
+
+
+def failed_backup(p, error):
+    """A failed backup's record still gives the recovery point's age: a schedule whose every
+    backup fails never reaches status(), so an RPO breach would otherwise go unreported."""
+    items = generations(p["root"])
+    age = int(time.time()) - items[0][1]["created"] if items else None
+    if age is not None and age <= p["rpo_seconds"]:
+        return {"event": "schedule", "result": "failed", **failure(error), "age_seconds": age}
+    return {"event": "schedule", "result": "failed", "code": "rpo_exceeded", "age_seconds": age,
+            "backup": failure(error)}
+
+
 def load_environment(path):
     if not path.exists() and not path.is_symlink():
         return
@@ -742,31 +779,15 @@ def main():
                 verify(destination)  # The publication may have stopped before its check.
                 result = complete_generation(p["root"], p, destination, "finalize")
         elif args.command == "schedule":
-            # A minute timer evaluates the approved cadence; pre-cycle backups do not
-            # move the independently scheduled deadline.
-            mkdir(p["root"])
-            with lock(p["root"] / ".schedule.lock", wait=LOCK_WAIT_SECONDS):
-                receipt_path = p["root"] / "schedule.json"
-                last = read_json(receipt_path).get("completed", 0) if receipt_path.exists() else 0
-                if time.time() - last >= p["schedule_seconds"]:
-                    result = backup(p, os.environ.get("PERSISTENCE_MODE", "mariadb-primary"))
-                    # A pending replication is reported as it is; the next run's backup
-                    # retries it without a new capture.
-                    require(result["result"] in {"ok", "replication_pending"},
-                            "authority_not_initialized")
-                    if result["result"] == "ok":
-                        write_json(receipt_path, {"completed": int(time.time())})
-                else:
-                    result = status(p)
+            result = schedule(p, os.environ.get("PERSISTENCE_MODE", "mariadb-primary"))
         else:
             from persistence_restore import restore
             result = restore(p, args.generation, args.tombstones, args.command == "drill")
-        print(json.dumps(result, sort_keys=True))
-        return 1 if result.get("result") == "replication_pending" else 0
-    except (BackupError, OSError, ValueError, KeyError, TypeError,
-            subprocess.SubprocessError, EOFError) as error:
-        print(json.dumps({"event": args.command, "result": "failed", **failure(error)}), file=sys.stderr)
-        return 1
+    except FAILURES as error:
+        result = {"event": args.command, "result": "failed", **failure(error)}
+    failed = result["result"] == "failed"
+    print(json.dumps(result, sort_keys=True), file=sys.stderr if failed else sys.stdout)
+    return 1 if failed or result["result"] == "replication_pending" else 0
 
 
 if __name__ == "__main__":

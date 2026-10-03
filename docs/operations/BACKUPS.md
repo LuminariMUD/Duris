@@ -123,7 +123,11 @@ before receipt and authority capture, so dump duration cannot hide an RPO breach
 names, hosts, or player values are telemetry. Alert on any nonzero job result,
 rpo_exceeded, capacity failures, interrupted work, or missing/overdue drill
 receipts. Monitor timer/unit availability too: a stopped scheduler cannot
-report its own failure.
+report its own failure. A scheduled backup that fails still reports the
+recovery point's age as `age_seconds`; past the RPO its code is rpo_exceeded,
+with the backup's own failure under `backup`, so a breach is reported while
+every attempt fails. A scheduled backup whose replica failed prints its
+replication_pending result, and the next run retries the replication.
 
 A failed post-publication step leaves a complete generation and preserves prior
 ones. Resolve the cause and explicitly retry verification/replication/rotation:
