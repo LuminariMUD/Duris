@@ -37,7 +37,6 @@ ROOT = Path(__file__).resolve().parents[2]
 
 PULSE_US = 250000
 EVENT_BUDGET_US = 25000  # NEVENT_BUDGET_USEC_DEFAULT
-HOUR_SECONDS = 125  # event_another_hour: every 500 pulses
 INN_ROOM = 81019
 INN_NAME = 'The Entryway of the Golden Cat Inn'
 GOD_ITEMS = 60
@@ -231,8 +230,9 @@ def run(server, players, hours):
                 return re.findall(r'NEVENT ANALYTICS CALLBACK: .*name=event_another_hour '
                                   r'calls=(\d+) total_us=\d+ avg_us=\S+ max_us=(\d+)', status)
 
+            # The first hourly event comes 500 pulses after the boot, the rest every 300.
             trace_path = runtime / 'logs/latency_trace.log'
-            windows = hours * HOUR_SECONDS * 4 // 300 + 1
+            windows = hours + 1
             deadline = booted + windows * 75 + 60
             while (sum(int(calls) for calls, _ in hourly_lines()) < hours or
                    trace_path.read_text().count('END LATENCY TRACE') < windows):
