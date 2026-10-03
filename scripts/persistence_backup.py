@@ -42,6 +42,8 @@ RETIRED_JOURNAL_FILES = {"critical-command.journal", "critical-command.journal.t
 # receipt; one is there while a write is under way, and a crash can leave it behind. The game
 # never reads one, so no capture copies it.
 RECEIPT_WRITE = re.compile(r"\.[1-9][0-9]{0,9}\.receipt\.tmp\.[0-9]+\.[0-9]+")
+RECEIPT = re.compile(r"locker-identification/([1-9][0-9]{0,9})\.receipt")
+RECEIPT_MAX_BYTES = 16 + 1024 + 64 * 1024 + 32  # The native codec's bound.
 LOCK_WAIT_SECONDS = 120
 CAPACITY_CHECK_INTERVAL = 32 * 1024 * 1024
 
@@ -263,14 +265,12 @@ def journal_capture(stage, p, capacity_base=None):
         shutil.copytree(source, target / name, symlinks=True,
                         ignore=lambda _, names: {x for x in names if RECEIPT_WRITE.fullmatch(x)})
         for relative, metadata in inventory(target / name).items():
-            receipt = re.fullmatch(r"locker-identification/([1-9][0-9]{0,9})\.receipt", relative)
+            receipt = RECEIPT.fullmatch(relative)
             service_lock = relative == "locker-identification/.service-lock"
             if receipt:
                 require(int(receipt[1]) <= 2147483647, "journal_receipt_pid")
-                # Match the native format's bound before copying. The restore
-                # qualifier validates the checksum, payment and filename identity.
-                require(0 < metadata["bytes"] <= 16 + 1024 + 64 * 1024 + 32,
-                        "journal_receipt_size")
+                # The restore qualifier validates the checksum, payment and filename identity.
+                require(0 < metadata["bytes"] <= RECEIPT_MAX_BYTES, "journal_receipt_size")
             else:
                 require(service_lock or relative in RETIRED_JOURNAL_FILES, "journal_filename")
             if service_lock:
@@ -278,6 +278,21 @@ def journal_capture(stage, p, capacity_base=None):
         existing = total_size(p["root"]) if capacity_base is None else capacity_base
         require(existing + total_size(stage) < p["max_bytes"], "capacity_headroom_required")
         require(shutil.disk_usage(stage).free >= p["min_free_bytes"], "low_free_capacity")
+
+
+def waiting_receipts(root):
+    """Each receipt below root that a payment may still be charging, with its bytes: any whose
+    header (locker_receipt_encode(): "LIDR", version 1, then the state) does not record it
+    paid, failed or delivered."""
+    result = {}
+    for path in walk(root):
+        relative = path.relative_to(root).as_posix()
+        if RECEIPT.fullmatch(relative):
+            with path.open("rb") as stream:
+                data = stream.read(RECEIPT_MAX_BYTES + 1)
+            if not (data[:5] == b"LIDR\x01" and data[5:6] in (b"\x01", b"\x02", b"\x03")):
+                result[relative] = data
+    return result
 
 
 def flatfile_capture(stage, p, capacity_base=None):
@@ -631,12 +646,19 @@ def backup(p, mode):
                         "journal_policy_mismatch")
             if mode == "mariadb-primary":
                 verify_database_schema(stage / "runtime-schema.json")
+            waiting = {name: waiting_receipts(source) for name, source in p["journal_roots"].items()}
             detail = (flatfile_capture(stage, p, capacity_base) if mode == "flatfile-primary"
                       else mariadb_capture(stage, p, capacity_base))
-            # The receipts come after the authority, so each is at least as new as the database
-            # it is restored with: a restore can lose an identification's charge, as a crash
-            # does, but never charge it again.
+            # The receipts come after the authority, so a paid, failed or delivered one is at
+            # least as new as the database it is restored with. One still waiting on its payment
+            # may have its charge in the snapshot but not its paid marker, which a restore would
+            # charge again, so each must have been waiting, unchanged, before the capture: a
+            # payment begun during it fails the run. An unchanged one charged during the capture,
+            # its paid marker stalled past the copy, is the moment in which a crash also charges
+            # twice (docs/operations/locker-identification.md).
             journal_capture(stage, p, capacity_base)
+            require(all(waiting_receipts(stage / "journals" / name).items() <= waiting[name].items()
+                        for name in waiting), "receipt_payment_in_flight")
             if mode == "mariadb-primary":
                 verify_database_schema(stage / "runtime-schema.json")
             checkpoint("after_capture")

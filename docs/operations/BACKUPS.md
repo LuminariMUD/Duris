@@ -75,14 +75,20 @@ Flatfile capture holds the identity, critical-authority, account and
 artifact-mana locks, taken in that order, while it copies the complete durable
 file tree with its pending-transaction evidence.
 
-The receipt tree is copied after the authority capture, so each receipt is at
-least as new as the database it is restored with: an identification paid after
-the snapshot restores as paid with its charge lost, never as prepared and charged
-again. A rename replaces a receipt whole, so one written during the capture does
-not fail it, and the writer's temporary files (`.<pid>.receipt.tmp.*`) are left
-out. Anything else in that directory other than receipts and their empty service
-lock rejects the generation. Restores copy the same tree. Historical generations
-are never edited.
+The receipt tree is copied after the authority capture, so a paid, failed or
+delivered receipt is at least as new as the database it is restored with: an
+identification paid after the snapshot restores as paid, its charge lost. A
+prepared receipt is still waiting on its payment, and its charge can reach the
+database before its paid marker reaches the receipt, so a restore could charge it
+twice: every prepared receipt in the copy must have been there, unchanged, before
+the authority capture began, and a payment begun during the capture rejects the
+generation (the next run takes it). One already waiting whose charge lands during
+the capture while its paid marker stalls past the copy is not caught; that is the
+moment in which a crash also charges twice. A rename replaces a receipt whole, so
+any other change during the capture does not fail it, and the writer's temporary
+files (`.<pid>.receipt.tmp.*`) are left out. Anything else in that directory other
+than receipts and their empty service lock rejects the generation. Restores copy
+the same tree. Historical generations are never edited.
 
 ## Commands and scheduling
 
