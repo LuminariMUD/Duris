@@ -99,10 +99,11 @@ periodic ownership, catch-up debt, and configuration. The rest of this section
 records incident-derived constraints.
 
 Each pulse is bounded by a wall-clock budget (`NEVENT_BUDGET_USEC_DEFAULT`,
-25 ms) and a callback count cap (`NEVENT_MAX_CALLBACKS_DEFAULT`). Both are
-overridable at runtime - see [CONFIGURATION.md](../operations/CONFIGURATION.md#diagnostics).
-The time budget is meant to be the binding limit; a count cap low enough to end
-pulses at half the time budget starves the wheel.
+25 ms) and, when one is set, a callback count cap (`NEVENT_MAX_CALLBACKS_DEFAULT`,
+none). Both are overridable at runtime - see
+[CONFIGURATION.md](../operations/CONFIGURATION.md#diagnostics). The time budget is
+the binding limit; a count cap low enough to end pulses inside the time budget
+starves the wheel.
 
 These properties of the wheel are load-bearing:
 
