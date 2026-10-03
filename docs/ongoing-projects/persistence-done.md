@@ -2749,3 +2749,52 @@ corrupted after a publish that stopped before its check, and `status.json` stays
 previous one; the drill refuses a corrupted older generation and a restore a corrupted newest,
 both before any candidate exists, while `status` passes. Each fails on the old code, and with
 any one of the new `verify()` calls taken out the test that pins it fails.
+
+### Failure records name their cause (done)
+
+`main()` printed `operation_failed` for every unexpected exception, and `replication_result()`
+recorded `replication_failed` for every replica failure, its own `BackupError` code included.
+`failure()` now builds a record's cause: a `BackupError` keeps its code; anything else gives
+`operation_failed`, the exception's class as `error` (with its module when not a built-in, so
+`shutil.Error` or `subprocess.TimeoutExpired`) and its message as `detail`. Two kinds keep less,
+so that nothing private reaches the journal: an OS error keeps only its `strerror`, since its
+file name can be a flat-file path naming an account; a subprocess error keeps no message,
+since `TimeoutExpired` quotes the command line with the database user and host (the password
+travels in `MYSQL_PWD`, never in arguments). The replica's failure is recorded the same way as
+`replica_error` in `status.json` and in the run's output, which did not carry it at all.
+`5ba50200b`.
+
+Tests: `test_persistence_backup.py` runs `main()` with a backup raising a `BackupError`, a
+`FileNotFoundError` whose file name names an account, a `TimeoutExpired` whose command line
+names a user and host, and a `KeyError`, and compares each whole record, so nothing else can
+appear in it; `test_backup_review_remediations.py`'s replication test fails the replica with
+`ENOSPC` and checks `replica_error` in the result and in `status.json`. Both fail on the old
+code.
+
+### A scheduled backup's pending replication (found, done)
+
+Found while tracing the schedule for item 2. `schedule` required its backup's result to be
+`ok` and called anything else `authority_not_initialized`, so a generation published locally
+whose replica failed was reported as an uninitialised authority, and the replica's cause was
+lost with it. The schedule now prints the `replication_pending` result, with its replica error,
+and exits 1 as `backup` does; it leaves its deadline alone, so the next minute's backup sees
+the pending receipt and retries only the replication. `879356579`.
+
+Test: `test_backup_review_remediations.py` runs `schedule` with the replica failing (the
+pending result and its cause are printed and `schedule.json` is not written), then with it
+working (the same generation completes and the deadline is written). On the old code the
+first run printed `authority_not_initialized`.
+
+### The RPO alarm while backups fail (done)
+
+While every backup failed, `schedule` never reached `status()`, so `rpo_exceeded` never fired.
+The schedule moves into `schedule()`, and when its backup fails, `failed_backup()` reads the
+newest generation's manifest (no lock: it only reads, and a broken root has already failed the
+backup with the same code). Past the RPO, or with no generation at all, the record's code is
+`rpo_exceeded` with `age_seconds` and the backup's own failure under `backup`; within it, the
+record is the backup's failure with `age_seconds` added. `main()` now prints every failure
+record, raised or returned, the same way. `1265b3ff9`.
+
+Test: `test_persistence_backup.py` fails a scheduled backup with `ENOSPC` an hour after the
+last generation, past the RPO, and with no generation, and compares each whole record. All
+three fail on the old code.
