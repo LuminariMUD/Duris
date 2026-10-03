@@ -123,6 +123,22 @@ class BackupReviewRemediationTests(Fixture):
         with self.assertRaisesRegex(backup.BackupError, "symlink_rejected"):
             backup.journal_capture(stage, self.p)
 
+    def test_journal_capture_writes_nothing_past_the_budget_or_the_reserve(self):
+        critical = self.p["journal_roots"]["critical"]
+        (critical / "critical-command.journal").write_bytes(b"x" * 1024 * 1024)
+        for index, (changes, free, code) in enumerate((
+                ({"max_bytes": 512 * 1024}, None, "capacity_headroom_required"),
+                ({"min_free_bytes": 1024 * 1024}, 1536 * 1024, "low_free_capacity"))):
+            stage = self.base / f"stage-{index}"
+            stage.mkdir(mode=0o700)
+            with contextlib.ExitStack() as stack:
+                if free is not None:
+                    stack.enter_context(mock.patch.object(
+                        backup.shutil, "disk_usage", return_value=mock.Mock(free=free)))
+                with self.subTest(code=code), self.assertRaisesRegex(backup.BackupError, code):
+                    backup.journal_capture(stage, dict(self.p, **changes))
+            self.assertEqual(backup.total_size(stage), 0)
+
     def test_expired_generations_are_pruned_only_after_successful_capture(self):
         now = int(time.time())
         old = [self.create("flatfile-primary", now - 90 * 86400 + offset)

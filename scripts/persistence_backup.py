@@ -256,13 +256,24 @@ def sync_tree(root):
 def journal_capture(stage, p, capacity_base=None):
     target = stage / "journals"
     target.mkdir(mode=0o700)
+    used = (total_size(p["root"]) if capacity_base is None else capacity_base) + total_size(stage)
+
+    def copy(source, destination):
+        # Each file is held to the budget and the reserve before a byte of it is written.
+        nonlocal used
+        size = os.lstat(source).st_size
+        used += size
+        require(used < p["max_bytes"], "capacity_headroom_required")
+        require(shutil.disk_usage(stage).free >= size + p["min_free_bytes"], "low_free_capacity")
+        return shutil.copy2(source, destination)
+
     for name, source in p["journal_roots"].items():
         secure_path(source, True)
         require(source.is_dir(), "journal_source_missing")
         require(name in JOURNAL_ROOTS, "invalid_journal_roots")
         # A rename replaces a receipt whole, so the copy holds one whole version of each. It
         # is checked on its own: the directory may have moved on since.
-        shutil.copytree(source, target / name, symlinks=True,
+        shutil.copytree(source, target / name, symlinks=True, copy_function=copy,
                         ignore=lambda _, names: {x for x in names if RECEIPT_WRITE.fullmatch(x)})
         for relative, metadata in inventory(target / name).items():
             receipt = RECEIPT.fullmatch(relative)
@@ -275,9 +286,6 @@ def journal_capture(stage, p, capacity_base=None):
                 require(service_lock or relative in RETIRED_JOURNAL_FILES, "journal_filename")
             if service_lock:
                 require(metadata["bytes"] == 0, "journal_service_lock_nonempty")
-        existing = total_size(p["root"]) if capacity_base is None else capacity_base
-        require(existing + total_size(stage) < p["max_bytes"], "capacity_headroom_required")
-        require(shutil.disk_usage(stage).free >= p["min_free_bytes"], "low_free_capacity")
 
 
 def waiting_receipts(root):
