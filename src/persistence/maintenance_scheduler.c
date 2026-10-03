@@ -289,6 +289,11 @@ void worker_main()
 					lock.lock();
 					if (!stop_requested)
 						durable_state_dirty = true;
+					// Try again in a second, or with the next job: retried at
+					// once, a state file that cannot be written held a core.
+					work_available.wait_for(
+						lock, std::chrono::seconds(1),
+						[] { return stop_requested || !queue.empty(); });
 				}
 				continue;
 			}

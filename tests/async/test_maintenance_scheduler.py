@@ -24,7 +24,9 @@ HARNESS = r'''
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
+#include <ctime>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -212,6 +214,21 @@ int main(int argc, char **argv)
 	assert(maintenance_scheduler_set_state_path(argv[1]));
 	assert(maintenance_scheduler_init(9, execute, &acknowledged, auction_only));
 	assert(maintenance_scheduler_health_copy(0).completions == 0);
+	maintenance_scheduler_shutdown();
+	maintenance_scheduler_reset_for_tests();
+
+	// A state file that cannot be written is tried again after a pause. The worker
+	// retried at once, and held a core for as long as the write kept failing.
+	const std::string unwritable = std::string(argv[1]) + ".missing/state";
+	assert(maintenance_scheduler_set_state_path(unwritable.c_str()));
+	assert(maintenance_scheduler_init(9, execute, &acknowledged, auction_only));
+	maintenance_scheduler_pulse(first_tick, results, MAINTENANCE_COMPLETION_MAX);
+	wait_until([&] { return maintenance_scheduler_health_copy(first_tick).completions == 1; });
+	assert(maintenance_scheduler_pulse(first_tick + 1, results, MAINTENANCE_COMPLETION_MAX) == 1);
+	assert(results[0].outcome == maintenance_outcome::retryable_failure);
+	const clock_t before = clock();
+	std::this_thread::sleep_for(std::chrono::milliseconds(300));
+	assert(clock() - before < CLOCKS_PER_SEC / 10);
 	maintenance_scheduler_shutdown();
 	maintenance_scheduler_reset_for_tests();
     return 0;
