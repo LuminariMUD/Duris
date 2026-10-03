@@ -51,6 +51,27 @@ def require(condition, code):
         raise BackupError(code)
 
 
+def failure(error):
+    """What a failure record says of its cause. An OS error keeps no file name, which can
+    name an account, and a subprocess error no message: its command line names the database
+    user and host."""
+    if isinstance(error, BackupError):
+        return {"code": str(error)}
+    kind = type(error)
+    record = {"code": "operation_failed",
+              "error": kind.__name__ if kind.__module__ == "builtins" else
+              f"{kind.__module__}.{kind.__name__}"}
+    if isinstance(error, OSError):
+        detail = error.strerror
+    elif isinstance(error, subprocess.SubprocessError):
+        detail = None
+    else:
+        detail = str(error)
+    if detail:
+        record["detail"] = detail
+    return record
+
+
 def checkpoint(stage):
     """Fault-injection seam for unit tests; no operational environment switch."""
 
@@ -539,8 +560,8 @@ def replicate(source, p):
 def replication_result(source, p):
     try:
         return replicate(source, p), None
-    except (BackupError, OSError, ValueError, KeyError, subprocess.SubprocessError):
-        return "pending", "replication_failed"
+    except (BackupError, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+        return "pending", failure(error)
 
 
 def write_generation_status(root, generation, replica, result, replica_error=None):
@@ -556,7 +577,7 @@ def complete_generation(root, p, destination, event):
     if replica_error:
         write_generation_status(root, destination.name, replica, "replication_pending", replica_error)
         return {"event": event, "result": "replication_pending",
-                "generation": destination.name, "replica": replica}
+                "generation": destination.name, "replica": replica, "replica_error": replica_error}
     rotate(root, p, destination)
     write_generation_status(root, destination.name, replica, "ok")
     return {"event": event, "result": "ok", "generation": destination.name,
@@ -740,8 +761,7 @@ def main():
         return 1 if result.get("result") == "replication_pending" else 0
     except (BackupError, OSError, ValueError, KeyError, TypeError,
             subprocess.SubprocessError, EOFError) as error:
-        code = str(error) if isinstance(error, BackupError) else "operation_failed"
-        print(json.dumps({"event": args.command, "result": "failed", "code": code}), file=sys.stderr)
+        print(json.dumps({"event": args.command, "result": "failed", **failure(error)}), file=sys.stderr)
         return 1
 
 

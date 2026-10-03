@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import contextlib
+import errno
 import fcntl
 import io
 import json
@@ -140,15 +141,18 @@ class BackupReviewRemediationTests(Fixture):
         replica = self.base / "replica"
         replica.mkdir(mode=0o700)
         self.p["replica_root"] = replica
-        with mock.patch.object(backup, "replicate",
-                               side_effect=backup.BackupError("replication_failed")):
+        full = OSError(errno.ENOSPC, "No space left on device", str(replica / "private"))
+        with mock.patch.object(backup, "replicate", side_effect=full):
             result = backup.backup(self.p, "flatfile-primary")
         self.assertEqual(result["result"], "replication_pending")
         self.assertEqual(result["replica"], "pending")
+        cause = {"code": "operation_failed", "error": "OSError", "detail": "No space left on device"}
+        self.assertEqual(result["replica_error"], cause)
         status = json.loads((self.p["root"] / "status.json").read_text())
         self.assertEqual(status["generation"], result["generation"])
         self.assertEqual(status["replica"], "pending")
         self.assertEqual(status["result"], "replication_pending")
+        self.assertEqual(status["replica_error"], cause)
         self.assertTrue(first.is_dir())
         self.assertEqual(len(backup.generations(self.p["root"])), 2)
         with mock.patch.object(backup, "replicate",

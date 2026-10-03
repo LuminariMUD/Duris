@@ -113,7 +113,12 @@ catches missed invocations after host downtime. Test a deliberate invalid
 policy and verify that the failure reaches the responsible operator.
 
 stdout/stderr contain JSON with fixed result/error codes, generation IDs,
-aggregate age/bytes/counts, and separate replica status. Recovery-point age starts
+aggregate age/bytes/counts, and separate replica status. When an unexpected
+exception stops a job, its code is operation_failed, `error` names the exception's
+class and `detail` its message: for an OS error only the system's text, never the
+file name, and nothing for a subprocess error, whose command line names the
+database user and host. A failed replication is recorded the same way, as
+`replica_error` in status.json and in the job's output. Recovery-point age starts
 before receipt and authority capture, so dump duration cannot hide an RPO breach. No credentials, account
 names, hosts, or player values are telemetry. Alert on any nonzero job result,
 rpo_exceeded, capacity failures, interrupted work, or missing/overdue drill

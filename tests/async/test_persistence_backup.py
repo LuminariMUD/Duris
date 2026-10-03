@@ -6,12 +6,14 @@ MariaDB dump bytes only; the separate integration suite exercises real MariaDB.
 Run: python3 tests/async/test_persistence_backup.py
 """
 import contextlib
+import errno
 import gzip
 import io
 import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -487,6 +489,26 @@ class CapacityAndInputTests(Fixture):
                     self.create()
             self.assertEqual(backup.inventory(generation), captured)
             self.assertEqual(len(backup.generations(self.p["root"])), 1)
+
+class FailureRecordTests(Fixture):
+    def test_failure_records_name_the_exception_without_private_text(self):
+        account = str(self.base / "live/identities/accounts/privatename.acct")
+        timeout = subprocess.TimeoutExpired(["mysqldump", "--user=privateuser", "--host=privatehost"], 300)
+        for error, cause in (
+                (backup.BackupError("journal_filename"), {"code": "journal_filename"}),
+                (FileNotFoundError(errno.ENOENT, "No such file or directory", account),
+                 {"code": "operation_failed", "error": "FileNotFoundError",
+                  "detail": "No such file or directory"}),
+                (timeout, {"code": "operation_failed", "error": "subprocess.TimeoutExpired"}),
+                (KeyError("mode"), {"code": "operation_failed", "error": "KeyError", "detail": "'mode'"})):
+            with self.subTest(error=type(error).__name__), \
+                 mock.patch.object(backup, "backup", side_effect=error), \
+                 mock.patch.object(backup, "policy_load", return_value=self.p), \
+                 mock.patch.object(sys, "argv", ["backup", "--policy", "/synthetic/policy", "backup"]), \
+                 contextlib.redirect_stderr(io.StringIO()) as output:
+                self.assertEqual(backup.main(), 1)
+                self.assertEqual(json.loads(output.getvalue()),
+                                 {"event": "backup", "result": "failed", **cause})
 
 class RestoreTests(Fixture):
     def setUp(self):
