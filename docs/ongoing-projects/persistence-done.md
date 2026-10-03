@@ -2740,8 +2740,10 @@ generation before it restores the newest, so a corrupted older one fails the dri
 
 Measured with copies of a real local generation (the 31 MB `duris_dev` dump) in a scratch
 root: `status` took 1.16 s of CPU with 1 generation and 43 s with 40 on the old code, and
-0.03 s and 0.04 s on the new one, reporting the same bytes. #3's staging dumps are about five
-times larger, hence its 3 to 4 CPU-minutes.
+0.03 s and 0.04 s on the new one, reporting the same bytes. A real backup of `duris_dev` into
+that root of 40 took 97.9 s of CPU on the old code and 13.7 s on the new one, the same as into
+the local root of 2 (13.6 s); the dump and the one verification of what it publishes are what
+is left. #3's staging dumps are about five times larger, hence its 3 to 4 CPU-minutes a run.
 
 Tests (`test_persistence_backup.py`): `status` with 1 and with 40 generations runs with
 `digest()` and `validate_dump()` failing if called; `finalize` refuses a newest generation
