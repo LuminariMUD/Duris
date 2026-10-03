@@ -1363,6 +1363,7 @@ void artifact_update_sql(P_obj arti, char owned, time_t timer)
 			      vnum);
 			arti->loc_p = LOC_NOWHERE;
 			obj_to_room(arti, real_room0(ROOM_LIMBO_VNUM));
+			obj1 = arti;
 		}
 		else
 		{
