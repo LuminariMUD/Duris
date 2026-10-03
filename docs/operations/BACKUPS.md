@@ -71,9 +71,9 @@ the guard correctly rejects that execution context. The root-managed production
 service template preserves the expected root mapping. Custom user services must
 qualify the backup under their actual service restrictions before cutover.
 
-Flatfile capture preserves identity
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ critical authority ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ account locking, pending-transaction evidence, and the
-complete durable file tree.
+Flatfile capture holds the identity, critical-authority, account and
+artifact-mana locks, taken in that order, while it copies the complete durable
+file tree with its pending-transaction evidence.
 
 The receipt tree is copied after the authority capture, so each receipt is at
 least as new as the database it is restored with: an identification paid after
