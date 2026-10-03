@@ -2851,3 +2851,19 @@ Run with the `.env` account's `duris_dev` and the local backup policy, on the co
   failed, 3 with `journal_filename` (a temporary file listed) and 2 with
   `journal_changed_during_capture`; on the new one 5 of 5 published, and each retained
   generation's receipt passed `qualify_flatfile_restore --receipts`, the production decoder.
+
+### The gate on the branch head (done)
+
+On `6537ac919`, the head with every record above, run once each: `./scripts/format.sh --all
+--check` (1031 files clean); `make test-all -j16 TEST_JOBS=16` alone (659 of 659, 435 s); then
+`make test-db` (36 of 36, 183 s) and `npm test --prefix site` (14 tests; `docs/` changed).
+Neither suite left `logs/log/dupes` or `logs/log/item_claims` behind.
+
+The backup-recovery job (`.github/workflows/backup-recovery.yml`), which this phase's changes
+call for, was replayed in a privileged `ubuntu:24.04` container on a clone of `6537ac9`: both
+backends built, the four policy and filesystem tests passed, and the root-only
+`test_persistence_backup_integration.py` passed 5 of 5 (57 s), among them the flat-file
+generation with a real receipt restored and qualified, and the MariaDB dump restored into a
+private database and booted in an isolated namespace. Not run:
+`run_runtime_compatibility_mysql.sh` (no schema change) and CodeQL and Trivy (nothing they
+check changed).
