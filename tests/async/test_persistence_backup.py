@@ -6,12 +6,14 @@ MariaDB dump bytes only; the separate integration suite exercises real MariaDB.
 Run: python3 tests/async/test_persistence_backup.py
 """
 import contextlib
+import errno
 import gzip
 import io
 import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -42,6 +44,14 @@ def provision(root):
         (root / relative).write_bytes(("synthetic:" + relative).encode())
     for path in [root, *root.rglob("*"), journal_root, *journal_root.rglob("*")]:
         path.chmod(0o700 if path.is_dir() else 0o600)
+
+
+PREPARED, PAID = 0, 1
+
+
+def locker_receipt(state, body=b"synthetic receipt"):
+    # The native header locker_receipt_encode() writes: "LIDR", version 1, then the state.
+    return b"LIDR\x01" + bytes([state]) + b"\x00\x00" + body
 
 
 def fake_database_capture(stage, unused, capacity_base=None):
@@ -257,8 +267,7 @@ class GenerationTests(Fixture):
                 data.write_bytes(data.read_bytes() + b"corruption")
                 with self.assertRaisesRegex(backup.BackupError, "checksum"):
                     backup.verify(path)
-                # Restore the fixture for the next mode; no invalid generation
-                # should be silently bypassed by backup discovery.
+                # Restore the fixture for the next mode.
                 data.write_bytes(data.read_bytes()[:-len(b"corruption")])
 
     def test_failures_preserve_live_and_last_two_generations(self):
@@ -344,6 +353,36 @@ class GenerationTests(Fixture):
             backup.status(self.p)
         with self.assertRaises(backup.BackupError):
             self.create()
+
+    def test_status_reads_no_generation_bytes_with_one_or_forty(self):
+        now = int(time.time())
+        unread = AssertionError("status read a stored generation's bytes")
+        for count in (1, 40):
+            with self.subTest(generations=count):
+                self.p["root"] = self.base / f"backups-{count}"
+                for index in reversed(range(count)):
+                    self.create("mariadb-primary", now - index * 3600)
+                with mock.patch.object(backup, "digest", side_effect=unread), \
+                     mock.patch.object(backup, "validate_dump", side_effect=unread):
+                    result = backup.status(self.p)
+                self.assertEqual((result["result"], result["generations"]), ("ok", count))
+
+    def test_finalize_verifies_a_publication_that_stopped_before_its_check(self):
+        self.create()
+        def interrupt(stage):
+            if stage == "after_publish":
+                raise OSError("synthetic publication interruption")
+        with mock.patch.object(backup, "checkpoint", interrupt), self.assertRaises(OSError):
+            self.create()
+        newest = backup.generations(self.p["root"])[0][0]
+        (newest / "state/players/42").write_bytes(b"corrupted after publication")
+        with mock.patch.object(backup, "policy_load", return_value=self.p), \
+             mock.patch.object(sys, "argv", ["backup", "--policy", "/synthetic/policy", "finalize"]), \
+             contextlib.redirect_stderr(io.StringIO()) as output:
+            self.assertEqual(backup.main(), 1)
+        self.assertIn("generation_checksum_mismatch", output.getvalue())
+        with self.assertRaisesRegex(backup.BackupError, "backup_or_rotation_incomplete"):
+            backup.status(self.p)
 
     def test_stale_or_incomplete_status(self):
         self.create()
@@ -435,29 +474,111 @@ class CapacityAndInputTests(Fixture):
         self.assertTrue(child.stdout.closed)
         self.assertLess(time.monotonic() - started, 5)
 
-    def test_receipts_are_complete_and_churn_blocks_publication(self):
+    def receipt_store(self):
         critical = self.base / "critical-journal"
         receipts = critical / "locker-identification"
         receipts.mkdir(mode=0o700, parents=True)
         critical.chmod(0o700)
+        self.p["journal_roots"] = {"critical": critical}
+        return critical, receipts
+
+    def test_receipts_changing_during_the_capture_are_copied_after_it(self):
+        critical, receipts = self.receipt_store()
         receipt = receipts / "42.receipt"
-        receipt.write_bytes(b"synthetic-receipt-bytes")
-        receipt.chmod(0o600)
+        # flatfile_atomic_write() writes a receipt to a temporary file renamed over it; one is
+        # there while a write is under way, and a crash leaves it behind.
+        self.assertIn('".%s.tmp.%ld.%llu"', (ROOT / "src/flatfile/flatfile_store.c").read_text())
+        (receipts / ".43.receipt.tmp.1234.7").write_bytes(b"half-written receipt")
         with mock.patch.dict(os.environ, {"CRITICAL_COMMAND_JOURNAL_DIR": str(critical)}):
-            self.p["journal_roots"] = {"critical": critical}
+            for mode, capture in (("flatfile-primary", "flatfile_capture"),
+                                  ("mariadb-primary", "mariadb_capture")):
+                receipt.write_bytes(locker_receipt(PREPARED))
+                original = getattr(backup, capture)
+                def paid_during_capture(stage, p, capacity_base=None):
+                    result = original(stage, p, capacity_base)
+                    receipt.write_bytes(locker_receipt(PAID))
+                    return result
+                with self.subTest(mode=mode), mock.patch.object(backup, capture, paid_during_capture):
+                    generation = self.create(mode)
+                    copied = generation / "journals/critical/locker-identification"
+                    self.assertEqual([path.name for path in copied.iterdir()], ["42.receipt"])
+                    self.assertEqual((copied / "42.receipt").read_bytes(), locker_receipt(PAID))
+
+    def test_a_payment_begun_during_the_capture_fails_it(self):
+        # The receipt's state is byte 5, prepared first: what the backup reads to tell a
+        # payment that may still be charging.
+        self.assertIn("(*bytes)[5] = static_cast<uint8_t>(receipt.state);",
+                      (ROOT / "src/item/locker_receipt.c").read_text())
+        self.assertIn("\tprepared,\n\tpaid,\n\tfailed,\n\tdelivered",
+                      (ROOT / "src/item/locker_receipt.h").read_text())
+        critical, receipts = self.receipt_store()
+        waiting = locker_receipt(PREPARED, b"waiting since before the capture")
+        (receipts / "44.receipt").write_bytes(waiting)
+        begun = receipts / "43.receipt"
+        with mock.patch.dict(os.environ, {"CRITICAL_COMMAND_JOURNAL_DIR": str(critical)}):
+            for mode, capture in (("flatfile-primary", "flatfile_capture"),
+                                  ("mariadb-primary", "mariadb_capture")):
+                original = getattr(backup, capture)
+                def begun_during_capture(stage, p, capacity_base=None):
+                    result = original(stage, p, capacity_base)
+                    begun.write_bytes(locker_receipt(PREPARED))
+                    return result
+                with self.subTest(mode=mode), mock.patch.object(backup, capture, begun_during_capture), \
+                     self.assertRaisesRegex(backup.BackupError, "receipt_payment_in_flight"):
+                    self.create(mode)
+                begun.unlink()
+            self.assertFalse(backup.generations(self.p["root"]))
             generation = self.create()
-            self.assertEqual(backup.inventory(critical), backup.inventory(generation / "journals/critical"))
-            captured = backup.inventory(generation)
-            original = backup.flatfile_capture
-            def changed_capture(stage, p, capacity_base=None):
-                result = original(stage, p, capacity_base)
-                receipt.write_bytes(b"synthetic-new-receipt-bytes")
-                return result
-            with mock.patch.object(backup, "flatfile_capture", changed_capture):
-                with self.assertRaisesRegex(backup.BackupError, "journal_changed"):
-                    self.create()
-            self.assertEqual(backup.inventory(generation), captured)
-            self.assertEqual(len(backup.generations(self.p["root"])), 1)
+        copied = generation / "journals/critical/locker-identification/44.receipt"
+        self.assertEqual(copied.read_bytes(), waiting)
+
+    def test_a_receipt_directory_the_game_does_not_use_costs_no_capture(self):
+        unused = AssertionError("captured the authority for a mismatched policy")
+        with mock.patch.dict(os.environ, {"CRITICAL_COMMAND_JOURNAL_DIR": str(self.base / "other")}), \
+             mock.patch.object(backup, "mariadb_capture", side_effect=unused), \
+             self.assertRaisesRegex(backup.BackupError, "journal_policy_mismatch"):
+            self.create("mariadb-primary")
+
+class FailureRecordTests(Fixture):
+    def test_failure_records_name_the_exception_without_private_text(self):
+        account = str(self.base / "live/identities/accounts/privatename.acct")
+        timeout = subprocess.TimeoutExpired(["mysqldump", "--user=privateuser", "--host=privatehost"], 300)
+        for error, cause in (
+                (backup.BackupError("journal_filename"), {"code": "journal_filename"}),
+                (FileNotFoundError(errno.ENOENT, "No such file or directory", account),
+                 {"code": "operation_failed", "error": "FileNotFoundError",
+                  "detail": "No such file or directory"}),
+                (timeout, {"code": "operation_failed", "error": "subprocess.TimeoutExpired"}),
+                (KeyError("mode"), {"code": "operation_failed", "error": "KeyError", "detail": "'mode'"})):
+            with self.subTest(error=type(error).__name__), \
+                 mock.patch.object(backup, "backup", side_effect=error), \
+                 mock.patch.object(backup, "policy_load", return_value=self.p), \
+                 mock.patch.object(sys, "argv", ["backup", "--policy", "/synthetic/policy", "backup"]), \
+                 contextlib.redirect_stderr(io.StringIO()) as output:
+                self.assertEqual(backup.main(), 1)
+                self.assertEqual(json.loads(output.getvalue()),
+                                 {"event": "backup", "result": "failed", **cause})
+
+    def test_failing_schedule_reports_the_recovery_point_age(self):
+        now = int(time.time())
+        rpo = self.p["rpo_seconds"]
+        self.create("mariadb-primary", now - 3600)
+        full = OSError(errno.ENOSPC, "No space left on device", str(self.base / "private"))
+        cause = {"code": "operation_failed", "error": "OSError", "detail": "No space left on device"}
+        for root, late, record in (
+                ("backups", 0, {**cause, "age_seconds": 3600}),
+                ("backups", rpo, {"code": "rpo_exceeded", "age_seconds": 3600 + rpo, "backup": cause}),
+                ("never-backed-up", 0, {"code": "rpo_exceeded", "age_seconds": None, "backup": cause})):
+            self.p["root"] = self.base / root
+            with self.subTest(root=root, late=late), \
+                 mock.patch.object(backup.time, "time", return_value=now + late), \
+                 mock.patch.object(backup, "mariadb_capture", side_effect=full), \
+                 mock.patch.object(backup, "policy_load", return_value=self.p), \
+                 mock.patch.object(sys, "argv", ["backup", "--policy", "/synthetic/policy", "schedule"]), \
+                 contextlib.redirect_stderr(io.StringIO()) as output:
+                self.assertEqual(backup.main(), 1)
+                self.assertEqual(json.loads(output.getvalue()),
+                                 {"event": "schedule", "result": "failed", **record})
 
 class RestoreTests(Fixture):
     def setUp(self):
@@ -475,6 +596,21 @@ class RestoreTests(Fixture):
                               ({"tombstones": [{"account": "synthetic-erased"}]}, "propagation_required")):
             with self.subTest(changes=changes), self.assertRaisesRegex(backup.BackupError, code):
                 restore.tombstone_preflight(self.ledger(**changes), self.p, captured)
+
+    def test_restore_and_drill_verify_what_status_does_not(self):
+        older = self.create(created=int(time.time()) - 3600)
+        newest = self.create()
+        for corrupted, drill in ((older, True), (newest, False)):
+            with self.subTest(corrupted=corrupted.name, drill=drill):
+                data = corrupted / "state/players/42"
+                data.write_bytes(data.read_bytes() + b"corruption")
+                self.assertEqual(backup.status(self.p)["result"], "ok")
+                with mock.patch.object(restore, "service_load") as service, \
+                     self.assertRaisesRegex(backup.BackupError, "generation_checksum_mismatch"):
+                    restore.restore(self.p, None, self.ledger(), drill=drill)
+                service.assert_not_called()
+                self.assertFalse(list(self.p["restore_root"].glob("candidate-*")))
+                data.write_bytes(data.read_bytes()[:-len(b"corruption")])
 
     def test_restore_rejects_tombstones_before_candidate_or_service(self):
         for mode in sorted(backup.MODES):

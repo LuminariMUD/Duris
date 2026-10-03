@@ -190,12 +190,17 @@ def restore(p, generation_name, tombstones, drill=False):
                 return {"event": "drill", "result": "not_due"}
         items = backup.generations(p["root"])
         backup.require(items, "no_verified_generation")
+        if drill:
+            # A backup verifies only the generation it publishes; the drill, at its slow
+            # cadence, verifies every stored one again.
+            for path, _ in items:
+                backup.verify(path)
         if generation_name is None:
-            generation, meta = items[0]
+            generation = items[0][0]
         else:
             backup.require(backup.GENERATION.fullmatch(generation_name), "invalid_generation_name")
             generation = p["root"] / generation_name
-            meta = backup.verify(generation)
+        meta = backup.verify(generation)
         backup.require(meta["runtime_schema_sha256"] ==
                        backup.digest(backup.ROOT / "migrations/runtime_compatibility_manifest.json"),
                        "restore_requires_matching_runtime")

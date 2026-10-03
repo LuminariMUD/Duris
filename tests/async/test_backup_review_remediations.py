@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import contextlib
+import errno
 import fcntl
 import io
 import json
@@ -75,10 +76,10 @@ class BackupReviewRemediationTests(Fixture):
         stage = self.base / "stage"
         stage.mkdir(mode=0o700)
         value = dict(self.p, journal_roots={"critical": critical})
-        captured = backup.journal_capture(stage, value)
-        self.assertEqual(set(captured["critical"]),
+        backup.journal_capture(stage, value)
+        self.assertEqual(backup.inventory(stage / "journals/critical"), backup.inventory(critical))
+        self.assertEqual(set(backup.inventory(critical)),
                          {"critical-command.journal", "critical-command.journal.tmp"})
-        self.assertEqual(backup.inventory(stage / "journals/critical"), captured["critical"])
         (critical / "player-save.journal").write_bytes(b"not a receipt")
         stage = self.base / "stage-foreign"
         stage.mkdir(mode=0o700)
@@ -93,9 +94,8 @@ class BackupReviewRemediationTests(Fixture):
         (store / "42.receipt").write_bytes(b"synthetic bounded receipt; native validation is separate")
         stage = self.base / "stage"
         stage.mkdir(mode=0o700)
-        captured = backup.journal_capture(stage, self.p)
-        self.assertEqual(backup.inventory(critical), captured["critical"])
-        self.assertEqual(backup.inventory(stage / "journals/critical"), captured["critical"])
+        backup.journal_capture(stage, self.p)
+        self.assertEqual(backup.inventory(stage / "journals/critical"), backup.inventory(critical))
 
     def test_journal_capture_rejects_invalid_locker_entries(self):
         store = self.p["journal_roots"]["critical"] / "locker-identification"
@@ -115,6 +115,29 @@ class BackupReviewRemediationTests(Fixture):
                 with self.assertRaisesRegex(backup.BackupError, code):
                     backup.journal_capture(stage, self.p)
                 entry.unlink()
+        target = self.base / "outside-receipt"
+        target.write_bytes(b"read through a link")
+        (store / "42.receipt").symlink_to(target)
+        stage = self.base / "stage-link"
+        stage.mkdir(mode=0o700)
+        with self.assertRaisesRegex(backup.BackupError, "symlink_rejected"):
+            backup.journal_capture(stage, self.p)
+
+    def test_journal_capture_writes_nothing_past_the_budget_or_the_reserve(self):
+        critical = self.p["journal_roots"]["critical"]
+        (critical / "critical-command.journal").write_bytes(b"x" * 1024 * 1024)
+        for index, (changes, free, code) in enumerate((
+                ({"max_bytes": 512 * 1024}, None, "capacity_headroom_required"),
+                ({"min_free_bytes": 1024 * 1024}, 1536 * 1024, "low_free_capacity"))):
+            stage = self.base / f"stage-{index}"
+            stage.mkdir(mode=0o700)
+            with contextlib.ExitStack() as stack:
+                if free is not None:
+                    stack.enter_context(mock.patch.object(
+                        backup.shutil, "disk_usage", return_value=mock.Mock(free=free)))
+                with self.subTest(code=code), self.assertRaisesRegex(backup.BackupError, code):
+                    backup.journal_capture(stage, dict(self.p, **changes))
+            self.assertEqual(backup.total_size(stage), 0)
 
     def test_expired_generations_are_pruned_only_after_successful_capture(self):
         now = int(time.time())
@@ -140,15 +163,18 @@ class BackupReviewRemediationTests(Fixture):
         replica = self.base / "replica"
         replica.mkdir(mode=0o700)
         self.p["replica_root"] = replica
-        with mock.patch.object(backup, "replicate",
-                               side_effect=backup.BackupError("replication_failed")):
+        full = OSError(errno.ENOSPC, "No space left on device", str(replica / "private"))
+        with mock.patch.object(backup, "replicate", side_effect=full):
             result = backup.backup(self.p, "flatfile-primary")
         self.assertEqual(result["result"], "replication_pending")
         self.assertEqual(result["replica"], "pending")
+        cause = {"code": "operation_failed", "error": "OSError", "detail": "No space left on device"}
+        self.assertEqual(result["replica_error"], cause)
         status = json.loads((self.p["root"] / "status.json").read_text())
         self.assertEqual(status["generation"], result["generation"])
         self.assertEqual(status["replica"], "pending")
         self.assertEqual(status["result"], "replication_pending")
+        self.assertEqual(status["replica_error"], cause)
         self.assertTrue(first.is_dir())
         self.assertEqual(len(backup.generations(self.p["root"])), 2)
         with mock.patch.object(backup, "replicate",
@@ -159,6 +185,44 @@ class BackupReviewRemediationTests(Fixture):
         status = json.loads((self.p["root"] / "status.json").read_text())
         self.assertEqual(status["result"], "ok")
         self.assertEqual(status["replica"], "transport_and_readback_verified")
+
+    def test_schedule_reports_a_pending_replication_as_it_is(self):
+        replica = self.base / "replica"
+        replica.mkdir(mode=0o700)
+        self.p["replica_root"] = replica
+
+        def scheduled(replicated):
+            with mock.patch.object(backup, "replicate", **replicated), \
+                 mock.patch.object(backup, "policy_load", return_value=self.p), \
+                 mock.patch.object(sys, "argv", ["backup", "--policy", "/synthetic/policy", "schedule"]), \
+                 contextlib.redirect_stdout(io.StringIO()) as output:
+                code = backup.main()
+            return code, json.loads(output.getvalue())
+
+        code, result = scheduled({"side_effect": backup.BackupError("replica_mount_missing")})
+        self.assertEqual((code, result["result"]), (1, "replication_pending"))
+        self.assertEqual(result["replica_error"], {"code": "replica_mount_missing"})
+        self.assertFalse((self.p["root"] / "schedule.json").exists())
+        code, retried = scheduled({"return_value": "transport_and_readback_verified"})
+        self.assertEqual((code, retried["result"]), (0, "ok"))
+        self.assertEqual(retried["generation"], result["generation"])
+        self.assertTrue((self.p["root"] / "schedule.json").exists())
+
+    def test_a_pending_replication_retry_verifies_the_generation(self):
+        replica = self.base / "replica"
+        replica.mkdir(mode=0o700)
+        self.p["replica_root"] = replica
+        with mock.patch.object(backup, "replicate",
+                               side_effect=backup.BackupError("replica_mount_missing")):
+            pending = backup.backup(self.p, "flatfile-primary")
+        generation = self.p["root"] / pending["generation"]
+        (generation / "state/players/42").write_bytes(b"corrupted while the replica was down")
+        self.p["replica_root"] = None
+        with self.assertRaisesRegex(backup.BackupError, "generation_checksum_mismatch"):
+            backup.backup(self.p, "flatfile-primary")
+        status = json.loads((self.p["root"] / "status.json").read_text())
+        self.assertEqual((status["generation"], status["result"]),
+                         (pending["generation"], "replication_pending"))
 
     def test_replication_stage_is_removed_when_publication_fails(self):
         source = self.create("flatfile-primary")

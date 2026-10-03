@@ -71,14 +71,24 @@ the guard correctly rejects that execution context. The root-managed production
 service template preserves the expected root mapping. Custom user services must
 qualify the backup under their actual service restrictions before cutover.
 
-Flatfile capture preserves identity
-ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ critical authority ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ account locking, pending-transaction evidence, and the
-complete durable file tree.
+Flatfile capture holds the identity, critical-authority, account and
+artifact-mana locks, taken in that order, while it copies the complete durable
+file tree with its pending-transaction evidence.
 
-The receipt tree is copied before the authority snapshot and compared again after
-it; a receipt that changes meanwhile rejects the generation. Anything in that
-directory other than receipts and their empty service lock also rejects it. Restores
-copy the same tree. Historical generations are never edited.
+The receipt tree is copied after the authority capture, so a paid, failed or
+delivered receipt is at least as new as the database it is restored with: an
+identification paid after the snapshot restores as paid, its charge lost. A
+prepared receipt is still waiting on its payment, and its charge can reach the
+database before its paid marker reaches the receipt, so a restore could charge it
+twice: every prepared receipt in the copy must have been there, unchanged, before
+the authority capture began, and a payment begun during the capture rejects the
+generation (the next run takes it). One already waiting whose charge lands during
+the capture while its paid marker stalls past the copy is not caught; that is the
+moment in which a crash also charges twice. A rename replaces a receipt whole, so
+any other change during the capture does not fail it, and the writer's temporary
+files (`.<pid>.receipt.tmp.*`) are left out. Anything else in that directory other
+than receipts and their empty service lock rejects the generation. Restores copy
+the same tree. Historical generations are never edited.
 
 ## Commands and scheduling
 
@@ -97,6 +107,14 @@ busy condition is reported as a fixed error. The systemd backup, health, and dri
 units declare mutual conflicts, and the pre-cycle launcher retries a busy backup
 before refusing to boot.
 
+Status and the schedule read the generations' manifests and the receipt, never
+their files, so a run costs the same however many generations are kept. A
+generation's checksums and dump are verified in full when it is published, by
+finalize, before its pending replication is retried, when it is restored and
+before it is pruned. Every drill verifies all
+stored generations before it restores the newest, so a corrupted older generation
+fails the drill; `status --require-drill` is what then reports it.
+
 Sample inactive systemd units are in deploy/systemd/duris-backup-*. Copy them,
 adapt User, WorkingDirectory, ReadWritePaths, paths, and permissions, and connect
 OnFailure to the custodian's existing alerting service before enabling the
@@ -106,12 +124,21 @@ catches missed invocations after host downtime. Test a deliberate invalid
 policy and verify that the failure reaches the responsible operator.
 
 stdout/stderr contain JSON with fixed result/error codes, generation IDs,
-aggregate age/bytes/counts, and separate replica status. Recovery-point age starts
+aggregate age/bytes/counts, and separate replica status. When an unexpected
+exception stops a job, its code is operation_failed, `error` names the exception's
+class and `detail` its message: for an OS error only the system's text, never the
+file name, and nothing for a subprocess error, whose command line names the
+database user and host. A failed replication is recorded the same way, as
+`replica_error` in status.json and in the job's output. Recovery-point age starts
 before receipt and authority capture, so dump duration cannot hide an RPO breach. No credentials, account
 names, hosts, or player values are telemetry. Alert on any nonzero job result,
 rpo_exceeded, capacity failures, interrupted work, or missing/overdue drill
 receipts. Monitor timer/unit availability too: a stopped scheduler cannot
-report its own failure.
+report its own failure. A scheduled backup that fails still reports the
+recovery point's age as `age_seconds`; past the RPO its code is rpo_exceeded,
+with the backup's own failure under `backup`, so a breach is reported while
+every attempt fails. A scheduled backup whose replica failed prints its
+replication_pending result, and the next run retries the replication.
 
 A failed post-publication step leaves a complete generation and preserves prior
 ones. Resolve the cause and explicitly retry verification/replication/rotation:

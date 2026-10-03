@@ -38,6 +38,12 @@ JOURNAL_ROOTS = {"critical"}
 # The journal an older server kept in that directory. Nothing reads it any more; a backup
 # carries it as it is, so an upgraded server still backs up and an older generation restores.
 RETIRED_JOURNAL_FILES = {"critical-command.journal", "critical-command.journal.tmp"}
+# flatfile_atomic_write() writes a receipt to this temporary file and renames it over the
+# receipt; one is there while a write is under way, and a crash can leave it behind. The game
+# never reads one, so no capture copies it.
+RECEIPT_WRITE = re.compile(r"\.[1-9][0-9]{0,9}\.receipt\.tmp\.[0-9]+\.[0-9]+")
+RECEIPT = re.compile(r"locker-identification/([1-9][0-9]{0,9})\.receipt")
+RECEIPT_MAX_BYTES = 16 + 1024 + 64 * 1024 + 32  # The native codec's bound.
 LOCK_WAIT_SECONDS = 120
 CAPACITY_CHECK_INTERVAL = 32 * 1024 * 1024
 
@@ -49,6 +55,32 @@ class BackupError(Exception):
 def require(condition, code):
     if not condition:
         raise BackupError(code)
+
+
+def failure(error):
+    """What a failure record says of its cause. An OS error keeps no file name, which can
+    name an account, and a subprocess error no message: its command line names the database
+    user and host."""
+    if isinstance(error, BackupError):
+        return {"code": str(error)}
+    kind = type(error)
+    record = {"code": "operation_failed",
+              "error": kind.__name__ if kind.__module__ == "builtins" else
+              f"{kind.__module__}.{kind.__name__}"}
+    if isinstance(error, OSError):
+        detail = error.strerror
+    elif isinstance(error, subprocess.SubprocessError):
+        detail = None
+    else:
+        detail = str(error)
+    if detail:
+        record["detail"] = detail
+    return record
+
+
+# What a job reports in a failure record; anything else is a defect and keeps its traceback.
+FAILURES = (BackupError, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError,
+            EOFError)
 
 
 def checkpoint(stage):
@@ -193,17 +225,20 @@ def lock(path, wait=0):
         os.close(fd)
 
 
-def inventory(root, exclude_locks=False):
+def walk(root):
+    """Each file below root, once it and every directory on the way pass secure_path()."""
     secure_path(root, True)
-    result = {}
     for base, dirs, files in os.walk(root, followlinks=False):
         for name in sorted(dirs + files):
             path = Path(base) / name
             secure_path(path, name in dirs)
-            if name in files and not (exclude_locks and name in LOCKS):
-                result[path.relative_to(root).as_posix()] = {
-                    "sha256": digest(path), "bytes": path.stat().st_size}
-    return result
+            if name in files:
+                yield path
+
+
+def inventory(root, exclude_locks=False):
+    return {path.relative_to(root).as_posix(): {"sha256": digest(path), "bytes": path.stat().st_size}
+            for path in walk(root) if not (exclude_locks and path.name in LOCKS)}
 
 
 def sync_tree(root):
@@ -221,35 +256,51 @@ def sync_tree(root):
 def journal_capture(stage, p, capacity_base=None):
     target = stage / "journals"
     target.mkdir(mode=0o700)
-    snapshots = {}
+    used = (total_size(p["root"]) if capacity_base is None else capacity_base) + total_size(stage)
+
+    def copy(source, destination):
+        # Each file is held to the budget and the reserve before a byte of it is written.
+        nonlocal used
+        size = os.lstat(source).st_size
+        used += size
+        require(used < p["max_bytes"], "capacity_headroom_required")
+        require(shutil.disk_usage(stage).free >= size + p["min_free_bytes"], "low_free_capacity")
+        return shutil.copy2(source, destination)
+
     for name, source in p["journal_roots"].items():
         secure_path(source, True)
         require(source.is_dir(), "journal_source_missing")
-        snapshots[name] = inventory(source)
         require(name in JOURNAL_ROOTS, "invalid_journal_roots")
-        for relative, metadata in snapshots[name].items():
-            receipt = re.fullmatch(r"locker-identification/([1-9][0-9]{0,9})\.receipt", relative)
+        # A rename replaces a receipt whole, so the copy holds one whole version of each. It
+        # is checked on its own: the directory may have moved on since.
+        shutil.copytree(source, target / name, symlinks=True, copy_function=copy,
+                        ignore=lambda _, names: {x for x in names if RECEIPT_WRITE.fullmatch(x)})
+        for relative, metadata in inventory(target / name).items():
+            receipt = RECEIPT.fullmatch(relative)
             service_lock = relative == "locker-identification/.service-lock"
             if receipt:
                 require(int(receipt[1]) <= 2147483647, "journal_receipt_pid")
-                # Match the native format's bound before copying. The restore
-                # qualifier validates the checksum, payment and filename identity.
-                require(0 < metadata["bytes"] <= 16 + 1024 + 64 * 1024 + 32,
-                        "journal_receipt_size")
+                # The restore qualifier validates the checksum, payment and filename identity.
+                require(0 < metadata["bytes"] <= RECEIPT_MAX_BYTES, "journal_receipt_size")
             else:
                 require(service_lock or relative in RETIRED_JOURNAL_FILES, "journal_filename")
             if service_lock:
                 require(metadata["bytes"] == 0, "journal_service_lock_nonempty")
-        needed = sum(x["bytes"] for x in snapshots[name].values())
-        existing = total_size(p["root"]) if capacity_base is None else capacity_base
-        require(existing + total_size(stage) + needed < p["max_bytes"], "capacity_headroom_required")
-        require(shutil.disk_usage(stage).free >= needed + p["min_free_bytes"], "low_free_capacity")
-        shutil.copytree(source, target / name)
-        require(inventory(target / name) == snapshots[name], "journal_changed_during_capture")
-    if os.environ.get("CRITICAL_COMMAND_JOURNAL_DIR"):
-        require(p["journal_roots"]["critical"] == Path(os.environ["CRITICAL_COMMAND_JOURNAL_DIR"]),
-                "journal_policy_mismatch")
-    return snapshots
+
+
+def waiting_receipts(root):
+    """Each receipt below root that a payment may still be charging, with its bytes: any whose
+    header (locker_receipt_encode(): "LIDR", version 1, then the state) does not record it
+    paid, failed or delivered."""
+    result = {}
+    for path in walk(root):
+        relative = path.relative_to(root).as_posix()
+        if RECEIPT.fullmatch(relative):
+            with path.open("rb") as stream:
+                data = stream.read(RECEIPT_MAX_BYTES + 1)
+            if not (data[:5] == b"LIDR\x01" and data[5:6] in (b"\x01", b"\x02", b"\x03")):
+                result[relative] = data
+    return result
 
 
 def flatfile_capture(stage, p, capacity_base=None):
@@ -408,7 +459,7 @@ def mariadb_capture(stage, p, capacity_base=None):
     return {"database": database}
 
 
-def verify(generation):
+def read_manifest(generation):
     secure_path(generation, True)
     require(GENERATION.fullmatch(generation.name), "invalid_generation_name")
     manifest = read_json(generation / "manifest.json")
@@ -416,6 +467,11 @@ def verify(generation):
             manifest.get("generation") == generation.name and
             type(manifest.get("created")) is int and 0 <= manifest["created"] <= time.time() + 300,
             "invalid_generation_manifest")
+    return manifest
+
+
+def verify(generation):
+    manifest = read_manifest(generation)
     actual = inventory(generation)
     actual.pop("manifest.json")
     require(actual == manifest.get("files") and actual, "generation_checksum_mismatch")
@@ -427,10 +483,13 @@ def verify(generation):
 
 
 def generations(root):
+    # Manifests only: a generation is verified in full when it is published or finalized,
+    # before its pending replication is retried, when it is restored or pruned, and by the
+    # drill. Hashing every stored one here made each run cost more as generations accumulated.
     result = []
     for path in root.iterdir():
         if GENERATION.fullmatch(path.name):
-            result.append((path, verify(path)))
+            result.append((path, read_manifest(path)))
         else:
             require(path.name in {".job.lock", ".schedule.lock", "schedule.json", "status.json", "drill.json"} or
                     path.name.startswith((".staging-", ".trash-", ".metadata-")),
@@ -452,7 +511,7 @@ def retained(items, p, now):
 
 
 def total_size(path):
-    return sum(x["bytes"] for x in inventory(path).values())
+    return sum(file.stat().st_size for file in walk(path))
 
 
 def remove_owned(root, path):
@@ -481,7 +540,7 @@ def prune_unretained(root, p, items, keep, newest):
 
 def rotate(root, p, newest):
     checkpoint("before_rotation")
-    items = generations(root)  # Any invalid generation blocks all pruning.
+    items = generations(root)  # Any invalid manifest blocks all pruning.
     require(items and items[0][0] == newest, "new_generation_not_newest")
     keep = retained(items, p, int(time.time()))
     require(sum(total_size(path) for path, _ in items if path.name in keep) <= p["max_bytes"],
@@ -528,8 +587,8 @@ def replicate(source, p):
 def replication_result(source, p):
     try:
         return replicate(source, p), None
-    except (BackupError, OSError, ValueError, KeyError, subprocess.SubprocessError):
-        return "pending", "replication_failed"
+    except (BackupError, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+        return "pending", failure(error)
 
 
 def write_generation_status(root, generation, replica, result, replica_error=None):
@@ -545,7 +604,7 @@ def complete_generation(root, p, destination, event):
     if replica_error:
         write_generation_status(root, destination.name, replica, "replication_pending", replica_error)
         return {"event": event, "result": "replication_pending",
-                "generation": destination.name, "replica": replica}
+                "generation": destination.name, "replica": replica, "replica_error": replica_error}
     rotate(root, p, destination)
     write_generation_status(root, destination.name, replica, "ok")
     return {"event": event, "result": "ok", "generation": destination.name,
@@ -572,6 +631,7 @@ def backup(p, mode):
             require(receipt.get("generation") == items[0][0].name,
                     "prior_backup_requires_finalization")
             if receipt.get("result") == "replication_pending":
+                verify(items[0][0])  # It may have changed since its publication.
                 return complete_generation(root, p, items[0][0], "backup")
             require(receipt.get("result") == "ok", "prior_backup_requires_finalization")
         keep = retained(items, p, int(time.time())) if items else set()
@@ -590,13 +650,24 @@ def backup(p, mode):
                 schema = secure_path(Path(os.environ["RUNTIME_COMPATIBILITY_MANIFEST"]), False)
             shutil.copyfile(schema, stage / "runtime-schema.json")
             (stage / "runtime-schema.json").chmod(0o600)
+            if os.environ.get("CRITICAL_COMMAND_JOURNAL_DIR"):
+                require(p["journal_roots"]["critical"] == Path(os.environ["CRITICAL_COMMAND_JOURNAL_DIR"]),
+                        "journal_policy_mismatch")
             if mode == "mariadb-primary":
                 verify_database_schema(stage / "runtime-schema.json")
-            journals = journal_capture(stage, p, capacity_base)
+            waiting = {name: waiting_receipts(source) for name, source in p["journal_roots"].items()}
             detail = (flatfile_capture(stage, p, capacity_base) if mode == "flatfile-primary"
                       else mariadb_capture(stage, p, capacity_base))
-            require(all(inventory(p["journal_roots"][name]) == files for name, files in journals.items()),
-                    "journal_changed_during_authority_capture")
+            # The receipts come after the authority, so a paid, failed or delivered one is at
+            # least as new as the database it is restored with. One still waiting on its payment
+            # may have its charge in the snapshot but not its paid marker, which a restore would
+            # charge again, so each must have been waiting, unchanged, before the capture: a
+            # payment begun during it fails the run. An unchanged one charged during the capture,
+            # its paid marker stalled past the copy, is the moment in which a crash also charges
+            # twice (docs/operations/locker-identification.md).
+            journal_capture(stage, p, capacity_base)
+            require(all(waiting_receipts(stage / "journals" / name).items() <= waiting[name].items()
+                        for name in waiting), "receipt_payment_in_flight")
             if mode == "mariadb-primary":
                 verify_database_schema(stage / "runtime-schema.json")
             checkpoint("after_capture")
@@ -650,6 +721,38 @@ def status(p, require_drill=False):
         return {"event": "status", "drill_age_seconds": drill_age if drill else None, "result": "ok", "age_seconds": age,
                 "bytes": size, "free_bytes": free, "generations": len(items),
                 "replica": receipt["replica"]}
+
+
+def schedule(p, mode):
+    # A minute timer evaluates the approved cadence; pre-cycle backups do not move the
+    # independently scheduled deadline.
+    mkdir(p["root"])
+    with lock(p["root"] / ".schedule.lock", wait=LOCK_WAIT_SECONDS):
+        receipt_path = p["root"] / "schedule.json"
+        last = read_json(receipt_path).get("completed", 0) if receipt_path.exists() else 0
+        if time.time() - last < p["schedule_seconds"]:
+            return status(p)
+        try:
+            result = backup(p, mode)
+            # A pending replication is reported as it is; the next run's backup retries it
+            # without a new capture.
+            require(result["result"] in {"ok", "replication_pending"}, "authority_not_initialized")
+        except FAILURES as error:
+            return failed_backup(p, error)
+        if result["result"] == "ok":
+            write_json(receipt_path, {"completed": int(time.time())})
+        return result
+
+
+def failed_backup(p, error):
+    """A failed backup's record still gives the recovery point's age: a schedule whose every
+    backup fails never reaches status(), so an RPO breach would otherwise go unreported."""
+    items = generations(p["root"])
+    age = int(time.time()) - items[0][1]["created"] if items else None
+    if age is not None and age <= p["rpo_seconds"]:
+        return {"event": "schedule", "result": "failed", **failure(error), "age_seconds": age}
+    return {"event": "schedule", "result": "failed", "code": "rpo_exceeded", "age_seconds": age,
+            "backup": failure(error)}
 
 
 def load_environment(path):
@@ -707,30 +810,18 @@ def main():
                 items = generations(p["root"])
                 require(items, "no_verified_generation")
                 destination = items[0][0]
+                verify(destination)  # The publication may have stopped before its check.
                 result = complete_generation(p["root"], p, destination, "finalize")
         elif args.command == "schedule":
-            # A minute timer evaluates the approved cadence; pre-cycle backups do not
-            # move the independently scheduled deadline.
-            mkdir(p["root"])
-            with lock(p["root"] / ".schedule.lock", wait=LOCK_WAIT_SECONDS):
-                receipt_path = p["root"] / "schedule.json"
-                last = read_json(receipt_path).get("completed", 0) if receipt_path.exists() else 0
-                if time.time() - last >= p["schedule_seconds"]:
-                    result = backup(p, os.environ.get("PERSISTENCE_MODE", "mariadb-primary"))
-                    require(result.get("result") == "ok", "authority_not_initialized")
-                    write_json(receipt_path, {"completed": int(time.time())})
-                else:
-                    result = status(p)
+            result = schedule(p, os.environ.get("PERSISTENCE_MODE", "mariadb-primary"))
         else:
             from persistence_restore import restore
             result = restore(p, args.generation, args.tombstones, args.command == "drill")
-        print(json.dumps(result, sort_keys=True))
-        return 1 if result.get("result") == "replication_pending" else 0
-    except (BackupError, OSError, ValueError, KeyError, TypeError,
-            subprocess.SubprocessError, EOFError) as error:
-        code = str(error) if isinstance(error, BackupError) else "operation_failed"
-        print(json.dumps({"event": args.command, "result": "failed", "code": code}), file=sys.stderr)
-        return 1
+    except FAILURES as error:
+        result = {"event": args.command, "result": "failed", **failure(error)}
+    failed = result["result"] == "failed"
+    print(json.dumps(result, sort_keys=True), file=sys.stderr if failed else sys.stdout)
+    return 1 if failed or result["result"] == "replication_pending" else 0
 
 
 if __name__ == "__main__":

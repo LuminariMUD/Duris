@@ -36,6 +36,9 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   on 2026-10-03 in `218d0640b`, one `--no-ff` merge of the `-1` head, with no rebase or
   squash, so both tags still name what was reviewed. The branch is deleted
   ([record](#phase-5-landed-done)).
+- Phase 6 is reviewed as [!8](https://gitlab.com/max757/duris/-/merge_requests/8) (source
+  `fix/3-persistence-phase-6`, branched from master `2d58826c4`), tagged
+  `persistence/phase-6-review-0` and `-1` ([review round 1](#review-round-1-mr-8)).
 - Each later phase works the same way: a branch from master named for its work item, an MR,
   the head the review reads tagged `persistence/phase-<n>-review-0`, a review round's fixes on
   the branch tagged `-1`, `-2` and so on, then one `--no-ff` merge of the last tag.
@@ -2715,3 +2718,194 @@ recorded (a restored player corpse keeps refreshing its decay). Its three `Sanit
 from NumAttackers() ... at NOWHERE!` lines were not reproduced and are not the loads'
 ([record](#characters-missing-from-their-rooms-people-list-done)); a new work item takes them
 if they recur on this build.
+
+## Phase 6 progress
+
+Phase 6 ([plan](persistence-plan.md#phase-6-backups-3)) is done on `fix/3-persistence-phase-6`,
+branched on 2026-10-03 from master `2d58826c4`. Each item below gets its record when it lands;
+an item without one is not done.
+
+### Each generation verified once (done)
+
+`generations()` called `verify()` on every stored generation, hashing each file and
+decompressing and scanning each dump, and `total_size()` hashed every file to count its bytes.
+Every run paid for the whole history: the minute's `status`, each hourly backup (twice: before
+the capture and in the rotation) and each replication.
+
+`generations()` now reads each manifest (`read_manifest()`, the first half of the old
+`verify()`), and `total_size()` takes sizes from the file system through `walk()`, the
+secure walk `inventory()` now shares. A generation is verified in full when it is published,
+by `finalize` (which can follow a publish that stopped before its check; the old `finalize`
+verified it through `generations()`), when it is restored (the newest was verified only
+through `generations()` before) and before it is pruned. The drill verifies every stored
+generation before it restores the newest, so a corrupted older one fails the drill, and
+`status --require-drill` reports the overdue drill. `9e1bca3d8`.
+
+Measured with copies of a real local generation (the 31 MB `duris_dev` dump) in a scratch
+root: `status` took 1.16 s of CPU with 1 generation and 43 s with 40 on the old code, and
+0.03 s and 0.04 s on the new one, reporting the same bytes. A real backup of `duris_dev` into
+that root of 40 took 97.9 s of CPU on the old code and 13.7 s on the new one, the same as into
+the local root of 2 (13.6 s); the dump and the one verification of what it publishes are what
+is left. #3's staging dumps are about five times larger, hence its 3 to 4 CPU-minutes a run.
+
+Tests (`test_persistence_backup.py`): `status` with 1 and with 40 generations runs with
+`digest()` and `validate_dump()` failing if called; `finalize` refuses a newest generation
+corrupted after a publish that stopped before its check, and `status.json` stays on the
+previous one; the drill refuses a corrupted older generation and a restore a corrupted newest,
+both before any candidate exists, while `status` passes. Each fails on the old code, and with
+any one of the new `verify()` calls taken out the test that pins it fails.
+
+### Failure records name their cause (done)
+
+`main()` printed `operation_failed` for every unexpected exception, and `replication_result()`
+recorded `replication_failed` for every replica failure, its own `BackupError` code included.
+`failure()` now builds a record's cause: a `BackupError` keeps its code; anything else gives
+`operation_failed`, the exception's class as `error` (with its module when not a built-in, so
+`shutil.Error` or `subprocess.TimeoutExpired`) and its message as `detail`. Two kinds keep less,
+so that nothing private reaches the journal: an OS error keeps only its `strerror`, since its
+file name can be a flat-file path naming an account; a subprocess error keeps no message,
+since `TimeoutExpired` quotes the command line with the database user and host (the password
+travels in `MYSQL_PWD`, never in arguments). The replica's failure is recorded the same way as
+`replica_error` in `status.json` and in the run's output, which did not carry it at all.
+`5ba50200b`.
+
+Tests: `test_persistence_backup.py` runs `main()` with a backup raising a `BackupError`, a
+`FileNotFoundError` whose file name names an account, a `TimeoutExpired` whose command line
+names a user and host, and a `KeyError`, and compares each whole record, so nothing else can
+appear in it; `test_backup_review_remediations.py`'s replication test fails the replica with
+`ENOSPC` and checks `replica_error` in the result and in `status.json`. Both fail on the old
+code.
+
+### A scheduled backup's pending replication (found, done)
+
+Found while tracing the schedule for item 2. `schedule` required its backup's result to be
+`ok` and called anything else `authority_not_initialized`, so a generation published locally
+whose replica failed was reported as an uninitialised authority, and the replica's cause was
+lost with it. The schedule now prints the `replication_pending` result, with its replica error,
+and exits 1 as `backup` does; it leaves its deadline alone, so the next minute's backup sees
+the pending receipt and retries only the replication. `879356579`.
+
+Test: `test_backup_review_remediations.py` runs `schedule` with the replica failing (the
+pending result and its cause are printed and `schedule.json` is not written), then with it
+working (the same generation completes and the deadline is written). On the old code the
+first run printed `authority_not_initialized`.
+
+### The RPO alarm while backups fail (done)
+
+While every backup failed, `schedule` never reached `status()`, so `rpo_exceeded` never fired.
+The schedule moves into `schedule()`, and when its backup fails, `failed_backup()` reads the
+newest generation's manifest (no lock: it only reads, and a broken root has already failed the
+backup with the same code). Past the RPO, or with no generation at all, the record's code is
+`rpo_exceeded` with `age_seconds` and the backup's own failure under `backup`; within it, the
+record is the backup's failure with `age_seconds` added. `main()` now prints every failure
+record, raised or returned, the same way. `1265b3ff9`.
+
+Test: `test_persistence_backup.py` fails a scheduled backup with `ENOSPC` an hour after the
+last generation, past the RPO, and with no generation, and compares each whole record. All
+three fail on the old code.
+
+### Receipts that change during the capture (done)
+
+The capture listed and hashed the receipt directory, copied it, required the copy to match the
+listing, ran the authority capture, and then required the directory to match the listing
+again, so a receipt written during the dump failed the run (`journal_changed_during_authority_capture`).
+Traced further, a receipt write failed it too: `flatfile_atomic_write()` writes to
+`.<pid>.receipt.tmp.<pid>.<n>` in the same directory and renames it over the receipt, and the
+listing refused that name (`journal_filename`), or lost it to the rename before hashing it
+(`FileNotFoundError`, an `operation_failed`). Nothing removes one a crash leaves behind, so a
+crash during a receipt write would have failed every backup after it.
+
+The comparison bought no consistency: a receipt is written at once, and the wallet it charges
+reaches the database with a later save. What matters on a restore is which way they disagree.
+A receipt older than the database can say `prepared` for a charge the database holds, and the
+player's next login charges it again; a receipt newer than the database says `paid` for a
+charge the database lacks, and the identification is free, the way a crash loses money rather
+than paying it twice. So the receipts are now copied after the authority capture (the dump
+snapshots at its start, the flat-file copy under its locks), and the copy is checked on its own
+instead of against the directory: a rename replaces a receipt whole, so each copied receipt is
+one whole version. The writer's temporary files are not copied (`RECEIPT_WRITE`). `copytree()`
+keeps symlinks as links, so the copy's own check still refuses one, as the old listing of the
+directory did. The check that `CRITICAL_COMMAND_JOURNAL_DIR` matches the policy moves into
+`backup()` before the capture, so a mismatch still costs no dump. `8277ddc64`. Review round 1
+found that copying last does not cover a payment begun during the capture, whose paid marker
+can lag its charge, and its fix refuses one ([record](#review-round-1-mr-8)).
+
+Tests (`test_persistence_backup.py`): in both modes, with a writer's temporary file in the
+directory, a receipt rewritten during the authority capture is published as rewritten, and the
+temporary file is left out; it pins the writer's name format in `flatfile_store.c`. On the old
+code the temporary file failed it with `journal_filename`, and without it the rewrite failed it
+with `journal_changed_during_authority_capture`. A policy naming another receipt directory than
+`CRITICAL_COMMAND_JOURNAL_DIR` fails before the authority capture is called.
+`test_backup_review_remediations.py` adds a symlinked receipt, refused as `symlink_rejected`,
+which fails with `copytree()`'s default of following links.
+
+### Live checks on the local database (done)
+
+Run with the `.env` account's `duris_dev` and the local backup policy, on the code head:
+
+- `./scripts/backup_pfiles.sh` published a generation and pruned one by retention (13.6 s of
+  CPU), and `status` answered in 0.04 s. `schedule` with no deadline ran a backup and wrote
+  `schedule.json`; run again, it answered with the status.
+- With a copy of `.env` holding a wrong database password, a scheduled backup within the RPO
+  printed `{"age_seconds": 92, "code": "subprocess_failed", ...}`, and with a 60-second RPO
+  `{"age_seconds": 81, "backup": {"code": "subprocess_failed"}, "code": "rpo_exceeded", ...}`.
+- The game's receipt writer: four loops of `persistence_restore_fixture seed-receipt` (the
+  integration test's fixture, writing through `locker_receipt_write()` and
+  `flatfile_atomic_write()`) rewrote one receipt about 45,000 times in a scratch receipt
+  directory while real backups of `duris_dev` captured it. On master's script 5 of 5 backups
+  failed, 3 with `journal_filename` (a temporary file listed) and 2 with
+  `journal_changed_during_capture`; on the new one 5 of 5 published, and each retained
+  generation's receipt passed `qualify_flatfile_restore --receipts`, the production decoder.
+
+### The gate on the branch head (done)
+
+On `6537ac919`, the head with every record above, run once each: `./scripts/format.sh --all
+--check` (1031 files clean); `make test-all -j16 TEST_JOBS=16` alone (659 of 659, 435 s); then
+`make test-db` (36 of 36, 183 s) and `npm test --prefix site` (14 tests; `docs/` changed).
+Neither suite left `logs/log/dupes` or `logs/log/item_claims` behind.
+
+The backup-recovery job (`.github/workflows/backup-recovery.yml`), which this phase's changes
+call for, was replayed in a privileged `ubuntu:24.04` container on a clone of `6537ac9`: both
+backends built, the four policy and filesystem tests passed, and the root-only
+`test_persistence_backup_integration.py` passed 5 of 5 (57 s), among them the flat-file
+generation with a real receipt restored and qualified, and the MariaDB dump restored into a
+private database and booted in an isolated namespace. Not run:
+`run_runtime_compatibility_mysql.sh` (no schema change) and CodeQL and Trivy (nothing they
+check changed).
+
+### Review round 1 (MR !8)
+
+The review read `persistence/phase-6-review-0` (`7b7b247f9`). It found three defects, all
+from this phase; each reproduced on that head with a test, and each is fixed in its own
+commit on `fix/3-persistence-phase-6`. The fixed head is tagged `persistence/phase-6-review-1`.
+
+| Finding | Fix | Commit |
+|---|---|---|
+| 1. P1: copying the receipts after the authority does not keep a `prepared` receipt from being published with its charge. A bank payment queues its debit and the player's save at once while the paid marker is written by a worker that can lag or fail, so a payment begun during the capture could be in the snapshot while its receipt still said `prepared`, and the restored player's login charged it again; master's comparison refused that interleaving. | Before the authority capture the backup lists the receipts still waiting on their payment (`waiting_receipts()`: any whose header does not say paid, failed or delivered), and every waiting receipt in the copy must have been waiting, unchanged, then; otherwise the run fails with `receipt_payment_in_flight` and the next run takes it. Settled changes still do not fail it. An unchanged waiting receipt charged during the capture with its paid marker stalled past the copy is not caught, as master did not catch it either: it is the moment in which a crash also charges twice (`locker-identification.md`). In every dangerous case this refuses whatever master refused. | `a6cb01709` |
+| 2. P2: the receipt directory was copied before its size checks, so a large file (an older server's `critical-command.journal` has no bound) could consume the free-space reserve or the budget before the capture failed; master refused it before copying. | `copytree()` copies through a function that holds each file to the budget and the reserve before writing a byte of it, which also covers growth after any listing. | `afb181b4b` |
+| 3. P2: with `generations()` reading manifests only, a backup that found its last generation's replication pending completed it unchecked; under a policy whose replica was then removed, a generation corrupted since its publication was marked `ok`. | The retry verifies the generation first, as `finalize` does. | `a6741ccf9` |
+
+Also corrected with finding 1: `BACKUPS.md` and the plan's item 3 no longer say that copying
+last alone keeps a restore from charging twice, and `locker-identification.md` no longer says
+transient files fail the capture (wrong since item 3).
+
+Verification for this round:
+
+- Each new test fails on `7b7b247f9`: a prepared receipt written during the authority capture
+  is published in both modes; the 1 MiB legacy journal is copied whole before it is refused,
+  and passes outright with 1.5 MiB free against a 1 MiB reserve; the pending retry marks the
+  corrupted generation `ok`. The test for finding 1 pins the header layout the backup reads
+  (`locker_receipt.c` writes the state at byte 5, `prepared` first) and keeps an unchanged
+  waiting receipt publishable.
+- A receipt written by the native encoder (`persistence_restore_fixture seed-receipt`) reads
+  as settled, and with its state byte set to `prepared` as waiting.
+- The live writer check again, on the fixed code: four loops of `seed-receipt` rewrote a paid
+  receipt about 33,600 times while 5 of 5 real backups of `duris_dev` published, and each
+  retained receipt passed `qualify_flatfile_restore --receipts`.
+- The gate on `09e267fff`, the fixed head with this round's record, run once each:
+  `./scripts/format.sh --all --check` (1031 files clean); `make test-all -j16 TEST_JOBS=16`
+  alone (659 of 659, 615 s); `npm test --prefix site` (14 tests); and the backup-recovery job
+  replayed in the privileged container on a clone of `09e267f` (the four policy and filesystem
+  tests, and `test_persistence_backup_integration.py` 5 of 5). Not run again: `make test-db`,
+  which runs nothing these fixes touch, and passed on the review's code head
+  ([record](#the-gate-on-the-branch-head-done-3)).

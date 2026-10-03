@@ -39,10 +39,13 @@ Every crash boundary also runs with 40 online players without receipts queued be
 The backup preserves `locker-identification/<pid>.receipt` and its empty
 `.service-lock` under `journal_roots.critical`. Receipt filenames must
 contain a positive signed 32-bit player ID and files must fit the native codec's
-size bound. Existing ownership, permissions, symlink, hardlink and capture
-consistency checks still apply. Transient or unexpected files fail capture, except
-the `critical-command.journal` and `critical-command.journal.tmp` an older server left
-beside the store, which are carried unread.
+size bound. Existing ownership, permissions and symlink checks still apply. The
+directory is copied after the database or flat-file capture, leaving out the
+writer's temporary files. A prepared receipt that appears or changes during the
+capture rejects the generation, since its charge may be in the snapshot before its
+paid marker is in the receipt; other receipt changes do not. Unexpected files fail
+capture, except the `critical-command.journal` and `critical-command.journal.tmp` an
+older server left beside the store, which are carried unread.
 
 The restore verifier (`qualify_flatfile_restore --receipts`) checks this directory
 before service boot. It accepts only an empty service lock and receipts that pass the

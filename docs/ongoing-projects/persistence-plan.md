@@ -17,8 +17,11 @@ items, one phase each. Phase 4 landed as
 [!6](https://gitlab.com/max757/duris/-/merge_requests/6) in `d6952d701`, its review clean
 ([record](persistence-done.md#phase-4-landed-done)). Phase 5 landed as
 [!7](https://gitlab.com/max757/duris/-/merge_requests/7) in `218d0640b` after one review
-round, and #4 is closed ([record](persistence-done.md#phase-5-landed-done)). Phase 6 is next,
-on `fix/3-persistence-phase-6`; Phases 6 to 8 are not started.
+round, and #4 is closed ([record](persistence-done.md#phase-5-landed-done)). Phase 6 is done
+on `fix/3-persistence-phase-6` and in review as
+[!8](https://gitlab.com/max757/duris/-/merge_requests/8), with review round 1's fixes tagged
+`persistence/phase-6-review-1` ([progress](persistence-done.md#phase-6-progress)); Phases 7
+and 8 are not started.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
@@ -314,6 +317,41 @@ Done when: a status run costs about the same with 1 generation or 40, and a test
 completes while a receipt changes, with a test; failure records name the exception, and an RPO
 breach alerts even when every backup fails.
 
+How each item is done (decided 2026-10-03):
+
+1. `generations()` reads each generation's manifest and checks its fields, without hashing a
+   file or opening a dump; `verify()` keeps the full check. A generation is verified in full
+   when it is published, by `finalize` (which can follow a publish that stopped before its
+   check), when it is restored and before it is pruned. The drill verifies every stored
+   generation before it restores the newest, so a corrupted older one fails the drill and
+   `status --require-drill` alarms. `total_size()` takes sizes from the file system instead of
+   hashing every file. Measured locally on the old code with copies of a real 31 MB
+   generation, `status` took 1.2 s of CPU with 1 generation and 43 s with 40.
+2. When a scheduled backup fails, the schedule still reads the newest generation's age. Past
+   the RPO the failure record's code is `rpo_exceeded`, with the backup's own failure under
+   `backup`; otherwise the record is the backup's failure with the age added.
+3. The receipts are copied after the authority capture instead of before it, and the
+   comparison after the dump goes. A receipt is written at once and the wallet reaches the
+   database with a later save, so the two never matched at one instant; copied last, a paid,
+   failed or delivered receipt is at least as new as the database it is restored with, so a
+   restore can lose that identification's charge but not repeat it (as a crash does: money is
+   lost rather than paid twice). A prepared receipt is still waiting on its payment, whose
+   charge can reach the database first (a bank debit and its save are queued at once), so the
+   capture lists the waiting receipts before the authority capture and fails with
+   `receipt_payment_in_flight` when the copy holds one that was not waiting, unchanged, then
+   (review round 1 of !8). A rename replaces a receipt whole, so the copy is checked on its own
+   instead of against the directory, each file held to the budget and the reserve before it is
+   copied. The writer's temporary files (`.<pid>.receipt.tmp.<pid>.<n>`), there while a write
+   is under way and left behind by a crash, are not copied: one failed the run with
+   `journal_filename`, and a crash's leftover failed every run. The check that
+   `CRITICAL_COMMAND_JOURNAL_DIR` agrees with the policy moves before the capture, so a
+   mismatch still costs no dump.
+4. A failure record names the exception's class (`error`) and message (`detail`), except what
+   can be private: an OS error keeps its `strerror` without the file names (a flat-file path
+   can name an account), and a subprocess error keeps no message (its command line names the
+   database user and host). The replica's failure is recorded the same way in `status.json`
+   and the run's output, instead of a bare `replication_failed`.
+
 ## Phase 7: game-loop performance (#5)
 
 1. **Measure again.** The tick stalls, the event debt and the `rent`, `quit` and hourly timings in
@@ -326,7 +364,9 @@ breach alerts even when every backup fails.
 3. **Production builds at `-Og`.** `HARDENING_FLAGS` in `src/Makefile` puts `-Og` in every profile.
    Build `BUILD_PROFILE=production` at `-O2`, and record the tick latency before and after on the
    same load.
-4. **The backup job's CPU** competes with the loop; Phase 6 item 1 fixes it.
+4. **The backup job's CPU** competes with the loop; Phase 6 item 1 fixed it: locally a backup
+   into a root of 40 generations went from 97.9 s of CPU to 13.7 s, and `status` from 43 s to
+   0.04 s ([record](persistence-done.md#each-generation-verified-once-done)).
 
 Left on #5, as server configuration: the MariaDB buffer pool, left at its 128 MB default.
 
@@ -415,6 +455,8 @@ In this order: the backup job's cost before Phase 7 measures the loop; the world
 on the optimised build. Phases 4 (alerts and logs) and 5 (bugs from the logs) are done and on
 master.
 
-1. [Phase 6: backups (#3)](#phase-6-backups-3).
+1. [Phase 6: backups (#3)](#phase-6-backups-3): done, in review as
+   [!8](https://gitlab.com/max757/duris/-/merge_requests/8); it leaves this list when it
+   lands.
 2. [Phase 7: game-loop performance (#5)](#phase-7-game-loop-performance-5).
 3. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2).
