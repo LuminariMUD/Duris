@@ -3532,8 +3532,7 @@ static int parse_proxy_protocol(int desc, char *real_ip, size_t ip_len)
 	else
 		return 0;
 
-	strncpy(real_ip, src_ip, ip_len - 1);
-	real_ip[ip_len - 1] = '\0';
+	strlcpy(real_ip, src_ip, ip_len);
 	return 1;
 }
 

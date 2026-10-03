@@ -953,15 +953,15 @@ static void format_time_remaining(time_t expires_at, char *buf, size_t buflen)
 	}
 	else if (remaining > 86400)
 	{
-		snprintf(buf, buflen, "%ldd", (long)(remaining / 86400));
+		snprintf(buf, buflen, "%dd", (int)(remaining / 86400));
 	}
 	else if (remaining > 3600)
 	{
-		snprintf(buf, buflen, "%ldh", (long)(remaining / 3600));
+		snprintf(buf, buflen, "%dh", (int)(remaining / 3600));
 	}
 	else if (remaining > 60)
 	{
-		snprintf(buf, buflen, "%ldm", (long)(remaining / 60));
+		snprintf(buf, buflen, "%dm", (int)(remaining / 60));
 	}
 	else
 	{

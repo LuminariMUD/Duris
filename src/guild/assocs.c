@@ -582,15 +582,16 @@ void show_guild_frags(P_char ch)
 	i = 0;
 	while (i < guild_count)
 	{
-		snprintf(Gbuf1, MAX_STRING_LENGTH,
-			 "\t%s\n\t&+WTotal Guild Frags: \t&+Y%+.2f&n\n"
-			 "\t&+WTop Fragger: &+Y%-10s %+.2f&n\n"
-			 "\t&+WMembers:&+Y%2d&+W Frags/Member:&+Y%+.2f&n\n"
-			 "    &+L---------------------------------------\n",
-			 gfrag_list[i].guild_name, gfrag_list[i].tot_frags / 100.00,
-			 gfrag_list[i].top_fragger, gfrag_list[i].top_frags / 100.00,
-			 gfrag_list[i].num_members,
-			 (float)(gfrag_list[i].tot_frags / (gfrag_list[i].num_members * 100.00)));
+		checked_snprintf(
+			Gbuf1, MAX_STRING_LENGTH,
+			"\t%s\n\t&+WTotal Guild Frags: \t&+Y%+.2f&n\n"
+			"\t&+WTop Fragger: &+Y%-10s %+.2f&n\n"
+			"\t&+WMembers:&+Y%2d&+W Frags/Member:&+Y%+.2f&n\n"
+			"    &+L---------------------------------------\n",
+			gfrag_list[i].guild_name, gfrag_list[i].tot_frags / 100.00,
+			gfrag_list[i].top_fragger, gfrag_list[i].top_frags / 100.00,
+			gfrag_list[i].num_members,
+			(float)(gfrag_list[i].tot_frags / (gfrag_list[i].num_members * 100.00)));
 		strcat(buf, Gbuf1);
 		i++;
 	}
@@ -744,7 +745,7 @@ Guild::Guild(char *_name, unsigned int _racewar, unsigned int _id_number, unsign
 	members = NULL;
 	for (int i = 0; i < ASC_NUM_RANKS; i++)
 	{
-		snprintf(titles[i], sizeof(titles[i]), "%s", guild_default_titles[i]);
+		checked_snprintf(titles[i], sizeof(titles[i]), "%s", guild_default_titles[i]);
 	}
 }
 
@@ -766,7 +767,7 @@ Guild::Guild()
 	members = NULL;
 	for (int i = 0; i < ASC_NUM_RANKS; i++)
 	{
-		snprintf(titles[i], sizeof(titles[i]), "%s", guild_default_titles[i]);
+		checked_snprintf(titles[i], sizeof(titles[i]), "%s", guild_default_titles[i]);
 	}
 }
 

@@ -1078,34 +1078,27 @@ int build_obj_info_text(P_obj obj, char *buf, size_t bufsize)
 		APPEND_INFO("Abilities: ");
 
 		tmpbuf[0] = '\0';
-		size_t remaining = sizeof(tmpbuf) - 1;
 		if (obj->bitvector)
-		{
 			sprintbitde(obj->bitvector, affected1_bits, tmpbuf);
-			remaining = sizeof(tmpbuf) - strlen(tmpbuf) - 1;
-		}
-		if (obj->bitvector2 && remaining > 0)
+		if (obj->bitvector2)
 		{
 			sprintbitde(obj->bitvector2, affected2_bits, tmpbuf2);
-			strncat(tmpbuf, tmpbuf2, remaining);
-			remaining = sizeof(tmpbuf) - strlen(tmpbuf) - 1;
+			APPENDF(tmpbuf, "%s", tmpbuf2);
 		}
-		if (obj->bitvector3 && remaining > 0)
+		if (obj->bitvector3)
 		{
 			sprintbitde(obj->bitvector3, affected3_bits, tmpbuf2);
-			strncat(tmpbuf, tmpbuf2, remaining);
-			remaining = sizeof(tmpbuf) - strlen(tmpbuf) - 1;
+			APPENDF(tmpbuf, "%s", tmpbuf2);
 		}
-		if (obj->bitvector4 && remaining > 0)
+		if (obj->bitvector4)
 		{
 			sprintbitde(obj->bitvector4, affected4_bits, tmpbuf2);
-			strncat(tmpbuf, tmpbuf2, remaining);
-			remaining = sizeof(tmpbuf) - strlen(tmpbuf) - 1;
+			APPENDF(tmpbuf, "%s", tmpbuf2);
 		}
-		if (obj->bitvector5 && remaining > 0)
+		if (obj->bitvector5)
 		{
 			sprintbitde(obj->bitvector5, affected5_bits, tmpbuf2);
-			strncat(tmpbuf, tmpbuf2, remaining);
+			APPENDF(tmpbuf, "%s", tmpbuf2);
 		}
 		APPEND_INFO("%s\n", tmpbuf);
 	}
