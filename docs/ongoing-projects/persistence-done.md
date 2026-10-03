@@ -2833,3 +2833,21 @@ with `journal_changed_during_authority_capture`. A policy naming another receipt
 `CRITICAL_COMMAND_JOURNAL_DIR` fails before the authority capture is called.
 `test_backup_review_remediations.py` adds a symlinked receipt, refused as `symlink_rejected`,
 which fails with `copytree()`'s default of following links.
+
+### Live checks on the local database (done)
+
+Run with the `.env` account's `duris_dev` and the local backup policy, on the code head:
+
+- `./scripts/backup_pfiles.sh` published a generation and pruned one by retention (13.6 s of
+  CPU), and `status` answered in 0.04 s. `schedule` with no deadline ran a backup and wrote
+  `schedule.json`; run again, it answered with the status.
+- With a copy of `.env` holding a wrong database password, a scheduled backup within the RPO
+  printed `{"age_seconds": 92, "code": "subprocess_failed", ...}`, and with a 60-second RPO
+  `{"age_seconds": 81, "backup": {"code": "subprocess_failed"}, "code": "rpo_exceeded", ...}`.
+- The game's receipt writer: four loops of `persistence_restore_fixture seed-receipt` (the
+  integration test's fixture, writing through `locker_receipt_write()` and
+  `flatfile_atomic_write()`) rewrote one receipt about 45,000 times in a scratch receipt
+  directory while real backups of `duris_dev` captured it. On master's script 5 of 5 backups
+  failed, 3 with `journal_filename` (a temporary file listed) and 2 with
+  `journal_changed_during_capture`; on the new one 5 of 5 published, and each retained
+  generation's receipt passed `qualify_flatfile_restore --receipts`, the production decoder.
