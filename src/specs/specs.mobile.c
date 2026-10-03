@@ -15611,7 +15611,7 @@ int llyren(P_char ch, P_char pl, int cmd, char *arg)
 		}
 		else if (OBJ_INSIDE(t_obj) && ((container = t_obj->loc.inside) != NULL))
 		{
-			while (OBJ_INSIDE(container))
+			while (OBJ_INSIDE(container) && container->loc.inside)
 			{
 				container = container->loc.inside;
 			}

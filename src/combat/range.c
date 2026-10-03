@@ -377,7 +377,6 @@ void do_fire(P_char ch, char *argument, int cmd)
 	char room_msg[256];
 	char vict_death_msg[256];
 	char room_death_msg[256];
-	struct damage_messages *messages;
 	struct damage_messages room_messages = {
 		"Your $p's hit strikes $N!",
 		"$n's $p's hit strikes you!", //"$p fired by $n hits you!",
@@ -404,6 +403,8 @@ void do_fire(P_char ch, char *argument, int cmd)
 		0,
 		0
 	};
+	// Set for each shot below; the start value is only there for the compiler.
+	struct damage_messages *messages = &room_messages;
 
 	if (!ch)
 	{

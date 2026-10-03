@@ -23,6 +23,7 @@
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <deque>
 #include <vector>
 #include "combat/damage.h"
 #include "core/defines.h"
@@ -880,7 +881,7 @@ void do_mix(P_char ch, char *argument, int /*cmd*/)
 			P_obj object;
 			bool generated;
 		};
-		std::vector<alchemy_bottle_candidate> available_bottles;
+		std::deque<alchemy_bottle_candidate> available_bottles;
 		for (P_obj object = ch->carrying; object; object = object->next_content)
 			if (OBJ_VNUM(object) == VOBJ_POTION_BOTTLES &&
 			    strstr(object->name, "bottle"))
@@ -893,7 +894,7 @@ void do_mix(P_char ch, char *argument, int /*cmd*/)
 		while (!available_bottles.empty())
 		{
 			const alchemy_bottle_candidate current = available_bottles.front();
-			available_bottles.erase(available_bottles.begin());
+			available_bottles.pop_front();
 			if (!current.generated)
 				consumed_bottles.push_back(current.object);
 
@@ -919,8 +920,7 @@ void do_mix(P_char ch, char *argument, int /*cmd*/)
 			}
 
 			if (number(0, 5))
-				available_bottles.insert(available_bottles.begin(),
-							 { nullptr, true });
+				available_bottles.push_front({ nullptr, true });
 
 			if (number(0, GET_CHAR_SKILL(ch, SKILL_MIX) / 10 + number(1, 2)))
 			{

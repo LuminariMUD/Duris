@@ -1509,7 +1509,7 @@ bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, i
 	std::vector<item_ownership_runtime_entry> authoritative;
 	try
 	{
-		authoritative.resize(plan.authority_items.size());
+		authoritative.assign(plan.authority_items.size(), {});
 	}
 	catch (const std::bad_alloc &)
 	{

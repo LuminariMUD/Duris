@@ -4778,6 +4778,7 @@ void act_convert(char *buf, const char *str, P_char ch, P_char to, P_obj obj, vo
 		if (*strp == '$')
 		{
 			j = 0;
+			i = NULL;
 
 			switch (*(++strp))
 			{
@@ -5266,6 +5267,7 @@ void act(const char *str, int hide_invisible, P_char ch, P_obj obj, void *vict_o
 				if (*strp == '$')
 				{
 					j = 0;
+					i = NULL;
 
 					switch (*(++strp))
 					{

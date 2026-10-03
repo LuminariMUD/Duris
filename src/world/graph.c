@@ -39,6 +39,7 @@ CHANGELOG
 // #      include <values.h>
 #endif
 #endif
+#include <algorithm>
 #include <list>
 #include <queue>
 #include <string.h>
@@ -1389,10 +1390,10 @@ bool dijkstra(int from_room, int to_room, valid_edge_func *valid_edge, vector<in
 		PathNode pn = prev[to_room];
 		for (int i = 0; i < dist[to_room]; i++)
 		{
-			// path.push_back(pn.to_dir);
-			path.insert(path.begin(), pn.to_dir);
+			path.push_back(pn.to_dir);
 			pn = prev[pn.room_id];
 		}
+		std::reverse(path.begin(), path.end());
 
 		return true;
 	}

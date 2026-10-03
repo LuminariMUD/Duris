@@ -6543,9 +6543,8 @@ void spell_curse(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int 
 	if (!victim)
 		victim = ch;
 
-	if (victim)
-		if (!IS_TRUSTED(ch) && resists_spell(ch, victim))
-			return;
+	if (!IS_TRUSTED(ch) && resists_spell(ch, victim))
+		return;
 
 	if (IS_TRUSTED(victim) || affected_by_spell(victim, SPELL_CURSE))
 	{

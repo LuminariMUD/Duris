@@ -264,7 +264,7 @@ bool is_ally(P_char ch, P_char other)
 {
 	if (IS_MORPH(other))
 	{
-		other = MORPH_ORIG(other);
+		other = other->only.npc->orig_char;
 	}
 
 	if (IS_TRUSTED(other) || IS_NPC(other))

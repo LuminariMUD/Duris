@@ -140,7 +140,7 @@ bool read_scores(P_obj pouch, score_table *scores)
 							       description->description :
 							       "" };
 	}
-	std::sort(chunks.begin(), chunks.begin() + chunk_count,
+	std::sort(chunks.begin(), chunks.begin() + std::min(chunk_count, chunks.size()),
 		  [](const ledger_chunk &left, const ledger_chunk &right)
 		  { return left.index < right.index; });
 	std::array<bool, CHAOS_MATERIAL_TYPES> seen = {};

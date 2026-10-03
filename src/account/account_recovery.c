@@ -274,6 +274,8 @@ void make_room(time_t now)
 	if (entries.size() < ACCOUNT_RECOVERY_MAX_ENTRIES)
 		return;
 	auto oldest = entries.begin();
+	if (oldest == entries.end())
+		return;
 	for (auto it = entries.begin(); it != entries.end(); ++it)
 		if (it->second.issued_at < oldest->second.issued_at)
 			oldest = it;

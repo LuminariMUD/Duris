@@ -4944,7 +4944,7 @@ void show_toggles(P_char ch)
 	{
 		if (IS_MORPH(ch))
 		{
-			ch = MORPH_ORIG(ch);
+			ch = ch->only.npc->orig_char;
 		}
 		else
 		{

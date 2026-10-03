@@ -1942,14 +1942,10 @@ void do_epic_share(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	struct affected_type *afp, *tafp;
 
-	if (!has_epic_task(ch))
+	if (!(afp = get_epic_task(ch)))
 	{
 		send_to_char("You don't have an epic task to share.\r\n", ch);
 		return;
-	}
-	else
-	{
-		afp = get_epic_task(ch);
 	}
 	if (afp->modifier < 0)
 	{
@@ -1967,9 +1963,8 @@ void do_epic_share(P_char ch, char * /*arg*/, int /*cmd*/)
 			{
 				if (is_linked_to(ch, gl->ch, LNK_CONSENT) && IS_PC(gl->ch))
 				{
-					if (has_epic_task(gl->ch))
+					if ((tafp = get_epic_task(gl->ch)))
 					{
-						tafp = get_epic_task(gl->ch);
 						// Don't let nexus stones or pvp get replaced
 						if (abs(tafp->modifier) >= SPILL_BLOOD)
 							continue;
