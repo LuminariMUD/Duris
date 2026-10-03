@@ -431,10 +431,21 @@ before and after in [the measurement](persistence-done.md#the-measurement-done).
 3. **Nothing escalates.** Each failure is one `LOG_SYS` line. After a run of failed or expired
    captures, raise one persistence alert with the reason and the last acknowledged sequence and
    age, and report that age in runtime health.
+4. **A raised corpse's items go to the caster.** Not world recovery: a leftover of the reset,
+   found on 2026-10-04. `place_raised_item()` (`necromancy.c`) gives a player caster every item
+   in the corpse except the coins, in all six raises (the undead, the golem, the titan, the
+   avatar and both dracoliches); `raise_undead()` takes a player's corpse too. `389016091`
+   (2026-09-15) made it so because a pet's inventory had no place in the ownership ledger, and
+   step 5 of Phase 3 removed the deferred raise (`4401cc6ef`), which left this rule to every
+   raise. On the local server, `animate dead` on a guard's corpse put its dagger in the
+   caster's inventory. Put the items on the raised creature, as before `389016091`. A pet can
+   then carry a hidden (`!show`) item from an NPC's corpse: `wear all` already skips those for
+   a player's pet, and `wear` and `wield` by keyword must skip them too.
 
 Done when: a capture of that size publishes, with a test above the old 64 MiB limit; it finishes
 within its budget under load; consecutive failures raise an alert with the age of the last good
-generation.
+generation; a raise leaves the corpse's items on the raised creature and a player's pet cannot
+wear or wield a hidden item by keyword, with a test for each.
 
 ## What was cut, and why
 
@@ -517,4 +528,5 @@ and 6 (backups) are done and on master.
    lands. A review round's fixes go on `fix/5-persistence-phase-7`, each finding in its own
    commit with its test, the fixed head tagged `persistence/phase-7-review-1`
    ([how](persistence-done.md#review-and-branches)).
-2. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2).
+2. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2), and with it the raised corpse's
+   items (its item 4).
