@@ -2925,3 +2925,191 @@ the local policy needed anything.
 `fix/5-persistence-phase-7`, branched from master after this record. #3 stays open for its
 server configuration (whether a server runs restore drills, keeps an off-host replica and
 skips the pre-boot backup); its Status line now records what Phase 6 resolved.
+
+## Phase 7 progress
+
+Phase 7 ([plan](persistence-plan.md#phase-7-game-loop-performance-5)) is being done on
+`fix/5-persistence-phase-7`, branched on 2026-10-03 from master `1c5a53de9`. Each item below
+gets its record when it lands; an item without one is not done.
+
+### Unnamed callbacks (done)
+
+`lib/misc/event_names` held only global functions (`nm ... | grep " T "`), and its `sed` cut
+each name at its first parenthesis, so a callback in an anonymous namespace
+(`(anonymous namespace)::community_spellup_event`) lost its whole name. The server has seven
+static event callbacks (`sp_hour_event`, `kingdom_gather_tick`, `kingdom_upkeep_tick`,
+`kingdom_harvest_tick`, `kingdom_node_reload_event`, `event_deferredTerminalSave`,
+`community_spellup_event`); each logged as `unknown function`.
+
+Both launchers (`cycle_mud.sh`, `gdbdms`) now write the file with `scripts/event_names.sh`,
+which lists local (`t`) and weak (`W`: inline functions, lambdas in inline variables)
+functions with the global ones, drops `(anonymous namespace)::` and every parameter list, and
+keeps one token per name, so no line is malformed. A lambda in `do_look()` reads
+`do_look::{lambda#1}::_FUN`. The loader takes weak symbols. The file goes from 7,365 names to
+26,169. `4df5e1018`.
+
+Tests: `test_event_name_registry.py` builds the names of its own harness with the script and
+looks up a global, a static, an anonymous-namespace, an inline and a lambda callback. With
+the old pipeline the static one has no name; with the old loader the weak lines are
+malformed. The game loop budget journey (below) writes the file as the launchers do and
+fails if the event analytics or a slow-event record names an `unknown function` over a
+full-world run.
+
+### The game loop budget journey (done)
+
+`test_mysql_game_loop_budget_journey.py` (in `make test-db`, about 3 minutes) is the
+measurement and the pin for item 1. It boots the full world on a disposable MariaDB with
+the event analytics on and the launcher's names file. Eight mortals on their own accounts
+play side by side (`look`, `inventory`, `score`, `equipment`, `who`, `time`, `weather`,
+`save`, one line every half second), camp out with `quit`, enter again, are brought to an
+inn by a god and `rent`, and enter again; the god rents with 88 items. The run lasts to the
+end of the 300-pulse window that holds the first hourly event.
+
+It reads the loop's own records, not a client's clock. The budget is one pulse, 250 ms:
+
+- the hourly event ran, by its `NEVENT ANALYTICS CALLBACK` line, inside the budget;
+- no `COMMAND OP SLOW` names a `rent` or a `quit` past it;
+- no `MUD TICK TOOK TOO LONG` pulse ran past it in its event pass or in its activity pass,
+  where a camp ends;
+- no `NEVENT BUDGET` pulse deferred events inside its 25 ms time budget;
+- no callback is named `unknown function`;
+- every camp and every rent is in `log_entries` after the shutdown.
+
+A slow pulse anywhere else is printed, not judged. The journey first failed on any pulse
+past 250 ms; in one of four runs beside the other database tests a single `score` took
+346 ms, with nothing else slow in the run, and neither ten MariaDB containers starting and
+stopping around a run by itself nor a second suite run repeated it. The loop had lost the
+CPU in the middle of a command, which says nothing about a rent, a camp or the hourly
+event.
+
+It prints the latency trace's tick, event, command and activity times, the deferred and late
+events and the twelve costliest callbacks. `--players N --hours N` scale it; the numbers
+below are from `--players 30 --hours 2`. `cb5ceaed9`, `69dbf4886`, `a99782abb`.
+
+Three things the fixture needed: the password worker queues 16 hashes and refuses the rest
+(`Password service is busy`), so at most 8 characters are created at once; a camp is refused
+in the room north of the start, so the mortals do not move; and the default camp takes nine
+short affect updates (about 140 s), so `camp.timer` is 2, as in the full-world boot test.
+
+### The measurement (done)
+
+Thirty mortals and a god, 900 pulses (two hourly events), on this machine (16 cores,
+otherwise idle), production profile. "Before" is `1c5a53de9`, the code this phase started
+from, at `-Og`; the other two columns are the phase's code at `ca0a6810a`, built at `-Og`
+(`EXTRA_CFLAGS=-Og`) and at `-O2`. One run each, times in microseconds:
+
+| | Before, `-Og` | After, `-Og` | After, `-O2` |
+|---|---|---|---|
+| Slowest pulse | 1,186,017 | 49,866 | 36,625 |
+| Mean pulse | 8,070 | 6,560 | 6,356 |
+| Slowest event pass (`ne_events`) | 1,183,008 | 25,625 | 26,928 |
+| Mean event pass | 6,053 | 4,558 | 4,466 |
+| Slowest command sweep (the rents) | 34,647 | 32,218 | 22,702 |
+| Mean command sweep | 995 | 989 | 927 |
+| Slowest activity pass (the camps) | 4,875 | 8,008 | 3,689 |
+| The hourly event, slowest | 1,181,521 | 8,849 | 6,874 |
+| `MUD TICK TOOK TOO LONG` | 1 | 0 | 0 |
+| Pulses that deferred events | 68 (63 inside the time budget) | 2 (none inside) | 3 (none inside) |
+| Events run 1 pulse late | 138,545 | 1,340 | 2,406 |
+| Events run 2 to 3 pulses late | 15,908 | 0 | 0 |
+
+What it shows, against #5's figures:
+
+- **`rent` and `quit`** no longer wait: every rent (31, the god's with 88 items) and every
+  camp ran inside a command sweep or activity pass of at most 35 ms, against a median of
+  1,871 ms and a maximum of 5,002 ms for `rent` in #5. No `COMMAND OP SLOW` (50 ms) was
+  logged in any run.
+- **The hourly event** still stalled the loop once after every boot, for 1.2 to 1.6 s over
+  five runs (#5 measured 1.7 to 2.0 s): see the shop walk below. Later hours took about
+  50 µs.
+- **The event debt** was not load: it was the callback limit ending pulses early. See the
+  callback limit below.
+- **What is left in `ne_events`**: `event_mob_mundane` is about 40% of the event time
+  (555,000 calls in 900 pulses, 3 µs each), then `event_balance_affects`,
+  `event_spellcast`, `event_mob_proc` and the sliced `generic_char_event` (up to 8 ms a
+  slice). No other callback reaches 7 ms.
+- **`-O2`** takes 3% off the mean pulse and 2% off the mean event pass: the loop spends its
+  time following pointers through the world, which the optimiser does not shorten. The
+  slowest pulse and command sweep were lower at `-O2` in these single runs.
+
+### The hourly event's shop walk (found, done)
+
+`event_another_hour()` saves the shops marked dirty, and a boot marks every shop dirty (the
+world singleton pass and the restore each do). For each dirty shop
+`find_shopkeeper_for_dirty_save()` walked the whole character list to find the keeper: 544
+shops against about 69,000 characters. Timed inside the loop on a full-world boot, the first
+hourly save took 1.65 s, 1.63 s of it in the walks and 0.02 s capturing the stock. The
+persistence reset had moved the write to the writer; the walk stayed on the loop.
+
+`sql_save_dirty_shopkeepers()` now collects the shops that are due and finds all their
+keepers in one walk, keyed by keeper template (`find_shopkeepers_for_dirty_save()`). The
+same save takes about 9 ms. `4f0dfad67`.
+
+Tests: `test_shopkeeper_save_runtime.py` counts the steps along the character list (two
+dirty shops and two characters take two steps; the old code took four), and the journey
+fails on the old code (`the hourly event took 1229344 us`).
+
+### The maintenance scheduler's retry (found, done)
+
+In every measurement run one server thread used a full core. Stacks taken under `gdb`
+showed the maintenance scheduler's worker in `persist_state()`: when the state file cannot
+be written it marked the state dirty again and retried at once. The full-world test
+fixtures have no `bin/server/` under their run directory, so every such server spun; on a
+real server a full disk or a missing directory would do the same. The worker now waits a
+second, or for the next job, before it tries again. The journey sets
+`MAINTENANCE_STATE_FILE`, so its scheduler works as a real server's does. `7ddcdfae9`.
+
+Test: `test_maintenance_scheduler.py` points the state at a missing directory and requires
+under 100 ms of CPU in 300 ms; the old worker used all of it.
+
+### The event callback limit (found, done)
+
+An event pulse ended at 25 ms or at 4,000 callbacks, whichever came first.
+`ARCHITECTURE.md` says the time budget is meant to be the binding limit, and the count was
+raised twice for that (1000, 2000, 4000), but on a full world a callback costs 1 to 3 µs, so
+the count ended pulses at a tenth of the time budget: one pulse deferred 16,732 events after
+2.6 ms. In the "before" run 65 of the 72 pulses that deferred events had time left, and
+about 167,000 of 1.57 million events ran one to three pulses late. That is #5's standing
+event debt (111,846 `NEVENT CATCHUP` and 71,914 `NEVENT BUDGET` lines in five days).
+
+The default count limit is now none (`NEVENT_MAX_CALLBACKS_DEFAULT` 0), so time alone ends a
+pulse; `DURIS_NEVENT_MAX_CALLBACKS` still sets a count. Measured on the same load before the
+default changed (development build): with the limit, 70 deferring pulses, 150,733 events one
+pulse late and 16,495 two to three; without it, 4 deferring pulses, all at the time budget,
+and 2,635 events one pulse late, with the slowest and the mean pulse unchanged (42 ms and
+6.5 ms against 52 ms and 6.6 ms). `12256b9cd`.
+
+Test: the journey fails if a pulse defers events inside its time budget.
+
+### The production build at `-O2` (done)
+
+`HARDENING_FLAGS` put `-Og` in every profile. The development profile keeps `-Og`, the
+production profile compiles at `-O2`, and the hardening flags apply to both. `ca0a6810a`.
+
+The warnings that follow values (`-Wnull-dereference`, `-Wmaybe-uninitialized`,
+`-Wformat-truncation`, `-Wstringop-overflow`, `-Warray-bounds`, `-Wstrict-overflow`) see
+further at `-O2`, through inlined code: the first `-O2` build reported 84 diagnostics at
+about 60 sites that the `-Og` build does not. The warning profile allows no exception, so
+each is resolved:
+
+| What `-O2` reported | Resolution | Commit |
+|---|---|---|
+| `setbit char <name> savthr` copied five shorts over the character's five one-byte saving throws: it ran on into the five conditions after them and stored the bytes of the first values. Two `snprintf()` calls in `setbit` gave a 1024-byte buffer a 65536-byte bound, and the on/off argument was read without a value when not given as a number. | Each throw is set, bounded to a byte, and one not given keeps its value; the bounds and the start value are corrected. | `fd43366b1` |
+| `event_embrace_death()` returned whenever the character had the affect and used the missing one when it had none: `9f77d0cda` had inverted the check when it flattened nested ifs. The bonus never followed the wounds and never ended. | It returns when there is no affect, as before that commit. | `8f7012086` |
+| Six uses of a pointer or value that is not there: the mob loop's report of an NPC without npc data read that data; `artifact_update_sql()`'s repair of an artifact inside no container left the pointer it then used NULL; a quest action removing a tag the instance lacks went past the list's end; `notch_achievement()` used an unchecked `apply_achievement()`; `do_breathe()` tested `arg \|\| *arg`; `poll_get_by_id()` returned a poll with only its id initialised. | Each path is guarded or initialised. | `f9a09eb0d` |
+| Writes that can truncate: the world persistence report's query-site line, the armor list, the guild frag list and default titles, identify's ability list, the kingdom guard class lists, an auction item's ability lists, the forge recipe's flux line, the PROXY header's address and the poll's time remaining. | `checked_snprintf()`, `checked_appendf()` / `APPENDF()` and `strlcpy()`, the helpers the code base has for it; the poll prints ints. | `e4aaebbb0` |
+| A null dereference in `check_flags()`. | Nothing calls it; removed. | `50ed401a9` |
+| About 30 sites that did not misbehave but did not say why: `GET_PLYR()` and the morph steps (through `MORPH_ORIG()`, whose other arm is NULL), the walks to an outermost container, `do_epic_share()`, the locker grant, the level notice, the password worker, the recovery store, `do_fire()`'s messages, a save file's witness offset, `act()`'s substitution, and four standard-library calls (a vector used as a queue, a path built backwards, a sort and a resize). | Each states what made it safe, or does the same through code the library warnings accept. | `e675d94f5` |
+
+Both backends (`mariadb`, `flatfile`) and the `pfile` tool build clean at `-O2`.
+
+`make test-all` builds the production profile too, so a later `-O2` report fails the gate:
+`make build-production` compiles it into `bin/objects/server/mariadb/production` and
+`bin/server/production/dms_new` (67 s from clean on 16 cores, then only what changed), and
+`bin/server/dms_new` stays the development build the tests run.
+
+Tests: `test_setbit_saving_throws.py` and `test_embrace_death_event.py` run the real
+functions and fail on the old code; `test_binary_layout.py` checks each profile's level in
+a dry run; `test_root_test_harness.py` pins the production build in `test-all`. The `-O2`
+server's own run is the measurement above: the journey passed on it with 31 characters
+created, camped and rented.
