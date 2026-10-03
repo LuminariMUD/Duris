@@ -479,8 +479,9 @@ if a requirement or a concrete risk failed without it. Cut:
   takes `--players` and `--hours`.
 - **A higher callback limit:** it was raised twice already; time is the limit.
 - **Failing the budget journey on any slow pulse:** it judges what it can put on a rent, a
-  camp, the hourly event or the event pass. One unrelated command took 346 ms in one of
-  four runs beside the other database tests.
+  camp, the hourly event or the event pass. Beside the other database tests two runs in
+  five had one unrelated command of 225 to 346 ms; by itself, even with its database
+  paused, the journey had none.
 - **A flat-file production build in the gate:** production runs MariaDB; the flat-file
   backend built clean at `-O2` once.
 

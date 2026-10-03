@@ -2976,11 +2976,16 @@ It reads the loop's own records, not a client's clock. The budget is one pulse, 
 - every camp and every rent is in `log_entries` after the shutdown.
 
 A slow pulse anywhere else is printed, not judged. The journey first failed on any pulse
-past 250 ms; in one of four runs beside the other database tests a single `score` took
-346 ms, with nothing else slow in the run, and neither ten MariaDB containers starting and
-stopping around a run by itself nor a second suite run repeated it. The loop had lost the
-CPU in the middle of a command, which says nothing about a rent, a camp or the hourly
-event.
+past 250 ms. Beside the other database tests (`make test-db` runs 12 at a time, each with
+its own MariaDB container), two runs in five logged one slow command each, a `score` of
+346 ms and a `who` of 225 ms, with nothing else slow in the run. Run by itself the journey
+never had a pulse past 52 ms, and three attempts to provoke one failed: ten MariaDB
+containers starting and stopping around it (slowest pulse 32 ms), eight loops of
+synchronous writes on the same file system (43 ms), and its own database paused for 3 s
+just after the hourly event, while the writer held the 544 shop saves (38 ms). The loop
+does not wait on the database or the disk there; beside the suite the machine takes the
+CPU from it in the middle of a command, which says nothing about a rent, a camp or the
+hourly event.
 
 It prints the latency trace's tick, event, command and activity times, the deferred and late
 events and the twelve costliest callbacks. `--players N --hours N` scale it; the numbers
@@ -3113,3 +3118,18 @@ functions and fail on the old code; `test_binary_layout.py` checks each profile'
 a dry run; `test_root_test_harness.py` pins the production build in `test-all`. The `-O2`
 server's own run is the measurement above: the journey passed on it with 31 characters
 created, camped and rented.
+
+### The gate on the branch head (done)
+
+On `e66799844`, the head with every record above, run once each: `./scripts/format.sh --all
+--check` (1031 files clean); `make test-all -j16 TEST_JOBS=16` alone (662 of 662, 538 s,
+with the development and the production build); then `make test-db` (37 of 37, 245 s) and
+`npm test --prefix site` (14 tests; `docs/` changed). Neither suite left `logs/log/dupes`
+or `logs/log/item_claims` behind.
+
+The `-O2` server was also run through the database suite once, in place of the development
+build: 37 of 37 (207 s). An earlier run of it was the one that logged the 346 ms `score`
+above, which failed the journey as it then judged, with the other 36 passing.
+
+Not run: the backup-recovery container job, `run_runtime_compatibility_mysql.sh` beyond its
+leg in `make test-db`, CodeQL and Trivy (nothing they check changed; no schema change).
