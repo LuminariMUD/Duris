@@ -2721,3 +2721,31 @@ if they recur on this build.
 Phase 6 ([plan](persistence-plan.md#phase-6-backups-3)) is done on `fix/3-persistence-phase-6`,
 branched on 2026-10-03 from master `2d58826c4`. Each item below gets its record when it lands;
 an item without one is not done.
+
+### Each generation verified once (done)
+
+`generations()` called `verify()` on every stored generation, hashing each file and
+decompressing and scanning each dump, and `total_size()` hashed every file to count its bytes.
+Every run paid for the whole history: the minute's `status`, each hourly backup (twice: before
+the capture and in the rotation) and each replication.
+
+`generations()` now reads each manifest (`read_manifest()`, the first half of the old
+`verify()`), and `total_size()` takes sizes from the file system through `walk()`, the
+secure walk `inventory()` now shares. A generation is verified in full when it is published,
+by `finalize` (which can follow a publish that stopped before its check; the old `finalize`
+verified it through `generations()`), when it is restored (the newest was verified only
+through `generations()` before) and before it is pruned. The drill verifies every stored
+generation before it restores the newest, so a corrupted older one fails the drill, and
+`status --require-drill` reports the overdue drill. `9e1bca3d8`.
+
+Measured with copies of a real local generation (the 31 MB `duris_dev` dump) in a scratch
+root: `status` took 1.16 s of CPU with 1 generation and 43 s with 40 on the old code, and
+0.03 s and 0.04 s on the new one, reporting the same bytes. #3's staging dumps are about five
+times larger, hence its 3 to 4 CPU-minutes.
+
+Tests (`test_persistence_backup.py`): `status` with 1 and with 40 generations runs with
+`digest()` and `validate_dump()` failing if called; `finalize` refuses a newest generation
+corrupted after a publish that stopped before its check, and `status.json` stays on the
+previous one; the drill refuses a corrupted older generation and a restore a corrupted newest,
+both before any candidate exists, while `status` passes. Each fails on the old code, and with
+any one of the new `verify()` calls taken out the test that pins it fails.
