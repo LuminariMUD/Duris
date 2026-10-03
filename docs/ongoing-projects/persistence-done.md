@@ -36,9 +36,12 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   on 2026-10-03 in `218d0640b`, one `--no-ff` merge of the `-1` head, with no rebase or
   squash, so both tags still name what was reviewed. The branch is deleted
   ([record](#phase-5-landed-done)).
-- Phase 6 is reviewed as [!8](https://gitlab.com/max757/duris/-/merge_requests/8) (source
+- Phase 6 was reviewed as [!8](https://gitlab.com/max757/duris/-/merge_requests/8) (source
   `fix/3-persistence-phase-6`, branched from master `2d58826c4`), tagged
-  `persistence/phase-6-review-0` and `-1` ([review round 1](#review-round-1-mr-8)).
+  `persistence/phase-6-review-0` and `-1` ([review round 1](#review-round-1-mr-8)). It landed
+  on 2026-10-03 in `1a4b15f9d`, one `--no-ff` merge of the `-1` head, with no rebase or
+  squash, so both tags still name what was reviewed. The branch is deleted
+  ([record](#phase-6-landed-done)).
 - Each later phase works the same way: a branch from master named for its work item, an MR,
   the head the review reads tagged `persistence/phase-<n>-review-0`, a review round's fixes on
   the branch tagged `-1`, `-2` and so on, then one `--no-ff` merge of the last tag.
@@ -2721,7 +2724,7 @@ if they recur on this build.
 
 ## Phase 6 progress
 
-Phase 6 ([plan](persistence-plan.md#phase-6-backups-3)) is done on `fix/3-persistence-phase-6`,
+Phase 6 ([plan](persistence-plan.md#phase-6-backups-3)) was done on `fix/3-persistence-phase-6`,
 branched on 2026-10-03 from master `2d58826c4`. Each item below gets its record when it lands;
 an item without one is not done.
 
@@ -2909,3 +2912,16 @@ Verification for this round:
   tests, and `test_persistence_backup_integration.py` 5 of 5). Not run again: `make test-db`,
   which runs nothing these fixes touch, and passed on the review's code head
   ([record](#the-gate-on-the-branch-head-done-3)).
+
+### Phase 6 landed (done)
+
+On 2026-10-03 !8 landed in `1a4b15f9d`, one `--no-ff` merge of `086cac326`, the review round 1
+head (`persistence/phase-6-review-1`). Master had no commits the branch lacked, so the merge's
+tree is that head's, gated in the round ([record](#review-round-1-mr-8)), and nothing was rerun
+for it. No migration and no change to the backup policy's format, so neither `duris_dev` nor
+the local policy needed anything.
+
+`fix/3-persistence-phase-6` is deleted, and this worktree continues on
+`fix/5-persistence-phase-7`, branched from master after this record. #3 stays open for its
+server configuration (whether a server runs restore drills, keeps an off-host replica and
+skips the pre-boot backup); its Status line now records what Phase 6 resolved.
