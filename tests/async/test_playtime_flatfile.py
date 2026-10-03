@@ -20,7 +20,7 @@ int main(int argc, char **argv) {
     assert(flatfile_identity_allocate_pid(root, &pid, &error) == flatfile_identity_result::ok);
     assert(pid == 1);
     assert(flatfile_identity_claim(root, pid, "Player", "PlaytimeAccount", &error) == flatfile_identity_result::ok);
-    player_snapshot baseline;
+    player_snapshot baseline = {};
     baseline.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
     baseline.pid = pid;
     baseline.revision = 1;
