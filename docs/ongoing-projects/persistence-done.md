@@ -2826,7 +2826,9 @@ instead of against the directory: a rename replaces a receipt whole, so each cop
 one whole version. The writer's temporary files are not copied (`RECEIPT_WRITE`). `copytree()`
 keeps symlinks as links, so the copy's own check still refuses one, as the old listing of the
 directory did. The check that `CRITICAL_COMMAND_JOURNAL_DIR` matches the policy moves into
-`backup()` before the capture, so a mismatch still costs no dump. `8277ddc64`.
+`backup()` before the capture, so a mismatch still costs no dump. `8277ddc64`. Review round 1
+found that copying last does not cover a payment begun during the capture, whose paid marker
+can lag its charge, and its fix refuses one ([record](#review-round-1-mr-8)).
 
 Tests (`test_persistence_backup.py`): in both modes, with a writer's temporary file in the
 directory, a receipt rewritten during the authority capture is published as rewritten, and the
@@ -2870,3 +2872,33 @@ generation with a real receipt restored and qualified, and the MariaDB dump rest
 private database and booted in an isolated namespace. Not run:
 `run_runtime_compatibility_mysql.sh` (no schema change) and CodeQL and Trivy (nothing they
 check changed).
+
+### Review round 1 (MR !8)
+
+The review read `persistence/phase-6-review-0` (`7b7b247f9`). It found three defects, all
+from this phase; each reproduced on that head with a test, and each is fixed in its own
+commit on `fix/3-persistence-phase-6`. The fixed head is tagged `persistence/phase-6-review-1`.
+
+| Finding | Fix | Commit |
+|---|---|---|
+| 1. P1: copying the receipts after the authority does not keep a `prepared` receipt from being published with its charge. A bank payment queues its debit and the player's save at once while the paid marker is written by a worker that can lag or fail, so a payment begun during the capture could be in the snapshot while its receipt still said `prepared`, and the restored player's login charged it again; master's comparison refused that interleaving. | Before the authority capture the backup lists the receipts still waiting on their payment (`waiting_receipts()`: any whose header does not say paid, failed or delivered), and every waiting receipt in the copy must have been waiting, unchanged, then; otherwise the run fails with `receipt_payment_in_flight` and the next run takes it. Settled changes still do not fail it. An unchanged waiting receipt charged during the capture with its paid marker stalled past the copy is not caught, as master did not catch it either: it is the moment in which a crash also charges twice (`locker-identification.md`). In every dangerous case this refuses whatever master refused. | `a6cb01709` |
+| 2. P2: the receipt directory was copied before its size checks, so a large file (an older server's `critical-command.journal` has no bound) could consume the free-space reserve or the budget before the capture failed; master refused it before copying. | `copytree()` copies through a function that holds each file to the budget and the reserve before writing a byte of it, which also covers growth after any listing. | `afb181b4b` |
+| 3. P2: with `generations()` reading manifests only, a backup that found its last generation's replication pending completed it unchecked; under a policy whose replica was then removed, a generation corrupted since its publication was marked `ok`. | The retry verifies the generation first, as `finalize` does. | `a6741ccf9` |
+
+Also corrected with finding 1: `BACKUPS.md` and the plan's item 3 no longer say that copying
+last alone keeps a restore from charging twice, and `locker-identification.md` no longer says
+transient files fail the capture (wrong since item 3).
+
+Verification for this round:
+
+- Each new test fails on `7b7b247f9`: a prepared receipt written during the authority capture
+  is published in both modes; the 1 MiB legacy journal is copied whole before it is refused,
+  and passes outright with 1.5 MiB free against a 1 MiB reserve; the pending retry marks the
+  corrupted generation `ok`. The test for finding 1 pins the header layout the backup reads
+  (`locker_receipt.c` writes the state at byte 5, `prepared` first) and keeps an unchanged
+  waiting receipt publishable.
+- A receipt written by the native encoder (`persistence_restore_fixture seed-receipt`) reads
+  as settled, and with its state byte set to `prepared` as waiting.
+- The live writer check again, on the fixed code: four loops of `seed-receipt` rewrote a paid
+  receipt about 33,600 times while 5 of 5 real backups of `duris_dev` published, and each
+  retained receipt passed `qualify_flatfile_restore --receipts`.

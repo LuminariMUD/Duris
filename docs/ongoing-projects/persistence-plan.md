@@ -332,13 +332,18 @@ How each item is done (decided 2026-10-03):
    `backup`; otherwise the record is the backup's failure with the age added.
 3. The receipts are copied after the authority capture instead of before it, and the
    comparison after the dump goes. A receipt is written at once and the wallet reaches the
-   database with a later save, so the two never matched at one instant; copied last, a receipt
-   is at least as new as the database it is restored with, so a restore can lose an
-   identification's charge but never make it twice (as a crash does: money is lost rather than
-   paid twice). A rename replaces a receipt whole, so the copy is checked on its own instead of
-   against the directory. The writer's temporary files (`.<pid>.receipt.tmp.<pid>.<n>`), there
-   while a write is under way and left behind by a crash, are not copied: one failed the run
-   with `journal_filename`, and a crash's leftover failed every run. The check that
+   database with a later save, so the two never matched at one instant; copied last, a paid,
+   failed or delivered receipt is at least as new as the database it is restored with, so a
+   restore can lose that identification's charge but not repeat it (as a crash does: money is
+   lost rather than paid twice). A prepared receipt is still waiting on its payment, whose
+   charge can reach the database first (a bank debit and its save are queued at once), so the
+   capture lists the waiting receipts before the authority capture and fails with
+   `receipt_payment_in_flight` when the copy holds one that was not waiting, unchanged, then
+   (review round 1 of !8). A rename replaces a receipt whole, so the copy is checked on its own
+   instead of against the directory, each file held to the budget and the reserve before it is
+   copied. The writer's temporary files (`.<pid>.receipt.tmp.<pid>.<n>`), there while a write
+   is under way and left behind by a crash, are not copied: one failed the run with
+   `journal_filename`, and a crash's leftover failed every run. The check that
    `CRITICAL_COMMAND_JOURNAL_DIR` agrees with the policy moves before the capture, so a
    mismatch still costs no dump.
 4. A failure record names the exception's class (`error`) and message (`detail`), except what
