@@ -235,7 +235,9 @@ player_save_pipeline_result player_save_pipeline_request(P_char ch,
 							 player_component_mask_t components,
 							 int save_intent, int room_vnum)
 {
-	if (!ch || IS_NPC(ch) || !player_save_pipeline_mark(GET_PID(ch), components))
+	// A character saves only the components its load read (player_load_materialize()).
+	if (!ch || IS_NPC(ch) ||
+	    !player_save_pipeline_mark(GET_PID(ch), components & ~ch->only.pc->unloaded_components))
 		return player_save_pipeline_result::invalid;
 	return player_save_pipeline_checkpoint_dirty(ch, save_intent, room_vnum);
 }

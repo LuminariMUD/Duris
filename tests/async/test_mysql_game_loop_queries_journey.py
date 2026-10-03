@@ -5,7 +5,8 @@ A real server on a disposable MariaDB, in the combat journey's fixture world: a 
 account and character are created, the character plays, saves and quits, the account
 menu lists its characters, and the character, now a god, enters the game again, runs
 the commands the rest of step 8 moved off the loop, fingers and loads an offline
-character saved in its room (which must then be in the room's people list), and quits.
+character saved in its room (which must then be in the room's people list) and saves it
+(which must keep its stored pet), and quits.
 Every query the game thread issues while the loop runs logs its site once (`game loop query
 site <file>:<line> <function> (<kind>)`). No site may appear except the functions
 NOT_CONVERTED still lists: the rest of step 8 empties it. Run it through
@@ -123,10 +124,13 @@ REENTRY_COMMANDS = (
 # load char brings it into the room. A load left in_room set to the saved room though the
 # character was in no room, so freeing it logged that it was missing from the room's people
 # list, and char_to_room() refused it: load char left it in the game but out of the room.
+# Its save then keeps the pet stored with it: the load reads no pets, and a save that wrote
+# them deleted it.
 OFFLINE_COMMANDS = (
     ('finger Vexmora', 'PID:'),
     ('load char Vexmora', 'appears before you'),
     ('look', 'Vexmora'),
+    ('force vexmora save', 'Ok.'),
 )
 
 # The functions this session still reaches with a query on the game loop.
@@ -292,6 +296,8 @@ def run(server):
                 assert time.monotonic() < deadline, 'newchar was not written'
                 time.sleep(0.2)
             sql("UPDATE player_data SET last_room=22800 WHERE name='Vexmora'")
+            sql("INSERT INTO player_pets (owner_pid, mob_vnum, room_vnum, saved_at) "
+                "SELECT pid, 11, 22800, NOW() FROM player_data WHERE name='Vexmora'")
             run_commands(client, OFFLINE_COMMANDS)
             client.send('quit')
             client.expect('Please select an option', timeout=60)
@@ -331,6 +337,11 @@ def run(server):
                   "(SELECT COUNT(*) FROM account_characters WHERE char_name='Vexmora')"
             ).stdout.split()
         assert made == ['1', '1'], f'newchar stored {made}'
+        pets = subprocess.run(
+            mysql + [database], text=True, env=environment, check=True, capture_output=True,
+            input="SELECT COUNT(*) FROM player_pets p JOIN player_data d ON d.pid=p.owner_pid "
+                  "WHERE d.name='Vexmora'").stdout.strip()
+        assert pets == '1', f'the loaded character\'s save left {pets} of its 1 pet'
         renamed = subprocess.run(
             mysql + [database], text=True, env=environment, check=True, capture_output=True,
             input="SELECT (SELECT COUNT(*) FROM player_data WHERE name='Tavrenn'), "
