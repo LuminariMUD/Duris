@@ -193,17 +193,20 @@ def lock(path, wait=0):
         os.close(fd)
 
 
-def inventory(root, exclude_locks=False):
+def walk(root):
+    """Each file below root, once it and every directory on the way pass secure_path()."""
     secure_path(root, True)
-    result = {}
     for base, dirs, files in os.walk(root, followlinks=False):
         for name in sorted(dirs + files):
             path = Path(base) / name
             secure_path(path, name in dirs)
-            if name in files and not (exclude_locks and name in LOCKS):
-                result[path.relative_to(root).as_posix()] = {
-                    "sha256": digest(path), "bytes": path.stat().st_size}
-    return result
+            if name in files:
+                yield path
+
+
+def inventory(root, exclude_locks=False):
+    return {path.relative_to(root).as_posix(): {"sha256": digest(path), "bytes": path.stat().st_size}
+            for path in walk(root) if not (exclude_locks and path.name in LOCKS)}
 
 
 def sync_tree(root):
@@ -408,7 +411,7 @@ def mariadb_capture(stage, p, capacity_base=None):
     return {"database": database}
 
 
-def verify(generation):
+def read_manifest(generation):
     secure_path(generation, True)
     require(GENERATION.fullmatch(generation.name), "invalid_generation_name")
     manifest = read_json(generation / "manifest.json")
@@ -416,6 +419,11 @@ def verify(generation):
             manifest.get("generation") == generation.name and
             type(manifest.get("created")) is int and 0 <= manifest["created"] <= time.time() + 300,
             "invalid_generation_manifest")
+    return manifest
+
+
+def verify(generation):
+    manifest = read_manifest(generation)
     actual = inventory(generation)
     actual.pop("manifest.json")
     require(actual == manifest.get("files") and actual, "generation_checksum_mismatch")
@@ -427,10 +435,13 @@ def verify(generation):
 
 
 def generations(root):
+    # Manifests only: a generation is verified in full when it is published or finalized,
+    # restored or pruned, and by the drill. Hashing every stored one here made each run cost
+    # more as generations accumulated.
     result = []
     for path in root.iterdir():
         if GENERATION.fullmatch(path.name):
-            result.append((path, verify(path)))
+            result.append((path, read_manifest(path)))
         else:
             require(path.name in {".job.lock", ".schedule.lock", "schedule.json", "status.json", "drill.json"} or
                     path.name.startswith((".staging-", ".trash-", ".metadata-")),
@@ -452,7 +463,7 @@ def retained(items, p, now):
 
 
 def total_size(path):
-    return sum(x["bytes"] for x in inventory(path).values())
+    return sum(file.stat().st_size for file in walk(path))
 
 
 def remove_owned(root, path):
@@ -481,7 +492,7 @@ def prune_unretained(root, p, items, keep, newest):
 
 def rotate(root, p, newest):
     checkpoint("before_rotation")
-    items = generations(root)  # Any invalid generation blocks all pruning.
+    items = generations(root)  # Any invalid manifest blocks all pruning.
     require(items and items[0][0] == newest, "new_generation_not_newest")
     keep = retained(items, p, int(time.time()))
     require(sum(total_size(path) for path, _ in items if path.name in keep) <= p["max_bytes"],
@@ -707,6 +718,7 @@ def main():
                 items = generations(p["root"])
                 require(items, "no_verified_generation")
                 destination = items[0][0]
+                verify(destination)  # The publication may have stopped before its check.
                 result = complete_generation(p["root"], p, destination, "finalize")
         elif args.command == "schedule":
             # A minute timer evaluates the approved cadence; pre-cycle backups do not

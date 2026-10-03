@@ -97,6 +97,13 @@ busy condition is reported as a fixed error. The systemd backup, health, and dri
 units declare mutual conflicts, and the pre-cycle launcher retries a busy backup
 before refusing to boot.
 
+Status and the schedule read the generations' manifests and the receipt, never
+their files, so a run costs the same however many generations are kept. A
+generation's checksums and dump are verified in full when it is published, by
+finalize, when it is restored and before it is pruned. Every drill verifies all
+stored generations before it restores the newest, so a corrupted older generation
+fails the drill; `status --require-drill` is what then reports it.
+
 Sample inactive systemd units are in deploy/systemd/duris-backup-*. Copy them,
 adapt User, WorkingDirectory, ReadWritePaths, paths, and permissions, and connect
 OnFailure to the custodian's existing alerting service before enabling the

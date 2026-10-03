@@ -257,8 +257,7 @@ class GenerationTests(Fixture):
                 data.write_bytes(data.read_bytes() + b"corruption")
                 with self.assertRaisesRegex(backup.BackupError, "checksum"):
                     backup.verify(path)
-                # Restore the fixture for the next mode; no invalid generation
-                # should be silently bypassed by backup discovery.
+                # Restore the fixture for the next mode.
                 data.write_bytes(data.read_bytes()[:-len(b"corruption")])
 
     def test_failures_preserve_live_and_last_two_generations(self):
@@ -344,6 +343,36 @@ class GenerationTests(Fixture):
             backup.status(self.p)
         with self.assertRaises(backup.BackupError):
             self.create()
+
+    def test_status_reads_no_generation_bytes_with_one_or_forty(self):
+        now = int(time.time())
+        unread = AssertionError("status read a stored generation's bytes")
+        for count in (1, 40):
+            with self.subTest(generations=count):
+                self.p["root"] = self.base / f"backups-{count}"
+                for index in reversed(range(count)):
+                    self.create("mariadb-primary", now - index * 3600)
+                with mock.patch.object(backup, "digest", side_effect=unread), \
+                     mock.patch.object(backup, "validate_dump", side_effect=unread):
+                    result = backup.status(self.p)
+                self.assertEqual((result["result"], result["generations"]), ("ok", count))
+
+    def test_finalize_verifies_a_publication_that_stopped_before_its_check(self):
+        self.create()
+        def interrupt(stage):
+            if stage == "after_publish":
+                raise OSError("synthetic publication interruption")
+        with mock.patch.object(backup, "checkpoint", interrupt), self.assertRaises(OSError):
+            self.create()
+        newest = backup.generations(self.p["root"])[0][0]
+        (newest / "state/players/42").write_bytes(b"corrupted after publication")
+        with mock.patch.object(backup, "policy_load", return_value=self.p), \
+             mock.patch.object(sys, "argv", ["backup", "--policy", "/synthetic/policy", "finalize"]), \
+             contextlib.redirect_stderr(io.StringIO()) as output:
+            self.assertEqual(backup.main(), 1)
+        self.assertIn("generation_checksum_mismatch", output.getvalue())
+        with self.assertRaisesRegex(backup.BackupError, "backup_or_rotation_incomplete"):
+            backup.status(self.p)
 
     def test_stale_or_incomplete_status(self):
         self.create()
@@ -475,6 +504,21 @@ class RestoreTests(Fixture):
                               ({"tombstones": [{"account": "synthetic-erased"}]}, "propagation_required")):
             with self.subTest(changes=changes), self.assertRaisesRegex(backup.BackupError, code):
                 restore.tombstone_preflight(self.ledger(**changes), self.p, captured)
+
+    def test_restore_and_drill_verify_what_status_does_not(self):
+        older = self.create(created=int(time.time()) - 3600)
+        newest = self.create()
+        for corrupted, drill in ((older, True), (newest, False)):
+            with self.subTest(corrupted=corrupted.name, drill=drill):
+                data = corrupted / "state/players/42"
+                data.write_bytes(data.read_bytes() + b"corruption")
+                self.assertEqual(backup.status(self.p)["result"], "ok")
+                with mock.patch.object(restore, "service_load") as service, \
+                     self.assertRaisesRegex(backup.BackupError, "generation_checksum_mismatch"):
+                    restore.restore(self.p, None, self.ledger(), drill=drill)
+                service.assert_not_called()
+                self.assertFalse(list(self.p["restore_root"].glob("candidate-*")))
+                data.write_bytes(data.read_bytes()[:-len(b"corruption")])
 
     def test_restore_rejects_tombstones_before_candidate_or_service(self):
         for mode in sorted(backup.MODES):
