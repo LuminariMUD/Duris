@@ -32,7 +32,7 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   head, with no rebase or squash. Both branches are deleted ([record](#phase-4-landed-done)).
 - Phase 5 is reviewed as [!7](https://gitlab.com/max757/duris/-/merge_requests/7) (source
   `fix/4-persistence-phase-5`, branched from master `b7105b7d4`), tagged
-  `persistence/phase-5-review-0` on the head with this line.
+  `persistence/phase-5-review-0` and `-1` ([review round 1](#review-round-1-mr-7)).
 - Each later phase works the same way: a branch from master named for its work item, an MR,
   the head the review reads tagged `persistence/phase-<n>-review-0`, a review round's fixes on
   the branch tagged `-1`, `-2` and so on, then one `--no-ff` merge of the last tag.
@@ -2649,3 +2649,47 @@ head 0036: `/health` answered `healthy`/`ready`; the `.env` character fingered a
 Necrotest, whose saved room the 2026-09-30 log named, and Necrotest stood in the room with no
 desync or refusal line logged; the character quit, and a SIGTERM ended the server with
 `shutdown [0]` and "Normal termination of game", no persistence alert raised.
+
+### Review round 1 (MR !7)
+
+The review read `persistence/phase-5-review-0` (`74b93be72`). It found three defects: two from
+this phase and one older one on the same path, a save of a character loaded off the loop.
+Each is fixed in its own commit on `fix/4-persistence-phase-5`, with a test that fails without
+it. The fixed head is tagged `persistence/phase-5-review-1`.
+
+| Finding | Fix | Commit |
+|---|---|---|
+| 1. P1: a loaded artifact owner is now in no room, but `poof_artifact()` still made it shout, and `do_shout()` reads `IS_ROOM(ch->in_room, ...)` unchecked: `world[-1]`. An ASan build aborted with a heap-buffer-overflow in `do_shout()` from staff `artifacts poof` and from the artifact-expiry job with nobody logged in. | The owner's two messages and the shout run once, after the switch, and only for an owner in a room. An offline owner has no one to tell; master had it shout "Ouch!" to the game while logged off. `test_artifact_offline_owner_loads.py` pins the guard. | `5f3abdff4` |
+| 2. P2: `restoreCharOnly()` stopped setting `in_room`, but `purge pfiles` and `lookup pfile` take the character from `mm_get()`, which zeroes it, so `in_room` was 0, a real room. `purge pfiles` frees every character it restores, and `free_char()` ran `char_from_room()` on room 0 for each: the desync this phase fixes, moved to room 0. Its early failure exits always did. | `restoreCharOnly()` sets `in_room` to `NOWHERE` before its first failure exit. `test_pfile_tool.py` pins it. | `52ecdbd67` |
+| 3. P1, older than this phase: an offline load reads no pets, but every save of the character it made wrote all components, so `capture_pets()` sent no pets and `apply_pets()` deleted every stored one without items in custody. `load char` and any save after it, the expiry job's save of an offline owner, and staff artifact poof, swap and files all did it, silently. | The load notes the components it did not read (`unloaded_components`), and `player_save_pipeline_request()` leaves them out of what it marks. A full load reads every component and a new character was loaded from nothing, so their saves are unchanged. The MariaDB game-loop journey stores a pet for the offline Vexmora, loads and saves it, and checks the pet is still there. | `5b451088f` |
+
+Left out: the review also suggested checking `oroom >= 0` before `IS_MAP_ROOM(oroom)` in
+`ac_can_see()`. Traced, that alone would not have made the shout safe: `PERS()` reads the
+shouter's room through `CAN_NIGHTPEOPLE_SEE()` right after. With finding 1 fixed, nothing
+traced hands either a target in no room from a mortal viewer. The character an account loads
+to confirm its deletion waits on its descriptor at `NOWHERE`, as a new character in creation
+always did, and only staff commands (`users`; `where` checks `in_room` first) look at those.
+
+Verification for this round:
+
+- Each new test fails on `74b93be72`: the two contract tests find two unguarded shouts and no
+  `NOWHERE` in `restoreCharOnly()`, and the game-loop journey, on a build with findings 1 and
+  2 fixed but not 3, ends with "the loaded character's save left 0 of its 1 pet".
+- Live, on an ASan/UBSan build (`scripts/build-san.sh`) against the local `duris_dev`, with the
+  `.env` account: Veridian ran `load obj 425`, `load char Ratgapp`, `give avenger ratgapp` and
+  `force ratgapp save`, the server restarted, and the artifact's timer was set in the past.
+  Before the fixes the expiry job aborted the server in `do_shout()` about 105 s after boot;
+  with them it poofed 425 from the offline Ratgapp, saved him and cleared the row, with no
+  sanitizer report. `purge pfiles` over a list naming a missing pfile logged `char_from_room:
+  (null) (-1) not in room 0 (The Void) people list` before and only `free_char called with no
+  name. room: (-1)` after. `load char Zxat` and `force zxat save` deleted both of Zxat's stored
+  pets before and kept them after. `duris_dev` was dumped before each session and restored
+  from the dump after it.
+- The gate, on these fixes with this record: `./scripts/format.sh --all --check` (1031 files
+  clean); `make test-all -j16 TEST_JOBS=16` alone (659 of 659, 545 s); then `make test-db` (36
+  of 36, 196 s, the `game_loop_queries` journey keeping Vexmora's pet). Neither suite left
+  `logs/log/dupes` or `logs/log/item_claims` behind. After the gate a duplicate assertion was
+  dropped from `test_pfile_tool.py`, which was run again on its own. Not run:
+  `npm test --prefix site` (nothing under `site/` changed), `run_runtime_compatibility_mysql.sh`
+  (no schema change: `unloaded_components` lives in memory) and the backup-recovery replay
+  (nothing the restore qualifier runs changed).
