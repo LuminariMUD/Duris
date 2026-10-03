@@ -75,10 +75,14 @@ Flatfile capture preserves identity
 ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ critical authority ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ account locking, pending-transaction evidence, and the
 complete durable file tree.
 
-The receipt tree is copied before the authority snapshot and compared again after
-it; a receipt that changes meanwhile rejects the generation. Anything in that
-directory other than receipts and their empty service lock also rejects it. Restores
-copy the same tree. Historical generations are never edited.
+The receipt tree is copied after the authority capture, so each receipt is at
+least as new as the database it is restored with: an identification paid after
+the snapshot restores as paid with its charge lost, never as prepared and charged
+again. A rename replaces a receipt whole, so one written during the capture does
+not fail it, and the writer's temporary files (`.<pid>.receipt.tmp.*`) are left
+out. Anything else in that directory other than receipts and their empty service
+lock rejects the generation. Restores copy the same tree. Historical generations
+are never edited.
 
 ## Commands and scheduling
 

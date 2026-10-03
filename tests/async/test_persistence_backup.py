@@ -466,29 +466,38 @@ class CapacityAndInputTests(Fixture):
         self.assertTrue(child.stdout.closed)
         self.assertLess(time.monotonic() - started, 5)
 
-    def test_receipts_are_complete_and_churn_blocks_publication(self):
+    def test_receipts_changing_during_the_capture_are_copied_after_it(self):
         critical = self.base / "critical-journal"
         receipts = critical / "locker-identification"
         receipts.mkdir(mode=0o700, parents=True)
         critical.chmod(0o700)
         receipt = receipts / "42.receipt"
-        receipt.write_bytes(b"synthetic-receipt-bytes")
-        receipt.chmod(0o600)
+        # flatfile_atomic_write() writes a receipt to a temporary file renamed over it; one is
+        # there while a write is under way, and a crash leaves it behind.
+        self.assertIn('".%s.tmp.%ld.%llu"', (ROOT / "src/flatfile/flatfile_store.c").read_text())
+        (receipts / ".43.receipt.tmp.1234.7").write_bytes(b"half-written receipt")
+        self.p["journal_roots"] = {"critical": critical}
         with mock.patch.dict(os.environ, {"CRITICAL_COMMAND_JOURNAL_DIR": str(critical)}):
-            self.p["journal_roots"] = {"critical": critical}
-            generation = self.create()
-            self.assertEqual(backup.inventory(critical), backup.inventory(generation / "journals/critical"))
-            captured = backup.inventory(generation)
-            original = backup.flatfile_capture
-            def changed_capture(stage, p, capacity_base=None):
-                result = original(stage, p, capacity_base)
-                receipt.write_bytes(b"synthetic-new-receipt-bytes")
-                return result
-            with mock.patch.object(backup, "flatfile_capture", changed_capture):
-                with self.assertRaisesRegex(backup.BackupError, "journal_changed"):
-                    self.create()
-            self.assertEqual(backup.inventory(generation), captured)
-            self.assertEqual(len(backup.generations(self.p["root"])), 1)
+            for mode, capture in (("flatfile-primary", "flatfile_capture"),
+                                  ("mariadb-primary", "mariadb_capture")):
+                receipt.write_bytes(b"synthetic prepared receipt")
+                original = getattr(backup, capture)
+                def paid_during_capture(stage, p, capacity_base=None):
+                    result = original(stage, p, capacity_base)
+                    receipt.write_bytes(b"synthetic paid receipt")
+                    return result
+                with self.subTest(mode=mode), mock.patch.object(backup, capture, paid_during_capture):
+                    generation = self.create(mode)
+                    copied = generation / "journals/critical/locker-identification"
+                    self.assertEqual([path.name for path in copied.iterdir()], ["42.receipt"])
+                    self.assertEqual((copied / "42.receipt").read_bytes(), b"synthetic paid receipt")
+
+    def test_a_receipt_directory_the_game_does_not_use_costs_no_capture(self):
+        unused = AssertionError("captured the authority for a mismatched policy")
+        with mock.patch.dict(os.environ, {"CRITICAL_COMMAND_JOURNAL_DIR": str(self.base / "other")}), \
+             mock.patch.object(backup, "mariadb_capture", side_effect=unused), \
+             self.assertRaisesRegex(backup.BackupError, "journal_policy_mismatch"):
+            self.create("mariadb-primary")
 
 class FailureRecordTests(Fixture):
     def test_failure_records_name_the_exception_without_private_text(self):

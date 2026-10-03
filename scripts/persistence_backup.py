@@ -38,6 +38,10 @@ JOURNAL_ROOTS = {"critical"}
 # The journal an older server kept in that directory. Nothing reads it any more; a backup
 # carries it as it is, so an upgraded server still backs up and an older generation restores.
 RETIRED_JOURNAL_FILES = {"critical-command.journal", "critical-command.journal.tmp"}
+# flatfile_atomic_write() writes a receipt to this temporary file and renames it over the
+# receipt; one is there while a write is under way, and a crash can leave it behind. The game
+# never reads one, so no capture copies it.
+RECEIPT_WRITE = re.compile(r"\.[1-9][0-9]{0,9}\.receipt\.tmp\.[0-9]+\.[0-9]+")
 LOCK_WAIT_SECONDS = 120
 CAPACITY_CHECK_INTERVAL = 32 * 1024 * 1024
 
@@ -250,13 +254,15 @@ def sync_tree(root):
 def journal_capture(stage, p, capacity_base=None):
     target = stage / "journals"
     target.mkdir(mode=0o700)
-    snapshots = {}
     for name, source in p["journal_roots"].items():
         secure_path(source, True)
         require(source.is_dir(), "journal_source_missing")
-        snapshots[name] = inventory(source)
         require(name in JOURNAL_ROOTS, "invalid_journal_roots")
-        for relative, metadata in snapshots[name].items():
+        # A rename replaces a receipt whole, so the copy holds one whole version of each. It
+        # is checked on its own: the directory may have moved on since.
+        shutil.copytree(source, target / name, symlinks=True,
+                        ignore=lambda _, names: {x for x in names if RECEIPT_WRITE.fullmatch(x)})
+        for relative, metadata in inventory(target / name).items():
             receipt = re.fullmatch(r"locker-identification/([1-9][0-9]{0,9})\.receipt", relative)
             service_lock = relative == "locker-identification/.service-lock"
             if receipt:
@@ -269,16 +275,9 @@ def journal_capture(stage, p, capacity_base=None):
                 require(service_lock or relative in RETIRED_JOURNAL_FILES, "journal_filename")
             if service_lock:
                 require(metadata["bytes"] == 0, "journal_service_lock_nonempty")
-        needed = sum(x["bytes"] for x in snapshots[name].values())
         existing = total_size(p["root"]) if capacity_base is None else capacity_base
-        require(existing + total_size(stage) + needed < p["max_bytes"], "capacity_headroom_required")
-        require(shutil.disk_usage(stage).free >= needed + p["min_free_bytes"], "low_free_capacity")
-        shutil.copytree(source, target / name)
-        require(inventory(target / name) == snapshots[name], "journal_changed_during_capture")
-    if os.environ.get("CRITICAL_COMMAND_JOURNAL_DIR"):
-        require(p["journal_roots"]["critical"] == Path(os.environ["CRITICAL_COMMAND_JOURNAL_DIR"]),
-                "journal_policy_mismatch")
-    return snapshots
+        require(existing + total_size(stage) < p["max_bytes"], "capacity_headroom_required")
+        require(shutil.disk_usage(stage).free >= p["min_free_bytes"], "low_free_capacity")
 
 
 def flatfile_capture(stage, p, capacity_base=None):
@@ -627,13 +626,17 @@ def backup(p, mode):
                 schema = secure_path(Path(os.environ["RUNTIME_COMPATIBILITY_MANIFEST"]), False)
             shutil.copyfile(schema, stage / "runtime-schema.json")
             (stage / "runtime-schema.json").chmod(0o600)
+            if os.environ.get("CRITICAL_COMMAND_JOURNAL_DIR"):
+                require(p["journal_roots"]["critical"] == Path(os.environ["CRITICAL_COMMAND_JOURNAL_DIR"]),
+                        "journal_policy_mismatch")
             if mode == "mariadb-primary":
                 verify_database_schema(stage / "runtime-schema.json")
-            journals = journal_capture(stage, p, capacity_base)
             detail = (flatfile_capture(stage, p, capacity_base) if mode == "flatfile-primary"
                       else mariadb_capture(stage, p, capacity_base))
-            require(all(inventory(p["journal_roots"][name]) == files for name, files in journals.items()),
-                    "journal_changed_during_authority_capture")
+            # The receipts come after the authority, so each is at least as new as the database
+            # it is restored with: a restore can lose an identification's charge, as a crash
+            # does, but never charge it again.
+            journal_capture(stage, p, capacity_base)
             if mode == "mariadb-primary":
                 verify_database_schema(stage / "runtime-schema.json")
             checkpoint("after_capture")

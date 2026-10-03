@@ -76,10 +76,10 @@ class BackupReviewRemediationTests(Fixture):
         stage = self.base / "stage"
         stage.mkdir(mode=0o700)
         value = dict(self.p, journal_roots={"critical": critical})
-        captured = backup.journal_capture(stage, value)
-        self.assertEqual(set(captured["critical"]),
+        backup.journal_capture(stage, value)
+        self.assertEqual(backup.inventory(stage / "journals/critical"), backup.inventory(critical))
+        self.assertEqual(set(backup.inventory(critical)),
                          {"critical-command.journal", "critical-command.journal.tmp"})
-        self.assertEqual(backup.inventory(stage / "journals/critical"), captured["critical"])
         (critical / "player-save.journal").write_bytes(b"not a receipt")
         stage = self.base / "stage-foreign"
         stage.mkdir(mode=0o700)
@@ -94,9 +94,8 @@ class BackupReviewRemediationTests(Fixture):
         (store / "42.receipt").write_bytes(b"synthetic bounded receipt; native validation is separate")
         stage = self.base / "stage"
         stage.mkdir(mode=0o700)
-        captured = backup.journal_capture(stage, self.p)
-        self.assertEqual(backup.inventory(critical), captured["critical"])
-        self.assertEqual(backup.inventory(stage / "journals/critical"), captured["critical"])
+        backup.journal_capture(stage, self.p)
+        self.assertEqual(backup.inventory(stage / "journals/critical"), backup.inventory(critical))
 
     def test_journal_capture_rejects_invalid_locker_entries(self):
         store = self.p["journal_roots"]["critical"] / "locker-identification"
@@ -116,6 +115,13 @@ class BackupReviewRemediationTests(Fixture):
                 with self.assertRaisesRegex(backup.BackupError, code):
                     backup.journal_capture(stage, self.p)
                 entry.unlink()
+        target = self.base / "outside-receipt"
+        target.write_bytes(b"read through a link")
+        (store / "42.receipt").symlink_to(target)
+        stage = self.base / "stage-link"
+        stage.mkdir(mode=0o700)
+        with self.assertRaisesRegex(backup.BackupError, "symlink_rejected"):
+            backup.journal_capture(stage, self.p)
 
     def test_expired_generations_are_pruned_only_after_successful_capture(self):
         now = int(time.time())
