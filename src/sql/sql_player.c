@@ -50,6 +50,7 @@
 #include "player/player_name.h"
 #include "account/password_hash.h"
 #include "player/player_revision_state.h"
+#include "player/player_save_worker.h"
 #include "persistence/persistence_mode.h"
 #include "item/item_transfer_command.h"
 #include "item/item_transfer_repository.h"
@@ -2725,6 +2726,8 @@ std::vector<shopkeeper_candidates>
 find_shopkeepers_for_dirty_save(const std::unordered_multimap<int, int> &shops)
 {
 	std::vector<shopkeeper_candidates> found(number_of_shops);
+	if (shops.empty())
+		return found;
 	for (P_char ch = character_list; ch; ch = ch->next)
 	{
 		if (!IS_NPC(ch) || GET_MASTER(ch))
@@ -3638,11 +3641,35 @@ bool sql_restore_shopkeepers(void)
 	return sql_restore_shopkeeper_catalog(-1, nullptr);
 }
 
+// True while the periodic save's next pulse is scheduled.
+static bool shopkeeper_save_continues = false;
+
+// The shops the writer had no room for a pulse ago.
+static void event_save_dirty_shopkeepers(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/,
+					 void * /*data*/)
+{
+	shopkeeper_save_continues = false;
+	sql_save_dirty_shopkeepers();
+}
+
 bool sql_save_dirty_shopkeepers(bool force)
 {
 	if (!shop_index || number_of_shops <= 0)
 		return true;
 
+	// The one writer takes these saves in order with the players', and a boot leaves
+	// every shop dirty: queued at once, 544 shop saves stood ahead of every player save
+	// and relog. The periodic save fills the writer's queue to SHOPKEEPER_SAVE_QUEUE
+	// jobs and takes the remaining shops on the following pulses, as the writer takes
+	// them. A forced save (shutdown, copyover) queues every shop.
+	constexpr uint64_t SHOPKEEPER_SAVE_QUEUE = 16;
+	uint64_t room = UINT64_MAX;
+	if (!force)
+	{
+		const uint64_t queued = player_save_worker_health_copy().queued_jobs;
+		room = queued < SHOPKEEPER_SAVE_QUEUE ? SHOPKEEPER_SAVE_QUEUE - queued : 0;
+	}
+	bool waiting = false;
 	const time_t now = time(NULL);
 	std::vector<int> due;
 	std::unordered_multimap<int, int> due_by_keeper;
@@ -3660,9 +3687,18 @@ bool sql_save_dirty_shopkeepers(bool force)
 				shopkeeper_save_retry_record_failure(retry, now);
 			continue;
 		}
+		if (due.size() >= room)
+		{
+			waiting = true;
+			continue;
+		}
 		due.push_back(i);
 		due_by_keeper.emplace(shop_index[i].keeper, i);
 	}
+	if (waiting && !shopkeeper_save_continues)
+		shopkeeper_save_continues =
+			add_event(event_save_dirty_shopkeepers, 1, NULL, NULL, NULL, 0, NULL, 0)
+				.was_scheduled();
 
 	const std::vector<shopkeeper_candidates> found =
 		find_shopkeepers_for_dirty_save(due_by_keeper);

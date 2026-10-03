@@ -17,8 +17,10 @@ sql = (subprocess.check_output(["git", "show", "440248b17:src/sql/sql_player.c"]
 save_start = sql.rindex("bool sql_save_shopkeeper(P_char ch, int shop_nr)")
 save_end = "bool sql_delete_shopkeeper" if baseline else "static bool sql_save_saved_item_affects"
 save = sql[save_start:sql.index(save_end, save_start)]
-flush_marker = "void sql_save_dirty_shopkeepers(" if baseline else "bool sql_save_dirty_shopkeepers("
-flush_start = sql.index(flush_marker) if baseline else sql.rindex(flush_marker)
+# The periodic save's continuation event stands ahead of the save itself.
+flush_marker = ("void sql_save_dirty_shopkeepers(" if baseline
+                else "// True while the periodic save's next pulse is scheduled.")
+flush_start = sql.index(flush_marker)
 flush = sql[flush_start:sql.index("static P_obj sql_load_saved_item_contents", flush_start)]
 guards = "" if baseline else sql[sql.rfind("namespace", 0, sql.index("enum class shopkeeper_save_reason")):save_start]
 files = (subprocess.check_output(["git", "show", "440248b17:src/core/files.c"], cwd=ROOT, text=True)
@@ -69,11 +71,11 @@ int world_quest_proc(P_char, P_char, int, char *) { return 0; }
 int trainer_proc(P_char, P_char, int, char *) { return 0; }
 struct Shop { int keeper=0, in_room=100, shop_is_roaming=0, dirty=1;
     mob_proc func=nullptr;
-    shopkeeper_save_retry_state dirty_save_retry = {}; } shops[2];
+    shopkeeper_save_retry_state dirty_save_retry = {}; } shops[40];
 auto *shop_index = shops;
 int number_of_shops=1, top_of_world=1, top_of_mobt=1;
 struct Room { int number; P_char people; } world[2] = {{100,nullptr},{101,nullptr}};
-struct Index { int virtual_number=0; struct { mob_proc mob=nullptr; } func; mob_proc qst_func=nullptr; } mob_index[2] = {};
+struct Index { int virtual_number=0; struct { mob_proc mob=nullptr; } func; mob_proc qst_func=nullptr; } mob_index[40] = {};
 P_char character_list=nullptr;
 bool DB=true;
 #define IS_NPC(ch) ((ch)->npc)
@@ -151,7 +153,23 @@ player_save_submit_result persistence_writer_submit(persistence_job_kind, uint64
     ++queued; queued_owner = owner;
     return queue_ok ? player_save_submit_result::accepted : player_save_submit_result::refused;
 }
+// The writer's queue as the periodic save sees it, and the event it continues in.
+struct writer_health { uint64_t queued_jobs; };
+uint64_t writer_queued = 0;
+writer_health player_save_worker_health_copy() { return {writer_queued}; }
+using event_func = void (*)(P_char, P_char, P_obj, void *);
+struct schedule_result { bool was_scheduled() const { return true; } };
+event_func next_pulse = nullptr;
+int scheduled = 0;
+schedule_result add_event(event_func func, int delay, P_char, P_char, P_obj, int, const void *, int)
+{
+    assert(delay == 1 && !next_pulse);
+    next_pulse = func; ++scheduled;
+    return {};
+}
+void run_next_pulse() { event_func func = next_pulse; next_pulse = nullptr; func(nullptr, nullptr, nullptr, nullptr); }
 '''
+declaration = "bool sql_save_dirty_shopkeepers(bool force = false);\n"
 main = r'''
 int main() {
     Character keeper;
@@ -271,7 +289,34 @@ int main() {
     shops[0].dirty=shops[1].dirty=1; next_reads=0;
     assert(sql_save_dirty_shopkeepers(true) && !shops[0].dirty && !shops[1].dirty);
     assert(next_reads==2);
-    std::puts("production shopkeeper save/flush: explicit identity, non-shop procs, roaming room0, retained dirty, controlled exclusion, terminal failures, one list walk PASS");
+    // The periodic save fills the writer's queue to 16 jobs and takes the remaining shops on
+    // the following pulses: a boot's 544 dirty shops, queued at once, stood ahead of every
+    // player save and relog.
+    Character keepers[40];
+    number_of_shops=40; top_of_mobt=39;
+    for (int i=0; i<40; ++i) {
+        keepers[i].rnum=i; keepers[i].in_room=0; keepers[i].next=i<39 ? &keepers[i+1] : nullptr;
+        shops[i]=Shop(); shops[i].keeper=i;
+    }
+    character_list=keepers; queued=0;
+    assert(!sql_save_dirty_shopkeepers(false) && queued==16 && scheduled==1);
+    // The writer still holds ten of them: six more go.
+    writer_queued=10; run_next_pulse();
+    assert(queued==22 && scheduled==2);
+    // A full queue takes none, and the character list is not walked for none.
+    writer_queued=16; next_reads=0; run_next_pulse();
+    assert(queued==22 && scheduled==3 && next_reads==0);
+    writer_queued=0; run_next_pulse();
+    assert(queued==38 && scheduled==4);
+    // The last pulse leaves nothing waiting and schedules nothing.
+    run_next_pulse();
+    assert(queued==40 && scheduled==4 && !next_pulse);
+    for (int i=0; i<40; ++i) assert(!shops[i].dirty);
+    // A forced save (shutdown, copyover) queues every shop whatever the writer holds.
+    for (int i=0; i<40; ++i) shops[i].dirty=1;
+    writer_queued=100;
+    assert(sql_save_dirty_shopkeepers(true) && queued==80 && scheduled==4);
+    std::puts("production shopkeeper save/flush: explicit identity, non-shop procs, roaming room0, retained dirty, controlled exclusion, terminal failures, one list walk, bounded writer queue PASS");
 }
 '''
 old_main = r'''
@@ -292,7 +337,7 @@ with tempfile.TemporaryDirectory(prefix="shop-save-runtime-", dir=build) as tmp:
     binary=Path(tmp)/"test"
     legacy_guard = ("#define IS_SHOPKEEPER(ch) (IS_NPC(ch) && ((mob_index[GET_RNUM(ch)].qst_func == shop_keeper) || "
                      "(mob_index[GET_RNUM(ch)].func.mob == shop_keeper)))\n") if baseline else ""
-    source.write_text(preamble+legacy_guard+guards+save+flush+("" if baseline else direct)+(old_main if baseline else main))
+    source.write_text(preamble+("" if baseline else declaration)+legacy_guard+guards+save+flush+("" if baseline else direct)+(old_main if baseline else main))
     subprocess.run(["g++","-std=c++20","-g","-Wall","-Wextra","-Werror",
                     "-fsanitize=address,undefined","-fno-omit-frame-pointer","-fno-pie","-no-pie",
                     "-I",str(ROOT/"src"),str(source),"-o",str(binary)],check=True)

@@ -17,6 +17,9 @@ The loop times itself, and the journey reads its records. The budget is one puls
 - every callback the analytics and the slow-event records name has a name.
 A slow pulse anywhere else is printed, not judged: beside the other database tests the
 machine can take the CPU from the loop in the middle of any command.
+What the hourly save costs the players is judged too: it queues at most 16 shop saves in a
+pulse, and every re-entry, the god's as that save runs, takes under the 3 s a load waits
+for its character's queued save.
 
 The numbers it prints (the trace's tick, event and command times, the event debt, the
 callbacks that cost the most) are the measurement: --players and --hours scale the load.
@@ -40,6 +43,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 PULSE_US = 250000
 EVENT_BUDGET_US = 25000  # NEVENT_BUDGET_USEC_DEFAULT
+SHOP_SAVE_QUEUE = 16  # SHOPKEEPER_SAVE_QUEUE
+RE_ENTRY_S = 3  # PLAYER_LOAD_TIMEOUT_USEC: a load waits this long for its character's save
 INN_ROOM = 81019
 INN_NAME = 'The Entryway of the Golden Cat Inn'
 GOD_ITEMS = 60
@@ -58,13 +63,22 @@ def character_name(number):
 
 
 def enter_game(client, character):
-    """From the account menu into the game."""
+    """From the account menu into the game; returns the seconds it took from the request.
+    A load that gave up waiting for the character's queued save is asked again, and its
+    wait counts."""
     client.send('1')
     client.expect(character, timeout=30)
-    client.send('1')
-    client.expect('Play as', timeout=30)
-    client.send('y')
-    client.expect('Pos: standing >', timeout=60)
+    asked = None
+    for _ in range(5):
+        client.send('1')
+        client.expect('Play as', timeout=30)
+        client.send('y')
+        asked = asked or time.monotonic()
+        entered, _ = client.expect_any(('Pos: standing >', 'temporarily unavailable'),
+                                       timeout=60)
+        if entered == 'Pos: standing >':
+            return time.monotonic() - asked
+    raise AssertionError(character + ' was refused five times')
 
 
 class Mortal(threading.Thread):
@@ -77,6 +91,7 @@ class Mortal(threading.Thread):
         self.camped = threading.Event()
         self.rented = threading.Event()
         self.stop = threading.Event()
+        self.entries = []
         self.error = None
 
     def play(self, seconds=None):
@@ -112,12 +127,12 @@ class Mortal(threading.Thread):
             self.client.expect('Pos: standing >', timeout=30)
             self.client.send('quit')
             self.client.expect('Please select an option', timeout=90)
-            enter_game(self.client, self.name)
+            self.entries.append(enter_game(self.client, self.name))
             self.camped.set()
             if self.play():
                 self.client.send('rent')
                 self.client.expect('Please select an option', timeout=60)
-                enter_game(self.client, self.name)
+                self.entries.append(enter_game(self.client, self.name))
                 self.rented.set()
                 self.play()
         except Exception as error:  # reported by the main thread
@@ -223,8 +238,16 @@ def run(server, players, hours):
                 while not mortal.rented.wait(1):
                     assert mortal.error is None, mortal.error
                     assert time.monotonic() - booted < 900, mortal.name + ' never rented'
+            # The god rents as the first hourly save queues its shops, and enters again
+            # at once: its load waits for its own save, behind what the writer holds.
+            debug_log = runtime / 'logs/log/debug'
+            while 'sql_save_dirty_shopkeepers: saved' not in debug_log.read_text(
+                    errors='replace'):
+                assert time.monotonic() - booted < 300, 'the hourly save never ran'
+                time.sleep(0.02)
             god.send('rent')
             god.expect('Please select an option', timeout=60)
+            entries = [enter_game(god, GOD)]
 
             # Play on past the last hourly event, to the end of its 300-pulse window:
             # the event analytics and the latency trace are written a window at a time.
@@ -248,6 +271,7 @@ def run(server, players, hours):
             for mortal in mortals:
                 mortal.join(timeout=120)
                 assert mortal.error is None, mortal.error
+                entries += mortal.entries
             elapsed = time.monotonic() - booted
         except Exception:
             print(output_path.read_text(errors='replace')[-6000:])
@@ -273,8 +297,17 @@ def run(server, players, hours):
 
         status = (runtime / 'logs/log/status').read_text(errors='replace')
         report(status, trace_path.read_text(), players, elapsed)
+        shop_saves = [int(saved) for saved in re.findall(
+            r'sql_save_dirty_shopkeepers: saved (\d+) shopkeepers', debug_log.read_text())]
+        print(f'  slowest re-entry {max(entries):.2f} s of {len(entries)}; {sum(shop_saves)} '
+              f'shop saves queued over {len(shop_saves)} pulses, at most {max(shop_saves)} '
+              'in one')
         slowest_hour = max(int(slowest) for _, slowest in hourly_lines())
         assert slowest_hour < PULSE_US, f'the hourly event took {slowest_hour} us'
+        assert max(shop_saves) <= SHOP_SAVE_QUEUE, \
+            f'{max(shop_saves)} shop saves were queued in one pulse, ahead of the players\''
+        assert max(entries) < RE_ENTRY_S, \
+            f'a re-entry took {max(entries):.2f} s: its load waited for saves queued ahead'
         for operation, spent in re.findall(
                 r'COMMAND OP SLOW: .*operation=(rent|quit) duration_us=(\d+)', status):
             assert int(spent) < PULSE_US, f'a {operation} took {spent} us'
