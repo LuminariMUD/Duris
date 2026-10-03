@@ -17,9 +17,11 @@ items, one phase each. Phase 4 landed as
 [!6](https://gitlab.com/max757/duris/-/merge_requests/6) in `d6952d701`, its review clean
 ([record](persistence-done.md#phase-4-landed-done)). Phase 5 landed as
 [!7](https://gitlab.com/max757/duris/-/merge_requests/7) in `218d0640b` after one review
-round, and #4 is closed ([record](persistence-done.md#phase-5-landed-done)). Phase 6 is in
-progress on `fix/3-persistence-phase-6` ([progress](persistence-done.md#phase-6-progress));
-Phases 7 and 8 are not started.
+round, and #4 is closed ([record](persistence-done.md#phase-5-landed-done)). Phase 6 is done
+on `fix/3-persistence-phase-6` and in review as
+[!8](https://gitlab.com/max757/duris/-/merge_requests/8), tagged
+`persistence/phase-6-review-0` ([progress](persistence-done.md#phase-6-progress)); Phases 7
+and 8 are not started.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
@@ -357,7 +359,9 @@ How each item is done (decided 2026-10-03):
 3. **Production builds at `-Og`.** `HARDENING_FLAGS` in `src/Makefile` puts `-Og` in every profile.
    Build `BUILD_PROFILE=production` at `-O2`, and record the tick latency before and after on the
    same load.
-4. **The backup job's CPU** competes with the loop; Phase 6 item 1 fixes it.
+4. **The backup job's CPU** competes with the loop; Phase 6 item 1 fixed it: locally a backup
+   into a root of 40 generations went from 97.9 s of CPU to 13.7 s, and `status` from 43 s to
+   0.04 s ([record](persistence-done.md#each-generation-verified-once-done)).
 
 Left on #5, as server configuration: the MariaDB buffer pool, left at its 128 MB default.
 
@@ -446,6 +450,8 @@ In this order: the backup job's cost before Phase 7 measures the loop; the world
 on the optimised build. Phases 4 (alerts and logs) and 5 (bugs from the logs) are done and on
 master.
 
-1. [Phase 6: backups (#3)](#phase-6-backups-3).
+1. [Phase 6: backups (#3)](#phase-6-backups-3): done, in review as
+   [!8](https://gitlab.com/max757/duris/-/merge_requests/8); it leaves this list when it
+   lands.
 2. [Phase 7: game-loop performance (#5)](#phase-7-game-loop-performance-5).
 3. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2).

@@ -36,6 +36,9 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   on 2026-10-03 in `218d0640b`, one `--no-ff` merge of the `-1` head, with no rebase or
   squash, so both tags still name what was reviewed. The branch is deleted
   ([record](#phase-5-landed-done)).
+- Phase 6 is reviewed as [!8](https://gitlab.com/max757/duris/-/merge_requests/8) (source
+  `fix/3-persistence-phase-6`, branched from master `2d58826c4`), tagged
+  `persistence/phase-6-review-0` on the head with this line.
 - Each later phase works the same way: a branch from master named for its work item, an MR,
   the head the review reads tagged `persistence/phase-<n>-review-0`, a review round's fixes on
   the branch tagged `-1`, `-2` and so on, then one `--no-ff` merge of the last tag.
