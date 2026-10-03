@@ -13,7 +13,8 @@ The implementation is split by responsibility:
 - `src/world/events.c` contains callbacks and callback-specific helpers such as
   regeneration, command waits, room events, and zone resets. It is not a
   second scheduler.
-- `src/world/event_names.c` maps callback addresses to diagnostic names.
+- `src/world/event_names.c` maps callback addresses to diagnostic names, read from
+  `lib/misc/event_names`, which the launcher writes with `scripts/event_names.sh`.
 - `src/world/events.h` contains only the regeneration selector and the current
   character/object event-list traversal helpers. The old numeric event-type
   scheduler no longer exists.

@@ -2504,9 +2504,7 @@ const char *get_function_name(void *func)
 	return "unknown function";
 }
 
-// file FUNCTION_NAMES_FILE should be created with
-// nm --demangle dms | grep " T " before each boot,
-// preferably with a mainboot script
+// The launcher writes FUNCTION_NAMES_FILE with scripts/event_names.sh before each boot.
 void load_event_names()
 {
 	void *base_address = get_executable_base_address();

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""ASan/UBSan coverage for the dynamically sized event-name registry."""
+"""ASan/UBSan coverage for the dynamically sized event-name registry, and the names
+scripts/event_names.sh gives a binary's own callbacks of every linkage."""
 
 from _paths import SRC
 import os
@@ -17,12 +18,43 @@ HARNESS = r'''
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <link.h>
 #include <string>
 
 static void require(bool condition, int code)
 {
 	if (!condition)
 		std::exit(code);
+}
+
+// A callback of each linkage the event code schedules: global, static, in an anonymous
+// namespace, inline (a weak symbol) and, in main(), a lambda.
+void global_callback()
+{
+}
+static void static_callback()
+{
+}
+namespace
+{
+void hidden_callback()
+{
+}
+}
+inline void inline_callback()
+{
+}
+
+static int first_object_base(struct dl_phdr_info *info, size_t, void *base)
+{
+	*static_cast<uintptr_t *>(base) = info->dlpi_addr;
+	return 1;
+}
+
+static bool named(void (*callback)(), const char *name)
+{
+	const char *found = event_name_registry_lookup(reinterpret_cast<const void *>(callback));
+	return found && std::string(found) == name;
 }
 
 static void count_entry(const void *, const char *, void *context)
@@ -45,8 +77,21 @@ static std::filesystem::path write_symbols(const std::filesystem::path &director
 
 int main(int argc, char **argv)
 {
-	require(argc == 2, 1);
+	require(argc == 3, 1);
 	const std::filesystem::path directory(argv[1]);
+
+	// argv[2] is what scripts/event_names.sh printed for this executable.
+	uintptr_t own_base = 0;
+	dl_iterate_phdr(first_object_base, &own_base);
+	const event_name_load_result own = event_name_registry_load(argv[2], own_base);
+	require(own.opened && !own.read_error && own.malformed_lines == 0, 2);
+	void (*lambda_callback)() = [] {};
+	require(named(global_callback, "global_callback"), 3);
+	require(named(static_callback, "static_callback"), 4);
+	require(named(hidden_callback, "hidden_callback"), 5);
+	require(named(inline_callback, "inline_callback"), 6);
+	require(named(lambda_callback, "main::{lambda#1}::_FUN"), 7);
+
 	constexpr uintptr_t base = 0x100000U;
 	int test = 0;
 
@@ -130,9 +175,13 @@ with tempfile.TemporaryDirectory(prefix="duris-event-names-") as directory:
         ],
         check=True,
     )
+    own_names = temp / "own-names"
+    with own_names.open("w") as output:
+        subprocess.run([str(ROOT / "scripts/event_names.sh"), str(binary)], check=True,
+                       stdout=output)
     environment = os.environ.copy()
     environment["ASAN_OPTIONS"] = "detect_leaks=1:halt_on_error=1"
     environment["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"
-    subprocess.run([str(binary), str(temp)], check=True, env=environment)
+    subprocess.run([str(binary), str(temp), str(own_names)], check=True, env=environment)
 
 print("event-name registry boundary tests passed under ASan/UBSan")

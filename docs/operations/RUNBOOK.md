@@ -31,8 +31,9 @@ production port 7777; the default remains 4000.
 - Raises core dump limits (`ulimit -c unlimited`).
 - Rebuilds area tools and regenerates `areas/world.*` when the `make_*`
   helpers are missing.
-- Regenerates `lib/misc/event_names` (demangled symbol list used by crash
-  tooling).
+- Regenerates `lib/misc/event_names` with `scripts/event_names.sh`: the
+  executable's function names, local and weak ones included, which the event
+  diagnostics use to name a callback.
 - Promotes `bin/server/dms_new` to `bin/server/dms`, retains the five newest
   prior executables under `bin/server/history/` by default, and runs the active
   binary in an outer loop. Set `DMS_BINARY_HISTORY_LIMIT` to change the limit.
@@ -85,7 +86,7 @@ be useless after exit. Verify the running executable after promotion as well;
 an ordinary in-game reboot is not proof that staged code was loaded.
 
 Callback labels in `lib/misc/event_names` must match the loaded executable.
-The launcher regenerates them with `nm --demangle`; an in-process code copyover
+The launcher regenerates them with `scripts/event_names.sh`; an in-process code copyover
 must also use a matching map. Stale addresses can invalidate callback-family
 profiles even when the executable is correct. Follow the existing deployment
 path and verify both identities before comparing profiles.
