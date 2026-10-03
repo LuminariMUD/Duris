@@ -67,10 +67,8 @@ assert "close(S);" in game_loop
 assert "websocket_shutdown();" in game_loop
 main = body(comm, "int main(", "// all text meant")
 assert main.index("run_the_game(port, sslport);") < main.index("shutdown_mysql();")
-assert main.index("shutdown_mysql();") < main.index("close_cmdlog();")
-
-close_log = body(debug, "void close_cmdlog(", "void cmdlog(")
-assert "fclose(cmdfile);" in close_log and "cmdfile = NULL;" in close_log
+# The command log holds no file or allocation: its lines are a static ring, written at exit.
+assert "close_cmdlog" not in main and "fopen" not in body(debug, "void write_cmdlog(", "void do_debug(")
 mysql_shutdown = sql[sql.rindex("void shutdown_mysql("):]
 assert "sql_pool_shutdown();" in mysql_shutdown
 assert "mysql_close(DB);" in mysql_shutdown

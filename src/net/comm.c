@@ -693,7 +693,8 @@ int main(int argc, char **argv)
 
 	load_event_names();
 
-	init_cmdlog(); /* init cmd.debug file - DCL */
+	init_cmdlog(); /* cmd.debug is written when the server exits */
+	start_log_writer();
 	(void)telemetry_runtime_init(telemetry_runtime_options_from_environment());
 
 	const int game_exit_status = run_the_game(port, sslport);
@@ -715,7 +716,6 @@ int main(int argc, char **argv)
 	(void)telemetry_runtime_final_reap();
 	artifact_mana_shutdown();
 	shutdown_mysql();
-	close_cmdlog();
 
 	return game_exit_status;
 }
@@ -2313,16 +2313,17 @@ static void run_pulse_reset_phase(game_loop_pulse_context &ctx)
 	{
 		latency_trace_snapshot snapshot = {};
 		latency_trace_snapshot_take_and_reset(&snapshot);
-		FILE *_ltf = fopen("logs/latency_trace.log", "a");
+		// The log thread writes it, as it writes the log lines.
+		char *trace = NULL;
+		size_t trace_size = 0;
+		FILE *_ltf = open_memstream(&trace, &trace_size);
 		if (_ltf)
 		{
 			latency_trace_snapshot_dump(_ltf, &snapshot);
 			fclose(_ltf);
+			log_append("logs/latency_trace.log", trace);
+			free(trace);
 		}
-		else
-			statuslog(56,
-				  "LATENCY TRACE: could not open logs/latency_trace.log: errno=%d",
-				  errno);
 	}
 	memcpy(&timeout, &opt_time, sizeof(timeout));
 	const suseconds_t usec_spent = (suseconds_t)MIN(

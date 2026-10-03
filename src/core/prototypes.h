@@ -885,7 +885,7 @@ void do_debug(P_char, char *, int);
 void do_mreport(P_char, char *, int);
 void hour_debug(void);
 void init_cmdlog(void);
-void close_cmdlog(void);
+void write_cmdlog(void);
 void loop_debug(void);
 
 /* drannak.c */
@@ -3053,6 +3053,10 @@ void CAP(char *);
 void DECAP(char *);
 void InitGrantFastLookup(void);
 void logit(const char *, const char *, ...) __attribute__((format(printf, 2, 3)));
+void log_append(const char *filename, const char *line);
+void start_log_writer(void);
+void flush_log_writer(void);
+void write_queued_log_lines(void);
 // Severity controls routing; level only selects the immortal audience for alerts.
 enum class persistence_severity
 {

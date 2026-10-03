@@ -10,13 +10,10 @@ whose first run after a boot saves every shop.
 
 The loop times itself, and the journey reads its records. The budget is one pulse, 250 ms:
 - the hourly event ran, by its line in the event analytics, inside the budget;
-- no `rent` or `quit` command ran past it (`COMMAND OP SLOW`);
-- no pulse ran past it (`MUD TICK TOOK TOO LONG`) in its event pass or in its activity
-  pass, where a camp ends;
+- no command, a `rent` and a `quit` among them, ran past it (`COMMAND OP SLOW`);
+- no pulse ran past it (`MUD TICK TOOK TOO LONG`);
 - no pulse deferred events with time left in its 25 ms event budget;
 - every callback the analytics and the slow-event records name has a name.
-A slow pulse anywhere else is printed, not judged: beside the other database tests the
-machine can take the CPU from the loop in the middle of any command.
 What the hourly save costs the players is judged too: it queues at most 16 shop saves in a
 pulse, and every re-entry, the god's as that save runs, takes under the 3 s a load waits
 for its character's queued save.
@@ -309,13 +306,10 @@ def run(server, players, hours):
         assert max(entries) < RE_ENTRY_S, \
             f'a re-entry took {max(entries):.2f} s: its load waited for saves queued ahead'
         for operation, spent in re.findall(
-                r'COMMAND OP SLOW: .*operation=(rent|quit) duration_us=(\d+)', status):
+                r'COMMAND OP SLOW: .*operation=(\S+) duration_us=(\d+)', status):
             assert int(spent) < PULSE_US, f'a {operation} took {spent} us'
-        for line in re.findall(r'MUD TICK TOOK TOO LONG.*', status):
-            for section in ('ne_events_us', 'activities_us'):
-                spent = re.search(section + r'=(\d+)', line)
-                assert not spent or int(spent.group(1)) < PULSE_US, \
-                    'a pulse ran past its 250 ms:\n' + line
+        slow_pulses = re.findall(r'MUD TICK TOOK TOO LONG.*', status)
+        assert not slow_pulses, 'a pulse ran past its 250 ms:\n' + slow_pulses[0]
         early = [line for line in re.findall(r'NEVENT BUDGET: .*', status)
                  if int(re.search(r'total_us=(\d+)', line).group(1)) < EVENT_BUDGET_US]
         assert not early, 'events were deferred inside the time budget:\n' + early[0]

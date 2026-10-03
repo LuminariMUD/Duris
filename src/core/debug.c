@@ -19,10 +19,12 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/wait.h>
+#include <unistd.h>
 #include "core/mm.h"
 #include "core/profile.h"
 #include "ships/ship_npc_ai.h"
@@ -75,19 +77,33 @@ void loop_debug(void)
 
 void hour_debug(void) {}
 
-static FILE *cmdfile;
+// The last CMDLOG_LINES player commands. They are kept in memory: writing each to
+// logs/log/cmd.debug as it came held the game loop, before every command, for as long as
+// a busy disk held the write. write_cmdlog() puts them in the file when the server exits
+// or crashes.
+#define CMDLOG_LINES 500
+static char cmdlog_lines[CMDLOG_LINES][256];
+
+// Makes only calls a signal handler may make: a crash writes the log too.
+void write_cmdlog(void)
+{
+	const int fd = open("logs/log/cmd.debug", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (fd < 0)
+		return;
+	// Oldest first. Once the ring is full, the next line to be replaced is the oldest.
+	const uint count = logcount < CMDLOG_LINES ? logcount : CMDLOG_LINES;
+	for (uint i = logcount - count; i != logcount; i++)
+	{
+		const char *line = cmdlog_lines[i % CMDLOG_LINES];
+		const ssize_t written = write(fd, line, strlen(line));
+		(void)written;
+	}
+	close(fd);
+}
 
 void init_cmdlog(void)
 {
-	cmdfile = fopen("logs/log/cmd.debug", "w");
-}
-
-void close_cmdlog(void)
-{
-	if (!cmdfile)
-		return;
-	fclose(cmdfile);
-	cmdfile = NULL;
+	atexit(write_cmdlog);
 }
 
 void cmdlog(P_char ch, char *str)
@@ -102,19 +118,18 @@ void cmdlog(P_char ch, char *str)
 	}
 	if (IS_NPC(ch))
 		return;
-	if (cmdfile && (*(str + 1) != '\0'))
+	if (*(str + 1) != '\0')
 	{
+		char *line = cmdlog_lines[logcount % CMDLOG_LINES];
 		logcount++;
-		if (!(logcount % 500))
-		{
-			rewind(cmdfile);
-		}
 		ct = time(0);
 		strcpy(tbuf, asctime(localtime(&ct)));
 		tbuf[strlen(tbuf) - 1] = '\0';
-		fprintf(cmdfile, "%s :: [%d] %s in %d: %s\n", tbuf, logcount, GET_NAME(ch),
-			world[ch->in_room].number, str);
-		fflush(cmdfile);
+		// A command too long for the line is cut, and still ends its line.
+		if (snprintf(line, sizeof cmdlog_lines[0], "%s :: [%u] %s in %d: %s\n", tbuf,
+			     logcount, GET_NAME(ch), world[ch->in_room].number,
+			     str) >= (int)sizeof cmdlog_lines[0])
+			line[sizeof cmdlog_lines[0] - 2] = '\n';
 	}
 }
 

@@ -264,7 +264,7 @@ within the `DURIS_LOG_ARCHIVE_MB` cap.
 |------|---------|
 | `logs/log/status` | Boot progress, MySQL connection status, system messages |
 | `logs/log/syslog` | Game events |
-| `logs/log/cmdlog` | Player commands |
+| `logs/log/cmd.debug` | The last 500 player commands, written when the server exits or crashes |
 | `logs/log/wizlog` | Immortal commands |
 | `logs/duris-console.log` | stdout/stderr of the supervised process |
 

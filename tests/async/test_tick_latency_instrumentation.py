@@ -89,7 +89,7 @@ if loop:
     ))
     checks.append((
         "the latency trace dump targets the repository's logs directory",
-        contains(loop, 'fopen("logs/latency_trace.log", "a")') and
+        contains(loop, 'log_append("logs/latency_trace.log", trace)') and
         not contains(loop, "/durismud/logs")
     ))
     checks.append((

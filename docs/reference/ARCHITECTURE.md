@@ -22,6 +22,11 @@ multiplexed in a single `select()` loop. Concurrency includes:
 - A non-coalescing critical-command coordinator, whose commands run on that writer, and an
   outbox dispatcher for economy, ownership, auction, and gameplay-outcome operations.
 - One bounded maintenance worker for staggered recurring database and snapshot work.
+- One log thread (`src/core/utility.c`) that appends every `logit()` line and the latency
+  trace to its file, in the order they were logged, so a busy disk never holds the thread
+  that logs. A line for `logs/log/exit` is written by its caller, behind the queued lines.
+  The last 500 player commands stay in memory (`src/core/debug.c`). An exit writes both;
+  so does the crash handler (`src/core/signals.c`), before the signal's own action.
 - One immutable world-recovery publisher worker when Redis recovery is enabled.
 - One bounded best-effort mail worker (libcurl SMTP) for account password recovery. It is
   not in the shutdown drain chain, is joined at shutdown (each send is bounded to 10 s
