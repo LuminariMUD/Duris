@@ -2394,7 +2394,7 @@ int restoreCharOnly(P_char ch, char *name)
 	int surname = 0;
 #endif
 	int start, size, csize, type, room;
-	int witness_off;
+	int witness_off = 0; /* read, and used, from SAV_WTNSVERS on */
 	char Gbuf1[MAX_STRING_LENGTH];
 	char b_savevers;
 

@@ -62,7 +62,7 @@ mkdir -p bin/server/history
 cp -f "$STAGED_BINARY" "$RUNTIME_BINARY"
 
 echo "Generating list of function names.."
-nm --demangle "$RUNTIME_BINARY" | grep " T " | sed -e 's/[(].*//g' > lib/misc/event_names
+scripts/event_names.sh "$RUNTIME_BINARY" > lib/misc/event_names
 
 echo "Starting Duris development environment on port ${PORT}..."
 exec gdb -q \

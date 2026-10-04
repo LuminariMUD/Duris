@@ -4320,24 +4320,25 @@ static void show_world_persistence(P_char ch)
 	for (size_t site_index = 0; site_index < rendered_sites; ++site_index)
 	{
 		const struct persistence_query_metric *metric = &metrics[site_index];
-		snprintf(line, sizeof(line),
-			 "query_site rank=%llu site=%s context=%s kind=%s calls=%llu "
-			 "failures=%llu total_us=%llu max_us=%llu "
-			 "buckets=%llu/%llu/%llu/%llu/%llu/%llu/%llu/%llu\n",
-			 (unsigned long long)(site_index + 1), metric->site,
-			 persistence_query_context_name(metric->context),
-			 persistence_statement_kind_name(metric->kind),
-			 (unsigned long long)metric->calls, (unsigned long long)metric->failures,
-			 (unsigned long long)metric->total_usec,
-			 (unsigned long long)metric->max_usec,
-			 (unsigned long long)metric->latency_buckets[0],
-			 (unsigned long long)metric->latency_buckets[1],
-			 (unsigned long long)metric->latency_buckets[2],
-			 (unsigned long long)metric->latency_buckets[3],
-			 (unsigned long long)metric->latency_buckets[4],
-			 (unsigned long long)metric->latency_buckets[5],
-			 (unsigned long long)metric->latency_buckets[6],
-			 (unsigned long long)metric->latency_buckets[7]);
+		checked_snprintf(line, sizeof(line),
+				 "query_site rank=%llu site=%s context=%s kind=%s calls=%llu "
+				 "failures=%llu total_us=%llu max_us=%llu "
+				 "buckets=%llu/%llu/%llu/%llu/%llu/%llu/%llu/%llu\n",
+				 (unsigned long long)(site_index + 1), metric->site,
+				 persistence_query_context_name(metric->context),
+				 persistence_statement_kind_name(metric->kind),
+				 (unsigned long long)metric->calls,
+				 (unsigned long long)metric->failures,
+				 (unsigned long long)metric->total_usec,
+				 (unsigned long long)metric->max_usec,
+				 (unsigned long long)metric->latency_buckets[0],
+				 (unsigned long long)metric->latency_buckets[1],
+				 (unsigned long long)metric->latency_buckets[2],
+				 (unsigned long long)metric->latency_buckets[3],
+				 (unsigned long long)metric->latency_buckets[4],
+				 (unsigned long long)metric->latency_buckets[5],
+				 (unsigned long long)metric->latency_buckets[6],
+				 (unsigned long long)metric->latency_buckets[7]);
 		send_to_char(line, ch);
 	}
 

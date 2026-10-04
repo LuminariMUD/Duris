@@ -42,6 +42,10 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   on 2026-10-03 in `1a4b15f9d`, one `--no-ff` merge of the `-1` head, with no rebase or
   squash, so both tags still name what was reviewed. The branch is deleted
   ([record](#phase-6-landed-done)).
+- Phase 7 is reviewed as [!9](https://gitlab.com/max757/duris/-/merge_requests/9) (source
+  `fix/5-persistence-phase-7`, branched from master `1c5a53de9`), tagged
+  `persistence/phase-7-review-0` and `-1` ([review round 1](#review-round-1-mr-9)). The
+  `-1` head has master merged in, for the older defects the review found and master fixed.
 - Each later phase works the same way: a branch from master named for its work item, an MR,
   the head the review reads tagged `persistence/phase-<n>-review-0`, a review round's fixes on
   the branch tagged `-1`, `-2` and so on, then one `--no-ff` merge of the last tag.
@@ -2925,3 +2929,290 @@ the local policy needed anything.
 `fix/5-persistence-phase-7`, branched from master after this record. #3 stays open for its
 server configuration (whether a server runs restore drills, keeps an off-host replica and
 skips the pre-boot backup); its Status line now records what Phase 6 resolved.
+
+## Phase 7 progress
+
+Phase 7 ([plan](persistence-plan.md#phase-7-game-loop-performance-5)) is being done on
+`fix/5-persistence-phase-7`, branched on 2026-10-03 from master `1c5a53de9`. Each item below
+gets its record when it lands; an item without one is not done.
+
+### Unnamed callbacks (done)
+
+`lib/misc/event_names` held only global functions (`nm ... | grep " T "`), and its `sed` cut
+each name at its first parenthesis, so a callback in an anonymous namespace
+(`(anonymous namespace)::community_spellup_event`) lost its whole name. The server has seven
+static event callbacks (`sp_hour_event`, `kingdom_gather_tick`, `kingdom_upkeep_tick`,
+`kingdom_harvest_tick`, `kingdom_node_reload_event`, `event_deferredTerminalSave`,
+`community_spellup_event`); each logged as `unknown function`.
+
+Both launchers (`cycle_mud.sh`, `gdbdms`) now write the file with `scripts/event_names.sh`,
+which lists local (`t`) and weak (`W`: inline functions, lambdas in inline variables)
+functions with the global ones, drops `(anonymous namespace)::` and every parameter list, and
+keeps one token per name, so no line is malformed. A lambda in `do_look()` reads
+`do_look::{lambda#1}::_FUN`. The loader takes weak symbols. The file goes from 7,365 names to
+26,169. `4df5e1018`.
+
+Tests: `test_event_name_registry.py` builds the names of its own harness with the script and
+looks up a global, a static, an anonymous-namespace, an inline and a lambda callback. With
+the old pipeline the static one has no name; with the old loader the weak lines are
+malformed. The game loop budget journey (below) writes the file as the launchers do and
+fails if the event analytics or a slow-event record names an `unknown function` over a
+full-world run.
+
+### The game loop budget journey (done)
+
+`test_mysql_game_loop_budget_journey.py` (in `make test-db`, about 3 minutes) is the
+measurement and the pin for item 1. It boots the full world on a disposable MariaDB with
+the event analytics on and the launcher's names file. Eight mortals on their own accounts
+play side by side (`look`, `inventory`, `score`, `equipment`, `who`, `time`, `weather`,
+`save`, one line every half second), camp out with `quit`, enter again, are brought to an
+inn by a god and `rent`, and enter again; the god rents with 88 items. The run lasts to the
+end of the 300-pulse window that holds the first hourly event.
+
+It reads the loop's own records, not a client's clock. The budget is one pulse, 250 ms:
+
+- the hourly event ran, by its `NEVENT ANALYTICS CALLBACK` line, inside the budget;
+- no `COMMAND OP SLOW` names a command past it, a `rent` and a `quit` among them;
+- no `MUD TICK TOOK TOO LONG` pulse ran past it;
+- no `NEVENT BUDGET` pulse deferred events inside its 25 ms time budget;
+- no callback is named `unknown function`;
+- every camp and every rent is in `log_entries` after the shutdown.
+
+Since review round 1 it also judges what the hourly save costs the players: no pulse
+queues more than 16 shop saves, and every re-entry (the god's is made as that save runs)
+takes under the 3 s a load waits for its character's queued save.
+
+The journey first failed on any pulse past 250 ms. Beside the other database tests
+(`make test-db` runs 12 at a time, each with its own MariaDB container), two runs in five
+logged one slow command each, a `score` of 346 ms and a `who` of 225 ms, with nothing else
+slow in the run. Run by itself the journey never had a pulse past 52 ms, and three attempts
+to provoke one failed: ten MariaDB containers starting and stopping around it (slowest
+pulse 32 ms), eight loops of synchronous writes on the same file system (43 ms), and its
+own database paused for 3 s just after the hourly event, while the writer held the 544
+shop saves (38 ms). The slow commands were put down to the machine taking the CPU from the
+loop, and the journey judged only rents, camps and the hourly event. That was wrong: they
+were log writes on the game thread, which [review round 1](#review-round-1-mr-9) found and
+removed, and the journey judges every command and pulse again.
+
+It prints the latency trace's tick, event, command and activity times, the deferred and late
+events and the twelve costliest callbacks. `--players N --hours N` scale it; the numbers
+below are from `--players 30 --hours 2`. `cb5ceaed9`, `69dbf4886`, `a99782abb`.
+
+Three things the fixture needed: the password worker queues 16 hashes and refuses the rest
+(`Password service is busy`), so at most 8 characters are created at once; a camp is refused
+in the room north of the start, so the mortals do not move; and the default camp takes nine
+short affect updates (about 140 s), so `camp.timer` is 2, as in the full-world boot test.
+
+### The measurement (done)
+
+Thirty mortals and a god, 900 pulses (two hourly events), on this machine (16 cores,
+otherwise idle), production profile. "Before" is `1c5a53de9`, the code this phase started
+from, at `-Og`; the other two columns are the phase's code at `ca0a6810a`, built at `-Og`
+(`EXTRA_CFLAGS=-Og`) and at `-O2`. One run each, times in microseconds:
+
+| | Before, `-Og` | After, `-Og` | After, `-O2` |
+|---|---|---|---|
+| Slowest pulse | 1,186,017 | 49,866 | 36,625 |
+| Mean pulse | 8,070 | 6,560 | 6,356 |
+| Slowest event pass (`ne_events`) | 1,183,008 | 25,625 | 26,928 |
+| Mean event pass | 6,053 | 4,558 | 4,466 |
+| Slowest command sweep (the rents) | 34,647 | 32,218 | 22,702 |
+| Mean command sweep | 995 | 989 | 927 |
+| Slowest activity pass (the camps) | 4,875 | 8,008 | 3,689 |
+| The hourly event, slowest | 1,181,521 | 8,849 | 6,874 |
+| `MUD TICK TOOK TOO LONG` | 1 | 0 | 0 |
+| Pulses that deferred events | 68 (63 inside the time budget) | 2 (none inside) | 3 (none inside) |
+| Events run 1 pulse late | 138,545 | 1,340 | 2,406 |
+| Events run 2 to 3 pulses late | 15,908 | 0 | 0 |
+
+What it shows, against #5's figures:
+
+- **`rent` and `quit`** no longer wait: every rent (31, the god's with 88 items) and every
+  camp ran inside a command sweep or activity pass of at most 35 ms, against a median of
+  1,871 ms and a maximum of 5,002 ms for `rent` in #5. No `COMMAND OP SLOW` (50 ms) was
+  logged in any run.
+- **The hourly event** still stalled the loop once after every boot, for 1.2 to 1.6 s over
+  five runs (#5 measured 1.7 to 2.0 s): see the shop walk below. Later hours took about
+  50 µs.
+- **The event debt** was not load: it was the callback limit ending pulses early. See the
+  callback limit below.
+- **What is left in `ne_events`**: `event_mob_mundane` is about 40% of the event time
+  (555,000 calls in 900 pulses, 3 µs each), then `event_balance_affects`,
+  `event_spellcast`, `event_mob_proc` and the sliced `generic_char_event` (up to 8 ms a
+  slice). No other callback reaches 7 ms.
+- **`-O2`** takes 3% off the mean pulse and 2% off the mean event pass: the loop spends its
+  time following pointers through the world, which the optimiser does not shorten. The
+  slowest pulse and command sweep were lower at `-O2` in these single runs.
+
+### The hourly event's shop walk (found, done)
+
+`event_another_hour()` saves the shops marked dirty, and a boot marks every shop dirty (the
+world singleton pass and the restore each do). For each dirty shop
+`find_shopkeeper_for_dirty_save()` walked the whole character list to find the keeper: 544
+shops against about 69,000 characters. Timed inside the loop on a full-world boot, the first
+hourly save took 1.65 s, 1.63 s of it in the walks and 0.02 s capturing the stock. The
+persistence reset had moved the write to the writer; the walk stayed on the loop.
+
+`sql_save_dirty_shopkeepers()` now collects the shops that are due and finds all their
+keepers in one walk, keyed by keeper template (`find_shopkeepers_for_dirty_save()`). The
+same save takes about 9 ms. `4f0dfad67`.
+
+Tests: `test_shopkeeper_save_runtime.py` counts the steps along the character list (two
+dirty shops and two characters take two steps; the old code took four), and the journey
+fails on the old code (`the hourly event took 1229344 us`).
+
+### The maintenance scheduler's retry (found, done)
+
+In every measurement run one server thread used a full core. Stacks taken under `gdb`
+showed the maintenance scheduler's worker in `persist_state()`: when the state file cannot
+be written it marked the state dirty again and retried at once. The full-world test
+fixtures have no `bin/server/` under their run directory, so every such server spun; on a
+real server a full disk or a missing directory would do the same. The worker now waits a
+second, or for the next job, before it tries again. The journey sets
+`MAINTENANCE_STATE_FILE`, so its scheduler works as a real server's does. `7ddcdfae9`.
+
+Test: `test_maintenance_scheduler.py` points the state at a missing directory and requires
+under 100 ms of CPU in 300 ms; the old worker used all of it.
+
+### The event callback limit (found, done)
+
+An event pulse ended at 25 ms or at 4,000 callbacks, whichever came first.
+`ARCHITECTURE.md` says the time budget is meant to be the binding limit, and the count was
+raised twice for that (1000, 2000, 4000), but on a full world a callback costs 1 to 3 µs, so
+the count ended pulses at a tenth of the time budget: one pulse deferred 16,732 events after
+2.6 ms. In the "before" run 65 of the 72 pulses that deferred events had time left, and
+about 167,000 of 1.57 million events ran one to three pulses late. That is #5's standing
+event debt (111,846 `NEVENT CATCHUP` and 71,914 `NEVENT BUDGET` lines in five days).
+
+The default count limit is now none (`NEVENT_MAX_CALLBACKS_DEFAULT` 0), so time alone ends a
+pulse; `DURIS_NEVENT_MAX_CALLBACKS` still sets a count. Measured on the same load before the
+default changed (development build): with the limit, 70 deferring pulses, 150,733 events one
+pulse late and 16,495 two to three; without it, 4 deferring pulses, all at the time budget,
+and 2,635 events one pulse late, with the slowest and the mean pulse unchanged (42 ms and
+6.5 ms against 52 ms and 6.6 ms). `12256b9cd`.
+
+Test: the journey fails if a pulse defers events inside its time budget.
+
+### The production build at `-O2` (done)
+
+`HARDENING_FLAGS` put `-Og` in every profile. The development profile keeps `-Og`, the
+production profile compiles at `-O2`, and the hardening flags apply to both. `ca0a6810a`.
+
+The warnings that follow values (`-Wnull-dereference`, `-Wmaybe-uninitialized`,
+`-Wformat-truncation`, `-Wstringop-overflow`, `-Warray-bounds`, `-Wstrict-overflow`) see
+further at `-O2`, through inlined code: the first `-O2` build reported 84 diagnostics at
+about 60 sites that the `-Og` build does not. The warning profile allows no exception, so
+each is resolved:
+
+| What `-O2` reported | Resolution | Commit |
+|---|---|---|
+| `setbit char <name> savthr` copied five shorts over the character's five one-byte saving throws: it ran on into the five conditions after them and stored the bytes of the first values. Two `snprintf()` calls in `setbit` gave a 1024-byte buffer a 65536-byte bound, and the on/off argument was read without a value when not given as a number. | Each throw is set, bounded to a byte, and one not given keeps its value; the bounds and the start value are corrected. | `fd43366b1` |
+| `event_embrace_death()` returned whenever the character had the affect and used the missing one when it had none: `9f77d0cda` had inverted the check when it flattened nested ifs. The bonus never followed the wounds and never ended. | It returns when there is no affect, as before that commit. | `8f7012086` |
+| Six uses of a pointer or value that is not there: the mob loop's report of an NPC without npc data read that data; `artifact_update_sql()`'s repair of an artifact inside no container left the pointer it then used NULL; a quest action removing a tag the instance lacks went past the list's end; `notch_achievement()` used an unchecked `apply_achievement()`; `do_breathe()` tested `arg \|\| *arg`; `poll_get_by_id()` returned a poll with only its id initialised. | Each path is guarded or initialised. | `f9a09eb0d` |
+| Writes that can truncate: the world persistence report's query-site line, the armor list, the guild frag list and default titles, identify's ability list, the kingdom guard class lists, an auction item's ability lists, the forge recipe's flux line, the PROXY header's address and the poll's time remaining. | `checked_snprintf()`, `checked_appendf()` / `APPENDF()` and `strlcpy()`, the helpers the code base has for it; the poll prints ints. | `e4aaebbb0` |
+| A null dereference in `check_flags()`. | Nothing calls it; removed. | `50ed401a9` |
+| About 30 sites that did not misbehave but did not say why: `GET_PLYR()` and the morph steps (through `MORPH_ORIG()`, whose other arm is NULL), the walks to an outermost container, `do_epic_share()`, the locker grant, the level notice, the password worker, the recovery store, `do_fire()`'s messages, a save file's witness offset, `act()`'s substitution, and four standard-library calls (a vector used as a queue, a path built backwards, a sort and a resize). | Each states what made it safe, or does the same through code the library warnings accept. | `e675d94f5` |
+
+Both backends (`mariadb`, `flatfile`) and the `pfile` tool build clean at `-O2`.
+
+`make test-all` builds the production profile too, so a later `-O2` report fails the gate:
+`make build-production` compiles it into `bin/objects/server/mariadb/production` and
+`bin/server/production/dms_new` (67 s from clean on 16 cores, then only what changed), and
+`bin/server/dms_new` stays the development build the tests run.
+
+Tests: `test_setbit_saving_throws.py` and `test_embrace_death_event.py` run the real
+functions and fail on the old code; `test_binary_layout.py` checks each profile's level in
+a dry run; `test_root_test_harness.py` pins the production build in `test-all`. The `-O2`
+server's own run is the measurement above: the journey passed on it with 31 characters
+created, camped and rented.
+
+### The gate on the branch head (done)
+
+On `e66799844`, the head with every record above, run once each: `./scripts/format.sh --all
+--check` (1031 files clean); `make test-all -j16 TEST_JOBS=16` alone (662 of 662, 538 s,
+with the development and the production build); then `make test-db` (37 of 37, 245 s) and
+`npm test --prefix site` (14 tests; `docs/` changed). Neither suite left `logs/log/dupes`
+or `logs/log/item_claims` behind.
+
+The `-O2` server was also run through the database suite once, in place of the development
+build: 37 of 37 (207 s). An earlier run of it was the one that logged the 346 ms `score`
+above, which failed the journey as it then judged, with the other 36 passing.
+
+Not run: the backup-recovery container job, `run_runtime_compatibility_mysql.sh` beyond its
+leg in `make test-db`, CodeQL and Trivy (nothing they check changed; no schema change).
+
+### Review round 1 (MR !9)
+
+The review read `persistence/phase-7-review-0` (`ceec883f9`). It found no defect in the code
+of the diff: its two findings come from what the change does at run time and from what the
+journey left unjudged, and three older defects surfaced under the sanitizers. Each
+reproduced. The two findings are fixed in their own commits on `fix/5-persistence-phase-7`.
+The older defects are not this phase's, so they are fixed on master, and master is merged
+into the branch (`34d1434cf`). The fixed head is tagged `persistence/phase-7-review-1`.
+
+| Finding | Fix | Commit |
+|---|---|---|
+| 1. Low to medium: with every keeper found in one walk, the first hourly save after a boot queued all 544 shop saves on the one writer inside 9 ms. Every player save of the next two seconds stood behind them, and a relog waits for its character's own save: 0.5 to 1.0 s added to a re-entry on an idle machine, 1.5 s beside the database tests, and a refused re-entry (the load gives up after 3 s) once the server was slowed. The journey re-entered in that window with no retry. | The periodic save fills the writer's queue to 16 jobs and takes the remaining shops on the following pulses, as the writer takes them (`event_save_dirty_shopkeepers`). A player's save stands behind 16 shop saves at most, whatever the database's speed. A forced save (shutdown, copyover) still queues every shop. | `774821a95` |
+| 2. Medium: the slow commands the journey set aside as machine noise were a blocking write on the game thread. `cmdlog()` wrote each player command to `logs/log/cmd.debug` and flushed it before the command ran (136 ms traced inside one write); `debug_mode` is on unless a god turns it off; `rent` and `quit` pass through the same write; `logit()` has the same shape. | No log write is left on the game thread. The command log is a ring of the last 500 commands in memory. One log thread writes every `logit()` line and the latency trace, in the order logged; a line for the exit log is written by its caller, behind the queued ones. An exit writes what is held, and copyover flushes before its exec. A crash handler (`SIGSEGV`, `SIGBUS`, `SIGFPE`, `SIGILL`, `SIGABRT`, on its own stack) writes the command log and the queued lines, then lets the signal take its own action, so the core and the exit status are the crash's. The journey judges every command and every pulse. | `7469778dc` |
+| 3. Not from this phase: `char_to_room()`'s map update read `world[-1]` for a character at the account menu and used the bytes as a zone index; `test_playtime_flatfile.py` passed only without optimisation; `number(0, 2147483647)` and `convertObj()` overflowed an int. | On master, each with its test: the walk skips a character in no room; the test's snapshot is value-initialised; `number()` counts its span in 64 bits; `convertObj()` widens the object's values, so the cargo hold of the Dark Sun (#40218) costs the function's bound and no longer nothing. | `df18c581c`, `f7b24db8f`, `8a2e77eb2`, `5e36709d4` |
+
+What the round measured:
+
+- **The cause of finding 2, without a tracer.** A probe beside `make test-db` timed, every
+  5 ms, each step of a `logit()`-shaped append, a bare write to an open file and a stretch of
+  plain CPU work (36,756 samples). The CPU work was never held longer than 1.1 ms. The bare
+  write took 9 ms at worst. The append's write and close took over 1 ms 45 times, over 10 ms
+  8 times, over 50 ms 3 times, and 136 ms at worst. The machine does not take the CPU from
+  the loop, as [the journey's record](#the-game-loop-budget-journey-done) had it: the disk
+  holds the write. With only the command log off the loop, the journey beside the suite
+  still logged a level 1 `who`, the one play command that logs a line, at 117 ms; that is
+  why `logit()` went to the log thread too.
+- **The loop writes no log.** `strace` on the journey's server beside `make test-db`: with
+  the command log alone fixed the game thread made 2,126 log writes during the run; on the
+  fixed head it makes none from the start of the log thread to the shutdown (the log thread
+  made 2,077), and `cmd.debug` is opened once, at the exit.
+- **Finding 1.** The reviewed code under the new journey: 543 shop saves in one pulse, and
+  the god's re-entry, made as they were queued, took 1.50 s. The fixed head: the saves go out
+  over 34 to 38 pulses, 16 at most in one; that re-entry takes 1.00 s, the time with nothing
+  queued; each following pulse costs 3 to 4 ms (the walk of the character list).
+- **The build's measurement again**, as [above](#the-measurement-done): thirty mortals and a
+  god, 900 pulses, production profile at `-O2`, idle machine, one run. Slowest pulse 49.6 ms
+  and mean 6.2 ms; slowest event pass 23.5 ms; slowest command sweep 30.5 ms; the hourly
+  event 4.2 ms at most; no pulse deferred events and none ran late (3 pulses and 2,406
+  events before); no `COMMAND OP SLOW`; 61 re-entries, the slowest 1.00 s.
+- **Sanitizers.** The production profile with ASan and UBSan through the journey: no
+  report. The reviewed head's run had the `world[-1]` read and both overflows.
+- **Every `g++` call at `-O2`.** 666 of 668. The two failures are the ones the review saw:
+  `-Wmaybe-uninitialized` on an unnamed temporary in
+  `flatfile_authority_transaction_harness.cpp` and `-Warray-bounds` inside
+  `std::vector::assign` in the critical-command admission harness. Both come from GCC 13
+  with the sanitizers at `-O2`, in harnesses the suite builds without optimisation, with no
+  defect behind them, and are left alone. The playtime test passes.
+
+Also corrected with finding 2: the journey's record and the plan's item 1 no longer put the
+slow commands down to the CPU; `RUNBOOK.md`'s log table named a `logs/log/cmdlog` no code
+writes, and names `cmd.debug`; `ARCHITECTURE.md`'s process model lists the log thread.
+
+Verification for this round:
+
+- Each new test fails on `ceec883f9`. The journey fails with `543 shop saves were queued in
+  one pulse, ahead of the players'`. `test_shopkeeper_save_runtime.py` runs the real save
+  with 40 dirty shops against a writer queue it sets (16 queued, then 6 behind a queue of
+  10, none behind a full queue and no walk of the character list, all 40 when forced);
+  `test_command_log_ring.py` and `test_log_writer_thread.py` run the real `cmdlog()`,
+  `logit()`, log thread and crash handler, and the reviewed code has none of the three. A
+  write the disk holds (a FIFO nobody reads) does not hold `logit()`; an exit, a fault, an
+  `abort()`, a sent signal and an overflowed stack each leave the commands and the queued
+  lines in their files and end with the signal's own status. The four tests on master fail
+  on the old code under ASan or UBSan; the playtime test, unchanged but for its snapshot,
+  fails at `-O2` without the fix and passes at `-O0`, `-O1` and `-O2` with it.
+- Both backends and the `pfile` tool build clean at `-O2`.
+- The fixes on master passed the gate there before the push (`5e36709d4`: 663 of 663 in
+  476 s, `make test-db` 36 of 36 in 198 s, 1031 files clean).
+- The gate on `a87b00385`, the fixed head with this round's record, run once each:
+  `./scripts/format.sh --all --check` (1031 files clean); `make test-all -j16 TEST_JOBS=16`
+  alone (668 of 668, 413 s, with the development and the production build); then
+  `make test-db` (37 of 37, 203 s, the journey with no slow command) and
+  `npm test --prefix site` (14 tests). Neither suite left `logs/log/dupes` or
+  `logs/log/item_claims` behind. Not run: the backup-recovery container job, CodeQL and
+  Trivy (nothing they check changed; no schema change).

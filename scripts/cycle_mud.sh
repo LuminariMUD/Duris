@@ -349,7 +349,7 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
   fi
 
   echo "Generating list of function names.."
-  nm --demangle "$RUNTIME_BINARY" | grep " T " | sed -e 's/[(].*//g' > lib/misc/event_names
+  scripts/event_names.sh "$RUNTIME_BINARY" > lib/misc/event_names
 
 	if [ -f /usr/bin/sendemail ]; then
 		if [ -f "logs/old-logs/$DATESTR/exit" ]; then

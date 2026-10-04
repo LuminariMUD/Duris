@@ -63,10 +63,48 @@ static void install_signal_handler(int signo, void (*handler)(int), int flags)
 	}
 }
 
+// A crash writes the command log, which is kept in memory, and the log lines still queued
+// for the log thread, and then takes the action the signal had before: the core and the
+// exit status stay those of the crash.
+static const int crash_signals[] = { SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT };
+#define CRASH_SIGNAL_COUNT (sizeof crash_signals / sizeof crash_signals[0])
+static struct sigaction crash_previous[CRASH_SIGNAL_COUNT];
+// The handler runs on its own stack, so a stack that overflowed still writes the log.
+static char crash_stack[64 * 1024];
+
+static void crash_signal(int signo, siginfo_t *info, void * /*context*/)
+{
+	write_cmdlog();
+	write_queued_log_lines();
+	for (size_t i = 0; i < CRASH_SIGNAL_COUNT; i++)
+		if (crash_signals[i] == signo)
+			sigaction(signo, &crash_previous[i], NULL);
+	// A fault of the running instruction happens again on return. A signal that was
+	// sent (abort(), kill) is sent again.
+	if (info->si_code <= 0)
+		raise(signo);
+}
+
 void signal_setup(void)
 {
 	struct itimerval itime;
 	struct timeval interval;
+	stack_t stack;
+	struct sigaction crash;
+
+	memset(&stack, 0, sizeof(stack));
+	stack.ss_sp = crash_stack;
+	stack.ss_size = sizeof(crash_stack);
+	memset(&crash, 0, sizeof(crash));
+	crash.sa_sigaction = crash_signal;
+	crash.sa_flags = SA_SIGINFO | SA_ONSTACK;
+	sigemptyset(&crash.sa_mask);
+	if (sigaltstack(&stack, NULL) < 0)
+		fatal_boot_error("signals", "sigaltstack() failed: %s", strerror(errno));
+	for (size_t i = 0; i < CRASH_SIGNAL_COUNT; i++)
+		if (sigaction(crash_signals[i], &crash, &crash_previous[i]) < 0)
+			fatal_boot_error("signals", "sigaction(%d) failed: %s", crash_signals[i],
+					 strerror(errno));
 
 	install_signal_handler(SIGUSR2, shutdown_request, SA_RESTART); // shutdown (no restart)
 	install_signal_handler(SIGUSR1, shutdown_notice, SA_RESTART); // copyover

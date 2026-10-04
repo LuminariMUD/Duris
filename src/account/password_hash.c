@@ -158,6 +158,8 @@ struct login_password_worker
 			if (stopping)
 				return;
 			password_login_job *job = next_job();
+			if (!job)
+				continue;
 			job->started = true;
 			lock.unlock();
 			const bool bcrypt = is_bcrypt_hash(job->hash);

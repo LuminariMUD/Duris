@@ -47,8 +47,13 @@ using namespace std;
 #include "core/mm.h"
 #include "persistence/persistence_log.h"
 #include <chrono>
+#include <condition_variable>
+#include <deque>
 #include <limits>
 #include <mutex>
+#include <string>
+#include <thread>
+#include <utility>
 #include "persistence/persistence_checkpoint.h"
 #include "persistence/latency_trace.h"
 #include "classes/specializations.h"
@@ -729,9 +734,128 @@ static bool create_log_parent_directories(const char *filename)
 	return true;
 }
 
+// Appends one finished line to its log file.
+static void write_log_line(const char *filename, const char *line)
+{
+	FILE *log_f = fopen(filename, "a");
+	if (!log_f && errno == ENOENT && create_log_parent_directories(filename))
+		log_f = fopen(filename, "a");
+	if (!log_f)
+	{
+		if (str_cmp(filename, LOG_FILE))
+			logit(LOG_FILE, "failure opening logfile %s", filename);
+		return;
+	}
+	if (!(debugcount % 500))
+	{
+		rewind(log_f);
+	}
+	fputs(line, log_f);
+	fclose(log_f);
+	if (!str_cmp(filename, LOG_EXIT))
+	{
+		fputs(line, stderr);
+	}
+}
+
+// One thread writes the log lines, in the order they were logged. Appending a line held
+// its caller for as long as a busy disk held the write (over 100 ms, measured beside the
+// database tests), and the game loop logs from inside commands and events.
+namespace
+{
+std::mutex log_mutex;
+std::condition_variable log_changed;
+// Each line's file and text.
+std::deque<std::pair<std::string, std::string>> log_queue;
+std::thread log_thread;
+// True while the thread takes lines: from start_log_writer() to the exit.
+bool log_thread_running = false;
+// True while the thread writes a line it took off the queue.
+bool log_thread_writing = false;
+
+void log_writer()
+{
+	std::unique_lock<std::mutex> lock(log_mutex);
+	for (;;)
+	{
+		log_changed.wait(lock, [] { return !log_queue.empty() || !log_thread_running; });
+		if (log_queue.empty())
+			return;
+		const std::pair<std::string, std::string> line = std::move(log_queue.front());
+		log_queue.pop_front();
+		log_thread_writing = true;
+		lock.unlock();
+		write_log_line(line.first.c_str(), line.second.c_str());
+		lock.lock();
+		log_thread_writing = false;
+		log_changed.notify_all();
+	}
+}
+
+// At exit: the thread writes what is queued and ends. Later lines are written by their
+// callers.
+void stop_log_writer()
+{
+	{
+		std::lock_guard<std::mutex> lock(log_mutex);
+		log_thread_running = false;
+		log_changed.notify_all();
+	}
+	log_thread.join();
+}
+} // namespace
+
+void start_log_writer(void)
+{
+	std::lock_guard<std::mutex> lock(log_mutex);
+	log_thread = std::thread(log_writer);
+	log_thread_running = true;
+	atexit(stop_log_writer);
+}
+
+// Waits until every queued line is in its file.
+void flush_log_writer(void)
+{
+	std::unique_lock<std::mutex> lock(log_mutex);
+	log_changed.wait(lock, [] { return log_queue.empty() && !log_thread_writing; });
+}
+
+// For the crash handler: puts the queued lines in their files, with calls a signal handler
+// may make. The queue stays locked, so the log thread does not write them again before the
+// process ends; a crash inside the lock leaves them unwritten.
+void write_queued_log_lines(void)
+{
+	if (!log_mutex.try_lock())
+		return;
+	for (const std::pair<std::string, std::string> &line : log_queue)
+	{
+		const int fd = open(line.first.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0666);
+		if (fd < 0)
+			continue;
+		const ssize_t written = write(fd, line.second.data(), line.second.size());
+		(void)written;
+		close(fd);
+	}
+}
+
+// Hands a finished line to the log thread. Without one (before start_log_writer(), from
+// the exit on, and in the tools that never start one) the caller writes it.
+void log_append(const char *filename, const char *line)
+{
+	{
+		std::lock_guard<std::mutex> lock(log_mutex);
+		if (log_thread_running)
+		{
+			log_queue.emplace_back(filename, line);
+			log_changed.notify_all();
+			return;
+		}
+	}
+	write_log_line(filename, line);
+}
+
 void logit(const char *filename, const char *format, ...)
 {
-	FILE *log_f;
 	char tbuf[MAX_STRING_LENGTH];
 	char *lbuf;
 	time_t ct;
@@ -756,26 +880,15 @@ void logit(const char *filename, const char *format, ...)
 	if (!lbuf)
 		return;
 
-	log_f = fopen(filename, "a");
-	if (!log_f && errno == ENOENT && create_log_parent_directories(filename))
-		log_f = fopen(filename, "a");
-	if (!log_f)
-	{
-		free(lbuf);
-		if (str_cmp(filename, LOG_FILE))
-			logit(LOG_FILE, "failure opening logfile %s", filename);
-		return;
-	}
-	if (!(debugcount % 500))
-	{
-		rewind(log_f);
-	}
-	fputs(lbuf, log_f);
-	fclose(log_f);
+	// A line for the exit log can be the last thing the process does: it is in the file,
+	// behind the lines logged before it, when logit() returns.
 	if (!str_cmp(filename, LOG_EXIT))
 	{
-		fputs(lbuf, stderr);
+		flush_log_writer();
+		write_log_line(filename, lbuf);
 	}
+	else
+		log_append(filename, lbuf);
 	free(lbuf);
 }
 

@@ -52,7 +52,7 @@ AREA_WORLD_DIRECT_INPUTS := \
 	$(AREA_GENERATORS)
 
 .PHONY: \
-	help all build build-server build-editor build-area-tools world \
+	help all build build-server build-production build-editor build-area-tools world \
 	build-deps-package test test-all test-python test-native test-list test-db \
 	security-sbom security-check clean clean-all
 
@@ -61,7 +61,7 @@ help:
 		'Duris developer targets:' \
 		'  make                 Build the server, area editor, and area tools' \
 		'  make test            Run deterministic local regression tests' \
-		'  make test-all        Build everything, generate world data, and test' \
+		'  make test-all        Build everything (the production profile too), generate world data, and test' \
 		'  make test-list       List tests discovered by the regression runner' \
 		'  make test-db         Run isolated Docker database tests and MariaDB journeys' \
 		'  make build-deps-package  Build the Debian metapackage under bin/packages' \
@@ -80,6 +80,14 @@ build: build-server build-editor build-area-tools
 
 build-server:
 	+$(MAKE) -C src
+
+# The production profile compiles at -O2, where the warning profile reports what
+# the development build's -Og does not see. Its objects have their own directory,
+# and its binary stays out of bin/server/dms_new, which the tests run.
+build-production:
+	+$(MAKE) -C src BUILD_PROFILE=production \
+		SERVER_BIN_DIR=$(CURDIR)/bin/server/production \
+		DMS_BINARY=$(CURDIR)/bin/server/production/dms_new
 
 build-editor:
 	+$(MAKE) -C areas/de/src
@@ -147,7 +155,7 @@ test: test-python test-native
 
 # Keep compilation ahead of the test phase even when the caller enables
 # parallel make. The recursive make inherits the jobserver and test controls.
-test-all: build
+test-all: build build-production
 	+$(MAKE) test
 
 test-list:

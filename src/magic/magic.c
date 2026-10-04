@@ -6543,9 +6543,8 @@ void spell_curse(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int 
 	if (!victim)
 		victim = ch;
 
-	if (victim)
-		if (!IS_TRUSTED(ch) && resists_spell(ch, victim))
-			return;
+	if (!IS_TRUSTED(ch) && resists_spell(ch, victim))
+		return;
 
 	if (IS_TRUSTED(victim) || affected_by_spell(victim, SPELL_CURSE))
 	{
@@ -10389,16 +10388,20 @@ void spell_identify(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /
 			if (i == (currelem - 1))
 			{
 				if (currelem > 1)
-					snprintf(Gbuf2, MAX_STRING_LENGTH, "and %s.\n", strarr[i]);
+					checked_snprintf(Gbuf2, MAX_STRING_LENGTH, "and %s.\n",
+							 strarr[i]);
 				else
-					snprintf(Gbuf2, MAX_STRING_LENGTH, "%s.\n", strarr[i]);
+					checked_snprintf(Gbuf2, MAX_STRING_LENGTH, "%s.\n",
+							 strarr[i]);
 			}
 			else
 			{
 				if (currelem > 2)
-					snprintf(Gbuf2, MAX_STRING_LENGTH, "%s, ", strarr[i]);
+					checked_snprintf(Gbuf2, MAX_STRING_LENGTH, "%s, ",
+							 strarr[i]);
 				else
-					snprintf(Gbuf2, MAX_STRING_LENGTH, "%s ", strarr[i]);
+					checked_snprintf(Gbuf2, MAX_STRING_LENGTH, "%s ",
+							 strarr[i]);
 			}
 			send_to_char(Gbuf2, ch);
 		}

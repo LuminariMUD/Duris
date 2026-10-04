@@ -107,10 +107,13 @@ for backend, profile in (
     assert f"bin/objects/server/{backend}/{profile}" in output
     assert f"backend='{backend}'" in output
     assert f"profile='{profile}'" in output
+    # A development build stays debuggable; a production build is optimised.
     if profile == "development":
         assert "-DTEST_MUD" in output
+        assert " -Og " in output and " -O2 " not in output
     else:
         assert "-DTEST_MUD" not in output
+        assert " -O2 " in output and " -Og " not in output
 
 # Cleaning the isolated sanitizer build must not remove normal utility or
 # migration binaries.

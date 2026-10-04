@@ -136,10 +136,10 @@ assert index(rose, "if (flow)") < index(rose, "do_give(t_ch, text, CMD_GIVE);")
 # LOG_EXIT is also used for normal termination messages.  perror() appended an
 # unrelated EAGAIN left by the nonblocking game loop to each of those messages.
 utility = (SRC / "utility.c").read_text()
-logit = utility.split("void logit(const char *filename, const char *format, ...)", 1)[1]
-logit = logit.split("\nvoid ", 1)[0]
-assert contains(logit, "fputs(lbuf, stderr)")
-assert not contains(logit, "perror(lbuf)")
+write_line = utility.split("static void write_log_line(const char *filename, const char *line)", 1)[1]
+write_line = write_line.split("\n}\n", 1)[0]
+assert contains(write_line, "fputs(line, stderr)")
+assert not contains(write_line, "perror(")
 
 
 # --- Heaven's persisted zone number must match its first room vnum -----------

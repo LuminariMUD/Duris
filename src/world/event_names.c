@@ -64,8 +64,9 @@ event_name_load_result event_name_registry_load(const char *path, uintptr_t base
 		uintptr_t offset = 0;
 
 		if (!(record >> address_text >> type_text >> symbol_name) || (record >> trailing) ||
-		    (type_text != "T" && type_text != "t") || symbol_name.empty() ||
-		    symbol_name.size() > MAX_EVENT_SYMBOL_LENGTH ||
+		    (type_text != "T" && type_text != "t" && type_text != "W" &&
+		     type_text != "w") ||
+		    symbol_name.empty() || symbol_name.size() > MAX_EVENT_SYMBOL_LENGTH ||
 		    !parse_address(address_text, &offset) ||
 		    offset > std::numeric_limits<uintptr_t>::max() - base_address)
 		{

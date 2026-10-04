@@ -56,6 +56,9 @@ HARNESS = r'''
 #include <unistd.h>
 #include <cstdarg>
 
+// The fixture's logit() writes nothing, so there is no log thread to flush before the exec.
+void flush_log_writer(void) {}
+
 // This no-player custody fixture must never enter gameplay telemetry adapters.
 // Its clock is unavailable, so the telemetry durability barrier is not entered.
 bool telemetry_runtime_now(telemetry_monotonic_usec *, telemetry_utc_usec *) noexcept

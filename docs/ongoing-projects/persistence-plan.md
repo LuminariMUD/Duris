@@ -20,8 +20,12 @@ items, one phase each. Phase 4 landed as
 round, and #4 is closed ([record](persistence-done.md#phase-5-landed-done)). Phase 6 landed as
 [!8](https://gitlab.com/max757/duris/-/merge_requests/8) in `1a4b15f9d` after one review
 round; #3 stays open for its server configuration
-([record](persistence-done.md#phase-6-landed-done)). Phase 7 is next, on
-`fix/5-persistence-phase-7`; Phases 7 and 8 are not started.
+([record](persistence-done.md#phase-6-landed-done)). Phase 7 is done on
+`fix/5-persistence-phase-7` and in review as
+[!9](https://gitlab.com/max757/duris/-/merge_requests/9), tagged
+`persistence/phase-7-review-0` ([progress](persistence-done.md#phase-7-progress)); review
+round 1 is fixed and tagged `persistence/phase-7-review-1`
+([record](persistence-done.md#review-round-1-mr-9)). Phase 8 is not started.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
@@ -374,6 +378,57 @@ Done when: `rent`, `quit` and the hourly event stay under a set budget under loa
 it; every slow event names its callback; the production profile builds optimised, with the tick
 latency before and after recorded.
 
+How each item is done (decided 2026-10-03):
+
+1. One journey is the measurement and the pin: `test_mysql_game_loop_budget_journey.py`, in
+   `make test-db`. It boots the full world on a disposable MariaDB; scripted mortals on their
+   own accounts play, camp out with `quit` and rent at an inn while the first hourly event
+   runs, and a god rents with 88 items. The budget is one pulse, 250 ms, for the rents, the
+   camps and the hourly event alike, and it is read from the loop's own records
+   (`COMMAND OP SLOW`, `MUD TICK TOOK TOO LONG`, the event analytics), not timed from
+   outside. Every command and every pulse is held to it. `--players` and
+   `--hours` scale it into the load a build is measured with; it prints the trace's tick,
+   event and command times, the deferred events and the costliest callbacks. What the
+   measurement found is fixed in this phase, each with its test:
+   - The hourly event still held the loop for 1.4 to 1.6 s, once after every boot. A boot
+     leaves every shop dirty, and the hourly save walked the whole character list for each
+     shop. It now finds every keeper in one walk.
+   - The event debt came from the default limit of 4000 callbacks a pulse, which ended
+     pulses at a tenth of the 25 ms time budget. The default is now no count limit: time is
+     the limit, as [ARCHITECTURE.md](../reference/ARCHITECTURE.md#event-wheel) already said
+     it should be. `DURIS_NEVENT_MAX_CALLBACKS` still sets one.
+   - The maintenance scheduler's worker retried a failed write of its state file without a
+     pause, and held a core for as long as it failed (every full-world test fixture, or a
+     full disk). It waits a second.
+   - Found by the review: with the keepers found in one walk, the hourly save queued all
+     544 shop saves on the one writer at once, ahead of every player save and relog. It
+     fills the writer's queue to 16 jobs and takes the remaining shops on the following
+     pulses.
+   - Found by the review: the slow commands the journey had put down to the machine were
+     log writes on the game thread, the command log before every command and `logit()` for
+     every line. The command log is kept in memory and a log thread writes the lines; an
+     exit or a crash writes what is held.
+   `rent`, `quit` and the camp's save were already inside the budget: the persistence reset
+   took their database waits away.
+2. The names file lists local and weak functions with the global ones, and keeps a name in
+   an anonymous namespace. Both launchers write it with `scripts/event_names.sh`. Registering
+   names at `add_event` time was not needed: it would touch every call site and misname a
+   callback passed through a wrapper.
+3. `-Og` stays the development level and production builds at `-O2`. The warning profile
+   holds at both levels: the 84 diagnostics `-O2` newly reported are fixed, not excepted.
+   Among them were real defects: a staff command writing ten bytes over five, an event
+   whose inverted check used a missing affect, and six more uses of a pointer or value that
+   was not there. `make test-all` builds the production profile too
+   (`make build-production`), so a later `-O2` report fails the gate. On the same load the
+   mean pulse is 6.6 ms at `-Og` and 6.4 ms at `-O2`: the loop follows pointers through
+   the world, which the optimiser does not shorten.
+
+Done: each item has its record under
+[Phase 7 progress](persistence-done.md#phase-7-progress). The budget holds (no rent, camp or
+hourly event past 35 ms under 30 players, against a 250 ms budget); every callback in a
+full-world run is named; the production profile builds at `-O2`, with the tick latency
+before and after in [the measurement](persistence-done.md#the-measurement-done).
+
 ## Phase 8: world recovery (#2)
 
 1. **Captures above 64 MiB fail.** `append_record()` (`world_recovery_pipeline.c`) refuses any
@@ -385,10 +440,21 @@ latency before and after recorded.
 3. **Nothing escalates.** Each failure is one `LOG_SYS` line. After a run of failed or expired
    captures, raise one persistence alert with the reason and the last acknowledged sequence and
    age, and report that age in runtime health.
+4. **A raised corpse's items go to the caster.** Not world recovery: a leftover of the reset,
+   found on 2026-10-04. `place_raised_item()` (`necromancy.c`) gives a player caster every item
+   in the corpse except the coins, in all six raises (the undead, the golem, the titan, the
+   avatar and both dracoliches); `raise_undead()` takes a player's corpse too. `389016091`
+   (2026-09-15) made it so because a pet's inventory had no place in the ownership ledger, and
+   step 5 of Phase 3 removed the deferred raise (`4401cc6ef`), which left this rule to every
+   raise. On the local server, `animate dead` on a guard's corpse put its dagger in the
+   caster's inventory. Put the items on the raised creature, as before `389016091`. A pet can
+   then carry a hidden (`!show`) item from an NPC's corpse: `wear all` already skips those for
+   a player's pet, and `wear` and `wield` by keyword must skip them too.
 
 Done when: a capture of that size publishes, with a test above the old 64 MiB limit; it finishes
 within its budget under load; consecutive failures raise an alert with the age of the last good
-generation.
+generation; a raise leaves the corpse's items on the raised creature and a player's pet cannot
+wear or wield a hidden item by keyword, with a test for each.
 
 ## What was cut, and why
 
@@ -429,6 +495,17 @@ if a requirement or a concrete risk failed without it. Cut:
   the boot probes, the lifecycle manifest and the legacy dump import.
 - **Watching `test_flatfile_full_world_boot.py`:** one abort in nine runs during Phase 1, none
   since.
+- **Registering callback names at `add_event` time:** listing local and weak symbols names
+  every callback without touching a call site.
+- **A load tool beside the test:** the budget journey prints what the loop measured and
+  takes `--players` and `--hours`.
+- **A higher callback limit:** it was raised twice already; time is the limit.
+- **Failing the budget journey on any slow pulse:** it judges what it can put on a rent, a
+  camp, the hourly event or the event pass. Beside the other database tests two runs in
+  five had one unrelated command of 225 to 346 ms; by itself, even with its database
+  paused, the journey had none.
+- **A flat-file production build in the gate:** production runs MariaDB; the flat-file
+  backend built clean at `-O2` once.
 
 ## Done when
 
@@ -455,5 +532,10 @@ In this order: the game loop, measured now that the backup job no longer compete
 world capture last, on the optimised build. Phases 4 (alerts and logs), 5 (bugs from the logs)
 and 6 (backups) are done and on master.
 
-1. [Phase 7: game-loop performance (#5)](#phase-7-game-loop-performance-5).
-2. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2).
+1. [Phase 7: game-loop performance (#5)](#phase-7-game-loop-performance-5): done, in review
+   as [!9](https://gitlab.com/max757/duris/-/merge_requests/9); it leaves this list when it
+   lands. Review round 1's fixes are on `fix/5-persistence-phase-7`, each finding in its own
+   commit with its test, the fixed head tagged `persistence/phase-7-review-1`
+   ([record](persistence-done.md#review-round-1-mr-9)).
+2. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2), and with it the raised corpse's
+   items (its item 4).

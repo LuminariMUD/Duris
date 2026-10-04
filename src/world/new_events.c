@@ -53,7 +53,9 @@
 
 #define FUNCTION_NAMES_FILE "lib/misc/event_names"
 #define NEVENT_BUDGET_USEC_DEFAULT 25000L
-#define NEVENT_MAX_CALLBACKS_DEFAULT 4000L
+// No count limit by default: time is the limit. A count of 4000 ended full-world pulses
+// at a tenth of the time budget and kept a standing backlog of deferred events.
+#define NEVENT_MAX_CALLBACKS_DEFAULT 0L
 #define NEVENT_CONFIG_MAX_BUDGET_USEC 1000000L
 #define NEVENT_CONFIG_MAX_CALLBACKS 1000000L
 #define NEVENT_UNLIMITED 0L
@@ -2504,9 +2506,7 @@ const char *get_function_name(void *func)
 	return "unknown function";
 }
 
-// file FUNCTION_NAMES_FILE should be created with
-// nm --demangle dms | grep " T " before each boot,
-// preferably with a mainboot script
+// The launcher writes FUNCTION_NAMES_FILE with scripts/event_names.sh before each boot.
 void load_event_names()
 {
 	void *base_address = get_executable_base_address();

@@ -50,6 +50,7 @@
 #include "player/player_name.h"
 #include "account/password_hash.h"
 #include "player/player_revision_state.h"
+#include "player/player_save_worker.h"
 #include "persistence/persistence_mode.h"
 #include "item/item_transfer_command.h"
 #include "item/item_transfer_repository.h"
@@ -2710,45 +2711,58 @@ shopkeeper_save_reason validate_shopkeeper_save(P_char ch, int shop_nr)
 	return shopkeeper_save_reason::ok;
 }
 
-shopkeeper_save_reason find_shopkeeper_for_dirty_save(int shop_nr, P_char *keeper_out)
+// The NPCs that could be a dirty shop's keeper.
+struct shopkeeper_candidates
 {
-	if (keeper_out)
-		*keeper_out = NULL;
-	if (!DB)
-		return shopkeeper_save_reason::database_unavailable;
-	if (!shop_index || shop_nr < 0 || shop_nr >= number_of_shops)
-		return shopkeeper_save_reason::invalid_shop;
+	P_char keeper = NULL;
+	int same_rnum = 0;
+	int matches = 0;
+};
+
+// Finds the keepers of all the shops in `shops` (keeper template to shop) in one walk of
+// the character list. A boot leaves every shop dirty, and a walk per shop held the game
+// loop for over a second at the first hourly save.
+std::vector<shopkeeper_candidates>
+find_shopkeepers_for_dirty_save(const std::unordered_multimap<int, int> &shops)
+{
+	std::vector<shopkeeper_candidates> found(number_of_shops);
+	if (shops.empty())
+		return found;
+	for (P_char ch = character_list; ch; ch = ch->next)
+	{
+		if (!IS_NPC(ch) || GET_MASTER(ch))
+			continue;
+		const auto same_rnum = shops.equal_range(GET_RNUM(ch));
+		for (auto shop = same_rnum.first; shop != same_rnum.second; ++shop)
+		{
+			shopkeeper_candidates &candidates = found[shop->second];
+			++candidates.same_rnum;
+			if (ch->in_room < 0 || ch->in_room > top_of_world ||
+			    !shopkeeper_save_matches_room(ch, shop->second))
+				continue;
+			candidates.keeper = ch;
+			++candidates.matches;
+		}
+	}
+	return found;
+}
+
+shopkeeper_save_reason choose_shopkeeper_for_dirty_save(int shop_nr,
+							const shopkeeper_candidates &candidates,
+							P_char *keeper_out)
+{
 	if (shop_index[shop_nr].keeper < 0 || shop_index[shop_nr].keeper > top_of_mobt)
 		return shopkeeper_save_reason::invalid_keeper;
 	const int shop_room = shopkeeper_expected_room_rnum(shop_nr);
 	if (!shop_index[shop_nr].shop_is_roaming && (shop_room < 0 || shop_room > top_of_world))
 		return shopkeeper_save_reason::invalid_shop_room;
-
-	const int expected_rnum = shop_index[shop_nr].keeper;
-	P_char candidate = NULL;
-	int same_rnum = 0;
-	int candidates = 0;
-	for (P_char ch = character_list; ch; ch = ch->next)
-	{
-		if (!IS_NPC(ch) || GET_MASTER(ch) || GET_RNUM(ch) != expected_rnum)
-			continue;
-		++same_rnum;
-		if (ch->in_room < 0 || ch->in_room > top_of_world)
-			continue;
-		if (!shopkeeper_save_matches_room(ch, shop_nr))
-			continue;
-		candidate = ch;
-		++candidates;
-	}
-
-	if (candidates == 0)
-		return same_rnum > 0 ? shopkeeper_save_reason::keeper_room_mismatch :
-				       shopkeeper_save_reason::keeper_not_found;
-	if (candidates > 1)
+	if (candidates.matches == 0)
+		return candidates.same_rnum > 0 ? shopkeeper_save_reason::keeper_room_mismatch :
+						  shopkeeper_save_reason::keeper_not_found;
+	if (candidates.matches > 1)
 		return shopkeeper_save_reason::keeper_ambiguous;
-	if (keeper_out)
-		*keeper_out = candidate;
-	return validate_shopkeeper_save(candidate, shop_nr);
+	*keeper_out = candidates.keeper;
+	return validate_shopkeeper_save(candidates.keeper, shop_nr);
 }
 
 void log_shopkeeper_save_guard(P_char ch, int shop_nr, shopkeeper_save_reason reason)
@@ -3627,13 +3641,38 @@ bool sql_restore_shopkeepers(void)
 	return sql_restore_shopkeeper_catalog(-1, nullptr);
 }
 
+// True while the periodic save's next pulse is scheduled.
+static bool shopkeeper_save_continues = false;
+
+// The shops the writer had no room for a pulse ago.
+static void event_save_dirty_shopkeepers(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/,
+					 void * /*data*/)
+{
+	shopkeeper_save_continues = false;
+	sql_save_dirty_shopkeepers();
+}
+
 bool sql_save_dirty_shopkeepers(bool force)
 {
 	if (!shop_index || number_of_shops <= 0)
 		return true;
 
+	// The one writer takes these saves in order with the players', and a boot leaves
+	// every shop dirty: queued at once, 544 shop saves stood ahead of every player save
+	// and relog. The periodic save fills the writer's queue to SHOPKEEPER_SAVE_QUEUE
+	// jobs and takes the remaining shops on the following pulses, as the writer takes
+	// them. A forced save (shutdown, copyover) queues every shop.
+	constexpr uint64_t SHOPKEEPER_SAVE_QUEUE = 16;
+	uint64_t room = UINT64_MAX;
+	if (!force)
+	{
+		const uint64_t queued = player_save_worker_health_copy().queued_jobs;
+		room = queued < SHOPKEEPER_SAVE_QUEUE ? SHOPKEEPER_SAVE_QUEUE - queued : 0;
+	}
+	bool waiting = false;
 	const time_t now = time(NULL);
-	int saved = 0;
+	std::vector<int> due;
+	std::unordered_multimap<int, int> due_by_keeper;
 	for (int i = 0; i < number_of_shops; i++)
 	{
 		if (!shop_index[i].dirty)
@@ -3648,9 +3687,28 @@ bool sql_save_dirty_shopkeepers(bool force)
 				shopkeeper_save_retry_record_failure(retry, now);
 			continue;
 		}
+		if (due.size() >= room)
+		{
+			waiting = true;
+			continue;
+		}
+		due.push_back(i);
+		due_by_keeper.emplace(shop_index[i].keeper, i);
+	}
+	if (waiting && !shopkeeper_save_continues)
+		shopkeeper_save_continues =
+			add_event(event_save_dirty_shopkeepers, 1, NULL, NULL, NULL, 0, NULL, 0)
+				.was_scheduled();
 
+	const std::vector<shopkeeper_candidates> found =
+		find_shopkeepers_for_dirty_save(due_by_keeper);
+	int saved = 0;
+	for (int i : due)
+	{
+		shopkeeper_save_retry_state *retry = &shop_index[i].dirty_save_retry;
 		P_char keeper = NULL;
-		shopkeeper_save_reason reason = find_shopkeeper_for_dirty_save(i, &keeper);
+		shopkeeper_save_reason reason =
+			choose_shopkeeper_for_dirty_save(i, found[i], &keeper);
 		if (reason == shopkeeper_save_reason::ok && sql_save_shopkeeper(keeper, i))
 		{
 			shop_index[i].dirty = 0;

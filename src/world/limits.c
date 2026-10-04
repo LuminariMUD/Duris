@@ -650,8 +650,8 @@ static void lose_level_impl(P_char ch, std::uint64_t threshold_xp,
 
 static void notify_level_advancement(P_char ch, int previous_level)
 {
-	const int levels_gained = GET_LEVEL(ch) - previous_level;
 	P_char recipient = IS_SET(ch->specials.act, PLR_MORPH) ? ch->only.pc->switched : ch;
+	const int levels_gained = GET_LEVEL(ch) - previous_level;
 
 	if (levels_gained <= 0)
 		return;

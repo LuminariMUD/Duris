@@ -1334,10 +1334,8 @@ static void crafting_handle_forge_command(P_char ch, char *argument, int /*cmd*/
 			strcat(recipe,
 			       "You must have &+W1 &nof &+ma &+Mm&+Ya&+Mg&+Yi&+Mc&+Ya&+Ml &+messence&n due to the &+mmagical &nproperties this item possesses.\r\n");
 		}
-		snprintf(
-			Gbuf1, sizeof Gbuf1,
+		APPENDF(recipe,
 			"You will also need one blacksmithing flux; it is consumed to bind the work.\r\n");
-		strncat(recipe, Gbuf1, sizeof(recipe) - strlen(recipe) - 1);
 
 		page_string(ch->desc, recipe, 1);
 		extract_obj(obj);

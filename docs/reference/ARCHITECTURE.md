@@ -22,6 +22,11 @@ multiplexed in a single `select()` loop. Concurrency includes:
 - A non-coalescing critical-command coordinator, whose commands run on that writer, and an
   outbox dispatcher for economy, ownership, auction, and gameplay-outcome operations.
 - One bounded maintenance worker for staggered recurring database and snapshot work.
+- One log thread (`src/core/utility.c`) that appends every `logit()` line and the latency
+  trace to its file, in the order they were logged, so a busy disk never holds the thread
+  that logs. A line for `logs/log/exit` is written by its caller, behind the queued lines.
+  The last 500 player commands stay in memory (`src/core/debug.c`). An exit writes both;
+  so does the crash handler (`src/core/signals.c`), before the signal's own action.
 - One immutable world-recovery publisher worker when Redis recovery is enabled.
 - One bounded best-effort mail worker (libcurl SMTP) for account password recovery. It is
   not in the shutdown drain chain, is joined at shutdown (each send is bounded to 10 s
@@ -99,10 +104,11 @@ periodic ownership, catch-up debt, and configuration. The rest of this section
 records incident-derived constraints.
 
 Each pulse is bounded by a wall-clock budget (`NEVENT_BUDGET_USEC_DEFAULT`,
-25 ms) and a callback count cap (`NEVENT_MAX_CALLBACKS_DEFAULT`). Both are
-overridable at runtime - see [CONFIGURATION.md](../operations/CONFIGURATION.md#diagnostics).
-The time budget is meant to be the binding limit; a count cap low enough to end
-pulses at half the time budget starves the wheel.
+25 ms) and, when one is set, a callback count cap (`NEVENT_MAX_CALLBACKS_DEFAULT`,
+none). Both are overridable at runtime - see
+[CONFIGURATION.md](../operations/CONFIGURATION.md#diagnostics). The time budget is
+the binding limit; a count cap low enough to end pulses inside the time budget
+starves the wheel.
 
 These properties of the wheel are load-bearing:
 

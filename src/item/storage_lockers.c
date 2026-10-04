@@ -2351,12 +2351,12 @@ static int locker_grantcmd(P_char ch, char *arg)
 	char arg2[MAX_INPUT_LENGTH];
 
 	StorageLocker *pLocker = locker_current_or_error(ch, "Error: no locker found.\r\n");
-	bool bPlayerIsGod = ((GET_LEVEL(ch) >= OVERLORD) || god_check(ch->player.name));
 
 	if (!pLocker)
 	{
 		return TRUE;
 	}
+	bool bPlayerIsGod = ((GET_LEVEL(ch) >= OVERLORD) || god_check(ch->player.name));
 
 	chLocker = locker_char_or_error(
 		pLocker, ch, "Error: unable to locate chLocker.  Please report ASAP\r\n");

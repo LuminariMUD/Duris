@@ -323,7 +323,7 @@ record("configuration", revision=subprocess.check_output(
     backend="flatfile-primary", compiler=subprocess.check_output(
         ["g++", "--version"], text=True).splitlines()[0],
     cpu_affinity=sorted(os.sched_getaffinity(0)), repeats=REPEATS,
-    scheduler="default: 25000 us / 4000 callbacks; catchup +5000 us / +4000 callbacks",
+    scheduler="default: 25000 us, no callback limit; catchup +5000 us",
     analytics=os.environ.get("DURIS_NEVENT_ANALYTICS", "0"),
     player_trace=os.environ.get("DURIS_NEVENT_TRACE_PLAYER", "0"))
 world = subprocess.run(

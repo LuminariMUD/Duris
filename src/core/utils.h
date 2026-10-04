@@ -565,9 +565,10 @@ int race_size(int race);
 /* generic function to point to either a PC, or the "owning"
    morph (or the original person switched into me)  */
 
-#define GET_PLYR(a)                                                 \
-	(IS_MORPH(a)			    ? MORPH_ORIG(a) :       \
-	 ((a)->desc && (a)->desc->original) ? (a)->desc->original : \
+/* IS_MORPH() is true only for an NPC with an original body, so the result is never NULL. */
+#define GET_PLYR(a)                                                      \
+	(IS_MORPH(a)			    ? (a)->only.npc->orig_char : \
+	 ((a)->desc && (a)->desc->original) ? (a)->desc->original :      \
 					      (a))
 #define SWITCHED(a) ((a)->desc && (a)->desc->original && (a) == (a)->desc->original)
 

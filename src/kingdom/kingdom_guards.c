@@ -629,8 +629,8 @@ int kingdom_guard_class_ambiguous(const char *name, char *out, size_t out_len)
 		if (used + 2 >= out_len)
 			continue;
 
-		snprintf(out + used, out_len - used, "%s%s", used ? ", " : "",
-			 kingdom_guard_classes[i].name);
+		checked_appendf(out, out_len, "%s%s", used ? ", " : "",
+				kingdom_guard_classes[i].name);
 	}
 
 	return matches > 1 ? matches : 0;
@@ -681,8 +681,8 @@ static void kingdom_class_list_of(char *out, size_t out_len, bool include_specia
 		if (used + 2 >= out_len)
 			return;
 
-		snprintf(out + used, out_len - used, "%s%s", used ? ", " : "",
-			 kingdom_guard_classes[i].name);
+		checked_appendf(out, out_len, "%s%s", used ? ", " : "",
+				kingdom_guard_classes[i].name);
 	}
 }
 

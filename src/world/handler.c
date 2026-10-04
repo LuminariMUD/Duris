@@ -2770,7 +2770,7 @@ static void mark_container_dirty(P_obj container)
 		return;
 
 	P_obj top = container;
-	while (OBJ_INSIDE(top))
+	while (OBJ_INSIDE(top) && top->loc.inside)
 		top = top->loc.inside;
 
 	SET_BIT(top->runtime_flags, OBJ_RFLAG_DIRTY_CONTAINER);

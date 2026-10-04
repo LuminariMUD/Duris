@@ -8613,21 +8613,6 @@ void concat_which_flagsde(const char *flagType, const flagDef flagNames[], char 
 	strcat(buf, "\n\n");
 }
 
-bool check_flags(int *value, const char **flagNames, const char *flagName)
-{
-	int i;
-
-	for (i = 0; str_cmp(flagNames[i], flagName) && (flagNames[i][0] != '\n'); i++)
-		;
-
-	if (flagNames[i][0] == '\n')
-		return FALSE;
-
-	*value = i;
-
-	return TRUE;
-}
-
 bool check_flagsde(int *value, const flagDef flagNames[], const char *flagName)
 {
 	int i;
@@ -12955,12 +12940,13 @@ void which_armor(P_char ch, char *argument)
 			    (op == OP_LESS_THAN && obj->value[0] < acValue) ||
 			    (op == OP_GREATER_THAN && obj->value[0] > acValue))
 			{
-				snprintf(buf, MAX_STRING_LENGTH,
-					 "%3d) &%s%4d/%4d %6d&n %s&n - %s.\n", ++count,
-					 OBJ_COLOR(r_num), obj_index[r_num].number - 1,
-					 obj_index[r_num].limit, obj_index[r_num].virtual_number,
-					 pad_ansi(obj->short_description, 30, TRUE).c_str(),
-					 armor_modifiers(obj));
+				checked_snprintf(buf, MAX_STRING_LENGTH,
+						 "%3d) &%s%4d/%4d %6d&n %s&n - %s.\n", ++count,
+						 OBJ_COLOR(r_num), obj_index[r_num].number - 1,
+						 obj_index[r_num].limit,
+						 obj_index[r_num].virtual_number,
+						 pad_ansi(obj->short_description, 30, TRUE).c_str(),
+						 armor_modifiers(obj));
 				send_to_char(buf, ch);
 			}
 		}

@@ -13,7 +13,8 @@ The implementation is split by responsibility:
 - `src/world/events.c` contains callbacks and callback-specific helpers such as
   regeneration, command waits, room events, and zone resets. It is not a
   second scheduler.
-- `src/world/event_names.c` maps callback addresses to diagnostic names.
+- `src/world/event_names.c` maps callback addresses to diagnostic names, read from
+  `lib/misc/event_names`, which the launcher writes with `scripts/event_names.sh`.
 - `src/world/events.h` contains only the regeneration selector and the current
   character/object event-list traversal helpers. The old numeric event-type
   scheduler no longer exists.
@@ -156,10 +157,11 @@ owner deletion, address reuse, and zero NPC membership-list visits under sanitiz
 
 ## Per-pulse limits and overload recovery
 
-The default base limits are 25 ms and 4,000 executed callbacks per pulse. A
-zero value disables that individual limit; setting both to zero intentionally
-makes the scheduler unbounded and emits a warning once. Configuration values
-are rejected outside their documented range.
+The default base limit is 25 ms per pulse, with no limit on the number of
+executed callbacks: a count limit can be set, and a zero value disables either
+limit. Setting both to zero intentionally makes the scheduler unbounded and
+emits a warning once. Configuration values are rejected outside their
+documented range.
 
 Time is checked after each callback and every 64 scans through not-yet-due
 records. When either active limit is exhausted, every remaining due event in
@@ -280,7 +282,7 @@ links while inspecting them.
 | Variable | Default | Allowed | Effect |
 | --- | ---: | ---: | --- |
 | `DURIS_NEVENT_BUDGET_USEC` | `25000` | `0..1000000` | Base wall-clock limit per pulse; `0` is unlimited. |
-| `DURIS_NEVENT_MAX_CALLBACKS` | `4000` | `0..1000000` | Base callback limit per pulse; `0` is unlimited. |
+| `DURIS_NEVENT_MAX_CALLBACKS` | `0` | `0..1000000` | Base callback limit per pulse; `0` is unlimited. |
 | `DURIS_NEVENT_CATCHUP_MAX_EXTENSION_USEC` | `5000` | `0..1000000` | Maximum time added while repaying debt. |
 | `DURIS_NEVENT_CATCHUP_MAX_EXTRA_CALLBACKS` | `4000` | `0..1000000` | Maximum callback capacity added while repaying debt. |
 | `DURIS_NEVENT_PLAYER_PRIORITY` | `1` | `0..1` | Enables player-timed priority. |

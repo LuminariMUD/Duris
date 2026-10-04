@@ -23,7 +23,7 @@ assert contains(poison, "for (P_obj input : inputs) extract_obj(input); obj_to_c
 assert contains(mix, "for (P_obj input : inputs) extract_obj(input); for (P_obj output : outputs) obj_to_char(output, ch);")
 # A mix that produced nothing still consumed what it says it did.
 assert "struct alchemy_bottle_candidate" in mix
-assert "available_bottles.insert" in mix
+assert "available_bottles.push_front" in mix
 assert "if (ingredients_consumed)" in mix
 # A failed encrust breaks the item and the jewel and makes nothing.
 failure = section(encrust, "if (!succeeded)", "P_obj new_item")

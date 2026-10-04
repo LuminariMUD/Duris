@@ -29,8 +29,7 @@ struct reader
 
 	template <typename T> bool get(T *value)
 	{
-		if (!value || !cursor || !end || cursor > end ||
-		    static_cast<size_t>(end - cursor) < sizeof(T))
+		if (!value || !cursor || !end || end - cursor < static_cast<ptrdiff_t>(sizeof(T)))
 			return false;
 		using unsigned_type = std::make_unsigned_t<T>;
 		unsigned_type bits = 0;

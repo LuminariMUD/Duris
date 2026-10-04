@@ -35,7 +35,10 @@ for target in (
 
 assert "tests/run_regression_tests.py" in makefile
 assert "tests/async/run_signal_handlers.sh" in makefile
-assert re.search(r"^test-all:\s*build\s*$", makefile, re.MULTILINE)
+# test-all builds both profiles: the production one compiles at -O2, where the
+# warning profile reports what the development build does not see.
+assert re.search(r"^test-all:\s*build build-production\s*$", makefile, re.MULTILINE)
+assert "BUILD_PROFILE=production" in makefile
 assert "$(MAKE) test" in makefile
 
 runner_spec = importlib.util.spec_from_file_location("duris_regression_runner", RUNNER)

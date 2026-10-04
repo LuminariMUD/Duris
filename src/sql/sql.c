@@ -450,8 +450,6 @@ void sql_update_frag_leaderboard(P_char ch)
 {
 	if (!ch || IS_NPC(ch))
 		return;
-	if (IS_MORPH(ch))
-		ch = MORPH_ORIG(ch);
 	const char *root = persistence_mode_flatfile_root();
 	const char *account = get_account_name_safe(ch);
 	const char *name = GET_NAME(ch);
@@ -2215,7 +2213,7 @@ int sql_save_player_core(P_char ch)
 	char assoc_name_sql[MAX_STRING_LENGTH * 2 + 1];
 	struct char_player_data *p;
 	if (IS_MORPH(ch))
-		ch = MORPH_ORIG(ch);
+		ch = ch->only.npc->orig_char;
 	p = &ch->player;
 
 	if (GET_ASSOC(ch) == NULL)
@@ -2404,9 +2402,6 @@ void sql_update_account_character(P_char ch)
 	if (!ch || IS_NPC(ch))
 		return;
 
-	if (IS_MORPH(ch))
-		ch = MORPH_ORIG(ch);
-
 	if (GET_PID(ch) <= 0)
 	{
 		logit(LOG_DEBUG, "sql_update_account_character: invalid pid for %s",
@@ -2510,9 +2505,6 @@ void sql_update_frag_leaderboard(P_char ch)
 
 	if (!ch || IS_NPC(ch))
 		return;
-
-	if (IS_MORPH(ch))
-		ch = MORPH_ORIG(ch);
 
 	if (GET_PID(ch) <= 0)
 	{
