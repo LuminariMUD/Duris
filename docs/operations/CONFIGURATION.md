@@ -238,6 +238,17 @@ without it. It brings the mobs, the objects on the ground, the doors and the zon
 as the last capture had them after a crash or a cold restart, where the boot would otherwise
 reset every zone. A copyover keeps the world by itself.
 
+Two kinds of object on the ground are not brought back:
+
+- An item a character logged in with, or was granted, and then dropped. The ownership
+  ledger in memory names the character for it, a drop does not change that, and a capture
+  and the floor journal leave out a tree whose custody is not its room's. It is lost at a
+  crash or a cold restart, as it is with recovery off. An item picked up during the
+  session, from the ground or a corpse, has no such entry and is captured where it lies,
+  also after a save.
+- An item a character's save holds by the time of the restore. It was taken after the
+  capture, so its holder has it.
+
 What it costs, measured on the full world (54,000 mobs, 253,000 rooms):
 
 - **The game thread.** While a capture runs, the game thread gives it at most 2 ms every

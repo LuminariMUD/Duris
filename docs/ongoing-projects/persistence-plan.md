@@ -602,7 +602,10 @@ if a requirement or a concrete risk failed without it. Cut:
 - **Deleting the old owner's row when a save claims an item:** loads ignore stale rows, and the old
   owner's next save removes them.
 - **Releasing items an owner no longer holds:** the next holder claims them; a release would also
-  trip foreign keys and need a "nobody" owner.
+  trip foreign keys and need a "nobody" owner. The cost is on the ground: a dropped item keeps
+  its last holder's record. A capture leaves out an item the ledger in memory names a
+  character for, and a restore asks the character's save, not the record, whether an item
+  is held (the MR !10 review; CONFIGURATION.md says which objects come back).
 - **Saving the receiver the moment an item changes hands:** the 30-second checkpoint writes both
   sides together.
 - **Keeping the player-save journal:** a replay would skip the corpse and locker saves between

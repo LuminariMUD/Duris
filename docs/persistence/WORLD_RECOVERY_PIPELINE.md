@@ -23,7 +23,11 @@ places while the capture runs can be met twice, in a container and by itself; it
 written once, in the tree it was met in first. Capture marks items
 that have live SQL custody and omits trees whose custody disagrees with their floor
 location; restore requires complete SQL reconciliation of every marked item before
-materializing anything. An unmarked item is looked up at restore. When an ownership record
+materializing anything. The custody is the in-memory ledger's. It names a character for
+every item the character logged in with or was granted, and a drop does not change it, so
+capture and the floor journal omit such an item once it is dropped and recovery does not
+bring it back. An item picked up during the session has no entry, a save's claim adds
+none, and it is captured where it lies. An unmarked item is looked up at restore. When an ownership record
 names an owner for it, other than a character whose save no longer has the item, it was
 taken and saved after the capture: its tree is left out, since the holder has the item and
 a second one would take the uid from them at the next taker's save. A record that names a
