@@ -138,6 +138,12 @@ class PolicyTests(Fixture):
             with self.subTest(changes=changes), self.assertRaises(backup.BackupError):
                 self.load(**changes)
 
+    def test_example_policy_has_no_drill_and_no_replica(self):
+        example = json.loads((ROOT / "scripts/backup_policy.example.json").read_text())
+        self.assertEqual(example["drill_seconds"], 0)
+        self.assertIsNone(example["replica_root"])
+        self.assertEqual(self.load(drill_seconds=0)["drill_seconds"], 0)
+
     def test_overlap_in_both_directions_and_replica(self):
         for changes in ({"root": self.base / "live"}, {"root": self.base},
                         {"root": self.base / "live/child"},
@@ -254,6 +260,19 @@ class GenerationTests(Fixture):
                 backup.status(self.p, require_drill=True)
         backup.write_json(receipt, {"result": "qualified", "completed": int(time.time())})
         self.assertEqual(backup.status(self.p, require_drill=True)["result"], "ok")
+
+    def test_drills_are_off_at_zero(self):
+        # With drill_seconds 0 the health check asks for no drill receipt, and the drill
+        # timer's command does nothing.
+        self.p["drill_seconds"] = 0
+        self.create()
+        self.assertEqual(backup.status(self.p, require_drill=True)["result"], "ok")
+        with mock.patch.object(restore, "service_load") as service:
+            self.assertEqual(restore.restore(self.p, None, self.ledger(), drill=True),
+                             {"event": "drill", "result": "off"})
+        service.assert_not_called()
+        self.assertFalse((self.p["root"] / "drill.json").exists())
+        self.assertFalse(list(self.p["restore_root"].glob("candidate-*")))
 
 
     def test_full_manifest_and_checksum_tamper_both_modes(self):

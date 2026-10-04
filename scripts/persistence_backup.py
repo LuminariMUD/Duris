@@ -178,7 +178,9 @@ def policy_load(path):
             "invalid_schedule_rpo")
     require(2 <= p["hourly"] <= 8760 and p["daily"] <= 3650 and p["weekly"] <= 520,
             "invalid_retention")
-    require(p["max_bytes"] > 0 and 3600 <= p["drill_seconds"] <= 2678400,
+    # drill_seconds 0: no restore drills.
+    require(p["max_bytes"] > 0 and (p["drill_seconds"] == 0 or
+                                    3600 <= p["drill_seconds"] <= 2678400),
             "invalid_capacity_drill")
     require(isinstance(p["live_roots"], list) and p["live_roots"], "live_roots_required")
     for key in ("root", "restore_root"):
@@ -715,7 +717,7 @@ def status(p, require_drill=False):
         drill_path = root / "drill.json"
         drill = read_json(drill_path) if drill_path.exists() else {}
         drill_age = int(time.time()) - drill.get("completed", 0)
-        if require_drill:
+        if require_drill and p["drill_seconds"]:
             require(drill.get("result") == "qualified" and 0 <= drill_age <= p["drill_seconds"],
                     "restore_drill_missing_or_overdue")
         return {"event": "status", "drill_age_seconds": drill_age if drill else None, "result": "ok", "age_seconds": age,

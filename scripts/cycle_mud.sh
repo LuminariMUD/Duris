@@ -299,11 +299,12 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
     mv core "core.$DATESTR"
   fi
 
-  echo "Backing up authoritative persistence state..."
-  BACKUP_OK=0
-  if [[ "${SKIP_PREBOOT_BACKUP:-0}" == "1" ]]; then
-    echo "SKIP_PREBOOT_BACKUP=1 set; skipping pre-boot persistence backup" >&2
-    BACKUP_OK=1
+  # A backup before every boot is for a server with no backup timer: it is taken only
+  # with PREBOOT_BACKUP=1, and a boot it is asked for does not go on without it.
+  BACKUP_OK=1
+  if [[ "${PREBOOT_BACKUP:-0}" == "1" ]]; then
+    echo "Backing up authoritative persistence state..."
+    BACKUP_OK=0
   fi
   for BACKUP_ATTEMPT in 1 2 3; do
     (( BACKUP_OK == 1 )) && break

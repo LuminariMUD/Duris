@@ -180,6 +180,8 @@ def restore_capacity(p):
 
 
 def restore(p, generation_name, tombstones, drill=False):
+    if drill and not p["drill_seconds"]:
+        return {"event": "drill", "result": "off"}
     backup.mkdir(p["root"])
     restore_capacity(p)
     with backup.lock(p["root"] / ".job.lock", wait=backup.LOCK_WAIT_SECONDS), \
