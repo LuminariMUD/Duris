@@ -5,16 +5,11 @@ allows owner type 11 in the three item authority tables. Existing pet rows keep
 `NULL` and their existing player owned equipment route. The migration and its
 verification script are additive and rerunnable on MariaDB 10.11 and MySQL 8.
 
-For a committed player corpse raise that produces a follower, the corpse key
-becomes the stable pet UID. The corpse transaction creates the pet record,
-transfers every durable nested item to that pet owner, writes its physical item
-graph, and records the commit receipt together. A restart can load that graph
-before a later player save. The initial pet record includes its charm duration
-and absolute charm and death deadlines so an immediate restart does not extend
-its lifetime. The existing chance for a summon to be hostile is
-resolved before the transaction: hostile creatures have no pet record and keep
-the previous caster custody route. Corpse money still follows the spell's
-existing wallet rule; transient objects are retired.
+A raise happens in memory: the raised creature takes what the corpse held, and
+the corpse leaves the world. A follower is saved with its master, whose save
+records the pet and its items (`player_pets`, `player_pet_items`) and claims
+those items. A player's pet equips no hidden (`!show`) item, which an NPC's
+corpse can hold: `wear()` refuses it for every command.
 
 A player save verifies every UID, root, parent, and vnum against pet custody
 before replacing the pet item projection. A save that omits a pet with a

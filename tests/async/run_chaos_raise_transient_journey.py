@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Cast Greater Dracolich against a disposable persisted player corpse (raised in memory)."""
+"""Cast Greater Dracolich against a disposable persisted player corpse (raised in memory).
+
+The raised creature carries what the corpse held, and its master's save records the items
+under the pet. A hidden (!show) item among them stays unequipped when the pet is ordered to
+wear or wield it by keyword; a plain one is equipped.
+"""
 import os
 from pathlib import Path
 import subprocess
@@ -19,6 +24,10 @@ PROC_UID = 880000000006
 NPC_GEAR_UIDS = (880000000007, 880000000008, 880000000009)
 NPC_TRANSIENT_UID = 880000000010
 NPC_MONEY_UID = 880000000011
+# A hidden and a plain ring, a hidden and a plain blade: (uid, keyword, wear flags, type).
+HIDDEN, RING, BLADE = 2, 1 | 2, 1 | 8192
+WORN = ((880000000012, "hiddenring", RING, 12), (880000000013, "plainring", RING, 12),
+        (880000000014, "hiddenblade", BLADE, 5), (880000000015, "plainblade", BLADE, 5))
 OWNER_PID, SAVE_ID, ROOM = 880001, 1004, 22800
 
 
@@ -369,6 +378,14 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                      f" VALUES(@corpse_id,5,1,150,2050,0,{PROC_UID},"
                      "'hidden proc token','a hidden proc token',"
                      "'A hidden proc token lies here.');" if fixture_probe else "") + coin_row)
+                plain = not any(flag.startswith("--") for flag in sys.argv[2:])
+                if plain:
+                    for uid, keyword, wear_flags, item_type in WORN:
+                        hidden = HIDDEN if keyword.startswith("hidden") else 0
+                        sql("INSERT INTO corpse_items(corpse_id,vnum,item_type,weight,cost,"
+                            "extra_flags,wear_flags,obj_uid,name,short_descr,description) "
+                            f"SELECT id,5,{item_type},1,150,{hidden},{wear_flags},{uid},"
+                            f"'{keyword}','a {keyword}','A {keyword} lies here.' FROM corpses")
                 sql("INSERT INTO item_owner_revision"
                     "(owner_type,owner_id,owner_context_id,revision)"
                     f" VALUES(4,{corpse_owner},0,1)")
@@ -447,10 +464,11 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                                f"owner_pid={pid}") == "0"
                     print("baseline chaos cast: ESTALE refusal retained full corpse graph",
                           flush=True)
-                elif not any(flag.startswith("--") for flag in sys.argv[2:]):
-                    # The raise runs in memory (persistence reset step 6): the caster
-                    # takes the corpse's items, the corpse leaves the world through a
-                    # queued delete, and the caster's next save records the items once.
+                elif plain:
+                    # The raise runs in memory (persistence reset step 6): the raised
+                    # creature takes the corpse's items, the corpse leaves the world
+                    # through a queued delete, and the caster's next save records the
+                    # items once, under the pet.
                     assert outcome.startswith("The corpse summons"), transcript
                     after_cast = client.expect("Pos: standing >", timeout=20)
                     if "NOT pleased" in transcript + after_cast:
@@ -467,16 +485,38 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                         time.sleep(0.2)
                     assert sql("SELECT COUNT(*) FROM corpse_items") == "0"
                     client.pending.clear()
+                    client.send("inventory")
+                    carried = client.expect("Pos: standing >", timeout=20)
+                    assert "fixture backpack" not in carried and "blade" not in carried, carried
+                    # By keyword, the hidden one first: its slot is free.
+                    for keyword in ("hiddenring", "plainring"):
+                        client.send("order dracolich wear " + keyword)
+                        client.expect("Pos: standing >", timeout=20)
+                    for keyword in ("hiddenblade", "plainblade"):
+                        client.send("order dracolich wield " + keyword)
+                        client.expect("Pos: standing >", timeout=20)
+                    client.pending.clear()
                     client.send("save")
                     client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+                    raised = (UIDS[0], UIDS[1]) + tuple(uid for uid, *_ in WORN)
                     deadline = time.monotonic() + 15
-                    while sql("SELECT COUNT(*) FROM player_items WHERE "
-                              f"pid={pid} AND obj_uid IN ({UIDS[0]},{UIDS[1]})") != "2":
-                        assert time.monotonic() < deadline, "the caster's save lacks the items"
+                    while sql("SELECT COUNT(*) FROM player_pet_items WHERE "
+                              f"obj_uid IN {raised}") != "6":
+                        assert time.monotonic() < deadline, "the pet's save lacks the items"
                         time.sleep(0.2)
+                    assert sql(f"SELECT COUNT(*) FROM player_items WHERE obj_uid IN {raised}") \
+                        == "0"
+                    # A pet's items are claimed by its master's save.
                     assert sql("SELECT COUNT(*) FROM item_current_owner WHERE item_uid IN "
-                               f"({UIDS[0]},{UIDS[1]}) AND owner_type=1 AND owner_id={pid}") == "2"
-                    print("in-memory raise: corpse deleted, caster saved the items once",
+                               f"{raised} AND owner_type=1 AND owner_id={pid}") == "6"
+                    equipped = dict(line.split("\t") for line in sql(
+                        "SELECT name, equip_slot > 0 FROM player_pet_items WHERE obj_uid IN "
+                        f"{tuple(uid for uid, *_ in WORN)}").splitlines())
+                    assert equipped == {"hiddenring": "0", "plainring": "1",
+                                        "hiddenblade": "0", "plainblade": "1"}, equipped
+                    print("in-memory raise: corpse deleted, the pet carries the items and "
+                          "its master's save records them once; ordered by keyword, it "
+                          "wore and wielded the plain items and left the hidden ones",
                           flush=True)
                     return True
                 else:
