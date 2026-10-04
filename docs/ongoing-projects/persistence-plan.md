@@ -449,11 +449,36 @@ before and after in [the measurement](persistence-done.md#the-measurement-done).
    caster's inventory. Put the items on the raised creature, as before `389016091`. A pet can
    then carry a hidden (`!show`) item from an NPC's corpse: `wear all` already skips those for
    a player's pet, and `wear` and `wield` by keyword must skip them too.
+5. **World recovery is a switch, and it is off unless a server turns it on** (owner,
+   2026-10-04). It is a convenience, not a safety net: characters, pets, corpses, lockers,
+   banks and shops are saved without it. It only brings the mobs, the loose objects, the
+   doors and the zone ages back as they were after a crash or a cold restart, where the boot
+   would otherwise reset every zone; a copyover keeps the world by itself. The code already
+   leaves it off when `REDIS_WORLD_STATE` is not `TRUE`, but `.env.example` ships `TRUE`, so
+   every server set up from the template captures the world. Ship `REDIS_WORLD_STATE=FALSE`
+   in `.env.example` and set it in the local `.env`; say beside it, and in
+   `CONFIGURATION.md`, what it buys and what it costs; and make sure a server with it off
+   does none of the capture's work and raises none of item 3's alerts. Items 1 to 3 are
+   still fixed, for the servers that turn it on.
+6. **The capture interval is a setting, ten minutes by default** (owner, 2026-10-04).
+   `REDIS_WORLD_STATE_INTERVAL` is 10 seconds by default and accepts 5 to 300, and a capture
+   of the full world takes close to five minutes, so a server with recovery on captures
+   without a pause. Make the default 600 seconds and accept longer intervals. Put the strain
+   beside the setting in `.env.example`, measured in this phase: while a capture runs the
+   game thread gives it up to 2 ms of every pulse, and each generation is the whole world
+   written to Redis (past 64 MiB at full size); a shorter interval costs more of both, and a
+   longer one restores an older world. Two limits must follow the interval, or a crash
+   restores nothing: at boot `REDIS_WORLD_STATE_MAX_AGE` (300 seconds by default) refuses a
+   generation older than itself, and by the time the next capture is due a generation is as
+   old as the interval plus the time its capture took.
 
 Done when: a capture of that size publishes, with a test above the old 64 MiB limit; it finishes
 within its budget under load; consecutive failures raise an alert with the age of the last good
 generation; a raise leaves the corpse's items on the raised creature and a player's pet cannot
-wear or wield a hidden item by keyword, with a test for each.
+wear or wield a hidden item by keyword; a server captures nothing unless
+`REDIS_WORLD_STATE=TRUE`, which the template no longer sets; and with recovery on, captures
+start ten minutes apart by default, the strain is stated beside the setting, and a generation
+taken at that interval is still accepted at boot. Each has its test.
 
 ## What was cut, and why
 
@@ -531,4 +556,5 @@ The world capture is left, on the optimised build. Phases 4 (alerts and logs), 5
 the logs), 6 (backups) and 7 (the game loop) are done and on master.
 
 1. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2), and with it the raised corpse's
-   items (its item 4).
+   items (its item 4). World recovery also becomes a switch that is off by default, with a
+   capture every ten minutes when it is on (its items 5 and 6).
