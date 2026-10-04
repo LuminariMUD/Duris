@@ -2,17 +2,18 @@
 
 Optional Redis restart and crash recovery uses a long-lived in-process publisher instead of a
 forked serializer. The game thread incrementally captures one sequence-numbered
-generation across NPCs, floor objects, doors, and zone timers. Each pulse is bounded by
-record count and elapsed time, each record has a byte ceiling, and the complete retained
-generation has a fixed memory ceiling.
+generation across NPCs, floor objects, doors, and zone timers. Each call is bounded by
+elapsed time, each record has a byte ceiling, and the complete retained generation has a
+fixed memory ceiling.
 
 The generation is an explicitly fuzzy recovery snapshot, not a point-in-time transaction.
 Its timestamp is capture start, so age is conservative relative to every record. Capture
 may span at most five minutes; an expired capture is discarded before publication, its
 failure completion resumes the floor worker, and a later periodic request retries from a
-new sequence. The game thread still performs at most 64 capture steps or 2 ms of capture
-work per pulse. Door capture scans all fixed directions for one room per step, avoiding
-one budget step per absent exit.
+new sequence. The game thread gives the capture at most 2 ms every second pulse (half a
+second). Time is the only limit on a call: a step is one character, one object or one room
+looked at, whether or not it is written, and the full world is 350,000 steps. Its capture
+is 36 calls, about 16 seconds.
 
 Fuzzy state is restricted to reconstructible NPC position/state, doors, zone timers, and
 world-pop objects. NPC equipment and inventory are omitted, and NPC-carried gold is

@@ -289,8 +289,9 @@ Gameplay performs bounded fixed-memory serialization but no Redis socket, SQL, d
 process, or logging I/O for floor drops, pickups, or snapshot preflight.
 
 World capture is an explicitly fuzzy crash-recovery snapshot with a hard five-minute
-capture deadline. It keeps the existing 64-step/2-ms per-pulse gameplay budget; an expired
-capture is discarded and retried later rather than published. NPC inventory/equipment and
+capture deadline. The game thread gives it at most 2 ms every second pulse, and a capture of
+the full world takes about 16 seconds; an expired capture is discarded and retried later
+rather than published. NPC inventory/equipment and
 carried gold are excluded from recovery, while all floor-item UIDs must pass complete SQL
 custody reconciliation before any recovery entity is created. `REDIS_WORLD_STATE_MAX_AGE`
 still controls how old a completed durable generation may be when boot attempts restore.

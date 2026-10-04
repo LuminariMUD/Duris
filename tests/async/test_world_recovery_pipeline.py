@@ -1015,7 +1015,6 @@ for token in (
     "WORLD_RECOVERY_MAX_RECORD_BYTES = 2 * 1024 * 1024",
     "WORLD_RECOVERY_MAX_FLOOR_BYTES = 16 * 1024 * 1024",
     "WORLD_RECOVERY_MAX_FLOOR_RECORDS = 32768",
-    "WORLD_RECOVERY_CAPTURE_RECORD_BUDGET = 1024",
     "WORLD_RECOVERY_CAPTURE_TIME_BUDGET_USEC = 2000",
     "WORLD_RECOVERY_CAPTURE_MAX_AGE_MSEC = 300000",
     "WORLD_RECOVERY_QUEUE_CAPACITY = 2",
@@ -1025,7 +1024,7 @@ for token in (
 ):
     assert token in HEADER
 capture = section(PIPELINE, "void world_recovery_pipeline_pulse", "bool world_recovery_pipeline_take_completion")
-assert "WORLD_RECOVERY_CAPTURE_RECORD_BUDGET" in capture
+assert "RECORD_BUDGET" not in PIPELINE + HEADER
 assert "WORLD_RECOVERY_CAPTURE_TIME_BUDGET_USEC" in capture
 assert "std::chrono::steady_clock::now()" in capture
 assert "world_recovery_capture_age_expired" in capture

@@ -100,6 +100,8 @@ bool worker_busy = false;
 bool capture_failure_pending = false;
 world_recovery_completion capture_failure_completion = {};
 std::array<unsigned char, WORLD_RECOVERY_MAX_RECORD_BYTES> capture_buffer = {};
+// One object record's items as they are captured. Every capture is on the game thread.
+std::array<world_recovery_item_snapshot, WORLD_RECOVERY_MAX_ITEM_TREE> capture_items = {};
 
 struct planned_mob
 {
@@ -370,19 +372,9 @@ int write_object_record(P_obj object, int room_vnum, char *buffer, size_t maximu
 {
 	if (!object || !buffer || room_vnum <= 0 || maximum < sizeof(world_recovery_object_record))
 		return -1;
-	// capture_item_tree initializes each emitted entry; do not clear unused capacity.
-	std::vector<world_recovery_item_snapshot> items;
-	try
-	{
-		items.resize(WORLD_RECOVERY_MAX_ITEM_TREE);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return -1;
-	}
 	uint32_t count = 0;
 	bool skip = false;
-	if (!capture_item_tree(object, room_vnum, 0, 0, items.data(), &count, &skip,
+	if (!capture_item_tree(object, room_vnum, 0, 0, capture_items.data(), &count, &skip,
 			       copyover_custody) ||
 	    !count)
 	{
@@ -399,7 +391,7 @@ int write_object_record(P_obj object, int room_vnum, char *buffer, size_t maximu
 		return -1;
 	const world_recovery_object_record record = { room_vnum, count };
 	memcpy(buffer, &record, sizeof(record));
-	memcpy(buffer + sizeof(record), items.data(),
+	memcpy(buffer + sizeof(record), capture_items.data(),
 	       static_cast<size_t>(count) * sizeof(world_recovery_item_snapshot));
 	return static_cast<int>(size);
 }
@@ -800,11 +792,10 @@ void world_recovery_pipeline_pulse(void)
 		fail_capture(true);
 		return;
 	}
+	// Time is the only limit: a step is as little as one room looked at.
 	const auto deadline = std::chrono::steady_clock::now() +
 			      std::chrono::microseconds(WORLD_RECOVERY_CAPTURE_TIME_BUDGET_USEC);
-	for (size_t count = 0; count < WORLD_RECOVERY_CAPTURE_RECORD_BUDGET &&
-			       std::chrono::steady_clock::now() < deadline;
-	     ++count)
+	while (std::chrono::steady_clock::now() < deadline)
 	{
 		if (!capture_one_record())
 		{
