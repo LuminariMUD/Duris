@@ -2728,7 +2728,7 @@ for it.
 
 Migration 0036 comes with it: a database must run `python3 scripts/migration_runner.py run`
 before the merged binary boots. The local `duris_dev` has been at 0036 since the phase
-([record](#ipv6-in-logentries-done)).
+([record](#ipv6-in-log_entries-done)).
 
 `fix/4-persistence-phase-5` is deleted, and this worktree continues on
 `fix/3-persistence-phase-6`, branched from master after this record. #4 is closed: sections 1
