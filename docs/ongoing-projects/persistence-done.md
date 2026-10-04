@@ -3267,7 +3267,7 @@ The second capture took 192 s. What it shows:
   one item of 3.3 KiB.
 - **Two calls ran far past 2 ms**: the buffer is a vector that doubles, and each doubling
   copies the capture so far on the game thread, 5.9 ms at 16 MiB and 18.2 ms at 32 MiB.
-- **The size.** 49.9 MiB for a world just booted, 52.9 MiB three minutes later with the
+- **The size.** 47.6 MiB for a world just booted, 50.4 MiB three minutes later with the
   same counts (the mobs' spell affects). A mob is 360 bytes and 64 more for each affect; an
   item is 3,328 bytes, 3,076 of them four fixed-width text fields. Staging's 10,850 objects are what crossed
   64 MiB. Redis held 59 MiB with one generation stored.
@@ -3295,7 +3295,7 @@ of fixed-width text was not needed either: it would change the wire format for a
 ceiling now holds five times over. `a98573c19`.
 
 Tests: `test_world_recovery_pipeline.py` captures a world of 20,500 objects through the
-pipeline, sees the published generation (68 MiB) validate with its counts, and restores it;
+pipeline, sees the published generation (65 MiB) validate with its counts, and restores it;
 `test_redis_world_store_live.py` publishes 65 MiB and 17 bytes to a live Redis in 66 chunks,
 reads it back, and sees the next publish remove every chunk. Both fail on the old ceiling.
 
@@ -3391,8 +3391,8 @@ follow it by the same ten minutes, five for a capture's budget and five for the 
   publish renews it, so at a ten-minute interval it ran out before every publish.
 
 The strain is beside the setting in `.env.example` and in CONFIGURATION.md: 2 ms of the
-game thread every half second for about 16 seconds, and the whole world written to Redis
-(50 MiB after a boot, 67 MiB with staging's 11,000 objects). `e77d7ddfb`.
+game thread every half second for about 20 seconds, and the whole world written to Redis
+(about 45 MiB after a boot and 3.3 KiB more for every object on the ground). `e77d7ddfb`.
 
 Tests: the journey boots with a capture every 5 seconds and a maximum age of 60, and reads
 `interval=5s, max_age=605s`; kills the server, waits until its last generation is 65
@@ -3403,3 +3403,88 @@ reads `interval=600s, max_age=1200s`. `test_documentation_contract.py` holds the
 Server configuration, not code: a server whose `.env` says `REDIS_WORLD_STATE_INTERVAL=10`
 or `REDIS_WORLD_STATE_MAX_AGE=300` keeps the interval it names (the age is raised to the
 minimum) until the lines are removed.
+
+### A raised corpse's items (done)
+
+All six raises (`raise_undead()`, the golem, the titan, the avatar and both dracoliches) put
+the corpse's items on the raised creature again, and `place_raised_item()` is gone
+(`necromancy.c`). A player's corpse is raised the same way: its items go to the creature,
+not to the caster. A pet is saved with its master, so the master's next save records the
+items under the pet (`player_pet_items`) and claims them.
+
+`wear()` (`actobj.c`), which every way of equipping goes through, refuses a hidden (`!show`)
+item for a player's pet. `wear`, `wield` and `hold` by keyword therefore skip it; `wear all`
+keeps its own check, which lets its loop go on to the next item. A mob that is nobody's pet
+still equips one. `374c8a518`.
+
+Tests: `run_chaos_raise_transient_journey.py` (in `make test-db`) raises a greater dracolich
+from a corpse holding a backpack with a note in it, two rings and two blades, one of each
+hidden. The caster's inventory has none of them; the save has all six under the pet and none
+under the player; ordered by keyword, the dracolich wore and wielded the plain ring and
+blade and left the hidden ones. Without the check in `wear()` it equips all four.
+`test_wear_all_regression.py` runs the production `wear()` for a pet with a hidden item
+(wield and hold refused, a plain item equipped) and for a mob with no master (equipped).
+
+[PET_CUSTODY.md](../operations/PET_CUSTODY.md) still described the deferred raise that
+Phase 3 removed; its paragraph on the raise says what happens now.
+
+### A restored world's mob items (found, done)
+
+Found by the capture journey: after a crash the boot restored the world in 30 s, where
+resetting every zone takes 8. A sample of the boot's stack was in
+`select_recovered_mobs()` every time. A restore gives the recovered mobs the items their
+zones load them with (`world_recovery_rehydrate_npc_items()`), and each mob-load command
+looked through all 54,000 recovered mobs for the ones of its prototype and room. The mobs
+are indexed once by prototype and birthplace, and a command takes its group. The restore
+takes 3 s and matches the same mobs: all but 46 of 53,977, as before. `4ab307744`.
+
+Test: `test_world_recovery_npc_items.py` rehydrates 54,000 mobs from 108,000 load commands
+and allows it 5 s; the old code took six minutes there (under the sanitizers).
+
+### The capture journey and the measurement (done)
+
+`test_mysql_world_capture_journey.py` (in `make test-db`, about a minute and a half) is the
+measurement and the pin for items 1 and 2, and the first test of a restore at full size. It
+boots the full world on a disposable MariaDB and Redis with world recovery on, as shipped
+(the first capture starts 30 seconds after the boot). 8,000 lines added to the first zone's
+reset put 8,000 more objects on the ground, which makes the generation 69 MiB: staging's
+world crossed the old ceiling with 11,000 objects, and a booted one has 6,900. Eight mortals
+on their own accounts play while the capture runs.
+
+It reads the capture's own record, the line that acknowledges its generation
+(`bytes=`, `capture_msec=`), and the loop's:
+
+- the generation is above 64 MiB, and it was published;
+- the capture took under 100 s, a third of its 300 s (it took 193 s on an idle server
+  before);
+- no `MUD TICK TOOK TOO LONG` pulse ran past 250 ms while it ran.
+
+It then kills the server and boots it again, and requires that the boot restored that
+generation: its sequence, more than 50,000 mobs, the 8,000 objects, and more than 50,000
+mobs given the items their zones load them with. `1ded37a8c`.
+
+The measurement, one run each on this machine (16 cores, otherwise idle), the world at
+69 MiB (54,000 mobs, 14,900 objects on the ground, 10,372 doors, 351 zones):
+
+| | Capture | Pulses past 250 ms | Restored after the kill |
+|---|---|---|---|
+| Production profile (`-O2`), nobody playing | 19.0 s | 0 | 3 s |
+| Production profile, 30 players | 20.0 s | 0 | 3 s |
+| Development profile (`-Og`), 8 players | 19.5 to 22.5 s (four runs) | 0 | 3 s |
+| Development profile, 30 players | 21.0 s | 0 | 3 s |
+
+What it shows:
+
+- **A capture takes about 20 s**, 7% of its budget, where it took 193 s at 48 MiB. Players
+  do not change it: the capture's 2 ms come every half second whatever else the pulse
+  does. Neither does `-O2`, as Phase 7 found for the loop.
+- **The whole path works at full size**, which nothing had tested: the capture, the
+  publication in 70 chunks, the boot's validation, and the restore of 54,000 mobs and
+  15,000 objects.
+- **A boot that restores is faster than one that resets every zone** (3 s against 8),
+  once the mob items take one pass.
+
+### Master's credits record (taken in)
+
+Master gained `99f6ab8e9` during the phase: the credits record `docs/records/CREDITS.md`
+and its line in the docs index. It is merged into the branch in `b47ed0746`, unchanged.

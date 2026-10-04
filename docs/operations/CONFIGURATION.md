@@ -234,10 +234,13 @@ reset every zone. A copyover keeps the world by itself.
 What it costs, measured on the full world (54,000 mobs, 253,000 rooms):
 
 - **The game thread.** While a capture runs, the game thread gives it at most 2 ms every
-  second pulse (half a second). A capture is 36 such calls, about 16 seconds.
-- **Redis.** Each generation is the whole world: 50 MiB after a boot and 67 MiB with 11,000
-  objects on the ground, since an item is 3.3 KiB. Redis holds two generations while one
-  replaces the other.
+  second pulse (half a second). A capture is about 40 such calls, 20 seconds, with nobody
+  playing or with 30 players.
+- **Redis.** Each generation is the whole world: about 45 MiB after a boot and 3.3 KiB more
+  for every object on the ground, 69 MiB with 15,000. Redis holds two generations while one
+  replaces the other, and uses about a third more memory than their bytes.
+- **A restart.** A boot that restores a generation takes 3 seconds, less than one that
+  resets every zone.
 
 `REDIS_WORLD_STATE_INTERVAL` sets how often that is paid: ten minutes by default. A shorter
 interval costs more of both; a longer one restores an older world. Two limits follow the
@@ -295,7 +298,7 @@ are restored without inventing SQL custody, while SQL-restored player corpses ar
 A failed or stale generation is retained for diagnosis and the
 server performs a full normal zone boot.
 
-World generations are capped at 256 MiB; the full world is about 67 MiB. Redis holds one
+World generations are capped at 256 MiB; the full world is 45 to 70 MiB. Redis holds one
 generation, and two while the next one replaces it, so allow it twice the generation's size.
 Restore checks the value length inside Redis before transfer. Each published generation receives a TTL of at least one hour or four
 times `REDIS_WORLD_STATE_MAX_AGE`, whichever is greater, so abandoned generations expire.
@@ -319,7 +322,7 @@ process, or logging I/O for floor drops, pickups, or snapshot preflight.
 
 World capture is an explicitly fuzzy crash-recovery snapshot with a hard five-minute
 capture deadline. The game thread gives it at most 2 ms every second pulse, and a capture of
-the full world takes about 16 seconds; an expired capture is discarded and retried later
+the full world takes about 20 seconds; an expired capture is discarded and retried later
 rather than published. NPC inventory/equipment and
 carried gold are excluded from recovery, while all floor-item UIDs must pass complete SQL
 custody reconciliation before any recovery entity is created. `REDIS_WORLD_STATE_MAX_AGE`

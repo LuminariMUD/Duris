@@ -531,10 +531,17 @@ How each item is done (decided 2026-10-04, after the
    `.env` still says `REDIS_WORLD_STATE_INTERVAL=10` keeps capturing without a pause until
    the line is removed: server configuration.
 
-One journey is the measurement and the pin for items 1, 2 and 6, as in Phase 7:
+One journey is the measurement and the pin for items 1 and 2, as in Phase 7:
 `test_mysql_world_capture_journey.py`, in `make test-db`. It boots the full world on a
-disposable MariaDB and Redis with recovery on while mortals play, and reads the capture's
-own record of its size and time.
+disposable MariaDB and Redis with recovery on while mortals play, reads the capture's own
+record of its size and time, kills the server and sees the next boot restore the world.
+`run_world_recovery_journey.py` is the pin for items 3, 5 and 6, on the mini world.
+
+Done: each item has its record under
+[Phase 8 progress](persistence-done.md#phase-8-progress). A generation of 69 MiB is
+captured in about 20 s of its 300 s under 30 players, with no pulse past 250 ms, and a
+crash restores it in 3 s
+([the measurement](persistence-done.md#the-capture-journey-and-the-measurement-done)).
 
 ## What was cut, and why
 
@@ -615,10 +622,8 @@ the logs), 6 (backups) and 7 (the game loop) are done and on master.
 `fix/2-persistence-phase-8`, each item with its tests in its own commits. An item leaves this
 list when its record is under [Phase 8 progress](persistence-done.md#phase-8-progress):
 
-1. A raised corpse's items (item 4).
-2. The full-world capture journey, and the measurement after, under load and on the
-   production profile.
-3. The gate on the branch head (`./scripts/format.sh --check`, `make test-all`,
+1. The gate on the branch head (`./scripts/format.sh --check`, `make test-all`,
    `make test-db`), then the merge request for #2.
 
-Done and recorded: items 1, 2, 3, 5 and 6.
+Done and recorded: all six items, the capture journey with its measurement, and the mob
+items of a restored world, which the journey found.

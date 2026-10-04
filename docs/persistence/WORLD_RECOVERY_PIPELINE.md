@@ -13,7 +13,7 @@ failure completion resumes the floor worker, and a later periodic request retrie
 new sequence. The game thread gives the capture at most 2 ms every second pulse (half a
 second). Time is the only limit on a call: a step is one character, one object or one room
 looked at, whether or not it is written, and the full world is 350,000 steps. Its capture
-is 36 calls, about 16 seconds.
+is about 40 calls, 20 seconds.
 
 Fuzzy state is restricted to reconstructible NPC position/state, doors, zone timers, and
 world-pop objects. NPC equipment and inventory are omitted, and NPC-carried gold is

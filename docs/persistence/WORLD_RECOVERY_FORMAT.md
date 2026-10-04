@@ -1,8 +1,8 @@
 # World Recovery Wire Format
 
 Duris world-recovery generations use schema 13; the magic is still `WR12`. The durable
-Redis value is independent of
-compiler padding, host byte order, `time_t`, `unsigned long`, and native C/C++ struct size.
+Redis value is independent of compiler padding, host byte order, `time_t`, `unsigned long`,
+and native C/C++ struct size.
 All integers are fixed-width little-endian values. Text fields are fixed-width byte arrays
 that must contain a null terminator before materialization.
 
@@ -75,8 +75,9 @@ Accepted recovery payload has these application-level ceilings:
 
 The generation ceiling bounds memory: the game holds one generation while it is captured and
 published, and Redis holds two while the next one replaces the last. The full world of
-54,000 NPCs, 11,000 floor objects and 10,000 doors is 67 MiB; an NPC is about 400 bytes and
-an item 3.3 KiB, so the ceiling leaves room for 70,000 floor objects. The capture reserves
+54,000 NPCs and 10,000 doors is about 45 MiB after a boot, and staging's crossed 64 MiB with
+11,000 floor objects: an NPC is about 400 bytes and an item 3.3 KiB, so the ceiling leaves
+room for 70,000 floor objects. The capture reserves
 the ceiling's address space once, so appending a record never moves what is captured.
 
 Generation publication, floor encoding/indexing, and Redis socket work remain background
