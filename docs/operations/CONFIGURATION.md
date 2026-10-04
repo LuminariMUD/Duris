@@ -134,7 +134,7 @@ per-operation authority transfer is not supported.
 | `ENVIRONMENT` | Required: `local` or `production` | Runtime trust role. |
 | `DB_HOST` | Required by `mariadb-primary` | MySQL/MariaDB host. |
 | `DB_PORT` | Optional; `1`-`65535` | Database TCP port; the client default applies when omitted. |
-| `DB_USER` | Required by `mariadb-primary` | Database account. |
+| `DB_USER` | Required by `mariadb-primary` | Database account. Name it for its environment (`duris_local`, `duris_staging`, `duris_prod`), so that a command or credential sent to the wrong server fails to log in. |
 | `DB_PASSWD` | Required by `mariadb-primary` | Database password. |
 | `DB_NAME` | Required by `mariadb-primary` | Requested database name. |
 | `DB_ALLOWED_TARGETS` | Required by `mariadb-primary` | Comma-separated exact `host/database` pairs; the resolved pair must match. |
@@ -166,6 +166,12 @@ selects another; on any other port an explicitly production-like name (`duris` o
 `duris_prod`) is redirected to `duris_dev` before the allow-list check. Use a separate
 database account, target, and non-production port for development. The
 redirect does not make a production credential safe to reuse locally.
+
+The database server's memory is its own setting, not one of these variables. MariaDB's
+default buffer pool (`innodb_buffer_pool_size`) is 128 MB, smaller than the game's data.
+The repository's default is 1 GB: `compose.yaml` starts MariaDB with
+`--innodb-buffer-pool-size=1G`, and a server's own MariaDB sets
+`innodb_buffer_pool_size = 1G` in its configuration unless its host calls for another size.
 
 Every connection has 10-second connect/read/write deadlines and disables automatic
 reconnect. MySQL's client default keeps reconnect off without invoking its deprecated
