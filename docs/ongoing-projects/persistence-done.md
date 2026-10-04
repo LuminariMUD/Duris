@@ -3232,3 +3232,48 @@ migration, so `duris_dev` needed nothing.
 `fix/2-persistence-phase-8`, branched from master after this record. #5 stays open for its
 server configuration (the size of the MariaDB buffer pool); its Status line now records what
 Phase 7 resolved.
+
+## Phase 8 progress
+
+Phase 8 ([plan](persistence-plan.md#phase-8-world-recovery-2)) is being done on
+`fix/2-persistence-phase-8`, branched on 2026-10-04 from master `0d6a772b9`. Each item below
+gets its record when it lands; an item without one is not done.
+
+### The baseline measurement (done)
+
+Item 2 says to measure before changing the budget. The Phase 7 code (`9809ed48e`, the
+development profile) was built with a timer around each stage of the capture and the two
+ceilings raised so that a capture could finish, and booted the full world on a disposable
+MariaDB and Redis with recovery on and nobody playing, on this machine (16 cores, otherwise
+idle). Two captures in a row:
+
+| Stage | Steps | Calls | Wall time | Work on the game thread | Longest call |
+|---|---|---|---|---|---|
+| Mobs (53,970 written) | 54,420 | 54 | 25.0 s | 41 ms | 5.9 ms |
+| Objects (6,869 written) | 34,155 | 112 | 50.6 s | 250 ms | 18.2 ms |
+| Doors (10,372 written) | 263,634 | 257 | 117.1 s | 45 ms | 2.0 ms |
+| Zones (352 written) | 352 | 0 | 0 s | 0 ms | |
+| **A capture** | | 423 | **193 s** | **0.34 s** | **18.2 ms** |
+
+The second capture took 192 s. What it shows:
+
+- **The time is not work.** A capture is a third of a second of work spread over 193 s. The
+  game calls it twice a second (every second pulse, plus the interval's event), and each
+  call ends after 1,024 steps or 2 ms. A step is one character, one object or one room
+  looked at, whether or not it is written: the 253,000 rooms alone are 257 calls. The mob
+  and door stages always end on the step limit, after 0.75 ms and 0.17 ms of their 2 ms.
+- **The object stage ends on the 2 ms**, at 61 objects a call: `write_object_record()`
+  allocates and zero-fills room for 512 items (1.7 MB) for every record, 36 µs to write
+  one item of 3.3 KiB.
+- **Two calls ran far past 2 ms**: the buffer is a vector that doubles, and each doubling
+  copies the capture so far on the game thread, 5.9 ms at 16 MiB and 18.2 ms at 32 MiB.
+- **The size.** 49.9 MiB for a world just booted, 52.9 MiB three minutes later with the
+  same counts (the mobs' spell affects). A mob is 360 bytes and 64 more for each affect; an
+  item is 3,328 bytes, 3,076 of them four fixed-width text fields. Staging's 10,850 objects are what crossed
+  64 MiB. Redis held 59 MiB with one generation stored.
+- **On staging** the same capture took 285 to 295 s: it has half as many objects again, and
+  a loop that runs late makes fewer calls.
+
+The script that ran it is not kept: the
+[capture journey](persistence-plan.md#phase-8-world-recovery-2) is the measurement from here
+on.

@@ -23,8 +23,9 @@ round; #3 stays open for its server configuration
 ([record](persistence-done.md#phase-6-landed-done)). Phase 7 landed as
 [!9](https://gitlab.com/max757/duris/-/merge_requests/9) in `77734a404` after one review
 round; #5 stays open for its server configuration
-([record](persistence-done.md#phase-7-landed-done)). Phase 8 is next, on
-`fix/2-persistence-phase-8`; it is not started.
+([record](persistence-done.md#phase-7-landed-done)). Phase 8 is under way on
+`fix/2-persistence-phase-8`: its decisions are below, and
+[Phase 8 progress](persistence-done.md#phase-8-progress) says which items have landed.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
@@ -480,6 +481,61 @@ wear or wield a hidden item by keyword; a server captures nothing unless
 start ten minutes apart by default, the strain is stated beside the setting, and a generation
 taken at that interval is still accepted at boot. Each has its test.
 
+How each item is done (decided 2026-10-04, after the
+[baseline](persistence-done.md#the-baseline-measurement-done)):
+
+1. The ceiling goes from 64 MiB to 256 MiB, and the store's chunk limit follows it (256
+   chunks of 1 MiB). It stays a fixed number because it is what bounds memory: the game holds
+   one generation and Redis two for a moment. A mob costs about 400 bytes and an item 3.3 KiB,
+   so 256 MiB holds the 54,000 mobs and 70,000 objects on the ground, against 11,000 today;
+   past it a capture fails and item 3 says so. The capture reserves the ceiling's address
+   space once, so its buffer never moves: the old one doubled as it grew, and each doubling
+   copied the whole capture on the game thread, 18 ms at 32 MiB. Chunking and streaming were
+   not needed: the generation already goes to Redis in 1 MiB chunks, and only the ceilings
+   stopped it.
+2. Time is the capture's only limit, as it is for events since Phase 7. A capture is 0.34 s
+   of work, but it took 193 s on an idle server, because each call stopped after 1,024
+   steps, and a step is as little as one room looked at (253,000 rooms, two calls a second).
+   The step limit goes; the 2 ms a call stays. Each object record also allocated and
+   zero-filled room for 512 items (1.7 MB) to write one, three quarters of the capture's
+   work: it writes into one scratch array instead. The 300 s budget stays: nothing needs it
+   changed once a capture takes a tenth of it.
+3. A failed attempt is counted where the capture is driven (`redis_world_runtime.c`): a
+   capture that failed or expired, a generation that did not publish, and an attempt that
+   could not start because the writer lease or the floor worker was unavailable. A published
+   generation resets the count. The third failure in a row raises one
+   `domain=world_recovery` alert whose action is the reason (`capture_failed`,
+   `capture_expired`, `publish_failed`, `writer_unavailable`, `floor_unavailable`) and whose
+   detail is `failures=N last_ack_sequence=N last_ack_age_secs=N` (-1: none since boot). The
+   `redis detailed` and runtime health outputs show the same age.
+   Found with it: a writer that lost its lease could never publish again without a restart.
+   The lease is renewed only by a publish, so a run of failures longer than the lease (the
+   three days on staging), a Redis restart or a flush ended it for good. A publish now takes
+   the lease when nobody holds it, and still refuses when another writer does.
+4. All six raises put the corpse's items on the raised creature again, and
+   `place_raised_item()` goes. `wear()`, which every way of equipping goes through, refuses
+   a hidden item for a player's pet, so `wear`, `wield` and `hold` by keyword skip it;
+   `wear all` keeps its own check, which lets it go on to the next item.
+5. `.env.example` and the local `.env` set `REDIS_WORLD_STATE=FALSE`. The code needs no
+   change to do nothing when it is off: the capture job is registered disabled, the pulse
+   returns at its first test, floor drops are not recorded, and no attempt is counted, so no
+   alert. A journey pins it.
+6. The interval's default is 600 seconds and it accepts 5 to 3,600. Two limits follow it by
+   the same ten minutes (five for a capture's budget, five for the restart):
+   - `REDIS_WORLD_STATE_MAX_AGE` is at least the interval plus 600 seconds, which is also
+     its default; a lower setting is raised to it, since it could only refuse every
+     generation. It accepts up to a day.
+   - The writer lease is the interval plus 600 seconds instead of a fixed ten minutes: a
+     publish renews it, so at a ten-minute interval it ran out before every publish.
+   `.env.example` no longer sets the maximum age, so it follows the interval. A server whose
+   `.env` still says `REDIS_WORLD_STATE_INTERVAL=10` keeps capturing without a pause until
+   the line is removed: server configuration.
+
+One journey is the measurement and the pin for items 1, 2 and 6, as in Phase 7:
+`test_mysql_world_capture_journey.py`, in `make test-db`. It boots the full world on a
+disposable MariaDB and Redis with recovery on while mortals play, and reads the capture's
+own record of its size and time.
+
 ## What was cut, and why
 
 Each part was removed in turn ([ablation](../../.agents/skills/ablation/SKILL.md)) and stayed only
@@ -555,6 +611,16 @@ All hold: the gate passed on `0b90e5fc1`
 The world capture is left, on the optimised build. Phases 4 (alerts and logs), 5 (bugs from
 the logs), 6 (backups) and 7 (the game loop) are done and on master.
 
-1. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2), and with it the raised corpse's
-   items (its item 4). World recovery also becomes a switch that is off by default, with a
-   capture every ten minutes when it is on (its items 5 and 6).
+[Phase 8: world recovery (#2)](#phase-8-world-recovery-2) is under way on
+`fix/2-persistence-phase-8`, each item with its tests in its own commits. An item leaves this
+list when its record is under [Phase 8 progress](persistence-done.md#phase-8-progress):
+
+1. Captures above 64 MiB (item 1).
+2. Captures that expire under load (item 2).
+3. Failures that raise no alert, and the writer lease that does not come back (item 3).
+4. A raised corpse's items (item 4).
+5. World recovery off unless a server turns it on (item 5).
+6. The ten-minute interval and the two limits that follow it (item 6).
+7. The full-world capture journey, and the measurement after.
+8. The gate on the branch head (`./scripts/format.sh --check`, `make test-all`,
+   `make test-db`), then the merge request for #2.
