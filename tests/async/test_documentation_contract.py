@@ -222,7 +222,7 @@ class DocumentationContractTest(unittest.TestCase):
         for token in ("10-second", "READ-COMMITTED", "utf8mb4", "250 ms", "100 ms"):
             self.assertIn(token, configuration, token)
 
-    def test_redis_example_enables_all_local_subsystems(self) -> None:
+    def test_redis_example_leaves_world_recovery_off(self) -> None:
         example = (ROOT / ".env.example").read_text()
         assignments = dict(
             match.groups()
@@ -231,12 +231,13 @@ class DocumentationContractTest(unittest.TestCase):
             )
         )
 
-        for toggle in (
-            "REDIS",
-            "REDIS_WORLD_STATE",
-            "REDIS_DONATION_SUBSCRIBER",
-        ):
+        for toggle in ("REDIS", "REDIS_DONATION_SUBSCRIBER"):
             self.assertEqual(assignments.get(toggle), "TRUE", toggle)
+        # World recovery is a switch a server turns on, at ten minutes; the maximum age
+        # is left to follow the interval.
+        self.assertEqual(assignments.get("REDIS_WORLD_STATE"), "FALSE")
+        self.assertEqual(assignments.get("REDIS_WORLD_STATE_INTERVAL"), "600")
+        self.assertNotIn("REDIS_WORLD_STATE_MAX_AGE", assignments)
 
         world_secret = assignments.get("REDIS_WORLD_STATE_SECRET", "")
         donation_secret = assignments.get("REDIS_DONATION_SECRET", "")

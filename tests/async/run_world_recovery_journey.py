@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
-"""World recovery, switched on, says when it stops working and comes back by itself
-(persistence plan phase 8).
+"""World recovery is a switch: off it does nothing, and on it says when it stops working,
+comes back by itself and restores what its interval lets a generation age to (persistence
+plan phase 8).
 
-A real server on a disposable MariaDB and Redis, with the mini world and a capture every
-five seconds:
-- once a generation is published, Redis is stopped. The third attempt in a row that leaves
-  no generation raises one alert, naming the reason, the last published sequence and its
-  age; the failures after it raise no other;
+A real server on a disposable MariaDB and Redis, with the mini world:
+- with the switch off, as the template ships it, a player drops an item and the first
+  capture's time passes: nothing is captured, Redis holds no world or floor key, and no
+  alert is raised;
+- with it on and a capture every five seconds, Redis is stopped once a generation is
+  published. The third attempt in a row that leaves no generation raises one alert, naming
+  the reason, the last published sequence and its age; the failures after it raise no
+  other;
 - Redis comes back empty, so the writer's lease is gone with it. The next capture publishes
-  and holds the lease again, with no restart.
+  and holds the lease again, with no restart;
+- the server is killed, and booted when its last generation is older than the maximum age
+  it was configured with (60 seconds). That setting is below the interval plus 600, so it
+  was raised, and the boot restores the generation;
+- with no interval set, captures are 600 seconds apart and a generation is accepted for
+  1,200.
 Run it through with_disposable_mariadb.sh (make test-db).
 """
 import os
@@ -75,6 +84,7 @@ def run(binary: Path) -> None:
         output_path = game / "server.out"
         redis = None
         server = None
+        booted = 0.0
 
         def start_redis() -> subprocess.Popen:
             process = subprocess.Popen(
@@ -96,7 +106,10 @@ def run(binary: Path) -> None:
                 ["redis-cli", "--raw", "-h", "127.0.0.1", "-p", str(redis_port), *arguments],
                 text=True).strip()
 
-        def boot(**settings: str) -> subprocess.Popen:
+        def boot(**settings: str):
+            nonlocal booted
+            for name in ("sys", "file", "status"):
+                (game / "logs/log" / name).unlink(missing_ok=True)
             port, tls, websocket = journey.available_ports()
             with output_path.open("w") as output:
                 process = subprocess.Popen(
@@ -109,7 +122,12 @@ def run(binary: Path) -> None:
                 assert process.poll() is None and time.monotonic() < deadline, \
                     output_path.read_text(errors="replace")[-2000:]
                 time.sleep(.1)
-            return process
+            booted = time.monotonic()
+            return process, port
+
+        def stop() -> None:
+            server.terminate()
+            assert server.wait(timeout=60) == 0, log("sys")[-2000:]
 
         def log(name: str) -> str:
             path = game / "logs/log" / name
@@ -139,7 +157,28 @@ def run(binary: Path) -> None:
             fence = namespace + ":season:1:world_state:writer_fence"
             current = namespace + ":season:1:world_state:current"
 
-            server = boot(REDIS_WORLD_STATE="TRUE", REDIS_WORLD_STATE_INTERVAL="5")
+            # Off: the first capture would start 30 seconds after the boot.
+            server, port = boot(REDIS_WORLD_STATE="FALSE")
+            client = journey.MudClient(port)
+            journey.create_character(client)
+            client.send("drop all")
+            client.expect("You drop", timeout=20)
+            time.sleep(max(0, 40 - (time.monotonic() - booted)))
+            client.close()
+            assert "world state enabled" not in log("sys"), log("sys")[-1500:]
+            assert "world recovery" not in log("sys"), log("sys")[-1500:]
+            assert redis_cli("KEYS", namespace + ":*world_state*") == ""
+            assert redis_cli("KEYS", namespace + ":*floor*") == ""
+            assert "domain=world_recovery" not in log("file"), log("file")[-1500:]
+            stop()
+            print("off: a dropped item and the first capture's time left no capture, no "
+                  "Redis key and no alert", flush=True)
+
+            on = dict(REDIS_WORLD_STATE="TRUE", REDIS_WORLD_STATE_INTERVAL="5",
+                      REDIS_WORLD_STATE_MAX_AGE="60")
+            server, _ = boot(**on)
+            wait_for("the maximum age did not follow the interval", 10, lambda:
+                     "redis world state enabled: interval=5s, max_age=605s" in log("sys"))
             first = wait_for("no generation was published", 60, acknowledged)[-1]
             assert not re.search(ALERT, log("file")), log("file")[-1500:]
 
@@ -171,6 +210,26 @@ def run(binary: Path) -> None:
             assert len(re.findall(ALERT, log("file"))) == 1
             print(f"recovery: generation {later} was published with the lease taken again, "
                   "with no restart", flush=True)
+
+            # A crash, and a boot when the last generation is older than the configured
+            # maximum age: the age that counts follows the interval, so it is restored.
+            server.kill()
+            server.wait()
+            killed = time.monotonic()
+            last = int(redis_cli("GET", current))
+            time.sleep(65)
+            server, _ = boot(**on)
+            wait_for("the generation was not restored", 10, lambda:
+                     f"redis: restored world recovery generation sequence={last} "
+                     in log("sys") and "Crash recovery complete" in log("status"))
+            print(f"crash: generation {last} was restored {time.monotonic() - killed:.0f} s "
+                  "after the kill, past the 60 s it was configured with", flush=True)
+            stop()
+
+            server, _ = boot(REDIS_WORLD_STATE="TRUE")
+            wait_for("the defaults changed", 10, lambda:
+                     "redis world state enabled: interval=600s, max_age=1200s" in log("sys"))
+            print("defaults: a capture every 600 s, accepted at boot for 1,200", flush=True)
         finally:
             if server and server.poll() is None:
                 server.terminate()

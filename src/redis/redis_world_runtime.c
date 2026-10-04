@@ -33,8 +33,10 @@
 
 namespace
 {
-constexpr int WORLD_STATE_INTERVAL_DEFAULT = 10;
-constexpr int WORLD_STATE_MAX_AGE_DEFAULT = 300;
+constexpr int WORLD_STATE_INTERVAL_DEFAULT = 600;
+// The maximum age and the writer lease follow the interval by this much: five minutes for a
+// capture's budget and five for the restart.
+constexpr int WORLD_STATE_INTERVAL_MARGIN = 600;
 constexpr uint64_t WORLD_DRAIN_TIMEOUT_MSEC = 30000;
 constexpr uint64_t FLOOR_DRAIN_TIMEOUT_MSEC = 1000;
 
@@ -44,7 +46,7 @@ bool world_enabled = false;
 bool recovery_boot = false;
 bool clean_restart_boot = false;
 int world_state_interval = WORLD_STATE_INTERVAL_DEFAULT;
-int world_state_max_age = WORLD_STATE_MAX_AGE_DEFAULT;
+int world_state_max_age = WORLD_STATE_INTERVAL_DEFAULT + WORLD_STATE_INTERVAL_MARGIN;
 bool world_recovery_quiesced = false;
 std::string world_writer_token;
 std::string world_authentication_secret;
@@ -59,7 +61,6 @@ uint64_t clean_shutdown_sequence = 0;
 uint64_t world_sequence_floor = 0;
 
 #ifndef __NO_REDIS__
-constexpr uint64_t WORLD_WRITER_LEASE_MSEC = 10 * 60 * 1000;
 constexpr std::array<unsigned int, 7> WORLD_WRITER_RETRY_SECONDS = { 1, 2, 4, 8, 16, 30, 60 };
 constexpr auto WORLD_DEGRADED_LOG_INTERVAL = std::chrono::seconds(60);
 bool world_writer_retryable = false;
@@ -73,6 +74,12 @@ const char *world_degraded_reason = "none";
 unsigned int world_capture_failures = 0;
 
 auto redis_world_recovery_ensure_initialized() -> bool;
+
+// Only a publish renews the lease, so it outlasts the interval.
+uint64_t world_writer_lease()
+{
+	return (world_state_interval + WORLD_STATE_INTERVAL_MARGIN) * 1000ULL;
+}
 
 // An attempt that left no generation. A published one ends the run; the third in a row
 // raises the run's one alert.
@@ -262,7 +269,7 @@ bool redis_world_writer_fence_claim()
 		world_writer_epoch = 0;
 		return false;
 	}
-	world_writer_lease_msec = WORLD_WRITER_LEASE_MSEC;
+	world_writer_lease_msec = world_writer_lease();
 	const redis_world_store_config config = redis_world_store_config_copy();
 	if (redis_world_store_claim_fence(&config, world_writer_token.c_str(),
 					  world_writer_lease_msec))
@@ -334,7 +341,7 @@ void redis_world_writer_retry_pulse()
 		}
 		world_writer_token = std::move(world_writer_retry_token);
 		world_writer_epoch = world_writer_retry_epoch;
-		world_writer_lease_msec = WORLD_WRITER_LEASE_MSEC;
+		world_writer_lease_msec = world_writer_lease();
 		world_writer_retry_epoch = 0;
 		if ((!world_context || world_context->err) && !redis_reconnect())
 		{
@@ -368,19 +375,19 @@ void redis_world_writer_retry_pulse()
 	world_writer_retry_epoch = world_runtime_epoch;
 	const redis_world_store_config config = redis_world_store_config_copy();
 	const std::string token = world_writer_retry_token;
+	const uint64_t lease = world_writer_lease();
 	try
 	{
-		world_writer_retry_future =
-			std::async(std::launch::async,
-				   [config, token, renewing]()
-				   {
-					   return renewing ? redis_world_store_renew_fence(
-								     &config, token.c_str(),
-								     WORLD_WRITER_LEASE_MSEC) :
-							     redis_world_store_claim_fence(
-								     &config, token.c_str(),
-								     WORLD_WRITER_LEASE_MSEC);
-				   });
+		world_writer_retry_future = std::async(
+			std::launch::async,
+			[config, token, renewing, lease]()
+			{
+				return renewing ?
+					       redis_world_store_renew_fence(&config, token.c_str(),
+									     lease) :
+					       redis_world_store_claim_fence(&config, token.c_str(),
+									     lease);
+			});
 	}
 	catch (const std::exception &)
 	{
@@ -698,7 +705,7 @@ bool redis_world_runtime_start(const redis_world_runtime_config *config)
 	recovery_boot = false;
 	clean_restart_boot = false;
 	world_state_interval = WORLD_STATE_INTERVAL_DEFAULT;
-	world_state_max_age = WORLD_STATE_MAX_AGE_DEFAULT;
+	world_state_max_age = WORLD_STATE_INTERVAL_DEFAULT + WORLD_STATE_INTERVAL_MARGIN;
 	world_recovery_quiesced = false;
 	world_writer_token.clear();
 	world_writer_lease_msec = 0;
@@ -745,14 +752,17 @@ bool redis_world_runtime_start(const redis_world_runtime_config *config)
 		if (interval_text && *interval_text)
 		{
 			const int interval = atoi(interval_text);
-			if (interval >= 5 && interval <= 300)
+			if (interval >= 5 && interval <= 3600)
 				world_state_interval = interval;
 		}
+		// A generation is as old as the interval and its capture when the next one
+		// replaces it: a lower maximum age would refuse every one.
+		world_state_max_age = world_state_interval + WORLD_STATE_INTERVAL_MARGIN;
 		const char *max_age_text = getenv("REDIS_WORLD_STATE_MAX_AGE");
 		if (max_age_text && *max_age_text)
 		{
 			const int max_age = atoi(max_age_text);
-			if (max_age >= 60 && max_age <= 3600)
+			if (max_age >= world_state_max_age && max_age <= 86400)
 				world_state_max_age = max_age;
 		}
 		if (world_enabled)

@@ -215,13 +215,39 @@ player-save pipeline.
 | `REDIS_CA_CERT` | empty | Readable CA bundle | Required when Redis TLS is enabled and used for peer verification. |
 | `REDIS_TLS_SERVER_NAME` | `REDIS_HOST` | Certificate DNS name | Optional runtime SNI and certificate-name override, useful when connecting by IP to a certificate issued for a DNS name. |
 | `REDIS_ALLOWED_TARGETS` | none | Comma-separated exact `host:port/database` or `unix:/absolute/socket/database` values | Required destructive-maintenance allow-list. |
-| `REDIS_WORLD_STATE` | disabled | `TRUE` enables it | Enable bounded capture and background publication of crash-recovery world generations. |
-| `REDIS_WORLD_STATE_INTERVAL` | `10` seconds | `5`-`300` | Snapshot interval when world-state recovery is enabled. |
-| `REDIS_WORLD_STATE_MAX_AGE` | `300` seconds | `60`-`3600` | Maximum snapshot age accepted during recovery. |
+| `REDIS_WORLD_STATE` | disabled | `TRUE` enables it | Enable bounded capture and background publication of crash-recovery world generations. Off, the server does none of that work. See [what world recovery buys and costs](#what-world-recovery-buys-and-costs). |
+| `REDIS_WORLD_STATE_INTERVAL` | `600` seconds | `5`-`3600` | Seconds from one capture's start to the next when world-state recovery is enabled. |
+| `REDIS_WORLD_STATE_MAX_AGE` | the interval plus `600` seconds | the interval plus `600`, to `86400` | Maximum snapshot age accepted during recovery. A lower setting is raised to the minimum: it could only refuse every generation. |
 | `REDIS_WORLD_STATE_SECRET` | none | `32`-`256` bytes | Independent HMAC key required when world recovery is enabled. It authenticates the manifest and complete generation payload; do not reuse Redis, database, donation, or DurisWeb credentials. |
 | `REDIS_WORLD_STATE_SECRET_PREVIOUS` | empty | `32`-`256` bytes | Optional previous recovery HMAC key accepted only for reading and cleanup during a bounded rotation window. New generations are always signed by the current key. |
 | `REDIS_DONATION_SUBSCRIBER` | disabled | Exact `TRUE` enables it | Subscribe to authenticated external donation notices. No polling job or subscriber connection exists by default. |
 | `REDIS_DONATION_SECRET` | none | At least 32 bytes | Independent HMAC key required when the donation subscriber is enabled. Do not reuse a Redis, database, or DurisWeb secret. |
+
+### What world recovery buys and costs
+
+World recovery is a convenience, not a safety net, and it is off unless a server sets
+`REDIS_WORLD_STATE=TRUE`. Characters, pets, corpses, lockers, banks and shops are saved
+without it. It brings the mobs, the objects on the ground, the doors and the zone ages back
+as the last capture had them after a crash or a cold restart, where the boot would otherwise
+reset every zone. A copyover keeps the world by itself.
+
+What it costs, measured on the full world (54,000 mobs, 253,000 rooms):
+
+- **The game thread.** While a capture runs, the game thread gives it at most 2 ms every
+  second pulse (half a second). A capture is 36 such calls, about 16 seconds.
+- **Redis.** Each generation is the whole world: 50 MiB after a boot and 67 MiB with 11,000
+  objects on the ground, since an item is 3.3 KiB. Redis holds two generations while one
+  replaces the other.
+
+`REDIS_WORLD_STATE_INTERVAL` sets how often that is paid: ten minutes by default. A shorter
+interval costs more of both; a longer one restores an older world. Two limits follow the
+interval, so that a generation taken at it is still accepted at boot: when the next capture
+replaces it, a generation is as old as the interval plus the time that capture took, and the
+server then has to restart.
+
+- `REDIS_WORLD_STATE_MAX_AGE`, past which boot refuses a generation, is at least the
+  interval plus 600 seconds (300 for a capture's budget, 300 for the restart).
+- The writer lease, which only a publish renews, lasts the interval plus 600 seconds.
 
 World recovery is intentionally separate from player saves and reconstructible caches.
 At boot the server constructs immutable connection settings for each subsystem. In
@@ -249,7 +275,8 @@ and retired Duris surfaces, but it must not have access to other applications' p
 Test the exact ACL rules on a disposable Redis instance before deployment; Redis command
 categories and Lua ACL behavior can differ across supported server versions.
 
-At boot, one publisher claims a renewable 10-minute writer lease. Each background
+At boot, one publisher claims a renewable writer lease of the interval plus ten minutes.
+Each background
 publication verifies that lease and expected prior pointer, writes the immutable
 sequence-keyed payload, advances the current pointer and diagnostic metadata, consumes
 the pre-capture floor hash, and renews the lease in one atomic Lua compare-and-set. A
@@ -332,15 +359,15 @@ REDIS_DB=0
 REDIS_NAMESPACE=duris:local:default
 REDIS_TLS=FALSE
 REDIS_ALLOWED_TARGETS=127.0.0.1:6379/0
-REDIS_WORLD_STATE=TRUE
+REDIS_WORLD_STATE=FALSE
 REDIS_WORLD_STATE_SECRET=local-development-only-world-state-hmac-change-before-shared-use
 REDIS_DONATION_SUBSCRIBER=TRUE
 REDIS_DONATION_SECRET=local-development-only-donation-hmac-change-before-shared-use
 ```
 
-Those fixed values are local-only placeholders so the example brings up every Redis
-worker. Replace both with distinct random secrets before connecting any shared or
-externally reachable service.
+Those fixed secrets are local-only placeholders; the world-recovery one is there for when
+the switch is turned on. Replace both with distinct random secrets before connecting any
+shared or externally reachable service.
 
 Stop the server before clearing Redis state. `scripts/clear-redis.sh --confirm
 <host:port/database|unix:/absolute/socket/database>` loads the owner-only `.env`, requires

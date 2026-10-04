@@ -147,7 +147,7 @@ caches and recovery integration. Local development may use shared
 presence, cache, maintenance, and, when enabled, donation ACL identities. Verified
 `REDIS_TLS=TRUE` transport applies to every runtime connection; non-loopback production
 endpoints require TLS. `REDIS_WORLD_STATE=TRUE` additionally enables immutable world
-recovery.
+recovery, which is off unless a server turns it on.
 Player saves do not depend on Redis. If a DurisWeb backend will authenticate
 through WebSocket or GMCP, give it a private `DURISWEB_SECRET` and follow the
 challenge-response contract in the
