@@ -8,33 +8,28 @@ the open work items, what was cut and [What is left](#what-is-left). Finished wo
 (what landed, decisions, tests, verification, commits, bugs found) goes there and the item leaves
 the list. A decision that changes the framework is written here.
 
-**Status (2026-10-04):** Phases 1 to 7 are done and on master. Phase 3 landed as
+**Status (2026-10-05):** Phases 1 to 8 are done and on master, and
+[nothing is left](#what-is-left). Phase 3 landed as
 [!5](https://gitlab.com/max757/duris/-/merge_requests/5) in `21f65de2c` after one review
 round ([record](persistence-done.md#phase-3-landed-done)). The reset is finished: #7 is closed,
 and #3, #5 and #6 record what it resolved
-([record](persistence-done.md#the-work-items-closed-out-done)). Phases 4 to 8 take the open work
+([record](persistence-done.md#the-work-items-closed-out-done)). Phases 4 to 8 took the open work
 items, one phase each. Phase 4 landed as
 [!6](https://gitlab.com/max757/duris/-/merge_requests/6) in `d6952d701`, its review clean
 ([record](persistence-done.md#phase-4-landed-done)). Phase 5 landed as
 [!7](https://gitlab.com/max757/duris/-/merge_requests/7) in `218d0640b` after one review
 round, and #4 is closed ([record](persistence-done.md#phase-5-landed-done)). Phase 6 landed as
 [!8](https://gitlab.com/max757/duris/-/merge_requests/8) in `1a4b15f9d` after one review
-round; #3 stays open for its server configuration
-([record](persistence-done.md#phase-6-landed-done)). Phase 7 landed as
+round ([record](persistence-done.md#phase-6-landed-done)). Phase 7 landed as
 [!9](https://gitlab.com/max757/duris/-/merge_requests/9) in `77734a404` after one review
-round; #5 stays open for its server configuration
-([record](persistence-done.md#phase-7-landed-done)). Phase 8 is done on
-`fix/2-persistence-phase-8` and in review as
-[!10](https://gitlab.com/max757/duris/-/merge_requests/10), tagged
-`persistence/phase-8-review-0` ([progress](persistence-done.md#phase-8-progress)); #2 is
-closed. The settings that Phases 4, 6 and 7 left on #6, #3 and #5 were decided the same day
-and are done on the same branch, tagged `persistence/phase-8-review-1`
-([record](persistence-done.md#the-settings-that-were-left-done)); those three items are
-closed too.
+round ([record](persistence-done.md#phase-7-landed-done)). Phase 8 landed as
+[!10](https://gitlab.com/max757/duris/-/merge_requests/10) in `791b1b132` after one review
+round, and with it the settings that Phases 4, 6 and 7 had left on #6, #3 and #5
+([record](persistence-done.md#phase-8-landed-done)); #2, #3, #5 and #6 are closed.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
-storms). Phases 4 to 8 take what is still open in #6, #4, #3, #5 and #2.
+storms). Phases 4 to 8 took what was still open in #6, #4, #3, #5 and #2.
 
 ## What was wrong
 
@@ -561,8 +556,8 @@ variables is for whoever runs it.
 
 Phases 4, 6 and 7 left settings on their work items as server configuration. The owner
 decided each of them on 2026-10-04: the repository carries a default, whoever runs a server
-sets what differs, and the items close. They are done on `fix/2-persistence-phase-8`, after
-Phase 8 ([record](persistence-done.md#the-settings-that-were-left-done)).
+sets what differs, and the items close. They were done on `fix/2-persistence-phase-8`, after
+Phase 8, and landed with it ([record](persistence-done.md#the-settings-that-were-left-done)).
 
 1. **Restore drills are off by default** (#3). `drill_seconds` 0 in the backup policy means
    no drills, and the example policy ships it: the drill timer's command does nothing and
@@ -666,16 +661,7 @@ All hold: the gate passed on `0b90e5fc1`
 
 ## What is left
 
-Phases 4 (alerts and logs), 5 (bugs from the logs), 6 (backups) and 7 (the game loop) are
-done and on master. The last phase is done and in review:
-
-1. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2), with
-   [the settings that were left](#the-settings-that-were-left-3-5-6) on #3, #5 and #6: done,
-   in review as [!10](https://gitlab.com/max757/duris/-/merge_requests/10); it leaves this
-   list when it lands. `persistence/phase-8-review-0` is Phase 8 and `-review-1` the head
-   with the settings. A review round's fixes go on `fix/2-persistence-phase-8`, each finding
-   in its own commit with its test, the fixed head tagged `persistence/phase-8-review-2`
-   ([how](persistence-done.md#review-and-branches)). Every item, the capture journey with
-   its measurement, the mob items of a restored world (which the journey found) and the
-   gates have their records under
-   [Phase 8 progress](persistence-done.md#phase-8-progress).
+Nothing. Phases 4 (alerts and logs), 5 (bugs from the logs), 6 (backups), 7 (the game loop)
+and 8 (world recovery, with [the settings that were left](#the-settings-that-were-left-3-5-6)
+on #3, #5 and #6) are done and on master, and the work items the plan took, #2 to #7, are
+closed ([record](persistence-done.md#phase-8-landed-done)).

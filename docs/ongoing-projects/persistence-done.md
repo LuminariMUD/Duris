@@ -49,7 +49,7 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   It landed on 2026-10-04 in `77734a404`, one `--no-ff` merge of the `-1` head, with no
   rebase or squash, so both tags still name what was reviewed. The branch is deleted
   ([record](#phase-7-landed-done)).
-- Phase 8 is reviewed as [!10](https://gitlab.com/max757/duris/-/merge_requests/10) (source
+- Phase 8 was reviewed as [!10](https://gitlab.com/max757/duris/-/merge_requests/10) (source
   `fix/2-persistence-phase-8`, branched from master `0d6a772b9`), tagged
   `persistence/phase-8-review-0` on the head with this line. Master is merged in twice, for
   two records it gained during the phase (`99f6ab8e9`, `638396fe6`).
@@ -57,8 +57,10 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   [the settings that were left](#the-settings-that-were-left-done) on #3, #5 and #6, which
   the owner decided the same day, before any review. The review read `-1`, and
   `persistence/phase-8-review-2` is the head with its fixes
-  ([review round 1](#review-round-1-mr-10)).
-- Each later phase works the same way: a branch from master named for its work item, an MR,
+  ([review round 1](#review-round-1-mr-10)). It landed on 2026-10-05 in `791b1b132`, one
+  `--no-ff` merge of the `-2` head, with no rebase or squash, so all three tags still name
+  the commits they were put on. The branch is deleted ([record](#phase-8-landed-done)).
+- Phases 4 to 8 each went the same way: a branch from master named for its work item, an MR,
   the head the review reads tagged `persistence/phase-<n>-review-0`, a review round's fixes on
   the branch tagged `-1`, `-2` and so on, then one `--no-ff` merge of the last tag.
 
@@ -3244,7 +3246,7 @@ Phase 7 resolved.
 
 ## Phase 8 progress
 
-Phase 8 ([plan](persistence-plan.md#phase-8-world-recovery-2)) is being done on
+Phase 8 ([plan](persistence-plan.md#phase-8-world-recovery-2)) was done on
 `fix/2-persistence-phase-8`, branched on 2026-10-04 from master `0d6a772b9`. Each item below
 gets its record when it lands; an item without one is not done.
 
@@ -3721,3 +3723,24 @@ times against 100 ms Redis deadlines, so a busy machine fails it.
 
 Not run: `npm test --prefix site` (the round touches nothing of the site), the
 backup-recovery container job, CodeQL and Trivy.
+
+### Phase 8 landed (done)
+
+On 2026-10-05 !10 landed in `791b1b132`, one `--no-ff` merge of `512fc4d7d`, the review round 1
+head (`persistence/phase-8-review-2`). Master had no commits the branch lacked (its two
+records were merged into the branch during the phase), so the merge's tree is that head's.
+The gate ran on `3b8db7bf9` ([record](#the-gate-on-the-review-rounds-head-done)), and the one
+commit after it is the round's record, so the gate was not rerun for the merge;
+`npm test --prefix site` (14 tests) ran on the head with this record. No migration, so
+`duris_dev` needed nothing.
+
+`fix/2-persistence-phase-8` is deleted. #2, #3, #5 and #6 were closed before the merge, so
+every work item the plan took is closed and
+[nothing is left](persistence-plan.md#what-is-left). A server with a website sets
+`DURIS_WEBSOCKET=TRUE` before it takes this master
+([the settings that were left](#the-settings-that-were-left-done)).
+
+Two rows of [the Community-Duris record](../records/COMMUNITY_DURIS_TRACKING.md) were open
+for defects this phase fixed here, and name its commits now: their #660 (a), a pet that
+wears a hidden item (`374c8a518`), and their #573 (d), the writer lease a copyover kept
+(`a9e6e391d`).
