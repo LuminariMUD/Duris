@@ -3488,3 +3488,26 @@ What it shows:
 
 Master gained `99f6ab8e9` during the phase: the credits record `docs/records/CREDITS.md`
 and its line in the docs index. It is merged into the branch in `b47ed0746`, unchanged.
+
+### The gate on the branch head (done)
+
+On `05cd4e3b1`, the head with every record above, on a server rebuilt from it:
+`./scripts/format.sh --all --check` (1031 files clean); `make test-all -j16 TEST_JOBS=16`
+alone (669 of 669, 439 s, with the development and the production build); then
+`make test-db` (39 of 39, 231 s) and `npm test --prefix site` (14 tests; `docs/` changed).
+Neither suite left `logs/log/dupes` or `logs/log/item_claims` behind. Beside the other
+database tests the capture journey's generation of 69.0 MiB was captured in 19.5 s and
+restored 4 s after the kill.
+
+That was the second run of the two suites. In the first, `make test-db` failed the raise
+journey (38 of 39): the server had been built once without the hidden-item check, to see
+the journey fail without it, and the restored source kept its older date, so `make` kept
+that object and the server lacked the check. Every source file the phase changed was
+touched and rebuilt, and both suites were run again on that server.
+
+One run in twelve of the Redis tests by themselves (`run_regression_tests.py --match redis`)
+had one failure that did not repeat; its name was not kept. Neither run of `make test-all`
+had it.
+
+Not run: the backup-recovery container job, `run_runtime_compatibility_mysql.sh` beyond its
+leg in `make test-db`, CodeQL and Trivy (nothing they check changed; no schema change).

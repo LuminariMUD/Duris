@@ -543,6 +543,11 @@ captured in about 20 s of its 300 s under 30 players, with no pulse past 250 ms,
 crash restores it in 3 s
 ([the measurement](persistence-done.md#the-capture-journey-and-the-measurement-done)).
 
+Left on #2, as server configuration: whether a server turns recovery on
+(`REDIS_WORLD_STATE=TRUE`), and the `REDIS_WORLD_STATE_INTERVAL` and
+`REDIS_WORLD_STATE_MAX_AGE` lines of an older `.env`, which keep the old interval until they
+are removed.
+
 ## What was cut, and why
 
 Each part was removed in turn ([ablation](../../.agents/skills/ablation/SKILL.md)) and stayed only
