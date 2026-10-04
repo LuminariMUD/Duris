@@ -197,6 +197,14 @@ if (( DATABASE_REQUIRED == 1 )); then
   export DB_NAME="$EFFECTIVE_DB_NAME"
 
   MYSQL_CONNECTION_ARGS=(--connect-timeout=10 -u "$DB_USER")
+  # A client unpacked outside the system's prefix reads its own charsets, not another
+  # package's, whose different list makes it warn on every call.
+  if MYSQL_CLIENT="$(command -v mysql)"; then
+    MYSQL_CHARSETS="$(dirname "$(dirname "$(readlink -f "$MYSQL_CLIENT")")")/share/mysql/charsets"
+    if [[ -d "$MYSQL_CHARSETS" ]]; then
+      MYSQL_CONNECTION_ARGS+=(--character-sets-dir="$MYSQL_CHARSETS")
+    fi
+  fi
   if [[ -n "${DB_SOCKET:-}" ]]; then
     if [[ "$ENVIRONMENT" != "local" ||
           ( "$DB_HOST" != "localhost" && "$DB_HOST" != "127.0.0.1" && "$DB_HOST" != "::1" ) ]]; then
