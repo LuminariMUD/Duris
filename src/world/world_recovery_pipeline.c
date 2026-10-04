@@ -772,6 +772,8 @@ bool world_recovery_pipeline_request(void)
 	active_capture.generation.timestamp = time(NULL);
 	try
 	{
+		// Reserved whole, so that appending a record never moves what is captured.
+		active_capture.generation.blob.reserve(WORLD_RECOVERY_MAX_BYTES);
 		active_capture.generation.blob.resize(sizeof(world_recovery_header));
 	}
 	catch (const std::bad_alloc &)

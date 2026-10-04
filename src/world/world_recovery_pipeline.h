@@ -9,7 +9,9 @@
 
 constexpr uint32_t WORLD_RECOVERY_SCHEMA_VERSION = 13;
 constexpr uint32_t WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED = 1U << 0;
-constexpr size_t WORLD_RECOVERY_MAX_BYTES = 64 * 1024 * 1024;
+// What one generation may take of the game's memory, and twice that of Redis's while the
+// next one is published. An NPC is about 400 bytes and an item 3.3 KiB.
+constexpr size_t WORLD_RECOVERY_MAX_BYTES = 256 * 1024 * 1024;
 constexpr size_t WORLD_RECOVERY_MAX_RECORD_BYTES = 2 * 1024 * 1024;
 constexpr size_t WORLD_RECOVERY_MAX_ITEM_TREE = 512;
 constexpr size_t WORLD_RECOVERY_MAX_FLOOR_BYTES = 16 * 1024 * 1024;

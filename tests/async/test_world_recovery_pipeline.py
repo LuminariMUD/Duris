@@ -277,6 +277,15 @@ static bool blocked_publish(const unsigned char *, size_t,
     return true;
 }
 
+static bool copying_publish(const unsigned char *data, size_t size,
+                            const world_recovery_header *,
+                            redis_shared_command_outcome *outcome, void *raw)
+{
+    static_cast<std::vector<unsigned char> *>(raw)->assign(data, data + size);
+    *outcome = REDIS_SHARED_OUTCOME_SUCCESS;
+    return true;
+}
+
 static void finish(std::vector<unsigned char>& blob, world_recovery_header& header)
 {
     header.payload_size = blob.size() - WORLD_RECOVERY_WIRE_HEADER_BYTES;
@@ -515,6 +524,45 @@ int main()
     const world_recovery_health canceled = world_recovery_pipeline_health_copy();
     assert(!canceled.initialized && !canceled.worker_running && !canceled.worker_busy);
     world_recovery_pipeline_reset_for_tests();
+
+    // A world above the old 64 MiB ceiling: its capture publishes, and boot takes it.
+    {
+        constexpr size_t old_ceiling = 64 * 1024 * 1024;
+        std::vector<obj_data> ground(20500);
+        for (size_t index = 0; index < ground.size(); ++index)
+        {
+            ground[index].obj_uid = 100000 + index;
+            ground[index].R_num = 0;
+            ground[index].loc_p = LOC_ROOM;
+            ground[index].loc.room = 0;
+            ground[index].next = index + 1 < ground.size() ? &ground[index + 1] : nullptr;
+        }
+        object_list = ground.data();
+        std::vector<unsigned char> published;
+        assert(world_recovery_pipeline_init(copying_publish, &published));
+        assert(world_recovery_pipeline_request());
+        world_recovery_completion completion = {};
+        while (!world_recovery_pipeline_take_completion(&completion))
+        {
+            world_recovery_pipeline_pulse();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        object_list = nullptr;
+        assert(completion.published && published.size() > old_ceiling);
+        assert(world_recovery_pipeline_health_copy().high_water_bytes > old_ceiling);
+        world_recovery_header large = {};
+        assert(world_recovery_validate(published.data(), published.size(), 300,
+                                       completion.sequence, &large));
+        assert(large.object_count == ground.size());
+        const int read_before = objects_read;
+        assert(world_recovery_restore(published.data(), published.size(), 300,
+                                      completion.sequence, nullptr));
+        assert(objects_read - read_before == static_cast<int>(ground.size()));
+        while (object_list)
+            extract_obj(object_list, FALSE);
+        objects_read = objects_extracted = 0;
+        world_recovery_pipeline_reset_for_tests();
+    }
 
     const auto valid_objects = object_generation({{item(500, 500, 0)}});
     reconcile_succeeds = false;
@@ -958,11 +1006,12 @@ with tempfile.TemporaryDirectory(prefix="duris-world-recovery-") as temp_dir:
     subprocess.run([str(binary)], check=True)
 print("[PASS] schema, sequence, completeness, age, length, and checksum framing validates")
 print("[PASS] in-flight publication joins before pwipe deletion can continue")
+print("[PASS] a world above the old 64 MiB ceiling is captured, published and restored")
 print("[PASS] duplicate/moved items and custody failures fail closed with rollback")
 print("[PASS] failed recovery and forced zone reset restore exactly one owned ground artifact")
 
 for token in (
-    "WORLD_RECOVERY_MAX_BYTES = 64 * 1024 * 1024",
+    "WORLD_RECOVERY_MAX_BYTES = 256 * 1024 * 1024",
     "WORLD_RECOVERY_MAX_RECORD_BYTES = 2 * 1024 * 1024",
     "WORLD_RECOVERY_MAX_FLOOR_BYTES = 16 * 1024 * 1024",
     "WORLD_RECOVERY_MAX_FLOOR_RECORDS = 32768",
@@ -1008,6 +1057,10 @@ assert "health.publish_operations" in worker
 assert "redis_worker_operation_prepare_snapshot(&snapshot.publish_operations)" in PIPELINE
 assert "crc32(0, generation->blob.data() + WORLD_RECOVERY_WIRE_HEADER_BYTES" in PIPELINE
 assert "std::vector<unsigned char> blob" not in worker
+request = section(PIPELINE, "bool world_recovery_pipeline_request", "void world_recovery_pipeline_pulse")
+assert "blob.reserve(WORLD_RECOVERY_MAX_BYTES)" in request
+assert ("static_assert(REDIS_WORLD_GENERATION_MAX_CHUNKS * REDIS_WORLD_GENERATION_CHUNK_BYTES ==\n"
+        "\t      WORLD_RECOVERY_MAX_BYTES)") in STORE
 print("[PASS] bounded capture is game-thread owned and publisher traverses no live graph")
 
 save = section(WORLD_RUNTIME, "bool redis_save_world_state(void)", "void redis_world_recovery_pulse")

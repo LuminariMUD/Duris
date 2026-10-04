@@ -24,6 +24,9 @@
 
 namespace
 {
+static_assert(REDIS_WORLD_GENERATION_MAX_CHUNKS * REDIS_WORLD_GENERATION_CHUNK_BYTES ==
+	      WORLD_RECOVERY_MAX_BYTES);
+
 struct world_keys
 {
 	char fence[128];

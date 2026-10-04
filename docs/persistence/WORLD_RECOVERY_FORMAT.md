@@ -49,7 +49,7 @@ A generation is not stored as one Redis value. The season-scoped generation key 
 an exact 120-byte `WRG2` manifest with version 2, total byte length, chunk count, the fixed
 1 MiB chunk size, a 32-byte lowercase hexadecimal upload token, a SHA-256 payload digest,
 and an HMAC-SHA256 tag bound to deployment, season, and sequence. The generation bytes are
-split across at most 64 keys qualified by sequence, upload token, and zero-based chunk
+split across at most 256 keys qualified by sequence, upload token, and zero-based chunk
 index. Every manifest and chunk expires with the configured generation TTL.
 
 The publisher writes one chunk per command on the recovery worker, then uses the writer
@@ -66,11 +66,17 @@ the loader requires equal hash/index counts, accepts at most 32,768 records, and
 
 Accepted recovery payload has these application-level ceilings:
 
-- generation bytes: 64 MiB;
+- generation bytes: 256 MiB;
 - floor object payload: 16 MiB;
-- generation plus floor payload: 64 MiB;
+- generation plus floor payload: 256 MiB;
 - floor records: 32,768;
 - individual generation Redis command/reply: 1 MiB plus protocol/key overhead.
+
+The generation ceiling bounds memory: the game holds one generation while it is captured and
+published, and Redis holds two while the next one replaces the last. The full world of
+54,000 NPCs, 11,000 floor objects and 10,000 doors is 67 MiB; an NPC is about 400 bytes and
+an item 3.3 KiB, so the ceiling leaves room for 70,000 floor objects. The capture reserves
+the ceiling's address space once, so appending a record never moves what is captured.
 
 Generation publication, floor encoding/indexing, and Redis socket work remain background
 operations. Durable reads and recovery planning occur only during boot.

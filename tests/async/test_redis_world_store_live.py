@@ -268,6 +268,24 @@ int main(int argc, char **argv)
     assert(reply->element[0]->type == REDIS_REPLY_STRING && !strcmp(reply->element[0]->str, "4"));
     assert(reply->element[1]->type == REDIS_REPLY_STRING && !strcmp(reply->element[1]->str, "1"));
     freeReplyObject(reply);
+
+    // A generation above the old 64 MiB ceiling, its last chunk a partial one, publishes and
+    // reads back; the next publish removes every one of its chunks.
+    std::vector<unsigned char> world(65 * REDIS_WORLD_GENERATION_CHUNK_BYTES + 17);
+    for (size_t index = 0; index < world.size(); ++index)
+        world[index] = static_cast<unsigned char>(index * 31 + (index >> 20));
+    assert(redis_world_store_publish(&config, writer_b, lease, world.data(), world.size(),
+                                     5, time(nullptr), 60));
+    assert(redis_world_store_read_generation(&config, 5, &loaded));
+    assert(loaded == world);
+    reply = run(context, "KEYS mud:season:42:world_state:generation:5:upload:*");
+    assert(reply->type == REDIS_REPLY_ARRAY && reply->elements == 66);
+    freeReplyObject(reply);
+    assert(redis_world_store_publish(&config, writer_b, lease, second, sizeof(second) - 1,
+                                     6, time(nullptr), 61));
+    reply = run(context, "KEYS mud:season:42:world_state:generation:5*");
+    assert(reply->type == REDIS_REPLY_ARRAY && reply->elements == 0);
+    freeReplyObject(reply);
     assert(redis_world_store_release_fence(&config, writer_b));
     assert(redis_world_store_release_fence(&next_season, writer_a));
     redisFree(context);
