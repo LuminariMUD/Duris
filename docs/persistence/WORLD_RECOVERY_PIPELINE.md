@@ -23,7 +23,12 @@ places while the capture runs can be met twice, in a container and by itself; it
 written once, in the tree it was met in first. Capture marks items
 that have live SQL custody and omits trees whose custody disagrees with their floor
 location; restore requires complete SQL reconciliation of every marked item before
-materializing anything. Reconstructible world-pop objects stay HMAC-authenticated without
+materializing anything. An unmarked item is looked up at restore. When an ownership record
+names an owner for it, other than a character whose save no longer has the item, it was
+taken and saved after the capture: its tree is left out, since the holder has the item and
+a second one would take the uid from them at the next taker's save. A record that names a
+character whose save does not have the item is a dropped item's, and the item is restored.
+Reconstructible world-pop objects stay HMAC-authenticated without
 inventing SQL custody, and player corpses remain with the separate authoritative corpse
 restore path. Player and ship state remain SQL-authoritative.
 
@@ -83,7 +88,9 @@ generation left in place would be restored again at the next crash. A capture at
 could not start is made again 30 seconds later. A copyover releases the lease before its
 exec, and the image it starts claims it at boot.
 
-After a successful graceful drain, the fenced writer records an expiring marker for the
+A graceful shutdown asks for one last capture after its drain, with the players saved and
+gone, and waits for it to be published: a clean restart restores the world as the shutdown
+left it. After a successful graceful drain, the fenced writer records an expiring marker for the
 exact current sequence. Boot consumes that marker once and labels a matching valid
 generation as clean-restart recovery. A missing or mismatched marker is crash recovery.
 Successful materialization consumes only that exact generation and leaves the publisher

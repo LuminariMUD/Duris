@@ -37,6 +37,8 @@ extern int top_of_zone_table;
 extern bool sql_persistence_reconcile_world_recovery_items(
 	const world_recovery_authority_item *items, size_t count,
 	item_ownership_runtime_entry *authoritative, size_t authoritative_capacity);
+extern bool sql_persistence_world_recovery_items_owned(const std::vector<uint64_t> &item_uids,
+						       std::unordered_set<uint64_t> *owned);
 namespace
 {
 /* Recovery fixtures are intentionally linkable without the gameplay module;
@@ -1303,6 +1305,48 @@ bool floor_record_repeats(const recovery_plan &plan, const std::vector<unsigned 
 	return false;
 }
 
+// An item the capture saw on the floor without an owner is held once its taker's save, or
+// a command of the economy, has recorded it. The holder has the item, so the tree it was
+// captured in is left out; put back, the next taker's save would claim the uid and the
+// first holder would lose the item.
+bool leave_out_owned_trees(recovery_plan *plan)
+{
+	std::vector<uint64_t> item_uids;
+	std::unordered_set<uint64_t> owned, left_out;
+	try
+	{
+		for (const planned_object &object : plan->objects)
+			for (const world_recovery_item_snapshot &item : object.items)
+				if (!(item.flags & WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED))
+					item_uids.push_back(item.item_uid);
+		if (item_uids.empty())
+			return true;
+		if (!sql_persistence_world_recovery_items_owned(item_uids, &owned))
+			return false;
+		std::erase_if(plan->objects,
+			      [&](const planned_object &object)
+			      {
+				      for (const world_recovery_item_snapshot &item : object.items)
+					      if (owned.count(item.item_uid))
+					      {
+						      left_out.insert(object.items[0].item_uid);
+						      return true;
+					      }
+				      return false;
+			      });
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
+	}
+	std::erase_if(plan->authority_items, [&](const world_recovery_authority_item &item)
+		      { return left_out.count(item.root_item_uid) != 0; });
+	if (!left_out.empty())
+		logit(LOG_SYS, "redis: world recovery left out %zu object trees that have an owner",
+		      left_out.size());
+	return true;
+}
+
 void replace_object_text(P_obj object, const world_recovery_item_snapshot &item)
 {
 	if (item.name[0])
@@ -1564,6 +1608,11 @@ bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, i
 	if (repeated)
 		logit(LOG_SYS, "redis: world recovery left out %zu floor records of items it holds",
 		      repeated);
+	if (!leave_out_owned_trees(&plan))
+	{
+		logit(LOG_SYS, "redis: world recovery ownership lookup failed");
+		return false;
+	}
 	std::vector<item_ownership_runtime_entry> authoritative;
 	try
 	{

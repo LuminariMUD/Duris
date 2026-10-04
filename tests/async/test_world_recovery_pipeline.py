@@ -48,6 +48,7 @@ HARNESS = r'''
 #include <ctime>
 #include <mutex>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 #include <zlib.h>
 
@@ -198,6 +199,16 @@ bool sql_persistence_reconcile_world_recovery_items(
         authoritative[index].vnum = items[index].vnum;
     }
     return true;
+}
+
+std::unordered_set<uint64_t> owned_items;
+bool sql_persistence_world_recovery_items_owned(const std::vector<uint64_t> &item_uids,
+                                                std::unordered_set<uint64_t> *owned)
+{
+    for (uint64_t item_uid : item_uids)
+        if (owned_items.count(item_uid))
+            owned->insert(item_uid);
+    return reconcile_succeeds;
 }
 
 bool item_ownership_runtime_hydrate_many_atomic(const item_ownership_runtime_entry *entries, size_t count)
@@ -662,6 +673,29 @@ int main()
         assert(object_list && object_list->obj_uid == 500 && object_list->next == nullptr);
         assert(world[object_list->loc.room].number == 100);
         extract_obj(object_list, FALSE);
+    }
+
+    // An item a player took after the capture and saved has an ownership record. The tree
+    // it was captured in is left out, with the custody of the tree's other items; the
+    // other trees are restored. A failed lookup restores nothing.
+    {
+        auto loose = item(610, 610, 0), taken = item(621, 620, 620);
+        loose.flags = taken.flags = 0;
+        const auto floor = object_generation(
+            {{loose}, {item(620, 620, 0), taken}, {item(630, 630, 0)}});
+        owned_items = {621};
+        assert(world_recovery_restore(floor.data(), floor.size(), 300, 77, nullptr));
+        assert(hydrated_entries.size() == 1 && hydrated_entries[0].item_uid == 630);
+        assert(object_list && object_list->obj_uid == 630 && object_list->next &&
+               object_list->next->obj_uid == 610 && !object_list->next->next);
+        while (object_list)
+            extract_obj(object_list, FALSE);
+        owned_items.clear();
+        const int read_before = objects_read;
+        reconcile_succeeds = false;
+        assert(!world_recovery_restore(floor.data(), floor.size(), 300, 77, nullptr));
+        reconcile_succeeds = true;
+        assert(objects_read == read_before);
     }
 
     const auto duplicates = object_generation(

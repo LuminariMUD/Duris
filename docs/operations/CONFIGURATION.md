@@ -308,6 +308,8 @@ checksum validate. It combines the generation with versioned binary floor record
 validates the full semantic graph, and batch-reconciles every custody-bearing item UID
 against SQL before creating any entity. Authenticated reconstructible world-pop objects
 are restored without inventing SQL custody, while SQL-restored player corpses are excluded.
+A world-pop object that an owner holds by then is left out, with the tree it was captured
+in: a character took it after the capture and saved, so the character has it.
 A failed or stale generation is retained for diagnosis and the
 server performs a full normal zone boot.
 
@@ -318,7 +320,9 @@ times `REDIS_WORLD_STATE_MAX_AGE`, whichever is greater, so abandoned generation
 The background publisher scales its write timeout for the blob size, up to five seconds;
 this does not extend the game-loop Redis command deadline.
 
-Graceful shutdown preserves the latest valid world generation for restart recovery. After
+A graceful shutdown takes one last capture once the players are saved and gone, so a clean
+restart restores the world as the shutdown left it and not as the last periodic capture had
+it. After
 all world and floor work drains, the fenced writer records a one-use clean-shutdown marker
 for that exact sequence. The next boot consumes the marker and reports `clean restart`
 only when the validated current generation matches; otherwise it reports `crash`
@@ -337,8 +341,12 @@ World capture is an explicitly fuzzy crash-recovery snapshot with a hard five-mi
 capture deadline. The game thread gives it at most 2 ms every second pulse, and a capture of
 the full world takes about 20 seconds; an expired capture is discarded and retried later
 rather than published. NPC inventory/equipment and
-carried gold are excluded from recovery, while all floor-item UIDs must pass complete SQL
-custody reconciliation before any recovery entity is created. `REDIS_WORLD_STATE_MAX_AGE`
+carried gold are excluded from recovery. Before any recovery entity is created, every
+floor-item UID is looked up in SQL: an item captured with the room's custody must still
+have it, or nothing is restored, and an item captured without custody that an owner holds
+by then is left out with its tree. An owner holds an item when an ownership record names
+it, except a character whose save no longer has the item: that character dropped it.
+`REDIS_WORLD_STATE_MAX_AGE`
 still controls how old a completed durable generation may be when boot attempts restore.
 
 When three attempts in a row leave no generation, the server raises one persistence alert,

@@ -7,6 +7,8 @@
 #include "world/world_recovery_pipeline.h"
 #include <functional>
 #include <stdlib.h>
+#include <unordered_set>
+#include <vector>
 
 /* Database connection fields are explicit. Runtime validation rejects missing values. */
 static inline const char *get_db_host(void)
@@ -129,6 +131,12 @@ bool sql_persistence_reconcile_world_recovery_items(const world_recovery_authori
 						    size_t count,
 						    item_ownership_runtime_entry *authoritative,
 						    size_t authoritative_capacity);
+// The items among these that an owner holds: each one with an ownership record, except a
+// record that names a character whose save no longer holds the item. A save records what
+// its owner holds and releases nothing, so that record is a dropped item's. The flat-file
+// backend counts every record.
+bool sql_persistence_world_recovery_items_owned(const std::vector<uint64_t> &item_uids,
+						std::unordered_set<uint64_t> *owned);
 bool sql_hydrate_item_owner_revisions(void);
 void sql_world_quest_finished(P_char ch, P_obj obj);
 // Reads a character's world quest history, which the quest checks then use.

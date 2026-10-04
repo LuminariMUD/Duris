@@ -11,6 +11,14 @@ crash     the lease is renewed while the server runs. A boot after a crash consu
           banana a player took after the first is not back on the floor.
 copyover  the image a copyover starts holds the lease at once and publishes a generation; a
           crash after it restores that generation, not the one from before the copyover.
+restart   a clean stop takes one last capture, with the players gone, and the next boot
+          restores it: the banana a player took after the periodic capture is not back on
+          the floor.
+taken     a player takes the banana after the capture and saves, and the server crashes.
+          The boot leaves the banana's tree out of what it restores; nobody else can take a
+          second one, and one character's save holds the uid. A mace the player took, saved
+          and dropped again before the capture is restored: its ownership record still
+          names the character, whose save no longer holds it.
 midcapture  a banana is taken out of a basket on the floor and dropped while a capture of
           12,000 more objects runs. The capture meets it twice and the drop is journaled as
           well; the generation holds it once, in the basket, and the boot restores it.
@@ -35,6 +43,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SECRET = "local-development-only-world-state-hmac-change-before-shared-use"
 ACKNOWLEDGED = r"world recovery generation and floor handoff acknowledged sequence=(\d+)"
 BANANA = "O 0 15 1 22800 100 0 0 0 * a banana on the floor"
+MACE = "O 0 677 1 22800 100 0 0 0 * a mace on the floor"
 # A capture walks the objects newest first: the basket is the newest, the banana the oldest,
 # and the maces in another room keep the capture busy between them.
 BUSY = [BANANA] + ["O 0 677 99999 10 100 0 0 0"] * 12000 + ["O 0 387 1 22800 100 0 0 0"]
@@ -152,6 +161,10 @@ class Rig:
         self.server.kill()
         self.server.wait()
 
+    def stop(self) -> None:
+        self.server.terminate()
+        assert self.server.wait(timeout=90) == 0, self.log("sys")[-2000:]
+
     def wait_for(self, what: str, seconds: float, found):
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
@@ -204,11 +217,15 @@ def enter(rig: Rig) -> journey.MudClient:
     return client
 
 
-def take_banana(client: journey.MudClient) -> None:
-    assert "You get a banana" in screen(client, "get banana")
+def save(client: journey.MudClient) -> None:
     client.send("save")
     client.expect("Save", timeout=20)
     time.sleep(2)
+
+
+def take_banana(client: journey.MudClient) -> None:
+    assert "You get a banana" in screen(client, "get banana")
+    save(client)
 
 
 def bananas(rig: Rig) -> tuple[bool, int]:
@@ -278,6 +295,63 @@ def copyover(rig: Rig) -> None:
           f"{second} {waited:.0f} s later; a crash after it restored that one", flush=True)
 
 
+def restart(rig: Rig) -> None:
+    rig.boot()
+    client = enter(rig)
+    first = rig.generation()
+    take_banana(client)
+    client.send("quit")
+    client.expect("ACCOUNT MENU", timeout=40)
+    client.close()
+    rig.stop()
+    last = int(re.findall(ACKNOWLEDGED, rig.log("sys"))[-1])
+    assert last > first, "the shutdown took no capture"
+    assert rig.redis_cli("EXISTS", rig.key("writer_fence")) == "0", "the lease was kept"
+
+    rig.boot()
+    rig.restored(last, "Clean restart")
+    assert bananas(rig) == (False, 1), "the periodic capture's floor was restored"
+    print(f"restart: the clean stop published generation {last} with the players gone, and "
+          "the boot restored it", flush=True)
+
+
+def taken(rig: Rig) -> None:
+    rig.boot()
+    client = enter(rig)
+    assert "You get a small wooden mace" in screen(client, "get mace")
+    save(client)
+    client.send("drop mace")
+    client.expect("You drop a small wooden mace", timeout=10)
+    save(client)
+    assert time.monotonic() - rig.booted < 27, "the character entered too late"
+    assert rig.sql("SELECT owner_type, state FROM item_current_owner WHERE vnum=677") \
+        == "1\t1" and rig.sql("SELECT COUNT(*) FROM player_items WHERE vnum=677") == "0"
+    first = rig.generation()
+    take_banana(client)
+    client.close()
+    rig.kill()
+
+    rig.boot()
+    rig.restored(first)
+    assert "left out 1 object trees that have an owner" in rig.log("sys"), \
+        rig.log("sys")[-1500:]
+    client = journey.reconnect_character(rig.port, expected_room=None)
+    floor, carried = screen(client, "look"), screen(client, "inventory")
+    client.close()
+    assert "banana lies here" not in floor and carried.count("banana") == 1, \
+        "the banana a character holds is back on the floor"
+    assert "small mace, lies here" in floor, "the mace a character dropped is gone"
+    other = journey.MudClient(rig.port)
+    journey.create_character(other, account="Otheracct", character="Brannoc",
+                             email="other@example.invalid")
+    assert "You get a banana" not in screen(other, "get banana")
+    other.close()
+    assert rig.sql("SELECT COUNT(*), COUNT(DISTINCT pid) FROM player_items WHERE vnum=15") \
+        == "1\t1"
+    print(f"taken: the boot restored generation {first} with the mace a character had "
+          "dropped and without the banana it took and saved after the capture", flush=True)
+
+
 def midcapture(rig: Rig) -> None:
     rig.boot()
     client = enter(rig)
@@ -315,6 +389,7 @@ def midcapture(rig: Rig) -> None:
 
 
 SCENARIOS = {"crash": (crash, [BANANA], True), "copyover": (copyover, [BANANA], True),
+             "restart": (restart, [BANANA], True), "taken": (taken, [BANANA, MACE], False),
              "midcapture": (midcapture, BUSY, False)}
 
 if __name__ == "__main__":

@@ -851,6 +851,12 @@ void redis_world_runtime_shutdown(bool pwipe)
 	{
 		recovery_drained = !world_recovery_pipeline_health_copy().initialized ||
 				   redis_world_recovery_drain(WORLD_DRAIN_TIMEOUT_MSEC);
+		// The players are saved and gone. One last capture, so that a clean restart
+		// restores the world as this shutdown leaves it and not as the last periodic
+		// capture, up to an interval ago, had it.
+		if (recovery_drained && !pwipe && !world_writer_token.empty() &&
+		    redis_save_world_state())
+			recovery_drained = redis_world_recovery_drain(WORLD_DRAIN_TIMEOUT_MSEC);
 		if (!recovery_drained)
 			logit(LOG_SYS, "redis: world recovery drain timed out during shutdown");
 		if (world_recovery_pipeline_health_copy().initialized)
@@ -1043,7 +1049,8 @@ bool redis_world_recovery_drain(uint64_t timeout_msec)
 	while (std::chrono::steady_clock::now() < deadline)
 	{
 		redis_world_recovery_pulse();
-		if (!world_recovery_pipeline_busy())
+		// A capture that was asked for starts once the floor worker's barrier is in.
+		if (!world_recovery_pipeline_busy() && !world_floor_barrier_waiting)
 			return true;
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
