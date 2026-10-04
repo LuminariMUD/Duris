@@ -114,6 +114,7 @@ Kept when the `.spec_system/` tracking tree was retired.
 | [CREDITS.md](records/CREDITS.md) | Credits for moshehbenavraham's foundation work, 2026-08-25 to 2026-09-23, counted from the Git history. |
 | [SECURITY-COMPLIANCE.md](records/SECURITY-COMPLIANCE.md) | Cumulative security posture and GDPR compliance record. |
 | [readiness-report.md](records/readiness-report.md) | Phase 03 final readiness result and the deferred capacity gate. |
+| [COMMUNITY_DURIS_TRACKING.md](records/COMMUNITY_DURIS_TRACKING.md) | The split from Community-Duris, their changes since (bug fixes and everything else), and what we adopted, adapted or rejected. |
 
 ## Decisions and diagrams
 
