@@ -49,7 +49,8 @@ nc 127.0.0.1 4000
 ```
 
 The default listeners are plain telnet on `4000`, self-signed TLS telnet on
-`4001`, and WebSocket/HTTP health on `4050`. They are published on host loopback
+`4001`, and WebSocket/HTTP health on `4050`, which `compose.yaml` turns on with
+`DURIS_WEBSOCKET=TRUE` for the container's health check. They are published on host loopback
 only. The generated certificate is intended for local use and persists in the
 `duris-runtime` volume.
 

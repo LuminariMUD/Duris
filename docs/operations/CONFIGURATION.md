@@ -477,6 +477,7 @@ craft-pouch contract is in [CHAOS_MODE.md](../reference/CHAOS_MODE.md).
 | `DURIS_DEV_PORT` | Plain-telnet port selected by `--dev` and `--minimal`. It defaults to `4000`; values must be decimal ports from 1 through 65535 and must not be the production port. |
 | `DURIS_PRODUCTION_PORT` | Optional plain-telnet port for the production role (`--production`). It defaults to `7777`; set it only when a second production-role install shares a host. Values must be decimal ports from 1 through 65535. |
 | `DURIS_TLS_PORT` | Optional independent TLS telnet port. It defaults to `7778`, or to the plain-telnet port plus one when a custom plain port is supplied. Values must be decimal ports from 1 through 65535 and must differ from the plain port. |
+| `DURIS_WEBSOCKET` | `TRUE` opens the WebSocket and HTTP health listener. It is off by default: a server is assumed to have no website, and a MUD-only server opens no such port and has no `GET /health`. The Docker deployment sets it, because the container's health check reads `/health`. |
 | `DURIS_WEBSOCKET_PORT` | WebSocket and HTTP health-listener port. It defaults to `4050`; values must be decimal ports from 1 through 65535. |
 | `DURIS_WEBSOCKET_LISTEN_ADDRESS` | WebSocket-only numeric listener address; defaults to `LISTEN_ADDRESS`, and to `127.0.0.1` when neither is set. Production requires exact loopback so a local TLS reverse proxy owns the public endpoint. |
 | `DURIS_WEBSOCKET_ALLOWED_ORIGINS` | Exact comma-separated browser `Origin` allow-list. Required in production; non-browser service connections may omit `Origin`. |
@@ -513,7 +514,8 @@ website-only ids (`flag_parsing`, `guild_parsing`, `zone_builder_parsing`, and
 controlled only by its permission and live-session checks.
 | `DURIS_TRUSTED_PROXY_IP` | One immediate proxy IP address whose `X-Forwarded-For` header may be trusted for WebSocket and telnet connections. If unset, forwarded addresses are ignored. This is an address allow-list, not a CIDR range. |
 
-WebSocket and `GET /health` listen on `DURIS_WEBSOCKET_PORT` (default `4050`).
+With `DURIS_WEBSOCKET=TRUE`, WebSocket and `GET /health` listen on `DURIS_WEBSOCKET_PORT`
+(default `4050`).
 In production, the WebSocket listener must use loopback, the trusted proxy and
 allowed origins must be configured, and the local reverse proxy must terminate
 TLS before forwarding to this plaintext listener. The server refuses to create

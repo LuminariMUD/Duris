@@ -294,6 +294,9 @@ class BackupReviewRemediationTests(Fixture):
         environment = restore.clean_environment(candidate)
         self.assertEqual(environment["TMPDIR"], str(candidate / "tmp"))
         self.assertTrue((candidate / "tmp").is_dir())
+        # The qualifier waits for the restored server's GET /health, and the listener is
+        # off unless a server asks for it.
+        self.assertEqual(environment["DURIS_WEBSOCKET"], "TRUE")
 
     def test_restore_wrapper_without_policy_is_controlled(self):
         tombstones = self.base / "tombstones.json"

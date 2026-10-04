@@ -2497,12 +2497,19 @@ void game_loop(int port, int sslport)
 		s = init_socket(port);
 		logit(LOG_STATUS, "Opening father connection.");
 		S = init_socket(sslport);
-		logit(LOG_STATUS, "Opening WebSocket connection.");
-		WS = websocket_init(WS_PORT);
-		if (WS < 0)
+		// The WebSocket and health listener is for a server with a website.
+		const char *websocket = getenv("DURIS_WEBSOCKET");
+		WS = -1;
+		if (websocket && !strcasecmp(websocket, "TRUE"))
 		{
-			logit(LOG_STATUS, "WARNING: WebSocket server failed to start on port %d",
-			      WS_PORT);
+			logit(LOG_STATUS, "Opening WebSocket connection.");
+			WS = websocket_init(WS_PORT);
+			if (WS < 0)
+			{
+				logit(LOG_STATUS,
+				      "WARNING: WebSocket server failed to start on port %d",
+				      WS_PORT);
+			}
 		}
 	}
 

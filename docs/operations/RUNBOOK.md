@@ -220,7 +220,8 @@ After startup, verify process and selected-persistence readiness without logging
 scripts/healthcheck.sh
 ```
 
-The probe targets `http://127.0.0.1:4050/health` by default. For an isolated local
+The probe needs the server's WebSocket and health listener, which is off unless
+`DURIS_WEBSOCKET=TRUE`. It targets `http://127.0.0.1:4050/health` by default. For an isolated local
 instance, set `DURIS_WEBSOCKET_PORT` on the server and the matching
 `DURIS_HEALTH_URL` for the probe. A healthy response is HTTP 200 with only
 `status=healthy` and `persistence=ready`; the handler performs no blocking

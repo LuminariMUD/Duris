@@ -25,8 +25,8 @@ def clean_environment(candidate):
             "ENVIRONMENT": "local", "REDIS": "FALSE",
             "TMPDIR": str(tmp),
             "CRITICAL_COMMAND_JOURNAL_DIR": str(candidate / "journals/critical"),
-            "LISTEN_ADDRESS": "127.0.0.1", "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
-            "DURIS_WEBSOCKET_PORT": "4050"}
+            "LISTEN_ADDRESS": "127.0.0.1", "DURIS_WEBSOCKET": "TRUE",
+            "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1", "DURIS_WEBSOCKET_PORT": "4050"}
 
 
 def tombstone_preflight(path, p, captured):
