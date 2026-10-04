@@ -23,8 +23,9 @@ round; #3 stays open for its server configuration
 ([record](persistence-done.md#phase-6-landed-done)). Phase 7 is done on
 `fix/5-persistence-phase-7` and in review as
 [!9](https://gitlab.com/max757/duris/-/merge_requests/9), tagged
-`persistence/phase-7-review-0` ([progress](persistence-done.md#phase-7-progress)); Phase 8
-is not started.
+`persistence/phase-7-review-0` ([progress](persistence-done.md#phase-7-progress)); review
+round 1 is fixed and tagged `persistence/phase-7-review-1`
+([record](persistence-done.md#review-round-1-mr-9)). Phase 8 is not started.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
@@ -385,7 +386,7 @@ How each item is done (decided 2026-10-03):
    runs, and a god rents with 88 items. The budget is one pulse, 250 ms, for the rents, the
    camps and the hourly event alike, and it is read from the loop's own records
    (`COMMAND OP SLOW`, `MUD TICK TOOK TOO LONG`, the event analytics), not timed from
-   outside. A slow pulse it cannot put on one of them is printed, not judged. `--players` and
+   outside. Every command and every pulse is held to it. `--players` and
    `--hours` scale it into the load a build is measured with; it prints the trace's tick,
    event and command times, the deferred events and the costliest callbacks. What the
    measurement found is fixed in this phase, each with its test:
@@ -399,6 +400,14 @@ How each item is done (decided 2026-10-03):
    - The maintenance scheduler's worker retried a failed write of its state file without a
      pause, and held a core for as long as it failed (every full-world test fixture, or a
      full disk). It waits a second.
+   - Found by the review: with the keepers found in one walk, the hourly save queued all
+     544 shop saves on the one writer at once, ahead of every player save and relog. It
+     fills the writer's queue to 16 jobs and takes the remaining shops on the following
+     pulses.
+   - Found by the review: the slow commands the journey had put down to the machine were
+     log writes on the game thread, the command log before every command and `logit()` for
+     every line. The command log is kept in memory and a log thread writes the lines; an
+     exit or a crash writes what is held.
    `rent`, `quit` and the camp's save were already inside the budget: the persistence reset
    took their database waits away.
 2. The names file lists local and weak functions with the global ones, and keeps a name in
@@ -525,8 +534,8 @@ and 6 (backups) are done and on master.
 
 1. [Phase 7: game-loop performance (#5)](#phase-7-game-loop-performance-5): done, in review
    as [!9](https://gitlab.com/max757/duris/-/merge_requests/9); it leaves this list when it
-   lands. A review round's fixes go on `fix/5-persistence-phase-7`, each finding in its own
+   lands. Review round 1's fixes are on `fix/5-persistence-phase-7`, each finding in its own
    commit with its test, the fixed head tagged `persistence/phase-7-review-1`
-   ([how](persistence-done.md#review-and-branches)).
+   ([record](persistence-done.md#review-round-1-mr-9)).
 2. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2), and with it the raised corpse's
    items (its item 4).
