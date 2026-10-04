@@ -3174,7 +3174,7 @@ What the round measured:
 - **Finding 1.** The reviewed code under the new journey: 543 shop saves in one pulse, and
   the god's re-entry, made as they were queued, took 1.50 s. The fixed head: the saves go out
   over 34 to 38 pulses, 16 at most in one; that re-entry takes 1.00 s, the time with nothing
-  queued; each following pulse costs about 3.7 ms (the walk of the character list).
+  queued; each following pulse costs 3 to 4 ms (the walk of the character list).
 - **The build's measurement again**, as [above](#the-measurement-done): thirty mortals and a
   god, 900 pulses, production profile at `-O2`, idle machine, one run. Slowest pulse 49.6 ms
   and mean 6.2 ms; slowest event pass 23.5 ms; slowest command sweep 30.5 ms; the hourly
@@ -3209,3 +3209,10 @@ Verification for this round:
 - Both backends and the `pfile` tool build clean at `-O2`.
 - The fixes on master passed the gate there before the push (`5e36709d4`: 663 of 663 in
   476 s, `make test-db` 36 of 36 in 198 s, 1031 files clean).
+- The gate on `a87b00385`, the fixed head with this round's record, run once each:
+  `./scripts/format.sh --all --check` (1031 files clean); `make test-all -j16 TEST_JOBS=16`
+  alone (668 of 668, 413 s, with the development and the production build); then
+  `make test-db` (37 of 37, 203 s, the journey with no slow command) and
+  `npm test --prefix site` (14 tests). Neither suite left `logs/log/dupes` or
+  `logs/log/item_claims` behind. Not run: the backup-recovery container job, CodeQL and
+  Trivy (nothing they check changed; no schema change).
