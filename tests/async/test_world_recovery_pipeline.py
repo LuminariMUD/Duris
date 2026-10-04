@@ -48,6 +48,7 @@ HARNESS = r'''
 #include <ctime>
 #include <mutex>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 #include <zlib.h>
 
@@ -200,6 +201,16 @@ bool sql_persistence_reconcile_world_recovery_items(
     return true;
 }
 
+std::unordered_set<uint64_t> owned_items;
+bool sql_persistence_world_recovery_items_owned(const std::vector<uint64_t> &item_uids,
+                                                std::unordered_set<uint64_t> *owned)
+{
+    for (uint64_t item_uid : item_uids)
+        if (owned_items.count(item_uid))
+            owned->insert(item_uid);
+    return reconcile_succeeds;
+}
+
 bool item_ownership_runtime_hydrate_many_atomic(const item_ownership_runtime_entry *entries, size_t count)
 {
     hydrated_entries.clear();
@@ -273,6 +284,15 @@ static bool blocked_publish(const unsigned char *, size_t,
     gate.entered = true;
     gate.changed.notify_all();
     gate.changed.wait(lock, [&] { return gate.release; });
+    *outcome = REDIS_SHARED_OUTCOME_SUCCESS;
+    return true;
+}
+
+static bool copying_publish(const unsigned char *data, size_t size,
+                            const world_recovery_header *,
+                            redis_shared_command_outcome *outcome, void *raw)
+{
+    static_cast<std::vector<unsigned char> *>(raw)->assign(data, data + size);
     *outcome = REDIS_SHARED_OUTCOME_SUCCESS;
     return true;
 }
@@ -516,6 +536,105 @@ int main()
     assert(!canceled.initialized && !canceled.worker_running && !canceled.worker_busy);
     world_recovery_pipeline_reset_for_tests();
 
+    // A world above the old 64 MiB ceiling: its capture publishes, and boot takes it.
+    {
+        constexpr size_t old_ceiling = 64 * 1024 * 1024;
+        std::vector<obj_data> ground(20500);
+        for (size_t index = 0; index < ground.size(); ++index)
+        {
+            ground[index].obj_uid = 100000 + index;
+            ground[index].R_num = 0;
+            ground[index].loc_p = LOC_ROOM;
+            ground[index].loc.room = 0;
+            ground[index].next = index + 1 < ground.size() ? &ground[index + 1] : nullptr;
+        }
+        object_list = ground.data();
+        std::vector<unsigned char> published;
+        assert(world_recovery_pipeline_init(copying_publish, &published));
+        assert(world_recovery_pipeline_health_copy().last_acknowledged_age_sec == -1);
+        assert(world_recovery_pipeline_request());
+        world_recovery_completion completion = {};
+        while (!world_recovery_pipeline_take_completion(&completion))
+        {
+            world_recovery_pipeline_pulse();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        object_list = nullptr;
+        assert(completion.published && published.size() > old_ceiling);
+        assert(world_recovery_pipeline_health_copy().high_water_bytes > old_ceiling);
+        const int64_t age = world_recovery_pipeline_health_copy().last_acknowledged_age_sec;
+        assert(age >= 0 && age < 60);
+        world_recovery_header large = {};
+        assert(world_recovery_validate(published.data(), published.size(), 300,
+                                       completion.sequence, &large));
+        assert(large.object_count == ground.size());
+        const int read_before = objects_read;
+        assert(world_recovery_restore(published.data(), published.size(), 300,
+                                      completion.sequence, nullptr));
+        assert(objects_read - read_before == static_cast<int>(ground.size()));
+        while (object_list)
+            extract_obj(object_list, FALSE);
+        objects_read = objects_extracted = 0;
+
+        // A capture that fails (an object without a uid) completes as a failure, not as an
+        // expiry or a failed publish, and leaves the last published generation's age.
+        obj_data broken = {};
+        broken.loc_p = LOC_ROOM;
+        object_list = &broken;
+        assert(world_recovery_pipeline_request());
+        while (!world_recovery_pipeline_take_completion(&completion))
+        {
+            world_recovery_pipeline_pulse();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        object_list = nullptr;
+        assert(!completion.published && !completion.attempts && !completion.expired);
+        assert(world_recovery_pipeline_health_copy().last_acknowledged_age_sec >= 0);
+
+        // An object taken out of a floor container while the capture runs is met twice: in
+        // the container, which is newer and so comes first, and then on the floor. It is
+        // written once, and boot takes the generation.
+        obj_data basket = {}, banana = {};
+        basket.obj_uid = 90000;
+        banana.obj_uid = 90001;
+        basket.loc_p = LOC_ROOM;
+        basket.contains = &banana;
+        banana.loc_p = LOC_INSIDE;
+        banana.loc.inside = &basket;
+        basket.next = ground.data();
+        ground.back().next = &banana;
+        object_list = &basket;
+        assert(world_recovery_pipeline_request());
+        world_recovery_pipeline_pulse();
+        assert(world_recovery_pipeline_health_copy().capture_active);
+        basket.contains = nullptr;
+        banana.loc_p = LOC_ROOM;
+        banana.loc.room = 0;
+        while (!world_recovery_pipeline_take_completion(&completion))
+        {
+            world_recovery_pipeline_pulse();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        object_list = nullptr;
+        assert(completion.published);
+        assert(world_recovery_validate(published.data(), published.size(), 300,
+                                       completion.sequence, &large));
+        assert(large.object_count == ground.size() + 1);
+        assert(world_recovery_restore(published.data(), published.size(), 300,
+                                      completion.sequence, nullptr));
+        while (P_obj object = object_list)
+        {
+            assert(object->obj_uid != banana.obj_uid ||
+                   (object->loc_p == LOC_INSIDE &&
+                    object->loc.inside->obj_uid == basket.obj_uid));
+            while (object->loc_p == LOC_INSIDE)
+                object = object->loc.inside;
+            extract_obj(object, FALSE);
+        }
+        objects_read = objects_extracted = 0;
+        world_recovery_pipeline_reset_for_tests();
+    }
+
     const auto valid_objects = object_generation({{item(500, 500, 0)}});
     reconcile_succeeds = false;
     assert(!world_recovery_restore(valid_objects.data(), valid_objects.size(), 300, 77,
@@ -535,6 +654,49 @@ int main()
     assert(object_list && object_list->obj_uid == 500 && object_list->next == nullptr);
     assert(object_list->loc_p == LOC_ROOM && world[object_list->loc.room].number == 100);
     extract_obj(object_list, FALSE);
+
+    // A drop made while a capture runs is journaled after it, and the capture may have
+    // written the item too. Boot takes the generation's and leaves the floor record out.
+    {
+        const world_recovery_object_record dropped = {200, 1};
+        const world_recovery_item_snapshot dropped_item = item(500, 500, 0);
+        std::vector<unsigned char> drop(sizeof(dropped) + sizeof(dropped_item));
+        memcpy(drop.data(), &dropped, sizeof(dropped));
+        memcpy(drop.data() + sizeof(dropped), &dropped_item, sizeof(dropped_item));
+        assert(world_recovery_encode_record(
+            world_recovery_record_type::object, drop.data(), drop.size(),
+            captured_wire.data(), captured_wire.size(), &captured_wire_size));
+        const unsigned char *floor_records[] = {captured_wire.data()};
+        assert(world_recovery_restore_with_floor(
+            valid_objects.data(), valid_objects.size(), 300, 77, floor_records,
+            &captured_wire_size, 1, nullptr));
+        assert(object_list && object_list->obj_uid == 500 && object_list->next == nullptr);
+        assert(world[object_list->loc.room].number == 100);
+        extract_obj(object_list, FALSE);
+    }
+
+    // An item a player took after the capture and saved has an ownership record. The tree
+    // it was captured in is left out, with the custody of the tree's other items; the
+    // other trees are restored. A failed lookup restores nothing.
+    {
+        auto loose = item(610, 610, 0), taken = item(621, 620, 620);
+        loose.flags = taken.flags = 0;
+        const auto floor = object_generation(
+            {{loose}, {item(620, 620, 0), taken}, {item(630, 630, 0)}});
+        owned_items = {621};
+        assert(world_recovery_restore(floor.data(), floor.size(), 300, 77, nullptr));
+        assert(hydrated_entries.size() == 1 && hydrated_entries[0].item_uid == 630);
+        assert(object_list && object_list->obj_uid == 630 && object_list->next &&
+               object_list->next->obj_uid == 610 && !object_list->next->next);
+        while (object_list)
+            extract_obj(object_list, FALSE);
+        owned_items.clear();
+        const int read_before = objects_read;
+        reconcile_succeeds = false;
+        assert(!world_recovery_restore(floor.data(), floor.size(), 300, 77, nullptr));
+        reconcile_succeeds = true;
+        assert(objects_read == read_before);
+    }
 
     const auto duplicates = object_generation(
         {{item(600, 600, 0)}, {item(600, 600, 0)}});
@@ -958,15 +1120,16 @@ with tempfile.TemporaryDirectory(prefix="duris-world-recovery-") as temp_dir:
     subprocess.run([str(binary)], check=True)
 print("[PASS] schema, sequence, completeness, age, length, and checksum framing validates")
 print("[PASS] in-flight publication joins before pwipe deletion can continue")
+print("[PASS] a world above the old 64 MiB ceiling is captured, published and restored")
+print("[PASS] a failed capture completes as one, and health keeps the last publish's age")
 print("[PASS] duplicate/moved items and custody failures fail closed with rollback")
 print("[PASS] failed recovery and forced zone reset restore exactly one owned ground artifact")
 
 for token in (
-    "WORLD_RECOVERY_MAX_BYTES = 64 * 1024 * 1024",
+    "WORLD_RECOVERY_MAX_BYTES = 256 * 1024 * 1024",
     "WORLD_RECOVERY_MAX_RECORD_BYTES = 2 * 1024 * 1024",
     "WORLD_RECOVERY_MAX_FLOOR_BYTES = 16 * 1024 * 1024",
     "WORLD_RECOVERY_MAX_FLOOR_RECORDS = 32768",
-    "WORLD_RECOVERY_CAPTURE_RECORD_BUDGET = 1024",
     "WORLD_RECOVERY_CAPTURE_TIME_BUDGET_USEC = 2000",
     "WORLD_RECOVERY_CAPTURE_MAX_AGE_MSEC = 300000",
     "WORLD_RECOVERY_QUEUE_CAPACITY = 2",
@@ -976,7 +1139,7 @@ for token in (
 ):
     assert token in HEADER
 capture = section(PIPELINE, "void world_recovery_pipeline_pulse", "bool world_recovery_pipeline_take_completion")
-assert "WORLD_RECOVERY_CAPTURE_RECORD_BUDGET" in capture
+assert "RECORD_BUDGET" not in PIPELINE + HEADER
 assert "WORLD_RECOVERY_CAPTURE_TIME_BUDGET_USEC" in capture
 assert "std::chrono::steady_clock::now()" in capture
 assert "world_recovery_capture_age_expired" in capture
@@ -985,7 +1148,7 @@ assert "PC_CORPSE" in PIPELINE
 assert "item_ownership_runtime_lookup" in PIPELINE
 failure = section(PIPELINE, "void fail_capture(bool expired)", "bool submit_capture()")
 for token in (
-    "capture_failure_completion = { active_capture.generation.sequence, false, 0 }",
+    "capture_failure_completion = { active_capture.generation.sequence, false, 0, expired,",
     "capture_failure_pending = true",
     "++health.capture_expirations",
     "health.last_capture_duration_msec",
@@ -1008,6 +1171,10 @@ assert "health.publish_operations" in worker
 assert "redis_worker_operation_prepare_snapshot(&snapshot.publish_operations)" in PIPELINE
 assert "crc32(0, generation->blob.data() + WORLD_RECOVERY_WIRE_HEADER_BYTES" in PIPELINE
 assert "std::vector<unsigned char> blob" not in worker
+request = section(PIPELINE, "bool world_recovery_pipeline_request", "void world_recovery_pipeline_pulse")
+assert "blob.reserve(WORLD_RECOVERY_MAX_BYTES)" in request
+assert ("static_assert(REDIS_WORLD_GENERATION_MAX_CHUNKS * REDIS_WORLD_GENERATION_CHUNK_BYTES ==\n"
+        "\t      WORLD_RECOVERY_MAX_BYTES)") in STORE
 print("[PASS] bounded capture is game-thread owned and publisher traverses no live graph")
 
 save = section(WORLD_RUNTIME, "bool redis_save_world_state(void)", "void redis_world_recovery_pulse")
@@ -1039,7 +1206,8 @@ for token in (
     "redis.call('EXPIRE',KEYS[3],ARGV[8])",
     "redis.call('SET',KEYS[2],ARGV[4])",
     "redis.call('DEL',KEYS[8],KEYS[9])",
-    "redis.call('PEXPIRE',KEYS[1],ARGV[7])",
+    "if fence and fence~=ARGV[1] then return 0 end",
+    "redis.call('SET',KEYS[1],ARGV[1],'PX',ARGV[7])",
 ):
     assert token in STORE
 for token in ("WRG2", "HMAC(EVP_sha256()", "SHA256(", "CRYPTO_memcmp"):
@@ -1058,9 +1226,13 @@ assert "world_recovery_restore" in section(WORLD_RUNTIME, "bool redis_load_world
 consume = section(WORLD_RUNTIME, "bool redis_consume_world_state", "bool redis_load_world_state")
 assert "redis_world_recovery_quiesce" not in consume
 assert "redis_world_store_consume_generation" in consume
-assert "redis.call('GET',KEYS[1])~=ARGV[1]" in section(
-    STORE, "bool redis_world_store_consume_generation", "bool redis_world_store_publish"
+# The consume checks the sequence it restored and not the lease, which a crashed writer may
+# still hold.
+store_consume = section(
+    STORE, "bool redis_world_store_consume_generation", "bool redis_world_store_read_generation"
 )
+assert "redis.call('GET',KEYS[1])~=ARGV[1]" in store_consume
+assert "keys.current, generation" in store_consume and "keys.fence" not in store_consume
 assert "redis_consume_world_state()" in COMM
 assert "redis_clear_world_state();" not in section(
     COMM, "// redis crash recovery - restore world state from redis snapshot", "PROFILES(RESET)"

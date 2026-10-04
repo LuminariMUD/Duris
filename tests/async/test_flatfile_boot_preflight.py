@@ -102,6 +102,52 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-build-") as build_tmp:
             }
             if runtime_library_path := os.environ.get("LD_LIBRARY_PATH"):
                 environment["LD_LIBRARY_PATH"] = runtime_library_path
+
+            # The WebSocket and health listener is off unless DURIS_WEBSOCKET is TRUE: a
+            # server with no website opens no such port and logs no warning about it.
+            with output_path.open("w", encoding="utf-8") as output:
+                process = subprocess.Popen(
+                    [str(binary), "--minimal", "-d", str(run_root), str(port)],
+                    cwd=run_root,
+                    env=environment,
+                    text=True,
+                    stdout=output,
+                    stderr=subprocess.STDOUT,
+                )
+                try:
+                    deadline = time.monotonic() + 30
+                    while True:
+                        try:
+                            socket.create_connection(("127.0.0.1", port), timeout=1).close()
+                            break
+                        except OSError:
+                            require(
+                                process.poll() is None and time.monotonic() < deadline,
+                                "server without a website did not open its game port:\n"
+                                + output_path.read_text(errors="replace"),
+                            )
+                            time.sleep(0.1)
+                    time.sleep(0.5)
+                    try:
+                        socket.create_connection(("127.0.0.1", websocket_port), timeout=1).close()
+                        listening = True
+                    except OSError:
+                        listening = False
+                    boot_output = output_path.read_text(errors="replace")
+                    require(
+                        not listening and "WebSocket" not in boot_output,
+                        "a server without DURIS_WEBSOCKET=TRUE opened or tried the "
+                        "WebSocket listener:\n" + boot_output,
+                    )
+                    process.send_signal(signal.SIGTERM)
+                    process.wait(timeout=30)
+                    require(process.returncode == 0, "server without a website did not stop")
+                finally:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait(timeout=5)
+
+            environment["DURIS_WEBSOCKET"] = "TRUE"
             with output_path.open("w", encoding="utf-8") as output:
                 process = subprocess.Popen(
                     [str(binary), "--minimal", "-d", str(run_root), str(port)],
@@ -222,4 +268,5 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-build-") as build_tmp:
                 mode = stat.S_IMODE(path.stat().st_mode)
                 require(mode == 0o700, f"insecure mode {mode:o} on {path}")
 
-print("client-free build, health, game-loop boot, and clean shutdown preflight passed")
+print("client-free build, no listener without DURIS_WEBSOCKET, health with it, game-loop boot, "
+      "and clean shutdown preflight passed")

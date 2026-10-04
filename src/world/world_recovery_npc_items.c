@@ -6,7 +6,7 @@
 
 #include <new>
 #include <unordered_map>
-#include <unordered_set>
+#include <utility>
 #include <vector>
 
 extern P_index mob_index;
@@ -21,29 +21,32 @@ extern int top_of_zone_table;
 namespace
 {
 using recovered_mob_list = std::vector<P_char>;
+// The recovered mobs no load command has taken yet, by prototype and birthplace.
+using recovered_mob_index = std::unordered_map<uint64_t, recovered_mob_list>;
 
 bool is_mob_load_command(char command)
 {
 	return command == 'M' || command == 'F' || command == 'R';
 }
 
-recovered_mob_list select_recovered_mobs(const reset_com &command, P_char const *mobs,
-					 size_t mob_count, std::unordered_set<P_char> *assigned)
+uint64_t recovered_mob_key(int mob_rnum, int birthplace)
 {
-	recovered_mob_list selected;
-	if (!assigned || command.arg1 < 0 || command.arg1 > top_of_mobt || command.arg3 < 0 ||
+	return (static_cast<uint64_t>(static_cast<uint32_t>(mob_rnum)) << 32) |
+	       static_cast<uint32_t>(birthplace);
+}
+
+// A load command takes every recovered mob of its prototype born in its room, once.
+recovered_mob_list select_recovered_mobs(const reset_com &command, recovered_mob_index *unassigned)
+{
+	if (command.arg1 < 0 || command.arg1 > top_of_mobt || command.arg3 < 0 ||
 	    command.arg3 > top_of_world)
-		return selected;
-	const int birthplace = world[command.arg3].number;
-	for (size_t index = 0; index < mob_count; ++index)
-	{
-		P_char mob = mobs[index];
-		if (!mob || !IS_NPC(mob) || GET_RNUM(mob) != command.arg1 ||
-		    GET_BIRTHPLACE(mob) != birthplace || assigned->find(mob) != assigned->end())
-			continue;
-		selected.push_back(mob);
-		assigned->insert(mob);
-	}
+		return {};
+	const auto found =
+		unassigned->find(recovered_mob_key(command.arg1, world[command.arg3].number));
+	if (found == unassigned->end())
+		return {};
+	recovered_mob_list selected = std::move(found->second);
+	unassigned->erase(found);
 	return selected;
 }
 
@@ -133,8 +136,12 @@ bool world_recovery_rehydrate_npc_items(P_char const *mobs, size_t mob_count)
 		return false;
 	try
 	{
-		std::unordered_set<P_char> assigned;
-		assigned.reserve(mob_count);
+		recovered_mob_index unassigned;
+		for (size_t index = 0; index < mob_count; ++index)
+			if (mobs[index] && IS_NPC(mobs[index]))
+				unassigned[recovered_mob_key(GET_RNUM(mobs[index]),
+							     GET_BIRTHPLACE(mobs[index]))]
+					.push_back(mobs[index]);
 		const int artifact_respawn = get_property("artifact.respawn", 0);
 		size_t matched_mobs = 0;
 		size_t loaded_items = 0;
@@ -149,8 +156,7 @@ bool world_recovery_rehydrate_npc_items(P_char const *mobs, size_t mob_count)
 					break;
 				if (is_mob_load_command(command.command))
 				{
-					selected = select_recovered_mobs(command, mobs, mob_count,
-									 &assigned);
+					selected = select_recovered_mobs(command, &unassigned);
 					matched_mobs += selected.size();
 					desired_carried.clear();
 					continue;

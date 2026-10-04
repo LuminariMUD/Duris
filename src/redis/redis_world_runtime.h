@@ -33,5 +33,8 @@ void event_save_world_state(P_char ch, P_char victim, P_obj obj, void *data);
 void redis_world_recovery_pulse(void);
 bool redis_world_recovery_drain(uint64_t timeout_msec);
 bool redis_world_recovery_quiesce(void);
+// A copyover gives the lease up before its exec; the image it starts claims it at boot. If
+// the exec fails, this process takes it again at its next renewal.
+void redis_world_writer_release(void);
 
 #endif

@@ -301,7 +301,7 @@ static void redis_status_detailed(P_char ch)
 		"  state=%s capture=%s worker=%s busy=%s queued=%llu\r\n"
 		"  requested=%llu coalesced=%llu submitted=%llu published=%llu publish_failures=%llu\r\n"
 		"  capture_failures=%llu expired=%llu age_ms=%llu last_duration_ms=%llu\r\n"
-		"  last_sequence=%llu acknowledged=%llu bytes=%llu high_water=%llu\r\n",
+		"  last_sequence=%llu acknowledged=%llu last_ack_age_s=%lld bytes=%llu high_water=%llu\r\n",
 		world_worker_state(&world), world.capture_active ? "yes" : "no",
 		world.worker_running ? "running" : "stopped", world.worker_busy ? "yes" : "no",
 		(unsigned long long)world.queued_generations, (unsigned long long)world.requested,
@@ -313,6 +313,7 @@ static void redis_status_detailed(P_char ch)
 		(unsigned long long)world.last_capture_duration_msec,
 		(unsigned long long)world.last_submitted_sequence,
 		(unsigned long long)world.last_acknowledged_sequence,
+		(long long)world.last_acknowledged_age_sec,
 		(unsigned long long)world.last_published_bytes,
 		(unsigned long long)world.high_water_bytes);
 	redis_append_operation_health(buf, &world.publish_operations);

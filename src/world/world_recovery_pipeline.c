@@ -37,6 +37,8 @@ extern int top_of_zone_table;
 extern bool sql_persistence_reconcile_world_recovery_items(
 	const world_recovery_authority_item *items, size_t count,
 	item_ownership_runtime_entry *authoritative, size_t authoritative_capacity);
+extern bool sql_persistence_world_recovery_items_owned(const std::vector<uint64_t> &item_uids,
+						       std::unordered_set<uint64_t> *owned);
 namespace
 {
 /* Recovery fixtures are intentionally linkable without the gameplay module;
@@ -79,6 +81,8 @@ struct capture_state
 	recovery_generation generation;
 	P_char next_character = nullptr;
 	P_obj next_object = nullptr;
+	// Every item written so far.
+	std::unordered_set<uint64_t> item_uids;
 	int room = 0;
 	int direction = 0;
 	int zone = 0;
@@ -100,6 +104,8 @@ bool worker_busy = false;
 bool capture_failure_pending = false;
 world_recovery_completion capture_failure_completion = {};
 std::array<unsigned char, WORLD_RECOVERY_MAX_RECORD_BYTES> capture_buffer = {};
+// One object record's items as they are captured. Every capture is on the game thread.
+std::array<world_recovery_item_snapshot, WORLD_RECOVERY_MAX_ITEM_TREE> capture_items = {};
 
 struct planned_mob
 {
@@ -226,7 +232,8 @@ void fail_capture(bool expired)
 	      active_capture.generation.blob.size(), active_capture.generation.mob_count,
 	      active_capture.generation.object_count, active_capture.generation.door_count,
 	      active_capture.generation.zone_count);
-	capture_failure_completion = { active_capture.generation.sequence, false, 0 };
+	capture_failure_completion = { active_capture.generation.sequence, false, 0, expired,
+				       active_capture.generation.timestamp };
 	capture_failure_pending = true;
 	++health.capture_failures;
 	if (expired)
@@ -370,19 +377,9 @@ int write_object_record(P_obj object, int room_vnum, char *buffer, size_t maximu
 {
 	if (!object || !buffer || room_vnum <= 0 || maximum < sizeof(world_recovery_object_record))
 		return -1;
-	// capture_item_tree initializes each emitted entry; do not clear unused capacity.
-	std::vector<world_recovery_item_snapshot> items;
-	try
-	{
-		items.resize(WORLD_RECOVERY_MAX_ITEM_TREE);
-	}
-	catch (const std::bad_alloc &)
-	{
-		return -1;
-	}
 	uint32_t count = 0;
 	bool skip = false;
-	if (!capture_item_tree(object, room_vnum, 0, 0, items.data(), &count, &skip,
+	if (!capture_item_tree(object, room_vnum, 0, 0, capture_items.data(), &count, &skip,
 			       copyover_custody) ||
 	    !count)
 	{
@@ -399,7 +396,7 @@ int write_object_record(P_obj object, int room_vnum, char *buffer, size_t maximu
 		return -1;
 	const world_recovery_object_record record = { room_vnum, count };
 	memcpy(buffer, &record, sizeof(record));
-	memcpy(buffer + sizeof(record), items.data(),
+	memcpy(buffer + sizeof(record), capture_items.data(),
 	       static_cast<size_t>(count) * sizeof(world_recovery_item_snapshot));
 	return static_cast<int>(size);
 }
@@ -550,12 +547,28 @@ void publisher_main()
 		else
 			++health.publish_failures;
 		if (completions.size() < WORLD_RECOVERY_QUEUE_CAPACITY * 2)
-			completions.push_back({ generation.sequence, published, attempts });
+			completions.push_back({ generation.sequence, published, attempts, false,
+						generation.timestamp });
 		worker_busy = false;
 		health.worker_busy = false;
 	}
 	std::lock_guard<std::mutex> lock(recovery_mutex);
 	health.worker_running = false;
+}
+
+// An object that changes places while a capture runs can be met twice, in a container and
+// then by itself, and boot refuses a generation that holds an item twice. The capture
+// keeps the tree it met an item in first.
+bool capture_tree_is_new(int record_size)
+{
+	const size_t count = (record_size - sizeof(world_recovery_object_record)) /
+			     sizeof(world_recovery_item_snapshot);
+	for (size_t index = 0; index < count; ++index)
+		if (active_capture.item_uids.count(capture_items[index].item_uid))
+			return false;
+	for (size_t index = 0; index < count; ++index)
+		active_capture.item_uids.insert(capture_items[index].item_uid);
+	return true;
 }
 
 bool capture_one_record()
@@ -607,6 +620,15 @@ bool capture_one_record()
 						    capture_buffer.size());
 			if (!size)
 				return true;
+			try
+			{
+				if (size > 0 && !capture_tree_is_new(size))
+					return true;
+			}
+			catch (const std::bad_alloc &)
+			{
+				return false;
+			}
 			if (size < 0 || !append_record(active_capture.generation,
 						       world_recovery_record_type::object,
 						       capture_buffer.data(), size))
@@ -772,6 +794,8 @@ bool world_recovery_pipeline_request(void)
 	active_capture.generation.timestamp = time(NULL);
 	try
 	{
+		// Reserved whole, so that appending a record never moves what is captured.
+		active_capture.generation.blob.reserve(WORLD_RECOVERY_MAX_BYTES);
 		active_capture.generation.blob.resize(sizeof(world_recovery_header));
 	}
 	catch (const std::bad_alloc &)
@@ -798,11 +822,10 @@ void world_recovery_pipeline_pulse(void)
 		fail_capture(true);
 		return;
 	}
+	// Time is the only limit: a step is as little as one room looked at.
 	const auto deadline = std::chrono::steady_clock::now() +
 			      std::chrono::microseconds(WORLD_RECOVERY_CAPTURE_TIME_BUDGET_USEC);
-	for (size_t count = 0; count < WORLD_RECOVERY_CAPTURE_RECORD_BUDGET &&
-			       std::chrono::steady_clock::now() < deadline;
-	     ++count)
+	while (std::chrono::steady_clock::now() < deadline)
 	{
 		if (!capture_one_record())
 		{
@@ -834,7 +857,10 @@ bool world_recovery_pipeline_take_completion(world_recovery_completion *completi
 	completions.pop_front();
 	if (completion->published && completion->sequence == health.last_submitted_sequence &&
 	    completion->sequence > health.last_acknowledged_sequence)
+	{
 		health.last_acknowledged_sequence = completion->sequence;
+		health.last_acknowledged_timestamp = completion->timestamp;
+	}
 	else if (completion->published)
 		++health.stale_completions;
 	return true;
@@ -880,6 +906,10 @@ world_recovery_health world_recovery_pipeline_health_copy(void)
 	snapshot.queued_generations = queued.size();
 	if (health.capture_active)
 		snapshot.capture_age_msec = elapsed_msec(active_capture.started);
+	snapshot.last_acknowledged_age_sec =
+		health.last_acknowledged_timestamp ?
+			time(NULL) - health.last_acknowledged_timestamp :
+			-1;
 	return snapshot;
 }
 
@@ -1255,6 +1285,68 @@ bool build_recovery_plan(const unsigned char *data, size_t size, int max_age_sec
 	return counts_match;
 }
 
+// A drop is journaled after the capture it was made in, and that capture may have written
+// the item as well, where it was dropped or where it lay before. A later drop of an item
+// the generation holds is journaled too. The generation's stays; boot refuses an item that
+// comes twice.
+bool floor_record_repeats(const recovery_plan &plan, const std::vector<unsigned char> &record)
+{
+	for (size_t offset = sizeof(world_recovery_object_record);
+	     offset + sizeof(world_recovery_item_snapshot) <= record.size();
+	     offset += sizeof(world_recovery_item_snapshot))
+	{
+		uint64_t item_uid = 0;
+		memcpy(&item_uid,
+		       record.data() + offset + offsetof(world_recovery_item_snapshot, item_uid),
+		       sizeof(item_uid));
+		if (plan.item_uids.count(item_uid))
+			return true;
+	}
+	return false;
+}
+
+// An item the capture saw on the floor without an owner is held once its taker's save, or
+// a command of the economy, has recorded it. The holder has the item, so the tree it was
+// captured in is left out; put back, the next taker's save would claim the uid and the
+// first holder would lose the item.
+bool leave_out_owned_trees(recovery_plan *plan)
+{
+	std::vector<uint64_t> item_uids;
+	std::unordered_set<uint64_t> owned, left_out;
+	try
+	{
+		for (const planned_object &object : plan->objects)
+			for (const world_recovery_item_snapshot &item : object.items)
+				if (!(item.flags & WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED))
+					item_uids.push_back(item.item_uid);
+		if (item_uids.empty())
+			return true;
+		if (!sql_persistence_world_recovery_items_owned(item_uids, &owned))
+			return false;
+		std::erase_if(plan->objects,
+			      [&](const planned_object &object)
+			      {
+				      for (const world_recovery_item_snapshot &item : object.items)
+					      if (owned.count(item.item_uid))
+					      {
+						      left_out.insert(object.items[0].item_uid);
+						      return true;
+					      }
+				      return false;
+			      });
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
+	}
+	std::erase_if(plan->authority_items, [&](const world_recovery_authority_item &item)
+		      { return left_out.count(item.root_item_uid) != 0; });
+	if (!left_out.empty())
+		logit(LOG_SYS, "redis: world recovery left out %zu object trees that have an owner",
+		      left_out.size());
+	return true;
+}
+
 void replace_object_text(P_obj object, const world_recovery_item_snapshot &item)
 {
 	if (item.name[0])
@@ -1493,18 +1585,33 @@ bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, i
 		logit(LOG_SYS, "redis: world recovery semantic plan validation failed");
 		return false;
 	}
+	size_t repeated = 0;
 	for (size_t index = 0; index < floor_record_count; ++index)
 	{
 		std::vector<unsigned char> native_record;
-		if (!world_recovery_decode_record(world_recovery_record_type::object,
-						  floor_records[index], floor_record_sizes[index],
-						  &native_record) ||
+		const bool decoded = world_recovery_decode_record(
+			world_recovery_record_type::object, floor_records[index],
+			floor_record_sizes[index], &native_record);
+		if (decoded && floor_record_repeats(plan, native_record))
+		{
+			++repeated;
+			continue;
+		}
+		if (!decoded ||
 		    !add_object_record(&plan, native_record.data(), native_record.size()))
 		{
 			logit(LOG_SYS, "redis: world recovery floor record rejected index=%zu",
 			      index);
 			return false;
 		}
+	}
+	if (repeated)
+		logit(LOG_SYS, "redis: world recovery left out %zu floor records of items it holds",
+		      repeated);
+	if (!leave_out_owned_trees(&plan))
+	{
+		logit(LOG_SYS, "redis: world recovery ownership lookup failed");
+		return false;
 	}
 	std::vector<item_ownership_runtime_entry> authoritative;
 	try

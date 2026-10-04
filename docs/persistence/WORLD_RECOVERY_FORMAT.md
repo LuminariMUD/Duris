@@ -1,7 +1,8 @@
 # World Recovery Wire Format
 
-Duris world-recovery generations use schema 12. The durable Redis value is independent of
-compiler padding, host byte order, `time_t`, `unsigned long`, and native C/C++ struct size.
+Duris world-recovery generations use schema 13; the magic is still `WR12`. The durable
+Redis value is independent of compiler padding, host byte order, `time_t`, `unsigned long`,
+and native C/C++ struct size.
 All integers are fixed-width little-endian values. Text fields are fixed-width byte arrays
 that must contain a null terminator before materialization.
 
@@ -12,7 +13,7 @@ The generation header is exactly 64 bytes:
 | Offset | Bytes | Field |
 | ---: | ---: | --- |
 | 0 | 4 | ASCII magic `WR12` |
-| 4 | 4 | Schema version, currently 12 |
+| 4 | 4 | Schema version, currently 13 |
 | 8 | 4 | Header size, always 64 |
 | 12 | 8 | Monotonic publication sequence |
 | 20 | 8 | Signed Unix timestamp |
@@ -40,7 +41,7 @@ authenticated by the generation HMAC, but are not misrepresented as SQL-owned it
 Trees whose live custody identity disagrees with their floor location are omitted, and
 player corpses are left to the authoritative corpse restore path.
 
-Floor deltas use the same schema-12 object-tree payload prefixed by `WRF5:`. The Redis hash
+Floor deltas use the same object-tree payload prefixed by `WRF5:`. The Redis hash
 field UID must match the decoded root UID before the record enters recovery planning.
 
 ## Redis storage and memory bounds
@@ -49,7 +50,7 @@ A generation is not stored as one Redis value. The season-scoped generation key 
 an exact 120-byte `WRG2` manifest with version 2, total byte length, chunk count, the fixed
 1 MiB chunk size, a 32-byte lowercase hexadecimal upload token, a SHA-256 payload digest,
 and an HMAC-SHA256 tag bound to deployment, season, and sequence. The generation bytes are
-split across at most 64 keys qualified by sequence, upload token, and zero-based chunk
+split across at most 256 keys qualified by sequence, upload token, and zero-based chunk
 index. Every manifest and chunk expires with the configured generation TTL.
 
 The publisher writes one chunk per command on the recovery worker, then uses the writer
@@ -66,11 +67,18 @@ the loader requires equal hash/index counts, accepts at most 32,768 records, and
 
 Accepted recovery payload has these application-level ceilings:
 
-- generation bytes: 64 MiB;
+- generation bytes: 256 MiB;
 - floor object payload: 16 MiB;
-- generation plus floor payload: 64 MiB;
+- generation plus floor payload: 256 MiB;
 - floor records: 32,768;
 - individual generation Redis command/reply: 1 MiB plus protocol/key overhead.
+
+The generation ceiling bounds memory: the game holds one generation while it is captured and
+published, and Redis holds two while the next one replaces the last. The full world of
+54,000 NPCs and 10,000 doors is about 45 MiB after a boot, and staging's crossed 64 MiB with
+11,000 floor objects: an NPC is about 400 bytes and an item 3.3 KiB, so the ceiling leaves
+room for 70,000 floor objects. The capture reserves
+the ceiling's address space once, so appending a record never moves what is captured.
 
 Generation publication, floor encoding/indexing, and Redis socket work remain background
 operations. Durable reads and recovery planning occur only during boot.
@@ -78,7 +86,7 @@ operations. Durable reads and recovery planning occur only during boot.
 ## Runtime and compatibility policy
 
 Gameplay capture retains bounded native in-process snapshots because they never leave the
-process. The existing publisher thread converts a completed generation to schema 12 in
+process. The existing publisher thread converts a completed generation to the wire format in
 place before checksumming and Redis publication. The existing floor worker converts queued
 native object snapshots before issuing its Redis command. Durable decoding occurs only
 during boot recovery.
@@ -96,7 +104,7 @@ filesystem, process, or logging I/O is added to gameplay capture.
 
 Older schemas and floor records are rejected rather than interpreted through an ABI-dependent
 compatibility path. Recovery data is reconstructible and expiring: an incompatible current
-generation produces a normal zone boot, and the first schema-12 publication atomically
+generation produces a normal zone boot, and the first publication in the current schema atomically
 replaces the generation pointer and clears prior floor deltas.
 
 The golden-vector and round-trip contract is:
@@ -105,16 +113,16 @@ The golden-vector and round-trip contract is:
 python3 tests/async/test_world_recovery_codec.py
 ```
 
-## Corpse and generated item state (schema 12 / file copyover 12)
+## Corpse and generated item state
 
-Each schema-12 item is 728 wire bytes. In addition to UID/tree identity, type,
+Each item is 3,324 wire bytes. In addition to UID/tree identity, type,
 values, timers, and display strings, it records action/owner text, wear flags,
 extra/anti flags, weight, material, cost, trap fields, condition, craftsmanship,
 z coordinate, five character bitvectors, and all fixed item affects. Recovery
 metadata `flags` remains distinct from `wear_flags`; restoration never adds
-`ITEM_TAKE` to an item that did not have it. Text retains the existing fixed-width capture convention (80-byte names and
-short descriptions, 160-byte room descriptions); action text has a 160-byte
-field including its terminator. These are bounded recovery strings, not an
+`ITEM_TAKE` to an item that did not have it. Text is fixed-width, each field including its
+terminator: 513 bytes for the name and for the short description, 1,025 for the room
+description and for the action text. These are bounded recovery strings, not an
 unbounded serialization of arbitrary object prose.
 
 The generated-equipment audit covers the runtime overrides in `randomeq.c`,
@@ -124,16 +132,16 @@ not newly serialized by this change. It is not a general replacement for player
 item persistence. Aggregate container weights and values are restored after
 linking descendants so container insertion does not double-count saved weight.
 
-The per-record ceiling is 512 KiB, retaining the 512-item tree limit. Floor
+The per-record ceiling is 2 MiB, which holds the 512-item tree limit. Floor
 records use the same increased ceiling; generation and total floor budgets
 remain unchanged.
 
-File copyover version 12 stores each ground object as a native uint32 byte
+File copyover (version 12 and later) stores each ground object as a native uint32 byte
 length followed by the bounded native world-recovery object tree and its live
 custody entries. One native `item_ownership_runtime_entry` follows for each item
 marked `WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED`, in tree traversal order; no
 entry is emitted for an item absent from the runtime ledger. The byte length
-covers both the tree and custody entries, within the same 512 KiB ceiling.
+covers both the tree and custody entries, within the same 2 MiB ceiling.
 
 Copyover captures the live ledger after persistence workers have quiesced and
 drained. It preserves owner type, owner ID/context, logical root/parent UIDs,

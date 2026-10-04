@@ -5711,6 +5711,10 @@ int wear(P_char ch, P_obj obj_object, int keyword, bool showit)
 	}
 	if (!can_equip_soulbound_item(ch, obj_object, showit))
 		return FALSE;
+	// A raised pet carries what its corpse held, and an NPC's corpse can hold hidden
+	// items: a player's pet equips none of them.
+	if (IS_NOSHOW(obj_object) && IS_PC_PET(ch))
+		return FALSE;
 
 	// Scrap it. Might cause crash. Dec08 -Lucrot
 	if (obj_object->condition <= 0)

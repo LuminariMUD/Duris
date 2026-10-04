@@ -24,6 +24,9 @@
 
 namespace
 {
+static_assert(REDIS_WORLD_GENERATION_MAX_CHUNKS * REDIS_WORLD_GENERATION_CHUNK_BYTES ==
+	      WORLD_RECOVERY_MAX_BYTES);
+
 struct world_keys
 {
 	char fence[128];
@@ -37,21 +40,23 @@ struct world_keys
 	char clean_shutdown[128];
 };
 
-constexpr const char *WORLD_PUBLISH_SCRIPT =
-	"if redis.call('GET',KEYS[1])~=ARGV[1] then return 0 end "
-	"local current=redis.call('GET',KEYS[2]) "
-	"if ARGV[2]=='' then if current then return 0 end "
-	"elseif current~=ARGV[2] then return 0 end "
-	"redis.call('SET',KEYS[3],ARGV[3]) "
-	"redis.call('EXPIRE',KEYS[3],ARGV[8]) "
-	"redis.call('SET',KEYS[2],ARGV[4]) "
-	"redis.call('SET',KEYS[4],ARGV[5]) "
-	"redis.call('SET',KEYS[5],ARGV[4]) "
-	"redis.call('SET',KEYS[6],ARGV[6]) "
-	"redis.call('SET',KEYS[7],'1') "
-	"redis.call('DEL',KEYS[8],KEYS[9]) "
-	"redis.call('PEXPIRE',KEYS[1],ARGV[7]) "
-	"return 1";
+// The writer publishes while it holds the fence or nobody does, as it renews: a lease that
+// ran out, or that Redis lost in a restart, is taken again here.
+constexpr const char *WORLD_PUBLISH_SCRIPT = "local fence=redis.call('GET',KEYS[1]) "
+					     "if fence and fence~=ARGV[1] then return 0 end "
+					     "local current=redis.call('GET',KEYS[2]) "
+					     "if ARGV[2]=='' then if current then return 0 end "
+					     "elseif current~=ARGV[2] then return 0 end "
+					     "redis.call('SET',KEYS[3],ARGV[3]) "
+					     "redis.call('EXPIRE',KEYS[3],ARGV[8]) "
+					     "redis.call('SET',KEYS[2],ARGV[4]) "
+					     "redis.call('SET',KEYS[4],ARGV[5]) "
+					     "redis.call('SET',KEYS[5],ARGV[4]) "
+					     "redis.call('SET',KEYS[6],ARGV[6]) "
+					     "redis.call('SET',KEYS[7],'1') "
+					     "redis.call('DEL',KEYS[8],KEYS[9]) "
+					     "redis.call('SET',KEYS[1],ARGV[1],'PX',ARGV[7]) "
+					     "return 1";
 
 bool format_key(char *buffer, size_t size, const char *key_namespace, uint64_t epoch,
 		const char *suffix)
@@ -381,6 +386,15 @@ bool token_matches(redisContext *context, const char *fence_key, const char *wri
 	return matches;
 }
 
+bool fence_held_or_free(redisContext *context, const char *fence_key, const char *writer_token)
+{
+	redisReply *reply = command(context, "GET %s", fence_key);
+	const bool unheld = reply && reply->type == REDIS_REPLY_NIL;
+	if (reply)
+		freeReplyObject(reply);
+	return unheld || token_matches(context, fence_key, writer_token);
+}
+
 void end_watch(redisContext *context, bool transaction_started)
 {
 	redisReply *reply = command(context, transaction_started ? "DISCARD" : "UNWATCH");
@@ -422,30 +436,16 @@ bool redis_world_store_renew_fence(const struct redis_world_store_config *config
 			redisFree(context);
 		return false;
 	}
-	bool transaction_started = false;
-	bool renewed = status_ok(command(context, "WATCH %s", keys.fence)) &&
-		       token_matches(context, keys.fence, writer_token) &&
-		       status_ok(command(context, "MULTI"));
-	if (renewed)
-	{
-		transaction_started = true;
-		redisReply *queued = command(context, "PEXPIRE %s %llu", keys.fence,
-					     (unsigned long long)lease_msec);
-		renewed = queued && queued->type == REDIS_REPLY_STATUS;
-		if (queued)
-			freeReplyObject(queued);
-	}
-	if (renewed)
-	{
-		redisReply *reply = command(context, "EXEC");
-		renewed = reply && reply->type == REDIS_REPLY_ARRAY && reply->elements == 1 &&
-			  reply->element[0] && reply->element[0]->type == REDIS_REPLY_INTEGER &&
-			  reply->element[0]->integer == 1;
-		if (reply)
-			freeReplyObject(reply);
-	}
-	else
-		end_watch(context, transaction_started);
+	// The lease is the writer's while it holds it or nobody does.
+	constexpr const char *script = "local fence=redis.call('GET',KEYS[1]) "
+				       "if fence and fence~=ARGV[1] then return 0 end "
+				       "redis.call('SET',KEYS[1],ARGV[1],'PX',ARGV[2]) return 1";
+	redisReply *reply = command(context, "EVAL %b 1 %s %b %llu", script, strlen(script),
+				    keys.fence, writer_token, strlen(writer_token),
+				    (unsigned long long)lease_msec);
+	const bool renewed = reply && reply->type == REDIS_REPLY_INTEGER && reply->integer == 1;
+	if (reply)
+		freeReplyObject(reply);
 	redisFree(context);
 	return renewed;
 }
@@ -545,11 +545,11 @@ uint64_t redis_world_store_consume_clean_shutdown(const struct redis_world_store
 }
 
 bool redis_world_store_consume_generation(const struct redis_world_store_config *config,
-					  const char *writer_token, uint64_t sequence)
+					  uint64_t sequence)
 {
 	world_keys keys = {};
 	char generation[160];
-	if (!writer_token || !*writer_token || !sequence || !build_keys(config, &keys) ||
+	if (!sequence || !build_keys(config, &keys) ||
 	    !generation_key(generation, sizeof generation, config, sequence))
 		return false;
 	redisContext *context = connect_bounded(config);
@@ -565,16 +565,16 @@ bool redis_world_store_consume_generation(const struct redis_world_store_config 
 		redisFree(context);
 		return false;
 	}
+	// Whoever holds the lease: a boot that restored the generation, with a crashed writer's
+	// lease still running, must not find it again at the next crash.
 	constexpr const char *script =
 		"if redis.call('GET',KEYS[1])~=ARGV[1] then return 0 end "
-		"if redis.call('GET',KEYS[2])~=ARGV[2] then return 0 end "
-		"redis.call('DEL',KEYS[2],KEYS[3],KEYS[4],KEYS[5],KEYS[6],KEYS[7],KEYS[8]) "
+		"redis.call('DEL',KEYS[1],KEYS[2],KEYS[3],KEYS[4],KEYS[5],KEYS[6],KEYS[7]) "
 		"return 1";
-	redisReply *reply = command(context, "EVAL %b 8 %s %s %s %s %s %s %s %s %b %llu", script,
-				    strlen(script), keys.fence, keys.current, generation,
-				    keys.timestamp, keys.sequence, keys.checksum, keys.complete,
-				    keys.clean_shutdown, writer_token, strlen(writer_token),
-				    (unsigned long long)sequence);
+	redisReply *reply = command(context, "EVAL %b 7 %s %s %s %s %s %s %s %llu", script,
+				    strlen(script), keys.current, generation, keys.timestamp,
+				    keys.sequence, keys.checksum, keys.complete,
+				    keys.clean_shutdown, (unsigned long long)sequence);
 	const bool consumed = reply && reply->type == REDIS_REPLY_INTEGER && reply->integer == 1;
 	if (reply)
 		freeReplyObject(reply);
@@ -685,7 +685,7 @@ bool redis_world_store_publish_observed(const struct redis_world_store_config *c
 
 	uint64_t previous_sequence = 0;
 	redisReply *current_reply = command(context, "GET %s", keys.current);
-	bool valid = current_reply && token_matches(context, keys.fence, writer_token) &&
+	bool valid = current_reply && fence_held_or_free(context, keys.fence, writer_token) &&
 		     (current_reply->type == REDIS_REPLY_NIL ||
 		      (current_reply->type == REDIS_REPLY_STRING && current_reply->str));
 	if (valid && current_reply->type == REDIS_REPLY_STRING)

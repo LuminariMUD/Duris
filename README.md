@@ -147,7 +147,7 @@ caches and recovery integration. Local development may use shared
 presence, cache, maintenance, and, when enabled, donation ACL identities. Verified
 `REDIS_TLS=TRUE` transport applies to every runtime connection; non-loopback production
 endpoints require TLS. `REDIS_WORLD_STATE=TRUE` additionally enables immutable world
-recovery.
+recovery, which is off unless a server turns it on.
 Player saves do not depend on Redis. If a DurisWeb backend will authenticate
 through WebSocket or GMCP, give it a private `DURISWEB_SECRET` and follow the
 challenge-response contract in the
@@ -337,8 +337,10 @@ nc localhost 4000
 | TLS telnet | 7778 | 4001 |
 | WebSocket and HTTP health | 4050 | 4050 |
 
-The WebSocket port can be overridden with `DURIS_WEBSOCKET_PORT`. Once the game is
-running, `scripts/healthcheck.sh` verifies both process and database-pool readiness.
+The WebSocket and HTTP health listener is off unless `DURIS_WEBSOCKET=TRUE`: a server is
+assumed to have no website. Its port can be overridden with `DURIS_WEBSOCKET_PORT`. With
+the listener on, `scripts/healthcheck.sh` verifies both process and database-pool
+readiness once the game is running.
 
 For local TLS, run `./scripts/generate_localhost_cert.sh`. It creates an ignored,
 machine-local self-signed keypair under `certs/`; that fallback is accepted only

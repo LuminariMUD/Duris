@@ -130,10 +130,11 @@ per-operation authority transfer is not supported.
 | `PERSISTENCE_MODE` | Optional; defaults to `mariadb-primary` | Select the complete persistence authority; mixed per-write failover is not supported. |
 | `FLATFILE_STATE_DIR` | Required by `flatfile-primary` | Absolute server-user-owned directory with mode `0700` or stricter. |
 | BACKUP_POLICY_FILE | Required for pre-cycle and scheduled backups | Absolute owner-only approved JSON policy; see [BACKUPS.md](BACKUPS.md). |
+| `PREBOOT_BACKUP` | Optional; off unless `1` | Have `cycle_mud.sh` take a backup before every boot, and refuse the boot when it fails. Off by default: the backup timer takes the backups. |
 | `ENVIRONMENT` | Required: `local` or `production` | Runtime trust role. |
 | `DB_HOST` | Required by `mariadb-primary` | MySQL/MariaDB host. |
 | `DB_PORT` | Optional; `1`-`65535` | Database TCP port; the client default applies when omitted. |
-| `DB_USER` | Required by `mariadb-primary` | Database account. |
+| `DB_USER` | Required by `mariadb-primary` | Database account. Name it for its environment (`duris_local`, `duris_staging`, `duris_prod`), so that a command or credential sent to the wrong server fails to log in. |
 | `DB_PASSWD` | Required by `mariadb-primary` | Database password. |
 | `DB_NAME` | Required by `mariadb-primary` | Requested database name. |
 | `DB_ALLOWED_TARGETS` | Required by `mariadb-primary` | Comma-separated exact `host/database` pairs; the resolved pair must match. |
@@ -165,6 +166,12 @@ selects another; on any other port an explicitly production-like name (`duris` o
 `duris_prod`) is redirected to `duris_dev` before the allow-list check. Use a separate
 database account, target, and non-production port for development. The
 redirect does not make a production credential safe to reuse locally.
+
+The database server's memory is its own setting, not one of these variables. MariaDB's
+default buffer pool (`innodb_buffer_pool_size`) is 128 MB, smaller than the game's data.
+The repository's default is 1 GB: `compose.yaml` starts MariaDB with
+`--innodb-buffer-pool-size=1G`, and a server's own MariaDB sets
+`innodb_buffer_pool_size = 1G` in its configuration unless its host calls for another size.
 
 Every connection has 10-second connect/read/write deadlines and disables automatic
 reconnect. MySQL's client default keeps reconnect off without invoking its deprecated
@@ -215,13 +222,51 @@ player-save pipeline.
 | `REDIS_CA_CERT` | empty | Readable CA bundle | Required when Redis TLS is enabled and used for peer verification. |
 | `REDIS_TLS_SERVER_NAME` | `REDIS_HOST` | Certificate DNS name | Optional runtime SNI and certificate-name override, useful when connecting by IP to a certificate issued for a DNS name. |
 | `REDIS_ALLOWED_TARGETS` | none | Comma-separated exact `host:port/database` or `unix:/absolute/socket/database` values | Required destructive-maintenance allow-list. |
-| `REDIS_WORLD_STATE` | disabled | `TRUE` enables it | Enable bounded capture and background publication of crash-recovery world generations. |
-| `REDIS_WORLD_STATE_INTERVAL` | `10` seconds | `5`-`300` | Snapshot interval when world-state recovery is enabled. |
-| `REDIS_WORLD_STATE_MAX_AGE` | `300` seconds | `60`-`3600` | Maximum snapshot age accepted during recovery. |
+| `REDIS_WORLD_STATE` | disabled | `TRUE` enables it | Enable bounded capture and background publication of crash-recovery world generations. Off, the server does none of that work. See [what world recovery buys and costs](#what-world-recovery-buys-and-costs). |
+| `REDIS_WORLD_STATE_INTERVAL` | `600` seconds | `5`-`3600` | Seconds from one capture's start to the next when world-state recovery is enabled. |
+| `REDIS_WORLD_STATE_MAX_AGE` | the interval plus `600` seconds | the interval plus `600`, to `86400` | Maximum snapshot age accepted during recovery. A lower setting is raised to the minimum: it could only refuse every generation. |
 | `REDIS_WORLD_STATE_SECRET` | none | `32`-`256` bytes | Independent HMAC key required when world recovery is enabled. It authenticates the manifest and complete generation payload; do not reuse Redis, database, donation, or DurisWeb credentials. |
 | `REDIS_WORLD_STATE_SECRET_PREVIOUS` | empty | `32`-`256` bytes | Optional previous recovery HMAC key accepted only for reading and cleanup during a bounded rotation window. New generations are always signed by the current key. |
 | `REDIS_DONATION_SUBSCRIBER` | disabled | Exact `TRUE` enables it | Subscribe to authenticated external donation notices. No polling job or subscriber connection exists by default. |
 | `REDIS_DONATION_SECRET` | none | At least 32 bytes | Independent HMAC key required when the donation subscriber is enabled. Do not reuse a Redis, database, or DurisWeb secret. |
+
+### What world recovery buys and costs
+
+World recovery is a convenience, not a safety net, and it is off unless a server sets
+`REDIS_WORLD_STATE=TRUE`. Characters, pets, corpses, lockers, banks and shops are saved
+without it. It brings the mobs, the objects on the ground, the doors and the zone ages back
+as the last capture had them after a crash or a cold restart, where the boot would otherwise
+reset every zone. A copyover keeps the world by itself.
+
+Two kinds of object on the ground are not brought back:
+
+- An item a character logged in with, or was granted, and then dropped. The ownership
+  ledger in memory names the character for it, a drop does not change that, and a capture
+  and the floor journal leave out a tree whose custody is not its room's. It is lost at a
+  crash or a cold restart, as it is with recovery off. An item picked up during the
+  session, from the ground or a corpse, has no such entry and is captured where it lies,
+  also after a save.
+- An item a character's save holds by the time of the restore. It was taken after the
+  capture, so its holder has it.
+
+What it costs, measured on the full world (54,000 mobs, 253,000 rooms):
+
+- **The game thread.** While a capture runs, the game thread gives it at most 2 ms every
+  second pulse (half a second). A capture is about 40 such calls, 20 seconds, with nobody
+  playing or with 30 players.
+- **Redis.** Each generation is the whole world: about 45 MiB after a boot and 3.3 KiB more
+  for every object on the ground, 69 MiB with 15,000. Redis holds two generations while one
+  replaces the other, and uses about a third more memory than their bytes.
+- **A restart.** A boot that restores a generation takes 3 seconds, less than one that
+  resets every zone.
+
+`REDIS_WORLD_STATE_INTERVAL` sets how often that is paid: ten minutes by default. A shorter
+interval costs more of both; a longer one restores an older world. One limit follows the
+interval, so that a generation taken at it is still accepted at boot: when the next capture
+replaces it, a generation is as old as the interval plus the time that capture took, and the
+server then has to restart. `REDIS_WORLD_STATE_MAX_AGE`, past which boot refuses a
+generation, is at least the interval plus 600 seconds (300 for a capture's budget, 300 for
+the restart).
 
 World recovery is intentionally separate from player saves and reconstructible caches.
 At boot the server constructs immutable connection settings for each subsystem. In
@@ -249,12 +294,23 @@ and retired Duris surfaces, but it must not have access to other applications' p
 Test the exact ACL rules on a disposable Redis instance before deployment; Redis command
 categories and Lua ACL behavior can differ across supported server versions.
 
-At boot, one publisher claims a renewable 10-minute writer lease. Each background
+At boot, one publisher claims a writer lease of 60 seconds, which the game loop renews
+every 20. Each background
 publication verifies that lease and expected prior pointer, writes the immutable
 sequence-keyed payload, advances the current pointer and diagnostic metadata, consumes
 the pre-capture floor hash, and renews the lease in one atomic Lua compare-and-set. A
-stale or second writer cannot publish. The single script also reduces background Redis
-round trips compared with a watched transaction.
+stale or second writer cannot publish. A renewal and a publication take the lease when
+nobody holds it, so a writer whose lease ran out while the game loop stood still, or was
+lost with a Redis restart, holds it again by itself. The single script also reduces
+background Redis round trips compared with a watched transaction.
+
+A crashed writer's lease runs out within a minute of the crash. The boot after it restores
+the generation and consumes it whoever holds the lease, so that no generation is restored
+twice; it claims the lease once it is free, and a capture attempt that could not start is
+made again 30 seconds later, not an interval later. Its first generation is published
+about a minute and a half after the boot, and a second crash before that has nothing to
+restore: the boot resets every zone. A copyover gives the lease up before its exec, and the
+image it starts claims it at boot.
 All of those keys use `<REDIS_NAMESPACE>:season:<epoch>:` with the active SQL season epoch captured at
 boot. An old process can therefore write only its abandoned epoch after a reset; it cannot
 create a snapshot visible to the new season.
@@ -263,24 +319,29 @@ checksum validate. It combines the generation with versioned binary floor record
 validates the full semantic graph, and batch-reconciles every custody-bearing item UID
 against SQL before creating any entity. Authenticated reconstructible world-pop objects
 are restored without inventing SQL custody, while SQL-restored player corpses are excluded.
+A world-pop object that an owner holds by then is left out, with the tree it was captured
+in: a character took it after the capture and saved, so the character has it.
 A failed or stale generation is retained for diagnosis and the
 server performs a full normal zone boot.
 
-World generations are capped at 64 MiB. Restore checks the value length inside Redis
-before transfer. Each published generation receives a TTL of at least one hour or four
+World generations are capped at 256 MiB; the full world is 45 to 70 MiB. Redis holds one
+generation, and two while the next one replaces it, so allow it twice the generation's size.
+Restore checks the value length inside Redis before transfer. Each published generation receives a TTL of at least one hour or four
 times `REDIS_WORLD_STATE_MAX_AGE`, whichever is greater, so abandoned generations expire.
 The background publisher scales its write timeout for the blob size, up to five seconds;
 this does not extend the game-loop Redis command deadline.
 
-Graceful shutdown preserves the latest valid world generation for restart recovery. After
+A graceful shutdown takes one last capture once the players are saved and gone, so a clean
+restart restores the world as the shutdown left it and not as the last periodic capture had
+it. After
 all world and floor work drains, the fenced writer records a one-use clean-shutdown marker
 for that exact sequence. The next boot consumes the marker and reports `clean restart`
 only when the validated current generation matches; otherwise it reports `crash`
 recovery. Successful restore consumes that generation without disabling future snapshots.
 
 Floor deltas use a separate background worker bounded to eight batches and 16 MiB. Each
-batch holds at most 2,048 mutations, each value is capped at 256 KiB, and keys are capped
-at 128 bytes. Each value is a binary tree of at most 12 identity-preserving items; larger
+batch holds at most 2,048 mutations, each value is capped at 2 MiB, and keys are capped
+at 128 bytes. Each value is a binary tree of at most 512 identity-preserving items; larger
 trees fail capture closed rather than being truncated. Before world capture, an ordered
 worker barrier confirms all earlier deltas and pauses later publication; the generation
 handoff deletes the acknowledged hash atomically, then post-barrier deltas resume.
@@ -288,11 +349,25 @@ Gameplay performs bounded fixed-memory serialization but no Redis socket, SQL, d
 process, or logging I/O for floor drops, pickups, or snapshot preflight.
 
 World capture is an explicitly fuzzy crash-recovery snapshot with a hard five-minute
-capture deadline. It keeps the existing 64-step/2-ms per-pulse gameplay budget; an expired
-capture is discarded and retried later rather than published. NPC inventory/equipment and
-carried gold are excluded from recovery, while all floor-item UIDs must pass complete SQL
-custody reconciliation before any recovery entity is created. `REDIS_WORLD_STATE_MAX_AGE`
+capture deadline. The game thread gives it at most 2 ms every second pulse, and a capture of
+the full world takes about 20 seconds; an expired capture is discarded and retried later
+rather than published. NPC inventory/equipment and
+carried gold are excluded from recovery. Before any recovery entity is created, every
+floor-item UID is looked up in SQL: an item captured with the room's custody must still
+have it, or nothing is restored, and an item captured without custody that an owner holds
+by then is left out with its tree. An owner holds an item when an ownership record names
+it, except a character whose save no longer has the item: that character dropped it.
+`REDIS_WORLD_STATE_MAX_AGE`
 still controls how old a completed durable generation may be when boot attempts restore.
+
+When three attempts in a row leave no generation, the server raises one persistence alert,
+`domain=world_recovery`. Its action is the reason: `capture_failed`, `capture_expired`,
+`publish_failed`, `writer_unavailable` (the lease is held elsewhere or Redis was down at
+boot) or `floor_unavailable` (the floor worker cannot write). Its detail is
+`failures=3 last_ack_sequence=N last_ack_age_secs=N`, the last published generation and
+the age boot would judge it by, `-1` when this boot has published none. The next published generation ends the
+run, and a later run raises its own alert. `world persistence` and `redis detailed` show
+the same age as `last_ack_age_s`.
 
 The in-game `redis` and `redis detailed` commands read bounded local worker/pipeline
 telemetry only; they never query Redis. Shared boot, recovery, and stopped-server
@@ -319,15 +394,15 @@ REDIS_DB=0
 REDIS_NAMESPACE=duris:local:default
 REDIS_TLS=FALSE
 REDIS_ALLOWED_TARGETS=127.0.0.1:6379/0
-REDIS_WORLD_STATE=TRUE
+REDIS_WORLD_STATE=FALSE
 REDIS_WORLD_STATE_SECRET=local-development-only-world-state-hmac-change-before-shared-use
 REDIS_DONATION_SUBSCRIBER=TRUE
 REDIS_DONATION_SECRET=local-development-only-donation-hmac-change-before-shared-use
 ```
 
-Those fixed values are local-only placeholders so the example brings up every Redis
-worker. Replace both with distinct random secrets before connecting any shared or
-externally reachable service.
+Those fixed secrets are local-only placeholders; the world-recovery one is there for when
+the switch is turned on. Replace both with distinct random secrets before connecting any
+shared or externally reachable service.
 
 Stop the server before clearing Redis state. `scripts/clear-redis.sh --confirm
 <host:port/database|unix:/absolute/socket/database>` loads the owner-only `.env`, requires
@@ -434,6 +509,7 @@ craft-pouch contract is in [CHAOS_MODE.md](../reference/CHAOS_MODE.md).
 | `DURIS_DEV_PORT` | Plain-telnet port selected by `--dev` and `--minimal`. It defaults to `4000`; values must be decimal ports from 1 through 65535 and must not be the production port. |
 | `DURIS_PRODUCTION_PORT` | Optional plain-telnet port for the production role (`--production`). It defaults to `7777`; set it only when a second production-role install shares a host. Values must be decimal ports from 1 through 65535. |
 | `DURIS_TLS_PORT` | Optional independent TLS telnet port. It defaults to `7778`, or to the plain-telnet port plus one when a custom plain port is supplied. Values must be decimal ports from 1 through 65535 and must differ from the plain port. |
+| `DURIS_WEBSOCKET` | `TRUE` opens the WebSocket and HTTP health listener. It is off by default: a server is assumed to have no website, and a MUD-only server opens no such port and has no `GET /health`. The Docker deployment sets it, because the container's health check reads `/health`. |
 | `DURIS_WEBSOCKET_PORT` | WebSocket and HTTP health-listener port. It defaults to `4050`; values must be decimal ports from 1 through 65535. |
 | `DURIS_WEBSOCKET_LISTEN_ADDRESS` | WebSocket-only numeric listener address; defaults to `LISTEN_ADDRESS`, and to `127.0.0.1` when neither is set. Production requires exact loopback so a local TLS reverse proxy owns the public endpoint. |
 | `DURIS_WEBSOCKET_ALLOWED_ORIGINS` | Exact comma-separated browser `Origin` allow-list. Required in production; non-browser service connections may omit `Origin`. |
@@ -470,7 +546,8 @@ website-only ids (`flag_parsing`, `guild_parsing`, `zone_builder_parsing`, and
 controlled only by its permission and live-session checks.
 | `DURIS_TRUSTED_PROXY_IP` | One immediate proxy IP address whose `X-Forwarded-For` header may be trusted for WebSocket and telnet connections. If unset, forwarded addresses are ignored. This is an address allow-list, not a CIDR range. |
 
-WebSocket and `GET /health` listen on `DURIS_WEBSOCKET_PORT` (default `4050`).
+With `DURIS_WEBSOCKET=TRUE`, WebSocket and `GET /health` listen on `DURIS_WEBSOCKET_PORT`
+(default `4050`).
 In production, the WebSocket listener must use loopback, the trusted proxy and
 allowed origins must be configured, and the local reverse proxy must terminate
 TLS before forwarding to this plaintext listener. The server refuses to create

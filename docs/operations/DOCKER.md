@@ -49,7 +49,8 @@ nc 127.0.0.1 4000
 ```
 
 The default listeners are plain telnet on `4000`, self-signed TLS telnet on
-`4001`, and WebSocket/HTTP health on `4050`. They are published on host loopback
+`4001`, and WebSocket/HTTP health on `4050`, which `compose.yaml` turns on with
+`DURIS_WEBSOCKET=TRUE` for the container's health check. They are published on host loopback
 only. The generated certificate is intended for local use and persists in the
 `duris-runtime` volume.
 
@@ -72,8 +73,9 @@ docker compose --env-file .env.docker build --pull game
 docker compose --env-file .env.docker up --detach --wait
 ```
 
-The game launcher takes a database backup before each boot. Backups, the locker
-identification receipts, maintenance state, and the local TLS key are in
+The game launcher takes no backup before a boot: that needs `PREBOOT_BACKUP=1` and an
+approved backup policy ([BACKUPS.md](BACKUPS.md)), and this deployment sets neither. The
+locker identification receipts, maintenance state, and the local TLS key are in
 the `duris-runtime` volume. Filesystem-backed player state such as lockers,
 crafting recipes, aliases, and death-object configuration is in `duris-players`.
 Game logs are in `duris-logs`, and MariaDB data is in `mariadb-data`.

@@ -18,7 +18,8 @@ The example values approved for this PR are:
 | Retention | 48 hourly, 14 daily, 8 weekly buckets |
 | Local budget | 20 GiB, including publication headroom |
 | Required free space | 1 GiB |
-| Restore drill | Every week |
+| Restore drill | Off (`drill_seconds` 0); 604800 is every week |
+| Off-host replica | None (`replica_root` null) |
 
 The newest generation in each UTC epoch-aligned bucket is retained. Overlapping
 tiers share a generation. Always preserve the two newest valid generations.
@@ -99,7 +100,9 @@ connects to a game session or promotes a candidate.
     BACKUP_ENV_FILE=/etc/duris/backup.env scripts/backup_pfiles.sh status --require-drill
     BACKUP_ENV_FILE=/etc/duris/backup.env scripts/backup_pfiles.sh schedule
 
-The no-argument command remains the pre-cycle safety gate. A not-yet-created flatfile authority on its first boot reports authority_not_initialized and allows initial provisioning; scheduled jobs treat that state as an error, and no verified generation is claimed. The schedule command
+The no-argument command is the pre-cycle backup. `cycle_mud.sh` runs it before a boot only
+with `PREBOOT_BACKUP=1`, and then refuses the boot when it fails; it is off by default, for
+a server whose backup timer takes the backups. A not-yet-created flatfile authority on its first boot reports authority_not_initialized and allows initial provisioning; scheduled jobs treat that state as an error, and no verified generation is claimed. The schedule command
 uses a separate persisted deadline, so pre-cycle runs do not defer independent
 snapshot. It is safe to invoke once per minute. All capture, rotation, restore,
 and status operations use an exclusive job lock with a bounded wait; a remaining
@@ -113,13 +116,16 @@ generation's checksums and dump are verified in full when it is published, by
 finalize, before its pending replication is retried, when it is restored and
 before it is pruned. Every drill verifies all
 stored generations before it restores the newest, so a corrupted older generation
-fails the drill; `status --require-drill` is what then reports it.
+fails the drill; `status --require-drill` is what then reports it. Drills are off by
+default (`drill_seconds` 0): no drill runs, `status --require-drill` asks for none, and a
+stored generation is checked again only when it is restored or pruned. Set
+`drill_seconds` (3600 to 2678400) to have them.
 
 Sample inactive systemd units are in deploy/systemd/duris-backup-*. Copy them,
 adapt User, WorkingDirectory, ReadWritePaths, paths, and permissions, and connect
 OnFailure to the custodian's existing alerting service before enabling the
 timers. The backup/health timers evaluate each minute; the drill timer evaluates
-hourly and runs only when the configured week has elapsed. Timer persistence
+hourly and runs a drill only when the policy's interval has elapsed, never when it is 0. Timer persistence
 catches missed invocations after host downtime. Test a deliberate invalid
 policy and verify that the failure reaches the responsible operator.
 

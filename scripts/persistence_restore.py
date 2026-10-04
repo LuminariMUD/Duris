@@ -25,8 +25,8 @@ def clean_environment(candidate):
             "ENVIRONMENT": "local", "REDIS": "FALSE",
             "TMPDIR": str(tmp),
             "CRITICAL_COMMAND_JOURNAL_DIR": str(candidate / "journals/critical"),
-            "LISTEN_ADDRESS": "127.0.0.1", "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
-            "DURIS_WEBSOCKET_PORT": "4050"}
+            "LISTEN_ADDRESS": "127.0.0.1", "DURIS_WEBSOCKET": "TRUE",
+            "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1", "DURIS_WEBSOCKET_PORT": "4050"}
 
 
 def tombstone_preflight(path, p, captured):
@@ -180,6 +180,8 @@ def restore_capacity(p):
 
 
 def restore(p, generation_name, tombstones, drill=False):
+    if drill and not p["drill_seconds"]:
+        return {"event": "drill", "result": "off"}
     backup.mkdir(p["root"])
     restore_capacity(p)
     with backup.lock(p["root"] / ".job.lock", wait=backup.LOCK_WAIT_SECONDS), \

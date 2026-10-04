@@ -9,16 +9,18 @@
 
 constexpr uint32_t WORLD_RECOVERY_SCHEMA_VERSION = 13;
 constexpr uint32_t WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED = 1U << 0;
-constexpr size_t WORLD_RECOVERY_MAX_BYTES = 64 * 1024 * 1024;
+// What one generation may take of the game's memory, and twice that of Redis's while the
+// next one is published. An NPC is about 400 bytes and an item 3.3 KiB.
+constexpr size_t WORLD_RECOVERY_MAX_BYTES = 256 * 1024 * 1024;
 constexpr size_t WORLD_RECOVERY_MAX_RECORD_BYTES = 2 * 1024 * 1024;
 constexpr size_t WORLD_RECOVERY_MAX_ITEM_TREE = 512;
 constexpr size_t WORLD_RECOVERY_MAX_FLOOR_BYTES = 16 * 1024 * 1024;
 constexpr size_t WORLD_RECOVERY_MAX_FLOOR_RECORDS = 32768;
-constexpr size_t WORLD_RECOVERY_CAPTURE_RECORD_BUDGET = 1024;
 constexpr uint64_t WORLD_RECOVERY_CAPTURE_TIME_BUDGET_USEC = 2000;
 constexpr uint64_t WORLD_RECOVERY_CAPTURE_MAX_AGE_MSEC = 300000;
 constexpr size_t WORLD_RECOVERY_QUEUE_CAPACITY = 2;
 constexpr unsigned int WORLD_RECOVERY_MAX_RETRIES = 3;
+constexpr unsigned int WORLD_RECOVERY_ALERT_FAILURES = 3;
 
 struct world_recovery_header
 {
@@ -42,6 +44,8 @@ struct world_recovery_completion
 	uint64_t sequence;
 	bool published;
 	unsigned int attempts;
+	bool expired;
+	int64_t timestamp;
 };
 
 struct world_recovery_item_snapshot
@@ -117,6 +121,10 @@ struct world_recovery_health
 	uint64_t stale_completions;
 	uint64_t last_submitted_sequence;
 	uint64_t last_acknowledged_sequence;
+	int64_t last_acknowledged_timestamp;
+	// The age boot would judge the last published generation by; -1 when this boot has
+	// published none.
+	int64_t last_acknowledged_age_sec;
 	uint64_t last_published_bytes;
 	uint64_t high_water_bytes;
 	uint64_t capture_age_msec;

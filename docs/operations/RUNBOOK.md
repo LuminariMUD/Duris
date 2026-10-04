@@ -42,10 +42,11 @@ production port 7777; the default remains 4000.
 - On each restart it moves `logs/log/*`, `logs/player-log/*` and
   `logs/latency_trace.log` into `logs/old-logs/<timestamp>/`, then deletes the
   oldest of those until `logs/old-logs` fits in `DURIS_LOG_ARCHIVE_MB` (1024 by
-  default; the newest is always kept). It writes the stop reason, runs
-  `scripts/backup_pfiles.sh`, and optionally emails an alert.
-  Both modes publish verified full generations under the approved backup policy,
-  including journal evidence. A backup failure stops the cycle before restart.
+  default; the newest is always kept). It writes the stop reason and optionally
+  emails an alert. With `PREBOOT_BACKUP=1` it also runs `scripts/backup_pfiles.sh`
+  before the boot, which publishes a verified full generation under the approved
+  backup policy, and a backup failure then stops the cycle before restart. That is
+  off by default: the backup timer takes the backups.
   Configure policy, scheduling, retention and isolated drills using
   [BACKUPS.md](BACKUPS.md) before deploying this launcher.
 
@@ -220,7 +221,8 @@ After startup, verify process and selected-persistence readiness without logging
 scripts/healthcheck.sh
 ```
 
-The probe targets `http://127.0.0.1:4050/health` by default. For an isolated local
+The probe needs the server's WebSocket and health listener, which is off unless
+`DURIS_WEBSOCKET=TRUE`. It targets `http://127.0.0.1:4050/health` by default. For an isolated local
 instance, set `DURIS_WEBSOCKET_PORT` on the server and the matching
 `DURIS_HEALTH_URL` for the probe. A healthy response is HTTP 200 with only
 `status=healthy` and `persistence=ready`; the handler performs no blocking
@@ -483,6 +485,10 @@ For queue or dependency incidents, use `world persistence` and the detailed `red
 status command. Do not clear a player save queue: player state is owned by memory and
 the persistence writer's queue, not a Redis dirty set. A world generation publish
 failure preserves the prior current generation and retains floor deltas for retry.
+A `domain=world_recovery` alert means three capture attempts in a row left no generation:
+its action is the reason and its detail the age of the last good one
+([CONFIGURATION.md](CONFIGURATION.md)). Captures resume by themselves once the cause is
+gone; no restart is needed.
 
 Account password recovery keeps no durable state. Reset codes, their per-account cooldown
 records, and any queued or in-flight recovery mail live only in process memory, so a

@@ -2,7 +2,9 @@ name: durismud
 
 services:
   mariadb:
-    image: mariadb:11.4
+    image: mariadb:10.11
+    # MariaDB's own default, 128 MB, is smaller than the game's data.
+    command: ["--innodb-buffer-pool-size=1G"]
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -39,6 +41,8 @@ services:
       ENVIRONMENT: local
       LISTEN_ADDRESS: "0.0.0.0"
       DURIS_TLS_PORT: "4001"
+      # The container's health check reads GET /health on this listener.
+      DURIS_WEBSOCKET: "TRUE"
       DURIS_WEBSOCKET_PORT: "4050"
       DURIS_WEBSOCKET_LISTEN_ADDRESS: "0.0.0.0"
       PERSISTENCE_MODE: mariadb-primary

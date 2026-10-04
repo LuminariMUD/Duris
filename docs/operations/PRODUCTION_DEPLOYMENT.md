@@ -24,7 +24,7 @@ Git history.
 | MUD Redis | `redis-server.service`, `127.0.0.1:6379` | Namespace `duris:production:default` |
 | Plain telnet | `mud.newduris.com:7777` | DNS-only A record to the host |
 | TLS telnet | `mud.newduris.com:7778` | Let's Encrypt; expires 2026-12-05 |
-| MUD WebSocket/health origin | `127.0.0.1:4050` | Loopback-only |
+| MUD WebSocket/health origin | `127.0.0.1:4050` | Loopback-only. The MUD's `.env` must set `DURIS_WEBSOCKET=TRUE`: the listener is off by default, and the website and both health checks need it |
 | Public MUD WebSocket/health | `wss://mud.newduris.com`, `https://mud.newduris.com/health` | Nginx TLS proxy to the origin |
 | Website checkout | `/home/duris/website` | `Community-Duris/DurisWebApp`, deployed from `master` |
 | Website application | `durisweb-production.service`, `127.0.0.1:3001` | Private cache `durisweb-redis.service` on `127.0.0.1:6380` |

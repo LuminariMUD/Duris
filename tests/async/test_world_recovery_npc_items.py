@@ -15,7 +15,9 @@ HARNESS = r'''
 #include "core/utils.h"
 
 #include <cassert>
+#include <chrono>
 #include <cstdarg>
+#include <vector>
 
 index_data mob_indexes[2] = {};
 index_data object_indexes[10] = {};
@@ -179,6 +181,39 @@ int main()
     assert(world_recovery_rehydrate_npc_items(recovered, 2));
     for (int object_rnum = 0; object_rnum <= 8; ++object_rnum)
         assert(obj_index[object_rnum].number == counts_after_first[object_rnum]);
+
+    // The full world: 54,000 mobs, each loaded by its own command and given one item, and
+    // a second command for the same mob and room that finds nobody left. Looking through
+    // every mob for every command took 25 seconds of a crash's restore.
+    constexpr int population = 54000;
+    std::vector<room_data> many_rooms(population);
+    std::vector<reset_com> many_commands;
+    std::vector<npc_only_data> many_npcs(population);
+    std::vector<char_data> many_mobs(population);
+    std::vector<P_char> many(population);
+    for (int index = 0; index < population; ++index)
+    {
+        many_rooms[index].number = 100000 + index;
+        many_commands.push_back({'M', false, 1, 1, index, 100});
+        many_commands.push_back({'G', true, 9, 999999, 0, 100});
+        many_commands.push_back({'M', false, 1, 1, index, 100});
+        many_commands.push_back({'G', true, 9, 999999, 0, 100});
+        many_npcs[index].R_num = 1;
+        many_mobs[index].only.npc = &many_npcs[index];
+        many_mobs[index].specials.act = ACT_ISNPC;
+        many_mobs[index].player.birthplace = many_rooms[index].number;
+        many[index] = &many_mobs[index];
+    }
+    many_commands.push_back({'S', false, 0, 0, 0, 0});
+    world = many_rooms.data();
+    top_of_world = population - 1;
+    zones[0].cmd = many_commands.data();
+    const auto started = std::chrono::steady_clock::now();
+    assert(world_recovery_rehydrate_npc_items(many.data(), many.size()));
+    const auto elapsed = std::chrono::steady_clock::now() - started;
+    for (P_char mob : many)
+        assert(carried_count(mob, 9) == 1);
+    assert(elapsed < std::chrono::seconds(5));
     return 0;
 }
 '''
@@ -208,3 +243,4 @@ with tempfile.TemporaryDirectory(prefix="duris-world-npc-items-") as temp_dir:
     subprocess.run([str(binary)], check=True)
 
 print("recovered NPC zone items rehydrate once with duplicate stock and equipment intact")
+print("54,000 recovered mobs take their items in one pass over the zone commands")

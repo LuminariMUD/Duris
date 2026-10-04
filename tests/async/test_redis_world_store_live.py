@@ -123,8 +123,10 @@ int main(int argc, char **argv)
     assert(reply->type == REDIS_REPLY_INTEGER && reply->integer == 1);
     freeReplyObject(reply);
 
+    // A renewal takes a lease nobody holds, and no other.
     assert(redis_world_store_release_fence(&config, writer_a));
-    assert(redis_world_store_claim_fence(&config, writer_b, lease));
+    assert(redis_world_store_renew_fence(&config, writer_b, lease));
+    assert(!redis_world_store_claim_fence(&config, writer_a, lease));
     assert(!redis_world_store_renew_fence(&config, writer_a, lease));
     assert(redis_world_store_renew_fence(&config, writer_b, lease));
     assert(redis_world_store_publish(&config, writer_b, lease, second, sizeof(second) - 1,
@@ -149,9 +151,10 @@ int main(int argc, char **argv)
     freeReplyObject(reply);
     assert(redis_world_store_consume_clean_shutdown(&config) == 2);
     assert(redis_world_store_consume_clean_shutdown(&config) == 0);
-    assert(!redis_world_store_consume_generation(&config, writer_a, 2));
-    assert(!redis_world_store_consume_generation(&config, writer_b, 1));
-    assert(redis_world_store_consume_generation(&config, writer_b, 2));
+    // The boot that restored the current generation consumes it, whoever holds the lease:
+    // here writer_b does.
+    assert(!redis_world_store_consume_generation(&config, 1));
+    assert(redis_world_store_consume_generation(&config, 2));
     reply = run(context, "EXISTS mud:season:42:world_state:current mud:season:42:world_state:generation:2");
     assert(reply->type == REDIS_REPLY_INTEGER && reply->integer == 0);
     freeReplyObject(reply);
@@ -267,6 +270,42 @@ int main(int argc, char **argv)
     assert(reply->type == REDIS_REPLY_ARRAY && reply->elements == 2);
     assert(reply->element[0]->type == REDIS_REPLY_STRING && !strcmp(reply->element[0]->str, "4"));
     assert(reply->element[1]->type == REDIS_REPLY_STRING && !strcmp(reply->element[1]->str, "1"));
+    freeReplyObject(reply);
+
+    // A generation above the old 64 MiB ceiling, its last chunk a partial one, publishes and
+    // reads back; the next publish removes every one of its chunks.
+    std::vector<unsigned char> world(65 * REDIS_WORLD_GENERATION_CHUNK_BYTES + 17);
+    for (size_t index = 0; index < world.size(); ++index)
+        world[index] = static_cast<unsigned char>(index * 31 + (index >> 20));
+    assert(redis_world_store_publish(&config, writer_b, lease, world.data(), world.size(),
+                                     5, time(nullptr), 60));
+    assert(redis_world_store_read_generation(&config, 5, &loaded));
+    assert(loaded == world);
+    reply = run(context, "KEYS mud:season:42:world_state:generation:5:upload:*");
+    assert(reply->type == REDIS_REPLY_ARRAY && reply->elements == 66);
+    freeReplyObject(reply);
+    assert(redis_world_store_publish(&config, writer_b, lease, second, sizeof(second) - 1,
+                                     6, time(nullptr), 61));
+    reply = run(context, "KEYS mud:season:42:world_state:generation:5*");
+    assert(reply->type == REDIS_REPLY_ARRAY && reply->elements == 0);
+    freeReplyObject(reply);
+
+    // A writer whose lease ran out publishes again and holds the fence again; while another
+    // writer holds it, it does not.
+    freeReplyObject(run(context, "DEL mud:season:42:world_state:writer_fence"));
+    assert(redis_world_store_publish(&config, writer_b, lease, first, sizeof(first) - 1, 7,
+                                     time(nullptr), 62));
+    reply = run(context, "GET mud:season:42:world_state:writer_fence");
+    assert(reply->type == REDIS_REPLY_STRING && !strcmp(reply->str, writer_b));
+    freeReplyObject(reply);
+    reply = run(context, "PTTL mud:season:42:world_state:writer_fence");
+    assert(reply->type == REDIS_REPLY_INTEGER && reply->integer > 0 &&
+           reply->integer <= static_cast<long long>(lease));
+    freeReplyObject(reply);
+    assert(!redis_world_store_publish(&config, writer_a, lease, second, sizeof(second) - 1,
+                                      8, time(nullptr), 63));
+    reply = run(context, "GET mud:season:42:world_state:current");
+    assert(reply->type == REDIS_REPLY_STRING && !strcmp(reply->str, "7"));
     freeReplyObject(reply);
     assert(redis_world_store_release_fence(&config, writer_b));
     assert(redis_world_store_release_fence(&next_season, writer_a));

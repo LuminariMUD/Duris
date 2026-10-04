@@ -17,6 +17,7 @@
 #include "flatfile/flatfile_artifact_repository.h"
 #include "flatfile/flatfile_help_catalog.h"
 #include "flatfile/flatfile_ip_activity_repository.h"
+#include "flatfile/flatfile_item_repository.h"
 #include "flatfile/flatfile_offline_message_repository.h"
 #include "flatfile/flatfile_frag_leaderboard_repository.h"
 #include "flatfile/flatfile_shop_trophy_history.h"
@@ -425,6 +426,20 @@ bool sql_persistence_reconcile_world_recovery_items(const world_recovery_authori
 	(void)items;
 	(void)authoritative;
 	return count == 0 && authoritative_capacity == 0;
+}
+bool sql_persistence_world_recovery_items_owned(const std::vector<uint64_t> &item_uids,
+						std::unordered_set<uint64_t> *owned)
+{
+	const char *root = persistence_mode_flatfile_root();
+	std::vector<flatfile_item_ownership_record> records;
+	std::string error;
+	if (!owned || !root ||
+	    flatfile_item_repository_load_uids(root, item_uids, &records, &error) !=
+		    flatfile_item_repository_result::ok)
+		return false;
+	for (const flatfile_item_ownership_record &record : records)
+		owned->insert(record.item_uid);
+	return true;
 }
 bool sql_hydrate_item_owner_revisions(void)
 {
@@ -5151,6 +5166,49 @@ bool sql_persistence_reconcile_world_recovery_items(const world_recovery_authori
 		sql_rollback();
 	if (!valid)
 		return false;
+	return true;
+}
+
+bool sql_persistence_world_recovery_items_owned(const std::vector<uint64_t> &item_uids,
+						std::unordered_set<uint64_t> *owned)
+{
+	constexpr size_t QUERY_BATCH_SIZE = 256;
+	if (!owned || !DB)
+		return false;
+	try
+	{
+		for (size_t begin = 0; begin < item_uids.size(); begin += QUERY_BATCH_SIZE)
+		{
+			const size_t end = std::min(item_uids.size(), begin + QUERY_BATCH_SIZE);
+			std::string query =
+				"SELECT own.item_uid FROM item_current_owner own WHERE NOT "
+				"(own.owner_type=" +
+				std::to_string(static_cast<unsigned>(item_owner_type::player)) +
+				" AND own.state=" +
+				std::to_string(static_cast<unsigned>(item_custody_state::active)) +
+				" AND NOT EXISTS (SELECT 1 FROM player_items held WHERE "
+				"held.obj_uid=own.item_uid AND held.pid=own.owner_id)) AND "
+				"own.item_uid IN (";
+			for (size_t index = begin; index < end; ++index)
+			{
+				if (index != begin)
+					query.push_back(',');
+				query += std::to_string(item_uids[index]);
+			}
+			query.push_back(')');
+			MYSQL_RES *result = db_query("%s", query.c_str());
+			if (!result)
+				return false;
+			MYSQL_ROW row;
+			while ((row = mysql_fetch_row(result)))
+				owned->insert(strtoull(row[0], NULL, 10));
+			mysql_free_result(result);
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
+	}
 	return true;
 }
 

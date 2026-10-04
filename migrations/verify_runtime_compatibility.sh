@@ -17,6 +17,12 @@ else
     if mysql --help 2>&1 | grep -- '--ssl-mode' >/dev/null; then MYSQL_SSL=(--ssl-mode=PREFERRED); else MYSQL_SSL=(--skip-ssl); fi
     MYSQL_CONNECTION=("${MYSQL_SSL[@]}" -h "$DB_HOST" -P "${DB_PORT:-3306}")
 fi
+# A client unpacked outside the system's prefix reads its own charsets, not another
+# package's, whose different list makes it warn on every call.
+if MYSQL_CLIENT="$(command -v mysql)"; then
+    MYSQL_CHARSETS="$(dirname "$(dirname "$(readlink -f "$MYSQL_CLIENT")")")/share/mysql/charsets"
+    if [[ -d "$MYSQL_CHARSETS" ]]; then MYSQL_CONNECTION+=(--character-sets-dir="$MYSQL_CHARSETS"); fi
+fi
 MYSQL=(mysql "${MYSQL_CONNECTION[@]}" -u "$DB_USER" -N -B --raw "$DB_NAME")
 extract_string() { sed -n "s/.*\"$1\": \"\([^\"]*\)\".*/\1/p" "$MANIFEST" | head -1; }
 extract_number() { sed -n "s/.*\"$1\": \([0-9][0-9]*\).*/\1/p" "$MANIFEST" | head -1; }

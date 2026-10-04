@@ -1144,6 +1144,7 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	logit(LOG_STATUS, "copyover: executing new binary...");
 	// The log thread does not live through the exec.
 	flush_log_writer();
+	redis_world_writer_release();
 
 	if (mini_mode)
 		execl(DMS_RUNTIME_BINARY, "dms", "--minimal", "-C", exec_buf, (char *)NULL);

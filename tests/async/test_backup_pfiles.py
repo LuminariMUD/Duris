@@ -95,6 +95,8 @@ else:
 
     def test_cycle_refuses_boot_on_backup_failure(self):
         cycle = (ROOT / "scripts/cycle_mud.sh").read_text()
+        self.assertIn('if [[ "${PREBOOT_BACKUP:-0}" == "1" ]]; then', cycle)
+        self.assertNotIn("SKIP_PREBOOT_BACKUP", cycle)
         self.assertIn("./scripts/backup_pfiles.sh", cycle)
         self.assertIn("job_overlap_or_authority_busy", cycle)
         self.assertIn('echo "Required $PERSISTENCE_MODE backup failed; refusing to boot"', cycle)

@@ -33,8 +33,12 @@
 
 namespace
 {
-constexpr int WORLD_STATE_INTERVAL_DEFAULT = 10;
-constexpr int WORLD_STATE_MAX_AGE_DEFAULT = 300;
+constexpr int WORLD_STATE_INTERVAL_DEFAULT = 600;
+// The maximum age follows the interval by this much: five minutes for a capture's budget and
+// five for the restart.
+constexpr int WORLD_STATE_INTERVAL_MARGIN = 600;
+// An attempt that could not start is made again this soon, as the first one after a boot is.
+constexpr int WORLD_STATE_RETRY_SECONDS = 30;
 constexpr uint64_t WORLD_DRAIN_TIMEOUT_MSEC = 30000;
 constexpr uint64_t FLOOR_DRAIN_TIMEOUT_MSEC = 1000;
 
@@ -44,7 +48,7 @@ bool world_enabled = false;
 bool recovery_boot = false;
 bool clean_restart_boot = false;
 int world_state_interval = WORLD_STATE_INTERVAL_DEFAULT;
-int world_state_max_age = WORLD_STATE_MAX_AGE_DEFAULT;
+int world_state_max_age = WORLD_STATE_INTERVAL_DEFAULT + WORLD_STATE_INTERVAL_MARGIN;
 bool world_recovery_quiesced = false;
 std::string world_writer_token;
 std::string world_authentication_secret;
@@ -59,8 +63,12 @@ uint64_t clean_shutdown_sequence = 0;
 uint64_t world_sequence_floor = 0;
 
 #ifndef __NO_REDIS__
-constexpr uint64_t WORLD_WRITER_LEASE_MSEC = 10 * 60 * 1000;
 constexpr std::array<unsigned int, 7> WORLD_WRITER_RETRY_SECONDS = { 1, 2, 4, 8, 16, 30, 60 };
+// The lease is short, so that a crashed writer's runs out within a minute of the crash, and
+// the game loop renews it.
+constexpr uint64_t WORLD_WRITER_LEASE_MSEC = 60000;
+constexpr auto WORLD_WRITER_RENEW_INTERVAL = std::chrono::seconds(20);
+constexpr int WORLD_BOOT_READ_ATTEMPTS = 5;
 constexpr auto WORLD_DEGRADED_LOG_INTERVAL = std::chrono::seconds(60);
 bool world_writer_retryable = false;
 std::future<bool> world_writer_retry_future;
@@ -68,11 +76,27 @@ std::string world_writer_retry_token;
 uint64_t world_writer_retry_epoch = 0;
 unsigned int world_writer_retry_failures = 0;
 std::chrono::steady_clock::time_point world_writer_retry_after;
+std::future<bool> world_writer_renew_future;
+std::chrono::steady_clock::time_point world_writer_renew_after;
 std::chrono::steady_clock::time_point world_degraded_log_after;
 const char *world_degraded_reason = "none";
-int64_t world_last_ack_time = 0;
+unsigned int world_capture_failures = 0;
 
 auto redis_world_recovery_ensure_initialized() -> bool;
+
+// An attempt that left no generation. A published one ends the run; the third in a row
+// raises the run's one alert.
+void redis_world_capture_failed(const char *reason)
+{
+	if (++world_capture_failures != WORLD_RECOVERY_ALERT_FAILURES)
+		return;
+	const world_recovery_health health = world_recovery_pipeline_health_copy();
+	persistence_alert(AVATAR, "world_recovery", "none", "none", "none", reason,
+			  "failures=%u last_ack_sequence=%llu last_ack_age_secs=%lld",
+			  world_capture_failures,
+			  (unsigned long long)health.last_acknowledged_sequence,
+			  (long long)health.last_acknowledged_age_sec);
+}
 
 void redis_clear_world_authentication_secrets()
 {
@@ -219,6 +243,48 @@ bool redis_reconnect()
 	return true;
 }
 
+// The boot's reads share the game loop's connection and its 100 ms deadline. On a busy host
+// a reply misses it, and that is not an answer: the read is made again on a new connection.
+// False when Redis did not answer, or when its answer made the read fail.
+template <typename Read> bool redis_world_boot_read(Read read)
+{
+	for (int attempt = 0; attempt < WORLD_BOOT_READ_ATTEMPTS; ++attempt)
+	{
+		if (attempt)
+			std::this_thread::sleep_for(std::chrono::milliseconds(250));
+		if ((!world_context || world_context->err) && !redis_reconnect())
+			continue;
+		if (read())
+			return true;
+		if (!world_context->err)
+			return false;
+	}
+	return false;
+}
+
+// The current generation's sequence, 0 when there is none.
+bool redis_world_boot_sequence(uint64_t *sequence)
+{
+	char current_key[128];
+	if (!redis_epoch_key(current_key, sizeof current_key, world_runtime_epoch,
+			     REDIS_WORLD_CURRENT_SUFFIX))
+		return false;
+	return redis_world_boot_read(
+		[&]()
+		{
+			redisReply *reply = redis_command(REDIS_SHARED_SCOPE_WORLD,
+							  REDIS_SHARED_COMMAND_READ, "GET %s",
+							  current_key);
+			if (!reply)
+				return false;
+			*sequence = reply->type == REDIS_REPLY_STRING && reply->str ?
+					    strtoull(reply->str, NULL, 10) :
+					    0;
+			freeReplyObject(reply);
+			return true;
+		});
+}
+
 bool redis_world_writer_token_create(std::string *token)
 {
 	unsigned char random[16] = {};
@@ -276,6 +342,8 @@ void redis_world_writer_retry_schedule(const char *reason)
 void redis_world_writer_retry_cancel()
 {
 	world_writer_retryable = false;
+	if (world_writer_renew_future.valid())
+		world_writer_renew_future.get();
 	if (world_writer_retry_future.valid())
 	{
 		const bool claimed = world_writer_retry_future.get();
@@ -373,6 +441,41 @@ void redis_world_writer_retry_pulse()
 		world_writer_retry_token.clear();
 		world_writer_retry_epoch = 0;
 		redis_world_writer_retry_schedule("retry_dispatch_failed");
+	}
+}
+
+// A renewal that fails is made again at the next one: it takes the lease once it is free, and
+// a publish says so while another writer holds it.
+void redis_world_writer_renew_pulse()
+{
+	if (!world_enabled || world_writer_retryable || world_recovery_quiesced ||
+	    world_writer_token.empty())
+		return;
+	if (world_writer_renew_future.valid())
+	{
+		if (world_writer_renew_future.wait_for(std::chrono::seconds(0)) !=
+		    std::future_status::ready)
+			return;
+		world_writer_renew_future.get();
+	}
+	const auto now = std::chrono::steady_clock::now();
+	if (now < world_writer_renew_after)
+		return;
+	world_writer_renew_after = now + WORLD_WRITER_RENEW_INTERVAL;
+	const redis_world_store_config config = redis_world_store_config_copy();
+	const std::string token = world_writer_token;
+	try
+	{
+		world_writer_renew_future =
+			std::async(std::launch::async,
+				   [config, token]() {
+					   return redis_world_store_renew_fence(
+						   &config, token.c_str(), WORLD_WRITER_LEASE_MSEC);
+				   });
+	}
+	catch (const std::exception &)
+	{
+		// As a renewal that failed.
 	}
 }
 
@@ -684,7 +787,7 @@ bool redis_world_runtime_start(const redis_world_runtime_config *config)
 	recovery_boot = false;
 	clean_restart_boot = false;
 	world_state_interval = WORLD_STATE_INTERVAL_DEFAULT;
-	world_state_max_age = WORLD_STATE_MAX_AGE_DEFAULT;
+	world_state_max_age = WORLD_STATE_INTERVAL_DEFAULT + WORLD_STATE_INTERVAL_MARGIN;
 	world_recovery_quiesced = false;
 	world_writer_token.clear();
 	world_writer_lease_msec = 0;
@@ -699,7 +802,7 @@ bool redis_world_runtime_start(const redis_world_runtime_config *config)
 	world_writer_retry_failures = 0;
 	world_degraded_log_after = std::chrono::steady_clock::time_point();
 	world_degraded_reason = "none";
-	world_last_ack_time = 0;
+	world_capture_failures = 0;
 	redis_clear_world_authentication_secrets();
 
 	world_context = redis_connection_open(world_connection);
@@ -731,14 +834,17 @@ bool redis_world_runtime_start(const redis_world_runtime_config *config)
 		if (interval_text && *interval_text)
 		{
 			const int interval = atoi(interval_text);
-			if (interval >= 5 && interval <= 300)
+			if (interval >= 5 && interval <= 3600)
 				world_state_interval = interval;
 		}
+		// A generation is as old as the interval and its capture when the next one
+		// replaces it: a lower maximum age would refuse every one.
+		world_state_max_age = world_state_interval + WORLD_STATE_INTERVAL_MARGIN;
 		const char *max_age_text = getenv("REDIS_WORLD_STATE_MAX_AGE");
 		if (max_age_text && *max_age_text)
 		{
 			const int max_age = atoi(max_age_text);
-			if (max_age >= 60 && max_age <= 3600)
+			if (max_age >= world_state_max_age && max_age <= 86400)
 				world_state_max_age = max_age;
 		}
 		if (world_enabled)
@@ -788,6 +894,12 @@ void redis_world_runtime_shutdown(bool pwipe)
 	{
 		recovery_drained = !world_recovery_pipeline_health_copy().initialized ||
 				   redis_world_recovery_drain(WORLD_DRAIN_TIMEOUT_MSEC);
+		// The players are saved and gone. One last capture, so that a clean restart
+		// restores the world as this shutdown leaves it and not as the last periodic
+		// capture, up to an interval ago, had it.
+		if (recovery_drained && !pwipe && !world_writer_token.empty() &&
+		    redis_save_world_state())
+			recovery_drained = redis_world_recovery_drain(WORLD_DRAIN_TIMEOUT_MSEC);
 		if (!recovery_drained)
 			logit(LOG_SYS, "redis: world recovery drain timed out during shutdown");
 		if (world_recovery_pipeline_health_copy().initialized)
@@ -808,6 +920,9 @@ void redis_world_runtime_shutdown(bool pwipe)
 		if (!redis_world_store_mark_clean_shutdown(&config, world_writer_token.c_str()))
 			logit(LOG_SYS, "redis: clean shutdown recovery marker was not recorded");
 	}
+	// The drains above pulse the renewal: one still under way would take the lease back.
+	if (world_writer_renew_future.valid())
+		world_writer_renew_future.get();
 	if (!world_writer_token.empty())
 	{
 		const redis_world_store_config config = redis_world_store_config_copy();
@@ -875,20 +990,25 @@ bool redis_save_world_state(void)
 		{
 			const world_recovery_health health = world_recovery_pipeline_health_copy();
 			logit(LOG_SYS,
-			      "redis: world recovery worker unavailable reason=%s retry_attempts=%u last_ack_sequence=%llu last_ack_time=%lld",
+			      "redis: world recovery worker unavailable reason=%s retry_attempts=%u last_ack_sequence=%llu last_ack_age_secs=%lld",
 			      world_degraded_reason, world_writer_retry_failures,
 			      (unsigned long long)health.last_acknowledged_sequence,
-			      (long long)world_last_ack_time);
+			      (long long)health.last_acknowledged_age_sec);
 			world_degraded_log_after = now + WORLD_DEGRADED_LOG_INTERVAL;
 		}
+		redis_world_capture_failed("writer_unavailable");
 		return false;
 	}
 	redis_world_recovery_pulse();
-	if (world_recovery_pipeline_busy() || world_floor_barrier_waiting ||
-	    world_floor_handoff_active)
+	if (world_recovery_pipeline_busy() || world_floor_handoff_active)
 		return true;
-	if (!redis_flush_floor_drops() || !redis_floor_store_request_barrier())
+	// A barrier still waiting since the last attempt: the floor worker cannot write.
+	if (world_floor_barrier_waiting || !redis_flush_floor_drops() ||
+	    !redis_floor_store_request_barrier())
+	{
+		redis_world_capture_failed("floor_unavailable");
 		return false;
+	}
 	world_floor_barrier_waiting = true;
 	return true;
 #endif
@@ -898,6 +1018,7 @@ void redis_world_recovery_pulse(void)
 {
 #ifndef __NO_REDIS__
 	redis_world_writer_retry_pulse();
+	redis_world_writer_renew_pulse();
 	if (!world_enabled || !world_recovery_pipeline_health_copy().initialized)
 		return;
 	bool barrier_succeeded = false;
@@ -913,6 +1034,8 @@ void redis_world_recovery_pulse(void)
 		{
 			redis_floor_store_resume();
 			logit(LOG_SYS, "redis: floor preflight failed; recovery capture deferred");
+			redis_world_capture_failed(barrier_succeeded ? "capture_failed" :
+								       "floor_unavailable");
 		}
 	}
 	world_recovery_pipeline_pulse();
@@ -928,15 +1051,24 @@ void redis_world_recovery_pulse(void)
 		if (completion.published &&
 		    completion.sequence == recovery.last_acknowledged_sequence)
 		{
-			world_last_ack_time = time(NULL);
+			world_capture_failures = 0;
 			logit(LOG_SYS,
-			      "redis: world recovery generation and floor handoff acknowledged sequence=%llu attempts=%u",
-			      (unsigned long long)completion.sequence, completion.attempts);
+			      "redis: world recovery generation and floor handoff acknowledged sequence=%llu attempts=%u bytes=%llu capture_msec=%llu",
+			      (unsigned long long)completion.sequence, completion.attempts,
+			      (unsigned long long)recovery.last_published_bytes,
+			      (unsigned long long)recovery.last_capture_duration_msec);
 		}
 		else if (!completion.published)
-			logit(LOG_SYS,
-			      "redis: world recovery generation publish failed sequence=%llu attempts=%u",
-			      (unsigned long long)completion.sequence, completion.attempts);
+		{
+			// The pipeline has logged a capture that failed or expired.
+			if (completion.attempts)
+				logit(LOG_SYS,
+				      "redis: world recovery generation publish failed sequence=%llu attempts=%u",
+				      (unsigned long long)completion.sequence, completion.attempts);
+			redis_world_capture_failed(completion.attempts ? "publish_failed" :
+						   completion.expired  ? "capture_expired" :
+									 "capture_failed");
+		}
 	}
 	if (world_floor_handoff_active && !world_recovery_pipeline_busy())
 	{
@@ -960,11 +1092,24 @@ bool redis_world_recovery_drain(uint64_t timeout_msec)
 	while (std::chrono::steady_clock::now() < deadline)
 	{
 		redis_world_recovery_pulse();
-		if (!world_recovery_pipeline_busy())
+		// A capture that was asked for starts once the floor worker's barrier is in.
+		if (!world_recovery_pipeline_busy() && !world_floor_barrier_waiting)
 			return true;
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 	return false;
+#endif
+}
+
+void redis_world_writer_release(void)
+{
+#ifndef __NO_REDIS__
+	if (world_writer_renew_future.valid())
+		world_writer_renew_future.wait();
+	if (world_writer_token.empty())
+		return;
+	const redis_world_store_config config = redis_world_store_config_copy();
+	redis_world_store_release_fence(&config, world_writer_token.c_str());
 #endif
 }
 
@@ -998,21 +1143,8 @@ bool redis_has_world_state(void)
 	const uint64_t candidate_clean_sequence = clean_shutdown_sequence;
 	clean_shutdown_sequence = 0;
 	clean_restart_boot = false;
-	if ((!world_context || world_context->err) && !redis_reconnect())
-		return false;
-	char current_key[128];
-	if (!redis_epoch_key(current_key, sizeof current_key, world_runtime_epoch,
-			     REDIS_WORLD_CURRENT_SUFFIX))
-		return false;
-	redisReply *reply = redis_command(REDIS_SHARED_SCOPE_WORLD, REDIS_SHARED_COMMAND_READ,
-					  "GET %s", current_key);
-	if (!reply)
-		return false;
 	uint64_t sequence = 0;
-	if (reply->type == REDIS_REPLY_STRING && reply->str)
-		sequence = strtoull(reply->str, NULL, 10);
-	freeReplyObject(reply);
-	if (!sequence)
+	if (!redis_world_boot_sequence(&sequence) || !sequence)
 		return false;
 	std::vector<unsigned char> generation;
 	const redis_world_store_config config = redis_world_store_config_copy();
@@ -1034,24 +1166,11 @@ bool redis_consume_world_state(void)
 #ifdef __NO_REDIS__
 	return false;
 #else
-	if (!world_enabled || !world_context || world_context->err)
+	uint64_t sequence = 0;
+	if (!world_enabled || !redis_world_boot_sequence(&sequence) || !sequence)
 		return false;
-	char current_key[128];
-	if (!redis_epoch_key(current_key, sizeof current_key, world_runtime_epoch,
-			     REDIS_WORLD_CURRENT_SUFFIX))
-		return false;
-	redisReply *current = redis_command(REDIS_SHARED_SCOPE_WORLD, REDIS_SHARED_COMMAND_READ,
-					    "GET %s", current_key);
-	if (!current || current->type != REDIS_REPLY_STRING || !current->str)
-	{
-		if (current)
-			freeReplyObject(current);
-		return false;
-	}
-	const uint64_t sequence = strtoull(current->str, NULL, 10);
-	freeReplyObject(current);
 	const redis_world_store_config config = redis_world_store_config_copy();
-	return redis_world_store_consume_generation(&config, world_writer_token.c_str(), sequence);
+	return redis_world_store_consume_generation(&config, sequence);
 #endif
 }
 
@@ -1060,32 +1179,10 @@ bool redis_load_world_state(void)
 #ifdef __NO_REDIS__
 	return false;
 #else
-	if (!world_enabled || ((!world_context || world_context->err) && !redis_reconnect()))
-	{
-		logit(LOG_SYS, "redis: world recovery load unavailable");
-		return false;
-	}
-	char current_key[128];
-	if (!redis_epoch_key(current_key, sizeof current_key, world_runtime_epoch,
-			     REDIS_WORLD_CURRENT_SUFFIX))
-	{
-		logit(LOG_SYS, "redis: world recovery current key rejected");
-		return false;
-	}
-	redisReply *sequence_reply = redis_command(
-		REDIS_SHARED_SCOPE_WORLD, REDIS_SHARED_COMMAND_READ, "GET %s", current_key);
-	if (!sequence_reply)
+	uint64_t expected_sequence = 0;
+	if (!world_enabled || !redis_world_boot_sequence(&expected_sequence) || !expected_sequence)
 	{
 		logit(LOG_SYS, "redis: world recovery current sequence read failed");
-		return false;
-	}
-	uint64_t expected_sequence = 0;
-	if (sequence_reply->type == REDIS_REPLY_STRING && sequence_reply->str)
-		expected_sequence = strtoull(sequence_reply->str, NULL, 10);
-	freeReplyObject(sequence_reply);
-	if (!expected_sequence)
-	{
-		logit(LOG_SYS, "redis: world recovery current sequence rejected");
 		return false;
 	}
 	std::vector<unsigned char> generation;
@@ -1101,7 +1198,8 @@ bool redis_load_world_state(void)
 					    std::min(WORLD_RECOVERY_MAX_FLOOR_BYTES,
 						     WORLD_RECOVERY_MAX_BYTES - generation.size()) :
 					    0;
-	if (!redis_read_floor_records(&floor_records, floor_budget))
+	if (!redis_world_boot_read(
+		    [&]() { return redis_read_floor_records(&floor_records, floor_budget); }))
 	{
 		logit(LOG_SYS, "redis: world recovery floor read failed sequence=%llu budget=%zu",
 		      (unsigned long long)expected_sequence, floor_budget);
@@ -1145,12 +1243,12 @@ bool redis_load_world_state(void)
 
 void event_save_world_state(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
 {
-	if (world_enabled)
-	{
-		if (!redis_save_world_state())
-			nevent_periodic_mark_failure("world-state persistence did not complete");
-	}
-	else
-		nevent_periodic_mark_failure("world-state persistence is disabled");
 	nevent_periodic_next_after(world_state_interval * WAIT_SEC);
+	if (!world_enabled)
+		nevent_periodic_mark_failure("world-state persistence is disabled");
+	else if (!redis_save_world_state())
+		// A boot after a crash waits for the crashed writer's lease, not for an interval.
+		nevent_periodic_retry_after(
+			std::min(world_state_interval, WORLD_STATE_RETRY_SECONDS) * WAIT_SEC,
+			"world-state persistence did not complete");
 }

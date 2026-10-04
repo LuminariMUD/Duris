@@ -23,8 +23,14 @@ round; #3 stays open for its server configuration
 ([record](persistence-done.md#phase-6-landed-done)). Phase 7 landed as
 [!9](https://gitlab.com/max757/duris/-/merge_requests/9) in `77734a404` after one review
 round; #5 stays open for its server configuration
-([record](persistence-done.md#phase-7-landed-done)). Phase 8 is next, on
-`fix/2-persistence-phase-8`; it is not started.
+([record](persistence-done.md#phase-7-landed-done)). Phase 8 is done on
+`fix/2-persistence-phase-8` and in review as
+[!10](https://gitlab.com/max757/duris/-/merge_requests/10), tagged
+`persistence/phase-8-review-0` ([progress](persistence-done.md#phase-8-progress)); #2 is
+closed. The settings that Phases 4, 6 and 7 left on #6, #3 and #5 were decided the same day
+and are done on the same branch, tagged `persistence/phase-8-review-1`
+([record](persistence-done.md#the-settings-that-were-left-done)); those three items are
+closed too.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
@@ -225,7 +231,8 @@ writer retries a retryable or ambiguous result itself, so a game-side branch for
 
 Left on #6, as server configuration rather than code: the `mysql` client's charset warnings, the
 WebSocket warning on a MUD-only server, the stale `proxies_priv` grant, the game's database user
-name and the logins without a password.
+name and the logins without a password. Decided on 2026-10-04:
+[the settings that were left](#the-settings-that-were-left-3-5-6).
 
 Done when: logs rotate with size caps and the latency trace has one destination; a
 critical-command failure names its command type and reason, and repeats are counted, not
@@ -314,7 +321,8 @@ Not an item: a restored player corpse gets a fresh decay timer on every boot
    message, without secrets.
 
 Left on #3, as server configuration: whether a server runs restore drills, keeps an off-host
-replica and skips the pre-boot backup.
+replica and skips the pre-boot backup. Decided on 2026-10-04:
+[the settings that were left](#the-settings-that-were-left-3-5-6).
 
 Done when: a status run costs about the same with 1 generation or 40, and a test pins it; a backup
 completes while a receipt changes, with a test; failure records name the exception, and an RPO
@@ -372,6 +380,7 @@ How each item is done (decided 2026-10-03):
    0.04 s ([record](persistence-done.md#each-generation-verified-once-done)).
 
 Left on #5, as server configuration: the MariaDB buffer pool, left at its 128 MB default.
+Decided on 2026-10-04: [the settings that were left](#the-settings-that-were-left-3-5-6).
 
 Done when: `rent`, `quit` and the hourly event stay under a set budget under load, and a test pins
 it; every slow event names its callback; the production profile builds optimised, with the tick
@@ -449,11 +458,138 @@ before and after in [the measurement](persistence-done.md#the-measurement-done).
    caster's inventory. Put the items on the raised creature, as before `389016091`. A pet can
    then carry a hidden (`!show`) item from an NPC's corpse: `wear all` already skips those for
    a player's pet, and `wear` and `wield` by keyword must skip them too.
+5. **World recovery is a switch, and it is off unless a server turns it on** (owner,
+   2026-10-04). It is a convenience, not a safety net: characters, pets, corpses, lockers,
+   banks and shops are saved without it. It only brings the mobs, the loose objects, the
+   doors and the zone ages back as they were after a crash or a cold restart, where the boot
+   would otherwise reset every zone; a copyover keeps the world by itself. The code already
+   leaves it off when `REDIS_WORLD_STATE` is not `TRUE`, but `.env.example` ships `TRUE`, so
+   every server set up from the template captures the world. Ship `REDIS_WORLD_STATE=FALSE`
+   in `.env.example` and set it in the local `.env`; say beside it, and in
+   `CONFIGURATION.md`, what it buys and what it costs; and make sure a server with it off
+   does none of the capture's work and raises none of item 3's alerts. Items 1 to 3 are
+   still fixed, for the servers that turn it on.
+6. **The capture interval is a setting, ten minutes by default** (owner, 2026-10-04).
+   `REDIS_WORLD_STATE_INTERVAL` is 10 seconds by default and accepts 5 to 300, and a capture
+   of the full world takes close to five minutes, so a server with recovery on captures
+   without a pause. Make the default 600 seconds and accept longer intervals. Put the strain
+   beside the setting in `.env.example`, measured in this phase: while a capture runs the
+   game thread gives it up to 2 ms of every pulse, and each generation is the whole world
+   written to Redis (past 64 MiB at full size); a shorter interval costs more of both, and a
+   longer one restores an older world. Two limits must follow the interval, or a crash
+   restores nothing: at boot `REDIS_WORLD_STATE_MAX_AGE` (300 seconds by default) refuses a
+   generation older than itself, and by the time the next capture is due a generation is as
+   old as the interval plus the time its capture took.
 
 Done when: a capture of that size publishes, with a test above the old 64 MiB limit; it finishes
 within its budget under load; consecutive failures raise an alert with the age of the last good
 generation; a raise leaves the corpse's items on the raised creature and a player's pet cannot
-wear or wield a hidden item by keyword, with a test for each.
+wear or wield a hidden item by keyword; a server captures nothing unless
+`REDIS_WORLD_STATE=TRUE`, which the template no longer sets; and with recovery on, captures
+start ten minutes apart by default, the strain is stated beside the setting, and a generation
+taken at that interval is still accepted at boot. Each has its test.
+
+How each item is done (decided 2026-10-04, after the
+[baseline](persistence-done.md#the-baseline-measurement-done)):
+
+1. The ceiling goes from 64 MiB to 256 MiB, and the store's chunk limit follows it (256
+   chunks of 1 MiB). It stays a fixed number because it is what bounds memory: the game holds
+   one generation and Redis two for a moment. A mob costs about 400 bytes and an item 3.3 KiB,
+   so 256 MiB holds the 54,000 mobs and 70,000 objects on the ground, against 11,000 today;
+   past it a capture fails and item 3 says so. The capture reserves the ceiling's address
+   space once, so its buffer never moves: the old one doubled as it grew, and each doubling
+   copied the whole capture on the game thread, 18 ms at 32 MiB. Chunking and streaming were
+   not needed: the generation already goes to Redis in 1 MiB chunks, and only the ceilings
+   stopped it.
+2. Time is the capture's only limit, as it is for events since Phase 7. A capture is 0.34 s
+   of work, but it took 193 s on an idle server, because each call stopped after 1,024
+   steps, and a step is as little as one room looked at (253,000 rooms, two calls a second).
+   The step limit goes; the 2 ms a call stays. Each object record also allocated and
+   zero-filled room for 512 items (1.7 MB) to write one, three quarters of the capture's
+   work: it writes into one scratch array instead. The 300 s budget stays: nothing needs it
+   changed once a capture takes a tenth of it.
+3. A failed attempt is counted where the capture is driven (`redis_world_runtime.c`): a
+   capture that failed or expired, a generation that did not publish, and an attempt that
+   could not start because the writer lease or the floor worker was unavailable. A published
+   generation resets the count. The third failure in a row raises one
+   `domain=world_recovery` alert whose action is the reason (`capture_failed`,
+   `capture_expired`, `publish_failed`, `writer_unavailable`, `floor_unavailable`) and whose
+   detail is `failures=N last_ack_sequence=N last_ack_age_secs=N` (-1: none since boot). The
+   `redis detailed` and runtime health outputs show the same age.
+   Found with it: a writer that lost its lease could never publish again without a restart.
+   The lease was renewed only by a publish, so a run of failures longer than the lease (the
+   three days on staging), a Redis restart or a flush ended it for good. A publish now takes
+   the lease when nobody holds it, and still refuses when another writer does.
+4. All six raises put the corpse's items on the raised creature again, and
+   `place_raised_item()` goes. `wear()`, which every way of equipping goes through, refuses
+   a hidden item for a player's pet, so `wear`, `wield` and `hold` by keyword skip it;
+   `wear all` keeps its own check, which lets it go on to the next item.
+5. `.env.example` and the local `.env` set `REDIS_WORLD_STATE=FALSE`. The code needs no
+   change to do nothing when it is off: the capture job is registered disabled, the pulse
+   returns at its first test, floor drops are not recorded, and no attempt is counted, so no
+   alert. A journey pins it.
+6. The interval's default is 600 seconds and it accepts 5 to 3,600. One limit follows it by
+   ten minutes (five for a capture's budget, five for the restart):
+   `REDIS_WORLD_STATE_MAX_AGE` is at least the interval plus 600 seconds, which is also its
+   default; a lower setting is raised to it, since it could only refuse every generation.
+   It accepts up to a day.
+   The writer lease does not follow the interval. It was ten minutes and only a publish
+   renewed it, so at a ten-minute interval it ran out before every publish. It is 60
+   seconds and the game loop renews it every 20 (since the MR !10 review, which found that
+   a lease as long as the interval kept the boot after a crash or a copyover from capturing
+   for that long).
+   `.env.example` no longer sets the maximum age, so it follows the interval. A server whose
+   `.env` still says `REDIS_WORLD_STATE_INTERVAL=10` keeps capturing without a pause until
+   the line is removed: server configuration.
+
+One journey is the measurement and the pin for items 1 and 2, as in Phase 7:
+`test_mysql_world_capture_journey.py`, in `make test-db`. It boots the full world on a
+disposable MariaDB and Redis with recovery on while mortals play, reads the capture's own
+record of its size and time, kills the server and sees the next boot restore the world.
+`run_world_recovery_journey.py` is the pin for items 3, 5 and 6, on the mini world.
+
+Done: each item has its record under
+[Phase 8 progress](persistence-done.md#phase-8-progress). A generation of 69 MiB is
+captured in about 20 s of its 300 s under 30 players, with no pulse past 250 ms, and a
+crash restores it in 3 s
+([the measurement](persistence-done.md#the-capture-journey-and-the-measurement-done)).
+
+Nothing is left on #2, which is closed (owner, 2026-10-04): how a server sets its recovery
+variables is for whoever runs it.
+
+## The settings that were left (#3, #5, #6)
+
+Phases 4, 6 and 7 left settings on their work items as server configuration. The owner
+decided each of them on 2026-10-04: the repository carries a default, whoever runs a server
+sets what differs, and the items close. They are done on `fix/2-persistence-phase-8`, after
+Phase 8 ([record](persistence-done.md#the-settings-that-were-left-done)).
+
+1. **Restore drills are off by default** (#3). `drill_seconds` 0 in the backup policy means
+   no drills, and the example policy ships it: the drill timer's command does nothing and
+   `status --require-drill` asks for no receipt. A stored generation is then checked again
+   only when it is restored or pruned.
+2. **The off-host replica is off by default** (#3). It already was (`replica_root` null).
+3. **The backup before a boot is off by default** (#3). `cycle_mud.sh` takes it only with
+   `PREBOOT_BACKUP=1`, and then still refuses a boot whose backup fails.
+   `SKIP_PREBOOT_BACKUP` is gone: skipping is the default.
+4. **The MariaDB buffer pool is 1 GB by default** (#5). `compose.yaml` starts MariaDB with
+   it, and CONFIGURATION.md states it for a server's own MariaDB, whose configuration is
+   not the repository's.
+5. **The charset warnings** (#6). A MariaDB client unpacked outside the system's prefix
+   read another package's charsets and warned twice on every call. The compatibility check
+   and the launcher pass the client the charsets directory under its own prefix when there
+   is one.
+6. **The WebSocket and health listener is off by default** (#6). A server is assumed to have
+   no website: the listener, and `GET /health` with it, opens only with
+   `DURIS_WEBSOCKET=TRUE`. The Docker deployment and the restore qualifier set it, since
+   both wait for `/health`. **A server with a website sets it in its `.env` before it takes
+   this change.**
+7. **The stale `proxies_priv` grant** (#6) is deleted on the server that had it.
+8. **The game's database user** (#6) is named for its environment (`duris_local`,
+   `duris_staging`, `duris_prod`), so that a command or credential sent to the wrong server
+   fails to log in. The template and CONFIGURATION.md say so; staging, which connected as
+   `duris_prod`, connects as `duris_staging`.
+9. **The logins without a password** (#6) are left, to see whether they are a real issue.
 
 ## What was cut, and why
 
@@ -466,7 +602,10 @@ if a requirement or a concrete risk failed without it. Cut:
 - **Deleting the old owner's row when a save claims an item:** loads ignore stale rows, and the old
   owner's next save removes them.
 - **Releasing items an owner no longer holds:** the next holder claims them; a release would also
-  trip foreign keys and need a "nobody" owner.
+  trip foreign keys and need a "nobody" owner. The cost is on the ground: a dropped item keeps
+  its last holder's record. A capture leaves out an item the ledger in memory names a
+  character for, and a restore asks the character's save, not the record, whether an item
+  is held (the MR !10 review; CONFIGURATION.md says which objects come back).
 - **Saving the receiver the moment an item changes hands:** the 30-second checkpoint writes both
   sides together.
 - **Keeping the player-save journal:** a replay would skip the corpse and locker saves between
@@ -527,8 +666,16 @@ All hold: the gate passed on `0b90e5fc1`
 
 ## What is left
 
-The world capture is left, on the optimised build. Phases 4 (alerts and logs), 5 (bugs from
-the logs), 6 (backups) and 7 (the game loop) are done and on master.
+Phases 4 (alerts and logs), 5 (bugs from the logs), 6 (backups) and 7 (the game loop) are
+done and on master. The last phase is done and in review:
 
-1. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2), and with it the raised corpse's
-   items (its item 4).
+1. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2), with
+   [the settings that were left](#the-settings-that-were-left-3-5-6) on #3, #5 and #6: done,
+   in review as [!10](https://gitlab.com/max757/duris/-/merge_requests/10); it leaves this
+   list when it lands. `persistence/phase-8-review-0` is Phase 8 and `-review-1` the head
+   with the settings. A review round's fixes go on `fix/2-persistence-phase-8`, each finding
+   in its own commit with its test, the fixed head tagged `persistence/phase-8-review-2`
+   ([how](persistence-done.md#review-and-branches)). Every item, the capture journey with
+   its measurement, the mob items of a restored world (which the journey found) and the
+   gates have their records under
+   [Phase 8 progress](persistence-done.md#phase-8-progress).

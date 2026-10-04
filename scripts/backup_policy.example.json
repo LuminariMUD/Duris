@@ -9,7 +9,7 @@
   "weekly": 8,
   "max_bytes": 21474836480,
   "min_free_bytes": 1073741824,
-  "drill_seconds": 604800,
+  "drill_seconds": 0,
   "root": "/var/lib/duris/backups",
   "restore_root": "/var/lib/duris/restore-drills",
   "live_roots": [

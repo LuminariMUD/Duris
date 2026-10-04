@@ -49,6 +49,15 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   It landed on 2026-10-04 in `77734a404`, one `--no-ff` merge of the `-1` head, with no
   rebase or squash, so both tags still name what was reviewed. The branch is deleted
   ([record](#phase-7-landed-done)).
+- Phase 8 is reviewed as [!10](https://gitlab.com/max757/duris/-/merge_requests/10) (source
+  `fix/2-persistence-phase-8`, branched from master `0d6a772b9`), tagged
+  `persistence/phase-8-review-0` on the head with this line. Master is merged in twice, for
+  two records it gained during the phase (`99f6ab8e9`, `638396fe6`).
+  `persistence/phase-8-review-1` is not a review round: it is the head with
+  [the settings that were left](#the-settings-that-were-left-done) on #3, #5 and #6, which
+  the owner decided the same day, before any review. The review read `-1`, and
+  `persistence/phase-8-review-2` is the head with its fixes
+  ([review round 1](#review-round-1-mr-10)).
 - Each later phase works the same way: a branch from master named for its work item, an MR,
   the head the review reads tagged `persistence/phase-<n>-review-0`, a review round's fixes on
   the branch tagged `-1`, `-2` and so on, then one `--no-ff` merge of the last tag.
@@ -3232,3 +3241,483 @@ migration, so `duris_dev` needed nothing.
 `fix/2-persistence-phase-8`, branched from master after this record. #5 stays open for its
 server configuration (the size of the MariaDB buffer pool); its Status line now records what
 Phase 7 resolved.
+
+## Phase 8 progress
+
+Phase 8 ([plan](persistence-plan.md#phase-8-world-recovery-2)) is being done on
+`fix/2-persistence-phase-8`, branched on 2026-10-04 from master `0d6a772b9`. Each item below
+gets its record when it lands; an item without one is not done.
+
+### The baseline measurement (done)
+
+Item 2 says to measure before changing the budget. The Phase 7 code (`9809ed48e`, the
+development profile) was built with a timer around each stage of the capture and the two
+ceilings raised so that a capture could finish, and booted the full world on a disposable
+MariaDB and Redis with recovery on and nobody playing, on this machine (16 cores, otherwise
+idle). Two captures in a row:
+
+| Stage | Steps | Calls | Wall time | Work on the game thread | Longest call |
+|---|---|---|---|---|---|
+| Mobs (53,970 written) | 54,420 | 54 | 25.0 s | 41 ms | 5.9 ms |
+| Objects (6,869 written) | 34,155 | 112 | 50.6 s | 250 ms | 18.2 ms |
+| Doors (10,372 written) | 263,634 | 257 | 117.1 s | 45 ms | 2.0 ms |
+| Zones (352 written) | 352 | 0 | 0 s | 0 ms | |
+| **A capture** | | 423 | **193 s** | **0.34 s** | **18.2 ms** |
+
+The second capture took 192 s. What it shows:
+
+- **The time is not work.** A capture is a third of a second of work spread over 193 s. The
+  game calls it twice a second (every second pulse, plus the interval's event), and each
+  call ends after 1,024 steps or 2 ms. A step is one character, one object or one room
+  looked at, whether or not it is written: the 253,000 rooms alone are 257 calls. The mob
+  and door stages always end on the step limit, after 0.75 ms and 0.17 ms of their 2 ms.
+- **The object stage ends on the 2 ms**, at 61 objects a call: `write_object_record()`
+  allocates and zero-fills room for 512 items (1.7 MB) for every record, 36 µs to write
+  one item of 3.3 KiB.
+- **Two calls ran far past 2 ms**: the buffer is a vector that doubles, and each doubling
+  copies the capture so far on the game thread, 5.9 ms at 16 MiB and 18.2 ms at 32 MiB.
+- **The size.** 47.6 MiB for a world just booted, 50.4 MiB three minutes later with the
+  same counts (the mobs' spell affects). A mob is 360 bytes and 64 more for each affect; an
+  item is 3,328 bytes, 3,076 of them four fixed-width text fields. Staging's 10,850 objects are what crossed
+  64 MiB. Redis held 59 MiB with one generation stored.
+- **On staging** the same capture took 285 to 295 s: it has half as many objects again, and
+  a loop that runs late makes fewer calls.
+
+The script that ran it is not kept: the
+[capture journey](persistence-plan.md#phase-8-world-recovery-2) is the measurement from here
+on.
+
+### Captures above 64 MiB (done)
+
+`WORLD_RECOVERY_MAX_BYTES` is 256 MiB, and the store's limit of 64 chunks of 1 MiB is 256,
+tied to it by a `static_assert`. The ceiling stays a fixed number because it is what bounds
+memory: the game holds one generation, Redis two while one replaces the other. At 360 bytes
+a mob and 3.3 KiB an item it holds the 54,000 mobs and 70,000 objects on the ground.
+
+The capture reserves the ceiling's address space when it starts
+(`blob.reserve(WORLD_RECOVERY_MAX_BYTES)`; only what is written is ever touched), so its
+buffer never moves. The longest call of a capture went from 18.2 ms to 2.0 ms.
+
+Chunking and streaming were not needed. The generation already goes to Redis in 1 MiB
+chunks; nothing but the two ceilings stopped a larger one. Shrinking an item's 3,076 bytes
+of fixed-width text was not needed either: it would change the wire format for a size the
+ceiling now holds five times over. `a98573c19`.
+
+Tests: `test_world_recovery_pipeline.py` captures a world of 20,500 objects through the
+pipeline, sees the published generation (65 MiB) validate with its counts, and restores it;
+`test_redis_world_store_live.py` publishes 65 MiB and 17 bytes to a live Redis in 66 chunks,
+reads it back, and sees the next publish remove every chunk. Both fail on the old ceiling.
+
+### Captures that expired under load (done)
+
+Time is the capture's only limit: `WORLD_RECOVERY_CAPTURE_RECORD_BUDGET` is gone, and a call
+runs until its 2 ms are spent. Each object record's items are written into one scratch
+array (`capture_items`) instead of a vector of 512 items allocated and zero-filled for
+every record. The 300 s budget did not change. `b62648a4c`.
+
+The same measurement as [the baseline](#the-baseline-measurement-done), three captures in
+a row:
+
+| Stage | Steps | Calls | Wall time | Work on the game thread | Longest call |
+|---|---|---|---|---|---|
+| Mobs (53,998 written) | 54,434 | 10 | 5.0 s | 20 ms | 2.0 ms |
+| Objects (6,924 written) | 34,163 | 10 | 4.5 s | 20 ms | 2.0 ms |
+| Doors (10,372 written) | 263,634 | 16 | 7.0 s | 32 ms | 2.0 ms |
+| **A capture** | 352,583 | 36 | **16.5 s** | **72 ms** | **2.0 ms** |
+
+The other two took 15.5 s and 15.0 s, against 193 s. Every call now uses its 2 ms, so the
+work on the game thread is the number of calls times 2 ms; the object stage's 250 ms went
+to 20 ms. The pipeline test's capture of 20,500 objects, built with the address sanitizer,
+went from 37 s to 7 s.
+
+### Failures raise an alert, and the writer comes back (done)
+
+An attempt that leaves no generation is counted where the capture is driven
+(`redis_world_capture_failed()`, `redis_world_runtime.c`): a capture that failed or expired,
+a generation that did not publish, an attempt that could not start because the writer lease
+was unavailable, and one that found the floor worker's barrier refused or still waiting
+since the attempt before. A published generation resets the count. The third failure in a
+row raises one alert:
+
+```
+domain=world_recovery action=publish_failed outcome=alert detail=failures=3 last_ack_sequence=1 last_ack_age_secs=15
+```
+
+The action is the reason (`capture_failed`, `capture_expired`, `publish_failed`,
+`writer_unavailable`, `floor_unavailable`). The age is the one boot would judge the
+generation by, from its capture's start, and -1 when this boot has published none. `world
+persistence` and `redis detailed` show it as `last_ack_age_s`. The acknowledgement line in
+`logs/log/sys` now gives the generation's size and its capture's time (`bytes=`,
+`capture_msec=`), and a capture that failed is no longer also logged as
+`generation publish failed ... attempts=0`. `b8c0ca1cb`.
+
+Found with it: **a writer that lost its lease never published again.** The lease is a key
+with an expiry, and only a publish renewed it (`PEXPIRE` at the end of the publish script,
+which began by requiring the key to hold this writer's token). After a run of failures
+longer than the lease, a Redis restart without its data, or a flush, every later publish
+was refused until the server restarted: on staging the lease ran out ten minutes into the
+three days of failed captures. The publish script now takes the lease when nobody holds
+it (`SET ... PX`), and still refuses while another writer's token is there.
+
+Tests: `run_world_recovery_journey.py` (in `make test-db`) stops Redis under a running
+server, reads the one alert after the third failed capture and none after the fourth and
+fifth, brings Redis back empty and sees the next generation published with the lease held
+again; with the old publish script it fails there. `test_redis_world_store_live.py` deletes
+the fence, publishes, and reads the fence back with its expiry; a second writer is still
+refused. `test_world_recovery_pipeline.py` checks that a failed capture completes as one,
+neither an expiry nor a failed publish, and that health keeps the last generation's age.
+
+A crash leaves the crashed server's lease behind, and the restarted one waits for it to run
+out before it captures: up to the interval plus ten minutes. That is as before (it was up
+to ten minutes). At an interval under 570 seconds that wait is three attempts, so the
+restarted server raises one `writer_unavailable` alert, which is true: until the lease is
+free no generation is taken, and a second crash restores the first one's world again.
+(The MR !10 review found this wait a defect, a copyover's with it: the lease is 60 seconds
+and renewed since, and no generation is restored twice. See
+[review round 1](#review-round-1-mr-10).)
+
+### World recovery is off unless a server turns it on (done)
+
+`.env.example` ships `REDIS_WORLD_STATE=FALSE`, and the local `.env` is set the same. Beside
+the setting, and in [CONFIGURATION.md](../operations/CONFIGURATION.md#what-world-recovery-buys-and-costs),
+is what it buys (the mobs, the objects on the ground, the doors and the zone ages after a
+crash or a cold restart) and what it does not (characters, pets, corpses, lockers, banks
+and shops are saved without it). `e77d7ddfb`. (Since the MR !10 review both say which
+objects: the ones no character's save has held.)
+
+The code needed no change to do nothing when it is off: the capture job is registered
+disabled, `redis_world_recovery_pulse()` returns at its first test, floor drops are not
+recorded, and nothing counts an attempt. The journey pins it: with the switch off a player
+drops an item and the first capture's time passes; the log has no capture, Redis holds no
+world or floor key, and no alert is raised.
+
+### The ten-minute interval and the limits that follow it (done)
+
+`REDIS_WORLD_STATE_INTERVAL` is 600 seconds by default and accepts 5 to 3,600. Two limits
+follow it by the same ten minutes, five for a capture's budget and five for the restart
+(`WORLD_STATE_INTERVAL_MARGIN`):
+
+- **The maximum age.** `REDIS_WORLD_STATE_MAX_AGE` is at least the interval plus 600
+  seconds, which is its default; a lower setting is raised to it, and it accepts up to
+  86,400. `.env.example` no longer sets it.
+- **The writer lease** is the interval plus 600 seconds instead of ten minutes. Only a
+  publish renews it, so at a ten-minute interval it ran out before every publish. (Since
+  the MR !10 review the lease does not follow the interval: it is 60 seconds and the game
+  loop renews it.)
+
+The strain is beside the setting in `.env.example` and in CONFIGURATION.md: 2 ms of the
+game thread every half second for about 20 seconds, and the whole world written to Redis
+(about 45 MiB after a boot and 3.3 KiB more for every object on the ground). `e77d7ddfb`.
+
+Tests: the journey boots with a capture every 5 seconds and a maximum age of 60, and reads
+`interval=5s, max_age=605s`; kills the server, waits until its last generation is 65
+seconds old, boots, and sees that generation restored; then boots with no interval set and
+reads `interval=600s, max_age=1200s`. `test_documentation_contract.py` holds the template to
+`FALSE`, 600 and no maximum age.
+
+Server configuration, not code: a server whose `.env` says `REDIS_WORLD_STATE_INTERVAL=10`
+or `REDIS_WORLD_STATE_MAX_AGE=300` keeps the interval it names (the age is raised to the
+minimum) until the lines are removed.
+
+### A raised corpse's items (done)
+
+All six raises (`raise_undead()`, the golem, the titan, the avatar and both dracoliches) put
+the corpse's items on the raised creature again, and `place_raised_item()` is gone
+(`necromancy.c`). A player's corpse is raised the same way: its items go to the creature,
+not to the caster. A pet is saved with its master, so the master's next save records the
+items under the pet (`player_pet_items`) and claims them.
+
+`wear()` (`actobj.c`), which every way of equipping goes through, refuses a hidden (`!show`)
+item for a player's pet. `wear`, `wield` and `hold` by keyword therefore skip it; `wear all`
+keeps its own check, which lets its loop go on to the next item. A mob that is nobody's pet
+still equips one. `374c8a518`.
+
+Tests: `run_chaos_raise_transient_journey.py` (in `make test-db`) raises a greater dracolich
+from a corpse holding a backpack with a note in it, two rings and two blades, one of each
+hidden. The caster's inventory has none of them; the save has all six under the pet and none
+under the player; ordered by keyword, the dracolich wore and wielded the plain ring and
+blade and left the hidden ones. Without the check in `wear()` it equips all four.
+`test_wear_all_regression.py` runs the production `wear()` for a pet with a hidden item
+(wield and hold refused, a plain item equipped) and for a mob with no master (equipped).
+
+[PET_CUSTODY.md](../operations/PET_CUSTODY.md) still described the deferred raise that
+Phase 3 removed; its paragraph on the raise says what happens now.
+
+### A restored world's mob items (found, done)
+
+Found by the capture journey: after a crash the boot restored the world in 30 s, where
+resetting every zone takes 8. A sample of the boot's stack was in
+`select_recovered_mobs()` every time. A restore gives the recovered mobs the items their
+zones load them with (`world_recovery_rehydrate_npc_items()`), and each mob-load command
+looked through all 54,000 recovered mobs for the ones of its prototype and room. The mobs
+are indexed once by prototype and birthplace, and a command takes its group. The restore
+takes 3 s and matches the same mobs: all but 46 of 53,977, as before. `4ab307744`.
+
+Test: `test_world_recovery_npc_items.py` rehydrates 54,000 mobs from 108,000 load commands
+and allows it 5 s; the old code took six minutes there (under the sanitizers).
+
+### The capture journey and the measurement (done)
+
+`test_mysql_world_capture_journey.py` (in `make test-db`, about a minute and a half) is the
+measurement and the pin for items 1 and 2, and the first test of a restore at full size. It
+boots the full world on a disposable MariaDB and Redis with world recovery on, as shipped
+(the first capture starts 30 seconds after the boot). 8,000 lines added to the first zone's
+reset put 8,000 more objects on the ground, which makes the generation 69 MiB: staging's
+world crossed the old ceiling with 11,000 objects, and a booted one has 6,900. Eight mortals
+on their own accounts play while the capture runs.
+
+It reads the capture's own record, the line that acknowledges its generation
+(`bytes=`, `capture_msec=`), and the loop's:
+
+- the generation is above 64 MiB, and it was published;
+- the capture took under 100 s, a third of its 300 s (it took 193 s on an idle server
+  before);
+- no `MUD TICK TOOK TOO LONG` pulse ran past 250 ms while it ran.
+
+It then kills the server and boots it again, and requires that the boot restored that
+generation: its sequence, more than 50,000 mobs, the 8,000 objects, and more than 50,000
+mobs given the items their zones load them with. `1ded37a8c`.
+
+The measurement, one run each on this machine (16 cores, otherwise idle), the world at
+69 MiB (54,000 mobs, 14,900 objects on the ground, 10,372 doors, 351 zones):
+
+| | Capture | Pulses past 250 ms | Restored after the kill |
+|---|---|---|---|
+| Production profile (`-O2`), nobody playing | 19.0 s | 0 | 3 s |
+| Production profile, 30 players | 20.0 s | 0 | 3 s |
+| Development profile (`-Og`), 8 players | 19.5 to 22.5 s (four runs) | 0 | 3 s |
+| Development profile, 30 players | 21.0 s | 0 | 3 s |
+
+What it shows:
+
+- **A capture takes about 20 s**, 7% of its budget, where it took 193 s at 48 MiB. Players
+  do not change it: the capture's 2 ms come every half second whatever else the pulse
+  does. Neither does `-O2`, as Phase 7 found for the loop.
+- **The whole path works at full size**, which nothing had tested: the capture, the
+  publication in 70 chunks, the boot's validation, and the restore of 54,000 mobs and
+  15,000 objects.
+- **A boot that restores is faster than one that resets every zone** (3 s against 8),
+  once the mob items take one pass.
+
+### Master's records (taken in)
+
+Master gained two documentation commits during the phase, each a record with its line in the
+docs index: `99f6ab8e9`, the credits record `docs/records/CREDITS.md`, merged into the branch
+in `b47ed0746`; and `638396fe6`, `docs/records/COMMUNITY_DURIS_TRACKING.md`, merged in
+`3f9cc1bb0` after the gate. Both are unchanged.
+
+### The gate on the branch head (done)
+
+On `05cd4e3b1`, the head with every record above, on a server rebuilt from it:
+`./scripts/format.sh --all --check` (1031 files clean); `make test-all -j16 TEST_JOBS=16`
+alone (669 of 669, 439 s, with the development and the production build); then
+`make test-db` (39 of 39, 231 s) and `npm test --prefix site` (14 tests; `docs/` changed).
+Neither suite left `logs/log/dupes` or `logs/log/item_claims` behind. Beside the other
+database tests the capture journey's generation of 69.0 MiB was captured in 19.5 s and
+restored 4 s after the kill.
+
+That was the second run of the two suites. In the first, `make test-db` failed the raise
+journey (38 of 39): the server had been built once without the hidden-item check, to see
+the journey fail without it, and the restored source kept its older date, so `make` kept
+that object and the server lacked the check. Every source file the phase changed was
+touched and rebuilt, and both suites were run again on that server.
+
+One run in twelve of the Redis tests by themselves (`run_regression_tests.py --match redis`)
+had one failure that did not repeat; its name was not kept. Neither run of `make test-all`
+had it.
+
+Not run: the backup-recovery container job, `run_runtime_compatibility_mysql.sh` beyond its
+leg in `make test-db`, CodeQL and Trivy (nothing they check changed; no schema change).
+
+### The work item closed (done)
+
+#2 was closed on 2026-10-04, with !10 in review: its three items are items 1 to 3 above, and
+nothing of it is left. It is not kept open for server configuration, as #3, #5 and #6 were:
+whether a server turns world recovery on, and what interval it sets, is for whoever runs it
+(owner, 2026-10-04).
+
+### The settings that were left (done)
+
+Phases 4, 6 and 7 left settings on #6, #3 and #5 as server configuration. The owner decided
+each on 2026-10-04 ([plan](persistence-plan.md#the-settings-that-were-left-3-5-6)): the
+repository carries a default, whoever runs a server sets what differs, and the items close.
+Done on `fix/2-persistence-phase-8` after Phase 8, each change with its test.
+
+- **Restore drills off, replica off, pre-boot backup off** (#3; `2bb637bfe`).
+  `drill_seconds` 0 means no drills and `scripts/backup_policy.example.json` ships it:
+  `status --require-drill` asks for no receipt, and the drill command returns
+  `{"event": "drill", "result": "off"}` before it touches anything. `replica_root` was
+  already null. `cycle_mud.sh` takes the backup before a boot only with `PREBOOT_BACKUP=1`
+  and then still refuses a boot whose backup fails; `SKIP_PREBOOT_BACKUP` is gone. Tests:
+  `test_persistence_backup.py` (the example policy, a status with no receipt, a drill that
+  does nothing), `test_flatfile_launcher.py` (a boot with no backup, then the backup and
+  its refusal with the switch), `test_backup_pfiles.py`.
+- **The buffer pool, 1 GB** (#5; `b7a3d2403`, `b05344026`). `compose.yaml` starts MariaDB
+  with `--innodb-buffer-pool-size=1G`, checked in a container (1,073,741,824), and
+  CONFIGURATION.md states it for a server's own MariaDB. Staging's is not changed: its
+  MariaDB shares a 16 GB host with production, which #5 says is short of memory, so that
+  size is for whoever runs the host.
+- **The charset warnings** (#6; `607a57942`). On staging the MariaDB client unpacked under
+  the account read the system's MySQL 8.0 charsets and warned twice on every call, 22
+  lines a boot. `verify_runtime_compatibility.sh` and `cycle_mud.sh` pass the client
+  `--character-sets-dir` for the `share/mysql/charsets` under its own prefix when that
+  directory exists. Run on staging against its database, the old check printed 22 warning
+  lines and the new one none. `test_database_boot_gate.py` runs the check with a relocated
+  client and with a plain one.
+- **The WebSocket and health listener, off** (#6; `a6054183c`). `comm.c` opens it only with
+  `DURIS_WEBSOCKET=TRUE`; without it there is no port, no `GET /health` and no line about
+  the listener, so a MUD-only server no longer logs `WebSocket server failed to start`.
+  `compose.yaml` and the restore qualifier (`persistence_restore.py`) set it, because both
+  wait for `/health`; `.env.example` ships it `FALSE`. `test_flatfile_boot_preflight.py`
+  boots once without the switch (the port refuses, the log does not mention the listener)
+  and once with it (`/health` answers). **Production has a website and health checks on
+  this listener: its `.env` needs `DURIS_WEBSOCKET=TRUE` before it takes this change**
+  ([PRODUCTION_DEPLOYMENT.md](../operations/PRODUCTION_DEPLOYMENT.md)).
+- **The stale `proxies_priv` grant** (#6). On staging's MariaDB the row for
+  `duris@plesk.luminarimud.com`, carried over from the old host, is deleted; the two rows
+  an install makes (`root@localhost`, `duris@localhost`) are left.
+- **The game's database user** (#6; `b05344026`). The template and CONFIGURATION.md name
+  the account for its environment. The local one is already `duris_local`. Staging
+  connected as `duris_prod` on the host it shares with production: its account is renamed
+  `duris_staging` (grants kept, the one view it defined in a leftover import database moved
+  with it), its `.env` says so, and the MUD was stopped for the change and started again.
+  It booted in 12 s with five connections as `duris_staging`.
+- **The logins without a password** (#6) are left, to see whether they are a real issue.
+
+Found on the way:
+
+- **The Docker deployment did not boot.** `compose.yaml` ran `mariadb:11.4`, and the
+  verifiers of migrations 0031 and 0032 accept MariaDB 10.11 and MySQL 8.0 only, so the
+  game container stopped at `unsupported database engine for accounting schema`. It runs
+  `mariadb:10.11` now (`7c5a7c6e7`), and the contract test holds it there. With this
+  branch's defaults the stack comes up healthy: `/health` answers
+  `{"status":"healthy","persistence":"ready"}`, the pool is 1 GB, and no backup is taken
+  before the boot. Before this branch that backup would also have refused the boot, since
+  the deployment has no backup policy.
+- **Staging's backup unit** has been in a failed state since 2026-09-30 and its timer has
+  not fired since. Not touched: how that server is backed up is for whoever runs it.
+
+Staging runs an older checkout, so it logs the charset warnings until it takes this branch.
+
+### The gate on the head with the settings (done)
+
+On `1f2707d34`, run once each: `./scripts/format.sh --all --check` (1031 files clean);
+`make test-all -j16 TEST_JOBS=16` alone (669 of 669, 438 s, with the development and the
+production build); then `make test-db` (39 of 39, 232 s) and `npm test --prefix site`
+(14 tests). Neither suite left `logs/log/dupes` or `logs/log/item_claims` behind. The
+Docker deployment was also brought up once with `docker compose up --build --wait`, in a
+project of its own: both services healthy, then removed.
+
+Not run: the backup-recovery container job (the restore qualifier's environment now sets
+`DURIS_WEBSOCKET=TRUE`, which `test_backup_review_remediations.py` holds), CodeQL and Trivy.
+
+### Review round 1 (MR !10)
+
+The review read `persistence/phase-8-review-1` (`fe7be81aa`) and found four defects in what
+a restart leaves with world recovery on. It reproduced each on the built server with the
+shipped settings and the mini world, and posted the script (`review_probes.py`, six
+scenarios). Each reproduced here as posted. Each is fixed in its own commit on
+`fix/2-persistence-phase-8`, with a test that fails without it. The fixed head is tagged
+`persistence/phase-8-review-2`.
+
+| Finding | Fix | Commit |
+|---|---|---|
+| 1. High: after a crash or a copyover the new process could not take the writer lease for up to the interval plus 600 seconds (20 minutes as shipped), since only the process that set the lease knows its token. For that long no capture ran, the generation the boot had restored could not be consumed, and a second crash restored it again; after a copyover a crash restored the world from before the copyover. | The lease is 60 seconds and the game loop renews it every 20 (`redis_world_writer_renew_pulse()`), so a crashed writer's is gone within a minute; a renewal takes a lease nobody holds, as a publish does. A copyover releases the lease before its exec and the image it starts claims it at boot. The boot's consume no longer asks for the lease, so no generation is restored twice. A capture attempt that could not start is made again 30 seconds later, not an interval later: without that the boot after a crash would still have waited ten minutes. | `a9e6e391d` |
+| 2. High: every restart, a clean one included, put back the floor objects players had taken since the last capture, with the uid the player already holds. The copy is a real object: the next taker's save claims the uid, and the first holder loses the item at the next login. At a 600 second interval that is what was looted in a restart's last ten minutes. | A clean shutdown takes one last capture, after the players are saved and gone and before the lease is released, and waits for it. The restore looks up every item it captured without custody (`sql_persistence_world_recovery_items_owned()`) and leaves out the tree of one that an owner holds: its taker saved it, or the economy recorded it. A failed lookup restores nothing. | `fd0ad6bce` |
+| 3. Medium: a capture walks the object list across pulses and writes a container's contents with the container, so an object taken out of a floor container and dropped while it runs was written twice. The generation was published with no alert, and the boot refused all of it. | The capture keeps the uids it has written (`capture_tree_is_new()`) and leaves out a tree that holds one: an item is in the tree the capture met it in first. | `9c26a9ee5` |
+| 4. Medium: an item a player dropped is never captured and never journaled, because a drop changes no custody and the capture leaves out a tree whose custody is not its room's; `.env.example` and CONFIGURATION.md said recovery brings back "the objects on the ground". | The documents name the two kinds of object that are not brought back: an item a character logged in with, or was granted, and then dropped; and an item a character's save holds by the time of the restore. The other way, a save that releases the record of an item its owner no longer holds, is what the plan cut ([what was cut](persistence-plan.md#what-was-cut-and-why)); the cut list now names this cost. | `367571ac3` |
+
+Found with finding 3, and fixed in its commit: **a drop made while a capture runs put the
+item in the generation and in the floor journal.** The drop is journaled once the capture
+is published, and the capture reaches the object after the drop; a later drop of an item
+the generation holds elsewhere (loot taken from a captured corpse and dropped before the
+taker's save) is journaled too. The boot refused the floor record and with it the whole
+restore (`world recovery floor record rejected`, then every zone reset). It leaves out a
+floor record of an item the generation holds: the item comes back where the capture saw it.
+
+**What "an owner holds" had to mean.** The review proposed leaving out a tree that has an
+active ownership record, and gave finding 4 as "every item that was ever in a saved
+inventory is skipped once it is on the floor". Two probes on the built server say
+otherwise. The ledger in memory names a character for an item the character logged in with
+or was granted, and such an item is left out of a capture once dropped, as the review
+found. An item picked up during the session has no entry, and a save's claim adds none: a
+zone-loaded banana that a character took, saved, dropped and saved again was captured on
+the floor and restored by the reviewed code, while its record still named the character.
+A check on the record alone would have lost that item at every crash. So the lookup leaves
+out a record that names a character whose save no longer has the item
+(`player_items`): the record cannot tell a dropped item from a taken one, and the save
+can. The flat-file backend counts every record, which errs on the side of no duplicate.
+
+Found by the gate, and fixed in its own commit (`3b8db7bf9`): **a boot took a read of Redis
+that missed its deadline for "no generation".** The boot reads the current sequence and
+the floor records on the game loop's connection, with its 100 ms deadline. On the full
+world, beside the other journeys, the boot after the kill logged `world recovery current
+sequence read failed` and reset every zone with its generation still in Redis. One run of
+the review's restart probe on the mini world, of 105, booted without attempting a restore
+at all; it kept no logs, and that is what a missed read at the boot's first check looks
+like. A read that Redis did not answer is made again on a new connection, up to
+five times (`redis_world_boot_read()`), and the boot's check, its restore and its consume
+read the sequence through one function. Older than this branch.
+
+Tests: `run_world_restart_journey.py <server> <scenario>`, six lines in `make test-db`,
+each a real server on its own MariaDB and Redis with the shipped settings: `crash`,
+`copyover`, `restart`, `taken`, `midcapture` and `slowread`. The first five are the
+review's scenarios with assertions; `taken` also drops a mace its character had saved,
+before the capture, and sees it restored; `slowread` puts a proxy before Redis that answers
+every other read of the current sequence in 300 ms. `test_world_recovery_pipeline.py` moves
+an object out of a container between two calls of a capture, restores a generation beside
+a floor record of the same item, and restores three trees of which one holds an owned
+item. `test_redis_world_store_live.py` renews a free lease and consumes a generation while
+another writer holds the lease.
+
+What the round measured:
+
+- **Finding 1.** The boot's claim is 60 seconds long; 27 seconds after the boot the lease
+  had 52 left, so it had been renewed. The boot after a crash consumed generation 1 with
+  the crashed writer's lease still running and published generation 2 91 seconds after it
+  started; a second crash restored generation 2. After a copyover the new image held the
+  lease at once and published 31 seconds later. On the reviewed head the lease had 1,172
+  seconds left at the same point and the copyover's image did not hold it.
+- **What is left of the wait.** For about a minute and a half after the boot that follows
+  a crash there is no generation: a second crash then resets every zone, and restores
+  nothing twice.
+- **Finding 2 on the full world** (the capture journey, stopped cleanly instead of
+  killed, one run): the clean stop took 3.2 seconds, its last generation was 69.4 MiB
+  captured in 115 ms, and the next boot restored it 4 seconds after the stop (53,961 mobs,
+  14,915 objects, each object looked up in SQL).
+- **Each new test without its fix.** On the reviewed head `crash`, `copyover` and
+  `midcapture` fail (the last with the generation refused). On `9c26a9ee5`, the commit
+  before finding 2's fix, `restart` fails with no capture at the shutdown and `taken` with
+  the banana restored; `slowread` fails there too, with no restore attempted. The
+  pipeline's three cases fail with their check removed.
+- **The restart scenario 105 times**, up to 16 servers side by side: 27 runs of the
+  review's probe and 78 of the journey's. All but one restored the shutdown's generation
+  (one of the journey's failed on a race in its own check, since fixed). The one, the
+  first run on the fixed build, booted without attempting a restore. `slowread` reproduces
+  that: six reads of the sequence, every other one late, and the generation restored;
+  without the change, no restore.
+
+What a server sees that it did not before: a clean stop takes a capture, 3.2 seconds in
+all on the full world.
+
+### The gate on the review round's head (done)
+
+On `3b8db7bf9`, the head with every change of the round (the run was on `c2f61746e`, the same
+tree before its commit message was corrected), once each:
+`./scripts/format.sh --all --check` (1031 files clean); `make test-all -j16 TEST_JOBS=16`
+(669 of 669, 497 s, with the development and the production build); then `make test-db`
+(45 of 45, 267 s, the journey's six lines among them). The full-world journey captured
+69.2 MiB in 19.5 s and restored it 5 seconds after the kill: 53,964 mobs and 14,912
+objects, each object looked up in SQL. The commit after it is this record.
+
+The gate ran three times in the round: on an earlier head of it (669 of 669, 44 of 44), on
+`367571ac3`, and on this one. The run on `367571ac3` is the one that found the missed read:
+`world_capture` failed in its `make test-db`. In its `make test-all` two tests of other
+subsystems failed together, once: `test_redis_maintenance_live.py` and
+`test_redis_presence_worker_live.py`. They are not changed. Both passed in the other two
+runs and alone; twelve of each side by side gave one failure, of the presence test, and
+that test's three failures in the round were three different assertions. It sleeps fixed
+times against 100 ms Redis deadlines, so a busy machine fails it.
+
+Not run: `npm test --prefix site` (the round touches nothing of the site), the
+backup-recovery container job, CodeQL and Trivy.

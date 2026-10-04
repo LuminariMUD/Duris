@@ -237,6 +237,17 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
     server.write_text("#!/bin/sh\nexit 0\n")
     server.chmod(0o755)
 
+    # The backup before a boot is off unless PREBOOT_BACKUP=1: without it the launcher
+    # boots and leaves no backup.
+    launched = run(script, flat_env, "--minimal")
+    if launched.returncode != 0 or "Mud stopped, reason: shutdown [0]" not in launched.stdout:
+        raise AssertionError("flat-file launcher did not boot without a pre-boot backup:\n"
+                             + launched.stdout)
+    if "Backing up" in launched.stdout or (project / "backups").exists():
+        raise AssertionError("flat-file launcher took a backup it was not asked for:\n"
+                             + launched.stdout)
+    flat_env["PREBOOT_BACKUP"] = "1"
+
     nested_backup_env = dict(flat_env)
     nested_config = project / "nested-policy.json"
     nested_config.write_text(json.dumps(dict(policy, root=str(project / "state/backups"))))

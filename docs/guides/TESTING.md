@@ -99,6 +99,25 @@ costliest callbacks), so it is also the load to measure a build with:
 tests/async/test_mysql_game_loop_budget_journey.py --server <dms_new> --players 30
 --hours 2`.
 
+The world capture journey (`test_mysql_world_capture_journey.py`, in `make test-db`)
+boots the full world on MariaDB and Redis with world recovery on and 8,000 more objects
+on the ground, and has scripted players play while the first capture runs. It fails if
+the generation is not above the old 64 MiB ceiling, if its capture takes a third of its
+300 s, or if a pulse runs past its 250 ms; it then kills the server, and fails unless the
+next boot restores the generation. It prints the generation's size, the capture's time
+and what the restore brought back; `--players N` scales the load.
+`run_world_recovery_journey.py`, also in `make test-db`, covers the switch on the mini
+world: off, the alert of an outage, the writer coming back, a crash's restore and the
+defaults. `run_world_restart_journey.py <server> <scenario>` covers what a restart leaves,
+one scenario a run and each its own line in `make test-db`: `crash` (the lease is renewed,
+the boot after a crash consumes the generation it restored and publishes its own, and a
+second crash restores that one), `copyover` (the new image holds the lease at once),
+`restart` (a clean stop takes a last capture and the boot restores it), `taken` (an object
+a character took and saved after the capture is not restored to the floor, and one it
+saved and dropped before the capture is), `midcapture` (an object that leaves a floor
+container while a capture runs, and whose drop is journaled, is restored once) and
+`slowread` (a boot whose reads of Redis miss their deadline asks again and restores).
+
 MySQL fixtures that reuse a table within a statement must account for MySQL's
 `Can't reopen table` restriction on connection-local temporary tables; MariaDB
 may accept the same fixture. Use isolated ordinary tables with explicit cleanup

@@ -178,6 +178,11 @@ void mobsay(P_char, const char *)
 {
 	abort();
 }
+static P_char pet_master = nullptr;
+P_char get_linked_char(P_char, ush_int type)
+{
+	return type == LNK_PET ? pet_master : nullptr;
+}
 // PRODUCTION_FUNCTIONS
 
 static pc_only_data pc{};
@@ -324,6 +329,23 @@ int main()
 	assert(!wear(&actor, &detached, 12, true));
 	assert(message == "You do not have that item in your inventory yet.\r\n");
 	assert(actor.equipment[PRIMARY_WEAPON] == nullptr);
+	// A player's pet equips no hidden item, whatever the command; it equips a plain one,
+	// and a mob that is nobody's pet still equips a hidden one.
+	char_data master{};
+	auto hidden = item(ITEM_WEAPON, ITEM_WIELD | ITEM_HOLD);
+	hidden.extra_flags = ITEM_NOSHOW;
+	auto plain = item(ITEM_WEAPON, ITEM_WIELD | ITEM_HOLD);
+	SET_BIT(actor.specials.act, ACT_ISNPC);
+	pet_master = &master;
+	for (int role : { 12, 13 })
+	{
+		assert(!wear(&actor, &hidden, role, true) && hidden.loc_p == LOC_CARRIED);
+		assert(wear(&actor, &plain, role, true));
+		remove(&plain);
+	}
+	pet_master = nullptr;
+	assert(wear(&actor, &hidden, 12, true));
+	reset();
 	auto weapon = item(ITEM_WEAPON, ITEM_WIELD);
 	auto great = item(ITEM_WEAPON, ITEM_WIELD, true);
 	auto book = item(ITEM_SPELLBOOK, ITEM_HOLD);
