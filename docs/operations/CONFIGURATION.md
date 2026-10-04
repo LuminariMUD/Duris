@@ -281,7 +281,7 @@ deployed Redis version. Key/channel boundaries should be:
 | Identity | Allowed keys/channels |
 | --- | --- |
 | world | `<REDIS_NAMESPACE>:season:*:world_state:*` and `<REDIS_NAMESPACE>:season:*:floor_*` |
-| presence | `<REDIS_NAMESPACE>:season:*:presence:*`, `<REDIS_NAMESPACE>:season:*:presence_op:*`, and publish only to `<REDIS_NAMESPACE>:season:*:player` |
+| presence | `<REDIS_NAMESPACE>:season:*:presence:*`, `<REDIS_NAMESPACE>:season:*:presence_op:*`, `<REDIS_NAMESPACE>:season:*:player`, and `mud:online` as keys; publish only to `<REDIS_NAMESPACE>:season:*:player` |
 | cache | `<REDIS_NAMESPACE>:season:*:cache:*` |
 | donation | subscribe only to `<REDIS_NAMESPACE>:season:*:nchat`; no key access |
 | maintenance | `<REDIS_NAMESPACE>:*`, `mud:*`, and `ship:snapshot:*`; allow only connection, scan, delete, and required Lua execution commands |
@@ -289,8 +289,11 @@ deployed Redis version. Key/channel boundaries should be:
 The world, presence, and cache workers need their respective read/write/Lua commands plus
 `PING` and `SELECT`; they do not need administrative, server-management, or cross-prefix
 access. The donation identity needs only `PING`, `SELECT`, and `SUBSCRIBE` with the channel
-pattern above. Maintenance is deliberately broader in key scope because it removes active
-and retired Duris surfaces, but it must not have access to other applications' prefixes.
+pattern above. The presence script names its event channel and the retired `mud:online` key
+among its keys, so the presence identity needs both as key patterns too: without them Redis
+refuses every presence update. Maintenance is deliberately broader in key scope because it
+removes active and retired Duris surfaces, but it must not have access to other
+applications' prefixes.
 Test the exact ACL rules on a disposable Redis instance before deployment; Redis command
 categories and Lua ACL behavior can differ across supported server versions.
 
