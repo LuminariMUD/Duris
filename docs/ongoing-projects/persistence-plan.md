@@ -615,12 +615,10 @@ the logs), 6 (backups) and 7 (the game loop) are done and on master.
 `fix/2-persistence-phase-8`, each item with its tests in its own commits. An item leaves this
 list when its record is under [Phase 8 progress](persistence-done.md#phase-8-progress):
 
-1. Captures above 64 MiB (item 1).
-2. Captures that expire under load (item 2).
-3. Failures that raise no alert, and the writer lease that does not come back (item 3).
-4. A raised corpse's items (item 4).
-5. World recovery off unless a server turns it on (item 5).
-6. The ten-minute interval and the two limits that follow it (item 6).
-7. The full-world capture journey, and the measurement after.
-8. The gate on the branch head (`./scripts/format.sh --check`, `make test-all`,
+1. A raised corpse's items (item 4).
+2. The full-world capture journey, and the measurement after, under load and on the
+   production profile.
+3. The gate on the branch head (`./scripts/format.sh --check`, `make test-all`,
    `make test-db`), then the merge request for #2.
+
+Done and recorded: items 1, 2, 3, 5 and 6.

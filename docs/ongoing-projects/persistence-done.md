@@ -3277,3 +3277,129 @@ The second capture took 192 s. What it shows:
 The script that ran it is not kept: the
 [capture journey](persistence-plan.md#phase-8-world-recovery-2) is the measurement from here
 on.
+
+### Captures above 64 MiB (done)
+
+`WORLD_RECOVERY_MAX_BYTES` is 256 MiB, and the store's limit of 64 chunks of 1 MiB is 256,
+tied to it by a `static_assert`. The ceiling stays a fixed number because it is what bounds
+memory: the game holds one generation, Redis two while one replaces the other. At 360 bytes
+a mob and 3.3 KiB an item it holds the 54,000 mobs and 70,000 objects on the ground.
+
+The capture reserves the ceiling's address space when it starts
+(`blob.reserve(WORLD_RECOVERY_MAX_BYTES)`; only what is written is ever touched), so its
+buffer never moves. The longest call of a capture went from 18.2 ms to 2.0 ms.
+
+Chunking and streaming were not needed. The generation already goes to Redis in 1 MiB
+chunks; nothing but the two ceilings stopped a larger one. Shrinking an item's 3,076 bytes
+of fixed-width text was not needed either: it would change the wire format for a size the
+ceiling now holds five times over. `a98573c19`.
+
+Tests: `test_world_recovery_pipeline.py` captures a world of 20,500 objects through the
+pipeline, sees the published generation (68 MiB) validate with its counts, and restores it;
+`test_redis_world_store_live.py` publishes 65 MiB and 17 bytes to a live Redis in 66 chunks,
+reads it back, and sees the next publish remove every chunk. Both fail on the old ceiling.
+
+### Captures that expired under load (done)
+
+Time is the capture's only limit: `WORLD_RECOVERY_CAPTURE_RECORD_BUDGET` is gone, and a call
+runs until its 2 ms are spent. Each object record's items are written into one scratch
+array (`capture_items`) instead of a vector of 512 items allocated and zero-filled for
+every record. The 300 s budget did not change. `b62648a4c`.
+
+The same measurement as [the baseline](#the-baseline-measurement-done), three captures in
+a row:
+
+| Stage | Steps | Calls | Wall time | Work on the game thread | Longest call |
+|---|---|---|---|---|---|
+| Mobs (53,998 written) | 54,434 | 10 | 5.0 s | 20 ms | 2.0 ms |
+| Objects (6,924 written) | 34,163 | 10 | 4.5 s | 20 ms | 2.0 ms |
+| Doors (10,372 written) | 263,634 | 16 | 7.0 s | 32 ms | 2.0 ms |
+| **A capture** | 352,583 | 36 | **16.5 s** | **72 ms** | **2.0 ms** |
+
+The other two took 15.5 s and 15.0 s, against 193 s. Every call now uses its 2 ms, so the
+work on the game thread is the number of calls times 2 ms; the object stage's 250 ms went
+to 20 ms. The pipeline test's capture of 20,500 objects, built with the address sanitizer,
+went from 37 s to 7 s.
+
+### Failures raise an alert, and the writer comes back (done)
+
+An attempt that leaves no generation is counted where the capture is driven
+(`redis_world_capture_failed()`, `redis_world_runtime.c`): a capture that failed or expired,
+a generation that did not publish, an attempt that could not start because the writer lease
+was unavailable, and one that found the floor worker's barrier refused or still waiting
+since the attempt before. A published generation resets the count. The third failure in a
+row raises one alert:
+
+```
+domain=world_recovery action=publish_failed outcome=alert detail=failures=3 last_ack_sequence=1 last_ack_age_secs=15
+```
+
+The action is the reason (`capture_failed`, `capture_expired`, `publish_failed`,
+`writer_unavailable`, `floor_unavailable`). The age is the one boot would judge the
+generation by, from its capture's start, and -1 when this boot has published none. `world
+persistence` and `redis detailed` show it as `last_ack_age_s`. The acknowledgement line in
+`logs/log/sys` now gives the generation's size and its capture's time (`bytes=`,
+`capture_msec=`), and a capture that failed is no longer also logged as
+`generation publish failed ... attempts=0`. `b8c0ca1cb`.
+
+Found with it: **a writer that lost its lease never published again.** The lease is a key
+with an expiry, and only a publish renewed it (`PEXPIRE` at the end of the publish script,
+which began by requiring the key to hold this writer's token). After a run of failures
+longer than the lease, a Redis restart without its data, or a flush, every later publish
+was refused until the server restarted: on staging the lease ran out ten minutes into the
+three days of failed captures. The publish script now takes the lease when nobody holds
+it (`SET ... PX`), and still refuses while another writer's token is there.
+
+Tests: `run_world_recovery_journey.py` (in `make test-db`) stops Redis under a running
+server, reads the one alert after the third failed capture and none after the fourth and
+fifth, brings Redis back empty and sees the next generation published with the lease held
+again; with the old publish script it fails there. `test_redis_world_store_live.py` deletes
+the fence, publishes, and reads the fence back with its expiry; a second writer is still
+refused. `test_world_recovery_pipeline.py` checks that a failed capture completes as one,
+neither an expiry nor a failed publish, and that health keeps the last generation's age.
+
+A crash leaves the crashed server's lease behind, and the restarted one waits for it to run
+out before it captures: up to the interval plus ten minutes. That is as before (it was up
+to ten minutes). At an interval under 570 seconds that wait is three attempts, so the
+restarted server raises one `writer_unavailable` alert, which is true: until the lease is
+free no generation is taken, and a second crash restores the first one's world again.
+
+### World recovery is off unless a server turns it on (done)
+
+`.env.example` ships `REDIS_WORLD_STATE=FALSE`, and the local `.env` is set the same. Beside
+the setting, and in [CONFIGURATION.md](../operations/CONFIGURATION.md#what-world-recovery-buys-and-costs),
+is what it buys (the mobs, the objects on the ground, the doors and the zone ages after a
+crash or a cold restart) and what it does not (characters, pets, corpses, lockers, banks
+and shops are saved without it). `e77d7ddfb`.
+
+The code needed no change to do nothing when it is off: the capture job is registered
+disabled, `redis_world_recovery_pulse()` returns at its first test, floor drops are not
+recorded, and nothing counts an attempt. The journey pins it: with the switch off a player
+drops an item and the first capture's time passes; the log has no capture, Redis holds no
+world or floor key, and no alert is raised.
+
+### The ten-minute interval and the limits that follow it (done)
+
+`REDIS_WORLD_STATE_INTERVAL` is 600 seconds by default and accepts 5 to 3,600. Two limits
+follow it by the same ten minutes, five for a capture's budget and five for the restart
+(`WORLD_STATE_INTERVAL_MARGIN`):
+
+- **The maximum age.** `REDIS_WORLD_STATE_MAX_AGE` is at least the interval plus 600
+  seconds, which is its default; a lower setting is raised to it, and it accepts up to
+  86,400. `.env.example` no longer sets it.
+- **The writer lease** is the interval plus 600 seconds instead of ten minutes. Only a
+  publish renews it, so at a ten-minute interval it ran out before every publish.
+
+The strain is beside the setting in `.env.example` and in CONFIGURATION.md: 2 ms of the
+game thread every half second for about 16 seconds, and the whole world written to Redis
+(50 MiB after a boot, 67 MiB with staging's 11,000 objects). `e77d7ddfb`.
+
+Tests: the journey boots with a capture every 5 seconds and a maximum age of 60, and reads
+`interval=5s, max_age=605s`; kills the server, waits until its last generation is 65
+seconds old, boots, and sees that generation restored; then boots with no interval set and
+reads `interval=600s, max_age=1200s`. `test_documentation_contract.py` holds the template to
+`FALSE`, 600 and no maximum age.
+
+Server configuration, not code: a server whose `.env` says `REDIS_WORLD_STATE_INTERVAL=10`
+or `REDIS_WORLD_STATE_MAX_AGE=300` keeps the interval it names (the age is raised to the
+minimum) until the lines are removed.
