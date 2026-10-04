@@ -27,7 +27,10 @@ round; #5 stays open for its server configuration
 `fix/2-persistence-phase-8` and in review as
 [!10](https://gitlab.com/max757/duris/-/merge_requests/10), tagged
 `persistence/phase-8-review-0` ([progress](persistence-done.md#phase-8-progress)); #2 is
-closed.
+closed. The settings that Phases 4, 6 and 7 left on #6, #3 and #5 were decided the same day
+and are done on the same branch, tagged `persistence/phase-8-review-1`
+([record](persistence-done.md#the-settings-that-were-left-done)); those three items are
+closed too.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
@@ -228,7 +231,8 @@ writer retries a retryable or ambiguous result itself, so a game-side branch for
 
 Left on #6, as server configuration rather than code: the `mysql` client's charset warnings, the
 WebSocket warning on a MUD-only server, the stale `proxies_priv` grant, the game's database user
-name and the logins without a password.
+name and the logins without a password. Decided on 2026-10-04:
+[the settings that were left](#the-settings-that-were-left-3-5-6).
 
 Done when: logs rotate with size caps and the latency trace has one destination; a
 critical-command failure names its command type and reason, and repeats are counted, not
@@ -317,7 +321,8 @@ Not an item: a restored player corpse gets a fresh decay timer on every boot
    message, without secrets.
 
 Left on #3, as server configuration: whether a server runs restore drills, keeps an off-host
-replica and skips the pre-boot backup.
+replica and skips the pre-boot backup. Decided on 2026-10-04:
+[the settings that were left](#the-settings-that-were-left-3-5-6).
 
 Done when: a status run costs about the same with 1 generation or 40, and a test pins it; a backup
 completes while a receipt changes, with a test; failure records name the exception, and an RPO
@@ -375,6 +380,7 @@ How each item is done (decided 2026-10-03):
    0.04 s ([record](persistence-done.md#each-generation-verified-once-done)).
 
 Left on #5, as server configuration: the MariaDB buffer pool, left at its 128 MB default.
+Decided on 2026-10-04: [the settings that were left](#the-settings-that-were-left-3-5-6).
 
 Done when: `rent`, `quit` and the hourly event stay under a set budget under load, and a test pins
 it; every slow event names its callback; the production profile builds optimised, with the tick
@@ -548,6 +554,40 @@ crash restores it in 3 s
 Nothing is left on #2, which is closed (owner, 2026-10-04): how a server sets its recovery
 variables is for whoever runs it.
 
+## The settings that were left (#3, #5, #6)
+
+Phases 4, 6 and 7 left settings on their work items as server configuration. The owner
+decided each of them on 2026-10-04: the repository carries a default, whoever runs a server
+sets what differs, and the items close. They are done on `fix/2-persistence-phase-8`, after
+Phase 8 ([record](persistence-done.md#the-settings-that-were-left-done)).
+
+1. **Restore drills are off by default** (#3). `drill_seconds` 0 in the backup policy means
+   no drills, and the example policy ships it: the drill timer's command does nothing and
+   `status --require-drill` asks for no receipt. A stored generation is then checked again
+   only when it is restored or pruned.
+2. **The off-host replica is off by default** (#3). It already was (`replica_root` null).
+3. **The backup before a boot is off by default** (#3). `cycle_mud.sh` takes it only with
+   `PREBOOT_BACKUP=1`, and then still refuses a boot whose backup fails.
+   `SKIP_PREBOOT_BACKUP` is gone: skipping is the default.
+4. **The MariaDB buffer pool is 1 GB by default** (#5). `compose.yaml` starts MariaDB with
+   it, and CONFIGURATION.md states it for a server's own MariaDB, whose configuration is
+   not the repository's.
+5. **The charset warnings** (#6). A MariaDB client unpacked outside the system's prefix
+   read another package's charsets and warned twice on every call. The compatibility check
+   and the launcher pass the client the charsets directory under its own prefix when there
+   is one.
+6. **The WebSocket and health listener is off by default** (#6). A server is assumed to have
+   no website: the listener, and `GET /health` with it, opens only with
+   `DURIS_WEBSOCKET=TRUE`. The Docker deployment and the restore qualifier set it, since
+   both wait for `/health`. **A server with a website sets it in its `.env` before it takes
+   this change.**
+7. **The stale `proxies_priv` grant** (#6) is deleted on the server that had it.
+8. **The game's database user** (#6) is named for its environment (`duris_local`,
+   `duris_staging`, `duris_prod`), so that a command or credential sent to the wrong server
+   fails to log in. The template and CONFIGURATION.md say so; staging, which connected as
+   `duris_prod`, connects as `duris_staging`.
+9. **The logins without a password** (#6) are left, to see whether they are a real issue.
+
 ## What was cut, and why
 
 Each part was removed in turn ([ablation](../../.agents/skills/ablation/SKILL.md)) and stayed only
@@ -623,10 +663,13 @@ All hold: the gate passed on `0b90e5fc1`
 Phases 4 (alerts and logs), 5 (bugs from the logs), 6 (backups) and 7 (the game loop) are
 done and on master. The last phase is done and in review:
 
-1. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2): done, in review as
-   [!10](https://gitlab.com/max757/duris/-/merge_requests/10); it leaves this list when it
-   lands. A review round's fixes go on `fix/2-persistence-phase-8`, each finding in its own
-   commit with its test, the fixed head tagged `persistence/phase-8-review-1`
-   ([how](persistence-done.md#review-and-branches)). All six items, the capture journey with
-   its measurement, the mob items of a restored world (which the journey found) and the gate
-   have their records under [Phase 8 progress](persistence-done.md#phase-8-progress).
+1. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2), with
+   [the settings that were left](#the-settings-that-were-left-3-5-6) on #3, #5 and #6: done,
+   in review as [!10](https://gitlab.com/max757/duris/-/merge_requests/10); it leaves this
+   list when it lands. `persistence/phase-8-review-0` is Phase 8 and `-review-1` the head
+   with the settings. A review round's fixes go on `fix/2-persistence-phase-8`, each finding
+   in its own commit with its test, the fixed head tagged `persistence/phase-8-review-2`
+   ([how](persistence-done.md#review-and-branches)). Every item, the capture journey with
+   its measurement, the mob items of a restored world (which the journey found) and the
+   gates have their records under
+   [Phase 8 progress](persistence-done.md#phase-8-progress).

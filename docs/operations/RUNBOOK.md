@@ -42,10 +42,11 @@ production port 7777; the default remains 4000.
 - On each restart it moves `logs/log/*`, `logs/player-log/*` and
   `logs/latency_trace.log` into `logs/old-logs/<timestamp>/`, then deletes the
   oldest of those until `logs/old-logs` fits in `DURIS_LOG_ARCHIVE_MB` (1024 by
-  default; the newest is always kept). It writes the stop reason, runs
-  `scripts/backup_pfiles.sh`, and optionally emails an alert.
-  Both modes publish verified full generations under the approved backup policy,
-  including journal evidence. A backup failure stops the cycle before restart.
+  default; the newest is always kept). It writes the stop reason and optionally
+  emails an alert. With `PREBOOT_BACKUP=1` it also runs `scripts/backup_pfiles.sh`
+  before the boot, which publishes a verified full generation under the approved
+  backup policy, and a backup failure then stops the cycle before restart. That is
+  off by default: the backup timer takes the backups.
   Configure policy, scheduling, retention and isolated drills using
   [BACKUPS.md](BACKUPS.md) before deploying this launcher.
 

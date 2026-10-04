@@ -73,8 +73,9 @@ docker compose --env-file .env.docker build --pull game
 docker compose --env-file .env.docker up --detach --wait
 ```
 
-The game launcher takes a database backup before each boot. Backups, the locker
-identification receipts, maintenance state, and the local TLS key are in
+The game launcher takes no backup before a boot: that needs `PREBOOT_BACKUP=1` and an
+approved backup policy ([BACKUPS.md](BACKUPS.md)), and this deployment sets neither. The
+locker identification receipts, maintenance state, and the local TLS key are in
 the `duris-runtime` volume. Filesystem-backed player state such as lockers,
 crafting recipes, aliases, and death-object configuration is in `duris-players`.
 Game logs are in `duris-logs`, and MariaDB data is in `mariadb-data`.

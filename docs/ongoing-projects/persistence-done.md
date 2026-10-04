@@ -3524,3 +3524,66 @@ leg in `make test-db`, CodeQL and Trivy (nothing they check changed; no schema c
 nothing of it is left. It is not kept open for server configuration, as #3, #5 and #6 were:
 whether a server turns world recovery on, and what interval it sets, is for whoever runs it
 (owner, 2026-10-04).
+
+### The settings that were left (done)
+
+Phases 4, 6 and 7 left settings on #6, #3 and #5 as server configuration. The owner decided
+each on 2026-10-04 ([plan](persistence-plan.md#the-settings-that-were-left-3-5-6)): the
+repository carries a default, whoever runs a server sets what differs, and the items close.
+Done on `fix/2-persistence-phase-8` after Phase 8, each change with its test.
+
+- **Restore drills off, replica off, pre-boot backup off** (#3; `2bb637bfe`).
+  `drill_seconds` 0 means no drills and `scripts/backup_policy.example.json` ships it:
+  `status --require-drill` asks for no receipt, and the drill command returns
+  `{"event": "drill", "result": "off"}` before it touches anything. `replica_root` was
+  already null. `cycle_mud.sh` takes the backup before a boot only with `PREBOOT_BACKUP=1`
+  and then still refuses a boot whose backup fails; `SKIP_PREBOOT_BACKUP` is gone. Tests:
+  `test_persistence_backup.py` (the example policy, a status with no receipt, a drill that
+  does nothing), `test_flatfile_launcher.py` (a boot with no backup, then the backup and
+  its refusal with the switch), `test_backup_pfiles.py`.
+- **The buffer pool, 1 GB** (#5; `b7a3d2403`, `b05344026`). `compose.yaml` starts MariaDB
+  with `--innodb-buffer-pool-size=1G`, checked in a container (1,073,741,824), and
+  CONFIGURATION.md states it for a server's own MariaDB. Staging's is not changed: its
+  MariaDB shares a 16 GB host with production, which #5 says is short of memory, so that
+  size is for whoever runs the host.
+- **The charset warnings** (#6; `607a57942`). On staging the MariaDB client unpacked under
+  the account read the system's MySQL 8.0 charsets and warned twice on every call, 22
+  lines a boot. `verify_runtime_compatibility.sh` and `cycle_mud.sh` pass the client
+  `--character-sets-dir` for the `share/mysql/charsets` under its own prefix when that
+  directory exists. Run on staging against its database, the old check printed 22 warning
+  lines and the new one none. `test_database_boot_gate.py` runs the check with a relocated
+  client and with a plain one.
+- **The WebSocket and health listener, off** (#6; `a6054183c`). `comm.c` opens it only with
+  `DURIS_WEBSOCKET=TRUE`; without it there is no port, no `GET /health` and no line about
+  the listener, so a MUD-only server no longer logs `WebSocket server failed to start`.
+  `compose.yaml` and the restore qualifier (`persistence_restore.py`) set it, because both
+  wait for `/health`; `.env.example` ships it `FALSE`. `test_flatfile_boot_preflight.py`
+  boots once without the switch (the port refuses, the log does not mention the listener)
+  and once with it (`/health` answers). **Production has a website and health checks on
+  this listener: its `.env` needs `DURIS_WEBSOCKET=TRUE` before it takes this change**
+  ([PRODUCTION_DEPLOYMENT.md](../operations/PRODUCTION_DEPLOYMENT.md)).
+- **The stale `proxies_priv` grant** (#6). On staging's MariaDB the row for
+  `duris@plesk.luminarimud.com`, carried over from the old host, is deleted; the two rows
+  an install makes (`root@localhost`, `duris@localhost`) are left.
+- **The game's database user** (#6; `b05344026`). The template and CONFIGURATION.md name
+  the account for its environment. The local one is already `duris_local`. Staging
+  connected as `duris_prod` on the host it shares with production: its account is renamed
+  `duris_staging` (grants kept, the one view it defined in a leftover import database moved
+  with it), its `.env` says so, and the MUD was stopped for the change and started again.
+  It booted in 12 s with five connections as `duris_staging`.
+- **The logins without a password** (#6) are left, to see whether they are a real issue.
+
+Found on the way:
+
+- **The Docker deployment did not boot.** `compose.yaml` ran `mariadb:11.4`, and the
+  verifiers of migrations 0031 and 0032 accept MariaDB 10.11 and MySQL 8.0 only, so the
+  game container stopped at `unsupported database engine for accounting schema`. It runs
+  `mariadb:10.11` now (`7c5a7c6e7`), and the contract test holds it there. With this
+  branch's defaults the stack comes up healthy: `/health` answers
+  `{"status":"healthy","persistence":"ready"}`, the pool is 1 GB, and no backup is taken
+  before the boot. Before this branch that backup would also have refused the boot, since
+  the deployment has no backup policy.
+- **Staging's backup unit** has been in a failed state since 2026-09-30 and its timer has
+  not fired since. Not touched: how that server is backed up is for whoever runs it.
+
+Staging runs an older checkout, so it logs the charset warnings until it takes this branch.
