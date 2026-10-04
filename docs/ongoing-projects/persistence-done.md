@@ -53,6 +53,9 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   `fix/2-persistence-phase-8`, branched from master `0d6a772b9`), tagged
   `persistence/phase-8-review-0` on the head with this line. Master is merged in twice, for
   two records it gained during the phase (`99f6ab8e9`, `638396fe6`).
+  `persistence/phase-8-review-1` is not a review round: it is the head with
+  [the settings that were left](#the-settings-that-were-left-done) on #3, #5 and #6, which
+  the owner decided the same day, before any review. A review round's fixes are `-2`.
 - Each later phase works the same way: a branch from master named for its work item, an MR,
   the head the review reads tagged `persistence/phase-<n>-review-0`, a review round's fixes on
   the branch tagged `-1`, `-2` and so on, then one `--no-ff` merge of the last tag.
@@ -3587,3 +3590,15 @@ Found on the way:
   not fired since. Not touched: how that server is backed up is for whoever runs it.
 
 Staging runs an older checkout, so it logs the charset warnings until it takes this branch.
+
+### The gate on the head with the settings (done)
+
+On `1f2707d34`, run once each: `./scripts/format.sh --all --check` (1031 files clean);
+`make test-all -j16 TEST_JOBS=16` alone (669 of 669, 438 s, with the development and the
+production build); then `make test-db` (39 of 39, 232 s) and `npm test --prefix site`
+(14 tests). Neither suite left `logs/log/dupes` or `logs/log/item_claims` behind. The
+Docker deployment was also brought up once with `docker compose up --build --wait`, in a
+project of its own: both services healthy, then removed.
+
+Not run: the backup-recovery container job (the restore qualifier's environment now sets
+`DURIS_WEBSOCKET=TRUE`, which `test_backup_review_remediations.py` holds), CodeQL and Trivy.
