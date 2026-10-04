@@ -3517,3 +3517,10 @@ had it.
 
 Not run: the backup-recovery container job, `run_runtime_compatibility_mysql.sh` beyond its
 leg in `make test-db`, CodeQL and Trivy (nothing they check changed; no schema change).
+
+### The work item closed (done)
+
+#2 was closed on 2026-10-04, with !10 in review: its three items are items 1 to 3 above, and
+nothing of it is left. It is not kept open for server configuration, as #3, #5 and #6 were:
+whether a server turns world recovery on, and what interval it sets, is for whoever runs it
+(owner, 2026-10-04).

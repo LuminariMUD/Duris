@@ -26,7 +26,8 @@ round; #5 stays open for its server configuration
 ([record](persistence-done.md#phase-7-landed-done)). Phase 8 is done on
 `fix/2-persistence-phase-8` and in review as
 [!10](https://gitlab.com/max757/duris/-/merge_requests/10), tagged
-`persistence/phase-8-review-0` ([progress](persistence-done.md#phase-8-progress)).
+`persistence/phase-8-review-0` ([progress](persistence-done.md#phase-8-progress)); #2 is
+closed.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
@@ -544,10 +545,8 @@ captured in about 20 s of its 300 s under 30 players, with no pulse past 250 ms,
 crash restores it in 3 s
 ([the measurement](persistence-done.md#the-capture-journey-and-the-measurement-done)).
 
-Left on #2, as server configuration: whether a server turns recovery on
-(`REDIS_WORLD_STATE=TRUE`), and the `REDIS_WORLD_STATE_INTERVAL` and
-`REDIS_WORLD_STATE_MAX_AGE` lines of an older `.env`, which keep the old interval until they
-are removed.
+Nothing is left on #2, which is closed (owner, 2026-10-04): how a server sets its recovery
+variables is for whoever runs it.
 
 ## What was cut, and why
 
