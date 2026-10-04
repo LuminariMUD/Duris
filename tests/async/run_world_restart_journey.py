@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+"""What a restart leaves with world recovery on (the review of MR !10).
+
+A real server on a disposable MariaDB and Redis, the mini world with a zone-loaded banana on
+the arena floor, and the shipped settings (REDIS_WORLD_STATE=TRUE and nothing else). One
+scenario a run:
+
+crash     the lease is renewed while the server runs. A boot after a crash consumes the
+          generation it restored, with the crashed writer's lease still running, and
+          publishes its own within two minutes. A second crash restores that one: the
+          banana a player took after the first is not back on the floor.
+copyover  the image a copyover starts holds the lease at once and publishes a generation; a
+          crash after it restores that generation, not the one from before the copyover.
+
+Run it through with_disposable_mariadb.sh (make test-db).
+"""
+import os
+from pathlib import Path
+import re
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import uuid
+
+import test_flatfile_combat_journey as journey
+
+ROOT = Path(__file__).resolve().parents[2]
+SECRET = "local-development-only-world-state-hmac-change-before-shared-use"
+ACKNOWLEDGED = r"world recovery generation and floor handoff acknowledged sequence=(\d+)"
+BANANA = "O 0 15 1 22800 100 0 0 0 * a banana on the floor"
+
+
+def free_port() -> int:
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        return listener.getsockname()[1]
+
+
+class Rig:
+    """One server directory, one database and one Redis."""
+
+    def __init__(self, binary: Path, zone_lines: list[str]) -> None:
+        host, port = os.environ["TEST_DB_HOST"], os.environ["TEST_DB_PORT"]
+        assert host == "127.0.0.1", "use a disposable loopback database"
+        self.database = "world_restart_" + uuid.uuid4().hex[:12]
+        self.namespace = "duris:local:restart_" + uuid.uuid4().hex[:8]
+        self.redis_port = free_port()
+        self.temporary = tempfile.TemporaryDirectory(prefix="world-restart-")
+        self.root = Path(self.temporary.name)
+        self.game = self.root / "game"
+        self.game.mkdir()
+        (self.game / "logs/log").mkdir(parents=True)
+        journey.make_fixture(self.game)
+        journey.generate_certificate(self.game)
+        (self.game / "journals/critical").mkdir(parents=True, mode=0o700)
+        # A copyover execs bin/server/dms below the directory the server runs in.
+        (self.game / "bin/server").mkdir(parents=True)
+        shutil.copy2(binary, self.game / "bin/server/dms")
+        (self.root / "copyover-state").mkdir()
+        zone = self.game / "areas_mini/mini.zon"
+        zone.write_text(zone.read_text().replace("\nS\n", "\n" + "\n".join(zone_lines) + "\nS\n"))
+        self.port, tls, websocket = journey.available_ports()
+        self.env = dict(
+            PATH=os.environ.get("PATH", "/usr/bin:/bin"), ENVIRONMENT="local",
+            DB_HOST=host, DB_PORT=port, DB_NAME=self.database,
+            DB_USER=os.environ["TEST_DB_USER"], DB_PASSWD=os.environ["TEST_DB_PASSWORD"],
+            MYSQL_PWD=os.environ["TEST_DB_PASSWORD"],
+            DB_ALLOWED_TARGETS=host + "/" + self.database,
+            PERSISTENCE_MODE="mariadb-primary", DB_TLS="FALSE",
+            REDIS="TRUE", REDIS_HOST="127.0.0.1", REDIS_PORT=str(self.redis_port),
+            REDIS_DB="0", REDIS_NAMESPACE=self.namespace, REDIS_TLS="FALSE",
+            REDIS_ALLOWED_TARGETS=f"127.0.0.1:{self.redis_port}/0",
+            REDIS_WORLD_STATE="TRUE", REDIS_WORLD_STATE_SECRET=SECRET,
+            REDIS_DONATION_SUBSCRIBER="FALSE", CHAOS_MUD="FALSE", LISTEN_ADDRESS="127.0.0.1",
+            DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1", DURIS_TLS_PORT=str(tls),
+            DURIS_WEBSOCKET_PORT=str(websocket),
+            CRITICAL_COMMAND_JOURNAL_DIR=str(self.game / "journals/critical"),
+            COPYOVER_STATE_FILE=str(self.root / "copyover-state/copyover.dat"))
+        if "LD_LIBRARY_PATH" in os.environ:
+            self.env["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
+        self.mysql = ["mysql", "--protocol=tcp", "-h", host, "-P", port, "-u",
+                      self.env["DB_USER"], "-N", "-B"]
+        self.output = self.game / "server.out"
+        self.output.write_text("")
+        self.server = None
+        self.redis = None
+        self.booted = 0.0
+        self.marks = {}
+        self.sql("CREATE DATABASE " + self.database, False)
+        self.sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
+        for args in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
+            subprocess.run(["python3", "scripts/migration_runner.py", *args], cwd=ROOT,
+                           env=self.env, check=True, capture_output=True)
+        self.redis = subprocess.Popen(
+            ["redis-server", "--bind", "127.0.0.1", "--port", str(self.redis_port),
+             "--save", "", "--appendonly", "no", "--dir", str(self.root)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        deadline = time.monotonic() + 10
+        while subprocess.run(["redis-cli", "-p", str(self.redis_port), "PING"],
+                             capture_output=True, text=True).stdout.strip() != "PONG":
+            assert time.monotonic() < deadline, "the disposable Redis did not start"
+            time.sleep(.1)
+
+    def sql(self, statement: str, selected: bool = True) -> str:
+        return subprocess.check_output(self.mysql + ([self.database] if selected else []),
+                                       input=statement, text=True, env=self.env).strip()
+
+    def redis_cli(self, *arguments: str) -> str:
+        return subprocess.check_output(
+            ["redis-cli", "--raw", "-p", str(self.redis_port), *arguments],
+            text=True, errors="replace").strip()
+
+    def key(self, suffix: str) -> str:
+        return f"{self.namespace}:season:1:world_state:{suffix}"
+
+    def log(self, name: str) -> str:
+        """What this boot has logged."""
+        path = self.game / "logs/log" / name
+        text = path.read_text(errors="replace") if path.exists() else ""
+        return text[self.marks.get(name, 0):]
+
+    def boot(self) -> None:
+        self.marks = {}
+        self.marks = {name: len(self.log(name)) for name in ("sys", "status", "debug")}
+        loops = self.output.read_text(errors="replace").count("Entering game loop.")
+        with self.output.open("a") as output:
+            self.server = subprocess.Popen(
+                [str(self.game / "bin/server/dms"), "--minimal", "-s", str(self.port)],
+                cwd=self.game, env=self.env, stdout=output, stderr=subprocess.STDOUT)
+        deadline = time.monotonic() + 90
+        while self.output.read_text(errors="replace").count("Entering game loop.") == loops:
+            assert self.server.poll() is None and time.monotonic() < deadline, \
+                self.output.read_text(errors="replace")[-3000:]
+            time.sleep(.1)
+        self.booted = time.monotonic()
+
+    def kill(self) -> None:
+        self.server.kill()
+        self.server.wait()
+
+    def wait_for(self, what: str, seconds: float, found):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            assert self.server.poll() is None, "the server exited:\n" + self.log("sys")[-2000:]
+            result = found()
+            if result:
+                return result
+            time.sleep(.1)
+        raise AssertionError("\n".join([what] + [self.log(name)[-2000:]
+                                                for name in ("sys", "status", "debug")]))
+
+    def generation(self, seconds: float = 60) -> int:
+        """The first generation this boot publishes."""
+        return int(self.wait_for("no generation was published", seconds, lambda: re.search(
+            ACKNOWLEDGED, self.log("sys"))).group(1))
+
+    def restored(self, sequence: int, kind: str = "Crash") -> None:
+        """The boot restored the generation and then consumed it."""
+        self.wait_for(f"generation {sequence} was not restored and consumed", 15, lambda:
+                      f"restored world recovery generation sequence={sequence} "
+                      in self.log("sys") and f"{kind} recovery complete" in self.log("status")
+                      and self.redis_cli("EXISTS", self.key("current")) == "0")
+
+    def close(self) -> None:
+        if self.server and self.server.poll() is None:
+            self.server.kill()
+            self.server.wait()
+        if self.redis:
+            self.redis.terminate()
+            self.redis.wait(timeout=10)
+        self.sql("DROP DATABASE IF EXISTS " + self.database, False)
+        self.temporary.cleanup()
+
+
+def screen(client: journey.MudClient, command: str, wait: float = 1.5) -> str:
+    client.pending.clear()
+    client.send(command)
+    time.sleep(wait)
+    while client._receive():
+        pass
+    return bytes(client.pending).decode(errors="replace")
+
+
+def enter(rig: Rig) -> journey.MudClient:
+    """A new character in the arena, carrying nothing."""
+    client = journey.MudClient(rig.port)
+    journey.create_character(client)
+    client.send("drop all")
+    client.expect("You drop a steel long sword.", timeout=20)
+    return client
+
+
+def take_banana(client: journey.MudClient) -> None:
+    assert "You get a banana" in screen(client, "get banana")
+    client.send("save")
+    client.expect("Save", timeout=20)
+    time.sleep(2)
+
+
+def bananas(rig: Rig) -> tuple[bool, int]:
+    """Whether the arena floor has a banana, and how many the character carries."""
+    client = journey.reconnect_character(rig.port, expected_room=None)
+    try:
+        return ("banana lies here" in screen(client, "look"),
+                screen(client, "inventory").count("banana"))
+    finally:
+        client.close()
+
+
+def crash(rig: Rig) -> None:
+    rig.boot()
+    assert "redis world state enabled: interval=600s, max_age=1200s" in rig.log("sys")
+    # The boot's claim is 60 seconds long and the first capture is 30 seconds away: only a
+    # renewal leaves the lease more than 40 seconds at this point.
+    time.sleep(max(0, 27 - (time.monotonic() - rig.booted)))
+    left = int(rig.redis_cli("PTTL", rig.key("writer_fence")))
+    assert 40000 < left <= 60000, left
+    first = rig.generation()
+    holder = rig.redis_cli("GET", rig.key("writer_fence"))
+    rig.kill()
+
+    rig.boot()
+    rig.restored(first)
+    assert rig.redis_cli("GET", rig.key("writer_fence")) == holder, "the lease did not run on"
+    client = enter(rig)
+    assert "banana lies here" in screen(client, "look")
+    take_banana(client)
+    client.close()
+    second = rig.generation(150)
+    assert second > first and rig.redis_cli("GET", rig.key("writer_fence")) != holder
+    waited = time.monotonic() - rig.booted
+    rig.kill()
+
+    rig.boot()
+    rig.restored(second)
+    assert bananas(rig) == (False, 1), "the first crash's generation was restored again"
+    print(f"crash: the lease had {left / 1000:.0f} s left 27 s after the boot; the boot "
+          f"after a crash consumed generation {first} and published generation {second} "
+          f"{waited:.0f} s later; a second crash restored that one", flush=True)
+
+
+def copyover(rig: Rig) -> None:
+    rig.boot()
+    client = enter(rig)
+    first = rig.generation()
+    holder = rig.redis_cli("GET", rig.key("writer_fence"))
+    rig.marks["sys"] += len(rig.log("sys"))
+    rig.server.send_signal(signal.SIGUSR1)
+    client.expect("Copyover complete!", timeout=90)
+    copied = time.monotonic()
+    taken = rig.redis_cli("GET", rig.key("writer_fence"))
+    assert len(taken) == 32 and taken != holder, "the new image does not hold the lease"
+    take_banana(client)
+    client.close()
+    second = rig.generation()
+    assert second > first
+    waited = time.monotonic() - copied
+    rig.kill()
+
+    rig.boot()
+    rig.restored(second)
+    assert bananas(rig) == (False, 1), "the generation from before the copyover was restored"
+    print(f"copyover: the new image held the lease at once and published generation "
+          f"{second} {waited:.0f} s later; a crash after it restored that one", flush=True)
+
+
+SCENARIOS = {"crash": crash, "copyover": copyover}
+
+if __name__ == "__main__":
+    if not os.getenv("TEST_DB_HOST"):
+        print("world restart journey skipped: run it through with_disposable_mariadb.sh")
+    else:
+        rig = Rig(Path(sys.argv[1]).resolve(strict=True), [BANANA])
+        try:
+            SCENARIOS[sys.argv[2]](rig)
+        finally:
+            rig.close()
+        print(f"world restart journey passed: {sys.argv[2]}")

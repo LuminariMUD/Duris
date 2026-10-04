@@ -123,8 +123,10 @@ int main(int argc, char **argv)
     assert(reply->type == REDIS_REPLY_INTEGER && reply->integer == 1);
     freeReplyObject(reply);
 
+    // A renewal takes a lease nobody holds, and no other.
     assert(redis_world_store_release_fence(&config, writer_a));
-    assert(redis_world_store_claim_fence(&config, writer_b, lease));
+    assert(redis_world_store_renew_fence(&config, writer_b, lease));
+    assert(!redis_world_store_claim_fence(&config, writer_a, lease));
     assert(!redis_world_store_renew_fence(&config, writer_a, lease));
     assert(redis_world_store_renew_fence(&config, writer_b, lease));
     assert(redis_world_store_publish(&config, writer_b, lease, second, sizeof(second) - 1,
@@ -149,9 +151,10 @@ int main(int argc, char **argv)
     freeReplyObject(reply);
     assert(redis_world_store_consume_clean_shutdown(&config) == 2);
     assert(redis_world_store_consume_clean_shutdown(&config) == 0);
-    assert(!redis_world_store_consume_generation(&config, writer_a, 2));
-    assert(!redis_world_store_consume_generation(&config, writer_b, 1));
-    assert(redis_world_store_consume_generation(&config, writer_b, 2));
+    // The boot that restored the current generation consumes it, whoever holds the lease:
+    // here writer_b does.
+    assert(!redis_world_store_consume_generation(&config, 1));
+    assert(redis_world_store_consume_generation(&config, 2));
     reply = run(context, "EXISTS mud:season:42:world_state:current mud:season:42:world_state:generation:2");
     assert(reply->type == REDIS_REPLY_INTEGER && reply->integer == 0);
     freeReplyObject(reply);

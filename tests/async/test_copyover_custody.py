@@ -94,6 +94,7 @@ void player_save_pipeline_quiesce() {}
 void player_save_pipeline_resume() {}
 bool player_save_pipeline_drain(uint64_t) { return true; }
 bool redis_world_recovery_drain(uint64_t) { return true; }
+void redis_world_writer_release() {}
 bool persistence_flush_all_character_saves() { return true; }
 bool persistence_log_drain(unsigned timeout_ms) { assert(timeout_ms == 3000); return true; }
 

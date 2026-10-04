@@ -200,9 +200,8 @@ def run(binary: Path) -> None:
                   flush=True)
 
             # Redis comes back empty: the writer's lease went with it. The next capture
-            # publishes and holds the lease again.
+            # publishes, and the writer holds the lease again.
             redis = start_redis()
-            assert redis_cli("EXISTS", fence) == "0"
             later = wait_for("no generation was published after the outage", 60,
                              lambda: acknowledged(last))[-1]
             assert int(redis_cli("GET", current)) >= later

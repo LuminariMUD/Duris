@@ -68,6 +68,14 @@ lease or the floor worker was unavailable. The third in a row raises one
 its age; a published generation ends the run. The health outputs report that age as
 `last_ack_age_s`.
 
+The writer's lease is 60 seconds long and the game loop renews it every 20. A renewal, like
+a publication, takes a lease nobody holds, so a writer whose lease ran out holds it again by
+itself, and a crashed writer's is gone within a minute. A boot consumes the generation it
+restored whoever holds the lease: a crashed writer's is usually still running, and a
+generation left in place would be restored again at the next crash. A capture attempt that
+could not start is made again 30 seconds later. A copyover releases the lease before its
+exec, and the image it starts claims it at boot.
+
 After a successful graceful drain, the fenced writer records an expiring marker for the
 exact current sequence. Boot consumes that marker once and labels a matching valid
 generation as clean-restart recovery. A missing or mismatched marker is crash recovery.

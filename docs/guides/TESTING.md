@@ -108,7 +108,10 @@ next boot restores the generation. It prints the generation's size, the capture'
 and what the restore brought back; `--players N` scales the load.
 `run_world_recovery_journey.py`, also in `make test-db`, covers the switch on the mini
 world: off, the alert of an outage, the writer coming back, a crash's restore and the
-defaults.
+defaults. `run_world_restart_journey.py <server> <scenario>` covers what a restart leaves,
+one scenario a run and each its own line in `make test-db`: `crash` (the lease is renewed,
+the boot after a crash consumes the generation it restored and publishes its own, and a
+second crash restores that one) and `copyover` (the new image holds the lease at once).
 
 MySQL fixtures that reuse a table within a statement must account for MySQL's
 `Can't reopen table` restriction on connection-local temporary tables; MariaDB

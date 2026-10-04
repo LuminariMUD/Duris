@@ -250,14 +250,12 @@ What it costs, measured on the full world (54,000 mobs, 253,000 rooms):
   resets every zone.
 
 `REDIS_WORLD_STATE_INTERVAL` sets how often that is paid: ten minutes by default. A shorter
-interval costs more of both; a longer one restores an older world. Two limits follow the
+interval costs more of both; a longer one restores an older world. One limit follows the
 interval, so that a generation taken at it is still accepted at boot: when the next capture
 replaces it, a generation is as old as the interval plus the time that capture took, and the
-server then has to restart.
-
-- `REDIS_WORLD_STATE_MAX_AGE`, past which boot refuses a generation, is at least the
-  interval plus 600 seconds (300 for a capture's budget, 300 for the restart).
-- The writer lease, which only a publish renews, lasts the interval plus 600 seconds.
+server then has to restart. `REDIS_WORLD_STATE_MAX_AGE`, past which boot refuses a
+generation, is at least the interval plus 600 seconds (300 for a capture's budget, 300 for
+the restart).
 
 World recovery is intentionally separate from player saves and reconstructible caches.
 At boot the server constructs immutable connection settings for each subsystem. In
@@ -285,15 +283,23 @@ and retired Duris surfaces, but it must not have access to other applications' p
 Test the exact ACL rules on a disposable Redis instance before deployment; Redis command
 categories and Lua ACL behavior can differ across supported server versions.
 
-At boot, one publisher claims a renewable writer lease of the interval plus ten minutes.
-Each background
+At boot, one publisher claims a writer lease of 60 seconds, which the game loop renews
+every 20. Each background
 publication verifies that lease and expected prior pointer, writes the immutable
 sequence-keyed payload, advances the current pointer and diagnostic metadata, consumes
 the pre-capture floor hash, and renews the lease in one atomic Lua compare-and-set. A
-stale or second writer cannot publish. A publication takes the lease when nobody holds it,
-so a writer whose lease ran out during a run of failures, or was lost with a Redis restart,
-publishes again by itself. The single script also reduces background Redis
-round trips compared with a watched transaction.
+stale or second writer cannot publish. A renewal and a publication take the lease when
+nobody holds it, so a writer whose lease ran out while the game loop stood still, or was
+lost with a Redis restart, holds it again by itself. The single script also reduces
+background Redis round trips compared with a watched transaction.
+
+A crashed writer's lease runs out within a minute of the crash. The boot after it restores
+the generation and consumes it whoever holds the lease, so that no generation is restored
+twice; it claims the lease once it is free, and a capture attempt that could not start is
+made again 30 seconds later, not an interval later. Its first generation is published
+about a minute and a half after the boot, and a second crash before that has nothing to
+restore: the boot resets every zone. A copyover gives the lease up before its exec, and the
+image it starts claims it at boot.
 All of those keys use `<REDIS_NAMESPACE>:season:<epoch>:` with the active SQL season epoch captured at
 boot. An old process can therefore write only its abandoned epoch after a reset; it cannot
 create a snapshot visible to the new season.

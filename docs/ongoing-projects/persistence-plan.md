@@ -517,7 +517,7 @@ How each item is done (decided 2026-10-04, after the
    detail is `failures=N last_ack_sequence=N last_ack_age_secs=N` (-1: none since boot). The
    `redis detailed` and runtime health outputs show the same age.
    Found with it: a writer that lost its lease could never publish again without a restart.
-   The lease is renewed only by a publish, so a run of failures longer than the lease (the
+   The lease was renewed only by a publish, so a run of failures longer than the lease (the
    three days on staging), a Redis restart or a flush ended it for good. A publish now takes
    the lease when nobody holds it, and still refuses when another writer does.
 4. All six raises put the corpse's items on the raised creature again, and
@@ -528,13 +528,16 @@ How each item is done (decided 2026-10-04, after the
    change to do nothing when it is off: the capture job is registered disabled, the pulse
    returns at its first test, floor drops are not recorded, and no attempt is counted, so no
    alert. A journey pins it.
-6. The interval's default is 600 seconds and it accepts 5 to 3,600. Two limits follow it by
-   the same ten minutes (five for a capture's budget, five for the restart):
-   - `REDIS_WORLD_STATE_MAX_AGE` is at least the interval plus 600 seconds, which is also
-     its default; a lower setting is raised to it, since it could only refuse every
-     generation. It accepts up to a day.
-   - The writer lease is the interval plus 600 seconds instead of a fixed ten minutes: a
-     publish renews it, so at a ten-minute interval it ran out before every publish.
+6. The interval's default is 600 seconds and it accepts 5 to 3,600. One limit follows it by
+   ten minutes (five for a capture's budget, five for the restart):
+   `REDIS_WORLD_STATE_MAX_AGE` is at least the interval plus 600 seconds, which is also its
+   default; a lower setting is raised to it, since it could only refuse every generation.
+   It accepts up to a day.
+   The writer lease does not follow the interval. It was ten minutes and only a publish
+   renewed it, so at a ten-minute interval it ran out before every publish. It is 60
+   seconds and the game loop renews it every 20 (since the MR !10 review, which found that
+   a lease as long as the interval kept the boot after a crash or a copyover from capturing
+   for that long).
    `.env.example` no longer sets the maximum age, so it follows the interval. A server whose
    `.env` still says `REDIS_WORLD_STATE_INTERVAL=10` keeps capturing without a pause until
    the line is removed: server configuration.

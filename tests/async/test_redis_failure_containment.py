@@ -211,7 +211,8 @@ assert "current~=ARGV[2]" in store
 assert "reply->type == REDIS_REPLY_INTEGER && reply->integer == 1" in publisher
 assert "REDIS_WORLD_SEQUENCE_SUFFIX" in store and "REDIS_WORLD_CHECKSUM_SUFFIX" in store
 assert '"world_state:sequence"' in key_registry and '"world_state:checksum"' in key_registry
-assert "redis.call('DEL',KEYS[8],KEYS[9])" in store and "PEXPIRE" in store
+assert "redis.call('DEL',KEYS[8],KEYS[9])" in store
+assert "redis.call('SET',KEYS[1],ARGV[1],'PX',ARGV[2])" in store
 print("[PASS] null, timeout, error reply, or rejected world CAS forces worker failure")
 
 floor_flush = section(

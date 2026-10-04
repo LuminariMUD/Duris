@@ -1130,9 +1130,13 @@ assert "world_recovery_restore" in section(WORLD_RUNTIME, "bool redis_load_world
 consume = section(WORLD_RUNTIME, "bool redis_consume_world_state", "bool redis_load_world_state")
 assert "redis_world_recovery_quiesce" not in consume
 assert "redis_world_store_consume_generation" in consume
-assert "redis.call('GET',KEYS[1])~=ARGV[1]" in section(
-    STORE, "bool redis_world_store_consume_generation", "bool redis_world_store_publish"
+# The consume checks the sequence it restored and not the lease, which a crashed writer may
+# still hold.
+store_consume = section(
+    STORE, "bool redis_world_store_consume_generation", "bool redis_world_store_read_generation"
 )
+assert "redis.call('GET',KEYS[1])~=ARGV[1]" in store_consume
+assert "keys.current, generation" in store_consume and "keys.fence" not in store_consume
 assert "redis_consume_world_state()" in COMM
 assert "redis_clear_world_state();" not in section(
     COMM, "// redis crash recovery - restore world state from redis snapshot", "PROFILES(RESET)"
