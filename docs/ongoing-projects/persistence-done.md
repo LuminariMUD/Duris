@@ -55,7 +55,9 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   two records it gained during the phase (`99f6ab8e9`, `638396fe6`).
   `persistence/phase-8-review-1` is not a review round: it is the head with
   [the settings that were left](#the-settings-that-were-left-done) on #3, #5 and #6, which
-  the owner decided the same day, before any review. A review round's fixes are `-2`.
+  the owner decided the same day, before any review. The review read `-1`, and
+  `persistence/phase-8-review-2` is the head with its fixes
+  ([review round 1](#review-round-1-mr-10)).
 - Each later phase works the same way: a branch from master named for its work item, an MR,
   the head the review reads tagged `persistence/phase-<n>-review-0`, a review round's fixes on
   the branch tagged `-1`, `-2` and so on, then one `--no-ff` merge of the last tag.
@@ -3370,6 +3372,9 @@ out before it captures: up to the interval plus ten minutes. That is as before (
 to ten minutes). At an interval under 570 seconds that wait is three attempts, so the
 restarted server raises one `writer_unavailable` alert, which is true: until the lease is
 free no generation is taken, and a second crash restores the first one's world again.
+(The MR !10 review found this wait a defect, a copyover's with it: the lease is 60 seconds
+and renewed since, and no generation is restored twice. See
+[review round 1](#review-round-1-mr-10).)
 
 ### World recovery is off unless a server turns it on (done)
 
@@ -3377,7 +3382,8 @@ free no generation is taken, and a second crash restores the first one's world a
 the setting, and in [CONFIGURATION.md](../operations/CONFIGURATION.md#what-world-recovery-buys-and-costs),
 is what it buys (the mobs, the objects on the ground, the doors and the zone ages after a
 crash or a cold restart) and what it does not (characters, pets, corpses, lockers, banks
-and shops are saved without it). `e77d7ddfb`.
+and shops are saved without it). `e77d7ddfb`. (Since the MR !10 review both say which
+objects: the ones no character's save has held.)
 
 The code needed no change to do nothing when it is off: the capture job is registered
 disabled, `redis_world_recovery_pulse()` returns at its first test, floor drops are not
@@ -3395,7 +3401,9 @@ follow it by the same ten minutes, five for a capture's budget and five for the 
   seconds, which is its default; a lower setting is raised to it, and it accepts up to
   86,400. `.env.example` no longer sets it.
 - **The writer lease** is the interval plus 600 seconds instead of ten minutes. Only a
-  publish renews it, so at a ten-minute interval it ran out before every publish.
+  publish renews it, so at a ten-minute interval it ran out before every publish. (Since
+  the MR !10 review the lease does not follow the interval: it is 60 seconds and the game
+  loop renews it.)
 
 The strain is beside the setting in `.env.example` and in CONFIGURATION.md: 2 ms of the
 game thread every half second for about 20 seconds, and the whole world written to Redis
@@ -3602,3 +3610,114 @@ project of its own: both services healthy, then removed.
 
 Not run: the backup-recovery container job (the restore qualifier's environment now sets
 `DURIS_WEBSOCKET=TRUE`, which `test_backup_review_remediations.py` holds), CodeQL and Trivy.
+
+### Review round 1 (MR !10)
+
+The review read `persistence/phase-8-review-1` (`fe7be81aa`) and found four defects in what
+a restart leaves with world recovery on. It reproduced each on the built server with the
+shipped settings and the mini world, and posted the script (`review_probes.py`, six
+scenarios). Each reproduced here as posted. Each is fixed in its own commit on
+`fix/2-persistence-phase-8`, with a test that fails without it. The fixed head is tagged
+`persistence/phase-8-review-2`.
+
+| Finding | Fix | Commit |
+|---|---|---|
+| 1. High: after a crash or a copyover the new process could not take the writer lease for up to the interval plus 600 seconds (20 minutes as shipped), since only the process that set the lease knows its token. For that long no capture ran, the generation the boot had restored could not be consumed, and a second crash restored it again; after a copyover a crash restored the world from before the copyover. | The lease is 60 seconds and the game loop renews it every 20 (`redis_world_writer_renew_pulse()`), so a crashed writer's is gone within a minute; a renewal takes a lease nobody holds, as a publish does. A copyover releases the lease before its exec and the image it starts claims it at boot. The boot's consume no longer asks for the lease, so no generation is restored twice. A capture attempt that could not start is made again 30 seconds later, not an interval later: without that the boot after a crash would still have waited ten minutes. | `a9e6e391d` |
+| 2. High: every restart, a clean one included, put back the floor objects players had taken since the last capture, with the uid the player already holds. The copy is a real object: the next taker's save claims the uid, and the first holder loses the item at the next login. At a 600 second interval that is what was looted in a restart's last ten minutes. | A clean shutdown takes one last capture, after the players are saved and gone and before the lease is released, and waits for it. The restore looks up every item it captured without custody (`sql_persistence_world_recovery_items_owned()`) and leaves out the tree of one that an owner holds: its taker saved it, or the economy recorded it. A failed lookup restores nothing. | `fd0ad6bce` |
+| 3. Medium: a capture walks the object list across pulses and writes a container's contents with the container, so an object taken out of a floor container and dropped while it runs was written twice. The generation was published with no alert, and the boot refused all of it. | The capture keeps the uids it has written (`capture_tree_is_new()`) and leaves out a tree that holds one: an item is in the tree the capture met it in first. | `9c26a9ee5` |
+| 4. Medium: an item a player dropped is never captured and never journaled, because a drop changes no custody and the capture leaves out a tree whose custody is not its room's; `.env.example` and CONFIGURATION.md said recovery brings back "the objects on the ground". | The documents name the two kinds of object that are not brought back: an item a character logged in with, or was granted, and then dropped; and an item a character's save holds by the time of the restore. The other way, a save that releases the record of an item its owner no longer holds, is what the plan cut ([what was cut](persistence-plan.md#what-was-cut-and-why)); the cut list now names this cost. | `367571ac3` |
+
+Found with finding 3, and fixed in its commit: **a drop made while a capture runs put the
+item in the generation and in the floor journal.** The drop is journaled once the capture
+is published, and the capture reaches the object after the drop; a later drop of an item
+the generation holds elsewhere (loot taken from a captured corpse and dropped before the
+taker's save) is journaled too. The boot refused the floor record and with it the whole
+restore (`world recovery floor record rejected`, then every zone reset). It leaves out a
+floor record of an item the generation holds: the item comes back where the capture saw it.
+
+**What "an owner holds" had to mean.** The review proposed leaving out a tree that has an
+active ownership record, and gave finding 4 as "every item that was ever in a saved
+inventory is skipped once it is on the floor". Two probes on the built server say
+otherwise. The ledger in memory names a character for an item the character logged in with
+or was granted, and such an item is left out of a capture once dropped, as the review
+found. An item picked up during the session has no entry, and a save's claim adds none: a
+zone-loaded banana that a character took, saved, dropped and saved again was captured on
+the floor and restored by the reviewed code, while its record still named the character.
+A check on the record alone would have lost that item at every crash. So the lookup leaves
+out a record that names a character whose save no longer has the item
+(`player_items`): the record cannot tell a dropped item from a taken one, and the save
+can. The flat-file backend counts every record, which errs on the side of no duplicate.
+
+Found by the gate, and fixed in its own commit (`3b8db7bf9`): **a boot took a read of Redis
+that missed its deadline for "no generation".** The boot reads the current sequence and
+the floor records on the game loop's connection, with its 100 ms deadline. On the full
+world, beside the other journeys, the boot after the kill logged `world recovery current
+sequence read failed` and reset every zone with its generation still in Redis. One run of
+the review's restart probe on the mini world, of 105, booted without attempting a restore
+at all; it kept no logs, and that is what a missed read at the boot's first check looks
+like. A read that Redis did not answer is made again on a new connection, up to
+five times (`redis_world_boot_read()`), and the boot's check, its restore and its consume
+read the sequence through one function. Older than this branch.
+
+Tests: `run_world_restart_journey.py <server> <scenario>`, six lines in `make test-db`,
+each a real server on its own MariaDB and Redis with the shipped settings: `crash`,
+`copyover`, `restart`, `taken`, `midcapture` and `slowread`. The first five are the
+review's scenarios with assertions; `taken` also drops a mace its character had saved,
+before the capture, and sees it restored; `slowread` puts a proxy before Redis that answers
+every other read of the current sequence in 300 ms. `test_world_recovery_pipeline.py` moves
+an object out of a container between two calls of a capture, restores a generation beside
+a floor record of the same item, and restores three trees of which one holds an owned
+item. `test_redis_world_store_live.py` renews a free lease and consumes a generation while
+another writer holds the lease.
+
+What the round measured:
+
+- **Finding 1.** The boot's claim is 60 seconds long; 27 seconds after the boot the lease
+  had 52 left, so it had been renewed. The boot after a crash consumed generation 1 with
+  the crashed writer's lease still running and published generation 2 91 seconds after it
+  started; a second crash restored generation 2. After a copyover the new image held the
+  lease at once and published 31 seconds later. On the reviewed head the lease had 1,172
+  seconds left at the same point and the copyover's image did not hold it.
+- **What is left of the wait.** For about a minute and a half after the boot that follows
+  a crash there is no generation: a second crash then resets every zone, and restores
+  nothing twice.
+- **Finding 2 on the full world** (the capture journey, stopped cleanly instead of
+  killed, one run): the clean stop took 3.2 seconds, its last generation was 69.4 MiB
+  captured in 115 ms, and the next boot restored it 4 seconds after the stop (53,961 mobs,
+  14,915 objects, each object looked up in SQL).
+- **Each new test without its fix.** On the reviewed head `crash`, `copyover` and
+  `midcapture` fail (the last with the generation refused). On `9c26a9ee5`, the commit
+  before finding 2's fix, `restart` fails with no capture at the shutdown and `taken` with
+  the banana restored; `slowread` fails there too, with no restore attempted. The
+  pipeline's three cases fail with their check removed.
+- **The restart scenario 105 times**, up to 16 servers side by side: 27 runs of the
+  review's probe and 78 of the journey's. All but one restored the shutdown's generation
+  (one of the journey's failed on a race in its own check, since fixed). The one, the
+  first run on the fixed build, booted without attempting a restore. `slowread` reproduces
+  that: six reads of the sequence, every other one late, and the generation restored;
+  without the change, no restore.
+
+What a server sees that it did not before: a clean stop takes a capture, 3.2 seconds in
+all on the full world.
+
+### The gate on the review round's head (done)
+
+On `3b8db7bf9`, the head with every change of the round (the run was on `c2f61746e`, the same
+tree before its commit message was corrected), once each:
+`./scripts/format.sh --all --check` (1031 files clean); `make test-all -j16 TEST_JOBS=16`
+(669 of 669, 497 s, with the development and the production build); then `make test-db`
+(45 of 45, 267 s, the journey's six lines among them). The full-world journey captured
+69.2 MiB in 19.5 s and restored it 5 seconds after the kill: 53,964 mobs and 14,912
+objects, each object looked up in SQL. The commit after it is this record.
+
+The gate ran three times in the round: on an earlier head of it (669 of 669, 44 of 44), on
+`367571ac3`, and on this one. The run on `367571ac3` is the one that found the missed read:
+`world_capture` failed in its `make test-db`. In its `make test-all` two tests of other
+subsystems failed together, once: `test_redis_maintenance_live.py` and
+`test_redis_presence_worker_live.py`. They are not changed. Both passed in the other two
+runs and alone; twelve of each side by side gave one failure, of the presence test, and
+that test's three failures in the round were three different assertions. It sleeps fixed
+times against 100 ms Redis deadlines, so a busy machine fails it.
+
+Not run: `npm test --prefix site` (the round touches nothing of the site), the
+backup-recovery container job, CodeQL and Trivy.
