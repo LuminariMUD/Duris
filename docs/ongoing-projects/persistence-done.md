@@ -49,6 +49,10 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   It landed on 2026-10-04 in `77734a404`, one `--no-ff` merge of the `-1` head, with no
   rebase or squash, so both tags still name what was reviewed. The branch is deleted
   ([record](#phase-7-landed-done)).
+- Phase 8 is reviewed as [!10](https://gitlab.com/max757/duris/-/merge_requests/10) (source
+  `fix/2-persistence-phase-8`, branched from master `0d6a772b9`), tagged
+  `persistence/phase-8-review-0` on the head with this line. Master is merged in twice, for
+  two records it gained during the phase (`99f6ab8e9`, `638396fe6`).
 - Each later phase works the same way: a branch from master named for its work item, an MR,
   the head the review reads tagged `persistence/phase-<n>-review-0`, a review round's fixes on
   the branch tagged `-1`, `-2` and so on, then one `--no-ff` merge of the last tag.
@@ -3484,10 +3488,12 @@ What it shows:
 - **A boot that restores is faster than one that resets every zone** (3 s against 8),
   once the mob items take one pass.
 
-### Master's credits record (taken in)
+### Master's records (taken in)
 
-Master gained `99f6ab8e9` during the phase: the credits record `docs/records/CREDITS.md`
-and its line in the docs index. It is merged into the branch in `b47ed0746`, unchanged.
+Master gained two documentation commits during the phase, each a record with its line in the
+docs index: `99f6ab8e9`, the credits record `docs/records/CREDITS.md`, merged into the branch
+in `b47ed0746`; and `638396fe6`, `docs/records/COMMUNITY_DURIS_TRACKING.md`, merged in
+`3f9cc1bb0` after the gate. Both are unchanged.
 
 ### The gate on the branch head (done)
 

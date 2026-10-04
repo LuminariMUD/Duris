@@ -23,9 +23,10 @@ round; #3 stays open for its server configuration
 ([record](persistence-done.md#phase-6-landed-done)). Phase 7 landed as
 [!9](https://gitlab.com/max757/duris/-/merge_requests/9) in `77734a404` after one review
 round; #5 stays open for its server configuration
-([record](persistence-done.md#phase-7-landed-done)). Phase 8 is under way on
-`fix/2-persistence-phase-8`: its decisions are below, and
-[Phase 8 progress](persistence-done.md#phase-8-progress) says which items have landed.
+([record](persistence-done.md#phase-7-landed-done)). Phase 8 is done on
+`fix/2-persistence-phase-8` and in review as
+[!10](https://gitlab.com/max757/duris/-/merge_requests/10), tagged
+`persistence/phase-8-review-0` ([progress](persistence-done.md#phase-8-progress)).
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
@@ -620,15 +621,13 @@ All hold: the gate passed on `0b90e5fc1`
 
 ## What is left
 
-The world capture is left, on the optimised build. Phases 4 (alerts and logs), 5 (bugs from
-the logs), 6 (backups) and 7 (the game loop) are done and on master.
+Phases 4 (alerts and logs), 5 (bugs from the logs), 6 (backups) and 7 (the game loop) are
+done and on master. The last phase is done and in review:
 
-[Phase 8: world recovery (#2)](#phase-8-world-recovery-2) is under way on
-`fix/2-persistence-phase-8`, each item with its tests in its own commits. An item leaves this
-list when its record is under [Phase 8 progress](persistence-done.md#phase-8-progress):
-
-1. The gate on the branch head (`./scripts/format.sh --check`, `make test-all`,
-   `make test-db`), then the merge request for #2.
-
-Done and recorded: all six items, the capture journey with its measurement, and the mob
-items of a restored world, which the journey found.
+1. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2): done, in review as
+   [!10](https://gitlab.com/max757/duris/-/merge_requests/10); it leaves this list when it
+   lands. A review round's fixes go on `fix/2-persistence-phase-8`, each finding in its own
+   commit with its test, the fixed head tagged `persistence/phase-8-review-1`
+   ([how](persistence-done.md#review-and-branches)). All six items, the capture journey with
+   its measurement, the mob items of a restored world (which the journey found) and the gate
+   have their records under [Phase 8 progress](persistence-done.md#phase-8-progress).
