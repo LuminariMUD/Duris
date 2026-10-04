@@ -72,7 +72,8 @@ def github_anchors(markdown: str) -> set[str]:
         if not match:
             continue
         heading = re.sub(r"<[^>]+>", "", match.group(1))
-        heading = re.sub(r"[`*_~]", "", heading).strip().lower()
+        # GitHub and GitLab keep a heading's underscores in its anchor.
+        heading = re.sub(r"[`*~]", "", heading).strip().lower()
         slug = re.sub(r"[^\w\- ]", "", heading, flags=re.UNICODE)
         slug = re.sub(r"\s+", "-", slug)
         suffix = counts.get(slug, 0)
