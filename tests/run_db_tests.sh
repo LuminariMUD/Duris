@@ -39,6 +39,7 @@ world_restart_copyover $DB python3 tests/async/run_world_restart_journey.py $SER
 world_restart_midcapture $DB python3 tests/async/run_world_restart_journey.py $SERVER midcapture
 world_restart_clean $DB python3 tests/async/run_world_restart_journey.py $SERVER restart
 world_restart_taken $DB python3 tests/async/run_world_restart_journey.py $SERVER taken
+world_restart_slowread $DB python3 tests/async/run_world_restart_journey.py $SERVER slowread
 saved_item_recovery $DB python3 tests/async/run_saved_item_recovery_journey.py $SERVER
 playtime $DB python3 tests/async/test_mysql_playtime_journey.py --server $SERVER
 runtime_compatibility tests/async/run_runtime_compatibility_mysql.sh

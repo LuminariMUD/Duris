@@ -53,7 +53,10 @@ generation recoverable. After a verified swap, the previous blob is removed.
 Boot trusts neither the diagnostic `valid` flag nor a partial key set. It loads the
 current pointer and accepts the referenced generation only when magic, schema, header
 size, exact sequence, age, payload length, completeness, record framing/counts, and
-checksum all validate.
+checksum all validate. The boot reads the pointer and the floor records on the game loop's
+connection, with its 100 ms deadline. On a busy host a reply can miss it, which is not an
+answer: such a read is made again, up to five times, before the boot takes it that there is
+nothing to restore.
 
 ## Floor-Delta Boundary
 

@@ -22,6 +22,9 @@ taken     a player takes the banana after the capture and saves, and the server 
 midcapture  a banana is taken out of a basket on the floor and dropped while a capture of
           12,000 more objects runs. The capture meets it twice and the drop is journaled as
           well; the generation holds it once, in the basket, and the boot restores it.
+slowread  Redis answers every other read of the current sequence in 300 ms, past the 100 ms
+          the game loop's connection allows, as on a busy host. The boot asks again each
+          time, and restores and consumes the generation.
 
 Run it through with_disposable_mariadb.sh (make test-db).
 """
@@ -34,6 +37,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
 
@@ -55,10 +59,49 @@ def free_port() -> int:
         return listener.getsockname()[1]
 
 
+class SlowReads(threading.Thread):
+    """A proxy before Redis that, while `slow`, holds back every other read of the current
+    sequence for 300 ms."""
+
+    def __init__(self, redis_port: int) -> None:
+        super().__init__(daemon=True)
+        self.redis_port = redis_port
+        self.listener = socket.create_server(("127.0.0.1", 0))
+        self.port = self.listener.getsockname()[1]
+        self.slow = False
+        self.reads = 0
+        self.start()
+
+    def run(self) -> None:
+        while True:
+            try:
+                client, _ = self.listener.accept()
+            except OSError:
+                return
+            redis = socket.create_connection(("127.0.0.1", self.redis_port))
+            threading.Thread(target=self.pipe, args=(client, redis, True), daemon=True).start()
+            threading.Thread(target=self.pipe, args=(redis, client, False), daemon=True).start()
+
+    def pipe(self, source: socket.socket, sink: socket.socket, requests: bool) -> None:
+        try:
+            while data := source.recv(65536):
+                if requests and b"GET\r\n" in data and b"world_state:current\r\n" in data:
+                    self.reads += 1
+                    if self.slow and self.reads % 2:
+                        time.sleep(.3)
+                sink.sendall(data)
+        except OSError:
+            pass
+        finally:
+            source.close()
+            sink.close()
+
+
 class Rig:
     """One server directory, one database and one Redis."""
 
-    def __init__(self, binary: Path, zone_lines: list[str], mobs: bool = True) -> None:
+    def __init__(self, binary: Path, zone_lines: list[str], mobs: bool = True,
+                 proxy: bool = False) -> None:
         host, port = os.environ["TEST_DB_HOST"], os.environ["TEST_DB_PORT"]
         assert host == "127.0.0.1", "use a disposable loopback database"
         self.database = "world_restart_" + uuid.uuid4().hex[:12]
@@ -83,6 +126,9 @@ class Rig:
                     if "deterministic" not in line and "corpse-loot marker" not in line]
         zone.write_text("\n".join(kept).replace("\nS\n", "\n" + "\n".join(zone_lines) + "\nS\n"))
         self.port, tls, websocket = journey.available_ports()
+        # With a proxy the server reaches Redis through it; the journey reads Redis directly.
+        self.proxy = SlowReads(self.redis_port) if proxy else None
+        server_port = self.proxy.port if proxy else self.redis_port
         self.env = dict(
             PATH=os.environ.get("PATH", "/usr/bin:/bin"), ENVIRONMENT="local",
             DB_HOST=host, DB_PORT=port, DB_NAME=self.database,
@@ -90,9 +136,9 @@ class Rig:
             MYSQL_PWD=os.environ["TEST_DB_PASSWORD"],
             DB_ALLOWED_TARGETS=host + "/" + self.database,
             PERSISTENCE_MODE="mariadb-primary", DB_TLS="FALSE",
-            REDIS="TRUE", REDIS_HOST="127.0.0.1", REDIS_PORT=str(self.redis_port),
+            REDIS="TRUE", REDIS_HOST="127.0.0.1", REDIS_PORT=str(server_port),
             REDIS_DB="0", REDIS_NAMESPACE=self.namespace, REDIS_TLS="FALSE",
-            REDIS_ALLOWED_TARGETS=f"127.0.0.1:{self.redis_port}/0",
+            REDIS_ALLOWED_TARGETS=f"127.0.0.1:{server_port}/0",
             REDIS_WORLD_STATE="TRUE", REDIS_WORLD_STATE_SECRET=SECRET,
             REDIS_DONATION_SUBSCRIBER="FALSE", CHAOS_MUD="FALSE", LISTEN_ADDRESS="127.0.0.1",
             DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1", DURIS_TLS_PORT=str(tls),
@@ -192,6 +238,8 @@ class Rig:
         if self.server and self.server.poll() is None:
             self.server.kill()
             self.server.wait()
+        if self.proxy:
+            self.proxy.listener.close()
         if self.redis:
             self.redis.terminate()
             self.redis.wait(timeout=10)
@@ -388,16 +436,37 @@ def midcapture(rig: Rig) -> None:
           flush=True)
 
 
-SCENARIOS = {"crash": (crash, [BANANA], True), "copyover": (copyover, [BANANA], True),
-             "restart": (restart, [BANANA], True), "taken": (taken, [BANANA, MACE], False),
-             "midcapture": (midcapture, BUSY, False)}
+def slowread(rig: Rig) -> None:
+    rig.boot()
+    first = rig.generation()
+    rig.kill()
+
+    rig.proxy.reads = 0
+    rig.proxy.slow = True
+    rig.boot()
+    rig.restored(first)
+    rig.proxy.slow = False
+    # The boot's check, its restore and its consume each read the sequence: twice each.
+    assert rig.proxy.reads >= 6, rig.proxy.reads
+    print(f"slowread: the boot read the current sequence {rig.proxy.reads} times, every "
+          f"other one answered past its deadline, and restored generation {first}",
+          flush=True)
+
+
+# A scenario, its zone lines, whether the fixture's mobs are kept, and the proxy.
+SCENARIOS = {"crash": (crash, [BANANA], True, False),
+             "copyover": (copyover, [BANANA], True, False),
+             "restart": (restart, [BANANA], True, False),
+             "taken": (taken, [BANANA, MACE], False, False),
+             "midcapture": (midcapture, BUSY, False, False),
+             "slowread": (slowread, [BANANA], True, True)}
 
 if __name__ == "__main__":
     if not os.getenv("TEST_DB_HOST"):
         print("world restart journey skipped: run it through with_disposable_mariadb.sh")
     else:
-        scenario, zone_lines, mobs = SCENARIOS[sys.argv[2]]
-        rig = Rig(Path(sys.argv[1]).resolve(strict=True), zone_lines, mobs)
+        scenario, *settings = SCENARIOS[sys.argv[2]]
+        rig = Rig(Path(sys.argv[1]).resolve(strict=True), *settings)
         try:
             scenario(rig)
         finally:

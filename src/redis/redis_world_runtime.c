@@ -68,6 +68,7 @@ constexpr std::array<unsigned int, 7> WORLD_WRITER_RETRY_SECONDS = { 1, 2, 4, 8,
 // the game loop renews it.
 constexpr uint64_t WORLD_WRITER_LEASE_MSEC = 60000;
 constexpr auto WORLD_WRITER_RENEW_INTERVAL = std::chrono::seconds(20);
+constexpr int WORLD_BOOT_READ_ATTEMPTS = 5;
 constexpr auto WORLD_DEGRADED_LOG_INTERVAL = std::chrono::seconds(60);
 bool world_writer_retryable = false;
 std::future<bool> world_writer_retry_future;
@@ -240,6 +241,48 @@ bool redis_reconnect()
 	redis_shared_connection_observability_record(true, true);
 	logit(LOG_SYS, "redis reconnected");
 	return true;
+}
+
+// The boot's reads share the game loop's connection and its 100 ms deadline. On a busy host
+// a reply misses it, and that is not an answer: the read is made again on a new connection.
+// False when Redis did not answer, or when its answer made the read fail.
+template <typename Read> bool redis_world_boot_read(Read read)
+{
+	for (int attempt = 0; attempt < WORLD_BOOT_READ_ATTEMPTS; ++attempt)
+	{
+		if (attempt)
+			std::this_thread::sleep_for(std::chrono::milliseconds(250));
+		if ((!world_context || world_context->err) && !redis_reconnect())
+			continue;
+		if (read())
+			return true;
+		if (!world_context->err)
+			return false;
+	}
+	return false;
+}
+
+// The current generation's sequence, 0 when there is none.
+bool redis_world_boot_sequence(uint64_t *sequence)
+{
+	char current_key[128];
+	if (!redis_epoch_key(current_key, sizeof current_key, world_runtime_epoch,
+			     REDIS_WORLD_CURRENT_SUFFIX))
+		return false;
+	return redis_world_boot_read(
+		[&]()
+		{
+			redisReply *reply = redis_command(REDIS_SHARED_SCOPE_WORLD,
+							  REDIS_SHARED_COMMAND_READ, "GET %s",
+							  current_key);
+			if (!reply)
+				return false;
+			*sequence = reply->type == REDIS_REPLY_STRING && reply->str ?
+					    strtoull(reply->str, NULL, 10) :
+					    0;
+			freeReplyObject(reply);
+			return true;
+		});
 }
 
 bool redis_world_writer_token_create(std::string *token)
@@ -1100,21 +1143,8 @@ bool redis_has_world_state(void)
 	const uint64_t candidate_clean_sequence = clean_shutdown_sequence;
 	clean_shutdown_sequence = 0;
 	clean_restart_boot = false;
-	if ((!world_context || world_context->err) && !redis_reconnect())
-		return false;
-	char current_key[128];
-	if (!redis_epoch_key(current_key, sizeof current_key, world_runtime_epoch,
-			     REDIS_WORLD_CURRENT_SUFFIX))
-		return false;
-	redisReply *reply = redis_command(REDIS_SHARED_SCOPE_WORLD, REDIS_SHARED_COMMAND_READ,
-					  "GET %s", current_key);
-	if (!reply)
-		return false;
 	uint64_t sequence = 0;
-	if (reply->type == REDIS_REPLY_STRING && reply->str)
-		sequence = strtoull(reply->str, NULL, 10);
-	freeReplyObject(reply);
-	if (!sequence)
+	if (!redis_world_boot_sequence(&sequence) || !sequence)
 		return false;
 	std::vector<unsigned char> generation;
 	const redis_world_store_config config = redis_world_store_config_copy();
@@ -1136,22 +1166,9 @@ bool redis_consume_world_state(void)
 #ifdef __NO_REDIS__
 	return false;
 #else
-	if (!world_enabled || !world_context || world_context->err)
+	uint64_t sequence = 0;
+	if (!world_enabled || !redis_world_boot_sequence(&sequence) || !sequence)
 		return false;
-	char current_key[128];
-	if (!redis_epoch_key(current_key, sizeof current_key, world_runtime_epoch,
-			     REDIS_WORLD_CURRENT_SUFFIX))
-		return false;
-	redisReply *current = redis_command(REDIS_SHARED_SCOPE_WORLD, REDIS_SHARED_COMMAND_READ,
-					    "GET %s", current_key);
-	if (!current || current->type != REDIS_REPLY_STRING || !current->str)
-	{
-		if (current)
-			freeReplyObject(current);
-		return false;
-	}
-	const uint64_t sequence = strtoull(current->str, NULL, 10);
-	freeReplyObject(current);
 	const redis_world_store_config config = redis_world_store_config_copy();
 	return redis_world_store_consume_generation(&config, sequence);
 #endif
@@ -1162,32 +1179,10 @@ bool redis_load_world_state(void)
 #ifdef __NO_REDIS__
 	return false;
 #else
-	if (!world_enabled || ((!world_context || world_context->err) && !redis_reconnect()))
-	{
-		logit(LOG_SYS, "redis: world recovery load unavailable");
-		return false;
-	}
-	char current_key[128];
-	if (!redis_epoch_key(current_key, sizeof current_key, world_runtime_epoch,
-			     REDIS_WORLD_CURRENT_SUFFIX))
-	{
-		logit(LOG_SYS, "redis: world recovery current key rejected");
-		return false;
-	}
-	redisReply *sequence_reply = redis_command(
-		REDIS_SHARED_SCOPE_WORLD, REDIS_SHARED_COMMAND_READ, "GET %s", current_key);
-	if (!sequence_reply)
+	uint64_t expected_sequence = 0;
+	if (!world_enabled || !redis_world_boot_sequence(&expected_sequence) || !expected_sequence)
 	{
 		logit(LOG_SYS, "redis: world recovery current sequence read failed");
-		return false;
-	}
-	uint64_t expected_sequence = 0;
-	if (sequence_reply->type == REDIS_REPLY_STRING && sequence_reply->str)
-		expected_sequence = strtoull(sequence_reply->str, NULL, 10);
-	freeReplyObject(sequence_reply);
-	if (!expected_sequence)
-	{
-		logit(LOG_SYS, "redis: world recovery current sequence rejected");
 		return false;
 	}
 	std::vector<unsigned char> generation;
@@ -1203,7 +1198,8 @@ bool redis_load_world_state(void)
 					    std::min(WORLD_RECOVERY_MAX_FLOOR_BYTES,
 						     WORLD_RECOVERY_MAX_BYTES - generation.size()) :
 					    0;
-	if (!redis_read_floor_records(&floor_records, floor_budget))
+	if (!redis_world_boot_read(
+		    [&]() { return redis_read_floor_records(&floor_records, floor_budget); }))
 	{
 		logit(LOG_SYS, "redis: world recovery floor read failed sequence=%llu budget=%zu",
 		      (unsigned long long)expected_sequence, floor_budget);

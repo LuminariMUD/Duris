@@ -114,8 +114,9 @@ the boot after a crash consumes the generation it restored and publishes its own
 second crash restores that one), `copyover` (the new image holds the lease at once),
 `restart` (a clean stop takes a last capture and the boot restores it), `taken` (an object
 a character took and saved after the capture is not restored to the floor, and one it
-saved and dropped before the capture is) and `midcapture` (an object that leaves a floor
-container while a capture runs, and whose drop is journaled, is restored once).
+saved and dropped before the capture is), `midcapture` (an object that leaves a floor
+container while a capture runs, and whose drop is journaled, is restored once) and
+`slowread` (a boot whose reads of Redis miss their deadline asks again and restores).
 
 MySQL fixtures that reuse a table within a statement must account for MySQL's
 `Can't reopen table` restriction on connection-local temporary tables; MariaDB
