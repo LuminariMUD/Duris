@@ -3,6 +3,8 @@ name: durismud
 services:
   mariadb:
     image: mariadb:11.4
+    # MariaDB's own default, 128 MB, is smaller than the game's data.
+    command: ["--innodb-buffer-pool-size=1G"]
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

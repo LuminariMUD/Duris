@@ -58,6 +58,7 @@ assert "DB_SOCKET: /run/mysqld/mysqld.sock" in compose
 assert "DB_HOST: localhost" in compose
 assert "DB_ALLOWED_TARGETS: localhost/duris_dev" in compose
 assert 'DURIS_DOCKER_BIND_ADDRESS:-127.0.0.1' in compose
+assert 'command: ["--innodb-buffer-pool-size=1G"]' in mariadb_service
 # The listener is off by default, and the container's health check reads its /health.
 assert 'DURIS_WEBSOCKET: "TRUE"' in game_service
 assert "ports:" not in mariadb_service
