@@ -79,6 +79,8 @@ struct capture_state
 	recovery_generation generation;
 	P_char next_character = nullptr;
 	P_obj next_object = nullptr;
+	// Every item written so far.
+	std::unordered_set<uint64_t> item_uids;
 	int room = 0;
 	int direction = 0;
 	int zone = 0;
@@ -552,6 +554,21 @@ void publisher_main()
 	health.worker_running = false;
 }
 
+// An object that changes places while a capture runs can be met twice, in a container and
+// then by itself, and boot refuses a generation that holds an item twice. The capture
+// keeps the tree it met an item in first.
+bool capture_tree_is_new(int record_size)
+{
+	const size_t count = (record_size - sizeof(world_recovery_object_record)) /
+			     sizeof(world_recovery_item_snapshot);
+	for (size_t index = 0; index < count; ++index)
+		if (active_capture.item_uids.count(capture_items[index].item_uid))
+			return false;
+	for (size_t index = 0; index < count; ++index)
+		active_capture.item_uids.insert(capture_items[index].item_uid);
+	return true;
+}
+
 bool capture_one_record()
 {
 	switch (active_capture.stage)
@@ -601,6 +618,15 @@ bool capture_one_record()
 						    capture_buffer.size());
 			if (!size)
 				return true;
+			try
+			{
+				if (size > 0 && !capture_tree_is_new(size))
+					return true;
+			}
+			catch (const std::bad_alloc &)
+			{
+				return false;
+			}
 			if (size < 0 || !append_record(active_capture.generation,
 						       world_recovery_record_type::object,
 						       capture_buffer.data(), size))
@@ -1257,6 +1283,26 @@ bool build_recovery_plan(const unsigned char *data, size_t size, int max_age_sec
 	return counts_match;
 }
 
+// A drop is journaled after the capture it was made in, and that capture may have written
+// the item as well, where it was dropped or where it lay before. A later drop of an item
+// the generation holds is journaled too. The generation's stays; boot refuses an item that
+// comes twice.
+bool floor_record_repeats(const recovery_plan &plan, const std::vector<unsigned char> &record)
+{
+	for (size_t offset = sizeof(world_recovery_object_record);
+	     offset + sizeof(world_recovery_item_snapshot) <= record.size();
+	     offset += sizeof(world_recovery_item_snapshot))
+	{
+		uint64_t item_uid = 0;
+		memcpy(&item_uid,
+		       record.data() + offset + offsetof(world_recovery_item_snapshot, item_uid),
+		       sizeof(item_uid));
+		if (plan.item_uids.count(item_uid))
+			return true;
+	}
+	return false;
+}
+
 void replace_object_text(P_obj object, const world_recovery_item_snapshot &item)
 {
 	if (item.name[0])
@@ -1495,12 +1541,19 @@ bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, i
 		logit(LOG_SYS, "redis: world recovery semantic plan validation failed");
 		return false;
 	}
+	size_t repeated = 0;
 	for (size_t index = 0; index < floor_record_count; ++index)
 	{
 		std::vector<unsigned char> native_record;
-		if (!world_recovery_decode_record(world_recovery_record_type::object,
-						  floor_records[index], floor_record_sizes[index],
-						  &native_record) ||
+		const bool decoded = world_recovery_decode_record(
+			world_recovery_record_type::object, floor_records[index],
+			floor_record_sizes[index], &native_record);
+		if (decoded && floor_record_repeats(plan, native_record))
+		{
+			++repeated;
+			continue;
+		}
+		if (!decoded ||
 		    !add_object_record(&plan, native_record.data(), native_record.size()))
 		{
 			logit(LOG_SYS, "redis: world recovery floor record rejected index=%zu",
@@ -1508,6 +1561,9 @@ bool world_recovery_restore_with_floor(const unsigned char *data, size_t size, i
 			return false;
 		}
 	}
+	if (repeated)
+		logit(LOG_SYS, "redis: world recovery left out %zu floor records of items it holds",
+		      repeated);
 	std::vector<item_ownership_runtime_entry> authoritative;
 	try
 	{

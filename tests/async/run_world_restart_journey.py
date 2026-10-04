@@ -11,6 +11,9 @@ crash     the lease is renewed while the server runs. A boot after a crash consu
           banana a player took after the first is not back on the floor.
 copyover  the image a copyover starts holds the lease at once and publishes a generation; a
           crash after it restores that generation, not the one from before the copyover.
+midcapture  a banana is taken out of a basket on the floor and dropped while a capture of
+          12,000 more objects runs. The capture meets it twice and the drop is journaled as
+          well; the generation holds it once, in the basket, and the boot restores it.
 
 Run it through with_disposable_mariadb.sh (make test-db).
 """
@@ -32,6 +35,9 @@ ROOT = Path(__file__).resolve().parents[2]
 SECRET = "local-development-only-world-state-hmac-change-before-shared-use"
 ACKNOWLEDGED = r"world recovery generation and floor handoff acknowledged sequence=(\d+)"
 BANANA = "O 0 15 1 22800 100 0 0 0 * a banana on the floor"
+# A capture walks the objects newest first: the basket is the newest, the banana the oldest,
+# and the maces in another room keep the capture busy between them.
+BUSY = [BANANA] + ["O 0 677 99999 10 100 0 0 0"] * 12000 + ["O 0 387 1 22800 100 0 0 0"]
 
 
 def free_port() -> int:
@@ -43,7 +49,7 @@ def free_port() -> int:
 class Rig:
     """One server directory, one database and one Redis."""
 
-    def __init__(self, binary: Path, zone_lines: list[str]) -> None:
+    def __init__(self, binary: Path, zone_lines: list[str], mobs: bool = True) -> None:
         host, port = os.environ["TEST_DB_HOST"], os.environ["TEST_DB_PORT"]
         assert host == "127.0.0.1", "use a disposable loopback database"
         self.database = "world_restart_" + uuid.uuid4().hex[:12]
@@ -62,7 +68,11 @@ class Rig:
         shutil.copy2(binary, self.game / "bin/server/dms")
         (self.root / "copyover-state").mkdir()
         zone = self.game / "areas_mini/mini.zon"
-        zone.write_text(zone.read_text().replace("\nS\n", "\n" + "\n".join(zone_lines) + "\nS\n"))
+        kept = zone.read_text().split("\n")
+        if not mobs:  # the fixture's mobs pick up what lies in their room
+            kept = [line for line in kept
+                    if "deterministic" not in line and "corpse-loot marker" not in line]
+        zone.write_text("\n".join(kept).replace("\nS\n", "\n" + "\n".join(zone_lines) + "\nS\n"))
         self.port, tls, websocket = journey.available_ports()
         self.env = dict(
             PATH=os.environ.get("PATH", "/usr/bin:/bin"), ENVIRONMENT="local",
@@ -268,15 +278,53 @@ def copyover(rig: Rig) -> None:
           f"{second} {waited:.0f} s later; a crash after it restored that one", flush=True)
 
 
-SCENARIOS = {"crash": crash, "copyover": copyover}
+def midcapture(rig: Rig) -> None:
+    rig.boot()
+    client = enter(rig)
+    # Between the player checkpoints 5 and 35 seconds after the boot, so that no save finds
+    # the banana in the character's hands and records it as the character's.
+    time.sleep(max(0, 7 - (time.monotonic() - rig.booted)))
+    client.send("get banana")
+    client.send("put banana basket")
+    client.expect("You get a banana", timeout=10)
+    client.expect("Ok.", timeout=10)
+    assert time.monotonic() - rig.booted < 27, "the character entered too late"
+    rig.wait_for("no capture started", 60, lambda:
+                 "starting bounded world recovery capture" in rig.log("sys"))
+    client.send("get banana basket")
+    client.send("drop banana")
+    client.expect("You drop a banana", timeout=10)
+    assert not re.search(ACKNOWLEDGED, rig.log("sys")), "the capture ended before the drop"
+    first = rig.generation()
+    floor_drops = f"{rig.namespace}:season:1:floor_drops"
+    rig.wait_for("the drop was not journaled", 45, lambda:
+                 rig.redis_cli("HLEN", floor_drops) == "1")
+    client.close()
+    rig.kill()
+
+    rig.boot()
+    rig.restored(first)
+    assert "left out 1 floor records" in rig.log("sys"), rig.log("sys")[-1500:]
+    client = journey.reconnect_character(rig.port, expected_room=None)
+    floor, basket = screen(client, "look"), screen(client, "look in basket")
+    client.close()
+    assert "banana lies here" not in floor and "banana" in basket, floor + basket
+    print(f"midcapture: generation {first} held the banana once, in the basket it left "
+          "while the capture ran; the boot restored it and left the journaled drop out",
+          flush=True)
+
+
+SCENARIOS = {"crash": (crash, [BANANA], True), "copyover": (copyover, [BANANA], True),
+             "midcapture": (midcapture, BUSY, False)}
 
 if __name__ == "__main__":
     if not os.getenv("TEST_DB_HOST"):
         print("world restart journey skipped: run it through with_disposable_mariadb.sh")
     else:
-        rig = Rig(Path(sys.argv[1]).resolve(strict=True), [BANANA])
+        scenario, zone_lines, mobs = SCENARIOS[sys.argv[2]]
+        rig = Rig(Path(sys.argv[1]).resolve(strict=True), zone_lines, mobs)
         try:
-            SCENARIOS[sys.argv[2]](rig)
+            scenario(rig)
         finally:
             rig.close()
         print(f"world restart journey passed: {sys.argv[2]}")

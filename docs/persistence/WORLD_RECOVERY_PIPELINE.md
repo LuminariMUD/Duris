@@ -18,7 +18,9 @@ is about 40 calls, 20 seconds.
 Fuzzy state is restricted to reconstructible NPC position/state, doors, zone timers, and
 world-pop objects. NPC equipment and inventory are omitted, and NPC-carried gold is
 captured as zero so a cross-time generation cannot replay currency into the persisted
-player economy. Floor item trees retain stable UIDs and hierarchy. Capture marks items
+player economy. Floor item trees retain stable UIDs and hierarchy. An object that changes
+places while the capture runs can be met twice, in a container and by itself; it is
+written once, in the tree it was met in first. Capture marks items
 that have live SQL custody and omits trees whose custody disagrees with their floor
 location; restore requires complete SQL reconciliation of every marked item before
 materializing anything. Reconstructible world-pop objects stay HMAC-authenticated without
@@ -52,6 +54,11 @@ later mutations. Only the exact acknowledged generation may atomically clear the
 pre-capture hash. Completion or capture failure resumes post-barrier work. Each immutable
 batch remains a hiredis pipeline, avoiding one network round trip per delta without
 blocking the game loop.
+
+A drop made while a capture runs is journaled after it, and the capture may have written
+the item as well; so is a later drop of an item the generation holds in another place. Boot
+refuses an item that comes twice, so it leaves out a floor record of an item the generation
+holds: the item comes back where the capture saw it.
 
 ## Lifecycle And Health
 

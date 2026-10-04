@@ -579,6 +579,48 @@ int main()
         object_list = nullptr;
         assert(!completion.published && !completion.attempts && !completion.expired);
         assert(world_recovery_pipeline_health_copy().last_acknowledged_age_sec >= 0);
+
+        // An object taken out of a floor container while the capture runs is met twice: in
+        // the container, which is newer and so comes first, and then on the floor. It is
+        // written once, and boot takes the generation.
+        obj_data basket = {}, banana = {};
+        basket.obj_uid = 90000;
+        banana.obj_uid = 90001;
+        basket.loc_p = LOC_ROOM;
+        basket.contains = &banana;
+        banana.loc_p = LOC_INSIDE;
+        banana.loc.inside = &basket;
+        basket.next = ground.data();
+        ground.back().next = &banana;
+        object_list = &basket;
+        assert(world_recovery_pipeline_request());
+        world_recovery_pipeline_pulse();
+        assert(world_recovery_pipeline_health_copy().capture_active);
+        basket.contains = nullptr;
+        banana.loc_p = LOC_ROOM;
+        banana.loc.room = 0;
+        while (!world_recovery_pipeline_take_completion(&completion))
+        {
+            world_recovery_pipeline_pulse();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        object_list = nullptr;
+        assert(completion.published);
+        assert(world_recovery_validate(published.data(), published.size(), 300,
+                                       completion.sequence, &large));
+        assert(large.object_count == ground.size() + 1);
+        assert(world_recovery_restore(published.data(), published.size(), 300,
+                                      completion.sequence, nullptr));
+        while (P_obj object = object_list)
+        {
+            assert(object->obj_uid != banana.obj_uid ||
+                   (object->loc_p == LOC_INSIDE &&
+                    object->loc.inside->obj_uid == basket.obj_uid));
+            while (object->loc_p == LOC_INSIDE)
+                object = object->loc.inside;
+            extract_obj(object, FALSE);
+        }
+        objects_read = objects_extracted = 0;
         world_recovery_pipeline_reset_for_tests();
     }
 
@@ -601,6 +643,26 @@ int main()
     assert(object_list && object_list->obj_uid == 500 && object_list->next == nullptr);
     assert(object_list->loc_p == LOC_ROOM && world[object_list->loc.room].number == 100);
     extract_obj(object_list, FALSE);
+
+    // A drop made while a capture runs is journaled after it, and the capture may have
+    // written the item too. Boot takes the generation's and leaves the floor record out.
+    {
+        const world_recovery_object_record dropped = {200, 1};
+        const world_recovery_item_snapshot dropped_item = item(500, 500, 0);
+        std::vector<unsigned char> drop(sizeof(dropped) + sizeof(dropped_item));
+        memcpy(drop.data(), &dropped, sizeof(dropped));
+        memcpy(drop.data() + sizeof(dropped), &dropped_item, sizeof(dropped_item));
+        assert(world_recovery_encode_record(
+            world_recovery_record_type::object, drop.data(), drop.size(),
+            captured_wire.data(), captured_wire.size(), &captured_wire_size));
+        const unsigned char *floor_records[] = {captured_wire.data()};
+        assert(world_recovery_restore_with_floor(
+            valid_objects.data(), valid_objects.size(), 300, 77, floor_records,
+            &captured_wire_size, 1, nullptr));
+        assert(object_list && object_list->obj_uid == 500 && object_list->next == nullptr);
+        assert(world[object_list->loc.room].number == 100);
+        extract_obj(object_list, FALSE);
+    }
 
     const auto duplicates = object_generation(
         {{item(600, 600, 0)}, {item(600, 600, 0)}});

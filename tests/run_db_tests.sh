@@ -36,6 +36,7 @@ legacy_migration tests/async/run_legacy_migration_mysql.sh
 saved_item_allocator $DB python3 tests/async/run_saved_item_allocator_journey.py $SERVER
 mysql_combat $DB python3 tests/async/test_mysql_combat_journey.py --server $SERVER
 world_restart_copyover $DB python3 tests/async/run_world_restart_journey.py $SERVER copyover
+world_restart_midcapture $DB python3 tests/async/run_world_restart_journey.py $SERVER midcapture
 saved_item_recovery $DB python3 tests/async/run_saved_item_recovery_journey.py $SERVER
 playtime $DB python3 tests/async/test_mysql_playtime_journey.py --server $SERVER
 runtime_compatibility tests/async/run_runtime_compatibility_mysql.sh

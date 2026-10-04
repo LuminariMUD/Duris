@@ -111,7 +111,9 @@ world: off, the alert of an outage, the writer coming back, a crash's restore an
 defaults. `run_world_restart_journey.py <server> <scenario>` covers what a restart leaves,
 one scenario a run and each its own line in `make test-db`: `crash` (the lease is renewed,
 the boot after a crash consumes the generation it restored and publishes its own, and a
-second crash restores that one) and `copyover` (the new image holds the lease at once).
+second crash restores that one), `copyover` (the new image holds the lease at once) and
+`midcapture` (an object that leaves a floor container while a capture runs, and whose drop
+is journaled, is restored once).
 
 MySQL fixtures that reuse a table within a statement must account for MySQL's
 `Can't reopen table` restriction on connection-local temporary tables; MariaDB
