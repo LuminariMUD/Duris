@@ -4444,7 +4444,8 @@ static void show_world_persistence(P_char ch)
 		 "world_recovery state=%s capture=%d worker=%d queue=%llu records=%llu bytes=%llu "
 		 "high_water_bytes=%llu requested=%llu coalesced=%llu capture_failures=%llu "
 		 "submitted=%llu published=%llu publish_failures=%llu stale=%llu "
-		 "sequence=%llu/%llu capture_age_ms=%llu worker_runtime_ms=%llu\n",
+		 "sequence=%llu/%llu last_ack_age_s=%lld capture_age_ms=%llu "
+		 "worker_runtime_ms=%llu\n",
 		 !world_recovery.initialized	 ? "stopped" :
 		 world_recovery.capture_active	 ? "capturing" :
 		 world_recovery.worker_busy	 ? "publishing" :
@@ -4464,6 +4465,7 @@ static void show_world_persistence(P_char ch)
 		 (unsigned long long)world_recovery.stale_completions,
 		 (unsigned long long)world_recovery.last_submitted_sequence,
 		 (unsigned long long)world_recovery.last_acknowledged_sequence,
+		 (long long)world_recovery.last_acknowledged_age_sec,
 		 (unsigned long long)world_recovery.capture_age_msec,
 		 (unsigned long long)world_recovery.worker_runtime_msec);
 	send_to_char(line, ch);

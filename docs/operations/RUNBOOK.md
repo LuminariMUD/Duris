@@ -483,6 +483,10 @@ For queue or dependency incidents, use `world persistence` and the detailed `red
 status command. Do not clear a player save queue: player state is owned by memory and
 the persistence writer's queue, not a Redis dirty set. A world generation publish
 failure preserves the prior current generation and retains floor deltas for retry.
+A `domain=world_recovery` alert means three capture attempts in a row left no generation:
+its action is the reason and its detail the age of the last good one
+([CONFIGURATION.md](CONFIGURATION.md)). Captures resume by themselves once the cause is
+gone; no restart is needed.
 
 Account password recovery keeps no durable state. Reset codes, their per-account cooldown
 records, and any queued or in-flight recovery mail live only in process memory, so a

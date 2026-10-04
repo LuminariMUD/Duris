@@ -40,21 +40,23 @@ struct world_keys
 	char clean_shutdown[128];
 };
 
-constexpr const char *WORLD_PUBLISH_SCRIPT =
-	"if redis.call('GET',KEYS[1])~=ARGV[1] then return 0 end "
-	"local current=redis.call('GET',KEYS[2]) "
-	"if ARGV[2]=='' then if current then return 0 end "
-	"elseif current~=ARGV[2] then return 0 end "
-	"redis.call('SET',KEYS[3],ARGV[3]) "
-	"redis.call('EXPIRE',KEYS[3],ARGV[8]) "
-	"redis.call('SET',KEYS[2],ARGV[4]) "
-	"redis.call('SET',KEYS[4],ARGV[5]) "
-	"redis.call('SET',KEYS[5],ARGV[4]) "
-	"redis.call('SET',KEYS[6],ARGV[6]) "
-	"redis.call('SET',KEYS[7],'1') "
-	"redis.call('DEL',KEYS[8],KEYS[9]) "
-	"redis.call('PEXPIRE',KEYS[1],ARGV[7]) "
-	"return 1";
+// The writer publishes while it holds the fence or nobody does: a publish is what renews the
+// lease, so one that ran out during a run of failures is taken again here.
+constexpr const char *WORLD_PUBLISH_SCRIPT = "local fence=redis.call('GET',KEYS[1]) "
+					     "if fence and fence~=ARGV[1] then return 0 end "
+					     "local current=redis.call('GET',KEYS[2]) "
+					     "if ARGV[2]=='' then if current then return 0 end "
+					     "elseif current~=ARGV[2] then return 0 end "
+					     "redis.call('SET',KEYS[3],ARGV[3]) "
+					     "redis.call('EXPIRE',KEYS[3],ARGV[8]) "
+					     "redis.call('SET',KEYS[2],ARGV[4]) "
+					     "redis.call('SET',KEYS[4],ARGV[5]) "
+					     "redis.call('SET',KEYS[5],ARGV[4]) "
+					     "redis.call('SET',KEYS[6],ARGV[6]) "
+					     "redis.call('SET',KEYS[7],'1') "
+					     "redis.call('DEL',KEYS[8],KEYS[9]) "
+					     "redis.call('SET',KEYS[1],ARGV[1],'PX',ARGV[7]) "
+					     "return 1";
 
 bool format_key(char *buffer, size_t size, const char *key_namespace, uint64_t epoch,
 		const char *suffix)
@@ -384,6 +386,15 @@ bool token_matches(redisContext *context, const char *fence_key, const char *wri
 	return matches;
 }
 
+bool fence_held_or_free(redisContext *context, const char *fence_key, const char *writer_token)
+{
+	redisReply *reply = command(context, "GET %s", fence_key);
+	const bool unheld = reply && reply->type == REDIS_REPLY_NIL;
+	if (reply)
+		freeReplyObject(reply);
+	return unheld || token_matches(context, fence_key, writer_token);
+}
+
 void end_watch(redisContext *context, bool transaction_started)
 {
 	redisReply *reply = command(context, transaction_started ? "DISCARD" : "UNWATCH");
@@ -688,7 +699,7 @@ bool redis_world_store_publish_observed(const struct redis_world_store_config *c
 
 	uint64_t previous_sequence = 0;
 	redisReply *current_reply = command(context, "GET %s", keys.current);
-	bool valid = current_reply && token_matches(context, keys.fence, writer_token) &&
+	bool valid = current_reply && fence_held_or_free(context, keys.fence, writer_token) &&
 		     (current_reply->type == REDIS_REPLY_NIL ||
 		      (current_reply->type == REDIS_REPLY_STRING && current_reply->str));
 	if (valid && current_reply->type == REDIS_REPLY_STRING)

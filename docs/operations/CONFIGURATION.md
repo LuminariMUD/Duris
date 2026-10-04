@@ -253,7 +253,9 @@ At boot, one publisher claims a renewable 10-minute writer lease. Each backgroun
 publication verifies that lease and expected prior pointer, writes the immutable
 sequence-keyed payload, advances the current pointer and diagnostic metadata, consumes
 the pre-capture floor hash, and renews the lease in one atomic Lua compare-and-set. A
-stale or second writer cannot publish. The single script also reduces background Redis
+stale or second writer cannot publish. A publication takes the lease when nobody holds it,
+so a writer whose lease ran out during a run of failures, or was lost with a Redis restart,
+publishes again by itself. The single script also reduces background Redis
 round trips compared with a watched transaction.
 All of those keys use `<REDIS_NAMESPACE>:season:<epoch>:` with the active SQL season epoch captured at
 boot. An old process can therefore write only its abandoned epoch after a reset; it cannot
@@ -295,6 +297,15 @@ rather than published. NPC inventory/equipment and
 carried gold are excluded from recovery, while all floor-item UIDs must pass complete SQL
 custody reconciliation before any recovery entity is created. `REDIS_WORLD_STATE_MAX_AGE`
 still controls how old a completed durable generation may be when boot attempts restore.
+
+When three attempts in a row leave no generation, the server raises one persistence alert,
+`domain=world_recovery`. Its action is the reason: `capture_failed`, `capture_expired`,
+`publish_failed`, `writer_unavailable` (the lease is held elsewhere or Redis was down at
+boot) or `floor_unavailable` (the floor worker cannot write). Its detail is
+`failures=3 last_ack_sequence=N last_ack_age_secs=N`, the last published generation and
+the age boot would judge it by, `-1` when this boot has published none. The next published generation ends the
+run, and a later run raises its own alert. `world persistence` and `redis detailed` show
+the same age as `last_ack_age_s`.
 
 The in-game `redis` and `redis detailed` commands read bounded local worker/pipeline
 telemetry only; they never query Redis. Shared boot, recovery, and stopped-server

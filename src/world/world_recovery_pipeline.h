@@ -20,6 +20,7 @@ constexpr uint64_t WORLD_RECOVERY_CAPTURE_TIME_BUDGET_USEC = 2000;
 constexpr uint64_t WORLD_RECOVERY_CAPTURE_MAX_AGE_MSEC = 300000;
 constexpr size_t WORLD_RECOVERY_QUEUE_CAPACITY = 2;
 constexpr unsigned int WORLD_RECOVERY_MAX_RETRIES = 3;
+constexpr unsigned int WORLD_RECOVERY_ALERT_FAILURES = 3;
 
 struct world_recovery_header
 {
@@ -43,6 +44,8 @@ struct world_recovery_completion
 	uint64_t sequence;
 	bool published;
 	unsigned int attempts;
+	bool expired;
+	int64_t timestamp;
 };
 
 struct world_recovery_item_snapshot
@@ -118,6 +121,10 @@ struct world_recovery_health
 	uint64_t stale_completions;
 	uint64_t last_submitted_sequence;
 	uint64_t last_acknowledged_sequence;
+	int64_t last_acknowledged_timestamp;
+	// The age boot would judge the last published generation by; -1 when this boot has
+	// published none.
+	int64_t last_acknowledged_age_sec;
 	uint64_t last_published_bytes;
 	uint64_t high_water_bytes;
 	uint64_t capture_age_msec;

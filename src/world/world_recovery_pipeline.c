@@ -228,7 +228,8 @@ void fail_capture(bool expired)
 	      active_capture.generation.blob.size(), active_capture.generation.mob_count,
 	      active_capture.generation.object_count, active_capture.generation.door_count,
 	      active_capture.generation.zone_count);
-	capture_failure_completion = { active_capture.generation.sequence, false, 0 };
+	capture_failure_completion = { active_capture.generation.sequence, false, 0, expired,
+				       active_capture.generation.timestamp };
 	capture_failure_pending = true;
 	++health.capture_failures;
 	if (expired)
@@ -542,7 +543,8 @@ void publisher_main()
 		else
 			++health.publish_failures;
 		if (completions.size() < WORLD_RECOVERY_QUEUE_CAPACITY * 2)
-			completions.push_back({ generation.sequence, published, attempts });
+			completions.push_back({ generation.sequence, published, attempts, false,
+						generation.timestamp });
 		worker_busy = false;
 		health.worker_busy = false;
 	}
@@ -827,7 +829,10 @@ bool world_recovery_pipeline_take_completion(world_recovery_completion *completi
 	completions.pop_front();
 	if (completion->published && completion->sequence == health.last_submitted_sequence &&
 	    completion->sequence > health.last_acknowledged_sequence)
+	{
 		health.last_acknowledged_sequence = completion->sequence;
+		health.last_acknowledged_timestamp = completion->timestamp;
+	}
 	else if (completion->published)
 		++health.stale_completions;
 	return true;
@@ -873,6 +878,10 @@ world_recovery_health world_recovery_pipeline_health_copy(void)
 	snapshot.queued_generations = queued.size();
 	if (health.capture_active)
 		snapshot.capture_age_msec = elapsed_msec(active_capture.started);
+	snapshot.last_acknowledged_age_sec =
+		health.last_acknowledged_timestamp ?
+			time(NULL) - health.last_acknowledged_timestamp :
+			-1;
 	return snapshot;
 }
 

@@ -540,6 +540,7 @@ int main()
         object_list = ground.data();
         std::vector<unsigned char> published;
         assert(world_recovery_pipeline_init(copying_publish, &published));
+        assert(world_recovery_pipeline_health_copy().last_acknowledged_age_sec == -1);
         assert(world_recovery_pipeline_request());
         world_recovery_completion completion = {};
         while (!world_recovery_pipeline_take_completion(&completion))
@@ -550,6 +551,8 @@ int main()
         object_list = nullptr;
         assert(completion.published && published.size() > old_ceiling);
         assert(world_recovery_pipeline_health_copy().high_water_bytes > old_ceiling);
+        const int64_t age = world_recovery_pipeline_health_copy().last_acknowledged_age_sec;
+        assert(age >= 0 && age < 60);
         world_recovery_header large = {};
         assert(world_recovery_validate(published.data(), published.size(), 300,
                                        completion.sequence, &large));
@@ -561,6 +564,21 @@ int main()
         while (object_list)
             extract_obj(object_list, FALSE);
         objects_read = objects_extracted = 0;
+
+        // A capture that fails (an object without a uid) completes as a failure, not as an
+        // expiry or a failed publish, and leaves the last published generation's age.
+        obj_data broken = {};
+        broken.loc_p = LOC_ROOM;
+        object_list = &broken;
+        assert(world_recovery_pipeline_request());
+        while (!world_recovery_pipeline_take_completion(&completion))
+        {
+            world_recovery_pipeline_pulse();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        object_list = nullptr;
+        assert(!completion.published && !completion.attempts && !completion.expired);
+        assert(world_recovery_pipeline_health_copy().last_acknowledged_age_sec >= 0);
         world_recovery_pipeline_reset_for_tests();
     }
 
@@ -1007,6 +1025,7 @@ with tempfile.TemporaryDirectory(prefix="duris-world-recovery-") as temp_dir:
 print("[PASS] schema, sequence, completeness, age, length, and checksum framing validates")
 print("[PASS] in-flight publication joins before pwipe deletion can continue")
 print("[PASS] a world above the old 64 MiB ceiling is captured, published and restored")
+print("[PASS] a failed capture completes as one, and health keeps the last publish's age")
 print("[PASS] duplicate/moved items and custody failures fail closed with rollback")
 print("[PASS] failed recovery and forced zone reset restore exactly one owned ground artifact")
 
@@ -1033,7 +1052,7 @@ assert "PC_CORPSE" in PIPELINE
 assert "item_ownership_runtime_lookup" in PIPELINE
 failure = section(PIPELINE, "void fail_capture(bool expired)", "bool submit_capture()")
 for token in (
-    "capture_failure_completion = { active_capture.generation.sequence, false, 0 }",
+    "capture_failure_completion = { active_capture.generation.sequence, false, 0, expired,",
     "capture_failure_pending = true",
     "++health.capture_expirations",
     "health.last_capture_duration_msec",
@@ -1091,7 +1110,8 @@ for token in (
     "redis.call('EXPIRE',KEYS[3],ARGV[8])",
     "redis.call('SET',KEYS[2],ARGV[4])",
     "redis.call('DEL',KEYS[8],KEYS[9])",
-    "redis.call('PEXPIRE',KEYS[1],ARGV[7])",
+    "if fence and fence~=ARGV[1] then return 0 end",
+    "redis.call('SET',KEYS[1],ARGV[1],'PX',ARGV[7])",
 ):
     assert token in STORE
 for token in ("WRG2", "HMAC(EVP_sha256()", "SHA256(", "CRYPTO_memcmp"):

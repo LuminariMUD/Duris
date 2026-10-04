@@ -32,7 +32,8 @@ sequence, record counts, payload length, completeness, and CRC32.
 ## Atomic Publication
 
 The worker passes the immutable generation blob to one Redis Lua compare-and-set. The
-script verifies the writer token and expected prior pointer while atomically writing
+script verifies that this writer holds the lease, or that nobody does, and the expected
+prior pointer while atomically writing
 `mud:season:<epoch>:world_state:generation:<sequence>`, swapping the small
 `mud:season:<epoch>:world_state:current` pointer and diagnostic metadata, consuming the
 stable floor hash, and renewing the lease. A rejected script leaves the previous current
@@ -59,6 +60,13 @@ shutdown wait to bounded deadlines for capture, publication, exact acknowledgeme
 floor-boundary cleanup; failure cancels the process transition. `world persistence`
 reports aggregate capture, queue, bytes, sequence, active/last capture age, expiry,
 runtime, retry, and publication-failure health without object, room, or character identity.
+
+An attempt that leaves no generation is counted: a capture that failed or expired, a
+generation that did not publish, and an attempt that could not start because the writer
+lease or the floor worker was unavailable. The third in a row raises one
+`domain=world_recovery` persistence alert with the reason, the last published sequence and
+its age; a published generation ends the run. The health outputs report that age as
+`last_ack_age_s`.
 
 After a successful graceful drain, the fenced writer records an expiring marker for the
 exact current sequence. Boot consumes that marker once and labels a matching valid

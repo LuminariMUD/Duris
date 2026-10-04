@@ -70,9 +70,23 @@ unsigned int world_writer_retry_failures = 0;
 std::chrono::steady_clock::time_point world_writer_retry_after;
 std::chrono::steady_clock::time_point world_degraded_log_after;
 const char *world_degraded_reason = "none";
-int64_t world_last_ack_time = 0;
+unsigned int world_capture_failures = 0;
 
 auto redis_world_recovery_ensure_initialized() -> bool;
+
+// An attempt that left no generation. A published one ends the run; the third in a row
+// raises the run's one alert.
+void redis_world_capture_failed(const char *reason)
+{
+	if (++world_capture_failures != WORLD_RECOVERY_ALERT_FAILURES)
+		return;
+	const world_recovery_health health = world_recovery_pipeline_health_copy();
+	persistence_alert(AVATAR, "world_recovery", "none", "none", "none", reason,
+			  "failures=%u last_ack_sequence=%llu last_ack_age_secs=%lld",
+			  world_capture_failures,
+			  (unsigned long long)health.last_acknowledged_sequence,
+			  (long long)health.last_acknowledged_age_sec);
+}
 
 void redis_clear_world_authentication_secrets()
 {
@@ -699,7 +713,7 @@ bool redis_world_runtime_start(const redis_world_runtime_config *config)
 	world_writer_retry_failures = 0;
 	world_degraded_log_after = std::chrono::steady_clock::time_point();
 	world_degraded_reason = "none";
-	world_last_ack_time = 0;
+	world_capture_failures = 0;
 	redis_clear_world_authentication_secrets();
 
 	world_context = redis_connection_open(world_connection);
@@ -875,20 +889,25 @@ bool redis_save_world_state(void)
 		{
 			const world_recovery_health health = world_recovery_pipeline_health_copy();
 			logit(LOG_SYS,
-			      "redis: world recovery worker unavailable reason=%s retry_attempts=%u last_ack_sequence=%llu last_ack_time=%lld",
+			      "redis: world recovery worker unavailable reason=%s retry_attempts=%u last_ack_sequence=%llu last_ack_age_secs=%lld",
 			      world_degraded_reason, world_writer_retry_failures,
 			      (unsigned long long)health.last_acknowledged_sequence,
-			      (long long)world_last_ack_time);
+			      (long long)health.last_acknowledged_age_sec);
 			world_degraded_log_after = now + WORLD_DEGRADED_LOG_INTERVAL;
 		}
+		redis_world_capture_failed("writer_unavailable");
 		return false;
 	}
 	redis_world_recovery_pulse();
-	if (world_recovery_pipeline_busy() || world_floor_barrier_waiting ||
-	    world_floor_handoff_active)
+	if (world_recovery_pipeline_busy() || world_floor_handoff_active)
 		return true;
-	if (!redis_flush_floor_drops() || !redis_floor_store_request_barrier())
+	// A barrier still waiting since the last attempt: the floor worker cannot write.
+	if (world_floor_barrier_waiting || !redis_flush_floor_drops() ||
+	    !redis_floor_store_request_barrier())
+	{
+		redis_world_capture_failed("floor_unavailable");
 		return false;
+	}
 	world_floor_barrier_waiting = true;
 	return true;
 #endif
@@ -913,6 +932,8 @@ void redis_world_recovery_pulse(void)
 		{
 			redis_floor_store_resume();
 			logit(LOG_SYS, "redis: floor preflight failed; recovery capture deferred");
+			redis_world_capture_failed(barrier_succeeded ? "capture_failed" :
+								       "floor_unavailable");
 		}
 	}
 	world_recovery_pipeline_pulse();
@@ -928,15 +949,24 @@ void redis_world_recovery_pulse(void)
 		if (completion.published &&
 		    completion.sequence == recovery.last_acknowledged_sequence)
 		{
-			world_last_ack_time = time(NULL);
+			world_capture_failures = 0;
 			logit(LOG_SYS,
-			      "redis: world recovery generation and floor handoff acknowledged sequence=%llu attempts=%u",
-			      (unsigned long long)completion.sequence, completion.attempts);
+			      "redis: world recovery generation and floor handoff acknowledged sequence=%llu attempts=%u bytes=%llu capture_msec=%llu",
+			      (unsigned long long)completion.sequence, completion.attempts,
+			      (unsigned long long)recovery.last_published_bytes,
+			      (unsigned long long)recovery.last_capture_duration_msec);
 		}
 		else if (!completion.published)
-			logit(LOG_SYS,
-			      "redis: world recovery generation publish failed sequence=%llu attempts=%u",
-			      (unsigned long long)completion.sequence, completion.attempts);
+		{
+			// The pipeline has logged a capture that failed or expired.
+			if (completion.attempts)
+				logit(LOG_SYS,
+				      "redis: world recovery generation publish failed sequence=%llu attempts=%u",
+				      (unsigned long long)completion.sequence, completion.attempts);
+			redis_world_capture_failed(completion.attempts ? "publish_failed" :
+						   completion.expired  ? "capture_expired" :
+									 "capture_failed");
+		}
 	}
 	if (world_floor_handoff_active && !world_recovery_pipeline_busy())
 	{

@@ -45,6 +45,7 @@ bank_restart $DB python3 tests/async/run_mysql_bank_restart_journey.py $SERVER
 idle_timeout $DB python3 tests/async/run_mysql_idle_timeout_journey.py $SERVER
 chaos_raise $DB python3 tests/async/run_chaos_raise_transient_journey.py $SERVER
 collector_intake $DB python3 tests/async/run_mysql_collector_intake_journey.py $SERVER
+world_recovery $DB python3 tests/async/run_world_recovery_journey.py $SERVER
 world_writer_retry $DB python3 tests/async/run_world_writer_retry_journey.py $SERVER
 collector_repository tests/async/run_collector_repository_schema_mysql.sh
 account_bound_reward tests/async/run_account_bound_reward_schema_mysql.sh

@@ -286,6 +286,24 @@ int main(int argc, char **argv)
     reply = run(context, "KEYS mud:season:42:world_state:generation:5*");
     assert(reply->type == REDIS_REPLY_ARRAY && reply->elements == 0);
     freeReplyObject(reply);
+
+    // A writer whose lease ran out publishes again and holds the fence again; while another
+    // writer holds it, it does not.
+    freeReplyObject(run(context, "DEL mud:season:42:world_state:writer_fence"));
+    assert(redis_world_store_publish(&config, writer_b, lease, first, sizeof(first) - 1, 7,
+                                     time(nullptr), 62));
+    reply = run(context, "GET mud:season:42:world_state:writer_fence");
+    assert(reply->type == REDIS_REPLY_STRING && !strcmp(reply->str, writer_b));
+    freeReplyObject(reply);
+    reply = run(context, "PTTL mud:season:42:world_state:writer_fence");
+    assert(reply->type == REDIS_REPLY_INTEGER && reply->integer > 0 &&
+           reply->integer <= static_cast<long long>(lease));
+    freeReplyObject(reply);
+    assert(!redis_world_store_publish(&config, writer_a, lease, second, sizeof(second) - 1,
+                                      8, time(nullptr), 63));
+    reply = run(context, "GET mud:season:42:world_state:current");
+    assert(reply->type == REDIS_REPLY_STRING && !strcmp(reply->str, "7"));
+    freeReplyObject(reply);
     assert(redis_world_store_release_fence(&config, writer_b));
     assert(redis_world_store_release_fence(&next_season, writer_a));
     redisFree(context);
