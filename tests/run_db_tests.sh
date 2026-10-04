@@ -29,6 +29,8 @@ started=$SECONDS
 # Longest first.
 xargs -P "${TEST_DB_JOBS:-12}" -L 1 bash -c 'run_one "$@"' _ <<EOF
 game_loop_budget $DB python3 tests/async/test_mysql_game_loop_budget_journey.py --server $SERVER
+world_recovery $DB python3 tests/async/run_world_recovery_journey.py $SERVER
+world_capture $DB python3 tests/async/test_mysql_world_capture_journey.py --server $SERVER
 legacy_migration tests/async/run_legacy_migration_mysql.sh
 saved_item_allocator $DB python3 tests/async/run_saved_item_allocator_journey.py $SERVER
 mysql_combat $DB python3 tests/async/test_mysql_combat_journey.py --server $SERVER
@@ -45,7 +47,6 @@ bank_restart $DB python3 tests/async/run_mysql_bank_restart_journey.py $SERVER
 idle_timeout $DB python3 tests/async/run_mysql_idle_timeout_journey.py $SERVER
 chaos_raise $DB python3 tests/async/run_chaos_raise_transient_journey.py $SERVER
 collector_intake $DB python3 tests/async/run_mysql_collector_intake_journey.py $SERVER
-world_recovery $DB python3 tests/async/run_world_recovery_journey.py $SERVER
 world_writer_retry $DB python3 tests/async/run_world_writer_retry_journey.py $SERVER
 collector_repository tests/async/run_collector_repository_schema_mysql.sh
 account_bound_reward tests/async/run_account_bound_reward_schema_mysql.sh
