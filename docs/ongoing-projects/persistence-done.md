@@ -42,10 +42,13 @@ tests, verification, commits and the bugs found) and the item leaves the plan's 
   on 2026-10-03 in `1a4b15f9d`, one `--no-ff` merge of the `-1` head, with no rebase or
   squash, so both tags still name what was reviewed. The branch is deleted
   ([record](#phase-6-landed-done)).
-- Phase 7 is reviewed as [!9](https://gitlab.com/max757/duris/-/merge_requests/9) (source
+- Phase 7 was reviewed as [!9](https://gitlab.com/max757/duris/-/merge_requests/9) (source
   `fix/5-persistence-phase-7`, branched from master `1c5a53de9`), tagged
   `persistence/phase-7-review-0` and `-1` ([review round 1](#review-round-1-mr-9)). The
   `-1` head has master merged in, for the older defects the review found and master fixed.
+  It landed on 2026-10-04 in `77734a404`, one `--no-ff` merge of the `-1` head, with no
+  rebase or squash, so both tags still name what was reviewed. The branch is deleted
+  ([record](#phase-7-landed-done)).
 - Each later phase works the same way: a branch from master named for its work item, an MR,
   the head the review reads tagged `persistence/phase-<n>-review-0`, a review round's fixes on
   the branch tagged `-1`, `-2` and so on, then one `--no-ff` merge of the last tag.
@@ -2932,7 +2935,7 @@ skips the pre-boot backup); its Status line now records what Phase 6 resolved.
 
 ## Phase 7 progress
 
-Phase 7 ([plan](persistence-plan.md#phase-7-game-loop-performance-5)) is being done on
+Phase 7 ([plan](persistence-plan.md#phase-7-game-loop-performance-5)) was done on
 `fix/5-persistence-phase-7`, branched on 2026-10-03 from master `1c5a53de9`. Each item below
 gets its record when it lands; an item without one is not done.
 
@@ -3216,3 +3219,16 @@ Verification for this round:
   `npm test --prefix site` (14 tests). Neither suite left `logs/log/dupes` or
   `logs/log/item_claims` behind. Not run: the backup-recovery container job, CodeQL and
   Trivy (nothing they check changed; no schema change).
+
+### Phase 7 landed (done)
+
+On 2026-10-04 !9 landed in `77734a404`, one `--no-ff` merge of `2e0983e51`, the review round 1
+head (`persistence/phase-7-review-1`). Master had no commits the branch lacked (its fixes of
+the older defects were merged into the branch in the round), so the merge's tree is that
+head's, gated in the round ([record](#review-round-1-mr-9)), and nothing was rerun for it. No
+migration, so `duris_dev` needed nothing.
+
+`fix/5-persistence-phase-7` is deleted, and this worktree continues on
+`fix/2-persistence-phase-8`, branched from master after this record. #5 stays open for its
+server configuration (the size of the MariaDB buffer pool); its Status line now records what
+Phase 7 resolved.

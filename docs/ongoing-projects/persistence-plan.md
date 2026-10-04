@@ -8,7 +8,7 @@ the open work items, what was cut and [What is left](#what-is-left). Finished wo
 (what landed, decisions, tests, verification, commits, bugs found) goes there and the item leaves
 the list. A decision that changes the framework is written here.
 
-**Status (2026-10-03):** Phases 1 to 6 are done and on master. Phase 3 landed as
+**Status (2026-10-04):** Phases 1 to 7 are done and on master. Phase 3 landed as
 [!5](https://gitlab.com/max757/duris/-/merge_requests/5) in `21f65de2c` after one review
 round ([record](persistence-done.md#phase-3-landed-done)). The reset is finished: #7 is closed,
 and #3, #5 and #6 record what it resolved
@@ -20,12 +20,11 @@ items, one phase each. Phase 4 landed as
 round, and #4 is closed ([record](persistence-done.md#phase-5-landed-done)). Phase 6 landed as
 [!8](https://gitlab.com/max757/duris/-/merge_requests/8) in `1a4b15f9d` after one review
 round; #3 stays open for its server configuration
-([record](persistence-done.md#phase-6-landed-done)). Phase 7 is done on
-`fix/5-persistence-phase-7` and in review as
-[!9](https://gitlab.com/max757/duris/-/merge_requests/9), tagged
-`persistence/phase-7-review-0` ([progress](persistence-done.md#phase-7-progress)); review
-round 1 is fixed and tagged `persistence/phase-7-review-1`
-([record](persistence-done.md#review-round-1-mr-9)). Phase 8 is not started.
+([record](persistence-done.md#phase-6-landed-done)). Phase 7 landed as
+[!9](https://gitlab.com/max757/duris/-/merge_requests/9) in `77734a404` after one review
+round; #5 stays open for its server configuration
+([record](persistence-done.md#phase-7-landed-done)). Phase 8 is next, on
+`fix/2-persistence-phase-8`; it is not started.
 
 **Work items:** the reset took #7 (player saves and deaths, closed) and the persistence causes
 behind #5 (game freezes), #3 (the player-save journal breaking backups) and #6 (persistence alert
@@ -528,14 +527,8 @@ All hold: the gate passed on `0b90e5fc1`
 
 ## What is left
 
-In this order: the game loop, measured now that the backup job no longer competes with it; the
-world capture last, on the optimised build. Phases 4 (alerts and logs), 5 (bugs from the logs)
-and 6 (backups) are done and on master.
+The world capture is left, on the optimised build. Phases 4 (alerts and logs), 5 (bugs from
+the logs), 6 (backups) and 7 (the game loop) are done and on master.
 
-1. [Phase 7: game-loop performance (#5)](#phase-7-game-loop-performance-5): done, in review
-   as [!9](https://gitlab.com/max757/duris/-/merge_requests/9); it leaves this list when it
-   lands. Review round 1's fixes are on `fix/5-persistence-phase-7`, each finding in its own
-   commit with its test, the fixed head tagged `persistence/phase-7-review-1`
-   ([record](persistence-done.md#review-round-1-mr-9)).
-2. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2), and with it the raised corpse's
+1. [Phase 8: world recovery (#2)](#phase-8-world-recovery-2), and with it the raised corpse's
    items (its item 4).
