@@ -309,8 +309,8 @@ only when the validated current generation matches; otherwise it reports `crash`
 recovery. Successful restore consumes that generation without disabling future snapshots.
 
 Floor deltas use a separate background worker bounded to eight batches and 16 MiB. Each
-batch holds at most 2,048 mutations, each value is capped at 256 KiB, and keys are capped
-at 128 bytes. Each value is a binary tree of at most 12 identity-preserving items; larger
+batch holds at most 2,048 mutations, each value is capped at 2 MiB, and keys are capped
+at 128 bytes. Each value is a binary tree of at most 512 identity-preserving items; larger
 trees fail capture closed rather than being truncated. Before world capture, an ordered
 worker barrier confirms all earlier deltas and pauses later publication; the generation
 handoff deletes the acknowledged hash atomically, then post-barrier deltas resume.
