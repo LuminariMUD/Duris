@@ -273,9 +273,11 @@ def run(server, players):
         assert matched > 50000 and carried > 0, (matched, carried)
         assert 'sql job' not in log('file'), log('file')[-2000:]
         # Work item #13: the mortals each named a new character with no creation lock set,
-        # and closed their connections without a word.
+        # and closed their connections without a word. The server stopped with profiling
+        # off.
+        assert 'Normal termination of game.' in log('status'), 'no clean shutdown'
         for name, line in (('comm', 'EOF encountered'), ('comm', 'process_input()'),
-                           ('debug', 'get_mud_info')):
+                           ('debug', 'get_mud_info'), ('file', 'Profile info')):
             assert line not in log(name), f'{line!r} is in logs/log/{name}'
     print(f'world capture journey passed: {size / 2**20:.1f} MiB captured in '
           f'{capture_ms / 1000:.1f} s under {players} players, and restored after a crash')

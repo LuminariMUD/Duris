@@ -95,6 +95,13 @@ lookup = sql[sql.rindex("string get_mud_info(const char *name)"):].split("\n}\n"
 assert contains(lookup, "mud_info.find(") and "logit(" not in lookup
 
 
+# --- a shutdown with profiling off reports no profile -------------------------
+# Every shutdown wrote a "Profile info" line of zeros for each event function.
+shutdown = (SRC / "comm.c").read_text().split("int run_the_game(int port, int sslport)", 1)[1]
+profile = shutdown[index(shutdown, "if (do_profile)"):index(shutdown, "save_func_call_info();")]
+assert shutdown.count("save_func_call_info();") == 1 and contains(profile, "PROFILES(SAVE);")
+
+
 # --- the donation subscriber must not block the game loop --------------------
 # A blocking Redis subscriber socket stalled every idle pulse and showed up as
 # a once-per-second NEVENT SLOW entry in logs/log/status.

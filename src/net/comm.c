@@ -2632,9 +2632,13 @@ resume_game_loop:
 					  "pipeline_drain_failed", "shutdown_cancelled=0");
 	}
 
-	PROFILES(SAVE);
 #ifdef DO_PROFILE
-	save_func_call_info();
+	// With profiling off there is nothing to report but zeros.
+	if (do_profile)
+	{
+		PROFILES(SAVE);
+		save_func_call_info();
+	}
 #endif
 
 	// Don't want to save stuff just after we wiped all the tables in SQL.
