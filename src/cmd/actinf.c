@@ -6985,12 +6985,10 @@ void do_time(P_char ch, char *argument, int /*cmd*/)
 	send_to_char(Gbuf2, ch);
 
 	// The server's own time, with the zone it is in.
-	char zone[16];
 	lt = localtime(&ct);
-	strftime(zone, sizeof zone, "%Z", lt);
 	tmstr = asctime(lt);
 	*(tmstr + strlen(tmstr) - 1) = '\0';
-	snprintf(Gbuf2, MAX_STRING_LENGTH, "Current time is: %s (%s)\n", tmstr, zone);
+	snprintf(Gbuf2, MAX_STRING_LENGTH, "Current time is: %s (%s)\n", tmstr, lt->tm_zone);
 	send_to_char(Gbuf2, ch);
 
 	if (IS_TRUSTED(ch))
