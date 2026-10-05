@@ -79,6 +79,9 @@ for name, line in (("actoth.c", '"%s has quit in [%d]."'),
     text = (SRC / name).read_text()
     assert line in text, line
     assert not re.search(r'\bEST\b', text), name
+# A new character's entry line gave the time since 1970 as its absence.
+assert contains((SRC / "nanny.c").read_text(),
+                "if (ch->player.time.saved) GetMIA(ch->player.time.saved, Gbuf1);")
 
 
 # --- a peer that closes its connection is not a read error -------------------

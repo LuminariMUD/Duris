@@ -1681,7 +1681,10 @@ void enter_game(P_desc d)
 		debug("'%s' getting rested bonus!", J_NAME(ch));
 	}
 
-	GetMIA(ch->player.time.saved, Gbuf1);
+	// A character that has never been saved has not been away.
+	*Gbuf1 = '\0';
+	if (ch->player.time.saved)
+		GetMIA(ch->player.time.saved, Gbuf1);
 
 	loginlog(GET_LEVEL(ch), "%s [%s] enters game.%s [%d]", GET_NAME(ch), d->host, Gbuf1,
 		 world[ch->in_room].number);
