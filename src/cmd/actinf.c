@@ -6984,17 +6984,13 @@ void do_time(P_char ch, char *argument, int /*cmd*/)
 		 (uptime.second > 9) ? "" : "0", uptime.second);
 	send_to_char(Gbuf2, ch);
 
+	// The server's own time, with the zone it is in.
+	char zone[16];
 	lt = localtime(&ct);
+	strftime(zone, sizeof zone, "%Z", lt);
 	tmstr = asctime(lt);
 	*(tmstr + strlen(tmstr) - 1) = '\0';
-	snprintf(Gbuf2, MAX_STRING_LENGTH, "Current time is: %s (local time)\n", tmstr);
-	send_to_char(Gbuf2, ch);
-	// Subtract 5 hrs.
-	ct -= 5 * 60 * 60;
-	lt = localtime(&ct);
-	tmstr = asctime(lt);
-	*(tmstr + strlen(tmstr) - 1) = '\0';
-	snprintf(Gbuf2, MAX_STRING_LENGTH, "                 %s (EST)\n", tmstr);
+	snprintf(Gbuf2, MAX_STRING_LENGTH, "Current time is: %s (%s)\n", tmstr, zone);
 	send_to_char(Gbuf2, ch);
 
 	if (IS_TRUSTED(ch))
