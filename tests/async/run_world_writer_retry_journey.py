@@ -3,7 +3,6 @@
 import os
 from pathlib import Path
 import re
-import socket
 import subprocess
 import sys
 import tempfile
@@ -16,12 +15,6 @@ ROOT = Path(__file__).resolve().parents[2]
 SECRET = "local-development-only-world-state-hmac-change-before-shared-use"
 
 
-def free_port() -> int:
-    with socket.socket() as listener:
-        listener.bind(("127.0.0.1", 0))
-        return listener.getsockname()[1]
-
-
 def run(binary: Path, expect_stuck: bool, outage: bool, cancel: bool,
         auth: bool, repeat: bool) -> None:
     sql_host = os.environ.get("TEST_DB_HOST", "127.0.0.1")
@@ -29,7 +22,9 @@ def run(binary: Path, expect_stuck: bool, outage: bool, cancel: bool,
     assert sql_host in ("127.0.0.1", "localhost", "::1")
     database = "writer_retry_" + uuid.uuid4().hex[:12]
     namespace = "duris:local:retry_" + uuid.uuid4().hex[:8]
-    redis_port = free_port()
+    # Below the kernel's ephemeral range, where a port waiting to be bound is handed out
+    # again to another journey's listener or an outgoing connection.
+    redis_port = journey.available_ports()[0]
     env = dict(os.environ, ENVIRONMENT="local", DB_HOST=sql_host, DB_PORT=sql_port,
                DB_NAME=database, DB_USER=os.environ["TEST_DB_USER"],
                DB_PASSWD=os.environ["TEST_DB_PASSWORD"],

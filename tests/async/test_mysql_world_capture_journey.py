@@ -27,7 +27,6 @@ import argparse
 import os
 import re
 import shutil
-import socket
 import subprocess
 import tempfile
 import time
@@ -65,12 +64,6 @@ class Player(budget.Mortal):
             self.play()
         except Exception as error:  # reported by the main thread
             self.error = f'{self.name}: {error}'
-
-
-def free_port():
-    with socket.socket() as listener:
-        listener.bind(('127.0.0.1', 0))
-        return listener.getsockname()[1]
 
 
 def crowded_world(runtime):
@@ -114,7 +107,6 @@ def run(server, players):
     database = 'world_capture_' + uuid.uuid4().hex[:12]
     host, port = os.environ['TEST_DB_HOST'], os.environ['TEST_DB_PORT']
     assert host == '127.0.0.1', 'use a disposable loopback database'
-    redis_port = free_port()
     environment = {
         'PATH': os.environ.get('PATH', '/usr/bin:/bin'),
         'ENVIRONMENT': 'local', 'DB_HOST': host, 'DB_PORT': port, 'DB_NAME': database,
@@ -123,9 +115,9 @@ def run(server, players):
         'MYSQL_PWD': os.environ['TEST_DB_PASSWORD'], 'PERSISTENCE_MODE': 'mariadb-primary',
         'DB_TLS': 'FALSE', 'CHAOS_MUD': 'FALSE',
         'LISTEN_ADDRESS': '127.0.0.1', 'DURIS_WEBSOCKET_LISTEN_ADDRESS': '127.0.0.1',
-        'REDIS': 'TRUE', 'REDIS_HOST': '127.0.0.1', 'REDIS_PORT': str(redis_port),
+        'REDIS': 'TRUE', 'REDIS_HOST': '127.0.0.1',
         'REDIS_DB': '0', 'REDIS_NAMESPACE': 'duris:local:capture_' + uuid.uuid4().hex[:8],
-        'REDIS_TLS': 'FALSE', 'REDIS_ALLOWED_TARGETS': f'127.0.0.1:{redis_port}/0',
+        'REDIS_TLS': 'FALSE',
         'REDIS_WORLD_STATE': 'TRUE', 'REDIS_WORLD_STATE_SECRET': SECRET,
         'REDIS_DONATION_SUBSCRIBER': 'FALSE',
     }
@@ -161,6 +153,12 @@ def run(server, players):
         environment.update(CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / 'journals/critical'),
                            MAINTENANCE_STATE_FILE=str(runtime / 'maintenance-scheduler.state'))
         output_path = runtime / 'server.out'
+        # Redis takes a port below the kernel's ephemeral range and binds it at once. A
+        # port probed in that range and bound after the world was built was handed out
+        # again in between, to another journey's listener or an outgoing connection.
+        redis_port = journey.available_ports()[0]
+        environment.update(REDIS_PORT=str(redis_port),
+                           REDIS_ALLOWED_TARGETS=f'127.0.0.1:{redis_port}/0')
         redis = subprocess.Popen(
             ['redis-server', '--bind', '127.0.0.1', '--port', str(redis_port), '--save', '',
              '--appendonly', 'no', '--dir', str(runtime / 'redis')],

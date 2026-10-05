@@ -23,7 +23,6 @@ Run it through with_disposable_mariadb.sh (make test-db).
 import os
 from pathlib import Path
 import re
-import socket
 import subprocess
 import sys
 import tempfile
@@ -39,18 +38,14 @@ ALERT = (r"domain=world_recovery action=(\w+) outcome=alert detail=failures=(\d+
          r"last_ack_sequence=(\d+) last_ack_age_secs=(-?\d+)")
 
 
-def free_port() -> int:
-    with socket.socket() as listener:
-        listener.bind(("127.0.0.1", 0))
-        return listener.getsockname()[1]
-
-
 def run(binary: Path) -> None:
     sql_host, sql_port = os.environ["TEST_DB_HOST"], os.environ["TEST_DB_PORT"]
     assert sql_host == "127.0.0.1", "use a disposable loopback database"
     database = "world_recovery_" + uuid.uuid4().hex[:12]
     namespace = "duris:local:recovery_" + uuid.uuid4().hex[:8]
-    redis_port = free_port()
+    # Below the kernel's ephemeral range, where a port waiting to be bound is handed out
+    # again to another journey's listener or an outgoing connection.
+    redis_port = journey.available_ports()[0]
     env = dict(PATH=os.environ.get("PATH", "/usr/bin:/bin"), ENVIRONMENT="local",
                DB_HOST=sql_host, DB_PORT=sql_port, DB_NAME=database,
                DB_USER=os.environ["TEST_DB_USER"], DB_PASSWD=os.environ["TEST_DB_PASSWORD"],
@@ -149,11 +144,11 @@ def run(binary: Path) -> None:
 
         sql("CREATE DATABASE " + database, False)
         try:
+            redis = start_redis()
             sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
             for args in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
                 subprocess.run(["python3", "scripts/migration_runner.py", *args], cwd=ROOT,
                                env=env, check=True, capture_output=True)
-            redis = start_redis()
             fence = namespace + ":season:1:world_state:writer_fence"
             current = namespace + ":season:1:world_state:current"
 

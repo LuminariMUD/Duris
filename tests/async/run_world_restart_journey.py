@@ -53,12 +53,6 @@ MACE = "O 0 677 1 22800 100 0 0 0 * a mace on the floor"
 BUSY = [BANANA] + ["O 0 677 99999 10 100 0 0 0"] * 12000 + ["O 0 387 1 22800 100 0 0 0"]
 
 
-def free_port() -> int:
-    with socket.socket() as listener:
-        listener.bind(("127.0.0.1", 0))
-        return listener.getsockname()[1]
-
-
 class SlowReads(threading.Thread):
     """A proxy before Redis that, while `slow`, holds back every other read of the current
     sequence for 300 ms."""
@@ -106,9 +100,21 @@ class Rig:
         assert host == "127.0.0.1", "use a disposable loopback database"
         self.database = "world_restart_" + uuid.uuid4().hex[:12]
         self.namespace = "duris:local:restart_" + uuid.uuid4().hex[:8]
-        self.redis_port = free_port()
         self.temporary = tempfile.TemporaryDirectory(prefix="world-restart-")
         self.root = Path(self.temporary.name)
+        # Redis takes a port below the kernel's ephemeral range and binds it at once. A
+        # port probed in that range and bound after the database setup was handed out
+        # again in between, to another journey's listener or an outgoing connection.
+        self.redis_port = journey.available_ports()[0]
+        self.redis = subprocess.Popen(
+            ["redis-server", "--bind", "127.0.0.1", "--port", str(self.redis_port),
+             "--save", "", "--appendonly", "no", "--dir", str(self.root)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        deadline = time.monotonic() + 10
+        while subprocess.run(["redis-cli", "-p", str(self.redis_port), "PING"],
+                             capture_output=True, text=True).stdout.strip() != "PONG":
+            assert time.monotonic() < deadline, "the disposable Redis did not start"
+            time.sleep(.1)
         self.game = self.root / "game"
         self.game.mkdir()
         (self.game / "logs/log").mkdir(parents=True)
@@ -152,7 +158,6 @@ class Rig:
         self.output = self.game / "server.out"
         self.output.write_text("")
         self.server = None
-        self.redis = None
         self.booted = 0.0
         self.marks = {}
         self.sql("CREATE DATABASE " + self.database, False)
@@ -160,15 +165,6 @@ class Rig:
         for args in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
             subprocess.run(["python3", "scripts/migration_runner.py", *args], cwd=ROOT,
                            env=self.env, check=True, capture_output=True)
-        self.redis = subprocess.Popen(
-            ["redis-server", "--bind", "127.0.0.1", "--port", str(self.redis_port),
-             "--save", "", "--appendonly", "no", "--dir", str(self.root)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        deadline = time.monotonic() + 10
-        while subprocess.run(["redis-cli", "-p", str(self.redis_port), "PING"],
-                             capture_output=True, text=True).stdout.strip() != "PONG":
-            assert time.monotonic() < deadline, "the disposable Redis did not start"
-            time.sleep(.1)
 
     def sql(self, statement: str, selected: bool = True) -> str:
         return subprocess.check_output(self.mysql + ([self.database] if selected else []),
