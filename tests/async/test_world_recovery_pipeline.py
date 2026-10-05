@@ -1060,6 +1060,7 @@ void run_artifact_boot()
 }
 void reconcile_shopkeepers(bool) {}
 void initialize_transport() {}
+void arti_cache_init() {}
 void run_recovery_boot()
 {
 @RECOVERY_BOOT@
