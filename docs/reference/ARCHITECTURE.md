@@ -28,6 +28,17 @@ multiplexed in a single `select()` loop. Concurrency includes:
   The last 500 player commands stay in memory (`src/core/debug.c`). An exit writes both;
   so does the crash handler (`src/core/signals.c`), before the signal's own action.
 - One immutable world-recovery publisher worker when Redis recovery is enabled.
+- One bounded password worker (`src/account/password_hash.c`), started on first use, that
+  runs every interactive bcrypt hash and verify (cost 12, about a quarter of a second on a
+  server CPU) off the game loop: account login, creation, password change, deletion and
+  recovery over Telnet and WebSocket, and private-chest passwords. At most 16 jobs are
+  outstanding (queued, running or not yet consumed). A full queue refuses the request so
+  the player tries again; nothing falls back to hashing on the game thread.
+  `src/account/password_async.c` keeps the continuations on the game thread, hands the
+  worker only copies of the password and hash, and re-checks the session (connection
+  state, account, character, room and, while playing, that the character is alive)
+  before it applies a result. Closing a descriptor cancels its job without waiting for
+  bcrypt.
 - One bounded best-effort mail worker (libcurl SMTP) for account password recovery. It is
   not in the shutdown drain chain, is joined at shutdown (each send is bounded to 10 s
   connect / 20 s total, no retry), and is disabled unless `MAIL_ENABLED=TRUE`.

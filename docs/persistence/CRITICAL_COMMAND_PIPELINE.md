@@ -22,8 +22,8 @@ therefore lands in capture order with the saves around it: a save captured befor
 command is applied before it, one captured after, after it. `submit()` returns
 `accepted`; the command is durable once the writer has applied it. Commands are not
 journaled: like a save, a command that had not reached the database is lost in a crash
-(see the persistence reset plan, "What a crash costs"). Records are never coalesced or
-replaced by a newer command.
+(see [ADR 0002](../adr/0002-persistence-reset-memory-is-the-authority.md#consequences)).
+Records are never coalesced or replaced by a newer command.
 
 The writer job carries its own copy of the command and of the apply function, so a
 command queued before shutdown still lands after the coordinator has stopped; its

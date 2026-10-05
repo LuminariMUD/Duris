@@ -121,6 +121,9 @@ Kept when the `.spec_system/` tracking tree was retired.
 - [Architecture decision template](adr/0000-template.md)
 - [Refactor investigations #343-#347](adr/0001-refactor-investigation-343-347.md): alternatives,
   chosen ownership boundaries, performance risks, dependencies, and migration/test gates.
+- [Persistence reset: memory is the authority](adr/0002-persistence-reset-memory-is-the-authority.md):
+  why saves never refuse and one writer applies them, what a crash costs, and what was
+  deliberately left out.
 - [Server architecture diagram](diagrams/duris-server-architecture.html) and
   [database model](diagrams/duris-database-model.html)
 

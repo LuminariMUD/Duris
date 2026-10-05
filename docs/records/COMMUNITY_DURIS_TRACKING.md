@@ -43,7 +43,7 @@ This is why `git merge-base --all` prints four commits for the two `master` bran
 ### The two lines went opposite ways on persistence
 
 - **Ours** made memory the authority again
-  ([persistence-plan.md](../ongoing-projects/persistence-plan.md)). Migration
+  ([ADR 0002](../adr/0002-persistence-reset-memory-is-the-authority.md)). Migration
   `0034_retire_death_custody_and_accounting` dropped the death custody, restitution and economy
   accounting tables, and the code that waited on them went with it.
 - **Theirs** kept that model and extends it. Their `master` adds operator tooling on top of

@@ -209,7 +209,7 @@ hold, corpse handoff batch or disputed-death disposition any more. The wallet
 becomes a coin pile in the corpse (Phase 2 step 4); the player's save, with the
 wallet empty, is queued before the corpse's, so a crash between them can lose
 the coins but never leave them in both places. See
-[the persistence reset plan](../ongoing-projects/persistence-plan.md)
+[the persistence reset decision](../adr/0002-persistence-reset-memory-is-the-authority.md)
 and `tests/async/test_deaths_happen_at_once.py`. Every server is treated as new, so
 the death evidence older servers stored is gone: migration 0034 drops
 `player_death_disposition` and `player_death_custody`, and the flat-file

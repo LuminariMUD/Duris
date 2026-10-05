@@ -120,7 +120,7 @@ All three files added to `.github/` in the first two weeks, and 96% of the lines
 
 After 2026-09-23 the work continued in this repository. The persistence reset (Phases 1 to 7)
 kept the ownership table and simplified the save-time checks built on it in this period; its
-record is [persistence-done.md](../ongoing-projects/persistence-done.md).
+decision record is [ADR 0002](../adr/0002-persistence-reset-memory-is-the-authority.md).
 
 ## How the figures were counted
 

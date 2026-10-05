@@ -645,7 +645,7 @@ above; never use production as a development or validation target.
 ```
 
 Wallets, banks, epic points, frags and item ownership are saved from memory since the
-[persistence reset](../ongoing-projects/persistence-plan.md): a save writes balances
+[persistence reset](../adr/0002-persistence-reset-memory-is-the-authority.md): a save writes balances
 without a ledger row and claims the items it holds without a transfer, so no ledger
 explains them and no reconciler checks them. `item_owner_audit` records each item a save
 took from another owner, and `logs/log/dupes` each item a save or load gave up.

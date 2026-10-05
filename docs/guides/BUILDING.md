@@ -200,6 +200,29 @@ area data; the combined outputs land in `areas/world.*`.
 binaries are missing, so first boot after a fresh clone works without manual
 intervention.
 
+## Finding unreachable code
+
+The linker can list the functions no build reaches. Build both servers with one section
+per function, in object directories of their own so the normal build is not disturbed:
+
+```sh
+make -C src -j16 OBJDIR=$PWD/bin/analysis/objects SERVER_BIN_DIR=$PWD/bin/analysis \
+    DMS_BINARY=$PWD/bin/analysis/dms_new EXTRA_CFLAGS="-ffunction-sections -fdata-sections"
+make -C src -j16 PERSISTENCE_BACKEND=flatfile OBJDIR=$PWD/bin/analysis/flat-objects \
+    SERVER_BIN_DIR=$PWD/bin/analysis/flat DMS_BINARY=$PWD/bin/analysis/flat/dms_new \
+    EXTRA_CFLAGS="-ffunction-sections -fdata-sections"
+```
+
+Then rerun each build's final link line from `src/` without `-rdynamic` and with
+`-Wl,--gc-sections -Wl,--print-gc-sections`. Each `removing unused section
+'.text.<symbol>'` line names a function that build never reaches. Demangle with `c++filt`,
+and read `st_mysql` as `MYSQL` (the flat-file build stubs it).
+
+A function is dead when every build that compiles it drops it. The list is a lead, not
+proof, so read the source first: a function reached only through a dead branch shows as
+live, and an inlined one shows as dead. The linker also cannot see a dead branch inside a
+live function.
+
 ## Verifying a build
 
 - Recompile check: `make -C src` must complete without errors or warnings in
