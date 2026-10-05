@@ -128,7 +128,7 @@ unbounded serialization of arbitrary object prose.
 The generated-equipment audit covers the runtime overrides in `randomeq.c`,
 including its fixed affects and bitvectors. Prototype-linked extra descriptions,
 linked temporary object affects, event pointers, and database bookkeeping are
-not newly serialized by this change. It is not a general replacement for player
+not serialized. It is not a general replacement for player
 item persistence. Aggregate container weights and values are restored after
 linking descendants so container insertion does not double-count saved weight.
 

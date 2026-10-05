@@ -1,4 +1,4 @@
-# Epic stone reward recovery (#166)
+# Epic stone reward recovery
 
 Stone touches now submit a version-2 zone transaction containing the captured
 participant amounts, including task and bonus modifiers. The SQL transaction
@@ -27,8 +27,6 @@ recovery requests receive their own outbox receipt so reconciliation stays clean
 
 - Apply immutable migration `0012_epic_stone_claim` through the standard migration
   runner before starting this binary. Fresh bootstrap includes the same table.
-  Boot compatibility is synchronized to migration 0012 and 178 tables, with
-  fingerprints measured on MySQL 8.4 and MariaDB 10.11.
 - Claims are protected replay records retained alongside the operation inbox
   through season resets. Never delete claims or recycle object UIDs independently.
 - Version-1 zone commands and old 88-byte receipts remain metadata-only. New
@@ -36,8 +34,7 @@ recovery requests receive their own outbox receipt so reconciliation stays clean
   zone commands/receipts or migration 0012; retain a compatible recovery binary.
 - Flatfile mode has no atomic zone repository. Stone reward admission now reports
   unavailable and leaves rewards and effects untouched in that mode.
-- This does not reconstruct awards lost by older code. The reported player
-  incident still needs its original gameplay and deployment evidence.
+- This does not reconstruct awards lost by older code.
 
 ## Verification and limits
 

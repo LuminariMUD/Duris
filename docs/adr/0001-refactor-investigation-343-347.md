@@ -1,6 +1,9 @@
 # 0001. Refactor investigations: persistence, combat, networking, and item commands
 
-Status: investigated recommendations, not implementation sign-off.
+Status: investigated recommendations, not implementation sign-off. All four refactors
+have since landed, and the persistence design described here was superseded by
+[ADR 0002](0002-persistence-reset-memory-is-the-authority.md); this is the record of
+the alternatives considered. Its links point at the baseline commit below.
 
 Source baseline: `f62b69f92f792a0ff7897c19876c6d1bb6f1c626`.
 Issue state was refreshed during the September 14, 2026 investigation. Recheck

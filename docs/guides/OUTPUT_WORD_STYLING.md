@@ -1,10 +1,10 @@
 # Completed-message word styling
 
-Issue #280 adds an opt-in rendering boundary. Existing callers still use Preserve.
-No player preferences, server palette, animation sequence, prompt routing or GMCP
-adoption is enabled by this change. [Profile loading and channel resolution](OUTPUT_PROFILES.md)
-are provided by #281; [animated scenery and recipient/channel sequences](SCENERY_COLORIZATION.md)
-are provided by #282.
+The renderer is an opt-in boundary: a caller that does not ask for styling uses
+Preserve. [Profile loading and channel resolution](OUTPUT_PROFILES.md),
+[player preferences](OUTPUT_PREFERENCES.md) and
+[animated scenery and recipient/channel sequences](SCENERY_COLORIZATION.md) are built
+on it.
 
 ## Calling the renderer
 

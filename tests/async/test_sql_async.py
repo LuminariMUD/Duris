@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Game-thread SQL is queued on the writer: in order, never waited for.
+"""Game-thread SQL is queued on the writer: in order, never waited for. During boot,
+before the writer starts, it is applied at once instead.
 
-Links the production sql_async.c with the real persistence writer and records what the
-writer applies, in order, with the repository stubbed out.
+Links the production sql_async.c with the real persistence writer and records what is
+applied, in order, with the repository stubbed out.
 """
 
 from pathlib import Path
@@ -70,6 +71,15 @@ player_save_apply_result sql_work_repository_apply_from_pool(const sql_work &wor
             0, error_code};
 }
 
+// Boot applies on the game thread's connection.
+static int applied_at_boot = 0;
+player_save_apply_result sql_work_repository_apply(MYSQL *boot, const sql_work &work)
+{
+    assert(boot == DB);
+    ++applied_at_boot;
+    return sql_work_repository_apply_from_pool(work);
+}
+
 static player_save_apply_result no_saves(const player_snapshot &, void *)
 {
     return {player_save_apply_outcome::applied, 0, 0};
@@ -82,14 +92,30 @@ static void wait_for_writer()
 
 int main()
 {
+    // Boot: no writer is running. A write is applied before its call returns, and one
+    // that fails returns false. A read runs at once too; its callback, told whether the
+    // read failed, waits for the first pulse.
+    std::vector<std::string> seen;
+    assert(sql_queue("INSERT INTO t VALUES (%d)", 0));
+    assert((applied == std::vector<std::string>{"INSERT INTO t VALUES (0)"}));
+    assert(sql_read("SELECT boot", [&](bool ok, const sql_rows &rows)
+                    { seen.push_back(ok && rows.size() == 1 ? "boot" : "wrong"); }));
+    assert(!sql_queue_work([](MYSQL *) -> unsigned int { return 1064; }));
+    assert(sql_read("SELECT broken",
+                    [&](bool ok, const sql_rows &) { seen.push_back(ok ? "wrong" : "failed"); }));
+    assert(applied.size() == 2 && applied_at_boot == 4 && seen.empty());
+    assert(sql_async_pulse() == 2 && (seen == std::vector<std::string>{"boot", "failed"}));
+    applied.clear();
+    seen.clear();
+
     assert(player_save_worker_init(no_saves, nullptr));
+    sql_async_boot_done();
     char_data ch = {};
     ch.runtime_id = 7;
     character_list = &ch;
 
     // Writes and reads apply in the order they were queued, so a read sees the writes
     // queued before it. Its callback runs on a later pulse, never inside the call.
-    std::vector<std::string> seen;
     assert(sql_queue("INSERT INTO t VALUES (%d)", 1));
     assert(sql_read(sql_format("SELECT %s", "one"),
                     [&](bool ok, const sql_rows &rows)
@@ -136,6 +162,9 @@ int main()
     wait_for_writer();
     assert(sql_async_pulse() == 1 && seen.size() == 2);
 
+    // Nothing after boot was applied on the game thread.
+    assert(applied_at_boot == 4);
+
     // Without a database nothing is queued.
     DB = nullptr;
     assert(!sql_queue("INSERT INTO t VALUES (2)"));
@@ -164,6 +193,7 @@ with tempfile.TemporaryDirectory(prefix="duris-sql-async-") as temporary:
         check=True,
     )
     subprocess.run([str(binary)], check=True, timeout=60)
+print("[PASS] before the writer starts, a write is applied at once and a read is delivered on the first pulse")
 print("[PASS] game-thread writes and reads apply on the writer in the order they were queued")
 print("[PASS] a read's rows come back on a later pulse; a lost connection is retried once")
 print("[PASS] a failed read tells the character; one who left gets nothing")

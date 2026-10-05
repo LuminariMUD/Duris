@@ -73,5 +73,4 @@ Snapshot pipeline, critical-command retry and disposable flat-file
 ownership-replay regressions also pass. `make -C src` passes with the repository's
 strict warning profile. These are synthetic and local checks, not a live latency
 benchmark or production database test. Replay guarantees remain per accepted
-ownership operation; this change does not introduce a durable kit-level receipt
-or redesign existing ambiguous-commit recovery.
+ownership operation; there is no durable kit-level receipt.

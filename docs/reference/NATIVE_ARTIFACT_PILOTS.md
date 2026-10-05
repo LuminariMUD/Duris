@@ -206,9 +206,8 @@ complete effect contract and measured budget before migration. A missing literal
 binding does not establish inertness: packed values, device types, affect fields,
 equipment enchantments and dynamic Studio/proc-library assignment remain possible.
 Token placeholders receive no invented power. The inventory is a source boundary,
-not verified live availability or approval to enable all artifacts. Future
-per-artifact issues should be opened only with concrete contracts and balance
-policies, as required by #296.
+not verified live availability or approval to enable all artifacts. Open a
+per-artifact work item only with a concrete contract and balance policy.
 
 ## Focused verification
 
@@ -219,8 +218,8 @@ world/storage boundaries exercise legacy/new routing, exact last payment,
 insufficient/cold storage, reserve floors, legal targets, terrain, abort,
 leave-and-return, removal, configuration changes, linked forms, save-time versus
 real unequip, theurgist forms, class/body slots and extraction during effects.
-These focused tests do not substitute for the disposable-server rollout evidence
-owned by #297.
+These focused tests do not substitute for the disposable-server rollout evidence in
+the [verification record](../testing/ITEM_ABILITY_ROLLOUT.md).
 
 `test_sword_actions_runtime.py` compiles the actual old sword helpers, callback,
 weapon dispatcher and new state machine. It exercises all fifteen combat choices

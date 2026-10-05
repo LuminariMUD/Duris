@@ -44,6 +44,26 @@ assert contains(utility, 'getenv("DURIS_PERSISTENCE_TRACE")')
 assert "`DURIS_PERSISTENCE_TRACE`" in (ROOT / "docs/operations/CONFIGURATION.md").read_text()
 
 
+# --- SQL queued during boot must not be thrown away --------------------------
+# The writer starts after every fatal world-data load, and it refused what boot queued
+# before that ("sql job not queued"): artifact rows, outpost hit points, cache reads.
+# Until the writer start, sql_queue() and sql_read() apply on the boot connection.
+run_the_game = (SRC / "comm.c").read_text().split("int run_the_game(int port, int sslport)", 1)[1]
+assert run_the_game.count("sql_async_boot_done();") == 1
+assert index(run_the_game, "player_save_pipeline_init()") < index(run_the_game,
+                                                                  "sql_async_boot_done();")
+# The artifact lists are read once the boot's world is final. Read in the middle of boot,
+# every one was dropped as stale when boot loaded an artifact afterwards: an owned one from
+# its row, or all of them when a generation or a copyover is restored.
+game_loop = (SRC / "comm.c").read_text().split("void game_loop(int port, int sslport)", 1)[1]
+assert game_loop.count("arti_cache_init();") == 1
+for restore in ("copyover_recover(", "redis_world_recovery_boot_clear();",
+                "initialize_transport();"):
+    assert index(game_loop, restore) < index(game_loop, "arti_cache_init();"), restore
+artifact = (SRC / "artifact.c").read_text()
+assert artifact.count("arti_cache_init();") == 0
+
+
 # --- the donation subscriber must not block the game loop --------------------
 # A blocking Redis subscriber socket stalled every idle pulse and showed up as
 # a once-per-second NEVENT SLOW entry in logs/log/status.

@@ -31,8 +31,9 @@ Message rendering performs no configuration I/O. See the
 [versioned sample](../examples/output-profiles-v1.json) for the schema and bounds.
 
 Loading a profile does not opt existing callers into styling. Callers still need
-an explicit output context; animation effects and player preference commands are
-separate follow-up work.
+an explicit output context. Player preferences are in
+[OUTPUT_PREFERENCES.md](../guides/OUTPUT_PREFERENCES.md) and animation in
+[SCENERY_COLORIZATION.md](../guides/SCENERY_COLORIZATION.md).
 
 ## Telemetry runtime
 
@@ -143,6 +144,7 @@ per-operation authority transfer is not supported.
 | `DB_SSL_CA` | Required for non-loopback hosts | Regular CA file used to verify the database server certificate. |
 | `CRITICAL_COMMAND_JOURNAL_DIR` | Required outside mini mode | Absolute server-user-owned `0700` directory for the locker identification receipts. It is named for the critical-command journal it held before the persistence reset; nothing is journaled any more. |
 | `MAINTENANCE_STATE_FILE` | Optional; `bin/server/maintenance-scheduler.state` | Durable scheduler cursor/completion state; parent directory must be server-user controlled. |
+| `COPYOVER_STATE_FILE` | Optional; `copyover.dat` | State file a copyover writes and the new image reads; its `.tmp` sibling is in the same directory, which the server user must be able to write. Docker sets `/var/lib/duris/copyover.dat`. |
 
 `scripts/cycle_mud.sh --check-config` validates the selected mode without starting the
 server. Add `--production` to require `ENVIRONMENT=production` and the production-port

@@ -1,0 +1,267 @@
+# Regression journeys
+
+One section per fixed defect: the rule the fix established, the tests that hold it, and
+what those tests do not cover. Every journey uses synthetic accounts, a private world and
+temporary state, and never reads the checkout's `.env`. A MariaDB journey needs
+`TEST_DB_HOST`, `TEST_DB_USER` and `TEST_DB_PASSWORD` for a disposable loopback server
+(`tests/async/with_disposable_mariadb.sh CMD...` supplies one) and creates and drops its
+own schema. Flat-file journeys take a server built with
+`make -C src PERSISTENCE_BACKEND=flatfile DMS_BINARY=/absolute/path/dms_flat`.
+
+The full-server sanitizer journeys that four of these sections name as not covered are
+[#27](https://gitlab.com/max757/duris/-/work_items/27).
+
+## Area-authored coin piles
+
+Get, take and put handle any `ITEM_MONEY` object by type, whatever its vnum, and add a
+picked-up pile to the wallet at once; the player's save writes the wallet. The reported
+pile was `areas/obj/library.obj` #402013, ten platinum that a `P` reset hides inside
+statue #402001. A pile kept in a container is an ordinary item: the save writes it with
+its amount and claims it, and a load reads that amount back. The amount an older server
+kept in the pile's custody row (`coin_payload`) is no longer read, and a pile such a
+server's coin transaction spent stays spent. Only the pile made from a death wallet must
+still be vnum 3.
+
+```sh
+python3 tests/async/test_area_coin_pickup.py   # --server /absolute/path/dms_new reuses a flat-file binary
+python3 tests/async/test_take_coins.py
+python3 tests/async/test_currency_in_memory.py
+python3 tests/async/test_flatfile_item_repository.py
+python3 tests/async/test_live_item_movement_contract.py
+bash tests/async/run_experience_trophy_mysql.sh
+```
+
+`test_area_coin_pickup.py` boots flat-file servers with the real statue and money
+prototypes under new vnums. Each fresh character searches the statue, picks the coins up
+with one of `get coins statue`, `get all.coins statue` and `take all statue`, and saves;
+the test checks a durable ten-platinum wallet, an empty statue and no credit on a second
+pickup. The player-load harness in `run_experience_trophy_mysql.sh` loads a pile whose
+custody row holds an older amount and checks that the saved amount wins.
+
+## Coin put after an auction listing
+
+An auction settlement advances the ownership revision of both the source and the
+destination, and the completion publisher in `src/economy/auction_transaction.c`
+publishes both, keeping a newer source revision that is already published. Publishing only
+the destination left a seller's next `put all.coins bag` refused until a full relog. A
+rejected auction transaction publishes nothing. Money itself moves in memory: the listing
+fee leaves the wallet when the listing is submitted, and coins go into the bag at once.
+
+```sh
+python3 tests/async/test_auction_ownership_publication.py
+python3 tests/async/test_flatfile_auction_coin_put_journey.py   # --server reuses a flat-file binary
+```
+
+The first runs the real publisher with the real ownership runtime and codecs under
+ASan/UBSan: rejected settlement, listing, claim, and a newer source revision kept. The
+journey puts food in a bag, acquires ten platinum, lists another item, puts the remaining
+coins in the bag at once, repeats the transfer, and checks the exact balance after a full
+logout and login; it saves before it reads the wallet from disk. `--expect-regression`
+only fits a server from before the persistence reset. Live play ran on the flat-file
+backend only.
+
+## Copyover state path and failure output
+
+`COPYOVER_STATE_FILE` selects the state file shared by capture, listener-header
+inspection, recovery and cleanup. Unset or empty keeps `copyover.dat`. Docker sets
+`/var/lib/duris/copyover.dat`; the image provisions `/var/lib/duris` as UID/GID 10001 with
+mode 0700. The sibling `.tmp` file uses the same directory and is renamed after all saves
+complete. A failure notice enters the descriptor output queue, so the live output loop
+frames it for Telnet, MCCP, TLS and WebSocket instead of writing plaintext into a
+compressed or encrypted stream.
+
+```sh
+python3 tests/async/test_copyover_failure_runtime.py
+python3 tests/async/test_copyover_save_guards.py
+python3 tests/async/test_copyover_custody.py
+python3 tests/async/test_telnet_output_runtime.py
+python3 tests/async/run_copyover_runtime_journey.py /absolute/path/dms_flat
+# Start the fixture as root; it drops the server to UID/GID 10001.
+python3 tests/async/run_copyover_runtime_journey.py /absolute/path/dms_flat --nonroot
+```
+
+The journey saves a synthetic player, promotes its offline snapshot to staff and restarts
+with the state file's parent directory missing, so the real copyover command fails. The
+same client then runs `look` and an acknowledged `save`, which proves transport and the
+save worker resumed. With the directory created, a second attempt publishes, execs the
+staged binary, recovers and removes the state file, and `look` and `save` run on the
+original socket. MCCP is decoded with zlib, and plaintext in the stream fails the test.
+It runs plain and MCCP, as the ordinary and the non-root fixture.
+
+Not covered: the complete release image (the journeys use a minimal world), and full TLS
+and WebSocket player sessions across a failed or successful copyover; the failure helper
+is tested with separate TLS and WebSocket descriptor queues. A disconnect after a
+successful copyover, once seen with a full-world Docker server and TinTin, was never
+reproduced.
+
+## Corpse bulk loot
+
+`get all corpse` captures the corpse's display name for the operation. When the first
+item is taken, the looter and the room see the start. At the end the player sees the
+sorting line, the haul (only delivered items and the coin amounts actually taken), then
+partial and failure notices. NPC and player corpses present the same way. The haul runs
+at once, in memory: it selects the items, applying the carry count and weight limits as it
+goes, then takes each one. Each selected coin pile gives up only the denominations it held
+when selected, and an item an earlier pickup moved or destroyed is reported as no longer
+available. The next save of the player and of the corpse records where the items went.
+
+```sh
+python3 tests/async/test_corpse_haul.py
+python3 tests/async/test_bulk_get_publication.py
+python3 tests/async/test_money_carry_count.py
+python3 tests/async/test_take_coins.py
+python3 tests/async/run_corpse_haul_journey.py /absolute/path/to/mariadb/server   # in make test-db
+```
+
+`test_corpse_haul.py` runs the production selection, pickup and reporting under
+ASan/UBSan: NPC and player presentation, coin-only and mixed loot, scrap, a later pile
+with nothing to take, the count cap, a malformed sibling cycle, failed live delivery and
+strict NPC publication. The MariaDB journey uses three real accounts: the looter kills
+Raoul in combat, a second player at the corpse sees the haul start, and a third in the
+next room sees nothing. After a real player death it repeats a mixed equipment-and-coin
+haul on the player's corpse. Each stage asserts the haul, observer output, and the saved
+custody and wallet; a reconnect keeps the inventory without replaying the haul.
+
+## Falling: Safe Fall, Climb and breakable floors
+
+- A successful Safe Fall halves the computed impact damage, rounding down; the pre-skill
+  minimum of two gives a successful minimum of one. The strict skill comparison, water
+  landings, flying or levitating characters, mount and rider handling and breakable-floor
+  behavior are unchanged. (The old left shift doubled the damage.)
+- Climb needs the active Climb affect and catches an initiating fall with
+  `clamp(effective_skill, 0, 100) / 2` percent probability, rounded down: at most 50%,
+  whatever the skill bonus. The effective skill still includes the Mental Anguish
+  restriction. Climb does not recheck once a falling event is under way.
+- A lethal impact on a breakable floor ends there: no dispel, no further fall, and the
+  message reports the impact without saying the floor shattered. Death owns corpse
+  placement, and the dead actor does not destroy the floor. A survivor still dispels it
+  and keeps falling.
+
+```sh
+python3 tests/async/test_falling_skills.py
+python3 tests/async/run_falling_skills_journey.py /absolute/path/dms_flat
+python3 tests/async/test_lethal_floor.py
+python3 tests/async/run_lethal_floor_journey.py /absolute/path/dms_flat nonlethal
+python3 tests/async/run_lethal_floor_journey.py /absolute/path/dms_flat lethal
+```
+
+`test_falling_skills.py` runs the production `falling_char` under ASan/UBSan and exhausts
+every 1-100 roll for negative, zero, boundary, ordinary and above-cap skill values:
+success and failure, short and long falls, odd-damage rounding, minimum damage, a lethal
+threshold, water, a breakable floor, mount and rider, flight and levitation, Climb active
+and absent, Mental Anguish, and initial against already-scheduled falls. Its journey walks
+a character off a ledge, lands, saves and reloads in the landing room. The fixture is a
+Thief so login keeps Safe Fall; skill 1 always fails the strict comparison and skill 100
+can fail on rolls 100 and 101, so failed rolls retry up to five times, and increased
+damage fails at once.
+
+`test_lethal_floor.py` runs the production falling function under ASan/UBSan with lethal
+and nonlethal PC, NPC and mounted impacts: no dispel or event after a lethal one, and
+damage, one dispel and one continuation after a living one. In the journey a staff player
+casts a real wall of ice across the shaft and the other falls three steps to pass speed
+43. `nonlethal` checks the impact, the dispel, the wall's removal, the landing and the
+save. `lethal` checks the death, the intact floor, the corpse in the impact room, the
+account-menu release, re-entry, corpse looting (11 of 27 starting items under normal carry
+limits, by exact identity), save, restart, and the kept item IDs and death count. Minimal
+mode skips corpse restoration at startup, so the journey loots before the restart.
+
+Not covered: the mount, rider, lethal-threshold and floor cases run through controlled
+callbacks, not a full-server NPC, mount and rider destruction under sanitizers.
+
+## Generated NPC identity across recovery
+
+Vnums 1255 and 1256 are shared templates. Each instance owns its generated strings, race,
+class, level, size, base statistics, combat bases, damage dice, spell slots, affects,
+aggression, act flags and four coin balances, and reloading only the template lost them.
+The bounded `GNP1` extension carries those fields in the portable state codec, without
+pet ownership or summon timers.
+
+- File copyover version 14 appends the extension after each NPC's inventory. The fixed
+  record layout is unchanged and readers still accept versions 12 and 13.
+- The Redis record codec accepts an optional validated extension after its affects and
+  transport data; ordinary wire records stay byte-compatible.
+- Recovery applies owned strings and base attributes before affects and equipment, then
+  updates derived values and reinstates the saved resource values.
+- File copyover keeps all four coin balances. Redis world capture leaves currency out, and
+  its extension zeroes all four, so neither a stale replay nor a random template wallet
+  comes back.
+- An old snapshot holds nothing to recover the identity from. It stays readable, keeps its
+  instance, and logs a recovery review with vnum, instance and room. A degraded, unowned
+  template is written as an empty extension so it cannot block saving the world. No name
+  is invented and no shared prototype string is freed.
+- The 15-map-NPC loop in `create_randoms()` (`src/item/randomeq.c`) is under
+  `#ifndef RANDOM_ZONES`, and `src/core/defines.h` defines `RANDOM_ZONES`, so it does
+  not run and is not a source of boot growth.
+
+```sh
+python3 tests/async/test_generated_npc_state.py
+python3 tests/async/test_world_recovery_codec.py
+python3 tests/async/test_world_recovery_pipeline.py
+python3 tests/async/test_world_singletons.py
+python3 tests/async/test_copyover_custody.py
+python3 tests/async/test_redis_fault_recovery_live.py
+python3 tests/async/test_redis_floor_store_live.py
+python3 tests/async/test_generated_npc_journey.py <server> file
+python3 tests/async/test_generated_npc_journey.py <mariadb-server> redis
+```
+
+`test_generated_npc_state.py` runs the production capture and apply, the file extension
+helpers and the Redis wire codec under ASan/UBSan for both vnums over five cycles: exact
+encoded state, string ownership, an ordinary control, legacy handling, truncation,
+oversized data and vnum mismatch. The `file` journey sets strings through real staff
+commands and runs two live file copyovers with stable IDs, counts and base stats. The
+`redis` journey uses a private Redis and a MariaDB schema: an acknowledged snapshot, a
+forced crash, a clean reboot and the kept identity. Redis needs a SQL season epoch, so a
+flat-file server cannot run it.
+
+Not covered: the full random-world generator (the journeys use controlled instances of
+1255 and 1256), and generated equipment across a file copyover, which still stores NPC
+equipment by vnum.
+
+## Riposte after a participant is removed
+
+Riposte keeps process-local character identities, the original room and height, and the
+chosen weapon's slot and UID. Before it continues after an attack it resolves both
+characters, requires the same living participants in the original place, and checks the
+live equipment slot before it touches the weapon, so reused character or object storage
+cannot become a follow-up target. The innate second-hand strike checks its captured
+secondary weapon. `hit` rejects dead participants before its first skill read.
+
+```sh
+python3 tests/async/test_riposte_lifetime.py
+```
+
+It runs the complete production `try_riposte` under ASan/UBSan with controlled attack
+callbacks. Ordinary, expert, elite, innate, berserker and follow-up branches keep their
+living attack counts. The destructive cases follow each possible hit: death with cleared
+player storage, extraction, runtime identity reuse, room and height changes, weapon
+removal and weapon identity reuse. Follow-up damage returns false after invalidating
+participants, so the return value is not read as survival. The test also runs `hit`
+through its initial guards only.
+
+Not covered: real reflective damage and a proc-driven extraction during an expert or elite
+riposte on a full sanitizer server.
+
+## Zone purge with followers
+
+`zone_purge` records runtime identities, resolves each again in its original room, and
+checks NPC and morph eligibility right before extraction. Saving `next_in_room` first was
+wrong: `die_follower` can extract the next NPC, a summoned follower, during the call.
+
+```sh
+python3 tests/async/test_zone_purge_lifetime.py
+python3 tests/async/run_zone_purge_journey.py /absolute/path/dms_flat
+```
+
+The test compiles the production `zone_purge` and `die_follower` under ASan/UBSan. Its
+extraction adapter covers retained and immediately freed allocations, recursive follower
+teardown, a moved NPC, reused storage, surviving PCs and morphs, and the object-purge
+policy. Combat-reference cleanup belongs to the adapter, so the test says nothing about
+production `stop_fighting`. The journey runs 15 cycles of a mortal fighting Raoul, an
+immortal purging the opponent, the combat reference clearing, a full zone reset and
+another player command, then a save and reconnect across a restart.
+
+Not covered: the original report, an intermittent full-world crash in room 402003 after
+purging an apprentice and running `zresetfull`, was never attributed to this defect by a
+core or sanitizer trace. A full-world sanitizer journey with a real summoned
+master-and-follower chain would settle it.

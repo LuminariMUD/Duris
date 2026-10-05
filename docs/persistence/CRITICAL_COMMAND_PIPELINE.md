@@ -1,16 +1,35 @@
 # Critical Command Pipeline
 
-Phase 02 non-idempotent gameplay work uses one bounded command contract. Each command
-has a cryptographically random 128-bit operation ID, a schema and payload version, a
+Non-idempotent gameplay work uses one bounded command contract. Each command has a
+cryptographically random 128-bit operation ID, a schema and payload version, a
 categorical source site and deadline, sorted affected entity keys, optional expected
 revisions, and owned payload bytes. It contains no live game pointers, SQL, Redis keys,
 paths, account names, or character names.
 
-The generic destination stores command identity and result in an InnoDB inbox, applies
-a typed test-domain mutation, and creates its notification in the same transaction.
-Production gameplay producers remain disabled until their individual Phase 02 domain
-sessions. Outside mini mode, startup requires the verified critical-command schema;
-failure leaves critical gameplay stopped.
+The destination stores command identity and result in an InnoDB inbox, applies the typed
+domain mutation, and writes its outbox record in the same transaction. Outside mini mode,
+startup requires the verified critical-command schema; failure leaves critical gameplay
+stopped. The legacy item/scalar/large queues, their flat fallback log and the raw SQL
+executor are gone: nothing executes SQL text.
+
+## Domains
+
+| Command | What its transaction commits | Entity keys |
+|---|---|---|
+| Item grant, operator repair and destruction | `item_current_owner`, `item_ownership_ledger` | item + owners |
+| Auction | auction, custody and ledger rows | auction + item + players/accounts |
+| Collector | the listing, its item custody and ledger rows | listing + player/account + items |
+| Shop trade (flat-file backend only) | the trade and its item custody | player + shopkeeper + items |
+| Boon shop (flat-file backend only) | the purchase | player |
+| PvP/combat outcome | `pkill_event`, `pkill_info`, `combat_outcome`, frag and epic ledgers, frag leaderboard | all participant players |
+| Artifact/guild | domain state and outcome ledgers | actor + artifacts + guild |
+| Boon reward | progress and bounded outcomes | player |
+| Zone touch | zone, history, alignment, participants | zone + participants |
+| Epic | `epic_ledger` history only; the balance is the save's ([below](#epic-points-and-frags-live-in-memory)) | player |
+| Session audit | `session_audit_outcome` | player |
+
+Wallets and banks are not commands ([Money lives in memory](#money-lives-in-memory)).
+Fan-out is bounded at 15 participants or artifacts and 32 boon results per command.
 
 ## Acceptance and execution
 
@@ -62,11 +81,12 @@ never dropped because the writer is behind.
 
 ## Lifecycle and diagnostics
 
-Copyover and ordinary shutdown quiesce admission and require a three-second drain
-before later persistence gates. The drain covers commands on the writer and retained
-terminal notifications. Any failed transition resumes admission and leaves the live
-server running. The game loop drains typed completions every two pulses. Submission
-and pulse perform no file or database I/O on the game thread.
+Copyover and shutdown quiesce admission and give commands, then the outbox, a
+three-second drain each. The drain covers commands on the writer and retained terminal
+notifications. A copyover whose drain fails resumes admission and leaves the live server
+running; a shutdown reports the failure and goes on. The game loop drains typed
+completions every two pulses. Submission and pulse perform no file or database I/O on
+the game thread.
 
 `world persistence` exposes one metadata-only `critical_commands` line: state,
 in-flight and publication-pending counts, retained bytes, fences, recent completions,
@@ -93,6 +113,40 @@ totals, and high-water records/bytes.
 Treat a growing oldest age as a stop condition for copyover/shutdown and affected
 gameplay: restore the underlying database or destination and investigate before
 restarting.
+
+## Failure behavior
+
+This is the required result at each boundary;
+`python3 tests/async/test_phase02_capacity_and_crash_gate.py` pins the table.
+
+| Boundary | Failure | Required result |
+|---|---|---|
+| Admission | queue full, coordinator unavailable, key fenced | reject before gameplay success; what the command took out of memory is given back |
+| DB acquire/begin | outage, timeout, pool close | the writer retries at the head of its queue; fences stay |
+| DB apply | deadlock or lock timeout | rollback and retry with the same operation ID |
+| DB commit | connection loss, ambiguous result | reread the inbox by operation ID; never resubmit under a new ID |
+| Completion | stale, malformed, offline player, consumer full | exact ID match; the result is retained until it can be published |
+| Outbox | destination outage, duplicate delivery, restart | retry the same outbox ID; the consumer dedupes; the eighth failure keeps a dead letter |
+| Duplicate | the same operation ID submitted again | attaches to the active operation, or returns the stored result as `already_applied`; no repeated mutation |
+| Crash | process dies with commands queued | they are lost like a save that was not written; nothing is replayed |
+| Copyover | drain timeout | called off; admission resumes and the game keeps running |
+| Shutdown | writer stall or database outage | bounded drain, then the process goes; the log names what was not written |
+
+One operation per client at 25, 50, 100 and 200 clients stays below the 1,024-operation
+cap, and all payloads below the 64 MiB cap. An outage must show bounded overload and retry
+counters, not unbounded memory, threads, connections or log payloads.
+
+## Reconciliation
+
+On a local, development or test database:
+
+```bash
+migrations/reconcile_phase02_domains.sh
+```
+
+Any nonzero mismatch blocks a release. Do not repair with direct SQL: keep the inbox,
+ledger and current-row evidence, find the owning domain, and issue only a guarded
+idempotent command or a reviewed additive repair migration.
 
 Focused validation is `python3 tests/async/test_critical_command_admission.py`,
 `python3 tests/async/test_critical_command_coordinator.py`,

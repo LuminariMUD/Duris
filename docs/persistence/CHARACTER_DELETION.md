@@ -67,20 +67,3 @@ character created does not get its pid.
 
 The flat-file character-deletion harness separately exercises the real journal and
 repository coordinator.
-
-## Protected operator follow-up for issue 200
-
-The historical disposable identity was deliberately omitted from the public
-issue. This checkout has no `.env` or protected evidence identifying that player.
-No production database query or player-data mutation was performed for this fix.
-The historical check remains pending and must not be inferred from a likely name.
-
-An operator should recover the exact account/PID from the original protected
-September 5 investigation, verify that the evidence identifies an authorized
-disposable test character, and inspect its current player row, account mapping,
-and relevant cleanup domains read-only. Keep those identifiers and query results
-out of public issues and pull requests. If absent, record that result privately.
-If present, obtain or confirm cleanup authorization for that exact identity and
-reconcile its current state before deleting it. Legacy partial cleanup and
-unacknowledged commits require this evidence-based review; the new transaction
-boundary does not retroactively repair old partial deletions.

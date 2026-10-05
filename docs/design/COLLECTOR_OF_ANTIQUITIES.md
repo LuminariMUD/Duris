@@ -1,15 +1,13 @@
-# Collector of Antiquities — implementation status
+# Collector of Antiquities
 
 Specification: [discussion #336](https://github.com/Community-Duris/Duris/discussions/336).
 
-**Implementation status: complete and promotion-ready behind the
-disabled-by-default feature switch.** Player deaths are enrolled with captured
-policy, live collector commands and the due worker submit through the critical
-command coordinator, and protected collector NPCs reconcile in registered
-auction rooms. SQL and flat-file authorities both preserve exact item payloads,
-custody, currency, replay, restart, and publication boundaries. Production
-enablement still requires deployment configuration and the live shortened-timer
-journey described in the operational validation section below.
+**Status: implemented on both backends, behind `collector.enabled` (off by default).**
+Player deaths are enrolled with captured policy, live collector commands and the due
+worker submit through the critical command coordinator, and protected collector NPCs
+reconcile in registered auction rooms. SQL and flat-file authorities both preserve exact
+item payloads, custody, currency, replay, restart, and publication boundaries. Live
+journeys cover intake only ([Before enabling](#before-enabling)).
 
 ## Implemented policy
 
@@ -119,30 +117,19 @@ are non-locking and cap the exact item-blob projection; commands will revalidate
 the returned record and payload under the durable transaction locks before any
 mutation.
 
-## Operational follow-up
+## Before enabling
 
-The implementation work described by the original integration checklist is now
-present in both persistence paths: death enrollment captures eligibility and
-policy, corpse and room transitions preserve exact subtree custody, mobile claims
-use a durable claimant path, the service and due worker submit bounded commands,
-and listing, hint, pause/resume, restart, and replay paths are wired through the
-same authority. The remaining work is deployment evidence and controlled
-enablement rather than an unimplemented service entry point:
+`run_mysql_collector_intake_journey.py` (in `make test-db`) and
+`test_flatfile_collector_intake_journey.py` drive a real death and the collection of an
+antiquity from the live corpse, with shortened timers. No live journey yet covers sale
+activation, inspection, purchase, save and reconnect, or expiry ([#23](https://gitlab.com/max757/duris/-/work_items/23)); the
+harnesses below cover them against the repositories. Keep the feature disabled on a
+server until that journey has run there.
 
-1. Run the full #336 shortened-timer journey against disposable MariaDB and
-   flat-file authorities: death, partial loot, corpse decay, collection, sale
-   activation, inspection, purchase, save/reconnect, and expiry. Assert the UID,
-   exact payload, wallet, and source custody after every stage.
-2. Repeat that journey with nested mixed containers, repeated deaths, NPC/mobile
-   claims, copyover/restart, offline players, all registered auction rooms, and
-   faults before and after authority commit and live publication.
-3. Verify the immutable migrations on both supported database engines and keep
-   the collector feature disabled until the deployed config, monitoring, and
-   recovery runbook have been exercised in the target environment.
-4. Treat a failed live publication as a recovery signal: durable authority state
-   remains canonical, the cache invalidation/outbox path must reconcile it before
-   another action is admitted, and operators should inspect the existing health,
-   quarantine, and age metrics.
+Treat a failed live publication as a recovery signal: durable authority state remains
+canonical, the cache invalidation and outbox path must reconcile it before another
+action is admitted, and operators should inspect the health, quarantine, and age
+metrics.
 
 An item a mobile or pet takes from a corpse is not collected: collection looks
 for the live item, and one no longer in the player's corpse counts as claimed.
@@ -182,16 +169,3 @@ MariaDB image and again with `COLLECTOR_OWNER_DB_IMAGE=mysql:8.0`; the isolated
 upgrade test proves type-9 preservation, type-10 admission across all three
 ownership authorities, type-11 rejection, exact rerun behavior, and protection
 against a later shopkeeper-migration narrowing pass.
-
-For production enablement, execute the full #336 journey on both backends with
-shortened timers: actual player death, partial loot, forced corpse decay into
-room custody, collection, sale activation, inspection, purchase, save/reconnect,
-and durable expiry. Assert exact UID, payload, wallet, and source custody after
-every stage. Extend to NPC/mobile claims, nested mixed containers, repeated
-deaths, copyover/restart, offline hints, all auction rooms, faults before and
-after commit/publication, and pickup/purchase/expiry races. Verify migrations
-against an isolated database and responsive pulses with a blocked worker.
-
-Existing corpse/combat journeys are useful regressions but do not substitute for
-the collector-specific journey. GitHub CI is necessary but should be combined
-with the target-environment run before enabling the feature globally.

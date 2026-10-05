@@ -320,7 +320,8 @@ static void artifact_bind_maintenance_update(int vnum, int owner_pid, long timer
 #endif
 }
 
-// populate redis cache at boot
+// Fills the Redis artifact lists. Called once the boot's world is final (game_loop()): an
+// artifact that boot loads after a list is read makes that read stale, and it is dropped.
 void arti_cache_init(void)
 {
 	if (!redis_report_cache_enabled())
@@ -462,6 +463,8 @@ void arti_redis_cache(int type, bool Godlist)
 				 return;
 			 redis_cache_artifact_list(type, Godlist, json);
 			 free(json);
+			 logit(LOG_SYS, "redis: cached artifact list type=%d godlist=%d", type,
+			       Godlist ? 1 : 0);
 		 });
 }
 #else
@@ -1030,8 +1033,6 @@ void setupMortArtiList_sql()
 	qry("INSERT INTO artifacts_mortal (vnum, owned, locType, location, timer, type) SELECT vnum, owned, locType, location, timer, type FROM artifacts WHERE locType=%d OR locType=%d",
 	    ARTIFACT_ON_PC, ARTIFACT_ONCORPSE);
 #endif
-
-	arti_cache_init();
 }
 
 // Loads the artis that were on the ground and owned back into the boot.

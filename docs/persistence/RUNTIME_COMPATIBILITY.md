@@ -6,7 +6,7 @@ read-only compatibility gate, not an automatic migration mechanism.
 
 ## Required installation sequence
 
-For a fresh development database, load the sealed 170-table Session 11 baseline,
+For a fresh development database, load the sealed 170-table baseline,
 adopt that exact fingerprint, and run the immutable migration head:
 
 ```sh

@@ -30,14 +30,10 @@ ANCHORS = (
     ROOT / "docs/operations/incident-response.md",
 )
 
-# Trees excluded from the maintained corpus. `legacy` is inherited upstream
-# reference text this repository does not maintain; `lib` is game data the
-# server reads at runtime (see src/cmd/wikihelp.c and src/account/nanny.c) and
-# is not documentation at all.
-UNMAINTAINED = (
-    "legacy",
-    "lib",
-)
+# Trees excluded from the maintained corpus. `lib` is game data the server
+# reads at runtime (see src/cmd/wikihelp.c and src/account/nanny.c) and is not
+# documentation at all.
+UNMAINTAINED = ("lib",)
 
 
 def maintained_documents() -> tuple[Path, ...]:

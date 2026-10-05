@@ -2,7 +2,7 @@
 
 The project uses focused regression tests in `tests/async/`, plus
 schema/migration checks at `tests/` root. The root `Makefile` provides a single
-developer and CI gate while retaining fast commands for focused work.
+gate while retaining fast commands for focused work.
 
 ## Layout
 
@@ -36,7 +36,7 @@ MySQL or MariaDB instances (development databases only).
 ## Running
 
 ```bash
-# Complete safe developer/CI gate: builds all maintained binaries and tools,
+# Complete gate: builds all maintained binaries and tools,
 # generates world data, then runs Python and native regression tests.
 make test-all
 
@@ -105,7 +105,13 @@ on the ground, and has scripted players play while the first capture runs. It fa
 the generation is not above the old 64 MiB ceiling, if its capture takes a third of its
 300 s, or if a pulse runs past its 250 ms; it then kills the server, and fails unless the
 next boot restores the generation. It prints the generation's size, the capture's time
-and what the restore brought back; `--players N` scales the load.
+and what the restore brought back; `--players N` scales the load. Its first boot is on
+an empty database, so it is also the boot test for SQL queued before the writer starts:
+it fails unless every artifact the boot created has its `artifacts` and
+`artifact_domain_state` rows, each outpost's stored hit points are set and the frag list
+cache is filled. Both boots must cache the six artifact lists (the restored one reads
+them after the restore), and neither may log a `sql job` line (`not queued`, or
+`failed at boot`).
 `run_world_recovery_journey.py`, also in `make test-db`, covers the switch on the mini
 world: off, the alert of an outage, the writer coming back, a crash's restore and the
 defaults. `run_world_restart_journey.py <server> <scenario>` covers what a restart leaves,
@@ -172,31 +178,10 @@ The last category includes inspector compilation and process startup; it is not
 solely gameplay time. Cache keys hash environment values without storing their
 plaintext in manifests. Never check cache artifacts into Git.
 
-### Build-reuse measurement (2026-09-10)
-
-The complete Python gate was measured sequentially in one Ubuntu 24.04 Linux
-container on an Intel Core i7-12700K host, with a four-CPU quota, four regression
-workers, two jobs per server build, GCC 13.3.0 and Python 3.12.3. World data was
-prepared before each gate. The baseline used commit `206c95de` with timing-only
-instrumentation around the original build calls; no assertions or deadlines were
-changed. The candidate adds one focused artifact-cache regression.
-
-| Run | Gate result | Gate wall time | Server builds | Server build time | Artifact validation | Journey/fixture time |
-| --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Before reuse | 438 passed, 0 failed | 1,314.58 s | 5 | 520.39 s | N/A | 595.74 s |
-| Empty artifact cache | 439 passed, 0 failed | 911.18 s | 1 | 113.51 s | 8.91 s | 596.48 s |
-| Retained artifact cache | 439 passed, 0 failed | 780.99 s | 0 | 0.00 s | 4.56 s | 580.60 s |
-
-Build, validation and journey/fixture columns sum the five server journeys;
-they exclude the parallel tests and the separate sanitizer harness. The gate wall
-time includes every discovered test, including that harness. The clean-cache run
-was 30.7% faster overall, and the retained-cache run was 40.6% faster. All five
-journeys used the same one published artifact across both candidate runs.
-
-These are single-run, host-specific measurements, not an SLA. "Empty cache"
-refers to server artifacts; the operating-system page cache was not flushed.
-Initial environment-setup attempts were excluded; the reported runs used the same
-installed dependencies, Linux line endings, hardware and concurrency.
+Measured once on 2026-09-10 (four-CPU Ubuntu 24.04 container, four workers, GCC
+13.3.0): the Python gate took 1,315 s with five server builds, 911 s with an empty
+artifact cache (one build, 30.7% faster) and 781 s with a retained cache (no build,
+40.6% faster). These are single-run, host-specific numbers, not an SLA.
 
 ## Before a merge
 
@@ -260,7 +245,7 @@ iterating, then run every row required by the session or release gate.
 | Dual-engine boot contract | `tests/async/run_runtime_compatibility_mysql.sh` and `RUNTIME_DB_IMAGE=mariadb:10.11 tests/async/run_runtime_compatibility_mysql.sh` | Fresh bootstrap, immutable head, drift rejection, and boot compatibility on MySQL 8 and MariaDB 10.11 | A configured or production upgrade |
 | Lifecycle/privacy | commands below | Pending-policy fail-closed behavior, synthetic archive/export/erasure contracts, and disposable schemas | Controller approval, legal compliance, or enabled canonical mutation |
 | Capacity/fault precursors | commands below | Bounded 25/50/100/200 logical-client codecs and named crash/fault invariants | Representative eight-profile 30-minute 200-player readiness |
-| Final Phase 03 gate | Session 14 specification and its future sanitized report | Only the complete qualified workload, fault, reconciliation, privacy, migration, and restore evidence can support readiness | Nothing until every criterion is executed and recorded |
+| 200-player gate | [`PHASE03_READINESS.md`](../gates/PHASE03_READINESS.md) | Only the complete qualified workload, fault, reconciliation, privacy, migration, and restore evidence can support readiness | Nothing until every criterion is executed and recorded |
 
 ### Load, recovery, and fault contracts
 
@@ -284,7 +269,7 @@ python3 tests/async/test_phase02_capacity_and_crash_gate.py
 The Phase 01 and Phase 02 gates include 25/50/100/200 logical-client waves and bounded
 codec/crash coverage. They are precursor evidence only. They do not perform the eight
 representative workload profiles, 30-minute 200-player holds, production-clone query
-measurements, or complete fault/reconciliation matrix required by Session 14.
+measurements, or complete fault/reconciliation matrix the 200-player gate requires.
 
 ### Account recovery contracts
 
@@ -339,33 +324,15 @@ database. The checked-in lifecycle policy keeps canonical archive, export, and e
 mutation disabled; passing tests prove the guard and synthetic contract, not policy
 approval.
 
-## Phase 03 readiness boundary
-
-Session 14 owns the final readiness claim. Its published outcome and remaining
-limitations are recorded in `docs/records/readiness-report.md`.
-Until that session qualifies isolated representative data, runs all eight profiles at
-25/50/100/200 clients with each 200-client hold lasting at least 30 minutes, injects
-the complete fault matrix, reconciles every durable domain after every run, validates
-privacy/restore behavior, and publishes sanitized evidence, the repository is not qualified
-as 200-player ready. That limitation remains explicit until the complete Session 14 evidence
-exists.
+## 200-player readiness
 
 Neither `make test-all`, `make test-db`, the Phase 01/02 logical-client gates, nor a
-successful server boot may be used as a substitute for that evidence.
-
-The checked-in contract and exact execution procedure are in
-[`PHASE03_READINESS.md`](../gates/PHASE03_READINESS.md). Qualification uses a separate ignored
-configuration and never reads `.env` implicitly:
-
-```bash
-python3 scripts/session14_gate.py \
-  --config tmp/session14-gate/config.json \
-  --preflight-only
-```
-
-`UNQUALIFIED` is a safe refusal, not a failed workload. `QUALIFIED` is also not
-readiness evidence; only a complete `PASS` after every minimum-duration case can
-support the claim.
+successful server boot is 200-player readiness evidence. Only the complete gate in
+[`PHASE03_READINESS.md`](../gates/PHASE03_READINESS.md) is: eight profiles at
+25/50/100/200 clients with 30-minute 200-client holds, the fault matrix, reconciliation
+after every run, and privacy/restore validation on isolated representative data. That
+document holds the procedure and the gate's current state. `UNQUALIFIED` is a safe
+refusal, not a failed workload, and `QUALIFIED` is not readiness evidence either.
 
 ## Conventions for new tests
 

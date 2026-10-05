@@ -72,14 +72,16 @@ class Phase02CapacityCrashGateTests(unittest.TestCase):
                       (SRC / "boon_reward_command.h").read_text())
 
     def test_crash_matrix_covers_every_required_boundary(self):
-        matrix = (ROOT / "docs/gates/PHASE02_CRASH_MATRIX.md").read_text().lower()
-        for boundary in ("admission", "journal append", "journal replay", "db acquire",
-                         "db apply", "db commit", "completion", "outbox", "checkpoint",
-                         "copyover", "shutdown", "legacy fallback"):
-            self.assertIn(boundary, matrix)
-        for result in ("fail closed", "same operation id", "already_applied",
-                       "never execute sql text"):
+        pipeline = (ROOT / "docs/persistence/CRITICAL_COMMAND_PIPELINE.md").read_text()
+        matrix = pipeline[pipeline.index("## Failure behavior"):
+                          pipeline.index("## Reconciliation")].lower()
+        for boundary in ("admission", "db acquire", "db apply", "db commit", "completion",
+                         "outbox", "duplicate", "crash", "copyover", "shutdown"):
+            self.assertIn(f"| {boundary}", matrix)
+        for result in ("reject before gameplay success", "same operation id",
+                       "already_applied", "nothing is replayed"):
             self.assertIn(result.lower(), matrix)
+        self.assertIn("nothing executes sql text", pipeline.lower())
 
 
 if __name__ == "__main__":

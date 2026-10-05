@@ -993,6 +993,7 @@ int run_the_game(int port, int sslport)
 		persistence_alert(AVATAR, "player_save", "pipeline", "none", "none", "start_failed",
 				  "writer thread did not start");
 	}
+	sql_async_boot_done();
 	critical_apply_fn critical_apply = critical_command_repository_apply_from_pool;
 #ifdef __NO_MYSQL__
 	critical_apply = flatfile_critical_command_repository_apply_selected;
@@ -2465,6 +2466,9 @@ void game_loop(int port, int sslport)
 	{
 		reconcile_shopkeepers(copyover_boot != 0);
 		initialize_transport();
+		// The world is final: every artifact that boot, a copyover or a restored
+		// generation loads is in place, so the lists read now are not stale.
+		arti_cache_init();
 	}
 
 	PROFILES(RESET);

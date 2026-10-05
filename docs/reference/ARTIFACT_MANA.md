@@ -22,7 +22,7 @@ Capacity is at most 10^12 units, rate at most 10^9 units per second, and costs m
 be positive and at most 10^12. This bounds the arithmetic without floating-point
 rounding or overflow. Exact-cost actions are affordable. An automatic power also
 requires that its post-payment reserve meet the profile's conservation floor.
-The initial floor is zero; this release does not add an owner-editable spending
+The initial floor is zero; there is no owner-editable spending
 preference. Active powers may consume the protected reserve.
 
 An item without an existing record enrolls **empty**, whether newly generated,

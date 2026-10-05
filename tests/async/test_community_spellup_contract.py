@@ -85,7 +85,7 @@ class CommunitySpellupContractTest(unittest.TestCase):
         ):
             self.assertIn(token, SOURCE, token)
         for token in (
-            "Status: implemented in PR 521",
+            "Status: implemented.",
             "10 seconds through 1 hour",
             "offline-safe self-caster",
             "Cold reboot and copyover",

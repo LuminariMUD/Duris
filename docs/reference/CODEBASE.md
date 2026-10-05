@@ -25,6 +25,7 @@ Related: [ARCHITECTURE.md](ARCHITECTURE.md), [DATABASE.md](DATABASE.md).
 | `net/` | Telnet, TLS, WebSocket, GMCP, MCCP, prompts, and descriptor I/O. |
 | `persistence/`, `sql/`, `redis/` | Typed durability coordinators, MariaDB repositories, and Redis integrations. |
 | `ships/` | Naval simulation, dock economy, and player/NPC ship control. |
+| `telemetry/` | Optional gameplay telemetry: sessions, activity, progression, encounters, and the bounded SQL writer ([contract](../telemetry/CONTRACT.md)). |
 | `world/` | Boot/loading, world lifecycle, movement, maps, events, quests, and global updates. |
 
 ## Core engine
@@ -57,7 +58,7 @@ Related: [ARCHITECTURE.md](ARCHITECTURE.md), [DATABASE.md](DATABASE.md).
 | `src/sql/sql.c`, `src/sql/sql.h` | Main MariaDB connection, target selection, boot schema checks, and retained synchronous queries. |
 | `src/sql/sql_pool.c` | Bounded connection pool used by typed persistence workers. |
 | `src/sql/sql_player.c` | Character row mapping. |
-| `src/player/player_load_pipeline.c`, `src/player/player_save_pipeline.c` | Bounded typed player load and revisioned checkpoint orchestration. |
+| `src/player/player_load_pipeline.c`, `src/player/player_save_pipeline.c`, `src/player/player_save_worker.c` | Bounded typed player load, checkpoint capture, and the one persistence writer. |
 | `src/persistence/critical_command_coordinator.c` | Non-coalescing critical gameplay operations and entity fencing. |
 | `src/core/files.c` | Legacy binary playerfile I/O and pfile utilities. |
 | `src/redis/redis.c`, `src/redis/wizredis.c` | Redis caches, floor deltas, immutable world recovery, and staff diagnostics. |

@@ -5,24 +5,23 @@ runtime serving.
 
 ## Runtime path (what players see)
 
-The `help` command (`do_help`, `src/cmd/actinf.c:6527`) does two things:
+The `help` command (`do_help`, `src/cmd/actinf.c`) does two things:
 
-1. **`wiki_help()`** (`src/cmd/wikihelp.c`) - in database-backed mode, queries the
-   `pages` table on the main MySQL connection:
+1. **`wiki_help()`** (`src/cmd/wikihelp.c`) - in database-backed mode, searches
+   an in-memory catalog of the `pages` table (`help_cache_get()`). A background
+   worker loads the catalog after boot and refreshes it every 60 seconds; the
+   command itself never queries the database, and until the first catalog is
+   published it answers that help is temporarily unavailable. Operation,
+   limits and the staff refresh command are in
+   [help-cache.md](../operations/help-cache.md).
 
-   ```sql
-   SELECT title FROM pages WHERE title LIKE '%<term>%'
-     ORDER BY title ASC LIMIT <N>
-   ```
-
-   (`WIKIHELP_RESULTS_LIMIT` is 100, `src/cmd/wikihelp.h`.) One match renders
+   Titles match case-insensitively by substring, with `%` and `_` wildcards
+   (`WIKIHELP_RESULTS_LIMIT` is 100, `src/cmd/wikihelp.h`). One match renders
    the full entry; multiple matches render the exact match plus "see also"
-   links. User input is escaped (`escape_str()` wraps
-   `mysql_real_escape_string`). Misses are logged to `lib/etc/help`
+   links. Misses are logged to `lib/etc/help`
    (`logit(LOG_HELP, ...)`), which is useful for spotting missing topics.
    Entries are stored wiki-formatted; `dewikify()` converts `[[...]]` markup
-   into ANSI-colored output. Requests are rate-limited by the
-   `help.cooldown.secs` property (default 2s).
+   into ANSI-colored output. There is no browsing cooldown.
 
    Two page features are applied at render time (`src/cmd/wikihelp.c`,
    `wiki_help_single()`):
@@ -102,7 +101,9 @@ lib/information/*          help/                      database
 - motd/news/wizmotd are cached into memory at boot (`src/world/db.c`) and re-read
   only by the immortal `page` command (level 60+, `src/cmd/actcomm.c`). After
   importing new copies, run `page` or restart; otherwise players keep
-  seeing the old text.
+  seeing the old text. Imported help pages reach players at the next automatic
+  refresh, or at once with `page help`; credits, FAQ and wizlist with `page info`
+  ([information-cache.md](../operations/information-cache.md)).
 - Content is hex-encoded into `DELETE`+`INSERT` SQL so arbitrary text survives;
   supports `--dry-run`.
 - `lib/information/help_index` carries one entry per immortal command

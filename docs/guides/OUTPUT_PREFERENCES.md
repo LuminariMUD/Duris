@@ -50,7 +50,7 @@ to the normal deployment backup process. The additive SQL column can remain.
 Preferences follow the existing `database:player_data` lifecycle entry, associated
 character snapshots, backup, recovery, and export/erasure policy. They
 contain display choices only, no credentials, message content, or independent
-identity. This change creates no new retention store or policy decision.
+identity, and add no retention store or policy decision.
 
 ## Validation
 

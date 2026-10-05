@@ -138,6 +138,4 @@ Run the focused test with:
 python3 tests/async/test_telemetry_activity_state.py
 ```
 
-The repository host's full `make -C src` remains a separate integration check and
-requires the project's MySQL build environment; this pure module is intentionally
-not registered in the build manifest by #266.
+The full `make -C src` is a separate integration check.

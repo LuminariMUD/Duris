@@ -52,5 +52,5 @@ functions run with controlled world/visibility boundaries. Fixtures cover all ne
 channels, override/reset, caller Preserve, protected gradients/layout, closed and
 hidden exits, unseen items, magic detection, room/inventory independence, aura
 detection, indoor weather and blindness. `test_color_command.py` exercises every
-exposed color and actual rendered previews. The final live-client walkthrough and
-release evidence are tracked by #289.
+exposed color and actual rendered previews. The live-client walkthrough and release
+evidence are in [COLORIZATION_RELEASE.md](COLORIZATION_RELEASE.md).

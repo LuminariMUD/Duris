@@ -142,5 +142,5 @@ and 175 suppressed delayed drains (87.5% suppressed). This deliberately saturate
 workload measures pending suppression; it
 does not model the natural 1/25 trigger probability or infer PvP balance. Enabled
 timing is a throughput change even when effect power and trigger probability are
-preserved. Sustained mana use and later artifact-specific rollout evidence remain
-tracked by #297.
+preserved. Sustained mana use and the artifact-specific rollout evidence are in the
+[verification record](../testing/ITEM_ABILITY_ROLLOUT.md).

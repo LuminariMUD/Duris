@@ -1,8 +1,9 @@
 # Project website
 
-The [DurisMUD project hub](https://community-duris.github.io/Duris/) is published
-from this repository with GitHub Pages and GitHub Actions. It provides a project
-index, a searchable documentation library, and a reader for selected guides.
+The DurisMUD project hub is a static site built from this repository: a project
+index, a searchable documentation library, and a reader for selected guides. Nothing
+publishes it from this repository today ([#25](https://gitlab.com/max757/duris/-/work_items/25)); it is built and tested
+locally. [GitHub publishing](#github-publishing) is the recipe it was published with.
 
 ## Content comes from the repository
 
@@ -25,7 +26,7 @@ category choices can be shared through the URL.
 
 ## Diagrams
 
-The [Diagrams gallery](https://community-duris.github.io/Duris/diagrams/) displays
+The Diagrams gallery (`/diagrams/`) displays
 the standalone HTML diagrams tracked under `docs/diagrams/`. The build discovers
 these files automatically, reads each diagram's heading and SVG description for
 the gallery, and publishes the original HTML unchanged. Each diagram has an
@@ -39,7 +40,7 @@ scripts; their full-size pages retain the original document behavior.
 
 ## Power Atlas
 
-The [Power Atlas](https://community-duris.github.io/Duris/power-atlas/) publishes
+The Power Atlas (`/power-atlas/`) publishes
 the supplied combat-model report as an interactive page. `site/power-atlas/`
 contains its report content, styles, interaction code, and unchanged JSON snapshot.
 The snapshot covers 192 race/class combinations, 711 single-class builds, 56
@@ -84,6 +85,7 @@ JavaScript; search, filters, copying, and diagram rendering progressively enhanc
 
 ## GitHub publishing
 
+No pipeline runs this workflow today.
 `.github/workflows/pages.yml` builds and tests on pull requests and on pushes to
 `master` that change documentation, the README, site files, or the publishing
 workflow. A successful build on `master` deploys through the protected

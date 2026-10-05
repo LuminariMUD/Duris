@@ -136,8 +136,8 @@ cycle, retention, and provisional fields is incomplete.
 The report role should have `SELECT` only on the two `telemetry_reward_*`
 tables. The projection worker role needs `SELECT` on the listed source
 tables and write access only to the two projection tables. Neither role needs
-the critical outbox delivered-state columns. Deployment grants are external
-to this change; the CLI never creates users, grants, tables, or migrations.
+the critical outbox delivered-state columns. Deployment grants are external;
+the CLI never creates users, grants, tables, or migrations.
 
 ## Failure and lifecycle behavior
 

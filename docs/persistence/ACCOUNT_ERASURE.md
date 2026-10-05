@@ -2,16 +2,16 @@
 
 Canonical account erasure is **not enabled**. The lifecycle manifest has no approved
 destructive actions, every store's controller decision remains pending, and inspection
-reports all 194 stores as `retain` with `request_state=blocked_by_policy`.
+reports every store as `retain` with `request_state=blocked_by_policy`.
 
-Session 10 defines the safety boundary that any future approved adapter must satisfy.
+This document defines the safety boundary that any future approved adapter must satisfy.
 It is an engineering control, not legal advice or approval to erase records.
 
 ## Player-initiated live account deletion
 
 Account-menu option 7 implements a narrower operational deletion path. It permanently
 removes the selected persistence backend's login credential, character authorities,
-and live character/account state. It does **not** activate the canonical 194-store
+and live character/account state. It does **not** activate the canonical
 privacy-erasure manifest, create a legal erasure tombstone, or claim that retained
 history and backups contain no direct identifiers.
 
@@ -50,7 +50,7 @@ tests exercise this required transition order:
 1. Password reauthentication and owner-token creation.
 2. A separate exact request-bound confirmation that stores no confirmation phrase.
 3. Fence account/character mutations and disconnect owned descriptors.
-4. Drain Phase 01 snapshots and Phase 02 commands; reconcile all value domains.
+4. Drain queued saves and critical commands; reconcile all value domains.
 5. Apply every store's approved dependency-ordered action through bounded domain
    adapters. Retained stores cannot be mutated; value stores require transactional
    disposition.

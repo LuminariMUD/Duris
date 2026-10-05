@@ -16,8 +16,8 @@ The short version is:
   first be retained in a `legacy_import_*` archive;
 - source values that the current runtime schema cannot represent are retained in a raw
   archive before a compatible runtime projection is produced; and
-- the game still requires an exact 174-table positive runtime contract. Extra imported
-  tables do not weaken that check.
+- the game still requires its exact positive runtime contract. Extra imported tables do
+  not weaken that check.
 
 Never point this process at production. The importer deliberately accepts only a loopback,
 non-production target whose exact `host/database` pair appears in `DB_ALLOWED_TARGETS`.
@@ -27,7 +27,7 @@ non-production target whose exact `host/database` pair appears in `DB_ALLOWED_TA
 | Term | Meaning |
 | --- | --- |
 | Source table | A base table restored directly from the supplied dump. |
-| Runtime table | One of the 174 canonical game tables required by the current server. |
+| Runtime table | One of the canonical game tables required by the current server. |
 | Extension table | A source table used by the website, administration tools, or an older subsystem, but not owned by the game runtime contract. |
 | Preservation archive | A `legacy_import_*` table containing source rows that cannot remain verbatim in a canonical runtime table. |
 | Legacy migration | The additive 145-step upgrade in `migrations/run_migration.sh`. |
@@ -154,13 +154,11 @@ canonical table is the source of truth for current server operation.
 
 The current schema contract has two layers:
 
-1. The Session 11 baseline requires a positive inventory of 170 canonical tables.
-2. Immutable migrations add `lookup_dataset_state`, `season_reset_state`,
-   `server_reboots`, and `kingdom_realms`, yielding 174 runtime tables. The head
-   is `0008_statistics_date_index`; migrations 0007 and 0008 modify existing
-   runtime tables without changing that count. Convergence must reach 0008:
-   both the head's ledger identity and the 174-table inventory are enforced at
-   boot.
+1. The baseline requires a positive inventory of 170 canonical tables.
+2. Immutable migrations add, change and drop tables after it.
+   [RUNTIME_COMPATIBILITY.md](RUNTIME_COMPATIBILITY.md) states the current head and
+   table count. Convergence must reach that head: both its ledger identity and the
+   full runtime inventory are enforced at boot.
 
 The baseline and runtime checks ask whether every required table and its expected metadata
 is present. They do not require unrelated tables to be absent. This distinction lets a
@@ -195,7 +193,7 @@ lifecycle rows.
 | Source/runtime overlap | 112 tables |
 | Source extension inventory | 78 tables |
 | Immediate post-migration inventory | 254 base tables, 1,773,767 rows |
-| Runtime contract | 173 tables; migration count 5 at `0005_level_cap_singleton`, the head on the run date. The current head is `0008_statistics_date_index` at count 8 with 174 runtime tables; a repeat of this import today must converge to it. |
+| Runtime contract | 173 tables; migration count 5 at `0005_level_cap_singleton`, the head on the run date. A repeat of this import today must converge to the current head. |
 | Added preservation archives | Three: two item-description archives and the reboot archive |
 | Missing source tables | None |
 | Unexpected source row reductions | None |

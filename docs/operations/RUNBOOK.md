@@ -373,9 +373,8 @@ not a complete count of late callbacks and may belong to an NPC.
 
 For casting complaints, correlate a controlled mortal cast's intended duration,
 callback timing, completion/abort, and queued input. `event_spellcast()` schedules
-continuations relative to actual execution, so segment lateness can accumulate.
-The casting/wait mismatch is tracked in
-[#186](https://github.com/Community-Duris/Duris/issues/186). Aggregate scheduler
+continuations relative to actual execution, so segment lateness can accumulate
+([#14](https://gitlab.com/max757/duris/-/work_items/14)). Aggregate scheduler
 samples alone do not establish a particular player's delay or justify changing
 NPC cadence, priority ordering, or budgets.
 
@@ -798,25 +797,12 @@ The backup command selects the explicit persistence mode and applies the
 operator-approved shared policy. See [BACKUPS.md](BACKUPS.md) for independent
 scheduling, full generations, bounded retention and verified isolated restores.
 
-## Phase 03 final readiness gate
+## 200-player readiness gate
 
-The integrated 200-player gate requires a separately configured, backed-up,
-production-unreachable representative clone, approved RPO/lifecycle policy identities,
-200 sanitized test identities, isolated non-default ports, and reversible deployment
-adapters. It never reads `.env` implicitly.
-
-Run preflight before any workload:
-
-```bash
-python3 scripts/session14_gate.py \
-  --config tmp/session14-gate/config.json \
-  --preflight-only
-```
-
-Follow [`PHASE03_READINESS.md`](../gates/PHASE03_READINESS.md) only after preflight is
-`QUALIFIED`. Treat `QUALIFIED` as permission to begin the isolated gate, not as a
-readiness result. Every injected fault must be torn down and the target restored before
-retry. A repair invalidates affected evidence and requires affected plus complete reruns.
+The integrated gate needs a separately configured, backed-up, production-unreachable
+representative clone and never reads `.env` implicitly. Its inputs, preflight, procedure
+and current state are in [`PHASE03_READINESS.md`](../gates/PHASE03_READINESS.md). Treat a
+`QUALIFIED` preflight as permission to begin the isolated gate, not as a readiness result.
 
 ## Disabling a DurisWeb hook
 
@@ -900,15 +886,14 @@ the timer penalty.
   TLS with an absolute trusted `DB_SSL_CA` whenever database traffic leaves loopback,
   a `BUILD_PROFILE=production` binary, a real listener TLS certificate linked as
   `duris.crt`/`duris.key`, secrets supplied through the protected environment or secret
-  store, mode-0700 journal/state directories, and regularly restored and verified
-  backups of MySQL, legacy player/account material, journals, and erasure tombstones.
+  store, mode-0700 receipt/state directories, and regularly restored and verified
+  backups of MySQL, legacy player/account material, receipts, and erasure tombstones.
   Credentials never belong in source files.
 
 ### Release boundary
 
-This repository declares no production hosting provider, deployment trigger, service
-account, or public URL. Release authorization and platform rollback are operator-owned
-decisions made outside it. Repository-owned validation ends at the workflows in
-`.github/workflows/`; their local equivalents are `./scripts/format.sh --check`,
-`python3 tests/async/test_compiler_warning_profile.py`, `make test-all`, and
-`make security-check`.
+This repository declares no deployment trigger or service account. Release
+authorization and platform rollback are operator-owned decisions made outside it.
+Repository-owned validation is the local gate: `./scripts/format.sh --all --check`,
+`make test-all`, `make test-db`, and `make security-check`
+([TESTING.md](../guides/TESTING.md#before-a-merge)). No hosted pipeline runs.
