@@ -11,7 +11,7 @@ Updated 2026-10-05. A new session starts here, then reads the phase it continues
 
 | Phase | Item | State |
 |---|---|---|
-| 1 | #10 | In review as !11, on `fix/10-boot-sql-discarded`. Built, gated and tagged `log-review/phase-1-review-0`. Nothing is open; it waits for its review and merge. |
+| 1 | #10 | In review as !11, on `fix/10-boot-sql-discarded`. Review round 1 found one defect; it is fixed and gated, and the head is tagged `log-review/phase-1-review-1`. Nothing is open; it waits for its merge. |
 | 2 | #13 | Not started. |
 | 3 | #11 | Not started. |
 | 4 | #14 | Not started. |
@@ -80,8 +80,8 @@ Two things to keep in mind across phases:
 
 ## Phase 1: SQL queued during boot is discarded (#10)
 
-**Status: in review as !11.** Built and gated on `fix/10-boot-sql-discarded`; "State of
-the work" at the end of this phase has the details.
+**Status: in review as !11, review round 1 fixed.** Built and gated on
+`fix/10-boot-sql-discarded`; "State of the work" at the end of this phase has the details.
 
 **Checked.** `submit()` in `src/sql/sql_async.c` logs `sql job not queued` and drops the job
 when the writer returns `unavailable`. The writer starts at `comm.c` L990, after `boot_db()`
@@ -122,7 +122,12 @@ issues no query after boot, because it stops at the writer start.
   `finished` with its outcome and its call returns true.
 - `sql_async_boot_done()` clears the flag. `run_the_game()` calls it once, right after the
   `player_save_pipeline_init()` attempt, whether or not the writer started.
-- Nothing else in `src/` changed. No caller changed.
+- No caller of `sql_queue()` or `sql_read()` changed.
+- Review round 1: `arti_cache_init()` is called from `game_loop()`, after the recovery block
+  and the transports, and no longer from `setupMortArtiList_sql()`. Read in the middle of
+  boot, the six artifact lists were dropped as stale as soon as boot loaded an artifact
+  afterwards: an owned one from its row, or all of them when a generation or a copyover is
+  restored. So no restart cached them. `arti_redis_cache()` logs each list it caches.
 - Nothing inside a transaction on `DB` queues SQL during boot (the pwipe epoch, the lookup
   publication, the account reward and saved-item paths were read), so the transaction the
   job opens never commits another one early.
@@ -138,22 +143,26 @@ issues no query after boot, because it stops at the writer start.
    `test_sql_async.py` covers boot mode before it starts the writer: a write is applied at
    once on `DB`, a failed write returns false, a read and a failed read are delivered on
    the first pulse, and nothing after `sql_async_boot_done()` is applied on the game
-   thread.
+   thread. Since round 1 `test_boot_log_hygiene.py` also pins that `game_loop()` reads the
+   artifact lists after the restores and that nothing in `artifact.c` does.
 3. Done, and simpler than planned: no new leg. The first boot of
    `test_mysql_world_capture_journey.py` already is a full-world boot on an empty
    disposable MariaDB with Redis, so the assertions were added there
    (`boot_sql_missing()`) and the gate gains no second full-world boot. It asserts:
-   - no `sql job not queued` line in `logs/log/file`, after the first boot and again after
-     the crash-recovery boot;
+   - no `sql job` line in `logs/log/file` (not queued, or failed at boot), after the first
+     boot and again after the crash-recovery boot;
    - `artifacts` and `artifact_domain_state` each hold exactly the vnums of the
      "Creating entry" lines in `logs/log/artifact` (42 in the run on the fixed build);
    - every outpost's stored hit points are above the 0 its row is created with. The
      stored value is the building's by construction (`set_current_outpost_hitpoints()`),
      so a nonzero value shows the boot write landed;
-   - "cached fraglist" is in `logs/log/sys`.
+   - "cached fraglist" is in `logs/log/sys`;
+   - since round 1, six "cached artifact list" lines are in `logs/log/sys` after the first
+     boot and six more after the crash-recovery boot.
 
-   The six artifact list reads are not asserted. They were checked by hand on the fixed
-   build: the three immortal lists in Redis held 12, 25 and 5 artifacts, 42 together.
+   Before round 1 the artifact lists were checked by hand only (12, 25 and 5 artifacts in
+   the three immortal lists). That was a cold boot on an empty database, the one case that
+   cached them.
 4. Done. `test_flatfile_boot_preflight.py` already boots with a missing world and requires
    a controlled exit instead of `SIGABRT`. It passes unchanged: the writer start did not
    move, so no new test was needed.
@@ -167,24 +176,39 @@ checks.
 **State of the work**
 
 - Branch `fix/10-boot-sql-discarded`, from `master` at `4f39cdf3e`. `92fce27db` is the
-  fix with its tests and documents; the commit after it is this file.
-- Merge request !11 closes #10. The tag `log-review/phase-1-review-0` is the head its
-  review reads.
-- The gate ran once on 2026-10-05, on the tree that became `92fce27db`:
+  fix with its tests and documents, and `16a99081b` the first version of this file.
+- Review round 1 is `ee927e1a7` (the artifact lists, with their tests) and `ad529fd16` (a
+  harness stub that commit needed). This file's commit follows them.
+- The branch also carries two documentation commits that are not part of #10:
+  `62e475907` and `a9bdc74f6`.
+- Merge request !11 closes #10. The tag `log-review/phase-1-review-0` is the head the
+  review read, and `log-review/phase-1-review-1` the head with its fix.
+- The gate ran once on 2026-10-05 on `a9bdc74f6`, the tree this file was added to:
   - `./scripts/format.sh --check`: clean.
   - `make -C src`: built.
-  - `make test-all`: 669 passed, 0 failed, in 9 minutes.
-  - `make test-db`: 45 of 45 passed in 273 s. `world_capture`, which carries the boot
-    checks, took 97 s.
-- Before the fix, the same journey failed on the `sql job not queued` lines.
+  - `make test-all`: 669 passed, 0 failed, in 8 minutes.
+  - `make test-db`: 45 of 45 passed in 267 s. `world_capture`, which carries the boot
+    checks, took 92 s.
+- A gate run on `ee927e1a7` alone had failed one test: `test_world_recovery_pipeline.py`
+  compiles the recovery block of `game_loop()` and did not link without a stub for
+  `arti_cache_init()`. `ad529fd16` adds the stub.
+- The first gate run, on the tree that became `92fce27db`, was 669 passed and 45 of 45.
+  Before that fix, the journey failed on the `sql job not queued` lines.
+- Round 1 by hand on the fixed build: a clean restart caches the six lists as a crash
+  restore does. A build with the read back in the middle of boot and the new log line kept
+  cached none after a crash restore, so the journey's second-boot check fails without the
+  fix.
+- The lists carry a 15-minute TTL (`artifact_cache_ttl_seconds`), so the boot fill is a
+  warm-up: once it expires, a list returns when `artifact list` is run in game.
 - Also run by hand, because the journeys boot empty databases: the fixed build booted on a
   copy of the long-lived development database (97 artifact rows, outposts already at
   300,000 hit points). It wrote no `sql job` line of either kind, updated 47 artifact
   rows, left `artifact_domain_state` agreeing with `artifacts` on every row, cached the
   frag list and stopped cleanly.
-- Nothing is open. A review round's fixes go on the same branch, with the tag
-  `log-review/phase-1-review-1` on the new head. When !11 lands, set this phase's row in
-  "Status" to landed.
+- `master` moved during the review: `6f167e9f9` and `41e11b10f` repair two journeys (the
+  world quest dual-backend run, and the playtime journey's copyover bound, which can fail
+  in a loaded `make test-db`). The branch does not have them; the merge brings them in.
+- Nothing is open. When !11 lands, set this phase's row in "Status" to landed.
 
 ---
 
