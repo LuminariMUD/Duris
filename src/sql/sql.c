@@ -58,6 +58,7 @@
 #include <vector>
 #include "account/account.h"
 #include "account/account_reward.h"
+#include "net/gmcp.h"
 #include "net/poll.h"
 #include "account/multiplay_whitelist.h"
 #include "guild/assocs.h"
@@ -2726,6 +2727,10 @@ void sql_world_quest_history_load(P_char ch)
 				      }
 			      }
 			      world_quest_histories[pid] = std::move(history);
+			      // The Quest.Status sent on entering the game could not carry the
+			      // count: this read was still out.
+			      if (P_char online = find_player_by_pid(pid))
+				      gmcp_quest_status(online);
 		      }))
 		world_quest_histories_loading.erase(pid);
 }
@@ -2785,10 +2790,7 @@ int sql_world_quest_can_do_another(P_char ch)
 
 	const world_quest_history *history = world_quest_history_of(ch);
 	if (!history)
-	{
-		logit(LOG_DEBUG, "sql_world_quest_can_do_another: history not loaded yet");
 		return -1;
-	}
 	int done_today = history->today_total;
 	if (GET_LEVEL(ch) < 50)
 	{
