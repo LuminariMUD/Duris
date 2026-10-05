@@ -4274,28 +4274,26 @@ int process_input(P_desc t)
 	buf = t->buf;
 
 	/*
-	 * Read in some stuff
+	 * Read in some stuff. A peer that closed its connection (end of file, a reset, or
+	 * TLS ended without a close) is not an error: close_socket() logs the disconnect.
 	 */
 	if (t->sslses)
 	{
 		thisround =
 			gnutls_record_recv(t->sslses, buf + begin, MAX_QUEUE_LENGTH - begin - 1);
 		if (!thisround)
-		{
-			logit(LOG_COMM,
-			      "EOF encountered on socket read for %s [host=%s desc=%d connected=%d ssl=%s].",
-			      (t->character) ? GET_NAME(t->character) : "NOCHAR",
-			      *t->host ? t->host : "unknown", t->descriptor, t->connected,
-			      t->sslses ? "yes" : "no");
 			return (-1);
-		}
 		else if (thisround < 0)
 		{
 			if (thisround != GNUTLS_E_AGAIN && thisround != GNUTLS_E_INTERRUPTED)
 			{
-				logit(LOG_COMM, "process_input() CON_%d %s Read: %d Error: %s",
-				      t->connected, (t->character) ? GET_NAME(t->character) : "",
-				      thisround, gnutls_strerror(thisround));
+				if (thisround != GNUTLS_E_PREMATURE_TERMINATION &&
+				    thisround != GNUTLS_E_PULL_ERROR)
+					logit(LOG_COMM,
+					      "process_input() CON_%d %s Read: %d Error: %s",
+					      t->connected,
+					      (t->character) ? GET_NAME(t->character) : "",
+					      thisround, gnutls_strerror(thisround));
 				return (-1);
 			}
 			return 0;
@@ -4305,21 +4303,17 @@ int process_input(P_desc t)
 	{
 		thisround = read(t->descriptor, buf + begin, MAX_QUEUE_LENGTH - begin - 1);
 		if (!thisround)
-		{
-			logit(LOG_COMM,
-			      "EOF encountered on socket read for %s [host=%s desc=%d connected=%d ssl=%s].",
-			      (t->character) ? GET_NAME(t->character) : "NOCHAR",
-			      *t->host ? t->host : "unknown", t->descriptor, t->connected,
-			      t->sslses ? "yes" : "no");
 			return (-1);
-		}
 		else if (thisround < 0)
 		{
 			if (errno != EAGAIN)
 			{
-				logit(LOG_COMM, "process_input() CON_%d %s Read: %d Error: %d",
-				      t->connected, (t->character) ? GET_NAME(t->character) : "",
-				      thisround, errno);
+				if (errno != ECONNRESET)
+					logit(LOG_COMM,
+					      "process_input() CON_%d %s Read: %d Error: %d",
+					      t->connected,
+					      (t->character) ? GET_NAME(t->character) : "",
+					      thisround, errno);
 				return (-1);
 			}
 			return 0;

@@ -77,6 +77,16 @@ for name, line in (("actoth.c", '"%s has quit in [%d]."'),
     assert not re.search(r'\bEST\b', text), name
 
 
+# --- a peer that closes its connection is not a read error -------------------
+# End of file, a reset and TLS ended without a close each wrote a line from the read,
+# beside the one close_socket() writes for every descriptor it closes.
+process_input = (SRC / "comm.c").read_text().split("int process_input(P_desc t)", 1)[1]
+process_input = process_input.split("\n}\n", 1)[0]
+assert "EOF encountered" not in process_input
+for closed in ("GNUTLS_E_PREMATURE_TERMINATION", "GNUTLS_E_PULL_ERROR", "ECONNRESET"):
+    assert contains(process_input, "!= " + closed), closed
+
+
 # --- the donation subscriber must not block the game loop --------------------
 # A blocking Redis subscriber socket stalled every idle pulse and showed up as
 # a once-per-second NEVENT SLOW entry in logs/log/status.
