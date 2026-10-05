@@ -97,10 +97,12 @@ lookup = sql[sql.rindex("string get_mud_info(const char *name)"):].split("\n}\n"
 assert contains(lookup, "mud_info.find(") and "logit(" not in lookup
 
 
-# --- a shutdown with profiling off reports no profile -------------------------
-# Every shutdown wrote a "Profile info" line of zeros for each event function.
+# --- a shutdown that collected no profile reports none ------------------------
+# Every shutdown wrote a "Profile info" line of zeros for each event function. A run that
+# was switched off before the stop collected something, and is still written.
 shutdown = (SRC / "comm.c").read_text().split("int run_the_game(int port, int sslport)", 1)[1]
-profile = shutdown[index(shutdown, "if (do_profile)"):index(shutdown, "save_func_call_info();")]
+profile = shutdown[index(shutdown, "if (event_loop_profile.calls > 0)"):
+                   index(shutdown, "save_func_call_info();")]
 assert shutdown.count("save_func_call_info();") == 1 and contains(profile, "PROFILES(SAVE);")
 
 

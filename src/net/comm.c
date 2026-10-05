@@ -2633,8 +2633,9 @@ resume_game_loop:
 	}
 
 #ifdef DO_PROFILE
-	// With profiling off there is nothing to report but zeros.
-	if (do_profile)
+	// A server that never profiled has nothing to report but zeros. A run that was
+	// switched off before the stop is still written.
+	if (event_loop_profile.calls > 0)
 	{
 		PROFILES(SAVE);
 		save_func_call_info();
