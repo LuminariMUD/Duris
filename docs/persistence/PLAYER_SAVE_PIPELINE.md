@@ -38,6 +38,13 @@ outcome is unknown is reported instead of retried. Whatever still queries the ga
 connection while the loop runs is counted (`game_loop_queries` in `world persistence`) and
 logged once per site (`game loop query site ...` in `logs/log/status`).
 
+Boot is the exception. The writer starts only after every fatal world-data load, so until
+then (`sql_async_boot_done()` in `run_the_game()`) the same calls apply their SQL at once on
+the game thread's connection, as the rest of boot queries it. A write that fails is logged
+(`sql job failed at boot` in `logs/log/file`) and its call returns false. A read's callback
+runs on the first pulse. After the writer start, a job the writer refuses is logged
+(`sql job not queued`) and dropped.
+
 ## What a save writes
 
 A player save writes the wallet, epic points, frags and old frags with the rest of the

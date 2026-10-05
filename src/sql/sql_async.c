@@ -25,6 +25,9 @@ struct finished_read
 	sql_rows rows;
 };
 
+// Until the writer has been started nothing can be queued on it: a job is applied at
+// once on the game thread's connection, as the rest of boot queries it.
+bool booting = true;
 // Game thread only: each job is its own owner, so none replaces another.
 uint64_t sequence = 0;
 std::mutex finished_mutex;
@@ -55,10 +58,24 @@ bool submit(struct persistence_query_site site, size_t bytes, persistence_job_wr
 	return false;
 }
 
+bool apply_at_boot(struct persistence_query_site site, const sql_work &work)
+{
+	const player_save_apply_result applied = sql_work_repository_apply(DB, work);
+	if (applied.outcome == player_save_apply_outcome::applied)
+		return true;
+	logit(LOG_FILE, "sql job failed at boot: %s:%d %s error=%u", site.file, site.line,
+	      site.function, applied.error_code);
+	return false;
+}
+
 bool queue(struct persistence_query_site site, size_t bytes, sql_work work)
 {
-	return DB && submit(site, bytes, [work = std::move(work)]()
-			    { return sql_work_repository_apply_from_pool(work); });
+	if (!DB)
+		return false;
+	if (booting)
+		return apply_at_boot(site, work);
+	return submit(site, bytes, [work = std::move(work)]()
+		      { return sql_work_repository_apply_from_pool(work); });
 }
 
 P_char live_character(P_char expected, uint64_t runtime_id)
@@ -121,6 +138,15 @@ bool sql_read_work_at(struct persistence_query_site site, sql_read_work_fn work,
 {
 	if (!work || !done || !DB)
 		return false;
+	if (booting)
+	{
+		sql_rows rows;
+		const bool ok = apply_at_boot(site, [&](MYSQL *connection)
+					      { return work(connection, &rows); });
+		std::lock_guard<std::mutex> lock(finished_mutex);
+		finished.push_back({ std::move(done), ok, std::move(rows) });
+		return true;
+	}
 	return submit(
 		site, sizeof(work),
 		[work = std::move(work), done = std::move(done)]()
@@ -189,6 +215,11 @@ bool sql_read_for_at(struct persistence_query_site site, P_char ch, std::string 
 	       sql_read_work_for_at(
 		       site, ch, [query = std::move(query)](MYSQL *connection, sql_rows *rows)
 		       { return sql_select(connection, query, rows); }, std::move(done));
+}
+
+void sql_async_boot_done(void)
+{
+	booting = false;
 }
 
 size_t sql_async_pulse(void)

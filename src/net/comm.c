@@ -993,6 +993,7 @@ int run_the_game(int port, int sslport)
 		persistence_alert(AVATAR, "player_save", "pipeline", "none", "none", "start_failed",
 				  "writer thread did not start");
 	}
+	sql_async_boot_done();
 	critical_apply_fn critical_apply = critical_command_repository_apply_from_pool;
 #ifdef __NO_MYSQL__
 	critical_apply = flatfile_critical_command_repository_apply_selected;

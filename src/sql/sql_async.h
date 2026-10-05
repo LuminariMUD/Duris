@@ -16,6 +16,10 @@
  * write queued before it; its rows come back to the game thread on a later pulse
  * (sql_async_pulse()). Without a database (the flat-file backend) nothing is queued
  * and the calls return false.
+ *
+ * During boot the writer is not running yet. Until sql_async_boot_done() a write is
+ * applied before its call returns, on the game thread's connection, and returns false
+ * when it failed. A read runs there too; its callback still waits for the first pulse.
  */
 
 // The query, formatted on the game thread.
@@ -42,7 +46,9 @@ bool sql_read_work_at(struct persistence_query_site site, sql_read_work_fn work,
 		      std::function<void(bool ok, const sql_rows &rows)> done);
 bool sql_read_work_for_at(struct persistence_query_site site, P_char ch, sql_read_work_fn work,
 			  std::function<void(P_char ch, const sql_rows &rows)> done);
-// Runs the callbacks of the reads the writer finished. Returns how many ran.
+// Boot is over: called once, where the writer is started.
+void sql_async_boot_done(void);
+// Runs the callbacks of the reads that finished. Returns how many ran.
 size_t sql_async_pulse(void);
 
 #define sql_queue(...) sql_queue_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)

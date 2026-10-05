@@ -7,6 +7,7 @@
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_repository.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "sql/sql_pool.h"
 #include "sql/zone_story_quest_state_repository.h"
 
@@ -101,6 +102,7 @@ int main()
 				 "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'"),
 		mysql_error(DB));
 
+	sql_async_boot_done();
 	// 96 KiB, with quotes, backslashes and newlines that escaping lengthens.
 	std::string state;
 	while (state.size() < 96 * 1024)

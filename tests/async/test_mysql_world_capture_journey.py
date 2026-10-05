@@ -7,6 +7,10 @@ on, and with enough objects on the ground to put a generation above the old 64 M
 as staging's world is. Mortals on their own accounts play (they look, list what they carry
 and save) while the first capture runs.
 
+That first boot is on an empty database, so it also shows that a boot writes the SQL it
+queues before its writer starts (work item #10): see boot_sql_missing(). Neither boot may
+log `sql job not queued`.
+
 The capture reports itself in the line that acknowledges its generation:
 - the generation, above 64 MiB, was published;
 - the capture took under a third of its 300 s (it took two thirds on an idle server);
@@ -43,6 +47,7 @@ ACKNOWLEDGED = (r'world recovery generation and floor handoff acknowledged seque
 RESTORED = (r'restored world recovery generation sequence=(\d+) mobs=(\d+) objs=(\d+) '
             r'doors=(\d+) zones=(\d+)')
 REHYDRATED = r'rehydrated recovered NPC zone items matched_mobs=(\d+) loaded_items=(\d+)'
+CREATED = r'arti_update_sql: Creating entry: vnum: (\d+),'
 
 
 class Player(budget.Mortal):
@@ -79,6 +84,25 @@ def crowded_world(runtime):
     line = f'O 0 {EXTRA_OBJECT} 9999 {EXTRA_ROOM} 100 0 0 0'
     (areas / 'world.zon').write_text('\n'.join(zones[:end] + [line] * EXTRA_OBJECTS +
                                                zones[end:]), encoding='latin-1')
+
+
+def boot_sql_missing(sql, log):
+    """What the first boot queued before its writer started and did not write.
+
+    The database began empty. Every artifact the zone resets load logs "Creating entry" and
+    queues its row and its domain-state row. Each outpost queues its building's hit points
+    over the 0 its row began with. The frag list read fills the cache on the first pulse.
+    """
+    created = sorted(set(map(int, re.findall(CREATED, log('artifact')))))
+    missing = [] if created else ['any artifact']
+    for table in ('artifacts', 'artifact_domain_state'):
+        if sorted(map(int, sql(f'SELECT vnum FROM {table}').split())) != created:
+            missing.append(table + ' rows')
+    if sql('SELECT MIN(hitpoints) > 0 FROM outposts') != '1':
+        missing.append('outpost hit points')
+    if 'redis: cached fraglist' not in log('sys'):
+        missing.append('the frag list cache')
+    return missing
 
 
 def run(server, players):
@@ -159,6 +183,12 @@ def run(server, players):
         mortals = []
         try:
             process, plain, boot_seconds = boot()
+            assert 'sql job not queued' not in log('file'), log('file')[-2000:]
+            written = time.monotonic() + 30
+            while boot_sql_missing(sql, log):
+                assert time.monotonic() < written, \
+                    'the boot did not write: ' + ', '.join(boot_sql_missing(sql, log))
+                time.sleep(0.5)
             mortals = [Player(plain, number) for number in range(players)]
             for mortal in mortals:
                 mortal.start()
@@ -230,6 +260,7 @@ def run(server, players):
         assert restored == sequence, (restored, sequence)
         assert mobs > 50000 and objects > EXTRA_OBJECTS, (mobs, objects)
         assert matched > 50000 and carried > 0, (matched, carried)
+        assert 'sql job not queued' not in log('file'), log('file')[-2000:]
     print(f'world capture journey passed: {size / 2**20:.1f} MiB captured in '
           f'{capture_ms / 1000:.1f} s under {players} players, and restored after a crash')
 

@@ -105,7 +105,11 @@ on the ground, and has scripted players play while the first capture runs. It fa
 the generation is not above the old 64 MiB ceiling, if its capture takes a third of its
 300 s, or if a pulse runs past its 250 ms; it then kills the server, and fails unless the
 next boot restores the generation. It prints the generation's size, the capture's time
-and what the restore brought back; `--players N` scales the load.
+and what the restore brought back; `--players N` scales the load. Its first boot is on
+an empty database, so it is also the boot test for SQL queued before the writer starts:
+it fails unless every artifact the boot created has its `artifacts` and
+`artifact_domain_state` rows, each outpost's stored hit points are set, the frag list
+cache is filled, and neither boot logged `sql job not queued`.
 `run_world_recovery_journey.py`, also in `make test-db`, covers the switch on the mini
 world: off, the alert of an outage, the writer coming back, a crash's restore and the
 defaults. `run_world_restart_journey.py <server> <scenario>` covers what a restart leaves,
