@@ -66,6 +66,7 @@ lib/relic_highscore
 # ------------------------------------------------------------------------------
 # Logs, journals, exports, and recovery state
 # ------------------------------------------------------------------------------
+/logs/boot.log
 /logs/duris-console.log
 /logs/latency_trace.log
 logs/log/*
