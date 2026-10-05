@@ -66,9 +66,11 @@ artifact = (SRC / "artifact.c").read_text()
 assert artifact.count("arti_cache_init();") == 0
 
 
-# --- a connection line carries the logger's time stamp and no second one -----
+# --- a connection line builds no time stamp of its own ------------------------
 # Quit, enter game, rent, void and lost link each added the time shifted by a fixed four
-# or five hours and labelled EST, which is wrong for half of every year.
+# or five hours and labelled EST, which is wrong for half of every year. The quit line is
+# also logged, behind the logger's stamp. The other four go to the staff channel only,
+# where loginlog() puts the server's time on every line (test_server_time_zone.py).
 for name, line in (("actoth.c", '"%s has quit in [%d]."'),
                    ("nanny.c", '"%s [%s] enters game.%s [%d]"'),
                    ("specs.room.c", '"%s [%s] has rented out in [%d]."'),
