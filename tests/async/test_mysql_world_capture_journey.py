@@ -214,6 +214,11 @@ def run(server, players):
                 mortal.join(timeout=60)
                 assert mortal.error is None, mortal.error
                 mortal.client.close()
+            # The close logs each disconnect; the read that met it must not (#13).
+            closed = time.monotonic() + 30
+            while len(re.findall(r'(?:Closing link to|Combat DropLink): ', log('comm'))) < players:
+                assert time.monotonic() < closed, 'a disconnect was not logged:\n' + log('comm')
+                time.sleep(0.1)
             slow_pulses = re.findall(r'MUD TICK TOOK TOO LONG.*', log('status'))
 
             # A crash: the next boot restores the generation.
@@ -276,9 +281,10 @@ def run(server, players):
         # and closed their connections without a word. The server stopped with profiling
         # off.
         assert 'Normal termination of game.' in log('status'), 'no clean shutdown'
-        for name, line in (('comm', 'EOF encountered'), ('comm', 'process_input()'),
-                           ('debug', 'get_mud_info'), ('file', 'Profile info')):
-            assert line not in log(name), f'{line!r} is in logs/log/{name}'
+        noise = [f'{line!r} in logs/log/{name}' for name, line in (
+            ('comm', 'EOF encountered'), ('comm', 'process_input()'),
+            ('debug', 'get_mud_info'), ('file', 'Profile info')) if line in log(name)]
+        assert not noise, ', '.join(noise)
     print(f'world capture journey passed: {size / 2**20:.1f} MiB captured in '
           f'{capture_ms / 1000:.1f} s under {players} players, and restored after a crash')
 
