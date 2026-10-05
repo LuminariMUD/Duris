@@ -11,8 +11,8 @@ Updated 2026-10-05. A new session starts here, then reads the phase it continues
 
 | Phase | Item | State |
 |---|---|---|
-| 1 | #10 | In review as !11, on `fix/10-boot-sql-discarded`. Review round 1 found one defect; it is fixed and gated, and the head is tagged `log-review/phase-1-review-1`. Nothing is open; it waits for its merge. |
-| 2 | #13 | Not started. |
+| 1 | #10 | Landed on 2026-10-05 in `7fdbb20fe` (!11). |
+| 2 | #13 | Not started. It is next, on a new branch from `master`. |
 | 3 | #11 | Not started. |
 | 4 | #14 | Not started. |
 | 5 | #17 | Not started. |
@@ -80,8 +80,8 @@ Two things to keep in mind across phases:
 
 ## Phase 1: SQL queued during boot is discarded (#10)
 
-**Status: in review as !11, review round 1 fixed.** Built and gated on
-`fix/10-boot-sql-discarded`; "State of the work" at the end of this phase has the details.
+**Status: landed in `7fdbb20fe`.** "State of the work" at the end of this phase has the
+details.
 
 **Checked.** `submit()` in `src/sql/sql_async.c` logs `sql job not queued` and drops the job
 when the writer returns `unavailable`. The writer starts at `comm.c` L990, after `boot_db()`
@@ -205,10 +205,14 @@ checks.
   300,000 hit points). It wrote no `sql job` line of either kind, updated 47 artifact
   rows, left `artifact_domain_state` agreeing with `artifacts` on every row, cached the
   frag list and stopped cleanly.
-- `master` moved during the review: `6f167e9f9` and `41e11b10f` repair two journeys (the
-  world quest dual-backend run, and the playtime journey's copyover bound, which can fail
-  in a loaded `make test-db`). The branch does not have them; the merge brings them in.
-- Nothing is open. When !11 lands, set this phase's row in "Status" to landed.
+- Landed on 2026-10-05 in `7fdbb20fe`: one `--no-ff` merge of `log-review/phase-1-review-1`
+  (`f2bcd921b`) into `master`, with no squash and no rebase, so both tags still name the
+  commits that were reviewed. #10 is closed and the branch is deleted.
+- `master` had moved during the review: `6f167e9f9` and `41e11b10f` repair two journeys
+  (the world quest dual-backend run, and the playtime journey's copyover bound, which can
+  fail in a loaded `make test-db`). So the gate ran once more, on the merge:
+  `make test-all` 669 passed, 0 failed, in 8 minutes, and `make test-db` 45 of 45 in 375 s.
+- Nothing is open.
 
 ---
 
@@ -220,7 +224,7 @@ checks.
 
 - The shifted time stamp labelled `EST` is built at five sites: quit (`actoth.c` L309),
   enter game (`nanny.c` L1685), rent (`specs.room.c` L389), void (`limits.c` L1739) and
-  lost link (`comm.c` L3357). Three subtract four hours and two subtract five, so they do
+  lost link (`comm.c` L3361). Three subtract four hours and two subtract five, so they do
   not even agree with each other.
 - `sql_world_quest_can_do_another()` has four callers. `world_quest.c` L642 and
   `specs.mobile.c` L10962 test `< 1`, so "not loaded yet" refuses the quest. That is the
@@ -228,7 +232,7 @@ checks.
 - `get_mud_info("lock")` has two callers: `account.c` L2402 and `ws_handlers.c` L2032. The
   other rows it reads (`news`, `motd`, `wizmotd`) are optional too.
 - A playing character's disconnect already writes `Closing link to:` from the close path
-  (`comm.c` L3355), so the read-side line repeats it.
+  (`comm.c` L3359), so the read-side line repeats it.
 - `DURIS_NEVENT_ANALYTICS` already defines a 300-pulse window.
   `test_nevent_budget_contract.py`, `test_nevent_catchup_contract.py` and
   `test_mysql_game_loop_budget_journey.py` read the event-budget lines; `RUNBOOK.md`,
