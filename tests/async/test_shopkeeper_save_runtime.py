@@ -117,6 +117,7 @@ void logit(int, const char *fmt, ...) {
     char buf[2048]; va_list args; va_start(args,fmt);
     vsnprintf(buf,sizeof(buf),fmt,args); va_end(args); logs.emplace_back(buf);
 }
+bool persistence_trace_enabled() { return false; }
 int begins=0, writes=0, commits=0, rollbacks=0;
 bool begin_ok=true, write_ok=true, commit_ok=true, item_ok=true;
 bool sql_begin_transaction() { ++begins; return begin_ok; }

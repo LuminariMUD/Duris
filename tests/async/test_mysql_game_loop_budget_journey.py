@@ -148,7 +148,7 @@ def run(server, players, hours):
         'MYSQL_PWD': os.environ['TEST_DB_PASSWORD'], 'PERSISTENCE_MODE': 'mariadb-primary',
         'DB_TLS': 'FALSE', 'REDIS': 'FALSE', 'CHAOS_MUD': 'FALSE',
         'LISTEN_ADDRESS': '127.0.0.1', 'DURIS_WEBSOCKET_LISTEN_ADDRESS': '127.0.0.1',
-        'DURIS_NEVENT_ANALYTICS': '1',
+        'DURIS_NEVENT_ANALYTICS': '1', 'DURIS_PERSISTENCE_TRACE': '1',
     }
     if 'LD_LIBRARY_PATH' in os.environ:
         environment['LD_LIBRARY_PATH'] = os.environ['LD_LIBRARY_PATH']

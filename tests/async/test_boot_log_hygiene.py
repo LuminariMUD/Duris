@@ -22,11 +22,13 @@ assert (ROOT / "logs/log/.gitignore").is_file()
 
 
 # --- routine persistence traces are opt-in ----------------------------------
-# A shopkeeper line for each shop on every boot, and locker moves on every save,
-# filled the debug log; DURIS_PERSISTENCE_TRACE turns them on, failures stay on.
+# A shopkeeper line for each shop on every boot, one for each pulse of the batched shop
+# save that follows it, and locker moves on every save, filled the debug log;
+# DURIS_PERSISTENCE_TRACE turns them on, failures stay on.
 lockers = (SRC / "storage_lockers.c").read_text()
 shop_restore = (SRC / "sql_player.c").read_text()
 for text, line in [(shop_restore, "sql_restore_shopkeepers: shop %d"),
+                   (shop_restore, "sql_save_dirty_shopkeepers: saved %d shopkeepers"),
                    (lockers, "Locker save start:"),
                    (lockers, "LockerToPFile: saving private chest"),
                    (lockers, "LockerToPFile: private chest scan complete"),
@@ -34,7 +36,7 @@ for text, line in [(shop_restore, "sql_restore_shopkeepers: shop %d"),
                    (lockers, "LockerToPFile: moving loose room object"),
                    (lockers, "PFileToLocker: moving carried object")]:
     before = text[:text.index(line)].splitlines()[-8:]
-    assert any("if (persistence_trace_enabled())" in row for row in before), line
+    assert any("persistence_trace_enabled())" in row for row in before), line
 for line in ("LockerToPFile: missing chest object", "LockerToPFile: failed to save private chest",
              "LockerToPFile: aborting before non-private chest moves"):
     before = lockers[:lockers.index(line)].splitlines()[-3:]
