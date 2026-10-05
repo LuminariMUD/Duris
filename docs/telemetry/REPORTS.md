@@ -329,6 +329,6 @@ on exit. Credentials are generated per run and are never printed. It does not
 read an existing database, run game-server code, or require production access.
 
 The report interface is ready for a future UI to consume JSON. There is no
-frontend, no runtime/schema change, and no local-clock time-of-day report in
-this slice. Those are explicit integration/definition gaps rather than hidden
+frontend and no local-clock time-of-day report. Those are explicit
+integration/definition gaps rather than hidden
 fallback behavior.

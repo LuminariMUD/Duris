@@ -4,8 +4,9 @@ Migration `0014_telemetry_storage` adds exactly six InnoDB tables. The additive
 migration `0017_telemetry_rollup_support` adds the two replay-safe rollup support
 stores described below. Migration `0030_telemetry_quarantine` adds a durable,
 operator-controlled quarantine for record-specific SQL failures. Existing
-immutable migrations retain their original content and checksums; the current
-runtime inventory is 203 tables.
+immutable migrations retain their original content and checksums
+([RUNTIME_COMPATIBILITY.md](../persistence/RUNTIME_COMPATIBILITY.md) states the current
+runtime inventory).
 
 | Table | Grain and ownership |
 | --- | --- |
@@ -97,9 +98,9 @@ an implemented purge/export scheduler.
 
 ## Repository behavior and F/D handoff
 
-`telemetry_repository.c` implements the unchanged public #260 API. F must register
-it in the build and call init/apply from its sole joined worker; no source here
-activates telemetry or adds a thread. Flat-file authority, including runtime
+`telemetry_repository.c` implements the public #260 API. The runtime (#265) calls
+init/apply from its sole joined worker; the repository itself activates nothing and
+adds no thread. Flat-file authority, including runtime
 flat-file mode in the SQL build, returns `flatfile_disabled` without connecting.
 
 The private SQL factory requires `TELEMETRY_DB_USER` and `TELEMETRY_DB_PASSWD` in
@@ -239,8 +240,7 @@ were changed. The 0017 extension is statically verified here; parent-owned Maria
 migration, grant, and drift checks remain required. These results do not qualify
 rollup/report plans or the future load gate. Permission grant provisioning, scoped
 disclosure and lifecycle activation remain explicit operator/integration work.
-The runtime contract is pinned to migration head 0017. A previously built binary
-pinned to head 0016 will refuse the upgraded schema; additive tables do not make a
-binary-only rollback compatible. Recovery requires a reviewed compatible
+A binary pinned to an older migration head refuses the upgraded schema; additive
+tables do not make a binary-only rollback compatible. Recovery requires a reviewed compatible
 binary/schema pair. Disabling telemetry retains its tables and does not authorize a
 destructive down migration.

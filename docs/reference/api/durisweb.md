@@ -159,10 +159,10 @@ event. Removal carries no actor wallet, so it runs through the same actor-less
 background path as auction expiry, and repeating the request for an auction that
 is no longer open is rejected by the repository. A retry is therefore safe.
 
-Bidding and buy-now are deliberately **not** exposed here. Those commands lock
-the bidder's live wallet through `expected_wallet_revision`, which only an
-online character carries, so a website-originated bid would need an offline
-wallet custody contract that does not exist yet.
+Bidding and buy-now are deliberately **not** exposed here. A bid's money leaves
+the bidder's wallet in memory when the command is submitted, and only an online
+character has one, so a website-originated bid would need an offline wallet
+custody contract that does not exist.
 
 ## Authorization and data
 

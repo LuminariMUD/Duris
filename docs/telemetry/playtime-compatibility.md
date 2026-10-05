@@ -1,10 +1,10 @@
-# Compatibility playtime (#259)
+# Compatibility playtime
 
 ## Contract
 
 Compatibility playtime measures the time a player character remains resident in
-the game. It is **not** active-input time, anti-idle time, or the future telemetry
-session measure described by #258/#260.
+the game. It is **not** active-input time, anti-idle time, or the telemetry session
+measure ([SESSION_STATE.md](SESSION_STATE.md)).
 
 - The live `player.time.played` value remains the loaded or administrator-set
   baseline. `player.time.logon` remains the existing wall-clock session anchor.
@@ -44,17 +44,13 @@ seconds, plus continuation/scheduler delay. Under healthy operation a crash can
 lose the still-uncaptured tail since the last checkpoint. This is not a hard
 thirty-second durability guarantee: capture refusal, writer backlog, or an
 unhealthy scheduler can enlarge the exposure. Existing queue/health diagnostics
-remain authoritative. This change does not add main-loop I/O or a new durability
-fence. Terminal save and copyover durability policies remain unchanged.
+remain authoritative. Capture adds no main-loop I/O and no durability fence.
 
-Captured totals travel through existing revisioned repositories. Replaying the
-same revision is idempotent; an older revision cannot overwrite a newer total.
-Crash recovery replays captured values, not a newly calculated session delta.
+A save writes the captured total, so writing the same save again cannot compound
+it. A crash loses the totals the writer had not yet written.
 
 ## Focused verification
 
-Run only the relevant checks; no full regression gate or GitHub CI is required
-for this change's local evidence:
 
 ```sh
 python3 tests/async/test_player_playtime_capture.py
@@ -70,7 +66,7 @@ python3 tests/async/test_playtime_flatfile.py
 - Real flat-file repository: full baseline, status-only elapsed update, duplicate
   and stale revisions, reload with a fresh session anchor.
 
-With a disposable loopback MariaDB and a fresh branch binary:
+With a disposable loopback MariaDB (the journey also runs in `make test-db`):
 
 ```sh
 TEST_DB_HOST=127.0.0.1 TEST_DB_USER=<fixture-user> TEST_DB_PASSWORD=<fixture-password> \
@@ -86,24 +82,16 @@ playtime across a real live copyover. A synthetic offline fixture character is
 promoted only to invoke the copyover command; the runtime executable is copied
 inside the disposable fixture directory.
 
-The minimal fixture's account-menu restoration after copyover is outside this
-playtime test. A test development run restored the character and its playtime but
-reported `account load failed`; subsequent quit closed the socket rather than
-returning to the account menu. That symptom is not diagnosed or fixed here. The
-playtime test checks the preserved connection's post-copyover save and then closes
-the fixture connection for cleanup; it does not claim account UI correctness.
+After the copyover the test checks the preserved connection's save and then closes
+the fixture connection; it does not test the account menu.
 
 Build the changed C++ code with `make -C src`. Both MariaDB and flat-file backend
 builds must pass; use a separate `DMS_BINARY` for the latter to avoid replacing the
 binary used by the SQL journey.
 
-## Historical data and rollout
+## Historical data
 
 No migration or historical repair is performed. Old stored totals may omit prior
 sessions or reflect legacy/wipe/admin conventions. Do not treat them as verified
-active time or backfill guessed seconds. The new calculation affects future
-captures only. No production deployment or data mutation is part of this change.
-
-Rollback is a code revert. It does not subtract already retained playtime or
-rewrite historical rows. #265 must consume this compatibility contract without
-reusing the field as its telemetry session accumulator.
+active time or backfill guessed seconds; the calculation affects future captures
+only. Telemetry sessions must not reuse the field as their accumulator.

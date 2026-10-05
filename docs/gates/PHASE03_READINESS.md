@@ -82,6 +82,23 @@ Do not lower thresholds or remove cases. Repair a demonstrated defect narrowly, 
 focused regression, rerun from the earliest affected checkpoint, invalidate prior
 build/configuration evidence, then rerun the complete gate.
 
-Phase 03 engineering is complete. The user explicitly deferred the 200-account,
-four-hour capacity execution, so the current sanitized outcome makes no 200-player
-readiness claim. The gate remains `UNQUALIFIED` until every binding case passes.
+## Current state
+
+The gate has not been run, so the repository makes no 200-player readiness claim
+([#19](https://gitlab.com/max757/duris/-/work_items/19)). The gate tooling and the local migration replay, runtime and game smoke
+passed on 2026-08-27; the 200-account, four-hour run was postponed. It stays
+`UNQUALIFIED` until every binding case passes, and only a checksummed `PASS` with every
+case present changes that. The manifest predates the
+[persistence reset](../adr/0002-persistence-reset-memory-is-the-authority.md): it still
+requires `journal_within_bounds` and `revision_ordering_valid` and injects
+`game_kill_after_journal`, so it must be revised before a run. What a run still needs:
+
+| Requirement | State |
+|-------------|-------|
+| Production-unreachable representative clone | Missing |
+| Ten representative aggregate thresholds | The configured fixture failed all of them |
+| At least 200 sanitized load identities | Missing |
+| Workload, fault and reconciliation adapters | Missing |
+| Approved checkpoint RPO | Five minutes |
+| Approved lifecycle policy | Pending controller decision |
+| Eight ramps and 1800-second 200-client holds | Not run |

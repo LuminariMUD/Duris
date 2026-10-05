@@ -1,15 +1,15 @@
 # Full persistence backup and isolated recovery
 
-Issue #83 introduces one policy and generation format for both authoritative
-persistence modes. Install and approve the policy before updating a host: the
-pre-cycle gate now refuses an unconfigured backup instead of using implicit
-retention. Nothing in this PR installs timers or enables a host policy.
+One policy and one generation format cover both authoritative persistence modes.
+Install and approve the policy on a host before it takes backups: a backup that is
+not configured is refused, never given implicit retention. Nothing in the repository
+installs timers or enables a host policy.
 
 ## Policy and custody
 
 Copy scripts/backup_policy.example.json to an absolute, owner-only file, assign
 the real custodian and paths, and set approved to true only after host review.
-The example values approved for this PR are:
+The example file's values are:
 
 | Setting | Example |
 | --- | --- |

@@ -17,7 +17,7 @@ properties set exp.zoneTrophy.observe 0
 
 Use the existing property save workflow if the setting should survive a restart.
 The checked-in `lib/duris.properties` sets observation to zero. Only the exact
-value `1` enables it. This PR does not change any running server's properties.
+value `1` enables it.
 
 `trophy` shows the saved/in-memory totals and explicitly states that no XP penalty
 applies. Staff can inspect `trophy <character>` or `trophy <character> frags`.
@@ -75,8 +75,8 @@ detect excess history. This bounds MySQL's result buffer before row validation.
 The existing SQL snapshot transaction writes XP and replaces that player's trophy
 rows together. It performs one trophy `DELETE` and, for a nonempty collection,
 one batched `INSERT`, without one `SELECT` per zone. An empty component deletes
-old rows. Revision checks handle retries and reject stale snapshots; acknowledging
-an older checkpoint does not clear newer dirty changes. Flatfile snapshots use
+old rows. Writing the same save again is harmless; with one writer there is no
+revision fence. Flatfile snapshots use
 the same trophy component and codec. There is no schema or snapshot-format change.
 
 Character resets and class changes clear the in-memory collection and mark XP/status
@@ -111,30 +111,12 @@ bash tests/async/run_experience_trophy_mysql.sh
 
 The SQL wrapper creates a disposable Docker database, applies the fresh schema
 and migrations, and uses synthetic accounts. It never sources the checkout's
-`.env`. It exercises checkpoint/reload, retry, stale-revision rejection, rollback
+`.env`. It exercises checkpoint/reload, a repeated save, rollback
 of XP and trophies on an insert failure, empty collection persistence, and the
 existing SQL login harness including bounds and malformed trophy rows.
 
-## Follow-up scope for a separate issue or PR
+## Not built
 
-1. **Versioned familiarity and recovery:** choose fixed-point normalized units,
-   checked 64-bit storage, timestamp semantics, and a policy for old counters.
-   Implement lazy elapsed-time recovery consistently online and offline, with
-   SQL and codec migration and clock-change tests. Do not restore SQL decay sweeps.
-2. **Penalty policy:** settle the grace interval, curve, floor, level/race exemptions,
-   and individual versus group behavior. Add explicit off/observe/enforce modes
-   with disabled behavior guaranteed to preserve XP. Observation here is only
-   accumulation, not a simulation of a proposed penalty curve.
-3. **Reward attribution and zone policy:** define canonical encounter/source zones,
-   cache `trophy_zone` eligibility before enforcement, support policy refreshes,
-   and decide quest coverage and support-XP behavior around zone boundaries.
-4. **Rollout evidence and player feedback:** measure proposed multiplier distributions
-   by zone, level, and XP category; choose a fresh enforcement epoch; show effective
-   multiplier/recovery time and send threshold-change messages.
-5. **Further write reduction if measured:** compare full collection replacement
-   against revisioned changed-zone batches. Retain explicit deletions and absolute
-   totals, and prove retry idempotency before adopting delta persistence.
-
-This stage is useful independently: it makes trophy state observable and durable
-through the existing memory/checkpoint architecture without introducing a new
-progression penalty before those design decisions are made.
+Observation is accumulation only. Familiarity decay, a penalty curve and its
+enforcement, zone eligibility by `trophy_zone`, and player-facing multiplier feedback
+are not built ([#24](https://gitlab.com/max757/duris/-/work_items/24)). Do not restore the SQL decay sweeps.

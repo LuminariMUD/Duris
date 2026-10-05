@@ -74,7 +74,6 @@ success, and lifecycle copyover/shutdown. All adapters are best effort and
 value-only. No telemetry call is placed before the gameplay operation it
 describes has committed.
 
-The encounter facts are ready for the aggregate/report owners (#268/#269). The
-report definition in `scripts/telemetry/encounter_definitions.py` specifies the
-denominators and unresolved-tail policy without reading the raw fact stream;
-the aggregate implementation remains a separate, bounded work item.
+The report definition in `scripts/telemetry/encounter_definitions.py` specifies the
+denominators and unresolved-tail policy without reading the raw fact stream. No
+rollup or report consumes the encounter facts yet ([#26](https://gitlab.com/max757/duris/-/work_items/26)).

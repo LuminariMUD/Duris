@@ -106,4 +106,4 @@ creation, revision refusal, replay, nested topology, and failure behavior:
 tests/async/run_item_transfer_schema_mysql.sh
 ```
 
-No schema change or data repair is needed for this change.
+The grant has no schema of its own.

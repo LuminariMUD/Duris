@@ -72,5 +72,5 @@ unchanged HP, configurable Hit/Miss/Success/Failure/Critical roles, and auxiliar
 prompts. `test_manual_save_feedback_contract.py` verifies success only after ACK,
 failure on deadline and lifetime gating. `test_item_movement_prompt_runtime.py`
 runs the real ANSI/Telnet/WebSocket and deferred item/currency paths under sanitizers,
-including selected prompt colors. Final live visual release evidence is tracked by
-#289.
+including selected prompt colors. The live visual release evidence is in
+[COLORIZATION_RELEASE.md](COLORIZATION_RELEASE.md).

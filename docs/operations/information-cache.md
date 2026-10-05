@@ -37,9 +37,8 @@ Other `get_mud_info` callers were intentionally audited separately:
 - Generic `send_mud_info` also remains direct rather than silently changing
   unknown callers' freshness requirements.
 
-This uses the same `refresh_cache` state machine introduced for help in #221.
-Both help and information caches, including their staff refresh commands, are
-part of the maintained server. The information commands add no burst limiter,
+This uses the same `refresh_cache` state machine as [help](help-cache.md).
+The information commands add no burst limiter,
 shared cooldown, or character wait; ordinary command scheduling still applies.
 
 Validation: `python3 tests/async/test_information_cache.py` runs held-worker,
@@ -117,8 +116,7 @@ cache/SQL tests separately establish failure retention, bounds, and zero databas
 connection acquisitions for 10,000 cached reads; socket timings alone do not prove
 the absence of synchronous I/O.
 
-Closeout validation for #222 on master `ea16e31d7` plus the journey tests, in an
-isolated Linux container (2026-09-11):
+Measured on 2026-09-11 in an isolated Linux container:
 
 | Backend | Three-page sequence maximum | Observer score maximum | Observer samples | Pager survives refresh |
 | --- | --- | --- | --- | --- |
@@ -126,6 +124,4 @@ isolated Linux container (2026-09-11):
 | MariaDB 10.11 | 0.751 s | 0.251 s | 60 | Yes |
 
 Both runs completed twelve navigation sequences, observed automatic publication,
-and shut down normally. They used built server executables with the maintained
-warning-as-error profile. No production deployment or data changes were part of
-this validation.
+and shut down normally.

@@ -133,11 +133,9 @@ Use `ok` after a successful durable operation and `info` for expected progress.
 A death is quiet unless its terminal save fails (`terminal_save_failed` alerts); the
 character leaves at once either way.
 
-Successful deferred-save flushes, flat fallback writes and complete legacy replays
-also use `ok`; failed flushes and partial replays retain alerts. Retired raw-worker
-and raw-replay status reports use `info`. Failed I/O, rejected mutations, dropped
-or undrained work, unavailable workers and automatic restarts after worker failure
-continue to alert even when a recovery path is available.
+A successful deferred-save flush uses `ok` and a failed one alerts. Failed I/O,
+rejected mutations, dropped or undrained work and unavailable workers alert even when
+a recovery path is available.
 
 File delivery runs on a dedicated worker started during boot. Admission uses a fixed
 128-record queue and a try-lock: the game loop never opens, writes, closes, or waits
@@ -209,11 +207,11 @@ starvation. The controlled retry/crash modes are documented in
 
 ## Player deaths
 
-A death happens at once (persistence reset step 5): `make_corpse()` moves the
+A death happens at once: `make_corpse()` moves the
 player's items into the corpse in memory, the corpse save claims them, the
 player's save follows, and the character is extracted. There is no recovery
 hold, corpse handoff batch or disputed-death disposition any more. The wallet
-becomes a coin pile in the corpse (Phase 2 step 4); the player's save, with the
+becomes a coin pile in the corpse; the player's save, with the
 wallet empty, is queued before the corpse's, so a crash between them can lose
 the coins but never leave them in both places. See
 [the persistence reset decision](../adr/0002-persistence-reset-memory-is-the-authority.md)

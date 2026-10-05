@@ -1,6 +1,6 @@
 # Community spell-up controls and boot-lifetime repeat mode
 
-**Status: implemented in PR 521.** The command is available through the existing
+**Status: implemented.** The command is available through the existing
 `newbsa` command registration at `LESSER_G` (level 59). The implementation keeps
 the legacy default one-shot path intact and adds an allowlisted selection draft,
 preview/status controls, and one boot-scoped server-owned repeat job.
@@ -142,22 +142,15 @@ capture raw command strings or unrelated player data.
   rebuilt. Drafts, the active job, and its handles are therefore cleared; no
   schedule is serialized or replayed.
 
-## Verification notes
+## Verification
 
-The implementation was checked with the focused source contract test and with the
-repository's available WSL `g++` C++20 warning profile for the new module,
-`actwiz.c`, and `new_events.c`. The native `make` invocation is not available in
-the Windows shell, and the repository Makefile cannot safely resolve this
-OneDrive path with spaces under WSL; the PR validation records that environment
-limitation separately from compiler diagnostics.
-
-The remaining full-client journeys (large live recipient set, extraction during a
-running pass, reconnect, and scheduler allocation failure) are covered by the
-bounded state-machine structure and should be exercised in the server integration
-environment before changing the interval or target limits.
+`python3 tests/async/test_community_spellup_contract.py` is the focused source contract.
+A large live recipient set, extraction during a running pass, reconnect, and scheduler
+allocation failure rest on the bounded state machine alone; exercise them on a running
+server before changing the interval or target limits.
 
 ## Non-goals
 
 Persistent presets/schedules, arbitrary spell execution, automatic login
-blessings, player rewards or compensation, XP rebalance, changing `newbsu`, and
-production migrations remain out of scope.
+blessings, player rewards or compensation, XP rebalance, and changing `newbsu` are
+out of scope.

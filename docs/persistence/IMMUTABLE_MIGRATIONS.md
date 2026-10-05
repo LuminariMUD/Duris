@@ -6,7 +6,7 @@ Duris has two deliberately separate histories:
   steps and `mud_schema_migrations` data-copy markers are not complete historical
   execution evidence and are never backfilled as if they were.
 - `migrations/migration_manifest.json` is the authoritative immutable history after
-  the Session 11 baseline. Every post-baseline step receives one ordered ID, apply file,
+  the baseline. Every post-baseline step receives one ordered ID, apply file,
   verifier, compatibility label, and exact SHA-256 hashes.
 
 ## Honest baseline adoption
@@ -39,9 +39,9 @@ passed on a disposable clone, an owner-authorized production `run` additionally 
 `--production-backup /absolute/path.sql.gz`. Production baseline adoption remains prohibited, and
 the runner refuses to apply while another connection is using the configured database.
 
-The current immutable head is `0012_epic_stone_claim`. After it is applied,
-the database contains the 185-table runtime boot contract, and the history
-singleton records applied count 12 plus the exact history checksum. If a pre-b029
+[RUNTIME_COMPATIBILITY.md](RUNTIME_COMPATIBILITY.md) states the current head and the
+runtime table count. After the head is applied, the history singleton records the
+applied count plus the exact history checksum. If a pre-b029
 launcher already created the legacy `server_reboots`
 shape, 0004 copies every lifecycle row into the canonical table and atomically
 swaps it into place; an interrupted conversion can be retried without making the
@@ -75,11 +75,10 @@ on `date` and sorts chronologically. MySQL 8 has no portable
 issues no `ALTER` when an index of exactly the verified shape - a single
 non-unique entry on `date` - is present; an index of that name with any other
 shape is dropped and rebuilt. The index is a structural
-correction; its latency benefit is not yet measured on a representative clone,
-which remains the open half of that backlog item.
+correction; its latency benefit has not been measured on a representative clone
+([#19](https://gitlab.com/max757/duris/-/work_items/19)).
 
-`kingdom_realms` is part of the boot contract's *table list*:
-`runtime_compatibility_manifest.json` counts 185 runtime tables and both
+`kingdom_realms` is part of the boot contract's *table list*: both
 normalized metadata fingerprints are sealed over an inventory that includes it,
 so on the database backend the gate proves the table's engine, collation,
 columns and indexes before gameplay publishes. `kingdom_initialize()` still
@@ -87,11 +86,11 @@ disables kingdoms for the boot when it cannot read the table, which remains
 reachable on the flat-file build, where no boot gate stands in front of it. The
 *ledger* is fail-closed too, exactly as it is for every other immutable
 migration: `src/core/runtime_compatibility_contract.h` compiles
-`RUNTIME_MIGRATION_HEAD_ID = "0016_artifact_mana"` with sequence 16, and
+`RUNTIME_MIGRATION_HEAD_ID` and its sequence, and
 `sql_verify_boot_database()` in `src/sql/sql.c` requires the matching
-`mud_schema_history` row, its two checksums, and `applied_count=15` in
+`mud_schema_history` row, its two checksums, and the applied count in
 `mud_schema_migration_state`. On the MariaDB/MySQL backend a database left at
-head `0014_telemetry_storage` therefore refuses to boot, aborting with
+an older head therefore refuses to boot, aborting with
 `COMPAT-E002`. An operator upgrading an existing database must apply the pending
 migrations with
 `python3 scripts/migration_runner.py run`, which applies the SQL, runs the
@@ -120,7 +119,7 @@ and re-runnable (`DROP TABLE IF EXISTS`). Back up a database that may still hold
 evidence before running it.
 
 Migration 0035 changes no table. Boot refuses an `account_banks` row without a
-`currency_bank_baseline`, and from the persistence reset's Phase 2 until the server
+`currency_bank_baseline`, and from the persistence reset until the server
 wrote the baseline with the bank, the delta that created a bank wrote none. The step
 copies each such bank's current row into its baseline (`INSERT IGNORE ... SELECT`, so
 it leaves existing baselines alone and re-runs), and its verifier requires every bank

@@ -146,6 +146,33 @@ owner records where the items went.
   `tests/async/test_corpse_haul.py`, `tests/async/test_actobj_get_limits.py`, and
   `tests/async/test_wear_all_regression.py`
 
+## GET parser and shared checks
+
+Item commands (get, drop, put, give, empty) move the object in memory at once. The next
+save of each owner records where it went; nothing waits on the database (see
+[the persistence reset decision](../adr/0002-persistence-reset-memory-is-the-authority.md)).
+
+`src/item/item_command_parser.h` owns only the GET grammar. It turns the legacy forms
+into one of six typed command kinds (`item_get_command_kind`):
+
+| Form | Kind |
+| --- | --- |
+| `get all` or `get all.<name>` | `floor_all` |
+| `get <object>` | `floor_item` |
+| `get all from all` | `all_from_all` |
+| `get all from <container>` or `get all.<name> from <container>` | `all_from_container` |
+| `get <object> from all` | `item_from_all`: the matching item from every eligible container |
+| `get <object> from <container>` | `item_from_container` |
+
+The parser is bounded by `MAX_INPUT_LENGTH`, keeps `all.<name>` filtering separate from
+the command kind, and does not retain the input buffer.
+
+`src/item/item_command_policy.h` holds the two checks get, put and empty share:
+`item_command_object_is_takeable()` and `item_command_container_is_valid()`.
+
+The bulk forms select their items first, check carry and container limits as they go,
+then move each one and report once.
+
 ## Asynchronous completion prompts
 
 Item commands move objects in memory and print at once. `src/net/comm.c::process_output()`

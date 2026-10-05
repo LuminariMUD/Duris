@@ -87,13 +87,13 @@ administers it. A website may read documented projections and maintain its own
 application tables, but it must not issue direct SQL mutations against
 MUD-owned player, account, item-custody, balance, auction, or lifecycle state.
 Those mutations must enter through an authenticated, authorized, typed server
-command so the game thread, revisions, ledgers, fences, and outbox remain one
+command so the game thread, ledgers, fences, and outbox remain one
 coherent authority.
 
 The DurisWeb bridge follows this boundary. Its authenticated administrative
 character-deletion route is implemented by the MUD; auction bid and buy
-mutations are intentionally not exposed because they require the live player's
-expected wallet revision. Adding a web action means adding a typed server-side
+mutations are intentionally not exposed because a bid's money leaves the live
+player's wallet in memory. Adding a web action means adding a typed server-side
 contract and authorization policy, not granting a web database account broader
 write access. See [api/durisweb.md](api/durisweb.md).
 
@@ -138,15 +138,14 @@ transaction, replay, or idempotency identifiers.
 - `migrations/run_migration.sh` -- the legacy additive upgrade/baseline-adoption path;
   re-runnable by design.
 - `migrations/migration_manifest.json` and `scripts/migration_runner.py` -- the
-  immutable manifest-driven path for every migration after the verified Session 11
-  baseline. The current immutable head adds the `kingdom_realms` table, completing
-  the 174-table boot contract. See
-  [IMMUTABLE_MIGRATIONS.md](../persistence/IMMUTABLE_MIGRATIONS.md).
+  immutable manifest-driven path for every migration after the verified
+  baseline. See [IMMUTABLE_MIGRATIONS.md](../persistence/IMMUTABLE_MIGRATIONS.md).
 - `migrations/runtime_compatibility_manifest.json` and
   `migrations/verify_runtime_compatibility.sh` -- the read-only pre-boot contract for
   migration history, full metadata shape, storage engine, collation, and supported
-  MySQL 8.0/MariaDB 10.11 variants. See
-  [RUNTIME_COMPATIBILITY.md](../persistence/RUNTIME_COMPATIBILITY.md).
+  MySQL 8.0/MariaDB 10.11 variants.
+  [RUNTIME_COMPATIBILITY.md](../persistence/RUNTIME_COMPATIBILITY.md) states the current
+  head and table count.
 
 ### Applying schema changes
 
@@ -216,7 +215,7 @@ Rules of thumb (enforced by repo conventions):
 | persistence event tables | Remaining bounded compatibility events; not the player/critical authority |
 | frag leaderboard tables | Auto-populated as players log in and save |
 | `corpses`, `corpse_items` | Player corpses across restarts (see below) |
-| `kingdom_realms` | Guild kingdom realm territory (one claim integer per guild), harvested resource stores, and upkeep/arrears state; created by immutable migration 0006, read positionally by `src/kingdom/kingdom_db.c`, and part of the 174-table runtime boot contract, whose metadata fingerprints are sealed over it |
+| `kingdom_realms` | Guild kingdom realm territory (one claim integer per guild), harvested resource stores, and upkeep/arrears state; created by immutable migration 0006, read positionally by `src/kingdom/kingdom_db.c`, and part of the runtime boot contract, whose metadata fingerprints are sealed over it |
 | `towns`, `kingdom_land`, `siege_items`, `siege_item_affects`, `siege_item_extra_descr` | Retired siege-era schema tombstones retained in the lifecycle and compatibility manifests. Runtime SQL must not revive them; the current kingdom system owns `kingdom_realms` instead. |
 
 ### Player corpses

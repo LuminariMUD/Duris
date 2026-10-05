@@ -34,8 +34,8 @@ about.
 | `--trace-children` | Follow `exec()` across a copyover (off by default) |
 | `-- ...` | Everything after `--` goes to valgrind verbatim |
 
-The standard build already compiles with `-g` and no `-O`, so no special build
-is needed for readable stacks.
+The development build compiles with `-g -Og`, so no special build is needed for
+readable stacks.
 
 ## What to expect
 

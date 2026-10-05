@@ -61,14 +61,12 @@ this boundary.
 
 ## Non-goals and verification
 
-This extraction does not change command metadata, socket ownership, queue
-capacity, transaction admission, durable journaling, receipt identity, output
-formatting, or the number/cadence of world and persistence calls.  It does not
-make synchronous journal or database work part of the pulse helper contract.
+The phase helpers own no command metadata, socket ownership, queue capacity,
+transaction admission, receipt identity, output formatting, or the number and
+cadence of world and persistence calls.  No synchronous database work is part of
+the pulse helper contract.
 
 The phase contract is guarded by `tests/async/test_game_loop_phase_contract.py`
 and the command-latency runtime/source contract.  Runtime coverage keeps the
 existing casting, command-gate, authentication, item/currency queue, output,
-telnet/WebSocket, and session-journey tests in the validation set.  Build and
-sanitizer results are recorded with the implementation PR; a local compiler
-limitation is reported separately rather than treated as passing coverage.
+telnet/WebSocket, and session-journey tests in the validation set.

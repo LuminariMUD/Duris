@@ -12,7 +12,7 @@
 - The game thread is the sole owner of mutable `P_char` and `P_obj` state.
 - Normal mutation paths and per-pulse callbacks perform no external I/O.
 - Workers receive immutable typed values, never live game-object pointers.
-- Persist exact revisions and clear dirty state only after the matching acknowledgement.
+- Memory is the authority; one writer copies it to the database in capture order.
 - Give every non-idempotent economy, ownership, reward, and audit action a unique ID.
 - Bound time, bytes, retries, and shutdown behavior at every external boundary.
 - Preserve proven InnoDB, transaction, dedupe, pool, and locker-worker foundations.
@@ -22,9 +22,9 @@
 
 - Match nearby names and established domain terms such as PID, epic, frag, rent, and locker.
 - Keep existing public type names such as `P_char` and `P_obj` stable unless a scoped refactor requires otherwise.
-- New functions should describe one action; state and revision fields should identify their domain.
+- New functions should describe one action; state fields should identify their domain.
 - Boolean and result names should make success, retryability, dirty state, and acknowledgement explicit.
-- Stable operation, event, revision, and query-site IDs must be unambiguous in code and telemetry.
+- Stable operation, event, and query-site IDs must be unambiguous in code and telemetry.
 
 ## Files and Structure
 
@@ -48,8 +48,7 @@
 ## Concurrency and Ownership
 
 - Build immutable snapshot DTOs on the game thread before enqueueing worker work.
-- Key ordered work by player, account, item, or other owning entity; parallelize only across independent keys.
-- A worker transaction may apply revision N only when the stored revision is older than N.
+- Key ordered work by player, account, item, or other owning entity. The one writer applies it in capture order, so no revision fence is needed.
 - Apply worker completions on the game thread and ignore stale acknowledgements safely.
 - Do not call `fork()` from the running multithreaded server for player or world persistence.
 - Make worker lifecycle states, operation deadlines, retry timing, pool healing, drain, and termination explicit.
@@ -83,13 +82,15 @@
 - Put additive schema changes and their verification under `migrations/`.
 - Keep migrations guarded and re-runnable where practical; never alter production or run operational scripts against it.
 - Use `bootstrap_multithread_safe.sql` only for an empty database.
+- Read an operational script's argument handling before running it, even on a development
+  database: several have no `--help` or dry-run mode and start work at once.
 - Apply `migrations/run_migration.sh` only to a backed-up development clone before promotion.
 - Give new migrations immutable IDs and checksums and record success only after the operation completes.
 - Validate required schema and connection invariants before boot writes lookup data.
 
 ### Schema and Models
 
-- Persist monotonic revisions on parent rows for revisioned snapshot domains.
+- A save advances its owner's revision; revisions order history, they do not fence writes.
 - Keep current balance or ownership rows reconcilable with immutable ledger or audit rows.
 - Use foreign keys and uniqueness constraints to enforce dedupe and ownership contracts where applicable.
 - Define explicit limits and errors instead of silently truncating player, inventory, or pet data.
@@ -99,6 +100,7 @@
 
 - Prefer typed repositories and prepared statements for new hot or sensitive paths.
 - Never concatenate untrusted values into SQL; use the database client's parameter or escaping contract consistently.
+- Include `mysql/mysql.h` and derive statement null-indicator types from `MYSQL_BIND`, not MariaDB-only `my_bool`, so the source builds against both clients.
 - Keep hot-path lookups in memory when the source defines game memory as authoritative.
 - Batch related rows and avoid N+1 queries, repeated linear scans, and per-recipient query fan-out.
 - Keep predicates sargable and validate candidate indexes with representative clone data and `EXPLAIN ANALYZE`.
@@ -106,7 +108,7 @@
 
 ### Transactions and Idempotency
 
-- Commit critical economy and ownership changes before reporting final gameplay success.
+- Critical commands (auctions, the collector, item grants, boons, artifacts, combat outcomes, zone touches) commit in the database, one transaction each on the one writer. Items, wallets, banks, epics and frags change in memory and are saved.
 - Put balance and ledger, current owner and audit outbox, or equivalent coupled state in one transaction.
 - Use mandatory unique command or event IDs for ambiguous commits and replay.
 - Store outbox or inbox delivery state in the same transaction as the domain mutation.
@@ -179,33 +181,24 @@
 | Type safety and compiler | g++ C++20 with `-Werror` | `make -C src` |
 | Focused tests | Python/Bash | `tests/async/test_*.py`, `tests/async/run_*.sh` |
 | Full tests | Make | `make test-all` |
-| Observability | Bounded persistence telemetry and redacted logs | `src/persistence_observability.*`, log-hygiene regressions |
+| Observability | Bounded persistence telemetry and redacted logs | `src/persistence/persistence_observability.*`, log-hygiene regressions |
 | Database tests | Isolated MySQL/Docker | `make test-db` and DB-specific wrappers |
 | Git hooks | Repository hook installer | `./scripts/install-hooks.sh` |
 | Database | MySQL/MariaDB | `.env`, `migrations/run_migration.sh` |
 | Dev server | DurisMUD supervisor | `scripts/start_mud.sh --dev` |
 
-## CI/CD
+## Verification gate
 
-| Bundle | Status | Workflow |
-|--------|--------|----------|
-| Code Quality | configured | `.github/workflows/quality.yml` |
-| Build & Test | configured | `.github/workflows/build.yml` |
-| Security | configured | `.github/workflows/security.yml` |
-| Integration | not configured | - |
-| Operations | not configured | `.github/dependabot.yml` provides dependency updates only |
-
-Build & Test and Security run on pushes to `master` and on pull requests targeting
-`master`; Code Quality additionally runs on pushes to any branch. The local
-equivalents are `./scripts/format.sh --check`,
-`python3 tests/async/test_compiler_warning_profile.py`, `make test-all`, and
-`make security-check`.
+Verification is local; no hosted pipeline runs. The gate is `./scripts/format.sh --all --check`,
+`make test-all` and `make test-db` ([TESTING.md](TESTING.md#before-a-merge)). The workflow
+files under `.github/workflows/` are kept as the recipe for the checks that are replayed by
+hand when a change touches them: backup recovery, CodeQL and Trivy, and the site tests.
 
 ## Infrastructure
 
 | Component | Provider | Details |
 |-----------|----------|---------|
-| Hosting | externally managed | No repository-owned production target is declared |
+| Hosting | externally managed | [PRODUCTION_DEPLOYMENT.md](../operations/PRODUCTION_DEPLOYMENT.md) describes the production host |
 | Database | MySQL/MariaDB | Required at boot; pooled readiness is exposed without a blocking query |
 | Health | DurisMUD WebSocket listener | `GET /health` on `DURIS_WEBSOCKET_PORT` (default 4050); JSON status; `scripts/healthcheck.sh` probe |
 

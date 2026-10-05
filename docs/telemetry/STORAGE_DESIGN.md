@@ -2,7 +2,7 @@
 
 Design review: 2026-09-12. Source baseline: `20fb9c15d77a321cb39d7f89b384adc3571d24ff`. Companion to the source audit summarized in #258.
 
-Status: proposed architecture, not implemented or benchmarked. No production database/version/topology was inspected. Performance numbers below are proposed test budgets and workload arithmetic, not observed capacity. This review deepens and narrows T2/T3/T8/T9 in the audit.
+Status: the design review the telemetry modules were built from. The tables, the writer and the external rollup and report commands exist ([CONTRACT.md](CONTRACT.md) maps the modules); where this review and those documents differ, they are right. Nothing here was benchmarked: no production database, version or topology was inspected, and the performance numbers below are proposed test budgets and workload arithmetic, not observed capacity. This review deepens and narrows T2/T3/T8/T9 in the audit.
 
 ## Decision
 

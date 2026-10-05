@@ -197,29 +197,23 @@ tool. This subsystem touches and replaces none of them.
 ## Deliberately not included
 
 - **On-crit riders.** Nothing is dispatched when a critical is
-  confirmed. The smallest fix is a `CMD_MELEE_CRIT` pseudo-command
-  beside `CMD_MELEE_HIT` — two lines in `hit()`. Left out because that
-  trade, in that function, should be the maintainer's call.
-- **A fix for `events.c:1348`**, where `room_event()` passes a room vnum
-  while every other room-proc call site passes the real index.
-  `studioproc_room()` accepts both rather than carrying an unrelated
-  change into this PR.
-- **`spells.h` changes.** The three affect type ids (2198-2200) come
-  from the unused top of the `skills[]` index space
-  (`MAX_AFFECT_TYPES + 1` = 2201; the `TAG_` list currently ends at
-  2126). Nothing reserves them, so if that list ever grows past 2197 they
-  collide silently. Three explicit `TAG_`-style constants would be
-  strictly safer and is three lines — say the word.
+  confirmed. The smallest addition is a `CMD_MELEE_CRIT` pseudo-command
+  beside `CMD_MELEE_HIT`, two lines in `hit()`.
+- **A fix for `room_event()`** (`src/world/events.c`), which passes a room
+  vnum while every other room-proc call site passes the real index.
+  `studioproc_room()` accepts both.
+- **`spells.h` changes.** The three affect type ids (2198-2200,
+  `SP_TAG_*` in `src/mob/studioproc.h`) come from the unused top of the
+  `skills[]` index space (`MAX_AFFECT_TYPES + 1` = 2201). Nothing
+  reserves them, so if the `TAG_` list ever grows past 2197 they collide
+  silently ([#28](https://gitlab.com/max757/duris/-/work_items/28)).
 - **Toolchain integration for `world.trg`.** It is appended by hand
   rather than produced by `areas/src`, which is also why area
-  regeneration leaves it alone. Having `make_all` concatenate
-  `trg/*.trg` per zone would be a better long-term shape and is a small
-  follow-up.
+  regeneration leaves it alone ([#28](https://gitlab.com/max757/duris/-/work_items/28)).
 
 ## Verifying it yourself
 
-Build from a pristine `git archive` of the branch: `cd src && make -j16`.
-Expect exit 0 and 225 objects, with your warning set unchanged.
+Build with `make -C src`; it must finish with no warning.
 
 Boot with no `areas/world.trg` present — the entire feature is one line
 in the status log, `STUDIOPROC: no areas/world.trg, proc engine idle.`,

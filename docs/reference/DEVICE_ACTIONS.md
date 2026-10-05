@@ -68,8 +68,8 @@ recursively inside its own transfer/unequip callback. It cannot be used twice,
 and transfer or abort does not restore the ink. An already extracted scroll is
 not extracted again. The cleanup queue is capped at 4096 entries.
 
-Charges and consumed ink use the existing item save authority. This slice does
-not add a synchronous durable ledger for ordinary devices. A crash before the
+Charges and consumed ink use the existing item save authority. Ordinary devices
+have no synchronous durable ledger. A crash before the
 next item snapshot retains that authority's existing recovery limitations; a
 saved blank scroll may remain as a harmless spent item if shutdown interrupts
 deferred removal. Artifact mana's separate crash policy is documented in
@@ -142,5 +142,6 @@ to the common departure/extraction hooks. No raw game pointer survives a call.
 
 The live journey records binary SHA-256 and measurements in an optional JSON
 output. Keep those generated logs under `bin/`; do not commit player/state data.
-Full rollout, persistent mana interaction and additional artifact families
-remain tracked by #296/#297. No production enablement is performed here.
+Persistent mana is in [ARTIFACT_MANA.md](ARTIFACT_MANA.md), the other artifact families
+in [NATIVE_ARTIFACT_PILOTS.md](NATIVE_ARTIFACT_PILOTS.md), and the rollout in the
+[rollout runbook](../operations/ITEM_ABILITY_ROLLOUT.md). Everything ships disabled.

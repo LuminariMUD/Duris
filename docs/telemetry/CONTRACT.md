@@ -1,9 +1,9 @@
 # Telemetry contract — version 1 (#260)
 
-Status: implementation candidate; **not frozen or integration-ready until #260
-merges**. This document and the public headers must be reviewed together with the
-golden fixtures. Declarations and specification tests do not implement a writer,
-classifier, SQL store or gameplay instrumentation.
+Status: implemented; telemetry is off unless `TELEMETRY_ENABLED` is set. This
+document, the public headers and the golden fixtures change together. The telemetry
+documents name each module by the number of the work item it was built under; the
+list below maps the numbers to documents.
 
 `STORAGE_DESIGN.md` preserves the complete published design. Its workload numbers,
 SQL examples and table shapes are proposals, not measurements. The precise v1
@@ -13,18 +13,26 @@ telemetry, retention, account linkage or automatic balance changes are authorize
 
 ## Ownership and build boundaries
 
-- #260 owns the shared headers and fixture format. Consumers request amendments
-  here rather than fork record types or change enum meanings.
-- #261 owns SQL schema, private connection, idempotent apply and immutable migration
-  registration. Allocate migration IDs from current master, not this document.
-- #262 owns the preallocated queue, sequential writer, retry and stop protocol.
-- #263 owns effective config identity and typed classifier policy snapshots.
-- #264 owns logical session/connection state and cumulative counters.
-- #266 owns pure activity evidence/classification and contextual interval splitting.
-- #265 alone owns gameplay/lifecycle hooks and shared build registration after its
-  predecessors merge. #267 owns the additive progression fact extension and the
-  telemetry-only XP/level hooks in `world/limits.c`; see `PROGRESSION.md`. #268
-  owns external rollups; #269 owns report presentation.
+- #260 (this document) owns the shared headers and fixture format. Consumers request
+  amendments here rather than fork record types or change enum meanings.
+- #261 ([DATABASE.md](DATABASE.md)) owns SQL schema, private connection, idempotent
+  apply and immutable migration registration.
+- #262 ([TRANSPORT.md](TRANSPORT.md)) owns the preallocated queue, sequential writer,
+  retry and stop protocol.
+- #263 ([CONFIG_CONTEXT.md](CONFIG_CONTEXT.md)) owns effective config identity and typed
+  classifier policy snapshots.
+- #264 ([SESSION_STATE.md](SESSION_STATE.md)) owns logical session/connection state and
+  cumulative counters.
+- #266 ([ACTIVITY.md](ACTIVITY.md)) owns pure activity evidence/classification and
+  contextual interval splitting.
+- #265 ([SESSION_LIFECYCLE.md](SESSION_LIFECYCLE.md)) alone owns gameplay/lifecycle hooks
+  and shared build registration. #267 ([PROGRESSION.md](PROGRESSION.md)) owns the
+  additive progression fact extension and the telemetry-only XP/level hooks in
+  `world/limits.c`. #268 ([ROLLUPS.md](ROLLUPS.md)) owns external rollups; #269
+  ([REPORTS.md](REPORTS.md)) owns report presentation; #270 is
+  [REWARD_PROJECTION.md](REWARD_PROJECTION.md); #272 is
+  [PERFORMANCE_GATE.md](PERFORMANCE_GATE.md); #273 to #275 are the rested-bonus study
+  and the balance shadow policy and application under `studies/` and `balance/`.
 - No new header includes game character, SQL, socket, mutex or filesystem types.
   Standalone compilation must work both with and without `__NO_MYSQL__`.
 - Flat-file authority explicitly reports disabled/unsupported telemetry. There is
@@ -58,7 +66,7 @@ new environment identity. No per-event randomness/hashing is needed.
 - Subject, PID, environment and season are scoped at entry. PID must be positive;
   subject/season/environment identifiers must be nonzero. Subject is a restricted
   opaque character key, not a name, IP or raw account identifier. Environment and
-  season distinguish reused player IDs and restored worlds. This release does
+  season distinguish reused player IDs and restored worlds. The contract does
   not claim historical account linkage or distinct-account reports.
 - Sequence/revision exhaustion disables further observation for that incarnation;
   never wrap or silently reuse identities. Saturating diagnostic counters expose
@@ -342,9 +350,4 @@ python3 tests/async/test_telemetry_contract_fixtures.py
 Shared fixtures live in `tests/async/fixtures/telemetry/contract/`. Downstream
 implementations must consume the same cases through their actual boundaries; the
 reference oracle is not a substitute for queue, repository or classifier tests.
-The public declarations are intentionally not added to `src/Makefile` here, and
-no gameplay journey is applicable until #265 installs actual runtime hooks.
-
-#260 is not complete until header/document/fixture agreement is checked. The
-standalone schema declaration does not justify enabling SQL telemetry or changing
-ready/blocked labels before the contract actually merges.
+The gameplay journey is `tests/async/run_telemetry_player_journey.py`.

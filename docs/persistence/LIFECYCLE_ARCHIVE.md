@@ -1,6 +1,6 @@
 # Lifecycle Archive Execution
 
-Phase 03 provides a bounded archive execution contract, but the checked-in lifecycle
+The repository provides a bounded archive execution contract, but the checked-in lifecycle
 policy has no approved destructive rule. The live scheduler therefore exposes a
 `lifecycle_archive` slot with `enabled=0`, and the operator command reports
 `scheduler_state=blocked_by_policy`. No archive, purge, pseudonymization, or active-row

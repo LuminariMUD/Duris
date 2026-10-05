@@ -5,10 +5,9 @@ The current project version is `0.1.63`. The root
 [`VERSION`](../../VERSION) file is the canonical version marker; the version
 shown at the top of the root [README.md](../../README.md) mirrors it.
 
-The repository's long development history informed the initial `1.81.8`
-baseline. It does not create a formula between Git commit counts and release
-numbers. Future versions communicate compatibility according to the rules
-below.
+Versioning started at `0.1.0` on 2026-08-28. There is no formula between Git
+commit counts and release numbers; versions communicate compatibility according
+to the rules below.
 
 ## Version format
 
@@ -23,8 +22,8 @@ resets `PATCH` to zero. Published version contents are immutable; a correction
 is released under a new version.
 
 Pre-release identifiers may be appended for test builds, such as
-`1.82.0-alpha.1`, `1.82.0-beta.1`, or `1.82.0-rc.1`. Build metadata may be
-appended with `+`, for example `1.81.8+git.abcdef0`; it does not affect version
+`0.2.0-alpha.1`, `0.2.0-beta.1`, or `0.2.0-rc.1`. Build metadata may be
+appended with `+`, for example `0.1.63+git.abcdef0`; it does not affect version
 precedence.
 
 ## Compatibility surface

@@ -59,6 +59,5 @@ and forced resets. Existing recovery pipeline tests exercise failed Redis
 materialization and fallback. These are isolated regressions, not a production
 recovery experiment.
 
-The next full-world boot or copyover on the updated binary applies reconciliation
-and logs the number of extra keepers and dragons removed. Merging the change
-does not restart a running server or directly alter production state.
+A full-world boot or copyover applies reconciliation and logs the number of extra
+keepers and dragons removed.

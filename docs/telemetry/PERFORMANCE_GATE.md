@@ -11,8 +11,7 @@ The gate deliberately does not:
 - connect to MySQL/MariaDB or read credentials;
 - start the game server or generate player/gameplay traffic;
 - apply a migration, publish a rollup generation, or change runtime
-  activation/balance policy;
-- run CI checks (the project task explicitly excludes CI for this package).
+  activation/balance policy.
 
 ## Reproducible workload
 
@@ -136,6 +135,5 @@ the harness source:
 5. Stop/quiesce/teardown evidence is captured after callbacks are released and
    no test performs a production migration, load, activation, or CI action.
 
-The closeout should attach the sanitized JSON report, record the compiler and
-Python versions, note host/runtime limitations, and keep any follow-up live
-database qualification as a separate issue.
+A run's record is the sanitized JSON report with the compiler and Python versions
+and the host's limitations. Live database qualification is not part of this gate.
