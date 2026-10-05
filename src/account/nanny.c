@@ -1210,7 +1210,7 @@ void enter_game(P_desc d)
 	long time_gone = 0, hit_g, move_g, heal_time, rest;
 	time_t ct = time(NULL);
 	int mana_g;
-	char Gbuf1[MAX_STRING_LENGTH], timestr[MAX_STRING_LENGTH];
+	char Gbuf1[MAX_STRING_LENGTH];
 	bool nobonus = FALSE;
 	P_char ch = d->character;
 	const bool new_character = ch && GET_LEVEL(ch) == 0;
@@ -1682,15 +1682,9 @@ void enter_game(P_desc d)
 	}
 
 	GetMIA(ch->player.time.saved, Gbuf1);
-	// Convert to EST.
-	ct -= 4 * 60 * 60;
-	snprintf(timestr, MAX_STRING_LENGTH, "%s", asctime(localtime(&ct)));
-	*(timestr + strlen(timestr) - 1) = '\0';
-	strcat(timestr, " EST");
-	ct += 4 * 60 * 60;
 
-	loginlog(GET_LEVEL(ch), "%s [%s] enters game @ %s.%s [%d]", GET_NAME(ch), d->host, timestr,
-		 Gbuf1, world[ch->in_room].number);
+	loginlog(GET_LEVEL(ch), "%s [%s] enters game.%s [%d]", GET_NAME(ch), d->host, Gbuf1,
+		 world[ch->in_room].number);
 	sql_log(ch, CONNECTLOG, "Entered Game");
 
 	if (GET_LEVEL(ch) >= MINLVLIMMORTAL)

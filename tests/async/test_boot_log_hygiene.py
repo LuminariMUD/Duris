@@ -64,6 +64,19 @@ artifact = (SRC / "artifact.c").read_text()
 assert artifact.count("arti_cache_init();") == 0
 
 
+# --- a connection line carries the logger's time stamp and no second one -----
+# Quit, enter game, rent, void and lost link each added the time shifted by a fixed four
+# or five hours and labelled EST, which is wrong for half of every year.
+for name, line in (("actoth.c", '"%s has quit in [%d]."'),
+                   ("nanny.c", '"%s [%s] enters game.%s [%d]"'),
+                   ("specs.room.c", '"%s [%s] has rented out in [%d]."'),
+                   ("limits.c", '"%s has voided in [%d]."'),
+                   ("comm.c", '"%s [%s] has lost link."')):
+    text = (SRC / name).read_text()
+    assert line in text, line
+    assert not re.search(r'\bEST\b', text), name
+
+
 # --- the donation subscriber must not block the game loop --------------------
 # A blocking Redis subscriber socket stalled every idle pulse and showed up as
 # a once-per-second NEVENT SLOW entry in logs/log/status.

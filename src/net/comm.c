@@ -3225,8 +3225,6 @@ void close_socket(struct descriptor_data *d)
 	struct descriptor_data *tmp;
 	snoop_by_data *snoop_by_ptr, *next;
 	int is_morphed = d->character ? IS_MORPH(d->character) : 0;
-	char Gbuf1[MAX_STRING_LENGTH];
-	time_t ct;
 	if (d && d->player_load_request_id)
 		player_load_pipeline_cancel(d->player_load_request_id);
 	account_recovery_descriptor_closed(d);
@@ -3358,13 +3356,8 @@ void close_socket(struct descriptor_data *d)
 			{
 				logit(LOG_COMM, "Closing link to: %s [%s].",
 				      GET_NAME(GET_PLYR(d->character)), d->host);
-				// Subtract 5 hrs: GMT -> EST.
-				ct = time(0) - 5 * 60 * 60;
-				snprintf(Gbuf1, MAX_STRING_LENGTH, "%s", asctime(localtime(&ct)));
-				*(Gbuf1 + strlen(Gbuf1) - 1) = '\0';
-				loginlog(d->character->player.level,
-					 "%s [%s] has lost link @ %s EST.",
-					 GET_NAME(GET_PLYR(d->character)), d->host, Gbuf1);
+				loginlog(d->character->player.level, "%s [%s] has lost link.",
+					 GET_NAME(GET_PLYR(d->character)), d->host);
 				sql_log(d->character, CONNECTLOG, "Lost Link");
 			}
 			persistence_save_character_terminal(d->character, RENT_CRASH);
