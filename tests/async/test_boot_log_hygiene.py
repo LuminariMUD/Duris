@@ -87,6 +87,14 @@ for closed in ("GNUTLS_E_PREMATURE_TERMINATION", "GNUTLS_E_PULL_ERROR", "ECONNRE
     assert contains(process_input, "!= " + closed), closed
 
 
+# --- an absent mud_info page is its normal state ------------------------------
+# The creation lock is an optional row that no migration seeds, and every new-character
+# name logged that it "doesn't exist". The MariaDB lookup is the file's second.
+sql = (SRC / "sql.c").read_text()
+lookup = sql[sql.rindex("string get_mud_info(const char *name)"):].split("\n}\n", 1)[0]
+assert contains(lookup, "mud_info.find(") and "logit(" not in lookup
+
+
 # --- the donation subscriber must not block the game loop --------------------
 # A blocking Redis subscriber socket stalled every idle pulse and showed up as
 # a once-per-second NEVENT SLOW entry in logs/log/status.
