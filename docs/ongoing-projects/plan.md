@@ -7,12 +7,12 @@ working note: delete it when the last phase lands.
 
 ## Status
 
-Updated 2026-10-05. A new session starts here, then reads the phase it continues.
+Updated 2026-10-06. A new session starts here, then reads the phase it continues.
 
 | Phase | Item | State |
 |---|---|---|
 | 1 | #10 | Landed on 2026-10-05 in `7fdbb20fe` (!11). |
-| 2 | #13 | Built and in review: branch `fix/13-small-defects-log-noise`, !12. |
+| 2 | #13 | Built, and review round 1 is fixed: branch `fix/13-small-defects-log-noise`, !12. It is ready to land. |
 | 3 | #11 | Not started. It is next, on a new branch from `master`, once !12 has landed. |
 | 4 | #14 | Not started. |
 | 5 | #17 | Not started. |
@@ -218,8 +218,8 @@ checks.
 
 ## Phase 2: small defects and log noise (#13)
 
-**Status: built, in review as !12.** "State of the work" at the end of this phase has the
-details.
+**Status: built, review round 1 fixed, ready to land as !12.** "State of the work" at the
+end of this phase has the details.
 
 **Checked.** All seven findings are in the code as described, at the lines the item links.
 
@@ -252,9 +252,18 @@ details.
    loaded, or the flat-file read failed. `test_world_quest_remaining_unloaded.py` runs
    score's own lines and the production JSON builder against a history that has not
    loaded, then against one that has.
+   Review round 1 (`87cca01d2`): `enter_game()` queues the history read and sends
+   `Quest.Status` in the same call, so a first entry after a boot could never carry the
+   count, and nothing sent it later. The read's callback now sends the status again to a
+   character that is in the game. `sql_world_quest_can_do_another()` no longer logs
+   `history not loaded yet`: every first entry asks once before the read can answer.
 2. **Time stamps** (`26531fc28`). The stamp is gone from the five `loginlog()` lines and
    from the quit `logit()` line, with the locals that only built it.
    `test_boot_log_hygiene.py` pins the five format strings.
+   Review round 1 (`d2fbf849d`): four of the five lines (enter game, rent, void and lost
+   link) are written by `loginlog()` alone, which reaches no log file, so the stamp that
+   was removed was the only time they carried. `loginlog()` now starts every line of the
+   staff channel with the server's time and the zone it is in.
 3. **Disconnects** (`9f027d69d`). `process_input()` returns without a line for end of
    file, `ECONNRESET`, `GNUTLS_E_PREMATURE_TERMINATION` and `GNUTLS_E_PULL_ERROR`. Any
    other read error keeps its line. `close_socket()` logs every descriptor it closes,
@@ -267,6 +276,10 @@ details.
 5. **Profile dump** (`0ce7f0586`). Shutdown runs `PROFILES(SAVE)` and
    `save_func_call_info()` only while `do_profile` is on. `debug profile save` still
    writes them on request.
+   Review round 1 (`e07673051`): a run that was switched off before the stop was lost, so
+   the guard is now `event_loop_profile.calls > 0`. That timer counts only while
+   profiling is on and `debug profile reset` zeroes it, so a server that never profiled
+   still writes nothing.
 6. **Shopkeeper saves** (`aa7d10392`). The `saved %d shopkeepers` line is behind
    `persistence_trace_enabled()` and in the list `test_boot_log_hygiene.py` checks.
    `CONFIGURATION.md` names it under `DURIS_PERSISTENCE_TRACE`.
@@ -289,7 +302,8 @@ name a new character and close their sockets, and its last server is stopped cle
 journey waits until `close_socket()` has logged every disconnect, requires
 `Normal termination of game.`, and fails on `EOF encountered` or `process_input()` in
 `logs/log/comm`, `get_mud_info` in `logs/log/debug` and `Profile info` in `logs/log/file`
-(`9cd0ef332`).
+(`9cd0ef332`). Since review round 1 its mortals turn GMCP on, and each must be sent a
+`Quest.Status` with its count.
 
 **Differs from the plan**
 
@@ -311,14 +325,29 @@ journey waits until `close_socket()` has logged every disconnect, requires
   change.
 - No test of its own for the real log lines: they are checked in the world capture
   journey, which already boots, plays and stops a full server.
+- Step 2, review round 1: decision 2 removed the wrong stamp from the immortal channel as
+  well as from the log line. For four of the five lines the channel is the only record, so
+  that left them with no time at all. The channel now carries the server's own time on
+  every line. `d2fbf849d` stands alone: it can be dropped if the channel should carry none.
+- Step 5, review round 1: the review offered `do_profile || event_loop_profile.calls > 0`.
+  The second half alone is used. With profiling on at the stop the timer has counted,
+  unless the stop came within two pulses of switching it on or resetting it, and then
+  there is nothing but zeros to write.
 
 **Found on the way**
 
 - `time` showed players a second line: the server's time minus five hours, labelled
   `(EST)`. It is the same stamp. The line is removed, and the one that is left names the
-  zone the server's clock is in, `(UTC)` on a server set to UTC (`c93b4588c`, with
-  `test_time_command_zone.py`). A correct Eastern line would need the time zone database
-  at run time; it was not built.
+  zone the server's clock is in, `(UTC)` on a server set to UTC (`c93b4588c`). A correct
+  Eastern line would need the time zone database at run time; it was not built.
+  Review round 1 (`f0a8c4e3a`): the zone was formatted into 16 bytes with an unchecked
+  `strftime()`, so a zone abbreviation of 16 characters or more printed stack bytes. Only
+  the server's own `TZ` can do that. The line now prints `tm_zone`, with no buffer. The
+  test is `test_server_time_zone.py`, which also runs the production `loginlog()`.
+- A new character's "enters game" line on the staff channel gave the time since 1970 as
+  its absence (`MIA: 20731 days`): a character that has never been saved has a save time
+  of zero. The line now carries an absence only for a character that has been saved
+  (`ad5c0af68`). Seen in the round 1 probe.
 - Two defects of the journeys themselves each failed a `make test-db` run. Neither is
   part of #13, so each went to `master` after its own gate, and this branch was rebased
   onto it.
@@ -343,8 +372,11 @@ four stamps as well.
 
 - Branch `fix/13-small-defects-log-noise`, from `master` at `105dc9092`: the nine
   commits named above, then this file's.
+- Review round 1 is five commits: `87cca01d2`, `e07673051`, `f0a8c4e3a` and `d2fbf849d`
+  for the review's findings 1 to 4, and `ad5c0af68` for what was found on the way. This
+  file's second commit follows them.
 - Merge request !12 closes #13. The tag `log-review/phase-2-review-0` is the head the
-  review reads.
+  review read, and `log-review/phase-2-review-1` the head with its fixes.
 - The gate, on 2026-10-05, on `c93b4588c`, the head before this file's commit:
   - `./scripts/format.sh --check`: clean.
   - `make -C src`: built.
@@ -373,9 +405,50 @@ four stamps as well.
 - In the game loop budget journey, with analytics on, 9 `NEVENT BUDGET:` and 14
   `NEVENT CATCHUP:` lines over 600 pulses came with 1 window line. A default server
   writes only that one.
-- The rent and void lines were not triggered by hand. `test_boot_log_hygiene.py` pins
-  their format strings.
-- Open: the review, then landing.
+- The rent and void lines were not triggered by hand before the review.
+  `test_boot_log_hygiene.py` pins their format strings. Round 1 triggered both.
+- The review ran its own gate on `dfc8e2c99`: `make test-all` 671 passed and 0 failed in
+  472 s, and `make test-db` 45 of 45 in 266 s.
+- The round 1 gate, on 2026-10-06 on `ad5c0af68`, the head before this file's second
+  commit:
+  - `./scripts/format.sh --all --check` and `--check`: clean.
+  - `make -C src`: built.
+  - `make test-db`: 45 of 45 passed in 279 s. `world_capture`, which now requires the
+    quest count, took 99 s, and `game_loop_budget` 201 s.
+  - `make test-all`: 671 passed, 0 failed, in 450 s. That was its second run. The first,
+    with the round's two probe servers running beside it, was 670 passed and 1 failed:
+    `test_password_async_runtime.py` holds each step of its game thread to 50 ms and
+    missed that once. The test passed alone 3 times of 3, and 32 times of 32 as 16 copies
+    side by side.
+- Round 1 by hand, with the review's probe on a real server (disposable MariaDB, the full
+  world, three boots), a level 62 character watching a mortal:
+  - A new character over telnet with GMCP is sent `Quest.Status` without the count, then
+    with it (`"remaining":8`) inside 3 seconds. An existing character gets the same pair
+    on its first entry after a restart, over telnet and over the WebSocket. A later entry
+    in the same boot gets the count twice. `logs/log/debug` has no `world_quest` line.
+  - The staff channel shows `*** LOGMSG: 01:01:46 IDT Morwenna [127.0.0.1] has rented out
+    in [81019].`, and the same stamp on the enter game, lost link, reconnect and camp
+    lines. A mortal left idle was voided after 21 minutes: `*** LOGMSG: 01:48:20 IDT
+    Morwenna has voided in [22800].`
+  - `debug profile on`, 10 seconds, `debug profile off`, then a stop: 59 `Profile info`
+    lines. Stopped with profiling still on: 59. Never profiled: none.
+  - A new character's entry line carries no absence: `*** LOGMSG: 01:27:06 IDT Morwenna
+    [127.0.0.1] enters game. [22800]`.
+- Shown to fail without the round 1 fixes, on the build of `dfc8e2c99`:
+  - The world capture journey with its new check stops with `Kakan was never sent its
+    remaining quests`.
+  - The same probe gets one `Quest.Status`, without the count, on each first entry. Its
+    channel lines carry no time, and the new character's reads `(MIA: 20731 days, 22
+    hours, 5 minutes)`. On, off and a stop writes no `Profile info` line, and
+    `logs/log/debug` has four `history not loaded yet` lines.
+  - `time`'s own lines, run alone under `TZ='<ABCDEFGHIJKLMNOP>5'`, print `(0)` and
+    valgrind reports an uninitialised value. The new lines print the zone whole and
+    valgrind is clean.
+- Not checked: the `NEVENT BUDGET WINDOW` line over a long run with players on. The
+  development server, with no one connected, wrote 101 of them in 153 revolutions (3 hours
+  11 minutes) and no per-pulse line. The worst pulse was 2 late, apart from five
+  revolutions while the round's gate and probes loaded the machine, where it was up to 6.
+- Open: landing.
 
 ---
 
