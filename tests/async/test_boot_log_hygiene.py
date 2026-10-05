@@ -52,6 +52,16 @@ run_the_game = (SRC / "comm.c").read_text().split("int run_the_game(int port, in
 assert run_the_game.count("sql_async_boot_done();") == 1
 assert index(run_the_game, "player_save_pipeline_init()") < index(run_the_game,
                                                                   "sql_async_boot_done();")
+# The artifact lists are read once the boot's world is final. Read in the middle of boot,
+# every one was dropped as stale when boot loaded an artifact afterwards: an owned one from
+# its row, or all of them when a generation or a copyover is restored.
+game_loop = (SRC / "comm.c").read_text().split("void game_loop(int port, int sslport)", 1)[1]
+assert game_loop.count("arti_cache_init();") == 1
+for restore in ("copyover_recover(", "redis_world_recovery_boot_clear();",
+                "initialize_transport();"):
+    assert index(game_loop, restore) < index(game_loop, "arti_cache_init();"), restore
+artifact = (SRC / "artifact.c").read_text()
+assert artifact.count("arti_cache_init();") == 0
 
 
 # --- the donation subscriber must not block the game loop --------------------

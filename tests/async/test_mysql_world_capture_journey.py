@@ -8,8 +8,9 @@ as staging's world is. Mortals on their own accounts play (they look, list what 
 and save) while the first capture runs.
 
 That first boot is on an empty database, so it also shows that a boot writes the SQL it
-queues before its writer starts (work item #10): see boot_sql_missing(). Neither boot may
-log `sql job not queued`.
+queues before its writer starts (work item #10): see boot_sql_missing(). Each boot must
+cache the six artifact lists, and neither may log a `sql job` line (not queued, or failed
+at boot).
 
 The capture reports itself in the line that acknowledges its generation:
 - the generation, above 64 MiB, was published;
@@ -48,6 +49,7 @@ RESTORED = (r'restored world recovery generation sequence=(\d+) mobs=(\d+) objs=
             r'doors=(\d+) zones=(\d+)')
 REHYDRATED = r'rehydrated recovered NPC zone items matched_mobs=(\d+) loaded_items=(\d+)'
 CREATED = r'arti_update_sql: Creating entry: vnum: (\d+),'
+LISTED = 'redis: cached artifact list'
 
 
 class Player(budget.Mortal):
@@ -92,6 +94,7 @@ def boot_sql_missing(sql, log):
     The database began empty. Every artifact the zone resets load logs "Creating entry" and
     queues its row and its domain-state row. Each outpost queues its building's hit points
     over the 0 its row began with. The frag list read fills the cache on the first pulse.
+    The six artifact lists are read once the world is final and cached on a later pulse.
     """
     created = sorted(set(map(int, re.findall(CREATED, log('artifact')))))
     missing = [] if created else ['any artifact']
@@ -102,6 +105,8 @@ def boot_sql_missing(sql, log):
         missing.append('outpost hit points')
     if 'redis: cached fraglist' not in log('sys'):
         missing.append('the frag list cache')
+    if log('sys').count(LISTED) < 6:
+        missing.append('the artifact list caches')
     return missing
 
 
@@ -183,7 +188,7 @@ def run(server, players):
         mortals = []
         try:
             process, plain, boot_seconds = boot()
-            assert 'sql job not queued' not in log('file'), log('file')[-2000:]
+            assert 'sql job' not in log('file'), log('file')[-2000:]
             written = time.monotonic() + 30
             while boot_sql_missing(sql, log):
                 assert time.monotonic() < written, \
@@ -217,6 +222,7 @@ def run(server, players):
             process.kill()
             process.wait()
             killed = time.monotonic()
+            listed = log('sys').count(LISTED)
             process, _, _ = boot()
             while not (re.search(RESTORED, log('sys')) and
                        'Crash recovery complete' in log('status')):
@@ -225,6 +231,13 @@ def run(server, players):
                     log('sys')[-2000:] + log('status')[-2000:]
                 time.sleep(0.5)
             recovery_seconds = time.monotonic() - killed
+            # The restore stores a row for each artifact it puts back; the lists are read
+            # after it, so this boot caches them too.
+            while log('sys').count(LISTED) < listed + 6:
+                assert process.poll() is None, 'the server exited'
+                assert time.monotonic() - killed < 330, \
+                    'the restored boot did not cache the artifact lists:\n' + log('sys')[-2000:]
+                time.sleep(0.5)
             restored, mobs, objects, doors, zones = map(
                 int, re.search(RESTORED, log('sys')).groups())
             matched, carried = map(int, re.search(REHYDRATED, log('status')).groups())
@@ -260,7 +273,7 @@ def run(server, players):
         assert restored == sequence, (restored, sequence)
         assert mobs > 50000 and objects > EXTRA_OBJECTS, (mobs, objects)
         assert matched > 50000 and carried > 0, (matched, carried)
-        assert 'sql job not queued' not in log('file'), log('file')[-2000:]
+        assert 'sql job' not in log('file'), log('file')[-2000:]
     print(f'world capture journey passed: {size / 2**20:.1f} MiB captured in '
           f'{capture_ms / 1000:.1f} s under {players} players, and restored after a crash')
 

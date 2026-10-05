@@ -108,8 +108,10 @@ next boot restores the generation. It prints the generation's size, the capture'
 and what the restore brought back; `--players N` scales the load. Its first boot is on
 an empty database, so it is also the boot test for SQL queued before the writer starts:
 it fails unless every artifact the boot created has its `artifacts` and
-`artifact_domain_state` rows, each outpost's stored hit points are set, the frag list
-cache is filled, and neither boot logged `sql job not queued`.
+`artifact_domain_state` rows, each outpost's stored hit points are set and the frag list
+cache is filled. Both boots must cache the six artifact lists (the restored one reads
+them after the restore), and neither may log a `sql job` line (`not queued`, or
+`failed at boot`).
 `run_world_recovery_journey.py`, also in `make test-db`, covers the switch on the mini
 world: off, the alert of an outage, the writer coming back, a crash's restore and the
 defaults. `run_world_restart_journey.py <server> <scenario>` covers what a restart leaves,

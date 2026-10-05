@@ -712,6 +712,7 @@ bool remove_owned_artifact_sql(P_obj arti, int pid = -1);
 std::vector<std::string> remove_all_artifacts_sql(int pid);
 void artifacts_forget_deleted_character(int pid);
 void setupMortArtiList_sql(void);
+void arti_cache_init(void);
 bool artifacts_load(void);
 void artifacts_forget_deleted_account_character(int pid);
 void artifact_feed_published(int vnum, time_t captured_timer, time_t timer);
