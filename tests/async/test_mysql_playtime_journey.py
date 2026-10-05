@@ -220,12 +220,13 @@ def run(server):
                     process = boot()
                     client = journey.reconnect_character(plain)
                     before_copyover = save("pre-copyover")
-                    copyover_begin = time.monotonic()
                     client.send("shutdown copyover")
                     client.expect("*** Copyover complete! ***", timeout=60)
                     assert process.poll() is None
                     after_copyover = save("post-copyover")
-                    assert before_copyover <= after_copyover <= before_copyover + time.monotonic() - copyover_begin + 2
+                    # The session counts on from that save's capture, not from the copyover.
+                    assert before_copyover <= after_copyover <= \
+                        before_copyover + time.monotonic() - sent["pre-copyover"] + 2, rows
                     # Copyover playtime is verified on the preserved connection.
                     # Account-menu restoration is a separate contract; cleanup
                     # must not assume this minimal fixture retained its account UI.
