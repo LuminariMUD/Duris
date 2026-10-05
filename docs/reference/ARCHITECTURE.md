@@ -305,7 +305,7 @@ are data-driven from `areas/world.trg` and dispatched by the studio-proc engine
 (`src/mob/studioproc.c`, `src/mob/studioproclib.c`). Engine hooks are four one-line
 call sites added to existing code paths; everything else is table-driven.
 Design rationale: [STUDIOPROC.md](../content/STUDIOPROC.md). Builder grammar:
-[`src/howto_trg.txt`](../legacy/src/howto_trg.txt).
+[`howto_trg.txt`](../content/howto_trg.txt).
 
 ## Ships
 

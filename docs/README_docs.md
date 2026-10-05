@@ -17,7 +17,6 @@ docs/
   examples/      versioned configuration samples and transcripts
   data/          generated inputs and evidence that tools read
   ongoing-projects/  the plan being worked on now
-  legacy/        inherited upstream text
   lib/           runtime game data (not documentation)
 ```
 
@@ -145,7 +144,9 @@ the work item it was built under; [CONTRACT.md](telemetry/CONTRACT.md) maps the 
 | [HELP_SYSTEM.md](content/HELP_SYSTEM.md) | Help sources, database import, and rendering. |
 | [HELP_STYLE_GUIDE.md](content/HELP_STYLE_GUIDE.md) | House style for help entries. |
 | [AREA_OBJECT_FORMAT.md](content/AREA_OBJECT_FORMAT.md) | Area object file format and bitvector compatibility. |
+| [area_writing.txt](content/area_writing.txt) | The inherited area-writing manual: the `.wld`, `.mob`, `.obj`, `.zon`, `.shp` and `.qst` formats, ANSI codes, and common object numbers. It says itself that it is outdated. |
 | [STUDIOPROC.md](content/STUDIOPROC.md) | Studio proc design and the reasoning behind it. |
+| [howto_trg.txt](content/howto_trg.txt) | The builder's grammar for `areas/world.trg`. |
 | [classes_and_races.txt](content/classes_and_races.txt) | Class and race reference table. |
 
 ## testing/, gates/, network/, design/
@@ -182,10 +183,8 @@ are in Git history at commit `212592e3`.
 - [Server architecture diagram](diagrams/duris-server-architecture.html) and
   [database model](diagrams/duris-database-model.html)
 
-## Legacy and runtime-data trees
+## Runtime-data tree
 
-- `legacy/` is inherited upstream reference text (`legacy/areas/`, `legacy/src/`) and
-  may be stale.
 - `lib/` is **not documentation**. `lib/information/` is read by the server at runtime
   (`src/cmd/wikihelp.c`, `src/account/nanny.c`) and by `scripts/import_help_to_prod.sh`; moving it
   breaks the running game.

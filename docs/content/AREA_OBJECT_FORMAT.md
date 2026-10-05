@@ -5,7 +5,8 @@ unlabelled unsigned integers immediately after an object's condition value.
 Duris runtime objects also have a fifth bank (`obj_data::bitvector5`) for
 `AFF5_*` flags. To keep every existing four-bank area file compatible, the
 fifth bank uses an explicit optional marker instead of another positional
-number.
+number. The area file formats themselves are described in
+[area_writing.txt](area_writing.txt).
 
 ## Fifth affect bitvector
 
