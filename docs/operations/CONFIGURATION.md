@@ -679,7 +679,7 @@ the event system initializes:
 | `DURIS_NEVENT_CATCHUP_MAX_EXTRA_CALLBACKS` | `4000` | Maximum callback-cap extension while repaying deferred work. |
 | `DURIS_NEVENT_PLAYER_PRIORITY` | `1` | Set to `0` to disable player-timed priority. |
 | `DURIS_NEVENT_TRACE_PLAYER` | `0` | Set to `1` for per-player deadline timing logs. |
-| `DURIS_NEVENT_ANALYTICS` | `0` | Set to `1` for 300-pulse scheduler and callback analytics. |
+| `DURIS_NEVENT_ANALYTICS` | `0` | Set to `1` for 300-pulse scheduler and callback analytics, and for the per-pulse `NEVENT BUDGET` and `NEVENT CATCHUP` lines. |
 
 The wall-clock budget is the binding limit, and by default the only one. A
 callback cap low enough that pulses end well inside the time budget starves the

@@ -334,9 +334,9 @@ def report(status, trace, players, elapsed):
             worst, weighted, samples = sections[name]
             print(f'  {name:18} max {worst:8} us   mean {weighted // samples:6} us   '
                   f'{samples} pulses')
-    for label in ('MUD TICK TOOK TOO LONG', 'NEVENT SLOW', 'NEVENT BUDGET', 'NEVENT CATCHUP',
-                  'COMMAND OP SLOW'):
-        print(f'  {label}: {status.count(label)}')
+    for label in ('MUD TICK TOOK TOO LONG', 'NEVENT SLOW', 'NEVENT BUDGET WINDOW:',
+                  'NEVENT BUDGET:', 'NEVENT CATCHUP', 'COMMAND OP SLOW'):
+        print(f'  {label.rstrip(":")}: {status.count(label)}')
     for line in re.findall(r'COMMAND OP SLOW: .*', status)[:8]:
         print('   ', re.sub(r'boot=\S+ ', '', line))
     deferring = [int(spent) for spent in re.findall(r'NEVENT BUDGET: .* total_us=(\d+)', status)]

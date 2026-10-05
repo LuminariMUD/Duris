@@ -105,8 +105,9 @@ Descriptor structures come from a custom pooled allocator (`mm_create("SOCKET",
 Deferred and periodic work runs through the event system (`src/world/new_events.c`,
 `src/world/nevent_periodic.c`, and the callbacks in `src/world/events.c`): timed callbacks
 with absolute deadlines are stored on a 300-bucket wheel and executed inside
-the game loop between pulses. Budget telemetry is exposed via `NEVENT BUDGET`
-log lines and `src/persistence/latency_trace.c`; `NEVENT SLOW` marks total scheduler work of
+the game loop between pulses. Budget telemetry is exposed via `NEVENT BUDGET WINDOW`
+log lines (one per revolution of the wheel that deferred work or ran it late) and
+`src/persistence/latency_trace.c`; `NEVENT SLOW` marks total scheduler work of
 at least 50 ms.
 
 [EVENTS.md](EVENTS.md) is the mechanism reference — absolute scheduling, the

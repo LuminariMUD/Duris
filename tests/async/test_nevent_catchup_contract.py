@@ -22,6 +22,10 @@ for marker in (
 ):
     assert contains(source, marker), marker
 
+# The per-pulse catch-up line is written with DURIS_NEVENT_ANALYTICS.
+assert contains(
+    source, "if ((nevent_catchup_quota > 0 || new_debt > 0) && nevent_analytics_enabled())")
+
 for marker in (
     "struct regen_event_state",
     "last_tick",

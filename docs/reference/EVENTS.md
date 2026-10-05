@@ -264,8 +264,9 @@ histograms. Relevant logs are:
 
 | Log prefix | Meaning |
 | --- | --- |
-| `NEVENT BUDGET` | Work was deferred after a limit was reached. |
-| `NEVENT CATCHUP` | Debt was added or a repayment quota was active. |
+| `NEVENT BUDGET WINDOW` | One line per revolution of the wheel (300 pulses) in which work was deferred or ran late: the pulses that deferred, the total deferred, the largest catch-up debt, and the worst pulse (its lateness, event, tick and time). |
+| `NEVENT BUDGET` | With `DURIS_NEVENT_ANALYTICS=1`: a pulse deferred work after a limit was reached. |
+| `NEVENT CATCHUP` | With `DURIS_NEVENT_ANALYTICS=1`: a pulse added debt or had a repayment quota. |
 | `NEVENT SLOW` | Total scheduler work for the pulse reached 50 ms. |
 | `NEVENT ANALYTICS WINDOW` | One 300-pulse aggregate window. |
 | `NEVENT ANALYTICS CALLBACK` | Per-callback timing and deferral totals. |
@@ -287,7 +288,7 @@ links while inspecting them.
 | `DURIS_NEVENT_CATCHUP_MAX_EXTRA_CALLBACKS` | `4000` | `0..1000000` | Maximum callback capacity added while repaying debt. |
 | `DURIS_NEVENT_PLAYER_PRIORITY` | `1` | `0..1` | Enables player-timed priority. |
 | `DURIS_NEVENT_TRACE_PLAYER` | `0` | `0..1` | Emits per-player timing logs. |
-| `DURIS_NEVENT_ANALYTICS` | `0` | `0..1` | Emits 300-pulse scheduler analytics windows. |
+| `DURIS_NEVENT_ANALYTICS` | `0` | `0..1` | Emits 300-pulse scheduler analytics windows and the per-pulse `NEVENT BUDGET` and `NEVENT CATCHUP` lines. |
 
 ## Core invariants
 
