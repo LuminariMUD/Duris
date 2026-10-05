@@ -6556,10 +6556,14 @@ void do_score(P_char ch, char * /*argument*/, int /*cmd*/)
 
 	if (IS_PC(ch))
 	{
+		// Negative while the quest history is still loading: the count is not known yet.
 		int RemainingBartenderQuests = sql_world_quest_can_do_another(ch);
-		snprintf(buf, MAX_STRING_LENGTH, "&+yBartender Quests Remaining:&n %d\n",
-			 RemainingBartenderQuests);
-		send_to_char(buf, ch);
+		if (RemainingBartenderQuests >= 0)
+		{
+			snprintf(buf, MAX_STRING_LENGTH, "&+yBartender Quests Remaining:&n %d\n",
+				 RemainingBartenderQuests);
+			send_to_char(buf, ch);
+		}
 	}
 
 	if (IS_PC(ch))

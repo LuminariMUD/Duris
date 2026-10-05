@@ -1137,9 +1137,10 @@ char *json_build_quest_status(struct char_data *ch)
 
 	root = cJSON_CreateObject();
 
-	/* Get remaining quests for today */
+	/* Get remaining quests for today; negative while the history is still loading */
 	remaining = sql_world_quest_can_do_another(ch);
-	cJSON_AddNumberToObject(root, "remaining", remaining);
+	if (remaining >= 0)
+		cJSON_AddNumberToObject(root, "remaining", remaining);
 
 	/* Check if quest is active */
 	if (ch->only.pc->quest_active == 1)
