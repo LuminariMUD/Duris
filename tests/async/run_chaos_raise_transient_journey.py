@@ -470,7 +470,10 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                     # through a queued delete, and the caster's next save records the
                     # items once, under the pet.
                     assert outcome.startswith("The corpse summons"), transcript
-                    after_cast = client.expect("Pos: standing >", timeout=20)
+                    # One raise in ten is hostile, and it can kill the caster before
+                    # another prompt comes: look for its line first.
+                    after_cast = client.expect_any(("NOT pleased", "Pos: standing >"),
+                                                   timeout=20)[1]
                     if "NOT pleased" in transcript + after_cast:
                         print("hostile raise; retrying a fresh fixture", flush=True)
                         return False
