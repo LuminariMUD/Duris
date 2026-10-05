@@ -205,6 +205,20 @@ def test_dual_backend_publishes_mariadb_on_a_dynamic_host_port() -> None:
     assert "return container, port, root_password, db_password" in DUAL_BACKEND
 
 
+def test_dual_backend_journey_matches_this_server() -> None:
+    """The journey had gone stale: it ran MariaDB 11.4, which the migrations refuse, waited
+    for a funds line the server no longer prints, and left its container when setup failed."""
+    assert '"DURIS_WORLD_QUEST_DB_IMAGE", "mariadb:10.11"' in DUAL_BACKEND
+    waited = [line for line in DUAL_BACKEND.splitlines() if 'client.expect("Quest-room test' in line]
+    assert len(waited) == 2
+    for line in waited:
+        assert line.split('"')[1] in CHAOS, line
+    prepare = DUAL_BACKEND[DUAL_BACKEND.index("def prepare_mariadb(") :
+                           DUAL_BACKEND.index("def setup_run_root(")]
+    assert 'except BaseException:' in prepare
+    assert '"docker", "rm", "-f", container' in prepare
+
+
 def test_quest_reward_uses_accepted_level_cache() -> None:
     function = extract_function("world_quest.c", "P_obj quest_item_reward(")
     assert "getQuestItemFromZone" in function
@@ -234,6 +248,7 @@ if __name__ == "__main__":
         test_zone_average_uses_integer_sum_for_truncation_and_level_boundaries,
         test_dual_backend_creates_build_parent_before_temporary_directory,
         test_dual_backend_publishes_mariadb_on_a_dynamic_host_port,
+        test_dual_backend_journey_matches_this_server,
         test_quest_reward_uses_accepted_level_cache,
         test_failure_reason_reaches_bartender_feedback,
     ]

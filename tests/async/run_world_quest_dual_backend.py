@@ -28,7 +28,8 @@ from quest_character_flow import create_quest_character
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BARTENDER_ROOM = 16633
-DB_IMAGE = os.environ.get("DURIS_WORLD_QUEST_DB_IMAGE", "mariadb:11.4")
+# The migrations verify their schema on MariaDB 10.11 and MySQL 8.0 only.
+DB_IMAGE = os.environ.get("DURIS_WORLD_QUEST_DB_IMAGE", "mariadb:10.11")
 REQUESTED_BACKEND = os.environ.get("DURIS_WORLD_QUEST_BACKEND", "both")
 BINARY_OVERRIDE = os.environ.get("DURIS_WORLD_QUEST_BINARY")
 if REQUESTED_BACKEND not in {"both", "mariadb", "flatfile"}:
@@ -178,13 +179,18 @@ def migration_environment(port: int, database: str, password: str) -> dict[str, 
 
 def prepare_mariadb(database: str) -> tuple[str, int, str, str, dict[str, str]]:
     container, port, root_password, db_password = start_database(database)
-    environment = migration_environment(port, database, db_password)
-    adopted = run(["python3", "scripts/migration_runner.py", "adopt", "--kind", "fresh_bootstrap"], env=environment)
-    require(adopted.returncode == 0,
-            "fresh MariaDB baseline adoption failed:\n" + adopted.stdout.decode(errors="replace")[-12000:])
-    migrated = run(["python3", "scripts/migration_runner.py", "run"], env=environment)
-    require(migrated.returncode == 0,
-            "fresh MariaDB migrations failed:\n" + migrated.stdout.decode(errors="replace")[-12000:])
+    try:
+        environment = migration_environment(port, database, db_password)
+        adopted = run(["python3", "scripts/migration_runner.py", "adopt", "--kind", "fresh_bootstrap"], env=environment)
+        require(adopted.returncode == 0,
+                "fresh MariaDB baseline adoption failed:\n" + adopted.stdout.decode(errors="replace")[-12000:])
+        migrated = run(["python3", "scripts/migration_runner.py", "run"], env=environment)
+        require(migrated.returncode == 0,
+                "fresh MariaDB migrations failed:\n" + migrated.stdout.decode(errors="replace")[-12000:])
+    except BaseException:
+        subprocess.run(["docker", "rm", "-f", container], stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, check=False)
+        raise
     return container, port, root_password, db_password, environment
 
 
@@ -294,7 +300,6 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
             create_quest_character(client)
             client.send(f"chaos questroom {BARTENDER_ROOM}")
             client.expect("Quest-room test move complete.", timeout=15)
-            client.expect("Quest-room test funds queued.", timeout=15)
             client.expect("Quest-room test funds committed.", timeout=60)
             client.send("save")
             client.expect("Save complete for Taverek.", timeout=120)
