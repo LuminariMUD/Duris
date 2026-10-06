@@ -13,7 +13,7 @@ Updated 2026-10-06. A new session starts here, then reads the phase it continues
 |---|---|---|
 | 1 | #10 | Landed on 2026-10-05 in `7fdbb20fe` (!11). |
 | 2 | #13 | Landed on 2026-10-06 in `6a4e5511c` (!12). |
-| 3 | #11 | Not started. It is next, on a new branch from `master`. |
+| 3 | #11 | In progress on `fix/11-ownership-reap`, from `master` at `1e3a464ca`. "State of the work" at the end of its section says where it stands. |
 | 4 | #14 | Not started. |
 | 5 | #17 | Not started. |
 
@@ -517,23 +517,82 @@ life of the database and every query keyed on an owner would slow with it.
   writes no `unowned_object` line, and with `DURIS_PERSISTENCE_TRACE=1` the line is
   written for any held item that has no ledger entry.
 
+**Ablated before the work started (2026-10-06).** Read again at `1e3a464ca`, against the
+code and the tests. What the plan asked for is kept; how it is proved got smaller.
+
+- No new journey and no new `make test-db` leg. The `taken` mode of
+  `run_world_restart_journey.py` already does the done-when's sequence: get a zone-loaded
+  mace, save, drop it, save, crash, boot, log in. Its docstring even states the stale
+  record. It gains three assertions: the mace's player record is gone after the boot, the
+  login after it writes no `missing_payload_rows` line, and the saves before it wrote no
+  `unowned_object` line (it does not set the trace switch).
+- Both combat journeys already insert a ghost ownership record under the banana and
+  restart the server. Their comparisons of the player's records across the restart
+  (`stable_state()` in `test_mysql_combat_journey.py`, `player_items` in
+  `test_flatfile_combat_journey.py`) fail once the reap exists, so they change anyway:
+  after the restart the ghost is gone and the rest is unchanged, and the login after it
+  adds no `missing_payload_rows` line although the journey now has the trace on.
+- The rules are proved where `claim_items()` already is: a fixture in
+  `player_save_claim_mysql_harness.cpp` (the `player_save_claim` leg) and in
+  `flatfile_player_save_claim_harness.cpp` (`test_player_save_claim.py`). A record with a
+  payload row stays, one a legacy pet's payload carries stays, a stale container goes
+  after its stale contents, a row an auction's custody row or an `artifact_domain_state`
+  row references stays (the foreign keys), another owner's record and a quarantined one
+  are not touched. A full-world boot to prove a foreign key would add a minute to the
+  gate for what twenty fixture rows show.
+- The reap does not advance `item_owner_revision`. A player owner's revision is not a
+  fence (`item_transfer_repository.c`: "saves move their revisions, so a transfer does not
+  fence on them"), and the in-memory copy is hydrated in `main()` before `run_the_game()`,
+  so a bump there would only make the two disagree.
+- The flat-file reap skips only a record another record names as its parent. The auction
+  and artifact exclusions exist because the MariaDB delete fails on those foreign keys;
+  the catalog has none. `artifact_domain_state.item_uid` is written by nothing in `src/`
+  (the mirror leaves it NULL), so the exclusion is a schema guard and is tested with a
+  fixture row.
+- `missing_payload_rows` is logged in `player_load_materialize.c` for both backends, so
+  the gate is one site. `unowned_object` needs a `persistence_trace_enabled()` stub in the
+  five harnesses that compile `player_snapshot_capture.c`, as the shopkeeper line needed
+  one in Phase 2.
+- `test_player_snapshot_capture.py` runs the production capture: it is where "several
+  saves after a pickup write no `unowned_object` line by default and one each with the
+  trace on" is shown with the switch toggled; the `taken` journey shows the default on a
+  real server.
+
+**Files.** `src/item/item_claim_repository.{c,h}` (the MariaDB reap),
+`src/flatfile/flatfile_item_repository.{c,h}` (the flat-file reap), `src/net/comm.c` (the
+call, after the owner revisions are hydrated and before `run_the_game()`),
+`src/player/player_load_materialize.c` and `src/player/player_snapshot_capture.c` (the
+two lines), `src/world/handler.c` and `scripts/item_ownership_audit.sh` (the comments),
+ADR 0002, `PLAYER_SAVE_PIPELINE.md`, `DATABASE.md` and `CONFIGURATION.md`; the tests named
+above, `test_boot_log_hygiene.py` (the gates and the call's place in the boot) and
+`test_player_load_topology.py` and `test_orphan_item_session_regressions.py` (the two
+source contracts).
+
+**Non-goals.** Rows of other owner types, destroyed rows, the `item_ownership_ledger`,
+and the `item_owner_audit` table are not reaped. No in-memory entry is written at pickup
+and committed claims are not published back (decision 8). No transfer reason is wired.
+
 **Steps**
 
 1. Record the decision in ADR 0002 (the "Releasing items an owner no longer holds" row and
    the consequence about dropped items), and amend the done-when on the work item.
-2. The boot reap for MariaDB, with a `make test-db` test: a character picks up a zone
-   item, saves, drops it, the server restarts, and the row is gone. The same test covers
-   an artifact and a nested container that must survive or go in order.
-3. The boot reap for the flat-file backend, with the same journey there.
+2. The boot reap for MariaDB, with its fixture in the claim harness and the assertions
+   in the `taken` mode and the MariaDB combat journey.
+3. The boot reap for the flat-file backend, with its fixture in the flat-file claim
+   harness and the assertions in the flat-file combat journey.
 4. Both lines behind the trace switch. The two journeys that wait on
    `missing_payload_rows` set `DURIS_PERSISTENCE_TRACE=1`; the two source-contract tests
-   are updated. A test shows several saves after a pickup write no `unowned_object` line
-   by default and one with the trace on.
+   are updated; `test_player_snapshot_capture.py` toggles the switch.
 5. Rewrite the `handler.c` L3151 comment, the comment above `unowned_object` and the
    header of `scripts/item_ownership_audit.sh` to say what the reap does.
-6. `run_world_restart_journey.py` passes in all its modes.
+6. `run_world_restart_journey.py` passes in all its modes (they run in `make test-db`).
 
 **Done when:** the three conditions in the item, the last one as amended above.
+
+**State of the work**
+
+- Branch `fix/11-ownership-reap`, from `master` at `1e3a464ca`. Nothing is built yet;
+  this file's first commit records the ablation above.
 
 ---
 
