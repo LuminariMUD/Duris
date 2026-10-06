@@ -431,8 +431,9 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 		      result.pid, result.repaired_item_rows);
 	}
 	// An ownership row with no payload is an item this character no longer holds; its
-	// next holder claims it.
-	if (result.missing_payload_rows)
+	// next holder claims it, or the next boot reaps it. It collects during an uptime,
+	// so it is a trace.
+	if (result.missing_payload_rows && persistence_trace_enabled())
 		logit(LOG_DEBUG,
 		      "player_load_materialize: component=items pid=%d outcome=missing_payload_rows "
 		      "count=%zu",

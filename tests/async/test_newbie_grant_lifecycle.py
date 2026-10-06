@@ -63,6 +63,7 @@ static void grant_callback(P_char actor, uint64_t item_uid, bool committed, unsi
     }
 }
 void logit(const char *, const char *, ...) {}
+bool persistence_trace_enabled() { return false; }
 void statuslog(int, const char *, ...) {}
 void persistence_alert(int, const char *, const char *, const char *, const char *, const char *,
                        const char *, ...) {}

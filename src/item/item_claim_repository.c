@@ -231,6 +231,39 @@ unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,
 	return 0;
 }
 
+unsigned int reap_unheld_player_items(MYSQL *connection, uint64_t *deleted)
+{
+	if (!connection || !deleted)
+		return EINVAL;
+	*deleted = 0;
+	// The self-join, not a subquery on the same table: MySQL refuses the latter in a
+	// DELETE. The pet payload is the one the load's count reads: a legacy pet without
+	// a uid carries items under its owner's identity.
+	const std::string sql =
+		"DELETE own FROM item_current_owner own "
+		"LEFT JOIN item_current_owner child ON child.parent_item_uid=own.item_uid "
+		"LEFT JOIN player_items held ON held.obj_uid=own.item_uid AND held.pid=own.owner_id "
+		"LEFT JOIN auction_item_custody auction ON auction.item_uid=own.item_uid "
+		"LEFT JOIN artifact_domain_state artifact ON artifact.item_uid=own.item_uid "
+		"WHERE own.owner_type=" +
+		std::to_string(static_cast<unsigned>(item_owner_type::player)) +
+		" AND own.owner_context_id=0 AND own.state=" +
+		std::to_string(static_cast<unsigned>(item_custody_state::active)) +
+		" AND child.item_uid IS NULL AND held.id IS NULL AND auction.item_uid IS NULL AND "
+		"artifact.vnum IS NULL AND NOT EXISTS (SELECT 1 FROM player_pet_items pet_item JOIN "
+		"player_pets pet ON pet.id=pet_item.pet_id WHERE pet_item.obj_uid=own.item_uid AND "
+		"pet.owner_pid=own.owner_id)";
+	for (;;)
+	{
+		if (const unsigned int failed = execute(connection, sql))
+			return failed;
+		const my_ulonglong affected = mysql_affected_rows(connection);
+		if (!affected)
+			return 0;
+		*deleted += affected;
+	}
+}
+
 unsigned int claim_transfer_item(MYSQL *connection, const item_owner_identity &holder,
 				 uint64_t item_uid, uint64_t root_uid, const uint64_t *parent_uid,
 				 int32_t vnum, uint64_t *revision, bool *refused)

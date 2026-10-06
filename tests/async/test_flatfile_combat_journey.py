@@ -273,12 +273,12 @@ def attack_until_death(client: MudClient) -> None:
         client.send("hit executioner")
 
 
-def ghost_ownership_record(port: int, state_root: pathlib.Path, run_root: pathlib.Path) -> dict:
+def ghost_ownership_record(port: int, state_root: pathlib.Path, run_root: pathlib.Path) -> int:
     """An ownership record whose payload item is gone is only counted at load.
 
     Memory is the authority: the character loads every payload item the catalog
     gives it, saves what it holds and leaves at once. Nothing is read-only and
-    nothing is refused over the record.
+    nothing is refused over the record. Returns the record's uid.
     """
     client = reconnect_character(port)
     try:
@@ -314,7 +314,7 @@ def ghost_ownership_record(port: int, state_root: pathlib.Path, run_root: pathli
         print(f"flatfile-primary ghost-record camp-to-account-menu (n=1, isolated): {elapsed:.3f}s",
               flush=True)
         client.send("0")
-        return after
+        return ghost
     finally:
         client.close()
 
@@ -682,6 +682,8 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                 "DURIS_WEBSOCKET_PORT": str(websocket_port),
                 "REDIS": "FALSE",
                 "DURIS_NEVENT_TRACE_PLAYER": "1",
+                # The ghost record's missing_payload_rows line is a trace (#11).
+                "DURIS_PERSISTENCE_TRACE": "1",
                 "CHAOS_MUD": "FALSE",
             }
             if runtime_library_path := os.environ.get("LD_LIBRARY_PATH"):
@@ -733,7 +735,7 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                     verify_recovered_loot(plain_port)
                     require(inspect_authority(state_root)["wallet"] == coin_balance,
                             "reconnect or corpse recovery changed the coin total")
-                    ghost_ownership_record(plain_port, state_root, run_root)
+                    ghost = ghost_ownership_record(plain_port, state_root, run_root)
 
                     process.send_signal(signal.SIGTERM)
                     process.wait(timeout=30)
@@ -752,8 +754,17 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                         "combat journey logged a fatal/assertion failure:\n" + server_output[-8000:],
                     )
                     # Boot again with the same authority. Compare the wallet and the
-                    # rest after re-entry and another save.
+                    # rest after re-entry and another save. The boot reaps every player
+                    # record with no payload (#11): the ghost, and the starter kit that
+                    # dissolved when the character dropped it. The login after it counts
+                    # nothing.
                     before_restart = inspect_authority(state_root)
+                    require(any(item["uid"] == ghost for item in before_restart["player_items"]),
+                            "the ghost record was not in place before the restart")
+                    before_restart["player_items"] = [
+                        item for item in before_restart["player_items"]
+                        if item["uid"] in before_restart["snapshot_uids"]]
+                    gaps = runtime_logs(run_root).count("outcome=missing_payload_rows")
                     offset = output_path.stat().st_size
                     process = subprocess.Popen(
                         [str(binary), "--minimal", "-s", "-d", str(run_root), str(plain_port)],
@@ -779,6 +790,8 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                                 f"restart/re-entry changed {field}")
                     require(after_restart["snapshot_uids"] == before_restart["snapshot_uids"],
                             "restart/re-entry changed the inventory")
+                    require(runtime_logs(run_root).count("outcome=missing_payload_rows") == gaps,
+                            "the login after the reap still counted the ghost")
                     process.send_signal(signal.SIGTERM)
                     process.wait(timeout=30)
                     require(process.returncode == 0, "restarted server shutdown failed")

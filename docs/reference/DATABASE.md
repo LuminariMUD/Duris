@@ -296,6 +296,10 @@ final: the save leaves the item and its contents out and logs them to `logs/log/
 The claim writes `root_item_uid` and `parent_item_uid` from memory too, so moving an item,
 including into a container of the same owner, needs no transfer. Auctions, shops and the
 collector take what they trade out of memory at submit, so a later save never holds it.
+A save never deletes a row. Each boot deletes a player's active rows whose item is in no
+payload row of that player, before the writer starts; a row `auction_item_custody`,
+`artifact_domain_state` or a child row still references is kept for the foreign keys
+([PLAYER_SAVE_PIPELINE.md](../persistence/PLAYER_SAVE_PIPELINE.md)).
 
 `item_ownership_ledger` keeps the transfers that still commit as critical commands
 (creation grants, operator repair and destruction, auctions and the collector). A claim

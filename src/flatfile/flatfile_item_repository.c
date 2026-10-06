@@ -28,6 +28,7 @@
 #include <openssl/crypto.h>
 #include <openssl/sha.h>
 #include <type_traits>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -1188,6 +1189,99 @@ flatfile_item_repository_result flatfile_item_repository_list_active_player_item
 		return flatfile_item_repository_result::io_error;
 	}
 	*items = std::move(selected);
+	return flatfile_item_repository_result::ok;
+}
+
+flatfile_item_repository_result
+flatfile_item_repository_reap_unheld_player_items(const std::string &root, uint64_t *deleted,
+						  std::string *error)
+{
+	if (root.empty() || !deleted)
+		return flatfile_item_repository_result::invalid;
+	*deleted = 0;
+	std::lock_guard<std::mutex> guard(ownership_mutex);
+	flatfile_authority_lock authority;
+	if (!authority.acquire(root, error))
+		return flatfile_item_repository_result::io_error;
+	const auto recovered = flatfile_authority_transaction_recover(root, authority, error);
+	if (recovered != flatfile_authority_transaction_result::ok)
+		return recovered == flatfile_authority_transaction_result::io_error ?
+			       flatfile_item_repository_result::io_error :
+			       flatfile_item_repository_result::invalid;
+	ownership_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded != flatfile_item_repository_result::ok)
+		return loaded;
+	try
+	{
+		// The uids each player's file carries, read once per player; a file that
+		// cannot be read leaves every record of its player in place.
+		struct payload
+		{
+			bool readable;
+			std::unordered_set<uint64_t> uids;
+		};
+		std::unordered_map<uint64_t, payload> payloads;
+		std::unordered_set<uint64_t> stale;
+		for (const auto &record : catalog.items)
+		{
+			if (record.owner.type != item_owner_type::player ||
+			    record.owner.context_id || record.state != item_custody_state::active)
+				continue;
+			auto found = payloads.find(record.owner.id);
+			if (found == payloads.end())
+			{
+				player_snapshot snapshot;
+				std::string read_error;
+				const auto read = flatfile_player_snapshot_read(
+					root, static_cast<int32_t>(record.owner.id), &snapshot,
+					&read_error);
+				payload carried = {
+					read == flatfile_player_load_result::ok ||
+						read == flatfile_player_load_result::not_found,
+					{}
+				};
+				if (read == flatfile_player_load_result::ok)
+				{
+					for (const auto &item : snapshot.items)
+						carried.uids.insert(item.object_uid);
+					for (const auto &pet : snapshot.pets)
+						for (const auto &item : pet.items)
+							carried.uids.insert(item.object_uid);
+				}
+				found = payloads.emplace(record.owner.id, std::move(carried)).first;
+			}
+			if (found->second.readable && !found->second.uids.count(record.item_uid))
+				stale.insert(record.item_uid);
+		}
+		// A record that stays keeps its container, and that container its own.
+		for (bool changed = true; changed;)
+		{
+			changed = false;
+			for (const auto &record : catalog.items)
+				if (record.parent_item_uid && !stale.count(record.item_uid) &&
+				    stale.erase(record.parent_item_uid))
+					changed = true;
+		}
+		if (stale.empty())
+			return flatfile_item_repository_result::unchanged;
+		catalog.items.erase(std::remove_if(catalog.items.begin(), catalog.items.end(),
+						   [&](const flatfile_item_ownership_record &record)
+						   { return stale.count(record.item_uid) != 0; }),
+				    catalog.items.end());
+		*deleted = stale.size();
+	}
+	catch (const std::bad_alloc &)
+	{
+		return flatfile_item_repository_result::io_error;
+	}
+	if (catalog.revision == std::numeric_limits<uint64_t>::max())
+		return flatfile_item_repository_result::invalid;
+	std::vector<uint8_t> encoded;
+	if (!encode_catalog(catalog, catalog.revision + 1, &encoded))
+		return flatfile_item_repository_result::invalid;
+	if (!flatfile_atomic_write(domains_directory(root), ownership_filename, encoded, error))
+		return flatfile_item_repository_result::io_error;
 	return flatfile_item_repository_result::ok;
 }
 

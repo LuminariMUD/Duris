@@ -18,7 +18,10 @@ taken     a player takes the banana after the capture and saves, and the server 
           The boot leaves the banana's tree out of what it restores; nobody else can take a
           second one, and one character's save holds the uid. A mace the player took, saved
           and dropped again before the capture is restored: its ownership record still
-          names the character, whose save no longer holds it.
+          named the character, whose save no longer held it, and the boot reaped it (#11)
+          with the records of the starter kit the character dropped (transient items
+          dissolve when dropped); the login after the boot counts no such record, and the
+          saves wrote no unowned_object line, both without DURIS_PERSISTENCE_TRACE.
 midcapture  a banana is taken out of a basket on the floor and dropped while a capture of
           12,000 more objects runs. The capture meets it twice and the drop is journaled as
           well; the generation holds it once, in the basket, and the boot restores it.
@@ -370,18 +373,29 @@ def taken(rig: Rig) -> None:
     assert time.monotonic() - rig.booted < 27, "the character entered too late"
     assert rig.sql("SELECT owner_type, state FROM item_current_owner WHERE vnum=677") \
         == "1\t1" and rig.sql("SELECT COUNT(*) FROM player_items WHERE vnum=677") == "0"
+    assert "outcome=unowned_object" not in rig.log("debug"), rig.log("debug")[-1500:]
     first = rig.generation()
     take_banana(client)
     client.close()
     rig.kill()
 
     rig.boot()
+    assert rig.sql("SELECT COUNT(*) FROM item_current_owner WHERE vnum=677 AND owner_type=1") \
+        == "0", "the boot did not reap the dropped mace's record"
+    assert rig.sql("SELECT COUNT(*) FROM item_current_owner own WHERE own.owner_type=1 AND "
+                   "own.state=1 AND NOT EXISTS (SELECT 1 FROM player_items held WHERE "
+                   "held.obj_uid=own.item_uid AND held.pid=own.owner_id)") == "0", \
+        "a player's record with no payload row survived the boot"
+    reaped = re.search(r"Item ownership reap: records of items no player holds deleted=(\d+)",
+                       rig.log("status"))
+    assert reaped and int(reaped.group(1)) > 1, rig.log("status")[:1500]
     rig.restored(first)
     assert "left out 1 object trees that have an owner" in rig.log("sys"), \
         rig.log("sys")[-1500:]
     client = journey.reconnect_character(rig.port, expected_room=None)
     floor, carried = screen(client, "look"), screen(client, "inventory")
     client.close()
+    assert "outcome=missing_payload_rows" not in rig.log("debug"), rig.log("debug")[-1500:]
     assert "banana lies here" not in floor and carried.count("banana") == 1, \
         "the banana a character holds is back on the floor"
     assert "small mace, lies here" in floor, "the mace a character dropped is gone"

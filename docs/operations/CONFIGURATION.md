@@ -652,7 +652,7 @@ specific issue and restart the server after changing them.
 | `GET_TRACE` | any non-empty value except `0`, `false`, or `off` | Debug logging for object pickup paths. |
 | `DURIS_ZONE_RESET_TRACE` | positive integer | Zone-reset tracing. |
 | `DURIS_CORPSE_TRACE` | any non-empty value except `0` | Corpse decay tracing. |
-| `DURIS_PERSISTENCE_TRACE` | any non-empty value except `0` | Routine locker save, boot shopkeeper-restore and shopkeeper-save lines in `logs/log/debug`. Their failure lines are always written. |
+| `DURIS_PERSISTENCE_TRACE` | any non-empty value except `0` | Routine locker save, boot shopkeeper-restore and shopkeeper-save lines in `logs/log/debug`, the per-login count of a character's ownership records that have no payload row (`missing_payload_rows`, reaped at the next boot) and the per-save `unowned_object` line for each held item the in-memory ledger has no entry for (every item picked up since the last login). Their failure lines are always written. |
 | `DURIS_ACCEPT_DEBUG` | variable present, including an empty value | Connection-accept debug counters. |
 
 `SQL_TRACE` never writes query text, bound values, MySQL error prose, account or

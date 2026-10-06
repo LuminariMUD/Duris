@@ -411,6 +411,64 @@ int main(int argc, char **argv)
 			" outcome=" + std::to_string(static_cast<int>(elder_loaded.outcome)) +
 			" error=" + std::to_string(elder_loaded.error_code) +
 			" copper=" + std::to_string(elder_loaded.domains.wallet[0]));
+	// The boot reap (work item #11). Player 42's file holds 1004 while its records still
+	// name the bag, the room item in it, and the auction's bag with its contents from the
+	// first save: nothing released them. Player 39's records name a bag and its contents
+	// and a loose item its file never carried, beside the item it holds and the one its
+	// legacy pet carries under its own identity. Player 38's file cannot be read, so its
+	// record is left alone. The pet's and the destroyed records are not player 42's.
+	const item_owner_identity reaped_player = { item_owner_type::player, 39, 0 };
+	establish(root, reaped_player,
+		  { { 1070, 1070, 0, 570 }, { 1071, 1070, 1070, 571 }, { 1074, 1074, 0, 574 } });
+	require(flatfile_identity_claim(root, 39, "Dropper", "Account-Five", &error) ==
+			flatfile_identity_result::ok,
+		"dropper identity claim: " + error);
+	player_snapshot dropper = snapshot_for(1, 39, "Dropper");
+	dropper.items = { item(1072, 572, PLAYER_SNAPSHOT_NO_PARENT) };
+	player_pet_snapshot legacy = {};
+	legacy.mob_vnum = 700;
+	legacy.room_vnum = 3001;
+	legacy.items = { item(1073, 573, PLAYER_SNAPSHOT_NO_PARENT) };
+	dropper.pets.push_back(legacy);
+	require(flatfile_player_snapshot_apply(root, dropper, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"dropper save: " + error);
+	const item_owner_identity unreadable = { item_owner_type::player, 38, 0 };
+	establish(root, unreadable, { { 1080, 1080, 0, 580 } });
+	{
+		std::ofstream corrupt(flatfile_player_snapshot_file::player_directory(root) + "/" +
+				      flatfile_player_snapshot_file::player_filename(38));
+		corrupt << "not a player file";
+	}
+	uint64_t reaped = 0;
+	require(flatfile_item_repository_reap_unheld_player_items(root, &reaped, &error) ==
+				flatfile_item_repository_result::ok &&
+			reaped == 7,
+		"the reap deletes the seven stale records: " + std::to_string(reaped) + " " +
+			error);
+	const auto remaining = [&](const item_owner_identity &owner)
+	{
+		std::vector<uint64_t> kept;
+		for (const auto &record : held_by(root, owner))
+			kept.push_back(record.item_uid);
+		return kept;
+	};
+	require((remaining(player) == std::vector<uint64_t>{ 1004 }),
+		"player 42 keeps the item its file holds");
+	require((remaining(reaped_player) == std::vector<uint64_t>{ 1072, 1073 }),
+		"player 39 keeps what it and its legacy pet hold");
+	require((remaining(unreadable) == std::vector<uint64_t>{ 1080 }),
+		"a player whose file cannot be read keeps its records");
+	require(remaining(pet).size() == 1 && remaining(seller).empty() &&
+			flatfile_item_repository_load_uids(root, { 1060, 1061 }, &destroyed,
+							   &error) ==
+				flatfile_item_repository_result::ok &&
+			destroyed.size() == 2,
+		"the pet's and the destroyed records are not touched");
+	require(flatfile_item_repository_reap_unheld_player_items(root, &reaped, &error) ==
+				flatfile_item_repository_result::unchanged &&
+			reaped == 0,
+		"a second reap finds nothing");
 	std::cout << "flat-file player save claim passed\n";
 	return 0;
 }

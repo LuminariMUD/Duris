@@ -118,6 +118,7 @@
 #include "item/item_ownership_runtime.h"
 #include "economy/shop_trade_transaction.h"
 #include "item/item_uid_allocator.h"
+#include "item/item_claim_repository.h"
 #include "flatfile/flatfile_item_repository.h"
 #include "economy/auction_transaction.h"
 #include "economy/collector_catalog_cache.h"
@@ -183,6 +184,35 @@ static bool hydrate_flatfile_system_item_owner(void)
 		return item_ownership_runtime_hydrate_owner(owner, 0);
 	return loaded == flatfile_item_repository_result::ok && items.empty() &&
 	       item_ownership_runtime_hydrate_owner(owner, revision);
+}
+
+// A player's active ownership record whose item is in no payload row is an item the
+// player no longer holds, and no save releases it (ADR 0002). No character is in memory
+// yet, so the records are deleted here, before the writer starts. A failure leaves them
+// for the next boot.
+static void reap_unheld_player_items_at_boot(void)
+{
+	uint64_t deleted = 0;
+	if (persistence_mode_requires_mysql())
+	{
+		if (const unsigned int failed = reap_unheld_player_items(DB, &deleted))
+			logit(LOG_STATUS, "Item ownership reap failed: error=%u", failed);
+	}
+	else
+	{
+		const char *root = persistence_mode_flatfile_root();
+		std::string error;
+		const auto result = flatfile_item_repository_reap_unheld_player_items(
+			root ? root : "", &deleted, &error);
+		if (result != flatfile_item_repository_result::ok &&
+		    result != flatfile_item_repository_result::unchanged &&
+		    result != flatfile_item_repository_result::not_found)
+			logit(LOG_STATUS, "Item ownership reap failed: %s", error.c_str());
+	}
+	if (deleted)
+		logit(LOG_STATUS,
+		      "Item ownership reap: records of items no player holds deleted=%llu",
+		      (unsigned long long)deleted);
 }
 
 static void maintenance_handle_completions(const maintenance_result *results, size_t count)
@@ -670,6 +700,7 @@ int main(int argc, char **argv)
 	if (persistence_mode_requires_mysql() && !sql_hydrate_item_owner_revisions())
 		logit(LOG_STATUS,
 		      "Authoritative item owner revisions unavailable; movement fails closed.");
+	reap_unheld_player_items_at_boot();
 
 	redis_init();
 

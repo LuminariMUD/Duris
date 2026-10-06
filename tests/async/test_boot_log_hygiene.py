@@ -41,9 +41,37 @@ for line in ("LockerToPFile: missing chest object", "LockerToPFile: failed to sa
              "LockerToPFile: aborting before non-private chest moves"):
     before = lockers[:lockers.index(line)].splitlines()[-3:]
     assert not any("persistence_trace_enabled" in row for row in before), line
+# Two ownership lines that grew with ordinary play (#11): a player's ownership record
+# with no payload row is counted on every login until the next boot reaps it, and an
+# item picked up since the last login has no in-memory ledger entry on every save.
+materialize = (SRC / "player_load_materialize.c").read_text()
+assert "if (result.missing_payload_rows && persistence_trace_enabled())" in materialize
+capture = (SRC / "player_snapshot_capture.c").read_text()
+assert "if (!ownership_loaded && persistence_trace_enabled())" in capture
 utility = (SRC / "utility.c").read_text()
 assert contains(utility, 'getenv("DURIS_PERSISTENCE_TRACE")')
 assert "`DURIS_PERSISTENCE_TRACE`" in (ROOT / "docs/operations/CONFIGURATION.md").read_text()
+
+
+# --- stale ownership records are reaped at boot, never inside a save -----------
+# A player's active record whose item is in no payload row is an item the player no
+# longer holds (ADR 0002). Both backends delete those records once per boot, after the
+# owner revisions are hydrated and before run_the_game() starts the writer; a save never
+# releases a record, since a delete that met a foreign key would fail the save.
+comm = (SRC / "comm.c").read_text()
+main = comm[comm.index("int main(int argc, char **argv)"):]
+assert main.count("reap_unheld_player_items_at_boot();") == 1
+assert index(main, "sql_hydrate_item_owner_revisions()") < index(
+    main, "reap_unheld_player_items_at_boot();") < index(main, "run_the_game(port, sslport)")
+reap = comm[comm.index("static void reap_unheld_player_items_at_boot(void)"):]
+reap = reap[:reap.index("\n}\n")]
+assert "reap_unheld_player_items(DB, &deleted)" in reap
+assert "flatfile_item_repository_reap_unheld_player_items(" in reap
+for name in ("player_snapshot_repository.c", "item_claim_repository.c",
+             "flatfile_player_repository.c"):
+    save = (SRC / name).read_text()
+    assert "reap_unheld_player_items(" not in save.replace(
+        "unsigned int reap_unheld_player_items(", ""), name
 
 
 # --- SQL queued during boot must not be thrown away --------------------------

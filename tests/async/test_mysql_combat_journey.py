@@ -37,6 +37,8 @@ def run(server, reset_coins=False, boons=False):
         'MYSQL_PWD': os.environ['TEST_DB_PASSWORD'],
         'PERSISTENCE_MODE': 'mariadb-primary', 'DB_TLS': 'FALSE',
         'REDIS': 'FALSE', 'CHAOS_MUD': 'FALSE', 'DURIS_NEVENT_TRACE_PLAYER': '1',
+        # The ghost record's missing_payload_rows line is a trace (#11).
+        'DURIS_PERSISTENCE_TRACE': '1',
         'LISTEN_ADDRESS': '127.0.0.1', 'DURIS_WEBSOCKET_LISTEN_ADDRESS': '127.0.0.1',
     }
     if 'LD_LIBRARY_PATH' in os.environ:
@@ -174,12 +176,22 @@ def run(server, reset_coins=False, boons=False):
                     settle(lambda: number(f'SELECT numb_deaths FROM player_data WHERE pid={pid}')==before_deaths+1, 'the second death was not saved')
                     assert sql(f'SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}')=='0\t0\t0\t0'
                     before=stable_state(pid)
+                    # The boot reaps every player row with no payload row (#11): the ghost,
+                    # and the starter kit that dissolved when the character dropped it. The
+                    # rest of the state stays, and the login after it counts nothing.
+                    held=set(sql(f'SELECT obj_uid FROM player_items WHERE pid={pid}').split())
+                    wallet,rows=before
+                    kept='\n'.join(row for row in rows.split('\n') if row.split('\t')[0] in held)
+                    assert any(row.startswith(f'{ghost}\t') for row in rows.split('\n')), 'the ghost row was not in place before the restart'
+                    gaps=journey.runtime_logs(runtime).count('outcome=missing_payload_rows')
                     stop(); process=boot()
+                    assert number(f'SELECT COUNT(*) FROM item_current_owner WHERE item_uid={ghost}')==0, 'the boot did not reap the ghost row'
                     client=journey.reconnect_character(plain)
                     client.send('save'); client.expect('Save complete for '+journey.CHARACTER+'.')
                     client.send('quit'); client.expect('ACCOUNT MENU',timeout=30)
                     client.send('0'); client.close(); client=None
-                    assert stable_state(pid)==before, 'restart duplicated death consequences'
+                    assert stable_state(pid)==(wallet,kept), 'restart duplicated death consequences'
+                    assert journey.runtime_logs(runtime).count('outcome=missing_payload_rows')==gaps, 'the login after the reap still counted the ghost'
                     stop()
                     print(f'MariaDB second death: corpse took the items at once; restart stable; reset_coins={reset_coins}, boons={boons}',flush=True)
                 except Exception as error:
