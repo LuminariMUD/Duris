@@ -550,8 +550,8 @@ code and the tests. What the plan asked for is kept; how it is proved got smalle
   (the mirror leaves it NULL), so the exclusion is a schema guard and is tested with a
   fixture row.
 - `missing_payload_rows` is logged in `player_load_materialize.c` for both backends, so
-  the gate is one site. `unowned_object` needs a `persistence_trace_enabled()` stub in the
-  five harnesses that compile `player_snapshot_capture.c`, as the shopkeeper line needed
+  the gate is one site. `unowned_object` needs a `persistence_trace_enabled()` stub in
+  every harness that compiles `player_snapshot_capture.c`, as the shopkeeper line needed
   one in Phase 2.
 - `test_player_snapshot_capture.py` runs the production capture: it is where "several
   saves after a pickup write no `unowned_object` line by default and one each with the
@@ -609,8 +609,11 @@ and committed claims are not published back (decision 8). No transfer reason is 
    and `unowned_object` in `player_snapshot_capture.c` are behind
    `persistence_trace_enabled()`, with the comment above the second rewritten. The two
    combat journeys set `DURIS_PERSISTENCE_TRACE=1`; `test_player_load_topology.py` and
-   `test_orphan_item_session_regressions.py` pin the gated lines; five harnesses that
-   compile `player_snapshot_capture.c` stub the switch, and
+   `test_orphan_item_session_regressions.py` pin the gated lines; seven harnesses that
+   compile `player_snapshot_capture.c` stub the switch (`61fa52894` had five; the first
+   `make test-all` found `test_locker_save_room.py` and
+   `test_item_movement_input_queue.py`, which name the file through a path helper,
+   `119dda91e`), and
    `test_player_snapshot_capture.py` records `logit()` and toggles it: three saves with
    it off write no line, two with it on write one each.
 5. The `handler.c` comment, the audit script's header (and its `--help` range) say what
