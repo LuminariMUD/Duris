@@ -218,6 +218,44 @@ Not covered: the full random-world generator (the journeys use controlled instan
 1255 and 1256), and generated equipment across a file copyover, which still stores NPC
 equipment by vnum.
 
+## Ownership records of items that stopped existing
+
+A save never releases an `item_current_owner` row, so a player's row for an item that was
+dropped and then extracted (or eaten, decayed, dissolved) was counted on every login,
+forever, and the table grew with play. Each boot now deletes a player's active rows whose
+item is in no payload row of that player, in both backends, before the writer starts; a
+row an auction's custody row, an `artifact_domain_state` row or a child row still
+references is kept, and a container goes after its contents. The per-login
+`missing_payload_rows` count and the per-save `unowned_object` line are traces
+(`DURIS_PERSISTENCE_TRACE`). Work item #11.
+
+```sh
+tests/async/run_player_save_claim_mysql.sh
+python3 tests/async/test_player_save_claim.py
+python3 tests/async/test_player_snapshot_capture.py
+python3 tests/async/test_boot_log_hygiene.py
+tests/async/with_disposable_mariadb.sh python3 tests/async/run_world_restart_journey.py /absolute/path/dms_new taken
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_combat_journey.py --server /absolute/path/dms_new
+python3 tests/async/test_flatfile_combat_journey.py
+```
+
+The two claim harnesses hold the rules on fixture rows: a stale leaf and a stale container
+with its stale contents go, a row with a payload row, a legacy pet's, a quarantined one,
+another owner's, and (MariaDB) one an auction's or an artifact's row references or whose
+contents a payload still holds stay; (flat-file) a player whose file cannot be read keeps
+its records. The `taken` scenario is the real path without the switch: get a zone-loaded
+mace, save, drop it, save, crash, boot; the mace's row and the dissolved starter kit's
+are gone, every remaining player row has a payload row, the login counts nothing and the
+saves wrote no `unowned_object` line. The combat journeys restart with a ghost record
+under the banana and the switch on: after the boot the ghost is gone, the rows whose items
+the save holds stay, and the login counts nothing. The capture test runs the production
+save with the switch off (three saves, no line) and on (one line per save).
+
+Not covered: a stale container in the flat-file catalog whose contents a payload still
+holds (no transfer path produces that state there; the rule is held by the MariaDB
+fixture, where the foreign key is), and the reap on a long-lived database with every
+owner type populated.
+
 ## Riposte after a participant is removed
 
 Riposte keeps process-local character identities, the original room and height, and the
