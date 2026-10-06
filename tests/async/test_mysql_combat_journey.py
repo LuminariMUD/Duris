@@ -184,6 +184,8 @@ def run(server, reset_coins=False, boons=False):
                     kept='\n'.join(row for row in rows.split('\n') if row.split('\t')[0] in held)
                     assert any(row.startswith(f'{ghost}\t') for row in rows.split('\n')), 'the ghost row was not in place before the restart'
                     gaps=journey.runtime_logs(runtime).count('outcome=missing_payload_rows')
+                    # With the switch on, each save of the looted banana named it (#11).
+                    assert f'outcome=unowned_object uid={banana} vnum=15' in journey.runtime_logs(runtime), 'the looted banana was not traced on its saves'
                     stop(); process=boot()
                     assert number(f'SELECT COUNT(*) FROM item_current_owner WHERE item_uid={ghost}')==0, 'the boot did not reap the ghost row'
                     client=journey.reconnect_character(plain)

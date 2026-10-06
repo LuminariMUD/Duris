@@ -247,8 +247,9 @@ its records. The `taken` scenario is the real path without the switch: get a zon
 mace, save, drop it, save, crash, boot; the mace's row and the dissolved starter kit's
 are gone, every remaining player row has a payload row, the login counts nothing and the
 saves wrote no `unowned_object` line. The combat journeys restart with a ghost record
-under the banana and the switch on: after the boot the ghost is gone, the rows whose items
-the save holds stay, and the login counts nothing. The capture test runs the production
+under the banana and the switch on: each save of the looted banana wrote an
+`unowned_object` line, and after the boot the ghost is gone, the rows whose items the save
+holds stay, and the login counts nothing. The capture test runs the production
 save with the switch off (three saves, no line) and on (one line per save).
 
 Not covered: a stale container in the flat-file catalog whose contents a payload still

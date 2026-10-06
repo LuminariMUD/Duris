@@ -765,6 +765,9 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                         item for item in before_restart["player_items"]
                         if item["uid"] in before_restart["snapshot_uids"]]
                     gaps = runtime_logs(run_root).count("outcome=missing_payload_rows")
+                    # With the switch on, each save of the looted banana named it (#11).
+                    require(re.search(r"outcome=unowned_object uid=\d+ vnum=15", runtime_logs(run_root)),
+                            "the looted banana was not traced on its saves")
                     offset = output_path.stat().st_size
                     process = subprocess.Popen(
                         [str(binary), "--minimal", "-s", "-d", str(run_root), str(plain_port)],
