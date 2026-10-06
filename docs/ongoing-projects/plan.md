@@ -13,7 +13,7 @@ Updated 2026-10-06. A new session starts here, then reads the phase it continues
 |---|---|---|
 | 1 | #10 | Landed on 2026-10-05 in `7fdbb20fe` (!11). |
 | 2 | #13 | Landed on 2026-10-06 in `6a4e5511c` (!12). |
-| 3 | #11 | In progress on `fix/11-ownership-reap`, from `master` at `1e3a464ca`. "State of the work" at the end of its section says where it stands. |
+| 3 | #11 | Built on `fix/11-ownership-reap` (from `master` at `1e3a464ca`); merge request !13 is open for review, its head tagged `log-review/phase-3-review-0`. "State of the work" at the end of its section has the details. |
 | 4 | #14 | Not started. |
 | 5 | #17 | Not started. |
 
