@@ -647,7 +647,10 @@ and committed claims are not published back (decision 8). No transfer reason is 
 - Branch `fix/11-ownership-reap`, from `master` at `1e3a464ca`: `6500b2f9e` (this
   file's ablation), `f3f21475a` (ADR), `61fa52894` (the reap, the two lines, their
   tests and documents), `f77ff5022` (test documents), `f44e37fde` (the traced pickup),
-  then this file's commit.
+  `76d21809b` (this file, as built), `119dda91e` (two more harness stubs), `923135184`
+  (this file's note of them), then this file's commit with the gate's result.
+- Merge request !MR_IID closes #11. The tag `log-review/phase-3-review-0` is the head the
+  review reads.
 - Shown to fail without the fix, on a server built from `master` under
   `bin/analysis`: `taken` stops with `the boot did not reap the dropped mace's record`,
   and the MariaDB combat journey with `the boot did not reap the ghost row` (all three
@@ -657,7 +660,28 @@ and committed claims are not published back (decision 8). No transfer reason is 
   `test_orphan_item_session_regressions.py`, `test_player_load_topology.py`, the four
   other stubbed harnesses, `taken`, and both combat journeys (twice, the second with
   the traced-pickup assertion): all pass.
-- The gate has not run yet.
+- The gate, on 2026-10-06:
+  - `./scripts/format.sh --check`: clean.
+  - `make -C src`: built.
+  - `make test-db`: 45 of 45 passed in 339 s, on `76d21809b`. `world_restart_taken` took
+    87 s, `mysql_combat` 164 s, `player_save_claim` 63 s, `world_capture` 104 s.
+  - `make test-all`: 671 passed, 0 failed, in 457 s, on `923135184`. Its first run, on
+    `76d21809b`, was 669 passed and 2 failed: `test_locker_save_room.py` and
+    `test_item_movement_input_queue.py` did not link without the switch's stub
+    (`119dda91e`). `make test-db` does not run either, and the server did not change
+    between the two heads, so it was not run again.
+- By hand, the fixed build on a copy of the long-lived development database (dumped,
+  imported into a disposable MariaDB, the full world, one boot and a clean stop):
+  69,576 rows before, 37,446 of them a player's active rows, 101 with no payload row (94
+  reap candidates on the first pass and 7 containers whose contents were among them).
+  The boot logged `Item ownership reap: records of items no player holds deleted=101`
+  and stopped with `Normal termination`. After it: 69,475 rows, 37,345 player rows, each
+  with a payload row, and the 31 room, 114 corpse, 31,972 locker and 13 destroyed rows
+  as before; `item_owner_audit` and `item_owner_revision` unchanged; none of the 101 is
+  left. 24 of the 101 named "player" 4,000,000,001, which is no pid: rows
+  `item_transfer_mysql_harness.cpp` left on 2026-09-01 when it was run against that
+  database.
+- Nothing is open. The review is next.
 
 ---
 
