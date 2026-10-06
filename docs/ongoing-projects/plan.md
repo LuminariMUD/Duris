@@ -649,7 +649,7 @@ and committed claims are not published back (decision 8). No transfer reason is 
   tests and documents), `f77ff5022` (test documents), `f44e37fde` (the traced pickup),
   `76d21809b` (this file, as built), `119dda91e` (two more harness stubs), `923135184`
   (this file's note of them), then this file's commit with the gate's result.
-- Merge request !MR_IID closes #11. The tag `log-review/phase-3-review-0` is the head the
+- Merge request !13 closes #11. The tag `log-review/phase-3-review-0` is the head the
   review reads.
 - Shown to fail without the fix, on a server built from `master` under
   `bin/analysis`: `taken` stops with `the boot did not reap the dropped mace's record`,
