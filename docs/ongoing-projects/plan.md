@@ -12,8 +12,8 @@ Updated 2026-10-06. A new session starts here, then reads the phase it continues
 | Phase | Item | State |
 |---|---|---|
 | 1 | #10 | Landed on 2026-10-05 in `7fdbb20fe` (!11). |
-| 2 | #13 | Built, and review round 1 is fixed: branch `fix/13-small-defects-log-noise`, !12. It is ready to land. |
-| 3 | #11 | Not started. It is next, on a new branch from `master`, once !12 has landed. |
+| 2 | #13 | Landed on 2026-10-06 in `6a4e5511c` (!12). |
+| 3 | #11 | Not started. It is next, on a new branch from `master`. |
 | 4 | #14 | Not started. |
 | 5 | #17 | Not started. |
 
@@ -218,8 +218,8 @@ checks.
 
 ## Phase 2: small defects and log noise (#13)
 
-**Status: built, review round 1 fixed, ready to land as !12.** "State of the work" at the
-end of this phase has the details.
+**Status: landed in `6a4e5511c`.** "State of the work" at the end of this phase has the
+details.
 
 **Checked.** All seven findings are in the code as described, at the lines the item links.
 
@@ -448,7 +448,12 @@ four stamps as well.
   development server, with no one connected, wrote 101 of them in 153 revolutions (3 hours
   11 minutes) and no per-pulse line. The worst pulse was 2 late, apart from five
   revolutions while the round's gate and probes loaded the machine, where it was up to 6.
-- Open: landing.
+- Landed on 2026-10-06 in `6a4e5511c`: one `--no-ff` merge of `log-review/phase-2-review-1`
+  (`630e34830`) into `master`, with no squash and no rebase, so both tags still name the
+  commits that were reviewed. `master` had not moved since the branch was made, so the
+  merge's tree is the branch's and the round 1 gate stands for it. #13 is closed and the
+  branch is deleted.
+- Nothing is open.
 
 ---
 
@@ -468,7 +473,7 @@ and logs it on every login. The save's insert is not published to the in-memory 
 - The flat-file backend follows the same claim model and counts the same records
   (`flatfile_player_repository.c` L404), so it collects them the same way.
 - World recovery already treats a player's active row with no payload row as not owned
-  (`sql_persistence_world_recovery_items_owned()`, `sql.c` L5168). Retiring such a row does
+  (`sql_persistence_world_recovery_items_owned()`, `sql.c` L5170). Retiring such a row does
   not change what it restores.
 - `test_mysql_combat_journey.py` L163 and `test_flatfile_combat_journey.py` L301 wait for
   the `missing_payload_rows` line as a signal. `test_player_load_topology.py` and
