@@ -22,11 +22,13 @@ assert (ROOT / "logs/log/.gitignore").is_file()
 
 
 # --- routine persistence traces are opt-in ----------------------------------
-# A shopkeeper line for each shop on every boot, and locker moves on every save,
-# filled the debug log; DURIS_PERSISTENCE_TRACE turns them on, failures stay on.
+# A shopkeeper line for each shop on every boot, one for each pulse of the batched shop
+# save that follows it, and locker moves on every save, filled the debug log;
+# DURIS_PERSISTENCE_TRACE turns them on, failures stay on.
 lockers = (SRC / "storage_lockers.c").read_text()
 shop_restore = (SRC / "sql_player.c").read_text()
 for text, line in [(shop_restore, "sql_restore_shopkeepers: shop %d"),
+                   (shop_restore, "sql_save_dirty_shopkeepers: saved %d shopkeepers"),
                    (lockers, "Locker save start:"),
                    (lockers, "LockerToPFile: saving private chest"),
                    (lockers, "LockerToPFile: private chest scan complete"),
@@ -34,7 +36,7 @@ for text, line in [(shop_restore, "sql_restore_shopkeepers: shop %d"),
                    (lockers, "LockerToPFile: moving loose room object"),
                    (lockers, "PFileToLocker: moving carried object")]:
     before = text[:text.index(line)].splitlines()[-8:]
-    assert any("if (persistence_trace_enabled())" in row for row in before), line
+    assert any("persistence_trace_enabled())" in row for row in before), line
 for line in ("LockerToPFile: missing chest object", "LockerToPFile: failed to save private chest",
              "LockerToPFile: aborting before non-private chest moves"):
     before = lockers[:lockers.index(line)].splitlines()[-3:]
@@ -62,6 +64,51 @@ for restore in ("copyover_recover(", "redis_world_recovery_boot_clear();",
     assert index(game_loop, restore) < index(game_loop, "arti_cache_init();"), restore
 artifact = (SRC / "artifact.c").read_text()
 assert artifact.count("arti_cache_init();") == 0
+
+
+# --- a connection line builds no time stamp of its own ------------------------
+# Quit, enter game, rent, void and lost link each added the time shifted by a fixed four
+# or five hours and labelled EST, which is wrong for half of every year. The quit line is
+# also logged, behind the logger's stamp. The other four go to the staff channel only,
+# where loginlog() puts the server's time on every line (test_server_time_zone.py).
+for name, line in (("actoth.c", '"%s has quit in [%d]."'),
+                   ("nanny.c", '"%s [%s] enters game.%s [%d]"'),
+                   ("specs.room.c", '"%s [%s] has rented out in [%d]."'),
+                   ("limits.c", '"%s has voided in [%d]."'),
+                   ("comm.c", '"%s [%s] has lost link."')):
+    text = (SRC / name).read_text()
+    assert line in text, line
+    assert not re.search(r'\bEST\b', text), name
+# A new character's entry line gave the time since 1970 as its absence.
+assert contains((SRC / "nanny.c").read_text(),
+                "if (ch->player.time.saved) GetMIA(ch->player.time.saved, Gbuf1);")
+
+
+# --- a peer that closes its connection is not a read error -------------------
+# End of file, a reset and TLS ended without a close each wrote a line from the read,
+# beside the one close_socket() writes for every descriptor it closes.
+process_input = (SRC / "comm.c").read_text().split("int process_input(P_desc t)", 1)[1]
+process_input = process_input.split("\n}\n", 1)[0]
+assert "EOF encountered" not in process_input
+for closed in ("GNUTLS_E_PREMATURE_TERMINATION", "GNUTLS_E_PULL_ERROR", "ECONNRESET"):
+    assert contains(process_input, "!= " + closed), closed
+
+
+# --- an absent mud_info page is its normal state ------------------------------
+# The creation lock is an optional row that no migration seeds, and every new-character
+# name logged that it "doesn't exist". The MariaDB lookup is the file's second.
+sql = (SRC / "sql.c").read_text()
+lookup = sql[sql.rindex("string get_mud_info(const char *name)"):].split("\n}\n", 1)[0]
+assert contains(lookup, "mud_info.find(") and "logit(" not in lookup
+
+
+# --- a shutdown that collected no profile reports none ------------------------
+# Every shutdown wrote a "Profile info" line of zeros for each event function. A run that
+# was switched off before the stop collected something, and is still written.
+shutdown = (SRC / "comm.c").read_text().split("int run_the_game(int port, int sslport)", 1)[1]
+profile = shutdown[index(shutdown, "if (event_loop_profile.calls > 0)"):
+                   index(shutdown, "save_func_call_info();")]
+assert shutdown.count("save_func_call_info();") == 1 and contains(profile, "PROFILES(SAVE);")
 
 
 # --- the donation subscriber must not block the game loop --------------------

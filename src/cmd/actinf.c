@@ -6556,10 +6556,14 @@ void do_score(P_char ch, char * /*argument*/, int /*cmd*/)
 
 	if (IS_PC(ch))
 	{
+		// Negative while the quest history is still loading: the count is not known yet.
 		int RemainingBartenderQuests = sql_world_quest_can_do_another(ch);
-		snprintf(buf, MAX_STRING_LENGTH, "&+yBartender Quests Remaining:&n %d\n",
-			 RemainingBartenderQuests);
-		send_to_char(buf, ch);
+		if (RemainingBartenderQuests >= 0)
+		{
+			snprintf(buf, MAX_STRING_LENGTH, "&+yBartender Quests Remaining:&n %d\n",
+				 RemainingBartenderQuests);
+			send_to_char(buf, ch);
+		}
 	}
 
 	if (IS_PC(ch))
@@ -6980,17 +6984,11 @@ void do_time(P_char ch, char *argument, int /*cmd*/)
 		 (uptime.second > 9) ? "" : "0", uptime.second);
 	send_to_char(Gbuf2, ch);
 
+	// The server's own time, with the zone it is in.
 	lt = localtime(&ct);
 	tmstr = asctime(lt);
 	*(tmstr + strlen(tmstr) - 1) = '\0';
-	snprintf(Gbuf2, MAX_STRING_LENGTH, "Current time is: %s (local time)\n", tmstr);
-	send_to_char(Gbuf2, ch);
-	// Subtract 5 hrs.
-	ct -= 5 * 60 * 60;
-	lt = localtime(&ct);
-	tmstr = asctime(lt);
-	*(tmstr + strlen(tmstr) - 1) = '\0';
-	snprintf(Gbuf2, MAX_STRING_LENGTH, "                 %s (EST)\n", tmstr);
+	snprintf(Gbuf2, MAX_STRING_LENGTH, "Current time is: %s (%s)\n", tmstr, lt->tm_zone);
 	send_to_char(Gbuf2, ch);
 
 	if (IS_TRUSTED(ch))

@@ -91,6 +91,8 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-help-") as temporary:
         cwd=ROOT,
         check=True,
     )
-    subprocess.run([str(mud_info_binary)], cwd=ROOT, check=True)
+    broken_root = temporary_path / "broken"
+    (broken_root / "lib/information/motd").mkdir(parents=True)
+    subprocess.run([str(mud_info_binary), str(broken_root)], cwd=ROOT, check=True)
 
 print("flat-file help catalog regression passed")

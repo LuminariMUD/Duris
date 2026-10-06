@@ -2632,9 +2632,14 @@ resume_game_loop:
 					  "pipeline_drain_failed", "shutdown_cancelled=0");
 	}
 
-	PROFILES(SAVE);
 #ifdef DO_PROFILE
-	save_func_call_info();
+	// A server that never profiled has nothing to report but zeros. A run that was
+	// switched off before the stop is still written.
+	if (event_loop_profile.calls > 0)
+	{
+		PROFILES(SAVE);
+		save_func_call_info();
+	}
 #endif
 
 	// Don't want to save stuff just after we wiped all the tables in SQL.
@@ -3225,8 +3230,6 @@ void close_socket(struct descriptor_data *d)
 	struct descriptor_data *tmp;
 	snoop_by_data *snoop_by_ptr, *next;
 	int is_morphed = d->character ? IS_MORPH(d->character) : 0;
-	char Gbuf1[MAX_STRING_LENGTH];
-	time_t ct;
 	if (d && d->player_load_request_id)
 		player_load_pipeline_cancel(d->player_load_request_id);
 	account_recovery_descriptor_closed(d);
@@ -3358,13 +3361,8 @@ void close_socket(struct descriptor_data *d)
 			{
 				logit(LOG_COMM, "Closing link to: %s [%s].",
 				      GET_NAME(GET_PLYR(d->character)), d->host);
-				// Subtract 5 hrs: GMT -> EST.
-				ct = time(0) - 5 * 60 * 60;
-				snprintf(Gbuf1, MAX_STRING_LENGTH, "%s", asctime(localtime(&ct)));
-				*(Gbuf1 + strlen(Gbuf1) - 1) = '\0';
-				loginlog(d->character->player.level,
-					 "%s [%s] has lost link @ %s EST.",
-					 GET_NAME(GET_PLYR(d->character)), d->host, Gbuf1);
+				loginlog(d->character->player.level, "%s [%s] has lost link.",
+					 GET_NAME(GET_PLYR(d->character)), d->host);
 				sql_log(d->character, CONNECTLOG, "Lost Link");
 			}
 			persistence_save_character_terminal(d->character, RENT_CRASH);
@@ -4281,28 +4279,26 @@ int process_input(P_desc t)
 	buf = t->buf;
 
 	/*
-	 * Read in some stuff
+	 * Read in some stuff. A peer that closed its connection (end of file, a reset, or
+	 * TLS ended without a close) is not an error: close_socket() logs the disconnect.
 	 */
 	if (t->sslses)
 	{
 		thisround =
 			gnutls_record_recv(t->sslses, buf + begin, MAX_QUEUE_LENGTH - begin - 1);
 		if (!thisround)
-		{
-			logit(LOG_COMM,
-			      "EOF encountered on socket read for %s [host=%s desc=%d connected=%d ssl=%s].",
-			      (t->character) ? GET_NAME(t->character) : "NOCHAR",
-			      *t->host ? t->host : "unknown", t->descriptor, t->connected,
-			      t->sslses ? "yes" : "no");
 			return (-1);
-		}
 		else if (thisround < 0)
 		{
 			if (thisround != GNUTLS_E_AGAIN && thisround != GNUTLS_E_INTERRUPTED)
 			{
-				logit(LOG_COMM, "process_input() CON_%d %s Read: %d Error: %s",
-				      t->connected, (t->character) ? GET_NAME(t->character) : "",
-				      thisround, gnutls_strerror(thisround));
+				if (thisround != GNUTLS_E_PREMATURE_TERMINATION &&
+				    thisround != GNUTLS_E_PULL_ERROR)
+					logit(LOG_COMM,
+					      "process_input() CON_%d %s Read: %d Error: %s",
+					      t->connected,
+					      (t->character) ? GET_NAME(t->character) : "",
+					      thisround, gnutls_strerror(thisround));
 				return (-1);
 			}
 			return 0;
@@ -4312,21 +4308,17 @@ int process_input(P_desc t)
 	{
 		thisround = read(t->descriptor, buf + begin, MAX_QUEUE_LENGTH - begin - 1);
 		if (!thisround)
-		{
-			logit(LOG_COMM,
-			      "EOF encountered on socket read for %s [host=%s desc=%d connected=%d ssl=%s].",
-			      (t->character) ? GET_NAME(t->character) : "NOCHAR",
-			      *t->host ? t->host : "unknown", t->descriptor, t->connected,
-			      t->sslses ? "yes" : "no");
 			return (-1);
-		}
 		else if (thisround < 0)
 		{
 			if (errno != EAGAIN)
 			{
-				logit(LOG_COMM, "process_input() CON_%d %s Read: %d Error: %d",
-				      t->connected, (t->character) ? GET_NAME(t->character) : "",
-				      thisround, errno);
+				if (errno != ECONNRESET)
+					logit(LOG_COMM,
+					      "process_input() CON_%d %s Read: %d Error: %d",
+					      t->connected,
+					      (t->character) ? GET_NAME(t->character) : "",
+					      thisround, errno);
 				return (-1);
 			}
 			return 0;

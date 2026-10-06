@@ -24,6 +24,7 @@ HARNESS = r'''
 #include <map>
 #include <queue>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -45,6 +46,8 @@ static int failure_code = 0;
 static unsigned long long fake_clock_ns = 0;
 static int unbounded_warnings = 0;
 static int invalid_config_warnings = 0;
+static int budget_pulse_lines = 0;
+static std::vector<std::string> budget_windows;
 
 bool nevent_periodic_begin(P_nevent)
 {
@@ -120,6 +123,18 @@ void logit(const char *, const char *format, ...)
 		unbounded_warnings++;
 	if (format && std::strstr(format, "allowed 0.."))
 		invalid_config_warnings++;
+	if (format &&
+	    (std::strstr(format, "NEVENT BUDGET:") || std::strstr(format, "NEVENT CATCHUP:")))
+		budget_pulse_lines++;
+	if (format && std::strstr(format, "NEVENT BUDGET WINDOW:"))
+	{
+		char line[1024];
+		va_list arguments;
+		va_start(arguments, format);
+		std::vsnprintf(line, sizeof(line), format, arguments);
+		va_end(arguments);
+		budget_windows.emplace_back(line);
+	}
 }
 
 void statuslog(int, const char *, ...)
@@ -310,6 +325,9 @@ static void reset_scheduler()
 	std::memset(ne_schedule_tail, 0, sizeof(ne_schedule_tail));
 	std::memset(&test_pool, 0, sizeof(test_pool));
 	nevent_analytics = {};
+	nevent_budget_window = {};
+	budget_pulse_lines = 0;
+	budget_windows.clear();
 	current_nevent = nullptr;
 	ne_dead_event_pool = &test_pool;
 	ne_event_counter = 0;
@@ -628,6 +646,32 @@ static void test_catchup_convergence()
 			nevent_deferred_due_counts.empty(),
 		147);
 	require_balanced(148);
+}
+
+// The budget record that is always on is one line per revolution of the wheel, and only
+// for a revolution that deferred work or ran work late. It keeps the revolution's worst
+// pulse. The per-pulse lines are written with analytics on.
+static void test_budget_window(bool analytics)
+{
+	reset_scheduler();
+	for (int id = 9000; id < 9006; ++id)
+		add_record(id, 0, ULLONG_MAX);
+	// Two callbacks a pulse: ticks 0 and 1 defer 4 and 2, and tick 2 runs the last two.
+	for (int tick = 0; tick < PULSES_IN_TICK - 1; ++tick)
+		run_one_heartbeat();
+	require(budget_windows.empty(), 240);
+	run_one_heartbeat();
+	require(budget_windows.size() == 1, 241);
+	require(budget_windows[0].find(
+			" tick=299 deferring_pulses=2 deferred=6 peak_catchup_debt=4 "
+			"max_late_ticks=2 max_late_name=unknown function max_late_tick=2 "
+			"max_late_total_us=") != std::string::npos,
+		242);
+	require((budget_pulse_lines > 0) == analytics, 243);
+	for (int tick = 0; tick < PULSES_IN_TICK; ++tick)
+		run_one_heartbeat();
+	require(budget_windows.size() == 1, 244);
+	require_balanced(245);
 }
 
 static void test_large_batch_deferral()
@@ -1266,6 +1310,10 @@ int main(int argc, char **argv)
 		test_bounded_normal_aging();
 	else if (std::strcmp(argv[1], "catchup") == 0)
 		test_catchup_convergence();
+	else if (std::strcmp(argv[1], "budget-window") == 0)
+		test_budget_window(false);
+	else if (std::strcmp(argv[1], "budget-window-analytics") == 0)
+		test_budget_window(true);
 	else if (std::strcmp(argv[1], "large-batch") == 0)
 		test_large_batch_deferral();
 	else if (std::strcmp(argv[1], "mass-insert") == 0)
@@ -1363,6 +1411,12 @@ with tempfile.TemporaryDirectory(prefix="duris-nevent-scheduler-") as directory:
         "catchup",
         DURIS_NEVENT_MAX_CALLBACKS="2",
         DURIS_NEVENT_CATCHUP_MAX_EXTRA_CALLBACKS="1",
+    )
+    run_mode("budget-window", DURIS_NEVENT_MAX_CALLBACKS="2")
+    run_mode(
+        "budget-window-analytics",
+        DURIS_NEVENT_MAX_CALLBACKS="2",
+        DURIS_NEVENT_ANALYTICS="1",
     )
     run_mode(
         "large-batch",

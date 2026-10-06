@@ -118,7 +118,21 @@ struct nevent_analytics_data
 	std::map<void *, struct nevent_callback_analytics> callbacks;
 };
 
+/* What the event pass deferred, and the latest it ran anything, in the wheel's current
+ * revolution. */
+struct nevent_budget_window_data
+{
+	long deferring_pulses;
+	long long deferred;
+	long peak_catchup_debt;
+	long max_late_ticks;
+	const char *max_late_name;
+	unsigned long long max_late_tick;
+	long max_late_total_us;
+};
+
 static struct nevent_analytics_data nevent_analytics;
+static struct nevent_budget_window_data nevent_budget_window;
 static long nevent_catchup_debt = 0;
 static int nevent_catchup_remaining = 0;
 static long nevent_avg_callback_us = 50;
@@ -1458,6 +1472,40 @@ static long nevent_elapsed_us(const struct timespec *started, const struct times
 	       (finished->tv_nsec - started->tv_nsec) / 1000L;
 }
 
+/* Deferring is the budget working, so it is reported once per revolution of the wheel and
+ * not once per pulse: one line if the pass deferred work or ran work late, with the
+ * revolution's worst pulse. DURIS_NEVENT_ANALYTICS adds the per-pulse lines. */
+static void nevent_budget_window_record(long deferred, long late_ticks, const char *late_name,
+					long loop_us)
+{
+	struct nevent_budget_window_data &window = nevent_budget_window;
+
+	if (deferred > 0)
+	{
+		window.deferring_pulses++;
+		window.deferred += deferred;
+	}
+	if (nevent_catchup_debt > window.peak_catchup_debt)
+		window.peak_catchup_debt = nevent_catchup_debt;
+	if (late_ticks > window.max_late_ticks)
+	{
+		window.max_late_ticks = late_ticks;
+		window.max_late_name = late_name;
+		window.max_late_tick = ne_event_tick;
+		window.max_late_total_us = loop_us;
+	}
+	if (pulse != PULSES_IN_TICK - 1)
+		return;
+	if (window.deferring_pulses > 0 || window.max_late_ticks > 0)
+		logit(LOG_STATUS,
+		      "NEVENT BUDGET WINDOW: boot=%s tick=%llu deferring_pulses=%ld deferred=%lld peak_catchup_debt=%ld max_late_ticks=%ld max_late_name=%s max_late_tick=%llu max_late_total_us=%ld",
+		      latency_trace_boot_id(), ne_event_tick, window.deferring_pulses,
+		      window.deferred, window.peak_catchup_debt, window.max_late_ticks,
+		      window.max_late_name ? window.max_late_name : "none", window.max_late_tick,
+		      window.max_late_total_us);
+	window = {};
+}
+
 /* Move every unscanned due event into the next bucket.  Reinsertion uses the
  * authoritative due/priority/aging order; future revolutions stay put and the
  * original due tick remains unchanged. */
@@ -1695,7 +1743,8 @@ void ne_events(void)
 	PROFILE_END(event_loop);
 	clock_gettime(CLOCK_MONOTONIC, &loop_finished);
 	long loop_us = nevent_elapsed_us(&loop_started, &loop_finished);
-	if (deferred > 0)
+	nevent_budget_window_record(deferred, max_late_ticks, max_late_name, loop_us);
+	if (deferred > 0 && nevent_analytics_enabled())
 	{
 		char trace_tick_buffer[LATENCY_TRACE_TICK_STRING_LENGTH];
 		const char *trace_tick =
@@ -1712,7 +1761,7 @@ void ne_events(void)
 		      max_late_deferral, nevent_catchup_extension_us, nevent_avg_callback_us,
 		      slowest_name ? slowest_name : "unknown", slowest_us, ne_event_counter);
 	}
-	if (nevent_catchup_quota > 0 || new_debt > 0)
+	if ((nevent_catchup_quota > 0 || new_debt > 0) && nevent_analytics_enabled())
 	{
 		char trace_tick_buffer[LATENCY_TRACE_TICK_STRING_LENGTH];
 		const char *trace_tick =

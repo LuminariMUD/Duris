@@ -3722,7 +3722,7 @@ bool sql_save_dirty_shopkeepers(bool force)
 		log_shopkeeper_dirty_retry(i, reason, keeper, now, force);
 	}
 
-	if (saved > 0)
+	if (saved > 0 && persistence_trace_enabled())
 		logit(LOG_DEBUG, "sql_save_dirty_shopkeepers: saved %d shopkeepers", saved);
 	for (int i = 0; i < number_of_shops; ++i)
 		if (shop_index[i].dirty)

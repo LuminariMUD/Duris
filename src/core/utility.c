@@ -1224,9 +1224,16 @@ void loginlog(int level, const char *format, ...)
 	va_list args;
 	char *lbuf;
 	P_desc d;
+	// The channel is all that records most of these lines, so each carries the server's
+	// own time, with the zone it is in.
+	char prefix[64];
+	const time_t ct = time(0);
+	const struct tm *lt = localtime(&ct);
 
+	snprintf(prefix, sizeof prefix, "&+c*** LOGMSG: %02d:%02d:%02d %s&n ", lt->tm_hour,
+		 lt->tm_min, lt->tm_sec, lt->tm_zone);
 	va_start(args, format);
-	lbuf = format_variadic_message("&+c*** LOGMSG:&n ", "\n", format, args);
+	lbuf = format_variadic_message(prefix, "\n", format, args);
 	va_end(args);
 	if (!lbuf)
 		return;

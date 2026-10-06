@@ -652,7 +652,7 @@ specific issue and restart the server after changing them.
 | `GET_TRACE` | any non-empty value except `0`, `false`, or `off` | Debug logging for object pickup paths. |
 | `DURIS_ZONE_RESET_TRACE` | positive integer | Zone-reset tracing. |
 | `DURIS_CORPSE_TRACE` | any non-empty value except `0` | Corpse decay tracing. |
-| `DURIS_PERSISTENCE_TRACE` | any non-empty value except `0` | Routine locker save and boot shopkeeper-restore lines in `logs/log/debug`. Their failure lines are always written. |
+| `DURIS_PERSISTENCE_TRACE` | any non-empty value except `0` | Routine locker save, boot shopkeeper-restore and shopkeeper-save lines in `logs/log/debug`. Their failure lines are always written. |
 | `DURIS_ACCEPT_DEBUG` | variable present, including an empty value | Connection-accept debug counters. |
 
 `SQL_TRACE` never writes query text, bound values, MySQL error prose, account or
@@ -679,7 +679,7 @@ the event system initializes:
 | `DURIS_NEVENT_CATCHUP_MAX_EXTRA_CALLBACKS` | `4000` | Maximum callback-cap extension while repaying deferred work. |
 | `DURIS_NEVENT_PLAYER_PRIORITY` | `1` | Set to `0` to disable player-timed priority. |
 | `DURIS_NEVENT_TRACE_PLAYER` | `0` | Set to `1` for per-player deadline timing logs. |
-| `DURIS_NEVENT_ANALYTICS` | `0` | Set to `1` for 300-pulse scheduler and callback analytics. |
+| `DURIS_NEVENT_ANALYTICS` | `0` | Set to `1` for 300-pulse scheduler and callback analytics, and for the per-pulse `NEVENT BUDGET` and `NEVENT CATCHUP` lines. |
 
 The wall-clock budget is the binding limit, and by default the only one. A
 callback cap low enough that pulses end well inside the time budget starves the

@@ -239,8 +239,6 @@ void do_target(P_char ch, char *arg, int cmd)
 void do_camp(P_char ch, char *arg, int /*cmd*/)
 {
 	struct affected_type af;
-	time_t ct;
-	char timestr[1024];
 
 	// old guildhalls (deprecated)
 	//  P_house house;
@@ -305,19 +303,11 @@ void do_camp(P_char ch, char *arg, int /*cmd*/)
 			ch->desc->snoop.snooping = 0;
 		}
 
-		ct = time(NULL);
-		// Convert to EST.
-		ct -= 4 * 60 * 60;
-		snprintf(timestr, 1024, "%s", asctime(localtime(&ct)));
-		*(timestr + strlen(timestr) - 1) = '\0';
-		strcat(timestr, " EST");
-
 		persistence_save_character_terminal(ch, RENT_INN);
 
-		logit(LOG_COMM, "%s has quit in [%d] @ %s.", GET_NAME(ch),
-		      world[ch->in_room].number, timestr);
-		loginlog(GET_LEVEL(ch), "%s has quit in [%d] @ %s.", GET_NAME(ch),
-			 ROOM_VNUM(ch->in_room), timestr);
+		logit(LOG_COMM, "%s has quit in [%d].", GET_NAME(ch), world[ch->in_room].number);
+		loginlog(GET_LEVEL(ch), "%s has quit in [%d].", GET_NAME(ch),
+			 ROOM_VNUM(ch->in_room));
 		sql_log(ch, CONNECTLOG, "Quit Game");
 		act("$n has left the game.", TRUE, ch, 0, 0, TO_ROOM);
 		sql_log_player_login(ch, "logout");

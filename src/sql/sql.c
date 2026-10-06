@@ -58,6 +58,7 @@
 #include <vector>
 #include "account/account.h"
 #include "account/account_reward.h"
+#include "net/gmcp.h"
 #include "net/poll.h"
 #include "account/multiplay_whitelist.h"
 #include "guild/assocs.h"
@@ -609,8 +610,9 @@ string get_mud_info(const char *name)
 	string contents, error;
 	if (!name || !flatfile_information_read(".", name, &contents, &error))
 	{
-		logit(LOG_DEBUG, "get_mud_info: %s",
-		      error.empty() ? "invalid name" : error.c_str());
+		// An absent page is the normal state of an optional one, such as "lock".
+		if (error.starts_with("invalid information source"))
+			logit(LOG_DEBUG, "get_mud_info: %s", error.c_str());
 		return {};
 	}
 	return contents;
@@ -2725,6 +2727,10 @@ void sql_world_quest_history_load(P_char ch)
 				      }
 			      }
 			      world_quest_histories[pid] = std::move(history);
+			      // The Quest.Status sent on entering the game could not carry the
+			      // count: this read was still out.
+			      if (P_char online = find_player_by_pid(pid))
+				      gmcp_quest_status(online);
 		      }))
 		world_quest_histories_loading.erase(pid);
 }
@@ -2784,10 +2790,7 @@ int sql_world_quest_can_do_another(P_char ch)
 
 	const world_quest_history *history = world_quest_history_of(ch);
 	if (!history)
-	{
-		logit(LOG_DEBUG, "sql_world_quest_can_do_another: history not loaded yet");
 		return -1;
-	}
 	int done_today = history->today_total;
 	if (GET_LEVEL(ch) < 50)
 	{
@@ -3833,14 +3836,9 @@ void sql_mud_info_reload(P_char ch, std::function<void(P_char)> done)
 
 string get_mud_info(const char *name)
 {
+	// An absent row is the normal state of an optional page, such as "lock".
 	const auto found = mud_info.find(name ? name : "");
-	if (found == mud_info.end())
-	{
-		logit(LOG_DEBUG, "get_mud_info(): requested mud_info '%s', but doesn't exist!",
-		      name);
-		return string();
-	}
-	return found->second;
+	return found == mud_info.end() ? string() : found->second;
 }
 
 bool sql_clear_zone_trophy()

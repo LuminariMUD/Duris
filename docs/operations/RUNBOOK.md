@@ -301,7 +301,7 @@ Useful checks:
 
 ```bash
 tail -f logs/log/status                 # boot + DB issues
-rg 'NEVENT BUDGET' logs/log/status # event-callback latency telemetry
+rg 'NEVENT BUDGET WINDOW' logs/log/status # deferred and late events, a line per 75 s
 rg 'telemetry_health' logs/log/status  # telemetry writer state and alerts
 ```
 
@@ -365,7 +365,8 @@ Verify profiling is off after capture.
 
 `DURIS_NEVENT_TRACE_PLAYER=1` adds per-callback due/actual ticks, lateness,
 sequence, and elapsed time to `logs/log/status`; `DURIS_NEVENT_ANALYTICS=1`
-adds callback-family windows. These settings are cached after first use and
+adds callback-family windows and the per-pulse `NEVENT BUDGET` and
+`NEVENT CATCHUP` lines. These settings are cached after first use and
 must be supplied to the process before use. Player traces contain player IDs:
 keep raw captures private, bound their duration, and separate startup from
 steady-state observations. The maximally late callback in a budget report is

@@ -7,13 +7,13 @@ working note: delete it when the last phase lands.
 
 ## Status
 
-Updated 2026-10-05. A new session starts here, then reads the phase it continues.
+Updated 2026-10-06. A new session starts here, then reads the phase it continues.
 
 | Phase | Item | State |
 |---|---|---|
 | 1 | #10 | Landed on 2026-10-05 in `7fdbb20fe` (!11). |
-| 2 | #13 | Not started. It is next, on a new branch from `master`. |
-| 3 | #11 | Not started. |
+| 2 | #13 | Built, and review round 1 is fixed: branch `fix/13-small-defects-log-noise`, !12. It is ready to land. |
+| 3 | #11 | Not started. It is next, on a new branch from `master`, once !12 has landed. |
 | 4 | #14 | Not started. |
 | 5 | #17 | Not started. |
 
@@ -27,7 +27,7 @@ five is closed, duplicated by another item or covered by an open merge request.
 | Phase | Item | Verdict | What the check added or corrected |
 |---|---|---|---|
 | 1 | [#10](https://gitlab.com/max757/duris/-/work_items/10) Boot SQL discarded | Valid, accurate | Nothing wrong. `sql_work_repository_apply(MYSQL *, ...)` already exists, which makes the synchronous fix the short one. |
-| 2 | [#13](https://gitlab.com/max757/duris/-/work_items/13) Small defects and log noise | Valid, accurate | The wrong `EST` stamp is built at five sites, not one. The quest-count sentinel has four callers, not two. The `lock` lookup has two callers. Three tests and four documents read the event-budget lines. |
+| 2 | [#13](https://gitlab.com/max757/duris/-/work_items/13) Small defects and log noise | Valid, accurate | The wrong `EST` stamp is built at five sites, not one. The quest-count sentinel has five callers, not two. The `lock` lookup has two callers. Three tests and four documents read the event-budget lines. |
 | 3 | [#11](https://gitlab.com/max757/duris/-/work_items/11) Ownership rows and the save audit | Valid, accurate | Three `ON DELETE RESTRICT` foreign keys constrain any delete. The flat-file backend keeps the same records. Two journeys wait on the `missing_payload_rows` line. The audit's stated failure no longer exists. |
 | 4 | [#14](https://gitlab.com/max757/duris/-/work_items/14) Casts finish late | Valid, not yet measured | The item's first link (`sparser.c` L2193) is in `do_will`, not `do_cast`; `do_cast` starts its cast at L2558. All three scheduling sites go through `schedule_spellcast()`, so one fix covers both. |
 | 5 | [#17](https://gitlab.com/max757/duris/-/work_items/17) Telemetry | Valid, accurate | The three community commits were probed against `master`: all source merges cleanly, the conflicts are in documents and the data-lifecycle files. The third commit is needed once the first is in. |
@@ -218,17 +218,20 @@ checks.
 
 ## Phase 2: small defects and log noise (#13)
 
+**Status: built, review round 1 fixed, ready to land as !12.** "State of the work" at the
+end of this phase has the details.
+
 **Checked.** All seven findings are in the code as described, at the lines the item links.
 
-**Added by the check**
+**Added by the check.** The line numbers are `master`'s at `9725a354d`, before this phase.
 
 - The shifted time stamp labelled `EST` is built at five sites: quit (`actoth.c` L309),
   enter game (`nanny.c` L1685), rent (`specs.room.c` L389), void (`limits.c` L1739) and
   lost link (`comm.c` L3361). Three subtract four hours and two subtract five, so they do
   not even agree with each other.
-- `sql_world_quest_can_do_another()` has four callers. `world_quest.c` L642 and
-  `specs.mobile.c` L10962 test `< 1`, so "not loaded yet" refuses the quest. That is the
-  right behaviour and they do not change.
+- `sql_world_quest_can_do_another()` has five callers. `world_quest.c` L642 and
+  `specs.mobile.c` L10962 and L11161 test `< 1`, so "not loaded yet" refuses the quest.
+  That is the right behaviour and they do not change.
 - `get_mud_info("lock")` has two callers: `account.c` L2402 and `ws_handlers.c` L2032. The
   other rows it reads (`news`, `motd`, `wizmotd`) are optional too.
 - A playing character's disconnect already writes `Closing link to:` from the close path
@@ -241,32 +244,211 @@ checks.
   persistence lines, and `test_boot_log_hygiene.py` asserts that for the per-shop restore
   line.
 
-**Steps.** Each is its own small commit.
+**As built.** Each step is its own commit.
 
-1. **Quest count.** `score` omits the line and the quest JSON omits `remaining` while the
-   history is not loaded. A test covers a character whose history has not loaded.
-2. **Time stamps.** Remove the stamp at all five sites, from the `logit` lines and from
-   the `loginlog()` copies. The log lines keep the logger's UTC prefix; the immortal
-   channel is read live and needs none.
-3. **Disconnects.** `process_input()` writes nothing when the peer closed: end of file,
-   `ECONNRESET`, `GNUTLS_E_PREMATURE_TERMINATION` and `GNUTLS_E_PULL_ERROR`. Any other read
-   error keeps its error line.
-4. **`mud_info`.** `get_mud_info()` returns empty for an absent row without logging. The
-   flat-file version does the same for an absent file and still logs a read error.
-5. **Profile dump.** Shutdown skips `PROFILES(SAVE)` and `save_func_call_info()` when
-   `do_profile` is off.
-6. **Shopkeeper saves.** The `saved %d shopkeepers` line goes behind
-   `persistence_trace_enabled()`, and joins the list `test_boot_log_hygiene.py` checks.
-7. **Event-budget records.** Last in the phase.
-   - Always on: one `NEVENT BUDGET` line per 300-pulse window in which the pass deferred
-     work. It carries the pulses over budget, the total deferred, the largest catch-up
-     debt, and the worst pulse's lateness, event name, tick and time.
-   - The per-pulse `NEVENT BUDGET` and `NEVENT CATCHUP` lines are written only with
-     `DURIS_NEVENT_ANALYTICS=1`. `test_mysql_game_loop_budget_journey.py` sets it.
-   - The two contract tests and the four documents change in the same commit.
+1. **Quest count** (`8e25ee1f5`). `score` leaves the line out, and
+   `json_build_quest_status()` leaves `remaining` out, while
+   `sql_world_quest_can_do_another()` answers below zero: the MariaDB history has not
+   loaded, or the flat-file read failed. `test_world_quest_remaining_unloaded.py` runs
+   score's own lines and the production JSON builder against a history that has not
+   loaded, then against one that has.
+   Review round 1 (`87cca01d2`): `enter_game()` queues the history read and sends
+   `Quest.Status` in the same call, so a first entry after a boot could never carry the
+   count, and nothing sent it later. The read's callback now sends the status again to a
+   character that is in the game. `sql_world_quest_can_do_another()` no longer logs
+   `history not loaded yet`: every first entry asks once before the read can answer.
+2. **Time stamps** (`26531fc28`). The stamp is gone from the five `loginlog()` lines and
+   from the quit `logit()` line, with the locals that only built it.
+   `test_boot_log_hygiene.py` pins the five format strings.
+   Review round 1 (`d2fbf849d`): four of the five lines (enter game, rent, void and lost
+   link) are written by `loginlog()` alone, which reaches no log file, so the stamp that
+   was removed was the only time they carried. `loginlog()` now starts every line of the
+   staff channel with the server's time and the zone it is in.
+3. **Disconnects** (`9f027d69d`). `process_input()` returns without a line for end of
+   file, `ECONNRESET`, `GNUTLS_E_PREMATURE_TERMINATION` and `GNUTLS_E_PULL_ERROR`. Any
+   other read error keeps its line. `close_socket()` logs every descriptor it closes,
+   playing or not, so a disconnect still writes one line. The WebSocket read path never
+   logged these.
+4. **`mud_info`** (`53b51de63`). The MariaDB lookup returns empty for an absent row and
+   logs nothing. The flat-file lookup logs only a source it cannot read; a page that has
+   no source there, as `lock` has none, and a missing file are quiet.
+   `flatfile_mud_info_runtime_harness.cpp` covers the three cases.
+5. **Profile dump** (`0ce7f0586`). Shutdown runs `PROFILES(SAVE)` and
+   `save_func_call_info()` only while `do_profile` is on. `debug profile save` still
+   writes them on request.
+   Review round 1 (`e07673051`): a run that was switched off before the stop was lost, so
+   the guard is now `event_loop_profile.calls > 0`. That timer counts only while
+   profiling is on and `debug profile reset` zeroes it, so a server that never profiled
+   still writes nothing.
+6. **Shopkeeper saves** (`aa7d10392`). The `saved %d shopkeepers` line is behind
+   `persistence_trace_enabled()` and in the list `test_boot_log_hygiene.py` checks.
+   `CONFIGURATION.md` names it under `DURIS_PERSISTENCE_TRACE`.
+7. **Event-budget records** (`3b6d3ae90`).
+   - Always on: `NEVENT BUDGET WINDOW`, one line when a revolution of the wheel (300
+     pulses) ends, if the pass deferred work or ran work late in it. It carries
+     `deferring_pulses`, `deferred`, `peak_catchup_debt`, and the worst pulse as
+     `max_late_ticks`, `max_late_name`, `max_late_tick` and `max_late_total_us`.
+   - The per-pulse `NEVENT BUDGET:` and `NEVENT CATCHUP:` lines are written only with
+     `DURIS_NEVENT_ANALYTICS=1`. `test_mysql_game_loop_budget_journey.py` already set it.
+   - `test_nevent_scheduler_runtime.py` runs the production pass through two revolutions,
+     with analytics off and on: one window line with the worst pulse, none for a quiet
+     revolution, and per-pulse lines only with analytics. The two contract tests pin the
+     gates. `EVENTS.md`, `CONFIGURATION.md`, `RUNBOOK.md`, `ARCHITECTURE.md` and
+     `CODEBASE.md` describe the line and the switch.
+
+The lines a real server writes are checked in `test_mysql_world_capture_journey.py`
+(`world_capture` in `make test-db`), where Phase 1 put its boot checks. Its mortals each
+name a new character and close their sockets, and its last server is stopped cleanly. The
+journey waits until `close_socket()` has logged every disconnect, requires
+`Normal termination of game.`, and fails on `EOF encountered` or `process_input()` in
+`logs/log/comm`, `get_mud_info` in `logs/log/debug` and `Profile info` in `logs/log/file`
+(`9cd0ef332`). Since review round 1 its mortals turn GMCP on, and each must be sent a
+`Quest.Status` with its count.
+
+**Differs from the plan**
+
+- Step 6: `test_mysql_game_loop_budget_journey.py` waits for the shopkeeper save line and
+  measures the batch from it, which the check had missed. The journey now sets
+  `DURIS_PERSISTENCE_TRACE=1`, and `test_shopkeeper_save_runtime.py` stubs the switch.
+- Step 7: the summary has its own prefix, `NEVENT BUDGET WINDOW`, so nothing that reads
+  `NEVENT BUDGET:` meets a line of another shape. The window is one revolution of the
+  wheel and ends on its last bucket, so it needs no counter of its own.
+- Step 7: a revolution that only ran work late is reported too. The pulse that defers and
+  the pulse that runs that work late can fall on either side of the boundary, and the
+  worst case would be lost otherwise. The revolution a stop interrupts is not reported.
+- Step 7: five documents changed, not four. `CONFIGURATION.md` lists the switch as well.
+- Step 4: in the flat-file backend `lock` has no source at all, so "no source" is quiet as
+  well as "no file". A read error is recognised by the reader's own
+  `invalid information source` text.
+- Step 2: the stamp the logger puts in front of every line is the server's clock
+  (`localtime`), not UTC as such. It is UTC on a server set to UTC. The logger did not
+  change.
+- No test of its own for the real log lines: they are checked in the world capture
+  journey, which already boots, plays and stops a full server.
+- Step 2, review round 1: decision 2 removed the wrong stamp from the immortal channel as
+  well as from the log line. For four of the five lines the channel is the only record, so
+  that left them with no time at all. The channel now carries the server's own time on
+  every line. `d2fbf849d` stands alone: it can be dropped if the channel should carry none.
+- Step 5, review round 1: the review offered `do_profile || event_loop_profile.calls > 0`.
+  The second half alone is used. With profiling on at the stop the timer has counted,
+  unless the stop came within two pulses of switching it on or resetting it, and then
+  there is nothing but zeros to write.
+
+**Found on the way**
+
+- `time` showed players a second line: the server's time minus five hours, labelled
+  `(EST)`. It is the same stamp. The line is removed, and the one that is left names the
+  zone the server's clock is in, `(UTC)` on a server set to UTC (`c93b4588c`). A correct
+  Eastern line would need the time zone database at run time; it was not built.
+  Review round 1 (`f0a8c4e3a`): the zone was formatted into 16 bytes with an unchecked
+  `strftime()`, so a zone abbreviation of 16 characters or more printed stack bytes. Only
+  the server's own `TZ` can do that. The line now prints `tm_zone`, with no buffer. The
+  test is `test_server_time_zone.py`, which also runs the production `loginlog()`.
+- A new character's "enters game" line on the staff channel gave the time since 1970 as
+  its absence (`MIA: 20731 days`): a character that has never been saved has a save time
+  of zero. The line now carries an absence only for a character that has been saved
+  (`ad5c0af68`). Seen in the round 1 probe.
+- Two defects of the journeys themselves each failed a `make test-db` run. Neither is
+  part of #13, so each went to `master` after its own gate, and this branch was rebased
+  onto it.
+  - `19c71cc22`: the first run failed `world_restart_crash` and
+    `world_restart_slowread` on one port collision. Four journeys chose their Redis port
+    by binding port 0 and started Redis on it 20 seconds or more later. Such a port comes
+    from the kernel's ephemeral range, 4,096 ports wide here, and was handed out again in
+    between: the crash leg's port went to the slow-read leg's proxy. The journeys now
+    take the port from below that range and bind it at once. Its gate: `make test-all`
+    669 passed and 0 failed, `make test-db` 45 of 45.
+  - `105dc9092`: the second run failed `chaos_raise`. One greater dracolich in ten
+    turns on its creator, and the journey starts over when that happens, but it waited
+    for a standing prompt first, which a caster killed in the first round never gets. It
+    now looks for the hostile line first. Against a server built with the roll forced,
+    the old journey fails with the same timeout and the new one starts over five times
+    out of five. Its gate: `make test-db` 45 of 45, the only gate that runs that file.
 
 **Done when:** the four conditions in the item. The quit line condition holds for the other
 four stamps as well.
+
+**State of the work**
+
+- Branch `fix/13-small-defects-log-noise`, from `master` at `105dc9092`: the nine
+  commits named above, then this file's.
+- Review round 1 is five commits: `87cca01d2`, `e07673051`, `f0a8c4e3a` and `d2fbf849d`
+  for the review's findings 1 to 4, and `ad5c0af68` for what was found on the way. This
+  file's second commit follows them.
+- Merge request !12 closes #13. The tag `log-review/phase-2-review-0` is the head the
+  review read, and `log-review/phase-2-review-1` the head with its fixes.
+- The gate, on 2026-10-05, on `c93b4588c`, the head before this file's commit:
+  - `./scripts/format.sh --check`: clean.
+  - `make -C src`: built.
+  - `make test-db`: 45 of 45 passed in 272 s. `world_capture`, which reads the logs, took
+    95 s, and `game_loop_budget` 202 s.
+  - `make test-all`: 671 passed, 0 failed, in 462 s. It ran before the last rebase, which
+    added only `105dc9092`: a change to a journey that `make test-all` does not run.
+- Two earlier `make test-db` runs were 43 of 45 and 44 of 45. Each failed on one of the
+  two journey defects under "Found on the way", and `make test-all` was 671 passed and 0
+  failed beside the first as well.
+- Shown to fail without the fixes:
+  - A server built from `master` (`9725a354d`) fails the world capture journey with all
+    four lines: `EOF encountered` and `process_input()` in `logs/log/comm`, `get_mud_info`
+    in `logs/log/debug` and `Profile info` in `logs/log/file`. The branch's server passes.
+  - `test_world_quest_remaining_unloaded.py` and the flat-file `mud_info` harness fail on
+    the old code.
+- By hand, on the development server with its long-lived database and the branch build:
+  - `score` shows "Bartender Quests Remaining: 2". `time` shows one line, with the zone.
+  - A staff quit writes `has quit in [1200].`. A dropped link writes `Closing link to:`
+    and nothing else. A close at the account menu writes `Losing descriptor without char`
+    and nothing else.
+  - A clean stop writes no `Profile info` line. The old build, stopped a few minutes
+    before, wrote 39.
+  - The first revolution after the boot wrote one `NEVENT BUDGET WINDOW` line (41 pulses
+    deferred 234,593 events, the worst ran 3 pulses late) and no per-pulse line.
+- In the game loop budget journey, with analytics on, 9 `NEVENT BUDGET:` and 14
+  `NEVENT CATCHUP:` lines over 600 pulses came with 1 window line. A default server
+  writes only that one.
+- The rent and void lines were not triggered by hand before the review.
+  `test_boot_log_hygiene.py` pins their format strings. Round 1 triggered both.
+- The review ran its own gate on `dfc8e2c99`: `make test-all` 671 passed and 0 failed in
+  472 s, and `make test-db` 45 of 45 in 266 s.
+- The round 1 gate, on 2026-10-06 on `ad5c0af68`, the head before this file's second
+  commit:
+  - `./scripts/format.sh --all --check` and `--check`: clean.
+  - `make -C src`: built.
+  - `make test-db`: 45 of 45 passed in 279 s. `world_capture`, which now requires the
+    quest count, took 99 s, and `game_loop_budget` 201 s.
+  - `make test-all`: 671 passed, 0 failed, in 450 s. That was its second run. The first,
+    with the round's two probe servers running beside it, was 670 passed and 1 failed:
+    `test_password_async_runtime.py` holds each step of its game thread to 50 ms and
+    missed that once. The test passed alone 3 times of 3, and 32 times of 32 as 16 copies
+    side by side.
+- Round 1 by hand, with the review's probe on a real server (disposable MariaDB, the full
+  world, three boots), a level 62 character watching a mortal:
+  - A new character over telnet with GMCP is sent `Quest.Status` without the count, then
+    with it (`"remaining":8`) inside 3 seconds. An existing character gets the same pair
+    on its first entry after a restart, over telnet and over the WebSocket. A later entry
+    in the same boot gets the count twice. `logs/log/debug` has no `world_quest` line.
+  - The staff channel shows `*** LOGMSG: 01:01:46 IDT Morwenna [127.0.0.1] has rented out
+    in [81019].`, and the same stamp on the enter game, lost link, reconnect and camp
+    lines. A mortal left idle was voided after 21 minutes: `*** LOGMSG: 01:48:20 IDT
+    Morwenna has voided in [22800].`
+  - `debug profile on`, 10 seconds, `debug profile off`, then a stop: 59 `Profile info`
+    lines. Stopped with profiling still on: 59. Never profiled: none.
+  - A new character's entry line carries no absence: `*** LOGMSG: 01:27:06 IDT Morwenna
+    [127.0.0.1] enters game. [22800]`.
+- Shown to fail without the round 1 fixes, on the build of `dfc8e2c99`:
+  - The world capture journey with its new check stops with `Kakan was never sent its
+    remaining quests`.
+  - The same probe gets one `Quest.Status`, without the count, on each first entry. Its
+    channel lines carry no time, and the new character's reads `(MIA: 20731 days, 22
+    hours, 5 minutes)`. On, off and a stop writes no `Profile info` line, and
+    `logs/log/debug` has four `history not loaded yet` lines.
+  - `time`'s own lines, run alone under `TZ='<ABCDEFGHIJKLMNOP>5'`, print `(0)` and
+    valgrind reports an uninitialised value. The new lines print the zone whole and
+    valgrind is clean.
+- Not checked: the `NEVENT BUDGET WINDOW` line over a long run with players on. The
+  development server, with no one connected, wrote 101 of them in 153 revolutions (3 hours
+  11 minutes) and no per-pulse line. The worst pulse was 2 late, apart from five
+  revolutions while the round's gate and probes loaded the machine, where it was up to 6.
+- Open: landing.
 
 ---
 
@@ -286,7 +468,7 @@ and logs it on every login. The save's insert is not published to the in-memory 
 - The flat-file backend follows the same claim model and counts the same records
   (`flatfile_player_repository.c` L404), so it collects them the same way.
 - World recovery already treats a player's active row with no payload row as not owned
-  (`sql_persistence_world_recovery_items_owned()`, `sql.c` L5172). Retiring such a row does
+  (`sql_persistence_world_recovery_items_owned()`, `sql.c` L5168). Retiring such a row does
   not change what it restores.
 - `test_mysql_combat_journey.py` L163 and `test_flatfile_combat_journey.py` L301 wait for
   the `missing_payload_rows` line as a signal. `test_player_load_topology.py` and
@@ -355,8 +537,8 @@ life of the database and every query keyed on an owner would slow with it.
 **Checked.** `do_will` (L2193) and `do_cast` (L2558) each schedule a first segment of 1 to 4
 pulses. `event_spellcast` schedules each further segment at L2759 to L2762 from the current
 tick. All three go through `schedule_spellcast()` (L1241). `add_event` sets
-`due_tick = ne_event_tick + delay` (`new_events.c` L890). The event pass knows how late the
-running event is (L1603), and the continuation does not use it. `DelayCommune()` extends
+`due_tick = ne_event_tick + delay` (`new_events.c` L904). The event pass knows how late the
+running event is (L1651), and the continuation does not use it. `DelayCommune()` extends
 the memorize event by the nominal segment, which still adds up to the cast time. The defect
 follows from the code. Nobody has measured a late cast.
 

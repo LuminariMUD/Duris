@@ -49,7 +49,7 @@ Related: [ARCHITECTURE.md](ARCHITECTURE.md), [DATABASE.md](DATABASE.md).
 | `src/world/timers.c` | Player-facing timers such as affect durations. |
 | `src/mob/studioproc.c`, `src/mob/studioproc.h` | Studio-proc trigger engine for `areas/world.trg`; see [STUDIOPROC.md](../content/STUDIOPROC.md). |
 | `src/mob/studioproclib.c`, `src/mob/studioproclib.h` | Built-in proc function library callable from triggers. |
-| `src/persistence/latency_trace.c` | Per-callback latency telemetry (`NEVENT BUDGET`). |
+| `src/persistence/latency_trace.c` | Per-callback latency telemetry (`NEVENT BUDGET WINDOW`). |
 
 ## Persistence
 

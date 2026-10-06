@@ -48,16 +48,18 @@ RESTORED = (r'restored world recovery generation sequence=(\d+) mobs=(\d+) objs=
             r'doors=(\d+) zones=(\d+)')
 REHYDRATED = r'rehydrated recovered NPC zone items matched_mobs=(\d+) loaded_items=(\d+)'
 CREATED = r'arti_update_sql: Creating entry: vnum: (\d+),'
+QUEST_COUNT = rb'\xff\xfa\xc9Quest\.Status \{"remaining":\d+,[^\xff]*\xff\xf0'
 LISTED = 'redis: cached artifact list'
 
 
 class Player(budget.Mortal):
-    """A mortal that enters the game and plays until the run stops."""
+    """A mortal that enters the game, with GMCP on, and plays until the run stops."""
 
     def run(self):
         try:
             with budget.CREATING:
                 self.client = journey.MudClient(self.port)
+                self.client.socket.sendall(b'\xff\xfd\xc9')  # IAC DO GMCP
                 journey.create_character(self.client, expected_room=None,
                                          account=self.account, character=self.name,
                                          email=self.account.lower() + '@example.invalid')
@@ -213,7 +215,16 @@ def run(server, players):
             for mortal in mortals:
                 mortal.join(timeout=60)
                 assert mortal.error is None, mortal.error
+                # A character's first entry sends Quest.Status before its quest history
+                # has been read: the count follows when the read answers (#13).
+                assert re.search(QUEST_COUNT, mortal.client.transcript), \
+                    mortal.name + ' was never sent its remaining quests'
                 mortal.client.close()
+            # The close logs each disconnect; the read that met it must not (#13).
+            closed = time.monotonic() + 30
+            while len(re.findall(r'(?:Closing link to|Combat DropLink): ', log('comm'))) < players:
+                assert time.monotonic() < closed, 'a disconnect was not logged:\n' + log('comm')
+                time.sleep(0.1)
             slow_pulses = re.findall(r'MUD TICK TOOK TOO LONG.*', log('status'))
 
             # A crash: the next boot restores the generation.
@@ -272,6 +283,14 @@ def run(server, players):
         assert mobs > 50000 and objects > EXTRA_OBJECTS, (mobs, objects)
         assert matched > 50000 and carried > 0, (matched, carried)
         assert 'sql job' not in log('file'), log('file')[-2000:]
+        # Work item #13: the mortals each named a new character with no creation lock set,
+        # and closed their connections without a word. The server stopped with profiling
+        # off.
+        assert 'Normal termination of game.' in log('status'), 'no clean shutdown'
+        noise = [f'{line!r} in logs/log/{name}' for name, line in (
+            ('comm', 'EOF encountered'), ('comm', 'process_input()'),
+            ('debug', 'get_mud_info'), ('file', 'Profile info')) if line in log(name)]
+        assert not noise, ', '.join(noise)
     print(f'world capture journey passed: {size / 2**20:.1f} MiB captured in '
           f'{capture_ms / 1000:.1f} s under {players} players, and restored after a crash')
 

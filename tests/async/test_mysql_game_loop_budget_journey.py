@@ -148,7 +148,7 @@ def run(server, players, hours):
         'MYSQL_PWD': os.environ['TEST_DB_PASSWORD'], 'PERSISTENCE_MODE': 'mariadb-primary',
         'DB_TLS': 'FALSE', 'REDIS': 'FALSE', 'CHAOS_MUD': 'FALSE',
         'LISTEN_ADDRESS': '127.0.0.1', 'DURIS_WEBSOCKET_LISTEN_ADDRESS': '127.0.0.1',
-        'DURIS_NEVENT_ANALYTICS': '1',
+        'DURIS_NEVENT_ANALYTICS': '1', 'DURIS_PERSISTENCE_TRACE': '1',
     }
     if 'LD_LIBRARY_PATH' in os.environ:
         environment['LD_LIBRARY_PATH'] = os.environ['LD_LIBRARY_PATH']
@@ -334,9 +334,9 @@ def report(status, trace, players, elapsed):
             worst, weighted, samples = sections[name]
             print(f'  {name:18} max {worst:8} us   mean {weighted // samples:6} us   '
                   f'{samples} pulses')
-    for label in ('MUD TICK TOOK TOO LONG', 'NEVENT SLOW', 'NEVENT BUDGET', 'NEVENT CATCHUP',
-                  'COMMAND OP SLOW'):
-        print(f'  {label}: {status.count(label)}')
+    for label in ('MUD TICK TOOK TOO LONG', 'NEVENT SLOW', 'NEVENT BUDGET WINDOW:',
+                  'NEVENT BUDGET:', 'NEVENT CATCHUP', 'COMMAND OP SLOW'):
+        print(f'  {label.rstrip(":")}: {status.count(label)}')
     for line in re.findall(r'COMMAND OP SLOW: .*', status)[:8]:
         print('   ', re.sub(r'boot=\S+ ', '', line))
     deferring = [int(spent) for spent in re.findall(r'NEVENT BUDGET: .* total_us=(\d+)', status)]

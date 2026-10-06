@@ -40,7 +40,11 @@ assert contains(src, 'left->sequence < right->sequence')
 assert not contains(src, 'priority_promotion_used')
 assert count(src, 'nevent_defer_suffix(next_event, &new_debt)') == 2
 
-# Instrumentation and clock source.
+# Instrumentation and clock source. Deferring is the budget working, so it is reported
+# once per revolution of the wheel; the per-pulse line needs DURIS_NEVENT_ANALYTICS.
+assert contains(src, 'NEVENT BUDGET WINDOW:')
+assert contains(src, 'if (pulse != PULSES_IN_TICK - 1)')
+assert contains(src, 'if (deferred > 0 && nevent_analytics_enabled())')
 assert contains(src, 'NEVENT BUDGET:')
 assert contains(src, 'budget_exhausted')
 assert contains(src, 'CLOCK_MONOTONIC')

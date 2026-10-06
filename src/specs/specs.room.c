@@ -240,9 +240,6 @@ int multiclass_proc(int /*room*/, P_char ch, int cmd, char *arg)
 
 int inn(int room, P_char ch, int cmd, char * /*arg*/)
 {
-	char timestr[MAX_STRING_LENGTH];
-	time_t ct;
-
 	/* check for periodic event calls */
 	if (cmd == CMD_SET_PERIODIC)
 	{
@@ -385,21 +382,8 @@ int inn(int room, P_char ch, int cmd, char * /*arg*/)
 			*/
 			return TRUE;
 		}
-		ct = time(NULL);
-		// Convert to EST. - this sux.. gotta be a be'er way.
-		ct -= 4 * 60 * 60;
-		// asctime() ends its result with a newline; trim it and append the zone in
-		// one pass rather than writing over the last byte at an offset.
-		char stamp[64];
-		snprintf(stamp, sizeof stamp, "%s", asctime(localtime(&ct)));
-		const size_t stamp_length = strlen(stamp);
-		if (stamp_length && stamp[stamp_length - 1] == '\n')
-			stamp[stamp_length - 1] = '\0';
-		snprintf(timestr, MAX_STRING_LENGTH, "%s EST", stamp);
-
-		loginlog(ch->player.level, "%s [%s] has rented out in [%d] @ %s.", GET_NAME(ch),
-			 (ch->desc) ? ch->desc->host : "LINKDEAD", world[ch->in_room].number,
-			 timestr);
+		loginlog(ch->player.level, "%s [%s] has rented out in [%d].", GET_NAME(ch),
+			 (ch->desc) ? ch->desc->host : "LINKDEAD", world[ch->in_room].number);
 		sql_log(ch, CONNECTLOG, "Rented Out");
 		// If it's not an immortal.
 		if (IS_PC(ch) && (GET_LEVEL(ch) < MINLVLIMMORTAL))
