@@ -587,12 +587,74 @@ and committed claims are not published back (decision 8). No transfer reason is 
    header of `scripts/item_ownership_audit.sh` to say what the reap does.
 6. `run_world_restart_journey.py` passes in all its modes (they run in `make test-db`).
 
+**As built**
+
+1. ADR 0002 (`f3f21475a`): the "dropped item" consequence names the boot reap, and the
+   "Releasing items" row says why a save never releases one. The item's third done-when
+   clause was amended on GitLab as decision 8 says, with the reason.
+2. and 3. The reap (`61fa52894`). `reap_unheld_player_items()` in
+   `item_claim_repository.c` is one multi-table `DELETE` with the self-join for the
+   child rows (a subquery on the deleted table is refused by MySQL), `LEFT JOIN`s on
+   `player_items`, `auction_item_custody` and `artifact_domain_state`, and a
+   `NOT EXISTS` on the player's `player_pet_items`; it repeats until a pass deletes
+   nothing. `flatfile_item_repository_reap_unheld_player_items()` reads each player's
+   file once under the authority lock, keeps the records of a file it cannot read,
+   un-stales a container while a record that stays names it, and writes the catalog as
+   `establish_owner()` does. `reap_unheld_player_items_at_boot()` in `comm.c` runs
+   whichever backend is configured, right after the owner revisions are hydrated in
+   `main()` and before `run_the_game()`; a failure is one `logs/log/status` line, and a
+   count above zero is another (`Item ownership reap: records of items no player holds
+   deleted=N`).
+4. The two lines (`61fa52894`): `missing_payload_rows` in `player_load_materialize.c`
+   and `unowned_object` in `player_snapshot_capture.c` are behind
+   `persistence_trace_enabled()`, with the comment above the second rewritten. The two
+   combat journeys set `DURIS_PERSISTENCE_TRACE=1`; `test_player_load_topology.py` and
+   `test_orphan_item_session_regressions.py` pin the gated lines; five harnesses that
+   compile `player_snapshot_capture.c` stub the switch, and
+   `test_player_snapshot_capture.py` records `logit()` and toggles it: three saves with
+   it off write no line, two with it on write one each.
+5. The `handler.c` comment, the audit script's header (and its `--help` range) say what
+   the reap does (`61fa52894`). `PLAYER_SAVE_PIPELINE.md`, `DATABASE.md` and
+   `CONFIGURATION.md` describe it; `TESTING.md` and `REGRESSIONS.md` describe its tests
+   (`f77ff5022`).
+6. `run_world_restart_journey.py taken` carries the real-path assertions; the other five
+   modes run in `make test-db`.
+
+**Differs from the plan**
+
+- The journeys' characters `drop all` their starter kit after creation, and most of its
+  items are `ITEM_TRANSIENT` ("dissolves when dropped"), so every journey's character
+  has 26 creation-grant rows for items that no longer exist: the item's case at scale.
+  The reap deletes them with the ghost or the mace, so the journeys assert "every player
+  row left has a payload row" and "the rows whose items the save holds are the ones that
+  stay", not "one row fewer". `taken` reads the status line's count as above one.
+- The `taken` pickup never wrote `unowned_object`, even on the old build: the mini
+  world's floor mace has an in-memory ledger entry from world recovery. The looted
+  banana in the combat journeys has none, so with the switch on they require the line
+  for it (`f44e37fde`), and `taken` keeps the default's "no line" check.
+- The flat-file rule "a record that stays keeps its container" is in the code but its
+  fixture is only in the MariaDB harness: `establish_owner()` refuses an owner that has
+  saved, and a save re-points what it holds, so no API writes that catalog state. The
+  rule exists for the foreign key, which is MariaDB's.
+
 **Done when:** the three conditions in the item, the last one as amended above.
 
 **State of the work**
 
-- Branch `fix/11-ownership-reap`, from `master` at `1e3a464ca`. Nothing is built yet;
-  this file's first commit records the ablation above.
+- Branch `fix/11-ownership-reap`, from `master` at `1e3a464ca`: `6500b2f9e` (this
+  file's ablation), `f3f21475a` (ADR), `61fa52894` (the reap, the two lines, their
+  tests and documents), `f77ff5022` (test documents), `f44e37fde` (the traced pickup),
+  then this file's commit.
+- Shown to fail without the fix, on a server built from `master` under
+  `bin/analysis`: `taken` stops with `the boot did not reap the dropped mace's record`,
+  and the MariaDB combat journey with `the boot did not reap the ghost row` (all three
+  variants).
+- Run on the branch: `run_player_save_claim_mysql.sh`, `test_player_save_claim.py`,
+  `test_player_snapshot_capture.py`, `test_boot_log_hygiene.py`,
+  `test_orphan_item_session_regressions.py`, `test_player_load_topology.py`, the four
+  other stubbed harnesses, `taken`, and both combat journeys (twice, the second with
+  the traced-pickup assertion): all pass.
+- The gate has not run yet.
 
 ---
 
