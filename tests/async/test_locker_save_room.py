@@ -33,6 +33,7 @@ extern const int top_of_world = 2;
 Skill skills[MAX_SKILLS] = {};
 bool has_innate(P_char, int) { return false; }
 void logit(const char *, const char *, ...) {}
+bool persistence_trace_enabled() { return false; }
 int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 P_char get_linked_char(P_char, ush_int) { return nullptr; }
 
