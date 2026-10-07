@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 struct flatfile_item_ownership_record
@@ -142,6 +143,22 @@ flatfile_item_repository_result flatfile_item_repository_list_collector_items_lo
 flatfile_item_repository_result flatfile_item_repository_list_active_player_items(
 	const std::string &root, std::vector<flatfile_item_ownership_record> *items,
 	std::string *error);
+// Delete every active record naming a player as the holder of an item no stored payload
+// carries: no player file (its items and its pets'), no delivery the record's player
+// still has pending from a committed transfer, no locker chest, corpse or room. The
+// boot reap, see reap_unheld_player_items() in item/item_claim_repository.h. A record
+// another record names as its parent is kept. A player file or store that cannot be
+// read stops the reap with nothing deleted. Returns unchanged when nothing was deleted.
+// *deleted counts the records.
+flatfile_item_repository_result
+flatfile_item_repository_reap_unheld_player_items(const std::string &root, uint64_t *deleted,
+						  std::string *error);
+// World recovery: add to *owned each of uids that has an owner. A player's active
+// record counts only when the player's next load holds the item (its file, its pets, or
+// a delivery still pending), as MariaDB asks player_items; any other record counts.
+flatfile_item_repository_result flatfile_item_repository_world_recovery_owned(
+	const std::string &root, const std::vector<uint64_t> &uids,
+	std::unordered_set<uint64_t> *owned, std::string *error);
 flatfile_item_baseline_result
 flatfile_item_repository_establish_owner(const std::string &root, const item_owner_identity &owner,
 					 const std::vector<flatfile_item_ownership_record> &items,

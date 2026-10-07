@@ -92,13 +92,15 @@ check("do_load no longer waits for an ownership transaction",
       "item_movement_transaction_submit" not in actwiz
       and "submit_wizard_load_establish" not in actwiz)
 
-# 2. extract_obj's silence about the ledger is deliberate and documented.
+# 2. extract_obj's silence about the ledger is deliberate and documented: the next boot
+#    reaps a player's row for an item that is gone (#11), a save never releases one.
 extract_preamble = handler[:handler.index("void extract_obj(")]
 check("extract_obj records why it leaves the ownership row alone",
-      "does not retire" in extract_preamble[-900:]
-      and "missing_payload_rows" in extract_preamble[-900:]
-      and "explicit operator repair" in extract_preamble[-900:]
-      and "snapshot saves deliberately cannot rewrite custody authority" in extract_preamble[-900:])
+      "does not retire" in extract_preamble[-1100:]
+      and "missing_payload_rows" in extract_preamble[-1100:]
+      and "reap_unheld_player_items()" in extract_preamble[-1100:]
+      and "a save never\n// releases a row" in extract_preamble[-1100:]
+      and "explicit operator repair" not in extract_preamble[-1100:])
 
 # 3. The description generators own and release their scratch strings.
 modif = utility[utility.index("char *generate_modif("):]
@@ -138,10 +140,13 @@ free_world = db[db.index("void free_world("):db.index("/* read direction data */
 check("final world teardown closes both prototype files",
       "fclose(mob_f);" in free_world and "fclose(obj_f);" in free_world)
 
-# The save-time detector that turns the remaining grant-path audit into data.
+# The save-time line naming an object the in-memory ledger does not know. Under the claim
+# model that is every item picked up since the last login, on every save, so it is a
+# trace (#11): test_player_snapshot_capture.py runs it with the switch off and on.
 check("the save path reports an object the ownership ledger does not know",
       "outcome=unowned_object" in capture
-      and "item_ownership_runtime_lookup(object->obj_uid, &ownership)" in capture)
+      and "item_ownership_runtime_lookup(object->obj_uid, &ownership)" in capture
+      and "if (!ownership_loaded && persistence_trace_enabled())" in capture)
 check("transfer serialization does not masquerade as an unowned player save",
       "if (audit_ownership && object->obj_uid)" in capture
       and "budget, seen, 1, false, false" in capture

@@ -197,6 +197,8 @@ HELD_PETS_HARNESS = r"""
 #include <cassert>
 #include <cstring>
 #include <iostream>
+#include <string>
+#include <vector>
 
 bool training_dummy_capture_target_allowed(P_char) { return true; }
 
@@ -211,7 +213,10 @@ int top_of_mobt = 1;
 extern const int top_of_world = 0;
 Skill skills[MAX_SKILLS] = {};
 bool has_innate(P_char, int) { return false; }
-void logit(const char *, const char *, ...) {}
+std::vector<std::string> logged;
+void logit(const char *, const char *format, ...) { logged.push_back(format); }
+bool trace = false;
+bool persistence_trace_enabled() { return trace; }
 int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 P_char get_linked_char(P_char ch, ush_int type)
 {
@@ -251,6 +256,35 @@ int main()
     }
     pc.held_pets = nullptr;
     std::cout << "[PASS] held pet assets survive crash, logout and death saves\n";
+
+    // An item picked up since the last login has no entry in the in-memory ledger until
+    // its first save inserts one, and nothing publishes that back: the unowned_object
+    // line is a trace, written on each save only with DURIS_PERSISTENCE_TRACE (#11).
+    obj_data picked_up = {};
+    picked_up.R_num = 1;
+    picked_up.obj_uid = 5001;
+    indexes[1].virtual_number = 15;
+    ch.carrying = &picked_up;
+    const auto unowned_lines = [] {
+        size_t count = 0;
+        for (const std::string &line : logged)
+            count += line.find("outcome=unowned_object") != std::string::npos;
+        return count;
+    };
+    for (int save = 0; save < 3; ++save) {
+        player_snapshot saved;
+        assert(player_snapshot_capture(&ch, 99, PLAYER_COMPONENT_INVENTORY, RENT_QUIT, 22800, &saved) == player_snapshot_capture_result::ok);
+        assert(saved.items.size() == 1 && saved.items[0].object_uid == 5001);
+    }
+    assert(unowned_lines() == 0);
+    trace = true;
+    for (int save = 0; save < 2; ++save) {
+        player_snapshot saved;
+        assert(player_snapshot_capture(&ch, 99, PLAYER_COMPONENT_INVENTORY, RENT_QUIT, 22800, &saved) == player_snapshot_capture_result::ok);
+    }
+    assert(unowned_lines() == 2);
+    ch.carrying = nullptr;
+    std::cout << "[PASS] a held item with no ledger entry is reported only with the trace on\n";
 }
 """
 

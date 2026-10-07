@@ -4,6 +4,7 @@
 // the table says was destroyed is left out with its contents and logged to the dupe
 // log; the rest of the save commits. This drives
 // player_snapshot_repository_apply() against a real server.
+#include "item/item_claim_repository.h"
 #include "persistence/dupe_log.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_repository.h"
@@ -124,6 +125,86 @@ int main()
 	execute(test_connection, "SET SESSION sql_mode='STRICT_TRANS_TABLES,"
 				 "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'");
 	dupe_log_set_path_for_tests(dupe_log.c_str());
+
+	// The boot reap (work item #11): a player's active row whose item is in no payload
+	// row at all goes; one a payload row, a legacy pet's payload row, a child row, an
+	// auction's custody row or an artifact's row still holds stays, as does a
+	// quarantined row and any other owner's. So does one whose item an older copy in
+	// another player's payload, a pet's, a locker, a corpse or a saved room item still
+	// carries: the row is what makes that copy load as stale (MR !13 review, finding 1).
+	// A stale container goes after its stale contents. Pid 2's rows, so the saves below
+	// meet the table they expect.
+	execute(test_connection,
+		"INSERT INTO item_current_owner (item_uid,root_item_uid,parent_item_uid,owner_type,"
+		"owner_id,owner_context_id,item_revision,vnum,state) VALUES "
+		"(7001,7001,NULL,1,2,0,1,601,1)," // dropped and extracted
+		"(7002,7002,NULL,1,2,0,1,602,1)," // a dropped bag...
+		"(7003,7002,7002,1,2,0,1,603,1)," // ...with what it held
+		"(7004,7004,NULL,1,2,0,1,604,1)," // held
+		"(7005,7005,NULL,1,2,0,1,605,1)," // carried by a legacy pet
+		"(7006,7006,NULL,1,2,0,1,606,1)," // claimed from an auction, whose row stays
+		"(7007,7007,NULL,1,2,0,1,607,1)," // an artifact's row names it
+		"(7008,7008,NULL,1,2,0,1,608,3)," // quarantined
+		"(7010,7010,NULL,4,9002,0,1,610,1)," // a corpse's, with no payload anywhere
+		"(7011,7011,NULL,1,2,0,1,611,1)," // a bag the player no longer holds...
+		"(7012,7011,7011,1,2,0,1,612,1)," // ...but its contents are held
+		"(7013,7013,NULL,1,2,0,1,613,1)," // handed over; pid 1's payload has a copy
+		"(7014,7014,NULL,1,2,0,1,614,1)," // a copy is in a locker
+		"(7015,7015,NULL,1,2,0,1,615,1)," // in a corpse
+		"(7016,7016,NULL,1,2,0,1,616,1)," // in a saved room item
+		"(7017,7017,NULL,1,2,0,1,617,1)"); // with pid 1's pet
+	execute(test_connection, "INSERT INTO player_items (pid,vnum,equip_slot,container_id,"
+				 "quantity,item_type,obj_uid) VALUES (2,604,0,NULL,1,0,7004),"
+				 "(2,612,0,NULL,1,0,7012)");
+	execute(test_connection,
+		"INSERT INTO player_pets (id,owner_pid,mob_vnum) VALUES (77,2,1201)");
+	execute(test_connection, "INSERT INTO player_pet_items (pet_id,vnum,obj_uid) VALUES "
+				 "(77,605,7005)");
+	execute(test_connection,
+		"INSERT INTO auction_item_custody (auction_id,slot,item_uid,"
+		"item_revision,vnum,obj_blob,claim_pid) VALUES (79,0,7006,1,606,'',2)");
+	execute(test_connection,
+		"INSERT INTO artifact_domain_state (vnum,item_uid) VALUES (607,7007)");
+	execute(test_connection, "INSERT INTO player_items (pid,vnum,equip_slot,container_id,"
+				 "quantity,item_type,obj_uid) VALUES (1,613,0,NULL,1,0,7013)");
+	execute(test_connection,
+		"INSERT INTO lockers (id,locker_name,owner_pid) VALUES (70,'Reaped',2)");
+	execute(test_connection,
+		"INSERT INTO locker_items (locker_id,vnum,obj_uid) VALUES (70,614,7014)");
+	execute(test_connection,
+		"INSERT INTO corpses (id,player_name,save_id) VALUES (70,'Other',1)");
+	execute(test_connection,
+		"INSERT INTO corpse_items (corpse_id,vnum,obj_uid) VALUES (70,615,7015)");
+	execute(test_connection, "INSERT INTO saved_items (item_key,room_vnum,vnum,obj_uid) "
+				 "VALUES ('item.uid.7016',3001,616,7016)");
+	execute(test_connection,
+		"INSERT INTO player_pets (id,owner_pid,mob_vnum) VALUES (78,1,1201)");
+	execute(test_connection, "INSERT INTO player_pet_items (pet_id,vnum,obj_uid) VALUES "
+				 "(78,617,7017)");
+	// The reap runs before each check, so the check's message sees its outcome.
+	uint64_t reaped = 0;
+	unsigned int reap = reap_unheld_player_items(test_connection, &reaped);
+	require(reap == 0 && reaped == 3,
+		"the reap deletes the three stale rows: " + std::to_string(reaped));
+	require(scalar(test_connection, "SELECT GROUP_CONCAT(item_uid ORDER BY item_uid) FROM "
+					"item_current_owner") ==
+			"7004,7005,7006,7007,7008,7010,7011,7012,7013,7014,7015,7016,7017",
+		"the reap keeps every other row: " +
+			scalar(test_connection,
+			       "SELECT GROUP_CONCAT(item_uid ORDER BY item_uid) FROM "
+			       "item_current_owner"));
+	reap = reap_unheld_player_items(test_connection, &reaped);
+	require(reap == 0 && reaped == 0, "a second reap finds nothing");
+	// The older copies go, as their holders' next saves take them out: the rows go at
+	// the boot after that.
+	execute(test_connection, "DELETE FROM player_items WHERE obj_uid=7013");
+	execute(test_connection, "DELETE FROM lockers WHERE id=70");
+	execute(test_connection, "DELETE FROM corpses WHERE id=70");
+	execute(test_connection, "DELETE FROM saved_items WHERE obj_uid=7016");
+	execute(test_connection, "DELETE FROM player_pets WHERE id=78");
+	reap = reap_unheld_player_items(test_connection, &reaped);
+	require(reap == 0 && reaped == 5,
+		"the rows no copy holds any more go: " + std::to_string(reaped));
 
 	// The ownership table disagrees with memory about almost everything pid 1 holds.
 	execute(test_connection,

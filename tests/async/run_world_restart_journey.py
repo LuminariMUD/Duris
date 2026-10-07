@@ -18,7 +18,17 @@ taken     a player takes the banana after the capture and saves, and the server 
           The boot leaves the banana's tree out of what it restores; nobody else can take a
           second one, and one character's save holds the uid. A mace the player took, saved
           and dropped again before the capture is restored: its ownership record still
-          names the character, whose save no longer holds it.
+          named the character, whose save no longer held it, and the boot reaped it (#11)
+          with the records of the starter kit the character dropped (transient items
+          dissolve when dropped); the login after the boot counts no such record, and the
+          saves wrote no unowned_object line, both without DURIS_PERSISTENCE_TRACE.
+handover  a character takes the banana after the capture and a checkpoint saves it, gives it
+          to a second one, who saves, drops it and saves again; the server crashes before
+          the giver's next checkpoint. The boot keeps the banana's record, which names the
+          second character, since the giver's save still holds the banana: the record is
+          what makes that older copy load as stale. The floor copy is restored, the giver
+          loads without it, and only one character holds it after both save (the review of
+          MR !13).
 midcapture  a banana is taken out of a basket on the floor and dropped while a capture of
           12,000 more objects runs. The capture meets it twice and the drop is journaled as
           well; the generation holds it once, in the basket, and the boot restores it.
@@ -370,18 +380,29 @@ def taken(rig: Rig) -> None:
     assert time.monotonic() - rig.booted < 27, "the character entered too late"
     assert rig.sql("SELECT owner_type, state FROM item_current_owner WHERE vnum=677") \
         == "1\t1" and rig.sql("SELECT COUNT(*) FROM player_items WHERE vnum=677") == "0"
+    assert "outcome=unowned_object" not in rig.log("debug"), rig.log("debug")[-1500:]
     first = rig.generation()
     take_banana(client)
     client.close()
     rig.kill()
 
     rig.boot()
+    assert rig.sql("SELECT COUNT(*) FROM item_current_owner WHERE vnum=677 AND owner_type=1") \
+        == "0", "the boot did not reap the dropped mace's record"
+    assert rig.sql("SELECT COUNT(*) FROM item_current_owner own WHERE own.owner_type=1 AND "
+                   "own.state=1 AND NOT EXISTS (SELECT 1 FROM player_items held WHERE "
+                   "held.obj_uid=own.item_uid AND held.pid=own.owner_id)") == "0", \
+        "a player's record with no payload row survived the boot"
+    reaped = re.search(r"Item ownership reap: records of items no player holds deleted=(\d+)",
+                       rig.log("status"))
+    assert reaped and int(reaped.group(1)) > 1, rig.log("status")[:1500]
     rig.restored(first)
     assert "left out 1 object trees that have an owner" in rig.log("sys"), \
         rig.log("sys")[-1500:]
     client = journey.reconnect_character(rig.port, expected_room=None)
     floor, carried = screen(client, "look"), screen(client, "inventory")
     client.close()
+    assert "outcome=missing_payload_rows" not in rig.log("debug"), rig.log("debug")[-1500:]
     assert "banana lies here" not in floor and carried.count("banana") == 1, \
         "the banana a character holds is back on the floor"
     assert "small mace, lies here" in floor, "the mace a character dropped is gone"
@@ -394,6 +415,60 @@ def taken(rig: Rig) -> None:
         == "1\t1"
     print(f"taken: the boot restored generation {first} with the mace a character had "
           "dropped and without the banana it took and saved after the capture", flush=True)
+
+
+def handover(rig: Rig) -> None:
+    rig.boot()
+    taverek = enter(rig)
+    brannoc = journey.MudClient(rig.port)
+    journey.create_character(brannoc, account="Otheracct", character="Brannoc",
+                             email="other@example.invalid")
+    brannoc.send("drop all")
+    brannoc.expect("You drop a steel long sword.", timeout=20)
+    first = rig.generation()
+    assert "You get a banana" in screen(taverek, "get banana")
+    # The next player checkpoint saves Taverek with the banana; the one after it is 30
+    # seconds of game time away, far beyond the hand-over.
+    giver = rig.sql("SELECT pid FROM player_data WHERE name='Taverek'")
+    rig.wait_for("no checkpoint saved Taverek with the banana", 45, lambda: rig.sql(
+        f"SELECT COUNT(*) FROM player_items WHERE vnum=15 AND pid={giver}") == "1")
+    taverek.send("give banana brannoc")
+    brannoc.expect("gives you a banana", timeout=10)
+    save(brannoc)
+    brannoc.send("drop banana")
+    brannoc.expect("You drop a banana", timeout=10)
+    save(brannoc)
+    taker = rig.sql("SELECT pid FROM player_data WHERE name='Brannoc'")
+    assert rig.sql("SELECT owner_type, owner_id FROM item_current_owner WHERE vnum=15") \
+        == f"1\t{taker}" and rig.sql("SELECT pid FROM player_items WHERE vnum=15") == giver, \
+        "a checkpoint saved Taverek after the hand-over"
+    uid = rig.sql("SELECT item_uid FROM item_current_owner WHERE vnum=15")
+    rig.kill()
+    taverek.close()
+    brannoc.close()
+
+    rig.boot()
+    assert rig.sql("SELECT owner_type, owner_id FROM item_current_owner WHERE vnum=15") \
+        == f"1\t{taker}", "the boot reaped the record that keeps Taverek's copy out"
+    rig.restored(first)
+    taverek = journey.reconnect_character(rig.port, expected_room=None)
+    floor, carried = screen(taverek, "look"), screen(taverek, "inventory")
+    assert "banana lies here" in floor and "banana" not in carried, floor + carried
+    assert f"load_skipped uid={uid} vnum=15 lost_by=player:{giver}:0 held_by=player:{taker}:0" \
+        in (rig.game / "logs/log/dupes").read_text(errors="replace")
+    brannoc = journey.reconnect_character(rig.port, expected_room=None, account="Otheracct",
+                                          character="Brannoc")
+    screen(brannoc, "look", 3)  # the load finishes after the login
+    assert "You get a banana" in screen(brannoc, "get banana")
+    save(taverek)
+    save(brannoc)
+    taverek.close()
+    brannoc.close()
+    assert rig.sql("SELECT GROUP_CONCAT(pid) FROM player_items WHERE vnum=15") == taker, \
+        "two characters hold the banana"
+    print(f"handover: generation {first} restored the banana Brannoc dropped; the boot kept "
+          "its record, so Taverek's older copy stayed out and only Brannoc holds it",
+          flush=True)
 
 
 def midcapture(rig: Rig) -> None:
@@ -454,6 +529,7 @@ SCENARIOS = {"crash": (crash, [BANANA], True, False),
              "copyover": (copyover, [BANANA], True, False),
              "restart": (restart, [BANANA], True, False),
              "taken": (taken, [BANANA, MACE], False, False),
+             "handover": (handover, [BANANA], False, False),
              "midcapture": (midcapture, BUSY, False, False),
              "slowread": (slowread, [BANANA], True, True)}
 

@@ -31,7 +31,8 @@ none, and it is captured where it lies. An unmarked item is looked up at restore
 names an owner for it, other than a character whose save no longer has the item, it was
 taken and saved after the capture: its tree is left out, since the holder has the item and
 a second one would take the uid from them at the next taker's save. A record that names a
-character whose save does not have the item is a dropped item's, and the item is restored.
+character whose save does not have the item (nor, on flat-file, a delivery still pending to
+it) is a dropped item's, and the item is restored, in both backends.
 Reconstructible world-pop objects stay HMAC-authenticated without
 inventing SQL custody, and player corpses remain with the separate authoritative corpse
 restore path. Player and ship state remain SQL-authoritative.

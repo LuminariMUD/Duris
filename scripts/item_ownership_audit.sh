@@ -8,11 +8,18 @@
 # to see it is to look.
 #
 #   orphan payload rows   player_items / player_pet_items with no item_current_owner
-#                         row. The item loads today but is dropped from the snapshot
-#                         and DELETED by the next full save. This is item loss.
+#                         row. The load takes the item as the player's, and the next
+#                         save inserts its row (the claim model, ADR 0002). Nothing is
+#                         lost; the count says how many items have been picked up and
+#                         saved on a server that has not saved them again since.
 #
 #   missing payload rows  item_current_owner rows for a player whose payload row is
-#                         gone. The item cannot be rebuilt; the row is inert.
+#                         gone: an item the player dropped, used up or lost, which was
+#                         then extracted. The row is inert and the next boot deletes
+#                         it (reap_unheld_player_items() in item_claim_repository.c),
+#                         except one an auction's custody row, an artifact_domain_state
+#                         row or a child row still references, and one whose item an
+#                         older copy in another payload still carries.
 #
 #   ./scripts/item_ownership_audit.sh            # summary counts
 #   ./scripts/item_ownership_audit.sh --detail   # every offending row
@@ -27,7 +34,7 @@ cd "$(dirname "$0")/.." || exit 1
 DETAIL=0
 case "${1-}" in
   --detail) DETAIL=1 ;;
-  -h|--help) sed -n '3,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '3,29p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
   "") ;;
   *) echo "Unknown option: $1" >&2; exit 2 ;;
 esac

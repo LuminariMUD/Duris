@@ -3151,11 +3151,13 @@ void object_list_new_owner(P_obj list, P_char ch)
 // This deliberately does not retire the object's item_current_owner row. Extraction runs
 // on teardown paths where a transaction is impossible or pointless - shutdown, zone
 // resets, copyover, every object freed in bulk - and one durable submission per extracted
-// object is not viable there. The load path tolerates the resulting stale custody row
-// instead (counted as missing_payload_rows) and reports it for explicit operator repair;
-// snapshot saves deliberately cannot rewrite custody authority. Destruction that does need
-// a ledger record goes through the transfer pipeline with item_transfer_reason::destruction
-// rather than through here.
+// object is not viable there. A player's row for an extracted item stays until the next
+// boot reaps it (reap_unheld_player_items() in item/item_claim_repository.h: an active
+// player row whose item is in no payload row, when no character is in memory). Until
+// then the load path tolerates it and counts it as missing_payload_rows; a save never
+// releases a row, since a delete that met a foreign key would fail the save. Destruction
+// that does need a ledger record goes through the transfer pipeline with
+// item_transfer_reason::destruction rather than through here.
 void extract_obj(P_obj obj, int gone_for_good)
 {
 	int i;

@@ -21,13 +21,16 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <limits>
 #include <mutex>
 #include <new>
 #include <openssl/crypto.h>
 #include <openssl/sha.h>
 #include <type_traits>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -1188,6 +1191,253 @@ flatfile_item_repository_result flatfile_item_repository_list_active_player_item
 		return flatfile_item_repository_result::io_error;
 	}
 	*items = std::move(selected);
+	return flatfile_item_repository_result::ok;
+}
+
+namespace
+{
+flatfile_item_repository_result player_file_unreadable(flatfile_player_load_result read,
+						       int32_t pid, std::string *error)
+{
+	if (error)
+		*error = "player file " + flatfile_player_snapshot_file::player_filename(pid) +
+			 " cannot be read" + (error->empty() ? "" : ": " + *error);
+	return read == flatfile_player_load_result::io_error ?
+		       flatfile_item_repository_result::io_error :
+		       flatfile_item_repository_result::invalid;
+}
+
+void add_uids(const player_snapshot &snapshot, std::unordered_set<uint64_t> *uids)
+{
+	for (const auto &item : snapshot.items)
+		uids->insert(item.object_uid);
+	for (const auto &pet : snapshot.pets)
+		for (const auto &item : pet.items)
+			uids->insert(item.object_uid);
+}
+
+// Add the uids player pid's next load holds: its file's items and its pets', and what a
+// committed transfer (a purchase, a grant) still delivers to it, which the load
+// reconciles from the player's active records first. A player with no file holds
+// nothing.
+flatfile_item_repository_result add_player_load_uids(const std::string &root,
+						     const flatfile_authority_lock &authority,
+						     const ownership_catalog &catalog, uint64_t pid,
+						     std::unordered_set<uint64_t> *uids,
+						     std::string *error)
+{
+	player_snapshot snapshot;
+	const auto read =
+		flatfile_player_snapshot_read(root, static_cast<int32_t>(pid), &snapshot, error);
+	if (read == flatfile_player_load_result::not_found)
+		return flatfile_item_repository_result::ok;
+	if (read != flatfile_player_load_result::ok)
+		return player_file_unreadable(read, static_cast<int32_t>(pid), error);
+	const item_owner_identity player = { item_owner_type::player, pid, 0 };
+	std::vector<flatfile_item_ownership_record> owned;
+	for (const auto &record : catalog.items)
+		if (record.state == item_custody_state::active &&
+		    item_owner_identity_equal(record.owner, player))
+			owned.push_back(record);
+	const auto reconciled = flatfile_shop_trade_materialization_reconcile(
+		root, authority, static_cast<uint32_t>(pid), owned, &snapshot, error);
+	if (reconciled != flatfile_shop_trade_materialization_result::ok)
+		return reconciled == flatfile_shop_trade_materialization_result::io_error ?
+			       flatfile_item_repository_result::io_error :
+			       flatfile_item_repository_result::invalid;
+	add_uids(snapshot, uids);
+	return flatfile_item_repository_result::ok;
+}
+
+bool active_player_record(const flatfile_item_ownership_record &record)
+{
+	return record.owner.type == item_owner_type::player && !record.owner.context_id &&
+	       record.state == item_custody_state::active;
+}
+} // namespace
+
+flatfile_item_repository_result
+flatfile_item_repository_reap_unheld_player_items(const std::string &root, uint64_t *deleted,
+						  std::string *error)
+{
+	if (root.empty() || !deleted)
+		return flatfile_item_repository_result::invalid;
+	*deleted = 0;
+	// A load skips a copy whose record names another owner, so a record stays while any
+	// stored payload carries its item: a player file, a locker chest, a corpse or a room.
+	// The locker and world stores take the authority lock themselves, so they are read
+	// first; at boot nothing else writes.
+	std::vector<flatfile_locker_record> lockers;
+	std::vector<flatfile_locker_access_record> access;
+	const auto listed_lockers = flatfile_locker_list(root, &lockers, &access, error);
+	if (listed_lockers != flatfile_locker_result::ok &&
+	    listed_lockers != flatfile_locker_result::not_found)
+		return listed_lockers == flatfile_locker_result::io_error ?
+			       flatfile_item_repository_result::io_error :
+			       flatfile_item_repository_result::invalid;
+	std::vector<flatfile_corpse_record> corpses;
+	std::vector<flatfile_saved_world_item_record> saved;
+	std::vector<flatfile_room_item_record> rooms;
+	auto listed_world = flatfile_world_item_list(root, &corpses, &saved, error);
+	if (listed_world == flatfile_world_item_result::ok)
+		listed_world = flatfile_world_item_list_rooms(root, &rooms, error);
+	if (listed_world != flatfile_world_item_result::ok &&
+	    listed_world != flatfile_world_item_result::not_found)
+		return listed_world == flatfile_world_item_result::io_error ?
+			       flatfile_item_repository_result::io_error :
+			       flatfile_item_repository_result::invalid;
+	std::lock_guard<std::mutex> guard(ownership_mutex);
+	flatfile_authority_lock authority;
+	if (!authority.acquire(root, error))
+		return flatfile_item_repository_result::io_error;
+	const auto recovered = flatfile_authority_transaction_recover(root, authority, error);
+	if (recovered != flatfile_authority_transaction_result::ok)
+		return recovered == flatfile_authority_transaction_result::io_error ?
+			       flatfile_item_repository_result::io_error :
+			       flatfile_item_repository_result::invalid;
+	ownership_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded != flatfile_item_repository_result::ok)
+		return loaded;
+	std::unordered_set<uint64_t> stale;
+	try
+	{
+		std::unordered_set<uint64_t> carried;
+		for (const auto &locker : lockers)
+			for (const auto &chest : locker.chests)
+				for (const auto &item : chest.items)
+					carried.insert(item.object_uid);
+		for (const auto &corpse : corpses)
+			for (const auto &item : corpse.items)
+				carried.insert(item.object_uid);
+		for (const auto &room : rooms)
+			for (const auto &item : room.items)
+				carried.insert(item.object_uid);
+		// Every player file; one that cannot be read stops the reap, since any record
+		// may be what keeps a copy in it out.
+		std::error_code listed;
+		const std::string players = flatfile_player_snapshot_file::player_directory(root);
+		for (std::filesystem::directory_iterator entry(players, listed), end;
+		     !listed && entry != end; entry.increment(listed))
+		{
+			const std::string name = entry->path().filename().string();
+			const long pid = strtol(name.c_str(), nullptr, 10);
+			if (pid <= 0 || pid > INT32_MAX ||
+			    name != flatfile_player_snapshot_file::player_filename(
+					    static_cast<int32_t>(pid)))
+				continue;
+			player_snapshot snapshot;
+			const auto read = flatfile_player_snapshot_read(
+				root, static_cast<int32_t>(pid), &snapshot, error);
+			if (read != flatfile_player_load_result::ok)
+				return player_file_unreadable(read, static_cast<int32_t>(pid),
+							      error);
+			add_uids(snapshot, &carried);
+		}
+		if (listed && listed != std::errc::no_such_file_or_directory)
+		{
+			if (error)
+				*error = players + ": " + listed.message();
+			return flatfile_item_repository_result::io_error;
+		}
+		// What a committed transfer still delivers is held too; only a record naming
+		// the player can be delivered to it, so only those players are reconciled.
+		std::unordered_set<uint64_t> owners;
+		for (const auto &record : catalog.items)
+			if (active_player_record(record) && !carried.count(record.item_uid))
+				owners.insert(record.owner.id);
+		for (const uint64_t pid : owners)
+			if (const auto read = add_player_load_uids(root, authority, catalog, pid,
+								   &carried, error);
+			    read != flatfile_item_repository_result::ok)
+				return read;
+		for (const auto &record : catalog.items)
+			if (active_player_record(record) && !carried.count(record.item_uid))
+				stale.insert(record.item_uid);
+		// A record that stays keeps its container, and that container its own.
+		for (bool changed = true; changed;)
+		{
+			changed = false;
+			for (const auto &record : catalog.items)
+				if (record.parent_item_uid && !stale.count(record.item_uid) &&
+				    stale.erase(record.parent_item_uid))
+					changed = true;
+		}
+		if (stale.empty())
+			return flatfile_item_repository_result::unchanged;
+		catalog.items.erase(std::remove_if(catalog.items.begin(), catalog.items.end(),
+						   [&](const flatfile_item_ownership_record &record)
+						   { return stale.count(record.item_uid) != 0; }),
+				    catalog.items.end());
+	}
+	catch (const std::bad_alloc &)
+	{
+		return flatfile_item_repository_result::io_error;
+	}
+	if (catalog.revision == std::numeric_limits<uint64_t>::max())
+		return flatfile_item_repository_result::invalid;
+	std::vector<uint8_t> encoded;
+	if (!encode_catalog(catalog, catalog.revision + 1, &encoded))
+		return flatfile_item_repository_result::invalid;
+	if (!flatfile_atomic_write(domains_directory(root), ownership_filename, encoded, error))
+		return flatfile_item_repository_result::io_error;
+	*deleted = stale.size();
+	return flatfile_item_repository_result::ok;
+}
+
+flatfile_item_repository_result flatfile_item_repository_world_recovery_owned(
+	const std::string &root, const std::vector<uint64_t> &uids,
+	std::unordered_set<uint64_t> *owned, std::string *error)
+{
+	if (root.empty() || !owned)
+		return flatfile_item_repository_result::invalid;
+	std::lock_guard<std::mutex> guard(ownership_mutex);
+	flatfile_authority_lock authority;
+	if (!authority.acquire(root, error))
+		return flatfile_item_repository_result::io_error;
+	const auto recovered = flatfile_authority_transaction_recover(root, authority, error);
+	if (recovered != flatfile_authority_transaction_result::ok)
+		return recovered == flatfile_authority_transaction_result::io_error ?
+			       flatfile_item_repository_result::io_error :
+			       flatfile_item_repository_result::invalid;
+	ownership_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded == flatfile_item_repository_result::not_found)
+		return flatfile_item_repository_result::ok;
+	if (loaded != flatfile_item_repository_result::ok)
+		return loaded;
+	try
+	{
+		const std::unordered_set<uint64_t> wanted(uids.begin(), uids.end());
+		std::unordered_map<uint64_t, std::unordered_set<uint64_t>> held;
+		for (const auto &record : catalog.items)
+		{
+			if (!wanted.count(record.item_uid))
+				continue;
+			if (active_player_record(record))
+			{
+				auto found = held.find(record.owner.id);
+				if (found == held.end())
+				{
+					found = held.emplace(record.owner.id,
+							     std::unordered_set<uint64_t>{})
+							.first;
+					if (const auto read = add_player_load_uids(
+						    root, authority, catalog, record.owner.id,
+						    &found->second, error);
+					    read != flatfile_item_repository_result::ok)
+						return read;
+				}
+				if (!found->second.count(record.item_uid))
+					continue;
+			}
+			owned->insert(record.item_uid);
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		return flatfile_item_repository_result::io_error;
+	}
 	return flatfile_item_repository_result::ok;
 }
 

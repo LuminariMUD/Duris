@@ -223,6 +223,7 @@ bool collector_service_player_busy(P_char)
 void collector_catalog_cache_invalidate(void) { ++collector_invalidations; }
 
 void logit(const char *, const char *, ...) {}
+bool persistence_trace_enabled() { return false; }
 void statuslog(int, const char *, ...) {}
 void persistence_alert(int, const char *, const char *, const char *, const char *, const char *,
                       const char *, ...) {}

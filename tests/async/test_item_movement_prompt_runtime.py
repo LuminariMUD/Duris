@@ -83,6 +83,7 @@ static int ga_count;
 P_index mob_index = nullptr;
 long sentbytes = 0;
 void logit(const char *, const char *, ...) {}
+bool persistence_trace_enabled() { return false; }
 void statuslog(int, const char *, ...) {}
 void persistence_alert(int, const char *, const char *, const char *, const char *, const char *,
                        const char *, ...) {}

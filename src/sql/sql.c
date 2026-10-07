@@ -432,15 +432,10 @@ bool sql_persistence_world_recovery_items_owned(const std::vector<uint64_t> &ite
 						std::unordered_set<uint64_t> *owned)
 {
 	const char *root = persistence_mode_flatfile_root();
-	std::vector<flatfile_item_ownership_record> records;
 	std::string error;
-	if (!owned || !root ||
-	    flatfile_item_repository_load_uids(root, item_uids, &records, &error) !=
-		    flatfile_item_repository_result::ok)
-		return false;
-	for (const flatfile_item_ownership_record &record : records)
-		owned->insert(record.item_uid);
-	return true;
+	return owned && root &&
+	       flatfile_item_repository_world_recovery_owned(root, item_uids, owned, &error) ==
+		       flatfile_item_repository_result::ok;
 }
 bool sql_hydrate_item_owner_revisions(void)
 {

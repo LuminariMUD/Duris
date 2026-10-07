@@ -7,13 +7,13 @@ working note: delete it when the last phase lands.
 
 ## Status
 
-Updated 2026-10-06. A new session starts here, then reads the phase it continues.
+Updated 2026-10-07. A new session starts here, then reads the phase it continues.
 
 | Phase | Item | State |
 |---|---|---|
 | 1 | #10 | Landed on 2026-10-05 in `7fdbb20fe` (!11). |
 | 2 | #13 | Landed on 2026-10-06 in `6a4e5511c` (!12). |
-| 3 | #11 | Not started. It is next, on a new branch from `master`. |
+| 3 | #11 | Built on `fix/11-ownership-reap` (from `master` at `1e3a464ca`), merge request !13. Review round 1 (two findings) is fixed and the head is tagged `log-review/phase-3-review-1`. It is ready to land. "State of the work" at the end of its section has the details. |
 | 4 | #14 | Not started. |
 | 5 | #17 | Not started. |
 
@@ -517,23 +517,275 @@ life of the database and every query keyed on an owner would slow with it.
   writes no `unowned_object` line, and with `DURIS_PERSISTENCE_TRACE=1` the line is
   written for any held item that has no ledger entry.
 
+**Ablated before the work started (2026-10-06).** Read again at `1e3a464ca`, against the
+code and the tests. What the plan asked for is kept; how it is proved got smaller.
+
+- No new journey and no new `make test-db` leg. The `taken` mode of
+  `run_world_restart_journey.py` already does the done-when's sequence: get a zone-loaded
+  mace, save, drop it, save, crash, boot, log in. Its docstring even states the stale
+  record. It gains three assertions: the mace's player record is gone after the boot, the
+  login after it writes no `missing_payload_rows` line, and the saves before it wrote no
+  `unowned_object` line (it does not set the trace switch).
+- Both combat journeys already insert a ghost ownership record under the banana and
+  restart the server. Their comparisons of the player's records across the restart
+  (`stable_state()` in `test_mysql_combat_journey.py`, `player_items` in
+  `test_flatfile_combat_journey.py`) fail once the reap exists, so they change anyway:
+  after the restart the ghost is gone and the rest is unchanged, and the login after it
+  adds no `missing_payload_rows` line although the journey now has the trace on.
+- The rules are proved where `claim_items()` already is: a fixture in
+  `player_save_claim_mysql_harness.cpp` (the `player_save_claim` leg) and in
+  `flatfile_player_save_claim_harness.cpp` (`test_player_save_claim.py`). A record with a
+  payload row stays, one a legacy pet's payload carries stays, a stale container goes
+  after its stale contents, a row an auction's custody row or an `artifact_domain_state`
+  row references stays (the foreign keys), another owner's record and a quarantined one
+  are not touched. A full-world boot to prove a foreign key would add a minute to the
+  gate for what twenty fixture rows show.
+- The reap does not advance `item_owner_revision`. A player owner's revision is not a
+  fence (`item_transfer_repository.c`: "saves move their revisions, so a transfer does not
+  fence on them"), and the in-memory copy is hydrated in `main()` before `run_the_game()`,
+  so a bump there would only make the two disagree.
+- The flat-file reap skips only a record another record names as its parent. The auction
+  and artifact exclusions exist because the MariaDB delete fails on those foreign keys;
+  the catalog has none. `artifact_domain_state.item_uid` is written by nothing in `src/`
+  (the mirror leaves it NULL), so the exclusion is a schema guard and is tested with a
+  fixture row.
+- `missing_payload_rows` is logged in `player_load_materialize.c` for both backends, so
+  the gate is one site. `unowned_object` needs a `persistence_trace_enabled()` stub in
+  every harness that compiles `player_snapshot_capture.c`, as the shopkeeper line needed
+  one in Phase 2.
+- `test_player_snapshot_capture.py` runs the production capture: it is where "several
+  saves after a pickup write no `unowned_object` line by default and one each with the
+  trace on" is shown with the switch toggled; the `taken` journey shows the default on a
+  real server.
+
+**Files.** `src/item/item_claim_repository.{c,h}` (the MariaDB reap),
+`src/flatfile/flatfile_item_repository.{c,h}` (the flat-file reap), `src/net/comm.c` (the
+call, after the owner revisions are hydrated and before `run_the_game()`),
+`src/player/player_load_materialize.c` and `src/player/player_snapshot_capture.c` (the
+two lines), `src/world/handler.c` and `scripts/item_ownership_audit.sh` (the comments),
+ADR 0002, `PLAYER_SAVE_PIPELINE.md`, `DATABASE.md` and `CONFIGURATION.md`; the tests named
+above, `test_boot_log_hygiene.py` (the gates and the call's place in the boot) and
+`test_player_load_topology.py` and `test_orphan_item_session_regressions.py` (the two
+source contracts).
+
+**Non-goals.** Rows of other owner types, destroyed rows, the `item_ownership_ledger`,
+and the `item_owner_audit` table are not reaped. No in-memory entry is written at pickup
+and committed claims are not published back (decision 8). No transfer reason is wired.
+
 **Steps**
 
 1. Record the decision in ADR 0002 (the "Releasing items an owner no longer holds" row and
    the consequence about dropped items), and amend the done-when on the work item.
-2. The boot reap for MariaDB, with a `make test-db` test: a character picks up a zone
-   item, saves, drops it, the server restarts, and the row is gone. The same test covers
-   an artifact and a nested container that must survive or go in order.
-3. The boot reap for the flat-file backend, with the same journey there.
+2. The boot reap for MariaDB, with its fixture in the claim harness and the assertions
+   in the `taken` mode and the MariaDB combat journey.
+3. The boot reap for the flat-file backend, with its fixture in the flat-file claim
+   harness and the assertions in the flat-file combat journey.
 4. Both lines behind the trace switch. The two journeys that wait on
    `missing_payload_rows` set `DURIS_PERSISTENCE_TRACE=1`; the two source-contract tests
-   are updated. A test shows several saves after a pickup write no `unowned_object` line
-   by default and one with the trace on.
+   are updated; `test_player_snapshot_capture.py` toggles the switch.
 5. Rewrite the `handler.c` L3151 comment, the comment above `unowned_object` and the
    header of `scripts/item_ownership_audit.sh` to say what the reap does.
-6. `run_world_restart_journey.py` passes in all its modes.
+6. `run_world_restart_journey.py` passes in all its modes (they run in `make test-db`).
+
+**As built**
+
+1. ADR 0002 (`f3f21475a`): the "dropped item" consequence names the boot reap, and the
+   "Releasing items" row says why a save never releases one. The item's third done-when
+   clause was amended on GitLab as decision 8 says, with the reason.
+2. and 3. The reap (`61fa52894`). `reap_unheld_player_items()` in
+   `item_claim_repository.c` is one multi-table `DELETE` with the self-join for the
+   child rows (a subquery on the deleted table is refused by MySQL), `LEFT JOIN`s on
+   `player_items`, `auction_item_custody` and `artifact_domain_state`, and a
+   `NOT EXISTS` on the player's `player_pet_items`; it repeats until a pass deletes
+   nothing. `flatfile_item_repository_reap_unheld_player_items()` reads each player's
+   file once under the authority lock, keeps the records of a file it cannot read,
+   un-stales a container while a record that stays names it, and writes the catalog as
+   `establish_owner()` does. `reap_unheld_player_items_at_boot()` in `comm.c` runs
+   whichever backend is configured, right after the owner revisions are hydrated in
+   `main()` and before `run_the_game()`; a failure is one `logs/log/status` line, and a
+   count above zero is another (`Item ownership reap: records of items no player holds
+   deleted=N`).
+4. The two lines (`61fa52894`): `missing_payload_rows` in `player_load_materialize.c`
+   and `unowned_object` in `player_snapshot_capture.c` are behind
+   `persistence_trace_enabled()`, with the comment above the second rewritten. The two
+   combat journeys set `DURIS_PERSISTENCE_TRACE=1`; `test_player_load_topology.py` and
+   `test_orphan_item_session_regressions.py` pin the gated lines; seven harnesses that
+   compile `player_snapshot_capture.c` stub the switch (`61fa52894` had five; the first
+   `make test-all` found `test_locker_save_room.py` and
+   `test_item_movement_input_queue.py`, which name the file through a path helper,
+   `119dda91e`), and
+   `test_player_snapshot_capture.py` records `logit()` and toggles it: three saves with
+   it off write no line, two with it on write one each.
+5. The `handler.c` comment, the audit script's header (and its `--help` range) say what
+   the reap does (`61fa52894`). `PLAYER_SAVE_PIPELINE.md`, `DATABASE.md` and
+   `CONFIGURATION.md` describe it; `TESTING.md` and `REGRESSIONS.md` describe its tests
+   (`f77ff5022`).
+6. `run_world_restart_journey.py taken` carries the real-path assertions; the other five
+   modes run in `make test-db`.
+
+**Differs from the plan**
+
+- The journeys' characters `drop all` their starter kit after creation, and most of its
+  items are `ITEM_TRANSIENT` ("dissolves when dropped"), so every journey's character
+  has 26 creation-grant rows for items that no longer exist: the item's case at scale.
+  The reap deletes them with the ghost or the mace, so the journeys assert "every player
+  row left has a payload row" and "the rows whose items the save holds are the ones that
+  stay", not "one row fewer". `taken` reads the status line's count as above one.
+- The `taken` pickup never wrote `unowned_object`, even on the old build: the mini
+  world's floor mace has an in-memory ledger entry from world recovery. The looted
+  banana in the combat journeys has none, so with the switch on they require the line
+  for it (`f44e37fde`), and `taken` keeps the default's "no line" check.
+- The flat-file rule "a record that stays keeps its container" is in the code but its
+  fixture is only in the MariaDB harness: `establish_owner()` refuses an owner that has
+  saved, and a save re-points what it holds, so no API writes that catalog state. The
+  rule exists for the foreign key, which is MariaDB's.
+
+**Review round 1**
+
+The review read `e0928db80` and, in a second pass, `028eb062e` (the same code), and left two
+High findings, each a thread on the diff of !13.
+
+1. **A crash after an item changed hands duplicated it** (finding 1, `0ca22fdcc`). A load
+   skips a copy whose record names another owner, so a record naming a player who no
+   longer holds the item is what keeps an older copy elsewhere out of play: after a crash
+   that follows a hand-over, the giver's save still holds the item. The reap asked only
+   whether the record's own player held it, deleted the record, and the older copy loaded
+   beside the restored floor copy. It now deletes a player's active record only when no
+   stored payload of anyone carries the uid: on MariaDB a `NOT EXISTS` each on
+   `player_items`, `player_pet_items`, `locker_items`, `corpse_items` and `saved_items`;
+   on flat-file every player file (the `players` directory) and the locker, corpse and
+   room stores. Such a record stays while the copy can still load against it: the
+   holder's next save drops the copy and the boot after it reaps the record. A flat-file
+   player file or store the reap cannot read now stops the reap with nothing deleted (it
+   used to keep only that player's records), since any record may be what keeps a copy in
+   that file out.
+2. **A crash after a flat-file purchase or grant lost the item** (finding 2,
+   `0ca22fdcc`). The flat-file login delivers what a committed transfer left in the
+   materialization store, and only while the record names the player; the reap read only
+   the file. For each player that owns a record no payload carries, it now runs the
+   load's own `flatfile_shop_trade_materialization_reconcile()` on the player's file and
+   counts what it would deliver.
+
+**Found on the way**
+
+- Flat-file world recovery counted every ownership record as an owner, so a floor copy
+  whose record names a character who does not hold it was left out of the restore, and
+  the older copy that record keeps out was skipped at its load: finding 1's sequence lost
+  the item on flat-file, on `master` too (the review called it a separate bug, read not
+  run). `9f157be7a` counts a player's record only when the player's next load holds the
+  item (its file, its pets, a delivery still pending), as MariaDB asks `player_items`.
+- The two claim harnesses built a check's message before the reap it checks ran (the
+  order of a call's arguments is unspecified), so a failure showed a stale count. Each
+  reap now runs before its check (`0ca22fdcc`).
+
+**Tests added in the round**
+
+- `run_world_restart_journey.py handover`, a new `make test-db` leg (`world_restart_handover`):
+  finding 1's crash on a real server. Taverek takes the banana after the first capture and
+  the journey waits until the next player checkpoint has saved him with it; he gives it to
+  Brannoc, who saves, drops it and saves, and the server is killed. After the boot the
+  record still names Brannoc, Taverek loads without the banana (`load_skipped` in
+  `logs/log/dupes`), the floor copy is back, and after Brannoc takes it and both save only
+  Brannoc's `player_items` holds it.
+- `player_save_claim_mysql_harness.cpp`: rows whose item another player's `player_items`,
+  another player's pet, a locker, a corpse and a saved room item carry stay, and go once
+  the copies are gone.
+- `flatfile_player_save_claim_harness.cpp`: the same with a newcomer's file, a corpse, a
+  room and a guild locker; the newcomer's load skips its handed-over copy; a creation
+  grant committed after the player's last save keeps its record, the load delivers it,
+  and once a save has carried it and the ring is used up the next reap takes the record;
+  an unreadable player file stops the reap; world recovery counts what a load holds as
+  owned and not a record that only keeps an older copy out.
+
+**Shown to fail without the fix,** on the reviewed head `028eb062e` (built in a scratch
+worktree): the MariaDB harness reaps 8 rows instead of 3 (the five that older copies
+need), the flat-file harness reaps 12 records instead of 8 (the four that keep older
+copies out and the pending grant's) and reaps on an unreadable file, and `handover` stops
+with `the boot reaped the record that keeps Taverek's copy out`. A copy of `handover`
+without that check, on the same server, ends with the banana in the `player_items` of
+both characters.
+
+**Differs from the review's proposals**
+
+- Only the players that own a record no payload carries are reconciled, not every player
+  the reap reads: the reconcile adds only items whose record names that player.
+- The scenario waits for a checkpoint instead of racing one: the review's probe killed the
+  server in the five seconds between a capture and the next checkpoint.
+- No shop fixture for finding 2: the harness commits a creation grant, which writes the
+  same materialization event a purchase does and goes through the same reconcile.
+
+**Cost.** On `duris_dev` (69,576 rows) the SELECT with the DELETE's joins and conditions
+finds the same 94 first-pass candidates as before, in 0.13 s. `EXPLAIN DELETE` shows each
+payload check materialized once, so the unindexed `saved_items.obj_uid` is read once.
 
 **Done when:** the three conditions in the item, the last one as amended above.
+
+**State of the work**
+
+- Branch `fix/11-ownership-reap`, from `master` at `1e3a464ca`: `6500b2f9e` (this
+  file's ablation), `f3f21475a` (ADR), `61fa52894` (the reap, the two lines, their
+  tests and documents), `f77ff5022` (test documents), `f44e37fde` (the traced pickup),
+  `76d21809b` (this file, as built), `119dda91e` (two more harness stubs), `923135184`
+  (this file's note of them), then this file's commit with the gate's result.
+- Merge request !13 closes #11. The tag `log-review/phase-3-review-0` is the head the
+  review reads.
+- Shown to fail without the fix, on a server built from `master` under
+  `bin/analysis`: `taken` stops with `the boot did not reap the dropped mace's record`,
+  and the MariaDB combat journey with `the boot did not reap the ghost row` (all three
+  variants).
+- Run on the branch: `run_player_save_claim_mysql.sh`, `test_player_save_claim.py`,
+  `test_player_snapshot_capture.py`, `test_boot_log_hygiene.py`,
+  `test_orphan_item_session_regressions.py`, `test_player_load_topology.py`, the four
+  other stubbed harnesses, `taken`, and both combat journeys (twice, the second with
+  the traced-pickup assertion): all pass.
+- The gate, on 2026-10-06:
+  - `./scripts/format.sh --check`: clean.
+  - `make -C src`: built.
+  - `make test-db`: 45 of 45 passed in 339 s, on `76d21809b`. `world_restart_taken` took
+    87 s, `mysql_combat` 164 s, `player_save_claim` 63 s, `world_capture` 104 s.
+  - `make test-all`: 671 passed, 0 failed, in 457 s, on `923135184`. Its first run, on
+    `76d21809b`, was 669 passed and 2 failed: `test_locker_save_room.py` and
+    `test_item_movement_input_queue.py` did not link without the switch's stub
+    (`119dda91e`). `make test-db` does not run either, and the server did not change
+    between the two heads, so it was not run again.
+- By hand, the fixed build on a copy of the long-lived development database (dumped,
+  imported into a disposable MariaDB, the full world, one boot and a clean stop):
+  69,576 rows before, 37,446 of them a player's active rows, 101 with no payload row (94
+  reap candidates on the first pass and 7 containers whose contents were among them).
+  The boot logged `Item ownership reap: records of items no player holds deleted=101`
+  and stopped with `Normal termination`. After it: 69,475 rows, 37,345 player rows, each
+  with a payload row, and the 31 room, 114 corpse, 31,972 locker and 13 destroyed rows
+  as before; `item_owner_audit` and `item_owner_revision` unchanged; none of the 101 is
+  left. 24 of the 101 named "player" 4,000,000,001, which is no pid: rows
+  `item_transfer_mysql_harness.cpp` left on 2026-09-01 when it was run against that
+  database.
+- Review round 1 (2026-10-07): `0ca22fdcc` (findings 1 and 2), `9f157be7a` (flat-file
+  world recovery, found on the way), then this file's commit with the round and its gate.
+  The tag `log-review/phase-3-review-1` names that head.
+- The round's gate, on 2026-10-07, on `9f157be7a`:
+  - `./scripts/format.sh --check`: clean.
+  - `make -C src`: built.
+  - `make test-all`: 671 passed, 0 failed, in 465 s.
+  - `make test-db`: 45 of 46 passed in 380 s. `world_restart_handover` took 87 s,
+    `world_restart_taken` 85 s, `mysql_combat` 172 s, `player_save_claim` 44 s. The one
+    failure, `sql_pool_interrupt` ("the pool lent a connection without the lock"), was a
+    race in that leg: it kills the lock owner's session and asks the pool at once, but
+    `KILL` returns before the server ends the session, and the lock goes only with it.
+    This branch does not touch the pool.
+- Fixed on `master`, each in its own commit, pushed as a fast-forward to `a7e43bd0a`:
+  `2bc212690` (the leg waits until the server shows the lock free; two of four runs side
+  by side still saw the killed session's lock on the first check), and `a7e43bd0a`
+  (`make test-db` generates the world before its legs: run alone on a fresh worktree,
+  `saved_item_allocator` booted before another leg had written `world.mob`). On `master`
+  with both: `make test-db` 45 of 45 in 276 s from a worktree without a generated world,
+  and the 51 tests that read `TESTING.md` or the `Makefile` pass.
+- On a merge of that `master` with `9f157be7a` (scratch, not pushed): `make test-db` 46 of
+  46 in 269 s, `world_restart_handover` among them.
+- Nothing is open. The phase is ready to land. `master` has the two commits above that the
+  branch lacks, so the landing is a real `git merge --no-ff`, not the commit-tree merge
+  Phase 2 used. It merges the branch head, not the tag: after the tag the branch carries
+  two working notes the owner added (`build-issues.md` and `fall-while-walking.md` in
+  this folder, documentation only), which land with it.
 
 ---
 

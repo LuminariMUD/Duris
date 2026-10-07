@@ -154,8 +154,11 @@ for source in (repository, flatfile):
 assert "outcome=topology_repaired" in materialize
 assert "recovery=next_full_save" in materialize
 # An ownership row without a payload is an item the character no longer holds; its next
-# holder claims it. The load only counts it: no read-only admission, no payload-gap path.
-missing_payload = materialize[materialize.index("if (result.missing_payload_rows)"):]
+# holder claims it, or the next boot reaps it. The load only counts it: no read-only
+# admission, no payload-gap path. The count collects during an uptime, so the line is a
+# trace (#11).
+missing_payload = materialize[materialize.index(
+    "if (result.missing_payload_rows && persistence_trace_enabled())"):]
 missing_payload = missing_payload[:missing_payload.index("ch->only.pc->output_preferences")]
 assert "outcome=missing_payload_rows" in missing_payload
 assert "refuse(" not in missing_payload and "return false" not in missing_payload

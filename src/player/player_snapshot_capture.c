@@ -339,15 +339,13 @@ capture_item_tree(const obj_data *object, int parent_index, int equipment_slot,
 		return player_snapshot_capture_result::limit_exceeded;
 	++budget.objects;
 
-	// An object being written into a player's payload while the ownership ledger has no
-	// row for it is the orphan that used to make a character permanently unloadable, and
-	// that the load path now absorbs by silently dropping the item. The save is the last
-	// point where the object is still identifiable, so name it here: the vnum says which
-	// grant path handed it over without submitting a transfer, which is the only
-	// practical way to find those paths in a codebase with 271 obj_to_char() calls.
+	// Under the claim model an item with no entry in the in-memory ledger is the normal
+	// state of anything picked up since the last login: the first save inserts its row
+	// and nothing publishes that back, so the line would repeat on every save until the
+	// next login. It is a trace of which uids the save is about to claim, not an audit.
 	if (audit_ownership && object->obj_uid)
 	{
-		if (!ownership_loaded)
+		if (!ownership_loaded && persistence_trace_enabled())
 			logit(LOG_DEBUG,
 			      "player_snapshot_capture: component=items outcome=unowned_object "
 			      "uid=%llu vnum=%d recovery=audit_grant_path",

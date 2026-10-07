@@ -75,6 +75,28 @@ per save that changes them. There is no revision fence: with one writer, every s
 newer than the last one for that owner. A character with no `player_data` row yet gets
 one.
 
+A save never releases a row: an item the owner dropped, used up or lost keeps its last
+holder's row until another owner's save claims it. A row whose item then stops existing
+(extracted by a zone reset or a shutdown, eaten, decayed, dissolved) is never claimed
+again, so each boot deletes them before the writer starts: every active row naming a
+player as the holder of an item that no payload row carries, whoever's it is:
+`player_items`, `player_pet_items`, `locker_items`, `corpse_items` or `saved_items`
+(`reap_unheld_player_items()` in `src/item/item_claim_repository.c`). The flat-file
+backend reads every player file, the locker, corpse and room stores, and what a
+record's player still has to be delivered from a committed transfer, which its next
+load materializes (`flatfile_item_repository_reap_unheld_player_items()`); a file or
+store it cannot read stops the reap. At boot no character is in memory, so such a row
+cannot be a held item. A row whose item an older copy still carries stays: a load
+skips a copy whose row names someone else (below), so after a crash that follows a
+hand-over the row is what keeps the giver's copy out, until that holder's next save
+drops the copy and the boot after it reaps the row. A row an auction's custody row, an
+`artifact_domain_state` row or another row (its contents) still references is kept for
+the foreign keys; the pass repeats until it deletes nothing, so a container goes after
+its contents. `logs/log/status` records the count when it is above zero. Only
+player-owned rows are reaped: lockers, corpses, shops, auctions and the collector keep
+their own. The reap does not run inside a save, where a delete that met a foreign key
+would fail the save (ADR 0002).
+
 `logs/log/dupes` has one line per item a save left out or a load skipped, naming the
 item, its vnum, the owner that lost it and the owner that has it.
 
@@ -90,7 +112,12 @@ graph is corrected, not refused. The same rule applies to player and pet items
 (`player_load_repository.c`; flat-file: `flatfile_player_repository.c`), and to corpses,
 lockers and saved room items through `sql_persistence_item_owner_matches_identity()`.
 The flat-file corpse and room loaders still use their own reconciliation until those
-owners are saved through the writer.
+owners are saved through the writer. A player's row with no payload row of that player
+is only counted; the boot reap above deletes it once no payload carries the item. The count is logged on login
+(`missing_payload_rows`) only with `DURIS_PERSISTENCE_TRACE`, as is the save's
+`unowned_object` line for each held item the in-memory ledger has no entry for: under
+the claim model that is every item picked up since the last login, until the next
+login.
 
 A load always succeeds with the rows that pass the filter; there is no degraded
 admission, no stale-row refusal threshold and no read-only quarantine. Logins never

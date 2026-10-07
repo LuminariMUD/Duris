@@ -167,6 +167,7 @@ the work item it was built under; [CONTRACT.md](telemetry/CONTRACT.md) maps the 
 | [SECURITY-COMPLIANCE.md](records/SECURITY-COMPLIANCE.md) | Cumulative security posture and GDPR compliance record. |
 | [COMMUNITY_DURIS_TRACKING.md](records/COMMUNITY_DURIS_TRACKING.md) | The split from Community-Duris, their changes since (bug fixes and everything else), and what we adopted, adapted or rejected. |
 | [CREDITS.md](records/CREDITS.md) | Credits for moshehbenavraham's foundation work, 2026-08-25 to 2026-09-23, counted from the Git history. |
+| [HISTORY.md](records/HISTORY.md) | The history of Duris from Sojourn (1993) to 2026: eras, staff, addresses, wipes, lore and culture, with sources. |
 
 The `.spec_system/` tracking tree these began in was retired after Phase 03; its contents
 are in Git history at commit `212592e3`.

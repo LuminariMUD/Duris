@@ -8,6 +8,7 @@
 #include "flatfile/flatfile_item_repository.h"
 #include "flatfile/flatfile_player_repository.h"
 #include "player/player_save_worker.h"
+#include "player/player_snapshot_codec.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -17,6 +18,7 @@
 #include <sstream>
 #include <string>
 #include <unistd.h>
+#include <unordered_set>
 
 namespace fs = std::filesystem;
 
@@ -411,6 +413,219 @@ int main(int argc, char **argv)
 			" outcome=" + std::to_string(static_cast<int>(elder_loaded.outcome)) +
 			" error=" + std::to_string(elder_loaded.error_code) +
 			" copper=" + std::to_string(elder_loaded.domains.wallet[0]));
+	// The boot reap (work item #11). Player 42's file holds 1004 while its records still
+	// name the bag, the room item in it, and the auction's bag with its contents from the
+	// first save: nothing released them. Player 39's records name a bag and its contents
+	// and a loose item its file never carried, beside the item it holds and the one its
+	// legacy pet carries under its own identity. The pet's and the destroyed records are
+	// not player 42's.
+	const item_owner_identity reaped_player = { item_owner_type::player, 39, 0 };
+	establish(root, reaped_player,
+		  { { 1070, 1070, 0, 570 }, { 1071, 1070, 1070, 571 }, { 1074, 1074, 0, 574 } });
+	require(flatfile_identity_claim(root, 39, "Dropper", "Account-Five", &error) ==
+			flatfile_identity_result::ok,
+		"dropper identity claim: " + error);
+	player_snapshot dropper = snapshot_for(1, 39, "Dropper");
+	dropper.items = { item(1072, 572, PLAYER_SNAPSHOT_NO_PARENT) };
+	player_pet_snapshot legacy = {};
+	legacy.mob_vnum = 700;
+	legacy.room_vnum = 3001;
+	legacy.items = { item(1073, 573, PLAYER_SNAPSHOT_NO_PARENT) };
+	dropper.pets.push_back(legacy);
+	require(flatfile_player_snapshot_apply(root, dropper, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"dropper save: " + error);
+	// Player 39 then took what other stores still carry, saved, let it go and saved
+	// again: 1075 from the newcomer, whose file still holds it, and 1076, 1077 and 1078
+	// from a corpse, a room and a guild locker that still list them (a crash came before
+	// their next save). The records name player 39, and only they make each older copy
+	// load as stale (MR !13 review, finding 1).
+	player_snapshot newcomer_copy = snapshot_for(3, 41, "Newcomer");
+	newcomer_copy.items = { item(1075, 575, PLAYER_SNAPSHOT_NO_PARENT) };
+	require(flatfile_player_snapshot_apply(root, newcomer_copy, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"newcomer save holding the hand-over: " + error);
+	flatfile_corpse_record looted = dead;
+	looted.save_id = 556;
+	looted.items = { loose(1076, 576, PLAYER_SNAPSHOT_NO_PARENT) };
+	require(flatfile_corpse_snapshot_apply(root, looted, false, {}, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"looted corpse save: " + error);
+	flatfile_saved_world_item_record left = chest;
+	left.item_key = "item.uid.1077";
+	left.items = { loose(1077, 577, PLAYER_SNAPSHOT_NO_PARENT) };
+	require(flatfile_saved_item_snapshot_apply(root, left, false, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"room item save: " + error);
+	flatfile_locker_save guild_locker;
+	guild_locker.locker_name = "guild.7.locker";
+	guild_locker.owner_assoc_id = 7;
+	guild_locker.items = { loose(1078, 578, PLAYER_SNAPSHOT_NO_PARENT) };
+	require(flatfile_locker_snapshot_apply(root, guild_locker, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"guild locker save: " + error);
+	player_snapshot taken = snapshot_for(2, 39, "Dropper");
+	taken.items = { item(1072, 572, PLAYER_SNAPSHOT_NO_PARENT),
+			item(1075, 575, PLAYER_SNAPSHOT_NO_PARENT),
+			item(1076, 576, PLAYER_SNAPSHOT_NO_PARENT),
+			item(1077, 577, PLAYER_SNAPSHOT_NO_PARENT),
+			item(1078, 578, PLAYER_SNAPSHOT_NO_PARENT) };
+	taken.pets.push_back(legacy);
+	player_snapshot let_go = snapshot_for(3, 39, "Dropper");
+	let_go.items = dropper.items;
+	let_go.pets.push_back(legacy);
+	require(flatfile_player_snapshot_apply(root, taken, &error).outcome ==
+				player_save_apply_outcome::applied &&
+			flatfile_player_snapshot_apply(root, let_go, &error).outcome ==
+				player_save_apply_outcome::applied,
+		"dropper saves holding and then without the hand-overs: " + error);
+	require(flatfile_world_item_list(root, &corpses, &saved_items, &error) ==
+				flatfile_world_item_result::ok &&
+			flatfile_world_item_list_rooms(root, &rooms, &error) ==
+				flatfile_world_item_result::ok &&
+			corpses.size() == 1 && corpses[0].items.size() == 1 &&
+			corpses[0].items[0].object_uid == 1076 && rooms.size() == 1 &&
+			rooms[0].items.size() == 1 && rooms[0].items[0].object_uid == 1077,
+		"the corpse and the room still list what player 39 took");
+	// A creation grant committed after player 39's last save: its next load delivers
+	// 1079 from the materialization store, which only the record names it in (MR !13
+	// review, finding 2).
+	player_item_snapshot granted = item(1079, 579, PLAYER_SNAPSHOT_NO_PARENT);
+	granted.name = granted.short_description = "a granted ring";
+	item_transfer_payload grant = {};
+	grant.from_owner = { item_owner_type::system, 0, 0 };
+	grant.to_owner = reaped_player;
+	std::vector<flatfile_item_ownership_record> ignored;
+	require(flatfile_item_repository_load_owner(root, reaped_player,
+						    &grant.expected_to_revision, &ignored,
+						    &error) == flatfile_item_repository_result::ok,
+		"player 39's revision: " + error);
+	grant.reason = item_transfer_reason::creation;
+	grant.reason_id = 297;
+	grant.selected_item_uid = grant.target_root_item_uid = granted.object_uid;
+	grant.item_count = 1;
+	grant.items[0].item_uid = grant.items[0].root_item_uid = granted.object_uid;
+	grant.items[0].expected_item_revision = ITEM_TRANSFER_ABSENT_REVISION;
+	grant.items[0].vnum = granted.vnum;
+	grant.items[0].expected_state = item_custody_state::absent;
+	std::vector<uint8_t> blob;
+	require(player_item_snapshot_list_encode({ granted }, &blob) ==
+			player_snapshot_codec_result::ok,
+		"encode the granted item");
+	grant.item_blob_size = static_cast<uint32_t>(blob.size());
+	std::copy(blob.begin(), blob.end(), grant.item_blob.begin());
+	critical_operation_id operation;
+	critical_command command;
+	require(critical_operation_id_generate(&operation) &&
+			item_transfer_command_build(&command, operation, grant,
+						    critical_source_site::command,
+						    critical_deadline_class::interactive),
+		"build the grant");
+	command.accepted_at_usec = 1;
+	require(flatfile_item_repository_apply(root, command).outcome ==
+			critical_apply_outcome::applied,
+		"the grant commits");
+	// A player file that cannot be read stops the reap: any record may be what keeps
+	// an older copy in it out.
+	const item_owner_identity unreadable = { item_owner_type::player, 38, 0 };
+	establish(root, unreadable, { { 1080, 1080, 0, 580 } });
+	const std::string unreadable_file = flatfile_player_snapshot_file::player_directory(root) +
+					    "/" +
+					    flatfile_player_snapshot_file::player_filename(38);
+	{
+		std::ofstream corrupt(unreadable_file);
+		corrupt << "not a player file";
+	}
+	// The reap runs before each check, so the check's message sees its outcome.
+	uint64_t reaped = 0;
+	auto reap = flatfile_item_repository_reap_unheld_player_items(root, &reaped, &error);
+	require(reap == flatfile_item_repository_result::invalid && reaped == 0 &&
+			held_by(root, reaped_player).size() == 10 &&
+			held_by(root, unreadable).size() == 1,
+		"an unreadable player file stops the reap with nothing deleted: result=" +
+			std::to_string(static_cast<int>(reap)) + " " + error);
+	fs::remove(unreadable_file);
+	// Without it, player 38 holds nothing.
+	reap = flatfile_item_repository_reap_unheld_player_items(root, &reaped, &error);
+	require(reap == flatfile_item_repository_result::ok && reaped == 8,
+		"the reap deletes the eight stale records: " + std::to_string(reaped) + " " +
+			error);
+	const auto remaining = [&](const item_owner_identity &owner)
+	{
+		std::vector<uint64_t> kept;
+		for (const auto &record : held_by(root, owner))
+			kept.push_back(record.item_uid);
+		std::sort(kept.begin(), kept.end());
+		return kept;
+	};
+	require((remaining(player) == std::vector<uint64_t>{ 1004 }),
+		"player 42 keeps the item its file holds");
+	require((remaining(reaped_player) ==
+		 std::vector<uint64_t>{ 1072, 1073, 1075, 1076, 1077, 1078, 1079 }),
+		"player 39 keeps what it and its legacy pet hold, what older copies elsewhere "
+		"carry, and the grant still to be delivered");
+	require(remaining(unreadable).empty(), "a player without a file holds nothing");
+	require(remaining(pet).size() == 1 && remaining(seller).empty() &&
+			flatfile_item_repository_load_uids(root, { 1060, 1061 }, &destroyed,
+							   &error) ==
+				flatfile_item_repository_result::ok &&
+			destroyed.size() == 2,
+		"the pet's and the destroyed records are not touched");
+	// World recovery restores a floor copy unless an owner holds it. A player's record
+	// counts only while the player's next load holds the item, as MariaDB asks
+	// player_items: 1075's record keeps the newcomer's copy out, but player 39 does not
+	// hold it, so the floor copy is the one that comes back.
+	std::unordered_set<uint64_t> owned;
+	require(flatfile_item_repository_world_recovery_owned(
+			root, { 1072, 1075, 1079, 1005, 1004, 1099 }, &owned, &error) ==
+				flatfile_item_repository_result::ok &&
+			(owned == std::unordered_set<uint64_t>{ 1072, 1079, 1005, 1004 }),
+		"world recovery counts what a load holds as owned, and only that: " + error);
+	// The kept records do their work at the next loads: the newcomer's copy is skipped
+	// and the grant is delivered.
+	request.request_id = 3;
+	request.pid = 41;
+	request.account_name = "Account-Two";
+	const player_load_result newcomer_loaded =
+		flatfile_player_load_repository_execute(root, request);
+	require(newcomer_loaded.outcome == player_load_outcome::applied &&
+			newcomer_loaded.snapshot.items.empty() &&
+			text_of(path / "logs/log/dupes")
+					.find("load_skipped uid=1075 vnum=575 lost_by=player:41:0 "
+					      "held_by=player:39:0") != std::string::npos,
+		"the newcomer's older copy is skipped");
+	request.request_id = 4;
+	request.pid = 39;
+	request.account_name = "Account-Five";
+	const player_load_result dropper_loaded =
+		flatfile_player_load_repository_execute(root, request);
+	require(dropper_loaded.outcome == player_load_outcome::applied &&
+			std::any_of(dropper_loaded.snapshot.items.begin(),
+				    dropper_loaded.snapshot.items.end(),
+				    [](const player_item_snapshot &held)
+				    { return held.object_uid == 1079; }),
+		"player 39's load delivers the grant");
+	// Once a save has carried the grant (retiring the delivery) and the ring is used up,
+	// the next reap takes its record.
+	player_snapshot with_ring = snapshot_for(4, 39, "Dropper");
+	with_ring.items = { item(1072, 572, PLAYER_SNAPSHOT_NO_PARENT), granted };
+	with_ring.pets.push_back(legacy);
+	player_snapshot used_up = snapshot_for(5, 39, "Dropper");
+	used_up.items = dropper.items;
+	used_up.pets.push_back(legacy);
+	require(flatfile_player_snapshot_apply(root, with_ring, &error).outcome ==
+				player_save_apply_outcome::applied &&
+			flatfile_player_snapshot_apply(root, used_up, &error).outcome ==
+				player_save_apply_outcome::applied,
+		"player 39 saves with the ring and then without it: " + error);
+	reap = flatfile_item_repository_reap_unheld_player_items(root, &reaped, &error);
+	require(reap == flatfile_item_repository_result::ok && reaped == 1 &&
+			(remaining(reaped_player) ==
+			 std::vector<uint64_t>{ 1072, 1073, 1075, 1076, 1077, 1078 }),
+		"the used-up grant's record goes: " + std::to_string(reaped) + " " + error);
+	reap = flatfile_item_repository_reap_unheld_player_items(root, &reaped, &error);
+	require(reap == flatfile_item_repository_result::unchanged && reaped == 0,
+		"a second reap finds nothing");
 	std::cout << "flat-file player save claim passed\n";
 	return 0;
 }
