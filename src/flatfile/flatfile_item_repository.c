@@ -1385,6 +1385,62 @@ flatfile_item_repository_reap_unheld_player_items(const std::string &root, uint6
 	return flatfile_item_repository_result::ok;
 }
 
+flatfile_item_repository_result flatfile_item_repository_world_recovery_owned(
+	const std::string &root, const std::vector<uint64_t> &uids,
+	std::unordered_set<uint64_t> *owned, std::string *error)
+{
+	if (root.empty() || !owned)
+		return flatfile_item_repository_result::invalid;
+	std::lock_guard<std::mutex> guard(ownership_mutex);
+	flatfile_authority_lock authority;
+	if (!authority.acquire(root, error))
+		return flatfile_item_repository_result::io_error;
+	const auto recovered = flatfile_authority_transaction_recover(root, authority, error);
+	if (recovered != flatfile_authority_transaction_result::ok)
+		return recovered == flatfile_authority_transaction_result::io_error ?
+			       flatfile_item_repository_result::io_error :
+			       flatfile_item_repository_result::invalid;
+	ownership_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded == flatfile_item_repository_result::not_found)
+		return flatfile_item_repository_result::ok;
+	if (loaded != flatfile_item_repository_result::ok)
+		return loaded;
+	try
+	{
+		const std::unordered_set<uint64_t> wanted(uids.begin(), uids.end());
+		std::unordered_map<uint64_t, std::unordered_set<uint64_t>> held;
+		for (const auto &record : catalog.items)
+		{
+			if (!wanted.count(record.item_uid))
+				continue;
+			if (active_player_record(record))
+			{
+				auto found = held.find(record.owner.id);
+				if (found == held.end())
+				{
+					found = held.emplace(record.owner.id,
+							     std::unordered_set<uint64_t>{})
+							.first;
+					if (const auto read = add_player_load_uids(
+						    root, authority, catalog, record.owner.id,
+						    &found->second, error);
+					    read != flatfile_item_repository_result::ok)
+						return read;
+				}
+				if (!found->second.count(record.item_uid))
+					continue;
+			}
+			owned->insert(record.item_uid);
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		return flatfile_item_repository_result::io_error;
+	}
+	return flatfile_item_repository_result::ok;
+}
+
 flatfile_item_baseline_result
 flatfile_item_repository_establish_owner(const std::string &root, const item_owner_identity &owner,
 					 const std::vector<flatfile_item_ownership_record> &items,

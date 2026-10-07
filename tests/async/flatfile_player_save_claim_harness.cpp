@@ -18,6 +18,7 @@
 #include <sstream>
 #include <string>
 #include <unistd.h>
+#include <unordered_set>
 
 namespace fs = std::filesystem;
 
@@ -570,6 +571,16 @@ int main(int argc, char **argv)
 				flatfile_item_repository_result::ok &&
 			destroyed.size() == 2,
 		"the pet's and the destroyed records are not touched");
+	// World recovery restores a floor copy unless an owner holds it. A player's record
+	// counts only while the player's next load holds the item, as MariaDB asks
+	// player_items: 1075's record keeps the newcomer's copy out, but player 39 does not
+	// hold it, so the floor copy is the one that comes back.
+	std::unordered_set<uint64_t> owned;
+	require(flatfile_item_repository_world_recovery_owned(
+			root, { 1072, 1075, 1079, 1005, 1004, 1099 }, &owned, &error) ==
+				flatfile_item_repository_result::ok &&
+			(owned == std::unordered_set<uint64_t>{ 1072, 1079, 1005, 1004 }),
+		"world recovery counts what a load holds as owned, and only that: " + error);
 	// The kept records do their work at the next loads: the newcomer's copy is skipped
 	// and the grant is delivered.
 	request.request_id = 3;

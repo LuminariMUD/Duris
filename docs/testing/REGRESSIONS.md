@@ -232,9 +232,11 @@ copy out (the review of MR !13, finding 1); and a flat-file purchase or grant co
 after the buyer's last save is delivered by the next login only while its record names the
 buyer (finding 2). A row an auction's custody row, an `artifact_domain_state` row or a child
 row still references is kept, and a container goes after its contents. A flat-file player
-file or store the reap cannot read stops it with nothing deleted. The per-login
-`missing_payload_rows` count and the per-save `unowned_object` line are traces
-(`DURIS_PERSISTENCE_TRACE`). Work item #11.
+file or store the reap cannot read stops it with nothing deleted. Flat-file world recovery
+counts a player's record as an owner only while the player's next load holds the item, as
+MariaDB's does with `player_items`, so a floor copy whose record only keeps an older copy
+out is restored rather than lost. The per-login `missing_payload_rows` count and the
+per-save `unowned_object` line are traces (`DURIS_PERSISTENCE_TRACE`). Work item #11.
 
 ```sh
 tests/async/run_player_save_claim_mysql.sh
@@ -255,8 +257,9 @@ references or whose contents a payload still holds stay, and the older-copy rows
 the copies are gone. The flat-file harness also commits a creation grant after the
 player's last save: the reap keeps its record and the login delivers it, and once a save
 has carried it and the item is used up the next reap takes the record; the newcomer whose
-file holds a handed-over copy loads without it; and an unreadable player file stops the
-reap. The `taken` scenario is the real path without the switch: get a
+file holds a handed-over copy loads without it; an unreadable player file stops the reap;
+and world recovery counts as owned what a load holds and not a record that only keeps an
+older copy out. The `taken` scenario is the real path without the switch: get a
 zone-loaded mace, save, drop it, save, crash, boot; the mace's row and the dissolved
 starter kit's are gone, every remaining player row has a payload row, the login counts
 nothing and the saves wrote no `unowned_object` line. The `handover` scenario is finding
@@ -270,8 +273,8 @@ line) and on (one line per save).
 
 Not covered: a stale container in the flat-file catalog whose contents a payload still
 holds (no transfer path produces that state there; the rule is held by the MariaDB
-fixture, where the foreign key is), the flat-file reap on a live server (the harness
-drives the repository functions), and the reap on a long-lived
+fixture, where the foreign key is), the flat-file reap and world recovery on a live
+server (the harness drives the repository functions), and the reap on a long-lived
 database with every owner type populated.
 
 ## Riposte after a participant is removed
