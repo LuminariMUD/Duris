@@ -15,7 +15,7 @@ Updated 2026-10-07. A new session starts here, then reads the phase it continues
 | 2 | #13 | Landed on 2026-10-06 in `6a4e5511c` (!12). |
 | 3 | #11 | Landed on 2026-10-07 in `a55ccef17` (!13). |
 | 4 | #14 | Landed on 2026-10-07 in `7ef76523e` (!14). |
-| 5 | #17 | Not started. It is next, on a new branch from `master`. |
+| 5 | #17 | In progress since 2026-10-07 on `fix/17-telemetry` from `master` at `ab4d91340`. |
 
 ## Are the items still valid?
 
@@ -1052,6 +1052,69 @@ tree and each is proved with it. Their three commits are about 3,700 lines witho
 balance plan. They are already tested on their side, and taking them keeps `src/telemetry`
 close enough to pick from again; a smaller rewrite here would end that. Part 3 is their
 bounded gap record. A spool that replays the backlog is not built.
+
+**Added by the check (2026-10-07).** Read again at `ab4d91340`, on the branch.
+
+- Their harness and its Python test were reshaped before the three commits, by their PR
+  #591 (`34b6593b3`, 2026-10-01; the ledger's row for it says `N/A`, a hosted job). In
+  that shape the harness takes host, port, user, password and database from the
+  environment and no longer parses migration files; the Python test creates the database,
+  applies the whole chain with `scripts/migration_runner.py` (`adopt --kind
+  fresh_bootstrap`, then `run`) and checks the history's count and head against
+  `migration_manifest.json`; and `every_record_kind_round_trip_tests()` writes each of
+  the eight kinds, replays it for `duplicate_identical`, changes one field and requires
+  `duplicate_conflict`. The `startup_contract_tests()` that `e0e837102` adds reads
+  `fixture_database`, `fixture_user` and `fixture_password` from that shape, so the
+  commit merges onto our harness without conflict and does not compile there. Steps 1
+  and 2 are therefore #591's harness and test changes on our wrapper. Not taken from
+  #591: `run_telemetry_repository_sql.sh` (its own container and a loopback proxy), the
+  hosted workflow, its Makefile lines and its `migration_runner.py` message change.
+- The repository's replay check is the read-back the item asks for: `apply_record()`
+  selects every mapped column of the stored row by the replay key and `equal_row()`
+  compares each with the record's serialized value, so `duplicate_identical` is only
+  returned when every field matched. `typed_extension_mapping_tests()` names the
+  progression, encounter and combat columns in SQL, and the golden tests read the
+  interval and checkpoint columns, so a mapping to an existing column of the wrong name
+  is caught there. A column name the table lacks fails the INSERT with 1054.
+- `IMPLEMENTATION_STATUS.md` is new in `e0e837102` and is their delivery record for the
+  balance expansion: pending rows, their hosts, their follow-up PRs. Documents here hold
+  no open-work lists, so it is not taken from any of the three commits, and step 5's
+  resolution is a deletion. `BALANCE_EXPANSION_PLAN.md`, `RECOVERED_FOLLOWUPS.md` and
+  `scripts/telemetry/preflight.py` are not taken either.
+- `03da1882d` adds `TELEMETRY_OUTAGE_LEDGER_DIR` to `.env.example` (required when
+  telemetry is on; capture is refused without it), `telemetry_outage.o` to
+  `src/Makefile`, `scripts/telemetry/outage.py` (a read-only export of the evidence)
+  and `docs/telemetry/OUTAGE_STORAGE.md`.
+- `b3fb28b9f`'s parent is `9b5c23fec`, three commits after `03da1882d`. None of the
+  three touches `src/`; `9b5c23fec` touches three rollup and report tests only.
+- `test_telemetry_connection.py` keeps its own `TELEMETRY_REPOSITORY_DISPOSABLE` guard;
+  it is a different test, skipped by `make test-all`, and is not changed.
+
+**Ablated before the work started (2026-10-07).**
+
+- Outcome: the item's four done-when conditions. Non-goals: a replayed spool
+  (decision 10); a MySQL leg (the gate runs on the wrapper's MariaDB, like every other
+  leg); their hosted workflow; any descriptor refactor beyond what `e0e837102` carries.
+- The Python test reads the wrapper's `TEST_DB_HOST`, `TEST_DB_PORT`, `TEST_DB_USER`
+  and `TEST_DB_PASSWORD`, as `run_mysql_deletion_journey.py` does, builds the same
+  `DB_*` environment the migration runner needs, and hands it to the harness. Not
+  taken from #591: the `TELEMETRY_REPOSITORY_*` names, the disposable acknowledgement
+  and the port list (the wrapper's container is disposable by construction, as for
+  every other leg), the engine name, the harness's own history count (the Python test
+  checks the head) and `fixture_safety_contract()`.
+- `--sql-fixture` stays the flag. With it, a missing `TEST_DB_*` setting is an error,
+  which is how the leg cannot report the SQL part as skipped. Without it, as in
+  `make test-all`, the test compiles the harness and prints `SKIPPED`, as today.
+- The database is `duris_telemetry_test` on the wrapper's server and dies with the
+  container; the test does not drop it.
+- The leg is one line in `tests/run_db_tests.sh`.
+
+**Files.** `tests/async/test_telemetry_repository.py`,
+`tests/async/telemetry_repository_harness.cc`, `tests/run_db_tests.sh`,
+`docs/telemetry/DATABASE.md`, `docs/guides/TESTING.md`, `docs/testing/REGRESSIONS.md`;
+then the files of the three picks less the four documents and the script above,
+`docs/README_docs.md` (the outage document), `.env.example`,
+`docs/records/COMMUNITY_DURIS_TRACKING.md`; this file.
 
 **Steps**
 
