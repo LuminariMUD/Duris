@@ -1,6 +1,7 @@
 #include "persistence/maintenance_scheduler.h"
 #include "sql/sql_thread_init.h"
 
+#include "core/utility.h"
 #include "persistence/persistence_observability.h"
 
 #include <mysql/mysql.h>
@@ -91,6 +92,9 @@ struct durable_scheduler_state_v2
 
 durable_scheduler_state durable_state = {};
 bool durable_state_dirty = false;
+// True from a failed state write until one succeeds: the worker retries every second,
+// and the status log gets one line per streak.
+bool persist_failing = false;
 
 uint64_t state_checksum(const durable_scheduler_state &state)
 {
@@ -134,6 +138,15 @@ bool write_all(int descriptor, const void *raw, size_t size)
 	return true;
 }
 
+bool persist_failed()
+{
+	if (!persist_failing)
+		logit(LOG_STATUS, "Maintenance scheduler state not written to %s: %s",
+		      state_path.c_str(), strerror(errno));
+	persist_failing = true;
+	return false;
+}
+
 bool persist_state(const durable_scheduler_state &state)
 {
 	if (state_path.empty())
@@ -144,15 +157,18 @@ bool persist_state(const durable_scheduler_state &state)
 	const int descriptor = open(temporary.c_str(),
 				    O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);
 	if (descriptor < 0)
-		return false;
+		return persist_failed();
 	const bool written = write_all(descriptor, &stored, sizeof(stored));
 	const bool synced = written && fsync(descriptor) == 0;
 	const bool closed = close(descriptor) == 0;
 	if (!synced || !closed || rename(temporary.c_str(), state_path.c_str()) != 0)
 	{
+		const int error = errno;
 		unlink(temporary.c_str());
-		return false;
+		errno = error;
+		return persist_failed();
 	}
+	persist_failing = false;
 	return true;
 }
 
@@ -620,6 +636,11 @@ bool maintenance_scheduler_set_state_path(const char *path)
 	if (health.running || worker.joinable() || !path || !*path || strlen(path) >= 4096)
 		return false;
 	state_path = path;
+	// The file's directory is the server's own (runtime/ by default): a missing one is
+	// made for the server user alone, and a write that still fails is logged.
+	const size_t slash = state_path.rfind('/');
+	if (slash != std::string::npos && slash > 0)
+		(void)mkdir(state_path.substr(0, slash).c_str(), 0700);
 	return true;
 }
 

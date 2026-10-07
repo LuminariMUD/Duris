@@ -27,8 +27,11 @@ HARNESS = r'''
 #include <ctime>
 #include <mutex>
 #include <string>
+#include <sys/stat.h>
 #include <thread>
 #include <vector>
+
+void logit(const char *, const char *, ...) {}
 
 struct state_type
 {
@@ -217,9 +220,24 @@ int main(int argc, char **argv)
 	maintenance_scheduler_shutdown();
 	maintenance_scheduler_reset_for_tests();
 
+	// A missing directory above the state file is made for the server user alone.
+	const std::string made_directory = std::string(argv[1]) + ".made";
+	const std::string made = made_directory + "/state";
+	assert(maintenance_scheduler_set_state_path(made.c_str()));
+	struct stat made_metadata = {};
+	assert(stat(made_directory.c_str(), &made_metadata) == 0);
+	assert(S_ISDIR(made_metadata.st_mode) && (made_metadata.st_mode & 0777) == 0700);
+	assert(maintenance_scheduler_init(9, execute, &acknowledged, auction_only));
+	maintenance_scheduler_pulse(first_tick, results, MAINTENANCE_COMPLETION_MAX);
+	wait_until([&] { return maintenance_scheduler_health_copy(first_tick).completions == 1; });
+	maintenance_scheduler_shutdown();
+	maintenance_scheduler_reset_for_tests();
+	assert(stat(made.c_str(), &made_metadata) == 0 && S_ISREG(made_metadata.st_mode));
+
 	// A state file that cannot be written is tried again after a pause. The worker
-	// retried at once, and held a core for as long as the write kept failing.
-	const std::string unwritable = std::string(argv[1]) + ".missing/state";
+	// retried at once, and held a core for as long as the write kept failing. The
+	// scheduler makes one missing directory level, not two.
+	const std::string unwritable = std::string(argv[1]) + ".missing/below/state";
 	assert(maintenance_scheduler_set_state_path(unwritable.c_str()));
 	assert(maintenance_scheduler_init(9, execute, &acknowledged, auction_only));
 	maintenance_scheduler_pulse(first_tick, results, MAINTENANCE_COMPLETION_MAX);

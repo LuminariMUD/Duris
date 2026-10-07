@@ -1064,7 +1064,7 @@ int run_the_game(int port, int sslport)
 			static_cast<uint32_t>(sslport);
 		const char *maintenance_state = getenv("MAINTENANCE_STATE_FILE");
 		if (!maintenance_state || !*maintenance_state)
-			maintenance_state = "bin/server/maintenance-scheduler.state";
+			maintenance_state = "runtime/maintenance-scheduler.state";
 		if (!maintenance_scheduler_set_state_path(maintenance_state) ||
 		    !maintenance_scheduler_init(maintenance_instance,
 						maintenance_repository_execute, nullptr,

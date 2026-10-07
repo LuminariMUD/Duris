@@ -75,6 +75,7 @@ logs/valgrind/
 /runtime/personal-data-exports/
 /runtime/critical-command-journal/
 /runtime/player-journal/
+/runtime/maintenance-scheduler.state*
 
 # ------------------------------------------------------------------------------
 # Temporary files, editor leftovers, and local analysis artifacts
