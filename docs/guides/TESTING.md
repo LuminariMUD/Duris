@@ -365,7 +365,7 @@ refusal, not a failed workload, and `QUALIFIED` is not readiness evidence either
 | Critical commands | `test_critical_command_coordinator.py` exercises identity, codec, multi-key ordering, duplicate attachment, exact completion, retries, fences, bounds, and lifecycle |
 | Critical transactions | `test_critical_transaction_contract.py` plus guarded `run_critical_command_schema_mysql.sh` cover schema, duplicate/mismatch, atomic rollback, concurrent locking, ambiguity lookup, outbox retry/dedupe/dead-letter/restart, and reconciliation |
 | Help files | class/race helpfile completeness contracts |
-| Event loop | hotspot budget regression |
+| Event loop | hotspot budget regression; `test_cast_lateness_runtime.py` runs the production cast segments with late callbacks, and `run_cast_timing_probe.py` measures a real server's casts |
 | Build contract | `test_compiler_warning_profile.py`, `test_message_buffer_bounds.py` |
 | Untrusted input | `test_unicode_runtime.py`, `test_ansi_runtime.py`, `test_json_utils_runtime.py`, `test_ttype_runtime.py` |
 
