@@ -33,6 +33,7 @@ world_recovery $DB python3 tests/async/run_world_recovery_journey.py $SERVER
 world_restart_crash $DB python3 tests/async/run_world_restart_journey.py $SERVER crash
 world_capture $DB python3 tests/async/test_mysql_world_capture_journey.py --server $SERVER
 legacy_migration tests/async/run_legacy_migration_mysql.sh
+telemetry_repository $DB python3 tests/async/test_telemetry_repository.py --sql-fixture
 saved_item_allocator $DB python3 tests/async/run_saved_item_allocator_journey.py $SERVER
 mysql_combat $DB python3 tests/async/test_mysql_combat_journey.py --server $SERVER
 world_restart_copyover $DB python3 tests/async/run_world_restart_journey.py $SERVER copyover

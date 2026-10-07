@@ -195,17 +195,23 @@ make -C src -j4
 make -C src -j4 PERSISTENCE_BACKEND=flatfile
 ```
 
-For a caller-provisioned **disposable loopback** MariaDB fixture with the test
-schema `duris_telemetry_test`, the explicitly guarded repository suite resets that
-schema's telemetry tables and consumes all ten shared golden fixtures through the
-actual repository API. It also tests mixed rejections, field/padding replay,
-checkpoint history, restart configuration reuse and immutable publication replay,
-configuration/scope validation, immutable batch retries, five
-transaction fault modes, ownership lock contention, startup recovery, disabled
-behavior, stop requests and concurrent cached health:
+`make test-db` runs the repository suite as its `telemetry_repository` leg on a
+disposable MariaDB from `tests/async/with_disposable_mariadb.sh`: the test creates
+`duris_telemetry_test` there, applies the whole immutable migration chain with
+`scripts/migration_runner.py` and checks that the history is at the manifest's head,
+then the harness writes every record kind (1 to 8), replays each for
+`duplicate_identical` (the repository reads every mapped column of the stored row back
+and compares it), changes one field for `duplicate_conflict`, and consumes all ten
+shared golden fixtures through the actual repository API. It also tests mixed
+rejections, field/padding replay, checkpoint history, restart configuration reuse and
+immutable publication replay, configuration/scope validation, immutable batch retries,
+five transaction fault modes, ownership lock contention, startup recovery, disabled
+behavior, stop requests and concurrent cached health. With `--sql-fixture` a missing
+`TEST_DB_*` setting is an error, so the leg cannot report the SQL part as skipped; a
+column name the table lacks fails the INSERT and the leg.
 
 ```sh
-TELEMETRY_REPOSITORY_DISPOSABLE=1 python3 tests/async/test_telemetry_repository.py --sql-fixture
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_telemetry_repository.py --sql-fixture
 # MYSQL_CONFIG may select a separate Oracle or MariaDB client installation.
 TELEMETRY_REPOSITORY_DISPOSABLE=1 python3 tests/async/test_telemetry_connection.py
 ```

@@ -365,6 +365,20 @@ journey waits until `close_socket()` has logged every disconnect, requires
     the old journey fails with the same timeout and the new one starts over five times
     out of five. Its gate: `make test-db` 45 of 45, the only gate that runs that file.
 
+**As built**
+
+1. **The gate (steps 1 and 2).** `test_telemetry_repository.py --sql-fixture` takes the
+   wrapper's `TEST_DB_*`, creates `duris_telemetry_test`, applies the chain with
+   `migration_runner.py` (36 steps through `0036_log_entries_ipv6`) and checks the
+   history head, then runs the harness with the `DB_*` settings; a missing setting is an
+   error. The harness is #591's: every record kind 1 to 8 is written, replayed for
+   `duplicate_identical` and changed for `duplicate_conflict`. The leg is
+   `telemetry_repository` in `run_db_tests.sh`, 19 s. On today's code (`ab4d91340`) it
+   passes on MariaDB 10.11.19: no record kind needed a fix before step 3. Probed: with
+   `session_boot_id` misspelt in `session_fields()` (a column the Python mapping contract
+   does not cover) the harness fails on the first INSERT and the leg exits 1.
+   `DATABASE.md` names the leg and the command.
+
 **Done when:** the four conditions in the item. The quit line condition holds for the other
 four stamps as well.
 
@@ -1137,5 +1151,19 @@ then the files of the three picks less the four documents and the script above,
 5. Pick `b3fb28b9f`. `IMPLEMENTATION_STATUS.md` is resolved to describe our tree.
 6. Set the "Telemetry" row in `docs/records/COMMUNITY_DURIS_TRACKING.md` to taken, with
    the three commits.
+
+**As built**
+
+1. **The gate (steps 1 and 2).** `test_telemetry_repository.py --sql-fixture` takes the
+   wrapper's `TEST_DB_*`, creates `duris_telemetry_test`, applies the chain with
+   `migration_runner.py` (36 steps through `0036_log_entries_ipv6`) and checks the
+   history head, then runs the harness with the `DB_*` settings; a missing setting is an
+   error. The harness is #591's: every record kind 1 to 8 is written, replayed for
+   `duplicate_identical` and changed for `duplicate_conflict`. The leg is
+   `telemetry_repository` in `run_db_tests.sh`, 19 s. On today's code (`ab4d91340`) it
+   passes on MariaDB 10.11.19: no record kind needed a fix before step 3. Probed: with
+   `session_boot_id` misspelt in `session_fields()` (a column the Python mapping contract
+   does not cover) the harness fails on the first INSERT and the leg exits 1.
+   `DATABASE.md` names the leg and the command.
 
 **Done when:** the four conditions in the item.
