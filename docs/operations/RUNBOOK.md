@@ -37,8 +37,14 @@ production port 7777; the default remains 4000.
 - Promotes `bin/server/dms_new` to `bin/server/dms`, retains the five newest
   prior executables under `bin/server/history/` by default, and runs the active
   binary in an outer loop. Set `DMS_BINARY_HISTORY_LIMIT` to change the limit.
-  A `--production` launch refuses to promote or run anything except a stamped
-  `PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=production` build.
+  A `--production` launch promotes and runs nothing except a stamped
+  `PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=production` build: a staged binary
+  with another stamp is logged and left in place, and the runtime binary keeps
+  running. `make`, `make build-server` and `make test-db` stage a development
+  build, so on a production host build the release after the tests, or restart
+  before them. To run the database journeys against the production profile,
+  `make build-production` and `DURIS_SERVER_BINARY=bin/server/production/dms_new
+  make test-db`.
 - On each restart it moves `logs/log/*`, `logs/player-log/*` and
   `logs/latency_trace.log` into `logs/old-logs/<timestamp>/`, then deletes the
   oldest of those until `logs/old-logs` fits in `DURIS_LOG_ARCHIVE_MB` (1024 by

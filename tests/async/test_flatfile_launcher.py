@@ -298,4 +298,32 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
     if backups[0].stat().st_mode & 0o077 or backups[0].parents[1].stat().st_mode & 0o077:
         raise AssertionError("flat-file launcher created a non-private backup")
 
+    # --production logs a staged binary whose stamp is not mariadb/production, leaves it
+    # where it is and runs the stamped runtime binary; it exits only when that one is
+    # unstamped too. The regression suite stages a development build, and the exit
+    # here kept the systemd service in a ten-second restart loop.
+    tools = project / "bin/areas/tools"
+    tools.mkdir(parents=True)
+    for name in ("make_mob", "make_obj", "make_qst", "make_shp", "make_wld", "make_zon"):
+        (tools / name).write_text("#!/bin/sh\nexit 0\n")
+        (tools / name).chmod(0o755)
+    runtime = project / "bin/server/dms"
+    runtime.write_text("#!/bin/sh\necho runtime binary ran\nexit 0\n")
+    runtime.chmod(0o755)
+    (project / "bin/server/.dms-backend").write_text("mariadb/production\n")
+    server.write_text("#!/bin/sh\necho staged binary ran\nexit 0\n")
+    server.chmod(0o755)
+    (project / "bin/server/.dms_new-backend").write_text("flatfile/development\n")
+    launched = run(script, production_check_env, "--production")
+    if (launched.returncode != 0 or "Ignoring staged bin/server/dms_new" not in launched.stdout
+            or "runtime binary ran" not in launched.stdout or "staged binary ran" in launched.stdout):
+        raise AssertionError("production launcher did not run the runtime binary past a development build:\n"
+                             + launched.stdout)
+    if not server.exists() or (project / "bin/server/.dms-backend").read_text() != "mariadb/production\n":
+        raise AssertionError("production launcher promoted or removed the development build")
+    (project / "bin/server/.dms-backend").write_text("flatfile/development\n")
+    rejected = run(script, production_check_env, "--production")
+    if rejected.returncode == 0 or "requires a mariadb/production server build" not in rejected.stdout:
+        raise AssertionError("production launcher ran an unstamped runtime binary:\n" + rejected.stdout)
+
 print("flat-file launcher regression passed")
