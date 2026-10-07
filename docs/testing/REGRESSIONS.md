@@ -352,6 +352,18 @@ exports the ledger. A player who enters, or is recovered by a copyover, while th
 is still qualifying is retried by the descriptor sweep. Work item #17; the writer code is
 Community-Duris's (`e0e837102`, `03da1882d`, `b3fb28b9f`).
 
+The review of !15 found three ways the writer stayed off for good after one event, and a
+line that did not say why. A pending file that was not a whole frame (what a full disk
+or a crash leaves between the create and the rename) refused the ledger on every later
+boot; now the writer removes its own staging file when a write fails, an open removes
+one that does not decode, and a failed sample no longer ends the worker. At 256
+lifetimes the ledger refused the 257th; now it is kept as an archive and the chain
+starts again. A transient failure at qualification (the advisory lock held, a lock wait
+past the two-second read timeout) was retried eight times inside a quarter of a second
+and then opened the circuit for the rest of the process, on master too; now it is
+retried at a one-second cap for as long as it lasts. The health line and `world
+telemetry` print `storage_check` for a ledger refusal.
+
 ```sh
 tests/async/with_disposable_mariadb.sh python3 tests/async/test_telemetry_repository.py --sql-fixture
 tests/async/with_disposable_mariadb.sh python3 tests/async/run_telemetry_schema_boot_journey.py --server /absolute/path/dms_new [--misnamed-server /absolute/path/dms_misnamed]
@@ -380,10 +392,16 @@ writer that may only SELECT (`permanent-permission error=1142`, game running, no
 admitted) and, given a build whose `telemetry_columns.inc` names a column the chain lacks,
 `permanent-schema error=1054 schema_check=column` with the game running: the production
 incident. The outage tests cover the ledger's lifecycle, protection, corruption, a real
-SIGKILL and exec, the quota and the export, and the runtime journey registration before
-SQL init, clean drain, transient recovery, a shutdown with an unresolved commit and
-disk-full. The adapter test covers delayed qualification, presence without input and
-copyover handoffs kept for a later observation.
+SIGKILL and exec, ENOSPC and fsync faults with the retry in place, an empty, short or
+torn pending file removed at open, the archive at 256 lifetimes and the export of the
+live ledger and of an archive; the runtime journey registration before SQL init, clean
+drain, transient recovery, a shutdown with an unresolved commit, a disk-full registration
+(refused, no staging file left), a disk-full sample (capture goes on) and a transient
+qualification failure retried past the old budget; the transport test the same at the
+transport, twenty failed initializations then a healthy writer. The journey adds a boot
+with no ledger directory (`storage_check=directory error=22`) and one with a directory
+readable by others (`protection error=1`). The adapter test covers delayed qualification,
+presence without input and copyover handoffs kept for a later observation.
 
 Not covered: a copyover or kill while queued records are waiting on a real server with
 SQL down (the runtime journey simulates the faults; the ledger's content under them is

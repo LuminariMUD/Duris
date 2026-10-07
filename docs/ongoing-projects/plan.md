@@ -1114,7 +1114,7 @@ where each remaining segment costs one pulse plus its own lateness.
 
 ## Phase 5: telemetry schema check, SQL round trip and restart gaps (#17)
 
-**Status: built, open for review as !15.** "State of the work" at the end of this phase
+**Status: built, review round 1 fixed, open as !15.** "State of the work" at the end of this phase
 has the details.
 
 **Checked.** Startup proves only that four tables exist (`telemetry_repository.c` L125).
@@ -1378,3 +1378,59 @@ unattempted count), never by a replay; decision 10.
   the plan" and in the regression notes' "Not covered": the persistence boot gate refuses
   a drifted telemetry table before the writer sees it, and a copyover leaves the
   copied-over producer an unknown tail.
+
+**Review round 1 (2026-10-07)**
+
+The adversarial review of `5008c891e` (`log-review/phase-5-review-0`) read the whole diff
+and ran three probes on a real `--minimal` server with SQL telemetry against a disposable
+MariaDB, on the head's build and on a scratch build of master. It found four defects,
+posted as threads on !15, and the round fixed each in its own commit:
+
+- Finding 1 (`56f2305b7`): a pending ledger file that was not a whole frame, what a
+  full disk or a crash leaves between the create and the rename, refused telemetry on
+  every later boot (`permanent-repository error=74`), the export refused too, and the
+  only way back was deleting the file by hand. `persist()` now removes its own staging
+  file when the write, fsync or close fails; an open removes a pending file that is not
+  a whole frame (a whole frame that decodes but does not extend the chain is still kept
+  and refused); a failed checkpoint poisons the journal only when a whole pending file
+  remains; a sample that cannot be written no longer ends the worker.
+- Finding 2 (`ffc349606`): every boot and copyover appended a producer and the 257th
+  registration was refused with `error=28` for good. A full ledger is now published
+  once more with the unfinished lifetime closed as an unknown tail, kept as
+  `outages.ledger.<registered utc>.<generation>`, and the chain starts again;
+  `outage.py --ledger` reads an archive. The `quota` result is gone.
+- Finding 3 (`489c17d07`, pre-existing on master): a transient fault at the writer's
+  qualification was retried eight times inside about a quarter of a second and then
+  opened the circuit for the rest of the process, with `failure_class=transient-connection`.
+  A table lock held across a copyover, or the advisory lock held for three seconds at
+  boot, left telemetry off until the next restart: the copied-over player's exit and a
+  later login never reached the database. The repository retry now keeps the capped
+  backoff for as long as the fault lasts, with the repository's own transient class;
+  only a permanent class opens the circuit. The batch retry budget is unchanged.
+- Finding 4 (`2f101c275`): a ledger refusal said `permanent-repository error=<errno>`
+  and nothing else. The health snapshot, the `telemetry_health` line and
+  `world telemetry` carry `storage_check` (directory, protection, owner, ledger, io);
+  the runbook lists the values.
+
+What differs from the plan after the round: the ledger refuses capture only for a
+registration it cannot write, a directory it cannot trust, a ledger it cannot decode or
+an owner it cannot take; a sample it cannot write costs evidence, not records. The
+transient classes at qualification are retried until they clear.
+
+Tests added: `telemetry_outage_harness.cc` `interrupted_publication` and `rotation`
+(replacing `quota`), the `publication_faults` retry assertions; `telemetry_runtime_outage.cc`
+`failed_registration`, `failed_checkpoint` (replacing `failed_storage`) and
+`transient_qualification`, the storage check assertions; the transport harness's
+"transient initialization failure is retried until it clears"; the schema boot journey's
+boots with no ledger directory and with one readable by others; the export test's archive
+read. The probes (a zero-byte pending file before boot; a copyover with a player logged
+in while a client's `LOCK TABLES telemetry_quarantine WRITE` stalls the schema check, then
+a second login; a boot while a client holds the writer's `GET_LOCK` for three seconds)
+are a scratch script of the review, not a leg; on the fixed build all three recover and
+record every session.
+
+Gate on `489c17d07`'s tree (the regression notes and this section are the only later
+change), 2026-10-07: `./scripts/format.sh --check` clean;
+`make -C src` built; `make test-all` 674 passed, 0 failed, in 499 s (14 min 18 s with the build); `make test-db` 48 of 48 passed in 279 s (`telemetry_repository` 36 s, `telemetry_schema_boot` 44 s).
+The tag `log-review/phase-5-review-1` is the head to review now: `489c17d07` plus this
+file's commit.
