@@ -1123,9 +1123,11 @@ struct worker_outage_guard
 		observation.observed_utc_usec = utc;
 		if (terminal)
 			observation.phase = telemetry_outage_terminal_phase(observation);
-		if (telemetry_outage_checkpoint(&journal, observation) !=
-		    telemetry_outage_result::ready)
-			return refuse(now);
+		// A sample that could not be written is evidence lost, not records: the
+		// records are durable in SQL whatever the ledger says, and the ledger's
+		// last good sample stays a running watermark. The next sample retries,
+		// or finds the journal poisoned and leaves the watermark alone.
+		(void)telemetry_outage_checkpoint(&journal, observation);
 		return true;
 	}
 

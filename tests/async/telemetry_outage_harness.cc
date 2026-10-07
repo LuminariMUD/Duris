@@ -266,32 +266,68 @@ void publication_faults()
 		assert(telemetry_outage_checkpoint(&journal, sampled()) == result::io_failure);
 		assert(journal.error_code == (fault == 1U ? EIO : ENOSPC));
 		assert(journal.observations[0].health.admitted_detail == 0U);
-		assert(telemetry_outage_checkpoint(&journal, sampled()) == result::invalid);
 		fail_write = fail_rename = false;
 		fail_fsync_call = 0U;
-		telemetry_outage_close(&journal);
-		if (fault == 0U)
+		// A failure before the rename leaves no staging file and the next sample
+		// retries in place. A failed rename leaves the whole frame and poisons
+		// the journal until a fresh open validates it.
+		if (fault == 1U)
 		{
+			assert(fs::exists(f.path / "outages.pending"));
+			assert(telemetry_outage_checkpoint(&journal, sampled()) == result::invalid);
 			assert(bytes(f.path / "outages.ledger") == original);
-			assert(telemetry_outage_read(&journal, f.path.c_str()) == result::corrupt);
-			assert(fs::file_size(f.path / "outages.pending") == 0U);
 		}
 		else
 		{
-			assert(telemetry_outage_read(&journal, f.path.c_str()) == result::ready);
-			assert(journal.generation == 2U &&
-			       journal.observations[0].health.admitted_detail == 8U);
 			assert(!fs::exists(f.path / "outages.pending"));
-			telemetry_outage_close(&journal);
-			const auto recovered = bytes(f.path / "outages.ledger");
-			assert(telemetry_outage_read(&journal, f.path.c_str()) == result::ready);
-			assert(journal.generation == 2U &&
-			       bytes(f.path / "outages.ledger") == recovered);
-			telemetry_outage_close(&journal);
+			assert(telemetry_outage_checkpoint(&journal, sampled()) == result::ready);
 		}
+		telemetry_outage_close(&journal);
+		assert(telemetry_outage_read(&journal, f.path.c_str()) == result::ready);
+		assert(journal.generation == 2U &&
+		       journal.observations[0].health.admitted_detail == 8U);
+		assert(!fs::exists(f.path / "outages.pending"));
+		telemetry_outage_close(&journal);
+		const auto recovered = bytes(f.path / "outages.ledger");
+		assert(telemetry_outage_read(&journal, f.path.c_str()) == result::ready);
+		assert(journal.generation == 2U && bytes(f.path / "outages.ledger") == recovered);
+		telemetry_outage_close(&journal);
 	}
 	std::puts(
 		"outage disk-full, fsync, interrupted publication and idempotent recovery passed");
+}
+
+void interrupted_publication()
+{
+	// What a crash or a full disk leaves between the create and the rename: an
+	// empty, a short or a torn pending file. None of them is a whole frame, so an
+	// open removes it and the ledger stands; the directory is otherwise untouched.
+	fixture f;
+	telemetry_outage_journal journal{};
+	assert(telemetry_outage_open(&journal, f.path.c_str(), registration()) == result::ready);
+	assert(telemetry_outage_checkpoint(&journal, sampled()) == result::ready);
+	telemetry_outage_close(&journal);
+	const auto original = bytes(f.path / "outages.ledger");
+	auto torn = original;
+	torn[original.size() - 5U] ^= 1U;
+	for (const auto &pending :
+	     { std::vector<unsigned char>{}, std::vector<unsigned char>(100U, 7U),
+	       std::vector<unsigned char>(original.begin(), original.begin() + 200), torn })
+	{
+		replace(f.path / "outages.pending", pending);
+		assert(telemetry_outage_read(&journal, f.path.c_str()) == result::ready);
+		assert(journal.generation == 2U && journal.count == 1U);
+		assert(!fs::exists(f.path / "outages.pending"));
+		assert(bytes(f.path / "outages.ledger") == original);
+		telemetry_outage_close(&journal);
+	}
+	replace(f.path / "outages.pending", {});
+	assert(telemetry_outage_open(&journal, f.path.c_str(), registration(2)) == result::ready);
+	assert(journal.count == 2U && journal.generation == 3U);
+	assert(journal.observations[0].phase == phase::unknown_tail);
+	assert(!fs::exists(f.path / "outages.pending"));
+	telemetry_outage_close(&journal);
+	std::puts("outage interrupted publication is removed and the ledger stands passed");
 }
 
 void changed_storage()
@@ -483,6 +519,7 @@ int main(int argc, char **argv)
 	unsafe_storage();
 	corruption();
 	publication_faults();
+	interrupted_publication();
 	changed_storage();
 	pending_chain();
 	abrupt_kill();

@@ -232,6 +232,9 @@ bool safe_file(int fd, struct stat &status)
 	       (status.st_mode & 07777U) == 0600U && status.st_nlink == 1U;
 }
 
+/* A frame that is not whole, short or with a digest that does not match, is an
+ * interrupted write and reports ENODATA; a whole frame whose content does not
+ * decode reports EBADMSG. */
 telemetry_outage_result load(telemetry_outage_journal &j, const char *name, bool &present)
 {
 	present = false;
@@ -251,7 +254,7 @@ telemetry_outage_result load(telemetry_outage_journal &j, const char *name, bool
 	if (status.st_size < 64 ||
 	    static_cast<std::uint64_t>(status.st_size) > TELEMETRY_OUTAGE_MAX_BYTES)
 	{
-		return failure(j, telemetry_outage_result::corrupt, EBADMSG);
+		return failure(j, telemetry_outage_result::corrupt, ENODATA);
 	}
 	std::vector<unsigned char> data(static_cast<std::size_t>(status.st_size));
 	std::size_t offset = 0U;
@@ -272,7 +275,7 @@ telemetry_outage_result load(telemetry_outage_journal &j, const char *name, bool
 		return failure(j, telemetry_outage_result::io_failure, EIO);
 	if (std::memcmp(data.data(), MAGIC, sizeof(MAGIC)) != 0 ||
 	    std::memcmp(data.data() + data.size() - sizeof(digest), digest, sizeof(digest)) != 0)
-		return failure(j, telemetry_outage_result::corrupt, EBADMSG);
+		return failure(j, telemetry_outage_result::corrupt, ENODATA);
 	const auto generation = read_word(data.data() + 8U);
 	const auto count = read_word(data.data() + 16U);
 	if (generation == 0U || count == 0U || count > TELEMETRY_OUTAGE_MAX_PRODUCERS ||
@@ -337,27 +340,31 @@ telemetry_outage_result persist(telemetry_outage_journal &j)
 			      O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
 	if (fd < 0)
 		return failure(j, telemetry_outage_result::io_failure, errno);
+	// Until the rename the pending file is this call's own staging copy. A
+	// failure before that leaves nothing worth keeping, so it is removed and
+	// the next sample simply writes again.
+	int error = 0;
 	std::size_t offset = 0U;
-	while (offset < data.size())
+	while (error == 0 && offset < data.size())
 	{
 		const auto written = write(fd, data.data() + offset, data.size() - offset);
 		if (written < 0 && errno == EINTR)
 			continue;
 		if (written <= 0)
-		{
-			const int error = written == 0 ? EIO : errno;
-			close(fd);
-			return failure(j, telemetry_outage_result::io_failure, error);
-		}
-		offset += static_cast<std::size_t>(written);
+			error = written == 0 ? EIO : errno;
+		else
+			offset += static_cast<std::size_t>(written);
 	}
-	if (fsync(fd) != 0)
+	if (error == 0 && fsync(fd) != 0)
+		error = errno;
+	if (close(fd) != 0 && error == 0)
+		error = errno;
+	if (error != 0)
 	{
-		const int error = errno;
-		close(fd);
+		(void)unlinkat(j.directory_fd, PENDING, 0);
 		return failure(j, telemetry_outage_result::io_failure, error);
 	}
-	if (close(fd) != 0 || renameat(j.directory_fd, PENDING, j.directory_fd, LEDGER) != 0 ||
+	if (renameat(j.directory_fd, PENDING, j.directory_fd, LEDGER) != 0 ||
 	    fsync(j.directory_fd) != 0)
 		return failure(j, telemetry_outage_result::io_failure, errno);
 	++j.generation;
@@ -405,12 +412,22 @@ telemetry_outage_result acquire(telemetry_outage_journal &j, const char *directo
 	staged.directory_fd = j.directory_fd;
 	bool pending = false;
 	result = load(staged, PENDING, pending);
+	if (result == telemetry_outage_result::corrupt && staged.error_code == ENODATA)
+	{
+		// An interrupted write left a pending file that is not a whole frame. It
+		// never became the ledger and holds nothing the ledger lacks: remove it.
+		if ((unlinkat(j.directory_fd, PENDING, 0) != 0 && errno != ENOENT) ||
+		    fsync(j.directory_fd) != 0)
+			return failure(j, telemetry_outage_result::io_failure, errno);
+		result = telemetry_outage_result::ready;
+		pending = false;
+	}
 	if (result != telemetry_outage_result::ready)
 		return failure(j, result, static_cast<int>(staged.error_code));
 	if (pending)
 	{
-		// A complete interrupted publication may only extend this exact chain.
-		// Corrupt/truncated pending evidence is retained and refuses admission.
+		// A whole pending publication may only extend this exact chain; one that
+		// decodes but does not is kept and refuses admission.
 		if (j.generation == UINT64_MAX || staged.generation != j.generation + 1U ||
 		    staged.count < j.count || staged.count > j.count + 1U)
 			return failure(j, telemetry_outage_result::corrupt, EBADMSG);
@@ -558,9 +575,15 @@ telemetry_outage_checkpoint(telemetry_outage_journal *journal,
 	if (result != telemetry_outage_result::ready)
 	{
 		journal->observations[journal->current] = previous;
-		// Reopen and validate an ambiguously acknowledged publication before
-		// any further mutation. A retry from this generation can overwrite it.
-		journal->current = TELEMETRY_OUTAGE_MAX_PRODUCERS;
+		// A failure before the rename left nothing behind; the next sample
+		// retries. A pending file still present was written whole and may or
+		// may not have been published: reopen and validate before any further
+		// mutation, since a retry from this generation could overwrite it.
+		struct stat staged
+		{
+		};
+		if (fstatat(journal->directory_fd, PENDING, &staged, AT_SYMLINK_NOFOLLOW) == 0)
+			journal->current = TELEMETRY_OUTAGE_MAX_PRODUCERS;
 	}
 	return result;
 }

@@ -12,6 +12,7 @@
 namespace
 {
 std::atomic<bool> outage_fail_write{ false };
+std::atomic<unsigned int> outage_failed_writes{ 0U };
 std::atomic<bool> outage_io_on_producer{ false };
 std::thread::id outage_producer_thread;
 }
@@ -24,6 +25,7 @@ extern "C" ssize_t __wrap_write(int fd, const void *data, size_t count)
 		outage_io_on_producer = true;
 	if (outage_fail_write.load())
 	{
+		++outage_failed_writes;
 		errno = ENOSPC;
 		return -1;
 	}
@@ -253,17 +255,45 @@ void failed_storage(bool startup)
 	assert(telemetry_runtime_health_copy().admitted_control == before.admitted_control);
 	outage_fail_write = false;
 	stop_outage_runtime(false);
-	if (startup)
-		assert(fixture.fake.init_calls == 0U &&
-		       !fs::exists(fixture.directory / "outages.ledger"));
+	assert(fixture.fake.init_calls == 0U && !fs::exists(fixture.directory / "outages.ledger"));
+	assert(!fs::exists(fixture.directory / "outages.pending"));
 	telemetry_outage_journal evidence{};
-	assert(telemetry_outage_read(&evidence, fixture.directory.c_str()) ==
-	       outage_result::corrupt);
-	assert(fs::exists(fixture.directory / "outages.pending"));
+	assert(telemetry_outage_read(&evidence, fixture.directory.c_str()) == outage_result::ready);
+	assert(evidence.count == 0U);
+	telemetry_outage_close(&evidence);
 	std::puts(
-		startup ?
-			"runtime disk-full startup refuses all SQL admission passed" :
-			"runtime disk-full checkpoint stops capture and preserves unresolved evidence passed");
+		"runtime disk-full startup refuses all SQL admission and leaves no staging file passed");
+}
+
+void failed_checkpoint()
+{
+	// A sample that cannot be written costs evidence, not records: capture goes
+	// on, the staging file is removed, and sampling resumes when writes do.
+	outage_fixture fixture;
+	const auto options = make_enabled_options();
+	bind_outage(fixture, options);
+	telemetry_test_start_runtime(options);
+	assert(telemetry_runtime_session_enter(make_enter(options.producer, options.config))
+		       .outcome == telemetry_runtime_outcome::accepted);
+	outage_failed_writes = 0U;
+	outage_fail_write = true;
+	std::this_thread::sleep_for(std::chrono::milliseconds(2'500));
+	assert(outage_failed_writes.load() != 0U);
+	assert(telemetry_runtime_health_copy().state == telemetry_health_state::healthy);
+	assert(telemetry_runtime_health_copy().last_storage_check == telemetry_storage_check::none);
+	assert(!fs::exists(fixture.directory / "outages.pending"));
+	outage_fail_write = false;
+	std::this_thread::sleep_for(std::chrono::milliseconds(2'500));
+	stop_outage_runtime();
+	assert(!fs::exists(fixture.directory / "outages.pending"));
+	telemetry_outage_journal evidence{};
+	assert(telemetry_outage_read(&evidence, fixture.directory.c_str()) == outage_result::ready);
+	assert(evidence.count == 1U &&
+	       evidence.observations[0].phase == outage_phase::clean_drained);
+	assert(evidence.observations[0].health.admitted_control > 0U);
+	telemetry_outage_close(&evidence);
+	std::puts("runtime disk-full checkpoint keeps capture running and resumes sampling passed");
+}
 }
 } // namespace
 
@@ -273,8 +303,8 @@ int main()
 	required_directory();
 	clean_and_recovery();
 	ambiguous_shutdown();
-	failed_storage(true);
-	failed_storage(false);
+	failed_registration();
+	failed_checkpoint();
 	assert(!outage_io_on_producer.load());
 	std::puts("telemetry runtime durable outage journey passed");
 }
