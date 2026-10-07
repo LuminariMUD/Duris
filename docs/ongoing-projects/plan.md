@@ -404,6 +404,26 @@ journey waits until `close_socket()` has logged every disconnect, requires
    the SELECT-only writer logged `permanent-repository error=0`. `RUNBOOK.md` lists the
    causes; `DATABASE.md` names the journey.
 
+3. **Part 3** (`476376592`, the pick of `03da1882d`; author kept). The data-lifecycle
+   conflicts were resolved by adding only the ledger's entry (23 non-database stores),
+   the validator's one check and the test's one case; their two status documents stay
+   out, `OUTAGE_STORAGE.md` is reworded without their follow-up numbers and indexed in
+   `README_docs.md`. Their two tests (`test_telemetry_outage.py`: lifecycle, protected
+   paths, corruption, a real SIGKILL, a real exec and restart, the producer quota, the
+   offline export; `test_telemetry_runtime_outage.py`: registration before SQL init,
+   clean drain and restart, transient SQL recovery, a shutdown with an unresolved
+   commit, disk-full) pass here, as do the harnesses the transport change touches.
+   `TELEMETRY_OUTAGE_LEDGER_DIR` is required once telemetry is on: without it the
+   server logged `permanent-repository error=22` and ran on, as designed. On the real
+   server (the schema boot journey, `bc763f090`): a SIGTERM leaves the producer `clean_drained`; a copyover leaves the
+   copied-over producer `unknown_tail` and the new image `clean_drained`; a SIGKILL
+   leaves `running` until the next producer registers, then `unknown_tail`. The
+   copyover result is an observation, not a defect of the item: the flush before the
+   exec is durable, but no terminal sample is written, so the record says only that
+   coverage after the last sample is unknown, which is the conservative reading the
+   document gives `unknown_tail`. Writing that sample before the exec would be a
+   change to the copyover path, left out of this phase.
+
 **Done when:** the four conditions in the item. The quit line condition holds for the other
 four stamps as well.
 
@@ -1215,5 +1235,25 @@ then the files of the three picks less the four documents and the script above,
    `telemetry_schema_boot` leg of `make test-db`, 20 s. On the binary of `f7368e60e`
    the SELECT-only writer logged `permanent-repository error=0`. `RUNBOOK.md` lists the
    causes; `DATABASE.md` names the journey.
+
+3. **Part 3** (`476376592`, the pick of `03da1882d`; author kept). The data-lifecycle
+   conflicts were resolved by adding only the ledger's entry (23 non-database stores),
+   the validator's one check and the test's one case; their two status documents stay
+   out, `OUTAGE_STORAGE.md` is reworded without their follow-up numbers and indexed in
+   `README_docs.md`. Their two tests (`test_telemetry_outage.py`: lifecycle, protected
+   paths, corruption, a real SIGKILL, a real exec and restart, the producer quota, the
+   offline export; `test_telemetry_runtime_outage.py`: registration before SQL init,
+   clean drain and restart, transient SQL recovery, a shutdown with an unresolved
+   commit, disk-full) pass here, as do the harnesses the transport change touches.
+   `TELEMETRY_OUTAGE_LEDGER_DIR` is required once telemetry is on: without it the
+   server logged `permanent-repository error=22` and ran on, as designed. On the real
+   server (the schema boot journey, `bc763f090`): a SIGTERM leaves the producer `clean_drained`; a copyover leaves the
+   copied-over producer `unknown_tail` and the new image `clean_drained`; a SIGKILL
+   leaves `running` until the next producer registers, then `unknown_tail`. The
+   copyover result is an observation, not a defect of the item: the flush before the
+   exec is durable, but no terminal sample is written, so the record says only that
+   coverage after the last sample is unknown, which is the conservative reading the
+   document gives `unknown_tail`. Writing that sample before the exec would be a
+   change to the copyover path, left out of this phase.
 
 **Done when:** the four conditions in the item.
