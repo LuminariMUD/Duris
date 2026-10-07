@@ -14,7 +14,7 @@ Updated 2026-10-07. A new session starts here, then reads the phase it continues
 | 1 | #10 | Landed on 2026-10-05 in `7fdbb20fe` (!11). |
 | 2 | #13 | Landed on 2026-10-06 in `6a4e5511c` (!12). |
 | 3 | #11 | Landed on 2026-10-07 in `a55ccef17` (!13). |
-| 4 | #14 | In progress on `fix/14-cast-lateness`, from `master` at `647e785d7`. |
+| 4 | #14 | Built on 2026-10-07 on `fix/14-cast-lateness`; open for review as !14, tag `log-review/phase-4-review-0`. |
 | 5 | #17 | Not started. |
 
 ## Are the items still valid?
@@ -889,7 +889,109 @@ follows from the code. Nobody has measured a late cast.
    with no lateness takes exactly its cast time.
 4. Run the measurement again and post the second set of numbers.
 
+**As built**
+
+1. **The measurement** (`0df20ac4a`, posted on the item at 15:39 on 2026-10-07). On a
+   server built from `master` at `647e785d7`: with the default 25 ms budget on a quiet
+   machine all 20 casts took exactly their 9 pulses and no callback was late (the only
+   budget window was the boot's, 3 deferring pulses). With the budget cut to 2 ms (210
+   deferring pulses, 1,981,482 deferred events, worst callback 19 pulses late) 12 of 20
+   casts finished late, by 5.6 pulses on average and 22 at most (a 9-pulse cast took
+   31), and every late cast's extra was exactly the sum of its callbacks' lateness. The
+   last callback's lateness, which the fix leaves, was 1.85 on average and 9 at most.
+2. **The fix.** `spellcast_datatype.due_tick` is the tick the scheduled segment is due
+   at. `schedule_spellcast()` takes the segment's length: it advances `due_tick` from
+   its old value, or from the current tick for a cast that has not been scheduled yet,
+   and schedules for `due_tick - now`, at least 1. `MobCastSpell()` sets `due_tick` for
+   the first segment it schedules itself. Both files declare `ne_event_tick` as
+   `comm.c` does. `DelayCommune()`, the progress stars and the three construction sites
+   of the payload (`memset`/`bzero`) did not change.
+3. **The test.** `test_cast_lateness_runtime.py` compiles the production
+   `schedule_spellcast()`, `event_spellcast()` and `MobCastSpell()` with a scheduler
+   double that records each segment's delay and runs the callback at its due tick plus
+   an injected lateness. Pinned, as exact ticks: casts of 1 to 20 pulses with no
+   lateness take their cast time in segments of four and extend the memorize event by
+   the nominal segments; the item's 12-pulse cast with three callbacks two late finishes
+   in 14; only the last callback late gives cast time plus that; lateness before the
+   last segment is made up in full; after a stall each remaining segment is one pulse;
+   five segments all two late give 18 + 2 + 1; a mob's cast makes up its lateness as a
+   player's does, so the `MobCastSpell()` line is covered. On `master`'s sources (the
+   harness minus its one `due_tick` assertion, in a scratch worktree) the no-lateness
+   loop passes and the item's example fails: 18, not 14.
+   `test_spell_schedule_failure_runtime.py` and `test_death_field_runtime.py` define
+   the tick they now link; the first also zeroes `due_tick` on the payload it reuses
+   for its "fresh cast" retry, since a rejected payload dies with its cast in production
+   and a new cast's payload is zeroed.
+4. **The measurement again**, on the server built from `f461a9b91`. Default budget: all
+   20 casts took exactly 9 pulses, none late. Budget cut to 2 ms (213 deferring pulses,
+   2,250,592 deferred events, worst callback 21 late): 12 of 20 casts late, 5.0 extra
+   pulses on average and 21 at most, with the callbacks' lateness summing to 6.3 on
+   average and 24 at most. Every row is what the harness pins: `[5, 6, 7]` finished in
+   24 pulses (27 before), `[3, 4, 4]` in 17 (20), `[1, 2, 0]` in 11 (12). The mean moved
+   little because under that budget a callback runs 5 to 20 pulses late, more than the
+   4- and 1-pulse segments after it, so the cast sits on the one-pulse minimum: the
+   gain is bounded by the slack of the remaining segments, 3 pulses for this 9-pulse
+   cast, which is the exception the item's bound allows for. A run at an 8 ms budget,
+   where callbacks are late by a few pulses, is in "State of the work".
+- **Documents.** `RUNBOOK.md`'s casting paragraph states the rule and names the probe.
+  `REGRESSIONS.md` has the section "Casts that run behind the event pass", and
+  `TESTING.md`'s samples table names the harness and the probe.
+
+**Differs from the plan**
+
+- Four scheduling sites, not three: `MobCastSpell()` gets one line (see "Added by the
+  check").
+- The measurement is `run_cast_timing_probe.py` on a flat-file full world, not a copy
+  of the MariaDB combat journey (see "Ablated"). The cast time is not a constant: it
+  depends on the character's `spell_pulse` and affects (the level-56 MindFlayer casts
+  the 18-beat spell in 9 pulses, three segments of 4, 4 and 1), so the probe takes it
+  from the run as the shortest cast, which is exact whenever a cast ran with no late
+  callback.
+- `schedule_spellcast()` keeps the intended tick when the one-pulse minimum applies,
+  so lateness larger than a segment carries into the following segments; the plan said
+  so and the harness pins it (`{10, 0, 0}` on a 12-pulse cast gives 16: the stall, then
+  one pulse per remaining segment).
+
 **Done when:** the three conditions in the item.
+
+**State of the work**
+
+- Branch `fix/14-cast-lateness`, from `master` at `647e785d7`: `6dad532f7` (this file's
+  ablation), `0df20ac4a` (the probe), `f461a9b91` (the fix, its tests and documents),
+  then this file's commit with the gate's result.
+- The probe ran six times on 2026-10-07, 20 casts each, on the server of `647e785d7`
+  (before) and of `f461a9b91` (after), from the regression artifact cache:
+  - default budget: before, 20 of 20 casts exactly 9 pulses; after, the same.
+  - 2 ms budget: before, 12 late, extra mean 5.60 max 22, every extra the sum of the
+    callbacks' lateness; after, 12 late, extra mean 5.00 max 21 against a summed
+    lateness of mean 6.30 max 24.
+  - 8 ms budget: before, 11 late, extra mean 8.00 max 46 (124 deferring pulses, worst
+    callback 15 late); after, 9 late, extra mean 4.70 max 37 against a summed lateness
+    of mean 5.75 max 40 (212 deferring pulses, worst callback 28 late: the load of a run
+    is not repeatable, so the rows, not the means, are the comparison).
+  - On the fixed build every row follows the rule: `[5, 1, 0]` took 12 pulses (15 on
+    the old code), `[5, 2, 1]` 14 (17), `[1, 4, 7]` 20 (21), `[2, 2, 0]` 11 (13),
+    `[0, 1, 1]` 11 (11: the lateness fell on the last segments).
+  - Under these budgets a callback is late by 1 to 28 pulses, mostly more than the 4
+    and 1 pulses of the segments after it, so the one-pulse minimum rules: on this
+    9-pulse cast the fix can take back at most 3 pulses. A longer cast has more slack
+    (an 18-pulse one, 10), and lateness of a pulse or two per callback is made up in
+    full, as the harness shows; the real server with its default budget showed none.
+- Run on the branch: `test_cast_lateness_runtime.py`,
+  `test_spell_schedule_failure_runtime.py`, `test_death_field_runtime.py`: pass. The
+  first, minus its `due_tick` assertion, fails on `master`'s sources at the item's
+  example (18, not 14).
+- Both measurements are posted on the item (15:39 and 15:51 on 2026-10-07).
+- Merge request !14 closes #14. The tag `log-review/phase-4-review-0` is the head the
+  review reads: `f461a9b91` plus this file's commit.
+- The gate, on 2026-10-07, on `f461a9b91` with this file's edits in the tree:
+  - `./scripts/format.sh --check`: clean.
+  - `make -C src`: built (9 minutes: `structs.h` changed, so everything recompiled).
+  - `make test-all`: 672 passed, 0 failed, in 576 s. `test_cast_lateness_runtime.py`
+    is the 672nd.
+  - `make test-db`: 46 of 46 passed in 275 s. `mysql_combat` took 160 s,
+    `world_capture` 94 s, `game_loop_budget` 194 s, `chaos_raise` 86 s.
+- Nothing is open.
 
 ---
 
