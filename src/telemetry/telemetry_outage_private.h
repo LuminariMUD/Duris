@@ -29,7 +29,6 @@ enum class telemetry_outage_result : std::uint8_t
 	unsafe_storage,
 	owned_elsewhere,
 	corrupt,
-	quota,
 	io_failure,
 };
 
@@ -61,8 +60,10 @@ struct telemetry_outage_journal
 };
 
 /* All operations belong to the designated worker. A successful open persists
- * registration before transport admission is possible. read acquires the same
- * exclusive lock and is intended for bounded, offline evidence export. */
+ * registration before transport admission is possible; when the ledger already
+ * holds TELEMETRY_OUTAGE_MAX_PRODUCERS lifetimes it is kept as an archive file
+ * and the chain starts again. read acquires the same exclusive lock and is
+ * intended for bounded, offline evidence export. */
 telemetry_outage_result
 telemetry_outage_open(telemetry_outage_journal *journal, const char *directory,
 		      const telemetry_outage_observation &registration) noexcept;

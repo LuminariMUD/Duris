@@ -323,7 +323,7 @@ telemetry_outage_result persist(telemetry_outage_journal &j)
 	else if (errno != ENOENT || j.generation != 0U)
 		return failure(j, telemetry_outage_result::unsafe_storage, errno);
 	if (j.generation == UINT64_MAX)
-		return failure(j, telemetry_outage_result::quota, EOVERFLOW);
+		return failure(j, telemetry_outage_result::io_failure, EOVERFLOW);
 	std::vector<unsigned char> data(std::begin(MAGIC), std::end(MAGIC));
 	data.reserve(64U + j.count * TELEMETRY_OUTAGE_DISK_WORDS * 8U);
 	append_word(data, j.generation + 1U);
@@ -369,6 +369,37 @@ telemetry_outage_result persist(telemetry_outage_journal &j)
 		return failure(j, telemetry_outage_result::io_failure, errno);
 	++j.generation;
 	j.error_code = 0U;
+	return telemetry_outage_result::ready;
+}
+
+/* A full ledger is published once more, with its last running phase closed by
+ * the caller, then kept as outages.ledger.<registered utc>.<generation>; the
+ * chain starts again with the new registration as its only entry. */
+telemetry_outage_result archive(telemetry_outage_journal &j,
+				const telemetry_outage_observation &registration)
+{
+	const auto published = persist(j);
+	if (published != telemetry_outage_result::ready)
+		return published;
+	std::array<char, 80U> name{};
+	const auto stamp =
+		registration.registered_utc_usec != TELEMETRY_UTC_UNKNOWN ?
+			registration.registered_utc_usec :
+			static_cast<std::int64_t>(registration.registered_monotonic_usec);
+	std::snprintf(name.data(), name.size(), "%s.%lld.%llu", LEDGER,
+		      static_cast<long long>(stamp), static_cast<unsigned long long>(j.generation));
+	struct stat existing
+	{
+	};
+	if (fstatat(j.directory_fd, name.data(), &existing, AT_SYMLINK_NOFOLLOW) == 0)
+		return failure(j, telemetry_outage_result::unsafe_storage, EEXIST);
+	if (errno != ENOENT)
+		return failure(j, telemetry_outage_result::io_failure, errno);
+	if (renameat(j.directory_fd, LEDGER, j.directory_fd, name.data()) != 0 ||
+	    fsync(j.directory_fd) != 0)
+		return failure(j, telemetry_outage_result::io_failure, errno);
+	j.count = 0U;
+	j.generation = 0U;
 	return telemetry_outage_result::ready;
 }
 
@@ -534,9 +565,10 @@ telemetry_outage_open(telemetry_outage_journal *journal, const char *directory,
 				journal->observations[index].phase =
 					telemetry_outage_phase::unknown_tail;
 		}
-		if (journal->count == TELEMETRY_OUTAGE_MAX_PRODUCERS)
-			result = failure(*journal, telemetry_outage_result::quota, ENOSPC);
-		else
+		result = journal->count == TELEMETRY_OUTAGE_MAX_PRODUCERS ?
+				 archive(*journal, registration) :
+				 telemetry_outage_result::ready;
+		if (result == telemetry_outage_result::ready)
 		{
 			journal->current = journal->count++;
 			journal->observations[journal->current] = registration;

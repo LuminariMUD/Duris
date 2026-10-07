@@ -43,6 +43,16 @@ def main() -> None:
             assert previous["known_abandoned_unattempted_records"] == 0
             assert current["phase"] == "clean_drained" and current["tail_end_monotonic_usec"] == 500
             assert (evidence / "outages.ledger").read_bytes() == before
+            # An archive the writer kept reads the same way under its own name.
+            archive = evidence / "outages.ledger.1000.4"
+            archive.write_bytes(before)
+            archive.chmod(0o600)
+            archived = subprocess.run(command + ["--ledger", archive.name], check=True, text=True,
+                                      capture_output=True, timeout=10)
+            assert json.loads(archived.stdout) == packet
+            refused = subprocess.run(command + ["--ledger", "../outages.ledger"], text=True, capture_output=True, timeout=10)
+            assert refused.returncode == 2 and json.loads(refused.stdout)["reason"] == "invalid_ledger_name"
+            archive.unlink()
             pending = evidence / "outages.pending"
             pending.write_bytes(b"interrupted")
             pending.chmod(0o600)

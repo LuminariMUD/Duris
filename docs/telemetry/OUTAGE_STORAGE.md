@@ -61,28 +61,39 @@ owner-only `outages.pending` file, synchronizes it, renames it to `outages.ledge
 and synchronizes the directory. A SHA-256 checksum detects damaged frames;
 protected storage provides access control, not the checksum.
 
-A complete pending publication is recovered only when its generation extends
+A whole pending publication is recovered only when its generation extends
 the existing chain, preserves producer identities/scopes, advances cumulative
 watermarks, and retains terminal history. Registration may only append an empty
 new producer and convert the prior running phase to unknown without extending its
 time. Recovery synchronizes the pending file before publication and is idempotent.
-After any uncertain publication, the in-memory writer is poisoned until a fresh
-open validates the on-disk chain; it cannot retry over the same generation.
+A whole pending frame that decodes but does not extend the chain is kept and
+refuses capture. A pending file that is not a whole frame (empty, short, or with
+a digest that does not match) is what a crash, a power cut or a full disk leaves
+between the create and the rename; it never became the ledger and holds nothing
+the ledger lacks, so an open removes it and the ledger stands. Until the rename
+the pending file is the writer's own staging copy: a write, fsync or close that
+fails removes it and the next sample writes again. Only a rename that fails
+leaves a whole frame behind and poisons the in-memory writer until a fresh open
+validates the on-disk chain.
 
-Corrupt or truncated pending evidence is retained and capture is refused. Missing,
-unsafe, disk-full, conflicting or exhausted storage opens a payload-free telemetry
-circuit and refuses further admissions. Normal gameplay startup remains available.
-The worker does not automatically delete evidence, evict producers or reconstruct
-missing facts. Fixing a storage fault does not resume that producer; use a fresh
-runtime after inspecting and preserving evidence.
+A sample that cannot be written costs evidence, not records: the records are
+durable in SQL whatever the ledger says, capture goes on, and the ledger's last
+good sample stays a running watermark (an unknown tail after the next
+registration). A registration that cannot be written refuses capture, as do a
+missing, unsafe or conflicting directory and a ledger that does not decode: the
+telemetry circuit opens payload-free with `storage_check` naming the check
+(`directory`, `protection`, `owner`, `ledger`, `io`) and `error` the errno, and
+normal gameplay startup remains available. The worker never deletes a ledger or
+reconstructs missing facts.
 
 During normal publication the two frame files occupy at most 163,968 bytes,
-plus filesystem metadata and the empty owner file. At the 256-lifetime limit,
-stop the telemetry worker, inspect/export the ledger, and retain the entire old
-directory in protected archival storage before provisioning a fresh empty one.
-Never remove or replace `outages.owner` while a worker is active. Archival evidence
-must remain available for incident registration and study provenance; deleting it
-is not a recovery procedure.
+plus filesystem metadata and the empty owner file. When the ledger already holds
+256 lifetimes the next registration publishes it once more (the unfinished
+lifetime closed as an unknown tail), keeps it as
+`outages.ledger.<registered utc usec>.<generation>` and starts a new chain with
+itself as the only entry; nothing is lost and no operator step is needed. Archive
+files are never read or removed by the worker; retain them with the directory.
+Never remove or replace `outages.owner` while a worker is active.
 
 ## Offline evidence export
 
@@ -90,13 +101,16 @@ Stop the telemetry worker before using the POSIX offline reader:
 
 ```sh
 python3 scripts/telemetry/outage.py /your/private/local/runtime/telemetry-outages
+python3 scripts/telemetry/outage.py /your/private/local/runtime/telemetry-outages --ledger outages.ledger.<utc>.<generation>
 ```
 
 The reader takes the same exclusive ownership lock, validates the bounded frame
-and protection, and writes sanitized JSON to standard output. It creates no files
-and performs no repair. Exit 2 reports refused input/storage with a stable reason
-and, for I/O errors, a numeric code. `pending_publication` requires the worker's
-validated recovery path or evidence review; the reader will not delete/repair it.
+and protection, and writes sanitized JSON to standard output; `--ledger` reads an
+archive the writer kept instead of the live ledger. It creates no files and
+performs no repair. Exit 2 reports refused input/storage with a stable reason
+and, for I/O errors, a numeric code. `pending_publication` (a whole pending frame
+beside the live ledger) requires the worker's validated recovery path or evidence
+review; the reader will not delete/repair it.
 Both unknown-tail end fields are `null`. The separate last-observed timestamps,
 queue decomposition and acknowledged/rejected counters retain their actual
 meaning. Store exported packets privately, not in the repository.
@@ -118,15 +132,19 @@ python3 tests/async/test_telemetry_runtime_outage.py
 The native journal tests use synthetic protected temporary directories and cover
 clean/abandoned observations, monotonic watermarks and immutable scopes, producer
 reuse, simultaneous process ownership, unsafe/symlink/hard-link storage,
-checksum/semantic/truncation/size corruption, ENOSPC write and fsync faults,
-interrupted rename/publication, idempotent recovery, real SIGKILL, real exec,
-historical-chain refusal, storage changes and the full producer quota. The
-offline reader consumes a real native frame and is checked for unchanged bytes,
-null unknown ends, active-owner refusal, and retained interrupted evidence.
+checksum/semantic/truncation/size corruption, ENOSPC write and fsync faults with
+the retry in place, an interrupted rename, an empty, short or torn pending file
+removed at open, idempotent recovery, real SIGKILL, real exec, historical-chain
+refusal, storage changes and the archive at 256 lifetimes. The offline reader
+consumes a real native frame and is checked for unchanged bytes, null unknown
+ends, active-owner refusal, retained whole pending evidence and an archive read
+under its own name.
 
 The runtime journey runs SQL-header and client-free variants with bounded
 synthetic repository faults. It verifies registration before SQL initialization
 and admission, clean drain/restart, transient SQL recovery, unresolved commit
-shutdown, disk-full startup/checkpoints and worker-only I/O. Existing transport
-stress verifies coherent queue/counter samples while gameplay admission is active.
+shutdown, a disk-full registration (refused, no staging file left), a disk-full
+sample (capture goes on, sampling resumes), a transient qualification failure
+retried past the old budget, and worker-only I/O. Existing transport stress
+verifies coherent queue/counter samples while gameplay admission is active.
 These tests require no production, staging or personal database credentials.

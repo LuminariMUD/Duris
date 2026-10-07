@@ -466,7 +466,7 @@ void process_exec(const char *executable)
 	std::puts("outage real process exec, restart and descriptor ownership passed");
 }
 
-void quota()
+void rotation()
 {
 	fixture f;
 	telemetry_outage_journal journal{};
@@ -474,16 +474,41 @@ void quota()
 	{
 		assert(telemetry_outage_open(&journal, f.path.c_str(), registration(index + 1U)) ==
 		       result::ready);
-		terminate_cleanly(journal, index + 1U);
+		// The last lifetime ends without a terminal sample, like a kill.
+		if (index + 1U < TELEMETRY_OUTAGE_MAX_PRODUCERS)
+			terminate_cleanly(journal, index + 1U);
+		else
+			telemetry_outage_close(&journal);
 	}
 	const auto full = bytes(f.path / "outages.ledger");
 	assert(full.size() == TELEMETRY_OUTAGE_MAX_BYTES);
-	assert(telemetry_outage_open(&journal, f.path.c_str(), registration(257)) == result::quota);
-	assert(bytes(f.path / "outages.ledger") == full);
+	// Lifetime 257 keeps the full chain as an archive, with the killed producer
+	// closed as an unknown tail, and starts a new chain with itself.
+	assert(telemetry_outage_open(&journal, f.path.c_str(), registration(257)) == result::ready);
+	assert(journal.count == 1U && journal.generation == 1U && journal.current == 0U);
+	terminate_cleanly(journal, 257);
+	assert(fs::file_size(f.path / "outages.ledger") == 384U);
+	const auto archive = f.path / "outages.ledger.1000.512";
+	assert(fs::exists(archive) && fs::file_size(archive) == TELEMETRY_OUTAGE_MAX_BYTES);
+	std::size_t files = 0U;
+	for (const auto &entry : fs::directory_iterator(f.path))
+		files += entry.path().filename().string().rfind("outages.ledger.", 0) == 0 ? 1U :
+											     0U;
+	assert(files == 1U);
 	assert(telemetry_outage_read(&journal, f.path.c_str()) == result::ready);
-	assert(journal.count == TELEMETRY_OUTAGE_MAX_PRODUCERS);
+	assert(journal.count == 1U && journal.generation == 2U &&
+	       journal.observations[0].phase == phase::clean_drained);
 	telemetry_outage_close(&journal);
-	std::puts("outage bounded producer quota preserves all evidence passed");
+	fixture g;
+	fs::copy_file(archive, g.path / "outages.ledger");
+	assert(chmod((g.path / "outages.ledger").c_str(), 0600) == 0);
+	assert(telemetry_outage_read(&journal, g.path.c_str()) == result::ready);
+	assert(journal.count == TELEMETRY_OUTAGE_MAX_PRODUCERS && journal.generation == 512U);
+	assert(journal.observations[TELEMETRY_OUTAGE_MAX_PRODUCERS - 1U].phase ==
+	       phase::unknown_tail);
+	assert(journal.observations[0].phase == phase::clean_drained);
+	telemetry_outage_close(&journal);
+	std::puts("outage full producer table is archived and the chain starts again passed");
 }
 } // namespace
 
@@ -524,6 +549,6 @@ int main(int argc, char **argv)
 	pending_chain();
 	abrupt_kill();
 	process_exec(argv[0]);
-	quota();
+	rotation();
 	std::puts("telemetry durable outage evidence qualification passed");
 }

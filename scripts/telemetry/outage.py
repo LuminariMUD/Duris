@@ -91,9 +91,11 @@ def safe_file(fd: int) -> os.stat_result:
     return status
 
 
-def read_evidence(directory: Path) -> dict:
+def read_evidence(directory: Path, name: str = "outages.ledger") -> dict:
     if not directory.is_absolute():
         raise EvidenceError("invalid_directory")
+    if name != "outages.ledger" and not (name.startswith("outages.ledger.") and "/" not in name):
+        raise EvidenceError("invalid_ledger_name")
     root = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
     owner = ledger = None
     try:
@@ -107,14 +109,16 @@ def read_evidence(directory: Path) -> dict:
             fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise EvidenceError("owned_elsewhere") from None
-        try:
-            os.stat("outages.pending", dir_fd=root, follow_symlinks=False)
-        except FileNotFoundError:
-            pass
-        else:
-            # This reader never repairs or deletes interrupted evidence.
-            raise EvidenceError("pending_publication")
-        ledger = os.open("outages.ledger", os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=root)
+        if name == "outages.ledger":
+            try:
+                os.stat("outages.pending", dir_fd=root, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                # A whole pending frame belongs to the writer's recovery path; this
+                # reader never repairs or deletes it. An archive has no pending file.
+                raise EvidenceError("pending_publication")
+        ledger = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=root)
         size = safe_file(ledger).st_size
         if not 384 <= size <= MAX_BYTES:
             raise EvidenceError("corrupt")
@@ -130,9 +134,12 @@ def read_evidence(directory: Path) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
+    parser.add_argument("--ledger", default="outages.ledger",
+                        help="file name in the directory: the live outages.ledger, or an archive "
+                             "outages.ledger.<utc>.<generation> the writer kept when the table was full")
     args = parser.parse_args()
     try:
-        evidence = read_evidence(args.directory)
+        evidence = read_evidence(args.directory, args.ledger)
     except EvidenceError as error:
         print(json.dumps({"status": "refused", "reason": str(error)}))
         return 2
