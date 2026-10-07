@@ -379,6 +379,31 @@ journey waits until `close_socket()` has logged every disconnect, requires
    does not cover) the harness fails on the first INSERT and the leg exits 1.
    `DATABASE.md` names the leg and the command.
 
+2. **Part 1** (`f7368e60e`, the pick of `e0e837102` with the four documents and the
+   script dropped, author kept). It merged cleanly and compiled on the step-1 harness.
+   Reviewing it found a defect it did not fix: the transport opened the circuit on a
+   refused repository start with `permanent_repository` and error 0, never reading the
+   repository's health, so the operator line said that for a schema or a grant refusal
+   alike; and the check's own mismatches (type, index, engine) borrowed SQL error 1054,
+   the missing-column code. `ce09d17bc` fixes both: `telemetry_schema_check` (table,
+   column, column-type, index, engine) in the health snapshot, set by the repository
+   and carried by the transport through an optional `health` callback on the repository
+   binding (defaulted, so the harness bindings compile unchanged), printed as
+   `schema_check=` on the `telemetry_health` line and by `world telemetry`, and part of
+   the monitor's failure signature. The repository harness pins the kind and the code
+   per case and gains a renamed progression column; the transport harness pins the
+   carried cause. `run_telemetry_schema_boot_journey.py` boots a real server with
+   telemetry on: whole chain (healthy), one progression column renamed (the boot gate
+   refuses the schema with COMPAT-E003 before telemetry runs, so on this tree a drifted
+   telemetry table never reaches the writer), a writer that may only SELECT
+   (`permanent-permission error=1142 schema_check=none`, game running, nothing admitted)
+   and, with `--misnamed-server`, a build whose `telemetry_columns.inc` names a column
+   the chain lacks (`permanent-schema error=1054 schema_check=column`, game running):
+   the production incident of the item, reproduced on a running server. It is the
+   `telemetry_schema_boot` leg of `make test-db`, 20 s. On the binary of `f7368e60e`
+   the SELECT-only writer logged `permanent-repository error=0`. `RUNBOOK.md` lists the
+   causes; `DATABASE.md` names the journey.
+
 **Done when:** the four conditions in the item. The quit line condition holds for the other
 four stamps as well.
 
@@ -1165,5 +1190,30 @@ then the files of the three picks less the four documents and the script above,
    `session_boot_id` misspelt in `session_fields()` (a column the Python mapping contract
    does not cover) the harness fails on the first INSERT and the leg exits 1.
    `DATABASE.md` names the leg and the command.
+
+2. **Part 1** (`f7368e60e`, the pick of `e0e837102` with the four documents and the
+   script dropped, author kept). It merged cleanly and compiled on the step-1 harness.
+   Reviewing it found a defect it did not fix: the transport opened the circuit on a
+   refused repository start with `permanent_repository` and error 0, never reading the
+   repository's health, so the operator line said that for a schema or a grant refusal
+   alike; and the check's own mismatches (type, index, engine) borrowed SQL error 1054,
+   the missing-column code. `ce09d17bc` fixes both: `telemetry_schema_check` (table,
+   column, column-type, index, engine) in the health snapshot, set by the repository
+   and carried by the transport through an optional `health` callback on the repository
+   binding (defaulted, so the harness bindings compile unchanged), printed as
+   `schema_check=` on the `telemetry_health` line and by `world telemetry`, and part of
+   the monitor's failure signature. The repository harness pins the kind and the code
+   per case and gains a renamed progression column; the transport harness pins the
+   carried cause. `run_telemetry_schema_boot_journey.py` boots a real server with
+   telemetry on: whole chain (healthy), one progression column renamed (the boot gate
+   refuses the schema with COMPAT-E003 before telemetry runs, so on this tree a drifted
+   telemetry table never reaches the writer), a writer that may only SELECT
+   (`permanent-permission error=1142 schema_check=none`, game running, nothing admitted)
+   and, with `--misnamed-server`, a build whose `telemetry_columns.inc` names a column
+   the chain lacks (`permanent-schema error=1054 schema_check=column`, game running):
+   the production incident of the item, reproduced on a running server. It is the
+   `telemetry_schema_boot` leg of `make test-db`, 20 s. On the binary of `f7368e60e`
+   the SELECT-only writer logged `permanent-repository error=0`. `RUNBOOK.md` lists the
+   causes; `DATABASE.md` names the journey.
 
 **Done when:** the four conditions in the item.
