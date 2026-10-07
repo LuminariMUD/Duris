@@ -16,6 +16,7 @@ docs/
   diagrams/      architecture diagrams         assets/       images and audio
   examples/      versioned configuration samples and transcripts
   data/          generated inputs and evidence that tools read
+  ongoing-projects/  the owner's working notes on work in progress
   lib/           runtime game data (not documentation)
 ```
 

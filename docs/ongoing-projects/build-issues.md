@@ -1,7 +1,8 @@
 # Findings: clean rebuild and restart of staging, 2026-10-07
 
 Written 2026-10-07 against `master` at `a7e43bd0a`, right after the pull from `baba13d99`
-(36 commits: Phases 1 and 2 of [plan.md](plan.md) plus the documentation consolidation).
+(36 commits: Phases 1 and 2 of the plan for #10, #11, #13, #14 and #17, whose last phase
+landed on 2026-10-07 in `338092a78`, plus the documentation consolidation).
 This is a working note. File each row of the findings table as a work item or dismiss it,
 then delete the file.
 
