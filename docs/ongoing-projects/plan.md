@@ -14,7 +14,7 @@ Updated 2026-10-07. A new session starts here, then reads the phase it continues
 | 1 | #10 | Landed on 2026-10-05 in `7fdbb20fe` (!11). |
 | 2 | #13 | Landed on 2026-10-06 in `6a4e5511c` (!12). |
 | 3 | #11 | Landed on 2026-10-07 in `a55ccef17` (!13). |
-| 4 | #14 | Not started. It is next, on a new branch from `master`. |
+| 4 | #14 | In progress on `fix/14-cast-lateness`, from `master` at `647e785d7`. |
 | 5 | #17 | Not started. |
 
 ## Are the items still valid?
@@ -809,6 +809,68 @@ tick. All three go through `schedule_spellcast()` (L1241). `add_event` sets
 running event is (L1651), and the continuation does not use it. `DelayCommune()` extends
 the memorize event by the nominal segment, which still adds up to the cast time. The defect
 follows from the code. Nobody has measured a late cast.
+
+**Added by the check (2026-10-07).** Read again at `647e785d7`.
+
+- There are four scheduling sites, not three. `MobCastSpell()` (`mobact.c` L821) schedules
+  a mob's first segment with its own `add_event(event_spellcast, 4, ...)`; only its
+  continuations go through `schedule_spellcast()`. A mob of level 60 or more, or with a
+  cast of four pulses or less, calls `event_spellcast()` at once with no event, as
+  `do_cast` does for `CMD_INSTACAST` and a weaved spell.
+- `event_spellcast` has player priority only for a PC (`nevent_is_player_timed()`); a
+  mob's cast is NORMAL priority and is deferred first. The `PLAYER EVENT TIMING` line is
+  written for a PC's callbacks only, so the measurement sees players' casts.
+- `spellcast_datatype` is copied into the event as a raw payload, zeroed by `memset` or
+  `bzero` at its three construction sites, and persisted nowhere.
+- `ne_event_tick` has no header; `comm.c`, `events.c` and `nevent_periodic.c` each
+  declare it `extern`.
+- `test_spell_schedule_failure_runtime.py` and `test_death_field_runtime.py` compile
+  `schedule_spellcast()` (the second `event_spellcast()` and `MobCastSpell()` too)
+  without `new_events.c`, so each must define the tick once the helper reads it.
+  `test_elemental_aura_runtime.py` reads `event_spellcast` as text only.
+- The event budget is checked every 64 scanned events, so the `--minimal` world never
+  defers; load needs the full world. The full-world flat-file layout of
+  `test_flatfile_full_world_boot.py` boots with no database, and with `CHAOS_MUD=TRUE` a
+  new MindFlayer is level 56 and casts `adrenaline control` (18 pulses, five segments)
+  through `do_will` with mana alone, as `run_spellcast_racial_multiplier_journey.py` does.
+- `RUNBOOK.md` ("For casting complaints") states the defect. `EVENTS.md` and
+  `CONFIGURATION.md` do not describe the segments.
+
+**Ablated before the work started (2026-10-07).**
+
+- Outcome: the item's three done-when conditions. Non-goals: `DelayCommune()` and the
+  progress stars keep the nominal segment (decision 9); the scheduler's ordering, budgets
+  and trace line do not change; a mob whose first `add_event()` is refused stays
+  `AFF2_CASTING`, which is older than this item and not fixed here.
+- The measurement is not a copy of `test_mysql_combat_journey.py`: its character is a
+  warrior and it needs a MariaDB leg, and the measurement needs a caster and load.
+  `tests/async/run_cast_timing_probe.py` boots the full world on the flat-file backend,
+  creates the level-56 MindFlayer, casts `adrenaline control` a number of times and reads
+  the trace: per cast, the start tick (the first segment's due tick less its length), the
+  finish tick (the last callback's actual tick) and each callback's lateness. Load is the
+  existing `DURIS_NEVENT_BUDGET_USEC` knob on the full world, not scripted mobs: a cut
+  budget defers the pass's work every pulse, which is the condition the item describes.
+  The script is committed so that step 4 and the review re-run it; `make test-all` does
+  not run it.
+- The fix is in `schedule_spellcast()` as planned, plus one line in `MobCastSpell()` so a
+  mob's first segment carries its due tick; without it a mob's cast keeps its first
+  callback's lateness. The field is `due_tick`, the tick the scheduled segment is due at.
+  Zero means the cast has not been scheduled yet; a scheduled segment is always due at
+  tick 1 or later, so zero cannot be a real value. The delay is the intended tick less
+  the current one, at least 1, and the intended tick is kept when the minimum applies so
+  that lateness larger than a segment carries forward.
+- One harness, `test_cast_lateness_runtime.py`, modelled on the two above: the production
+  `schedule_spellcast()`, `event_spellcast()` and `MobCastSpell()` with `add_event()`
+  stubbed to record the delay, each callback run at its due tick plus an injected
+  lateness. It pins exact finish ticks, not a model of the code.
+- `RUNBOOK.md`'s sentence becomes the new rule; `REGRESSIONS.md` and `TESTING.md` get the
+  test's entry as the earlier phases did.
+
+**Files.** `src/core/structs.h`, `src/net/sparser.c`, `src/mob/mobact.c`;
+`tests/async/test_cast_lateness_runtime.py` and `tests/async/run_cast_timing_probe.py`
+(new), `tests/async/test_spell_schedule_failure_runtime.py` and
+`tests/async/test_death_field_runtime.py` (the tick); `docs/operations/RUNBOOK.md`,
+`docs/testing/REGRESSIONS.md`, `docs/guides/TESTING.md`; this file.
 
 **Steps**
 
