@@ -74,8 +74,9 @@ without creating synthetic observations, and always roll back. A refusal opens t
 circuit and the payload-free health names its cause: the failure class, the SQL
 error if one occurred, and `schema_check` (table, column, column-type, index or
 engine) for what the contract check refused; gameplay stays available. Admission
-waits for that qualification; buffering through a later transient outage remains
-supported. `tests/async/run_telemetry_schema_boot_journey.py`, the
+waits for that qualification; a transient failure at qualification is retried at
+a one-second cap for as long as it lasts, and buffering through a later transient
+outage remains supported. `tests/async/run_telemetry_schema_boot_journey.py`, the
 `telemetry_schema_boot` leg of `make test-db`, boots a real server against the
 whole chain, against a renamed column (the boot gate's COMPAT-E003 refuses that
 schema first), as a writer that may only SELECT, and, given `--misnamed-server`,

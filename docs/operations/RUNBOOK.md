@@ -340,6 +340,13 @@ decode; 74) and `io` (open, read, write, fsync or rename failed, for example 2 f
 a missing directory or 28 for a full disk). A sample that cannot be written after
 registration does not refuse anything; capture goes on and the ledger keeps its
 last good sample.
+
+A dependency that is down when the writer qualifies (a connection refused, the
+advisory lock held, a lock wait past the two-second read timeout) is
+`failure_class=transient-connection` or `transient-transaction` with
+`state=degraded`, retried at a one-second cap for as long as it lasts; the line
+shows `retry repository=<attempts>`. Only a permanent class opens the circuit.
+
 A trusted operator can run `world telemetry` to inspect the same live metadata
 without a debugger. Start with `state`, `reason_flags`, `failure class`, numeric
 `error`, `schema_check`, `record_kinds`, `queue`, and `retry`; compare

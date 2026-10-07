@@ -544,24 +544,19 @@ bool schedule_inflight_retry(telemetry_monotonic_usec now, std::uint32_t error_c
 	return true;
 }
 
-bool schedule_repository_retry(telemetry_monotonic_usec now, std::uint32_t error_code) noexcept
+/* A dependency that is down when the writer qualifies comes back on its own
+ * time: the connection, lock or timeout failure is retried at the backoff, capped
+ * at one second, for as long as it lasts. Only a permanent class opens the
+ * circuit; the batch retry budget stays where it bounds duplicate commits. */
+bool schedule_repository_retry(telemetry_monotonic_usec now, std::uint32_t error_code,
+			       telemetry_failure_class failure_class =
+				       telemetry_failure_class::transient_connection) noexcept
 {
-	if (REPOSITORY_RETRY_ATTEMPTS < TELEMETRY_TRANSPORT_MAX_RETRY_ATTEMPTS)
+	if (REPOSITORY_RETRY_ATTEMPTS != std::numeric_limits<std::uint32_t>::max())
 		++REPOSITORY_RETRY_ATTEMPTS;
-	if (REPOSITORY_RETRY_ATTEMPTS >= TELEMETRY_TRANSPORT_MAX_RETRY_ATTEMPTS)
-	{
-		open_circuit(now, error_code, telemetry_failure_class::transient_connection,
-			     nullptr, 0U, REPOSITORY_RETRY_ATTEMPTS);
-		REPOSITORY_RETRY_NOT_BEFORE = std::numeric_limits<telemetry_monotonic_usec>::max();
-		HEALTH.repository_retry_attempts.store(REPOSITORY_RETRY_ATTEMPTS,
-						       std::memory_order_release);
-		HEALTH.repository_retry_not_before.store(REPOSITORY_RETRY_NOT_BEFORE,
-							 std::memory_order_release);
-		return false;
-	}
 	REPOSITORY_RETRY_NOT_BEFORE =
 		saturating_time_add(now, retry_backoff(REPOSITORY_RETRY_ATTEMPTS));
-	mark_failure(now, error_code, telemetry_failure_class::transient_connection);
+	mark_failure(now, error_code, failure_class);
 	HEALTH.repository_retry_attempts.store(REPOSITORY_RETRY_ATTEMPTS,
 					       std::memory_order_release);
 	HEALTH.repository_retry_not_before.store(REPOSITORY_RETRY_NOT_BEFORE,
@@ -756,7 +751,10 @@ bool ensure_repository(telemetry_monotonic_usec now) noexcept
 					       std::memory_order_release);
 		return false;
 	}
-	schedule_repository_retry(now, cause.last_error_code);
+	schedule_repository_retry(now, cause.last_error_code,
+				  cause.last_failure_class == telemetry_failure_class::none ?
+					  telemetry_failure_class::transient_connection :
+					  cause.last_failure_class);
 	return false;
 }
 

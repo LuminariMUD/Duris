@@ -169,6 +169,7 @@ void wait_for_storage_refusal(telemetry_storage_check check)
 	const auto health = telemetry_runtime_health_copy();
 	assert(health.state == telemetry_health_state::circuit_open);
 	assert(health.last_failure_class == telemetry_failure_class::permanent_repository);
+	assert(health.last_storage_check == check);
 }
 
 void required_directory()
@@ -237,17 +238,16 @@ void ambiguous_shutdown()
 	std::puts("runtime unresolved SQL commit remains an unknown tail after shutdown passed");
 }
 
-void failed_storage(bool startup)
+void failed_registration()
 {
+	// Without a durable registration nothing is admitted. The staging file the
+	// failed write left is removed, so the next lifetime starts clean.
 	outage_fixture fixture;
 	const auto options = make_enabled_options();
 	bind_outage(fixture, options);
-	if (!startup)
-		telemetry_test_start_runtime(options);
 	outage_fail_write = true;
-	if (startup)
-		assert(telemetry_runtime_init(options) == telemetry_runtime_outcome::accepted);
-	wait_for_storage_refusal();
+	assert(telemetry_runtime_init(options) == telemetry_runtime_outcome::accepted);
+	wait_for_storage_refusal(telemetry_storage_check::io);
 	const auto before = telemetry_runtime_health_copy();
 	assert(before.last_error_code == ENOSPC);
 	assert(telemetry_runtime_session_enter(make_enter(options.producer, options.config))
@@ -294,6 +294,49 @@ void failed_checkpoint()
 	telemetry_outage_close(&evidence);
 	std::puts("runtime disk-full checkpoint keeps capture running and resumes sampling passed");
 }
+
+void wait_for_state(telemetry_health_state state, unsigned int seconds = 5U)
+{
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+	while (telemetry_runtime_health_copy().state != state &&
+	       std::chrono::steady_clock::now() < deadline)
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	assert(telemetry_runtime_health_copy().state == state);
+}
+
+void transient_qualification()
+{
+	// A dependency that is down when the writer qualifies is retried for as long
+	// as it is down; the old budget gave up for the process after eight tries.
+	outage_fixture fixture;
+	const auto options = make_enabled_options();
+	bind_outage(fixture, options);
+	fixture.fake.init_mode = fake_repository::mode::unavailable;
+	assert(telemetry_runtime_init(options) == telemetry_runtime_outcome::accepted);
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+	while (telemetry_runtime_health_copy().repository_retry_attempts < 12U &&
+	       std::chrono::steady_clock::now() < deadline)
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	const auto waiting = telemetry_runtime_health_copy();
+	assert(waiting.repository_retry_attempts >= 12U);
+	assert(waiting.state == telemetry_health_state::degraded);
+	assert(waiting.last_failure_class == telemetry_failure_class::transient_connection);
+	assert(waiting.circuit_open_count == 0U);
+	assert(telemetry_runtime_session_enter(make_enter(options.producer, options.config))
+		       .outcome != telemetry_runtime_outcome::accepted);
+	fixture.fake.init_mode = fake_repository::mode::ready;
+	wait_for_state(telemetry_health_state::healthy);
+	assert(telemetry_runtime_health_copy().repository_retry_attempts == 0U);
+	assert(telemetry_runtime_session_enter(make_enter(options.producer, options.config))
+		       .outcome == telemetry_runtime_outcome::accepted);
+	stop_outage_runtime();
+	telemetry_outage_journal evidence{};
+	assert(telemetry_outage_read(&evidence, fixture.directory.c_str()) == outage_result::ready);
+	assert(evidence.count == 1U &&
+	       evidence.observations[0].phase == outage_phase::clean_drained);
+	assert(evidence.observations[0].health.admitted_control > 0U);
+	telemetry_outage_close(&evidence);
+	std::puts("runtime transient qualification failure is retried until it clears passed");
 }
 } // namespace
 
@@ -305,6 +348,7 @@ int main()
 	ambiguous_shutdown();
 	failed_registration();
 	failed_checkpoint();
+	transient_qualification();
 	assert(!outage_io_on_producer.load());
 	std::puts("telemetry runtime durable outage journey passed");
 }
