@@ -194,9 +194,9 @@ int main() {
         assert(applied_damage == baseline);
     }
     reset(); person.curr_stats.Agi = 101; falling_step(&person, 43);
-    assert(applied_damage == 171);
+    assert(applied_damage == 118);
     reset(); person.curr_stats.Agi = 101; safe_skill = 100; falling_step(&person, 43);
-    assert(applied_damage == 85);
+    assert(applied_damage == 59);
     reset(); safe_skill = 100; person.curr_stats.Agi = 200; falling_step(&person, 1);
     assert(applied_damage == 1);
     reset(); person.points.max_hit = 0;
@@ -206,7 +206,7 @@ int main() {
     assert(falling_step(&person, 43) == falling_step_result::actor_removed);
     assert(deaths == 1 && stuns == 0);
     reset(); person.points.hit = 100; safe_skill = 100; falling_step(&person, 43);
-    assert(deaths == 0 && GET_HIT(&person) == 14);
+    assert(deaths == 0 && GET_HIT(&person) == 41);
 
     for (int skill : {0, 100}) {
         reset(); safe_skill = skill; rooms[0].sector_type = SECT_WATER_SWIM;
@@ -214,10 +214,10 @@ int main() {
         assert(applied_damage == 0 && schedule_attempts == 0 && GET_HIT(&person) == 1000);
         reset(); safe_skill = skill; floor();
         assert(falling_step(&person, 60) == falling_step_result::continued);
-        assert(applied_damage == (skill ? 120 : 240) && schedule_attempts == 1);
+        assert(applied_damage == (skill ? 103 : 206) && schedule_attempts == 1);
         reset(); safe_skill = skill; has_rider = true;
         assert(falling_step(&person, 43) == falling_step_result::landed);
-        const int expected = skill ? 86 : 172;
+        const int expected = skill ? 59 : 119;
         assert(applied_damage == 0 && rider_damage == expected);
         assert(GET_HIT(&person) == 1000 - expected && GET_HIT(&rider) == 1000 - expected);
         assert(unlinks == 1);

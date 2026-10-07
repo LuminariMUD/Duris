@@ -57,7 +57,11 @@ falling_speed_decision falling_advance_speed(int speed, bool levitating, bool fl
 int falling_impact_damage(int max_hit, int speed, int agility, int impact_roll, int safe_fall_skill,
 			  int safe_fall_roll)
 {
-	int damage = static_cast<int>(max_hit * ((speed / 2.5) / 100)) + impact_roll - agility;
+	/* The flat impact term grows with the fall: a one-room fall (speed 31) carries a third
+	 * of it, and it applies in full from speed 90, where the high-speed band begins. Flat,
+	 * it was most of a low-level character's hit points for a single room. */
+	const int impact = impact_roll * std::min(speed, 90) / 90;
+	int damage = static_cast<int>(max_hit * ((speed / 2.5) / 100)) + impact - agility;
 	if (damage < 2)
 		damage = 2;
 	if (safe_fall_skill && safe_fall_skill > safe_fall_roll)

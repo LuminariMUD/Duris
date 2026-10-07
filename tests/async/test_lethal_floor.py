@@ -106,7 +106,7 @@ int main() {
         if (npc) person.specials.act |= ACT_ISNPC;
         riding = mounted;
         assert(falling_step(&person, 60) == falling_step_result::continued);
-        assert(applied_damage == 240 && scheduled == 1 && dispels == 1);
+        assert(applied_damage == 206 && scheduled == 1 && dispels == 1);
 
         reset(); floor(); lethal = true;
         if (npc) person.specials.act |= ACT_ISNPC;

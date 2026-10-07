@@ -172,6 +172,10 @@ custody and wallet; a reconnect keeps the inventory without replaying the haul.
   fires only in the room it was scheduled in: a faller summoned or teleported between two
   steps is left where they are. (A move typed inside the gap between two steps used to
   run, and the fall then landed wherever the walk went, three rooms away in the report.)
+- The flat 80 to 120 impact term grows with the fall: a third of it for a one-room fall
+  (speed 31), all of it from speed 90. The hit-point term, the agility deduction, the
+  minimum of 2 and Safe Fall are unchanged. (Flat, it was most of a low-level
+  character's hit points for a single room.)
 
 ```sh
 python3 tests/async/test_falling_skills.py
@@ -181,9 +185,11 @@ python3 tests/async/run_lethal_floor_journey.py /absolute/path/dms_flat nonletha
 python3 tests/async/run_lethal_floor_journey.py /absolute/path/dms_flat lethal
 ```
 
-`test_falling_skills.py` runs the production `falling_char` under ASan/UBSan and exhausts
-every 1-100 roll for negative, zero, boundary, ordinary and above-cap skill values:
-success and failure, short and long falls, odd-damage rounding, minimum damage, a lethal
+`test_falling_policy.py` pins the arithmetic, the scaled impact term at speeds 31, 43, 90
+and 250 included. `test_falling_skills.py` runs the production `falling_char` under
+ASan/UBSan and exhausts every 1-100 roll for negative, zero, boundary, ordinary and
+above-cap skill values: success and failure, short and long falls, odd-damage rounding,
+minimum damage, a lethal
 threshold, water, a breakable floor, mount and rider, flight and levitation, Climb active
 and absent, Mental Anguish, initial against already-scheduled falls, and a step whose
 faller has left the scheduled room. Its journey walks a character off a ledge, lands,
