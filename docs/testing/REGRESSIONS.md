@@ -38,6 +38,37 @@ the test checks a durable ten-platinum wallet, an empty statue and no credit on 
 pickup. The player-load harness in `run_experience_trophy_mysql.sh` loads a pile whose
 custody row holds an older amount and checks that the saved amount wins.
 
+## Casts that run behind the event pass
+
+A spell with a cast time above four pulses is cast in segments of up to four, and each
+segment was scheduled from the tick the one before it ran at, so every callback the event
+pass ran late pushed the cast back by its lateness: a 12-pulse cast whose three callbacks
+each ran two pulses late took 18. Each segment is now due at the tick the one before it
+was due plus its own length (`spellcast_datatype.due_tick`, advanced by
+`schedule_spellcast()`, and set by `MobCastSpell()` for the segment it schedules itself),
+so a late callback shortens the next segment, never below one pulse: a cast finishes at
+its cast time plus the lateness of its last segment, or later only by that minimum. A
+cast with no lateness takes exactly its cast time. `DelayCommune()` and the casting
+display keep the nominal segments. Work item #14.
+
+```sh
+python3 tests/async/test_cast_lateness_runtime.py
+python3 tests/async/test_spell_schedule_failure_runtime.py
+python3 tests/async/test_death_field_runtime.py
+python3 tests/async/run_cast_timing_probe.py --server /absolute/path/dms_flat [--budget-usec 2000]
+```
+
+`test_cast_lateness_runtime.py` compiles the production `schedule_spellcast()`,
+`event_spellcast()` and `MobCastSpell()` and runs each callback at its due tick plus an
+injected lateness: casts of 1 to 20 pulses with none take their cast time in segments of
+four; the item's 12-pulse example finishes in 14; lateness before the last segment is made
+up; after a stall the minimum leaves one pulse per remaining segment; and a mob's cast
+makes up its lateness as a player's does. The other two compile the helper and keep
+rejection and NPC casts as they were. The probe is the measurement on a real full-world
+server, not a test, and is not in `make test-all`: it reads each cast's segments from the
+`PLAYER EVENT TIMING` trace and prints how late it finished. Not covered: a cast under real
+lateness in a test leg.
+
 ## Coin put after an auction listing
 
 An auction settlement advances the ownership revision of both the source and the
