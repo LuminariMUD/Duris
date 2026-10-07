@@ -164,7 +164,7 @@ test-list:
 # Every test here creates and destroys its own MySQL or MariaDB container, and
 # they run side by side. They are kept out of test-all because Docker is
 # intentionally not a core build dependency. The journeys run the built server.
-test-db: build-server
+test-db: build-server world
 	@command -v docker >/dev/null 2>&1 || { \
 		echo 'error: make test-db requires Docker' >&2; \
 		exit 127; \
