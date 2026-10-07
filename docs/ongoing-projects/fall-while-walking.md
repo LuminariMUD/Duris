@@ -54,7 +54,7 @@ text: the landing messages arrive in A Large Sleeping Cave.
 ## Resolution (2026-10-08)
 
 On the branch `fix/build-findings-and-falling`, with the build findings of
-[build-issues.md](build-issues.md).
+[build-findings.md](build-findings.md).
 
 | # | Status | Change |
 |---|---|---|
