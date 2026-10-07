@@ -782,8 +782,10 @@ payload check materialized once, so the unindexed `saved_items.obj_uid` is read 
 - On a merge of that `master` with `9f157be7a` (scratch, not pushed): `make test-db` 46 of
   46 in 269 s, `world_restart_handover` among them.
 - Nothing is open. The phase is ready to land. `master` has the two commits above that the
-  branch lacks, so the landing is a real `git merge --no-ff` of the tag, not the
-  commit-tree merge Phase 2 used.
+  branch lacks, so the landing is a real `git merge --no-ff`, not the commit-tree merge
+  Phase 2 used. It merges the branch head, not the tag: after the tag the branch carries
+  two working notes the owner added (`build-issues.md` and `fall-while-walking.md` in
+  this folder, documentation only), which land with it.
 
 ---
 
