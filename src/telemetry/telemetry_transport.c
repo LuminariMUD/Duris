@@ -59,6 +59,11 @@ std::atomic<bool> RESTART_ALLOWED{ false };
 std::atomic<bool> SHUTDOWN_REQUESTED{ false };
 std::atomic<std::uint64_t> ADMISSION_STATE{ 0U };
 std::atomic<bool> REPOSITORY_READY{ false };
+/* Initial validation is required before admission. Once qualified, a later
+ * transient outage may buffer records while the worker reconnects. */
+std::atomic<bool> ADMISSION_READY{ false };
+std::atomic<std::uint64_t> PRODUCER_SAMPLE_EPOCH{ 0U };
+std::atomic<std::uint64_t> OBSERVED_RECORD_KINDS{ 0U };
 std::atomic<bool> CIRCUIT_OPEN{ false };
 /* Set only after init reports an owned writer.  DB-down/disabled paths must
  * not synchronously call a borrowed shutdown callback that has no live writer. */
@@ -76,6 +81,8 @@ struct transport_health_atoms
 	std::atomic<std::uint8_t> last_failure_class{ static_cast<std::uint8_t>(
 		telemetry_failure_class::none) };
 	std::atomic<std::uint32_t> last_error_code{ 0U };
+	std::atomic<std::uint8_t> last_schema_check{ 0U };
+	std::atomic<std::uint8_t> last_storage_check{ 0U };
 	std::atomic<std::uint32_t> queue_capacity{ 0U };
 	std::atomic<std::uint64_t> producer_boot_id{ 0U };
 	std::atomic<std::uint64_t> producer_process_id{ 0U };
@@ -170,6 +177,18 @@ void production_repository_shutdown(void *) noexcept
 	}
 }
 
+telemetry_health_snapshot production_repository_health(void *) noexcept
+{
+	try
+	{
+		return telemetry_repository_health_copy();
+	}
+	catch (...)
+	{
+		return {};
+	}
+}
+
 bool production_clock_now(void *, telemetry_monotonic_usec *value) noexcept
 {
 	if (value == nullptr)
@@ -187,6 +206,7 @@ telemetry_transport_repository_binding DEFAULT_REPOSITORY = {
 	production_repository_request_stop,
 	production_repository_shutdown,
 	nullptr,
+	production_repository_health,
 };
 telemetry_transport_clock_binding DEFAULT_CLOCK = { production_clock_now, nullptr };
 telemetry_transport_repository_binding REPOSITORY = DEFAULT_REPOSITORY;
@@ -294,6 +314,8 @@ void reset_health(const telemetry_transport_config &config) noexcept
 	HEALTH.last_failure_class.store(static_cast<std::uint8_t>(telemetry_failure_class::none),
 					std::memory_order_relaxed);
 	HEALTH.last_error_code.store(0U, std::memory_order_relaxed);
+	HEALTH.last_schema_check.store(0U, std::memory_order_relaxed);
+	HEALTH.last_storage_check.store(0U, std::memory_order_relaxed);
 	HEALTH.queue_capacity.store(config.queue_capacity, std::memory_order_relaxed);
 	HEALTH.producer_boot_id.store(config.fresh_producer.boot_id, std::memory_order_relaxed);
 	HEALTH.producer_process_id.store(config.fresh_producer.process_id,
@@ -437,6 +459,8 @@ void capture_failure_identity(const telemetry_record *records, std::size_t count
 	HEALTH.last_failure_class.store(static_cast<std::uint8_t>(failure_class),
 					std::memory_order_release);
 	HEALTH.last_error_code.store(error_code, std::memory_order_release);
+	HEALTH.last_schema_check.store(0U, std::memory_order_release);
+	HEALTH.last_storage_check.store(0U, std::memory_order_release);
 	HEALTH.last_failure_retry_attempts.store(retry_attempts, std::memory_order_release);
 	if (records == nullptr || count == 0U)
 	{
@@ -467,6 +491,8 @@ void mark_failure(telemetry_monotonic_usec now, std::uint32_t error_code,
 			  telemetry_failure_class::transient_internal) noexcept
 {
 	HEALTH.last_error_code.store(error_code, std::memory_order_release);
+	HEALTH.last_schema_check.store(0U, std::memory_order_release);
+	HEALTH.last_storage_check.store(0U, std::memory_order_release);
 	HEALTH.last_failure_class.store(static_cast<std::uint8_t>(failure_class),
 					std::memory_order_release);
 	HEALTH.last_failure_monotonic_usec.store(now, std::memory_order_release);
@@ -518,24 +544,19 @@ bool schedule_inflight_retry(telemetry_monotonic_usec now, std::uint32_t error_c
 	return true;
 }
 
-bool schedule_repository_retry(telemetry_monotonic_usec now, std::uint32_t error_code) noexcept
+/* A dependency that is down when the writer qualifies comes back on its own
+ * time: the connection, lock or timeout failure is retried at the backoff, capped
+ * at one second, for as long as it lasts. Only a permanent class opens the
+ * circuit; the batch retry budget stays where it bounds duplicate commits. */
+bool schedule_repository_retry(telemetry_monotonic_usec now, std::uint32_t error_code,
+			       telemetry_failure_class failure_class =
+				       telemetry_failure_class::transient_connection) noexcept
 {
-	if (REPOSITORY_RETRY_ATTEMPTS < TELEMETRY_TRANSPORT_MAX_RETRY_ATTEMPTS)
+	if (REPOSITORY_RETRY_ATTEMPTS != std::numeric_limits<std::uint32_t>::max())
 		++REPOSITORY_RETRY_ATTEMPTS;
-	if (REPOSITORY_RETRY_ATTEMPTS >= TELEMETRY_TRANSPORT_MAX_RETRY_ATTEMPTS)
-	{
-		open_circuit(now, error_code, telemetry_failure_class::transient_connection,
-			     nullptr, 0U, REPOSITORY_RETRY_ATTEMPTS);
-		REPOSITORY_RETRY_NOT_BEFORE = std::numeric_limits<telemetry_monotonic_usec>::max();
-		HEALTH.repository_retry_attempts.store(REPOSITORY_RETRY_ATTEMPTS,
-						       std::memory_order_release);
-		HEALTH.repository_retry_not_before.store(REPOSITORY_RETRY_NOT_BEFORE,
-							 std::memory_order_release);
-		return false;
-	}
 	REPOSITORY_RETRY_NOT_BEFORE =
 		saturating_time_add(now, retry_backoff(REPOSITORY_RETRY_ATTEMPTS));
-	mark_failure(now, error_code, telemetry_failure_class::transient_connection);
+	mark_failure(now, error_code, failure_class);
 	HEALTH.repository_retry_attempts.store(REPOSITORY_RETRY_ATTEMPTS,
 					       std::memory_order_release);
 	HEALTH.repository_retry_not_before.store(REPOSITORY_RETRY_NOT_BEFORE,
@@ -683,6 +704,7 @@ bool ensure_repository(telemetry_monotonic_usec now) noexcept
 	{
 		REPOSITORY_STARTED.store(true, std::memory_order_release);
 		REPOSITORY_READY.store(true, std::memory_order_release);
+		ADMISSION_READY.store(true, std::memory_order_release);
 		REPOSITORY_RETRY_ATTEMPTS = 0U;
 		REPOSITORY_RETRY_NOT_BEFORE = 0U;
 		HEALTH.repository_retry_attempts.store(0U, std::memory_order_release);
@@ -713,13 +735,26 @@ bool ensure_repository(telemetry_monotonic_usec now) noexcept
 		set_health_state(telemetry_health_state::stopping);
 		return false;
 	}
+	// The repository's own health names the cause: the schema, a grant or a
+	// producer collision, with the SQL error and what the check refused.
+	telemetry_health_snapshot cause{};
+	if (REPOSITORY.health != nullptr)
+		cause = REPOSITORY.health(REPOSITORY.context);
 	if (outcome == telemetry_repository_outcome::permanent_failure)
 	{
-		open_circuit(now, 0U, telemetry_failure_class::permanent_repository, nullptr, 0U,
-			     REPOSITORY_RETRY_ATTEMPTS);
+		open_circuit(now, cause.last_error_code,
+			     telemetry_failure_is_permanent(cause.last_failure_class) ?
+				     cause.last_failure_class :
+				     telemetry_failure_class::permanent_repository,
+			     nullptr, 0U, REPOSITORY_RETRY_ATTEMPTS);
+		HEALTH.last_schema_check.store(static_cast<std::uint8_t>(cause.last_schema_check),
+					       std::memory_order_release);
 		return false;
 	}
-	schedule_repository_retry(now, 0U);
+	schedule_repository_retry(now, cause.last_error_code,
+				  cause.last_failure_class == telemetry_failure_class::none ?
+					  telemetry_failure_class::transient_connection :
+					  cause.last_failure_class);
 	return false;
 }
 
@@ -1246,6 +1281,22 @@ struct producer_guard
 	}
 };
 
+struct producer_sample_guard
+{
+	bool active;
+	explicit producer_sample_guard(bool entered) noexcept
+		: active(entered)
+	{
+		if (active)
+			PRODUCER_SAMPLE_EPOCH.fetch_add(1U, std::memory_order_seq_cst);
+	}
+	~producer_sample_guard()
+	{
+		if (active)
+			PRODUCER_SAMPLE_EPOCH.fetch_add(1U, std::memory_order_seq_cst);
+	}
+};
+
 } // namespace
 
 telemetry_transport_outcome
@@ -1326,6 +1377,8 @@ telemetry_transport_outcome telemetry_transport_init(telemetry_transport_config 
 
 	SETTINGS = config;
 	LAST_ADMITTED_KEY = {};
+	PRODUCER_SAMPLE_EPOCH.store(0U, std::memory_order_release);
+	OBSERVED_RECORD_KINDS.store(0U, std::memory_order_release);
 	LOSS = {};
 	LOSS_RANGE_UNKNOWN = false;
 	REPOSITORY_SETTINGS = { config.backend,		0U,
@@ -1339,6 +1392,7 @@ telemetry_transport_outcome telemetry_transport_init(telemetry_transport_config 
 	SHUTDOWN_REQUESTED.store(false, std::memory_order_release);
 	REPOSITORY_READY.store(false, std::memory_order_release);
 	REPOSITORY_STARTED.store(false, std::memory_order_release);
+	ADMISSION_READY.store(false, std::memory_order_release);
 	CIRCUIT_OPEN.store(false, std::memory_order_release);
 
 	if (config.backend == telemetry_storage_backend::flatfile_disabled)
@@ -1372,6 +1426,7 @@ telemetry_transport_outcome telemetry_transport_init(telemetry_transport_config 
 telemetry_enqueue_result telemetry_transport_enqueue(telemetry_record record)
 {
 	producer_guard guard;
+	producer_sample_guard sample(guard.entered);
 	telemetry_enqueue_result result{};
 	result.key = record.header.key;
 	const std::uint8_t lifecycle = LIFECYCLE.load(std::memory_order_seq_cst);
@@ -1412,6 +1467,9 @@ telemetry_enqueue_result telemetry_transport_enqueue(telemetry_record record)
 		update_admission_result(result);
 		return result;
 	}
+	OBSERVED_RECORD_KINDS.fetch_or(std::uint64_t{ 1U }
+					       << static_cast<std::uint8_t>(record.header.kind),
+				       std::memory_order_relaxed);
 	if (CIRCUIT_OPEN.load(std::memory_order_acquire) && !control)
 	{
 		record_failed_admission(record, false);
@@ -1422,6 +1480,12 @@ telemetry_enqueue_result telemetry_transport_enqueue(telemetry_record record)
 
 	telemetry_monotonic_usec now = 0U;
 	const bool now_valid = clock_now(now);
+	if (!ADMISSION_READY.load(std::memory_order_acquire))
+	{
+		result.admission = telemetry_queue_admission::rejected_not_ready;
+		update_admission_result(result);
+		return result;
+	}
 	const telemetry_queue_private::push_result pushed =
 		telemetry_queue_private::try_push(&QUEUE, record, now, now_valid, control);
 	if (!pushed.accepted)
@@ -1558,6 +1622,57 @@ telemetry_transport_loss_snapshot telemetry_transport_loss_copy_for_producer(voi
 	return LOSS;
 }
 
+bool telemetry_transport_uses_test_repository(void)
+{
+	return REPOSITORY.init != DEFAULT_REPOSITORY.init;
+}
+
+void telemetry_transport_fail_storage_for_worker(telemetry_monotonic_usec now,
+						 std::uint32_t error_code,
+						 telemetry_storage_check check)
+{
+	ADMISSION_READY.store(false, std::memory_order_release);
+	const auto first = INFLIGHT.isolation ? INFLIGHT.isolation_index : 0U;
+	open_circuit(now, error_code, telemetry_failure_class::permanent_repository,
+		     INFLIGHT.active ? INFLIGHT_RECORDS.data() + first : nullptr,
+		     INFLIGHT.active ? INFLIGHT.count - first : 0U, 0U);
+	HEALTH.last_storage_check.store(static_cast<std::uint8_t>(check),
+					std::memory_order_release);
+}
+
+bool telemetry_transport_outage_copy_for_worker(telemetry_outage_observation *observation)
+{
+	if (observation == nullptr)
+		return false;
+	for (unsigned int attempt = 0U; attempt < 4U; ++attempt)
+	{
+		const auto epoch = PRODUCER_SAMPLE_EPOCH.load(std::memory_order_seq_cst);
+		if ((epoch & 1U) != 0U)
+			continue;
+		const auto health = telemetry_transport_health_copy();
+		const auto kinds = OBSERVED_RECORD_KINDS.load(std::memory_order_acquire);
+		// A read-modify-write sees the latest epoch in modification order and
+		// orders the preceding atomic samples. Ordinary loads may see a stale
+		// even epoch while already observing part of the next admission.
+		if (epoch != PRODUCER_SAMPLE_EPOCH.fetch_add(0U, std::memory_order_seq_cst))
+			continue;
+		const auto first = INFLIGHT.isolation ? INFLIGHT.isolation_index : 0U;
+		const auto inflight = INFLIGHT.active ? INFLIGHT.count - first : 0U;
+		if (inflight > health.queue_depth || health.queue_depth > SETTINGS.queue_capacity)
+			return false;
+		observation->health = health;
+		observation->record_kind_mask = kinds;
+		observation->inflight_records = static_cast<std::uint32_t>(inflight);
+		observation->unattempted_records =
+			static_cast<std::uint32_t>(health.queue_depth - inflight);
+		if (inflight != 0U)
+			observation->health.inflight_first_record_seq =
+				INFLIGHT_RECORDS[first].header.key.record_seq;
+		return true;
+	}
+	return false;
+}
+
 telemetry_health_snapshot telemetry_transport_health_copy(void)
 {
 	telemetry_health_snapshot result{};
@@ -1570,6 +1685,10 @@ telemetry_health_snapshot telemetry_transport_health_copy(void)
 		HEALTH.last_failure_class.load(std::memory_order_acquire));
 	result.schema_version = TELEMETRY_SCHEMA_VERSION;
 	result.last_error_code = HEALTH.last_error_code.load(std::memory_order_acquire);
+	result.last_schema_check = static_cast<telemetry_schema_check>(
+		HEALTH.last_schema_check.load(std::memory_order_acquire));
+	result.last_storage_check = static_cast<telemetry_storage_check>(
+		HEALTH.last_storage_check.load(std::memory_order_acquire));
 	result.queue_capacity = HEALTH.queue_capacity.load(std::memory_order_acquire);
 	result.producer.boot_id = HEALTH.producer_boot_id.load(std::memory_order_acquire);
 	result.producer.process_id = HEALTH.producer_process_id.load(std::memory_order_acquire);

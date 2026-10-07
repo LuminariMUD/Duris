@@ -72,6 +72,7 @@ DESTRUCTIVE_ACTIONS = {
 REQUIRED_NON_DATABASE_STORES = {
     "file:flatfile-authority-journal": ("recovery_state", "FLATFILE_ROOT/domains/.critical-authority-transaction"),
     "file:critical_command_journal": ("journal", "CRITICAL_COMMAND_JOURNAL_DIR"),
+    "file:telemetry_outage_ledger": ("journal", "TELEMETRY_OUTAGE_LEDGER_DIR"),
     "file:persistence_fallback": ("fallback", "legacy persistence fallback file"),
     "file:persistence_fallback_quarantine": (
         "quarantine", "legacy persistence fallback quarantine",
@@ -442,6 +443,12 @@ def validate_manifest(manifest: dict, expected_tables: set[str],
             raise ValidationError(f"{entry_id} dependencies must be a unique list")
         if not isinstance(entry["protected_record"], bool):
             raise ValidationError(f"{entry_id} protected_record must be boolean")
+        if entry_id == "file:telemetry_outage_ledger" and (
+                not entry["protected_record"] or entry["season_action"] != "retain" or
+                entry["terminal_action"] != "retain"):
+            raise ValidationError(
+                "telemetry coverage evidence must remain protected and retained"
+            )
         if entry["protected_record"] and entry["exception"] not in PROTECTED_EXCEPTIONS:
             raise ValidationError(f"{entry_id} protected record lacks a recognized exception")
         if entry["terminal_action"] in destructive_actions:

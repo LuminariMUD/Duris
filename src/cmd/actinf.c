@@ -4609,11 +4609,13 @@ static void show_world_telemetry(P_char ch)
 	if (status.last_failure_age_available != 0U)
 		snprintf(
 			line, sizeof(line),
-			"failure class=%s error=%u monotonic_us=%llu age_ms=%llu producer=%llu:%llu "
-			"seq=%llu-%llu "
+			"failure class=%s error=%u schema_check=%s storage_check=%s monotonic_us=%llu "
+			"age_ms=%llu producer=%llu:%llu seq=%llu-%llu "
 			"record_kinds=%s retries=%u\n",
 			telemetry_health_failure_class_name(health.last_failure_class),
 			health.last_error_code,
+			telemetry_health_schema_check_name(health.last_schema_check),
+			telemetry_health_storage_check_name(health.last_storage_check),
 			(unsigned long long)health.last_failure_monotonic_usec,
 			(unsigned long long)(status.last_failure_age_usec / 1'000U),
 			(unsigned long long)health.last_failure_producer.boot_id,
@@ -4623,9 +4625,13 @@ static void show_world_telemetry(P_char ch)
 			health.last_failure_retry_attempts);
 	else
 		snprintf(line, sizeof(line),
-			 "failure class=%s error=%u age=never record_kinds=%s\n",
+			 "failure class=%s error=%u schema_check=%s storage_check=%s age=never "
+			 "record_kinds=%s\n",
 			 telemetry_health_failure_class_name(health.last_failure_class),
-			 health.last_error_code, failure_kinds);
+			 health.last_error_code,
+			 telemetry_health_schema_check_name(health.last_schema_check),
+			 telemetry_health_storage_check_name(health.last_storage_check),
+			 failure_kinds);
 	send_to_char(line, ch);
 	snprintf(line, sizeof(line),
 		 "retry inflight=%u repository=%u backoff_us=%llu retryable=%llu ambiguous=%llu "

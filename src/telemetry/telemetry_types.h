@@ -316,6 +316,30 @@ enum class telemetry_failure_class : std::uint8_t
 	permanent_repository = 8,
 };
 
+/* What the writer's startup contract check refused, with no record data. */
+enum class telemetry_schema_check : std::uint8_t
+{
+	none = 0,
+	table = 1, // a table is missing (SQL error 1146)
+	column = 2, // a column the writer needs is missing or an unknown one is required
+	column_type = 3, // a column's type, signedness, width, nullability or default differs
+	index = 4, // a replay or projection index is missing, changed or unreviewed
+	engine = 5, // a table is not InnoDB
+};
+
+/* What the worker's outage ledger refused at startup, with the errno in
+ * last_error_code. */
+enum class telemetry_storage_check : std::uint8_t
+{
+	none = 0,
+	directory =
+		1, // TELEMETRY_OUTAGE_LEDGER_DIR unset or relative, or this producer is registered
+	protection = 2, // owner, mode or link count of the directory or a file
+	owner = 3, // another process holds outages.owner
+	ledger = 4, // the ledger or a whole pending frame does not decode
+	io = 5, // open, read, write, fsync or rename failed; errno says which
+};
+
 enum class telemetry_disabled_reason : std::uint8_t
 {
 	none = 0,
@@ -347,6 +371,8 @@ enum class telemetry_queue_admission : std::uint8_t
 	rejected_control_full = 6,
 	rejected_oversize = 7,
 	rejected_circuit_open = 8,
+	/* Worker startup has not yet validated the storage contract. */
+	rejected_not_ready = 9,
 };
 
 /*
@@ -564,6 +590,18 @@ struct telemetry_cumulative_counters
 	telemetry_duration_usec unknown_usec;
 	telemetry_duration_usec resident_usec;
 	telemetry_duration_usec linkdead_usec;
+};
+
+/* Bounded copyover state; no monotonic timestamp crosses process incarnations.
+ * Import retains totals and starts from a new observation's clock anchor.
+ * Descriptors may hold this value while initial writer qualification completes. */
+struct telemetry_session_handoff
+{
+	telemetry_session_ref session;
+	telemetry_producer_id previous_producer;
+	telemetry_checkpoint_revision last_checkpoint_revision;
+	telemetry_cumulative_counters cumulative;
+	telemetry_quality_mask quality_flags;
 };
 
 /* Common immutable record metadata. occurrence_utc_usec is not ingestion time. */
@@ -795,7 +833,8 @@ struct telemetry_health_snapshot
 	telemetry_disabled_reason disabled_reason;
 	telemetry_failure_class last_failure_class;
 	std::uint16_t schema_version;
-	std::uint16_t reserved2;
+	telemetry_schema_check last_schema_check;
+	telemetry_storage_check last_storage_check;
 	std::uint32_t last_error_code;
 	std::uint32_t queue_capacity;
 	telemetry_producer_id producer;

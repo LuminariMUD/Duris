@@ -64,6 +64,29 @@ connection before activation, using the same database endpoint/TLS/session polic
 as the authority connection. No gameplay credentials or gameplay connection pool
 may serve as a telemetry fallback.
 
+The writer validates its complete storage contract on its own worker before
+accepting records: every column each record kind writes, with its SQL type,
+signedness, fixed width, nullable and default semantics, the InnoDB engine of each
+table, and the replay and projection indexes. The contract is one descriptor per
+column in `src/telemetry/telemetry_columns.inc`, which the serializers use as well.
+Zero-row SELECT, INSERT and session UPDATE probes verify the effective permissions
+without creating synthetic observations, and always roll back. A refusal opens the
+circuit and the payload-free health names its cause: the failure class, the SQL
+error if one occurred, and `schema_check` (table, column, column-type, index or
+engine) for what the contract check refused; gameplay stays available. Admission
+waits for that qualification; a transient failure at qualification is retried at
+a one-second cap for as long as it lasts, and buffering through a later transient
+outage remains supported. `tests/async/run_telemetry_schema_boot_journey.py`, the
+`telemetry_schema_boot` leg of `make test-db`, boots a real server against the
+whole chain, against a renamed column (the boot gate's COMPAT-E003 refuses that
+schema first), as a writer that may only SELECT, and, given `--misnamed-server`,
+as a build whose column list names a column the chain lacks.
+
+Configuration and quarantine rows are append-only. Their identity checks use the
+repository advisory lock and unique keys; they do not require UPDATE grants for
+locking reads on MySQL. Session projections retain their SELECT FOR UPDATE and
+the dedicated session UPDATE permission.
+
 | Role | Allowed table operations |
 | --- | --- |
 | Telemetry writer | SELECT and INSERT on `telemetry_interval`, `telemetry_config` and `telemetry_quarantine`; SELECT, INSERT and UPDATE on `telemetry_session`. No quarantine UPDATE/DELETE, aggregate writes or gameplay-table privileges. |
@@ -173,6 +196,13 @@ initialization helper. Initialization and apply are single-worker-only APIs.
 
 ## Local validation and limitations
 
+Enabled SQL capture also requires protected durable outage storage. The worker
+registers its producer in `TELEMETRY_OUTAGE_LEDGER_DIR` before repository
+qualification and admission. See [OUTAGE_STORAGE.md](OUTAGE_STORAGE.md) for
+local setup, refusal/recovery semantics, bounded offline evidence export and
+the independent process/storage qualification. This does not change SQL grants
+or schema identities.
+
 The new migration verifier enforces explicit local/production scope and verified
 remote TLS; no remote connection falls back to plaintext or preferred-mode TLS.
 
@@ -195,17 +225,23 @@ make -C src -j4
 make -C src -j4 PERSISTENCE_BACKEND=flatfile
 ```
 
-For a caller-provisioned **disposable loopback** MariaDB fixture with the test
-schema `duris_telemetry_test`, the explicitly guarded repository suite resets that
-schema's telemetry tables and consumes all ten shared golden fixtures through the
-actual repository API. It also tests mixed rejections, field/padding replay,
-checkpoint history, restart configuration reuse and immutable publication replay,
-configuration/scope validation, immutable batch retries, five
-transaction fault modes, ownership lock contention, startup recovery, disabled
-behavior, stop requests and concurrent cached health:
+`make test-db` runs the repository suite as its `telemetry_repository` leg on a
+disposable MariaDB from `tests/async/with_disposable_mariadb.sh`: the test creates
+`duris_telemetry_test` there, applies the whole immutable migration chain with
+`scripts/migration_runner.py` and checks that the history is at the manifest's head,
+then the harness writes every record kind (1 to 8), replays each for
+`duplicate_identical` (the repository reads every mapped column of the stored row back
+and compares it), changes one field for `duplicate_conflict`, and consumes all ten
+shared golden fixtures through the actual repository API. It also tests mixed
+rejections, field/padding replay, checkpoint history, restart configuration reuse and
+immutable publication replay, configuration/scope validation, immutable batch retries,
+five transaction fault modes, ownership lock contention, startup recovery, disabled
+behavior, stop requests and concurrent cached health. With `--sql-fixture` a missing
+`TEST_DB_*` setting is an error, so the leg cannot report the SQL part as skipped; a
+column name the table lacks fails the INSERT and the leg.
 
 ```sh
-TELEMETRY_REPOSITORY_DISPOSABLE=1 python3 tests/async/test_telemetry_repository.py --sql-fixture
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_telemetry_repository.py --sql-fixture
 # MYSQL_CONFIG may select a separate Oracle or MariaDB client installation.
 TELEMETRY_REPOSITORY_DISPOSABLE=1 python3 tests/async/test_telemetry_connection.py
 ```

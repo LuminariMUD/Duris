@@ -322,11 +322,37 @@ reminder every five minutes, while state, severity, reason, and failure-signatur
 changes are logged immediately. An idle writer with no outstanding accepted
 records does not become stale merely because it has no recent commit.
 
+A writer refused at startup opens the circuit before any record is admitted, and
+the line names the cause: `failure_class=permanent-schema` with `error=1146` and
+`schema_check=table` for a missing table, `error=1054` and `schema_check=column`
+for a column the writer needs and the table lacks, `error=0` and
+`schema_check=column-type`, `index` or `engine` for a definition the check itself
+refused, and `failure_class=permanent-permission error=1142` for a grant the
+telemetry account lacks. The game runs on with telemetry off in every case.
+
+A writer refused by its outage ledger says `failure_class=permanent-repository`
+with `storage_check` naming the check and `error` the errno: `directory` (no
+`TELEMETRY_OUTAGE_LEDGER_DIR`, a relative one, or this producer is already
+registered; 22), `protection` (the directory or a file is not owned by the server
+user with mode 0700 or 0600, or has a hard link; 1), `owner` (another process holds
+`outages.owner`; 11), `ledger` (the ledger or a whole pending frame does not
+decode; 74) and `io` (open, read, write, fsync or rename failed, for example 2 for
+a missing directory or 28 for a full disk). A sample that cannot be written after
+registration does not refuse anything; capture goes on and the ledger keeps its
+last good sample.
+
+A dependency that is down when the writer qualifies (a connection refused, the
+advisory lock held, a lock wait past the two-second read timeout) is
+`failure_class=transient-connection` or `transient-transaction` with
+`state=degraded`, retried at a one-second cap for as long as it lasts; the line
+shows `retry repository=<attempts>`. Only a permanent class opens the circuit.
+
 A trusted operator can run `world telemetry` to inspect the same live metadata
 without a debugger. Start with `state`, `reason_flags`, `failure class`, numeric
-`error`, `record_kinds`, `queue`, and `retry`; compare `last_admitted_seq` with
-`last_committed_seq` to locate the unresolved range. Fix the named schema,
-permission, connection, or storage fault rather than weakening SQL/TLS policy.
+`error`, `schema_check`, `record_kinds`, `queue`, and `retry`; compare
+`last_admitted_seq` with `last_committed_seq` to locate the unresolved range. Fix
+the named schema, permission, connection, or storage fault rather than weakening
+SQL/TLS policy.
 A permanent open circuit retains its in-flight batch and requires the normal
 reviewed telemetry lifecycle restart after the dependency is repaired. Recovery
 is logged once, only after fresh commit progress, with the alert duration and

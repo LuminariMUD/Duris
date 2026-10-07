@@ -44,6 +44,8 @@ failure_signature(const telemetry_health_snapshot &health) noexcept
 {
 	telemetry_health_failure_signature signature{};
 	signature.failure_class = health.last_failure_class;
+	signature.schema_check = health.last_schema_check;
+	signature.storage_check = health.last_storage_check;
 	signature.error_code = health.last_error_code;
 	signature.producer = health.last_failure_producer;
 	signature.first_record_seq = health.last_failure_first_record_seq;
@@ -60,7 +62,9 @@ bool same_producer(telemetry_producer_id left, telemetry_producer_id right) noex
 bool same_failure(const telemetry_health_failure_signature &left,
 		  const telemetry_health_failure_signature &right) noexcept
 {
-	return left.failure_class == right.failure_class && left.error_code == right.error_code &&
+	return left.failure_class == right.failure_class &&
+	       left.schema_check == right.schema_check &&
+	       left.storage_check == right.storage_check && left.error_code == right.error_code &&
 	       same_producer(left.producer, right.producer) &&
 	       left.first_record_seq == right.first_record_seq &&
 	       left.last_record_seq == right.last_record_seq &&
@@ -432,6 +436,46 @@ const char *telemetry_health_failure_class_name(telemetry_failure_class failure)
 		return "permanent-permission";
 	case telemetry_failure_class::permanent_repository:
 		return "permanent-repository";
+	}
+	return "unknown";
+}
+
+const char *telemetry_health_schema_check_name(telemetry_schema_check check) noexcept
+{
+	switch (check)
+	{
+	case telemetry_schema_check::none:
+		return "none";
+	case telemetry_schema_check::table:
+		return "table";
+	case telemetry_schema_check::column:
+		return "column";
+	case telemetry_schema_check::column_type:
+		return "column-type";
+	case telemetry_schema_check::index:
+		return "index";
+	case telemetry_schema_check::engine:
+		return "engine";
+	}
+	return "unknown";
+}
+
+const char *telemetry_health_storage_check_name(telemetry_storage_check check) noexcept
+{
+	switch (check)
+	{
+	case telemetry_storage_check::none:
+		return "none";
+	case telemetry_storage_check::directory:
+		return "directory";
+	case telemetry_storage_check::protection:
+		return "protection";
+	case telemetry_storage_check::owner:
+		return "owner";
+	case telemetry_storage_check::ledger:
+		return "ledger";
+	case telemetry_storage_check::io:
+		return "io";
 	}
 	return "unknown";
 }

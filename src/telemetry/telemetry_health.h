@@ -48,7 +48,9 @@ struct telemetry_health_monitor_config
 struct telemetry_health_failure_signature
 {
 	telemetry_failure_class failure_class;
-	std::uint8_t reserved[3];
+	telemetry_schema_check schema_check;
+	telemetry_storage_check storage_check;
+	std::uint8_t reserved[1];
 	std::uint32_t error_code;
 	telemetry_producer_id producer;
 	telemetry_record_sequence first_record_seq;
@@ -121,6 +123,8 @@ telemetry_health_status telemetry_health_monitor_status_copy(
 const char *telemetry_health_state_name(telemetry_health_state state) noexcept;
 const char *telemetry_health_backend_name(telemetry_storage_backend backend) noexcept;
 const char *telemetry_health_failure_class_name(telemetry_failure_class failure) noexcept;
+const char *telemetry_health_schema_check_name(telemetry_schema_check check) noexcept;
+const char *telemetry_health_storage_check_name(telemetry_storage_check check) noexcept;
 const char *telemetry_health_advisory_lock_name(telemetry_advisory_lock_state state) noexcept;
 const char *telemetry_health_alert_severity_name(telemetry_health_alert_severity severity) noexcept;
 const char *telemetry_health_event_kind_name(telemetry_health_event_kind kind) noexcept;

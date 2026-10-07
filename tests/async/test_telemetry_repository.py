@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Compile repository boundary tests; --sql-fixture resets ONLY duris_telemetry_test.
+"""Compile the repository boundary tests; --sql-fixture also runs them on a database.
 
-SQL execution requires an explicitly disposable loopback MariaDB/MySQL fixture
-and TELEMETRY_REPOSITORY_DISPOSABLE=1. TELEMETRY_REPOSITORY_PORT permits only 3306
-(default MariaDB fixture) or 3307 (MySQL 8.4 fixture). No game, Redis, pool, or production credentials
-are used. Default execution runs the SQL-free harness and only builds SQL tests.
+The SQL part needs the TEST_DB_HOST, TEST_DB_PORT, TEST_DB_USER and TEST_DB_PASSWORD
+of a disposable server, as tests/async/with_disposable_mariadb.sh exports them. It
+creates duris_telemetry_test there, applies the whole immutable migration chain with
+scripts/migration_runner.py, checks the history head against the manifest and runs
+the harness against that schema. With --sql-fixture a missing setting is an error,
+so make test-db cannot report the SQL part as skipped. Without the flag the SQL
+harness is only compiled. No checkout credentials are used.
 """
 from __future__ import annotations
 
@@ -16,6 +19,7 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
+import sys
 import tempfile
 
 from test_telemetry_contract_fixtures import canonical_config_fingerprint
@@ -29,6 +33,7 @@ ENUMS = {
     "reason": "telemetry_gap_reason", "backend": "telemetry_storage_backend",
 }
 PAYLOADS = {"session_lifecycle": "lifecycle", "session_checkpoint": "checkpoint", "coverage_gap": "gap"}
+DATABASE = "duris_telemetry_test"
 
 
 def function_body(source: str, start: str, end: str) -> str:
@@ -38,7 +43,7 @@ def function_body(source: str, start: str, end: str) -> str:
 def mapped_columns(source: str) -> list[str]:
     columns = []
     for line in source.splitlines():
-        explicit = re.search(r'number\(values, "([a-z0-9_]+)"', line)
+        explicit = re.search(r'number\(values, telemetry_column_id::([a-z0-9_]+)', line)
         inferred = re.search(r'FIELD\(values, [^,]+, ([a-z0-9_]+)\)', line)
         if explicit:
             columns.append(explicit.group(1))
@@ -54,6 +59,15 @@ def migration_columns(name: str) -> list[str]:
 
 def repository_mapping_contract() -> None:
     repository = (ROOT / "src" / "telemetry" / "telemetry_repository.c").read_text()
+    descriptor = (ROOT / "src/telemetry/telemetry_columns.inc").read_text()
+    names = set(re.findall(r"TELEMETRY_COLUMN\(([a-z0-9_]+),", descriptor))
+    serializer = "\n".join(line for line in repository.splitlines()
+                           if not line.startswith("#define FIELD"))
+    mapped = set(re.findall(r"telemetry_column_id::([a-z0-9_]+)", serializer))
+    assert mapped <= names, f"serializer columns lack canonical descriptors: {mapped - names}"
+    assert 'const char *name, T value' not in repository, "untyped serializer bypass"
+    assert 'validate_writer_schema();' in repository
+    assert 'SELECT * FROM ' not in repository, "incomplete startup table probe"
     encounter = function_body(repository, "void encounter_fields", "void combat_summary_fields")
     combat = function_body(repository, "void combat_summary_fields", "fields counter_fields")
     progression = function_body(
@@ -64,22 +78,58 @@ def repository_mapping_contract() -> None:
 
     progression_schema = migration_columns("0022_telemetry_progression.sql")
     progression_mapped = mapped_columns(progression)
-    assert set(progression_schema).issubset(progression_mapped)
-    assert not set(column.removeprefix("progression_") for column in progression_schema).intersection(
-        progression_mapped
-    )
+    missing = sorted(set(progression_schema) - set(progression_mapped))
+    generic = sorted(set(column.removeprefix("progression_") for column in progression_schema) &
+                     set(progression_mapped))
+    assert not missing, f"0022_telemetry_progression: unmapped columns {missing}"
+    assert not generic, f"0022_telemetry_progression: generic columns {generic}"
 
     encounter_schema = migration_columns("0024_telemetry_encounters.sql")
     encounter_mapped = mapped_columns(encounter)
-    assert encounter_mapped == encounter_schema
-    assert "start_monotonic_usec" not in encounter_mapped
-    assert "start_utc_usec" not in encounter_mapped
-    assert "quality_flags" not in encounter_mapped
+    assert encounter_mapped == encounter_schema, (
+        f"0024_telemetry_encounters: mapped {encounter_mapped} schema {encounter_schema}")
+    generic = sorted({"start_monotonic_usec", "start_utc_usec", "quality_flags"} & set(encounter_mapped))
+    assert not generic, f"0024_telemetry_encounters: generic columns {generic}"
 
     combat_schema = migration_columns("0025_telemetry_combat_summaries.sql")
     combat_mapped = mapped_columns(combat)
-    assert combat_mapped == combat_schema
-    assert "FIELD(values, summary" not in combat
+    assert combat_mapped == combat_schema, (
+        f"0025_telemetry_combat_summaries: mapped {combat_mapped} schema {combat_schema}")
+    assert "FIELD(values, summary" not in combat, "0025_telemetry_combat_summaries: unprefixed FIELD mapping"
+
+
+def prepare_sql_fixture() -> dict[str, str]:
+    """Create the test database on the disposable server and apply the chain to its head."""
+    missing = [name for name in ("TEST_DB_HOST", "TEST_DB_PORT", "TEST_DB_USER", "TEST_DB_PASSWORD")
+               if not os.environ.get(name)]
+    if missing:
+        raise SystemExit("--sql-fixture needs a disposable database: missing " + ", ".join(missing))
+    host = os.environ["TEST_DB_HOST"]
+    assert host in ("127.0.0.1", "localhost"), "use a disposable loopback database"
+    environment = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "ENVIRONMENT": "local", "DB_HOST": host, "DB_PORT": os.environ["TEST_DB_PORT"],
+        "DB_NAME": DATABASE, "DB_USER": os.environ["TEST_DB_USER"],
+        "DB_PASSWD": os.environ["TEST_DB_PASSWORD"],
+        "DB_ALLOWED_TARGETS": host + "/" + DATABASE, "DB_TLS": "FALSE",
+        "MYSQL_PWD": os.environ["TEST_DB_PASSWORD"],
+    }
+    mysql = ["mysql", "--protocol=tcp", "-h", host, "-P", environment["DB_PORT"], "-u",
+             environment["DB_USER"], "-N", "-B"]
+    subprocess.run(mysql + ["-e", f"CREATE DATABASE {DATABASE} CHARACTER SET utf8mb4 "
+                                  "COLLATE utf8mb4_unicode_ci"], check=True, env=environment)
+    subprocess.run(mysql + [DATABASE], input=(ROOT / "migrations/bootstrap_multithread_safe.sql").read_bytes(),
+                   check=True, env=environment)
+    subprocess.run([sys.executable, "scripts/migration_runner.py", "adopt", "--kind", "fresh_bootstrap"],
+                   cwd=ROOT, env=environment, check=True)
+    subprocess.run([sys.executable, "scripts/migration_runner.py", "run"], cwd=ROOT, env=environment, check=True)
+    manifest = json.loads((ROOT / "migrations/migration_manifest.json").read_text())["migrations"]
+    head = subprocess.check_output(
+        mysql + [DATABASE, "-e", "SELECT COUNT(*),COALESCE(MAX(migration_id),'') FROM mud_schema_history"],
+        text=True, env=environment).strip()
+    assert head == f"{len(manifest)}\t{manifest[-1]['id']}", f"migration chain is not at its head: {head!r}"
+    print(f"Immutable migration chain: PASS ({len(manifest)} steps through {manifest[-1]['id']})", flush=True)
+    return environment
 
 
 def assignments(value, target):
@@ -167,10 +217,6 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sql-fixture", action="store_true")
     args = parser.parse_args()
-    if args.sql_fixture and os.environ.get("TELEMETRY_REPOSITORY_DISPOSABLE") != "1":
-        parser.error("--sql-fixture requires TELEMETRY_REPOSITORY_DISPOSABLE=1; database reset is destructive")
-    if os.environ.get("TELEMETRY_REPOSITORY_PORT", "3306") not in {"3306", "3307"}:
-        parser.error("TELEMETRY_REPOSITORY_PORT must be 3306 or 3307 for the disposable fixtures")
     repository_mapping_contract()
     compiler = shlex.split(os.environ.get("CXX", "g++"))
     output_root = ROOT / "bin/tests"
@@ -193,14 +239,9 @@ def main():
                                   "-o", str(sql)] + mysql, check=True)
         print("SQL repository harness compile: PASS", flush=True)
         if args.sql_fixture:
-            subprocess.run([str(sql), str(ROOT / "migrations/immutable/0014_telemetry_storage.sql"),
-                            str(ROOT / "migrations/immutable/0022_telemetry_progression.sql"),
-                            str(ROOT / "migrations/immutable/0024_telemetry_encounters.sql"),
-                            str(ROOT / "migrations/immutable/0025_telemetry_combat_summaries.sql"),
-                            str(ROOT / "migrations/immutable/0030_telemetry_quarantine.sql")],
-                           check=True, timeout=120)
+            subprocess.run([str(sql)], check=True, timeout=180, env=prepare_sql_fixture())
         else:
-            print("SQL runtime: SKIPPED (use --sql-fixture with disposable fixture acknowledgement)")
+            print("SQL runtime: SKIPPED (--sql-fixture under tests/async/with_disposable_mariadb.sh runs it)")
 
 
 if __name__ == "__main__":

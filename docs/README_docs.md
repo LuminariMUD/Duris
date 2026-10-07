@@ -126,6 +126,7 @@ the work item it was built under; [CONTRACT.md](telemetry/CONTRACT.md) maps the 
 | [STORAGE_DESIGN.md](telemetry/STORAGE_DESIGN.md) | The design review the modules were built from. |
 | [DATABASE.md](telemetry/DATABASE.md) | Tables, roles, and repository behavior. |
 | [TRANSPORT.md](telemetry/TRANSPORT.md) | The bounded in-process queue and writer handoff. |
+| [OUTAGE_STORAGE.md](telemetry/OUTAGE_STORAGE.md) | The bounded outage record the writer keeps on disk, and its offline export. |
 | [CONFIG_CONTEXT.md](telemetry/CONFIG_CONTEXT.md) | Effective configuration identity. |
 | [SESSION_STATE.md](telemetry/SESSION_STATE.md), [SESSION_LIFECYCLE.md](telemetry/SESSION_LIFECYCLE.md) | Session state, and the gameplay hooks that feed it. |
 | [ACTIVITY.md](telemetry/ACTIVITY.md) | Activity classification and contextual intervals. |

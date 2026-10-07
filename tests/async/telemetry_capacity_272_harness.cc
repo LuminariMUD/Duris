@@ -230,6 +230,7 @@ benchmark_result run(mode selected, std::uint32_t records, std::uint32_t repetit
 		if (telemetry_transport_init(transport_config()) !=
 		    telemetry_transport_outcome::started)
 			fail("could not initialize benchmark transport");
+		(void)telemetry_transport_pulse(0U);
 	}
 
 	const auto wall_started = std::chrono::steady_clock::now();
@@ -383,6 +384,10 @@ telemetry_repository_outcome telemetry_repository_request_stop(void)
 }
 
 void telemetry_repository_shutdown(void) {}
+telemetry_health_snapshot telemetry_repository_health_copy(void)
+{
+	return {};
+}
 
 int main(int argc, char **argv)
 {

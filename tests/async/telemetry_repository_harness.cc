@@ -76,11 +76,14 @@ int main()
 #else
 #include <mysql.h>
 #include <new>
-#include <fstream>
 #include <string>
 #include <vector>
 
 static unsigned int fixture_port = 3306U;
+static std::string fixture_host;
+static std::string fixture_user;
+static std::string fixture_password;
+static std::string fixture_database;
 static MYSQL *observer = nullptr;
 static MYSQL *sink = nullptr;
 static unsigned int factory_calls = 0;
@@ -131,8 +134,8 @@ extern "C" int __wrap_mysql_real_query(MYSQL *connection, const char *query, uns
 	++query_calls;
 	injected_error = 0;
 	const std::string sql(query, length);
-	if (fault == fault_kind::startup_permission &&
-	    sql == "SELECT * FROM telemetry_interval LIMIT 0")
+	if (fault == fault_kind::startup_permission && sql.starts_with("SELECT `ingest_id`,") &&
+	    sql.ends_with(" LIMIT 0"))
 	{
 		fault = fault_kind::none;
 		injected_handle = connection;
@@ -196,15 +199,6 @@ static void execute(const std::string &sql)
 		std::exit(1);
 	}
 }
-static void execute_migration_statement(const std::string &sql)
-{
-	execute(sql);
-	if (sql.find("EXECUTE ") != std::string::npos)
-	{
-		if (auto *result = mysql_store_result(observer))
-			mysql_free_result(result);
-	}
-}
 static unsigned long long scalar(const char *sql)
 {
 	execute(sql);
@@ -240,9 +234,12 @@ MYSQL *sql_open_telemetry_connection(void)
 	MYSQL *connection = mysql_init(nullptr);
 	CHECK(connection != nullptr);
 	unsigned int timeout = 2;
+	unsigned int protocol = MYSQL_PROTOCOL_TCP;
 	mysql_options(connection, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
-	if (!mysql_real_connect(connection, "127.0.0.1", "root", "", "duris_telemetry_test",
-				fixture_port, nullptr, 0))
+	mysql_options(connection, MYSQL_OPT_PROTOCOL, &protocol);
+	if (!mysql_real_connect(connection, fixture_host.c_str(), fixture_user.c_str(),
+				fixture_password.c_str(), fixture_database.c_str(), fixture_port,
+				nullptr, 0))
 	{
 		mysql_close(connection);
 		return nullptr;
@@ -291,6 +288,15 @@ static telemetry_record interval_record()
 	for (const auto &record : normal_interval_records)
 		if (record.header.kind == telemetry_record_kind::interval)
 			return record;
+	CHECK(false);
+	return {};
+}
+static telemetry_record fixture_record(telemetry_record_kind kind, const telemetry_record *records,
+				       std::size_t count)
+{
+	for (std::size_t index = 0; index < count; ++index)
+		if (records[index].header.kind == kind)
+			return records[index];
 	CHECK(false);
 	return {};
 }
@@ -430,6 +436,92 @@ static telemetry_record combat_summary_record(unsigned long long sequence)
 static void seed_config()
 {
 	expect_one(normal_interval_configs[0], telemetry_apply_outcome::applied);
+}
+
+static telemetry_record record_kind_fixture(telemetry_record_kind kind)
+{
+	switch (kind)
+	{
+	case telemetry_record_kind::interval:
+		return interval_record();
+	case telemetry_record_kind::session_lifecycle:
+		return fixture_record(kind, normal_interval_records,
+				      std::size(normal_interval_records));
+	case telemetry_record_kind::session_checkpoint:
+		return checkpoint_record(1U, 100U, 7303U);
+	case telemetry_record_kind::coverage_gap:
+		return fixture_record(kind, drop_recovery_no_invented_context_records,
+				      std::size(drop_recovery_no_invented_context_records));
+	case telemetry_record_kind::configuration:
+		return normal_interval_configs[0];
+	case telemetry_record_kind::progression:
+		return progression_record(7306U, 25);
+	case telemetry_record_kind::encounter:
+		return encounter_record(7307U);
+	case telemetry_record_kind::combat_summary:
+		return combat_summary_record(7308U);
+	default:
+		CHECK(false);
+		return {};
+	}
+}
+
+static void change_one_field(telemetry_record &record)
+{
+	switch (record.header.kind)
+	{
+	case telemetry_record_kind::interval:
+		record.payload.interval.quality_flags |= TELEMETRY_QUALITY_LATE;
+		break;
+	case telemetry_record_kind::session_lifecycle:
+		record.payload.lifecycle.quality_flags |= TELEMETRY_QUALITY_LATE;
+		break;
+	case telemetry_record_kind::session_checkpoint:
+		record.payload.checkpoint.quality_flags |= TELEMETRY_QUALITY_LATE;
+		break;
+	case telemetry_record_kind::coverage_gap:
+		record.payload.gap.quality_flags |= TELEMETRY_QUALITY_LATE;
+		break;
+	case telemetry_record_kind::configuration:
+		++record.header.occurrence_utc_usec;
+		break;
+	case telemetry_record_kind::progression:
+		record.payload.progression.quality_flags |= TELEMETRY_QUALITY_LATE;
+		break;
+	case telemetry_record_kind::encounter:
+		record.payload.encounter.quality_flags |= TELEMETRY_QUALITY_SEQUENCE_GAP;
+		break;
+	case telemetry_record_kind::combat_summary:
+		++record.payload.combat_summary.damage_dealt;
+		break;
+	default:
+		CHECK(false);
+	}
+	CHECK(telemetry_record_is_valid(record));
+}
+
+static void every_record_kind_round_trip_tests()
+{
+	for (unsigned int number = 1U; number <= 8U; ++number)
+	{
+		const auto kind = static_cast<telemetry_record_kind>(number);
+		std::string label = "record-kind:" + std::to_string(number);
+		case_name = label.c_str();
+		reset_fixture();
+		if (kind != telemetry_record_kind::configuration)
+			seed_config();
+		const auto original = record_kind_fixture(kind);
+		CHECK(telemetry_record_is_valid(original));
+		expect_one(original, telemetry_apply_outcome::applied);
+		expect_one(original, telemetry_apply_outcome::duplicate_identical);
+		auto conflict = original;
+		change_one_field(conflict);
+		expect_one(conflict, telemetry_apply_outcome::duplicate_conflict);
+		const std::string count =
+			"SELECT COUNT(*) FROM telemetry_interval WHERE record_kind=" +
+			std::to_string(number);
+		CHECK(scalar(count.c_str()) == 1U);
+	}
 }
 
 static void replay_and_isolation_tests()
@@ -925,6 +1017,9 @@ static void startup_fencing_tests()
 	CHECK(telemetry_repository_health_copy().state == telemetry_health_state::circuit_open);
 	CHECK(telemetry_repository_health_copy().last_failure_class ==
 	      telemetry_failure_class::permanent_schema);
+	CHECK(telemetry_repository_health_copy().last_schema_check ==
+	      telemetry_schema_check::table);
+	CHECK(telemetry_repository_health_copy().last_error_code == 1146U);
 	CHECK(scalar("SELECT GET_LOCK(CONCAT('duris.telemetry.',MD5(DATABASE())),2)") == 1U);
 	CHECK(scalar("SELECT RELEASE_LOCK(CONCAT('duris.telemetry.',MD5(DATABASE())))") == 1U);
 	execute("RENAME TABLE telemetry_interval_fixture_hidden TO telemetry_interval");
@@ -938,10 +1033,134 @@ static void startup_fencing_tests()
 	CHECK(telemetry_repository_health_copy().last_failure_class ==
 	      telemetry_failure_class::permanent_permission);
 	CHECK(telemetry_repository_health_copy().last_error_code == 1142U);
+	CHECK(telemetry_repository_health_copy().last_schema_check == telemetry_schema_check::none);
 	CHECK(scalar("SELECT GET_LOCK(CONCAT('duris.telemetry.',MD5(DATABASE())),2)") == 1U);
 	CHECK(scalar("SELECT RELEASE_LOCK(CONCAT('duris.telemetry.',MD5(DATABASE())))") == 1U);
 	CHECK(telemetry_repository_init(repository_config()) ==
 	      telemetry_repository_outcome::ready);
+}
+
+static void startup_contract_tests()
+{
+	reset_fixture();
+	shutdown_fixture();
+	// Each refusal names what the check refused and the SQL error, if one
+	// occurred, so the operator message tells a missing column from a wrong type.
+	auto refuses_schema = [](telemetry_schema_check check, unsigned int error)
+	{
+		CHECK(telemetry_repository_init(repository_config()) ==
+		      telemetry_repository_outcome::permanent_failure);
+		const auto health = telemetry_repository_health_copy();
+		CHECK(health.last_failure_class == telemetry_failure_class::permanent_schema);
+		CHECK(health.last_schema_check == check);
+		CHECK(health.last_error_code == error);
+		CHECK(scalar("SELECT GET_LOCK(CONCAT('duris.telemetry.',MD5(DATABASE())),2)") ==
+		      1U);
+		CHECK(scalar("SELECT RELEASE_LOCK(CONCAT('duris.telemetry.',MD5(DATABASE())))") ==
+		      1U);
+		shutdown_fixture();
+	};
+	case_name = "startup validates a missing combat column, not just base tables";
+	execute("ALTER TABLE telemetry_interval CHANGE COLUMN combat_healing_attempted "
+		"combat_healing_attempted_fixture_hidden BIGINT UNSIGNED NULL");
+	refuses_schema(telemetry_schema_check::column, 1054U);
+	execute("ALTER TABLE telemetry_interval CHANGE COLUMN combat_healing_attempted_fixture_hidden "
+		"combat_healing_attempted BIGINT UNSIGNED NULL");
+	case_name = "startup validates a renamed progression column";
+	execute("ALTER TABLE telemetry_interval CHANGE COLUMN progression_requested_xp "
+		"progression_requested_xp_fixture_hidden BIGINT NULL");
+	refuses_schema(telemetry_schema_check::column, 1054U);
+	execute("ALTER TABLE telemetry_interval CHANGE COLUMN progression_requested_xp_fixture_hidden "
+		"progression_requested_xp BIGINT NULL");
+	case_name = "startup rejects unsigned XP deltas that cannot store death losses";
+	execute("ALTER TABLE telemetry_interval MODIFY COLUMN progression_applied_xp BIGINT UNSIGNED NULL");
+	refuses_schema(telemetry_schema_check::column_type, 0U);
+	execute("ALTER TABLE telemetry_interval MODIFY COLUMN progression_applied_xp BIGINT NULL");
+	case_name = "startup rejects a changed discriminator width";
+	execute("ALTER TABLE telemetry_interval MODIFY COLUMN combat_actor_kind SMALLINT UNSIGNED NULL");
+	refuses_schema(telemetry_schema_check::column_type, 0U);
+	execute("ALTER TABLE telemetry_interval MODIFY COLUMN combat_actor_kind TINYINT UNSIGNED NULL");
+	case_name = "startup rejects a tagged nullable field made required";
+	execute("ALTER TABLE telemetry_interval MODIFY COLUMN encounter_outcome TINYINT UNSIGNED NOT NULL");
+	refuses_schema(telemetry_schema_check::column_type, 0U);
+	execute("ALTER TABLE telemetry_interval MODIFY COLUMN encounter_outcome TINYINT UNSIGNED NULL");
+	case_name = "startup rejects a shortened configuration digest";
+	execute("ALTER TABLE telemetry_config MODIFY COLUMN fingerprint BINARY(16) NOT NULL");
+	refuses_schema(telemetry_schema_check::column_type, 0U);
+	execute("ALTER TABLE telemetry_config MODIFY COLUMN fingerprint BINARY(32) NOT NULL");
+	case_name = "startup rejects projection defaults that invent played time";
+	execute("ALTER TABLE telemetry_session ALTER COLUMN active_usec SET DEFAULT 99");
+	refuses_schema(telemetry_schema_check::column_type, 0U);
+	execute("ALTER TABLE telemetry_session ALTER COLUMN active_usec SET DEFAULT 0");
+	case_name = "startup rejects a tagged fact default that invents absent XP";
+	execute("ALTER TABLE telemetry_interval ALTER COLUMN progression_applied_xp SET DEFAULT 1");
+	refuses_schema(telemetry_schema_check::column_type, 0U);
+	execute("ALTER TABLE telemetry_interval ALTER COLUMN progression_applied_xp SET DEFAULT NULL");
+	case_name = "startup rejects a missing replay key";
+	execute("ALTER TABLE telemetry_interval DROP INDEX uq_telemetry_replay");
+	refuses_schema(telemetry_schema_check::index, 0U);
+	case_name = "startup rejects a reordered replay key";
+	execute("ALTER TABLE telemetry_interval ADD UNIQUE KEY uq_telemetry_replay (record_seq,boot_id,process_id)");
+	refuses_schema(telemetry_schema_check::index, 0U);
+	execute("ALTER TABLE telemetry_interval DROP INDEX uq_telemetry_replay, "
+		"ADD UNIQUE KEY uq_telemetry_replay (boot_id,process_id,record_seq)");
+	case_name = "startup rejects an unrecognized uniqueness constraint";
+	execute("ALTER TABLE telemetry_interval ADD UNIQUE KEY uq_fixture_unreviewed (record_seq)");
+	refuses_schema(telemetry_schema_check::index, 0U);
+	execute("ALTER TABLE telemetry_interval DROP INDEX uq_fixture_unreviewed");
+	case_name = "startup refuses a new required field that would break INSERT";
+	execute("ALTER TABLE telemetry_interval ADD COLUMN fixture_required INT NOT NULL");
+	refuses_schema(telemetry_schema_check::column, 0U);
+	execute("ALTER TABLE telemetry_interval DROP COLUMN fixture_required");
+	case_name = "nullable additive fields remain compatible and readiness writes no facts";
+	execute("ALTER TABLE telemetry_interval ADD COLUMN fixture_optional INT NULL");
+	CHECK(telemetry_repository_init(repository_config()) ==
+	      telemetry_repository_outcome::ready);
+	CHECK(scalar("SELECT COUNT(*) FROM telemetry_interval") == 0U);
+	CHECK(scalar("SELECT COUNT(*) FROM telemetry_session") == 0U);
+	shutdown_fixture();
+	execute("ALTER TABLE telemetry_interval DROP COLUMN fixture_optional");
+
+	case_name = "a SELECT-only writer cannot publish useful records";
+	const std::string writer =
+		"telemetry_fixture_" + fixture_database.substr(fixture_database.size() - 12U);
+	execute("DROP USER IF EXISTS '" + writer + "'@'%'");
+	execute("CREATE USER '" + writer + "'@'%' IDENTIFIED BY 'telemetry-fixture-writer-only'");
+	const auto owner_user = fixture_user;
+	const auto owner_password = fixture_password;
+	fixture_user = writer;
+	fixture_password = "telemetry-fixture-writer-only";
+	for (const char *table : { "telemetry_interval", "telemetry_config", "telemetry_session",
+				   "telemetry_quarantine" })
+		execute("GRANT SELECT ON `" + fixture_database + "`." + table + " TO '" + writer +
+			"'@'%'");
+	CHECK(telemetry_repository_init(repository_config()) ==
+	      telemetry_repository_outcome::permanent_failure);
+	CHECK(telemetry_repository_health_copy().last_failure_class ==
+	      telemetry_failure_class::permanent_permission);
+	shutdown_fixture();
+	case_name = "missing session UPDATE is detected before admission";
+	for (const char *table : { "telemetry_interval", "telemetry_config", "telemetry_session",
+				   "telemetry_quarantine" })
+		execute("GRANT INSERT ON `" + fixture_database + "`." + table + " TO '" + writer +
+			"'@'%'");
+	CHECK(telemetry_repository_init(repository_config()) ==
+	      telemetry_repository_outcome::permanent_failure);
+	CHECK(telemetry_repository_health_copy().last_failure_class ==
+	      telemetry_failure_class::permanent_permission);
+	shutdown_fixture();
+	case_name = "the documented least privilege writer is sufficient";
+	execute("GRANT UPDATE ON `" + fixture_database + "`.telemetry_session TO '" + writer +
+		"'@'%'");
+	CHECK(telemetry_repository_init(repository_config()) ==
+	      telemetry_repository_outcome::ready);
+	seed_config();
+	expect_one(interval_record(), telemetry_apply_outcome::applied);
+	shutdown_fixture();
+	fixture_user = owner_user;
+	fixture_password = owner_password;
+	execute("DROP USER '" + writer + "'@'%'");
+	std::puts("Canonical writer startup schema and effective permission cases: PASS");
 }
 
 static void fresh_producer_tests()
@@ -1094,48 +1313,43 @@ static void bounds_and_lifecycle_tests()
 	CHECK(telemetry_repository_health_copy().state != telemetry_health_state::healthy);
 }
 
-int main(int argc, char **argv)
+int main()
 {
-	CHECK(argc >= 2);
-	const char *ack = std::getenv("TELEMETRY_REPOSITORY_DISPOSABLE");
-	CHECK(ack && std::strcmp(ack, "1") == 0);
-	const char *port = std::getenv("TELEMETRY_REPOSITORY_PORT");
-	CHECK(!port || std::strcmp(port, "3306") == 0 || std::strcmp(port, "3307") == 0);
-	fixture_port = port && std::strcmp(port, "3307") == 0 ? 3307U : 3306U;
+	// The Python test hands over the DB_* settings it applied the migration
+	// chain with: a disposable server from with_disposable_mariadb.sh.
+	auto required = [](const char *name)
+	{
+		const char *value = std::getenv(name);
+		CHECK(value && *value);
+		return value;
+	};
+	fixture_host = required("DB_HOST");
+	fixture_user = required("DB_USER");
+	fixture_password = required("DB_PASSWD");
+	fixture_database = required("DB_NAME");
+	char *port_end = nullptr;
+	const unsigned long parsed_port = std::strtoul(required("DB_PORT"), &port_end, 10);
+	CHECK(port_end && *port_end == '\0' && parsed_port > 0U && parsed_port <= 65535U);
+	fixture_port = static_cast<unsigned int>(parsed_port);
 	observer = mysql_init(nullptr);
 	CHECK(observer != nullptr);
-	CHECK(mysql_real_connect(observer, "127.0.0.1", "root", "", nullptr, fixture_port, nullptr,
-				 0) != nullptr);
+	unsigned int protocol = MYSQL_PROTOCOL_TCP;
+	CHECK(mysql_options(observer, MYSQL_OPT_PROTOCOL, &protocol) == 0);
+	CHECK(mysql_real_connect(observer, fixture_host.c_str(), fixture_user.c_str(),
+				 fixture_password.c_str(), fixture_database.c_str(), fixture_port,
+				 nullptr, 0) != nullptr);
 	CHECK(__real_mysql_real_query(observer, "SELECT VERSION()", 16) == 0);
 	MYSQL_RES *version = mysql_store_result(observer);
 	CHECK(version != nullptr);
 	MYSQL_ROW version_row = mysql_fetch_row(version);
 	CHECK(version_row && version_row[0]);
-	std::printf("Repository disposable fixture server: %s (port %u)\n", version_row[0],
-		    fixture_port);
+	std::printf("Repository disposable fixture server: %s database=%s (port %u)\n",
+		    version_row[0], fixture_database.c_str(), fixture_port);
 	mysql_free_result(version);
-	execute("DROP DATABASE IF EXISTS duris_telemetry_test");
-	execute("CREATE DATABASE duris_telemetry_test");
-	CHECK(mysql_select_db(observer, "duris_telemetry_test") == 0);
-	for (int migration_index = 1; migration_index < argc; ++migration_index)
-	{
-		std::ifstream migration(argv[migration_index]);
-		CHECK(migration.good());
-		std::string schema;
-		for (std::string line; std::getline(migration, line);)
-			if (line.rfind("--", 0) != 0)
-				schema += line + "\n";
-		std::size_t start = 0;
-		for (std::size_t end = schema.find(';'); end != std::string::npos;
-		     end = schema.find(';', start))
-		{
-			execute_migration_statement(schema.substr(start, end - start));
-			start = end + 1;
-		}
-	}
 	initialization_stop_tests();
 	allocation_failure_tests();
 	golden_tests();
+	every_record_kind_round_trip_tests();
 	replay_and_isolation_tests();
 	progression_replay_tests();
 	typed_extension_mapping_tests();
@@ -1145,11 +1359,12 @@ int main(int argc, char **argv)
 	fault_tests();
 	failure_taxonomy_tests();
 	startup_fencing_tests();
+	startup_contract_tests();
 	fresh_producer_tests();
 	bounds_and_lifecycle_tests();
 	shutdown_fixture();
 	mysql_close(observer);
-	std::puts(
-		"SQL repository runtime: PASS (10 golden fixtures and focused failure/isolation regressions)");
+	std::puts("SQL repository runtime: PASS (record kinds 1-8, 10 golden fixtures, and focused "
+		  "failure/isolation regressions)");
 }
 #endif

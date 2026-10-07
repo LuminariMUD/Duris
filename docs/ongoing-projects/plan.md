@@ -15,7 +15,7 @@ Updated 2026-10-07. A new session starts here, then reads the phase it continues
 | 2 | #13 | Landed on 2026-10-06 in `6a4e5511c` (!12). |
 | 3 | #11 | Landed on 2026-10-07 in `a55ccef17` (!13). |
 | 4 | #14 | Landed on 2026-10-07 in `7ef76523e` (!14). |
-| 5 | #17 | Not started. It is next, on a new branch from `master`. |
+| 5 | #17 | Built on 2026-10-07 on `fix/17-telemetry` from `master` at `ab4d91340`; open for review as !15, tag `log-review/phase-5-review-0`. |
 
 ## Are the items still valid?
 
@@ -364,6 +364,102 @@ journey waits until `close_socket()` has logged every disconnect, requires
     now looks for the hostile line first. Against a server built with the roll forced,
     the old journey fails with the same timeout and the new one starts over five times
     out of five. Its gate: `make test-db` 45 of 45, the only gate that runs that file.
+
+**As built**
+
+1. **The gate (steps 1 and 2).** `test_telemetry_repository.py --sql-fixture` takes the
+   wrapper's `TEST_DB_*`, creates `duris_telemetry_test`, applies the chain with
+   `migration_runner.py` (36 steps through `0036_log_entries_ipv6`) and checks the
+   history head, then runs the harness with the `DB_*` settings; a missing setting is an
+   error. The harness is #591's: every record kind 1 to 8 is written, replayed for
+   `duplicate_identical` and changed for `duplicate_conflict`. The leg is
+   `telemetry_repository` in `run_db_tests.sh`, 19 s. On today's code (`ab4d91340`) it
+   passes on MariaDB 10.11.19: no record kind needed a fix before step 3. Probed: with
+   `session_boot_id` misspelt in `session_fields()` (a column the Python mapping contract
+   does not cover) the harness fails on the first INSERT and the leg exits 1.
+   `DATABASE.md` names the leg and the command.
+
+2. **Part 1** (`f7368e60e`, the pick of `e0e837102` with the four documents and the
+   script dropped, author kept). It merged cleanly and compiled on the step-1 harness.
+   Reviewing it found a defect it did not fix: the transport opened the circuit on a
+   refused repository start with `permanent_repository` and error 0, never reading the
+   repository's health, so the operator line said that for a schema or a grant refusal
+   alike; and the check's own mismatches (type, index, engine) borrowed SQL error 1054,
+   the missing-column code. `ce09d17bc` fixes both: `telemetry_schema_check` (table,
+   column, column-type, index, engine) in the health snapshot, set by the repository
+   and carried by the transport through an optional `health` callback on the repository
+   binding (defaulted, so the harness bindings compile unchanged), printed as
+   `schema_check=` on the `telemetry_health` line and by `world telemetry`, and part of
+   the monitor's failure signature. The repository harness pins the kind and the code
+   per case and gains a renamed progression column; the transport harness pins the
+   carried cause. `run_telemetry_schema_boot_journey.py` boots a real server with
+   telemetry on: whole chain (healthy), one progression column renamed (the boot gate
+   refuses the schema with COMPAT-E003 before telemetry runs, so on this tree a drifted
+   telemetry table never reaches the writer), a writer that may only SELECT
+   (`permanent-permission error=1142 schema_check=none`, game running, nothing admitted)
+   and, with `--misnamed-server`, a build whose `telemetry_columns.inc` names a column
+   the chain lacks (`permanent-schema error=1054 schema_check=column`, game running):
+   the production incident of the item, reproduced on a running server. It is the
+   `telemetry_schema_boot` leg of `make test-db`, 20 s. On the binary of `f7368e60e`
+   the SELECT-only writer logged `permanent-repository error=0`. `RUNBOOK.md` lists the
+   causes; `DATABASE.md` names the journey.
+
+3. **Part 3** (`476376592`, the pick of `03da1882d`; author kept). The data-lifecycle
+   conflicts were resolved by adding only the ledger's entry (23 non-database stores),
+   the validator's one check and the test's one case; their two status documents stay
+   out, `OUTAGE_STORAGE.md` is reworded without their follow-up numbers and indexed in
+   `README_docs.md`. Their two tests (`test_telemetry_outage.py`: lifecycle, protected
+   paths, corruption, a real SIGKILL, a real exec and restart, the producer quota, the
+   offline export; `test_telemetry_runtime_outage.py`: registration before SQL init,
+   clean drain and restart, transient SQL recovery, a shutdown with an unresolved
+   commit, disk-full) pass here, as do the harnesses the transport change touches.
+   `TELEMETRY_OUTAGE_LEDGER_DIR` is required once telemetry is on: without it the
+   server logged `permanent-repository error=22` and ran on, as designed. On the real
+   server (the schema boot journey, `bc763f090`): a SIGTERM leaves the producer `clean_drained`; a copyover leaves the
+   copied-over producer `unknown_tail` and the new image `clean_drained`; a SIGKILL
+   leaves `running` until the next producer registers, then `unknown_tail`. The
+   copyover result is an observation, not a defect of the item: the flush before the
+   exec is durable, but no terminal sample is written, so the record says only that
+   coverage after the last sample is unknown, which is the conservative reading the
+   document gives `unknown_tail`. Writing that sample before the exec would be a
+   change to the copyover path, left out of this phase.
+
+4. **Step 5** (`95cf073c7`, the pick of `b3fb28b9f`; author kept). The two status
+   documents stay out and the `SESSION_LIFECYCLE.md` paragraph ends without the pointer to
+   them. `structs.h` now includes `telemetry_types.h`, so everything recompiled (36 s
+   here). Its adapter, hook and copyover-format tests pass, and the schema boot journey's
+   copyover case still shows the copied-over producer as an unknown tail: that commit is
+   about sessions, not the ledger.
+5. **Step 6.** The ledger's telemetry row is `Adopted` with the three commits and the two
+   on top; PR #591's row is `Adapted` with `38c59e6fe`. `REGRESSIONS.md` has the section
+   "Telemetry writer: schema check, round trip and the gap record" and `TESTING.md`'s
+   samples table a telemetry row (`04ccf6a2c`).
+
+**Differs from the plan**
+
+- Steps 1 and 2 are PR #591's harness and test on our wrapper, not a new harness (see
+  "Added by the check"). The read-back is the repository's own replay comparison.
+- Part 1 needed a fix of our own on top of the pick (`ce09d17bc`): the transport reported
+  every refused start as `permanent_repository` with error 0, so the item's "told apart in
+  one operator message" was not met by the pick alone, and its synthetic mismatches
+  borrowed SQL error 1054. The `telemetry_schema_check` field, the binding's `health`
+  callback and the `schema_check=` output are ours.
+- The schema cases of the item's first condition are detected by the persistence boot
+  gate (`COMPAT-E003`) before telemetry on a real server, because the telemetry tables are
+  in the runtime fingerprint. The telemetry check matters for grants and for a writer
+  whose column list disagrees with the migrations, the production incident; the journey
+  proves both on a running server, the second with a variant build
+  (`bin/analysis/misnamed`, two lines added to `telemetry_columns.inc`, built with its own
+  `OBJDIR`; the recipe is in "State of the work").
+- The plan's step 4 tests (shutdown, copyover, kill "during a simulated SQL outage") are
+  their harnesses (simulated faults, real SIGKILL and exec at the journal level) plus the
+  journey's real-server stop, copyover and kill without an outage. A real-server outage
+  with queued records is not simulated (see the regression notes' "Not covered").
+- `IMPLEMENTATION_STATUS.md` is deleted at each pick rather than "resolved to describe our
+  tree" (see "Added by the check").
+- Three documents of ours changed that the plan did not list: `RUNBOOK.md` (the causes
+  on the health line), `README_docs.md` (the outage document) and `.env.example` (the
+  ledger directory, from the pick).
 
 **Done when:** the four conditions in the item. The quit line condition holds for the other
 four stamps as well.
@@ -1018,6 +1114,9 @@ where each remaining segment costs one pulse plus its own lateness.
 
 ## Phase 5: telemetry schema check, SQL round trip and restart gaps (#17)
 
+**Status: built, review round 1 fixed, open as !15.** "State of the work" at the end of this phase
+has the details.
+
 **Checked.** Startup proves only that four tables exist (`telemetry_repository.c` L125).
 `test_telemetry_repository.py` prints `SQL runtime: SKIPPED` unless it is given
 `--sql-fixture`, and `tests/run_db_tests.sh` has no telemetry leg. The queue and the
@@ -1053,6 +1152,69 @@ balance plan. They are already tested on their side, and taking them keeps `src/
 close enough to pick from again; a smaller rewrite here would end that. Part 3 is their
 bounded gap record. A spool that replays the backlog is not built.
 
+**Added by the check (2026-10-07).** Read again at `ab4d91340`, on the branch.
+
+- Their harness and its Python test were reshaped before the three commits, by their PR
+  #591 (`34b6593b3`, 2026-10-01; the ledger's row for it says `N/A`, a hosted job). In
+  that shape the harness takes host, port, user, password and database from the
+  environment and no longer parses migration files; the Python test creates the database,
+  applies the whole chain with `scripts/migration_runner.py` (`adopt --kind
+  fresh_bootstrap`, then `run`) and checks the history's count and head against
+  `migration_manifest.json`; and `every_record_kind_round_trip_tests()` writes each of
+  the eight kinds, replays it for `duplicate_identical`, changes one field and requires
+  `duplicate_conflict`. The `startup_contract_tests()` that `e0e837102` adds reads
+  `fixture_database`, `fixture_user` and `fixture_password` from that shape, so the
+  commit merges onto our harness without conflict and does not compile there. Steps 1
+  and 2 are therefore #591's harness and test changes on our wrapper. Not taken from
+  #591: `run_telemetry_repository_sql.sh` (its own container and a loopback proxy), the
+  hosted workflow, its Makefile lines and its `migration_runner.py` message change.
+- The repository's replay check is the read-back the item asks for: `apply_record()`
+  selects every mapped column of the stored row by the replay key and `equal_row()`
+  compares each with the record's serialized value, so `duplicate_identical` is only
+  returned when every field matched. `typed_extension_mapping_tests()` names the
+  progression, encounter and combat columns in SQL, and the golden tests read the
+  interval and checkpoint columns, so a mapping to an existing column of the wrong name
+  is caught there. A column name the table lacks fails the INSERT with 1054.
+- `IMPLEMENTATION_STATUS.md` is new in `e0e837102` and is their delivery record for the
+  balance expansion: pending rows, their hosts, their follow-up PRs. Documents here hold
+  no open-work lists, so it is not taken from any of the three commits, and step 5's
+  resolution is a deletion. `BALANCE_EXPANSION_PLAN.md`, `RECOVERED_FOLLOWUPS.md` and
+  `scripts/telemetry/preflight.py` are not taken either.
+- `03da1882d` adds `TELEMETRY_OUTAGE_LEDGER_DIR` to `.env.example` (required when
+  telemetry is on; capture is refused without it), `telemetry_outage.o` to
+  `src/Makefile`, `scripts/telemetry/outage.py` (a read-only export of the evidence)
+  and `docs/telemetry/OUTAGE_STORAGE.md`.
+- `b3fb28b9f`'s parent is `9b5c23fec`, three commits after `03da1882d`. None of the
+  three touches `src/`; `9b5c23fec` touches three rollup and report tests only.
+- `test_telemetry_connection.py` keeps its own `TELEMETRY_REPOSITORY_DISPOSABLE` guard;
+  it is a different test, skipped by `make test-all`, and is not changed.
+
+**Ablated before the work started (2026-10-07).**
+
+- Outcome: the item's four done-when conditions. Non-goals: a replayed spool
+  (decision 10); a MySQL leg (the gate runs on the wrapper's MariaDB, like every other
+  leg); their hosted workflow; any descriptor refactor beyond what `e0e837102` carries.
+- The Python test reads the wrapper's `TEST_DB_HOST`, `TEST_DB_PORT`, `TEST_DB_USER`
+  and `TEST_DB_PASSWORD`, as `run_mysql_deletion_journey.py` does, builds the same
+  `DB_*` environment the migration runner needs, and hands it to the harness. Not
+  taken from #591: the `TELEMETRY_REPOSITORY_*` names, the disposable acknowledgement
+  and the port list (the wrapper's container is disposable by construction, as for
+  every other leg), the engine name, the harness's own history count (the Python test
+  checks the head) and `fixture_safety_contract()`.
+- `--sql-fixture` stays the flag. With it, a missing `TEST_DB_*` setting is an error,
+  which is how the leg cannot report the SQL part as skipped. Without it, as in
+  `make test-all`, the test compiles the harness and prints `SKIPPED`, as today.
+- The database is `duris_telemetry_test` on the wrapper's server and dies with the
+  container; the test does not drop it.
+- The leg is one line in `tests/run_db_tests.sh`.
+
+**Files.** `tests/async/test_telemetry_repository.py`,
+`tests/async/telemetry_repository_harness.cc`, `tests/run_db_tests.sh`,
+`docs/telemetry/DATABASE.md`, `docs/guides/TESTING.md`, `docs/testing/REGRESSIONS.md`;
+then the files of the three picks less the four documents and the script above,
+`docs/README_docs.md` (the outage document), `.env.example`,
+`docs/records/COMMUNITY_DURIS_TRACKING.md`; this file.
+
 **Steps**
 
 1. **Part 2, the gate.** A `telemetry_repository` leg in `tests/run_db_tests.sh` under
@@ -1075,4 +1237,200 @@ bounded gap record. A spool that replays the backlog is not built.
 6. Set the "Telemetry" row in `docs/records/COMMUNITY_DURIS_TRACKING.md` to taken, with
    the three commits.
 
-**Done when:** the four conditions in the item.
+**As built**
+
+1. **The gate (steps 1 and 2).** `test_telemetry_repository.py --sql-fixture` takes the
+   wrapper's `TEST_DB_*`, creates `duris_telemetry_test`, applies the chain with
+   `migration_runner.py` (36 steps through `0036_log_entries_ipv6`) and checks the
+   history head, then runs the harness with the `DB_*` settings; a missing setting is an
+   error. The harness is #591's: every record kind 1 to 8 is written, replayed for
+   `duplicate_identical` and changed for `duplicate_conflict`. The leg is
+   `telemetry_repository` in `run_db_tests.sh`, 19 s. On today's code (`ab4d91340`) it
+   passes on MariaDB 10.11.19: no record kind needed a fix before step 3. Probed: with
+   `session_boot_id` misspelt in `session_fields()` (a column the Python mapping contract
+   does not cover) the harness fails on the first INSERT and the leg exits 1.
+   `DATABASE.md` names the leg and the command.
+
+2. **Part 1** (`f7368e60e`, the pick of `e0e837102` with the four documents and the
+   script dropped, author kept). It merged cleanly and compiled on the step-1 harness.
+   Reviewing it found a defect it did not fix: the transport opened the circuit on a
+   refused repository start with `permanent_repository` and error 0, never reading the
+   repository's health, so the operator line said that for a schema or a grant refusal
+   alike; and the check's own mismatches (type, index, engine) borrowed SQL error 1054,
+   the missing-column code. `ce09d17bc` fixes both: `telemetry_schema_check` (table,
+   column, column-type, index, engine) in the health snapshot, set by the repository
+   and carried by the transport through an optional `health` callback on the repository
+   binding (defaulted, so the harness bindings compile unchanged), printed as
+   `schema_check=` on the `telemetry_health` line and by `world telemetry`, and part of
+   the monitor's failure signature. The repository harness pins the kind and the code
+   per case and gains a renamed progression column; the transport harness pins the
+   carried cause. `run_telemetry_schema_boot_journey.py` boots a real server with
+   telemetry on: whole chain (healthy), one progression column renamed (the boot gate
+   refuses the schema with COMPAT-E003 before telemetry runs, so on this tree a drifted
+   telemetry table never reaches the writer), a writer that may only SELECT
+   (`permanent-permission error=1142 schema_check=none`, game running, nothing admitted)
+   and, with `--misnamed-server`, a build whose `telemetry_columns.inc` names a column
+   the chain lacks (`permanent-schema error=1054 schema_check=column`, game running):
+   the production incident of the item, reproduced on a running server. It is the
+   `telemetry_schema_boot` leg of `make test-db`, 20 s. On the binary of `f7368e60e`
+   the SELECT-only writer logged `permanent-repository error=0`. `RUNBOOK.md` lists the
+   causes; `DATABASE.md` names the journey.
+
+3. **Part 3** (`476376592`, the pick of `03da1882d`; author kept). The data-lifecycle
+   conflicts were resolved by adding only the ledger's entry (23 non-database stores),
+   the validator's one check and the test's one case; their two status documents stay
+   out, `OUTAGE_STORAGE.md` is reworded without their follow-up numbers and indexed in
+   `README_docs.md`. Their two tests (`test_telemetry_outage.py`: lifecycle, protected
+   paths, corruption, a real SIGKILL, a real exec and restart, the producer quota, the
+   offline export; `test_telemetry_runtime_outage.py`: registration before SQL init,
+   clean drain and restart, transient SQL recovery, a shutdown with an unresolved
+   commit, disk-full) pass here, as do the harnesses the transport change touches.
+   `TELEMETRY_OUTAGE_LEDGER_DIR` is required once telemetry is on: without it the
+   server logged `permanent-repository error=22` and ran on, as designed. On the real
+   server (the schema boot journey, `bc763f090`): a SIGTERM leaves the producer `clean_drained`; a copyover leaves the
+   copied-over producer `unknown_tail` and the new image `clean_drained`; a SIGKILL
+   leaves `running` until the next producer registers, then `unknown_tail`. The
+   copyover result is an observation, not a defect of the item: the flush before the
+   exec is durable, but no terminal sample is written, so the record says only that
+   coverage after the last sample is unknown, which is the conservative reading the
+   document gives `unknown_tail`. Writing that sample before the exec would be a
+   change to the copyover path, left out of this phase.
+
+4. **Step 5** (`95cf073c7`, the pick of `b3fb28b9f`; author kept). The two status
+   documents stay out and the `SESSION_LIFECYCLE.md` paragraph ends without the pointer to
+   them. `structs.h` now includes `telemetry_types.h`, so everything recompiled (36 s
+   here). Its adapter, hook and copyover-format tests pass, and the schema boot journey's
+   copyover case still shows the copied-over producer as an unknown tail: that commit is
+   about sessions, not the ledger.
+5. **Step 6.** The ledger's telemetry row is `Adopted` with the three commits and the two
+   on top; PR #591's row is `Adapted` with `38c59e6fe`. `REGRESSIONS.md` has the section
+   "Telemetry writer: schema check, round trip and the gap record" and `TESTING.md`'s
+   samples table a telemetry row (`04ccf6a2c`).
+
+**Differs from the plan**
+
+- Steps 1 and 2 are PR #591's harness and test on our wrapper, not a new harness (see
+  "Added by the check"). The read-back is the repository's own replay comparison.
+- Part 1 needed a fix of our own on top of the pick (`ce09d17bc`): the transport reported
+  every refused start as `permanent_repository` with error 0, so the item's "told apart in
+  one operator message" was not met by the pick alone, and its synthetic mismatches
+  borrowed SQL error 1054. The `telemetry_schema_check` field, the binding's `health`
+  callback and the `schema_check=` output are ours.
+- The schema cases of the item's first condition are detected by the persistence boot
+  gate (`COMPAT-E003`) before telemetry on a real server, because the telemetry tables are
+  in the runtime fingerprint. The telemetry check matters for grants and for a writer
+  whose column list disagrees with the migrations, the production incident; the journey
+  proves both on a running server, the second with a variant build
+  (`bin/analysis/misnamed`, two lines added to `telemetry_columns.inc`, built with its own
+  `OBJDIR`; the recipe is in "State of the work").
+- The plan's step 4 tests (shutdown, copyover, kill "during a simulated SQL outage") are
+  their harnesses (simulated faults, real SIGKILL and exec at the journal level) plus the
+  journey's real-server stop, copyover and kill without an outage. A real-server outage
+  with queued records is not simulated (see the regression notes' "Not covered").
+- `IMPLEMENTATION_STATUS.md` is deleted at each pick rather than "resolved to describe our
+  tree" (see "Added by the check").
+- Three documents of ours changed that the plan did not list: `RUNBOOK.md` (the causes
+  on the health line), `README_docs.md` (the outage document) and `.env.example` (the
+  ledger directory, from the pick).
+
+**Done when:** the four conditions in the item. On this tree the first condition's
+schema cases are met twice over: the persistence boot gate refuses a drifted telemetry
+table before the game starts, and the writer's own check refuses, with the cause named,
+what that gate cannot see (a grant, or a writer whose columns the chain lacks). The
+fourth condition is met by the gap record (`unknown_tail`, or `abandoned` with the
+unattempted count), never by a replay; decision 10.
+
+**State of the work**
+
+- Branch `fix/17-telemetry`, from `master` at `ab4d91340`: `e2ca538f4` (this file's
+  ablation), `38c59e6fe` (the gate: the round-trip leg), `f7368e60e` (pick of
+  `e0e837102`), `ce09d17bc` (the cause on the operator line, the schema boot journey and
+  its leg), `2ec01dc7c` (plan), `476376592` (pick of `03da1882d`), `bc763f090` (the ledger
+  read on a real server), `683daafeb` (plan), `95cf073c7` (pick of `b3fb28b9f`),
+  `04ccf6a2c` (regression notes, testing sample, ledger rows), `360838fc4` (plan),
+  `426bb5557` (three lifecycle tests pin 221 entries), then this file's commit with the
+  gate's result.
+- The two new `make test-db` legs: `telemetry_repository` (the SQL harness, about 70 s)
+  and `telemetry_schema_boot` (the journey, about 20 s). The journey's optional
+  `--misnamed-server` case is not in the leg; the build it needs is two lines in
+  `src/telemetry/telemetry_columns.inc` (`TELEMETRY_COLUMN(combat_damage_dealtx, bigint,
+  true, 0U)` after `combat_damage_dealt`, and the matching
+  `TELEMETRY_TABLE_COLUMN(telemetry_interval, combat_damage_dealtx, true, false,
+  null_value)`), built with `make -C src OBJDIR=$PWD/bin/analysis/misnamed/objects
+  DMS_BINARY=$PWD/bin/analysis/misnamed/dms_misnamed`, then `git checkout` and `touch`
+  the file. Run on 2026-10-07 after every pick, last on `04ccf6a2c`'s tree: the game
+  ran and the line said `permanent-schema error=1054 schema_check=column`.
+- Before `ce09d17bc` (the tree of `f7368e60e`, built in a scratch worktree), the same
+  journey's SELECT-only writer logged `permanent-repository error=0` and its healthy
+  boot had no `schema_check=` field.
+- `make test-all` on `360838fc4` found the three count pins (671 of 674); fixed in
+  `426bb5557`.
+- The gate, on 2026-10-07, on `426bb5557`'s tree:
+  - `./scripts/format.sh --check`: clean (checked at every commit).
+  - `make -C src`: built.
+  - `make test-all`: 674 passed, 0 failed, in 466 s (8 min 15 s with the build).
+  - `make test-db`: 48 of 48 passed in 469 s. `telemetry_repository` took 43 s,
+    `telemetry_schema_boot` 44 s, `game_loop_budget` 215 s, `mysql_combat` 194 s.
+- Merge request !15 closes #17. The tag `log-review/phase-5-review-0` is the head
+  the review reads: `426bb5557` plus this file's commit. The measurements of the
+  journey, before and after `ce09d17bc`, are posted on #17.
+- Left for the review: nothing known. Two observations are recorded under "Differs from
+  the plan" and in the regression notes' "Not covered": the persistence boot gate refuses
+  a drifted telemetry table before the writer sees it, and a copyover leaves the
+  copied-over producer an unknown tail.
+
+**Review round 1 (2026-10-07)**
+
+The adversarial review of `5008c891e` (`log-review/phase-5-review-0`) read the whole diff
+and ran three probes on a real `--minimal` server with SQL telemetry against a disposable
+MariaDB, on the head's build and on a scratch build of master. It found four defects,
+posted as threads on !15, and the round fixed each in its own commit:
+
+- Finding 1 (`56f2305b7`): a pending ledger file that was not a whole frame, what a
+  full disk or a crash leaves between the create and the rename, refused telemetry on
+  every later boot (`permanent-repository error=74`), the export refused too, and the
+  only way back was deleting the file by hand. `persist()` now removes its own staging
+  file when the write, fsync or close fails; an open removes a pending file that is not
+  a whole frame (a whole frame that decodes but does not extend the chain is still kept
+  and refused); a failed checkpoint poisons the journal only when a whole pending file
+  remains; a sample that cannot be written no longer ends the worker.
+- Finding 2 (`ffc349606`): every boot and copyover appended a producer and the 257th
+  registration was refused with `error=28` for good. A full ledger is now published
+  once more with the unfinished lifetime closed as an unknown tail, kept as
+  `outages.ledger.<registered utc>.<generation>`, and the chain starts again;
+  `outage.py --ledger` reads an archive. The `quota` result is gone.
+- Finding 3 (`489c17d07`, pre-existing on master): a transient fault at the writer's
+  qualification was retried eight times inside about a quarter of a second and then
+  opened the circuit for the rest of the process, with `failure_class=transient-connection`.
+  A table lock held across a copyover, or the advisory lock held for three seconds at
+  boot, left telemetry off until the next restart: the copied-over player's exit and a
+  later login never reached the database. The repository retry now keeps the capped
+  backoff for as long as the fault lasts, with the repository's own transient class;
+  only a permanent class opens the circuit. The batch retry budget is unchanged.
+- Finding 4 (`2f101c275`): a ledger refusal said `permanent-repository error=<errno>`
+  and nothing else. The health snapshot, the `telemetry_health` line and
+  `world telemetry` carry `storage_check` (directory, protection, owner, ledger, io);
+  the runbook lists the values.
+
+What differs from the plan after the round: the ledger refuses capture only for a
+registration it cannot write, a directory it cannot trust, a ledger it cannot decode or
+an owner it cannot take; a sample it cannot write costs evidence, not records. The
+transient classes at qualification are retried until they clear.
+
+Tests added: `telemetry_outage_harness.cc` `interrupted_publication` and `rotation`
+(replacing `quota`), the `publication_faults` retry assertions; `telemetry_runtime_outage.cc`
+`failed_registration`, `failed_checkpoint` (replacing `failed_storage`) and
+`transient_qualification`, the storage check assertions; the transport harness's
+"transient initialization failure is retried until it clears"; the schema boot journey's
+boots with no ledger directory and with one readable by others; the export test's archive
+read. The probes (a zero-byte pending file before boot; a copyover with a player logged
+in while a client's `LOCK TABLES telemetry_quarantine WRITE` stalls the schema check, then
+a second login; a boot while a client holds the writer's `GET_LOCK` for three seconds)
+are a scratch script of the review, not a leg; on the fixed build all three recover and
+record every session.
+
+Gate on `489c17d07`'s tree (the regression notes and this section are the only later
+change), 2026-10-07: `./scripts/format.sh --check` clean;
+`make -C src` built; `make test-all` 674 passed, 0 failed, in 499 s (14 min 18 s with the build); `make test-db` 48 of 48 passed in 279 s (`telemetry_repository` 36 s, `telemetry_schema_boot` 44 s).
+The tag `log-review/phase-5-review-1` is the head to review now: `489c17d07` plus this
+file's commit.

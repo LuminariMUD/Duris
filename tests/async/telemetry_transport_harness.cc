@@ -50,6 +50,7 @@ struct fake_repository
 	std::uint32_t failures_left = 0U;
 	std::uint32_t init_failures_left = 0U;
 	bool init_permanent = false;
+	telemetry_health_snapshot init_health{};
 	std::uint32_t calls = 0U;
 	std::uint32_t init_calls = 0U;
 	std::uint32_t invalid_single_seq = 0U;
@@ -247,6 +248,11 @@ telemetry_repository_outcome fake_request_stop(void *) noexcept
 
 void fake_shutdown(void *) noexcept {}
 
+telemetry_health_snapshot fake_health(void *context) noexcept
+{
+	return static_cast<fake_repository *>(context)->init_health;
+}
+
 bool fake_now(void *context, telemetry_monotonic_usec *value) noexcept
 {
 	fake_clock &clock = *static_cast<fake_clock *>(context);
@@ -258,7 +264,8 @@ bool fake_now(void *context, telemetry_monotonic_usec *value) noexcept
 
 telemetry_transport_repository_binding repository_binding()
 {
-	return { fake_init, fake_apply, fake_request_stop, fake_shutdown, &repository_state };
+	return { fake_init,	fake_apply,	   fake_request_stop,
+		 fake_shutdown, &repository_state, fake_health };
 }
 
 telemetry_transport_clock_binding clock_binding()
@@ -320,7 +327,8 @@ telemetry_record control_record(std::uint64_t sequence)
 	return record;
 }
 
-void bind_and_init(const telemetry_transport_config &transport_config = config())
+void bind_and_init(const telemetry_transport_config &transport_config = config(),
+		   bool prepare_writer = true)
 {
 	const auto repository = repository_binding();
 	const auto clock = clock_binding();
@@ -329,6 +337,8 @@ void bind_and_init(const telemetry_transport_config &transport_config = config()
 	const auto outcome = telemetry_transport_init(transport_config);
 	CHECK(outcome == telemetry_transport_outcome::started ||
 	      outcome == telemetry_transport_outcome::unavailable);
+	if (prepare_writer && outcome == telemetry_transport_outcome::started)
+		CHECK(telemetry_transport_pulse(0U).examined == 0U);
 }
 
 void finish()
@@ -364,7 +374,7 @@ void row_and_age_flush_tests()
 	CHECK(admitted.last_admitted_record_seq == 1U);
 	CHECK(admitted.last_committed_record_seq == 0U);
 	CHECK(admitted.queue_depth == 1U);
-	CHECK(admitted.advisory_lock_state == telemetry_advisory_lock_state::unavailable);
+	CHECK(admitted.advisory_lock_state == telemetry_advisory_lock_state::held);
 	CHECK(telemetry_transport_pulse(150U).examined == 0U);
 	CHECK(telemetry_transport_enqueue(detail_record(2U)).admission ==
 	      telemetry_queue_admission::accepted_detail);
@@ -610,6 +620,7 @@ void circuit_breaker_tests()
 	repository_state = {};
 	CHECK(telemetry_transport_init(config(4U, 1U, 1U, 1U)) ==
 	      telemetry_transport_outcome::started);
+	(void)telemetry_transport_pulse(0U);
 	CHECK(telemetry_transport_enqueue(detail_record(1U)).admission ==
 	      telemetry_queue_admission::accepted_detail);
 	CHECK(telemetry_transport_pulse(200U).examined == 1U);
@@ -641,19 +652,61 @@ void circuit_breaker_tests()
 	repository_state = {};
 
 	case_name = "permanent repository initialization failure does not reconnect";
-	bind_and_init(config(4U, 1U, 2U, 1U));
+	bind_and_init(config(4U, 1U, 2U, 1U), false);
 	repository_state.init_permanent = true;
+	// The published health carries the repository's cause, not a generic one.
+	repository_state.init_health.last_failure_class = telemetry_failure_class::permanent_schema;
+	repository_state.init_health.last_error_code = 1054U;
+	repository_state.init_health.last_schema_check = telemetry_schema_check::column;
 	CHECK(telemetry_transport_enqueue(detail_record(100U)).admission ==
-	      telemetry_queue_admission::accepted_detail);
+	      telemetry_queue_admission::rejected_not_ready);
 	CHECK(telemetry_transport_pulse(101U).outcome == telemetry_transport_outcome::unavailable);
 	CHECK(repository_state.init_calls == 1U);
-	CHECK(telemetry_transport_health_copy().state == telemetry_health_state::circuit_open);
+	{
+		const auto health = telemetry_transport_health_copy();
+		CHECK(health.state == telemetry_health_state::circuit_open);
+		CHECK(health.last_failure_class == telemetry_failure_class::permanent_schema);
+		CHECK(health.last_error_code == 1054U);
+		CHECK(health.last_schema_check == telemetry_schema_check::column);
+	}
 	CHECK(telemetry_transport_pulse(10'000'000U).outcome ==
 	      telemetry_transport_outcome::unavailable);
 	CHECK(repository_state.init_calls == 1U);
 	telemetry_transport_shutdown();
 	telemetry_transport_unbind_for_tests();
 	repository_state = {};
+
+	case_name = "transient initialization failure is retried until it clears";
+	bind_and_init(config(4U, 1U, 2U, 1U), false);
+	repository_state.init_failures_left = 20U;
+	CHECK(telemetry_transport_enqueue(detail_record(100U)).admission ==
+	      telemetry_queue_admission::rejected_not_ready);
+	now = 101U;
+	for (std::uint32_t attempt = 1U; attempt <= 20U; ++attempt)
+	{
+		CHECK(telemetry_transport_pulse(now).outcome ==
+		      telemetry_transport_outcome::unavailable);
+		CHECK(repository_state.init_calls == attempt);
+		const auto waiting = telemetry_transport_health_copy();
+		CHECK(waiting.state == telemetry_health_state::degraded);
+		CHECK(waiting.last_failure_class == telemetry_failure_class::transient_connection);
+		CHECK(waiting.repository_retry_attempts == attempt);
+		CHECK(waiting.circuit_open_count == 0U);
+		// Before the backoff passes nothing is attempted; at the one-second cap
+		// every pulse past it is.
+		CHECK(telemetry_transport_pulse(now + 500U).examined == 0U);
+		CHECK(repository_state.init_calls == attempt);
+		now += 1'000'000U;
+	}
+	CHECK(telemetry_transport_pulse(now).examined == 0U);
+	CHECK(repository_state.init_calls == 21U);
+	const auto qualified = telemetry_transport_health_copy();
+	CHECK(qualified.state == telemetry_health_state::healthy);
+	CHECK(qualified.repository_retry_attempts == 0U);
+	CHECK(telemetry_transport_enqueue(detail_record(101U)).admission ==
+	      telemetry_queue_admission::accepted_detail);
+	CHECK(telemetry_transport_pulse(now + 1'000U).examined == 1U);
+	finish();
 }
 
 void controlled_io_teardown_tests()
@@ -735,6 +788,20 @@ void lifecycle_race_and_stress_tests()
 	bind_and_init(config(16U, 4U, 4U, 1U));
 	std::atomic<bool> producing{ true };
 	std::atomic<std::uint64_t> next_sequence{ 100U };
+	std::uint64_t coherent_samples = 0U;
+	const auto observe = [&]
+	{
+		telemetry_outage_observation sample{};
+		if (!telemetry_transport_outage_copy_for_worker(&sample))
+			return;
+		++coherent_samples;
+		CHECK(sample.inflight_records + sample.unattempted_records ==
+		      sample.health.queue_depth);
+		CHECK(sample.health.admitted_detail ==
+		      sample.health.applied_records + sample.health.queue_depth);
+		CHECK(sample.health.last_committed_record_seq <=
+		      sample.health.last_admitted_record_seq);
+	};
 	std::thread worker(
 		[&]
 		{
@@ -743,9 +810,13 @@ void lifecycle_race_and_stress_tests()
 				clock_state.now.fetch_add(1U, std::memory_order_relaxed);
 				(void)telemetry_transport_pulse(
 					clock_state.now.load(std::memory_order_relaxed));
+				observe();
 			}
 			for (unsigned int attempt = 0U; attempt < 256U; ++attempt)
+			{
 				(void)telemetry_transport_pulse(1'000'000U + attempt);
+				observe();
+			}
 		});
 	for (unsigned int attempt = 0U; attempt < 20'000U; ++attempt)
 	{
@@ -755,6 +826,7 @@ void lifecycle_race_and_stress_tests()
 	}
 	producing.store(false, std::memory_order_release);
 	worker.join();
+	CHECK(coherent_samples != 0U);
 	CHECK(telemetry_transport_health_copy().queue_depth <= 16U);
 	finish();
 }
@@ -779,6 +851,10 @@ telemetry_repository_outcome telemetry_repository_request_stop(void)
 	return telemetry_repository_outcome::stopping;
 }
 void telemetry_repository_shutdown(void) {}
+telemetry_health_snapshot telemetry_repository_health_copy(void)
+{
+	return {};
+}
 
 int main()
 {
