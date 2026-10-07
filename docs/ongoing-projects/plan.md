@@ -14,8 +14,8 @@ Updated 2026-10-07. A new session starts here, then reads the phase it continues
 | 1 | #10 | Landed on 2026-10-05 in `7fdbb20fe` (!11). |
 | 2 | #13 | Landed on 2026-10-06 in `6a4e5511c` (!12). |
 | 3 | #11 | Landed on 2026-10-07 in `a55ccef17` (!13). |
-| 4 | #14 | Built on 2026-10-07 on `fix/14-cast-lateness`; open for review as !14, tag `log-review/phase-4-review-0`. |
-| 5 | #17 | Not started. |
+| 4 | #14 | Landed on 2026-10-07 in `7ef76523e` (!14). |
+| 5 | #17 | Not started. It is next, on a new branch from `master`. |
 
 ## Are the items still valid?
 
@@ -802,6 +802,9 @@ payload check materialized once, so the unindexed `saved_items.obj_uid` is read 
 
 ## Phase 4: casts finish late when the event pass runs behind (#14)
 
+**Status: landed in `7ef76523e`.** "State of the work" at the end of this phase has the
+details.
+
 **Checked.** `do_will` (L2193) and `do_cast` (L2558) each schedule a first segment of 1 to 4
 pulses. `event_spellcast` schedules each further segment at L2759 to L2762 from the current
 tick. All three go through `schedule_spellcast()` (L1241). `add_event` sets
@@ -952,7 +955,11 @@ follows from the code. Nobody has measured a late cast.
   so and the harness pins it (`{10, 0, 0}` on a 12-pulse cast gives 16: the stall, then
   one pulse per remaining segment).
 
-**Done when:** the three conditions in the item.
+**Done when:** the three conditions in the item. The second condition's bound, cast time
+plus the lateness of the last segment, is not attainable by any design once a callback is
+later than the segments left after it, since those cannot run before it; the rule as
+built, and as the closing note on #14 states it, is that bound except after such a stall,
+where each remaining segment costs one pulse plus its own lateness.
 
 **State of the work**
 
@@ -991,6 +998,20 @@ follows from the code. Nobody has measured a late cast.
     is the 672nd.
   - `make test-db`: 46 of 46 passed in 275 s. `mysql_combat` took 160 s,
     `world_capture` 94 s, `game_loop_budget` 194 s, `chaos_raise` 86 s.
+- The review (2026-10-07, on !14, of `b89a2d7a0`) left no finding. It checked the rule
+  against the scheduler's contract, the anchor of the first segment at all four sites,
+  the payload's zeroing and copying, and `MobCastSpell()`'s ignored refusal (unreachable
+  for a live mob); it re-ran the three harnesses, the format check and the probe on the
+  gate's own binary at a 2 ms budget (10 of 20 casts late, extra mean 4.55 and max 19,
+  every row following the rule, none under 9 pulses). Its two observations are not
+  defects: the item's literal bound is unattainable after a stall (noted under "Done
+  when"), and paying one pulse per remaining segment after a stall is the per-segment
+  design decision 9 keeps.
+- Landed on 2026-10-07 in `7ef76523e`: one `--no-ff` merge of `log-review/phase-4-review-0`
+  (`b89a2d7a0`) into `master`, with no squash and no rebase, so the tag still names the
+  commit that was reviewed. `master` had not moved since the branch was made, so the
+  merge's tree is the branch's and the gate above stands for it. #14 is closed and the
+  branch is deleted.
 - Nothing is open.
 
 ---
