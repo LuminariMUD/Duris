@@ -1048,17 +1048,39 @@ bool all_admitted_records_durable() noexcept
 	       applied + health.stale_checkpoint_records;
 }
 
+telemetry_storage_check storage_check_for(telemetry_outage_result result) noexcept
+{
+	switch (result)
+	{
+	case telemetry_outage_result::ready:
+		return telemetry_storage_check::none;
+	case telemetry_outage_result::invalid:
+		return telemetry_storage_check::directory;
+	case telemetry_outage_result::unsafe_storage:
+		return telemetry_storage_check::protection;
+	case telemetry_outage_result::owned_elsewhere:
+		return telemetry_storage_check::owner;
+	case telemetry_outage_result::corrupt:
+		return telemetry_storage_check::ledger;
+	case telemetry_outage_result::io_failure:
+		return telemetry_storage_check::io;
+	}
+	return telemetry_storage_check::io;
+}
+
 struct worker_outage_guard
 {
 	telemetry_outage_journal journal{};
 	bool failed = false;
 
-	bool refuse(telemetry_monotonic_usec now) noexcept
+	bool refuse(telemetry_monotonic_usec now, telemetry_outage_result result) noexcept
 	{
 		failed = true;
-		telemetry_transport_fail_storage_for_worker(
-			now, journal.error_code != 0U ? journal.error_code :
-							static_cast<std::uint32_t>(EIO));
+		telemetry_transport_fail_storage_for_worker(now,
+							    journal.error_code != 0U ?
+								    journal.error_code :
+								    static_cast<std::uint32_t>(EIO),
+							    storage_check_for(result));
 		return false;
 	}
 
@@ -1074,12 +1096,12 @@ struct worker_outage_guard
 		registration.season_id = R.session_scope_season_id;
 		if (!production_clock_now(nullptr, &registration.registered_monotonic_usec,
 					  &registration.registered_utc_usec))
-			return refuse(0U);
+			return refuse(0U, telemetry_outage_result::io_failure);
 		registration.observed_monotonic_usec = registration.registered_monotonic_usec;
 		registration.observed_utc_usec = registration.registered_utc_usec;
-		if (telemetry_outage_open(&journal, directory, registration) !=
-		    telemetry_outage_result::ready)
-			return refuse(registration.observed_monotonic_usec);
+		const auto opened = telemetry_outage_open(&journal, directory, registration);
+		if (opened != telemetry_outage_result::ready)
+			return refuse(registration.observed_monotonic_usec, opened);
 		return true;
 	}
 

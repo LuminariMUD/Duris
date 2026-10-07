@@ -158,7 +158,7 @@ void stop_outage_runtime(bool flush = true)
 	assert(telemetry_runtime_final_reap() == telemetry_runtime_outcome::accepted);
 }
 
-void wait_for_storage_refusal()
+void wait_for_storage_refusal(telemetry_storage_check check)
 {
 	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
 	while (telemetry_runtime_health_copy().state != telemetry_health_state::circuit_open &&
@@ -175,7 +175,8 @@ void required_directory()
 	telemetry_transport_unbind_for_tests();
 	assert(telemetry_runtime_init(make_enabled_options()) ==
 	       telemetry_runtime_outcome::accepted);
-	wait_for_storage_refusal();
+	wait_for_storage_refusal(telemetry_storage_check::directory);
+	assert(telemetry_runtime_health_copy().last_error_code == EINVAL);
 	assert(telemetry_runtime_health_copy().last_admitted_record_seq == 0U);
 	stop_outage_runtime(false);
 	std::puts(

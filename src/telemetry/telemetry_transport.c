@@ -82,6 +82,7 @@ struct transport_health_atoms
 		telemetry_failure_class::none) };
 	std::atomic<std::uint32_t> last_error_code{ 0U };
 	std::atomic<std::uint8_t> last_schema_check{ 0U };
+	std::atomic<std::uint8_t> last_storage_check{ 0U };
 	std::atomic<std::uint32_t> queue_capacity{ 0U };
 	std::atomic<std::uint64_t> producer_boot_id{ 0U };
 	std::atomic<std::uint64_t> producer_process_id{ 0U };
@@ -314,6 +315,7 @@ void reset_health(const telemetry_transport_config &config) noexcept
 					std::memory_order_relaxed);
 	HEALTH.last_error_code.store(0U, std::memory_order_relaxed);
 	HEALTH.last_schema_check.store(0U, std::memory_order_relaxed);
+	HEALTH.last_storage_check.store(0U, std::memory_order_relaxed);
 	HEALTH.queue_capacity.store(config.queue_capacity, std::memory_order_relaxed);
 	HEALTH.producer_boot_id.store(config.fresh_producer.boot_id, std::memory_order_relaxed);
 	HEALTH.producer_process_id.store(config.fresh_producer.process_id,
@@ -458,6 +460,7 @@ void capture_failure_identity(const telemetry_record *records, std::size_t count
 					std::memory_order_release);
 	HEALTH.last_error_code.store(error_code, std::memory_order_release);
 	HEALTH.last_schema_check.store(0U, std::memory_order_release);
+	HEALTH.last_storage_check.store(0U, std::memory_order_release);
 	HEALTH.last_failure_retry_attempts.store(retry_attempts, std::memory_order_release);
 	if (records == nullptr || count == 0U)
 	{
@@ -489,6 +492,7 @@ void mark_failure(telemetry_monotonic_usec now, std::uint32_t error_code,
 {
 	HEALTH.last_error_code.store(error_code, std::memory_order_release);
 	HEALTH.last_schema_check.store(0U, std::memory_order_release);
+	HEALTH.last_storage_check.store(0U, std::memory_order_release);
 	HEALTH.last_failure_class.store(static_cast<std::uint8_t>(failure_class),
 					std::memory_order_release);
 	HEALTH.last_failure_monotonic_usec.store(now, std::memory_order_release);
@@ -1626,13 +1630,16 @@ bool telemetry_transport_uses_test_repository(void)
 }
 
 void telemetry_transport_fail_storage_for_worker(telemetry_monotonic_usec now,
-						 std::uint32_t error_code)
+						 std::uint32_t error_code,
+						 telemetry_storage_check check)
 {
 	ADMISSION_READY.store(false, std::memory_order_release);
 	const auto first = INFLIGHT.isolation ? INFLIGHT.isolation_index : 0U;
 	open_circuit(now, error_code, telemetry_failure_class::permanent_repository,
 		     INFLIGHT.active ? INFLIGHT_RECORDS.data() + first : nullptr,
 		     INFLIGHT.active ? INFLIGHT.count - first : 0U, 0U);
+	HEALTH.last_storage_check.store(static_cast<std::uint8_t>(check),
+					std::memory_order_release);
 }
 
 bool telemetry_transport_outage_copy_for_worker(telemetry_outage_observation *observation)
@@ -1682,6 +1689,8 @@ telemetry_health_snapshot telemetry_transport_health_copy(void)
 	result.last_error_code = HEALTH.last_error_code.load(std::memory_order_acquire);
 	result.last_schema_check = static_cast<telemetry_schema_check>(
 		HEALTH.last_schema_check.load(std::memory_order_acquire));
+	result.last_storage_check = static_cast<telemetry_storage_check>(
+		HEALTH.last_storage_check.load(std::memory_order_acquire));
 	result.queue_capacity = HEALTH.queue_capacity.load(std::memory_order_acquire);
 	result.producer.boot_id = HEALTH.producer_boot_id.load(std::memory_order_acquire);
 	result.producer.process_id = HEALTH.producer_process_id.load(std::memory_order_acquire);

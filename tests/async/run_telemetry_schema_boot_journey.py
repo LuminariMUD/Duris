@@ -11,7 +11,8 @@ running watermark that the next producer turns into unknown_tail. It then boots
 against the chain with one progression column renamed (the boot gate refuses
 the schema with COMPAT-E003 before telemetry runs) and as a writer that may
 only SELECT (the game enters its loop with nobody logged in and the one
-telemetry_health line names the permission). --misnamed-server, a build whose
+telemetry_health line names the permission), with no outage ledger directory
+and with one readable by others (the line names the storage check). --misnamed-server, a build whose
 telemetry_columns.inc names a column the migrations do not create, boots
 against the whole chain: the game runs and the line names the missing column,
 which is the production incident of work item #17. Only a newly created
@@ -38,7 +39,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CATALOG = '6f49b7e9b16055b6c7d48d83f4a9de789d89adeddabbb4bfc1f6d2c86f6b8792 265 265 1\n'
 TABLES = ('telemetry_interval', 'telemetry_config', 'telemetry_session', 'telemetry_quarantine')
 HEALTH = re.compile(r'telemetry_health event=(\S+) .*?state=(\S+) .*?producer=(\d+:\d+) .*?'
-                    r'failure_class=(\S+) error=(\d+) schema_check=(\S+) ')
+                    r'failure_class=(\S+) error=(\d+) schema_check=(\S+) storage_check=(\S+) ')
 
 
 def run(server, misnamed_server):
@@ -149,8 +150,8 @@ def run(server, misnamed_server):
                         time.sleep(.1)
                     assert expected is not None, label+': the server booted on a schema the boot gate should refuse'
                     found = health_line(label, status_offset, process)
-                    event, state, producer, failure_class, error, check = found.groups()
-                    observed = (state, failure_class, int(error), check)
+                    event, state, producer, failure_class, error, check, storage = found.groups()
+                    observed = (state, failure_class, int(error), check, storage)
                     assert observed == expected, f'{label}: {observed} != {expected}\n{found.group(0)}'
                     # The game stays up, with telemetry refused or running.
                     time.sleep(1.5)
@@ -169,7 +170,7 @@ def run(server, misnamed_server):
                         process.send_signal(signal.SIGTERM)
                         process.wait(timeout=30)
                         assert process.returncode == 0, label+': shutdown returned '+str(process.returncode)
-                    print(f'{label}: state={state} failure_class={failure_class} error={error} schema_check={check}, {stop}', flush=True)
+                    print(f'{label}: state={state} failure_class={failure_class} error={error} schema_check={check} storage_check={storage}, {stop}', flush=True)
                 except Exception as error:
                     raise AssertionError(str(error)+'\n'+output_path.read_text(errors='replace')[offset:][-6000:]+'\n'+journey.runtime_logs(runtime)) from error
                 finally:
@@ -180,24 +181,35 @@ def run(server, misnamed_server):
                     if revert:
                         sql(revert)
 
-            boot('whole chain', ('healthy', 'none', 0, 'none'))
+            boot('whole chain', ('healthy', 'none', 0, 'none', 'none'))
             assert evidence() == [('clean_drained', False)], evidence()
-            boot('whole chain, copied over', ('healthy', 'none', 0, 'none'), stop='copyover')
+            boot('whole chain, copied over', ('healthy', 'none', 0, 'none', 'none'), stop='copyover')
             # The copyover flushes durably but writes no terminal sample before the exec,
             # so the copied-over producer is an unknown tail; the new image drains cleanly.
             assert evidence() == [('clean_drained', False), ('unknown_tail', True), ('clean_drained', False)], evidence()
-            boot('whole chain, killed', ('healthy', 'none', 0, 'none'), stop='kill')
+            boot('whole chain, killed', ('healthy', 'none', 0, 'none', 'none'), stop='kill')
             assert evidence()[3] == ('running', True), evidence()
             print(f'outage ledger after stop, copyover and kill: {evidence()}', flush=True)
             boot('renamed progression column', None,
                  'ALTER TABLE telemetry_interval CHANGE COLUMN progression_requested_xp progression_requested_xp_hidden BIGINT NULL',
                  'ALTER TABLE telemetry_interval CHANGE COLUMN progression_requested_xp_hidden progression_requested_xp BIGINT NULL')
-            boot('writer that may only SELECT', ('circuit-open', 'permanent-permission', 1142, 'none'),
+            boot('writer that may only SELECT', ('circuit-open', 'permanent-permission', 1142, 'none', 'none'),
                  env_extra={'TELEMETRY_DB_USER': writer, 'TELEMETRY_DB_PASSWD': writer_password})
             # The next producer's registration turned the killed one's watermark into a gap.
             assert evidence()[3] == ('unknown_tail', True), evidence()
+            # A ledger the worker cannot use is refused before SQL, and the line says what.
+            boot('no outage ledger directory', ('circuit-open', 'permanent-repository', 22, 'none', 'directory'),
+                 env_extra={'TELEMETRY_OUTAGE_LEDGER_DIR': ''})
+            ledger.chmod(0o755)
+            try:
+                boot('outage ledger directory readable by others',
+                     ('circuit-open', 'permanent-repository', 1, 'none', 'protection'))
+            finally:
+                ledger.chmod(0o700)
+            # Neither refused boot registered a producer; the SELECT-only writer did.
+            assert len(evidence()) == 5, evidence()
             if misnamed_server:
-                boot('writer naming a column the chain lacks', ('circuit-open', 'permanent-schema', 1054, 'column'),
+                boot('writer naming a column the chain lacks', ('circuit-open', 'permanent-schema', 1054, 'column', 'none'),
                      binary=misnamed_server)
             assert sql('SELECT COUNT(*) FROM telemetry_interval WHERE record_kind<>5') == '0', 'a refused writer admitted records'
             print('telemetry schema boot: each refusal named its cause with nobody logged in, and the game ran whenever the boot gate let it', flush=True)

@@ -330,6 +330,16 @@ for a column the writer needs and the table lacks, `error=0` and
 refused, and `failure_class=permanent-permission error=1142` for a grant the
 telemetry account lacks. The game runs on with telemetry off in every case.
 
+A writer refused by its outage ledger says `failure_class=permanent-repository`
+with `storage_check` naming the check and `error` the errno: `directory` (no
+`TELEMETRY_OUTAGE_LEDGER_DIR`, a relative one, or this producer is already
+registered; 22), `protection` (the directory or a file is not owned by the server
+user with mode 0700 or 0600, or has a hard link; 1), `owner` (another process holds
+`outages.owner`; 11), `ledger` (the ledger or a whole pending frame does not
+decode; 74) and `io` (open, read, write, fsync or rename failed, for example 2 for
+a missing directory or 28 for a full disk). A sample that cannot be written after
+registration does not refuse anything; capture goes on and the ledger keeps its
+last good sample.
 A trusted operator can run `world telemetry` to inspect the same live metadata
 without a debugger. Start with `state`, `reason_flags`, `failure class`, numeric
 `error`, `schema_check`, `record_kinds`, `queue`, and `retry`; compare

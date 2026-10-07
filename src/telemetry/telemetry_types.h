@@ -327,6 +327,19 @@ enum class telemetry_schema_check : std::uint8_t
 	engine = 5, // a table is not InnoDB
 };
 
+/* What the worker's outage ledger refused at startup, with the errno in
+ * last_error_code. */
+enum class telemetry_storage_check : std::uint8_t
+{
+	none = 0,
+	directory =
+		1, // TELEMETRY_OUTAGE_LEDGER_DIR unset or relative, or this producer is registered
+	protection = 2, // owner, mode or link count of the directory or a file
+	owner = 3, // another process holds outages.owner
+	ledger = 4, // the ledger or a whole pending frame does not decode
+	io = 5, // open, read, write, fsync or rename failed; errno says which
+};
+
 enum class telemetry_disabled_reason : std::uint8_t
 {
 	none = 0,
@@ -821,7 +834,7 @@ struct telemetry_health_snapshot
 	telemetry_failure_class last_failure_class;
 	std::uint16_t schema_version;
 	telemetry_schema_check last_schema_check;
-	std::uint8_t reserved2;
+	telemetry_storage_check last_storage_check;
 	std::uint32_t last_error_code;
 	std::uint32_t queue_capacity;
 	telemetry_producer_id producer;

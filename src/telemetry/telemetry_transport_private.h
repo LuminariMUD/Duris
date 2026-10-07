@@ -78,7 +78,8 @@ telemetry_transport_loss_snapshot telemetry_transport_loss_copy_for_producer(voi
  * between queue publication and its counter updates; never wait on gameplay. */
 bool telemetry_transport_outage_copy_for_worker(telemetry_outage_observation *observation);
 void telemetry_transport_fail_storage_for_worker(telemetry_monotonic_usec now,
-						 std::uint32_t error_code);
+						 std::uint32_t error_code,
+						 telemetry_storage_check check);
 /* Explicitly injected repositories may omit storage in component fixtures.
  * The production binding always requires a protected ledger directory. */
 bool telemetry_transport_uses_test_repository(void);
