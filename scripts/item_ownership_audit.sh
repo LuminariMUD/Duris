@@ -18,7 +18,8 @@
 #                         then extracted. The row is inert and the next boot deletes
 #                         it (reap_unheld_player_items() in item_claim_repository.c),
 #                         except one an auction's custody row, an artifact_domain_state
-#                         row or a child row still references.
+#                         row or a child row still references, and one whose item an
+#                         older copy in another payload still carries.
 #
 #   ./scripts/item_ownership_audit.sh            # summary counts
 #   ./scripts/item_ownership_audit.sh --detail   # every offending row
@@ -33,7 +34,7 @@ cd "$(dirname "$0")/.." || exit 1
 DETAIL=0
 case "${1-}" in
   --detail) DETAIL=1 ;;
-  -h|--help) sed -n '3,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '3,29p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
   "") ;;
   *) echo "Unknown option: $1" >&2; exit 2 ;;
 esac

@@ -60,12 +60,16 @@ disagreement, and nothing ever settled one. On a running server that meant:
   for the locker identification receipts.
 - **A dropped item keeps its last holder's ownership record** until another owner's save
   claims it or the next boot reaps it (see the release entry below). At boot no character
-  is in memory, so a player's active record whose item is in no payload row is an item
-  the player no longer holds: both backends delete those records then, before the writer
-  starts. A record an auction's custody row, an `artifact_domain_state` row or another
-  record (its contents) still references is kept for the foreign keys; the pass repeats
-  until it deletes nothing, so a container goes after its contents. During an uptime the
-  load path tolerates such a record and counts it (`missing_payload_rows`, logged with
+  is in memory, so a player's active record whose item no stored payload carries (no
+  character's or pet's items, no locker, corpse or saved room item, and on flat-file no
+  delivery its player still has pending) is an item nobody holds: both backends delete
+  those records then, before the writer starts. A record whose item an older copy still
+  carries stays: a load skips a copy whose record names someone else, so after a crash
+  that follows a hand-over the record is what keeps the giver's copy out. A record an
+  auction's custody row, an `artifact_domain_state` row or another record (its contents)
+  still references is kept for the foreign keys; the pass repeats until it deletes
+  nothing, so a container goes after its contents. During an uptime the load path
+  tolerates such a record and counts it (`missing_payload_rows`, logged with
   `DURIS_PERSISTENCE_TRACE`).
 - **World recovery is a convenience, not a safety net.** Characters, pets, corpses,
   lockers, banks and shops are saved without it. It is off unless a server sets

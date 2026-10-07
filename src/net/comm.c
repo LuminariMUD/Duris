@@ -186,10 +186,10 @@ static bool hydrate_flatfile_system_item_owner(void)
 	       item_ownership_runtime_hydrate_owner(owner, revision);
 }
 
-// A player's active ownership record whose item is in no payload row is an item the
-// player no longer holds, and no save releases it (ADR 0002). No character is in memory
-// yet, so the records are deleted here, before the writer starts. A failure leaves them
-// for the next boot.
+// A player's active ownership record whose item no stored payload carries is an item
+// the player no longer holds, and no save releases it (ADR 0002). No character is in
+// memory yet, so the records are deleted here, before the writer starts. A failure
+// leaves them for the next boot.
 static void reap_unheld_player_items_at_boot(void)
 {
 	uint64_t deleted = 0;

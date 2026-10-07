@@ -223,9 +223,16 @@ equipment by vnum.
 A save never releases an `item_current_owner` row, so a player's row for an item that was
 dropped and then extracted (or eaten, decayed, dissolved) was counted on every login,
 forever, and the table grew with play. Each boot now deletes a player's active rows whose
-item is in no payload row of that player, in both backends, before the writer starts; a
-row an auction's custody row, an `artifact_domain_state` row or a child row still
-references is kept, and a container goes after its contents. The per-login
+item no stored payload carries, in both backends, before the writer starts: no
+character's or pet's items, no locker, corpse or saved room item, and on flat-file no
+delivery the record's player still has pending from a committed purchase or grant. A row
+whose item an older copy still carries stays, since a load skips a copy whose row names
+someone else: after a crash that follows a hand-over, the row is what keeps the giver's
+copy out (the review of MR !13, finding 1); and a flat-file purchase or grant committed
+after the buyer's last save is delivered by the next login only while its record names the
+buyer (finding 2). A row an auction's custody row, an `artifact_domain_state` row or a child
+row still references is kept, and a container goes after its contents. A flat-file player
+file or store the reap cannot read stops it with nothing deleted. The per-login
 `missing_payload_rows` count and the per-save `unowned_object` line are traces
 (`DURIS_PERSISTENCE_TRACE`). Work item #11.
 
@@ -235,27 +242,37 @@ python3 tests/async/test_player_save_claim.py
 python3 tests/async/test_player_snapshot_capture.py
 python3 tests/async/test_boot_log_hygiene.py
 tests/async/with_disposable_mariadb.sh python3 tests/async/run_world_restart_journey.py /absolute/path/dms_new taken
+tests/async/with_disposable_mariadb.sh python3 tests/async/run_world_restart_journey.py /absolute/path/dms_new handover
 tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_combat_journey.py --server /absolute/path/dms_new
 python3 tests/async/test_flatfile_combat_journey.py
 ```
 
 The two claim harnesses hold the rules on fixture rows: a stale leaf and a stale container
-with its stale contents go, a row with a payload row, a legacy pet's, a quarantined one,
-another owner's, and (MariaDB) one an auction's or an artifact's row references or whose
-contents a payload still holds stay; (flat-file) a player whose file cannot be read keeps
-its records. The `taken` scenario is the real path without the switch: get a zone-loaded
-mace, save, drop it, save, crash, boot; the mace's row and the dissolved starter kit's
-are gone, every remaining player row has a payload row, the login counts nothing and the
-saves wrote no `unowned_object` line. The combat journeys restart with a ghost record
-under the banana and the switch on: each save of the looted banana wrote an
-`unowned_object` line, and after the boot the ghost is gone, the rows whose items the save
-holds stay, and the login counts nothing. The capture test runs the production
-save with the switch off (three saves, no line) and on (one line per save).
+with its stale contents go; a row with a payload row, a legacy pet's, a quarantined one,
+another owner's, one whose item an older copy carries (another player's payload or pet, a
+locker, a corpse, a saved room item) and (MariaDB) one an auction's or an artifact's row
+references or whose contents a payload still holds stay, and the older-copy rows go once
+the copies are gone. The flat-file harness also commits a creation grant after the
+player's last save: the reap keeps its record and the login delivers it, and once a save
+has carried it and the item is used up the next reap takes the record; the newcomer whose
+file holds a handed-over copy loads without it; and an unreadable player file stops the
+reap. The `taken` scenario is the real path without the switch: get a
+zone-loaded mace, save, drop it, save, crash, boot; the mace's row and the dissolved
+starter kit's are gone, every remaining player row has a payload row, the login counts
+nothing and the saves wrote no `unowned_object` line. The `handover` scenario is finding
+1's crash: the banana's row survives the boot, the giver loads without its older copy
+(`load_skipped` in `logs/log/dupes`), the floor copy is restored, and after both save one
+character holds it. The combat journeys restart with a ghost record under the banana and
+the switch on: each save of the looted banana wrote an `unowned_object` line, and after
+the boot the ghost is gone, the rows whose items the save holds stay, and the login counts
+nothing. The capture test runs the production save with the switch off (three saves, no
+line) and on (one line per save).
 
 Not covered: a stale container in the flat-file catalog whose contents a payload still
 holds (no transfer path produces that state there; the rule is held by the MariaDB
-fixture, where the foreign key is), and the reap on a long-lived database with every
-owner type populated.
+fixture, where the foreign key is), the flat-file reap on a live server (the harness
+drives the repository functions), and the reap on a long-lived
+database with every owner type populated.
 
 ## Riposte after a participant is removed
 

@@ -142,11 +142,13 @@ flatfile_item_repository_result flatfile_item_repository_list_collector_items_lo
 flatfile_item_repository_result flatfile_item_repository_list_active_player_items(
 	const std::string &root, std::vector<flatfile_item_ownership_record> *items,
 	std::string *error);
-// Delete every active record naming a player as the holder of an item its player file
-// (its items and its pets' items) does not carry: the boot reap, see
-// reap_unheld_player_items() in item/item_claim_repository.h. A record another record
-// names as its parent is kept, and a player whose file cannot be read keeps its records.
-// Returns unchanged when nothing was deleted. *deleted counts the records.
+// Delete every active record naming a player as the holder of an item no stored payload
+// carries: no player file (its items and its pets'), no delivery the record's player
+// still has pending from a committed transfer, no locker chest, corpse or room. The
+// boot reap, see reap_unheld_player_items() in item/item_claim_repository.h. A record
+// another record names as its parent is kept. A player file or store that cannot be
+// read stops the reap with nothing deleted. Returns unchanged when nothing was deleted.
+// *deleted counts the records.
 flatfile_item_repository_result
 flatfile_item_repository_reap_unheld_player_items(const std::string &root, uint64_t *deleted,
 						  std::string *error);

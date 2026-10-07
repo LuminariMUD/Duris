@@ -176,7 +176,7 @@ def run(server, reset_coins=False, boons=False):
                     settle(lambda: number(f'SELECT numb_deaths FROM player_data WHERE pid={pid}')==before_deaths+1, 'the second death was not saved')
                     assert sql(f'SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}')=='0\t0\t0\t0'
                     before=stable_state(pid)
-                    # The boot reaps every player row with no payload row (#11): the ghost,
+                    # The boot reaps every player row no payload row carries (#11): the ghost,
                     # and the starter kit that dissolved when the character dropped it. The
                     # rest of the state stays, and the login after it counts nothing.
                     held=set(sql(f'SELECT obj_uid FROM player_items WHERE pid={pid}').split())
