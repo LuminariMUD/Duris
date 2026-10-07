@@ -1,7 +1,8 @@
 # Findings: a fall that landed three rooms away (Faang, 2026-10-07)
 
 Written 2026-10-07 against `master` at `a7e43bd0a`, from a play-test report by the owner.
-Working note: file the defect as a work item and delete this file.
+Working note: file the defect as a work item and delete this file. The resolution of each
+finding is at the end, under [Resolution](#resolution-2026-10-08).
 
 ## What happened
 
@@ -49,3 +50,17 @@ except that the swallowed command is a movement, which is why one `d` in the ali
 Any mortal in 15265 typing `look` repeatedly falls within a few dozen commands (10% each).
 Send `d` immediately after "You rediscover the law of gravity" and `s` after the next room
 text: the landing messages arrive in A Large Sleeping Cave.
+
+## Resolution (2026-10-08)
+
+On the branch `fix/build-findings-and-falling`, with the build findings of
+[build-issues.md](build-issues.md).
+
+| # | Status | Change |
+|---|---|---|
+| 1 | Fixed | `command_interpreter()` refuses every command but the casting escape hatches (petition, return) while an `event_falling_char` is pending: "You are falling!" (`src/cmd/interp.c`, right after the casting gate). The event payload carries the room the step was scheduled in, and a step whose faller is elsewhere, summoned or teleported between two steps, does nothing (`src/world/falling.c`). Regressions: the shelf phase of `tests/async/run_falling_skills_journey.py` (a room with `F 100`, a move typed behind the command that starts the fall), and the payload case in `tests/async/test_falling_skills.py`. |
+| 2 | Fixed | "You tumble downward!" to the faller on every step below speed 90; the faster band already had its line. |
+| 3 | Documented | `docs/content/area_writing.txt`, under the `F` record: a successful roll swallows the command, and the character can do nothing but petition until the fall lands. The roll stays per command. |
+| 4 | Kept | The impact arithmetic is unchanged. |
+| 5 | Builders | No change. |
+| 6 | Done | See 1. |

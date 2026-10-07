@@ -167,6 +167,11 @@ custody and wallet; a reconnect keeps the inventory without replaying the haul.
   message reports the impact without saying the floor shattered. Death owns corpse
   placement, and the dead actor does not destroy the floor. A survivor still dispels it
   and keeps falling.
+- A fall in progress refuses every command but petition and return ("You are falling!")
+  until it lands, the faller is told "You tumble downward!" on every step, and a step
+  fires only in the room it was scheduled in: a faller summoned or teleported between two
+  steps is left where they are. (A move typed inside the gap between two steps used to
+  run, and the fall then landed wherever the walk went, three rooms away in the report.)
 
 ```sh
 python3 tests/async/test_falling_skills.py
@@ -180,8 +185,11 @@ python3 tests/async/run_lethal_floor_journey.py /absolute/path/dms_flat lethal
 every 1-100 roll for negative, zero, boundary, ordinary and above-cap skill values:
 success and failure, short and long falls, odd-damage rounding, minimum damage, a lethal
 threshold, water, a breakable floor, mount and rider, flight and levitation, Climb active
-and absent, Mental Anguish, and initial against already-scheduled falls. Its journey walks
-a character off a ledge, lands, saves and reloads in the landing room. The fixture is a
+and absent, Mental Anguish, initial against already-scheduled falls, and a step whose
+faller has left the scheduled room. Its journey walks a character off a ledge, lands,
+saves and reloads in the landing room, then steps onto a shelf with a certain fall chance,
+types a move behind the command that starts the fall, and sees it refused and the landing
+in the fall's own room. The fixture is a
 Thief so login keeps Safe Fall; skill 1 always fails the strict comparison and skill 100
 can fail on rolls 100 and 101, so failed rolls retry up to five times, and increased
 damage fails at once.
@@ -249,6 +257,25 @@ Not covered: the full random-world generator (the journeys use controlled instan
 1255 and 1256), and generated equipment across a file copyover, which still stores NPC
 equipment by vnum.
 
+## Maintenance scheduler state file
+
+The state file defaults to `runtime/maintenance-scheduler.state`, outside the `bin/` tree
+that `make clean-all` removes. The scheduler makes a missing directory above the file
+with mode `0700`, and a write that fails is logged once per failure streak while the
+worker retries every second. The old default under `bin/server/` vanished under a running
+server during a clean rebuild, and nothing said so.
+
+```sh
+python3 tests/async/test_maintenance_scheduler.py
+```
+
+The harness drives the production scheduler with a stubbed job: a state path under one
+missing directory level is made and written, and one under two levels stays unwritable and
+is retried after a pause.
+
+Not covered: a configured `MAINTENANCE_STATE_FILE` that still points under `bin/`; that is
+the host's configuration.
+
 ## Ownership records of items that stopped existing
 
 A save never releases an `item_current_owner` row, so a player's row for an item that was
@@ -307,6 +334,26 @@ holds (no transfer path produces that state there; the rule is held by the Maria
 fixture, where the foreign key is), the flat-file reap and world recovery on a live
 server (the harness drives the repository functions), and the reap on a long-lived
 database with every owner type populated.
+
+## Production launcher and a staged development build
+
+`scripts/cycle_mud.sh --production` promotes only a `bin/server/dms_new` stamped
+`mariadb/production`. One with another stamp is logged and left where it is, and the
+stamped runtime binary runs; the launcher exits only when the runtime binary is unstamped
+too. It used to exit on the staged stamp alone, so a development build staged by the
+regression suite kept the systemd service in a ten-second restart loop with a valid
+`bin/server/dms` beside it.
+
+```sh
+python3 tests/async/test_flatfile_launcher.py
+python3 tests/async/test_production_service.py
+```
+
+The launcher test boots a fake stamped runtime binary past a fake development build in
+production mode and checks that the staged file and its stamp are untouched, then removes
+the runtime stamp and expects the refusal.
+
+Not covered: a real production boot; the journeys run the server directly.
 
 ## Riposte after a participant is removed
 
