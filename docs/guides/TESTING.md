@@ -367,6 +367,7 @@ refusal, not a failed workload, and `QUALIFIED` is not readiness evidence either
 | Help files | class/race helpfile completeness contracts |
 | Event loop | hotspot budget regression; `test_cast_lateness_runtime.py` runs the production cast segments with late callbacks, and `run_cast_timing_probe.py` measures a real server's casts |
 | Build contract | `test_compiler_warning_profile.py`, `test_message_buffer_bounds.py` |
+| Telemetry | `test_telemetry_repository.py --sql-fixture` round-trips every record kind and refuses drifted schemas on a disposable MariaDB; `run_telemetry_schema_boot_journey.py` boots a real server against them and reads the outage ledger (both are `make test-db` legs) |
 | Untrusted input | `test_unicode_runtime.py`, `test_ansi_runtime.py`, `test_json_utils_runtime.py`, `test_ttype_runtime.py` |
 
 The four untrusted-input suites are behavioral rather than contract-style: they

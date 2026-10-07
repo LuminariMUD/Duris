@@ -332,6 +332,64 @@ through its initial guards only.
 Not covered: real reflective damage and a proc-driven extraction during an expert or elite
 riposte on a full sanitizer server.
 
+## Telemetry writer: schema check, round trip and the gap record
+
+The SQL telemetry writer (off unless `TELEMETRY_ENABLED` is set) proved at startup only
+that four tables existed, so a schema its serializers could not write to was reported
+usable until the first affected record failed; no gate wrote a telemetry record to a
+database, which is how the repository and the migrations came to disagree on column
+names; and a restart or copyover during an SQL outage dropped the queue with no record of
+the gap. Now the worker validates every column each record kind writes (name, type,
+signedness, width, nullability, default), the InnoDB engine and the replay and projection
+indexes against `information_schema`, and probes its SELECT, INSERT and session UPDATE
+grants with zero-row statements, before a record is admitted; a refusal opens the circuit
+with the cause on the `telemetry_health` line (`failure_class`, `error`, `schema_check`:
+table, column, column-type, index or engine) and the game runs on. The worker registers
+its producer in `TELEMETRY_OUTAGE_LEDGER_DIR` before it qualifies, samples bounded
+counters about once a second and writes a terminal observation when it stops; a later
+producer turns an unfinished one into an unknown tail; `scripts/telemetry/outage.py`
+exports the ledger. A player who enters, or is recovered by a copyover, while the writer
+is still qualifying is retried by the descriptor sweep. Work item #17; the writer code is
+Community-Duris's (`e0e837102`, `03da1882d`, `b3fb28b9f`).
+
+```sh
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_telemetry_repository.py --sql-fixture
+tests/async/with_disposable_mariadb.sh python3 tests/async/run_telemetry_schema_boot_journey.py --server /absolute/path/dms_new [--misnamed-server /absolute/path/dms_misnamed]
+python3 tests/async/test_telemetry_transport.py
+python3 tests/async/test_telemetry_outage.py
+python3 tests/async/test_telemetry_runtime_outage.py
+python3 tests/async/test_telemetry_gameplay_adapters.py
+```
+
+The repository test applies the whole migration chain to a disposable MariaDB with
+`migration_runner.py`, checks the history head, then writes every record kind 1 to 8,
+replays each for `duplicate_identical` (the repository reads every mapped column back and
+compares) and changes one field for `duplicate_conflict`; with `--sql-fixture` a missing
+`TEST_DB_*` setting is an error, so the `telemetry_repository` leg of `make test-db` cannot
+report the SQL part as skipped, and a column name the table lacks fails the INSERT. Its
+startup cases rename a combat and a progression column, change a type, a width, a
+nullability, a digest length, two defaults and three indexes, add a required column and
+take grants away, and pin the failure class, the schema check and the SQL error of each.
+The transport test pins that the published health carries the repository's cause. The
+schema boot journey, the `telemetry_schema_boot` leg, boots a real server with telemetry
+on: against the whole chain (healthy; stopped, copied over and killed, and the ledger
+shows `clean_drained`, an `unknown_tail` for the copied-over producer and a `running`
+watermark that the next producer turns into `unknown_tail`), against a renamed progression
+column (the boot gate refuses that schema with `COMPAT-E003` before telemetry runs), as a
+writer that may only SELECT (`permanent-permission error=1142`, game running, nothing
+admitted) and, given a build whose `telemetry_columns.inc` names a column the chain lacks,
+`permanent-schema error=1054 schema_check=column` with the game running: the production
+incident. The outage tests cover the ledger's lifecycle, protection, corruption, a real
+SIGKILL and exec, the quota and the export, and the runtime journey registration before
+SQL init, clean drain, transient recovery, a shutdown with an unresolved commit and
+disk-full. The adapter test covers delayed qualification, presence without input and
+copyover handoffs kept for a later observation.
+
+Not covered: a copyover or kill while queued records are waiting on a real server with
+SQL down (the runtime journey simulates the faults; the ledger's content under them is
+pinned there), a terminal sample before a copyover's exec (the copied-over producer is an
+unknown tail by design today), and MySQL 8 (the gate runs on the wrapper's MariaDB).
+
 ## Zone purge with followers
 
 `zone_purge` records runtime identities, resolves each again in its original room, and
