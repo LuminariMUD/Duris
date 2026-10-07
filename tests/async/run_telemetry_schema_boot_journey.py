@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""A server boots with SQL telemetry against a database that is wrong in one way.
+"""A server boots with SQL telemetry; its schema check and its outage record are read.
 
 Set TEST_DB_HOST (loopback), TEST_DB_USER and TEST_DB_PASSWORD for a disposable
 server; tests/async/with_disposable_mariadb.sh exports them. --server boots
---minimal with telemetry enabled against the whole migration chain (healthy),
+--minimal with telemetry enabled against the whole migration chain and is
+stopped, copied over (SIGUSR1) and killed; after each the outage ledger in
+TELEMETRY_OUTAGE_LEDGER_DIR, read with scripts/telemetry/outage.py, shows the
+producer as clean_drained, as a copied-over producer and a new one, and as a
+running watermark that the next producer turns into unknown_tail. It then boots
 against the chain with one progression column renamed (the boot gate refuses
-the schema with COMPAT-E003 before telemetry runs), and as a writer that may
+the schema with COMPAT-E003 before telemetry runs) and as a writer that may
 only SELECT (the game enters its loop with nobody logged in and the one
 telemetry_health line names the permission). --misnamed-server, a build whose
 telemetry_columns.inc names a column the migrations do not create, boots
@@ -15,9 +19,13 @@ synthetic schema is touched.
 """
 from pathlib import Path
 import argparse
+import json
 import os
 import re
+import shutil
+import signal
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -29,8 +37,8 @@ ROOT = Path(__file__).resolve().parents[2]
 # lib/duris.properties and the property registry of this tree.
 CATALOG = '6f49b7e9b16055b6c7d48d83f4a9de789d89adeddabbb4bfc1f6d2c86f6b8792 265 265 1\n'
 TABLES = ('telemetry_interval', 'telemetry_config', 'telemetry_session', 'telemetry_quarantine')
-HEALTH = re.compile(r'telemetry_health event=(\S+) .*?state=(\S+) .*?failure_class=(\S+) error=(\d+) '
-                    r'schema_check=(\S+) ')
+HEALTH = re.compile(r'telemetry_health event=(\S+) .*?state=(\S+) .*?producer=(\d+:\d+) .*?'
+                    r'failure_class=(\S+) error=(\d+) schema_check=(\S+) ')
 
 
 def run(server, misnamed_server):
@@ -79,17 +87,41 @@ def run(server, misnamed_server):
             journey.generate_certificate(runtime)
             (runtime/'logs/log').mkdir(parents=True)
             (runtime/'journals'/'critical').mkdir(parents=True, mode=0o700)
+            ledger = runtime/'telemetry-outages'
+            ledger.mkdir(mode=0o700)
+            # A copyover execs bin/server/dms below the directory the server runs in.
+            (runtime/'bin/server').mkdir(parents=True)
+            shutil.copy2(server, runtime/'bin/server/dms')
+            (runtime/'copyover-state').mkdir()
             catalog = runtime/'reviewed-properties.catalog'
             catalog.touch(mode=0o600)
             catalog.write_text(CATALOG)
             plain, tls, websocket = journey.available_ports()
             environment.update(CRITICAL_COMMAND_JOURNAL_DIR=str(runtime/'journals/critical'),
                                TELEMETRY_PROPERTY_CATALOG_FILE=str(catalog),
+                               TELEMETRY_OUTAGE_LEDGER_DIR=str(ledger),
+                               COPYOVER_STATE_FILE=str(runtime/'copyover-state/copyover.dat'),
                                DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_PORT=str(websocket))
             output_path = runtime/'server.out'
             status_path = runtime/'logs/log/status'
 
-            def boot(label, expected, alter=None, revert=None, env_extra=None, binary=server):
+            def evidence():
+                packet = json.loads(subprocess.check_output(
+                    [sys.executable, 'scripts/telemetry/outage.py', str(ledger)], cwd=ROOT, text=True))
+                return [(row['phase'], row['unknown_after_last_sample']) for row in packet['observations']]
+
+            def health_line(label, status_offset, process, deadline=30):
+                deadline = time.monotonic()+deadline
+                while True:
+                    assert process.poll() is None and time.monotonic() < deadline, label+': no telemetry_health line'
+                    if status_path.exists():
+                        for line in status_path.read_text(errors='replace')[status_offset:].splitlines():
+                            # The first observation can precede the worker's qualification.
+                            if (found := HEALTH.search(line)) and found.group(2) != 'starting':
+                                return found
+                    time.sleep(.1)
+
+            def boot(label, expected, alter=None, revert=None, env_extra=None, binary=server, stop='term'):
                 if alter:
                     sql(alter)
                 process = None
@@ -116,26 +148,28 @@ def run(server, misnamed_server):
                         assert process.poll() is None and time.monotonic() < deadline, label+': the server did not enter its loop'
                         time.sleep(.1)
                     assert expected is not None, label+': the server booted on a schema the boot gate should refuse'
-                    deadline = time.monotonic()+30
-                    found = None
-                    while found is None:
-                        assert process.poll() is None and time.monotonic() < deadline, label+': no telemetry_health line'
-                        if status_path.exists():
-                            for line in status_path.read_text(errors='replace')[status_offset:].splitlines():
-                                found = HEALTH.search(line)
-                                if found:
-                                    break
-                        time.sleep(.1)
-                    event, state, failure_class, error, check = found.groups()
+                    found = health_line(label, status_offset, process)
+                    event, state, producer, failure_class, error, check = found.groups()
                     observed = (state, failure_class, int(error), check)
                     assert observed == expected, f'{label}: {observed} != {expected}\n{found.group(0)}'
-                    # The game stays up with telemetry refused.
-                    time.sleep(1)
+                    # The game stays up, with telemetry refused or running.
+                    time.sleep(1.5)
                     assert process.poll() is None, label+': the server exited after the health line'
-                    process.send_signal(__import__('signal').SIGTERM)
-                    process.wait(timeout=30)
-                    assert process.returncode == 0, label+': shutdown returned '+str(process.returncode)
-                    print(f'{label}: state={state} failure_class={failure_class} error={error} schema_check={check}', flush=True)
+                    if stop == 'copyover':
+                        copied_at = status_path.stat().st_size
+                        process.send_signal(signal.SIGUSR1)
+                        again = health_line(label, copied_at, process, 90)
+                        assert again.group(3) != producer, label+': the copied-over image kept the producer'
+                        time.sleep(1.5)
+                        stop = 'term'
+                    if stop == 'kill':
+                        process.kill()
+                        process.wait(timeout=30)
+                    else:
+                        process.send_signal(signal.SIGTERM)
+                        process.wait(timeout=30)
+                        assert process.returncode == 0, label+': shutdown returned '+str(process.returncode)
+                    print(f'{label}: state={state} failure_class={failure_class} error={error} schema_check={check}, {stop}', flush=True)
                 except Exception as error:
                     raise AssertionError(str(error)+'\n'+output_path.read_text(errors='replace')[offset:][-6000:]+'\n'+journey.runtime_logs(runtime)) from error
                 finally:
@@ -147,11 +181,21 @@ def run(server, misnamed_server):
                         sql(revert)
 
             boot('whole chain', ('healthy', 'none', 0, 'none'))
+            assert evidence() == [('clean_drained', False)], evidence()
+            boot('whole chain, copied over', ('healthy', 'none', 0, 'none'), stop='copyover')
+            # The copyover flushes durably but writes no terminal sample before the exec,
+            # so the copied-over producer is an unknown tail; the new image drains cleanly.
+            assert evidence() == [('clean_drained', False), ('unknown_tail', True), ('clean_drained', False)], evidence()
+            boot('whole chain, killed', ('healthy', 'none', 0, 'none'), stop='kill')
+            assert evidence()[3] == ('running', True), evidence()
+            print(f'outage ledger after stop, copyover and kill: {evidence()}', flush=True)
             boot('renamed progression column', None,
                  'ALTER TABLE telemetry_interval CHANGE COLUMN progression_requested_xp progression_requested_xp_hidden BIGINT NULL',
                  'ALTER TABLE telemetry_interval CHANGE COLUMN progression_requested_xp_hidden progression_requested_xp BIGINT NULL')
             boot('writer that may only SELECT', ('circuit-open', 'permanent-permission', 1142, 'none'),
                  env_extra={'TELEMETRY_DB_USER': writer, 'TELEMETRY_DB_PASSWD': writer_password})
+            # The next producer's registration turned the killed one's watermark into a gap.
+            assert evidence()[3] == ('unknown_tail', True), evidence()
             if misnamed_server:
                 boot('writer naming a column the chain lacks', ('circuit-open', 'permanent-schema', 1054, 'column'),
                      binary=misnamed_server)
