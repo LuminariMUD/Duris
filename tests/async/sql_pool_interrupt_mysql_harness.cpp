@@ -194,6 +194,25 @@ int main()
 	// Once the lock is lost (the server restarted, or ended the owner's session), the pool
 	// lends nothing, says so once, and reports itself inactive, so /health fails.
 	execute(admin, ("KILL " + std::to_string(mysql_thread_id(owner))).c_str());
+	// KILL returns before the server has ended the session, and the lock goes only with
+	// the session: wait until the server no longer shows it held.
+	const auto lock_held = [admin]()
+	{
+		execute(admin,
+			"SELECT IS_USED_LOCK(" DURIS_SQL_EXCLUSION_LOCK_EXPRESSION ") IS NOT NULL");
+		MYSQL_RES *result = mysql_store_result(admin);
+		MYSQL_ROW row = result ? mysql_fetch_row(result) : nullptr;
+		const bool held = row && row[0] && std::string(row[0]) == "1";
+		mysql_free_result(result);
+		return held;
+	};
+	const auto killed_by = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+	while (lock_held())
+	{
+		require(std::chrono::steady_clock::now() < killed_by,
+			"the killed session kept the runtime lock");
+		std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	}
 	require(sql_pool_acquire() == nullptr, "the pool lent a connection without the lock");
 	require(sql_pool_acquire() == nullptr, "the pool lent a connection without the lock");
 	require(!sql_pool_is_active(), "the pool reported itself active without the lock");
