@@ -322,11 +322,20 @@ reminder every five minutes, while state, severity, reason, and failure-signatur
 changes are logged immediately. An idle writer with no outstanding accepted
 records does not become stale merely because it has no recent commit.
 
+A writer refused at startup opens the circuit before any record is admitted, and
+the line names the cause: `failure_class=permanent-schema` with `error=1146` and
+`schema_check=table` for a missing table, `error=1054` and `schema_check=column`
+for a column the writer needs and the table lacks, `error=0` and
+`schema_check=column-type`, `index` or `engine` for a definition the check itself
+refused, and `failure_class=permanent-permission error=1142` for a grant the
+telemetry account lacks. The game runs on with telemetry off in every case.
+
 A trusted operator can run `world telemetry` to inspect the same live metadata
 without a debugger. Start with `state`, `reason_flags`, `failure class`, numeric
-`error`, `record_kinds`, `queue`, and `retry`; compare `last_admitted_seq` with
-`last_committed_seq` to locate the unresolved range. Fix the named schema,
-permission, connection, or storage fault rather than weakening SQL/TLS policy.
+`error`, `schema_check`, `record_kinds`, `queue`, and `retry`; compare
+`last_admitted_seq` with `last_committed_seq` to locate the unresolved range. Fix
+the named schema, permission, connection, or storage fault rather than weakening
+SQL/TLS policy.
 A permanent open circuit retains its in-flight batch and requires the normal
 reviewed telemetry lifecycle restart after the dependency is repaired. Recovery
 is logged once, only after fresh commit progress, with the alert duration and

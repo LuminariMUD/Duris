@@ -50,6 +50,7 @@ struct fake_repository
 	std::uint32_t failures_left = 0U;
 	std::uint32_t init_failures_left = 0U;
 	bool init_permanent = false;
+	telemetry_health_snapshot init_health{};
 	std::uint32_t calls = 0U;
 	std::uint32_t init_calls = 0U;
 	std::uint32_t invalid_single_seq = 0U;
@@ -247,6 +248,11 @@ telemetry_repository_outcome fake_request_stop(void *) noexcept
 
 void fake_shutdown(void *) noexcept {}
 
+telemetry_health_snapshot fake_health(void *context) noexcept
+{
+	return static_cast<fake_repository *>(context)->init_health;
+}
+
 bool fake_now(void *context, telemetry_monotonic_usec *value) noexcept
 {
 	fake_clock &clock = *static_cast<fake_clock *>(context);
@@ -258,7 +264,8 @@ bool fake_now(void *context, telemetry_monotonic_usec *value) noexcept
 
 telemetry_transport_repository_binding repository_binding()
 {
-	return { fake_init, fake_apply, fake_request_stop, fake_shutdown, &repository_state };
+	return { fake_init,	fake_apply,	   fake_request_stop,
+		 fake_shutdown, &repository_state, fake_health };
 }
 
 telemetry_transport_clock_binding clock_binding()
@@ -647,11 +654,21 @@ void circuit_breaker_tests()
 	case_name = "permanent repository initialization failure does not reconnect";
 	bind_and_init(config(4U, 1U, 2U, 1U), false);
 	repository_state.init_permanent = true;
+	// The published health carries the repository's cause, not a generic one.
+	repository_state.init_health.last_failure_class = telemetry_failure_class::permanent_schema;
+	repository_state.init_health.last_error_code = 1054U;
+	repository_state.init_health.last_schema_check = telemetry_schema_check::column;
 	CHECK(telemetry_transport_enqueue(detail_record(100U)).admission ==
 	      telemetry_queue_admission::rejected_not_ready);
 	CHECK(telemetry_transport_pulse(101U).outcome == telemetry_transport_outcome::unavailable);
 	CHECK(repository_state.init_calls == 1U);
-	CHECK(telemetry_transport_health_copy().state == telemetry_health_state::circuit_open);
+	{
+		const auto health = telemetry_transport_health_copy();
+		CHECK(health.state == telemetry_health_state::circuit_open);
+		CHECK(health.last_failure_class == telemetry_failure_class::permanent_schema);
+		CHECK(health.last_error_code == 1054U);
+		CHECK(health.last_schema_check == telemetry_schema_check::column);
+	}
 	CHECK(telemetry_transport_pulse(10'000'000U).outcome ==
 	      telemetry_transport_outcome::unavailable);
 	CHECK(repository_state.init_calls == 1U);
@@ -783,6 +800,10 @@ telemetry_repository_outcome telemetry_repository_request_stop(void)
 	return telemetry_repository_outcome::stopping;
 }
 void telemetry_repository_shutdown(void) {}
+telemetry_health_snapshot telemetry_repository_health_copy(void)
+{
+	return {};
+}
 
 int main()
 {

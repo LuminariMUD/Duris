@@ -384,6 +384,10 @@ telemetry_repository_outcome telemetry_repository_request_stop(void)
 }
 
 void telemetry_repository_shutdown(void) {}
+telemetry_health_snapshot telemetry_repository_health_copy(void)
+{
+	return {};
+}
 
 int main(int argc, char **argv)
 {

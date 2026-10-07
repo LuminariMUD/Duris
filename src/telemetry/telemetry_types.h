@@ -316,6 +316,17 @@ enum class telemetry_failure_class : std::uint8_t
 	permanent_repository = 8,
 };
 
+/* What the writer's startup contract check refused, with no record data. */
+enum class telemetry_schema_check : std::uint8_t
+{
+	none = 0,
+	table = 1, // a table is missing (SQL error 1146)
+	column = 2, // a column the writer needs is missing or an unknown one is required
+	column_type = 3, // a column's type, signedness, width, nullability or default differs
+	index = 4, // a replay or projection index is missing, changed or unreviewed
+	engine = 5, // a table is not InnoDB
+};
+
 enum class telemetry_disabled_reason : std::uint8_t
 {
 	none = 0,
@@ -797,7 +808,8 @@ struct telemetry_health_snapshot
 	telemetry_disabled_reason disabled_reason;
 	telemetry_failure_class last_failure_class;
 	std::uint16_t schema_version;
-	std::uint16_t reserved2;
+	telemetry_schema_check last_schema_check;
+	std::uint8_t reserved2;
 	std::uint32_t last_error_code;
 	std::uint32_t queue_capacity;
 	telemetry_producer_id producer;

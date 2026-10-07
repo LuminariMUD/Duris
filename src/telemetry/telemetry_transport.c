@@ -79,6 +79,7 @@ struct transport_health_atoms
 	std::atomic<std::uint8_t> last_failure_class{ static_cast<std::uint8_t>(
 		telemetry_failure_class::none) };
 	std::atomic<std::uint32_t> last_error_code{ 0U };
+	std::atomic<std::uint8_t> last_schema_check{ 0U };
 	std::atomic<std::uint32_t> queue_capacity{ 0U };
 	std::atomic<std::uint64_t> producer_boot_id{ 0U };
 	std::atomic<std::uint64_t> producer_process_id{ 0U };
@@ -173,6 +174,18 @@ void production_repository_shutdown(void *) noexcept
 	}
 }
 
+telemetry_health_snapshot production_repository_health(void *) noexcept
+{
+	try
+	{
+		return telemetry_repository_health_copy();
+	}
+	catch (...)
+	{
+		return {};
+	}
+}
+
 bool production_clock_now(void *, telemetry_monotonic_usec *value) noexcept
 {
 	if (value == nullptr)
@@ -190,6 +203,7 @@ telemetry_transport_repository_binding DEFAULT_REPOSITORY = {
 	production_repository_request_stop,
 	production_repository_shutdown,
 	nullptr,
+	production_repository_health,
 };
 telemetry_transport_clock_binding DEFAULT_CLOCK = { production_clock_now, nullptr };
 telemetry_transport_repository_binding REPOSITORY = DEFAULT_REPOSITORY;
@@ -297,6 +311,7 @@ void reset_health(const telemetry_transport_config &config) noexcept
 	HEALTH.last_failure_class.store(static_cast<std::uint8_t>(telemetry_failure_class::none),
 					std::memory_order_relaxed);
 	HEALTH.last_error_code.store(0U, std::memory_order_relaxed);
+	HEALTH.last_schema_check.store(0U, std::memory_order_relaxed);
 	HEALTH.queue_capacity.store(config.queue_capacity, std::memory_order_relaxed);
 	HEALTH.producer_boot_id.store(config.fresh_producer.boot_id, std::memory_order_relaxed);
 	HEALTH.producer_process_id.store(config.fresh_producer.process_id,
@@ -440,6 +455,7 @@ void capture_failure_identity(const telemetry_record *records, std::size_t count
 	HEALTH.last_failure_class.store(static_cast<std::uint8_t>(failure_class),
 					std::memory_order_release);
 	HEALTH.last_error_code.store(error_code, std::memory_order_release);
+	HEALTH.last_schema_check.store(0U, std::memory_order_release);
 	HEALTH.last_failure_retry_attempts.store(retry_attempts, std::memory_order_release);
 	if (records == nullptr || count == 0U)
 	{
@@ -470,6 +486,7 @@ void mark_failure(telemetry_monotonic_usec now, std::uint32_t error_code,
 			  telemetry_failure_class::transient_internal) noexcept
 {
 	HEALTH.last_error_code.store(error_code, std::memory_order_release);
+	HEALTH.last_schema_check.store(0U, std::memory_order_release);
 	HEALTH.last_failure_class.store(static_cast<std::uint8_t>(failure_class),
 					std::memory_order_release);
 	HEALTH.last_failure_monotonic_usec.store(now, std::memory_order_release);
@@ -717,13 +734,23 @@ bool ensure_repository(telemetry_monotonic_usec now) noexcept
 		set_health_state(telemetry_health_state::stopping);
 		return false;
 	}
+	// The repository's own health names the cause: the schema, a grant or a
+	// producer collision, with the SQL error and what the check refused.
+	telemetry_health_snapshot cause{};
+	if (REPOSITORY.health != nullptr)
+		cause = REPOSITORY.health(REPOSITORY.context);
 	if (outcome == telemetry_repository_outcome::permanent_failure)
 	{
-		open_circuit(now, 0U, telemetry_failure_class::permanent_repository, nullptr, 0U,
-			     REPOSITORY_RETRY_ATTEMPTS);
+		open_circuit(now, cause.last_error_code,
+			     telemetry_failure_is_permanent(cause.last_failure_class) ?
+				     cause.last_failure_class :
+				     telemetry_failure_class::permanent_repository,
+			     nullptr, 0U, REPOSITORY_RETRY_ATTEMPTS);
+		HEALTH.last_schema_check.store(static_cast<std::uint8_t>(cause.last_schema_check),
+					       std::memory_order_release);
 		return false;
 	}
-	schedule_repository_retry(now, 0U);
+	schedule_repository_retry(now, cause.last_error_code);
 	return false;
 }
 
@@ -1581,6 +1608,8 @@ telemetry_health_snapshot telemetry_transport_health_copy(void)
 		HEALTH.last_failure_class.load(std::memory_order_acquire));
 	result.schema_version = TELEMETRY_SCHEMA_VERSION;
 	result.last_error_code = HEALTH.last_error_code.load(std::memory_order_acquire);
+	result.last_schema_check = static_cast<telemetry_schema_check>(
+		HEALTH.last_schema_check.load(std::memory_order_acquire));
 	result.queue_capacity = HEALTH.queue_capacity.load(std::memory_order_acquire);
 	result.producer.boot_id = HEALTH.producer_boot_id.load(std::memory_order_acquire);
 	result.producer.process_id = HEALTH.producer_process_id.load(std::memory_order_acquire);

@@ -22,12 +22,16 @@ struct telemetry_transport_repository_binding
 								std::size_t) noexcept;
 	using request_stop_function = telemetry_repository_outcome (*)(void *) noexcept;
 	using shutdown_function = void (*)(void *) noexcept;
+	using health_function = telemetry_health_snapshot (*)(void *) noexcept;
 
 	init_function init;
 	apply_function apply;
 	request_stop_function request_stop;
 	shutdown_function shutdown;
 	void *context;
+	/* Optional. After a refused init it names the cause (failure class, SQL
+	 * error and what the schema check refused) for the published health. */
+	health_function health = nullptr;
 };
 
 struct telemetry_transport_clock_binding

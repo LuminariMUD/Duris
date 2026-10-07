@@ -70,10 +70,16 @@ signedness, fixed width, nullable and default semantics, the InnoDB engine of ea
 table, and the replay and projection indexes. The contract is one descriptor per
 column in `src/telemetry/telemetry_columns.inc`, which the serializers use as well.
 Zero-row SELECT, INSERT and session UPDATE probes verify the effective permissions
-without creating synthetic observations, and always roll back. A schema or
-permission refusal is told apart in the payload-free health diagnostics and leaves
-gameplay available. Admission waits for that qualification; buffering through a
-later transient outage remains supported.
+without creating synthetic observations, and always roll back. A refusal opens the
+circuit and the payload-free health names its cause: the failure class, the SQL
+error if one occurred, and `schema_check` (table, column, column-type, index or
+engine) for what the contract check refused; gameplay stays available. Admission
+waits for that qualification; buffering through a later transient outage remains
+supported. `tests/async/run_telemetry_schema_boot_journey.py`, the
+`telemetry_schema_boot` leg of `make test-db`, boots a real server against the
+whole chain, against a renamed column (the boot gate's COMPAT-E003 refuses that
+schema first), as a writer that may only SELECT, and, given `--misnamed-server`,
+as a build whose column list names a column the chain lacks.
 
 Configuration and quarantine rows are append-only. Their identity checks use the
 repository advisory lock and unique keys; they do not require UPDATE grants for

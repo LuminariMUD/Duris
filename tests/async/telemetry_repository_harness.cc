@@ -1017,6 +1017,9 @@ static void startup_fencing_tests()
 	CHECK(telemetry_repository_health_copy().state == telemetry_health_state::circuit_open);
 	CHECK(telemetry_repository_health_copy().last_failure_class ==
 	      telemetry_failure_class::permanent_schema);
+	CHECK(telemetry_repository_health_copy().last_schema_check ==
+	      telemetry_schema_check::table);
+	CHECK(telemetry_repository_health_copy().last_error_code == 1146U);
 	CHECK(scalar("SELECT GET_LOCK(CONCAT('duris.telemetry.',MD5(DATABASE())),2)") == 1U);
 	CHECK(scalar("SELECT RELEASE_LOCK(CONCAT('duris.telemetry.',MD5(DATABASE())))") == 1U);
 	execute("RENAME TABLE telemetry_interval_fixture_hidden TO telemetry_interval");
@@ -1030,6 +1033,7 @@ static void startup_fencing_tests()
 	CHECK(telemetry_repository_health_copy().last_failure_class ==
 	      telemetry_failure_class::permanent_permission);
 	CHECK(telemetry_repository_health_copy().last_error_code == 1142U);
+	CHECK(telemetry_repository_health_copy().last_schema_check == telemetry_schema_check::none);
 	CHECK(scalar("SELECT GET_LOCK(CONCAT('duris.telemetry.',MD5(DATABASE())),2)") == 1U);
 	CHECK(scalar("SELECT RELEASE_LOCK(CONCAT('duris.telemetry.',MD5(DATABASE())))") == 1U);
 	CHECK(telemetry_repository_init(repository_config()) ==
@@ -1040,12 +1044,16 @@ static void startup_contract_tests()
 {
 	reset_fixture();
 	shutdown_fixture();
-	auto refuses_schema = []()
+	// Each refusal names what the check refused and the SQL error, if one
+	// occurred, so the operator message tells a missing column from a wrong type.
+	auto refuses_schema = [](telemetry_schema_check check, unsigned int error)
 	{
 		CHECK(telemetry_repository_init(repository_config()) ==
 		      telemetry_repository_outcome::permanent_failure);
-		CHECK(telemetry_repository_health_copy().last_failure_class ==
-		      telemetry_failure_class::permanent_schema);
+		const auto health = telemetry_repository_health_copy();
+		CHECK(health.last_failure_class == telemetry_failure_class::permanent_schema);
+		CHECK(health.last_schema_check == check);
+		CHECK(health.last_error_code == error);
 		CHECK(scalar("SELECT GET_LOCK(CONCAT('duris.telemetry.',MD5(DATABASE())),2)") ==
 		      1U);
 		CHECK(scalar("SELECT RELEASE_LOCK(CONCAT('duris.telemetry.',MD5(DATABASE())))") ==
@@ -1055,48 +1063,54 @@ static void startup_contract_tests()
 	case_name = "startup validates a missing combat column, not just base tables";
 	execute("ALTER TABLE telemetry_interval CHANGE COLUMN combat_healing_attempted "
 		"combat_healing_attempted_fixture_hidden BIGINT UNSIGNED NULL");
-	refuses_schema();
+	refuses_schema(telemetry_schema_check::column, 1054U);
 	execute("ALTER TABLE telemetry_interval CHANGE COLUMN combat_healing_attempted_fixture_hidden "
 		"combat_healing_attempted BIGINT UNSIGNED NULL");
+	case_name = "startup validates a renamed progression column";
+	execute("ALTER TABLE telemetry_interval CHANGE COLUMN progression_requested_xp "
+		"progression_requested_xp_fixture_hidden BIGINT NULL");
+	refuses_schema(telemetry_schema_check::column, 1054U);
+	execute("ALTER TABLE telemetry_interval CHANGE COLUMN progression_requested_xp_fixture_hidden "
+		"progression_requested_xp BIGINT NULL");
 	case_name = "startup rejects unsigned XP deltas that cannot store death losses";
 	execute("ALTER TABLE telemetry_interval MODIFY COLUMN progression_applied_xp BIGINT UNSIGNED NULL");
-	refuses_schema();
+	refuses_schema(telemetry_schema_check::column_type, 0U);
 	execute("ALTER TABLE telemetry_interval MODIFY COLUMN progression_applied_xp BIGINT NULL");
 	case_name = "startup rejects a changed discriminator width";
 	execute("ALTER TABLE telemetry_interval MODIFY COLUMN combat_actor_kind SMALLINT UNSIGNED NULL");
-	refuses_schema();
+	refuses_schema(telemetry_schema_check::column_type, 0U);
 	execute("ALTER TABLE telemetry_interval MODIFY COLUMN combat_actor_kind TINYINT UNSIGNED NULL");
 	case_name = "startup rejects a tagged nullable field made required";
 	execute("ALTER TABLE telemetry_interval MODIFY COLUMN encounter_outcome TINYINT UNSIGNED NOT NULL");
-	refuses_schema();
+	refuses_schema(telemetry_schema_check::column_type, 0U);
 	execute("ALTER TABLE telemetry_interval MODIFY COLUMN encounter_outcome TINYINT UNSIGNED NULL");
 	case_name = "startup rejects a shortened configuration digest";
 	execute("ALTER TABLE telemetry_config MODIFY COLUMN fingerprint BINARY(16) NOT NULL");
-	refuses_schema();
+	refuses_schema(telemetry_schema_check::column_type, 0U);
 	execute("ALTER TABLE telemetry_config MODIFY COLUMN fingerprint BINARY(32) NOT NULL");
 	case_name = "startup rejects projection defaults that invent played time";
 	execute("ALTER TABLE telemetry_session ALTER COLUMN active_usec SET DEFAULT 99");
-	refuses_schema();
+	refuses_schema(telemetry_schema_check::column_type, 0U);
 	execute("ALTER TABLE telemetry_session ALTER COLUMN active_usec SET DEFAULT 0");
 	case_name = "startup rejects a tagged fact default that invents absent XP";
 	execute("ALTER TABLE telemetry_interval ALTER COLUMN progression_applied_xp SET DEFAULT 1");
-	refuses_schema();
+	refuses_schema(telemetry_schema_check::column_type, 0U);
 	execute("ALTER TABLE telemetry_interval ALTER COLUMN progression_applied_xp SET DEFAULT NULL");
 	case_name = "startup rejects a missing replay key";
 	execute("ALTER TABLE telemetry_interval DROP INDEX uq_telemetry_replay");
-	refuses_schema();
+	refuses_schema(telemetry_schema_check::index, 0U);
 	case_name = "startup rejects a reordered replay key";
 	execute("ALTER TABLE telemetry_interval ADD UNIQUE KEY uq_telemetry_replay (record_seq,boot_id,process_id)");
-	refuses_schema();
+	refuses_schema(telemetry_schema_check::index, 0U);
 	execute("ALTER TABLE telemetry_interval DROP INDEX uq_telemetry_replay, "
 		"ADD UNIQUE KEY uq_telemetry_replay (boot_id,process_id,record_seq)");
 	case_name = "startup rejects an unrecognized uniqueness constraint";
 	execute("ALTER TABLE telemetry_interval ADD UNIQUE KEY uq_fixture_unreviewed (record_seq)");
-	refuses_schema();
+	refuses_schema(telemetry_schema_check::index, 0U);
 	execute("ALTER TABLE telemetry_interval DROP INDEX uq_fixture_unreviewed");
 	case_name = "startup refuses a new required field that would break INSERT";
 	execute("ALTER TABLE telemetry_interval ADD COLUMN fixture_required INT NOT NULL");
-	refuses_schema();
+	refuses_schema(telemetry_schema_check::column, 0U);
 	execute("ALTER TABLE telemetry_interval DROP COLUMN fixture_required");
 	case_name = "nullable additive fields remain compatible and readiness writes no facts";
 	execute("ALTER TABLE telemetry_interval ADD COLUMN fixture_optional INT NULL");

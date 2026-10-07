@@ -76,11 +76,13 @@ std::array<telemetry_record, TELEMETRY_BATCH_MAX_RECORDS_PROPOSAL> pending{};
 std::size_t pending_count = 0;
 telemetry_failure_class last_open_failure_class = telemetry_failure_class::none;
 std::uint32_t last_open_error_code = 0U;
+telemetry_schema_check last_open_schema_check = telemetry_schema_check::none;
 
 struct sql_failure
 {
 	unsigned int code;
 	telemetry_failure_class failure_class = telemetry_failure_class::none;
+	telemetry_schema_check check = telemetry_schema_check::none;
 };
 using result_ptr = std::unique_ptr<MYSQL_RES, decltype(&mysql_free_result)>;
 
@@ -107,6 +109,7 @@ bool open_connection()
 {
 	last_open_failure_class = telemetry_failure_class::none;
 	last_open_error_code = 0U;
+	last_open_schema_check = telemetry_schema_check::none;
 	try
 	{
 		connection = sql_open_telemetry_connection();
@@ -132,6 +135,7 @@ bool open_connection()
 	catch (const sql_failure &failure)
 	{
 		last_open_error_code = failure.code;
+		last_open_schema_check = failure.check;
 		last_open_failure_class =
 			failure.failure_class != telemetry_failure_class::none ?
 				failure.failure_class :
@@ -699,8 +703,9 @@ void validate_writer_schema()
 {
 	constexpr const char *tables[] = { "telemetry_interval", "telemetry_config",
 					   "telemetry_session", "telemetry_quarantine" };
-	auto schema_failure = []()
-	{ throw sql_failure{ 1054U, telemetry_failure_class::permanent_schema }; };
+	// A mismatch the check finds itself carries no SQL error, only what it refused.
+	auto schema_failure = [](telemetry_schema_check check)
+	{ throw sql_failure{ 0U, telemetry_failure_class::permanent_schema, check }; };
 	for (const char *table : tables)
 	{
 		std::string columns;
@@ -716,13 +721,23 @@ void validate_writer_schema()
 			}
 		// SELECT distinguishes a missing table from a missing writer permission
 		// before visibility rules on information_schema can obscure the cause.
-		query("SELECT " + columns + " FROM " + table + " LIMIT 0");
+		try
+		{
+			query("SELECT " + columns + " FROM " + table + " LIMIT 0");
+		}
+		catch (sql_failure &failure)
+		{
+			failure.check = failure.code == 1146U ? telemetry_schema_check::table :
+					failure.code == 1054U ? telemetry_schema_check::column :
+								telemetry_schema_check::none;
+			throw;
+		}
 		auto engine = query("SELECT ENGINE FROM information_schema.tables WHERE "
 				    "table_schema=DATABASE() AND table_name='" +
 				    std::string(table) + "'");
 		auto engine_row = mysql_fetch_row(engine.get());
 		if (!engine_row || !engine_row[0] || std::string(engine_row[0]) != "InnoDB")
-			schema_failure();
+			schema_failure(telemetry_schema_check::engine);
 
 		auto metadata =
 			query("SELECT COLUMN_NAME,DATA_TYPE,COLUMN_TYPE,IS_NULLABLE,"
@@ -731,12 +746,12 @@ void validate_writer_schema()
 			      "AND table_name='" +
 			      std::string(table) + "' LIMIT 513");
 		if (mysql_num_rows(metadata.get()) > 512U)
-			schema_failure();
+			schema_failure(telemetry_schema_check::column);
 		std::size_t matched = 0U;
 		while (auto row = mysql_fetch_row(metadata.get()))
 		{
 			if (!row[0] || !row[1] || !row[2] || !row[3] || !row[6])
-				schema_failure();
+				schema_failure(telemetry_schema_check::column_type);
 			const telemetry_table_column_descriptor *mapping = nullptr;
 			for (const auto &candidate : TELEMETRY_TABLE_COLUMNS)
 				if (std::string(candidate.table) == table &&
@@ -755,7 +770,7 @@ void validate_writer_schema()
 				if (std::string(row[3]) == "NO" && !row[7] && !auto_increment &&
 				    extra.find("STORED GENERATED") == std::string::npos &&
 				    extra.find("VIRTUAL GENERATED") == std::string::npos)
-					schema_failure();
+					schema_failure(telemetry_schema_check::column);
 				continue;
 			}
 			const auto &column = telemetry_column(mapping->column);
@@ -767,21 +782,21 @@ void validate_writer_schema()
 			    mapping->auto_increment != auto_increment ||
 			    (extra.find("STORED GENERATED") != std::string::npos ||
 			     extra.find("VIRTUAL GENERATED") != std::string::npos))
-				schema_failure();
+				schema_failure(telemetry_schema_check::column_type);
 			if (column.width != 0U)
 			{
 				const char *width = std::string(column.sql_type) == "timestamp" ?
 							    row[5] :
 							    row[4];
 				if (!width || unsigned_cell(width) != column.width)
-					schema_failure();
+					schema_failure(telemetry_schema_check::column_type);
 			}
 			if (mapping->default_kind == telemetry_column_default::zero &&
 			    (!row[7] || std::string(row[7]) != "0"))
-				schema_failure();
+				schema_failure(telemetry_schema_check::column_type);
 			if (mapping->default_kind == telemetry_column_default::null_value &&
 			    row[7] && std::string(row[7]) != "NULL")
-				schema_failure();
+				schema_failure(telemetry_schema_check::column_type);
 			if (mapping->default_kind == telemetry_column_default::current_timestamp)
 			{
 				std::string default_value(row[7] ? row[7] : "");
@@ -789,12 +804,12 @@ void validate_writer_schema()
 					       default_value.begin(), [](unsigned char value)
 					       { return std::tolower(value); });
 				if (default_value != "current_timestamp(6)")
-					schema_failure();
+					schema_failure(telemetry_schema_check::column_type);
 			}
 			++matched;
 		}
 		if (matched != expected_count)
-			schema_failure();
+			schema_failure(telemetry_schema_check::column);
 
 		struct observed_index
 		{
@@ -810,19 +825,19 @@ void validate_writer_schema()
 			"AND table_name='" +
 			std::string(table) + "' ORDER BY INDEX_NAME,SEQ_IN_INDEX LIMIT 257");
 		if (mysql_num_rows(index_rows.get()) > 256U)
-			schema_failure();
+			schema_failure(telemetry_schema_check::index);
 		while (auto row = mysql_fetch_row(index_rows.get()))
 		{
 			if (!row[0] || !row[1] || !row[2] || !row[3] || !row[5] || row[4] ||
 			    std::string(row[5]) != "BTREE")
-				schema_failure();
+				schema_failure(telemetry_schema_check::index);
 			const bool unique = unsigned_cell(row[1]) == 0U;
 			const auto sequence = unsigned_cell(row[2]);
 			if (indexes.empty() || indexes.back().name != row[0])
 				indexes.push_back({ row[0], {}, unique, 0U });
 			auto &index = indexes.back();
 			if (sequence != index.sequence + 1U || unique != index.unique)
-				schema_failure();
+				schema_failure(telemetry_schema_check::index);
 			if (!index.columns.empty())
 				index.columns += ',';
 			index.columns += row[3];
@@ -837,7 +852,7 @@ void validate_writer_schema()
 						     { return index.name == expected.name; });
 				if (found == indexes.end() || found->unique != expected.unique ||
 				    found->columns != expected.columns)
-					schema_failure();
+					schema_failure(telemetry_schema_check::index);
 			}
 		for (const auto &index : indexes)
 			if (index.unique &&
@@ -846,7 +861,7 @@ void validate_writer_schema()
 						 return std::string(expected.table) == table &&
 							index.name == expected.name;
 					 }))
-				schema_failure();
+				schema_failure(telemetry_schema_check::index);
 
 		// Zero-row statements exercise actual effective SELECT/INSERT/UPDATE
 		// permissions (including active roles and column grants). They create
@@ -1262,6 +1277,8 @@ telemetry_repository_outcome telemetry_repository_init(telemetry_repository_conf
 		thread.ready ? last_open_failure_class :
 			       telemetry_failure_class::transient_internal;
 	std::uint32_t init_error_code = thread.ready ? last_open_error_code : 0U;
+	const telemetry_schema_check init_schema_check =
+		thread.ready ? last_open_schema_check : telemetry_schema_check::none;
 	if (opened && !freshness_verified)
 	{
 		const auto fresh = check_fresh_producer();
@@ -1286,6 +1303,7 @@ telemetry_repository_outcome telemetry_repository_init(telemetry_repository_conf
 	}
 	health.last_failure_class = usable ? telemetry_failure_class::none : init_failure_class;
 	health.last_error_code = usable ? 0U : init_error_code;
+	health.last_schema_check = usable ? telemetry_schema_check::none : init_schema_check;
 	health.state = usable ? telemetry_health_state::healthy :
 		       telemetry_failure_is_permanent(init_failure_class) ?
 				telemetry_health_state::circuit_open :

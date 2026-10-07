@@ -1991,7 +1991,7 @@ static void log_telemetry_health_event(const telemetry_health_event &event)
 	      "previous_state=%s "
 	      "backend=%s schema=%u producer=%llu:%llu last_admitted_seq=%llu "
 	      "last_committed_seq=%llu last_commit_monotonic_us=%llu last_commit_age_known=%u "
-	      "last_commit_age_us=%llu failure_class=%s error=%u "
+	      "last_commit_age_us=%llu failure_class=%s error=%u schema_check=%s "
 	      "last_failure_monotonic_us=%llu last_failure_age_known=%u last_failure_age_us=%llu "
 	      "admitted=%llu/%llu applied=%llu duplicate=%llu stale=%llu invalid=%llu conflict=%llu "
 	      "dropped=%llu/%llu queue=%llu/%u high_water=%llu inflight=%u "
@@ -2011,6 +2011,7 @@ static void log_telemetry_health_event(const telemetry_health_event &event)
 	      event.last_commit_age_available, (unsigned long long)event.last_commit_age_usec,
 	      telemetry_health_failure_class_name(event.health.last_failure_class),
 	      event.health.last_error_code,
+	      telemetry_health_schema_check_name(event.health.last_schema_check),
 	      (unsigned long long)event.health.last_failure_monotonic_usec,
 	      event.last_failure_age_available, (unsigned long long)event.last_failure_age_usec,
 	      (unsigned long long)event.health.admitted_detail,
