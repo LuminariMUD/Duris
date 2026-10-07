@@ -424,6 +424,43 @@ journey waits until `close_socket()` has logged every disconnect, requires
    document gives `unknown_tail`. Writing that sample before the exec would be a
    change to the copyover path, left out of this phase.
 
+4. **Step 5** (`95cf073c7`, the pick of `b3fb28b9f`; author kept). The two status
+   documents stay out and the `SESSION_LIFECYCLE.md` paragraph ends without the pointer to
+   them. `structs.h` now includes `telemetry_types.h`, so everything recompiled (36 s
+   here). Its adapter, hook and copyover-format tests pass, and the schema boot journey's
+   copyover case still shows the copied-over producer as an unknown tail: that commit is
+   about sessions, not the ledger.
+5. **Step 6.** The ledger's telemetry row is `Adopted` with the three commits and the two
+   on top; PR #591's row is `Adapted` with `38c59e6fe`. `REGRESSIONS.md` has the section
+   "Telemetry writer: schema check, round trip and the gap record" and `TESTING.md`'s
+   samples table a telemetry row (`04ccf6a2c`).
+
+**Differs from the plan**
+
+- Steps 1 and 2 are PR #591's harness and test on our wrapper, not a new harness (see
+  "Added by the check"). The read-back is the repository's own replay comparison.
+- Part 1 needed a fix of our own on top of the pick (`ce09d17bc`): the transport reported
+  every refused start as `permanent_repository` with error 0, so the item's "told apart in
+  one operator message" was not met by the pick alone, and its synthetic mismatches
+  borrowed SQL error 1054. The `telemetry_schema_check` field, the binding's `health`
+  callback and the `schema_check=` output are ours.
+- The schema cases of the item's first condition are detected by the persistence boot
+  gate (`COMPAT-E003`) before telemetry on a real server, because the telemetry tables are
+  in the runtime fingerprint. The telemetry check matters for grants and for a writer
+  whose column list disagrees with the migrations, the production incident; the journey
+  proves both on a running server, the second with a variant build
+  (`bin/analysis/misnamed`, two lines added to `telemetry_columns.inc`, built with its own
+  `OBJDIR`; the recipe is in "State of the work").
+- The plan's step 4 tests (shutdown, copyover, kill "during a simulated SQL outage") are
+  their harnesses (simulated faults, real SIGKILL and exec at the journal level) plus the
+  journey's real-server stop, copyover and kill without an outage. A real-server outage
+  with queued records is not simulated (see the regression notes' "Not covered").
+- `IMPLEMENTATION_STATUS.md` is deleted at each pick rather than "resolved to describe our
+  tree" (see "Added by the check").
+- Three documents of ours changed that the plan did not list: `RUNBOOK.md` (the causes
+  on the health line), `README_docs.md` (the outage document) and `.env.example` (the
+  ledger directory, from the pick).
+
 **Done when:** the four conditions in the item. The quit line condition holds for the other
 four stamps as well.
 
@@ -1256,4 +1293,46 @@ then the files of the three picks less the four documents and the script above,
    document gives `unknown_tail`. Writing that sample before the exec would be a
    change to the copyover path, left out of this phase.
 
-**Done when:** the four conditions in the item.
+4. **Step 5** (`95cf073c7`, the pick of `b3fb28b9f`; author kept). The two status
+   documents stay out and the `SESSION_LIFECYCLE.md` paragraph ends without the pointer to
+   them. `structs.h` now includes `telemetry_types.h`, so everything recompiled (36 s
+   here). Its adapter, hook and copyover-format tests pass, and the schema boot journey's
+   copyover case still shows the copied-over producer as an unknown tail: that commit is
+   about sessions, not the ledger.
+5. **Step 6.** The ledger's telemetry row is `Adopted` with the three commits and the two
+   on top; PR #591's row is `Adapted` with `38c59e6fe`. `REGRESSIONS.md` has the section
+   "Telemetry writer: schema check, round trip and the gap record" and `TESTING.md`'s
+   samples table a telemetry row (`04ccf6a2c`).
+
+**Differs from the plan**
+
+- Steps 1 and 2 are PR #591's harness and test on our wrapper, not a new harness (see
+  "Added by the check"). The read-back is the repository's own replay comparison.
+- Part 1 needed a fix of our own on top of the pick (`ce09d17bc`): the transport reported
+  every refused start as `permanent_repository` with error 0, so the item's "told apart in
+  one operator message" was not met by the pick alone, and its synthetic mismatches
+  borrowed SQL error 1054. The `telemetry_schema_check` field, the binding's `health`
+  callback and the `schema_check=` output are ours.
+- The schema cases of the item's first condition are detected by the persistence boot
+  gate (`COMPAT-E003`) before telemetry on a real server, because the telemetry tables are
+  in the runtime fingerprint. The telemetry check matters for grants and for a writer
+  whose column list disagrees with the migrations, the production incident; the journey
+  proves both on a running server, the second with a variant build
+  (`bin/analysis/misnamed`, two lines added to `telemetry_columns.inc`, built with its own
+  `OBJDIR`; the recipe is in "State of the work").
+- The plan's step 4 tests (shutdown, copyover, kill "during a simulated SQL outage") are
+  their harnesses (simulated faults, real SIGKILL and exec at the journal level) plus the
+  journey's real-server stop, copyover and kill without an outage. A real-server outage
+  with queued records is not simulated (see the regression notes' "Not covered").
+- `IMPLEMENTATION_STATUS.md` is deleted at each pick rather than "resolved to describe our
+  tree" (see "Added by the check").
+- Three documents of ours changed that the plan did not list: `RUNBOOK.md` (the causes
+  on the health line), `README_docs.md` (the outage document) and `.env.example` (the
+  ledger directory, from the pick).
+
+**Done when:** the four conditions in the item. On this tree the first condition's
+schema cases are met twice over: the persistence boot gate refuses a drifted telemetry
+table before the game starts, and the writer's own check refuses, with the cause named,
+what that gate cannot see (a grant, or a writer whose columns the chain lacks). The
+fourth condition is met by the gap record (`unknown_tail`, or `abandoned` with the
+unattempted count), never by a replay; decision 10.
