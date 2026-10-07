@@ -13,8 +13,8 @@ Updated 2026-10-07. A new session starts here, then reads the phase it continues
 |---|---|---|
 | 1 | #10 | Landed on 2026-10-05 in `7fdbb20fe` (!11). |
 | 2 | #13 | Landed on 2026-10-06 in `6a4e5511c` (!12). |
-| 3 | #11 | Built on `fix/11-ownership-reap` (from `master` at `1e3a464ca`), merge request !13. Review round 1 (two findings) is fixed and the head is tagged `log-review/phase-3-review-1`. It is ready to land. "State of the work" at the end of its section has the details. |
-| 4 | #14 | Not started. |
+| 3 | #11 | Landed on 2026-10-07 in `a55ccef17` (!13). |
+| 4 | #14 | Not started. It is next, on a new branch from `master`. |
 | 5 | #17 | Not started. |
 
 ## Are the items still valid?
@@ -459,6 +459,9 @@ four stamps as well.
 
 ## Phase 3: ownership records are never retired, and the save audit (#11)
 
+**Status: landed in `a55ccef17`.** "State of the work" at the end of this phase has the
+details.
+
 **Checked.** `claim_items()` inserts or re-points rows and never releases one. No statement
 in `src/` deletes from `item_current_owner`. The reasons `player_get`, `player_drop`,
 `player_give`, `corpse_loot` and `mobile_claim` have no user. The load path counts the row
@@ -781,11 +784,19 @@ payload check materialized once, so the unindexed `saved_items.obj_uid` is read 
   and the 51 tests that read `TESTING.md` or the `Makefile` pass.
 - On a merge of that `master` with `9f157be7a` (scratch, not pushed): `make test-db` 46 of
   46 in 269 s, `world_restart_handover` among them.
-- Nothing is open. The phase is ready to land. `master` has the two commits above that the
-  branch lacks, so the landing is a real `git merge --no-ff`, not the commit-tree merge
-  Phase 2 used. It merges the branch head, not the tag: after the tag the branch carries
-  two working notes the owner added (`build-issues.md` and `fall-while-walking.md` in
-  this folder, documentation only), which land with it.
+- Landed on 2026-10-07 in `a55ccef17`: one `--no-ff` merge of the branch head
+  (`43264d32d`) into `master` at `a7e43bd0a`, with no squash and no rebase, so both
+  review tags still name the commits that were reviewed. The head is
+  `log-review/phase-3-review-1` (`4694c74ea`) plus three documentation commits: the two
+  working notes the owner added (`build-issues.md` and `fall-while-walking.md` in this
+  folder) and the plan's landing line. `master` had moved (`2bc212690`, `a7e43bd0a`), so
+  the gate ran again on the merge:
+  - `./scripts/format.sh --check`: clean.
+  - `make -C src`: built.
+  - `make test-all`: 671 passed, 0 failed, in 464 s.
+  - `make test-db`: 46 of 46 passed in 274 s.
+  #11 is closed and the branch is deleted.
+- Nothing is open.
 
 ---
 
