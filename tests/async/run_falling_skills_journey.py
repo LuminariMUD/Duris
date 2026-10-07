@@ -31,7 +31,8 @@ def run(binary):
         zone.write_text(re.sub(r'^[MG] .*\n', '', zone.read_text(), flags=re.M))
         world = runtime / 'areas_mini/mini.wld'
         text = world.read_text()
-        text = text.replace('1 0 0\nS\n$~', '1 0 0\nD1\n~\n~\n0 0 22801\nS\n$~')
+        text = text.replace('1 0 0\nS\n$~',
+                            '1 0 0\nD1\n~\n~\n0 0 22801\nD2\n~\n~\n0 0 22803\nS\n$~')
         assert '0 0 22801' in text, 'arena exit fixture changed'
         rooms = '''#22801
 The Regression Ledge~
@@ -46,6 +47,26 @@ S
 The Regression Landing~
 A stone floor stops the fall.\n~
 1 0 0
+S
+#22803
+The Regression Shelf~
+Solid ground, with a long drop below.\n~
+1 0 0
+F
+100
+D5
+~
+~
+0 0 22804
+S
+#22804
+The Regression Chute~
+Open air, with the landing below.\n~
+1 0 0
+D5
+~
+~
+0 0 22802
 S
 '''
         world.write_text(text.replace('$~', rooms + '$~'))
@@ -82,6 +103,17 @@ S
             if output:
                 output.close()
 
+        def save_after_landing():
+            client.send('save')
+            saved_message = f'Save complete for {journey.CHARACTER}.'
+            outcome, _ = client.expect_any((saved_message,
+                'Being knocked unconscious strictly limits what you can do.'), timeout=30)
+            if outcome != saved_message:
+                client.expect('Feeling begins to return', timeout=30)
+                client.send('save')
+                client.expect(saved_message, timeout=30)
+            return subprocess.check_output([str(fixture), str(state), 'inspect'], text=True).split()
+
         def boot():
             nonlocal process, output
             output = (runtime / 'server.out').open('w')
@@ -112,15 +144,7 @@ S
                     client.send('east')
                     client.expect('You rediscover the law of gravity', timeout=20)
                     client.expect('You land with stunning force!', timeout=20)
-                    client.send('save')
-                    saved_message = f'Save complete for {journey.CHARACTER}.'
-                    outcome, _ = client.expect_any((saved_message,
-                        'Being knocked unconscious strictly limits what you can do.'), timeout=30)
-                    if outcome != saved_message:
-                        client.expect('Feeling begins to return', timeout=30)
-                        client.send('save')
-                        client.expect(saved_message, timeout=30)
-                    saved = subprocess.check_output([str(fixture), str(state), 'inspect'], text=True).split()
+                    saved = save_after_landing()
                     assert int(saved[0]) == 22802, saved
                     losses[mode] = int(saved[1])
                     assert losses[mode] > 1000, losses
@@ -147,6 +171,23 @@ S
             assert 0.4 < losses['safe'] / losses['unskilled'] < 0.6, losses
             assert 0.9 < losses['climb-zero'] / losses['unskilled'] < 1.1, losses
             print('falling skills: real movement, landing, damage, save/restart/reload passed', flush=True)
+            # The shelf drops everyone on their first command there, two rooms down. The
+            # move queued behind that command arrives inside the four-tick gap between
+            # the two steps and is refused: the fall used to resolve wherever the walk went.
+            subprocess.run([str(fixture), str(state), 'unskilled'], check=True)
+            boot()
+            client = journey.reconnect_character(port)
+            client.send('south')
+            client.expect('The Regression Shelf')
+            client.send('look')
+            client.send('north')
+            client.expect('You rediscover the law of gravity', timeout=20)
+            client.expect('You are falling!', timeout=20)
+            client.expect('You land with stunning force!', timeout=20)
+            saved = save_after_landing()
+            assert int(saved[0]) == 22802, saved
+            stop()
+            print('falling gate: a move typed during the fall was refused, landed in the fall room', flush=True)
         except Exception:
             print((runtime / 'server.out').read_text(errors='replace')[-8000:])
             if client:

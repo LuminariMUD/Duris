@@ -1883,6 +1883,15 @@ void command_interpreter(P_char ch, char *argument)
 		return;
 	}
 
+	/* A fall resolves where the faller is when its next step fires, so a move typed
+	 * between two steps landed them rooms away. Only the escape hatches a cast in
+	 * progress leaves open stay open. */
+	if (falling_in_progress(ch) && !cmd_allowed_while_casting(ch, cmd))
+	{
+		send_to_char("You are falling!\r\n", ch);
+		return;
+	}
+
 	if (world[ch->in_room].chance_fall && number(1, 100) <= world[ch->in_room].chance_fall)
 	{
 		const falling_start_result falling = falling_start(ch);

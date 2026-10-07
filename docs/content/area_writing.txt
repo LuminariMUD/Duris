@@ -574,7 +574,8 @@ NOTE: All the text fields above may be left blank, but the '~' should
     (not yet implemented, but we could likely be prodded into it pretty
     easily) - this chance will be evaluated for each command entered - so
     low numbers (5-20%) would be a good average here, except for dangerous/
-    tough rooms.
+    tough rooms. A roll that succeeds swallows the command that was typed,
+    and until the fall lands the character can do nothing but petition.
 
    C
    <current speed> <current direction>

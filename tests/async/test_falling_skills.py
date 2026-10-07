@@ -133,8 +133,8 @@ nevent_schedule_result add_event(event_func, int delay, P_char ch, P_char, P_obj
                                   const void *data, int data_size) {
     ++schedule_attempts;
     scheduled_delay = delay;
-    assert(data && data_size == int(sizeof(int)));
-    scheduled_speed = *static_cast<const int *>(data);
+    assert(data && data_size == int(sizeof(falling_event_payload)));
+    scheduled_speed = static_cast<const falling_event_payload *>(data)->speed;
     if (!IS_ALIVE(ch)) ++post_death_schedules;
     return {schedule_status, {}};
 }
@@ -292,6 +292,16 @@ int main() {
     reset(); ledge(); relocate_on_entry = true;
     assert(falling_step(&person, 1) == falling_step_result::landed);
     assert(person.in_room == 2 && applied_damage > 0 && schedule_attempts == 0);
+
+    // A step scheduled in one room does nothing once the faller was moved elsewhere
+    // between two steps; in the scheduled room it runs as before.
+    reset(); falling_chain();
+    falling_event_payload elsewhere = {1, 2};
+    event_falling_char(&person, nullptr, nullptr, &elsewhere);
+    assert(person.in_room == 0 && applied_damage == 0 && schedule_attempts == 0);
+    falling_event_payload here = {1, 0};
+    event_falling_char(&person, nullptr, nullptr, &here);
+    assert(person.in_room == 1 && schedule_attempts == 1 && scheduled_speed == 31);
 
     puts("falling executor skill, lifetime, relocation and scheduling regressions passed");
 }
