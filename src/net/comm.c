@@ -3412,7 +3412,7 @@ void close_socket(struct descriptor_data *d)
 		}
 	}
 	else
-		logit(LOG_COMM,
+		logit(LOG_DEBUG,
 		      "Losing descriptor without char [host=%s desc=%d connected=%d ssl=%s].",
 		      *d->host ? d->host : "unknown", d->descriptor, d->connected,
 		      d->sslses ? "yes" : "no");
