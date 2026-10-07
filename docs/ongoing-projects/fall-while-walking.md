@@ -61,6 +61,6 @@ On the branch `fix/build-findings-and-falling`, with the build findings of
 | 1 | Fixed | `command_interpreter()` refuses every command but the casting escape hatches (petition, return) while an `event_falling_char` is pending: "You are falling!" (`src/cmd/interp.c`, right after the casting gate). The event payload carries the room the step was scheduled in, and a step whose faller is elsewhere, summoned or teleported between two steps, does nothing (`src/world/falling.c`). Regressions: the shelf phase of `tests/async/run_falling_skills_journey.py` (a room with `F 100`, a move typed behind the command that starts the fall), and the payload case in `tests/async/test_falling_skills.py`. |
 | 2 | Fixed | "You tumble downward!" to the faller on every step below speed 90; the faster band already had its line. |
 | 3 | Documented | `docs/content/area_writing.txt`, under the `F` record: a successful roll swallows the command, and the character can do nothing but petition until the fall lands. The roll stays per command. |
-| 4 | Kept | The impact arithmetic is unchanged. |
-| 5 | Builders | No change. |
+| 4 | Kept | The impact arithmetic is the legacy rule, faithfully reproduced (`falling_policy.c` keeps it so it can be checked without a world), and it is not a defect: a one-room fall is meant to hurt. Softening the flat term is a balance change, and that is the owner's to make, not a fix. |
+| 5 | Builders | World content, not server behaviour: the route and the spider are zone data under `areas/`. No change. |
 | 6 | Done | See 1. |
