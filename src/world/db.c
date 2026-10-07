@@ -430,7 +430,7 @@ void boot_material_rarity_objects(int mini_mode)
 void boot_db(int mini_mode)
 {
 	logit(LOG_STATUS, "Boot db -- BEGIN.");
-	fprintf(stderr, "\nBoot db -- BEGIN.\r\n");
+	fprintf(stderr, "\nBoot db -- BEGIN.\n");
 	boot_time = time(0);
 	if (!persistence_mode_requires_mysql())
 	{
@@ -445,10 +445,10 @@ void boot_db(int mini_mode)
 	}
 
 	logit(LOG_STATUS, "Resetting the game time:");
-	fprintf(stderr, "Resetting the game time:\r\n");
+	fprintf(stderr, "Resetting the game time:\n");
 	reset_time();
 
-	fprintf(stderr, "Reading files from lib directory. (motd, wizlist, etc)\r\n");
+	fprintf(stderr, "Reading files from lib directory. (motd, wizlist, etc)\n");
 	logit(LOG_STATUS, "Reading newsfile.");
 	//  news = file_to_string(NEWS_FILE);
 	news = get_mud_info("news");
@@ -515,7 +515,7 @@ void boot_db(int mini_mode)
 	portal_id = 0; // if someone knows a better place to put this, feel free to move it
 	logit(LOG_STATUS, "Reading in short desc tables.");
 	boot_desc_data();
-	fprintf(stderr, "Opening mobile, object, help and info files.\r\n");
+	fprintf(stderr, "Opening mobile, object, help and info files.\n");
 	logit(LOG_STATUS, "Opening mobile, object, help and info files.");
 	// mob_f and obj_f stay open for the life of the process on purpose: read_mobile()
 	// and read_object() fseek into them every time a prototype is instantiated, so
@@ -550,23 +550,23 @@ void boot_db(int mini_mode)
 		}
 	}
 
-	fprintf(stderr, "Loading zone table.\r\n");
+	fprintf(stderr, "Loading zone table.\n");
 	logit(LOG_STATUS, "Loading zone table.");
 	boot_zones(mini_mode);
 
-	fprintf(stderr, "Loading rooms.\r\n");
+	fprintf(stderr, "Loading rooms.\n");
 	logit(LOG_STATUS, "Loading rooms.");
 	boot_world(mini_mode);
 
-	fprintf(stderr, "Renumbering rooms.\r\n");
+	fprintf(stderr, "Renumbering rooms.\n");
 	logit(LOG_STATUS, "Renumbering rooms.");
 	renum_world();
 
-	fprintf(stderr, "Generating index table for mobiles.\r\n");
+	fprintf(stderr, "Generating index table for mobiles.\n");
 	logit(LOG_STATUS, "Generating index table for mobiles.");
 	mob_index = generate_indices(mob_f, &top_of_mobt);
 
-	fprintf(stderr, "Generating index table for objects.\r\n");
+	fprintf(stderr, "Generating index table for objects.\n");
 	logit(LOG_STATUS, "Generating index table for objects.");
 	obj_index = generate_indices(obj_f, &top_of_objt);
 
@@ -574,32 +574,32 @@ void boot_db(int mini_mode)
 	 * load_obj_limits();
 	 */
 
-	fprintf(stderr, "Renumbering zone table.\r\n");
+	fprintf(stderr, "Renumbering zone table.\n");
 	logit(LOG_STATUS, "Renumbering zone table.");
 	renum_zone_table();
 
-	fprintf(stderr, "Initializing Random Load Tables.\r\n");
+	fprintf(stderr, "Initializing Random Load Tables.\n");
 	logit(LOG_STATUS, "Initializing Random Load Tables.");
 	init_rand_tables(mini_mode);
 
 	if (0)
 	{ /* EMAIL registration  */
-		fprintf(stderr, "Initializing EMAIL registration table.\n\r");
+		fprintf(stderr, "Initializing EMAIL registration table.\n");
 		init_email_reg_db();
 	}
 
-	fprintf(stderr, "Loading social messages.\r\n");
+	fprintf(stderr, "Loading social messages.\n");
 	logit(LOG_STATUS, "Loading social messages.");
 	boot_social_messages();
 
 	if (!mini_mode)
 	{
-		fprintf(stderr, "Initializing boards.\r\n");
+		fprintf(stderr, "Initializing boards.\n");
 		logit(LOG_STATUS, "Initializing boards..");
 		initialize_boards();
 	}
 
-	fprintf(stderr, "Loading pose messages.\r\n");
+	fprintf(stderr, "Loading pose messages.\n");
 	logit(LOG_STATUS, "Loading pose messages.");
 	boot_pose_messages();
 
@@ -619,24 +619,24 @@ void boot_db(int mini_mode)
 
 	if (!no_specials)
 	{
-		fprintf(stderr, "Assigning function pointers (spec procs):\r\n");
+		fprintf(stderr, "Assigning function pointers (spec procs):\n");
 		logit(LOG_STATUS, "Assigning function pointers:");
 
 		logit(LOG_STATUS, "   Mobiles.");
-		fprintf(stderr, "-- Mobile special procedures.\r\n");
+		fprintf(stderr, "-- Mobile special procedures.\n");
 		assign_mobiles();
 
 		logit(LOG_STATUS, "   Objects.");
-		fprintf(stderr, "-- Object special procedures.\r\n");
+		fprintf(stderr, "-- Object special procedures.\n");
 		assign_objects();
 
 		logit(LOG_STATUS, "   Room.");
-		fprintf(stderr, "-- Room special procedures.\r\n");
+		fprintf(stderr, "-- Room special procedures.\n");
 		assign_rooms();
 	}
 	zone_story_quest_runtime::note_stored_state();
 
-	fprintf(stderr, "Assigning command pointers from interpreter.\r\n");
+	fprintf(stderr, "Assigning command pointers from interpreter.\n");
 
 	fprintf(stderr, "-- Commands.\n");
 	logit(LOG_STATUS, "   Commands.");
@@ -692,7 +692,7 @@ void boot_db(int mini_mode)
 #ifdef SHLIB
 	if (!no_specials)
 	{
-		fprintf(stderr, "Loading dynamic proc libs (and assigning pointers):\r\n");
+		fprintf(stderr, "Loading dynamic proc libs (and assigning pointers):\n");
 		logit(LOG_STATUS, "Loading dynamic proc libs");
 		load_all_proc_libs();
 	}
@@ -770,7 +770,7 @@ void boot_db(int mini_mode)
 	}
 	else
 	{
-		fprintf(stderr, "--  Skipping full-world state restoration in mini mode.\r\n");
+		fprintf(stderr, "--  Skipping full-world state restoration in mini mode.\n");
 	}
 
 	fprintf(stderr, "-- Continents\n");
@@ -1878,7 +1878,7 @@ void boot_zones(int mini_mode)
 
 		zon++;
 		if (mini_mode == 2)
-			fprintf(stderr, "\r\nzon == %d\r\n", zon);
+			fprintf(stderr, "\nzon == %d\n", zon);
 	}
 	top_of_zone_table = --zon;
 	//  str_free(check);  // i don't think so..  the last time check is used, it reads a string that is put directly into the zone data

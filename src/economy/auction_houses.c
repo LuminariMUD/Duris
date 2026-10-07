@@ -379,7 +379,7 @@ string format_time(long seconds)
 
 void init_auction_houses()
 {
-	fprintf(stderr, "-- Initializing Flat-File Auctions\r\n");
+	fprintf(stderr, "-- Initializing Flat-File Auctions\n");
 	install_auction_house_room_procedures();
 	flat_default_auction_length = get_property("auctions.defaultLength", 2 * 24 * 60 * 60);
 	flat_bid_time_extension = get_property("auctions.bidTimeExtension", 5 * 60);
@@ -1011,7 +1011,7 @@ struct auction_money_pickup_context
 
 void init_auction_houses()
 {
-	fprintf(stderr, "-- Initializing Auctions\r\n");
+	fprintf(stderr, "-- Initializing Auctions\n");
 	install_auction_house_room_procedures();
 
 	sorter = new EqSort();

@@ -94,7 +94,7 @@ static void load_crafting_config(void)
 	fp = fopen("lib/crafting.cfg", "r");
 	if (fp == NULL)
 	{
-		fprintf(stderr, "WARNING: Cannot open lib/crafting.cfg — using defaults.\r\n");
+		fprintf(stderr, "WARNING: Cannot open lib/crafting.cfg — using defaults.\n");
 		logit(LOG_STATUS, "WARNING: Cannot open lib/crafting.cfg — using defaults.");
 		return;
 	}

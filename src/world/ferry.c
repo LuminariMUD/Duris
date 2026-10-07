@@ -93,14 +93,14 @@ void Ferry::init()
 	state_timer = wait_time;
 	cur_route_leg = 0;
 
-	// fprintf(stderr, "        Loading %s...\r\n", name.c_str() );
+	// fprintf(stderr, "        Loading %s...\n", name.c_str() );
 
 	for (vector<int>::iterator it = rooms.begin(); it != rooms.end(); it++)
 	{
 		world[*it].funct = ferry_room_proc;
 	}
 
-	// fprintf(stderr, "         Generating route paths...\r\n");
+	// fprintf(stderr, "         Generating route paths...\n");
 	for (size_t i = 0; i < route.size(); i++)
 	{
 		if (route[i].stop_here)
@@ -129,7 +129,7 @@ void Ferry::init()
 
 		if (!found_path)
 		{
-			fprintf(stderr, "   %s        %s-> no path found!\r\n", name.c_str(),
+			fprintf(stderr, "   %s        %s-> no path found!\n", name.c_str(),
 				route[i].name());
 		}
 	}

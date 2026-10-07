@@ -494,7 +494,7 @@ const struct randomeq_slots slot_data[MAX_SLOT + 1] = {
 void create_randoms()
 {
 #ifndef RANDOM_ZONES
-	fprintf(stderr, "Boot random zones -- BEGIN.\r\n");
+	fprintf(stderr, "Boot random zones -- BEGIN.\n");
 
 	time_before = clock();
 
@@ -520,7 +520,7 @@ void create_randoms()
 		x++;
 	}
 
-	fprintf(stderr, " -- Generating random zones\r\n");
+	fprintf(stderr, " -- Generating random zones\n");
 
 	while (i < 45)
 	{
@@ -528,7 +528,7 @@ void create_randoms()
 		i++;
 	}
 
-	fprintf(stderr, " -- Generating random mobs\r\n");
+	fprintf(stderr, " -- Generating random mobs\n");
 
 	i = 0;
 	while (i < 15)
@@ -537,7 +537,7 @@ void create_randoms()
 		i++;
 	}
 
-	fprintf(stderr, " -- Generating random zone from areas/RANDOM_AREA file\r\n");
+	fprintf(stderr, " -- Generating random zone from areas/RANDOM_AREA file\n");
 
 	snprintf(fname, 256, "areas/RANDOM_AREA");
 	f = fopen(fname, "r");

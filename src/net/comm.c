@@ -875,11 +875,11 @@ int run_the_game(int port, int sslport)
 	if (no_random == 0)
 		create_randoms();
 	else
-		fprintf(stderr, "Starting without random zones!.\n\r");
+		fprintf(stderr, "Starting without random zones!.\n");
 
 	if (!mini_mode)
 	{
-		fprintf(stderr, "-- Updating zone database.\r\n");
+		fprintf(stderr, "-- Updating zone database.\n");
 		update_zone_db();
 		if (!epic_task_catalog_refresh())
 			logit(LOG_STATUS,
@@ -887,38 +887,38 @@ int run_the_game(int port, int sslport)
 	}
 	else
 	{
-		fprintf(stderr, "--  Skipping zone database publication in mini mode.\r\n");
+		fprintf(stderr, "--  Skipping zone database publication in mini mode.\n");
 	}
 
 	calculate_map_coordinates();
-	fprintf(stderr, "--  Done calculating maps coordinates.\r\n");
+	fprintf(stderr, "--  Done calculating maps coordinates.\n");
 
-	fprintf(stderr, "-- Calculating avg mob level and world-quest catalog.\r\n");
+	fprintf(stderr, "-- Calculating avg mob level and world-quest catalog.\n");
 	if (calc_zone_mob_level() < 0)
 	{
 		logit(LOG_EXIT, "World quest catalog unavailable; bartender quests fail closed.");
 		fprintf(stderr, "World quest catalog unavailable; bartender quests fail closed.\n");
 	}
-	fprintf(stderr, "--  Done calculating mob level and world-quest catalog.\r\n");
+	fprintf(stderr, "--  Done calculating mob level and world-quest catalog.\n");
 
 	if (!mini_mode)
 		initialize_tradeskills();
 	else
-		fprintf(stderr, "--  Skipping tradeskills/mines in mini mode.\r\n");
-	fprintf(stderr, "--  Done loading tradeskills/mines.\r\n");
+		fprintf(stderr, "--  Skipping tradeskills/mines in mini mode.\n");
+	fprintf(stderr, "--  Done loading tradeskills/mines.\n");
 
 	if (!mini_mode)
 		load_cmd_attributes();
 	else
-		fprintf(stderr, "--  Skipping command attributes in mini mode.\r\n");
-	fprintf(stderr, "--  Done loading command attributes.\r\n");
+		fprintf(stderr, "--  Skipping command attributes in mini mode.\n");
+	fprintf(stderr, "--  Done loading command attributes.\n");
 
 	if (!mini_mode)
 	{
 		if (no_ferries == 0)
 			init_ferries();
 		else
-			fprintf(stderr, "Starting without ferries.\r\n");
+			fprintf(stderr, "Starting without ferries.\n");
 
 		update_breath_weapon_properties();
 		update_regen_properties();
@@ -926,19 +926,19 @@ int run_the_game(int port, int sslport)
 		// initialize_buildings();
 
 		Guild::initialize();
-		fprintf(stderr, "-- Done loading guilds\r\n");
+		fprintf(stderr, "-- Done loading guilds\n");
 		if (!artifact_guild_state_hydrate())
 			logit(LOG_FILE,
 			      "artifact_guild: component=hydration outcome=unavailable state=retained");
 
 		Guildhall::initialize();
-		fprintf(stderr, "-- Done loading guildhalls\r\n");
+		fprintf(stderr, "-- Done loading guildhalls\n");
 
 		/* AFTER the guildhalls: a realm's anchor is a hall's outside square,
 		 * and the orphan sweep needs them loaded to tell a hall that is really
 		 * gone from one that simply has not booted yet. */
 		kingdom_initialize();
-		fprintf(stderr, "-- Done loading kingdoms\r\n");
+		fprintf(stderr, "-- Done loading kingdoms\n");
 
 		init_auction_houses();
 
@@ -947,31 +947,31 @@ int run_the_game(int port, int sslport)
 
 		init_outposts();
 
-		fprintf(stderr, "-- Loading alliances\r\n");
+		fprintf(stderr, "-- Loading alliances\n");
 		load_alliances();
 
-		fprintf(stderr, "-- Booting enhancement system\r\n");
+		fprintf(stderr, "-- Booting enhancement system\n");
 		boot_enhancement_system();
 
-		fprintf(stderr, "-- Booting crafting system\r\n");
+		fprintf(stderr, "-- Booting crafting system\n");
 		boot_crafting_system();
 
-		fprintf(stderr, "-- Loading random equipment configuration\r\n");
+		fprintf(stderr, "-- Loading random equipment configuration\n");
 		boot_random_equipment_config();
 
-		fprintf(stderr, "-- Loading frag-cap configuration\r\n");
+		fprintf(stderr, "-- Loading frag-cap configuration\n");
 		boot_frag_cap_config();
 
-		fprintf(stderr, "-- Loading account reward configuration\r\n");
+		fprintf(stderr, "-- Loading account reward configuration\n");
 		boot_account_reward_config();
 
-		fprintf(stderr, "-- Loading Hardcore configuration\r\n");
+		fprintf(stderr, "-- Loading Hardcore configuration\n");
 		boot_hardcore_config();
 
-		fprintf(stderr, "-- Loading creation availability configuration\r\n");
+		fprintf(stderr, "-- Loading creation availability configuration\n");
 		boot_creation_availability_config();
 
-		fprintf(stderr, "-- Touching hall of fame\r\n");
+		fprintf(stderr, "-- Touching hall of fame\n");
 		touch(halloffamelist_file);
 		newHardcoreBoard(NULL, "boot", 0);
 		init_ctf();
@@ -981,11 +981,11 @@ int run_the_game(int port, int sslport)
 	}
 	else
 	{
-		fprintf(stderr, "--  Skipping optional subsystems in mini mode.\r\n");
+		fprintf(stderr, "--  Skipping optional subsystems in mini mode.\n");
 	}
 	ssl_read_cert();
 
-	fprintf(stderr, "Assigning map glyph variations.\r\n");
+	fprintf(stderr, "Assigning map glyph variations.\n");
 	init_map_glyphs();
 
 	time_after = clock();
@@ -1015,7 +1015,7 @@ int run_the_game(int port, int sslport)
 #endif
 	game_booted = TRUE;
 
-	fprintf(stderr, "Entering game loop.\n\r");
+	fprintf(stderr, "Entering game loop.\n");
 	logit(LOG_STATUS, "Entering game loop.");
 	locker_async_init();
 	if (!player_save_pipeline_init())

@@ -3335,7 +3335,7 @@ void studioproc_boot(void)
 	      "STUDIOPROC: %d records, %d triggers, %d bound (%d mob, %d obj, %d room), %d counters.",
 	      nrec, studioproc_count, nbound, sp_tcount[SP_T_MOB], sp_tcount[SP_T_OBJ],
 	      sp_tcount[SP_T_ROOM], sp_ncounters);
-	fprintf(stderr, "--    STUDIOPROC: %d records, %d triggers.\r\n", nrec, studioproc_count);
+	fprintf(stderr, "--    STUDIOPROC: %d records, %d triggers.\n", nrec, studioproc_count);
 	/* the HOUR timer is armed lazily, from the first dispatch - see
 	   sp_arm_hour().  The event pool does not exist yet at this point. */
 }
