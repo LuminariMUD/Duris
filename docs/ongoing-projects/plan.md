@@ -15,7 +15,7 @@ Updated 2026-10-07. A new session starts here, then reads the phase it continues
 | 2 | #13 | Landed on 2026-10-06 in `6a4e5511c` (!12). |
 | 3 | #11 | Landed on 2026-10-07 in `a55ccef17` (!13). |
 | 4 | #14 | Landed on 2026-10-07 in `7ef76523e` (!14). |
-| 5 | #17 | In progress since 2026-10-07 on `fix/17-telemetry` from `master` at `ab4d91340`. |
+| 5 | #17 | Built on 2026-10-07 on `fix/17-telemetry` from `master` at `ab4d91340`; open for review as !15, tag `log-review/phase-5-review-0`. |
 
 ## Are the items still valid?
 
@@ -1114,6 +1114,9 @@ where each remaining segment costs one pulse plus its own lateness.
 
 ## Phase 5: telemetry schema check, SQL round trip and restart gaps (#17)
 
+**Status: built, open for review as !15.** "State of the work" at the end of this phase
+has the details.
+
 **Checked.** Startup proves only that four tables exist (`telemetry_repository.c` L125).
 `test_telemetry_repository.py` prints `SQL runtime: SKIPPED` unless it is given
 `--sql-fixture`, and `tests/run_db_tests.sh` has no telemetry leg. The queue and the
@@ -1336,3 +1339,42 @@ table before the game starts, and the writer's own check refuses, with the cause
 what that gate cannot see (a grant, or a writer whose columns the chain lacks). The
 fourth condition is met by the gap record (`unknown_tail`, or `abandoned` with the
 unattempted count), never by a replay; decision 10.
+
+**State of the work**
+
+- Branch `fix/17-telemetry`, from `master` at `ab4d91340`: `e2ca538f4` (this file's
+  ablation), `38c59e6fe` (the gate: the round-trip leg), `f7368e60e` (pick of
+  `e0e837102`), `ce09d17bc` (the cause on the operator line, the schema boot journey and
+  its leg), `2ec01dc7c` (plan), `476376592` (pick of `03da1882d`), `bc763f090` (the ledger
+  read on a real server), `683daafeb` (plan), `95cf073c7` (pick of `b3fb28b9f`),
+  `04ccf6a2c` (regression notes, testing sample, ledger rows), `360838fc4` (plan),
+  `426bb5557` (three lifecycle tests pin 221 entries), then this file's commit with the
+  gate's result.
+- The two new `make test-db` legs: `telemetry_repository` (the SQL harness, about 70 s)
+  and `telemetry_schema_boot` (the journey, about 20 s). The journey's optional
+  `--misnamed-server` case is not in the leg; the build it needs is two lines in
+  `src/telemetry/telemetry_columns.inc` (`TELEMETRY_COLUMN(combat_damage_dealtx, bigint,
+  true, 0U)` after `combat_damage_dealt`, and the matching
+  `TELEMETRY_TABLE_COLUMN(telemetry_interval, combat_damage_dealtx, true, false,
+  null_value)`), built with `make -C src OBJDIR=$PWD/bin/analysis/misnamed/objects
+  DMS_BINARY=$PWD/bin/analysis/misnamed/dms_misnamed`, then `git checkout` and `touch`
+  the file. Run on 2026-10-07 after every pick, last on `04ccf6a2c`'s tree: the game
+  ran and the line said `permanent-schema error=1054 schema_check=column`.
+- Before `ce09d17bc` (the tree of `f7368e60e`, built in a scratch worktree), the same
+  journey's SELECT-only writer logged `permanent-repository error=0` and its healthy
+  boot had no `schema_check=` field.
+- `make test-all` on `360838fc4` found the three count pins (671 of 674); fixed in
+  `426bb5557`.
+- The gate, on 2026-10-07, on `426bb5557`'s tree:
+  - `./scripts/format.sh --check`: clean (checked at every commit).
+  - `make -C src`: built.
+  - `make test-all`: 674 passed, 0 failed, in 466 s (8 min 15 s with the build).
+  - `make test-db`: 48 of 48 passed in 469 s. `telemetry_repository` took 43 s,
+    `telemetry_schema_boot` 44 s, `game_loop_budget` 215 s, `mysql_combat` 194 s.
+- Merge request !15 closes #17. The tag `log-review/phase-5-review-0` is the head
+  the review reads: `426bb5557` plus this file's commit. The measurements of the
+  journey, before and after `ce09d17bc`, are posted on #17.
+- Left for the review: nothing known. Two observations are recorded under "Differs from
+  the plan" and in the regression notes' "Not covered": the persistence boot gate refuses
+  a drifted telemetry table before the writer sees it, and a copyover leaves the
+  copied-over producer an unknown tail.
