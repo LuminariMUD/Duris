@@ -29,8 +29,38 @@ Updated 2026-10-08. A new session starts here, then reads the phase it continues
 | 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc` (on Phase 4), gate green; open for review as PR #9, tag `backlog/phase-5-review-0`. |
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
 | 7 | Quest EXP line and `achievements zones` | Built on `fix/4-phase-7-display-fixes` (on Phase 5), gate green; open for review as PR #10, tag `backlog/phase-7-review-0`. |
-| 8 | Specials assigned to missing vnums | Built on `fix/4-phase-8-dead-specials` (on Phase 7), gate green; open for review, tag `backlog/phase-8-review-0`. |
-| 9 | `board` specials and the audit heading | Not started. |
+| 8 | Specials assigned to missing vnums | Built on `fix/4-phase-8-dead-specials` (on Phase 7), gate green; open for review as PR #11, tag `backlog/phase-8-review-0`. |
+| 9 | `board` specials and the audit heading | Built on `fix/4-phase-9-boards` (on Phase 8), gate green after two fixes; open for review, tag `backlog/phase-9-review-0`. |
+
+Every phase is built and open for review; nothing is landed except Phase 6. What is left
+is review and landing, below.
+
+## Landing
+
+The pull requests form one stack, each on the one before: #5 (Phase 1, base `master`),
+#6, #7, #8, #9, #10, #11 and Phase 9's, in that order. Land them in order as "Every phase"
+says (a `--no-ff` merge of the last reviewed head, the landing recorded in the Status
+table); once a base branch is merged and deleted, GitHub retargets the next pull request to
+`master`. Delete this file when Phase 9 lands.
+
+`master` moved after the stack was built: on 2026-10-08 Dependabot's #3 (dompurify
+3.4.16, `71f14f1a7`), #2 (codeql-action 4.38.2, `96aee8c58`) and #1 (mermaid 12.1.0,
+`fb8e563d1`) landed, with `510ef5ae8` and `3ebaafd4a` (ledger row #659). Checked with
+`git merge-tree` against `origin/master` at `3ebaafd4a`:
+
+- Phases 1 and 2 merge cleanly.
+- From Phase 3 on there is one conflict, in `docs/records/COMMUNITY_DURIS_TRACKING.md`:
+  master's row #659 and Phase 3's row #662 are adjacent lines. Keep master's #659 and
+  Phase 3's #662, and let #662 name `71f14f1a7` as well (Dependabot's #3 landed the same
+  dompurify line first). Phase 3's record says #3 "becomes redundant when this lands"; it
+  landed first instead.
+- `site/package.json` and `site/package-lock.json` merge on their own: mermaid 12.1.0
+  from `master` with Phase 3's katex 0.18.2 override (mermaid 12.1.0 still asks for katex
+  `^0.16.47`). In a copy of the merged files `npm ci` succeeded and `npm audit` found
+  nothing. Run `npm test --prefix site` after that landing.
+
+The local dev server (`duris-plan`, ports 4000/4001) was copyovered onto Phase 9's build
+for its board check; Veridian quit in room 55612.
 
 ## Why these
 
@@ -53,7 +83,8 @@ work is not in this plan:
 
 Decisions 5, 7, 9 and 10 were locked by the owner on 2026-10-08 as written below; Phases 8
 and 9 have nothing left to decide. Decisions 5 and 7 were rewritten the same day for the move
-to GitHub. Decisions 1 to 4, 6, 8 and 11 are still proposed.
+to GitHub. Decisions 1 to 4, 6, 8 and 11 were proposed and were taken as written when the
+work was done (2026-10-08); each phase's section says where the work differs.
 
 | # | Decision | Where |
 |---|---|---|
@@ -818,6 +849,55 @@ and L2392); 70501→ship_shop_proc (L2391); 8010→pet_shops (L2435); 8211→dum
 30511→inn (L2457); 29903→inn (L2459); 30303→inn (L2462).
 
 ## Phase 9: six `board` specials without a table row, and the audit's heading
+
+**Built** on `fix/4-phase-9-boards` (stacked on Phase 8), 2026-10-08:
+
+- `c71b92689` (a defect found on the way, its own commit): `initialize_boards()` leaves a
+  row's rnum at -1 when the world lacks its object, and `find_board()` indexed
+  `obj_index[]` with it for every row before the board in the room. The full world has all
+  44 objects; the minimal world has 13, so a board listed after a missing row (the code
+  board 29) read `obj_index[-1]`. `find_board()` skips such rows;
+  `tests/async/test_board_lookup.py` runs it under ASan and UBSan, a heap-buffer-overflow
+  without the guard.
+- `a4ca22408`: the eighteen live `board` lines in `specs.assign.c` are deleted; 55197 gets
+  `{ 55197, AVATAR, AVATAR, AVATAR, "lib/boards/winterhaven", 0 }` and `NUM_OF_BOARDS` is
+  45; `test_spec_assign_vnums.py` fails when `specs.assign.c` assigns `board` again.
+- `65968e748`: `areas/zon/heavens.zon` calls object 42 "a dazzling pearl necklace"; the
+  audit prints `== Orphan payload rows (not a loss: the load takes them, the next save
+  claims them) ==`.
+- `2a05cb23f` (a defect found on the way, its own commit): `boot_db()` initializes the
+  boards in the full world, and `board()` initialized them again on the first board
+  command through a static flag, zeroing `msg_storage[]` and the headings without freeing
+  them and reading every board file again. With the table the only source of the special,
+  `board()` runs only after the boot initialization, so the lazy call is gone.
+- In the local dev server (full world, `duris_dev`), copyovered onto this build: the boot
+  logged `Initializing boards..`; Veridian (level 62) went to 55612, `look board` showed
+  the empty Winterhaven board, `write board ...` and `/s` posted message 1, `read 1`
+  showed it, `remove 1` removed it, and `logs/log/board` was never created.
+
+**What differs from the plan, and why.**
+
+- Eighteen explicit lines, not nineteen: the plan's range L1761-1776 holds sixteen, plus
+  L2102 and L2103; the nineteenth `= board;` (35970) is inside a comment block.
+- A `--minimal` boot does not initialize the boards (`boot_db()` skips it there), so with
+  the explicit lines gone no object in the minimal world has the special. That world loads
+  no board; a board a god loads there by hand is now a plain object, where before it
+  worked after a lazy initialization that logged 31 missing boards.
+- The two defects above were not in the plan; both sit on the path this phase changes.
+- `2fcc73f4e`: the zone comment changes `heavens.zon`'s hash in
+  `migrations/seeds/epic_zone_payouts.json`, which `test_epic_zone_seed.py` compares;
+  `scripts/epic_zone_seed.py write` changed only that hash.
+- `b683d9eb0` fixes a second race in `run_telemetry_schema_boot_journey.py`: it reads the
+  outage ledger right after killing the server, and a kill during the writer's publication
+  leaves `outages.pending`, which `outage.py` refuses to read (exit 2) until the next
+  producer recovers it. The gate's failure printed no reason (the refusal went to the
+  captured stdout); the journey now accepts that one refusal after the kill and prints any
+  other, and the leg passed seven runs in a row on this build.
+
+**Gate** on `2a05cb23f`: `./scripts/format.sh --all --check` clean, `make test-all -j16
+TEST_JOBS=16` 680 passed, 1 failed (`test_epic_zone_seed.py`, fixed by `2fcc73f4e` and then
+passing), `make test-db` 47 of 48 (`telemetry_schema_boot`, fixed by `b683d9eb0`). Nothing
+is left.
 
 **Checked** at `f44291043`. `board_info[]` (`src/cmd/boards.c` L55-103, `NUM_OF_BOARDS` 44
 at L52) is what `find_board()` (L121) searches, so an object carrying the `board` special
