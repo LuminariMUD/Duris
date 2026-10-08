@@ -652,15 +652,19 @@ int websocket_parse_handshake(struct descriptor_data *d, const char *buf, size_t
 			origin_seen = 1;
 			origin_ok = websocket_origin_allowed(value);
 		}
-		/* x-forwarded-for - trust only from the configured immediate proxy */
+		/* x-forwarded-for - trust only from the configured immediate proxy, and only the
+		 * last entry, which that proxy appended: the client writes the ones before it */
 		else if (strncasecmp(line, "X-Forwarded-For:", 16) == 0)
 		{
 			if (proxy_peer_is_trusted(d->descriptor))
 			{
 				const char *value = skip_header_value(line, 16);
+				const char *last_comma = strrchr(value, ',');
 				char client_ip[INET6_ADDRSTRLEN];
 				int i = 0;
-				while (value[i] && value[i] != ',' && value[i] != ' ' &&
+				if (last_comma)
+					value = skip_header_value(last_comma, 1);
+				while (value[i] && value[i] != ' ' &&
 				       i < (int)(sizeof(client_ip) - 1))
 				{
 					client_ip[i] = value[i];

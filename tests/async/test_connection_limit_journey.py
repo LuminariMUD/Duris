@@ -8,7 +8,7 @@ name, while a login from 127.0.0.2 still gets in; TLS connections still negotiat
 count too. Behind the proxy, two client addresses its PROXY headers name are
 counted apart, the proxy's own address, shared by every client it forwards, is not
 capped, and two website logins with different X-Forwarded-For addresses do not close each
-other. A connection silent at the account name prompt, and one silent at the password
+other, even when the second client writes the first one's address in front of its own. A connection silent at the account name prompt, and one silent at the password
 prompt, are closed after two minutes. A connection from a banned address is told so and closed, and the server stays up. A full
 server refuses TLS connections without growing.
 """
@@ -174,9 +174,10 @@ def main() -> int:
                     client = BoundClient(port, PROXY)
                     client.expect("account name")
                     held.append(client)
+                # The proxy appends the real client to whatever X-Forwarded-For it was sent.
                 first = handshake(websocket_port, "198.51.100.3")
                 held.append(first)
-                held.append(handshake(websocket_port, "198.51.100.4"))
+                held.append(handshake(websocket_port, "198.51.100.3, 198.51.100.4"))
                 require(closed_within(first, 2) is None,
                         "a website login closed another client's as a stale one from its address")
 
