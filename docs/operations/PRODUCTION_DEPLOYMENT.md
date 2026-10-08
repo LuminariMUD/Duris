@@ -5,7 +5,7 @@ Last verified: 2026-09-14 23:11 UTC
 ## Objective
 
 Run DurisMUD and the DurisWeb website as persistent production services for
-`newduris.com`. Services must recover from any exit on their own, and an
+`duris.sbs`. Services must recover from any exit on their own, and an
 off-host check must alert when they do not.
 
 This file intentionally records no passwords, API tokens, tunnel tokens, or
@@ -22,24 +22,23 @@ Git history.
 | MUD service | `duris-mud-production.service` | System unit running `scripts/cycle_mud.sh --production` |
 | Database | `mysql.service`, `127.0.0.1:3306`, schema `duris_game_prod` | MySQL 8.0; `PERSISTENCE_MODE=mariadb-primary` |
 | MUD Redis | `redis-server.service`, `127.0.0.1:6379` | Namespace `duris:production:default` |
-| Plain telnet | `mud.newduris.com:7777` | DNS-only A record to the host |
-| TLS telnet | `mud.newduris.com:7778` | Let's Encrypt; expires 2026-12-05 |
+| Plain telnet | `mud.duris.sbs:7777` | DNS-only A record to the host |
+| TLS telnet | `mud.duris.sbs:7778` | Let's Encrypt; expires 2026-12-05 |
 | MUD WebSocket/health origin | `127.0.0.1:4050` | Loopback-only. The MUD's `.env` must set `DURIS_WEBSOCKET=TRUE`: the listener is off by default, and the website and both health checks need it |
-| Public MUD WebSocket/health | `wss://mud.newduris.com`, `https://mud.newduris.com/health` | Nginx TLS proxy to the origin |
-| Website checkout | `/home/duris/website` | `Community-Duris/DurisWebApp`, deployed from `master` |
+| Public MUD WebSocket/health | `wss://mud.duris.sbs`, `https://mud.duris.sbs/health` | Nginx TLS proxy to the origin |
+| Website checkout | `/home/duris/website` | ` `, deployed from `master` |
 | Website application | `durisweb-production.service`, `127.0.0.1:3001` | Private cache `durisweb-redis.service` on `127.0.0.1:6380` |
-| Website tunnel | `durisweb-cloudflared.service`, tunnel `5b7d0472-7d5b-4c6e-8aa3-cd550e2bdb60` | `www.newduris.com` routes to the application; `newduris.com` routes to Nginx port 80, which redirects to `www` and passes `/health` through |
+| Website tunnel | `durisweb-cloudflared.service`, tunnel `5b7d0472-7d5b-4c6e-8aa3-cd550e2bdb60` | `duris.sbs` routes to the application; `duris.sbs` routes to Nginx port 80, which redirects to `www` and passes `/health` through |
 | Tunnel readiness | `http://127.0.0.1:20243/ready` | Loopback-only |
 | Watchdog | `durisweb-watchdog.timer` | Runs `/usr/local/sbin/durisweb-watchdog` every minute |
 
-The `newduris.com` zone and website tunnel belong to a different Cloudflare
-account from `duris.sbs`. API work for them uses the credentials in
+API work for them uses the credentials in
 `/home/duris/.config/durisweb/deployment.env`, not a workstation `.env`.
 
 ## Availability safeguards
 
 On 2026-09-10 the website tunnel exited cleanly after losing every edge
-connection. Its unit restarted only on failure, so `newduris.com` served
+connection. Its unit restarted only on failure, so `duris.sbs` served
 Cloudflare error 1033 until the connector was started by hand on 2026-09-14.
 Later that day, a maintenance stop and start of the website application stopped
 the tunnel again, because the tunnel was bound to the application, and the site
@@ -58,8 +57,8 @@ was down for another 40 minutes.
   `Restart=always`, `RestartSec=5s`, and `StartLimitIntervalSec=0`.
 - `duris-mud-production.service` uses `Restart=always` with no start rate limit
   (`deploy/systemd/duris-mud-production.service.in`).
-- The `production uptime` workflow probes `https://newduris.com/health` and
-  `https://mud.newduris.com/health` every ten minutes from GitHub-hosted runners.
+- The `production uptime` workflow probes `https://duris.sbs/health` and
+  `https://mud.duris.sbs/health` every ten minutes from GitHub-hosted runners.
   A failed run notifies through GitHub.
 - A Cloudflare Tunnel Health Alert emails the Cloudflare account owner when the
   website tunnel goes down.
@@ -112,13 +111,13 @@ systemctl is-active duris-mud-production mysql redis-server nginx \
 systemctl list-timers durisweb-watchdog.timer
 journalctl -u durisweb-watchdog.service --since -1h
 curl --fail --silent --show-error http://127.0.0.1:20243/ready
-curl --fail --silent --show-error https://newduris.com/health
-curl --fail --silent --show-error https://mud.newduris.com/health
+curl --fail --silent --show-error https://duris.sbs/health
+curl --fail --silent --show-error https://mud.duris.sbs/health
 
 openssl s_client \
-  -connect mud.newduris.com:7778 \
-  -servername mud.newduris.com \
-  -verify_hostname mud.newduris.com \
+  -connect mud.duris.sbs:7778 \
+  -servername mud.duris.sbs \
+  -verify_hostname mud.duris.sbs \
   -verify_return_error </dev/null
 ```
 
@@ -134,5 +133,5 @@ health response must be `{"status":"healthy","persistence":"ready"}`.
   document and tracked files contain no secret values.
 - The root-run watchdog executes a root-owned copy, never a script in a checkout
   the service account can modify.
-- The MUD WebSocket origin allow-list is restricted to `https://newduris.com`
-  and `https://www.newduris.com`.
+- The MUD WebSocket origin allow-list is restricted to `https://duris.sbs`
+  and `https://duris.sbs`.

@@ -103,7 +103,7 @@ Colorization:
 | [CONFIGURATION.md](operations/CONFIGURATION.md) | Runtime variables, Redis, listeners, proxy handling, and diagnostics. |
 | [BACKUPS.md](operations/BACKUPS.md) | Backup policy, generations, off-host copies, and isolated restore qualification. |
 | [DOCKER.md](operations/DOCKER.md) | Local Compose deployment, persistent data, upgrades, and reset boundaries. |
-| [PRODUCTION_DEPLOYMENT.md](operations/PRODUCTION_DEPLOYMENT.md) | The `newduris.com` production host as last verified on 2026-09-14. |
+| [PRODUCTION_DEPLOYMENT.md](operations/PRODUCTION_DEPLOYMENT.md) | The `duris.sbs` production host as last verified on 2026-09-14. |
 | [SECURITY_BASELINE.md](operations/SECURITY_BASELINE.md) | Dependency inventory, SBOM, and the security workflow recipe. |
 | [incident-response.md](operations/incident-response.md) | Incident handling procedure. |
 | [help-cache.md](operations/help-cache.md), [information-cache.md](operations/information-cache.md) | The help catalog and the credits/FAQ/wizlist snapshot: refresh, limits, and validation. |

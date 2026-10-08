@@ -919,7 +919,7 @@ int websocket_complete_handshake(struct descriptor_data *d, const char *key)
 	statuslog(56, "WebSocket handshake complete for %s", d->host);
 
 	/* send welcome message - client is ready for login */
-	ws_send_system(d, "connected", "Welcome to NewDuris MUD!");
+	ws_send_system(d, "connected", "Welcome to Duris MUD!");
 
 	return 1;
 }

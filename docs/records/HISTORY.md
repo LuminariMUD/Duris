@@ -73,7 +73,7 @@ public source.
 | 7 Jan 2020 | A wipe "celebrates 25 years of Durismud" and is dedicated to Lohrr's memory. |
 | 30 Dec 2021 | A "time capsule" of Duris as it was around 2002 opens on port 2002. |
 | 31 Oct-2 Nov 2025 | Xanadin publishes the February 2017 source on GitHub and starts a test MUD. Arih brings up "a new server … the source code supplied by Xanadinn". |
-| 6 Nov 2025 | The Community-Duris organisation is created. The revival's website becomes newduris.com. |
+| 6 Nov 2025 | The Community-Duris organisation is created. The revival's website becomes duris.sbs. |
 | 25 Aug 2026 | Zusuk (moshehbenavraham) begins a large modernisation of the community code. |
 | 23 Sep 2026 | This repository's line and Community-Duris diverge (`e1357a30a`); this line has been on GitLab since 28 Sep 2026. |
 | 2026 | Three Durises exist: the original game at durismud.com, Community-Duris at newduris.com, and this repository duris.sbs . |
@@ -489,7 +489,7 @@ has lived on GitLab at `max757/duris` since 28 September 2026.
 
 So, thirty years after "DURIS IS BORN!", there are three Durises: the official game at
 `mud.durismud.com:7777`, where Torgal is still writing code; the Community-Duris revival at
-newduris.com; and this repository.
+newduris.com; and this repository `mud.duris.sbs:7777`.
 
 ## The world and its lore
 
@@ -644,6 +644,7 @@ Cython, Fafhrd and Tripod have been Honorary Overlords on every wizlist since 20
 | `mud.durismud.com` port 2002 | since Dec 2021 | the 2002 "time capsule" |
 | Hosts vella, tiamat, bahamut, ixie | 2010, 2011-13, about 2012-2019, 2019 onward | commit author addresses; 9 Dec 2019 news |
 | newduris.com | late 2025 onward | the Community-Duris message of the day and wizlist |
+| mud.duris.sbs:7777 | 2026 onward | split from newduris 9/23 |
 
 Websites: www.duris.org (1997-2001, by Paradox, with UBB forums); durismud.com (2002 onward; PHP-Nuke,
 then phpBB, then the current site with News, PvP logs, maps and donations); the fan wiki on

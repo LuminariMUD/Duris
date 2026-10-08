@@ -1,5 +1,5 @@
 ================================================================================
-                    NewDuris - Playable Races and Classes Guide
+                    Duris.sbs - Playable Races and Classes Guide
 ================================================================================
 
 This document explains how to add, edit, or modify the playable races and

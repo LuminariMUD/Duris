@@ -21,8 +21,8 @@ jobs:
     steps:
       - name: Require healthy website and MUD endpoints
         env:
-          WEBSITE_HEALTH_URL: https://newduris.com/health
-          MUD_HEALTH_URL: https://mud.newduris.com/health
+          WEBSITE_HEALTH_URL: https://duris.sbs/health
+          MUD_HEALTH_URL: https://duris.sbs/health
         run: |
           # Retry for up to three minutes so routine restarts do not alert.
           probe() {

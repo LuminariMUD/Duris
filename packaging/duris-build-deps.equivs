@@ -2,7 +2,7 @@
 # To install: apt install ./bin/packages/duris-build-deps_1.0_all.deb
 Section: misc
 Priority: optional
-Homepage: https://www.newduris.com
+Homepage: https://duris.sbs
 
 Package: duris-build-deps
 Version: 1.0
