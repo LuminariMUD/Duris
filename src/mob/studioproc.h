@@ -26,6 +26,7 @@
 #define _STUDIOPROC_H_
 
 #include "core/structs.h"
+#include "magic/spells.h"
 
 #define STUDIOPROC_FILE "areas/world.trg"
 
@@ -146,14 +147,18 @@
    there is no pointer-keyed table, no free_char() hook and no chance of
    state bleeding onto a later mob that reused the address.
 
-   The three type ids sit at the very top of the skills[] index space
-   (skills[] is declared skills[MAX_AFFECT_TYPES + 1], MAX_AFFECT_TYPES
-   == MAX_SKILLS + 200 == 2200, and the TAG_ list currently ends at
-   2126).  Taking them from the top means new TAG_ constants can keep
-   being appended without ever colliding, and spells.h is not edited. */
-#define SP_TAG_COUNTER 2200 /* location = counter slot, modifier = n  */
-#define SP_TAG_COOLDOWN 2199 /* location = action idx, modifier = when */
-#define SP_TAG_TRIG 2198 /* location = trig idx, modifier = state  */
+   The three type ids are the last of the TAG_ list in spells.h, at the
+   very top of the skills[] index space (skills[] is declared
+   skills[MAX_AFFECT_TYPES + 1], MAX_AFFECT_TYPES == MAX_SKILLS + 200 ==
+   2200).  A new TAG_ is numbered above TAG_INFO_COOLDOWN and below
+   them; the build checks that they stay inside skills[] and above
+   TAG_INFO_COOLDOWN, and test_studioproc_tag_ids.py that no other define
+   takes their numbers. */
+#define SP_TAG_COUNTER TAG_STUDIOPROC_COUNTER /* location = counter slot, modifier = n  */
+#define SP_TAG_COOLDOWN TAG_STUDIOPROC_COOLDOWN /* location = action idx, modifier = when */
+#define SP_TAG_TRIG TAG_STUDIOPROC_TRIG /* location = trig idx, modifier = state  */
+static_assert(TAG_INFO_COOLDOWN < SP_TAG_TRIG && SP_TAG_COUNTER <= MAX_AFFECT_TYPES,
+	      "the studio-proc tag ids must sit above the TAG_ list and inside skills[]");
 
 /* ---- boot / hook entry points ------------------------------------ */
 

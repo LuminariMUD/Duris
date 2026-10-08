@@ -1254,6 +1254,12 @@
 #define TAG_HELP_COOLDOWN 2124
 #define TAG_SUPPRESS_PERM_BITS 2125
 #define TAG_INFO_COOLDOWN 2126
+/* The studio-proc engine's per-instance state (src/mob/studioproc.h) takes the top of
+ * the skills[] index space.  A new tag goes above TAG_INFO_COOLDOWN and below these;
+ * tests/async/test_studioproc_tag_ids.py fails the gate on one that reaches them. */
+#define TAG_STUDIOPROC_TRIG 2198
+#define TAG_STUDIOPROC_COOLDOWN 2199
+#define TAG_STUDIOPROC_COUNTER 2200
 
 #define SAVING_PARA 0
 #define SAVING_ROD 1
