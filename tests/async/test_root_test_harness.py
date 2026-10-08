@@ -126,6 +126,11 @@ assert "run_regression_tests.py --list" in dry_run
 workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text()
 assert "make test-all" in workflow, "CI does not exercise the root test gate"
 assert "make -j`nproc` -C src" not in workflow, "CI duplicates the root build harness"
+# A step that names a deleted file fails its job, and the job's later steps never run.
+for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+    for path in sorted(set(re.findall(r"\b(?:tests|scripts|migrations)/[\w./-]+\.(?:py|sh)\b",
+                                      workflow_path.read_text()))):
+        assert (ROOT / path).is_file(), f"{workflow_path.name} runs a missing file: {path}"
 
 testing_doc = (ROOT / "docs" / "guides" / "TESTING.md").read_text()
 assert "make test-all" in testing_doc
