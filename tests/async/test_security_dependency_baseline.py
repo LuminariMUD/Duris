@@ -160,7 +160,7 @@ assert all(
 assert "vulnerability status" in inventory["coverage"]["not_included"]
 assert spdx["spdxVersion"] == "SPDX-2.3"
 assert spdx["dataLicense"] == "CC0-1.0"
-assert spdx["documentNamespace"].startswith("https://github.com/LuminariMUD/DurisMUD/sbom/")
+assert spdx["documentNamespace"].startswith("https://github.com/LuminariMUD/Duris/sbom/")
 assert spdx["packages"][0]["name"] == "DurisMUD"
 package_purls = [
     reference["referenceLocator"]

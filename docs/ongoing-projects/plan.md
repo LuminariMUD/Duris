@@ -581,9 +581,9 @@ repositories:
    local build opens the community tree. In the workflow the variable is
    `LuminariMUD/Duris`, so a published build would link correctly.
 3. `README.md` builds its build, last-commit and issues badges, and its commit and issue
-   links, from `LuminariMUD/DurisMUD`, which GitHub now redirects to `LuminariMUD/Duris`.
-   Its guide table describes critical commands as "journal, inbox/results, outbox, replay";
-   nothing is journaled or replayed since ADR 0002.
+   links, from `LuminariMUD/DurisMUD`, which GitHub now redirects to the community
+   repository, `Community-Duris/Duris`. Its guide table describes critical commands as
+   "journal, inbox/results, outbox, replay"; nothing is journaled or replayed since ADR 0002.
 
 **Checked** at `6e1b93cdb`, and on GitHub on 2026-10-08. `README.md` L416 links the
 community site, L432 is the critical-commands row, L439 to L442 and L448 to L449 build the
