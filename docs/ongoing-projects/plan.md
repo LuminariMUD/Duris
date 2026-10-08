@@ -42,8 +42,10 @@ The pull requests form one stack: #6 (Phase 2) now targets `master`, and #7, #8,
 #11 and #12 (Phase 9) each target the previous phase's branch. Each has an adversarial review
 whose findings are open. Take them in order: the review round on the branch (each finding
 fixed in its own commit, the round's head tagged `backlog/phase-<n>-review-<round>`), then the
-landing as "Every phase" says. Once a base branch is merged and deleted, GitHub retargets the
-next pull request to `master`. Delete this file when Phase 9 lands.
+landing as "Every phase" says. Before deleting a landed branch, point the next pull request
+at `master` (`gh pr edit <n> --base master`): a landing is a pushed merge, and GitHub then
+closes, not retargets, a pull request whose base branch is deleted (#6 was closed that way at
+Phase 1's landing and reopened). Delete this file when Phase 9 lands.
 
 Every later landing conflicts in this file: its branch rewrites the Status table's earlier
 rows. Keep `master`'s table and this section, mark the landed phase, and take the branch's
