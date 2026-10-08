@@ -1813,9 +1813,20 @@ static void run_session_input_phase(game_loop_pulse_context &ctx)
 
 			switch (point->connected)
 			{
-				/* a connection that has not entered an account name holds a slot for free */
+				/* a connection that has not logged in to an account holds a slot for free;
+				 * waiting for a reset code by mail keeps the default */
 			case CON_GET_ACCT_NAME:
-				if (point->wait > UNNAMED_CONNECTION_TIMEOUT)
+			case CON_GET_ACCT_PASSWD:
+			case CON_VERIFY_NEW_ACCT_NAME:
+			case CON_GET_NEW_ACCT_EMAIL:
+			case CON_VERIFY_NEW_ACCT_EMAIL:
+			case CON_GET_NEW_ACCT_PASSWD:
+			case CON_VERIFY_NEW_ACCT_PASSWD:
+			case CON_VERIFY_NEW_ACCT_INFO:
+			case CON_ACCT_RESET_NEWPW:
+			case CON_ACCT_RESET_NEWPW2:
+			case CON_EXIT:
+				if (point->wait > LOGIN_PROMPT_TIMEOUT)
 				{
 					write_to_descriptor(point, "Idle Timeout\n");
 					close_socket(point);
@@ -3710,17 +3721,43 @@ void resolve_descriptor_hostname_async(const char *address, int descriptor)
 	pthread_attr_destroy(&attr);
 }
 
-/* Open connections from host that have not entered an account name: negotiating TLS,
- * waiting for a WebSocket handshake, or at the account name prompt.  An authenticated
- * DurisWeb service connection stays at that prompt and is not one of them. */
-static int unnamed_connections_from(const char *host)
+/* Whether d has not logged in to an account: negotiating TLS, waiting for a WebSocket
+ * handshake, at a prompt to log in, create an account or reset its password, or
+ * closing.  Any name gets a connection past the account name prompt. */
+static bool before_account_login(const struct descriptor_data *d)
+{
+	switch (d->connected)
+	{
+	case CON_SSLNEGO:
+	case CON_GET_TERM:
+	case CON_GET_ACCT_NAME:
+	case CON_GET_ACCT_PASSWD:
+	case CON_VERIFY_NEW_ACCT_NAME:
+	case CON_GET_NEW_ACCT_EMAIL:
+	case CON_VERIFY_NEW_ACCT_EMAIL:
+	case CON_GET_NEW_ACCT_PASSWD:
+	case CON_VERIFY_NEW_ACCT_PASSWD:
+	case CON_VERIFY_NEW_ACCT_INFO:
+	case CON_ACCT_RESET_CODE:
+	case CON_ACCT_RESET_NEWPW:
+	case CON_ACCT_RESET_NEWPW2:
+	case CON_EXIT:
+	case CON_FLUSH:
+		return true;
+	default:
+		return false;
+	}
+}
+
+/* Open connections from host that have not logged in to an account.  An authenticated
+ * DurisWeb service connection stays at the account name prompt and is not one of them. */
+static int login_connections_from(const char *host)
 {
 	int count = 0;
 
 	for (P_desc d = descriptor_list; d; d = d->next)
-		if ((d->connected == CON_SSLNEGO || d->connected == CON_GET_TERM ||
-		     d->connected == CON_GET_ACCT_NAME) &&
-		    !websocket_is_authenticated_service(d) && !strcmp(d->host, host))
+		if (before_account_login(d) && !websocket_is_authenticated_service(d) &&
+		    !strcmp(d->host, host))
 			count++;
 	return count;
 }
@@ -3842,13 +3879,13 @@ int new_descriptor(int s, int conn_type)
 	}
 
 	if (!shared_address &&
-	    unnamed_connections_from(newd->host) >= MAX_UNNAMED_CONNECTIONS_PER_ADDRESS)
+	    login_connections_from(newd->host) >= MAX_LOGIN_CONNECTIONS_PER_ADDRESS)
 	{
 		static const char refusal[] = "Too many connections from your address.\r\n";
 
 		logit(LOG_DEBUG,
-		      "Refused connection from %s: %d open connections have not entered an account name.",
-		      newd->host, MAX_UNNAMED_CONNECTIONS_PER_ADDRESS);
+		      "Refused connection from %s: %d open connections have not logged in.",
+		      newd->host, MAX_LOGIN_CONNECTIONS_PER_ADDRESS);
 		if (conn_type == 0)
 		{
 			const ssize_t written = write(desc, refusal, sizeof(refusal) - 1);

@@ -588,21 +588,21 @@ register and login rate buckets. Echo control has no meaning on this transport: 
 password field, and rendering the "a code may have been sent; one per account per 10
 minutes" meaning of the telnet text, is the client's job.
 
-### Connections before an account name
+### Connections before an account login
 
-A client that has not entered an account name has cost nothing to connect, so two
+A client that has not logged in to an account has cost nothing to connect, so two
 compile-time constants in `src/core/config.h` bound what it can hold. They sit beside
 `MAX_CONNECTIONS`, the 256 descriptors all clients share, and are not environment-tunable.
 
-- `MAX_UNNAMED_CONNECTIONS_PER_ADDRESS` (8): the open connections one address may have
-  that are negotiating TLS, waiting for the WebSocket handshake, or at the account name
-  prompt. The next one is closed at once, with one
-  `Refused connection from <address>: 8 open connections have not entered an account name.`
+- `MAX_LOGIN_CONNECTIONS_PER_ADDRESS` (8): the open connections one address may have that
+  have not logged in: negotiating TLS, waiting for the WebSocket handshake, at a prompt to
+  log in, create an account or reset its password, or closing. The next one is closed at
+  once, with one `Refused connection from <address>: 8 open connections have not logged in.`
   line in `logs/log/debug`; a plain telnet client is first told
   `Too many connections from your address.` Nobody is banned.
-- `UNNAMED_CONNECTION_TIMEOUT` (120 seconds, in pulses): a connection that sends nothing
-  that long at the account name prompt, or that has not finished its TLS handshake, is
-  closed. Other login states keep their own limits.
+- `LOGIN_PROMPT_TIMEOUT` (120 seconds, in pulses): a connection that sends nothing that
+  long at one of those prompts is closed, except while it waits for a reset code by mail
+  (15 minutes). GnuTLS ends a TLS handshake that stalls for 40 seconds.
 
 The address is the client's. A connection from `DURIS_TRUSTED_PROXY_IP` counts under the
 address its PROXY header names; without one it has the proxy's address, which all the

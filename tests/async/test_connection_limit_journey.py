@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Connections that have not entered an account name, per address, on a real server.
+"""Connections that have not logged in to an account, per address, on a real server.
 
 One isolated flat-file server, with the WebSocket listener on and 127.0.0.9 as its
 trusted proxy. Eight telnet connections from 127.0.0.1 reach the account name prompt and
-the ninth is refused, while a login from 127.0.0.2 still gets in; TLS connections still
-negotiating count too. Behind the proxy, two client addresses its PROXY headers name are
+the ninth is refused, and so is a ninth from 127.0.0.5 after eight that each entered a
+name, while a login from 127.0.0.2 still gets in; TLS connections still negotiating
+count too. Behind the proxy, two client addresses its PROXY headers name are
 counted apart, the proxy's own address, shared by every client it forwards, is not
 capped, and two website logins with different X-Forwarded-For addresses do not close each
-other. A connection silent at the account name prompt is closed after two minutes. A
-connection from a banned address is told so and closed, and the server stays up. A full
+other. A connection silent at the account name prompt, and one silent at the password
+prompt, are closed after two minutes. A connection from a banned address is told so and closed, and the server stays up. A full
 server refuses TLS connections without growing.
 """
 
@@ -20,7 +21,7 @@ import time
 from pathlib import Path
 
 from test_account_recovery_journey import (
-    OLD_PASSWORD, IsolatedServer, MudClient, build_flatfile_server, create_account, require,
+    ACCOUNT, OLD_PASSWORD, IsolatedServer, MudClient, build_flatfile_server, create_account, require,
 )
 
 LIMIT = 8
@@ -125,6 +126,19 @@ def main() -> int:
                 require("Refused connection from 127.0.0.1" in debug,
                         "the refusal left no debug-log line:\n" + debug[-4000:])
 
+                # Any name takes a connection past the account name prompt; it still counts.
+                for letter in "abcdefgh":
+                    client = BoundClient(port, "127.0.0.5")
+                    client.expect("account name")
+                    client.send(f"Limit{letter}")
+                    client.expect("is this correct?")
+                    held.append(client)
+                refused = socket.create_connection(("127.0.0.1", port), timeout=5,
+                                                   source_address=("127.0.0.5", 0))
+                text = closed_within(refused, 10)
+                require(text is not None and REFUSAL in text,
+                        f"a ninth connection after eight named ones was not refused: {text!r}")
+
                 banned = socket.create_connection(("127.0.0.1", port), timeout=5,
                                                   source_address=(BANNED, 0))
                 text = closed_within(banned, 10)
@@ -136,6 +150,13 @@ def main() -> int:
                 other = BoundClient(port, "127.0.0.2")
                 create_account(other, OLD_PASSWORD)
                 held.append(other)
+
+                # Silent at the password prompt: closed after 120 s as well.
+                waiting = BoundClient(port, "127.0.0.6")
+                waiting.expect("account name")
+                waiting.send(ACCOUNT)
+                waiting.expect("password")
+                waiting_since = time.monotonic()
 
                 # Behind the proxy each PROXY-named client is counted on its own, and the
                 # proxy's own address is shared by its clients, so it is never capped.
@@ -159,12 +180,14 @@ def main() -> int:
                 require(closed_within(first, 2) is None,
                         "a website login closed another client's as a stale one from its address")
 
-                remaining = 120 - (time.monotonic() - silent_since)
-                text = closed_within(silent.socket, remaining + 15)
-                require(text is not None and b"Idle Timeout" in text,
-                        "a connection silent at the account name prompt was kept")
-                require(time.monotonic() - silent_since >= 115,
-                        "the silent connection was closed before its two minutes")
+                for client, since, prompt in ((silent, silent_since, "account name"),
+                                              (waiting, waiting_since, "password")):
+                    remaining = 120 - (time.monotonic() - since)
+                    text = closed_within(client.socket, remaining + 15)
+                    require(text is not None and b"Idle Timeout" in text,
+                            f"a connection silent at the {prompt} prompt was kept")
+                    require(time.monotonic() - since >= 115,
+                            f"the connection silent at the {prompt} prompt was closed early")
 
                 # Fill the server: a TLS connection it refuses keeps no GnuTLS session
                 # (about 8 KiB each before).
