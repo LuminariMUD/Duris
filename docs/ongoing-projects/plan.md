@@ -441,6 +441,51 @@ the next line would not fit; the trailing "Nothing!" path is unchanged. `npm aud
   `docs/` or the README, run bare (all pass after C13), and `npm test --prefix site`
   (15 tests). Phase 5's full gate runs on top of this tree.
 
+**Review round 1** (PR #8, review of `b86794e0b`; tag `backlog/phase-4-review-1`). Five
+findings, each reproduced on that head first and fixed in its own commit:
+
+- Finding 2, `cd46e2e93` on `master`: `SECURITY.md`'s old form link redirected to
+  `Community-Duris/Duris`, whose private reporting is on, so a report following the policy
+  reached another organisation. This phase's `SECURITY.md` hunk landed there ahead of the
+  stack, with the redirect sentence in Phase 6's section corrected. On this branch,
+  `fc638ac1a` puts the SBOM namespace under `LuminariMUD/Duris` and makes the same
+  correction.
+- Finding 1, `b511b5b28`: the scanner root had no `Source:` lines, so Trivy matched only
+  packages named like their source package. It never matched libcurl, OpenSSL or Redis, and
+  a root of older builds with fixed HIGH advisories passed. Each paragraph now names its
+  source.
+- Finding 3, `e15dff9ae`: a metapackage from a `*-defaults` source is scanned as the
+  package it installs (the MySQL server, client and library on the runner; `python3.12`;
+  `clang-format-18`). The workflow fails on an unresolved dependency, and the baseline says
+  a scan describes the machine it ran on.
+- Finding 4, `2eef081d8`: the check is again due before a production deploy, as
+  `TESTING.md` says.
+- Finding 5, `0adbbb4ad`: CodeQL's build also compiles `pfile` and `migrations/tools`. Its
+  ten results there are fixed: `6f02b0161` (eight batched `snprintf` appends that could
+  run past a 64 KiB stack buffer) and `17467c3b8` (two stat-then-open races).
+- `6282ce45a`: the record. The hosted run's dependency result counted for nothing, so the
+  baseline records the workflow replayed locally on 2026-10-09. CodeQL 2.27.1 found 0
+  results over 1103 of 1265 files. Trivy `v0.70.0` scanned the root a fresh `ubuntu:24.04`
+  container wrote after installing the build-deps package: all 23 direct packages by
+  source, no fixed HIGH or CRITICAL finding, and 26 unfixed lower ones. The container row
+  in `SECURITY-COMPLIANCE.md` is `PARTIAL` until a host Duris runs on is scanned.
+- `030a1614a`: the baseline says a local CodeQL replay needs ccache off. The first replay
+  traced only 34 files, because ccache served the rest.
+
+This differs from decision 5, which made the hosted run the scan of record without a
+replay: its dependency scan was blind. The first hosted run that matches by source will be
+the one on `master` after this phase lands.
+
+**Gate** on `6282ce45a`, the round's last code commit; the two commits after it change
+documents only. `./scripts/format.sh --all --check` was clean. `make test-all -j16
+TEST_JOBS=16` passed 675 and failed 1 in 10 min 17 s, at a load average near 36 with three
+other gates running. The failure was `test_connection_limit_journey.py` (Phase 2's),
+which got ECONNREFUSED on its first connection, and it passed alone on the same head. The
+server wrote "Entering game loop." before it opened its listeners; `47f5a06d6` on `master`
+moves that line, and the catch-up merge brings the fix here. `make test-db` passed 48 of
+48 in 7 min 49 s. The 37 tests that read the touched documents, the security scripts or
+the migration tools, run bare, all pass.
+
 **Problem.** Until the move to GitHub the dependency and code scans last ran on 2026-08-27,
 and `libcurl4-gnutls-dev`, added to the build dependencies on 2026-09-06, was never scanned.
 Since 2026-10-08 the `security baseline` workflow (`.github/workflows/security.yml`:
@@ -666,9 +711,9 @@ repositories:
    local build opens the community tree. In the workflow the variable is
    `LuminariMUD/Duris`, so a published build would link correctly.
 3. `README.md` builds its build, last-commit and issues badges, and its commit and issue
-   links, from `LuminariMUD/DurisMUD`, which GitHub now redirects to `LuminariMUD/Duris`.
-   Its guide table describes critical commands as "journal, inbox/results, outbox, replay";
-   nothing is journaled or replayed since ADR 0002.
+   links, from `LuminariMUD/DurisMUD`, which GitHub now redirects to the community
+   repository, `Community-Duris/Duris`. Its guide table describes critical commands as
+   "journal, inbox/results, outbox, replay"; nothing is journaled or replayed since ADR 0002.
 
 **Checked** at `6e1b93cdb`, and on GitHub on 2026-10-08. `README.md` L416 links the
 community site, L432 is the critical-commands row, L439 to L442 and L448 to L449 build the
