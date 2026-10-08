@@ -62,7 +62,7 @@ ACTIVE_STATE=1   # item_custody_state::active
 echo "Database: $DB_NAME on $DB_HOST"
 echo
 
-echo "== Orphan payload rows (item loss: dropped at load, deleted at next save) =="
+echo "== Orphan payload rows (not a loss: the load takes them, the next save claims them) =="
 if (( DETAIL )); then
   run_sql "
     SELECT 'character' AS source, pi.pid, pi.id, pi.vnum, pi.obj_uid
