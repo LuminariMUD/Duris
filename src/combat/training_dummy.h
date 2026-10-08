@@ -29,6 +29,8 @@ void training_dummy_note_attacker(P_char dummy, P_char attacker);
 void training_dummy_retarget_nonpet(P_char npc, P_char rejected);
 void training_dummy_record_damage(P_char ch, int damage);
 void training_dummy_bootstrap();
+int training_dummy_parse_race(const char *token);
+int training_dummy_parse_class(const char *token);
 
 bool training_dummy_can_enter_room(P_char ch);
 bool training_dummy_can_leave_room(P_char ch);

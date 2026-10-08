@@ -172,7 +172,7 @@ assert "chaos_eq_enhanceable_optional_slots" in chaos_code
 assert "chaos_eq_standard_optional_slots" in chaos_code
 assert "obj_to_obj(obj, bag)" in chaos_code
 assert "AddSpellToSpellBook(ch, obj, j)" in chaos_code
-assert "has_eq_slot(ch, item->slot)" in chaos_code
+assert "chaos_kit_has_eq_slot(ch, slot)" in chaos_code
 assert "can_char_use_item(ch, obj)" in chaos_code
 assert "REMOVE_BIT(obj->extra_flags, chaos_eq_permanent_strip_flags);" in chaos_code
 assert "affect.location == APPLY_CURSE" in chaos_code
@@ -180,7 +180,7 @@ assert "kit.append_root(obj)" in chaos_code
 assert chaos_code.count("item_creation_grant_submit_batch_to_player_before_entry(") == 1
 assert "item_creation_grant_submit_to_player(ch, obj, ch, bag)" not in chaos_code
 assert "1252" not in chaos_code
-assert chaos_code.index("if (item_failure)") < chaos_code.index("item_creation_grant_submit_batch_to_player_before_entry(")
+assert chaos_code.index("if (!build_chaos_kit(ch, kit))") < chaos_code.index("item_creation_grant_submit_batch_to_player_before_entry(")
 # The master spellbook remains the dynamic all-spells object and is beltable.
 master = objects[7]
 assert master.object_type == DEFINES["ITEM_SPELLBOOK"]

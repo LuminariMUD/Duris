@@ -27,6 +27,7 @@
 #include "world/object_template.h"
 #include "account/creation_availability_config.h"
 #include "combat/chaos_config.h"
+#include "combat/training_dummy.h"
 #include "account/chaos_eq_data.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -132,6 +133,7 @@ extern char *greetings;
 extern char *greetinga1;
 extern bool has_eq_slot(P_char ch, int wear_slot);
 extern int equipment_pos_table[CUR_MAX_WEAR][3];
+extern const char *where[];
 extern char *greetinga2;
 extern char *greetinga3;
 extern char *greetinga4;
@@ -587,6 +589,18 @@ static bool chaos_kit_fits_slot(P_obj obj, int slot)
 	return false;
 }
 
+// Why the kit leaves `slot` empty for `ch`, or NULL when the kit fills it.
+static const char *chaos_kit_skip_reason(P_char ch, int slot)
+{
+	if (GET_CLASS(ch, CLASS_MONK) && chaos_kit_weapon_slot(slot))
+		return "monks fight unarmed";
+	if (slot == SECONDARY_WEAPON)
+		return chaos_kit_skill_available(ch, SKILL_DUAL_WIELD) ? NULL : "no dual wield";
+	if (slot >= 0 && !chaos_kit_has_eq_slot(ch, slot))
+		return "no such slot";
+	return NULL;
+}
+
 static bool append_chaos_kit_item(P_char ch, P_obj bag, const chaos_kit_item *item,
 				  chaos_kit_objects &kit)
 {
@@ -594,11 +608,7 @@ static bool append_chaos_kit_item(P_char ch, P_obj bag, const chaos_kit_item *it
 		return true;
 	if (item->slot < WEAR_NONE || item->slot > CUR_MAX_WEAR)
 		return false;
-	if (GET_CLASS(ch, CLASS_MONK) && chaos_kit_weapon_slot(item->slot))
-		return true;
-	if (item->slot >= 0 &&
-	    (item->slot == SECONDARY_WEAPON ? !chaos_kit_skill_available(ch, SKILL_DUAL_WIELD) :
-					      !chaos_kit_has_eq_slot(ch, item->slot)))
+	if (chaos_kit_skip_reason(ch, item->slot))
 		return true;
 
 	P_obj obj = read_object(item->vnum, VIRTUAL);
@@ -649,30 +659,24 @@ static bool append_chaos_kit_item(P_char ch, P_obj bag, const chaos_kit_item *it
 	return false;
 }
 
-static void load_chaos_new_character_kit(P_char ch)
+// Build ch's CHAOS kit into `kit`: the bag first, holding the support items,
+// then each worn item as its own root. Every item is tried, so the log names
+// each one that cannot be made; false if the bag or any item could not be.
+static bool build_chaos_kit(P_char ch, chaos_kit_objects &kit)
 {
 	static const int bag_vnum = 96443;
-	if (!ch || IS_NPC(ch) || ch->carrying || item_movement_transaction_player_busy(ch))
-		return;
-	const int class_id = flag2idx(ch->player.m_class);
-	if (class_id < 1 || class_id > CLASS_COUNT)
-		return;
-
 	P_obj bag = read_object(bag_vnum, VIRTUAL);
 	if (!bag || GET_ITEM_TYPE(bag) != ITEM_CONTAINER)
 	{
 		if (bag)
 			extract_obj(bag, FALSE);
 		statuslog(56, "&+RALERT&n: CHAOS starter bag VNUM %d is unavailable", bag_vnum);
-		send_to_char(
-			"Your CHAOS equipment bag could not be created; please contact staff.\r\n",
-			ch);
-		return;
+		return false;
 	}
 	prepare_chaos_kit_item(ch, bag);
-	chaos_kit_objects kit;
 	kit.append_root(bag);
 
+	const int class_id = flag2idx(ch->player.m_class);
 	const int profile_id = chaos_eq_use_enhanceable_profile() ? 1 : 0;
 	const chaos_eq_profile &profile = chaos_eq_profiles[class_id][profile_id];
 	bool item_failure = false;
@@ -708,7 +712,19 @@ static void load_chaos_new_character_kit(P_char ch)
 		if (!append_chaos_kit_item(ch, bag, &pouch, kit))
 			item_failure = true;
 	}
-	if (item_failure)
+	return !item_failure;
+}
+
+static void load_chaos_new_character_kit(P_char ch)
+{
+	if (!ch || IS_NPC(ch) || ch->carrying || item_movement_transaction_player_busy(ch))
+		return;
+	const int class_id = flag2idx(ch->player.m_class);
+	if (class_id < 1 || class_id > CLASS_COUNT)
+		return;
+
+	chaos_kit_objects kit;
+	if (!build_chaos_kit(ch, kit))
 	{
 		statuslog(56, "&+RALERT&n: CHAOS starter kit has an invalid item for pid %d",
 			  GET_PID(ch));
@@ -775,6 +791,63 @@ void restore_chaos_character_kit(P_char staff, const char *name)
 	else
 		send_to_char("Chaos equipment could not be restored; check the server log.\r\n",
 			     staff);
+}
+
+void load_chaos_kit_bag(P_char staff, char *argument)
+{
+	if (!staff || !chaos_mud_enabled())
+		return;
+	if (GET_LEVEL(staff) < LESSER_G)
+		return send_to_char("Loading a kit bag takes the level of the load command.\r\n",
+				    staff);
+	char class_name[MAX_INPUT_LENGTH], race_name[MAX_INPUT_LENGTH];
+	one_argument(one_argument(argument, class_name), race_name);
+	const int class_bit = training_dummy_parse_class(class_name);
+	const int race = training_dummy_parse_race(race_name);
+	if (!class_bit || race < 1)
+		return send_to_char("Usage: chaos kitbag <class> <race>\r\n", staff);
+
+	// A new character of that class and race before its first level, which is
+	// what creation judges the kit's slots, skills and item use against.
+	pc_only_data standin_pc{};
+	char_data standin{};
+	standin.only.pc = &standin_pc;
+	standin.player.m_class = class_bit;
+	standin.player.race = race;
+
+	chaos_kit_objects kit;
+	if (!build_chaos_kit(&standin, kit))
+		return send_to_char("That kit has an item that cannot be made, so a new character "
+				    "would get none of it; the server log names the item.\r\n",
+				    staff);
+	P_obj bag = kit.roots[0];
+	for (size_t i = 1; i < kit.count; ++i)
+		obj_to_obj(kit.roots[i], bag);
+	const size_t worn = kit.count - 1;
+	kit.count = 0; // The bag holds every item now.
+	obj_to_char(bag, staff);
+
+	const int class_id = flag2idx(class_bit);
+	const int profile_id = chaos_eq_use_enhanceable_profile() ? 1 : 0;
+	logit(LOG_WIZLOAD, "%s loaded the CHAOS kit of a %s %s", GET_NAME(staff),
+	      race_names_table[race].normal, class_names_table[class_id].normal);
+	char line[MAX_STRING_LENGTH];
+	snprintf(line, sizeof(line),
+		 "You load the %s CHAOS kit of a new %s %s: %zu worn items and the supplies, "
+		 "all in the bag.\r\n",
+		 profile_id ? "enhanceable" : "standard", race_names_table[race].normal,
+		 class_names_table[class_id].normal, worn);
+	send_to_char(line, staff);
+	for (const chaos_kit_item *item = chaos_eq_profiles[class_id][profile_id].items;
+	     item && item->vnum; ++item)
+	{
+		const char *reason = chaos_kit_skip_reason(&standin, item->slot);
+		if (!reason)
+			continue;
+		snprintf(line, sizeof(line), "Left out: %s %6d  %s\r\n", where[item->slot],
+			 item->vnum, reason);
+		send_to_char(line, staff);
+	}
 }
 
 // Main-thread capture adapter. This value-only view is never registered, given

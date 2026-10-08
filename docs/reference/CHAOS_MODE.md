@@ -76,6 +76,16 @@ balance mutation. Completion clears the matching pending flag and marks player
 status dirty. Existing characters are not retroactively given the one-time
 equipment bag or material pouch.
 
+Two staff commands use the same kit. `chaos kit <character>` grants it through
+the ownership coordinator to an online mortal who holds and wears nothing.
+`chaos kitbag <class> <race>`, for gods at the `load` command's level, puts the
+kit a new character of that class and race would get into the god's own
+inventory, worn items and supplies together in the bag, with each item prepared
+as the kit prepares it. It judges slots, skills and item use against a blank
+character of that class and race, follows `CHAOS_EQ_PROFILE`, and lists the
+class-kit items it left out and why. An item that cannot be made withholds the
+whole bag, as it would a new character's kit.
+
 Epic-skill selection reuses the normal `epic_rewards` and `epic_teachers`
 tables for an unspecialized character. It preserves class masks, the
 Thri-Kreen exception, teacher existence, deny-skill mutual exclusions in table
