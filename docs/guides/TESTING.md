@@ -71,7 +71,8 @@ and a failing test's output is printed as soon as it fails. A test still running
 started and reported as `TIMEOUT`; a test ended by a signal is reported by the
 signal's name. Both are failures, the end of the run lists every failure with its
 kind, the summary counts timeouts and signals apart, and every 60 s a line names
-the tests still running.
+the tests still running. Stopping the runner, by Ctrl-C or a SIGTERM, ends the
+tests it is running with everything they started, and starts no others.
 The runner executes every discovered `test_*.py` in a separate process and
 returns nonzero if any test fails. The journeys that boot a real server, and the
 large sanitizer harness, start together once the parallel phase is done. They
