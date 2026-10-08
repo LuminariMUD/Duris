@@ -118,8 +118,8 @@ to apply to. Once a row is decided, it names our commit or the reason.
 
 | PR | Merged | Class | What they changed | Our line | Status |
 |---|---|---|---|---|---|
-| #659 | 10-01 | Dependencies | `codeql-action` 4.38.1 to 4.38.2. | Our line has no hosted pipeline. | `N/A` |
-| #662 | 10-01 | Dependencies | `dompurify` 3.4.15 to 3.4.16 in `site/`. | `3151e2d85` (2026-10-08): the same lockfile change, with katex pinned to 0.18.2 for a third advisory. | `Adapted` |
+| #659 | 10-01 | Dependencies | `codeql-action` 4.38.1 to 4.38.2. | `96aee8c58` (2026-10-08): Dependabot's same pin change in `.github/workflows/security.yml`, our PR #2. | `Adapted` |
+| #662 | 10-01 | Dependencies | `dompurify` 3.4.15 to 3.4.16 in `site/`. | `71f14f1a7` (2026-10-08): Dependabot's same lockfile change, our PR #3. `3151e2d85` (2026-10-08) carries it too and pins katex to 0.18.2 for a third advisory. | `Adapted` |
 | #444 | 10-01 | Tests | The auction journey builds its inspector per run instead of in the shared `bin/tests/` path, where parallel runs overwrote it. | `tests/async/test_flatfile_auction_coin_put_journey.py` still uses the shared `bin/tests/coin-death-inspector`. | `Open` |
 | #591 | 10-01 | Tests | Telemetry SQL round trips on MySQL 8.4 and MariaDB 11.4 as a required CI job (their issue #564). | Its harness and test changes are `38c59e6fe` (2026-10-07): the `telemetry_repository` leg of `make test-db` on the wrapper's MariaDB, taking `TEST_DB_*`. Their container wrapper, loopback proxy and hosted job are not. | `Adapted` |
 | #677 | 10-02 | Operations | Telemetry follow-up acceptance runbook and a read-only preflight script. | Not taken (decision 10 of the plan that landed it in `338092a78`): the writer's own startup check covers what the preflight script checked, and the runbook paragraph on the `telemetry_health` line is ours. | `Open` |

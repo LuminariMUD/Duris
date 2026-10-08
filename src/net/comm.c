@@ -1028,8 +1028,6 @@ int run_the_game(int port, int sslport)
 #endif
 	game_booted = TRUE;
 
-	fprintf(stderr, "Entering game loop.\n");
-	logit(LOG_STATUS, "Entering game loop.");
 	locker_async_init();
 	if (!player_save_pipeline_init())
 	{
@@ -1813,9 +1811,20 @@ static void run_session_input_phase(game_loop_pulse_context &ctx)
 
 			switch (point->connected)
 			{
-				/* a connection that has not entered an account name holds a slot for free */
+				/* a connection that has not logged in to an account holds a slot for free;
+				 * waiting for a reset code by mail keeps the default */
 			case CON_GET_ACCT_NAME:
-				if (point->wait > UNNAMED_CONNECTION_TIMEOUT)
+			case CON_GET_ACCT_PASSWD:
+			case CON_VERIFY_NEW_ACCT_NAME:
+			case CON_GET_NEW_ACCT_EMAIL:
+			case CON_VERIFY_NEW_ACCT_EMAIL:
+			case CON_GET_NEW_ACCT_PASSWD:
+			case CON_VERIFY_NEW_ACCT_PASSWD:
+			case CON_VERIFY_NEW_ACCT_INFO:
+			case CON_ACCT_RESET_NEWPW:
+			case CON_ACCT_RESET_NEWPW2:
+			case CON_EXIT:
+				if (point->wait > LOGIN_PROMPT_TIMEOUT)
 				{
 					write_to_descriptor(point, "Idle Timeout\n");
 					close_socket(point);
@@ -2585,6 +2594,10 @@ void game_loop(int port, int sslport)
 		if (receipt_desc->character && receipt_desc->connected == CON_PLAYING)
 			locker_identify_replay(receipt_desc->character);
 
+	// Tests and scripts take this line to mean the server accepts connections, so it
+	// follows the listeners, opened or inherited above.
+	fprintf(stderr, "Entering game loop.\n");
+	logit(LOG_STATUS, "Entering game loop.");
 	long last_desc_per_hour_reset = time(0);
 	/* Main loop */
 resume_game_loop:
@@ -3710,17 +3723,56 @@ void resolve_descriptor_hostname_async(const char *address, int descriptor)
 	pthread_attr_destroy(&attr);
 }
 
-/* Open connections from host that have not entered an account name: negotiating TLS,
- * waiting for a WebSocket handshake, or at the account name prompt.  An authenticated
- * DurisWeb service connection stays at that prompt and is not one of them. */
-static int unnamed_connections_from(const char *host)
+/* Whether d has not logged in to an account: negotiating TLS, waiting for a WebSocket
+ * handshake, at a prompt to log in, create an account or reset its password, or
+ * closing.  Any name gets a connection past the account name prompt. */
+static bool before_account_login(const struct descriptor_data *d)
+{
+	switch (d->connected)
+	{
+	case CON_SSLNEGO:
+	case CON_GET_TERM:
+	case CON_GET_ACCT_NAME:
+	case CON_GET_ACCT_PASSWD:
+	case CON_VERIFY_NEW_ACCT_NAME:
+	case CON_GET_NEW_ACCT_EMAIL:
+	case CON_VERIFY_NEW_ACCT_EMAIL:
+	case CON_GET_NEW_ACCT_PASSWD:
+	case CON_VERIFY_NEW_ACCT_PASSWD:
+	case CON_VERIFY_NEW_ACCT_INFO:
+	case CON_ACCT_RESET_CODE:
+	case CON_ACCT_RESET_NEWPW:
+	case CON_ACCT_RESET_NEWPW2:
+	case CON_EXIT:
+	case CON_FLUSH:
+		return true;
+	default:
+		return false;
+	}
+}
+
+/* Whether descriptor addresses a and b are one client.  An IPv6 host normally has a
+ * whole /64 to itself, so IPv6 addresses compare on that prefix. */
+static bool same_client(const char *a, const char *b)
+{
+	struct in6_addr a6, b6;
+
+	if (inet_pton(AF_INET6, a, &a6) == 1 && inet_pton(AF_INET6, b, &b6) == 1 &&
+	    !IN6_IS_ADDR_V4MAPPED(&a6) && !IN6_IS_ADDR_V4MAPPED(&b6))
+		return memcmp(&a6, &b6, 8) == 0;
+	return !strcmp(a, b);
+}
+
+/* Open connections from host's client that have not logged in to an account.  An
+ * authenticated DurisWeb service connection stays at the account name prompt and is not
+ * one of them. */
+static int login_connections_from(const char *host)
 {
 	int count = 0;
 
 	for (P_desc d = descriptor_list; d; d = d->next)
-		if ((d->connected == CON_SSLNEGO || d->connected == CON_GET_TERM ||
-		     d->connected == CON_GET_ACCT_NAME) &&
-		    !websocket_is_authenticated_service(d) && !strcmp(d->host, host))
+		if (before_account_login(d) && !websocket_is_authenticated_service(d) &&
+		    same_client(d->host, host))
 			count++;
 	return count;
 }
@@ -3760,6 +3812,8 @@ int new_descriptor(int s, int conn_type)
 	{
 		// shouldn't write anything before setup
 		// write(desc, "Sorry, the game is full...\r\n");
+		if (sslses)
+			gnutls_deinit(sslses);
 		used_descs--;
 		shutdown(desc, 2);
 		close(desc);
@@ -3810,7 +3864,10 @@ int new_descriptor(int s, int conn_type)
 			char proxy_ip[46];
 			if (conn_type == 2 &&
 			    parse_proxy_protocol(desc, proxy_ip, sizeof(proxy_ip)))
+			{
 				strlcpy(newd->host, proxy_ip, sizeof newd->host);
+				newd->proxy_named_client = 1;
+			}
 			else
 				shared_address = true;
 		}
@@ -3840,13 +3897,13 @@ int new_descriptor(int s, int conn_type)
 	}
 
 	if (!shared_address &&
-	    unnamed_connections_from(newd->host) >= MAX_UNNAMED_CONNECTIONS_PER_ADDRESS)
+	    login_connections_from(newd->host) >= MAX_LOGIN_CONNECTIONS_PER_ADDRESS)
 	{
 		static const char refusal[] = "Too many connections from your address.\r\n";
 
 		logit(LOG_DEBUG,
-		      "Refused connection from %s: %d open connections have not entered an account name.",
-		      newd->host, MAX_UNNAMED_CONNECTIONS_PER_ADDRESS);
+		      "Refused connection from %s: %d open connections have not logged in.",
+		      newd->host, MAX_LOGIN_CONNECTIONS_PER_ADDRESS);
 		if (conn_type == 0)
 		{
 			const ssize_t written = write(desc, refusal, sizeof(refusal) - 1);
@@ -3914,16 +3971,15 @@ int new_descriptor(int s, int conn_type)
 		setsockopt(desc, IPPROTO_TCP, TCP_NODELAY, &ws_opt, sizeof(ws_opt));
 	}
 
+	/* Never linked as CON_PLAYING (0): code that walks descriptor_list takes a playing
+	 * descriptor to have a character.  A WebSocket waits for its HTTP handshake in
+	 * CON_GET_TERM, and greet() moves a telnet client on. */
+	STATE(newd) = conn_type == 1 ? CON_SSLNEGO : CON_GET_TERM;
 	descriptor_list = newd;
 
-	if (conn_type == 1) // ssl - always use CON_SSLNEGO, let game loop handle greet
-	{
+	if (conn_type == 1) // ssl - let game loop handle greet
 		ssl_negotiate(sslses); // do first round immediately
-		STATE(newd) = CON_SSLNEGO;
-	}
-	else if (conn_type == 2)
-		STATE(newd) = CON_GET_TERM; /* WebSocket waits for HTTP handshake */
-	else
+	else if (conn_type == 0)
 	{
 		/* Terminal discovery is optional metadata.  Start it before the
 		 * greeting so responsive clients can answer immediately, but never
@@ -3948,8 +4004,7 @@ static void greet(P_desc newd)
 			"feel this is in error, please e-mail multiplay@durismud.com\r\n");
 		banlog(56, "Reject Connect from %s, banned site.", newd->host);
 		logit(LOG_STATUS, "Rejected Connect from %s, banned site.", newd->host);
-		STATE(newd) = CON_EXIT;
-		// flush_queues(newd);
+		STATE(newd) = CON_FLUSH; /* closed once the message is sent */
 		return;
 	}
 

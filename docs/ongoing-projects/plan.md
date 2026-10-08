@@ -18,19 +18,48 @@ every later phase.
 
 ## Status
 
-Updated 2026-10-08. A new session starts here, then reads the phase it continues.
+Updated 2026-10-09. A new session starts here, then reads the phase it continues.
 
 | Phase | Subject | State |
 |---|---|---|
-| 1 | Hung tests and silent backup failures | Built on `fix/4-phase-1-hung-tests`, gate green; open for review as PR #5, tag `backlog/phase-1-review-0` and one test fix after it. |
-| 2 | Unauthenticated connections per address | Built on `fix/4-phase-2-connection-limit` (on Phase 1), gate green; open for review as PR #6, tag `backlog/phase-2-review-0`. |
-| 3 | Shop listing, dompurify, dead helpers | Built on `fix/4-phase-3-shop-listing` (on Phase 2), gate green; open for review, tag `backlog/phase-3-review-0`. |
-| 4 | Security record and `SECURITY.md` | Not started. |
-| 5 | Studio-proc tag ids and `world.trg` | Not started. |
+| 1 | Hung tests and silent backup failures | Landed 2026-10-09 in `e757c77e7` (PR #5, `backlog/phase-1-review-1`). |
+| 2 | Unauthenticated connections per address | Built on `fix/4-phase-2-connection-limit`, gate green; PR #6, tag `backlog/phase-2-review-0`; reviewed, seven findings open. |
+| 3 | Shop listing, dompurify, dead helpers | Built on `fix/4-phase-3-shop-listing`, gate green; PR #7, tag `backlog/phase-3-review-0`; reviewed, two findings open. |
+| 4 | Security record and `SECURITY.md` | Built on `fix/4-phase-4-security-record`, documents only, their tests green; PR #8, tag `backlog/phase-4-review-0`; reviewed, five findings open. |
+| 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc`, gate green; PR #9, tag `backlog/phase-5-review-0`; reviewed, six findings open. |
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
-| 7 | Quest EXP line and `achievements zones` | Not started. |
-| 8 | Specials assigned to missing vnums | Not started. |
-| 9 | `board` specials and the audit heading | Not started. |
+| 7 | Quest EXP line and `achievements zones` | Built on `fix/4-phase-7-display-fixes`, gate green; PR #10, tag `backlog/phase-7-review-0`; reviewed, two findings open. |
+| 8 | Specials assigned to missing vnums | Built on `fix/4-phase-8-dead-specials`, gate green; PR #11, tag `backlog/phase-8-review-0`; reviewed, two findings open. |
+| 9 | `board` specials and the audit heading | Built on `fix/4-phase-9-boards`, gate green; PR #12, tag `backlog/phase-9-review-0`; reviewed, seven findings open. |
+
+Each phase after the first is on its own branch, stacked on the one before; its section here
+is on that branch, not yet on `master`. What is left is a review round and a landing for each,
+in order, starting with Phase 2.
+
+## Landing
+
+The pull requests form one stack: #6 (Phase 2) now targets `master`, and #7, #8, #9, #10,
+#11 and #12 (Phase 9) each target the previous phase's branch. Each has an adversarial review
+whose findings are open. Take them in order: the review round on the branch (each finding
+fixed in its own commit, the round's head tagged `backlog/phase-<n>-review-<round>`), then the
+landing as "Every phase" says. Before deleting a landed branch, point the next pull request
+at `master` (`gh pr edit <n> --base master`): a landing is a pushed merge, and GitHub then
+closes, not retargets, a pull request whose base branch is deleted (#6 was closed that way at
+Phase 1's landing and reopened). Delete this file when Phase 9 lands.
+
+Every later landing conflicts in this file: its branch rewrites the Status table's earlier
+rows. Keep `master`'s table and this section, mark the landed phase, and take the branch's
+side everywhere else. From Phase 3 on there is one more conflict, in
+`docs/records/COMMUNITY_DURIS_TRACKING.md`: `master`'s row #659 and Phase 3's row #662 are
+adjacent lines. Keep both, and let #662 name `71f14f1a7` as well: Dependabot's #3 landed the
+same dompurify line first, although Phase 3's record says #3 "becomes redundant when this
+lands". `site/package.json` and `site/package-lock.json` merge on their own: mermaid 12.1.0
+from `master` with Phase 3's katex 0.18.2 override (mermaid 12.1.0 still asks for katex
+`^0.16.47`); in a copy of the merged files `npm ci` succeeded and `npm audit` found nothing.
+Run `npm test --prefix site` after that landing.
+
+The local dev server (`duris-plan`, ports 4000/4001) runs Phase 9's build. Phase 1 changed
+no server code, so its landing needed no copyover.
 
 ## Why these
 
@@ -160,6 +189,43 @@ raises `ProcessLookupError`, not `FileNotFoundError`. One commit after
 `backlog/phase-1-review-0` treats both as gone; the pull request's head is the one to
 review.
 
+**Review round 1** (PR #5, review of `ca9f1219c`; tag `backlog/phase-1-review-1`). Four
+findings, each reproduced on that head first, each fixed in its own commit with a case that
+fails without it:
+
+- `2fc042368`: each test runs in its own session, so a Ctrl-C, coreutils `timeout` or a
+  supervisor's SIGTERM stopped the runner and left its tests, their servers and their
+  builds running. The runner keeps the tests it is running in a set. When it is stopped, it
+  cancels the queued tests and kills each running test's group, and a test that a worker
+  starts after that is killed at once. A SIGTERM unwinds like Ctrl-C.
+- `152b76e78`: a test's group was killed only at its deadline. Now it is killed whenever the
+  test ends, so a crashed journey's server does not run on beside later tests.
+- `f6c0da542`: the restore import's usual failure lost its record: `mysql` exits at the
+  first statement it rejects, and the next write broke the pipe. A stream past its deadline
+  was recorded as `streaming_process_failed` with `-9`. The first is now reported by
+  `mysql`'s exit status, the second as `subprocess_timed_out` with a null status, as
+  `BACKUPS.md` says.
+- `9e99e272d`: the stderr tail kept the client host MariaDB names (`'user'@'host'`,
+  `Host '...' is not allowed`), which is this host's address as the server sees it; it is
+  now `<CLIENT_HOST>`.
+
+The Status table is left as it was: every stacked branch rewrites Phase 1's row, so an
+edit here would conflict with each of them when they land after this one.
+
+**Gate** on `9e99e272d`: `./scripts/format.sh --all --check` clean, `make test-all -j16
+TEST_JOBS=16` 675 passed, 0 failed (0 timed out, 0 ended by a signal) in 7 min 26 s,
+`make test-db` 48 of 48. The CI `backup recovery` job was replayed in a privileged
+`ubuntu:24.04` container on the same head: its four regression files, and
+`test_persistence_backup_integration.py` as root against a real MariaDB (5 tests, a real
+`mysqldump` and import through the changed `streaming_process()`), passed.
+
+**Landed** 2026-10-09 in `e757c77e7`, PR #5: a `--no-ff` merge of `backlog/phase-1-review-1`
+(`94e4b9485`). `master` had moved to `586ab3b55` (the Dependabot merges and a quality
+workflow fix that also edits `test_root_test_harness.py`), so the merge was gated again
+before the push: `./scripts/format.sh --all --check` clean, `make test-all -j16
+TEST_JOBS=16` 675 passed, 0 failed (0 timed out, 0 ended by a signal) in 7 min 39 s,
+`make test-db` 48 of 48.
+
 **Problem.** Two failures that are hard to see, first recorded in a pipeline analysis of
 2026-09-11. A test that hangs holds `make test` and `make test-all` until someone kills it,
 and prints nothing meanwhile; a failed test's output is shown only after every test has
@@ -273,6 +339,67 @@ test fix): `./scripts/format.sh --all --check` clean, `make test-all -j16 TEST_J
 branch and then passing 12 runs in a row), `test_connection_limit_journey.py` 127 s,
 `make test-db` 48 of 48. The journey's proxy case failed before `7c21ef491`: every
 proxied connection was counted under the proxy's address. Nothing is left.
+
+**Review round 1** (PR #6, review of `d8ec5d566`; tag `backlog/phase-2-review-1`),
+2026-10-09. The branch first took `master` in a merge (`1f11aec12`), not a rebase: Phase 1
+had landed, and Phases 3 to 9 are stacked on this branch's pushed commits. Seven findings,
+each reproduced on an isolated flat-file server first, each fixed in its own commit:
+
+- `b20612298` (an older bug): a telnet connection from a banned address crashed the
+  server. `new_descriptor()` linked the descriptor while its state was still 0
+  (`CON_PLAYING`), and `banlog()` read its NULL character. It now gets its first state
+  before it is linked. A banned connection is `CON_FLUSH`, closed once its message is
+  sent, not `CON_EXIT`, which ended only on input or after 15 minutes.
+- `90cb04769`: one line of input took a connection out of the cap, so one address that
+  sent a name on each connection held all 255 slots. `before_account_login()` counts
+  every state before an account login: the two handshakes, the login, creation and reset
+  prompts, `CON_EXIT` and `CON_FLUSH`. Those prompts close after 120 s of silence, except
+  the wait for a reset code by mail (15 minutes). The constants became
+  `MAX_LOGIN_CONNECTIONS_PER_ADDRESS` and `LOGIN_PROMPT_TIMEOUT`.
+- `b4e6fb0b0`: the leftmost `X-Forwarded-For` entry, which the client writes, became the
+  address, so a website client could close another's login and pick a new address for
+  each connection. The last entry, the one the proxy appended, is used now.
+- `3fb6883e6`: behind a PROXY-protocol proxy, `X-Forwarded-For` replaced the address the
+  PROXY header gave and so escaped the cap. A PROXY-named connection ignores it now.
+- `3bc4fa8bb` (an older bug): a full server leaked a GnuTLS session, about 8 KiB, for each
+  TLS connection it refused. It is freed now.
+- `546605f93`: a website client's messages did not restart the 120 s timer, so an active
+  website login was closed 120 s after its handshake. Every text message restarts it.
+- `2843a9a0c`: IPv6 clients were capped per address; one IPv6 /64 now counts as one client.
+
+`d45ba16c0` corrects the `DURIS_TRUSTED_PROXY_IP` row in `CONFIGURATION.md` for the two
+`X-Forwarded-For` fixes.
+The journey covers each fix: a banned address, eight named connections, a silent password
+prompt, a forged leading `X-Forwarded-For`, a forged one behind a PROXY header, a website
+client that sends every 25 s, one IPv6 /64, and a full server's memory over 1000 refused
+TLS connections. `IsolatedServer` takes an optional hook on the run root (for the ban
+file). This differs from decision 3: the cap and the 120 s limit cover every connection
+before an account login, not only those that have not entered a name.
+
+The round's gates also found four test defects outside Phase 2's code, each fixed:
+
+- `532a869ab`: under load the journey's website client dropped the server's first ping
+  when it arrived in the same read as the handshake response, and the server closed it
+  for a ping timeout.
+- `game_loop_budget` in `make test-db` counted the shutdown's forced shop save, which
+  under load still had shops to queue: fixed on `master` in `f3ba6bd2a`, merged here in
+  `fcfd37baf` (with `cd46e2e93`).
+- Under load a harness could be refused on its first connect: "Entering game loop." came
+  before the listeners opened. Fixed on `master` in `47f5a06d6`, merged in `e60301113`;
+  `3078d2d16` drops the journey's own wait for the listeners.
+- `corpse_haul_count_cap` failed when the kill salvaged a random item into the corpse and
+  the one-slot haul took it: fixed on `master` in `494317e40`, merged in `42b6ac89f`.
+
+**Gate** for round 1: `./scripts/format.sh --all --check` clean and `make test-all -j16
+TEST_JOBS=16` 676 passed, 0 failed (0 timed out, 0 ended by a signal) in 7 min 44 s on
+`3078d2d16` (`test_connection_limit_journey.py` 173 s); `make test-db` 48 of 48 on
+`42b6ac89f`, which adds only `494317e40`'s fixture change to it. Each fix was checked on
+its own before and after: the banned address no longer kills the server; ten named
+connections from one address, the ninth and tenth refused; the forged leading
+`X-Forwarded-For` no longer closes the victim; 1 of 20 forged-header PROXY handshakes
+kept, not 20; VmRSS flat over 3000 refused TLS connections, not +7.6 MB per 1000; a
+website client sending every 25 s open at 175 s, not closed at 120 s; 8 of 12 from one
+IPv6 /64, not 12. Nothing is left.
 
 **Problem.** Found on 2026-10-05 in a full read of one server's logs. Over 51 minutes one
 address opened 753 plain-telnet connections: a median of 13 a minute, at most 26 a minute,
@@ -545,9 +672,9 @@ repositories:
    local build opens the community tree. In the workflow the variable is
    `LuminariMUD/Duris`, so a published build would link correctly.
 3. `README.md` builds its build, last-commit and issues badges, and its commit and issue
-   links, from `LuminariMUD/DurisMUD`, which GitHub now redirects to `LuminariMUD/Duris`.
-   Its guide table describes critical commands as "journal, inbox/results, outbox, replay";
-   nothing is journaled or replayed since ADR 0002.
+   links, from `LuminariMUD/DurisMUD`, which GitHub now redirects to the community
+   repository, `Community-Duris/Duris`. Its guide table describes critical commands as
+   "journal, inbox/results, outbox, replay"; nothing is journaled or replayed since ADR 0002.
 
 **Checked** at `6e1b93cdb`, and on GitHub on 2026-10-08. `README.md` L416 links the
 community site, L432 is the critical-commands row, L439 to L442 and L448 to L449 build the
