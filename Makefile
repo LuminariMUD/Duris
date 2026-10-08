@@ -110,6 +110,8 @@ security-check: security-sbom
 	$(PYTHON) scripts/security_source_check.py
 	$(PYTHON) tests/async/test_security_dependency_baseline.py
 
+# Removing a source changes only its directory, so the staleness check below reads
+# directories as well as files.
 world: build-area-tools
 	@set -eu; \
 	stamp=areas/.world.stamp; \
@@ -125,7 +127,7 @@ world: build-area-tools
 	fi; \
 	if [ "$$refresh" -eq 0 ]; then \
 		newer=$$(find areas/mob areas/obj areas/qst areas/shp areas/trg areas/wld areas/zon areas/src \
-			-type f ! -name '*.o' -newer "$$stamp" -print -quit); \
+			! -name '*.o' -newer "$$stamp" -print -quit); \
 		if [ -n "$$newer" ]; then refresh=1; fi; \
 	fi; \
 	if [ "$$refresh" -eq 1 ]; then \
