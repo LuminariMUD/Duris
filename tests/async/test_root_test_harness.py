@@ -96,9 +96,10 @@ assert resource_intensive_tests == sample_tests[1:]
 
 
 def gone(pid: int) -> bool:
+    # A process reaped between the open and the read fails the read with ESRCH.
     try:
         return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] == "Z"
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
         return True
 
 

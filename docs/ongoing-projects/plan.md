@@ -154,6 +154,12 @@ recovery` job was replayed in a privileged `ubuntu:24.04` container: the four
 regression files and `test_persistence_backup_integration.py` as root (5 tests, real
 MariaDB) passed. Nothing is left.
 
+**After the tag.** Phase 2's gate failed `test_root_test_harness.py` once: its `gone()`
+helper read `/proc/<pid>/stat` of a process reaped between the open and the read, which
+raises `ProcessLookupError`, not `FileNotFoundError`. One commit after
+`backlog/phase-1-review-0` treats both as gone; the pull request's head is the one to
+review.
+
 **Problem.** Two failures that are hard to see, first recorded in a pipeline analysis of
 2026-09-11. A test that hangs holds `make test` and `make test-all` until someone kills it,
 and prints nothing meanwhile; a failed test's output is shown only after every test has
