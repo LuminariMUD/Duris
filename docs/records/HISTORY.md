@@ -475,7 +475,7 @@ kilobyte's work as pull request #1 the same day.
 Fafhrd and Tripod still Honorary Overlords. On 8 December the message of the day became "New
 Duris is up and running … http://www.newduris.com". On 13 December Xanadin was "removing
 durismud.com from more places". Liskin joined in late December 2025 and went on to lead the
-project. The current Community Duris/Duris repository was created on 24 August 2026.
+project. The current Community-Duris/Duris repository was created on 24 August 2026.
 
 **2026.** From 25 August 2026, Zusuk (moshehbenavraham, founder of LuminariMUD) did a large
 modernisation of the community code: the source tree reorganised, warnings treated as errors, a
@@ -760,8 +760,8 @@ dated here.
 - [durismud.com/news](https://www.durismud.com/news), the official news from September 2018 to
   July 2026.
 - `mud.durismud.com` ports 7777 and 2002: login banners only.
-- [Community Duris/Duris](https://github.com/Community Duris/Duris),
-  [Community Duris/DurisMUD](https://github.com/Community Duris/DurisMUD),
+- [Community-Duris/Duris](https://github.com/Community-Duris/Duris),
+  [Community-Duris/DurisMUD](https://github.com/Community-Duris/DurisMUD),
   [xanadinn/DurisMUD](https://github.com/xanadinn/DurisMUD).
 - [Drevarr/DurisParser](https://github.com/Drevarr/DurisParser) and the
   [2021 wipe charts](https://drevarr.github.io/2021Charts.html).

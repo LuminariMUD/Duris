@@ -1,7 +1,7 @@
-# Community- uris tracking
+# Community Duris tracking
 
 Our line (`github.com/LuminariMUD/Duris`) and
-[Community Duris/Duris](https://github.com/Community Duris/Duris) on GitHub share one history up
+[Community-Duris/Duris](https://github.com/Community-Duris/Duris) on GitHub share one history up
 to 2026-09-23 and have been developed separately since. This file records where the split is,
 every change they have landed since, sorted into bug fixes and everything else, and what we did
 with each one.
@@ -63,7 +63,7 @@ Three things follow for every row below:
 Each branch has three tables: bug fixes, changes that are not bugs (balance, features, content,
 performance), and housekeeping (tests, CI, dependencies, operator tooling). A PR that mixes
 classes is split into lettered parts, one per row. PR numbers are theirs:
-`https://github.com/Community Duris/Duris/pull/<number>`. Dates are merge dates in UTC. Their
+`https://github.com/Community-Duris/Duris/pull/<number>`. Dates are merge dates in UTC. Their
 unmerged branches share one set of the same three tables, with a row keyed by branch.
 
 **Our line** says what our tree has: whether the defect is there, or why the change has nothing
@@ -228,7 +228,7 @@ Fetch their branches. This needs no configured remote. A PR from someone's fork,
 has no branch in their repository and is fetched by its number:
 
 ```sh
-git fetch --no-tags https://github.com/Community Duris/Duris \
+git fetch --no-tags https://github.com/Community-Duris/Duris \
 	'+refs/heads/*:refs/remotes/community/*' \
 	'+refs/pull/658/head:refs/remotes/community/pr-658'
 ```
@@ -260,7 +260,7 @@ A PR's description and linked issue come from the public API, and their player n
 they told players:
 
 ```sh
-curl -s https://api.github.com/repos/Community Duris/Duris/pulls/<number>
+curl -s https://api.github.com/repos/Community-Duris/Duris/pulls/<number>
 git diff f7d26eaa7 community/experimental-accounting -- lib/information/news
 ```
 
