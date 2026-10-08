@@ -24,8 +24,8 @@ Updated 2026-10-08. A new session starts here, then reads the phase it continues
 |---|---|---|
 | 1 | Hung tests and silent backup failures | Built on `fix/4-phase-1-hung-tests`, gate green; open for review as PR #5, tag `backlog/phase-1-review-0` and one test fix after it. |
 | 2 | Unauthenticated connections per address | Built on `fix/4-phase-2-connection-limit` (on Phase 1), gate green; open for review as PR #6, tag `backlog/phase-2-review-0`. |
-| 3 | Shop listing, dompurify, dead helpers | Built on `fix/4-phase-3-shop-listing` (on Phase 2), gate green; open for review, tag `backlog/phase-3-review-0`. |
-| 4 | Security record and `SECURITY.md` | Not started. |
+| 3 | Shop listing, dompurify, dead helpers | Built on `fix/4-phase-3-shop-listing` (on Phase 2), gate green; open for review as PR #7, tag `backlog/phase-3-review-0`. |
+| 4 | Security record and `SECURITY.md` | Built on `fix/4-phase-4-security-record` (on Phase 3), documents only, their tests green; open for review, tag `backlog/phase-4-review-0`. |
 | 5 | Studio-proc tag ids and `world.trg` | Not started. |
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
 | 7 | Quest EXP line and `achievements zones` | Not started. |
@@ -404,6 +404,42 @@ the next line would not fit; the trailing "Nothing!" path is unchanged. `npm aud
 - The two helpers are gone and the build is clean.
 
 ## Phase 4: the security record and `SECURITY.md`
+
+**Built** on `fix/4-phase-4-security-record` (stacked on Phase 3), 2026-10-08, in
+`ddb8abfc0`:
+
+- The scan of record is the `security baseline` run 37808827646 on `master` at
+  `690a7575d` (completed 2026-10-08 16:46 UTC): `make security-check` passed; CodeQL 2.27.1
+  found 0 results over 58 rules and code scanning listed no open alert; Trivy `v0.70.0`
+  scanned all 23 resolved direct packages, `libcurl4-gnutls-dev` 8.5.0 among them (its
+  `trivy-results.json` artifact), with no fixed HIGH or CRITICAL finding.
+- `docs/operations/SECURITY_BASELINE.md`: the workflow section says it runs on every push
+  and pull request to `master` and that local replay is for changes that touch what it
+  checks; Dependabot (action pins and `site/` npm, weekly) in one sentence; the failure
+  policy says the hosted scan lists nothing unfixed or below HIGH; "Baseline Result
+  (2026-10-08)" replaces the August one and the libcurl note, with the settings the owner
+  turned on that day.
+- `docs/records/SECURITY-COMPLIANCE.md`: the reporting row and the action-pin, source and
+  container rows are `PASS`, the scan paragraph says what ran, and the header's date is
+  2026-10-08. The direct-dependency row stays `PARTIAL` (transitive packages are not
+  inventoried).
+- `SECURITY.md`: the `0.1.x` line and the private vulnerability reporting form of
+  `LuminariMUD/Duris` (`gh api repos/LuminariMUD/Duris/private-vulnerability-reporting`
+  reads `{"enabled":true}`); no other repository is named.
+- `tests/async/test_account_recovery_contract.py` C13 pinned the old "libcurl added, no
+  scan has covered it yet" bullet; it now pins the scan that covered it.
+
+**What differs from the plan, and why.**
+
+- `make security-sbom` run locally lists `libcurl4-gnutls-dev` as declared but unresolved:
+  this workstation has `libcurl4-openssl-dev` 8.5.0 instead. The workflow, which installs
+  the build-deps package, resolved it, so the record cites the workflow's inventory.
+- The hosted scan reports only fixed HIGH and CRITICAL findings, so the August scan's
+  unfixed MEDIUM Git advisory (`CVE-2024-52005`) is kept as the last one seen at that
+  depth rather than dropped or claimed fixed.
+- No code changed, so the gate was the tests that read documents: the 58 tests that read
+  `docs/` or the README, run bare (all pass after C13), and `npm test --prefix site`
+  (15 tests). Phase 5's full gate runs on top of this tree.
 
 **Problem.** Until the move to GitHub the dependency and code scans last ran on 2026-08-27,
 and `libcurl4-gnutls-dev`, added to the build dependencies on 2026-09-06, was never scanned.
