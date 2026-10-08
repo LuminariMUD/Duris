@@ -30,7 +30,7 @@ Updated 2026-10-08. A new session starts here, then reads the phase it continues
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
 | 7 | Quest EXP line and `achievements zones` | Built on `fix/4-phase-7-display-fixes` (on Phase 5), gate green; open for review as PR #10, tag `backlog/phase-7-review-0`. |
 | 8 | Specials assigned to missing vnums | Built on `fix/4-phase-8-dead-specials` (on Phase 7), gate green; open for review as PR #11, tag `backlog/phase-8-review-0`. |
-| 9 | `board` specials and the audit heading | Built on `fix/4-phase-9-boards` (on Phase 8), gate green after two fixes; open for review, tag `backlog/phase-9-review-0`. |
+| 9 | `board` specials and the audit heading | Built on `fix/4-phase-9-boards` (on Phase 8), gate green; open for review as PR #12, tag `backlog/phase-9-review-0`. |
 
 Every phase is built and open for review; nothing is landed except Phase 6. What is left
 is review and landing, below.
@@ -38,7 +38,7 @@ is review and landing, below.
 ## Landing
 
 The pull requests form one stack, each on the one before: #5 (Phase 1, base `master`),
-#6, #7, #8, #9, #10, #11 and Phase 9's, in that order. Land them in order as "Every phase"
+#6, #7, #8, #9, #10, #11 and #12 (Phase 9), in that order. Land them in order as "Every phase"
 says (a `--no-ff` merge of the last reviewed head, the landing recorded in the Status
 table); once a base branch is merged and deleted, GitHub retargets the next pull request to
 `master`. Delete this file when Phase 9 lands.
@@ -896,8 +896,9 @@ and L2392); 70501→ship_shop_proc (L2391); 8010→pet_shops (L2435); 8211→dum
 
 **Gate** on `2a05cb23f`: `./scripts/format.sh --all --check` clean, `make test-all -j16
 TEST_JOBS=16` 680 passed, 1 failed (`test_epic_zone_seed.py`, fixed by `2fcc73f4e` and then
-passing), `make test-db` 47 of 48 (`telemetry_schema_boot`, fixed by `b683d9eb0`). Nothing
-is left.
+passing), `make test-db` 47 of 48 (`telemetry_schema_boot`, fixed by `b683d9eb0`). The full
+gate again on `6ae7e3f5f`, the head with both fixes: format check clean, `make test-all`
+681 passed, 0 failed, `make test-db` 48 of 48. Nothing is left.
 
 **Checked** at `f44291043`. `board_info[]` (`src/cmd/boards.c` L55-103, `NUM_OF_BOARDS` 44
 at L52) is what `find_board()` (L121) searches, so an object carrying the `board` special
