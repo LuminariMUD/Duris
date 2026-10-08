@@ -355,7 +355,7 @@
     "areas/zon/yuan_ti.zon": "2d66d7a899d4871cd1592b8808366a6dc803544616acc985fd99dfe7c9af1490",
     "areas/zon/yuan_ti2.zon": "43b9b2f9b87db74d5cdce0afb7f1460cb6e0b51899b292d5fb04e6365424610f",
     "migrations/epic-zone-payout.sql": "97e3145b3c924d7ecf8115a7efa9e439b1273f321a78630e38eb7321435f0c96",
-    "src/world/epic.h": "e9117324431aa43fcdf61ac99ef9f2f6cacbbaec4cab3a305243230de9413f83"
+    "src/world/epic.h": "602cc1fa92725a8f832661d9967f78acb6c0f6fa6f0518dfc912c337e6362854"
   },
   "unseeded_assignments": [
     {
