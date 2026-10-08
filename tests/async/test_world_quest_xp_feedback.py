@@ -31,7 +31,6 @@ PRELUDE = r'''
 #include "net/comm.h"
 #include "net/gmcp.h"
 #include "world/difficulty.h"
-#include "world/rested.h"
 #include "world/hardcore_config.h"
 #include "world/epic_bonus.h"
 #include "combat/justice.h"
@@ -86,9 +85,9 @@ int IS_MORPH(P_char) { return false; }
 int GET_CLASS(P_char, unsigned int) { return 0; }
 int BOUNDED(int low, int value, int high) { return MAX(low, MIN(value, high)); }
 int shop_keeper(P_char, P_char, int, char *) { return 0; }
+bool affected_by_spell(P_char, int tag) { return tag == rested_tag; }
 bool opposite_racewar(P_char, P_char) { return false; }
 bool grouped(P_char, P_char) { return false; }
-bool has_active_rested_bonus(P_char, int tag) { return tag == rested_tag; }
 double difficulty_multiplier(difficulty_dial dial) {
     return dial == DIFFICULTY_EXP_EARNED ? earned_multiplier : 1.0;
 }
