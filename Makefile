@@ -13,6 +13,7 @@ AREA_GENERATORS := \
 	bin/areas/tools/make_obj \
 	bin/areas/tools/make_qst \
 	bin/areas/tools/make_shp \
+	bin/areas/tools/make_trg \
 	bin/areas/tools/make_wld \
 	bin/areas/tools/make_zon
 AREA_WORLD_OUTPUTS := \
@@ -20,6 +21,7 @@ AREA_WORLD_OUTPUTS := \
 	areas/world.obj \
 	areas/world.qst \
 	areas/world.shp \
+	areas/world.trg \
 	areas/world.wld \
 	areas/world.zon
 AREA_WORLD_SCRATCH_OUTPUTS := \
@@ -27,6 +29,7 @@ AREA_WORLD_SCRATCH_OUTPUTS := \
 	areas/tworld.obj \
 	areas/tworld.qst \
 	areas/tworld.shp \
+	areas/tworld.trg \
 	areas/tworld.wld \
 	areas/tworld.zon \
 	areas/mini.mob \
@@ -121,7 +124,7 @@ world: build-area-tools
 		done; \
 	fi; \
 	if [ "$$refresh" -eq 0 ]; then \
-		newer=$$(find areas/mob areas/obj areas/qst areas/shp areas/wld areas/zon areas/src \
+		newer=$$(find areas/mob areas/obj areas/qst areas/shp areas/trg areas/wld areas/zon areas/src \
 			-type f ! -name '*.o' -newer "$$stamp" -print -quit); \
 		if [ -n "$$newer" ]; then refresh=1; fi; \
 	fi; \

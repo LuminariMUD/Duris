@@ -357,7 +357,7 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
     echo "Using tracked minimal world data; skipping full world generation."
   else
     echo "Building area tools if needed..."
-    if [ ! -x "bin/areas/tools/make_mob" ] || [ ! -x "bin/areas/tools/make_obj" ] || [ ! -x "bin/areas/tools/make_qst" ] || [ ! -x "bin/areas/tools/make_shp" ] || [ ! -x "bin/areas/tools/make_wld" ] || [ ! -x "bin/areas/tools/make_zon" ]; then
+    if [ ! -x "bin/areas/tools/make_mob" ] || [ ! -x "bin/areas/tools/make_obj" ] || [ ! -x "bin/areas/tools/make_qst" ] || [ ! -x "bin/areas/tools/make_shp" ] || [ ! -x "bin/areas/tools/make_trg" ] || [ ! -x "bin/areas/tools/make_wld" ] || [ ! -x "bin/areas/tools/make_zon" ]; then
       (cd ./areas/src && make -j1) || exit 1
     fi
 

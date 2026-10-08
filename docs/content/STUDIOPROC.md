@@ -24,6 +24,9 @@ cannot do is *fill those slots* without editing C.
 
 `studioproc_boot()` reads one data file, `areas/world.trg`, at boot and
 binds a single generic C proc per target type to every vnum named in it.
+`make world` generates that file: `make_trg` checks each area's
+`areas/trg/<area>.trg` (for the areas `areas/AREA` lists) and appends it,
+then ends the file with `#~`.
 After that, the engine's own dispatch does all the work — there is no
 scripting VM, no interpreter thread, and no new dispatch machinery.
 
@@ -139,10 +142,12 @@ All of these are enforced in C and none are optional.
   `ACT_SPEC_DIE` for DEATH), because that is the engine's own gate
   (mobact.c:5735, fight.c:2566).
 
-A malformed record logs its zone, vnum and line to `logs/log/status` and
-is skipped, so a bad `.trg` cannot stop a boot. The file is read and
-never written. The kill switch is renaming `areas/world.trg` and
-rebooting.
+A malformed source fails `make world`, naming the file and line, when the
+fault is in the framing (a record header, `T`, `~` and `S`). At boot a
+malformed record logs its zone, vnum and line to `logs/log/status` and is
+skipped, so a bad `.trg` cannot stop a boot. The file is read and never
+written. The kill switch is renaming `areas/world.trg` and rebooting; the
+next `make world` writes it again.
 
 ## Per-instance state
 
@@ -202,26 +207,21 @@ tool. This subsystem touches and replaces none of them.
 - **A fix for `room_event()`** (`src/world/events.c`), which passes a room
   vnum while every other room-proc call site passes the real index.
   `studioproc_room()` accepts both.
-- **`spells.h` changes.** The three affect type ids (2198-2200,
-  `SP_TAG_*` in `src/mob/studioproc.h`) come from the unused top of the
-  `skills[]` index space (`MAX_AFFECT_TYPES + 1` = 2201). Nothing
-  reserves them, so if the `TAG_` list ever grows past 2197 they collide
-  silently.
-- **Toolchain integration for `world.trg`.** It is appended by hand
-  rather than produced by `areas/src`, which is also why area
-  regeneration leaves it alone.
 
 ## Verifying it yourself
 
 Build with `make -C src`; it must finish with no warning.
 
-Boot with no `areas/world.trg` present — the entire feature is one line
-in the status log, `STUDIOPROC: no areas/world.trg, proc engine idle.`,
-and nothing else changes.
+With no trigger source, `make world` writes an `areas/world.trg` that holds
+only `#~`; the entire feature is then one line in the status log,
+`STUDIOPROC: 0 records, 0 triggers, 0 bound (0 mob, 0 obj, 0 room), 0 counters.`,
+and nothing else changes. With no `areas/world.trg` at all the line reads
+`STUDIOPROC: no areas/world.trg, proc engine idle.`
 
 Then give it content. Create `logs/log` if it does not exist (`logit()`
-gives up quietly when the directory is missing), and write
-`areas/world.trg` using any mob vnum you have to hand:
+gives up quietly when the directory is missing), write
+`areas/trg/<area>.trg` for an area `areas/AREA` lists, using any mob vnum
+you have to hand, and run `make world`:
 
 ```
 #<mobvnum> M
@@ -231,13 +231,14 @@ say You do not pass without the sigil.
 block
 ~
 S
-#~
 ```
 
 Boot, and the status log reports `STUDIOPROC: 1 records, 1 triggers,
 1 bound (1 mob, 0 obj, 0 room), 0 counters.` Walk a mortal east past the
-mob with and without the object. Then break the file on purpose and boot
-again: the parse error names the zone, vnum and line, the record is
-skipped, and the boot completes.
+mob with and without the object. Then break a record's content on purpose
+(an unknown action, say) and boot again: the parse error names the zone,
+vnum and line, the record is skipped, and the boot completes. Break its
+framing (drop the `~`) and `make world` fails instead, naming the file and
+line.
 
 [`howto_trg.txt`](howto_trg.txt) has the full grammar and the authoring rules.

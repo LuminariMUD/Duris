@@ -122,9 +122,11 @@ Safety Rails (enforced in C, not optional):
 Howto Install a Zone's Triggers:
   First, install the zone's area files as usual (areas/wld, areas/mob,
     ..., name in areas/AREA).
-  Second, append the zone's trigger records to areas/world.trg BEFORE the
-    terminating "#~" line.  The file is a plain concatenation; there is
-    no build step.
+  Second, put the zone's trigger records in areas/trg/<area>.trg, the
+    area's name as areas/AREA lists it, with no "#~" line, and run
+    'make world'.  make_trg checks the framing (headers, T, ~ and S) and
+    writes areas/world.trg from every area's file, ending it with "#~"; a
+    malformed file fails 'make world' with its file and line.
   Third, reboot (or copyover) and check the boot line in logs/log/status:
       STUDIOPROC: 12 records, 47 triggers, 12 bound (31 mob, 6 obj,
       10 room), 4 counters.

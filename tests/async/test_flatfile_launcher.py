@@ -304,7 +304,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
     # here kept the systemd service in a ten-second restart loop.
     tools = project / "bin/areas/tools"
     tools.mkdir(parents=True)
-    for name in ("make_mob", "make_obj", "make_qst", "make_shp", "make_wld", "make_zon"):
+    for name in ("make_mob", "make_obj", "make_qst", "make_shp", "make_trg", "make_wld", "make_zon"):
         (tools / name).write_text("#!/bin/sh\nexit 0\n")
         (tools / name).chmod(0o755)
     runtime = project / "bin/server/dms"

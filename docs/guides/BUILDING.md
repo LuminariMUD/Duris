@@ -183,18 +183,21 @@ The server boots from combined area files (`areas/world.wld`, `world.mob`,
 are generated, not hand-edited:
 
 1. Build the compilers: `make build-area-tools` (produces `make_mob`,
-   `make_obj`, `make_qst`, `make_shp`, `make_wld`, and `make_zon` under
-   `bin/areas/tools/`).
+   `make_obj`, `make_qst`, `make_shp`, `make_trg`, `make_wld`, and `make_zon`
+   under `bin/areas/tools/`).
 2. Generate: `make world` (runs `areas/m_slow`, including lookup generation).
 
-The six independent compiler builds inherit GNU Make's jobserver, so
+The seven independent compiler builds inherit GNU Make's jobserver, so
 `make -j"$(nproc)"` can build them in parallel. Generation scripts stop on the
 first failed command instead of leaving a partially refreshed world behind.
 The root target records an ignored `areas/.world.stamp` and skips regeneration
 when every required output exists and all area sources and tools are unchanged.
 
 Per-area source directories (`areas/wld/`, `areas/mob/`, ...) hold editable
-area data; the combined outputs land in `areas/world.*`.
+area data; the combined outputs land in `areas/world.*`. An area's studio-proc
+triggers are `areas/trg/<area>.trg`, optional like its quests; `make_trg` checks
+their framing and fails generation with the file and line of a malformed one
+([STUDIOPROC.md](../content/STUDIOPROC.md)).
 
 `scripts/cycle_mud.sh` performs both steps automatically when the helper
 binaries are missing, so first boot after a fresh clone works without manual
