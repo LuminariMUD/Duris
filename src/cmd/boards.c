@@ -125,8 +125,9 @@ int find_board(struct char_data *ch)
 
 	for (obj = world[ch->in_room].contents; obj; obj = obj->next_content)
 		for (i = 0; i < NUM_OF_BOARDS; i++)
-			if (obj_index[BOARD_RNUM(i)].virtual_number ==
-			    obj_index[obj->R_num].virtual_number)
+			/* A row whose object the world lacks keeps rnum -1 (initialize_boards). */
+			if (BOARD_RNUM(i) >= 0 && obj_index[BOARD_RNUM(i)].virtual_number ==
+							  obj_index[obj->R_num].virtual_number)
 				return i;
 	return -1;
 }
