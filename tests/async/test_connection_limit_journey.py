@@ -4,13 +4,15 @@
 One isolated flat-file server, with the WebSocket listener on and 127.0.0.9 as its
 trusted proxy. Eight telnet connections from 127.0.0.1 reach the account name prompt and
 the ninth is refused, and so is a ninth from 127.0.0.5 after eight that each entered a
-name, while a login from 127.0.0.2 still gets in; TLS connections still negotiating
-count too. Behind the proxy, two client addresses its PROXY headers name are
-counted apart, the proxy's own address, shared by every client it forwards, is not
-capped, and two website logins with different X-Forwarded-For addresses do not close each
-other, even when the second client writes the first one's address in front of its own. A connection silent at the account name prompt, and one silent at the password
-prompt, are closed after two minutes. A connection from a banned address is told so and closed, and the server stays up. A full
-server refuses TLS connections without growing.
+name, while a login from 127.0.0.2 still gets in; TLS connections still negotiating count
+too. Behind the proxy, two client addresses its PROXY headers name are counted apart, and
+X-Forwarded-For does not move a connection out of its PROXY address's count; the proxy's
+own address, shared by every client it forwards, is not capped; and two website logins
+with different X-Forwarded-For addresses do not close each other, even when the second
+client writes the first one's address in front of its own. A connection silent at the
+account name prompt, and one silent at the password prompt, are closed after two
+minutes. A connection from a banned address is told so and closed, and the server stays
+up. A full server refuses TLS connections without growing.
 """
 
 from __future__ import annotations
@@ -59,21 +61,30 @@ def closed_within(sock: socket.socket, timeout: float) -> bytes | None:
     return None
 
 
-def proxied(port: int, client: str) -> socket.socket:
-    """A WebSocket-port connection from the proxy carrying a PROXY header for client."""
+def upgrade(sock: socket.socket, forwarded_for: str) -> None:
+    """A WebSocket upgrade naming forwarded_for in X-Forwarded-For."""
+    sock.sendall(("GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\n"
+                  "Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                  f"Sec-WebSocket-Version: 13\r\nX-Forwarded-For: {forwarded_for}\r\n\r\n"
+                  ).encode("ascii"))
+    sock.settimeout(5)
+    require(b" 101 " in sock.recv(4096), f"the handshake for {forwarded_for} was not accepted")
+
+
+def proxied(port: int, client: str, forwarded_for: str | None = None) -> socket.socket:
+    """A WebSocket-port connection from the proxy carrying a PROXY header for client, then
+    with forwarded_for a completed upgrade that names another address."""
     sock = socket.create_connection(("127.0.0.1", port), timeout=5, source_address=(PROXY, 0))
     sock.sendall(f"PROXY TCP4 {client} 127.0.0.1 40000 4050\r\n".encode("ascii"))
+    if forwarded_for:
+        upgrade(sock, forwarded_for)
     return sock
 
 
 def handshake(port: int, client: str) -> socket.socket:
     """A WebSocket upgrade through the proxy naming client in X-Forwarded-For."""
     sock = socket.create_connection(("127.0.0.1", port), timeout=5, source_address=(PROXY, 0))
-    sock.sendall(("GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\n"
-                  "Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
-                  f"Sec-WebSocket-Version: 13\r\nX-Forwarded-For: {client}\r\n\r\n").encode("ascii"))
-    sock.settimeout(5)
-    require(b" 101 " in sock.recv(4096), f"the handshake for {client} was not accepted")
+    upgrade(sock, client)
     return sock
 
 
@@ -160,8 +171,11 @@ def main() -> int:
 
                 # Behind the proxy each PROXY-named client is counted on its own, and the
                 # proxy's own address is shared by its clients, so it is never capped.
-                for _ in range(LIMIT):
+                # The request's X-Forwarded-For, which a PROXY-protocol proxy passes on
+                # untouched, does not take a connection out of its PROXY address's count.
+                for _ in range(LIMIT - 1):
                     held.append(proxied(websocket_port, "198.51.100.1"))
+                held.append(proxied(websocket_port, "198.51.100.1", forwarded_for="10.66.0.1"))
                 time.sleep(1)
                 excess = proxied(websocket_port, "198.51.100.1")
                 require(closed_within(excess, 10) is not None,

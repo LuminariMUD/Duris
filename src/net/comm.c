@@ -3849,7 +3849,10 @@ int new_descriptor(int s, int conn_type)
 			char proxy_ip[46];
 			if (conn_type == 2 &&
 			    parse_proxy_protocol(desc, proxy_ip, sizeof(proxy_ip)))
+			{
 				strlcpy(newd->host, proxy_ip, sizeof newd->host);
+				newd->proxy_named_client = 1;
+			}
 			else
 				shared_address = true;
 		}
