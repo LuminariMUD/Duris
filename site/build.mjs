@@ -9,7 +9,7 @@ import { build } from "esbuild";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
-const repository = process.env.GITHUB_REPOSITORY || "Community-Duris/Duris";
+const repository = process.env.GITHUB_REPOSITORY || "LuminariMUD/Duris";
 const base = process.env.SITE_BASE_PATH || `/${repository.split("/")[1]}/`;
 if (!/^\/(?:[a-zA-Z0-9._-]+\/)*$/.test(base))
   throw new Error("Invalid SITE_BASE_PATH");

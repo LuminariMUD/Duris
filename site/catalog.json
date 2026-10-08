@@ -95,7 +95,7 @@
     "source": "docs/persistence/CRITICAL_COMMAND_PIPELINE.md",
     "title": "Critical commands",
     "group": "Engineering",
-    "description": "Understand transactions, journals, replay, and fences."
+    "description": "Understand operation identity, the inbox and outbox transaction, and failure behavior."
   },
   {
     "slug": "world-recovery",

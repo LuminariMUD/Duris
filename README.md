@@ -12,7 +12,6 @@
 ![RFC 6455 WebSocket support][websocket-badge]
 [![clang-format code style][format-badge]][formatting]
 [![Last commit][commit-badge]][commits]
-[![Open issues][issues-badge]][issues]
 
 ![DurisMUD - a dragon circles a citadel between moonlit ruins and a volcanic fortress](docs/assets/durismud-readme-header.webp)
 
@@ -413,7 +412,7 @@ the root [`VERSION`](VERSION) file.
 
 ## Documentation
 
-Browse the [project website and documentation library](https://community-duris.github.io/Duris/)
+Browse the [project website and documentation library](https://luminarimud.github.io/Duris/)
 for searchable guides with source links, code highlighting, and diagrams.
 
 | Guide | Covers |
@@ -429,24 +428,22 @@ for searchable guides with source links, code highlighting, and diagrams.
 | [Immutable migrations](docs/persistence/IMMUTABLE_MIGRATIONS.md) | Baseline adoption, ordered checksums, exact resume. |
 | [Runtime compatibility](docs/persistence/RUNTIME_COMPATIBILITY.md) | Pre-mutation boot verification and lookup publication. |
 | [Data lifecycle](docs/persistence/DATA_LIFECYCLE.md) | Store inventory, pending policy, archive/export/erasure boundaries. |
-| [Critical commands](docs/persistence/CRITICAL_COMMAND_PIPELINE.md) | Operation identity, journal, inbox/results, outbox, replay, fences. |
+| [Critical commands](docs/persistence/CRITICAL_COMMAND_PIPELINE.md) | Operation identity, domains, the inbox/outbox transaction, failure behavior, and money and epics in memory. |
 | [Formatting](docs/guides/formatting.md) | Style, changed-line formatting, and editors. |
 | [Help system](docs/content/HELP_SYSTEM.md) | Help sources, database import, and rendering. |
 
 The complete index, including builder references and standalone diagrams, is
 in [`docs/README_docs.md`](docs/README_docs.md).
 
-[build]: https://github.com/LuminariMUD/DurisMUD/actions/workflows/build.yml
-[build-badge]: https://img.shields.io/github/actions/workflow/status/LuminariMUD/DurisMUD/build.yml?branch=master&style=flat-square&logo=githubactions&logoColor=white&label=build
-[commit-badge]: https://img.shields.io/github/last-commit/LuminariMUD/DurisMUD?style=flat-square&logo=github
-[commits]: https://github.com/LuminariMUD/DurisMUD/commits/master
+[build]: https://github.com/LuminariMUD/Duris/actions/workflows/build.yml
+[build-badge]: https://img.shields.io/github/actions/workflow/status/LuminariMUD/Duris/build.yml?branch=master&style=flat-square&logo=githubactions&logoColor=white&label=build
+[commit-badge]: https://img.shields.io/github/last-commit/LuminariMUD/Duris?style=flat-square&logo=github
+[commits]: https://github.com/LuminariMUD/Duris/commits/master
 [compiler-badge]: https://img.shields.io/badge/compiler-g%2B%2B-A42E2B?style=flat-square&logo=gnu&logoColor=white
 [cpp20-badge]: https://img.shields.io/badge/C%2B%2B-20-00599C?style=flat-square&logo=cplusplus&logoColor=white
 [database-badge]: https://img.shields.io/badge/database-MySQL%20%2F%20MariaDB-4479A1?style=flat-square&logo=mysql&logoColor=white
 [format-badge]: https://img.shields.io/badge/style-clang--format-262D3A?style=flat-square&logo=llvm&logoColor=white
 [formatting]: docs/guides/formatting.md
-[issues]: https://github.com/LuminariMUD/DurisMUD/issues
-[issues-badge]: https://img.shields.io/github/issues/LuminariMUD/DurisMUD?style=flat-square&logo=github
 [linux-badge]: https://img.shields.io/badge/platform-Linux-FCC624?style=flat-square&logo=linux&logoColor=black
 [redis-badge]: https://img.shields.io/badge/Redis-optional-DC382D?style=flat-square&logo=redis&logoColor=white
 [tls-badge]: https://img.shields.io/badge/TLS-GnuTLS-386892?style=flat-square&logo=gnu&logoColor=white

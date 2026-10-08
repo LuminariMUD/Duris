@@ -1,9 +1,9 @@
 # Project website
 
 The DurisMUD project hub is a static site built from this repository: a project
-index, a searchable documentation library, and a reader for selected guides. Nothing
-publishes it from this repository today; it is built and tested
-locally. [GitHub publishing](#github-publishing) is the recipe it was published with.
+index, a searchable documentation library, and a reader for selected guides. It is
+published at <https://luminarimud.github.io/Duris/> as [GitHub publishing](#github-publishing)
+describes, and can be built and tested locally.
 
 ## Content comes from the repository
 
@@ -85,7 +85,7 @@ JavaScript; search, filters, copying, and diagram rendering progressively enhanc
 
 ## GitHub publishing
 
-No pipeline runs this workflow today.
+The site has been live at <https://luminarimud.github.io/Duris/> since 2026-10-08.
 `.github/workflows/pages.yml` builds and tests on pull requests and on pushes to
 `master` that change documentation, the README, site files, or the publishing
 workflow. A successful build on `master` deploys through the protected
@@ -104,7 +104,7 @@ on demand. Standalone HTML diagrams retain their original Google Fonts styleshee
 and system-font fallbacks.
 
 The builder derives the project base path and Pages origin from
-`GITHUB_REPOSITORY`, defaulting to `Community-Duris/Duris`. `SITE_BASE_PATH`
+`GITHUB_REPOSITORY`, defaulting to `LuminariMUD/Duris`. `SITE_BASE_PATH`
 (leading and trailing slash) and `SITE_ORIGIN` can override these for another
 Pages location. `GITHUB_SHA` identifies the deployed source revision.
 

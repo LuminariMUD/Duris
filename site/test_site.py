@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
-REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "Community-Duris/Duris")
+REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "LuminariMUD/Duris")
 BASE = os.environ.get("SITE_BASE_PATH", f"/{REPOSITORY.split('/')[1]}/")
 OUTPUT = ROOT / "bin" / "pages" / BASE.strip("/")
 
