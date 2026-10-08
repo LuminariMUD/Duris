@@ -17,6 +17,6 @@ PASSWORD="$2"
 HASH=$(mkpasswd -m bcrypt -R 12 "$PASSWORD")
 
 echo "updating password for $ACCOUNT..."
-mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASSWD" "$DB_NAME" -e "UPDATE accounts SET password='$HASH' WHERE LOWER(account_name)=LOWER('$ACCOUNT');"
+mysql -h"$DB_HOST" -P"${DB_PORT:-3306}" -u"$DB_USER" -p"$DB_PASSWD" "$DB_NAME" -e "UPDATE accounts SET password='$HASH' WHERE LOWER(account_name)=LOWER('$ACCOUNT');"
 
 echo "done."

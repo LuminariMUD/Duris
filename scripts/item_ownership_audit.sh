@@ -54,7 +54,7 @@ for required in DB_HOST DB_USER DB_PASSWD DB_NAME; do
 done
 
 run_sql() {
-  MYSQL_PWD="$DB_PASSWD" mysql -h"$DB_HOST" -u"$DB_USER" "$DB_NAME" --batch --table -e "$1"
+  MYSQL_PWD="$DB_PASSWD" mysql -h"$DB_HOST" -P"${DB_PORT:-3306}" -u"$DB_USER" "$DB_NAME" --batch --table -e "$1"
 }
 
 ACTIVE_STATE=1   # item_custody_state::active
