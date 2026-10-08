@@ -75,8 +75,7 @@ on `date` and sorts chronologically. MySQL 8 has no portable
 issues no `ALTER` when an index of exactly the verified shape - a single
 non-unique entry on `date` - is present; an index of that name with any other
 shape is dropped and rebuilt. The index is a structural
-correction; its latency benefit has not been measured on a representative clone
-([#19](https://gitlab.com/max757/duris/-/work_items/19)).
+correction; its latency benefit has not been measured on a representative clone.
 
 `kingdom_realms` is part of the boot contract's *table list*: both
 normalized metadata fingerprints are sealed over an inventory that includes it,

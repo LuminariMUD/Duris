@@ -75,7 +75,7 @@ public source.
 | 31 Oct-2 Nov 2025 | Xanadin publishes the February 2017 source on GitHub and starts a test MUD. Arih brings up "a new server … the source code supplied by Xanadinn". |
 | 6 Nov 2025 | The Community-Duris organisation is created. The revival's website becomes newduris.com. |
 | 25 Aug 2026 | Zusuk (moshehbenavraham) begins a large modernisation of the community code. |
-| 23 Sep 2026 | This repository's line and Community-Duris diverge (`e1357a30a`); this line has been on GitLab since 28 Sep 2026. |
+| 23 Sep 2026 | This repository's line and Community-Duris diverge (`e1357a30a`); this line was on GitLab from 28 Sep 2026 and has been on GitHub (`LuminariMUD/Duris`) since 8 Oct 2026. |
 | 2026 | Three Durises exist: the original game at durismud.com, Community-Duris at newduris.com, and this repository duris.sbs . |
 
 ## 1. Before Duris: DikuMUD and Sojourn (1990-1995)
@@ -484,7 +484,8 @@ test suite, documentation, and a flat-file backend
 guildhalls (a design the 2008 wipe had promised), Chaos events, ships and quest records. The
 September 2026 news gave players a "catch-up" covering December 2025 to September 2026. On
 23 September 2026 (`e1357a30a`) this repository's line and Community-Duris diverged. This line
-has lived on GitLab at `max757/duris` since 28 September 2026.
+lived on GitLab from 28 September 2026 and has been on GitHub at `LuminariMUD/Duris` since
+8 October 2026.
 [COMMUNITY_DURIS_TRACKING.md](COMMUNITY_DURIS_TRACKING.md) records what each line has done since.
 
 So, thirty years after "DURIS IS BORN!", there are three Durises: the official game at

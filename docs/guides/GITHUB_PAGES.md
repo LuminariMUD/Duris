@@ -2,7 +2,7 @@
 
 The DurisMUD project hub is a static site built from this repository: a project
 index, a searchable documentation library, and a reader for selected guides. Nothing
-publishes it from this repository today ([#25](https://gitlab.com/max757/duris/-/work_items/25)); it is built and tested
+publishes it from this repository today; it is built and tested
 locally. [GitHub publishing](#github-publishing) is the recipe it was published with.
 
 ## Content comes from the repository

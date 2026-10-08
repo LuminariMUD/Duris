@@ -119,4 +119,4 @@ existing SQL login harness including bounds and malformed trophy rows.
 
 Observation is accumulation only. Familiarity decay, a penalty curve and its
 enforcement, zone eligibility by `trophy_zone`, and player-facing multiplier feedback
-are not built ([#24](https://gitlab.com/max757/duris/-/work_items/24)). Do not restore the SQL decay sweeps.
+are not built. Do not restore the SQL decay sweeps.

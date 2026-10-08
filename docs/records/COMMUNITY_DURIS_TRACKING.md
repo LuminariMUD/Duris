@@ -1,6 +1,6 @@
 # Community-Duris tracking
 
-Our line (`gitlab.com/max757/duris`) and
+Our line (`github.com/LuminariMUD/Duris`) and
 [Community-Duris/Duris](https://github.com/Community-Duris/Duris) on GitHub share one history up
 to 2026-09-23 and have been developed separately since. This file records where the split is,
 every change they have landed since, sorted into bug fixes and everything else, and what we did
@@ -73,7 +73,7 @@ to apply to. Once a row is decided, it names our commit or the reason.
 
 | Status | Meaning |
 |---|---|
-| `Open` | Not decided or not done yet. Our line names the work item once there is one. |
+| `Open` | Not decided or not done yet. |
 | `Adopted` | Their commits taken as they are. Our line names the commit. |
 | `Adapted` | The same change written for our code. Our line names the commit. |
 | `Rejected` | Decided against. Our line gives the reason. |
@@ -90,7 +90,7 @@ to apply to. Once a row is decided, it names our commit or the reason.
 | #660 (a) | 10-01 | A raised, player-owned pet could wear a hidden (`!show`) NPC helper weapon it inherited and fire its procs (their issue #590). | `374c8a518` (2026-10-04): a raised corpse's items are on the raised creature again, and `wear()` refuses a hidden item for a player's pet, so `wear`, `wield` and `hold` by keyword skip it as `wear all` did. | `Adapted` |
 | #660 (b) | 10-01 | A scheduled backup interrupted after publishing was never completed. Adds automatic `finalize` (off by default) and a retry throttle (their issue #525). | `scripts/persistence_backup.py` was reworked here from 2026-10-01 to 2026-10-03 (11 commits, `2f2c0f405` to `a6741ccf9`). Whether that covers the same interruption is not verified. | `Open` |
 | #601 | 10-01 | A boon reward result (2,080 bytes) overflowed the 2,048-byte critical-completion buffer. | `004598b0e` is in our history and the 4,096-byte limit is in our tree. | `Shared` |
-| #594 | 10-01 | `achievements zones` listed zones with no completed quests, some as "This area". Now only zones with a completed quest are listed, highest count first. | Not in ours: `summary_for_at` in `src/world/zone_story_quest_feature.c` still lists every zone. Work item [#8](https://gitlab.com/max757/duris/-/work_items/8). | `Open` |
+| #594 | 10-01 | `achievements zones` listed zones with no completed quests, some as "This area". Now only zones with a completed quest are listed, highest count first. | Not in ours: `summary_for_at` in `src/world/zone_story_quest_feature.c` still lists every zone. | `Open` |
 | #573 (a) | 10-01 | Poison mixing, Encrust and Harvester exchanges could consume inputs twice or reroll results across a crash. Made atomic through database craft receipts (their issue #551). | We merged the earlier head, then our persistence reset removed the craft-receipt layer. Their 3 later commits build on it. | `N/A` |
 | #573 (b) | 10-01 | Saving a staff account wrote the immortal menu category over the character's own racewar. | `6e4934ab0` (2026-09-29). | `Ours first` |
 | #573 (c) | 10-01 | Copyover restored a session's account under the character's name. | `9a4c3bcfd` (2026-09-30). | `Ours first` |
@@ -98,7 +98,7 @@ to apply to. Once a row is decided, it names our commit or the reason.
 | #671 | 10-02 | `artifact fixit` freed its display object, then read and freed it again. | `00efb191f` (2026-09-30). | `Ours first` |
 | #596 | 10-02 | A coin transfer that committed after a disconnect left stale wallet and bank revisions on the retained character (their issue #505). | We merged the earlier head, then our reset removed the coin-transfer command layer (`src/economy/coin_transfer_command.c`) that their 2 later commits patch. | `N/A` |
 | #694 | 10-03 | `chaos platinum` printed success before the wallet credit was confirmed. | Same code in ours (`do_chaos` in `src/combat/chaos.c`). Not verified that a credit can still fail after submission in our currency path. | `Open` |
-| #700 (b) | 10-03 | Shop `list` could overflow its output buffer. | Latent in ours: the listing loop in `src/economy/shop.c` appends without a bound into a 65,536-byte buffer, which takes about 700 priced items on one keeper. Work item [#9](https://gitlab.com/max757/duris/-/work_items/9). | `Open` |
+| #700 (b) | 10-03 | Shop `list` could overflow its output buffer. | Latent in ours: the listing loop in `src/economy/shop.c` appends without a bound into a 65,536-byte buffer, which takes about 700 priced items on one keeper. | `Open` |
 | #700 (c) | 10-03 | An unterminated quote overflowed the stack in the new quantity parser. | The parser is new in #700 (a); ours does not have it. | `N/A` |
 | #702 | 10-03 | GMCP `Room.Info` updates were dropped when more than 500 rooms changed between flushes, and room indexes were used without a bounds check. | Present: `gmcp_mark_room_dirty` and `gmcp_flush_dirty_rooms` in `src/net/gmcp.c` are unchanged since the split. | `Open` |
 
@@ -111,18 +111,18 @@ to apply to. Once a row is decided, it names our commit or the reason.
 | #595 | 10-01 | Content | Cleric pets refuse orders with authored lines for their patron, read from `lib/misc/divine_refusal.json`. Pilot for Garl (vnums 66026, 66031), switched off by default (their issue #278). | Ours has part 1, the refusal decision ([DIVINE_REFUSAL.md](../reference/DIVINE_REFUSAL.md)), not the authored content. | `Open` |
 | #522 | 10-01 | Feature | `exp.rested.enabled` (default on) turns the rested XP bonus off for the whole server. Staff spell-ups still grant it. | Not in ours. | `Open` |
 | #511 | 10-01 | Performance | Ordinary NPC activity is throttled in regions with no player nearby. Off by default on their `master`, on by default on `experimental-accounting` (their issue #299). | Not in ours. | `Open` |
-| #697 | 10-03 | Feature | A separate `Quest EXP` line shows the experience a quest reward actually added (their issue #598). | Not in ours. Work item [#8](https://gitlab.com/max757/duris/-/work_items/8). | `Open` |
-| #700 (a) | 10-03 | Feature | `buy <item> quantity <1-50> [into <container>]` for produced stock, with markers in `list` and one summary per batch (their issue #539). | Not in ours. Work item [#16](https://gitlab.com/max757/duris/-/work_items/16). | `Open` |
+| #697 | 10-03 | Feature | A separate `Quest EXP` line shows the experience a quest reward actually added (their issue #598). | Not in ours. | `Open` |
+| #700 (a) | 10-03 | Feature | `buy <item> quantity <1-50> [into <container>]` for produced stock, with markers in `list` and one summary per batch (their issue #539). | Not in ours. | `Open` |
 
 ### Housekeeping
 
 | PR | Merged | Class | What they changed | Our line | Status |
 |---|---|---|---|---|---|
 | #659 | 10-01 | Dependencies | `codeql-action` 4.38.1 to 4.38.2. | Our line has no hosted pipeline. | `N/A` |
-| #662 | 10-01 | Dependencies | `dompurify` 3.4.15 to 3.4.16 in `site/`. | Ours is at 3.4.15. Work item [#9](https://gitlab.com/max757/duris/-/work_items/9). | `Open` |
+| #662 | 10-01 | Dependencies | `dompurify` 3.4.15 to 3.4.16 in `site/`. | Ours is at 3.4.15. | `Open` |
 | #444 | 10-01 | Tests | The auction journey builds its inspector per run instead of in the shared `bin/tests/` path, where parallel runs overwrote it. | `tests/async/test_flatfile_auction_coin_put_journey.py` still uses the shared `bin/tests/coin-death-inspector`. | `Open` |
 | #591 | 10-01 | Tests | Telemetry SQL round trips on MySQL 8.4 and MariaDB 11.4 as a required CI job (their issue #564). | Its harness and test changes are `38c59e6fe` (2026-10-07): the `telemetry_repository` leg of `make test-db` on the wrapper's MariaDB, taking `TEST_DB_*`. Their container wrapper, loopback proxy and hosted job are not. | `Adapted` |
-| #677 | 10-02 | Operations | Telemetry follow-up acceptance runbook and a read-only preflight script. | Not taken (decision 10 of the plan that landed Phase 5, !15): the writer's own startup check covers what the preflight script checked, and the runbook paragraph on the `telemetry_health` line is ours. | `Open` |
+| #677 | 10-02 | Operations | Telemetry follow-up acceptance runbook and a read-only preflight script. | Not taken (decision 10 of the plan that landed it in `338092a78`): the writer's own startup check covers what the preflight script checked, and the runbook paragraph on the `telemetry_health` line is ours. | `Open` |
 | #671 (b) | 10-02 | Build | Executable bit on their migration `0031` verifier, and link repairs in item-transfer test harnesses. | Their migration and their harness changes. | `N/A` |
 | #700 (d) | 10-03 | Build | Initialised variables for GCC 12 `maybe-uninitialized` warnings in four files. | Warnings from their GCC 12 build. Not checked against ours. | `Open` |
 | #695 | 10-03 | Operations | Reports and status queries for death-recovery custody (their issue #570). | Built on death custody, which migration `0034` dropped. | `N/A` |
@@ -201,7 +201,7 @@ The branch was still being pushed to during this check.
 | Zone dailies, six commits | Fifteen room descriptions named the wrong exit direction: Desolate (2, `b1ff082bc`), Moonhollow in the Rift Valley Jungle (5, `f5d5b2a5c`), Tempest Court (2, `dc586e34c`), Tribal Forest (3, `f8090481d`), Ironstar (2, `b07b560cc`) and Brass (1, `d18758098`). | Present: our six `.wld` files are identical to theirs before the fixes. All six commits apply cleanly. | `Open` |
 | Zone dailies, `3f1ecf2be` | Tower of Darkness: two room descriptions named the wrong direction, and four door keyword lists ended in a stray `&n` colour code, which their commit says broke the magic passwords. | Present: our `areas/wld/lortower.wld` is identical to theirs before the fix. The commit applies cleanly. | `Open` |
 | Zone dailies, design documents | Found, not fixed: 58 of the 60 per-zone documents under `docs/design/zone-stories/` list pending repairs to quests, rewards and access in the shared world files. | The world files are ours too. One checked: `areas/qst/halfcut.qst` rewards item 25000, which no object file defines. The rest is not checked. | `Open` |
-| Telemetry, `e0e837102`, `03da1882d`, `b3fb28b9f` | The telemetry writer started without checking the live schema and its permissions (their issue #561). Queued observations were lost across a restart or copyover with no record of the gap (their issue #566). Sessions were not recovered after a deferred start or a capacity refusal. | Taken as `f7368e60e`, `476376592` and `95cf073c7` (2026-10-07), without their `IMPLEMENTATION_STATUS.md`, `RECOVERED_FOLLOWUPS.md`, `BALANCE_EXPANSION_PLAN.md` and `preflight.py`. On top: the transport carries the repository's refusal cause and a `schema_check` to the operator line (`ce09d17bc`), and `run_telemetry_schema_boot_journey.py` proves the checks and the ledger on a running server. Work item [#17](https://gitlab.com/max757/duris/-/work_items/17). | `Adopted` |
+| Telemetry, `e0e837102`, `03da1882d`, `b3fb28b9f` | The telemetry writer started without checking the live schema and its permissions (their issue #561). Queued observations were lost across a restart or copyover with no record of the gap (their issue #566). Sessions were not recovered after a deferred start or a capacity refusal. | Taken as `f7368e60e`, `476376592` and `95cf073c7` (2026-10-07), without their `IMPLEMENTATION_STATUS.md`, `RECOVERED_FOLLOWUPS.md`, `BALANCE_EXPANSION_PLAN.md` and `preflight.py`. On top: the transport carries the repository's refusal cause and a `schema_check` to the operator line (`ce09d17bc`), and `run_telemetry_schema_boot_journey.py` proves the checks and the ledger on a running server. | `Adopted` |
 | Craft and Forge recovery, #675 | A Craft or Forge interrupted between the item commit and the player save lost its progression. | Built on the database craft receipts and command coordinator that our persistence reset removed. | `N/A` |
 | Accounting plan 5, `c3a948594`, `87424d5a7`, `7a78bb065` | Wrong or missing rows in the accounting audit views. | Our line dropped accounting (migration `0034`). | `N/A` |
 

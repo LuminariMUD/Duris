@@ -7,7 +7,7 @@ Gameplay capture performs no journal I/O, allocation or wait. The coherent sampl
 has four bounded attempts; a busy producer can defer a sample rather than delay
 gameplay or publish torn queue/counter totals.
 
-This is the bounded gap record of work item #17 (part 3). It does not spool
+This is the bounded gap record that landed in `338092a78`. It does not spool
 telemetry payloads, restore lost gameplay facts, or establish historical incident
 ends, and nothing publishes a recorded gap into the rollups or reports.
 

@@ -206,10 +206,10 @@ tool. This subsystem touches and replaces none of them.
   `SP_TAG_*` in `src/mob/studioproc.h`) come from the unused top of the
   `skills[]` index space (`MAX_AFFECT_TYPES + 1` = 2201). Nothing
   reserves them, so if the `TAG_` list ever grows past 2197 they collide
-  silently ([#28](https://gitlab.com/max757/duris/-/work_items/28)).
+  silently.
 - **Toolchain integration for `world.trg`.** It is appended by hand
   rather than produced by `areas/src`, which is also why area
-  regeneration leaves it alone ([#28](https://gitlab.com/max757/duris/-/work_items/28)).
+  regeneration leaves it alone.
 
 ## Verifying it yourself
 

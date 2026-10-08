@@ -70,7 +70,7 @@ rationale, compensating control, and expiry date.
   (`CVE-2024-52005`) for the installed Ubuntu Git package and no fixed HIGH/CRITICAL
   finding. This passes the stated gate but is not a clean or vulnerability-free claim.
 - libcurl4-gnutls-dev added to the build dependencies (2026-09-06), after this scan:
-  the count of 19 predates it and no scan has covered it yet ([#21](https://gitlab.com/max757/duris/-/work_items/21)). A fixed
+  the count of 19 predates it and no scan has covered it yet. A fixed
   HIGH/CRITICAL finding against the Ubuntu 24.04 package is fixed by the package update,
   never by a weakened transport setting.
 - Transitive and deployment dependency vulnerability status: `UNKNOWN` by design.

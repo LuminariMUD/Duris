@@ -3,7 +3,7 @@
 Setup and first boot live in the root [README](../README.md); its Quick start is the
 onboarding path. This directory holds the development, architecture, operations,
 database, and builder references. Open work lives in the
-[GitLab work items](https://gitlab.com/max757/duris/-/work_items), not here.
+plan under `ongoing-projects/`, not here.
 
 ```
 docs/

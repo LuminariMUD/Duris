@@ -414,8 +414,7 @@ For casting complaints, correlate a controlled mortal cast's intended duration,
 callback timing, completion/abort, and queued input. Each segment of a cast is due at
 the tick the one before it was due plus its own length, so a callback that ran late
 shortens the next segment: a cast finishes at its cast time plus the lateness of its
-last segment, or later only by the one-pulse minimum a segment keeps
-([#14](https://gitlab.com/max757/duris/-/work_items/14)).
+last segment, or later only by the one-pulse minimum a segment keeps.
 `tests/async/run_cast_timing_probe.py` measures this on a full-world flat-file server,
 with `--budget-usec` to load the event pass. Aggregate scheduler samples alone do not
 establish a particular player's delay or justify changing NPC cadence, priority

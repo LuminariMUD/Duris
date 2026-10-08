@@ -84,8 +84,8 @@ build/configuration evidence, then rerun the complete gate.
 
 ## Current state
 
-The gate has not been run, so the repository makes no 200-player readiness claim
-([#19](https://gitlab.com/max757/duris/-/work_items/19)). The gate tooling and the local migration replay, runtime and game smoke
+The gate has not been run, so the repository makes no 200-player readiness claim.
+The gate tooling and the local migration replay, runtime and game smoke
 passed on 2026-08-27; the 200-account, four-hour run was postponed. It stays
 `UNQUALIFIED` until every binding case passes, and only a checksummed `PASS` with every
 case present changes that. The manifest predates the

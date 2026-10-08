@@ -122,7 +122,7 @@ mutation.
 `run_mysql_collector_intake_journey.py` (in `make test-db`) and
 `test_flatfile_collector_intake_journey.py` drive a real death and the collection of an
 antiquity from the live corpse, with shortened timers. No live journey yet covers sale
-activation, inspection, purchase, save and reconnect, or expiry ([#23](https://gitlab.com/max757/duris/-/work_items/23)); the
+activation, inspection, purchase, save and reconnect, or expiry; the
 harnesses below cover them against the repositories. Keep the feature disabled on a
 server until that journey has run there.
 

@@ -76,4 +76,4 @@ describes has committed.
 
 The report definition in `scripts/telemetry/encounter_definitions.py` specifies the
 denominators and unresolved-tail policy without reading the raw fact stream. No
-rollup or report consumes the encounter facts yet ([#26](https://gitlab.com/max757/duris/-/work_items/26)).
+rollup or report consumes the encounter facts yet.

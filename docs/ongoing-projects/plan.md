@@ -44,9 +44,9 @@ work is not in this plan:
 
 ## Decisions (proposed)
 
-Decisions 9 and 10 were locked by the owner on 2026-10-08 as written below; Phases 8 and 9
-have nothing left to decide. Decisions 5 and 7 were rewritten on 2026-10-08 for the move to
-GitHub. Decisions 1 to 8 and 11 are still proposed.
+Decisions 5, 9 and 10 were locked by the owner on 2026-10-08 as written below; Phases 8 and
+9 have nothing left to decide. Decisions 5 and 7 were rewritten the same day for the move to
+GitHub. Decisions 1 to 4, 6 to 8 and 11 are still proposed.
 
 | # | Decision | Where |
 |---|---|---|
@@ -54,7 +54,7 @@ GitHub. Decisions 1 to 8 and 11 are still proposed.
 | 2 | A failed backup subprocess is reported with the command's basename, the phase, the exit status and the last 20 lines of its stderr (at most 2 KiB), with the database user, host and password replaced. | Phase 1 |
 | 3 | At most 8 connections per address that have not entered an account name; the ninth is told so and closed, with one debug-log line, and nobody is banned. A connection silent at the account name prompt is closed after 120 s. Both are constants in `src/core/config.h`, documented in `CONFIGURATION.md`. The address is the one PROXY resolution yields. | Phase 2 |
 | 4 | The listing is sent in pieces when the next line would not fit; dompurify is bumped by `npm audit fix --prefix site`; the two helpers are deleted. | Phase 3 |
-| 5 | The scan of record is the `security baseline` workflow, which now runs on every push to `master`; Phase 4 records its latest completed run instead of replaying it, and runs only `make security-sbom` locally to see libcurl in the inventory. `SECURITY.md` names the `0.1.x` line and the private vulnerability reporting form of `LuminariMUD/Duris`, which the owner turns on in the repository settings (it is off). The baseline says in one sentence that Dependabot proposes action-pin and `site/` npm updates weekly. | Phase 4 |
+| 5 | The scan of record is the `security baseline` workflow, which now runs on every push to `master`; Phase 4 records its latest completed run instead of replaying it, and runs only `make security-sbom` locally to see libcurl in the inventory. `SECURITY.md` names the `0.1.x` line and the private vulnerability reporting form of `LuminariMUD/Duris`, which the owner turned on on 2026-10-08. The baseline says in one sentence that Dependabot proposes action-pin and `site/` npm updates weekly. | Phase 4 |
 | 6 | The three studio-proc ids are defined at the end of the `TAG_` list in `spells.h`, with a `static_assert` beside them and a source contract that no other `TAG_` reaches 2198. `world.trg` is built by `make_trg` from `areas/trg/<area>.trg`, run by `make_all`, and a malformed source fails `make world` with its file and line. | Phase 5 |
 | 7 | The site is published by the existing `Project website` workflow once the owner sets the repository's GitHub Pages source to GitHub Actions; it then lives at `https://luminarimud.github.io/Duris/`. The site's repository default becomes `LuminariMUD/Duris`. The README's documentation link goes to that site; its build and last-commit badges and its commit link go to `LuminariMUD/Duris`; the issues badge and link go, since work is not tracked in issues. If the owner decides not to publish, the deploy job leaves `pages.yml`, the README link goes, and `docs/guides/GITHUB_PAGES.md` records that the site is a local build. | Phase 6 |
 | 8 | The two display fixes are taken from the community tree with the author kept where a commit applies, adapted otherwise. | Phase 7 |
@@ -95,8 +95,6 @@ Things to keep in mind across phases:
   the tag is pushed with the branch.
 - A phase lands as a `--no-ff` merge of the last reviewed head, with the landing recorded in
   this file's Status table.
-- A document the phase edits loses any link it still has to an outside tracker for the same
-  work; this file is the record.
 - The phase's section is brought up to date in the same branch: what was built, what differs
   from the plan and why, the gate's result, and what is left.
 
@@ -267,24 +265,27 @@ is the record and the policy:
   CRITICAL finding) and notes libcurl as unscanned.
 - `docs/records/SECURITY-COMPLIANCE.md` still marks the container scan `STALE`, the source
   checks and action pins `PARTIAL` ("nothing proposes updates", "CodeQL last ran
-  2026-08-27"), and the reporting process `PARTIAL`.
+  2026-08-27"), and the reporting process `PARTIAL`, and its scan paragraph says no hosted
+  pipeline runs the scans.
 - `SECURITY.md` promises fixes "in the current `1.81.x` line" (`VERSION` is `0.1.63` and was
   never `1.x`) and sends reporters to the private reporting form of `LuminariMUD/DurisMUD`,
-  which now redirects to the community repository. Private vulnerability reporting is off on
-  `LuminariMUD/Duris`.
+  which now redirects to the community repository.
+
+On 2026-10-08 the owner turned on, for `LuminariMUD/Duris`, private vulnerability reporting,
+Dependabot security updates, and secret scanning with push protection.
 
 **Checked** at `6e1b93cdb`, and on GitHub on 2026-10-08. `SECURITY.md` L5 and L10 name
 `1.81.x`, L17 the form. `SECURITY_BASELINE.md` L72 records libcurl as added after the scan;
 its "Local Commands" section (L6) is the local recipe. `SECURITY-COMPLIANCE.md` L102 and L119
-to L122 carry the `PARTIAL` and `STALE` rows. The `security baseline` run at `02bdd8008`
+to L122 carry the `PARTIAL` and `STALE` rows, L110 to L115 the scan paragraph. The `security baseline` run at `02bdd8008`
 passed, and code scanning listed no open alert.
 
 **Fix.** By decision 5: take the latest completed `security baseline` run on `master`, its
 CodeQL result and its `trivy-results.json` artifact, and run `make security-sbom` locally to
 see libcurl among the resolved direct packages (or record why it is not). Record the result
 and its date in the baseline's result section, replacing the libcurl note, with one sentence
-each on the workflow and on Dependabot. Update the `PARTIAL` and `STALE` rows of
-`SECURITY-COMPLIANCE.md`. Rewrite `SECURITY.md`: the `0.1.x` line, the private vulnerability
+each on the workflow, on Dependabot, and on the repository settings turned on 2026-10-08.
+Update the `PARTIAL` and `STALE` rows and the scan paragraph of `SECURITY-COMPLIANCE.md`. Rewrite `SECURITY.md`: the `0.1.x` line, the private vulnerability
 reporting form of `LuminariMUD/Duris`, no other repository named.
 
 **Steps.**

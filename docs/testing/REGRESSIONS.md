@@ -8,8 +8,8 @@ temporary state, and never reads the checkout's `.env`. A MariaDB journey needs
 own schema. Flat-file journeys take a server built with
 `make -C src PERSISTENCE_BACKEND=flatfile DMS_BINARY=/absolute/path/dms_flat`.
 
-The full-server sanitizer journeys that four of these sections name as not covered are
-[#27](https://gitlab.com/max757/duris/-/work_items/27).
+Four of these sections note that the full-server path was never driven under sanitizers; no
+journey does that yet.
 
 ## Area-authored coin piles
 
@@ -49,7 +49,7 @@ was due plus its own length (`spellcast_datatype.due_tick`, advanced by
 so a late callback shortens the next segment, never below one pulse: a cast finishes at
 its cast time plus the lateness of its last segment, or later only by that minimum. A
 cast with no lateness takes exactly its cast time. `DelayCommune()` and the casting
-display keep the nominal segments. Work item #14.
+display keep the nominal segments. Landed in `7ef76523e`.
 
 ```sh
 python3 tests/async/test_cast_lateness_runtime.py
@@ -300,7 +300,7 @@ character's or pet's items, no locker, corpse or saved room item, and on flat-fi
 delivery the record's player still has pending from a committed purchase or grant. A row
 whose item an older copy still carries stays, since a load skips a copy whose row names
 someone else: after a crash that follows a hand-over, the row is what keeps the giver's
-copy out (the review of MR !13, finding 1); and a flat-file purchase or grant committed
+copy out (found in the change's review); and a flat-file purchase or grant committed
 after the buyer's last save is delivered by the next login only while its record names the
 buyer (finding 2). A row an auction's custody row, an `artifact_domain_state` row or a child
 row still references is kept, and a container goes after its contents. A flat-file player
@@ -308,7 +308,7 @@ file or store the reap cannot read stops it with nothing deleted. Flat-file worl
 counts a player's record as an owner only while the player's next load holds the item, as
 MariaDB's does with `player_items`, so a floor copy whose record only keeps an older copy
 out is restored rather than lost. The per-login `missing_payload_rows` count and the
-per-save `unowned_object` line are traces (`DURIS_PERSISTENCE_TRACE`). Work item #11.
+per-save `unowned_object` line are traces (`DURIS_PERSISTENCE_TRACE`). Landed in `a55ccef17`.
 
 ```sh
 tests/async/run_player_save_claim_mysql.sh
@@ -410,10 +410,10 @@ its producer in `TELEMETRY_OUTAGE_LEDGER_DIR` before it qualifies, samples bound
 counters about once a second and writes a terminal observation when it stops; a later
 producer turns an unfinished one into an unknown tail; `scripts/telemetry/outage.py`
 exports the ledger. A player who enters, or is recovered by a copyover, while the writer
-is still qualifying is retried by the descriptor sweep. Work item #17; the writer code is
+is still qualifying is retried by the descriptor sweep. Landed in `338092a78`; the writer code is
 Community-Duris's (`e0e837102`, `03da1882d`, `b3fb28b9f`).
 
-The review of !15 found three ways the writer stayed off for good after one event, and a
+The review of that change found three ways the writer stayed off for good after one event, and a
 line that did not say why. A pending file that was not a whole frame (what a full disk
 or a crash leaves between the create and the rename) refused the ledger on every later
 boot; now the writer removes its own staging file when a write fails, an open removes

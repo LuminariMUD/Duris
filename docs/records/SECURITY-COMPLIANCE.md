@@ -61,7 +61,7 @@ No open critical or high findings.
     have no controller-approved references.
   - Remediation: The responsible controller must approve the manifest decisions. Then
     validate the real adapters and protected delivery on isolated data before activation.
-  - Status: Open - external controller decision required ([#20](https://gitlab.com/max757/duris/-/work_items/20))
+  - Status: Open - external controller decision required
   - Opened: P00 (2026-08-26); technical boundary completed P03 (2026-08-27)
 
 ---
@@ -99,7 +99,7 @@ fail closed.
 | No private values in persistence diagnostics | PASS | Log-hygiene and gate-containment tests pass. |
 | Security of processing is verified | PASS | One-writer persistence, critical transactions, migration/boot gates and dual-engine tests pass. |
 | Third-party/processor transfers are documented | FAIL | No processor inventory, backup-storage record or transfer documentation exists. |
-| Vulnerability reporting process exists | PARTIAL | `SECURITY.md` and the local source/dependency checks exist, but the policy names a reporting form on another repository ([#21](https://gitlab.com/max757/duris/-/work_items/21)). |
+| Vulnerability reporting process exists | PARTIAL | `SECURITY.md` and the local source/dependency checks exist, but the policy names a reporting form on another repository. |
 
 ---
 
@@ -112,7 +112,7 @@ and one unfixed medium Git advisory (`CVE-2024-52005`). Transitive dependencies,
 deployment-only services, and external infrastructure are outside that scan; the record
 does not claim the dependency set is vulnerability-free. No hosted pipeline runs the
 scans now, and `libcurl4-gnutls-dev` was added after the last one
-([SECURITY_BASELINE.md](../operations/SECURITY_BASELINE.md), [#21](https://gitlab.com/max757/duris/-/work_items/21)).
+([SECURITY_BASELINE.md](../operations/SECURITY_BASELINE.md)).
 
 | Scope | Current State | Status |
 |-------|---------------|--------|
