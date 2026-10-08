@@ -26,7 +26,7 @@ Installation writes /etc/systemd/system/duris-mud-production.service and
 therefore must run as root. Enabling or starting first requires the target
 account's .env to pass the explicit production configuration check.
 
-The production host (plesk.luminarimud.com, account staging) does not use this
+The production host (a shared Plesk host, user-scope account) does not use this
 system-wide unit; it runs the MUD as a user unit under ~/.config/systemd/user.
 EOF
 }
