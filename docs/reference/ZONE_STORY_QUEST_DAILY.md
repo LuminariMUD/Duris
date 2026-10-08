@@ -72,7 +72,8 @@ never shown to players.
 
 Player completion surfaces are:
 
-* `achievements zones` for the overall personal summary;
+* `achievements zones` for the overall personal summary: the zones where the character
+  has completed a quest, most completed first, then by name;
 * `achievements zone <area>` for a private per-area 25/50/75/100% milestone view;
 * `leaderboard quests [page]` for the worldwide completion ranking;
 * `quest daily` for the assignment/status/reward section.

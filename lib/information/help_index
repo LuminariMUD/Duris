@@ -11750,9 +11750,11 @@ Syntax: achievements zones
 
 The zone-story achievement view shows the current character's distinct
 completion count against every eligible static zone/story/lore quest in the
-active catalog. It displays per-zone 25%, 50%, 75% and 100% milestones. Use
-the zone form to inspect one zone. A zone with no eligible tracked quests is
-shown as N/A; it is never treated as a free 100% completion.
+active catalog. It displays per-zone 25%, 50%, 75% and 100% milestones. The
+summary lists only the zones where the character has completed a quest, most
+completed first; use the zone form to inspect any one zone. A zone with no
+eligible tracked quests is shown as N/A; it is never treated as a free 100%
+completion.
 
 This view is private to the current character. Bartender and random world
 quests are not included. The feature is durable across logout and restart,
