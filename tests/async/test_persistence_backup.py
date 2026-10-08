@@ -611,14 +611,19 @@ class FailureRecordTests(Fixture):
         command.write_text(
             "#!/bin/sh\n"
             "i=0; while [ $i -lt 40 ]; do echo \"noise $i\" >&2; i=$((i+1)); done\n"
-            "echo \"Got error: 1045: Access denied for user 'privateuser'@'privatehost.example'"
+            "echo \"Got error: 2003: Can't connect to server on 'privatehost.example' (111)\" >&2\n"
+            "echo \"Got error: 1130: Host 'privateclient.example' is not allowed to connect\" >&2\n"
+            "echo \"Got error: 1045: Access denied for user 'privateuser'@'privateclient.example'"
             " (using password: privateuser-secret) $1\" >&2\n"
             "exit 3\n")
         command.chmod(0o700)
         credentials = {"DB_USER": "privateuser", "DB_HOST": "privatehost.example",
                        "DB_PASSWD": "privateuser-secret"}
-        tail = "\n".join([*(f"noise {n}" for n in range(21, 40)),
-                          "Got error: 1045: Access denied for user '<DB_USER>'@'<DB_HOST>'"
+        # The server names the client as it sees it, not as DB_HOST.
+        tail = "\n".join([*(f"noise {n}" for n in range(23, 40)),
+                          "Got error: 2003: Can't connect to server on '<DB_HOST>' (111)",
+                          "Got error: 1130: Host '<CLIENT_HOST>' is not allowed to connect",
+                          "Got error: 1045: Access denied for user '<DB_USER>'@'<CLIENT_HOST>'"
                           " (using password: <DB_PASSWD>) "])
         def failing_backup(*unused):
             backup.run([str(command)], phase="engine_check")

@@ -68,7 +68,8 @@ def subprocess_error(code, args, phase, status, stderr, env):
     """A failed command's basename, the phase that ran it, its exit status (negative: the
     signal that ended it; None: its deadline) and the last lines of its stderr. Its command
     line and messages can name the database user, host and password, so the values the
-    command was given are replaced, longest first, before the tail is cut."""
+    command was given are replaced, longest first, before the tail is cut; so is the client
+    host the server names, which is this host's address as the server sees it."""
     text = "\n".join(stderr.decode(errors="replace").splitlines()[-STDERR_TAIL_LINES:])
     given = os.environ if env is None else env
     names = {}
@@ -77,6 +78,8 @@ def subprocess_error(code, args, phase, status, stderr, env):
             names.setdefault(given[name], name)
     for value in sorted(names, key=len, reverse=True):
         text = text.replace(value, f"<{names[value]}>")
+    # 'user'@'host' (1044, 1045, 1142) and "Host 'host' is not allowed" (1129, 1130).
+    text = re.sub(r"(@|\bHost )'[^']*'", r"\1'<CLIENT_HOST>'", text)
     return BackupError(code, {"command": Path(args[0]).name, "phase": phase, "exit_status": status,
                               "stderr": text.encode()[-STDERR_TAIL_BYTES:].decode(errors="ignore")})
 
