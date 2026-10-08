@@ -36,6 +36,7 @@ void act(const char *, int, P_char, P_obj, void *, int) {}
 void send_to_char(const char *, P_char) {}
 void do_look(P_char, char *, int) {}
 bool affected_by_spell(P_char, int) { return false; }
+bool char_falling(P_char) { return false; }
 P_char get_linked_char(P_char ch, ush_int) {
     return riding && ch == &person ? &mount : nullptr;
 }

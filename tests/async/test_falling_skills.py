@@ -53,6 +53,10 @@ void act(const char *, int, P_char, P_obj, void *, int) {}
 void send_to_char(const char *, P_char) {}
 void do_look(P_char, char *, int) {}
 bool affected_by_spell(P_char, int spell) { return climbing && spell == SKILL_CLIMB; }
+bool char_falling(P_char ch) {
+    return rooms[ch->in_room].sector_type == SECT_NO_GROUND && !IS_AFFECTED(ch, AFF_FLY) &&
+           !IS_AFFECTED(ch, AFF_LEVITATE);
+}
 P_char get_linked_char(P_char ch, ush_int) {
     return riding && ch == &person ? &mount : nullptr;
 }
@@ -293,12 +297,21 @@ int main() {
     assert(falling_step(&person, 1) == falling_step_result::landed);
     assert(person.in_room == 2 && applied_damage > 0 && schedule_attempts == 0);
 
-    // A step scheduled in one room does nothing once the faller was moved elsewhere
-    // between two steps; in the scheduled room it runs as before.
+    // A step scheduled in one room ends the fall once the faller was moved elsewhere
+    // between two steps: into open air it starts over from there at the first speed,
+    // onto a floor it does nothing; in the scheduled room it runs as before.
     reset(); falling_chain();
-    falling_event_payload elsewhere = {1, 2};
+    falling_event_payload elsewhere = {43, 2};
+    event_falling_char(&person, nullptr, nullptr, &elsewhere);
+    assert(person.in_room == 1 && applied_damage == 0 && schedule_attempts == 1);
+    assert(scheduled_speed == 31 && scheduled_delay == 4);
+    reset(); falling_chain(); rooms[0].sector_type = SECT_INSIDE;
     event_falling_char(&person, nullptr, nullptr, &elsewhere);
     assert(person.in_room == 0 && applied_damage == 0 && schedule_attempts == 0);
+    reset(); falling_chain(); person.specials.affected_by = AFF_FLY;
+    event_falling_char(&person, nullptr, nullptr, &elsewhere);
+    assert(person.in_room == 0 && schedule_attempts == 0);
+    reset(); falling_chain();
     falling_event_payload here = {1, 0};
     event_falling_char(&person, nullptr, nullptr, &here);
     assert(person.in_room == 1 && schedule_attempts == 1 && scheduled_speed == 31);

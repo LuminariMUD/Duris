@@ -108,9 +108,15 @@ void event_falling_char(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 		return;
 	}
 	const auto *payload = static_cast<const falling_event_payload *>(data);
-	// Summoned or teleported between two steps: the fall ends where it was left.
 	if (ch && ch->in_room != payload->room)
+	{
+		/* Summoned or teleported between two steps: that fall ends where it was
+		 * left. Open air here starts another, which char_to_room() could not while
+		 * this event was pending. */
+		if (ch->in_room != NOWHERE && char_falling(ch))
+			falling_step(ch, 1);
 		return;
+	}
 	falling_step(ch, payload->speed);
 }
 

@@ -170,8 +170,10 @@ custody and wallet; a reconnect keeps the inventory without replaying the haul.
 - A fall in progress refuses every command but petition and return ("You are falling!")
   until it lands, the faller is told "You tumble downward!" on every step, and a step
   fires only in the room it was scheduled in: a faller summoned or teleported between two
-  steps is left where they are. (A move typed inside the gap between two steps used to
-  run, and the fall then landed wherever the walk went, three rooms away in the report.)
+  steps falls again from where they are if that is open air, and stands if it is a floor.
+  (A move typed inside the gap between two steps used to run, and the fall then landed
+  wherever the walk went, three rooms away in the report; the first gated build left a
+  faller moved into open air hovering there.)
 - A down exit back onto the room itself, or onto the room the step came from, lands the
   fall instead of continuing it, and `test_falling_world_exits.py` refuses any longer loop
   of down exits in `areas/wld`. (Three live rooms fell forever, and once commands were
