@@ -117,6 +117,11 @@ with tempfile.TemporaryDirectory(prefix="duris-security-baseline-") as temp_dir:
     assert (first_rootfs / "var/lib/dpkg/status").read_bytes() == (second_rootfs / "var/lib/dpkg/status").read_bytes()
     inventory = json.loads(first_inventory.read_text())
     spdx = json.loads(first_spdx.read_text())
+    # Trivy finds Ubuntu advisories only through a paragraph's source package.
+    status_paragraphs = (first_rootfs / "var/lib/dpkg/status").read_text().split("\n\n")
+    assert status_paragraphs and all(
+        re.search(r"^Source: \S+ \(\S+\)$", paragraph, re.MULTILINE) for paragraph in status_paragraphs
+    ), status_paragraphs
 
     guarded_rootfs = Path(temp_dir) / "scanner-rootfs-guarded"
     guarded_rootfs.mkdir()

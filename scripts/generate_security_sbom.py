@@ -73,6 +73,11 @@ def installed_provider(name: str) -> tuple[str, str, str] | None:
     return sorted(providers)[0] if providers else None
 
 
+def package_source(name: str) -> str:
+    # Trivy matches Ubuntu advisories by source package (curl, not libcurl4-gnutls-dev).
+    return command("dpkg-query", "-W", "-f=${source:Package} (${source:Version})", name)
+
+
 def resolved_inventory() -> list[dict[str, object]]:
     inventory = []
     for expression in dependency_expressions():
@@ -96,6 +101,7 @@ def resolved_inventory() -> list[dict[str, object]]:
                 "architecture": architecture,
                 "declared": expression,
                 "selected": selected,
+                "source": package_source(selected) if selected else None,
                 "status": "resolved" if selected else "unresolved",
                 "version": version,
             }
@@ -271,6 +277,7 @@ def generate(inventory_path: Path, spdx_path: Path, rootfs_path: Path) -> None:
             paragraphs.append(
                 f'Package: {dependency["selected"]}\n'
                 "Status: install ok installed\n"
+                f'Source: {dependency["source"]}\n'
                 f'Architecture: {dependency["architecture"]}\n'
                 f'Version: {dependency["version"]}\n'
             )
