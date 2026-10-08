@@ -50,6 +50,8 @@ assert sorted(step for step, _ in codeql) == ["analyze", "init"], codeql
 assert len({sha for _, sha in codeql}) == 1, f"CodeQL init and analyze pin different releases: {codeql}"
 assert '- "github/codeql-action*"' in dependabot
 assert "version: v0.70.0" in security_workflow
+assert "make -C src pfile" in security_workflow
+assert "make -C migrations/tools migrate_pfiles affects pfile_converter" in security_workflow
 assert "scan-type: rootfs" in security_workflow
 assert "scan-ref: bin/security/scanner-rootfs" in security_workflow
 assert "severity: HIGH,CRITICAL" in security_workflow

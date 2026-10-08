@@ -55,7 +55,10 @@ the `master` ruleset requires no status check. All `uses:` references are immuta
 commit SHAs with human-readable version comments. It performs:
 
 1. repository-specific local source/configuration contracts (`make security-check`);
-2. a warning-as-error C++ build captured by CodeQL C/C++ analysis;
+2. CodeQL C/C++ analysis of what the build step compiles: the warning-as-error
+   `make build`, `pfile`, and the legacy migration tools in `migrations/tools`, which
+   read old player and account files. The test harnesses and the area generators in
+   `areas/src/areas` are not built there, so CodeQL does not see them;
 3. Trivy `v0.70.0` scanning of the generated direct-package root while preserving the
    equivalent SPDX document as the portable SBOM. That root is the runner's: a fresh
    `ubuntu-24.04` image that has just installed the build-deps package, so the
