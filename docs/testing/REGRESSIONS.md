@@ -69,6 +69,23 @@ server, not a test, and is not in `make test-all`: it reads each cast's segments
 `PLAYER EVENT TIMING` trace and prints how late it finished. Not covered: a cast under real
 lateness in a test leg.
 
+## CHAOS kit for centaurs and driders
+
+The CHAOS kit judges each body slot for the level-56 character it is for. Creation builds
+the kit before the character's first level, and the horse body and spider body slots come
+from racial innates that unlock at level 1, so a new centaur never got horse-body item
+87585 and a new drider never got spider-body item 85714.
+
+```sh
+python3 tests/async/test_chaos_kit_runtime.py
+```
+
+The test compiles the production kit helpers under ASan/UBSan and checks that a level-0
+character's slot is asked about at level 56 and that its own level comes back unchanged.
+On a disposable copy of the development database a new centaur warrior got its tail item
+but not 87585, and with the fix a new one got both. Not covered: a journey that creates a
+centaur or drider and reads its saved kit.
+
 ## Coin put after an auction listing
 
 An auction settlement advances the ownership revision of both the source and the

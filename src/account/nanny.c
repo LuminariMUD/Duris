@@ -557,6 +557,18 @@ static bool chaos_kit_skill_available(P_char ch, int skill)
 	return required_level > 0 && required_level <= 56;
 }
 
+static bool chaos_kit_has_eq_slot(P_char ch, int slot)
+{
+	// Creation also precedes the first level, and the horse and spider body
+	// slots come from racial innates that unlock at level 1. Judge the slot for
+	// the level-56 character the kit is for.
+	const ubyte level = ch->player.level;
+	ch->player.level = 56;
+	const bool available = has_eq_slot(ch, slot);
+	ch->player.level = level;
+	return available;
+}
+
 static bool chaos_kit_weapon_slot(int slot)
 {
 	return slot == PRIMARY_WEAPON || slot == SECONDARY_WEAPON || slot == THIRD_WEAPON ||
@@ -586,7 +598,7 @@ static bool append_chaos_kit_item(P_char ch, P_obj bag, const chaos_kit_item *it
 		return true;
 	if (item->slot >= 0 &&
 	    (item->slot == SECONDARY_WEAPON ? !chaos_kit_skill_available(ch, SKILL_DUAL_WIELD) :
-					      !has_eq_slot(ch, item->slot)))
+					      !chaos_kit_has_eq_slot(ch, item->slot)))
 		return true;
 
 	P_obj obj = read_object(item->vnum, VIRTUAL);

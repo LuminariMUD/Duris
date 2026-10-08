@@ -40,7 +40,8 @@ int GET_LVL_FOR_SKILL(P_char, int) { return required_level; }
 int get_spell_circle(P_char, int spell) { return spell == FIRST_SPELL ? 1 : 2; }
 int AddSpellToSpellBook(P_char, P_obj, int) { ++book_additions; return 1; }
 static void add_newbie_keyword(P_obj) { ++keywords; }
-bool has_eq_slot(P_char, int) { return slot_available; }
+static int slot_check_level = -1;
+bool has_eq_slot(P_char actor, int) { slot_check_level = actor->player.level; return slot_available; }
 int can_char_use_item(P_char, P_obj) { return usable; }
 P_obj read_object(int vnum, int) { indexes[0].virtual_number = vnum; return object_available ? &loaded : nullptr; }
 void extract_obj(P_obj, int) { ++extracts; }
@@ -149,6 +150,8 @@ int main()
     loaded.wear_flags = ITEM_WEAR_NECK;
     slot_available = false;
     { chaos_kit_objects kit; assert(append_chaos_kit_item(&actor, &bag, &wearable, kit)); assert(!kit.count); }
+    // A new character has no level yet; slots are judged at the CHAOS level.
+    assert(slot_check_level == 56 && actor.player.level == 0);
     // CUR_MAX_WEAR is the highest valid equipment index, not the array size.
     const chaos_kit_item last_slot = {CUR_MAX_WEAR, 999};
     const chaos_kit_item invalid_slot = {MAX_WEAR, 999};
@@ -215,6 +218,7 @@ int main()
 
 def main():
     functions = ["static void prepare_chaos_kit_item", "static bool chaos_kit_skill_available",
+                 "static bool chaos_kit_has_eq_slot",
                  "static bool chaos_kit_weapon_slot", "static bool chaos_kit_fits_slot",
                  "static bool append_chaos_kit_item", "void restore_chaos_character_kit"]
     harness = "\n".join([PRELUDE, BUILDER, *[extract_function("nanny.c", sig) for sig in functions], DRIVER])
