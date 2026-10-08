@@ -138,6 +138,12 @@ sudo -u DURIS_USER /absolute/path/to/duris/scripts/cycle_mud.sh \
   --production --check-config
 ```
 
+> The production host (`plesk.luminarimud.com`, account `staging`) does not use
+> this system-wide installation: the MUD runs as the user unit
+> `~/.config/systemd/user/duris-mud-production.service` (see
+> `PRODUCTION_DEPLOYMENT.md`). The `sudo` steps below are the portable procedure
+> for a host with a dedicated service account.
+
 Install a disabled copy for inspection without disturbing the current listener:
 
 ```bash
