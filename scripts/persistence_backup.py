@@ -398,14 +398,26 @@ def streaming_process(args, *, phase, env, input_pipe=False, timeout=300):
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
-        timer = threading.Timer(timeout, expire)
+        expired = threading.Event()
+        def at_deadline():
+            expired.set()
+            expire()
+        timer = threading.Timer(timeout, at_deadline)
         timer.daemon = True
         timer.start()
         try:
-            yield process
+            try:
+                yield process
+            except BrokenPipeError:
+                # An import stops reading at the first statement it rejects; its status says so.
+                if not input_pipe:
+                    raise
             status = process.wait(timeout=timeout)
             if status:
                 stderr.seek(0)
+                if expired.is_set():
+                    raise subprocess_error("subprocess_timed_out", args, phase, None,
+                                           stderr.read(), env)
                 raise subprocess_error("streaming_process_failed", args, phase, status,
                                        stderr.read(), env)
         finally:
@@ -416,7 +428,9 @@ def streaming_process(args, *, phase, env, input_pipe=False, timeout=300):
                 process.wait()
             for stream in (process.stdin, process.stdout):
                 if stream is not None and not stream.closed:
-                    stream.close()
+                    # Closing flushes what was written, which fails if nothing reads it.
+                    with contextlib.suppress(BrokenPipeError):
+                        stream.close()
 
 
 def run(args, *, phase, env=None, input=None, timeout=300):

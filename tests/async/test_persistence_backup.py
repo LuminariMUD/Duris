@@ -485,13 +485,41 @@ class CapacityAndInputTests(Fixture):
 
     def test_stalled_stream_is_killed_and_reaped(self):
         started = time.monotonic()
-        with self.assertRaises(backup.BackupError):
+        with self.assertRaises(backup.BackupError) as raised:
             with backup.streaming_process([sys.executable, "-c", "import time; time.sleep(60)"],
                                           phase="dump", env={}, timeout=0.25) as child:
                 self.assertEqual(child.stdout.read(), b"")
         self.assertIsNotNone(child.poll())
         self.assertTrue(child.stdout.closed)
         self.assertLess(time.monotonic() - started, 5)
+        # The deadline killed it, so it is a timeout with no status, not a failure by SIGKILL.
+        self.assertEqual((str(raised.exception), raised.exception.detail),
+                         ("subprocess_timed_out", {"command": Path(sys.executable).name,
+                                                   "phase": "dump", "exit_status": None,
+                                                   "stderr": ""}))
+
+    def test_an_import_that_stops_reading_reports_its_status(self):
+        # mysql in batch mode exits at the first statement it rejects, and the import's next
+        # write meets a closed pipe.
+        bin_dir = self.base / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "mysql").write_text("#!/bin/sh\nhead -c 4096 >/dev/null\n"
+                                       "echo \"ERROR 1062 (23000) at line 40: Duplicate entry 'x'\" >&2\n"
+                                       "exit 1\n")
+        (bin_dir / "mysql").chmod(0o700)
+        generation = self.base / "generation"
+        generation.mkdir()
+        (generation / "manifest.json").write_text(json.dumps({"database": "synthetic"}))
+        with gzip.open(generation / "database.sql.gz", "wb") as dump:
+            for row in range(20000):
+                dump.write(f"INSERT INTO t VALUES ({row}, 'row {row}');\n".encode())
+        env = dict(os.environ, DB_SOCKET="/nonexistent.sock",
+                   PATH=f"{bin_dir}:{os.environ['PATH']}")
+        with self.assertRaises(backup.BackupError) as raised:
+            restore.database_import(generation, env)
+        self.assertEqual((str(raised.exception), raised.exception.detail),
+                         ("streaming_process_failed", {"command": "mysql", "phase": "restore_import",
+                                                       "exit_status": 1, "stderr": ""}))
 
     def receipt_store(self):
         critical = self.base / "critical-journal"
