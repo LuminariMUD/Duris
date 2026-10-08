@@ -3516,7 +3516,8 @@ void nonblock(int s)
         * old/new socket code. 9/18/95  JAB                                                                                                                                                            \
         */
 
-static int proxy_peer_is_trusted(int desc)
+/* Whether the peer of desc is DURIS_TRUSTED_PROXY_IP. */
+int proxy_peer_is_trusted(int desc)
 {
 	const char *trusted_ip = getenv("DURIS_TRUSTED_PROXY_IP");
 	struct sockaddr_storage peer;
@@ -3532,9 +3533,15 @@ static int proxy_peer_is_trusted(int desc)
 		       memcmp(&((struct sockaddr_in *)&peer)->sin_addr, &trusted4,
 			      sizeof(trusted4)) == 0;
 	if (peer.ss_family == AF_INET6)
+	{
+		const struct in6_addr *address = &((struct sockaddr_in6 *)&peer)->sin6_addr;
+
+		/* The listeners are IPv6 sockets, so an IPv4 peer arrives as ::ffff:a.b.c.d. */
+		if (IN6_IS_ADDR_V4MAPPED(address) && inet_pton(AF_INET, trusted_ip, &trusted4) == 1)
+			return memcmp(&address->s6_addr[12], &trusted4, sizeof(trusted4)) == 0;
 		return inet_pton(AF_INET6, trusted_ip, &trusted6) == 1 &&
-		       memcmp(&((struct sockaddr_in6 *)&peer)->sin6_addr, &trusted6,
-			      sizeof(trusted6)) == 0;
+		       memcmp(address, &trusted6, sizeof(trusted6)) == 0;
+	}
 	return 0;
 }
 
