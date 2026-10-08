@@ -25,6 +25,7 @@ const revision =
   }).trim();
 const branch = "master";
 const github = `https://github.com/${repository}`;
+const mainWebsite = "https://duris.sbs/";
 const catalog = JSON.parse(
   await readFile(path.join(here, "catalog.json"), "utf8"),
 );
@@ -161,10 +162,10 @@ function renderDoc(text, source) {
 }
 
 function header() {
-  return `<a class="skip-link" href="#main">Skip to content</a><header class="site-header"><a class="wordmark" href="${base}" aria-label="DurisMUD home">DURIS<span>MUD</span></a><nav aria-label="Main navigation"><a href="${base}#explore">Explore</a><a href="${base}#documentation">Documentation</a><a href="${github}">GitHub ${external}</a></nav></header>`;
+  return `<a class="skip-link" href="#main">Skip to content</a><header class="site-header"><a class="wordmark" href="${base}" aria-label="DurisMUD home">DURIS<span>MUD</span></a><nav aria-label="Main navigation"><a href="${base}#explore">Explore</a><a href="${base}#documentation">Documentation</a><a href="${github}">GitHub ${external}</a><a href="${mainWebsite}">Main-Website ${external}</a></nav></header>`;
 }
 function footer() {
-  return `<footer class="site-footer"><a href="${base}">DurisMUD</a><a href="${github}/tree/${revision}">Built from the repository. ${external}</a></footer>`;
+  return `<footer class="site-footer"><a href="${base}">DurisMUD</a><a href="${mainWebsite}">Main-Website ${external}</a><a href="${github}/tree/${revision}">Built from the repository. ${external}</a></footer>`;
 }
 function layout(
   title,

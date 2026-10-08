@@ -144,8 +144,10 @@ a:hover {
 }
 .site-header nav {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
-  gap: 38px;
+  gap: 6px 38px;
 }
 .site-header nav a {
   display: inline-flex;
@@ -883,7 +885,7 @@ p {
     height: 78px;
   }
   .site-header nav {
-    gap: 23px;
+    column-gap: 23px;
   }
   .site-header nav a {
     font-size: 13px;
@@ -1047,7 +1049,7 @@ p {
 }
 @media (max-width: 520px) {
   .site-header nav {
-    gap: 18px;
+    column-gap: 18px;
   }
   .site-header nav > a:first-child {
     display: none;

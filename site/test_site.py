@@ -100,6 +100,12 @@ class PagesTests(unittest.TestCase):
             self.assertTrue(any(f"/blob/{metadata['revision']}/{doc['source']}" in link for link in page.links))
             self.assertTrue(any(f"/edit/master/{doc['source']}" in link for link in page.links))
 
+    def test_every_site_page_links_the_main_website_in_menu_and_footer(self):
+        framed = [file for file in self.pages if 'class="site-header"' in file.read_text()]
+        self.assertGreaterEqual(len(framed), len(self.catalog) + 3)
+        for file in framed:
+            self.assertEqual(self.pages[file].links.count("https://duris.sbs/"), 2, file)
+
     def test_static_reader_contains_tables_code_and_diagram_source(self):
         html = (OUTPUT / "docs/quick-start/index.html").read_text()
         self.assertIn('<pre class="mermaid">', html)
