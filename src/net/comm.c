@@ -1028,8 +1028,6 @@ int run_the_game(int port, int sslport)
 #endif
 	game_booted = TRUE;
 
-	fprintf(stderr, "Entering game loop.\n");
-	logit(LOG_STATUS, "Entering game loop.");
 	locker_async_init();
 	if (!player_save_pipeline_init())
 	{
@@ -2575,6 +2573,10 @@ void game_loop(int port, int sslport)
 		if (receipt_desc->character && receipt_desc->connected == CON_PLAYING)
 			locker_identify_replay(receipt_desc->character);
 
+	// Tests and scripts take this line to mean the server accepts connections, so it
+	// follows the listeners, opened or inherited above.
+	fprintf(stderr, "Entering game loop.\n");
+	logit(LOG_STATUS, "Entering game loop.");
 	long last_desc_per_hour_reset = time(0);
 	/* Main loop */
 resume_game_loop:
