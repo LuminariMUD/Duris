@@ -1,6 +1,6 @@
 # Production deployment tracker
 
-Last verified: 2026-10-08 UTC (website relocation to this host in progress)
+Last verified: 2026-10-08 12:08 UTC (website live on this host)
 
 ## Objective
 
@@ -105,6 +105,8 @@ the public health checks below.
   (mode `0600`, gitignored)
 - Rendered website units: `/home/staging/.local/share/durisweb/rendered`,
   linked into the `staging` user manager
+- Website application drop-in (user-scope process-monitor fix):
+  `/home/staging/.config/systemd/user/durisweb-production.service.d/10-user-scope-process-monitor.conf`
 - Watchdog executable: the website checkout's `deploy/scripts/durisweb-watchdog`
   (user scope; no root-owned copy)
 - Watchdog state and pause file: `/home/staging/.local/state/durisweb-watchdog`
