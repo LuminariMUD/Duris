@@ -26,9 +26,9 @@ Updated 2026-10-08. A new session starts here, then reads the phase it continues
 | 2 | Unauthenticated connections per address | Built on `fix/4-phase-2-connection-limit` (on Phase 1), gate green; open for review as PR #6, tag `backlog/phase-2-review-0`. |
 | 3 | Shop listing, dompurify, dead helpers | Built on `fix/4-phase-3-shop-listing` (on Phase 2), gate green; open for review as PR #7, tag `backlog/phase-3-review-0`. |
 | 4 | Security record and `SECURITY.md` | Built on `fix/4-phase-4-security-record` (on Phase 3), documents only, their tests green; open for review as PR #8, tag `backlog/phase-4-review-0`. |
-| 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc` (on Phase 4), gate green; open for review, tag `backlog/phase-5-review-0`. |
+| 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc` (on Phase 4), gate green; open for review as PR #9, tag `backlog/phase-5-review-0`. |
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
-| 7 | Quest EXP line and `achievements zones` | Not started. |
+| 7 | Quest EXP line and `achievements zones` | Built on `fix/4-phase-7-display-fixes` (on Phase 5), gate green; open for review, tag `backlog/phase-7-review-0`. |
 | 8 | Specials assigned to missing vnums | Not started. |
 | 9 | `board` specials and the audit heading | Not started. |
 
@@ -661,6 +661,29 @@ published.
 - `npm test --prefix site` passes with the new defaults.
 
 ## Phase 7: the quest EXP line and `achievements zones`
+
+**Built** on `fix/4-phase-7-display-fixes` (stacked on Phase 5), 2026-10-08:
+
+- The three community commits, cherry-picked with `-x` and their authors kept, all
+  applying cleanly in order: `536ce6dba` (their `cf575ede6`, Liskin: one `Quest EXP:` line
+  with the applied amount for `EXP_WORLD_QUEST`, and `tests/async/test_world_quest_xp_feedback.py`),
+  `2e1984e9c` (their `5516cf284`, Liskin: `summary_for_at()` keeps only zones with a
+  completed quest, sorted by count, name, zone number) and `3682944ca` (their `7b1405cfd`,
+  xander-l: the sort's formatting and stronger cases in
+  `tests/async/zone_story_quest_feature_harness.cpp`).
+- `a69444da3`: their XP harness included `world/rested.h` and stubbed
+  `has_active_rested_bonus()`, from their rested-XP feature; ours checks `TAG_WELLRESTED`
+  and `TAG_RESTED` with `affected_by_spell()`, so the harness stubs that. Its cases, both
+  branches of the first "Done when" item among them, pass on both backends.
+- `82fc0184b`: ledger rows #697 and #594 `Adopted`.
+- `8498aa0c1`: the `achievements` help entry in `lib/information/help_index` and
+  `docs/reference/ZONE_STORY_QUEST_DAILY.md` say which zones the summary lists.
+
+**What differs from the plan.** Only the harness fit above and the help text, which
+their commits did not change.
+
+**Gate** on `8498aa0c1`: `./scripts/format.sh --all --check` clean, `make test-all -j16
+TEST_JOBS=16` 679 passed, 0 failed, `make test-db` 48 of 48. Nothing is left.
 
 **Problem.** Two display fixes the community tree made after the split, found in the same
 comparison as Phase 3. Neither changes a reward or a game mechanic.
