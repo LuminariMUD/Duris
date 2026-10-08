@@ -1,6 +1,6 @@
 # Source-derived epic-zone payout seed
 
-Issue: [#514](https://github.com/Community-Duris/Duris/issues/514).
+Issue: [#514](https://github.com/LuminariMUD/Duris/issues/514).
 
 `python3 scripts/epic_zone_seed.py check` derives the seed from tracked repository
 content. The generator **never connects to a database**. Its SQL output is an explicit,

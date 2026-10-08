@@ -1,7 +1,7 @@
 # Item action foundation
 
-This is the default-off shared runtime for [#291](https://github.com/Community-Duris/Duris/issues/291),
-the first workstream in [#290](https://github.com/Community-Duris/Duris/issues/290).
+This is the default-off shared runtime for [#291](https://github.com/LuminariMUD/Duris/issues/291),
+the first workstream in [#290](https://github.com/LuminariMUD/Duris/issues/290).
 The core registers no gameplay abilities by itself. Optional
 [weapon adapters](WEAPON_ACTIONS.md), [device activation](DEVICE_ACTIONS.md), and
 [artifact mana](ARTIFACT_MANA.md) use it. [Typed Studio authoring](STUDIO_ITEM_ABILITIES.md)

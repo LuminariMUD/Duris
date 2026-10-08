@@ -155,15 +155,15 @@ source table before executing an exceptional merge.
 For a shared MUD/web deployment, inventory every writer and ingress service before
 maintenance, restore the complete stopped service group, and require public health
 as well as local readiness. A healthy origin alone cannot prove public recovery.
-DurisWeb's [maintenance recovery issue](https://github.com/Community-Duris/DurisWebApp/issues/11)
+DurisWeb's [maintenance recovery issue](https://github.com/LuminariMUD/DurisWebApp/issues/11)
 tracks the complete-group contract.
 
 DurisWeb has recorded final import dispositions for
-[quarantined items](https://github.com/Community-Duris/DurisWebApp/blob/master/docs/post-import/quarantined-item-disposition.md),
-[normalized affiliations](https://github.com/Community-Duris/DurisWebApp/blob/master/docs/post-import/legacy-affiliation-disposition.md),
-and [orphaned PvP comments](https://github.com/Community-Duris/DurisWebApp/blob/master/docs/post-import/orphaned-pvp-comment-disposition.md).
+[quarantined items](https://github.com/LuminariMUD/DurisWebApp/blob/master/docs/post-import/quarantined-item-disposition.md),
+[normalized affiliations](https://github.com/LuminariMUD/DurisWebApp/blob/master/docs/post-import/legacy-affiliation-disposition.md),
+and [orphaned PvP comments](https://github.com/LuminariMUD/DurisWebApp/blob/master/docs/post-import/orphaned-pvp-comment-disposition.md).
 Those decisions do not authorize MUD-side recovery or imply that the protected
-work in [#126](https://github.com/Community-Duris/Duris/issues/126) and
-[#127](https://github.com/Community-Duris/Duris/issues/127) has been executed.
+work in [#126](https://github.com/LuminariMUD/Duris/issues/126) and
+[#127](https://github.com/LuminariMUD/Duris/issues/127) has been executed.
 The original dump, stage, and private recovery artifacts remain operator evidence;
 removing a temporary Markdown journal never authorizes their deletion.

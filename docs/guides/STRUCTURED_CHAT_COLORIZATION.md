@@ -1,8 +1,8 @@
 # Terminal and structured chat colorization
 
-The supported structured client is [Community-Duris/DurisWebApp](https://github.com/Community-Duris/DurisWebApp).
-Its implementation is [DurisWebApp PR #44](https://github.com/Community-Duris/DurisWebApp/pull/44), paired with
-[server #288](https://github.com/Community-Duris/Duris/issues/288). The
+The supported structured client is [LuminariMUD/DurisWebApp](https://github.com/LuminariMUD/DurisWebApp).
+Its implementation is [DurisWebApp PR #44](https://github.com/LuminariMUD/DurisWebApp/pull/44), paired with
+[server #288](https://github.com/LuminariMUD/Duris/issues/288). The
 [release report](COLORIZATION_RELEASE.md) records integration tests and actual-client screenshots.
 
 ## Delivery and compatibility

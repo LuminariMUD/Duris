@@ -1,6 +1,6 @@
 # Legacy starter-kit preparation
 
-Issue: [Community-Duris/Duris #160](https://github.com/Community-Duris/Duris/issues/160)
+Issue: [LuminariMUD/Duris #160](https://github.com/LuminariMUD/Duris/issues/160)
 
 The legacy kit table is initialized once and selects an ordered, owned plan from
 copied race, class, alignment, override, and special-item inputs. Repeated VNUMs

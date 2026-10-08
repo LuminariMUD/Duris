@@ -1,6 +1,6 @@
 # Item ability rollout and rollback
 
-This runbook covers the initial delivery of [#290](https://github.com/Community-Duris/Duris/issues/290), through #291–#297. It prepares a deployment; it does not authorize production changes. The master, every category and the five native artifact flags ship disabled. See the [verification record](../testing/ITEM_ABILITY_ROLLOUT.md) for the distinction between real server encounters, forced native callback fixtures and benchmarks.
+This runbook covers the initial delivery of [#290](https://github.com/LuminariMUD/Duris/issues/290), through #291–#297. It prepares a deployment; it does not authorize production changes. The master, every category and the five native artifact flags ship disabled. See the [verification record](../testing/ITEM_ABILITY_ROLLOUT.md) for the distinction between real server encounters, forced native callback fixtures and benchmarks.
 
 ## Delivered roster and editor boundary
 
@@ -18,7 +18,7 @@ This runbook covers the initial delivery of [#290](https://github.com/Community-
 
 Contracts: [foundation](../reference/ITEM_ACTIONS.md), [weapons](../reference/WEAPON_ACTIONS.md), [mana](../reference/ARTIFACT_MANA.md), [Studio](../reference/STUDIO_ITEM_ABILITIES.md), [native pilots](../reference/NATIVE_ARTIFACT_PILOTS.md). The [source inventory](../reference/artifact_source_inventory.json) lists 169 templates, 78 active bindings and 67 callbacks. Other templates retain legacy behavior and require a reviewed contract and measured budget for a later wave. Presence in the source does not establish live availability. This release changes no bulk area or loot data.
 
-DurisStudio is a private editor outside this repository, so its boundary is a stub: the repository supplies the schema, examples, a public validation stub and the editor acceptance checklist ([STUDIO_ITEM_ABILITIES.md](../reference/STUDIO_ITEM_ABILITIES.md#editor-stub-and-validation)). The server has real `.trg` parser/runtime evidence. Editor UI execution and end-to-end editor integration are the editor owner's ([#329](https://github.com/Community-Duris/Duris/issues/329)) and were not tested here.
+DurisStudio is a private editor outside this repository, so its boundary is a stub: the repository supplies the schema, examples, a public validation stub and the editor acceptance checklist ([STUDIO_ITEM_ABILITIES.md](../reference/STUDIO_ITEM_ABILITIES.md#editor-stub-and-validation)). The server has real `.trg` parser/runtime evidence. Editor UI execution and end-to-end editor integration are the editor owner's ([#329](https://github.com/LuminariMUD/Duris/issues/329)) and were not tested here.
 
 ## Prepare a wave
 

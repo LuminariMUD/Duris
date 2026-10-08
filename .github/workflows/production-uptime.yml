@@ -15,7 +15,7 @@ jobs:
   public-health:
     # Probe from outside the host so an offline server, tunnel, or DNS change
     # still fails a run; GitHub then notifies the workflow's schedule owner.
-    if: github.repository == 'Community-Duris/Duris'
+    if: github.repository == 'LuminariMUD/Duris'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

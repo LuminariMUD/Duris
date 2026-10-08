@@ -1,6 +1,6 @@
 # Device channels and scroll recitation
 
-[#294](https://github.com/Community-Duris/Duris/issues/294) adds opt-in adapters to
+[#294](https://github.com/LuminariMUD/Duris/issues/294) adds opt-in adapters to
 the [shared item action runtime](ITEM_ACTIONS.md). Wands and staves channel;
 scrolls recite all selected slots in their original order. The wand of wonder
 has its own typed adapter for its native outcomes. Every switch ships off.

@@ -209,7 +209,7 @@ in the idle switch closes a silent connection at 480 pulses. The two constants s
 
 ## Phase 3: the shop listing, dompurify, two dead helpers
 
-**Problem.** Three small things the community tree (`Community-Duris/Duris`, master at
+**Problem.** Three small things the community tree (`LuminariMUD/Duris`, master at
 `a1e4a7efd`, split from ours at `e1357a30a` on 2026-09-23) fixed after the split, found on
 2026-10-04 by comparing the trees:
 
@@ -383,14 +383,14 @@ repositories:
 1. `.github/workflows/pages.yml` ("Project website") runs on pushes to `master`, builds and
    tests the site, then fails at its `Configure Pages` step because GitHub Pages is not
    enabled for `LuminariMUD/Duris`. `README.md` instead invites readers to
-   `https://community-duris.github.io/Duris/`, the community tree's site with their
+   `https://luminarimud.github.io/Duris/`, the community tree's site with their
    documentation, not ours.
 2. `site/build.mjs` and `site/test_site.py` take the repository from `GITHUB_REPOSITORY` and
-   default to `Community-Duris/Duris`, so every "View source" and "Edit on GitHub" link in a
+   default to `LuminariMUD/Duris`, so every "View source" and "Edit on GitHub" link in a
    local build opens the community tree. In the workflow the variable is
    `LuminariMUD/Duris`, so a published build would link correctly.
 3. `README.md` builds its build, last-commit and issues badges, and its commit and issue
-   links, from `LuminariMUD/DurisMUD`, which GitHub now redirects to `Community-Duris/Duris`.
+   links, from `LuminariMUD/DurisMUD`, which GitHub now redirects to `LuminariMUD/Duris`.
    Its guide table describes critical commands as "journal, inbox/results, outbox, replay";
    nothing is journaled or replayed since ADR 0002.
 

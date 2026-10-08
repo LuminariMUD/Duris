@@ -1,6 +1,6 @@
 # Typed Studio item abilities
 
-[#295](https://github.com/Community-Duris/Duris/issues/295) adds an object-only
+[#295](https://github.com/LuminariMUD/Duris/issues/295) adds an object-only
 `itemability <id>` action, action ID **24**. Existing action IDs 0–23, event IDs
 0–15, mob `cast`/`MobCastSpell`, and legacy object HIT actor/`$n` semantics stay
 unchanged. The new action requests the [shared runtime](ITEM_ACTIONS.md) and

@@ -20,10 +20,10 @@ migration second, maintainability third, and measured hot-path cost throughout.
 
 | Issue | Recommended organization | Main performance constraint | Merge dependency or constraint |
 | --- | --- | --- | --- |
-| [#343](https://github.com/Community-Duris/Duris/issues/343) persistence | Separate coordinator execution/delivery state from domain publication state, joined by the existing operation ID | No disk work under the coordinator lock or on admission/pulse; bound every stage | #337 is closed; #341 remains the journal-admission prerequisite; #380 is a newly reproduced publication defect |
-| [#344](https://github.com/Community-Duris/Duris/issues/344) combat | Small checked attack-continuation contract over existing character/object identities; migrate two actual sequences | Existing character-ID lookup is linear, not a free hash lookup | #338 is closed; preserve its controls and do not claim to solve #229 |
-| [#346](https://github.com/Community-Duris/Duris/issues/346) networking | Explicit, order-preserving pulse phases plus a session-input decision boundary | Preserve cadence, bounded dequeue, backpressure and rendering costs; add no blocking calls | #337 is closed; #341 precedes implementation/merge; coordinate #376 and telemetry lifecycle work |
-| [#347](https://github.com/Community-Duris/Duris/issues/347) item commands | Thin parsers, shared eligibility facts/rules, existing immutable transfer requests, one live-publication adapter per family | Capture/validate item trees once per submission, not once per layer | #337 is closed; preserve #88/#165/#256; #376/#378 constrain coin/bulk behavior |
+| [#343](https://github.com/LuminariMUD/Duris/issues/343) persistence | Separate coordinator execution/delivery state from domain publication state, joined by the existing operation ID | No disk work under the coordinator lock or on admission/pulse; bound every stage | #337 is closed; #341 remains the journal-admission prerequisite; #380 is a newly reproduced publication defect |
+| [#344](https://github.com/LuminariMUD/Duris/issues/344) combat | Small checked attack-continuation contract over existing character/object identities; migrate two actual sequences | Existing character-ID lookup is linear, not a free hash lookup | #338 is closed; preserve its controls and do not claim to solve #229 |
+| [#346](https://github.com/LuminariMUD/Duris/issues/346) networking | Explicit, order-preserving pulse phases plus a session-input decision boundary | Preserve cadence, bounded dequeue, backpressure and rendering costs; add no blocking calls | #337 is closed; #341 precedes implementation/merge; coordinate #376 and telemetry lifecycle work |
+| [#347](https://github.com/LuminariMUD/Duris/issues/347) item commands | Thin parsers, shared eligibility facts/rules, existing immutable transfer requests, one live-publication adapter per family | Capture/validate item trees once per submission, not once per layer | #337 is closed; preserve #88/#165/#256; #376/#378 constrain coin/bulk behavior |
 
 These are deliberately different boundaries. A combat callback is synchronous
 but re-entrant; a persistence completion is asynchronous and durable; session
@@ -34,7 +34,7 @@ framework would obscure those distinctions.
 
 ### What the current code actually owns
 
-The [coordinator](https://github.com/Community-Duris/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/persistence/critical_command_coordinator.c)
+The [coordinator](https://github.com/LuminariMUD/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/persistence/critical_command_coordinator.c)
 owns immutable commands, attempts, per-key admission fences, active worker keys,
 raw completion retention, and a bounded completed cache. `operation_state`
 expresses lifecycle through `inflight`, `completed`, `blocked`, and
@@ -44,12 +44,12 @@ expresses lifecycle through `inflight`, `completed`, `blocked`, and
 `pulse()` can call uncertain-journal recovery, which also does storage work.
 Therefore moving the code into another file is not a nonblocking implementation.
 The older pipeline guide's blanket claim that the pulse performs no filesystem
-work is not an accurate description of this baseline. [#341](https://github.com/Community-Duris/Duris/issues/341)
+work is not an accurate description of this baseline. [#341](https://github.com/LuminariMUD/Duris/issues/341)
 owns that prerequisite; do not weaken `fsync` or silently call RAM enqueue durable.
 
-The [item adapter](https://github.com/Community-Duris/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/item/item_movement_transaction.c#L1008)
+The [item adapter](https://github.com/LuminariMUD/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/item/item_movement_transaction.c#L1008)
 can retain a committed result when custody/creation/corpse publication is not
-ready. The [currency adapter](https://github.com/Community-Duris/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/economy/currency_transaction.c#L144)
+ready. The [currency adapter](https://github.com/LuminariMUD/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/economy/currency_transaction.c#L144)
 has separate completion-ready, coin-wallet-publication and retry concerns.
 Coordinator retirement is consequently not synonymous with visible gameplay
 completion, and its bounded cache is not the owner of outstanding callbacks.
@@ -95,8 +95,8 @@ outbox acknowledgement independent.
 ### Adversarial checks and performance
 
 - A successful database write with an unreadable receipt is not a rejected write.
-  This exact error is reproduced in [#380](https://github.com/Community-Duris/Duris/issues/380),
-  with the focused fix in [PR #381](https://github.com/Community-Duris/Duris/pull/381).
+  This exact error is reproduced in [#380](https://github.com/LuminariMUD/Duris/issues/380),
+  with the focused fix in [PR #381](https://github.com/LuminariMUD/Duris/pull/381).
   Merge and verify the fix before organizing the resulting contract.
 - Returning early from `submit()` is insufficient if the pulse then waits on a
   mutex held by the append worker. For #341, make journal work own its lock and
@@ -130,10 +130,10 @@ and flatfile authority journeys separately, including ambiguity and restart.
 
 ### Current boundary and callback inventory
 
-[`try_riposte()`](https://github.com/Community-Duris/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/combat/fight.c#L4073)
+[`try_riposte()`](https://github.com/LuminariMUD/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/combat/fight.c#L4073)
 already captures runtime IDs, room/height, and selected weapon slot/UID following
 #338. The important next seam is the recursive Vicious Attack path inside
-[`hit()`](https://github.com/Community-Duris/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/combat/fight.c#L7159):
+[`hit()`](https://github.com/LuminariMUD/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/combat/fight.c#L7159):
 it calls `hit()` and resumes calculations using actor, victim and weapon after a
 room-membership check. This is a high-value second migration target, not a newly
 proved production crash claim.
@@ -145,9 +145,9 @@ Ordinary arithmetic and read-only skill queries need not become virtual effects.
 Before changing any boundary, trace the real called implementation and annotate
 the continuation's required postconditions, not just its function name.
 
-The [existing character identity resolver](https://github.com/Community-Duris/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/account/character_identity.c)
+The [existing character identity resolver](https://github.com/LuminariMUD/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/account/character_identity.c)
 scans `character_list`. Runtime IDs change when storage is reused; pointer equality
-alone does not prove identity. The [item-action contract](https://github.com/Community-Duris/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/item/item_actions.h)
+alone does not prove identity. The [item-action contract](https://github.com/LuminariMUD/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/item/item_actions.h)
 already defines borrowed pointers as valid for one adapter call and re-resolves
 before effects. Reuse this discipline and existing identity owners, not a second
 combat-only registry or the entire deferred item-action runtime per melee hit.
@@ -215,7 +215,7 @@ is not authority to close #344.
 
 ### Preserve the observed sequence
 
-The current [`game_loop()`](https://github.com/Community-Duris/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/net/comm.c#L1185)
+The current [`game_loop()`](https://github.com/LuminariMUD/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/net/comm.c#L1185)
 does not run a generic input-completions-world-output sequence. Its meaningful
 normal-pulse ordering is:
 
@@ -267,7 +267,7 @@ socket lifetimes and transport backpressure with networking.
 
 ### Hidden ordering and privacy traps
 
-[#376](https://github.com/Community-Duris/Duris/issues/376) shows why command names
+[#376](https://github.com/LuminariMUD/Duris/issues/376) shows why command names
 alone are insufficient: `ASK` can run a world special that reads/spends money
 before pending coin retrieval publishes. `SAY`, `TELL`, shop routes, aliases and
 special interception require an effects audit, not just adding one keyword to a
@@ -301,7 +301,7 @@ real sessions asserting exact text order, privacy, replay and paging behavior.
 
 ### Existing vertical slice and alternatives
 
-[`actobj.c`](https://github.com/Community-Duris/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/cmd/actobj.c)
+[`actobj.c`](https://github.com/LuminariMUD/Duris/blob/f62b69f92f792a0ff7897c19876c6d1bb6f1c626/src/cmd/actobj.c)
 already contains get/put/drop completions, bulk selection, source-owner capture,
 coin admission, immutable transfer submission, and publication callbacks.
 `select_bulk_get_item()` and `bulk_put_permitted()` embody useful but different
@@ -370,7 +370,7 @@ terminal-save retention coverage. Add golden error/success/haul text and delayed
 completion tests for source movement, target disappearance, link loss/reconnect,
 duplicate delivery, full buffers and failure after the first batch root. Run
 separate flatfile and disposable MariaDB journeys exercising actual object and
-currency lifecycles, not only mocked parsers. Track [#378](https://github.com/Community-Duris/Duris/issues/378)
+currency lifecycles, not only mocked parsers. Track [#378](https://github.com/LuminariMUD/Duris/issues/378)
 and #376 alongside #256 before changing mixed-haul and coin-facing behavior.
 
 ## Implementation order and completion audit

@@ -411,7 +411,7 @@ counters about once a second and writes a terminal observation when it stops; a 
 producer turns an unfinished one into an unknown tail; `scripts/telemetry/outage.py`
 exports the ledger. A player who enters, or is recovered by a copyover, while the writer
 is still qualifying is retried by the descriptor sweep. Landed in `338092a78`; the writer code is
-Community-Duris's (`e0e837102`, `03da1882d`, `b3fb28b9f`).
+LuminariMUD's (`e0e837102`, `03da1882d`, `b3fb28b9f`).
 
 The review of that change found three ways the writer stayed off for good after one event, and a
 line that did not say why. A pending file that was not a whole frame (what a full disk

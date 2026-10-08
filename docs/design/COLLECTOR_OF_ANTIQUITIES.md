@@ -1,6 +1,6 @@
 # Collector of Antiquities
 
-Specification: [discussion #336](https://github.com/Community-Duris/Duris/discussions/336).
+Specification: [discussion #336](https://github.com/LuminariMUD/Duris/discussions/336).
 
 **Status: implemented on both backends, behind `collector.enabled` (off by default).**
 Player deaths are enrolled with captured policy, live collector commands and the due
