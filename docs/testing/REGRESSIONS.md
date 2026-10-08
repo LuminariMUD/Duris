@@ -288,6 +288,23 @@ Not covered: the full random-world generator (the journeys use controlled instan
 1255 and 1256), and generated equipment across a file copyover, which still stores NPC
 equipment by vnum.
 
+## Journey clients and an ANSI escape split across reads
+
+The journey clients strip colour escapes from what the server sends. They stripped each
+socket read on its own, so an escape that the end of a read cut in two survived: the
+generated NPC journey once failed `make test-all` on `Cha:  87[0;1;33m ( 87)` from
+`stat mob`. The shared `MudClient` in `test_flatfile_combat_journey.py`, its copy in
+`test_account_recovery_journey.py` and the copyover journey's compressed reader now hold
+back a cut-off escape until the next read completes it.
+
+```sh
+python3 tests/async/test_journey_client_ansi_split.py
+```
+
+The test feeds both clients an escape split across three reads through a socket pair and
+fails without the fix. Not covered: the copyover journey's own reader, which shares the
+method but is only exercised by its journey.
+
 ## Maintenance scheduler state file
 
 The state file defaults to `runtime/maintenance-scheduler.state`, outside the `bin/` tree

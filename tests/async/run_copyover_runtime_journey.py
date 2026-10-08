@@ -52,7 +52,7 @@ class Client(journey.MudClient):
                 plain += self.inflater.unused_data
                 self.inflater = None
         else: plain += data
-        clean = journey.ANSI.sub(b'', plain)
+        clean = self._clean(plain)
         self.pending.extend(clean); self.transcript.extend(clean)
         return True
 
