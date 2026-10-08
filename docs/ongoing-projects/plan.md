@@ -160,6 +160,36 @@ raises `ProcessLookupError`, not `FileNotFoundError`. One commit after
 `backlog/phase-1-review-0` treats both as gone; the pull request's head is the one to
 review.
 
+**Review round 1** (PR #5, review of `ca9f1219c`; tag `backlog/phase-1-review-1`). Four
+findings, each reproduced on that head first, each fixed in its own commit with a case that
+fails without it:
+
+- `2fc042368`: each test runs in its own session, so a Ctrl-C, coreutils `timeout` or a
+  supervisor's SIGTERM stopped the runner and left its tests, their servers and their
+  builds running. The runner keeps the tests it is running in a set. When it is stopped, it
+  cancels the queued tests and kills each running test's group, and a test that a worker
+  starts after that is killed at once. A SIGTERM unwinds like Ctrl-C.
+- `152b76e78`: a test's group was killed only at its deadline. Now it is killed whenever the
+  test ends, so a crashed journey's server does not run on beside later tests.
+- `f6c0da542`: the restore import's usual failure lost its record: `mysql` exits at the
+  first statement it rejects, and the next write broke the pipe. A stream past its deadline
+  was recorded as `streaming_process_failed` with `-9`. The first is now reported by
+  `mysql`'s exit status, the second as `subprocess_timed_out` with a null status, as
+  `BACKUPS.md` says.
+- `9e99e272d`: the stderr tail kept the client host MariaDB names (`'user'@'host'`,
+  `Host '...' is not allowed`), which is this host's address as the server sees it; it is
+  now `<CLIENT_HOST>`.
+
+The Status table is left as it was: every stacked branch rewrites Phase 1's row, so an
+edit here would conflict with each of them when they land after this one.
+
+**Gate** on `9e99e272d`: `./scripts/format.sh --all --check` clean, `make test-all -j16
+TEST_JOBS=16` 675 passed, 0 failed (0 timed out, 0 ended by a signal) in 7 min 26 s,
+`make test-db` 48 of 48. The CI `backup recovery` job was replayed in a privileged
+`ubuntu:24.04` container on the same head: its four regression files, and
+`test_persistence_backup_integration.py` as root against a real MariaDB (5 tests, a real
+`mysqldump` and import through the changed `streaming_process()`), passed.
+
 **Problem.** Two failures that are hard to see, first recorded in a pipeline analysis of
 2026-09-11. A test that hangs holds `make test` and `make test-all` until someone kills it,
 and prints nothing meanwhile; a failed test's output is shown only after every test has
