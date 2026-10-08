@@ -89,23 +89,36 @@ available upstream fixes. A temporary exception must be documented in a public i
 when disclosure is safe, or in the private advisory when it is not, with an owner,
 rationale, compensating control, and expiry date.
 
-## Baseline Result (2026-10-08)
+## Baseline Result (2026-10-09)
 
-The `security baseline` run of 2026-10-08 on `master` at `690a7575d` (run 37808827646,
-completed 16:46 UTC):
+The workflow replayed locally on 2026-10-09, at the tree that records this result:
 
 - `make security-check` (inventory, SPDX and the repository's source/configuration
   contracts): passed.
-- CodeQL 2.27.1 C/C++ analysis of the warning-as-error build: 0 results over 58 rules;
-  code scanning listed no open alert.
-- Trivy `v0.70.0` recognized Ubuntu 24.04 and scanned all 23 resolved direct packages,
-  `libcurl4-gnutls-dev` 8.5.0 among them (it joined the build dependencies on
-  2026-09-06, after the previous scan), and reported no fixed HIGH or CRITICAL finding.
-  The run does not list unfixed or lower findings; the previous, local scan of all
-  severities (2026-08-27, 19 packages) reported one unfixed MEDIUM Git advisory
-  (`CVE-2024-52005`). This passes the stated gate but is not a clean or
-  vulnerability-free claim. A fixed HIGH/CRITICAL finding against the Ubuntu 24.04 libcurl
-  package is fixed by the package update, never by a weakened transport setting.
+- CodeQL 2.27.1, its `cpp-code-scanning` suite (58 rules), over the build step's
+  compilation with ccache off: 1103 of 1265 C/C++ files, where the hosted run below
+  covered 1087 without `pfile` and `migrations/tools`. Those two added ten results, all
+  in the migration tools: eight `cpp/overflowing-snprintf` in `migrate_players.c` and two
+  `cpp/toctou-race-condition`, in `migrate_accounts.c` and `pfile_converter.c`. With them
+  fixed, the suite reports 0 results.
+- Trivy `v0.70.0`, vulnerability database of 2026-10-08 19:05 UTC, over the root that
+  `make security-sbom` wrote in a fresh `ubuntu:24.04` container after it installed the
+  build-deps package, as the workflow's runner does (git came from Ubuntu, not the
+  runner's PPA). All 23 direct dependencies resolved, each with its source package:
+  `libcurl4-gnutls-dev` `8.5.0-2ubuntu10.15` (source `curl`; it joined the build
+  dependencies on 2026-09-06) and `mysql-server-8.0` `8.0.46-0ubuntu0.24.04.4` among
+  them. No fixed HIGH or CRITICAL finding, so the gate passes. Without the gate's
+  options it lists 26 unfixed findings: MEDIUM for cJSON (9), Redis (7, in both
+  `redis-server` and `redis-tools`), Git (`CVE-2024-52005`) and zlib (`CVE-2026-85091`),
+  and LOW for `clang-format-18` (`CVE-2024-7883`). This is not a clean or
+  vulnerability-free claim. A fixed HIGH/CRITICAL finding against the Ubuntu 24.04
+  libcurl package is fixed by the package update, never by a weakened transport setting.
+- The hosted run of 2026-10-08 on `master` at `690a7575d` (run 37808827646) is not a
+  dependency result: its root had no `Source:` lines, so Trivy matched only packages
+  named like their source (`git`, `gawk`, `gdb`, `valgrind`) and saw none of libcurl's,
+  OpenSSL's or Redis's advisories. The August scan had the same blind spot. Its CodeQL
+  result, 0 results, holds for what it built.
+- No host Duris runs on has been scanned yet.
 - On 2026-10-08 the owner turned on, for `LuminariMUD/Duris`, private vulnerability
   reporting, Dependabot security updates, and secret scanning with push protection.
 - Transitive and deployment dependency vulnerability status: `UNKNOWN` by design.
