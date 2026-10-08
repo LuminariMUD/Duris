@@ -134,5 +134,9 @@ Howto Install a Zone's Triggers:
     is short, grep logs/log/status for STUDIOPROC: every skipped record
     names its zone, vnum, line and reason.  A skipped record is silent in
     game, so the log line is the only warning you get.
-  To turn the whole thing off in a hurry: rename areas/world.trg and
-    reboot.  Everything reverts to stock behaviour.
+  To turn an area's triggers off in a hurry: move its areas/trg/<area>.trg
+    out of areas/trg/ and reboot (the supervisor regenerates
+    areas/world.trg before every start), or run 'make world' and copyover.
+    Move every file out to turn them all off; everything reverts to stock
+    behaviour.  Renaming areas/world.trg lasts only until the next
+    generation, and renaming areas/trg/ fails generation instead.

@@ -151,8 +151,14 @@ A malformed source fails `make world`, naming the file and line, when the
 fault is in the framing (a record header, `T`, `~` and `S`). At boot a
 malformed record logs its zone, vnum and line to `logs/log/status` and is
 skipped, so a bad `.trg` cannot stop a boot. The file is read and never
-written. The kill switch is renaming `areas/world.trg` and rebooting; the
-next `make world` writes it again.
+written.
+
+The kill switch for an area's triggers is moving its `areas/trg/<area>.trg`
+out of `areas/trg/` and rebooting (the supervisor regenerates
+`areas/world.trg` before every start), or running `make world` and a
+copyover. Move every file out to switch them all off. Renaming
+`areas/world.trg` lasts only until the next generation, and renaming
+`areas/trg/` fails generation instead.
 
 ## Per-instance state
 
