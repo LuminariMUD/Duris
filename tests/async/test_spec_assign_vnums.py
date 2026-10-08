@@ -63,6 +63,10 @@ for number, line in enumerate(source.split("\n"), 1):
             missing.append(f"L{number} {lookup}({vnum})")
 
 assert assignments > 1000, f"only {assignments} assignments were read"
+# board_info[] in boards.c is the one owner of the board special: initialize_boards()
+# gives it to every row, and an object with it but no row logs "degenerate board!".
+assert not re.search(r"\.func\.obj\s*=\s*board\s*;", source), \
+    "specs.assign.c assigns the board special; add a board_info[] row in boards.c instead"
 assert not missing, (
     f"{len(missing)} assignment(s) in specs.assign.c name a vnum no area in areas/AREA has; "
     "they would land on index 0:\n" + "\n".join(missing))
