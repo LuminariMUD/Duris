@@ -61,7 +61,7 @@ def private_database(candidate):
     user = pwd.getpwuid(os.getuid()).pw_name
     backup.run(["mariadb-install-db", "--no-defaults", "--datadir=" + str(datadir),
                 "--auth-root-authentication-method=normal", "--skip-test-db", "--user=" + user],
-               env=env)
+               phase="restore_database_init", env=env)
     exports = candidate / "exports"
     exports.mkdir(mode=0o700)
     socket = candidate / "mysql.sock"
@@ -87,7 +87,7 @@ def private_database(candidate):
             password = secrets.token_hex(24)
             # Only this newly initialized daemon receives an administrative query.
             # Import uses a schema-only account without FILE/SUPER/CREATE USER.
-            backup.run([*client], env=env, input=(
+            backup.run([*client], phase="restore_database_account", env=env, input=(
                 "CREATE DATABASE duris_restore CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
                 "CREATE USER 'restore'@'localhost' IDENTIFIED BY '" + password + "';"
                 "GRANT ALL ON duris_restore.* TO 'restore'@'localhost';").encode())
@@ -108,7 +108,7 @@ def private_database(candidate):
 def database_import(generation, env):
     args = ["mysql", "--no-defaults", "--binary-mode", "--local-infile=0",
             "--protocol=socket", "--socket=" + env["DB_SOCKET"], "--user=restore", "duris_restore"]
-    with backup.streaming_process(args, env=env, input_pipe=True) as process:
+    with backup.streaming_process(args, phase="restore_import", env=env, input_pipe=True) as process:
         with gzip.open(generation / "database.sql.gz", "rb") as source:
             database = backup.read_json(generation / "manifest.json")["database"]
             for line in source:
@@ -122,9 +122,11 @@ def database_import(generation, env):
         process.stdin.close()
 
 
-def database_qualify(env):
-    backup.run(["bash", str(backup.ROOT / "migrations/verify_runtime_compatibility.sh")], env=env)
-    backup.run(["python3", str(backup.ROOT / "scripts/qualify_database_restore.py")], env=env)
+def database_qualify(env, phase):
+    backup.run(["bash", str(backup.ROOT / "migrations/verify_runtime_compatibility.sh")],
+               phase=phase, env=env)
+    backup.run(["python3", str(backup.ROOT / "scripts/qualify_database_restore.py")],
+               phase=phase, env=env)
 
 
 def service_load(candidate, mode, env):
@@ -151,11 +153,11 @@ def service_load(candidate, mode, env):
     (candidate / "journals/critical").mkdir(mode=0o700, parents=True, exist_ok=True)
     backup.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-sha256", "-nodes",
                 "-days", "1", "-subj", "/CN=localhost", "-keyout", str(runtime / "duris.key"),
-                "-out", str(runtime / "duris.crt")], env=env)
+                "-out", str(runtime / "duris.crt")], phase="restore_certificate", env=env)
     env = dict(env, PERSISTENCE_MODE=mode)
     backup.run(["unshare", "--user", "--map-root-user", "--net", "--pid", "--fork", "--kill-child=KILL",
                 "python3", str(staged_qualifier),
-                str(candidate), str(staged_binary)], env=env, timeout=120)
+                str(candidate), str(staged_binary)], phase="restore_service_load", env=env, timeout=120)
 
 
 def remove_candidate(root, candidate):
@@ -214,24 +216,26 @@ def restore(p, generation_name, tombstones, drill=False):
             env = clean_environment(candidate)
             shutil.copytree(generation / "journals", candidate / "journals")
             qualifier = str(backup.ROOT / "bin/tools/qualify_flatfile_restore")
-            backup.run([qualifier, "--receipts", str(candidate)], env=env)
+            backup.run([qualifier, "--receipts", str(candidate)], phase="restore_receipts", env=env)
             if meta["mode"] == "flatfile-primary":
                 shutil.copytree(generation / "state", candidate / "state")
                 backup.require(backup.inventory(generation / "state") == backup.inventory(candidate / "state"),
                                "restore_copy_checksum_mismatch")
                 env["FLATFILE_STATE_DIR"] = str(candidate / "state")
                 result = backup.run([str(backup.ROOT / "bin/tools/qualify_flatfile_restore"),
-                                     "--state-preflight", str(candidate / "state")], env=env)
+                                     "--state-preflight", str(candidate / "state")],
+                                    phase="restore_state_preflight", env=env)
                 aggregates = json.loads(result)
                 service_load(candidate, meta["mode"], env)
-                aggregates = json.loads(backup.run([qualifier, str(candidate / "state")], env=env))
+                aggregates = json.loads(backup.run([qualifier, str(candidate / "state")],
+                                                   phase="restore_state_check", env=env))
             else:
                 with private_database(candidate) as env:
                     database_import(generation, env)
-                    database_qualify(env)
+                    database_qualify(env, "restore_import_check")
                     aggregates = {"schema_history_and_value_reconciliation": "ok"}
                     service_load(candidate, meta["mode"], env)
-                    database_qualify(env)
+                    database_qualify(env, "restore_service_check")
             backup.require(ledger_hash == tombstone_preflight(tombstones, p, meta["created"]),
                            "erasure_evidence_changed_during_restore")
             backup.verify(generation)

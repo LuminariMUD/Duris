@@ -9,13 +9,20 @@ they were written here. The order and the decisions below are proposed; the owne
 changes them before Phase 1 starts. This file is a working note: delete it when the last
 phase lands.
 
+Work started on 2026-10-08 under the owner's goal to carry the plan through on its own:
+the decisions still proposed were taken as written, and each phase's section says where
+the work differs from them. Each phase's branch starts from the previous phase's branch,
+and its pull request targets that branch (Phase 1's targets `master`), so a review reads
+one phase's diff and the phases land in order; Phase 1's deadlines are then the gate of
+every later phase.
+
 ## Status
 
 Updated 2026-10-08. A new session starts here, then reads the phase it continues.
 
 | Phase | Subject | State |
 |---|---|---|
-| 1 | Hung tests and silent backup failures | Not started. |
+| 1 | Hung tests and silent backup failures | Built on `fix/4-phase-1-hung-tests`, gate green; open for review, tag `backlog/phase-1-review-0`. |
 | 2 | Unauthenticated connections per address | Not started. |
 | 3 | Shop listing, dompurify, dead helpers | Not started. |
 | 4 | Security record and `SECURITY.md` | Not started. |
@@ -100,6 +107,88 @@ Things to keep in mind across phases:
 ---
 
 ## Phase 1: a hung test holds the gate, a failed backup says one word
+
+**Built** on `fix/4-phase-1-hung-tests` (from `master` at `690a7575d`), 2026-10-08:
+
+- `89c370bc7`: `tests/run_regression_tests.py` runs each test in its own process group
+  with its output in a temporary file (`run_test(path, deadline)`), ends one still running
+  at `POOLED_DEADLINE_SECONDS` (900) or `JOURNEY_DEADLINE_SECONDS` (1800) with `SIGKILL` to
+  the group, and labels a result `PASS`, `FAIL`, `TIMEOUT` or the signal's name. A failure's
+  output is printed when it fails; the end of the run lists failures with their kind; the
+  summary reads `N passed, F failed (T timed out, S ended by a signal)`; every
+  `PROGRESS_SECONDS` (60) a `still running:` line names the running tests. The cases are in
+  `tests/async/test_root_test_harness.py`. `docs/guides/TESTING.md` says so.
+- `76fb1bfa8`: `scripts/persistence_backup.py` keeps a failed command's stderr.
+  `subprocess_error()` builds the `BackupError` with `command` (basename), `phase` (a
+  required keyword of `run()` and `streaming_process()`, one per call site), `exit_status`
+  (negative for a signal, null at the deadline) and `stderr` (last 20 lines, at most
+  2 KiB), the values of `DB_PASSWD`, `DB_USER` and `DB_HOST` the command was given replaced
+  longest first, before the cut; `failure()` merges that detail into the record. The case is
+  in `tests/async/test_persistence_backup.py`; `docs/operations/BACKUPS.md` describes the
+  record.
+
+**What differs from the plan, and why.**
+
+- The runner's cases went into the existing `test_root_test_harness.py`, which already
+  loads the runner, not a new `test_regression_runner.py`; and `main()` is driven by
+  patching `ROOT` and `TEST_DIRECTORY`, so `discover_tests()` needed no `directory`
+  parameter.
+- A test's output goes to a temporary file, not a pipe: reading a pipe after the kill would
+  wait for any process that left the group and still held it; the file is read once the
+  test's own process has been reaped.
+- The values are replaced where the error is built, from the environment the command was
+  given, not in `failure()` from the tool's own: the restore's commands run with a clean
+  environment and their own database user and password.
+- The restore's import (`streaming_process(..., input_pipe=True)`) keeps no stderr:
+  MariaDB quotes the rows it rejects, and the plan rules out printing a restored row.
+- `run()`'s own deadline (120 s for the restore's service load, 300 s otherwise) is reported
+  as `subprocess_timed_out` with its phase and what the command wrote, instead of a bare
+  `subprocess.TimeoutExpired`.
+- `tests/async/test_persistence_backup_integration.py` (the CI `backup recovery` job, root
+  and a disposable MariaDB) passes `phase="test"` to its fixture calls.
+
+**Gate** on `76fb1bfa8`: `./scripts/format.sh --all --check` clean, `make test-all -j16
+TEST_JOBS=16` 675 passed, 0 failed (0 timed out, 0 ended by a signal) in 8 min 53 s,
+`make test-db` 48 of 48. The new runner case fails on the old runner. The CI `backup
+recovery` job was replayed in a privileged `ubuntu:24.04` container: the four
+regression files and `test_persistence_backup_integration.py` as root (5 tests, real
+MariaDB) passed. Nothing is left.
+
+**After the tag.** Phase 2's gate failed `test_root_test_harness.py` once: its `gone()`
+helper read `/proc/<pid>/stat` of a process reaped between the open and the read, which
+raises `ProcessLookupError`, not `FileNotFoundError`. One commit after
+`backlog/phase-1-review-0` treats both as gone; the pull request's head is the one to
+review.
+
+**Review round 1** (PR #5, review of `ca9f1219c`; tag `backlog/phase-1-review-1`). Four
+findings, each reproduced on that head first, each fixed in its own commit with a case that
+fails without it:
+
+- `2fc042368`: each test runs in its own session, so a Ctrl-C, coreutils `timeout` or a
+  supervisor's SIGTERM stopped the runner and left its tests, their servers and their
+  builds running. The runner keeps the tests it is running in a set. When it is stopped, it
+  cancels the queued tests and kills each running test's group, and a test that a worker
+  starts after that is killed at once. A SIGTERM unwinds like Ctrl-C.
+- `152b76e78`: a test's group was killed only at its deadline. Now it is killed whenever the
+  test ends, so a crashed journey's server does not run on beside later tests.
+- `f6c0da542`: the restore import's usual failure lost its record: `mysql` exits at the
+  first statement it rejects, and the next write broke the pipe. A stream past its deadline
+  was recorded as `streaming_process_failed` with `-9`. The first is now reported by
+  `mysql`'s exit status, the second as `subprocess_timed_out` with a null status, as
+  `BACKUPS.md` says.
+- `9e99e272d`: the stderr tail kept the client host MariaDB names (`'user'@'host'`,
+  `Host '...' is not allowed`), which is this host's address as the server sees it; it is
+  now `<CLIENT_HOST>`.
+
+The Status table is left as it was: every stacked branch rewrites Phase 1's row, so an
+edit here would conflict with each of them when they land after this one.
+
+**Gate** on `9e99e272d`: `./scripts/format.sh --all --check` clean, `make test-all -j16
+TEST_JOBS=16` 675 passed, 0 failed (0 timed out, 0 ended by a signal) in 7 min 26 s,
+`make test-db` 48 of 48. The CI `backup recovery` job was replayed in a privileged
+`ubuntu:24.04` container on the same head: its four regression files, and
+`test_persistence_backup_integration.py` as root against a real MariaDB (5 tests, a real
+`mysqldump` and import through the changed `streaming_process()`), passed.
 
 **Problem.** Two failures that are hard to see, first recorded in a pipeline analysis of
 2026-09-11. A test that hangs holds `make test` and `make test-all` until someone kills it,

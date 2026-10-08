@@ -12,7 +12,7 @@ tests/
 │   ├── test_*.py                # plain python3 regressions; no framework
 │   ├── run_*.sh                 # special-purpose and legacy thin wrappers
 │   └── run_*_mysql.sh           # MySQL-backed schema-contract tests (need a live DB)
-├── run_regression_tests.py      # discovery, bounded parallelism, failure summary
+├── run_regression_tests.py      # discovery, bounded parallelism, deadlines, failure summary
 ├── compare_bootstrap_mud_schema.sh   # diff live schema vs bootstrap baseline
 ├── test_migration_replay_safety.sh   # migration re-run safety
 └── test_run_migration_persistence_schema.sh
@@ -65,7 +65,15 @@ RUNTIME_DB_IMAGE=mariadb:10.11 tests/async/run_runtime_compatibility_mysql.sh
 ```
 
 `TEST_JOBS=0` is the default and selects up to eight workers based on available
-CPUs. Test output is buffered per process so parallel failures remain readable.
+CPUs. Test output is buffered per process so parallel failures remain readable,
+and a failing test's output is printed as soon as it fails. A test still running
+900 s after it started, or a journey 1800 s after, is ended with everything it
+started and reported as `TIMEOUT`; a test ended by a signal is reported by the
+signal's name. Both are failures, the end of the run lists every failure with its
+kind, the summary counts timeouts and signals apart, and every 60 s a line names
+the tests still running. However a test ends, whatever it started and left
+running ends with it. Stopping the runner, by Ctrl-C or a SIGTERM, ends the
+tests it is running with everything they started, and starts no others.
 The runner executes every discovered `test_*.py` in a separate process and
 returns nonzero if any test fails. The journeys that boot a real server, and the
 large sanitizer harness, start together once the parallel phase is done. They

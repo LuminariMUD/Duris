@@ -46,10 +46,17 @@ RECEIPT = re.compile(r"locker-identification/([1-9][0-9]{0,9})\.receipt")
 RECEIPT_MAX_BYTES = 16 + 1024 + 64 * 1024 + 32  # The native codec's bound.
 LOCK_WAIT_SECONDS = 120
 CAPACITY_CHECK_INTERVAL = 32 * 1024 * 1024
+STDERR_TAIL_LINES = 20
+STDERR_TAIL_BYTES = 2048
 
 
 class BackupError(Exception):
-    """Only redacted, fixed error codes may cross the CLI boundary."""
+    """Only redacted, fixed error codes may cross the CLI boundary, with the sanitized
+    detail subprocess_error() gives a failed command."""
+
+    def __init__(self, code, detail=None):
+        super().__init__(code)
+        self.detail = detail or {}
 
 
 def require(condition, code):
@@ -57,12 +64,32 @@ def require(condition, code):
         raise BackupError(code)
 
 
+def subprocess_error(code, args, phase, status, stderr, env):
+    """A failed command's basename, the phase that ran it, its exit status (negative: the
+    signal that ended it; None: its deadline) and the last lines of its stderr. Its command
+    line and messages can name the database user, host and password, so the values the
+    command was given are replaced, longest first, before the tail is cut; so is the client
+    host the server names, which is this host's address as the server sees it."""
+    text = "\n".join(stderr.decode(errors="replace").splitlines()[-STDERR_TAIL_LINES:])
+    given = os.environ if env is None else env
+    names = {}
+    for name in ("DB_PASSWD", "DB_USER", "DB_HOST"):
+        if given.get(name):
+            names.setdefault(given[name], name)
+    for value in sorted(names, key=len, reverse=True):
+        text = text.replace(value, f"<{names[value]}>")
+    # 'user'@'host' (1044, 1045, 1142) and "Host 'host' is not allowed" (1129, 1130).
+    text = re.sub(r"(@|\bHost )'[^']*'", r"\1'<CLIENT_HOST>'", text)
+    return BackupError(code, {"command": Path(args[0]).name, "phase": phase, "exit_status": status,
+                              "stderr": text.encode()[-STDERR_TAIL_BYTES:].decode(errors="ignore")})
+
+
 def failure(error):
     """What a failure record says of its cause. An OS error keeps no file name, which can
-    name an account, and a subprocess error no message: its command line names the database
-    user and host."""
+    name an account; a failed command keeps what subprocess_error() kept, and any other
+    subprocess error no message: its command line names the database user and host."""
     if isinstance(error, BackupError):
-        return {"code": str(error)}
+        return {"code": str(error), **error.detail}
     kind = type(error)
     record = {"code": "operation_failed",
               "error": kind.__name__ if kind.__module__ == "builtins" else
@@ -360,37 +387,64 @@ def db_connection():
 
 
 @contextlib.contextmanager
-def streaming_process(args, *, env, input_pipe=False, timeout=300):
-    process = subprocess.Popen(args, env=env, start_new_session=True,
-                               stdin=subprocess.PIPE if input_pipe else None,
-                               stdout=subprocess.DEVNULL if input_pipe else subprocess.PIPE,
-                               stderr=subprocess.DEVNULL)
-    def expire():
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-    timer = threading.Timer(timeout, expire)
-    timer.daemon = True
-    timer.start()
-    try:
-        yield process
-        require(process.wait(timeout=timeout) == 0, "streaming_process_failed")
-    finally:
-        timer.cancel()
-        timer.join()
-        if process.poll() is None:
+def streaming_process(args, *, phase, env, input_pipe=False, timeout=300):
+    # What is piped in is restored rows, and an import's errors quote the rows they reject,
+    # so its stderr is not kept. A file, not a pipe, holds the rest: nothing reads it until
+    # the process has ended.
+    with tempfile.TemporaryFile() as stderr:
+        process = subprocess.Popen(args, env=env, start_new_session=True,
+                                   stdin=subprocess.PIPE if input_pipe else None,
+                                   stdout=subprocess.DEVNULL if input_pipe else subprocess.PIPE,
+                                   stderr=subprocess.DEVNULL if input_pipe else stderr)
+        def expire():
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        expired = threading.Event()
+        def at_deadline():
+            expired.set()
             expire()
-            process.wait()
-        for stream in (process.stdin, process.stdout):
-            if stream is not None and not stream.closed:
-                stream.close()
+        timer = threading.Timer(timeout, at_deadline)
+        timer.daemon = True
+        timer.start()
+        try:
+            try:
+                yield process
+            except BrokenPipeError:
+                # An import stops reading at the first statement it rejects; its status says so.
+                if not input_pipe:
+                    raise
+            status = process.wait(timeout=timeout)
+            if status:
+                stderr.seek(0)
+                if expired.is_set():
+                    raise subprocess_error("subprocess_timed_out", args, phase, None,
+                                           stderr.read(), env)
+                raise subprocess_error("streaming_process_failed", args, phase, status,
+                                       stderr.read(), env)
+        finally:
+            timer.cancel()
+            timer.join()
+            if process.poll() is None:
+                expire()
+                process.wait()
+            for stream in (process.stdin, process.stdout):
+                if stream is not None and not stream.closed:
+                    # Closing flushes what was written, which fails if nothing reads it.
+                    with contextlib.suppress(BrokenPipeError):
+                        stream.close()
 
 
-def run(args, *, env=None, input=None, timeout=300):
-    result = subprocess.run(args, input=input, env=env, stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL, timeout=timeout)
-    require(result.returncode == 0, "subprocess_failed")
+def run(args, *, phase, env=None, input=None, timeout=300):
+    try:
+        result = subprocess.run(args, input=input, env=env, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        raise subprocess_error("subprocess_timed_out", args, phase, None, error.stderr or b"", env)
+    if result.returncode:
+        raise subprocess_error("subprocess_failed", args, phase, result.returncode,
+                               result.stderr, env)
     return result.stdout
 
 
@@ -412,7 +466,7 @@ def verify_database_schema(schema):
     # database. Upgrades can explicitly select the deployed, older contract.
     _, env, _ = db_connection()
     env["RUNTIME_COMPATIBILITY_MANIFEST"] = str(schema)
-    run([str(ROOT / "migrations/verify_runtime_compatibility.sh")], env=env)
+    run([str(ROOT / "migrations/verify_runtime_compatibility.sh")], phase="schema_check", env=env)
 
 
 class BoundedOutput:
@@ -442,10 +496,10 @@ def mariadb_capture(stage, p, capacity_base=None):
     args, env, database = db_connection()
     engines = run(["mysql", *args, "-N", "-B", database, "-e",
                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() "
-                   "AND table_type='BASE TABLE' AND engine<>'InnoDB';"], env=env)
+                   "AND table_type='BASE TABLE' AND engine<>'InnoDB';"], phase="engine_check", env=env)
     require(engines.strip() == b"0", "nontransactional_tables")
     path = stage / "database.sql.gz"
-    help_text = run(["mysqldump", "--no-defaults", "--help"])
+    help_text = run(["mysqldump", "--no-defaults", "--help"], phase="dump_options")
     options = ["--single-transaction", "--quick", "--hex-blob", "--routines", "--events",
                "--triggers", "--databases", database]
     if b"--no-tablespaces" in help_text:
@@ -455,7 +509,7 @@ def mariadb_capture(stage, p, capacity_base=None):
     with path.open("xb") as raw:
         output = BoundedOutput(raw, stage, remaining, p["min_free_bytes"])
         with gzip.GzipFile(fileobj=output, mode="wb", mtime=0) as zipped:
-            with streaming_process(["mysqldump", *args, *options], env=env) as process:
+            with streaming_process(["mysqldump", *args, *options], phase="dump", env=env) as process:
                 shutil.copyfileobj(process.stdout, zipped)
     validate_dump(path, stage / "runtime-schema.json")
     return {"database": database}
@@ -558,7 +612,7 @@ def replicate(source, p):
     # Mount creation, credentials, host keys, and host durability belong to its custodian.
     secure_path(root, True)
     require(root.is_dir(), "replica_mount_missing")
-    fs = run(["findmnt", "-n", "-o", "FSTYPE", "--target", str(root)]).strip()
+    fs = run(["findmnt", "-n", "-o", "FSTYPE", "--target", str(root)], phase="replica_mount").strip()
     require(fs == b"fuse.sshfs", "replica_requires_sshfs_transport")
     with lock(root / ".job.lock", wait=LOCK_WAIT_SECONDS):
         generations(root)
