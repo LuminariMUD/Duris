@@ -340,6 +340,67 @@ branch and then passing 12 runs in a row), `test_connection_limit_journey.py` 12
 `make test-db` 48 of 48. The journey's proxy case failed before `7c21ef491`: every
 proxied connection was counted under the proxy's address. Nothing is left.
 
+**Review round 1** (PR #6, review of `d8ec5d566`; tag `backlog/phase-2-review-1`),
+2026-10-09. The branch first took `master` in a merge (`1f11aec12`), not a rebase: Phase 1
+had landed, and Phases 3 to 9 are stacked on this branch's pushed commits. Seven findings,
+each reproduced on an isolated flat-file server first, each fixed in its own commit:
+
+- `b20612298` (an older bug): a telnet connection from a banned address crashed the
+  server. `new_descriptor()` linked the descriptor while its state was still 0
+  (`CON_PLAYING`), and `banlog()` read its NULL character. It now gets its first state
+  before it is linked. A banned connection is `CON_FLUSH`, closed once its message is
+  sent, not `CON_EXIT`, which ended only on input or after 15 minutes.
+- `90cb04769`: one line of input took a connection out of the cap, so one address that
+  sent a name on each connection held all 255 slots. `before_account_login()` counts
+  every state before an account login: the two handshakes, the login, creation and reset
+  prompts, `CON_EXIT` and `CON_FLUSH`. Those prompts close after 120 s of silence, except
+  the wait for a reset code by mail (15 minutes). The constants became
+  `MAX_LOGIN_CONNECTIONS_PER_ADDRESS` and `LOGIN_PROMPT_TIMEOUT`.
+- `b4e6fb0b0`: the leftmost `X-Forwarded-For` entry, which the client writes, became the
+  address, so a website client could close another's login and pick a new address for
+  each connection. The last entry, the one the proxy appended, is used now.
+- `3fb6883e6`: behind a PROXY-protocol proxy, `X-Forwarded-For` replaced the address the
+  PROXY header gave and so escaped the cap. A PROXY-named connection ignores it now.
+- `3bc4fa8bb` (an older bug): a full server leaked a GnuTLS session, about 8 KiB, for each
+  TLS connection it refused. It is freed now.
+- `546605f93`: a website client's messages did not restart the 120 s timer, so an active
+  website login was closed 120 s after its handshake. Every text message restarts it.
+- `2843a9a0c`: IPv6 clients were capped per address; one IPv6 /64 now counts as one client.
+
+`d45ba16c0` corrects the `DURIS_TRUSTED_PROXY_IP` row in `CONFIGURATION.md` for the two
+`X-Forwarded-For` fixes.
+The journey covers each fix: a banned address, eight named connections, a silent password
+prompt, a forged leading `X-Forwarded-For`, a forged one behind a PROXY header, a website
+client that sends every 25 s, one IPv6 /64, and a full server's memory over 1000 refused
+TLS connections. `IsolatedServer` takes an optional hook on the run root (for the ban
+file). This differs from decision 3: the cap and the 120 s limit cover every connection
+before an account login, not only those that have not entered a name.
+
+The round's gates also found four test defects outside Phase 2's code, each fixed:
+
+- `532a869ab`: under load the journey's website client dropped the server's first ping
+  when it arrived in the same read as the handshake response, and the server closed it
+  for a ping timeout.
+- `game_loop_budget` in `make test-db` counted the shutdown's forced shop save, which
+  under load still had shops to queue: fixed on `master` in `f3ba6bd2a`, merged here in
+  `fcfd37baf` (with `cd46e2e93`).
+- Under load a harness could be refused on its first connect: "Entering game loop." came
+  before the listeners opened. Fixed on `master` in `47f5a06d6`, merged in `e60301113`;
+  `3078d2d16` drops the journey's own wait for the listeners.
+- `corpse_haul_count_cap` failed when the kill salvaged a random item into the corpse and
+  the one-slot haul took it: fixed on `master` in `494317e40`, merged in `42b6ac89f`.
+
+**Gate** for round 1: `./scripts/format.sh --all --check` clean and `make test-all -j16
+TEST_JOBS=16` 676 passed, 0 failed (0 timed out, 0 ended by a signal) in 7 min 44 s on
+`3078d2d16` (`test_connection_limit_journey.py` 173 s); `make test-db` 48 of 48 on
+`42b6ac89f`, which adds only `494317e40`'s fixture change to it. Each fix was checked on
+its own before and after: the banned address no longer kills the server; ten named
+connections from one address, the ninth and tenth refused; the forged leading
+`X-Forwarded-For` no longer closes the victim; 1 of 20 forged-header PROXY handshakes
+kept, not 20; VmRSS flat over 3000 refused TLS connections, not +7.6 MB per 1000; a
+website client sending every 25 s open at 175 s, not closed at 120 s; 8 of 12 from one
+IPv6 /64, not 12. Nothing is left.
+
 **Problem.** Found on 2026-10-05 in a full read of one server's logs. Over 51 minutes one
 address opened 753 plain-telnet connections: a median of 13 a minute, at most 26 a minute,
 11 in the busiest second. None got past the account name prompt (`CON_GET_ACCT_NAME`,
