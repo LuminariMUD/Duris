@@ -64,14 +64,22 @@ def closed_within(sock: socket.socket, timeout: float) -> bytes | None:
     return None
 
 
-def upgrade(sock: socket.socket, forwarded_for: str) -> None:
-    """A WebSocket upgrade naming forwarded_for in X-Forwarded-For."""
+def upgrade(sock: socket.socket, forwarded_for: str) -> bytes:
+    """A WebSocket upgrade naming forwarded_for in X-Forwarded-For. Returns what the server
+    sent after the response headers: its first frames, a ping among them."""
     sock.sendall(("GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\n"
                   "Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
                   f"Sec-WebSocket-Version: 13\r\nX-Forwarded-For: {forwarded_for}\r\n\r\n"
                   ).encode("ascii"))
     sock.settimeout(5)
-    require(b" 101 " in sock.recv(4096), f"the handshake for {forwarded_for} was not accepted")
+    response = bytearray()
+    while b"\r\n\r\n" not in response:
+        chunk = sock.recv(4096)
+        require(bool(chunk), f"the handshake for {forwarded_for} was closed")
+        response.extend(chunk)
+    headers, _, frames = bytes(response).partition(b"\r\n\r\n")
+    require(b" 101 " in headers, f"the handshake for {forwarded_for} was not accepted")
+    return frames
 
 
 def proxied(port: int, client: str, forwarded_for: str | None = None) -> socket.socket:
@@ -118,7 +126,8 @@ def take_frame(buffer: bytearray) -> tuple[int, bytes] | None:
 
 class WebsiteClient(threading.Thread):
     """A website client at the account name prompt that answers the server's pings and
-    sends a login attempt every 25 s until stopped; closed says the server ended it."""
+    sends a login attempt every 25 s until stopped. If the server closes it, ended holds
+    the last message it sent."""
 
     LOGIN = b'{"type":"cmd","cmd":"login","data":{"account":"Nosuch","password":"wrong1"}}'
 
@@ -126,16 +135,22 @@ class WebsiteClient(threading.Thread):
         super().__init__(daemon=True)
         self.socket = socket.create_connection(("127.0.0.1", port), timeout=5,
                                                source_address=("127.0.0.7", 0))
-        upgrade(self.socket, "198.51.100.9")  # not from the proxy: the header is ignored
+        # Not from the proxy, so the header is ignored.
+        self.buffer = bytearray(upgrade(self.socket, "198.51.100.9"))
         self.since = time.monotonic()
         self.stopping = threading.Event()
-        self.closed = False
+        self.last = b""
+        self.ended: bytes | None = None
 
     def run(self) -> None:
-        buffer = bytearray()
         next_login = self.since
         self.socket.settimeout(1)
         while not self.stopping.is_set():
+            while (frame := take_frame(self.buffer)) is not None:
+                if frame[0] == 0x9:
+                    send_frame(self.socket, 0xA, frame[1])
+                else:
+                    self.last = frame[1]
             if time.monotonic() >= next_login:
                 send_frame(self.socket, 0x1, self.LOGIN)
                 next_login += 25
@@ -146,12 +161,9 @@ class WebsiteClient(threading.Thread):
             except OSError:
                 chunk = b""
             if not chunk:
-                self.closed = True
+                self.ended = self.last
                 return
-            buffer.extend(chunk)
-            while (frame := take_frame(buffer)) is not None:
-                if frame[0] == 0x9:
-                    send_frame(self.socket, 0xA, frame[1])
+            self.buffer.extend(chunk)
 
 
 def rss_kib(server: IsolatedServer) -> int:
@@ -299,8 +311,8 @@ def main() -> int:
                 time.sleep(max(0.0, website.since + 130 - time.monotonic()))
                 website.stopping.set()
                 website.join()
-                require(not website.closed,
-                        "a website client that sent a message every 25 s was closed as idle")
+                require(website.ended is None, "a website client that sent a message every 25 s "
+                        f"was closed: {website.ended!r}")
 
                 # Fill the server: a TLS connection it refuses keeps no GnuTLS session
                 # (about 8 KiB each before).
