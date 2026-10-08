@@ -7,7 +7,8 @@ the ninth is refused, while a login from 127.0.0.2 still gets in; TLS connection
 negotiating count too. Behind the proxy, two client addresses its PROXY headers name are
 counted apart, the proxy's own address, shared by every client it forwards, is not
 capped, and two website logins with different X-Forwarded-For addresses do not close each
-other. A connection silent at the account name prompt is closed after two minutes.
+other. A connection silent at the account name prompt is closed after two minutes. A
+connection from a banned address is told so and closed, and the server stays up.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from test_account_recovery_journey import (
 
 LIMIT = 8
 PROXY = "127.0.0.9"
+BANNED = "127.0.0.23"
 REFUSAL = b"Too many connections from your address."
 
 
@@ -73,11 +75,16 @@ def handshake(port: int, client: str) -> socket.socket:
     return sock
 
 
+def ban(run_root: Path) -> None:
+    """A ban entry for BANNED, as the server's ban command saves one."""
+    (run_root / "lib/misc/ban_sites").write_text(f"Journey\n60\n{BANNED}\n")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="duris-connection-limit-build-") as build:
         binary = build_flatfile_server(Path(build))
         with IsolatedServer(binary, {"DURIS_WEBSOCKET": "TRUE",
-                                     "DURIS_TRUSTED_PROXY_IP": PROXY}) as server:
+                                     "DURIS_TRUSTED_PROXY_IP": PROXY}, ban) as server:
             port = server.plain_port
             tls_port, websocket_port = port + 1, port + 2
             held = []
@@ -109,6 +116,13 @@ def main() -> int:
                 debug = (server.run_root / "logs/log/debug").read_text(errors="replace")
                 require("Refused connection from 127.0.0.1" in debug,
                         "the refusal left no debug-log line:\n" + debug[-4000:])
+
+                banned = socket.create_connection(("127.0.0.1", port), timeout=5,
+                                                  source_address=(BANNED, 0))
+                text = closed_within(banned, 10)
+                require(text is not None and b"banned" in text,
+                        f"a connection from a banned address was not closed: {text!r}")
+                require(server.process.poll() is None, "a banned address stopped the server")
 
                 # Another address still logs in.
                 other = BoundClient(port, "127.0.0.2")
