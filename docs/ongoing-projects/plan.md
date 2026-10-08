@@ -28,8 +28,8 @@ Updated 2026-10-08. A new session starts here, then reads the phase it continues
 | 4 | Security record and `SECURITY.md` | Built on `fix/4-phase-4-security-record` (on Phase 3), documents only, their tests green; open for review as PR #8, tag `backlog/phase-4-review-0`. |
 | 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc` (on Phase 4), gate green; open for review as PR #9, tag `backlog/phase-5-review-0`. |
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
-| 7 | Quest EXP line and `achievements zones` | Built on `fix/4-phase-7-display-fixes` (on Phase 5), gate green; open for review, tag `backlog/phase-7-review-0`. |
-| 8 | Specials assigned to missing vnums | Not started. |
+| 7 | Quest EXP line and `achievements zones` | Built on `fix/4-phase-7-display-fixes` (on Phase 5), gate green; open for review as PR #10, tag `backlog/phase-7-review-0`. |
+| 8 | Specials assigned to missing vnums | Built on `fix/4-phase-8-dead-specials` (on Phase 7), gate green; open for review, tag `backlog/phase-8-review-0`. |
 | 9 | `board` specials and the audit heading | Not started. |
 
 ## Why these
@@ -721,6 +721,34 @@ comparison as Phase 3. Neither changes a reward or a game mechanic.
   pins the filter and the order.
 
 ## Phase 8: specials named for vnums that are not in the world land on index 0
+
+**Built** on `fix/4-phase-8-dead-specials` (stacked on Phase 7), 2026-10-08, in
+`44345ebc9`:
+
+- `tests/async/test_spec_assign_vnums.py` reads every live `real_object0(N)`,
+  `real_mobile0(N)` and `real_room0(N)` with a numeric `N` in `specs.assign.c` (block and
+  line comments blanked, `#if 0` blocks skipped, line numbers kept) and checks it against
+  the `#N` lines of `areas/obj|mob|wld/<area>.*` for the areas `areas/AREA` lists. That
+  reading gives the same 17,681 mobs, 19,150 objects and 253,261 rooms as the generated
+  `world.*` files. Before the deletion it named 142 lines: exactly the 121 of the appendix
+  below, and 21 more.
+- The 142 lines are deleted, with the two continuation lines of the bridge troll's
+  trailing comment and seven section headings left with nothing under them (Sylvandawn
+  twice, fooquest, the pirate ship's `mobs` and `general jabbering`, Wilderness Near
+  Verzanan, Troll Hills). 1,209 live assignments remain, all naming a vnum the world has.
+
+**What differs from the plan, and why.**
+
+- The 21 more are `mob_index[real_mobile0(N)].func.mob = 0;` lines for spec teachers that
+  left the world (1500 to 1520, 200011, 200012, 200321, 210006), which the appendix's
+  count left out because they assign no special. They wrote 0 over mob 1's special and
+  are as dead as the rest, so they went too, and the contract covers every lookup.
+- The special procedures only these lines named (the pirate ship's talkers, the outpost
+  captains, `fooquest_*` and others) stay in the source. They were already unreachable
+  except through index 0, and deleting them is outside decision 9.
+
+**Gate** on `44345ebc9`: `./scripts/format.sh --all --check` clean, `make test-all -j16
+TEST_JOBS=16` 680 passed, 0 failed, `make test-db` 48 of 48. Nothing is left.
 
 **Checked** at `f44291043`. `real_room0()`, `real_mobile0()` and `real_object0()`
 (`src/world/db.c` L4607, L4680, L4748) return 0 for a missing vnum; the comment at
