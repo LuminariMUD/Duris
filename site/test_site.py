@@ -118,8 +118,9 @@ class PagesTests(unittest.TestCase):
         # Mermaid 12 defaults to ELK, which rearranges the existing flowcharts and
         # makes every diagram page download a 1.5 MB layout chunk.
         self.assertIn('layout:"dagre"', (OUTPUT / "assets/app.js").read_text())
-        # chevrotain 11.1.2 pins lodash-es 4.17.23 (GHSA-r5fr-rjxr-66jc and
-        # GHSA-f23m-r3pf-42rh); package.json overrides it with a fixed release.
+        # dagre-d3-es accepts lodash-es ^4.17.21, which includes releases with
+        # GHSA-r5fr-rjxr-66jc and GHSA-f23m-r3pf-42rh; package.json overrides it
+        # with a fixed release.
         lock = json.loads((ROOT / "site/package-lock.json").read_text())
         versions = [entry["version"] for name, entry in lock["packages"].items()
                     if name.rsplit("node_modules/", 1)[-1] == "lodash-es"]
