@@ -148,10 +148,11 @@ All of these are enforced in C and none are optional.
   (mobact.c:5735, fight.c:2566).
 
 A malformed source fails `make world`, naming the file and line, when the
-fault is in the framing (a record header, `T`, `~` and `S`). At boot a
-malformed record logs its zone, vnum and line to `logs/log/status` and is
-skipped, so a bad `.trg` cannot stop a boot. The file is read and never
-written.
+fault is in the framing (a record header, `T`, `~` and `S`), and
+`scripts/cycle_mud.sh` then refuses to boot rather than start on the
+previous area files. A record whose content is malformed passes generation;
+at boot it logs its zone, vnum and line to `logs/log/status` and is
+skipped. The file is read and never written.
 
 The kill switch for an area's triggers is moving its `areas/trg/<area>.trg`
 out of `areas/trg/` and rebooting (the supervisor regenerates

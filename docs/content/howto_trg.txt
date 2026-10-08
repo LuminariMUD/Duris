@@ -13,8 +13,10 @@ What It Is:
   A vnum that already has a hand-written C proc keeps it.  The C proc runs
     first; if it returns TRUE the data trigger never fires.
   The file is read, never written.  A parse error logs zone + vnum + line
-    to logs/log/status and SKIPS that record; a bad .trg cannot stop a
-    boot.  Make sure logs/log/ exists or the parse errors go nowhere.
+    to logs/log/status and SKIPS that record.  A framing error in an
+    areas/trg/<area>.trg (a header, T, ~ or S) fails generation instead,
+    and the supervisor then refuses to boot.  Make sure logs/log/ exists
+    or the parse errors go nowhere.
 
 Record Grammar:
   #<vnum> <M|O|R>            target prototype: Mob / Object / Room

@@ -201,7 +201,8 @@ their framing and fails generation with the file and line of a malformed one
 
 `scripts/cycle_mud.sh` performs both steps automatically when the helper
 binaries are missing, so first boot after a fresh clone works without manual
-intervention.
+intervention. It generates the world before every start and refuses to boot
+when generation fails, rather than start on the previous `areas/world.*`.
 
 ## Finding unreachable code
 
