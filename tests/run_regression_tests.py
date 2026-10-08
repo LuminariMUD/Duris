@@ -6,10 +6,12 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import signal
 import subprocess
 import sys
+import tempfile
 import time
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,6 +19,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TEST_DIRECTORY = ROOT / "tests" / "async"
 MAX_AUTOMATIC_JOBS = 8
+# A test still running at its deadline is ended with its process group and counted as a
+# failure. A pooled test may first build a server artifact (about three minutes); the
+# slowest journey measured 309 s on a loaded host.
+POOLED_DEADLINE_SECONDS = 900
+JOURNEY_DEADLINE_SECONDS = 1800
+# How often a line names the tests still running.
+PROGRESS_SECONDS = 60
 RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
     {
         "test_account_recovery_journey.py",
@@ -59,6 +68,18 @@ class TestResult:
     returncode: int
     output: str
     elapsed: float
+    timed_out: bool = False
+
+    @property
+    def status(self) -> str:
+        if self.timed_out:
+            return "TIMEOUT"
+        if self.returncode < 0:
+            try:
+                return signal.Signals(-self.returncode).name
+            except ValueError:
+                return f"SIGNAL {-self.returncode}"
+        return "PASS" if self.returncode == 0 else "FAIL"
 
 
 def discover_tests(match: str | None) -> list[Path]:
@@ -81,22 +102,32 @@ def partition_tests(tests: list[Path]) -> tuple[list[Path], list[Path]]:
     return parallel, resource_intensive
 
 
-def run_test(path: Path) -> TestResult:
+def run_test(path: Path, deadline: float) -> TestResult:
     started = time.monotonic()
-    completed = subprocess.run(
-        [sys.executable, str(path)],
-        cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        errors="replace",
-        check=False,
-    )
+    # A file, not a pipe: reading it does not wait on a process that outlives the test.
+    with tempfile.TemporaryFile() as output:
+        process = subprocess.Popen(
+            [sys.executable, str(path)],
+            cwd=ROOT,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        timed_out = False
+        try:
+            process.wait(timeout=deadline)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+        output.seek(0)
+        text = output.read().decode(errors="replace")
     return TestResult(
         path=path,
-        returncode=completed.returncode,
-        output=completed.stdout,
+        returncode=process.returncode,
+        output=text,
         elapsed=time.monotonic() - started,
+        timed_out=timed_out,
     )
 
 
@@ -156,10 +187,9 @@ def main() -> int:
     def report(result: TestResult) -> None:
         nonlocal completed_count
         completed_count += 1
-        status = "PASS" if result.returncode == 0 else "FAIL"
         print(
             f"[{completed_count:>{len(str(len(tests)))}}/{len(tests)}] "
-            f"{status} {relative(result.path)} ({result.elapsed:.2f}s)",
+            f"{result.status} {relative(result.path)} ({result.elapsed:.2f}s)",
             flush=True,
         )
         builds = re.findall(r"SERVER_BUILD (built|reused) build=([0-9.]+)s lookup=([0-9.]+)s", result.output)
@@ -169,30 +199,43 @@ def main() -> int:
             print(f"    server artifacts: {', '.join(status for status, _, _ in builds)}; "
                   f"build {build_time:.3f}s; validation {lookup_time:.3f}s; "
                   f"journey/other {max(0, result.elapsed - build_time - lookup_time):.3f}s", flush=True)
-        if result.returncode != 0:
+        if result.status != "PASS":
             failures.append(result)
+            print(f"--- {relative(result.path)} output ---")
+            print(result.output.rstrip() or "(no output)", flush=True)
 
-    with ThreadPoolExecutor(max_workers=jobs) as executor:
-        pending: dict[Future[TestResult], Path] = {
-            executor.submit(run_test, path): path for path in parallel_tests
-        }
-        for future in as_completed(pending):
-            report(future.result())
+    def run_all(paths: list[Path], workers: int, deadline: float) -> None:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures: dict[Future[TestResult], Path] = {
+                executor.submit(run_test, path, deadline): path for path in paths
+            }
+            pending = set(futures)
+            last_progress = time.monotonic()
+            while pending:
+                done, pending = wait(pending, timeout=PROGRESS_SECONDS, return_when=FIRST_COMPLETED)
+                for future in done:
+                    report(future.result())
+                if pending and time.monotonic() - last_progress >= PROGRESS_SECONDS:
+                    running = sorted(relative(futures[future]) for future in pending if future.running())
+                    print(f"    still running: {', '.join(running)}", flush=True)
+                    last_progress = time.monotonic()
 
+    run_all(parallel_tests, jobs, POOLED_DEADLINE_SECONDS)
     # These wait on game time, not on the CPU, so they run together after the pool.
-    with ThreadPoolExecutor(max_workers=max(1, len(resource_intensive_tests))) as executor:
-        for future in as_completed(
-            [executor.submit(run_test, path) for path in resource_intensive_tests]
-        ):
-            report(future.result())
+    run_all(resource_intensive_tests, max(1, len(resource_intensive_tests)), JOURNEY_DEADLINE_SECONDS)
 
-    for result in failures:
-        print(f"\n--- {relative(result.path)} output ---")
-        print(result.output.rstrip() or "(no output)")
-
+    if failures:
+        print("\nFailed:")
+        for result in failures:
+            print(f"    {result.status} {relative(result.path)}")
     elapsed = time.monotonic() - started
+    timeouts = sum(result.timed_out for result in failures)
+    signals = sum(not result.timed_out and result.returncode < 0 for result in failures)
     passed = len(tests) - len(failures)
-    print(f"\n{passed} passed, {len(failures)} failed in {elapsed:.2f}s")
+    print(
+        f"\n{passed} passed, {len(failures)} failed "
+        f"({timeouts} timed out, {signals} ended by a signal) in {elapsed:.2f}s"
+    )
     return 1 if failures else 0
 
 
