@@ -26,7 +26,12 @@ cannot do is *fill those slots* without editing C.
 binds a single generic C proc per target type to every vnum named in it.
 `make world` generates that file: `make_trg` checks each area's
 `areas/trg/<area>.trg` (for the areas `areas/AREA` lists) and appends it,
-then ends the file with `#~`.
+then ends the file with `#~`. Its first line says `make_trg` wrote it.
+Before `make_trg`, `areas/world.trg` was written by hand; `make_trg`
+refuses to replace a file without that first line that holds a record,
+and fails `make world` until its records are moved, without the `#~`
+line, into `areas/trg/<area>.trg`. `make clean-all` deletes
+`areas/world.trg` whoever wrote it, so move them before running it.
 After that, the engine's own dispatch does all the work — there is no
 scripting VM, no interpreter thread, and no new dispatch machinery.
 
