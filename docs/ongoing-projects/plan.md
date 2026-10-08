@@ -437,7 +437,7 @@ the next line would not fit; the trailing "Nothing!" path is unchanged. `npm aud
 - The hosted scan reports only fixed HIGH and CRITICAL findings, so the August scan's
   unfixed MEDIUM Git advisory (`CVE-2024-52005`) is kept as the last one seen at that
   depth rather than dropped or claimed fixed.
-- No code changed, so the gate was the tests that read documents: the 58 tests that read
+- No code changed, so the gate was the tests that read documents: the 41 tests that read
   `docs/` or the README, run bare (all pass after C13), and `npm test --prefix site`
   (15 tests). Phase 5's full gate runs on top of this tree.
 
