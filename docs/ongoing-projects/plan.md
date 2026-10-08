@@ -1,9 +1,11 @@
-# Plan: work items #22, #12, #9, #21, #28, #25 and #8
+# Plan: work items #22, #12, #9, #21, #28, #25 and #8, and the 2026-10-08 log review
 
 Written 2026-10-08 against `master` at `6e1b93cdb`, after the clean-rebuild and fall fixes
-landed (!16). One phase per work item. The order and the decisions below are proposed; the
-owner locks or changes them before Phase 1 starts. This file is a working note: delete it
-when the last phase lands.
+landed (!16). One phase per work item. Phases 8 and 9 were added the same day from the log
+review that followed the staging restart; they have no work item, and the findings file
+that held them was deleted when they were written here. The order and the decisions below
+are proposed; the owner locks or changes them before Phase 1 starts. This file is a working
+note: delete it when the last phase lands.
 
 ## Status
 
@@ -18,11 +20,15 @@ Updated 2026-10-08. A new session starts here, then reads the phase it continues
 | 5 | #28 | Not started. |
 | 6 | #25 | Not started. |
 | 7 | #8 | Not started. |
+| 8 | log review | Not started. |
+| 9 | log review | Not started. |
 
 ## Why these seven
 
 Fifteen work items are open. These seven are defects, exposures or wrong pointers, each a
-bounded change with a gate and a regression test. The other eight are not in this plan:
+bounded change with a gate and a regression test. Phases 8 and 9 are the three open rows of
+the log review after the 2026-10-08 staging restart: a latent defect, a logged warning and a
+stale heading. The other eight work items are not in this plan:
 
 | Item | Why not here |
 |---|---|
@@ -52,6 +58,9 @@ merge request.
 
 ## Decisions (proposed)
 
+Decisions 9 and 10 were locked by the owner on 2026-10-08 as written below; Phases 8 and 9
+have nothing left to decide. Decisions 1 to 8 and 11 are still proposed.
+
 | # | Decision | Where |
 |---|---|---|
 | 1 | A pooled test is ended after 900 s and a journey after 1800 s, by killing its process group; both are constants in the runner. A test ended that way, or by a signal, is a failure with its own label in the summary. A failure's output is printed when it happens, and every 60 s a line names the tests still running. | Phase 1 |
@@ -62,7 +71,9 @@ merge request.
 | 6 | The three studio-proc ids are defined at the end of the `TAG_` list in `spells.h`, with a `static_assert` beside them and a source contract that no other `TAG_` reaches 2198. `world.trg` is built by `make_trg` from `areas/trg/<area>.trg`, run by `make_all`, and a malformed source fails `make world` with its file and line. | Phase 5 |
 | 7 | The site is not published for now, and `docs/guides/GITHUB_PAGES.md` records that. Every README and site link goes to `gitlab.com/max757/duris`; the build badge goes; the commit and issue badges use shields.io's GitLab endpoints. | Phase 6 |
 | 8 | The two display fixes are taken from the community tree with the author kept where a commit applies, adapted otherwise, as Phase 5 of the last plan did. | Phase 7 |
-| 9 | The phases are done in the order below. | All |
+| 9 | The vnums `specs.assign.c` names are checked by a source contract against the area files `areas/AREA` lists, not at run time: the 121 assignments to vnums no longer in the world are deleted, and the test fails the gate when a new one appears or an area leaves the list. The `0` lookups keep returning 0 on a miss; about sixty callers outside `specs.assign.c` compare their result against 0. | Phase 8 |
+| 10 | The nineteen explicit `board` assignments in `specs.assign.c` go; `initialize_boards()` assigns the special to every table row itself. 55197, the discussion board loaded into Winterhaven's Immortal Control Room, gets a `board_info` row at AVATAR for read, write and remove, file `lib/boards/winterhaven`. 87 and 55026 are loaded by no zone and stay plain objects. Room 1196 keeps the necklace; the zone comment that still calls it a board is corrected. | Phase 9 |
+| 11 | The phases are done in the order below. | All |
 
 ## Order
 
@@ -70,10 +81,14 @@ By cost of leaving it: the gate every later phase runs (#22), then the one expos
 silent client can hold every login slot for 15 minutes), a latent stack overflow and a
 known advisory (#9), scans that have not run since 2026-08-27 (#21), an id collision waiting
 to happen and triggers in a hand-edited file (#28), links that send readers to other
-repositories (#25), then two display gaps (#8).
+repositories (#25), then two display gaps (#8). The log-review phases come last: an
+assignment to index 0 that no loaded object or mob reaches today, though room 0 does carry
+`inn` (Phase 8), then a logged warning and a stale heading (Phase 9).
 
 Things to keep in mind across phases:
 
+- **Phases 8 and 9** both edit `src/specs/specs.assign.c`; Phase 9's nineteen lines are among
+  the ones Phase 8's contract reads, so land 8 first.
 - **#12** edits `src/net/comm.c`, which `tests/async/test_boot_log_hygiene.py` pins in
   places; read its contracts before moving anything there.
 - **#9 and #25** both touch `site/`; run `npm test --prefix site` in both.
@@ -245,3 +260,102 @@ as `docs/records/COMMUNITY_DURIS_TRACKING.md` describes, and adapted where our f
 1. The EXP line, with a harness test for both branches of the done-when.
 2. The filter and the sort, with a test that pins them.
 3. The ledger rows for the three commits. Gate.
+
+## Phase 8: specials named for vnums that are not in the world land on index 0 (log review)
+
+**Checked** at `f44291043`. `real_room0()`, `real_mobile0()` and `real_object0()`
+(`src/world/db.c` L4607, L4680, L4748) return 0 for a missing vnum; the comment at
+L4531-4539 says this was done so `spec_ass.c` never indexes -1. `specs.assign.c` assigns
+through them at about 1,500 sites with no check. Against the `world.*` files generated at the
+2026-10-08 staging boot, with comments and `#if 0` blocks excluded, 17 object, 86 mobile and
+18 room assignments name vnums that do not exist (the appendix below). The last in file order
+wins: object 1 ("a silvery pendant in the shape of a skull", `areas/obj/Magetower.obj`) ends
+with `staff_of_blue_flames` (L1971), mobile 1 ("mob", a placeholder) with `world_quest`
+(L2214) and room 0 "The Void" with `inn` (L2462). Object 1 and mobile 1 are loaded by no zone
+command and no `player_items` row holds object 1, so those two are dormant; room 0 is live.
+The lookups cannot change: about sixty callers outside `specs.assign.c` compare their result
+against 0 (`src/classes/mount.c` L652-657, `src/magic/smagic.c` L3037, and the rest).
+
+**Fix.** By decision 9, no runtime guard. `tests/async/test_spec_assign_vnums.py` reads every
+live `real_object0(N)`, `real_mobile0(N)` and `real_room0(N)` with a numeric `N` in
+`specs.assign.c` (comments and `#if 0` blocks stripped; the few named constants and the loop
+at L317 are outside its reach) and checks each against the `#N` lines of the area files
+`areas/AREA` lists, `areas/obj/<area>.obj`, `areas/mob/<area>.mob` and
+`areas/wld/<area>.wld`, which is what `make_all` concatenates into the generated files. The
+121 dead lines are deleted. The alternative, a specs-local helper that skips and logs a miss,
+means rewriting the 1,500 call sites into call form, since the `0` lookups' return cannot
+move, and would log every one of these lines at each boot until the same pruning was done;
+the contract gets the same protection from the gate alone.
+
+**Steps.**
+
+1. The test. Before any pruning it must name exactly the 121 lines in the appendix; a
+   difference means an area the generator reads differently from the list, and the test
+   follows the generator.
+2. Delete the 121 lines; `make -C src`; the test passes bare. Gate.
+
+**Appendix: the dead assignments** (`src/specs/specs.assign.c` lines at `f44291043`,
+format `vnum→special (line)`).
+
+Objects (17), all landing on object 1:
+35102→magic_pool (L1287); 35103→magic_pool (L1288); 32507→shard_frozen_styx_water (L1455);
+70549→circlet_of_light (L1501); 70554→ljs_sword (L1502); 70556→wuss_sword (L1503);
+70558→head_guard_sword (L1504); 70559→priest_rudder (L1505); 70565→alch_bag (L1506);
+70568→alch_rod (L1507); 70571→ljs_armor (L1508); 70572→dragon_skull_helm (L1509);
+65050→dragonslayer (L1552); 4801→magic_pool (L1827); 4802→magic_pool (L1828);
+25080→ring_elemental_control (L1965); 25103→staff_of_blue_flames (L1971).
+
+Mobiles (86), all landing on mobile 1:
+8028→cityguard (L374); 8034→cityguard (L375); 8047→cityguard (L376); 1919→bridge_troll (L416);
+65012→fooquest_mob (L478); 65013→fooquest_boss (L479); 4070→piercer (L569);
+4120→guild_guard (L570); 210004→undeadcont_track (L587); 210005→undeadcont_track (L588);
+4812→poison (L622); 4830→wanderer (L623); 150115 to 150140→outpost_captain (L687 to L712,
+26 lines); 8003→world_quest (L772); 8309→world_quest (L779); 8004→money_changer (L904);
+8019→guild_guard (L905); 8029→guild_guard (L906); 8037→guild_guard (L907);
+8039→guild_guard (L908); 8040→guild_guard (L909); 8041→guild_guard (L910);
+8042→guild_guard (L911); 8044→janitor (L912); 8050→guild_guard (L913);
+8311→guild_guard (L914); 8312→guild_guard (L915); 8313→guild_guard (L916);
+14202→bridge_troll (L987); 25000→guild_guard (L1051); 25101→guild_guard (L1054);
+25104→guild_guard (L1055); 150100→patrol_leader (L1212); 150101→patrol_leader_road (L1213);
+65015, 65016, 65018, 65019, 65022, 65024, 65026, 65028, 65029, 65030, 65032, 65033,
+65034→newbie_quest (L1228 to L1240, 13 lines); 70535→long_john_silver_shout (L1514);
+70542→undead_parrot (L1515); 70546→undead_dragon_east (L1516);
+70552→pirate_cabinboy_talk (L1519); 70554→pirate_female_talk (L1520); 70502, 70503, 70539,
+70540, 70541, 70549, 70551, 70561→pirate_talk (L1521 to L1528); 87891→world_quest (L2214).
+
+Rooms (18), all landing on room 0:
+29605→inn (L296); 19890→GithyankiCave (L2294); 3398→inn (L2318); 66355→undead_inn (L2337);
+43341→patrol_shops (L2340); 140854→ship_shop_proc (L2388); 258421→ship_shop_proc (L2389
+and L2392); 70501→ship_shop_proc (L2391); 8010→pet_shops (L2435); 8211→dump (L2436);
+8323→pet_shops (L2437); 8003→inn (L2438); 8287→ship_shop_proc (L2439); 29502→inn (L2456);
+30511→inn (L2457); 29903→inn (L2459); 30303→inn (L2462).
+
+## Phase 9: six `board` specials without a table row, and the audit's heading (log review)
+
+**Checked** at `f44291043`. `board_info[]` (`src/cmd/boards.c` L55-103, `NUM_OF_BOARDS` 44
+at L52) is what `find_board()` (L121) searches, so an object carrying the `board` special
+without a row makes `look`, `read`, `examine`, `write` or `remove` near it log
+`degenerate board!  (what the hell...)` (L199). `specs.assign.c` assigns `board` to nineteen
+vnums (L1761-1776, L2102, L2103); six of them, 76, 86, 87, 42, 55026 and 55197, have no row.
+`initialize_boards()` (L134) already assigns the special to every row (L162) and a board
+whose file does not exist yet loads quietly (`Board_load_board()` L519), so none of the
+nineteen lines is needed. Of the six, 42 is now "a dazzling pearl necklace"
+(`areas/obj/dalvik.obj` L549) that `areas/zon/heavens.zon` L182 still loads into room 1196
+"The Ideas Room" under the comment `* The board of IDEAS`; 55197 "a discussion board"
+(`areas/obj/wh.obj` L2590) is loaded by `areas/zon/wh.zon` L559 into room 55612, the Immortal
+Control Room of Winterhaven; 76, 86, 87 and 55026 are loaded by no zone command and held by
+no character. The staging run before the restart logged the line six times, the last six
+seconds after a level-62 login. Separately, `scripts/item_ownership_audit.sh` L65 still
+prints `item loss: dropped at load, deleted at next save` over the orphan-payload count,
+which the header comment at L10-14 says is not a loss.
+
+**Fix.** By decision 10: delete the nineteen lines; add the 55197 row and raise
+`NUM_OF_BOARDS` to 45; correct the zone comment at `heavens.zon` L182; reword the echo to
+say what the header says.
+
+**Steps.**
+
+1. The deletion and the row. `tests/async/test_spec_assign_vnums.py` gains a check that
+   `specs.assign.c` assigns `board` nowhere, so the table stays the one owner. In a local
+   boot a wizard reads and writes the Winterhaven board; `logs/log/board` stays empty.
+2. The zone comment and the echo. Gate.
