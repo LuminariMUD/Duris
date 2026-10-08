@@ -28,6 +28,9 @@ Record Grammar:
   S                          ends the record
   #~                         ends the file
   '*' starts a comment.  Blank lines are ignored.
+  One record per target: put all of a vnum's triggers in it.  A second
+    record for the same vnum and letter, in any area's file, is logged and
+    skipped at boot.
   In messages $n is the actor, $m is the self, $$ is a literal $.
 
   Example -- a guard that bars the east door to anyone without a pass:
