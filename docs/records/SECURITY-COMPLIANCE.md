@@ -1,7 +1,7 @@
 # Security & Compliance
 
 > Cumulative security posture and GDPR compliance record. Findings were last audited at
-> Phase 03 (2026-08-27); the text was brought up to date on 2026-10-05.
+> Phase 03 (2026-08-27); the text was brought up to date on 2026-10-08.
 >
 > This is an engineering record, not legal advice or a determination of applicability.
 
@@ -99,7 +99,7 @@ fail closed.
 | No private values in persistence diagnostics | PASS | Log-hygiene and gate-containment tests pass. |
 | Security of processing is verified | PASS | One-writer persistence, critical transactions, migration/boot gates and dual-engine tests pass. |
 | Third-party/processor transfers are documented | FAIL | No processor inventory, backup-storage record or transfer documentation exists. |
-| Vulnerability reporting process exists | PARTIAL | `SECURITY.md` and the local source/dependency checks exist, but the policy names a reporting form on another repository. |
+| Vulnerability reporting process exists | PASS | `SECURITY.md` names the current `0.1.x` line and this repository's private vulnerability reporting form, turned on 2026-10-08. |
 
 ---
 
@@ -107,19 +107,20 @@ fail closed.
 
 ### Current Vulnerabilities
 
-The last recorded scan (2026-08-27) found no fixed high or critical direct-package issue
-and one unfixed medium Git advisory (`CVE-2024-52005`). Transitive dependencies,
-deployment-only services, and external infrastructure are outside that scan; the record
-does not claim the dependency set is vulnerability-free. No hosted pipeline runs the
-scans now, and `libcurl4-gnutls-dev` was added after the last one
-([SECURITY_BASELINE.md](../operations/SECURITY_BASELINE.md)).
+The `security baseline` workflow runs the scans on every push to `master`. Its run of
+2026-10-08 found no fixed high or critical issue in the 23 resolved direct packages,
+`libcurl4-gnutls-dev` among them, and CodeQL reported nothing; it lists no unfixed or
+lower finding, and the last scan that did (2026-08-27) found one unfixed medium Git
+advisory (`CVE-2024-52005`). Transitive dependencies, deployment-only services, and
+external infrastructure are outside the scan; the record does not claim the dependency
+set is vulnerability-free ([SECURITY_BASELINE.md](../operations/SECURITY_BASELINE.md)).
 
 | Scope | Current State | Status |
 |-------|---------------|--------|
 | Native/system direct dependencies | Deterministic inventory and SPDX 2.3 output (`make security-sbom`) | PARTIAL |
-| Workflow action pins | Immutable SHAs, held by `test_security_dependency_baseline.py`; nothing proposes updates | PARTIAL |
-| Source and configuration security | Local checks (`make security-check`); CodeQL last ran 2026-08-27 | PARTIAL |
-| Container/root filesystem scan | Pinned Trivy recipe; last run 2026-08-27 | STALE |
+| Workflow action pins | Immutable SHAs, held by `test_security_dependency_baseline.py`; Dependabot proposes updates weekly | PASS |
+| Source and configuration security | `make security-check` and CodeQL on every push to `master`; no open alert on 2026-10-08 | PASS |
+| Container/root filesystem scan | Pinned Trivy on every push to `master`; last run 2026-10-08, no fixed high or critical finding | PASS |
 
 ---
 

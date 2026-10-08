@@ -29,11 +29,12 @@ does not perform a vulnerability scan.
 
 ## The Security Workflow
 
-`.github/workflows/security.yml` is the recipe. No hosted pipeline runs it: replay it by
+`.github/workflows/security.yml` (`security baseline`) runs on every push to `master` and
+every pull request to it, on GitHub; the scan of record is its latest completed run on
+`master`. Verification here is local and does not wait for a hosted run, so replay it by
 hand when a change touches dependencies, `packaging/`, the `Dockerfile`, or network or
-authentication code, and before a production deploy
-([TESTING.md](../guides/TESTING.md#before-a-merge)). All `uses:` references are immutable
-commit SHAs with human-readable version comments. It performs:
+authentication code ([TESTING.md](../guides/TESTING.md#before-a-merge)). All `uses:`
+references are immutable commit SHAs with human-readable version comments. It performs:
 
 1. repository-specific local source/configuration contracts (`make security-check`);
 2. a warning-as-error C++ build captured by CodeQL C/C++ analysis;
@@ -45,13 +46,17 @@ there (`gh api repos/<owner>/<repo>/code-scanning/default-setup` reads `not-conf
 otherwise the upload is refused and every later step, Trivy included, is skipped.
 
 Native packages remain distribution-managed; the generated inventory is the review input
-because Dependabot has no ecosystem for an `equivs` control file.
+because Dependabot has no ecosystem for an `equivs` control file. Dependabot
+(`.github/dependabot.yml`) proposes updates to the workflow action pins and to the
+`site/` npm packages weekly, and its security updates and alerts cover `site/` as well.
 
 ## Ownership And Failure Policy
 
 Repository maintainers own triage. A fixed HIGH or CRITICAL Trivy finding fails the
-check. Unfixed findings remain visible for triage but do not fail by default; changing
-that policy requires a reviewed workflow change. No vulnerability is ignored in a
+check. The workflow's scan lists nothing else (`ignore-unfixed`, `HIGH,CRITICAL`):
+unfixed and lower findings are seen only by running Trivy by hand over
+`bin/security/scanner-rootfs` without those options; changing that policy requires a
+reviewed workflow change. No vulnerability is ignored in a
 committed exception file at this baseline.
 
 Reports are triaged for reachability, affected supported versions, exploitability, and
@@ -59,20 +64,25 @@ available upstream fixes. A temporary exception must be documented in a public i
 when disclosure is safe, or in the private advisory when it is not, with an owner,
 rationale, compensating control, and expiry date.
 
-## Baseline Result (2026-08-27)
+## Baseline Result (2026-10-08)
 
-- Direct manifest inventory and SPDX generation: completed locally.
-- Repository-specific source/configuration gate: passed locally.
-- Workflow syntax (`actionlint` 1.7.10): passed locally.
-- CodeQL C/C++ analysis: ran clean; the run reported no failing alert.
-- Trivy `v0.70.0` with the 2026-08-26 vulnerability database recognized Ubuntu 24.04
-  and scanned all 19 resolved direct packages. It reported one unfixed MEDIUM advisory
-  (`CVE-2024-52005`) for the installed Ubuntu Git package and no fixed HIGH/CRITICAL
-  finding. This passes the stated gate but is not a clean or vulnerability-free claim.
-- libcurl4-gnutls-dev added to the build dependencies (2026-09-06), after this scan:
-  the count of 19 predates it and no scan has covered it yet. A fixed
-  HIGH/CRITICAL finding against the Ubuntu 24.04 package is fixed by the package update,
-  never by a weakened transport setting.
+The `security baseline` run of 2026-10-08 on `master` at `690a7575d` (run 37808827646,
+completed 16:46 UTC):
+
+- `make security-check` (inventory, SPDX and the repository's source/configuration
+  contracts): passed.
+- CodeQL 2.27.1 C/C++ analysis of the warning-as-error build: 0 results over 58 rules;
+  code scanning listed no open alert.
+- Trivy `v0.70.0` recognized Ubuntu 24.04 and scanned all 23 resolved direct packages,
+  `libcurl4-gnutls-dev` 8.5.0 among them (it joined the build dependencies on
+  2026-09-06, after the previous scan), and reported no fixed HIGH or CRITICAL finding.
+  The run does not list unfixed or lower findings; the previous, local scan of all
+  severities (2026-08-27, 19 packages) reported one unfixed MEDIUM Git advisory
+  (`CVE-2024-52005`). This passes the stated gate but is not a clean or
+  vulnerability-free claim. A fixed HIGH/CRITICAL finding against the Ubuntu 24.04 libcurl
+  package is fixed by the package update, never by a weakened transport setting.
+- On 2026-10-08 the owner turned on, for `LuminariMUD/Duris`, private vulnerability
+  reporting, Dependabot security updates, and secret scanning with push protection.
 - Transitive and deployment dependency vulnerability status: `UNKNOWN` by design.
 
 Security reports follow [SECURITY.md](../../SECURITY.md). Generated reports, scanner
