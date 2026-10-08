@@ -26,9 +26,9 @@ Git history.
 | TLS telnet | `mud.duris.sbs:7778` | Let's Encrypt; expires 2026-12-05 |
 | MUD WebSocket/health origin | `127.0.0.1:4050` | Loopback-only. The MUD's `.env` must set `DURIS_WEBSOCKET=TRUE`: the listener is off by default, and the website and both health checks need it |
 | Public MUD WebSocket/health | `wss://mud.duris.sbs`, `https://mud.duris.sbs/health` | Nginx TLS proxy to the origin |
-| Website checkout | `/home/duris/website` | ` `, deployed from `master` |
+| Website checkout | `/home/duris/website` | The DurisWeb repository, deployed from `master` |
 | Website application | `durisweb-production.service`, `127.0.0.1:3001` | Private cache `durisweb-redis.service` on `127.0.0.1:6380` |
-| Website tunnel | `durisweb-cloudflared.service`, tunnel `5b7d0472-7d5b-4c6e-8aa3-cd550e2bdb60` | `duris.sbs` routes to the application; `duris.sbs` routes to Nginx port 80, which redirects to `www` and passes `/health` through |
+| Website tunnel | `durisweb-cloudflared.service`, tunnel `5b7d0472-7d5b-4c6e-8aa3-cd550e2bdb60` | `www.duris.sbs` routes to the application; `duris.sbs` routes to Nginx port 80, which redirects to `www` and passes `/health` through |
 | Tunnel readiness | `http://127.0.0.1:20243/ready` | Loopback-only |
 | Watchdog | `durisweb-watchdog.timer` | Runs `/usr/local/sbin/durisweb-watchdog` every minute |
 
@@ -134,4 +134,4 @@ health response must be `{"status":"healthy","persistence":"ready"}`.
 - The root-run watchdog executes a root-owned copy, never a script in a checkout
   the service account can modify.
 - The MUD WebSocket origin allow-list is restricted to `https://duris.sbs`
-  and `https://duris.sbs`.
+  and `https://www.duris.sbs`.
