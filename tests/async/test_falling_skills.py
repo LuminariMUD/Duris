@@ -303,6 +303,15 @@ int main() {
     event_falling_char(&person, nullptr, nullptr, &here);
     assert(person.in_room == 1 && schedule_attempts == 1 && scheduled_speed == 31);
 
+    // A down exit onto the room itself, or back onto the room the step came from, is
+    // no way down: the fall lands there instead of never ending.
+    reset(); ledge(); downward.to_room = 0;
+    assert(falling_step(&person, 1) == falling_step_result::landed);
+    assert(person.in_room == 0 && applied_damage == 2 && schedule_attempts == 0);
+    reset(); ledge(); next_downward.to_room = 0; rooms[1].dir_option[DIR_DOWN] = &next_downward;
+    assert(falling_step(&person, 1) == falling_step_result::landed);
+    assert(person.in_room == 1 && applied_damage > 0 && schedule_attempts == 0);
+
     puts("falling executor skill, lifetime, relocation and scheduling regressions passed");
 }
 '''

@@ -32,7 +32,8 @@ def run(binary):
         world = runtime / 'areas_mini/mini.wld'
         text = world.read_text()
         text = text.replace('1 0 0\nS\n$~',
-                            '1 0 0\nD1\n~\n~\n0 0 22801\nD2\n~\n~\n0 0 22803\nS\n$~')
+                            '1 0 0\nD1\n~\n~\n0 0 22801\nD2\n~\n~\n0 0 22803\n'
+                            'D3\n~\n~\n0 0 22805\nS\n$~')
         assert '0 0 22801' in text, 'arena exit fixture changed'
         rooms = '''#22801
 The Regression Ledge~
@@ -67,6 +68,19 @@ D5
 ~
 ~
 0 0 22802
+S
+#22805
+The Regression Pit~
+Open air; the only way down is back here.\n~
+1 0 8
+D1
+~
+~
+0 0 22800
+D5
+~
+~
+0 0 22805
 S
 '''
         world.write_text(text.replace('$~', rooms + '$~'))
@@ -188,6 +202,21 @@ S
             assert int(saved[0]) == 22802, saved
             stop()
             print('falling gate: a move typed during the fall was refused, landed in the fall room', flush=True)
+            # The pit's down exit leads back onto the pit: a loop in the data, not a way
+            # down. The fall lands at its first step and the gate lets go. (It used to fall
+            # forever, and once gated, refused every command for as long as that lasted.)
+            subprocess.run([str(fixture), str(state), 'unskilled'], check=True)
+            boot()
+            client = journey.reconnect_character(port)
+            client.send('west')
+            client.expect('You rediscover the law of gravity', timeout=20)
+            client.expect('You land with stunning force!', timeout=20)
+            saved = save_after_landing()
+            assert int(saved[0]) == 22805, saved
+            client.send('look')
+            client.expect('The Regression Pit', timeout=20)
+            stop()
+            print('falling loop: a down exit onto the room itself landed at once', flush=True)
         except Exception:
             print((runtime / 'server.out').read_text(errors='replace')[-8000:])
             if client:

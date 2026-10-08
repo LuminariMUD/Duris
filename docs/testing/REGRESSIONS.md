@@ -172,6 +172,11 @@ custody and wallet; a reconnect keeps the inventory without replaying the haul.
   fires only in the room it was scheduled in: a faller summoned or teleported between two
   steps is left where they are. (A move typed inside the gap between two steps used to
   run, and the fall then landed wherever the walk went, three rooms away in the report.)
+- A down exit back onto the room itself, or onto the room the step came from, lands the
+  fall instead of continuing it, and `test_falling_world_exits.py` refuses any longer loop
+  of down exits in `areas/wld`. (Three live rooms fell forever, and once commands were
+  gated, nothing but a god or a reboot ended it. The two chasm rooms of the northern
+  wilderness now fall down the chasm; the Pocket of Exile lands on its disc.)
 - The flat 80 to 120 impact term grows with the fall: a third of it for a one-room fall
   (speed 31), all of it from speed 90. The hit-point term, the agility deduction, the
   minimum of 2 and Safe Fall are unchanged. (Flat, it was most of a low-level
@@ -179,6 +184,7 @@ custody and wallet; a reconnect keeps the inventory without replaying the haul.
 
 ```sh
 python3 tests/async/test_falling_skills.py
+python3 tests/async/test_falling_world_exits.py
 python3 tests/async/run_falling_skills_journey.py /absolute/path/dms_flat
 python3 tests/async/test_lethal_floor.py
 python3 tests/async/run_lethal_floor_journey.py /absolute/path/dms_flat nonlethal
@@ -191,8 +197,8 @@ ASan/UBSan and exhausts every 1-100 roll for negative, zero, boundary, ordinary 
 above-cap skill values: success and failure, short and long falls, odd-damage rounding,
 minimum damage, a lethal
 threshold, water, a breakable floor, mount and rider, flight and levitation, Climb active
-and absent, Mental Anguish, initial against already-scheduled falls, and a step whose
-faller has left the scheduled room. Its journey walks a character off a ledge, lands,
+and absent, Mental Anguish, initial against already-scheduled falls, a step whose
+faller has left the scheduled room, and down exits that loop. Its journey walks a character off a ledge, lands,
 saves and reloads in the landing room, then steps onto a shelf with a certain fall chance,
 types a move behind the command that starts the fall, and sees it refused and the landing
 in the fall's own room. The fixture is a

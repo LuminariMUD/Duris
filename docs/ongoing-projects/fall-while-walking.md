@@ -64,3 +64,14 @@ On the branch `fix/build-findings-and-falling`, with the build findings of
 | 4 | Changed | The flat 80 to 120 term now grows with the fall: a one-room fall (speed 31) carries a third of it, two rooms (43) about half, and it applies in full from speed 90, where the high-speed band begins (`falling_impact_damage` in `src/world/falling_policy.c`). The `max_hit × speed/250` term, the agility deduction, the minimum of 2 and Safe Fall are unchanged, so long falls are as they were. A balance change on the owner's instruction; its commit stands alone and can be dropped. |
 | 5 | Changed | The two canyon-wall rooms (15265 and 15266 in `areas/wld/faang.wld`) are `NO_MOB`: a wandering mob does not stand on the climbing wall, so the black widow spider meets the traveller in the caves or at the bank, not where a command is swallowed by a fall. The fall chances stay as the builder set them, and the spider's seven resets are untouched. Also its own commit. |
 | 6 | Done | See 1. |
+
+### Review of `9f7253f7e` (2026-10-08)
+
+The adversarial review of the merge request found two things the gate made worse.
+
+| # | Severity | Finding | Change |
+|---|---|---|---|
+| 1 | High | Three live rooms never land: 12302 and 12305 "Inside the Chasm" (`northern_wilderness.wld`) have a down exit onto themselves, and 134128 "The Pocket of Exile" and 134129 "In the Center of Nowhere" (`lortower.wld`) have each other's. The fall was endless on master too, but a command typed between two steps ended it; gated, nothing but a god or a reboot did. | A down exit back onto the room itself, or onto the room the step came from, is a loop in the data, not a way down: `falling_step()` lands there (`src/world/falling.c`). The pocket pair lands on the disc of force in 134128, which its text describes as the floor, with the portal north of it. The two chasm rooms now fall down the chasm like their neighbours (12302 to 12304, 12305 to 12306, and on to the bottom at 12309): a character cannot walk out of open air, so landing on the spot would have stranded them there, as the endless fall did on master. `tests/async/test_falling_world_exits.py` walks every fall entry in `areas/wld` the way the server does and refuses any longer loop of down exits; none exists (1,315 entries, longest fall 27 rooms). No step bound: a fall that a loop of three or more rooms could never end would only end by a lethal landing, and the test refuses the data before it merges. |
+
+Regressions: the pit phase of `tests/async/run_falling_skills_journey.py`, the loop cases of
+`tests/async/test_falling_skills.py`, and the new world test.
