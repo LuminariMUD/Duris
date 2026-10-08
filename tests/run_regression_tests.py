@@ -145,8 +145,10 @@ def run_test(path: Path, deadline: float) -> TestResult:
             process.wait(timeout=deadline)
         except subprocess.TimeoutExpired:
             timed_out = True
-            end_group(process)
-            process.wait()
+        # Whatever the test started goes with it, however it ended: a crashed journey's
+        # server would keep its port and its CPU while later tests run.
+        end_group(process)
+        process.wait()
         with running_lock:
             running.discard(process)
         output.seek(0)

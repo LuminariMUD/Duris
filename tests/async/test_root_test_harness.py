@@ -128,6 +128,10 @@ with tempfile.TemporaryDirectory(prefix="duris-runner-") as scratch:
         "test_fails.py": "print('synthetic failure output')\nraise SystemExit(1)\n",
         "test_passes.py": "print('fine')\n",
         "test_signalled.py": "import os, signal\nos.kill(os.getpid(), signal.SIGTERM)\n",
+        "test_crashes.py": "import os, pathlib, signal, subprocess, sys\n"
+        "server = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)'])\n"
+        "pathlib.Path(__file__).with_suffix('.pids').write_text(str(server.pid))\n"
+        "os.kill(os.getpid(), signal.SIGKILL)\n",
     }
     for name, source in scripts.items():
         (tests_dir / name).write_text(source)
@@ -140,6 +144,12 @@ with tempfile.TemporaryDirectory(prefix="duris-runner-") as scratch:
         assert all_gone(pids), f"{name} left a process behind: {pids}"
     result = runner.run_test(tests_dir / "test_fails.py", 1)
     assert result.status == "FAIL" and "synthetic failure output" in result.output, result
+    # However a test ends, what it left running goes with it: here the server of a test
+    # that died before it could stop it.
+    result = runner.run_test(tests_dir / "test_crashes.py", 10)
+    assert result.status == "SIGKILL" and result.elapsed < 10, result
+    server = int((tests_dir / "test_crashes.pids").read_text())
+    assert all_gone([server]), f"test_crashes.py left its server running: {server}"
 
     # Through main(): a failure's output comes when it fails, a line names what is still
     # running, and the summary counts timeouts and signals apart.
@@ -153,12 +163,13 @@ with tempfile.TemporaryDirectory(prefix="duris-runner-") as scratch:
          contextlib.redirect_stdout(output):
         assert runner.main() == 1
     text = output.getvalue()
-    summary = "1 passed, 4 failed (2 timed out, 1 ended by a signal) in "
+    summary = "1 passed, 5 failed (2 timed out, 2 ended by a signal) in "
     assert summary in text, text
     assert text.index("synthetic failure output") < text.index("\nFailed:") < text.index(summary), text
     assert "still running: tests/async/test_child_sleeps.py, tests/async/test_sleeps.py" in text, text
     for line in ("TIMEOUT tests/async/test_sleeps.py", "TIMEOUT tests/async/test_child_sleeps.py",
-                 "FAIL tests/async/test_fails.py", "SIGTERM tests/async/test_signalled.py"):
+                 "FAIL tests/async/test_fails.py", "SIGTERM tests/async/test_signalled.py",
+                 "SIGKILL tests/async/test_crashes.py"):
         assert f"    {line}\n" in text, text
 
     # Stopping the runner, by Ctrl-C or by a SIGTERM from a supervisor or `timeout`, ends
