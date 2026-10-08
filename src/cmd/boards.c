@@ -171,18 +171,11 @@ void initialize_boards(void)
 int board([[maybe_unused]] P_obj obj, P_char ch, int cmd, char *argument)
 {
 	int board_type;
-	static bool loaded = FALSE;
 
 	/* check for periodic event calls  */
 	if (cmd == CMD_SET_PERIODIC)
 	{
 		return FALSE;
-	}
-
-	if (!loaded)
-	{
-		initialize_boards();
-		loaded = TRUE;
 	}
 
 	if (!ch || !ch->desc)
