@@ -73,6 +73,10 @@ jobs:
             echo "Trivy did not scan a supported dependency target." >&2
             exit 1
           fi
+          if ! python3 -c 'import json; assert all(d["status"] == "resolved" for d in json.load(open("bin/security/dependency-inventory.json"))["dependencies"])'; then
+            echo "A declared dependency is not installed, so Trivy did not scan it." >&2
+            exit 1
+          fi
           if [ "$TRIVY_OUTCOME" = "failure" ]; then
             echo "Trivy found a fixed HIGH or CRITICAL vulnerability; inspect the uploaded report." >&2
             exit 1

@@ -13,19 +13,34 @@ make security-check
 Generated outputs are written under ignored `bin/security/`:
 
 - `dependency-inventory.json` records every direct expression from
-  `packaging/duris-build-deps.equivs`, the installed alternative and version when
-  available, and unresolved expressions explicitly.
+  `packaging/duris-build-deps.equivs`, the installed alternative with its version and
+  source package when available, and unresolved expressions explicitly. A metapackage
+  from a `*-defaults` source (the MySQL defaults, `python3`, `clang-format`) is recorded
+  as the installed package it depends on: no advisory names the metapackage.
 - `duris.spdx.json` is SPDX 2.3 for those resolved direct packages. Its timestamp comes
   from the source commit and its namespace from canonical inventory content, so the
   same commit and installed package set reproduce byte-identical output.
 - `scanner-rootfs/` contains minimal OS identity and dpkg status records for only the
-  resolved direct packages. It exists because Trivy cannot infer Debian/Ubuntu package
-  semantics from a direct-package-only SPDX document; the workflow rejects an
-  unsupported or empty scan instead of treating it as clean.
+  resolved direct packages, each with its `Source:` line: Trivy matches Ubuntu
+  advisories by source package (`curl`, not `libcurl4-gnutls-dev`). It exists because
+  Trivy cannot infer Debian/Ubuntu package semantics from a direct-package-only SPDX
+  document; the workflow rejects an unsupported or empty scan, or an unresolved
+  dependency, instead of treating it as clean.
 
 The inventory does not resolve transitive packages, deployment-only MySQL/Redis/host
 services, containers, firmware, or external DurisWeb infrastructure. SPDX generation
 does not perform a vulnerability scan.
+
+A scan describes the machine it ran on. To scan a host, run there `make security-sbom`,
+check that the inventory lists no `unresolved` entry, and run the workflow's Trivy step
+with Trivy `v0.70.0`:
+
+```bash
+trivy rootfs --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 bin/security/scanner-rootfs
+```
+
+A deployment counts as scanned only from such a run on it, recorded with its date and
+Trivy's database version.
 
 ## The Security Workflow
 
@@ -39,7 +54,11 @@ references are immutable commit SHAs with human-readable version comments. It pe
 1. repository-specific local source/configuration contracts (`make security-check`);
 2. a warning-as-error C++ build captured by CodeQL C/C++ analysis;
 3. Trivy `v0.70.0` scanning of the generated direct-package root while preserving the
-   equivalent SPDX document as the portable SBOM.
+   equivalent SPDX document as the portable SBOM. That root is the runner's: a fresh
+   `ubuntu-24.04` image that has just installed the build-deps package, so the
+   archive's newest builds and the runner's alternatives (MySQL, not MariaDB; git from
+   the runner's PPA). It shows whether those builds carry a fixed HIGH or CRITICAL
+   advisory, not whether a host Duris runs on is up to date.
 
 On GitHub it is an *advanced* CodeQL configuration, so CodeQL default setup must be off
 there (`gh api repos/<owner>/<repo>/code-scanning/default-setup` reads `not-configured`);

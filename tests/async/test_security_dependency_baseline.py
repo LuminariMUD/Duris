@@ -56,6 +56,7 @@ assert "severity: HIGH,CRITICAL" in security_workflow
 assert "ignore-unfixed: true" in security_workflow
 assert "continue-on-error: true" in security_workflow
 assert "Trivy did not scan a supported dependency target." in security_workflow
+assert "A declared dependency is not installed, so Trivy did not scan it." in security_workflow
 assert 'TRIVY_OUTCOME: ${{ steps.trivy.outcome }}' in security_workflow
 assert "if: always()" in security_workflow
 print("[PASS] immutable CodeQL/Trivy CI preserves reports and enforces stated policy")
@@ -157,6 +158,12 @@ assert all(
     for dependency in inventory["dependencies"]
     if dependency["status"] == "resolved"
 )
+# python3 (python3-defaults) is always installed, so this exercises the resolution.
+assert not any(
+    dependency["source"].split()[0].endswith("-defaults")
+    for dependency in inventory["dependencies"]
+    if dependency["status"] == "resolved"
+), inventory["dependencies"]
 assert "vulnerability status" in inventory["coverage"]["not_included"]
 assert spdx["spdxVersion"] == "SPDX-2.3"
 assert spdx["dataLicense"] == "CC0-1.0"

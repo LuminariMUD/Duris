@@ -73,6 +73,19 @@ def installed_provider(name: str) -> tuple[str, str, str] | None:
     return sorted(providers)[0] if providers else None
 
 
+def defaults_dependency(name: str) -> tuple[str, str, str] | None:
+    # A *-defaults source (mysql-defaults, python3-defaults, llvm-defaults) builds only
+    # metapackages, which no advisory names; scan the installed package one depends on.
+    if not command("dpkg-query", "-W", "-f=${source:Package}", name).endswith("-defaults"):
+        return None
+    for alternative in command("dpkg-query", "-W", "-f=${Depends}", name).split(",")[0].split("|"):
+        dependency = package_name(alternative)
+        candidate = installed_package(dependency)
+        if candidate:
+            return (dependency, *candidate)
+    return None
+
+
 def package_source(name: str) -> str:
     # Trivy matches Ubuntu advisories by source package (curl, not libcurl4-gnutls-dev).
     return command("dpkg-query", "-W", "-f=${source:Package} (${source:Version})", name)
@@ -88,8 +101,7 @@ def resolved_inventory() -> list[dict[str, object]]:
         for name in alternatives:
             candidate = installed_package(name)
             if candidate:
-                selected = name
-                version, architecture = candidate
+                selected, version, architecture = defaults_dependency(name) or (name, *candidate)
                 break
             provider = installed_provider(name)
             if provider:
