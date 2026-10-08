@@ -487,7 +487,7 @@ class CapacityAndInputTests(Fixture):
         started = time.monotonic()
         with self.assertRaises(backup.BackupError):
             with backup.streaming_process([sys.executable, "-c", "import time; time.sleep(60)"],
-                                          env={}, timeout=0.25) as child:
+                                          phase="dump", env={}, timeout=0.25) as child:
                 self.assertEqual(child.stdout.read(), b"")
         self.assertIsNotNone(child.poll())
         self.assertTrue(child.stdout.closed)
@@ -577,6 +577,66 @@ class FailureRecordTests(Fixture):
                 self.assertEqual(backup.main(), 1)
                 self.assertEqual(json.loads(output.getvalue()),
                                  {"event": "backup", "result": "failed", **cause})
+
+    def test_a_failed_command_reports_its_phase_status_and_sanitized_stderr_tail(self):
+        command = self.base / "mysqldump"
+        command.write_text(
+            "#!/bin/sh\n"
+            "i=0; while [ $i -lt 40 ]; do echo \"noise $i\" >&2; i=$((i+1)); done\n"
+            "echo \"Got error: 1045: Access denied for user 'privateuser'@'privatehost.example'"
+            " (using password: privateuser-secret) $1\" >&2\n"
+            "exit 3\n")
+        command.chmod(0o700)
+        credentials = {"DB_USER": "privateuser", "DB_HOST": "privatehost.example",
+                       "DB_PASSWD": "privateuser-secret"}
+        tail = "\n".join([*(f"noise {n}" for n in range(21, 40)),
+                          "Got error: 1045: Access denied for user '<DB_USER>'@'<DB_HOST>'"
+                          " (using password: <DB_PASSWD>) "])
+        def failing_backup(*unused):
+            backup.run([str(command)], phase="engine_check")
+        with mock.patch.dict(os.environ, credentials), \
+             mock.patch.object(backup, "backup", failing_backup), \
+             mock.patch.object(backup, "policy_load", return_value=self.p), \
+             mock.patch.object(sys, "argv", ["backup", "--policy", "/synthetic/policy", "backup"]), \
+             contextlib.redirect_stderr(io.StringIO()) as output:
+            self.assertEqual(backup.main(), 1)
+        self.assertNotIn("private", output.getvalue())
+        self.assertNotIn("secret", output.getvalue())
+        self.assertEqual(json.loads(output.getvalue()),
+                         {"event": "backup", "result": "failed", "code": "subprocess_failed",
+                          "command": "mysqldump", "phase": "engine_check", "exit_status": 3,
+                          "stderr": tail})
+
+        # A stream's failure carries the same, its tail is at most 2 KiB, and an import, whose
+        # errors quote the restored rows it rejects, keeps none.
+        env = dict(os.environ, **credentials)
+        for input_pipe, argument, stderr in ((False, "x" * 5000, None), (True, "row", "")):
+            with self.subTest(input_pipe=input_pipe), \
+                 self.assertRaises(backup.BackupError) as raised:
+                with backup.streaming_process([str(command), argument], phase="dump", env=env,
+                                              input_pipe=input_pipe) as child:
+                    if input_pipe:
+                        child.stdin.close()
+                    else:
+                        child.stdout.read()
+            detail = raised.exception.detail
+            self.assertEqual(str(raised.exception), "streaming_process_failed")
+            self.assertEqual((detail["command"], detail["phase"], detail["exit_status"]),
+                             ("mysqldump", "dump", 3))
+            if stderr is None:
+                self.assertEqual(len(detail["stderr"].encode()), backup.STDERR_TAIL_BYTES)
+                self.assertTrue(detail["stderr"].endswith("x" * 100))
+                self.assertNotIn("private", detail["stderr"])
+            else:
+                self.assertEqual(detail["stderr"], stderr)
+
+        # A command still running at its deadline names its phase and what it wrote.
+        with self.assertRaises(backup.BackupError) as raised:
+            backup.run(["/bin/sh", "-c", "echo started >&2; exec sleep 60"],
+                       phase="replica_mount", timeout=0.5)
+        self.assertEqual((str(raised.exception), raised.exception.detail),
+                         ("subprocess_timed_out", {"command": "sh", "phase": "replica_mount",
+                                                   "exit_status": None, "stderr": "started"}))
 
     def test_failing_schedule_reports_the_recovery_point_age(self):
         now = int(time.time())

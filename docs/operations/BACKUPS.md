@@ -134,7 +134,14 @@ aggregate age/bytes/counts, and separate replica status. When an unexpected
 exception stops a job, its code is operation_failed, `error` names the exception's
 class and `detail` its message: for an OS error only the system's text, never the
 file name, and nothing for a subprocess error, whose command line names the
-database user and host. A failed replication is recorded the same way, as
+database user and host. A command the tool runs that fails has the code
+subprocess_failed, streaming_process_failed, or subprocess_timed_out at its
+deadline, with `command` (the program's basename), `phase` (the step that ran it,
+such as dump or restore_state_preflight), `exit_status` (negative: the signal that
+ended it; null at the deadline) and `stderr`: the last 20 lines of its error
+output, at most 2 KiB, with the database user, host and password it was given
+replaced by `<DB_USER>`, `<DB_HOST>` and `<DB_PASSWD>`. The restore's import keeps
+no error output, since that quotes the rows it rejects. A failed replication is recorded the same way, as
 `replica_error` in status.json and in the job's output. Recovery-point age starts
 before receipt and authority capture, so dump duration cannot hide an RPO breach. No credentials, account
 names, hosts, or player values are telemetry. Alert on any nonzero job result,

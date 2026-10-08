@@ -39,7 +39,7 @@ def sql(env, query=None, payload=None):
             "--user=restore", "-N", "-B", "duris_restore"]
     if query is not None:
         args += ["-e", query]
-    return backup.run(args, env=env, input=payload).decode().strip()
+    return backup.run(args, phase="test", env=env, input=payload).decode().strip()
 
 
 @unittest.skipUnless(os.environ.get("DURIS_RUN_BACKUP_INTEGRATION") == "1",
@@ -103,7 +103,7 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
         candidate = self.p["restore_root"] / "candidate-private-checkout"
         candidate.mkdir(mode=0o700)
         backup.write_json(candidate / "ISOLATED_RESTORE", {"generation": "synthetic"})
-        backup.run([str(self.fixture), "seed", str(candidate / "state")])
+        backup.run([str(self.fixture), "seed", str(candidate / "state")], phase="test")
         checkout = self.base / "private-checkout"
         checkout.mkdir(mode=0o700)
         for name in ("areas_mini", "lib"):
@@ -124,10 +124,10 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
     def test_flatfile_pending_transaction_account_player_domain_receipt_and_boot(self):
         self.build_native_fixture()
         live = self.base / "live"
-        backup.run([str(self.fixture), "seed", str(live)])
+        backup.run([str(self.fixture), "seed", str(live)], phase="test")
         journals = live.parent / "journals"
         receipt_relative = "critical/locker-identification/42.receipt"
-        backup.run([str(self.fixture), "seed-receipt", str(journals / "critical/locker-identification")])
+        backup.run([str(self.fixture), "seed-receipt", str(journals / "critical/locker-identification")], phase="test")
         journals.chmod(0o700)
         (journals / "critical").chmod(0o700)
         self.p["journal_roots"] = {"critical": journals / "critical"}
@@ -148,12 +148,12 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
         self.assertEqual((candidate / "journals" / receipt_relative).read_bytes(), receipt_bytes)
         self.assertEqual((generation / "journals" / receipt_relative).read_bytes(), receipt_bytes)
         recovered_before_verify = backup.inventory(candidate / "state", exclude_locks=True)
-        backup.run([str(self.fixture), "verify", str(candidate / "state")])
+        backup.run([str(self.fixture), "verify", str(candidate / "state")], phase="test")
         self.assertEqual(backup.inventory(candidate / "state", exclude_locks=True), recovered_before_verify)
         self.assertEqual(backup.inventory(journals), journal_before)
         # Repeated native verification proves recovery is idempotent.
         recovered = backup.inventory(candidate / "state", exclude_locks=True)
-        backup.run([str(ROOT / "bin/tools/qualify_flatfile_restore"), str(candidate / "state")])
+        backup.run([str(ROOT / "bin/tools/qualify_flatfile_restore"), str(candidate / "state")], phase="test")
         self.assertEqual(backup.inventory(candidate / "state", exclude_locks=True), recovered)
         self.assertEqual(backup.inventory(live, exclude_locks=True), before)
         self.assertEqual(backup.inventory(generation), captured)
@@ -170,7 +170,7 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
                 candidate.mkdir(mode=0o700)
                 backup.write_json(candidate / "ISOLATED_RESTORE", {"synthetic": True})
                 store = candidate / "journals/critical/locker-identification"
-                backup.run([str(self.fixture), "seed-receipt", str(store)])
+                backup.run([str(self.fixture), "seed-receipt", str(store)], phase="test")
                 receipt = store / "42.receipt"
                 lock = store / ".service-lock"
                 lock.touch(mode=0o600)
@@ -208,15 +208,15 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
                     os.link(receipt, candidate / "alias")
                 command = [str(ROOT / "bin/tools/qualify_flatfile_restore"), "--receipts", str(candidate)]
                 if case in ("valid", "retired-journal"):
-                    backup.run(command)
+                    backup.run(command, phase="test")
                 else:
                     with self.assertRaises(backup.BackupError):
-                        backup.run(command)
+                        backup.run(command, phase="test")
 
     def test_valid_manifest_with_corrupt_lazy_catalog_never_qualifies(self):
         self.build_native_fixture()
         live = self.base / "live"
-        backup.run([str(self.fixture), "seed", str(live)])
+        backup.run([str(self.fixture), "seed", str(live)], phase="test")
         def kingdom_catalog(realm_id):
             # Supported v1 frame: count, four int32 identity/claim fields,
             # four int64 resources, int64 upkeep and two int32 status fields.
@@ -234,7 +234,7 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
         proof.mkdir(mode=0o700)
         backup.write_json(proof / "ISOLATED_RESTORE", {"synthetic": True})
         shutil.copytree(live, proof / "state")
-        backup.run([str(ROOT / "bin/tools/qualify_flatfile_restore"), str(proof / "state")])
+        backup.run([str(ROOT / "bin/tools/qualify_flatfile_restore"), str(proof / "state")], phase="test")
         for relative in ("domains/shop_trade_operations",
                          "metadata/kingdom_realms", "domains/locker_catalog",
                          "domains/artifact-mana-81"):
@@ -284,14 +284,14 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
                      "INSERT INTO currency_bank_baseline(bank_id,opening_copper,opening_silver,opening_gold,opening_platinum) VALUES(1,21,22,23,24);"
                      "INSERT INTO epic_balance_baseline(pid,opening_balance) VALUES(42,15);"
                      "INSERT INTO combat_frag_baseline(pid,opening_frags) VALUES(42,0);")
-            restore.database_qualify(env)
+            restore.database_qualify(env, "test")
             query = ("SELECT CONCAT(a.account_name,':',p.pid,':',p.copper,':',p.epics,':',b.bank_gold) "
                      "FROM accounts a JOIN player_data p ON p.account_name=a.account_name "
                      "JOIN account_banks b ON b.account_name=a.account_name WHERE p.pid=42;")
             expected = sql(env, query)
             self.assertEqual(expected, "SyntheticRestore:42:11:15:23")
             store = self.p["journal_roots"]["critical"] / "locker-identification"
-            backup.run([str(self.fixture), "seed-receipt", str(store)])
+            backup.run([str(self.fixture), "seed-receipt", str(store)], phase="test")
             receipt_bytes = (store / "42.receipt").read_bytes()
             with mock.patch.dict(os.environ, env, clear=True):
                 result = backup.backup(self.p, "mariadb-primary")
@@ -317,13 +317,13 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
             sql(env, "INSERT INTO accounts(account_name,confirmed) VALUES('OtherSynthetic',1);"
                      "UPDATE player_data SET account_name='OtherSynthetic' WHERE pid=42;")
             with self.assertRaises(backup.BackupError):
-                restore.database_qualify(env)
+                restore.database_qualify(env, "test")
             # Corrupt only the disposable source's migration history: the same qualifier
             # that accepted the restored values must now reject it.
             sql(env, "UPDATE player_data SET account_name='SyntheticRestore' WHERE pid=42;"
                      "UPDATE mud_schema_history SET apply_checksum=UNHEX(REPEAT('00',32)) WHERE sequence_number=1;")
             with self.assertRaises(backup.BackupError):
-                restore.database_qualify(env)
+                restore.database_qualify(env, "test")
 
 
 if __name__ == "__main__":
