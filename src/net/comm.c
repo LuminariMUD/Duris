@@ -3760,6 +3760,8 @@ int new_descriptor(int s, int conn_type)
 	{
 		// shouldn't write anything before setup
 		// write(desc, "Sorry, the game is full...\r\n");
+		if (sslses)
+			gnutls_deinit(sslses);
 		used_descs--;
 		shutdown(desc, 2);
 		close(desc);

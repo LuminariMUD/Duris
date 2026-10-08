@@ -8,7 +8,8 @@ negotiating count too. Behind the proxy, two client addresses its PROXY headers 
 counted apart, the proxy's own address, shared by every client it forwards, is not
 capped, and two website logins with different X-Forwarded-For addresses do not close each
 other. A connection silent at the account name prompt is closed after two minutes. A
-connection from a banned address is told so and closed, and the server stays up.
+connection from a banned address is told so and closed, and the server stays up. A full
+server refuses TLS connections without growing.
 """
 
 from __future__ import annotations
@@ -73,6 +74,13 @@ def handshake(port: int, client: str) -> socket.socket:
     sock.settimeout(5)
     require(b" 101 " in sock.recv(4096), f"the handshake for {client} was not accepted")
     return sock
+
+
+def rss_kib(server: IsolatedServer) -> int:
+    for line in Path(f"/proc/{server.process.pid}/status").read_text().splitlines():
+        if line.startswith("VmRSS:"):
+            return int(line.split()[1])
+    raise AssertionError("the server has no VmRSS line")
 
 
 def ban(run_root: Path) -> None:
@@ -157,6 +165,24 @@ def main() -> int:
                         "a connection silent at the account name prompt was kept")
                 require(time.monotonic() - silent_since >= 115,
                         "the silent connection was closed before its two minutes")
+
+                # Fill the server: a TLS connection it refuses keeps no GnuTLS session
+                # (about 8 KiB each before).
+                for octet in range(40, 72):
+                    for _ in range(LIMIT):
+                        held.append(socket.create_connection(
+                            ("127.0.0.1", port), timeout=5, source_address=(f"127.0.0.{octet}", 0)))
+                full = socket.create_connection(("127.0.0.1", port), timeout=5,
+                                                source_address=("127.0.0.39", 0))
+                require(closed_within(full, 10) is not None, "the server never filled up")
+                before = rss_kib(server)
+                for _ in range(1000):
+                    socket.create_connection(("127.0.0.1", tls_port), timeout=5,
+                                             source_address=("127.0.0.38", 0)).close()
+                time.sleep(1)
+                growth = rss_kib(server) - before
+                require(growth < 3072,
+                        f"a full server grew {growth} KiB over 1000 refused TLS connections")
             finally:
                 for client in held:
                     (client.socket if isinstance(client, MudClient) else client).close()
