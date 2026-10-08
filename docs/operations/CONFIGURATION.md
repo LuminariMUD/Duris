@@ -521,7 +521,7 @@ craft-pouch contract is in [CHAOS_MODE.md](../reference/CHAOS_MODE.md).
 | `DURISWEB_SECRET` | Current shared key for one-time DurisWeb challenge-response authentication. Production requires at least 32 characters and rejects the public example placeholder. See the DurisWeb API reference. |
 | `DURISWEB_SECRET_PREVIOUS` | Optional previous service key accepted during a bounded zero-downtime rotation. In production it must be empty or at least 32 characters and non-placeholder; remove it after every backend has switched. |
 | `DURISWEB_PRIVATE_PRESENCE` | Exact `TRUE` opts the authenticated backend into account names, IP addresses, client metadata, and invisible staff presence. The default WebSocket and Redis presence feeds omit them. |
-| `DURIS_TRUSTED_PROXY_IP` | One immediate proxy IP address, an allow-list entry, not a CIDR range. A WebSocket connection from it may name its client in a PROXY protocol v1 header or an `X-Forwarded-For` header; any other connection from it keeps the proxy's address, which all its clients share. If unset, forwarded addresses are ignored. |
+| `DURIS_TRUSTED_PROXY_IP` | One immediate proxy IP address, an allow-list entry, not a CIDR range. A WebSocket connection from it may name its client in a PROXY protocol v1 header or, without one, in the last `X-Forwarded-For` entry, the one the proxy appended (the client writes the entries before it); any other connection from it keeps the proxy's address, which all its clients share. If unset, forwarded addresses are ignored. |
 
 ### DurisWeb hook toggles
 
