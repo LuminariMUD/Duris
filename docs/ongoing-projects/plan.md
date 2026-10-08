@@ -25,8 +25,8 @@ Updated 2026-10-08. A new session starts here, then reads the phase it continues
 | 1 | Hung tests and silent backup failures | Built on `fix/4-phase-1-hung-tests`, gate green; open for review as PR #5, tag `backlog/phase-1-review-0` and one test fix after it. |
 | 2 | Unauthenticated connections per address | Built on `fix/4-phase-2-connection-limit` (on Phase 1), gate green; open for review as PR #6, tag `backlog/phase-2-review-0`. |
 | 3 | Shop listing, dompurify, dead helpers | Built on `fix/4-phase-3-shop-listing` (on Phase 2), gate green; open for review as PR #7, tag `backlog/phase-3-review-0`. |
-| 4 | Security record and `SECURITY.md` | Built on `fix/4-phase-4-security-record` (on Phase 3), documents only, their tests green; open for review, tag `backlog/phase-4-review-0`. |
-| 5 | Studio-proc tag ids and `world.trg` | Not started. |
+| 4 | Security record and `SECURITY.md` | Built on `fix/4-phase-4-security-record` (on Phase 3), documents only, their tests green; open for review as PR #8, tag `backlog/phase-4-review-0`. |
+| 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc` (on Phase 4), gate green; open for review, tag `backlog/phase-5-review-0`. |
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
 | 7 | Quest EXP line and `achievements zones` | Not started. |
 | 8 | Specials assigned to missing vnums | Not started. |
@@ -495,6 +495,51 @@ Rewrite `SECURITY.md`: the `0.1.x` line, the private vulnerability reporting for
 - How dependency updates are noticed is written down in one sentence.
 
 ## Phase 5: studio-proc tag ids and `world.trg`
+
+**Built** on `fix/4-phase-5-studioproc` (stacked on Phase 4), 2026-10-08:
+
+- `4827305a2`: `TAG_STUDIOPROC_TRIG` 2198, `_COOLDOWN` 2199 and `_COUNTER` 2200 end the
+  `TAG_` list in `spells.h`; `SP_TAG_*` in `studioproc.h` alias them, beside a
+  `static_assert(TAG_INFO_COOLDOWN < SP_TAG_TRIG && SP_TAG_COUNTER <= MAX_AFFECT_TYPES)`.
+  `tests/async/test_studioproc_tag_ids.py` fails when any other `spells.h` define reaches
+  2198 (checked with a stray `TAG_COLLIDES 2199`).
+- `f31d8b14f`: `areas/src/trg/make_trg.c` (with its `Makefile`, in `areas/src` `SUBDIRS`)
+  reads `trg/<area>.trg` for each area `areas/AREA` lists, checks the framing the engine
+  reads (header, `T` ... `~`, `S`, no `#~`), appends it to `tworld.trg` and ends that with
+  `#~`; `areas/make_all` runs it and `areas/moveall` makes it `world.trg`. The root
+  `Makefile` lists the tool, `world.trg` and `tworld.trg`, and watches `areas/trg/`;
+  `scripts/cycle_mud.sh` rebuilds the tools when `make_trg` is missing.
+  `areas/trg/.gitkeep` keeps the directory. `tests/async/test_make_trg.py` builds the tool
+  and runs a good source, an area without one, and six malformed ones;
+  `test_clean_all.py` and `test_flatfile_launcher.py` know the new tool and outputs.
+  `docs/content/STUDIOPROC.md`, `howto_trg.txt` and `docs/guides/BUILDING.md` describe the
+  generated file. A real `make world` wrote `areas/world.trg` (`#~` only), and with a
+  broken `areas/trg/limbo.trg` it failed: `error: trg/limbo.trg:4: a trigger is not ended
+  by ~`.
+- `b439fa892`: a "Connections before an account name, and the trusted proxy" section in
+  `docs/testing/REGRESSIONS.md` for Phase 2's journey, which belonged in Phase 2 but is
+  added here so the pushed branches below are not rewritten.
+
+**What differs from the plan, and why.**
+
+- The `static_assert` sits in `studioproc.h` beside the aliases, not in `spells.h`:
+  `spells.h` does not see `MAX_AFFECT_TYPES`, and `studioproc.h` now includes `spells.h`.
+  The test reads every numeric define in `spells.h`, not only `TAG_` ones: the list also
+  holds `AIP_`, `ACH_`, `PR_` and `TYPE_` values in the same index space. As the plan
+  read it, the build catches the ids leaving `skills[]` or the list passing them at its
+  last entry, and the gate catches any other define taking one of their numbers.
+- `make_trg` checks the framing only. A record's content (events, conditions, actions) is
+  still checked by the engine at boot, which logs and skips a bad record; the docs say
+  which fault fails where.
+- With no source the generated file holds `#~` (the world target requires every output to
+  be non-empty), so the boot line reads `STUDIOPROC: 0 records, 0 triggers, ...` rather
+  than `no areas/world.trg`. No test pinned the old line.
+- A failed generation leaves the `tworld.*` files the earlier tools wrote, as any failing
+  generator already did; `make clean-all` removes them.
+
+**Gate** on `b439fa892`: `./scripts/format.sh --all --check` clean (1038 files),
+`make test-all -j16 TEST_JOBS=16` 678 passed, 0 failed, `make test-db` 48 of 48. This is
+also the full gate for Phase 4's documents, which this tree contains. Nothing is left.
 
 **Problem.** Two loose ends the studio-proc engine left on purpose, listed in
 `docs/content/STUDIOPROC.md` under "Deliberately not included":
