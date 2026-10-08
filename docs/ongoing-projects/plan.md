@@ -541,6 +541,46 @@ Rewrite `SECURITY.md`: the `0.1.x` line, the private vulnerability reporting for
 `make test-all -j16 TEST_JOBS=16` 678 passed, 0 failed, `make test-db` 48 of 48. This is
 also the full gate for Phase 4's documents, which this tree contains. Nothing is left.
 
+**Review round 1** (PR #9, review of `b4a2d7450`; tag `backlog/phase-5-review-1`). Six
+findings, each reproduced on that head first, each fixed in its own commit with a case that
+fails without it:
+
+- `8e14e458d`: make_trg copied each line as read, so a source without a final newline ran
+  into the next area's first line (`S#10 R`) and the engine dropped both records. Each line
+  is now written stripped, with one `\n`.
+- `1100b1b22`: until this phase `areas/world.trg` was the hand-written source and
+  git-ignored, and the first generation replaced it with `#~`. make_trg now starts its
+  output with a marker line and refuses a `world.trg` without it that holds a record,
+  naming the move; STUDIOPROC.md has the one-time step and says `make clean-all` deletes
+  the file.
+- `1843e2d7c`: a `~` dropped before a later one passed make_trg (the next `S`, `T` or
+  header was taken as an action) and cost the engine two records. Such a line inside a
+  trigger now fails; no action begins that way.
+- `829e58f1f` and `a6652f93b`: the documented kill switch (rename `world.trg`) was undone
+  by the supervisor's generation before every start. The switch is now moving an area's
+  `areas/trg/<area>.trg` out and rebooting, or `make world` and a copyover. `make world`
+  did not notice a removed source; its staleness `find` now reads directories too
+  (`test_root_test_harness.py` pins it).
+- `55dab3119`: `cycle_mud.sh` ignored `m_slow`'s status, so one framing typo kept every
+  area edit from loading, silently. It now refuses to boot when generation fails, as after
+  a failed backup; this holds for every generator. The warn-and-skip alternative was not
+  taken: decision 6 has a malformed source fail generation, and `make test-db` builds the
+  world, so the gate catches one before a deploy.
+- `35cba256a`: two records for one target both bound; only the later dispatched, and its
+  bind lost the target's C proc. `studioproc_boot()` now logs and skips the second
+  (`test_studioproc_duplicate_record.py` boots on two). make_trg does not check for
+  duplicates: the engine covers hand-written files too, and a make_trg failure now stops
+  the boot.
+
+`REGRESSIONS.md` has a section for the generator and the duplicate check. The Status table
+is left as it was, as in Phase 1's round.
+
+**Gate** on the round's code before the guard's header test became the engine's own (folded
+into `1100b1b22`; it differs from `35cba256a` only in `make_trg.c` and `test_make_trg.py`):
+`./scripts/format.sh --all --check` clean (1038 files), `make test-all -j16 TEST_JOBS=16`
+679 passed, 0 failed (0 timed out, 0 ended by a signal) in 9 min 3 s, `make test-db` 48 of
+48. On `35cba256a`, `test_make_trg.py` and a real `make world` were run again.
+
 **Problem.** Two loose ends the studio-proc engine left on purpose, listed in
 `docs/content/STUDIOPROC.md` under "Deliberately not included":
 

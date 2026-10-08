@@ -419,6 +419,30 @@ through its initial guards only.
 Not covered: real reflective damage and a proc-driven extraction during an expert or elite
 riposte on a full sanitizer server.
 
+## Studio-proc trigger sources and duplicate records
+
+`make world` builds `areas/world.trg` with `make_trg` (`areas/src/trg/make_trg.c`) from each
+area's `areas/trg/<area>.trg`, and `make_trg` fails generation, naming the file and line,
+when a source's framing is wrong. It writes every line with one newline, so a source
+without a final newline cannot run into the next one; inside a trigger, a line starting
+`S`, `T ` or `#` means its `~` is missing. It starts its output with a marker line and
+refuses to replace an `areas/world.trg` without it that holds a record, which was the
+hand-written source before `make_trg`. `scripts/cycle_mud.sh` refuses to boot when
+generation fails, and `make world` regenerates after a source is removed. At boot,
+`studioproc_boot()` logs and skips a second record for a target that already has one: only
+one record per target dispatches, and a second bind lost the target's own C proc.
+
+```sh
+python3 tests/async/test_make_trg.py
+python3 tests/async/test_studioproc_duplicate_record.py   # builds or reuses a flat-file server
+python3 tests/async/test_flatfile_launcher.py
+python3 tests/async/test_root_test_harness.py
+```
+
+`test_make_trg.py` compiles the tool and runs it on good, concatenated, missing and
+malformed sources and on a hand-written `world.trg`. The duplicate test boots the
+flat-file server on two records for room 22800 and reads the status log.
+
 ## Telemetry writer: schema check, round trip and the gap record
 
 The SQL telemetry writer (off unless `TELEMETRY_ENABLED` is set) proved at startup only
