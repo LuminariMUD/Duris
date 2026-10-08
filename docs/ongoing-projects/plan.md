@@ -474,8 +474,9 @@ in the idle switch closes a silent connection at 480 pulses. The two constants s
   and npm's only automatic fix was a downgrade to mermaid 10.8.0, so the override pins
   katex instead, beside the existing `lodash-es` one. Mermaid's one katex call
   (`renderToString` with `throwOnError`, `displayMode`, `output`) renders under 0.18.2, and
-  the site's diagrams use no math. Dependabot's #3 (dompurify) is the same lockfile line
-  and becomes redundant when this lands; #1 (mermaid 12.1.0) is unaffected.
+  the site's diagrams use no math. Dependabot's #3 (dompurify) is the same lockfile line;
+  it landed on `master` first (`71f14f1a7`), so after the merge recorded below the katex
+  pin is the only `site/` change this phase adds. #1 (mermaid 12.1.0) is unaffected.
 - The listing harness extends the listing's existing test instead of adding a file, and
   the bound is written inline at the one call site rather than as the community tree's
   `append_listing` helper.
@@ -490,6 +491,56 @@ in the idle switch closes a silent connection at 480 pulses. The two constants s
 **Gate** on `b606a9d8b`: `./scripts/format.sh --all --check` clean, `make test-all -j16
 TEST_JOBS=16` 676 passed, 0 failed, `make test-db` 47 of 48 (`telemetry_schema_boot`, the
 race above; with `2caf3a289` the leg passed twice in a row on its own). Nothing is left.
+
+**Review round 1** (PR #7, review of `f9ad0e09e`; tag `backlog/phase-3-review-1`). Two
+findings, both in the listing bound, both reproduced first on a production-profile flat-file
+build of that head with the review's live probe: a keeper with 700 priced items, and a
+mortal with paging off running `list`, then snooped by an overlord. One bound fixes both;
+each commit has a case that fails on the code before it:
+
+- `4c4557d76`: `c4a9eb681` cut the pieces at 65,535 bytes, which kept `shopping_list()` in
+  bounds but not the output path. `process_output()` expands each queued block into
+  buffers of `MAX_STRING_LENGTH`: `AnsiString::term()` stops 64 bytes short of it and
+  drops the rest (55 of 700 lines never arrived, 378 to 432, with no notice), and for a
+  snooped player `format_to_snoopers()` ran past its buffer and the server aborted
+  (`stack smashing detected`). Pieces are now at most `MAX_STRING_LENGTH / 8`, which also
+  keeps a 700-item listing to about a dozen entries in the player's log. The listing test
+  names its items and prices in colour and passes each piece through the production
+  `format_to_snoopers()` and `AnsiString::term()` as `process_output()` does; against the
+  old bound the first is an ASan overflow and the second loses lines.
+- `7a16e9c13`: `format_to_snoopers()` itself had no bound, so any other block of about
+  62 KB with enough lines still overflowed it. It now counts what it writes and stops where
+  the next step might not fit. The count replaces the review's pointer limit, which the
+  production profile's `-Wstrict-overflow=2` rejects. A case in
+  `word_output_integration_harness.cpp` (a SIGSEGV without it, an ASan overflow under
+  `SANITIZE=1`).
+
+With both, the probe on a production build of `7a16e9c13`: 700 of 700 lines with plain and
+with coloured names, snooped and not, the snooper got all 700 with its `%` prefix, and the
+server stayed up. The same probe with the mortal on a WebSocket connection, which the
+review left unchecked, behaved the same way on both builds. Ledger row #700 (b) names
+`4c4557d76` too.
+
+`6624a7078` merges Phase 2's round head (`0ddbaa62d`, `backlog/phase-2-review-1`), which
+had merged `master` after Phase 1 landed, so this branch carries `master` up to
+`494317e40`. Its two conflicts are the ones the plan's Landing section names: the Status
+table and that section keep `master`'s text and this section keeps the branch's; ledger
+rows #659 (`master`'s) and #662 are both kept, and #662 names Dependabot's `71f14f1a7`,
+which landed the same dompurify line on `master` first; the sentence on Dependabot's #3
+above is reworded to match. `site/` merged on its own: mermaid 12.1.0 from `master` with
+this phase's katex 0.18.2 override.
+
+**Gate** on `6624a7078`, the merge: `./scripts/format.sh --all --check` clean (1037 files),
+`make test-all -j16 TEST_JOBS=16` 676 passed, 0 failed (0 timed out, 0 ended by a signal)
+in 6 min 49 s, and on the merged `site/` `npm ci`, `npm audit` (0 vulnerabilities) and
+`npm test --prefix site` (15 passed). `make test-db` 47 of 48: `telemetry_schema_boot`'s
+first stop left the outage ledger at `abandoned` instead of `clean_drained` under the
+host's load, and the leg passed alone. The journey stopped a healthy server while the
+boot's records still waited in their 2 s batch, so the stop's own 2 s flush had to write
+them. `89080c967` on `master` makes it stop only once they are in SQL: a probe that stalls
+that flush with a table lock fails the old journey and passes the new one. This branch
+takes it when it lands. The record after the merge changes only this section and ledger
+row #700 (b).
 
 **Problem.** Three small things the community tree (`Community-Duris/Duris`, master at
 `a1e4a7efd`, split from ours at `e1357a30a` on 2026-09-23) fixed after the split, found on
