@@ -1813,6 +1813,16 @@ static void run_session_input_phase(game_loop_pulse_context &ctx)
 
 			switch (point->connected)
 			{
+				/* a connection that has not entered an account name holds a slot for free */
+			case CON_GET_ACCT_NAME:
+				if (point->wait > UNNAMED_CONNECTION_TIMEOUT)
+				{
+					write_to_descriptor(point, "Idle Timeout\n");
+					close_socket(point);
+					continue;
+				}
+				break;
+
 				/* short protocol/login transitions retain a 60 second timeout */
 			case CON_FLUSH:
 			case CON_GET_TERM:
@@ -3700,6 +3710,21 @@ void resolve_descriptor_hostname_async(const char *address, int descriptor)
 	pthread_attr_destroy(&attr);
 }
 
+/* Open connections from host that have not entered an account name: negotiating TLS,
+ * waiting for a WebSocket handshake, or at the account name prompt.  An authenticated
+ * DurisWeb service connection stays at that prompt and is not one of them. */
+static int unnamed_connections_from(const char *host)
+{
+	int count = 0;
+
+	for (P_desc d = descriptor_list; d; d = d->next)
+		if ((d->connected == CON_SSLNEGO || d->connected == CON_GET_TERM ||
+		     d->connected == CON_GET_ACCT_NAME) &&
+		    !websocket_is_authenticated_service(d) && !strcmp(d->host, host))
+			count++;
+	return count;
+}
+
 int new_descriptor(int s, int conn_type)
 {
 	P_desc newd;
@@ -3707,6 +3732,7 @@ int new_descriptor(int s, int conn_type)
 	socklen_t size;
 	sockaddr_in6 sock;
 	gnutls_session_t sslses = 0;
+	bool shared_address = false;
 
 	if ((desc = new_connection(s)) < 0)
 		return (-1);
@@ -3777,12 +3803,16 @@ int new_descriptor(int s, int conn_type)
 			memmove(newd->host, mapped, strlen(mapped) + 1);
 		}
 
-		/* check for proxy protocol on websocket connections */
-		if (conn_type == 2 && proxy_peer_is_trusted(desc))
+		/* check for proxy protocol on websocket connections; without it the address is
+		 * the trusted proxy's, which all its clients share */
+		if (proxy_peer_is_trusted(desc))
 		{
 			char proxy_ip[46];
-			if (parse_proxy_protocol(desc, proxy_ip, sizeof(proxy_ip)))
+			if (conn_type == 2 &&
+			    parse_proxy_protocol(desc, proxy_ip, sizeof(proxy_ip)))
 				strlcpy(newd->host, proxy_ip, sizeof newd->host);
+			else
+				shared_address = true;
 		}
 
 		/*
@@ -3807,6 +3837,28 @@ int new_descriptor(int s, int conn_type)
 		      }
 		    }
 		*/
+	}
+
+	if (!shared_address &&
+	    unnamed_connections_from(newd->host) >= MAX_UNNAMED_CONNECTIONS_PER_ADDRESS)
+	{
+		static const char refusal[] = "Too many connections from your address.\r\n";
+
+		logit(LOG_DEBUG,
+		      "Refused connection from %s: %d open connections have not entered an account name.",
+		      newd->host, MAX_UNNAMED_CONNECTIONS_PER_ADDRESS);
+		if (conn_type == 0)
+		{
+			const ssize_t written = write(desc, refusal, sizeof(refusal) - 1);
+			(void)written;
+		}
+		if (sslses)
+			gnutls_deinit(sslses);
+		mm_release(dead_desc_pool, newd);
+		used_descs--;
+		shutdown(desc, 2);
+		close(desc);
+		return 0;
 	}
 
 	//  if (!found)
