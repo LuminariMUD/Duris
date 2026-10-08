@@ -4,7 +4,10 @@ listing longer than its buffer reaches the player whole and in order.
 
 For the second, the production shopping_list() is compiled under ASan and UBSan against
 stubs for the world, the keeper's stock and the output queue: a keeper carrying 700
-listable items writes about 70 KB, more than the 64 KB buffer the listing is built in.
+listable items with coloured names and prices writes over 64 KB, more than the buffer
+the listing is built in. Each piece it sends then goes the way process_output() takes a
+queued block, through the production format_to_snoopers() and AnsiString::term(), and
+every line must come out of both.
 """
 from pathlib import Path
 import subprocess
@@ -26,17 +29,17 @@ assert "obj1 = obj1->next_content" not in listing
 print("[PASS] the shop listing reads the next item before it extracts invalid stock")
 
 PRELUDE = r'''
+#include <algorithm>
 #include <cassert>
 #include <cctype>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
-#define TRUE 1
-#define FALSE 0
-#define MAX_STRING_LENGTH 65536
+#include "net/ansi.h"
 #define ITEM_DRINKCON 17
 #define EPIC_BONUS_SHOP 1
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -72,9 +75,11 @@ const char *item_condition(P_obj) { return ""; }
 float get_epic_bonus(P_char, int) { return 0; }
 const char *coin_stringv(int amount) {
     static char buffer[64];
-    snprintf(buffer, sizeof buffer, "%d copper", amount);
+    snprintf(buffer, sizeof buffer, "%d &+ycopper&N", amount);
     return buffer;
 }
+/* unicode.c's table setter references the server's corruption panic. */
+void panic_corruption(const char *, const char *, ...) { abort(); }
 std::string pad_ansi(const char *text, int width) {
     std::string padded(text);
     padded.resize(MAX(padded.size(), static_cast<size_t>(width)), ' ');
@@ -96,7 +101,7 @@ int main() {
     std::vector<obj_data> stock(700);
     names.reserve(stock.size());
     for (size_t index = 0; index < stock.size(); ++index) {
-        names.push_back("a long and carefully described trade good from a distant harbour, crate number " + std::to_string(index + 1));
+        names.push_back("a &+ybrass-bound &+Ysea chest&n from a &+Bdistant harbour&n, crate &+W#" + std::to_string(index + 1) + "&n");
         stock[index].short_description = names.back().c_str();
         stock[index].cost = 10;
         if (index + 1 < stock.size())
@@ -106,9 +111,20 @@ int main() {
     shopping_list(nullptr, &player, &keeper, 0);
 
     std::string listing;
+    static char snooped[MAX_STRING_LENGTH], rendered[MAX_STRING_LENGTH];
     for (const auto &message : sent) {
-        assert(message.size() < MAX_STRING_LENGTH);
+        assert(message.size() < MAX_STRING_LENGTH / 8);
         listing += message;
+        const size_t lines = std::count(message.begin(), message.end(), '\n');
+        std::vector<char> block(message.begin(), message.end());
+        block.push_back('\0');
+        format_to_snoopers(block.data(), snooped);
+        for (const char *text : {block.data(), snooped}) {
+            AnsiString(text).term(rendered, TL_BLINK);
+            const std::string out(rendered);
+            assert(static_cast<size_t>(std::count(out.begin(), out.end(), '\n')) == lines);
+            assert(out.ends_with("\r\n"));
+        }
     }
     assert(sent.size() > 1 && listing.size() > MAX_STRING_LENGTH);
     std::string expected = "You can buy:\r\n";
@@ -116,20 +132,23 @@ int main() {
         char line[256];
         std::string text = names[index];
         text[0] = toupper((unsigned char)text[0]);
-        snprintf(line, sizeof line, "%2zu) %s for 10 copper.\r\n", index + 1,
+        snprintf(line, sizeof line, "%2zu) %s for 10 &+ycopper&N.\r\n", index + 1,
                  pad_ansi(text.c_str(), 45).c_str());
         expected += line;
     }
     assert(listing == expected);
-    puts("long shop listing arrives whole and in order");
+    puts("long shop listing arrives whole and in order, snooped or not");
 }
 '''
 
-harness = "\n".join([PRELUDE, extract_function("economy/shop.c", "void shopping_list("), DRIVER])
+harness = "\n".join([PRELUDE, extract_function("economy/shop.c", "void shopping_list("),
+                     extract_function("net/comm.c", "void format_to_snoopers(char *from_string, char *to_string)\n"),
+                     DRIVER])
 with tempfile.TemporaryDirectory(prefix="shop-list-") as directory:
     cpp = Path(directory) / "test.cpp"
     binary = Path(directory) / "test"
     cpp.write_text(harness)
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
-                    "-fsanitize=address,undefined", "-g", str(cpp), "-o", str(binary)], check=True)
+                    "-fsanitize=address,undefined", "-g", f"-I{SRC}", str(cpp), str(SRC / "net" / "ansi.c"),
+                    str(SRC / "net" / "unicode.c"), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True)

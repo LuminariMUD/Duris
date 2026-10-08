@@ -1794,8 +1794,11 @@ void shopping_list(char * /*arg*/, P_char ch, P_char keeper, int shop_nr)
 				CAP(Gbuf2);
 				strcat(Gbuf4, Gbuf2);
 				/* A keeper can carry more than one buffer of stock: send what is
-				 * listed so far and go on. */
-				if (strlen(Gbuf1) + strlen(Gbuf4) >= sizeof(Gbuf1))
+				 * listed so far and go on. Each piece is one block in the output
+				 * queue, and process_output() expands a block's colour codes and
+				 * snoop prefixes into buffers of MAX_STRING_LENGTH, so the pieces
+				 * stay well under it. */
+				if (strlen(Gbuf1) + strlen(Gbuf4) >= MAX_STRING_LENGTH / 8)
 				{
 					send_to_char(Gbuf1, ch);
 					*Gbuf1 = '\0';

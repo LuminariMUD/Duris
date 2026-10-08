@@ -140,7 +140,9 @@ deadline, with `command` (the program's basename), `phase` (the step that ran it
 such as dump or restore_state_preflight), `exit_status` (negative: the signal that
 ended it; null at the deadline) and `stderr`: the last 20 lines of its error
 output, at most 2 KiB, with the database user, host and password it was given
-replaced by `<DB_USER>`, `<DB_HOST>` and `<DB_PASSWD>`. The restore's import keeps
+replaced by `<DB_USER>`, `<DB_HOST>` and `<DB_PASSWD>`, and the client host the
+server names (`'user'@'host'`, `Host '...' is not allowed`) by `<CLIENT_HOST>`,
+since that is this host's address as the server sees it. The restore's import keeps
 no error output, since that quotes the rows it rejects. A failed replication is recorded the same way, as
 `replica_error` in status.json and in the job's output. Recovery-point age starts
 before receipt and authority capture, so dump duration cannot hide an RPO breach. No credentials, account
