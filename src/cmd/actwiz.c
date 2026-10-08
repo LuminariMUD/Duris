@@ -109,7 +109,6 @@ extern const char *sector_types[];
 extern const flagDef wear_bits[];
 extern const char *zone_bits[];
 extern const char *justice_obj_status[];
-extern char *shutdown_message;
 extern const char *item_material[];
 extern const char *resource_list[];
 extern const int shot_damage[];
@@ -4515,11 +4514,6 @@ void timedShutdown(P_char ch, P_char, P_obj, void * /*data*/)
 			wizlog(60, "WARNING:  Unknown shutdown type ABORTED!!");
 			return;
 		}
-		if (shutdown_message)
-		{
-			FREE(shutdown_message);
-		}
-		shutdown_message = str_dup(buf);
 	}
 	else
 	{

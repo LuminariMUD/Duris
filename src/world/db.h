@@ -94,7 +94,6 @@ void boot_material_rarity_objects(int mini_mode);
 #define KEEPCHAR_FILE "lib/creation/keepchar" /* for accepting char explanation */
 #define HOMETOWN_FILE "lib/creation/hometown"
 #define ALIGNMENT_FILE "lib/creation/alignment"
-#define SHUTDOWN_FILE "lib/creation/boom"
 
 #define TERM_ARRAY_CHAR '\n'
 #define NULL_FILE "\0"

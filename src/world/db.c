@@ -141,7 +141,6 @@ char *bonus = NULL;
 char *keepchar = NULL;
 char *hometown_table = NULL;
 char *alignment_table = NULL;
-char *shutdown_message = NULL;
 char *artilist_mortal_main = NULL;
 char *artilist_mortal_ioun = NULL;
 char *artilist_mortal_unique = NULL;
@@ -508,8 +507,6 @@ void boot_db(int mini_mode)
 	hometown_table = file_to_string(HOMETOWN_FILE);
 	logit(LOG_STATUS, "Reading Alignment_table message.");
 	alignment_table = file_to_string(ALIGNMENT_FILE);
-	logit(LOG_STATUS, "Reading Shutdown Ansi.");
-	shutdown_message = file_to_string(SHUTDOWN_FILE);
 	logit(LOG_STATUS, "Getting PC id numb info.");
 	setNewPCidNumbfromFile();
 	portal_id = 0; // if someone knows a better place to put this, feel free to move it

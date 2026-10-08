@@ -158,7 +158,6 @@ extern struct wizban_t *wizconnect;
 extern struct time_info_data time_info;
 extern struct zone_data *zone;
 extern struct zone_data *zone_table;
-extern char *shutdown_message;
 extern const int max_ingame_good;
 extern const int max_ingame_evil;
 extern TimedShutdownData shutdownData;
@@ -2715,10 +2714,10 @@ resume_game_loop:
 							stop_fighting(point->character);
 						un_morph(point->character);
 					}
-					if (shutdown_message)
-					{
-						write_to_descriptor(point, shutdown_message);
-					}
+					// timedShutdown() already queued the shutdown notice. Deliver what is
+					// still pending through the normal color path, once, not a raw copy.
+					if (point->output.head)
+						process_output(point);
 					// If it's not an immortal.
 					if (GET_LEVEL(point->character) < MINLVLIMMORTAL)
 					{
