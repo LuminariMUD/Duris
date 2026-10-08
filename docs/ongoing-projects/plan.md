@@ -22,8 +22,8 @@ Updated 2026-10-08. A new session starts here, then reads the phase it continues
 
 | Phase | Subject | State |
 |---|---|---|
-| 1 | Hung tests and silent backup failures | Built on `fix/4-phase-1-hung-tests`, gate green; open for review, tag `backlog/phase-1-review-0`. |
-| 2 | Unauthenticated connections per address | Not started. |
+| 1 | Hung tests and silent backup failures | Built on `fix/4-phase-1-hung-tests`, gate green; open for review as PR #5, tag `backlog/phase-1-review-0` and one test fix after it. |
+| 2 | Unauthenticated connections per address | Built on `fix/4-phase-2-connection-limit` (on Phase 1), gate green; open for review, tag `backlog/phase-2-review-0`. |
 | 3 | Shop listing, dompurify, dead helpers | Not started. |
 | 4 | Security record and `SECURITY.md` | Not started. |
 | 5 | Studio-proc tag ids and `world.trg` | Not started. |
@@ -218,6 +218,61 @@ message on purpose because the command line names the database user and host.
   output.
 
 ## Phase 2: unauthenticated connections per address
+
+**Built** on `fix/4-phase-2-connection-limit` (stacked on Phase 1), 2026-10-08:
+
+- `7c21ef491` (a defect found on the way, its own commit): every listener is an
+  `AF_INET6` socket, so an IPv4 client arrives as `::ffff:a.b.c.d`, and both checks of
+  `DURIS_TRUSTED_PROXY_IP` parsed the setting only as IPv6. An IPv4 proxy, such as the
+  `127.0.0.1` in `.env.example`, was never trusted: its PROXY and `X-Forwarded-For`
+  headers were ignored, every website player had the proxy's address, and a completed
+  WebSocket handshake closed every other website login in progress as a stale connection
+  from the same address. `proxy_peer_is_trusted()` (`comm.c`) now matches a v4-mapped peer
+  against the IPv4 form, and `websocket.c` calls it instead of its own copy.
+- `dad3822f6`: `MAX_UNNAMED_CONNECTIONS_PER_ADDRESS` (8) and `UNNAMED_CONNECTION_TIMEOUT`
+  (`120 * WAIT_SEC`) beside `MAX_CONNECTIONS` in `src/core/config.h`. `new_descriptor()`
+  counts, after the address is known, the open connections from it in `CON_SSLNEGO`,
+  `CON_GET_TERM` or `CON_GET_ACCT_NAME` (an authenticated DurisWeb service connection
+  excepted) and, at 8, closes the new one before anything is set up: one `LOG_DEBUG` line
+  `Refused connection from <address>: 8 open connections have not entered an account
+  name.`, and a plain telnet client first reads `Too many connections from your address.`
+  A connection from the trusted proxy without a PROXY header has the proxy's address,
+  shared by its clients, and is not limited. The idle switch closes a connection silent at
+  `CON_GET_ACCT_NAME` after `UNNAMED_CONNECTION_TIMEOUT`.
+  `tests/async/test_connection_limit_journey.py` (in the resource-intensive set) drives a
+  flat-file server: eight telnet connections from `127.0.0.1` and the ninth refused; eight
+  TLS connections still negotiating from `127.0.0.4` and the ninth refused; an account
+  created from `127.0.0.2` meanwhile; eight proxied connections for one PROXY-header client
+  and the ninth refused while another client's is kept; nine telnet connections from the
+  proxy's own address all kept; two website handshakes through the proxy with different
+  `X-Forwarded-For` addresses both kept; a connection silent at the prompt closed between
+  115 and 135 s. `docs/operations/CONFIGURATION.md` has a "Connections before an account
+  name" section, and its `DURIS_TRUSTED_PROXY_IP` row, which had fallen out of its table
+  and said telnet honoured `X-Forwarded-For`, is back in the table and correct.
+
+**What differs from the plan, and why.**
+
+- The trusted-proxy fix was not in the plan; without it the requirement that players
+  behind the proxy are not counted as one address could not hold, and the journey's proxy
+  case failed on it.
+- WebSocket connections are counted as well as telnet and TLS ones, but a WebSocket client
+  already kept at most one connection that had not logged in (a completed handshake closes
+  the address's older ones), so the cap matters for telnet and TLS.
+- A TLS connection that never finishes its handshake needed no new timeout: GnuTLS ends it
+  after its default 40 s (a silent socket on the old dev server was closed after 39 s).
+- The journey is `test_connection_limit_journey.py`, not `run_connection_limit_journey.py`:
+  the runner discovers `test_*.py`, and the resource-intensive set is a list of those. The
+  proxy case is part of the journey, not a separate harness.
+- `docs/operations/RUNBOOK.md` names no login idle timeout and was not changed.
+- A website client that sits at the account name prompt is now closed after 120 s, like a
+  telnet one (it was 15 minutes); the plan's decision 3 does not tell them apart.
+
+**Gate** on `348ae9fd4` (the same tree as `dad3822f6` before the rebase onto Phase 1's
+test fix): `./scripts/format.sh --all --check` clean, `make test-all -j16 TEST_JOBS=16`
+675 passed, 1 failed (`test_root_test_harness.py`, the `gone()` race fixed on Phase 1's
+branch and then passing 12 runs in a row), `test_connection_limit_journey.py` 127 s,
+`make test-db` 48 of 48. The journey's proxy case failed before `7c21ef491`: every
+proxied connection was counted under the proxy's address. Nothing is left.
 
 **Problem.** Found on 2026-10-05 in a full read of one server's logs. Over 51 minutes one
 address opened 753 plain-telnet connections: a median of 13 a minute, at most 26 a minute,
