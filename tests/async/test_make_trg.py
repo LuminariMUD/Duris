@@ -14,6 +14,10 @@ MALFORMED = {
     "#200\nT DEATH\n": "trg/bad.trg:1: expected a #<vnum> <M|O|R> record header",
     "#200 X\n": "trg/bad.trg:1: expected a #<vnum> <M|O|R> record header",
     "#200 R\nsay ow\n": "trg/bad.trg:2: expected T, S or a * comment",
+    # A ~ missing before a later one: the next S, T or record header gives it away.
+    "#200 O\nT DEATH\nsay ow\nS\n#201 O\nT DEATH\nsay ow\n~\nS\n": "trg/bad.trg:4: a trigger is not ended by ~",
+    "#200 O\nT DEATH\nsay ow\nT DEATH\nsay ow\n~\nS\n": "trg/bad.trg:4: a trigger is not ended by ~",
+    "#200 O\nT DEATH\nsay ow\n#201 O\nT DEATH\nsay ow\n~\nS\n": "trg/bad.trg:4: a trigger is not ended by ~",
     "#~\n": 'trg/bad.trg:1: "#~" ends the combined file; a source may not hold it',
 }
 

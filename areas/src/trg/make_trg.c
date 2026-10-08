@@ -85,8 +85,12 @@ static int append_triggers(FILE *source, const char *path, FILE *all_trg)
 				malformed(path, line, "expected T, S or a * comment");
 			break;
 		case TRIGGER:
+			/* no action begins with S, "T " or '#': its ~ is missing */
 			if (!strcmp(buf, "~"))
 				frame = RECORD;
+			else if ((buf[0] == 'S' && (buf[1] == '\0' || buf[1] == ' ')) ||
+				 (buf[0] == 'T' && buf[1] == ' ') || buf[0] == '#')
+				malformed(path, line, "a trigger is not ended by ~");
 			break;
 		}
 	}
