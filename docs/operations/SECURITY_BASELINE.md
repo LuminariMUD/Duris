@@ -70,6 +70,11 @@ On GitHub it is an *advanced* CodeQL configuration, so CodeQL default setup must
 there (`gh api repos/<owner>/<repo>/code-scanning/default-setup` reads `not-configured`);
 otherwise the upload is refused and every later step, Trivy included, is skipped.
 
+A local CodeQL replay must trace an uncached build: a compile that ccache serves never
+reaches CodeQL's tracer, and one replay here traced 34 of 1265 files that way. Take
+ccache off `PATH`, set `CCACHE_DISABLE=1`, and read the analysis's "scanned N out of M"
+line.
+
 Native packages remain distribution-managed; the generated inventory is the review input
 because Dependabot has no ecosystem for an `equivs` control file. Dependabot
 (`.github/dependabot.yml`) proposes updates to the workflow action pins and to the
