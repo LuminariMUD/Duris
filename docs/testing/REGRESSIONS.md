@@ -91,6 +91,32 @@ logout and login; it saves before it reads the wallet from disk. `--expect-regre
 only fits a server from before the persistence reset. Live play ran on the flat-file
 backend only.
 
+## Connections before an account name, and the trusted proxy
+
+One address may hold at most `MAX_UNNAMED_CONNECTIONS_PER_ADDRESS` (8) open connections
+that are negotiating TLS, waiting for the WebSocket handshake or at the account name
+prompt; `new_descriptor()` closes the next before setting it up. A connection silent at
+the prompt is closed after `UNNAMED_CONNECTION_TIMEOUT` (120 s). A connection from
+`DURIS_TRUSTED_PROXY_IP` counts under the address its PROXY header names, and one without
+a header has the proxy's address, shared by its clients, and is not limited. The
+listeners are IPv6 sockets, so an IPv4 proxy arrives as `::ffff:a.b.c.d`;
+`proxy_peer_is_trusted()` matches that against the IPv4 setting, and `websocket.c` uses it
+for `X-Forwarded-For`. Before that the proxy was never trusted, and one website login
+closed every other one in progress as a stale connection from the same address.
+
+```sh
+python3 tests/async/test_connection_limit_journey.py   # builds or reuses a flat-file server
+python3 tests/async/test_websocket_protocol_contract.py
+```
+
+The journey boots a flat-file server with the WebSocket listener on and `127.0.0.9` as
+its proxy, binding client sockets to loopback aliases: nine telnet and nine TLS
+connections from one address (the ninth refused), an account created from another, nine
+PROXY-header connections for one client beside one for another, nine telnet connections
+from the proxy itself, two website handshakes with different `X-Forwarded-For` addresses,
+and a connection silent at the prompt (closed between 115 and 135 s). It takes about two
+and a half minutes.
+
 ## Copyover state path and failure output
 
 `COPYOVER_STATE_FILE` selects the state file shared by capture, listener-header
