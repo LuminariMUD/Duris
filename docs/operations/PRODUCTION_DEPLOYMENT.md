@@ -85,14 +85,15 @@ explicitly stopped tunnel was started by a watchdog run.
 
 ## Planned maintenance
 
-Pause the watchdog before deliberately stopping a website unit, Nginx, or the
-tunnel. The watchdog ignores a pause older than four hours.
+Pause the watchdog before deliberately stopping a website unit or the tunnel.
+The watchdog ignores a pause older than four hours. All website units are
+user units of the `staging` account.
 
 ```bash
-sudo touch /var/lib/durisweb-watchdog/pause
+mkdir -p ~/.local/state/durisweb-watchdog && touch ~/.local/state/durisweb-watchdog/pause
 # Maintenance...
-sudo systemctl start durisweb-redis durisweb-production durisweb-cloudflared
-sudo rm /var/lib/durisweb-watchdog/pause
+systemctl --user start durisweb-redis durisweb-production durisweb-cloudflared
+rm ~/.local/state/durisweb-watchdog/pause
 ```
 
 Stopping only the MUD does not require a pause. Before ending maintenance, run
@@ -120,10 +121,10 @@ the public health checks below.
 Run these on the host without printing `.env`:
 
 ```bash
-systemctl is-active duris-mud-production mysql redis-server nginx \
+systemctl --user is-active duris-mariadb duris-redis duris-mud-production \
   durisweb-redis durisweb-production durisweb-cloudflared durisweb-watchdog.timer
-systemctl list-timers durisweb-watchdog.timer
-journalctl -u durisweb-watchdog.service --since -1h
+systemctl --user list-timers durisweb-watchdog.timer
+journalctl --user-unit durisweb-watchdog.service --since -1h
 curl --fail --silent --show-error http://127.0.0.1:20243/ready
 curl --fail --silent --show-error https://duris.sbs/health
 curl --fail --silent --show-error https://mud.duris.sbs/health
