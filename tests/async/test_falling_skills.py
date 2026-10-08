@@ -53,6 +53,10 @@ void act(const char *, int, P_char, P_obj, void *, int) {}
 void send_to_char(const char *, P_char) {}
 void do_look(P_char, char *, int) {}
 bool affected_by_spell(P_char, int spell) { return climbing && spell == SKILL_CLIMB; }
+bool char_falling(P_char ch) {
+    return rooms[ch->in_room].sector_type == SECT_NO_GROUND && !IS_AFFECTED(ch, AFF_FLY) &&
+           !IS_AFFECTED(ch, AFF_LEVITATE);
+}
 P_char get_linked_char(P_char ch, ush_int) {
     return riding && ch == &person ? &mount : nullptr;
 }
@@ -133,8 +137,8 @@ nevent_schedule_result add_event(event_func, int delay, P_char ch, P_char, P_obj
                                   const void *data, int data_size) {
     ++schedule_attempts;
     scheduled_delay = delay;
-    assert(data && data_size == int(sizeof(int)));
-    scheduled_speed = *static_cast<const int *>(data);
+    assert(data && data_size == int(sizeof(falling_event_payload)));
+    scheduled_speed = static_cast<const falling_event_payload *>(data)->speed;
     if (!IS_ALIVE(ch)) ++post_death_schedules;
     return {schedule_status, {}};
 }
@@ -194,9 +198,9 @@ int main() {
         assert(applied_damage == baseline);
     }
     reset(); person.curr_stats.Agi = 101; falling_step(&person, 43);
-    assert(applied_damage == 171);
+    assert(applied_damage == 118);
     reset(); person.curr_stats.Agi = 101; safe_skill = 100; falling_step(&person, 43);
-    assert(applied_damage == 85);
+    assert(applied_damage == 59);
     reset(); safe_skill = 100; person.curr_stats.Agi = 200; falling_step(&person, 1);
     assert(applied_damage == 1);
     reset(); person.points.max_hit = 0;
@@ -206,7 +210,7 @@ int main() {
     assert(falling_step(&person, 43) == falling_step_result::actor_removed);
     assert(deaths == 1 && stuns == 0);
     reset(); person.points.hit = 100; safe_skill = 100; falling_step(&person, 43);
-    assert(deaths == 0 && GET_HIT(&person) == 14);
+    assert(deaths == 0 && GET_HIT(&person) == 41);
 
     for (int skill : {0, 100}) {
         reset(); safe_skill = skill; rooms[0].sector_type = SECT_WATER_SWIM;
@@ -214,10 +218,10 @@ int main() {
         assert(applied_damage == 0 && schedule_attempts == 0 && GET_HIT(&person) == 1000);
         reset(); safe_skill = skill; floor();
         assert(falling_step(&person, 60) == falling_step_result::continued);
-        assert(applied_damage == (skill ? 120 : 240) && schedule_attempts == 1);
+        assert(applied_damage == (skill ? 103 : 206) && schedule_attempts == 1);
         reset(); safe_skill = skill; has_rider = true;
         assert(falling_step(&person, 43) == falling_step_result::landed);
-        const int expected = skill ? 86 : 172;
+        const int expected = skill ? 59 : 119;
         assert(applied_damage == 0 && rider_damage == expected);
         assert(GET_HIT(&person) == 1000 - expected && GET_HIT(&rider) == 1000 - expected);
         assert(unlinks == 1);
@@ -292,6 +296,34 @@ int main() {
     reset(); ledge(); relocate_on_entry = true;
     assert(falling_step(&person, 1) == falling_step_result::landed);
     assert(person.in_room == 2 && applied_damage > 0 && schedule_attempts == 0);
+
+    // A step scheduled in one room ends the fall once the faller was moved elsewhere
+    // between two steps: into open air it starts over from there at the first speed,
+    // onto a floor it does nothing; in the scheduled room it runs as before.
+    reset(); falling_chain();
+    falling_event_payload elsewhere = {43, 2};
+    event_falling_char(&person, nullptr, nullptr, &elsewhere);
+    assert(person.in_room == 1 && applied_damage == 0 && schedule_attempts == 1);
+    assert(scheduled_speed == 31 && scheduled_delay == 4);
+    reset(); falling_chain(); rooms[0].sector_type = SECT_INSIDE;
+    event_falling_char(&person, nullptr, nullptr, &elsewhere);
+    assert(person.in_room == 0 && applied_damage == 0 && schedule_attempts == 0);
+    reset(); falling_chain(); person.specials.affected_by = AFF_FLY;
+    event_falling_char(&person, nullptr, nullptr, &elsewhere);
+    assert(person.in_room == 0 && schedule_attempts == 0);
+    reset(); falling_chain();
+    falling_event_payload here = {1, 0};
+    event_falling_char(&person, nullptr, nullptr, &here);
+    assert(person.in_room == 1 && schedule_attempts == 1 && scheduled_speed == 31);
+
+    // A down exit onto the room itself, or back onto the room the step came from, is
+    // no way down: the fall lands there instead of never ending.
+    reset(); ledge(); downward.to_room = 0;
+    assert(falling_step(&person, 1) == falling_step_result::landed);
+    assert(person.in_room == 0 && applied_damage == 2 && schedule_attempts == 0);
+    reset(); ledge(); next_downward.to_room = 0; rooms[1].dir_option[DIR_DOWN] = &next_downward;
+    assert(falling_step(&person, 1) == falling_step_result::landed);
+    assert(person.in_room == 1 && applied_damage > 0 && schedule_attempts == 0);
 
     puts("falling executor skill, lifetime, relocation and scheduling regressions passed");
 }

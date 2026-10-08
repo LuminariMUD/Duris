@@ -1775,7 +1775,7 @@ bool set_ship_physical_layout(P_ship ship)
 	{
 	  int to_room = real_room( ZONE_SHIP_ZONE_ENTRANCE );
 	  if( !to_room )
-	    fprintf(stderr, "Failed to link zone ship to zone.\r\n");
+	    fprintf(stderr, "Failed to link zone ship to zone.\n");
 	  else
 	  {
 	    world[real_room(ship->room[1].roomnum)].dir_option[DIR_NORTH]->to_room = to_room;

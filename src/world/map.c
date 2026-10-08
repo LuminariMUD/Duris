@@ -1387,7 +1387,7 @@ bool is_in_line_of_sight_dir(P_char ch, P_char target, int current_room)
 
 void assign_continents()
 {
-	fprintf(stderr, "Assigning continents...\r\n");
+	fprintf(stderr, "Assigning continents...\n");
 
 	for (int i = 0; continents[i].id; i++)
 	{

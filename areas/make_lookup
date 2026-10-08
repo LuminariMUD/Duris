@@ -1,5 +1,8 @@
 #!/bin/sh
 set -eu
+# The redirections below keep the mode of a file they truncate; the chmod at the
+# end covers tables an earlier run made readable to others.
+umask 077
 
 echo
 echo "Making lookup table."
@@ -15,6 +18,7 @@ gawk -f lookup.rawk target='~' world.zon > ../lib/misc/lookup.zon
 echo "Lookup table done."
 gawk -f lookup_with_limits.awk target='~' world.zon > ../lib/misc/lookup_with_limits.zon
 echo "Lookup zone table with limits done."
+chmod 600 ../lib/misc/lookup.mob ../lib/misc/lookup.obj ../lib/misc/lookup.wld ../lib/misc/lookup.zon ../lib/misc/lookup_with_limits.zon
 echo "Converting lookup mob to unix format..."
 dos2unix ../lib/misc/lookup.mob
 echo "....done!"

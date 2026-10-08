@@ -117,10 +117,7 @@ def run(binary):
                 time.sleep(0.1)
 
         def reconnect_player():
-            original = journey.ACCOUNT, journey.CHARACTER
-            journey.ACCOUNT, journey.CHARACTER = 'Purgeacct', 'Purgemortal'
-            try: return journey.reconnect_character(port)
-            finally: journey.ACCOUNT, journey.CHARACTER = original
+            return journey.reconnect_character(port, account='Purgeacct', character='Purgemortal')
 
         def stat_player():
             admin.send('stat c Purgemortal')

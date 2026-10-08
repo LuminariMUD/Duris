@@ -49,10 +49,13 @@ int main() {
     speed = falling_advance_speed(31, true, false);
     assert(speed.speed == 23 && speed.motion == falling_motion::continue_falling);
 
-    assert(falling_impact_damage(1000, 43, 101, 100, 0, 0) == 171);
-    assert(falling_impact_damage(1000, 43, 101, 100, 100, 1) == 85);
+    assert(falling_impact_damage(1000, 43, 101, 100, 0, 0) == 118);
+    assert(falling_impact_damage(1000, 43, 101, 100, 100, 1) == 59);
     assert(falling_impact_damage(1000, 1, 200, 100, 100, 1) == 1);
-    assert(falling_impact_damage(1000, 43, 101, 100, 100, 100) == 171);
+    assert(falling_impact_damage(1000, 43, 101, 100, 100, 100) == 118);
+    assert(falling_impact_damage(1000, 31, 0, 100, 0, 0) == 158);
+    assert(falling_impact_damage(1000, 90, 0, 100, 0, 0) == 460);
+    assert(falling_impact_damage(1000, 250, 0, 100, 0, 0) == 1100);
 
     assert(falling_injury_percent(171, 1000) == 17);
     assert(falling_injury_percent(1, 1000) == 0);

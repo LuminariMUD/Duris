@@ -17,11 +17,11 @@ static bool ssl_local_fallback_allowed(void)
 	       (!strcmp(address, "127.0.0.1") || !strcmp(address, "::1"));
 }
 
-#define YELL(msg, ...)                            \
-	do                                        \
-	{                                         \
-		printf(msg, __VA_ARGS__);         \
-		logit(LOG_SYS, msg, __VA_ARGS__); \
+#define YELL(msg, ...)                             \
+	do                                         \
+	{                                          \
+		fprintf(stderr, msg, __VA_ARGS__); \
+		logit(LOG_SYS, msg, __VA_ARGS__);  \
 	} while (0)
 
 // read the cert, skipping if file date is the same.
@@ -79,9 +79,9 @@ void ssl_read_cert(void)
 		    key_st.st_mtim.tv_nsec == key_time.tv_nsec)
 			return;
 
-	printf("[%ld] reading ssl cert: %s key: %s (old_mtime=%ld.%ld new_mtime=%ld.%ld)\n",
-	       time(NULL), certfile, keyfile, cert_time.tv_sec, cert_time.tv_nsec,
-	       st.st_mtim.tv_sec, st.st_mtim.tv_nsec);
+	logit(LOG_STATUS, "reading ssl cert: %s key: %s (old_mtime=%ld.%ld new_mtime=%ld.%ld)",
+	      certfile, keyfile, cert_time.tv_sec, cert_time.tv_nsec, st.st_mtim.tv_sec,
+	      st.st_mtim.tv_nsec);
 	cert_time = st.st_mtim;
 	key_time = key_st.st_mtim;
 	if ((err = gnutls_certificate_allocate_credentials(&cred)) < 0 ||
@@ -144,7 +144,7 @@ int ssl_negotiate(gnutls_session_t ses)
 		return 0;
 	if (err == GNUTLS_E_AGAIN || err == GNUTLS_E_INTERRUPTED)
 		return 1;
-	logit(LOG_COMM, "gnutls_handshake failed: %s", gnutls_strerror(err));
+	logit(LOG_DEBUG, "gnutls_handshake failed: %s", gnutls_strerror(err));
 	return 2;
 }
 

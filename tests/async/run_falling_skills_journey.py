@@ -14,6 +14,8 @@ import tempfile
 import time
 import test_flatfile_combat_journey as journey
 
+GOD_ACCOUNT, GOD = 'Fallgodacct', 'Fallgod'
+
 
 def run(binary):
     subprocess.run(['python3', 'tests/async/test_flatfile_player_repository.py',
@@ -31,7 +33,9 @@ def run(binary):
         zone.write_text(re.sub(r'^[MG] .*\n', '', zone.read_text(), flags=re.M))
         world = runtime / 'areas_mini/mini.wld'
         text = world.read_text()
-        text = text.replace('1 0 0\nS\n$~', '1 0 0\nD1\n~\n~\n0 0 22801\nS\n$~')
+        text = text.replace('1 0 0\nS\n$~',
+                            '1 0 0\nD0\n~\n~\n0 0 22810\nD1\n~\n~\n0 0 22801\n'
+                            'D2\n~\n~\n0 0 22803\nD3\n~\n~\n0 0 22805\nS\n$~')
         assert '0 0 22801' in text, 'arena exit fixture changed'
         rooms = '''#22801
 The Regression Ledge~
@@ -44,6 +48,85 @@ D5
 S
 #22802
 The Regression Landing~
+A stone floor stops the fall.\n~
+1 0 0
+S
+#22803
+The Regression Shelf~
+Solid ground, with a long drop below.\n~
+1 0 0
+F
+100
+D5
+~
+~
+0 0 22804
+S
+#22804
+The Regression Chute~
+Open air, with the landing below.\n~
+1 0 0
+D5
+~
+~
+0 0 22802
+S
+#22805
+The Regression Pit~
+Open air; the only way down is back here.\n~
+1 0 8
+D1
+~
+~
+0 0 22800
+D5
+~
+~
+0 0 22805
+S
+#22810
+The Regression Shaft Top~
+Open air.\n~
+1 0 8
+D5
+~
+~
+0 0 22811
+S
+#22811
+The Regression Shaft Middle~
+Open air.\n~
+1 0 8
+D5
+~
+~
+0 0 22812
+S
+#22812
+The Regression Shaft Lower~
+Open air.\n~
+1 0 8
+D5
+~
+~
+0 0 22813
+S
+#22813
+The Regression Shaft Bottom~
+A stone floor stops the fall.\n~
+1 0 0
+S
+#22820
+The Regression Hover~
+Open air over a second floor.\n~
+1 0 8
+D5
+~
+~
+0 0 22821
+S
+#22821
+The Regression Second Floor~
 A stone floor stops the fall.\n~
 1 0 0
 S
@@ -82,6 +165,17 @@ S
             if output:
                 output.close()
 
+        def save_after_landing():
+            client.send('save')
+            saved_message = f'Save complete for {journey.CHARACTER}.'
+            outcome, _ = client.expect_any((saved_message,
+                'Being knocked unconscious strictly limits what you can do.'), timeout=30)
+            if outcome != saved_message:
+                client.expect('Feeling begins to return', timeout=30)
+                client.send('save')
+                client.expect(saved_message, timeout=30)
+            return subprocess.check_output([str(fixture), str(state), 'inspect'], text=True).split()
+
         def boot():
             nonlocal process, output
             output = (runtime / 'server.out').open('w')
@@ -112,15 +206,7 @@ S
                     client.send('east')
                     client.expect('You rediscover the law of gravity', timeout=20)
                     client.expect('You land with stunning force!', timeout=20)
-                    client.send('save')
-                    saved_message = f'Save complete for {journey.CHARACTER}.'
-                    outcome, _ = client.expect_any((saved_message,
-                        'Being knocked unconscious strictly limits what you can do.'), timeout=30)
-                    if outcome != saved_message:
-                        client.expect('Feeling begins to return', timeout=30)
-                        client.send('save')
-                        client.expect(saved_message, timeout=30)
-                    saved = subprocess.check_output([str(fixture), str(state), 'inspect'], text=True).split()
+                    saved = save_after_landing()
                     assert int(saved[0]) == 22802, saved
                     losses[mode] = int(saved[1])
                     assert losses[mode] > 1000, losses
@@ -147,6 +233,72 @@ S
             assert 0.4 < losses['safe'] / losses['unskilled'] < 0.6, losses
             assert 0.9 < losses['climb-zero'] / losses['unskilled'] < 1.1, losses
             print('falling skills: real movement, landing, damage, save/restart/reload passed', flush=True)
+            # The shelf drops everyone on their first command there, two rooms down. The
+            # move queued behind that command arrives inside the four-tick gap between
+            # the two steps and is refused: the fall used to resolve wherever the walk went.
+            subprocess.run([str(fixture), str(state), 'unskilled'], check=True)
+            boot()
+            client = journey.reconnect_character(port)
+            client.send('south')
+            client.expect('The Regression Shelf')
+            client.send('look')
+            client.send('north')
+            client.expect('You rediscover the law of gravity', timeout=20)
+            client.expect('You are falling!', timeout=20)
+            client.expect('You land with stunning force!', timeout=20)
+            saved = save_after_landing()
+            assert int(saved[0]) == 22802, saved
+            stop()
+            print('falling gate: a move typed during the fall was refused, landed in the fall room', flush=True)
+            # The pit's down exit leads back onto the pit: a loop in the data, not a way
+            # down. The fall lands at its first step and the gate lets go. (It used to fall
+            # forever, and once gated, refused every command for as long as that lasted.)
+            subprocess.run([str(fixture), str(state), 'unskilled'], check=True)
+            boot()
+            client = journey.reconnect_character(port)
+            client.send('west')
+            client.expect('You rediscover the law of gravity', timeout=20)
+            client.expect('You land with stunning force!', timeout=20)
+            saved = save_after_landing()
+            assert int(saved[0]) == 22805, saved
+            client.send('look')
+            client.expect('The Regression Pit', timeout=20)
+            stop()
+            print('falling loop: a down exit onto the room itself landed at once', flush=True)
+            # Transferred between two steps into open air over a floor, the faller falls
+            # from there: the pending step, fired in the wrong room, starts the fall over
+            # instead of leaving the character hovering. A god is made for the transfer.
+            subprocess.run([str(fixture), str(state), 'unskilled'], check=True)
+            boot()
+            god = journey.MudClient(port)
+            journey.create_character(god, account=GOD_ACCOUNT, character=GOD,
+                                     email='god@example.invalid')
+            god.send('save')
+            god.expect(f'Save complete for {GOD}.', timeout=30)
+            god.send('quit')
+            god.expect('ACCOUNT MENU', timeout=30)
+            god.close()
+            stop()
+            journey.make_overlord(state, GOD)
+            boot()
+            god = journey.reconnect_character(port, account=GOD_ACCOUNT, character=GOD)
+            god.send('goto 22820')
+            god.expect('The Regression Hover', timeout=10)
+            client = journey.reconnect_character(port)
+            client.send('north')
+            client.expect('You rediscover the law of gravity', timeout=20)
+            client.expect('You tumble downward!', timeout=20)
+            god.send(f'transfer {journey.CHARACTER.lower()}')
+            client.expect('Someone demands your presence NOW!', timeout=20)
+            client.expect('You land with stunning force!', timeout=20)
+            transcript = client.transcript.decode(errors='replace')
+            assert 'law of gravity' not in transcript[transcript.rindex('Someone demands'):], \
+                'the fall over the second floor was started afresh, not by the pending step'
+            saved = save_after_landing()
+            assert int(saved[0]) == 22821, saved
+            god.close()
+            stop()
+            print('falling restart: a faller moved mid-fall into open air landed below it', flush=True)
         except Exception:
             print((runtime / 'server.out').read_text(errors='replace')[-8000:])
             if client:

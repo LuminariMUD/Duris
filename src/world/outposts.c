@@ -285,7 +285,7 @@ bool save_outpost_record(const runtime_outpost_record &record, const char * /*op
 
 int init_outposts()
 {
-	fprintf(stderr, "-- Booting outposts\r\n");
+	fprintf(stderr, "-- Booting outposts\n");
 
 	// Outpost specs, (can be found in building.c)
 	// mob_index[real_mobile(0)].func.mob = ;

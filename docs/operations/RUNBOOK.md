@@ -37,8 +37,14 @@ production port 7777; the default remains 4000.
 - Promotes `bin/server/dms_new` to `bin/server/dms`, retains the five newest
   prior executables under `bin/server/history/` by default, and runs the active
   binary in an outer loop. Set `DMS_BINARY_HISTORY_LIMIT` to change the limit.
-  A `--production` launch refuses to promote or run anything except a stamped
-  `PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=production` build.
+  A `--production` launch promotes and runs nothing except a stamped
+  `PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=production` build: a staged binary
+  with another stamp is logged and left in place, and the runtime binary keeps
+  running. `make`, `make build-server` and `make test-db` stage a development
+  build, so on a production host build the release after the tests, or restart
+  before them. To run the database journeys against the production profile,
+  `make build-production` and `DURIS_SERVER_BINARY=bin/server/production/dms_new
+  make test-db`.
 - On each restart it moves `logs/log/*`, `logs/player-log/*` and
   `logs/latency_trace.log` into `logs/old-logs/<timestamp>/`, then deletes the
   oldest of those until `logs/old-logs` fits in `DURIS_LOG_ARCHIVE_MB` (1024 by
@@ -76,9 +82,9 @@ keeping player connections alive via `copyover.dat`.
 Before an authorized clean build or rollout, identify the actual supervisor,
 its system/user scope, and the executable behind the listener. A service name
 or port alone does not establish environment role. Preserve the executable
-bytes and matching backend/profile stamp outside `bin/`, together with any
-runtime maintenance-scheduler state under that deletion boundary.
-`make clean-all` removes `bin/`.
+bytes and matching backend/profile stamp outside `bin/`: `make clean-all`
+removes `bin/`. The maintenance-scheduler state is under `runtime/` by default;
+a `MAINTENANCE_STATE_FILE` that still points under `bin/` goes with it.
 
 When copying `/proc/<pid>/exe`, dereference it into a regular file (for example,
 `cp -L`), verify that the copy is not a symlink, and compare SHA-256 digests.

@@ -164,10 +164,8 @@ S
                 time.sleep(0.1)
 
         def reconnect_player(expected_room='The Regression Arena'):
-            original = journey.ACCOUNT, journey.CHARACTER
-            journey.ACCOUNT, journey.CHARACTER = 'Purgeacct', 'Purgemortal'
-            try: return journey.reconnect_character(port, expected_room=expected_room)
-            finally: journey.ACCOUNT, journey.CHARACTER = original
+            return journey.reconnect_character(port, expected_room=expected_room,
+                                               account='Purgeacct', character='Purgemortal')
 
         def inspect_player():
             return json.loads(subprocess.check_output(
@@ -231,7 +229,8 @@ S
                 player.close()
                 player = reconnect_player()
                 admin.send('transfer purgemortal'); drain(admin); drain(player)
-                player.send('get all purgemortal'); player.expect('You get', timeout=30)
+                player.send('get all purgemortal')
+                player.expect('You finish sorting your haul from the corpse of Purgemortal.', timeout=30)
                 time.sleep(2)
                 player.send('save'); player.expect('Save complete for Purgemortal.', timeout=30)
                 recovered = inspect_player()

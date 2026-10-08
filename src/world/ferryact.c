@@ -216,11 +216,11 @@ void init_ferries()
 	P_char Charon;
 
 #ifdef DISABLE_FERRIES
-	fprintf(stderr, "--    Ferries disabled\r\n");
+	fprintf(stderr, "--    Ferries disabled\n");
 	return;
 #endif
 
-	fprintf(stderr, "--    Booting Ferries\r\n");
+	fprintf(stderr, "--    Booting Ferries\n");
 
 	const struct ferry_definition *it = ferries;
 	while (it->name != NULL)
@@ -247,7 +247,7 @@ void init_ferries()
 	{
 		char_to_room(Charon, real_room0(600586), -2);
 	}
-	// fprintf(stderr, "      Ferry loading complete.\r\n");
+	// fprintf(stderr, "      Ferry loading complete.\n");
 }
 
 void shutdown_ferries()

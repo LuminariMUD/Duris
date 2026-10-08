@@ -474,7 +474,7 @@ void Board_save_board(int board_type)
 
 	if (!num_of_msgs[board_type])
 	{
-		fprintf(stderr, "number of messages is 0! NOT saving!\r\n");
+		fprintf(stderr, "number of messages is 0! NOT saving!\n");
 		unlink(FILENAME(board_type));
 		return;
 	}

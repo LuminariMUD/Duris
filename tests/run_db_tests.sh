@@ -23,7 +23,7 @@ run_one() {
 export -f run_one
 
 DB=tests/async/with_disposable_mariadb.sh
-SERVER=bin/server/dms_new
+SERVER=${DURIS_SERVER_BINARY:-bin/server/dms_new}
 started=$SECONDS
 
 # Longest first.

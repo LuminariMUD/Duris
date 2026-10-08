@@ -237,10 +237,18 @@ fi
 while [[ $RESULT != 0 && $RESULT != 55 ]]; do
 	DATESTR=$(date +%C%y.%m.%d-%H.%M.%S)
 
+  # A staged binary built for another backend or profile is left where it is and
+  # the runtime binary keeps running: the regression suite stages a development
+  # build, and a launcher that exited here was restarted every ten seconds.
+  SKIP_STAGED=0
   if (( PRODUCTION_MODE == 1 )); then
-    BUILD_STAMP="$RUNTIME_BUILD_STAMP"
-    [[ -f "$STAGED_BINARY" ]] && BUILD_STAMP="$STAGED_BUILD_STAMP"
-    if [[ ! -f "$BUILD_STAMP" || "$(<"$BUILD_STAMP")" != "mariadb/production" ]]; then
+    if [[ -f "$STAGED_BINARY" ]] &&
+       [[ ! -f "$STAGED_BUILD_STAMP" || "$(<"$STAGED_BUILD_STAMP")" != "mariadb/production" ]]; then
+      echo "Ignoring staged $STAGED_BINARY: its build stamp is not mariadb/production" >&2
+      SKIP_STAGED=1
+    fi
+    if [[ ! -f "$STAGED_BINARY" || $SKIP_STAGED == 1 ]] &&
+       [[ ! -f "$RUNTIME_BUILD_STAMP" || "$(<"$RUNTIME_BUILD_STAMP")" != "mariadb/production" ]]; then
       echo "Production mode requires a mariadb/production server build" >&2
       echo "Build with: make -C src PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=production" >&2
       exit 1
@@ -266,7 +274,7 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
   fi
 
   if [[ $RESULT == 53 || $RESULT == 57 ]]; then
-    if [ -f "$STAGED_BINARY" ]; then
+    if [[ -f "$STAGED_BINARY" && $SKIP_STAGED == 0 ]]; then
       if [ -f "$RUNTIME_BINARY" ]; then
         mv "$RUNTIME_BINARY" "$BINARY_HISTORY_DIR/dms.$DATESTR"
       fi

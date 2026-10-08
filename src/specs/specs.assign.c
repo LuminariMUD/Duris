@@ -1253,14 +1253,14 @@ void assign_mobiles(void)
 	mob_index[real_mobile0(25401)].func.mob = unblock_on_death;
 
 	logit(LOG_STATUS, "   Booting the shops.");
-	fprintf(stderr, "--    Booting the shops.\r\n");
+	fprintf(stderr, "--    Booting the shops.\n");
 	boot_the_shops();
 	logit(LOG_STATUS, "   Assigning the shopkeepers.");
-	fprintf(stderr, "--    Booting the shopkeepers.\r\n");
+	fprintf(stderr, "--    Booting the shopkeepers.\n");
 	assign_the_shopkeepers();
 
 	logit(LOG_STATUS, "   Booting quests.");
-	fprintf(stderr, "--    Booting the quests.\r\n");
+	fprintf(stderr, "--    Booting the quests.\n");
 	boot_the_quests();
 	std::string zone_story_error;
 	if (!zone_story_quest_runtime::bootstrap(&zone_story_error))
@@ -1271,7 +1271,7 @@ void assign_mobiles(void)
 		      zone_story_quest_runtime::service()->catalog().definitions.size(),
 		      zone_story_quest_runtime::content_revision());
 	logit(LOG_STATUS, "   Assigning questers.");
-	fprintf(stderr, "--    Assigning the questors.\r\n");
+	fprintf(stderr, "--    Assigning the questors.\n");
 	assign_the_questers();
 }
 

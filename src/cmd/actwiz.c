@@ -4421,8 +4421,12 @@ void timedShutdown(P_char ch, P_char, P_obj, void * /*data*/)
 		switch (shutdownData.eShutdownType)
 		{
 		case TimedShutdownData::OK:
-			snprintf(buf, 500, "\r\n%s grabs Duris by the balls and rips them off.\r\n",
-				 shutdownData.IssuedBy);
+			snprintf(
+				buf, 500,
+				"\r\n&+W%s&n &+Mspeaks the Word of Unmaking&n: the sun gutters, the "
+				"stars wink out one by one, and &+YDuris&n closes like a book of "
+				"&+Cstarlight&n.\r\n",
+				shutdownData.IssuedBy);
 			send_to_all(buf);
 			logit(LOG_STATUS, "%s", buf);
 			sql_log(ch, WIZLOG, "%s", buf);

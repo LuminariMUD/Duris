@@ -120,7 +120,7 @@ size_t ctf_boon_state_snapshot(int64_t *values, size_t capacity)
 int init_ctf()
 {
 #if defined(CTF_MUD) && (CTF_MUD == 1)
-	fprintf(stderr, "-- Loading ctf\r\n");
+	fprintf(stderr, "-- Loading ctf\n");
 
 	load_ctf();
 #endif

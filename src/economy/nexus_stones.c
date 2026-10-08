@@ -177,7 +177,7 @@ void copy_nexus_info(const flatfile_nexus_record &record, NexusStoneInfo *info)
 
 int init_nexus_stones()
 {
-	fprintf(stderr, "-- Booting nexus stones\r\n");
+	fprintf(stderr, "-- Booting nexus stones\n");
 
 	mob_index[real_mobile(MOB_GOOD_GUARDIAN)].func.mob = nexus_stone_guardian;
 	mob_index[real_mobile(MOB_EVIL_GUARDIAN)].func.mob = nexus_stone_guardian;

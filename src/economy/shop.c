@@ -2295,7 +2295,7 @@ void boot_the_shops(void)
 
 		if (*shop_record == '#')
 		{ /* a new shop */
-			//      fprintf(stderr, "boot_the_shops: Booting shop: '%s'.\r\n", shop_record);
+			//      fprintf(stderr, "boot_the_shops: Booting shop: '%s'.\n", shop_record);
 			shop_end = FALSE;
 
 			// first shop
@@ -2318,7 +2318,7 @@ void boot_the_shops(void)
 			}
 			else
 			{
-				fprintf(stderr, "boot_the_shops: Old shop: '%s'!\r\n", shop_record);
+				fprintf(stderr, "boot_the_shops: Old shop: '%s'!\n", shop_record);
 				perror("Old shop exists!");
 				fatal_boot_error("shop", "boot_the_shops: old shop format in '%s'",
 						 shop_record);
@@ -2355,14 +2355,14 @@ void boot_the_shops(void)
 			/* Load in the percentages that the shop will use to make a profit. */
 			if (fscanf(shop_f, "%f \n", &t_buy) != 1)
 			{
-				fprintf(stderr, "boot_the_shops: '%s' has bad t_buy!\r\n",
+				fprintf(stderr, "boot_the_shops: '%s' has bad t_buy!\n",
 					shop_record);
 				fatal_boot_error("shop", "boot_the_shops: '%s' has bad t_buy",
 						 shop_record);
 			}
 			if (fscanf(shop_f, "%f \n", &t_sell) != 1)
 			{
-				fprintf(stderr, "boot_the_shops: '%s' has bad t_sell!\r\n",
+				fprintf(stderr, "boot_the_shops: '%s' has bad t_sell!\n",
 					shop_record);
 				fatal_boot_error("shop", "boot_the_shops: '%s' has bad t_sell",
 						 shop_record);
@@ -2512,7 +2512,7 @@ void boot_the_shops(void)
 		}
 		else if (*shop_record == '$')
 		{ /* EOF */
-			fprintf(stderr, "-- Shop loading complete.\r\n");
+			fprintf(stderr, "-- Shop loading complete.\n");
 			FREE(shop_record);
 			break;
 		}
@@ -2522,7 +2522,7 @@ void boot_the_shops(void)
 
 	if (shop_end == FALSE)
 	{
-		fprintf(stderr, "WARNING! The shop file has an error in it! (boot stopped)\r\n");
+		fprintf(stderr, "WARNING! The shop file has an error in it! (boot stopped)\n");
 		logit(LOG_STATUS, "WARNING! The shop file has an error in it! (boot stopped)");
 		fatal_boot_error("shop", "boot_the_shops: shop file ended unexpectedly");
 	}

@@ -1,7 +1,8 @@
 # Findings: a fall that landed three rooms away (Faang, 2026-10-07)
 
 Written 2026-10-07 against `master` at `a7e43bd0a`, from a play-test report by the owner.
-Working note: file the defect as a work item and delete this file.
+Working note: file the defect as a work item and delete this file. The resolution of each
+finding is at the end, under [Resolution](#resolution-2026-10-08).
 
 ## What happened
 
@@ -49,3 +50,29 @@ except that the swallowed command is a movement, which is why one `d` in the ali
 Any mortal in 15265 typing `look` repeatedly falls within a few dozen commands (10% each).
 Send `d` immediately after "You rediscover the law of gravity" and `s` after the next room
 text: the landing messages arrive in A Large Sleeping Cave.
+
+## Resolution (2026-10-08)
+
+On the branch `fix/build-findings-and-falling`, with the build findings of
+[build-findings.md](build-findings.md).
+
+| # | Status | Change |
+|---|---|---|
+| 1 | Fixed | `command_interpreter()` refuses every command but the casting escape hatches (petition, return) while an `event_falling_char` is pending: "You are falling!" (`src/cmd/interp.c`, right after the casting gate). The event payload carries the room the step was scheduled in, and a step whose faller is elsewhere, summoned or teleported between two steps, does nothing (`src/world/falling.c`). Regressions: the shelf phase of `tests/async/run_falling_skills_journey.py` (a room with `F 100`, a move typed behind the command that starts the fall), and the payload case in `tests/async/test_falling_skills.py`. |
+| 2 | Fixed | "You tumble downward!" to the faller on every step below speed 90; the faster band already had its line. |
+| 3 | Documented | `docs/content/area_writing.txt`, under the `F` record: a successful roll swallows the command, and the character can do nothing but petition until the fall lands. The roll stays per command. |
+| 4 | Changed | The flat 80 to 120 term now grows with the fall: a one-room fall (speed 31) carries a third of it, two rooms (43) about half, and it applies in full from speed 90, where the high-speed band begins (`falling_impact_damage` in `src/world/falling_policy.c`). The `max_hit × speed/250` term, the agility deduction, the minimum of 2 and Safe Fall are unchanged, so long falls are as they were. A balance change on the owner's instruction; its commit stands alone and can be dropped. |
+| 5 | Changed | The two canyon-wall rooms (15265 and 15266 in `areas/wld/faang.wld`) are `NO_MOB`: a wandering mob does not stand on the climbing wall, so the black widow spider meets the traveller in the caves or at the bank, not where a command is swallowed by a fall. The fall chances stay as the builder set them, and the spider's seven resets are untouched. Also its own commit. |
+| 6 | Done | See 1. |
+
+### Review of `9f7253f7e` (2026-10-08)
+
+The adversarial review of the merge request found two things the gate made worse.
+
+| # | Severity | Finding | Change |
+|---|---|---|---|
+| 1 | High | Three live rooms never land: 12302 and 12305 "Inside the Chasm" (`northern_wilderness.wld`) have a down exit onto themselves, and 134128 "The Pocket of Exile" and 134129 "In the Center of Nowhere" (`lortower.wld`) have each other's. The fall was endless on master too, but a command typed between two steps ended it; gated, nothing but a god or a reboot did. | A down exit back onto the room itself, or onto the room the step came from, is a loop in the data, not a way down: `falling_step()` lands there (`src/world/falling.c`). The pocket pair lands on the disc of force in 134128, which its text describes as the floor, with the portal north of it. The two chasm rooms now fall down the chasm like their neighbours (12302 to 12304, 12305 to 12306, and on to the bottom at 12309): a character cannot walk out of open air, so landing on the spot would have stranded them there, as the endless fall did on master. `tests/async/test_falling_world_exits.py` walks every fall entry in `areas/wld` the way the server does and refuses any longer loop of down exits; none exists (1,315 entries, longest fall 27 rooms). No step bound: a fall that a loop of three or more rooms could never end would only end by a lethal landing, and the test refuses the data before it merges. |
+| 2 | Medium | Moved between two steps (summon, teleport, a god's `transfer`), the faller's pending step was dropped, but while it was pending `falling_start()` on arrival had been refused: in open air the character hovered. | The dropped step starts the fall over where the character is when that is open air (`char_falling()`), from the first speed; on a floor it does nothing. One chain: the `falling_start()` inside that step is refused by the still-linked event. |
+
+Regressions: the pit and transfer phases of `tests/async/run_falling_skills_journey.py`, the loop
+and the reworked elsewhere cases of `tests/async/test_falling_skills.py`, and the new world test.

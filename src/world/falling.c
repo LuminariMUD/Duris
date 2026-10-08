@@ -36,8 +36,9 @@ bool character_survived(P_char ch, std::uint64_t removal_before)
 
 nevent_schedule_result schedule_falling_event(P_char ch, int speed, int delay)
 {
+	const falling_event_payload payload = { speed, ch->in_room };
 	const nevent_schedule_result scheduled =
-		add_event(event_falling_char, delay, ch, NULL, NULL, 0, &speed, sizeof(speed));
+		add_event(event_falling_char, delay, ch, NULL, NULL, 0, &payload, sizeof(payload));
 	if (!scheduled.was_scheduled())
 		logit(LOG_DEBUG, "Falling event schedule rejected with status %d.",
 		      static_cast<int>(scheduled.status));
@@ -106,26 +107,40 @@ void event_falling_char(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 		logit(LOG_DEBUG, "Falling event received a null speed payload.");
 		return;
 	}
-	falling_step(ch, *static_cast<const int *>(data));
+	const auto *payload = static_cast<const falling_event_payload *>(data);
+	if (ch && ch->in_room != payload->room)
+	{
+		/* Summoned or teleported between two steps: that fall ends where it was
+		 * left. Open air here starts another, which char_to_room() could not while
+		 * this event was pending. */
+		if (ch->in_room != NOWHERE && char_falling(ch))
+			falling_step(ch, 1);
+		return;
+	}
+	falling_step(ch, payload->speed);
+}
+
+bool falling_in_progress(P_char ch)
+{
+	P_nevent event;
+
+	LOOP_EVENTS_CH(event, ch->nevents)
+	{
+		if (event->func == event_falling_char)
+			return true;
+	}
+	return false;
 }
 
 falling_start_result falling_start(P_char ch)
 {
-	P_nevent event;
-
 	if (!ch)
 	{
 		logit(LOG_EXIT, "falling_start with NULL char.");
 		return falling_start_result::not_applicable;
 	}
-	if (!IS_ALIVE(ch) || ch->in_room == NOWHERE)
+	if (!IS_ALIVE(ch) || ch->in_room == NOWHERE || falling_in_progress(ch))
 		return falling_start_result::not_applicable;
-
-	LOOP_EVENTS_CH(event, ch->nevents)
-	{
-		if (event->func == event_falling_char)
-			return falling_start_result::not_applicable;
-	}
 
 	/* Grounded chance-fall rooms may have a blocked downward exit. */
 	if ((world[ch->in_room].sector_type != SECT_NO_GROUND) &&
@@ -199,8 +214,11 @@ falling_step_result falling_step(P_char ch, int speed)
 	int new_room = source_room;
 	bool completed_vertical_descent = false;
 
+	/* A down exit back onto the room itself, or onto the room the step came from,
+	 * is a loop in the data, not a way down: the fall lands rather than never. */
 	const auto *source_down = world[source_room].dir_option[DIR_DOWN];
 	const bool open_down = source_down && source_down->to_room != NOWHERE &&
+			       source_down->to_room != source_room &&
 			       !IS_SET(source_down->exit_info, EX_CLOSED) &&
 			       !IS_SET(source_down->exit_info, EX_BREAKABLE);
 	const falling_route route = falling_choose_route(ch->specials.z_cord > 0, open_down);
@@ -275,7 +293,9 @@ falling_step_result falling_step(P_char ch, int speed)
 	}
 
 	const auto *down = world[new_room].dir_option[DIR_DOWN];
-	const bool should_land = falling_should_land(down != NULL, down && down->to_room != NOWHERE,
+	const bool down_leads_on = down && down->to_room != NOWHERE && down->to_room != new_room &&
+				   down->to_room != source_room;
+	const bool should_land = falling_should_land(down != NULL, down_leads_on,
 						     down && IS_SET(down->exit_info, EX_CLOSED),
 						     down && IS_SET(down->exit_info, EX_BREAKABLE),
 						     completed_vertical_descent);
@@ -387,6 +407,7 @@ falling_step_result falling_step(P_char ch, int speed)
 	if (speed < 45)
 	{
 		act("$n falls in from above.", TRUE, ch, 0, 0, TO_ROOM);
+		send_to_char("You tumble downward!\n", ch);
 		const falling_step_result look = checked_look(ch, new_room, -2);
 		if (look != falling_step_result::continued)
 			return look;
@@ -394,6 +415,7 @@ falling_step_result falling_step(P_char ch, int speed)
 	else if (speed < 90)
 	{
 		act("Someone hurtles in from above.", TRUE, ch, 0, 0, TO_ROOM);
+		send_to_char("You tumble downward!\n", ch);
 		if (IS_PC(ch))
 		{
 			const int saved_act = ch->specials.act;

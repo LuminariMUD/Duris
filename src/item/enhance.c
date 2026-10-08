@@ -1503,7 +1503,7 @@ void load_enhance_config(void)
 	fp = fopen("lib/enhance.cfg", "r");
 	if (!fp)
 	{
-		fprintf(stderr, "WARNING: Cannot open lib/enhance.cfg — using defaults.\r\n");
+		fprintf(stderr, "WARNING: Cannot open lib/enhance.cfg — using defaults.\n");
 		logit(LOG_STATUS, "WARNING: Cannot open lib/enhance.cfg — using defaults.");
 		return;
 	}
@@ -1804,7 +1804,7 @@ void load_enhance_config(void)
 	}
 
 	fclose(fp);
-	fprintf(stderr, "-- Loaded enhance config from lib/enhance.cfg\r\n");
+	fprintf(stderr, "-- Loaded enhance config from lib/enhance.cfg\n");
 	logit(LOG_STATUS, "Loaded enhance config from lib/enhance.cfg");
 }
 
@@ -1880,7 +1880,7 @@ void load_enhance_index(void)
 	P_obj obj;
 	struct enhance_index_entry *entry;
 
-	fprintf(stderr, "-- Building enhance index (vnum %d to %d)...\r\n", enhance_search_vnum_min,
+	fprintf(stderr, "-- Building enhance index (vnum %d to %d)...\n", enhance_search_vnum_min,
 		enhance_search_vnum_max);
 	logit(LOG_STATUS, "Building enhance index (vnum %d to %d)...", enhance_search_vnum_min,
 	      enhance_search_vnum_max);
@@ -1974,7 +1974,7 @@ void load_enhance_index(void)
 		count++;
 	}
 
-	fprintf(stderr, "-- Enhance index built: %d entries indexed\r\n", count);
+	fprintf(stderr, "-- Enhance index built: %d entries indexed\n", count);
 	logit(LOG_STATUS, "Enhance index built: %d entries indexed", count);
 }
 

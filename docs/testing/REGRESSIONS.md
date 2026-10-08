@@ -167,21 +167,43 @@ custody and wallet; a reconnect keeps the inventory without replaying the haul.
   message reports the impact without saying the floor shattered. Death owns corpse
   placement, and the dead actor does not destroy the floor. A survivor still dispels it
   and keeps falling.
+- A fall in progress refuses every command but petition and return ("You are falling!")
+  until it lands, the faller is told "You tumble downward!" on every step, and a step
+  fires only in the room it was scheduled in: a faller summoned or teleported between two
+  steps falls again from where they are if that is open air, and stands if it is a floor.
+  (A move typed inside the gap between two steps used to run, and the fall then landed
+  wherever the walk went, three rooms away in the report; the first gated build left a
+  faller moved into open air hovering there.)
+- A down exit back onto the room itself, or onto the room the step came from, lands the
+  fall instead of continuing it, and `test_falling_world_exits.py` refuses any longer loop
+  of down exits in `areas/wld`. (Three live rooms fell forever, and once commands were
+  gated, nothing but a god or a reboot ended it. The two chasm rooms of the northern
+  wilderness now fall down the chasm; the Pocket of Exile lands on its disc.)
+- The flat 80 to 120 impact term grows with the fall: a third of it for a one-room fall
+  (speed 31), all of it from speed 90. The hit-point term, the agility deduction, the
+  minimum of 2 and Safe Fall are unchanged. (Flat, it was most of a low-level
+  character's hit points for a single room.)
 
 ```sh
 python3 tests/async/test_falling_skills.py
+python3 tests/async/test_falling_world_exits.py
 python3 tests/async/run_falling_skills_journey.py /absolute/path/dms_flat
 python3 tests/async/test_lethal_floor.py
 python3 tests/async/run_lethal_floor_journey.py /absolute/path/dms_flat nonlethal
 python3 tests/async/run_lethal_floor_journey.py /absolute/path/dms_flat lethal
 ```
 
-`test_falling_skills.py` runs the production `falling_char` under ASan/UBSan and exhausts
-every 1-100 roll for negative, zero, boundary, ordinary and above-cap skill values:
-success and failure, short and long falls, odd-damage rounding, minimum damage, a lethal
+`test_falling_policy.py` pins the arithmetic, the scaled impact term at speeds 31, 43, 90
+and 250 included. `test_falling_skills.py` runs the production `falling_char` under
+ASan/UBSan and exhausts every 1-100 roll for negative, zero, boundary, ordinary and
+above-cap skill values: success and failure, short and long falls, odd-damage rounding,
+minimum damage, a lethal
 threshold, water, a breakable floor, mount and rider, flight and levitation, Climb active
-and absent, Mental Anguish, and initial against already-scheduled falls. Its journey walks
-a character off a ledge, lands, saves and reloads in the landing room. The fixture is a
+and absent, Mental Anguish, initial against already-scheduled falls, a step whose
+faller has left the scheduled room, and down exits that loop. Its journey walks a character off a ledge, lands,
+saves and reloads in the landing room, then steps onto a shelf with a certain fall chance,
+types a move behind the command that starts the fall, and sees it refused and the landing
+in the fall's own room. The fixture is a
 Thief so login keeps Safe Fall; skill 1 always fails the strict comparison and skill 100
 can fail on rolls 100 and 101, so failed rolls retry up to five times, and increased
 damage fails at once.
@@ -249,6 +271,25 @@ Not covered: the full random-world generator (the journeys use controlled instan
 1255 and 1256), and generated equipment across a file copyover, which still stores NPC
 equipment by vnum.
 
+## Maintenance scheduler state file
+
+The state file defaults to `runtime/maintenance-scheduler.state`, outside the `bin/` tree
+that `make clean-all` removes. The scheduler makes a missing directory above the file
+with mode `0700`, and a write that fails is logged once per failure streak while the
+worker retries every second. The old default under `bin/server/` vanished under a running
+server during a clean rebuild, and nothing said so.
+
+```sh
+python3 tests/async/test_maintenance_scheduler.py
+```
+
+The harness drives the production scheduler with a stubbed job: a state path under one
+missing directory level is made and written, and one under two levels stays unwritable and
+is retried after a pause.
+
+Not covered: a configured `MAINTENANCE_STATE_FILE` that still points under `bin/`; that is
+the host's configuration.
+
 ## Ownership records of items that stopped existing
 
 A save never releases an `item_current_owner` row, so a player's row for an item that was
@@ -307,6 +348,26 @@ holds (no transfer path produces that state there; the rule is held by the Maria
 fixture, where the foreign key is), the flat-file reap and world recovery on a live
 server (the harness drives the repository functions), and the reap on a long-lived
 database with every owner type populated.
+
+## Production launcher and a staged development build
+
+`scripts/cycle_mud.sh --production` promotes only a `bin/server/dms_new` stamped
+`mariadb/production`. One with another stamp is logged and left where it is, and the
+stamped runtime binary runs; the launcher exits only when the runtime binary is unstamped
+too. It used to exit on the staged stamp alone, so a development build staged by the
+regression suite kept the systemd service in a ten-second restart loop with a valid
+`bin/server/dms` beside it.
+
+```sh
+python3 tests/async/test_flatfile_launcher.py
+python3 tests/async/test_production_service.py
+```
+
+The launcher test boots a fake stamped runtime binary past a fake development build in
+production mode and checks that the staged file and its stamp are untouched, then removes
+the runtime stamp and expects the refusal.
+
+Not covered: a real production boot; the journeys run the server directly.
 
 ## Riposte after a participant is removed
 
