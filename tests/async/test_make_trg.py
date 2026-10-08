@@ -32,6 +32,13 @@ with tempfile.TemporaryDirectory(prefix="duris-make-trg-") as scratch:
     subprocess.run([str(tool)], cwd=run, check=True, stdout=subprocess.DEVNULL)
     assert (run / "tworld.trg").read_text() == "#~\n"
 
+    # A source without a final newline does not run into the next one.
+    (run / "AREA").write_text("good *1\nnext *2\n")
+    (run / "trg/good.trg").write_text(GOOD.rstrip("\n"))
+    (run / "trg/next.trg").write_text(GOOD)
+    subprocess.run([str(tool)], cwd=run, check=True, stdout=subprocess.DEVNULL)
+    assert (run / "tworld.trg").read_text() == GOOD + GOOD + "#~\n"
+
     (run / "AREA").write_text("bad *1\n")
     for source, error in MALFORMED.items():
         (run / "trg/bad.trg").write_text(source)

@@ -49,9 +49,11 @@ static int append_triggers(FILE *source, const char *path, FILE *all_trg)
 		line++;
 		if (length == sizeof(buf) - 1 && buf[length - 1] != '\n')
 			malformed(path, line, "line too long");
-		fputs(buf, all_trg);
 		while (length > 0 && (buf[length - 1] == '\n' || buf[length - 1] == '\r'))
 			buf[--length] = '\0';
+		/* one '\n' per line, so a source without a final newline cannot run
+		   into the next area's first line */
+		fprintf(all_trg, "%s\n", buf);
 
 		if (!strcmp(buf, "#~"))
 			malformed(path, line,
