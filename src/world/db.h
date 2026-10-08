@@ -159,7 +159,7 @@ extern const char *GREETINGS;
 extern const char *BACKGR_STORY;
 #define WELC_MESSG \
 	"\r\n\
-        Welcome to New Duris\r\n\
+        Welcome to Duris\r\n\
 \r\n\r\n"
 
 #define ZONE_SILENT BIT_1

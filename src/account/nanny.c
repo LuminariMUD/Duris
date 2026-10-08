@@ -2069,7 +2069,7 @@ void select_newbie(P_desc d, char *arg)
 	case 'Y':
 	case 'y':
 		SET_BIT(d->character->specials.act2, PLR2_NEWBIE);
-		SEND_TO_Q("\r\nWelcome to New Duris!\r\n", d);
+		SEND_TO_Q("\r\nWelcome to Duris!\r\n", d);
 		SEND_TO_Q(racewars, d);
 		STATE(d) = CON_SHOW_RACE_TABLE;
 		break;
