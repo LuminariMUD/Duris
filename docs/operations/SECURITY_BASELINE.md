@@ -45,11 +45,14 @@ Trivy's database version.
 ## The Security Workflow
 
 `.github/workflows/security.yml` (`security baseline`) runs on every push to `master` and
-every pull request to it, on GitHub; the scan of record is its latest completed run on
-`master`. Verification here is local and does not wait for a hosted run, so replay it by
-hand when a change touches dependencies, `packaging/`, the `Dockerfile`, or network or
-authentication code ([TESTING.md](../guides/TESTING.md#before-a-merge)). All `uses:`
-references are immutable commit SHAs with human-readable version comments. It performs:
+every pull request to it, on GitHub. Verification here is local and does not wait for a
+hosted run, so replay it by hand when a change touches dependencies, `packaging/`, the
+`Dockerfile`, or network or authentication code, and before a production deploy
+([TESTING.md](../guides/TESTING.md#before-a-merge)). For a deploy, a green run on the
+commit being deployed (`gh run list --workflow security.yml --commit <sha>`) stands for
+the replay, and the target host is scanned as above. Nothing else holds back a red run:
+the `master` ruleset requires no status check. All `uses:` references are immutable
+commit SHAs with human-readable version comments. It performs:
 
 1. repository-specific local source/configuration contracts (`make security-check`);
 2. a warning-as-error C++ build captured by CodeQL C/C++ analysis;
