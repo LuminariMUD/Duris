@@ -187,17 +187,6 @@ def main() -> int:
             tls_port, websocket_port = port + 1, port + 2
             held = []
             try:
-                # The listeners open just after the boot line, the WebSocket one last.
-                deadline = time.monotonic() + 30
-                while True:
-                    try:
-                        socket.create_connection(("127.0.0.1", websocket_port), timeout=5,
-                                                 source_address=("127.0.0.8", 0)).close()
-                        break
-                    except ConnectionRefusedError:
-                        require(time.monotonic() < deadline, "the listeners never opened")
-                        time.sleep(0.1)
-
                 # Silent from the start at the account name prompt: closed after 120 s.
                 silent = BoundClient(port, "127.0.0.3")
                 silent.expect("account name")
