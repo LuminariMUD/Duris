@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: studio_abilities.c                                    Part of Duris
+ *  Usage: studio abilities: catalog loading, reload, and casting
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "item/studio_abilities.h"
 #include "item/artifact_mana.h"
 #include "core/prototypes.h"

@@ -1,3 +1,16 @@
+/****************************************************************************
+ *
+ *  File: proc-libs.h                                           Part of Duris
+ *  Usage: prototypes of the proc library functions
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
 
 #ifndef _SOJ_PROC_LIB_
 #define _SOJ_PROC_LIB_

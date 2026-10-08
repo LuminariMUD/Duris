@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: newbie_kit_plan.h                                     Part of Duris
+ *  Usage: newbie kit plan types and interface
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef DURIS_NEWBIE_KIT_PLAN_H
 #define DURIS_NEWBIE_KIT_PLAN_H
 #include <vector>

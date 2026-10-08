@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: latency_trace.c                                       Part of Duris
+ *  Usage: pulse latency tracing: sections, samples, and the trace file
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "persistence/latency_trace.h"
 #include "core/clock_utils.h"
 

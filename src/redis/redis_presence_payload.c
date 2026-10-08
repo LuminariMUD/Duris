@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: redis_presence_payload.c                              Part of Duris
+ *  Usage: encodes presence payloads for Redis
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "redis/redis_presence_payload.h"
 
 #include <cjson/cJSON.h>

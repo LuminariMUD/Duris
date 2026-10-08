@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: redis_report_cache.c                                  Part of Duris
+ *  Usage: cached reports in Redis: fraglists, artifacts, and primes
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "redis/redis_report_cache.h"
 
 #include "core/config.h"

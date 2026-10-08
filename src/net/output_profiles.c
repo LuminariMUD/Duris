@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: output_profiles.c                                     Part of Duris
+ *  Usage: parses and resolves output profiles from JSON
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "net/output_profiles.h"
 #include <algorithm>
 #include <cjson/cJSON.h>

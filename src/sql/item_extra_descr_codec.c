@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: item_extra_descr_codec.c                              Part of Duris
+ *  Usage: encodes item extra descriptions and spellbooks as JSON
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "sql/item_extra_descr_codec.h"
 
 #include "core/defines.h"

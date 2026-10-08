@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: collector_purchase_preparation.c                      Part of Duris
+ *  Usage: prepares a collector purchase command from a listing detail
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "economy/collector_purchase_preparation.h"
 
 #include "player/player_snapshot_codec.h"

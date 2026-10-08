@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: output_message.c                                      Part of Duris
+ *  Usage: builds and sends authored player output messages
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "player/output_message.h"
 #include "core/prototypes.h"
 #include <algorithm>

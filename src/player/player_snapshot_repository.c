@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: player_snapshot_repository.c                          Part of Duris
+ *  Usage: SQL player snapshot repository: writes, items, and lockers
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "player/player_snapshot_repository.h"
 
 #include "core/defines.h"

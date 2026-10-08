@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: flatfile_auction_repository.c                         Part of Duris
+ *  Usage: flat-file auction listings, money pickups, and their operations
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "flatfile/flatfile_auction_repository.h"
 
 #include "economy/auction_command.h"

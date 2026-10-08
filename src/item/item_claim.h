@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: item_claim.h                                          Part of Duris
+ *  Usage: item claim outcomes and interface
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef ITEM_CLAIM_H
 #define ITEM_CLAIM_H
 

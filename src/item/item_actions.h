@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: item_actions.h                                        Part of Duris
+ *  Usage: item action types, definitions, and adapter interface
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef DURIS_ITEM_ACTIONS_H
 #define DURIS_ITEM_ACTIONS_H
 

@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: flatfile_corpse_ownership.c                           Part of Duris
+ *  Usage: who owns an item found in a flat-file corpse record
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "flatfile/flatfile_corpse_ownership.h"
 
 #include "persistence/dupe_log.h"

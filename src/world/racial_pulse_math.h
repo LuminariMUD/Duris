@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: racial_pulse_math.h                                   Part of Duris
+ *  Usage: value rules for the pulse command, free of engine types
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #pragma once
 
 // Value rules for the 'pulse' command, kept free of engine types so a harness can test them.

@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: pet_restore_state.h                                   Part of Duris
+ *  Usage: pet restore state type and interface
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef PET_RESTORE_STATE_H
 #define PET_RESTORE_STATE_H
 

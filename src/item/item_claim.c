@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: item_claim.c                                          Part of Duris
+ *  Usage: which held items a save leaves out
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "item/item_claim.h"
 
 #include "persistence/dupe_log.h"

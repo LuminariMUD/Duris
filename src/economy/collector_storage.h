@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: collector_storage.h                                   Part of Duris
+ *  Usage: immutable collector values passed between threads
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef DURIS_COLLECTOR_STORAGE_H
 #define DURIS_COLLECTOR_STORAGE_H
 

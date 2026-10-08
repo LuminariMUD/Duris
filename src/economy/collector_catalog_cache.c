@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: collector_catalog_cache.c                             Part of Duris
+ *  Usage: refreshes and publishes the collector catalog off the game thread
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "economy/collector_catalog_cache.h"
 
 #include "core/refresh_cache.h"

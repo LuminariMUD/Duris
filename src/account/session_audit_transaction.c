@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: session_audit_transaction.c                           Part of Duris
+ *  Usage: submits session audit records to the writer
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "account/session_audit_transaction.h"
 
 #include "persistence/critical_command_coordinator.h"

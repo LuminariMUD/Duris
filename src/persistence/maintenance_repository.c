@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: maintenance_repository.c                              Part of Duris
+ *  Usage: SQL maintenance jobs: epic balances, level caps, and timers
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "persistence/maintenance_repository.h"
 
 #include "combat/frag_cap_config.h"

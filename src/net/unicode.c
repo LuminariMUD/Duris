@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: unicode.c                                             Part of Duris
+ *  Usage: Unicode mapping, UTF-8 coding, and downgrades
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "net/unicode.h"
 #include "core/prototypes.h"
 #include <stdlib.h>

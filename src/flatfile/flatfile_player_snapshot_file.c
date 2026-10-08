@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: flatfile_player_snapshot_file.c                       Part of Duris
+ *  Usage: reads one published player snapshot file without locks
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "flatfile/flatfile_player_snapshot_file.h"
 
 #include "flatfile/flatfile_store.h"

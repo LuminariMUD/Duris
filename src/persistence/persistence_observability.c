@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: persistence_observability.c                           Part of Duris
+ *  Usage: persistence query metrics by context and statement kind
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "persistence/persistence_observability.h"
 
 #include <ctype.h>

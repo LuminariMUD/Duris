@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: help_cache.c                                          Part of Duris
+ *  Usage: cache of help pages loaded off the game thread
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "cmd/help_cache.h"
 #include "core/refresh_cache.h"
 #include <algorithm>

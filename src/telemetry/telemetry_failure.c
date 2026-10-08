@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: telemetry_failure.c                                   Part of Duris
+ *  Usage: classifies MySQL and MariaDB errors for telemetry retries
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "telemetry/telemetry_failure.h"
 
 telemetry_failure_class telemetry_classify_sql_failure(std::uint32_t error_code,

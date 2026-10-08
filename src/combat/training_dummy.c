@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: training_dummy.c                                      Part of Duris
+ *  Usage: training dummies: gear, rooms, levels, and descriptions
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "combat/training_dummy.h"
 
 #include "account/creation_availability_config.h"

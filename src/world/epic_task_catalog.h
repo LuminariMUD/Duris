@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: epic_task_catalog.h                                   Part of Duris
+ *  Usage: epic task catalog interface
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef EPIC_TASK_CATALOG_H
 #define EPIC_TASK_CATALOG_H
 

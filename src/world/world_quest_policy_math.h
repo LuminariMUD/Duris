@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: world_quest_policy_math.h                             Part of Duris
+ *  Usage: world quest level and reward arithmetic, free of engine types
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef DURIS_WORLD_QUEST_POLICY_MATH_H
 #define DURIS_WORLD_QUEST_POLICY_MATH_H
 

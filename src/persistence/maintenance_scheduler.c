@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: maintenance_scheduler.c                               Part of Duris
+ *  Usage: the maintenance scheduler: durable jobs, worker, and state
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "persistence/maintenance_scheduler.h"
 #include "sql/sql_thread_init.h"
 

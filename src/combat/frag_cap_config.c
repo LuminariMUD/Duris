@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: frag_cap_config.c                                     Part of Duris
+ *  Usage: loads the frag cap configuration from properties
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "core/prototypes.h"
 #include "core/config.h"
 #include "combat/frag_cap_config.h"

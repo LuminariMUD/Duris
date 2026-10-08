@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: boon_shop_transaction.h                               Part of Duris
+ *  Usage: boon shop transaction interface
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef BOON_SHOP_TRANSACTION_H
 #define BOON_SHOP_TRANSACTION_H
 

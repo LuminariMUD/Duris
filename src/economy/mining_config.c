@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: mining_config.c                                       Part of Duris
+ *  Usage: boot-time configuration of mine regions and gem rewards
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "economy/mining_config.h"

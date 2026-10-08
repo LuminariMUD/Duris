@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: player_save_pipeline.h                                Part of Duris
+ *  Usage: player save pipeline interface and health
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef PLAYER_SAVE_PIPELINE_H
 #define PLAYER_SAVE_PIPELINE_H
 

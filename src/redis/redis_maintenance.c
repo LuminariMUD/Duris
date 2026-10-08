@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: redis_maintenance.c                                   Part of Duris
+ *  Usage: stopped-server Redis maintenance: clear and validate keys
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "redis/redis_maintenance.h"
 
 #include "redis/redis_command_observability.h"

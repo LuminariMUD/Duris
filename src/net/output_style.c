@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: output_style.c                                        Part of Duris
+ *  Usage: output styling: recipes, spans, hashes, and fit checks
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "net/output_style.h"
 #include "net/unicode.h"
 #include <algorithm>

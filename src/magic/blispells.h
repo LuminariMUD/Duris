@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: blispells.h                                           Part of Duris
+ *  Usage: blighter spell interface
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 void spell_thornskin(int level, P_char ch, char *arg, int type, P_char victim, P_obj obj);
 void spell_flame_sphere(int level, P_char ch, char *arg, int type, P_char victim, P_obj obj);
 void spell_desecrate_land(int level, P_char ch, char *arg, int type, P_char victim, P_obj obj);

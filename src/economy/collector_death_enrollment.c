@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: collector_death_enrollment.c                          Part of Duris
+ *  Usage: enrolls a player's death into collector intake
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "economy/collector_death_enrollment.h"
 
 #include "classes/necromancy.h"

@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: safe_format.h                                         Part of Duris
+ *  Usage: safe formatting interface and buffer capacity
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef DURIS_SAFE_FORMAT_H
 #define DURIS_SAFE_FORMAT_H
 

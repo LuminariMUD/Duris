@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: flatfile_shopkeeper_capture.c                         Part of Duris
+ *  Usage: captures a shopkeeper's stock for the flat-file store
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "flatfile/flatfile_shopkeeper_capture.h"
 
 #include "player/player_snapshot_capture.h"

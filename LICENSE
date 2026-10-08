@@ -5,9 +5,9 @@ Duris is a derivative of DikuMUD. Two notices apply to this repository.
    names stay in the login sequence and in the credits command, and no part of
    the combined work may be sold or otherwise used for profit.
 
-2. Everything added to or changed from the original DikuMUD, by the Duris
-   maintainers and, as far as the maintainers know, by their predecessors, is
-   released into the public domain under the Unlicense, reproduced after the
+2. Everything added to or changed from the original DikuMUD, by the LuminariMUD/
+   Duris maintainers and, as far as the maintainers know, by their predecessors,
+   is released into the public domain under the Unlicense, reproduced after the
    DikuMUD license. That dedication covers only those additions and changes;
    the combined work remains bound by the DikuMUD terms above. Where a file's
    origin is unknown, treat it as DikuMUD-derived.

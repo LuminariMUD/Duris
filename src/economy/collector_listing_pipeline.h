@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: collector_listing_pipeline.h                          Part of Duris
+ *  Usage: collector listing pipeline types and interface
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef DURIS_COLLECTOR_LISTING_PIPELINE_H
 #define DURIS_COLLECTOR_LISTING_PIPELINE_H
 

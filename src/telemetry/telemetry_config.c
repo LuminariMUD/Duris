@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: telemetry_config.c                                    Part of Duris
+ *  Usage: telemetry configuration snapshots, status, and publication
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "telemetry/telemetry_runtime.h"
 #include "telemetry/telemetry_config_private.h"
 

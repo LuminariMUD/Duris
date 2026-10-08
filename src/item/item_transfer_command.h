@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: item_transfer_command.h                               Part of Duris
+ *  Usage: item transfer payload, entry, and result types
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef ITEM_TRANSFER_COMMAND_H
 #define ITEM_TRANSFER_COMMAND_H
 

@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: specs.eth2.c                                          Part of Duris
+ *  Usage: special procedures for the eth2 area: Aramus, the crown, and more
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "net/comm.h"

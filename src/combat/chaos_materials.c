@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: chaos_materials.c                                     Part of Duris
+ *  Usage: chaos material pouches: scores, ledgers, and prototypes
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "core/prototypes.h"
 #include "combat/chaos_materials.h"
 

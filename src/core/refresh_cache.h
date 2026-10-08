@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: refresh_cache.h                                       Part of Duris
+ *  Usage: a cache refreshed on a worker and published to the game thread
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef DURIS_REFRESH_CACHE_H
 #define DURIS_REFRESH_CACHE_H
 

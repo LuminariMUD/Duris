@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: player_load_offline.c                                 Part of Duris
+ *  Usage: loads an offline character for a command and completes it
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "player/player_load_offline.h"
 
 #include "core/prototypes.h"

@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: item_transfer_repository.c                            Part of Duris
+ *  Usage: SQL item transfer repository: grants, repairs, and destruction
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "item/item_transfer_repository.h"
 #include "item/item_claim_repository.h"
 #include "core/defines.h"

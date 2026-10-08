@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: salchemist.h                                          Part of Duris
+ *  Usage: alchemist potion types and interface
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #define WRONG_INGREDIENT -1
 #define NIGHTSHADE 1
 #define MANDRAKE_ROOT 2

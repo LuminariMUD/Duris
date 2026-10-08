@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: item_uid_allocator.c                                  Part of Duris
+ *  Usage: SQL-backed allocation of item uids
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "item/item_uid_allocator.h"
 
 #include "world/db.h"

@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: vnum.room.h                                           Part of Duris
+ *  Usage: well-known room vnums
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef _VNUM_ROOM_H_
 #define _VNUM_ROOM_H_
 

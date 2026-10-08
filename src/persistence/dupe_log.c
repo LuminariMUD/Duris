@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: dupe_log.c                                            Part of Duris
+ *  Usage: the dupes log: items a save left out or a load skipped
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Duris, LuminariMUD, Zusuk                  Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "persistence/dupe_log.h"
 
 #include <cerrno>
