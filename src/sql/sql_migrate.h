@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: sql_migrate.h                                         Part of Duris
+ *  Usage: schema migration note: migrations run outside the server
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Zusuk                                      Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef __SQL_MIGRATE_H__
 #define __SQL_MIGRATE_H__
 

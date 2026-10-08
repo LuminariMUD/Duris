@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: sql_telemetry_connection.h                            Part of Duris
+ *  Usage: private telemetry connection factory
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Zusuk                                      Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef DURIS_SQL_TELEMETRY_CONNECTION_H
 #define DURIS_SQL_TELEMETRY_CONNECTION_H
 

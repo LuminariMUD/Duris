@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: output_channel.h                                      Part of Duris
+ *  Usage: output channel registry identifiers
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Zusuk                                      Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #pragma once
 
 // Stable registry identifiers. Append new entries; never renumber existing ones.

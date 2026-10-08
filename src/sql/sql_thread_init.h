@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: sql_thread_init.h                                     Part of Duris
+ *  Usage: per-thread MySQL client setup for persistence workers
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Zusuk                                      Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #ifndef SQL_THREAD_INIT_H
 #define SQL_THREAD_INIT_H
 

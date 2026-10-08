@@ -1,3 +1,17 @@
+/****************************************************************************
+ *
+ *  File: storage_lockers.c                                     Part of Duris
+ *  Usage: storage lockers: chests, snapshots, access, and commands
+ *
+ *  Copyright 1990, 1991 - see LICENSE for complete information
+ *
+ *  Additions since 2025 by the Duris maintainers and since 2026 by
+ *    LuminariMUD maintainers are public domain (Unlicense, see LICENSE)
+ *
+ *  Created by: Zusuk                                      Date: 2026-09-23
+ *
+ ****************************************************************************/
+
 #include "account/password_async.h"
 #include <string>
 //
