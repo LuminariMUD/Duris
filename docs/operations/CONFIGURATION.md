@@ -604,7 +604,8 @@ compile-time constants in `src/core/config.h` bound what it can hold. They sit b
   long at one of those prompts is closed, except while it waits for a reset code by mail
   (15 minutes). GnuTLS ends a TLS handshake that stalls for 40 seconds.
 
-The address is the client's. A connection from `DURIS_TRUSTED_PROXY_IP` counts under the
+The address is the client's, and the addresses of one IPv6 /64, which one host normally
+has to itself, count as one. A connection from `DURIS_TRUSTED_PROXY_IP` counts under the
 address its PROXY header names; without one it has the proxy's address, which all the
 proxy's clients share, and the limit does not apply to it. An authenticated DurisWeb
 service connection is not counted. A WebSocket client keeps at most one connection that

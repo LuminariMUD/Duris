@@ -3749,15 +3749,28 @@ static bool before_account_login(const struct descriptor_data *d)
 	}
 }
 
-/* Open connections from host that have not logged in to an account.  An authenticated
- * DurisWeb service connection stays at the account name prompt and is not one of them. */
+/* Whether descriptor addresses a and b are one client.  An IPv6 host normally has a
+ * whole /64 to itself, so IPv6 addresses compare on that prefix. */
+static bool same_client(const char *a, const char *b)
+{
+	struct in6_addr a6, b6;
+
+	if (inet_pton(AF_INET6, a, &a6) == 1 && inet_pton(AF_INET6, b, &b6) == 1 &&
+	    !IN6_IS_ADDR_V4MAPPED(&a6) && !IN6_IS_ADDR_V4MAPPED(&b6))
+		return memcmp(&a6, &b6, 8) == 0;
+	return !strcmp(a, b);
+}
+
+/* Open connections from host's client that have not logged in to an account.  An
+ * authenticated DurisWeb service connection stays at the account name prompt and is not
+ * one of them. */
 static int login_connections_from(const char *host)
 {
 	int count = 0;
 
 	for (P_desc d = descriptor_list; d; d = d->next)
 		if (before_account_login(d) && !websocket_is_authenticated_service(d) &&
-		    !strcmp(d->host, host))
+		    same_client(d->host, host))
 			count++;
 	return count;
 }

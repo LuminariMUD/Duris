@@ -5,8 +5,9 @@ One isolated flat-file server, with the WebSocket listener on and 127.0.0.9 as i
 trusted proxy. Eight telnet connections from 127.0.0.1 reach the account name prompt and
 the ninth is refused, and so is a ninth from 127.0.0.5 after eight that each entered a
 name, while a login from 127.0.0.2 still gets in; TLS connections still negotiating count
-too. Behind the proxy, two client addresses its PROXY headers name are counted apart, and
-X-Forwarded-For does not move a connection out of its PROXY address's count; the proxy's
+too. Behind the proxy, two client addresses its PROXY headers name are counted apart, the
+addresses of one IPv6 /64 count together, and X-Forwarded-For does not move a connection
+out of its PROXY address's count; the proxy's
 own address, shared by every client it forwards, is not capped; and two website logins
 with different X-Forwarded-For addresses do not close each other, even when the second
 client writes the first one's address in front of its own. A connection silent at the
@@ -76,8 +77,9 @@ def upgrade(sock: socket.socket, forwarded_for: str) -> None:
 def proxied(port: int, client: str, forwarded_for: str | None = None) -> socket.socket:
     """A WebSocket-port connection from the proxy carrying a PROXY header for client, then
     with forwarded_for a completed upgrade that names another address."""
+    family, local = ("TCP6", "::1") if ":" in client else ("TCP4", "127.0.0.1")
     sock = socket.create_connection(("127.0.0.1", port), timeout=5, source_address=(PROXY, 0))
-    sock.sendall(f"PROXY TCP4 {client} 127.0.0.1 40000 4050\r\n".encode("ascii"))
+    sock.sendall(f"PROXY {family} {client} {local} 40000 4050\r\n".encode("ascii"))
     if forwarded_for:
         upgrade(sock, forwarded_for)
     return sock
@@ -262,6 +264,19 @@ def main() -> int:
                 require(closed_within(second, 2) is None,
                         "a proxied client was refused for another client's connections")
                 held.append(second)
+
+                # One IPv6 host normally has a /64 to itself: its addresses count together.
+                for host in range(1, LIMIT + 1):
+                    held.append(proxied(websocket_port, f"2001:db8::{host}"))
+                time.sleep(1)
+                excess = proxied(websocket_port, f"2001:db8::{LIMIT + 1}")
+                require(closed_within(excess, 10) is not None,
+                        "a ninth connection from one IPv6 /64 was kept")
+                other_network = proxied(websocket_port, "2001:db8:0:1::1")
+                require(closed_within(other_network, 2) is None,
+                        "a connection from another IPv6 /64 was refused")
+                held.append(other_network)
+
                 for _ in range(LIMIT + 1):
                     client = BoundClient(port, PROXY)
                     client.expect("account name")
