@@ -1634,6 +1634,10 @@ static void websocket_handle_message(struct descriptor_data *d, int opcode, char
 {
 	if (opcode == WS_OPCODE_TEXT && payload)
 	{
+		/* A message is input, as a line is on telnet: it restarts the idle timer.  A
+		 * website login stays at CON_GET_ACCT_NAME until it succeeds. */
+		d->wait = 0;
+
 		/* parse json and extract command/data */
 		cJSON *json = cJSON_Parse(payload);
 		if (json)

@@ -11,14 +11,16 @@ own address, shared by every client it forwards, is not capped; and two website 
 with different X-Forwarded-For addresses do not close each other, even when the second
 client writes the first one's address in front of its own. A connection silent at the
 account name prompt, and one silent at the password prompt, are closed after two
-minutes. A connection from a banned address is told so and closed, and the server stays
-up. A full server refuses TLS connections without growing.
+minutes, but a website client that sends a message every 25 s is not. A connection from a
+banned address is told so and closed, and the server stays up. A full server refuses TLS connections without growing.
 """
 
 from __future__ import annotations
 
+import os
 import socket
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -88,6 +90,68 @@ def handshake(port: int, client: str) -> socket.socket:
     return sock
 
 
+def send_frame(sock: socket.socket, opcode: int, payload: bytes) -> None:
+    """One masked client frame; payload is under 126 bytes."""
+    mask = os.urandom(4)
+    sock.sendall(bytes([0x80 | opcode, 0x80 | len(payload)]) + mask +
+                 bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload)))
+
+
+def take_frame(buffer: bytearray) -> tuple[int, bytes] | None:
+    """Remove the first complete server frame from buffer: (opcode, payload)."""
+    if len(buffer) < 2:
+        return None
+    length, start = buffer[1] & 0x7F, 2
+    if length > 125:
+        start = 4 if length == 126 else 10
+        if len(buffer) < start:
+            return None
+        length = int.from_bytes(buffer[2:start], "big")
+    if len(buffer) < start + length:
+        return None
+    frame = (buffer[0] & 0x0F, bytes(buffer[start:start + length]))
+    del buffer[:start + length]
+    return frame
+
+
+class WebsiteClient(threading.Thread):
+    """A website client at the account name prompt that answers the server's pings and
+    sends a login attempt every 25 s until stopped; closed says the server ended it."""
+
+    LOGIN = b'{"type":"cmd","cmd":"login","data":{"account":"Nosuch","password":"wrong1"}}'
+
+    def __init__(self, port: int) -> None:
+        super().__init__(daemon=True)
+        self.socket = socket.create_connection(("127.0.0.1", port), timeout=5,
+                                               source_address=("127.0.0.7", 0))
+        upgrade(self.socket, "198.51.100.9")  # not from the proxy: the header is ignored
+        self.since = time.monotonic()
+        self.stopping = threading.Event()
+        self.closed = False
+
+    def run(self) -> None:
+        buffer = bytearray()
+        next_login = self.since
+        self.socket.settimeout(1)
+        while not self.stopping.is_set():
+            if time.monotonic() >= next_login:
+                send_frame(self.socket, 0x1, self.LOGIN)
+                next_login += 25
+            try:
+                chunk = self.socket.recv(4096)
+            except socket.timeout:
+                continue
+            except OSError:
+                chunk = b""
+            if not chunk:
+                self.closed = True
+                return
+            buffer.extend(chunk)
+            while (frame := take_frame(buffer)) is not None:
+                if frame[0] == 0x9:
+                    send_frame(self.socket, 0xA, frame[1])
+
+
 def rss_kib(server: IsolatedServer) -> int:
     for line in Path(f"/proc/{server.process.pid}/status").read_text().splitlines():
         if line.startswith("VmRSS:"):
@@ -109,10 +173,24 @@ def main() -> int:
             tls_port, websocket_port = port + 1, port + 2
             held = []
             try:
+                # The listeners open just after the boot line, the WebSocket one last.
+                deadline = time.monotonic() + 30
+                while True:
+                    try:
+                        socket.create_connection(("127.0.0.1", websocket_port), timeout=5,
+                                                 source_address=("127.0.0.8", 0)).close()
+                        break
+                    except ConnectionRefusedError:
+                        require(time.monotonic() < deadline, "the listeners never opened")
+                        time.sleep(0.1)
+
                 # Silent from the start at the account name prompt: closed after 120 s.
                 silent = BoundClient(port, "127.0.0.3")
                 silent.expect("account name")
                 silent_since = time.monotonic()
+                website = WebsiteClient(websocket_port)
+                held.append(website.socket)
+                website.start()
 
                 # A TLS connection counts while it negotiates (GnuTLS ends a silent one
                 # after 40 s).
@@ -203,6 +281,11 @@ def main() -> int:
                             f"a connection silent at the {prompt} prompt was kept")
                     require(time.monotonic() - since >= 115,
                             f"the connection silent at the {prompt} prompt was closed early")
+                time.sleep(max(0.0, website.since + 130 - time.monotonic()))
+                website.stopping.set()
+                website.join()
+                require(not website.closed,
+                        "a website client that sent a message every 25 s was closed as idle")
 
                 # Fill the server: a TLS connection it refuses keeps no GnuTLS session
                 # (about 8 KiB each before).
