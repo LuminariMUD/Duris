@@ -23,8 +23,8 @@ Updated 2026-10-08. A new session starts here, then reads the phase it continues
 | Phase | Subject | State |
 |---|---|---|
 | 1 | Hung tests and silent backup failures | Built on `fix/4-phase-1-hung-tests`, gate green; open for review as PR #5, tag `backlog/phase-1-review-0` and one test fix after it. |
-| 2 | Unauthenticated connections per address | Built on `fix/4-phase-2-connection-limit` (on Phase 1), gate green; open for review, tag `backlog/phase-2-review-0`. |
-| 3 | Shop listing, dompurify, dead helpers | Not started. |
+| 2 | Unauthenticated connections per address | Built on `fix/4-phase-2-connection-limit` (on Phase 1), gate green; open for review as PR #6, tag `backlog/phase-2-review-0`. |
+| 3 | Shop listing, dompurify, dead helpers | Built on `fix/4-phase-3-shop-listing` (on Phase 2), gate green; open for review, tag `backlog/phase-3-review-0`. |
 | 4 | Security record and `SECURITY.md` | Not started. |
 | 5 | Studio-proc tag ids and `world.trg` | Not started. |
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
@@ -323,7 +323,48 @@ in the idle switch closes a silent connection at 480 pulses. The two constants s
 
 ## Phase 3: the shop listing, dompurify, two dead helpers
 
-**Problem.** Three small things the community tree (`LuminariMUD/Duris`, master at
+**Built** on `fix/4-phase-3-shop-listing` (stacked on Phase 2), 2026-10-08:
+
+- `c4a9eb681`: `shopping_list()` sends `Gbuf1` and starts it again when the next line would
+  not fit, before each `strcat()`; the "Nothing!" path is unchanged.
+  `tests/async/test_shop_list_extract_contract.py`, the listing's existing test, now also
+  compiles the production `shopping_list()` under ASan and UBSan with a keeper carrying
+  700 items (about 70 KB) and checks every line arrives once, in order, in pieces under
+  64 KB. Without the bound it reports a stack-buffer overflow.
+- `3151e2d85`: `npm audit fix --prefix site` moved dompurify to 3.4.16, and an `overrides`
+  entry in `site/package.json` pins katex 0.18.2. `npm audit --prefix site` reports no
+  vulnerability; `npm test --prefix site` passes (15 tests).
+- `2c814182e`: `got_all_ingredients()` and `extract_used_ingredients()` deleted;
+  `get_bottle()` and `get_id_for()` keep their callers.
+- `b606a9d8b`: the three rows in `docs/records/COMMUNITY_DURIS_TRACKING.md`: #700 (b) and
+  #662 `Adapted`, #573 (e) `Rejected` (ours keeps `mix`; the helpers are noted).
+
+**What differs from the plan, and why.**
+
+- `npm audit` also reported katex 0.16.47 (GHSA-238p-pmpm-9mq7, low, fixed in 0.18.2),
+  which mermaid pulls in, and a second dompurify advisory (GHSA-6688-9rhm-gjv2, fixed by
+  the same 3.4.16). Every mermaid 12 release, 12.1.0 included, asks for katex `^0.16.47`,
+  and npm's only automatic fix was a downgrade to mermaid 10.8.0, so the override pins
+  katex instead, beside the existing `lodash-es` one. Mermaid's one katex call
+  (`renderToString` with `throwOnError`, `displayMode`, `output`) renders under 0.18.2, and
+  the site's diagrams use no math. Dependabot's #3 (dompurify) is the same lockfile line
+  and becomes redundant when this lands; #1 (mermaid 12.1.0) is unaffected.
+- The listing harness extends the listing's existing test instead of adding a file, and
+  the bound is written inline at the one call site rather than as the community tree's
+  `append_listing` helper.
+- `2caf3a289` fixes a race in `tests/async/run_telemetry_schema_boot_journey.py`, found by
+  this phase's gate: after its copyover signal the old image can still log a
+  `telemetry_health` line (here a stall alert raised by the copyover tick) carrying the old
+  producer, which the journey took for the new image's. It now reads from the old image's
+  `copyover: executing new binary` line.
+- This section's "Problem" called the community tree `LuminariMUD/Duris`; since the move
+  to GitHub that is this repository, and theirs is `Community-Duris/Duris`.
+
+**Gate** on `b606a9d8b`: `./scripts/format.sh --all --check` clean, `make test-all -j16
+TEST_JOBS=16` 676 passed, 0 failed, `make test-db` 47 of 48 (`telemetry_schema_boot`, the
+race above; with `2caf3a289` the leg passed twice in a row on its own). Nothing is left.
+
+**Problem.** Three small things the community tree (`Community-Duris/Duris`, master at
 `a1e4a7efd`, split from ours at `e1357a30a` on 2026-09-23) fixed after the split, found on
 2026-10-04 by comparing the trees:
 
