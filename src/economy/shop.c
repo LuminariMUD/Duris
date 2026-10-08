@@ -1793,6 +1793,13 @@ void shopping_list(char * /*arg*/, P_char ch, P_char keeper, int shop_nr)
 				snprintf(Gbuf4, MAX_STRING_LENGTH, "%2d) ", temp);
 				CAP(Gbuf2);
 				strcat(Gbuf4, Gbuf2);
+				/* A keeper can carry more than one buffer of stock: send what is
+				 * listed so far and go on. */
+				if (strlen(Gbuf1) + strlen(Gbuf4) >= sizeof(Gbuf1))
+				{
+					send_to_char(Gbuf1, ch);
+					*Gbuf1 = '\0';
+				}
 				strcat(Gbuf1, Gbuf4);
 			}
 		}
