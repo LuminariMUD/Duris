@@ -1,6 +1,6 @@
 # Production deployment tracker
 
-Last verified: 2026-09-14 23:11 UTC
+Last verified: 2026-10-08 UTC (website relocation to this host in progress)
 
 ## Objective
 
@@ -13,29 +13,44 @@ private keys. Those remain in owner-controlled ignored files. The earlier
 `duris.sbs` deployment is not tracked here; its setup record is in this file's
 Git history.
 
+**This server, `plesk.luminarimud.com` under the `staging` account, and the
+domain `duris.sbs` are the ONLY location of the MUD and of the DurisWeb
+website. The website's public ingress is the Cloudflare tunnel
+`durisweb-production`; Cloudflare is required, not optional. The host
+`178.156.165.10` / `/home/duris` deployment recorded in this file's history and
+the tunnel `5b7d0472-7d5b-4c6e-8aa3-cd550e2bdb60` are retired and must not be
+treated as a fallback.**
+
+
 ## Production topology
 
 | Component | Endpoint or location | Notes |
 | --- | --- | --- |
-| Host | `178.156.165.10` | Ubuntu 24.04, systemd 255; services run as `duris` |
-| MUD checkout | `/home/duris/duris` | Deployed from `master` |
-| MUD service | `duris-mud-production.service` | System unit running `scripts/cycle_mud.sh --production` |
-| Database | `mysql.service`, `127.0.0.1:3306`, schema `duris_game_prod` | MySQL 8.0; `PERSISTENCE_MODE=mariadb-primary` |
-| MUD Redis | `redis-server.service`, `127.0.0.1:6379` | Namespace `duris:production:default` |
+| Host | `plesk.luminarimud.com` (`74.208.126.44`) | Shared Plesk host; everything below runs as the unprivileged `staging` account under user-scope systemd with lingering enabled |
+| MUD checkout | `/home/staging/duris` | Deployed from `master` |
+| MUD service | `duris-mud-production.service` | User unit running `scripts/cycle_mud.sh --production` |
+| Database | `duris-mariadb.service`, `127.0.0.1:3307`, schema `duris_staging` | MariaDB; `PERSISTENCE_MODE=mariadb-primary`; shared with the website |
+| MUD Redis | `duris-redis.service`, `127.0.0.1:6381` | Namespace `duris:production:staging`; ACL identities in `~/.config/duris-redis/users.acl` |
 | Plain telnet | `mud.duris.sbs:7777` | DNS-only A record to the host |
-| TLS telnet | `mud.duris.sbs:7778` | Let's Encrypt; expires 2026-12-05 |
+| TLS telnet | `mud.duris.sbs:7778` | Let's Encrypt via the Cloudflare DNS-01 hooks in `~/.local/libexec/`, renewed by `duris-certbot-renew.timer` |
 | MUD WebSocket/health origin | `127.0.0.1:4050` | Loopback-only. The MUD's `.env` must set `DURIS_WEBSOCKET=TRUE`: the listener is off by default, and the website and both health checks need it |
-| Public MUD WebSocket/health | `wss://mud.duris.sbs`, `https://mud.duris.sbs/health` | Nginx TLS proxy to the origin |
-| Website checkout | `/home/duris/website` | The DurisWeb repository, deployed from `master` |
-| Website application | `durisweb-production.service`, `127.0.0.1:3001` | Private cache `durisweb-redis.service` on `127.0.0.1:6380` |
-| Website tunnel | `durisweb-cloudflared.service`, tunnel `5b7d0472-7d5b-4c6e-8aa3-cd550e2bdb60` | `www.duris.sbs` routes to the application; `duris.sbs` routes to Nginx port 80, which redirects to `www` and passes `/health` through |
+| Public MUD WebSocket/health | `wss://mud.duris.sbs`, `https://mud.duris.sbs/health` | Needs a TLS proxy to the loopback origin on this host; not in place yet (Plesk owns the system Nginx). `ws.duris.sbs` still points at the retired MUD tunnel `aec07955-bcc1-4faa-9588-f28d45edc474` |
+| Website checkout | `/home/staging/durisweb` | The DurisWeb repository, deployed from `master` |
+| Website application | `durisweb-production.service`, `127.0.0.1:7770` | Private cache `durisweb-redis.service` on `127.0.0.1:6380`; port 3001 belongs to another account on this host |
+| Website tunnel | `durisweb-cloudflared.service`, tunnel `durisweb-production` (`afb18d75-613f-41af-bd53-bb0d19bbf5dc`) | REQUIRED. `duris.sbs` and `www.duris.sbs` are proxied CNAMEs to this tunnel, and its ingress routes both directly to the application; no Nginx is in the website path |
 | Tunnel readiness | `http://127.0.0.1:20243/ready` | Loopback-only |
-| Watchdog | `durisweb-watchdog.timer` | Runs `/usr/local/sbin/durisweb-watchdog` every minute |
+| Watchdog | `durisweb-watchdog.timer` | User timer running the checkout's `deploy/scripts/durisweb-watchdog` every minute |
 
 API work for them uses the credentials in
-`/home/duris/.config/durisweb/deployment.env`, not a workstation `.env`.
+`/home/staging/durisweb/deploy/deployment.env` (mode 0600, gitignored), not a
+workstation `.env`.
 
 ## Availability safeguards
+
+The safeguards below were established on the retired host. On this host every
+unit is a user unit of the `staging` account, so the `sudo`, root-owned copy,
+and `/etc/systemd/system` paths in this section and the next do not apply;
+use `systemctl --user` and the pause file under `~/.local/state/durisweb-watchdog`.
 
 On 2026-09-10 the website tunnel exited cleanly after losing every edge
 connection. Its unit restarted only on failure, so `duris.sbs` served
@@ -85,21 +100,20 @@ the public health checks below.
 
 ## Service and configuration locations
 
-- Website deployment input: `/home/duris/.config/durisweb/deployment.env`
-  (mode `0600`)
-- Rendered website units: `/home/duris/.local/share/durisweb/rendered`,
-  installed as root-owned copies under `/etc/systemd/system`
-- Watchdog executable: `/usr/local/sbin/durisweb-watchdog`, a root-owned copy of
-  the website checkout's `deploy/scripts/durisweb-watchdog`; reinstall it when
-  that script changes
-- Watchdog state and pause file: `/var/lib/durisweb-watchdog`
-- MUD service unit: `/etc/systemd/system/duris-mud-production.service`, installed
-  by `scripts/install-production-service.sh`
-- MUD secrets and connection values: `/home/duris/duris/.env` (mode `0600`)
-- MUD TLS certificate: `/home/duris/duris/duris.crt` and `duris.key`, linked to
-  `/var/lib/duris-mud/tls/` and refreshed by the Certbot deploy hook
-  `/etc/letsencrypt/renewal-hooks/deploy/duris-mud`
-- Pre-boot database backups: `/home/duris/duris/db/Backup`
+- Website deployment input: `/home/staging/durisweb/deploy/deployment.env`
+  (mode `0600`, gitignored)
+- Rendered website units: `/home/staging/.local/share/durisweb/rendered`,
+  linked into the `staging` user manager
+- Watchdog executable: the website checkout's `deploy/scripts/durisweb-watchdog`
+  (user scope; no root-owned copy)
+- Watchdog state and pause file: `/home/staging/.local/state/durisweb-watchdog`
+- MUD service unit: `/home/staging/.config/systemd/user/duris-mud-production.service`
+- MUD secrets and connection values: `/home/staging/duris/.env` (mode `0600`)
+- MUD TLS certificate: `/home/staging/duris/duris.crt` and `duris.key`, symlinks
+  into `/home/staging/.config/letsencrypt/live/mud.duris.sbs/`
+- Cloudflare DNS token used by certificate renewal and by the website tunnel
+  launcher: `/home/staging/.config/duris-certbot/cloudflare.env` (mode `0600`)
+- Backups: `/home/staging/backups/duris`
 
 ## Verification commands
 
