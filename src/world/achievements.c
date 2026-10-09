@@ -32,8 +32,10 @@ extern int top_of_zone_table;
 
 namespace
 {
-int zone_number_from_player_name(const char *value)
+int zone_number_from_player_name(char *value)
 {
+	// one_argument() leaves the space after "zone" in front of the area name.
+	value = skip_spaces(value);
 	if (!value || !*value)
 		return 0;
 
