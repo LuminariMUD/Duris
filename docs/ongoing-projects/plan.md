@@ -1,4 +1,4 @@
-# Plan: the 2026-10-09 log review's fixes, seven test-quality additions and MariaDB 11.8
+# Plan: the 2026-10-09 log review's fixes, seven test-quality additions, MariaDB 11.8 and the slow tick and boot
 
 Written 2026-10-09 against `master` at `24e7d3fba`. It holds the open work of two working
 notes it replaces: the 2026-10-09 log review (Part 1, items 1 to 9) and the test-quality
@@ -7,15 +7,16 @@ their last versions are at `24e7d3fba`, where
 `docs/ongoing-projects/log-review-2026-10-09.md` also records what the review read and what
 it found expected or benign. Part 3 (item 17) was added the same day: the staging host's
 upgrade to MariaDB 11.8, found during the tick and boot investigation, stops a new database
-from being built. Each item holds the problem, the evidence, the change and when it is done. The order and the decisions are proposed; the owner locks or changes them before
-the first item starts. This file is a working note: delete it when the last item lands.
+from being built. Part 4 (items 18 and 19) was added the same day from a third working note,
+the investigations of the review's two performance findings, deleted when their fixes were
+written here; its last version is at `dd1c33842`. Each item holds the problem, the evidence,
+the change and when it is done. The order and the decisions are proposed; the owner locks or
+changes them before the first item starts. This file is a working note: delete it when the
+last item lands.
 
-Kept apart, in their own working notes:
-
-- [tick-and-boot-performance.md](tick-and-boot-performance.md): the review's two
-  performance findings, the slow tick and the slower boot, each an investigation.
-- [staging-host-follow-ups.md](staging-host-follow-ups.md): the host owner's work left
-  from the review and the host's 26.04 upgrade (SSH, a GitHub token, backups).
+Kept apart, in its own working note:
+[staging-host-follow-ups.md](staging-host-follow-ups.md), the host owner's work left from the
+review and the host's 26.04 upgrade (SSH, a GitHub token, backups).
 
 [ADR 0003](../adr/0003-player-privacy-chat-snoop-addresses.md) is the decision record for
 items 3, 8 and 9.
@@ -54,9 +55,16 @@ Part 3, database engine support:
 |---|---|---|---|
 | 17 | A new database cannot be built on MariaDB 11.8: migrations 0031 and 0032 know only MariaDB 10.11 and MySQL 8.0 | Medium | Open |
 
+Part 4, the slow tick and the slower boot:
+
+| # | Item | Severity | State |
+|---|---|---|---|
+| 18 | Every tick, `affect_update` walks all ~56,000 mobs (40 to 140 ms on staging), and the events it queues land on pulses 0, 10 and 20, where the event pass goes over its budget | Low | Open |
+| 19 | Most of every boot is one shopkeeper scan in the zone resets (7.4 billion comparisons, about 8 s of staging's 12 s); its loop's placement across a cache line made it 2 s slower on 2026-10-08 | Low | Open |
+
 ## Order (proposed)
 
-The two parts touch different files and can go side by side.
+The parts touch different files and can go side by side, except where noted below.
 
 - **Part 1:** 9 first, the one Medium item, decided and small; then 8 with 3, the rest of
   ADR 0003's code; then 6, which loses the moves before a crash; then 1, 2, 7, 4 and 5.
@@ -66,6 +74,10 @@ The two parts touch different files and can go side by side.
 - **Part 3:** 17 touches only the migration runner, the manifest, two new verifier files and
   a test leg, so it can go beside either part. It has to land before a database is next built
   on staging, and before production moves to Ubuntu 26.04.
+- **Part 4:** 18's changes 1 to 3 and 19's change 1 first, because they are small and change
+  nothing a player sees; then 19's change 2; then 18's change 4, the largest. 19 changes
+  `reset_zone()` in `src/world/db.c`, where item 7 changes the `cmd not executed` lines, so
+  whichever lands second rebases onto the other.
 
 ## Decisions
 
@@ -577,3 +589,228 @@ defaults handling`, then a start timeout) and has run since 13:03:57.
 MariaDB 11.8, MariaDB 10.11 and MySQL 8.0 with the same history checksum; staging's existing
 database still passes the runner and boots; the 11.8 leg and the regression test run; the
 documents name the three engines; and staging's `mysql_upgrade_info` reads 11.8.
+
+---
+
+## Part 4: the slow tick and the slower boot
+
+The log review's two performance findings, investigated and concluded on 2026-10-09 in a
+working note of their own. It was deleted when its work was written here; its last version,
+with every measurement, is at `dd1c33842` (`docs/ongoing-projects/tick-and-boot-performance.md`).
+Players feel neither: no pulse of the tick comes near 250 ms, and the boot's cost is paid once
+per start. Everything was measured on `24e7d3fba`, and nothing under `src/` has changed since.
+
+### How to measure
+
+- **A full world without a database:** the run-directory layout of
+  `tests/async/run_cast_timing_probe.py` (flat-file, `REDIS=FALSE`) with `CHAOS_MUD=FALSE`,
+  which is staging's configuration. It boots in about 4.5 s here and runs idle for as many
+  ticks as wanted. `logs/latency_trace.log` and `DURIS_NEVENT_ANALYTICS=1` work there as on
+  staging.
+- **Timers in a scratch build:** extract a tree with `git archive <sha> src Makefile` into
+  `bin/analysis/`, add `clock_gettime()` sums logged once per tick or per boot step, and build it
+  with `make -C <tree>/src BUILD_PROFILE=production OBJDIR=... DMS_BINARY=...
+  EXTRA_CFLAGS=-Wno-error`. Never in the worktree.
+- **Staging's speed, locally:** the loops that do not depend on the world (`activities`,
+  `connections` in the latency trace) take about 1.9 times as long on staging as on this
+  workstation, so `DURIS_NEVENT_BUDGET_USEC=13000` here stands in for staging's 25 ms budget.
+- **MariaDB boots:** `tests/async/with_disposable_mariadb.sh` with the commit's own migrations
+  (`migrations/bootstrap_multithread_safe.sql`, then `scripts/migration_runner.py adopt
+  --kind fresh_bootstrap` and `run`).
+- **Profiling on staging:** valgrind cannot load the server (its `.bss` is 1.76 GB, which
+  valgrind 3.22 fails to map), and `perf` needs root there (`perf_event_paranoid` is 4). gdb
+  works with the server as its child (`ptrace_scope` is 1): start the server under
+  `gdb -batch`, stop it with `SIGINT` every 0.2 s, and record `thread 1` plus `bt` each time.
+- **A scratch boot on staging beside the live game:** the live binary, copied to a scratch
+  directory, boots on loopback in the production role with `DURIS_PRODUCTION_PORT` set to its
+  own port and `REDIS=FALSE`, against a copy of the database made inside staging's own MariaDB
+  (`mariadb-dump duris_staging | mariadb <copy>`). Drop the copy, its user and the directory
+  afterwards. Until item 17 lands, a fresh database cannot be built there, but a copy of the
+  live one can.
+- **`Boot completed in: N milliseconds` is CPU time**, not wall time: `clock()` sums every
+  thread's CPU since `run_the_game()` started (`src/net/comm.c` L846-L1010). The boot is single
+  threaded, so on staging it tracks the wall-clock boot to within a second.
+
+### 18. A slow pulse every tick on an idle server
+
+**Problem.** Once per tick (300 pulses, 75 s), on pulse 299, `affect_update()`
+(`src/magic/affects.c` L3821) walks every character, and on an idle server that is about
+56,000 mobs. It costs 40 to 140 ms on staging. It also queues two waves of events that land
+on pulses 0, 10 and 20 of the next tick, where the event pass goes over its 25 ms budget
+(`DURIS_NEVENT_BUDGET_USEC`) and runs its tail one pulse late. The cost grows with the age of
+the world.
+
+**Evidence on staging.** Every run with more than two latency windows since 2026-10-04:
+
+| Run ended | Windows | Over 50 ms | Worst pulse (us) | Worst `affect_update` (us) |
+|---|---|---|---|---|
+| 2026-10-05 03:12 | 237 | 228 | 125,847 | 120,410 |
+| 2026-10-07 08:17 | 2,497 | 2,489 | 144,832 | 137,315 |
+| 2026-10-08 10:01 | 1,232 | 1,226 | 475,386 | 130,946 |
+| 2026-10-09 03:50 | 749 | 738 | 144,826 | 137,944 |
+| 2026-10-09 09:01 (read to 08:15) | 209 | 198 | 121,020 | 114,971 |
+| 2026-10-09 10:44 | 81 | 73 | 114,674 | 108,646 |
+
+The 475 ms pulse was an immortal's `zreset` of Tharnadia on 2026-10-07 at 13:12:55
+(`COMMAND OP SLOW ... operation=zreset`), not the tick. In every run of more than 20 windows,
+the median of each window's worst `affect_update` is 58 to 71 ms, the cheapest pulse's event
+pass 3.0 to 3.6 ms and the average pass 5.3 to 5.6 ms. `event_balance_affects` is
+the latest callback in 172 of the 175 `NEVENT BUDGET WINDOW` lines of the run that ended at
+09:01 on 2026-10-09, one pulse late (`max_late_ticks` counts pulses). The run of 2026-10-08
+12:11 to 2026-10-09 03:50 deferred 2.58 million callbacks in 15.6 hours, and repaid all its
+catch-up debt; the worst late event fell on pulse 1 or 2 in 738 of its 742 deferring windows.
+
+**What one pass does**, measured locally with timers inside `affect_update()`, on a full idle
+world in staging's configuration with no player online:
+
+| Tick after boot | Pass | Regeneration check | Affect countdown and expiry | of which `affect_remove()` | Falling check | Mobs walked | Mob affects | Affects expired |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 19.7 ms | 9.3 ms | 3.7 ms | 0 | 3.6 ms | 55,031 | 31,912 | 0 |
+| 4 | 29.8 ms | 10.2 ms | 13.1 ms | 2.8 ms | 3.7 ms | 55,766 | 84,419 | 882 |
+| 8 | 52.9 ms | 12.3 ms | 31.9 ms | 11.1 ms | 5.7 ms | 55,961 | 106,772 | 2,516 |
+| 16 | 59.9 ms | 11.7 ms | 40.6 ms | 19.4 ms | 4.5 ms | 56,201 | 122,676 | 5,337 |
+| 24 | 49.7 ms | 10.3 ms | 29.9 ms | 11.3 ms | 6.8 ms | 56,504 | 128,784 | 3,507 |
+
+The rest of the pass (the walk itself, disguises and the timers' own cost) is about 3 ms. The
+affects that expire are the mobs' own spells and songs (shadow shield, soulshield, minor globe,
+armor, fireshield, coldshield, stone skin, war cry, infuriate). The mobs cast them again, so
+their count climbs toward a plateau of about 130,000 after 30 minutes. A Chaos-mode run gives
+the same picture. Staging's CPU is about 1.9 times slower on the same loops, hence 40 to
+140 ms there. The players are not the cost: staging's at most three are 0.005% of the
+characters walked.
+
+- The regeneration check finds 11,700 to 12,100 mobs below their maximum vitality every tick,
+  against 1 to 3 below their maximum hit points and a few hundred below their maximum mana.
+  93 to 96% of the vitality ones are wanderers (no `ACT_SENTINEL`), short by 1 or 2 points
+  that they spent moving. `StartRegen()` (`src/world/events.c` L256) gives each one an
+  `event_move_regen` 10 pulses later (`MOB_MOVE_REGEN_DELAY`): 10,900 to 11,800 per pass.
+- `balance_affects()` (`src/magic/affects.c` L487) queues up to 3,200 `event_balance_affects`
+  per pass, with no delay and at most one per mob whose buff expired.
+
+**Where the queued work lands**, per pulse of the tick, in a local Chaos-mode run with
+per-pulse logging (which adds about 1 ms to every pulse):
+
+| Pulse of the tick | Event pass, mean (max) | Callbacks run | What runs |
+|---|---|---|---|
+| 0 | 14.5 ms (23.9 ms) | 2,500 | 1,200 to 3,300 `event_balance_affects` (about 3 us each), one `generic_char_event` (4.8 to 5.4 ms), a wave of `event_mob_mundane` |
+| 10 | 12.5 ms (20.5 ms) | 12,400 | about 11,000 `event_move_regen` restoring 1 or 2 points |
+| 20 | 16.8 ms (21.4 ms) | 12,400 | the same `event_move_regen` again, now finding the mob full and stopping, and `generic_char_event` |
+| any other | 3 to 4 ms | about 1,000 | |
+
+- `event_move_regen()` (`src/world/events.c` L178) applies the gain and then always
+  reschedules itself (L206). The next run finds the mob at its maximum and returns, so half of
+  the 24,000 regeneration callbacks of every tick do nothing else.
+- `generic_char_event()` (`src/world/handler.c` L298) is registered in `ne_init_events()`
+  (`src/world/new_events.c` L2069) with an initial delay of 80 pulses and an interval of 20.
+  Each run walks all 56,000 characters, though it does a character's work only once in four
+  runs, and it took over 5 ms 273 to 306 times in 30 minutes locally. Twenty divides 300, so
+  it runs on pulses 0 and 20, two of the tick's busy pulses.
+- The pass checks its budget after each callback and moves the rest of the bucket to the next
+  pulse (`nevent_defer_suffix()`, `src/world/new_events.c`). The balance events are queued
+  after everything else due on pulse 0, so they are the tail that runs late. With the budget
+  scaled to staging's speed (13 ms), the local world defers 300 to 14,000 callbacks per
+  window, all one pulse late: 23% `event_move_regen`, 20% `event_spellcast`, 18%
+  `event_mob_mundane`, 17% `event_balance_affects`, 8% `event_mana_regen` and 7% `event_wait`
+  (Chaos mode, whose mobs cast more).
+
+The 29.7 ms `event_mob_mundane` on staging at 2026-10-08 12:07:34 is not part of this: slow
+`event_mob_mundane` runs locally are one-offs from different mobs, never repeated.
+
+**The change.**
+
+1. In `event_move_regen()`, and in `event_hit_regen()`, `event_mana_regen()` and
+   `event_ward_regen()`, which have the same shape, stop rescheduling once the gain has
+   brought the character to its maximum. This removes the pulse-20 wave of about 12,000
+   callbacks. The same points are restored at the same moments.
+2. In `StartRegen()`, give an NPC's first event a per-mob offset within
+   `MOB_MOVE_REGEN_DELAY` instead of +10 for all. This flattens the pulse-10 wave. The event
+   counts elapsed pulses (`regen_elapsed_ticks()`), so the points restored stay the same.
+3. Give `generic_char_event`'s registration an initial delay that puts it on a pulse the tick
+   does not use, such as 5, so it stops stacking on pulses 0 and 20.
+4. Sweep the NPCs in `affect_update()` in slices across the tick, as `generic_char_event`
+   slices its per-character work, and keep players on the tick boundary. This removes the
+   40 to 140 ms pass and spreads the balance events. An NPC's buff then wears off at its
+   slice's pulse within the same tick instead of at the boundary.
+
+Changes 1 to 3 are small, change nothing a player sees, and remove the event-pass spikes;
+change 4 removes the spike of the pass itself.
+
+**Done when** an idle full world shows fewer pulses over 50 ms in `logs/latency_trace.log`
+than today (locally, after 12 minutes, 6 to 11 of every 14 windows in the timed build, whose
+timers add a few ms to the pass); `NEVENT BUDGET WINDOW` lines become rare on staging; and
+regression tests show that a regeneration event stops at the maximum while restoring the same
+points, and that a sliced NPC's affects still count down once per tick.
+
+### 19. Most of every boot is one shopkeeper scan
+
+**Problem.** When a boot's zone reset loads the keeper of a fixed (not replicated) shop
+(command `M`, `src/world/db.c` L3505), it asks `live_shopkeeper_for_identity()` (L3244)
+whether that shop already has a live keeper. That walks `character_list` until
+`singleton_shop_id()` says so, and at boot none exists yet, so it walks the whole list.
+`singleton_shop_id()` (`src/world/world_singletons.c` L89) answers at once for a bound keeper;
+for every other mob it loops over all 544 `shop_index` entries, comparing each shop's keeper
+with the mob's prototype. One local boot counted 519 walks, 13,774,490 characters visited,
+13,639,309 full shop-table scans and 7,419,784,096 comparisons: 2.40 s of the 2.92 s
+zone-reset phase, in a 4.1 s boot. On staging it is about 8 s of a 12 s boot: gdb stopped
+the live binary's boot every 0.2 s, and 42 of the 49 samples were in this scan. It came in
+with `4cb743b6a` ("Prevent duplicate fixed shopkeepers after recovery", 2026-09-22), before
+staging's first boot.
+
+**The 2 s step of 2026-10-08.** Staging's boot CPU went from 8.9 to 10.1 s, with 6 or 7 s of
+zone resets, to 11.8 to 13.5 s, with 9 or 10 s, from the first boot of `ca92ef1c2`
+(2026-10-08 10:01), and stayed there through the host's reboot and OS upgrade. The cause is
+where the build placed the scan's loop, not a change in the code:
+
+- The scan is a 24-byte loop of eight instructions at offset `0xfb` in `singleton_shop_id()`.
+  Where it falls in a 64-byte cache line moves whenever code linked before the function
+  changes size. In `a7e43bd0a` it fits in one line (byte 27). In `ca92ef1c2`, and in every
+  staging build kept since, it crosses two (byte 43, once 59). A build here of a commit puts
+  these functions at the same addresses as staging's build of it.
+- Staging's AMD Zen 3 CPU runs the loop at 0.44 to 0.51 ns per comparison when it fits in one
+  line and at 0.74 to 0.85 ns when it crosses: about 3.5 s against 6.3 s for 7.4 billion
+  comparisons, which is the step. This workstation (Intel) runs every placement at about
+  0.2 ns, which is why the step never showed here.
+- Ruled out: the code in `a7e43bd0a..ca92ef1c2` (built here at the production profile, the two
+  boot equally fast with flat files and with MariaDB, in the local and production roles);
+  staging's data (the resets take as long against a copy of the database with its accumulated
+  state deleted); the host's memory and CPU (the first boot after the reboot was as slow, with
+  no direct reclaim, and a CPU-only step after the resets did not move); the world files,
+  Chaos mode and the WebSocket listener.
+
+Any later build can land either way. The cost underneath is the scan, and making it cheap
+recovers about 8 s of every staging boot whatever the alignment.
+
+**Other costs in every boot.**
+
+- `restore_shopkeepers()`: `sql_restore_shopkeeper_catalog()` (`src/sql/sql_player.c` L3062)
+  walks the whole `character_list` twice for each restored keeper (L3579 counts the incumbent,
+  L3588 extracts it): 544 keepers × 2 × 54,500 characters, 59 million visits. That is 1.87 to
+  1.91 s of the step's 2 s locally, and the step takes 0.76 to 0.86 s on staging. It takes
+  0.3 ms when the database has no saved shops, so a local second boot is about 2 s slower
+  than the first boot on a new database.
+- `remember_boot_shopkeepers()` (`src/world/world_singletons.c` L142) calls
+  `singleton_shop_id()` once for every character: about 10 ms locally.
+- At runtime, a zone reset whose fixed keeper is missing pays one full scan, about
+  56,000 × 544 comparisons: 15 to 26 ms on staging at the two loop speeds, consistent with
+  local `event_reset_zone` callbacks of 6 to 15 ms.
+
+**The change.**
+
+1. Make `singleton_shop_id()` answer at once for a mob whose prototype keeps no shop: build a
+   per-prototype flag once after the shops are booted, and return -1 when it is not set. The
+   13.6 million full scans become flag reads, and only the list walk is left, about 0.45 s
+   locally at the restore's measured 32 ns per visit.
+2. Keep, per shop, its live keepers, updated where a keeper is bound (`bind_shopkeeper()`) and
+   where it is extracted. `live_shopkeeper_for_identity()` and the restore's incumbent search
+   then look it up instead of walking the list. `singleton_shop_id()` also recognizes an
+   unbound keeper by its room or birthplace, so either every keeper is bound when it loads or
+   the index covers those too.
+
+Change 1 alone takes the 7.4 billion comparisons out of every boot and every runtime reset.
+Together the two should cut staging's boot by about 8 s, the scan's share of the resets plus
+the restore's 0.8 s, and a local boot from 4.1 s to under 2 s.
+
+**Done when** the scan no longer shows in a sampled boot; staging's `Boot completed` falls by
+several seconds and stays there across rebuilds; and a regression test shows that
+`singleton_shop_id()` gives the same answers as before for a bound keeper, an unbound keeper
+in its shop's room, a roaming keeper and a mob that keeps no shop.
