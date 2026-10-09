@@ -108,6 +108,8 @@ the public health checks below.
   `~/.config/systemd/user/durisweb-production.service.d/10-user-scope-process-monitor.conf`
 - Watchdog executable: the website checkout's `deploy/scripts/durisweb-watchdog`
   (user scope; no root-owned copy)
+- Watchdog drop-in (stops AppArmor user-namespace denials):
+  `~/.config/systemd/user/durisweb-watchdog.service.d/10-user-scope-no-namespaces.conf`
 - Watchdog state and pause file: `~/.local/state/durisweb-watchdog`
 - MUD service unit: `~/.config/systemd/user/duris-mud-production.service`
 - MUD secrets and connection values: `~/duris/.env` (mode `0600`)
@@ -116,6 +118,11 @@ the public health checks below.
 - Cloudflare DNS token used by certificate renewal and by the website tunnel
   launcher: `~/.config/duris-certbot/cloudflare.env` (mode `0600`)
 - Backups: `~/backups/duris`
+- Host AppArmor allowance for the MUD database: `/etc/apparmor.d/local/mariadbd`
+  (root-owned). Ubuntu 26.04 enforces the `mariadbd` profile on `duris-mariadb.service`
+  too. Without this file, MariaDB can't read `~/.config/duris-mariadb/my.cnf` or
+  `~/.local/state/duris-mariadb/`, or tell systemd it is ready. If those paths or the
+  account's uid change, root must update it.
 
 ## Verification commands
 

@@ -14,8 +14,8 @@ Kept apart, in their own working notes:
 
 - [tick-and-boot-performance.md](tick-and-boot-performance.md): the review's two
   performance findings, the slow tick and the slower boot, each an investigation.
-- [staging-host-follow-ups.md](staging-host-follow-ups.md): the review's findings for the
-  host's owner (SSH, backups, the logs only root can read, the kernel).
+- [staging-host-follow-ups.md](staging-host-follow-ups.md): the host owner's work left
+  from the review and the host's 26.04 upgrade (SSH, a GitHub token, backups).
 
 [ADR 0003](../adr/0003-player-privacy-chat-snoop-addresses.md) is the decision record for
 items 3, 8 and 9.
