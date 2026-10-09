@@ -424,6 +424,13 @@ with tempfile.TemporaryDirectory(prefix="full-world-build-", dir=ROOT / "bin") a
                         phase = "first_boot" if output_path.name == "boot-first.out" else "second_boot"
                         record("phase_start")
                         wait_for_boot(process, output, output_path)
+                        # Every shop's rates are within the loader's bounds, so a boot
+                        # adjusts none and logs no "Old buy/sell" line.
+                        debug_log = (run_root / "logs/log/debug").read_text(errors="replace")
+                        require("Old buy/sell" not in debug_log,
+                                "the boot adjusted a shop's rates:\n" + "\n".join(
+                                    line for line in debug_log.splitlines()
+                                    if "Old buy/sell" in line))
                         phase = "first_boot:character_creation"
                         client = MudClient(port)
                         create_character(client, expected_room=None)
