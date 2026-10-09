@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
+#include <climits>
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
