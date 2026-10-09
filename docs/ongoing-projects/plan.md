@@ -549,6 +549,14 @@ that flush with a table lock fails the old journey and passes the new one. This 
 takes it when it lands. The record after the merge changes only this section and ledger
 row #700 (b).
 
+After the tag, `test-all` on `fb5590b99` failed Phase 2's `test_connection_limit_journey.py`
+once (and `test_telemetry_capacity_272.py`'s latency guard, which passed alone): during the
+fill an idle timeout could free a slot and let the journey's one probe in. Phase 2 fixed its
+journey in `97807ecbe`, and `b4b5068e7` merges Phase 2's `ab4f885cd` with it. **Gate** on
+`b4b5068e7`: `./scripts/format.sh --all --check` clean, `make test-all -j16 TEST_JOBS=16` 676
+passed, 0 failed (0 timed out, 0 ended by a signal), `make test-db` 48 of 48, and on `site/`
+`npm audit` 0 vulnerabilities and `npm test --prefix site` 15 passed.
+
 **Problem.** Three small things the community tree (`Community-Duris/Duris`, master at
 `a1e4a7efd`, split from ours at `e1357a30a` on 2026-09-23) fixed after the split, found on
 2026-10-04 by comparing the trees:
