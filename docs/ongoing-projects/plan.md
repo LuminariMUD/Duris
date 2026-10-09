@@ -38,7 +38,7 @@ built at that branch's head.
 |---|---|---|---|
 | 1 | `fix/14-privacy` | 9, 8, 3 (ADR 0003's code) | Built |
 | 2 | `fix/14-log-fixes` | 6, 1, 2, 7, 4, 5 | Built |
-| 3 | `fix/14-mariadb-11.8` | 17 | Not started |
+| 3 | `fix/14-mariadb-11.8` | 17 | Built |
 | 4 | `fix/14-boot-scan` | 19 | Not started |
 | 5 | `fix/14-tick-spikes` | 18 | Not started |
 | 6 | `fix/14-test-tools` | 10, 14, 16 | Not started |
@@ -89,7 +89,7 @@ Part 3, database engine support:
 
 | # | Item | Severity | State |
 |---|---|---|---|
-| 17 | A new database cannot be built on MariaDB 11.8: migrations 0031 and 0032 know only MariaDB 10.11 and MySQL 8.0 | Medium | Open |
+| 17 | A new database cannot be built on MariaDB 11.8: migrations 0031 and 0032 know only MariaDB 10.11 and MySQL 8.0 | Medium | Built (PR 3); staging upgraded |
 
 Part 4, the slow tick and the slower boot:
 
@@ -716,6 +716,39 @@ defaults handling`, then a start timeout) and has run since 13:03:57.
 MariaDB 11.8, MariaDB 10.11 and MySQL 8.0 with the same history checksum; staging's existing
 database still passes the runner and boots; the 11.8 leg and the regression test run; the
 documents name the three engines; and staging's `mysql_upgrade_info` reads 11.8.
+
+**Built** (PR 3), and the staging step done.
+
+- Running all 36 migrations on a fresh `mariadb:11.8` (11.8.9) failed only at 0031's and
+  0032's verifiers, on the version gate: their metadata fingerprints on 11.8 are 10.11's.
+- `migrations/immutable/0031_economy_accounting_mariadb_11_8.sh` and
+  `0032_economic_baseline_mariadb_11_8.sh` are the sealed files with the version gate
+  for `11.8.*MariaDB*` and 10.11's fingerprints. The manifest lists them in a new optional
+  top-level `engine_verifiers` list (migration, engine, path, checksum); the runner checks
+  them like any sealed file. `MysqlExecutor.verify()` asks `SELECT VERSION()` once and runs
+  `Migration.verifier(engine)`; the history row keeps the sealed checksum. The manifest and
+  runner versions stay 1.
+- `run_runtime_compatibility_mysql.sh` runs each step's verifier as the runner chooses it,
+  and links `mysql` to `mariadb` inside a MariaDB 11 container, whose image has only the
+  new name. `verify_runtime_compatibility.sh` needed nothing: its one MariaDB fingerprint
+  holds on 11.8.
+- New legs in `make test-db`: `runtime_compatibility_mariadb_11_8` and
+  `migration_runner_engines` (`tests/async/run_migration_runner_engines.py`: the runner on
+  all three engines, one history checksum, an edited history refused). The runner's unit
+  test covers the new manifest list.
+- Docs: `IMMUTABLE_MIGRATIONS.md` (a "Supported engines" section), `DATABASE.md`,
+  `RUNTIME_COMPATIBILITY.md`, `TESTING.md`.
+- Staging, 2026-10-10 00:27 local: `duris_staging` dumped to
+  `~/backups/duris/2026-10-10-pre-mariadb-upgrade/duris_staging.sql.gz` (6.9 MB), then
+  `mariadb-upgrade --defaults-file=~/.config/duris-mariadb/my.cnf --user="$(id -un)"` (the
+  tool defaults to `root`, which the instance refuses). The data directory's upgrade file
+  is `mariadb_upgrade_info` on 11.x, and it reads `11.8.6-MariaDB`; the old
+  `mysql_upgrade_info` (10.11.14) is gone. The game and MariaDB stayed up. The server
+  reports `11.8.6-MariaDB-5ubuntu0.1 from Ubuntu`, which `engine_of()` and the verifiers'
+  `11.8.*MariaDB*` both match.
+- Staging's existing database, restored from that dump into a local `mariadb:11.8`, passes
+  the new runner (`run`: nothing pending, history intact) and
+  `verify_runtime_compatibility.sh`. The copy was deleted afterwards.
 
 ---
 
