@@ -37,7 +37,7 @@ built at that branch's head.
 | PR | Branch | Items | State |
 |---|---|---|---|
 | 1 | `fix/14-privacy` | 9, 8, 3 (ADR 0003's code) | Built |
-| 2 | `fix/14-log-fixes` | 6, 1, 2, 7, 4, 5 | Not started |
+| 2 | `fix/14-log-fixes` | 6, 1, 2, 7, 4, 5 | Built |
 | 3 | `fix/14-mariadb-11.8` | 17 | Not started |
 | 4 | `fix/14-boot-scan` | 19 | Not started |
 | 5 | `fix/14-tick-spikes` | 18 | Not started |
@@ -63,13 +63,13 @@ Part 1, the log review's fixes:
 
 | # | Item | Severity | State |
 |---|---|---|---|
-| 1 | `server_reboots` records one of ten restarts: a service stop kills the launcher before it writes | Low | Open |
-| 2 | Plain HTTP requests to `ws.duris.sbs` reach the MUD's WebSocket port and get a tunnel error | Low | Open |
+| 1 | `server_reboots` records one of ten restarts: a service stop kills the launcher before it writes | Low | Built (PR 2) |
+| 2 | Plain HTTP requests to `ws.duris.sbs` reach the MUD's WebSocket port and get a tunnel error | Low | Built (PR 2) |
 | 3 | `lib/etc/hosts` keeps every client's address and reverse-DNS name, and nothing prunes it | Low | Built (PR 1) |
-| 4 | Nine shops ask for a buy rate the loader clamps at every boot | Low | Open, data |
-| 5 | `logs/boot.log` is stale since 2026-10-04 and nothing writes it | Low | Open |
-| 6 | `cmd.debug` never records a one-letter command, and records stale text for an empty line | Low | Open |
-| 7 | Wizard broadcasts go into `status` raw, a lost peer's host is a color code, and zone-command lines print internal indices | Low | Open |
+| 4 | Nine shops ask for a buy rate the loader clamps at every boot | Low | Built (PR 2) |
+| 5 | `logs/boot.log` is stale since 2026-10-04 and nothing writes it | Low | Done (staging, 2026-10-10) |
+| 6 | `cmd.debug` never records a one-letter command, and records stale text for an empty line | Low | Built (PR 2) |
+| 7 | Wizard broadcasts go into `status` raw, a lost peer's host is a color code, and zone-command lines print internal indices | Low | Built (PR 2) |
 | 8 | `snoop` never tells its target, and nothing ages out players' addresses | Low | Built (PR 1) |
 | 9 | Any immortal can read a player's last 200 private messages with `recall` | Medium | Built (PR 1) |
 
@@ -162,6 +162,21 @@ the reason as data (for example hex-encoded into `UNHEX()`), not inside the SQL.
 **Done when** a service stop and a restart each shut `dms` down cleanly and leave one row, a
 reason with an apostrophe is recorded, and a regression test covers both.
 
+**Built** (PR 2). `scripts/cycle_mud.sh` runs the server in the background, traps TERM, INT
+and HUP to pass them on, and waits until the server has exited (`wait` returns early when a
+trapped signal arrives). After a stop it writes the row and leaves the loop at once, with no
+ten-second pause, so the post-loop steps (a pwipe's wipe, the email) still run. The issuer
+and reason go in as `CONVERT(UNHEX(...) USING utf8mb4)`, and a failed insert prints an error
+instead of the old unconditional "Logged reboot". The unit template has `KillMode=mixed`.
+`tests/async/run_launcher_stop_journey.py` (in `make test-db`) runs the real launcher with a
+stand-in server on MariaDB and sends SIGTERM to the launcher alone, twice.
+
+Left for the deploy: staging's unit is written by hand
+(`~/.config/systemd/user/duris-mud-production.service`, `KillMode=control-group`). Set
+`KillMode=mixed` there and run `systemctl --user daemon-reload` in the same step that
+deploys this launcher, never before: the old launcher has no trap, so with `mixed` it would
+die at once and leave the server running until `TimeoutStopSec` kills it unsaved.
+
 ### 2. Plain HTTP to `ws.duris.sbs` gets a tunnel error
 
 **Problem.** cloudflared logged `Unable to reach the origin service ... EOF` for
@@ -177,6 +192,12 @@ upgrade, so crawlers get a Cloudflare error page.
 
 **Done when** a plain GET and a GET of `/robots.txt` get their responses, an upgrade still
 connects, and a regression test sends all three.
+
+**Built** (PR 2). A GET with neither the upgrade nor the WebSocket header gets `426 Upgrade
+Required` (with `Upgrade: websocket`), and `GET /robots.txt` gets `200` with `User-agent: *`
+and `Disallow: /`; the connection closes after either, as after `/health`. A banned address
+still gets its `403` first. The three HTTP answers share one function. Tested in
+`tests/async/websocket_runtime_harness.cpp`, whose first case is a real upgrade.
 
 ### 3. `lib/etc/hosts` keeps every client's address and name
 
@@ -211,6 +232,11 @@ log carries nothing.
 
 **Done when** a boot logs no `Old buy/sell` line.
 
+**Built** (PR 2). The nine buy rates in `areas/shp/{dream,vehicles,ravenloft2,newhope}.shp`
+are `0.80`; each shop's sell rate stays above it, so the loader changes nothing.
+`tests/async/test_flatfile_full_world_boot.py` fails on any `Old buy/sell` line in its debug
+log.
+
 ### 5. `logs/boot.log` is stale
 
 **Problem.** `logs/boot.log` is dated 2026-10-04 22:05. Nothing in `scripts/` or `src/` writes
@@ -221,6 +247,12 @@ nor the 09:01 boot prints them, so the file misleads anyone who reads it.
 **The change.** Delete it (decision 2), or have the launcher write the boot's stderr there.
 
 **Done when** no `logs/boot.log` older than the last boot is left on the host.
+
+**Done** (2026-10-10). Deleted on staging (`~/duris/logs/boot.log`, 2,940 bytes, dated
+2026-10-04 22:05; the service had last started at 13:04 on 2026-10-09). Nothing in
+`scripts/` or `src/` writes the file; `.gitignore` still lists it. Also seen there:
+`logs/shutdown_info.txt` of the 12:33 stop during the OS upgrade, which item 1's defect left
+unread. The next stop's server overwrites it, so it was left.
 
 ### 6. `cmd.debug` misses one-letter commands
 
@@ -235,6 +267,8 @@ are the part it loses.
 
 **Done when** `tests/async/test_command_log_ring.py`, which runs the real `cmdlog()`, records a
 one-letter command and nothing for an empty line.
+
+**Built** (PR 2), as written; the test also checks a two-word command after them.
 
 ### 7. Three log-hygiene defects
 
@@ -255,6 +289,21 @@ one-letter command and nothing for an empty line.
 **Done when** all three are fixed, each with a regression test.
 `tests/async/test_boot_log_hygiene.py` pins `src/net/comm.c` in places; read its contracts
 before moving anything there.
+
+**Built** (PR 2).
+
+- `timedShutdown()` logs `<kind> by <issuer>: <reason>` to the status and wiz logs through
+  `log_shutdown()` (kinds: Shutdown, Reboot, Copyover, Auto-reboot, Auto-reboot with
+  copyover); the players' broadcast is unchanged.
+- A failed `getpeername()` gives the host `unknown`; the `strip_ansi()` around the lookup's
+  address went with the color code.
+- `M`, `F` and `R cmd not executed` print `mob <vnum> in room <vnum>, limit <n>, chance
+  <n>%`.
+
+One journey covers all three, `tests/async/test_log_hygiene_journey.py`: a flat-file server
+with zero-chance `M`, `F` and `R` commands, a connection reset before the server accepts it
+(Linux hands it over, and `getpeername()` then fails, as on staging), and a SIGTERM stop.
+`test_boot_log_hygiene.py`'s pins on `comm.c` still hold.
 
 ### 8. `snoop` never tells its target, and nothing ages out players' addresses
 
