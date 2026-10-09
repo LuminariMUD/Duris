@@ -111,17 +111,3 @@ run_sql "
      AND payload.obj_uid IS NULL
    GROUP BY own.owner_id
    ORDER BY missing_payload_rows DESC;"
-echo
-
-echo "== Characters over the load-time skip cap (PLAYER_LOAD_ITEM_SKIP_MAX = 32) =="
-echo "   These characters are REFUSED at login rather than losing items silently."
-run_sql "
-  SELECT pid, orphan_rows FROM (
-    SELECT pi.pid AS pid, COUNT(*) AS orphan_rows
-      FROM player_items pi
-      LEFT JOIN item_current_owner own ON own.item_uid = pi.obj_uid
-     WHERE own.item_uid IS NULL
-     GROUP BY pi.pid
-  ) per_character
-   WHERE orphan_rows > 32
-   ORDER BY orphan_rows DESC;"
