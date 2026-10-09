@@ -29,38 +29,37 @@ Updated 2026-10-09. A new session starts here, then reads the phase it continues
 | 5 | Studio-proc tag ids and `world.trg` | Landed 2026-10-09 in `2584ad609` (PR #9, `backlog/phase-5-review-1` and its catch-up merges). |
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
 | 7 | Quest EXP line and `achievements zones` | Landed 2026-10-09 in `17b1f0813` (PR #10, `backlog/phase-7-review-1` and Phase 5's catch-up). |
-| 8 | Specials assigned to missing vnums | Built on `fix/4-phase-8-dead-specials`; PR #11, review round 1 done, tag `backlog/phase-8-review-1`, gate green; next to land. |
-| 9 | `board` specials and the audit heading | Built on `fix/4-phase-9-boards`; PR #12, review round 1 on the branch, tag `backlog/phase-9-review-1`. |
+| 8 | Specials assigned to missing vnums | Landed 2026-10-09 in `eb34cf799` (PR #11, `backlog/phase-8-review-1` and Phase 7's round 1). |
+| 9 | `board` specials and the audit heading | Built on `fix/4-phase-9-boards`; PR #12, review round 1 done, tag `backlog/phase-9-review-1`; next to land. |
 
-Phases 1 to 7 are on `master`. Phases 8 and 9 are each on their own branch, stacked on the
-one before; their sections here are on those branches, not yet on `master`. What is left:
-Phase 8's landing, whose review round is done, then Phase 9's round and landing.
+Phases 1 to 8 are on `master`. Phase 9 is on its own branch; its section here is on that
+branch, not yet on `master`. What is left: Phase 9's landing, whose review round is done.
 
 ## Landing
 
-The pull requests form one stack: #11 (Phase 8) now targets `master`, and #12 (Phase 9)
-targets Phase 8's branch. #11 has had review round 1: each finding fixed in its own commit,
-its thread resolved, the round's head tagged `backlog/phase-8-review-1`. #12's round 1 is on
-its branch, tagged `backlog/phase-9-review-1`. Take them in order: the review round on the
-branch where one is still open, then the landing as "Every phase" says. A branch's head can
-be past its last tag (a fix or a merge from the phase below after the round); the landing
-merges the head. Before deleting a landed branch, point the next pull request at `master`
-(`gh pr edit <n> --base master`): a landing is a pushed merge, and GitHub then closes, not
-retargets, a pull request whose base branch is deleted (#6 was closed that way at Phase 1's
-landing and reopened). Delete this file when Phase 9 lands.
+#12 (Phase 9) is the last pull request of the stack and now targets `master`. It has had
+review round 1: each finding fixed in its own commit, its thread resolved, the round's head
+tagged `backlog/phase-9-review-1` (`75f4aff7c`). The landing is a `--no-ff` merge of the
+branch head, `34a729868`, which is past the tag: `8031e8593` merged Phase 8's round 1 head
+(`6864ab279`, the head that landed), and `918612472` reverts the branch's copy of
+`b683d9eb0`, a telemetry journey fix `master` took as `70418a562` and `cb23b36fd` then
+rewrote. Phase 9 changes no Status row, so a trial merge of its head onto this landing record
+is clean.
 
-A landing can meet a conflict in this file: a branch that rewrote the Status table's earlier
-rows conflicts with `master`'s. Keep `master`'s table and this section, mark the landed phase,
-and take the branch's side everywhere else. Phase 8's branch already has Phase 7's head
-(`3549daad4`), taken in `9db3eaecb`, and changes no Status row, so a trial merge of its head
-(`6864ab279`) onto this landing record is clean. Phase 8 regenerates
-`docs/reference/artifact_source_inventory.json`, which `test_artifact_source_inventory.py`
-checks against `specs.assign.c`; a `master` change to either needs the inventory regenerated
-at the landing.
+Gate the landing merge in full. Phase 9's last gate, on `8031e8593` (`make test-all` 683
+passed, `make test-db` 47 of 48, the `deletion` leg that `master`'s `4133466af` fixes), ran
+before `master` took `639f6fd55` (the kingdom subsystem shipped off), `cb10b2408` and seven
+test fixes. Phase 9 changes `areas/zon/heavens.zon` and with it the hash in
+`migrations/seeds/epic_zone_payouts.json`; a `master` change to an `areas/zon/*.zon` file
+before the landing needs `scripts/epic_zone_seed.py write` on the merge.
 
-The local dev server (`duris-plan`, ports 4000/4001) runs Phase 9's build of 2026-10-08, the
-review-0 heads. The landings so far did not copyover it: the landed build would take the
-phases still on branches off it. It goes onto `master`'s build when Phase 9 lands.
+When Phase 9 lands, no pull request is stacked on `fix/4-phase-9-boards`, so the branch can
+be deleted right after the push. The local dev server (`duris-plan`, ports 4000/4001) still
+runs Phase 9's build of 2026-10-08, the review-0 heads; the landings so far did not copyover
+it, since the landed build would take the phases still on branches off it. It goes onto
+`master`'s build then, and plan issue #4 is done. This file is deleted with the landing
+record. Its "Why these" table is the one list of open work outside this plan, so ask the
+owner where that list goes before deleting it.
 
 ## Why these
 
@@ -1217,6 +1216,14 @@ The other was `test_password_async_runtime.py`: its harness timed calls by the w
 and a call passed 50 ms while four gates ran at once (load about 60). That is fixed on
 `master` in `91b768884`, which times calls by the thread's CPU, and it comes here through
 the stack.
+
+**Landed** 2026-10-09 in `eb34cf799`, PR #11: a `--no-ff` merge of the branch head
+`6864ab279` (`backlog/phase-8-review-1`), which already had Phase 7's round 1 (`3549daad4`,
+taken in `9db3eaecb`), on `master` at `a6829d172`; clean, and only Phase 8's six files. Gated
+on that merge: `./scripts/format.sh --all --check` clean (1038 files), `make test-all -j16
+TEST_JOBS=16` 682 passed, 0 failed (0 timed out, 0 ended by a signal), `make test-db` 48 of
+48. No `master` change touched `specs.assign.c` or the artifact inventory, so the inventory
+needed no regeneration.
 
 **Checked** at `f44291043`. `real_room0()`, `real_mobile0()` and `real_object0()`
 (`src/world/db.c` L4607, L4680, L4748) return 0 for a missing vnum; the comment at
