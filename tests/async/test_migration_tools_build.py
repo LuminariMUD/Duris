@@ -12,6 +12,10 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 assert "-std=c++20" in (ROOT / "migrations/tools/Makefile").read_text()
+# An unchecked "len += snprintf(buf + len, size - len, ...)" writes past the buffer once it
+# fills; migrate_players.c batches its rows through append_row() instead.
+for source in sorted((ROOT / "migrations/tools").glob("*.c")):
+    assert "+= snprintf(" not in source.read_text(), f"unchecked snprintf append in {source.name}"
 (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="migration-tools-", dir=ROOT / "bin/tests") as scratch:
     for target in ("all", "affects", "pfile_converter"):

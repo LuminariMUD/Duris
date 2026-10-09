@@ -1,7 +1,7 @@
 # Security & Compliance
 
 > Cumulative security posture and GDPR compliance record. Findings were last audited at
-> Phase 03 (2026-08-27); the text was brought up to date on 2026-10-08.
+> Phase 03 (2026-08-27); the text was brought up to date on 2026-10-09.
 >
 > This is an engineering record, not legal advice or a determination of applicability.
 
@@ -107,20 +107,24 @@ fail closed.
 
 ### Current Vulnerabilities
 
-The `security baseline` workflow runs the scans on every push to `master`. Its run of
-2026-10-08 found no fixed high or critical issue in the 23 resolved direct packages,
-`libcurl4-gnutls-dev` among them, and CodeQL reported nothing; it lists no unfixed or
-lower finding, and the last scan that did (2026-08-27) found one unfixed medium Git
-advisory (`CVE-2024-52005`). Transitive dependencies, deployment-only services, and
-external infrastructure are outside the scan; the record does not claim the dependency
-set is vulnerability-free ([SECURITY_BASELINE.md](../operations/SECURITY_BASELINE.md)).
+The `security baseline` workflow runs the scans on every push to `master`, on a fresh
+GitHub runner. Until 2026-10-09 its dependency scan matched packages by binary name and
+missed every advisory filed under a source package (curl, OpenSSL, Redis), so no hosted
+or earlier dependency result counts. The workflow replayed locally on 2026-10-09 over the
+runner's package set (all 23 direct packages, `libcurl4-gnutls-dev` and the MySQL server
+among them) found no fixed high or critical issue and 26 unfixed lower ones (cJSON,
+Redis, Git, zlib, `clang-format`). CodeQL found ten issues in the migration tools, now
+fixed, and nothing else. No host Duris runs on has been scanned. Transitive
+dependencies, deployment-only services, and external infrastructure are outside the scan;
+the record does not claim the dependency set is vulnerability-free
+([SECURITY_BASELINE.md](../operations/SECURITY_BASELINE.md)).
 
 | Scope | Current State | Status |
 |-------|---------------|--------|
 | Native/system direct dependencies | Deterministic inventory and SPDX 2.3 output (`make security-sbom`) | PARTIAL |
 | Workflow action pins | Immutable SHAs, held by `test_security_dependency_baseline.py`; Dependabot proposes updates weekly | PASS |
-| Source and configuration security | `make security-check` and CodeQL on every push to `master`; no open alert on 2026-10-08 | PASS |
-| Container/root filesystem scan | Pinned Trivy on every push to `master`; last run 2026-10-08, no fixed high or critical finding | PASS |
+| Source and configuration security | `make security-check` and CodeQL on every push to `master`, over the server, the editor, the area tools, `pfile` and `migrations/tools` (not the test harnesses or the area generators); 0 results on the 2026-10-09 replay | PASS |
+| Container/root filesystem scan | Pinned Trivy, by source package, over the runner's direct packages on every push to `master`; the 2026-10-09 replay found no fixed high or critical finding. No host Duris runs on has been scanned | PARTIAL |
 
 ---
 

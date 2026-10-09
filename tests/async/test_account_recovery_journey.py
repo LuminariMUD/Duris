@@ -316,9 +316,12 @@ def build_flatfile_server(build_root: pathlib.Path) -> pathlib.Path:
 class IsolatedServer:
     """One booted flat-file server with its own state, run root, ports, and output file."""
 
-    def __init__(self, binary: pathlib.Path, mail_environment: dict[str, str] | None) -> None:
+    def __init__(self, binary: pathlib.Path, mail_environment: dict[str, str] | None,
+                 prepare_run_root=None) -> None:
+        """prepare_run_root, if given, is called with the run root before the boot."""
         self.binary = binary
         self.mail_environment = mail_environment or {}
+        self.prepare_run_root = prepare_run_root
         self.state_tmp = tempfile.TemporaryDirectory(prefix="duris-recovery-state-")
         self.run_tmp = tempfile.TemporaryDirectory(prefix="duris-recovery-run-")
         self.state_root = pathlib.Path(self.state_tmp.name)
@@ -355,6 +358,8 @@ class IsolatedServer:
         (self.run_root / "logs/log").mkdir(parents=True)
         (self.run_root / "logs/log/.gitignore").write_text("*\n!.gitignore\n")
         make_fixture(self.run_root)
+        if self.prepare_run_root:
+            self.prepare_run_root(self.run_root)
         generate_certificate(self.run_root)
 
         journal_root = self.run_root / "journals"

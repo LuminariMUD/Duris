@@ -307,6 +307,10 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
     for name in ("make_mob", "make_obj", "make_qst", "make_shp", "make_trg", "make_wld", "make_zon"):
         (tools / name).write_text("#!/bin/sh\nexit 0\n")
         (tools / name).chmod(0o755)
+    generator = project / "areas/m_slow"
+    generator.parent.mkdir()
+    generator.write_text("#!/bin/sh\nexit 0\n")
+    generator.chmod(0o755)
     runtime = project / "bin/server/dms"
     runtime.write_text("#!/bin/sh\necho runtime binary ran\nexit 0\n")
     runtime.chmod(0o755)
@@ -321,6 +325,14 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
                              + launched.stdout)
     if not server.exists() or (project / "bin/server/.dms-backend").read_text() != "mariadb/production\n":
         raise AssertionError("production launcher promoted or removed the development build")
+    # A failed world generation stops the boot: the server would otherwise start on the
+    # previous areas/world.* (or on none) and nothing would say so.
+    generator.write_text("#!/bin/sh\necho error: trg/limbo.trg:4: a trigger is not ended by ~ >&2\nexit 1\n")
+    rejected = run(script, production_check_env, "--production")
+    if (rejected.returncode == 0 or "refusing to boot on stale area files" not in rejected.stdout
+            or "runtime binary ran" in rejected.stdout):
+        raise AssertionError("the launcher booted after world generation failed:\n" + rejected.stdout)
+    generator.write_text("#!/bin/sh\nexit 0\n")
     (project / "bin/server/.dms-backend").write_text("flatfile/development\n")
     rejected = run(script, production_check_env, "--production")
     if rejected.returncode == 0 or "requires a mariadb/production server build" not in rejected.stdout:

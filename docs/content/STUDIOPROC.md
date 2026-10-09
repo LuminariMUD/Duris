@@ -26,7 +26,12 @@ cannot do is *fill those slots* without editing C.
 binds a single generic C proc per target type to every vnum named in it.
 `make world` generates that file: `make_trg` checks each area's
 `areas/trg/<area>.trg` (for the areas `areas/AREA` lists) and appends it,
-then ends the file with `#~`.
+then ends the file with `#~`. Its first line says `make_trg` wrote it.
+Before `make_trg`, `areas/world.trg` was written by hand; `make_trg`
+refuses to replace a file without that first line that holds a record,
+and fails `make world` until its records are moved, without the `#~`
+line, into `areas/trg/<area>.trg`. `make clean-all` deletes
+`areas/world.trg` whoever wrote it, so move them before running it.
 After that, the engine's own dispatch does all the work — there is no
 scripting VM, no interpreter thread, and no new dispatch machinery.
 
@@ -143,11 +148,18 @@ All of these are enforced in C and none are optional.
   (mobact.c:5735, fight.c:2566).
 
 A malformed source fails `make world`, naming the file and line, when the
-fault is in the framing (a record header, `T`, `~` and `S`). At boot a
-malformed record logs its zone, vnum and line to `logs/log/status` and is
-skipped, so a bad `.trg` cannot stop a boot. The file is read and never
-written. The kill switch is renaming `areas/world.trg` and rebooting; the
-next `make world` writes it again.
+fault is in the framing (a record header, `T`, `~` and `S`), and
+`scripts/cycle_mud.sh` then refuses to boot rather than start on the
+previous area files. A record whose content is malformed passes generation;
+at boot it logs its zone, vnum and line to `logs/log/status` and is
+skipped. The file is read and never written.
+
+The kill switch for an area's triggers is moving its `areas/trg/<area>.trg`
+out of `areas/trg/` and rebooting (the supervisor regenerates
+`areas/world.trg` before every start), or running `make world` and a
+copyover. Move every file out to switch them all off. Renaming
+`areas/world.trg` lasts only until the next generation, and renaming
+`areas/trg/` fails generation instead.
 
 ## Per-instance state
 

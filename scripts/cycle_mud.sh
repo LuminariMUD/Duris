@@ -362,7 +362,10 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
     fi
 
     echo "Building areas..."
-    (cd ./areas && ./m_slow)
+    if ! (cd ./areas && ./m_slow); then
+      echo "World generation failed; refusing to boot on stale area files" >&2
+      exit 1
+    fi
   fi
 
   echo "Generating list of function names.."
