@@ -664,6 +664,14 @@ moves that line, and the catch-up merge brings the fix here. `make test-db` pass
 48 in 7 min 49 s. The 37 tests that read the touched documents, the security scripts or
 the migration tools, run bare, all pass.
 
+**Catch-up** (2026-10-09): `9c8a14234` merges Phase 3's round head `fb5590b99`, which
+carries Phase 2's round and `master` up to `494317e40`, including the readiness fix
+`47f5a06d6`. Only the Status table conflicted, and `master`'s was kept. The merge also
+brought Dependabot's `codeql-action` bump to v4.38.2, which still uses CodeQL 2.27.1, the
+version the replay above ran. **Gate** on `9c8a14234`: `./scripts/format.sh --all --check`
+clean, `make test-all -j16 TEST_JOBS=16` 676 passed and 0 failed in 6 min 51 s, `make
+test-db` 48 of 48 in 5 min 41 s.
+
 **Problem.** Until the move to GitHub the dependency and code scans last ran on 2026-08-27,
 and `libcurl4-gnutls-dev`, added to the build dependencies on 2026-09-06, was never scanned.
 Since 2026-10-08 the `security baseline` workflow (`.github/workflows/security.yml`:
