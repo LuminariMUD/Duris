@@ -1,11 +1,10 @@
-# Test quality: six additions that keep the gate's time
+# Test quality: seven additions that keep the gate's time
 
-Written 2026-10-09 against `master` at `d6fe4c210`. It proposes six additions that raise what
-the tests prove without making `make test-all` or `make test-db` slower: anything slow runs
-outside the gate. Line coverage is a separate question and is not covered here. The numbers
-below were counted on that commit. The order and the decisions are proposed; the owner locks
-or changes them before the first item starts. This file is a working note: delete it when
-the last item lands.
+Written 2026-10-09 against `master` at `d6fe4c210`. It proposes seven additions that raise
+what the tests prove without making `make test-all` or `make test-db` slower: anything slow
+runs outside the gate. The numbers below were counted on that commit. The order and the
+decisions are proposed; the owner locks or changes them before the first item starts. This
+file is a working note: delete it when the last item lands.
 
 ## Where the suite stands
 
@@ -17,9 +16,9 @@ the last item lands.
 - 128 test files build with `-fsanitize`, almost all with `address,undefined`. The server
   builds with `-Wall -Wextra -Wpedantic -Werror`, and CodeQL (`c-cpp`) runs in
   `.github/workflows/security.yml`.
-- There is no fuzz target, no `clang-tidy` or `cppcheck` run, and no record of past test
-  runs. `clang` 18, `clang-tidy`, `clang-tidy-diff`, `ccache` and `valgrind` are installed
-  locally.
+- There is no fuzz target, no `clang-tidy` or `cppcheck` run, no coverage build and no
+  record of past test runs. `clang` 18, `clang-tidy`, `clang-tidy-diff`, `ccache`,
+  `valgrind`, `gcov` and `gcovr` 8.6 are installed locally.
 - Since 2026-09-01, 158 of 1,319 non-merge commits changed only tests; since 2026-10-01, 39
   of 437. Most of them fixed a test, not the server: a pinned count (`426bb5557`), a missing
   harness stub (`119dda91e`, `ad529fd16`), or a journey wait (`9cd0ef332`, `2bc212690`,
@@ -35,15 +34,18 @@ the last item lands.
 | 4 | `clang-tidy` on changed lines | none (commit hook) | Proposed |
 | 5 | Keep a history of test runs | none | Proposed |
 | 6 | Mutation testing, by hand | none | Proposed |
+| 7 | Line coverage, on demand | none (by hand) | Proposed |
 
 Suggested order: 1, 2 and 5 first, because they are cheap and address the breakages already
-seen; then 4; then 3 and 6, which look for bugs nobody has reported.
+seen; then 4; then 3 and 6, which look for bugs nobody has reported. Item 7 depends on
+nothing and can land at any point.
 
 Proposed decisions:
 
 - Item 1 reports; it does not block a landing.
 - Item 4's hook refuses a commit with a new finding on a changed line, as the format hook does.
 - Item 3's long runs are by hand; no scheduled workflow.
+- Item 7 runs only when a developer asks for it, and its percentage is never a target.
 
 ## 1. Prove a regression test fails without its fix
 
@@ -189,8 +191,8 @@ where the files are.
 
 ## 6. Mutation testing, by hand
 
-**Problem.** Nothing measures whether the tests catch bugs. A coverage number says a line
-ran, not that a test would notice if the line were wrong.
+**Problem.** Nothing measures whether the tests catch bugs. A coverage number (item 7) says
+a line ran, not that a test would notice if the line were wrong.
 
 **The change.** `scripts/mutate.py <src file>`. It finds mutation sites outside comments and
 strings (reusing `_source_contract.strip_comments`): it flips a relational operator, swaps
@@ -210,3 +212,44 @@ suite's strength.
 
 **Done when** the script runs on those three files, each surviving mutant has a new test or
 its dead code removed, and the commit that does so records the before and after scores.
+
+## 7. Line coverage, on demand
+
+**Problem.** Nothing shows which code no test reaches. Item 6 scores only the tests that
+name a file, and journeys reach most of the server without naming anything, so a function
+that no harness and no journey ever runs looks the same as one that both run.
+
+**The change.** `make coverage` runs `scripts/coverage.sh`, and nothing else runs it: it is
+never part of `test-all`, `test-db` or the commit hook. One command does the whole run:
+
+1. it creates a detached worktree of `HEAD` (or a commit given as an argument) under
+   `bin/analysis/coverage-<sha>/`, so the checkout, its objects and any running gate are
+   untouched;
+2. it puts a `g++` wrapper from `scripts/coverage/` first on `PATH`. The wrapper adds
+   `--coverage -fprofile-abs-path -fprofile-update=atomic` and a new `-dumpdir` under
+   `bin/coverage/<sha>/data/` to every compile, then runs the real `g++`. The server
+   `Makefile` (`CC = g++`), the journeys' own flat-file builds and the harness tests all
+   call `g++` by name, so one wrapper instruments all three, and the notes and counts of a
+   harness built in a temporary directory outlive that directory. It keeps the build's
+   `-Og`: `_FORTIFY_SOURCE=3` without optimisation is a warning, and `-Werror` makes it
+   fatal;
+3. it runs `make -k test-all` in the worktree, and `make test-db` as well when given
+   `--db`, and lists the tests that failed. A test that breaks only under instrumentation
+   loses its own counts, not the report;
+4. it writes `bin/coverage/<sha>/index.html` and a per-directory summary with `gcovr`,
+   reporting only files under `src/`, replaces any earlier report for the same commit, and
+   removes the worktree.
+
+**What it cannot see.** A process stopped with `SIGKILL` writes no counts. `SIGTERM` shuts
+the server down in order (`hupsig` sets `signal_shutdown_pending`), so most journeys count,
+but the crash probes do not. A test that patches a copy of a server source and compiles the
+copy is left out, because only `src/` is reported. The few tests that call `c++` or
+`clang++` bypass the wrapper.
+
+**Steps.** Write the wrapper, the script and the target. Run it once on `master`. Check
+that `src/economy/collector_policy.c`, which `collector_policy_harness.cpp` compiles, shows
+counts, and so does a command handler that only journeys reach. Add a "Coverage" paragraph
+to `docs/guides/TESTING.md`: the command, where the report lands, and what it cannot see.
+
+**Done when** `make coverage` on a clean checkout produces the report with no other step,
+both checks show counts, and `TESTING.md` says how to run it.
