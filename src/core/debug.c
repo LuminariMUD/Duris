@@ -160,7 +160,8 @@ void cmdlog(P_char ch, char *str)
 	}
 	if (IS_NPC(ch))
 		return;
-	if (*(str + 1) != '\0')
+	// A one-letter command (n, s, k) is a command; an empty line is not.
+	if (*str != '\0')
 	{
 		char *line = cmdlog_lines[logcount % CMDLOG_LINES];
 		logcount++;
