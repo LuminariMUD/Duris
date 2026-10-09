@@ -58,15 +58,16 @@ HARNESS_STUB bool isname(const char *, const char *)
 }
 
 // sql/sql_pool.h needs <mysql.h>; the pool's functions have C linkage, so these need not.
-extern "C" {
-typedef struct st_mysql MYSQL;
-HARNESS_STUB MYSQL *sql_pool_acquire(void)
+extern "C"
 {
-	return nullptr;
-}
-HARNESS_STUB void sql_pool_release(MYSQL *) {}
-HARNESS_STUB MYSQL *sql_pool_replace_connection(MYSQL *)
-{
-	return nullptr;
-}
+	typedef struct st_mysql MYSQL;
+	HARNESS_STUB MYSQL *sql_pool_acquire(void)
+	{
+		return nullptr;
+	}
+	HARNESS_STUB void sql_pool_release(MYSQL *) {}
+	HARNESS_STUB MYSQL *sql_pool_replace_connection(MYSQL *)
+	{
+		return nullptr;
+	}
 }
