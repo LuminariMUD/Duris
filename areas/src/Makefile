@@ -1,4 +1,4 @@
-SUBDIRS := mob obj qst shp wld zon
+SUBDIRS := mob obj qst shp trg wld zon
 
 ROOT_DIR          := $(abspath ../..)
 BIN_ROOT          ?= $(ROOT_DIR)/bin

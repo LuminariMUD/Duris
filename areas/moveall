@@ -9,6 +9,7 @@ set -eu
   echo "Moving zone file."; mv tworld.zon world.zon
   echo "Moving quest file."; mv tworld.qst world.qst
   echo "Moving shop file."; mv tworld.shp world.shp
+  echo "Moving trigger file."; mv tworld.trg world.trg
 echo
 echo "File conversion complete."
 echo

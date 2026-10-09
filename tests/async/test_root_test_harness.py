@@ -261,4 +261,11 @@ for script in ("m_slow", "m_quick", "make_all", "moveall", "make_lookup"):
         f"areas/{script} must stop when a generation step fails"
     )
 
+# A removed source (an optional areas/trg or areas/qst file, say) changes only its
+# directory, so make world must compare directories with its stamp, not files alone.
+world_target = makefile[makefile.index("\nworld:"):makefile.index("Combined world data is up to date")]
+assert '-newer "$$stamp"' in world_target and "-type f" not in world_target, (
+    "make world must regenerate after an area source is removed"
+)
+
 print("root build and test harness contracts passed")

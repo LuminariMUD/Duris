@@ -926,6 +926,10 @@ int run_the_game(int port, int sslport)
 		fprintf(stderr, "--  Skipping command attributes in mini mode.\n");
 	fprintf(stderr, "--  Done loading command attributes.\n");
 
+	// Kills drop random equipment in mini mode too, so it reads the same configuration.
+	fprintf(stderr, "-- Loading random equipment configuration\n");
+	boot_random_equipment_config();
+
 	if (!mini_mode)
 	{
 		if (no_ferries == 0)
@@ -968,9 +972,6 @@ int run_the_game(int port, int sslport)
 
 		fprintf(stderr, "-- Booting crafting system\n");
 		boot_crafting_system();
-
-		fprintf(stderr, "-- Loading random equipment configuration\n");
-		boot_random_equipment_config();
 
 		fprintf(stderr, "-- Loading frag-cap configuration\n");
 		boot_frag_cap_config();

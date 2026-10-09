@@ -106,9 +106,15 @@ def run(server, misnamed_server):
             output_path = runtime/'server.out'
             status_path = runtime/'logs/log/status'
 
-            def evidence():
-                packet = json.loads(subprocess.check_output(
-                    [sys.executable, 'scripts/telemetry/outage.py', str(ledger)], cwd=ROOT, text=True))
+            def evidence(pending_allowed=False):
+                read = subprocess.run([sys.executable, 'scripts/telemetry/outage.py', str(ledger)],
+                                      cwd=ROOT, text=True, stdout=subprocess.PIPE)
+                packet = json.loads(read.stdout)
+                # A kill during a publication leaves outages.pending, which the reader leaves
+                # to the next producer's recovery.
+                if pending_allowed and packet.get('reason') == 'pending_publication':
+                    return None
+                assert read.returncode == 0, packet
                 return [(row['phase'], row['unknown_after_last_sample']) for row in packet['observations']]
 
             def health_line(label, status_offset, process, deadline=30):
@@ -210,8 +216,9 @@ def run(server, misnamed_server):
             # so the copied-over producer is an unknown tail; the new image drains cleanly.
             assert evidence() == [('clean_drained', False), ('unknown_tail', True), ('clean_drained', False)], evidence()
             boot('whole chain, killed', ('healthy', 'none', 0, 'none', 'none'), stop='kill')
-            assert evidence()[3] == ('running', True), evidence()
-            print(f'outage ledger after stop, copyover and kill: {evidence()}', flush=True)
+            killed = evidence(pending_allowed=True)
+            assert killed is None or killed[3] == ('running', True), killed
+            print(f'outage ledger after stop, copyover and kill: {killed or "publication pending"}', flush=True)
             boot('renamed progression column', None,
                  'ALTER TABLE telemetry_interval CHANGE COLUMN progression_requested_xp progression_requested_xp_hidden BIGINT NULL',
                  'ALTER TABLE telemetry_interval CHANGE COLUMN progression_requested_xp_hidden progression_requested_xp BIGINT NULL')

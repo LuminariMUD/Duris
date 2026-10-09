@@ -135,6 +135,13 @@ def run(binary, backend):
                 while "Entering game loop." not in (runtime / "server.out").read_text(errors="replace"):
                     assert process.poll() is None and time.monotonic() < deadline, "boot failed"
                     time.sleep(.1)
+                # add_stock() turned the random drops off; a server that did not read that
+                # file would put a random item in the corpse now and then.
+                status = runtime / "logs/log/status"
+                while "random equipment config: piece 0.00%, equipment 0.00%" not in (
+                        status.read_text(errors="replace") if status.exists() else ""):
+                    assert time.monotonic() < deadline, "the random drops were not turned off"
+                    time.sleep(.1)
                 actor = journey.MudClient(game_port)
                 journey.create_character(actor)
                 actor.send("toggle boon")

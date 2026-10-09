@@ -13,8 +13,10 @@ What It Is:
   A vnum that already has a hand-written C proc keeps it.  The C proc runs
     first; if it returns TRUE the data trigger never fires.
   The file is read, never written.  A parse error logs zone + vnum + line
-    to logs/log/status and SKIPS that record; a bad .trg cannot stop a
-    boot.  Make sure logs/log/ exists or the parse errors go nowhere.
+    to logs/log/status and SKIPS that record.  A framing error in an
+    areas/trg/<area>.trg (a header, T, ~ or S) fails generation instead,
+    and the supervisor then refuses to boot.  Make sure logs/log/ exists
+    or the parse errors go nowhere.
 
 Record Grammar:
   #<vnum> <M|O|R>            target prototype: Mob / Object / Room
@@ -26,6 +28,9 @@ Record Grammar:
   S                          ends the record
   #~                         ends the file
   '*' starts a comment.  Blank lines are ignored.
+  One record per target: put all of a vnum's triggers in it.  A second
+    record for the same vnum and letter, in any area's file, is logged and
+    skipped at boot.
   In messages $n is the actor, $m is the self, $$ is a literal $.
 
   Example -- a guard that bars the east door to anyone without a pass:
@@ -122,9 +127,11 @@ Safety Rails (enforced in C, not optional):
 Howto Install a Zone's Triggers:
   First, install the zone's area files as usual (areas/wld, areas/mob,
     ..., name in areas/AREA).
-  Second, append the zone's trigger records to areas/world.trg BEFORE the
-    terminating "#~" line.  The file is a plain concatenation; there is
-    no build step.
+  Second, put the zone's trigger records in areas/trg/<area>.trg, the
+    area's name as areas/AREA lists it, with no "#~" line, and run
+    'make world'.  make_trg checks the framing (headers, T, ~ and S) and
+    writes areas/world.trg from every area's file, ending it with "#~"; a
+    malformed file fails 'make world' with its file and line.
   Third, reboot (or copyover) and check the boot line in logs/log/status:
       STUDIOPROC: 12 records, 47 triggers, 12 bound (31 mob, 6 obj,
       10 room), 4 counters.
@@ -132,5 +139,9 @@ Howto Install a Zone's Triggers:
     is short, grep logs/log/status for STUDIOPROC: every skipped record
     names its zone, vnum, line and reason.  A skipped record is silent in
     game, so the log line is the only warning you get.
-  To turn the whole thing off in a hurry: rename areas/world.trg and
-    reboot.  Everything reverts to stock behaviour.
+  To turn an area's triggers off in a hurry: move its areas/trg/<area>.trg
+    out of areas/trg/ and reboot (the supervisor regenerates
+    areas/world.trg before every start), or run 'make world' and copyover.
+    Move every file out to turn them all off; everything reverts to stock
+    behaviour.  Renaming areas/world.trg lasts only until the next
+    generation, and renaming areas/trg/ fails generation instead.

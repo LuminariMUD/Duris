@@ -26,40 +26,37 @@ Updated 2026-10-09. A new session starts here, then reads the phase it continues
 | 2 | Unauthenticated connections per address | Landed 2026-10-09 in `14776698a` (PR #6, `backlog/phase-2-review-1` and a journey fix). |
 | 3 | Shop listing, dompurify, dead helpers | Landed 2026-10-09 in `8a7f61c00` (PR #7, `backlog/phase-3-review-1` and Phase 2's journey fix). |
 | 4 | Security record and `SECURITY.md` | Landed 2026-10-09 in `9cd983785` (PR #8, `backlog/phase-4-review-1` and two catch-up merges). |
-| 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc`; PR #9, review round 1 done, tag `backlog/phase-5-review-1`, gate green; next to land. |
+| 5 | Studio-proc tag ids and `world.trg` | Landed 2026-10-09 in `2584ad609` (PR #9, `backlog/phase-5-review-1` and its catch-up merges). |
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
-| 7 | Quest EXP line and `achievements zones` | Built on `fix/4-phase-7-display-fixes`, gate green; PR #10, tag `backlog/phase-7-review-0`; reviewed, two findings open. |
-| 8 | Specials assigned to missing vnums | Built on `fix/4-phase-8-dead-specials`, gate green; PR #11, tag `backlog/phase-8-review-0`; reviewed, two findings open. |
-| 9 | `board` specials and the audit heading | Built on `fix/4-phase-9-boards`, gate green; PR #12, tag `backlog/phase-9-review-0`; reviewed, seven findings open. |
+| 7 | Quest EXP line and `achievements zones` | Landed 2026-10-09 in `17b1f0813` (PR #10, `backlog/phase-7-review-1` and Phase 5's catch-up). |
+| 8 | Specials assigned to missing vnums | Built on `fix/4-phase-8-dead-specials`; PR #11, review round 1 done, tag `backlog/phase-8-review-1`, gate green; next to land. |
+| 9 | `board` specials and the audit heading | Built on `fix/4-phase-9-boards`; PR #12, review round 1 on the branch, tag `backlog/phase-9-review-1`. |
 
-Phases 1 to 4 and 6 are on `master`. Each later phase is on its own branch, stacked on the
-one before; its section here is on that branch, not yet on `master`. What is left: Phase 5's
-landing, whose review round is done, and a review round and a landing for Phases 7, 8 and 9,
-in order, starting with Phase 5's landing.
+Phases 1 to 7 are on `master`. Phases 8 and 9 are each on their own branch, stacked on the
+one before; their sections here are on those branches, not yet on `master`. What is left:
+Phase 8's landing, whose review round is done, then Phase 9's round and landing.
 
 ## Landing
 
-The pull requests form one stack: #9 (Phase 5) now targets `master`, and #10, #11 and #12
-(Phase 9) each target the previous phase's branch. #9 has had review round 1: each finding
-fixed in its own commit, its thread resolved, the round's head tagged
-`backlog/phase-5-review-1`. #10, #11 and #12 have an adversarial review whose findings are
-open. Take them in order: the review round on the branch where one is still open, then the
-landing as "Every phase" says. A branch's head can be past its last tag (a fix or a merge from
-the phase below after the round); the landing merges the head. Before deleting a landed
-branch, point the next pull request at `master` (`gh pr edit <n> --base master`): a landing
-is a pushed merge, and GitHub then closes, not retargets, a pull request whose base branch is
-deleted (#6 was closed that way at Phase 1's landing and reopened).
-Delete this file when Phase 9 lands.
+The pull requests form one stack: #11 (Phase 8) now targets `master`, and #12 (Phase 9)
+targets Phase 8's branch. #11 has had review round 1: each finding fixed in its own commit,
+its thread resolved, the round's head tagged `backlog/phase-8-review-1`. #12's round 1 is on
+its branch, tagged `backlog/phase-9-review-1`. Take them in order: the review round on the
+branch where one is still open, then the landing as "Every phase" says. A branch's head can
+be past its last tag (a fix or a merge from the phase below after the round); the landing
+merges the head. Before deleting a landed branch, point the next pull request at `master`
+(`gh pr edit <n> --base master`): a landing is a pushed merge, and GitHub then closes, not
+retargets, a pull request whose base branch is deleted (#6 was closed that way at Phase 1's
+landing and reopened). Delete this file when Phase 9 lands.
 
 A landing can meet a conflict in this file: a branch that rewrote the Status table's earlier
 rows conflicts with `master`'s. Keep `master`'s table and this section, mark the landed phase,
-and take the branch's side everywhere else. Phase 5's branch already has Phase 4's head
-(`d44db479b`), taken in `6b7b3f62a`, and changes no Status row, so a trial merge of its head
-(`14ed3be55`) onto this landing record is clean. Phase 5 adds `make_trg` to `make world`,
-and `scripts/cycle_mud.sh` now refuses to boot when world generation fails; `make test-db`
-builds the world, so the gate runs the generator. The local checkouts hold no hand-written
-`areas/world.trg` with records, so the one-time move in `docs/content/STUDIOPROC.md` has
-nothing to move here.
+and take the branch's side everywhere else. Phase 8's branch already has Phase 7's head
+(`3549daad4`), taken in `9db3eaecb`, and changes no Status row, so a trial merge of its head
+(`6864ab279`) onto this landing record is clean. Phase 8 regenerates
+`docs/reference/artifact_source_inventory.json`, which `test_artifact_source_inventory.py`
+checks against `specs.assign.c`; a `master` change to either needs the inventory regenerated
+at the landing.
 
 The local dev server (`duris-plan`, ports 4000/4001) runs Phase 9's build of 2026-10-08, the
 review-0 heads. The landings so far did not copyover it: the landed build would take the
@@ -774,6 +771,126 @@ Rewrite `SECURITY.md`: the `0.1.x` line, the private vulnerability reporting for
 
 ## Phase 5: studio-proc tag ids and `world.trg`
 
+**Built** on `fix/4-phase-5-studioproc` (stacked on Phase 4), 2026-10-08:
+
+- `4827305a2`: `TAG_STUDIOPROC_TRIG` 2198, `_COOLDOWN` 2199 and `_COUNTER` 2200 end the
+  `TAG_` list in `spells.h`; `SP_TAG_*` in `studioproc.h` alias them, beside a
+  `static_assert(TAG_INFO_COOLDOWN < SP_TAG_TRIG && SP_TAG_COUNTER <= MAX_AFFECT_TYPES)`.
+  `tests/async/test_studioproc_tag_ids.py` fails when any other `spells.h` define reaches
+  2198 (checked with a stray `TAG_COLLIDES 2199`).
+- `f31d8b14f`: `areas/src/trg/make_trg.c` (with its `Makefile`, in `areas/src` `SUBDIRS`)
+  reads `trg/<area>.trg` for each area `areas/AREA` lists, checks the framing the engine
+  reads (header, `T` ... `~`, `S`, no `#~`), appends it to `tworld.trg` and ends that with
+  `#~`; `areas/make_all` runs it and `areas/moveall` makes it `world.trg`. The root
+  `Makefile` lists the tool, `world.trg` and `tworld.trg`, and watches `areas/trg/`;
+  `scripts/cycle_mud.sh` rebuilds the tools when `make_trg` is missing.
+  `areas/trg/.gitkeep` keeps the directory. `tests/async/test_make_trg.py` builds the tool
+  and runs a good source, an area without one, and six malformed ones;
+  `test_clean_all.py` and `test_flatfile_launcher.py` know the new tool and outputs.
+  `docs/content/STUDIOPROC.md`, `howto_trg.txt` and `docs/guides/BUILDING.md` describe the
+  generated file. A real `make world` wrote `areas/world.trg` (`#~` only), and with a
+  broken `areas/trg/limbo.trg` it failed: `error: trg/limbo.trg:4: a trigger is not ended
+  by ~`.
+- `b439fa892`: a "Connections before an account name, and the trusted proxy" section in
+  `docs/testing/REGRESSIONS.md` for Phase 2's journey, which belonged in Phase 2 but is
+  added here so the pushed branches below are not rewritten.
+
+**What differs from the plan, and why.**
+
+- The `static_assert` sits in `studioproc.h` beside the aliases, not in `spells.h`:
+  `spells.h` does not see `MAX_AFFECT_TYPES`, and `studioproc.h` now includes `spells.h`.
+  The test reads every numeric define in `spells.h`, not only `TAG_` ones: the list also
+  holds `AIP_`, `ACH_`, `PR_` and `TYPE_` values in the same index space. As the plan
+  read it, the build catches the ids leaving `skills[]` or the list passing them at its
+  last entry, and the gate catches any other define taking one of their numbers.
+- `make_trg` checks the framing only. A record's content (events, conditions, actions) is
+  still checked by the engine at boot, which logs and skips a bad record; the docs say
+  which fault fails where.
+- With no source the generated file holds `#~` (the world target requires every output to
+  be non-empty), so the boot line reads `STUDIOPROC: 0 records, 0 triggers, ...` rather
+  than `no areas/world.trg`. No test pinned the old line.
+- A failed generation leaves the `tworld.*` files the earlier tools wrote, as any failing
+  generator already did; `make clean-all` removes them.
+
+**Gate** on `b439fa892`: `./scripts/format.sh --all --check` clean (1038 files),
+`make test-all -j16 TEST_JOBS=16` 678 passed, 0 failed, `make test-db` 48 of 48. This is
+also the full gate for Phase 4's documents, which this tree contains. Nothing is left.
+
+**Review round 1** (PR #9, review of `b4a2d7450`; tag `backlog/phase-5-review-1`). Six
+findings, each reproduced on that head first, each fixed in its own commit with a case that
+fails without it:
+
+- `8e14e458d`: make_trg copied each line as read, so a source without a final newline ran
+  into the next area's first line (`S#10 R`) and the engine dropped both records. Each line
+  is now written stripped, with one `\n`.
+- `1100b1b22`: until this phase `areas/world.trg` was the hand-written source and
+  git-ignored, and the first generation replaced it with `#~`. make_trg now starts its
+  output with a marker line and refuses a `world.trg` without it that holds a record,
+  naming the move; STUDIOPROC.md has the one-time step and says `make clean-all` deletes
+  the file.
+- `1843e2d7c`: a `~` dropped before a later one passed make_trg (the next `S`, `T` or
+  header was taken as an action) and cost the engine two records. Such a line inside a
+  trigger now fails; no action begins that way.
+- `829e58f1f` and `a6652f93b`: the documented kill switch (rename `world.trg`) was undone
+  by the supervisor's generation before every start. The switch is now moving an area's
+  `areas/trg/<area>.trg` out and rebooting, or `make world` and a copyover. `make world`
+  did not notice a removed source; its staleness `find` now reads directories too
+  (`test_root_test_harness.py` pins it).
+- `55dab3119`: `cycle_mud.sh` ignored `m_slow`'s status, so one framing typo kept every
+  area edit from loading, silently. It now refuses to boot when generation fails, as after
+  a failed backup; this holds for every generator. The warn-and-skip alternative was not
+  taken: decision 6 has a malformed source fail generation, and `make test-db` builds the
+  world, so the gate catches one before a deploy.
+- `35cba256a`: two records for one target both bound; only the later dispatched, and its
+  bind lost the target's C proc. `studioproc_boot()` now logs and skips the second
+  (`test_studioproc_duplicate_record.py` boots on two). make_trg does not check for
+  duplicates: the engine covers hand-written files too, and a make_trg failure now stops
+  the boot.
+
+`REGRESSIONS.md` has a section for the generator and the duplicate check. The Status table
+is left as it was, as in Phase 1's round.
+
+**Gate** on the round's code before the guard's header test became the engine's own (folded
+into `1100b1b22`; it differs from `35cba256a` only in `make_trg.c` and `test_make_trg.py`):
+`./scripts/format.sh --all --check` clean (1038 files), `make test-all -j16 TEST_JOBS=16`
+679 passed, 0 failed (0 timed out, 0 ended by a signal) in 9 min 3 s, `make test-db` 48 of
+48. On `35cba256a`, `test_make_trg.py` and a real `make world` were run again.
+
+**Catch-up with `master`, through the stack** (2026-10-09). `1475f68fa` merges Phase 4's
+round 1 (`f1da69342`, `backlog/phase-4-review-1`). `7fc0c7b16` merges Phase 4's catch-up
+(`71f7c30fb`: Phase 3's and Phase 2's rounds and `master` up to `494317e40`); its one
+conflict, the Status table, keeps `master`'s. Both are merges rather than rebases, so the
+review tags and pushed commits stay. PRs #10 to #12 now conflict with this head only in this
+file's Status table and Landing section, the conflict the Landing section describes; their
+own catch-up keeps `master`'s side. `db79d240e` brings the `REGRESSIONS.md` section
+`b439fa892` added up to Phase 2's round (the constants are
+`MAX_LOGIN_CONNECTIONS_PER_ADDRESS` and `LOGIN_PROMPT_TIMEOUT` now). `master`'s `89080c967`
+(a telemetry journey fix) is not in the stack yet; it comes with the landings.
+
+**Gate** on the catch-up's code (`db79d240e`; the gate ran before its journey paragraph was
+completed, a `REGRESSIONS.md`-only change): `./scripts/format.sh --all --check` clean (1038
+files), `make test-all -j16 TEST_JOBS=16` 679 passed, 0 failed (0 timed out, 0 ended by a
+signal) in 7 min 55 s, `make test-db` 48 of 48. The document tests were run again on the
+record.
+
+`6b7b3f62a` then merges Phase 4's `d44db479b` (Phase 3's `4a03cf2a1`: Phase 2's
+connection-limit journey fix, which probes until the full server refuses, and plan notes in
+Phase 2's and Phase 3's sections); no conflict. On it: `./scripts/format.sh --all --check`
+clean, `test_connection_limit_journey.py` passed (190 s), and the 46 tests that read `docs/`
+passed (`test_flatfile_death_restart_journey.py` failed once in an eight-wide ad-hoc batch
+beside other server builds and passed alone; it passed in both full gates).
+
+**Landed** 2026-10-09 in `2584ad609`, PR #9: a `--no-ff` merge of the branch head `14ed3be55`,
+which is `backlog/phase-5-review-1` plus the catch-up above (`6b7b3f62a` and its record).
+`master` had moved on with Phase 4's landing (`9cd983785`, record `e29719aed`) and three test
+fixes (`11cdf6b94`, `4133466af`, `91b768884`). The landing first took `70418a562`, Phase 9's
+journey fix `b683d9eb0` picked onto `master`: the first gate of these merges failed
+`telemetry_schema_boot` on the outage ledger a kill leaves mid-publication. The merge was
+clean. Phase 7 (PR #10) landed right after it in `17b1f0813`, and the two merges were gated
+together: `./scripts/format.sh --all --check` clean (1038 files), `make test-all -j16
+TEST_JOBS=16` 681 passed, 0 failed (0 timed out, 0 ended by a signal) in 6 min 57 s, `make
+test-db` 48 of 48 in 6 min 10 s.
+
 **Problem.** Two loose ends the studio-proc engine left on purpose, listed in
 `docs/content/STUDIOPROC.md` under "Deliberately not included":
 
@@ -894,6 +1011,81 @@ published.
 - `npm test --prefix site` passes with the new defaults.
 
 ## Phase 7: the quest EXP line and `achievements zones`
+
+**Built** on `fix/4-phase-7-display-fixes` (stacked on Phase 5), 2026-10-08:
+
+- The three community commits, cherry-picked with `-x` and their authors kept, all
+  applying cleanly in order: `536ce6dba` (their `cf575ede6`, Liskin: one `Quest EXP:` line
+  with the applied amount for `EXP_WORLD_QUEST`, and `tests/async/test_world_quest_xp_feedback.py`),
+  `2e1984e9c` (their `5516cf284`, Liskin: `summary_for_at()` keeps only zones with a
+  completed quest, sorted by count, name, zone number) and `3682944ca` (their `7b1405cfd`,
+  xander-l: the sort's formatting and stronger cases in
+  `tests/async/zone_story_quest_feature_harness.cpp`).
+- `a69444da3`: their XP harness included `world/rested.h` and stubbed
+  `has_active_rested_bonus()`, from their rested-XP feature; ours checks `TAG_WELLRESTED`
+  and `TAG_RESTED` with `affected_by_spell()`, so the harness stubs that. Its cases, both
+  branches of the first "Done when" item among them, pass on both backends.
+- `82fc0184b`: ledger rows #697 and #594 `Adopted`.
+- `8498aa0c1`: the `achievements` help entry in `lib/information/help_index` and
+  `docs/reference/ZONE_STORY_QUEST_DAILY.md` say which zones the summary lists.
+
+**What differs from the plan.** Only the harness fit above and the help text, which
+their commits did not change.
+
+**Gate** on `8498aa0c1`: `./scripts/format.sh --all --check` clean, `make test-all -j16
+TEST_JOBS=16` 679 passed, 0 failed, `make test-db` 48 of 48. Nothing is left.
+
+**Review round 1** (PR #10, review of `f9745f66c`; tag `backlog/phase-7-review-1`). Two
+findings and one smaller point, each reproduced on that head first, each fixed in its own
+commit with a case that fails without it:
+
+- `e09f03213`: the catalog put a quest giver in zone `giver_vnum / 100`, but an area's mobs
+  run past its first hundred vnums. 575 of the 2,668 definitions (244 givers) sat on 36 zone
+  numbers no area has: `achievements zones` showed them as "This area" rows, one area could
+  split over several rows, and each phantom zone counted toward "Fully completed zones". A
+  giver now belongs to the zone with the highest first vnum (number × 100) at or below its
+  own, `which_race()`'s rule, in `zone_for_giver_vnum()` and in
+  `scripts/zone_story_quest_catalog.py`; the snapshot is regenerated (the same ids, 575
+  moved). The review's range check against the zone's top was not taken: the Tower of
+  Darkness givers (134146 and up) are past that area's top room. Against the area file each
+  quest comes from, the old rule was wrong for 575 definitions, the range check for 5, this
+  rule for none; the heavens givers stay on zone 1.
+- `520d322e2`: zones with equal counts were ordered by their stored names, color codes
+  included. They are now ordered by the name a player reads, lowercased.
+- `c984fc7ac` (the review's smaller point): since `536ce6dba`, an immortal's world quest
+  `logexp()` line read "would have gained 0". It keeps the award again, and only mortals
+  get the `Quest EXP:` line.
+
+**Found on the way:** `340420fab`. `achievements zone <area>` never found an area by its
+name, only by number: `one_argument()` leaves a space in front of the name. On full-world
+flat-file boots, before and after the round: zones 551, 552, 832 and 1341 went from
+"This area" with quests to N/A, 550, 831 and 1340 kept their names, and `achievements zone
+the city of winterhaven`, `alat` and `the tower of darkness` went from the usage line to
+their areas. No quest was completed on a running server.
+
+`REGRESSIONS.md` has sections for the achievement zones and the Quest EXP line. The Status
+table is left as it was, as in the earlier rounds.
+
+**Catch-up with `master`, through the stack** (2026-10-09). `afad1e5bf` merges Phase 5's
+`14ed3be55`, which holds Phase 5's round and, through Phases 4, 3 and 2, `master` up to
+`494317e40`. PR #10 showed a conflict with its base before it. The one conflict, the Status
+table and the Landing section, keeps Phase 5's side, which carries `master`'s.
+`master`'s `89080c967` and the landing records of Phases 2 and 3 come with the landings.
+
+**Gate** on `340420fab`, the round's code: `./scripts/format.sh --all --check` clean (1038
+files), `make test-all -j16 TEST_JOBS=16` 681 passed, 0 failed (0 timed out, 0 ended by a
+signal) in 8 min 48 s, `make test-db` 46 of 48. The two failures were
+`persistence_contract` and `immutable_migration_ledger`: their `mysql:8.0` containers
+stopped before the first query while four sessions ran their gates at once (load about 60),
+and both passed when run again alone on the same head. The record commit changes documents
+only; the tests that read `docs/` passed on it. Nothing is left.
+
+**Landed** 2026-10-09 in `17b1f0813`, PR #10: a `--no-ff` merge of the branch head `3549daad4`
+(`backlog/phase-7-review-1`), which already had Phase 5's head (`14ed3be55`, taken in
+`afad1e5bf`), right after Phase 5's landing; clean. Gated on that merge, as Phase 5's section
+says: `./scripts/format.sh --all --check` clean (1038 files), `make test-all -j16 TEST_JOBS=16`
+681 passed, 0 failed (0 timed out, 0 ended by a signal) in 6 min 57 s, `make test-db` 48 of 48
+in 6 min 10 s.
 
 **Problem.** Two display fixes the community tree made after the split, found in the same
 comparison as Phase 3. Neither changes a reward or a game mechanic.
