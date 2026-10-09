@@ -314,42 +314,6 @@ int training_dummy_parse_level(const char *token)
 	return static_cast<int>(parsed);
 }
 
-int training_dummy_parse_race(const char *token)
-{
-	if (!token || !*token)
-		return -1;
-	if (!str_cmp(token, "grey") || !str_cmp(token, "gray") || !str_cmp(token, "greyelf") ||
-	    !str_cmp(token, "grayelf"))
-		return RACE_GREY;
-
-	for (int race = 1; race <= LAST_RACE; ++race)
-	{
-		if (!race_names_table[race].normal)
-			continue;
-		if (!str_cmp(token, race_names_table[race].normal) ||
-		    !str_cmp(token, race_names_table[race].no_spaces) ||
-		    !str_cmp(token, race_names_table[race].code))
-			return race;
-	}
-	return -1;
-}
-
-int training_dummy_parse_class(const char *token)
-{
-	if (!token || !*token)
-		return 0;
-
-	for (int class_index = 1; class_index <= CLASS_COUNT; ++class_index)
-	{
-		if (!class_names_table[class_index].normal)
-			continue;
-		if (!str_cmp(token, class_names_table[class_index].normal) ||
-		    !str_cmp(token, class_names_table[class_index].code))
-			return static_cast<int>(1u << (class_index - 1));
-	}
-	return 0;
-}
-
 int training_dummy_parse_gear(const char *token)
 {
 	if (!token || !*token || !str_cmp(token, "mid"))
@@ -411,6 +375,42 @@ P_char training_dummy_from_command_room(P_char ch)
 }
 
 } // namespace
+
+int training_dummy_parse_race(const char *token)
+{
+	if (!token || !*token)
+		return -1;
+	if (!str_cmp(token, "grey") || !str_cmp(token, "gray") || !str_cmp(token, "greyelf") ||
+	    !str_cmp(token, "grayelf"))
+		return RACE_GREY;
+
+	for (int race = 1; race <= LAST_RACE; ++race)
+	{
+		if (!race_names_table[race].normal)
+			continue;
+		if (!str_cmp(token, race_names_table[race].normal) ||
+		    !str_cmp(token, race_names_table[race].no_spaces) ||
+		    !str_cmp(token, race_names_table[race].code))
+			return race;
+	}
+	return -1;
+}
+
+int training_dummy_parse_class(const char *token)
+{
+	if (!token || !*token)
+		return 0;
+
+	for (int class_index = 1; class_index <= CLASS_COUNT; ++class_index)
+	{
+		if (!class_names_table[class_index].normal)
+			continue;
+		if (!str_cmp(token, class_names_table[class_index].normal) ||
+		    !str_cmp(token, class_names_table[class_index].code))
+			return static_cast<int>(1u << (class_index - 1));
+	}
+	return 0;
+}
 
 bool training_dummy_is(P_char ch)
 {

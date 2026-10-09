@@ -35,6 +35,7 @@ CHARACTER = "Taverek"
 EMAIL = "journey@example.invalid"
 INSPECTOR = ROOT / "bin/tests/coin-death-inspector"
 ANSI = re.compile(rb"\x1b\[[0-?]*[ -/]*[@-~]")
+ANSI_TAIL = re.compile(rb"\x1b(?:\[[0-?]*[ -/]*)?\Z")
 
 
 def require(condition: bool, message: str) -> None:
@@ -84,6 +85,8 @@ def available_ports() -> tuple[int, int, int]:
 
 
 class MudClient:
+    ansi_tail = b""  # an escape sequence the end of the last read cut off
+
     def __init__(self, port: int, *, source_host: str | None = None) -> None:
         deadline = time.monotonic() + 30
         while True:
@@ -107,6 +110,13 @@ class MudClient:
     def send(self, line: str) -> None:
         self.socket.sendall(line.encode("ascii") + b"\n")
 
+    def _clean(self, data: bytes) -> bytes:
+        """Strip ANSI escapes, holding back one that the end of a read cut off."""
+        data = self.ansi_tail + data
+        tail = ANSI_TAIL.search(data)
+        self.ansi_tail = data[tail.start():] if tail else b""
+        return ANSI.sub(b"", data[: tail.start()] if tail else data)
+
     def _receive(self) -> bool:
         try:
             chunk = self.socket.recv(65536)
@@ -114,7 +124,7 @@ class MudClient:
             return False
         if not chunk:
             raise AssertionError("server closed the gameplay connection")
-        cleaned = ANSI.sub(b"", chunk)
+        cleaned = self._clean(chunk)
         self.pending.extend(cleaned)
         self.transcript.extend(cleaned)
         return True

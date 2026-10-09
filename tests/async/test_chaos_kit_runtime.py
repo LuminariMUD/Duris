@@ -20,8 +20,10 @@ PRELUDE = r'''
 #include "combat/chaos_config.h"
 #include "item/item_movement_transaction.h"
 #include "net/comm.h"
+#include "sql/sql.h"
 #include <array>
 #include <cassert>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -40,7 +42,8 @@ int GET_LVL_FOR_SKILL(P_char, int) { return required_level; }
 int get_spell_circle(P_char, int spell) { return spell == FIRST_SPELL ? 1 : 2; }
 int AddSpellToSpellBook(P_char, P_obj, int) { ++book_additions; return 1; }
 static void add_newbie_keyword(P_obj) { ++keywords; }
-bool has_eq_slot(P_char, int) { return slot_available; }
+static int slot_check_level = -1;
+bool has_eq_slot(P_char actor, int) { slot_check_level = actor->player.level; return slot_available; }
 int can_char_use_item(P_char, P_obj) { return usable; }
 P_obj read_object(int vnum, int) { indexes[0].virtual_number = vnum; return object_available ? &loaded : nullptr; }
 void extract_obj(P_obj, int) { ++extracts; }
@@ -55,10 +58,71 @@ bool chaos_mud_enabled() { return chaos_enabled; }
 P_char get_char_vis(P_char, const char *) { return restore_target; }
 bool item_movement_transaction_player_busy(P_char) { return restore_busy; }
 bool item_creation_grant_blocks_commands(P_char) { return restore_queued; }
-void send_to_char(const char *message, P_char) { restore_message = message; }
+static std::string sent;
+void send_to_char(const char *message, P_char) { restore_message = message; sent += message; }
 static void load_chaos_new_character_kit(P_char) {
     ++restore_calls;
     restore_busy = restore_queued = !restore_refused;
+}
+static bool enhanceable = false;
+bool chaos_eq_use_enhanceable_profile() { return enhanceable; }
+const char *where[MAX_WEAR];
+struct name_row { const char *normal; };
+static name_row race_names_table[LAST_RACE + 1], class_names_table[CLASS_COUNT + 1];
+char *one_argument(const char *argument, char *first) {
+    while (*argument == ' ') ++argument;
+    size_t n = 0;
+    for (; argument[n] && argument[n] != ' '; ++n) first[n] = argument[n];
+    first[n] = 0;
+    return const_cast<char *>(argument + n);
+}
+int training_dummy_parse_class(const char *token) { return !strcmp(token, "necromancer") ? CLASS_NECROMANCER : 0; }
+int training_dummy_parse_race(const char *token) { return !strcmp(token, "githzerai") ? RACE_GITHZERAI : -1; }
+static P_obj given = nullptr;
+static P_char given_to = nullptr;
+void obj_to_char(P_obj object, P_char recipient) { given = object; given_to = recipient; }
+static room_data rooms[1]{};
+P_room world = rooms;
+static std::string wizlogged, sql_logged;
+static int wizlog_level = -1;
+static std::string format_line(const char *format, va_list args) {
+    char line[256];
+    vsnprintf(line, sizeof(line), format, args);
+    return std::string(line) + "\n";
+}
+void wizlog(int level, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    wizlog_level = level;
+    wizlogged += format_line(format, args);
+    va_end(args);
+}
+void sql_log(P_char, const char *kind, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    sql_logged += std::string(kind) + ": " + format_line(format, args);
+    va_end(args);
+}
+'''
+KIT_STUB = r'''
+// The staff kit bag's builder: records the stand-in it judged the kit against.
+static obj_data kit_bag{}, kit_worn[2]{};
+static bool build_succeeds = true, built_has_pc = false, built_npc = true;
+static int build_calls = 0, built_level = -1;
+static unsigned built_class = 0, built_race = 0;
+static bool build_chaos_kit(P_char ch, chaos_kit_objects &kit) {
+    ++build_calls;
+    built_class = ch->player.m_class;
+    built_race = ch->player.race;
+    built_level = ch->player.level;
+    built_has_pc = ch->only.pc != nullptr;
+    built_npc = IS_NPC(ch);
+    kit.append_root(&kit_bag);
+    if (!build_succeeds)
+        return false;
+    kit.append_root(&kit_worn[0]);
+    kit.append_root(&kit_worn[1]);
+    return true;
 }
 '''
 DRIVER = r'''
@@ -149,6 +213,8 @@ int main()
     loaded.wear_flags = ITEM_WEAR_NECK;
     slot_available = false;
     { chaos_kit_objects kit; assert(append_chaos_kit_item(&actor, &bag, &wearable, kit)); assert(!kit.count); }
+    // A new character has no level yet; slots are judged at the CHAOS level.
+    assert(slot_check_level == 56 && actor.player.level == 0);
     // CUR_MAX_WEAR is the highest valid equipment index, not the array size.
     const chaos_kit_item last_slot = {CUR_MAX_WEAR, 999};
     const chaos_kit_item invalid_slot = {MAX_WEAR, 999};
@@ -208,6 +274,79 @@ int main()
     assert(restore_calls == 2 && restore_queued && restore_message.find("queued") != std::string::npos);
     restore_chaos_character_kit(&staff, "target");
     assert(restore_calls == 2);
+    // The skip rules that creation and the staff kit bag share.
+    actor.player.m_class = CLASS_MONK;
+    assert(!strcmp(chaos_kit_skip_reason(&actor, PRIMARY_WEAPON), "monks fight unarmed"));
+    actor.player.m_class = CLASS_WARRIOR;
+    required_level = 0;
+    assert(!strcmp(chaos_kit_skip_reason(&actor, SECONDARY_WEAPON), "no dual wield"));
+    required_level = 1;
+    assert(!chaos_kit_skip_reason(&actor, SECONDARY_WEAPON));
+    slot_available = false;
+    assert(!strcmp(chaos_kit_skip_reason(&actor, WEAR_LEGS), "no such slot"));
+    assert(!chaos_kit_skip_reason(&actor, WEAR_NONE));
+    slot_available = true;
+    assert(!chaos_kit_skip_reason(&actor, WEAR_LEGS));
+
+    // The staff kit bag takes the load command's level, a known class and race,
+    // and judges the kit against a new character of exactly that class and race.
+    char slot_names[MAX_WEAR][16];
+    for (int slot = 0; slot < MAX_WEAR; ++slot) {
+        snprintf(slot_names[slot], sizeof(slot_names[slot]), "slot%d", slot);
+        where[slot] = slot_names[slot];
+    }
+    race_names_table[RACE_GITHZERAI].normal = "Githzerai";
+    class_names_table[flag2idx(CLASS_NECROMANCER)].normal = "Necromancer";
+    char staff_name[] = "Zusuk";
+    staff.player.name = staff_name;
+    char args[64] = "necromancer githzerai";
+    staff.player.level = LESSER_G - 1;
+    load_chaos_kit_bag(&staff, args);
+    assert(!build_calls && restore_message.find("level of the load command") != std::string::npos);
+    staff.player.level = OVERLORD;
+    for (const char *bad : {"", "necromancer", "necromancer martian", "baker githzerai"}) {
+        snprintf(args, sizeof(args), "%s", bad);
+        load_chaos_kit_bag(&staff, args);
+        assert(!build_calls && restore_message.find("Usage: chaos kitbag") != std::string::npos);
+    }
+    snprintf(args, sizeof(args), "necromancer githzerai");
+    chaos_enabled = false;
+    load_chaos_kit_bag(&staff, args);
+    assert(!build_calls);
+    chaos_enabled = true;
+    const int extracts_before = extracts;
+    build_succeeds = false;
+    load_chaos_kit_bag(&staff, args);
+    assert(build_calls == 1 && !given && extracts == extracts_before + 1);
+    assert(restore_message.find("cannot be made") != std::string::npos);
+    build_succeeds = true;
+    required_level = 0; // no dual wield, so the necromancer's off-hand item is left out
+    sent.clear();
+    load_chaos_kit_bag(&staff, args);
+    assert(build_calls == 2 && built_class == CLASS_NECROMANCER && built_race == RACE_GITHZERAI);
+    assert(built_level == 0 && built_has_pc && !built_npc);
+    assert(given == &kit_bag && given_to == &staff && extracts == extracts_before + 1);
+    assert(kit_worn[0].loc.inside == &kit_bag && kit_worn[1].loc.inside == &kit_bag);
+    assert(sent.find("standard CHAOS kit of a new Githzerai Necromancer: 2 worn items") != std::string::npos);
+    int offhand = 0;
+    for (const chaos_kit_item *item = chaos_eq_standard_necromancer; item->vnum; ++item)
+        if (item->slot == SECONDARY_WEAPON)
+            offhand = item->vnum;
+    char left_out[96];
+    snprintf(left_out, sizeof(left_out), "Left out: slot%d %6d  no dual wield\r\n", SECONDARY_WEAPON, offhand);
+    assert(offhand && sent.find(left_out) != std::string::npos);
+    assert(sent.find("Left out") == sent.rfind("Left out"));
+    // Each bag is audited as a load is: the refusals above recorded nothing, an
+    // OVERLORD's bag is in the wiz log only, a lower god's also on WIZLOG.
+    assert(wizlogged.empty());
+    assert(sql_logged == "wiz: Loaded the CHAOS kit of a Githzerai Necromancer\n");
+    rooms[0].number = 22800;
+    staff.player.level = LESSER_G;
+    sql_logged.clear();
+    load_chaos_kit_bag(&staff, args);
+    assert(build_calls == 3 && wizlog_level == LESSER_G);
+    assert(wizlogged == "Zusuk loaded the CHAOS kit of a Githzerai Necromancer in [22800]\n");
+    assert(sql_logged == "wiz: Loaded the CHAOS kit of a Githzerai Necromancer\n");
     puts("CHAOS preparation/role/placement runtime passed");
 }
 '''
@@ -215,14 +354,18 @@ int main()
 
 def main():
     functions = ["static void prepare_chaos_kit_item", "static bool chaos_kit_skill_available",
+                 "static bool chaos_kit_has_eq_slot",
                  "static bool chaos_kit_weapon_slot", "static bool chaos_kit_fits_slot",
-                 "static bool append_chaos_kit_item", "void restore_chaos_character_kit"]
-    harness = "\n".join([PRELUDE, BUILDER, *[extract_function("nanny.c", sig) for sig in functions], DRIVER])
+                 "static const char *chaos_kit_skip_reason",
+                 "static bool append_chaos_kit_item", "void restore_chaos_character_kit",
+                 "void load_chaos_kit_bag"]
+    harness = "\n".join([PRELUDE, BUILDER, KIT_STUB, *[extract_function("nanny.c", sig) for sig in functions], DRIVER])
     with tempfile.TemporaryDirectory(prefix="chaos-kit-unit-") as directory:
         source, binary = Path(directory) / "kit.cpp", Path(directory) / "kit"
         source.write_text(harness)
         subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
-                        "-fsanitize=address,undefined", "-Isrc", str(source), "-o", str(binary)],
+                        "-fsanitize=address,undefined", "-Isrc", "-D__NO_MYSQL__", "-Isrc/no_mysql",
+                        str(source), "-o", str(binary)],
                        cwd=ROOT, check=True)
         subprocess.run([str(binary)], check=True)
 

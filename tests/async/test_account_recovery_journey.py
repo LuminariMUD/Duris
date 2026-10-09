@@ -39,6 +39,7 @@ NEW_PASSWORD = "Wk3#vB8%"
 EMAIL = "recovery@example.invalid"
 MAIL_FROM = "noreply@duris.test"
 ANSI = re.compile(rb"\x1b\[[0-?]*[ -/]*[@-~]")
+ANSI_TAIL = re.compile(rb"\x1b(?:\[[0-?]*[ -/]*)?\Z")
 
 # Server-side literals this journey depends on.  Prompts carry their trailing space.
 ENABLED_PROMPT = "Please enter your password (or ? to reset it by email): "
@@ -216,6 +217,8 @@ class FakeSmtpServer:
 
 
 class MudClient:
+    ansi_tail = b""  # an escape sequence the end of the last read cut off
+
     def __init__(self, port: int) -> None:
         deadline = time.monotonic() + 30
         while True:
@@ -236,6 +239,13 @@ class MudClient:
     def send(self, line: str) -> None:
         self.socket.sendall(line.encode("ascii") + b"\n")
 
+    def _clean(self, data: bytes) -> bytes:
+        """Strip ANSI escapes, holding back one that the end of a read cut off."""
+        data = self.ansi_tail + data
+        tail = ANSI_TAIL.search(data)
+        self.ansi_tail = data[tail.start():] if tail else b""
+        return ANSI.sub(b"", data[: tail.start()] if tail else data)
+
     def _receive(self) -> bool:
         try:
             chunk = self.socket.recv(65536)
@@ -243,7 +253,7 @@ class MudClient:
             return False
         if not chunk:
             raise AssertionError("server closed the gameplay connection")
-        cleaned = ANSI.sub(b"", chunk)
+        cleaned = self._clean(chunk)
         self.pending.extend(cleaned)
         self.transcript.extend(cleaned)
         return True

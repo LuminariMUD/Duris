@@ -53,7 +53,7 @@ assert schedule_helper.index("writeCharacter(ch, 2, NOWHERE)") < schedule_helper
 assert "load_chaos_new_character_kit(ch);" not in enter_game
 assert "item_creation_grant_submit_batch_to_player_before_entry(ch, kit.roots.data()," in chaos_loader
 assert "kit.count = 0;" in chaos_loader
-assert chaos_loader.index("if (item_failure)") < chaos_loader.index("item_creation_grant_submit_batch_to_player_before_entry")
+assert chaos_loader.index("if (!build_chaos_kit(ch, kit))") < chaos_loader.index("item_creation_grant_submit_batch_to_player_before_entry")
 assert chaos_loader.index("item_creation_grant_submit_batch_to_player_before_entry") < chaos_loader.index("kit.count = 0;")
 assert "item_creation_grant_mark_blocking(ch)" not in chaos_loader
 

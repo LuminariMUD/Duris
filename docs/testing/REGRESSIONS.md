@@ -129,6 +129,23 @@ server, not a test, and is not in `make test-all`: it reads each cast's segments
 `PLAYER EVENT TIMING` trace and prints how late it finished. Not covered: a cast under real
 lateness in a test leg.
 
+## CHAOS kit for centaurs and driders
+
+The CHAOS kit judges each body slot for the level-56 character it is for. Creation builds
+the kit before the character's first level, and the horse body and spider body slots come
+from racial innates that unlock at level 1, so a new centaur never got horse-body item
+87585 and a new drider never got spider-body item 85714.
+
+```sh
+python3 tests/async/test_chaos_kit_runtime.py
+```
+
+The test compiles the production kit helpers under ASan/UBSan and checks that a level-0
+character's slot is asked about at level 56 and that its own level comes back unchanged.
+On a disposable copy of the development database a new centaur warrior got its tail item
+but not 87585, and with the fix a new one got both. Not covered: a journey that creates a
+centaur or drider and reads its saved kit.
+
 ## Coin put after an auction listing
 
 An auction settlement advances the ownership revision of both the source and the
@@ -364,6 +381,43 @@ Not covered: the full random-world generator (the journeys use controlled instan
 1255 and 1256), and generated equipment across a file copyover, which still stores NPC
 equipment by vnum.
 
+## Item race restrictions and races without a bit
+
+An item's race list (`anti2_flags`) holds one bit for each of races 1-32. Races 33-37
+(pillithid, kuo-toa, wood elf, firbolg, tiefling) and race 0, which a mob with an unknown
+race code gets, have none: no deny list names them, and every allow list leaves them out,
+as for the races above `RACE_PLAYER_MAX`. `can_char_use_item()` and
+`can_prime_class_use_item()` used to shift past the 32-bit word for them, which x86
+wraps: a firbolg was judged as a grey elf, refused the items denied to grey elves and
+given the ones allowed only to them.
+
+```sh
+python3 tests/async/test_item_race_restriction_runtime.py
+```
+
+The test compiles both production functions with UBSan stopping at its first report and
+checks every race from 0 to 100 against each of the 32 bits, as a deny list and as an
+allow list: a race is refused or admitted by its own bit only, and an illithid by none.
+Without the fix it stops at race 0, and from race 1 at the pillithid. Not covered: a
+journey in which a character of one of these races wears such an item.
+
+## Journey clients and an ANSI escape split across reads
+
+The journey clients strip colour escapes from what the server sends. They stripped each
+socket read on its own, so an escape that the end of a read cut in two survived: the
+generated NPC journey once failed `make test-all` on `Cha:  87[0;1;33m ( 87)` from
+`stat mob`. The shared `MudClient` in `test_flatfile_combat_journey.py`, its copy in
+`test_account_recovery_journey.py` and the copyover journey's compressed reader now hold
+back a cut-off escape until the next read completes it.
+
+```sh
+python3 tests/async/test_journey_client_ansi_split.py
+```
+
+The test feeds both clients an escape split across three reads through a socket pair and
+fails without the fix. Not covered: the copyover journey's own reader, which shares the
+method but is only exercised by its journey.
+
 ## Maintenance scheduler state file
 
 The state file defaults to `runtime/maintenance-scheduler.state`, outside the `bin/` tree
@@ -501,6 +555,24 @@ through its initial guards only.
 
 Not covered: real reflective damage and a proc-driven extraction during an expert or elite
 riposte on a full sanitizer server.
+
+## Setbit flag bits beyond a 32-bit field
+
+`setbit` sets a flag bit only where its 32-bit field has one, and otherwise answers
+"That field has no bit for that value." An item's race list offers every race, but only
+races 1-32 have a bit: `setbit obj <item> race firbolg 1` asked for bit 35, which x86 wraps
+to bit 3, so the item denied grey elves instead. A flag given by number outside 0-31 did the
+same.
+
+```sh
+python3 tests/async/test_setbit_flag_bits.py
+```
+
+The test compiles the production `setbit_parseTable()` and `ac_bitCopy()` with UBSan
+stopping at its first report, against an item race list built as `setbit_obj()` builds it
+and a numbered flag field: races 1 and 32 set and clear their own bits, race 36 and the
+numbers -1, 32 and 40 are refused and change nothing, and bit 31 is set. Without the fix it
+stops at race 36's shift. Not covered: the other `setbit` field types.
 
 ## Studio-proc trigger sources and duplicate records
 
