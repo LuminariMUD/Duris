@@ -241,9 +241,9 @@ Each run of `tests/run_regression_tests.py` (so each `make test` and `make test-
 writes `bin/test-history/<UTC time>-<short sha>.json`: the commit, whether tracked files
 were dirty, and each test's path, status and seconds. `python3 scripts/test_history.py`
 reads them and lists the tests that both passed and failed on one clean commit, those whose
-last time rose more than half over their median of the ten runs before, and the twenty
-slowest of the last run. `bin/` is ignored, so the history is the checkout's own; a gate
-run in another worktree keeps its files there.
+last time rose more than half over their median of the ten runs before (among those taking
+a second or more), and the twenty slowest of the last run. `bin/` is ignored, so the
+history is the checkout's own; a gate run in another worktree keeps its files there.
 
 ## Coverage
 

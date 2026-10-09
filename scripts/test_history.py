@@ -6,7 +6,8 @@ commit, whether the tree was dirty, and each test's path, status and seconds. Th
 them and lists:
 
 - tests that both passed and failed on the same clean commit (flaky);
-- tests whose last time rose more than half over their median of the ten runs before;
+- tests whose last time rose more than half over their median of the ten runs before
+  (those taking a second or more: below that the ratio is noise);
 - the twenty slowest tests of the last run.
 
     python3 scripts/test_history.py [--history DIR]
@@ -63,7 +64,7 @@ def main() -> int:
     for path, seconds in times.items():
         if len(seconds) >= 2:
             median = statistics.median(seconds[-11:-1])
-            if median > 0 and seconds[-1] > 1.5 * median:
+            if median >= 1.0 and seconds[-1] > 1.5 * median:
                 slower.append((seconds[-1] / median, path, median, seconds[-1]))
     print(f"\nSlower than half again their median of the ten runs before: {len(slower)}")
     for ratio, path, median, last in sorted(slower, reverse=True):
