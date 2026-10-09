@@ -93,11 +93,10 @@ assert legacy_identity >= current_identity, (
 # so a revert to an unconditional upsert fails here rather than in production.
 sql_text = (SRC / "sql.c").read_text(encoding="utf-8", errors="replace")
 player_text = (SRC / "sql_player.c").read_text(encoding="utf-8", errors="replace")
-index(sql_text, "static unsigned int sql_find_account_character_id(MYSQL *connection, long pid,")
-index(sql_text, "sql_find_account_character_id(connection, pid, name, &mapping_id)")
+index(sql_text, "unsigned int sql_find_account_character_id(MYSQL *connection, long pid,")
+index(sql_text, "sql_find_account_character_id( connection, pid, name, &mapping_id)")
 index(sql_text, "UPDATE account_characters ")
-index(player_text, "static long sql_find_account_character_mapping(int pid, const char *escaped_char_name)")
-index(player_text, "const long mapping_id = sql_find_account_character_mapping(pid, esc_char);")
+index(player_text, "sql_find_account_character_id( connection, pid, character.name, &mapping_id)")
 index(player_text, "update account_characters set login_count=")
 
 print(

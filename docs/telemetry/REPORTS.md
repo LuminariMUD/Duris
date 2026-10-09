@@ -312,14 +312,18 @@ complete response byte budgets, actual server-side SQL interruption, and a real
 CLI report blocked behind a disposable table lock (including connection cleanup
 after the deadline). It never mutates the shared #268 fixture database.
 
-Run from the repository root with Docker, a locally installed PyMySQL, and an
-existing Python-capable client container whose network mode is `none`:
+`make test-db` runs it on both engines. By hand, from the repository root with Docker
+and a locally installed PyMySQL:
 
 ```sh
 python3 tests/async/test_telemetry_reports_contract.py
-python3 tests/async/run_telemetry_reports_mysql.py --client-container CLIENT --image mariadb:10.11
-python3 tests/async/run_telemetry_reports_mysql.py --client-container CLIENT --image mysql:8.0
+python3 tests/async/run_telemetry_reports_mysql.py --image mariadb:10.11
+python3 tests/async/run_telemetry_reports_mysql.py --image mysql:8.0
 ```
+
+Without `--client-container CLIENT` (an existing Python-capable container whose network
+mode is `none`), the runner starts a network-none `python:3.14-slim` client and removes
+it afterwards.
 
 The runner refuses a network-enabled client or an occupied SQL port (default
 3309), creates a uniquely named disposable SQL server sharing that isolated

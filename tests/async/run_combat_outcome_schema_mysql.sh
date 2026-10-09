@@ -2,14 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-set -a
-# shellcheck disable=SC1091
-source "$ROOT/.env"
-set +a
-environment_name="${ENVIRONMENT:-${APP_ENV:-}}"
-[[ "${environment_name,,}" =~ (dev|local|test) ]] || { echo 'refusing combat test: environment is not development/local/test' >&2; exit 1; }
-[[ "${DB_NAME,,}" =~ (dev|local|test) ]] || { echo 'refusing combat test: configured database name is not development/local/test' >&2; exit 1; }
-export MYSQL_PWD="$DB_PASSWD"
+source "$ROOT/tests/async/disposable_schema.sh"
 mysql -h "$DB_HOST" -P "${DB_PORT:-3306}" -u "$DB_USER" "$DB_NAME" < "$ROOT/migrations/combat_outcome.sql"
 "$ROOT/migrations/verify_combat_outcome_schema.sh"
 mkdir -p "$ROOT/bin/tests"

@@ -2,13 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-set -a
-# shellcheck disable=SC1091
-source "$ROOT/.env"
-set +a
-environment_name="${ENVIRONMENT:-${APP_ENV:-}}"
-[[ "${environment_name,,}" =~ (dev|local|test) ]] || { echo 'refusing auction test: environment is not development/local/test' >&2; exit 1; }
-[[ "${DB_NAME,,}" =~ (dev|local|test) ]] || { echo 'refusing auction test: configured database name is not development/local/test' >&2; exit 1; }
+source "$ROOT/tests/async/disposable_schema.sh"
 "$ROOT/migrations/apply_auction_transactional_cutover.sh"
 export AUCTION_TEST_DB_NAME="$DB_NAME"
 mkdir -p "$ROOT/bin/tests"

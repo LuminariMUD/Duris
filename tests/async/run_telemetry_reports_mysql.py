@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Run #269 tests on fresh isolated SQL, using a network-none Python client.
 
-Requires Docker, locally installed PyMySQL, and a named client container with
-Python 3. The client is never rebuilt or reconfigured. Only a unique temporary
-subdirectory is created in it; the new database sidecar has no host mounts or
-published ports. No game environment files are read.
+Requires Docker and locally installed PyMySQL. The client is a named container with
+Python 3, or a new network-none python:3.14-slim that the run removes. A named client
+is never rebuilt or reconfigured. Only a unique temporary subdirectory is created in
+it; the new database sidecar has no host mounts or published ports. No game
+environment files are read.
 """
 from __future__ import annotations
 
@@ -60,10 +61,25 @@ raise SystemExit(subprocess.run([sys.executable,'tests/async/telemetry_reports_m
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--client-container', required=True)
+    parser.add_argument('--client-container',
+                        help='default: a new network-none python:3.14-slim, removed afterwards')
     parser.add_argument('--image', choices=('mariadb:10.11', 'mysql:8.0'), default='mariadb:10.11')
     parser.add_argument('--port', type=int, default=3309)
     args = parser.parse_args()
+    if args.client_container:
+        run(parser, args)
+        return
+    args.client_container = subprocess.check_output(
+        ['docker','run','-d','--network','none','--label','hermes.task=duris-269-reports',
+         'python:3.14-slim','sleep','infinity'], text=True).strip()
+    try:
+        run(parser, args)
+    finally:
+        subprocess.run(['docker','rm','-f',args.client_container],check=True,
+                       stdout=subprocess.DEVNULL)
+
+
+def run(parser, args):
     if not 1024 <= args.port <= 65535:
         parser.error('port must be unprivileged and valid')
     client = json.loads(subprocess.check_output(['docker','inspect',args.client_container]))[0]
