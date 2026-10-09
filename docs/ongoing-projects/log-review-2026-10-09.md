@@ -3,7 +3,8 @@
 Written 2026-10-09 on the staging host, against `master` at `639f6fd55`. It covers every log
 this account can read, from the first staging boot (2026-10-04 22:11 UTC) to about 08:15 UTC
 on 2026-10-09. Each finding gives the evidence, the cause where it was found, and a next step.
-Findings already tracked in [plan.md](plan.md) are listed only to say whether they still show.
+Findings already tracked in the 2026-10-08 plan are listed only to say whether they still show;
+that plan finished on 2026-10-09, and its file was deleted in `ef891cc54`.
 This file is a working note: when a finding is fixed, moved into a plan, or dropped, mark it
 here. Delete the file when every row is settled.
 
@@ -331,7 +332,7 @@ These patterns stopped with a commit and have not come back:
 | `process_input() ... Error: 104` and TLS pull errors (72 and more) | ended 2026-10-07 08:17 | `9f027d69d` |
 | The 15 `has invalid number` zone warnings at boot | `logs/boot.log`, 2026-10-04 | not traced; the current boot prints none |
 
-## Already tracked in plan.md
+## Already tracked in the 2026-10-08 plan
 
 - **Phase 2** (landed on `master`, not live here; finding 1): `Losing descriptor without
   char` from scanners at the account name prompt. There were 2, 595, 181, 937, 130, 14, 11
@@ -344,9 +345,10 @@ These patterns stopped with a commit and have not come back:
   specials assigned to vnums not in the world. An earlier session's `stale_specs.out`
   counts the same 17 object, 86 mobile and 18 room assignments, and the cited lines were
   still in `src/specs/specs.assign.c` at `639f6fd55`.
-- **Phase 9** (on its branch): `degenerate board!  (what the hell...)` in `board`. It shows 6
-  times in the run that ended 2026-10-08 10:01, and once in the last archive (2026-10-08
-  21:24:35). It has not shown yet in the current run.
+- **Phase 9** (landed on `master` in `115fba006` after this review, not live here):
+  `degenerate board!  (what the hell...)` in `board`. It shows 6 times in the run that ended
+  2026-10-08 10:01, and once in the last archive (2026-10-08 21:24:35). It has not shown yet
+  in the current run.
 
 ## Checked: expected or benign
 
