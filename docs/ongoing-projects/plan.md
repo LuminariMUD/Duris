@@ -615,6 +615,95 @@ the next line would not fit; the trailing "Nothing!" path is unchanged. `npm aud
 
 ## Phase 4: the security record and `SECURITY.md`
 
+**Built** on `fix/4-phase-4-security-record` (stacked on Phase 3), 2026-10-08, in
+`ddb8abfc0`:
+
+- The scan of record is the `security baseline` run 37808827646 on `master` at
+  `690a7575d` (completed 2026-10-08 16:46 UTC): `make security-check` passed; CodeQL 2.27.1
+  found 0 results over 58 rules and code scanning listed no open alert; Trivy `v0.70.0`
+  scanned all 23 resolved direct packages, `libcurl4-gnutls-dev` 8.5.0 among them (its
+  `trivy-results.json` artifact), with no fixed HIGH or CRITICAL finding.
+- `docs/operations/SECURITY_BASELINE.md`: the workflow section says it runs on every push
+  and pull request to `master` and that local replay is for changes that touch what it
+  checks; Dependabot (action pins and `site/` npm, weekly) in one sentence; the failure
+  policy says the hosted scan lists nothing unfixed or below HIGH; "Baseline Result
+  (2026-10-08)" replaces the August one and the libcurl note, with the settings the owner
+  turned on that day.
+- `docs/records/SECURITY-COMPLIANCE.md`: the reporting row and the action-pin, source and
+  container rows are `PASS`, the scan paragraph says what ran, and the header's date is
+  2026-10-08. The direct-dependency row stays `PARTIAL` (transitive packages are not
+  inventoried).
+- `SECURITY.md`: the `0.1.x` line and the private vulnerability reporting form of
+  `LuminariMUD/Duris` (`gh api repos/LuminariMUD/Duris/private-vulnerability-reporting`
+  reads `{"enabled":true}`); no other repository is named.
+- `tests/async/test_account_recovery_contract.py` C13 pinned the old "libcurl added, no
+  scan has covered it yet" bullet; it now pins the scan that covered it.
+
+**What differs from the plan, and why.**
+
+- `make security-sbom` run locally lists `libcurl4-gnutls-dev` as declared but unresolved:
+  this workstation has `libcurl4-openssl-dev` 8.5.0 instead. The workflow, which installs
+  the build-deps package, resolved it, so the record cites the workflow's inventory.
+- The hosted scan reports only fixed HIGH and CRITICAL findings, so the August scan's
+  unfixed MEDIUM Git advisory (`CVE-2024-52005`) is kept as the last one seen at that
+  depth rather than dropped or claimed fixed.
+- No code changed, so the gate was the tests that read documents: the 41 tests that read
+  `docs/` or the README, run bare (all pass after C13), and `npm test --prefix site`
+  (15 tests). Phase 5's full gate runs on top of this tree.
+
+**Review round 1** (PR #8, review of `b86794e0b`; tag `backlog/phase-4-review-1`). Five
+findings, each reproduced on that head first and fixed in its own commit:
+
+- Finding 2, `cd46e2e93` on `master`: `SECURITY.md`'s old form link redirected to
+  `Community-Duris/Duris`, whose private reporting is on, so a report following the policy
+  reached another organisation. This phase's `SECURITY.md` hunk landed there ahead of the
+  stack, with the redirect sentence in Phase 6's section corrected. On this branch,
+  `fc638ac1a` puts the SBOM namespace under `LuminariMUD/Duris` and makes the same
+  correction.
+- Finding 1, `b511b5b28`: the scanner root had no `Source:` lines, so Trivy matched only
+  packages named like their source package. It never matched libcurl, OpenSSL or Redis, and
+  a root of older builds with fixed HIGH advisories passed. Each paragraph now names its
+  source.
+- Finding 3, `e15dff9ae`: a metapackage from a `*-defaults` source is scanned as the
+  package it installs (the MySQL server, client and library on the runner; `python3.12`;
+  `clang-format-18`). The workflow fails on an unresolved dependency, and the baseline says
+  a scan describes the machine it ran on.
+- Finding 4, `2eef081d8`: the check is again due before a production deploy, as
+  `TESTING.md` says.
+- Finding 5, `0adbbb4ad`: CodeQL's build also compiles `pfile` and `migrations/tools`. Its
+  ten results there are fixed: `6f02b0161` (eight batched `snprintf` appends that could
+  run past a 64 KiB stack buffer) and `17467c3b8` (two stat-then-open races).
+- `6282ce45a`: the record. The hosted run's dependency result counted for nothing, so the
+  baseline records the workflow replayed locally on 2026-10-09. CodeQL 2.27.1 found 0
+  results over 1103 of 1265 files. Trivy `v0.70.0` scanned the root a fresh `ubuntu:24.04`
+  container wrote after installing the build-deps package: all 23 direct packages by
+  source, no fixed HIGH or CRITICAL finding, and 26 unfixed lower ones. The container row
+  in `SECURITY-COMPLIANCE.md` is `PARTIAL` until a host Duris runs on is scanned.
+- `030a1614a`: the baseline says a local CodeQL replay needs ccache off. The first replay
+  traced only 34 files, because ccache served the rest.
+
+This differs from decision 5, which made the hosted run the scan of record without a
+replay: its dependency scan was blind. The first hosted run that matches by source will be
+the one on `master` after this phase lands.
+
+**Gate** on `6282ce45a`, the round's last code commit; the two commits after it change
+documents only. `./scripts/format.sh --all --check` was clean. `make test-all -j16
+TEST_JOBS=16` passed 675 and failed 1 in 10 min 17 s, at a load average near 36 with three
+other gates running. The failure was `test_connection_limit_journey.py` (Phase 2's),
+which got ECONNREFUSED on its first connection, and it passed alone on the same head. The
+server wrote "Entering game loop." before it opened its listeners; `47f5a06d6` on `master`
+moves that line, and the catch-up merge brings the fix here. `make test-db` passed 48 of
+48 in 7 min 49 s. The 37 tests that read the touched documents, the security scripts or
+the migration tools, run bare, all pass.
+
+**Catch-up** (2026-10-09): `9c8a14234` merges Phase 3's round head `fb5590b99`, which
+carries Phase 2's round and `master` up to `494317e40`, including the readiness fix
+`47f5a06d6`. Only the Status table conflicted, and `master`'s was kept. The merge also
+brought Dependabot's `codeql-action` bump to v4.38.2, which still uses CodeQL 2.27.1, the
+version the replay above ran. **Gate** on `9c8a14234`: `./scripts/format.sh --all --check`
+clean, `make test-all -j16 TEST_JOBS=16` 676 passed and 0 failed in 6 min 51 s, `make
+test-db` 48 of 48 in 5 min 41 s.
+
 **Problem.** Until the move to GitHub the dependency and code scans last ran on 2026-08-27,
 and `libcurl4-gnutls-dev`, added to the build dependencies on 2026-09-06, was never scanned.
 Since 2026-10-08 the `security baseline` workflow (`.github/workflows/security.yml`:

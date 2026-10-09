@@ -945,8 +945,8 @@ def test_environment_and_docs() -> None:
     check("mail worker" in read_repo("docs/reference/ARCHITECTURE.md"), "ARCHITECTURE.md lists the mail worker")
     baseline = read_repo("docs/operations/SECURITY_BASELINE.md")
     check(
-        "libcurl4-gnutls-dev added to the build dependencies (2026-09-06)" in baseline,
-        "SECURITY_BASELINE.md carries the dated libcurl follow-up bullet (C13)",
+        "`libcurl4-gnutls-dev` `8.5.0-2ubuntu10.15` (source `curl`" in baseline and "2026-09-06" in baseline,
+        "SECURITY_BASELINE.md records a scan that matched libcurl4-gnutls-dev by its source package (C13)",
     )
     check("curl" in read_repo("docs/guides/BUILDING.md"), "BUILDING.md lists curl among the link libraries")
     testing = read_repo("docs/guides/TESTING.md")

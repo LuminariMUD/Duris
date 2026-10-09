@@ -73,6 +73,24 @@ def installed_provider(name: str) -> tuple[str, str, str] | None:
     return sorted(providers)[0] if providers else None
 
 
+def defaults_dependency(name: str) -> tuple[str, str, str] | None:
+    # A *-defaults source (mysql-defaults, python3-defaults, llvm-defaults) builds only
+    # metapackages, which no advisory names; scan the installed package one depends on.
+    if not command("dpkg-query", "-W", "-f=${source:Package}", name).endswith("-defaults"):
+        return None
+    for alternative in command("dpkg-query", "-W", "-f=${Depends}", name).split(",")[0].split("|"):
+        dependency = package_name(alternative)
+        candidate = installed_package(dependency)
+        if candidate:
+            return (dependency, *candidate)
+    return None
+
+
+def package_source(name: str) -> str:
+    # Trivy matches Ubuntu advisories by source package (curl, not libcurl4-gnutls-dev).
+    return command("dpkg-query", "-W", "-f=${source:Package} (${source:Version})", name)
+
+
 def resolved_inventory() -> list[dict[str, object]]:
     inventory = []
     for expression in dependency_expressions():
@@ -83,8 +101,7 @@ def resolved_inventory() -> list[dict[str, object]]:
         for name in alternatives:
             candidate = installed_package(name)
             if candidate:
-                selected = name
-                version, architecture = candidate
+                selected, version, architecture = defaults_dependency(name) or (name, *candidate)
                 break
             provider = installed_provider(name)
             if provider:
@@ -96,6 +113,7 @@ def resolved_inventory() -> list[dict[str, object]]:
                 "architecture": architecture,
                 "declared": expression,
                 "selected": selected,
+                "source": package_source(selected) if selected else None,
                 "status": "resolved" if selected else "unresolved",
                 "version": version,
             }
@@ -234,7 +252,7 @@ def generate(inventory_path: Path, spdx_path: Path, rootfs_path: Path) -> None:
         "dataLicense": "CC0-1.0",
         "SPDXID": "SPDXRef-DOCUMENT",
         "name": f"DurisMUD-{version}-direct-dependencies",
-        "documentNamespace": f"https://github.com/LuminariMUD/DurisMUD/sbom/{namespace_hash}",
+        "documentNamespace": f"https://github.com/LuminariMUD/Duris/sbom/{namespace_hash}",
         "creationInfo": {"created": created, "creators": ["Tool: generate_security_sbom.py"]},
         "documentDescribes": ["SPDXRef-Package-DurisMUD"],
         "packages": packages,
@@ -271,6 +289,7 @@ def generate(inventory_path: Path, spdx_path: Path, rootfs_path: Path) -> None:
             paragraphs.append(
                 f'Package: {dependency["selected"]}\n'
                 "Status: install ok installed\n"
+                f'Source: {dependency["source"]}\n'
                 f'Architecture: {dependency["architecture"]}\n'
                 f'Version: {dependency["version"]}\n'
             )
