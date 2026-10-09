@@ -20,8 +20,10 @@ PRELUDE = r'''
 #include "combat/chaos_config.h"
 #include "item/item_movement_transaction.h"
 #include "net/comm.h"
+#include "sql/sql.h"
 #include <array>
 #include <cassert>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -79,6 +81,28 @@ int training_dummy_parse_race(const char *token) { return !strcmp(token, "githze
 static P_obj given = nullptr;
 static P_char given_to = nullptr;
 void obj_to_char(P_obj object, P_char recipient) { given = object; given_to = recipient; }
+static room_data rooms[1]{};
+P_room world = rooms;
+static std::string wizlogged, sql_logged;
+static int wizlog_level = -1;
+static std::string format_line(const char *format, va_list args) {
+    char line[256];
+    vsnprintf(line, sizeof(line), format, args);
+    return std::string(line) + "\n";
+}
+void wizlog(int level, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    wizlog_level = level;
+    wizlogged += format_line(format, args);
+    va_end(args);
+}
+void sql_log(P_char, const char *kind, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    sql_logged += std::string(kind) + ": " + format_line(format, args);
+    va_end(args);
+}
 '''
 KIT_STUB = r'''
 // The staff kit bag's builder: records the stand-in it judged the kit against.
@@ -312,6 +336,17 @@ int main()
     snprintf(left_out, sizeof(left_out), "Left out: slot%d %6d  no dual wield\r\n", SECONDARY_WEAPON, offhand);
     assert(offhand && sent.find(left_out) != std::string::npos);
     assert(sent.find("Left out") == sent.rfind("Left out"));
+    // Each bag is audited as a load is: the refusals above recorded nothing, an
+    // OVERLORD's bag is in the wiz log only, a lower god's also on WIZLOG.
+    assert(wizlogged.empty());
+    assert(sql_logged == "wiz: Loaded the CHAOS kit of a Githzerai Necromancer\n");
+    rooms[0].number = 22800;
+    staff.player.level = LESSER_G;
+    sql_logged.clear();
+    load_chaos_kit_bag(&staff, args);
+    assert(build_calls == 3 && wizlog_level == LESSER_G);
+    assert(wizlogged == "Zusuk loaded the CHAOS kit of a Githzerai Necromancer in [22800]\n");
+    assert(sql_logged == "wiz: Loaded the CHAOS kit of a Githzerai Necromancer\n");
     puts("CHAOS preparation/role/placement runtime passed");
 }
 '''
@@ -329,7 +364,8 @@ def main():
         source, binary = Path(directory) / "kit.cpp", Path(directory) / "kit"
         source.write_text(harness)
         subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
-                        "-fsanitize=address,undefined", "-Isrc", str(source), "-o", str(binary)],
+                        "-fsanitize=address,undefined", "-Isrc", "-D__NO_MYSQL__", "-Isrc/no_mysql",
+                        str(source), "-o", str(binary)],
                        cwd=ROOT, check=True)
         subprocess.run([str(binary)], check=True)
 

@@ -84,7 +84,9 @@ inventory, worn items and supplies together in the bag, with each item prepared
 as the kit prepares it. It judges slots, skills and item use against a blank
 character of that class and race, follows `CHAOS_EQ_PROFILE`, and lists the
 class-kit items it left out and why. An item that cannot be made withholds the
-whole bag, as it would a new character's kit.
+whole bag, as it would a new character's kit. Each bag is recorded the way
+`load obj` records an object: on `WIZLOG` for a god below OVERLORD, in the
+wizload log, and as a `wiz` audit record.
 
 Epic-skill selection reuses the normal `epic_rewards` and `epic_teachers`
 tables for an unspecialized character. It preserves class masks, the

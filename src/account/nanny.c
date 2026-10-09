@@ -829,8 +829,15 @@ void load_chaos_kit_bag(P_char staff, char *argument)
 
 	const int class_id = flag2idx(class_bit);
 	const int profile_id = chaos_eq_use_enhanceable_profile() ? 1 : 0;
+	// Recorded once per bag, where do_load() records each object it loads.
+	if (GET_LEVEL(staff) < OVERLORD)
+		wizlog(GET_LEVEL(staff), "%s loaded the CHAOS kit of a %s %s in [%d]",
+		       GET_NAME(staff), race_names_table[race].normal,
+		       class_names_table[class_id].normal, world[staff->in_room].number);
 	logit(LOG_WIZLOAD, "%s loaded the CHAOS kit of a %s %s", GET_NAME(staff),
 	      race_names_table[race].normal, class_names_table[class_id].normal);
+	sql_log(staff, WIZLOG, "Loaded the CHAOS kit of a %s %s", race_names_table[race].normal,
+		class_names_table[class_id].normal);
 	char line[MAX_STRING_LENGTH];
 	snprintf(line, sizeof(line),
 		 "You load the %s CHAOS kit of a new %s %s: %zu worn items and the supplies, "
