@@ -1,0 +1,338 @@
+#!/usr/bin/env python3
+"""Connections that have not logged in to an account, per address, on a real server.
+
+One isolated flat-file server, with the WebSocket listener on and 127.0.0.9 as its
+trusted proxy. Eight telnet connections from 127.0.0.1 reach the account name prompt and
+the ninth is refused, and so is a ninth from 127.0.0.5 after eight that each entered a
+name, while a login from 127.0.0.2 still gets in; TLS connections still negotiating count
+too. Behind the proxy, two client addresses its PROXY headers name are counted apart, the
+addresses of one IPv6 /64 count together, and X-Forwarded-For does not move a connection
+out of its PROXY address's count; the proxy's
+own address, shared by every client it forwards, is not capped; and two website logins
+with different X-Forwarded-For addresses do not close each other, even when the second
+client writes the first one's address in front of its own. A connection silent at the
+account name prompt, and one silent at the password prompt, are closed after two
+minutes, but a website client that sends a message every 25 s is not. A connection from a
+banned address is told so and closed, and the server stays up. A full server refuses TLS connections without growing.
+"""
+
+from __future__ import annotations
+
+import os
+import socket
+import tempfile
+import threading
+import time
+from pathlib import Path
+
+from test_account_recovery_journey import (
+    ACCOUNT, OLD_PASSWORD, IsolatedServer, MudClient, build_flatfile_server, create_account, require,
+)
+
+LIMIT = 8
+PROXY = "127.0.0.9"
+BANNED = "127.0.0.23"
+REFUSAL = b"Too many connections from your address."
+
+
+class BoundClient(MudClient):
+    """A telnet client whose socket leaves from a given loopback address."""
+
+    def __init__(self, port: int, source: str) -> None:
+        self.socket = socket.create_connection(("127.0.0.1", port), timeout=5,
+                                               source_address=(source, 0))
+        self.socket.settimeout(0.25)
+        self.pending = bytearray()
+        self.transcript = bytearray()
+
+
+def closed_within(sock: socket.socket, timeout: float) -> bytes | None:
+    """Everything the server sent before closing, or None if it is still open."""
+    received = bytearray()
+    deadline = time.monotonic() + timeout
+    sock.settimeout(0.25)
+    while time.monotonic() < deadline:
+        try:
+            chunk = sock.recv(4096)
+        except socket.timeout:
+            continue
+        except ConnectionResetError:
+            return bytes(received)
+        if not chunk:
+            return bytes(received)
+        received.extend(chunk)
+    return None
+
+
+def upgrade(sock: socket.socket, forwarded_for: str) -> bytes:
+    """A WebSocket upgrade naming forwarded_for in X-Forwarded-For. Returns what the server
+    sent after the response headers: its first frames, a ping among them."""
+    sock.sendall(("GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\n"
+                  "Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                  f"Sec-WebSocket-Version: 13\r\nX-Forwarded-For: {forwarded_for}\r\n\r\n"
+                  ).encode("ascii"))
+    sock.settimeout(5)
+    response = bytearray()
+    while b"\r\n\r\n" not in response:
+        chunk = sock.recv(4096)
+        require(bool(chunk), f"the handshake for {forwarded_for} was closed")
+        response.extend(chunk)
+    headers, _, frames = bytes(response).partition(b"\r\n\r\n")
+    require(b" 101 " in headers, f"the handshake for {forwarded_for} was not accepted")
+    return frames
+
+
+def proxied(port: int, client: str, forwarded_for: str | None = None) -> socket.socket:
+    """A WebSocket-port connection from the proxy carrying a PROXY header for client, then
+    with forwarded_for a completed upgrade that names another address."""
+    family, local = ("TCP6", "::1") if ":" in client else ("TCP4", "127.0.0.1")
+    sock = socket.create_connection(("127.0.0.1", port), timeout=5, source_address=(PROXY, 0))
+    sock.sendall(f"PROXY {family} {client} {local} 40000 4050\r\n".encode("ascii"))
+    if forwarded_for:
+        upgrade(sock, forwarded_for)
+    return sock
+
+
+def handshake(port: int, client: str) -> socket.socket:
+    """A WebSocket upgrade through the proxy naming client in X-Forwarded-For."""
+    sock = socket.create_connection(("127.0.0.1", port), timeout=5, source_address=(PROXY, 0))
+    upgrade(sock, client)
+    return sock
+
+
+def send_frame(sock: socket.socket, opcode: int, payload: bytes) -> None:
+    """One masked client frame; payload is under 126 bytes."""
+    mask = os.urandom(4)
+    sock.sendall(bytes([0x80 | opcode, 0x80 | len(payload)]) + mask +
+                 bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload)))
+
+
+def take_frame(buffer: bytearray) -> tuple[int, bytes] | None:
+    """Remove the first complete server frame from buffer: (opcode, payload)."""
+    if len(buffer) < 2:
+        return None
+    length, start = buffer[1] & 0x7F, 2
+    if length > 125:
+        start = 4 if length == 126 else 10
+        if len(buffer) < start:
+            return None
+        length = int.from_bytes(buffer[2:start], "big")
+    if len(buffer) < start + length:
+        return None
+    frame = (buffer[0] & 0x0F, bytes(buffer[start:start + length]))
+    del buffer[:start + length]
+    return frame
+
+
+class WebsiteClient(threading.Thread):
+    """A website client at the account name prompt that answers the server's pings and
+    sends a login attempt every 25 s until stopped. If the server closes it, ended holds
+    the last message it sent."""
+
+    LOGIN = b'{"type":"cmd","cmd":"login","data":{"account":"Nosuch","password":"wrong1"}}'
+
+    def __init__(self, port: int) -> None:
+        super().__init__(daemon=True)
+        self.socket = socket.create_connection(("127.0.0.1", port), timeout=5,
+                                               source_address=("127.0.0.7", 0))
+        # Not from the proxy, so the header is ignored.
+        self.buffer = bytearray(upgrade(self.socket, "198.51.100.9"))
+        self.since = time.monotonic()
+        self.stopping = threading.Event()
+        self.last = b""
+        self.ended: bytes | None = None
+
+    def run(self) -> None:
+        next_login = self.since
+        self.socket.settimeout(1)
+        while not self.stopping.is_set():
+            while (frame := take_frame(self.buffer)) is not None:
+                if frame[0] == 0x9:
+                    send_frame(self.socket, 0xA, frame[1])
+                else:
+                    self.last = frame[1]
+            if time.monotonic() >= next_login:
+                send_frame(self.socket, 0x1, self.LOGIN)
+                next_login += 25
+            try:
+                chunk = self.socket.recv(4096)
+            except socket.timeout:
+                continue
+            except OSError:
+                chunk = b""
+            if not chunk:
+                self.ended = self.last
+                return
+            self.buffer.extend(chunk)
+
+
+def rss_kib(server: IsolatedServer) -> int:
+    for line in Path(f"/proc/{server.process.pid}/status").read_text().splitlines():
+        if line.startswith("VmRSS:"):
+            return int(line.split()[1])
+    raise AssertionError("the server has no VmRSS line")
+
+
+def ban(run_root: Path) -> None:
+    """A ban entry for BANNED, as the server's ban command saves one."""
+    (run_root / "lib/misc/ban_sites").write_text(f"Journey\n60\n{BANNED}\n")
+
+
+def main() -> int:
+    with tempfile.TemporaryDirectory(prefix="duris-connection-limit-build-") as build:
+        binary = build_flatfile_server(Path(build))
+        with IsolatedServer(binary, {"DURIS_WEBSOCKET": "TRUE",
+                                     "DURIS_TRUSTED_PROXY_IP": PROXY}, ban) as server:
+            port = server.plain_port
+            tls_port, websocket_port = port + 1, port + 2
+            held = []
+            try:
+                # Silent from the start at the account name prompt: closed after 120 s.
+                silent = BoundClient(port, "127.0.0.3")
+                silent.expect("account name")
+                silent_since = time.monotonic()
+                website = WebsiteClient(websocket_port)
+                held.append(website.socket)
+                website.start()
+
+                # A TLS connection counts while it negotiates (GnuTLS ends a silent one
+                # after 40 s).
+                for _ in range(LIMIT):
+                    held.append(socket.create_connection(("127.0.0.1", tls_port), timeout=5,
+                                                         source_address=("127.0.0.4", 0)))
+                time.sleep(1)
+                excess_tls = socket.create_connection(("127.0.0.1", tls_port), timeout=5,
+                                                      source_address=("127.0.0.4", 0))
+                require(closed_within(excess_tls, 10) is not None,
+                        "a ninth connection from an address with eight in TLS negotiation was kept")
+
+                for _ in range(LIMIT):
+                    client = BoundClient(port, "127.0.0.1")
+                    client.expect("account name")
+                    held.append(client)
+                refused = socket.create_connection(("127.0.0.1", port), timeout=5)
+                text = closed_within(refused, 10)
+                require(text is not None and REFUSAL in text,
+                        f"the ninth connection from one address was not refused: {text!r}")
+                debug = (server.run_root / "logs/log/debug").read_text(errors="replace")
+                require("Refused connection from 127.0.0.1" in debug,
+                        "the refusal left no debug-log line:\n" + debug[-4000:])
+
+                # Any name takes a connection past the account name prompt; it still counts.
+                for letter in "abcdefgh":
+                    client = BoundClient(port, "127.0.0.5")
+                    client.expect("account name")
+                    client.send(f"Limit{letter}")
+                    client.expect("is this correct?")
+                    held.append(client)
+                refused = socket.create_connection(("127.0.0.1", port), timeout=5,
+                                                   source_address=("127.0.0.5", 0))
+                text = closed_within(refused, 10)
+                require(text is not None and REFUSAL in text,
+                        f"a ninth connection after eight named ones was not refused: {text!r}")
+
+                banned = socket.create_connection(("127.0.0.1", port), timeout=5,
+                                                  source_address=(BANNED, 0))
+                text = closed_within(banned, 10)
+                require(text is not None and b"banned" in text,
+                        f"a connection from a banned address was not closed: {text!r}")
+                require(server.process.poll() is None, "a banned address stopped the server")
+
+                # Another address still logs in.
+                other = BoundClient(port, "127.0.0.2")
+                create_account(other, OLD_PASSWORD)
+                held.append(other)
+
+                # Silent at the password prompt: closed after 120 s as well.
+                waiting = BoundClient(port, "127.0.0.6")
+                waiting.expect("account name")
+                waiting.send(ACCOUNT)
+                waiting.expect("password")
+                waiting_since = time.monotonic()
+
+                # Behind the proxy each PROXY-named client is counted on its own, and the
+                # proxy's own address is shared by its clients, so it is never capped.
+                # The request's X-Forwarded-For, which a PROXY-protocol proxy passes on
+                # untouched, does not take a connection out of its PROXY address's count.
+                for _ in range(LIMIT - 1):
+                    held.append(proxied(websocket_port, "198.51.100.1"))
+                held.append(proxied(websocket_port, "198.51.100.1", forwarded_for="10.66.0.1"))
+                time.sleep(1)
+                excess = proxied(websocket_port, "198.51.100.1")
+                require(closed_within(excess, 10) is not None,
+                        "the ninth proxied connection from one client address was kept")
+                second = proxied(websocket_port, "198.51.100.2")
+                require(closed_within(second, 2) is None,
+                        "a proxied client was refused for another client's connections")
+                held.append(second)
+
+                # One IPv6 host normally has a /64 to itself: its addresses count together.
+                for host in range(1, LIMIT + 1):
+                    held.append(proxied(websocket_port, f"2001:db8::{host}"))
+                time.sleep(1)
+                excess = proxied(websocket_port, f"2001:db8::{LIMIT + 1}")
+                require(closed_within(excess, 10) is not None,
+                        "a ninth connection from one IPv6 /64 was kept")
+                other_network = proxied(websocket_port, "2001:db8:0:1::1")
+                require(closed_within(other_network, 2) is None,
+                        "a connection from another IPv6 /64 was refused")
+                held.append(other_network)
+
+                for _ in range(LIMIT + 1):
+                    client = BoundClient(port, PROXY)
+                    client.expect("account name")
+                    held.append(client)
+                # The proxy appends the real client to whatever X-Forwarded-For it was sent.
+                first = handshake(websocket_port, "198.51.100.3")
+                held.append(first)
+                held.append(handshake(websocket_port, "198.51.100.3, 198.51.100.4"))
+                require(closed_within(first, 2) is None,
+                        "a website login closed another client's as a stale one from its address")
+
+                for client, since, prompt in ((silent, silent_since, "account name"),
+                                              (waiting, waiting_since, "password")):
+                    remaining = 120 - (time.monotonic() - since)
+                    text = closed_within(client.socket, remaining + 15)
+                    require(text is not None and b"Idle Timeout" in text,
+                            f"a connection silent at the {prompt} prompt was kept")
+                    require(time.monotonic() - since >= 115,
+                            f"the connection silent at the {prompt} prompt was closed early")
+                time.sleep(max(0.0, website.since + 130 - time.monotonic()))
+                website.stopping.set()
+                website.join()
+                require(website.ended is None, "a website client that sent a message every 25 s "
+                        f"was closed: {website.ended!r}")
+
+                # Fill the server: a TLS connection it refuses keeps no GnuTLS session
+                # (about 8 KiB each before). The connections opened just after `waiting`
+                # reach their 120 s now and free slots, so probe until one is refused.
+                for octet in range(40, 72):
+                    for _ in range(LIMIT):
+                        held.append(socket.create_connection(
+                            ("127.0.0.1", port), timeout=5, source_address=(f"127.0.0.{octet}", 0)))
+                for octet in range(72, 100):
+                    probe = socket.create_connection(("127.0.0.1", port), timeout=5,
+                                                     source_address=(f"127.0.0.{octet}", 0))
+                    if closed_within(probe, 5) is not None:
+                        break
+                    held.append(probe)
+                else:
+                    raise AssertionError("the server never filled up")
+                before = rss_kib(server)
+                for _ in range(1000):
+                    socket.create_connection(("127.0.0.1", tls_port), timeout=5,
+                                             source_address=("127.0.0.38", 0)).close()
+                time.sleep(1)
+                growth = rss_kib(server) - before
+                require(growth < 3072,
+                        f"a full server grew {growth} KiB over 1000 refused TLS connections")
+            finally:
+                for client in held:
+                    (client.socket if isinstance(client, MudClient) else client).close()
+            server.shutdown()
+    print("connection limit journey passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

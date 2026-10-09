@@ -1811,6 +1811,27 @@ static void run_session_input_phase(game_loop_pulse_context &ctx)
 
 			switch (point->connected)
 			{
+				/* a connection that has not logged in to an account holds a slot for free;
+				 * waiting for a reset code by mail keeps the default */
+			case CON_GET_ACCT_NAME:
+			case CON_GET_ACCT_PASSWD:
+			case CON_VERIFY_NEW_ACCT_NAME:
+			case CON_GET_NEW_ACCT_EMAIL:
+			case CON_VERIFY_NEW_ACCT_EMAIL:
+			case CON_GET_NEW_ACCT_PASSWD:
+			case CON_VERIFY_NEW_ACCT_PASSWD:
+			case CON_VERIFY_NEW_ACCT_INFO:
+			case CON_ACCT_RESET_NEWPW:
+			case CON_ACCT_RESET_NEWPW2:
+			case CON_EXIT:
+				if (point->wait > LOGIN_PROMPT_TIMEOUT)
+				{
+					write_to_descriptor(point, "Idle Timeout\n");
+					close_socket(point);
+					continue;
+				}
+				break;
+
 				/* short protocol/login transitions retain a 60 second timeout */
 			case CON_FLUSH:
 			case CON_GET_TERM:
@@ -3518,7 +3539,8 @@ void nonblock(int s)
         * old/new socket code. 9/18/95  JAB                                                                                                                                                            \
         */
 
-static int proxy_peer_is_trusted(int desc)
+/* Whether the peer of desc is DURIS_TRUSTED_PROXY_IP. */
+int proxy_peer_is_trusted(int desc)
 {
 	const char *trusted_ip = getenv("DURIS_TRUSTED_PROXY_IP");
 	struct sockaddr_storage peer;
@@ -3534,9 +3556,15 @@ static int proxy_peer_is_trusted(int desc)
 		       memcmp(&((struct sockaddr_in *)&peer)->sin_addr, &trusted4,
 			      sizeof(trusted4)) == 0;
 	if (peer.ss_family == AF_INET6)
+	{
+		const struct in6_addr *address = &((struct sockaddr_in6 *)&peer)->sin6_addr;
+
+		/* The listeners are IPv6 sockets, so an IPv4 peer arrives as ::ffff:a.b.c.d. */
+		if (IN6_IS_ADDR_V4MAPPED(address) && inet_pton(AF_INET, trusted_ip, &trusted4) == 1)
+			return memcmp(&address->s6_addr[12], &trusted4, sizeof(trusted4)) == 0;
 		return inet_pton(AF_INET6, trusted_ip, &trusted6) == 1 &&
-		       memcmp(&((struct sockaddr_in6 *)&peer)->sin6_addr, &trusted6,
-			      sizeof(trusted6)) == 0;
+		       memcmp(address, &trusted6, sizeof(trusted6)) == 0;
+	}
 	return 0;
 }
 
@@ -3695,6 +3723,60 @@ void resolve_descriptor_hostname_async(const char *address, int descriptor)
 	pthread_attr_destroy(&attr);
 }
 
+/* Whether d has not logged in to an account: negotiating TLS, waiting for a WebSocket
+ * handshake, at a prompt to log in, create an account or reset its password, or
+ * closing.  Any name gets a connection past the account name prompt. */
+static bool before_account_login(const struct descriptor_data *d)
+{
+	switch (d->connected)
+	{
+	case CON_SSLNEGO:
+	case CON_GET_TERM:
+	case CON_GET_ACCT_NAME:
+	case CON_GET_ACCT_PASSWD:
+	case CON_VERIFY_NEW_ACCT_NAME:
+	case CON_GET_NEW_ACCT_EMAIL:
+	case CON_VERIFY_NEW_ACCT_EMAIL:
+	case CON_GET_NEW_ACCT_PASSWD:
+	case CON_VERIFY_NEW_ACCT_PASSWD:
+	case CON_VERIFY_NEW_ACCT_INFO:
+	case CON_ACCT_RESET_CODE:
+	case CON_ACCT_RESET_NEWPW:
+	case CON_ACCT_RESET_NEWPW2:
+	case CON_EXIT:
+	case CON_FLUSH:
+		return true;
+	default:
+		return false;
+	}
+}
+
+/* Whether descriptor addresses a and b are one client.  An IPv6 host normally has a
+ * whole /64 to itself, so IPv6 addresses compare on that prefix. */
+static bool same_client(const char *a, const char *b)
+{
+	struct in6_addr a6, b6;
+
+	if (inet_pton(AF_INET6, a, &a6) == 1 && inet_pton(AF_INET6, b, &b6) == 1 &&
+	    !IN6_IS_ADDR_V4MAPPED(&a6) && !IN6_IS_ADDR_V4MAPPED(&b6))
+		return memcmp(&a6, &b6, 8) == 0;
+	return !strcmp(a, b);
+}
+
+/* Open connections from host's client that have not logged in to an account.  An
+ * authenticated DurisWeb service connection stays at the account name prompt and is not
+ * one of them. */
+static int login_connections_from(const char *host)
+{
+	int count = 0;
+
+	for (P_desc d = descriptor_list; d; d = d->next)
+		if (before_account_login(d) && !websocket_is_authenticated_service(d) &&
+		    same_client(d->host, host))
+			count++;
+	return count;
+}
+
 int new_descriptor(int s, int conn_type)
 {
 	P_desc newd;
@@ -3702,6 +3784,7 @@ int new_descriptor(int s, int conn_type)
 	socklen_t size;
 	sockaddr_in6 sock;
 	gnutls_session_t sslses = 0;
+	bool shared_address = false;
 
 	if ((desc = new_connection(s)) < 0)
 		return (-1);
@@ -3729,6 +3812,8 @@ int new_descriptor(int s, int conn_type)
 	{
 		// shouldn't write anything before setup
 		// write(desc, "Sorry, the game is full...\r\n");
+		if (sslses)
+			gnutls_deinit(sslses);
 		used_descs--;
 		shutdown(desc, 2);
 		close(desc);
@@ -3772,12 +3857,19 @@ int new_descriptor(int s, int conn_type)
 			memmove(newd->host, mapped, strlen(mapped) + 1);
 		}
 
-		/* check for proxy protocol on websocket connections */
-		if (conn_type == 2 && proxy_peer_is_trusted(desc))
+		/* check for proxy protocol on websocket connections; without it the address is
+		 * the trusted proxy's, which all its clients share */
+		if (proxy_peer_is_trusted(desc))
 		{
 			char proxy_ip[46];
-			if (parse_proxy_protocol(desc, proxy_ip, sizeof(proxy_ip)))
+			if (conn_type == 2 &&
+			    parse_proxy_protocol(desc, proxy_ip, sizeof(proxy_ip)))
+			{
 				strlcpy(newd->host, proxy_ip, sizeof newd->host);
+				newd->proxy_named_client = 1;
+			}
+			else
+				shared_address = true;
 		}
 
 		/*
@@ -3802,6 +3894,28 @@ int new_descriptor(int s, int conn_type)
 		      }
 		    }
 		*/
+	}
+
+	if (!shared_address &&
+	    login_connections_from(newd->host) >= MAX_LOGIN_CONNECTIONS_PER_ADDRESS)
+	{
+		static const char refusal[] = "Too many connections from your address.\r\n";
+
+		logit(LOG_DEBUG,
+		      "Refused connection from %s: %d open connections have not logged in.",
+		      newd->host, MAX_LOGIN_CONNECTIONS_PER_ADDRESS);
+		if (conn_type == 0)
+		{
+			const ssize_t written = write(desc, refusal, sizeof(refusal) - 1);
+			(void)written;
+		}
+		if (sslses)
+			gnutls_deinit(sslses);
+		mm_release(dead_desc_pool, newd);
+		used_descs--;
+		shutdown(desc, 2);
+		close(desc);
+		return 0;
 	}
 
 	//  if (!found)
@@ -3857,16 +3971,15 @@ int new_descriptor(int s, int conn_type)
 		setsockopt(desc, IPPROTO_TCP, TCP_NODELAY, &ws_opt, sizeof(ws_opt));
 	}
 
+	/* Never linked as CON_PLAYING (0): code that walks descriptor_list takes a playing
+	 * descriptor to have a character.  A WebSocket waits for its HTTP handshake in
+	 * CON_GET_TERM, and greet() moves a telnet client on. */
+	STATE(newd) = conn_type == 1 ? CON_SSLNEGO : CON_GET_TERM;
 	descriptor_list = newd;
 
-	if (conn_type == 1) // ssl - always use CON_SSLNEGO, let game loop handle greet
-	{
+	if (conn_type == 1) // ssl - let game loop handle greet
 		ssl_negotiate(sslses); // do first round immediately
-		STATE(newd) = CON_SSLNEGO;
-	}
-	else if (conn_type == 2)
-		STATE(newd) = CON_GET_TERM; /* WebSocket waits for HTTP handshake */
-	else
+	else if (conn_type == 0)
 	{
 		/* Terminal discovery is optional metadata.  Start it before the
 		 * greeting so responsive clients can answer immediately, but never
@@ -3891,8 +4004,7 @@ static void greet(P_desc newd)
 			"feel this is in error, please e-mail multiplay@durismud.com\r\n");
 		banlog(56, "Reject Connect from %s, banned site.", newd->host);
 		logit(LOG_STATUS, "Rejected Connect from %s, banned site.", newd->host);
-		STATE(newd) = CON_EXIT;
-		// flush_queues(newd);
+		STATE(newd) = CON_FLUSH; /* closed once the message is sent */
 		return;
 	}
 

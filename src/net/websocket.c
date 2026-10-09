@@ -107,28 +107,6 @@ static int websocket_origin_allowed(const char *origin)
 	return 0;
 }
 
-static int websocket_peer_is_trusted_proxy(struct descriptor_data *d)
-{
-	const char *trusted_ip = getenv("DURIS_TRUSTED_PROXY_IP");
-	struct sockaddr_storage peer;
-	struct in_addr trusted4;
-	struct in6_addr trusted6;
-	socklen_t peer_len = sizeof(peer);
-
-	if (!d || d->descriptor < 0 || !trusted_ip || !*trusted_ip ||
-	    getpeername(d->descriptor, (struct sockaddr *)&peer, &peer_len) < 0)
-		return 0;
-	if (peer.ss_family == AF_INET)
-		return inet_pton(AF_INET, trusted_ip, &trusted4) == 1 &&
-		       memcmp(&((struct sockaddr_in *)&peer)->sin_addr, &trusted4,
-			      sizeof(trusted4)) == 0;
-	if (peer.ss_family == AF_INET6)
-		return inet_pton(AF_INET6, trusted_ip, &trusted6) == 1 &&
-		       memcmp(&((struct sockaddr_in6 *)&peer)->sin6_addr, &trusted6,
-			      sizeof(trusted6)) == 0;
-	return 0;
-}
-
 static int websocket_input_error(struct descriptor_data *d, int code)
 {
 	if (d && d->ws_error_code == 0)
@@ -674,15 +652,20 @@ int websocket_parse_handshake(struct descriptor_data *d, const char *buf, size_t
 			origin_seen = 1;
 			origin_ok = websocket_origin_allowed(value);
 		}
-		/* x-forwarded-for - trust only from the configured immediate proxy */
+		/* x-forwarded-for - trust only from the configured immediate proxy, and only the
+		 * last entry, which that proxy appended: the client writes the ones before it.
+		 * A proxy that sent a PROXY header passes the client's request through untouched. */
 		else if (strncasecmp(line, "X-Forwarded-For:", 16) == 0)
 		{
-			if (websocket_peer_is_trusted_proxy(d))
+			if (!d->proxy_named_client && proxy_peer_is_trusted(d->descriptor))
 			{
 				const char *value = skip_header_value(line, 16);
+				const char *last_comma = strrchr(value, ',');
 				char client_ip[INET6_ADDRSTRLEN];
 				int i = 0;
-				while (value[i] && value[i] != ',' && value[i] != ' ' &&
+				if (last_comma)
+					value = skip_header_value(last_comma, 1);
+				while (value[i] && value[i] != ' ' &&
 				       i < (int)(sizeof(client_ip) - 1))
 				{
 					client_ip[i] = value[i];
@@ -1651,6 +1634,10 @@ static void websocket_handle_message(struct descriptor_data *d, int opcode, char
 {
 	if (opcode == WS_OPCODE_TEXT && payload)
 	{
+		/* A message is input, as a line is on telnet: it restarts the idle timer.  A
+		 * website login stays at CON_GET_ACCT_NAME until it succeeds. */
+		d->wait = 0;
+
 		/* parse json and extract command/data */
 		cJSON *json = cJSON_Parse(payload);
 		if (json)

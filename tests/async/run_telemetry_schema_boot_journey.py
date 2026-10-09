@@ -122,6 +122,20 @@ def run(server, misnamed_server):
                                 return found
                     time.sleep(.1)
 
+            def committed(label, status_offset, process):
+                # The newest health line's records wait up to 2 s in a batch, and a stop
+                # flushes what is left within its own 2 s: a host stall then leaves the
+                # ledger "abandoned". Stop once they are in SQL, with nothing left to flush.
+                text = status_path.read_text(errors='replace')[status_offset:]
+                newest = [line for line in HEALTH.finditer(text) if line.group(2) != 'starting'][-1]
+                boot_id, process_id = newest.group(3).split(':')
+                admitted = int(re.search(r'last_admitted_seq=(\d+)', newest.group(0)).group(1))
+                deadline = time.monotonic()+30
+                while int(sql(f'SELECT COALESCE(MAX(record_seq), 0) FROM telemetry_interval '
+                              f'WHERE boot_id={boot_id} AND process_id={process_id}')) < admitted:
+                    assert process.poll() is None and time.monotonic() < deadline, label+': the admitted records never reached SQL'
+                    time.sleep(.2)
+
             def boot(label, expected, alter=None, revert=None, env_extra=None, binary=server, stop='term'):
                 if alter:
                     sql(alter)
@@ -167,6 +181,8 @@ def run(server, misnamed_server):
                         process.kill()
                         process.wait(timeout=30)
                     else:
+                        if state == 'healthy':
+                            committed(label, status_offset, process)
                         process.send_signal(signal.SIGTERM)
                         process.wait(timeout=30)
                         assert process.returncode == 0, label+': shutdown returned '+str(process.returncode)

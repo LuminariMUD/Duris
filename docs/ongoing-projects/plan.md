@@ -23,43 +23,45 @@ Updated 2026-10-09. A new session starts here, then reads the phase it continues
 | Phase | Subject | State |
 |---|---|---|
 | 1 | Hung tests and silent backup failures | Landed 2026-10-09 in `e757c77e7` (PR #5, `backlog/phase-1-review-1`). |
-| 2 | Unauthenticated connections per address | Built on `fix/4-phase-2-connection-limit`, gate green; PR #6, tag `backlog/phase-2-review-0`; reviewed, seven findings open. |
-| 3 | Shop listing, dompurify, dead helpers | Built on `fix/4-phase-3-shop-listing`, gate green; PR #7, tag `backlog/phase-3-review-0`; reviewed, two findings open. |
-| 4 | Security record and `SECURITY.md` | Built on `fix/4-phase-4-security-record`, documents only, their tests green; PR #8, tag `backlog/phase-4-review-0`; reviewed, five findings open. |
-| 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc`, gate green; PR #9, tag `backlog/phase-5-review-0`; reviewed, six findings open. |
+| 2 | Unauthenticated connections per address | Landed 2026-10-09 in `14776698a` (PR #6, `backlog/phase-2-review-1` and a journey fix). |
+| 3 | Shop listing, dompurify, dead helpers | Built on `fix/4-phase-3-shop-listing`; PR #7, review round 1 done, tag `backlog/phase-3-review-1`, gate green; next to land. |
+| 4 | Security record and `SECURITY.md` | Built on `fix/4-phase-4-security-record`; PR #8, review round 1 done, tag `backlog/phase-4-review-1`, gate green. |
+| 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc`; PR #9, review round 1 done, tag `backlog/phase-5-review-1`, gate green. |
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
 | 7 | Quest EXP line and `achievements zones` | Built on `fix/4-phase-7-display-fixes`, gate green; PR #10, tag `backlog/phase-7-review-0`; reviewed, two findings open. |
 | 8 | Specials assigned to missing vnums | Built on `fix/4-phase-8-dead-specials`, gate green; PR #11, tag `backlog/phase-8-review-0`; reviewed, two findings open. |
 | 9 | `board` specials and the audit heading | Built on `fix/4-phase-9-boards`, gate green; PR #12, tag `backlog/phase-9-review-0`; reviewed, seven findings open. |
 
-Each phase after the first is on its own branch, stacked on the one before; its section here
-is on that branch, not yet on `master`. What is left is a review round and a landing for each,
-in order, starting with Phase 2.
+Phases 1, 2 and 6 are on `master`. Each later phase is on its own branch, stacked on the one
+before; its section here is on that branch, not yet on `master`. What is left: the landings
+of Phases 3, 4 and 5, whose review rounds are done, and a review round and a landing for
+Phases 7, 8 and 9, in order, starting with Phase 3's landing.
 
 ## Landing
 
-The pull requests form one stack: #6 (Phase 2) now targets `master`, and #7, #8, #9, #10,
-#11 and #12 (Phase 9) each target the previous phase's branch. Each has an adversarial review
-whose findings are open. Take them in order: the review round on the branch (each finding
-fixed in its own commit, the round's head tagged `backlog/phase-<n>-review-<round>`), then the
-landing as "Every phase" says. Before deleting a landed branch, point the next pull request
-at `master` (`gh pr edit <n> --base master`): a landing is a pushed merge, and GitHub then
-closes, not retargets, a pull request whose base branch is deleted (#6 was closed that way at
-Phase 1's landing and reopened). Delete this file when Phase 9 lands.
+The pull requests form one stack: #7 (Phase 3) now targets `master`, and #8, #9, #10, #11
+and #12 (Phase 9) each target the previous phase's branch. #7, #8 and #9 have had review
+round 1: each finding fixed in its own commit, its thread resolved, the round's head tagged
+`backlog/phase-<n>-review-1`. #10, #11 and #12 have an adversarial review whose findings are
+open. Take them in order: the review round on the branch where one is still open, then the
+landing as "Every phase" says. A branch's head can be past its last tag (a fix or a merge from
+the phase below after the round); the landing merges the head. Before deleting a landed
+branch, point the next pull request at `master` (`gh pr edit <n> --base master`): a landing
+is a pushed merge, and GitHub then closes, not retargets, a pull request whose base branch is
+deleted (#6 was closed that way at Phase 1's landing and reopened).
+Delete this file when Phase 9 lands.
 
-Every later landing conflicts in this file: its branch rewrites the Status table's earlier
-rows. Keep `master`'s table and this section, mark the landed phase, and take the branch's
-side everywhere else. From Phase 3 on there is one more conflict, in
-`docs/records/COMMUNITY_DURIS_TRACKING.md`: `master`'s row #659 and Phase 3's row #662 are
-adjacent lines. Keep both, and let #662 name `71f14f1a7` as well: Dependabot's #3 landed the
-same dompurify line first, although Phase 3's record says #3 "becomes redundant when this
-lands". `site/package.json` and `site/package-lock.json` merge on their own: mermaid 12.1.0
-from `master` with Phase 3's katex 0.18.2 override (mermaid 12.1.0 still asks for katex
-`^0.16.47`); in a copy of the merged files `npm ci` succeeded and `npm audit` found nothing.
-Run `npm test --prefix site` after that landing.
+A landing can meet a conflict in this file: a branch that rewrote the Status table's earlier
+rows conflicts with `master`'s. Keep `master`'s table and this section, mark the landed phase,
+and take the branch's side everywhere else. Phase 3's branch already has `master` up to
+`494317e40`, taken through Phase 2's branch; the merge that brought it (`6624a7078`) resolved
+the ledger rows #659 and #662 in `docs/records/COMMUNITY_DURIS_TRACKING.md` and the `site/`
+files. A trial merge of its head onto this landing record is clean. Run
+`npm test --prefix site` after Phase 3's landing.
 
-The local dev server (`duris-plan`, ports 4000/4001) runs Phase 9's build. Phase 1 changed
-no server code, so its landing needed no copyover.
+The local dev server (`duris-plan`, ports 4000/4001) runs Phase 9's build of 2026-10-08, the
+review-0 heads. Phase 2's landing did not copyover it: the landed build would take Phases 3
+to 9 off it. It goes onto `master`'s build when Phase 9 lands.
 
 ## Why these
 
@@ -284,6 +286,135 @@ message on purpose because the command line names the database user and host.
   output.
 
 ## Phase 2: unauthenticated connections per address
+
+**Built** on `fix/4-phase-2-connection-limit` (stacked on Phase 1), 2026-10-08:
+
+- `7c21ef491` (a defect found on the way, its own commit): every listener is an
+  `AF_INET6` socket, so an IPv4 client arrives as `::ffff:a.b.c.d`, and both checks of
+  `DURIS_TRUSTED_PROXY_IP` parsed the setting only as IPv6. An IPv4 proxy, such as the
+  `127.0.0.1` in `.env.example`, was never trusted: its PROXY and `X-Forwarded-For`
+  headers were ignored, every website player had the proxy's address, and a completed
+  WebSocket handshake closed every other website login in progress as a stale connection
+  from the same address. `proxy_peer_is_trusted()` (`comm.c`) now matches a v4-mapped peer
+  against the IPv4 form, and `websocket.c` calls it instead of its own copy.
+- `dad3822f6`: `MAX_UNNAMED_CONNECTIONS_PER_ADDRESS` (8) and `UNNAMED_CONNECTION_TIMEOUT`
+  (`120 * WAIT_SEC`) beside `MAX_CONNECTIONS` in `src/core/config.h`. `new_descriptor()`
+  counts, after the address is known, the open connections from it in `CON_SSLNEGO`,
+  `CON_GET_TERM` or `CON_GET_ACCT_NAME` (an authenticated DurisWeb service connection
+  excepted) and, at 8, closes the new one before anything is set up: one `LOG_DEBUG` line
+  `Refused connection from <address>: 8 open connections have not entered an account
+  name.`, and a plain telnet client first reads `Too many connections from your address.`
+  A connection from the trusted proxy without a PROXY header has the proxy's address,
+  shared by its clients, and is not limited. The idle switch closes a connection silent at
+  `CON_GET_ACCT_NAME` after `UNNAMED_CONNECTION_TIMEOUT`.
+  `tests/async/test_connection_limit_journey.py` (in the resource-intensive set) drives a
+  flat-file server: eight telnet connections from `127.0.0.1` and the ninth refused; eight
+  TLS connections still negotiating from `127.0.0.4` and the ninth refused; an account
+  created from `127.0.0.2` meanwhile; eight proxied connections for one PROXY-header client
+  and the ninth refused while another client's is kept; nine telnet connections from the
+  proxy's own address all kept; two website handshakes through the proxy with different
+  `X-Forwarded-For` addresses both kept; a connection silent at the prompt closed between
+  115 and 135 s. `docs/operations/CONFIGURATION.md` has a "Connections before an account
+  name" section, and its `DURIS_TRUSTED_PROXY_IP` row, which had fallen out of its table
+  and said telnet honoured `X-Forwarded-For`, is back in the table and correct.
+
+**What differs from the plan, and why.**
+
+- The trusted-proxy fix was not in the plan; without it the requirement that players
+  behind the proxy are not counted as one address could not hold, and the journey's proxy
+  case failed on it.
+- WebSocket connections are counted as well as telnet and TLS ones, but a WebSocket client
+  already kept at most one connection that had not logged in (a completed handshake closes
+  the address's older ones), so the cap matters for telnet and TLS.
+- A TLS connection that never finishes its handshake needed no new timeout: GnuTLS ends it
+  after its default 40 s (a silent socket on the old dev server was closed after 39 s).
+- The journey is `test_connection_limit_journey.py`, not `run_connection_limit_journey.py`:
+  the runner discovers `test_*.py`, and the resource-intensive set is a list of those. The
+  proxy case is part of the journey, not a separate harness.
+- `docs/operations/RUNBOOK.md` names no login idle timeout and was not changed.
+- A website client that sits at the account name prompt is now closed after 120 s, like a
+  telnet one (it was 15 minutes); the plan's decision 3 does not tell them apart.
+
+**Gate** on `348ae9fd4` (the same tree as `dad3822f6` before the rebase onto Phase 1's
+test fix): `./scripts/format.sh --all --check` clean, `make test-all -j16 TEST_JOBS=16`
+675 passed, 1 failed (`test_root_test_harness.py`, the `gone()` race fixed on Phase 1's
+branch and then passing 12 runs in a row), `test_connection_limit_journey.py` 127 s,
+`make test-db` 48 of 48. The journey's proxy case failed before `7c21ef491`: every
+proxied connection was counted under the proxy's address. Nothing is left.
+
+**Review round 1** (PR #6, review of `d8ec5d566`; tag `backlog/phase-2-review-1`),
+2026-10-09. The branch first took `master` in a merge (`1f11aec12`), not a rebase: Phase 1
+had landed, and Phases 3 to 9 are stacked on this branch's pushed commits. Seven findings,
+each reproduced on an isolated flat-file server first, each fixed in its own commit:
+
+- `b20612298` (an older bug): a telnet connection from a banned address crashed the
+  server. `new_descriptor()` linked the descriptor while its state was still 0
+  (`CON_PLAYING`), and `banlog()` read its NULL character. It now gets its first state
+  before it is linked. A banned connection is `CON_FLUSH`, closed once its message is
+  sent, not `CON_EXIT`, which ended only on input or after 15 minutes.
+- `90cb04769`: one line of input took a connection out of the cap, so one address that
+  sent a name on each connection held all 255 slots. `before_account_login()` counts
+  every state before an account login: the two handshakes, the login, creation and reset
+  prompts, `CON_EXIT` and `CON_FLUSH`. Those prompts close after 120 s of silence, except
+  the wait for a reset code by mail (15 minutes). The constants became
+  `MAX_LOGIN_CONNECTIONS_PER_ADDRESS` and `LOGIN_PROMPT_TIMEOUT`.
+- `b4e6fb0b0`: the leftmost `X-Forwarded-For` entry, which the client writes, became the
+  address, so a website client could close another's login and pick a new address for
+  each connection. The last entry, the one the proxy appended, is used now.
+- `3fb6883e6`: behind a PROXY-protocol proxy, `X-Forwarded-For` replaced the address the
+  PROXY header gave and so escaped the cap. A PROXY-named connection ignores it now.
+- `3bc4fa8bb` (an older bug): a full server leaked a GnuTLS session, about 8 KiB, for each
+  TLS connection it refused. It is freed now.
+- `546605f93`: a website client's messages did not restart the 120 s timer, so an active
+  website login was closed 120 s after its handshake. Every text message restarts it.
+- `2843a9a0c`: IPv6 clients were capped per address; one IPv6 /64 now counts as one client.
+
+`d45ba16c0` corrects the `DURIS_TRUSTED_PROXY_IP` row in `CONFIGURATION.md` for the two
+`X-Forwarded-For` fixes.
+The journey covers each fix: a banned address, eight named connections, a silent password
+prompt, a forged leading `X-Forwarded-For`, a forged one behind a PROXY header, a website
+client that sends every 25 s, one IPv6 /64, and a full server's memory over 1000 refused
+TLS connections. `IsolatedServer` takes an optional hook on the run root (for the ban
+file). This differs from decision 3: the cap and the 120 s limit cover every connection
+before an account login, not only those that have not entered a name.
+
+The round's gates also found four test defects outside Phase 2's code, each fixed:
+
+- `532a869ab`: under load the journey's website client dropped the server's first ping
+  when it arrived in the same read as the handshake response, and the server closed it
+  for a ping timeout.
+- `game_loop_budget` in `make test-db` counted the shutdown's forced shop save, which
+  under load still had shops to queue: fixed on `master` in `f3ba6bd2a`, merged here in
+  `fcfd37baf` (with `cd46e2e93`).
+- Under load a harness could be refused on its first connect: "Entering game loop." came
+  before the listeners opened. Fixed on `master` in `47f5a06d6`, merged in `e60301113`;
+  `3078d2d16` drops the journey's own wait for the listeners.
+- `corpse_haul_count_cap` failed when the kill salvaged a random item into the corpse and
+  the one-slot haul took it: fixed on `master` in `494317e40`, merged in `42b6ac89f`.
+
+**Gate** for round 1: `./scripts/format.sh --all --check` clean and `make test-all -j16
+TEST_JOBS=16` 676 passed, 0 failed (0 timed out, 0 ended by a signal) in 7 min 44 s on
+`3078d2d16` (`test_connection_limit_journey.py` 173 s); `make test-db` 48 of 48 on
+`42b6ac89f`, which adds only `494317e40`'s fixture change to it. Each fix was checked on
+its own before and after: the banned address no longer kills the server; ten named
+connections from one address, the ninth and tenth refused; the forged leading
+`X-Forwarded-For` no longer closes the victim; 1 of 20 forged-header PROXY handshakes
+kept, not 20; VmRSS flat over 3000 refused TLS connections, not +7.6 MB per 1000; a
+website client sending every 25 s open at 175 s, not closed at 120 s; 8 of 12 from one
+IPv6 /64, not 12. Nothing is left.
+
+**After the tag.** Phase 3's gate failed `test_connection_limit_journey.py` once with "the
+server never filled up". The journey fills the server just after `waiting` times out, and
+the connections it opened a few seconds after `waiting` time out during the fill: the
+probe from 127.0.0.39 could take a slot they freed. `97807ecbe` probes from fresh addresses
+until one is refused and keeps any that got in. The landing merges the branch head, which
+is `backlog/phase-2-review-1` plus that commit and this note.
+
+**Landed** 2026-10-09 in `14776698a`, PR #6: a `--no-ff` merge of the branch head
+`ab4f885cd`. `master` had moved to `89080c967` (the telemetry boot journey's stop waits for
+its records), so the merge was gated again before the push: `./scripts/format.sh --all
+--check` clean, `make test-all -j16 TEST_JOBS=16` 676 passed, 0 failed (0 timed out, 0 ended
+by a signal) in 7 min 23 s, `make test-db` 48 of 48.
 
 **Problem.** Found on 2026-10-05 in a full read of one server's logs. Over 51 minutes one
 address opened 753 plain-telnet connections: a median of 13 a minute, at most 26 a minute,
