@@ -24,24 +24,24 @@ Updated 2026-10-09. A new session starts here, then reads the phase it continues
 |---|---|---|
 | 1 | Hung tests and silent backup failures | Landed 2026-10-09 in `e757c77e7` (PR #5, `backlog/phase-1-review-1`). |
 | 2 | Unauthenticated connections per address | Landed 2026-10-09 in `14776698a` (PR #6, `backlog/phase-2-review-1` and a journey fix). |
-| 3 | Shop listing, dompurify, dead helpers | Built on `fix/4-phase-3-shop-listing`; PR #7, review round 1 done, tag `backlog/phase-3-review-1`, gate green; next to land. |
-| 4 | Security record and `SECURITY.md` | Built on `fix/4-phase-4-security-record`; PR #8, review round 1 done, tag `backlog/phase-4-review-1`, gate green. |
+| 3 | Shop listing, dompurify, dead helpers | Landed 2026-10-09 in `8a7f61c00` (PR #7, `backlog/phase-3-review-1` and Phase 2's journey fix). |
+| 4 | Security record and `SECURITY.md` | Built on `fix/4-phase-4-security-record`; PR #8, review round 1 done, tag `backlog/phase-4-review-1`, gate green; next to land. |
 | 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc`; PR #9, review round 1 done, tag `backlog/phase-5-review-1`, gate green. |
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
 | 7 | Quest EXP line and `achievements zones` | Built on `fix/4-phase-7-display-fixes`, gate green; PR #10, tag `backlog/phase-7-review-0`; reviewed, two findings open. |
 | 8 | Specials assigned to missing vnums | Built on `fix/4-phase-8-dead-specials`, gate green; PR #11, tag `backlog/phase-8-review-0`; reviewed, two findings open. |
 | 9 | `board` specials and the audit heading | Built on `fix/4-phase-9-boards`, gate green; PR #12, tag `backlog/phase-9-review-0`; reviewed, seven findings open. |
 
-Phases 1, 2 and 6 are on `master`. Each later phase is on its own branch, stacked on the one
-before; its section here is on that branch, not yet on `master`. What is left: the landings
-of Phases 3, 4 and 5, whose review rounds are done, and a review round and a landing for
-Phases 7, 8 and 9, in order, starting with Phase 3's landing.
+Phases 1, 2, 3 and 6 are on `master`. Each later phase is on its own branch, stacked on the
+one before; its section here is on that branch, not yet on `master`. What is left: the
+landings of Phases 4 and 5, whose review rounds are done, and a review round and a landing
+for Phases 7, 8 and 9, in order, starting with Phase 4's landing.
 
 ## Landing
 
-The pull requests form one stack: #7 (Phase 3) now targets `master`, and #8, #9, #10, #11
-and #12 (Phase 9) each target the previous phase's branch. #7, #8 and #9 have had review
-round 1: each finding fixed in its own commit, its thread resolved, the round's head tagged
+The pull requests form one stack: #8 (Phase 4) now targets `master`, and #9, #10, #11 and
+#12 (Phase 9) each target the previous phase's branch. #8 and #9 have had review round 1:
+each finding fixed in its own commit, its thread resolved, the round's head tagged
 `backlog/phase-<n>-review-1`. #10, #11 and #12 have an adversarial review whose findings are
 open. Take them in order: the review round on the branch where one is still open, then the
 landing as "Every phase" says. A branch's head can be past its last tag (a fix or a merge from
@@ -53,15 +53,14 @@ Delete this file when Phase 9 lands.
 
 A landing can meet a conflict in this file: a branch that rewrote the Status table's earlier
 rows conflicts with `master`'s. Keep `master`'s table and this section, mark the landed phase,
-and take the branch's side everywhere else. Phase 3's branch already has `master` up to
-`494317e40`, taken through Phase 2's branch; the merge that brought it (`6624a7078`) resolved
-the ledger rows #659 and #662 in `docs/records/COMMUNITY_DURIS_TRACKING.md` and the `site/`
-files. A trial merge of its head onto this landing record is clean. Run
-`npm test --prefix site` after Phase 3's landing.
+and take the branch's side everywhere else. Phase 4's branch already has Phase 3's head
+(`4a03cf2a1`), taken in `d44db479b`, and changes no Status row, so a trial merge of its head
+onto this landing record is clean. Phase 4 edits README-level documents: after its landing
+run `python3 tests/async/test_documentation_contract.py` bare, as "Order" says.
 
 The local dev server (`duris-plan`, ports 4000/4001) runs Phase 9's build of 2026-10-08, the
-review-0 heads. Phase 2's landing did not copyover it: the landed build would take Phases 3
-to 9 off it. It goes onto `master`'s build when Phase 9 lands.
+review-0 heads. The landings so far did not copyover it: the landed build would take the
+phases still on branches off it. It goes onto `master`'s build when Phase 9 lands.
 
 ## Why these
 
@@ -564,6 +563,16 @@ journey in `97807ecbe`, and `b4b5068e7` merges Phase 2's `ab4f885cd` with it. **
 `b4b5068e7`: `./scripts/format.sh --all --check` clean, `make test-all -j16 TEST_JOBS=16` 676
 passed, 0 failed (0 timed out, 0 ended by a signal), `make test-db` 48 of 48, and on `site/`
 `npm audit` 0 vulnerabilities and `npm test --prefix site` 15 passed.
+
+**Landed** 2026-10-09 in `8a7f61c00`, PR #7: a `--no-ff` merge of the branch head
+`4a03cf2a1`, which is `backlog/phase-3-review-1` plus Phase 2's journey fix and its record.
+`master` had moved on with Phase 2's landing and `89080c967`, and the merge was clean:
+`run_telemetry_schema_boot_journey.py` keeps both this branch's copyover marker and
+`master`'s wait for the records before a stop. Gated again on the merge:
+`./scripts/format.sh --all --check` clean and `make test-all -j16 TEST_JOBS=16` 676 passed,
+0 failed (0 timed out, 0 ended by a signal) in 7 min 41 s before the push; after it,
+`make test-db` 48 of 48, and on `site/` `npm audit` 0 vulnerabilities and
+`npm test --prefix site` 15 passed.
 
 **Problem.** Three small things the community tree (`Community-Duris/Duris`, master at
 `a1e4a7efd`, split from ours at `e1357a30a` on 2026-09-23) fixed after the split, found on
