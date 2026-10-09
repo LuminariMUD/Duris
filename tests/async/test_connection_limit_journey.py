@@ -304,14 +304,20 @@ def main() -> int:
                         f"was closed: {website.ended!r}")
 
                 # Fill the server: a TLS connection it refuses keeps no GnuTLS session
-                # (about 8 KiB each before).
+                # (about 8 KiB each before). The connections opened just after `waiting`
+                # reach their 120 s now and free slots, so probe until one is refused.
                 for octet in range(40, 72):
                     for _ in range(LIMIT):
                         held.append(socket.create_connection(
                             ("127.0.0.1", port), timeout=5, source_address=(f"127.0.0.{octet}", 0)))
-                full = socket.create_connection(("127.0.0.1", port), timeout=5,
-                                                source_address=("127.0.0.39", 0))
-                require(closed_within(full, 10) is not None, "the server never filled up")
+                for octet in range(72, 100):
+                    probe = socket.create_connection(("127.0.0.1", port), timeout=5,
+                                                     source_address=(f"127.0.0.{octet}", 0))
+                    if closed_within(probe, 5) is not None:
+                        break
+                    held.append(probe)
+                else:
+                    raise AssertionError("the server never filled up")
                 before = rss_kib(server)
                 for _ in range(1000):
                     socket.create_connection(("127.0.0.1", tls_port), timeout=5,
