@@ -77,7 +77,7 @@ for needle in ("ship_activity();", "short_affect_update();", "wimps_in_approve_q
 for needle in ("perform_violence();", "display_map_room(", "map_look(t_ch, MAP_AUTOMAP);",
                "gmcp_send_group_status(t_ch);", "move_regen(t_ch"):
     assert contains(combat, needle)
-for needle in ("nevent_advance_tick();", "affect_update();", "point_update();",
+for needle in ("nevent_advance_tick();", "affect_update(pulse);", "point_update();",
                "latency_trace_record(\"total_tick\"", "select(0, (fd_set *)0"):
     assert contains(reset, needle)
 
