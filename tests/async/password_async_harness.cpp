@@ -8,6 +8,7 @@
 #include <cassert>
 #include <chrono>
 #include <thread>
+#include <time.h>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -61,14 +62,23 @@ void persistence_alert(int, const char *, const char *, const char *, const char
 void account_recovery_invalidate(const char *) {}
 using Clock = std::chrono::steady_clock;
 static command_latency_tracker tracker = {};
-static void record(Clock::time_point start, command_latency_kind kind, int state)
+// A call is timed by this thread's CPU, not the wall clock: on a loaded machine
+// the wall clock also counts time the scheduler gives other processes, which
+// made a call "slow" with no work in it. Hashing on this thread still costs it
+// a bcrypt (cost 12, far over the 50 ms threshold), and a call that waits for
+// the worker instead leaves no pulse pending, which `pending_pulses > 0` catches.
+static uint64_t thread_cpu_us()
+{
+	timespec now;
+	clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now);
+	return (uint64_t)now.tv_sec * 1000000 + (uint64_t)now.tv_nsec / 1000;
+}
+static void record(uint64_t start_us, command_latency_kind kind, int state)
 {
 	command_latency_event event = {};
 	command_latency_event_prepare(&event, kind, state, 1, "test",
 				      kind == COMMAND_LATENCY_NANNY ? "nanny" : "open");
-	command_latency_record(
-		&tracker, &event,
-		std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start).count());
+	command_latency_record(&tracker, &event, thread_cpu_us() - start_us);
 }
 static int pending_pulses = 0;
 static void drain(P_desc d, command_latency_kind kind)
@@ -79,7 +89,7 @@ static void drain(P_desc d, command_latency_kind kind)
 		// Only the completion asks for prompt framing (IAC GA); a pending pulse
 		// that did would frame an empty prompt on every pulse while hashing.
 		d->prompt_mode = FALSE;
-		auto start = Clock::now();
+		auto start = thread_cpu_us();
 		assert(password_async_pulse(d));
 		record(start, kind, STATE(d));
 		if (d->password_request)
@@ -117,7 +127,7 @@ int main(int argc, char **)
 	// mismatch/retry and the confirmed account password-change save branch.
 	char entered[] = "password-one";
 	STATE(d) = CON_GET_NEW_ACCT_PASSWD;
-	auto nanny_start = Clock::now();
+	auto nanny_start = thread_cpu_us();
 	get_new_account_password(d, entered);
 	record(nanny_start, COMMAND_LATENCY_NANNY, STATE(d));
 	assert(d->password_request && !d->account->acct_password && !entered[0]);
@@ -125,7 +135,7 @@ int main(int argc, char **)
 	assert(STATE(d) == CON_VERIFY_NEW_ACCT_PASSWD);
 	assert(pending_pulses > 0); // The pending-pulse check above actually ran.
 	char wrong[] = "different";
-	nanny_start = Clock::now();
+	nanny_start = thread_cpu_us();
 	verify_new_account_password(d, wrong);
 	record(nanny_start, COMMAND_LATENCY_NANNY, STATE(d));
 	drain(d, COMMAND_LATENCY_NANNY);
@@ -205,7 +215,7 @@ int main(int argc, char **)
 	std::string hash;
 	int calls = 0;
 	STATE(d) = CON_GET_NEW_ACCT_PASSWD;
-	auto start = Clock::now();
+	auto start = thread_cpu_us();
 	assert(password_async_start(d, password_work_submit("password-one", nullptr, nullptr, 0, 0),
 				    nullptr,
 				    [&](P_desc done, int valid, const char *result)
@@ -282,7 +292,7 @@ int main(int argc, char **)
 	char legacy[65];
 	for (size_t i = 0; i < sizeof(digest); ++i)
 		snprintf(legacy + i * 2, 3, "%02x", digest[i]);
-	start = Clock::now();
+	start = thread_cpu_us();
 	assert(password_async_start(d, password_work_submit("password-one", legacy, nullptr, 1, 1),
 				    legacy,
 				    [&](P_desc, int valid, const char *result)
