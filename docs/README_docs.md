@@ -183,6 +183,9 @@ are in Git history at commit `212592e3`.
 - [Persistence reset: memory is the authority](adr/0002-persistence-reset-memory-is-the-authority.md):
   why saves never refuse and one writer applies them, what a crash costs, and what was
   deliberately left out.
+- [Player privacy: chat logging, snoop and address retention](adr/0003-player-privacy-chat-snoop-addresses.md):
+  no logging of private conversation (in the code since 2026-10-09), snoop that tells its
+  target, and network addresses kept at most 30 days (both still to implement).
 - [Server architecture diagram](diagrams/duris-server-architecture.html) and
   [database model](diagrams/duris-database-model.html)
 

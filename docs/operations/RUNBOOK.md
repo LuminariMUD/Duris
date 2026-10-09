@@ -274,11 +274,18 @@ test noise.
 All under `logs/`; each boot moves the last run's into `logs/old-logs/<timestamp>/`,
 within the `DURIS_LOG_ARCHIVE_MB` cap.
 
+The logs hold players' names and network addresses. By
+[ADR 0003](../adr/0003-player-privacy-chat-snoop-addresses.md) (2026-10-09), `logs/log/chat`
+carries only petitions, immortal actions and the newbie channel, and `cmd.debug` keeps a
+conversation command's word but not its text. The archives are to be kept at most 30 days;
+that is not enforced yet, and the cap is by size only. Treat a copy of `logs/` as player
+data.
+
 | File | Content |
 |------|---------|
 | `logs/log/status` | Boot progress, MySQL connection status, system messages |
 | `logs/log/syslog` | Game events |
-| `logs/log/cmd.debug` | The last 500 player commands, written when the server exits or crashes |
+| `logs/log/cmd.debug` | The last 500 player commands, written when the server exits or crashes; a say, tell or other conversation command keeps only its command word |
 | `logs/log/wizlog` | Immortal commands |
 | `logs/duris-console.log` | stdout/stderr of the supervised process |
 
@@ -551,7 +558,8 @@ These are investigated and understood; they are not signs of a failed boot.
 |---|---|
 | `Heaven has invalid number: 1 (should be 0)` | `recalc_zone_numbers()` finding and correcting a zone number that disagrees with its lowest room vnum. Self-healing; fixing the data would be zone-numbering surgery with a wide blast radius. |
 | `PERSISTENCE: worker_unavailable_flat_fallback` (a few lines at boot) | Item events fired during world load are written to the flat fallback and replayed before the workers start -- followed by `replayed N fallback persistence events; 0 remain queued`. Working as designed. |
-| Mob log `RIDICULOUS damage` / `M cmd not executed` | Area data, not engine defects. |
+| Mob log `RIDICULOUS damage` / `M cmd not executed` | Area data, not engine defects. `M cmd not executed` is a rare load's chance roll missing: a load under 100% is rolled only by the boot's forced reset, as the `Rareload` help says, so these lines come only at boot. |
+| Debug log `a pitiful slave (19953) got 1500p from room.`, twice per boot | Intended (owner decision, 2026-10-09). The slave, mob 19617, loads in room 19624 and wanders into the Vault of Avernus (room 19953), where it picks up the two coin piles the zone loads there; killing it gets them back. |
 
 ## Backups and maintenance scripts
 

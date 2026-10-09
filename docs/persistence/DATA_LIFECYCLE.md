@@ -16,10 +16,17 @@ maintenance is checked against its owned patterns. A new hardcoded `mud:` or
 `ship:snapshot:` literal outside the registry fails focused validation.
 
 This is an engineering control, not legal advice or a compliance conclusion. The
-repository does not contain an approved lawful-basis or retention decision. Those
-fields therefore remain `pending_controller_decision`, and the global policy keeps
-destructive lifecycle rules disabled. A repository operator must not replace pending
-values without an externally reviewed decision and traceable reference.
+repository does not contain an approved lawful-basis decision, and it has one retention
+decision (below). The fields therefore remain `pending_controller_decision`, and the global
+policy keeps destructive lifecycle rules disabled. A repository operator must not replace
+pending values without an externally reviewed decision and traceable reference.
+
+The one retention decision,
+[ADR 0003](../adr/0003-player-privacy-chat-snoop-addresses.md) (2026-10-09), keeps network
+addresses at most 30 days, except on the ban list. It is the decision reference for the
+stores it names: `log_entries`, `account_ips`, `account_login_history`, `ip_info`, and the
+`last_ip` columns. Their manifest entries take that reference when the code that enforces
+the limit lands. Until then they stay pending like the rest.
 
 ## Manifest contract
 
