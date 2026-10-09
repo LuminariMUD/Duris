@@ -10,6 +10,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
@@ -103,6 +104,28 @@ def partition_tests(tests: list[Path]) -> tuple[list[Path], list[Path]]:
     return parallel, resource_intensive
 
 
+# The tests now running, so that a runner that is stopped can end them too; once it is
+# stopping, a test that a worker starts anyway is ended at once.
+running: set[subprocess.Popen] = set()
+running_lock = threading.Lock()
+stopping = False
+
+
+def end_group(process: subprocess.Popen) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def stop_running_tests() -> None:
+    global stopping
+    with running_lock:
+        stopping = True
+        for process in running:
+            end_group(process)
+
+
 def run_test(path: Path, deadline: float) -> TestResult:
     started = time.monotonic()
     # A file, not a pipe: reading it does not wait on a process that outlives the test.
@@ -114,13 +137,21 @@ def run_test(path: Path, deadline: float) -> TestResult:
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+        with running_lock:
+            running.add(process)
+            if stopping:
+                end_group(process)
         timed_out = False
         try:
             process.wait(timeout=deadline)
         except subprocess.TimeoutExpired:
             timed_out = True
-            os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
+        # Whatever the test started goes with it, however it ended: a crashed journey's
+        # server would keep its port and its CPU while later tests run.
+        end_group(process)
+        process.wait()
+        with running_lock:
+            running.discard(process)
         output.seek(0)
         text = output.read().decode(errors="replace")
     return TestResult(
@@ -207,19 +238,25 @@ def main() -> int:
 
     def run_all(paths: list[Path], workers: int, deadline: float) -> None:
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures: dict[Future[TestResult], Path] = {
-                executor.submit(run_test, path, deadline): path for path in paths
-            }
-            pending = set(futures)
-            last_progress = time.monotonic()
-            while pending:
-                done, pending = wait(pending, timeout=PROGRESS_SECONDS, return_when=FIRST_COMPLETED)
-                for future in done:
-                    report(future.result())
-                if pending and time.monotonic() - last_progress >= PROGRESS_SECONDS:
-                    running = sorted(relative(futures[future]) for future in pending if future.running())
-                    print(f"    still running: {', '.join(running)}", flush=True)
-                    last_progress = time.monotonic()
+            try:
+                futures: dict[Future[TestResult], Path] = {
+                    executor.submit(run_test, path, deadline): path for path in paths
+                }
+                pending = set(futures)
+                last_progress = time.monotonic()
+                while pending:
+                    done, pending = wait(pending, timeout=PROGRESS_SECONDS, return_when=FIRST_COMPLETED)
+                    for future in done:
+                        report(future.result())
+                    if pending and time.monotonic() - last_progress >= PROGRESS_SECONDS:
+                        names = sorted(relative(futures[future]) for future in pending if future.running())
+                        print(f"    still running: {', '.join(names)}", flush=True)
+                        last_progress = time.monotonic()
+            except BaseException:
+                # Ctrl-C or SIGTERM: start nothing more, and end what is running.
+                executor.shutdown(wait=False, cancel_futures=True)
+                stop_running_tests()
+                raise
 
     run_all(parallel_tests, jobs, POOLED_DEADLINE_SECONDS)
     # These wait on game time, not on the CPU, so they run together after the pool.
@@ -241,4 +278,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # A SIGTERM (a supervisor, `timeout`) unwinds like Ctrl-C, which ends the running tests.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(128 + signal.SIGTERM))
     raise SystemExit(main())

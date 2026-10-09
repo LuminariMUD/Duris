@@ -48,6 +48,12 @@ def add_stock(runtime):
     fillers = "O 0 22812 30 22800 100 0 0 0 * count-cap filler\n" * 20
     zone_path.write_text(zone.replace(anchor, anchor + extra_resets + fillers))
 
+    # A random salvage drop on the kill would put a fourth item in the corpse, and the haul
+    # with one free slot could take it instead of a root. These values win over the ones
+    # above them in the file.
+    with (runtime / "lib/random_equipment.cfg").open("a") as config:
+        config.write("drop.piece.percentage=0\ndrop.equipment.percentage=0\n")
+
 
 def run(binary, backend):
     assert backend in ("mariadb", "flatfile")

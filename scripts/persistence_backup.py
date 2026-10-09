@@ -68,7 +68,8 @@ def subprocess_error(code, args, phase, status, stderr, env):
     """A failed command's basename, the phase that ran it, its exit status (negative: the
     signal that ended it; None: its deadline) and the last lines of its stderr. Its command
     line and messages can name the database user, host and password, so the values the
-    command was given are replaced, longest first, before the tail is cut."""
+    command was given are replaced, longest first, before the tail is cut; so is the client
+    host the server names, which is this host's address as the server sees it."""
     text = "\n".join(stderr.decode(errors="replace").splitlines()[-STDERR_TAIL_LINES:])
     given = os.environ if env is None else env
     names = {}
@@ -77,6 +78,8 @@ def subprocess_error(code, args, phase, status, stderr, env):
             names.setdefault(given[name], name)
     for value in sorted(names, key=len, reverse=True):
         text = text.replace(value, f"<{names[value]}>")
+    # 'user'@'host' (1044, 1045, 1142) and "Host 'host' is not allowed" (1129, 1130).
+    text = re.sub(r"(@|\bHost )'[^']*'", r"\1'<CLIENT_HOST>'", text)
     return BackupError(code, {"command": Path(args[0]).name, "phase": phase, "exit_status": status,
                               "stderr": text.encode()[-STDERR_TAIL_BYTES:].decode(errors="ignore")})
 
@@ -398,14 +401,26 @@ def streaming_process(args, *, phase, env, input_pipe=False, timeout=300):
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
-        timer = threading.Timer(timeout, expire)
+        expired = threading.Event()
+        def at_deadline():
+            expired.set()
+            expire()
+        timer = threading.Timer(timeout, at_deadline)
         timer.daemon = True
         timer.start()
         try:
-            yield process
+            try:
+                yield process
+            except BrokenPipeError:
+                # An import stops reading at the first statement it rejects; its status says so.
+                if not input_pipe:
+                    raise
             status = process.wait(timeout=timeout)
             if status:
                 stderr.seek(0)
+                if expired.is_set():
+                    raise subprocess_error("subprocess_timed_out", args, phase, None,
+                                           stderr.read(), env)
                 raise subprocess_error("streaming_process_failed", args, phase, status,
                                        stderr.read(), env)
         finally:
@@ -416,7 +431,9 @@ def streaming_process(args, *, phase, env, input_pipe=False, timeout=300):
                 process.wait()
             for stream in (process.stdin, process.stdout):
                 if stream is not None and not stream.closed:
-                    stream.close()
+                    # Closing flushes what was written, which fails if nothing reads it.
+                    with contextlib.suppress(BrokenPipeError):
+                        stream.close()
 
 
 def run(args, *, phase, env=None, input=None, timeout=300):

@@ -652,15 +652,20 @@ int websocket_parse_handshake(struct descriptor_data *d, const char *buf, size_t
 			origin_seen = 1;
 			origin_ok = websocket_origin_allowed(value);
 		}
-		/* x-forwarded-for - trust only from the configured immediate proxy */
+		/* x-forwarded-for - trust only from the configured immediate proxy, and only the
+		 * last entry, which that proxy appended: the client writes the ones before it.
+		 * A proxy that sent a PROXY header passes the client's request through untouched. */
 		else if (strncasecmp(line, "X-Forwarded-For:", 16) == 0)
 		{
-			if (proxy_peer_is_trusted(d->descriptor))
+			if (!d->proxy_named_client && proxy_peer_is_trusted(d->descriptor))
 			{
 				const char *value = skip_header_value(line, 16);
+				const char *last_comma = strrchr(value, ',');
 				char client_ip[INET6_ADDRSTRLEN];
 				int i = 0;
-				while (value[i] && value[i] != ',' && value[i] != ' ' &&
+				if (last_comma)
+					value = skip_header_value(last_comma, 1);
+				while (value[i] && value[i] != ' ' &&
 				       i < (int)(sizeof(client_ip) - 1))
 				{
 					client_ip[i] = value[i];
@@ -1629,6 +1634,10 @@ static void websocket_handle_message(struct descriptor_data *d, int opcode, char
 {
 	if (opcode == WS_OPCODE_TEXT && payload)
 	{
+		/* A message is input, as a line is on telnet: it restarts the idle timer.  A
+		 * website login stays at CON_GET_ACCT_NAME until it succeeds. */
+		d->wait = 0;
+
 		/* parse json and extract command/data */
 		cJSON *json = cJSON_Parse(payload);
 		if (json)

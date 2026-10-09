@@ -71,9 +71,13 @@ assert 'fopen("areas_mini/world.shp", "r")' in SHOP
 assert "STUDIOPROC: minimal world mode, proc engine idle." in STUDIOPROC
 
 assert "Skipping persistence worker startup in mini mode." not in COMM
-pipeline_startup = COMM[
-    COMM.index('logit(LOG_STATUS, "Entering game loop.");') : COMM.index("latency_trace_reset();")
-]
+pipeline_startup = COMM[COMM.index("game_booted = TRUE;") : COMM.index("latency_trace_reset();")]
+# Harnesses connect once this line appears, so it must follow the listeners.
+game_loop_body = COMM[COMM.index("void game_loop(int port, int sslport)") :]
+assert game_loop_body.index("S = init_socket(sslport);") < game_loop_body.index(
+    'logit(LOG_STATUS, "Entering game loop.");'
+)
+assert COMM.count('logit(LOG_STATUS, "Entering game loop.");') == 1
 # A minimal world saves its lockers through the writer like the full one, on both backends.
 assert "\tlocker_async_init();" in pipeline_startup
 assert "player_save_pipeline_init" in pipeline_startup
