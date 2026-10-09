@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""The bulletin boards: board_info[] against the world, and find_board() under sanitizers.
+"""The bulletin boards: board_info[] against the world, and boards.c under sanitizers.
 
 Every board_info[] row in boards.c names a board in the world make_all builds: an object,
 in an area file areas/AREA lists, whose keywords include "board" or "bulletin".
 Object 42 was taken for a pearl necklace from areas/obj/dalvik.obj, which is not in the
 world; the world's 42 is heavens.obj's board of IDEAS.
 
-find_board() skips a row whose object the world lacks: initialize_boards() leaves such a
-row's rnum at -1, and find_board() used it as an index into obj_index[]. The production
-function runs under ASan and UBSan with a missing row before the board in the room.
+The production board() and find_board() run under ASan and UBSan. A board answers for
+its own board_info[] row, found from the object whose special fired (room 1213 holds two
+boards), and only while it stands in the character's room: special() also calls the
+special for boards a character carries. A row whose object the world lacks keeps rnum
+-1 and matches nothing.
 """
 from pathlib import Path
 import re
@@ -36,42 +38,75 @@ assert not not_boards, f"board_info[] rows that name no board in the world: {not
 
 PRELUDE = r'''
 #include <cassert>
+#include <string>
 #include <vector>
-struct obj_data { obj_data *next_content = nullptr; int R_num = 0; };
-struct index_data { int virtual_number = 0; };
-struct room_data { obj_data *contents = nullptr; };
-struct char_data { int in_room = 0; };
+struct obj_data { obj_data *next_content = nullptr; int R_num = 0, loc_p = 0; struct { int room = -1; } loc; };
+struct descriptor_data { int unused = 0; };
+struct char_data { int in_room = 0; descriptor_data *desc = nullptr; };
 typedef obj_data *P_obj;
-struct board_info_type { int vnum, rnum; };
+typedef char_data *P_char;
 #define NUM_OF_BOARDS 3
-#define BOARD_RNUM(i) (board_info[i].rnum)
-board_info_type board_info[NUM_OF_BOARDS] = {{89, 0}, {48101, -1}, {29, 1}};
-std::vector<index_data> objects(2);
-index_data *obj_index;
-room_data world[1];
+#include "BOARDS_H"
+#define FALSE 0
+#define LOC_ROOM 1
+#define OBJ_IN_ROOM(o, r) ((o) && ((o)->loc_p & LOC_ROOM) && (o)->loc.room == (r))
+#define LOG_BOARD "board"
+enum { CMD_SET_PERIODIC = -1, CMD_WRITE = 1, CMD_LOOK, CMD_EXAMINE, CMD_READ, CMD_REMOVE };
+std::vector<std::string> logged;
+void logit(const char *, const char *format, ...) { logged.push_back(format); }
+board_info_type board_info[NUM_OF_BOARDS] = {
+    {89, 0, 0, 0, "", 0}, {48101, 0, 0, 0, "", -1}, {90, 0, 0, 0, "", 1}};
+int shown = -1;
+void Board_write_message(int, char_data *, char *) {}
+int Board_show_board(int board_type, char_data *, char *) { shown = board_type; return 1; }
+int Board_display_msg(int, char_data *, char *) { return 1; }
+int Board_remove_msg(int, char_data *, char *) { return 1; }
 '''
 
 DRIVER = r'''
 int main() {
-    obj_index = objects.data();
-    objects[0].virtual_number = 89;
-    objects[1].virtual_number = 29;
-    obj_data board_29;
-    board_29.R_num = 1;
-    world[0].contents = &board_29;
+    descriptor_data link;
     char_data reader;
-    assert(find_board(&reader) == 2);
-    world[0].contents = nullptr;
-    assert(find_board(&reader) == -1);
+    reader.in_room = 7;
+    reader.desc = &link;
+    char look[] = "board";
+
+    // Room 1213: the holy board (row 0) and the feedback board (row 2) side by side.
+    obj_data holy, feedback;
+    holy.R_num = 0;
+    feedback.R_num = 1;
+    for (obj_data *standing : {&holy, &feedback}) {
+        standing->loc_p = LOC_ROOM;
+        standing->loc.room = 7;
+    }
+    feedback.next_content = &holy;
+    assert(board(&holy, &reader, CMD_LOOK, look) == 1 && shown == 0);
+    assert(board(&feedback, &reader, CMD_LOOK, look) == 1 && shown == 2);
+
+    // A carried board is not the room's: no answer, nothing logged.
+    obj_data carried;
+    carried.R_num = 1;
+    shown = -1;
+    assert(board(&carried, &reader, CMD_LOOK, look) == FALSE && shown == -1 && logged.empty());
+
+    // An object with no row passes over the rnum -1 row and is logged.
+    obj_data plain;
+    plain.R_num = 5;
+    plain.loc_p = LOC_ROOM;
+    plain.loc.room = 7;
+    assert(find_board(&plain) == -1);
+    assert(board(&plain, &reader, CMD_LOOK, look) == FALSE && logged.size() == 1);
 }
 '''
 
-harness = "\n".join([PRELUDE, extract_function("cmd/boards.c", "int find_board("), DRIVER])
-with tempfile.TemporaryDirectory(prefix="board-lookup-") as directory:
+FUNCTIONS = ["int find_board(", "int board("]
+harness = "\n".join([PRELUDE.replace("BOARDS_H", str(source("cmd/boards.h"))),
+                     *(extract_function("cmd/boards.c", name) for name in FUNCTIONS), DRIVER])
+with tempfile.TemporaryDirectory(prefix="boards-") as directory:
     cpp = Path(directory) / "test.cpp"
     binary = Path(directory) / "test"
     cpp.write_text(harness)
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
                     "-fsanitize=address,undefined", "-g", str(cpp), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
-print(f"{len(rows)} board_info rows name world boards; find_board skips a missing one")
+print(f"{len(rows)} board_info rows name world boards; each board answers for its own row")

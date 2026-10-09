@@ -37,7 +37,6 @@ TO ADD A NEW BOARD, simply follow our easy 3-step program:
 #include <sys/time.h>
 #include <unistd.h>
 
-extern P_room world;
 extern P_desc descriptor_list;
 extern P_index obj_index;
 
@@ -119,18 +118,12 @@ int find_slot(void)
 	return -1;
 }
 
-/* search the room ch is standing in to find which board he's looking at */
-int find_board(struct char_data *ch)
+/* the board_info[] row of a board object, or -1 */
+int find_board(P_obj obj)
 {
-	P_obj obj;
-	int i;
-
-	for (obj = world[ch->in_room].contents; obj; obj = obj->next_content)
-		for (i = 0; i < NUM_OF_BOARDS; i++)
-			/* A row whose object the world lacks keeps rnum -1 (initialize_boards). */
-			if (BOARD_RNUM(i) >= 0 && obj_index[BOARD_RNUM(i)].virtual_number ==
-							  obj_index[obj->R_num].virtual_number)
-				return i;
+	for (int i = 0; i < NUM_OF_BOARDS; i++)
+		if (BOARD_RNUM(i) == obj->R_num)
+			return i;
 	return -1;
 }
 
@@ -169,7 +162,7 @@ void initialize_boards(void)
 		exit(1);
 }
 
-int board([[maybe_unused]] P_obj obj, P_char ch, int cmd, char *argument)
+int board(P_obj obj, P_char ch, int cmd, char *argument)
 {
 	int board_type;
 
@@ -190,7 +183,13 @@ int board([[maybe_unused]] P_obj obj, P_char ch, int cmd, char *argument)
 		return FALSE;
 	}
 
-	if ((board_type = find_board(ch)) == -1)
+	/* special() also calls this for boards ch carries; only one in the room answers */
+	if (!OBJ_IN_ROOM(obj, ch->in_room))
+	{
+		return FALSE;
+	}
+
+	if ((board_type = find_board(obj)) == -1)
 	{
 		logit(LOG_BOARD, "  degenerate board!  (what the hell...)");
 		return FALSE;
