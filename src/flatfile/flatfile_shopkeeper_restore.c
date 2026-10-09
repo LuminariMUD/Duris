@@ -175,15 +175,13 @@ flatfile_shopkeeper_restore_result flatfile_shopkeeper_restore_catalog(const std
 	{
 		P_char incumbent = nullptr;
 		int incumbent_count = 0;
-		for (P_char existing = character_list; existing; existing = existing->next)
+		for (P_char existing : live_shopkeepers(static_cast<int>(record.shop_id)))
 		{
-			if (!IS_NPC(existing) || GET_MASTER(existing) ||
-			    replacements.find(existing) != replacements.end() ||
+			if (replacements.find(existing) != replacements.end() ||
 			    existing->in_room < 0 || existing->in_room > top_of_world ||
 			    mob_index[GET_RNUM(existing)].virtual_number != record.mob_vnum ||
 			    (!shop_index[record.shop_id].shop_is_roaming &&
-			     world[existing->in_room].number != record.room_vnum) ||
-			    singleton_shop_id(existing) != static_cast<int>(record.shop_id))
+			     world[existing->in_room].number != record.room_vnum))
 				continue;
 			incumbent = existing;
 			++incumbent_count;

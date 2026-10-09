@@ -13,6 +13,7 @@
 #include "item/item_actions.h"
 #include "core/structs.h"
 #include "net/comm.h"
+#include "world/world_singletons.h"
 #include "world/db.h"
 #include "world/events.h"
 #include "world/falling.h"
@@ -3848,6 +3849,8 @@ void extract_char(P_char ch)
 	char_from_room(ch);
 	training_dummy_end_removal(ch);
 
+	if (IS_NPC(ch))
+		shopkeeper_mob_extracted(ch);
 	// Pull the char from the list
 	// If at the head..
 	if (ch == character_list)

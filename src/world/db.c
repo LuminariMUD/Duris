@@ -1993,6 +1993,7 @@ P_char read_mobile(int nr, int type, bool apply_mob_gold)
 	mob->next = character_list;
 	character_list = mob;
 	mob->only.npc->R_num = nr;
+	shopkeeper_mob_created(mob);
 	mob->desc = NULL;
 	mob_index[nr].number++;
 	idnum++;
@@ -3245,10 +3246,7 @@ static bool live_shopkeeper_for_identity(int shop)
 {
 	if (!shop_index || shop < 0 || shop >= number_of_shops)
 		return false;
-	for (P_char keeper = character_list; keeper; keeper = keeper->next)
-		if (singleton_shop_id(keeper) == shop)
-			return true;
-	return false;
+	return !live_shopkeepers(shop).empty();
 }
 
 /* execute the reset command table of a given zone */

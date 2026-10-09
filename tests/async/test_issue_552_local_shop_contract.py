@@ -93,7 +93,7 @@ for record in records[1:]:
 assert "static int configured_shopkeeper_for_room" in DB
 assert "configured_shopkeeper_for_room(ZCMD.arg1, ZCMD.arg3)" in DB
 assert "static bool live_shopkeeper_for_identity" in DB
-assert "singleton_shop_id(keeper) == shop" in DB
+assert "!live_shopkeepers(shop).empty()" in DB
 assert "live_shopkeeper_for_identity(configured_shop)" in DB
 assert "bind_shopkeeper(mob, configured_shop)" in DB
 assert "is_replicated_shop(configured_shop)" in DB

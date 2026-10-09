@@ -35,6 +35,16 @@ std::unordered_set<P_char> boot_shopkeepers;
 // answers for them without the shop table: a boot's zone resets asked it 13.6 million
 // times, each a scan of every shop.
 std::vector<bool> prototype_keeps_shop;
+// The live NPCs of those prototypes, as read_mobile() creates them and extract_char()
+// removes them. A shop's live keepers are among them, so a search for them need not walk
+// the whole character list, which each of a boot's 519 resets of a fixed keeper did.
+std::unordered_set<P_char> keeper_prototype_mobs;
+
+bool keeps_shop(int prototype)
+{
+	return prototype >= 0 && static_cast<size_t>(prototype) < prototype_keeps_shop.size() &&
+	       prototype_keeps_shop[prototype];
+}
 
 size_t keeper_stock(P_char keeper)
 {
@@ -96,6 +106,31 @@ void index_shopkeeper_prototypes()
 	for (int shop = 0; shop < number_of_shops; ++shop)
 		if (shop_index[shop].keeper >= 0 && shop_index[shop].keeper <= top_of_mobt)
 			prototype_keeps_shop[shop_index[shop].keeper] = true;
+	keeper_prototype_mobs.clear();
+	for (P_char ch = character_list; ch; ch = ch->next)
+		if (IS_NPC(ch) && keeps_shop(GET_RNUM(ch)))
+			keeper_prototype_mobs.insert(ch);
+}
+
+void shopkeeper_mob_created(P_char mob)
+{
+	// read_mobile() reports a mob before it marks it an NPC, which GET_RNUM() checks.
+	if (keeps_shop(mob->only.npc->R_num))
+		keeper_prototype_mobs.insert(mob);
+}
+
+void shopkeeper_mob_extracted(P_char mob)
+{
+	keeper_prototype_mobs.erase(mob);
+}
+
+std::vector<P_char> live_shopkeepers(int shop)
+{
+	std::vector<P_char> keepers;
+	for (P_char mob : keeper_prototype_mobs)
+		if (singleton_shop_id(mob) == shop)
+			keepers.push_back(mob);
+	return keepers;
 }
 
 int singleton_shop_id(P_char keeper)
@@ -110,9 +145,7 @@ int singleton_shop_id(P_char keeper)
 		// A stale binding is safer than falling back to a template/room guess.
 		return -1;
 	}
-	const int prototype = GET_RNUM(keeper);
-	if (prototype < 0 || static_cast<size_t>(prototype) >= prototype_keeps_shop.size() ||
-	    !prototype_keeps_shop[prototype])
+	if (!keeps_shop(GET_RNUM(keeper)))
 		return -1;
 	const int room = keeper->in_room >= 0 && keeper->in_room <= top_of_world ?
 				 world[keeper->in_room].number :

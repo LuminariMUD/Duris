@@ -22,8 +22,9 @@ for token in (
     "item_ownership_runtime_forget(item.object_uid)",
     "shop_trade_runtime_replace_revisions(records)",
     "replacements.find(existing) != replacements.end()",
-    "GET_MASTER(existing)",
-    "singleton_shop_id(existing)",
+    # The incumbents are the shop's live keepers (world_singletons_harness.cpp checks that
+    # live_shopkeepers() names what singleton_shop_id() names).
+    "live_shopkeepers(static_cast<int>(record.shop_id))",
     "shop_index[record.shop_id].dirty = 1",
 ):
     if token not in SOURCE:
