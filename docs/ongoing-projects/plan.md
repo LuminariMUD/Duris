@@ -862,9 +862,9 @@ and L2392); 70501→ship_shop_proc (L2391); 8010→pet_shops (L2435); 8211→dum
 - `a4ca22408`: the eighteen live `board` lines in `specs.assign.c` are deleted; 55197 gets
   `{ 55197, AVATAR, AVATAR, AVATAR, "lib/boards/winterhaven", 0 }` and `NUM_OF_BOARDS` is
   45; `test_spec_assign_vnums.py` fails when `specs.assign.c` assigns `board` again.
-- `65968e748`: `areas/zon/heavens.zon` calls object 42 "a dazzling pearl necklace"; the
-  audit prints `== Orphan payload rows (not a loss: the load takes them, the next save
-  claims them) ==`.
+- `65968e748`: `areas/zon/heavens.zon` calls object 42 "a dazzling pearl necklace" (wrong,
+  undone in review round 1); the audit prints `== Orphan payload rows (not a loss: the load
+  takes them, the next save claims them) ==`.
 - `2a05cb23f` (a defect found on the way, its own commit): `boot_db()` initializes the
   boards in the full world, and `board()` initialized them again on the first board
   command through a static flag, zeroing `msg_storage[]` and the headings without freeing
@@ -899,6 +899,58 @@ TEST_JOBS=16` 680 passed, 1 failed (`test_epic_zone_seed.py`, fixed by `2fcc73f4
 passing), `make test-db` 47 of 48 (`telemetry_schema_boot`, fixed by `b683d9eb0`). The full
 gate again on `6ae7e3f5f`, the head with both fixes: format check clean, `make test-all`
 681 passed, 0 failed, `make test-db` 48 of 48. Nothing is left.
+
+**Review round 1** (2026-10-09, PR #12's adversarial review of `ca2e5f9d5`, seven
+findings). Each finding was reproduced first, then fixed in its own commit:
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Object 42 is the Ideas Room's board, not a necklace (`areas/obj/dalvik.obj` is not in the world) | `28a19a882`: row `{ 42, AVATAR, AVATAR, AVATAR, "lib/boards/ideas", 0 }`, `NUM_OF_BOARDS` 46, zone comment and seed hash restored; `test_board_lookup.py` became `test_boards.py`, which checks every row against the world's board objects |
+| 2 | A message with no body kept the saving process's slot number | `988cab75f`: every loaded message gets a slot of its own |
+| 3 | `arg[71] = '\0'` could write past the 1024-byte command line | `c621738eb`: the format bounds the headline, `%.70s` |
+| 4 | A blank `write` leaked a message slot | `dba14e67d`: the headline is checked before `find_slot()` |
+| 5 | A save cut short stopped the next boot; the reset indexed `[-1]` and freed a pointer from the file | `932421560`: save via `<file>.tmp` and `rename()`, every write checked; a bad file resets its board and the boot goes on |
+| 6 | `find_board()` ignored the board it was called for; room 1213's second board was dead | `5eee1bc90`: `find_board(obj)`, a board answers only in the character's room; `b09b2f02e`: room 1213 loads only the feedback board, and the test fails on a room the zones give two boards |
+| 7 | The audit's skip-cap section said orphan rows refuse a login | `2b9b4ce78`: the section is gone |
+
+`65968e748`'s zone comment ("a dazzling pearl necklace") is undone by `28a19a882`; decision
+10 and this section's "Checked" and "Fix" are corrected. `find_board(obj)` alone could not
+revive room 1213's second board: `write`, `read <n>` and `remove <n>` name no board, so the
+first board in a room takes them. Removing the dead load keeps what room 1213 already
+showed.
+
+Live, on a throwaway copy of `duris_dev` in its own MariaDB container, booted from this
+round's build on port 4210 (the dev server was left alone):
+
+- Room 1196's board took a message and an aborted one.
+- Room 1213 showed only the feedback board.
+- A carried board in room 1214 gave its plain description.
+- After a clean stop and a reboot, `read 2` said the aborted message "seems to be empty", and
+  both removes worked.
+- `logs/log/board` was never created.
+
+`docs/testing/REGRESSIONS.md` has a "Bulletin boards" section.
+
+**Gate** on `2b9b4ce78`, the round's last fix:
+
+- `./scripts/format.sh --all --check`: clean.
+- `make test-all -j16 TEST_JOBS=16`: 680 passed, 1 failed.
+- `make test-db`: 46 of 48.
+
+The machine was shared with three other sessions' gates (load average up to 49), and none
+of the three failures comes from this round:
+
+- `test_connection_limit_journey.py` was refused its first connection. "Entering game
+  loop." is printed before the listeners open; `master` fixes that in `47f5a06d6`.
+- `game_loop_budget` counted the shutdown's forced shop save; `master` fixes that in
+  `f3ba6bd2a`.
+- `world_capture` saw one pulse past 250 ms while the world took 53 s to boot.
+
+Both `master` fixes reach this branch with the merge of Phase 8's next head. Run alone,
+the connection-limit journey and `world_capture` passed (0 slow pulses, the world booted in
+7 s). `game_loop_budget` alone failed the same way (52 saves in the shutdown's pulse), and
+`master`'s version of the journey passed against this round's server (at most 16 saves in
+one pulse).
 
 **Checked** at `f44291043`. `board_info[]` (`src/cmd/boards.c` L55-103, `NUM_OF_BOARDS` 44
 at L52) is what `find_board()` (L121) searches, so an object carrying the `board` special

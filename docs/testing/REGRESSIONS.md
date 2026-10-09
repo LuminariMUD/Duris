@@ -38,6 +38,41 @@ the test checks a durable ten-platinum wallet, an empty statue and no credit on 
 pickup. The player-load harness in `run_experience_trophy_mysql.sh` loads a pile whose
 custody row holds an older amount and checks that the saved amount wins.
 
+## Bulletin boards
+
+`board_info[]` in `boards.c` is the only source of the `board` special:
+`initialize_boards()` gives it to every row's object, once, at boot. Each row names an
+object in the world `make_all` builds whose keywords include `board` or `bulletin`. No
+zone loads two different boards into one room, because `write`, `read <n>` and
+`remove <n>` name no board and the first board in the room takes them. A board answers
+for its own row, and only while it stands in the character's room. A headline keeps at
+most 70 characters, and a write without one takes no message slot. Every message loaded
+from a board file gets a slot of its own, including one whose body was aborted. A save
+writes `<file>.tmp` and renames it over the board file. A board file cut short or corrupt
+is logged and resets that board, and the boot goes on.
+
+```sh
+python3 tests/async/test_boards.py
+python3 tests/async/test_spec_assign_vnums.py   # specs.assign.c assigns board nowhere
+```
+
+`test_boards.py` checks the table against the area and zone files `areas/AREA` lists. It
+then compiles `find_slot()`, `find_board()`, `board()`, `Board_write_message()` and the
+save, load and reset functions from `boards.c` into a harness under ASan and UBSan. The
+cases are:
+
+- room 1213's two boards;
+- a carried board;
+- a headline at the end of a 1024-byte command line;
+- a blank headline;
+- an aborted message reloaded after another board's message;
+- a file cut short;
+- a file whose heading length is 0 under a pointer;
+- a save whose copy cannot be opened.
+
+It does not drive the board commands through a running server, and it never makes the
+`fsync` or the `rename` fail after the copy is written.
+
 ## Casts that run behind the event pass
 
 A spell with a cast time above four pulses is cast in segments of up to four, and each
