@@ -401,6 +401,13 @@ kept, not 20; VmRSS flat over 3000 refused TLS connections, not +7.6 MB per 1000
 website client sending every 25 s open at 175 s, not closed at 120 s; 8 of 12 from one
 IPv6 /64, not 12. Nothing is left.
 
+**After the tag.** Phase 3's gate failed `test_connection_limit_journey.py` once with "the
+server never filled up". The journey fills the server just after `waiting` times out, and
+the connections it opened a few seconds after `waiting` time out during the fill: the
+probe from 127.0.0.39 could take a slot they freed. `97807ecbe` probes from fresh addresses
+until one is refused and keeps any that got in. The landing merges the branch head, which
+is `backlog/phase-2-review-1` plus that commit and this note.
+
 **Problem.** Found on 2026-10-05 in a full read of one server's logs. Over 51 minutes one
 address opened 753 plain-telnet connections: a median of 13 a minute, at most 26 a minute,
 11 in the busiest second. None got past the account name prompt (`CON_GET_ACCT_NAME`,
