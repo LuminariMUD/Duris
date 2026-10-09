@@ -1283,7 +1283,11 @@ and L2392); 70501→ship_shop_proc (L2391); 8010→pet_shops (L2435); 8211→dum
   leaves `outages.pending`, which `outage.py` refuses to read (exit 2) until the next
   producer recovers it. The gate's failure printed no reason (the refusal went to the
   captured stdout); the journey now accepts that one refusal after the kill and prints any
-  other, and the leg passed seven runs in a row on this build.
+  other, and the leg passed seven runs in a row on this build. `master` took the same
+  change as `70418a562` at #9 and #10's landing, and `cb23b36fd` then rewrote those lines,
+  so `918612472` reverts it here: the file is Phase 8's again, and `master`'s version
+  reaches this branch through Phase 8 or at the landing without a conflict. The
+  `telemetry_schema_boot` leg passed on `918612472`.
 
 **Gate** on `2a05cb23f`: `./scripts/format.sh --all --check` clean, `make test-all -j16
 TEST_JOBS=16` 680 passed, 1 failed (`test_epic_zone_seed.py`, fixed by `2fcc73f4e` and then
