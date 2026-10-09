@@ -32,7 +32,7 @@ trap 'git worktree remove --force "$tree"' EXIT
 export COVERAGE_DATA="$report/data"
 export PATH="$PWD/scripts/coverage:$PATH"
 status=0
-(cd "$tree" && make -k test-all) > "$report/test-all.log" 2>&1 || status=1
+(cd "$tree" && make -k -j"$(nproc)" test-all) > "$report/test-all.log" 2>&1 || status=1
 if (( database )); then
     (cd "$tree" && make test-db) > "$report/test-db.log" 2>&1 || status=1
 fi
