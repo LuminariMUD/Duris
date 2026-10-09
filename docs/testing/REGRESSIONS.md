@@ -288,6 +288,26 @@ Not covered: the full random-world generator (the journeys use controlled instan
 1255 and 1256), and generated equipment across a file copyover, which still stores NPC
 equipment by vnum.
 
+## Item race restrictions and races without a bit
+
+An item's race list (`anti2_flags`) holds one bit for each of races 1-32. Races 33-37
+(pillithid, kuo-toa, wood elf, firbolg, tiefling) and race 0, which a mob with an unknown
+race code gets, have none: no deny list names them, and every allow list leaves them out,
+as for the races above `RACE_PLAYER_MAX`. `can_char_use_item()` and
+`can_prime_class_use_item()` used to shift past the 32-bit word for them, which x86
+wraps: a firbolg was judged as a grey elf, refused the items denied to grey elves and
+given the ones allowed only to them.
+
+```sh
+python3 tests/async/test_item_race_restriction_runtime.py
+```
+
+The test compiles both production functions with UBSan stopping at its first report and
+checks every race from 0 to 100 against each of the 32 bits, as a deny list and as an
+allow list: a race is refused or admitted by its own bit only, and an illithid by none.
+Without the fix it stops at race 0, and from race 1 at the pillithid. Not covered: a
+journey in which a character of one of these races wears such an item.
+
 ## Journey clients and an ANSI escape split across reads
 
 The journey clients strip colour escapes from what the server sends. They stripped each
