@@ -3308,6 +3308,17 @@ void studioproc_boot(void)
 				break;
 			continue;
 		}
+		/* sp_find() returns one record per target and a second sp_bind()
+		   would lose the target's own C proc, so the first record wins */
+		if (sp_find(targ, vnum))
+		{
+			sp_err(vnum,
+			       "duplicate record; put all of a target's triggers in one record",
+			       buf);
+			if (!sp_skip_record(fl))
+				break;
+			continue;
+		}
 
 		CREATE(rec, struct sp_rec, 1, MEM_TAG_BUFFER);
 		memset(rec, 0, sizeof(*rec));

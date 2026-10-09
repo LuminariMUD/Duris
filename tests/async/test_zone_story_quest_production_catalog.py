@@ -23,6 +23,11 @@ assert all(item["zone_number"] > 0 for item in catalog["definitions"])
 assert all(item["source_system"] == "zone_story" for item in catalog["definitions"])
 assert all(item["repeatable"] is True for item in catalog["definitions"])
 assert len({item["definition_id"] for item in catalog["definitions"]}) == len(catalog["definitions"])
+# Givers past their area's first hundred vnums (Winterhaven) or its top room (the Tower of
+# Darkness) belong to that area, not to a zone number no area has.
+zone_by_giver = {item["giver_vnum"]: item["zone_number"] for item in catalog["definitions"]}
+assert zone_by_giver[55100] == 550
+assert zone_by_giver[134146] == 1340
 
 with tempfile.TemporaryDirectory(prefix="duris-zone-story-production-catalog-") as temporary:
     output = pathlib.Path(temporary) / "catalog.json"

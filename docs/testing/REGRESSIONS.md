@@ -11,6 +11,31 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Achievement zones: quest givers, tie order and area names
+
+`achievements zones` lists each zone where the character has completed a quest. A quest
+belongs to the zone with the highest first vnum (zone number × 100) at or below its giver's
+vnum, which is the area its giver comes from: an area's mobs run past its first hundred
+vnums and past its top room. `zone_for_giver_vnum()` and `scripts/zone_story_quest_catalog.py`
+use the same rule, so the checked-in catalog snapshot matches the runtime catalog. The
+heavens givers (zone 0) stay on zone 1, because the catalog needs a positive zone. Zones
+with equal counts are ordered by the name a player reads: color codes are skipped as
+`strip_ansi()` skips them, and case is ignored. `achievements zone <area>` finds an area by
+its name as well as by its number.
+
+```sh
+python3 tests/async/test_zone_story_quest_production.py
+python3 tests/async/test_zone_story_quest_production_catalog.py
+python3 tests/async/test_zone_story_quest_feature.py
+python3 tests/async/test_achievements_zone_lookup.py
+```
+
+The production harness maps givers past a zone's first hundred vnums and past its top room.
+The catalog test checks a Winterhaven giver and a Tower of Darkness giver in the real world
+files. The feature harness ties seven zones with real colored names. The lookup test runs
+the command's lookup with the real `is_abbrev()`, `strip_ansi()` and `skip_spaces()` on the
+text `one_argument()` hands it. No test completes a quest on a running server.
+
 ## Area-authored coin piles
 
 Get, take and put handle any `ITEM_MONEY` object by type, whatever its vnum, and add a
@@ -91,18 +116,20 @@ logout and login; it saves before it reads the wallet from disk. `--expect-regre
 only fits a server from before the persistence reset. Live play ran on the flat-file
 backend only.
 
-## Connections before an account name, and the trusted proxy
+## Connections before an account login, and the trusted proxy
 
-One address may hold at most `MAX_UNNAMED_CONNECTIONS_PER_ADDRESS` (8) open connections
-that are negotiating TLS, waiting for the WebSocket handshake or at the account name
-prompt; `new_descriptor()` closes the next before setting it up. A connection silent at
-the prompt is closed after `UNNAMED_CONNECTION_TIMEOUT` (120 s). A connection from
-`DURIS_TRUSTED_PROXY_IP` counts under the address its PROXY header names, and one without
-a header has the proxy's address, shared by its clients, and is not limited. The
-listeners are IPv6 sockets, so an IPv4 proxy arrives as `::ffff:a.b.c.d`;
-`proxy_peer_is_trusted()` matches that against the IPv4 setting, and `websocket.c` uses it
-for `X-Forwarded-For`. Before that the proxy was never trusted, and one website login
-closed every other one in progress as a stale connection from the same address.
+One address may hold at most `MAX_LOGIN_CONNECTIONS_PER_ADDRESS` (8) open connections
+that have not logged in to an account: negotiating TLS, waiting for the WebSocket
+handshake, at a prompt to log in, create an account or reset its password, or closing.
+`new_descriptor()` closes the next before setting it up. A connection silent at one of
+those prompts is closed after `LOGIN_PROMPT_TIMEOUT` (120 s). The addresses of one IPv6
+/64 count as one client (`same_client()`). A connection from `DURIS_TRUSTED_PROXY_IP`
+counts under the address its PROXY header names; a WebSocket connection from it without
+one takes the last `X-Forwarded-For` entry, the one the proxy appended; any other has the
+proxy's address, shared by its clients, and is not limited. The listeners are IPv6
+sockets, so an IPv4 proxy arrives as `::ffff:a.b.c.d`; `proxy_peer_is_trusted()` matches
+that against the IPv4 setting. Before that the proxy was never trusted, and one website
+login closed every other one in progress as a stale connection from the same address.
 
 ```sh
 python3 tests/async/test_connection_limit_journey.py   # builds or reuses a flat-file server
@@ -111,11 +138,16 @@ python3 tests/async/test_websocket_protocol_contract.py
 
 The journey boots a flat-file server with the WebSocket listener on and `127.0.0.9` as
 its proxy, binding client sockets to loopback aliases: nine telnet and nine TLS
-connections from one address (the ninth refused), an account created from another, nine
-PROXY-header connections for one client beside one for another, nine telnet connections
-from the proxy itself, two website handshakes with different `X-Forwarded-For` addresses,
-and a connection silent at the prompt (closed between 115 and 135 s). It takes about two
-and a half minutes.
+connections from one address (the ninth refused); eight connections that each entered a
+name, then a ninth, refused; a login from another address; PROXY-header connections for
+two clients and for addresses of one IPv6 /64, where one of eight PROXY-named connections
+completes a handshake with a forged `X-Forwarded-For` and the ninth is still refused;
+nine telnet connections from the proxy itself; two website logins with different
+`X-Forwarded-For` addresses (one forging the other's in front of its own); connections
+silent at the account name and password prompts, closed between 115 and 135 s, while a
+website client that sends a login every 25 s is still open at 130 s; a banned address;
+and TLS connections to a full server. It takes about three minutes (173 s in a loaded
+gate).
 
 ## Copyover state path and failure output
 
@@ -395,6 +427,22 @@ the runtime stamp and expects the refusal.
 
 Not covered: a real production boot; the journeys run the server directly.
 
+## Quest EXP line
+
+With the EXP display on (`toggle experience`), a world quest reward prints one `Quest EXP:`
+line with the amount the character was credited, after modifiers and caps, and prints none
+when nothing was credited. An immortal is credited nothing and gets no line; its staff log
+line (`logexp()`, "would have gained") keeps the award it would have had.
+
+```sh
+python3 tests/async/test_world_quest_xp_feedback.py
+```
+
+The test compiles `gain_exp()`, `display_gain()`, `quest_kill()` and `quest_full_reward()`
+from the source on both backends and checks the line for kills, turn-ins, every cap and
+exit that credits nothing, and an immortal, whose staff log it reads. No test turns in a
+quest on a running server.
+
 ## Riposte after a participant is removed
 
 Riposte keeps process-local character identities, the original room and height, and the
@@ -418,6 +466,30 @@ through its initial guards only.
 
 Not covered: real reflective damage and a proc-driven extraction during an expert or elite
 riposte on a full sanitizer server.
+
+## Studio-proc trigger sources and duplicate records
+
+`make world` builds `areas/world.trg` with `make_trg` (`areas/src/trg/make_trg.c`) from each
+area's `areas/trg/<area>.trg`, and `make_trg` fails generation, naming the file and line,
+when a source's framing is wrong. It writes every line with one newline, so a source
+without a final newline cannot run into the next one; inside a trigger, a line starting
+`S`, `T ` or `#` means its `~` is missing. It starts its output with a marker line and
+refuses to replace an `areas/world.trg` without it that holds a record, which was the
+hand-written source before `make_trg`. `scripts/cycle_mud.sh` refuses to boot when
+generation fails, and `make world` regenerates after a source is removed. At boot,
+`studioproc_boot()` logs and skips a second record for a target that already has one: only
+one record per target dispatches, and a second bind lost the target's own C proc.
+
+```sh
+python3 tests/async/test_make_trg.py
+python3 tests/async/test_studioproc_duplicate_record.py   # builds or reuses a flat-file server
+python3 tests/async/test_flatfile_launcher.py
+python3 tests/async/test_root_test_harness.py
+```
+
+`test_make_trg.py` compiles the tool and runs it on good, concatenated, missing and
+malformed sources and on a hand-written `world.trg`. The duplicate test boots the
+flat-file server on two records for room 22800 and reads the status log.
 
 ## Telemetry writer: schema check, round trip and the gap record
 

@@ -18,19 +18,48 @@ every later phase.
 
 ## Status
 
-Updated 2026-10-08. A new session starts here, then reads the phase it continues.
+Updated 2026-10-09. A new session starts here, then reads the phase it continues.
 
 | Phase | Subject | State |
 |---|---|---|
-| 1 | Hung tests and silent backup failures | Built on `fix/4-phase-1-hung-tests`, gate green; open for review as PR #5, tag `backlog/phase-1-review-0` and one test fix after it. |
-| 2 | Unauthenticated connections per address | Built on `fix/4-phase-2-connection-limit` (on Phase 1), gate green; open for review as PR #6, tag `backlog/phase-2-review-0`. |
-| 3 | Shop listing, dompurify, dead helpers | Built on `fix/4-phase-3-shop-listing` (on Phase 2), gate green; open for review as PR #7, tag `backlog/phase-3-review-0`. |
-| 4 | Security record and `SECURITY.md` | Built on `fix/4-phase-4-security-record` (on Phase 3), documents only, their tests green; open for review as PR #8, tag `backlog/phase-4-review-0`. |
-| 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc` (on Phase 4), gate green; open for review as PR #9, tag `backlog/phase-5-review-0`. |
+| 1 | Hung tests and silent backup failures | Landed 2026-10-09 in `e757c77e7` (PR #5, `backlog/phase-1-review-1`). |
+| 2 | Unauthenticated connections per address | Built on `fix/4-phase-2-connection-limit`, gate green; PR #6, tag `backlog/phase-2-review-0`; reviewed, seven findings open. |
+| 3 | Shop listing, dompurify, dead helpers | Built on `fix/4-phase-3-shop-listing`, gate green; PR #7, tag `backlog/phase-3-review-0`; reviewed, two findings open. |
+| 4 | Security record and `SECURITY.md` | Built on `fix/4-phase-4-security-record`, documents only, their tests green; PR #8, tag `backlog/phase-4-review-0`; reviewed, five findings open. |
+| 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc`, gate green; PR #9, tag `backlog/phase-5-review-0`; reviewed, six findings open. |
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
-| 7 | Quest EXP line and `achievements zones` | Built on `fix/4-phase-7-display-fixes` (on Phase 5), gate green; open for review as PR #10, tag `backlog/phase-7-review-0`. |
-| 8 | Specials assigned to missing vnums | Built on `fix/4-phase-8-dead-specials` (on Phase 7), gate green; open for review, tag `backlog/phase-8-review-0`. |
-| 9 | `board` specials and the audit heading | Not started. |
+| 7 | Quest EXP line and `achievements zones` | Built on `fix/4-phase-7-display-fixes`, gate green; PR #10, tag `backlog/phase-7-review-0`; reviewed, two findings open. |
+| 8 | Specials assigned to missing vnums | Built on `fix/4-phase-8-dead-specials`, gate green; PR #11, tag `backlog/phase-8-review-0`; reviewed, two findings open. |
+| 9 | `board` specials and the audit heading | Built on `fix/4-phase-9-boards`, gate green; PR #12, tag `backlog/phase-9-review-0`; reviewed, seven findings open. |
+
+Each phase after the first is on its own branch, stacked on the one before; its section here
+is on that branch, not yet on `master`. What is left is a review round and a landing for each,
+in order, starting with Phase 2.
+
+## Landing
+
+The pull requests form one stack: #6 (Phase 2) now targets `master`, and #7, #8, #9, #10,
+#11 and #12 (Phase 9) each target the previous phase's branch. Each has an adversarial review
+whose findings are open. Take them in order: the review round on the branch (each finding
+fixed in its own commit, the round's head tagged `backlog/phase-<n>-review-<round>`), then the
+landing as "Every phase" says. Before deleting a landed branch, point the next pull request
+at `master` (`gh pr edit <n> --base master`): a landing is a pushed merge, and GitHub then
+closes, not retargets, a pull request whose base branch is deleted (#6 was closed that way at
+Phase 1's landing and reopened). Delete this file when Phase 9 lands.
+
+Every later landing conflicts in this file: its branch rewrites the Status table's earlier
+rows. Keep `master`'s table and this section, mark the landed phase, and take the branch's
+side everywhere else. From Phase 3 on there is one more conflict, in
+`docs/records/COMMUNITY_DURIS_TRACKING.md`: `master`'s row #659 and Phase 3's row #662 are
+adjacent lines. Keep both, and let #662 name `71f14f1a7` as well: Dependabot's #3 landed the
+same dompurify line first, although Phase 3's record says #3 "becomes redundant when this
+lands". `site/package.json` and `site/package-lock.json` merge on their own: mermaid 12.1.0
+from `master` with Phase 3's katex 0.18.2 override (mermaid 12.1.0 still asks for katex
+`^0.16.47`); in a copy of the merged files `npm ci` succeeded and `npm audit` found nothing.
+Run `npm test --prefix site` after that landing.
+
+The local dev server (`duris-plan`, ports 4000/4001) runs Phase 9's build. Phase 1 changed
+no server code, so its landing needed no copyover.
 
 ## Why these
 
@@ -160,6 +189,43 @@ raises `ProcessLookupError`, not `FileNotFoundError`. One commit after
 `backlog/phase-1-review-0` treats both as gone; the pull request's head is the one to
 review.
 
+**Review round 1** (PR #5, review of `ca9f1219c`; tag `backlog/phase-1-review-1`). Four
+findings, each reproduced on that head first, each fixed in its own commit with a case that
+fails without it:
+
+- `2fc042368`: each test runs in its own session, so a Ctrl-C, coreutils `timeout` or a
+  supervisor's SIGTERM stopped the runner and left its tests, their servers and their
+  builds running. The runner keeps the tests it is running in a set. When it is stopped, it
+  cancels the queued tests and kills each running test's group, and a test that a worker
+  starts after that is killed at once. A SIGTERM unwinds like Ctrl-C.
+- `152b76e78`: a test's group was killed only at its deadline. Now it is killed whenever the
+  test ends, so a crashed journey's server does not run on beside later tests.
+- `f6c0da542`: the restore import's usual failure lost its record: `mysql` exits at the
+  first statement it rejects, and the next write broke the pipe. A stream past its deadline
+  was recorded as `streaming_process_failed` with `-9`. The first is now reported by
+  `mysql`'s exit status, the second as `subprocess_timed_out` with a null status, as
+  `BACKUPS.md` says.
+- `9e99e272d`: the stderr tail kept the client host MariaDB names (`'user'@'host'`,
+  `Host '...' is not allowed`), which is this host's address as the server sees it; it is
+  now `<CLIENT_HOST>`.
+
+The Status table is left as it was: every stacked branch rewrites Phase 1's row, so an
+edit here would conflict with each of them when they land after this one.
+
+**Gate** on `9e99e272d`: `./scripts/format.sh --all --check` clean, `make test-all -j16
+TEST_JOBS=16` 675 passed, 0 failed (0 timed out, 0 ended by a signal) in 7 min 26 s,
+`make test-db` 48 of 48. The CI `backup recovery` job was replayed in a privileged
+`ubuntu:24.04` container on the same head: its four regression files, and
+`test_persistence_backup_integration.py` as root against a real MariaDB (5 tests, a real
+`mysqldump` and import through the changed `streaming_process()`), passed.
+
+**Landed** 2026-10-09 in `e757c77e7`, PR #5: a `--no-ff` merge of `backlog/phase-1-review-1`
+(`94e4b9485`). `master` had moved to `586ab3b55` (the Dependabot merges and a quality
+workflow fix that also edits `test_root_test_harness.py`), so the merge was gated again
+before the push: `./scripts/format.sh --all --check` clean, `make test-all -j16
+TEST_JOBS=16` 675 passed, 0 failed (0 timed out, 0 ended by a signal) in 7 min 39 s,
+`make test-db` 48 of 48.
+
 **Problem.** Two failures that are hard to see, first recorded in a pipeline analysis of
 2026-09-11. A test that hangs holds `make test` and `make test-all` until someone kills it,
 and prints nothing meanwhile; a failed test's output is shown only after every test has
@@ -274,6 +340,74 @@ branch and then passing 12 runs in a row), `test_connection_limit_journey.py` 12
 `make test-db` 48 of 48. The journey's proxy case failed before `7c21ef491`: every
 proxied connection was counted under the proxy's address. Nothing is left.
 
+**Review round 1** (PR #6, review of `d8ec5d566`; tag `backlog/phase-2-review-1`),
+2026-10-09. The branch first took `master` in a merge (`1f11aec12`), not a rebase: Phase 1
+had landed, and Phases 3 to 9 are stacked on this branch's pushed commits. Seven findings,
+each reproduced on an isolated flat-file server first, each fixed in its own commit:
+
+- `b20612298` (an older bug): a telnet connection from a banned address crashed the
+  server. `new_descriptor()` linked the descriptor while its state was still 0
+  (`CON_PLAYING`), and `banlog()` read its NULL character. It now gets its first state
+  before it is linked. A banned connection is `CON_FLUSH`, closed once its message is
+  sent, not `CON_EXIT`, which ended only on input or after 15 minutes.
+- `90cb04769`: one line of input took a connection out of the cap, so one address that
+  sent a name on each connection held all 255 slots. `before_account_login()` counts
+  every state before an account login: the two handshakes, the login, creation and reset
+  prompts, `CON_EXIT` and `CON_FLUSH`. Those prompts close after 120 s of silence, except
+  the wait for a reset code by mail (15 minutes). The constants became
+  `MAX_LOGIN_CONNECTIONS_PER_ADDRESS` and `LOGIN_PROMPT_TIMEOUT`.
+- `b4e6fb0b0`: the leftmost `X-Forwarded-For` entry, which the client writes, became the
+  address, so a website client could close another's login and pick a new address for
+  each connection. The last entry, the one the proxy appended, is used now.
+- `3fb6883e6`: behind a PROXY-protocol proxy, `X-Forwarded-For` replaced the address the
+  PROXY header gave and so escaped the cap. A PROXY-named connection ignores it now.
+- `3bc4fa8bb` (an older bug): a full server leaked a GnuTLS session, about 8 KiB, for each
+  TLS connection it refused. It is freed now.
+- `546605f93`: a website client's messages did not restart the 120 s timer, so an active
+  website login was closed 120 s after its handshake. Every text message restarts it.
+- `2843a9a0c`: IPv6 clients were capped per address; one IPv6 /64 now counts as one client.
+
+`d45ba16c0` corrects the `DURIS_TRUSTED_PROXY_IP` row in `CONFIGURATION.md` for the two
+`X-Forwarded-For` fixes.
+The journey covers each fix: a banned address, eight named connections, a silent password
+prompt, a forged leading `X-Forwarded-For`, a forged one behind a PROXY header, a website
+client that sends every 25 s, one IPv6 /64, and a full server's memory over 1000 refused
+TLS connections. `IsolatedServer` takes an optional hook on the run root (for the ban
+file). This differs from decision 3: the cap and the 120 s limit cover every connection
+before an account login, not only those that have not entered a name.
+
+The round's gates also found four test defects outside Phase 2's code, each fixed:
+
+- `532a869ab`: under load the journey's website client dropped the server's first ping
+  when it arrived in the same read as the handshake response, and the server closed it
+  for a ping timeout.
+- `game_loop_budget` in `make test-db` counted the shutdown's forced shop save, which
+  under load still had shops to queue: fixed on `master` in `f3ba6bd2a`, merged here in
+  `fcfd37baf` (with `cd46e2e93`).
+- Under load a harness could be refused on its first connect: "Entering game loop." came
+  before the listeners opened. Fixed on `master` in `47f5a06d6`, merged in `e60301113`;
+  `3078d2d16` drops the journey's own wait for the listeners.
+- `corpse_haul_count_cap` failed when the kill salvaged a random item into the corpse and
+  the one-slot haul took it: fixed on `master` in `494317e40`, merged in `42b6ac89f`.
+
+**Gate** for round 1: `./scripts/format.sh --all --check` clean and `make test-all -j16
+TEST_JOBS=16` 676 passed, 0 failed (0 timed out, 0 ended by a signal) in 7 min 44 s on
+`3078d2d16` (`test_connection_limit_journey.py` 173 s); `make test-db` 48 of 48 on
+`42b6ac89f`, which adds only `494317e40`'s fixture change to it. Each fix was checked on
+its own before and after: the banned address no longer kills the server; ten named
+connections from one address, the ninth and tenth refused; the forged leading
+`X-Forwarded-For` no longer closes the victim; 1 of 20 forged-header PROXY handshakes
+kept, not 20; VmRSS flat over 3000 refused TLS connections, not +7.6 MB per 1000; a
+website client sending every 25 s open at 175 s, not closed at 120 s; 8 of 12 from one
+IPv6 /64, not 12. Nothing is left.
+
+**After the tag.** Phase 3's gate failed `test_connection_limit_journey.py` once with "the
+server never filled up". The journey fills the server just after `waiting` times out, and
+the connections it opened a few seconds after `waiting` time out during the fill: the
+probe from 127.0.0.39 could take a slot they freed. `97807ecbe` probes from fresh addresses
+until one is refused and keeps any that got in. The landing merges the branch head, which
+is `backlog/phase-2-review-1` plus that commit and this note.
+
 **Problem.** Found on 2026-10-05 in a full read of one server's logs. Over 51 minutes one
 address opened 753 plain-telnet connections: a median of 13 a minute, at most 26 a minute,
 11 in the busiest second. None got past the account name prompt (`CON_GET_ACCT_NAME`,
@@ -347,8 +481,9 @@ in the idle switch closes a silent connection at 480 pulses. The two constants s
   and npm's only automatic fix was a downgrade to mermaid 10.8.0, so the override pins
   katex instead, beside the existing `lodash-es` one. Mermaid's one katex call
   (`renderToString` with `throwOnError`, `displayMode`, `output`) renders under 0.18.2, and
-  the site's diagrams use no math. Dependabot's #3 (dompurify) is the same lockfile line
-  and becomes redundant when this lands; #1 (mermaid 12.1.0) is unaffected.
+  the site's diagrams use no math. Dependabot's #3 (dompurify) is the same lockfile line;
+  it landed on `master` first (`71f14f1a7`), so after the merge recorded below the katex
+  pin is the only `site/` change this phase adds. #1 (mermaid 12.1.0) is unaffected.
 - The listing harness extends the listing's existing test instead of adding a file, and
   the bound is written inline at the one call site rather than as the community tree's
   `append_listing` helper.
@@ -363,6 +498,64 @@ in the idle switch closes a silent connection at 480 pulses. The two constants s
 **Gate** on `b606a9d8b`: `./scripts/format.sh --all --check` clean, `make test-all -j16
 TEST_JOBS=16` 676 passed, 0 failed, `make test-db` 47 of 48 (`telemetry_schema_boot`, the
 race above; with `2caf3a289` the leg passed twice in a row on its own). Nothing is left.
+
+**Review round 1** (PR #7, review of `f9ad0e09e`; tag `backlog/phase-3-review-1`). Two
+findings, both in the listing bound, both reproduced first on a production-profile flat-file
+build of that head with the review's live probe: a keeper with 700 priced items, and a
+mortal with paging off running `list`, then snooped by an overlord. One bound fixes both;
+each commit has a case that fails on the code before it:
+
+- `4c4557d76`: `c4a9eb681` cut the pieces at 65,535 bytes, which kept `shopping_list()` in
+  bounds but not the output path. `process_output()` expands each queued block into
+  buffers of `MAX_STRING_LENGTH`: `AnsiString::term()` stops 64 bytes short of it and
+  drops the rest (55 of 700 lines never arrived, 378 to 432, with no notice), and for a
+  snooped player `format_to_snoopers()` ran past its buffer and the server aborted
+  (`stack smashing detected`). Pieces are now at most `MAX_STRING_LENGTH / 8`, which also
+  keeps a 700-item listing to about a dozen entries in the player's log. The listing test
+  names its items and prices in colour and passes each piece through the production
+  `format_to_snoopers()` and `AnsiString::term()` as `process_output()` does; against the
+  old bound the first is an ASan overflow and the second loses lines.
+- `7a16e9c13`: `format_to_snoopers()` itself had no bound, so any other block of about
+  62 KB with enough lines still overflowed it. It now counts what it writes and stops where
+  the next step might not fit. The count replaces the review's pointer limit, which the
+  production profile's `-Wstrict-overflow=2` rejects. A case in
+  `word_output_integration_harness.cpp` (a SIGSEGV without it, an ASan overflow under
+  `SANITIZE=1`).
+
+With both, the probe on a production build of `7a16e9c13`: 700 of 700 lines with plain and
+with coloured names, snooped and not, the snooper got all 700 with its `%` prefix, and the
+server stayed up. The same probe with the mortal on a WebSocket connection, which the
+review left unchecked, behaved the same way on both builds. Ledger row #700 (b) names
+`4c4557d76` too.
+
+`6624a7078` merges Phase 2's round head (`0ddbaa62d`, `backlog/phase-2-review-1`), which
+had merged `master` after Phase 1 landed, so this branch carries `master` up to
+`494317e40`. Its two conflicts are the ones the plan's Landing section names: the Status
+table and that section keep `master`'s text and this section keeps the branch's; ledger
+rows #659 (`master`'s) and #662 are both kept, and #662 names Dependabot's `71f14f1a7`,
+which landed the same dompurify line on `master` first; the sentence on Dependabot's #3
+above is reworded to match. `site/` merged on its own: mermaid 12.1.0 from `master` with
+this phase's katex 0.18.2 override.
+
+**Gate** on `6624a7078`, the merge: `./scripts/format.sh --all --check` clean (1037 files),
+`make test-all -j16 TEST_JOBS=16` 676 passed, 0 failed (0 timed out, 0 ended by a signal)
+in 6 min 49 s, and on the merged `site/` `npm ci`, `npm audit` (0 vulnerabilities) and
+`npm test --prefix site` (15 passed). `make test-db` 47 of 48: `telemetry_schema_boot`'s
+first stop left the outage ledger at `abandoned` instead of `clean_drained` under the
+host's load, and the leg passed alone. The journey stopped a healthy server while the
+boot's records still waited in their 2 s batch, so the stop's own 2 s flush had to write
+them. `89080c967` on `master` makes it stop only once they are in SQL: a probe that stalls
+that flush with a table lock fails the old journey and passes the new one. This branch
+takes it when it lands. The record after the merge changes only this section and ledger
+row #700 (b).
+
+After the tag, `test-all` on `fb5590b99` failed Phase 2's `test_connection_limit_journey.py`
+once (and `test_telemetry_capacity_272.py`'s latency guard, which passed alone): during the
+fill an idle timeout could free a slot and let the journey's one probe in. Phase 2 fixed its
+journey in `97807ecbe`, and `b4b5068e7` merges Phase 2's `ab4f885cd` with it. **Gate** on
+`b4b5068e7`: `./scripts/format.sh --all --check` clean, `make test-all -j16 TEST_JOBS=16` 676
+passed, 0 failed (0 timed out, 0 ended by a signal), `make test-db` 48 of 48, and on `site/`
+`npm audit` 0 vulnerabilities and `npm test --prefix site` 15 passed.
 
 **Problem.** Three small things the community tree (`Community-Duris/Duris`, master at
 `a1e4a7efd`, split from ours at `e1357a30a` on 2026-09-23) fixed after the split, found on
@@ -440,6 +633,59 @@ the next line would not fit; the trailing "Nothing!" path is unchanged. `npm aud
 - No code changed, so the gate was the tests that read documents: the 41 tests that read
   `docs/` or the README, run bare (all pass after C13), and `npm test --prefix site`
   (15 tests). Phase 5's full gate runs on top of this tree.
+
+**Review round 1** (PR #8, review of `b86794e0b`; tag `backlog/phase-4-review-1`). Five
+findings, each reproduced on that head first and fixed in its own commit:
+
+- Finding 2, `cd46e2e93` on `master`: `SECURITY.md`'s old form link redirected to
+  `Community-Duris/Duris`, whose private reporting is on, so a report following the policy
+  reached another organisation. This phase's `SECURITY.md` hunk landed there ahead of the
+  stack, with the redirect sentence in Phase 6's section corrected. On this branch,
+  `fc638ac1a` puts the SBOM namespace under `LuminariMUD/Duris` and makes the same
+  correction.
+- Finding 1, `b511b5b28`: the scanner root had no `Source:` lines, so Trivy matched only
+  packages named like their source package. It never matched libcurl, OpenSSL or Redis, and
+  a root of older builds with fixed HIGH advisories passed. Each paragraph now names its
+  source.
+- Finding 3, `e15dff9ae`: a metapackage from a `*-defaults` source is scanned as the
+  package it installs (the MySQL server, client and library on the runner; `python3.12`;
+  `clang-format-18`). The workflow fails on an unresolved dependency, and the baseline says
+  a scan describes the machine it ran on.
+- Finding 4, `2eef081d8`: the check is again due before a production deploy, as
+  `TESTING.md` says.
+- Finding 5, `0adbbb4ad`: CodeQL's build also compiles `pfile` and `migrations/tools`. Its
+  ten results there are fixed: `6f02b0161` (eight batched `snprintf` appends that could
+  run past a 64 KiB stack buffer) and `17467c3b8` (two stat-then-open races).
+- `6282ce45a`: the record. The hosted run's dependency result counted for nothing, so the
+  baseline records the workflow replayed locally on 2026-10-09. CodeQL 2.27.1 found 0
+  results over 1103 of 1265 files. Trivy `v0.70.0` scanned the root a fresh `ubuntu:24.04`
+  container wrote after installing the build-deps package: all 23 direct packages by
+  source, no fixed HIGH or CRITICAL finding, and 26 unfixed lower ones. The container row
+  in `SECURITY-COMPLIANCE.md` is `PARTIAL` until a host Duris runs on is scanned.
+- `030a1614a`: the baseline says a local CodeQL replay needs ccache off. The first replay
+  traced only 34 files, because ccache served the rest.
+
+This differs from decision 5, which made the hosted run the scan of record without a
+replay: its dependency scan was blind. The first hosted run that matches by source will be
+the one on `master` after this phase lands.
+
+**Gate** on `6282ce45a`, the round's last code commit; the two commits after it change
+documents only. `./scripts/format.sh --all --check` was clean. `make test-all -j16
+TEST_JOBS=16` passed 675 and failed 1 in 10 min 17 s, at a load average near 36 with three
+other gates running. The failure was `test_connection_limit_journey.py` (Phase 2's),
+which got ECONNREFUSED on its first connection, and it passed alone on the same head. The
+server wrote "Entering game loop." before it opened its listeners; `47f5a06d6` on `master`
+moves that line, and the catch-up merge brings the fix here. `make test-db` passed 48 of
+48 in 7 min 49 s. The 37 tests that read the touched documents, the security scripts or
+the migration tools, run bare, all pass.
+
+**Catch-up** (2026-10-09): `9c8a14234` merges Phase 3's round head `fb5590b99`, which
+carries Phase 2's round and `master` up to `494317e40`, including the readiness fix
+`47f5a06d6`. Only the Status table conflicted, and `master`'s was kept. The merge also
+brought Dependabot's `codeql-action` bump to v4.38.2, which still uses CodeQL 2.27.1, the
+version the replay above ran. **Gate** on `9c8a14234`: `./scripts/format.sh --all --check`
+clean, `make test-all -j16 TEST_JOBS=16` 676 passed and 0 failed in 6 min 51 s, `make
+test-db` 48 of 48 in 5 min 41 s.
 
 **Problem.** Until the move to GitHub the dependency and code scans last ran on 2026-08-27,
 and `libcurl4-gnutls-dev`, added to the build dependencies on 2026-09-06, was never scanned.
@@ -541,6 +787,70 @@ Rewrite `SECURITY.md`: the `0.1.x` line, the private vulnerability reporting for
 `make test-all -j16 TEST_JOBS=16` 678 passed, 0 failed, `make test-db` 48 of 48. This is
 also the full gate for Phase 4's documents, which this tree contains. Nothing is left.
 
+**Review round 1** (PR #9, review of `b4a2d7450`; tag `backlog/phase-5-review-1`). Six
+findings, each reproduced on that head first, each fixed in its own commit with a case that
+fails without it:
+
+- `8e14e458d`: make_trg copied each line as read, so a source without a final newline ran
+  into the next area's first line (`S#10 R`) and the engine dropped both records. Each line
+  is now written stripped, with one `\n`.
+- `1100b1b22`: until this phase `areas/world.trg` was the hand-written source and
+  git-ignored, and the first generation replaced it with `#~`. make_trg now starts its
+  output with a marker line and refuses a `world.trg` without it that holds a record,
+  naming the move; STUDIOPROC.md has the one-time step and says `make clean-all` deletes
+  the file.
+- `1843e2d7c`: a `~` dropped before a later one passed make_trg (the next `S`, `T` or
+  header was taken as an action) and cost the engine two records. Such a line inside a
+  trigger now fails; no action begins that way.
+- `829e58f1f` and `a6652f93b`: the documented kill switch (rename `world.trg`) was undone
+  by the supervisor's generation before every start. The switch is now moving an area's
+  `areas/trg/<area>.trg` out and rebooting, or `make world` and a copyover. `make world`
+  did not notice a removed source; its staleness `find` now reads directories too
+  (`test_root_test_harness.py` pins it).
+- `55dab3119`: `cycle_mud.sh` ignored `m_slow`'s status, so one framing typo kept every
+  area edit from loading, silently. It now refuses to boot when generation fails, as after
+  a failed backup; this holds for every generator. The warn-and-skip alternative was not
+  taken: decision 6 has a malformed source fail generation, and `make test-db` builds the
+  world, so the gate catches one before a deploy.
+- `35cba256a`: two records for one target both bound; only the later dispatched, and its
+  bind lost the target's C proc. `studioproc_boot()` now logs and skips the second
+  (`test_studioproc_duplicate_record.py` boots on two). make_trg does not check for
+  duplicates: the engine covers hand-written files too, and a make_trg failure now stops
+  the boot.
+
+`REGRESSIONS.md` has a section for the generator and the duplicate check. The Status table
+is left as it was, as in Phase 1's round.
+
+**Gate** on the round's code before the guard's header test became the engine's own (folded
+into `1100b1b22`; it differs from `35cba256a` only in `make_trg.c` and `test_make_trg.py`):
+`./scripts/format.sh --all --check` clean (1038 files), `make test-all -j16 TEST_JOBS=16`
+679 passed, 0 failed (0 timed out, 0 ended by a signal) in 9 min 3 s, `make test-db` 48 of
+48. On `35cba256a`, `test_make_trg.py` and a real `make world` were run again.
+
+**Catch-up with `master`, through the stack** (2026-10-09). `1475f68fa` merges Phase 4's
+round 1 (`f1da69342`, `backlog/phase-4-review-1`). `7fc0c7b16` merges Phase 4's catch-up
+(`71f7c30fb`: Phase 3's and Phase 2's rounds and `master` up to `494317e40`); its one
+conflict, the Status table, keeps `master`'s. Both are merges rather than rebases, so the
+review tags and pushed commits stay. PRs #10 to #12 now conflict with this head only in this
+file's Status table and Landing section, the conflict the Landing section describes; their
+own catch-up keeps `master`'s side. `db79d240e` brings the `REGRESSIONS.md` section
+`b439fa892` added up to Phase 2's round (the constants are
+`MAX_LOGIN_CONNECTIONS_PER_ADDRESS` and `LOGIN_PROMPT_TIMEOUT` now). `master`'s `89080c967`
+(a telemetry journey fix) is not in the stack yet; it comes with the landings.
+
+**Gate** on the catch-up's code (`db79d240e`; the gate ran before its journey paragraph was
+completed, a `REGRESSIONS.md`-only change): `./scripts/format.sh --all --check` clean (1038
+files), `make test-all -j16 TEST_JOBS=16` 679 passed, 0 failed (0 timed out, 0 ended by a
+signal) in 7 min 55 s, `make test-db` 48 of 48. The document tests were run again on the
+record.
+
+`6b7b3f62a` then merges Phase 4's `d44db479b` (Phase 3's `4a03cf2a1`: Phase 2's
+connection-limit journey fix, which probes until the full server refuses, and plan notes in
+Phase 2's and Phase 3's sections); no conflict. On it: `./scripts/format.sh --all --check`
+clean, `test_connection_limit_journey.py` passed (190 s), and the 46 tests that read `docs/`
+passed (`test_flatfile_death_restart_journey.py` failed once in an eight-wide ad-hoc batch
+beside other server builds and passed alone; it passed in both full gates).
+
 **Problem.** Two loose ends the studio-proc engine left on purpose, listed in
 `docs/content/STUDIOPROC.md` under "Deliberately not included":
 
@@ -626,9 +936,9 @@ repositories:
    local build opens the community tree. In the workflow the variable is
    `LuminariMUD/Duris`, so a published build would link correctly.
 3. `README.md` builds its build, last-commit and issues badges, and its commit and issue
-   links, from `LuminariMUD/DurisMUD`, which GitHub now redirects to `LuminariMUD/Duris`.
-   Its guide table describes critical commands as "journal, inbox/results, outbox, replay";
-   nothing is journaled or replayed since ADR 0002.
+   links, from `LuminariMUD/DurisMUD`, which GitHub now redirects to the community
+   repository, `Community-Duris/Duris`. Its guide table describes critical commands as
+   "journal, inbox/results, outbox, replay"; nothing is journaled or replayed since ADR 0002.
 
 **Checked** at `6e1b93cdb`, and on GitHub on 2026-10-08. `README.md` L416 links the
 community site, L432 is the critical-commands row, L439 to L442 and L448 to L449 build the
@@ -684,6 +994,51 @@ their commits did not change.
 
 **Gate** on `8498aa0c1`: `./scripts/format.sh --all --check` clean, `make test-all -j16
 TEST_JOBS=16` 679 passed, 0 failed, `make test-db` 48 of 48. Nothing is left.
+
+**Review round 1** (PR #10, review of `f9745f66c`; tag `backlog/phase-7-review-1`). Two
+findings and one smaller point, each reproduced on that head first, each fixed in its own
+commit with a case that fails without it:
+
+- `e09f03213`: the catalog put a quest giver in zone `giver_vnum / 100`, but an area's mobs
+  run past its first hundred vnums. 575 of the 2,668 definitions (244 givers) sat on 36 zone
+  numbers no area has: `achievements zones` showed them as "This area" rows, one area could
+  split over several rows, and each phantom zone counted toward "Fully completed zones". A
+  giver now belongs to the zone with the highest first vnum (number × 100) at or below its
+  own, `which_race()`'s rule, in `zone_for_giver_vnum()` and in
+  `scripts/zone_story_quest_catalog.py`; the snapshot is regenerated (the same ids, 575
+  moved). The review's range check against the zone's top was not taken: the Tower of
+  Darkness givers (134146 and up) are past that area's top room. Against the area file each
+  quest comes from, the old rule was wrong for 575 definitions, the range check for 5, this
+  rule for none; the heavens givers stay on zone 1.
+- `520d322e2`: zones with equal counts were ordered by their stored names, color codes
+  included. They are now ordered by the name a player reads, lowercased.
+- `c984fc7ac` (the review's smaller point): since `536ce6dba`, an immortal's world quest
+  `logexp()` line read "would have gained 0". It keeps the award again, and only mortals
+  get the `Quest EXP:` line.
+
+**Found on the way:** `340420fab`. `achievements zone <area>` never found an area by its
+name, only by number: `one_argument()` leaves a space in front of the name. On full-world
+flat-file boots, before and after the round: zones 551, 552, 832 and 1341 went from
+"This area" with quests to N/A, 550, 831 and 1340 kept their names, and `achievements zone
+the city of winterhaven`, `alat` and `the tower of darkness` went from the usage line to
+their areas. No quest was completed on a running server.
+
+`REGRESSIONS.md` has sections for the achievement zones and the Quest EXP line. The Status
+table is left as it was, as in the earlier rounds.
+
+**Catch-up with `master`, through the stack** (2026-10-09). `afad1e5bf` merges Phase 5's
+`14ed3be55`, which holds Phase 5's round and, through Phases 4, 3 and 2, `master` up to
+`494317e40`. PR #10 showed a conflict with its base before it. The one conflict, the Status
+table and the Landing section, keeps Phase 5's side, which carries `master`'s.
+`master`'s `89080c967` and the landing records of Phases 2 and 3 come with the landings.
+
+**Gate** on `340420fab`, the round's code: `./scripts/format.sh --all --check` clean (1038
+files), `make test-all -j16 TEST_JOBS=16` 681 passed, 0 failed (0 timed out, 0 ended by a
+signal) in 8 min 48 s, `make test-db` 46 of 48. The two failures were
+`persistence_contract` and `immutable_migration_ledger`: their `mysql:8.0` containers
+stopped before the first query while four sessions ran their gates at once (load about 60),
+and both passed when run again alone on the same head. The record commit changes documents
+only; the tests that read `docs/` passed on it. Nothing is left.
 
 **Problem.** Two display fixes the community tree made after the split, found in the same
 comparison as Phase 3. Neither changes a reward or a game mechanic.

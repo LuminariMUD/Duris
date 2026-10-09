@@ -50,12 +50,15 @@ assert sorted(step for step, _ in codeql) == ["analyze", "init"], codeql
 assert len({sha for _, sha in codeql}) == 1, f"CodeQL init and analyze pin different releases: {codeql}"
 assert '- "github/codeql-action*"' in dependabot
 assert "version: v0.70.0" in security_workflow
+assert "make -C src pfile" in security_workflow
+assert "make -C migrations/tools migrate_pfiles affects pfile_converter" in security_workflow
 assert "scan-type: rootfs" in security_workflow
 assert "scan-ref: bin/security/scanner-rootfs" in security_workflow
 assert "severity: HIGH,CRITICAL" in security_workflow
 assert "ignore-unfixed: true" in security_workflow
 assert "continue-on-error: true" in security_workflow
 assert "Trivy did not scan a supported dependency target." in security_workflow
+assert "A declared dependency is not installed, so Trivy did not scan it." in security_workflow
 assert 'TRIVY_OUTCOME: ${{ steps.trivy.outcome }}' in security_workflow
 assert "if: always()" in security_workflow
 print("[PASS] immutable CodeQL/Trivy CI preserves reports and enforces stated policy")
@@ -117,6 +120,11 @@ with tempfile.TemporaryDirectory(prefix="duris-security-baseline-") as temp_dir:
     assert (first_rootfs / "var/lib/dpkg/status").read_bytes() == (second_rootfs / "var/lib/dpkg/status").read_bytes()
     inventory = json.loads(first_inventory.read_text())
     spdx = json.loads(first_spdx.read_text())
+    # Trivy finds Ubuntu advisories only through a paragraph's source package.
+    status_paragraphs = (first_rootfs / "var/lib/dpkg/status").read_text().split("\n\n")
+    assert status_paragraphs and all(
+        re.search(r"^Source: \S+ \(\S+\)$", paragraph, re.MULTILINE) for paragraph in status_paragraphs
+    ), status_paragraphs
 
     guarded_rootfs = Path(temp_dir) / "scanner-rootfs-guarded"
     guarded_rootfs.mkdir()
@@ -152,10 +160,16 @@ assert all(
     for dependency in inventory["dependencies"]
     if dependency["status"] == "resolved"
 )
+# python3 (python3-defaults) is always installed, so this exercises the resolution.
+assert not any(
+    dependency["source"].split()[0].endswith("-defaults")
+    for dependency in inventory["dependencies"]
+    if dependency["status"] == "resolved"
+), inventory["dependencies"]
 assert "vulnerability status" in inventory["coverage"]["not_included"]
 assert spdx["spdxVersion"] == "SPDX-2.3"
 assert spdx["dataLicense"] == "CC0-1.0"
-assert spdx["documentNamespace"].startswith("https://github.com/LuminariMUD/DurisMUD/sbom/")
+assert spdx["documentNamespace"].startswith("https://github.com/LuminariMUD/Duris/sbom/")
 assert spdx["packages"][0]["name"] == "DurisMUD"
 package_purls = [
     reference["referenceLocator"]

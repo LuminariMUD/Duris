@@ -521,7 +521,7 @@ craft-pouch contract is in [CHAOS_MODE.md](../reference/CHAOS_MODE.md).
 | `DURISWEB_SECRET` | Current shared key for one-time DurisWeb challenge-response authentication. Production requires at least 32 characters and rejects the public example placeholder. See the DurisWeb API reference. |
 | `DURISWEB_SECRET_PREVIOUS` | Optional previous service key accepted during a bounded zero-downtime rotation. In production it must be empty or at least 32 characters and non-placeholder; remove it after every backend has switched. |
 | `DURISWEB_PRIVATE_PRESENCE` | Exact `TRUE` opts the authenticated backend into account names, IP addresses, client metadata, and invisible staff presence. The default WebSocket and Redis presence feeds omit them. |
-| `DURIS_TRUSTED_PROXY_IP` | One immediate proxy IP address, an allow-list entry, not a CIDR range. A WebSocket connection from it may name its client in a PROXY protocol v1 header or an `X-Forwarded-For` header; any other connection from it keeps the proxy's address, which all its clients share. If unset, forwarded addresses are ignored. |
+| `DURIS_TRUSTED_PROXY_IP` | One immediate proxy IP address, an allow-list entry, not a CIDR range. A WebSocket connection from it may name its client in a PROXY protocol v1 header or, without one, in the last `X-Forwarded-For` entry, the one the proxy appended (the client writes the entries before it); any other connection from it keeps the proxy's address, which all its clients share. If unset, forwarded addresses are ignored. |
 
 ### DurisWeb hook toggles
 
@@ -588,23 +588,24 @@ register and login rate buckets. Echo control has no meaning on this transport: 
 password field, and rendering the "a code may have been sent; one per account per 10
 minutes" meaning of the telnet text, is the client's job.
 
-### Connections before an account name
+### Connections before an account login
 
-A client that has not entered an account name has cost nothing to connect, so two
+A client that has not logged in to an account has cost nothing to connect, so two
 compile-time constants in `src/core/config.h` bound what it can hold. They sit beside
 `MAX_CONNECTIONS`, the 256 descriptors all clients share, and are not environment-tunable.
 
-- `MAX_UNNAMED_CONNECTIONS_PER_ADDRESS` (8): the open connections one address may have
-  that are negotiating TLS, waiting for the WebSocket handshake, or at the account name
-  prompt. The next one is closed at once, with one
-  `Refused connection from <address>: 8 open connections have not entered an account name.`
+- `MAX_LOGIN_CONNECTIONS_PER_ADDRESS` (8): the open connections one address may have that
+  have not logged in: negotiating TLS, waiting for the WebSocket handshake, at a prompt to
+  log in, create an account or reset its password, or closing. The next one is closed at
+  once, with one `Refused connection from <address>: 8 open connections have not logged in.`
   line in `logs/log/debug`; a plain telnet client is first told
   `Too many connections from your address.` Nobody is banned.
-- `UNNAMED_CONNECTION_TIMEOUT` (120 seconds, in pulses): a connection that sends nothing
-  that long at the account name prompt, or that has not finished its TLS handshake, is
-  closed. Other login states keep their own limits.
+- `LOGIN_PROMPT_TIMEOUT` (120 seconds, in pulses): a connection that sends nothing that
+  long at one of those prompts is closed, except while it waits for a reset code by mail
+  (15 minutes). GnuTLS ends a TLS handshake that stalls for 40 seconds.
 
-The address is the client's. A connection from `DURIS_TRUSTED_PROXY_IP` counts under the
+The address is the client's, and the addresses of one IPv6 /64, which one host normally
+has to itself, count as one. A connection from `DURIS_TRUSTED_PROXY_IP` counts under the
 address its PROXY header names; without one it has the proxy's address, which all the
 proxy's clients share, and the limit does not apply to it. An authenticated DurisWeb
 service connection is not counted. A WebSocket client keeps at most one connection that
