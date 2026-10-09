@@ -40,7 +40,7 @@ built at that branch's head.
 | 2 | `fix/14-log-fixes` | 6, 1, 2, 7, 4, 5 | Built |
 | 3 | `fix/14-mariadb-11.8` | 17 | Built |
 | 4 | `fix/14-boot-scan` | 19 | Built |
-| 5 | `fix/14-tick-spikes` | 18 | Not started |
+| 5 | `fix/14-tick-spikes` | 18 | Built |
 | 6 | `fix/14-test-tools` | 10, 14, 16 | Not started |
 | 7 | `fix/14-test-stability` | 11 | Not started |
 | 8 | `fix/14-clang-tidy` | 13 | Not started |
@@ -95,7 +95,7 @@ Part 4, the slow tick and the slower boot:
 
 | # | Item | Severity | State |
 |---|---|---|---|
-| 18 | Every tick, `affect_update` walks all ~56,000 mobs (40 to 140 ms on staging), and the events it queues land on pulses 0, 10 and 20, where the event pass goes over its budget | Low | Open |
+| 18 | Every tick, `affect_update` walks all ~56,000 mobs (40 to 140 ms on staging), and the events it queues land on pulses 0, 10 and 20, where the event pass goes over its budget | Low | Built (PR 5) |
 | 19 | Most of every boot is one shopkeeper scan in the zone resets (7.4 billion comparisons, about 8 s of staging's 12 s); its loop's placement across a cache line made it 2 s slower on 2026-10-08 | Low | Built (PR 4) |
 
 ## Order (proposed)
@@ -900,6 +900,42 @@ than today (locally, after 12 minutes, 6 to 11 of every 14 windows in the timed 
 timers add a few ms to the pass); `NEVENT BUDGET WINDOW` lines become rare on staging; and
 regression tests show that a regeneration event stops at the maximum while restoring the same
 points, and that a sliced NPC's affects still count down once per tick.
+
+**Built** (PR 5), all four changes.
+
+- Changes 1 and 2 (`src/world/events.c`): each of the four regeneration events returns
+  without rescheduling once its gain leaves the character at its maximum, and `StartRegen()`
+  gives an NPC's first event `1 + idnum % delay` pulses instead of the full delay.
+- Change 3 (`src/world/new_events.c`): the generic character sweep starts at
+  `20 * WAIT_SEC + 5` pulses, so it runs on pulses 5, 25, 45 and so on.
+- Change 4: `affect_update(pulse)` runs every pulse and returns unless the pulse is a
+  multiple of 15. Pulse 0 walks the players, as before, and each 15th pulse walks one of 20
+  NPC slices (`char_slice()`, which `char_sweep_slice()` now wraps). `point_update()` stays
+  on pulse 0.
+- Effects a player could notice: an NPC's buff wears off at its slice's pulse, anywhere in
+  the tick, instead of at the tick's start. A character whose points drop by a path that
+  does not call `StartRegen()` starts regenerating at the next regeneration check of its
+  slice, at most one tick later; before, its event kept running at the maximum and found
+  the loss within 10 pulses.
+- `tests/async/test_tick_work_spread.py` runs the production regeneration events and
+  `affect_update()` in harnesses: an event at the maximum does not reschedule and one below
+  restores the same points, an NPC's first run comes at its own offset, and over the 300
+  pulses of a tick every NPC counts down exactly once, in 20 pulses, and players on pulse 0.
+- Local, full world, staging's configuration, no player, event budget scaled to staging
+  (13 ms), two runs of 12 and 8 minutes, before against after: windows with a pulse over
+  50 ms 0 and 0 against 0 and 0 (this machine is faster); worst pulse 45 and 34 ms against
+  27 and 28 ms; worst `affect_update` 30.5 and 23.9 ms against 16.1 and 8.6 ms. Budget
+  windows were as many (8 and 6 each). In the second run the first two deferred 131,000 to
+  353,000 callbacks either way while the world settled; the later four deferred 213 to
+  9,496 per window before against 793 to 2,538 after.
+- Staging, 2026-10-10 01:30 to 02:05 IDT, production profile, two scratch servers beside
+  the live game against their own copies of `duris_staging` (loopback ports, Redis off),
+  30 minutes idle: the live binary had a pulse over 50 ms in 16 of 23 latency windows (worst
+  89 ms), its worst `affect_update` rising from 13 to 83 ms, and 14 `NEVENT BUDGET WINDOW`
+  lines; this branch had none over 50 ms (worst 36 ms, in the first window), its worst
+  `affect_update` 2 to 7 ms throughout, and 2 budget lines, both in the first 600 ticks.
+  The copies, their users and the scratch directory were removed afterwards. The live
+  service is measured after deploy.
 
 ### 19. Most of every boot is one shopkeeper scan
 
