@@ -56,14 +56,22 @@ def world_vnums() -> dict[str, set[int]]:
 source = live_source((SRC / "specs" / "specs.assign.c").read_text(errors="replace"))
 world = world_vnums()
 assert all(world.values()), "the area list reads no object, mob or room"
+defines = {name: int(value) for header in SRC.rglob("*.h") for name, value in re.findall(
+    r"^\s*#\s*define\s+(\w+)\s+(\d+)\s*$", header.read_text(errors="replace"), re.M)}
 
 missing = []
 assignments = 0
-for number, line in enumerate(source.split("\n"), 1):
-    for lookup, vnum in re.findall(r"\b(real_object0|real_mobile0|real_room0)\((\d+)\)", line):
-        assignments += 1
-        if int(vnum) not in world[LOOKUPS[lookup]]:
-            missing.append(f"L{number} {lookup}({vnum})")
+for match in re.finditer(r"\b(real_object0|real_mobile0|real_room0)\(\s*(\w+)\s*\)", source):
+    lookup, argument = match.groups()
+    number = source.count("\n", 0, match.start()) + 1
+    if argument in ("i", "x"):  # the claw cavern, Shaboath and squid arena loops
+        continue
+    assert argument.isdigit() or argument in defines, (
+        f"L{number} {lookup}({argument}) is not a vnum")
+    vnum = int(argument) if argument.isdigit() else defines[argument]
+    assignments += 1
+    if vnum not in world[LOOKUPS[lookup]]:
+        missing.append(f"L{number} {lookup}({argument})")
 
 assert assignments > 1000, f"only {assignments} assignments were read"
 assert not missing, (
@@ -75,7 +83,7 @@ mobile = (SRC / "specs" / "specs.mobile.c").read_text(errors="replace")
 proc = mobile[mobile.index("int guild_guard("):mobile.index("int guardian(")]
 guarded_rooms = {int(room) for room in re.findall(r"\bcase (\d+):", proc)}
 guards = {int(vnum) for vnum in re.findall(
-    r"real_mobile0\((\d+)\)\]\.func\.mob = guild_guard;", source)}
+    r"real_mobile0\(\s*(\d+)\s*\)\]\.func\.mob\s*=\s*guild_guard;", source)}
 loads: dict[int, set[int]] = {}
 for area in listed_areas():
     path = AREAS / "zon" / f"{area}.zon"
