@@ -25,24 +25,24 @@ Updated 2026-10-09. A new session starts here, then reads the phase it continues
 | 1 | Hung tests and silent backup failures | Landed 2026-10-09 in `e757c77e7` (PR #5, `backlog/phase-1-review-1`). |
 | 2 | Unauthenticated connections per address | Landed 2026-10-09 in `14776698a` (PR #6, `backlog/phase-2-review-1` and a journey fix). |
 | 3 | Shop listing, dompurify, dead helpers | Landed 2026-10-09 in `8a7f61c00` (PR #7, `backlog/phase-3-review-1` and Phase 2's journey fix). |
-| 4 | Security record and `SECURITY.md` | Built on `fix/4-phase-4-security-record`; PR #8, review round 1 done, tag `backlog/phase-4-review-1`, gate green; next to land. |
-| 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc`; PR #9, review round 1 done, tag `backlog/phase-5-review-1`, gate green. |
+| 4 | Security record and `SECURITY.md` | Landed 2026-10-09 in `9cd983785` (PR #8, `backlog/phase-4-review-1` and two catch-up merges). |
+| 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc`; PR #9, review round 1 done, tag `backlog/phase-5-review-1`, gate green; next to land. |
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
 | 7 | Quest EXP line and `achievements zones` | Built on `fix/4-phase-7-display-fixes`, gate green; PR #10, tag `backlog/phase-7-review-0`; reviewed, two findings open. |
 | 8 | Specials assigned to missing vnums | Built on `fix/4-phase-8-dead-specials`, gate green; PR #11, tag `backlog/phase-8-review-0`; reviewed, two findings open. |
 | 9 | `board` specials and the audit heading | Built on `fix/4-phase-9-boards`, gate green; PR #12, tag `backlog/phase-9-review-0`; reviewed, seven findings open. |
 
-Phases 1, 2, 3 and 6 are on `master`. Each later phase is on its own branch, stacked on the
-one before; its section here is on that branch, not yet on `master`. What is left: the
-landings of Phases 4 and 5, whose review rounds are done, and a review round and a landing
-for Phases 7, 8 and 9, in order, starting with Phase 4's landing.
+Phases 1 to 4 and 6 are on `master`. Each later phase is on its own branch, stacked on the
+one before; its section here is on that branch, not yet on `master`. What is left: Phase 5's
+landing, whose review round is done, and a review round and a landing for Phases 7, 8 and 9,
+in order, starting with Phase 5's landing.
 
 ## Landing
 
-The pull requests form one stack: #8 (Phase 4) now targets `master`, and #9, #10, #11 and
-#12 (Phase 9) each target the previous phase's branch. #8 and #9 have had review round 1:
-each finding fixed in its own commit, its thread resolved, the round's head tagged
-`backlog/phase-<n>-review-1`. #10, #11 and #12 have an adversarial review whose findings are
+The pull requests form one stack: #9 (Phase 5) now targets `master`, and #10, #11 and #12
+(Phase 9) each target the previous phase's branch. #9 has had review round 1: each finding
+fixed in its own commit, its thread resolved, the round's head tagged
+`backlog/phase-5-review-1`. #10, #11 and #12 have an adversarial review whose findings are
 open. Take them in order: the review round on the branch where one is still open, then the
 landing as "Every phase" says. A branch's head can be past its last tag (a fix or a merge from
 the phase below after the round); the landing merges the head. Before deleting a landed
@@ -53,10 +53,13 @@ Delete this file when Phase 9 lands.
 
 A landing can meet a conflict in this file: a branch that rewrote the Status table's earlier
 rows conflicts with `master`'s. Keep `master`'s table and this section, mark the landed phase,
-and take the branch's side everywhere else. Phase 4's branch already has Phase 3's head
-(`4a03cf2a1`), taken in `d44db479b`, and changes no Status row, so a trial merge of its head
-onto this landing record is clean. Phase 4 edits README-level documents: after its landing
-run `python3 tests/async/test_documentation_contract.py` bare, as "Order" says.
+and take the branch's side everywhere else. Phase 5's branch already has Phase 4's head
+(`d44db479b`), taken in `6b7b3f62a`, and changes no Status row, so a trial merge of its head
+(`14ed3be55`) onto this landing record is clean. Phase 5 adds `make_trg` to `make world`,
+and `scripts/cycle_mud.sh` now refuses to boot when world generation fails; `make test-db`
+builds the world, so the gate runs the generator. The local checkouts hold no hand-written
+`areas/world.trg` with records, so the one-time move in `docs/content/STUDIOPROC.md` has
+nothing to move here.
 
 The local dev server (`duris-plan`, ports 4000/4001) runs Phase 9's build of 2026-10-08, the
 review-0 heads. The landings so far did not copyover it: the landed build would take the
@@ -703,6 +706,18 @@ brought Dependabot's `codeql-action` bump to v4.38.2, which still uses CodeQL 2.
 version the replay above ran. **Gate** on `9c8a14234`: `./scripts/format.sh --all --check`
 clean, `make test-all -j16 TEST_JOBS=16` 676 passed and 0 failed in 6 min 51 s, `make
 test-db` 48 of 48 in 5 min 41 s.
+
+**Landed** 2026-10-09 in `9cd983785`, PR #8: a `--no-ff` merge of the branch head
+`d44db479b`, which is `backlog/phase-4-review-1` plus the catch-up above, its record
+`71f7c30fb`, and `d44db479b` itself, a merge of Phase 3's head `4a03cf2a1` (Phase 2's
+connection-limit journey fix). `master` had moved on with Phase 3's landing and `639f6fd55`
+(the kingdom subsystem shipped switched off), and the merge was clean. Gated again on the
+merge: `./scripts/format.sh --all --check` clean (1037 files);
+`test_documentation_contract.py`, `test_security_dependency_baseline.py`,
+`test_migration_tools_build.py` and `test_account_recovery_contract.py` pass bare;
+`make test-all` 676 passed, 0 failed (0 timed out, 0 ended by a signal) in 16 min 3 s, at a
+load near 29 with three other sessions working; `make test-db` 48 of 48 in 7 min 3 s. This
+push starts the first hosted `security baseline` run that matches packages by source.
 
 **Problem.** Until the move to GitHub the dependency and code scans last ran on 2026-08-27,
 and `libcurl4-gnutls-dev`, added to the build dependencies on 2026-09-06, was never scanned.
