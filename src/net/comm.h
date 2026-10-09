@@ -37,6 +37,7 @@ bool runtime_listener_address(struct sockaddr_in6 *address);
 
 /* Resolve a client address without blocking the select() game loop. */
 void resolve_descriptor_hostname_async(const char *address, int descriptor);
+int proxy_peer_is_trusted(int desc);
 
 #if 0
 /*

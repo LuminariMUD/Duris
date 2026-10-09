@@ -156,8 +156,8 @@ def test_legacy_binary_output_cannot_bypass_websocket_framing():
 def test_proxy_metadata_requires_trusted_peer_and_validated_values():
     assert "DURIS_TRUSTED_PROXY_IP" in COMM
     assert "proxy_peer_is_trusted(desc)" in COMM
-    assert "websocket_peer_is_trusted_proxy(d)" in SOURCE
-    assert "DURIS_TRUSTED_PROXY_IP" in SOURCE
+    assert "proxy_peer_is_trusted(d->descriptor)" in SOURCE
+    assert "IN6_IS_ADDR_V4MAPPED" in COMM
     assert "untrusted X-Forwarded-For changed descriptor host" in HARNESS
     assert "inet_pton(AF_INET" in COMM
     assert "inet_pton(AF_INET6" in COMM

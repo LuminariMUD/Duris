@@ -53,6 +53,10 @@ char *json_build_gmcp_message(const char *, const char *)
 	return nullptr;
 }
 void resolve_descriptor_hostname_async(const char *, int) {}
+int proxy_peer_is_trusted(int)
+{
+	return 0;
+}
 
 static int fail(const char *message)
 {
