@@ -30,12 +30,21 @@ int main()
 	mobs[0].virtual_number = 17;
 	char mob_name[] = "the archivist";
 	mobs[0].desc2 = mob_name;
-	zone_data zones[1] = {};
+	zone_data zones[3] = {};
 	char area_name[] = "The First Heavens";
 	zones[0].number = 1;
 	zones[0].name = area_name;
+	zones[1].number = 550;
+	zones[1].top = 55642;
+	zones[2].number = 1340;
+	zones[2].top = 134141;
 	zone_table = zones;
-	top_of_zone_table = 0;
+	top_of_zone_table = 2;
+	// Givers belong to the area whose first vnum is the highest at or below theirs, also past
+	// the area's first hundred vnums (Winterhaven) and past its top room (the Tower of Darkness).
+	require(zone_story_quest_production::zone_for_giver_vnum(55201) == 550 &&
+			zone_story_quest_production::zone_for_giver_vnum(134146) == 1340,
+		"quest giver was not assigned to the zone whose vnums hold it");
 
 	goal_data give{ .goal_type = QUEST_GOAL_ITEM, .number = 24402, .next = nullptr };
 	goal_data second_give{ .goal_type = QUEST_GOAL_ITEM, .number = 24404, .next = nullptr };
