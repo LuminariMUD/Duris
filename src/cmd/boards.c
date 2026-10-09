@@ -49,7 +49,7 @@ void Board_load_board(int board_type);
 void Board_reset_board(int board_num);
 void Board_write_message(int board_type, struct char_data *ch, char *arg);
 
-#define NUM_OF_BOARDS 45
+#define NUM_OF_BOARDS 46
 
 /* vnum, read lvl, write lvl, remove lvl, filename, 0 */
 struct board_info_type board_info[NUM_OF_BOARDS] = {
@@ -97,6 +97,7 @@ struct board_info_type board_info[NUM_OF_BOARDS] = {
 	{ 91, AVATAR, AVATAR, AVATAR, "lib/boards/meeting", 0 },
 	{ 29, AVATAR, AVATAR, AVATAR, "lib/boards/code", 0 },
 	{ 1204, AVATAR, AVATAR, AVATAR, "lib/boards/gellzboard", 0 },
+	{ 42, AVATAR, AVATAR, AVATAR, "lib/boards/ideas", 0 },
 	{ 55197, AVATAR, AVATAR, AVATAR, "lib/boards/winterhaven", 0 }
 };
 

@@ -97,7 +97,7 @@ work was done (2026-10-08); each phase's section says where the work differs.
 | 7 | The site is published by the existing `Project website` workflow, with the repository's GitHub Pages source set to GitHub Actions, at `https://luminarimud.github.io/Duris/`. The site's repository default is `LuminariMUD/Duris`. The README's documentation link goes to that site; its build and last-commit badges and its commit link go to `LuminariMUD/Duris`; the issues badge and link go, since work is not tracked in issues. | Phase 6 |
 | 8 | The two display fixes are taken from the community tree with the author kept where a commit applies, adapted otherwise. | Phase 7 |
 | 9 | The vnums `specs.assign.c` names are checked by a source contract against the area files `areas/AREA` lists, not at run time: the 121 assignments to vnums no longer in the world are deleted, and the test fails the gate when a new one appears or an area leaves the list. The `0` lookups keep returning 0 on a miss; about sixty callers outside `specs.assign.c` compare their result against 0. | Phase 8 |
-| 10 | The nineteen explicit `board` assignments in `specs.assign.c` go; `initialize_boards()` assigns the special to every table row itself. 55197, the discussion board loaded into Winterhaven's Immortal Control Room, gets a `board_info` row at AVATAR for read, write and remove, file `lib/boards/winterhaven`. 87 and 55026 are loaded by no zone and stay plain objects. Room 1196 keeps the necklace; the zone comment that still calls it a board is corrected. | Phase 9 |
+| 10 | The nineteen explicit `board` assignments in `specs.assign.c` go; `initialize_boards()` assigns the special to every table row itself. 55197, the discussion board loaded into Winterhaven's Immortal Control Room, gets a `board_info` row at AVATAR for read, write and remove, file `lib/boards/winterhaven`. 87 and 55026 are loaded by no zone and stay plain objects. 42, the board of IDEAS that `heavens.zon` loads into room 1196, gets a row at AVATAR for read, write and remove, file `lib/boards/ideas`. (Corrected in review round 1: this first kept a "necklace" in room 1196, read from `areas/obj/dalvik.obj`, an area `areas/AREA` does not list.) | Phase 9 |
 | 11 | The phases are done in the order below. | All |
 
 ## Order
@@ -907,9 +907,10 @@ without a row makes `look`, `read`, `examine`, `write` or `remove` near it log
 vnums (L1761-1776, L2102, L2103); six of them, 76, 86, 87, 42, 55026 and 55197, have no row.
 `initialize_boards()` (L134) already assigns the special to every row (L162) and a board
 whose file does not exist yet loads quietly (`Board_load_board()` L519), so none of the
-nineteen lines is needed. Of the six, 42 is now "a dazzling pearl necklace"
-(`areas/obj/dalvik.obj` L549) that `areas/zon/heavens.zon` L182 still loads into room 1196
-"The Ideas Room" under the comment `* The board of IDEAS`; 55197 "a discussion board"
+nineteen lines is needed. Of the six, 42 is "The board of IDEAS" (`areas/obj/heavens.obj`
+L482) that `areas/zon/heavens.zon` L182 loads into room 1196 "The Ideas Room" (this first
+read a pearl necklace from `areas/obj/dalvik.obj`, which is not in the world; corrected in
+review round 1); 55197 "a discussion board"
 (`areas/obj/wh.obj` L2590) is loaded by `areas/zon/wh.zon` L559 into room 55612, the Immortal
 Control Room of Winterhaven; 76, 86, 87 and 55026 are loaded by no zone command and held by
 no character. The staging run before the restart logged the line six times, the last six
@@ -917,13 +918,12 @@ seconds after a level-62 login. Separately, `scripts/item_ownership_audit.sh` L6
 prints `item loss: dropped at load, deleted at next save` over the orphan-payload count,
 which the header comment at L10-14 says is not a loss.
 
-**Fix.** By decision 10: delete the nineteen lines; add the 55197 row and raise
-`NUM_OF_BOARDS` to 45; correct the zone comment at `heavens.zon` L182; reword the echo to
-say what the header says.
+**Fix.** By decision 10: delete the nineteen lines; add the 55197 and 42 rows and raise
+`NUM_OF_BOARDS` to 46; reword the echo to say what the header says.
 
 **Steps.**
 
 1. The deletion and the row. `tests/async/test_spec_assign_vnums.py` gains a check that
    `specs.assign.c` assigns `board` nowhere, so the table stays the one owner. In a local
    boot a wizard reads and writes the Winterhaven board; `logs/log/board` stays empty.
-2. The zone comment and the echo. Gate.
+2. The echo. Gate.
