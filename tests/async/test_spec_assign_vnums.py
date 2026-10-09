@@ -4,6 +4,7 @@
 real_object0(), real_mobile0() and real_room0() return index 0 for a missing vnum, so an
 assignment to a vnum that left the world silently lands on object 1, mob 1 or room 0. The
 world is what make_all builds: the area files areas/AREA lists, under obj/, mob/ and wld/.
+guild_guard acts only in a room its switch names, so each guard a zone loads must stand in one.
 """
 
 import re
@@ -36,12 +37,14 @@ def live_source(text: str) -> str:
     return "\n".join(lines)
 
 
+def listed_areas() -> list[str]:
+    return [line.split()[0] for line in (AREAS / "AREA").read_text(errors="replace").splitlines()
+            if line.strip() and not line.startswith("*")]
+
+
 def world_vnums() -> dict[str, set[int]]:
     vnums = {kind: set() for kind in LOOKUPS.values()}
-    for line in (AREAS / "AREA").read_text(errors="replace").splitlines():
-        if not line.strip() or line.startswith("*"):
-            continue
-        area = line.split()[0]
+    for area in listed_areas():
         for kind in vnums:
             path = AREAS / kind / f"{area}.{kind}"
             if path.is_file():
@@ -67,3 +70,23 @@ assert not missing, (
     f"{len(missing)} assignment(s) in specs.assign.c name a vnum no area in areas/AREA has; "
     "they would land on index 0:\n" + "\n".join(missing))
 print(f"spec assignments name existing vnums ({assignments} checked)")
+
+mobile = (SRC / "specs" / "specs.mobile.c").read_text(errors="replace")
+proc = mobile[mobile.index("int guild_guard("):mobile.index("int guardian(")]
+guarded_rooms = {int(room) for room in re.findall(r"\bcase (\d+):", proc)}
+guards = {int(vnum) for vnum in re.findall(
+    r"real_mobile0\((\d+)\)\]\.func\.mob = guild_guard;", source)}
+loads: dict[int, set[int]] = {}
+for area in listed_areas():
+    path = AREAS / "zon" / f"{area}.zon"
+    if path.is_file():
+        for mob, room in re.findall(r"^M\s+-?\d+\s+(\d+)\s+-?\d+\s+(\d+)",
+                                    path.read_text(errors="replace"), re.M):
+            loads.setdefault(int(mob), set()).add(int(room))
+loaded = [guard for guard in guards if guard in loads]
+assert len(loaded) > 10, f"only {len(loaded)} guild guards are loaded"
+idle = [f"mob {guard} loads in {sorted(loads[guard])}" for guard in sorted(loaded)
+        if not loads[guard] & guarded_rooms]
+assert not idle, ("guild_guard has no case for any room these guards load in, so they "
+                  "block nobody:\n" + "\n".join(idle))
+print(f"guild guards stand in rooms guild_guard names ({len(loaded)} checked)")

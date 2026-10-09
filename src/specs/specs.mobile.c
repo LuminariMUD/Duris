@@ -2014,6 +2014,7 @@ int guild_guard(P_char ch, P_char pl, int cmd, char * /*arg*/)
 			block = TRUE;
 		break;
 	case 7588:
+	case 45027:
 		g_prot = TRUE;
 		if ((cmd == CMD_EAST) && !GET_CLASS(pl, CLASS_CLERIC))
 			block = TRUE;
@@ -2065,12 +2066,14 @@ int guild_guard(P_char ch, P_char pl, int cmd, char * /*arg*/)
 			block = TRUE;
 		break;
 	case 8318:
+	case 45145:
 		g_prot = TRUE;
 		if ((cmd == CMD_NORTH) && !GET_CLASS(pl, CLASS_BARD))
 			block = TRUE;
 		break;
 	case 8200:
 	case 17135:
+	case 45126:
 		g_prot = TRUE;
 		if ((cmd == CMD_WEST) && !GET_CLASS(pl, CLASS_ROGUE))
 			block = TRUE;
@@ -2087,6 +2090,7 @@ int guild_guard(P_char ch, P_char pl, int cmd, char * /*arg*/)
 		break;
 	case 8014:
 	case 17221:
+	case 45039:
 		g_prot = TRUE;
 		if ((cmd == CMD_SOUTH) && !GET_CLASS(pl, CLASS_WARRIOR))
 			block = TRUE;
@@ -2153,6 +2157,8 @@ int guild_guard(P_char ch, P_char pl, int cmd, char * /*arg*/)
 	case 8044:
 	case 8046:
 	case 11685:
+	case 45063:
+	case 45065:
 		if (cmd == CMD_EAST)
 			block = TRUE;
 		break;
@@ -2177,10 +2183,13 @@ int guild_guard(P_char ch, P_char pl, int cmd, char * /*arg*/)
 	case 25326:
 	case 19951:
 	case 19954:
+	case 139119:
+	case 139125:
 		if (cmd == CMD_SOUTH)
 			block = TRUE;
 		break;
 	case 8053:
+	case 45072:
 		if (cmd == CMD_WEST)
 			block = TRUE;
 		break;
