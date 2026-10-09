@@ -173,7 +173,13 @@ def run(server, misnamed_server):
                     if stop == 'copyover':
                         copied_at = status_path.stat().st_size
                         process.send_signal(signal.SIGUSR1)
-                        again = health_line(label, copied_at, process, 90)
+                        # The old image can log a health line (a stall alert) until it execs.
+                        marker = 'copyover: executing new binary'
+                        deadline = time.monotonic()+90
+                        while marker not in status_path.read_text(errors='replace')[copied_at:]:
+                            assert process.poll() is None and time.monotonic() < deadline, label+': the copyover did not exec'
+                            time.sleep(.1)
+                        again = health_line(label, status_path.read_text(errors='replace').index(marker, copied_at), process, 90)
                         assert again.group(3) != producer, label+': the copied-over image kept the producer'
                         time.sleep(1.5)
                         stop = 'term'

@@ -5974,17 +5974,16 @@ void delete_doubledollar(char *string)
 	}
 }
 
-// Puts a Cyan % in front of each line.
+// Puts a Cyan % in front of each line. to_string holds MAX_STRING_LENGTH bytes; each
+// prefix adds six bytes a line, so a long block of short lines is cut where it fills.
 void format_to_snoopers(char *from_string, char *to_string)
 {
-	char *index, *index2;
+	char *index = from_string;
+	size_t used = 7;
 
 	//  debug( "From: '%s'.", from_string );
-	index2 = to_string;
-	snprintf(index2, MAX_STRING_LENGTH, "&+C%%&N ");
-	index2 += 7;
-	index = from_string;
-	while (*index != '\0')
+	snprintf(to_string, MAX_STRING_LENGTH, "&+C%%&N ");
+	while (*index != '\0' && used < MAX_STRING_LENGTH - 9) // a prefix is 8 bytes, then the null
 	{
 		if (*index == '\r')
 		{
@@ -5993,14 +5992,14 @@ void format_to_snoopers(char *from_string, char *to_string)
 		}
 		if (index[0] == '\n' && index[1] != '\0')
 		{
-			snprintf(index2, MAX_STRING_LENGTH, "\n&+C%%&N ");
-			index2 += 8;
+			snprintf(to_string + used, MAX_STRING_LENGTH - used, "\n&+C%%&N ");
+			used += 8;
 			index++;
 		}
 		else
 		{
-			*(index2++) = *(index++);
+			to_string[used++] = *(index++);
 		}
 	}
-	*index2 = '\0';
+	to_string[used] = '\0';
 }

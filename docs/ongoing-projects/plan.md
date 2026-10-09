@@ -465,7 +465,107 @@ in the idle switch closes a silent connection at 480 pulses. The two constants s
 
 ## Phase 3: the shop listing, dompurify, two dead helpers
 
-**Problem.** Three small things the community tree (`LuminariMUD/Duris`, master at
+**Built** on `fix/4-phase-3-shop-listing` (stacked on Phase 2), 2026-10-08:
+
+- `c4a9eb681`: `shopping_list()` sends `Gbuf1` and starts it again when the next line would
+  not fit, before each `strcat()`; the "Nothing!" path is unchanged.
+  `tests/async/test_shop_list_extract_contract.py`, the listing's existing test, now also
+  compiles the production `shopping_list()` under ASan and UBSan with a keeper carrying
+  700 items (about 70 KB) and checks every line arrives once, in order, in pieces under
+  64 KB. Without the bound it reports a stack-buffer overflow.
+- `3151e2d85`: `npm audit fix --prefix site` moved dompurify to 3.4.16, and an `overrides`
+  entry in `site/package.json` pins katex 0.18.2. `npm audit --prefix site` reports no
+  vulnerability; `npm test --prefix site` passes (15 tests).
+- `2c814182e`: `got_all_ingredients()` and `extract_used_ingredients()` deleted;
+  `get_bottle()` and `get_id_for()` keep their callers.
+- `b606a9d8b`: the three rows in `docs/records/COMMUNITY_DURIS_TRACKING.md`: #700 (b) and
+  #662 `Adapted`, #573 (e) `Rejected` (ours keeps `mix`; the helpers are noted).
+
+**What differs from the plan, and why.**
+
+- `npm audit` also reported katex 0.16.47 (GHSA-238p-pmpm-9mq7, low, fixed in 0.18.2),
+  which mermaid pulls in, and a second dompurify advisory (GHSA-6688-9rhm-gjv2, fixed by
+  the same 3.4.16). Every mermaid 12 release, 12.1.0 included, asks for katex `^0.16.47`,
+  and npm's only automatic fix was a downgrade to mermaid 10.8.0, so the override pins
+  katex instead, beside the existing `lodash-es` one. Mermaid's one katex call
+  (`renderToString` with `throwOnError`, `displayMode`, `output`) renders under 0.18.2, and
+  the site's diagrams use no math. Dependabot's #3 (dompurify) is the same lockfile line;
+  it landed on `master` first (`71f14f1a7`), so after the merge recorded below the katex
+  pin is the only `site/` change this phase adds. #1 (mermaid 12.1.0) is unaffected.
+- The listing harness extends the listing's existing test instead of adding a file, and
+  the bound is written inline at the one call site rather than as the community tree's
+  `append_listing` helper.
+- `2caf3a289` fixes a race in `tests/async/run_telemetry_schema_boot_journey.py`, found by
+  this phase's gate: after its copyover signal the old image can still log a
+  `telemetry_health` line (here a stall alert raised by the copyover tick) carrying the old
+  producer, which the journey took for the new image's. It now reads from the old image's
+  `copyover: executing new binary` line.
+- This section's "Problem" called the community tree `LuminariMUD/Duris`; since the move
+  to GitHub that is this repository, and theirs is `Community-Duris/Duris`.
+
+**Gate** on `b606a9d8b`: `./scripts/format.sh --all --check` clean, `make test-all -j16
+TEST_JOBS=16` 676 passed, 0 failed, `make test-db` 47 of 48 (`telemetry_schema_boot`, the
+race above; with `2caf3a289` the leg passed twice in a row on its own). Nothing is left.
+
+**Review round 1** (PR #7, review of `f9ad0e09e`; tag `backlog/phase-3-review-1`). Two
+findings, both in the listing bound, both reproduced first on a production-profile flat-file
+build of that head with the review's live probe: a keeper with 700 priced items, and a
+mortal with paging off running `list`, then snooped by an overlord. One bound fixes both;
+each commit has a case that fails on the code before it:
+
+- `4c4557d76`: `c4a9eb681` cut the pieces at 65,535 bytes, which kept `shopping_list()` in
+  bounds but not the output path. `process_output()` expands each queued block into
+  buffers of `MAX_STRING_LENGTH`: `AnsiString::term()` stops 64 bytes short of it and
+  drops the rest (55 of 700 lines never arrived, 378 to 432, with no notice), and for a
+  snooped player `format_to_snoopers()` ran past its buffer and the server aborted
+  (`stack smashing detected`). Pieces are now at most `MAX_STRING_LENGTH / 8`, which also
+  keeps a 700-item listing to about a dozen entries in the player's log. The listing test
+  names its items and prices in colour and passes each piece through the production
+  `format_to_snoopers()` and `AnsiString::term()` as `process_output()` does; against the
+  old bound the first is an ASan overflow and the second loses lines.
+- `7a16e9c13`: `format_to_snoopers()` itself had no bound, so any other block of about
+  62 KB with enough lines still overflowed it. It now counts what it writes and stops where
+  the next step might not fit. The count replaces the review's pointer limit, which the
+  production profile's `-Wstrict-overflow=2` rejects. A case in
+  `word_output_integration_harness.cpp` (a SIGSEGV without it, an ASan overflow under
+  `SANITIZE=1`).
+
+With both, the probe on a production build of `7a16e9c13`: 700 of 700 lines with plain and
+with coloured names, snooped and not, the snooper got all 700 with its `%` prefix, and the
+server stayed up. The same probe with the mortal on a WebSocket connection, which the
+review left unchecked, behaved the same way on both builds. Ledger row #700 (b) names
+`4c4557d76` too.
+
+`6624a7078` merges Phase 2's round head (`0ddbaa62d`, `backlog/phase-2-review-1`), which
+had merged `master` after Phase 1 landed, so this branch carries `master` up to
+`494317e40`. Its two conflicts are the ones the plan's Landing section names: the Status
+table and that section keep `master`'s text and this section keeps the branch's; ledger
+rows #659 (`master`'s) and #662 are both kept, and #662 names Dependabot's `71f14f1a7`,
+which landed the same dompurify line on `master` first; the sentence on Dependabot's #3
+above is reworded to match. `site/` merged on its own: mermaid 12.1.0 from `master` with
+this phase's katex 0.18.2 override.
+
+**Gate** on `6624a7078`, the merge: `./scripts/format.sh --all --check` clean (1037 files),
+`make test-all -j16 TEST_JOBS=16` 676 passed, 0 failed (0 timed out, 0 ended by a signal)
+in 6 min 49 s, and on the merged `site/` `npm ci`, `npm audit` (0 vulnerabilities) and
+`npm test --prefix site` (15 passed). `make test-db` 47 of 48: `telemetry_schema_boot`'s
+first stop left the outage ledger at `abandoned` instead of `clean_drained` under the
+host's load, and the leg passed alone. The journey stopped a healthy server while the
+boot's records still waited in their 2 s batch, so the stop's own 2 s flush had to write
+them. `89080c967` on `master` makes it stop only once they are in SQL: a probe that stalls
+that flush with a table lock fails the old journey and passes the new one. This branch
+takes it when it lands. The record after the merge changes only this section and ledger
+row #700 (b).
+
+After the tag, `test-all` on `fb5590b99` failed Phase 2's `test_connection_limit_journey.py`
+once (and `test_telemetry_capacity_272.py`'s latency guard, which passed alone): during the
+fill an idle timeout could free a slot and let the journey's one probe in. Phase 2 fixed its
+journey in `97807ecbe`, and `b4b5068e7` merges Phase 2's `ab4f885cd` with it. **Gate** on
+`b4b5068e7`: `./scripts/format.sh --all --check` clean, `make test-all -j16 TEST_JOBS=16` 676
+passed, 0 failed (0 timed out, 0 ended by a signal), `make test-db` 48 of 48, and on `site/`
+`npm audit` 0 vulnerabilities and `npm test --prefix site` 15 passed.
+
+**Problem.** Three small things the community tree (`Community-Duris/Duris`, master at
 `a1e4a7efd`, split from ours at `e1357a30a` on 2026-09-23) fixed after the split, found on
 2026-10-04 by comparing the trees:
 
