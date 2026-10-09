@@ -508,6 +508,26 @@ is retried after a pause.
 Not covered: a configured `MAINTENANCE_STATE_FILE` that still points under `bin/`; that is
 the host's configuration.
 
+## New databases on MariaDB 11.8
+
+The sealed verifiers of migrations 0031 and 0032 accept only MariaDB 10.11 and MySQL 8.0,
+so a database built on MariaDB 11.8 stopped at 0031. Their files cannot change (every
+history holds their checksums), so the manifest lists an 11.8 verifier for each, which the
+runner runs in their place on 11.8; the history keeps the sealed checksums. On 11.8 their
+metadata fingerprints are 10.11's.
+
+```sh
+python3 tests/async/run_migration_runner_engines.py
+RUNTIME_DB_IMAGE=mariadb:11.8 tests/async/run_runtime_compatibility_mysql.sh
+python3 tests/async/test_immutable_migration_runner.py
+```
+
+The first builds a database through the runner on MariaDB 11.8, 10.11 and MySQL 8.0, checks
+one history checksum on all three, and that an edited history row stops the runner. The
+second applies every step and verifier on 11.8, as the runner chooses them, and runs the
+boot check's drift rejections. The unit test covers the manifest's checks of the 11.8
+verifiers. No test covers an engine besides these three.
+
 ## Ownership records of items that stopped existing
 
 A save never releases an `item_current_owner` row, so a player's row for an item that was

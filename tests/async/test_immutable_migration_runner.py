@@ -110,6 +110,11 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
         self.assertEqual(manifest.required_table_count, 170)
         self.assertEqual(len(manifest.required_tables), 170)
         self.assertEqual(len(manifest.migrations), 36)
+        self.assertEqual(
+            [(step.migration_id, step.verifier("mariadb-11.8").name)
+             for step in manifest.migrations if step.engine_verifiers],
+            [("0031_economy_accounting", "0031_economy_accounting_mariadb_11_8.sh"),
+             ("0032_economic_baseline", "0032_economic_baseline_mariadb_11_8.sh")])
         self.assertEqual(manifest.migrations[-1].migration_id,
                          "0036_log_entries_ipv6")
         self.assertEqual(manifest.migrations[0].migration_id,
@@ -179,6 +184,42 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
             target.symlink_to(real)
             with self.assertRaisesRegex(runner.MigrationContractError,
                                         "cannot read|escapes"):
+                runner.load_manifest(path)
+
+    def test_engine_verifier_is_sealed_and_chosen_only_for_its_engine(self):
+        """A migration's verifier for MariaDB 11.8 is checksummed like a sealed one and
+        replaces the sealed verifier on 11.8 only; the history keeps the sealed checksum."""
+        self.assertEqual(runner.engine_of("11.8.6-MariaDB-0ubuntu1"), "mariadb-11.8")
+        for other in ("10.11.14-MariaDB-0ubuntu0.24.04.1", "8.0.39", "11.4.5-MariaDB"):
+            self.assertEqual(runner.engine_of(other), "")
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            path = self.make_manifest(directory)
+            engine_path = directory / "immutable/0002_synthetic_step_mariadb_11_8.sh"
+            engine_path.write_text("#!/usr/bin/env bash\nexit 0\n")
+            entry = {"migration": "0002_synthetic_step", "engine": "mariadb-11.8",
+                     "verify": "immutable/0002_synthetic_step_mariadb_11_8.sh",
+                     "verify_checksum": runner.checksum(engine_path.read_bytes())}
+            value = json.loads(path.read_text())
+            value["engine_verifiers"] = [entry]
+            path.write_text(json.dumps(value))
+            step = runner.load_manifest(path).migrations[1]
+            self.assertEqual(step.verifier("mariadb-11.8"), engine_path)
+            self.assertEqual(step.verifier(""), step.verify_path)
+            self.assertEqual(step.verify_checksum,
+                             value["migrations"][1]["verify_checksum"])
+            for field, wrong, error in (
+                    ("verify_checksum", "0" * 64, "checksum"),
+                    ("engine", "mariadb-12.0", "names no migration or engine"),
+                    ("migration", "0009_synthetic_step", "names no migration or engine"),
+                    ("verify", "immutable/0001_synthetic_step_mariadb_11_8.sh", "path")):
+                value["engine_verifiers"] = [dict(entry, **{field: wrong})]
+                path.write_text(json.dumps(value))
+                with self.assertRaisesRegex(runner.MigrationContractError, error):
+                    runner.load_manifest(path)
+            value["engine_verifiers"] = [entry, entry]
+            path.write_text(json.dumps(value))
+            with self.assertRaisesRegex(runner.MigrationContractError, "names no migration"):
                 runner.load_manifest(path)
 
     def test_apply_verify_record_order_failure_resume_and_noop(self):
@@ -327,6 +368,8 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
             with mock.patch.object(runner.shutil, "which", return_value="/usr/bin/mysql"), \
                     mock.patch.object(runner.subprocess, "run") as process:
                 process.return_value.returncode = 0
+                # The server's version, which the runner asks for before a verifier.
+                process.return_value.stdout = b"10.11.14-MariaDB\n"
                 executor.verify(manifest.migrations[0])
                 verify_environment = process.call_args.kwargs["env"]
                 self.assertEqual(verify_environment["DURIS_REAL_MYSQL_CLIENT"],
