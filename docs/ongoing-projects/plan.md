@@ -29,38 +29,37 @@ Updated 2026-10-09. A new session starts here, then reads the phase it continues
 | 5 | Studio-proc tag ids and `world.trg` | Landed 2026-10-09 in `2584ad609` (PR #9, `backlog/phase-5-review-1` and its catch-up merges). |
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
 | 7 | Quest EXP line and `achievements zones` | Landed 2026-10-09 in `17b1f0813` (PR #10, `backlog/phase-7-review-1` and Phase 5's catch-up). |
-| 8 | Specials assigned to missing vnums | Built on `fix/4-phase-8-dead-specials`; PR #11, review round 1 done, tag `backlog/phase-8-review-1`, gate green; next to land. |
-| 9 | `board` specials and the audit heading | Built on `fix/4-phase-9-boards`; PR #12, review round 1 on the branch, tag `backlog/phase-9-review-1`. |
+| 8 | Specials assigned to missing vnums | Landed 2026-10-09 in `eb34cf799` (PR #11, `backlog/phase-8-review-1` and Phase 7's round 1). |
+| 9 | `board` specials and the audit heading | Built on `fix/4-phase-9-boards`; PR #12, review round 1 done, tag `backlog/phase-9-review-1`; next to land. |
 
-Phases 1 to 7 are on `master`. Phases 8 and 9 are each on their own branch, stacked on the
-one before; their sections here are on those branches, not yet on `master`. What is left:
-Phase 8's landing, whose review round is done, then Phase 9's round and landing.
+Phases 1 to 8 are on `master`. Phase 9 is on its own branch; its section here is on that
+branch, not yet on `master`. What is left: Phase 9's landing, whose review round is done.
 
 ## Landing
 
-The pull requests form one stack: #11 (Phase 8) now targets `master`, and #12 (Phase 9)
-targets Phase 8's branch. #11 has had review round 1: each finding fixed in its own commit,
-its thread resolved, the round's head tagged `backlog/phase-8-review-1`. #12's round 1 is on
-its branch, tagged `backlog/phase-9-review-1`. Take them in order: the review round on the
-branch where one is still open, then the landing as "Every phase" says. A branch's head can
-be past its last tag (a fix or a merge from the phase below after the round); the landing
-merges the head. Before deleting a landed branch, point the next pull request at `master`
-(`gh pr edit <n> --base master`): a landing is a pushed merge, and GitHub then closes, not
-retargets, a pull request whose base branch is deleted (#6 was closed that way at Phase 1's
-landing and reopened). Delete this file when Phase 9 lands.
+#12 (Phase 9) is the last pull request of the stack and now targets `master`. It has had
+review round 1: each finding fixed in its own commit, its thread resolved, the round's head
+tagged `backlog/phase-9-review-1` (`75f4aff7c`). The landing is a `--no-ff` merge of the
+branch head, `34a729868`, which is past the tag: `8031e8593` merged Phase 8's round 1 head
+(`6864ab279`, the head that landed), and `918612472` reverts the branch's copy of
+`b683d9eb0`, a telemetry journey fix `master` took as `70418a562` and `cb23b36fd` then
+rewrote. Phase 9 changes no Status row, so a trial merge of its head onto this landing record
+is clean.
 
-A landing can meet a conflict in this file: a branch that rewrote the Status table's earlier
-rows conflicts with `master`'s. Keep `master`'s table and this section, mark the landed phase,
-and take the branch's side everywhere else. Phase 8's branch already has Phase 7's head
-(`3549daad4`), taken in `9db3eaecb`, and changes no Status row, so a trial merge of its head
-(`6864ab279`) onto this landing record is clean. Phase 8 regenerates
-`docs/reference/artifact_source_inventory.json`, which `test_artifact_source_inventory.py`
-checks against `specs.assign.c`; a `master` change to either needs the inventory regenerated
-at the landing.
+Gate the landing merge in full. Phase 9's last gate, on `8031e8593` (`make test-all` 683
+passed, `make test-db` 47 of 48, the `deletion` leg that `master`'s `4133466af` fixes), ran
+before `master` took `639f6fd55` (the kingdom subsystem shipped off), `cb10b2408` and seven
+test fixes. Phase 9 changes `areas/zon/heavens.zon` and with it the hash in
+`migrations/seeds/epic_zone_payouts.json`; a `master` change to an `areas/zon/*.zon` file
+before the landing needs `scripts/epic_zone_seed.py write` on the merge.
 
-The local dev server (`duris-plan`, ports 4000/4001) runs Phase 9's build of 2026-10-08, the
-review-0 heads. The landings so far did not copyover it: the landed build would take the
-phases still on branches off it. It goes onto `master`'s build when Phase 9 lands.
+When Phase 9 lands, no pull request is stacked on `fix/4-phase-9-boards`, so the branch can
+be deleted right after the push. The local dev server (`duris-plan`, ports 4000/4001) still
+runs Phase 9's build of 2026-10-08, the review-0 heads; the landings so far did not copyover
+it, since the landed build would take the phases still on branches off it. It goes onto
+`master`'s build then, and plan issue #4 is done. This file is deleted with the landing
+record. Its "Why these" table is the one list of open work outside this plan, so ask the
+owner where that list goes before deleting it.
 
 ## Why these
 
@@ -1123,6 +1122,108 @@ comparison as Phase 3. Neither changes a reward or a game mechanic.
   pins the filter and the order.
 
 ## Phase 8: specials named for vnums that are not in the world land on index 0
+
+**Built** on `fix/4-phase-8-dead-specials` (stacked on Phase 7), 2026-10-08, in
+`44345ebc9`:
+
+- `tests/async/test_spec_assign_vnums.py` reads every live `real_object0(N)`,
+  `real_mobile0(N)` and `real_room0(N)` with a numeric `N` in `specs.assign.c` (block and
+  line comments blanked, `#if 0` blocks skipped, line numbers kept) and checks it against
+  the `#N` lines of `areas/obj|mob|wld/<area>.*` for the areas `areas/AREA` lists. That
+  reading gives the same 17,681 mobs, 19,150 objects and 253,261 rooms as the generated
+  `world.*` files. Before the deletion it named 142 lines: exactly the 121 of the appendix
+  below, and 21 more.
+- The 142 lines are deleted, with the two continuation lines of the bridge troll's
+  trailing comment and seven section headings left with nothing under them (Sylvandawn
+  twice, fooquest, the pirate ship's `mobs` and `general jabbering`, Wilderness Near
+  Verzanan, Troll Hills). 1,209 live assignments remain, all naming a vnum the world has.
+
+**What differs from the plan, and why.**
+
+- The 21 more are `mob_index[real_mobile0(N)].func.mob = 0;` lines for spec teachers that
+  left the world (1500 to 1520, 200011, 200012, 200321, 210006), which the appendix's
+  count left out because they assign no special. They wrote 0 over mob 1's special and
+  are as dead as the rest, so they went too, and the contract covers every lookup.
+- The special procedures only these lines named (the pirate ship's talkers, the outpost
+  captains, `fooquest_*` and others) stay in the source. They were already unreachable
+  except through index 0, and deleting them is outside decision 9.
+
+**Gate** on `44345ebc9`: `./scripts/format.sh --all --check` clean, `make test-all -j16
+TEST_JOBS=16` 680 passed, 0 failed, `make test-db` 48 of 48. Nothing is left.
+
+**Review round 1** (PR #11, review of `12a728d74`; tag `backlog/phase-8-review-1`),
+2026-10-09. Two findings, each fixed in its own commit, and two defects the fixes turned up:
+
+- `b53795c3c`: 60 of the 142 deleted lines named content still in the world under a new
+  vnum: its zone moved, and the same prototype sits in an area `areas/AREA` lists, with no
+  special. Those lines are re-pointed instead of deleted. Black Pearl (142xxx) from
+  `raxquest` and `fooquest`: Long John Silver, his parrot and dragon, ten pirate talkers,
+  nine objects, fooquest's sage and illithid, 13 `newbie_quest` NPCs and the dragonslayer.
+  Charing (45xxx) from Sylvandawn: Zilota and Nelanna (`world_quest`), nine guild guards,
+  three city guards, the trail keeper, the dump and the Royal Stables. The City of Brass
+  (139xxx) from `brass-old-2/3`: the iron golem, Latisia, the staff of blue flames and the
+  ring of elemental control. And the AoD hall's inn, now 29812 in `cbl_hall`, which holds
+  the whole hall at +310. Each pair was checked by diffing the two prototypes in full, and
+  the section headings came back under the zones' current names. Four procs named the old
+  numbers and move with them: `long_john_silver_shout`'s helpers and wraith,
+  `fooquest_mob`'s illithid, `fooquest_boss`'s dragon and `ring_elemental_control`'s own
+  object (every rub of the ring bailed). `docs/reference/artifact_source_inventory.json` is
+  regenerated with it: the staff and the dragonslayer are artifacts, now with a binding.
+  82 lines stay deleted: the 21 spec-teacher zeroes; three Sylvandawn lines whose Charing
+  copy was already bound (45049, 45036, 45006); the 26 `outpost_captain` lines; room
+  70501, whose copy 142201 is `ZONE_SHIP_ZONE_ENTRANCE`; and 31 whose content is nowhere in
+  the listed world. The outpost captains stay deleted although `patrols` reuses map5's
+  descriptions: those guards are not sentinel or stay-zone, load in rooms that open onto
+  the surface map, and the captains are level 60 now, so the tower garrison proc, which
+  hunts every racewar-evil player in its zone, would be new behaviour on them.
+- `191a475eb`: `guild_guard` acts only in a room its switch names, and the switch still
+  named Sylvandawn's and old Brass's rooms, so the re-pointed guards blocked nobody, nor
+  did 45049, bound before this phase. Each Charing or Brass room joins the case of the room
+  it replaces, with the same exit and class rule: 45126 (rogues, west), 45039 (warriors,
+  south), 45145 (bards, north), 45063 and 45065 (the royal chambers, east), 45072 (the
+  treasure, west), 139119 and 139125 (the temple, south). Charing's temple, 45027, opens
+  east where Sylvandawn's opened west, so it joins 7588, the east-for-clerics case. The
+  contract also checks now that every `guild_guard` mob a zone loads stands in a room the
+  switch names; without these cases it names the eight guards.
+- `2ae0ffe43` (an older defect that check found): `guild_guard` was bound to mob 16501,
+  with a case for room 16501 and insignia 9316, all from a guild that left long ago.
+  Woodseer has 165xx now, so the binding sat on its halfling street guard and the case on
+  a stairway with no north exit. Both are gone.
+- `db0525bc2`: the contract read numeric lookups one line at a time, 1,268 of the 1,293
+  live ones, and missed the two clang-format had wrapped and the 18 named constants. It now
+  reads the whole live source, resolves a name through the headers' `#define` lines, fails
+  on any other name, and checks 1,288; the rest are the loop variables of three loops. A
+  wrapped dead lookup, one through a header `#define`, and an undefined name each fail it.
+
+The special procedures of the 82 deleted lines that nothing else names stay in the source,
+as before. `9db3eaecb` then merged Phase 7's round 1 (`3549daad4`, which carries `master`
+through Phase 5); the only conflict, the Status table and Landing section, took Phase 7's side.
+
+A live check on a full-world flat-file boot, as an OVERLORD, passed 25 of 25. Each
+re-pointed guard bowed the god through ("bows before you", printed only when `guild_guard`
+blocks) in 45126, 45027, 45072, 45145, 45063, 45065, 45017, 139119 and 139125. In 45039 the
+warriors' guard let the god, a warrior, pass and blocked a loaded commoner. `stat` showed a
+special on the re-pointed rooms, mobs and objects it was asked about, and the illithid's
+`fooquest_boss` called in 142214. Rubbing the worn ring 139037 answered "There aren't any
+elementals to charm.", and the Royal Stables listed their hirelings. The boot logged no
+"ACT_SPEC, but no function" line.
+
+**Gate** for round 1, on `9db3eaecb`: `./scripts/format.sh --all --check` clean,
+`make test-all -j16 TEST_JOBS=16` 682 passed, 0 failed, `make test-db` 48 of 48. A first
+run on the round head before the merge failed two tests. One was
+`test_artifact_source_inventory.py`, fixed by the inventory regeneration now in `b53795c3c`.
+The other was `test_password_async_runtime.py`: its harness timed calls by the wall clock,
+and a call passed 50 ms while four gates ran at once (load about 60). That is fixed on
+`master` in `91b768884`, which times calls by the thread's CPU, and it comes here through
+the stack.
+
+**Landed** 2026-10-09 in `eb34cf799`, PR #11: a `--no-ff` merge of the branch head
+`6864ab279` (`backlog/phase-8-review-1`), which already had Phase 7's round 1 (`3549daad4`,
+taken in `9db3eaecb`), on `master` at `a6829d172`; clean, and only Phase 8's six files. Gated
+on that merge: `./scripts/format.sh --all --check` clean (1038 files), `make test-all -j16
+TEST_JOBS=16` 682 passed, 0 failed (0 timed out, 0 ended by a signal), `make test-db` 48 of
+48. No `master` change touched `specs.assign.c` or the artifact inventory, so the inventory
+needed no regeneration.
 
 **Checked** at `f44291043`. `real_room0()`, `real_mobile0()` and `real_object0()`
 (`src/world/db.c` L4607, L4680, L4748) return 0 for a missing vnum; the comment at
