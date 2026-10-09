@@ -7,7 +7,9 @@ server; tests/async/with_disposable_mariadb.sh exports them. --server boots
 stopped, copied over (SIGUSR1) and killed; after each the outage ledger in
 TELEMETRY_OUTAGE_LEDGER_DIR, read with scripts/telemetry/outage.py, shows the
 producer as clean_drained, as a copied-over producer and a new one, and as a
-running watermark that the next producer turns into unknown_tail. It then boots
+running watermark that the next producer turns into unknown_tail. A stop whose
+2 s flush a database stall ended with records unwritten may read as that tail
+instead of clean_drained; no other outcome passes. It then boots
 against the chain with one progression column renamed (the boot gate refuses
 the schema with COMPAT-E003 before telemetry runs) and as a writer that may
 only SELECT (the game enters its loop with nobody logged in and the one
@@ -115,7 +117,24 @@ def run(server, misnamed_server):
                 if pending_allowed and packet.get('reason') == 'pending_publication':
                     return None
                 assert read.returncode == 0, packet
-                return [(row['phase'], row['unknown_after_last_sample']) for row in packet['observations']]
+                return packet['observations']
+
+            def stopped(row):
+                # A stop writes what is left within 2 s (src/net/comm.c). A host stall can end
+                # that flush with admitted records unwritten, and the producer then records an
+                # unknown or abandoned tail instead of clean_drained. Anything else fails.
+                if row['phase'] == 'clean_drained':
+                    return True
+                unwritten = (row['admitted_detail'] + row['admitted_control'] - row['applied_records'] -
+                             row['duplicate_records'] - row['stale_checkpoint_records'])
+                cut = (row['phase'] in ('unknown_tail', 'abandoned') and unwritten > 0 and
+                       not (row['invalid_records'] or row['conflict_records'] or row['quarantined_records']))
+                if cut:
+                    print(f"a stop's flush ended at its deadline with {unwritten} records unwritten: {row['phase']}", flush=True)
+                return cut
+
+            def phases(rows):
+                return [(row['phase'], row['unknown_after_last_sample']) for row in rows]
 
             def health_line(label, status_offset, process, deadline=30):
                 deadline = time.monotonic()+deadline
@@ -210,22 +229,26 @@ def run(server, misnamed_server):
                         sql(revert)
 
             boot('whole chain', ('healthy', 'none', 0, 'none', 'none'))
-            assert evidence() == [('clean_drained', False)], evidence()
+            rows = evidence()
+            assert len(rows) == 1 and stopped(rows[0]), rows
+            first = phases(rows)[0]
             boot('whole chain, copied over', ('healthy', 'none', 0, 'none', 'none'), stop='copyover')
             # The copyover flushes durably but writes no terminal sample before the exec,
             # so the copied-over producer is an unknown tail; the new image drains cleanly.
-            assert evidence() == [('clean_drained', False), ('unknown_tail', True), ('clean_drained', False)], evidence()
+            rows = evidence()
+            assert (len(rows) == 3 and phases(rows)[:2] == [first, ('unknown_tail', True)] and
+                    stopped(rows[2])), rows
             boot('whole chain, killed', ('healthy', 'none', 0, 'none', 'none'), stop='kill')
             killed = evidence(pending_allowed=True)
-            assert killed is None or killed[3] == ('running', True), killed
-            print(f'outage ledger after stop, copyover and kill: {killed or "publication pending"}', flush=True)
+            assert killed is None or phases(killed)[3] == ('running', True), killed
+            print(f'outage ledger after stop, copyover and kill: {phases(killed) if killed else "publication pending"}', flush=True)
             boot('renamed progression column', None,
                  'ALTER TABLE telemetry_interval CHANGE COLUMN progression_requested_xp progression_requested_xp_hidden BIGINT NULL',
                  'ALTER TABLE telemetry_interval CHANGE COLUMN progression_requested_xp_hidden progression_requested_xp BIGINT NULL')
             boot('writer that may only SELECT', ('circuit-open', 'permanent-permission', 1142, 'none', 'none'),
                  env_extra={'TELEMETRY_DB_USER': writer, 'TELEMETRY_DB_PASSWD': writer_password})
             # The next producer's registration turned the killed one's watermark into a gap.
-            assert evidence()[3] == ('unknown_tail', True), evidence()
+            assert phases(evidence())[3] == ('unknown_tail', True), evidence()
             # A ledger the worker cannot use is refused before SQL, and the line says what.
             boot('no outage ledger directory', ('circuit-open', 'permanent-repository', 22, 'none', 'directory'),
                  env_extra={'TELEMETRY_OUTAGE_LEDGER_DIR': ''})
