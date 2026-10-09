@@ -447,6 +447,24 @@ through its initial guards only.
 Not covered: real reflective damage and a proc-driven extraction during an expert or elite
 riposte on a full sanitizer server.
 
+## Setbit flag bits beyond a 32-bit field
+
+`setbit` sets a flag bit only where its 32-bit field has one, and otherwise answers
+"That field has no bit for that value." An item's race list offers every race, but only
+races 1-32 have a bit: `setbit obj <item> race firbolg 1` asked for bit 35, which x86 wraps
+to bit 3, so the item denied grey elves instead. A flag given by number outside 0-31 did the
+same.
+
+```sh
+python3 tests/async/test_setbit_flag_bits.py
+```
+
+The test compiles the production `setbit_parseTable()` and `ac_bitCopy()` with UBSan
+stopping at its first report, against an item race list built as `setbit_obj()` builds it
+and a numbered flag field: races 1 and 32 set and clear their own bits, race 36 and the
+numbers -1, 32 and 40 are refused and change nothing, and bit 31 is set. Without the fix it
+stops at race 36's shift. Not covered: the other `setbit` field types.
+
 ## Telemetry writer: schema check, round trip and the gap record
 
 The SQL telemetry writer (off unless `TELEMETRY_ENABLED` is set) proved at startup only
