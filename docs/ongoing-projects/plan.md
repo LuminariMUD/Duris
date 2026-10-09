@@ -401,6 +401,13 @@ kept, not 20; VmRSS flat over 3000 refused TLS connections, not +7.6 MB per 1000
 website client sending every 25 s open at 175 s, not closed at 120 s; 8 of 12 from one
 IPv6 /64, not 12. Nothing is left.
 
+**After the tag.** Phase 3's gate failed `test_connection_limit_journey.py` once with "the
+server never filled up". The journey fills the server just after `waiting` times out, and
+the connections it opened a few seconds after `waiting` time out during the fill: the
+probe from 127.0.0.39 could take a slot they freed. `97807ecbe` probes from fresh addresses
+until one is refused and keeps any that got in. The landing merges the branch head, which
+is `backlog/phase-2-review-1` plus that commit and this note.
+
 **Problem.** Found on 2026-10-05 in a full read of one server's logs. Over 51 minutes one
 address opened 753 plain-telnet connections: a median of 13 a minute, at most 26 a minute,
 11 in the busiest second. None got past the account name prompt (`CON_GET_ACCT_NAME`,
@@ -541,6 +548,14 @@ them. `89080c967` on `master` makes it stop only once they are in SQL: a probe t
 that flush with a table lock fails the old journey and passes the new one. This branch
 takes it when it lands. The record after the merge changes only this section and ledger
 row #700 (b).
+
+After the tag, `test-all` on `fb5590b99` failed Phase 2's `test_connection_limit_journey.py`
+once (and `test_telemetry_capacity_272.py`'s latency guard, which passed alone): during the
+fill an idle timeout could free a slot and let the journey's one probe in. Phase 2 fixed its
+journey in `97807ecbe`, and `b4b5068e7` merges Phase 2's `ab4f885cd` with it. **Gate** on
+`b4b5068e7`: `./scripts/format.sh --all --check` clean, `make test-all -j16 TEST_JOBS=16` 676
+passed, 0 failed (0 timed out, 0 ended by a signal), `make test-db` 48 of 48, and on `site/`
+`npm audit` 0 vulnerabilities and `npm test --prefix site` 15 passed.
 
 **Problem.** Three small things the community tree (`Community-Duris/Duris`, master at
 `a1e4a7efd`, split from ours at `e1357a30a` on 2026-09-23) fixed after the split, found on
