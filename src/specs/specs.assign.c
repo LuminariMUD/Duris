@@ -856,10 +856,6 @@ void assign_mobiles(void)
 	mob_index[real_mobile0(45067)].func.mob = guild_guard;
 
 	mob_index[real_mobile0(45049)].func.mob = guild_guard;
-	/*
-	   Players Guild
-	 */
-	mob_index[real_mobile0(16501)].func.mob = guild_guard;
 
 	/*
 	   Split Shield

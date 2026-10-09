@@ -2033,20 +2033,6 @@ int guild_guard(P_char ch, P_char pl, int cmd, char * /*arg*/)
 				block = TRUE;
 		}
 		break;
-	case 16501:
-		if (cmd == CMD_NORTH)
-		{
-			if (pl->equipment[GUILD_INSIGNIA])
-				Guild_Eq = obj_index[pl->equipment[GUILD_INSIGNIA]->R_num]
-						   .virtual_number;
-			else
-				Guild_Eq = 0;
-			if (Guild_Eq == 9316)
-				break;
-			else
-				block = TRUE;
-		}
-		break;
 	case 11603:
 		g_prot = TRUE;
 		if ((cmd == CMD_WEST) && !GET_CLASS(pl, CLASS_WARRIOR))
