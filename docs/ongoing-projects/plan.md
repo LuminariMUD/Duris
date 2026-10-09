@@ -23,43 +23,45 @@ Updated 2026-10-09. A new session starts here, then reads the phase it continues
 | Phase | Subject | State |
 |---|---|---|
 | 1 | Hung tests and silent backup failures | Landed 2026-10-09 in `e757c77e7` (PR #5, `backlog/phase-1-review-1`). |
-| 2 | Unauthenticated connections per address | Built on `fix/4-phase-2-connection-limit`, gate green; PR #6, tag `backlog/phase-2-review-0`; reviewed, seven findings open. |
-| 3 | Shop listing, dompurify, dead helpers | Built on `fix/4-phase-3-shop-listing`, gate green; PR #7, tag `backlog/phase-3-review-0`; reviewed, two findings open. |
-| 4 | Security record and `SECURITY.md` | Built on `fix/4-phase-4-security-record`, documents only, their tests green; PR #8, tag `backlog/phase-4-review-0`; reviewed, five findings open. |
-| 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc`, gate green; PR #9, tag `backlog/phase-5-review-0`; reviewed, six findings open. |
+| 2 | Unauthenticated connections per address | Landed 2026-10-09 in `14776698a` (PR #6, `backlog/phase-2-review-1` and a journey fix). |
+| 3 | Shop listing, dompurify, dead helpers | Built on `fix/4-phase-3-shop-listing`; PR #7, review round 1 done, tag `backlog/phase-3-review-1`, gate green; next to land. |
+| 4 | Security record and `SECURITY.md` | Built on `fix/4-phase-4-security-record`; PR #8, review round 1 done, tag `backlog/phase-4-review-1`, gate green. |
+| 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc`; PR #9, review round 1 done, tag `backlog/phase-5-review-1`, gate green. |
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
 | 7 | Quest EXP line and `achievements zones` | Built on `fix/4-phase-7-display-fixes`, gate green; PR #10, tag `backlog/phase-7-review-0`; reviewed, two findings open. |
 | 8 | Specials assigned to missing vnums | Built on `fix/4-phase-8-dead-specials`, gate green; PR #11, tag `backlog/phase-8-review-0`; reviewed, two findings open. |
 | 9 | `board` specials and the audit heading | Built on `fix/4-phase-9-boards`, gate green; PR #12, tag `backlog/phase-9-review-0`; reviewed, seven findings open. |
 
-Each phase after the first is on its own branch, stacked on the one before; its section here
-is on that branch, not yet on `master`. What is left is a review round and a landing for each,
-in order, starting with Phase 2.
+Phases 1, 2 and 6 are on `master`. Each later phase is on its own branch, stacked on the one
+before; its section here is on that branch, not yet on `master`. What is left: the landings
+of Phases 3, 4 and 5, whose review rounds are done, and a review round and a landing for
+Phases 7, 8 and 9, in order, starting with Phase 3's landing.
 
 ## Landing
 
-The pull requests form one stack: #6 (Phase 2) now targets `master`, and #7, #8, #9, #10,
-#11 and #12 (Phase 9) each target the previous phase's branch. Each has an adversarial review
-whose findings are open. Take them in order: the review round on the branch (each finding
-fixed in its own commit, the round's head tagged `backlog/phase-<n>-review-<round>`), then the
-landing as "Every phase" says. Before deleting a landed branch, point the next pull request
-at `master` (`gh pr edit <n> --base master`): a landing is a pushed merge, and GitHub then
-closes, not retargets, a pull request whose base branch is deleted (#6 was closed that way at
-Phase 1's landing and reopened). Delete this file when Phase 9 lands.
+The pull requests form one stack: #7 (Phase 3) now targets `master`, and #8, #9, #10, #11
+and #12 (Phase 9) each target the previous phase's branch. #7, #8 and #9 have had review
+round 1: each finding fixed in its own commit, its thread resolved, the round's head tagged
+`backlog/phase-<n>-review-1`. #10, #11 and #12 have an adversarial review whose findings are
+open. Take them in order: the review round on the branch where one is still open, then the
+landing as "Every phase" says. A branch's head can be past its last tag (a fix or a merge from
+the phase below after the round); the landing merges the head. Before deleting a landed
+branch, point the next pull request at `master` (`gh pr edit <n> --base master`): a landing
+is a pushed merge, and GitHub then closes, not retargets, a pull request whose base branch is
+deleted (#6 was closed that way at Phase 1's landing and reopened).
+Delete this file when Phase 9 lands.
 
-Every later landing conflicts in this file: its branch rewrites the Status table's earlier
-rows. Keep `master`'s table and this section, mark the landed phase, and take the branch's
-side everywhere else. From Phase 3 on there is one more conflict, in
-`docs/records/COMMUNITY_DURIS_TRACKING.md`: `master`'s row #659 and Phase 3's row #662 are
-adjacent lines. Keep both, and let #662 name `71f14f1a7` as well: Dependabot's #3 landed the
-same dompurify line first, although Phase 3's record says #3 "becomes redundant when this
-lands". `site/package.json` and `site/package-lock.json` merge on their own: mermaid 12.1.0
-from `master` with Phase 3's katex 0.18.2 override (mermaid 12.1.0 still asks for katex
-`^0.16.47`); in a copy of the merged files `npm ci` succeeded and `npm audit` found nothing.
-Run `npm test --prefix site` after that landing.
+A landing can meet a conflict in this file: a branch that rewrote the Status table's earlier
+rows conflicts with `master`'s. Keep `master`'s table and this section, mark the landed phase,
+and take the branch's side everywhere else. Phase 3's branch already has `master` up to
+`494317e40`, taken through Phase 2's branch; the merge that brought it (`6624a7078`) resolved
+the ledger rows #659 and #662 in `docs/records/COMMUNITY_DURIS_TRACKING.md` and the `site/`
+files. A trial merge of its head onto this landing record is clean. Run
+`npm test --prefix site` after Phase 3's landing.
 
-The local dev server (`duris-plan`, ports 4000/4001) runs Phase 9's build. Phase 1 changed
-no server code, so its landing needed no copyover.
+The local dev server (`duris-plan`, ports 4000/4001) runs Phase 9's build of 2026-10-08, the
+review-0 heads. Phase 2's landing did not copyover it: the landed build would take Phases 3
+to 9 off it. It goes onto `master`'s build when Phase 9 lands.
 
 ## Why these
 
@@ -407,6 +409,12 @@ the connections it opened a few seconds after `waiting` time out during the fill
 probe from 127.0.0.39 could take a slot they freed. `97807ecbe` probes from fresh addresses
 until one is refused and keeps any that got in. The landing merges the branch head, which
 is `backlog/phase-2-review-1` plus that commit and this note.
+
+**Landed** 2026-10-09 in `14776698a`, PR #6: a `--no-ff` merge of the branch head
+`ab4f885cd`. `master` had moved to `89080c967` (the telemetry boot journey's stop waits for
+its records), so the merge was gated again before the push: `./scripts/format.sh --all
+--check` clean, `make test-all -j16 TEST_JOBS=16` 676 passed, 0 failed (0 timed out, 0 ended
+by a signal) in 7 min 23 s, `make test-db` 48 of 48.
 
 **Problem.** Found on 2026-10-05 in a full read of one server's logs. Over 51 minutes one
 address opened 753 plain-telnet connections: a median of 13 a minute, at most 26 a minute,
