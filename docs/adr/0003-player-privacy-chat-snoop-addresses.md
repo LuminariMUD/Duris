@@ -1,12 +1,12 @@
 # 0003. Player privacy: chat logging, snoop and address retention
 
-**Status:** Accepted. Decision 1 is implemented; decisions 2 and 3 are not yet.
-**Date:** 2026-10-09 (decided by the owner; decision 1 implemented the same day)
+**Status:** Accepted and implemented.
+**Date:** 2026-10-09 (decided by the owner; decision 1 implemented the same day, decisions 2
+and 3 on 2026-10-10)
 
 This records what the game may log or watch of its players, and for how long it keeps their
-network addresses. Decision 1 is in the code. For decisions 2 and 3 the code still does what
-the Context section describes; this record is the reference for that change, and the docs
-that cite it say what is pending.
+network addresses. All three decisions are in the code; the Context section describes the
+code before them.
 
 ## Context
 
@@ -85,25 +85,38 @@ Retention for these was pending with the rest of the lifecycle policy (finding P
     and 2 lines of `cmd.debug` lost their text.
   - The in-game help states the rule: `help channels` lists every channel, who hears it,
     and what is logged.
-- **Code still to change:**
-  - Rework `do_snoop()` as in decision 2, with the target's notice and the audit row.
-  - Make `recall <n> <player>` return early with the message in decision 2.
-  - Cap the log archives at 30 days of age in `scripts/cycle_mud.sh`, on top of the size
-    cap. That also limits the petition and newbie-channel logs to 30 days; keeping them
-    longer means storing them apart from the logs that hold addresses.
-  - Clear `lib/etc/hosts` at boot and remove a descriptor's file when it closes.
-  - Add a daily database prune that deletes address rows older than 30 days and blanks
-    older `last_ip` values, leaving the ban list alone.
-  - Each change needs a regression test: a snoop at each level notifies and audits as
-    decided; `recall` on another player refuses; the prune removes exactly the expired rows.
-- **Docs to update with the code:**
-  - the in-game `snoop` help entry, in `lib/information/help_index`, and the privacy lines
-    of the `COMMUNICATIONS UTILITIES CHANNELS` entry there, which today name only the
-    logging rule;
-  - the personal data inventory in `SECURITY-COMPLIANCE.md`;
-  - the `log_entries`, `account_ips`, `account_login_history` and `ip_info` entries in
-    `migrations/data_lifecycle_manifest.json`, which take this record as their decision
-    reference ([DATA_LIFECYCLE.md](../persistence/DATA_LIFECYCLE.md)).
+- **Implemented for decisions 2 and 3 (2026-10-10):**
+  - `do_snoop()` (`src/cmd/actwiz.c`) tells the target at the start and at every end of a
+    snoop the command started: a stop, a move to another target, a quit, the snooper's
+    link closing or the snooper leaving the game; when the target leaves, each snooper
+    is told why. `snoop <name> silent <reason>` is level 62 only, and its target is told
+    nothing. Each start and end is a `wiz` row in `log_entries` (the flat-file backend
+    writes it to the wiz log), with "silently" and the reason on a silent start. The
+    channel spell's shared sight uses the same mechanism and is neither told nor audited.
+  - `recall <n> <player>` by an immortal answers "Disabled by Zusuk October 9 2026".
+  - `scripts/cycle_mud.sh` deletes a log archive once it is 30 days old, before the size
+    cap.
+  - The server clears `lib/etc/hosts` at a cold boot (not a copyover) and removes a
+    descriptor's files when it closes.
+  - The `address_retention` maintenance job runs hourly. It deletes `account_ips` and
+    `account_login_history` rows last written over 30 days ago, and clears the address of
+    older `log_entries`, `ip_info`, `player_data` and `account_characters` rows, at most
+    256 rows per table a run. The ban list is a file (`lib/misc/ban_sites`) and is left
+    alone. An account keeps each address's last use (`account_ips.updated_at`); a login
+    no longer gives every address the save's time, and drops one past 30 days. `finger`
+    no longer shows an address from a login over 30 days ago.
+  - Regression tests: `tests/async/test_snoop_and_recall.py` runs the real `do_snoop()`
+    and `do_recall()`; `test_hostname_files_journey.py` boots a server;
+    `test_flatfile_launcher.py` covers the archive age; `run_address_retention_journey.py`
+    (in `make test-db`) logs in on MariaDB and runs the prune.
+  - The flat-file backend, which no deployment uses, keeps its account address lists and
+    IP activity files without an age limit; only what it shows is limited.
+- **Docs updated with the code:** the in-game `snoop` help entries, the `recall` entry and
+  the privacy lines of the `COMMUNICATIONS UTILITIES CHANNELS` entry in
+  `lib/information/help_index`; the personal data inventory in `SECURITY-COMPLIANCE.md`;
+  the `log_entries`, `account_ips` and `ip_info` entries in
+  `migrations/data_lifecycle_manifest.json`, which take this record as their decision
+  reference ([DATA_LIFECYCLE.md](../persistence/DATA_LIFECYCLE.md)).
 - **What this record is not.** It is the owner's decision for these data, made as the game's
   operator. It does not decide the lawful basis, and it does not cover the rest of the
   lifecycle policy, which stays pending under P00-S08. It is not a claim of legal

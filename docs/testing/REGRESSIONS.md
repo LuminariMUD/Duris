@@ -36,6 +36,32 @@ files. The feature harness ties seven zones with real colored names. The lookup 
 the command's lookup with the real `is_abbrev()`, `strip_ansi()` and `skip_spaces()` on the
 text `one_argument()` hands it. No test completes a quest on a running server.
 
+## Addresses kept 30 days after their last use
+
+ADR 0003 keeps a network address at most 30 days, except on the ban list. The hourly
+`address_retention` maintenance job deletes `account_ips` and `account_login_history`
+rows last written over 30 days ago and clears the address of older `log_entries`,
+`ip_info`, `player_data` and `account_characters` rows, at most a row budget per table a
+run. An account keeps each address's last use: a login rewrote the whole list with the
+save's time, so an account that logged in once a month kept every old address. A login
+now drops an address past 30 days and leaves the others' times alone. The launcher deletes
+a log archive once it is 30 days old, and the server clears `lib/etc/hosts` at a cold
+boot and removes a connection's files when it closes.
+
+```sh
+tests/async/with_disposable_mariadb.sh python3 tests/async/run_address_retention_journey.py bin/server/dms_new
+python3 tests/async/test_hostname_files_journey.py
+python3 tests/async/test_flatfile_launcher.py
+python3 tests/async/test_maintenance_scheduler.py
+```
+
+The MariaDB journey logs in on a real server, then runs the job against the same database
+without `account_login_history` and with it, with a row budget of one. The hosts journey
+boots a flat-file server over stale files and closes a connection. The launcher test ages
+an archive past 30 days. The scheduler test loads state files of versions 2 and 3, which
+held 11 and 12 jobs. No test waits for the hourly slot on a running server, and the
+flat-file backend's address lists are not pruned.
+
 ## Area-authored coin piles
 
 Get, take and put handle any `ITEM_MONEY` object by type, whatever its vnum, and add a
@@ -573,6 +599,25 @@ stopping at its first report, against an item race list built as `setbit_obj()` 
 and a numbered flag field: races 1 and 32 set and clear their own bits, race 36 and the
 numbers -1, 32 and 40 are refused and change nothing, and bit 31 is set. Without the fix it
 stops at race 36's shift. Not covered: the other `setbit` field types.
+
+## Snoop notices, audits and recall
+
+ADR 0003: a snoop tells its target when it starts and at every end, at every level that
+can snoop, where before the notice was given only below level 58, so no target was ever
+told. Every start and end is a `wiz` audit row, at 61 and 62 too. A silent snoop is level
+62 only and needs a reason, which its row keeps. A snoop ends the same way on a stop, a move
+to another target, a quit, the snooper's link closing and either side leaving the game;
+`extract_char()` left an immortal snooper's entry in its target's list. The channel spell's
+shared sight is neither told nor audited. `recall <n> <player>` by an immortal answers
+"Disabled by Zusuk October 9 2026".
+
+```sh
+python3 tests/async/test_snoop_and_recall.py
+```
+
+The harness runs the real `do_snoop()`, its stop helpers, `rem_char_from_snoopby_list()`
+and `do_recall()` under ASan and UBSan, with the lookup and output stubbed. No test snoops
+on a running server.
 
 ## Studio-proc trigger sources and duplicate records
 
