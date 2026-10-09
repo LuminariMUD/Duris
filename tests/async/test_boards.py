@@ -22,6 +22,11 @@ no message slot: it once took one for good, and the boards share INDEX_SIZE slot
 A board loaded from its file gives every message a slot of its own. A message whose body
 was aborted (string_add() leaves it NULL) kept the slot number the saving process had
 written, which after a reboot could be another board's message: read showed that text.
+
+A board file cut short no longer stops the boot: the load resets that board and goes on.
+Resetting never frees a heading pointer read from the file and passes over messages
+with no slot (-1), where it indexed msg_storage[-1]. A save writes a copy and renames it
+over the file, so a save that fails leaves the old file whole.
 """
 from pathlib import Path
 import re
@@ -60,11 +65,15 @@ assert boards_in_room and not crowded, f"rooms the zones give two boards: {crowd
 
 PRELUDE = r'''
 #include <cassert>
+#include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
 #include <ctime>
+#include <fstream>
+#include <sstream>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
 struct obj_data { obj_data *next_content = nullptr; int R_num = 0, loc_p = 0; struct { int room = -1; } loc; };
@@ -92,7 +101,6 @@ typedef char_data *P_char;
 #define SET_BIT(flags, bit) ((flags) |= (bit))
 #define CREATE(result, type, num, tag) ((result) = (type *)calloc((num), sizeof(type)))
 #define FREE(pointer) (free(pointer), (pointer) = NULL)
-#define REQUIRED_FREAD(buffer, size, count, file) assert(fread((buffer), (size), (count), (file)) == (size_t)(count))
 #define OBJ_IN_ROOM(o, r) ((o) && ((o)->loc_p & LOC_ROOM) && (o)->loc.room == (r))
 #define LOG_BOARD "board"
 enum { CMD_SET_PERIODIC = -1, CMD_WRITE = 1, CMD_LOOK, CMD_EXAMINE, CMD_READ, CMD_REMOVE };
@@ -130,6 +138,20 @@ void reboot() {
         msg_storage[slot] = nullptr;
         msg_storage_taken[slot] = 0;
     }
+}
+
+std::string contents(const char *path) {
+    std::stringstream text;
+    text << std::ifstream(path).rdbuf();
+    return text.str();
+}
+
+// One message on the holy board (row 0), with a body.
+void post(const char *body) {
+    MSG_HEADING(0, num_of_msgs[0]) = strdup("[Fri Oct  9 07:02 (Writer)] posted");
+    MSG_SLOTNUM(0, num_of_msgs[0]) = find_slot();
+    msg_storage[MSG_SLOTNUM(0, num_of_msgs[0])] = strdup(body);
+    num_of_msgs[0]++;
 }
 
 int main() {
@@ -211,6 +233,48 @@ int main() {
     assert(MSG_SLOTNUM(2, 0) != MSG_SLOTNUM(0, 0) && msg_storage_taken[MSG_SLOTNUM(2, 0)]);
     assert(!msg_storage[MSG_SLOTNUM(2, 0)]);
     reboot();
+
+    // A file cut short: the board is reset and loading goes on.
+    post("one");
+    post("two");
+    Board_save_board(0);
+    assert(access("holy.tmp", F_OK) != 0);
+    reboot();
+    struct stat saved;
+    assert(stat("holy", &saved) == 0 && truncate("holy", saved.st_size - 3) == 0);
+    logged.clear();
+    Board_load_board(0);
+    assert(num_of_msgs[0] == 0 && access("holy", F_OK) != 0 && logged.size() == 1);
+    for (int taken_slot : msg_storage_taken)
+        assert(!taken_slot);
+
+    // A heading length of 0 under a pointer from the file: the reset frees only what the
+    // load allocated.
+    FILE *file = fopen("holy", "wb");
+    int count = 2;
+    board_msginfo message{};
+    message.slot_num = 7;
+    message.heading = reinterpret_cast<char *>(0x1234);
+    message.heading_len = 2;
+    assert(fwrite(&count, sizeof(count), 1, file) == 1);
+    assert(fwrite(&message, sizeof(message), 1, file) == 1 && fwrite("a", 1, 2, file) == 2);
+    message.heading_len = 0;
+    assert(fwrite(&message, sizeof(message), 1, file) == 1 && fclose(file) == 0);
+    Board_load_board(0);
+    assert(num_of_msgs[0] == 0 && access("holy", F_OK) != 0);
+
+    // A save that cannot write its copy leaves the old file as it was.
+    post("old");
+    Board_save_board(0);
+    std::string before = contents("holy");
+    free(msg_storage[MSG_SLOTNUM(0, 0)]);
+    msg_storage[MSG_SLOTNUM(0, 0)] = strdup("new");
+    assert(mkdir("holy.tmp", 0700) == 0);
+    logged.clear();
+    Board_save_board(0);
+    assert(rmdir("holy.tmp") == 0);
+    assert(contents("holy") == before && logged.size() == 1);
+    reboot();
 }
 '''
 
@@ -218,7 +282,9 @@ int main() {
 FUNCTIONS = ["int find_slot(void)\n", "int find_board(P_obj obj)\n",
              "int board(P_obj obj, P_char ch, int cmd, char *argument)\n",
              "void Board_write_message(int board_type, struct char_data *ch, char *arg)\n",
-             "void Board_save_board(int board_type)\n", "void Board_load_board(int board_type)\n",
+             "void Board_save_board(int board_type)\n",
+             "static bool Board_read_messages(int board_type, FILE *fl)\n",
+             "void Board_load_board(int board_type)\n",
              "void Board_reset_board(int board_type)\n"]
 harness = "\n".join([PRELUDE.replace("BOARDS_H", str(source("cmd/boards.h"))),
                      *(extract_function("cmd/boards.c", name) for name in FUNCTIONS), DRIVER])
@@ -231,4 +297,5 @@ with tempfile.TemporaryDirectory(prefix="boards-") as directory:
     subprocess.run([str(binary)], check=True, cwd=directory)
 print(f"{len(rows)} board_info rows name world boards; each board answers for its own row; "
       "a headline is cut at 70 characters without writing into the command line, "
-      "and a write without one takes no slot; a loaded message gets a slot of its own")
+      "and a write without one takes no slot; a loaded message gets a slot of its own; "
+      "a file cut short resets its board, and a failed save keeps the old file")
