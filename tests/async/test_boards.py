@@ -18,6 +18,10 @@ Board_write_message() keeps at most 70 characters of a headline and writes nothi
 the command line: it once cut the headline with arg[71] = '\0', past the end of the
 1024-byte line when the headline started near its end. A write with no headline takes
 no message slot: it once took one for good, and the boards share INDEX_SIZE slots.
+
+A board loaded from its file gives every message a slot of its own. A message whose body
+was aborted (string_add() leaves it NULL) kept the slot number the saving process had
+written, which after a reboot could be another board's message: read showed that text.
 """
 from pathlib import Path
 import re
@@ -58,8 +62,10 @@ PRELUDE = r'''
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
 #include <ctime>
 #include <string>
+#include <unistd.h>
 #include <vector>
 struct obj_data { obj_data *next_content = nullptr; int R_num = 0, loc_p = 0; struct { int room = -1; } loc; };
 struct descriptor_data { char **str = nullptr; int max_str = 0; };
@@ -85,6 +91,8 @@ typedef char_data *P_char;
 #define IS_NPC(ch) false
 #define SET_BIT(flags, bit) ((flags) |= (bit))
 #define CREATE(result, type, num, tag) ((result) = (type *)calloc((num), sizeof(type)))
+#define FREE(pointer) (free(pointer), (pointer) = NULL)
+#define REQUIRED_FREAD(buffer, size, count, file) assert(fread((buffer), (size), (count), (file)) == (size_t)(count))
 #define OBJ_IN_ROOM(o, r) ((o) && ((o)->loc_p & LOC_ROOM) && (o)->loc.room == (r))
 #define LOG_BOARD "board"
 enum { CMD_SET_PERIODIC = -1, CMD_WRITE = 1, CMD_LOOK, CMD_EXAMINE, CMD_READ, CMD_REMOVE };
@@ -99,7 +107,7 @@ int msg_storage_taken[INDEX_SIZE];
 int num_of_msgs[NUM_OF_BOARDS];
 board_msginfo msg_index[NUM_OF_BOARDS][MAX_BOARD_MESSAGES];
 board_info_type board_info[NUM_OF_BOARDS] = {
-    {89, 0, 0, 0, "", 0}, {48101, 0, 0, 0, "", -1}, {90, 0, 0, 0, "", 1}};
+    {89, 0, 0, 0, "holy", 0}, {48101, 0, 0, 0, "guild1", -1}, {90, 0, 0, 0, "feedback", 1}};
 int shown = -1;
 int Board_show_board(int board_type, char_data *, char *) { shown = board_type; return 1; }
 int Board_display_msg(int, char_data *, char *) { return 1; }
@@ -107,6 +115,23 @@ int Board_remove_msg(int, char_data *, char *) { return 1; }
 '''
 
 DRIVER = r'''
+// Every message freed and every slot free again: what a reboot starts from.
+void reboot() {
+    for (int board_type = 0; board_type < NUM_OF_BOARDS; board_type++) {
+        for (board_msginfo &message : msg_index[board_type]) {
+            free(message.heading);
+            message = board_msginfo();
+            message.slot_num = -1;
+        }
+        num_of_msgs[board_type] = 0;
+    }
+    for (int slot = 0; slot < INDEX_SIZE; slot++) {
+        free(msg_storage[slot]);
+        msg_storage[slot] = nullptr;
+        msg_storage_taken[slot] = 0;
+    }
+}
+
 int main() {
     descriptor_data link;
     char_data reader;
@@ -165,13 +190,36 @@ int main() {
     for (int slot : msg_storage_taken)
         taken += slot;
     assert(taken == 2);
+
+    // The feedback board's aborted message is saved holding slot 0, the holy board's
+    // message slot 1; after the reboot the holy board loads first and takes slot 0.
+    reboot();
+    num_of_msgs[2] = 1;
+    MSG_HEADING(2, 0) = strdup("[Fri Oct  9 07:00 (Writer)] aborted");
+    MSG_SLOTNUM(2, 0) = find_slot();
+    num_of_msgs[0] = 1;
+    MSG_HEADING(0, 0) = strdup("[Fri Oct  9 07:01 (Writer)] holy");
+    MSG_SLOTNUM(0, 0) = find_slot();
+    msg_storage[MSG_SLOTNUM(0, 0)] = strdup("for gods only");
+    Board_save_board(2);
+    Board_save_board(0);
+    reboot();
+    Board_load_board(0);
+    Board_load_board(2);
+    assert(num_of_msgs[0] == 1 && num_of_msgs[2] == 1);
+    assert(!strcmp(msg_storage[MSG_SLOTNUM(0, 0)], "for gods only"));
+    assert(MSG_SLOTNUM(2, 0) != MSG_SLOTNUM(0, 0) && msg_storage_taken[MSG_SLOTNUM(2, 0)]);
+    assert(!msg_storage[MSG_SLOTNUM(2, 0)]);
+    reboot();
 }
 '''
 
 # A definition's signature ends its line; boards.c declares some of these above the table.
 FUNCTIONS = ["int find_slot(void)\n", "int find_board(P_obj obj)\n",
              "int board(P_obj obj, P_char ch, int cmd, char *argument)\n",
-             "void Board_write_message(int board_type, struct char_data *ch, char *arg)\n"]
+             "void Board_write_message(int board_type, struct char_data *ch, char *arg)\n",
+             "void Board_save_board(int board_type)\n", "void Board_load_board(int board_type)\n",
+             "void Board_reset_board(int board_type)\n"]
 harness = "\n".join([PRELUDE.replace("BOARDS_H", str(source("cmd/boards.h"))),
                      *(extract_function("cmd/boards.c", name) for name in FUNCTIONS), DRIVER])
 with tempfile.TemporaryDirectory(prefix="boards-") as directory:
@@ -180,7 +228,7 @@ with tempfile.TemporaryDirectory(prefix="boards-") as directory:
     cpp.write_text(harness)
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
                     "-fsanitize=address,undefined", "-g", str(cpp), "-o", str(binary)], check=True)
-    subprocess.run([str(binary)], check=True)
+    subprocess.run([str(binary)], check=True, cwd=directory)
 print(f"{len(rows)} board_info rows name world boards; each board answers for its own row; "
       "a headline is cut at 70 characters without writing into the command line, "
-      "and a write without one takes no slot")
+      "and a write without one takes no slot; a loaded message gets a slot of its own")

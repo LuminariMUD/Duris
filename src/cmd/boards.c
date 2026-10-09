@@ -538,14 +538,15 @@ void Board_load_board(int board_type)
 		REQUIRED_FREAD(tmp1, sizeof(char), (unsigned)len1, fl);
 		MSG_HEADING(board_type, i) = tmp1;
 
+		/* the file's slot number was the saving process's; every message needs its own */
+		if ((MSG_SLOTNUM(board_type, i) = find_slot()) == -1)
+		{
+			logit(LOG_BOARD, " Out of slots booting board!  Resetting...");
+			Board_reset_board(board_type);
+			return;
+		}
 		if ((len2 = msg_index[board_type][i].message_len))
 		{
-			if ((MSG_SLOTNUM(board_type, i) = find_slot()) == -1)
-			{
-				logit(LOG_BOARD, " Out of slots booting board!  Resetting...");
-				Board_reset_board(board_type);
-				return;
-			}
 			CREATE(tmp2, char, len2, MEM_TAG_STRING);
 			if (!tmp2)
 			{
