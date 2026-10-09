@@ -51,6 +51,10 @@ rows = [int(vnum) for vnum in re.findall(r"^\t\{ (\d+), ", BOARDS, re.M)]
 assert len(rows) == int(re.search(r"#define NUM_OF_BOARDS (\d+)", BOARDS)[1]), rows
 not_boards = [vnum for vnum in rows if not {"board", "bulletin"} & set(keywords.get(vnum, []))]
 assert not not_boards, f"board_info[] rows that name no board in the world: {not_boards}"
+# The Ideas Room's board (object 42, which heavens.zon loads into room 1196) keeps its row.
+# A commit once dropped it, and the check above cannot notice a row that is missing:
+# scripts/check_tests_catch.sh showed this test passing without 28a19a882's fix.
+assert 42 in rows, "the board of IDEAS lost its board_info[] row"
 
 boards_in_room = {}
 for area in WORLD:
