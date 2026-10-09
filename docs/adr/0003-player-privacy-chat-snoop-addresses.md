@@ -10,8 +10,8 @@ that cite it say what is pending.
 
 ## Context
 
-The 2026-10-09 log review
-([log-review-2026-10-09.md](../ongoing-projects/log-review-2026-10-09.md)) found:
+The 2026-10-09 log review (`docs/ongoing-projects/log-review-2026-10-09.md`, last at
+`24e7d3fba`) found:
 
 - **Chat is logged wholesale.** `lib/duris.properties` sets `logs.chat.status=1`. Every tell,
   whisper, `ask`, say and emote, every `project` and `beep`, and all guild (`gcc`) and

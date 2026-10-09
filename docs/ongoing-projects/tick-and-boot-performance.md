@@ -1,8 +1,8 @@
 # Investigations: the slow tick and the slower boot
 
-Two performance findings of the 2026-10-09 log review
-([log-review-2026-10-09.md](log-review-2026-10-09.md)), moved here on 2026-10-09 so that each
-gets a proper investigation. Each section holds the evidence so far, what the code does,
+Two performance findings of the 2026-10-09 log review, moved here on 2026-10-09 so that each
+gets a proper investigation. The review's other open findings are in [plan.md](plan.md); its
+own file was deleted then, and its last version is at `24e7d3fba`. Each section holds the evidence so far, what the code does,
 the questions to answer, a method and when it is done. This file is a working note: delete
 an investigation when it is concluded and its fix has landed or been declined, and the file
 when none is left.

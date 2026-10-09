@@ -1,9 +1,9 @@
 # Staging host follow-ups, 2026-10-09
 
-Four findings of the 2026-10-09 log review
-([log-review-2026-10-09.md](log-review-2026-10-09.md)) that belong to the host's owner rather
-than the MUD's code: SSH, backups, the logs only root can read, and the kernel. They are
-handled apart from the review. Checked on the staging host
+Four findings of the 2026-10-09 log review that belong to the host's owner rather than the
+MUD's code: SSH, backups, the logs only root can read, and the kernel. They are handled apart
+from the review, whose other open findings are in [plan.md](plan.md); its own file was
+deleted then, and its last version is at `24e7d3fba`. Checked on the staging host
 (`plesk.luminarimud.com`, account `staging`) on 2026-10-09, last at 09:10 UTC. This file is a
 working note: delete a finding when it is done, and the file when none is left.
 
