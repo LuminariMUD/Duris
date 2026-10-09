@@ -774,6 +774,115 @@ Rewrite `SECURITY.md`: the `0.1.x` line, the private vulnerability reporting for
 
 ## Phase 5: studio-proc tag ids and `world.trg`
 
+**Built** on `fix/4-phase-5-studioproc` (stacked on Phase 4), 2026-10-08:
+
+- `4827305a2`: `TAG_STUDIOPROC_TRIG` 2198, `_COOLDOWN` 2199 and `_COUNTER` 2200 end the
+  `TAG_` list in `spells.h`; `SP_TAG_*` in `studioproc.h` alias them, beside a
+  `static_assert(TAG_INFO_COOLDOWN < SP_TAG_TRIG && SP_TAG_COUNTER <= MAX_AFFECT_TYPES)`.
+  `tests/async/test_studioproc_tag_ids.py` fails when any other `spells.h` define reaches
+  2198 (checked with a stray `TAG_COLLIDES 2199`).
+- `f31d8b14f`: `areas/src/trg/make_trg.c` (with its `Makefile`, in `areas/src` `SUBDIRS`)
+  reads `trg/<area>.trg` for each area `areas/AREA` lists, checks the framing the engine
+  reads (header, `T` ... `~`, `S`, no `#~`), appends it to `tworld.trg` and ends that with
+  `#~`; `areas/make_all` runs it and `areas/moveall` makes it `world.trg`. The root
+  `Makefile` lists the tool, `world.trg` and `tworld.trg`, and watches `areas/trg/`;
+  `scripts/cycle_mud.sh` rebuilds the tools when `make_trg` is missing.
+  `areas/trg/.gitkeep` keeps the directory. `tests/async/test_make_trg.py` builds the tool
+  and runs a good source, an area without one, and six malformed ones;
+  `test_clean_all.py` and `test_flatfile_launcher.py` know the new tool and outputs.
+  `docs/content/STUDIOPROC.md`, `howto_trg.txt` and `docs/guides/BUILDING.md` describe the
+  generated file. A real `make world` wrote `areas/world.trg` (`#~` only), and with a
+  broken `areas/trg/limbo.trg` it failed: `error: trg/limbo.trg:4: a trigger is not ended
+  by ~`.
+- `b439fa892`: a "Connections before an account name, and the trusted proxy" section in
+  `docs/testing/REGRESSIONS.md` for Phase 2's journey, which belonged in Phase 2 but is
+  added here so the pushed branches below are not rewritten.
+
+**What differs from the plan, and why.**
+
+- The `static_assert` sits in `studioproc.h` beside the aliases, not in `spells.h`:
+  `spells.h` does not see `MAX_AFFECT_TYPES`, and `studioproc.h` now includes `spells.h`.
+  The test reads every numeric define in `spells.h`, not only `TAG_` ones: the list also
+  holds `AIP_`, `ACH_`, `PR_` and `TYPE_` values in the same index space. As the plan
+  read it, the build catches the ids leaving `skills[]` or the list passing them at its
+  last entry, and the gate catches any other define taking one of their numbers.
+- `make_trg` checks the framing only. A record's content (events, conditions, actions) is
+  still checked by the engine at boot, which logs and skips a bad record; the docs say
+  which fault fails where.
+- With no source the generated file holds `#~` (the world target requires every output to
+  be non-empty), so the boot line reads `STUDIOPROC: 0 records, 0 triggers, ...` rather
+  than `no areas/world.trg`. No test pinned the old line.
+- A failed generation leaves the `tworld.*` files the earlier tools wrote, as any failing
+  generator already did; `make clean-all` removes them.
+
+**Gate** on `b439fa892`: `./scripts/format.sh --all --check` clean (1038 files),
+`make test-all -j16 TEST_JOBS=16` 678 passed, 0 failed, `make test-db` 48 of 48. This is
+also the full gate for Phase 4's documents, which this tree contains. Nothing is left.
+
+**Review round 1** (PR #9, review of `b4a2d7450`; tag `backlog/phase-5-review-1`). Six
+findings, each reproduced on that head first, each fixed in its own commit with a case that
+fails without it:
+
+- `8e14e458d`: make_trg copied each line as read, so a source without a final newline ran
+  into the next area's first line (`S#10 R`) and the engine dropped both records. Each line
+  is now written stripped, with one `\n`.
+- `1100b1b22`: until this phase `areas/world.trg` was the hand-written source and
+  git-ignored, and the first generation replaced it with `#~`. make_trg now starts its
+  output with a marker line and refuses a `world.trg` without it that holds a record,
+  naming the move; STUDIOPROC.md has the one-time step and says `make clean-all` deletes
+  the file.
+- `1843e2d7c`: a `~` dropped before a later one passed make_trg (the next `S`, `T` or
+  header was taken as an action) and cost the engine two records. Such a line inside a
+  trigger now fails; no action begins that way.
+- `829e58f1f` and `a6652f93b`: the documented kill switch (rename `world.trg`) was undone
+  by the supervisor's generation before every start. The switch is now moving an area's
+  `areas/trg/<area>.trg` out and rebooting, or `make world` and a copyover. `make world`
+  did not notice a removed source; its staleness `find` now reads directories too
+  (`test_root_test_harness.py` pins it).
+- `55dab3119`: `cycle_mud.sh` ignored `m_slow`'s status, so one framing typo kept every
+  area edit from loading, silently. It now refuses to boot when generation fails, as after
+  a failed backup; this holds for every generator. The warn-and-skip alternative was not
+  taken: decision 6 has a malformed source fail generation, and `make test-db` builds the
+  world, so the gate catches one before a deploy.
+- `35cba256a`: two records for one target both bound; only the later dispatched, and its
+  bind lost the target's C proc. `studioproc_boot()` now logs and skips the second
+  (`test_studioproc_duplicate_record.py` boots on two). make_trg does not check for
+  duplicates: the engine covers hand-written files too, and a make_trg failure now stops
+  the boot.
+
+`REGRESSIONS.md` has a section for the generator and the duplicate check. The Status table
+is left as it was, as in Phase 1's round.
+
+**Gate** on the round's code before the guard's header test became the engine's own (folded
+into `1100b1b22`; it differs from `35cba256a` only in `make_trg.c` and `test_make_trg.py`):
+`./scripts/format.sh --all --check` clean (1038 files), `make test-all -j16 TEST_JOBS=16`
+679 passed, 0 failed (0 timed out, 0 ended by a signal) in 9 min 3 s, `make test-db` 48 of
+48. On `35cba256a`, `test_make_trg.py` and a real `make world` were run again.
+
+**Catch-up with `master`, through the stack** (2026-10-09). `1475f68fa` merges Phase 4's
+round 1 (`f1da69342`, `backlog/phase-4-review-1`). `7fc0c7b16` merges Phase 4's catch-up
+(`71f7c30fb`: Phase 3's and Phase 2's rounds and `master` up to `494317e40`); its one
+conflict, the Status table, keeps `master`'s. Both are merges rather than rebases, so the
+review tags and pushed commits stay. PRs #10 to #12 now conflict with this head only in this
+file's Status table and Landing section, the conflict the Landing section describes; their
+own catch-up keeps `master`'s side. `db79d240e` brings the `REGRESSIONS.md` section
+`b439fa892` added up to Phase 2's round (the constants are
+`MAX_LOGIN_CONNECTIONS_PER_ADDRESS` and `LOGIN_PROMPT_TIMEOUT` now). `master`'s `89080c967`
+(a telemetry journey fix) is not in the stack yet; it comes with the landings.
+
+**Gate** on the catch-up's code (`db79d240e`; the gate ran before its journey paragraph was
+completed, a `REGRESSIONS.md`-only change): `./scripts/format.sh --all --check` clean (1038
+files), `make test-all -j16 TEST_JOBS=16` 679 passed, 0 failed (0 timed out, 0 ended by a
+signal) in 7 min 55 s, `make test-db` 48 of 48. The document tests were run again on the
+record.
+
+`6b7b3f62a` then merges Phase 4's `d44db479b` (Phase 3's `4a03cf2a1`: Phase 2's
+connection-limit journey fix, which probes until the full server refuses, and plan notes in
+Phase 2's and Phase 3's sections); no conflict. On it: `./scripts/format.sh --all --check`
+clean, `test_connection_limit_journey.py` passed (190 s), and the 46 tests that read `docs/`
+passed (`test_flatfile_death_restart_journey.py` failed once in an eight-wide ad-hoc batch
+beside other server builds and passed alone; it passed in both full gates).
+
 **Problem.** Two loose ends the studio-proc engine left on purpose, listed in
 `docs/content/STUDIOPROC.md` under "Deliberately not included":
 
