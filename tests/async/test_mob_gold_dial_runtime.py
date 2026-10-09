@@ -22,9 +22,11 @@ import time
 from test_flatfile_combat_journey import (
     MudClient,
     available_ports,
+    build_flatfile_server,
     create_character,
     generate_certificate,
     make_fixture,
+    make_overlord,
     reconnect_character,
 )
 
@@ -115,7 +117,7 @@ def make_gold_fixture(run_root: pathlib.Path) -> pathlib.Path:
     })
     (run_root / "logs/log").mkdir(parents=True)
     (run_root / "logs/log/.gitignore").write_text("*\n!.gitignore\n")
-    (run_root / "journals/critical").mkdir(mode=0o700)
+    (run_root / "journals/critical").mkdir(parents=True, mode=0o700)
     generate_certificate(run_root)
     return run_root / "server.out"
 
@@ -223,7 +225,7 @@ def stat_target_money(client: MudClient, key: str = TARGET_KEY,
     return result
 
 
-def run_case(binary: pathlib.Path, promoter: pathlib.Path, setting: int) -> tuple[int, int, int, int]:
+def run_case(binary: pathlib.Path, setting: int) -> tuple[int, int, int, int]:
     with tempfile.TemporaryDirectory(prefix=f"gold-fix-state-{setting}-") as state_tmp, \
             tempfile.TemporaryDirectory(prefix=f"gold-fix-run-{setting}-") as run_tmp:
         state_root, run_root = pathlib.Path(state_tmp), pathlib.Path(run_tmp)
@@ -248,14 +250,8 @@ def run_case(binary: pathlib.Path, promoter: pathlib.Path, setting: int) -> tupl
             client.close()
             client = None
             stop(process, output)
-            promotion = subprocess.run(
-                [str(promoter), str(state_root), "61"],
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            print(f"setting={setting} {promotion.stdout.strip()}", flush=True)
+            # stat char needs a god.
+            make_overlord(state_root, "Taverek")
             process, output = boot(binary, state_root, run_root, output_path, plain)
             client = reconnect_character(plain)
             values = stat_target_money(client)
@@ -290,17 +286,24 @@ def run_case(binary: pathlib.Path, promoter: pathlib.Path, setting: int) -> tupl
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--server", type=pathlib.Path, required=True,
-                        help="fresh or baseline flat-file server binary")
-    parser.add_argument("--promoter", type=pathlib.Path, required=True,
-                        help="typed disposable flat-file level promotion helper")
+    parser.add_argument("--server", type=pathlib.Path,
+                        help="flat-file server binary (default: build one)")
     args = parser.parse_args()
-    require(args.server.is_file() and os.access(args.server, os.X_OK),
-            f"server binary is not executable: {args.server}")
-    require(args.promoter.is_file() and os.access(args.promoter, os.X_OK),
-            f"promotion helper is not executable: {args.promoter}")
-    neutral = run_case(args.server.resolve(), args.promoter.resolve(), 5)
-    hard = run_case(args.server.resolve(), args.promoter.resolve(), 10)
+    subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
+                    "--build-inspector", str(INSPECTOR)], cwd=ROOT, check=True, timeout=180)
+    if args.server:
+        require(args.server.is_file() and os.access(args.server, os.X_OK),
+                f"server binary is not executable: {args.server}")
+        compare(args.server.resolve())
+        return
+    (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="gold-dial-build-", dir=ROOT / "bin/tests") as build:
+        compare(build_flatfile_server(pathlib.Path(build)))
+
+
+def compare(binary: pathlib.Path) -> None:
+    neutral = run_case(binary, 5)
+    hard = run_case(binary, 10)
     neutral_total = neutral[0] * 1000 + neutral[1] * 100 + neutral[2] * 10 + neutral[3]
     hard_total = hard[0] * 1000 + hard[1] * 100 + hard[2] * 10 + hard[3]
     # The normal level-60 converter's four rolls are bounded to 75..125.  The

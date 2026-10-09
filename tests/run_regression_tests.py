@@ -44,23 +44,20 @@ RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
         "test_flatfile_first_session_currency.py",
         "test_flatfile_full_world_boot.py",
         "test_generated_npc_journey.py",
+        "test_mob_gold_dial_runtime.py",
+        "test_pet_restart_journey.py",
         "test_item_movement_prompt_runtime.py",
         "test_information_cache_journey.py",
         "test_mysql_combat_journey.py",
     }
 )
 
-# These real-runtime probes require explicitly supplied artifacts or helpers
-# (test_pet_restart_journey.py a flat-file server; test_mob_gold_dial_runtime.py a
-# server and a level promotion helper). The MySQL playtime journey needs a
-# disposable database and --server, and invokes its repository probe with that
-# database's environment. They are run explicitly, not by the generic test-all runner,
-# which invokes every discovered script with no arguments.
+# The MySQL playtime journey needs a disposable database and --server, and invokes its
+# repository probe with that database's environment. make test-db runs it; the generic
+# test-all runner invokes every discovered script with no arguments.
 MANUAL_ONLY_TEST_NAMES = frozenset(
     {
-        "test_mob_gold_dial_runtime.py",
         "test_mysql_playtime_journey.py",
-        "test_pet_restart_journey.py",
         "test_playtime_mysql_repository.py",
     }
 )

@@ -67,15 +67,15 @@ expected_resource_intensive = {
     "test_flatfile_first_session_currency.py",
     "test_flatfile_full_world_boot.py",
     "test_generated_npc_journey.py",
+    "test_mob_gold_dial_runtime.py",
+    "test_pet_restart_journey.py",
     "test_item_movement_prompt_runtime.py",
     "test_information_cache_journey.py",
     "test_mysql_combat_journey.py",
 }
 assert runner.RESOURCE_INTENSIVE_TEST_NAMES == expected_resource_intensive
 assert runner.MANUAL_ONLY_TEST_NAMES == {
-    "test_mob_gold_dial_runtime.py",
     "test_mysql_playtime_journey.py",
-    "test_pet_restart_journey.py",
     "test_playtime_mysql_repository.py",
 }
 discovered = {path.name for path in runner.discover_tests(None)}

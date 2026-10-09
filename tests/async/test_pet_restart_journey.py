@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Real-server recovery of generated pets and held equipment in a private fixture.
 
-Usage: python3 tests/async/test_pet_restart_journey.py /absolute/flatfile/server
-The server is built separately so this test never invokes a CI pipeline.
+Usage: python3 tests/async/test_pet_restart_journey.py [/absolute/flatfile/server]
+Without a server it builds one, as the other flat-file journeys do.
 """
 import os
 from pathlib import Path
@@ -159,5 +159,12 @@ def run(binary):
 
 
 if __name__ == "__main__":
-    assert len(sys.argv) == 2, __doc__
-    run(Path(sys.argv[1]).resolve())
+    assert len(sys.argv) <= 2, __doc__
+    subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
+                    "--build-inspector", str(journey.INSPECTOR)], cwd=ROOT, check=True, timeout=180)
+    if len(sys.argv) == 2:
+        run(Path(sys.argv[1]).resolve())
+    else:
+        (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="pet-restart-build-", dir=ROOT / "bin/tests") as build:
+            run(journey.build_flatfile_server(Path(build)))
