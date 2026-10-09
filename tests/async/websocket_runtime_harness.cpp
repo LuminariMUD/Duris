@@ -691,6 +691,30 @@ int main()
 		close(plain_pair[1]);
 	}
 
+	// An upgrade from a browser origin outside the allow-list is refused with 403.
+	setenv("DURIS_WEBSOCKET_ALLOWED_ORIGINS", "https://duris.example", 1);
+	const char foreign_origin[] = "GET / HTTP/1.1\r\nHost: ws.example\r\nUpgrade: websocket\r\n"
+				      "Connection: Upgrade\r\nOrigin: https://elsewhere.example\r\n"
+				      "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+				      "Sec-WebSocket-Version: 13\r\n\r\n";
+	int origin_pair[2];
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, origin_pair) != 0)
+		return fail("origin socketpair");
+	descriptor_data foreign{};
+	foreign.descriptor = origin_pair[0];
+	if (websocket_parse_handshake(&foreign, foreign_origin, sizeof(foreign_origin) - 1) != -2)
+		return fail("an upgrade from a foreign origin was not refused");
+	char refusal[256];
+	const ssize_t refusal_len = read(origin_pair[1], refusal, sizeof(refusal) - 1);
+	if (refusal_len <= 0)
+		return fail("read the foreign origin's refusal");
+	refusal[refusal_len] = '\0';
+	if (strncmp(refusal, "HTTP/1.1 403 Forbidden\r\n", 24) != 0)
+		return fail("a foreign origin got the wrong refusal");
+	unsetenv("DURIS_WEBSOCKET_ALLOWED_ORIGINS");
+	close(origin_pair[0]);
+	close(origin_pair[1]);
+
 	const char *bad_key = "GET / HTTP/1.1\r\n"
 			      "Upgrade: websocket\r\n"
 			      "Connection: Upgrade\r\n"
