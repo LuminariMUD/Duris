@@ -690,6 +690,26 @@ python3 tests/async/test_flatfile_full_world_boot.py
 
 The full-world boot fails on any `Old buy/sell` line in its debug log.
 
+## Shopkeeper scans at boot
+
+Most of every boot was one scan. Each zone reset of a fixed shop asks whether its keeper is
+already alive, which walked the character list calling `singleton_shop_id()`, and that
+compared every shop's keeper for any mob not bound to a shop: 7.4 billion comparisons a
+boot. The SQL restore then walked the list twice for each restored keeper. Now the
+prototypes that keep a shop are indexed once, `singleton_shop_id()` returns at once for
+any other mob, and `live_shopkeepers()` reads a set of the live NPCs of those prototypes,
+kept by `read_mobile()` and `extract_char()`; the reset check and both restores use it.
+
+```sh
+python3 tests/async/test_world_singletons.py
+```
+
+The harness asks `singleton_shop_id()` about a bound keeper, an unbound keeper away from
+home and in its shop's room, a roaming keeper, a controlled copy and a mob whose prototype
+keeps no shop, and checks that `live_shopkeepers()` names exactly what a walk with
+`singleton_shop_id()` names, for every shop. Its `read_mobile()` reports a mob before it
+marks it an NPC, as the real one does. No test times a boot.
+
 ## Snoop notices, audits and recall
 
 ADR 0003: a snoop tells its target when it starts and at every end, at every level that

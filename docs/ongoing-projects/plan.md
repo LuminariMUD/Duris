@@ -39,7 +39,7 @@ built at that branch's head.
 | 1 | `fix/14-privacy` | 9, 8, 3 (ADR 0003's code) | Built |
 | 2 | `fix/14-log-fixes` | 6, 1, 2, 7, 4, 5 | Built |
 | 3 | `fix/14-mariadb-11.8` | 17 | Built |
-| 4 | `fix/14-boot-scan` | 19 | Not started |
+| 4 | `fix/14-boot-scan` | 19 | Built |
 | 5 | `fix/14-tick-spikes` | 18 | Not started |
 | 6 | `fix/14-test-tools` | 10, 14, 16 | Not started |
 | 7 | `fix/14-test-stability` | 11 | Not started |
@@ -96,7 +96,7 @@ Part 4, the slow tick and the slower boot:
 | # | Item | Severity | State |
 |---|---|---|---|
 | 18 | Every tick, `affect_update` walks all ~56,000 mobs (40 to 140 ms on staging), and the events it queues land on pulses 0, 10 and 20, where the event pass goes over its budget | Low | Open |
-| 19 | Most of every boot is one shopkeeper scan in the zone resets (7.4 billion comparisons, about 8 s of staging's 12 s); its loop's placement across a cache line made it 2 s slower on 2026-10-08 | Low | Open |
+| 19 | Most of every boot is one shopkeeper scan in the zone resets (7.4 billion comparisons, about 8 s of staging's 12 s); its loop's placement across a cache line made it 2 s slower on 2026-10-08 | Low | Built (PR 4) |
 
 ## Order (proposed)
 
@@ -974,3 +974,44 @@ the restore's 0.8 s, and a local boot from 4.1 s to under 2 s.
 several seconds and stays there across rebuilds; and a regression test shows that
 `singleton_shop_id()` gives the same answers as before for a bound keeper, an unbound keeper
 in its shop's room, a roaming keeper and a mob that keeps no shop.
+
+**Built** (PR 4), both changes.
+
+- Change 1: `index_shopkeeper_prototypes()` (`src/world/world_singletons.c`), run once after
+  `assign_the_shopkeepers()`, marks the prototypes that keep a shop, and
+  `singleton_shop_id()` returns -1 for any other mob before it looks at the shop table.
+- Change 2: a set of the live NPCs of those prototypes. `read_mobile()` reports each NPC it
+  creates and `extract_char()` each it removes, the only places an NPC enters or leaves the
+  character list. `live_shopkeepers(shop)` returns the members `singleton_shop_id()` names,
+  bound or not, so every answer is the same. `live_shopkeeper_for_identity()` and the SQL
+  and flat-file restores' incumbent searches use it; the restores keep their other filters.
+  Binding at load was not needed. `read_mobile()` reports a mob before it marks it an NPC,
+  which `GET_RNUM()` refuses, so the report reads `R_num` itself: a first build crashed at
+  boot on exactly that, and the harness's stand-in now reports in the same order.
+- Local, development profile, MariaDB, full world, same load, `Boot completed` (CPU):
+
+  | Build | First boot | Second boot (544 shops restored) | 519 reset checks | Restore |
+  |---|---|---|---|---|
+  | Before | 6.8 s | 10.5 s | 4.8 s | 3.5 s |
+  | Change 1 | 2.8 s | 6.2 s | 0.84 s | 3.2 s |
+  | Change 2 | 1.7 s | 1.9 s | 0.01 s | 0.30 s |
+
+- Staging, 2026-10-09 21:54 UTC, production profile, scratch boots beside the live game
+  against a copy of `duris_staging` (loopback ports, Redis off), each binary twice:
+  the live binary (master, built 11:06) 12.2 and 13.0 s, this branch 3.7 and 3.7 s. A
+  gdb-sampled boot of each (SIGINT every 0.2 s until the game loop): the live binary had
+  41 of 72 samples in the reset scan and 5 in the restore; this branch had none in
+  either and 1 of 28 in `remember_boot_shopkeepers()`'s single walk. The copy, its user
+  and the scratch directory were removed afterwards.
+- "Stays there across rebuilds": the loop whose placement cost 2 s is the shop-table scan,
+  which no longer runs for any mob but a keeper, so where a build puts it no longer moves
+  the boot by seconds. The live service is not measured until this is deployed.
+- The staging build needed `fix/gcc-15-build` on master: master itself no longer built with
+  staging's gcc 15.2 (two missing `<algorithm>` includes and a `-Wnull-dereference` report
+  in `flatfile_ship_establish()`).
+- Tests: `tests/async/world_singletons_harness.cpp` asks `singleton_shop_id()` about an
+  unbound keeper in its shop's room and a mob whose prototype keeps no shop (it already
+  asked about bound, roaming and controlled ones), and checks that `live_shopkeepers()`
+  names exactly what a walk names, for every shop. Two source pins
+  (`test_flatfile_shopkeeper_restore.py`, `test_issue_552_local_shop_contract.py`) name the
+  new call.
