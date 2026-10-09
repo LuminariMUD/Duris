@@ -484,6 +484,22 @@ tests/async/with_disposable_mariadb.sh python3 tests/async/run_launcher_stop_jou
 The journey runs the real launcher with a stand-in server on a disposable MariaDB and
 sends SIGTERM to the launcher alone, twice. It does not run systemd.
 
+## Line editor: every line freed
+
+`FREE()` names its argument twice, so `FREE(lines[i++])` freed one line, nulled the next
+and skipped two. `edit_free()` and `edit_insert_data()`'s refusal of too many lines leaked
+every second line, an odd count read past the terminator, and `edit_free()` never freed
+the line array itself (32 KB per edit). Both loops free `lines[i]` and step once, and
+`edit_free()` frees the array. clang-tidy's `bugprone-macro-repeated-side-effects` found it.
+
+```sh
+python3 tests/async/test_editor_free.py
+```
+
+The harness runs the production editor under LeakSanitizer: three lines started and freed,
+and three lines added to an editor that holds two, which it refuses. It fails without the
+fix, on either loop alone.
+
 ## Log lines a reader can use
 
 A zone command that does not load (`M`, `F`, `R` whose chance roll misses) is logged with
