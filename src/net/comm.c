@@ -43,6 +43,7 @@
 #include "core/utils.h"
 #include <arpa/inet.h>
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <gnutls/gnutls.h>
@@ -828,6 +829,22 @@ void game_up_message(int port)
 	//  signal(SIGCHLD, (void *) reaper);
 }
 
+// lib/etc/hosts holds one reverse-DNS name per descriptor number and address. ADR 0003 keeps
+// no address past 30 days: a descriptor's names go when it closes, and a cold boot removes
+// any that a lookup wrote after its descriptor had closed.
+static void remove_hostname_files(const char *prefix)
+{
+	DIR *directory = opendir("lib/etc/hosts");
+	if (!directory)
+		return;
+	const size_t length = strlen(prefix);
+	while (const struct dirent *entry = readdir(directory))
+		if (!strncmp(entry->d_name, prefix, length) && strcmp(entry->d_name, ".") &&
+		    strcmp(entry->d_name, "..") && strcmp(entry->d_name, ".gitignore"))
+			unlinkat(dirfd(directory), entry->d_name, 0);
+	closedir(directory);
+}
+
 static void touch(const char *filename)
 {
 	// no need to check for failure, the next step will do
@@ -847,6 +864,8 @@ int run_the_game(int port, int sslport)
 
 	logit(LOG_STATUS, "Signal trapping.");
 	signal_setup();
+	if (!copyover_boot)
+		remove_hostname_files("");
 
 	SetSpellCircles(); /* spells circlewise done with pure math */
 
@@ -3317,7 +3336,12 @@ void close_socket(struct descriptor_data *d)
 	if (d->sslses)
 		ssl_close(d->sslses);
 	if (d->descriptor)
+	{
 		close(d->descriptor);
+		char hostname_files[16];
+		snprintf(hostname_files, sizeof(hostname_files), "%d.", d->descriptor);
+		remove_hostname_files(hostname_files);
+	}
 	flush_queues(d);
 	--used_descs;
 
@@ -3660,12 +3684,6 @@ void resolve_descriptor_hostname_async(const char *address, int descriptor)
 
 	strncpy(request->address, address, sizeof(request->address) - 1);
 	request->descriptor = descriptor;
-	{
-		char stale_path[128];
-		snprintf(stale_path, sizeof(stale_path), "lib/etc/hosts/%d.%s", descriptor,
-			 request->address);
-		unlink(stale_path);
-	}
 	if (pthread_attr_init(&attr) != 0)
 	{
 		pthread_mutex_lock(&hostname_lookup_mutex);
