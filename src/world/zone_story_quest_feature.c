@@ -399,6 +399,28 @@ std::string display_zone_name(const zone_progress &progress)
 	return progress.zone_name.empty() ? "This area" : progress.zone_name;
 }
 
+// Zone names carry color codes (&+B, &-r, &=Rb, &n), skipped as strip_ansi() does, which
+// this file cannot call: order by the text a player reads.
+std::string sort_name(const zone_progress &progress)
+{
+	const std::string name = display_zone_name(progress);
+	std::string visible;
+	for (size_t index = 0; index < name.size(); ++index)
+	{
+		// name[name.size()] is the terminating null, so a trailing '&' reads no code.
+		const char code = name[index] == '&' ? name[index + 1] : 0;
+		if (code == 'n' || code == 'N')
+			index += 1;
+		else if (code == '+' || code == '-')
+			index += 2;
+		else if (code == '=')
+			index += 3;
+		else
+			visible.push_back(name[index]);
+	}
+	return lower_name(visible);
+}
+
 std::string display_quest_name(const zone_story_quest_tracking::quest_definition *definition)
 {
 	if (!definition)
@@ -865,8 +887,10 @@ personal_summary service::summary_for_at(uint32_t season_id, uint32_t pid,
 		  {
 			  if (left.completed != right.completed)
 				  return left.completed > right.completed;
-			  if (left.zone_name != right.zone_name)
-				  return left.zone_name < right.zone_name;
+			  const std::string left_name = sort_name(left);
+			  const std::string right_name = sort_name(right);
+			  if (left_name != right_name)
+				  return left_name < right_name;
 			  return left.zone_number < right.zone_number;
 		  });
 	return summary;

@@ -270,6 +270,9 @@ def run(server, players, hours):
                 assert mortal.error is None, mortal.error
                 entries += mortal.entries
             elapsed = time.monotonic() - booted
+            # The shutdown queues every shop still dirty at once, by design: only the saves
+            # made while the game ran are bounded. Under load some are left for it.
+            played = debug_log.stat().st_size
         except Exception:
             print(output_path.read_text(errors='replace')[-6000:])
             print(journey.runtime_logs(runtime)[-6000:])
@@ -295,7 +298,8 @@ def run(server, players, hours):
         status = (runtime / 'logs/log/status').read_text(errors='replace')
         report(status, trace_path.read_text(), players, elapsed)
         shop_saves = [int(saved) for saved in re.findall(
-            r'sql_save_dirty_shopkeepers: saved (\d+) shopkeepers', debug_log.read_text())]
+            r'sql_save_dirty_shopkeepers: saved (\d+) shopkeepers',
+            debug_log.read_bytes()[:played].decode(errors='replace'))]
         print(f'  slowest re-entry {max(entries):.2f} s of {len(entries)}; {sum(shop_saves)} '
               f'shop saves queued over {len(shop_saves)} pulses, at most {max(shop_saves)} '
               'in one')

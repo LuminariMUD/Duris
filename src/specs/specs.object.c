@@ -1156,7 +1156,7 @@ int ring_elemental_control(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
-	if (cmd != CMD_RUB || !arg || !OBJ_WORN(obj) || obj->R_num != real_object(25080))
+	if (cmd != CMD_RUB || !arg || !OBJ_WORN(obj) || obj->R_num != real_object(139037))
 	{
 		return FALSE;
 	}

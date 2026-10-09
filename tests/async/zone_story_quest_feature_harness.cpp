@@ -308,6 +308,43 @@ int main()
 			"equal completion counts did not use name then zone-number tie-breakers");
 	}
 
+	// Real zone names carry color codes; ties go by the text a player reads.
+	zone_story_quest_catalog::catalog color_catalog;
+	color_catalog.content_revision = 7;
+	const std::vector<std::pair<int, const char *>> colored_names = {
+		{ 980, "&+BSevenoaks&n" },
+		{ 981, "&+GArbre's &+gForest&n" },
+		{ 982, "&+gAko Village&n" },
+		{ 983, "&+yThe Mountain Valley of &+YDawndale&n" },
+		{ 984, "The Wreck of the Dreadnaught Cyclops" },
+		{ 985, "&=LgNy'Neth's Stronghold Continued" },
+		{ 986, "Ny'Neth's Stronghold" }
+	};
+	for (const auto &[zone, name] : colored_names)
+	{
+		const std::string quest_id = "zone-story:" + std::to_string(zone) + ":001";
+		auto colored_definition = definition(quest_id.c_str(), zone);
+		colored_definition.zone_name = name;
+		color_catalog.definitions.push_back(std::move(colored_definition));
+	}
+	service color_tracker(color_catalog);
+	for (const auto &colored_definition : color_catalog.definitions)
+	{
+		const std::string transaction_id = "tx-color-" + colored_definition.definition_id;
+		const completion_event event =
+			completion(transaction_id.c_str(), colored_definition.definition_id.c_str(),
+				   colored_definition.zone_number, 42, 172803000, { 42 });
+		require(color_tracker.record_completion(event, &error) == result::applied,
+			"colored zone completion fixture was not applied");
+	}
+	const personal_summary color_summary = color_tracker.summary_for(7, 42);
+	const std::vector<int> expected_color_order = { 982, 981, 986, 985, 980, 983, 984 };
+	require(color_summary.zones.size() == expected_color_order.size(),
+		"colored zone summary lost a zone");
+	for (size_t index = 0; index < expected_color_order.size(); ++index)
+		require(color_summary.zones[index].zone_number == expected_color_order[index],
+			"equal completion counts were ordered by color codes, not by the name read");
+
 	daily_policy policy;
 	policy.enabled = true;
 	policy.minimum_attempts = 2;

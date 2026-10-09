@@ -171,7 +171,16 @@ std::string objective_for_quest(const quest_data &quest, std::string_view giver_
 
 int zone_for_giver_vnum(int giver_vnum)
 {
-	return giver_vnum > 0 ? std::max(1, giver_vnum / 100) : 0;
+	if (giver_vnum <= 0)
+		return 0;
+	// A mob's zone is the one with the highest first vnum (number * 100) at or below its
+	// own, as in which_race(): an area's mobs run past its first hundred vnums and past its
+	// top room. The heavens givers (zone 0) stay on zone 1, as the catalog needs a positive zone.
+	int zone_number = 0;
+	for (int index = 0; zone_table && index <= top_of_zone_table; ++index)
+		if (zone_table[index].number <= giver_vnum / 100)
+			zone_number = std::max(zone_number, zone_table[index].number);
+	return zone_number > 0 ? zone_number : std::max(1, giver_vnum / 100);
 }
 
 std::string canonical_completion_key(const quest_complete_data &completion)

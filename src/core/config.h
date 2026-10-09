@@ -123,8 +123,8 @@
 #define MAX_CMD_LIST 1000 /* maximum number of total commands */
 #define MAX_CMD 865 // current number of commands, including the final newline
 #define MAX_CONNECTIONS 256 /* last descriptor allowed, really; needs fixed */
-#define MAX_UNNAMED_CONNECTIONS_PER_ADDRESS 8 /* open before an account name is entered */
-#define UNNAMED_CONNECTION_TIMEOUT (120 * WAIT_SEC) /* silence before an account name */
+#define MAX_LOGIN_CONNECTIONS_PER_ADDRESS 8 /* open and not yet logged in to an account */
+#define LOGIN_PROMPT_TIMEOUT (120 * WAIT_SEC) /* silence at a login prompt */
 #define MAX_DUPES_IN_WELL 5 /* donation well won't accept more than this of same item */
 #define MAX_HOSTNAME 256 /* max length of server's hostname */
 #define MAX_INPUT_LENGTH 1024 /*    12+ 80 character lines */

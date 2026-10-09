@@ -3,6 +3,9 @@
 
 #include "migrate_common.h"
 
+#include <fcntl.h>
+#include <unistd.h>
+
 static void read_unique_ip_file(struct acct_entry *acct, FILE *f)
 {
 	int count = 0;
@@ -176,13 +179,21 @@ int migrate_accounts_from_files(void)
 			char filepath[512];
 			snprintf(filepath, sizeof(filepath), "%s/%s", dirname, entry->d_name);
 
+			// Check the file that was opened, not the name; O_NONBLOCK keeps a FIFO from
+			// blocking the open before fstat() skips it.
+			int fd = open(filepath, O_RDONLY | O_NONBLOCK);
 			struct stat st;
-			if (stat(filepath, &st) != 0 || !S_ISREG(st.st_mode))
+			if (fd >= 0 && (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)))
+			{
+				close(fd);
 				continue;
+			}
 
-			FILE *f = fopen(filepath, "r");
+			FILE *f = fd >= 0 ? fdopen(fd, "r") : NULL;
 			if (!f)
 			{
+				if (fd >= 0)
+					close(fd);
 				errors++;
 				processed++;
 				progress_update(&pb, processed);

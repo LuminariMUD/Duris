@@ -4,9 +4,9 @@
   "configuration": "Compiler defaults; THARKUN_ARTIS enabled",
   "counts": {
     "templates": 169,
-    "literalBindings": 78,
-    "callbacks": 67,
-    "withoutLiteralBinding": 91,
+    "literalBindings": 80,
+    "callbacks": 69,
+    "withoutLiteralBinding": 89,
     "goldenTokenPlaceholders": 29
   },
   "templates": [
@@ -4964,13 +4964,14 @@
         0,
         0
       ],
-      "literalCallback": null,
+      "literalCallback": "staff_of_blue_flames",
       "placeholder": false,
       "reviewPaths": [
         "base stats/affect bitvectors",
         "equipment enchantments",
         "Studio trigger/proc-library dynamic assignment",
-        "weapon_proc: positive value[5] and value[7] select packed spell path"
+        "weapon_proc: positive value[5] and value[7] select packed spell path",
+        "effective native callback and helper continuations"
       ],
       "disposition": "retain legacy; outside initial migration wave; requires individual contract and measured budget"
     },
@@ -5025,13 +5026,14 @@
         0,
         0
       ],
-      "literalCallback": null,
+      "literalCallback": "dragonslayer",
       "placeholder": false,
       "reviewPaths": [
         "base stats/affect bitvectors",
         "equipment enchantments",
         "Studio trigger/proc-library dynamic assignment",
-        "weapon_proc: positive value[5] and value[7] select packed spell path"
+        "weapon_proc: positive value[5] and value[7] select packed spell path",
+        "effective native callback and helper continuations"
       ],
       "disposition": "retain legacy; outside initial migration wave; requires individual contract and measured budget"
     }
