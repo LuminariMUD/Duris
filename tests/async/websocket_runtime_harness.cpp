@@ -658,6 +658,39 @@ int main()
 	d.ws_message_buffer = NULL;
 	d.ws_message_len = 0;
 
+	// A plain GET is answered, with robots.txt keeping crawlers out, and the connection
+	// closes (-2); it was dropped unanswered, which the tunnel turned into an error page.
+	// The upgrade above still opens.
+	const struct
+	{
+		const char *request, *status, *body;
+	} plain_gets[] = {
+		{ "GET / HTTP/1.1\r\nHost: ws.example\r\n\r\n", "HTTP/1.1 426 Upgrade Required",
+		  "WebSocket connections only" },
+		{ "GET /robots.txt HTTP/1.1\r\nHost: ws.example\r\n\r\n", "HTTP/1.1 200 OK",
+		  "\r\n\r\nUser-agent: *\nDisallow: /\n" },
+	};
+	for (const auto &plain : plain_gets)
+	{
+		int plain_pair[2];
+		if (socketpair(AF_UNIX, SOCK_STREAM, 0, plain_pair) != 0)
+			return fail("plain GET socketpair");
+		descriptor_data browser{};
+		browser.descriptor = plain_pair[0];
+		if (websocket_parse_handshake(&browser, plain.request, strlen(plain.request)) != -2)
+			return fail("a plain GET was not answered");
+		char answer[512];
+		const ssize_t answer_len = read(plain_pair[1], answer, sizeof(answer) - 1);
+		if (answer_len <= 0)
+			return fail("read the answer to a plain GET");
+		answer[answer_len] = '\0';
+		if (strncmp(answer, plain.status, strlen(plain.status)) != 0 ||
+		    !strstr(answer, plain.body) || !strstr(answer, "Connection: close"))
+			return fail("a plain GET got the wrong answer");
+		close(plain_pair[0]);
+		close(plain_pair[1]);
+	}
+
 	const char *bad_key = "GET / HTTP/1.1\r\n"
 			      "Upgrade: websocket\r\n"
 			      "Connection: Upgrade\r\n"
