@@ -10704,7 +10704,7 @@ int fooquest_boss(P_char ch, P_char pl, int cmd, char * /*arg*/)
 		 */
 		for (i = character_list; i; i = i->next)
 		{
-			if ((IS_NPC(i)) && (GET_VNUM(i) == 65014))
+			if ((IS_NPC(i)) && (GET_VNUM(i) == 142214))
 			{
 				count++;
 			}
@@ -10713,7 +10713,7 @@ int fooquest_boss(P_char ch, P_char pl, int cmd, char * /*arg*/)
 		{
 			if (number(1, 100) < 50)
 			{
-				dragon = read_mobile(65014, VIRTUAL);
+				dragon = read_mobile(142214, VIRTUAL);
 				if (!dragon)
 				{
 					logit(LOG_EXIT, "assert: error in bahamut() proc");
@@ -10772,7 +10772,7 @@ int fooquest_mob(P_char ch, P_char pl, int cmd, char *arg)
 		/*
 		 * load agthrodos
 		 */
-		tempchar = read_mobile(65013, VIRTUAL);
+		tempchar = read_mobile(142213, VIRTUAL);
 
 		if (!tempchar)
 		{
@@ -11971,7 +11971,7 @@ int long_john_silver_shout(P_char ch, P_char /*tch*/, int cmd, char * /*arg*/)
 	int count = 0;
 
 	/* variables for shout proc */
-	int helpers[] = { 70536, 70537, 70538, 70539, 70540, 70541, 70547, 70548, 0 };
+	int helpers[] = { 142236, 142237, 142238, 142239, 142240, 142241, 142247, 142248, 0 };
 
 	if (cmd == CMD_SET_PERIODIC)
 		return TRUE;
@@ -11995,7 +11995,7 @@ int long_john_silver_shout(P_char ch, P_char /*tch*/, int cmd, char * /*arg*/)
 		 */
 		for (i = character_list; i; i = i->next)
 		{
-			if ((IS_NPC(i)) && (GET_VNUM(i) == 70536))
+			if ((IS_NPC(i)) && (GET_VNUM(i) == 142236))
 			{
 				count++;
 			}
@@ -12004,7 +12004,7 @@ int long_john_silver_shout(P_char ch, P_char /*tch*/, int cmd, char * /*arg*/)
 		{
 			if (number(1, 100) < 50)
 			{
-				ljswraith = read_mobile(70536, VIRTUAL);
+				ljswraith = read_mobile(142236, VIRTUAL);
 				if (!ljswraith)
 				{
 					logit(LOG_EXIT, "assert: error in longjohnsilver() proc");
