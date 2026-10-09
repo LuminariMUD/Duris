@@ -235,18 +235,18 @@ void Board_write_message(int board_type, struct char_data *ch, char *arg)
 		send_to_char("The board is full.\r\n", ch);
 		return;
 	}
-	if ((NEW_MSG_INDEX(board_type).slot_num = find_slot()) == -1)
-	{
-		send_to_char("The board is malfunctioning - sorry.\r\n", ch);
-		logit(LOG_BOARD, " Board: failed to find empty slot on write.");
-		return;
-	}
 	/* skip blanks */
 	arg = skip_spaces(arg);
 
 	if (!*arg)
 	{
 		send_to_char("We must have a headline!\r\n", ch);
+		return;
+	}
+	if ((NEW_MSG_INDEX(board_type).slot_num = find_slot()) == -1)
+	{
+		send_to_char("The board is malfunctioning - sorry.\r\n", ch);
+		logit(LOG_BOARD, " Board: failed to find empty slot on write.");
 		return;
 	}
 

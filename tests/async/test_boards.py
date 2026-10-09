@@ -16,7 +16,8 @@ special for boards a character carries. A row whose object the world lacks keeps
 
 Board_write_message() keeps at most 70 characters of a headline and writes nothing into
 the command line: it once cut the headline with arg[71] = '\0', past the end of the
-1024-byte line when the headline started near its end.
+1024-byte line when the headline started near its end. A write with no headline takes
+no message slot: it once took one for good, and the boards share INDEX_SIZE slots.
 """
 from pathlib import Path
 import re
@@ -155,6 +156,15 @@ int main() {
     Board_write_message(0, &writer, headline.data());
     std::string heading = MSG_HEADING(0, 1);
     assert(heading.substr(heading.find("] ") + 2) == std::string(70, 'x'));
+
+    // No headline, no slot.
+    char blank[] = "   ";
+    Board_write_message(0, &writer, blank);
+    assert(told.back() == "We must have a headline!\r\n" && num_of_msgs[0] == 2);
+    int taken = 0;
+    for (int slot : msg_storage_taken)
+        taken += slot;
+    assert(taken == 2);
 }
 '''
 
@@ -172,4 +182,5 @@ with tempfile.TemporaryDirectory(prefix="boards-") as directory:
                     "-fsanitize=address,undefined", "-g", str(cpp), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
 print(f"{len(rows)} board_info rows name world boards; each board answers for its own row; "
-      "a headline is cut at 70 characters without writing into the command line")
+      "a headline is cut at 70 characters without writing into the command line, "
+      "and a write without one takes no slot")
