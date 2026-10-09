@@ -1343,6 +1343,21 @@ the connection-limit journey and `world_capture` passed (0 slow pulses, the worl
 `master`'s version of the journey passed against this round's server (at most 16 saves in
 one pulse).
 
+**Catch-up** (2026-10-09): `8031e8593` merges Phase 8's round 1 head `6864ab279`
+(`backlog/phase-8-review-1`). That head carries `master` through Phase 7, `47f5a06d6` and
+`f3ba6bd2a` included. Only the Status table and the Landing section conflicted, and Phase
+8's side was kept.
+
+Gate on `8031e8593`:
+
+- `./scripts/format.sh --all --check`: clean.
+- `make test-all -j16 TEST_JOBS=16`: 683 passed, 0 failed.
+- `make test-db`: 47 of 48.
+
+The failed leg, `deletion`, chose a character for deletion while its link-loss save was
+being acknowledged, and got "Couldn't load that character!". `master` fixes the journey in
+`4133466af`, which reaches this branch with a later catch-up. Run alone, the leg passed.
+
 **Checked** at `f44291043`. `board_info[]` (`src/cmd/boards.c` L55-103, `NUM_OF_BOARDS` 44
 at L52) is what `find_board()` (L121) searches, so an object carrying the `board` special
 without a row makes `look`, `read`, `examine`, `write` or `remove` near it log
