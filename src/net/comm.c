@@ -3300,7 +3300,6 @@ void close_sockets(int s)
 void close_socket(struct descriptor_data *d)
 {
 	struct descriptor_data *tmp;
-	snoop_by_data *snoop_by_ptr, *next;
 	int is_morphed = d->character ? IS_MORPH(d->character) : 0;
 	if (d && d->player_load_request_id)
 		player_load_pipeline_cancel(d->player_load_request_id);
@@ -3323,60 +3322,22 @@ void close_socket(struct descriptor_data *d)
 	--used_descs;
 
 	/* Forget snooping */
-	/*
-	  if (d->snoop.snoop_by) {
-	    send_to_char("Your victim is no longer among us.\r\n", d->snoop.snoop_by);
-	    d->snoop.snoop_by->desc->snoop.snooping = 0;
-	  }
-	*/
-	snoop_by_ptr = d->snoop.snoop_by_list;
-	while (snoop_by_ptr)
-	{
-		if (is_morphed && affected_by_spell(d->character, SPELL_CHANNEL))
-			send_to_char(
-				"Your host has lost link... you can no longer maintain the sight link.\r\n",
-				snoop_by_ptr->snoop_by);
-		else
-			send_to_char("Your victim is no longer among us.\r\n",
-				     snoop_by_ptr->snoop_by);
-		snoop_by_ptr->snoop_by->desc->snoop.snooping = 0;
-
-		next = snoop_by_ptr->next;
-		FREE(snoop_by_ptr);
-
-		snoop_by_ptr = next;
-	}
-
-	d->snoop.snoop_by_list = 0;
+	end_snoops_on(
+		d,
+		is_morphed && affected_by_spell(d->character, SPELL_CHANNEL) ?
+			"Your host has lost link... you can no longer maintain the sight link.\r\n" :
+			"Your victim is no longer among us.\r\n");
 
 	if (is_morphed && affected_by_spell(d->character, SPELL_CHANNEL))
 		un_morph(d->character);
 
-	if (d->snoop.snooping)
+	if (d->snoop.snooping && IS_MORPH(d->snoop.snooping))
 	{
-		/*
-		 * if !d->character, or they aren't playing, I can't get their
-		 * level.. so I'll assume its better then 58 to be safe
-		 */
-		is_morphed = IS_MORPH(d->snoop.snooping);
-
-		if (d->character && (d->connected == CON_PLAYING) && (GET_LEVEL(d->character) < 58))
-			send_to_char("&+CYou are no longer being snooped.&N\r\n",
-				     d->snoop.snooping);
-		/*    d->snoop.snooping->desc->snoop.snoop_by = 0;*/
-		if (is_morphed)
-		{
-			act("&+B$n has lost $s link and is unable to maintain $s part of the spell!&n",
-			    FALSE, d->character, 0, d->snoop.snooping, TO_VICT);
-			un_morph(d->snoop.snooping);
-		}
-		if (d->snoop.snooping)
-		{
-			rem_char_from_snoopby_list(&d->snoop.snooping->desc->snoop.snoop_by_list,
-						   d->character);
-			d->snoop.snooping = 0;
-		}
+		act("&+B$n has lost $s link and is unable to maintain $s part of the spell!&n",
+		    FALSE, d->character, 0, d->snoop.snooping, TO_VICT);
+		un_morph(d->snoop.snooping);
 	}
+	stop_snooping(d);
 	if (d->str && (*d->str))
 	{
 		FREE(*d->str);

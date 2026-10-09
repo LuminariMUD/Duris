@@ -4805,21 +4805,75 @@ void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 	timedShutdown(NULL, NULL, NULL, NULL);
 }
 
+// ADR 0003: a snoop the command started tells its target when it starts and ends, unless
+// it is silent, and leaves an audit row at both ends. A snoop the channel spell set up does
+// neither.
+static void snoop_ended(P_desc d, bool tell_target)
+{
+	P_char target = d->snoop.snooping;
+	if (d->snoop.by_command)
+	{
+		if (tell_target && !d->snoop.silent)
+			send_to_char("&+CYou are no longer being snooped.&N\n", target);
+		if (d->character)
+			sql_log(d->character, WIZLOG, "Stopped snooping %s%s", GET_NAME(target),
+				d->snoop.silent ? " (silent)" : "");
+	}
+	d->snoop.snooping = NULL;
+	d->snoop.by_command = d->snoop.silent = false;
+}
+
+// Ends the snoop d holds, if any.
+void stop_snooping(P_desc d)
+{
+	if (!d->snoop.snooping)
+		return;
+	rem_char_from_snoopby_list(&d->snoop.snooping->desc->snoop.snoop_by_list, d->character);
+	snoop_ended(d, true);
+}
+
+// Ends every snoop on d, whose character is leaving it; each snooper is told `message`
+// when it is not null.
+void end_snoops_on(P_desc d, const char *message)
+{
+	for (snoop_by_data *node = d->snoop.snoop_by_list, *next; node; node = next)
+	{
+		next = node->next;
+		if (message)
+			send_to_char(message, node->snoop_by);
+		snoop_ended(node->snoop_by->desc, false);
+		FREE(node);
+	}
+	d->snoop.snoop_by_list = NULL;
+}
+
+// snoop <name> [silent <reason>]: a silent snoop is for the highest level only, with a
+// reason for the audit (ADR 0003).
 void do_snoop(P_char ch, char *argument, int /*cmd*/)
 {
-	static char arg[MAX_STRING_LENGTH];
+	char arg[MAX_INPUT_LENGTH], mode[MAX_INPUT_LENGTH];
 	P_char victim;
 	P_desc point;
-	int level;
 	snoop_by_data *snoop_by_ptr;
 
 	if (!ch->desc)
 		return;
-	one_argument(argument, arg);
+	char *reason = skip_spaces(one_argument(one_argument(argument, arg), mode));
 
 	if (!*arg)
 	{
 		send_to_char("Snoop who ?\n", ch);
+		return;
+	}
+	const bool silent = *mode != '\0';
+	if (silent && (str_cmp(mode, "silent") || !*reason))
+	{
+		send_to_char("Syntax: snoop <name> [silent <reason>]\n", ch);
+		return;
+	}
+	if (silent && GET_LEVEL(ch) < OVERLORD)
+	{
+		send_to_char("Only the highest gods may snoop silently.\n", ch);
 		return;
 	}
 	if (!(victim = get_char_vis(ch, arg)))
@@ -4837,53 +4891,24 @@ void do_snoop(P_char ch, char *argument, int /*cmd*/)
 		send_to_char("Duh!  You already ARE snooping that person!\n", ch);
 		return;
 	}
-	level = MIN(62, GET_LEVEL(ch));
 	if (victim == ch)
 	{
 		send_to_char("Ok, you just snoop yourself.\n", ch);
-		if (ch->desc->snoop.snooping)
-		{
-			if (level < 59)
-				send_to_char("&+CYou are no longer being snooped.&N\n",
-					     ch->desc->snoop.snooping);
-			if (GET_LEVEL(ch) < FORGER)
-			{
-				sql_log(ch, WIZLOG, "Stopped snooping %s",
-					GET_NAME(ch->desc->snoop.snooping));
-			}
-			rem_char_from_snoopby_list(
-				&ch->desc->snoop.snooping->desc->snoop.snoop_by_list, ch);
-			ch->desc->snoop.snooping = 0;
-		}
+		stop_snooping(ch->desc);
 		return;
 	}
 
-	if ((GET_LEVEL(victim) >= level))
+	if (GET_LEVEL(victim) >= MIN(62, GET_LEVEL(ch)))
 	{
 		send_to_char("You failed.\n", ch);
 		return;
 	}
 	send_to_char("Ok. \n", ch);
 
-	if (ch->desc->snoop.snooping)
-	{
-		if (level < 58)
-			send_to_char("&+CYou are no longer being snooped.&N\n",
-				     ch->desc->snoop.snooping);
-		/*
-		    ch->desc->snoop.snooping->desc->snoop.snoop_by = 0;
-		*/
-		rem_char_from_snoopby_list(&ch->desc->snoop.snooping->desc->snoop.snoop_by_list,
-					   ch);
-
-		sql_log(ch, WIZLOG, "Stopped snooping %s", GET_NAME(ch->desc->snoop.snooping));
-		logit(LOG_WIZ, "(%s) stopped snooping (%s)", GET_NAME(ch),
-		      GET_NAME(ch->desc->snoop.snooping));
-	}
+	stop_snooping(ch->desc);
 	ch->desc->snoop.snooping = victim;
-	/*
-	  victim->desc->snoop.snoop_by = ch;
-	*/
+	ch->desc->snoop.by_command = true;
+	ch->desc->snoop.silent = silent;
 	CREATE(snoop_by_ptr, snoop_by_data, 1, MEM_TAG_SNOOP);
 	bzero(snoop_by_ptr, sizeof(snoop_by_data));
 
@@ -4916,11 +4941,13 @@ void do_snoop(P_char ch, char *argument, int /*cmd*/)
 	ch->desc->next = point->next;
 	point->next = ch->desc;
 
-	if (level < 58)
-		send_to_char("&+CSomeone starts snooping you.&N\n", victim);
-
-	if (GET_LEVEL(ch) < FORGER)
+	if (silent)
 	{
+		sql_log(ch, WIZLOG, "Started snooping %s silently: %s", GET_NAME(victim), reason);
+	}
+	else
+	{
+		send_to_char("&+CSomeone starts snooping you.&N\n", victim);
 		sql_log(ch, WIZLOG, "Started snooping %s", GET_NAME(victim));
 	}
 }
@@ -4928,7 +4955,6 @@ void do_snoop(P_char ch, char *argument, int /*cmd*/)
 void do_switch(P_char ch, char *argument, int cmd)
 {
 	static char arg[MAX_STRING_LENGTH];
-	snoop_by_data *snoop_by_ptr, *next;
 	P_char victim;
 
 	// If you're already switched, we un-switch you first.
@@ -4992,23 +5018,9 @@ void do_switch(P_char ch, char *argument, int cmd)
 			// We send this message to the descriptor since ch had its desc removed at the end of this fn.
 			SEND_TO_Q("Ok.\n", ch->desc);
 
-			if (ch->desc->snoop.snoop_by_list)
-			{
-				snoop_by_ptr = ch->desc->snoop.snoop_by_list;
-				while (snoop_by_ptr)
-				{
-					send_to_char(
-						"Your victim has switched into something, killing your snoop.\n",
-						snoop_by_ptr->snoop_by);
-					snoop_by_ptr->snoop_by->desc->snoop.snooping = NULL;
-
-					next = snoop_by_ptr->next;
-					FREE(snoop_by_ptr);
-
-					snoop_by_ptr = next;
-				}
-				ch->desc->snoop.snoop_by_list = NULL;
-			}
+			end_snoops_on(
+				ch->desc,
+				"Your victim has switched into something, killing your snoop.\n");
 
 			if (IS_TRUSTED(ch) && !IS_FIGHTING(ch))
 			{

@@ -10021,21 +10021,15 @@ void web_info(void)
 void do_recall(P_char ch, char *argument, int /*cmd*/)
 {
 	char arg[256];
-	char buf[2048];
 	int size = 10;
 	char *pattern = 0;
-	P_char victim = NULL;
 
 	argument = skip_spaces(one_argument(argument, arg));
+	// ADR 0003: an immortal cannot read another player's private messages.
 	if (*argument && IS_TRUSTED(ch))
 	{
-		victim = get_char_vis(ch, argument);
-		if (!victim)
-		{
-			snprintf(buf, 2048, "Could not find char '%s'.\n", argument);
-			send_to_char(buf, ch);
-			return;
-		}
+		send_to_char("Disabled by Zusuk October 9 2026\n", ch);
+		return;
 	}
 	if (*arg && atoi(arg) > 0)
 	{
@@ -10050,44 +10044,17 @@ void do_recall(P_char ch, char *argument, int /*cmd*/)
 
 	if (!IS_PC(ch))
 		return;
-	if (victim && !IS_PC(victim))
+	if (!GET_PLAYER_LOG(ch))
 	{
-		snprintf(buf, 2048, "'%s' is not a PC.\n", argument);
-		send_to_char(buf, ch);
+		logit(LOG_DEBUG, "Unintialized player log (%s) in do_recall()", GET_NAME(ch));
 		return;
 	}
 
-	if (victim)
+	ITERATE_LOG_LIMIT(ch, LOG_PRIVATE, size)
 	{
-		if (!GET_PLAYER_LOG(victim))
-		{
-			logit(LOG_DEBUG, "Unintialized player log (%s) in do_recall()",
-			      GET_NAME(victim));
-			return;
-		}
+		if (!pattern || isname(pattern, strip_ansi(LOG_MSG()).c_str()))
+			send_to_char(LOG_MSG(), ch, LOG_NONE);
 	}
-	else
-	{
-		if (!GET_PLAYER_LOG(ch))
-		{
-			logit(LOG_DEBUG, "Unintialized player log (%s) in do_recall()",
-			      GET_NAME(ch));
-			return;
-		}
-	}
-
-	if (victim)
-		ITERATE_LOG_LIMIT(victim, LOG_PRIVATE, size)
-		{
-			if (!pattern || isname(pattern, strip_ansi(LOG_MSG()).c_str()))
-				send_to_char(LOG_MSG(), ch, LOG_NONE);
-		}
-	else
-		ITERATE_LOG_LIMIT(ch, LOG_PRIVATE, size)
-		{
-			if (!pattern || isname(pattern, strip_ansi(LOG_MSG()).c_str()))
-				send_to_char(LOG_MSG(), ch, LOG_NONE);
-		}
 }
 
 namespace

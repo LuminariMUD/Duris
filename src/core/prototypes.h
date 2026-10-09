@@ -3113,6 +3113,8 @@ int total_carried_weight(P_char);
 int weight_notches_above_naked(P_char);
 char char_in_snoopby_list(snoop_by_data *, P_char);
 void rem_char_from_snoopby_list(snoop_by_data **, P_char);
+void stop_snooping(P_desc);
+void end_snoops_on(P_desc, const char *);
 P_char get_random_char_in_room(int, P_char, int);
 void cast_as_area(P_char, int, int, char *);
 void hummer(P_obj);

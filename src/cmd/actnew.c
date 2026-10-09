@@ -1752,7 +1752,6 @@ P_char un_morph(P_char mob)
 {
 	P_char ch;
 	int in_rm, is_avatar = FALSE, virt;
-	snoop_by_data *snoop_by_ptr, *next;
 
 	if (!mob || IS_PC(mob) || !IS_MORPH(mob))
 	{
@@ -1789,25 +1788,11 @@ P_char un_morph(P_char mob)
 		   if (mob->desc->snoop.snoop_by)
 		   mob->desc->snoop.snoop_by->desc->snoop.snooping = mob->desc->original;
 		   */
-		snoop_by_ptr = mob->desc->snoop.snoop_by_list;
-		while (snoop_by_ptr)
-		{
-			//      snoop_by_ptr->snoop_by->desc->snoop.snooping = mob->desc->original;
-			if (is_avatar)
-				send_to_char(
-					"&+RYour diety has returned from whence it came, you can no longer sight link with it.&n\r\n",
-					snoop_by_ptr->snoop_by);
-			snoop_by_ptr->snoop_by->desc->snoop.snooping = 0;
-			snoop_by_ptr = snoop_by_ptr->next;
-		}
-		snoop_by_ptr = mob->desc->snoop.snoop_by_list;
-		while (snoop_by_ptr)
-		{
-			next = snoop_by_ptr->next;
-			FREE(snoop_by_ptr);
-			snoop_by_ptr = next;
-		}
-		mob->desc->snoop.snoop_by_list = 0;
+		end_snoops_on(
+			mob->desc,
+			is_avatar ?
+				"&+RYour diety has returned from whence it came, you can no longer sight link with it.&n\r\n" :
+				NULL);
 
 		if (mob->in_room == 1 && world[mob->specials.was_in_room].number != NOWHERE)
 		{

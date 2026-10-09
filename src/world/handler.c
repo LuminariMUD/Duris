@@ -3642,7 +3642,6 @@ void extract_char(P_char ch)
 	P_char k;
 	P_desc t_desc;
 	int l;
-	snoop_by_data *snoop_by_ptr, *next;
 	struct affected_type *af, *nextaf;
 
 	if (!ch)
@@ -3770,40 +3769,8 @@ void extract_char(P_char ch)
 	{
 		sql_disconnectIP(ch);
 
-		if (ch->desc->snoop.snooping)
-		{
-			/*
-			 * if !d->character, or they aren't playing, I can't get their
-			 * level.. so I'll assume its better then 58 to be safe
-			 */
-			if (GET_LEVEL(ch) < 58)
-				// send_to_char("&+CYou are no longer being snooped.&N\r\n",
-				//            ch->desc->snoop.snooping);
-				rem_char_from_snoopby_list(
-					&ch->desc->snoop.snooping->desc->snoop.snoop_by_list, ch);
-		}
-		snoop_by_ptr = ch->desc->snoop.snoop_by_list;
-		while (snoop_by_ptr)
-		{
-			send_to_char("Your victim is no longer among us.\r\n",
-				     snoop_by_ptr->snoop_by);
-			snoop_by_ptr->snoop_by->desc->snoop.snooping = 0;
-
-			snoop_by_ptr = snoop_by_ptr->next;
-		}
-
-		ch->desc->snoop.snooping = /*ch->desc->snoop.snoop_by = */ NULL;
-
-		snoop_by_ptr = ch->desc->snoop.snoop_by_list;
-		while (snoop_by_ptr)
-		{
-			next = snoop_by_ptr->next;
-			FREE(snoop_by_ptr);
-
-			snoop_by_ptr = next;
-		}
-
-		ch->desc->snoop.snoop_by_list = 0;
+		stop_snooping(ch->desc);
+		end_snoops_on(ch->desc, "Your victim is no longer among us.\r\n");
 	}
 	/*
 	 * Code to stop others from ignoring person quitting

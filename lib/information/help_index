@@ -2561,7 +2561,9 @@ channel off or back on.
 What is logged: what players say to each other is not written to the
 game's logs, on any of these channels. Three things are: petitions, which
 go to the gods; the newbie channel, which the staff read to make the game
-better for new players; and what the gods do.
+better for new players; and what the gods do. If a god snoops you to sort
+out a problem, you are told when it starts and when it ends, and no god
+can read your tells with recall. Your network address is kept 30 days.
 
 Other utilities: BUG IDEA TYPO, CONSENT, DISPLAY, IGNORE, LANGUAGES,
 PASSWORD, READ, BOARD, DELETE REPEAT, SCORE ATTRIBUTES, TOGGLE, WRITE
@@ -6863,10 +6865,14 @@ Syntax:  silence <player>
 "GOD, SNOOP"
 ===========================================================================
 Syntax:  snoop <victim>
+         snoop <victim> silent <reason>      (level 62 only)
 
 This command lets you see everything that the MUD sends to the
 victim's screen, except for the prompt.  It is not possible to snoop
-someone of equal or higher level.
+someone of equal or higher level.  The victim is told when a snoop
+starts and when it ends.  Only level 62 can snoop silently, and must
+give a reason.  Every snoop is logged at every level: who, whom, when it
+started and ended, whether it was silent, and the reason.
 
 Note: snooping is to be used only for clearing up problems, and not for
 intruding on people's affairs. Excessive snooping is strongly frowned upon.
@@ -12316,7 +12322,7 @@ gccs you have received. Number specifies the amount of lines to display,
 pattern can be given to list only matching lines, for example containing
 name of whoever told you something. Remember to include * characters in
 pattern, for example 'recall *joe*' will list all messages from player
-called Joe.
+called Joe. No one else can read them, not even the gods.
 ===========================================================================
 See also: GSAY, TELL, GCC
 
@@ -20515,12 +20521,13 @@ See also: FREEZE, PETITION_BLOCK, "GOD, SILENCE"
 #
 SNOOP (Immortal Command)
 ===========================================================================
-Syntax: snoop <victim> | snoop me
+Syntax: snoop <victim> | snoop <victim> silent <reason> | snoop me
 
 Greater God command (level 60). Echoes everything sent to the victim's connection to your
 screen; snooping yourself stops any active snoop. Fails against peers
-or superiors, who are warned when a lower-level god snoops them. All
-snooping is logged.
+or superiors. The victim is told when the snoop starts and ends. A
+silent snoop is level 62 only and needs a reason. Every snoop's start
+and end are logged, with the reason of a silent one.
 
 See also: SWITCH, "GOD, SNOOP"
 ===========================================================================
