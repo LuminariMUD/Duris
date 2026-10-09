@@ -126,7 +126,9 @@ checkout owner, sets `Restart=always`, disables systemd's restart-rate limit, wa
 seconds between attempts, and invokes `cycle_mud.sh --production`. The launch flag
 refuses `ENVIRONMENT=local`; the unit cannot silently publish a development role as
 production. A deliberate `systemctl stop` remains stopped because systemd suppresses
-restart jobs requested by the service manager.
+restart jobs requested by the service manager. A stop or restart sends SIGTERM to the
+launcher alone (`KillMode=mixed`): it passes the signal to the server, which shuts down in
+order, records the stop in `server_reboots`, and exits without starting the server again.
 
 Prepare the production `.env` and protected runtime directories before installation.
 The service account must own `.env`, which must remain mode `0600`. Complete the

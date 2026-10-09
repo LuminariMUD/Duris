@@ -394,10 +394,16 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
   if (( MINIMAL_MODE == 1 )); then
     SERVER_ARGS+=(--minimal)
   fi
-  "$RUNTIME_BINARY" "${SERVER_ARGS[@]}" "${MUD_PORT}" # > dms.out
-
-	# capture the exit code
-  RESULT=${PIPESTATUS[0]}
+  # The server runs as a child, and a stop sent to this launcher is passed on to it:
+  # under systemd (KillMode=mixed) SIGTERM reaches only the launcher, which then still
+  # records the stop below. The server shuts down in order on SIGTERM.
+  STOP_REQUESTED=0
+  trap 'STOP_REQUESTED=1; kill -TERM "$SERVER_PID" 2>/dev/null' TERM INT HUP
+  "$RUNTIME_BINARY" "${SERVER_ARGS[@]}" "${MUD_PORT}" &
+  SERVER_PID=$!
+  # wait returns early when a trapped signal arrives, with the server still running.
+  while wait "$SERVER_PID"; RESULT=$?; kill -0 "$SERVER_PID" 2>/dev/null; do :; done
+  trap - TERM INT HUP
 
 	# determine the reason for shutting down
 	case $RESULT in
@@ -454,16 +460,28 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
     # Calculate MUD uptime (shutdown_time - boot_time)
     MUD_UPTIME=$((SHUTDOWN_TIME - BOOT_TIME))
 
-    # Insert a complete reboot record (boot + shutdown)
-    mysql "${MYSQL_CONNECTION_ARGS[@]}" "$EFFECTIVE_DB_NAME" -e "
+    # Insert a complete reboot record (boot + shutdown). The issuer and the reason go in
+    # as hex: an apostrophe in a reason ended the string and lost the row.
+    sql_text() {
+      if [[ -z "$1" ]]; then echo NULL; return; fi
+      echo "CONVERT(UNHEX('$(printf '%s' "$1" | od -An -tx1 -v | tr -d ' \n')') USING utf8mb4)"
+    }
+    if mysql "${MYSQL_CONNECTION_ARGS[@]}" "$EFFECTIVE_DB_NAME" -e "
       INSERT INTO server_reboots
         (boot_time, shutdown_time, uptime_seconds, shutdown_type, initiated_by, reason)
       VALUES
         (${BOOT_TIME}, ${SHUTDOWN_TIME}, ${MUD_UPTIME}, '${DB_SHUTDOWN_TYPE}',
-         IF('${INITIATED_BY}' = '', NULL, '${INITIATED_BY}'),
-         IF('${SHUTDOWN_REASON}' = '', NULL, '${SHUTDOWN_REASON}'));
-    " 2>/dev/null
-    echo "Logged reboot: ${MUD_UPTIME}s uptime, type: ${DB_SHUTDOWN_TYPE}"
+         $(sql_text "$INITIATED_BY"), $(sql_text "$SHUTDOWN_REASON"));
+    "; then
+      echo "Logged reboot: ${MUD_UPTIME}s uptime, type: ${DB_SHUTDOWN_TYPE}"
+    else
+      echo "Could not record the stop in server_reboots" >&2
+    fi
+  fi
+
+  # A stop sent to the launcher ends the loop here; the server is not started again.
+  if (( STOP_REQUESTED == 1 )); then
+    break
   fi
 
   echo "Sleeping 10 seconds to prevent coreflood..."
