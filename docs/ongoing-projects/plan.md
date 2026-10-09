@@ -844,6 +844,13 @@ files), `make test-all -j16 TEST_JOBS=16` 679 passed, 0 failed (0 timed out, 0 e
 signal) in 7 min 55 s, `make test-db` 48 of 48. The document tests were run again on the
 record.
 
+`6b7b3f62a` then merges Phase 4's `d44db479b` (Phase 3's `4a03cf2a1`: Phase 2's connection-
+limit journey fix, which probes until the full server refuses, and plan notes in Phase 2's
+and Phase 3's sections); no conflict. On it: `./scripts/format.sh --all --check` clean,
+`test_connection_limit_journey.py` passed (190 s), and the 46 tests that read `docs/` passed
+(`test_flatfile_death_restart_journey.py` failed once in an eight-wide ad-hoc batch beside
+other server builds and passed alone; it passed in both full gates).
+
 **Problem.** Two loose ends the studio-proc engine left on purpose, listed in
 `docs/content/STUDIOPROC.md` under "Deliberately not included":
 
