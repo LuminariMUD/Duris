@@ -102,7 +102,15 @@ telemetry_capture_result telemetry_runtime_game_progression(
     P_char, P_desc, telemetry_progression_observation) { return {}; }
 void gmcp_char_vitals(P_char) {}
 void gmcp_quest_status(P_char) {}
-void logexp(const char *, ...) {}
+std::string exp_log;
+void logexp(const char *format, ...) {
+    char buffer[1024];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    exp_log += buffer;
+}
 void logit(const char *, const char *, ...) {}
 void wizlog(int, const char *, ...) {}
 [[noreturn]] int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
@@ -167,6 +175,7 @@ int main() {
     for (auto &mod : racial_exp_mod_victims) mod = 1.0f;
     auto reset = [&] {
         output.clear();
+        exp_log.clear();
         dirty = epics = finished = 0;
         pc.quest_active = 1;
         pc.quest_mob_vnum = 55;
@@ -251,6 +260,8 @@ int main() {
     player.player.level = MINLVLIMMORTAL;
     gain_exp(&player, nullptr, 123, EXP_WORLD_QUEST);
     assert(player.points.curr_exp == 0 && output.empty());
+    // Nothing is credited to an immortal, so the staff log keeps the award it would have had.
+    assert(exp_log.find("Tester would have gained 123 (") != std::string::npos);
     reset();
     display_gain(&player, 0, EXP_WORLD_QUEST);
     display_gain(&player, -10, EXP_WORLD_QUEST);
