@@ -812,6 +812,23 @@ into `1100b1b22`; it differs from `35cba256a` only in `make_trg.c` and `test_mak
 679 passed, 0 failed (0 timed out, 0 ended by a signal) in 9 min 3 s, `make test-db` 48 of
 48. On `35cba256a`, `test_make_trg.py` and a real `make world` were run again.
 
+**Catch-up with `master`, through the stack** (2026-10-09). `1475f68fa` merges Phase 4's
+round 1 (`f1da69342`, `backlog/phase-4-review-1`). `7fc0c7b16` merges Phase 4's catch-up
+(`71f7c30fb`: Phase 3's and Phase 2's rounds and `master` up to `494317e40`); its one
+conflict, the Status table, keeps `master`'s. Both are merges rather than rebases, so the
+review tags and pushed commits stay. PRs #10 to #12 now conflict with this head only in this
+file's Status table and Landing section, the conflict the Landing section describes; their
+own catch-up keeps `master`'s side. `db79d240e` brings the `REGRESSIONS.md` section
+`b439fa892` added up to Phase 2's round (the constants are
+`MAX_LOGIN_CONNECTIONS_PER_ADDRESS` and `LOGIN_PROMPT_TIMEOUT` now). `master`'s `89080c967`
+(a telemetry journey fix) is not in the stack yet; it comes with the landings.
+
+**Gate** on the catch-up's code (`db79d240e`; the gate ran before its journey paragraph was
+completed, a `REGRESSIONS.md`-only change): `./scripts/format.sh --all --check` clean (1038
+files), `make test-all -j16 TEST_JOBS=16` 679 passed, 0 failed (0 timed out, 0 ended by a
+signal) in 7 min 55 s, `make test-db` 48 of 48. The document tests were run again on the
+record.
+
 **Problem.** Two loose ends the studio-proc engine left on purpose, listed in
 `docs/content/STUDIOPROC.md` under "Deliberately not included":
 
