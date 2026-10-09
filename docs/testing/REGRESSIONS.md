@@ -91,18 +91,20 @@ logout and login; it saves before it reads the wallet from disk. `--expect-regre
 only fits a server from before the persistence reset. Live play ran on the flat-file
 backend only.
 
-## Connections before an account name, and the trusted proxy
+## Connections before an account login, and the trusted proxy
 
-One address may hold at most `MAX_UNNAMED_CONNECTIONS_PER_ADDRESS` (8) open connections
-that are negotiating TLS, waiting for the WebSocket handshake or at the account name
-prompt; `new_descriptor()` closes the next before setting it up. A connection silent at
-the prompt is closed after `UNNAMED_CONNECTION_TIMEOUT` (120 s). A connection from
-`DURIS_TRUSTED_PROXY_IP` counts under the address its PROXY header names, and one without
-a header has the proxy's address, shared by its clients, and is not limited. The
-listeners are IPv6 sockets, so an IPv4 proxy arrives as `::ffff:a.b.c.d`;
-`proxy_peer_is_trusted()` matches that against the IPv4 setting, and `websocket.c` uses it
-for `X-Forwarded-For`. Before that the proxy was never trusted, and one website login
-closed every other one in progress as a stale connection from the same address.
+One address may hold at most `MAX_LOGIN_CONNECTIONS_PER_ADDRESS` (8) open connections
+that have not logged in to an account: negotiating TLS, waiting for the WebSocket
+handshake, at a prompt to log in, create an account or reset its password, or closing.
+`new_descriptor()` closes the next before setting it up. A connection silent at one of
+those prompts is closed after `LOGIN_PROMPT_TIMEOUT` (120 s). The addresses of one IPv6
+/64 count as one client (`same_client()`). A connection from `DURIS_TRUSTED_PROXY_IP`
+counts under the address its PROXY header names; a WebSocket connection from it without
+one takes the last `X-Forwarded-For` entry, the one the proxy appended; any other has the
+proxy's address, shared by its clients, and is not limited. The listeners are IPv6
+sockets, so an IPv4 proxy arrives as `::ffff:a.b.c.d`; `proxy_peer_is_trusted()` matches
+that against the IPv4 setting. Before that the proxy was never trusted, and one website
+login closed every other one in progress as a stale connection from the same address.
 
 ```sh
 python3 tests/async/test_connection_limit_journey.py   # builds or reuses a flat-file server
@@ -111,11 +113,16 @@ python3 tests/async/test_websocket_protocol_contract.py
 
 The journey boots a flat-file server with the WebSocket listener on and `127.0.0.9` as
 its proxy, binding client sockets to loopback aliases: nine telnet and nine TLS
-connections from one address (the ninth refused), an account created from another, nine
-PROXY-header connections for one client beside one for another, nine telnet connections
-from the proxy itself, two website handshakes with different `X-Forwarded-For` addresses,
-and a connection silent at the prompt (closed between 115 and 135 s). It takes about two
-and a half minutes.
+connections from one address (the ninth refused); eight connections that each entered a
+name, then a ninth, refused; a login from another address; PROXY-header connections for
+two clients and for addresses of one IPv6 /64, where one of eight PROXY-named connections
+completes a handshake with a forged `X-Forwarded-For` and the ninth is still refused;
+nine telnet connections from the proxy itself; two website logins with different
+`X-Forwarded-For` addresses (one forging the other's in front of its own); connections
+silent at the account name and password prompts, closed between 115 and 135 s, while a
+website client that sends a login every 25 s is still open at 130 s; a banned address;
+and TLS connections to a full server. It takes about three minutes (173 s in a loaded
+gate).
 
 ## Copyover state path and failure output
 
