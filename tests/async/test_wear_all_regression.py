@@ -17,6 +17,7 @@ from pathlib import Path
 import re
 import sys
 from contract_text import contains
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -166,6 +167,6 @@ with tempfile.TemporaryDirectory() as td:
     source.write_text(fixture.replace('// PRODUCTION_FUNCTIONS', production))
     subprocess.run(['g++', '-std=c++20', '-g', '-fsanitize=address,undefined',
                     '-fno-omit-frame-pointer', '-fno-pie', '-no-pie',
-                    '-I' + str(SRC), str(source), '-o', str(binary)], check=True)
+                    '-I' + str(SRC), str(source), str(HARNESS_STUBS), '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True)
 print('Production hand-equipment and scribing behavioral checks passed.')

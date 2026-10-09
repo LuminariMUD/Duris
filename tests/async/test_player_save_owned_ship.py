@@ -22,6 +22,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, extract_function
+from _paths import HARNESS_STUBS
 
 ACTOTH = "actoth.c"
 FUNCTIONS = "\n\n".join(
@@ -86,9 +87,6 @@ void checkHallOfFame(P_char, char *) {}
 void checkLeaderBoard(P_char) {}
 void update_achievements(P_char, P_char, int, int) {}
 const struct hardcore_config *hardcore_config_get(void) { return nullptr; }
-void send_to_char(const char *, P_char) {}
-void logit(const char *, const char *, ...) {}
-int panic_corruption_int(const char *, const char *, ...) { abort(); }
 int IS_MORPH(P_char) { return FALSE; }
 // Only for a connected descriptor's host file, and these characters have none.
 void required_fscanf_impl(FILE *, int, const char *, int, const char *, ...) { abort(); }
@@ -170,6 +168,6 @@ with tempfile.TemporaryDirectory(prefix="duris-owned-ship-save-") as directory:
     subprocess.run(
         ["g++", "-std=c++20", "-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
          "-Isrc", "-Itests/async", "-I/usr/include/mysql",
-         str(path / "test.cpp"), "-o", str(path / "test")],
+         str(path / "test.cpp"), str(HARNESS_STUBS), "-o", str(path / "test")],
         cwd=ROOT, check=True)
     subprocess.run([str(path / "test")], check=True)

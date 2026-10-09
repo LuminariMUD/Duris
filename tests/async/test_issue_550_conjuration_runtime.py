@@ -4,6 +4,7 @@
 import subprocess
 
 from _paths import ROOT, extract_function, source
+from _paths import HARNESS_STUBS
 
 
 MAGIC = source("magic.c").read_text(encoding="utf-8", errors="replace")
@@ -41,8 +42,6 @@ static bool actor_alive = true;
 
 void act(const char *, int, P_char, P_obj, void *, int) { ++act_calls; }
 void send_to_char(const char *text, P_char) { output += text ? text : ""; }
-void logit(const char *, const char *, ...) {}
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 int spell_damage(P_char, P_char, double dam, int, uint, damage_messages *, int *) {
     ++damage_calls;
     damage_amount += dam;
@@ -313,7 +312,7 @@ subprocess.run(
     [
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
         "-fsanitize=address,undefined", "-I" + str(ROOT / "src"),
-        str(harness), "-o", str(binary),
+        str(harness), str(HARNESS_STUBS), "-o", str(binary),
     ],
     check=True,
 )

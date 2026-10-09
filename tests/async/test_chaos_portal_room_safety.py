@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 from _paths import SRC, source
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 CHAOS = source("chaos.c")
@@ -57,9 +58,6 @@ void act(const char *message, int, P_char, P_obj, void *, int)
     act_messages.emplace_back(message ? message : "");
 }
 
-void logit(const char *, const char *, ...)
-{
-}
 
 int real_room(const int)
 {
@@ -232,7 +230,7 @@ with tempfile.TemporaryDirectory(prefix="duris-chaos-portal-safety-") as temp_di
             f"-I{SRC}",
             str(harness),
             "-Wl,--gc-sections",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,

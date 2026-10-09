@@ -298,11 +298,6 @@ void critical_outbox_resume(void)
 	++outbox_resumes;
 }
 
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-	abort();
-}
-
 int main()
 {
 	character.only.pc = &pc;

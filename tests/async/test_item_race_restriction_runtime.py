@@ -11,6 +11,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT, extract_function
+from _paths import HARNESS_STUBS
 
 PRELUDE = r'''
 #include "core/prototypes.h"
@@ -19,7 +20,6 @@ PRELUDE = r'''
 #include <cstdio>
 #include <cstdlib>
 
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...) { abort(); }
 int real_mobile(const int) { return -1; }
 int GET_CLASS(P_char ch, uint cls) { return ch->player.m_class & cls; }
 int GET_PRIME_CLASS(P_char ch, uint cls) { return ch->player.m_class & cls; }
@@ -60,7 +60,7 @@ def main():
         source.write_text(harness)
         subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
                         "-fsanitize=undefined", "-fno-sanitize-recover=undefined", "-Isrc",
-                        str(source), "-o", str(binary)], cwd=ROOT, check=True)
+                        str(source), str(HARNESS_STUBS), "-o", str(binary)], cwd=ROOT, check=True)
         subprocess.run([str(binary)], check=True)
 
 

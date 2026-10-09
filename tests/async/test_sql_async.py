@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, rel
+from _paths import HARNESS_STUBS
 
 
 HARNESS = r'''
@@ -35,7 +36,6 @@ static std::vector<std::string> applied;
 static std::vector<std::string> told;
 static std::atomic<int> lost_connections{0};
 
-void logit(const char *, const char *, ...) {}
 void send_to_char(const char *text, P_char) { told.push_back(text); }
 
 // The writer-side SQL, recorded: a failure and a lost connection on request.
@@ -187,7 +187,7 @@ with tempfile.TemporaryDirectory(prefix="duris-sql-async-") as temporary:
             "-fsanitize=address,undefined", "-ffunction-sections", "-fdata-sections",
             "-Isrc", "-I/usr/include/mysql", str(source), rel("sql_async.c"),
             rel("player_save_worker.c"), rel("persistence_observability.c"),
-            "-Wl,--gc-sections", "-lmysqlclient", "-o", str(binary),
+            "-Wl,--gc-sections", "-lmysqlclient", str(HARNESS_STUBS), "-o", str(binary),
         ],
         cwd=ROOT,
         check=True,

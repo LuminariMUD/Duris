@@ -4,11 +4,6 @@
 #include <cstdlib>
 #include <cstring>
 
-void panic_corruption(const char *, const char *, ...)
-{
-	std::abort();
-}
-
 static const int blue = ATTR_FG(25), green = ATTR_FG(18), white = ATTR_FG(31);
 static const WordColorDictionary words = { { "water", blue },	{ "forest", green },
 					   { "water's", blue }, { "x_2", green },

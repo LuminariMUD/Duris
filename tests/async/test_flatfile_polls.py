@@ -4,6 +4,7 @@ from _paths import SRC, rel
 import pathlib
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -29,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-polls-") as temporary:
             rel("flatfile_store.c"),
             "-Wl,--gc-sections",
             "-lcrypto",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,

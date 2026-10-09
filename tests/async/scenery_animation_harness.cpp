@@ -6,11 +6,6 @@
 #include <limits>
 #include <set>
 
-void panic_corruption(const char *, const char *, ...)
-{
-	std::abort();
-}
-
 static std::string plain(const AnsiString &text)
 {
 	char buffer[MAX_STRING_LENGTH];

@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT, extract_function
+from _paths import HARNESS_STUBS
 
 HARNESS=r'''
 #include "world/generated_npc_state.h"
@@ -18,7 +19,6 @@ HARNESS=r'''
 #include <vector>
 index_data indexes[3]={};
 P_index mob_index=indexes;
-int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 char *str_dup(const char *s) { return strdup(s); }
 void str_free(const char *s) { free(const_cast<char *>(s)); }
 '''+extract_function('copyover.c','static bool write_generated_npc_state(')+'\n'+extract_function('copyover.c','static bool read_generated_npc_state(')+r'''
@@ -109,5 +109,5 @@ with tempfile.TemporaryDirectory(prefix='generated-npc-') as directory:
     subprocess.run(['g++','-std=c++20','-Wall','-Wextra','-Werror','-D__NO_MYSQL__',
         '-Isrc','-Isrc/no_mysql','-fsanitize=address,undefined','-g',str(cpp),
         'src/world/generated_npc_state.c','src/world/generated_npc_runtime.c',
-        'src/player/pet_restore_state.c','src/world/world_recovery_codec.c','-o',str(binary)],cwd=ROOT,check=True)
+        'src/player/pet_restore_state.c','src/world/world_recovery_codec.c',str(HARNESS_STUBS), '-o',str(binary)],cwd=ROOT,check=True)
     subprocess.run([str(binary)],check=True)

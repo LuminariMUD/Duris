@@ -11,6 +11,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT, extract_function
+from _paths import HARNESS_STUBS
 
 PRELUDE = r'''
 #include "core/prototypes.h"
@@ -82,17 +83,11 @@ bool devotion_spell_check(int) { return false; }
 bool check_disruptive_blow(P_char) { return false; }
 bool divine_blessing_check(P_char, P_char, int) { return false; }
 int devotion_skill_check(P_char) { return 0; }
-void logit(const char *, const char *, ...) {}
-void debug(const char *, ...) {}
 void __free(void *p, const char *, int) { free(p); }
 void *__malloc(size_t n, const char *, const char *, int) { return calloc(1, n); }
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...) { abort(); }
 int number(int, int high) { return high; } // MobCastSpell() keeps the whole cast time
 float get_property(const char *, double fallback) { return fallback; }
 int get_property(const char *, int fallback) { return fallback; }
-void send_to_char(const char *, P_char) {}
-void send_to_char(const char *, P_char, int) {}
-void act(const char *, int, P_char, P_obj, void *, int) {}
 bool ac_can_see(P_char, P_char, bool) { return true; }
 bool AdjacentInRoom(P_char, P_char) { return true; }
 int is_char_in_room(P_char ch, int room)
@@ -101,28 +96,22 @@ int is_char_in_room(P_char ch, int room)
     return false;
 }
 int char_in_list(P_char ch) { return ch && is_char_in_room(ch, ch->in_room); }
-bool has_innate(P_char, int) { return false; }
 affected_type *get_spell_from_char(P_char, int, void *, int) { return nullptr; }
 affected_type *affect_to_char(P_char, affected_type *) { return nullptr; }
 void affect_from_char(P_char, int) {}
-bool affected_by_spell(P_char, int) { return false; }
 bool affected_by_spell_flagged(P_char, int, uint) { return false; }
 void clear_links(P_char, ush_int) {}
 char_link_data *link_char(P_char, P_char, ush_int) { return nullptr; }
-P_char get_linked_char(P_char, ush_int) { return nullptr; }
 int GET_CHAR_SKILL_P(P_char, int) { return 0; }
 int GET_CLASS(P_char ch, uint cls) { return ch->player.m_class & cls; }
 int GET_PRIME_CLASS(P_char ch, uint cls) { return GET_CLASS(ch, cls); }
 int GET_SECONDARY_CLASS(P_char, uint) { return 0; }
-bool notch_skill(P_char, int, float) { return false; }
 void CharWait(P_char, int) {}
 bool cast_common_generic(P_char, int) { return true; }
 const char *elemental_aura_failure_message(P_char) { return nullptr; }
 void appear(P_char, bool) {}
 int BOUNDED(int low, int val, int high) { return std::clamp(val, low, high); }
 void use_spell(P_char, int) {}
-void wizlog(int, const char *, ...) {}
-void sql_log(P_char, const char *, const char *, ...) {}
 P_char get_random_char_in_room(int, P_char, int) { return nullptr; }
 P_char grapple_attack_check(P_char) { return nullptr; }
 int grapple_misfire_chance(P_char, P_char, int) { return 0; }
@@ -274,7 +263,7 @@ def main():
         source, binary = Path(directory) / 'harness.cpp', Path(directory) / 'harness'
         source.write_text('\n'.join([PRELUDE, *[extract_function(*f) for f in functions], DRIVER]))
         subprocess.run(['g++', '-std=c++20', '-g', '-O1', '-fsanitize=address,undefined',
-                        '-Isrc', '-D__NO_MYSQL__', '-Isrc/no_mysql', str(source), '-o', str(binary)],
+                        '-Isrc', '-D__NO_MYSQL__', '-Isrc/no_mysql', str(source), str(HARNESS_STUBS), '-o', str(binary)],
                        cwd=ROOT, check=True, timeout=120)
         subprocess.run([str(binary)], check=True, timeout=30)
 

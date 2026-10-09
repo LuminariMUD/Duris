@@ -50,11 +50,6 @@ int write_account(P_acct)
 	++saves;
 	return 1;
 }
-void statuslog(int, const char *, ...) {}
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-	abort();
-}
 void persistence_alert(int, const char *, const char *, const char *, const char *, const char *,
 		       const char *, ...)
 {

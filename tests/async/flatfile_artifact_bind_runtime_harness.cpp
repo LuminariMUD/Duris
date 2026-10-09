@@ -28,14 +28,6 @@ const char *persistence_mode_flatfile_root()
 	return state_root.c_str();
 }
 
-void debug(const char *, ...) {}
-void logit(const char *, const char *, ...) {}
-
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-	abort();
-}
-
 int main(int argc, char **argv)
 {
 	require(argc == 2, "state root argument required");

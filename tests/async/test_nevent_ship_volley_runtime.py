@@ -6,6 +6,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+from _paths import HARNESS_STUBS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,10 +20,6 @@ HARNESS = r'''
 static int resolved_impacts = 0;
 static uint64_t impact_checksum = 0;
 
-void panic_corruption(const char *, const char *, ...)
-{
-	std::abort();
-}
 
 static void require(bool condition, int code)
 {
@@ -159,7 +156,7 @@ with tempfile.TemporaryDirectory(prefix="duris-nevent-volley-") as directory:
             "-fno-omit-frame-pointer",
             f"-I{SRC}",
             str(harness),
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         check=True,

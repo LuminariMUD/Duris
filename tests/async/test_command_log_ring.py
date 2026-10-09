@@ -14,6 +14,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, source
+from _paths import HARNESS_STUBS
 
 debug = source("debug.c").read_text()
 ring = debug[debug.index("// The last CMDLOG_LINES"):debug.index("void do_debug(")]
@@ -37,7 +38,6 @@ bool game_booted = false;
 int shutdownflag = 0;
 volatile sig_atomic_t tics = 0;
 volatile sig_atomic_t signal_shutdown_pending = 0;
-void logit(const char *, const char *, ...) {}
 void write_queued_log_lines(void) {}
 void fatal_boot_error(const char *, const char *, ...) { abort(); }
 static room_data rooms[1];
@@ -177,7 +177,7 @@ with tempfile.TemporaryDirectory(prefix="command-log-", dir=ROOT / "bin/tests") 
     test, binary = Path(tmp) / "test.cpp", Path(tmp) / "test"
     test.write_text(HARNESS)
     subprocess.run(["g++", "-std=c++20", "-g", "-Wall", "-Wextra", "-Werror",
-                    "-Wno-infinite-recursion", "-I", str(ROOT / "src"), str(test), "-o",
+                    "-Wno-infinite-recursion", "-I", str(ROOT / "src"), str(test), str(HARNESS_STUBS), "-o",
                     str(binary)], check=True)
     run = Path(tmp) / "run"
     run.mkdir()

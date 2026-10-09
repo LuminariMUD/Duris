@@ -4,6 +4,7 @@
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -52,7 +53,7 @@ def main() -> None:
                 str(ROOT / "src/economy/collector_service.c"),
                 str(ROOT / "src/player/player_snapshot_codec.c"),
                 str(ROOT / "tests/async/collector_service_harness.cpp"),
-                "-o",
+                str(HARNESS_STUBS), "-o",
                 str(binary),
             ],
             check=True,

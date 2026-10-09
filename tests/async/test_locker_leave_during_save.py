@@ -5,6 +5,7 @@ from _paths import rel
 import subprocess
 import tempfile
 from pathlib import Path
+from _paths import HARNESS_STUBS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,14 +38,9 @@ std::vector<size_t> written;
 int carried = 0;
 bool extracted = false;
 
-void logit(const char *, const char *, ...) {}
 void persistence_alert(int, const char *, const char *, const char *, const char *,
                        const char *, const char *, ...)
 {
-}
-int panic_corruption_int(const char *, const char *, ...)
-{
-    std::abort();
 }
 extern "C" int sql_pool_is_active(void)
 {
@@ -176,7 +172,7 @@ with tempfile.TemporaryDirectory() as temp_dir:
             "-I/usr/include/mysql",
             str(source),
             rel("locker_async.c"),
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,

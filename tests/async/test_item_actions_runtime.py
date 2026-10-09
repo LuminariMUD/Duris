@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 fixture = ast.parse((ROOT / "tests/async/test_nevent_scheduler_runtime.py").read_text())
@@ -50,9 +51,6 @@ void event_ward_regen(P_char, P_char, P_obj, void *) {}
 static int unrelated_wait_changes = 0;
 void CharWait(P_char, int) { ++unrelated_wait_changes; }
 void StopCasting(P_char) { ++unrelated_wait_changes; }
-void update_pos(P_char) {}
-void send_to_char(const char *, P_char) {}
-void act(const char *, int, P_char, P_obj, void *, int) {}
 void affect_from_char(P_char, int) {}
 // INSERT_PRODUCTION_ABORT
 
@@ -590,7 +588,7 @@ with tempfile.TemporaryDirectory(prefix="duris-item-actions-") as directory:
         "g++", "-std=c++20", "-O1", "-g", "-ffunction-sections", "-fdata-sections",
         "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-pthread",
         "-I" + str(ROOT / "src"), str(source), str(ROOT / "src/persistence/latency_trace.c"),
-        "-Wl,--gc-sections", "-o", str(binary),
+        "-Wl,--gc-sections", str(HARNESS_STUBS), "-o", str(binary),
     ], check=True)
     env = dict(os.environ, ASAN_OPTIONS="detect_leaks=1:halt_on_error=1",
                UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1",

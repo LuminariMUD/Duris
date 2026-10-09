@@ -28,8 +28,6 @@ const char *persistence_mode_flatfile_root()
 	return state_root.c_str();
 }
 
-void logit(const char *, const char *, ...) {}
-
 void cargo_activity() {}
 
 int main(int argc, char **argv)

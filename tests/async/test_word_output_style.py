@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 BUILD = ROOT / "bin/tests"
@@ -15,6 +16,6 @@ with tempfile.TemporaryDirectory(prefix="word-style-", dir=BUILD) as directory:
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-O1", "-g", *flags,
         f"-I{ROOT / 'src'}", str(ROOT / "tests/async/word_output_style_harness.cpp"),
         str(ROOT / "src/net/ansi.c"), str(ROOT / "src/net/unicode.c"),
-        str(ROOT / "src/net/output_style.c"), "-o", str(binary)
+        str(ROOT / "src/net/output_style.c"), str(HARNESS_STUBS), "-o", str(binary)
     ], check=True, timeout=120)
     subprocess.run([str(binary)], check=True, timeout=120)

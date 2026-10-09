@@ -51,8 +51,6 @@ const char *persistence_mode_flatfile_root()
 	return state_root.c_str();
 }
 
-void logit(const char *, const char *, ...) {}
-
 int main(int argc, char **argv)
 {
 	require(argc == 2, "state root argument required");

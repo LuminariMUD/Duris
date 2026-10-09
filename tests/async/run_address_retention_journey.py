@@ -24,6 +24,7 @@ import time
 import uuid
 
 import test_flatfile_combat_journey as journey
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -152,7 +153,7 @@ def run(server):
              'src/persistence/maintenance_repository.c',
              'src/persistence/persistence_observability.c', '-Wl,--gc-sections',
              *shlex.split(subprocess.check_output(['mysql_config', '--libs'], text=True)),
-             '-o', str(harness)], cwd=ROOT, check=True)
+             str(HARNESS_STUBS), '-o', str(harness)], cwd=ROOT, check=True)
 
         def prune(budget):
             return subprocess.run(

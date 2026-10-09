@@ -5,6 +5,7 @@ from _paths import SRC, rel
 import subprocess
 import tempfile
 from pathlib import Path
+from _paths import HARNESS_STUBS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -47,16 +48,11 @@ HARNESS = r'''
 P_char character_list = nullptr;
 int alerts = 0;
 
-void logit(const char *, const char *, ...) {}
 void collector_death_enrollment_saved(uint64_t, unsigned int) {}
 void persistence_alert(int, const char *, const char *, const char *, const char *,
                        const char *, const char *, ...)
 {
     ++alerts;
-}
-int panic_corruption_int(const char *, const char *, ...)
-{
-    std::abort();
 }
 
 struct apply_state
@@ -253,7 +249,7 @@ with tempfile.TemporaryDirectory(prefix="duris-player-save-pipeline-") as temp_d
             rel("player_revision_state.c"),
             rel("persistence_observability.c"),
             "-lmysqlclient",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,

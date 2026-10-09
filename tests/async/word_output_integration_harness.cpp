@@ -52,15 +52,6 @@ void command_interpreter(P_char ch, char *)
 {
 	command_action(ch);
 }
-void logit(const char *, const char *, ...) {}
-void panic_corruption(const char *, const char *, ...)
-{
-	abort();
-}
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-	abort();
-}
 int IS_MORPH(P_char)
 {
 	return 0;

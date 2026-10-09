@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, rel
+from _paths import HARNESS_STUBS
 
 
 HARNESS = r'''
@@ -28,8 +29,6 @@ HARNESS = r'''
 static std::vector<std::string> order;
 static int dirty = 0;
 
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...) { abort(); }
-void logit(const char *, const char *, ...) {}
 void mark_player_dirty_components(int, player_component_mask_t) { ++dirty; }
 critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
@@ -106,7 +105,7 @@ with tempfile.TemporaryDirectory(prefix="duris-epic-in-memory-") as temporary:
             "-g", "-O1", "-fsanitize=address,undefined", "-ffunction-sections",
             "-fdata-sections", "-Isrc", "-I/usr/include/mysql", str(source),
             rel("epic_transaction.c"), rel("epic_command.c"), rel("critical_command.c"),
-            "-Wl,--gc-sections", "-lcrypto", "-o", str(binary),
+            "-Wl,--gc-sections", "-lcrypto", str(HARNESS_STUBS), "-o", str(binary),
         ],
         cwd=ROOT,
         check=True,

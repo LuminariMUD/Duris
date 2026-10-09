@@ -38,16 +38,9 @@ float get_property(const char *, double)
 	return 2.0F;
 }
 
-void debug(const char *, ...) {}
-void logit(const char *, const char *, ...) {}
 void persistence_alert(int, const char *, const char *, const char *, const char *, const char *,
 		       const char *, ...)
 {
-}
-
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-	abort();
 }
 
 int main(int argc, char **argv)

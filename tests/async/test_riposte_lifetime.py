@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT, extract_function
+from _paths import HARNESS_STUBS
 
 PREFIX = r'''
 #include "core/prototypes.h"
@@ -46,7 +47,6 @@ int GET_CHAR_SKILL_P(P_char ch, int id) {
     if (id == SKILL_FOLLOWUP_RIPOSTE) return path == riposte_branch::followup ? 100 : 0;
     return 0;
 }
-bool notch_skill(P_char, int, float) { return false; }
 int get_property(const char *, int fallback) { return fallback; }
 void act(const char *, int, P_char ch, P_obj, void *victim, int) {
     assert(IS_ALIVE(ch) && (!victim || IS_ALIVE(static_cast<P_char>(victim))));
@@ -60,7 +60,6 @@ P_char find_character_by_runtime_id(uint64_t id) {
     return nullptr;
 }
 bool affected_by_spell(P_char, int) { return path == riposte_branch::berserker; }
-void send_to_char(const char *, P_char) {}
 static void mutate() {
     switch (change) {
     case mutation::none: break;
@@ -175,5 +174,5 @@ with tempfile.TemporaryDirectory(prefix='duris-riposte-lifetime-') as temporary:
                     '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
                     '-fno-pie', '-no-pie', str(source),
                     str(ROOT / 'src' / 'combat' / 'attack_continuation.c'),
-                    '-o', str(binary)], cwd=ROOT, check=True)
+                    str(HARNESS_STUBS), '-o', str(binary)], cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True, timeout=30)

@@ -10,6 +10,7 @@ import tempfile
 
 from _paths import ROOT, source
 from _source_contract import function_body, strip_comments
+from _paths import HARNESS_STUBS
 
 
 def extract_function(name: str, signature: str) -> str:
@@ -80,7 +81,6 @@ float get_property(const char *, double fallback) { return fallback; }
 int sql_level_cap(int) { return 20; }
 int frag_cap_config_hardcore_level_cap(int cap) { return cap; }
 const hardcore_config *hardcore_config_get() { static hardcore_config config{}; return &config; }
-P_char get_linked_char(P_char, ush_int) { return nullptr; }
 int IS_MORPH(P_char) { return false; }
 int GET_CLASS(P_char, unsigned int) { return 0; }
 int BOUNDED(int low, int value, int high) { return MAX(low, MIN(value, high)); }
@@ -111,9 +111,6 @@ void logexp(const char *format, ...) {
     va_end(args);
     exp_log += buffer;
 }
-void logit(const char *, const char *, ...) {}
-void wizlog(int, const char *, ...) {}
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 void send_to_char(const char *text, P_char) { output += text; }
 void send_to_char_f(P_char, const char *format, ...) {
     char buffer[1024];
@@ -386,7 +383,7 @@ def main() -> None:
                      shlex.split(subprocess.check_output(["mysql_config", "--cflags"], text=True)))
             subprocess.run(shlex.split(os.environ.get("CXX", "g++")) + [
                 "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-Isrc",
-                *flags, str(program), "src/telemetry/telemetry_progression.c", "-o", str(binary),
+                *flags, str(program), "src/telemetry/telemetry_progression.c", str(HARNESS_STUBS), "-o", str(binary),
             ], cwd=ROOT, check=True)
             subprocess.run([str(binary)], check=True, timeout=10)
     print("world quest XP award and feedback executable passed (mariadb + flatfile)")

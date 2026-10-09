@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT, extract_function
+from _paths import HARNESS_STUBS
 
 BUILD = ROOT / "bin/tests"
 BUILD.mkdir(parents=True, exist_ok=True)
@@ -57,6 +58,6 @@ with tempfile.TemporaryDirectory(prefix="word-output-", dir=BUILD) as directory:
         str(ROOT / "src/net/chat_presentation.c"),
         str(ROOT / "src/net/output_style.c"), str(ROOT / "src/core/safe_format.c"),
         str(ROOT / "src/net/output_profiles.c"), str(ROOT / "src/player/output_preferences.c"),
-        str(ROOT / "src/player/output_message.c"), "-lcjson", "-pthread", "-o", str(binary)
+        str(ROOT / "src/player/output_message.c"), "-lcjson", "-pthread", str(HARNESS_STUBS), "-o", str(binary)
     ], check=True, timeout=120)
     subprocess.run([str(binary)], check=True, timeout=120)

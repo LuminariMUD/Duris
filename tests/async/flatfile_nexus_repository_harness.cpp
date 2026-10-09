@@ -15,10 +15,6 @@ const char *persistence_mode_flatfile_root()
 	return persistence_root.c_str();
 }
 
-void logit(const char *, const char *, ...) {}
-
-void debug(const char *, ...) {}
-
 float get_property(const char *, double fallback)
 {
 	return fallback;
@@ -29,8 +25,6 @@ char *coin_stringv(int, int)
 	static char value[] = "coins";
 	return value;
 }
-
-void send_to_char(const char *, P_char) {}
 
 namespace
 {

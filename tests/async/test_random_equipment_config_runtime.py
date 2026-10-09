@@ -3,6 +3,7 @@ from _paths import SRC
 import subprocess
 import tempfile
 from pathlib import Path
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 HARNESS = r'''
@@ -10,7 +11,6 @@ HARNESS = r'''
 #include <cstdarg>
 #include <cstdio>
 #include <cmath>
-void logit(const char *, const char *, ...) {}
 #include "item/random_equipment_config.c"
 
 int main() {
@@ -63,7 +63,7 @@ with tempfile.TemporaryDirectory() as td:
     harness.write_text(HARNESS)
     subprocess.run([
         "g++", "-std=c++20", f"-I{SRC}", f"-I{SRC / 'ships'}",
-        str(harness), "-o", str(binary)
+        str(harness), str(HARNESS_STUBS), "-o", str(binary)
     ], check=True, cwd=ROOT)
     subprocess.run([str(binary)], check=True, cwd=root)
 

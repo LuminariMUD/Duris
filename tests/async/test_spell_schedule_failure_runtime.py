@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 CAST = (ROOT / 'src/net/sparser.c').read_text()
@@ -78,7 +79,6 @@ void event_memorize(P_char, P_char, P_obj, void *) {}
 void __free(void *p, const char *, int) { ++frees; std::free(p); }
 bool meming_class(P_char) { return true; }
 void send_to_char(const char *message, P_char) { ++message_count; last_message = message; }
-void act(const char *, int, P_char, P_obj, void *, int) {}
 void disarm_char_nevents(P_char, event_func_type f) { disarmed.push_back(f); }
 void clear_links(P_char, ush_int type) {
     if (type == LNK_CAST_ROOM) room_link = false;
@@ -203,7 +203,7 @@ with tempfile.TemporaryDirectory(prefix='spell-schedule-') as directory:
     cpp.write_text(source)
     subprocess.run(['g++', '-std=c++20', '-O1', '-g', '-Wall', '-Wextra', '-Werror',
                     '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
-                    '-I' + str(ROOT / 'src'), str(cpp), '-o', str(binary)], check=True)
+                    '-I' + str(ROOT / 'src'), str(cpp), str(HARNESS_STUBS), '-o', str(binary)], check=True)
     env = dict(os.environ, ASAN_OPTIONS='detect_leaks=1:halt_on_error=1',
                UBSAN_OPTIONS='halt_on_error=1')
     subprocess.run([str(binary)], env=env, check=True)

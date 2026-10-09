@@ -44,13 +44,6 @@ void collector_notification_death_enrolled(void)
 	++notifications;
 }
 
-void logit(const char *, const char *, ...) {}
-
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-	abort();
-}
-
 int main()
 {
 	// What the collector may take from a corpse.

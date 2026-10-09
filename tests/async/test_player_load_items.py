@@ -6,6 +6,7 @@ from _paths import SRC, rel
 import subprocess
 import tempfile
 from pathlib import Path
+from _paths import HARNESS_STUBS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -219,10 +220,6 @@ void *__malloc(size_t size, const char *, const char *, int)
     return std::calloc(1, size);
 }
 
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-    std::abort();
-}
 
 char *str_dup(const char *source)
 {
@@ -307,8 +304,6 @@ int GET_CLASS(P_char ch, uint cls) { return (ch->player.m_class & cls) != 0; }
 int last_death_delay = 0;
 void schedule_pet_death(P_char, int delay) { last_death_delay = delay; }
 void str_free(const char *s) { std::free(const_cast<char *>(s)); }
-void logit(const char *, const char *, ...) {}
-void send_to_char(const char *, P_char) {}
 char affect_total(P_char ch, int)
 {
     GET_MAX_HIT(ch) = ch->points.base_hit;
@@ -381,9 +376,6 @@ void set_obj_affected(P_obj object, int time, sh_int type, sh_int data)
     set_obj_affected_extra(object, time, type, data, 0);
 }
 
-void act(const char *, int, P_char, P_obj, void *, int)
-{
-}
 
 int main()
 {
@@ -1111,7 +1103,7 @@ with tempfile.TemporaryDirectory(prefix="duris-player-load-items-") as temp_dir:
             rel("item_ownership_runtime.c"),
             rel("critical_command.c"),
             "-lcrypto",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,

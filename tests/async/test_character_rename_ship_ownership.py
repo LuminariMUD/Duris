@@ -43,6 +43,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, extract_function
+from _paths import HARNESS_STUBS
 
 FUNCTIONS = "\n\n".join(
     [
@@ -288,11 +289,6 @@ void send_to_char_f(P_char, const char *format, ...)
 	va_end(args);
 	told += out;
 }
-void wizlog(int, const char *, ...) {}
-void logit(const char *, const char *, ...) {}
-void statuslog(int, const char *, ...) {}
-void sql_log(P_char, const char *, const char *, ...) {}
-int panic_corruption_int(const char *, const char *, ...) { abort(); }
 
 // --- the rename banker ---------------------------------------------------------
 char *one_argument(const char *arg, char *first)
@@ -305,7 +301,6 @@ char *one_argument(const char *arg, char *first)
 	return const_cast<char *>(arg);
 }
 bool ac_can_see(P_char, P_char, bool) { return true; }
-P_char get_linked_char(P_char, ush_int) { return nullptr; }
 int GET_CLASS(P_char, uint) { return 0; }
 void mobsay(P_char, const char *) {}
 int get_property(const char *, int fallback) { return fallback; }
@@ -545,7 +540,7 @@ with tempfile.TemporaryDirectory(prefix="duris-rename-ship-") as directory:
     subprocess.run(
         ["g++", "-std=c++20", "-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
          "-Isrc", "-Itests/async", "-I/usr/include/mysql",
-         str(path / "test.cpp"), "-o", str(path / "test")],
+         str(path / "test.cpp"), str(HARNESS_STUBS), "-o", str(path / "test")],
         cwd=ROOT, check=True)
     # finish_ship_owner_change() unlinks the legacy Ships/<owner> file: run
     # where there is none to remove.

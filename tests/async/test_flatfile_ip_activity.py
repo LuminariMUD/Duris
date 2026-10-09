@@ -4,6 +4,7 @@ from _paths import rel
 import pathlib
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -32,7 +33,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-ip-activity-") as tempor
             "-Wl,--gc-sections",
             "-lcrypto",
             "-lbsd",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,

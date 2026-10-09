@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -66,15 +67,12 @@ int CanDoFightMove(P_char, P_char) { return legal; }
 bool should_area_hit(P_char, P_char) { return true; }
 bool AdjacentInRoom(P_char, P_char) { return true; }
 bool is_linked_to(P_char, P_char, unsigned short) { return false; }
-bool affected_by_spell(P_char, int) { return false; }
 int char_in_list(const P_char actor) {
     for (auto p = character_list; p; p = p->next) if (p == actor) return true;
     return false;
 }
 bool isname(const char *a, const char *b) { return a && b && !strcmp(a,b); }
 void appear(P_char, bool) { ++appearances; }
-void wizlog(int, const char *, ...) {}
-void sql_log(P_char, const char *, const char *, ...) {}
 char *one_argument(const char *text, char *first) {
     while (*text == ' ') ++text;
     while (*text && *text != ' ') *first++ = *text++;
@@ -341,7 +339,7 @@ with tempfile.TemporaryDirectory(prefix="duris-device-actions-") as directory:
     subprocess.run(["g++", "-std=c++20", "-O1", "-g", "-D__NO_MYSQL__", "-ffunction-sections", "-fdata-sections",
                     "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-pthread", "-no-pie",
                     "-I" + str(ROOT / "src"), str(source), str(ROOT / "src/persistence/latency_trace.c"),
-                    "-Wl,--gc-sections", "-o", str(binary)], check=True)
+                    "-Wl,--gc-sections", str(HARNESS_STUBS), "-o", str(binary)], check=True)
     environment = dict(os.environ, ASAN_OPTIONS="detect_leaks=1:halt_on_error=1",
                        UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1", DURIS_NEVENT_ANALYTICS="0",
                        DURIS_NEVENT_BUDGET_USEC="0", DURIS_NEVENT_MAX_CALLBACKS="0", DURIS_NEVENT_PLAYER_PRIORITY="1")

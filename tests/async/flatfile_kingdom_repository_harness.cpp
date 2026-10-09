@@ -29,10 +29,8 @@ const char *persistence_mode_flatfile_root()
 }
 
 /* Swallow the module's log lines. */
-void logit(const char *, const char *, ...) {}
 
 /* Swallow engine debug output. */
-void debug(const char *, ...) {}
 
 namespace
 {

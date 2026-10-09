@@ -20,14 +20,6 @@ int IS_MORPH(P_char)
 {
 	return false;
 }
-void panic_corruption(const char *, const char *, ...)
-{
-	abort();
-}
-int panic_corruption_int(const char *, const char *, ...)
-{
-	abort();
-}
 player_save_pipeline_result
 player_save_pipeline_request(P_char owner, player_component_mask_t components, int intent, int room)
 {

@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, extract_function
+from _paths import HARNESS_STUBS
 
 shop = (ROOT / 'src/ships/ship_shop.c').read_text()
 header = (ROOT / 'src/world/epic_transaction.h').read_text()
@@ -28,7 +29,6 @@ harness = r'''
 #include <array>
 #include <string>
 #include <cstdlib>
-void panic_corruption(const char *, const char *, ...) { std::abort(); }
 '''+limit+'\n'+context+r'''
 static_assert(sizeof(ship_hull_purchase_context) <= EPIC_PENDING_CONTEXT_MAX_BYTES);
 void check(const std::string &input, size_t visible) {
@@ -73,5 +73,5 @@ with tempfile.TemporaryDirectory(prefix='ship-name-') as directory:
     cpp.write_text(harness)
     subprocess.run(['g++', '-std=c++20', '-Isrc', '-ffunction-sections',
                     '-fdata-sections', str(cpp), 'src/net/ansi.c', 'src/net/unicode.c',
-                    '-Wl,--gc-sections', '-o', str(binary)], cwd=ROOT, check=True)
+                    '-Wl,--gc-sections', str(HARNESS_STUBS), '-o', str(binary)], cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True)

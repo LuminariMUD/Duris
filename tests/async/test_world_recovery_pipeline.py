@@ -5,6 +5,7 @@ from _paths import SRC, rel
 import subprocess
 import tempfile
 from pathlib import Path
+from _paths import HARNESS_STUBS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -79,19 +80,12 @@ std::vector<item_ownership_runtime_entry> hydrated_entries;
 void transport_capture(P_char, transport_snapshot *state) { *state = {}; }
 void transport_restore(P_char, const transport_snapshot &) {}
 bool snapshot_shopkeepers_for_copyover() { return true; }
-void logit(const char *, const char *, ...)
-{
-}
 
 P_char get_linked_char(P_char ch, ush_int type)
 {
     return ch == linked_pet && type == LNK_PET ? linked_master : nullptr;
 }
 
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-    std::abort();
-}
 
 int real_room(int vnum)
 {
@@ -1113,7 +1107,7 @@ with tempfile.TemporaryDirectory(prefix="duris-world-recovery-") as temp_dir:
             rel("world_recovery_pipeline.c"), rel("world_recovery_codec.c"), rel("generated_npc_state.c"), rel("generated_npc_runtime.c"), rel("pet_restore_state.c"),
             rel("redis_command_observability.c"),
             "-Wl,--gc-sections", "-lz", "-pthread",
-            "-o", str(binary),
+            str(HARNESS_STUBS), "-o", str(binary),
         ],
         cwd=ROOT,
         check=True,

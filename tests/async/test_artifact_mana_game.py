@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 HARNESS = r'''
@@ -46,8 +47,6 @@ float get_property(const char *key, double fallback) {
     if (!std::strcmp(key, "itemActions.mana.enabled")) return mana_enabled;
     return fallback;
 }
-int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
-void logit(const char *, const char *, ...) {}
 void send_to_char(const char *text, P_char) { output += text; }
 char *one_argument(const char *text, char *name) { std::strcpy(name, text); return const_cast<char *>(text + std::strlen(text)); }
 P_obj get_obj_in_list_vis(P_char, const char *name, P_obj list, bool) { return std::strcmp(name, "blade") ? nullptr : list; }
@@ -137,7 +136,7 @@ with tempfile.TemporaryDirectory(prefix="duris-mana-game-") as directory:
         "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-no-pie", "-D__NO_MYSQL__",
         "-I", str(ROOT / "src"), "-I", str(ROOT / "src/no_mysql"), str(work / "test.cpp"),
         *[str(ROOT / "src/item" / f"artifact_mana_{part}.c") for part in ("model", "runtime", "store")],
-        str(ROOT / "src/flatfile/flatfile_store.c"), "-lcrypto", "-pthread", "-o", str(binary),
+        str(ROOT / "src/flatfile/flatfile_store.c"), "-lcrypto", "-pthread", str(HARNESS_STUBS), "-o", str(binary),
     ], check=True)
     subprocess.run([str(binary), str(work / "authority")], check=True, timeout=30)
 print("mana bridge UID, owner inspection, conservation, reload and disable/enable checks passed")

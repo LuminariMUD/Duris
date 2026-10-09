@@ -23,6 +23,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, extract_function
+from _paths import HARNESS_STUBS
 
 HARNESS = r'''
 #include "world/ferry.c"
@@ -137,14 +138,7 @@ void send_to_char(const char *message, P_char ch)
 }
 
 void send_to_room(const char *, int) {}
-void act(const char *, int, P_char, P_obj, void *, int) {}
-void logit(const char *, const char *, ...) {}
-void debug(const char *, ...) {}
 
-int panic_corruption_int(const char *, const char *, ...)
-{
-	abort();
-}
 
 void new_look(P_char, const char *, int cmd, int room)
 {
@@ -185,10 +179,6 @@ char *one_argument(const char *, char *first)
 P_obj get_obj_in_list_vis(P_char, const char *, P_obj, bool)
 {
 	return nullptr;
-}
-bool isname(const char *, const char *)
-{
-	return false;
 }
 char *str_dup(const char *) { abort(); }
 char *coin_stringv(int, int) { abort(); }
@@ -325,7 +315,7 @@ with tempfile.TemporaryDirectory(prefix="duris-ferry-lifetime-") as temporary:
                     "-Isrc", "-Isrc/no_mysql", "-I/usr/include/libxml2",
                     "-ffunction-sections", "-fdata-sections",
                     "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
-                    str(harness), "-Wl,--gc-sections", "-o", str(binary)], cwd=ROOT, check=True)
+                    str(harness), "-Wl,--gc-sections", str(HARNESS_STUBS), "-o", str(binary)], cwd=ROOT, check=True)
     environment = dict(os.environ, ASAN_OPTIONS="detect_leaks=0:halt_on_error=1",
                        UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1")
     subprocess.run([str(binary)], check=True, timeout=60, env=environment)

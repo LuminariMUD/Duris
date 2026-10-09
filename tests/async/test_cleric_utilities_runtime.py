@@ -3,6 +3,7 @@
 
 import subprocess
 from _paths import ROOT, extract_function
+from _paths import HARNESS_STUBS
 
 PRELUDE = r'''
 #include "core/prototypes.h"
@@ -13,8 +14,6 @@ PRELUDE = r'''
 #include <cstdio>
 #include <strings.h>
 
-void send_to_char(const char *, P_char) {}
-void act(const char *, int, P_char, P_obj, void *, int) {}
 bool affected_by_spell(P_char ch, int type) {
     for (auto *af = ch->affected; af; af = af->next)
         if (af->type == type) return true;
@@ -188,5 +187,5 @@ harness.write_text(PRELUDE + "\n".join(functions) + DRIVER)
 binary = output / "harness"
 subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
                 "-fsanitize=address,undefined", "-I" + str(ROOT / "src"),
-                str(harness), "-o", str(binary)], check=True)
+                str(harness), str(HARNESS_STUBS), "-o", str(binary)], check=True)
 subprocess.run([str(binary)], check=True)

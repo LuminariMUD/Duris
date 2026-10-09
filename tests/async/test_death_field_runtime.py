@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT, SRC, extract_function
+from _paths import HARNESS_STUBS
 
 PRELUDE = r'''
 #include "core/prototypes.h"
@@ -91,8 +92,6 @@ bool check_disruptive_blow(P_char) { return false; }
 int cast_as_damage_area(P_char, void (*)(int,P_char,char*,int,P_char,P_obj),int,P_char,float,float);
 bool divine_blessing_check(P_char, P_char, int) { return false; }
 int devotion_skill_check(P_char) { return 0; }
-void logit(const char *, const char *, ...) {}
-void debug(const char *, ...) {}
 void __free(void *p, const char *, int) { free(p); }
 int number(int low, int high) { return std::uniform_int_distribution<int>(low, high)(rng); }
 float get_property(const char *name, double fallback)
@@ -123,7 +122,6 @@ int raw_damage(P_char, P_char victim, double dam, uint, damage_messages *msg, in
 }
 int get_property(const char *name, int fallback) { return (int)get_property(name, (double)fallback); }
 void *__malloc(size_t n, const char *, const char *, int) { return calloc(1, n); }
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...) { abort(); }
 bool AdjacentInRoom(P_char, P_char) { return true; }
 bool grouped(P_char a, P_char b) { return a == b; }
 int is_char_in_room(P_char ch, int room)
@@ -141,17 +139,14 @@ void affect_from_char(P_char ch, int spell)
     if (spell == SPELL_DEFLECT) REMOVE_BIT(ch->specials.affected_by4, AFF4_DEFLECT);
 }
 void wear_off_message(P_char, affected_type *) {}
-bool affected_by_spell(P_char, int) { return false; }
 bool affected_by_spell_flagged(P_char, int, uint) { return false; }
 P_char get_linking_char(P_char, ush_int) { return nullptr; }
-P_char get_linked_char(P_char, ush_int) { return nullptr; }
 void clear_links(P_char, ush_int) {}
 char_link_data *link_char(P_char, P_char, ush_int) { return nullptr; }
 int GET_CHAR_SKILL_P(P_char, int) { return 0; }
 int GET_CLASS(P_char ch, uint cls) { return ch->player.m_class & cls; }
 int GET_PRIME_CLASS(P_char ch, uint cls) { return GET_CLASS(ch, cls); }
 int GET_SECONDARY_CLASS(P_char, uint) { return 0; }
-bool notch_skill(P_char, int, float) { return false; }
 P_char stack_area(P_char, int, int) { return nullptr; }
 void zone_spellmessage(int, bool, const char *, const char *) { ++announcements; }
 void CharWait(P_char, int) {}
@@ -170,8 +165,6 @@ nevent_schedule_result add_event(event_func fn, int, P_char ch, P_char victim, P
     return {nevent_schedule_status::scheduled, {}};
 }
 void use_spell(P_char, int) {}
-void wizlog(int, const char *, ...) {}
-void sql_log(P_char, const char *, const char *, ...) {}
 P_char get_random_char_in_room(int, P_char, int) { return nullptr; }
 P_char grapple_attack_check(P_char) { return nullptr; }
 int grapple_misfire_chance(P_char, P_char, int) { return 0; }
@@ -188,7 +181,6 @@ int STAT_INDEX(int) { return 0; }
 void MobStartFight(P_char, P_char) {}
 bool hit(P_char, P_char, P_obj, int *) { return false; }
 int vamp(P_char, double, double) { return 0; }
-void update_pos(P_char) {}
 void do_alert(P_char, char *, int) {}
 void remember(P_char, P_char) {}
 int attack_back(P_char, P_char, int) { return DAM_NONEDEAD; }
@@ -360,7 +352,7 @@ def main():
         source, binary = Path(directory) / 'harness.cpp', Path(directory) / 'harness'
         source.write_text('\n'.join([PRELUDE, *[extract_function(*f) for f in functions], DRIVER]))
         subprocess.run(['g++', '-std=c++20', '-g', '-O1', '-fsanitize=address,undefined',
-                        '-Isrc', '-D__NO_MYSQL__', '-Isrc/no_mysql', str(source), '-o', str(binary)], cwd=ROOT, check=True, timeout=120)
+                        '-Isrc', '-D__NO_MYSQL__', '-Isrc/no_mysql', str(source), str(HARNESS_STUBS), '-o', str(binary)], cwd=ROOT, check=True, timeout=120)
         subprocess.run([str(binary)], check=True, timeout=30)
 
 

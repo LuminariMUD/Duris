@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, SRC, extract_function, rel
+from _paths import HARNESS_STUBS
 
 
 makefile = (SRC / "Makefile").read_text(encoding="utf-8")
@@ -38,10 +39,6 @@ room_data rooms[2] = {};
 P_room world = rooms;
 extern const int top_of_world = 1;
 
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-    std::abort();
-}
 
 static int floor_calls = 0;
 static int dirty_calls = 0;
@@ -178,7 +175,7 @@ with tempfile.TemporaryDirectory(prefix="duris-forced-weapon-drop-") as director
             str(test_source),
             rel("item/forced_weapon_drop.c"),
             "-Wl,--gc-sections",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,

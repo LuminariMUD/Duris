@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import shlex
 from pathlib import Path
+from _paths import HARNESS_STUBS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -87,7 +88,6 @@ HARNESS = r'''
 #include "persistence/critical_outbox.h"
 #include <cassert>
 extern "C" struct st_mysql *sql_pool_acquire(void) { return nullptr; }
-extern "C" void sql_pool_release(struct st_mysql *) {}
 extern "C" struct st_mysql *sql_pool_replace_connection(struct st_mysql *) { return nullptr; }
 int main()
 {
@@ -120,7 +120,7 @@ with tempfile.TemporaryDirectory(prefix="duris-critical-outbox-") as temporary:
             rel("item_transfer_command.c"),
             rel("player_snapshot_codec.c"),
             rel("critical_command.c"), "-lcrypto",
-            "-o", str(binary),
+            str(HARNESS_STUBS), "-o", str(binary),
         ] + mysql_flags,
         cwd=ROOT,
         check=True,

@@ -9,16 +9,6 @@
 #include <mysql.h>
 #include <string>
 
-extern "C" MYSQL *sql_pool_acquire(void)
-{
-	return nullptr;
-}
-extern "C" void sql_pool_release(MYSQL *) {}
-extern "C" MYSQL *sql_pool_replace_connection(MYSQL *)
-{
-	return nullptr;
-}
-
 namespace
 {
 constexpr uint32_t PID = 2147000311U;

@@ -4,6 +4,7 @@ from _paths import SRC, rel
 import pathlib
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -29,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
             rel("flatfile_store.c"),
             "-lcrypto",
             "-pthread",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,
@@ -75,7 +76,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
             "-Wl,--gc-sections",
             "-lcrypto",
             "-pthread",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(runtime_binary),
         ],
         cwd=ROOT,
@@ -121,7 +122,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-artifact-") as temporary:
             "-Wl,--gc-sections",
             "-lcrypto",
             "-pthread",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(gameplay_binary),
         ],
         cwd=ROOT,

@@ -13,16 +13,6 @@
 #include <thread>
 #include <vector>
 
-extern "C" MYSQL *sql_pool_acquire(void)
-{
-	return nullptr;
-}
-extern "C" void sql_pool_release(MYSQL *) {}
-extern "C" MYSQL *sql_pool_replace_connection(MYSQL *)
-{
-	return nullptr;
-}
-
 namespace
 {
 MYSQL *connection = nullptr;

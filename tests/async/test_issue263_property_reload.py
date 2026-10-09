@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -21,7 +22,7 @@ def main():
                             str(ROOT / "tests/async/issue263_property_reload.cpp"),
                             str(ROOT / "src/core/safe_format.c"),
                             str(ROOT / "src/telemetry/telemetry_config.c"), "-lcrypto",
-                            "-Wl,--gc-sections", "-o", str(binary)], check=True, cwd=ROOT)
+                            "-Wl,--gc-sections", str(HARNESS_STUBS), "-o", str(binary)], check=True, cwd=ROOT)
             subprocess.run([str(binary)], check=True, cwd=work)
             print("real property-command journey passed:", mode, flush=True)
 

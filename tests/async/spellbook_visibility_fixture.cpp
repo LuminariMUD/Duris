@@ -20,10 +20,6 @@ int real_object(int number)
 {
 	return number;
 }
-bool isname(const char *, const char *)
-{
-	return false;
-}
 
 // PRODUCTION_FUNCTIONS
 

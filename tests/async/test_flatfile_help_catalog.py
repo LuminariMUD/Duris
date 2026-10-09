@@ -4,6 +4,7 @@ from _paths import rel
 import pathlib
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -22,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-help-") as temporary:
             "-Isrc",
             "tests/async/flatfile_help_catalog_harness.cpp",
             rel("flatfile_help_catalog.c"),
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,
@@ -60,7 +61,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-help-") as temporary:
             rel("wikihelp.c"),
             rel("flatfile_help_catalog.c"),
             "-Wl,--gc-sections",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(runtime_binary),
         ],
         cwd=ROOT,
@@ -85,7 +86,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-help-") as temporary:
             rel("sql.c"),
             rel("flatfile_help_catalog.c"),
             "-Wl,--gc-sections",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(mud_info_binary),
         ],
         cwd=ROOT,

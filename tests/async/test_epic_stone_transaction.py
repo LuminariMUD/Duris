@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 CODEC = r'''
@@ -168,7 +169,7 @@ class EpicStoneTransactionTests(unittest.TestCase):
                 "g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
                 "-pthread", "-ffunction-sections", "-fdata-sections", "-Isrc", *flags,
                 str(path), *(str(ROOT / "src" / source) for source in sources),
-                "-Wl,--gc-sections", *libraries, "-lcrypto", "-o", binary,
+                "-Wl,--gc-sections", *libraries, "-lcrypto", str(HARNESS_STUBS), "-o", binary,
             ], cwd=ROOT, check=True)
             subprocess.run([binary], cwd=ROOT, check=True)
 

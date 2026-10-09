@@ -39,9 +39,6 @@ std::string environment(const char *name, const char *fallback)
 }
 } // namespace
 
-void logit(const char *, const char *, ...) {}
-void send_to_char(const char *, P_char) {}
-
 // The writer runs each job at once, on the harness's connection.
 player_save_submit_result persistence_writer_submit(persistence_job_kind, uint64_t, size_t,
 						    persistence_job_write_fn write)
@@ -55,11 +52,6 @@ player_save_submit_result persistence_writer_submit(persistence_job_kind, uint64
 MYSQL *sql_pool_acquire(void)
 {
 	return DB;
-}
-void sql_pool_release(MYSQL *) {}
-MYSQL *sql_pool_replace_connection(MYSQL *)
-{
-	return nullptr;
 }
 // As sql_player.c and sql.c do them, on the harness's connection.
 char *sql_escape_string(const char *text)

@@ -30,8 +30,6 @@ void send_to_char(const char *s, P_char)
 {
 	message += s;
 }
-void act(const char *, int, P_char, P_obj, void *, int) {}
-void wizlog(int, const char *, ...) {}
 void MakeScrap(P_char, P_obj)
 {
 	assert(false);
@@ -89,10 +87,6 @@ int real_object(int number)
 {
 	return number;
 }
-bool isname(const char *, const char *)
-{
-	return false;
-}
 P_char FindTeacher(P_char)
 {
 	return nullptr;
@@ -137,10 +131,6 @@ int AddSpellToSpellBook(P_char, P_obj, int)
 	return true;
 }
 void mark_player_dirty_components(int, player_component_mask_t) {}
-bool notch_skill(P_char, int, float)
-{
-	return false;
-}
 
 void prac_all_spells(P_char)
 {
@@ -173,10 +163,6 @@ int lookup_spell(const char *, int)
 void mobsay(P_char, const char *)
 {
 	assert(false);
-}
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-	abort();
 }
 static P_char pet_master = nullptr;
 P_char get_linked_char(P_char, ush_int type)

@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT, extract_function, rel
+from _paths import HARNESS_STUBS
 
 PRELUDE = r'''
 #include "core/utils.h"
@@ -62,9 +63,6 @@ static void grant_callback(P_char actor, uint64_t item_uid, bool committed, unsi
         assert(item_creation_grant_submit_to_player(actor, successor, actor));
     }
 }
-void logit(const char *, const char *, ...) {}
-bool persistence_trace_enabled() { return false; }
-void statuslog(int, const char *, ...) {}
 void persistence_alert(int, const char *, const char *, const char *, const char *, const char *,
                        const char *, ...) {}
 bool player_load_item_graph_materialize_creation(const item_transfer_payload &,
@@ -85,7 +83,6 @@ bool player_load_item_graph_materialize_creation(const item_transfer_payload &,
     return true;
 }
 void __free(void *p, const char *, int) { free(p); }
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...) { abort(); }
 void send_to_char(const char *text, P_char ch)
 {
     if (ch && ch->desc) fixture_messages += text;
@@ -624,7 +621,7 @@ def main() -> int:
             "-Isrc", str(source), rel("item_movement_transaction.c"),
             rel("item_ownership_runtime.c"), rel("item_transfer_command.c"),
             rel("critical_command.c"), rel("player_snapshot_capture.c"),
-            rel("player_snapshot_codec.c"), "-Wl,--gc-sections", "-lcrypto", "-o", str(binary),
+            rel("player_snapshot_codec.c"), "-Wl,--gc-sections", "-lcrypto", str(HARNESS_STUBS), "-o", str(binary),
         ], cwd=ROOT, check=True)
         subprocess.run([str(binary)], check=True)
     print("All newbie grant lifecycle checks passed.")

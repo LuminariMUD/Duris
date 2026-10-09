@@ -11,6 +11,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 if os.environ.get("TELEMETRY_REPOSITORY_DISPOSABLE") != "1":
@@ -29,5 +30,5 @@ with tempfile.TemporaryDirectory(prefix="telemetry-connection-") as directory:
                     *flags, "tests/async/telemetry_connection_harness.cc", obj,
                     "-Wl,--gc-sections", "-Wl,--wrap=mysql_real_connect",
                     "-Wl,--wrap=mysql_close", "-Wl,--wrap=_Znwm", *libs,
-                    "-o", exe], cwd=ROOT, check=True)
+                    str(HARNESS_STUBS), "-o", exe], cwd=ROOT, check=True)
     subprocess.run([exe], cwd=ROOT, check=True, timeout=30)

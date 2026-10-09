@@ -3,6 +3,7 @@
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 HARNESS = r'''
@@ -15,7 +16,6 @@ HARNESS = r'''
 #include <vector>
 #include <iostream>
 
-int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 int _pwipe = 0;
 extern const int top_of_world = 0;
 room_data rooms[1] = {};
@@ -78,5 +78,5 @@ with tempfile.TemporaryDirectory(prefix="duris-playtime-checkpoint-") as tempora
     source.write_text(HARNESS)
     subprocess.run(["g++", "-std=c++20", "-ffunction-sections", "-fdata-sections", "-Isrc",
                     str(source), "src/persistence/persistence_checkpoint.c",
-                    "-Wl,--gc-sections", "-o", str(binary)], cwd=ROOT, check=True)
+                    "-Wl,--gc-sections", str(HARNESS_STUBS), "-o", str(binary)], cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True)

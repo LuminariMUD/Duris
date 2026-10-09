@@ -32,6 +32,7 @@ import persistence_restore as restore
 import build_restore_qualifier as native
 import migration_runner as migrations
 from test_persistence_backup import policy
+from _paths import HARNESS_STUBS
 
 
 def sql(env, query=None, payload=None):
@@ -73,7 +74,7 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
                         "-Isrc", "-Isrc/no_mysql",
                         "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
                         "tests/async/persistence_restore_fixture.cpp", *sources, "-lcrypto", "-lz", "-pthread",
-                        "-o", str(cls.fixture)], cwd=ROOT, check=True)
+                        str(HARNESS_STUBS), "-o", str(cls.fixture)], cwd=ROOT, check=True)
         cls.native_built = True
 
     @classmethod

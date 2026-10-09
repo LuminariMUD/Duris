@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 transport = (ROOT / 'src/world/transport.c').read_text()
@@ -25,7 +26,7 @@ with tempfile.TemporaryDirectory(prefix='world-singletons-', dir=build) as tmp:
                     '-I', str(ROOT / 'src'), '-I/usr/include/mysql', '-I/usr/include/libxml2',
                     str(source), str(ROOT / 'src/world/world_singletons.c'),
                     str(ROOT / 'src/world/generated_npc_runtime.c'),
-                    str(ROOT / 'src/world/world_recovery_codec.c'), str(ROOT / 'src/world/generated_npc_state.c'), str(ROOT / 'src/player/pet_restore_state.c'), '-lbsd', '-o', str(binary)], check=True)
+                    str(ROOT / 'src/world/world_recovery_codec.c'), str(ROOT / 'src/world/generated_npc_state.c'), str(ROOT / 'src/player/pet_restore_state.c'), '-lbsd', str(HARNESS_STUBS), '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True, env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=1:halt_on_error=1'})
 
 comm = (ROOT / 'src/net/comm.c').read_text()

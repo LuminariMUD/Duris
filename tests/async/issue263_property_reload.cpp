@@ -42,10 +42,6 @@ void update_misfire_properties()
 }
 void collector_config_reload() {}
 void item_actions_reload() {}
-void debug(const char *, ...) {}
-void logit(const char *, const char *, ...) {}
-void wizlog(int, const char *, ...) {}
-void sql_log(P_char, const char *, const char *, ...) {}
 void send_to_char(const char *text, P_char)
 {
 	output += text;

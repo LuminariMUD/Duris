@@ -3,6 +3,7 @@
 from pathlib import Path
 import subprocess
 from _paths import ROOT, extract_function
+from _paths import HARNESS_STUBS
 
 PRELUDE = r'''
 #include "core/prototypes.h"
@@ -24,10 +25,7 @@ bool affected_by_spell(P_char ch, int type) {
         if (af->type == type) return true;
     return false;
 }
-void send_to_char(const char *, P_char) {}
-void act(const char *, int, P_char, P_obj, void *, int) {}
 float get_property(const char *, double) { return 9.0f; }
-bool has_innate(P_char, int) { return false; }
 int get_innate_regeneration(P_char) { return innate_gain; }
 float get_epic_bonus(P_char, int) { return 0; }
 // The difficulty module is not linked; a neutral player recovery dial returns its input.
@@ -257,6 +255,6 @@ harness.write_text(PRELUDE + '\n'.join([
 binary = output / 'harness'
 subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
                 '-fsanitize=address,undefined', '-I' + str(ROOT / 'src'),
-                str(harness), '-o', str(binary)], check=True)
+                str(harness), str(HARNESS_STUBS), '-o', str(binary)], check=True)
 subprocess.run([str(binary)], check=True)
 

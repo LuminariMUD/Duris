@@ -67,7 +67,6 @@ bool sql_save_dirty_shopkeepers(bool)
 	return true;
 }
 
-void logit(const char *, const char *, ...) {}
 char *str_dup(const char *text)
 {
 	return strdup(text);
@@ -77,10 +76,6 @@ void str_free(const char *text)
 	free(const_cast<char *>(text));
 }
 char affect_total(P_char, int)
-{
-	std::abort();
-}
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
 {
 	std::abort();
 }
@@ -340,7 +335,6 @@ nevent_schedule_result add_event(event_func f, int, P_char ch, P_char rider, P_o
 	scheduled[ch] = { f, rider };
 	return {};
 }
-void act(const char *, int, P_char, P_obj, void *, int) {}
 void do_dismount(P_char rider, char *, int)
 {
 	mounts.erase(rider);

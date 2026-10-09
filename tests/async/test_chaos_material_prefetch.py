@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 from _paths import ROOT, source
+from _paths import HARNESS_STUBS
 
 
 MATERIALS = source("chaos_materials.c")
@@ -66,9 +67,6 @@ void extract_obj(P_obj object, int gone_for_good)
     ++extract_count;
 }
 
-void logit(const char *, const char *, ...)
-{
-}
 
 int main(void)
 {
@@ -106,7 +104,7 @@ with tempfile.TemporaryDirectory(prefix="duris-chaos-material-prefetch-") as tem
             str(MATERIALS),
             str(ROOT / "src/combat/chaos_config.c"),
             "-Wl,--gc-sections",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         check=True,

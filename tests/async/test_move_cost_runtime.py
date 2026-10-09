@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, extract_function
+from _paths import HARNESS_STUBS
 
 
 MOVE_COST = extract_function("utility.c", "int move_cost(P_char ch, int dir)")
@@ -36,7 +37,6 @@ extern const int movement_loss[NUM_SECT_TYPES] = {
 
 int load_modifier(P_char) { return 75; }
 int is_ice(P_char, int) { return ice ? 1 : 0; }
-bool affected_by_spell(P_char, int) { return false; }
 '''
 
 DRIVER = r'''
@@ -115,7 +115,7 @@ with tempfile.TemporaryDirectory(prefix="duris-move-cost-runtime-") as directory
             f"-I{ROOT / 'src'}",
             str(harness),
             "-Wl,--gc-sections",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,

@@ -6,6 +6,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+from _paths import HARNESS_STUBS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -102,10 +103,6 @@ IDENTITY_HARNESS = r'''
 
 P_char character_list = nullptr;
 
-void panic_corruption(const char *, const char *, ...)
-{
-	std::abort();
-}
 
 static void require(bool condition, int code)
 {
@@ -183,6 +180,7 @@ def compile_source(source: str, output: Path, *, link: bool) -> subprocess.Compl
             [
                 "-fsanitize=address,undefined",
                 "-fno-omit-frame-pointer",
+                str(HARNESS_STUBS),
                 "-o",
                 str(output),
             ]
