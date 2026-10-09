@@ -75,7 +75,7 @@ docs/
 | [BUILDING.md](guides/BUILDING.md) | Build entry points, compile flags, warning profile, sanitizers, area generation, and finding unreachable code. |
 | [TESTING.md](guides/TESTING.md) | Focused tests, the gates, the journeys, and what each proves. |
 | [CONVENTIONS.md](guides/CONVENTIONS.md) | Repository conventions and their precedence against `AGENTS.md`. |
-| [formatting.md](guides/formatting.md) | Style, changed-line formatting, and editor setup. |
+| [formatting.md](guides/formatting.md) | Style, changed-line formatting, clang-tidy on changed lines, and editor setup. |
 | [MEMORY_CHECKING.md](guides/MEMORY_CHECKING.md), [valgrind.md](guides/valgrind.md) | Which memory detector to use and when; the Valgrind wrapper. |
 | [VERSIONING.md](guides/VERSIONING.md) | Semantic versioning and the canonical version marker. |
 | [GITHUB_PAGES.md](guides/GITHUB_PAGES.md) | The project website: catalog, build, and the publishing recipe. |

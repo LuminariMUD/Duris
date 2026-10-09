@@ -187,6 +187,7 @@ for path in (HOOK, INSTALLER):
 
 hook = HOOK.read_text()
 assert 'format.sh" --staged' in hook, "the hook must auto-format staged lines"
+assert 'tidy.sh" --staged' in hook, "the hook must run clang-tidy on staged lines"
 assert "--no-verify" in hook, "the hook must tell the user how to bypass it"
 # A missing clang-format must warn and let the commit through, not block work.
 missing_branch = hook.split("command -v clang-format", 1)[1].split("fi", 1)[0]
@@ -202,6 +203,7 @@ if clang_format and shutil.which("git-clang-format"):
         (fixture / "scripts/git-hooks").mkdir(parents=True)
         shutil.copy2(CONFIG, fixture / ".clang-format")
         shutil.copy2(SCRIPT, fixture / "scripts/format.sh")
+        shutil.copy2(ROOT / "scripts/tidy.sh", fixture / "scripts/tidy.sh")
         shutil.copy2(HOOK, fixture / "scripts/git-hooks/pre-commit")
 
         subprocess.run(["git", "init", "-q"], cwd=fixture, check=True)
