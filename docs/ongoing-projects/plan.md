@@ -1150,7 +1150,26 @@ TEST_JOBS=16` 680 passed, 0 failed, `make test-db` 48 of 48. Nothing is left.
   wrapped dead lookup, one through a header `#define`, and an undefined name each fail it.
 
 The special procedures of the 82 deleted lines that nothing else names stay in the source,
-as before.
+as before. `9db3eaecb` then merged Phase 7's round 1 (`3549daad4`, which carries `master`
+through Phase 5); the only conflict, the Status table and Landing section, took Phase 7's side.
+
+A live check on a full-world flat-file boot, as an OVERLORD, passed 25 of 25. Each
+re-pointed guard bowed the god through ("bows before you", printed only when `guild_guard`
+blocks) in 45126, 45027, 45072, 45145, 45063, 45065, 45017, 139119 and 139125. In 45039 the
+warriors' guard let the god, a warrior, pass and blocked a loaded commoner. `stat` showed a
+special on the re-pointed rooms, mobs and objects it was asked about, and the illithid's
+`fooquest_boss` called in 142214. Rubbing the worn ring 139037 answered "There aren't any
+elementals to charm.", and the Royal Stables listed their hirelings. The boot logged no
+"ACT_SPEC, but no function" line.
+
+**Gate** for round 1, on `9db3eaecb`: `./scripts/format.sh --all --check` clean,
+`make test-all -j16 TEST_JOBS=16` 682 passed, 0 failed, `make test-db` 48 of 48. A first
+run on the round head before the merge failed two tests. One was
+`test_artifact_source_inventory.py`, fixed by the inventory regeneration now in `b53795c3c`.
+The other was `test_password_async_runtime.py`: its harness timed calls by the wall clock,
+and a call passed 50 ms while four gates ran at once (load about 60). That is fixed on
+`master` in `91b768884`, which times calls by the thread's CPU, and it comes here through
+the stack.
 
 **Checked** at `f44291043`. `real_room0()`, `real_mobile0()` and `real_object0()`
 (`src/world/db.c` L4607, L4680, L4748) return 0 for a missing vnum; the comment at
