@@ -5,6 +5,8 @@ Every board_info[] row in boards.c names a board in the world make_all builds: a
 in an area file areas/AREA lists, whose keywords include "board" or "bulletin".
 Object 42 was taken for a pearl necklace from areas/obj/dalvik.obj, which is not in the
 world; the world's 42 is heavens.obj's board of IDEAS.
+No zone loads two different boards into one room: write, read <n> and remove <n> name
+no board, so the first board in the room took them all and room 1213's second was dead.
 
 The production board() and find_board() run under ASan and UBSan. A board answers for
 its own board_info[] row, found from the object whose special fired (room 1213 holds two
@@ -35,6 +37,17 @@ rows = [int(vnum) for vnum in re.findall(r"^\t\{ (\d+), ", BOARDS, re.M)]
 assert len(rows) == int(re.search(r"#define NUM_OF_BOARDS (\d+)", BOARDS)[1]), rows
 not_boards = [vnum for vnum in rows if not {"board", "bulletin"} & set(keywords.get(vnum, []))]
 assert not not_boards, f"board_info[] rows that name no board in the world: {not_boards}"
+
+boards_in_room = {}
+for area in WORLD:
+    path = AREAS / "zon" / f"{area}.zon"
+    if path.is_file():
+        for vnum, room in re.findall(r"^O\s+\d+\s+(\d+)\s+\d+\s+(\d+)",
+                                     path.read_text(errors="replace"), re.M):
+            if int(vnum) in rows:
+                boards_in_room.setdefault(int(room), set()).add(int(vnum))
+crowded = {room: sorted(vnums) for room, vnums in boards_in_room.items() if len(vnums) > 1}
+assert boards_in_room and not crowded, f"rooms the zones give two boards: {crowded}"
 
 PRELUDE = r'''
 #include <cassert>
