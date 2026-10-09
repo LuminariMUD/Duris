@@ -22,6 +22,7 @@
 #endif
 
 #include <mysql/mysql.h>
+#include <mysql/mysqld_error.h>
 
 #include <algorithm>
 #include <cerrno>
@@ -972,6 +973,44 @@ maintenance_result execute_poll(MYSQL *connection, const maintenance_request &re
 			       mysql_errno(connection));
 	return result;
 }
+
+// ADR 0003: a network address is kept 30 days after its last use, everywhere but the ban
+// list, which is a file. A run clears at most row_budget addresses per table, so an old
+// database is cleared over many short runs.
+maintenance_result execute_address_retention(MYSQL *connection, const maintenance_request &request)
+{
+	static constexpr const char *expired[] = {
+		"DELETE FROM account_ips WHERE updated_at < NOW() - INTERVAL 30 DAY",
+		"DELETE FROM account_login_history WHERE `timestamp` < NOW() - INTERVAL 30 DAY",
+		"UPDATE log_entries SET ip_address='' WHERE date < NOW() - INTERVAL 30 DAY "
+		"AND ip_address<>''",
+		"UPDATE ip_info SET last_ip='none' WHERE last_connect < NOW() - INTERVAL 30 DAY "
+		"AND last_ip<>'none'",
+		"UPDATE player_data SET last_ip=0 WHERE last_save < NOW() - INTERVAL 30 DAY "
+		"AND last_ip<>0",
+		"UPDATE account_characters SET last_ip=NULL WHERE (last_login IS NULL OR "
+		"last_login < NOW() - INTERVAL 30 DAY) AND last_ip IS NOT NULL",
+	};
+	maintenance_result result = failure(request, maintenance_outcome::complete, 0);
+	for (const char *statement : expired)
+	{
+		const std::string sql = std::string(statement) + " LIMIT " + limit_sql(request);
+		if (!before_deadline(request))
+			return failure(request, maintenance_outcome::retryable_failure, ETIMEDOUT);
+		if (!execute_sql(connection, sql))
+		{
+			// The website keeps account_login_history; a database without it has none.
+			if (mysql_errno(connection) == ER_NO_SUCH_TABLE)
+				continue;
+			return sql_failure(connection, request);
+		}
+		const uint64_t rows = mysql_affected_rows(connection);
+		result.rows += static_cast<uint32_t>(rows);
+		if (rows >= request.row_budget)
+			result.outcome = maintenance_outcome::more;
+	}
+	return result;
+}
 } // namespace
 
 maintenance_result maintenance_repository_execute(const maintenance_request &request, void *)
@@ -993,6 +1032,9 @@ maintenance_result maintenance_repository_execute(const maintenance_request &req
 	// (maintenance_handle_completions()).
 	if (request.job_id == maintenance_job_id::auction_due_scan ||
 	    request.job_id == maintenance_job_id::boon_scan)
+		return failure(request, maintenance_outcome::complete, 0);
+	// Flat-file keeps no address tables.
+	if (request.job_id == maintenance_job_id::address_retention)
 		return failure(request, maintenance_outcome::complete, 0);
 	if (request.job_id == maintenance_job_id::cargo_market)
 	{
@@ -1027,6 +1069,8 @@ maintenance_result maintenance_repository_execute(const maintenance_request &req
 		return execute_cargo_market(connection, request);
 	case maintenance_job_id::operational_statistics:
 		return execute_statistics(connection, request);
+	case maintenance_job_id::address_retention:
+		return execute_address_retention(connection, request);
 	default:
 		return failure(request, maintenance_outcome::permanent_failure, ENOTSUP);
 	}

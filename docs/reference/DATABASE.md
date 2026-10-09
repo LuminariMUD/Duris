@@ -363,7 +363,11 @@ The maintenance scheduler gives each registered job a stable offset, row/time bu
 continuation cursor, retry classification, and game-thread completion. It persists
 cursor/completion state under `MAINTENANCE_STATE_FILE`. The archive job is present but
 disabled in the compiled registry until lifecycle policy is approved and the manifest
-allows canonical mutation.
+allows canonical mutation. The `address_retention` job runs hourly: it deletes
+`account_ips` and `account_login_history` rows last written over 30 days ago and clears
+the address of older `log_entries`, `ip_info`, `player_data` and `account_characters`
+rows (ADR 0003). An account keeps each address's last use in `account_ips.updated_at`,
+and a login drops an address past 30 days.
 
 `migrations/data_lifecycle_manifest.json` inventories every database and non-database
 store and classifies subject mapping, purpose, season behavior, retention, archive,

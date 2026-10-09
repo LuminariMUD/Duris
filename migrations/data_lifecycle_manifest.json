@@ -224,8 +224,8 @@
       "data_subject_key": "account_or_network_identifier",
       "technical_purpose": "connection safety, abuse investigation, and aggregate operations",
       "controller_decision": {
-        "status": "pending",
-        "reference": "PENDING-CONTROLLER-DECISION"
+        "status": "approved",
+        "reference": "ADR-0003 docs/adr/0003-player-privacy-chat-snoop-addresses.md"
       },
       "export_rule": {
         "disposition": "pending",
@@ -238,7 +238,7 @@
         "shared_fields": []
       },
       "season_action": "retain",
-      "active_retention": "pending_controller_decision",
+      "active_retention": "network_address_30_days_after_last_use",
       "archive_retention": "pending_controller_decision",
       "terminal_action": "retain",
       "exception": "none",
@@ -2176,8 +2176,8 @@
       "data_subject_key": "account_or_network_identifier",
       "technical_purpose": "connection safety, abuse investigation, and aggregate operations",
       "controller_decision": {
-        "status": "pending",
-        "reference": "PENDING-CONTROLLER-DECISION"
+        "status": "approved",
+        "reference": "ADR-0003 docs/adr/0003-player-privacy-chat-snoop-addresses.md"
       },
       "export_rule": {
         "disposition": "pending",
@@ -2190,7 +2190,7 @@
         "shared_fields": []
       },
       "season_action": "reset_delete",
-      "active_retention": "pending_controller_decision",
+      "active_retention": "network_address_30_days_after_last_use",
       "archive_retention": "pending_controller_decision",
       "terminal_action": "retain",
       "exception": "none",
@@ -2819,8 +2819,8 @@
       "data_subject_key": "account_or_network_identifier",
       "technical_purpose": "connection safety, abuse investigation, and aggregate operations",
       "controller_decision": {
-        "status": "pending",
-        "reference": "PENDING-CONTROLLER-DECISION"
+        "status": "approved",
+        "reference": "ADR-0003 docs/adr/0003-player-privacy-chat-snoop-addresses.md"
       },
       "export_rule": {
         "disposition": "pending",
@@ -2833,7 +2833,7 @@
         "shared_fields": []
       },
       "season_action": "reset_delete",
-      "active_retention": "pending_controller_decision",
+      "active_retention": "network_address_30_days_after_last_use",
       "archive_retention": "pending_controller_decision",
       "terminal_action": "retain",
       "exception": "none",

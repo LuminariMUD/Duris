@@ -35,6 +35,7 @@ struct acct_ip
 	char *hostname;
 	char *ip_address;
 	unsigned long int count;
+	time_t last_seen; // the last login from it; it is kept 30 days after (ADR 0003)
 	struct acct_ip *next;
 };
 

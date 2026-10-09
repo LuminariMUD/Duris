@@ -50,6 +50,8 @@ constexpr std::array<maintenance_job_definition, MAINTENANCE_JOB_COUNT> registry
 	{ maintenance_job_id::cargo_market, 240, 4, 100, 50000, true },
 	{ maintenance_job_id::operational_statistics, 300, 6, 1, 50000, true },
 	{ maintenance_job_id::lifecycle_archive, 2400, 7, 64, 25000, false },
+	// Hourly: network addresses go 30 days after their last use (ADR 0003).
+	{ maintenance_job_id::address_retention, 14400, 7, 256, 25000, true },
 } };
 
 struct queued_job
@@ -86,23 +88,17 @@ struct durable_job_state
 	maintenance_result completion;
 };
 
-struct durable_scheduler_state
+template <size_t Jobs> struct durable_state_layout
 {
 	char magic[8];
 	uint32_t version;
 	uint32_t job_count;
-	std::array<durable_job_state, MAINTENANCE_JOB_COUNT> jobs;
+	std::array<durable_job_state, Jobs> jobs;
 	uint64_t checksum;
 };
 
-struct durable_scheduler_state_v2
-{
-	char magic[8];
-	uint32_t version;
-	uint32_t job_count;
-	std::array<durable_job_state, 11> jobs;
-	uint64_t checksum;
-};
+// Version 4. Versions 2 and 3 hold the first 11 and 12 jobs, at the same indexes.
+using durable_scheduler_state = durable_state_layout<MAINTENANCE_JOB_COUNT>;
 
 durable_scheduler_state durable_state = {};
 bool durable_state_dirty = false;
@@ -110,23 +106,10 @@ bool durable_state_dirty = false;
 // and the status log gets one line per streak.
 bool persist_failing = false;
 
-uint64_t state_checksum(const durable_scheduler_state &state)
+template <size_t Jobs> uint64_t state_checksum(const durable_state_layout<Jobs> &state)
 {
 	const auto *bytes = reinterpret_cast<const uint8_t *>(&state);
-	const size_t length = offsetof(durable_scheduler_state, checksum);
-	uint64_t hash = 1469598103934665603ULL;
-	for (size_t index = 0; index < length; ++index)
-	{
-		hash ^= bytes[index];
-		hash *= 1099511628211ULL;
-	}
-	return hash;
-}
-
-uint64_t state_checksum(const durable_scheduler_state_v2 &state)
-{
-	const auto *bytes = reinterpret_cast<const uint8_t *>(&state);
-	const size_t length = offsetof(durable_scheduler_state_v2, checksum);
+	const size_t length = offsetof(durable_state_layout<Jobs>, checksum);
 	uint64_t hash = 1469598103934665603ULL;
 	for (size_t index = 0; index < length; ++index)
 	{
@@ -186,11 +169,37 @@ bool persist_state(const durable_scheduler_state &state)
 	return true;
 }
 
+// Reads a whole state file of `version`, which holds the first `Jobs` jobs.
+template <size_t Jobs> bool load_version(int descriptor, const char *magic, uint32_t version)
+{
+	durable_state_layout<Jobs> loaded = {};
+	auto *bytes = reinterpret_cast<uint8_t *>(&loaded);
+	size_t remaining = sizeof(loaded);
+	while (remaining)
+	{
+		const ssize_t count = read(descriptor, bytes, remaining);
+		if (count < 0 && errno == EINTR)
+			continue;
+		if (count <= 0)
+			break;
+		bytes += count;
+		remaining -= static_cast<size_t>(count);
+	}
+	const bool closed = close(descriptor) == 0;
+	if (remaining || !closed || memcmp(loaded.magic, magic, 7) != 0 ||
+	    loaded.version != version || loaded.job_count != Jobs ||
+	    loaded.checksum != state_checksum(loaded))
+		return false;
+	for (size_t index = 0; index < Jobs; ++index)
+		durable_state.jobs[index] = loaded.jobs[index];
+	return true;
+}
+
 bool load_state()
 {
 	durable_state = {};
-	memcpy(durable_state.magic, "DMSMNT3", 7);
-	durable_state.version = 3;
+	memcpy(durable_state.magic, "DMSMNT4", 7);
+	durable_state.version = 4;
 	durable_state.job_count = MAINTENANCE_JOB_COUNT;
 	if (state_path.empty())
 		return true;
@@ -203,56 +212,17 @@ bool load_state()
 		close(descriptor);
 		return false;
 	}
-	if (metadata.st_size == static_cast<off_t>(sizeof(durable_scheduler_state_v2)))
-	{
-		durable_scheduler_state_v2 loaded_v2 = {};
-		auto *old_bytes = reinterpret_cast<uint8_t *>(&loaded_v2);
-		size_t old_remaining = sizeof(loaded_v2);
-		while (old_remaining)
-		{
-			const ssize_t count = read(descriptor, old_bytes, old_remaining);
-			if (count < 0 && errno == EINTR)
-				continue;
-			if (count <= 0)
-				break;
-			old_bytes += count;
-			old_remaining -= static_cast<size_t>(count);
-		}
-		const bool closed = close(descriptor) == 0;
-		if (old_remaining || !closed || memcmp(loaded_v2.magic, "DMSMNT2", 7) != 0 ||
-		    loaded_v2.version != 2 || loaded_v2.job_count != 11 ||
-		    loaded_v2.checksum != state_checksum(loaded_v2))
-			return false;
-		for (size_t index = 0; index < loaded_v2.jobs.size(); ++index)
-			durable_state.jobs[index] = loaded_v2.jobs[index];
-	}
+	bool loaded = false;
+	if (metadata.st_size == static_cast<off_t>(sizeof(durable_state_layout<11>)))
+		loaded = load_version<11>(descriptor, "DMSMNT2", 2);
+	else if (metadata.st_size == static_cast<off_t>(sizeof(durable_state_layout<12>)))
+		loaded = load_version<12>(descriptor, "DMSMNT3", 3);
 	else if (metadata.st_size == static_cast<off_t>(sizeof(durable_scheduler_state)))
-	{
-		durable_scheduler_state loaded = {};
-		auto *bytes = reinterpret_cast<uint8_t *>(&loaded);
-		size_t remaining = sizeof(loaded);
-		while (remaining)
-		{
-			const ssize_t count = read(descriptor, bytes, remaining);
-			if (count < 0 && errno == EINTR)
-				continue;
-			if (count <= 0)
-				break;
-			bytes += count;
-			remaining -= static_cast<size_t>(count);
-		}
-		const bool closed = close(descriptor) == 0;
-		if (remaining || !closed || memcmp(loaded.magic, "DMSMNT3", 7) != 0 ||
-		    loaded.version != 3 || loaded.job_count != MAINTENANCE_JOB_COUNT ||
-		    loaded.checksum != state_checksum(loaded))
-			return false;
-		durable_state = loaded;
-	}
+		loaded = load_version<MAINTENANCE_JOB_COUNT>(descriptor, "DMSMNT4", 4);
 	else
-	{
 		close(descriptor);
+	if (!loaded)
 		return false;
-	}
 	for (const auto &job : durable_state.jobs)
 		if ((!job.work_id &&
 		     (job.cursor || job.request_pending || job.completion_pending)) ||
@@ -540,7 +510,8 @@ const char *maintenance_job_name(maintenance_job_id id)
 					  "web_status",
 					  "cargo_market",
 					  "operational_statistics",
-					  "lifecycle_archive" };
+					  "lifecycle_archive",
+					  "address_retention" };
 	const size_t index = index_of(id);
 	return index < MAINTENANCE_JOB_COUNT ? names[index] : "invalid";
 }

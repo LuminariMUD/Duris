@@ -25,8 +25,10 @@ The one retention decision,
 [ADR 0003](../adr/0003-player-privacy-chat-snoop-addresses.md) (2026-10-09), keeps network
 addresses at most 30 days, except on the ban list. It is the decision reference for the
 stores it names: `log_entries`, `account_ips`, `account_login_history`, `ip_info`, and the
-`last_ip` columns. Their manifest entries take that reference when the code that enforces
-the limit lands. Until then they stay pending like the rest.
+`last_ip` columns. The hourly `address_retention` maintenance job enforces it. The
+`log_entries`, `account_ips` and `ip_info` entries carry that reference; the `last_ip`
+columns are in the `player_data` and `account_characters` entries, whose other data stays
+pending, and `account_login_history` is a website table with no entry of its own.
 
 ## Manifest contract
 

@@ -54,6 +54,7 @@ stalled_writer tests/async/run_mysql_stalled_writer_journey.sh
 game_loop_queries $DB python3 tests/async/test_mysql_game_loop_queries_journey.py --server $SERVER
 bank_restart $DB python3 tests/async/run_mysql_bank_restart_journey.py $SERVER
 idle_timeout $DB python3 tests/async/run_mysql_idle_timeout_journey.py $SERVER
+address_retention $DB python3 tests/async/run_address_retention_journey.py $SERVER
 chaos_raise $DB python3 tests/async/run_chaos_raise_transient_journey.py $SERVER
 collector_intake $DB python3 tests/async/run_mysql_collector_intake_journey.py $SERVER
 world_writer_retry $DB python3 tests/async/run_world_writer_retry_journey.py $SERVER

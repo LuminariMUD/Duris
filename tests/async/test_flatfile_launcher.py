@@ -6,6 +6,7 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+import time
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -269,6 +270,11 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
     (logs / "old-logs/2000.01.01-00.00.00/status").write_bytes(b"x" * (2 << 20))
     (logs / "old-logs/2000.01.02-00.00.00").mkdir()
     (logs / "old-logs/2000.01.02-00.00.00/status").write_text("kept\n")
+    # An archive goes once it is 30 days old, whatever the size cap says (ADR 0003).
+    (logs / "old-logs/2000.01.03-00.00.00").mkdir()
+    (logs / "old-logs/2000.01.03-00.00.00/comm").write_text("an address\n")
+    expired = time.time() - 30 * 86400 - 3600
+    os.utime(logs / "old-logs/2000.01.03-00.00.00", (expired, expired))
     capped_env = dict(flat_env, DURIS_LOG_ARCHIVE_MB="1")
     launched = run(script, capped_env, "--minimal")
     if launched.returncode != 0 or "Mud stopped, reason: shutdown [0]" not in launched.stdout:
@@ -283,6 +289,8 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
     if (logs / "old-logs/2000.01.01-00.00.00").exists() or \
             not (logs / "old-logs/2000.01.02-00.00.00").exists():
         raise AssertionError("the archive cap did not drop only the oldest generation")
+    if (logs / "old-logs/2000.01.03-00.00.00").exists():
+        raise AssertionError("the boot kept a log archive older than 30 days")
     forbidden = (
         "database migrations",
         "runtime database compatibility",
