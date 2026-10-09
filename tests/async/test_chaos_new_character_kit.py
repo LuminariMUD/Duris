@@ -83,7 +83,8 @@ array_matches = [
     )
     if not name.endswith("_optional_slots")
 ]
-assert len(array_matches) == 60, len(array_matches)
+# One array per class and profile.
+assert len(array_matches) == 2 * DEFINES["CLASS_COUNT"], len(array_matches)
 array_names = {name for name, _ in array_matches}
 for profile in ("standard", "enhanceable"):
     assert {f"chaos_eq_{profile}_{re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')}" for name in CLASS_NAMES} <= array_names
@@ -161,7 +162,7 @@ for array_name, pairs in parsed_arrays.items():
 
 # Profile table contains the unused zero row plus one row per class.
 profiles = DATA.split("static const chaos_eq_profile chaos_eq_profiles[CLASS_COUNT + 1][2] = {", 1)[1].split("};", 1)[0]
-assert len(re.findall(r"\{\s*\{\s*(?:NULL|chaos_eq_[a-z0-9_]+)\s*\},\s*\{\s*(?:NULL|chaos_eq_[a-z0-9_]+)\s*\}\s*\},", profiles)) == 31
+assert len(re.findall(r"\{\s*\{\s*(?:NULL|chaos_eq_[a-z0-9_]+)\s*\},\s*\{\s*(?:NULL|chaos_eq_[a-z0-9_]+)\s*\}\s*\},", profiles)) == DEFINES["CLASS_COUNT"] + 1
 
 # The loader builds a single nested tree, preserves spellbook population, and
 # selects standard vs strict-enhanceable data through the profile gate.

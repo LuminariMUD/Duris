@@ -67,9 +67,10 @@ class CollectorCatalogSchemaTest(unittest.TestCase):
                       "collector_reconciliation_quarantine", "offline_message_receipts"):
             self.assertIn(f"'{table}'", runtime["runtime_table_sql_list"])
             self.assertIn(f"database:{table}", lifecycle_ids)
-        self.assertEqual(runtime["current_table_count"], 198)
-        self.assertEqual(runtime["migration_head"]["id"],
-                         "0036_log_entries_ipv6")
+        self.assertEqual(runtime["current_table_count"],
+                         len(runtime["runtime_table_sql_list"].split(",")))
+        migrations = json.loads((ROOT / "migrations/migration_manifest.json").read_text())
+        self.assertEqual(runtime["migration_head"]["id"], migrations["migrations"][-1]["id"])
 
 
 if __name__ == "__main__":

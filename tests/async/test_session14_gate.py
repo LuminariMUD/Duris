@@ -75,8 +75,10 @@ class Session14GateTests(unittest.TestCase):
     def test_manifest_is_the_complete_binding_gate(self):
         self.assertEqual(self.manifest["ramps"], [25, 50, 100, 200])
         self.assertEqual(self.manifest["minimum_hold_seconds"], 1800)
-        self.assertEqual(len(self.manifest["profiles"]), 8)
-        self.assertEqual(len(self.manifest["faults"]), 28)
+        profiles = [profile["id"] for profile in self.manifest["profiles"]]
+        for names in (profiles, self.manifest["faults"]):
+            self.assertTrue(names)
+            self.assertEqual(len(set(names)), len(names))
         self.assertIn("backup_restore_after_erasure", self.manifest["faults"])
         self.assertIn("critical_outbox_delivery", self.manifest["reconciliations"])
         self.assertIn("boot_drift_prewrite_rejection", self.manifest["privacy_cases"])

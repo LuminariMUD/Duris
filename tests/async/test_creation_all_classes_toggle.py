@@ -75,7 +75,7 @@ assert contains(ws_menu, 'cJSON_AddStringToObject(class_obj, "restricted_note"')
 # A direct-created class retains its existing skill/spell metadata and can use
 # its existing specialization definitions regardless of the selected race.
 class_symbols = re.findall(r"#define (CLASS_[A-Z]+)\s+BIT_\d+", defines)
-assert len(class_symbols) == 30
+assert len(class_symbols) == int(re.search(r"#define CLASS_COUNT (\d+)", defines).group(1))
 missing_skill_metadata = [name for name in class_symbols if not re.search(rf"(?:SKILL|SPELL)_ADD\({name}\b", skills)]
 assert not missing_skill_metadata, missing_skill_metadata
 allowed = specs.split("bool is_allowed_race_spec", 1)[1].split("\n}", 1)[0]

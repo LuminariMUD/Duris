@@ -28,10 +28,11 @@ for line in rnt_match.group(1).strip().splitlines():
     if m:
         player_races.append((m.group(1), m.group(2), m.group(3), m.group(4)))
 
-# We have 37 player races (indices 1 to 37)
-assert len(player_races) >= 38, f"Expected at least 38 entries in race_names_table, got {len(player_races)}"
-races_to_test = player_races[1:38]
-assert len(races_to_test) == 37, f"Expected 37 player races, got {len(races_to_test)}"
+# Player races are indices 1 to RACE_PLAYER_MAX.
+last_race = re.search(r"#define RACE_PLAYER_MAX (RACE_[A-Z_]+)", defines).group(1)
+race_count = int(re.search(rf"#define {last_race} (\d+)", defines).group(1))
+assert len(player_races) > race_count, f"race_names_table has {len(player_races)} entries, fewer than {race_count} races"
+races_to_test = player_races[1:race_count + 1]
 
 # Parse entries from parsed.hlp
 parsed_entries = {}

@@ -90,15 +90,19 @@ class LifecycleManifestTest(unittest.TestCase):
     def test_canonical_inventory_passes_and_reports_only_counts(self) -> None:
         """The shipped manifest validates and reports counts, never contents.
 
-        The counts pin the inventory the rest of the lifecycle tooling consumes, and
-        destructive rules must still read as disabled.
+        The counts are the manifest's own, so the report covers the whole inventory the
+        rest of the lifecycle tooling consumes (the validator refuses a schema table or a
+        store without its entry), and destructive rules must still read as disabled.
         """
         result = self.run_validator()
         self.assertEqual(result.returncode, 0, result.stderr)
         report = json.loads(result.stdout)
-        self.assertEqual(report["database_tables"], 198)
-        self.assertEqual(report["non_database_stores"], 23)
-        self.assertEqual(report["redis_surfaces"], 42)
+        kinds = [entry["kind"] for entry in self.manifest["entries"]]
+        self.assertEqual(report["database_tables"], kinds.count("database_table"))
+        self.assertEqual(report["non_database_stores"],
+                         len(kinds) - kinds.count("database_table"))
+        registry = (ROOT / "src/redis/redis_key_registry.def").read_text()
+        self.assertEqual(report["redis_surfaces"], registry.count("\nREDIS_SURFACE("))
         self.assertFalse(report["destructive_rules_enabled"])
 
     def test_telemetry_outage_evidence_is_required_protected_and_retained(self) -> None:

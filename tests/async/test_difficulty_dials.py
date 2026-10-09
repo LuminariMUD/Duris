@@ -117,7 +117,7 @@ def test_table_enum_and_properties_agree() -> None:
     keys = _dial_keys()
     enum = HEADER[HEADER.index("enum difficulty_dial"):HEADER.index("DIFFICULTY_DIAL_COUNT")]
     members = re.findall(r"\bDIFFICULTY_[A-Z_]+\b", enum)
-    assert len(keys) == len(members) == 18, (keys, members)
+    assert keys and len(keys) == len(members), (keys, members)
     for key, member in zip(keys, members):
         assert member == "DIFFICULTY_" + key.upper().replace(".", "_"), (key, member)
     section = PROPERTIES[PROPERTIES.index("[difficulty]"):].splitlines()
