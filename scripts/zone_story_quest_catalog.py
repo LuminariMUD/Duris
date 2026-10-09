@@ -25,28 +25,39 @@ QUEST_BLOCK_RE = re.compile(r"^#(-?\d+)\s*$")
 GOAL_RE = re.compile(r"^([GR])\s+([ITCSE])\s+(-?\d+)\s*$")
 
 
-def active_quest_files(source_root):
-    """Return qst files in the exact order consumed by make_qst.c.
+def active_area_names(source_root):
+    """Return the area names of the top-level ``areas/AREA`` list, in order.
 
-    ``make_all`` runs ``make_qst`` with ``areas/`` as its working directory,
-    so the compiler reads the top-level ``areas/AREA`` list.  The similarly
-    named ``areas/qst/AREA`` file is a narrower historical list and is not
-    the production static quest input.
+    ``make_all`` runs the area compilers with ``areas/`` as their working
+    directory, so they read this list.  The similarly named
+    ``areas/qst/AREA`` file is a narrower historical list and is not the
+    production static quest input.
     """
-    areas_root = source_root / "areas"
-    quest_root = areas_root / "qst"
-    area_list = areas_root / "AREA"
-    files = []
+    area_list = source_root / "areas" / "AREA"
+    names = []
     for raw_line in area_list.read_text(encoding="utf-8", errors="replace").splitlines():
         line = raw_line.strip()
-        if not line or line.startswith("*"):
-            continue
-        parts = line.split()
-        name = parts[0]
-        path = quest_root / f"{name}.qst"
-        if path.is_file():
-            files.append(path)
-    return files
+        if line and not line.startswith("*"):
+            names.append(line.split()[0])
+    return names
+
+
+def active_quest_files(source_root):
+    """Return qst files in the exact order consumed by make_qst.c."""
+    quest_root = source_root / "areas" / "qst"
+    paths = (quest_root / f"{name}.qst" for name in active_area_names(source_root))
+    return [path for path in paths if path.is_file()]
+
+
+def active_zone_numbers(source_root):
+    """Return the zone number of each area, from the ``#`` line make_zon.c copies."""
+    numbers = []
+    for name in active_area_names(source_root):
+        text = (source_root / "areas" / "zon" / f"{name}.zon").read_text(
+            encoding="utf-8", errors="replace"
+        )
+        numbers.append(int(re.search(r"^#(-?\d+)", text, re.MULTILINE).group(1)))
+    return numbers
 
 
 def completion_key(give_goals, receive_goals, disappear):
@@ -64,6 +75,7 @@ def production_catalog(source_root, content_revision=1):
     """
     definitions = []
     seen_contracts = set()
+    zone_numbers = active_zone_numbers(source_root)
     for path in active_quest_files(source_root):
         current_giver = None
         current_block = None
@@ -120,10 +132,14 @@ def production_catalog(source_root, content_revision=1):
             seen_contracts.add(base_key)
             encoded_key = key.encode("utf-8").hex()
             # Runtime quest_data retains the giver VNUM but not the source
-            # AREA filename.  Duris' zone namespace is the giver-vnum
-            # hundred-block; the historical low-vnum heavens questers are
-            # assigned to zone 1 explicitly.
-            zone_number = max(1, giver_vnum // 100)
+            # AREA filename, so both use zone_for_giver_vnum()'s rule: the
+            # zone with the highest first vnum (number * 100) at or below the
+            # giver's.  The heavens questers (zone 0) are assigned to zone 1.
+            zone_number = max(
+                [number for number in zone_numbers if number <= giver_vnum // 100] + [0]
+            )
+            if zone_number <= 0:
+                zone_number = max(1, giver_vnum // 100)
             definitions.append(
                 {
                     "definition_id": f"zone-story:qst:{giver_vnum}:{encoded_key}",
