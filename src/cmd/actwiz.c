@@ -4394,6 +4394,15 @@ static const char *scheduled_shutdown_type_name(int shutdown_type, bool uppercas
 }
 
 /** Execute an immediate shutdown or schedule the next countdown warning for an active request. */
+
+// The status and wiz logs get the kind of stop, who issued it and why: the broadcast the
+// players see carries color codes and line ends.
+static void log_shutdown(P_char ch, const char *kind)
+{
+	logit(LOG_STATUS, "%s by %s: %s", kind, shutdownData.IssuedBy, shutdownData.Reason);
+	sql_log(ch, WIZLOG, "%s by %s: %s", kind, shutdownData.IssuedBy, shutdownData.Reason);
+}
+
 void timedShutdown(P_char ch, P_char, P_obj, void * /*data*/)
 {
 	// timed shutdown event.  ch is the god who initiated the shutdown.
@@ -4419,8 +4428,7 @@ void timedShutdown(P_char ch, P_char, P_obj, void * /*data*/)
 				"&+Cstarlight&n.\r\n",
 				shutdownData.IssuedBy);
 			send_to_all(buf);
-			logit(LOG_STATUS, "%s", buf);
-			sql_log(ch, WIZLOG, "%s", buf);
+			log_shutdown(ch, "Shutdown");
 			write_shutdown_info(shutdownData.IssuedBy, shutdownData.Reason);
 			shutdownflag = 1;
 			break;
@@ -4429,8 +4437,7 @@ void timedShutdown(P_char ch, P_char, P_obj, void * /*data*/)
 			snprintf(buf, 500, "\r\n%s shreds the world around you.\r\n",
 				 shutdownData.IssuedBy);
 			send_to_all(buf);
-			logit(LOG_STATUS, "%s", buf);
-			sql_log(ch, WIZLOG, "%s", buf);
+			log_shutdown(ch, "Reboot");
 			write_shutdown_info(shutdownData.IssuedBy, shutdownData.Reason);
 			shutdownflag = _reboot = 1;
 			break;
@@ -4440,8 +4447,7 @@ void timedShutdown(P_char ch, P_char, P_obj, void * /*data*/)
 				 "\r\n%s begins a copyover; your connection will be preserved.\r\n",
 				 shutdownData.IssuedBy);
 			send_to_all(buf);
-			logit(LOG_STATUS, "%s", buf);
-			sql_log(ch, WIZLOG, "%s", buf);
+			log_shutdown(ch, "Copyover");
 			write_shutdown_info(shutdownData.IssuedBy, shutdownData.Reason);
 			shutdownflag = _copyover = 1;
 			break;
@@ -4451,8 +4457,7 @@ void timedShutdown(P_char ch, P_char, P_obj, void * /*data*/)
 				buf, 500,
 				"\r\nDuris fades into nothing, as the world begins its reconstruction...\r\n");
 			send_to_all(buf);
-			logit(LOG_STATUS, "%s", buf);
-			sql_log(ch, WIZLOG, "%s", buf);
+			log_shutdown(ch, "Auto-reboot with copyover");
 			shutdownflag = _autoboot = _copyover = 1;
 			break;
 
@@ -4461,8 +4466,7 @@ void timedShutdown(P_char ch, P_char, P_obj, void * /*data*/)
 				buf, 500,
 				"\r\nDuris fades into nothing, as the world begins its reconstruction...\r\n");
 			send_to_all(buf);
-			logit(LOG_STATUS, "%s", buf);
-			sql_log(ch, WIZLOG, "%s", buf);
+			log_shutdown(ch, "Auto-reboot");
 			shutdownflag = _autoboot = 1;
 			break;
 

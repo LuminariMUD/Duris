@@ -3822,7 +3822,8 @@ int new_descriptor(int s, int conn_type)
 	if (getpeername(desc, (struct sockaddr *)&sock, &size) < 0)
 	{
 		perror("getpeername");
-		strcpy(newd->host, "&+RUNTRACEABLE&n");
+		// Plain text: the host goes into every log line about this descriptor.
+		strcpy(newd->host, "unknown");
 	}
 	else
 	{
@@ -3906,7 +3907,7 @@ int new_descriptor(int s, int conn_type)
 	newd->descriptor = desc;
 	// newd->connected = CON_HOST_LOOKUP;
 	newd->wait = 1;
-	resolve_descriptor_hostname_async(strip_ansi(newd->host).c_str(), desc);
+	resolve_descriptor_hostname_async(newd->host, desc);
 	*newd->host2 = '\0';
 	newd->prompt_mode = FALSE;
 	*newd->buf = '\0';
