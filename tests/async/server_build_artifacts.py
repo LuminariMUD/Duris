@@ -94,8 +94,11 @@ def toolchain_key(environment):
                                      cwd=ROOT / "src", env=environment, text=True)
     add(search)
     # Hash actual installed inputs, not package versions: locally edited headers
-    # and libraries must invalidate the artifact too.
-    directories = {"/usr/include", "/usr/lib/gcc", "/usr/local/include", "/usr/local/lib"}
+    # and libraries must invalidate the artifact too. Libraries count only where the
+    # linker looks (the search directories below), so /usr/local/lib is not walked: it
+    # can hold gigabytes that no build reads (GitHub's runner image keeps the Android
+    # SDK there), and every journey computes this key.
+    directories = {"/usr/include", "/usr/lib/gcc", "/usr/local/include"}
     for variable in ("CPATH", "CPLUS_INCLUDE_PATH", "C_INCLUDE_PATH", "LIBRARY_PATH"):
         if variable in environment:
             directories.update(str(source_path(p or "."))
