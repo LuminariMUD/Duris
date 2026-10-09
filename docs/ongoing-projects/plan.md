@@ -750,6 +750,53 @@ comparison as Phase 3. Neither changes a reward or a game mechanic.
 **Gate** on `44345ebc9`: `./scripts/format.sh --all --check` clean, `make test-all -j16
 TEST_JOBS=16` 680 passed, 0 failed, `make test-db` 48 of 48. Nothing is left.
 
+**Review round 1** (PR #11, review of `12a728d74`; tag `backlog/phase-8-review-1`),
+2026-10-09. Two findings, each fixed in its own commit, and two defects the fixes turned up:
+
+- `b53795c3c`: 60 of the 142 deleted lines named content still in the world under a new
+  vnum: its zone moved, and the same prototype sits in an area `areas/AREA` lists, with no
+  special. Those lines are re-pointed instead of deleted. Black Pearl (142xxx) from
+  `raxquest` and `fooquest`: Long John Silver, his parrot and dragon, ten pirate talkers,
+  nine objects, fooquest's sage and illithid, 13 `newbie_quest` NPCs and the dragonslayer.
+  Charing (45xxx) from Sylvandawn: Zilota and Nelanna (`world_quest`), nine guild guards,
+  three city guards, the trail keeper, the dump and the Royal Stables. The City of Brass
+  (139xxx) from `brass-old-2/3`: the iron golem, Latisia, the staff of blue flames and the
+  ring of elemental control. And the AoD hall's inn, now 29812 in `cbl_hall`, which holds
+  the whole hall at +310. Each pair was checked by diffing the two prototypes in full, and
+  the section headings came back under the zones' current names. Four procs named the old
+  numbers and move with them: `long_john_silver_shout`'s helpers and wraith,
+  `fooquest_mob`'s illithid, `fooquest_boss`'s dragon and `ring_elemental_control`'s own
+  object (every rub of the ring bailed). `docs/reference/artifact_source_inventory.json` is
+  regenerated with it: the staff and the dragonslayer are artifacts, now with a binding.
+  82 lines stay deleted: the 21 spec-teacher zeroes; three Sylvandawn lines whose Charing
+  copy was already bound (45049, 45036, 45006); the 26 `outpost_captain` lines; room
+  70501, whose copy 142201 is `ZONE_SHIP_ZONE_ENTRANCE`; and 31 whose content is nowhere in
+  the listed world. The outpost captains stay deleted although `patrols` reuses map5's
+  descriptions: those guards are not sentinel or stay-zone, load in rooms that open onto
+  the surface map, and the captains are level 60 now, so the tower garrison proc, which
+  hunts every racewar-evil player in its zone, would be new behaviour on them.
+- `191a475eb`: `guild_guard` acts only in a room its switch names, and the switch still
+  named Sylvandawn's and old Brass's rooms, so the re-pointed guards blocked nobody, nor
+  did 45049, bound before this phase. Each Charing or Brass room joins the case of the room
+  it replaces, with the same exit and class rule: 45126 (rogues, west), 45039 (warriors,
+  south), 45145 (bards, north), 45063 and 45065 (the royal chambers, east), 45072 (the
+  treasure, west), 139119 and 139125 (the temple, south). Charing's temple, 45027, opens
+  east where Sylvandawn's opened west, so it joins 7588, the east-for-clerics case. The
+  contract also checks now that every `guild_guard` mob a zone loads stands in a room the
+  switch names; without these cases it names the eight guards.
+- `2ae0ffe43` (an older defect that check found): `guild_guard` was bound to mob 16501,
+  with a case for room 16501 and insignia 9316, all from a guild that left long ago.
+  Woodseer has 165xx now, so the binding sat on its halfling street guard and the case on
+  a stairway with no north exit. Both are gone.
+- `db0525bc2`: the contract read numeric lookups one line at a time, 1,268 of the 1,293
+  live ones, and missed the two clang-format had wrapped and the 18 named constants. It now
+  reads the whole live source, resolves a name through the headers' `#define` lines, fails
+  on any other name, and checks 1,288; the rest are the loop variables of three loops. A
+  wrapped dead lookup, one through a header `#define`, and an undefined name each fail it.
+
+The special procedures of the 82 deleted lines that nothing else names stay in the source,
+as before.
+
 **Checked** at `f44291043`. `real_room0()`, `real_mobile0()` and `real_object0()`
 (`src/world/db.c` L4607, L4680, L4748) return 0 for a missing vnum; the comment at
 L4531-4539 says this was done so `spec_ass.c` never indexes -1. `specs.assign.c` assigns
