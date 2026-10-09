@@ -11,6 +11,31 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Achievement zones: quest givers, tie order and area names
+
+`achievements zones` lists each zone where the character has completed a quest. A quest
+belongs to the zone with the highest first vnum (zone number × 100) at or below its giver's
+vnum, which is the area its giver comes from: an area's mobs run past its first hundred
+vnums and past its top room. `zone_for_giver_vnum()` and `scripts/zone_story_quest_catalog.py`
+use the same rule, so the checked-in catalog snapshot matches the runtime catalog. The
+heavens givers (zone 0) stay on zone 1, because the catalog needs a positive zone. Zones
+with equal counts are ordered by the name a player reads: color codes are skipped as
+`strip_ansi()` skips them, and case is ignored. `achievements zone <area>` finds an area by
+its name as well as by its number.
+
+```sh
+python3 tests/async/test_zone_story_quest_production.py
+python3 tests/async/test_zone_story_quest_production_catalog.py
+python3 tests/async/test_zone_story_quest_feature.py
+python3 tests/async/test_achievements_zone_lookup.py
+```
+
+The production harness maps givers past a zone's first hundred vnums and past its top room.
+The catalog test checks a Winterhaven giver and a Tower of Darkness giver in the real world
+files. The feature harness ties seven zones with real colored names. The lookup test runs
+the command's lookup with the real `is_abbrev()`, `strip_ansi()` and `skip_spaces()` on the
+text `one_argument()` hands it. No test completes a quest on a running server.
+
 ## Area-authored coin piles
 
 Get, take and put handle any `ITEM_MONEY` object by type, whatever its vnum, and add a
@@ -401,6 +426,22 @@ production mode and checks that the staged file and its stamp are untouched, the
 the runtime stamp and expects the refusal.
 
 Not covered: a real production boot; the journeys run the server directly.
+
+## Quest EXP line
+
+With the EXP display on (`toggle experience`), a world quest reward prints one `Quest EXP:`
+line with the amount the character was credited, after modifiers and caps, and prints none
+when nothing was credited. An immortal is credited nothing and gets no line; its staff log
+line (`logexp()`, "would have gained") keeps the award it would have had.
+
+```sh
+python3 tests/async/test_world_quest_xp_feedback.py
+```
+
+The test compiles `gain_exp()`, `display_gain()`, `quest_kill()` and `quest_full_reward()`
+from the source on both backends and checks the line for kills, turn-ins, every cap and
+exit that credits nothing, and an immortal, whose staff log it reads. No test turns in a
+quest on a running server.
 
 ## Riposte after a participant is removed
 

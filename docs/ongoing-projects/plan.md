@@ -995,6 +995,51 @@ their commits did not change.
 **Gate** on `8498aa0c1`: `./scripts/format.sh --all --check` clean, `make test-all -j16
 TEST_JOBS=16` 679 passed, 0 failed, `make test-db` 48 of 48. Nothing is left.
 
+**Review round 1** (PR #10, review of `f9745f66c`; tag `backlog/phase-7-review-1`). Two
+findings and one smaller point, each reproduced on that head first, each fixed in its own
+commit with a case that fails without it:
+
+- `e09f03213`: the catalog put a quest giver in zone `giver_vnum / 100`, but an area's mobs
+  run past its first hundred vnums. 575 of the 2,668 definitions (244 givers) sat on 36 zone
+  numbers no area has: `achievements zones` showed them as "This area" rows, one area could
+  split over several rows, and each phantom zone counted toward "Fully completed zones". A
+  giver now belongs to the zone with the highest first vnum (number × 100) at or below its
+  own, `which_race()`'s rule, in `zone_for_giver_vnum()` and in
+  `scripts/zone_story_quest_catalog.py`; the snapshot is regenerated (the same ids, 575
+  moved). The review's range check against the zone's top was not taken: the Tower of
+  Darkness givers (134146 and up) are past that area's top room. Against the area file each
+  quest comes from, the old rule was wrong for 575 definitions, the range check for 5, this
+  rule for none; the heavens givers stay on zone 1.
+- `520d322e2`: zones with equal counts were ordered by their stored names, color codes
+  included. They are now ordered by the name a player reads, lowercased.
+- `c984fc7ac` (the review's smaller point): since `536ce6dba`, an immortal's world quest
+  `logexp()` line read "would have gained 0". It keeps the award again, and only mortals
+  get the `Quest EXP:` line.
+
+**Found on the way:** `340420fab`. `achievements zone <area>` never found an area by its
+name, only by number: `one_argument()` leaves a space in front of the name. On full-world
+flat-file boots, before and after the round: zones 551, 552, 832 and 1341 went from
+"This area" with quests to N/A, 550, 831 and 1340 kept their names, and `achievements zone
+the city of winterhaven`, `alat` and `the tower of darkness` went from the usage line to
+their areas. No quest was completed on a running server.
+
+`REGRESSIONS.md` has sections for the achievement zones and the Quest EXP line. The Status
+table is left as it was, as in the earlier rounds.
+
+**Catch-up with `master`, through the stack** (2026-10-09). `afad1e5bf` merges Phase 5's
+`14ed3be55`, which holds Phase 5's round and, through Phases 4, 3 and 2, `master` up to
+`494317e40`. PR #10 showed a conflict with its base before it. The one conflict, the Status
+table and the Landing section, keeps Phase 5's side, which carries `master`'s.
+`master`'s `89080c967` and the landing records of Phases 2 and 3 come with the landings.
+
+**Gate** on `340420fab`, the round's code: `./scripts/format.sh --all --check` clean (1038
+files), `make test-all -j16 TEST_JOBS=16` 681 passed, 0 failed (0 timed out, 0 ended by a
+signal) in 8 min 48 s, `make test-db` 46 of 48. The two failures were
+`persistence_contract` and `immutable_migration_ledger`: their `mysql:8.0` containers
+stopped before the first query while four sessions ran their gates at once (load about 60),
+and both passed when run again alone on the same head. The record commit changes documents
+only; the tests that read `docs/` passed on it. Nothing is left.
+
 **Problem.** Two display fixes the community tree made after the split, found in the same
 comparison as Phase 3. Neither changes a reward or a game mechanic.
 
