@@ -1432,9 +1432,18 @@ static unsigned char *load_file(const char *filename, size_t *file_size)
 	struct stat st;
 	unsigned char *buf;
 
-	if (stat(filename, &st) != 0)
+	// Size the file that was opened, not the name, which can change in between.
+	fp = fopen(filename, "rb");
+	if (!fp)
+	{
+		fprintf(stderr, "ERROR: Cannot open file '%s': %s\n", filename, strerror(errno));
+		return NULL;
+	}
+
+	if (fstat(fileno(fp), &st) != 0)
 	{
 		fprintf(stderr, "ERROR: Cannot stat file '%s': %s\n", filename, strerror(errno));
+		fclose(fp);
 		return NULL;
 	}
 
@@ -1444,13 +1453,7 @@ static unsigned char *load_file(const char *filename, size_t *file_size)
 	{
 		fprintf(stderr, "ERROR: File too large (%zu bytes, max %d)\n", *file_size,
 			SAV_MAXSIZE);
-		return NULL;
-	}
-
-	fp = fopen(filename, "rb");
-	if (!fp)
-	{
-		fprintf(stderr, "ERROR: Cannot open file '%s': %s\n", filename, strerror(errno));
+		fclose(fp);
 		return NULL;
 	}
 

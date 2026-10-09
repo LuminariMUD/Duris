@@ -551,6 +551,26 @@ static bool my_qry(const char *format, ...)
 	return use_thread_db ? tqry("%s", query) : qry("%s", query);
 }
 
+// Appends one row to a batched VALUES list. A row that does not fit fails the player: the
+// unchecked "len += snprintf" this replaces moved the next write past the buffer's end once
+// a pfile's affects or granted commands outgrew it.
+__attribute__((format(printf, 6, 7))) static bool append_row(const char *table, const char *name,
+							     char *values, size_t size, int *len,
+							     const char *format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	int written = vsnprintf(values + *len, size - *len, format, args);
+	va_end(args);
+	if (written < 0 || (size_t)written >= size - *len)
+	{
+		fprintf(stderr, "%s: %s rows exceed %zu bytes; player failed\n", name, table, size);
+		return false;
+	}
+	*len += written;
+	return true;
+}
+
 static MYSQL_RES *my_db_query(const char *format, ...)
 {
 	char query[65536];
@@ -753,8 +773,10 @@ static int save_player_to_db(struct mig_player *p)
 	{
 		if (p->skills_learned[i] > 0 || p->skills_taught[i] > 0)
 		{
-			len += snprintf(values + len, sizeof(values) - len, "(%d,%d,%d,%d),", pid,
-					i, p->skills_learned[i], p->skills_taught[i]);
+			if (!append_row("player_skills", p->name, values, sizeof(values), &len,
+					"(%d,%d,%d,%d),", pid, i, p->skills_learned[i],
+					p->skills_taught[i]))
+				return 0;
 		}
 	}
 	if (len > 0)
@@ -771,8 +793,9 @@ static int save_player_to_db(struct mig_player *p)
 	{
 		if (p->languages[i] > 0)
 		{
-			len += snprintf(values + len, sizeof(values) - len, "(%d,%d,%d),", pid, i,
-					p->languages[i]);
+			if (!append_row("player_languages", p->name, values, sizeof(values), &len,
+					"(%d,%d,%d),", pid, i, p->languages[i]))
+				return 0;
 		}
 	}
 	if (len > 0)
@@ -789,9 +812,10 @@ static int save_player_to_db(struct mig_player *p)
 	{
 		if (p->timers[i] != 0)
 		{
-			len += snprintf(values + len, sizeof(values) - len,
+			if (!append_row("player_timers", p->name, values, sizeof(values), &len,
 					"(%d,%d,FROM_UNIXTIME(NULLIF(%ld,0))),", pid, i,
-					p->timers[i]);
+					p->timers[i]))
+				return 0;
 		}
 	}
 	if (len > 0)
@@ -808,8 +832,9 @@ static int save_player_to_db(struct mig_player *p)
 	{
 		if (p->undead_slots[i] > 0)
 		{
-			len += snprintf(values + len, sizeof(values) - len, "(%d,%d,%d),", pid, i,
-					p->undead_slots[i]);
+			if (!append_row("player_undead_slots", p->name, values, sizeof(values),
+					&len, "(%d,%d,%d),", pid, i, p->undead_slots[i]))
+				return 0;
 		}
 	}
 	if (len > 0)
@@ -826,8 +851,9 @@ static int save_player_to_db(struct mig_player *p)
 	{
 		if (p->forged_items[i] != 0)
 		{
-			len += snprintf(values + len, sizeof(values) - len, "(%d,%d,%d),", pid, i,
-					p->forged_items[i]);
+			if (!append_row("player_forged_items", p->name, values, sizeof(values),
+					&len, "(%d,%d,%d),", pid, i, p->forged_items[i]))
+				return 0;
 		}
 	}
 	if (len > 0)
@@ -844,8 +870,9 @@ static int save_player_to_db(struct mig_player *p)
 	{
 		if (p->intro_pids[i] != 0)
 		{
-			len += snprintf(values + len, sizeof(values) - len, "(%d,%d,%d,NULL),", pid,
-					i, p->intro_pids[i]);
+			if (!append_row("player_intros", p->name, values, sizeof(values), &len,
+					"(%d,%d,%d,NULL),", pid, i, p->intro_pids[i]))
+				return 0;
 		}
 	}
 	if (len > 0)
@@ -862,8 +889,9 @@ static int save_player_to_db(struct mig_player *p)
 		len = 0;
 		for (int i = 0; i < p->num_granted_cmds; i++)
 		{
-			len += snprintf(values + len, sizeof(values) - len, "(%d,%d),", pid,
-					p->granted_cmds[i]);
+			if (!append_row("player_granted_cmds", p->name, values, sizeof(values),
+					&len, "(%d,%d),", pid, p->granted_cmds[i]))
+				return 0;
 		}
 		if (len > 0)
 		{
@@ -910,11 +938,12 @@ static int save_player_to_db(struct mig_player *p)
 		else
 			strcpy(wor_str, "NULL");
 
-		len += snprintf(values + len, sizeof(values) - len,
+		if (!append_row("player_affects", p->name, values, sizeof(values), &len,
 				"(%d,%d,%d,%d,%d,%d,%d,%lu,%lu,%lu,%lu,%lu,%s,%s),", pid, af->type,
 				af->duration, af->flags, af->modifier, af->location, af->level,
 				af->bitvector1, af->bitvector2, af->bitvector3, af->bitvector4,
-				af->bitvector5, woc_str, wor_str);
+				af->bitvector5, woc_str, wor_str))
+			return 0;
 	}
 	if (len > 0)
 	{

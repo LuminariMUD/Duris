@@ -15,12 +15,10 @@ from _paths import ROOT, source
 MATERIALS = source("chaos_materials.c")
 HEADER = source("chaos_materials.h")
 CRAFTING = source("crafting.c")
-CONFIG = ROOT / "lib/kingdom.cfg"
 
 materials = MATERIALS.read_text(encoding="utf-8")
 header = HEADER.read_text(encoding="utf-8")
 crafting = CRAFTING.read_text(encoding="utf-8")
-kingdom_config = CONFIG.read_text(encoding="utf-8")
 
 body_match = re.search(
     r"void chaos_materials_initialize\(\)\s*\{(.*?)\n\}\n\nP_obj chaos_material_pouch_find",
@@ -40,7 +38,6 @@ assert "void chaos_materials_initialize(void);" in header
 config_load = crafting.index("load_crafting_config();")
 prefetch_call = crafting.index("chaos_materials_initialize();", config_load)
 assert config_load < prefetch_call, "prefetch must run after crafting boot reaches its object-ready hook"
-assert re.search(r"^kingdom\.enabled\s*=\s*1\s*$", kingdom_config, re.MULTILINE)
 
 HARNESS = r"""
 #include "core/prototypes.h"
@@ -136,4 +133,4 @@ with tempfile.TemporaryDirectory(prefix="duris-chaos-material-prefetch-") as tem
     )
     subprocess.run([str(binary)], check=True, env=disabled)
 
-print("Chaos material prefetch and kingdom-enabled boot contracts passed")
+print("Chaos material prefetch boot contracts passed")

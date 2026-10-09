@@ -547,44 +547,6 @@ int get_id_for(P_obj t_obj)
 	return WRONG_INGREDIENT;
 }
 
-int got_all_ingredients(P_char ch, int required[])
-{
-	int found[MAX_INGREDIENTS + 1];
-	int i;
-	P_obj t_obj, next_obj;
-	int object_id;
-
-	for (i = 0; i < MAX_INGREDIENTS + 1; i++)
-	{
-		found[i] = required[i];
-	}
-
-	for (t_obj = ch->carrying; t_obj; t_obj = next_obj)
-	{
-		next_obj = t_obj->next_content;
-		object_id = get_id_for(t_obj);
-
-		for (i = 0; i < MAX_INGREDIENTS + 1; i++)
-		{
-			if (found[i] == object_id)
-			{
-				found[i] = 0;
-				break;
-			}
-		}
-	}
-
-	for (i = 0; i < MAX_INGREDIENTS + 1; i++)
-	{
-		if (found[i])
-		{
-			return 0;
-		}
-	}
-
-	return 1;
-}
-
 int got_all_poison_ingredients(P_char ch, int required[])
 {
 	int found[MAX_INGREDIENTS + 1];
@@ -642,46 +604,6 @@ void extract_used_poison_ingredients(P_char ch, int ingredients[])
 		next_obj = t_obj->next_content;
 
 		object_id = obj_index[t_obj->R_num].virtual_number;
-
-		for (i = 0; i < MAX_INGREDIENTS + 1; i++)
-		{
-			if (found[i] == object_id)
-			{
-				found[i] = 0;
-				used_objs[i] = t_obj;
-				break;
-			}
-		}
-	}
-
-	for (i = 0; i < MAX_INGREDIENTS + 1; i++)
-	{
-		if (used_objs[i])
-		{
-			extract_obj(used_objs[i]);
-		}
-	}
-}
-
-void extract_used_ingredients(P_char ch, int ingredients[])
-{
-	int found[MAX_INGREDIENTS + 1];
-	P_obj used_objs[MAX_INGREDIENTS + 1];
-	P_obj t_obj, next_obj;
-	int object_id;
-	int i;
-
-	for (i = 0; i < MAX_INGREDIENTS + 1; i++)
-	{
-		found[i] = ingredients[i];
-		used_objs[i] = NULL;
-	}
-
-	for (t_obj = ch->carrying; t_obj; t_obj = next_obj)
-	{
-		next_obj = t_obj->next_content;
-
-		object_id = get_id_for(t_obj);
 
 		for (i = 0; i < MAX_INGREDIENTS + 1; i++)
 		{

@@ -161,13 +161,15 @@ def run(server):
                     assert save("link-loss-reconnect") >= quiet
                     quit_player()
                     client = None
+                    # The account menu comes back once the quit has queued the
+                    # character's last save, not once that save is in SQL. A
+                    # clean stop writes every queued save.
+                    stop()
+                    process = None
                     terminal = persisted()
                     assert terminal >= again, rows
                     rows.append({"phase": "quit", "played_seconds": terminal})
-                    stop()
-                    process = None
                     time.sleep(3)  # Offline time must not be credited on the next login.
-                    assert persisted() == terminal
                     process = boot()
                     start = time.monotonic()
                     client = journey.reconnect_character(plain)

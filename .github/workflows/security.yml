@@ -34,7 +34,10 @@ jobs:
       - name: Generate and validate security baseline
         run: make security-check
       - name: Build for CodeQL
-        run: make build -j"$(nproc)"
+        run: |
+          make build -j"$(nproc)"
+          make -C src pfile
+          make -C migrations/tools migrate_pfiles affects pfile_converter
       - name: Analyze source with CodeQL
         uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
@@ -71,6 +74,10 @@ jobs:
         run: |
           if ! python3 -c 'import json; assert len(json.load(open("bin/security/trivy-results.json"))["Results"]) > 0'; then
             echo "Trivy did not scan a supported dependency target." >&2
+            exit 1
+          fi
+          if ! python3 -c 'import json; assert all(d["status"] == "resolved" for d in json.load(open("bin/security/dependency-inventory.json"))["dependencies"])'; then
+            echo "A declared dependency is not installed, so Trivy did not scan it." >&2
             exit 1
           fi
           if [ "$TRIVY_OUTCOME" = "failure" ]; then

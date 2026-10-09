@@ -84,8 +84,20 @@ def run(server):
                     assert process.returncode == 0
 
                 def choose_delete():
-                    client.send('3'); client.expect('Which character do you want to')
-                    client.send('1'); client.expect('FINAL WARNING', timeout=30)
+                    # Between a save of the character reaching SQL and the game
+                    # thread taking its acknowledgement, a load of that character
+                    # is refused. A character in the game is saved at any time,
+                    # so choose it again until it loads.
+                    deadline = time.monotonic() + 30
+                    while True:
+                        client.send('3'); client.expect('Which character do you want to')
+                        client.send('1')
+                        loaded, _ = client.expect_any(('FINAL WARNING', "Couldn't load that character!"), timeout=30)
+                        if loaded == 'FINAL WARNING':
+                            return
+                        assert time.monotonic() < deadline, 'the character never loaded for deletion'
+                        client.expect('ACCOUNT MENU')
+                        time.sleep(.5)
 
                 try:
                     process = boot()

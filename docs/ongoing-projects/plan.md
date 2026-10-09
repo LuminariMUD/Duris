@@ -24,25 +24,25 @@ Updated 2026-10-09. A new session starts here, then reads the phase it continues
 |---|---|---|
 | 1 | Hung tests and silent backup failures | Landed 2026-10-09 in `e757c77e7` (PR #5, `backlog/phase-1-review-1`). |
 | 2 | Unauthenticated connections per address | Landed 2026-10-09 in `14776698a` (PR #6, `backlog/phase-2-review-1` and a journey fix). |
-| 3 | Shop listing, dompurify, dead helpers | Built on `fix/4-phase-3-shop-listing`; PR #7, review round 1 done, tag `backlog/phase-3-review-1`, gate green; next to land. |
-| 4 | Security record and `SECURITY.md` | Built on `fix/4-phase-4-security-record`; PR #8, review round 1 done, tag `backlog/phase-4-review-1`, gate green. |
-| 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc`; PR #9, review round 1 done, tag `backlog/phase-5-review-1`, gate green. |
+| 3 | Shop listing, dompurify, dead helpers | Landed 2026-10-09 in `8a7f61c00` (PR #7, `backlog/phase-3-review-1` and Phase 2's journey fix). |
+| 4 | Security record and `SECURITY.md` | Landed 2026-10-09 in `9cd983785` (PR #8, `backlog/phase-4-review-1` and two catch-up merges). |
+| 5 | Studio-proc tag ids and `world.trg` | Built on `fix/4-phase-5-studioproc`; PR #9, review round 1 done, tag `backlog/phase-5-review-1`, gate green; next to land. |
 | 6 | Site and README links | Landed 2026-10-08 on `master`, directly at the owner's request. |
 | 7 | Quest EXP line and `achievements zones` | Built on `fix/4-phase-7-display-fixes`, gate green; PR #10, tag `backlog/phase-7-review-0`; reviewed, two findings open. |
 | 8 | Specials assigned to missing vnums | Built on `fix/4-phase-8-dead-specials`, gate green; PR #11, tag `backlog/phase-8-review-0`; reviewed, two findings open. |
 | 9 | `board` specials and the audit heading | Built on `fix/4-phase-9-boards`, gate green; PR #12, tag `backlog/phase-9-review-0`; reviewed, seven findings open. |
 
-Phases 1, 2 and 6 are on `master`. Each later phase is on its own branch, stacked on the one
-before; its section here is on that branch, not yet on `master`. What is left: the landings
-of Phases 3, 4 and 5, whose review rounds are done, and a review round and a landing for
-Phases 7, 8 and 9, in order, starting with Phase 3's landing.
+Phases 1 to 4 and 6 are on `master`. Each later phase is on its own branch, stacked on the
+one before; its section here is on that branch, not yet on `master`. What is left: Phase 5's
+landing, whose review round is done, and a review round and a landing for Phases 7, 8 and 9,
+in order, starting with Phase 5's landing.
 
 ## Landing
 
-The pull requests form one stack: #7 (Phase 3) now targets `master`, and #8, #9, #10, #11
-and #12 (Phase 9) each target the previous phase's branch. #7, #8 and #9 have had review
-round 1: each finding fixed in its own commit, its thread resolved, the round's head tagged
-`backlog/phase-<n>-review-1`. #10, #11 and #12 have an adversarial review whose findings are
+The pull requests form one stack: #9 (Phase 5) now targets `master`, and #10, #11 and #12
+(Phase 9) each target the previous phase's branch. #9 has had review round 1: each finding
+fixed in its own commit, its thread resolved, the round's head tagged
+`backlog/phase-5-review-1`. #10, #11 and #12 have an adversarial review whose findings are
 open. Take them in order: the review round on the branch where one is still open, then the
 landing as "Every phase" says. A branch's head can be past its last tag (a fix or a merge from
 the phase below after the round); the landing merges the head. Before deleting a landed
@@ -53,15 +53,17 @@ Delete this file when Phase 9 lands.
 
 A landing can meet a conflict in this file: a branch that rewrote the Status table's earlier
 rows conflicts with `master`'s. Keep `master`'s table and this section, mark the landed phase,
-and take the branch's side everywhere else. Phase 3's branch already has `master` up to
-`494317e40`, taken through Phase 2's branch; the merge that brought it (`6624a7078`) resolved
-the ledger rows #659 and #662 in `docs/records/COMMUNITY_DURIS_TRACKING.md` and the `site/`
-files. A trial merge of its head onto this landing record is clean. Run
-`npm test --prefix site` after Phase 3's landing.
+and take the branch's side everywhere else. Phase 5's branch already has Phase 4's head
+(`d44db479b`), taken in `6b7b3f62a`, and changes no Status row, so a trial merge of its head
+(`14ed3be55`) onto this landing record is clean. Phase 5 adds `make_trg` to `make world`,
+and `scripts/cycle_mud.sh` now refuses to boot when world generation fails; `make test-db`
+builds the world, so the gate runs the generator. The local checkouts hold no hand-written
+`areas/world.trg` with records, so the one-time move in `docs/content/STUDIOPROC.md` has
+nothing to move here.
 
 The local dev server (`duris-plan`, ports 4000/4001) runs Phase 9's build of 2026-10-08, the
-review-0 heads. Phase 2's landing did not copyover it: the landed build would take Phases 3
-to 9 off it. It goes onto `master`'s build when Phase 9 lands.
+review-0 heads. The landings so far did not copyover it: the landed build would take the
+phases still on branches off it. It goes onto `master`'s build when Phase 9 lands.
 
 ## Why these
 
@@ -465,7 +467,117 @@ in the idle switch closes a silent connection at 480 pulses. The two constants s
 
 ## Phase 3: the shop listing, dompurify, two dead helpers
 
-**Problem.** Three small things the community tree (`LuminariMUD/Duris`, master at
+**Built** on `fix/4-phase-3-shop-listing` (stacked on Phase 2), 2026-10-08:
+
+- `c4a9eb681`: `shopping_list()` sends `Gbuf1` and starts it again when the next line would
+  not fit, before each `strcat()`; the "Nothing!" path is unchanged.
+  `tests/async/test_shop_list_extract_contract.py`, the listing's existing test, now also
+  compiles the production `shopping_list()` under ASan and UBSan with a keeper carrying
+  700 items (about 70 KB) and checks every line arrives once, in order, in pieces under
+  64 KB. Without the bound it reports a stack-buffer overflow.
+- `3151e2d85`: `npm audit fix --prefix site` moved dompurify to 3.4.16, and an `overrides`
+  entry in `site/package.json` pins katex 0.18.2. `npm audit --prefix site` reports no
+  vulnerability; `npm test --prefix site` passes (15 tests).
+- `2c814182e`: `got_all_ingredients()` and `extract_used_ingredients()` deleted;
+  `get_bottle()` and `get_id_for()` keep their callers.
+- `b606a9d8b`: the three rows in `docs/records/COMMUNITY_DURIS_TRACKING.md`: #700 (b) and
+  #662 `Adapted`, #573 (e) `Rejected` (ours keeps `mix`; the helpers are noted).
+
+**What differs from the plan, and why.**
+
+- `npm audit` also reported katex 0.16.47 (GHSA-238p-pmpm-9mq7, low, fixed in 0.18.2),
+  which mermaid pulls in, and a second dompurify advisory (GHSA-6688-9rhm-gjv2, fixed by
+  the same 3.4.16). Every mermaid 12 release, 12.1.0 included, asks for katex `^0.16.47`,
+  and npm's only automatic fix was a downgrade to mermaid 10.8.0, so the override pins
+  katex instead, beside the existing `lodash-es` one. Mermaid's one katex call
+  (`renderToString` with `throwOnError`, `displayMode`, `output`) renders under 0.18.2, and
+  the site's diagrams use no math. Dependabot's #3 (dompurify) is the same lockfile line;
+  it landed on `master` first (`71f14f1a7`), so after the merge recorded below the katex
+  pin is the only `site/` change this phase adds. #1 (mermaid 12.1.0) is unaffected.
+- The listing harness extends the listing's existing test instead of adding a file, and
+  the bound is written inline at the one call site rather than as the community tree's
+  `append_listing` helper.
+- `2caf3a289` fixes a race in `tests/async/run_telemetry_schema_boot_journey.py`, found by
+  this phase's gate: after its copyover signal the old image can still log a
+  `telemetry_health` line (here a stall alert raised by the copyover tick) carrying the old
+  producer, which the journey took for the new image's. It now reads from the old image's
+  `copyover: executing new binary` line.
+- This section's "Problem" called the community tree `LuminariMUD/Duris`; since the move
+  to GitHub that is this repository, and theirs is `Community-Duris/Duris`.
+
+**Gate** on `b606a9d8b`: `./scripts/format.sh --all --check` clean, `make test-all -j16
+TEST_JOBS=16` 676 passed, 0 failed, `make test-db` 47 of 48 (`telemetry_schema_boot`, the
+race above; with `2caf3a289` the leg passed twice in a row on its own). Nothing is left.
+
+**Review round 1** (PR #7, review of `f9ad0e09e`; tag `backlog/phase-3-review-1`). Two
+findings, both in the listing bound, both reproduced first on a production-profile flat-file
+build of that head with the review's live probe: a keeper with 700 priced items, and a
+mortal with paging off running `list`, then snooped by an overlord. One bound fixes both;
+each commit has a case that fails on the code before it:
+
+- `4c4557d76`: `c4a9eb681` cut the pieces at 65,535 bytes, which kept `shopping_list()` in
+  bounds but not the output path. `process_output()` expands each queued block into
+  buffers of `MAX_STRING_LENGTH`: `AnsiString::term()` stops 64 bytes short of it and
+  drops the rest (55 of 700 lines never arrived, 378 to 432, with no notice), and for a
+  snooped player `format_to_snoopers()` ran past its buffer and the server aborted
+  (`stack smashing detected`). Pieces are now at most `MAX_STRING_LENGTH / 8`, which also
+  keeps a 700-item listing to about a dozen entries in the player's log. The listing test
+  names its items and prices in colour and passes each piece through the production
+  `format_to_snoopers()` and `AnsiString::term()` as `process_output()` does; against the
+  old bound the first is an ASan overflow and the second loses lines.
+- `7a16e9c13`: `format_to_snoopers()` itself had no bound, so any other block of about
+  62 KB with enough lines still overflowed it. It now counts what it writes and stops where
+  the next step might not fit. The count replaces the review's pointer limit, which the
+  production profile's `-Wstrict-overflow=2` rejects. A case in
+  `word_output_integration_harness.cpp` (a SIGSEGV without it, an ASan overflow under
+  `SANITIZE=1`).
+
+With both, the probe on a production build of `7a16e9c13`: 700 of 700 lines with plain and
+with coloured names, snooped and not, the snooper got all 700 with its `%` prefix, and the
+server stayed up. The same probe with the mortal on a WebSocket connection, which the
+review left unchecked, behaved the same way on both builds. Ledger row #700 (b) names
+`4c4557d76` too.
+
+`6624a7078` merges Phase 2's round head (`0ddbaa62d`, `backlog/phase-2-review-1`), which
+had merged `master` after Phase 1 landed, so this branch carries `master` up to
+`494317e40`. Its two conflicts are the ones the plan's Landing section names: the Status
+table and that section keep `master`'s text and this section keeps the branch's; ledger
+rows #659 (`master`'s) and #662 are both kept, and #662 names Dependabot's `71f14f1a7`,
+which landed the same dompurify line on `master` first; the sentence on Dependabot's #3
+above is reworded to match. `site/` merged on its own: mermaid 12.1.0 from `master` with
+this phase's katex 0.18.2 override.
+
+**Gate** on `6624a7078`, the merge: `./scripts/format.sh --all --check` clean (1037 files),
+`make test-all -j16 TEST_JOBS=16` 676 passed, 0 failed (0 timed out, 0 ended by a signal)
+in 6 min 49 s, and on the merged `site/` `npm ci`, `npm audit` (0 vulnerabilities) and
+`npm test --prefix site` (15 passed). `make test-db` 47 of 48: `telemetry_schema_boot`'s
+first stop left the outage ledger at `abandoned` instead of `clean_drained` under the
+host's load, and the leg passed alone. The journey stopped a healthy server while the
+boot's records still waited in their 2 s batch, so the stop's own 2 s flush had to write
+them. `89080c967` on `master` makes it stop only once they are in SQL: a probe that stalls
+that flush with a table lock fails the old journey and passes the new one. This branch
+takes it when it lands. The record after the merge changes only this section and ledger
+row #700 (b).
+
+After the tag, `test-all` on `fb5590b99` failed Phase 2's `test_connection_limit_journey.py`
+once (and `test_telemetry_capacity_272.py`'s latency guard, which passed alone): during the
+fill an idle timeout could free a slot and let the journey's one probe in. Phase 2 fixed its
+journey in `97807ecbe`, and `b4b5068e7` merges Phase 2's `ab4f885cd` with it. **Gate** on
+`b4b5068e7`: `./scripts/format.sh --all --check` clean, `make test-all -j16 TEST_JOBS=16` 676
+passed, 0 failed (0 timed out, 0 ended by a signal), `make test-db` 48 of 48, and on `site/`
+`npm audit` 0 vulnerabilities and `npm test --prefix site` 15 passed.
+
+**Landed** 2026-10-09 in `8a7f61c00`, PR #7: a `--no-ff` merge of the branch head
+`4a03cf2a1`, which is `backlog/phase-3-review-1` plus Phase 2's journey fix and its record.
+`master` had moved on with Phase 2's landing and `89080c967`, and the merge was clean:
+`run_telemetry_schema_boot_journey.py` keeps both this branch's copyover marker and
+`master`'s wait for the records before a stop. Gated again on the merge:
+`./scripts/format.sh --all --check` clean and `make test-all -j16 TEST_JOBS=16` 676 passed,
+0 failed (0 timed out, 0 ended by a signal) in 7 min 41 s before the push; after it,
+`make test-db` 48 of 48, and on `site/` `npm audit` 0 vulnerabilities and
+`npm test --prefix site` 15 passed.
+
+**Problem.** Three small things the community tree (`Community-Duris/Duris`, master at
 `a1e4a7efd`, split from ours at `e1357a30a` on 2026-09-23) fixed after the split, found on
 2026-10-04 by comparing the trees:
 
@@ -505,6 +617,107 @@ the next line would not fit; the trailing "Nothing!" path is unchanged. `npm aud
 - The two helpers are gone and the build is clean.
 
 ## Phase 4: the security record and `SECURITY.md`
+
+**Built** on `fix/4-phase-4-security-record` (stacked on Phase 3), 2026-10-08, in
+`ddb8abfc0`:
+
+- The scan of record is the `security baseline` run 37808827646 on `master` at
+  `690a7575d` (completed 2026-10-08 16:46 UTC): `make security-check` passed; CodeQL 2.27.1
+  found 0 results over 58 rules and code scanning listed no open alert; Trivy `v0.70.0`
+  scanned all 23 resolved direct packages, `libcurl4-gnutls-dev` 8.5.0 among them (its
+  `trivy-results.json` artifact), with no fixed HIGH or CRITICAL finding.
+- `docs/operations/SECURITY_BASELINE.md`: the workflow section says it runs on every push
+  and pull request to `master` and that local replay is for changes that touch what it
+  checks; Dependabot (action pins and `site/` npm, weekly) in one sentence; the failure
+  policy says the hosted scan lists nothing unfixed or below HIGH; "Baseline Result
+  (2026-10-08)" replaces the August one and the libcurl note, with the settings the owner
+  turned on that day.
+- `docs/records/SECURITY-COMPLIANCE.md`: the reporting row and the action-pin, source and
+  container rows are `PASS`, the scan paragraph says what ran, and the header's date is
+  2026-10-08. The direct-dependency row stays `PARTIAL` (transitive packages are not
+  inventoried).
+- `SECURITY.md`: the `0.1.x` line and the private vulnerability reporting form of
+  `LuminariMUD/Duris` (`gh api repos/LuminariMUD/Duris/private-vulnerability-reporting`
+  reads `{"enabled":true}`); no other repository is named.
+- `tests/async/test_account_recovery_contract.py` C13 pinned the old "libcurl added, no
+  scan has covered it yet" bullet; it now pins the scan that covered it.
+
+**What differs from the plan, and why.**
+
+- `make security-sbom` run locally lists `libcurl4-gnutls-dev` as declared but unresolved:
+  this workstation has `libcurl4-openssl-dev` 8.5.0 instead. The workflow, which installs
+  the build-deps package, resolved it, so the record cites the workflow's inventory.
+- The hosted scan reports only fixed HIGH and CRITICAL findings, so the August scan's
+  unfixed MEDIUM Git advisory (`CVE-2024-52005`) is kept as the last one seen at that
+  depth rather than dropped or claimed fixed.
+- No code changed, so the gate was the tests that read documents: the 41 tests that read
+  `docs/` or the README, run bare (all pass after C13), and `npm test --prefix site`
+  (15 tests). Phase 5's full gate runs on top of this tree.
+
+**Review round 1** (PR #8, review of `b86794e0b`; tag `backlog/phase-4-review-1`). Five
+findings, each reproduced on that head first and fixed in its own commit:
+
+- Finding 2, `cd46e2e93` on `master`: `SECURITY.md`'s old form link redirected to
+  `Community-Duris/Duris`, whose private reporting is on, so a report following the policy
+  reached another organisation. This phase's `SECURITY.md` hunk landed there ahead of the
+  stack, with the redirect sentence in Phase 6's section corrected. On this branch,
+  `fc638ac1a` puts the SBOM namespace under `LuminariMUD/Duris` and makes the same
+  correction.
+- Finding 1, `b511b5b28`: the scanner root had no `Source:` lines, so Trivy matched only
+  packages named like their source package. It never matched libcurl, OpenSSL or Redis, and
+  a root of older builds with fixed HIGH advisories passed. Each paragraph now names its
+  source.
+- Finding 3, `e15dff9ae`: a metapackage from a `*-defaults` source is scanned as the
+  package it installs (the MySQL server, client and library on the runner; `python3.12`;
+  `clang-format-18`). The workflow fails on an unresolved dependency, and the baseline says
+  a scan describes the machine it ran on.
+- Finding 4, `2eef081d8`: the check is again due before a production deploy, as
+  `TESTING.md` says.
+- Finding 5, `0adbbb4ad`: CodeQL's build also compiles `pfile` and `migrations/tools`. Its
+  ten results there are fixed: `6f02b0161` (eight batched `snprintf` appends that could
+  run past a 64 KiB stack buffer) and `17467c3b8` (two stat-then-open races).
+- `6282ce45a`: the record. The hosted run's dependency result counted for nothing, so the
+  baseline records the workflow replayed locally on 2026-10-09. CodeQL 2.27.1 found 0
+  results over 1103 of 1265 files. Trivy `v0.70.0` scanned the root a fresh `ubuntu:24.04`
+  container wrote after installing the build-deps package: all 23 direct packages by
+  source, no fixed HIGH or CRITICAL finding, and 26 unfixed lower ones. The container row
+  in `SECURITY-COMPLIANCE.md` is `PARTIAL` until a host Duris runs on is scanned.
+- `030a1614a`: the baseline says a local CodeQL replay needs ccache off. The first replay
+  traced only 34 files, because ccache served the rest.
+
+This differs from decision 5, which made the hosted run the scan of record without a
+replay: its dependency scan was blind. The first hosted run that matches by source will be
+the one on `master` after this phase lands.
+
+**Gate** on `6282ce45a`, the round's last code commit; the two commits after it change
+documents only. `./scripts/format.sh --all --check` was clean. `make test-all -j16
+TEST_JOBS=16` passed 675 and failed 1 in 10 min 17 s, at a load average near 36 with three
+other gates running. The failure was `test_connection_limit_journey.py` (Phase 2's),
+which got ECONNREFUSED on its first connection, and it passed alone on the same head. The
+server wrote "Entering game loop." before it opened its listeners; `47f5a06d6` on `master`
+moves that line, and the catch-up merge brings the fix here. `make test-db` passed 48 of
+48 in 7 min 49 s. The 37 tests that read the touched documents, the security scripts or
+the migration tools, run bare, all pass.
+
+**Catch-up** (2026-10-09): `9c8a14234` merges Phase 3's round head `fb5590b99`, which
+carries Phase 2's round and `master` up to `494317e40`, including the readiness fix
+`47f5a06d6`. Only the Status table conflicted, and `master`'s was kept. The merge also
+brought Dependabot's `codeql-action` bump to v4.38.2, which still uses CodeQL 2.27.1, the
+version the replay above ran. **Gate** on `9c8a14234`: `./scripts/format.sh --all --check`
+clean, `make test-all -j16 TEST_JOBS=16` 676 passed and 0 failed in 6 min 51 s, `make
+test-db` 48 of 48 in 5 min 41 s.
+
+**Landed** 2026-10-09 in `9cd983785`, PR #8: a `--no-ff` merge of the branch head
+`d44db479b`, which is `backlog/phase-4-review-1` plus the catch-up above, its record
+`71f7c30fb`, and `d44db479b` itself, a merge of Phase 3's head `4a03cf2a1` (Phase 2's
+connection-limit journey fix). `master` had moved on with Phase 3's landing and `639f6fd55`
+(the kingdom subsystem shipped switched off), and the merge was clean. Gated again on the
+merge: `./scripts/format.sh --all --check` clean (1037 files);
+`test_documentation_contract.py`, `test_security_dependency_baseline.py`,
+`test_migration_tools_build.py` and `test_account_recovery_contract.py` pass bare;
+`make test-all` 676 passed, 0 failed (0 timed out, 0 ended by a signal) in 16 min 3 s, at a
+load near 29 with three other sessions working; `make test-db` 48 of 48 in 7 min 3 s. This
+push starts the first hosted `security baseline` run that matches packages by source.
 
 **Problem.** Until the move to GitHub the dependency and code scans last ran on 2026-08-27,
 and `libcurl4-gnutls-dev`, added to the build dependencies on 2026-09-06, was never scanned.
