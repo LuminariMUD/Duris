@@ -31,6 +31,10 @@ extern int top_of_world;
 namespace
 {
 std::unordered_set<P_char> boot_shopkeepers;
+// Whether each mob prototype keeps a shop. Most mobs keep none, and singleton_shop_id()
+// answers for them without the shop table: a boot's zone resets asked it 13.6 million
+// times, each a scan of every shop.
+std::vector<bool> prototype_keeps_shop;
 
 size_t keeper_stock(P_char keeper)
 {
@@ -86,6 +90,14 @@ bool is_replicated_shop(int shop)
 	return false;
 }
 
+void index_shopkeeper_prototypes()
+{
+	prototype_keeps_shop.assign(top_of_mobt + 1, false);
+	for (int shop = 0; shop < number_of_shops; ++shop)
+		if (shop_index[shop].keeper >= 0 && shop_index[shop].keeper <= top_of_mobt)
+			prototype_keeps_shop[shop_index[shop].keeper] = true;
+}
+
 int singleton_shop_id(P_char keeper)
 {
 	if (!keeper || !IS_NPC(keeper) || GET_MASTER(keeper))
@@ -98,6 +110,10 @@ int singleton_shop_id(P_char keeper)
 		// A stale binding is safer than falling back to a template/room guess.
 		return -1;
 	}
+	const int prototype = GET_RNUM(keeper);
+	if (prototype < 0 || static_cast<size_t>(prototype) >= prototype_keeps_shop.size() ||
+	    !prototype_keeps_shop[prototype])
+		return -1;
 	const int room = keeper->in_room >= 0 && keeper->in_room <= top_of_world ?
 				 world[keeper->in_room].number :
 				 -1;

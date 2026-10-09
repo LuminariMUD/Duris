@@ -17,6 +17,8 @@
 
 #include "core/structs.h"
 
+// After the shops are booted, and whenever shop_index changes: singleton_shop_id() reads it.
+void index_shopkeeper_prototypes();
 int singleton_shop_id(P_char keeper);
 bool is_replicated_shop(int shop);
 void bind_shopkeeper(P_char keeper, int shop_nr);

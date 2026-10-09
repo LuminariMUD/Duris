@@ -408,6 +408,7 @@ int main()
 	shops[0].producing[0] = 1;
 	shops[1].producing[0] = 2;
 	shops[0].number_items_produced = shops[1].number_items_produced = 1;
+	index_shopkeeper_prototypes();
 
 	// Cold boot and repeated initializer calls, including a missing sign.
 	initialize_transport();
@@ -441,6 +442,14 @@ int main()
 	masters[controlled] = keeper;
 	assert(singleton_shop_id(controlled) < 0);
 	assert(singleton_shop_id(ordinary) < 0);
+	// An unbound keeper in its shop's room is that shop; a mob whose prototype keeps no
+	// shop is none, even there (index_shopkeeper_prototypes()).
+	P_char walk_in = mob_at(2, 3);
+	assert(singleton_shop_id(walk_in) == 0);
+	P_char stranger = mob_at(0, 3);
+	assert(singleton_shop_id(stranger) < 0);
+	extract_char(walk_in);
+	extract_char(stranger);
 	shops[0].shop_is_roaming = 1;
 	shops[0].in_room = 0; // room 0 is configuration, not the live roaming room
 	REMOVE_BIT(keeper->specials.act, ACT_SENTINEL);
@@ -591,6 +600,7 @@ int main()
 		shops[shop].number_items_produced = 1;
 		shops[shop].producing[0] = 1;
 	}
+	index_shopkeeper_prototypes();
 	// Shop 2 models the historical roaming dealer identity. A durable snapshot
 	// may have been captured in any dealer room before the fixed identities
 	// existed; retain its binding and stock while returning it to its anchor.
