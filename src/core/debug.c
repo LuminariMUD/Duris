@@ -12,6 +12,7 @@
 /*
  * #include <errno.h>
  */
+#include "cmd/interp.h"
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "core/utils.h"
@@ -42,6 +43,7 @@ extern const int top_of_world;
 extern mm_ds_list *mmds_list;
 extern mem_usage mem_used[];
 extern long allocation_list_node_count;
+extern const char *command[];
 
 char debug_mode = 1;
 uint logcount = 0;
@@ -106,6 +108,46 @@ void init_cmdlog(void)
 	atexit(write_cmdlog);
 }
 
+/* Players' conversation is not logged (ADR 0003): a say, tell or other conversation command
+ * keeps its command word in cmd.debug and drops its text. Returns the length to keep, or -1
+ * to keep the whole line. */
+static int cmdlog_kept_length(const char *str)
+{
+	char word[MAX_INPUT_LENGTH];
+	int begin = 0, length = 0;
+
+	while (str[begin] == ' ')
+		begin++;
+	/* "'" and ":" are say and emote, with or without a space before the text. */
+	if (str[begin] == '\'' || str[begin] == ':')
+		return begin + 1;
+	while (str[begin + length] > ' ' && length < (int)sizeof(word) - 1)
+	{
+		word[length] = LOWER(str[begin + length]);
+		length++;
+	}
+	word[length] = '\0';
+	switch (old_search_block(word, 0, length, command, 2))
+	{
+	case CMD_SAY:
+	case CMD_TELL:
+	case CMD_REPLY:
+	case CMD_WHISPER:
+	case CMD_ASK:
+	case CMD_EMOTE:
+	case CMD_PROJECT:
+	case CMD_BEEP:
+	case CMD_GSAY:
+	case CMD_GCC:
+	case CMD_ACC:
+	case CMD_JESTROS:
+	case CMD_SHOUT:
+		return begin + length;
+	default:
+		return -1;
+	}
+}
+
 void cmdlog(P_char ch, char *str)
 {
 	char tbuf[30];
@@ -125,10 +167,21 @@ void cmdlog(P_char ch, char *str)
 		ct = time(0);
 		strcpy(tbuf, asctime(localtime(&ct)));
 		tbuf[strlen(tbuf) - 1] = '\0';
+		char withheld[64]; // a command word and the note
+		const char *text = str;
+		int kept = cmdlog_kept_length(str);
+		if (kept >= 0)
+		{
+			static const char note[] = " <text withheld>";
+			kept = MIN(kept, (int)(sizeof withheld - sizeof note));
+			memcpy(withheld, str, kept);
+			memcpy(withheld + kept, note, sizeof note);
+			text = withheld;
+		}
 		// A command too long for the line is cut, and still ends its line.
 		if (snprintf(line, sizeof cmdlog_lines[0], "%s :: [%u] %s in %d: %s\n", tbuf,
 			     logcount, GET_NAME(ch), world[ch->in_room].number,
-			     str) >= (int)sizeof cmdlog_lines[0])
+			     text) >= (int)sizeof cmdlog_lines[0])
 			line[sizeof cmdlog_lines[0] - 2] = '\n';
 	}
 }

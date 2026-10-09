@@ -488,9 +488,6 @@ int say(P_char ch, const char *argument)
 		else
 			send_to_char("Ok.\r\n", ch);
 
-		if (get_property("logs.chat.status", 0.000) && IS_PC(ch))
-			logit(LOG_CHAT, "%s says '%s'", GET_NAME(ch), argument + i);
-
 		listen_broadcast(ch, (argument + i), LISTEN_SAY);
 
 		check_magic_doors(ch, argument + i);
@@ -648,11 +645,6 @@ void do_gcc(P_char ch, char *argument, int /*cmd*/)
 			else
 			{
 				send_to_char("Ok.\r\n", ch);
-			}
-
-			if (get_property("logs.chat.status", 0.000) && IS_PC(ch))
-			{
-				logit(LOG_CHAT, "%s gcc's '%s'", GET_NAME(ch), argument);
 			}
 		}
 
@@ -876,9 +868,6 @@ void do_project(P_char ch, char *argument, int /*cmd*/)
 			send_to_char("Ok.\r\n", ch);
 
 		write_to_pc_log(ch, Gbuf1, LOG_PRIVATE);
-
-		if (get_property("logs.chat.status", 0.000) && IS_PC(ch))
-			logit(LOG_CHAT, "%s projects '%s'", GET_NAME(ch), argument);
 	}
 
 	escape_act_dollars(escaped_text, sizeof(escaped_text), argument);
@@ -1178,10 +1167,6 @@ void do_tell(P_char ch, char *argument, int /*cmd*/)
 				    TO_CHAR);
 			if (!CAN_SEE(vict, ch))
 				act("&+L$E cannot see you..&n", FALSE, ch, 0, vict, TO_CHAR);
-
-			if (get_property("logs.chat.status", 0.000) && IS_PC(ch) && IS_PC(vict))
-				logit(LOG_CHAT, "%s tells %s '%s'", GET_NAME(ch), GET_NAME(vict),
-				      message);
 		}
 
 		const std::string permitted_text = language_CRYPT(ch, vict, message);
@@ -1286,9 +1271,6 @@ void do_whisper(P_char ch, char *argument, int /*cmd*/)
 		else
 			send_to_char("Ok.\r\n", ch);
 
-		if (get_property("logs.chat.status", 0.000) && IS_PC(ch) && IS_PC(vict))
-			logit(LOG_CHAT, "%s whispers to %s '%s'", GET_NAME(ch), GET_NAME(vict),
-			      message);
 		if (IS_ILLITHID(ch) || IS_PILLITHID(ch))
 		{
 			escape_act_dollars(escaped_text, sizeof(escaped_text), message);
@@ -1377,9 +1359,6 @@ void do_ask(P_char ch, char *argument, int /*cmd*/)
 		}
 		else
 			send_to_char("Ok.\r\n", ch);
-
-		if (get_property("logs.chat.status", 0.000) && IS_PC(ch) && IS_PC(vict))
-			logit(LOG_CHAT, "%s asks %s '%s'", GET_NAME(ch), GET_NAME(vict), message);
 
 		if (IS_ILLITHID(ch) || IS_PILLITHID(ch))
 		{
@@ -2067,9 +2046,6 @@ void do_yell(P_char ch, char *argument, int /*cmd*/)
 		else
 			send_to_char("Ok.\r\n", ch);
 
-		if (get_property("logs.chat.status", 0.000) && IS_PC(ch))
-			logit(LOG_CHAT, "%s shouts '%s'", GET_NAME(ch), argument);
-
 		/* Load buffer with shout message */
 		/* Send the message to everyone in the zone */
 		for (i = descriptor_list; i; i = i->next)
@@ -2237,10 +2213,6 @@ void do_beep(P_char ch, char *argument, int /*cmd*/)
 			if (!CAN_SEE(vict, ch))
 			{
 				act("&+L$E cannot see you..&n", FALSE, ch, 0, vict, TO_CHAR);
-			}
-			if (get_property("logs.chat.status", 0.000) && IS_PC(ch) && IS_PC(vict))
-			{
-				logit(LOG_CHAT, "%s beeps %s.", J_NAME(ch), J_NAME(vict));
 			}
 		}
 

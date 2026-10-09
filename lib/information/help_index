@@ -51,6 +51,18 @@ The help entry under THAC0 further explains this hit/miss system.
 See also: THAC0
 
 #
+ACC (Command)
+===========================================================================
+Syntax:         acc <message>
+
+Alliance chat: talks to the members of your guild and of the guild it is
+allied with. Only full members can use it. In a guild with no alliance,
+acc is the same as guild chat (gcc). "toggle acc" turns the channel off
+or back on.
+===========================================================================
+See also: GCC, GUILD, TOGGLE, CHANNELS
+
+#
 "ACCELERATED HEALING" (Spell)
 ===========================================================================
 Area of effect:	<victim>
@@ -1215,6 +1227,18 @@ If you start as a Shaman, you will memorize spells, but you will no longer
 need totems, for ANY of your spells.
 ===========================================================================
 See Also: SHAMAN, DRUID, MULTI-CLASS, TOTEM, COMMUNE, MEMORIZE
+
+#
+BEEP (Command)
+===========================================================================
+Syntax:         beep <player>
+
+Makes another player's terminal beep, to get their attention without a
+word. It reaches a player of your own racewar side. Both of you need beep
+on ("toggle beep"), unless the other player has consented to you, and it
+does not reach someone asleep, deaf, underwater or ignoring you.
+===========================================================================
+See also: TELL, CONSENT, TOGGLE, CHANNELS
 
 #
 BERSERK (Skill)
@@ -2513,24 +2537,36 @@ Type 'commune' for a list of spells that are being regenerated back.
 See also: DRUID, TERRAIN
 
 #
-COMMUNICATIONS UTILITIES (General Information)
+COMMUNICATIONS UTILITIES CHANNELS (General Information)
 ===========================================================================
-The following is a list of all help available dealing with DurisMud
-communications and utilities. An asterisk beside an entry indicates that
-there is more help available at that entry. Type "help <entry>" for more
-information.
+The ways to talk to other players, from the closest to the widest reach.
+Type "help <entry>" for more on each one, and "help toggle" to turn a
+channel off or back on.
 
-Example: "help toggle" will bring up an explanation of the "toggle"
-command, a list of all toggling options, and how to obtain further help on
-each one.
+  Command        Who hears it                               Help
+  say  '         everyone in your room                      SAY
+  emote  :       everyone in your room                      EMOTE
+  whisper, ask   one person in your room                    SAY
+  tell, reply    one person, anywhere                       SAY
+  project        one person, by thought                     PROJECT
+  beep           one person on your side (no words)         BEEP
+  gsay           your group                                 GSAY
+  gcc            your guild                                 GCC
+  acc            your guild and its allies                  ACC
+  nchat          your racewar side: questions and help      NCHAT
+  jchat          your racewar side: general chat            JCHAT
+  shout          your zone, or nearby on the world map      SHOUT
+  petition       the gods                                   PETITION
 
-  BUG IDEA TYPO         CONSENT                DISPLAY
-  EMOTE :               GSAY                   IGNORE
-  LANGUAGES             PASSWORD               PETITION
-  READ                  BOARD                  DELETE REPEAT
-  SHOUT                 SCORE ATTRIBUTES       SAY TELL WHISPER ASK '
-  TOGGLE                WRITE                  
+What is logged: what players say to each other is not written to the
+game's logs, on any of these channels. Three things are: petitions, which
+go to the gods; the newbie channel, which the staff read to make the game
+better for new players; and what the gods do.
+
+Other utilities: BUG IDEA TYPO, CONSENT, DISPLAY, IGNORE, LANGUAGES,
+PASSWORD, READ, BOARD, DELETE REPEAT, SCORE ATTRIBUTES, TOGGLE, WRITE
 ===========================================================================
+See also: TOGGLE, IGNORE, INDEX
 
 #
 CONCEALMENT (Spell)
@@ -8521,6 +8557,19 @@ For a list of iouns, type "arti ioun".
 See also: ARTIFACT, UNIQUE, FEEDING
 
 #
+JCHAT (Command)
+===========================================================================
+Syntax:         jchat <message>
+                jc <message>
+
+The general chat channel of your racewar side. It reaches everyone on
+your side who has the channel on, wherever they are. Everyone starts with
+it on; "toggle jchat" turns it off or back on. For questions about how
+the game works, the newbie channel (nchat) is the place to ask.
+===========================================================================
+See also: NCHAT, TOGGLE, CHANNELS
+
+#
 JUDGEMENT (Spell)
 ===========================================================================
 Area of effect: <room>
@@ -10379,20 +10428,22 @@ less inside) and increases healing power with levels.
 See also: TERRAIN
 
 #
-NCHAT
+NCHAT (Command)
 ===========================================================================
-Syntax:        nchat hi there
+Syntax:        nchat <message>
+               nc <message>
 
-This is a communications channel for new players to the game to talk to
-others on their own racewar side at lower levels. It can also be used as a
-means to gain information and help in regard to the game. 
+The newbie channel: a place for new players to ask how the game works,
+and for experienced players to answer. It reaches everyone on your own
+racewar side who has the channel on. Every new character starts with it
+on, and "toggle nchat" turns it off or back on at any level. Illithids
+cannot use it.
 
-This channel will remain open to you only until you reach a certain level.
-However there will be a set of higher level, more experienced players
-within the game that have special access to this channel who will provide 
-assistance and help where they are able. 
+Repeating the same message too often loses the channel for a while. The
+newbie channel is logged, so the staff can read it to make the game
+better for new players.
 ===========================================================================
-See also: NEWBIE, TOGGLE_NCHAT
+See also: NEWBIE, TOGGLE_NCHAT, JCHAT, CHANNELS
 
 #
 NECROLYTE (Specialization)
@@ -13766,13 +13817,13 @@ SHOUT (Command)
 Syntax:         shout <text>
                 toggle shout
 
-"Shout" sends a message to all players within a certain range of you. If 
-you are in a zone, the message will only be heard by those in that  
-particular zone. If you are on the world map, the message will only be  
-heard by those on that particular continent. In order to hear shouts, you 
-must be conscious and have shout toggled on.
+"Shout" sends a message to the players around you. In a zone, everyone in
+that zone hears it; indoors, only those in the same room do. On the world
+map it carries a set distance, a little farther for a larger shouter.
+Players of every racewar side hear a shout, in the shouter's language. In
+order to hear shouts, you must be conscious and have shout toggled on.
 ===========================================================================
-See also: TOGGLE_SHOUT
+See also: TOGGLE_SHOUT, CHANNELS
 
 #
 SHREWTAMENESS (Spell)

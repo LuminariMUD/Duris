@@ -6,7 +6,8 @@ thread, before the command ran: a busy disk held the loop for as long as it held
 write (136 ms traced in one). The real cmdlog(), write_cmdlog() and crash handler run
 here: nothing is written while the server runs, and an exit, a fault, an abort(), a sent
 signal and an overflowed stack each leave the last commands in the file, with the
-signal's own exit status.
+signal's own exit status. A conversation command keeps its word and loses its text
+(ADR 0003).
 """
 from pathlib import Path
 import subprocess
@@ -18,6 +19,7 @@ debug = source("debug.c").read_text()
 ring = debug[debug.index("// The last CMDLOG_LINES"):debug.index("void do_debug(")]
 
 HARNESS = r'''
+#include "cmd/interp.h"
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "core/utils.h"
@@ -41,13 +43,20 @@ void fatal_boot_error(const char *, const char *, ...) { abort(); }
 static room_data rooms[1];
 P_room world = rooms;
 uint logcount = 0;
+const char *command[] = { "\n" };
+// The interpreter's lookup, for the two words the cases type.
+int old_search_block(const char *argument, uint begin, uint length, const char **, int)
+{
+    const std::string word(argument + begin, length);
+    return word == "say" ? CMD_SAY : word == "tell" ? CMD_TELL : 0;
+}
 ''' + ring + r'''
 #include "core/signals.c"
 
 static char_data player;
 static char name[] = "Tanen";
 
-static void command(const std::string &text)
+static void type(const std::string &text)
 {
     std::string copy = text;
     cmdlog(&player, copy.data());
@@ -80,7 +89,7 @@ template <typename Scenario> static int child(int commands, Scenario scenario)
         init_cmdlog();
         signal_setup();
         for (int number = 1; number <= commands; ++number)
-            command("say " + std::to_string(number));
+            type("look " + std::to_string(number));
         // Nothing reaches the file while the server runs.
         if (access("logs/log/cmd.debug", F_OK) == 0)
             _exit(99);
@@ -105,18 +114,36 @@ int main(int argc, char **argv)
     assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
     std::vector<std::string> written = lines();
     assert(written.size() == 3);
-    assert(written[0].find(":: [1] Tanen in 1200: say 1") != std::string::npos);
-    assert(written[2].find(":: [3] Tanen in 1200: say 3") != std::string::npos);
+    assert(written[0].find(":: [1] Tanen in 1200: look 1") != std::string::npos);
+    assert(written[2].find(":: [3] Tanen in 1200: look 3") != std::string::npos);
 
     // The file holds the last 500, oldest first; a long command is cut and ends its line.
-    status = child(619, [] { command("say " + std::string(1000, 'x')); });
+    status = child(619, [] { type("look " + std::string(1000, 'x')); });
     assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
     written = lines();
     assert(written.size() == 500);
-    assert(written[0].find(":: [121] Tanen in 1200: say 121") != std::string::npos);
-    assert(written[498].find(":: [619] Tanen in 1200: say 619") != std::string::npos);
-    assert(written[499].find(":: [620] Tanen in 1200: say xxx") != std::string::npos);
+    assert(written[0].find(":: [121] Tanen in 1200: look 121") != std::string::npos);
+    assert(written[498].find(":: [619] Tanen in 1200: look 619") != std::string::npos);
+    assert(written[499].find(":: [620] Tanen in 1200: look xxx") != std::string::npos);
     assert(written[499].size() == 254);
+
+    // Conversation keeps its command word and loses its text; "'" is say with the text
+    // glued on. Other commands are kept whole.
+    status = child(0, [] {
+        type("say a secret");
+        type("'a secret");
+        type("  tell Bob a secret");
+        type("look at the secret");
+    });
+    assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+    written = lines();
+    assert(written.size() == 4);
+    assert(written[0].find(": say <text withheld>") != std::string::npos);
+    assert(written[1].find(": ' <text withheld>") != std::string::npos);
+    assert(written[2].find(":   tell <text withheld>") != std::string::npos);
+    assert(written[3].find(": look at the secret") != std::string::npos);
+    for (int i = 0; i < 3; ++i)
+        assert(written[i].find("secret") == std::string::npos);
 
     // A crash writes them and dies of its own signal: a fault, an abort(), a signal that
     // was sent, and a stack that overflowed.

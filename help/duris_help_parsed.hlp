@@ -4669,24 +4669,6 @@ Ranger
 Terrain
 #0
 
-Communications
-Communications - Last Edited: 2007-04-19 19:17:10 by Unknown
-============================================================
-The following is a list of all help available dealing with DurisMud
-communications and utilities. An asterisk beside an entry indicates that
-there is more help available at that entry. Type "help <entry>" for more
-information.
-Example: "help toggle" will bring up an explanation of the "toggle"
-command, a list of all toggling options, and how to obtain further help on
-each one.
-  BUG IDEA TYPO         CONSENT                DISPLAY
-  EMOTE :               GSAY                   IGNORE
-  LANGUAGES             PASSWORD               PETITION
-  READ                  BOARD                  DELETE REPEAT
-  SHOUT                 SCORE ATTRIBUTES       SAY TELL WHISPER ASK "
-  TOGGLE                WRITE
-#0
-
 Concealment
 Concealment - Last Edited: 2017-09-19 01:00:17 by lohrr
 =======================================================
@@ -15649,20 +15631,6 @@ Hometowns
 Minotaur
 #0
 
-Nchat
-Nchat - Last Edited: 2013-04-17 20:42:50 by targ
-================================================
-Syntax:        nchat
-               nc
-This is a communications channel for players to talk to others
-on their own racewar side. It can also be used as a means to
-gain information and help in regard to the game.
-==See Also==
-Newbie, Toggle, Toggle Nchat
-The following help topics also matched your search:
- Toggle nchat
-#0
-
 Neckbite
 Neckbite - Last Edited: 2007-04-22 22:12:53 by Unknown
 ======================================================
@@ -21011,23 +20979,6 @@ To some people, murdering the keeper in the prospect of obtaining the entire inv
 capable men and women who are roughened by years of trading and surviving in a harsh world.  Killing them may not be as easy as it looks!
 ==See also==
 Buy, Sell, List, Value, Peruse
-#0
-
-Shout
-Shout - Last Edited: 2007-04-19 19:17:15 by Unknown
-===================================================
-Syntax:         shout <text>
-                toggle shout
-"Shout" sends a message to all players within a certain range of you. If
-you are in a zone, the message will only be heard by those in that
-particular zone. If you are on the world map, the message will only be
-heard by those on that particular continent. In order to hear shouts, you
-must be conscious and have shout toggled on.
-==See also==
-toggleshout, gsay, project
-The following help topics also matched your search:
- Godgshout
- Toggleshout
 #0
 
 Shove

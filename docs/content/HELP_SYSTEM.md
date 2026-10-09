@@ -129,6 +129,14 @@ lib/information/*          help/                      database
 - Command attribute changes go in
   `docs/lib/information/command_attributes.txt` and require a server restart
   (loaded once at boot).
+- The channels overview, `COMMUNICATIONS UTILITIES CHANNELS` in `help_index`
+  (`help channels`), lists every way players talk and says what is logged. That
+  is the rule of
+  [ADR 0003](../adr/0003-player-privacy-chat-snoop-addresses.md); change the
+  entry with the rule, and add a new channel to it. The overview, `NCHAT` and
+  `SHOUT` are in `help_index` only: the older `Communications`, `Nchat` and
+  `Shout` copies in `duris_help_parsed.hlp`, which won over them at import, were
+  removed on 2026-10-09.
 
 ## Related
 

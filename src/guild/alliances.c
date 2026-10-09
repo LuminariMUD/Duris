@@ -472,10 +472,6 @@ void do_acc(P_char ch, char *argument, int cmd)
 			}
 		}
 
-		if (get_property("logs.chat.status", 0.000) && IS_PC(ch))
-		{
-			logit(LOG_CHAT, "%s acc's '%s'", GET_NAME(ch), argument);
-		}
 		for (i = descriptor_list; i; i = i->next)
 		{
 			if (!(to_ch = i->character))

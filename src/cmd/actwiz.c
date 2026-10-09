@@ -660,9 +660,6 @@ void do_emote(P_char ch, char *argument, int /*cmd*/)
 		}
 		else
 			send_to_char("Ok.\n", ch);
-
-		if (get_property("logs.chat.status", 0.000) && IS_PC(ch))
-			logit(LOG_CHAT, "%s emotes '%s'", GET_NAME(ch), argument + i);
 	}
 }
 
@@ -4275,11 +4272,6 @@ void do_jestros(P_char ch, char *argument, int /*cmd*/)
 			     evil   ? "evil" :
 			     undead ? "undead" :
 				      "neutral");
-
-	if (get_property("logs.chat.status", 0.000))
-	{
-		logit(LOG_CHAT, "%s jchat (%s) '%s'", GET_NAME(ch), Gbuf2, argument);
-	}
 }
 
 void do_wizmsg(P_char ch, char *arg, int /*cmd*/)
