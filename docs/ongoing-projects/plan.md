@@ -1,12 +1,13 @@
-# Plan: the 2026-10-09 log review's fixes and seven test-quality additions
+# Plan: the 2026-10-09 log review's fixes, seven test-quality additions and MariaDB 11.8
 
 Written 2026-10-09 against `master` at `24e7d3fba`. It holds the open work of two working
 notes it replaces: the 2026-10-09 log review (Part 1, items 1 to 9) and the test-quality
 proposals (Part 2, items 10 to 16). Both notes were deleted when their work was written here;
 their last versions are at `24e7d3fba`, where
 `docs/ongoing-projects/log-review-2026-10-09.md` also records what the review read and what
-it found expected or benign. Each item holds the problem, the evidence, the change and when
-it is done. The order and the decisions are proposed; the owner locks or changes them before
+it found expected or benign. Part 3 (item 17) was added the same day: the staging host's
+upgrade to MariaDB 11.8, found during the tick and boot investigation, stops a new database
+from being built. Each item holds the problem, the evidence, the change and when it is done. The order and the decisions are proposed; the owner locks or changes them before
 the first item starts. This file is a working note: delete it when the last item lands.
 
 Kept apart, in their own working notes:
@@ -47,6 +48,12 @@ Part 2, test quality:
 | 15 | Mutation testing, by hand | none | Proposed |
 | 16 | Line coverage, on demand | none (by hand) | Proposed |
 
+Part 3, database engine support:
+
+| # | Item | Severity | State |
+|---|---|---|---|
+| 17 | A new database cannot be built on MariaDB 11.8: migrations 0031 and 0032 know only MariaDB 10.11 and MySQL 8.0 | Medium | Open |
+
 ## Order (proposed)
 
 The two parts touch different files and can go side by side.
@@ -56,6 +63,9 @@ The two parts touch different files and can go side by side.
 - **Part 2:** 10, 11 and 14 first, because they are cheap and address the breakages already
   seen; then 13; then 12 and 15, which look for bugs nobody has reported. 16 depends on
   nothing and can land at any point. 12 uses 11's shared stubs, so 11 comes first.
+- **Part 3:** 17 touches only the migration runner, the manifest, two new verifier files and
+  a test leg, so it can go beside either part. It has to land before a database is next built
+  on staging, and before production moves to Ubuntu 26.04.
 
 ## Decisions
 
@@ -69,6 +79,7 @@ Items 8 and 9 were decided by the owner on 2026-10-09 in ADR 0003. The rest are 
 | 4 | Item 13's hook refuses a commit with a new finding on a changed line, as the format hook does. | 13 |
 | 5 | Item 12's long runs are by hand; no scheduled workflow. | 12 |
 | 6 | Item 16 runs only when a developer asks for it, and its percentage is never a target. | 16 |
+| 7 | MariaDB 11.8 becomes a supported engine beside MariaDB 10.11 and MySQL 8.0, and the sealed files of 0031 and 0032 stay as they are, so no existing history changes. | 17 |
 
 ---
 
@@ -500,3 +511,69 @@ to `docs/guides/TESTING.md`: the command, where the report lands, and what it ca
 
 **Done when** `make coverage` on a clean checkout produces the report with no other step,
 both checks show counts, and `TESTING.md` says how to run it.
+
+---
+
+## Part 3: database engine support
+
+### 17. A new database cannot be built on MariaDB 11.8
+
+**Problem.** The staging host moved to Ubuntu 26.04 on 2026-10-09, and its MariaDB went from
+10.11 to 11.8.6. Migrations 0031 (`economy_accounting`) and 0032 (`economic_baseline`) verify
+by hashing their tables' metadata (columns, indexes, foreign keys, checks) against one
+fingerprint per engine. They know only MariaDB 10.11 and MySQL 8.0, and on any other version
+they stop with `unsupported database engine for accounting schema` (or `... for baseline
+retention schema`) (`migrations/immutable/0031_economy_accounting.sh` L26-34, and the same
+lines of `0032_economic_baseline.sh`). A database built from scratch on staging on
+2026-10-09 got through 0001 to 0030 and failed at 0031. Migrations 0033 to 0036 have not run
+on 11.8 yet. No other verifier checks the version.
+
+Existing databases are not affected. The runner runs a migration's verifier only when it
+applies that migration (`run_pending()`, `scripts/migration_runner.py` L273-282). Staging's
+live database was migrated under 10.11, and on 11.8 it boots and passes the server's schema
+checks (the boot of 13:04 that day). What breaks is building a database: rebuilding staging's,
+a new development database on a current Ubuntu, or production after the same OS upgrade. The
+gate does not see it, because its containers and `compose.yaml` pin `mariadb:10.11`
+(`tests/async/with_disposable_mariadb.sh`), and the documentation names MySQL 8.0 and MariaDB
+10.11 as the supported engines (`docs/reference/DATABASE.md` L145-146,
+`docs/persistence/IMMUTABLE_MIGRATIONS.md`, `docs/guides/TESTING.md`).
+
+**Why the verifiers cannot simply be edited.** They are sealed. `mud_schema_history` keeps
+each applied migration's verifier checksum. The runner refuses a database whose history
+differs from the manifest (`validate_applied_prefix()`, L247: "applied migration history was
+edited or reordered"), and the server compares the history checksum at every boot
+(`src/sql/sql.c` L1618-1636, `COMPAT-E002`). Adding an 11.8 branch to `0031_*.sh` or
+`0032_*.sh` would change their checksums and lock out every existing database. The manifest
+version and the runner version (both 1) are recorded in existing databases too, so neither
+can change either.
+
+**Also on staging.** Staging's MariaDB runs as a private instance with its own data
+directory, and that directory still records `10.11.14-MariaDB` in `mysql_upgrade_info`:
+`mariadb-upgrade` has not run against it. Ubuntu's package upgrades only the system
+instance. The unit failed to start from 12:35 to 13:03 during the upgrade (`Fatal error in
+defaults handling`, then a start timeout) and has run since 13:03:57.
+
+**The change.**
+
+1. Support MariaDB 11.8 (decision 7).
+2. Give 0031 and 0032 an 11.8 check without touching their sealed files. Add one verifier
+   per migration (for example `immutable/0031_economy_accounting.mariadb-11.8.sh`) with the
+   same metadata query and an 11.8 fingerprint, list it in the manifest with its own
+   checksum, and have the runner run it in place of the sealed verifier only when the server
+   reports MariaDB 11.8. The history row keeps the sealed verifier's checksum, so a history
+   is the same on every engine. Measure the fingerprints on a `mariadb:11.8` container from a
+   fresh bootstrap.
+3. Run all 36 migrations on 11.8, and fix any later verifier that fails the same way.
+4. Add an 11.8 leg: `RUNTIME_DB_IMAGE=mariadb:11.8 tests/async/run_runtime_compatibility_mysql.sh`,
+   which takes the image as a variable, plus a regression test that a fresh bootstrap through
+   the runner reaches the head on 11.8, and that the runner still refuses an edited history.
+5. Update the support statements in `DATABASE.md`, `IMMUTABLE_MIGRATIONS.md` and
+   `TESTING.md`.
+6. On staging, back up the database, then run `mariadb-upgrade` against the private instance
+   (its socket and `~/.config/duris-mariadb/my.cnf`), and check that `mysql_upgrade_info`
+   reads 11.8.
+
+**Done when** a fresh database reaches the head through `scripts/migration_runner.py` on
+MariaDB 11.8, MariaDB 10.11 and MySQL 8.0 with the same history checksum; staging's existing
+database still passes the runner and boots; the 11.8 leg and the regression test run; the
+documents name the three engines; and staging's `mysql_upgrade_info` reads 11.8.
