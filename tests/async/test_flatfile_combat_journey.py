@@ -42,19 +42,40 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+_port_lock = None
+_reserved_ports: set[int] = set()
+
+
 def available_ports() -> tuple[int, int, int]:
-    """Reserve a non-privileged plain/TLS/WebSocket port set."""
+    """Reserve a non-privileged plain/TLS/WebSocket port set.
+
+    The server binds the set only after its boot, so a free probe alone races every
+    other journey picking ports meanwhile, in this gate or another one beside it. The
+    set is also locked in a shared file until this process exits, and other journeys
+    skip a locked port.
+    """
+    global _port_lock
+    if _port_lock is None:
+        _port_lock = open(os.path.join(tempfile.gettempdir(), "duris-test-ports.lock"), "a")
     for _ in range(200):
+        # Below the kernel's ephemeral range, which outgoing connections and
+        # Docker's published ports draw from while the server is still booting.
+        plain = random.randrange(20000, 32000)
+        if _reserved_ports & {plain, plain + 1, plain + 2}:
+            continue
+        try:
+            fcntl.lockf(_port_lock, fcntl.LOCK_EX | fcntl.LOCK_NB, 3, plain)
+        except OSError:
+            continue
         probes = [socket.socket() for _ in range(3)]
         try:
-            # Below the kernel's ephemeral range, which outgoing connections and
-            # Docker's published ports draw from while the server is still booting.
-            plain = random.randrange(20000, 32000)
             probes[0].bind(("127.0.0.1", plain))
             probes[1].bind(("127.0.0.1", plain + 1))
             probes[2].bind(("127.0.0.1", plain + 2))
+            _reserved_ports.update((plain, plain + 1, plain + 2))
             return plain, plain + 1, plain + 2
         except OSError:
+            fcntl.lockf(_port_lock, fcntl.LOCK_UN, 3, plain)
             continue
         finally:
             for probe in probes:
