@@ -82,7 +82,8 @@ work is not in this plan:
 
 Decisions 5, 7, 9 and 10 were locked by the owner on 2026-10-08 as written below; Phases 8
 and 9 have nothing left to decide. Decisions 5 and 7 were rewritten the same day for the move
-to GitHub. Decisions 1 to 4, 6, 8 and 11 are still proposed.
+to GitHub. Decisions 1 to 4, 6, 8 and 11 were proposed and were taken as written when the
+work was done (2026-10-08); each phase's section says where the work differs.
 
 | # | Decision | Where |
 |---|---|---|
@@ -95,7 +96,7 @@ to GitHub. Decisions 1 to 4, 6, 8 and 11 are still proposed.
 | 7 | The site is published by the existing `Project website` workflow, with the repository's GitHub Pages source set to GitHub Actions, at `https://luminarimud.github.io/Duris/`. The site's repository default is `LuminariMUD/Duris`. The README's documentation link goes to that site; its build and last-commit badges and its commit link go to `LuminariMUD/Duris`; the issues badge and link go, since work is not tracked in issues. | Phase 6 |
 | 8 | The two display fixes are taken from the community tree with the author kept where a commit applies, adapted otherwise. | Phase 7 |
 | 9 | The vnums `specs.assign.c` names are checked by a source contract against the area files `areas/AREA` lists, not at run time: the 121 assignments to vnums no longer in the world are deleted, and the test fails the gate when a new one appears or an area leaves the list. The `0` lookups keep returning 0 on a miss; about sixty callers outside `specs.assign.c` compare their result against 0. | Phase 8 |
-| 10 | The nineteen explicit `board` assignments in `specs.assign.c` go; `initialize_boards()` assigns the special to every table row itself. 55197, the discussion board loaded into Winterhaven's Immortal Control Room, gets a `board_info` row at AVATAR for read, write and remove, file `lib/boards/winterhaven`. 87 and 55026 are loaded by no zone and stay plain objects. Room 1196 keeps the necklace; the zone comment that still calls it a board is corrected. | Phase 9 |
+| 10 | The nineteen explicit `board` assignments in `specs.assign.c` go; `initialize_boards()` assigns the special to every table row itself. 55197, the discussion board loaded into Winterhaven's Immortal Control Room, gets a `board_info` row at AVATAR for read, write and remove, file `lib/boards/winterhaven`. 87 and 55026 are loaded by no zone and stay plain objects. 42, the board of IDEAS that `heavens.zon` loads into room 1196, gets a row at AVATAR for read, write and remove, file `lib/boards/ideas`. (Corrected in review round 1: this first kept a "necklace" in room 1196, read from `areas/obj/dalvik.obj`, an area `areas/AREA` does not list.) | Phase 9 |
 | 11 | The phases are done in the order below. | All |
 
 ## Order
@@ -1294,6 +1295,127 @@ and L2392); 70501→ship_shop_proc (L2391); 8010→pet_shops (L2435); 8211→dum
 
 ## Phase 9: six `board` specials without a table row, and the audit's heading
 
+**Built** on `fix/4-phase-9-boards` (stacked on Phase 8), 2026-10-08:
+
+- `c71b92689` (a defect found on the way, its own commit): `initialize_boards()` leaves a
+  row's rnum at -1 when the world lacks its object, and `find_board()` indexed
+  `obj_index[]` with it for every row before the board in the room. The full world has all
+  44 objects; the minimal world has 13, so a board listed after a missing row (the code
+  board 29) read `obj_index[-1]`. `find_board()` skips such rows;
+  `tests/async/test_board_lookup.py` runs it under ASan and UBSan, a heap-buffer-overflow
+  without the guard.
+- `a4ca22408`: the eighteen live `board` lines in `specs.assign.c` are deleted; 55197 gets
+  `{ 55197, AVATAR, AVATAR, AVATAR, "lib/boards/winterhaven", 0 }` and `NUM_OF_BOARDS` is
+  45; `test_spec_assign_vnums.py` fails when `specs.assign.c` assigns `board` again.
+- `65968e748`: `areas/zon/heavens.zon` calls object 42 "a dazzling pearl necklace" (wrong,
+  undone in review round 1); the audit prints `== Orphan payload rows (not a loss: the load
+  takes them, the next save claims them) ==`.
+- `2a05cb23f` (a defect found on the way, its own commit): `boot_db()` initializes the
+  boards in the full world, and `board()` initialized them again on the first board
+  command through a static flag, zeroing `msg_storage[]` and the headings without freeing
+  them and reading every board file again. With the table the only source of the special,
+  `board()` runs only after the boot initialization, so the lazy call is gone.
+- In the local dev server (full world, `duris_dev`), copyovered onto this build: the boot
+  logged `Initializing boards..`; Veridian (level 62) went to 55612, `look board` showed
+  the empty Winterhaven board, `write board ...` and `/s` posted message 1, `read 1`
+  showed it, `remove 1` removed it, and `logs/log/board` was never created.
+
+**What differs from the plan, and why.**
+
+- Eighteen explicit lines, not nineteen: the plan's range L1761-1776 holds sixteen, plus
+  L2102 and L2103; the nineteenth `= board;` (35970) is inside a comment block.
+- A `--minimal` boot does not initialize the boards (`boot_db()` skips it there), so with
+  the explicit lines gone no object in the minimal world has the special. That world loads
+  no board; a board a god loads there by hand is now a plain object, where before it
+  worked after a lazy initialization that logged 31 missing boards.
+- The two defects above were not in the plan; both sit on the path this phase changes.
+- `2fcc73f4e`: the zone comment changes `heavens.zon`'s hash in
+  `migrations/seeds/epic_zone_payouts.json`, which `test_epic_zone_seed.py` compares;
+  `scripts/epic_zone_seed.py write` changed only that hash.
+- `b683d9eb0` fixes a second race in `run_telemetry_schema_boot_journey.py`: it reads the
+  outage ledger right after killing the server, and a kill during the writer's publication
+  leaves `outages.pending`, which `outage.py` refuses to read (exit 2) until the next
+  producer recovers it. The gate's failure printed no reason (the refusal went to the
+  captured stdout); the journey now accepts that one refusal after the kill and prints any
+  other, and the leg passed seven runs in a row on this build. `master` took the same
+  change as `70418a562` at #9 and #10's landing, and `cb23b36fd` then rewrote those lines,
+  so `918612472` reverts it here: the file is Phase 8's again, and `master`'s version
+  reaches this branch through Phase 8 or at the landing without a conflict. The
+  `telemetry_schema_boot` leg passed on `918612472`.
+
+**Gate** on `2a05cb23f`: `./scripts/format.sh --all --check` clean, `make test-all -j16
+TEST_JOBS=16` 680 passed, 1 failed (`test_epic_zone_seed.py`, fixed by `2fcc73f4e` and then
+passing), `make test-db` 47 of 48 (`telemetry_schema_boot`, fixed by `b683d9eb0`). The full
+gate again on `6ae7e3f5f`, the head with both fixes: format check clean, `make test-all`
+681 passed, 0 failed, `make test-db` 48 of 48. Nothing is left.
+
+**Review round 1** (2026-10-09, PR #12's adversarial review of `ca2e5f9d5`, seven
+findings). Each finding was reproduced first, then fixed in its own commit:
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Object 42 is the Ideas Room's board, not a necklace (`areas/obj/dalvik.obj` is not in the world) | `28a19a882`: row `{ 42, AVATAR, AVATAR, AVATAR, "lib/boards/ideas", 0 }`, `NUM_OF_BOARDS` 46, zone comment and seed hash restored; `test_board_lookup.py` became `test_boards.py`, which checks every row against the world's board objects |
+| 2 | A message with no body kept the saving process's slot number | `988cab75f`: every loaded message gets a slot of its own |
+| 3 | `arg[71] = '\0'` could write past the 1024-byte command line | `c621738eb`: the format bounds the headline, `%.70s` |
+| 4 | A blank `write` leaked a message slot | `dba14e67d`: the headline is checked before `find_slot()` |
+| 5 | A save cut short stopped the next boot; the reset indexed `[-1]` and freed a pointer from the file | `932421560`: save via `<file>.tmp` and `rename()`, every write checked; a bad file resets its board and the boot goes on |
+| 6 | `find_board()` ignored the board it was called for; room 1213's second board was dead | `5eee1bc90`: `find_board(obj)`, a board answers only in the character's room; `b09b2f02e`: room 1213 loads only the feedback board, and the test fails on a room the zones give two boards |
+| 7 | The audit's skip-cap section said orphan rows refuse a login | `2b9b4ce78`: the section is gone |
+
+`65968e748`'s zone comment ("a dazzling pearl necklace") is undone by `28a19a882`; decision
+10 and this section's "Checked" and "Fix" are corrected. `find_board(obj)` alone could not
+revive room 1213's second board: `write`, `read <n>` and `remove <n>` name no board, so the
+first board in a room takes them. Removing the dead load keeps what room 1213 already
+showed.
+
+Live, on a throwaway copy of `duris_dev` in its own MariaDB container, booted from this
+round's build on port 4210 (the dev server was left alone):
+
+- Room 1196's board took a message and an aborted one.
+- Room 1213 showed only the feedback board.
+- A carried board in room 1214 gave its plain description.
+- After a clean stop and a reboot, `read 2` said the aborted message "seems to be empty", and
+  both removes worked.
+- `logs/log/board` was never created.
+
+`docs/testing/REGRESSIONS.md` has a "Bulletin boards" section.
+
+**Gate** on `2b9b4ce78`, the round's last fix:
+
+- `./scripts/format.sh --all --check`: clean.
+- `make test-all -j16 TEST_JOBS=16`: 680 passed, 1 failed.
+- `make test-db`: 46 of 48.
+
+The machine was shared with three other sessions' gates (load average up to 49), and none
+of the three failures comes from this round:
+
+- `test_connection_limit_journey.py` was refused its first connection. "Entering game
+  loop." is printed before the listeners open; `master` fixes that in `47f5a06d6`.
+- `game_loop_budget` counted the shutdown's forced shop save; `master` fixes that in
+  `f3ba6bd2a`.
+- `world_capture` saw one pulse past 250 ms while the world took 53 s to boot.
+
+Both `master` fixes reach this branch with the merge of Phase 8's next head. Run alone,
+the connection-limit journey and `world_capture` passed (0 slow pulses, the world booted in
+7 s). `game_loop_budget` alone failed the same way (52 saves in the shutdown's pulse), and
+`master`'s version of the journey passed against this round's server (at most 16 saves in
+one pulse).
+
+**Catch-up** (2026-10-09): `8031e8593` merges Phase 8's round 1 head `6864ab279`
+(`backlog/phase-8-review-1`). That head carries `master` through Phase 7, `47f5a06d6` and
+`f3ba6bd2a` included. Only the Status table and the Landing section conflicted, and Phase
+8's side was kept.
+
+Gate on `8031e8593`:
+
+- `./scripts/format.sh --all --check`: clean.
+- `make test-all -j16 TEST_JOBS=16`: 683 passed, 0 failed.
+- `make test-db`: 47 of 48.
+
+The failed leg, `deletion`, chose a character for deletion while its link-loss save was
+being acknowledged, and got "Couldn't load that character!". `master` fixes the journey in
+`4133466af`, which reaches this branch with a later catch-up. Run alone, the leg passed.
+
 **Checked** at `f44291043`. `board_info[]` (`src/cmd/boards.c` L55-103, `NUM_OF_BOARDS` 44
 at L52) is what `find_board()` (L121) searches, so an object carrying the `board` special
 without a row makes `look`, `read`, `examine`, `write` or `remove` near it log
@@ -1301,9 +1423,10 @@ without a row makes `look`, `read`, `examine`, `write` or `remove` near it log
 vnums (L1761-1776, L2102, L2103); six of them, 76, 86, 87, 42, 55026 and 55197, have no row.
 `initialize_boards()` (L134) already assigns the special to every row (L162) and a board
 whose file does not exist yet loads quietly (`Board_load_board()` L519), so none of the
-nineteen lines is needed. Of the six, 42 is now "a dazzling pearl necklace"
-(`areas/obj/dalvik.obj` L549) that `areas/zon/heavens.zon` L182 still loads into room 1196
-"The Ideas Room" under the comment `* The board of IDEAS`; 55197 "a discussion board"
+nineteen lines is needed. Of the six, 42 is "The board of IDEAS" (`areas/obj/heavens.obj`
+L482) that `areas/zon/heavens.zon` L182 loads into room 1196 "The Ideas Room" (this first
+read a pearl necklace from `areas/obj/dalvik.obj`, which is not in the world; corrected in
+review round 1); 55197 "a discussion board"
 (`areas/obj/wh.obj` L2590) is loaded by `areas/zon/wh.zon` L559 into room 55612, the Immortal
 Control Room of Winterhaven; 76, 86, 87 and 55026 are loaded by no zone command and held by
 no character. The staging run before the restart logged the line six times, the last six
@@ -1311,13 +1434,12 @@ seconds after a level-62 login. Separately, `scripts/item_ownership_audit.sh` L6
 prints `item loss: dropped at load, deleted at next save` over the orphan-payload count,
 which the header comment at L10-14 says is not a loss.
 
-**Fix.** By decision 10: delete the nineteen lines; add the 55197 row and raise
-`NUM_OF_BOARDS` to 45; correct the zone comment at `heavens.zon` L182; reword the echo to
-say what the header says.
+**Fix.** By decision 10: delete the nineteen lines; add the 55197 and 42 rows and raise
+`NUM_OF_BOARDS` to 46; reword the echo to say what the header says.
 
 **Steps.**
 
 1. The deletion and the row. `tests/async/test_spec_assign_vnums.py` gains a check that
    `specs.assign.c` assigns `board` nowhere, so the table stays the one owner. In a local
    boot a wizard reads and writes the Winterhaven board; `logs/log/board` stays empty.
-2. The zone comment and the echo. Gate.
+2. The echo. Gate.
