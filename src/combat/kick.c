@@ -16,6 +16,7 @@
 #include "core/structs.h"
 #include "net/comm.h"
 #include "core/utils.h"
+#include <iterator>
 #include <stdio.h>
 #include <string.h>
 
@@ -40,7 +41,6 @@ const char *att_kick_kill_ch[] = {
 	"You launch a mighty kick at $N's gills, killing $M.",
 	"Your kick at $N sends $M to the grave.",
 	"Your fierce kick sends $N flying through the air in a lifeless arc of death."
-	""
 };
 const char *att_kick_kill_victim[] = {
 	"$n crushes you beneath $s foot, killing you.",
@@ -63,7 +63,6 @@ const char *att_kick_kill_victim[] = {
 	"$n kicks you in the gills!  You cannot breath..... you die!.",
 	"$n sends you to the grave with a mighty kick.",
 	"$n's mighty kick stops your heart cold."
-	""
 };
 const char *att_kick_kill_room[] = {
 	"$n strikes $N in chest, shattering the ribs beneath $M.",
@@ -86,7 +85,6 @@ const char *att_kick_kill_room[] = {
 	"$n kicks $N in the gills, killing $M.",
 	"$n sends $N to the grave with a mighty kick.",
 	"$n's kick sends $N flying through the air in a lifeless heap."
-	""
 };
 const char *att_kick_miss_ch[] = { "$N steps back, and your kick misses $M.",
 				   "$N deftly blocks your kick with $S forearm.",
@@ -107,8 +105,7 @@ const char *att_kick_miss_ch[] = { "$N steps back, and your kick misses $M.",
 				   "Your kick bounces off $N's tough exoskeleton.",
 				   "$N deflects your kick with a fin.",
 				   "$N avoids your paltry attempt at a kick.",
-				   "$N floats deftly out of the way, avoiding your sweeping kick."
-				   "" };
+				   "$N floats deftly out of the way, avoiding your sweeping kick." };
 const char *att_kick_miss_victim[] = {
 	"$n misses you with $s clumsy kick at your chest.",
 	"You block $n's feeble kick with your arm.",
@@ -130,7 +127,6 @@ const char *att_kick_miss_victim[] = {
 	"$n tries to kick you, but you easily deflect $s blow with a fin.",
 	"You avoid $n's feeble attempt to kick you.",
 	"You float deftly out of the way, avoiding $n's feeble sweep."
-	""
 };
 
 const char *att_kick_miss_room[] = {
@@ -154,7 +150,6 @@ const char *att_kick_miss_room[] = {
 	"$n tries to kick $N, but is thwarted by a fin.",
 	"$N avoids $n's feeble kick.",
 	"$N floats deftly out of the way, avoiding $n's sweeping kick."
-	""
 };
 
 const char *att_kick_hit_ch[] = {
@@ -178,7 +173,6 @@ const char *att_kick_hit_ch[] = {
 	"Your mighty kick rearranges $N's scales.",
 	"You leap off the ground and crash into $N with a powerful kick.",
 	"Your solid kick sends $N reeling through the air."
-	""
 };
 
 const char *att_kick_hit_victim[] = {
@@ -198,10 +192,10 @@ const char *att_kick_hit_victim[] = {
 	"$n kicks you, and you go reeling through the air.",
 	"$n kicks you and your bones crumble.",
 	"$n hits you in the flank with a hefty roundhouse kick.",
+	"$n kicks you, cracking your exoskeleton.",
 	"$n ruins some of your scales with a well placed kick.",
 	"$n leaps off of the grand and crashes into you with $s kick.",
 	"$n's solid kick finds flesh as $e sends $N flying through the air."
-	""
 };
 
 const char *att_kick_hit_room[] = {
@@ -225,8 +219,16 @@ const char *att_kick_hit_room[] = {
 	"$n kicks $N hard, sending scales flying!",
 	"$n leaps up and nails $N with a mighty kick.",
 	"$n's fierce kick sends $N reeling through the air in pain."
-	""
 };
+
+// kick_messages() picks index 0 to 19 by the victim's race, in every array. The victim's
+// hit messages once lacked the insect line: each later race read the next one's message,
+// and the last read past the array.
+static_assert(std::size(att_kick_kill_ch) == 20 && std::size(att_kick_kill_victim) == 20 &&
+	      std::size(att_kick_kill_room) == 20 && std::size(att_kick_miss_ch) == 20 &&
+	      std::size(att_kick_miss_victim) == 20 && std::size(att_kick_miss_room) == 20 &&
+	      std::size(att_kick_hit_ch) == 20 && std::size(att_kick_hit_victim) == 20 &&
+	      std::size(att_kick_hit_room) == 20);
 
 void kick_messages(P_char /*ch*/, P_char victim, bool hit, struct damage_messages *messages)
 {

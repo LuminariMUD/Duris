@@ -458,6 +458,16 @@ The test feeds both clients an escape split across three reads through a socket 
 fails without the fix. Not covered: the copyover journey's own reader, which shares the
 method but is only exercised by its journey.
 
+## Kick messages for every race
+
+`kick_messages()` picks message 0 to 19 by the victim's race in nine arrays, and the
+victim's hit messages had 19: the insect line was missing, so each later race read the
+next race's message and the default race read past the array. A missing comma glued each
+array's last message to an unused `""`, which hid the count. clang-tidy's
+`bugprone-suspicious-missing-comma` found it. The line is back, the `""` entries are gone,
+and a `static_assert` in `src/combat/kick.c` holds all nine at 20; it fails to compile on
+the old arrays. Not covered: whether each message suits its race.
+
 ## Launcher: a service stop is recorded
 
 systemd stopped the launcher with the server (`KillMode=control-group`), so the launcher
