@@ -294,11 +294,10 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
     fi
   fi
 
-  # The last run's logs move into logs/old-logs/<date>/. An archive goes once it is
-  # 30 days old, since the logs hold players' addresses (ADR 0003), and the oldest of
-  # the rest go until the archive fits in DURIS_LOG_ARCHIVE_MB. The game opens
-  # logs/log/* with fopen(), which fails silently when the directory is missing;
-  # every logit() write would be dropped.
+  # The last run's logs move into logs/old-logs/<date>/, and the oldest of those
+  # go until the archive fits in DURIS_LOG_ARCHIVE_MB. The game opens logs/log/*
+  # with fopen(), which fails silently when the directory is missing; every
+  # logit() write would be dropped.
   mkdir -p logs/log logs/player-log "logs/old-logs/$DATESTR/player-log"
   find logs/log -mindepth 1 -maxdepth 1 ! -name .gitignore \
     -exec mv -t "logs/old-logs/$DATESTR" {} +
@@ -307,7 +306,6 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
   if [ -f logs/latency_trace.log ]; then
     mv logs/latency_trace.log "logs/old-logs/$DATESTR/"
   fi
-  find logs/old-logs -mindepth 1 -maxdepth 1 -type d -mtime +29 -exec rm -rf -- {} +
   mapfile -t OLD_LOGS < <(find logs/old-logs -mindepth 1 -maxdepth 1 -type d | sort)
   while (( ${#OLD_LOGS[@]} > 1 && $(du -sm logs/old-logs | cut -f1) > LOG_ARCHIVE_LIMIT_MB )); do
     rm -rf -- "${OLD_LOGS[0]}"

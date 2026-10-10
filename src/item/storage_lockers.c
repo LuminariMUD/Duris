@@ -39,6 +39,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <algorithm>
 #include <cerrno>
 #include <mysql/mysqld_error.h>
 #include <set>
