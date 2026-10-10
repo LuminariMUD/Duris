@@ -41,7 +41,7 @@ built at that branch's head.
 | 3 | `fix/14-mariadb-11.8` | 17 | Built |
 | 4 | `fix/14-boot-scan` | 19 | Built |
 | 5 | `fix/14-tick-spikes` | 18 | Built |
-| 6 | `fix/14-test-tools` | 10, 14, 16 | Not started |
+| 6 | `fix/14-test-tools` | 10, 14, 16 | Built |
 | 7 | `fix/14-test-stability` | 11 | Not started |
 | 8 | `fix/14-clang-tidy` | 13 | Not started |
 | 9 | `fix/14-fuzz` | 12 | Not started |
@@ -77,13 +77,13 @@ Part 2, test quality:
 
 | # | Item | Gate time | State |
 |---|---|---|---|
-| 10 | Prove a regression test fails without its fix | none | Proposed |
+| 10 | Prove a regression test fails without its fix | none | Built (PR 6) |
 | 11 | Make tests break only when behaviour breaks | same or less | Proposed |
 | 12 | Fuzz the code that reads outside input | one replay test | Proposed |
 | 13 | `clang-tidy` on changed lines | none (commit hook) | Proposed |
-| 14 | Keep a history of test runs | none | Proposed |
+| 14 | Keep a history of test runs | none | Built (PR 6) |
 | 15 | Mutation testing, by hand | none | Proposed |
-| 16 | Line coverage, on demand | none (by hand) | Proposed |
+| 16 | Line coverage, on demand | none (by hand) | Built (PR 6) |
 
 Part 3, database engine support:
 
@@ -473,6 +473,19 @@ commit, whose test passes. Add a paragraph to "Before a merge" in `docs/guides/T
 **Done when** the script exists, it reports both checks correctly, and `TESTING.md` says
 when to run it.
 
+**Built** (PR 6). `scripts/check_tests_catch.sh BASE [HEAD]` as described; it checks out
+`HEAD`'s version of every file the range changed under `tests/`, runs each test the range
+adds or changes on `BASE`'s sources, and says "catches" or "does not catch".
+
+- On `932421560` (a board file kept whole across a failed save) `test_boards.py` catches:
+  it fails on the parent.
+- On `28a19a882` (the board of IDEAS given back its `board_info[]` row) it does not catch:
+  the test checked that every row names a board, which cannot notice a row the fix restored.
+  That was a gap, not a refactor, so `test_boards.py` now asks for row 42 as well
+  (`940c53998`).
+- `TESTING.md`'s "Before a merge" says to run it on a fix's range and record the report in
+  the landing commit.
+
 ### 11. Make tests break only when behaviour breaks
 
 **Problem.** Three habits make tests fail when the server is fine. They are what usually
@@ -585,6 +598,22 @@ commit, whether the tree was dirty, and each test's path, status and seconds.
 **Done when** runs write the file, the report works on a week of runs, and `TESTING.md` says
 where the files are.
 
+**Built** (PR 6). `tests/run_regression_tests.py` writes
+`bin/test-history/<UTC time>-<short sha>.json` after every run (the commit, whether tracked
+files were dirty, the `--match` filter, and each test's path, status and seconds), and
+`scripts/test_history.py [--history DIR]` reports as described; a slowdown counts only for
+tests whose median is a second or more, because the ratio of tenths of a second is noise.
+
+- A week of runs does not exist yet: the history is local and new. The report was run on
+  the 67 `make test-all` runs GitHub Actions kept from 2026-10-08 (when the repository moved
+  there) to 2026-10-10, each log turned into a history file: no flaky test (no clean commit
+  ran twice), one slower test (`test_studioproc_duplicate_record.py`, 617 s against a
+  median of 340 s), and the twenty slowest, led by the three flat-file journeys that pass
+  the 900 s timeout on those runners.
+- That last finding was a bug: every journey hashed `/usr/local/lib` for its build key, and
+  GitHub's runner image keeps gigabytes there. `46ac05997` on `master` stops it.
+- `TESTING.md` says where the files are and what the report lists.
+
 ### 15. Mutation testing, by hand
 
 **Problem.** Nothing measures whether the tests catch bugs. A coverage number (item 16) says
@@ -650,6 +679,37 @@ to `docs/guides/TESTING.md`: the command, where the report lands, and what it ca
 
 **Done when** `make coverage` on a clean checkout produces the report with no other step,
 both checks show counts, and `TESTING.md` says how to run it.
+
+**Built** (PR 6). `make coverage` and `scripts/coverage.sh [--db] [COMMIT]` as described,
+with `scripts/coverage/g++`. Three things the first runs on `master` showed are fixed in the
+wrapper and the script:
+
+- **ccache.** Where ccache's `g++` links come first on `PATH` (as on this workstation), the
+  wrapper took ccache for the real compiler. ccache found the wrapper again on `PATH`, and
+  each round added the flags once more, until "Argument list too long". The wrapper now skips
+  ccache's directories.
+- **Warnings.** At `-O2` (the production profile `make test-all` builds), `--coverage`
+  provokes false array-bounds and null-dereference warnings in libstdc++, and `-Werror`
+  stopped the build before any test ran. The wrapper appends `-Wno-error`.
+- **gcovr.** It stopped on counts whose harness source was a deleted temporary file, on hot
+  loops past its "suspicious" count, and on a function at two lines when a source is built
+  both with and without `__NO_MYSQL__`. The script now ignores the first two and keeps such
+  functions apart (`--merge-mode-functions=separate`).
+
+The run on `master` (`46ac05997`, without `--db`, 14 minutes on this workstation):
+
+- 688 tests ran under instrumentation. One failed only under coverage:
+  `test_spell_schedule_failure_runtime.py`, whose harness links only because the optimiser
+  drops a call that `--coverage` keeps.
+- 33% of `src/` lines ran (94,731 of 285,816). By directory: `telemetry` 68%, `flatfile` 65%,
+  `redis` and `account` 54%, `world` 49%, `item` 48%, `player` 45%, `net` 45%,
+  `persistence` 42%; then `economy` 33%, `mob` 28%, `classes` 25%, `combat` 22%, `specs`
+  19%, `cmd` 17%, `ships` 15%, `kingdom` 13%, `magic` 12%, `guild` 11%. `sql` is 9% because
+  only `--db` runs the MariaDB tests.
+- Both checks show counts. `src/economy/collector_policy.c`, which
+  `collector_policy_harness.cpp` compiles, is at 79%. `do_score()`, which only journeys
+  reach (they send `score`), has counts on all but 11 of its first 60 lines.
+- `kick.c` is at 0%: no test kicks.
 
 ---
 

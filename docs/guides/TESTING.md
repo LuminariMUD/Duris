@@ -262,7 +262,9 @@ that failed under instrumentation: their counts are missing, the report is not).
 It cannot see a process ended with `SIGKILL` (the crash probes write no counts; `SIGTERM`
 shuts the server down in order, so most journeys count), a test that patches a copy of a
 server source and compiles the copy (only `src/` is reported), or a test that calls `c++`
-or `clang++` instead of `g++`.
+or `clang++` instead of `g++`. The wrapper drops `-Werror` (at `-O2` the instrumentation
+provokes false warnings inside libstdc++), so a test that needs a compile to fail on a
+warning fails under coverage and is listed in `failed.txt`.
 
 ## Full-world save diagnostics
 
