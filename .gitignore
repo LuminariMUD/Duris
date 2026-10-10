@@ -70,6 +70,7 @@ lib/relic_highscore
 /logs/duris-console.log
 /logs/latency_trace.log
 logs/log/*
+/logs/old-logs/
 logs/shutdown_info.txt
 logs/valgrind/
 /runtime/personal-data-exports/
