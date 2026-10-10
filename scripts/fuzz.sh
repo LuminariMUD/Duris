@@ -23,9 +23,11 @@ read -r -a sources <<<"$(sed -n 's#^// fuzz-sources:##p' "$source")"
 read -r -a libs <<<"$(sed -n 's#^// fuzz-libs:##p' "$source")"
 out=bin/fuzz/$target
 mkdir -p "$out/corpus" "tests/fuzz/corpus/$target"
-# clang otherwise picks the newest installed libstdc++, which need not be g++'s.
+# clang otherwise picks the newest installed libstdc++, which need not be g++'s. An
+# undefined-behaviour report stops the run, as in the replay, so it leaves a crash input.
 clang++ --gcc-install-dir="$(dirname "$(g++ -print-libgcc-file-name)")" -std=c++20 -g -O1 \
-	-fsanitize=fuzzer,address,undefined -D__NO_MYSQL__ -Isrc -Isrc/no_mysql \
+	-fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all -D__NO_MYSQL__ -Isrc \
+	-Isrc/no_mysql \
 	"$source" "${sources[@]}" tests/async/harness_stubs.cpp "${libs[@]}" -o "$out/fuzzer"
 "$out/fuzzer" -max_total_time="$seconds" -print_final_stats=1 -artifact_prefix="$out/" \
 	"$out/corpus" "tests/fuzz/corpus/$target"

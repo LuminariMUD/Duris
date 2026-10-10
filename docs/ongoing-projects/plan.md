@@ -704,7 +704,10 @@ run). A 30-minute run of the new target: 37.6 million inputs, no finding, 114 in
 ran with descriptor -1, which `websocket_complete_handshake()` refuses at once, so no valid
 upgrade reached the accept key, the compression negotiation or the 101 answer. Each upgrade
 input now gets a socket pair (`247fd4b97`). Ten minutes on that target: 8 million inputs,
-coverage 623 to 672 edges, no finding, 9 inputs kept (760 inputs, 144 KB).
+coverage 623 to 672 edges, no finding, 9 inputs kept (760 inputs, 144 KB). The review after
+that: `fuzz.sh` let UBSan recover, so an undefined-behaviour report left no crash input; it
+builds with `-fno-sanitize-recover=all` now, as the replay does. This round's two runs
+printed no UBSan report, and the replay, which stops on one, passes the whole corpus.
 
 ### 13. `clang-tidy` on changed lines
 
