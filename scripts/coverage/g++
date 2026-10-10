@@ -6,7 +6,10 @@
 # that fatal.
 set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-real=$(PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vx "$here" | paste -sd:) command -v g++)
+# The real g++, past this directory and past ccache's g++ links: ccache would look g++ up on
+# PATH again, find this wrapper, and add the flags once more each round.
+real=$(PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vx "$here" | grep -v ccache | paste -sd:) \
+	command -v g++)
 : "${COVERAGE_DATA:?scripts/coverage.sh sets COVERAGE_DATA}"
 exec "$real" --coverage -fprofile-abs-path -fprofile-update=atomic \
     -dumpdir "$(mktemp -d "$COVERAGE_DATA/XXXXXXXX")/" "$@"
