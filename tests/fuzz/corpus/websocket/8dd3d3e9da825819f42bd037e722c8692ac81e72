@@ -1,0 +1,9 @@
+GET / HTTP/1.1
+Host: ws.example
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+Sec-WebSocket-Version: 13
+Sec-WebSocket-Extensions: permessage-deflate
+X-Forwarded-For: 198.51.100.1, 203.0.113.9
+
