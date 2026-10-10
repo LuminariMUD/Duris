@@ -3821,7 +3821,8 @@ bool falling_obj(P_obj obj, int speed, bool caller_is_event)
 // NPCs count down in AFFECT_UPDATE_SLICES groups, one every PULSES_IN_TICK /
 // AFFECT_UPDATE_SLICES pulses, so each still counts down once a tick but the world's
 // 56,000 mobs are not walked in one pulse: that pass took 40 to 140 ms on staging, and
-// the events it queued landed together. Players keep the tick's first pulse.
+// the events it queued landed together. Players keep the tick's first pulse, in a
+// shapechanged body too.
 #define AFFECT_UPDATE_SLICES 20
 
 void affect_update(int pulse)
@@ -3838,7 +3839,8 @@ void affect_update(int pulse)
 	{
 		i_next = i->next;
 
-		if (IS_PC(i) ? slice != 0 : char_slice(i, AFFECT_UPDATE_SLICES) != slice)
+		if ((IS_PC(i) || IS_MORPH(i)) ? slice != 0 :
+						char_slice(i, AFFECT_UPDATE_SLICES) != slice)
 			continue;
 		if (IS_PC(i) && i->desc && i->desc->connected)
 			continue;

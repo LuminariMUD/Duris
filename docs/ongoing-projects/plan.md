@@ -1008,6 +1008,12 @@ points, and that a sliced NPC's affects still count down once per tick.
   The copies, their users and the scratch directory were removed afterwards. The live
   service is measured after deploy.
 
+**Review round 1** (2026-10-10): the adversarial review found no defect. Codex, on the
+round's push: a player's shapechanged body is an NPC, so its affects (the shapechange's own
+`SPELL_CALL_OF_THE_WILD`, a channel) counted down in a hashed slice, up to a tick off the
+players' pulse 0. A shapechanged body (`IS_MORPH()`) now counts down with the players, and
+`test_tick_work_spread.py` has one.
+
 ### 19. Most of every boot is one shopkeeper scan
 
 **Problem.** When a boot's zone reset loads the keeper of a fixed (not replicated) shop
