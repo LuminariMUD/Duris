@@ -83,14 +83,22 @@ failure names one case, and adding a case shifts no other.
 
 | Part | Cases | Recorded |
 |---|---|---|
-| Drop decision | killer level x mob level x luck x {plain, elite, neutral player, Hardcore, town, guild room, no-experience mob, shopkeeper} x both rolls, 50 seeds each | One bit string per case |
-| Generator | Killer and mob levels across 1 to 62, luck 60/100/160, both zones, player and NPC killer, random and fixed slot and material | Every field the generator sets: keywords, both descriptions, wear flags, type, extra flags, anti-class flags, material, craftsmanship, weight, `value[0..7]`, the four affects, all bitvectors |
-| Materials and stones | Levels 1 to 62, alchemist and not | Vnums, and the alchemist's bind refund |
+| Drop decision | A grid: killer levels 1 to 16 and four higher, nine mob levels, luck 60/100/160, equipment roll; the material roll at luck 100. Each special condition (elite, neutral player, Hardcore, town, guild room, no-experience mob, shopkeeper, the loot dial at 1.5) at three level pairs, both rolls. 50 draws per case | One bit string per case |
+| Kill drop | The drop block of `die()`, player and pet killer, a few level pairs, 20 kills each | Each kill's objects put on the victim, and who reads the salvage line |
+| Generator | Every slot fixed, in the coloured zone at the best odds (so nearly all are named: every weapon path, shield, quiver, robe and the weapon spell) and in the plain zone; random slot across killer and mob levels, luck 60/100/160, both zones, player, NPC and shopkeeper killer; every material fixed; the quality dial at 1.5; a missing blank | Every field the generator sets: keywords, both descriptions, wear flags, type, extra flags, anti-class flags, material, craftsmanship, weight, `value[0..7]`, the four affects, all bitvectors, and its messages |
+| Materials and stones | Levels 1 to 62, alchemist and not; `create_material(index)` for every index; stones | Vnums, and the alchemist's bind refund |
+| Encrust and true name | `set_encrust_affect()` for each stone spell; `identify_random()` for every spell in the table | Bitvectors; the new short description |
+
+The kill drop is still inside `die()` in Phase 1, so the harness compiles that block, cut
+from `fight.c` between its `// object code - Normal kills.` comment and `update_pos(ch);`.
+From Phase 3 it calls `random_equipment_kill_drop()` instead.
 
 The expected output is committed as `tests/fixtures/random_equipment_golden.txt`, readable,
-one case per line, under 200 KB. It is written once, from today's code. Later phases change
+one case per line, about 260 KB. It is written once, from today's code. Later phases change
 only the harness's file list and the calls into the new interface, never the fixture. A
-phase whose output differs is wrong.
+phase whose output differs is wrong. The fixture never changes, so its coverage (named
+items, owner tags, weapon spells, every item type) was checked once by hand when it was
+written, not by an assertion.
 
 Every refactor below must therefore keep the order of the random rolls. Turning a switch
 into a table keeps the roll and its mapping. A helper that moves a roll must leave it at the
@@ -209,8 +217,8 @@ Each is its own commit, with a test. None changes generated output.
 
 1. **Out-of-bounds read.** `identify_random()` scans `spells_data` up to index 61 of a
    61-entry table, so it reads past the end for a weapon whose spell is not a random-weapon
-   spell. Fix: bound the loop by the table's size. Test: a native case with a foreign
-   spell.
+   spell. Fix: bound the loop by the table's size. Test: a foreign-spell case in the golden
+   harness, which runs under ASan (an assertion, not a fixture line).
 2. **`randobj` crash.** `randobj eq`, `piece` and `stone` pass the generator's result to
    `obj_to_char()` and `do_stat()` without checking it. Fixed by the rewrite (Phase 5);
    tested there.
@@ -250,6 +258,23 @@ source changes.
 
 Done when the test passes on `master`, and fails when a single roll in
 `create_random_eq_new()` is moved (checked once by hand, not committed).
+
+**Done (2026-10-10).** `tests/async/test_random_equipment_golden.py` and its 1,480-case
+fixture; it runs in about 4 seconds. Coverage, checked by hand: 131 named items, 15
+owner-tagged (one by an NPC), 10 weapon spells, every item type (88 weapons, 3 longbows,
+274 armour, 22 shields, 7 quivers, 5 robes), lances, backstab weapons, heater, buckler and
+tower shields, the newbie message, a stone on each of the kill drop's two rolls, 29
+alchemist refunds. Probes, each reverted:
+
+- the prefix roll moved below the zone lookup: 362 cases differ;
+- the drop jitter moved past the percentage scaling: 444 differ;
+- the kill drop's first stone roll made 1 in 25: 3 differ;
+- the jitter and low-level bonus rolls swapped: no change, correctly, since both draw 11
+  values that are only summed, so the game is the same.
+
+The harness takes `dice`, `strip_ansi`, `FirstWord`, `isname`, `material_restrictions`,
+`GET_CLASS` and `BOUNDED` from their real source by signature, and `ALL_MAGES` and
+`ALL_ROGUES` from `objconv.c`. Phase 3 changes `MODULE_SOURCES` and the kill drop's call.
 
 ### Phase 2: dead code out
 
@@ -331,8 +356,9 @@ Then one in-game check as a level 62 on a local server: `randobj eq ring 30 3`,
 output recorded in this file.
 
 [RANDOM_EQUIPMENT.md](../reference/RANDOM_EQUIPMENT.md) gets `randobj`'s syntax, and
-[REGRESSIONS.md](../testing/REGRESSIONS.md) a section for the golden test and one for
-`randobj`.
+[REGRESSIONS.md](../testing/REGRESSIONS.md) a section for the `randobj` crash (defect 2).
+Phase 4 adds the section for the out-of-bounds read (defect 1). The golden test is described
+in RANDOM_EQUIPMENT.md from Phase 1, since REGRESSIONS.md holds one section per fixed defect.
 
 Done when both pass.
 
@@ -366,7 +392,7 @@ based on the one below, so each pull request's diff is its own phase. The first 
 
 | PR | Phase | Branch | GitHub | State |
 |---|---|---|---|---|
-| 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | not opened | Branch published; golden test not started |
+| 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | opened | Done; up for review (`randeq/phase-1-review-0`) |
 | 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | | Not started |
 | 3 | 3, module and interface | `enhancement/randeq-3-module` | | Not started |
 | 4 | 4, readable generator | `enhancement/randeq-4-generator` | | Not started |
@@ -378,4 +404,20 @@ Every pull request runs the golden test and its own focused tests, then
 `./scripts/format.sh --check`, a development and production build, and `make test-all` and
 `make test-db` on its head in a throwaway worktree
 (`git worktree add --detach ../duris-plan-gate <sha>`, removed after), in the background, so
-the checkout can move on while the gate runs.
+the checkout can move on while the gate runs. PR 1 changes no server code (a test, comments
+and documents), so it skips `make test-db`.
+
+## Ablation review (2026-10-10, before Phase 1)
+
+The plan was checked part by part against what each part is for:
+
+- **Added:** the kill-drop part of the golden test. Phase 3 moves that block out of `die()`
+  and nothing else would prove its rolls survived the move.
+- **Added:** encrust and true-name cases. Both functions move in Phase 3 and change in
+  Phase 4. Defect 1's test joins the same harness instead of a new file.
+- **Simplified:** the drop-decision cross product is a grid sample, and the coverage check is
+  a one-time hand check, not a committed assertion. The fixture came out at 260 KB, not the
+  200 KB first guessed: both slot sweeps were kept rather than cut to fit, since each proves
+  every slot row in one naming style.
+- **Scaled:** PR 1's gate skips `make test-db`.
+- **Kept:** everything else. Each part serves the goal or an owner decision (D1 to D4).

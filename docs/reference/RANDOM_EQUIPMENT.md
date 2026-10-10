@@ -164,12 +164,18 @@ loot-drops and loot-quality dials are `difficulty.dial.loot.drops` and
 [server difficulty dials](CODEBASE.md#server-difficulty-dials).
 
 ```sh
+python3 tests/async/test_random_equipment_golden.py
 python3 tests/async/test_random_equipment_config_contract.py
 python3 tests/async/test_random_equipment_config_runtime.py
 python3 tests/async/test_random_drop_owner_message.py
 python3 tests/async/test_difficulty_dials.py
 ```
 
-The first two hold the settings and their loader, the third the salvage message's
-recipient, and the fourth the loot dials' hooks. No test rolls a drop on a running
-server.
+The golden test holds the rolls themselves. It compiles `randomeq.c` whole under ASan and
+UBSan with the real random number generator and settings at their defaults, stubs only
+the world, and records 1,480 seeded cases: drop decisions, the kill-drop block of `die()`,
+generated items field by field, materials, stones, encrust affects and true names. The
+output must equal `tests/fixtures/random_equipment_golden.txt`, so any change that moves,
+adds or drops a roll fails it. The next two hold the settings and their loader, then the
+salvage message's recipient, and the last the loot dials' hooks. No test rolls a drop on
+a running server.
