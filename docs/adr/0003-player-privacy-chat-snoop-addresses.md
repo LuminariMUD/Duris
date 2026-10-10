@@ -96,7 +96,8 @@ Retention for these was pending with the rest of the lifecycle policy (finding P
   - `recall <n> <player>` by an immortal answers "Disabled by Zusuk October 9 2026".
   - The `address_retention` job (below) moves the live logs into `logs/old-logs/<date>/`
     once they are a day old, so a server kept up by copyovers archives them too, and
-    removes each archived file and `core.*` dump 30 days after its last write.
+    removes each archived file and `core.*` dump 28 days after its last write: a file
+    holds at most about 25 hours of lines, so none of them reaches 30 days.
   - The server clears `lib/etc/hosts` at a cold boot (not a copyover) and removes a
     descriptor's files when it closes.
   - The `address_retention` maintenance job runs hourly. It deletes `account_ips` and
