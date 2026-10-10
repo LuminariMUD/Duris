@@ -57,21 +57,21 @@ def main() -> int:
     for path, commit in flaky:
         print(f"    {path} on {commit[:12]}: {', '.join(sorted(outcomes[(commit, path)]))}")
 
+    # Each test the last run passed, against its passes in the earlier runs made like it.
     def shape(run: dict) -> tuple:
         return run.get("match"), run.get("jobs")
-    times: dict[str, list[float]] = defaultdict(list)
-    for run in runs:
-        if shape(run) != shape(runs[-1]):
-            continue
-        for test in run["tests"]:
-            if test["status"] == "PASS":
-                times[test["path"]].append(test["seconds"])
+    earlier: dict[str, list[float]] = defaultdict(list)
+    for run in runs[:-1]:
+        if shape(run) == shape(runs[-1]):
+            for test in run["tests"]:
+                if test["status"] == "PASS":
+                    earlier[test["path"]].append(test["seconds"])
     slower = []
-    for path, seconds in times.items():
-        if len(seconds) >= 2:
-            median = statistics.median(seconds[-11:-1])
-            if median >= 1.0 and seconds[-1] > 1.5 * median:
-                slower.append((seconds[-1] / median, path, median, seconds[-1]))
+    for test in runs[-1]["tests"]:
+        if test["status"] == "PASS" and earlier[test["path"]]:
+            median = statistics.median(earlier[test["path"]][-10:])
+            if median >= 1.0 and test["seconds"] > 1.5 * median:
+                slower.append((test["seconds"] / median, test["path"], median, test["seconds"]))
     print(f"\nSlower than half again their median of the ten runs like the last before: "
           f"{len(slower)}")
     for ratio, path, median, last in sorted(slower, reverse=True):
