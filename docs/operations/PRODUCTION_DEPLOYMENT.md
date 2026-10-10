@@ -122,8 +122,9 @@ the public health checks below.
   `duris-backup-backup.timer` takes one an hour and `duris-backup-health.timer` checks
   them every minute. Both units are in `~/.config/systemd/user`, adapted from
   `deploy/systemd/duris-backup-*` without the sandboxing options a user unit can't use.
-  There is no off-host replica and no restore drill: the account has no SSHFS mount
-  and no dedicated restore filesystem, and no `OnFailure=` alert is connected.
+  A failure starts `duris-backup-alert@.service` (`~/.local/libexec/duris-backup-alert`),
+  which mails the operator, but Plesk does not let this account send mail yet. There is
+  no off-host replica and no restore drill. See `docs/ongoing-projects/production-host-follow-ups.md`.
 - The website's own hourly dump of the shared database: `~/durisweb-backups`
 - One-off copies (pre-change dumps, configuration): `~/backups/duris/<date>-*`
 - Host AppArmor allowance for the MUD database: `/etc/apparmor.d/local/mariadbd`

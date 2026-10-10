@@ -16,8 +16,9 @@ a finding when it is done, and the file when none is left.
 |---|---|---|---|
 | 1 | SSH still accepts passwords for some tenant accounts | Medium | Open, owner and tenants |
 | 2 | The old GitHub token from `wildeditor`'s `origin` URL may not be revoked | Medium | Open, owner (GitHub) |
-| 3 | The MUD's backups have no off-host copy, restore drill or failure alert | Medium | Open, owner |
+| 3 | The MUD's backups have no off-host copy or restore drill, and their alert can't send mail | Medium | Open, owner |
 | 4 | Loose ends from root's log sweep | Low | Open, optional |
+| 5 | The service account is still named `staging` | Low | Open, root (owner chose to rename it) |
 
 ## Findings
 
@@ -46,16 +47,19 @@ account's credential helper. No other `.git/config` on the disk holds credential
 
 **Next** (owner, on GitHub). Revoke the old token. Root can't do it from the host.
 
-### 3. The MUD's backups have no off-host copy, restore drill or failure alert
+### 3. The MUD's backups have no off-host copy or restore drill, and their alert can't send mail
 
 Since 2026-10-10 the service account takes verified hourly backups under the policy and timers
 that `docs/operations/PRODUCTION_DEPLOYMENT.md` lists, kept on the same disk as the database.
-`BACKUPS.md` asks for more than the account can set up by itself: an off-host replica needs an
-SSHFS mount (`replica_root`), a restore drill needs a dedicated restore filesystem
-(`drill_seconds`, `restore_root`), and a failing unit should reach someone through `OnFailure=`.
+A failed backup or health run starts `duris-backup-alert@.service`, which mails the operator
+through `/usr/sbin/sendmail` at most once an hour per unit. Plesk refuses it: "Mail handler
+'limit-out' said: The user staging is not allowed to send email." The owner left the off-host
+copy for later. It needs an SSHFS mount (`replica_root`), and a restore drill needs a dedicated
+restore filesystem (`drill_seconds`, `restore_root`).
 
-**Next** (owner). Provide the mount and the filesystem, then set those policy fields; connect
-`duris-backup-backup.service` and `duris-backup-health.service` to an alert.
+**Next** (owner). In Plesk's outgoing mail control, let the service account send mail, then run
+the deliberate-failure test in `BACKUPS.md` and check that the mail arrives. Provide the mount
+and the filesystem when wanted, then set those policy fields.
 
 ### 4. Loose ends from root's log sweep
 
@@ -68,3 +72,27 @@ These are left, all optional:
 - **luminari-sage pins.** Its `requirements.txt` pins early-2024 versions that don't build on
   the host's Python 3.14. Root built the host venv from `requirements-core.txt` instead. The
   Docker image (`python:3.11-slim`) is unaffected.
+
+### 5. The service account is still named `staging`
+
+Everything else on the host says production. The account keeps the name, and its home
+`/home/staging` is written out in its configuration. Root agreed to rename it.
+
+**Next** (root). Keep the uid (10014): file ownership and the AppArmor allowance follow it.
+1. As `staging`, rename the MariaDB admin login first, since `unix_socket` maps the Linux name:
+   `RENAME USER 'staging'@'localhost' TO '<new>'@'localhost';`. Then pause the website watchdog
+   and stop every `duris-*` and `durisweb-*` user unit and timer.
+2. `loginctl disable-linger staging`, `usermod -l <new> -d /home/<new> -m staging`,
+   `groupmod -n <new> staging`.
+3. Replace `/home/staging` in `~/duris/.env`, `~/.config/duris-backup/policy.json` (and its
+   `custodian`), `~/.config/duris-mariadb/my.cnf`, `~/.config/duris-redis/redis.conf`,
+   `~/.config/durisweb/redis.conf`, `~/.config/letsencrypt/renewal/mud.duris.sbs.conf`, the two
+   ACME hooks in `~/.local/libexec/`, and DurisWeb's `backend/.env` (with `MUD_PROCESS_USER`),
+   `frontend/.env` and `deploy/deployment.env`; then re-render the website units from
+   `deployment.env`. Re-create the absolute symlinks `~/duris/duris.crt`, `~/duris/duris.key`
+   and the five `durisweb-*` links in `~/.config/systemd/user`.
+4. Update the paths in `/etc/apparmor.d/local/mariadbd` and reload the `mariadbd` profile, and
+   the account's name in the `Match User` line of `/etc/ssh/sshd_config.d/40-hardening.conf`
+   (`sshd -t`, then reload ssh).
+5. `loginctl enable-linger <new>`; as `<new>`, `systemctl --user daemon-reload`, start the units,
+   resume the watchdog, and run the verification commands in `PRODUCTION_DEPLOYMENT.md`.
