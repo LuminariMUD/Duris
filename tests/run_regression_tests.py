@@ -193,25 +193,32 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def write_history(results: list[TestResult], started: str, match: str | None) -> None:
+def write_history(results: list[TestResult], started: str, match: str | None,
+                  jobs: int) -> None:
     """Keep this run's results in bin/test-history/ for scripts/test_history.py, which finds
-    the flaky tests and the ones that grow slower. bin/ is ignored: the history is local."""
+    the flaky tests and the ones that grow slower. bin/ is ignored: the history is local.
+    A run is dirty with a changed tracked file, or an untracked one where it changes what
+    runs: the runner finds untracked tests, and the build takes untracked sources."""
     def git(*arguments: str) -> str:
         return subprocess.run(["git", *arguments], cwd=ROOT, capture_output=True, text=True,
                               check=True).stdout.strip()
     try:
         commit = git("rev-parse", "HEAD")
-        dirty = bool(git("status", "--porcelain", "--untracked-files=no"))
+        dirty = bool(git("status", "--porcelain", "--untracked-files=no") or
+                     git("ls-files", "--others", "--exclude-standard", "--",
+                         "src", "tests", "areas", "scripts"))
     except (OSError, subprocess.CalledProcessError):
         return
     directory = ROOT / "bin/test-history"
     directory.mkdir(parents=True, exist_ok=True)
     record = {
-        "commit": commit, "dirty": dirty, "started": started, "match": match,
+        "commit": commit, "dirty": dirty, "started": started, "match": match, "jobs": jobs,
         "tests": [{"path": relative(result.path), "status": result.status,
                    "seconds": round(result.elapsed, 3)} for result in results],
     }
-    (directory / f"{started}-{commit[:12]}.json").write_text(json.dumps(record, indent=1) + "\n")
+    # Two runs can start in the same second on the same commit; the pid tells them apart.
+    with open(directory / f"{started}-{commit[:12]}-{os.getpid()}.json", "x") as history:
+        history.write(json.dumps(record, indent=1) + "\n")
 
 
 def main() -> int:
@@ -288,7 +295,7 @@ def main() -> int:
     # These wait on game time, not on the CPU, so they run together after the pool.
     run_all(resource_intensive_tests, max(1, len(resource_intensive_tests)), JOURNEY_DEADLINE_SECONDS)
 
-    write_history(results, started_utc, args.match)
+    write_history(results, started_utc, args.match, jobs)
     if failures:
         print("\nFailed:")
         for result in failures:
