@@ -410,7 +410,9 @@ change above:
   lived 70 days, and `core.*` dumps were never removed. The hourly `address_retention` job
   now moves the live logs into `logs/old-logs/<date>/` once they are a day old and removes
   each archived file and core dump 28 days after its last write (Codex, on the round's
-  push: 30 days after the last line kept a day-long file's first lines 31 days); the
+  push: 30 days after the last line kept a day-long file's first lines 31 days). A live set
+  without its marker, as after a copyover onto this code, may hold lines of any age, so it
+  moves at the next run, and the launcher marks each new set (Codex's next review); the
   launcher keeps only
   its archive at each start and the size cap (`eb496c0b0`).
 - Codex, on the round's push: a snooped player who came back from a shapechange was told
