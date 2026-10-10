@@ -5,11 +5,12 @@
   second overwrote the first. The name now carries the runner's pid, and the file is
   created exclusively.
 - A run counted as clean with untracked files, which change what runs: a test fixed while
-  still untracked was then reported flaky. An untracked file under src/, tests/, areas/ or
-  scripts/ now makes the run dirty.
+  still untracked was then reported flaky. Any untracked file now makes the run dirty: the
+  tests read migrations/ and docs/ as well as src/, tests/, areas/ and scripts/.
 - A test's time inside a full parallel run was set against its median from focused runs,
   made alone and faster, which reported it slower. Each run records its --match and worker
-  count, and scripts/test_history.py compares the last run only with runs made like it.
+  count, and scripts/test_history.py compares the last run only with runs made like it, and
+  only a test the last run passed: one it failed or did not run is not "slower".
 """
 from pathlib import Path
 import json
@@ -55,11 +56,13 @@ runner.write_history([runner.TestResult(runner.ROOT / "tests/async/test_a.py", 0
     assert [run["dirty"] for run in runs()] == [False, False]
     assert runs()[0]["jobs"] == 8 and runs()[0]["match"] is None
 
-    (repo / "notes.txt").write_text("not something a run reads\n")
-    write("20261010T000001Z")
     (repo / "tests/async/test_new.py").write_text("")
+    write("20261010T000001Z")
+    (repo / "tests/async/test_new.py").unlink()
+    (repo / "docs").mkdir()
+    (repo / "docs/new.md").write_text("read by the documentation contract\n")
     write("20261010T000002Z")
-    assert [run["dirty"] for run in runs()][2:] == [False, True]
+    assert [run["dirty"] for run in runs()][2:] == [True, True]
 
 with tempfile.TemporaryDirectory(prefix="test-history-report-") as temporary:
     history = Path(temporary)
@@ -80,9 +83,15 @@ with tempfile.TemporaryDirectory(prefix="test-history-report-") as temporary:
         run(index, 4.0, "test_b")
     run(11, 1.0, "test_b", "FAIL", dirty=True)
     run(12, 12.0, None)
-    report = subprocess.run([sys.executable, str(ROOT / "scripts/test_history.py"),
-                             "--history", str(history)], check=True, capture_output=True,
-                            text=True).stdout
-    assert "Flaky (passed and failed on one clean commit): 0" in report, report
-    assert "runs like the last before: 0" in report, report
+    def report() -> str:
+        return subprocess.run([sys.executable, str(ROOT / "scripts/test_history.py"),
+                               "--history", str(history)], check=True, capture_output=True,
+                              text=True).stdout
+    assert "Flaky (passed and failed on one clean commit): 0" in report(), report()
+    assert "runs like the last before: 0" in report(), report()
+    # A slow pass, then a last run that fails the test: the failure is not a slowdown.
+    run(13, 20.0, None)
+    assert "runs like the last before: 1" in report(), report()
+    run(14, 1.0, None, "TIMEOUT", dirty=True)
+    assert "runs like the last before: 0" in report(), report()
 print("the run history keeps every run and compares runs made alike")

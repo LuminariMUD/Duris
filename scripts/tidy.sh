@@ -51,8 +51,9 @@ if [[ "$MODE" != "all" && -z "$diff" ]]; then
 fi
 
 # The compile database: every C/C++ source under src/, with the build's -D/-I/-std flags.
-# A staged check reads what the commit will hold, src/ and .clang-tidy as staged, written
-# to bin/tidy/staged/: the working tree's unstaged edits may differ from it.
+# A staged check reads what the commit will hold, src/ (its Makefile's flags too) and
+# .clang-tidy as staged, written to bin/tidy/staged/: the working tree's unstaged edits may
+# differ from it.
 OUT=bin/tidy
 mkdir -p "$OUT"
 TREE=.
@@ -61,7 +62,7 @@ if [[ "$MODE" == "staged" ]]; then
 	rm -rf "$TREE"
 	git ls-files -z src .clang-tidy | git checkout-index -z --stdin --prefix="$TREE/"
 fi
-FLAGS="$(make -s --no-print-directory -C src '--eval=.PHONY: tidy-flags' \
+FLAGS="$(make -s --no-print-directory -C "$TREE/src" '--eval=.PHONY: tidy-flags' \
 	'--eval=tidy-flags:;@echo $(CFLAGS) $(INCLUDES)' tidy-flags)"
 git ls-files 'src/*.c' 'src/*.cpp' | python3 -c '
 import json, os, shlex, sys
@@ -77,14 +78,21 @@ json.dump([{"directory": os.path.join(root, "src"), "file": os.path.join(root, p
 if [[ "$MODE" == "all" ]]; then
 	(( ${#PATHS[@]} )) || PATHS=(src)
 	mapfile -t FILES < <(git ls-files "${PATHS[@]}" | grep -E '\.(c|cpp)$')
+	status=0
 	printf '%s\0' "${FILES[@]}" | xargs -0 -P "${TIDY_JOBS:-$(nproc)}" -n 1 \
-		"$TIDY" -p "$OUT" --quiet 2>/dev/null >"$OUT/raw.log" || true
+		"$TIDY" -p "$OUT" --quiet 2>/dev/null >"$OUT/raw.log" || status=$?
+	# clang-tidy exits 1 on a finding (xargs: 123); above that it did not run or it died.
+	if (( status > 123 )); then
+		echo "tidy: $TIDY did not run (xargs exit $status)." >&2
+		exit 1
+	fi
 	# A header's finding comes once per file that includes it: count it once.
 	grep -E ': (warning|error): ' "$OUT/raw.log" | sed -E "s#^(\./|$PWD/src/)#src/#" |
 		sort -u >"$OUT/all.log" || true
 	findings=$(wc -l <"$OUT/all.log")
 	echo "tidy: ${#FILES[@]} files, $findings findings; by check:"
-	grep -o '\[[a-z0-9.,-]*\]$' "$OUT/all.log" | sed 's/,-warnings-as-errors//' | sort | uniq -c | sort -rn
+	grep -o '\[[a-z0-9.,-]*\]$' "$OUT/all.log" | sed 's/,-warnings-as-errors//' | sort | uniq -c |
+		sort -rn || true
 	echo "Findings: $OUT/all.log (the compiler output around them: $OUT/raw.log)"
 	(( findings == 0 ))
 	exit

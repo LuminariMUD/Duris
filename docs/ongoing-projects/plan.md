@@ -299,9 +299,12 @@ before moving anything there.
 
 **Built** (PR 2).
 
-- `timedShutdown()` logs `<kind> by <issuer>: <reason>` to the status and wiz logs through
+- `timedShutdown()` logs `<kind> by <issuer>: <reason>` to the status log through
   `log_shutdown()` (kinds: Shutdown, Reboot, Copyover, Auto-reboot, Auto-reboot with
-  copyover); the players' broadcast is unchanged.
+  copyover); the players' broadcast is unchanged. Codex, on the round's push: its wiz row
+  was never written, because the countdown and a signal run it with no character (as
+  before). The issuer's wiz row is written when the shutdown is scheduled, and launcher
+  stops are in `server_reboots`, so the dead call is gone and these notes say "status log".
 - A failed `getpeername()` gives the host `unknown`; the `strip_ansi()` around the lookup's
   address went with the color code.
 - `M`, `F` and `R cmd not executed` print `mob <vnum> in room <vnum>, limit <n>, chance
@@ -407,9 +410,15 @@ change above:
   lived 70 days, and `core.*` dumps were never removed. The hourly `address_retention` job
   now moves the live logs into `logs/old-logs/<date>/` once they are a day old and removes
   each archived file and core dump 28 days after its last write (Codex, on the round's
-  push: 30 days after the last line kept a day-long file's first lines 31 days); the
+  push: 30 days after the last line kept a day-long file's first lines 31 days). A live set
+  without its marker, as after a copyover onto this code, may hold lines of any age, so it
+  moves at the next run, and the launcher marks each new set (Codex's next review); the
   launcher keeps only
   its archive at each start and the size cap (`eb496c0b0`).
+- Codex, on the round's push: a snooped player who came back from a shapechange was told
+  the start but never the stop, and the row named the shapechanged body. `un_morph()` now
+  ends the snoops after the link is the player's again, retargeted to the player, and tells
+  the target; `do_switch()` tells it too (`end_snoops_on()` gained the flag).
 - Not changed: `player_data.last_ip` clears 30 days after the last save, not the login. The
   address is in use for the whole session and every save writes it back from memory, so a
   clear during the session would not hold; a mortal idle 15 minutes is voided anyway.
@@ -739,6 +748,12 @@ as staged, written to `bin/tidy/staged/` (0.2 s), and both diffs pin `--no-color
 --no-ext-diff` and the `a/`/`b/` prefixes; `test_tidy_tooling.py` covers all four cases.
 The review also noted that no command reaches the line editor whose leak this item fixed;
 REGRESSIONS.md and `formatting.md` now say so, and what wiring it back in would need.
+Codex, on the round's push: `--all` with no finding at all exited 1 at its summary's empty
+`grep` under `set -e`; the summary tolerates that now (`5413f3914`), and the test runs
+`--all` on a clean file. Codex's next review: the staged check took its flags from the
+working tree's Makefile, and `--all` called a tree clean when clang-tidy could not run.
+The flags now come from the staged `src/Makefile`, and an `xargs` status above 123 (the
+analyzer missing or killed; a finding is 123) fails the run.
 
 ### 14. Keep a history of test runs
 
@@ -781,10 +796,13 @@ tests whose median is a second or more, because the ratio of tenths of a second 
 the same second on one commit overwrote each other's file; a run with an untracked test or
 source counted as clean, so a test fixed while untracked read as flaky; and a test's time
 in a full parallel run was set against focused runs made alone. The file name ends in the
-runner's pid and is created exclusively, an untracked file under `src/`, `tests/`, `areas/`
-or `scripts/` makes a run dirty, and each run records its workers beside `--match`, so a
-slowdown is judged only against runs made like the last (`f58f6e67c`;
-`test_test_history.py`).
+runner's pid and is created exclusively, an untracked file makes a run dirty, and each run
+records its workers beside `--match`, so a slowdown is judged only against runs made like
+the last (`f58f6e67c`; `test_test_history.py`). Codex, on the round's push: the untracked
+check covered only `src/`, `tests/`, `areas/` and `scripts/`, but tests read `migrations/`
+and `docs/` too; any untracked file counts now. Codex's next review: when the last run failed
+a test or did not run it, the slowdown check compared an older pass; it now takes only the
+tests the last run passed, against their passes in earlier runs made like it.
 
 ### 15. Mutation testing, by hand
 
@@ -997,6 +1015,15 @@ in an `ubuntu:26.04` container with `mariadb-client` and `python3`, sharing a
 with the manifest's history checksum. The README now says which package gives the names
 on a host with MariaDB's own packages. The check stays out of `make test-db`: it installs
 packages from the network.
+
+Codex, on the round's push: no database records which verifier approved 0031 and 0032 on
+11.8, so an engine verifier changed together with its manifest checksum would approve new
+databases while existing histories still pass. Not changed. Anchoring it means recording
+the engine verifier in every database, a history or schema change that decision 7 ruled out
+so that one history holds on every engine. A sealed verifier has the same exposure on a
+fresh database, which has no history to compare; histories catch an edit only for databases
+built before it. The engine verifiers are sealed by checksum under `immutable/` like the
+others, and an edit to one is a reviewed diff there.
 
 ---
 

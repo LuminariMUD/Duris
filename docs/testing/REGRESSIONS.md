@@ -521,8 +521,10 @@ fix, on either loop alone.
 A zone command that does not load (`M`, `F`, `R` whose chance roll misses) is logged with
 its mob and room vnums, not the boot's internal indices. A connection reset before the
 server accepts it has the host `unknown`, not a color code that went into every line about
-it. A shutdown, reboot or copyover writes its kind, issuer and reason to the status and
-wiz logs instead of the players' broadcast with its color codes and line ends.
+it. A shutdown, reboot or copyover writes its kind, issuer and reason to the status log
+instead of the players' broadcast with its color codes and line ends. The issuer's wiz row
+is written when it is scheduled; the completion runs with no character, so its wiz row was
+never written, before or after this change.
 
 ```sh
 python3 tests/async/test_log_hygiene_journey.py
@@ -782,7 +784,9 @@ to another target, a quit, the snooper's link closing and either side leaving th
 `extract_char()` left an immortal snooper's entry in its target's list. A god switched into
 a mob snoops as itself: its stop used to unlink the mob, so the snoop went on while its
 target was told it had ended, and the entry outlived the god. `who <name>` shows a silent
-snooper only to level 62; a snooped 61 could read it there. The channel spell's shared
+snooper only to level 62; a snooped 61 could read it there. A target whose snoops end while
+it stays, at a shapechange's return or a switch, is told as at a stop and the row names the
+player; before, it heard nothing and the row named the shapechanged body. The channel spell's shared
 sight is neither told nor audited. `recall <n> <player>` by an immortal answers
 "Disabled by Zusuk October 9 2026".
 

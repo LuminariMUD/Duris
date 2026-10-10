@@ -4,9 +4,9 @@
 A fixture repository has the real .clang-tidy and tidy.sh and a src/Makefile with the
 flags the script reads. A staged array whose last two strings lack a comma between them
 fails --staged; the same file with the comma passes; a finding on a line no one changed
-does not count. What is staged decides, not the working tree: an unstaged fix does not
+does not count, and `--all` on a clean file passes. What is staged decides, not the working tree: an unstaged fix does not
 pass a staged finding, and an unstaged finding does not fail a staged fix. The user's git
-config does not change the result: color.diff=always let every finding through, and
+config does not change the result, and the flags come from the staged Makefile: color.diff=always let every finding through, and
 diff.noprefix=true failed every commit. Skipped where clang-tidy or clang-tidy-diff is not
 installed.
 """
@@ -69,10 +69,29 @@ with tempfile.TemporaryDirectory() as temporary:
     git("add", "src/probe.c")
     fixed = tidy()
     assert fixed.returncode == 0, fixed.stdout + fixed.stderr
+    # --all with no finding at all: the summary's grep matches nothing. An analyzer that
+    # cannot run is a failure, not a clean tree.
+    clean = subprocess.run(["scripts/tidy.sh", "--all", "src/probe.c"], cwd=repo, text=True,
+                           capture_output=True)
+    assert clean.returncode == 0 and "0 findings" in clean.stdout, clean.stdout + clean.stderr
+    missing = subprocess.run(["scripts/tidy.sh", "--all", "src/probe.c"], cwd=repo, text=True,
+                             capture_output=True,
+                             env=dict(os.environ, CLANG_TIDY="/definitely/missing"))
+    assert missing.returncode == 1 and "did not run" in missing.stderr, missing
     # The fix is staged and the working tree has the finding again.
     source.write_text("int value()\n{\n\treturn 0;\n}\n" + GLUED)
     unstaged_finding = tidy()
     assert unstaged_finding.returncode == 0, unstaged_finding.stdout + unstaged_finding.stderr
+
+    # The flags come from the staged Makefile: a finding under a define only it has counts.
+    (repo / "src/Makefile").write_text("CFLAGS = -std=c++20 -DSTAGED_ONLY\nINCLUDES = -I.\n")
+    git("add", "src/Makefile")
+    (repo / "src/Makefile").write_text("CFLAGS = -std=c++20\nINCLUDES = -I.\n")
+    source.write_text("int value()\n{\n\treturn 0;\n}\n#ifdef STAGED_ONLY\n" + GLUED + "#endif\n")
+    git("add", "src/probe.c")
+    staged_flags = tidy()
+    assert staged_flags.returncode == 1, staged_flags.stdout + staged_flags.stderr
+    git("checkout", "HEAD", "--", "src/Makefile")
 
     # The glued array committed, then an unrelated line changed: not this change's finding.
     source.write_text("int value()\n{\n\treturn 0;\n}\n" + GLUED)

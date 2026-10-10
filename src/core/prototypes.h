@@ -3115,7 +3115,7 @@ char char_in_snoopby_list(snoop_by_data *, P_char);
 unsigned int char_slice(P_char, unsigned int);
 void rem_char_from_snoopby_list(snoop_by_data **, P_char);
 void stop_snooping(P_desc);
-void end_snoops_on(P_desc, const char *);
+void end_snoops_on(P_desc, const char *, bool);
 P_char get_random_char_in_room(int, P_char, int);
 void cast_as_area(P_char, int, int, char *);
 void hummer(P_obj);
