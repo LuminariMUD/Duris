@@ -5,7 +5,7 @@
 #   ./scripts/tidy.sh                    # changed lines, staged and unstaged, against HEAD
 #   ./scripts/tidy.sh --staged           # staged lines (the pre-commit hook)
 #   ./scripts/tidy.sh --rev origin/master
-#   ./scripts/tidy.sh --all [PATH...]    # every line of src/ (or of the paths)
+#   ./scripts/tidy.sh --all [PATH...]    # every line of src/ (or of the sources in the paths)
 #
 # It only reports: exit 1 when a finding falls on a checked line. The .c files are C++20
 # and there is no compile database, so one is written to bin/tidy/ from src/Makefile's
@@ -80,6 +80,11 @@ json.dump([{"directory": os.path.join(root, "src"), "file": os.path.join(root, p
 if [[ "$MODE" == "all" ]]; then
 	(( ${#PATHS[@]} )) || PATHS=(src)
 	mapfile -t FILES < <(git ls-files "${PATHS[@]}" | grep -E '\.(c|cpp)$')
+	if (( ${#FILES[@]} == 0 )); then
+		echo "tidy: no C/C++ source in ${PATHS[*]}; --all analyses sources, and the headers" \
+			"they include with them." >&2
+		exit 2
+	fi
 	status=0
 	printf '%s\0' "${FILES[@]}" | xargs -0 -P "${TIDY_JOBS:-$(nproc)}" -n 1 \
 		"$TIDY" -p "$OUT" --quiet 2>"$OUT/stderr.log" >"$OUT/raw.log" || status=$?
