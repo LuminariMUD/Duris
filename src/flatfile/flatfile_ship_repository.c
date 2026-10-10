@@ -805,7 +805,9 @@ flatfile_ship_result flatfile_ship_establish(const std::string &root,
 	ship_catalog candidate;
 	try
 	{
-		candidate.ships = ships;
+		// A copy moved in, not a copy assignment: gcc 15 reports a possible null
+		// dereference inside the inlined assignment and -Werror stops the build.
+		candidate.ships = std::vector<flatfile_ship_record>(ships);
 		for (auto &ship : candidate.ships)
 		{
 			ship.owner_name = canonical_name(ship.owner_name);

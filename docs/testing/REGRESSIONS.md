@@ -44,23 +44,30 @@ rows last written over 30 days ago and clears the address of older `log_entries`
 `ip_info`, `player_data` and `account_characters` rows, at most a row budget per table a
 run. An account keeps each address's last use: a login rewrote the whole list with the
 save's time, so an account that logged in once a month kept every old address. A login
-now drops an address past 30 days and leaves the others' times alone. The launcher deletes
-a log archive once it is 30 days old, and the server clears `lib/etc/hosts` at a cold
-boot and removes a connection's files when it closes.
+now drops an address past 30 days and leaves the others' times alone. The same job moves
+the live logs into `logs/old-logs/<date>/` once they are a day old and removes each archived
+file and core dump 30 days after its last write: the launcher archived only between runs,
+by the archive's age, so a server kept up by copyovers kept its logs for good and a 40-day
+run's first lines lived 70 days. The server clears `lib/etc/hosts` at a cold boot and
+removes a connection's files when it closes, and a reverse-DNS lookup that answers after
+its connection closed writes nothing (it used to write its file back after the close).
 
 ```sh
 tests/async/with_disposable_mariadb.sh python3 tests/async/run_address_retention_journey.py bin/server/dms_new
+python3 tests/async/test_log_retention.py
 python3 tests/async/test_hostname_files_journey.py
-python3 tests/async/test_flatfile_launcher.py
+python3 tests/async/test_hostname_lookup_cancel.py
 python3 tests/async/test_maintenance_scheduler.py
 ```
 
 The MariaDB journey logs in on a real server, then runs the job against the same database
-without `account_login_history` and with it, with a row budget of one. The hosts journey
-boots a flat-file server over stale files and closes a connection. The launcher test ages
-an archive past 30 days. The scheduler test loads state files of versions 2 and 3, which
-held 11 and 12 jobs. No test waits for the hourly slot on a running server, and the
-flat-file backend's address lists are not pruned.
+without `account_login_history` and with it, with a row budget of one. The log test runs
+the real `expire_log_files()` on file trees of known ages. The hosts journey boots a
+flat-file server over stale files and closes a connection; the lookup test runs the real
+lookup code under ThreadSanitizer with `getnameinfo()` held until after the close. The
+scheduler test loads state files of versions 2 and 3, which held 11 and 12 jobs. No test
+waits for the hourly slot on a running server, and the flat-file backend's address lists
+are not pruned.
 
 ## Area-authored coin piles
 
@@ -465,14 +472,18 @@ never wrote its `server_reboots` row: one restart in ten was recorded. The unit 
 SIGTERM to the launcher alone (`KillMode=mixed`); the launcher runs the server as a
 child, passes the signal on, waits for the shutdown, writes the row and exits without
 starting the server again or pausing ten seconds. The issuer and reason go in as hex, so
-a reason with an apostrophe is recorded, and a failed insert is reported.
+a reason with an apostrophe is recorded, and a failed insert is reported. A stop that lands
+between the server's fork and `SERVER_PID=$!` still reaches the new server; the trap sent
+it to the last run's PID.
 
 ```sh
 tests/async/with_disposable_mariadb.sh python3 tests/async/run_launcher_stop_journey.py
+python3 tests/async/test_flatfile_launcher.py
 ```
 
 The journey runs the real launcher with a stand-in server on a disposable MariaDB and
-sends SIGTERM to the launcher alone, twice. It does not run systemd.
+sends SIGTERM to the launcher alone, twice. The launcher test runs the launch block with
+the launcher signalling itself inside that window. Neither runs systemd.
 
 ## Log lines a reader can use
 
@@ -486,8 +497,12 @@ wiz logs instead of the players' broadcast with its color codes and line ends.
 python3 tests/async/test_log_hygiene_journey.py
 ```
 
-The journey boots a flat-file server with zero-chance `M`, `F` and `R` commands, resets a
-connection before the server accepts it, and stops the server with SIGTERM.
+An `R` that misses its roll after an `M` that loaded the rider no longer goes on with a
+NULL mount, which crashed the zone pass.
+
+The journey boots a flat-file server with zero-chance `M`, `F` and `R` commands and a
+zero-chance `R` after a loaded rider, resets a connection before the server accepts it,
+and stops the server with SIGTERM.
 
 ## Maintenance scheduler state file
 
@@ -717,17 +732,20 @@ can snoop, where before the notice was given only below level 58, so no target w
 told. Every start and end is a `wiz` audit row, at 61 and 62 too. A silent snoop is level
 62 only and needs a reason, which its row keeps. A snoop ends the same way on a stop, a move
 to another target, a quit, the snooper's link closing and either side leaving the game;
-`extract_char()` left an immortal snooper's entry in its target's list. The channel spell's
-shared sight is neither told nor audited. `recall <n> <player>` by an immortal answers
+`extract_char()` left an immortal snooper's entry in its target's list. A god switched into
+a mob snoops as itself: its stop used to unlink the mob, so the snoop went on while its
+target was told it had ended, and the entry outlived the god. `who <name>` shows a silent
+snooper only to level 62; a snooped 61 could read it there. The channel spell's shared
+sight is neither told nor audited. `recall <n> <player>` by an immortal answers
 "Disabled by Zusuk October 9 2026".
 
 ```sh
 python3 tests/async/test_snoop_and_recall.py
 ```
 
-The harness runs the real `do_snoop()`, its stop helpers, `rem_char_from_snoopby_list()`
-and `do_recall()` under ASan and UBSan, with the lookup and output stubbed. No test snoops
-on a running server.
+The harness runs the real `do_snoop()`, its stop helpers, `rem_char_from_snoopby_list()`,
+`who`'s `list_snoopers()` and `do_recall()` under ASan and UBSan, with the lookup and output
+stubbed. No test snoops on a running server.
 
 ## Studio-proc trigger sources and duplicate records
 

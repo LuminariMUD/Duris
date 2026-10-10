@@ -7,7 +7,9 @@ A snoop tells its target when it starts and when it ends, at every level that ca
 snoop is only for level 62 and needs a reason, which the audit row keeps; its target is
 told nothing. A snoop ends the same way when its target leaves (end_snoops_on()) and when
 the snooper's link goes (stop_snooping()), and a snoop the channel spell set up is neither
-told nor audited.
+told nor audited. A god switched into a mob snoops as itself: its stop removes its own entry
+and is audited under its own name, where it used to unlink the mob and leave the snoop running.
+`who <name>` lists a silent snooper only to level 62, so a snooped 61 cannot read it there.
 
 recall <n> <player> by an immortal answers "Disabled by Zusuk October 9 2026" and shows
 nothing of the other player's log; a player's own recall still lists their messages.
@@ -19,10 +21,11 @@ import tempfile
 from _paths import ROOT, extract_function, source
 
 actwiz = source("actwiz.c").read_text()
-snoop = actwiz[actwiz.index("// ADR 0003: a snoop the command started"):
+snoop = actwiz[actwiz.index("// The body d's snoop is registered under"):
                actwiz.index("void do_switch(P_char ch, char *argument, int cmd)")]
 recall = extract_function("actinf.c", "void do_recall(P_char ch, char *argument, int /*cmd*/)")
 remove = extract_function("utility.c", "void rem_char_from_snoopby_list(snoop_by_data **head")
+snoopers = extract_function("actinf.c", "static void list_snoopers(P_char ch, P_desc d, char *who_output)")
 
 HARNESS = r'''
 #include "core/structs.h"
@@ -52,8 +55,19 @@ void send_to_char(const char *text, P_char ch) { screen[ch] += text; }
 void send_to_char(const char *text, P_char ch, int) { screen[ch] += text; }
 string strip_ansi(const char *text) { return text; }
 bool isname(const char *, const char *) { return false; }
+bool is_linked_to(P_char, P_char, ush_int) { return false; }
+int checked_snprintf_at(const char *, int, char *destination, size_t size, const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    const int length = vsnprintf(destination, size, format, args);
+    va_end(args);
+    return length;
+}
 void sql_log(P_char ch, const char *kind, const char *format, ...)
 {
+    if (IS_NPC(ch)) // as the real one: a mob leaves no row
+        return;
     char message[512];
     va_list args;
     va_start(args, format);
@@ -83,7 +97,7 @@ char *one_argument(const char *argument, char *first)
     *first = '\0';
     return const_cast<char *>(argument);
 }
-''' + remove + "\n" + snoop + "\n" + recall + r'''
+''' + remove + "\n" + snoop + "\n" + snoopers + "\n" + recall + r'''
 
 struct person
 {
@@ -197,6 +211,40 @@ int main()
     audit.clear();
     stop_snooping(&bob.desc);
     assert(!tanen.desc.snoop.snoop_by_list && take(tanen).empty() && audit.empty());
+
+    // A switched god's Imm commands run as its own body (interp.c), so its snoop is registered
+    // under the god: stopping and retargeting remove that entry, and the audit names the god.
+    person zusuk("Zusuk", 62);
+    char_data goblin = {};
+    char goblin_name[] = "goblin";
+    goblin.player.name = goblin_name;
+    SET_BIT(goblin.specials.act, ACT_ISNPC);
+    goblin.desc = &zusuk.desc;
+    zusuk.desc.character = &goblin;
+    zusuk.desc.original = &zusuk.ch;
+    audit.clear();
+    type(zusuk, "tanen");
+    take(tanen);
+    type(zusuk, "bob");
+    assert(!tanen.desc.snoop.snoop_by_list && told(tanen, stopped));
+    type(zusuk, "zusuk");
+    assert(!zusuk.desc.snoop.snooping && !bob.desc.snoop.snoop_by_list && told(bob, stopped));
+    assert(screen[&goblin].empty() && audit.size() == 4);
+    assert(audit[1] == "Zusuk wiz: Stopped snooping Tanen");
+    assert(audit[3] == "Zusuk wiz: Stopped snooping Bob");
+
+    // who <name> shows a player's snoopers to gods, but a silent one only to level 62.
+    person watched("Watched", 61), loud("Loud", 62);
+    type(overlord, "watched silent checking a report");
+    type(loud, "watched");
+    char listed[MAX_STRING_LENGTH] = "";
+    list_snoopers(&watched.ch, &watched.desc, listed);
+    assert(!strcmp(listed, " (Snooped By: Loud)\n\r"));
+    list_snoopers(&loud.ch, &watched.desc, listed);
+    assert(!strcmp(listed, " (Snooped By: Loud, Overlord)\n\r"));
+    type(overlord, "overlord");
+    type(loud, "loud");
+    assert(!watched.desc.snoop.snoop_by_list);
 
     // recall: an immortal cannot read another player's private messages.
     PlayerLog tanen_log, god_log;
