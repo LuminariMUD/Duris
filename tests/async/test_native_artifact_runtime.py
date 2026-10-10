@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -29,8 +30,6 @@ platform = platform.replace("DEFINE_LABEL_CALLBACK(event_item_action_active)", "
 platform = platform.replace("test_world[1]", "test_world[2]").replace("top_of_world = 0", "top_of_world = 1")
 fixture = literal(ROOT / "tests/async/test_item_actions_runtime.py", "HARNESS")
 fixture = fixture.replace("int main() {", "void foundation_regression_main() {")
-fixture = fixture.replace("void send_to_char(const char *, P_char) {}", "")
-fixture = fixture.replace("void act(const char *, int, P_char, P_obj, void *, int) {}", "")
 fixture = fixture.replace("void affect_from_char(P_char, int) {}", "")
 fixture = fixture.replace("// INSERT_PRODUCTION_ABORT", function(ROOT / "src/net/sparser.c", "void do_abort(P_char ch,"))
 boundary = literal(ROOT / "tests/async/test_device_actions_runtime.py", "HARNESS").split("// INSERT_COMMANDS", 1)[0]
@@ -38,11 +37,11 @@ boundary = boundary.replace('#include "item/device_actions.c"', '')
 boundary = boundary.replace('#include "sql/sql.h"', '')
 boundary = boundary.replace('P_obj unequip_char(P_char actor, int slot, bool)', 'P_obj unequip_char(P_char actor, int slot, bool saving)')
 boundary = boundary.replace('actor->equipment[slot] = nullptr;', 'if(!saving) clear_links(actor,source,LNKFLG_BREAK_REMOVE); actor->equipment[slot] = nullptr;')
-boundary = boundary.replace('bool affected_by_spell(P_char, int) { return false; }', '''
+boundary += '''
 bool affected_by_spell(P_char actor, int spell) {
     for(auto *af=actor->affected;af;af=af->next) if(af->type==spell) return true;
     return false;
-}''')
+}'''
 
 HARNESS = r'''
 #include "item/artifact_mana.h"
@@ -359,7 +358,7 @@ with tempfile.TemporaryDirectory(prefix='duris-native-artifacts-') as directory:
     subprocess.run(['g++', '-std=c++20', '-O1', '-g', '-ffunction-sections', '-fdata-sections',
                     '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-pthread',
                     '-I' + str(ROOT / 'src'), str(source), str(ROOT / 'src/persistence/latency_trace.c'),
-                    '-Wl,--gc-sections', '-o', str(binary)], check=True)
+                    '-Wl,--gc-sections', str(HARNESS_STUBS), '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True, env=dict(os.environ,
                    ASAN_OPTIONS='detect_leaks=1:halt_on_error=1', UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1',
                    DURIS_NEVENT_ANALYTICS='0', DURIS_NEVENT_BUDGET_USEC='0',

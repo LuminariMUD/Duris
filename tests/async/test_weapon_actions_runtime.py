@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -38,8 +39,6 @@ platform = platform.split("struct record_payload\n", 1)[0]
 platform = platform.replace("DEFINE_LABEL_CALLBACK(event_item_action_active)", "")
 fixture = literal(ROOT / "tests/async/test_item_actions_runtime.py", "HARNESS")
 fixture = fixture.replace("int main() {", "void foundation_regression_main() {")
-fixture = fixture.replace('void send_to_char(const char *, P_char) {}', '')
-fixture = fixture.replace('void act(const char *, int, P_char, P_obj, void *, int) {}', '')
 fixture = fixture.replace("// INSERT_PRODUCTION_ABORT",
                           function(ROOT / "src/net/sparser.c", "void do_abort(P_char ch,"))
 callbacks = "\n".join([
@@ -380,7 +379,7 @@ with tempfile.TemporaryDirectory(prefix="duris-weapon-actions-") as directory:
         "g++", "-std=c++20", "-O1", "-g", "-ffunction-sections", "-fdata-sections",
         "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-pthread",
         "-I" + str(ROOT / "src"), str(source), str(ROOT / "src/persistence/latency_trace.c"),
-        "-Wl,--gc-sections", "-o", str(binary),
+        "-Wl,--gc-sections", str(HARNESS_STUBS), "-o", str(binary),
     ], check=True)
     env = dict(os.environ, ASAN_OPTIONS="detect_leaks=1:halt_on_error=1",
                UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1",
