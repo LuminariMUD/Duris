@@ -50,7 +50,8 @@ OPERATORS = [
     (re.compile(r"(?<= )(<=|>=|<|>)(?=[ \n])"), {"<": "<=", "<=": "<", ">": ">=", ">=": ">"}),
     (re.compile(r"(?<= )(==|!=)(?=[ \n])"), {"==": "!=", "!=": "=="}),
     (re.compile(r"(?<= )(&&|\|\|)(?=[ \n])"), {"&&": "||", "||": "&&"}),
-    (re.compile(r"!(?=[A-Za-z_(*])"), {"!": ""}),
+    # Any logical not (!x, !*p, !--n, ! x), never the ! of !=.
+    (re.compile(r"!(?!=)"), {"!": ""}),
     # `return 0;` and the legacy `return (0);`.
     (re.compile(r"(?<=return )(true|false|0|1)(?=;)|(?<=return \()(true|false|0|1)(?=\);)"),
      {"true": "false", "false": "true", "0": "1", "1": "0"}),
