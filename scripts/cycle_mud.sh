@@ -395,10 +395,14 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
   # The server runs as a child, and a stop sent to this launcher is passed on to it:
   # under systemd (KillMode=mixed) SIGTERM reaches only the launcher, which then still
   # records the stop below. The server shuts down in order on SIGTERM.
+  # A stop can land after the fork and before SERVER_PID is set: the trap then has no PID
+  # (never the last run's), and the check after the assignment passes it on.
+  SERVER_PID=
   STOP_REQUESTED=0
-  trap 'STOP_REQUESTED=1; kill -TERM "$SERVER_PID" 2>/dev/null' TERM INT HUP
+  trap 'STOP_REQUESTED=1; [[ -n $SERVER_PID ]] && kill -TERM "$SERVER_PID" 2>/dev/null' TERM INT HUP
   "$RUNTIME_BINARY" "${SERVER_ARGS[@]}" "${MUD_PORT}" &
   SERVER_PID=$!
+  (( STOP_REQUESTED )) && kill -TERM "$SERVER_PID" 2>/dev/null
   # wait returns early when a trapped signal arrives, with the server still running.
   while wait "$SERVER_PID"; RESULT=$?; kill -0 "$SERVER_PID" 2>/dev/null; do :; done
   trap - TERM INT HUP

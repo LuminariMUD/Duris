@@ -4,6 +4,7 @@ import os
 import json
 import pathlib
 import shutil
+import signal
 import subprocess
 import tempfile
 
@@ -43,6 +44,30 @@ for code, reason in (("0", "shutdown"), ("139", "crash"), ("137", "killed by SIG
                              text=True, capture_output=True, check=True).stdout.strip()
     if stopped != reason:
         raise AssertionError(f"exit {code} was reported as {stopped!r}, not {reason!r}")
+# A stop that lands while the server is being started still reaches it: here the launcher
+# signals itself between the fork and SERVER_PID=$!, where the trap used to send the stop to
+# the last run's PID (none, on the first run) and leave the new server running for good.
+launch = cycle[cycle.index("  # The server runs as a child"):cycle.index("  trap - TERM INT HUP")]
+fork = '"$RUNTIME_BINARY" "${SERVER_ARGS[@]}" "${MUD_PORT}" &\n'
+raced = launch.replace(fork, fork + "  kill -TERM $$\n")
+if raced == launch:
+    raise AssertionError("the launcher no longer starts the server in the background")
+with tempfile.TemporaryDirectory(prefix="duris-launcher-race-") as temporary:
+    stand_in = pathlib.Path(temporary) / "dms"
+    stand_in.write_text("#!/bin/bash\ntrap 'exit 0' TERM\nwhile :; do sleep 0.1; done\n")
+    stand_in.chmod(0o755)
+    launcher = subprocess.Popen(
+        ["bash", "-c", f"RUNTIME_BINARY={stand_in}\nSERVER_ARGS=()\nMUD_PORT=1\n{raced}\n"
+         'echo "$RESULT $STOP_REQUESTED"'], text=True, stdout=subprocess.PIPE,
+        start_new_session=True)
+    try:
+        stopped = launcher.communicate(timeout=20)[0]
+    except subprocess.TimeoutExpired:
+        os.killpg(launcher.pid, signal.SIGKILL)
+        raise AssertionError("a stop during the start never reached the server")
+    # 143 when the TERM beat the stand-in's own trap; either way it reached the server.
+    if stopped.split() not in (["0", "1"], ["143", "1"]):
+        raise AssertionError(f"a stop during the start gave {stopped!r}")
 # The boot email attaches the previous run's exit log from the checkout's logs.
 if '"/logs/old-logs/' in cycle or '-f "logs/old-logs/$DATESTR/exit"' not in cycle:
     raise AssertionError("the boot email looks for the exit log outside the checkout")
