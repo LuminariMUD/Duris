@@ -38,8 +38,14 @@ if (( database )); then
 fi
 grep -hE '^\s+(FAIL|TIMEOUT|SIG[A-Z]+) tests/|^FAIL ' "$report"/test-*.log > "$report/failed.txt" || true
 
-gcovr --root "$tree" --filter "$tree/src/" --html-details "$report/index.html" \
-    --txt "$report/summary.txt" "$report/data" > "$report/gcovr.log" 2>&1
+# A harness compiled in a temporary directory leaves counts whose source is gone; only src/
+# is reported, so gcov's errors on those are ignored. The hottest loops, counted across every
+# journey, pass the count gcovr calls suspicious; they are real. A source built both with
+# and without __NO_MYSQL__ puts a function on two lines, which are kept apart.
+gcovr --root "$tree" --filter "$tree/src/" --gcov-ignore-errors=all \
+    --gcov-ignore-parse-errors=suspicious_hits.warn --merge-mode-functions=separate \
+    --html-details "$report/index.html" --txt "$report/summary.txt" "$report/data" \
+    > "$report/gcovr.log" 2>&1
 python3 - "$report/summary.txt" > "$report/directories.txt" <<'PYTHON'
 import re, sys
 from collections import defaultdict
