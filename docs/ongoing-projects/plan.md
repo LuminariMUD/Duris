@@ -700,7 +700,11 @@ sets up the inflater as `websocket_complete_handshake()` does, parses every fram
 4 of an upgrade request makes the peer a trusted proxy (`8d06a8f1b`, with three seeds that
 reach those paths; a coverage build of the replay shows `inflate()` and the address copy
 run). A 30-minute run of the new target: 37.6 million inputs, no finding, 114 inputs kept
-(the WebSocket corpus is 751 inputs, 141 KB).
+(the WebSocket corpus is 751 inputs, 141 KB). Codex's next review: every upgrade request
+ran with descriptor -1, which `websocket_complete_handshake()` refuses at once, so no valid
+upgrade reached the accept key, the compression negotiation or the 101 answer. Each upgrade
+input now gets a socket pair (`247fd4b97`). Ten minutes on that target: 8 million inputs,
+coverage 623 to 672 edges, no finding, 9 inputs kept (760 inputs, 144 KB).
 
 ### 13. `clang-tidy` on changed lines
 
