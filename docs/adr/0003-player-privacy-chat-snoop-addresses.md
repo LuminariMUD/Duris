@@ -88,8 +88,8 @@ Retention for these was pending with the rest of the lifecycle policy (finding P
 - **Implemented for decisions 2 and 3 (2026-10-10):**
   - `do_snoop()` (`src/cmd/actwiz.c`) tells the target at the start and at every end of a
     snoop the command started: a stop, a move to another target, a quit, the snooper's
-    link closing or the snooper leaving the game; when the target leaves, each snooper
-    is told why. `snoop <name> silent <reason>` is level 62 only, and its target is told
+    link closing or the snooper leaving the game, and the target switching or coming back
+    from a shapechange; when the target leaves, each snooper is told why. `snoop <name> silent <reason>` is level 62 only, and its target is told
     nothing. Each start and end is a `wiz` row in `log_entries` (the flat-file backend
     writes it to the wiz log), with "silently" and the reason on a silent start. The
     channel spell's shared sight uses the same mechanism and is neither told nor audited.
