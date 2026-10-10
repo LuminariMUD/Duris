@@ -20,18 +20,36 @@ tests/
 
 ## Test styles
 
-**Source-contract tests** — read the C sources as text and assert structural
-invariants (a guard exists, a call site was not reintroduced, an ordering
-holds). Example (`tests/async/test_sql_pool_shutdown.py`): slices out
-`sql_pool_acquire`/`sql_pool_shutdown` from `src/sql/sql_pool.c` and asserts the
-closing-pool checks are present. These need no database and no build.
+**Behavioral tests** compile the production source into a native harness, or boot the
+server in a journey, and check what the code does. A new test is behavioral whenever a
+harness or a journey can reach the code: prefer more assertions in an existing harness
+for the same source, which adds no compile.
 
-**Behavioral tests** — boot or exercise server logic where feasible; most
-regression coverage for past crashes is contract-style because full boots are
-expensive.
+**Source-contract tests** read the sources as text. One fails on a harmless rename or a
+reshaped block, and passes when the behavior is wrong but the text still matches, so a
+text check stays only for what text alone can show: a call site that must not come back,
+or an order that must hold. Before keeping one, break the code it guards; when another
+test then fails, the text check is redundant. Example (`tests/async/test_sql_pool_shutdown.py`):
+slices out `sql_pool_acquire`/`sql_pool_shutdown` from `src/sql/sql_pool.c` and asserts
+the closing-pool checks are present.
 
-**Schema tests** - verify migrations/persistence contracts against disposable
-MySQL or MariaDB instances (development databases only).
+**Schema tests** run migrations and repositories against a disposable MariaDB or MySQL.
+Every one is a line of `tests/run_db_tests.sh`, so `make test-db` runs it: a test no gate
+runs stops passing unnoticed. A leg that needs the full schema runs under
+`tests/async/with_disposable_mariadb.sh` and sources `tests/async/disposable_schema.sh`;
+none reads the checkout's `.env`.
+
+**Counts and hashes.** Check the property a count stands for (every entry has an owner
+and a retention, names are unique, one array per class), not the count, unless the count
+itself is the contract, such as the sealed migrations' ids or the shops' durable ids. A
+count that grows with content breaks the test when nothing is wrong. Hashes stay where
+they guard a generated file against hand edits.
+
+**Harness stubs.** A native harness compiles `tests/async/harness_stubs.cpp`
+(`_paths.HARNESS_STUBS` from Python) for the server functions it does not link. Its
+definitions are weak, so the real source or a harness's own definition replaces them at
+link time; write a local stub only where it must behave differently. A harness built on
+its own types, without the server's headers, keeps its stubs.
 
 ## Running
 
@@ -401,12 +419,12 @@ refusal, not a failed workload, and `QUALIFIED` is not readiness evidence either
   (`test_<feature>.py`). The root runner discovers it automatically. Add a
   `run_<feature>.sh` wrapper only when the test needs special environment setup
   or is useful as a standalone workflow.
-- Keep them fast and deterministic; prefer source contracts over full boots
-  when the invariant is structural.
+- Keep them fast and deterministic, and behavioral (see "Test styles"); a text
+  check only for what text alone can show.
 - When you change behavior, add or update the focused regression test next to
   it — this is a stated repo convention (see `AGENTS.md`).
-- Schema-related changes should extend or add a `_schema_mysql` variant so the
-  contract is checked against a real database on a clone.
+- Schema-related changes should extend or add a `_schema_mysql` variant, listed
+  in `tests/run_db_tests.sh`, so the contract is checked against a real database.
 
 ## What exists today (samples)
 
