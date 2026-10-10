@@ -410,6 +410,10 @@ change above:
   push: 30 days after the last line kept a day-long file's first lines 31 days); the
   launcher keeps only
   its archive at each start and the size cap (`eb496c0b0`).
+- Codex, on the round's push: a snooped player who came back from a shapechange was told
+  the start but never the stop, and the row named the shapechanged body. `un_morph()` now
+  ends the snoops after the link is the player's again, retargeted to the player, and tells
+  the target; `do_switch()` tells it too (`end_snoops_on()` gained the flag).
 - Not changed: `player_data.last_ip` clears 30 days after the last save, not the login. The
   address is in use for the whole session and every save writes it back from memory, so a
   clear during the session would not hold; a mortal idle 15 minutes is voided anyway.
@@ -720,10 +724,11 @@ tests whose median is a second or more, because the ratio of tenths of a second 
 the same second on one commit overwrote each other's file; a run with an untracked test or
 source counted as clean, so a test fixed while untracked read as flaky; and a test's time
 in a full parallel run was set against focused runs made alone. The file name ends in the
-runner's pid and is created exclusively, an untracked file under `src/`, `tests/`, `areas/`
-or `scripts/` makes a run dirty, and each run records its workers beside `--match`, so a
-slowdown is judged only against runs made like the last (`f58f6e67c`;
-`test_test_history.py`).
+runner's pid and is created exclusively, an untracked file makes a run dirty, and each run
+records its workers beside `--match`, so a slowdown is judged only against runs made like
+the last (`f58f6e67c`; `test_test_history.py`). Codex, on the round's push: the untracked
+check covered only `src/`, `tests/`, `areas/` and `scripts/`, but tests read `migrations/`
+and `docs/` too; any untracked file counts now.
 
 ### 15. Mutation testing, by hand
 

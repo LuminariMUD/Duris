@@ -5,8 +5,8 @@
   second overwrote the first. The name now carries the runner's pid, and the file is
   created exclusively.
 - A run counted as clean with untracked files, which change what runs: a test fixed while
-  still untracked was then reported flaky. An untracked file under src/, tests/, areas/ or
-  scripts/ now makes the run dirty.
+  still untracked was then reported flaky. Any untracked file now makes the run dirty: the
+  tests read migrations/ and docs/ as well as src/, tests/, areas/ and scripts/.
 - A test's time inside a full parallel run was set against its median from focused runs,
   made alone and faster, which reported it slower. Each run records its --match and worker
   count, and scripts/test_history.py compares the last run only with runs made like it.
@@ -55,11 +55,13 @@ runner.write_history([runner.TestResult(runner.ROOT / "tests/async/test_a.py", 0
     assert [run["dirty"] for run in runs()] == [False, False]
     assert runs()[0]["jobs"] == 8 and runs()[0]["match"] is None
 
-    (repo / "notes.txt").write_text("not something a run reads\n")
-    write("20261010T000001Z")
     (repo / "tests/async/test_new.py").write_text("")
+    write("20261010T000001Z")
+    (repo / "tests/async/test_new.py").unlink()
+    (repo / "docs").mkdir()
+    (repo / "docs/new.md").write_text("read by the documentation contract\n")
     write("20261010T000002Z")
-    assert [run["dirty"] for run in runs()][2:] == [False, True]
+    assert [run["dirty"] for run in runs()][2:] == [True, True]
 
 with tempfile.TemporaryDirectory(prefix="test-history-report-") as temporary:
     history = Path(temporary)

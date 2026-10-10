@@ -7,7 +7,8 @@ A snoop tells its target when it starts and when it ends, at every level that ca
 snoop is only for level 62 and needs a reason, which the audit row keeps; its target is
 told nothing. A snoop ends the same way when its target leaves (end_snoops_on()) and when
 the snooper's link goes (stop_snooping()), and a snoop the channel spell set up is neither
-told nor audited. A god switched into a mob snoops as itself: its stop removes its own entry
+told nor audited. A target that stays when its snoops end, after a shapechange or a switch,
+is told as at a stop; it used to hear nothing. A god switched into a mob snoops as itself: its stop removes its own entry
 and is audited under its own name, where it used to unlink the mob and leave the snoop running.
 `who <name>` lists a silent snooper only to level 62, so a snooped 61 cannot read it there.
 
@@ -188,11 +189,19 @@ int main()
     type(greater, "bob");
     take(bob);
     audit.clear();
-    end_snoops_on(&bob.desc, "Your victim is no longer among us.\r\n");
+    end_snoops_on(&bob.desc, "Your victim is no longer among us.\r\n", false);
     assert(!bob.desc.snoop.snoop_by_list && !greater.desc.snoop.snooping &&
            !overlord.desc.snoop.snooping);
     assert(told(greater, "no longer among us") && told(overlord, "no longer among us"));
     assert(take(bob).empty() && audit.size() == 2);
+
+    // A target that stays, as after a shapechange or a switch, is told as at a stop.
+    type(greater, "tanen");
+    take(tanen);
+    audit.clear();
+    end_snoops_on(&tanen.desc, nullptr, true);
+    assert(!greater.desc.snoop.snooping && !tanen.desc.snoop.snoop_by_list && told(tanen, stopped));
+    assert(audit.size() == 1 && audit[0] == "Greater wiz: Stopped snooping Tanen");
 
     // The snooper's link going ends its snoop as a stop does.
     type(greater, "tanen");
