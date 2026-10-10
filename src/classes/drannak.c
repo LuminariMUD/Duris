@@ -28,6 +28,7 @@
 #include "world/map.h"
 #include "core/mm.h"
 #include "item/objmisc.h"
+#include "item/random_equipment.h"
 #include "ships/ships.h"
 #include "world/specs.prototypes.h"
 #include "magic/spells.h"

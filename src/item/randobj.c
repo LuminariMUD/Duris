@@ -19,6 +19,7 @@
 #include "cmd/interp.h"
 #include "core/utils.h"
 #include "economy/tradeskill.h"
+#include "item/random_equipment.h"
 #include "world/vnum.obj.h"
 
 extern P_index obj_index;

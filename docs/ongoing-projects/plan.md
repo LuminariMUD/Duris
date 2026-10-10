@@ -5,6 +5,28 @@ same day. This file is a working note: delete it when the last pull request land
 [RANDOM_EQUIPMENT.md](../reference/RANDOM_EQUIPMENT.md) describes how the system behaves
 today; that behaviour is what this plan keeps.
 
+## Current handoff (2026-10-10)
+
+Checked against the checkout, saved build/test logs and GitHub. Phases 1 and 2 are
+committed. Phase 3's module split is implemented locally: the development build, all
+1,480 golden cases and the affected focused tests pass. Both build profiles pass; its full
+gate is still outstanding. Phases 4 and 5 have not started.
+
+- **Checkout:** `/home/aiwithapex/projects/duris-plan`, branch
+  `enhancement/randeq-3-module`, HEAD `7d2026fea` (the Phase 2 commit). Phase 3's source,
+  test and documentation changes are uncommitted; preserve them when continuing.
+- **Published:** [PR #25](https://github.com/LuminariMUD/Duris/pull/25) is open against
+  `master` at `3fdd367af`, with the pushed tag `randeq/phase-1-review-0`. Phases 2 and 3
+  have local branches only; neither has a review tag or PR.
+- **Verification:** Phase 1's single full-suite failure passed in an isolated rerun.
+  Phase 2's interrupted gate is being resumed in
+  `/home/aiwithapex/projects/duris-plan-gate-pr2`; database tests are running, with
+  output in `/home/aiwithapex/projects/randeq-gate/pr2-db-resume.log`.
+
+Complete Phase 2's gate on its own committed head before tagging/pushing it and opening
+its PR against `enhancement/randeq-1-golden`. Finish Phase 3's committed-head gate before publishing it;
+continue Phase 4 on its own branch. Keep the golden fixture unchanged throughout.
+
 ## Goal
 
 1. **Clear code.** The random-equipment code (the kill-drop decision, the item generator,
@@ -20,7 +42,10 @@ Not in this plan: tuning or new settings, attaching `random_eq_proc()` (D1), ran
 random-mob internals beyond `randobj mob`'s options, and crafting's commented-out code that
 once called the generator (`src/economy/crafting.c`, around lines 1011 to 1090).
 
-## What is there now
+## Baseline before Phase 1
+
+This inventory describes `879adf0aa`, not the current checkout. The phase records below
+track what has been removed or moved; the line numbers here are historical.
 
 `src/item/randomeq.c` (1,814 lines) holds everything, in this order:
 
@@ -72,7 +97,8 @@ Also worth fixing:
 compiles the module's own source files whole (not extracted functions), links the real
 `src/core/random.c` and `src/item/random_equipment_config.c`, and stubs only the world:
 
-- two zones, one with colour codes in its name (difficulty 5) and one plain (difficulty 1);
+- three zones: one with colour codes in its name (difficulty 5), one plain (difficulty 1),
+  and a town; four rooms, including a guild room;
 - blank objects for vnums 1252 and 1254;
 - materials and stones by vnum;
 - the string setters;
@@ -84,7 +110,7 @@ failure names one case, and adding a case shifts no other.
 | Part | Cases | Recorded |
 |---|---|---|
 | Drop decision | A grid: killer levels 1 to 16 and four higher, nine mob levels, luck 60/100/160, equipment roll; the material roll at luck 100. Each special condition (elite, neutral player, Hardcore, town, guild room, no-experience mob, shopkeeper, the loot dial at 1.5) at three level pairs, both rolls. 50 draws per case | One bit string per case |
-| Kill drop | The drop block of `die()`, player and pet killer, a few level pairs, 20 kills each | Each kill's objects put on the victim, and who reads the salvage line |
+| Kill drop | The drop block of `die()`, player and pet killer, four level pairs including level 1 versus 62 so both rolls always win, 40 kills each | Each kill's objects put on the victim, and who reads the salvage line |
 | Generator | Every slot fixed, in the coloured zone at the best odds (so nearly all are named: every weapon path, shield, quiver, robe and the weapon spell) and in the plain zone; random slot across killer and mob levels, luck 60/100/160, both zones, player, NPC and shopkeeper killer; every material fixed; the quality dial at 1.5; a missing blank | Every field the generator sets: keywords, both descriptions, wear flags, type, extra flags, anti-class flags, material, craftsmanship, weight, `value[0..7]`, the four affects, all bitvectors, and its messages |
 | Materials and stones | Levels 1 to 62, alchemist and not; `create_material(index)` for every index; stones | Vnums, and the alchemist's bind refund |
 | Encrust and true name | `set_encrust_affect()` for each stone spell; `identify_random()` for every spell in the table | Bitvectors; the new short description |
@@ -126,6 +152,11 @@ player or shopkeeper status and newbie flag. The new core is:
 ```c
 P_obj create_random_eq(P_char finder, int finder_level, int source_level, int slot, int material);
 ```
+
+Salvage generation also takes explicit levels as
+`create_material(P_char finder, int finder_level, int source_level)`; its existing index
+overload stays. This lets `randobj piece [level]` keep the alchemist refund and tier rolls
+without mutating the staff character or constructing a fake mob.
 
 The kill path and every other caller pass `GET_LEVEL(killer)` and `GET_LEVEL(mob)`, so they
 generate exactly what they do today. `randobj eq <level>` passes the level it was given for
@@ -276,6 +307,15 @@ The harness takes `dice`, `strip_ansi`, `FirstWord`, `isname`, `material_restric
 `GET_CLASS` and `BOUNDED` from their real source by signature, and `ALL_MAGES` and
 `ALL_ROGUES` from `objconv.c`. Phase 3 changes `MODULE_SOURCES` and the kill drop's call.
 
+**Review and verification:** commit `3fdd367af`, open
+[PR #25](https://github.com/LuminariMUD/Duris/pull/25), tag `randeq/phase-1-review-0`.
+The golden test, seven other focused checks and formatting passed. `make test-all`
+built the development and production profiles, then reported 706/707 Python tests
+passing. `test_telemetry_capacity_272.py` exceeded its 5 ms budget during a concurrent
+build, then passed alone on the same commit. The original log still records that
+failure at `/home/aiwithapex/projects/randeq-gate/pr1.log`; the isolated pass was recorded
+in the session and PR. `make test-db` was intentionally skipped for this phase.
+
 ### Phase 2: dead code out
 
 Remove what nothing runs:
@@ -312,21 +352,53 @@ existed only for what went:
 
 `#define TROPHY` survives in other files, which use it for their own purposes.
 
+**Committed, gate incomplete:** `7d2026fea` on `enhancement/randeq-2-dead-code`.
+The development build, golden test and eight other focused tests passed before commit;
+the commit's formatting and tidy checks passed. The detached gate then passed its full
+format check and development/production builds, but `make test-all` was terminated
+at progress 692/707 (the last recorded test passed). There is no final suite result and
+`make test-db` was not reached. Evidence:
+`/home/aiwithapex/projects/randeq-gate/pr2.log`; retained worktree:
+`/home/aiwithapex/projects/duris-plan-gate-pr2` at `7d2026fea`.
+Rerun `make test-all` and `make test-db` there before publishing. Avoid a competing build
+during the latency test. The saved `randeq-gate/gate.sh` creates its worktree first, so
+do not invoke it again with `pr2` while that worktree still exists.
+
 ### Phase 3: the module and its interface
+
+**Implemented locally, verification in progress (2026-10-10).** The rename, three
+new module files, moved structs/constants/prototypes, caller includes, `die()` delegation
+and Makefile entries are in place. `setprefix_obj()` is private to the generator; the
+unused `BUGGED` slot and empty material terminator are gone. The six affected tests and
+four reference documents now follow the split, and every table's columns are documented.
+
+The interrupted session's build failed on missing `CMD_*`, `TO_*`, `MAT_*` and `WEAPON_*`
+definitions. Restoring `cmd/interp.h`, `net/comm.h` and `item/objmisc.h` fixed it; the
+row-count assertions now compile. The golden harness includes the module header, compiles
+all three source files and calls `random_equipment_kill_drop(killer, victim)` directly.
+
+Passed so far: `make -C src -j16`, the unchanged 1,480-case golden fixture, all five other
+affected tests and the 12 documentation checks. The disconnected proc body was compared
+with Phase 2 and is unchanged. `make build-production -j16` and `./scripts/format.sh --check` also passed. Build logs:
+`/tmp/randeq-phase3-dev.log` and `/tmp/randeq-phase3-production.log`. The committed-head
+`test-all` and `test-db` gate remains before publishing.
 
 - **Files:** `git mv` `randomeq.c` to `random_equipment.c`; move the tables to
   `random_equipment_tables.c` and the drop decision to `random_equipment_drop.c`.
-- **Header:** add `random_equipment.h` with the structs, the size constants and their
-  `static_assert`s; drop the `BUGGED` row (`number(0, MAX_SLOT - 1)` never reached it).
+- **Header:** add `random_equipment.h` with the structs and size constants, checked by
+  `static_assert`s beside the table definitions; drop the `BUGGED` row
+  (`number(0, MAX_SLOT - 1)` never reached it).
 - **Kill drop:** move the block out of `die()` into `random_equipment_kill_drop()`. `die()`
   keeps one call in the same place, and its `tempobj` goes if nothing else uses it.
 - **Declarations:** replace every local declaration and `prototypes.h` or `structs.h` entry
   with the header; update `src/Makefile`.
 - **Tests that read files by name:**
+  - `test_random_equipment_golden.py` (module sources, header and kill-drop call);
   - `test_random_equipment_config_contract.py`;
   - `test_difficulty_dials.py` (its hook strings);
   - `test_deferred_findings_repairs.py`;
-  - `test_random_drop_owner_message.py` (now reads the new function).
+  - `test_random_drop_owner_message.py` (now reads the new function);
+  - `test_weapon_actions_runtime.py` (proc source path and the header for `random_spells`).
 
 Every document that names `randomeq.c` or the moved functions follows:
 [RANDOM_EQUIPMENT.md](../reference/RANDOM_EQUIPMENT.md),
@@ -406,9 +478,9 @@ based on the one below, so each pull request's diff is its own phase. The first 
 
 | PR | Phase | Branch | GitHub | State |
 |---|---|---|---|---|
-| 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | opened | Done; up for review (`randeq/phase-1-review-0`) |
-| 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | | Done; gate pending |
-| 3 | 3, module and interface | `enhancement/randeq-3-module` | | Not started |
+| 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | [#25](https://github.com/LuminariMUD/Duris/pull/25) | Open for review at `3fdd367af` (`randeq/phase-1-review-0`) |
+| 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | Not opened | Committed locally at `7d2026fea`; gate interrupted, database tests outstanding |
+| 3 | 3, module and interface | `enhancement/randeq-3-module` | Not opened | Implemented; both builds and focused checks pass, full gate pending |
 | 4 | 4, readable generator | `enhancement/randeq-4-generator` | | Not started |
 | 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | | Not started |
 
@@ -435,3 +507,11 @@ The plan was checked part by part against what each part is for:
   every slot row in one naming style.
 - **Scaled:** PR 1's gate skips `make test-db`.
 - **Kept:** everything else. Each part serves the goal or an owner decision (D1 to D4).
+
+## Ablation review at takeover (2026-10-10)
+
+Outcome, non-goals, files and proof remain those above. Keep the module split: the drop
+decision has independent callers, while the generator and staff command have different
+responsibilities. Reuse the golden fixture and existing harnesses; no new compatibility
+wrapper or test framework is needed for the move. The missing includes and stale harness
+paths are required integration repairs, not changes to game rules.

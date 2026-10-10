@@ -4,12 +4,15 @@ When a player kills an NPC, the server may generate a piece of equipment, a salv
 material or an encrust stone and put it on the corpse. The player sees "It appears you
 were able to salvage a piece of equipment from your enemy." Nothing is drawn from a loot
 table: the item is built at that moment from tables of slots, materials and prefixes.
-The code lives in `src/item/randomeq.c`, the trigger in `die()` in
-`src/combat/fight.c`, and the settings in `lib/random_equipment.cfg`.
+The generator lives in `src/item/random_equipment.c`, its tables in
+`src/item/random_equipment_tables.c`, and the drop decision and kill-drop handler in
+`src/item/random_equipment_drop.c`. Callers include `src/item/random_equipment.h`;
+`die()` in `src/combat/fight.c` calls `random_equipment_kill_drop()`. Settings live in
+`lib/random_equipment.cfg`.
 
 ## When a kill drops something
 
-The drop block in `die()` runs when the victim is an NPC and the killer, still alive, is
+`random_equipment_kill_drop()` runs when the victim is an NPC and the killer, still alive, is
 a player or a player's pet. It makes two independent rolls with `check_random_drop()`:
 
 | Roll | Scaled by | A win gives |
@@ -117,7 +120,7 @@ mob's level (capped at 60), re-rolled while it is self-only. It fires through th
 that there is more to the weapon; the reveal true name spell appends "of <spell>" to its
 name (`identify_random()`).
 
-`random_eq_proc()` in `randomeq.c` is not connected yet: no object has it, so neither it nor
+`random_eq_proc()` in `random_equipment.c` is not connected yet: no object has it, so neither it nor
 the random-equipment route in [weapon actions](WEAPON_ACTIONS.md) runs in the game. It is
 kept until it is attached on purpose; only `tests/async/test_weapon_actions_runtime.py`
 calls it.
@@ -171,9 +174,9 @@ python3 tests/async/test_random_drop_owner_message.py
 python3 tests/async/test_difficulty_dials.py
 ```
 
-The golden test holds the rolls themselves. It compiles `randomeq.c` whole under ASan and
+The golden test holds the rolls themselves. It compiles all three module sources whole under ASan and
 UBSan with the real random number generator and settings at their defaults, stubs only
-the world, and records 1,480 seeded cases: drop decisions, the kill-drop block of `die()`,
+the world, and records 1,480 seeded cases: drop decisions, `random_equipment_kill_drop()`,
 generated items field by field, materials, stones, encrust affects and true names. The
 output must equal `tests/fixtures/random_equipment_golden.txt`, so any change that moves,
 adds or drops a roll fails it. The next two hold the settings and their loader, then the

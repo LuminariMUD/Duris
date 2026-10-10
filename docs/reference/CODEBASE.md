@@ -90,6 +90,10 @@ Representative entry points by feature:
 - **Objects and economy:** `src/cmd/actobj.c`, `src/item/`, and `src/economy/`.
   Batch transfer syntax and atomicity are documented in
   [BATCH_ITEM_COMMANDS.md](BATCH_ITEM_COMMANDS.md).
+- **Random equipment:** `src/item/random_equipment.c` generates items,
+  `random_equipment_tables.c` holds their tables, and `random_equipment_drop.c` handles
+  kill drops. Callers use `item/random_equipment.h`; `randobj.c` is the staff command.
+  See [RANDOM_EQUIPMENT.md](RANDOM_EQUIPMENT.md).
 - **World and movement:** `src/cmd/actmove.c`, `src/world/map.c`,
   `src/world/weather.c`, and the rest of `src/world/`.
 - **Guilds and social systems:** `src/guild/` plus social handlers in

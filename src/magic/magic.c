@@ -39,6 +39,7 @@
 #include "classes/necromancy.h"
 #include "persistence/persistence_checkpoint.h"
 #include "item/objmisc.h"
+#include "item/random_equipment.h"
 #include "item/item_movement_transaction.h"
 #include "item/item_ownership_runtime.h"
 #include "kingdom/kingdom_store_piece.h"
@@ -267,7 +268,6 @@ void affect_to_end(P_char ch, struct affected_type *af);
 int conjure_terrain_check(P_char, P_char);
 
 int portal_id;
-extern bool identify_random(P_obj);
 int cast_as_damage_area(P_char, void (*func)(int, P_char, char *, int, P_char, P_obj), int, P_char,
 			float, float);
 int cast_as_damage_area(P_char, void (*func)(int, P_char, char *, int, P_char, P_obj), int, P_char,

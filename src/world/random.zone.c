@@ -29,6 +29,7 @@
 #include "world/map.h"
 #include "core/mm.h"
 #include "item/objmisc.h"
+#include "item/random_equipment.h"
 #include "magic/spells.h"
 #include "world/vnum.obj.h"
 #include "world/weather.h"
@@ -65,7 +66,6 @@ extern struct zone_data *zone_table;
 extern struct mm_ds *dead_mob_pool;
 extern struct mm_ds *dead_pconly_pool;
 extern char *random_zone;
-extern struct random_spells spells_data[];
 extern const int rev_dir[];
 
 int find_map_place();

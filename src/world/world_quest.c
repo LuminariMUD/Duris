@@ -39,6 +39,7 @@ using namespace std;
 #include "combat/justice.h"
 #include "world/map.h"
 #include "item/objmisc.h"
+#include "item/random_equipment.h"
 #include "item/item_movement_transaction.h"
 #include "persistence/persistence_checkpoint.h"
 #include "magic/spells.h"
