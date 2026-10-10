@@ -348,6 +348,10 @@ change above:
   push: 30 days after the last line kept a day-long file's first lines 31 days); the
   launcher keeps only
   its archive at each start and the size cap (`eb496c0b0`).
+- Codex, on the round's push: a snooped player who came back from a shapechange was told
+  the start but never the stop, and the row named the shapechanged body. `un_morph()` now
+  ends the snoops after the link is the player's again, retargeted to the player, and tells
+  the target; `do_switch()` tells it too (`end_snoops_on()` gained the flag).
 - Not changed: `player_data.last_ip` clears 30 days after the last save, not the login. The
   address is in use for the whole session and every save writes it back from memory, so a
   clear during the session would not hold; a mortal idle 15 minutes is voided anyway.

@@ -4839,16 +4839,17 @@ void stop_snooping(P_desc d)
 	snoop_ended(d, true);
 }
 
-// Ends every snoop on d, whose character is leaving it; each snooper is told `message`
-// when it is not null.
-void end_snoops_on(P_desc d, const char *message)
+// Ends every snoop on d; each snooper is told `message` when it is not null. The target
+// is told as at a stop when tell_target is set: its character stays, as after a
+// shapechange, rather than leaving.
+void end_snoops_on(P_desc d, const char *message, bool tell_target)
 {
 	for (snoop_by_data *node = d->snoop.snoop_by_list, *next; node; node = next)
 	{
 		next = node->next;
 		if (message)
 			send_to_char(message, node->snoop_by);
-		snoop_ended(node->snoop_by->desc, false);
+		snoop_ended(node->snoop_by->desc, tell_target);
 		FREE(node);
 	}
 	d->snoop.snoop_by_list = NULL;
@@ -5027,7 +5028,8 @@ void do_switch(P_char ch, char *argument, int cmd)
 
 			end_snoops_on(
 				ch->desc,
-				"Your victim has switched into something, killing your snoop.\n");
+				"Your victim has switched into something, killing your snoop.\n",
+				true);
 
 			if (IS_TRUSTED(ch) && !IS_FIGHTING(ch))
 			{
