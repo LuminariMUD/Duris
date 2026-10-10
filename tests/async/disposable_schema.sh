@@ -2,8 +2,11 @@
 # Sourced by a database leg that tests/run_db_tests.sh runs under
 # tests/async/with_disposable_mariadb.sh: creates duris_test on that disposable server with
 # the full schema (the bootstrap and every immutable migration) and exports the DB_*
-# settings the leg reads. A leg never reads the checkout's .env.
-: "${TEST_DB_HOST:?run this leg under tests/async/with_disposable_mariadb.sh}"
+# settings the leg reads. A leg never reads the checkout's .env. Run on its own, the leg
+# runs itself again under that wrapper, which starts the disposable server.
+if [[ -z ${TEST_DB_HOST:-} ]]; then
+	exec "$ROOT/tests/async/with_disposable_mariadb.sh" bash "$0" "$@"
+fi
 export ENVIRONMENT=test DB_HOST="$TEST_DB_HOST" DB_PORT="$TEST_DB_PORT" DB_USER="$TEST_DB_USER" \
 	DB_PASSWD="$TEST_DB_PASSWORD" DB_NAME=duris_test MYSQL_PWD="$TEST_DB_PASSWORD"
 export DB_ALLOWED_TARGETS="$DB_HOST/$DB_NAME"

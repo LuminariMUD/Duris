@@ -38,12 +38,14 @@ if [[ -z "$TIDY" || -z "$TIDY_DIFF" ]]; then
 fi
 
 # clang-tidy-diff reads plain "+++ b/<path>" headers: no color, prefixes or diff drivers
-# from the user's git config.
+# from the user's git config. Only sources and headers are analysed: the Makefile and the
+# .inc and .def fragments are not translation units.
 PLAIN=(--no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ -U0)
+SOURCES=('src/*.c' 'src/*.cpp' 'src/*.h')
 if [[ "$MODE" == "staged" ]]; then
-	diff=$(git diff --cached "${PLAIN[@]}" -- src)
+	diff=$(git diff --cached "${PLAIN[@]}" -- "${SOURCES[@]}")
 elif [[ "$MODE" == "worktree" ]]; then
-	diff=$(git diff "${PLAIN[@]}" "$REV" -- src)
+	diff=$(git diff "${PLAIN[@]}" "$REV" -- "${SOURCES[@]}")
 fi
 if [[ "$MODE" != "all" && -z "$diff" ]]; then
 	echo "tidy: no changed C/C++ lines under src/."
