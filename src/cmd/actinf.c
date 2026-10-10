@@ -9485,26 +9485,22 @@ void do_title(P_char ch, char *arg, int /*cmd*/)
 {
 	char name[MAX_INPUT_LENGTH];
 	char Gbuf1[MAX_STRING_LENGTH];
-	P_char t_ch = NULL;
+	P_char t_ch = ch;
 
+	// Staff may title another player by naming them first; any other first
+	// word, a mob's name included, is the start of their own title.
 	if (IS_TRUSTED(ch))
 	{
-		arg = one_argument(arg, name);
-		if (!*name || !(t_ch = get_char_vis(ch, name)))
+		char *rest = one_argument(arg, name);
+		P_char named = get_char_vis(ch, name);
+
+		if (named && IS_PC(named))
 		{
-			send_to_char("Title who?\n", ch);
-			return;
+			t_ch = named;
+			arg = rest;
 		}
 	}
-	else
-		t_ch = ch;
 
-	/*
-	  if (IS_NPC(t_ch)) {
-	    send_to_char("Sorry, mobs don't deserve titles.\n", ch);
-	    return;
-	  }
-	*/
 	if ((GET_LEVEL(t_ch) > GET_LEVEL(ch)) && (t_ch != ch))
 	{
 		send_to_char("Sorry, you can't change the title of your superiors!\n", ch);

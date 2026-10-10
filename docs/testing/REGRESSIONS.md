@@ -812,6 +812,22 @@ The harness runs the real `do_snoop()`, its stop helpers, `rem_char_from_snoopby
 `who`'s `list_snoopers()` and `do_recall()` under ASan and UBSan, with the lookup and output
 stubbed. No test snoops on a running server.
 
+## Staff title with a mob's name in it
+
+Staff type `title <player> <text>` to title another player. Any other first word, a mob's
+name included, starts their own title, as `title <text>` does for mortals. A level 62
+typing `title can be reached on Discord` beside a mob called "can hy trader" used to
+title the mob: the server printed "Title Bestowed" with the mob's keywords, then refused
+with "That field is undefined for monsters", and the staff title stayed blank.
+
+```sh
+python3 tests/async/test_staff_title.py
+```
+
+The test compiles the real `do_title()` under ASan/UBSan with a mob, two staff and a
+mortal: a mob's name, another player, oneself, a bare `title`, a superior and a mortal's
+first word. `do_string()`, which stores the title, is a stand-in.
+
 ## Studio-proc trigger sources and duplicate records
 
 `make world` builds `areas/world.trg` with `make_trg` (`areas/src/trg/make_trg.c`) from each
