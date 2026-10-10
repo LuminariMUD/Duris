@@ -7,32 +7,37 @@ today; that behaviour is what this plan keeps.
 
 ## Current handoff (2026-10-11)
 
-Phases 1–4 are committed, and Phases 1–3 are published for review. Phase 5's command,
-regressions, help and reference docs are implemented locally. Both build profiles, the
-focused ASan/UBSan tests, all 1,480 golden cases and the corrected live gameplay check
-pass. Phase 4's full gate is running; Phase 5 needs its commit and full gate.
+All five phases are implemented, verified and published for review. The focused ASan/UBSan
+tests, both build profiles, all 1,480 unchanged golden cases and the corrected live gameplay
+check pass. Phase 5's final code commit `dbbc89dfe` passed all 709 regressions and 72 database
+tests without reruns. The final follow-up only records results and review links in this file.
 
 - **Checkout:** `/home/aiwithapex/projects/duris-plan`, branch
   `enhancement/randeq-5-randobj`, based on Phase 4 commit `4b7e68cb4`. The tokenizer
-  repair is committed at `a52c81902`; the remaining Phase 5 changes are uncommitted.
+  repair is committed at `a52c81902`; the Phase 5 implementation is `dbbc89dfe`.
   Phase 3 is `a3bff0079`; Phase 4 also contains `316444732` (true-name bounds) and
   `143fb1d5b` (void encrust return).
 - **Published:** [PR #25](https://github.com/LuminariMUD/Duris/pull/25) targets `master`
   at `3fdd367af`; [PR #26](https://github.com/LuminariMUD/Duris/pull/26) targets the
   Phase 1 branch at `7d2026fea`; [PR #27](https://github.com/LuminariMUD/Duris/pull/27)
-  targets Phase 2 at `a3bff0079`. All three have pushed `randeq/phase-<n>-review-0` tags.
+  targets Phase 2 at `a3bff0079`; [PR #28](https://github.com/LuminariMUD/Duris/pull/28)
+  targets Phase 3 at `4b7e68cb4`; [PR #29](https://github.com/LuminariMUD/Duris/pull/29)
+  targets Phase 4. All five review heads have pushed `randeq/phase-<n>-review-0` tags.
+  Phase 5's tag includes the documentation-only final record after `dbbc89dfe`.
 - **Gates:** Phase 2 passed 707/707 regressions and 72/72 database tests after two
   isolated performance reruns. Phase 3 passed 707/707 regressions and 72/72 database tests
-  without reruns. Phase 4 is running on `4b7e68cb4`. Logs are under
-  `/home/aiwithapex/projects/randeq-gate/` (`pr3.log`, `pr4.log`).
+  without reruns. Phase 4 also passed 707/707 regressions and 72/72 database tests
+  without reruns. Phase 5 passed 709/709 regressions and 72/72 database tests without
+  reruns. The task's temporary gate worktrees have been removed.
+  Logs are under `/home/aiwithapex/projects/randeq-gate/` (`pr3.log`, `pr4.log`, `pr5.log`).
 - **Live check:** a private full-world server using the dedicated flat-file binary under
   `bin/server/randeq-live/` passed the five requested commands plus sword/ring stat checks.
   A synthetic character was created, promoted to level 62 and discarded with the private
   state. Results are recorded below; full output is in `randeq-gate/pr5-live.log`.
 
-Commit Phase 5. Complete each remaining phase's local
-gate before its review tag, push and stacked PR; do not merge. Keep the golden fixture
-unchanged throughout.
+No implementation or verification work remains. Review and land in the order below;
+the PRs have not been merged. Keep the golden fixture unchanged, and retain this handoff
+until the final PR lands.
 
 ## Goal
 
@@ -403,7 +408,7 @@ all three source files and calls `random_equipment_kill_drop(killer, victim)` di
 Passed: `make -C src -j16`, the unchanged 1,480-case golden fixture, all five other
 affected tests and the 12 documentation checks. The disconnected proc body was compared
 with Phase 2 and is unchanged. `make build-production -j16` and `./scripts/format.sh --check` also passed. Build logs:
-`/tmp/randeq-phase3-dev.log` and `/tmp/randeq-phase3-production.log`. The committed-head
+`/home/aiwithapex/projects/randeq-gate/pr3-dev.log` and `/home/aiwithapex/projects/randeq-gate/pr3-production.log`. The committed-head
 gate passed `make test-all -j16 TEST_JOBS=16` (707/707) and `make test-db` (72/72), with
 no reruns. Evidence: `/home/aiwithapex/projects/randeq-gate/pr3.log`.
 
@@ -435,7 +440,8 @@ the production `-O2` profile).
 
 ### Phase 4: a readable generator
 
-**Implemented, full gate pending.** The independent fixes are `316444732` (true-name
+**Ready for review:** `4b7e68cb4`, [PR #28](https://github.com/LuminariMUD/Duris/pull/28),
+tag `randeq/phase-4-review-0`. The independent fixes are `316444732` (true-name
 bounds) and `143fb1d5b` (void encrust return); the foreign-spell assertion and all existing
 encrust cases pass under ASan/UBSan. The generator now has separate slot, material, naming,
 suffix, weight, stat and type steps. The three naming copies are one function, and all
@@ -447,8 +453,10 @@ All 1,480 golden cases match the unchanged fixture. The fixture caught an attemp
 The weapon-dice `MIN` expression also deliberately retains its original repeated draw.
 Every module function is at most 80 lines except the untouched, disconnected proc (112).
 Development and production builds passed (`make -C src -j8`, `make build-production -j8`),
-with logs `/tmp/randeq-phase4-dev.log` and `/tmp/randeq-phase4-production.log`. The affected
-contracts and documentation checks pass; full `test-all`/`test-db` gating remains.
+with logs `/home/aiwithapex/projects/randeq-gate/pr4-dev.log` and `/home/aiwithapex/projects/randeq-gate/pr4-production.log`. The affected
+contracts and documentation checks pass. `make test-all -j16 TEST_JOBS=16` passed
+707/707 on `4b7e68cb4`; `make test-db` passed 72/72. No reruns were needed.
+Evidence: `/home/aiwithapex/projects/randeq-gate/pr4.log`.
 
 Split `create_random_eq_new()` into the steps above, behind `create_random_eq()` with level
 parameters (the old name goes, every caller moves). Then:
@@ -464,13 +472,22 @@ about 80 lines, apart from the tables and `random_eq_proc()` (D1).
 
 ### Phase 5: `randobj` with arguments
 
-**Implemented, full gate pending.** Work continues on `enhancement/randeq-5-randobj`.
+**Ready for review:** [PR #29](https://github.com/LuminariMUD/Duris/pull/29), branch
+`enhancement/randeq-5-randobj`, tag `randeq/phase-5-review-0`. Code commit: `dbbc89dfe`;
+the tag also includes the final documentation-only record.
 The tokenizer repair is `a52c81902`. Both native harnesses, development and production
 builds, the unchanged golden fixture, documentation checks and the live commands pass.
 Build commands were `make -C src -j8`, `make build-production -j8` and the dedicated
-flat-file build for the live check; their logs are `/tmp/randeq-phase5-*-final.log`.
-The existing `lohrr_chop` tokenizer replaces the
-planned `one_argument`: the latter silently drops words like "at" and "with", violating
+flat-file build for the live check; their logs are `pr5-dev.log`, `pr5-production.log`
+and `pr5-flatfile.log` under `/home/aiwithapex/projects/randeq-gate/`.
+
+The committed-code gate passed `make test-all -j16 TEST_JOBS=16` (709/709) and
+`make test-db` (72/72), without reruns. Evidence: `randeq-gate/pr5.log`.
+The final handoff-only follow-up passes `python3 tests/async/test_documentation_contract.py`
+(12 checks); it reuses the code gate because no source or test code changed afterward.
+
+The existing `lohrr_chop` tokenizer replaces the planned `one_argument`: the latter
+silently drops words like "at" and "with", violating
 the requirement to reject stray arguments. No new tokenizer was added. Recipe batches
 repeat attempts and report the number made, excluding ineligible random blanks.
 
@@ -510,7 +527,8 @@ state with the full world. `score` confirmed level 62. The commands returned:
 Extra checks forced a long sword and then a ring while both prototypes were already carried:
 the stat blocks showed the new weapon and new armour respectively. Ordinary `stat o sword`
 still found the long sword. The character saved, the server shut down cleanly and the
-private state was removed. Full output: `/home/aiwithapex/projects/randeq-gate/pr5-live.log`.
+private state was removed. The script and full output are
+`/home/aiwithapex/projects/randeq-gate/pr5-live.py` and `pr5-live.log`.
 
 [RANDOM_EQUIPMENT.md](../reference/RANDOM_EQUIPMENT.md) gets `randobj`'s syntax, and
 [REGRESSIONS.md](../testing/REGRESSIONS.md) a section for the `randobj` crash (defect 2).
@@ -552,8 +570,8 @@ based on the one below, so each pull request's diff is its own phase. The first 
 | 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | [#25](https://github.com/LuminariMUD/Duris/pull/25) | Open for review at `3fdd367af` (`randeq/phase-1-review-0`) |
 | 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | [#26](https://github.com/LuminariMUD/Duris/pull/26) | Open for review at `7d2026fea` (`randeq/phase-2-review-0`); all checks accounted for |
 | 3 | 3, module and interface | `enhancement/randeq-3-module` | [#27](https://github.com/LuminariMUD/Duris/pull/27) | Open for review at `a3bff0079` (`randeq/phase-3-review-0`); full gate passed |
-| 4 | 4, readable generator | `enhancement/randeq-4-generator` | Not opened | Committed at `4b7e68cb4`; full gate running, focused checks passed |
-| 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | Not opened | Implemented locally; focused tests, all builds and live check pass, full gate pending |
+| 4 | 4, readable generator | `enhancement/randeq-4-generator` | [#28](https://github.com/LuminariMUD/Duris/pull/28) | Open for review at `4b7e68cb4` (`randeq/phase-4-review-0`); full gate passed |
+| 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | [#29](https://github.com/LuminariMUD/Duris/pull/29) | Open for review at `randeq/phase-5-review-0`; code `dbbc89dfe` plus final handoff record; full gate passed |
 
 ## Checks per pull request
 
