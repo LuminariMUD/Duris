@@ -891,10 +891,10 @@ P_obj create_random_eq_new(P_char killer, P_char mob, int object_type, int mater
 	}
 
 	// Chance for a named item. 0% for <= level 10, luck = every 4 points over 60 gives one point to multiplier
-	// At level 11 killer, 100 luck, 20 mob: 1 * 10 *  58 =   580  -> ~0.46% chance
-	// At level 11 killer, 160 luck, 20 mob: 1 * 25 *  58 =  1450  ->  1.16% chance
-	// At level 56 killer, 100 luck, 62 mob: 5 * 10 * 100 =  5000  ->  4.0 % chance
-	// At level 56 killer, 160 luck, 62 mob: 5 * 25 * 100 = 12500  -> 10.0 % chance
+	// At level 11 killer, 100 luck, 20 mob: 8 * 1 * 10 *  58 =   4640 ->  4.6% chance
+	// At level 11 killer, 160 luck, 20 mob: 8 * 1 * 25 *  58 =  11600 -> 11.6% chance
+	// At level 56 killer, 100 luck, 62 mob: 8 * 5 * 10 * 100 =  40000 -> 40.0% chance
+	// At level 56 killer, 160 luck, 62 mob: 8 * 5 * 25 * 100 = 100000 -> almost certain
 	chance = 8 * (GET_LEVEL(killer) / 11) * ((GET_C_LUK(killer) - 60) / 4) *
 		 (GET_LEVEL(mob) + 38);
 	// debug( "Chance: %5d, or %.04f%%.", chance, chance / 1000. );
