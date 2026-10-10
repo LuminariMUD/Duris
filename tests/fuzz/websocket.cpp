@@ -6,6 +6,7 @@
 // has a socket pair to answer on, so a valid one completes the handshake.
 // fuzz-sources: src/net/websocket.c
 // fuzz-libs: -lcjson -lssl -lcrypto -lz
+// fuzz-max-len: 65600 (a 64 KiB frame with its header and the selector)
 #include "core/structs.h"
 #include "net/websocket.h"
 

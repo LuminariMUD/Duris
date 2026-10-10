@@ -3,6 +3,7 @@
 // The first byte picks the decoder: odd for an item list, even for a whole snapshot.
 // fuzz-sources: src/player/player_snapshot_codec.c
 // fuzz-libs:
+// fuzz-max-len: 4194400 (past PLAYER_SNAPSHOT_MAX_BYTES (4 MiB))
 #include "player/player_snapshot_codec.h"
 
 #include <cstdint>

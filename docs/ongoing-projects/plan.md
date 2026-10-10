@@ -654,6 +654,14 @@ test pins a count that grows with content, and the repeated stubs come from one 
     now build their own server and are in `make test-all`; the gold journey promotes its
     character with the combat journey's `make_overlord()`.
 
+**Review round 1** (2026-10-10): the adversarial review found no defect. Codex, on the
+round's push: `test_session14_gate.py`'s exact count of 28 fault cases became "non-empty and
+unique", so a manifest that dropped `db_outage_30s` or any case but one still passed; it
+now requires every current profile and fault case by name and allows new ones. And a leg
+converted to `disposable_schema.sh` stopped at its `TEST_DB_HOST` check when run on its
+own, as `CRITICAL_COMMAND_PIPELINE.md` says to run them; such a leg now runs itself again
+under `with_disposable_mariadb.sh`.
+
 ### 12. Fuzz the code that reads outside input
 
 **Problem.** No fuzz target exists. Code that parses input from clients or files is tested
@@ -726,6 +734,9 @@ coverage 623 to 672 edges, no finding, 9 inputs kept (760 inputs, 144 KB). The r
 that: `fuzz.sh` let UBSan recover, so an undefined-behaviour report left no crash input; it
 builds with `-fno-sanitize-recover=all` now, as the replay does. This round's two runs
 printed no UBSan report, and the replay, which stops on one, passes the whole corpus.
+Then: libFuzzer took the corpus's largest input, 4 KiB, as its limit, under the sizes the
+code checks; each target now names its own on `// fuzz-max-len:` (64 KiB frames, 1 MiB
+GMCP, 4 MiB saves, each a little past), and `fuzz.sh` passes it.
 
 ### 13. `clang-tidy` on changed lines
 
@@ -792,7 +803,9 @@ analyzer missing or killed; a finding is 123) fails the run. The review after th
 analyzer that runs but exits 2 also gives `xargs` 123, so a failed run that reported no
 finding now fails too, with the end of clang-tidy's stderr (kept in `bin/tidy/stderr.log`).
 And the hook left at its missing-`clang-format` warning, so without a formatter the tidy
-check never ran; it goes on to the tidy check now.
+check never ran; it goes on to the tidy check now. Then: the diff took every file under
+`src/`, and a `clang-tidy-diff` whose file pattern is wider than this machine's would parse
+`src/Makefile` or an `.inc` fragment as C++; the diff now takes only `.c`, `.cpp` and `.h`.
 
 ### 14. Keep a history of test runs
 

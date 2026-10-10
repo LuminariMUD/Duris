@@ -312,7 +312,8 @@ minutes. It never runs in a gate, and its score counts only the tests that name 
 Each `tests/fuzz/<target>.cpp` feeds `LLVMFuzzerTestOneInput` to code that reads outside
 input: `websocket` (the upgrade request and frames), `gmcp` (a client's `Core.Hello` and
 `Client.Info`) and `player_snapshot` (save decoding, with an encode-and-decode round trip).
-Its `// fuzz-sources:` and `// fuzz-libs:` lines say what it links; the shared harness
+Its `// fuzz-sources:` and `// fuzz-libs:` lines say what it links, and `// fuzz-max-len:`
+its largest input, a little past the sizes its code checks; the shared harness
 stubs fill in the rest.
 
 `make fuzz FUZZ_TARGET=websocket FUZZ_SECONDS=3600` (or `scripts/fuzz.sh TARGET [SECONDS]`)

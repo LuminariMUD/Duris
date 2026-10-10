@@ -96,6 +96,14 @@ with tempfile.TemporaryDirectory() as temporary:
     staged_flags = tidy()
     assert staged_flags.returncode == 1, staged_flags.stdout + staged_flags.stderr
     git("checkout", "HEAD", "--", "src/Makefile")
+    # A change to the Makefile alone is no C/C++ to check.
+    git("checkout", "HEAD", "--", "src/probe.c")
+    (repo / "src/Makefile").write_text("CFLAGS = -std=c++20 -DOTHER\nINCLUDES = -I.\n")
+    git("add", "src/Makefile")
+    makefile_only = tidy()
+    assert makefile_only.returncode == 0 and "no changed C/C++ lines" in makefile_only.stdout, \
+        makefile_only.stdout + makefile_only.stderr
+    git("checkout", "HEAD", "--", "src/Makefile")
 
     # The glued array committed, then an unrelated line changed: not this change's finding.
     source.write_text("int value()\n{\n\treturn 0;\n}\n" + GLUED)
