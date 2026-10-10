@@ -739,6 +739,9 @@ tests the last run passed, against their passes in earlier runs made like it. Th
 after that: runs that started in the same second sorted by commit and pid, so the "last"
 could be the earlier one; each run records when it finished, and that breaks the tie.
 `make coverage` also checks for `gcovr` before its `test-all` instead of failing after it.
+The review after that: gcovr ignored every gcov error, so an output error could leave a
+report silently short; it now ignores only a vanished harness's missing source and working
+directory.
 
 ### 15. Mutation testing, by hand
 
