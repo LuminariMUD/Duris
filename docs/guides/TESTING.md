@@ -59,9 +59,12 @@ make test-db
 # Full historical legacy upgrade, replay, bootstrap equivalence, and compatibility:
 tests/async/run_legacy_migration_mysql.sh
 
-# Runtime schema compatibility on both supported variants:
+# Runtime schema compatibility on the supported variants (MySQL 8.0, MariaDB 10.11 and
+# 11.8), and the migration runner on all three:
 tests/async/run_runtime_compatibility_mysql.sh
 RUNTIME_DB_IMAGE=mariadb:10.11 tests/async/run_runtime_compatibility_mysql.sh
+RUNTIME_DB_IMAGE=mariadb:11.8 tests/async/run_runtime_compatibility_mysql.sh
+python3 tests/async/run_migration_runner_engines.py
 ```
 
 `TEST_JOBS=0` is the default and selects up to eight workers based on available
@@ -257,7 +260,7 @@ iterating, then run every row required by the session or release gate.
 | Server build | `make -C src` | C++20 server compiles under the warning profile | Schema compatibility or runtime readiness |
 | Repository gate | `make test-all` | Maintained builds, generated world inputs, all discovered Python tests, and native signal tests | Docker database suites, representative data, or a 200-player hold |
 | Disposable database | `make test-db` | Listed schema contracts, legacy-to-current convergence, and the MariaDB journeys on a real server, each on its own Docker container | Configured database state |
-| Dual-engine boot contract | `tests/async/run_runtime_compatibility_mysql.sh` and `RUNTIME_DB_IMAGE=mariadb:10.11 tests/async/run_runtime_compatibility_mysql.sh` | Fresh bootstrap, immutable head, drift rejection, and boot compatibility on MySQL 8 and MariaDB 10.11 | A configured or production upgrade |
+| Engine boot contract | `tests/async/run_runtime_compatibility_mysql.sh` with `RUNTIME_DB_IMAGE` unset, `mariadb:10.11` and `mariadb:11.8`, and `tests/async/run_migration_runner_engines.py` | Fresh bootstrap, immutable head through the runner with one history checksum, drift rejection, and boot compatibility on MySQL 8.0, MariaDB 10.11 and MariaDB 11.8 | A configured or production upgrade |
 | Lifecycle/privacy | commands below | Pending-policy fail-closed behavior, synthetic archive/export/erasure contracts, and disposable schemas | Controller approval, legal compliance, or enabled canonical mutation |
 | Capacity/fault precursors | commands below | Bounded 25/50/100/200 logical-client codecs and named crash/fault invariants | Representative eight-profile 30-minute 200-player readiness |
 | 200-player gate | [`PHASE03_READINESS.md`](../gates/PHASE03_READINESS.md) | Only the complete qualified workload, fault, reconciliation, privacy, migration, and restore evidence can support readiness | Nothing until every criterion is executed and recorded |
@@ -331,6 +334,8 @@ tests/async/run_legacy_migration_mysql.sh
 tests/async/run_immutable_migration_ledger_mysql.sh
 tests/async/run_runtime_compatibility_mysql.sh
 RUNTIME_DB_IMAGE=mariadb:10.11 tests/async/run_runtime_compatibility_mysql.sh
+RUNTIME_DB_IMAGE=mariadb:11.8 tests/async/run_runtime_compatibility_mysql.sh
+python3 tests/async/run_migration_runner_engines.py
 ```
 
 Each wrapper must create and destroy its own isolated container. Never replace its

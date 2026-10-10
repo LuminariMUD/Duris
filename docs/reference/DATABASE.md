@@ -143,7 +143,7 @@ transaction, replay, or idempotency identifiers.
 - `migrations/runtime_compatibility_manifest.json` and
   `migrations/verify_runtime_compatibility.sh` -- the read-only pre-boot contract for
   migration history, full metadata shape, storage engine, collation, and supported
-  MySQL 8.0/MariaDB 10.11 variants.
+  MySQL 8.0, MariaDB 10.11 and MariaDB 11.8 variants.
   [RUNTIME_COMPATIBILITY.md](../persistence/RUNTIME_COMPATIBILITY.md) states the current
   head and table count.
 

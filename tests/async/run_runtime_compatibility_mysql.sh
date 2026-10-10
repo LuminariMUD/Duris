@@ -14,6 +14,8 @@ else
     ROOT_PASSWORD_ENV="MYSQL_ROOT_PASSWORD"
 fi
 docker run -d --name "$NAME" -e "$ROOT_PASSWORD_ENV=$PASSWORD" "$DB_IMAGE" >/dev/null
+# MariaDB 11 images name their client mariadb only; the leg and the verifiers call mysql.
+docker exec "$NAME" sh -c 'command -v mysql >/dev/null || ln -s "$(command -v mariadb)" /usr/local/bin/mysql'
 ready=0
 for _ in $(seq 1 90); do
     if docker exec -e MYSQL_PWD="$PASSWORD" "$NAME" mysql -h127.0.0.1 -uroot -N -e 'SELECT 1' >/dev/null 2>&1; then
@@ -24,11 +26,15 @@ for _ in $(seq 1 90); do
 done
 [[ "$ready" == 1 ]]
 docker exec -e MYSQL_PWD="$PASSWORD" "$NAME" mysql -h127.0.0.1 -uroot -e "CREATE DATABASE $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-migration_files=$(PYTHONPATH="$ROOT/scripts" python3 - <<'PYTHON' | tr -d '\r'
+# Each step's verifier for this engine, as the runner chooses it.
+server_version=$(docker exec -e MYSQL_PWD="$PASSWORD" "$NAME" mysql -h127.0.0.1 -uroot -N -e 'SELECT VERSION();')
+migration_files=$(SERVER_VERSION="$server_version" PYTHONPATH="$ROOT/scripts" python3 - <<'PYTHON' | tr -d '\r'
+import os
 import migration_runner as m
+engine = m.engine_of(os.environ["SERVER_VERSION"])
 for step in m.load_manifest().migrations:
     print(step.apply_path.relative_to(m.ROOT / "migrations"))
-    print(step.verify_path.relative_to(m.ROOT / "migrations"))
+    print(step.verifier(engine).relative_to(m.ROOT / "migrations"))
 PYTHON
 )
 mapfile -t MIGRATION_FILES <<< "$migration_files"

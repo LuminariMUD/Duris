@@ -99,9 +99,11 @@ python3 tests/async/test_runtime_boot_compatibility.py
 tests/async/run_lookup_dataset_mysql.sh
 tests/async/run_runtime_compatibility_mysql.sh
 RUNTIME_DB_IMAGE=mariadb:10.11 tests/async/run_runtime_compatibility_mysql.sh
+RUNTIME_DB_IMAGE=mariadb:11.8 tests/async/run_runtime_compatibility_mysql.sh
 ```
 
 The disposable full-schema tests prove a valid fresh schema and reject migration
-history, missing-table, engine, collation, index, and column drift on both supported
-variants. The standalone verifier is read-only and may be used against an explicitly
+history, missing-table, engine, collation, index, and column drift on the supported
+variants: MySQL 8.0, MariaDB 10.11 and MariaDB 11.8, whose metadata fingerprint is
+10.11's. The standalone verifier is read-only and may be used against an explicitly
 configured development clone before starting the server.

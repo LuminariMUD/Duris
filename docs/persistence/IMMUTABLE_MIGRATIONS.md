@@ -147,6 +147,21 @@ Editing or reordering an applied row fails against the manifest. Deleting even t
 trailing row fails against the retained history count/head rather than silently
 reclassifying it as pending. Exact replay with a complete prefix performs no work.
 
+## Supported engines
+
+MySQL 8.0, MariaDB 10.11 and MariaDB 11.8. The verifiers of `0031_economy_accounting` and
+`0032_economic_baseline` hash their tables' metadata against one fingerprint per engine,
+and they know only MariaDB 10.11 and MySQL 8.0; on any other version they refuse. A
+sealed verifier cannot change, since every database's history holds its checksum, so
+the manifest's `engine_verifiers` list names a verifier of its own for MariaDB 11.8
+(`immutable/0031_economy_accounting_mariadb_11_8.sh` and
+`immutable/0032_economic_baseline_mariadb_11_8.sh`),
+with its own checksum. The runner asks the server's `VERSION()` and runs that verifier
+in place of the sealed one on 11.8 only; the history row keeps the sealed verifier's
+checksum, so a history is the same on every engine. Their 11.8 fingerprints are
+10.11's. Another engine needs the same: a verifier per migration that refuses it, and
+an entry in `ENGINE_VERSIONS` in `scripts/migration_runner.py`.
+
 ## Verification
 
 ```sh
@@ -155,9 +170,14 @@ tests/async/run_legacy_migration_mysql.sh
 tests/async/run_immutable_migration_ledger_mysql.sh
 tests/async/run_runtime_compatibility_mysql.sh
 RUNTIME_DB_IMAGE=mariadb:10.11 tests/async/run_runtime_compatibility_mysql.sh
+RUNTIME_DB_IMAGE=mariadb:11.8 tests/async/run_runtime_compatibility_mysql.sh
+python3 tests/async/run_migration_runner_engines.py
 ```
 
 The isolated MySQL tests verify the full legacy upgrade, exact fresh-bootstrap
 equivalence, replay, schema compatibility, ordered uniqueness, honest baseline kind
 uniqueness, preservation of legacy data-copy markers, and record-preserving
-convergence of the pre-b029 `server_reboots` table on both supported engines.
+convergence of the pre-b029 `server_reboots` table on the supported engines.
+`run_migration_runner_engines.py` builds a database through the runner on each of the
+three, checks that all reach the same history checksum, and that an edited history row
+stops the runner.

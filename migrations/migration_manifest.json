@@ -539,5 +539,19 @@
       "verify_checksum": "1c5f6a8ae3cb11b38de3e0f3c45d70eb877d5301f36c10dd68241c930c9c05cd",
       "compatibility": "mysql8-mariadb10"
     }
+  ],
+  "engine_verifiers": [
+    {
+      "migration": "0031_economy_accounting",
+      "engine": "mariadb-11.8",
+      "verify": "immutable/0031_economy_accounting_mariadb_11_8.sh",
+      "verify_checksum": "ebbac3878e67a2eb8cb9e7eaf3de0c33ad2ee6868097321cccf12f0ff0d3750a"
+    },
+    {
+      "migration": "0032_economic_baseline",
+      "engine": "mariadb-11.8",
+      "verify": "immutable/0032_economic_baseline_mariadb_11_8.sh",
+      "verify_checksum": "3e08e36857734ee3b6e221df6b6742f87e7e0faac6ac3fb21cc42e0f1e11c174"
+    }
   ]
 }

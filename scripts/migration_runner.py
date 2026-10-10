@@ -15,7 +15,7 @@ import stat
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
@@ -33,6 +33,11 @@ MIGRATION_FIELDS = {
     "id", "sequence", "description", "apply", "apply_checksum", "verify",
     "verify_checksum", "compatibility",
 }
+# A migration's verifier for an engine its sealed verifier does not know. The verifiers of
+# 0031 and 0032 accept only MariaDB 10.11 and MySQL 8.0, and a sealed file cannot change:
+# its checksum is in every database's history. The history keeps the sealed checksum.
+ENGINE_VERIFIER_FIELDS = {"migration", "engine", "verify", "verify_checksum"}
+ENGINE_VERSIONS = {"mariadb-11.8": r"11\.8\.[0-9]+-MariaDB.*"}
 
 
 class MigrationContractError(Exception):
@@ -116,6 +121,19 @@ class Migration:
     verify_path: Path
     verify_checksum: str
     compatibility: str
+    engine_verifiers: tuple[tuple[str, Path], ...] = ()
+
+    def verifier(self, engine: str) -> Path:
+        """The verifier to run on `engine`: its own one, or the sealed one."""
+        return dict(self.engine_verifiers).get(engine, self.verify_path)
+
+
+def engine_of(version: str) -> str:
+    """The ENGINE_VERSIONS name of a server's SELECT VERSION(), or '' for any other."""
+    for engine, pattern in ENGINE_VERSIONS.items():
+        if re.fullmatch(pattern, version):
+            return engine
+    return ""
 
 
 @dataclass(frozen=True)
@@ -146,7 +164,8 @@ def load_manifest(path: Path = DEFAULT_MANIFEST) -> Manifest:
         value = json.loads(raw, object_pairs_hook=strict_object)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise MigrationContractError(f"migration manifest parse failed: {error}") from error
-    if not isinstance(value, dict) or set(value) != MANIFEST_FIELDS:
+    if not isinstance(value, dict) or \
+            set(value) - {"engine_verifiers"} != MANIFEST_FIELDS:
         raise MigrationContractError("migration manifest fields differ")
     if type(value["manifest_version"]) is not int or value["manifest_version"] != 1 or \
             type(value["runner_version"]) is not int or value["runner_version"] != 1:
@@ -211,6 +230,30 @@ def load_manifest(path: Path = DEFAULT_MANIFEST) -> Manifest:
         migrations.append(Migration(migration_id, expected_sequence, item["description"],
                                     paths[0], item["apply_checksum"], paths[1],
                                     item["verify_checksum"], item["compatibility"]))
+    engine_verifiers: dict[str, list[tuple[str, Path]]] = {}
+    items = value.get("engine_verifiers", [])
+    if not isinstance(items, list):
+        raise MigrationContractError("engine verifiers must be a list")
+    for item in items:
+        if not isinstance(item, dict) or set(item) != ENGINE_VERIFIER_FIELDS:
+            raise MigrationContractError("engine verifier fields differ")
+        owner = item["migration"]
+        relative = item["verify"]
+        if owner not in seen_ids or item["engine"] not in ENGINE_VERSIONS or \
+                any(engine == item["engine"] for engine, _ in engine_verifiers.get(owner, [])):
+            raise MigrationContractError("engine verifier names no migration or engine")
+        if not isinstance(relative, str) or not re.fullmatch(
+                rf"immutable/{owner}_[a-z0-9_]+\.sh", relative):
+            raise MigrationContractError("engine verifier path is invalid")
+        candidate = directory / relative
+        if candidate.resolve().parent != (directory / "immutable").resolve():
+            raise MigrationContractError("migration path escapes immutable directory")
+        if item["verify_checksum"] != checksum(
+                read_regular(candidate, MAX_MIGRATION_BYTES, "engine verifier")):
+            raise MigrationContractError("migration content checksum mismatch")
+        engine_verifiers.setdefault(owner, []).append((item["engine"], candidate))
+    migrations = [replace(migration, engine_verifiers=tuple(
+        engine_verifiers.get(migration.migration_id, []))) for migration in migrations]
     return Manifest(value["manifest_version"], value["runner_version"], baseline["id"],
                     baseline["required_table_count"],
                     baseline["required_table_fingerprint"], tuple(required_tables),
@@ -326,6 +369,7 @@ class MysqlExecutor:
                 raise MigrationContractError(f"missing migration credential: {name}")
         self.manifest = manifest
         self.socket_path = socket_path
+        self.engine: str | None = None
         if socket_path:
             connection = ["--protocol=socket", f"--socket={socket_path}"]
         elif host in {"127.0.0.1", "localhost", "::1"}:
@@ -435,7 +479,9 @@ class MysqlExecutor:
             environment["DURIS_REAL_MYSQL_CLIENT"] = real_mysql
             environment["PATH"] = (str(ROOT / "scripts/mysql_socket_bin") +
                                    os.pathsep + environment.get("PATH", ""))
-        result = subprocess.run([str(migration.verify_path)], capture_output=True,
+        if self.engine is None:
+            self.engine = engine_of(self.sql("SELECT VERSION();"))
+        result = subprocess.run([str(migration.verifier(self.engine))], capture_output=True,
                                 env=environment, check=False)
         if result.returncode:
             detail = (result.stderr or result.stdout).decode(errors="replace").strip().splitlines()
