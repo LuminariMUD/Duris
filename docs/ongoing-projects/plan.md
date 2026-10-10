@@ -44,7 +44,7 @@ built at that branch's head.
 | 6 | `fix/14-test-tools` | 10, 14, 16 | Built |
 | 7 | `fix/14-test-stability` | 11 | Built |
 | 8 | `fix/14-clang-tidy` | 13 | Built |
-| 9 | `fix/14-fuzz` | 12 | Not started |
+| 9 | `fix/14-fuzz` | 12 | Built |
 | 10 | `fix/14-mutation` | 15 | Not started |
 
 Parts 3 and 4 sit below Part 2 because they matter more and change less: Part 3 has to land
@@ -79,7 +79,7 @@ Part 2, test quality:
 |---|---|---|---|
 | 10 | Prove a regression test fails without its fix | none | Built (PR 6) |
 | 11 | Make tests break only when behaviour breaks | same or less | Built (PR 7) |
-| 12 | Fuzz the code that reads outside input | one replay test | Proposed |
+| 12 | Fuzz the code that reads outside input | one replay test | Built (PR 9) |
 | 13 | `clang-tidy` on changed lines | none (commit hook) | Built (PR 8) |
 | 14 | Keep a history of test runs | none | Built (PR 6) |
 | 15 | Mutation testing, by hand | none | Proposed |
@@ -610,6 +610,31 @@ after the compile. Long runs are by hand (decision 5).
 **Done when** the first three targets exist, each has run for an hour, every finding is
 fixed in its own commit with its input in the corpus, and the replay test runs in
 `make test`.
+
+**Built** (PR 9), the first three targets; flat-file records and telnet input (targets 4
+and 5) are not written.
+
+- `tests/fuzz/{websocket,gmcp,player_snapshot}.cpp`, each with `LLVMFuzzerTestOneInput`,
+  its `// fuzz-sources:` and `// fuzz-libs:` lines, and the shared harness stubs for the
+  rest. `make fuzz FUZZ_TARGET=<name> FUZZ_SECONDS=<n>` (`scripts/fuzz.sh`) builds one with
+  clang, libFuzzer and the sanitizers under `bin/fuzz/<name>/` (passing g++'s
+  `--gcc-install-dir`, because clang otherwise picks the newest libstdc++) and fuzzes it,
+  new inputs going to `bin/`, not to the committed corpus.
+- `tests/async/test_fuzz_corpus.py`, in `make test`, builds each target with `g++`, the same
+  sanitizers and a replay `main`, and feeds it every committed input: 1,355 inputs in a few
+  seconds after the compiles.
+- One hour each, on 2026-10-10: websocket 292 million inputs; gmcp 1.6 billion, then
+  another hour (1.2 billion) from seeds that are real `Core.Hello` and `Client.Info`
+  messages, since the first hour's corpus had none (`gmcp_handle_input()` is small, and its
+  coverage stopped at 76 edges); player_snapshot 46 million, with the fix below. No
+  WebSocket or GMCP finding.
+- The finding: `player_snapshot_decode()` and `player_item_snapshot_list_decode()` said
+  `ok` without writing anything when an element's reader refused a value without naming
+  why, so a damaged save decoded to an empty snapshot. Fixed in its own commit; the crash
+  input and twelve more corpus inputs that failed the same way are in the corpus, and the
+  replay fails without the fix.
+- The corpora are those runs merged (`-merge=1`) to the inputs that add coverage: 634
+  WebSocket inputs (110 KB), 37 GMCP (1 KB), 684 save inputs (344 KB).
 
 ### 13. `clang-tidy` on changed lines
 
