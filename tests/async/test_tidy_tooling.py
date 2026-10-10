@@ -4,7 +4,7 @@
 A fixture repository has the real .clang-tidy and tidy.sh and a src/Makefile with the
 flags the script reads. A staged array whose last two strings lack a comma between them
 fails --staged; the same file with the comma passes; a finding on a line no one changed
-does not count. What is staged decides, not the working tree: an unstaged fix does not
+does not count, and `--all` on a clean file passes. What is staged decides, not the working tree: an unstaged fix does not
 pass a staged finding, and an unstaged finding does not fail a staged fix. The user's git
 config does not change the result: color.diff=always let every finding through, and
 diff.noprefix=true failed every commit. Skipped where clang-tidy or clang-tidy-diff is not
@@ -69,6 +69,10 @@ with tempfile.TemporaryDirectory() as temporary:
     git("add", "src/probe.c")
     fixed = tidy()
     assert fixed.returncode == 0, fixed.stdout + fixed.stderr
+    # --all with no finding at all: the summary's grep matches nothing.
+    clean = subprocess.run(["scripts/tidy.sh", "--all", "src/probe.c"], cwd=repo, text=True,
+                           capture_output=True)
+    assert clean.returncode == 0 and "0 findings" in clean.stdout, clean.stdout + clean.stderr
     # The fix is staged and the working tree has the finding again.
     source.write_text("int value()\n{\n\treturn 0;\n}\n" + GLUED)
     unstaged_finding = tidy()

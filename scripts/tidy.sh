@@ -84,7 +84,8 @@ if [[ "$MODE" == "all" ]]; then
 		sort -u >"$OUT/all.log" || true
 	findings=$(wc -l <"$OUT/all.log")
 	echo "tidy: ${#FILES[@]} files, $findings findings; by check:"
-	grep -o '\[[a-z0-9.,-]*\]$' "$OUT/all.log" | sed 's/,-warnings-as-errors//' | sort | uniq -c | sort -rn
+	grep -o '\[[a-z0-9.,-]*\]$' "$OUT/all.log" | sed 's/,-warnings-as-errors//' | sort | uniq -c |
+		sort -rn || true
 	echo "Findings: $OUT/all.log (the compiler output around them: $OUT/raw.log)"
 	(( findings == 0 ))
 	exit
