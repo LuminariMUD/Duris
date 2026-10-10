@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import signal
@@ -14,6 +15,7 @@ import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -191,6 +193,33 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
+def write_history(results: list[TestResult], started: str, match: str | None,
+                  jobs: int) -> None:
+    """Keep this run's results in bin/test-history/ for scripts/test_history.py, which finds
+    the flaky tests and the ones that grow slower. bin/ is ignored: the history is local.
+    A run is dirty with any changed or untracked file: the runner finds untracked tests, the
+    build takes untracked sources, and tests read migrations/, docs/ and the rest."""
+    def git(*arguments: str) -> str:
+        return subprocess.run(["git", *arguments], cwd=ROOT, capture_output=True, text=True,
+                              check=True).stdout.strip()
+    try:
+        commit = git("rev-parse", "HEAD")
+        dirty = bool(git("status", "--porcelain"))
+    except (OSError, subprocess.CalledProcessError):
+        return
+    directory = ROOT / "bin/test-history"
+    directory.mkdir(parents=True, exist_ok=True)
+    record = {
+        "commit": commit, "dirty": dirty, "started": started, "finished": time.time(),
+        "match": match, "jobs": jobs,
+        "tests": [{"path": relative(result.path), "status": result.status,
+                   "seconds": round(result.elapsed, 3)} for result in results],
+    }
+    # Two runs can start in the same second on the same commit; the pid tells them apart.
+    with open(directory / f"{started}-{commit[:12]}-{os.getpid()}.json", "x") as history:
+        history.write(json.dumps(record, indent=1) + "\n")
+
+
 def main() -> int:
     args = parse_args()
     tests = discover_tests(args.match)
@@ -209,7 +238,9 @@ def main() -> int:
     jobs = args.jobs or automatic_jobs()
     parallel_tests, resource_intensive_tests = partition_tests(tests)
     started = time.monotonic()
+    started_utc = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     failures: list[TestResult] = []
+    results: list[TestResult] = []
     completed_count = 0
     print(
         f"Running {len(tests)} Python regression tests with {jobs} worker(s), "
@@ -219,6 +250,7 @@ def main() -> int:
     def report(result: TestResult) -> None:
         nonlocal completed_count
         completed_count += 1
+        results.append(result)
         print(
             f"[{completed_count:>{len(str(len(tests)))}}/{len(tests)}] "
             f"{result.status} {relative(result.path)} ({result.elapsed:.2f}s)",
@@ -262,6 +294,7 @@ def main() -> int:
     # These wait on game time, not on the CPU, so they run together after the pool.
     run_all(resource_intensive_tests, max(1, len(resource_intensive_tests)), JOURNEY_DEADLINE_SECONDS)
 
+    write_history(results, started_utc, args.match, jobs)
     if failures:
         print("\nFailed:")
         for result in failures:

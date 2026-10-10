@@ -225,6 +225,50 @@ make test-db
 Do not replay the `flatfile-build`, `quality` or `build.yml` workflow jobs step
 by step. Their tests are the ones `make test-all` just ran on the same host.
 
+When a change fixes a defect and adds or changes its regression test, run
+`scripts/check_tests_catch.sh BASE HEAD` (`BASE` is the commit before the fix). For each
+`tests/async/test_*.py` the range adds or changes, it runs the test in two fresh worktrees
+under `bin/analysis/`, each after `make world`: `HEAD`'s, where it must pass, and `BASE`'s
+sources with `HEAD`'s whole `tests/` tree. It reports "catches" when the test passes on
+`HEAD` and fails on `BASE`, "does not catch" when it passes on both, and "cannot judge" when
+it fails on `HEAD`'s tree too, for something a fresh worktree lacks. A test that passes on
+the code before its fix proves nothing; one reshaped by a refactor may pass and still be
+right. It reports and does not block: the reviewer reads it, and the landing commit message
+records it. It does nothing when the range changes no `src/`. A journey builds a server in
+each worktree first, about three minutes. The last line of each failure shows how the test
+failed; a test that extracts a function the old code does not have fails without saying
+anything about behaviour.
+
+Each run of `tests/run_regression_tests.py` (so each `make test` and `make test-all`)
+writes `bin/test-history/<UTC time>-<short sha>-<pid>.json`: the commit, whether the tree
+was dirty (any changed or untracked file), when it finished, its `--match` filter and
+worker count, and each test's path, status and seconds. `python3 scripts/test_history.py` reads them and lists the tests that both passed
+and failed on one clean commit, those whose last time rose more than half over their median
+of the ten runs before that were made like the last (same `--match` and workers; among
+tests taking a second or more), and the twenty slowest of the last run. `bin/` is ignored, so the
+history is the checkout's own; a gate run in another worktree keeps its files there.
+
+## Coverage
+
+`make coverage` (or `scripts/coverage.sh [--db] [COMMIT]`) measures which lines of `src/`
+the suite runs. Nothing else runs it, and its percentage is never a target: it shows what
+no test reaches. It works in a detached worktree of the commit (`HEAD` by default) under
+`bin/analysis/coverage-<sha>/`, so the checkout and any running gate are untouched, with
+`scripts/coverage/g++` first on `PATH`. That wrapper gives every compile, the server's, the
+journeys' flat-file builds and the harnesses', `--coverage` and its own directory of notes
+and counts under `bin/coverage/<sha>/data/`, so a harness built in a temporary directory
+leaves its counts behind. It runs `make -k test-all`, and `make test-db` too with `--db`
+(`COVERAGE_ARGS=--db make coverage`), then writes `bin/coverage/<sha>/index.html`,
+`summary.txt` (per file), `directories.txt` (per directory) and `failed.txt` (the tests
+that failed under instrumentation: their counts are missing, the report is not).
+
+It cannot see a process ended with `SIGKILL` (the crash probes write no counts; `SIGTERM`
+shuts the server down in order, so most journeys count), a test that patches a copy of a
+server source and compiles the copy (only `src/` is reported), or a test that calls `c++`
+or `clang++` instead of `g++`. The wrapper drops `-Werror` (at `-O2` the instrumentation
+provokes false warnings inside libstdc++), so a test that needs a compile to fail on a
+warning fails under coverage and is listed in `failed.txt`.
+
 ## Full-world save diagnostics
 
 `test_flatfile_full_world_boot.py` supports opt-in synthetic failure/recovery

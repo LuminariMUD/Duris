@@ -77,6 +77,9 @@ void event_wait(P_char, P_char, P_obj, void *) {}
 void event_memorize(P_char, P_char, P_obj, void *) {}
 void __free(void *p, const char *, int) { ++frees; std::free(p); }
 bool meming_class(P_char) { return true; }
+// Every caster here memorizes, so show_abort_casting() never asks for the class; but
+// without optimisation (a coverage build) the call stays and needs a definition.
+int GET_CLASS(P_char, uint) { return 0; }
 void send_to_char(const char *message, P_char) { ++message_count; last_message = message; }
 void act(const char *, int, P_char, P_obj, void *, int) {}
 void disarm_char_nevents(P_char, event_func_type f) { disarmed.push_back(f); }
