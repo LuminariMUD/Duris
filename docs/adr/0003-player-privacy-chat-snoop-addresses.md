@@ -107,7 +107,8 @@ Retention for these was pending with the rest of the lifecycle policy (finding P
     no longer gives every address the save's time, and drops one past 30 days. `finger`
     no longer shows an address from a login over 30 days ago.
   - Regression tests: `tests/async/test_snoop_and_recall.py` runs the real `do_snoop()`
-    and `do_recall()`; `test_hostname_files_journey.py` boots a server;
+    and `do_recall()`; `test_hostname_files_journey.py` boots a server, and
+    `test_hostname_lookup_cancel.py` closes a connection during its lookup;
     `test_log_retention.py` covers the log files; `run_address_retention_journey.py`
     (in `make test-db`) logs in on MariaDB and runs the prune.
   - The flat-file backend, which no deployment uses, keeps its account address lists and

@@ -324,8 +324,31 @@ change above:
 - Tests: `tests/async/test_snoop_and_recall.py` (the real `do_snoop()` and `do_recall()`
   under ASan and UBSan), `run_address_retention_journey.py` (in `make test-db`: a MariaDB
   login, then the job with and without the website table and with a row budget of one),
-  `test_flatfile_launcher.py` (an archive past 30 days) and `test_maintenance_scheduler.py`
-  (state files of versions 2 and 3).
+  `test_log_retention.py` (the log files), `test_hostname_lookup_cancel.py` (a lookup that
+  outlives its connection) and `test_maintenance_scheduler.py` (state files of versions 2
+  and 3).
+
+**Review round 1** (2026-10-10, #15's adversarial review and Codex's), one commit each:
+
+- A god switched into a mob snoops as itself (`interp.c` runs its Imm commands as
+  `desc->original`), but `stop_snooping()` removed the mob from the target's list. The
+  snoop went on while its target was told it had ended, the entry outlived the god (a
+  use-after-free once the god quit), and the stop's audit row went to the mob, which
+  `sql_log()` skips. Both now use the body the snoop is registered under (`beec88c58`).
+- `who <name>` showed a silent snooper to its target when that target was a level 61; it
+  now shows one only to level 62 (`ce0dbc837`). `users` already did.
+- A reverse-DNS lookup that answered after its connection closed wrote its file back. The
+  close now cancels the descriptor's lookups under their mutex and also removes a temporary
+  file a copyover cut short (`d07a75095`).
+- The launcher's 30-day step ran only between launcher passes, and by the archive's age: a
+  server kept up by copyovers never archived or pruned its logs, a 40-day run's first lines
+  lived 70 days, and `core.*` dumps were never removed. The hourly `address_retention` job
+  now moves the live logs into `logs/old-logs/<date>/` once they are a day old and removes
+  each archived file and core dump 30 days after its last write; the launcher keeps only
+  its archive at each start and the size cap (`eb496c0b0`).
+- Not changed: `player_data.last_ip` clears 30 days after the last save, not the login. The
+  address is in use for the whole session and every save writes it back from memory, so a
+  clear during the session would not hold; a mortal idle 15 minutes is voided anyway.
 
 ### 9. Any immortal can read a player's last 200 private messages with `recall`
 
