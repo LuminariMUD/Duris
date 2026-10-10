@@ -725,7 +725,10 @@ The review also noted that no command reaches the line editor whose leak this it
 REGRESSIONS.md and `formatting.md` now say so, and what wiring it back in would need.
 Codex, on the round's push: `--all` with no finding at all exited 1 at its summary's empty
 `grep` under `set -e`; the summary tolerates that now (`5413f3914`), and the test runs
-`--all` on a clean file.
+`--all` on a clean file. Codex's next review: the staged check took its flags from the
+working tree's Makefile, and `--all` called a tree clean when clang-tidy could not run.
+The flags now come from the staged `src/Makefile`, and an `xargs` status above 123 (the
+analyzer missing or killed; a finding is 123) fails the run.
 
 ### 14. Keep a history of test runs
 
