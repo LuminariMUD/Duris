@@ -692,6 +692,16 @@ and 5) are not written.
 - The corpora are those runs merged (`-merge=1`) to the inputs that add coverage: 634
   WebSocket inputs (110 KB), 37 GMCP (1 KB), 684 save inputs (344 KB).
 
+**Review round 1** (2026-10-10, Codex's review; the adversarial review found no defect):
+the `websocket` target marked compression negotiated but set up no inflater, so every frame
+with RSV1 was refused before decompression; it parsed only an input's first frame; and its
+proxy stub never trusted the peer, so the `X-Forwarded-For` branch never ran. The target now
+sets up the inflater as `websocket_complete_handshake()` does, parses every frame, and bit
+4 of an upgrade request makes the peer a trusted proxy (`8d06a8f1b`, with three seeds that
+reach those paths; a coverage build of the replay shows `inflate()` and the address copy
+run). A 30-minute run of the new target: 37.6 million inputs, no finding, 114 inputs kept
+(the WebSocket corpus is 751 inputs, 141 KB).
+
 ### 13. `clang-tidy` on changed lines
 
 **Problem.** The warnings are strict and CodeQL runs in CI, but nothing checks for bug
