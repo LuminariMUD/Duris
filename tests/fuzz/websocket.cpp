@@ -2,7 +2,8 @@
 // websocket_parse_frame(). Any client reaches them before logging in. The first byte picks
 // the parser: odd for the HTTP upgrade (bit 4 makes the peer a trusted proxy, whose
 // X-Forwarded-For is read), even for the frames that follow (bit 2 turns on compression
-// with the inflater a negotiated connection gets, so a message spans frames).
+// with the inflater a negotiated connection gets, so a message spans frames). An upgrade
+// has a socket pair to answer on, so a valid one completes the handshake.
 // fuzz-sources: src/net/websocket.c
 // fuzz-libs: -lcjson -lssl -lcrypto -lz
 #include "core/structs.h"
@@ -13,6 +14,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <sys/socket.h>
+#include <unistd.h>
 #include <zlib.h>
 
 extern "C"
@@ -71,8 +74,14 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 	const char *input = reinterpret_cast<const char *>(data + 1);
 	if (data[0] & 1)
 	{
+		int answer[2];
+		if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, answer) != 0)
+			return 0;
+		d.descriptor = answer[0];
 		trusted_proxy = data[0] & 4;
 		websocket_parse_handshake(&d, input, size - 1);
+		close(answer[0]);
+		close(answer[1]);
 	}
 	else
 	{
