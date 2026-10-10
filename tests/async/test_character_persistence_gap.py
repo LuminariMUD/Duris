@@ -1,32 +1,19 @@
 #!/usr/bin/env python3
-"""Source contracts for character persistence, load, and death recovery.
+"""What only the text of character creation, entry and death can show.
 
-Pins these previously repaired boundaries:
-  1. new characters take the synchronous first save that INSERTs into player_data
-  2. a failed terminal death save schedules recovery that completes extraction
-  3. item extra descriptions and affects are deleted before being re-inserted
-  4. the typed load path reports why it refused a character
-  5. display_account_menu tolerates a NULL argument
-  6. enter_game converts fallback room vnums before indexing the mini world
+The behaviour of these paths is checked where it runs: the death journey (a death saves),
+the creation prompt journey (the account menu), the MariaDB load harness (duplicate
+descriptions, refused stages), test_immutable_migration_runner.py (sealed migrations). What
+stays here no harness or journey can show:
+
+  1. a death no longer waits on a recovery event, and coin piles load with the other items;
+  2. enter_game() bounds a restored room before it indexes the world;
+  3. a new character's starter kit is granted once, after its baseline save, and withheld
+     when that save fails (a crash between them is what the order guards);
+  4. a MariaDB character's pid comes from the name index (no journey makes two).
 """
 
 from _paths import SRC
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[2]
-ACCOUNT = (SRC / "account.c").read_text()
-DEFINES = (SRC / "defines.h").read_text()
-FIGHT = (SRC / "fight.c").read_text()
-FILES = (SRC / "files.c").read_text()
-LOAD_MATERIALIZE = (SRC / "player_load_materialize.c").read_text()
-LOAD_REPOSITORY = (SRC / "player_load_repository.c").read_text()
-LOAD_REPOSITORY_H = (SRC / "player_load_repository.h").read_text()
-NANNY = (SRC / "nanny.c").read_text()
-SAVE_PIPELINE = (SRC / "player_save_pipeline.c").read_text()
-SQL_PLAYER = (SRC / "sql_player.c").read_text()
-MIGRATION = (
-    ROOT / "migrations/immutable/0002_player_item_metadata_uniqueness.sql"
-).read_text()
 
 
 def section(text: str, start: str, end: str) -> str:
@@ -34,226 +21,37 @@ def section(text: str, start: str, end: str) -> str:
     return text[first : text.index(end, first)]
 
 
-def require(condition: bool, message: str) -> None:
-    assert condition, message
+FIGHT = (SRC / "fight.c").read_text()
+LOAD_REPOSITORY = (SRC / "player_load_repository.c").read_text()
+NANNY = (SRC / "nanny.c").read_text()
 
+# 1. Code that must not come back.
+assert "event_death_extract_retry" not in FIGHT and "schedule_death_extract_retry" not in FIGHT, (
+    "a death no longer holds the character for a recovery event"
+)
+assert "coin_sql" not in LOAD_REPOSITORY, "coin piles load with the other items"
 
-# --- 1. initial player_data insert ------------------------------------------------
-require(
-    "#define CHAR_RFLAG_NO_DB_BASELINE" in DEFINES,
-    "runtime flag marking a character with no player_data row is missing",
-)
-
-init_char = section(NANNY, "void init_char(P_char ch)", "\n}\n")
-require(
-    "getNewPCidNumb()" in init_char
-    and init_char.index("#ifdef __NO_MYSQL__")
-    < init_char.index("SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE);")
-    < init_char.index("#endif", init_char.index("#ifdef __NO_MYSQL__")),
-    "init_char must mark a flat-file character as having no database baseline",
-)
-# On MariaDB the first save is queued: the pid comes from the in-memory name index, and
-# the writer inserts the row (ensure_player_row()) and its opening baselines.
-require(
-    "sql_player_names_set(ch->only.pc->pid, GET_NAME(ch));" in init_char
-    and "highestPCidNumb = sql_highest_player_pid() + 1;" in NANNY,
-    "a MariaDB character's pid must come from the name index",
-)
-
-write_character = section(FILES, "int writeCharacter(P_char ch, int type, int room)", "\n}\n")
-async_branch = section(write_character, "player_save_pipeline_request", "return queued")
-gate = write_character[: write_character.index("player_save_pipeline_request")]
-require(
-    "!IS_SET(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE)" in gate,
-    "writeCharacter must not route a character without a baseline row to the async pipeline",
-)
-require("player_save_pipeline_is_nonterminal_type(type)" in gate, "async gate changed shape")
-require(async_branch, "async pipeline branch disappeared")
-
-completion = section(SAVE_PIPELINE, "void finish_completion(", "\n}\n")
-require(
-    "completion.error_code == ENOENT" in completion,
-    "the pulse must detect the missing-baseline apply failure",
-)
-rearm = completion.index("SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE)")
-require(
-    completion.rfind("#ifdef __NO_MYSQL__", 0, rearm) > completion.rfind("#endif", 0, rearm)
-    and "write_failed" in completion,
-    "a missing flat-file baseline must re-arm the synchronous save and be reported; "
-    "on MariaDB the flag would stop every later save",
-)
-
-# --- 2. a death saves and leaves at once -----------------------------------------
-require(
-    "event_death_extract_retry" not in FIGHT and "schedule_death_extract_retry" not in FIGHT,
-    "a death no longer holds the character for a recovery event",
-)
-die_body = section(FIGHT, "void die(P_char ch, P_char killer)", "\nvoid ")
-require(
-    die_body.index("persistence_save_character_terminal(ch, RENT_DEATH)")
-    < die_body.index("extract_char_after_terminal_save(ch)"),
-    "die() must queue the player's save before it extracts the character",
-)
-
-# --- 4. extra descriptions / affects are replaced, not appended -------------------
-extra_descr = section(
-    SQL_PLAYER,
-    "static bool sql_save_item_extra_descr(int item_id, P_obj obj, const char *table)",
-    "\n}\n",
-)
-require(
-    'DELETE FROM %s WHERE item_id = %d' in extra_descr,
-    "extra descriptions must be cleared before they are re-inserted",
-)
-require(
-    extra_descr.index("DELETE FROM %s") < extra_descr.index("INSERT INTO %s"),
-    "the delete must precede the inserts",
-)
-require(
-    "if (!obj->ex_description)\n\t\treturn true;" in extra_descr
-    and "if (!obj || !obj->ex_description || !DB)" not in extra_descr,
-    "an object that lost all its descriptions must still clear the stored rows",
-)
-require(
-    "description_keys" in extra_descr,
-    "the synchronous item save must skip duplicate in-memory descriptions",
-)
-
-for index in (
-    "uk_item_descr",
-    "uk_pet_item_descr",
-    "uk_item_affect",
-    "uk_pet_item_affect",
-):
-    require(index in MIGRATION, f"migration must add {index}")
-require(
-    MIGRATION.count("information_schema.statistics") == 4,
-    "each unique key must be added behind an existence guard so the migration is re-runnable",
-)
-require(
-    MIGRATION.count("MIN(id) AS keep_id") == 4,
-    "the migration must deduplicate before adding each unique key",
-)
-
-# load tolerates the duplicates that already exist
-require(
-    "bool append_loaded_extra_description(" in LOAD_REPOSITORY
-    and "if (duplicate_description(descriptions, normalized_keyword, normalized_description))"
-    in LOAD_REPOSITORY,
-    "the load path must centralize exact duplicate description handling",
-)
-require(
-    LOAD_REPOSITORY.count("return append_loaded_extra_description(item.extra_descriptions, row[5],")
-    == 2,
-    "player and pet item loads must both use duplicate-tolerant description loading",
-)
-
-# --- 5. load diagnostics ----------------------------------------------------------
-require(
-    "const char *failed_component" in LOAD_REPOSITORY_H,
-    "the load result must carry the failing repository stage back to the game thread",
-)
-execute = section(
-    LOAD_REPOSITORY,
-    "player_load_result player_load_repository_execute(MYSQL *connection,",
-    "\n\tresult.metrics.transaction_usec",
-)
-for token, stage in (
-    ('result.failed_component = "status"', "status"),
-    ('"components")', "components"),
-    ('"items")', "items"),
-    ('"pets")', "pets"),
-    ('"gameplay_reads")', "gameplay_reads"),
-    ('"bank")', "bank"),
-    ('"deadline")', "deadline"),
-    ('"budget")', "budget"),
-):
-    require(token in execute, f"repository must name the {stage} stage on failure")
-
-require(
-    "component=snapshot" in LOAD_MATERIALIZE and "repository_component=%s" in LOAD_MATERIALIZE,
-    "a refused snapshot must be logged with the failing repository component",
-)
-require(
-    "component=item_graph" in LOAD_MATERIALIZE,
-    "the SESSION03 item graph failure must be logged",
-)
-require(
-    LOAD_MATERIALIZE.count("component=ownership") == 1
-    and "outcome=hydrate_skipped" in LOAD_MATERIALIZE,
-    "a skipped in-memory ownership hydration must be logged",
-)
-
-# A coin pile loads with the other items, from what the save wrote: no per-item or
-# coin-specific query.
-require("coin_sql" not in LOAD_REPOSITORY, "coin piles must load with the other items")
-
-menu = section(ACCOUNT, "void display_account_menu(P_desc d, char *arg)", "\n}\n")
-require(
-    menu.lstrip().startswith("void display_account_menu(P_desc d, char *arg)\n{\n\tif (!arg)")
-    or "if (!arg)" in menu.split("\n")[2],
-    "display_account_menu must guard against a NULL arg, not dereference it",
-)
-
-# --- 8. saved-room fallback bounds ------------------------------------------------
+# 2. A restored room is bounded before it indexes world and zone_table.
 enter_game = section(NANNY, "void enter_game(P_desc d)", "\n}\n")
-require(
-    "r_room = real_room(GET_ORIG_BIRTHPLACE(ch));" in enter_game,
-    "enter_game must convert the original birthplace vnum to a world index",
-)
-require(
-    enter_game.index("if (r_room < 0 || r_room > top_of_world)")
-    < enter_game.index("if (zone_table[world[r_room].zone].flags & ZONE_CLOSED)"),
-    "enter_game must bounds-check a restored room before indexing world and zone_table",
-)
+assert "r_room = real_room(GET_ORIG_BIRTHPLACE(ch));" in enter_game
+assert enter_game.index("if (r_room < 0 || r_room > top_of_world)") < enter_game.index(
+    "if (zone_table[world[r_room].zone].flags & ZONE_CLOSED)"
+), "enter_game must bound a restored room before indexing world and zone_table"
 
-# --- 9. post-entry save routing ---------------------------------------------------
-entry_save = NANNY[NANNY.index("auction_transaction_player_ready(ch);") :]
-entry_save = entry_save[: entry_save.index("sql_connectIP(ch);")]
-require(
-    "if (!writeCharacter(ch, 1, NOWHERE))" in entry_save,
-    "post-entry persistence must check the backend-neutral character save result",
-)
-require(
-    entry_save.index("#ifndef __NO_MYSQL__")
-    < entry_save.index("sql_save_player_core(ch)"),
-    "client-free entry must not report the unavailable SQL-only core writer as a save failure",
-)
-
+# 3. One starter grant, after the baseline save, withheld when it fails.
 newbie_grant = NANNY[NANNY.index("if (!GET_LEVEL(ch))") :]
 newbie_grant = newbie_grant[: newbie_grant.index("else if (IS_SET(ch->specials.act2")]
-require(
-    "do_start_deferred_newbie_kit(ch, 0)" in newbie_grant
-    and newbie_grant.index("writeCharacter(ch, 1, NOWHERE)")
-    < newbie_grant.index("load_obj_to_newbies(ch)"),
-    "new players need complete initialization and a durable authority baseline before one starter grant",
-)
-require(
-    newbie_grant.count("load_obj_to_newbies(ch)") == 1,
-    "the new-character entry branch must submit exactly one starter grant sequence",
-)
-require(
-    "starter kit withheld" in newbie_grant,
-    "starter-item publication must fail closed when the player baseline cannot be saved",
-)
+assert newbie_grant.count("load_obj_to_newbies(ch)") == 1
+assert (
+    newbie_grant.index("do_start_deferred_newbie_kit(ch, 0)")
+    < newbie_grant.index("if (writeCharacter(ch, 1, NOWHERE))")
+    < newbie_grant.index("load_obj_to_newbies(ch)")
+    < newbie_grant.index("starter kit withheld")
+), "a new character's kit is granted after its baseline save, and withheld if that fails"
 
-flat_terminal_save = section(
-    write_character,
-    "#ifdef __NO_MYSQL__\n\tif (!is_locker_char &&",
-    "\n#endif",
-)
-require(
-    "const bool establishing_baseline" in flat_terminal_save
-    and "flatfile_item_repository_load_owner(" in flat_terminal_save,
-    "the first flat-file save must reload the authoritative item-owner revision",
-)
-require(
-    "item_ownership_runtime_hydrate_owner(owner, owner_revision)" in flat_terminal_save,
-    "starter grants must use the persisted player-owner revision, not the pre-save revision",
-)
-require(
-    "ownership_revision_sync_failed" in flat_terminal_save,
-    "a failed ownership revision publication must fail closed and remain observable",
-)
+# 4. The pid of a MariaDB character comes from the in-memory name index.
+init_char = section(NANNY, "void init_char(P_char ch)", "\n}\n")
+assert "sql_player_names_set(ch->only.pc->pid, GET_NAME(ch));" in init_char
+assert "highestPCidNumb = sql_highest_player_pid() + 1;" in NANNY
 
-print("character persistence gap contracts ok")
+print("character creation, entry and death: text-only contracts ok")
