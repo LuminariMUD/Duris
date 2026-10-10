@@ -10,9 +10,11 @@
 #include "core/utility.h"
 #include "core/utils.h"
 #include "guild/assocs.h"
+#include <algorithm>
 #include <string.h>
 #include <strings.h>
 #include <limits.h>
+#include <vector>
 #include "guild/alliances.h"
 #include "world/epic.h"
 #include "core/files.h"
@@ -30,10 +32,6 @@
 #include "flatfile/flatfile_identity_repository.h"
 #include "world/outposts.h"
 #include "persistence/persistence_mode.h"
-
-#include <algorithm>
-#include <limits.h>
-#include <vector>
 #endif
 
 // External variables & functions

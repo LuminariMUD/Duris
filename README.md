@@ -124,6 +124,11 @@ On another Linux distribution, use
 [`packaging/duris-build-deps.equivs`](packaging/duris-build-deps.equivs) as the
 authoritative dependency list.
 
+The scripts and migration verifiers call the database client as `mysql` and
+`mysqldump`. Debian's and Ubuntu's client packages provide those names, MariaDB
+11.8's on Ubuntu 26.04 included; MariaDB's own packages and container images put
+them in `mariadb-client-compat`, which such a host needs as well.
+
 ### 2. Configure the server
 
 ```bash
