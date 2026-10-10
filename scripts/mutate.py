@@ -37,17 +37,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TREE = ROOT / "bin/analysis/mutate"
 
-# Comments, string and character literals, and preprocessor lines, blanked so no mutation
-# lands in them; every offset and newline survives.
-MASK = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|^[ \t]*#[^\n]*',
-                  re.S | re.M)
+# Comments, string and character literals, and preprocessor lines with their backslash
+# continuations, blanked so no mutation lands in them; every offset and newline survives.
+MASK = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|'
+                  r'^[ \t]*#(?:[^\n]*\\\n)*[^\n]*', re.S | re.M)
 OPERATORS = [
     # An operator clang-format leaves at the end of a line has a newline after it.
     (re.compile(r"(?<= )(<=|>=|<|>)(?=[ \n])"), {"<": "<=", "<=": "<", ">": ">=", ">=": ">"}),
     (re.compile(r"(?<= )(==|!=)(?=[ \n])"), {"==": "!=", "!=": "=="}),
     (re.compile(r"(?<= )(&&|\|\|)(?=[ \n])"), {"&&": "||", "||": "&&"}),
     (re.compile(r"!(?=[A-Za-z_(])"), {"!": ""}),
-    (re.compile(r"(?<=return )(true|false|0|1)(?=;)"),
+    # `return 0;` and the legacy `return (0);`.
+    (re.compile(r"(?<=return )(true|false|0|1)(?=;)|(?<=return \()(true|false|0|1)(?=\);)"),
      {"true": "false", "false": "true", "0": "1", "1": "0"}),
 ]
 

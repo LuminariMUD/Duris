@@ -2,7 +2,9 @@
 """scripts/mutate.py scores only what its tests notice, in a scratch repository.
 
 - A comparison clang-format leaves at the end of a line (`a !=` then the operand on the
-  next line) was never mutated: the pattern wanted a space after it.
+  next line) was never mutated: the pattern wanted a space after it. The legacy
+  `return (0);` was not taken for a constant return, and the continued lines of a
+  multi-line macro were mutated as code.
 - Without ccache every compile through scripts/mutate/g++ failed, so every mutant counted
   as caught. The wrapper now runs the real g++ uncached.
 - A test that fails unmutated counted as catching every mutant. Each file's tests now run
@@ -24,6 +26,9 @@ import mutate  # noqa: E402
 
 wrapped = "\tif (left(1) !=\n\t    right(2))\n"
 assert [(old, new) for _, _, old, new in mutate.mutants(wrapped)] == [("!=", "==")]
+# The legacy `return (0);` is a constant return too; a continued macro is preprocessor text.
+legacy = "\treturn (0);\n#define BOTH(a, b) \\\n\t((a) && \\\n\t (b))\n\treturn 1;\n"
+assert [(old, new) for _, _, old, new in mutate.mutants(legacy)] == [("0", "1"), ("1", "0")]
 
 # A function, its harness test, and a test that fails whatever the code says.
 VALUE = "int value(int x)\n{\n\treturn x < 3;\n}\n"

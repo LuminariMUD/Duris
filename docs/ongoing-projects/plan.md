@@ -894,7 +894,9 @@ refused, and the operator pattern takes a newline after the operator (`1daf2aa0f
 `test_mutate_tool.py`). The pattern found one more mutant in each of
 the two files above, `collector_policy.c:40` and `critical_command.c:235`; both are caught
 (`test_collector_death_enrollment.py`, `test_critical_command_codec.py`), and the table
-counts them.
+counts them. Codex, on the round's push: the legacy `return (0);` was not taken for a
+constant return, and the continued lines of a multi-line macro were mutated as code. Both
+patterns are fixed; neither changes the three files' counts above.
 
 ### 16. Line coverage, on demand
 
