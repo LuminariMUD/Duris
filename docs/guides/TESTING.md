@@ -227,15 +227,17 @@ by step. Their tests are the ones `make test-all` just ran on the same host.
 
 When a change fixes a defect and adds or changes its regression test, run
 `scripts/check_tests_catch.sh BASE HEAD` (`BASE` is the commit before the fix). For each
-`tests/async/test_*.py` the range adds or changes, it runs `HEAD`'s test, with
-`HEAD`'s version of every file the range changed under `tests/`, on `BASE`'s sources in a
-worktree under `bin/analysis/catch-<sha>/`, and reports whether it fails there. A test that
-passes on the code before its fix proves nothing; one reshaped by a refactor may pass and
-still be right. It reports and does not block: the reviewer reads it, and the landing
-commit message records it. It does nothing when the range changes no `src/`. A journey
-builds a server in the worktree first, about three minutes. The last line of each failure
-shows how the test failed; a test that extracts a function the old code does not have
-fails without saying anything about behaviour.
+`tests/async/test_*.py` the range adds or changes, it runs the test in two fresh worktrees
+under `bin/analysis/`, each after `make world`: `HEAD`'s, where it must pass, and `BASE`'s
+sources with `HEAD`'s whole `tests/` tree. It reports "catches" when the test passes on
+`HEAD` and fails on `BASE`, "does not catch" when it passes on both, and "cannot judge" when
+it fails on `HEAD`'s tree too, for something a fresh worktree lacks. A test that passes on
+the code before its fix proves nothing; one reshaped by a refactor may pass and still be
+right. It reports and does not block: the reviewer reads it, and the landing commit message
+records it. It does nothing when the range changes no `src/`. A journey builds a server in
+each worktree first, about three minutes. The last line of each failure shows how the test
+failed; a test that extracts a function the old code does not have fails without saying
+anything about behaviour.
 
 Each run of `tests/run_regression_tests.py` (so each `make test` and `make test-all`)
 writes `bin/test-history/<UTC time>-<short sha>.json`: the commit, whether tracked files

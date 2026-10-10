@@ -4,12 +4,14 @@
 # in the gate it looks the same as one that works.
 #
 # For each tests/async/test_*.py the range adds or changes, when the range also changes
-# src/: a detached worktree of BASE under bin/analysis/catch-<sha>/ takes HEAD's version
-# of every file the range changed under tests/, and the test runs there against BASE's
-# sources. "catches" means it failed on BASE; "does not catch" means it passed, which a
-# refactor's reshaped test may do and still be right. It reports and does not block: the
-# reviewer reads it, and the landing commit records it. A journey builds a server in the
-# worktree first, about three minutes.
+# src/, the test runs in two fresh worktrees under bin/analysis/: HEAD's, the control, where
+# it must pass, and BASE's sources with HEAD's whole tests/ tree (so a test file the range
+# deleted is gone there too). Both get the generated world first (make world), which many
+# tests read. "catches" means it passed on HEAD and failed on BASE; "does not catch" means
+# it passed on both, which a refactor's reshaped test may do and still be right; "cannot
+# judge" means it failed on HEAD's tree too, for something a fresh worktree lacks. It
+# reports and does not block: the reviewer reads it, and the landing commit records it. A
+# journey builds a server in each worktree first, about three minutes.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -27,22 +29,32 @@ if (( ${#tests[@]} == 0 )); then
     echo "The range adds or changes no tests/async/test_*.py."
     exit 0
 fi
-mapfile -t test_files < <(git diff --name-only --diff-filter=AMR "$base" "$head" -- tests)
-
 tree="$PWD/bin/analysis/catch-${head:0:12}"
-git worktree remove --force "$tree" 2>/dev/null || true
+control="$tree-head"
+cleanup() {
+    git worktree remove --force "$tree" 2>/dev/null || true
+    git worktree remove --force "$control" 2>/dev/null || true
+}
+cleanup
+trap cleanup EXIT
+git worktree add --quiet --detach "$control" "$head"
 git worktree add --quiet --detach "$tree" "$base"
-trap 'git worktree remove --force "$tree"' EXIT
-git -C "$tree" checkout --quiet "$head" -- "${test_files[@]}"
+rm -rf "$tree/tests"
+git -C "$tree" checkout --quiet "$head" -- tests
+make -s -C "$control" world >/dev/null
+make -s -C "$tree" world >/dev/null
 
+last_line() { tail -n 1 "$1" | cut -c1-120; }
 caught=0
 for test in "${tests[@]}"; do
-    log="$tree/$(basename "$test" .py).log"
-    if (cd "$tree" && timeout 1800 python3 "$test" >"$log" 2>&1); then
+    log=$(basename "$test" .py).log
+    if ! (cd "$control" && timeout 1800 python3 "$test" >"$log" 2>&1); then
+        echo "cannot judge    $test (fails on ${head:0:12} too: $(last_line "$control/$log"))"
+    elif (cd "$tree" && timeout 1800 python3 "$test" >"$log" 2>&1); then
         echo "does not catch  $test (passes on ${base:0:12})"
     else
-        echo "catches         $test (fails on ${base:0:12}: $(tail -n 1 "$log" | cut -c1-120))"
+        echo "catches         $test (fails on ${base:0:12}: $(last_line "$tree/$log"))"
         caught=$((caught + 1))
     fi
 done
-echo "${caught} of ${#tests[@]} tests fail on ${base:0:12} without ${head:0:12}'s src/ changes."
+echo "${caught} of ${#tests[@]} tests pass on ${head:0:12} and fail on ${base:0:12}."
