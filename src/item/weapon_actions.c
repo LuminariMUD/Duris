@@ -370,6 +370,8 @@ item_action_start selected_packed_weapon_action(P_obj source, P_char actor, P_ch
 	return start_selected_item_action(id, actor, target, source, selection);
 }
 
+// NOT CONNECTED: the only caller is random_eq_proc() in randomeq.c, which no object has yet,
+// so this route never starts in the game whatever itemActions.randomWeapons says.
 item_action_start selected_random_weapon_action(P_obj source, P_char actor, P_char target,
 						int spell, int selected_at)
 {

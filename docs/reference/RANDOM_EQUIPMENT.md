@@ -117,9 +117,10 @@ mob's level (capped at 60), re-rolled while it is self-only. It fires through th
 that there is more to the weapon; the reveal true name spell appends "of <spell>" to its
 name (`identify_random()`).
 
-`random_eq_proc()` in `randomeq.c` is not attached to any object, so neither it nor the
-random-equipment route in [weapon actions](WEAPON_ACTIONS.md) runs in the game. Only
-`tests/async/test_weapon_actions_runtime.py` calls it.
+`random_eq_proc()` in `randomeq.c` is not connected yet: no object has it, so neither it nor
+the random-equipment route in [weapon actions](WEAPON_ACTIONS.md) runs in the game. It is
+kept until it is attached on purpose; only `tests/async/test_weapon_actions_runtime.py`
+calls it.
 
 ## Salvage materials and encrust stones
 
