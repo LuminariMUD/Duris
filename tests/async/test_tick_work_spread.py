@@ -194,7 +194,8 @@ bool char_falling(P_char) { return false; }
 falling_start_result falling_start(P_char) { return {}; }
 struct time_info_data age(P_char) { return {}; }
 int GET_CLASS(P_char, uint) { return 0; }
-int IS_MORPH(P_char) { return 0; }
+static P_char shapechanged = nullptr;
+int IS_MORPH(P_char ch) { return ch == shapechanged; }
 static int removed = 0;
 void affect_remove(P_char ch, struct affected_type *af)
 {
@@ -225,6 +226,15 @@ int main()
     player.affected = &player_buff;
     player.next = character_list;
     character_list = &player;
+    // A player's shapechanged body is an NPC, but counts down with the players.
+    char_data body{};
+    body.specials.act = ACT_ISNPC;
+    affected_type body_buff{};
+    body_buff.duration = 3;
+    body.affected = &body_buff;
+    body.next = character_list;
+    character_list = &body;
+    shapechanged = &body;
 
     // Over one tick, each affect counts down once, and the mobs at many pulses.
     std::vector<int> pulses_with_work;
@@ -239,7 +249,7 @@ int main()
         if (after != before)
             pulses_with_work.push_back(pulse);
         if (pulse == 0)
-            assert(player_buff.duration == 2);
+            assert(player_buff.duration == 2 && body_buff.duration == 2);
     }
     for (const auto &buff : buffs)
         assert(buff.duration == 2);
@@ -249,7 +259,7 @@ int main()
     for (int tick = 0; tick < 3; ++tick)
         for (int pulse = 0; pulse < PULSES_IN_TICK; ++pulse)
             affect_update(pulse);
-    assert(removed == static_cast<int>(mobs.size()) + 1);
+    assert(removed == static_cast<int>(mobs.size()) + 2);
     std::puts("a sliced mob's affects count down once a tick");
 }
 '''
