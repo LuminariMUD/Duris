@@ -931,7 +931,9 @@ patterns are fixed; neither changes the three files' counts above. The review af
 a raw string's payload was mutated as code where its quotes or lines fooled the string
 mask; raw strings are masked to their own delimiter now, again with no change above. Then:
 the operators between two digit separators (`1'000 && 2'000`) were masked as a character
-literal; an apostrophe after a digit or letter no longer opens one (no change above).
+literal; an apostrophe after a digit or letter no longer opens one (no change above). And a
+line that a `//` comment spliced on with a backslash was mutated; the comment mask runs over
+such lines (no change above).
 
 ### 16. Line coverage, on demand
 

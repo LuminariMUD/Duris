@@ -37,12 +37,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TREE = ROOT / "bin/analysis/mutate"
 
-# Comments, string and character literals (raw strings to their own delimiter; an apostrophe
-# after a digit or a letter is a digit separator), and preprocessor lines with their
-# backslash continuations, blanked so no mutation lands in them; every offset and newline
-# survives.
+# Comments (a // comment with its backslash continuations), string and character literals
+# (raw strings to their own delimiter; an apostrophe after a digit or a letter is a digit
+# separator), and preprocessor lines with their backslash continuations, blanked so no
+# mutation lands in them; every offset and newline survives.
 MASK = re.compile(r'(?<![A-Za-z0-9_])(?:u8|[uUL])?R"([^()\\\s]{0,16})\(.*?\)\1"|'
-                  r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\\n])*"|'
+                  r'//(?:[^\n]*\\\n)*[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\\n])*"|'
                   r'(?<![A-Za-z0-9_])(?:u8|[uUL])?\'(?:\\.|[^\'\\\n])*\'|'
                   r'^[ \t]*#(?:[^\n]*\\\n)*[^\n]*', re.S | re.M)
 OPERATORS = [
