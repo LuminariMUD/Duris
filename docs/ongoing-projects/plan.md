@@ -34,18 +34,32 @@ that branch as a new commit, and the branches above take it by merge, never by r
 pushed. Every branch also carries this file: its Status table and Stack table say what is
 built at that branch's head.
 
-| PR | Branch | Items | State |
-|---|---|---|---|
-| 1 | `fix/14-privacy` | 9, 8, 3 (ADR 0003's code) | Built |
-| 2 | `fix/14-log-fixes` | 6, 1, 2, 7, 4, 5 | Built |
-| 3 | `fix/14-mariadb-11.8` | 17 | Built |
-| 4 | `fix/14-boot-scan` | 19 | Built |
-| 5 | `fix/14-tick-spikes` | 18 | Built |
-| 6 | `fix/14-test-tools` | 10, 14, 16 | Built |
-| 7 | `fix/14-test-stability` | 11 | Built |
-| 8 | `fix/14-clang-tidy` | 13 | Built |
-| 9 | `fix/14-fuzz` | 12 | Built |
-| 10 | `fix/14-mutation` | 15 | Not started |
+| PR | GitHub | Branch | Items | State |
+|---|---|---|---|---|
+| 1 | #15 | `fix/14-privacy` | 9, 8, 3 (ADR 0003's code) | Built |
+| 2 | #16 | `fix/14-log-fixes` | 6, 1, 2, 7, 4, 5 | Built |
+| 3 | #17 | `fix/14-mariadb-11.8` | 17 | Built |
+| 4 | #18 | `fix/14-boot-scan` | 19 | Built |
+| 5 | #19 | `fix/14-tick-spikes` | 18 | Built |
+| 6 | #20 | `fix/14-test-tools` | 10, 14, 16 | Built |
+| 7 | #21 | `fix/14-test-stability` | 11 | Built |
+| 8 | #22 | `fix/14-clang-tidy` | 13 | Built |
+| 9 | #23 | `fix/14-fuzz` | 12 | Built |
+| 10 | #24 | `fix/14-mutation` | 15 | Built |
+
+**Where it stands** (2026-10-10). Every item is built, and every pull request is open,
+gated (`make test-all` and `make test-db` on its head) and tagged `-review-0`; none has
+landed. What is left is the owner's:
+
+- Review and land the pull requests in order. #15 targets `master`; retarget each next one
+  to `master` before deleting the base branch it was stacked on. `master` gained
+  `af2ea8e0d` (gcc 15) and `46ac05997` (the journeys' build key) after the stack branched;
+  #15 takes them by merge at landing.
+- At the deploy of #16 (the launcher), set staging's hand-written unit to `KillMode=mixed`,
+  never before (item 1).
+- After deploying #18 and #19, measure the live service's boot and idle tick as items 19
+  and 18 describe; the scratch-server numbers are in their Built paragraphs.
+- Delete this file when the last pull request lands.
 
 Parts 3 and 4 sit below Part 2 because they matter more and change less: Part 3 has to land
 before a database is next built on MariaDB 11.8. Part 2 keeps its own order: 10 and 14 (and
@@ -82,7 +96,7 @@ Part 2, test quality:
 | 12 | Fuzz the code that reads outside input | one replay test | Built (PR 9) |
 | 13 | `clang-tidy` on changed lines | none (commit hook) | Built (PR 8) |
 | 14 | Keep a history of test runs | none | Built (PR 6) |
-| 15 | Mutation testing, by hand | none | Proposed |
+| 15 | Mutation testing, by hand | none | Built (PR 10) |
 | 16 | Line coverage, on demand | none (by hand) | Built (PR 6) |
 
 Part 3, database engine support:
@@ -743,6 +757,27 @@ suite's strength.
 
 **Done when** the script runs on those three files, each surviving mutant has a new test or
 its dead code removed, and the commit that does so records the before and after scores.
+
+**Built** (PR 10). `scripts/mutate.py` as described, with `scripts/mutate/g++`: a harness
+builds in one `g++` command, which `ccache` cannot cache, so the wrapper splits it into one
+`ccache` compile per source and a link. A harness test that took tens of seconds per mutant
+then takes one or two. The journeys run only with `--journeys`: they name these files to
+build a helper, and take minutes each.
+
+| File | Tests naming it | Before | After |
+|---|---|---|---|
+| `src/player/player_snapshot_codec.c` | 41 | 100% (294 of 294) | (no survivor) |
+| `src/economy/collector_policy.c` | 21 | 88.7% (235 of 265) | 97.0% (257) |
+| `src/persistence/critical_command.c` | 52 | 73.7% (126 of 171) | 95.3% (162; one times out) |
+
+- The codec owes its 100% to item 12's replay test, which feeds it 684 save inputs.
+- For the other two, the new assertions are in `collector_policy_harness.cpp` and the new
+  `test_critical_command_codec.py`, which wraps `getrandom()`. Each commit lists what it
+  covers and its before and after scores.
+- No survivor was dead code. The 16 left are equivalent mutants, each explained in its
+  commit: a read one past a terminated string, a return after an exhaustive switch of a
+  validated value, a size boundary the limits never reach, a check a later check makes
+  redundant, a failed allocation.
 
 ### 16. Line coverage, on demand
 
