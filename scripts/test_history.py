@@ -32,7 +32,8 @@ def load(directory: Path) -> list[dict]:
             runs.append(json.loads(path.read_text()))
         except (OSError, ValueError) as error:
             print(f"skipped {path.name}: {error}")
-    return runs
+    # Runs that started in the same second are ordered by when they finished.
+    return sorted(runs, key=lambda run: (run["started"], run.get("finished", 0)))
 
 
 def main() -> int:
