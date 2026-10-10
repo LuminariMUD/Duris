@@ -155,10 +155,12 @@ def run(server):
              '-o', str(harness)], cwd=ROOT, check=True)
 
         def prune(budget):
-            return subprocess.run(
-                [str(harness), host, environment['DB_PORT'], environment['DB_USER'],
-                 environment['DB_PASSWD'], database, str(budget)],
-                capture_output=True, text=True, check=True).stdout.split('\n')[:-1]
+            # The job also expires log files under its working directory.
+            with tempfile.TemporaryDirectory(dir=ROOT / 'bin/tests') as cwd:
+                return subprocess.run(
+                    [str(harness), host, environment['DB_PORT'], environment['DB_USER'],
+                     environment['DB_PASSWD'], database, str(budget)],
+                    cwd=cwd, capture_output=True, text=True, check=True).stdout.split('\n')[:-1]
 
         # The database the migrations build has no account_login_history.
         assert prune(256) == ['complete 0'], 'the prune failed without the website table'
