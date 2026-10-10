@@ -74,10 +74,14 @@ with tempfile.TemporaryDirectory() as temporary:
     clean = subprocess.run(["scripts/tidy.sh", "--all", "src/probe.c"], cwd=repo, text=True,
                            capture_output=True)
     assert clean.returncode == 0 and "0 findings" in clean.stdout, clean.stdout + clean.stderr
-    missing = subprocess.run(["scripts/tidy.sh", "--all", "src/probe.c"], cwd=repo, text=True,
-                             capture_output=True,
-                             env=dict(os.environ, CLANG_TIDY="/definitely/missing"))
-    assert missing.returncode == 1 and "did not run" in missing.stderr, missing
+    failing = repo / "failing-clang-tidy"
+    failing.write_text("#!/bin/sh\necho 'error: cannot run' >&2\nexit 2\n")
+    failing.chmod(0o755)
+    for analyzer in ("/definitely/missing", str(failing)):
+        broken = subprocess.run(["scripts/tidy.sh", "--all", "src/probe.c"], cwd=repo,
+                                text=True, capture_output=True,
+                                env=dict(os.environ, CLANG_TIDY=analyzer))
+        assert broken.returncode == 1 and "did not run" in broken.stderr, (analyzer, broken)
     # The fix is staged and the working tree has the finding again.
     source.write_text("int value()\n{\n\treturn 0;\n}\n" + GLUED)
     unstaged_finding = tidy()

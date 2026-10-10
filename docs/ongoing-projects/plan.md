@@ -728,7 +728,9 @@ Codex, on the round's push: `--all` with no finding at all exited 1 at its summa
 `--all` on a clean file. Codex's next review: the staged check took its flags from the
 working tree's Makefile, and `--all` called a tree clean when clang-tidy could not run.
 The flags now come from the staged `src/Makefile`, and an `xargs` status above 123 (the
-analyzer missing or killed; a finding is 123) fails the run.
+analyzer missing or killed; a finding is 123) fails the run. The review after that: an
+analyzer that runs but exits 2 also gives `xargs` 123, so a failed run that reported no
+finding now fails too, with the end of clang-tidy's stderr (kept in `bin/tidy/stderr.log`).
 
 ### 14. Keep a history of test runs
 
