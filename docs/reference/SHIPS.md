@@ -852,9 +852,9 @@ the only authority, except a ship the full room pool cannot place, which stays
 in the catalog and is retried like an SQL one. The cargo market lives in `<state root>/metadata/cargo_market`
 (magic `DURCARGO`, SHA-256 trailer).
 
-`lib/etc/ship_index` is an empty leftover of the pre-SQL flat-file layout and
-is not read. `migrations/tools/migrate_ships.c` is the offline migrator from
-those legacy files (not part of the default build).
+`migrations/tools/migrate_ships.c` is the offline migrator from the pre-SQL
+flat-file layout (`Ships/ship_index` and its ship files; not part of the default
+build).
 
 ### When ships are written
 
