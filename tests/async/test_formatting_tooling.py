@@ -189,11 +189,32 @@ hook = HOOK.read_text()
 assert 'format.sh" --staged' in hook, "the hook must auto-format staged lines"
 assert 'tidy.sh" --staged' in hook, "the hook must run clang-tidy on staged lines"
 assert "--no-verify" in hook, "the hook must tell the user how to bypass it"
-# A missing clang-format must warn and let the commit through, not block work.
-missing_branch = hook.split("command -v clang-format", 1)[1].split("fi", 1)[0]
-assert "exit 0" in missing_branch, (
-    "the hook must not block commits when clang-format is unavailable"
-)
+# A missing clang-format warns and skips formatting; the tidy check still runs, so a
+# refusal from it still blocks the commit.
+with tempfile.TemporaryDirectory() as temp_dir:
+    fixture, tools = Path(temp_dir) / "repo", Path(temp_dir) / "tools"
+    (fixture / "scripts/git-hooks").mkdir(parents=True)
+    tools.mkdir()
+    shutil.copy2(HOOK, fixture / "scripts/git-hooks/pre-commit")
+    (fixture / "scripts/tidy.sh").write_text("#!/bin/sh\ntouch tidy-ran\nexit 1\n")
+    (fixture / "scripts/tidy.sh").chmod(0o755)
+    for tool in ("git", "bash", "sh", "cat", "touch"):
+        os.symlink(shutil.which(tool), tools / tool)
+    for tool in ("clang-tidy", "clang-tidy-diff"):
+        (tools / tool).write_text("#!/bin/sh\n")
+        (tools / tool).chmod(0o755)
+    for args in (["init", "-q"], ["config", "user.name", "t"],
+                 ["config", "user.email", "t@example.invalid"],
+                 ["config", "core.hooksPath", "scripts/git-hooks"]):
+        subprocess.run(["git", *args], cwd=fixture, check=True)
+    (fixture / "probe.c").write_text("int value() { return 0; }\n")
+    subprocess.run(["git", "add", "probe.c"], cwd=fixture, check=True)
+    refused = subprocess.run(["git", "commit", "-qm", "probe"], cwd=fixture, text=True,
+                             capture_output=True, env=dict(os.environ, PATH=str(tools)))
+    assert "skipping the format check" in refused.stderr, refused.stderr
+    assert (fixture / "tidy-ran").exists() and refused.returncode != 0, (
+        "the hook skipped the tidy check when clang-format is unavailable"
+    )
 
 # Auto-fixing must update the committed index without swallowing unrelated
 # unstaged edits from a partially staged source file.

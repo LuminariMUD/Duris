@@ -731,6 +731,8 @@ The flags now come from the staged `src/Makefile`, and an `xargs` status above 1
 analyzer missing or killed; a finding is 123) fails the run. The review after that: an
 analyzer that runs but exits 2 also gives `xargs` 123, so a failed run that reported no
 finding now fails too, with the end of clang-tidy's stderr (kept in `bin/tidy/stderr.log`).
+And the hook left at its missing-`clang-format` warning, so without a formatter the tidy
+check never ran; it goes on to the tidy check now.
 
 ### 14. Keep a history of test runs
 
