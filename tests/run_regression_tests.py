@@ -197,16 +197,14 @@ def write_history(results: list[TestResult], started: str, match: str | None,
                   jobs: int) -> None:
     """Keep this run's results in bin/test-history/ for scripts/test_history.py, which finds
     the flaky tests and the ones that grow slower. bin/ is ignored: the history is local.
-    A run is dirty with a changed tracked file, or an untracked one where it changes what
-    runs: the runner finds untracked tests, and the build takes untracked sources."""
+    A run is dirty with any changed or untracked file: the runner finds untracked tests, the
+    build takes untracked sources, and tests read migrations/, docs/ and the rest."""
     def git(*arguments: str) -> str:
         return subprocess.run(["git", *arguments], cwd=ROOT, capture_output=True, text=True,
                               check=True).stdout.strip()
     try:
         commit = git("rev-parse", "HEAD")
-        dirty = bool(git("status", "--porcelain", "--untracked-files=no") or
-                     git("ls-files", "--others", "--exclude-standard", "--",
-                         "src", "tests", "areas", "scripts"))
+        dirty = bool(git("status", "--porcelain"))
     except (OSError, subprocess.CalledProcessError):
         return
     directory = ROOT / "bin/test-history"

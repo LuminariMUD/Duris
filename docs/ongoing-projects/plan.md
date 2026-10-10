@@ -669,10 +669,11 @@ tests whose median is a second or more, because the ratio of tenths of a second 
 the same second on one commit overwrote each other's file; a run with an untracked test or
 source counted as clean, so a test fixed while untracked read as flaky; and a test's time
 in a full parallel run was set against focused runs made alone. The file name ends in the
-runner's pid and is created exclusively, an untracked file under `src/`, `tests/`, `areas/`
-or `scripts/` makes a run dirty, and each run records its workers beside `--match`, so a
-slowdown is judged only against runs made like the last (`f58f6e67c`;
-`test_test_history.py`).
+runner's pid and is created exclusively, an untracked file makes a run dirty, and each run
+records its workers beside `--match`, so a slowdown is judged only against runs made like
+the last (`f58f6e67c`; `test_test_history.py`). Codex, on the round's push: the untracked
+check covered only `src/`, `tests/`, `areas/` and `scripts/`, but tests read `migrations/`
+and `docs/` too; any untracked file counts now.
 
 ### 15. Mutation testing, by hand
 
