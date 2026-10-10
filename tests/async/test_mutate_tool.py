@@ -4,7 +4,8 @@
 - A comparison clang-format leaves at the end of a line (`a !=` then the operand on the
   next line) was never mutated: the pattern wanted a space after it. The legacy
   `return (0);` was not taken for a constant return, and the continued lines of a
-  multi-line macro and the inside of a raw string were mutated as code.
+  multi-line macro and the inside of a raw string were mutated as code, and the operators
+  between two digit separators (`1'000 && 2'000`) were masked as a character literal.
 - Without ccache every compile through scripts/mutate/g++ failed, so every mutant counted
   as caught. The wrapper now runs the real g++ uncached.
 - A test that fails unmutated counted as catching every mutant. Each file's tests now run
@@ -32,6 +33,10 @@ assert [(old, new) for _, _, old, new in mutate.mutants(legacy)] == [("0", "1"),
 # A raw string is data to its own delimiter, over lines and quotes alike.
 raw = 'auto json = R"json({"query": "a != b",\n "and": "c || d"})json";\nif (a != b)\n'
 assert [(old, new) for _, _, old, new in mutate.mutants(raw)] == [("!=", "==")]
+# Digit separators are no character literal; a character literal still is.
+separated = "\treturn x < 1'000 && y > 2'000 && c != '>';\n"
+assert [(old, new) for _, _, old, new in mutate.mutants(separated)] == \
+    [("<", "<="), ("&&", "||"), (">", ">="), ("&&", "||"), ("!=", "==")]
 
 # A function, its harness test, and a test that fails whatever the code says.
 VALUE = "int value(int x)\n{\n\treturn x < 3;\n}\n"

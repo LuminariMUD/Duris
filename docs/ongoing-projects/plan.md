@@ -923,7 +923,9 @@ counts them. Codex, on the round's push: the legacy `return (0);` was not taken 
 constant return, and the continued lines of a multi-line macro were mutated as code. Both
 patterns are fixed; neither changes the three files' counts above. The review after that:
 a raw string's payload was mutated as code where its quotes or lines fooled the string
-mask; raw strings are masked to their own delimiter now, again with no change above.
+mask; raw strings are masked to their own delimiter now, again with no change above. Then:
+the operators between two digit separators (`1'000 && 2'000`) were masked as a character
+literal; an apostrophe after a digit or letter no longer opens one (no change above).
 
 ### 16. Line coverage, on demand
 
