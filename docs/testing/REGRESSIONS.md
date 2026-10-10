@@ -521,8 +521,10 @@ fix, on either loop alone.
 A zone command that does not load (`M`, `F`, `R` whose chance roll misses) is logged with
 its mob and room vnums, not the boot's internal indices. A connection reset before the
 server accepts it has the host `unknown`, not a color code that went into every line about
-it. A shutdown, reboot or copyover writes its kind, issuer and reason to the status and
-wiz logs instead of the players' broadcast with its color codes and line ends.
+it. A shutdown, reboot or copyover writes its kind, issuer and reason to the status log
+instead of the players' broadcast with its color codes and line ends. The issuer's wiz row
+is written when it is scheduled; the completion runs with no character, so its wiz row was
+never written, before or after this change.
 
 ```sh
 python3 tests/async/test_log_hygiene_journey.py
