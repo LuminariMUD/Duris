@@ -1780,20 +1780,6 @@ P_char un_morph(P_char mob)
 		{
 			logit(LOG_EXIT, "un_morph: redundant original pointers don't match!");
 		}
-		/*
-		 * move a snoop from the morph to the owning player
-		 */
-
-		/*
-		   if (mob->desc->snoop.snoop_by)
-		   mob->desc->snoop.snoop_by->desc->snoop.snooping = mob->desc->original;
-		   */
-		end_snoops_on(
-			mob->desc,
-			is_avatar ?
-				"&+RYour diety has returned from whence it came, you can no longer sight link with it.&n\r\n" :
-				NULL);
-
 		if (mob->in_room == 1 && world[mob->specials.was_in_room].number != NOWHERE)
 		{
 			in_rm = real_room(mob->specials.was_in_room);
@@ -1822,6 +1808,16 @@ P_char un_morph(P_char mob)
 		 * clean up the desc...
 		 */
 		ch->desc->original = 0;
+		// The snoops on the shapechanged body end with it. They are the player's: each
+		// target notice and audit row names the player, who has the link back (ADR 0003).
+		for (snoop_by_data *node = ch->desc->snoop.snoop_by_list; node; node = node->next)
+			node->snoop_by->desc->snoop.snooping = ch;
+		end_snoops_on(
+			ch->desc,
+			is_avatar ?
+				"&+RYour diety has returned from whence it came, you can no longer sight link with it.&n\r\n" :
+				NULL,
+			true);
 	}
 	else
 		in_rm = mob->in_room;
