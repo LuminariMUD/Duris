@@ -3,6 +3,7 @@
 // linked, and what it calls is stubbed here.
 // fuzz-sources: src/net/gmcp.c
 // fuzz-libs: -lcjson -lcrypto
+// fuzz-max-len: 1048600 (past GMCP_MAX_INPUT_SIZE (1 MiB))
 #include "core/structs.h"
 #include "core/prototypes.h"
 #include "core/json_utils.h"

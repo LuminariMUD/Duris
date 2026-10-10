@@ -716,6 +716,9 @@ coverage 623 to 672 edges, no finding, 9 inputs kept (760 inputs, 144 KB). The r
 that: `fuzz.sh` let UBSan recover, so an undefined-behaviour report left no crash input; it
 builds with `-fno-sanitize-recover=all` now, as the replay does. This round's two runs
 printed no UBSan report, and the replay, which stops on one, passes the whole corpus.
+Then: libFuzzer took the corpus's largest input, 4 KiB, as its limit, under the sizes the
+code checks; each target now names its own on `// fuzz-max-len:` (64 KiB frames, 1 MiB
+GMCP, 4 MiB saves, each a little past), and `fuzz.sh` passes it.
 
 ### 13. `clang-tidy` on changed lines
 

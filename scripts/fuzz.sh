@@ -3,8 +3,9 @@
 # under bin/fuzz/TARGET/, and fuzz it for SECONDS (default 60). `make fuzz FUZZ_TARGET=...
 # FUZZ_SECONDS=...` runs it.
 #
-# The target names what it links on its `// fuzz-sources:` and `// fuzz-libs:` lines; the
-# shared harness stubs fill in the rest. The fuzzer starts from tests/fuzz/corpus/TARGET/
+# The target names what it links on its `// fuzz-sources:` and `// fuzz-libs:` lines, and
+# its largest input on `// fuzz-max-len:` (past the limits its code checks; libFuzzer would
+# take the corpus's largest, 4 KiB); the shared harness stubs fill in the rest. The fuzzer starts from tests/fuzz/corpus/TARGET/
 # and writes the inputs it finds to bin/fuzz/TARGET/corpus/, and a crash to
 # bin/fuzz/TARGET/crash-*. Copy a crash, and an input worth keeping, into
 # tests/fuzz/corpus/TARGET/ (`-merge=1` picks a small set): tests/async/test_fuzz_corpus.py
@@ -21,6 +22,7 @@ source=tests/fuzz/$target.cpp
 }
 read -r -a sources <<<"$(sed -n 's#^// fuzz-sources:##p' "$source")"
 read -r -a libs <<<"$(sed -n 's#^// fuzz-libs:##p' "$source")"
+max_len=$(sed -n 's#^// fuzz-max-len: *\([0-9]*\).*#\1#p' "$source")
 out=bin/fuzz/$target
 mkdir -p "$out/corpus" "tests/fuzz/corpus/$target"
 # clang otherwise picks the newest installed libstdc++, which need not be g++'s. An
@@ -29,5 +31,6 @@ clang++ --gcc-install-dir="$(dirname "$(g++ -print-libgcc-file-name)")" -std=c++
 	-fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all -D__NO_MYSQL__ -Isrc \
 	-Isrc/no_mysql \
 	"$source" "${sources[@]}" tests/async/harness_stubs.cpp "${libs[@]}" -o "$out/fuzzer"
-"$out/fuzzer" -max_total_time="$seconds" -print_final_stats=1 -artifact_prefix="$out/" \
+"$out/fuzzer" -max_total_time="$seconds" -max_len="${max_len:-4096}" -print_final_stats=1 \
+	-artifact_prefix="$out/" \
 	"$out/corpus" "tests/fuzz/corpus/$target"
