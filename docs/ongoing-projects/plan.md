@@ -786,6 +786,21 @@ documents name the three engines; and staging's `mysql_upgrade_info` reads 11.8.
   the new runner (`run`: nothing pending, history intact) and
   `verify_runtime_compatibility.sh`. The copy was deleted afterwards.
 
+**Review round 1** (2026-10-10, #17's adversarial review): the review found that MariaDB
+11.8's own client has no `mysql` or `mysqldump` command, so the runner, every verifier and
+the backup would stop at `command not found`, and that the engine leg drives the 11.8
+server with this machine's 10.11 client. Not changed in code. MariaDB's container image
+lacks the names (they are in its `mariadb-client-compat`), but Ubuntu 26.04's
+`mariadb-client` (11.8.6) ships `/usr/bin/mysql` and `mysqldump` in
+`mariadb-client-core`, and the dependency manifest installs `default-mysql-client |
+mariadb-client`. Forty scripts and the boot's compatibility check call the names too, so a
+shim in the runner alone would not make such a host work. Checked once with that client:
+in an `ubuntu:26.04` container with `mariadb-client` and `python3`, sharing a
+`mariadb:11.8` server's network, bootstrap, `adopt` and `run` reached all 36 migrations
+with the manifest's history checksum. The README now says which package gives the names
+on a host with MariaDB's own packages. The check stays out of `make test-db`: it installs
+packages from the network.
+
 ---
 
 ## Part 4: the slow tick and the slower boot
