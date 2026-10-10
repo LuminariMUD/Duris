@@ -1,4 +1,6 @@
 #include "economy/collector_policy.h"
+#include "economy/collector_eligibility.h"
+#include "core/defines.h"
 
 #include <cassert>
 #include <iostream>
@@ -177,6 +179,79 @@ int main()
 	auto malformed = candidate(100001, 100001);
 	malformed.collect_at++;
 	assert(!valid_record(malformed) && !queue.update(malformed) && queue.size() == 99999);
+	// Boundaries mutation testing found unchecked (scripts/mutate.py).
+	player_item_snapshot item{};
+	item.object_uid = 9;
+	item.vnum = 3000;
+	item.type = ITEM_ARMOR;
+	item.wear_flags = ITEM_TAKE;
+	item.name = "plate armor";
+	assert(collector_death_item_snapshot_eligible(item));
+	item.vnum = 0;
+	assert(!collector_death_item_snapshot_eligible(item));
+
+	rules even = defaults;
+	even.price_percent = 200;
+	even.sale_delay = even.collection_delay;
+	assert(valid_rules(even));
+	even.collection_delay = 0;
+	assert(!valid_rules(even) && price(75, even, &gold) == outcome::invalid);
+	assert(price(75, defaults, nullptr) == outcome::invalid);
+	record unhex;
+	assert(enroll(9, "z23456789abcdef0123456789abcdef0", 42, 109, 5, 1000, shield.policy,
+		      &unhex) == outcome::invalid);
+	assert(enroll(9, "G23456789abcdef0123456789abcdef0", 42, 109, 5, 1000, shield.policy,
+		      &unhex) == outcome::invalid);
+
+	// A record that is not valid, or none, is refused before its revision is compared.
+	auto damaged = candidate();
+	damaged.version = record_version + 1;
+	assert(cancel(&damaged, 1, reason::destroyed) == outcome::invalid);
+	assert(activate(nullptr, 1, maximum) == outcome::invalid);
+	auto closed_but_available = saleable();
+	closed_but_available.closed_reason = reason::claimed;
+	assert(!valid_record(closed_but_available));
+	auto reopened = candidate();
+	assert(cancel(&reopened, 1, reason::destroyed) == outcome::applied);
+	reopened.closed_reason = reason::none;
+	assert(!valid_record(reopened));
+
+	// A terminal record is not cancelled again, for any reason.
+	auto finished = saleable();
+	assert(expire(&finished, 3, finished.expires_at) == outcome::applied);
+	assert(cancel(&finished, 4, reason::destroyed) == outcome::conflict);
+
+	// Holding resumes at the moment it paused.
+	auto instant = saleable();
+	assert(pause(&instant, 3, instant.available_at + 10) == outcome::applied);
+	assert(resume(&instant, 4, instant.paused_at) == outcome::applied);
+
+	// The queue keeps a listing whose deadline did not change, and moves one whose did.
+	due_queue steady;
+	auto steady_entry = candidate(7, 107);
+	assert(steady.update(steady_entry) && steady.update(steady_entry) && steady.size() == 1);
+	uint64_t when = 0;
+	assert(steady.deadline(7, &when) && when == steady_entry.collect_at);
+	assert(steady.lease_due(steady_entry.collect_at, 1, steady_entry.collect_at + 30).front() ==
+	       7);
+	assert(collect(&steady_entry, 1, 5, 5, true, 75, steady_entry.collect_at) ==
+	       outcome::applied);
+	assert(steady.update(steady_entry) && steady.deadline(7, &when) &&
+	       when == steady_entry.sale_at);
+	assert(steady.lease_due(steady_entry.sale_at - 1, 1, maximum).empty());
+
+	// deadline() and defer() refuse no listing, no output and an unknown listing; a deferral
+	// to the same or an earlier time changes nothing, a later one moves the listing.
+	assert(!steady.deadline(0, &when) && !steady.deadline(7, nullptr) &&
+	       !steady.deadline(8, &when));
+	assert(!steady.defer(0, when) && !steady.defer(7, 0) && !steady.defer(8, when));
+	assert(steady.defer(7, when) && steady.defer(7, when - 1) && steady.deadline(7, &when) &&
+	       when == steady_entry.sale_at);
+	assert(steady.defer(7, when + 100) && steady.deadline(7, &when) &&
+	       when == steady_entry.sale_at + 100);
+	assert(steady.lease_due(steady_entry.sale_at + 99, 1, maximum).empty());
+	assert(steady.lease_due(steady_entry.sale_at + 100, 1, maximum).front() == 7);
+
 	std::cout
 		<< "collector policy: timing, custody conflicts, privacy, prices, pause, terminal "
 		   "states and leased 100000-item scheduling passed\n";
