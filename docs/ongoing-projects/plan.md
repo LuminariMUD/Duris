@@ -680,7 +680,10 @@ the last (`f58f6e67c`; `test_test_history.py`). Codex, on the round's push: the 
 check covered only `src/`, `tests/`, `areas/` and `scripts/`, but tests read `migrations/`
 and `docs/` too; any untracked file counts now. Codex's next review: when the last run failed
 a test or did not run it, the slowdown check compared an older pass; it now takes only the
-tests the last run passed, against their passes in earlier runs made like it.
+tests the last run passed, against their passes in earlier runs made like it. The review
+after that: runs that started in the same second sorted by commit and pid, so the "last"
+could be the earlier one; each run records when it finished, and that breaks the tie.
+`make coverage` also checks for `gcovr` before its `test-all` instead of failing after it.
 
 ### 15. Mutation testing, by hand
 
