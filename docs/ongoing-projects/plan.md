@@ -718,6 +718,9 @@ as staged, written to `bin/tidy/staged/` (0.2 s), and both diffs pin `--no-color
 --no-ext-diff` and the `a/`/`b/` prefixes; `test_tidy_tooling.py` covers all four cases.
 The review also noted that no command reaches the line editor whose leak this item fixed;
 REGRESSIONS.md and `formatting.md` now say so, and what wiring it back in would need.
+Codex, on the round's push: `--all` with no finding at all exited 1 at its summary's empty
+`grep` under `set -e`; the summary tolerates that now (`5413f3914`), and the test runs
+`--all` on a clean file.
 
 ### 14. Keep a history of test runs
 
