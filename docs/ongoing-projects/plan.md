@@ -44,7 +44,7 @@ built at that branch's head.
 | 6 | `fix/14-test-tools` | 10, 14, 16 | Built |
 | 7 | `fix/14-test-stability` | 11 | Built |
 | 8 | `fix/14-clang-tidy` | 13 | Built |
-| 9 | `fix/14-fuzz` | 12 | Not started |
+| 9 | `fix/14-fuzz` | 12 | Built |
 | 10 | `fix/14-mutation` | 15 | Not started |
 
 Parts 3 and 4 sit below Part 2 because they matter more and change less: Part 3 has to land
@@ -79,7 +79,7 @@ Part 2, test quality:
 |---|---|---|---|
 | 10 | Prove a regression test fails without its fix | none | Built (PR 6) |
 | 11 | Make tests break only when behaviour breaks | same or less | Built (PR 7) |
-| 12 | Fuzz the code that reads outside input | one replay test | Proposed |
+| 12 | Fuzz the code that reads outside input | one replay test | Built (PR 9) |
 | 13 | `clang-tidy` on changed lines | none (commit hook) | Built (PR 8) |
 | 14 | Keep a history of test runs | none | Built (PR 6) |
 | 15 | Mutation testing, by hand | none | Proposed |
@@ -677,6 +677,51 @@ after the compile. Long runs are by hand (decision 5).
 **Done when** the first three targets exist, each has run for an hour, every finding is
 fixed in its own commit with its input in the corpus, and the replay test runs in
 `make test`.
+
+**Built** (PR 9), the first three targets; flat-file records and telnet input (targets 4
+and 5) are not written.
+
+- `tests/fuzz/{websocket,gmcp,player_snapshot}.cpp`, each with `LLVMFuzzerTestOneInput`,
+  its `// fuzz-sources:` and `// fuzz-libs:` lines, and the shared harness stubs for the
+  rest. `make fuzz FUZZ_TARGET=<name> FUZZ_SECONDS=<n>` (`scripts/fuzz.sh`) builds one with
+  clang, libFuzzer and the sanitizers under `bin/fuzz/<name>/` (passing g++'s
+  `--gcc-install-dir`, because clang otherwise picks the newest libstdc++) and fuzzes it,
+  new inputs going to `bin/`, not to the committed corpus.
+- `tests/async/test_fuzz_corpus.py`, in `make test`, builds each target with `g++`, the same
+  sanitizers and a replay `main`, and feeds it every committed input: 1,355 inputs in a few
+  seconds after the compiles.
+- One hour each, on 2026-10-10: websocket 292 million inputs; gmcp 1.6 billion, then
+  another hour (1.2 billion) from seeds that are real `Core.Hello` and `Client.Info`
+  messages, since the first hour's corpus had none (`gmcp_handle_input()` is small, and its
+  coverage stopped at 76 edges); player_snapshot 46 million, with the fix below. No
+  WebSocket or GMCP finding.
+- The finding: `player_snapshot_decode()` and `player_item_snapshot_list_decode()` said
+  `ok` without writing anything when an element's reader refused a value without naming
+  why, so a damaged save decoded to an empty snapshot. Fixed in its own commit; the crash
+  input and twelve more corpus inputs that failed the same way are in the corpus, and the
+  replay fails without the fix.
+- The corpora are those runs merged (`-merge=1`) to the inputs that add coverage: 634
+  WebSocket inputs (110 KB), 37 GMCP (1 KB), 684 save inputs (344 KB).
+
+**Review round 1** (2026-10-10, Codex's review; the adversarial review found no defect):
+the `websocket` target marked compression negotiated but set up no inflater, so every frame
+with RSV1 was refused before decompression; it parsed only an input's first frame; and its
+proxy stub never trusted the peer, so the `X-Forwarded-For` branch never ran. The target now
+sets up the inflater as `websocket_complete_handshake()` does, parses every frame, and bit
+4 of an upgrade request makes the peer a trusted proxy (`8d06a8f1b`, with three seeds that
+reach those paths; a coverage build of the replay shows `inflate()` and the address copy
+run). A 30-minute run of the new target: 37.6 million inputs, no finding, 114 inputs kept
+(the WebSocket corpus is 751 inputs, 141 KB). Codex's next review: every upgrade request
+ran with descriptor -1, which `websocket_complete_handshake()` refuses at once, so no valid
+upgrade reached the accept key, the compression negotiation or the 101 answer. Each upgrade
+input now gets a socket pair (`247fd4b97`). Ten minutes on that target: 8 million inputs,
+coverage 623 to 672 edges, no finding, 9 inputs kept (760 inputs, 144 KB). The review after
+that: `fuzz.sh` let UBSan recover, so an undefined-behaviour report left no crash input; it
+builds with `-fno-sanitize-recover=all` now, as the replay does. This round's two runs
+printed no UBSan report, and the replay, which stops on one, passes the whole corpus.
+Then: libFuzzer took the corpus's largest input, 4 KiB, as its limit, under the sizes the
+code checks; each target now names its own on `// fuzz-max-len:` (64 KiB frames, 1 MiB
+GMCP, 4 MiB saves, each a little past), and `fuzz.sh` passes it.
 
 ### 13. `clang-tidy` on changed lines
 
