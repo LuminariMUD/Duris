@@ -11,6 +11,52 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Argument tokenizer: unterminated quoted words
+
+`lohrr_chop()` resets its output pointer when an unterminated single quote makes it
+restart as an ordinary word. Previously it appended the second attempt to the first,
+duplicating text and overflowing a command-sized output buffer on long input.
+
+```sh
+python3 tests/async/test_argument_tokenizer.py
+```
+
+The native ASan/UBSan test uses the real tokenizer and a maximum-length unterminated
+word, which reproduced a stack-buffer-overflow before the fix. It also checks the
+unquoted fallback, complete quotes, whitespace, empty input and the returned remainder.
+This tests the shared tokenizer directly; the randobj harness separately drives long
+unterminated words through the command.
+
+## Randobj: invalid arguments and missing generated objects
+
+`randobj` validates the whole subcommand before creating anything. Equipment, material
+and stone failures are checked before inventory placement or `stat`; a missing blank
+stops a batch and preserves earlier items. Recipe, mob and sample-name generation also
+stop on failure. Explicit levels are passed to the generators without changing the
+staff character.
+
+```sh
+python3 tests/async/test_randobj_command.py
+```
+
+The native ASan/UBSan harness calls the real command with the real tokenizer, wear words
+and slot tables. Recording generators cover every noun and wear group, defaults, both
+numeric forms, bounds, extra words, trust, null returns and mid-batch failures. It also
+checks `eq list`, single-item stat output, batch totals and unchanged map/zone operations.
+It does not prove the live command's generator output; the random-equipment golden harness
+and the local gameplay check recorded in the ongoing plan cover those separately.
+
+## Randobj: stat output selects the new item
+
+Single-item equipment generation passes its object directly to `do_stat()`'s renderer.
+Previously it passed the generated keywords, whose first word is always `random`; the
+command parser looked up that word and could display an older carried or worn item.
+Ordinary `stat` commands retain their existing lookup.
+
+The same native command harness asserts the exact object passed for display after several
+items with identical keywords. The local gameplay check also inspects successive weapon
+and ring stat blocks; the harness uses a recording stat function, not the full renderer.
+
 ## Random equipment: revealing a foreign weapon spell
 
 `identify_random()` bounds its search by the 61-entry spell table. A weapon with a spell

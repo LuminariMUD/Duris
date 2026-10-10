@@ -20295,12 +20295,38 @@ See also: WHERE
 #
 RANDOBJ (Immortal Command)
 ===========================================================================
-Syntax: randobj <eq | piece | stone | recipe | mob | zone | encrust | map | remove>
+Syntax: randobj eq [slot] [level] [count]
+        randobj eq list
+        randobj piece [level] [count]
+        randobj stone [count]
+        randobj recipe [count]
+        randobj mob [level] [count]
+        randobj encrust [count]
+        randobj zone | map | remove
 
-Forger command (level 61). Random-generation test harness: creates a random piece of
-equipment, tradeskill material, stone or recipe, spawns a random mob,
-builds a random zone, or regenerates the random-map test labs.
-Requires trust; results are for testing loot generation.
+Forger command (level 61), requiring trust. Equipment uses the given level for both
+finder and source, with your luck and current zone. Slot defaults to any, level to
+your own and count to 1. A number directly after eq is the level.
+
+Use eq list for slot words grouped by wear location. A wear location (finger, body,
+wield, etc.) chooses uniformly from that group; a noun (ring, tower-shield,
+long-sword, etc.) selects that item shape. Any keeps the usual weighted slot roll.
+If a word names both a group and a shape, it selects the group.
+
+Levels are 1-62. Mob level defaults to 0, meaning the generator's own choice.
+Counts are 1-50, or 1-10 for mobs, which remain in the world as wanderers.
+Encrust prints sample names and defaults to 10. Piece makes salvage materials;
+stone makes encrust stones; recipe repeats the current zone-recipe generator.
+Zone, map and remove retain their existing random-zone and test-lab behavior.
+
+One equipment item shows its stat. Batches list each item and a total. Invalid
+arguments create nothing and print that subcommand's syntax; creation failures stop
+the batch, keeping any items already made.
+
+Examples:
+  randobj eq ring 30 3   - three level-30 rings
+  randobj eq 50 5        - five level-50 items with the usual slot weighting
+  randobj piece 40 5     - five materials from level-40 drops
 ===========================================================================
 #
 REDIS (Immortal Command)

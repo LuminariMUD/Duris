@@ -67,7 +67,6 @@ explicit levels let staff generate the same item without changing their characte
 The steps are `choose_slot()`, `choose_material()`, `choose_name()`/`name_item()`,
 `add_name_affects()`, `set_wear_and_weight()`, `set_stat_affects()` and `set_type_values()`:
 
-
 - **Slot.** Two times in three it picks from the first 71 entries of `slot_data`
   (armour, jewellery and shields), otherwise from all 109. About one drop in sixteen is a
   weapon.
@@ -155,6 +154,35 @@ The same generators serve:
 
 The calls in shops, crafting and NPC ship crews are commented out.
 
+## The staff command
+
+`randobj` requires Forger rank and trust. All arguments are optional unless shown as
+literal words. Invalid slots, numbers, limits and extra words print syntax before
+anything is created. Missing generator objects stop a batch while keeping earlier items.
+
+| Command | Result | Defaults |
+| --- | --- | --- |
+| `randobj eq [slot] [level] [count]` | Equipment at the given finder/source level, using your luck and zone | `any`, your level, 1 |
+| `randobj eq list` | Slot words grouped by wear location | |
+| `randobj piece [level] [count]` | Salvage materials with the usual alchemist refund roll | your level, 1 |
+| `randobj stone [count]` | Encrust stones | 1 |
+| `randobj recipe [count]` | Zone recipe attempts; ineligible random objects are discarded | 1 |
+| `randobj mob [level] [count]` | Random mobs, which stay in the world as wanderers | 0 (automatic), 1 |
+| `randobj encrust [count]` | Sample encrusted names | 10 |
+| `randobj zone`, `map`, `remove` | Existing random-zone and test-lab operations | |
+
+Levels range from 1 to 62, with 0 also allowed for mobs. Counts range from 1 to 50,
+or 1 to 10 for mobs. For equipment, the first number is the level: `randobj eq 50 5`
+creates five items at level 50. `randobj eq ring 30 3` creates three level-30 rings;
+`randobj piece 40 5` creates five salvage materials at level 40.
+
+Slot words are `any`, wear locations (`finger`, `body`, `wield`, and the other names
+listed by `eq list`), or table nouns with colour removed and spaces replaced by hyphens
+(`ring`, `tower-shield`, `long-sword`). A wear word chooses uniformly among its rows;
+`any` retains the generator's usual worn-equipment weighting. A word that names both a
+wear group and a noun selects the group. One equipment item displays its `stat`; batches
+print descriptions, the level where applicable, and a total.
+
 ## Other drops on the same death
 
 Next to the random drop, `die()` handles three more. A dragon that grants experience
@@ -172,17 +200,19 @@ loot-drops and loot-quality dials are `difficulty.dial.loot.drops` and
 
 ```sh
 python3 tests/async/test_random_equipment_golden.py
+python3 tests/async/test_randobj_command.py
 python3 tests/async/test_random_equipment_config_contract.py
 python3 tests/async/test_random_equipment_config_runtime.py
 python3 tests/async/test_random_drop_owner_message.py
 python3 tests/async/test_difficulty_dials.py
 ```
 
-The golden test holds the rolls themselves. It compiles all three module sources whole under ASan and
-UBSan with the real random number generator and settings at their defaults, stubs only
-the world, and records 1,480 seeded cases: drop decisions, `random_equipment_kill_drop()`,
+The golden test holds the rolls themselves. It compiles all three module sources whole
+under ASan and UBSan with the real random number generator and settings at their defaults,
+stubs only the world, and records 1,480 seeded cases: drop decisions, `random_equipment_kill_drop()`,
 generated items field by field, materials, stones, encrust affects and true names. The
 output must equal `tests/fixtures/random_equipment_golden.txt`, so any change that moves,
-adds or drops a roll fails it. The next two hold the settings and their loader, then the
-salvage message's recipient, and the last the loot dials' hooks. No test rolls a drop on
-a running server.
+adds or drops a roll fails it. The command harness compiles the real `randobj.c` with
+recording generators and the real slot tables and tokenizer, checking defaults, every
+slot word, limits, errors and null returns. The remaining tests hold the settings and loader, salvage message recipient
+and loot dials' hooks. The golden harness does not roll a drop on a running server.
