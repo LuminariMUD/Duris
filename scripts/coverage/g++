@@ -2,8 +2,7 @@
 # The g++ of scripts/coverage.sh, first on its PATH. Every compile gets coverage, and its
 # notes and counts go to a directory of its own under COVERAGE_DATA, so a harness built in
 # a temporary directory leaves them behind and two files of one name never share counts.
-# The build's -Og stays: _FORTIFY_SOURCE=3 warns without optimisation, and -Werror makes
-# that fatal.
+# The build's -Og stays: _FORTIFY_SOURCE=3 warns without optimisation.
 set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # The real g++, past this directory and past ccache's g++ links: ccache would look g++ up on
@@ -11,5 +10,7 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 real=$(PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vx "$here" | grep -v ccache | paste -sd:) \
 	command -v g++)
 : "${COVERAGE_DATA:?scripts/coverage.sh sets COVERAGE_DATA}"
+# -Wno-error comes last, after the build's -Werror: at -O2 the instrumentation provokes false
+# array-bounds and null-dereference warnings inside libstdc++, which would stop the build.
 exec "$real" --coverage -fprofile-abs-path -fprofile-update=atomic \
-    -dumpdir "$(mktemp -d "$COVERAGE_DATA/XXXXXXXX")/" "$@"
+    -dumpdir "$(mktemp -d "$COVERAGE_DATA/XXXXXXXX")/" "$@" -Wno-error
