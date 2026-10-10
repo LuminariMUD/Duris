@@ -1,0 +1,6 @@
+GET / HTTP/1.1
+Upgrade:websocket
+Connection:Upgrade
+Sec-WebSocket-Key: dGHlIHNhbXBsZSBub25jZQ==
+Sec-WebSocket-Version: 13
+

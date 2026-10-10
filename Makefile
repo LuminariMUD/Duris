@@ -56,7 +56,7 @@ AREA_WORLD_DIRECT_INPUTS := \
 
 .PHONY: \
 	help all build build-server build-production build-editor build-area-tools world \
-	build-deps-package test test-all test-python test-native test-list test-db coverage \
+	build-deps-package test test-all test-python test-native test-list test-db coverage fuzz \
 	security-sbom security-check clean clean-all
 
 help:
@@ -68,6 +68,7 @@ help:
 		'  make test-list       List tests discovered by the regression runner' \
 		'  make test-db         Run isolated Docker database tests and MariaDB journeys' \
 		'  make coverage        Line coverage of src/ under test-all, in its own worktree (COVERAGE_ARGS=--db adds test-db)' \
+		'  make fuzz FUZZ_TARGET=name [FUZZ_SECONDS=60]  Fuzz tests/fuzz/<name>.cpp with libFuzzer (needs clang)' \
 		'  make build-deps-package  Build the Debian metapackage under bin/packages' \
 		'  make security-sbom    Generate dependency inventory and SPDX under bin/security' \
 		'  make security-check   Generate the SBOM and run local security contracts' \
@@ -171,6 +172,11 @@ test-list:
 # target. The report lands in bin/coverage/<sha>/.
 coverage:
 	scripts/coverage.sh $(COVERAGE_ARGS)
+
+# On demand only, like coverage: tests/async/test_fuzz_corpus.py replays the committed corpus
+# in every gate. See scripts/fuzz.sh.
+fuzz:
+	scripts/fuzz.sh $(FUZZ_TARGET) $(FUZZ_SECONDS)
 
 # Every test here creates and destroys its own MySQL or MariaDB container, and
 # they run side by side. They are kept out of test-all because Docker is

@@ -284,6 +284,26 @@ or `clang++` instead of `g++`. The wrapper drops `-Werror` (at `-O2` the instrum
 provokes false warnings inside libstdc++), so a test that needs a compile to fail on a
 warning fails under coverage and is listed in `failed.txt`.
 
+## Fuzzing
+
+Each `tests/fuzz/<target>.cpp` feeds `LLVMFuzzerTestOneInput` to code that reads outside
+input: `websocket` (the upgrade request and frames), `gmcp` (a client's `Core.Hello` and
+`Client.Info`) and `player_snapshot` (save decoding, with an encode-and-decode round trip).
+Its `// fuzz-sources:` and `// fuzz-libs:` lines say what it links; the shared harness
+stubs fill in the rest.
+
+`make fuzz FUZZ_TARGET=websocket FUZZ_SECONDS=3600` (or `scripts/fuzz.sh TARGET [SECONDS]`)
+builds the target with clang's libFuzzer and the address and undefined-behaviour
+sanitizers under `bin/fuzz/<target>/` and fuzzes it, starting from
+`tests/fuzz/corpus/<target>/`. It writes what it finds to `bin/fuzz/<target>/corpus/` and a
+crash to `bin/fuzz/<target>/crash-*`. Copy a crash, and inputs worth keeping, into the
+committed corpus (`bin/fuzz/<target>/fuzzer -merge=1 tests/fuzz/corpus/<target> DIR...`
+keeps the ones that add coverage). Long runs are by hand; nothing schedules them.
+
+`tests/async/test_fuzz_corpus.py`, in every `make test`, builds each target with `g++`, the
+same sanitizers and a `main` that feeds it every committed corpus file once, so a fixed
+crash stays fixed.
+
 ## Full-world save diagnostics
 
 `test_flatfile_full_world_boot.py` supports opt-in synthetic failure/recovery

@@ -1,0 +1,8 @@
+ÿÿÿx
+Sec-WebSocket-Extensions:S,permessage-deflate
+	
+Sec-WebSocket-Extensions:S,permessage-deflate,5
+
+	
+Sec-WebSocket-Extensions:S,permessage-deflate,,
+
