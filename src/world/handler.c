@@ -3771,7 +3771,7 @@ void extract_char(P_char ch)
 		sql_disconnectIP(ch);
 
 		stop_snooping(ch->desc);
-		end_snoops_on(ch->desc, "Your victim is no longer among us.\r\n");
+		end_snoops_on(ch->desc, "Your victim is no longer among us.\r\n", false);
 	}
 	/*
 	 * Code to stop others from ignoring person quitting
