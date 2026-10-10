@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Auto-format staged C/C++ lines before committing.
+# Auto-format staged C/C++ lines, then run clang-tidy on them, before committing.
 #
 # Installed by scripts/install-hooks.sh (sets core.hooksPath).
 # Bypass a single commit with `git commit --no-verify`.
@@ -8,23 +8,37 @@ set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 
-# A missing clang-format must not block committing; warn once and let it pass.
+# A missing clang-format must not block committing; warn once and go on to the tidy check.
 if ! command -v clang-format >/dev/null 2>&1 || ! command -v git-clang-format >/dev/null 2>&1; then
   echo "pre-commit: clang-format not installed; skipping the format check." >&2
   echo "            sudo apt-get install clang-format" >&2
-  exit 0
-fi
-
-if "$ROOT/scripts/format.sh" --staged; then
-  exit 0
-fi
-
-cat >&2 <<'MSG'
+elif ! "$ROOT/scripts/format.sh" --staged; then
+  cat >&2 <<'MSG'
 
 pre-commit: could not auto-format the staged C/C++ changes.
 
   ./scripts/format.sh --staged   # retry with full diagnostics
   git commit --no-verify         # bypass formatting for this commit
+
+MSG
+  exit 1
+fi
+
+# clang-tidy on the staged lines: a finding refuses the commit, as formatting does.
+if ! command -v clang-tidy >/dev/null 2>&1 || ! command -v clang-tidy-diff >/dev/null 2>&1; then
+  echo "pre-commit: clang-tidy not installed; skipping the tidy check." >&2
+  exit 0
+fi
+if "$ROOT/scripts/tidy.sh" --staged; then
+  exit 0
+fi
+cat >&2 <<'MSG'
+
+pre-commit: clang-tidy found the above on staged lines. Fix them, or put a NOLINT
+with the reason beside a line that is right as it is.
+
+  ./scripts/tidy.sh --staged     # run the check again
+  git commit --no-verify         # bypass the hook for this commit
 
 MSG
 exit 1

@@ -94,6 +94,36 @@ its own commit, never mixed with a behavior change.
 When you hit a construct the formatter mangles, fence it the same way and say
 why in a comment. Do not disable the option globally.
 
+## clang-tidy on changed lines
+
+`.clang-tidy` at the repository root turns on the bug patterns the compilers do not warn
+on: clang-tidy's `bugprone-*`, `cert-flp30-c` and three `performance-*` checks. Each check
+that is off says why beside it, in the file.
+
+```bash
+./scripts/tidy.sh                    # changed lines, staged and unstaged, against HEAD
+./scripts/tidy.sh --staged           # staged lines (what the hook runs)
+./scripts/tidy.sh --rev origin/master
+./scripts/tidy.sh --all [PATH...]    # every line, with a count by check
+```
+
+It needs `clang-tidy` and `clang-tidy-diff` (Debian/Ubuntu: `clang-tidy`). There is no
+compile database, so the script writes `bin/tidy/compile_commands.json` from
+`src/Makefile`'s flags: the `.c` files are C++20, and the MariaDB build's defines decide
+what is analysed, so code only under `__NO_MYSQL__` is not. A finding on a changed line
+fails the check; the hook runs it after formatting and refuses the commit. Fix the line,
+or, where it is right as it is, add `// NOLINT(check-name): reason`. `--staged` checks
+`src/` as staged, written to `bin/tidy/staged/`, so an unstaged edit does not change the
+result, and the diff it reads ignores the git config's color, prefix and diff-driver
+settings. A changed header's lines are checked through the nearest source that includes
+it, directly or through other headers, since many headers do not compile on their own.
+
+The first full run (2026-10-10) found 11,308; most came from the checks now off. Three
+were bugs, each fixed in its own commit with a test: the kick messages one race short
+(`bugprone-suspicious-missing-comma`), the line editor's leaks, in code no command
+reaches today (`bugprone-macro-repeated-side-effects`) and a missing `<climits>` in
+`flatfile_store.c`.
+
 ## Editor setup
 
 Point your editor at the repo's `.clang-format` and enable format-on-save for

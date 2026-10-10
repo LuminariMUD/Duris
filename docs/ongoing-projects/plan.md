@@ -43,7 +43,7 @@ built at that branch's head.
 | 5 | `fix/14-tick-spikes` | 18 | Built |
 | 6 | `fix/14-test-tools` | 10, 14, 16 | Built |
 | 7 | `fix/14-test-stability` | 11 | Built |
-| 8 | `fix/14-clang-tidy` | 13 | Not started |
+| 8 | `fix/14-clang-tidy` | 13 | Built |
 | 9 | `fix/14-fuzz` | 12 | Not started |
 | 10 | `fix/14-mutation` | 15 | Not started |
 
@@ -80,7 +80,7 @@ Part 2, test quality:
 | 10 | Prove a regression test fails without its fix | none | Built (PR 6) |
 | 11 | Make tests break only when behaviour breaks | same or less | Built (PR 7) |
 | 12 | Fuzz the code that reads outside input | one replay test | Proposed |
-| 13 | `clang-tidy` on changed lines | none (commit hook) | Proposed |
+| 13 | `clang-tidy` on changed lines | none (commit hook) | Built (PR 8) |
 | 14 | Keep a history of test runs | none | Built (PR 6) |
 | 15 | Mutation testing, by hand | none | Proposed |
 | 16 | Line coverage, on demand | none (by hand) | Built (PR 6) |
@@ -698,6 +698,60 @@ it to the hook.
 
 **Done when** `.clang-tidy` and `scripts/tidy.sh` exist, the first full run's real findings
 are fixed, and the hook runs it.
+
+**Built** (PR 8).
+
+- `.clang-tidy` turns on `bugprone-*`, `cert-flp30-c` and three `performance-*` checks, with
+  `WarningsAsErrors: '*'`; each check that is off has its reason and its first-run count in
+  the file. It is added past `.gitignore`'s `.c*`, as `.clang-format` is.
+- `scripts/tidy.sh` checks the lines changed against `HEAD` (or `--staged`, or `--rev REV`)
+  through `clang-tidy-diff`, or every line with `--all` and a count by check. It writes
+  `bin/tidy/compile_commands.json` from `src/Makefile`'s `-D`, `-I` and `-std` flags (the
+  MariaDB build: code only under `__NO_MYSQL__` is not analysed), and returns at once when
+  no `src/` line changed.
+- The pre-commit hook runs `tidy.sh --staged` after formatting and refuses a commit with a
+  finding; a missing `clang-tidy` lets the commit through, as a missing `clang-format`
+  does. `test_tidy_tooling.py` drives it in a fixture repository (a finding on a staged
+  line fails, the fixed line passes, the same finding on an unchanged line does not count),
+  and the hook test checks the hook runs it. `formatting.md` describes it.
+- The first full run (clang-tidy 22, 469 files, 7.5 minutes) found 11,308. Three were bugs,
+  each fixed in its own commit with a test: the kick messages one race short, the last
+  reading past the array (`bugprone-suspicious-missing-comma`; a `static_assert` holds the
+  nine arrays at 20); the line editor freeing every second line and never its line array
+  (`bugprone-macro-repeated-side-effects`; `test_editor_free.py` under LeakSanitizer); and a
+  missing `<climits>` in `flatfile_store.c`. The rest were reviewed: the noisy checks are
+  off, and the second full run finds 560, 508 of them parentheses missing from legacy
+  header macros, the others deliberate (empty catches of `bad_alloc`, `system()` calls,
+  binary `memcpy`) or guarded. Five are `std::sort` without `<algorithm>`, which `master`
+  fixed in `af2ea8e0d` after this stack branched.
+
+**Review round 1** (2026-10-10, #22's adversarial review and Codex's): `--staged` analysed
+the working-tree file at the staged lines, so an unstaged fix let a staged finding into the
+commit, and the reverse refused a clean one; and the diff it fed `clang-tidy-diff` followed
+the user's git config: `color.diff=always` let every finding through, `diff.noprefix=true`
+refused every commit touching `src/`. The staged check now reads `src/` and `.clang-tidy`
+as staged, written to `bin/tidy/staged/` (0.2 s), and both diffs pin `--no-color
+--no-ext-diff` and the `a/`/`b/` prefixes; `test_tidy_tooling.py` covers all four cases.
+The review also noted that no command reaches the line editor whose leak this item fixed;
+REGRESSIONS.md and `formatting.md` now say so, and what wiring it back in would need.
+Codex, on the round's push: `--all` with no finding at all exited 1 at its summary's empty
+`grep` under `set -e`; the summary tolerates that now (`5413f3914`), and the test runs
+`--all` on a clean file. Codex's next review: the staged check took its flags from the
+working tree's Makefile, and `--all` called a tree clean when clang-tidy could not run.
+The flags now come from the staged `src/Makefile`, and an `xargs` status above 123 (the
+analyzer missing or killed; a finding is 123) fails the run. The review after that: an
+analyzer that runs but exits 2 also gives `xargs` 123, so a failed run that reported no
+finding now fails too, with the end of clang-tidy's stderr (kept in `bin/tidy/stderr.log`).
+And the hook left at its missing-`clang-format` warning, so without a formatter the tidy
+check never ran; it goes on to the tidy check now. Then: the diff took every file under
+`src/`, and a `clang-tidy-diff` whose file pattern is wider than this machine's would parse
+`src/Makefile` or an `.inc` fragment as C++; the diff now takes only `.c`, `.cpp` and `.h`.
+And `clang-tidy-diff` ran clang-tidy on a changed header by itself, which fails on a header
+that is not self-contained (`account_reward.h`: a comment there was refused); a header's
+changed lines are now checked through the nearest source that includes it, directly or,
+after Codex's next review (`output_channel.h` is reached only through `structs.h`), through
+other headers. And `--all` given only a header compiled nothing and reported "0 findings";
+it says there is no source in the paths and exits 2.
 
 ### 14. Keep a history of test runs
 

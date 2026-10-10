@@ -466,6 +466,16 @@ The test feeds both clients an escape split across three reads through a socket 
 fails without the fix. Not covered: the copyover journey's own reader, which shares the
 method but is only exercised by its journey.
 
+## Kick messages for every race
+
+`kick_messages()` picks message 0 to 19 by the victim's race in nine arrays, and the
+victim's hit messages had 19: the insect line was missing, so each later race read the
+next race's message and the default race read past the array. A missing comma glued each
+array's last message to an unused `""`, which hid the count. clang-tidy's
+`bugprone-suspicious-missing-comma` found it. The line is back, the `""` entries are gone,
+and a `static_assert` in `src/combat/kick.c` holds all nine at 20; it fails to compile on
+the old arrays. Not covered: whether each message suits its race.
+
 ## Launcher: a service stop is recorded
 
 systemd stopped the launcher with the server (`KillMode=control-group`), so the launcher
@@ -485,6 +495,26 @@ python3 tests/async/test_flatfile_launcher.py
 The journey runs the real launcher with a stand-in server on a disposable MariaDB and
 sends SIGTERM to the launcher alone, twice. The launcher test runs the launch block with
 the launcher signalling itself inside that window. Neither runs systemd.
+
+## Line editor: every line freed
+
+`FREE()` names its argument twice, so `FREE(lines[i++])` freed one line, nulled the next
+and skipped two. `edit_free()` and `edit_insert_data()`'s refusal of too many lines leaked
+every second line, an odd count read past the terminator, and `edit_free()` never freed
+the line array itself (32 KB per edit). Both loops free `lines[i]` and step once, and
+`edit_free()` frees the array. clang-tidy's `bugprone-macro-repeated-side-effects` found it.
+No player reaches this editor today: nothing outside `src/misc/editor.c` calls
+`edit_start()`, and `close_socket()` never touches `d->editor`, so the leak never ran in
+the game. Wiring the editor back in also needs `close_socket()` to `edit_free()` it, or a
+disconnect in the middle of an edit leaks it.
+
+```sh
+python3 tests/async/test_editor_free.py
+```
+
+The harness runs the production editor under LeakSanitizer: three lines started and freed,
+and three lines added to an editor that holds two, which it refuses. It fails without the
+fix, on either loop alone.
 
 ## Log lines a reader can use
 

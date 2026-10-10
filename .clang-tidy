@@ -1,0 +1,54 @@
+# clang-tidy for scripts/tidy.sh: bug patterns the compilers do not warn on. tidy.sh checks
+# changed lines only, and every finding fails the check (WarningsAsErrors). The first full
+# run over src/ (2026-10-10) found 11,308; each check below that is off says why, and the
+# real bugs it found are fixed. See docs/guides/formatting.md.
+#
+# Off, because the legacy code uses the pattern on purpose and the findings were noise:
+#   bugprone-assignment-in-if-condition       `if ((x = f()))` is house style (1,279)
+#   bugprone-branch-clone                     identical branches kept for reading (169)
+#   bugprone-casting-through-void             the typed allocator's deliberate casts
+#   bugprone-easily-swappable-parameters      every (int, int) signature (747)
+#   bugprone-implicit-widening-of-multiplication-result  small game products (223)
+#   bugprone-inc-dec-in-conditions            `while (i-- && ...)` loops, all sound (15)
+#   bugprone-integer-division                 game formulas divide integers on purpose (63)
+#   bugprone-invalid-enum-default-initialization  0 means "not set" in the wire structs (142)
+#   bugprone-multi-level-implicit-pointer-conversion  void * callback arguments (17)
+#   bugprone-narrowing-conversions            int fields from wider values everywhere (2,463)
+#   bugprone-not-null-terminated-result       binary buffers and pieced strings, 10 of 10
+#   bugprone-reserved-identifier              legacy names such as __malloc (251)
+#   bugprone-signed-char-misuse, cert-str34-c sbyte fields that hold small numbers (201)
+#   bugprone-switch-missing-default-case      exhaustive switches over game types (274)
+#   bugprone-throwing-static-initialization   static containers and strings (48)
+#   bugprone-unchecked-string-to-number-conversion, cert-err34-c  atoi on checked input (878)
+#   bugprone-unsafe-functions                 bzero, bcopy, asctime and rewind (513)
+#   cert-err33-c                              every unchecked printf and fclose (3,336)
+Checks: >
+  -*,
+  bugprone-*,
+  cert-flp30-c,
+  performance-for-range-copy,
+  performance-move-const-arg,
+  performance-unnecessary-copy-initialization,
+  -bugprone-assignment-in-if-condition,
+  -bugprone-branch-clone,
+  -bugprone-casting-through-void,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-inc-dec-in-conditions,
+  -bugprone-integer-division,
+  -bugprone-invalid-enum-default-initialization,
+  -bugprone-multi-level-implicit-pointer-conversion,
+  -bugprone-narrowing-conversions,
+  -bugprone-not-null-terminated-result,
+  -bugprone-reserved-identifier,
+  -bugprone-signed-char-misuse,
+  -bugprone-switch-missing-default-case,
+  -bugprone-throwing-static-initialization,
+  -bugprone-unchecked-string-to-number-conversion,
+  -bugprone-unsafe-functions
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*'
+CheckOptions:
+  # `if (!strcmp(a, b))` is house style; keep the comparisons that are wrong.
+  bugprone-suspicious-string-compare.WarnOnImplicitComparison: false
+  bugprone-suspicious-string-compare.WarnOnLogicalNotComparison: false
