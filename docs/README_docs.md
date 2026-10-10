@@ -36,6 +36,7 @@ docs/
 | [LEGACY_STARTER_KITS.md](reference/LEGACY_STARTER_KITS.md) | How the legacy newbie kit is planned off the game loop. |
 | [EXPERIENCE_TROPHIES.md](reference/EXPERIENCE_TROPHIES.md) | In-memory PvE XP observation per zone and its checkpoint persistence. |
 | [DIVINE_REFUSAL.md](reference/DIVINE_REFUSAL.md) | The default-off refusal roll for ordered cleric pets. |
+| [RANDOM_EQUIPMENT.md](reference/RANDOM_EQUIPMENT.md) | Random equipment, salvage material and stone drops on NPC kills: the chance, the generated item, zone sets, and the settings. |
 | [ITEM_ACTIONS.md](reference/ITEM_ACTIONS.md) | The default-off shared runtime for telegraphed item abilities. |
 | [WEAPON_ACTIONS.md](reference/WEAPON_ACTIONS.md), [DEVICE_ACTIONS.md](reference/DEVICE_ACTIONS.md) | The weapon-proc adapters, and wand, staff, and scroll channels. |
 | [ARTIFACT_MANA.md](reference/ARTIFACT_MANA.md) | Per-item mana: the resource, its storage, and the crash window. |

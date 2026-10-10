@@ -365,8 +365,9 @@ chance in `chance_to_hit()`; breath through `breath_damage_mod()`; saving throws
 experience table in `update_exp_table()`; earned experience (not PvP) and the death loss
 in `gain_exp()`; PC corpse decay through `difficulty_pc_corpse_decay_minutes()`; player
 regeneration in `hit_regen()`, `mana_regen()` and `move_regen()`; loot in
-`check_random_drop()` and `create_random_eq_new()`; zone lifespan in `reset_zone()`;
-epic points (not PvP) in `prepare_epic_award()`; artefact feeding in
+`check_random_drop()` and `create_random_eq_new()` ([random equipment](RANDOM_EQUIPMENT.md));
+zone lifespan in `reset_zone()`; epic points (not PvP) in `prepare_epic_award()`; artefact
+feeding in
 `artifact_feed_seconds()`; bartender quests in the bartender fee, both backends'
 `sql_world_quest_can_do_another()` (never fewer than one a day) and the kill count in
 `createQuest()`.
