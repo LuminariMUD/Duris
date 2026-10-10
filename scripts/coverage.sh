@@ -40,11 +40,13 @@ if (( database )); then
 fi
 grep -hE '^\s+(FAIL|TIMEOUT|SIG[A-Z]+) tests/|^FAIL ' "$report"/test-*.log > "$report/failed.txt" || true
 
-# A harness compiled in a temporary directory leaves counts whose source is gone; only src/
-# is reported, so gcov's errors on those are ignored. The hottest loops, counted across every
+# A harness compiled in a temporary directory leaves counts whose source, and whose working
+# directory, are gone; only src/ is reported, so gcov's errors on those two are ignored, and
+# any other (gcov failing to write its output) fails the report. The hottest loops, counted across every
 # journey, pass the count gcovr calls suspicious; they are real. A source built both with
 # and without __NO_MYSQL__ puts a function on two lines, which are kept apart.
-gcovr --root "$tree" --filter "$tree/src/" --gcov-ignore-errors=all \
+gcovr --root "$tree" --filter "$tree/src/" --gcov-ignore-errors=source_not_found \
+    --gcov-ignore-errors=no_working_dir_found \
     --gcov-ignore-parse-errors=suspicious_hits.warn --merge-mode-functions=separate \
     --html-details "$report/index.html" --txt "$report/summary.txt" "$report/data" \
     > "$report/gcovr.log" 2>&1
