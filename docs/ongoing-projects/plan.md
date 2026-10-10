@@ -49,7 +49,8 @@ built at that branch's head.
 
 **Where it stands** (2026-10-10). Every item is built, and every pull request is open,
 gated (`make test-all` and `make test-db` on its head) and tagged `-review-0`; none has
-landed. What is left is the owner's:
+landed. After the tags, #20 took one more commit, `df9b957d3` (the harness fix item 16's
+coverage run needed), and #21 to #24 took it by merge. What is left is the owner's:
 
 - Review and land the pull requests in order. #15 targets `master`; retarget each next one
   to `master` before deleting the base branch it was stacked on. `master` gained
