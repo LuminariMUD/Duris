@@ -9,6 +9,9 @@
   a line a `//` comment spliced on with a backslash was mutated.
 - Without ccache every compile through scripts/mutate/g++ failed, so every mutant counted
   as caught. The wrapper now runs the real g++ uncached.
+- A file's tests were those whose text held its name anywhere, so files.c took the tests of
+  output_profiles.c; the name must stand alone now. A file whose every mutant timed out
+  scored 100%; it has no score now.
 - A test that fails unmutated counted as catching every mutant. Each file's tests now run
   once unmutated first, and a failing one is left out and listed.
 - The tests were listed from the checkout and run in a worktree of HEAD, so an uncommitted
@@ -83,6 +86,14 @@ with tempfile.TemporaryDirectory(prefix="mutate-tool-") as temporary:
     (repo / "src/value.c").write_text(VALUE)
     (repo / "tests/async/test_value.py").write_text(TEST)
     (repo / "tests/async/test_broken.py").write_text("# names value.c\nraise SystemExit(1)\n")
+    # Names other_value.c, not value.c: never picked for value.c.
+    (repo / "tests/async/test_other.py").write_text("# names other_value.c\nraise SystemExit(1)\n")
+    # slow.c's only mutant makes its test outlast the timeout: nothing is judged.
+    (repo / "src/slow.c").write_text("int slow(int x)\n{\n\treturn x < 3;\n}\n")
+    (repo / "tests/async/test_slow.py").write_text(
+        "import pathlib, time  # names slow.c\n"
+        "if '<=' in (pathlib.Path(__file__).parents[2] / 'src/slow.c').read_text():\n"
+        "    time.sleep(60)\n")
     (repo / ".gitignore").write_text("/bin/\n")
 
     def git(*arguments: str) -> None:
@@ -91,7 +102,8 @@ with tempfile.TemporaryDirectory(prefix="mutate-tool-") as temporary:
 
     def score() -> subprocess.CompletedProcess[str]:
         return subprocess.run([sys.executable, "scripts/mutate.py", "--jobs", "2",
-                               "src/value.c"], cwd=repo, capture_output=True, text=True)
+                               "--timeout", "10", "src/value.c", "src/slow.c"], cwd=repo,
+                              capture_output=True, text=True)
 
     git("init", "-q")
     git("add", "-A")
@@ -102,6 +114,8 @@ with tempfile.TemporaryDirectory(prefix="mutate-tool-") as temporary:
     # x < 3 -> x <= 3 is caught by value(3); return 0/1 is not a constant return here.
     assert "src/value.c: 100.0% (1 caught, 0 survived, 0 timed out; 1 tests)" in report, report
     assert "left out, fail unmutated: test_broken.py" in report, report
+    assert "test_other.py" not in report, report
+    assert "src/slow.c: no score (0 caught, 0 survived, 1 timed out; 1 tests)" in report, report
 
     (repo / "tests/async/test_new.py").write_text("# names value.c\n")
     refused = score()

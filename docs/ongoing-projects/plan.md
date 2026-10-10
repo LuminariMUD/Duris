@@ -935,7 +935,9 @@ mask; raw strings are masked to their own delimiter now, again with no change ab
 the operators between two digit separators (`1'000 && 2'000`) were masked as a character
 literal; an apostrophe after a digit or letter no longer opens one (no change above). And a
 line that a `//` comment spliced on with a backslash was mutated; the comment mask runs over
-such lines (no change above).
+such lines (no change above). Then: a file's tests were those whose text held its name
+anywhere, so `files.c` took `output_profiles.c`'s; the name must stand alone now. And a file
+whose every mutant timed out scored 100%; it has no score now.
 
 ### 16. Line coverage, on demand
 

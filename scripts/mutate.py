@@ -67,11 +67,12 @@ def mutants(text: str) -> list[tuple[int, int, str, str]]:
 
 
 def tests_naming(path: Path, journeys: bool) -> list[str]:
-    name = path.name
+    # The whole file name, not the tail of a longer one (files.c in output_profiles.c).
+    named = re.compile(rf"(?<![\w.-]){re.escape(path.name)}(?!\w)")
     sys.path.insert(0, str(ROOT / "tests"))
     from run_regression_tests import RESOURCE_INTENSIVE_TEST_NAMES
     tests = [test.name for test in sorted((TREE / "tests/async").glob("test_*.py"))
-             if name in test.read_text(errors="replace") and
+             if named.search(test.read_text(errors="replace")) and
              (journeys or test.name not in RESOURCE_INTENSIVE_TEST_NAMES)]
     seconds: dict[str, list[float]] = {}
     for record in sorted((ROOT / "bin/test-history").glob("*.json")):
@@ -167,8 +168,8 @@ def main() -> int:
                 if outcome != "caught":
                     survivors.append(f"    line {line}: {old!r} -> {new!r} ({outcome}): {text}")
             judged = outcomes["caught"] + outcomes["survived"]
-            score = 100 * outcomes["caught"] / judged if judged else 100.0
-            report.append(f"{relative}: {score:.1f}% ({outcomes['caught']} caught, "
+            score = f"{100 * outcomes['caught'] / judged:.1f}%" if judged else "no score"
+            report.append(f"{relative}: {score} ({outcomes['caught']} caught, "
                           f"{outcomes['survived']} survived, {outcomes['timeout']} timed out; "
                           f"{len(tests)} tests)")
             report += [f"    left out, {baseline[test]} unmutated: {test}" for test in broken]
