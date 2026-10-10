@@ -832,8 +832,8 @@ build a helper, and take minutes each.
 | File | Tests naming it | Before | After |
 |---|---|---|---|
 | `src/player/player_snapshot_codec.c` | 41 | 100% (294 of 294) | (no survivor) |
-| `src/economy/collector_policy.c` | 21 | 88.7% (235 of 265) | 97.0% (257) |
-| `src/persistence/critical_command.c` | 52 | 73.7% (126 of 171) | 95.3% (162; one times out) |
+| `src/economy/collector_policy.c` | 21 | 88.7% (235 of 265) | 97.0% (258 of 266) |
+| `src/persistence/critical_command.c` | 52 | 73.7% (126 of 171) | 95.3% (163 of 172; one times out) |
 
 - The codec owes its 100% to item 12's replay test, which feeds it 684 save inputs.
 - For the other two, the new assertions are in `collector_policy_harness.cpp` and the new
@@ -843,6 +843,20 @@ build a helper, and take minutes each.
   commit: a read one past a terminated string, a return after an exhaustive switch of a
   validated value, a size boundary the limits never reach, a check a later check makes
   redundant, a failed allocation.
+
+**Review round 1** (2026-10-10, #24's adversarial review and Codex's): four ways the tool
+miscounted. Without `ccache` every compile through the wrapper failed, so every mutant was
+"caught"; a test already failing caught every mutant; the tests were listed from the
+checkout but run in a worktree of `HEAD`, so an uncommitted test that names the file
+"caught" every survivor; and a comparison at a line end was never mutated. The wrapper now
+compiles uncached without `ccache` (and finds ccache's link directory by where its `g++`
+points), each file's tests run once unmutated and a failing one is left out and listed, the
+tests are listed from the worktree and a checkout with changes under `src/` or `tests/` is
+refused, and the operator pattern takes a newline after the operator (`1daf2aa0f`;
+`test_mutate_tool.py`). The pattern found one more mutant in each of
+the two files above, `collector_policy.c:40` and `critical_command.c:235`; both are caught
+(`test_collector_death_enrollment.py`, `test_critical_command_codec.py`), and the table
+counts them.
 
 ### 16. Line coverage, on demand
 
