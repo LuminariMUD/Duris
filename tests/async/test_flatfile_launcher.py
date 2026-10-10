@@ -305,6 +305,9 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
         raise AssertionError("the boot did not move the last run's logs into old-logs")
     if (logs / "latency_trace.log").exists() or any((logs / "player-log").iterdir()):
         raise AssertionError("the boot left the last run's logs in place")
+    # The address_retention job moves the new live set on once this marker is a day old.
+    if not (logs / "log/.since").is_file():
+        raise AssertionError("the boot did not mark when its live logs began")
     if (logs / "old-logs/2000.01.01-00.00.00").exists() or \
             not (logs / "old-logs/2000.01.02-00.00.00").exists():
         raise AssertionError("the archive cap did not drop only the oldest generation")
