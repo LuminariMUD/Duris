@@ -71,9 +71,11 @@ def tests_naming(path: Path, journeys: bool) -> list[str]:
     # The whole file name, not the tail of a longer one (files.c in output_profiles.c).
     named = re.compile(rf"(?<![\w.-]){re.escape(path.name)}(?!\w)")
     sys.path.insert(0, str(ROOT / "tests"))
-    from run_regression_tests import RESOURCE_INTENSIVE_TEST_NAMES
+    # The runner's manual-only tests need the journey that launches them, as in a gate.
+    from run_regression_tests import MANUAL_ONLY_TEST_NAMES, RESOURCE_INTENSIVE_TEST_NAMES
     tests = [test.name for test in sorted((TREE / "tests/async").glob("test_*.py"))
              if named.search(test.read_text(errors="replace")) and
+             test.name not in MANUAL_ONLY_TEST_NAMES and
              (journeys or test.name not in RESOURCE_INTENSIVE_TEST_NAMES)]
     seconds: dict[str, list[float]] = {}
     for record in sorted((ROOT / "bin/test-history").glob("*.json")):

@@ -90,6 +90,9 @@ with tempfile.TemporaryDirectory(prefix="mutate-tool-") as temporary:
     (repo / "src/value.c").write_text(VALUE)
     (repo / "tests/async/test_value.py").write_text(TEST)
     (repo / "tests/async/test_broken.py").write_text("# names value.c\nraise SystemExit(1)\n")
+    # A manual-only test of the runner's (it needs its journey) is never picked either.
+    (repo / "tests/async/test_playtime_mysql_repository.py").write_text(
+        "# names value.c\nraise SystemExit(1)\n")
     # Names other_value.c, not value.c: never picked for value.c.
     (repo / "tests/async/test_other.py").write_text("# names other_value.c\nraise SystemExit(1)\n")
     # slow.c's only mutant makes its test outlast the timeout: nothing is judged.
@@ -118,7 +121,8 @@ with tempfile.TemporaryDirectory(prefix="mutate-tool-") as temporary:
     # x < 3 -> x <= 3 is caught by value(3); return 0/1 is not a constant return here.
     assert "src/value.c: 100.0% (1 caught, 0 survived, 0 timed out; 1 tests)" in report, report
     assert "left out, fail unmutated: test_broken.py" in report, report
-    assert "test_other.py" not in report, report
+    assert "test_other.py" not in report and "test_playtime_mysql_repository.py" not in report, \
+        report
     assert "src/slow.c: no score (0 caught, 0 survived, 1 timed out; 1 tests)" in report, report
 
     (repo / "tests/async/test_new.py").write_text("# names value.c\n")
