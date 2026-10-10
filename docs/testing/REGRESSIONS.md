@@ -626,6 +626,22 @@ python3 tests/async/test_websocket_runtime.py
 The harness runs the real `websocket_parse_handshake()` over a socket pair. No test sends
 these through the tunnel.
 
+## Player save decoding refuses what it cannot read
+
+`player_snapshot_decode()` and `player_item_snapshot_list_decode()` returned the decoder's
+result when an element's reader refused a value, and a reader that refused a value without
+naming why (a status field out of range, for one) left that result at `ok`: a damaged save
+"decoded" without writing the snapshot, and the caller went on with an empty one. The
+`player_snapshot` fuzz target found it in its first minutes. A refusal now returns
+`invalid_value` unless the reader named another reason.
+
+```sh
+python3 tests/async/test_fuzz_corpus.py
+```
+
+The crash input and the twelve corpus inputs that failed the same way are in
+`tests/fuzz/corpus/player_snapshot/`; the replay fails without the fix.
+
 ## Production launcher and a staged development build
 
 `scripts/cycle_mud.sh --production` promotes only a `bin/server/dms_new` stamped
