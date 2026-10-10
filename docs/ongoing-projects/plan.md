@@ -746,6 +746,9 @@ And the hook left at its missing-`clang-format` warning, so without a formatter 
 check never ran; it goes on to the tidy check now. Then: the diff took every file under
 `src/`, and a `clang-tidy-diff` whose file pattern is wider than this machine's would parse
 `src/Makefile` or an `.inc` fragment as C++; the diff now takes only `.c`, `.cpp` and `.h`.
+And `clang-tidy-diff` ran clang-tidy on a changed header by itself, which fails on a header
+that is not self-contained (`account_reward.h`: a comment there was refused); a header's
+changed lines are now checked through the first source that includes it.
 
 ### 14. Keep a history of test runs
 
