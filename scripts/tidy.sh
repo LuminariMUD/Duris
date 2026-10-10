@@ -37,10 +37,13 @@ if [[ -z "$TIDY" || -z "$TIDY_DIFF" ]]; then
 	exit 1
 fi
 
+# clang-tidy-diff reads plain "+++ b/<path>" headers: no color, prefixes or diff drivers
+# from the user's git config.
+PLAIN=(--no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ -U0)
 if [[ "$MODE" == "staged" ]]; then
-	diff=$(git diff --cached -U0 -- src)
+	diff=$(git diff --cached "${PLAIN[@]}" -- src)
 elif [[ "$MODE" == "worktree" ]]; then
-	diff=$(git diff -U0 "$REV" -- src)
+	diff=$(git diff "${PLAIN[@]}" "$REV" -- src)
 fi
 if [[ "$MODE" != "all" && -z "$diff" ]]; then
 	echo "tidy: no changed C/C++ lines under src/."
@@ -48,20 +51,28 @@ if [[ "$MODE" != "all" && -z "$diff" ]]; then
 fi
 
 # The compile database: every C/C++ source under src/, with the build's -D/-I/-std flags.
+# A staged check reads what the commit will hold, src/ and .clang-tidy as staged, written
+# to bin/tidy/staged/: the working tree's unstaged edits may differ from it.
 OUT=bin/tidy
 mkdir -p "$OUT"
+TREE=.
+if [[ "$MODE" == "staged" ]]; then
+	TREE="$OUT/staged"
+	rm -rf "$TREE"
+	git ls-files -z src .clang-tidy | git checkout-index -z --stdin --prefix="$TREE/"
+fi
 FLAGS="$(make -s --no-print-directory -C src '--eval=.PHONY: tidy-flags' \
 	'--eval=tidy-flags:;@echo $(CFLAGS) $(INCLUDES)' tidy-flags)"
 git ls-files 'src/*.c' 'src/*.cpp' | python3 -c '
 import json, os, shlex, sys
-root = os.getcwd()
+root = os.path.abspath(sys.argv[2])
 flags = [f for f in shlex.split(sys.argv[1])
          if f.startswith(("-D", "-I", "-std=")) and not f.startswith("-D_FORTIFY_SOURCE")]
 command = ["clang++", "-x", "c++"] + flags
 json.dump([{"directory": os.path.join(root, "src"), "file": os.path.join(root, path.strip()),
             "arguments": command + ["-c", os.path.join(root, path.strip())]}
            for path in sys.stdin if path.strip()], sys.stdout, indent=0)
-' "$FLAGS" >"$OUT/compile_commands.json"
+' "$FLAGS" "$TREE" >"$OUT/compile_commands.json"
 
 if [[ "$MODE" == "all" ]]; then
 	(( ${#PATHS[@]} )) || PATHS=(src)
@@ -79,8 +90,9 @@ if [[ "$MODE" == "all" ]]; then
 	exit
 fi
 
-if ! out=$(printf '%s\n' "$diff" | "$TIDY_DIFF" -p1 -path "$OUT" -clang-tidy-binary "$TIDY" \
-	-j "$(nproc)" -quiet 2>&1); then
+DATABASE="$PWD/$OUT"
+if ! out=$(cd "$TREE" && printf '%s\n' "$diff" | "$TIDY_DIFF" -p1 -path "$DATABASE" \
+	-clang-tidy-binary "$TIDY" -j "$(nproc)" -quiet 2>&1); then
 	printf '%s\n' "$out"
 	echo
 	echo "tidy: findings on changed lines (fix them, or explain a NOLINT beside the line)."
