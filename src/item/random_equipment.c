@@ -892,7 +892,7 @@ int random_eq_proc(P_obj obj, P_char ch, int cmd, char *argument)
 	return FALSE;
 }
 
-P_obj set_encrust_affect(P_obj obj, int proc)
+void set_encrust_affect(P_obj obj, int proc)
 {
 	switch (proc)
 	{
@@ -925,8 +925,6 @@ P_obj set_encrust_affect(P_obj obj, int proc)
 		SET_BIT(obj->bitvector, AFF_HASTE);
 		break;
 	}
-
-	return 0;
 }
 
 bool identify_random(P_obj obj)

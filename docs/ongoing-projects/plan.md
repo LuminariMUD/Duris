@@ -411,8 +411,10 @@ the production `-O2` profile).
 
 ### Phase 4: a readable generator
 
-**In progress.** First, bound `identify_random()` by its 61-entry table and add a
-foreign-spell assertion to the golden harness without changing its fixture.
+**In progress.** The true-name bounds fix is committed as `316444732`; the foreign-spell
+assertion and all 1,480 golden cases pass. `set_encrust_affect()` now returns `void`,
+matching its side-effect-only callers; the existing golden cases check every stone effect.
+The generator refactor follows these two independent defect fixes.
 
 Split `create_random_eq_new()` into the steps above, behind `create_random_eq()` with level
 parameters (the old name goes, every caller moves). Then:

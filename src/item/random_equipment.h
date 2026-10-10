@@ -83,7 +83,7 @@ P_obj create_material(int index);
 P_obj create_material(P_char ch, P_char mob);
 P_obj create_stones(void);
 P_obj setsuffix_obj_new(P_obj obj);
-P_obj set_encrust_affect(P_obj obj, int proc);
+void set_encrust_affect(P_obj obj, int proc);
 bool identify_random(P_obj obj);
 
 #endif
