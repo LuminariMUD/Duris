@@ -5,7 +5,8 @@ The launcher archived the live logs only between two runs and deleted an archive
 directory's age, which is when the archive was made. So a server kept up by copyovers never
 archived or pruned its logs, and a 40-day run's first lines lived 70 days. The hourly
 address_retention job now moves the live logs into logs/old-logs/<date>/ once they are a day
-old (logs/log/.since marks when the live set began), and removes each archived file and core
+old (logs/log/.since, which the launcher makes, marks when the live set began; a set without
+it, as after a copyover onto this code, is of unknown age and moves at once), and removes each archived file and core
 dump 28 days after it was last written, whatever its directory's age, then any archive left
 empty: a file holds at most about 25 hours of lines, so none of them reaches 30 days.
 """
@@ -74,11 +75,12 @@ with tempfile.TemporaryDirectory(prefix="log-retention-", dir=ROOT / "bin/tests"
                           f"logs/old-logs/{archive}/player-log/new"}, files(run)
     assert time.time() - (run / "logs/log/.since").stat().st_mtime < 60
 
-    # A younger live set stays; a missing marker is made, and nothing moves.
+    # A younger live set stays. One with no marker may hold lines of any age: it moves.
     run = expire(lambda run: (write(run / "logs/log/comm", 2), write(run / "logs/log/.since", 0.9)))
     assert files(run) == {"logs/log/comm", "logs/log/.since"}, files(run)
     run = expire(lambda run: write(run / "logs/log/comm", 2))
-    assert files(run) == {"logs/log/comm", "logs/log/.since"}, files(run)
+    archive = next((run / "logs/old-logs").iterdir()).name
+    assert files(run) == {"logs/log/.since", f"logs/old-logs/{archive}/comm"}, files(run)
 
     # Archived files and core dumps go 28 days after their last write, whatever the age of
     # their directory, which a run that lasted 40 days made at its end. An archive left

@@ -3349,7 +3349,8 @@ void close_socket(struct descriptor_data *d)
 		d,
 		is_morphed && affected_by_spell(d->character, SPELL_CHANNEL) ?
 			"Your host has lost link... you can no longer maintain the sight link.\r\n" :
-			"Your victim is no longer among us.\r\n");
+			"Your victim is no longer among us.\r\n",
+		false);
 
 	if (is_morphed && affected_by_spell(d->character, SPELL_CHANNEL))
 		un_morph(d->character);
