@@ -3,8 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-# shellcheck disable=SC1091
-source "$PROJECT_ROOT/.env"
+if [[ -z "${DB_HOST:-}" ]]; then
+    # shellcheck disable=SC1091
+    source "$PROJECT_ROOT/.env"
+fi
 environment_name="${ENVIRONMENT:-${APP_ENV:-}}"
 [[ "${environment_name,,}" =~ (dev|local|test) ]] || { echo 'refusing auction cutover: environment is not development/local/test' >&2; exit 1; }
 [[ "${DB_NAME,,}" =~ (dev|local|test) ]] || { echo 'refusing auction cutover: database name is not development/local/test' >&2; exit 1; }
