@@ -522,6 +522,15 @@ adds or changes on `BASE`'s sources, and says "catches" or "does not catch".
 - `TESTING.md`'s "Before a merge" says to run it on a fix's range and record the report in
   the landing commit.
 
+**Review round 1** (2026-10-10, #20's adversarial review and Codex's): the script said
+"catches" for any failure on `BASE`, in a bare worktree with none of what the checkout
+generates, so a comment-only range whose test reads `areas/world.*` reported a catch; and it
+copied only the test files the range added or changed, so a deleted or renamed helper stayed
+in `BASE`'s tree. Each test now runs first in a `HEAD` worktree, the control ("cannot judge"
+when it fails there), both trees run `make world`, and `BASE`'s gets `HEAD`'s whole `tests/`
+(`f399d96db`). `932421560` still catches. `test_check_tests_catch.py` runs the script in a
+scratch repository.
+
 ### 11. Make tests break only when behaviour breaks
 
 **Problem.** Three habits make tests fail when the server is fine. They are what usually
@@ -649,6 +658,15 @@ tests whose median is a second or more, because the ratio of tenths of a second 
 - That last finding was a bug: every journey hashed `/usr/local/lib` for its build key, and
   GitHub's runner image keeps gigabytes there. `46ac05997` on `master` stops it.
 - `TESTING.md` says where the files are and what the report lists.
+
+**Review round 1** (2026-10-10, #20's adversarial review and Codex's): two runs starting in
+the same second on one commit overwrote each other's file; a run with an untracked test or
+source counted as clean, so a test fixed while untracked read as flaky; and a test's time
+in a full parallel run was set against focused runs made alone. The file name ends in the
+runner's pid and is created exclusively, an untracked file under `src/`, `tests/`, `areas/`
+or `scripts/` makes a run dirty, and each run records its workers beside `--match`, so a
+slowdown is judged only against runs made like the last (`f58f6e67c`;
+`test_test_history.py`).
 
 ### 15. Mutation testing, by hand
 
