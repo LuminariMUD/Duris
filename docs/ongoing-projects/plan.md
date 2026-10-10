@@ -642,7 +642,10 @@ unique", so a manifest that dropped `db_outage_30s` or any case but one still pa
 now requires every current profile and fault case by name and allows new ones. And a leg
 converted to `disposable_schema.sh` stopped at its `TEST_DB_HOST` check when run on its
 own, as `CRITICAL_COMMAND_PIPELINE.md` says to run them; such a leg now runs itself again
-under `with_disposable_mariadb.sh`.
+under `with_disposable_mariadb.sh`. The review after that: the quest catalog test's exact
+2,668 became "non-empty", and its later check runs the same parser, so a parser that skipped
+ordinary blocks passed; the test now counts the distinct quest blocks from the area files
+itself and requires one definition each.
 
 ### 12. Fuzz the code that reads outside input
 
