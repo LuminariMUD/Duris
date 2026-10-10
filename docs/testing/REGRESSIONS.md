@@ -502,6 +502,10 @@ and skipped two. `edit_free()` and `edit_insert_data()`'s refusal of too many li
 every second line, an odd count read past the terminator, and `edit_free()` never freed
 the line array itself (32 KB per edit). Both loops free `lines[i]` and step once, and
 `edit_free()` frees the array. clang-tidy's `bugprone-macro-repeated-side-effects` found it.
+No player reaches this editor today: nothing outside `src/misc/editor.c` calls
+`edit_start()`, and `close_socket()` never touches `d->editor`, so the leak never ran in
+the game. Wiring the editor back in also needs `close_socket()` to `edit_free()` it, or a
+disconnect in the middle of an edit leaks it.
 
 ```sh
 python3 tests/async/test_editor_free.py

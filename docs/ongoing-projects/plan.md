@@ -703,6 +703,16 @@ are fixed, and the hook runs it.
   binary `memcpy`) or guarded. Five are `std::sort` without `<algorithm>`, which `master`
   fixed in `af2ea8e0d` after this stack branched.
 
+**Review round 1** (2026-10-10, #22's adversarial review and Codex's): `--staged` analysed
+the working-tree file at the staged lines, so an unstaged fix let a staged finding into the
+commit, and the reverse refused a clean one; and the diff it fed `clang-tidy-diff` followed
+the user's git config: `color.diff=always` let every finding through, `diff.noprefix=true`
+refused every commit touching `src/`. The staged check now reads `src/` and `.clang-tidy`
+as staged, written to `bin/tidy/staged/` (0.2 s), and both diffs pin `--no-color
+--no-ext-diff` and the `a/`/`b/` prefixes; `test_tidy_tooling.py` covers all four cases.
+The review also noted that no command reaches the line editor whose leak this item fixed;
+REGRESSIONS.md and `formatting.md` now say so, and what wiring it back in would need.
+
 ### 14. Keep a history of test runs
 
 **Problem.** The runner prints each test's result and time, then forgets them. A journey
