@@ -1,5 +1,6 @@
 #include "player/player_snapshot_codec.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -155,6 +156,134 @@ int main()
 				player_snapshot_codec_result::ok &&
 			decoded.empty(),
 		"empty item list did not round trip");
+	// Mutation testing (item 15) found the reader and writer limits and error codes untested.
+	// Every proper prefix of a valid list is truncated: a reader that failed may not let the
+	// decode go on, call it ok, or turn the truncation into another failure.
+	require(player_item_snapshot_list_encode(original, &encoded) ==
+			player_snapshot_codec_result::ok,
+		"item list did not encode again");
+	for (size_t length = 1; length < encoded.size(); ++length)
+		require(player_item_snapshot_list_decode(encoded.data(), length, &decoded) ==
+				player_snapshot_codec_result::truncated,
+			"a " + std::to_string(length) + "-byte prefix was not truncated");
+	// A refusal keeps its reason through the reads after it: the first item's name length
+	// (after the count and 28 bytes of fixed fields) one over the limit, and a boolean of 2.
+	auto long_name = encoded;
+	const uint32_t over = PLAYER_SNAPSHOT_MAX_STRING_BYTES + 1;
+	for (size_t index = 0; index < 4; ++index)
+		long_name[32 + index] = static_cast<uint8_t>(over >> (8 * index));
+	require(player_item_snapshot_list_decode(long_name.data(), long_name.size(), &decoded) ==
+			player_snapshot_codec_result::limit_exceeded,
+		"an over-long name length was not refused as over the limit");
+	auto plain = original;
+	plain[0].extra_descriptions[0].spellbook = false;
+	std::vector<uint8_t> plain_encoded;
+	require(player_item_snapshot_list_encode(plain, &plain_encoded) ==
+				player_snapshot_codec_result::ok &&
+			plain_encoded.size() == encoded.size(),
+		"the list without a spellbook did not encode");
+	size_t flag = 0;
+	while (flag < encoded.size() && encoded[flag] == plain_encoded[flag])
+		++flag;
+	auto two = encoded;
+	two[flag] = 2;
+	require(player_item_snapshot_list_decode(two.data(), two.size(), &decoded) ==
+			player_snapshot_codec_result::invalid_value,
+		"a boolean of 2 was not refused as invalid");
+	require(player_item_snapshot_list_encode(original, nullptr) ==
+			player_snapshot_codec_result::invalid_value,
+		"an item list was encoded with nowhere to put it");
+	// Every limit holds at its value: a string, an item list, the rows and the depth.
+	auto longest = original;
+	longest[0].name.assign(PLAYER_SNAPSHOT_MAX_STRING_BYTES, 'x');
+	require(player_item_snapshot_list_encode(longest, &encoded) ==
+				player_snapshot_codec_result::ok &&
+			player_item_snapshot_list_decode(encoded.data(), encoded.size(),
+							 &decoded) ==
+				player_snapshot_codec_result::ok &&
+			decoded[0].name.size() == PLAYER_SNAPSHOT_MAX_STRING_BYTES,
+		"a string at the limit did not round trip");
+	player_item_snapshot loose = {};
+	loose.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	loose.equipment_slot = -1;
+	std::vector<player_item_snapshot> most(PLAYER_SNAPSHOT_MAX_OBJECTS, loose);
+	require(player_item_snapshot_list_encode(most, &encoded) ==
+				player_snapshot_codec_result::ok &&
+			player_item_snapshot_list_decode(encoded.data(), encoded.size(),
+							 &decoded) ==
+				player_snapshot_codec_result::ok &&
+			decoded.size() == PLAYER_SNAPSHOT_MAX_OBJECTS,
+		"an item list at the object limit did not round trip");
+	// One more item, written by hand: the count, then the last item's bytes again.
+	const size_t item_bytes = (encoded.size() - 4) / PLAYER_SNAPSHOT_MAX_OBJECTS;
+	auto too_many = encoded;
+	too_many.insert(too_many.end(), encoded.end() - item_bytes, encoded.end());
+	const uint32_t count = PLAYER_SNAPSHOT_MAX_OBJECTS + 1;
+	for (size_t index = 0; index < 4; ++index)
+		too_many[index] = static_cast<uint8_t>(count >> (8 * index));
+	require(player_item_snapshot_list_decode(too_many.data(), too_many.size(), &decoded) ==
+			player_snapshot_codec_result::limit_exceeded,
+		"an item list over the object limit was not refused as over the limit");
+	std::vector<player_item_snapshot> full_rows(1, loose);
+	full_rows[0].dynamic_affects.resize(PLAYER_SNAPSHOT_MAX_ROWS - 1);
+	require(player_item_snapshot_list_encode(full_rows, &encoded) ==
+				player_snapshot_codec_result::ok &&
+			player_item_snapshot_list_decode(encoded.data(), encoded.size(),
+							 &decoded) ==
+				player_snapshot_codec_result::ok,
+		"an item list at the row limit did not round trip");
+	std::vector<player_item_snapshot> deepest;
+	for (size_t index = 0; index < PLAYER_SNAPSHOT_MAX_DEPTH; ++index)
+	{
+		player_item_snapshot item = loose;
+		item.parent_index = index ? static_cast<int32_t>(index - 1) :
+					    PLAYER_SNAPSHOT_NO_PARENT;
+		deepest.push_back(item);
+	}
+	require(player_item_snapshot_list_encode(deepest, &encoded) ==
+			player_snapshot_codec_result::ok,
+		"an item tree at the depth limit was not encoded");
+	// An encoding of exactly PLAYER_SNAPSHOT_MAX_BYTES: 65 items, their names filled to it.
+	std::vector<player_item_snapshot> heavy(65, loose);
+	require(player_item_snapshot_list_encode(heavy, &encoded) ==
+			player_snapshot_codec_result::ok,
+		"65 empty items did not encode");
+	size_t room = PLAYER_SNAPSHOT_MAX_BYTES - encoded.size();
+	for (auto &item : heavy)
+		for (std::string *text : { &item.name, &item.short_description, &item.description,
+					   &item.action_description })
+		{
+			const size_t length = std::min(room, PLAYER_SNAPSHOT_MAX_STRING_BYTES);
+			text->assign(length, 'x');
+			room -= length;
+		}
+	require(room == 0 &&
+			player_item_snapshot_list_encode(heavy, &encoded) ==
+				player_snapshot_codec_result::ok &&
+			encoded.size() == PLAYER_SNAPSHOT_MAX_BYTES &&
+			player_item_snapshot_list_decode(encoded.data(), encoded.size(),
+							 &decoded) ==
+				player_snapshot_codec_result::ok,
+		"an item list of exactly the byte limit did not round trip");
+	// A snapshot's single list may hold every row: 8192 status values and nothing else.
+	player_snapshot snapshot = {};
+	snapshot.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
+	snapshot.pid = 41;
+	snapshot.revision = 7;
+	snapshot.components = PLAYER_COMPONENT_STATUS;
+	snapshot.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;
+	snapshot.status_integers.resize(PLAYER_SNAPSHOT_MAX_ROWS);
+	player_snapshot read_back = {};
+	require(player_snapshot_encode(snapshot, &encoded) == player_snapshot_codec_result::ok &&
+			player_snapshot_decode(encoded.data(), encoded.size(), &read_back) ==
+				player_snapshot_codec_result::ok &&
+			read_back.status_integers.size() == PLAYER_SNAPSHOT_MAX_ROWS,
+		"a snapshot list at the row limit did not round trip");
+	snapshot.status_integers.clear();
+	snapshot.pid = 0;
+	require(player_snapshot_encode(snapshot, &encoded) ==
+			player_snapshot_codec_result::invalid_value,
+		"a snapshot of pid 0 was encoded");
 	std::cout << "player item snapshot codec passed\n";
 	return 0;
 }
