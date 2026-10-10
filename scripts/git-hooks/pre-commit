@@ -8,14 +8,11 @@ set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 
-# A missing clang-format must not block committing; warn once and let it pass.
+# A missing clang-format must not block committing; warn once and go on to the tidy check.
 if ! command -v clang-format >/dev/null 2>&1 || ! command -v git-clang-format >/dev/null 2>&1; then
   echo "pre-commit: clang-format not installed; skipping the format check." >&2
   echo "            sudo apt-get install clang-format" >&2
-  exit 0
-fi
-
-if ! "$ROOT/scripts/format.sh" --staged; then
+elif ! "$ROOT/scripts/format.sh" --staged; then
   cat >&2 <<'MSG'
 
 pre-commit: could not auto-format the staged C/C++ changes.
