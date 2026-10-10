@@ -274,7 +274,8 @@ test noise.
 All under `logs/`; each boot moves the last run's into `logs/old-logs/<timestamp>/` and keeps
 the whole within the `DURIS_LOG_ARCHIVE_MB` cap. The hourly `address_retention` job also
 moves the live logs there once they are a day old, and removes each archived file and
-`core.*` dump 30 days after its last write.
+`core.*` dump 28 days after its last write: a file holds at most about 25 hours of lines,
+so none of them reaches 30 days.
 
 The logs hold players' names and network addresses. By
 [ADR 0003](../adr/0003-player-privacy-chat-snoop-addresses.md) (2026-10-09), `logs/log/chat`

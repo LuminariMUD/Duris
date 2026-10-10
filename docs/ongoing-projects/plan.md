@@ -344,7 +344,9 @@ change above:
   server kept up by copyovers never archived or pruned its logs, a 40-day run's first lines
   lived 70 days, and `core.*` dumps were never removed. The hourly `address_retention` job
   now moves the live logs into `logs/old-logs/<date>/` once they are a day old and removes
-  each archived file and core dump 30 days after its last write; the launcher keeps only
+  each archived file and core dump 28 days after its last write (Codex, on the round's
+  push: 30 days after the last line kept a day-long file's first lines 31 days); the
+  launcher keeps only
   its archive at each start and the size cap (`eb496c0b0`).
 - Not changed: `player_data.last_ip` clears 30 days after the last save, not the login. The
   address is in use for the whole session and every save writes it back from memory, so a
