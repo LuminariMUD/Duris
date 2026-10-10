@@ -177,6 +177,13 @@ Left for the deploy: staging's unit is written by hand
 deploys this launcher, never before: the old launcher has no trap, so with `mixed` it would
 die at once and leave the server running until `TimeoutStopSec` kills it unsaved.
 
+**Review round 1** (2026-10-10, #16's adversarial review): a stop that landed after the
+server's fork and before `SERVER_PID=$!` ran the trap with the last run's PID, so the new
+server was never told and systemd killed it unsaved. `SERVER_PID` is cleared before the
+trap, the trap signals only a known PID, and the flag is checked once the PID is set
+(`39dc1e0e3`); `test_flatfile_launcher.py` runs the launch block with the launcher
+signalling itself in that window.
+
 ### 2. Plain HTTP to `ws.duris.sbs` gets a tunnel error
 
 **Problem.** cloudflared logged `Unable to reach the origin service ... EOF` for
@@ -305,6 +312,12 @@ with zero-chance `M`, `F` and `R` commands, a connection reset before the server
 (Linux hands it over, and `getpeername()` then fails, as on staging), and a SIGTERM stop.
 `test_boot_log_hygiene.py`'s pins on `comm.c` still hold.
 
+**Review round 1** (2026-10-10, #16's adversarial review): an old bug in the block this item
+edits. An `R` that missed its roll after an `M` that loaded its rider kept `last_mob` and
+went on with a NULL mount, a crash in the zone pass; none of the shipped `R` lines is below
+100%. The guard now also needs the mount (`1a8731b80`), and the journey's zone has that
+case.
+
 ### 8. `snoop` never tells its target, and nothing ages out players' addresses
 
 **Problem.** Decided on 2026-10-09 in ADR 0003, whose logging rule is in the code. Two parts
@@ -373,8 +386,31 @@ change above:
 - Tests: `tests/async/test_snoop_and_recall.py` (the real `do_snoop()` and `do_recall()`
   under ASan and UBSan), `run_address_retention_journey.py` (in `make test-db`: a MariaDB
   login, then the job with and without the website table and with a row budget of one),
-  `test_flatfile_launcher.py` (an archive past 30 days) and `test_maintenance_scheduler.py`
-  (state files of versions 2 and 3).
+  `test_log_retention.py` (the log files), `test_hostname_lookup_cancel.py` (a lookup that
+  outlives its connection) and `test_maintenance_scheduler.py` (state files of versions 2
+  and 3).
+
+**Review round 1** (2026-10-10, #15's adversarial review and Codex's), one commit each:
+
+- A god switched into a mob snoops as itself (`interp.c` runs its Imm commands as
+  `desc->original`), but `stop_snooping()` removed the mob from the target's list. The
+  snoop went on while its target was told it had ended, the entry outlived the god (a
+  use-after-free once the god quit), and the stop's audit row went to the mob, which
+  `sql_log()` skips. Both now use the body the snoop is registered under (`beec88c58`).
+- `who <name>` showed a silent snooper to its target when that target was a level 61; it
+  now shows one only to level 62 (`ce0dbc837`). `users` already did.
+- A reverse-DNS lookup that answered after its connection closed wrote its file back. The
+  close now cancels the descriptor's lookups under their mutex and also removes a temporary
+  file a copyover cut short (`d07a75095`).
+- The launcher's 30-day step ran only between launcher passes, and by the archive's age: a
+  server kept up by copyovers never archived or pruned its logs, a 40-day run's first lines
+  lived 70 days, and `core.*` dumps were never removed. The hourly `address_retention` job
+  now moves the live logs into `logs/old-logs/<date>/` once they are a day old and removes
+  each archived file and core dump 30 days after its last write; the launcher keeps only
+  its archive at each start and the size cap (`eb496c0b0`).
+- Not changed: `player_data.last_ip` clears 30 days after the last save, not the login. The
+  address is in use for the whole session and every save writes it back from memory, so a
+  clear during the session would not hold; a mortal idle 15 minutes is voided anyway.
 
 ### 9. Any immortal can read a player's last 200 private messages with `recall`
 
@@ -810,6 +846,21 @@ documents name the three engines; and staging's `mysql_upgrade_info` reads 11.8.
 - Staging's existing database, restored from that dump into a local `mariadb:11.8`, passes
   the new runner (`run`: nothing pending, history intact) and
   `verify_runtime_compatibility.sh`. The copy was deleted afterwards.
+
+**Review round 1** (2026-10-10, #17's adversarial review): the review found that MariaDB
+11.8's own client has no `mysql` or `mysqldump` command, so the runner, every verifier and
+the backup would stop at `command not found`, and that the engine leg drives the 11.8
+server with this machine's 10.11 client. Not changed in code. MariaDB's container image
+lacks the names (they are in its `mariadb-client-compat`), but Ubuntu 26.04's
+`mariadb-client` (11.8.6) ships `/usr/bin/mysql` and `mysqldump` in
+`mariadb-client-core`, and the dependency manifest installs `default-mysql-client |
+mariadb-client`. Forty scripts and the boot's compatibility check call the names too, so a
+shim in the runner alone would not make such a host work. Checked once with that client:
+in an `ubuntu:26.04` container with `mariadb-client` and `python3`, sharing a
+`mariadb:11.8` server's network, bootstrap, `adopt` and `run` reached all 36 migrations
+with the manifest's history checksum. The README now says which package gives the names
+on a host with MariaDB's own packages. The check stays out of `make test-db`: it installs
+packages from the network.
 
 ---
 

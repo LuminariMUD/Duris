@@ -4809,6 +4809,13 @@ void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 	timedShutdown(NULL, NULL, NULL, NULL);
 }
 
+// The body d's snoop is registered under: a switched god's Imm commands run as the god
+// (interp.c), so its snoop belongs to d->original, not to the body it wears.
+static P_char snooping_body(P_desc d)
+{
+	return d->original ? d->original : d->character;
+}
+
 // ADR 0003: a snoop the command started tells its target when it starts and ends, unless
 // it is silent, and leaves an audit row at both ends. A snoop the channel spell set up does
 // neither.
@@ -4819,8 +4826,8 @@ static void snoop_ended(P_desc d, bool tell_target)
 	{
 		if (tell_target && !d->snoop.silent)
 			send_to_char("&+CYou are no longer being snooped.&N\n", target);
-		if (d->character)
-			sql_log(d->character, WIZLOG, "Stopped snooping %s%s", GET_NAME(target),
+		if (snooping_body(d))
+			sql_log(snooping_body(d), WIZLOG, "Stopped snooping %s%s", GET_NAME(target),
 				d->snoop.silent ? " (silent)" : "");
 	}
 	d->snoop.snooping = NULL;
@@ -4832,7 +4839,7 @@ void stop_snooping(P_desc d)
 {
 	if (!d->snoop.snooping)
 		return;
-	rem_char_from_snoopby_list(&d->snoop.snooping->desc->snoop.snoop_by_list, d->character);
+	rem_char_from_snoopby_list(&d->snoop.snooping->desc->snoop.snoop_by_list, snooping_body(d));
 	snoop_ended(d, true);
 }
 
