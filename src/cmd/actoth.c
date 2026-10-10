@@ -297,10 +297,7 @@ void do_camp(P_char ch, char *arg, int /*cmd*/)
 		if (ch->desc && ch->desc->snoop.snooping)
 		{
 			send_to_char("You stop your snoop.\r\n", ch);
-			rem_char_from_snoopby_list(
-				&ch->desc->snoop.snooping->desc->snoop.snoop_by_list,
-				ch->desc->character);
-			ch->desc->snoop.snooping = 0;
+			stop_snooping(ch->desc);
 		}
 
 		persistence_save_character_terminal(ch, RENT_INN);

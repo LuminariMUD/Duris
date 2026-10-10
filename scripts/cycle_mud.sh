@@ -303,6 +303,8 @@ while [[ $RESULT != 0 && $RESULT != 55 ]]; do
     -exec mv -t "logs/old-logs/$DATESTR" {} +
   find logs/player-log -mindepth 1 -maxdepth 1 ! -name .gitignore \
     -exec mv -t "logs/old-logs/$DATESTR/player-log" {} +
+  # The hourly address_retention job moves a live set on once this is a day old (ADR 0003).
+  touch logs/log/.since
   if [ -f logs/latency_trace.log ]; then
     mv logs/latency_trace.log "logs/old-logs/$DATESTR/"
   fi

@@ -325,8 +325,10 @@ const char *sql_select_IP_info(P_char ch, char *buf, size_t bufSize, time_t *las
 		return buf;
 	}
 
-	strlcpy(buf, record.ip.c_str(), bufSize);
 	const int64_t now = static_cast<int64_t>(time(nullptr));
+	// ADR 0003: an address is not shown 30 days after the login that left it.
+	if (now - record.last_connect <= 30 * 24 * 3600)
+		strlcpy(buf, record.ip.c_str(), bufSize);
 	if (lastConnect && record.last_connect > 0 && now >= record.last_connect)
 		*lastConnect = static_cast<time_t>(now - record.last_connect);
 	if (lastDisconnect && record.last_disconnect > 0 && now >= record.last_disconnect)
@@ -2831,7 +2833,9 @@ const char *sql_select_IP_info(P_char ch, char *buf, size_t bufSize, time_t *las
 	if (found == ip_activity_by_pid.end())
 		return buf;
 	const time_t now = time(NULL);
-	strlcpy(buf, found->second.ip.c_str(), bufSize);
+	// ADR 0003: an address is not kept past 30 days, as the hourly prune clears ip_info.
+	if (now - found->second.last_connect <= 30 * 24 * 3600)
+		strlcpy(buf, found->second.ip.c_str(), bufSize);
 	if (lastConnect)
 		*lastConnect = found->second.last_connect ? now - found->second.last_connect : 0;
 	if (lastDisconnect)

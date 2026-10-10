@@ -43,6 +43,7 @@
 #include "core/utils.h"
 #include <arpa/inet.h>
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <gnutls/gnutls.h>
@@ -828,6 +829,22 @@ void game_up_message(int port)
 	//  signal(SIGCHLD, (void *) reaper);
 }
 
+// lib/etc/hosts holds one reverse-DNS name per descriptor number and address. ADR 0003 keeps
+// no address past 30 days: a descriptor's names go when it closes, and a cold boot removes
+// any that a lookup wrote after its descriptor had closed.
+static void remove_hostname_files(const char *prefix)
+{
+	DIR *directory = opendir("lib/etc/hosts");
+	if (!directory)
+		return;
+	const size_t length = strlen(prefix);
+	while (const struct dirent *entry = readdir(directory))
+		if (!strncmp(entry->d_name, prefix, length) && strcmp(entry->d_name, ".") &&
+		    strcmp(entry->d_name, "..") && strcmp(entry->d_name, ".gitignore"))
+			unlinkat(dirfd(directory), entry->d_name, 0);
+	closedir(directory);
+}
+
 static void touch(const char *filename)
 {
 	// no need to check for failure, the next step will do
@@ -847,6 +864,8 @@ int run_the_game(int port, int sslport)
 
 	logit(LOG_STATUS, "Signal trapping.");
 	signal_setup();
+	if (!copyover_boot)
+		remove_hostname_files("");
 
 	SetSpellCircles(); /* spells circlewise done with pure math */
 
@@ -3297,10 +3316,11 @@ void close_sockets(int s)
 	close(s);
 }
 
+static void forget_hostname(int descriptor);
+
 void close_socket(struct descriptor_data *d)
 {
 	struct descriptor_data *tmp;
-	snoop_by_data *snoop_by_ptr, *next;
 	int is_morphed = d->character ? IS_MORPH(d->character) : 0;
 	if (d && d->player_load_request_id)
 		player_load_pipeline_cancel(d->player_load_request_id);
@@ -3318,65 +3338,31 @@ void close_socket(struct descriptor_data *d)
 	if (d->sslses)
 		ssl_close(d->sslses);
 	if (d->descriptor)
+	{
 		close(d->descriptor);
+		forget_hostname(d->descriptor);
+	}
 	flush_queues(d);
 	--used_descs;
 
 	/* Forget snooping */
-	/*
-	  if (d->snoop.snoop_by) {
-	    send_to_char("Your victim is no longer among us.\r\n", d->snoop.snoop_by);
-	    d->snoop.snoop_by->desc->snoop.snooping = 0;
-	  }
-	*/
-	snoop_by_ptr = d->snoop.snoop_by_list;
-	while (snoop_by_ptr)
-	{
-		if (is_morphed && affected_by_spell(d->character, SPELL_CHANNEL))
-			send_to_char(
-				"Your host has lost link... you can no longer maintain the sight link.\r\n",
-				snoop_by_ptr->snoop_by);
-		else
-			send_to_char("Your victim is no longer among us.\r\n",
-				     snoop_by_ptr->snoop_by);
-		snoop_by_ptr->snoop_by->desc->snoop.snooping = 0;
-
-		next = snoop_by_ptr->next;
-		FREE(snoop_by_ptr);
-
-		snoop_by_ptr = next;
-	}
-
-	d->snoop.snoop_by_list = 0;
+	end_snoops_on(
+		d,
+		is_morphed && affected_by_spell(d->character, SPELL_CHANNEL) ?
+			"Your host has lost link... you can no longer maintain the sight link.\r\n" :
+			"Your victim is no longer among us.\r\n",
+		false);
 
 	if (is_morphed && affected_by_spell(d->character, SPELL_CHANNEL))
 		un_morph(d->character);
 
-	if (d->snoop.snooping)
+	if (d->snoop.snooping && IS_MORPH(d->snoop.snooping))
 	{
-		/*
-		 * if !d->character, or they aren't playing, I can't get their
-		 * level.. so I'll assume its better then 58 to be safe
-		 */
-		is_morphed = IS_MORPH(d->snoop.snooping);
-
-		if (d->character && (d->connected == CON_PLAYING) && (GET_LEVEL(d->character) < 58))
-			send_to_char("&+CYou are no longer being snooped.&N\r\n",
-				     d->snoop.snooping);
-		/*    d->snoop.snooping->desc->snoop.snoop_by = 0;*/
-		if (is_morphed)
-		{
-			act("&+B$n has lost $s link and is unable to maintain $s part of the spell!&n",
-			    FALSE, d->character, 0, d->snoop.snooping, TO_VICT);
-			un_morph(d->snoop.snooping);
-		}
-		if (d->snoop.snooping)
-		{
-			rem_char_from_snoopby_list(&d->snoop.snooping->desc->snoop.snoop_by_list,
-						   d->character);
-			d->snoop.snooping = 0;
-		}
+		act("&+B$n has lost $s link and is unable to maintain $s part of the spell!&n",
+		    FALSE, d->character, 0, d->snoop.snooping, TO_VICT);
+		un_morph(d->snoop.snooping);
 	}
+	stop_snooping(d);
 	if (d->str && (*d->str))
 	{
 		FREE(*d->str);
@@ -3629,18 +3615,52 @@ struct hostname_lookup_request
 {
 	char address[INET6_ADDRSTRLEN];
 	int descriptor;
+	bool cancelled; // its descriptor closed during the lookup
+	struct hostname_lookup_request *next;
 };
 
 #define MAX_HOSTNAME_LOOKUP_WORKERS 8
+// The mutex guards the running lookups, their count, and every change to lib/etc/hosts after
+// the boot, so a lookup publishes its file before its descriptor closes or not at all.
 static pthread_mutex_t hostname_lookup_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int hostname_lookup_workers = 0;
+static struct hostname_lookup_request *hostname_lookups = NULL;
+
+// With hostname_lookup_mutex held.
+static void hostname_lookup_done(struct hostname_lookup_request *request)
+{
+	struct hostname_lookup_request **link = &hostname_lookups;
+	while (*link != request)
+		link = &(*link)->next;
+	*link = request->next;
+	hostname_lookup_workers--;
+}
+
+// ADR 0003: a closed descriptor keeps no reverse-DNS name. A lookup still running for it
+// writes nothing, and its files go, a temporary one a copyover cut short included.
+static void forget_hostname(int descriptor)
+{
+	char prefix[16];
+
+	pthread_mutex_lock(&hostname_lookup_mutex);
+	for (struct hostname_lookup_request *request = hostname_lookups; request;
+	     request = request->next)
+		if (request->descriptor == descriptor)
+			request->cancelled = true;
+	snprintf(prefix, sizeof(prefix), "%d.", descriptor);
+	remove_hostname_files(prefix);
+	snprintf(prefix, sizeof(prefix), ".%d.", descriptor);
+	remove_hostname_files(prefix);
+	pthread_mutex_unlock(&hostname_lookup_mutex);
+}
 
 static void *hostname_lookup_worker(void *arg)
 {
 	struct hostname_lookup_request *request = (struct hostname_lookup_request *)arg;
 	struct addrinfo hints, *result = NULL;
 	char hostname[NI_MAXHOST];
-	char temp_path[128], final_path[128];
+	char temp_path[128] = "", final_path[128];
+	bool written = false;
 	FILE *f;
 
 	bzero(&hints, sizeof(hints));
@@ -3663,15 +3683,18 @@ static void *hostname_lookup_worker(void *arg)
 			{
 				int write_ok = fprintf(f, "%s\n", hostname) >= 0;
 				int close_ok = fclose(f) == 0;
-				if (write_ok && close_ok)
-					rename(temp_path, final_path);
+				written = write_ok && close_ok;
 			}
 		}
 		freeaddrinfo(result);
 	}
 
 	pthread_mutex_lock(&hostname_lookup_mutex);
-	hostname_lookup_workers--;
+	if (written && !request->cancelled)
+		rename(temp_path, final_path);
+	else if (*temp_path)
+		unlink(temp_path);
+	hostname_lookup_done(request);
 	pthread_mutex_unlock(&hostname_lookup_mutex);
 	free(request);
 	return NULL;
@@ -3687,37 +3710,32 @@ void resolve_descriptor_hostname_async(const char *address, int descriptor)
 	if (request == NULL)
 		return;
 
-	pthread_mutex_lock(&hostname_lookup_mutex);
-	if (hostname_lookup_workers >= MAX_HOSTNAME_LOOKUP_WORKERS)
-	{
-		pthread_mutex_unlock(&hostname_lookup_mutex);
-		free(request);
-		return;
-	}
-	hostname_lookup_workers++;
-	pthread_mutex_unlock(&hostname_lookup_mutex);
-
 	strncpy(request->address, address, sizeof(request->address) - 1);
 	request->descriptor = descriptor;
-	{
-		char stale_path[128];
-		snprintf(stale_path, sizeof(stale_path), "lib/etc/hosts/%d.%s", descriptor,
-			 request->address);
-		unlink(stale_path);
-	}
 	if (pthread_attr_init(&attr) != 0)
 	{
-		pthread_mutex_lock(&hostname_lookup_mutex);
-		hostname_lookup_workers--;
-		pthread_mutex_unlock(&hostname_lookup_mutex);
 		free(request);
 		return;
 	}
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	pthread_mutex_lock(&hostname_lookup_mutex);
+	if (hostname_lookup_workers >= MAX_HOSTNAME_LOOKUP_WORKERS)
+	{
+		pthread_mutex_unlock(&hostname_lookup_mutex);
+		pthread_attr_destroy(&attr);
+		free(request);
+		return;
+	}
+	hostname_lookup_workers++;
+	request->next = hostname_lookups;
+	hostname_lookups = request;
+	pthread_mutex_unlock(&hostname_lookup_mutex);
+
 	if (pthread_create(&thread, &attr, hostname_lookup_worker, request) != 0)
 	{
 		pthread_mutex_lock(&hostname_lookup_mutex);
-		hostname_lookup_workers--;
+		hostname_lookup_done(request);
 		pthread_mutex_unlock(&hostname_lookup_mutex);
 		free(request);
 	}

@@ -10,9 +10,10 @@ upgrade to MariaDB 11.8, found during the tick and boot investigation, stops a n
 from being built. Part 4 (items 18 and 19) was added the same day from a third working note,
 the investigations of the review's two performance findings, deleted when their fixes were
 written here; its last version is at `dd1c33842`. Each item holds the problem, the evidence,
-the change and when it is done. The order and the decisions are proposed; the owner locks or
-changes them before the first item starts. This file is a working note: delete it when the
-last item lands.
+the change and when it is done. The order and the decisions were proposed; on 2026-10-09 the
+owner had the whole plan built at once as stacked pull requests, so the decisions were taken
+as written and the order is the stack's (below). This file is a working note: delete it when
+the last item lands.
 
 Kept apart, in its own working note:
 [staging-host-follow-ups.md](staging-host-follow-ups.md), the host owner's work left from the
@@ -20,6 +21,41 @@ review and the host's 26.04 upgrade (SSH, a GitHub token, backups).
 
 [ADR 0003](../adr/0003-player-privacy-chat-snoop-addresses.md) is the decision record for
 items 3, 8 and 9.
+
+## Stack
+
+Built from 2026-10-09 (night) in the worktree `/home/aiwithapex/projects/duris-plan`, one
+branch per pull request, each based on the one below it, so each pull request's diff is its
+own items. The first targets `master`; when one lands, the next is retargeted to `master`
+before its base branch is deleted (`gh pr edit <n> --base master`). Each head that goes up
+for review is tagged `issue-14/<subject>-review-0` (lightweight); a review round's fixed head
+gets `-review-1`, and so on. A fix to a lower branch after the ones above it exist goes on
+that branch as a new commit, and the branches above take it by merge, never by rebase once
+pushed. Every branch also carries this file: its Status table and Stack table say what is
+built at that branch's head.
+
+| PR | Branch | Items | State |
+|---|---|---|---|
+| 1 | `fix/14-privacy` | 9, 8, 3 (ADR 0003's code) | Built |
+| 2 | `fix/14-log-fixes` | 6, 1, 2, 7, 4, 5 | Not started |
+| 3 | `fix/14-mariadb-11.8` | 17 | Not started |
+| 4 | `fix/14-boot-scan` | 19 | Not started |
+| 5 | `fix/14-tick-spikes` | 18 | Not started |
+| 6 | `fix/14-test-tools` | 10, 14, 16 | Not started |
+| 7 | `fix/14-test-stability` | 11 | Not started |
+| 8 | `fix/14-clang-tidy` | 13 | Not started |
+| 9 | `fix/14-fuzz` | 12 | Not started |
+| 10 | `fix/14-mutation` | 15 | Not started |
+
+Parts 3 and 4 sit below Part 2 because they matter more and change less: Part 3 has to land
+before a database is next built on MariaDB 11.8. Part 2 keeps its own order: 10 and 14 (and
+16, which is independent) first, then 11, then 13, then 12, which uses 11's shared stubs, and
+15.
+
+How each pull request is checked: the focused tests of its items, `./scripts/format.sh
+--check`, a flat-file build, then `make test-all` and `make test-db` on its head in a
+throwaway worktree (`git worktree add --detach ../duris-plan-gate <sha>`, removed after),
+so the checkout can move on while the gate runs.
 
 ## Status
 
@@ -29,13 +65,13 @@ Part 1, the log review's fixes:
 |---|---|---|---|
 | 1 | `server_reboots` records one of ten restarts: a service stop kills the launcher before it writes | Low | Open |
 | 2 | Plain HTTP requests to `ws.duris.sbs` reach the MUD's WebSocket port and get a tunnel error | Low | Open |
-| 3 | `lib/etc/hosts` keeps every client's address and reverse-DNS name, and nothing prunes it | Low | Open (part of ADR 0003) |
+| 3 | `lib/etc/hosts` keeps every client's address and reverse-DNS name, and nothing prunes it | Low | Built (PR 1) |
 | 4 | Nine shops ask for a buy rate the loader clamps at every boot | Low | Open, data |
 | 5 | `logs/boot.log` is stale since 2026-10-04 and nothing writes it | Low | Open |
 | 6 | `cmd.debug` never records a one-letter command, and records stale text for an empty line | Low | Open |
 | 7 | Wizard broadcasts go into `status` raw, a lost peer's host is a color code, and zone-command lines print internal indices | Low | Open |
-| 8 | `snoop` never tells its target, and nothing ages out players' addresses | Low | Decided (ADR 0003); code pending |
-| 9 | Any immortal can read a player's last 200 private messages with `recall` | Medium | Decided: disable; code pending |
+| 8 | `snoop` never tells its target, and nothing ages out players' addresses | Low | Built (PR 1) |
+| 9 | Any immortal can read a player's last 200 private messages with `recall` | Medium | Built (PR 1) |
 
 Part 2, test quality:
 
@@ -157,6 +193,13 @@ lookup can finish after the close, so the boot clear is still needed).
 **Done when** both are in the code and a regression test shows the boot clear and the removal
 on close.
 
+**Built** (PR 1). `remove_hostname_files()` in `src/net/comm.c` runs at a cold boot (not a
+copyover, whose descriptors stay open) and in `close_socket()`, where it removes every
+`<descriptor>.*` file: a WebSocket connection is looked up twice, under the proxy's address
+and then the client's. The unlink before each lookup is gone; the close made it redundant.
+`tests/async/test_hostname_files_journey.py` boots a flat-file server over stale files,
+connects and disconnects.
+
 ### 4. Nine shops ask for a buy rate the loader clamps
 
 **Problem.** At every boot the shop loader caps a buy rate above 0.8 and logs `Shop #N: Old
@@ -253,6 +296,68 @@ applies to the addresses in DurisWeb's tables; that work belongs to the DurisWeb
 **Done when** the changes are in, with regression tests that a snoop at each level notifies
 and audits as decided and that the prune removes exactly the expired rows.
 
+**Built** (PR 1); ADR 0003's Consequences list what is in the code. Where it differs from the
+change above:
+
+- Every way a snoop ends goes through two functions in `src/cmd/actwiz.c`:
+  `stop_snooping()` (the snooper stops, moves to another target, quits, loses its link or
+  leaves the game) and `end_snoops_on()` (the target leaves, switches or unmorphs). They
+  replace five copies of the list handling, and fix one defect on the way:
+  `extract_char()` removed an immortal snooper's entry from its target's list only below
+  level 58, because a commented-out statement left the removal as the `if`'s body.
+- `snoop_data` gained `by_command` and `silent`: the channel spell's shared sight uses the
+  same lists, and is neither told nor audited.
+- The prune is a maintenance job, `address_retention`, hourly rather than daily: the
+  scheduler's offsets are per boot, so a daily slot could miss a server that restarts every
+  day. Its state file went to version 4 (13 jobs); versions 2 and 3 still load.
+- The account address list was rewritten with the save's time at every login, so an
+  account that logs in monthly would never age out an address. Each address now keeps its
+  last use, written to `account_ips.updated_at`, and a login drops one past 30 days.
+- `finger` shows an address only from a login in the last 30 days, since the server's copy
+  of `ip_info` is read at boot.
+- `account_login_history` is a website table the migrations do not create; the prune
+  clears it when it exists. It has no manifest entry, so three entries, not four, carry the
+  ADR's reference. The `last_ip` columns are in the `player_data` and `account_characters`
+  entries, whose other data stays pending.
+- The flat-file backend's account address lists and IP activity files are not pruned; no
+  deployment runs it.
+- Tests: `tests/async/test_snoop_and_recall.py` (the real `do_snoop()` and `do_recall()`
+  under ASan and UBSan), `run_address_retention_journey.py` (in `make test-db`: a MariaDB
+  login, then the job with and without the website table and with a row budget of one),
+  `test_log_retention.py` (the log files), `test_hostname_lookup_cancel.py` (a lookup that
+  outlives its connection) and `test_maintenance_scheduler.py` (state files of versions 2
+  and 3).
+
+**Review round 1** (2026-10-10, #15's adversarial review and Codex's), one commit each:
+
+- A god switched into a mob snoops as itself (`interp.c` runs its Imm commands as
+  `desc->original`), but `stop_snooping()` removed the mob from the target's list. The
+  snoop went on while its target was told it had ended, the entry outlived the god (a
+  use-after-free once the god quit), and the stop's audit row went to the mob, which
+  `sql_log()` skips. Both now use the body the snoop is registered under (`beec88c58`).
+- `who <name>` showed a silent snooper to its target when that target was a level 61; it
+  now shows one only to level 62 (`ce0dbc837`). `users` already did.
+- A reverse-DNS lookup that answered after its connection closed wrote its file back. The
+  close now cancels the descriptor's lookups under their mutex and also removes a temporary
+  file a copyover cut short (`d07a75095`).
+- The launcher's 30-day step ran only between launcher passes, and by the archive's age: a
+  server kept up by copyovers never archived or pruned its logs, a 40-day run's first lines
+  lived 70 days, and `core.*` dumps were never removed. The hourly `address_retention` job
+  now moves the live logs into `logs/old-logs/<date>/` once they are a day old and removes
+  each archived file and core dump 28 days after its last write (Codex, on the round's
+  push: 30 days after the last line kept a day-long file's first lines 31 days). A live set
+  without its marker, as after a copyover onto this code, may hold lines of any age, so it
+  moves at the next run, and the launcher marks each new set (Codex's next review); the
+  launcher keeps only
+  its archive at each start and the size cap (`eb496c0b0`).
+- Codex, on the round's push: a snooped player who came back from a shapechange was told
+  the start but never the stop, and the row named the shapechanged body. `un_morph()` now
+  ends the snoops after the link is the player's again, retargeted to the player, and tells
+  the target; `do_switch()` tells it too (`end_snoops_on()` gained the flag).
+- Not changed: `player_data.last_ip` clears 30 days after the last save, not the login. The
+  address is in use for the whole session and every save writes it back from memory, so a
+  clear during the session would not hold; a mortal idle 15 minutes is voided anyway.
+
 ### 9. Any immortal can read a player's last 200 private messages with `recall`
 
 **Problem.** Each player keeps their last 200 private messages in memory (`PRIVATE_LOG_SIZE`,
@@ -270,6 +375,10 @@ snoop rules.
 
 **Done when** it is in, with a regression test that an immortal's `recall` on another player
 gets the message and reads nothing.
+
+**Built** (PR 1). The branch that read another player's log is gone, so `do_recall()` reads
+only the caller's; a mortal's extra word is still ignored. `help recall` says the gods
+cannot read them. Tested in `tests/async/test_snoop_and_recall.py`.
 
 ### Found in the same logs, for other projects
 

@@ -19,7 +19,7 @@
 #include <cstdint>
 #include <array>
 
-constexpr size_t MAINTENANCE_JOB_COUNT = 12;
+constexpr size_t MAINTENANCE_JOB_COUNT = 13;
 constexpr size_t MAINTENANCE_QUEUE_MAX = MAINTENANCE_JOB_COUNT;
 constexpr size_t MAINTENANCE_COMPLETION_MAX = MAINTENANCE_JOB_COUNT;
 constexpr uint32_t MAINTENANCE_ROW_BUDGET_MAX = 256;
@@ -42,6 +42,7 @@ enum class maintenance_job_id : uint8_t
 	cargo_market,
 	operational_statistics,
 	lifecycle_archive,
+	address_retention,
 };
 
 enum class maintenance_outcome : uint8_t

@@ -1685,6 +1685,8 @@ struct snoop_data
 {
 	P_char snooping; /* Who is this char snooping */
 	snoop_by_data *snoop_by_list; /* And who is snooping on this char */
+	bool by_command; /* snooping was started by the snoop command (ADR 0003) */
+	bool silent; /* ... silently: its target is not told */
 };
 
 typedef struct gnutls_session_int *gnutls_session_t;

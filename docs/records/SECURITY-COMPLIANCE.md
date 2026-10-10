@@ -65,9 +65,10 @@ No open critical or high findings.
   - Partial decision (2026-10-09): the owner decided what the game may log or watch of its
     players and how long it keeps their network addresses
     ([ADR 0003](../adr/0003-player-privacy-chat-snoop-addresses.md)). Private conversation
-    is not logged, `snoop` tells its target, and addresses are kept at most 30 days. The
-    logging rule is in the code since 2026-10-09; the snoop and address rules are not yet.
-    The lawful basis and the rest of the policy stay pending.
+    is not logged, `snoop` tells its target, and addresses are kept at most 30 days. All
+    three are in the code: the logging rule since 2026-10-09, the snoop rule and the
+    30-day limit since 2026-10-10. The lawful basis and the rest of the policy stay
+    pending.
   - Opened: P00 (2026-08-26); technical boundary completed P03 (2026-08-27)
 
 ---
@@ -86,10 +87,10 @@ fail closed.
 | Data Element | Source | Storage | Purpose | Legal Basis | Retention | Deletion Path | Since |
 |-------------|--------|---------|---------|-------------|-----------|---------------|-------|
 | Account identity and authentication data | Registration, login, account updates | Account tables and request-scoped runtime state | Authentication, recovery, account operation | Pending controller decision | Pending | Policy-gated erasure/tombstone contract; canonical action disabled | P00 |
-| Network identifiers and access history | Client connections | Account/player IP fields, login and operational records, log archives, `lib/etc/hosts` | Abuse prevention, authentication history, operations | Pending controller decision | 30 days, ban-list entries while the ban stands (ADR 0003, 2026-10-09); not yet enforced | Manifest-mapped erasure or retained pseudonymization; disabled | P00 |
+| Network identifiers and access history | Client connections | Account/player IP fields, login and operational records, log archives, `lib/etc/hosts` | Abuse prevention, authentication history, operations | Pending controller decision | 30 days after last use, ban-list entries while the ban stands (ADR 0003, 2026-10-09): an hourly database prune, a 30-day age cap on log archives, `lib/etc/hosts` cleared on close and at boot (enforced since 2026-10-10; the flat-file backend's stores are not pruned) | Manifest-mapped erasure or retained pseudonymization; disabled | P00 |
 | Character profiles and user-authored content | Character creation and gameplay | Player tables, messages, descriptions, pfiles and archives | Gameplay and communication | Pending controller decision | Pending | Manifest-mapped export and erasure contracts; disabled | P00 |
 | Gameplay, economy, ownership and audit history | Gameplay commands and events | Current rows, ledgers, inbox/results, outbox and histories | Gameplay authority, reconciliation, fraud and audit | Pending controller decision | Protected/pending | Value-safe domain disposition plus approved retain/pseudonymize rules | P00 |
-| Activity, moderation and communication records | Runtime and administrator actions | Database logs, message/PvP/moderation tables and files | Operations, moderation, support and audit | Pending controller decision | Pending. Private conversation is not logged, only petitions, immortal actions and the newbie channel (ADR 0003, enforced since 2026-10-09). `snoop` is to tell its target and be audited, and immortals are not to read a player's private messages with `recall` (ADR 0003); not yet enforced | Manifest dependency order and approved exception rules | P00 |
+| Activity, moderation and communication records | Runtime and administrator actions | Database logs, message/PvP/moderation tables and files | Operations, moderation, support and audit | Pending controller decision | Pending. Private conversation is not logged, only petitions, immortal actions and the newbie channel (ADR 0003, enforced since 2026-10-09). `snoop` tells its target and is audited, and immortals cannot read a player's private messages with `recall` (ADR 0003, enforced since 2026-10-10) | Manifest dependency order and approved exception rules | P00 |
 | Recovery and generated private copies | Persistence, failures and operator actions | Locker receipts, Redis recovery, backups, export spool and archives | Durability, disaster recovery and data access | Pending controller decision | Pending; export TTL bounded | Restore-time tombstones, one-time export retrieval and spool expiry | P00 |
 
 ### Compliance Checklist
@@ -99,7 +100,7 @@ fail closed.
 | Data stores and technical purposes are inventoried | PASS | All declared database and non-database stores have one versioned lifecycle entry. |
 | Lawful basis and controller approval are documented | FAIL | Explicitly pending; the repository does not invent legal decisions. |
 | Data minimization is technically enforced | PASS | Bounded DTOs, aggregate-only evidence, secret exclusions and redacted logs are tested. |
-| Retention limits are approved and active | FAIL | Destructive rules and archive scheduling remain disabled by policy. Network identifiers have an approved 30-day limit (ADR 0003), not yet active. |
+| Retention limits are approved and active | FAIL | Destructive rules and archive scheduling remain disabled by policy. Network identifiers have an approved 30-day limit (ADR 0003), active since 2026-10-10. |
 | Authenticated access/export path is active | FAIL | Packaging, isolation and delivery contracts pass synthetically; canonical collection/release is disabled. |
 | Deletion/erasure path is active | FAIL | Ordered erasure, tombstones and restore protection pass synthetically; canonical mutation is disabled. |
 | No private values in persistence diagnostics | PASS | Log-hygiene and gate-containment tests pass. |

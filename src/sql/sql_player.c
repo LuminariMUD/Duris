@@ -1222,10 +1222,11 @@ bool sql_save_account(struct acct_entry *acc)
 		sql_format("DELETE FROM account_ips WHERE account_name='%s'", name.c_str()));
 	for (struct acct_ip *ip = acc->acct_unique_ips; ip; ip = ip->next)
 		statements.push_back(sql_format(
-			"INSERT INTO account_ips (account_name, hostname, ip_address, count) "
-			"VALUES ('%s', '%s', '%s', %lu)",
+			"INSERT INTO account_ips (account_name, hostname, ip_address, count, updated_at) "
+			"VALUES ('%s', '%s', '%s', %lu, FROM_UNIXTIME(%ld))",
 			name.c_str(), escape_str(ip->hostname ? ip->hostname : "").c_str(),
-			escape_str(ip->ip_address ? ip->ip_address : "").c_str(), ip->count));
+			escape_str(ip->ip_address ? ip->ip_address : "").c_str(), ip->count,
+			(long)ip->last_seen));
 
 	struct mapping
 	{
@@ -1428,6 +1429,7 @@ P_acct account_from_rows(const account_rows &rows)
 		ip->hostname = str_dup(ip_row[0] ? ip_row[0] : "");
 		ip->ip_address = str_dup(ip_row[1] ? ip_row[1] : "");
 		ip->count = ip_row[2] ? strtoul(ip_row[2], NULL, 10) : 0;
+		ip->last_seen = ip_row[3] ? atol(ip_row[3]) : 0;
 		*ip_tail = ip;
 		ip_tail = &ip->next;
 		acc->num_ips++;
@@ -1488,9 +1490,11 @@ bool sql_load_account(const char *name, std::function<void(bool ok, P_acct loade
 				return error_code;
 			if (const unsigned int error_code = sql_select(
 				    connection,
-				    sql_format("SELECT hostname, ip_address, count FROM account_ips "
-					       "WHERE account_name='%s'",
-					       account.c_str()),
+				    sql_format(
+					    "SELECT hostname, ip_address, count, UNIX_TIMESTAMP(updated_at) "
+					    "FROM account_ips WHERE account_name='%s' AND "
+					    "updated_at >= NOW() - INTERVAL 30 DAY",
+					    account.c_str()),
 				    &rows->ips))
 				return error_code;
 			return sql_select(

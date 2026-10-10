@@ -1220,6 +1220,7 @@ void update_account_iplist(P_desc d)
 	else
 	{
 		ip->count++;
+		ip->last_seen = time(NULL);
 		if (-1 == write_account(acct))
 		{
 			statuslog(56, "&+RALERT&n: account IP-list update failed");
@@ -1261,6 +1262,7 @@ void add_ip_entry(P_acct acct, P_desc d)
 
 	a->hostname = str_dup(host);
 	a->count = 1;
+	a->last_seen = time(NULL);
 	a->ip_address = str_dup(host);
 	acct->num_ips++;
 	a->next = acct->acct_unique_ips;
@@ -3051,6 +3053,7 @@ static void copy_account(P_acct to, const struct acct_entry *from)
 		copy->hostname = str_dup(source->hostname ? source->hostname : "");
 		copy->ip_address = str_dup(source->ip_address ? source->ip_address : "");
 		copy->count = source->count;
+		copy->last_seen = source->last_seen;
 		*ip_tail = copy;
 		ip_tail = &copy->next;
 	}

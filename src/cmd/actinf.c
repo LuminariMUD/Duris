@@ -7314,6 +7314,39 @@ int compare_char_data(const void *char1, const void *char2)
 		return GET_RACEWAR(*(P_char *)char1) - GET_RACEWAR(*(P_char *)char2);
 }
 
+// Writes " (Snooped By: a, b)" to who_output for the snoops on d that ch may see: a snooper
+// invisible to ch is left out, and a silent snoop shows only to the highest level (ADR 0003).
+static void list_snoopers(P_char ch, P_desc d, char *who_output)
+{
+	bool seen = FALSE;
+
+	for (snoop_by_data *snoop_by_ptr = d->snoop.snoop_by_list; snoop_by_ptr;
+	     snoop_by_ptr = snoop_by_ptr->next)
+	{
+		if (WIZ_INVIS(ch, snoop_by_ptr->snoop_by) ||
+		    (snoop_by_ptr->snoop_by->desc->snoop.silent && GET_LEVEL(ch) < OVERLORD))
+		{
+			continue;
+		}
+		if (!seen)
+		{
+			snprintf(who_output, MAX_STRING_LENGTH, " (Snooped By: %s",
+				 GET_NAME(snoop_by_ptr->snoop_by));
+			seen = TRUE;
+		}
+		else
+		{
+			checked_snprintf(who_output + strlen(who_output),
+					 MAX_STRING_LENGTH - strlen(who_output), ", %s",
+					 GET_NAME(snoop_by_ptr->snoop_by));
+		}
+	}
+	if (seen)
+	{
+		strcat(who_output, ")\n\r");
+	}
+}
+
 void do_who(P_char ch, char *argument, int /*cmd*/)
 {
 	P_char who_list[MAX_WHO_PLAYERS], who_gods[MAX_WHO_PLAYERS];
@@ -7326,7 +7359,6 @@ void do_who(P_char ch, char *argument, int /*cmd*/)
 	char pattern[256], arg[256];
 	int j, k, who_list_size = 0, who_gods_size = 0, total_ingame_connections = 0, surname;
 	long timer = 0;
-	snoop_by_data *snoop_by_ptr;
 	int align = RACEWAR_NONE, min_level = MAXLVL + 1, max_level = -1;
 	bool sort = FALSE, zone = FALSE, lfg = FALSE, mortalsonly = FALSE,
 	     mudconnector_limited = FALSE;
@@ -7810,35 +7842,8 @@ void do_who(P_char ch, char *argument, int /*cmd*/)
 		if (strcasecmp(tch->player.name, pattern))
 			return;
 
-		if ((GET_LEVEL(ch) >= FORGER) && tch->desc && tch->desc->snoop.snoop_by_list)
-		{
-			bool seen = FALSE;
-
-			for (snoop_by_ptr = tch->desc->snoop.snoop_by_list; snoop_by_ptr;
-			     snoop_by_ptr = snoop_by_ptr->next)
-			{
-				if (WIZ_INVIS(ch, snoop_by_ptr->snoop_by))
-				{
-					continue;
-				}
-				if (!seen)
-				{
-					snprintf(who_output, MAX_STRING_LENGTH, " (Snooped By: %s",
-						 GET_NAME(snoop_by_ptr->snoop_by));
-					seen = TRUE;
-				}
-				else
-				{
-					checked_snprintf(who_output + strlen(who_output),
-							 MAX_STRING_LENGTH - strlen(who_output),
-							 ", %s", GET_NAME(snoop_by_ptr->snoop_by));
-				}
-			}
-			if (seen)
-			{
-				strcat(who_output, ")\n\r");
-			}
-		}
+		if ((GET_LEVEL(ch) >= FORGER) && tch->desc)
+			list_snoopers(ch, tch->desc, who_output);
 
 		timer = tch->desc->character->specials.timer;
 		tchReal = (tch->desc->original != NULL) ? tch->desc->original :
@@ -10021,21 +10026,15 @@ void web_info(void)
 void do_recall(P_char ch, char *argument, int /*cmd*/)
 {
 	char arg[256];
-	char buf[2048];
 	int size = 10;
 	char *pattern = 0;
-	P_char victim = NULL;
 
 	argument = skip_spaces(one_argument(argument, arg));
+	// ADR 0003: an immortal cannot read another player's private messages.
 	if (*argument && IS_TRUSTED(ch))
 	{
-		victim = get_char_vis(ch, argument);
-		if (!victim)
-		{
-			snprintf(buf, 2048, "Could not find char '%s'.\n", argument);
-			send_to_char(buf, ch);
-			return;
-		}
+		send_to_char("Disabled by Zusuk October 9 2026\n", ch);
+		return;
 	}
 	if (*arg && atoi(arg) > 0)
 	{
@@ -10050,44 +10049,17 @@ void do_recall(P_char ch, char *argument, int /*cmd*/)
 
 	if (!IS_PC(ch))
 		return;
-	if (victim && !IS_PC(victim))
+	if (!GET_PLAYER_LOG(ch))
 	{
-		snprintf(buf, 2048, "'%s' is not a PC.\n", argument);
-		send_to_char(buf, ch);
+		logit(LOG_DEBUG, "Unintialized player log (%s) in do_recall()", GET_NAME(ch));
 		return;
 	}
 
-	if (victim)
+	ITERATE_LOG_LIMIT(ch, LOG_PRIVATE, size)
 	{
-		if (!GET_PLAYER_LOG(victim))
-		{
-			logit(LOG_DEBUG, "Unintialized player log (%s) in do_recall()",
-			      GET_NAME(victim));
-			return;
-		}
+		if (!pattern || isname(pattern, strip_ansi(LOG_MSG()).c_str()))
+			send_to_char(LOG_MSG(), ch, LOG_NONE);
 	}
-	else
-	{
-		if (!GET_PLAYER_LOG(ch))
-		{
-			logit(LOG_DEBUG, "Unintialized player log (%s) in do_recall()",
-			      GET_NAME(ch));
-			return;
-		}
-	}
-
-	if (victim)
-		ITERATE_LOG_LIMIT(victim, LOG_PRIVATE, size)
-		{
-			if (!pattern || isname(pattern, strip_ansi(LOG_MSG()).c_str()))
-				send_to_char(LOG_MSG(), ch, LOG_NONE);
-		}
-	else
-		ITERATE_LOG_LIMIT(ch, LOG_PRIVATE, size)
-		{
-			if (!pattern || isname(pattern, strip_ansi(LOG_MSG()).c_str()))
-				send_to_char(LOG_MSG(), ch, LOG_NONE);
-		}
 }
 
 namespace

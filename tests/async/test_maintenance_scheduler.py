@@ -268,17 +268,20 @@ with tempfile.TemporaryDirectory(prefix="duris-maintenance-scheduler-") as temp_
     state_file = Path(temp_dir) / "scheduler.state"
     subprocess.run([str(binary), str(state_file)], check=True, timeout=10)
     current = state_file.read_bytes()
-    job_size = (len(current) - 24) // 12
-    assert 16 + job_size * 12 + 8 == len(current)
-    legacy = bytearray(b"DMSMNT2\0" + struct.pack("=II", 2, 11))
-    legacy.extend(current[16:16 + job_size * 11])
-    checksum = 1469598103934665603
-    for byte in legacy:
-        checksum ^= byte
-        checksum = (checksum * 1099511628211) & ((1 << 64) - 1)
-    legacy.extend(struct.pack("=Q", checksum))
-    state_file.write_bytes(legacy)
-    subprocess.run([str(binary), str(state_file)], check=True, timeout=10)
+    assert current.startswith(b"DMSMNT4\0" + struct.pack("=II", 4, 13))
+    job_size = (len(current) - 24) // 13
+    assert 16 + job_size * 13 + 8 == len(current)
+    # Versions 2 and 3 held the first 11 and 12 jobs; both still load.
+    for version, jobs in ((2, 11), (3, 12)):
+        legacy = bytearray(f"DMSMNT{version}\0".encode() + struct.pack("=II", version, jobs))
+        legacy.extend(current[16:16 + job_size * jobs])
+        checksum = 1469598103934665603
+        for byte in legacy:
+            checksum ^= byte
+            checksum = (checksum * 1099511628211) & ((1 << 64) - 1)
+        legacy.extend(struct.pack("=Q", checksum))
+        state_file.write_bytes(legacy)
+        subprocess.run([str(binary), str(state_file)], check=True, timeout=10)
 
 for contract in (
     "MAINTENANCE_QUEUE_MAX", "maintenance_job_offset", "overlap_suppressed",
