@@ -46,8 +46,8 @@ production port 7777; the default remains 4000.
   `make build-production` and `DURIS_SERVER_BINARY=bin/server/production/dms_new
   make test-db`.
 - On each restart it moves `logs/log/*`, `logs/player-log/*` and
-  `logs/latency_trace.log` into `logs/old-logs/<timestamp>/`, deletes those 30 days
-  old or more, then deletes the oldest of the rest until `logs/old-logs` fits in
+  `logs/latency_trace.log` into `logs/old-logs/<timestamp>/`, then deletes the oldest
+  archives until `logs/old-logs` fits in
   `DURIS_LOG_ARCHIVE_MB` (1024 by default; the newest is always kept). It writes the stop reason and optionally
   emails an alert. With `PREBOOT_BACKUP=1` it also runs `scripts/backup_pfiles.sh`
   before the boot, which publishes a verified full generation under the approved
@@ -273,8 +273,10 @@ test noise.
 
 ## Logs
 
-All under `logs/`; each boot moves the last run's into `logs/old-logs/<timestamp>/`,
-keeps an archive at most 30 days, and keeps the whole within the `DURIS_LOG_ARCHIVE_MB` cap.
+All under `logs/`; each boot moves the last run's into `logs/old-logs/<timestamp>/` and keeps
+the whole within the `DURIS_LOG_ARCHIVE_MB` cap. The hourly `address_retention` job also
+moves the live logs there once they are a day old, and removes each archived file and
+`core.*` dump 30 days after its last write.
 
 The logs hold players' names and network addresses. By
 [ADR 0003](../adr/0003-player-privacy-chat-snoop-addresses.md) (2026-10-09), `logs/log/chat`
@@ -806,7 +808,8 @@ The maintenance scheduler is bounded and persistent. Use `world persistence` to
 inspect slot state, lag, errors, and deferred work. A disabled lifecycle slot is the
 expected checked-in state, not a fault. Do not enable it by editing state files. The
 `address_retention` slot runs hourly and clears network addresses 30 days after their
-last use (ADR 0003); its first run on an old database takes many short runs.
+last use (ADR 0003), in the database and in the log files (see Logs); its first run on an
+old database takes many short runs.
 
 These commands are local inspection or source-contract checks and do not connect to
 the configured database:
