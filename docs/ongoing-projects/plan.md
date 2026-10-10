@@ -177,6 +177,13 @@ Left for the deploy: staging's unit is written by hand
 deploys this launcher, never before: the old launcher has no trap, so with `mixed` it would
 die at once and leave the server running until `TimeoutStopSec` kills it unsaved.
 
+**Review round 1** (2026-10-10, #16's adversarial review): a stop that landed after the
+server's fork and before `SERVER_PID=$!` ran the trap with the last run's PID, so the new
+server was never told and systemd killed it unsaved. `SERVER_PID` is cleared before the
+trap, the trap signals only a known PID, and the flag is checked once the PID is set
+(`39dc1e0e3`); `test_flatfile_launcher.py` runs the launch block with the launcher
+signalling itself in that window.
+
 ### 2. Plain HTTP to `ws.duris.sbs` gets a tunnel error
 
 **Problem.** cloudflared logged `Unable to reach the origin service ... EOF` for
@@ -304,6 +311,12 @@ One journey covers all three, `tests/async/test_log_hygiene_journey.py`: a flat-
 with zero-chance `M`, `F` and `R` commands, a connection reset before the server accepts it
 (Linux hands it over, and `getpeername()` then fails, as on staging), and a SIGTERM stop.
 `test_boot_log_hygiene.py`'s pins on `comm.c` still hold.
+
+**Review round 1** (2026-10-10, #16's adversarial review): an old bug in the block this item
+edits. An `R` that missed its roll after an `M` that loaded its rider kept `last_mob` and
+went on with a NULL mount, a crash in the zone pass; none of the shipped `R` lines is below
+100%. The guard now also needs the mount (`1a8731b80`), and the journey's zone has that
+case.
 
 ### 8. `snoop` never tells its target, and nothing ages out players' addresses
 

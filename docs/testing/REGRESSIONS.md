@@ -472,14 +472,18 @@ never wrote its `server_reboots` row: one restart in ten was recorded. The unit 
 SIGTERM to the launcher alone (`KillMode=mixed`); the launcher runs the server as a
 child, passes the signal on, waits for the shutdown, writes the row and exits without
 starting the server again or pausing ten seconds. The issuer and reason go in as hex, so
-a reason with an apostrophe is recorded, and a failed insert is reported.
+a reason with an apostrophe is recorded, and a failed insert is reported. A stop that lands
+between the server's fork and `SERVER_PID=$!` still reaches the new server; the trap sent
+it to the last run's PID.
 
 ```sh
 tests/async/with_disposable_mariadb.sh python3 tests/async/run_launcher_stop_journey.py
+python3 tests/async/test_flatfile_launcher.py
 ```
 
 The journey runs the real launcher with a stand-in server on a disposable MariaDB and
-sends SIGTERM to the launcher alone, twice. It does not run systemd.
+sends SIGTERM to the launcher alone, twice. The launcher test runs the launch block with
+the launcher signalling itself inside that window. Neither runs systemd.
 
 ## Log lines a reader can use
 
@@ -493,8 +497,12 @@ wiz logs instead of the players' broadcast with its color codes and line ends.
 python3 tests/async/test_log_hygiene_journey.py
 ```
 
-The journey boots a flat-file server with zero-chance `M`, `F` and `R` commands, resets a
-connection before the server accepts it, and stops the server with SIGTERM.
+An `R` that misses its roll after an `M` that loaded the rider no longer goes on with a
+NULL mount, which crashed the zone pass.
+
+The journey boots a flat-file server with zero-chance `M`, `F` and `R` commands and a
+zero-chance `R` after a loaded rider, resets a connection before the server accepts it,
+and stops the server with SIGTERM.
 
 ## Maintenance scheduler state file
 
