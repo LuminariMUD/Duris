@@ -2608,6 +2608,9 @@ void die(P_char ch, P_char killer)
 	// object code - Normal kills.  Kvark
 	if ((IS_PC(killer) || IS_PC_PET(killer)) && IS_NPC(ch) && IS_ALIVE(killer))
 	{
+		// A pet's kill is reported to its owner; the pet has no one to read it.
+		P_char credited_killer = IS_PC_PET(killer) ? GET_MASTER(killer) : killer;
+
 		// if(GET_LEVEL(ch) < 30 || GET_LEVEL(killer) < 20)
 		//   {
 		if (check_random_drop(killer, ch, TRUE))
@@ -2626,14 +2629,14 @@ void die(P_char ch, P_char killer)
 					tempobj = create_random_eq_new(killer, ch, -1, -1);
 					send_to_char(
 						"It appears you were able to salvage a piece of equipment from your enemy.\n",
-						killer);
+						credited_killer);
 				}
 				else
 				{
 					tempobj = create_material(killer, ch);
 					send_to_char(
 						"It appears you were able to salvage a piece of material from your enemy.\n",
-						killer);
+						credited_killer);
 				}
 			}
 			if (tempobj && ch)

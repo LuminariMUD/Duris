@@ -700,6 +700,20 @@ from the source on both backends and checks the line for kills, turn-ins, every 
 exit that credits nothing, and an immortal, whose staff log it reads. No test turns in a
 quest on a running server.
 
+## Random drop message for a pet's kill
+
+When a player's pet kills an NPC and wins the equipment roll, the "salvage a piece of
+equipment" line goes to the pet's owner. It used to go to the pet, which nobody reads, so
+the owner never learned an item was on the corpse. The drop rolls and the item still use
+the pet's own level and luck.
+
+```sh
+python3 tests/async/test_random_drop_owner_message.py
+```
+
+The test is a source contract on the drop block in `die()`. No test kills an NPC with a
+pet on a running server.
+
 ## Riposte after a participant is removed
 
 Riposte keeps process-local character identities, the original room and height, and the
