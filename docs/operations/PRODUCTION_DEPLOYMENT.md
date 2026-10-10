@@ -1,6 +1,6 @@
 # Production deployment tracker
 
-Last verified: 2026-10-08 12:08 UTC (website live on this host)
+Last verified: 2026-10-10 14:12 UTC (staging names retired, MUD backups scheduled)
 
 ## Objective
 
@@ -28,15 +28,15 @@ tunnel are retired and must not be treated as a fallback.**
 | Host | Shared Plesk host; name, address and account in the operator's `.env` (`STAGING_*` block) | Everything below runs as one unprivileged account under user-scope systemd with lingering enabled |
 | MUD checkout | `~/duris` | Deployed from `master` |
 | MUD service | `duris-mud-production.service` | User unit running `scripts/cycle_mud.sh --production` |
-| Database | `duris-mariadb.service`, `127.0.0.1:3307`, schema `duris_staging` | MariaDB; `PERSISTENCE_MODE=mariadb-primary`; shared with the website |
-| MUD Redis | `duris-redis.service`, `127.0.0.1:6381` | Namespace `duris:production:staging`; ACL identities in `~/.config/duris-redis/users.acl` |
+| Database | `duris-mariadb.service`, `127.0.0.1:3307`, schema `duris_prod`, account `duris_prod` | MariaDB; `PERSISTENCE_MODE=mariadb-primary`; shared with the website |
+| MUD Redis | `duris-redis.service`, `127.0.0.1:6381` | Namespace `duris:production:main`; ACL identities in `~/.config/duris-redis/users.acl` |
 | Plain telnet | `mud.duris.sbs:7777` | DNS-only A record to the host |
 | TLS telnet | `mud.duris.sbs:7778` | Let's Encrypt via the Cloudflare DNS-01 hooks in `~/.local/libexec/`, renewed by `duris-certbot-renew.timer` |
 | MUD WebSocket/health origin | `127.0.0.1:4050` | Loopback-only. The MUD's `.env` must set `DURIS_WEBSOCKET=TRUE`: the listener is off by default, and the website and both health checks need it |
-| Public MUD WebSocket/health | `wss://mud.duris.sbs`, `https://mud.duris.sbs/health` | Needs a TLS proxy to the loopback origin on this host; not in place yet (Plesk owns the system Nginx). `ws.duris.sbs` still points at the retired MUD tunnel |
+| Public MUD WebSocket/health | `wss://ws.duris.sbs`, `https://ws.duris.sbs/health` | `ws.duris.sbs` is a proxied CNAME to the website tunnel, whose ingress routes it to the loopback origin. `mud.duris.sbs` stays DNS-only for telnet, and its port 443 is Plesk's Nginx. The browser client connects through the website at `wss://www.duris.sbs/ws` |
 | Website checkout | `~/durisweb` | The DurisWeb repository, deployed from `master` |
 | Website application | `durisweb-production.service`, `127.0.0.1:7770` | Private cache `durisweb-redis.service` on `127.0.0.1:6380`; port 3001 belongs to another account on this host |
-| Website tunnel | `durisweb-cloudflared.service`, tunnel `durisweb-production` | REQUIRED. `duris.sbs` and `www.duris.sbs` are proxied CNAMEs to this tunnel, and its ingress routes both directly to the application; no Nginx is in the website path |
+| Website tunnel | `durisweb-cloudflared.service`, tunnel `durisweb-production` | REQUIRED. `duris.sbs` and `www.duris.sbs` are proxied CNAMEs to this tunnel, and its ingress routes both directly to the application, and `ws.duris.sbs` to the MUD origin; no Nginx is in the website path |
 | Tunnel readiness | `http://127.0.0.1:20243/ready` | Loopback-only |
 | Watchdog | `durisweb-watchdog.timer` | User timer running the checkout's `deploy/scripts/durisweb-watchdog` every minute |
 
@@ -72,7 +72,7 @@ was down for another 40 minutes.
 - `duris-mud-production.service` uses `Restart=always` with no start rate limit
   (`deploy/systemd/duris-mud-production.service.in`).
 - The `production uptime` workflow probes `https://duris.sbs/health` and
-  `https://mud.duris.sbs/health` every ten minutes from GitHub-hosted runners.
+  `https://ws.duris.sbs/health` every ten minutes from GitHub-hosted runners.
   A failed run notifies through GitHub.
 - A Cloudflare Tunnel Health Alert emails the Cloudflare account owner when the
   website tunnel goes down.
@@ -117,7 +117,15 @@ the public health checks below.
   into `~/.config/letsencrypt/live/mud.duris.sbs/`
 - Cloudflare DNS token used by certificate renewal and by the website tunnel
   launcher: `~/.config/duris-certbot/cloudflare.env` (mode `0600`)
-- Backups: `~/backups/duris`
+- MUD persistence backups: policy `~/.config/duris-backup/policy.json` (named by
+  `BACKUP_POLICY_FILE` in `.env`), generations in `~/backups/duris/generations`.
+  `duris-backup-backup.timer` takes one an hour and `duris-backup-health.timer` checks
+  them every minute. Both units are in `~/.config/systemd/user`, adapted from
+  `deploy/systemd/duris-backup-*` without the sandboxing options a user unit can't use.
+  There is no off-host replica and no restore drill: the account has no SSHFS mount
+  and no dedicated restore filesystem, and no `OnFailure=` alert is connected.
+- The website's own hourly dump of the shared database: `~/durisweb-backups`
+- One-off copies (pre-change dumps, configuration): `~/backups/duris/<date>-*`
 - Host AppArmor allowance for the MUD database: `/etc/apparmor.d/local/mariadbd`
   (root-owned). Ubuntu 26.04 enforces the `mariadbd` profile on `duris-mariadb.service`
   too. Without this file, MariaDB can't read `~/.config/duris-mariadb/my.cnf` or
@@ -130,12 +138,14 @@ Run these on the host without printing `.env`:
 
 ```bash
 systemctl --user is-active duris-mariadb duris-redis duris-mud-production \
-  durisweb-redis durisweb-production durisweb-cloudflared durisweb-watchdog.timer
+  durisweb-redis durisweb-production durisweb-cloudflared durisweb-watchdog.timer \
+  duris-backup-backup.timer duris-backup-health.timer
+(cd ~/duris && scripts/backup_pfiles.sh status --require-drill)
 systemctl --user list-timers durisweb-watchdog.timer
 journalctl --user-unit durisweb-watchdog.service --since -1h
 curl --fail --silent --show-error http://127.0.0.1:20243/ready
 curl --fail --silent --show-error https://duris.sbs/health
-curl --fail --silent --show-error https://mud.duris.sbs/health
+curl --fail --silent --show-error https://ws.duris.sbs/health
 
 openssl s_client \
   -connect mud.duris.sbs:7778 \

@@ -1,6 +1,7 @@
-# Staging host follow-ups, 2026-10-09
+# Production host follow-ups, 2026-10-09
 
-Work left for the owner of the shared Plesk host that runs staging. It comes from the
+Work left for the owner of the shared Plesk host that runs production (staging until
+2026-10-10; its service account is still named `staging`). It comes from the
 2026-10-09 log review, whose other findings were fixed in #15 to #24 (its own file was
 deleted then; its last version is at `24e7d3fba`), and from the root session that followed the
 host's upgrade to Ubuntu 26.04.1 (rebooted 12:34 UTC). Root's notes were copied here with
@@ -15,7 +16,7 @@ a finding when it is done, and the file when none is left.
 |---|---|---|---|
 | 1 | SSH still accepts passwords for some tenant accounts | Medium | Open, owner and tenants |
 | 2 | The old GitHub token from `wildeditor`'s `origin` URL may not be revoked | Medium | Open, owner (GitHub) |
-| 3 | Nothing backs up the MUD's persistence on staging except DurisWeb's hourly dump | Low-medium | Open, decision |
+| 3 | The MUD's backups have no off-host copy, restore drill or failure alert | Medium | Open, owner |
 | 4 | Loose ends from root's log sweep | Low | Open, optional |
 
 ## Findings
@@ -45,20 +46,16 @@ account's credential helper. No other `.git/config` on the disk holds credential
 
 **Next** (owner, on GitHub). Revoke the old token. Root can't do it from the host.
 
-### 3. Nothing backs up the MUD's persistence on staging except DurisWeb's dump
+### 3. The MUD's backups have no off-host copy, restore drill or failure alert
 
-`.env` sets neither `BACKUP_POLICY_FILE` nor `PREBOOT_BACKUP`. The user manager has no backup
-timer and the service account has no crontab, so `scripts/persistence_backup.py` never runs
-here, and `cycle_mud.sh` skips the pre-boot backup (L318-323). The one database copy is
-DurisWeb's hourly dump in `~/durisweb-backups`. It keeps the last 24, from 2026-10-08 17:00 to
-2026-10-09 18:00, missing only 12:00 and 13:00 on 10-09, when the upgrade had staging down.
-The latest holds `database/duris_staging.sql` (61 MB). This dump is not the verified, drilled
-backup that `docs/operations/BACKUPS.md` describes, and no one has tried restoring it.
-`~/backups/duris/2026-10-07-prebuild` is a one-off copy of a binary and the scheduler state.
+Since 2026-10-10 the service account takes verified hourly backups under the policy and timers
+that `docs/operations/PRODUCTION_DEPLOYMENT.md` lists, kept on the same disk as the database.
+`BACKUPS.md` asks for more than the account can set up by itself: an off-host replica needs an
+SSHFS mount (`replica_root`), a restore drill needs a dedicated restore filesystem
+(`drill_seconds`, `restore_root`), and a failing unit should reach someone through `OnFailure=`.
 
-**Next** (decision). Staging may not need more than this. If it does, install the policy and
-the sample units in `deploy/systemd/duris-backup-*` as `BACKUPS.md` says, or set
-`PREBOOT_BACKUP=1`.
+**Next** (owner). Provide the mount and the filesystem, then set those policy fields; connect
+`duris-backup-backup.service` and `duris-backup-health.service` to an alert.
 
 ### 4. Loose ends from root's log sweep
 
