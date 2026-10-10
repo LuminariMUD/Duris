@@ -942,6 +942,15 @@ with the manifest's history checksum. The README now says which package gives th
 on a host with MariaDB's own packages. The check stays out of `make test-db`: it installs
 packages from the network.
 
+Codex, on the round's push: no database records which verifier approved 0031 and 0032 on
+11.8, so an engine verifier changed together with its manifest checksum would approve new
+databases while existing histories still pass. Not changed. Anchoring it means recording
+the engine verifier in every database, a history or schema change that decision 7 ruled out
+so that one history holds on every engine. A sealed verifier has the same exposure on a
+fresh database, which has no history to compare; histories catch an edit only for databases
+built before it. The engine verifiers are sealed by checksum under `immutable/` like the
+others, and an edit to one is a reviewed diff there.
+
 ---
 
 ## Part 4: the slow tick and the slower boot
