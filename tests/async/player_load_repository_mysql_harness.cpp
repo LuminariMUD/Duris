@@ -388,10 +388,13 @@ int main()
 			    std::to_string(pid) + ",0,4,102,1)");
 	execute_sql(connection, "INSERT INTO player_item_affects(item_id,location,modifier) VALUES"
 				"(1002,1,2),(1002,2,-3)");
+	// Two legacy spellbook markers pass the unique key but load as one description: the
+	// loader skips the duplicate instead of refusing the character.
 	execute_sql(connection,
 		    "INSERT INTO player_item_extra_descr(item_id,keyword,description) VALUES"
 		    "(1002,'SPELLBOOK','[1,7,31]'),(1003,'detail','fixture'),"
-		    "(1003,CONVERT(0x030103 USING utf8mb4),CONVERT(0x02 USING utf8mb4))");
+		    "(1003,CONVERT(0x030103 USING utf8mb4),CONVERT(0x02 USING utf8mb4)),"
+		    "(1003,CONVERT(0x030103 USING utf8mb4),'a')");
 
 	player_load_result fixture = execute_load(connection, request, 81);
 	if (fixture.outcome != player_load_outcome::applied)
