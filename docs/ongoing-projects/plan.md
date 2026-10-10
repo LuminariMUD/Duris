@@ -299,9 +299,12 @@ before moving anything there.
 
 **Built** (PR 2).
 
-- `timedShutdown()` logs `<kind> by <issuer>: <reason>` to the status and wiz logs through
+- `timedShutdown()` logs `<kind> by <issuer>: <reason>` to the status log through
   `log_shutdown()` (kinds: Shutdown, Reboot, Copyover, Auto-reboot, Auto-reboot with
-  copyover); the players' broadcast is unchanged.
+  copyover); the players' broadcast is unchanged. Codex, on the round's push: its wiz row
+  was never written, because the countdown and a signal run it with no character (as
+  before). The issuer's wiz row is written when the shutdown is scheduled, and launcher
+  stops are in `server_reboots`, so the dead call is gone and these notes say "status log".
 - A failed `getpeername()` gives the host `unknown`; the `strip_ansi()` around the lookup's
   address went with the color code.
 - `M`, `F` and `R cmd not executed` print `mob <vnum> in room <vnum>, limit <n>, chance
@@ -407,7 +410,9 @@ change above:
   lived 70 days, and `core.*` dumps were never removed. The hourly `address_retention` job
   now moves the live logs into `logs/old-logs/<date>/` once they are a day old and removes
   each archived file and core dump 28 days after its last write (Codex, on the round's
-  push: 30 days after the last line kept a day-long file's first lines 31 days); the
+  push: 30 days after the last line kept a day-long file's first lines 31 days). A live set
+  without its marker, as after a copyover onto this code, may hold lines of any age, so it
+  moves at the next run, and the launcher marks each new set (Codex's next review); the
   launcher keeps only
   its archive at each start and the size cap (`eb496c0b0`).
 - Codex, on the round's push: a snooped player who came back from a shapechange was told

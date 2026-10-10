@@ -1027,7 +1027,9 @@ std::vector<std::filesystem::path> list_files(const char *directory)
 
 // ADR 0003: no log line is kept past 30 days. The launcher moves the live logs into
 // logs/old-logs/<date>/ at each start, but a copyover never goes back to it, so this moves
-// them there too once they are a day old (logs/log/.since is made when a live set begins).
+// them there too once they are a day old: logs/log/.since marks when a live set began (the
+// launcher makes it), and a set without one, as after a copyover onto this code, is of
+// unknown age and moves at once.
 // A file then holds at most about 25 hours of lines (this job runs hourly), so every
 // archived file, and every core dump, goes 28 days after its last write, before its first
 // line is 30 days old; an archive left empty goes too. The game appends each log line by
@@ -1038,8 +1040,8 @@ void expire_log_files()
 	std::error_code error;
 	const auto now = fs::file_time_type::clock::now();
 	const fs::path since = "logs/log/.since";
-	bool begin = !fs::exists(since, error);
-	if (!begin && now - fs::last_write_time(since, error) > std::chrono::hours(24))
+	if (!fs::exists(since, error) ||
+	    now - fs::last_write_time(since, error) > std::chrono::hours(24))
 	{
 		char stamp[32];
 		const time_t clock = time(nullptr);
@@ -1053,10 +1055,8 @@ void expire_log_files()
 		for (const fs::path &file : list_files("logs/player-log"))
 			if (file.filename() != ".gitignore")
 				fs::rename(file, archive / "player-log" / file.filename(), error);
-		begin = true;
-	}
-	if (begin)
 		std::ofstream{ since };
+	}
 
 	const auto expired = [&](const fs::path &file)
 	{
