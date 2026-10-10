@@ -740,7 +740,9 @@ analyzer missing or killed; a finding is 123) fails the run. The review after th
 analyzer that runs but exits 2 also gives `xargs` 123, so a failed run that reported no
 finding now fails too, with the end of clang-tidy's stderr (kept in `bin/tidy/stderr.log`).
 And the hook left at its missing-`clang-format` warning, so without a formatter the tidy
-check never ran; it goes on to the tidy check now.
+check never ran; it goes on to the tidy check now. Then: the diff took every file under
+`src/`, and a `clang-tidy-diff` whose file pattern is wider than this machine's would parse
+`src/Makefile` or an `.inc` fragment as C++; the diff now takes only `.c`, `.cpp` and `.h`.
 
 ### 14. Keep a history of test runs
 
