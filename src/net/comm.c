@@ -3315,6 +3315,8 @@ void close_sockets(int s)
 	close(s);
 }
 
+static void forget_hostname(int descriptor);
+
 void close_socket(struct descriptor_data *d)
 {
 	struct descriptor_data *tmp;
@@ -3337,9 +3339,7 @@ void close_socket(struct descriptor_data *d)
 	if (d->descriptor)
 	{
 		close(d->descriptor);
-		char hostname_files[16];
-		snprintf(hostname_files, sizeof(hostname_files), "%d.", d->descriptor);
-		remove_hostname_files(hostname_files);
+		forget_hostname(d->descriptor);
 	}
 	flush_queues(d);
 	--used_descs;
@@ -3613,18 +3613,52 @@ struct hostname_lookup_request
 {
 	char address[INET6_ADDRSTRLEN];
 	int descriptor;
+	bool cancelled; // its descriptor closed during the lookup
+	struct hostname_lookup_request *next;
 };
 
 #define MAX_HOSTNAME_LOOKUP_WORKERS 8
+// The mutex guards the running lookups, their count, and every change to lib/etc/hosts after
+// the boot, so a lookup publishes its file before its descriptor closes or not at all.
 static pthread_mutex_t hostname_lookup_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int hostname_lookup_workers = 0;
+static struct hostname_lookup_request *hostname_lookups = NULL;
+
+// With hostname_lookup_mutex held.
+static void hostname_lookup_done(struct hostname_lookup_request *request)
+{
+	struct hostname_lookup_request **link = &hostname_lookups;
+	while (*link != request)
+		link = &(*link)->next;
+	*link = request->next;
+	hostname_lookup_workers--;
+}
+
+// ADR 0003: a closed descriptor keeps no reverse-DNS name. A lookup still running for it
+// writes nothing, and its files go, a temporary one a copyover cut short included.
+static void forget_hostname(int descriptor)
+{
+	char prefix[16];
+
+	pthread_mutex_lock(&hostname_lookup_mutex);
+	for (struct hostname_lookup_request *request = hostname_lookups; request;
+	     request = request->next)
+		if (request->descriptor == descriptor)
+			request->cancelled = true;
+	snprintf(prefix, sizeof(prefix), "%d.", descriptor);
+	remove_hostname_files(prefix);
+	snprintf(prefix, sizeof(prefix), ".%d.", descriptor);
+	remove_hostname_files(prefix);
+	pthread_mutex_unlock(&hostname_lookup_mutex);
+}
 
 static void *hostname_lookup_worker(void *arg)
 {
 	struct hostname_lookup_request *request = (struct hostname_lookup_request *)arg;
 	struct addrinfo hints, *result = NULL;
 	char hostname[NI_MAXHOST];
-	char temp_path[128], final_path[128];
+	char temp_path[128] = "", final_path[128];
+	bool written = false;
 	FILE *f;
 
 	bzero(&hints, sizeof(hints));
@@ -3647,15 +3681,18 @@ static void *hostname_lookup_worker(void *arg)
 			{
 				int write_ok = fprintf(f, "%s\n", hostname) >= 0;
 				int close_ok = fclose(f) == 0;
-				if (write_ok && close_ok)
-					rename(temp_path, final_path);
+				written = write_ok && close_ok;
 			}
 		}
 		freeaddrinfo(result);
 	}
 
 	pthread_mutex_lock(&hostname_lookup_mutex);
-	hostname_lookup_workers--;
+	if (written && !request->cancelled)
+		rename(temp_path, final_path);
+	else if (*temp_path)
+		unlink(temp_path);
+	hostname_lookup_done(request);
 	pthread_mutex_unlock(&hostname_lookup_mutex);
 	free(request);
 	return NULL;
@@ -3671,31 +3708,32 @@ void resolve_descriptor_hostname_async(const char *address, int descriptor)
 	if (request == NULL)
 		return;
 
-	pthread_mutex_lock(&hostname_lookup_mutex);
-	if (hostname_lookup_workers >= MAX_HOSTNAME_LOOKUP_WORKERS)
-	{
-		pthread_mutex_unlock(&hostname_lookup_mutex);
-		free(request);
-		return;
-	}
-	hostname_lookup_workers++;
-	pthread_mutex_unlock(&hostname_lookup_mutex);
-
 	strncpy(request->address, address, sizeof(request->address) - 1);
 	request->descriptor = descriptor;
 	if (pthread_attr_init(&attr) != 0)
 	{
-		pthread_mutex_lock(&hostname_lookup_mutex);
-		hostname_lookup_workers--;
-		pthread_mutex_unlock(&hostname_lookup_mutex);
 		free(request);
 		return;
 	}
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	pthread_mutex_lock(&hostname_lookup_mutex);
+	if (hostname_lookup_workers >= MAX_HOSTNAME_LOOKUP_WORKERS)
+	{
+		pthread_mutex_unlock(&hostname_lookup_mutex);
+		pthread_attr_destroy(&attr);
+		free(request);
+		return;
+	}
+	hostname_lookup_workers++;
+	request->next = hostname_lookups;
+	hostname_lookups = request;
+	pthread_mutex_unlock(&hostname_lookup_mutex);
+
 	if (pthread_create(&thread, &attr, hostname_lookup_worker, request) != 0)
 	{
 		pthread_mutex_lock(&hostname_lookup_mutex);
-		hostname_lookup_workers--;
+		hostname_lookup_done(request);
 		pthread_mutex_unlock(&hostname_lookup_mutex);
 		free(request);
 	}
