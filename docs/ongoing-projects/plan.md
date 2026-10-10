@@ -36,26 +36,29 @@ built at that branch's head.
 
 | PR | GitHub | Branch | Items | State |
 |---|---|---|---|---|
-| 1 | #15 | `fix/14-privacy` | 9, 8, 3 (ADR 0003's code) | Built |
-| 2 | #16 | `fix/14-log-fixes` | 6, 1, 2, 7, 4, 5 | Built |
-| 3 | #17 | `fix/14-mariadb-11.8` | 17 | Built |
-| 4 | #18 | `fix/14-boot-scan` | 19 | Built |
-| 5 | #19 | `fix/14-tick-spikes` | 18 | Built |
-| 6 | #20 | `fix/14-test-tools` | 10, 14, 16 | Built |
-| 7 | #21 | `fix/14-test-stability` | 11 | Built |
-| 8 | #22 | `fix/14-clang-tidy` | 13 | Built |
-| 9 | #23 | `fix/14-fuzz` | 12 | Built |
-| 10 | #24 | `fix/14-mutation` | 15 | Built |
+| 1 | #15 | `fix/14-privacy` | 9, 8, 3 (ADR 0003's code) | Built, review round 1 done |
+| 2 | #16 | `fix/14-log-fixes` | 6, 1, 2, 7, 4, 5 | Built, review round 1 done |
+| 3 | #17 | `fix/14-mariadb-11.8` | 17 | Built, review round 1 done |
+| 4 | #18 | `fix/14-boot-scan` | 19 | Built, review round 1 done |
+| 5 | #19 | `fix/14-tick-spikes` | 18 | Built, review round 1 done |
+| 6 | #20 | `fix/14-test-tools` | 10, 14, 16 | Built, review round 1 done |
+| 7 | #21 | `fix/14-test-stability` | 11 | Built, review round 1 done |
+| 8 | #22 | `fix/14-clang-tidy` | 13 | Built, review round 1 done |
+| 9 | #23 | `fix/14-fuzz` | 12 | Built, review round 1 done |
+| 10 | #24 | `fix/14-mutation` | 15 | Built, review round 1 done |
 
-**Where it stands** (2026-10-10). Every item is built, and every pull request is open,
-gated (`make test-all` and `make test-db` on its head) and tagged `-review-0`; none has
-landed. After the tags, #20 took one more commit, `df9b957d3` (the harness fix item 16's
-coverage run needed), and #21 to #24 took it by merge. What is left is the owner's:
+**Where it stands** (2026-10-10, after review round 1). Every item is built and every pull
+request is open; none has landed. Each pull request had an adversarial review and Codex's
+review, and Codex reviewed the round's pushes again. The round fixed or answered every
+finding on its own branch, one commit each, and each item's section says how; the branches
+above took every fix by merge, never by rebase. `master`'s `af2ea8e0d` (gcc 15) and
+`46ac05997` (the journeys' build key) came in through #15's `bbb31f9b7`. Each final head is
+gated (`make test-all` and `make test-db` in a throwaway worktree) and tagged: #15 to #17
+`-review-2` (their `-review-1` marks the round's first push), #18 to #24 `-review-1`. What
+is left is the owner's:
 
 - Review and land the pull requests in order. #15 targets `master`; retarget each next one
-  to `master` before deleting the base branch it was stacked on. `master` gained
-  `af2ea8e0d` (gcc 15) and `46ac05997` (the journeys' build key) after the stack branched;
-  #15 takes them by merge at landing.
+  to `master` before deleting the base branch it was stacked on.
 - At the deploy of #16 (the launcher), set staging's hand-written unit to `KillMode=mixed`,
   never before (item 1).
 - After deploying #18 and #19, measure the live service's boot and idle tick as items 19
