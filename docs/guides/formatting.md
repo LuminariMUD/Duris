@@ -115,8 +115,8 @@ fails the check; the hook runs it after formatting and refuses the commit. Fix t
 or, where it is right as it is, add `// NOLINT(check-name): reason`. `--staged` checks
 `src/` as staged, written to `bin/tidy/staged/`, so an unstaged edit does not change the
 result, and the diff it reads ignores the git config's color, prefix and diff-driver
-settings. A changed header's lines are checked through the first source that includes it,
-since many headers do not compile on their own.
+settings. A changed header's lines are checked through the nearest source that includes
+it, directly or through other headers, since many headers do not compile on their own.
 
 The first full run (2026-10-10) found 11,308; most came from the checks now off. Three
 were bugs, each fixed in its own commit with a test: the kick messages one race short

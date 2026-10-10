@@ -811,7 +811,9 @@ check never ran; it goes on to the tidy check now. Then: the diff took every fil
 `src/Makefile` or an `.inc` fragment as C++; the diff now takes only `.c`, `.cpp` and `.h`.
 And `clang-tidy-diff` ran clang-tidy on a changed header by itself, which fails on a header
 that is not self-contained (`account_reward.h`: a comment there was refused); a header's
-changed lines are now checked through the first source that includes it.
+changed lines are now checked through the nearest source that includes it, directly or,
+after Codex's next review (`output_channel.h` is reached only through `structs.h`), through
+other headers.
 
 ### 14. Keep a history of test runs
 

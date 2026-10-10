@@ -109,7 +109,7 @@ status=0
 out=$(cd "$TREE" && "$TIDY_DIFF" -p1 -regex '.*\.(c|cpp)' -path "$DATABASE" \
 	-clang-tidy-binary "$TIDY" -j "$(nproc)" -quiet <"$DATABASE/changed.diff" 2>&1) || status=1
 # A header's: clang-tidy cannot compile a header that is not self-contained, so they are
-# checked through the first source that includes it.
+# checked through the nearest source that includes it, directly or through other headers.
 out+=$(cd "$TREE" && python3 - "$TIDY" "$DATABASE" 2>&1 <<'PYTHON'
 import json, os, re, subprocess, sys
 tidy, database = sys.argv[1:]
@@ -122,18 +122,28 @@ for row in open(os.path.join(database, "changed.diff")):
         if hunk and int(hunk[2] or 1):
             first = int(hunk[1])
             ranges.setdefault(name, []).append([first, first + int(hunk[2] or 1) - 1])
-sources = sorted(os.path.join(directory, file) for directory, _, files in os.walk("src")
-                 for file in files if file.endswith((".c", ".cpp")))
+# Who includes what, from the quoted includes, which name a file from src/ or beside the
+# includer: a header included only through another header is found through it.
+included_by = {}
+for directory, _, files in os.walk("src"):
+    for file in files:
+        if not file.endswith((".c", ".cpp", ".h")):
+            continue
+        including = os.path.join(directory, file)
+        for path in re.findall(r'^[ \t]*#[ \t]*include[ \t]*"([^"]+)"',
+                               open(including, errors="replace").read(), re.M):
+            for candidate in (os.path.join("src", path), os.path.join(directory, path)):
+                if os.path.isfile(candidate):
+                    included_by.setdefault(os.path.normpath(candidate), set()).add(including)
+                    break
 failed = False
 for header, lines in ranges.items():
-    def includes(source):
-        for path in re.findall(r'^[ \t]*#[ \t]*include[ \t]*"([^"]+)"',
-                               open(source, errors="replace").read(), re.M):
-            if os.path.normpath(os.path.join("src", path)) == header or \
-                    os.path.normpath(os.path.join(os.path.dirname(source), path)) == header:
-                return True
-        return False
-    source = next((source for source in sources if includes(source)), None)
+    source, seen, frontier = None, {header}, [header]
+    while frontier and source is None:
+        frontier = sorted({including for file in frontier for including in
+                           included_by.get(file, ()) if including not in seen})
+        seen.update(frontier)
+        source = next((file for file in frontier if not file.endswith(".h")), None)
     if source is None:
         print(f"tidy: no source includes {header}; its changed lines are not checked.")
         continue
