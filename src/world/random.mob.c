@@ -1012,12 +1012,14 @@ P_char create_random_mob(int theme, int mob_level)
 	// give the mob 1-3 random items!
 	if (theme == -1 || 0 == number(0, 1))
 	{
-		o = create_random_eq_new(random_mob, random_mob, -1, -1);
+		o = create_random_eq(random_mob, GET_LEVEL(random_mob), GET_LEVEL(random_mob), -1,
+				     -1);
 		obj_to_char(o, random_mob);
 
 		while (!number(0, 2))
 		{
-			o = create_random_eq_new(random_mob, random_mob, -1, -1);
+			o = create_random_eq(random_mob, GET_LEVEL(random_mob),
+					     GET_LEVEL(random_mob), -1, -1);
 			obj_to_char(o, random_mob);
 		}
 		do_wear(random_mob, writable_arg("all"), 0);

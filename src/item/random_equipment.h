@@ -78,9 +78,9 @@ void random_equipment_kill_drop(P_char killer, P_char victim);
 
 // random_equipment.c: the item generator, salvage materials, encrust stones and the
 // affect helpers other code borrows.
-P_obj create_random_eq_new(P_char killer, P_char mob, int item_type, int material_type);
+P_obj create_random_eq(P_char finder, int finder_level, int source_level, int slot, int material);
 P_obj create_material(int index);
-P_obj create_material(P_char ch, P_char mob);
+P_obj create_material(P_char finder, int finder_level, int source_level);
 P_obj create_stones(void);
 P_obj setsuffix_obj_new(P_obj obj);
 void set_encrust_affect(P_obj obj, int proc);

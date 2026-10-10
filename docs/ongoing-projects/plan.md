@@ -7,25 +7,27 @@ today; that behaviour is what this plan keeps.
 
 ## Current handoff (2026-10-10)
 
-Checked against the checkout, saved build/test logs and GitHub. Phases 1 and 2 are
-committed. Phase 3's module split is implemented locally: the development build, all
-1,480 golden cases and the affected focused tests pass. Both build profiles pass; its full
-gate is still outstanding. Phase 4 is in progress; Phase 5 has not started.
+Phases 1–3 are committed. Phase 4's two defect fixes are committed, and its generator
+refactor is implemented locally: both build profiles, the unchanged 1,480-case golden
+fixture and the focused checks pass. Phase 5 has not started.
 
 - **Checkout:** `/home/aiwithapex/projects/duris-plan`, branch
-  `enhancement/randeq-4-generator`, based on Phase 3 commit `a3bff0079`. Phase 4
-  starts with the independent true-name bounds fix.
+  `enhancement/randeq-4-generator`. Phase 3 is `a3bff0079`; Phase 4's fixes are
+  `316444732` (true-name bounds) and `143fb1d5b` (void encrust return). The generator
+  refactor and its caller/test/documentation updates are uncommitted.
 - **Published:** [PR #25](https://github.com/LuminariMUD/Duris/pull/25) is open against
-  `master` at `3fdd367af`, with the pushed tag `randeq/phase-1-review-0`. Phases 2 and 3
-  have local branches only; neither has a review tag or PR.
-- **Verification:** Phase 1's single full-suite failure passed in an isolated rerun.
-  Phase 2's interrupted gate is being resumed in
-  `/home/aiwithapex/projects/duris-plan-gate-pr2`; database tests are running, with
-  output in `/home/aiwithapex/projects/randeq-gate/pr2-db-resume.log`.
+  `master` at `3fdd367af`, tagged `randeq/phase-1-review-0`. Later phases remain local.
+- **Gates:** Phase 2 is being resumed at `7d2026fea` in
+  `/home/aiwithapex/projects/duris-plan-gate-pr2`. Logs are
+  `/home/aiwithapex/projects/randeq-gate/pr2-all-resume.log` and `pr2-db-resume.log`.
+  Two database journeys exceeded pulse budgets under concurrent load (`world_capture`,
+  262 ms; `game_loop_budget`, 330 ms; limit 250 ms). Rerun them alone after the suites
+  finish before concluding whether a code repair is needed. Phases 3 and 4 still need
+  their full committed-head gates.
 
-Complete Phase 2's gate on its own committed head before tagging/pushing it and opening
-its PR against `enhancement/randeq-1-golden`. Finish Phase 3's committed-head gate before publishing it;
-continue Phase 4 on its own branch. Keep the golden fixture unchanged throughout.
+Finish Phase 4's review/commit and implement Phase 5 on its own branch. Complete every
+phase's local gate before its review tag, push and stacked PR; do not merge the PRs.
+Keep the golden fixture unchanged throughout.
 
 ## Goal
 
@@ -411,10 +413,20 @@ the production `-O2` profile).
 
 ### Phase 4: a readable generator
 
-**In progress.** The true-name bounds fix is committed as `316444732`; the foreign-spell
-assertion and all 1,480 golden cases pass. `set_encrust_affect()` now returns `void`,
-matching its side-effect-only callers; the existing golden cases check every stone effect.
-The generator refactor follows these two independent defect fixes.
+**Implemented, full gate pending.** The independent fixes are `316444732` (true-name
+bounds) and `143fb1d5b` (void encrust return); the foreign-spell assertion and all existing
+encrust cases pass under ASan/UBSan. The generator now has separate slot, material, naming,
+suffix, weight, stat and type steps. The three naming copies are one function, and all
+three switches are tables with the same mapping. Equipment and salvage use explicit
+levels, with every live caller passing the same levels as before.
+
+All 1,480 golden cases match the unchanged fixture. The fixture caught an attempted
+`MAX(0, ... - number(...))` simplification drawing twice; the roll and clamp remain separate.
+The weapon-dice `MIN` expression also deliberately retains its original repeated draw.
+Every module function is at most 80 lines except the untouched, disconnected proc (112).
+Development and production builds passed (`make -C src -j8`, `make build-production -j8`),
+with logs `/tmp/randeq-phase4-dev.log` and `/tmp/randeq-phase4-production.log`. The affected
+contracts and documentation checks pass; full `test-all`/`test-db` gating remains.
 
 Split `create_random_eq_new()` into the steps above, behind `create_random_eq()` with level
 parameters (the old name goes, every caller moves). Then:
@@ -486,7 +498,7 @@ based on the one below, so each pull request's diff is its own phase. The first 
 | 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | [#25](https://github.com/LuminariMUD/Duris/pull/25) | Open for review at `3fdd367af` (`randeq/phase-1-review-0`) |
 | 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | Not opened | Committed locally at `7d2026fea`; gate interrupted, database tests outstanding |
 | 3 | 3, module and interface | `enhancement/randeq-3-module` | Not opened | Committed at `a3bff0079`; both builds and focused checks pass, full gate pending |
-| 4 | 4, readable generator | `enhancement/randeq-4-generator` | Not opened | In progress: defect fixes, then generator refactor |
+| 4 | 4, readable generator | `enhancement/randeq-4-generator` | Not opened | Implemented locally; both builds and golden/focused checks pass, full gate pending |
 | 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | | Not started |
 
 ## Checks per pull request

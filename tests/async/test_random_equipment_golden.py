@@ -377,8 +377,7 @@ static void gen_case(const char *group, int killer_level, int mob_level, int luc
 		killer.npc.R_num = 1;
 	if (kind == NEWBIE)
 		SET_BIT(killer.ch.specials.act2, PLR2_NEWBIE);
-	person mob("goblin warrior", mob_level, 100, false, room);
-	P_obj obj = create_random_eq_new(&killer.ch, &mob.ch, slot, material);
+	P_obj obj = create_random_eq(&killer.ch, killer_level, mob_level, slot, material);
 	put_obj(obj);
 	release(obj);
 	finish_case();
@@ -432,10 +431,9 @@ static void materials_and_stones()
 			person killer("Finder", level, 100, true);
 			if (alchemist)
 				killer.ch.player.m_class = CLASS_ALCHEMIST;
-			person mob("goblin warrior", level, 100, false);
 			for (int i = 0; i < 5; i++)
 			{
-				P_obj obj = create_material(&killer.ch, &mob.ch);
+				P_obj obj = create_material(&killer.ch, level, level);
 				put(" %d", obj ? obj->R_num : 0);
 				release(obj);
 			}

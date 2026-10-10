@@ -16,5 +16,5 @@ for kind in ("equipment", "material"):
 
 # The rolls and the item still use the actual killer's level and luck.
 assert "check_random_drop(killer, victim, TRUE)" in drops
-assert "create_random_eq_new(killer, victim, -1, -1)" in drops
+assert "create_random_eq(killer, GET_LEVEL(killer), GET_LEVEL(victim), -1, -1)" in " ".join(drops.split())
 print("random drop owner message passed")
