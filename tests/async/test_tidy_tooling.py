@@ -80,6 +80,10 @@ with tempfile.TemporaryDirectory() as temporary:
     clean = subprocess.run(["scripts/tidy.sh", "--all", "src/probe.c"], cwd=repo, text=True,
                            capture_output=True)
     assert clean.returncode == 0 and "0 findings" in clean.stdout, clean.stdout + clean.stderr
+    # A header alone gives --all nothing to compile: it says so instead of "0 findings".
+    header_only = subprocess.run(["scripts/tidy.sh", "--all", "src/types.h"], cwd=repo,
+                                 text=True, capture_output=True)
+    assert header_only.returncode == 2 and "no C/C++ source" in header_only.stderr, header_only
     failing = repo / "failing-clang-tidy"
     failing.write_text("#!/bin/sh\necho 'error: cannot run' >&2\nexit 2\n")
     failing.chmod(0o755)

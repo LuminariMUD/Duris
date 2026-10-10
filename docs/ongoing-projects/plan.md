@@ -750,7 +750,8 @@ And `clang-tidy-diff` ran clang-tidy on a changed header by itself, which fails 
 that is not self-contained (`account_reward.h`: a comment there was refused); a header's
 changed lines are now checked through the nearest source that includes it, directly or,
 after Codex's next review (`output_channel.h` is reached only through `structs.h`), through
-other headers.
+other headers. And `--all` given only a header compiled nothing and reported "0 findings";
+it says there is no source in the paths and exits 2.
 
 ### 14. Keep a history of test runs
 
