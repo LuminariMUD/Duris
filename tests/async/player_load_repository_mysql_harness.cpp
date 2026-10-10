@@ -253,6 +253,8 @@ int main()
 		persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
 	player_load_result rejected = player_load_repository_execute(connection, wrong_account);
 	assert(rejected.outcome == player_load_outcome::component_failure);
+	// A refused load names its stage, for the login's log line.
+	assert(rejected.failed_component == std::string("status"));
 
 	player_load_request missing = request;
 	missing.request_id = 80;
@@ -329,7 +331,8 @@ int main()
 	const uint64_t before_rows = session_rows_sent(connection);
 	const auto oversized_trophy = execute_load(connection, request, 814);
 	const uint64_t sent_rows = session_rows_sent(connection) - before_rows;
-	assert(oversized_trophy.outcome == player_load_outcome::limit_exceeded);
+	assert(oversized_trophy.outcome == player_load_outcome::limit_exceeded &&
+	       oversized_trophy.failed_component == std::string("components"));
 	// Count rows sent by the server, not just rows visited by our callback. The
 	// first status query itself contributes one row. mysql_store_result must not
 	// buffer an unbounded result before the application detects the extra entry.
@@ -594,8 +597,9 @@ int main()
 	// More than four distinct static affects is an explicit limit outcome.
 	execute_sql(connection, "INSERT INTO player_item_affects(item_id,location,modifier) VALUES"
 				"(1002,3,1),(1002,4,1),(1002,5,1)");
-	assert(execute_load(connection, request, 84).outcome ==
-	       player_load_outcome::limit_exceeded);
+	const auto too_many_affects = execute_load(connection, request, 84);
+	assert(too_many_affects.outcome == player_load_outcome::limit_exceeded &&
+	       too_many_affects.failed_component == std::string("items"));
 	execute_sql(connection, "DELETE FROM player_item_affects WHERE location>=3");
 
 	// Empty ownership still carries and validates its owner revision.
