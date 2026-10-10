@@ -298,6 +298,20 @@ Tests and docs that name these change with them:
 
 Done when the golden test passes unchanged and `git grep` finds none of the removed names.
 
+**Done (2026-10-10).** 836 lines out. Found on the way and removed with the rest, since each
+existed only for what went:
+
+- two prototypes with no definition, `create_random_eq(int, int, int, int)` and
+  `setsuffix_obj()`;
+- `RANDOM_ZONES` in `defines.h`, read only by `create_randoms()`;
+- the boot's `no_random` switch, which only guarded `create_randoms()`, with its `-l`
+  option (nothing passes it; an unknown option only logs a line), the `-l` row in
+  [ARCHITECTURE.md](../reference/ARCHITECTURE.md) ("disable random encounters", which it
+  never did), and `test_minimal_boot.py`'s `no_random` assertion;
+- the comment in `salchemist.c` pointing at `stone_list` and `stone_spell_list`.
+
+`#define TROPHY` survives in other files, which use it for their own purposes.
+
 ### Phase 3: the module and its interface
 
 - **Files:** `git mv` `randomeq.c` to `random_equipment.c`; move the tables to
@@ -393,7 +407,7 @@ based on the one below, so each pull request's diff is its own phase. The first 
 | PR | Phase | Branch | GitHub | State |
 |---|---|---|---|---|
 | 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | opened | Done; up for review (`randeq/phase-1-review-0`) |
-| 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | | Not started |
+| 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | | Done; gate pending |
 | 3 | 3, module and interface | `enhancement/randeq-3-module` | | Not started |
 | 4 | 4, readable generator | `enhancement/randeq-4-generator` | | Not started |
 | 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | | Not started |

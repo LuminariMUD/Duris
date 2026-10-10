@@ -1194,15 +1194,12 @@ int reset_lab(int type);
 
 /* randomeq.c */
 
-void create_randoms();
 bool check_random_drop(P_char ch, P_char mob, bool piece);
-P_obj create_random_eq(int charlvl, int moblvl, int item_type, int material_type);
 P_obj create_random_eq_new(P_char killer, P_char mob, int item_type, int material_type);
 P_obj setprefix_obj(P_obj obj, float modifier, int affectnumber);
 P_obj create_stones(void);
 P_obj create_material(int index);
 P_obj create_material(P_char ch, P_char mob);
-P_obj setsuffix_obj(P_obj obj, int modifier, int suffix);
 P_obj setsuffix_obj_new(P_obj obj);
 
 P_obj create_sigil(int x);
@@ -2287,7 +2284,6 @@ bool has_quest_complete(int qi);
 /* randobj.c */
 
 void do_randobj(P_char, char *, int);
-P_obj createRandomItem(P_char, P_char, int, int, int);
 
 /* random.c */
 

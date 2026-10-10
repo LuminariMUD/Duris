@@ -8,8 +8,6 @@
  * ***************************************************************************
  */
 
-#define TROPHY
-
 #include "core/prototypes.h"
 #include "item/weapon_actions.h"
 #include "world/difficulty.h"
@@ -38,64 +36,9 @@
  */
 extern Skill skills[];
 extern struct zone_data *zone_table;
-extern const char *material_names[];
-extern P_char character_list;
-extern P_desc descriptor_list;
 extern P_index mob_index;
-extern P_index obj_index;
-extern P_obj object_list;
 extern P_room world;
-extern char debug_mode;
-extern const char *race_types[];
-
-// extern const int material_absorbtion[][];
-extern const struct stat_data stat_factor[];
-extern float fake_sqrt_table[];
-extern int pulse;
-extern int arena_hometown_location[];
-extern struct arena_data arena;
-extern struct agi_app_type agi_app[];
-extern struct dex_app_type dex_app[];
-extern struct message_list fight_messages[];
-extern struct str_app_type str_app[];
-extern struct time_info_data time_info;
-extern struct zone_data *zone_table;
 extern void material_restrictions(P_obj);
-
-int find_map_place();
-void create_zone(int theme, int map_room1, int map_room2, int level_range, int rooms);
-
-struct randomeq_weapon_data
-{
-	char *base_name;
-	int weapon_type;
-	bool one_handed;
-	bool two_handed;
-	bool throwable;
-	bool force_return;
-	bool allowed_materials[MAT_HIGHEST];
-	ulong weight;
-};
-
-struct randomeq_material_weapon_data
-{
-	int material_type;
-	ushort one_handed_min_dice;
-	ushort one_handed_max_dice;
-	ushort one_handed_min_size;
-	ushort one_handed_max_size;
-	ushort two_handed_min_dice;
-	ushort two_handed_max_dice;
-	ushort two_handed_min_size;
-	ushort two_handed_max_size;
-	ulong weight;
-};
-
-struct randomeq_prefix_data
-{
-	int apply_loc;
-	ulong weight;
-};
 
 // m_number is the material number used by game check, constant.c for the
 // correct value! - Kvark
@@ -108,75 +51,6 @@ struct randomeq_prefix
 	float m_ac;
 	float weight_mod;
 };
-
-// Going with the terminator -1 for searches.  Just in case someone f's up the count.
-#define NUM_HIGHDROP_MOBS 39
-const int highdrop_mobs[NUM_HIGHDROP_MOBS + 1] = {
-	19700, //  0 Tiamat
-	25040, //  1 Brass Sultan
-	25700, //  2 Bahamut
-	81454, //  3 Chronomancer
-	35523, //  4 Dark Knight
-	38317, //  5 Lady Death
-	44172, //  6 King Arkan'non
-	26642, //  7 the Dark
-	3524, //  8 Tyrlos
-	45565, //  9 Malevolence
-	36856, // 10 Kyeril
-	25110, // 11 Brass Padashaw
-	21672, // 12 King of Aravne
-	98959, // 13 Bard Faust
-	87741, // 14 snogres pit fiend
-	87700, // 15 snogres berserker
-	87709, // 16 snogres champion
-	87729, // 17 snogres chieftain
-	38737, // 18 Ny'Neth
-	70941, // 19 Kithron
-	88316, // 20 Kossuth
-	87561, // 21 Zuggtmoy
-	87544, // 22 Juiblex
-	87613, // 23 Graz'zt
-	87612, // 24 Lolth
-	32637, // 25 Aramus
-	16205, // 26 Aceralde
-	43576, // 27 Eligoth
-	32420, // 28 Bel
-	58835, // 29 Chenovog
-	71259, // 30 Yeenoghu
-	78439, // 31 Kyzastaxkasis
-	58379, // 32 Obox-ob
-	58383, // 33 Strahd
-	2435, // 34 Llamanby
-	15113, // 35 Dranum
-	91031, // 36 Doru
-	80538, // 37 Skrentherlog
-	8746, // 38 Crymson
-	-1 // 39 == NUM_HIGHDROP_MOBS + 1
-};
-
-const char *stone_list[] = { "",
-			     "&+Ggreen&+L stone&n",
-			     "&+Rred&+L stone&n",
-			     "&+Yyellow&+L stone&n",
-			     "&+Bblue&+L stone&n",
-			     "&+Lblack&+L stone&n",
-			     "&+Mpink&+L stone&n",
-			     "&+Wsharp &+rrubin&n",
-			     "&+Yyellow &+Wand &+bblue&+w cross&n",
-			     "&+rdark bl&+Roo&+rds&+Rto&+rne&n",
-			     " " };
-
-int stone_spell_list[] = { 0,
-			   SPELL_ACID_BLAST,
-			   SPELL_FIREBALL,
-			   SPELL_MAGIC_MISSILE,
-			   SPELL_CHILL_TOUCH,
-			   SPELL_NEGATIVE_CONCUSSION_BLAST,
-			   SPELL_SHOCKING_GRASP,
-			   SPELL_FLAMESTRIKE,
-			   SPELL_BLINDNESS,
-			   SPELL_ENERGY_DRAIN,
-			   0 };
 
 // Number, Name, Stat (material quality), AC - ac mod.
 // Weight mods were pulled from http://www.aqua-calc.com/calculate/volume-to-weight .. using the kilogram.
@@ -491,79 +365,6 @@ const struct randomeq_slots slot_data[MAX_SLOT + 1] = {
 	{ 110, "&+LBUGGED&n", 0.10, 0.10, ITEM_WIELD, 2, WEAPON_DAGGER, 999 }
 };
 
-void create_randoms()
-{
-#ifndef RANDOM_ZONES
-	fprintf(stderr, "Boot random zones -- BEGIN.\n");
-
-	time_before = clock();
-
-	while (x < 5)
-	{
-		fountain = read_object(real_object(70), REAL);
-		if (fountain)
-		{
-			while (!(map_room = find_map_place()))
-			{
-				if (++tries > 12)
-					break;
-			}
-			obj_to_room(fountain, map_room);
-
-			wizlog(56, "Fountain loaded in room %d", map_room);
-		}
-		else
-		{
-			wizlog(56, "Could not load fountain item [70]");
-		}
-
-		x++;
-	}
-
-	fprintf(stderr, " -- Generating random zones\n");
-
-	while (i < 45)
-	{
-		create_zone(number(0, 2), 999, 999, 999, 999);
-		i++;
-	}
-
-	fprintf(stderr, " -- Generating random mobs\n");
-
-	i = 0;
-	while (i < 15)
-	{
-		create_random_mob(-1, 0);
-		i++;
-	}
-
-	fprintf(stderr, " -- Generating random zone from areas/RANDOM_AREA file\n");
-
-	snprintf(fname, 256, "areas/RANDOM_AREA");
-	f = fopen(fname, "r");
-	if (!f)
-	{
-		wizlog(56,
-		       "Missing file areas/RANDOM_AREA unable to load specified random zones...");
-		return;
-	}
-	while (!(feof(f)))
-	{
-		if (fgets(buf2, sizeof(buf2) - 1, f))
-		{
-			if (sscanf(buf2, "%d %d %d %d %d", &theme, &map_room1, &map_room2,
-				   &level_range, &rooms) == 5)
-				create_zone(theme, map_room1, map_room2, level_range, rooms);
-		}
-	}
-	fclose(f);
-
-	time_after = clock();
-	fprintf(stderr, "Boot random zones -- DONE in: %d milliseconds\n",
-		(int)((time_after - time_before) * 1E3 / CLOCKS_PER_SEC));
-#endif
-}
-
 // Salvage materials live at vnums 400000..400209: 42 material families of five
 // quality tiers each, the tiers ascending in item value within a family.
 #define MATERIAL_VNUM_BASE 400000
@@ -611,8 +412,6 @@ bool check_random_drop(P_char ch, P_char mob, bool piece)
 	float char_lvl, mob_lvl, chance, char_mob_lvl_div, luck_divisor;
 	const struct random_equipment_config *config = random_equipment_config_get();
 
-	// int trophy_mod;
-
 	if (!ch || !mob)
 	{
 		return FALSE;
@@ -645,37 +444,6 @@ bool check_random_drop(P_char ch, P_char mob, bool piece)
 	if (IS_PC(ch) && (GET_RACEWAR(ch) == RACEWAR_NEUTRAL) &&
 	    !number(0, config->drop_neutral_roll_max))
 		return TRUE;
-
-	/* Not worth the time to calculate.
-	  for( i = 0; highdrop_mobs[i] != -1; i++ )
-	  {
-	    if( highdrop_mobs[i] == GET_VNUM(mob) )
-	    {
-	      // 20% drop + reg chance.
-	      if( !number(0, 4) )
-	      {
-	        return TRUE;
-	      }
-	      break;
-	    }
-	    i++;
-	  }
-	*/
-
-	/* Modifier for trophy.  Since is no trophy atm, disabled.
-	  trophy_mod = 0;
-	  if (!IS_TRUSTED(ch) && !IS_NPC(ch))
-	  {
-	    for( tr = ch->only.pc->trophy; tr; tr = tr->next )
-	    {
-	      if( tr && GET_VNUM(mob) == tr->vnum )
-	      {
-	        trophy_mod = tr->kills > 0 ? tr->kills / 100 : 0;
-	        break;
-	      }
-	    }
-	  }
-	*/
 
 	// Since extremely low lvl characters can easily get a high multiplier.
 	// Note: 1x = base 50% chance, 2x = base 75% chance, 3x = base 100% chance.
@@ -789,9 +557,6 @@ bool check_random_drop(P_char ch, P_char mob, bool piece)
 		chance *= config->drop_equipment_percentage / 100.0;
 	}
 
-	/* Disabled since no trophy atm.
-	  if (chance >= number(1, 100 + (trophy_mod * 2)))
-	*/
 	// Add .5 for rounding fix to floor-function type-casting.
 	chance *= static_cast<float>(difficulty_multiplier(DIFFICULTY_LOOT_DROPS));
 
@@ -897,7 +662,6 @@ P_obj create_random_eq_new(P_char killer, P_char mob, int object_type, int mater
 	// At level 56 killer, 160 luck, 62 mob: 8 * 5 * 25 * 100 = 100000 -> almost certain
 	chance = 8 * (GET_LEVEL(killer) / 11) * ((GET_C_LUK(killer) - 60) / 4) *
 		 (GET_LEVEL(mob) + 38);
-	// debug( "Chance: %5d, or %.04f%%.", chance, chance / 1000. );
 	//  Set the items name / short / long descriptions!
 	//  For PCs and non-shop-keeper mobs.
 	if ((number(1, 100000) < chance) && (material_type == -1) && ansi_n &&
@@ -997,42 +761,6 @@ P_obj create_random_eq_new(P_char killer, P_char mob, int object_type, int mater
 			}
 		}
 	}
-	/* Commenting this out since we don't want our random eq to be crafted by someone who is just now receiving the item.
-	  else if( !number(0, BOUNDED(1, 150 - GET_CHAR_SKILL(killer, SKILL_CRAFT) - (GET_C_LUK(killer) - 90), 150))
-	    && material_type != -1 )
-	  {
-	    snprintf(o_name, MAX_STRING_LENGTH, "random _noquest_ %s %s %s %s", strip_ansi(prefix_data[prefix].m_name).c_str(),
-	            strip_ansi(material_data[material].m_name).c_str(),
-	            strip_ansi(slot_data[slot].m_name).c_str(), owner );
-	    if (slot_data[slot].m_name[strlen(slot_data[slot].m_name) - 3] == 's')
-	    {
-	      snprintf(o_short, MAX_STRING_LENGTH, "some %s %s %s crafted by &+r%s&n",
-	              prefix_data[prefix].m_name, material_data[material].m_name,
-	              slot_data[slot].m_name, owner);
-	      snprintf(o_long, MAX_STRING_LENGTH,
-	              "Some %s %s %s crafted by &+r%s&n lie here on the ground.",
-	              prefix_data[prefix].m_name, material_data[material].m_name,
-	              slot_data[slot].m_name, owner);
-	    }
-	    else
-	    {
-	      snprintf(o_short, MAX_STRING_LENGTH, "%s %s %s %s crafted by &+r%s&n",
-	              VOWEL(prefix_data[prefix].m_name[3]) ? "an" : "a",
-	              prefix_data[prefix].m_name, material_data[material].m_name,
-	              slot_data[slot].m_name, owner);
-	      snprintf(o_long, MAX_STRING_LENGTH, "%s %s %s %s crafted by &+r%s&n lies here on the ground.",
-	              VOWEL(prefix_data[prefix].m_name[3]) ? "An" : "A",
-	              prefix_data[prefix].m_name, material_data[material].m_name,
-	              slot_data[slot].m_name, owner);
-	    }
-	    obj = setsuffix_obj_new(obj);
-	    while (!number(0, 19))
-	    {
-	      obj = setsuffix_obj_new(obj);
-	    }
-	    should_have_weapon_proc = TRUE;
-	  }
-	*/
 	else
 	{
 		snprintf(o_name, MAX_STRING_LENGTH, "random _noquest_ %s %s %s",
@@ -1115,8 +843,6 @@ P_obj create_random_eq_new(P_char killer, P_char mob, int object_type, int mater
 
 	obj->material = material_data[material].m_number;
 
-	// We don't need this: just sets cost and weight which we do in this function anyway.
-	// convertObj(obj);
 	// Sets anti-class flags based on material type (exemptions via object name)
 	material_restrictions(obj);
 
@@ -1292,30 +1018,6 @@ P_obj create_random_eq_new(P_char killer, P_char mob, int object_type, int mater
 		obj->value[0] = (int)(material_data[material].m_ac * prefix_data[prefix].m_ac *
 				      slot_data[slot].m_ac);
 	}
-
-	/*  if object has 2 identical locations for mod0 and mod1,
-	 *  we refigure a new mod location for mod1 and just pray mod2
-	 *  doesn't come out the same as mod0 and mod1 and makes some
-	 *  ridiculous +7dam belt :) - Jexni 11/01/08
-	 */
-	/* Getting some extremely high and low random values (e.g. +200 damage belts) Nov08 -Lucrot
-	 * I removed the line that was causing the issue (I think), but leaving this commented out anyway.
-	 * The while loop looks buggy too.
-	sbyte quickmod;
-	if(obj->affected[0].location == obj->affected[1].location && obj->affected[0].location != APPLY_NONE)
-	{
-	  obj->affected[0].modifier = (obj->affected[0].modifier + obj->affected[1].modifier) / 2;
-	  obj->affected[1].location = BOUNDED(APPLY_LOWEST, obj->affected[1].location + number(-3, 3), APPLY_LUCK_MAX);
-	  while(BAD_APPLYS(obj->affected[1].location) && (obj->affected[1].location > APPLY_NONE && obj->affected[1].location < APPLY_LUCK_MAX))
-	  {
-	    obj->affected[1].location += number(-2, 2);
-	  }
-	  quickmod = (sbyte) ((int) number(3, 5) * material_data[material].m_stat);
-	  if(obj->affected[1].location > 19 && obj->affected[1].location < 25)
-	    quickmod = -quickmod;
-	  obj->affected[1].modifier = quickmod;
-	}
-	*/
 
 	return obj;
 }
@@ -1682,50 +1384,6 @@ int random_eq_proc(P_obj obj, P_char ch, int cmd, char *argument)
 	return FALSE;
 }
 
-P_obj set_enchant_affect(P_obj obj, int proc)
-{
-	switch (proc)
-	{
-	case SPELL_ACID_BLAST:
-		SET_BIT(obj->bitvector2, AFF2_PROT_GAS);
-		SET_BIT(obj->bitvector2, AFF2_PROT_ACID);
-		obj->value[6] = 1;
-		break;
-	case SPELL_FIREBALL:
-		obj->value[6] = 2;
-		SET_BIT(obj->bitvector, AFF_PROT_FIRE);
-		break;
-	case SPELL_MAGIC_MISSILE:
-		obj->value[6] = 3;
-		SET_BIT(obj->bitvector, AFF_PROTECT_GOOD);
-		break;
-	case SPELL_CHILL_TOUCH:
-		obj->value[6] = 4;
-		SET_BIT(obj->bitvector2, AFF2_PROT_COLD);
-		break;
-	case SPELL_NEGATIVE_CONCUSSION_BLAST:
-		obj->value[6] = 5;
-		SET_BIT(obj->bitvector, AFF_FARSEE);
-		break;
-	case SPELL_SHOCKING_GRASP:
-		obj->value[6] = 6;
-		SET_BIT(obj->bitvector, AFF_FLY);
-		break;
-	case SPELL_FLAMESTRIKE:
-		obj->value[6] = 7;
-		SET_BIT(obj->bitvector, AFF_SENSE_LIFE);
-		break;
-	case SPELL_BLINDNESS:
-		obj->value[6] = 8;
-		SET_BIT(obj->bitvector, AFF_DETECT_INVISIBLE);
-		break;
-	case SPELL_ENERGY_DRAIN:
-		obj->value[6] = 9;
-		SET_BIT(obj->bitvector, AFF2_VAMPIRIC_TOUCH);
-		break;
-	}
-	return obj;
-}
 P_obj set_encrust_affect(P_obj obj, int proc)
 {
 	switch (proc)
@@ -1799,21 +1457,3 @@ bool identify_random(P_obj obj)
 
 	return true;
 }
-
-/*
-int stone_spell_list[] =
-{
-  0,
-  SPELL_ACID_BLAST,
-  SPELL_FIREBALL,
-  SPELL_MAGIC_MISSILE,
-  SPELL_CHILL_TOUCH,
-  SPELL_NEGATIVE_CONCUSSION_BLAST,
-  SPELL_SHOCKING_GRASP,
-  SPELL_FLAMESTRIKE,
-  SPELL_BLINDNESS,
-  SPELL_ENERGY_DRAIN,
-  0
-};
-
-*/

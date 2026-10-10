@@ -400,9 +400,6 @@ pet ownership or summon timers.
   instance, and logs a recovery review with vnum, instance and room. A degraded, unowned
   template is written as an empty extension so it cannot block saving the world. No name
   is invented and no shared prototype string is freed.
-- The 15-map-NPC loop in `create_randoms()` (`src/item/randomeq.c`) is under
-  `#ifndef RANDOM_ZONES`, and `src/core/defines.h` defines `RANDOM_ZONES`, so it does
-  not run and is not a source of boot growth.
 
 ```sh
 python3 tests/async/test_generated_npc_state.py
