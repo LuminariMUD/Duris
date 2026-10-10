@@ -275,7 +275,8 @@ test noise.
 
 All under `logs/`; each boot moves the last run's into `logs/old-logs/<timestamp>/` and keeps
 the whole within the `DURIS_LOG_ARCHIVE_MB` cap. The hourly `address_retention` job also
-moves the live logs there once they are a day old, and removes each archived file and
+moves the live logs there once they are a day old (the launcher marks a new set in
+`logs/log/.since`; a set without the marker moves at the next run), and removes each archived file and
 `core.*` dump 28 days after its last write: a file holds at most about 25 hours of lines,
 so none of them reaches 30 days.
 
