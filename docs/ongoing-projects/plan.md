@@ -903,15 +903,28 @@ build a helper, and take minutes each.
 
 | File | Tests naming it | Before | After |
 |---|---|---|---|
-| `src/player/player_snapshot_codec.c` | 41 | 100% (294 of 294) | (no survivor) |
+| `src/player/player_snapshot_codec.c` | 40 | 86.4% (254 of 294) | 98.3% (289 of 294) |
 | `src/economy/collector_policy.c` | 21 | 88.7% (235 of 265) | 97.0% (258 of 266) |
 | `src/persistence/critical_command.c` | 52 | 73.7% (126 of 171) | 95.3% (163 of 172; one times out) |
 
-- The codec owes its 100% to item 12's replay test, which feeds it 684 save inputs.
+- The codec's first figure, 100%, was the old tool's: it also ran
+  `test_playtime_mysql_repository.py`, a manual-only test that fails without the MySQL
+  journey's database, and ran it last, so it "caught" every mutant the others missed.
+  Re-scored with review round 1's tool, the codec stood at 86.4% (the before above), its 40
+  survivors in the readers and writers. `player_item_snapshot_codec_harness.cpp`, now built
+  with ASan, kills 35 of them (`31e305c8a`, `818ca00f5`): every proper prefix of an item
+  list, a snapshot and a version-3 snapshot is truncated; each limit holds at its value; an
+  over-long string, a boolean of 2, a field past the last and an over-long restore state
+  keep their own codes; versions 1, 3 and 5 decode and 2, 4, 6 and 8 do not; an absent item
+  is not extracted. The other two files, re-scored the same way, give exactly the figures
+  above, with the same survivors.
 - For the other two, the new assertions are in `collector_policy_harness.cpp` and the new
   `test_critical_command_codec.py`, which wraps `getrandom()`. Each commit lists what it
   covers and its before and after scores.
-- No survivor was dead code. The 16 left are equivalent mutants, each explained in its
+- No survivor was dead code. The 21 left are equivalent mutants. The codec's five: a read
+  that fails with more reads behind it ends as truncated either way (lines 678, 681, 690);
+  a status string field past the last is refused as invalid either way (649); and a root
+  named twice is refused by the second extraction (452). The other 16 are each explained in their
   commit: a read one past a terminated string, a return after an exhaustive switch of a
   validated value, a size boundary the limits never reach, a check a later check makes
   redundant, a failed allocation.
