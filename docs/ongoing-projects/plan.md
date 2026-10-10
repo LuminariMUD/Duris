@@ -805,8 +805,9 @@ wrapper and the script:
 The run on `master` (`46ac05997`, without `--db`, 14 minutes on this workstation):
 
 - 688 tests ran under instrumentation. One failed only under coverage:
-  `test_spell_schedule_failure_runtime.py`, whose harness links only because the optimiser
-  drops a call that `--coverage` keeps.
+  `test_spell_schedule_failure_runtime.py`, whose harness linked only because the optimiser
+  dropped a call to `GET_CLASS()`, which it never defined, and `--coverage` kept it. The
+  harness now defines it.
 - 33% of `src/` lines ran (94,731 of 285,816). By directory: `telemetry` 68%, `flatfile` 65%,
   `redis` and `account` 54%, `world` 49%, `item` 48%, `player` 45%, `net` 45%,
   `persistence` 42%; then `economy` 33%, `mob` 28%, `classes` 25%, `combat` 22%, `specs`
