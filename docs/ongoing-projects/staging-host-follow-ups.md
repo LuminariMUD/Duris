@@ -1,7 +1,7 @@
 # Staging host follow-ups, 2026-10-09
 
 Work left for the owner of the shared Plesk host that runs staging. It comes from the
-2026-10-09 log review, whose other open findings are in [plan.md](plan.md) (its own file was
+2026-10-09 log review, whose other findings were fixed in #15 to #24 (its own file was
 deleted then; its last version is at `24e7d3fba`), and from the root session that followed the
 host's upgrade to Ubuntu 26.04.1 (rebooted 12:34 UTC). Root's notes were copied here with
 host-security details left out: IP addresses, which accounts accept passwords, and where
