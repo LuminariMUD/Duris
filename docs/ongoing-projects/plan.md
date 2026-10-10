@@ -660,7 +660,10 @@ unique", so a manifest that dropped `db_outage_30s` or any case but one still pa
 now requires every current profile and fault case by name and allows new ones. And a leg
 converted to `disposable_schema.sh` stopped at its `TEST_DB_HOST` check when run on its
 own, as `CRITICAL_COMMAND_PIPELINE.md` says to run them; such a leg now runs itself again
-under `with_disposable_mariadb.sh`.
+under `with_disposable_mariadb.sh`. The review after that: the quest catalog test's exact
+2,668 became "non-empty", and its later check runs the same parser, so a parser that skipped
+ordinary blocks passed; the test now counts the distinct quest blocks from the area files
+itself and requires one definition each.
 
 ### 12. Fuzz the code that reads outside input
 
@@ -806,6 +809,9 @@ And the hook left at its missing-`clang-format` warning, so without a formatter 
 check never ran; it goes on to the tidy check now. Then: the diff took every file under
 `src/`, and a `clang-tidy-diff` whose file pattern is wider than this machine's would parse
 `src/Makefile` or an `.inc` fragment as C++; the diff now takes only `.c`, `.cpp` and `.h`.
+And `clang-tidy-diff` ran clang-tidy on a changed header by itself, which fails on a header
+that is not self-contained (`account_reward.h`: a comment there was refused); a header's
+changed lines are now checked through the first source that includes it.
 
 ### 14. Keep a history of test runs
 

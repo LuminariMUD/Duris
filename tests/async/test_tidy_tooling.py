@@ -6,7 +6,8 @@ flags the script reads. A staged array whose last two strings lack a comma betwe
 fails --staged; the same file with the comma passes; a finding on a line no one changed
 does not count, and `--all` on a clean file passes. What is staged decides, not the working tree: an unstaged fix does not
 pass a staged finding, and an unstaged finding does not fail a staged fix. The user's git
-config does not change the result, and the flags come from the staged Makefile: color.diff=always let every finding through, and
+config does not change the result, and the flags come from the staged Makefile. A header
+is checked through a source that includes it, so one that does not compile alone is fine: color.diff=always let every finding through, and
 diff.noprefix=true failed every commit. Skipped where clang-tidy or clang-tidy-diff is not
 installed.
 """
@@ -48,6 +49,10 @@ with tempfile.TemporaryDirectory() as temporary:
 
     git("init", "-q")
     source.write_text("int value()\n{\n\treturn 0;\n}\n")
+    # user.h is not self-contained: only a source that includes types.h first compiles it.
+    (repo / "src/types.h").write_text("typedef float amount_t;\n")
+    (repo / "src/user.h").write_text("amount_t users();\n")
+    (repo / "src/include_user.c").write_text('#include "types.h"\n#include "user.h"\n')
     git("add", ".")
     git("commit", "-qm", "base")
 
@@ -104,6 +109,21 @@ with tempfile.TemporaryDirectory() as temporary:
     assert makefile_only.returncode == 0 and "no changed C/C++ lines" in makefile_only.stdout, \
         makefile_only.stdout + makefile_only.stderr
     git("checkout", "HEAD", "--", "src/Makefile")
+
+    # A header's changed lines are checked through a source that includes it: a clean edit
+    # passes though the header does not compile alone, and a finding on its line fails.
+    (repo / "src/user.h").write_text("// who is here\namount_t users();\n")
+    git("add", "src/user.h")
+    header_clean = tidy()
+    assert header_clean.returncode == 0, header_clean.stdout + header_clean.stderr
+    (repo / "src/user.h").write_text(
+        "amount_t users();\n"
+        "inline void spin() { for (amount_t a = 0; a < 1; a += 0.25f) (void)a; }\n")
+    git("add", "src/user.h")
+    header_finding = tidy()
+    assert header_finding.returncode == 1 and "cert-flp30-c" in header_finding.stdout, \
+        header_finding.stdout + header_finding.stderr
+    git("checkout", "HEAD", "--", "src/user.h")
 
     # The glued array committed, then an unrelated line changed: not this change's finding.
     source.write_text("int value()\n{\n\treturn 0;\n}\n" + GLUED)
