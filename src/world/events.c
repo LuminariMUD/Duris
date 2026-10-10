@@ -141,6 +141,9 @@ void event_mana_regen(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 			stop_meditation(ch);
 		}
 	}
+	// Full: the next run would return at once. A loss or affect_update() starts it again.
+	if (GET_MANA(ch) == GET_MAX_MANA(ch) && per_tick > 0)
+		return;
 
 	add_event(event_mana_regen, IS_PC(ch) ? 1 : MOB_MANA_REGEN_DELAY, ch, 0, 0, 0, &state,
 		  sizeof(state));
@@ -168,6 +171,8 @@ void event_ward_regen(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 		state.accumulated -= (float)regen_value_int;
 		gmcp_char_vitals(ch);
 	}
+	if (GET_WARD(ch) == GET_MAX_WARD(ch) && per_tick > 0)
+		return;
 
 	add_event(event_ward_regen, IS_PC(ch) ? 1 : MOB_WARD_REGEN_DELAY, ch, 0, 0, 0, &state,
 		  sizeof(state));
@@ -202,6 +207,10 @@ void event_move_regen(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 		state.accumulated -= (float)regen_value_int;
 		gmcp_char_vitals(ch);
 	}
+	// Full: the next run would only return. Half of every tick's 24,000 regeneration
+	// callbacks on an idle world were those runs.
+	if (GET_VITALITY(ch) == GET_MAX_VITALITY(ch) && per_tick > 0)
+		return;
 
 	add_event(event_move_regen, IS_PC(ch) ? 1 : MOB_MOVE_REGEN_DELAY, ch, 0, 0, 0, &state,
 		  sizeof(state));
@@ -250,6 +259,8 @@ void event_hit_regen(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 	}
 
 	update_pos(ch);
+	if (GET_HIT(ch) == GET_MAX_HIT(ch) && per_tick > 0)
+		return;
 	add_event(event_hit_regen, 1, ch, 0, 0, 0, &state, sizeof(state));
 }
 
@@ -298,6 +309,11 @@ void StartRegen(P_char ch, regen_resource resource)
 	if (per_tick == 0)
 		return;
 
+	// A mob's first run falls at its own point within the delay, so the mobs that
+	// affect_update() starts together do not all run on one pulse. The event counts the
+	// pulses since the start, so the gain is the same.
+	if (IS_NPC(ch) && delay > 1)
+		delay = 1 + ch->only.npc->idnum % delay;
 	struct regen_event_state state;
 	state.accumulated = 0.0f;
 	state.last_tick = ne_event_tick;

@@ -285,7 +285,8 @@ int container_total_weight(P_obj cont)
 
 static unsigned int generic_char_event_phase = 0;
 
-static unsigned int char_sweep_slice(P_char c)
+// A character's slice of `slices`, from its address: stable for its lifetime.
+unsigned int char_slice(P_char c, unsigned int slices)
 {
 	unsigned long long h = (unsigned long long)(uintptr_t)c;
 
@@ -293,7 +294,12 @@ static unsigned int char_sweep_slice(P_char c)
 	h *= 0xff51afd7ed558ccdULL;
 	h ^= h >> 33;
 
-	return (unsigned int)(h % GENERIC_CHAR_EVENT_SLICES);
+	return (unsigned int)(h % slices);
+}
+
+static unsigned int char_sweep_slice(P_char c)
+{
+	return char_slice(c, GENERIC_CHAR_EVENT_SLICES);
 }
 
 void generic_char_event(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)

@@ -2350,16 +2350,15 @@ static void run_pulse_reset_phase(game_loop_pulse_context &ctx)
 	}
 	nevent_advance_tick();
 	const uint64_t affect_and_points_begin_us = loop_monotonic_us();
-	uint64_t affect_us = 0;
+	affect_update(pulse);
+	const uint64_t affect_end_us = loop_monotonic_us();
+	const uint64_t affect_us =
+		latency_trace_elapsed_us(affect_and_points_begin_us, affect_end_us);
 	uint64_t point_us = 0;
 	if (!pulse)
 	{
-		affect_update();
-		const uint64_t affect_end_us = loop_monotonic_us();
 		point_update();
-		const uint64_t point_end_us = loop_monotonic_us();
-		affect_us = latency_trace_elapsed_us(affect_and_points_begin_us, affect_end_us);
-		point_us = latency_trace_elapsed_us(affect_end_us, point_end_us);
+		point_us = latency_trace_elapsed_us(affect_end_us, loop_monotonic_us());
 	}
 	const uint64_t affect_and_points_us =
 		latency_trace_elapsed_us(affect_and_points_begin_us, loop_monotonic_us());

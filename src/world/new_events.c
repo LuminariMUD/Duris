@@ -2065,9 +2065,11 @@ void ne_init_events(void)
 			  &j, sizeof(j));
 	}
 
-	/* miscellaneous character looping */
-	nevent_register_periodic_job("generic-character-sweep", generic_char_event, 20 * WAIT_SEC,
-				     5 * WAIT_SEC, nevent_periodic_policy::fixed_delay, true);
+	/* miscellaneous character looping, five pulses off the tick's 20-pulse grid: every
+	 * 20 pulses from 80 ran it on pulses 0 and 20, which the tick's own work loads */
+	nevent_register_periodic_job("generic-character-sweep", generic_char_event,
+				     20 * WAIT_SEC + 5, 5 * WAIT_SEC,
+				     nevent_periodic_policy::fixed_delay, true);
 
 	// Kingdom upkeep: charge each realm, and walk the arrears ladder when it
 	// cannot pay. Always registered; kingdom_upkeep_event() returns at once

@@ -776,6 +776,27 @@ python3 tests/async/test_root_test_harness.py
 malformed sources and on a hand-written `world.trg`. The duplicate test boots the
 flat-file server on two records for room 22800 and reads the status log.
 
+## The tick's work spread over its pulses
+
+On an idle world the tick was one slow pulse and three busy ones: `affect_update()` walked
+all 56,000 mobs at once (40 to 140 ms on staging), the regeneration events it started all
+ran 10 pulses later, each rescheduled once more after filling its mob only to find it full,
+and `generic_char_event()` ran on the same pulses. A regeneration event that fills its
+character no longer reschedules; `StartRegen()` gives a mob's first event its own point
+within the delay, and the event counts the pulses that passed, so the gain is the same;
+`generic_char_event()` runs five pulses off the 20-pulse grid; and mobs count their affects
+down in 20 slices, one every 15 pulses, while players keep the tick's first pulse.
+
+```sh
+python3 tests/async/test_tick_work_spread.py
+```
+
+The harnesses run the real regeneration events, `StartRegen()` and `affect_update()` over
+a whole tick. A mob whose vitality fills does not reschedule, and loses and regains points
+as before; each affect, a mob's and a player's, counts down once a tick. A mob's buff now
+wears off at its slice's pulse rather than at the tick boundary. No test runs an idle world
+for a time; the plan's item 18 records that measurement.
+
 ## Telemetry writer: schema check, round trip and the gap record
 
 The SQL telemetry writer (off unless `TELEMETRY_ENABLED` is set) proved at startup only
