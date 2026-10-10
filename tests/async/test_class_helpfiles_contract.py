@@ -25,7 +25,8 @@ for line in class_table_match.group(1).split("\n"):
     if m and m.group(1) not in ("None", "NULL"):
         class_names.append(m.group(1))
 
-assert len(class_names) == 30, f"Expected 30 classes, found {len(class_names)}"
+class_count = int(re.search(r"#define CLASS_COUNT (\d+)", DEFINES_H).group(1))
+assert len(class_names) == class_count, f"Expected {class_count} classes, found {len(class_names)}"
 
 # 2. Parse help/duris_help_parsed.hlp
 parsed_entries = PARSED_HELP.split("\n#0\n")

@@ -40,9 +40,6 @@ bool match_pattern(const char *pattern, const char *value)
 	return pattern && value && fnmatch(pattern, value, 0) == 0;
 }
 
-void logit(const char *, const char *, ...) {}
-void sql_log(P_char, const char *, const char *, ...) {}
-
 int main(int argc, char **argv)
 {
 	require(argc == 2, "state root argument required");

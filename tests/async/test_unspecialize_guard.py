@@ -7,6 +7,7 @@ import tempfile
 
 from _paths import ROOT, SRC, extract_function
 from _source_contract import function_body
+from _paths import HARNESS_STUBS
 
 
 source = (SRC / "specializations.c").read_text(encoding="utf-8", errors="replace")
@@ -32,7 +33,6 @@ static int message_count = 0;
 static int submissions = 0;
 
 void send_to_char(const char *, P_char) { ++message_count; }
-void act(const char *, int, P_char, P_obj, void *, int) {}
 void unspecialize_committed(P_char, bool, const epic_command_result &, unsigned int,
                             const uint8_t *, size_t) {}
 bool epic_transaction_submit(P_char, int64_t, epic_reason_type, int64_t, uint16_t,
@@ -86,7 +86,7 @@ with tempfile.TemporaryDirectory(prefix="duris-unspecialize-") as directory:
             "-fsanitize=address,undefined",
             "-I" + str(ROOT / "src"),
             str(harness),
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         check=True,

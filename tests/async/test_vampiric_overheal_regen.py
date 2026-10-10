@@ -7,6 +7,7 @@ import tempfile
 
 from _paths import ROOT, SRC, extract_function
 from _source_contract import function_body
+from _paths import HARNESS_STUBS
 
 
 events_source = (SRC / "events.c").read_text(encoding="utf-8", errors="replace")
@@ -57,10 +58,7 @@ bool affected_by_spell(P_char ch, int type) {
         if (af->type == type) return true;
     return false;
 }
-void send_to_char(const char *, P_char) {}
-void act(const char *, int, P_char, P_obj, void *, int) {}
 float get_property(const char *, double) { return 9.0f; }
-bool has_innate(P_char, int) { return false; }
 int get_innate_regeneration(P_char) { return innate_gain; }
 float get_epic_bonus(P_char, int) { return 0; }
 int difficulty_scale_player_regen(P_char, int gain) { return gain; }
@@ -71,10 +69,7 @@ bool IS_OUTDOORS(int) { return false; }
 #define IS_SUNLIT(r) false
 int char_in_list(const P_char) { return 1; }
 void die(P_char, P_char) { assert(false && "the over-cap test must not enter death"); }
-void update_pos(P_char) {}
 void gmcp_char_vitals(P_char) {}
-void logit(const char *, const char *, ...) {}
-void statuslog(int, const char *, ...) {}
 
 nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int,
                                  const void *data, int data_size) {
@@ -161,7 +156,7 @@ with tempfile.TemporaryDirectory(prefix="duris-vampiric-overheal-") as directory
             "-fsanitize=address,undefined",
             "-I" + str(ROOT / "src"),
             str(harness),
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         check=True,

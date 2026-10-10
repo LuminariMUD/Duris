@@ -56,11 +56,6 @@ bool char_to_room(P_char ch, int room, int)
 	ch->in_room = room;
 	return true;
 }
-void logit(const char *, const char *, ...) {}
-int panic_corruption_int(const char *, const char *, ...)
-{
-	abort();
-}
 // generic_find() only reaches these for flags nexus never passes.
 P_char get_char_room_vis(P_char, const char *)
 {

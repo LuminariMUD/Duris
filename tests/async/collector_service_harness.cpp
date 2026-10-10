@@ -148,11 +148,6 @@ void persistence_alert(int, const char *, const char *, const char *, const char
 	++alerts;
 }
 
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-	abort();
-}
-
 P_char find_player_by_pid(int pid)
 {
 	return player_online && pid == 42 ? &character : nullptr;

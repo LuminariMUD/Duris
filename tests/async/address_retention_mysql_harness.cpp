@@ -16,7 +16,6 @@ extern "C" MYSQL *sql_pool_acquire(void)
 {
 	return connection;
 }
-extern "C" void sql_pool_release(MYSQL *) {}
 // The prune never reaches the frag cap jobs.
 const struct frag_cap_config *frag_cap_config_get(void)
 {

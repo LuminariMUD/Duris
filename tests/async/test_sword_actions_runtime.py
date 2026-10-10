@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -313,7 +314,7 @@ with tempfile.TemporaryDirectory(prefix='duris-swords-') as directory:
         native_boundary.replace('// INSERT_AFFECTS',affects)+HARNESS.replace('// INSERT_CALLBACKS',callbacks))
     subprocess.run(['g++','-std=c++20','-O1','-g','-ffunction-sections','-fdata-sections',
         '-fsanitize=address,undefined','-fno-omit-frame-pointer','-pthread','-I'+str(ROOT/'src'),
-        str(source),str(ROOT/'src/persistence/latency_trace.c'),'-Wl,--gc-sections','-o',str(binary)],check=True)
+        str(source),str(ROOT/'src/persistence/latency_trace.c'),'-Wl,--gc-sections',str(HARNESS_STUBS), '-o',str(binary)],check=True)
     subprocess.run([str(binary)],check=True,env=dict(os.environ,
         ASAN_OPTIONS='detect_leaks=1:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1',
         DURIS_NEVENT_ANALYTICS='0',DURIS_NEVENT_BUDGET_USEC='0',DURIS_NEVENT_MAX_CALLBACKS='0',

@@ -4,6 +4,7 @@ from _paths import rel
 import pathlib
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -27,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-sql-log-") as temporary:
             "tests/async/flatfile_sql_log_runtime_harness.cpp",
             rel("sql.c"),
             "-Wl,--gc-sections",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,

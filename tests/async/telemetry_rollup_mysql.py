@@ -63,7 +63,7 @@ class RollupDatabaseFoundation(unittest.TestCase):
                             ") VALUES (" + ",".join(["%s"] * len(columns)) + ")",
                             tuple(config[column] for column in columns))
             cls.expected_count = len(rows)
-            assert cls.expected_count == 36
+            assert cls.expected_count > 0
 
     @classmethod
     def tearDownClass(cls):

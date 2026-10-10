@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / "docs/examples/scenery-profiles-v1.json"
@@ -34,6 +35,6 @@ def scenery_harness():
             str(ROOT / "tests/async/scenery_animation_harness.cpp"),
             *(str(ROOT / "src" / path) for path in (
                 "net/output_profiles.c", "net/output_style.c", "net/ansi.c", "net/unicode.c")),
-            "-lcjson", "-pthread", "-o", str(binary)
+            "-lcjson", "-pthread", str(HARNESS_STUBS), "-o", str(binary)
         ], check=True, timeout=120)
         yield binary

@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 from _paths import ROOT, extract_function, source
+from _paths import HARNESS_STUBS
 
 ETHERMANCER = source("ethermancer.c").read_text(encoding="utf-8", errors="replace")
 ACTOBJ = source("actobj.c").read_text(encoding="utf-8", errors="replace")
@@ -73,12 +74,7 @@ static int attack_calls = 0;
 static P_char attacked = nullptr;
 static std::string output;
 
-void act(const char *, int, P_char, P_obj, void *, int) {}
 void send_to_char(const char *text, P_char) { output += text ? text : ""; }
-void logit(const char *, const char *, ...) {}
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...) {
-    std::abort();
-}
 
 bool has_wind_blade_wielded(P_char ch) {
     return ch && ch->equipment[PRIMARY_WEAPON] != nullptr;
@@ -223,7 +219,7 @@ subprocess.run(
         "-fsanitize=address,undefined",
         "-I" + str(ROOT / "src"),
         str(harness),
-        "-o",
+        str(HARNESS_STUBS), "-o",
         str(binary),
     ],
     check=True,

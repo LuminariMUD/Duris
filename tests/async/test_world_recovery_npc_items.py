@@ -5,6 +5,7 @@ from _paths import rel
 import subprocess
 import tempfile
 from pathlib import Path
+from _paths import HARNESS_STUBS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,14 +34,7 @@ int top_of_world = 1;
 int top_of_zone_table = 0;
 P_obj object_list = nullptr;
 
-void logit(const char *, const char *, ...)
-{
-}
 
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-    std::abort();
-}
 
 int get_property(const char *, int fallback)
 {
@@ -234,7 +228,7 @@ with tempfile.TemporaryDirectory(prefix="duris-world-npc-items-") as temp_dir:
             "-Isrc",
             str(source),
             rel("world_recovery_npc_items.c"),
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,

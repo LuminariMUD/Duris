@@ -14,6 +14,7 @@ import tempfile
 from pathlib import Path
 
 from _paths import ROOT, source
+from _paths import HARNESS_STUBS
 
 
 DIFFICULTY = source("world/difficulty.c").read_text()
@@ -29,7 +30,7 @@ def _run_harness(body: str, prefix: str) -> None:
         source_path.write_text(body)
         subprocess.run(
             ["g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
-             "-Isrc", str(source_path), "-o", str(binary)],
+             "-Isrc", str(source_path), str(HARNESS_STUBS), "-o", str(binary)],
             cwd=ROOT,
             check=True,
         )
@@ -117,7 +118,7 @@ def test_table_enum_and_properties_agree() -> None:
     keys = _dial_keys()
     enum = HEADER[HEADER.index("enum difficulty_dial"):HEADER.index("DIFFICULTY_DIAL_COUNT")]
     members = re.findall(r"\bDIFFICULTY_[A-Z_]+\b", enum)
-    assert len(keys) == len(members) == 18, (keys, members)
+    assert keys and len(keys) == len(members), (keys, members)
     for key, member in zip(keys, members):
         assert member == "DIFFICULTY_" + key.upper().replace(".", "_"), (key, member)
     section = PROPERTIES[PROPERTIES.index("[difficulty]"):].splitlines()
@@ -306,7 +307,6 @@ int get_property(const char *key, int fallback) {
     const auto found = props.find(key);
     return found == props.end() ? fallback : static_cast<int>(found->second);
 }
-P_char get_linked_char(P_char, ush_int) { return nullptr; }
 int IS_MORPH(P_char) { return 0; }
 static std::vector<std::string> requests;
 static std::string shown;

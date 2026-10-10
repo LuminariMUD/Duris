@@ -13,7 +13,6 @@ volatile sig_atomic_t tics = 0;
 volatile sig_atomic_t signal_shutdown_pending = 0;
 pid_t lookup_ident_process = 0;
 
-void logit(const char *, const char *, ...) {}
 void write_cmdlog(void) {}
 void write_queued_log_lines(void) {}
 void fatal_boot_error(const char *, const char *, ...)

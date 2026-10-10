@@ -26,8 +26,6 @@ const char *persistence_mode_flatfile_root(void)
 	return state_root.c_str();
 }
 
-void logit(const char *, const char *, ...) {}
-
 // No price band is configured here, so loading keeps every modifier as stored.
 float get_property(const char *, double fallback)
 {

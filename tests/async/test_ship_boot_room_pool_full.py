@@ -32,6 +32,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, extract_function, source
+from _paths import HARNESS_STUBS
 
 # The stored-ship rows and the boot load, from their struct to sql_load_all_ships().
 SQL_PLAYER = source("sql_player.c").read_text(encoding="utf-8")
@@ -116,10 +117,7 @@ int ship_room_proc(int, P_char, int, char *) { return 0; }
 
 void *__malloc(size_t size, const char *, const char *, int) { return calloc(1, size); }
 void __free(void *p, const char *, int) { free(p); }
-int panic_corruption_int(const char *, const char *, ...) { abort(); }
-void panic_corruption(const char *, const char *, ...) { abort(); }
 void fatal_boot_error(const char *, const char *, ...) { abort(); }
-void logit(const char *, const char *, ...) {}
 static std::vector<std::string> unplaced_ship_owners;
 int BOUNDED(int low, int value, int high) { return value < low ? low : value > high ? high : value; }
 
@@ -370,7 +368,7 @@ with tempfile.TemporaryDirectory(prefix="duris-ship-pool-") as directory:
     subprocess.run(
         ["g++", "-std=c++20", "-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
          "-Isrc", "-Itests/async", "-I/usr/include/mysql",
-         str(path / "test.cpp"), "-o", str(path / "test")],
+         str(path / "test.cpp"), str(HARNESS_STUBS), "-o", str(path / "test")],
         cwd=ROOT, check=True)
     subprocess.run([str(path / "test")], check=True,
                    env={**os.environ, "ASAN_OPTIONS": "detect_leaks=0"})

@@ -8,16 +8,6 @@
 #include <string>
 #include <thread>
 
-extern "C" MYSQL *sql_pool_acquire(void)
-{
-	return nullptr;
-}
-extern "C" MYSQL *sql_pool_replace_connection(MYSQL *)
-{
-	return nullptr;
-}
-extern "C" void sql_pool_release(MYSQL *) {}
-
 static unsigned long long scalar(MYSQL *connection, const std::string &sql)
 {
 	assert(mysql_real_query(connection, sql.data(), sql.size()) == 0);

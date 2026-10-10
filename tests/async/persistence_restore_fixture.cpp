@@ -9,7 +9,6 @@
 #include "item/locker_receipt.h"
 
 // Native fixture output must not expose repository log details.
-void logit(const char *, const char *, ...) {}
 
 static std::vector<uint8_t> fixture_bytes(const char *text)
 {

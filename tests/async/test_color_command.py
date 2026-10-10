@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT
+from _paths import HARNESS_STUBS
 
 build = ROOT / "bin/tests"
 build.mkdir(parents=True, exist_ok=True)
@@ -18,6 +19,6 @@ with tempfile.TemporaryDirectory(prefix="color-command-", dir=build) as director
         str(ROOT / "tests/async/color_command_harness.cpp"),
         *(str(ROOT / "src" / path) for path in ("cmd/color_command.c",
             "net/output_profiles.c", "net/output_style.c", "net/ansi.c", "net/unicode.c")),
-        "-lcjson", "-pthread", "-o", str(binary)
+        "-lcjson", "-pthread", str(HARNESS_STUBS), "-o", str(binary)
     ], check=True, timeout=120)
     subprocess.run([str(binary)], check=True, timeout=120)

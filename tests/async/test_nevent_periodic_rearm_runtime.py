@@ -6,6 +6,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+from _paths import HARNESS_STUBS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -62,9 +63,6 @@ nevent_cancel_result nevent_cancel(nevent_handle handle)
 	return nevent_cancel_result::canceled;
 }
 
-void logit(const char *, const char *, ...)
-{
-}
 
 void panic_corruption(const char *, const char *, ...)
 {
@@ -323,7 +321,7 @@ with tempfile.TemporaryDirectory(prefix="duris-nevent-periodic-") as directory:
             f"-I{SRC}",
             str(harness),
             str(SRC / "nevent_periodic.c"),
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         check=True,
@@ -442,7 +440,7 @@ with tempfile.TemporaryDirectory(prefix="duris-object-event-rearm-") as director
             "-fno-omit-frame-pointer",
             f"-I{SRC}",
             str(harness),
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         check=True,

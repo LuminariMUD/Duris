@@ -3,6 +3,7 @@
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
@@ -47,7 +48,7 @@ with tempfile.TemporaryDirectory(prefix="duris-password-async-") as tmp:
         str(harness),
         str(SRC / "account/password_hash.c"), str(SRC / "account/password_async.c"),
         str(SRC / "core/memory.c"), str(SRC / "net/command_latency.c"), "-lcrypt", "-lcrypto", "-pthread",
-        "-o", str(binary),
+        str(HARNESS_STUBS), "-o", str(binary),
     ], check=True)
     allocator = subprocess.run([str(binary), "--free-null"], capture_output=True, text=True)
     assert allocator.returncode == 1, allocator.stderr

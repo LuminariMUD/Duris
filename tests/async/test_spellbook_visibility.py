@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, SRC, extract_function
+from _paths import HARNESS_STUBS
 
 production = "\n".join(extract_function("memorize.c", signature) for signature in (
     "int SpellInThisSpellBook_p(",
@@ -27,7 +28,7 @@ with tempfile.TemporaryDirectory(dir=build) as td:
     subprocess.run([
         "g++", "-std=c++20", "-g", "-fsanitize=address,undefined",
         "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
-        "-I" + str(SRC), str(source), "-o", str(binary),
+        "-I" + str(SRC), str(source), str(HARNESS_STUBS), "-o", str(binary),
     ], check=True)
     subprocess.run([str(binary)], check=True, env={
         **os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",

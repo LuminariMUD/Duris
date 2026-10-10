@@ -80,6 +80,26 @@ collector_item_owner tests/async/run_collector_item_owner_schema_mysql.sh
 output_preferences tests/async/run_output_preferences_mysql.sh
 personal_data_export tests/async/run_personal_data_export_schema_mysql.sh
 lifecycle_archive tests/async/run_lifecycle_archive_schema_mysql.sh
+telemetry_reports_mariadb python3 tests/async/run_telemetry_reports_mysql.py --image mariadb:10.11
+telemetry_reports_mysql python3 tests/async/run_telemetry_reports_mysql.py --image mysql:8.0
+critical_command_schema tests/async/run_critical_command_schema_mysql.sh
+combat_baseline_repair tests/async/run_combat_baseline_repair_mysql.sh
+collector_notification tests/async/run_collector_notification_mysql.sh
+boon_reward_zone $DB tests/async/run_boon_reward_zone_schema_mysql.sh
+combat_outcome $DB tests/async/run_combat_outcome_schema_mysql.sh
+account_bank_delta tests/async/run_account_bank_delta_mysql.sh
+account_locker_conversion_check tests/async/run_account_locker_conversion_check_mysql.sh
+legacy_personal_locker_access_repair tests/async/run_legacy_personal_locker_access_repair_mysql.sh
+player_replacement_state tests/async/run_player_replacement_state_mysql.sh
+epic_transaction $DB tests/async/run_epic_transaction_schema_mysql.sh
+auction_transaction $DB tests/async/run_auction_transaction_schema_mysql.sh
+artifact_guild $DB tests/async/run_artifact_guild_schema_mysql.sh
+session_audit $DB tests/async/run_session_audit_schema_mysql.sh
+artifact_mana tests/async/run_artifact_mana_mysql.sh
+player_load_repository $DB tests/async/run_player_load_repository_mysql.sh
+character_rename_references $DB tests/async/run_character_rename_references_mysql.sh
+account_character_identity $DB tests/async/run_account_character_identity_mysql.sh
+account_character_projection $DB tests/async/run_account_character_projection_mysql.sh
 EOF
 status=$?
 

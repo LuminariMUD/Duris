@@ -5,6 +5,7 @@ from pathlib import Path
 import argparse
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -44,7 +45,7 @@ def main(*, sanitize: bool = False) -> None:
                 )
             ],
             "-lcrypto",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             executable,
         ]
         if sanitize:

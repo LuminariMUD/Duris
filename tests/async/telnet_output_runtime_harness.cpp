@@ -15,11 +15,6 @@ extern "C"
 {
 	long sentbytes = 0;
 }
-void logit(const char *, const char *, ...) {}
-void panic_corruption(const char *, const char *, ...)
-{
-	abort();
-}
 char *json_escape_ansi_string(const char *)
 {
 	abort();

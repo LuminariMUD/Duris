@@ -196,11 +196,6 @@ bool shop_trade_runtime_advance(uint32_t shop_id, uint64_t expected_revision, ui
 	return shop_revision_published;
 }
 
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-	abort();
-}
-
 int main()
 {
 	character.only.pc = &pc;

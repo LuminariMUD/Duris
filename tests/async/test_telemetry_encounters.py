@@ -90,6 +90,7 @@ def report_contract() -> None:
     sys.path.insert(0, str(ROOT / "scripts" / "telemetry"))
     from encounter_definitions import (  # noqa: E402
         ATTEMPT_DENOMINATOR_OUTCOMES,
+        ENCOUNTER_OUTCOMES,
         ENCOUNTER_REPORT_DEFINITION,
         denominator_bucket,
     )
@@ -98,7 +99,7 @@ def report_contract() -> None:
     assert "run_elapsed_usec" in ENCOUNTER_REPORT_DEFINITION["metrics"]
     assert "participant_usec" in ENCOUNTER_REPORT_DEFINITION["metrics"]
     assert "expected_credit_count" in ENCOUNTER_REPORT_DEFINITION["metrics"]
-    assert len(ATTEMPT_DENOMINATOR_OUTCOMES) == 10
+    assert ATTEMPT_DENOMINATOR_OUTCOMES == set(ENCOUNTER_OUTCOMES) - {"unknown"}
     assert denominator_bucket(1) == "successful"
     assert denominator_bucket(5) == "attempted_non_success"
     assert denominator_bucket(None) == "unclosed_tail"

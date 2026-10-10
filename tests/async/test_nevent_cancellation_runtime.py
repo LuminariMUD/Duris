@@ -6,6 +6,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+from _paths import HARNESS_STUBS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -47,23 +48,9 @@ static int typed_payload_destroys = 0;
 static int link_removals = 0;
 P_index mob_index = nullptr;
 
-void debug(const char *, ...)
-{
-}
 
-void logit(const char *, const char *, ...)
-{
-}
 
-void panic_corruption(const char *, const char *, ...)
-{
-	std::abort();
-}
 
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-	std::abort();
-}
 
 void __free(void *memory, const char *, int)
 {
@@ -401,7 +388,7 @@ with tempfile.TemporaryDirectory(prefix="duris-nevent-cancel-") as directory:
             f"-I{SRC}",
             str(harness),
             "-Wl,--gc-sections",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         check=True,

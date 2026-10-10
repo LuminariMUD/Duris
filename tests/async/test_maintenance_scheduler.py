@@ -7,6 +7,7 @@ import tempfile
 import shlex
 import struct
 from pathlib import Path
+from _paths import HARNESS_STUBS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -31,7 +32,6 @@ HARNESS = r'''
 #include <thread>
 #include <vector>
 
-void logit(const char *, const char *, ...) {}
 
 struct state_type
 {
@@ -262,7 +262,7 @@ with tempfile.TemporaryDirectory(prefix="duris-maintenance-scheduler-") as temp_
     subprocess.run(
         ["g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
          "-pthread", "-Isrc", *mysql_cflags, str(source), rel("maintenance_scheduler.c"),
-         rel("persistence_observability.c"), *mysql_libs, "-o", str(binary)],
+         rel("persistence_observability.c"), *mysql_libs, str(HARNESS_STUBS), "-o", str(binary)],
         cwd=ROOT, check=True,
     )
     state_file = Path(temp_dir) / "scheduler.state"

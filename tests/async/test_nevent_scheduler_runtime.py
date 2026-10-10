@@ -6,6 +6,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+from _paths import HARNESS_STUBS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -113,9 +114,6 @@ extern "C" int nevent_test_clock_gettime(clockid_t, struct timespec *value) noex
 	return 0;
 }
 
-void debug(const char *, ...)
-{
-}
 
 void logit(const char *, const char *format, ...)
 {
@@ -137,19 +135,12 @@ void logit(const char *, const char *format, ...)
 	}
 }
 
-void statuslog(int, const char *, ...)
-{
-}
 
 void panic_corruption(const char *, const char *, ...)
 {
 	throw panic_signal{};
 }
 
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-	std::abort();
-}
 
 void *__malloc(size_t size, const char *, const char *, int)
 {
@@ -188,10 +179,6 @@ char_link_data *link_char(P_char owner, P_char victim, ush_int type)
 	return link;
 }
 
-P_char get_linked_char(P_char, ush_int)
-{
-	return nullptr;
-}
 
 void remove_link(P_char owner, char_link_data *target)
 {
@@ -1375,7 +1362,7 @@ with tempfile.TemporaryDirectory(prefix="duris-nevent-scheduler-") as directory:
             str(harness),
             str(SRC / "persistence" / "latency_trace.c"),
             "-Wl,--gc-sections",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         check=True,

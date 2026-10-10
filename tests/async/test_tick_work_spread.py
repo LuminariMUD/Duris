@@ -21,6 +21,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, extract_function, source
+from _paths import HARNESS_STUBS
 
 events = source("events.c").read_text()
 delays = "\n".join(line for line in events.splitlines()
@@ -58,15 +59,10 @@ int move_regen(P_char, bool) { return rate; }
 int hit_regen(P_char, bool) { return rate; }
 int mana_regen(P_char, bool) { return rate; }
 int ward_regen(P_char, bool) { return rate; }
-bool affected_by_spell(P_char, int) { return false; }
-void send_to_char(const char *, P_char) {}
 void stop_meditation(P_char) {}
 int char_in_list(const P_char) { return 1; }
 void die(P_char, P_char) { assert(false); }
-void update_pos(P_char) {}
 void gmcp_char_vitals(P_char) {}
-void logit(const char *, const char *, ...) {}
-void statuslog(int, const char *, ...) {}
 P_nevent get_scheduled(P_char, event_func func)
 {
     for (const auto &entry : queue)
@@ -194,8 +190,6 @@ void remove_disguise(P_char, bool) {}
 int number(int, int) { return 0; }
 void wear_off_message(P_char, struct affected_type *) {}
 P_char un_morph(P_char ch) { return ch; }
-void act(const char *, int, P_char, P_obj, void *, int) {}
-void send_to_char(const char *, P_char) {}
 bool char_falling(P_char) { return false; }
 falling_start_result falling_start(P_char) { return {}; }
 struct time_info_data age(P_char) { return {}; }
@@ -277,5 +271,5 @@ with tempfile.TemporaryDirectory(prefix="tick-spread-", dir=ROOT / "bin/tests") 
         test.write_text(text)
         subprocess.run(["g++", "-std=c++20", "-g", "-Wall", "-Wextra", "-Werror",
                         "-Wno-unused-function", "-fsanitize=address,undefined",
-                        "-I", str(ROOT / "src"), str(test), "-o", str(binary)], check=True)
+                        "-I", str(ROOT / "src"), str(test), str(HARNESS_STUBS), "-o", str(binary)], check=True)
         subprocess.run([str(binary)], check=True)

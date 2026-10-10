@@ -10,6 +10,7 @@ outside the locker's door.
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 HARNESS = r'''
@@ -31,11 +32,6 @@ int top_of_objt = 0;
 int top_of_mobt = 0;
 extern const int top_of_world = 2;
 Skill skills[MAX_SKILLS] = {};
-bool has_innate(P_char, int) { return false; }
-void logit(const char *, const char *, ...) {}
-bool persistence_trace_enabled() { return false; }
-int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
-P_char get_linked_char(P_char, ush_int) { return nullptr; }
 
 int main() {
     rooms[1].number = 3001;  // outside the locker
@@ -77,6 +73,6 @@ with tempfile.TemporaryDirectory(prefix="duris-locker-save-room-") as temporary:
         "src/player/player_snapshot_codec.c", "src/player/pet_restore_state.c",
         "src/player/pet_restore_runtime.c", "src/item/item_ownership_runtime.c",
         "src/item/item_transfer_command.c", "src/persistence/critical_command.c",
-        "-Wl,--gc-sections", "-lcrypto", "-o", str(binary),
+        "-Wl,--gc-sections", "-lcrypto", str(HARNESS_STUBS), "-o", str(binary),
     ], cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True)

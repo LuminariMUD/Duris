@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 from _paths import ROOT, extract_function, source
+from _paths import HARNESS_STUBS
 
 PRELUDE = r'''
 #include "core/prototypes.h"
@@ -25,7 +26,6 @@ static std::string output;
 void send_to_char(const char *text, P_char) {
     output += text ? text : "";
 }
-void act(const char *, int, P_char, P_obj, void *, int) {}
 bool NewSaves(P_char, int, int) { return false; }
 bool affected_by_spell(P_char ch, int type) {
     for (auto *af = ch->affected; af; af = af->next)
@@ -152,6 +152,6 @@ binary = out_dir / "harness"
 subprocess.run([
     "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
     "-fsanitize=address,undefined", "-I" + str(ROOT / "src"),
-    str(harness), "-o", str(binary),
+    str(harness), str(HARNESS_STUBS), "-o", str(binary),
 ], check=True)
 subprocess.run([str(binary)], check=True)

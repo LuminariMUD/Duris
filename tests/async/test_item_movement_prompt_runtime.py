@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT, SRC, extract_function
+from _paths import HARNESS_STUBS
 
 
 PRELUDE = r'''
@@ -60,7 +61,6 @@ void obj_to_obj(P_obj, P_obj) {}
 void obj_to_room(P_obj, int) {}
 void mark_player_dirty_components(int, player_component_mask_t) {}
 P_char find_player_by_pid(int pid) { return character_list && GET_PID(character_list) == pid ? character_list : nullptr; }
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...) { abort(); }
 critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
     submitted = std::move(command);
@@ -82,9 +82,6 @@ static std::string ambient_bytes;
 static int ga_count;
 P_index mob_index = nullptr;
 long sentbytes = 0;
-void logit(const char *, const char *, ...) {}
-bool persistence_trace_enabled() { return false; }
-void statuslog(int, const char *, ...) {}
 void persistence_alert(int, const char *, const char *, const char *, const char *, const char *,
                        const char *, ...) {}
 bool player_load_item_graph_materialize_creation(const item_transfer_payload &,
@@ -93,14 +90,12 @@ bool player_load_item_graph_materialize_creation(const item_transfer_payload &,
 {
     return false;
 }
-void debug(const char *, ...) {}
 int IS_MORPH(P_char) { return false; }
 bool ac_can_see(P_char, P_char, bool) { return true; }
 char *PERS(P_char, P_char, int, bool) { static char name[] = "someone"; return name; }
 char *FirstWord(char *s) { return s; }
 affected_type *get_ward_from_char(P_char) { return nullptr; }
 void delete_doubledollar(char *) {}
-void panic_corruption(const char *, const char *, ...) { abort(); }
 void __free(void *p, const char *, int) { free(p); }
 void format_to_snoopers(const char *in, char *out) { strcpy(out, in); }
 void append_prompt(P_char, char *) {}
@@ -332,7 +327,7 @@ def main():
                             'item_movement_transaction.c', 'item_ownership_runtime.c',
                             'item_transfer_command.c', 'critical_command.c',
                             'player_snapshot_capture.c', 'player_snapshot_codec.c']],
-                        '-Wl,--gc-sections', '-Wl,--wrap=write', '-lz', '-lcrypto', '-lcjson', '-o', str(binary)],
+                        '-Wl,--gc-sections', '-Wl,--wrap=write', '-lz', '-lcrypto', '-lcjson', str(HARNESS_STUBS), '-o', str(binary)],
                        cwd=ROOT, check=True, timeout=600)
         subprocess.run([str(binary)], check=True, timeout=30)
 

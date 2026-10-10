@@ -26,6 +26,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, extract_function, source
+from _paths import HARNESS_STUBS
 
 SHOP = source("ship_shop.c").read_text(encoding="utf-8")
 CONTEXT = SHOP[SHOP.index("struct ship_hull_purchase_context\n{") :]
@@ -102,7 +103,6 @@ void affect_from_char(P_char, int) {}
 char *str_dup(const char *text) { return strdup(text); }
 void send_to_char(const char *text, P_char) { told += text; }
 void send_to_char_f(P_char, const char *, ...) {}
-int panic_corruption_int(const char *, const char *, ...) { abort(); }
 
 ''' + FUNCTIONS + r'''
 
@@ -191,6 +191,6 @@ with tempfile.TemporaryDirectory(prefix="duris-ship-purchase-") as directory:
     subprocess.run(
         ["g++", "-std=c++20", "-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
          "-Isrc", "-Itests/async", "-I/usr/include/mysql",
-         str(path / "test.cpp"), "-o", str(path / "test")],
+         str(path / "test.cpp"), str(HARNESS_STUBS), "-o", str(path / "test")],
         cwd=ROOT, check=True)
     subprocess.run([str(path / "test")], check=True, env={"ASAN_OPTIONS": "detect_leaks=0"})

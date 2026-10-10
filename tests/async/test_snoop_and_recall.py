@@ -20,6 +20,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, extract_function, source
+from _paths import HARNESS_STUBS
 
 actwiz = source("actwiz.c").read_text()
 snoop = actwiz[actwiz.index("// The body d's snoop is registered under"):
@@ -50,12 +51,9 @@ static std::vector<P_char> everyone;
 
 void *__malloc(size_t size, const char *, const char *, int) { return calloc(1, size); }
 void __free(void *pointer, const char *, int) { free(pointer); }
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...) { abort(); }
-void logit(const char *, const char *, ...) {}
 void send_to_char(const char *text, P_char ch) { screen[ch] += text; }
 void send_to_char(const char *text, P_char ch, int) { screen[ch] += text; }
 string strip_ansi(const char *text) { return text; }
-bool isname(const char *, const char *) { return false; }
 bool is_linked_to(P_char, P_char, ush_int) { return false; }
 int checked_snprintf_at(const char *, int, char *destination, size_t size, const char *format, ...)
 {
@@ -280,6 +278,6 @@ with tempfile.TemporaryDirectory(prefix="snoop-recall-", dir=ROOT / "bin/tests")
     test, binary = Path(tmp) / "test.cpp", Path(tmp) / "test"
     test.write_text(HARNESS)
     subprocess.run(["g++", "-std=c++20", "-g", "-Wall", "-Wextra", "-Werror",
-                    "-fsanitize=address,undefined", "-I", str(ROOT / "src"), str(test), "-o",
+                    "-fsanitize=address,undefined", "-I", str(ROOT / "src"), str(test), str(HARNESS_STUBS), "-o",
                     str(binary)], check=True)
     subprocess.run([str(binary)], check=True)

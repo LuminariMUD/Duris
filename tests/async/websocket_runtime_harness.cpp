@@ -19,13 +19,11 @@ extern "C"
 	}
 }
 
-void statuslog(int, const char *, ...) {}
 void close_socket(descriptor_data *) {}
 bool persistence_mode_requires_mysql(void)
 {
 	return false;
 }
-void logit(const char *, const char *, ...) {}
 void banlog(int, const char *, ...) {}
 int bannedsite(char *, int)
 {

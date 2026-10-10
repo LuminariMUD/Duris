@@ -15,7 +15,6 @@ extern "C" MYSQL *sql_pool_acquire(void)
 {
 	return database_connection;
 }
-extern "C" void sql_pool_release(MYSQL *) {}
 extern "C" MYSQL *sql_pool_replace_connection(MYSQL *)
 {
 	return database_connection;

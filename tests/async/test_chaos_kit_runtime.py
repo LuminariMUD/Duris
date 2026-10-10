@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT, SRC, extract_function
+from _paths import HARNESS_STUBS
 
 NANNY = (SRC / "nanny.c").read_text()
 BUILDER = NANNY[NANNY.index("struct chaos_kit_objects"):NANNY.index("static bool chaos_kit_skill_available")]
@@ -36,7 +37,6 @@ static bool slot_available = true, usable = true, nesting = true, object_availab
 static int extracts = 0, keywords = 0, book_additions = 0;
 int equipment_pos_table[CUR_MAX_WEAR][3]{};
 int flag2idx(int flags) { int i = 0; while (flags) { ++i; flags >>= 1; } return i; }
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...) { abort(); }
 int GET_CLASS(P_char actor, uint cls) { return actor->player.m_class & cls; }
 int GET_LVL_FOR_SKILL(P_char, int) { return required_level; }
 int get_spell_circle(P_char, int spell) { return spell == FIRST_SPELL ? 1 : 2; }
@@ -49,7 +49,6 @@ P_obj read_object(int vnum, int) { indexes[0].virtual_number = vnum; return obje
 void extract_obj(P_obj, int) { ++extracts; }
 bool obj_can_nest(P_obj, P_obj) { return nesting; }
 void obj_to_obj(P_obj object, P_obj bag) { object->loc_p = LOC_INSIDE; object->loc.inside = bag; bag->contains = object; }
-void logit(const char *, const char *, ...) {}
 static P_char restore_target = nullptr;
 static bool chaos_enabled = true, restore_busy = false, restore_queued = false, restore_refused = false;
 static int restore_calls = 0;
@@ -365,7 +364,7 @@ def main():
         source.write_text(harness)
         subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
                         "-fsanitize=address,undefined", "-Isrc", "-D__NO_MYSQL__", "-Isrc/no_mysql",
-                        str(source), "-o", str(binary)],
+                        str(source), str(HARNESS_STUBS), "-o", str(binary)],
                        cwd=ROOT, check=True)
         subprocess.run([str(binary)], check=True)
 

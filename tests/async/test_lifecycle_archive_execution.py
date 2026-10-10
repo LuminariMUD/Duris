@@ -144,7 +144,9 @@ class LifecycleArchiveExecutionTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         report = json.loads(result.stdout)
-        self.assertEqual(report["stores"], 221)
+        manifest = json.loads(
+            (ROOT / "migrations/data_lifecycle_manifest.json").read_text())
+        self.assertEqual(report["stores"], len(manifest["entries"]))
         self.assertEqual(report["approved_destructive_rules"], 0)
         self.assertFalse(report["destructive_rules_enabled"])
         self.assertEqual(report["scheduler_state"], "blocked_by_policy")

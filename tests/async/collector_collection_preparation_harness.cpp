@@ -117,11 +117,6 @@ bool isname(const char *needle, const char *haystack)
 	return needle && haystack && strstr(haystack, needle);
 }
 
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-	abort();
-}
-
 bool item_owner_identity_equal(const item_owner_identity &left, const item_owner_identity &right)
 {
 	return left.type == right.type && left.id == right.id &&

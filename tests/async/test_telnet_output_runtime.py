@@ -3,6 +3,7 @@
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 BUILD = ROOT / "bin/tests"
@@ -14,6 +15,6 @@ with tempfile.TemporaryDirectory(prefix="telnet-output-", dir=BUILD) as director
         "-ffunction-sections", "-fdata-sections", f"-I{ROOT / 'src'}",
         f"-I{ROOT / 'src/no_mysql'}", str(ROOT / "tests/async/telnet_output_runtime_harness.cpp"),
         str(ROOT / "src/net/mccp.c"), str(ROOT / "src/net/unicode.c"), "-Wl,--gc-sections", "-Wl,--wrap=write", "-lz",
-        "-o", str(binary)
+        str(HARNESS_STUBS), "-o", str(binary)
     ], check=True, cwd=ROOT, timeout=120)
     subprocess.run([str(binary)], check=True, cwd=ROOT, timeout=30)

@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 from _paths import SRC
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 account = (SRC / "account.c").read_text()
@@ -43,10 +44,6 @@ HARNESS = r"""
 #include <string.h>
 
 /* unicode.c's table setter references the server's corruption panic. */
-void panic_corruption(const char *, const char *, ...)
-{
-	abort();
-}
 
 static void escaped(const char *text)
 {
@@ -104,7 +101,7 @@ with tempfile.TemporaryDirectory(prefix="duris-login-mode-banner-") as temporary
             "src/net/ansi.c",
             "src/net/unicode.c",
             "-Wl,--gc-sections",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,

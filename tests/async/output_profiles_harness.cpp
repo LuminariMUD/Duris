@@ -9,11 +9,6 @@
 #include <set>
 #include <thread>
 
-void panic_corruption(const char *, const char *, ...)
-{
-	std::abort();
-}
-
 using Json = std::unique_ptr<cJSON, decltype(&cJSON_Delete)>;
 static cJSON *at(cJSON *object, const char *key)
 {

@@ -41,7 +41,7 @@ mkdir -p "$ROOT/bin/tests"
 read -r -a MYSQL_CFLAGS <<< "$(mysql_config --cflags)"
 read -r -a MYSQL_LIBS <<< "$(mysql_config --libs)"
 g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
-    "${MYSQL_CFLAGS[@]}" tests/async/player_save_claim_mysql_harness.cpp \
+    "${MYSQL_CFLAGS[@]}" tests/async/player_save_claim_mysql_harness.cpp tests/async/harness_stubs.cpp \
     src/player/player_snapshot_repository.c src/player/player_snapshot_codec.c \
     src/item/item_claim_repository.c src/item/item_claim.c src/persistence/dupe_log.c \
     src/sql/item_extra_descr_codec.c src/persistence/persistence_observability.c \
@@ -55,7 +55,7 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
 # Loads take only what the ownership table gives them: run the load filter leg on the
 # same schema.
 g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fdata-sections \
-    -Isrc "${MYSQL_CFLAGS[@]}" tests/async/player_load_filter_mysql_harness.cpp \
+    -Isrc "${MYSQL_CFLAGS[@]}" tests/async/player_load_filter_mysql_harness.cpp tests/async/harness_stubs.cpp \
     src/player/player_load_repository.c src/player/player_load_topology.c \
     src/player/player_snapshot_repository.c src/player/player_snapshot_codec.c \
     src/item/item_claim_repository.c src/item/item_claim.c src/persistence/dupe_log.c \
@@ -67,7 +67,7 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fd
 # The zone-story state is saved through sql_queue() on the writer: a state above 64 KiB
 # is stored whole on the same schema.
 g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fdata-sections \
-    -Isrc "${MYSQL_CFLAGS[@]}" tests/async/zone_story_state_mysql_harness.cpp \
+    -Isrc "${MYSQL_CFLAGS[@]}" tests/async/zone_story_state_mysql_harness.cpp tests/async/harness_stubs.cpp \
     src/sql/zone_story_quest_state_repository.c src/sql/sql_async.c \
     src/player/player_snapshot_repository.c src/player/player_snapshot_codec.c \
     src/item/item_claim_repository.c src/item/item_claim.c src/persistence/dupe_log.c \

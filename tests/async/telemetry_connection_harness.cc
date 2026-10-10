@@ -13,7 +13,6 @@
 #include <unistd.h>
 
 int RUNNING_PORT = 7777;
-void logit(const char *, const char *, ...) {}
 MYSQL *sql_open_configured_connection(unsigned long);
 static unsigned calls = 0;
 static const char *expected_user = "fixture_ingest";

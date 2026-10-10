@@ -6,6 +6,7 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
+from _paths import HARNESS_STUBS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -75,7 +76,7 @@ with tempfile.TemporaryDirectory(prefix="duris-player-snapshot-") as temp_dir:
             "-Werror",
             "-Isrc",
             str(source),
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,
@@ -212,12 +213,10 @@ int top_of_objt = 2;
 int top_of_mobt = 1;
 extern const int top_of_world = 0;
 Skill skills[MAX_SKILLS] = {};
-bool has_innate(P_char, int) { return false; }
 std::vector<std::string> logged;
 void logit(const char *, const char *format, ...) { logged.push_back(format); }
 bool trace = false;
 bool persistence_trace_enabled() { return trace; }
-int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 P_char get_linked_char(P_char ch, ush_int type)
 {
     for (char_link_data *link = ch->linking; link; link = link->next_linking)
@@ -299,6 +298,6 @@ subprocess.run([
     "src/player/player_snapshot_codec.c", "src/player/pet_restore_state.c",
     "src/player/pet_restore_runtime.c", "src/item/item_ownership_runtime.c",
     "src/item/item_transfer_command.c", "src/persistence/critical_command.c",
-    "-Wl,--gc-sections", "-lcrypto", "-o", str(binary),
+    "-Wl,--gc-sections", "-lcrypto", str(HARNESS_STUBS), "-o", str(binary),
 ], cwd=ROOT, check=True)
 subprocess.run([str(binary)], check=True)

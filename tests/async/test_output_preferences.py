@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT
+from _paths import HARNESS_STUBS
 
 build = ROOT / "bin/tests"
 build.mkdir(parents=True, exist_ok=True)
@@ -19,6 +20,6 @@ with tempfile.TemporaryDirectory(prefix="output-preferences-", dir=build) as dir
         *(str(ROOT / "src" / path) for path in ("player/output_preferences.c",
             "player/player_snapshot_codec.c", "net/output_profiles.c", "net/output_style.c",
             "net/ansi.c", "net/unicode.c")),
-        "-lcjson", "-pthread", "-o", str(binary)
+        "-lcjson", "-pthread", str(HARNESS_STUBS), "-o", str(binary)
     ], check=True, timeout=120)
     subprocess.run([str(binary)], check=True, timeout=120)

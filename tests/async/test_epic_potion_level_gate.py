@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 from _paths import ROOT, extract_function
+from _paths import HARNESS_STUBS
 
 
 PRELUDE = r'''
@@ -51,8 +52,6 @@ char *one_argument(const char *text, char *out) {
 }
 P_obj get_obj_in_list_vis(P_char, const char *, P_obj list, bool) { return list; }
 bool isname(const char *a, const char *b) { return !strcmp(a, b); }
-bool affected_by_spell(P_char, int) { return false; }
-bool has_innate(P_char, int) { return false; }
 int number(int, int high) { return high; }
 void CharWait(P_char, int) { ++waits; }
 P_obj unequip_char(P_char ch, int slot, bool) {
@@ -71,7 +70,6 @@ int spell_damage(P_char, P_char, double, int, uint, damage_messages *, int *) {
 }
 affected_type *affect_to_char(P_char, affected_type *) { ++potion_effects; return nullptr; }
 int char_in_list(const P_char) { return 1; }
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 '''
 
 DRIVER = r'''
@@ -133,6 +131,6 @@ with tempfile.TemporaryDirectory(prefix="duris-epic-potion-level-") as directory
     subprocess.run([
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
         "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-no-pie",
-        "-I" + str(ROOT / "src"), str(source), "-o", str(binary),
+        "-I" + str(ROOT / "src"), str(source), str(HARNESS_STUBS), "-o", str(binary),
     ], check=True)
     subprocess.run([str(binary)], check=True)

@@ -18,7 +18,30 @@ catalog = catalog_module.production_catalog(ROOT)
 assert catalog["source"]["kind"] == "legacy_static_qst"
 assert catalog["source"]["area_list"] == "areas/AREA"
 assert catalog["source"]["excludes"] == ["bartender_random_world_quests"]
-assert len(catalog["definitions"]) == 2668
+# Counted from the area files, apart from the catalog's parser: one definition for each
+# distinct block, a Q or QA block under a giver keyed by its goal lines and whether it
+# disappears (blocks alike are one accomplishment), and every giver has one. A parser that
+# skipped blocks would fall short here; new quests count on both sides.
+contracts = set()
+for path in catalog_module.active_quest_files(ROOT):
+    giver, block = None, None
+    for line in path.read_text(errors="replace").splitlines() + ["$"]:
+        line = line.strip()
+        ends = line == "$" or line in {"Q", "QA"} or (
+            line.startswith("#") and line[1:].lstrip("-").isdigit())
+        if ends and block is not None:
+            contracts.add((giver, tuple(sorted(block))))
+            block = None
+        if line.startswith("#") and line[1:].lstrip("-").isdigit():
+            giver = int(line[1:])
+        elif line == "$":
+            giver = None
+        elif line in {"Q", "QA"} and giver is not None:
+            block = []
+        elif block is not None and (line == "D" or line.split()[:1] in (["G"], ["R"])):
+            block.append(" ".join(line.split()))
+assert len(catalog["definitions"]) == len(contracts), (len(catalog["definitions"]), len(contracts))
+assert {item["giver_vnum"] for item in catalog["definitions"]} == {giver for giver, _ in contracts}
 assert all(item["zone_number"] > 0 for item in catalog["definitions"])
 assert all(item["source_system"] == "zone_story" for item in catalog["definitions"])
 assert all(item["repeatable"] is True for item in catalog["definitions"])

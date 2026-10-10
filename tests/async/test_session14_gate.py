@@ -30,6 +30,21 @@ faults = load_module("session14_fault_adapter", ROOT / "tests/async/session14_fa
 reconcile = load_module("session14_reconcile", ROOT / "tests/async/session14_reconcile.py")
 load_client = load_module("session14_load_client", ROOT / "tests/async/session14_load_client.py")
 MANIFEST_PATH = ROOT / "tests/async/session14_gate_manifest.json"
+REQUIRED_PROFILES = {
+    "idle_scheduled", "movement_regeneration", "group_pve", "epic_artifact_rewards",
+    "pvp_groups", "two_character_banking", "trade_locker_auction",
+    "reconnect_copyover_large_graph",
+}
+REQUIRED_FAULTS = {
+    "db_latency_50ms", "db_latency_200ms", "db_latency_1000ms", "db_connection_reset",
+    "db_outage_30s", "db_deadlock", "db_ambiguous_commit", "redis_latency", "redis_disconnect",
+    "redis_restart", "redis_volatile_key_loss", "worker_crash_queued", "worker_crash_committing",
+    "game_kill_before_enqueue", "game_kill_after_journal", "game_kill_during_commit",
+    "game_kill_before_ack", "disk_full", "disk_read_only", "terminal_camp_failure",
+    "terminal_inn_failure", "terminal_death_failure", "terminal_idle_rent_failure",
+    "stale_revision", "duplicate_critical_replay", "archive_failure", "migration_drift",
+    "backup_restore_after_erasure",
+}
 EXAMPLE_CONFIG_PATH = ROOT / "tests/async/session14_gate_config.example.json"
 
 
@@ -75,9 +90,13 @@ class Session14GateTests(unittest.TestCase):
     def test_manifest_is_the_complete_binding_gate(self):
         self.assertEqual(self.manifest["ramps"], [25, 50, 100, 200])
         self.assertEqual(self.manifest["minimum_hold_seconds"], 1800)
-        self.assertEqual(len(self.manifest["profiles"]), 8)
-        self.assertEqual(len(self.manifest["faults"]), 28)
-        self.assertIn("backup_restore_after_erasure", self.manifest["faults"])
+        # Every load profile and fault case the gate must exercise is named, so dropping one
+        # fails here; a new one may be added.
+        profiles = [profile["id"] for profile in self.manifest["profiles"]]
+        for names, required in ((profiles, REQUIRED_PROFILES),
+                                (self.manifest["faults"], REQUIRED_FAULTS)):
+            self.assertEqual(len(set(names)), len(names))
+            self.assertLessEqual(required, set(names))
         self.assertIn("critical_outbox_delivery", self.manifest["reconciliations"])
         self.assertIn("boot_drift_prewrite_rejection", self.manifest["privacy_cases"])
 

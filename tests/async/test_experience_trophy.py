@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import shlex
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -41,7 +42,6 @@ P_char get_linked_char(P_char ch, ush_int type)
     assert(type == LNK_PET);
     return ch == pet ? owner : nullptr;
 }
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 void mark_player_dirty_components(int pid, player_component_mask_t mask)
 {
     assert(player_revision_mark(pid, mask, nullptr));
@@ -167,7 +167,7 @@ with tempfile.TemporaryDirectory(prefix="duris-trophy-") as temporary:
             ["g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
              "-ffunction-sections", "-fdata-sections", "-Isrc", *flags, str(source),
              "src/item/trophy.c", "src/player/player_revision_state.c",
-             "src/player/player_snapshot_codec.c", "-Wl,--gc-sections", "-o", str(binary)],
+             "src/player/player_snapshot_codec.c", "-Wl,--gc-sections", str(HARNESS_STUBS), "-o", str(binary)],
             cwd=ROOT, check=True,
         )
         subprocess.run([str(binary)], check=True)

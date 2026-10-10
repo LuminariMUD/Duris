@@ -53,16 +53,9 @@ const char *persistence_mode_flatfile_root()
 	return state_root.c_str();
 }
 
-void debug(const char *, ...) {}
-void logit(const char *, const char *, ...) {}
 bool redis_invalidate_artifact_cache()
 {
 	return true;
-}
-
-bool isname(const char *, const char *)
-{
-	return false;
 }
 
 P_obj read_object(int vnum, int)
@@ -105,11 +98,6 @@ void extract_obj(P_obj object, int)
 {
 	++extract_count;
 	delete object;
-}
-
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-	abort();
 }
 
 int main(int argc, char **argv)

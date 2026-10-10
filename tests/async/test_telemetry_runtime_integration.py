@@ -4,6 +4,7 @@
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -87,6 +88,7 @@ def main(*, exhaustion: bool = False, outage: bool = False) -> None:
             if outage:
                 command += ["-Wl,--wrap=write", "-Wl,--wrap=fsync"]
             command += [
+                str(HARNESS_STUBS),
                 "-lcrypto",
                 "-o",
                 executable,

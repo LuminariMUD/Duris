@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT
+from _paths import HARNESS_STUBS
 
 
 HARNESS = r'''
@@ -48,9 +49,6 @@ static int random_calls = 0;
 static obj_data wall = {};
 static room_direction_data downward = {}, next_downward = {};
 
-void logit(const char *, const char *, ...) {}
-void act(const char *, int, P_char, P_obj, void *, int) {}
-void send_to_char(const char *, P_char) {}
 void do_look(P_char, char *, int) {}
 bool affected_by_spell(P_char, int spell) { return climbing && spell == SKILL_CLIMB; }
 bool char_falling(P_char ch) {
@@ -86,13 +84,11 @@ int number(int low, int high) {
 }
 int STAT_INDEX(int) { return 20; }
 bool check_castle_walls(int, int) { return false; }
-bool notch_skill(P_char, int, float) { return false; }
 void Stun(P_char victim, P_char, int, bool) {
     ++stuns;
     if (relocate_actor_on_stun && victim == &person) victim->in_room = 2;
 }
 void KnockOut(P_char, int) {}
-void update_pos(P_char) {}
 void char_from_room(P_char ch) {
     if (remove_on_leave && ch == &person) {
         person_listed = false;
@@ -351,7 +347,7 @@ with tempfile.TemporaryDirectory(prefix="duris-falling-skills-") as temporary:
             "src/world/falling.c",
             "src/world/falling_policy.c",
             str(source),
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,

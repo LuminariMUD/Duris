@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT
+from _paths import HARNESS_STUBS
 
 
 HARNESS = r'''
@@ -31,11 +32,7 @@ static bool riding = false, listed = true, lethal = false;
 static obj_data wall = {};
 static room_direction_data downward = {};
 
-void logit(const char *, const char *, ...) {}
-void act(const char *, int, P_char, P_obj, void *, int) {}
-void send_to_char(const char *, P_char) {}
 void do_look(P_char, char *, int) {}
-bool affected_by_spell(P_char, int) { return false; }
 bool char_falling(P_char) { return false; }
 P_char get_linked_char(P_char ch, ush_int) {
     return riding && ch == &person ? &mount : nullptr;
@@ -49,10 +46,8 @@ int char_in_list(const P_char ch) {
 int number(int low, int high) { return low == 80 && high == 120 ? 100 : low; }
 int STAT_INDEX(int) { return 20; }
 bool check_castle_walls(int, int) { return false; }
-bool notch_skill(P_char, int, float) { return false; }
 void Stun(P_char, P_char, int, bool) {}
 void KnockOut(P_char, int) {}
-void update_pos(P_char) {}
 void char_from_room(P_char ch) { ch->in_room = NOWHERE; }
 bool char_to_room(P_char ch, int room, int) { ch->in_room = room; return true; }
 int real_object(const int) { return 42; }
@@ -137,7 +132,7 @@ with tempfile.TemporaryDirectory(prefix="lethal-floor-") as directory:
             "src/world/falling.c",
             "src/world/falling_policy.c",
             str(source),
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,

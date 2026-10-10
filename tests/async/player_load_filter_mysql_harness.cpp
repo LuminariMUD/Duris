@@ -93,11 +93,6 @@ MYSQL *sql_pool_acquire(void)
 {
 	return test_connection;
 }
-void sql_pool_release(MYSQL *) {}
-MYSQL *sql_pool_replace_connection(MYSQL *)
-{
-	return nullptr;
-}
 char *sql_escape_string(const char *)
 {
 	std::abort();

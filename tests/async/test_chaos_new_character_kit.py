@@ -83,7 +83,8 @@ array_matches = [
     )
     if not name.endswith("_optional_slots")
 ]
-assert len(array_matches) == 60, len(array_matches)
+# One array per class and profile.
+assert len(array_matches) == 2 * DEFINES["CLASS_COUNT"], len(array_matches)
 array_names = {name for name, _ in array_matches}
 for profile in ("standard", "enhanceable"):
     assert {f"chaos_eq_{profile}_{re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')}" for name in CLASS_NAMES} <= array_names
@@ -161,22 +162,12 @@ for array_name, pairs in parsed_arrays.items():
 
 # Profile table contains the unused zero row plus one row per class.
 profiles = DATA.split("static const chaos_eq_profile chaos_eq_profiles[CLASS_COUNT + 1][2] = {", 1)[1].split("};", 1)[0]
-assert len(re.findall(r"\{\s*\{\s*(?:NULL|chaos_eq_[a-z0-9_]+)\s*\},\s*\{\s*(?:NULL|chaos_eq_[a-z0-9_]+)\s*\}\s*\},", profiles)) == 31
+assert len(re.findall(r"\{\s*\{\s*(?:NULL|chaos_eq_[a-z0-9_]+)\s*\},\s*\{\s*(?:NULL|chaos_eq_[a-z0-9_]+)\s*\}\s*\},", profiles)) == DEFINES["CLASS_COUNT"] + 1
 
-# The loader builds a single nested tree, preserves spellbook population, and
-# selects standard vs strict-enhanceable data through the profile gate.
+# test_chaos_kit_runtime.py runs the kit's preparation and placement, and the CHAOS character
+# journey checks what a new character receives. What text alone shows: the kit is built
+# before its one batch grant, never granted item by item, and never names the placeholder.
 chaos_code = NANNY.split("static void prepare_chaos_kit_item", 1)[1].split("void load_obj_to_newbies", 1)[0]
-assert "chaos_eq_profiles[class_id][profile_id]" in chaos_code
-assert "chaos_eq_support_consumables" in chaos_code
-assert "chaos_eq_enhanceable_optional_slots" in chaos_code
-assert "chaos_eq_standard_optional_slots" in chaos_code
-assert "obj_to_obj(obj, bag)" in chaos_code
-assert "AddSpellToSpellBook(ch, obj, j)" in chaos_code
-assert "chaos_kit_has_eq_slot(ch, slot)" in chaos_code
-assert "can_char_use_item(ch, obj)" in chaos_code
-assert "REMOVE_BIT(obj->extra_flags, chaos_eq_permanent_strip_flags);" in chaos_code
-assert "affect.location == APPLY_CURSE" in chaos_code
-assert "kit.append_root(obj)" in chaos_code
 assert chaos_code.count("item_creation_grant_submit_batch_to_player_before_entry(") == 1
 assert "item_creation_grant_submit_to_player(ch, obj, ch, bag)" not in chaos_code
 assert "1252" not in chaos_code

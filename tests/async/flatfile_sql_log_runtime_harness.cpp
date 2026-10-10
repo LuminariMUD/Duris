@@ -29,8 +29,6 @@ P_index mob_index = nullptr;
 int top_of_zone_table = 0;
 extern const int top_of_world = 0;
 
-void debug(const char *, ...) {}
-
 void logit(const char *file, const char *format, ...)
 {
 	char line[MAX_STRING_LENGTH];
@@ -42,11 +40,6 @@ void logit(const char *file, const char *format, ...)
 		"flat SQL log output overflowed its bound");
 	logged_file = file ? file : "";
 	logged_line.assign(line, static_cast<size_t>(length));
-}
-
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-	abort();
 }
 
 int main()

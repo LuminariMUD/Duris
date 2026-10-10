@@ -7,6 +7,7 @@ creates only a TEMPORARY player_data table shadowing the fixture schema's table.
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 HARNESS = r'''
@@ -31,8 +32,6 @@ char *sql_escape_string(const char *text) {
 MYSQL *db = nullptr;
 // The legacy replay path takes its connection from the pool.
 MYSQL *sql_pool_acquire(void) { return db; }
-void sql_pool_release(MYSQL *) {}
-MYSQL *sql_pool_replace_connection(MYSQL *) { return nullptr; }
 
 int main() {
     assert(std::string(std::getenv("DB_HOST")) == "127.0.0.1");
@@ -150,5 +149,5 @@ with tempfile.TemporaryDirectory(prefix="duris-playtime-sql-") as temporary:
                     "src/item/item_claim_repository.c", "src/item/item_claim.c",
                     "src/persistence/dupe_log.c",
                     "src/persistence/persistence_observability.c",
-                    "-Wl,--gc-sections", "-lmysqlclient", "-pthread", "-o", str(binary)], cwd=ROOT, check=True)
+                    "-Wl,--gc-sections", "-lmysqlclient", "-pthread", str(HARNESS_STUBS), "-o", str(binary)], cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True)

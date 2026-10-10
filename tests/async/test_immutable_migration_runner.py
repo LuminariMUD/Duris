@@ -100,7 +100,7 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
         return path
 
     def test_canonical_manifest_keeps_baseline_and_orders_immutable_steps(self):
-        """The shipped manifest still describes the sealed baseline and head.
+        """The shipped manifest still describes the sealed baseline and first steps.
 
         The 170-table Session 11 baseline and its fingerprint must not move, and the
         immutable migrations must stay in recorded order. Tables created by immutable
@@ -109,14 +109,11 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
         manifest = runner.load_manifest()
         self.assertEqual(manifest.required_table_count, 170)
         self.assertEqual(len(manifest.required_tables), 170)
-        self.assertEqual(len(manifest.migrations), 36)
         self.assertEqual(
             [(step.migration_id, step.verifier("mariadb-11.8").name)
              for step in manifest.migrations if step.engine_verifiers],
             [("0031_economy_accounting", "0031_economy_accounting_mariadb_11_8.sh"),
              ("0032_economic_baseline", "0032_economic_baseline_mariadb_11_8.sh")])
-        self.assertEqual(manifest.migrations[-1].migration_id,
-                         "0036_log_entries_ipv6")
         self.assertEqual(manifest.migrations[0].migration_id,
                          "0001_lookup_dataset_state")
         self.assertEqual(manifest.migrations[1].migration_id,

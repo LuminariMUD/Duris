@@ -198,11 +198,6 @@ void persistence_alert(int, const char *, const char *, const char *, const char
 	++alerts;
 }
 
-[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
-{
-	std::abort();
-}
-
 int main()
 {
 	indexes[0].virtual_number = VMOB_COLLECTOR_ANTIQUITIES;

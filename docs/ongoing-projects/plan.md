@@ -42,7 +42,7 @@ built at that branch's head.
 | 4 | `fix/14-boot-scan` | 19 | Built |
 | 5 | `fix/14-tick-spikes` | 18 | Built |
 | 6 | `fix/14-test-tools` | 10, 14, 16 | Built |
-| 7 | `fix/14-test-stability` | 11 | Not started |
+| 7 | `fix/14-test-stability` | 11 | Built |
 | 8 | `fix/14-clang-tidy` | 13 | Not started |
 | 9 | `fix/14-fuzz` | 12 | Not started |
 | 10 | `fix/14-mutation` | 15 | Not started |
@@ -78,7 +78,7 @@ Part 2, test quality:
 | # | Item | Gate time | State |
 |---|---|---|---|
 | 10 | Prove a regression test fails without its fix | none | Built (PR 6) |
-| 11 | Make tests break only when behaviour breaks | same or less | Proposed |
+| 11 | Make tests break only when behaviour breaks | same or less | Built (PR 7) |
 | 12 | Fuzz the code that reads outside input | one replay test | Proposed |
 | 13 | `clang-tidy` on changed lines | none (commit hook) | Proposed |
 | 14 | Keep a history of test runs | none | Built (PR 6) |
@@ -580,6 +580,72 @@ turns `master` red after a merge.
 
 **Done when** `TESTING.md` has the rule, the six tests above are converted or deleted, no
 test pins a count that grows with content, and the repeated stubs come from one file.
+
+**Built** (PR 7).
+
+- **The rule.** `TESTING.md`'s "Test styles" says a new test is behavioural whenever a
+  harness or a journey can reach the code, and keeps a text check only for what text alone
+  shows (a call site that must not come back, an order that must hold), after breaking the
+  code shows no other test notices. It also covers counts, harness stubs and database tests.
+- **Counts.** Twenty assertions pinned a number that grows with content (schema tables,
+  lifecycle entries, Redis surfaces, migrations, the quest catalog, epic zones, classes,
+  races, dials, the session 14 gate, kit arrays, telemetry fixtures). Each now checks the
+  property it stood for. The counts that are the contract stay: the shops' 540 durable ids,
+  the 170-table sealed baseline, the 100-row weather table, the sealed migrations' first ids.
+- **Stubs.** `tests/async/harness_stubs.cpp` defines the twenty server functions harnesses
+  most often stubbed, as weak symbols (`_paths.HARNESS_STUBS`). A harness's own definition,
+  or the real source, replaces one at link time. 283 copies are gone from 117 harnesses. The
+  22 harnesses built on their own types, without the server's headers, keep their 39: there
+  the stub is also the only declaration. (A `.cpp` linked in, not the planned `.inc`
+  included: only a separate file lets a harness keep its own version of one stub.)
+- **The six tests.** Each check was broken on its own, with the behavioural tests that
+  could notice run against it: 52 mutations, each built once into the flat-file server and
+  shared through the journeys' build cache.
+  - `test_account_erasure.py` and `test_personal_data_export.py` were behavioural already.
+    Their churn was the 220 → 221 kind of count, now the manifest's own.
+  - `test_flatfile_corpse_live_routing.py` is gone. Three of its six behaviours failed no
+    test when broken; `test_corpse_save_routing.py` runs the three production functions
+    and catches all six.
+  - `test_chaos_new_character_kit.py` keeps its checks of the generated kit data. Its text
+    checks of the kit loader are gone (`test_chaos_kit_runtime.py` and the CHAOS journey
+    run that code), except the build-before-grant order and two "must not come back"
+    checks.
+  - `test_character_persistence_gap.py`: 36 checks on eleven files became six. Caught
+    elsewhere: a death that saves nothing, a NULL account menu argument, an edited sealed
+    migration. Now asserted in the MariaDB load harness: duplicate descriptions and the
+    stage a refused load names. Noticed by nothing: the flat-file first save's
+    `NO_DB_BASELINE` flag, the gate on it and the writer's re-arm of it. Even all three
+    together go unnoticed, because a new flat-file character's first save lands without
+    them. Also unnoticed: the baseline save's owner-revision reload, the post-entry save,
+    the delete before re-inserting a saved item's descriptions, and the log lines.
+  - `test_chaos_infinite_starting_grants.py`: 122 checks on 36 files became an order file
+    and a "must not come back" file. `test_epic_skill_grant.py` and
+    `test_guild_chaos_epic_skills.py` now run the epic skill rules and the guild's CHAOS
+    fill.
+- **What stays as text without a behavioural test.** Pouch crafting, enhancing,
+  salvaging and encrusting, and the shipyard's frigate discount, keep their text checks:
+  breaking each fails no test, and no journey crafts with the pouch or buys a hull with
+  the tattoo. A CHAOS journey step for each would let those checks go.
+- **Found on the way and fixed.**
+  - Twenty MariaDB tests ran in no gate since `make test-db` took its list on 2026-09-29.
+    Ten read the checkout's `.env` and wrote to whatever database it named; they now take
+    a disposable one through `tests/async/disposable_schema.sh`. The telemetry reports
+    runner wanted a client container; it now starts its own. All twenty are in
+    `tests/run_db_tests.sh` and pass.
+  - `test_pet_restart_journey.py` and `test_mob_gold_dial_runtime.py` were manual. They
+    now build their own server and are in `make test-all`; the gold journey promotes its
+    character with the combat journey's `make_overlord()`.
+
+**Review round 1** (2026-10-10): the adversarial review found no defect. Codex, on the
+round's push: `test_session14_gate.py`'s exact count of 28 fault cases became "non-empty and
+unique", so a manifest that dropped `db_outage_30s` or any case but one still passed; it
+now requires every current profile and fault case by name and allows new ones. And a leg
+converted to `disposable_schema.sh` stopped at its `TEST_DB_HOST` check when run on its
+own, as `CRITICAL_COMMAND_PIPELINE.md` says to run them; such a leg now runs itself again
+under `with_disposable_mariadb.sh`. The review after that: the quest catalog test's exact
+2,668 became "non-empty", and its later check runs the same parser, so a parser that skipped
+ordinary blocks passed; the test now counts the distinct quest blocks from the area files
+itself and requires one definition each.
 
 ### 12. Fuzz the code that reads outside input
 

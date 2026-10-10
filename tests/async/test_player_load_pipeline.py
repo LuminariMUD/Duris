@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import shlex
 from pathlib import Path
+from _paths import HARNESS_STUBS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -34,8 +35,6 @@ HARNESS = r'''
 #include <thread>
 
 
-extern "C" MYSQL *sql_pool_acquire(void) { return nullptr; }
-extern "C" void sql_pool_release(MYSQL *) {}
 
 bool player_load_request_valid(const player_load_request &request, uint64_t now)
 {
@@ -246,7 +245,7 @@ with tempfile.TemporaryDirectory(prefix="duris-player-load-pipeline-") as temp_d
             rel("player_load_pipeline.c"),
             rel("persistence_observability.c"),
             *mysql_libs,
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,

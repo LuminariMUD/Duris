@@ -8,6 +8,7 @@ import ast
 from pathlib import Path
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -266,7 +267,7 @@ with tempfile.TemporaryDirectory(prefix="duris-copyover-custody-") as temp:
                    "src/world/world_recovery_pipeline.c", "src/world/world_recovery_codec.c", "src/world/generated_npc_state.c", "src/world/generated_npc_runtime.c",
                    "src/player/pet_restore_state.c",
                             "src/item/item_ownership_runtime.c", "src/item/item_transfer_command.c",
-                            "src/redis/redis_command_observability.c", "-Wl,--gc-sections",
+                            "src/redis/redis_command_observability.c", str(HARNESS_STUBS), "-Wl,--gc-sections",
                             "-lz", "-pthread", "-lgnutls", "-lbsd", "-o", str(temp / "fixture")],
                    cwd=ROOT, check=True)
     subprocess.run([str(temp / "fixture")], cwd=temp, check=True, timeout=60)

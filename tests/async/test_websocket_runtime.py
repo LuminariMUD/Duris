@@ -5,6 +5,7 @@ from _paths import SRC
 import pathlib
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -29,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix="duris-websocket-runtime-") as directory
             "-lssl",
             "-lcrypto",
             "-lz",
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         cwd=ROOT,

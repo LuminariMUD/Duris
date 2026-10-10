@@ -17,8 +17,8 @@ store_names = re.findall(r"^REDIS_STORE\(([A-Z0-9_]+),", registry, re.MULTILINE)
 owned_patterns = re.findall(
     r'^REDIS_OWNED_PATTERN\([A-Z0-9_]+, "([^"]+)"\)$', registry, re.MULTILINE
 )
-assert len(surface_names) == len(set(surface_names)) == 42
-assert len(store_names) == len(set(store_names)) == 5
+assert surface_names and len(surface_names) == len(set(surface_names))
+assert store_names and len(store_names) == len(set(store_names))
 assert owned_patterns == ["<namespace>:*", "mud:*", "ship:snapshot:*"]
 
 redis_literals = re.compile(r'"(?:mud|ship):')

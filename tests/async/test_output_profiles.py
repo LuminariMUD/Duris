@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT
+from _paths import HARNESS_STUBS
 
 build = ROOT / "bin/tests"
 build.mkdir(parents=True, exist_ok=True)
@@ -17,7 +18,7 @@ with tempfile.TemporaryDirectory(prefix="output-profiles-", dir=build) as direct
         str(ROOT / "tests/async/output_profiles_harness.cpp"),
         str(ROOT / "src/net/output_profiles.c"), str(ROOT / "src/net/output_style.c"),
         str(ROOT / "src/net/ansi.c"), str(ROOT / "src/net/unicode.c"),
-        "-lcjson", "-pthread", "-o", str(binary)
+        "-lcjson", "-pthread", str(HARNESS_STUBS), "-o", str(binary)
     ], check=True, timeout=120)
     subprocess.run([str(binary), str(ROOT / "docs/examples/output-profiles-v1.json"), directory],
                    check=True, timeout=120)

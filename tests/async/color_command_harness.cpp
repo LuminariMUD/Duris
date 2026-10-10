@@ -7,10 +7,6 @@ static OutputProfilePreferences current;
 static OutputPreferenceUpdate admission = OutputPreferenceUpdate::PendingSave;
 static unsigned saves = 0;
 static std::string output;
-void panic_corruption(const char *, const char *, ...)
-{
-	std::abort();
-}
 OutputProfilePreferences player_output_preferences(char_data *)
 {
 	return current;

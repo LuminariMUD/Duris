@@ -2,20 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-set -a
-# shellcheck disable=SC1091
-source "$ROOT/.env"
-set +a
-environment_name="${ENVIRONMENT:-${APP_ENV:-}}"
-[[ "${environment_name,,}" =~ (dev|local|test) ]] || {
-    echo 'refusing epic test: environment is not development/local/test' >&2
-    exit 1
-}
-[[ "${DB_NAME,,}" =~ (dev|local|test) ]] || {
-    echo 'refusing epic test: configured database name is not development/local/test' >&2
-    exit 1
-}
-export MYSQL_PWD="$DB_PASSWD"
+source "$ROOT/tests/async/disposable_schema.sh"
 if mysql --help 2>&1 | grep -- '--ssl-mode' >/dev/null; then MYSQL_SSL=(--ssl-mode=PREFERRED); else MYSQL_SSL=(--skip-ssl); fi
 MYSQL=(mysql "${MYSQL_SSL[@]}" -h "$DB_HOST" -P "${DB_PORT:-3306}" -u "$DB_USER" -N -B)
 "${MYSQL[@]}" "$DB_NAME" < "$ROOT/migrations/epic_ledger_balance.sql"
@@ -26,7 +13,7 @@ mkdir -p "$ROOT/bin/tests"
 read -r -a MYSQL_CFLAGS <<< "$(mysql_config --cflags)"
 read -r -a MYSQL_LIBS <<< "$(mysql_config --libs)"
 g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
-    "${MYSQL_CFLAGS[@]}" tests/async/epic_transaction_mysql_harness.cpp \
+    "${MYSQL_CFLAGS[@]}" tests/async/epic_transaction_mysql_harness.cpp tests/async/harness_stubs.cpp \
     src/persistence/critical_command.c src/world/epic_command.c src/economy/currency_command.c \
     src/item/item_transfer_command.c src/item/item_transfer_repository.c src/item/item_claim_repository.c src/persistence/persistence_observability.c src/item/item_claim.c src/persistence/dupe_log.c src/economy/auction_command.c \
     src/sql/item_extra_descr_codec.c tests/async/item_extra_descr_codec_sql_escape_stub.cpp \

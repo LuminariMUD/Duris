@@ -5,6 +5,7 @@ from _paths import SRC
 import subprocess
 import tempfile
 from pathlib import Path
+from _paths import HARNESS_STUBS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,10 +17,6 @@ HARNESS = r'''
 #include <cstdlib>
 #include <cstring>
 
-void panic_corruption(const char *, const char *, ...)
-{
-	std::abort();
-}
 
 static void require(bool condition, int code)
 {
@@ -155,7 +152,7 @@ with tempfile.TemporaryDirectory(prefix="duris-ansi-runtime-") as directory:
             str(harness),
             str(SRC / "ansi.c"),
             str(SRC / "unicode.c"),
-            "-o",
+            str(HARNESS_STUBS), "-o",
             str(binary),
         ],
         check=True,

@@ -26,6 +26,7 @@ import tempfile
 
 from _paths import ROOT, extract_function, source
 from contract_text import contains
+from _paths import HARNESS_STUBS
 
 FUNCTIONS = "\n\n".join(
     [
@@ -71,7 +72,6 @@ int write_cargo()
 	++market_writes;
 	return TRUE;
 }
-void logit(const char *, const char *, ...) {}
 int eq_levistone_slot(const ShipData *) { return 0; }
 char *ShipSlot::get_description() { return const_cast<char *>("a levistone"); }
 void act_to_all_in_ship(P_ship, const char *) {}
@@ -153,6 +153,6 @@ with tempfile.TemporaryDirectory(prefix="duris-ship-altitude-") as directory:
     subprocess.run(
         ["g++", "-std=c++20", "-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
          "-Isrc", "-Itests/async", "-I/usr/include/mysql",
-         str(path / "test.cpp"), "-o", str(path / "test")],
+         str(path / "test.cpp"), str(HARNESS_STUBS), "-o", str(path / "test")],
         cwd=ROOT, check=True)
     subprocess.run([str(path / "test")], check=True)
