@@ -17,6 +17,15 @@
 
 #include "core/structs.h"
 
+#include <vector>
+
+// After the shops are booted, and whenever shop_index changes: singleton_shop_id() reads it.
+void index_shopkeeper_prototypes();
+// read_mobile() and extract_char() report each NPC, so that live_shopkeepers() can.
+void shopkeeper_mob_created(P_char mob);
+void shopkeeper_mob_extracted(P_char mob);
+// The live characters singleton_shop_id() names `shop`, in no particular order.
+std::vector<P_char> live_shopkeepers(int shop);
 int singleton_shop_id(P_char keeper);
 bool is_replicated_shop(int shop);
 void bind_shopkeeper(P_char keeper, int shop_nr);

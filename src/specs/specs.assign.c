@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include "world/buildings.h"
 #include "world/outposts.h"
+#include "world/world_singletons.h"
 #include "core/proc-libs.h"
 #include "specs/specs.barovia.h"
 #include "specs/specs.caertannad.h"
@@ -1186,6 +1187,7 @@ void assign_mobiles(void)
 	logit(LOG_STATUS, "   Assigning the shopkeepers.");
 	fprintf(stderr, "--    Booting the shopkeepers.\n");
 	assign_the_shopkeepers();
+	index_shopkeeper_prototypes();
 
 	logit(LOG_STATUS, "   Booting quests.");
 	fprintf(stderr, "--    Booting the quests.\n");

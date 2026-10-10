@@ -6,6 +6,7 @@
 #include "world/generated_npc_state.h"
 #include "world/graph.h"
 #include "persistence/persistence_mode.h"
+#include <algorithm>
 #include <cassert>
 #include <cstdarg>
 #include <cstring>
@@ -184,7 +185,6 @@ P_char read_mobile(int v, int mode)
 	if (r < 0)
 		return nullptr;
 	P_char ch = new char_data{};
-	ch->specials.act = ACT_ISNPC;
 	ch->only.npc = new npc_only_data{};
 	ch->only.npc->R_num = r;
 	ch->only.npc->idnum = next_id++;
@@ -193,6 +193,9 @@ P_char read_mobile(int v, int mode)
 	ch->next = character_list;
 	character_list = ch;
 	++mob_index[r].number;
+	// As the production read_mobile() does: reported before it is marked an NPC.
+	shopkeeper_mob_created(ch);
+	ch->specials.act = ACT_ISNPC;
 	return ch;
 }
 P_obj read_object(int v, int mode)
@@ -288,6 +291,8 @@ void extract_char(P_char ch)
 		if (ch->equipment[i])
 			extract_obj(unequip_char(ch, i));
 	char_from_room(ch);
+	if (IS_NPC(ch))
+		shopkeeper_mob_extracted(ch); // as the production extract_char() does
 	P_char *at = &character_list;
 	while (*at != ch)
 		at = &(*at)->next;
@@ -408,6 +413,7 @@ int main()
 	shops[0].producing[0] = 1;
 	shops[1].producing[0] = 2;
 	shops[0].number_items_produced = shops[1].number_items_produced = 1;
+	index_shopkeeper_prototypes();
 
 	// Cold boot and repeated initializer calls, including a missing sign.
 	initialize_transport();
@@ -441,6 +447,26 @@ int main()
 	masters[controlled] = keeper;
 	assert(singleton_shop_id(controlled) < 0);
 	assert(singleton_shop_id(ordinary) < 0);
+	// An unbound keeper in its shop's room is that shop; a mob whose prototype keeps no
+	// shop is none, even there (index_shopkeeper_prototypes()).
+	P_char walk_in = mob_at(2, 3);
+	assert(singleton_shop_id(walk_in) == 0);
+	P_char stranger = mob_at(0, 3);
+	assert(singleton_shop_id(stranger) < 0);
+	// live_shopkeepers() names exactly the characters singleton_shop_id() names.
+	for (int shop = 0; shop < number_of_shops; ++shop)
+	{
+		std::vector<P_char> expected;
+		for (P_char ch = character_list; ch; ch = ch->next)
+			if (singleton_shop_id(ch) == shop)
+				expected.push_back(ch);
+		std::vector<P_char> live = live_shopkeepers(shop);
+		std::sort(expected.begin(), expected.end());
+		std::sort(live.begin(), live.end());
+		assert(live == expected && !live.empty());
+	}
+	extract_char(walk_in);
+	extract_char(stranger);
 	shops[0].shop_is_roaming = 1;
 	shops[0].in_room = 0; // room 0 is configuration, not the live roaming room
 	REMOVE_BIT(keeper->specials.act, ACT_SENTINEL);
@@ -591,6 +617,7 @@ int main()
 		shops[shop].number_items_produced = 1;
 		shops[shop].producing[0] = 1;
 	}
+	index_shopkeeper_prototypes();
 	// Shop 2 models the historical roaming dealer identity. A durable snapshot
 	// may have been captured in any dealer room before the fixed identities
 	// existed; retain its binding and stock while returning it to its anchor.

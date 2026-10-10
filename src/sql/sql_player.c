@@ -3579,30 +3579,20 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored)
 		// Replace only one incumbent already proven to belong to this exact
 		// shop.  A controlled NPC, a different bound shop, or an ambiguous
 		// same-template population is never destructive restore authority.
-		int incumbent_matches = 0;
-		for (P_char keeper2 = character_list; keeper2; keeper2 = keeper2->next)
-			if (IS_NPC(keeper2) && keeper2 != k->mob && !GET_MASTER(keeper2) &&
+		std::vector<P_char> incumbents;
+		for (P_char keeper2 : live_shopkeepers(k->shop_nr))
+			if (keeper2 != k->mob &&
 			    (shop_index[k->shop_nr].shop_is_roaming ||
 			     keeper2->in_room == load_room) &&
-			    mob_index[GET_RNUM(keeper2)].virtual_number == k->mob_vnum &&
-			    singleton_shop_id(keeper2) == k->shop_nr)
-				incumbent_matches++;
+			    mob_index[GET_RNUM(keeper2)].virtual_number == k->mob_vnum)
+				incumbents.push_back(keeper2);
+		const int incumbent_matches = static_cast<int>(incumbents.size());
 		int extracted = 0;
 		if (!restored && incumbent_matches == 1)
-			for (P_char keeper2 = character_list; keeper2;)
-			{
-				P_char next = keeper2->next;
-				if (IS_NPC(keeper2) && keeper2 != k->mob && !GET_MASTER(keeper2) &&
-				    (shop_index[k->shop_nr].shop_is_roaming ||
-				     keeper2->in_room == load_room) &&
-				    mob_index[GET_RNUM(keeper2)].virtual_number == k->mob_vnum &&
-				    singleton_shop_id(keeper2) == k->shop_nr)
-				{
-					extract_char(keeper2);
-					extracted++;
-				}
-				keeper2 = next;
-			}
+		{
+			extract_char(incumbents[0]);
+			extracted = 1;
+		}
 		if (persistence_trace_enabled())
 			logit(LOG_DEBUG,
 			      "sql_restore_shopkeepers: shop %d vnum %d incumbent_matches=%d extracted=%d",

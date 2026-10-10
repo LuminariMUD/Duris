@@ -122,6 +122,16 @@ int singleton_shop_id(P_char keeper)
 	}
 	return room_match >= 0 ? room_match : (home >= 0 ? home : (roaming >= 0 ? roaming : -1));
 }
+// The production set holds exactly what a walk with singleton_shop_id() names
+// (world_singletons_harness.cpp checks that); the walk stands in for it here.
+std::vector<P_char> live_shopkeepers(int shop)
+{
+	std::vector<P_char> keepers;
+	for (P_char ch = character_list; ch; ch = ch->next)
+		if (singleton_shop_id(ch) == shop)
+			keepers.push_back(ch);
+	return keepers;
+}
 void bind_shopkeeper(P_char keeper, int shop_nr)
 {
 	if (keeper && IS_NPC(keeper) && !GET_MASTER(keeper) && keeper->only.npc && shop_nr >= 0 &&
