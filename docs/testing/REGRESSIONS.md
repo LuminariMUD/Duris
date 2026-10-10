@@ -736,7 +736,9 @@ to another target, a quit, the snooper's link closing and either side leaving th
 `extract_char()` left an immortal snooper's entry in its target's list. A god switched into
 a mob snoops as itself: its stop used to unlink the mob, so the snoop went on while its
 target was told it had ended, and the entry outlived the god. `who <name>` shows a silent
-snooper only to level 62; a snooped 61 could read it there. The channel spell's shared
+snooper only to level 62; a snooped 61 could read it there. A target whose snoops end while
+it stays, at a shapechange's return or a switch, is told as at a stop and the row names the
+player; before, it heard nothing and the row named the shapechanged body. The channel spell's shared
 sight is neither told nor audited. `recall <n> <player>` by an immortal answers
 "Disabled by Zusuk October 9 2026".
 
