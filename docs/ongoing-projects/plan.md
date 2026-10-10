@@ -735,7 +735,10 @@ the last (`f58f6e67c`; `test_test_history.py`). Codex, on the round's push: the 
 check covered only `src/`, `tests/`, `areas/` and `scripts/`, but tests read `migrations/`
 and `docs/` too; any untracked file counts now. Codex's next review: when the last run failed
 a test or did not run it, the slowdown check compared an older pass; it now takes only the
-tests the last run passed, against their passes in earlier runs made like it.
+tests the last run passed, against their passes in earlier runs made like it. The review
+after that: runs that started in the same second sorted by commit and pid, so the "last"
+could be the earlier one; each run records when it finished, and that breaks the tie.
+`make coverage` also checks for `gcovr` before its `test-all` instead of failing after it.
 
 ### 15. Mutation testing, by hand
 
@@ -1144,6 +1147,12 @@ points, and that a sliced NPC's affects still count down once per tick.
   `affect_update` 2 to 7 ms throughout, and 2 budget lines, both in the first 600 ticks.
   The copies, their users and the scratch directory were removed afterwards. The live
   service is measured after deploy.
+
+**Review round 1** (2026-10-10): the adversarial review found no defect. Codex, on the
+round's push: a player's shapechanged body is an NPC, so its affects (the shapechange's own
+`SPELL_CALL_OF_THE_WILD`, a channel) counted down in a hashed slice, up to a tick off the
+players' pulse 0. A shapechanged body (`IS_MORPH()`) now counts down with the players, and
+`test_tick_work_spread.py` has one.
 
 ### 19. Most of every boot is one shopkeeper scan
 

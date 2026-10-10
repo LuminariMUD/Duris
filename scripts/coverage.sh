@@ -19,6 +19,8 @@ database=0
 if [[ "${1:-}" == --db ]]; then database=1; shift; fi
 commit=$(git rev-parse --verify --quiet "${1:-HEAD}^{commit}") || {
     echo "usage: $0 [--db] [COMMIT]" >&2; exit 2; }
+command -v gcovr >/dev/null || {
+    echo "coverage: gcovr writes the report and is not installed (pip install gcovr)." >&2; exit 1; }
 short=${commit:0:12}
 report="$PWD/bin/coverage/$short"
 tree="$PWD/bin/analysis/coverage-$short"

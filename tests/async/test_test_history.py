@@ -3,7 +3,7 @@
 
 - Two runs that start in the same second on one commit wrote the same file name, and the
   second overwrote the first. The name now carries the runner's pid, and the file is
-  created exclusively.
+  created exclusively; each run records when it finished, which orders such runs.
 - A run counted as clean with untracked files, which change what runs: a test fixed while
   still untracked was then reported flaky. Any untracked file now makes the run dirty: the
   tests read migrations/ and docs/ as well as src/, tests/, areas/ and scripts/.
@@ -94,4 +94,13 @@ with tempfile.TemporaryDirectory(prefix="test-history-report-") as temporary:
     assert "runs like the last before: 1" in report(), report()
     run(14, 1.0, None, "TIMEOUT", dirty=True)
     assert "runs like the last before: 0" in report(), report()
+    # Two runs in one second: the last is the one that finished last, whatever the names.
+    for name, finished, seconds in (("aaaaaaaaaaaa-9", 200.0, 3.5), ("bbbbbbbbbbbb-1", 100.0, 7.5)):
+        record = {"commit": "c" * 40, "dirty": True, "started": "20261010T000015Z",
+                  "finished": finished, "match": None, "jobs": 8,
+                  "tests": [{"path": "tests/async/test_b.py", "status": "PASS",
+                             "seconds": seconds}]}
+        (history / f"20261010T000015Z-{name}.json").write_text(json.dumps(record))
+    slowest = report().split("Slowest twenty of the last run:")[1]
+    assert "3.5s" in slowest and "7.5s" not in slowest, slowest
 print("the run history keeps every run and compares runs made alike")

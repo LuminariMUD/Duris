@@ -207,7 +207,8 @@ def write_history(results: list[TestResult], started: str, match: str | None,
     directory = ROOT / "bin/test-history"
     directory.mkdir(parents=True, exist_ok=True)
     record = {
-        "commit": commit, "dirty": dirty, "started": started, "match": match, "jobs": jobs,
+        "commit": commit, "dirty": dirty, "started": started, "finished": time.time(),
+        "match": match, "jobs": jobs,
         "tests": [{"path": relative(result.path), "status": result.status,
                    "seconds": round(result.elapsed, 3)} for result in results],
     }
