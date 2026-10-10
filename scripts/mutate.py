@@ -37,9 +37,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TREE = ROOT / "bin/analysis/mutate"
 
-# Comments, string and character literals, and preprocessor lines with their backslash
-# continuations, blanked so no mutation lands in them; every offset and newline survives.
-MASK = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|'
+# Comments, string and character literals (raw strings to their own delimiter), and
+# preprocessor lines with their backslash continuations, blanked so no mutation lands in
+# them; every offset and newline survives.
+MASK = re.compile(r'(?<![A-Za-z0-9_])(?:u8|[uUL])?R"([^()\\\s]{0,16})\(.*?\)\1"|'
+                  r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|'
                   r'^[ \t]*#(?:[^\n]*\\\n)*[^\n]*', re.S | re.M)
 OPERATORS = [
     # An operator clang-format leaves at the end of a line has a newline after it.

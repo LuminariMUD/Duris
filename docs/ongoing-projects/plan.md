@@ -908,7 +908,9 @@ the two files above, `collector_policy.c:40` and `critical_command.c:235`; both 
 (`test_collector_death_enrollment.py`, `test_critical_command_codec.py`), and the table
 counts them. Codex, on the round's push: the legacy `return (0);` was not taken for a
 constant return, and the continued lines of a multi-line macro were mutated as code. Both
-patterns are fixed; neither changes the three files' counts above.
+patterns are fixed; neither changes the three files' counts above. The review after that:
+a raw string's payload was mutated as code where its quotes or lines fooled the string
+mask; raw strings are masked to their own delimiter now, again with no change above.
 
 ### 16. Line coverage, on demand
 
