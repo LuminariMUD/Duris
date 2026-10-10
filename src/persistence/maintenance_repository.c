@@ -26,11 +26,14 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <cstdlib>
 #include <fcntl.h>
+#include <filesystem>
+#include <fstream>
 #include <map>
 #include <set>
 #include <string>
@@ -1011,6 +1014,70 @@ maintenance_result execute_address_retention(MYSQL *connection, const maintenanc
 	}
 	return result;
 }
+
+std::vector<std::filesystem::path> list_files(const char *directory)
+{
+	std::vector<std::filesystem::path> files;
+	std::error_code error;
+	for (std::filesystem::directory_iterator entry(directory, error), end;
+	     !error && entry != end; entry.increment(error))
+		files.push_back(entry->path());
+	return files;
+}
+
+// ADR 0003: no log line is kept past 30 days. The launcher moves the live logs into
+// logs/old-logs/<date>/ at each start, but a copyover never goes back to it, so this moves
+// them there too once they are a day old (logs/log/.since is made when a live set begins).
+// Then every archived file, and every core dump, last written 30 days ago goes, and so does
+// an archive left empty. The game appends each log line by opening its file, so moving a
+// live file loses no line.
+void expire_log_files()
+{
+	namespace fs = std::filesystem;
+	std::error_code error;
+	const auto now = fs::file_time_type::clock::now();
+	const fs::path since = "logs/log/.since";
+	bool begin = !fs::exists(since, error);
+	if (!begin && now - fs::last_write_time(since, error) > std::chrono::hours(24))
+	{
+		char stamp[32];
+		const time_t clock = time(nullptr);
+		struct tm local;
+		strftime(stamp, sizeof(stamp), "%Y.%m.%d-%H.%M.%S", localtime_r(&clock, &local));
+		const fs::path archive = fs::path("logs/old-logs") / stamp;
+		fs::create_directories(archive / "player-log", error);
+		for (const fs::path &file : list_files("logs/log"))
+			if (file.filename() != ".gitignore")
+				fs::rename(file, archive / file.filename(), error);
+		for (const fs::path &file : list_files("logs/player-log"))
+			if (file.filename() != ".gitignore")
+				fs::rename(file, archive / "player-log" / file.filename(), error);
+		begin = true;
+	}
+	if (begin)
+		std::ofstream{ since };
+
+	const auto expired = [&](const fs::path &file)
+	{
+		return fs::is_regular_file(file, error) &&
+		       now - fs::last_write_time(file, error) > std::chrono::hours(24 * 30);
+	};
+	for (const fs::path &file : list_files("."))
+		if (file.filename().string().starts_with("core.") && expired(file))
+			fs::remove(file, error);
+	for (const fs::path &archive : list_files("logs/old-logs"))
+	{
+		for (const fs::path &file : list_files(archive.c_str()))
+			if (expired(file))
+				fs::remove(file, error);
+		for (const fs::path &file : list_files((archive / "player-log").c_str()))
+			if (expired(file))
+				fs::remove(file, error);
+		// remove() leaves a directory that still holds files.
+		fs::remove(archive / "player-log", error);
+		fs::remove(archive, error);
+	}
+}
 } // namespace
 
 maintenance_result maintenance_repository_execute(const maintenance_request &request, void *)
@@ -1027,13 +1094,15 @@ maintenance_result maintenance_repository_execute(const maintenance_request &req
 		return failure(request, maintenance_outcome::complete, 0);
 	if (request.job_id == maintenance_job_id::web_status)
 		return execute_web_status(request);
+	if (request.job_id == maintenance_job_id::address_retention)
+		expire_log_files();
 #ifdef __NO_MYSQL__
 	// Flat-file expires its auctions and boons on the game thread when these are due
 	// (maintenance_handle_completions()).
 	if (request.job_id == maintenance_job_id::auction_due_scan ||
 	    request.job_id == maintenance_job_id::boon_scan)
 		return failure(request, maintenance_outcome::complete, 0);
-	// Flat-file keeps no address tables.
+	// Flat-file keeps no address tables, only the log files.
 	if (request.job_id == maintenance_job_id::address_retention)
 		return failure(request, maintenance_outcome::complete, 0);
 	if (request.job_id == maintenance_job_id::cargo_market)

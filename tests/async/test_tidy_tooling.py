@@ -4,9 +4,14 @@
 A fixture repository has the real .clang-tidy and tidy.sh and a src/Makefile with the
 flags the script reads. A staged array whose last two strings lack a comma between them
 fails --staged; the same file with the comma passes; a finding on a line no one changed
-does not count. Skipped where clang-tidy or clang-tidy-diff is not installed.
+does not count. What is staged decides, not the working tree: an unstaged fix does not
+pass a staged finding, and an unstaged finding does not fail a staged fix. The user's git
+config does not change the result: color.diff=always let every finding through, and
+diff.noprefix=true failed every commit. Skipped where clang-tidy or clang-tidy-diff is not
+installed.
 """
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import tempfile
@@ -33,9 +38,13 @@ with tempfile.TemporaryDirectory() as temporary:
         subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid",
                         *args], cwd=repo, check=True, capture_output=True)
 
-    def tidy():
+    def tidy(**config):
+        environment = dict(os.environ, GIT_CONFIG_COUNT=str(len(config)))
+        for index, (key, value) in enumerate(config.items()):
+            environment[f"GIT_CONFIG_KEY_{index}"] = key.replace("_", ".")
+            environment[f"GIT_CONFIG_VALUE_{index}"] = value
         return subprocess.run(["scripts/tidy.sh", "--staged"], cwd=repo, text=True,
-                              capture_output=True)
+                              capture_output=True, env=environment)
 
     git("init", "-q")
     source.write_text("int value()\n{\n\treturn 0;\n}\n")
@@ -47,11 +56,23 @@ with tempfile.TemporaryDirectory() as temporary:
     glued = tidy()
     assert glued.returncode == 1, glued.stdout + glued.stderr
     assert "bugprone-suspicious-missing-comma" in glued.stdout, glued.stdout
-
+    for config in ({"color_diff": "always"}, {"diff_noprefix": "true"}):
+        configured = tidy(**config)
+        assert configured.returncode == 1 and \
+            "bugprone-suspicious-missing-comma" in configured.stdout, \
+            (config, configured.stdout + configured.stderr)
+    # The finding stays staged while the working tree has the fix.
     source.write_text("int value()\n{\n\treturn 0;\n}\n" + FIXED)
+    unstaged_fix = tidy()
+    assert unstaged_fix.returncode == 1, unstaged_fix.stdout + unstaged_fix.stderr
+
     git("add", "src/probe.c")
     fixed = tidy()
     assert fixed.returncode == 0, fixed.stdout + fixed.stderr
+    # The fix is staged and the working tree has the finding again.
+    source.write_text("int value()\n{\n\treturn 0;\n}\n" + GLUED)
+    unstaged_finding = tidy()
+    assert unstaged_finding.returncode == 0, unstaged_finding.stdout + unstaged_finding.stderr
 
     # The glued array committed, then an unrelated line changed: not this change's finding.
     source.write_text("int value()\n{\n\treturn 0;\n}\n" + GLUED)

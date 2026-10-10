@@ -3960,7 +3960,8 @@ void reset_zone(int zone, int force_item_repop)
 						      world[ZCMD.arg3].number, ZCMD.arg2,
 						      ZCMD.arg4);
 					}
-					if (!last_mob)
+					// A missed roll leaves no mount, with the rider still in last_mob.
+					if (!mob || !last_mob)
 					{
 						last_cmd = last_mob_load = 0;
 						break;

@@ -112,13 +112,15 @@ compile database, so the script writes `bin/tidy/compile_commands.json` from
 `src/Makefile`'s flags: the `.c` files are C++20, and the MariaDB build's defines decide
 what is analysed, so code only under `__NO_MYSQL__` is not. A finding on a changed line
 fails the check; the hook runs it after formatting and refuses the commit. Fix the line,
-or, where it is right as it is, add `// NOLINT(check-name): reason`. `--staged` checks the
-file as it stands in the working tree, at the staged lines.
+or, where it is right as it is, add `// NOLINT(check-name): reason`. `--staged` checks
+`src/` as staged, written to `bin/tidy/staged/`, so an unstaged edit does not change the
+result, and the diff it reads ignores the git config's color, prefix and diff-driver
+settings.
 
 The first full run (2026-10-10) found 11,308; most came from the checks now off. Three
 were bugs, each fixed in its own commit with a test: the kick messages one race short
-(`bugprone-suspicious-missing-comma`), the line editor's leaks
-(`bugprone-macro-repeated-side-effects`) and a missing `<climits>` in
+(`bugprone-suspicious-missing-comma`), the line editor's leaks, in code no command
+reaches today (`bugprone-macro-repeated-side-effects`) and a missing `<climits>` in
 `flatfile_store.c`.
 
 ## Editor setup

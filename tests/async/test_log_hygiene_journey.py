@@ -3,7 +3,8 @@
 
 - A zone command that does not load (`M`, `F`, `R` with a chance roll that misses) is
   logged with its mob and room vnums. It printed the boot's internal indices, which match
-  no vnum, so a builder could not find the command.
+  no vnum, so a builder could not find the command. An `R` that misses after an `M` that
+  loaded its rider used to go on with no mount and crash the boot.
 - A connection reset before the server accepts it has no peer address. Its host was
   "&+RUNTRACEABLE&n", and the color code went into every log line about it; it is
   "unknown".
@@ -25,6 +26,8 @@ MISSED_LOADS = (
     "M 0 11 9 12 0 0 0 0 * a chance of 0 never loads\n"
     "F 0 11 9 12 0 0 0 0\n"
     "R 0 11 9 12 0 0 0 0\n"
+    "M 0 12 9 12 100 0 0 0 * a rider that loads\n"
+    "R 1 11 9 12 0 0 0 0 * and a mount that does not\n"
 )
 
 

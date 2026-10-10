@@ -94,8 +94,9 @@ Retention for these was pending with the rest of the lifecycle policy (finding P
     writes it to the wiz log), with "silently" and the reason on a silent start. The
     channel spell's shared sight uses the same mechanism and is neither told nor audited.
   - `recall <n> <player>` by an immortal answers "Disabled by Zusuk October 9 2026".
-  - `scripts/cycle_mud.sh` deletes a log archive once it is 30 days old, before the size
-    cap.
+  - The `address_retention` job (below) moves the live logs into `logs/old-logs/<date>/`
+    once they are a day old, so a server kept up by copyovers archives them too, and
+    removes each archived file and `core.*` dump 30 days after its last write.
   - The server clears `lib/etc/hosts` at a cold boot (not a copyover) and removes a
     descriptor's files when it closes.
   - The `address_retention` maintenance job runs hourly. It deletes `account_ips` and
@@ -106,8 +107,9 @@ Retention for these was pending with the rest of the lifecycle policy (finding P
     no longer gives every address the save's time, and drops one past 30 days. `finger`
     no longer shows an address from a login over 30 days ago.
   - Regression tests: `tests/async/test_snoop_and_recall.py` runs the real `do_snoop()`
-    and `do_recall()`; `test_hostname_files_journey.py` boots a server;
-    `test_flatfile_launcher.py` covers the archive age; `run_address_retention_journey.py`
+    and `do_recall()`; `test_hostname_files_journey.py` boots a server, and
+    `test_hostname_lookup_cancel.py` closes a connection during its lookup;
+    `test_log_retention.py` covers the log files; `run_address_retention_journey.py`
     (in `make test-db`) logs in on MariaDB and runs the prune.
   - The flat-file backend, which no deployment uses, keeps its account address lists and
     IP activity files without an age limit; only what it shows is limited.
