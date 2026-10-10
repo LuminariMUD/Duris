@@ -80,16 +80,18 @@ if [[ "$MODE" == "all" ]]; then
 	mapfile -t FILES < <(git ls-files "${PATHS[@]}" | grep -E '\.(c|cpp)$')
 	status=0
 	printf '%s\0' "${FILES[@]}" | xargs -0 -P "${TIDY_JOBS:-$(nproc)}" -n 1 \
-		"$TIDY" -p "$OUT" --quiet 2>/dev/null >"$OUT/raw.log" || status=$?
-	# clang-tidy exits 1 on a finding (xargs: 123); above that it did not run or it died.
-	if (( status > 123 )); then
-		echo "tidy: $TIDY did not run (xargs exit $status)." >&2
-		exit 1
-	fi
+		"$TIDY" -p "$OUT" --quiet 2>"$OUT/stderr.log" >"$OUT/raw.log" || status=$?
 	# A header's finding comes once per file that includes it: count it once.
 	grep -E ': (warning|error): ' "$OUT/raw.log" | sed -E "s#^(\./|$PWD/src/)#src/#" |
 		sort -u >"$OUT/all.log" || true
 	findings=$(wc -l <"$OUT/all.log")
+	# clang-tidy fails only after reporting a finding (xargs: 123). A failure with none, or
+	# a status above 123 (not found, not runnable, killed), means it did not analyse.
+	if (( status > 123 || (status != 0 && findings == 0) )); then
+		echo "tidy: $TIDY did not run (xargs exit $status):" >&2
+		tail -n 5 "$OUT/stderr.log" >&2
+		exit 1
+	fi
 	echo "tidy: ${#FILES[@]} files, $findings findings; by check:"
 	grep -o '\[[a-z0-9.,-]*\]$' "$OUT/all.log" | sed 's/,-warnings-as-errors//' | sort | uniq -c |
 		sort -rn || true
