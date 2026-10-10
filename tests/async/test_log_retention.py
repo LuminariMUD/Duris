@@ -6,8 +6,8 @@ directory's age, which is when the archive was made. So a server kept up by copy
 archived or pruned its logs, and a 40-day run's first lines lived 70 days. The hourly
 address_retention job now moves the live logs into logs/old-logs/<date>/ once they are a day
 old (logs/log/.since marks when the live set began), and removes each archived file and core
-dump 30 days after it was last written, whatever its directory's age, then any archive left
-empty.
+dump 28 days after it was last written, whatever its directory's age, then any archive left
+empty: a file holds at most about 25 hours of lines, so none of them reaches 30 days.
 """
 import os
 from pathlib import Path
@@ -80,21 +80,21 @@ with tempfile.TemporaryDirectory(prefix="log-retention-", dir=ROOT / "bin/tests"
     run = expire(lambda run: write(run / "logs/log/comm", 2))
     assert files(run) == {"logs/log/comm", "logs/log/.since"}, files(run)
 
-    # Archived files and core dumps go 30 days after their last write, whatever the age of
+    # Archived files and core dumps go 28 days after their last write, whatever the age of
     # their directory, which a run that lasted 40 days made at its end. An archive left
     # empty goes too.
     def archived(run: Path) -> None:
         write(run / "logs/log/.since")
-        write(run / "logs/old-logs/2026.09.01-00.00.00/comm", 30.1)
-        write(run / "logs/old-logs/2026.09.01-00.00.00/status", 29.9)
-        write(run / "logs/old-logs/2026.09.01-00.00.00/player-log/new", 31)
+        write(run / "logs/old-logs/2026.09.01-00.00.00/comm", 28.1)
+        write(run / "logs/old-logs/2026.09.01-00.00.00/status", 27.9)
+        write(run / "logs/old-logs/2026.09.01-00.00.00/player-log/new", 29)
         write(run / "logs/old-logs/2026.08.20-00.00.00/comm", 45)
         write(run / "logs/old-logs/2026.08.20-00.00.00/player-log/new", 45)
-        write(run / "core.2026.09.01-00.00.00", 30.1)
-        write(run / "core.2026.09.03-00.00.00", 29.9)
+        write(run / "core.2026.09.01-00.00.00", 28.1)
+        write(run / "core.2026.09.03-00.00.00", 27.9)
     run = expire(archived)
     assert files(run) == {"logs/log/.since", "logs/old-logs/2026.09.01-00.00.00/status",
                           "core.2026.09.03-00.00.00"}, files(run)
     assert sorted(path.name for path in (run / "logs/old-logs").iterdir()) == \
         ["2026.09.01-00.00.00"]
-print("log files are archived daily and kept 30 days after their last line")
+print("log files are archived daily and kept 28 days after their last line")
