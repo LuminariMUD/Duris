@@ -46,7 +46,8 @@ run. An account keeps each address's last use: a login rewrote the whole list wi
 save's time, so an account that logged in once a month kept every old address. A login
 now drops an address past 30 days and leaves the others' times alone. The same job moves
 the live logs into `logs/old-logs/<date>/` once they are a day old and removes each archived
-file and core dump 30 days after its last write: the launcher archived only between runs,
+file and core dump 28 days after its last write (a file holds at most about 25 hours of
+lines, so none reaches 30 days): the launcher archived only between runs,
 by the archive's age, so a server kept up by copyovers kept its logs for good and a 40-day
 run's first lines lived 70 days. The server clears `lib/etc/hosts` at a cold boot and
 removes a connection's files when it closes, and a reverse-DNS lookup that answers after
