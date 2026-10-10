@@ -287,6 +287,26 @@ or `clang++` instead of `g++`. The wrapper drops `-Werror` (at `-O2` the instrum
 provokes false warnings inside libstdc++), so a test that needs a compile to fail on a
 warning fails under coverage and is listed in `failed.txt`.
 
+## Mutation testing
+
+`python3 scripts/mutate.py [--jobs N] [--journeys] SRC_FILE...` measures whether the tests
+that name a source notice when it is wrong. It writes each mutant (a relational operator
+flipped, `==`/`!=` or `&&`/`||` swapped, a `!` dropped, a returned `true`, `false`, `0` or `1`
+replaced; never in a comment, string or preprocessor line) into a worktree of `HEAD` under
+`bin/analysis/mutate/`, and runs the tests there that name the file, the quickest first (by
+`bin/test-history/`), until one fails. It refuses a checkout with uncommitted changes under
+`src/` or `tests/`, so commit a new test before scoring with it. Each file's tests run once
+unmutated first; one that fails there is left out of the score and listed. The report, a
+score per file and every surviving mutant with its line, is printed and kept in
+`bin/analysis/mutate-report.txt`. A survivor is a missing test, dead code, or a mutant no
+caller can tell apart (an equivalent mutant: say why in the commit that leaves it).
+
+`scripts/mutate/g++`, first on the tests' `PATH`, splits each harness's one-command build
+into one `ccache` compile per source and a link, so a mutant rebuilds only its own file;
+without `ccache` it compiles uncached, and `mutate.py` says so at the start. The
+journeys run only with `--journeys`; they name these files to build a helper and take
+minutes. It never runs in a gate, and its score counts only the tests that name the file.
+
 ## Fuzzing
 
 Each `tests/fuzz/<target>.cpp` feeds `LLVMFuzzerTestOneInput` to code that reads outside

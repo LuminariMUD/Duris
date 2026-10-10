@@ -34,18 +34,36 @@ that branch as a new commit, and the branches above take it by merge, never by r
 pushed. Every branch also carries this file: its Status table and Stack table say what is
 built at that branch's head.
 
-| PR | Branch | Items | State |
-|---|---|---|---|
-| 1 | `fix/14-privacy` | 9, 8, 3 (ADR 0003's code) | Built |
-| 2 | `fix/14-log-fixes` | 6, 1, 2, 7, 4, 5 | Built |
-| 3 | `fix/14-mariadb-11.8` | 17 | Built |
-| 4 | `fix/14-boot-scan` | 19 | Built |
-| 5 | `fix/14-tick-spikes` | 18 | Built |
-| 6 | `fix/14-test-tools` | 10, 14, 16 | Built |
-| 7 | `fix/14-test-stability` | 11 | Built |
-| 8 | `fix/14-clang-tidy` | 13 | Built |
-| 9 | `fix/14-fuzz` | 12 | Built |
-| 10 | `fix/14-mutation` | 15 | Not started |
+| PR | GitHub | Branch | Items | State |
+|---|---|---|---|---|
+| 1 | #15 | `fix/14-privacy` | 9, 8, 3 (ADR 0003's code) | Built, review round 1 done |
+| 2 | #16 | `fix/14-log-fixes` | 6, 1, 2, 7, 4, 5 | Built, review round 1 done |
+| 3 | #17 | `fix/14-mariadb-11.8` | 17 | Built, review round 1 done |
+| 4 | #18 | `fix/14-boot-scan` | 19 | Built, review round 1 done |
+| 5 | #19 | `fix/14-tick-spikes` | 18 | Built, review round 1 done |
+| 6 | #20 | `fix/14-test-tools` | 10, 14, 16 | Built, review round 1 done |
+| 7 | #21 | `fix/14-test-stability` | 11 | Built, review round 1 done |
+| 8 | #22 | `fix/14-clang-tidy` | 13 | Built, review round 1 done |
+| 9 | #23 | `fix/14-fuzz` | 12 | Built, review round 1 done |
+| 10 | #24 | `fix/14-mutation` | 15 | Built, review round 1 done |
+
+**Where it stands** (2026-10-10, after review round 1). Every item is built and every pull
+request is open; none has landed. Each pull request had an adversarial review and Codex's
+review, and Codex reviewed the round's pushes again. The round fixed or answered every
+finding on its own branch, one commit each, and each item's section says how; the branches
+above took every fix by merge, never by rebase. `master`'s `af2ea8e0d` (gcc 15) and
+`46ac05997` (the journeys' build key) came in through #15's `bbb31f9b7`. Each final head is
+gated (`make test-all` and `make test-db` in a throwaway worktree) and tagged: #15 to #17
+`-review-2` (their `-review-1` marks the round's first push), #18 to #24 `-review-1`. What
+is left is the owner's:
+
+- Review and land the pull requests in order. #15 targets `master`; retarget each next one
+  to `master` before deleting the base branch it was stacked on.
+- At the deploy of #16 (the launcher), set staging's hand-written unit to `KillMode=mixed`,
+  never before (item 1).
+- After deploying #18 and #19, measure the live service's boot and idle tick as items 19
+  and 18 describe; the scratch-server numbers are in their Built paragraphs.
+- Delete this file when the last pull request lands.
 
 Parts 3 and 4 sit below Part 2 because they matter more and change less: Part 3 has to land
 before a database is next built on MariaDB 11.8. Part 2 keeps its own order: 10 and 14 (and
@@ -82,7 +100,7 @@ Part 2, test quality:
 | 12 | Fuzz the code that reads outside input | one replay test | Built (PR 9) |
 | 13 | `clang-tidy` on changed lines | none (commit hook) | Built (PR 8) |
 | 14 | Keep a history of test runs | none | Built (PR 6) |
-| 15 | Mutation testing, by hand | none | Proposed |
+| 15 | Mutation testing, by hand | none | Built (PR 10) |
 | 16 | Line coverage, on demand | none (by hand) | Built (PR 6) |
 
 Part 3, database engine support:
@@ -876,6 +894,70 @@ suite's strength.
 
 **Done when** the script runs on those three files, each surviving mutant has a new test or
 its dead code removed, and the commit that does so records the before and after scores.
+
+**Built** (PR 10). `scripts/mutate.py` as described, with `scripts/mutate/g++`: a harness
+builds in one `g++` command, which `ccache` cannot cache, so the wrapper splits it into one
+`ccache` compile per source and a link. A harness test that took tens of seconds per mutant
+then takes one or two. The journeys run only with `--journeys`: they name these files to
+build a helper, and take minutes each.
+
+| File | Tests naming it | Before | After |
+|---|---|---|---|
+| `src/player/player_snapshot_codec.c` | 40 | 86.4% (254 of 294) | 98.3% (289 of 294) |
+| `src/economy/collector_policy.c` | 21 | 88.7% (235 of 265) | 97.0% (258 of 266) |
+| `src/persistence/critical_command.c` | 52 | 73.7% (126 of 171) | 95.3% (163 of 172; one times out) |
+
+- The codec's first figure, 100%, was the old tool's: it also ran
+  `test_playtime_mysql_repository.py`, a manual-only test that fails without the MySQL
+  journey's database, and ran it last, so it "caught" every mutant the others missed.
+  Re-scored with review round 1's tool, the codec stood at 86.4% (the before above), its 40
+  survivors in the readers and writers. `player_item_snapshot_codec_harness.cpp`, now built
+  with ASan, kills 35 of them (`31e305c8a`, `818ca00f5`): every proper prefix of an item
+  list, a snapshot and a version-3 snapshot is truncated; each limit holds at its value; an
+  over-long string, a boolean of 2, a field past the last and an over-long restore state
+  keep their own codes; versions 1, 3 and 5 decode and 2, 4, 6 and 8 do not; an absent item
+  is not extracted. The other two files, re-scored the same way, give exactly the figures
+  above, with the same survivors.
+- For the other two, the new assertions are in `collector_policy_harness.cpp` and the new
+  `test_critical_command_codec.py`, which wraps `getrandom()`. Each commit lists what it
+  covers and its before and after scores.
+- No survivor was dead code. The 21 left are equivalent mutants. The codec's five: a read
+  that fails with more reads behind it ends as truncated either way (lines 678, 681, 690);
+  a status string field past the last is refused as invalid either way (649); and a root
+  named twice is refused by the second extraction (452). The other 16 are each explained in their
+  commit: a read one past a terminated string, a return after an exhaustive switch of a
+  validated value, a size boundary the limits never reach, a check a later check makes
+  redundant, a failed allocation.
+
+**Review round 1** (2026-10-10, #24's adversarial review and Codex's): four ways the tool
+miscounted. Without `ccache` every compile through the wrapper failed, so every mutant was
+"caught"; a test already failing caught every mutant; the tests were listed from the
+checkout but run in a worktree of `HEAD`, so an uncommitted test that names the file
+"caught" every survivor; and a comparison at a line end was never mutated. The wrapper now
+compiles uncached without `ccache` (and finds ccache's link directory by where its `g++`
+points), each file's tests run once unmutated and a failing one is left out and listed, the
+tests are listed from the worktree and a checkout with changes under `src/` or `tests/` is
+refused, and the operator pattern takes a newline after the operator (`1daf2aa0f`;
+`test_mutate_tool.py`). The pattern found one more mutant in each of
+the two files above, `collector_policy.c:40` and `critical_command.c:235`; both are caught
+(`test_collector_death_enrollment.py`, `test_critical_command_codec.py`), and the table
+counts them. Codex, on the round's push: the legacy `return (0);` was not taken for a
+constant return, and the continued lines of a multi-line macro were mutated as code. Both
+patterns are fixed; neither changes the three files' counts above. The review after that:
+a raw string's payload was mutated as code where its quotes or lines fooled the string
+mask; raw strings are masked to their own delimiter now, again with no change above. Then:
+the operators between two digit separators (`1'000 && 2'000`) were masked as a character
+literal; an apostrophe after a digit or letter no longer opens one (no change above). And a
+line that a `//` comment spliced on with a backslash was mutated; the comment mask runs over
+such lines (no change above). Then: a file's tests were those whose text held its name
+anywhere, so `files.c` took `output_profiles.c`'s; the name must stand alone now. And a file
+whose every mutant timed out scored 100%; it has no score now. Then: `!*value` was never
+mutated, and the default worker count could pass the regression runner's cap of eight on a
+large host; both fixed (no change above), and the logical-not pattern then took any `!`
+but that of `!=` (`!--count` was missed too). It also skips the runner's manual-only
+tests, which need the journey that launches them. Not changed: stopping a batch's other tests once
+one catches the mutant, which saves time only when a sibling hangs, and the timeout bounds
+that.
 
 ### 16. Line coverage, on demand
 
