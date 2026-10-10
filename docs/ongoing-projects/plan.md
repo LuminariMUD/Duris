@@ -678,7 +678,9 @@ runner's pid and is created exclusively, an untracked file makes a run dirty, an
 records its workers beside `--match`, so a slowdown is judged only against runs made like
 the last (`f58f6e67c`; `test_test_history.py`). Codex, on the round's push: the untracked
 check covered only `src/`, `tests/`, `areas/` and `scripts/`, but tests read `migrations/`
-and `docs/` too; any untracked file counts now.
+and `docs/` too; any untracked file counts now. Codex's next review: when the last run failed
+a test or did not run it, the slowdown check compared an older pass; it now takes only the
+tests the last run passed, against their passes in earlier runs made like it.
 
 ### 15. Mutation testing, by hand
 
