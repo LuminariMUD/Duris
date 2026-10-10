@@ -636,6 +636,14 @@ test pins a count that grows with content, and the repeated stubs come from one 
     now build their own server and are in `make test-all`; the gold journey promotes its
     character with the combat journey's `make_overlord()`.
 
+**Review round 1** (2026-10-10): the adversarial review found no defect. Codex, on the
+round's push: `test_session14_gate.py`'s exact count of 28 fault cases became "non-empty and
+unique", so a manifest that dropped `db_outage_30s` or any case but one still passed; it
+now requires every current profile and fault case by name and allows new ones. And a leg
+converted to `disposable_schema.sh` stopped at its `TEST_DB_HOST` check when run on its
+own, as `CRITICAL_COMMAND_PIPELINE.md` says to run them; such a leg now runs itself again
+under `with_disposable_mariadb.sh`.
+
 ### 12. Fuzz the code that reads outside input
 
 **Problem.** No fuzz target exists. Code that parses input from clients or files is tested
