@@ -10,11 +10,11 @@ today; that behaviour is what this plan keeps.
 Checked against the checkout, saved build/test logs and GitHub. Phases 1 and 2 are
 committed. Phase 3's module split is implemented locally: the development build, all
 1,480 golden cases and the affected focused tests pass. Both build profiles pass; its full
-gate is still outstanding. Phases 4 and 5 have not started.
+gate is still outstanding. Phase 4 is in progress; Phase 5 has not started.
 
 - **Checkout:** `/home/aiwithapex/projects/duris-plan`, branch
-  `enhancement/randeq-3-module`, HEAD `7d2026fea` (the Phase 2 commit). Phase 3's source,
-  test and documentation changes are uncommitted; preserve them when continuing.
+  `enhancement/randeq-4-generator`, based on Phase 3 commit `a3bff0079`. Phase 4
+  starts with the independent true-name bounds fix.
 - **Published:** [PR #25](https://github.com/LuminariMUD/Duris/pull/25) is open against
   `master` at `3fdd367af`, with the pushed tag `randeq/phase-1-review-0`. Phases 2 and 3
   have local branches only; neither has a review tag or PR.
@@ -411,6 +411,9 @@ the production `-O2` profile).
 
 ### Phase 4: a readable generator
 
+**In progress.** First, bound `identify_random()` by its 61-entry table and add a
+foreign-spell assertion to the golden harness without changing its fixture.
+
 Split `create_random_eq_new()` into the steps above, behind `create_random_eq()` with level
 parameters (the old name goes, every caller moves). Then:
 
@@ -480,8 +483,8 @@ based on the one below, so each pull request's diff is its own phase. The first 
 |---|---|---|---|---|
 | 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | [#25](https://github.com/LuminariMUD/Duris/pull/25) | Open for review at `3fdd367af` (`randeq/phase-1-review-0`) |
 | 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | Not opened | Committed locally at `7d2026fea`; gate interrupted, database tests outstanding |
-| 3 | 3, module and interface | `enhancement/randeq-3-module` | Not opened | Implemented; both builds and focused checks pass, full gate pending |
-| 4 | 4, readable generator | `enhancement/randeq-4-generator` | | Not started |
+| 3 | 3, module and interface | `enhancement/randeq-3-module` | Not opened | Committed at `a3bff0079`; both builds and focused checks pass, full gate pending |
+| 4 | 4, readable generator | `enhancement/randeq-4-generator` | Not opened | In progress: defect fixes, then generator refactor |
 | 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | | Not started |
 
 ## Checks per pull request

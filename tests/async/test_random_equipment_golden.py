@@ -63,6 +63,7 @@ HARNESS = r'''
 #include "world/difficulty.h"
 #include "world/vnum.obj.h"
 
+#include <cassert>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -497,6 +498,17 @@ static void encrust_and_true_name()
 		}
 }
 
+// A valid spell outside the random-weapon table must leave the name alone.
+// This assertion adds no fixture output; ASan also checks the table boundary.
+static void foreign_spell_name()
+{
+	P_obj obj = read_object(VOBJ_RANDOM_WEAPON, VIRTUAL);
+	obj->value[5] = SPELL_BLINDNESS;
+	assert(!identify_random(obj));
+	assert(!strcmp(obj->short_description, "a blank"));
+	release(obj);
+}
+
 int main()
 {
 	setup_world();
@@ -505,6 +517,7 @@ int main()
 	generator();
 	materials_and_stones();
 	encrust_and_true_name();
+	foreign_spell_name();
 	return 0;
 }
 '''
