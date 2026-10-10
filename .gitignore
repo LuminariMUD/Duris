@@ -52,15 +52,10 @@ Ships/ship_index
 # ------------------------------------------------------------------------------
 # Generated game data and mutable library state
 # ------------------------------------------------------------------------------
-lib/ban_sites
 lib/etc/help
 lib/etc/vote.miniwipe
-lib/etc/vote.undead
 lib/information/hardcore_hall_of_fame
 lib/information/hardcore_hall_of_fameprod
-lib/information/leaderboard
-lib/information/leaderboardprod
-lib/information/leaderboardprod
 lib/relic_highscore
 
 # ------------------------------------------------------------------------------
