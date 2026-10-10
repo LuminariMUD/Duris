@@ -1028,9 +1028,10 @@ std::vector<std::filesystem::path> list_files(const char *directory)
 // ADR 0003: no log line is kept past 30 days. The launcher moves the live logs into
 // logs/old-logs/<date>/ at each start, but a copyover never goes back to it, so this moves
 // them there too once they are a day old (logs/log/.since is made when a live set begins).
-// Then every archived file, and every core dump, last written 30 days ago goes, and so does
-// an archive left empty. The game appends each log line by opening its file, so moving a
-// live file loses no line.
+// A file then holds at most about 25 hours of lines (this job runs hourly), so every
+// archived file, and every core dump, goes 28 days after its last write, before its first
+// line is 30 days old; an archive left empty goes too. The game appends each log line by
+// opening its file, so moving a live file loses no line.
 void expire_log_files()
 {
 	namespace fs = std::filesystem;
@@ -1060,7 +1061,7 @@ void expire_log_files()
 	const auto expired = [&](const fs::path &file)
 	{
 		return fs::is_regular_file(file, error) &&
-		       now - fs::last_write_time(file, error) > std::chrono::hours(24 * 30);
+		       now - fs::last_write_time(file, error) > std::chrono::hours(24 * 28);
 	};
 	for (const fs::path &file : list_files("."))
 		if (file.filename().string().starts_with("core.") && expired(file))
