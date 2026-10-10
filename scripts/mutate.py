@@ -8,8 +8,11 @@ lines: a relational operator flipped (< and <=, > and >=), == and != swapped, &&
 swapped, a ! dropped, and a returned constant replaced (true and false, 0 and 1). Each
 mutant is written into a worktree of HEAD under bin/analysis/mutate/, where the tests that
 name the file run, the quickest first (by bin/test-history), N at a time, until one fails:
-the mutant is caught. scripts/mutate/g++, first on the tests' PATH, sends each compile through
-ccache, so a mutant rebuilds only its own file. The journeys (the runner's resource-intensive tests) run only with
+the mutant is caught. It works from HEAD, so it refuses a checkout with uncommitted changes
+under src/ or tests/: commit a new test before scoring with it. Each file's tests first run
+once unmutated, and one that fails there is left out of its score and listed.
+scripts/mutate/g++, first on the tests' PATH, sends each compile through ccache when it is
+installed, so a mutant rebuilds only its own file. The journeys (the runner's resource-intensive tests) run only with
 --journeys: each takes minutes, and they name these files only to build a helper. A mutant no test fails survived, and is a missing test or dead code;
 one whose tests ran out of time counts apart. The report, a score per file and every
 survivor with its line, is printed and kept in bin/analysis/mutate-report.txt.
@@ -24,6 +27,7 @@ import concurrent.futures
 import json
 import os
 import re
+import shutil
 import signal
 import statistics
 import subprocess
@@ -38,8 +42,9 @@ TREE = ROOT / "bin/analysis/mutate"
 MASK = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|^[ \t]*#[^\n]*',
                   re.S | re.M)
 OPERATORS = [
-    (re.compile(r"(?<= )(<=|>=|<|>)(?= )"), {"<": "<=", "<=": "<", ">": ">=", ">=": ">"}),
-    (re.compile(r"(?<= )(==|!=)(?= )"), {"==": "!=", "!=": "=="}),
+    # An operator clang-format leaves at the end of a line has a newline after it.
+    (re.compile(r"(?<= )(<=|>=|<|>)(?=[ \n])"), {"<": "<=", "<=": "<", ">": ">=", ">=": ">"}),
+    (re.compile(r"(?<= )(==|!=)(?=[ \n])"), {"==": "!=", "!=": "=="}),
     (re.compile(r"(?<= )(&&|\|\|)(?=[ \n])"), {"&&": "||", "||": "&&"}),
     (re.compile(r"!(?=[A-Za-z_(])"), {"!": ""}),
     (re.compile(r"(?<=return )(true|false|0|1)(?=;)"),
@@ -60,7 +65,7 @@ def tests_naming(path: Path, journeys: bool) -> list[str]:
     name = path.name
     sys.path.insert(0, str(ROOT / "tests"))
     from run_regression_tests import RESOURCE_INTENSIVE_TEST_NAMES
-    tests = [test.name for test in sorted((ROOT / "tests/async").glob("test_*.py"))
+    tests = [test.name for test in sorted((TREE / "tests/async").glob("test_*.py"))
              if name in test.read_text(errors="replace") and
              (journeys or test.name not in RESOURCE_INTENSIVE_TEST_NAMES)]
     seconds: dict[str, list[float]] = {}
@@ -113,6 +118,13 @@ def main() -> int:
     parser.add_argument("--journeys", action="store_true", help="run the journeys too")
     args = parser.parse_args()
 
+    if subprocess.check_output(["git", "status", "--porcelain", "--", "src", "tests"], cwd=ROOT,
+                               text=True).strip():
+        print("mutate.py runs HEAD's tests on HEAD's sources: commit or stash the changes "
+              "under src/ and tests/ first.", file=sys.stderr)
+        return 2
+    if not shutil.which("ccache"):
+        print("No ccache: every harness rebuilds in full for every mutant.", flush=True)
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     subprocess.run(["git", "worktree", "remove", "--force", str(TREE)], cwd=ROOT,
                    capture_output=True)
@@ -126,8 +138,14 @@ def main() -> int:
             source = TREE / relative
             original = source.read_text()
             tests = tests_naming(source, args.journeys)
+            # A test that fails unmutated would count as catching every mutant.
+            with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
+                baseline = dict(zip(tests, pool.map(lambda t: run_test(t, args.timeout), tests)))
+            broken = [test for test in tests if baseline[test] != "pass"]
+            tests = [test for test in tests if baseline[test] == "pass"]
             sites = mutants(original)
-            print(f"{relative}: {len(sites)} mutants, {len(tests)} tests name it", flush=True)
+            print(f"{relative}: {len(sites)} mutants, {len(tests)} tests name it and pass",
+                  flush=True)
             outcomes = {"caught": 0, "survived": 0, "timeout": 0}
             survivors = []
             for number, (start, end, old, new) in enumerate(sites, 1):
@@ -148,6 +166,7 @@ def main() -> int:
             report.append(f"{relative}: {score:.1f}% ({outcomes['caught']} caught, "
                           f"{outcomes['survived']} survived, {outcomes['timeout']} timed out; "
                           f"{len(tests)} tests)")
+            report += [f"    left out, {baseline[test]} unmutated: {test}" for test in broken]
             report += survivors
     finally:
         subprocess.run(["git", "worktree", "remove", "--force", str(TREE)], cwd=ROOT,

@@ -4,7 +4,8 @@
 A harness builds with one command that compiles several sources and links them, which
 ccache cannot cache. This splits such a command into one ccache compile per source and a
 link, so a mutant recompiles only the file it changed (and the harness, written afresh).
-Every other command goes to ccache, or to the real g++, unchanged.
+Every other command goes to ccache, or to the real g++, unchanged. Without ccache it runs
+the real g++ directly: uncached, but right.
 """
 import os
 import shutil
@@ -12,12 +13,15 @@ import subprocess
 import sys
 import tempfile
 
-# The real g++: past this directory and past ccache's own g++ links, which would look the
-# compiler up on PATH again and find this wrapper.
+# The real g++: past this directory and past a directory of ccache's g++ links, which would
+# look the compiler up on PATH again and find this wrapper.
 here = os.path.dirname(os.path.abspath(__file__))
-search = os.pathsep.join(p for p in os.environ.get("PATH", "").split(os.pathsep)
-                         if p and os.path.abspath(p) != here and "ccache" not in p)
+search = os.pathsep.join(
+    p for p in os.environ.get("PATH", "").split(os.pathsep)
+    if p and os.path.abspath(p) != here and
+    os.path.basename(os.path.realpath(os.path.join(p, "g++"))) != "ccache")
 real = shutil.which("g++", path=search)
+cached = [ccache] if (ccache := shutil.which("ccache", path=search)) else []
 args = sys.argv[1:]
 SOURCES = (".c", ".cc", ".cpp", ".cxx")
 TAKES_VALUE = {"-o", "-I", "-include", "-isystem", "-iquote", "-MF", "-MT", "-MQ", "-L",
@@ -26,7 +30,7 @@ TAKES_VALUE = {"-o", "-I", "-include", "-isystem", "-iquote", "-MF", "-MT", "-MQ
 # Compiles one source (-c), or only preprocesses or inspects: ccache or the real g++.
 if any(arg in ("-c", "-E", "-S", "-M", "-MM", "-") or arg.startswith(("-x", "-print-", "--version"))
        for arg in args):
-    command = ["ccache", real, *args] if "-c" in args else [real, *args]
+    command = [*cached, real, *args] if "-c" in args else [real, *args]
     os.execvp(command[0], command)
 
 sources, compile_flags, positions = [], [], []
@@ -52,7 +56,7 @@ with tempfile.TemporaryDirectory(prefix="mutate-objects-") as objects:
     link = list(args)
     for number, (source, position) in enumerate(zip(sources, positions)):
         output = os.path.join(objects, f"{number}.o")
-        compiled = subprocess.run(["ccache", real, *compile_flags, "-c", source, "-o", output])
+        compiled = subprocess.run([*cached, real, *compile_flags, "-c", source, "-o", output])
         if compiled.returncode:
             sys.exit(compiled.returncode)
         link[position] = output
