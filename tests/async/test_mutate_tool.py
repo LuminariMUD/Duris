@@ -37,6 +37,8 @@ assert [(old, new) for _, _, old, new in mutate.mutants(legacy)] == [("0", "1"),
 # A raw string is data to its own delimiter, over lines and quotes alike.
 raw = 'auto json = R"json({"query": "a != b",\n "and": "c || d"})json";\nif (a != b)\n'
 assert [(old, new) for _, _, old, new in mutate.mutants(raw)] == [("!=", "==")]
+# A logical not of a dereference is a mutant too.
+assert [(old, new) for _, _, old, new in mutate.mutants("\tif (!*value)\n")] == [("!", "")]
 # A // comment ending in a backslash goes on over the next line.
 spliced = "\t// disabled \\\n\treturn 0;\n\treturn 1;\n"
 assert [(old, new) for _, _, old, new in mutate.mutants(spliced)] == [("1", "0")]

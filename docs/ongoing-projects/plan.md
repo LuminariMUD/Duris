@@ -937,7 +937,11 @@ literal; an apostrophe after a digit or letter no longer opens one (no change ab
 line that a `//` comment spliced on with a backslash was mutated; the comment mask runs over
 such lines (no change above). Then: a file's tests were those whose text held its name
 anywhere, so `files.c` took `output_profiles.c`'s; the name must stand alone now. And a file
-whose every mutant timed out scored 100%; it has no score now.
+whose every mutant timed out scored 100%; it has no score now. Then: `!*value` was never
+mutated, and the default worker count could pass the regression runner's cap of eight on a
+large host; both fixed (no change above). Not changed: stopping a batch's other tests once
+one catches the mutant, which saves time only when a sibling hangs, and the timeout bounds
+that.
 
 ### 16. Line coverage, on demand
 

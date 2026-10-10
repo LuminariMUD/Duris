@@ -50,7 +50,7 @@ OPERATORS = [
     (re.compile(r"(?<= )(<=|>=|<|>)(?=[ \n])"), {"<": "<=", "<=": "<", ">": ">=", ">=": ">"}),
     (re.compile(r"(?<= )(==|!=)(?=[ \n])"), {"==": "!=", "!=": "=="}),
     (re.compile(r"(?<= )(&&|\|\|)(?=[ \n])"), {"&&": "||", "||": "&&"}),
-    (re.compile(r"!(?=[A-Za-z_(])"), {"!": ""}),
+    (re.compile(r"!(?=[A-Za-z_(*])"), {"!": ""}),
     # `return 0;` and the legacy `return (0);`.
     (re.compile(r"(?<=return )(true|false|0|1)(?=;)|(?<=return \()(true|false|0|1)(?=\);)"),
      {"true": "false", "false": "true", "0": "1", "1": "0"}),
@@ -119,7 +119,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("files", nargs="+", type=Path)
-    parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) // 2))
+    # At most the regression runner's own automatic eight, however many CPUs there are.
+    parser.add_argument("--jobs", type=int, default=min(8, max(1, (os.cpu_count() or 2) // 2)))
     parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument("--journeys", action="store_true", help="run the journeys too")
     args = parser.parse_args()
