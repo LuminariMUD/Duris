@@ -7,7 +7,7 @@ write (136 ms traced in one). The real cmdlog(), write_cmdlog() and crash handle
 here: nothing is written while the server runs, and an exit, a fault, an abort(), a sent
 signal and an overflowed stack each leave the last commands in the file, with the
 signal's own exit status. A conversation command keeps its word and loses its text
-(ADR 0003).
+(ADR 0003). A one-letter command is recorded, and an empty line is not.
 """
 from pathlib import Path
 import subprocess
@@ -144,6 +144,19 @@ int main(int argc, char **argv)
     assert(written[3].find(": look at the secret") != std::string::npos);
     for (int i = 0; i < 3; ++i)
         assert(written[i].find("secret") == std::string::npos);
+
+    // A one-letter command is kept; an empty line leaves no entry. cmdlog() tested the
+    // byte after the first, so it dropped "n" and read stale bytes past an empty line.
+    status = child(0, [] {
+        type("n");
+        type("");
+        type("k bob");
+    });
+    assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+    written = lines();
+    assert(written.size() == 2);
+    assert(written[0].find(":: [1] Tanen in 1200: n") != std::string::npos);
+    assert(written[1].find(":: [2] Tanen in 1200: k bob") != std::string::npos);
 
     // A crash writes them and dies of its own signal: a fault, an abort(), a signal that
     // was sent, and a stack that overflowed.

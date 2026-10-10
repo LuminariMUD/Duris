@@ -658,6 +658,63 @@ int main()
 	d.ws_message_buffer = NULL;
 	d.ws_message_len = 0;
 
+	// A plain GET is answered, with robots.txt keeping crawlers out, and the connection
+	// closes (-2); it was dropped unanswered, which the tunnel turned into an error page.
+	// The upgrade above still opens.
+	const struct
+	{
+		const char *request, *status, *body;
+	} plain_gets[] = {
+		{ "GET / HTTP/1.1\r\nHost: ws.example\r\n\r\n", "HTTP/1.1 426 Upgrade Required",
+		  "WebSocket connections only" },
+		{ "GET /robots.txt HTTP/1.1\r\nHost: ws.example\r\n\r\n", "HTTP/1.1 200 OK",
+		  "\r\n\r\nUser-agent: *\nDisallow: /\n" },
+	};
+	for (const auto &plain : plain_gets)
+	{
+		int plain_pair[2];
+		if (socketpair(AF_UNIX, SOCK_STREAM, 0, plain_pair) != 0)
+			return fail("plain GET socketpair");
+		descriptor_data browser{};
+		browser.descriptor = plain_pair[0];
+		if (websocket_parse_handshake(&browser, plain.request, strlen(plain.request)) != -2)
+			return fail("a plain GET was not answered");
+		char answer[512];
+		const ssize_t answer_len = read(plain_pair[1], answer, sizeof(answer) - 1);
+		if (answer_len <= 0)
+			return fail("read the answer to a plain GET");
+		answer[answer_len] = '\0';
+		if (strncmp(answer, plain.status, strlen(plain.status)) != 0 ||
+		    !strstr(answer, plain.body) || !strstr(answer, "Connection: close"))
+			return fail("a plain GET got the wrong answer");
+		close(plain_pair[0]);
+		close(plain_pair[1]);
+	}
+
+	// An upgrade from a browser origin outside the allow-list is refused with 403.
+	setenv("DURIS_WEBSOCKET_ALLOWED_ORIGINS", "https://duris.example", 1);
+	const char foreign_origin[] = "GET / HTTP/1.1\r\nHost: ws.example\r\nUpgrade: websocket\r\n"
+				      "Connection: Upgrade\r\nOrigin: https://elsewhere.example\r\n"
+				      "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+				      "Sec-WebSocket-Version: 13\r\n\r\n";
+	int origin_pair[2];
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, origin_pair) != 0)
+		return fail("origin socketpair");
+	descriptor_data foreign{};
+	foreign.descriptor = origin_pair[0];
+	if (websocket_parse_handshake(&foreign, foreign_origin, sizeof(foreign_origin) - 1) != -2)
+		return fail("an upgrade from a foreign origin was not refused");
+	char refusal[256];
+	const ssize_t refusal_len = read(origin_pair[1], refusal, sizeof(refusal) - 1);
+	if (refusal_len <= 0)
+		return fail("read the foreign origin's refusal");
+	refusal[refusal_len] = '\0';
+	if (strncmp(refusal, "HTTP/1.1 403 Forbidden\r\n", 24) != 0)
+		return fail("a foreign origin got the wrong refusal");
+	unsetenv("DURIS_WEBSOCKET_ALLOWED_ORIGINS");
+	close(origin_pair[0]);
+	close(origin_pair[1]);
+
 	const char *bad_key = "GET / HTTP/1.1\r\n"
 			      "Upgrade: websocket\r\n"
 			      "Connection: Upgrade\r\n"

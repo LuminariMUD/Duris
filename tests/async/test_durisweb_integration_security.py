@@ -59,7 +59,7 @@ assert 'getenv("DURIS_WEBSOCKET_LISTEN_ADDRESS")' in WS
 assert "websocket_address_is_loopback" in WS
 assert 'getenv("DURIS_WEBSOCKET_ALLOWED_ORIGINS")' in WS
 assert 'strncasecmp(line, "Origin:", 7)' in WS
-assert 'websocket_send_http_rejection(d, "403 Forbidden")' in WS
+# websocket_runtime_harness.cpp sends a foreign Origin and reads the 403.
 
 # Service authentication is a one-time, expiring challenge bound into the
 # HMAC and supports a previous key during rotation.

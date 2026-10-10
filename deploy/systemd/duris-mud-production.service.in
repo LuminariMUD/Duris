@@ -12,7 +12,9 @@ WorkingDirectory=@DURIS_ROOT@
 ExecStart="@DURIS_ROOT@/scripts/cycle_mud.sh" --production
 Restart=always
 RestartSec=10s
-KillMode=control-group
+# SIGTERM goes to the launcher alone, which stops the server and records the stop;
+# anything left after TimeoutStopSec is killed.
+KillMode=mixed
 TimeoutStopSec=90s
 UMask=0077
 LimitNOFILE=65535

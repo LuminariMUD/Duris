@@ -202,6 +202,20 @@ logout and login; it saves before it reads the wallet from disk. `--expect-regre
 only fits a server from before the persistence reset. Live play ran on the flat-file
 backend only.
 
+## Command log: one-letter commands
+
+`cmdlog()` recorded a command only when its second byte was not the terminator, so a
+one-letter command (`n`, `s`, `k`) never reached `cmd.debug`, and an empty line read the
+byte past the terminator. It now tests the first byte: a one-letter command is kept, and
+an empty line leaves no entry.
+
+```sh
+python3 tests/async/test_command_log_ring.py
+```
+
+The harness runs the real `cmdlog()`. No test types a one-letter command on a running
+server.
+
 ## Connections before an account login, and the trusted proxy
 
 One address may hold at most `MAX_LOGIN_CONNECTIONS_PER_ADDRESS` (8) open connections
@@ -452,6 +466,47 @@ The test feeds both clients an escape split across three reads through a socket 
 fails without the fix. Not covered: the copyover journey's own reader, which shares the
 method but is only exercised by its journey.
 
+## Launcher: a service stop is recorded
+
+systemd stopped the launcher with the server (`KillMode=control-group`), so the launcher
+never wrote its `server_reboots` row: one restart in ten was recorded. The unit sends
+SIGTERM to the launcher alone (`KillMode=mixed`); the launcher runs the server as a
+child, passes the signal on, waits for the shutdown, writes the row and exits without
+starting the server again or pausing ten seconds. The issuer and reason go in as hex, so
+a reason with an apostrophe is recorded, and a failed insert is reported. A stop that lands
+between the server's fork and `SERVER_PID=$!` still reaches the new server; the trap sent
+it to the last run's PID.
+
+```sh
+tests/async/with_disposable_mariadb.sh python3 tests/async/run_launcher_stop_journey.py
+python3 tests/async/test_flatfile_launcher.py
+```
+
+The journey runs the real launcher with a stand-in server on a disposable MariaDB and
+sends SIGTERM to the launcher alone, twice. The launcher test runs the launch block with
+the launcher signalling itself inside that window. Neither runs systemd.
+
+## Log lines a reader can use
+
+A zone command that does not load (`M`, `F`, `R` whose chance roll misses) is logged with
+its mob and room vnums, not the boot's internal indices. A connection reset before the
+server accepts it has the host `unknown`, not a color code that went into every line about
+it. A shutdown, reboot or copyover writes its kind, issuer and reason to the status log
+instead of the players' broadcast with its color codes and line ends. The issuer's wiz row
+is written when it is scheduled; the completion runs with no character, so its wiz row was
+never written, before or after this change.
+
+```sh
+python3 tests/async/test_log_hygiene_journey.py
+```
+
+An `R` that misses its roll after an `M` that loaded the rider no longer goes on with a
+NULL mount, which crashed the zone pass.
+
+The journey boots a flat-file server with zero-chance `M`, `F` and `R` commands and a
+zero-chance `R` after a loaded rider, resets a connection before the server accepts it,
+and stops the server with SIGTERM.
+
 ## Maintenance scheduler state file
 
 The state file defaults to `runtime/maintenance-scheduler.state`, outside the `bin/` tree
@@ -530,6 +585,19 @@ fixture, where the foreign key is), the flat-file reap and world recovery on a l
 server (the harness drives the repository functions), and the reap on a long-lived
 database with every owner type populated.
 
+## Plain HTTP on the WebSocket port
+
+A GET without an upgrade, a crawler's or a browser's, was dropped unanswered, and the
+tunnel in front of the port turned that into an error page. It gets `426 Upgrade
+Required`, and `GET /robots.txt` gets `Disallow: /`; both close. An upgrade still opens.
+
+```sh
+python3 tests/async/test_websocket_runtime.py
+```
+
+The harness runs the real `websocket_parse_handshake()` over a socket pair. No test sends
+these through the tunnel.
+
 ## Production launcher and a staged development build
 
 `scripts/cycle_mud.sh --production` promotes only a `bin/server/dms_new` stamped
@@ -607,6 +675,18 @@ stopping at its first report, against an item race list built as `setbit_obj()` 
 and a numbered flag field: races 1 and 32 set and clear their own bits, race 36 and the
 numbers -1, 32 and 40 are refused and change nothing, and bit 31 is set. Without the fix it
 stops at race 36's shift. Not covered: the other `setbit` field types.
+
+## Shop rates within the loader's bounds
+
+The loader caps a shop's buy rate at 0.8 and logs `Old buy/sell` when it changes one. Nine
+shops (31310, 47061, 47070, 47097, 47116, 59081, 59097 at 1.0, 89091 and 89118 at 0.9)
+asked for more, so every boot logged nine lines. Their files now ask for 0.8.
+
+```sh
+python3 tests/async/test_flatfile_full_world_boot.py
+```
+
+The full-world boot fails on any `Old buy/sell` line in its debug log.
 
 ## Snoop notices, audits and recall
 

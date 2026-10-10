@@ -262,37 +262,29 @@ static int websocket_send_all(int fd, const void *buf, size_t len)
 	return 0;
 }
 
-static int websocket_send_health_response(struct descriptor_data *d)
+// One HTTP response, after which the caller closes the connection: the health probe's, a
+// refusal, and the answer to a plain GET.
+static int websocket_send_http_response(struct descriptor_data *d, const char *status,
+					const char *headers, const char *body)
 {
-	const int persistence_ready = !persistence_mode_requires_mysql() || sql_pool_is_active();
-	const char *status = persistence_ready ? "200 OK" : "503 Service Unavailable";
-	const char *body = persistence_ready ?
-				   "{\"status\":\"healthy\",\"persistence\":\"ready\"}\n" :
-				   "{\"status\":\"unhealthy\",\"persistence\":\"unavailable\"}\n";
 	char response[WS_RESPONSE_BUFFER_SIZE];
 	int response_len = snprintf(response, sizeof(response),
-				    "HTTP/1.1 %s\r\n"
-				    "Content-Type: application/json\r\n"
-				    "Cache-Control: no-store\r\n"
-				    "Connection: close\r\n"
+				    "HTTP/1.1 %s\r\n%sConnection: close\r\n"
 				    "Content-Length: %zu\r\n\r\n%s",
-				    status, strlen(body), body);
-	if (!d || response_len < 0 || (size_t)response_len >= sizeof(response))
-		return -1;
-	const int descriptor = d->descriptor;
-	return websocket_send_all(descriptor, response, (size_t)response_len);
-}
-
-static int websocket_send_http_rejection(struct descriptor_data *d, const char *status)
-{
-	char response[WS_RESPONSE_BUFFER_SIZE];
-	int response_len = snprintf(response, sizeof(response),
-				    "HTTP/1.1 %s\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
-				    status);
-
+				    status, headers, strlen(body), body);
 	if (!d || response_len < 0 || (size_t)response_len >= sizeof(response))
 		return -1;
 	return websocket_send_all(d->descriptor, response, (size_t)response_len);
+}
+
+static int websocket_send_health_response(struct descriptor_data *d)
+{
+	const int persistence_ready = !persistence_mode_requires_mysql() || sql_pool_is_active();
+	return websocket_send_http_response(
+		d, persistence_ready ? "200 OK" : "503 Service Unavailable",
+		"Content-Type: application/json\r\nCache-Control: no-store\r\n",
+		persistence_ready ? "{\"status\":\"healthy\",\"persistence\":\"ready\"}\n" :
+				    "{\"status\":\"unhealthy\",\"persistence\":\"unavailable\"}\n");
 }
 
 /* base64 encoding helper */
@@ -534,6 +526,7 @@ int websocket_parse_handshake(struct descriptor_data *d, const char *buf, size_t
 	int malformed_header = 0;
 	int first_line = 1;
 	int health_request = 0;
+	int robots_request = 0;
 	int origin_seen = 0;
 	int origin_ok = 1;
 
@@ -566,6 +559,8 @@ int websocket_parse_handshake(struct descriptor_data *d, const char *buf, size_t
 			first_line = 0;
 			if (strcmp(line, "GET /health HTTP/1.1") == 0)
 				health_request = 1;
+			if (strcmp(line, "GET /robots.txt HTTP/1.1") == 0)
+				robots_request = 1;
 			if (strncmp(line, "GET ", 4) == 0)
 			{
 				/* RFC 6455 handshake uses an HTTP/1.1 GET request. */
@@ -699,13 +694,28 @@ int websocket_parse_handshake(struct descriptor_data *d, const char *buf, size_t
 	{
 		banlog(56, "Reject WebSocket connect from %s, banned site.", d->host);
 		logit(LOG_STATUS, "Rejected WebSocket connect from %s, banned site.", d->host);
-		int sent = websocket_send_http_rejection(d, "403 Forbidden");
+		int sent = websocket_send_http_response(d, "403 Forbidden", "", "");
 		free(request);
 		return sent < 0 ? -1 : -2;
 	}
 	if (!origin_ok)
 	{
-		int sent = websocket_send_http_rejection(d, "403 Forbidden");
+		int sent = websocket_send_http_response(d, "403 Forbidden", "", "");
+		free(request);
+		return sent < 0 ? -1 : -2;
+	}
+	// A plain GET, a crawler's or a browser's, is answered: a dropped connection becomes an
+	// error page at the tunnel in front of this port.
+	if (request_line_ok && !is_upgrade && !is_websocket && !malformed_header)
+	{
+		int sent = robots_request ?
+				   websocket_send_http_response(d, "200 OK",
+								"Content-Type: text/plain\r\n",
+								"User-agent: *\nDisallow: /\n") :
+				   websocket_send_http_response(
+					   d, "426 Upgrade Required",
+					   "Upgrade: websocket\r\nContent-Type: text/plain\r\n",
+					   "This port takes WebSocket connections only.\n");
 		free(request);
 		return sent < 0 ? -1 : -2;
 	}
