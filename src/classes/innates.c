@@ -2551,6 +2551,17 @@ void do_stone_skin(P_char ch, char * /*arg*/, int /*cmd*/)
 // The cooldown is innate.timer.secs.reflection.
 void do_innate_reflection(P_char ch, char * /*arg*/, int /*cmd*/)
 {
+	// Match the spell's titan restriction before spending cooldown or combat lag.
+	for (auto *link = ch->linked; link; link = link->next_linked)
+	{
+		if (link->type == LNK_PET && IS_NPC(link->linking) &&
+		    GET_VNUM(link->linking) == TITAN_NUMBER)
+		{
+			send_to_char("&+LBut you cant support so many different illusions!&n\r\n",
+				     ch);
+			return;
+		}
+	}
 	if (!check_innate_time(ch, INNATE_REFLECTION))
 	{
 		send_to_char("You're too tired to do that right now.\n", ch);
