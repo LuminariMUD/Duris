@@ -17,8 +17,8 @@ test-coverage findings and the applicable local gates below; GitHub CI is not a 
 stack and existing review tags; merge lower fixes upward in order and tag each fixed
 head with the next `randeq/phase-<n>-review-<round>` tag. No rebase or squash is needed.
 
-PR #25 review round 3 addresses two findings received after the previous ready tag
-`randeq/phase-1-review-2`. The four earlier findings remain fixed. The harness now covers:
+PR #25 is ready to merge at `randeq/phase-1-review-3`; all six review threads have
+replies and are resolved. The harness now covers:
 
 - different pet/owner level, luck and room attributes;
 - all 26 suffix totals and their RNG consumption;
@@ -49,7 +49,10 @@ The new assertions preserve both frozen fixtures. ASan/UBSan passes, and tempora
 mutations swapping the weapon blank or omitting any of the three eligibility predicates
 fail. No new fixture or production code is needed: template identity is a fixed invariant
 of the existing wear flags, and rejected contexts must be side-effect free. Evidence:
-`pr1-review4-focused.log` and `pr1-review4-mutations.log`. The full local gate is pending.
+`pr1-review4-focused.log` and `pr1-review4-mutations.log`. Commit `a32d39dd7` passed
+full formatting, both builds and `make test-all -j16 TEST_JOBS=16` (707/707, no reruns;
+`pr1-review4.log`), plus site checks (15) and documentation checks (12). The final
+record changes only this plan and reuses that code/test gate.
 Then merge upward through #26, #27, #28 and #29 in order; their prior fixes and evidence
 remain valid, and #29's recipe repair is already committed at `02e391102`.
 
