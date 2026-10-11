@@ -17,15 +17,18 @@ test-coverage findings and the applicable local gates below; GitHub CI is not a 
 stack and existing review tags; merge lower fixes upward in order and tag each fixed
 head with the next `randeq/phase-<n>-review-<round>` tag. No rebase or squash is needed.
 
-PR #25 is ready to merge at `randeq/phase-1-review-2`; all four review threads have
-replies and are resolved. The existing harness now covers:
+PR #25 is ready to merge at `randeq/phase-1-review-3`; all six review threads have
+replies and are resolved. The harness now covers:
 
 - different pet/owner level, luck and room attributes;
 - all 26 suffix totals and their RNG consumption;
 - a sentinel RNG draw after all 1,480 cases, stored in a companion fixture captured
   from original `master` code at `879adf0aa`;
 - real string setters and all three string ownership bits on every generated item,
-  including kill drops, so generated names are marked for persistence.
+  including kill drops, so generated names are marked for persistence;
+- the weapon/armor blank vnum at both direct-generation and kill-drop observation points;
+- ordinary NPC killers, player victims, dead player killers and dead pet killers, with no
+  drops, messages or RNG draws allowed in these rejected contexts.
 
 The original item fixture remains unchanged. Both fixtures are frozen for later phases.
 Temporary mutations proved the repairs: either pet roll using the owner fails four cases;
@@ -33,7 +36,7 @@ removing suffix 5, 6 or 7 fails its assertion; an extra terminal longbow draw le
 output unchanged but fails three RNG sentinels; bypassing each string setter fails the
 ownership assertion. No game code changed. The real setters replace three test stubs.
 
-**Proof:** final code/test commit `be9c9915d` passed the ASan/UBSan harness, full formatting,
+**Previous proof:** code/test commit `be9c9915d` passed the ASan/UBSan harness, full formatting,
 `make test-all -j16 TEST_JOBS=16` (707/707, no reruns, including both build profiles),
 `npm test --prefix site` (15 checks) and 12 documentation checks. `make security-check`
 also passed on the unchanged security sources. The final record commit only updates this
@@ -42,14 +45,29 @@ plan. `make test-db` remains exempt for this tests/comments/docs phase. Logs are
 `pr1-review1-security.log`, `pr1-review1-mutations.log`, `pr1-review2-rng.log` and
 `pr1-review3-ownership.log`. Earlier full gates also passed; their logs are retained.
 CodeQL and Trivy are not installed locally; those external scanners were not rerun.
+The new assertions preserve both frozen fixtures. ASan/UBSan passes, and temporary
+mutations swapping the weapon blank or omitting any of the three eligibility predicates
+fail. No new fixture or production code is needed: template identity is a fixed invariant
+of the existing wear flags, and rejected contexts must be side-effect free. Evidence:
+`pr1-review4-focused.log` and `pr1-review4-mutations.log`. Commit `a32d39dd7` passed
+full formatting, both builds and `make test-all -j16 TEST_JOBS=16` (707/707, no reruns;
+`pr1-review4.log`), plus site checks (15) and documentation checks (12). The final
+record changes only this plan and reuses that code/test gate.
 
-PR #26 is ready to merge at `randeq/phase-2-review-1` and has no review findings.
+
+PR #26 is ready to merge at `randeq/phase-2-review-2` and has no review findings.
 Merge `b4f4252a6` brings in all PR #25 repairs without conflicts or changes to Phase 2's
 server code. It passed the strengthened ASan/UBSan golden harness, minimal boot checks,
 full formatting, `make test-all -j16 TEST_JOBS=16` (707/707, both build profiles),
 `make test-db` (72/72) and the site checks (15). No reruns were needed. The final record
 only updates this plan and passes its 12 documentation checks. Evidence:
-`randeq-gate/pr2-review1.log` and `pr2-review1-site.log`. Next: PR #27, then #28 and #29.
+`randeq-gate/pr2-review1.log` and `pr2-review1-site.log`.
+
+The second review merge adds only the two new golden assertions and documentation.
+Its server source tree is byte-identical to the fully gated `fd38db525` revision. Reuse
+that full build/regression/database evidence. The changed ASan/UBSan harness, 12
+documentation checks, 15 site checks and formatting pass on this merge
+(`pr2-review2-focused.log`, `pr2-review2-site.log`). Next: PR #27, then #28 and #29.
 
 ## Goal
 
@@ -478,6 +496,9 @@ Every pull request runs the golden test and its own focused tests, then
 (`git worktree add --detach ../duris-plan-gate <sha>`, removed after), in the background, so
 the checkout can move on while the gate runs. PR 1 changes no server code (a test, comments
 and documents), so it skips `make test-db`.
+For later tests/documentation-only follow-ups, retain the completed full gate after
+verifying the server source tree is identical, and rerun the affected tests against each
+phase's implementation. Behavioral changes still require fresh full gates.
 
 ## Ablation review (2026-10-10, before Phase 1)
 
