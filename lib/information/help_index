@@ -16077,7 +16077,9 @@ Syntax: stampede
 
 Available to Centaurs at level 21, stampede crashes into nearby enemies,
 including enemies already fighting someone else. It can knock targets prone
-and stun them. Engaged targets keep their current opponent when possible.
+and stun them. An engaged target is never pulled onto you; if the stun breaks
+its fight, it re-engages when its opponent next hits it. Targets in a
+group's back rank always dodge.
 
 Only players can stampede. You must have footing and stand on the front line,
 and the room cannot be single file. Stampede has a 60-second cooldown;

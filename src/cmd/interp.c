@@ -3248,7 +3248,7 @@ void assign_command_pointers(void)
 	CMD_N(CMD_BIND, STAT_NORMAL + POS_STANDING, do_bind, 0, TRUE);
 	CMD_N(CMD_UNBIND, STAT_NORMAL + POS_PRONE, do_unbind, 0, TRUE);
 	CMD_N(CMD_COVER, STAT_NORMAL + POS_STANDING, do_cover, 0, TRUE);
-	CMD_N(CMD_STAMPEDE, STAT_NORMAL + POS_STANDING, do_stampede, 0, TRUE);
+	CMD_Y(CMD_STAMPEDE, STAT_NORMAL + POS_STANDING, do_stampede, 0, TRUE);
 	CMD_N(CMD_CHARGE, STAT_NORMAL + POS_STANDING, do_charge, 0, TRUE);
 	// old guildhalls (deprecated)
 	//  CMD_N(CMD_HOUSE, STAT_NORMAL + POS_PRONE, do_house, 0, TRUE);
