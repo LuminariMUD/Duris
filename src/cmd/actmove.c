@@ -1838,6 +1838,12 @@ int do_simple_move_skipping_procs(P_char ch, int exitnumb, unsigned int flags)
 		}
 	}
 
+	// Snapshot the linked participants only for the final move, after the visibility pass.
+	mount = IS_RIDING(ch);
+	rider = get_linking_char(ch, LNK_RIDING);
+	const int mount_room = mount ? mount->in_room : NOWHERE;
+	const int rider_room = rider ? rider->in_room : NOWHERE;
+
 	char_from_room(ch);
 	if (ch->in_room != NOWHERE)
 		return FALSE;
@@ -1864,6 +1870,16 @@ int do_simple_move_skipping_procs(P_char ch, int exitnumb, unsigned int flags)
 	}
 	telemetry_gameplay_context_changed(ch);
 	telemetry_gameplay_movement(ch);
+	if (ch->in_room != was_in)
+		web_spray_move_check(ch);
+	mount = IS_RIDING(ch);
+	rider = get_linking_char(ch, LNK_RIDING);
+	if (IS_ALIVE(mount) && mount_room != NOWHERE && mount->in_room == ch->in_room &&
+	    mount->in_room != mount_room)
+		web_spray_move_check(mount);
+	if (IS_ALIVE(rider) && rider_room != NOWHERE && rider->in_room == ch->in_room &&
+	    rider->in_room != rider_room)
+		web_spray_move_check(rider);
 
 	char_light(ch);
 	room_light(ch->in_room, REAL);

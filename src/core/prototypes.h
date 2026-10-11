@@ -565,6 +565,8 @@ void do_branch(P_char, char *, int);
 void branch(P_char, P_char);
 void bite(P_char, P_char);
 void webwrap(P_char, P_char);
+void web_spray_move_check(P_char);
+void event_web_spray(P_char, P_char, P_obj, void *);
 void do_summon_imp(P_char, char *, int);
 void innate_gaze(P_char, P_char);
 /* actset.c */

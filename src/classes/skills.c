@@ -5332,6 +5332,9 @@ void create_tags()
 				 "You feel ready to &+rr&+Rag&+re&n again!", "");
 
 	TAG_CREATE("suppress elite perm bits", TAG_SUPPRESS_PERM_BITS);
+	TAG_CREATE_WITH_MESSAGES("web spray", TAG_WEB_SPRAY,
+				 "&+WThe last of the sticky webbing falls away from you.&n",
+				 "&+WThe last of the sticky webbing falls away from $n.&n");
 }
 
 #ifdef _DE_

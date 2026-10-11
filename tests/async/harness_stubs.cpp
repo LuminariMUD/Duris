@@ -36,6 +36,7 @@ HARNESS_STUB void send_to_char(const char *, P_char) {}
 HARNESS_STUB void send_to_char(const char *, P_char, int) {}
 HARNESS_STUB void act(const char *, int, P_char, P_obj, void *, int) {}
 HARNESS_STUB void update_pos(P_char) {}
+HARNESS_STUB void updateShortAffects(P_char) {}
 HARNESS_STUB P_char get_linked_char(P_char, ush_int)
 {
 	return nullptr;

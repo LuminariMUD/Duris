@@ -106,6 +106,7 @@ void do_dispel_magic(P_char, char *, int);
 void do_conjure_water(P_char, char *, int);
 void do_foundry(P_char, char *, int);
 void do_webwrap(P_char, char *, int);
+void do_web_spray(P_char, char *, int);
 void do_summon_imp(P_char, char *, int);
 void do_innate_gaze(P_char, char *, int);
 void do_innate_embrace_death(P_char, char *, int);
@@ -314,6 +315,7 @@ const struct innate_data innates_data[LAST_INNATE + 1] = {
 	{ "ophidian eyes", NULL },
 	{ "warding faith", NULL },
 	{ "arcane rudiments", NULL },
+	{ "web_spray", do_web_spray },
 };
 
 string list_innates(int race, int cls, int spec)
@@ -538,6 +540,7 @@ void assign_innates()
 	/* List of Drider Innates         */
 	ADD_RACIAL_INNATE(INNATE_MAGIC_RESISTANCE, RACE_DRIDER, 1);
 	// ADD_RACIAL_INNATE(INNATE_WEBWRAP, RACE_DRIDER, 1);
+	ADD_RACIAL_INNATE(INNATE_WEB_SPRAY, RACE_DRIDER, 31);
 	ADD_RACIAL_INNATE(INNATE_SPIDER_BODY, RACE_DRIDER, 1);
 	//ADD_RACIAL_INNATE(INNATE_DAYBLIND, RACE_DRIDER, 1);
 	ADD_RACIAL_INNATE(INNATE_ULTRAVISION, RACE_DRIDER, 1);
@@ -3905,6 +3908,132 @@ void do_webwrap(P_char ch, char *argument, int /*cmd*/)
 
 	victim = parse_victim(ch, argument, 0);
 	webwrap(ch, victim);
+}
+
+// Web Spray (drider, lvl 31): sticky webbing that saps the target's moves every
+// combat round for 30 seconds. Runs on the victim while TAG_WEB_SPRAY lasts.
+void event_web_spray(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
+{
+	struct affected_type *af = get_spell_from_char(ch, TAG_WEB_SPRAY);
+
+	if (!af)
+	{
+		return;
+	}
+
+	send_to_char("&+WThe sticky webbing drags at your every movement.&n\n", ch);
+	GET_VITALITY(ch) = MAX(0, GET_VITALITY(ch) - af->modifier);
+
+	add_event(event_web_spray, PULSE_VIOLENCE, ch, NULL, NULL, 0, NULL, 0);
+}
+
+void do_web_spray(P_char ch, char *argument, int /*cmd*/)
+{
+	struct affected_type af;
+	P_char victim;
+	int cagi, vagi;
+	float chance;
+
+	if (!(victim = parse_victim(ch, argument, 0)))
+	{
+		send_to_char("Spray webs at who?\n", ch);
+		return;
+	}
+
+	if (!CanDoFightMove(ch, victim))
+	{
+		return;
+	}
+
+	if (!check_innate_time(ch, INNATE_WEB_SPRAY, 300))
+	{
+		send_to_char("Your spinnerets are still empty.\n", ch);
+		return;
+	}
+
+	appear(ch);
+	CharWait(ch, PULSE_VIOLENCE);
+
+	act("You rear back and spray a mass of &+Wsticky webbing&n at $N!", FALSE, ch, 0, victim,
+	    TO_CHAR);
+	act("$n rears back and sprays a mass of &+Wsticky webbing&n at you!", FALSE, ch, 0, victim,
+	    TO_VICT);
+	act("$n rears back and sprays a mass of &+Wsticky webbing&n at $N!", FALSE, ch, 0, victim,
+	    TO_NOTVICT);
+
+	// Same defences as a tackle: freedom of movement, then evade.
+	if (check_freedom_of_movement(
+		    victim, GET_LEVEL(ch) - GET_LEVEL(victim) >= 10 ? true : number(0, 1)))
+	{
+		act("The webbing slides harmlessly off $N.", FALSE, ch, 0, victim, TO_CHAR);
+		act("The webbing slides harmlessly off you.", FALSE, ch, 0, victim, TO_VICT);
+		act("The webbing slides harmlessly off $N.", FALSE, ch, 0, victim, TO_NOTVICT);
+		engage(ch, victim);
+		return;
+	}
+
+	if (GET_CHAR_SKILL(victim, SKILL_EVADE) && !get_spell_from_char(victim, SKILL_EVADE) &&
+	    (notch_skill(victim, SKILL_EVADE, get_property("skill.notch.offensive", 7)) ||
+	     GET_CHAR_SKILL(victim, SKILL_EVADE) / 3 >= number(1, 100)))
+	{
+		act("$N twists out of the way of your webbing!", FALSE, ch, 0, victim, TO_CHAR);
+		act("You twist out of the way of the webbing!", FALSE, ch, 0, victim, TO_VICT);
+		act("$N twists out of the way of the webbing!", FALSE, ch, 0, victim, TO_NOTVICT);
+		set_short_affected_by(victim, SKILL_EVADE, PULSE_VIOLENCE / 2);
+		engage(ch, victim);
+		return;
+	}
+
+	// Tackle's roll with level * 1.5 in place of skill: 70% that, 30% agi vs agi.
+	cagi = GET_C_AGI(ch);
+	vagi = GET_C_AGI(victim);
+	chance = GET_LEVEL(ch) * 1.5;
+	chance = .70 * chance +
+		 .30 * BOUNDED(0.0, 100.0 + (cagi - vagi) * ((cagi - vagi <= 0) ? 2.0 : .5), 125.0);
+	chance = BOUNDED(5, chance, 90);
+
+	if (IS_PC(ch))
+	{
+		debug("(%s) web spraying (%s) with percentage of (%d).", GET_NAME(ch),
+		      GET_NAME(victim), (int)chance);
+	}
+
+	if (number(1, 100) > chance && !IS_TRUSTED(ch))
+	{
+		act("$N dodges aside and your webbing misses.", FALSE, ch, 0, victim, TO_CHAR);
+		act("You dodge aside and the webbing misses.", FALSE, ch, 0, victim, TO_VICT);
+		act("$N dodges aside and the webbing misses.", FALSE, ch, 0, victim, TO_NOTVICT);
+		engage(ch, victim);
+		return;
+	}
+
+	act("Your webbing engulfs $N, gumming up $S limbs!", FALSE, ch, 0, victim, TO_CHAR);
+	act("The webbing engulfs you, gumming up your limbs!", FALSE, ch, 0, victim, TO_VICT);
+	act("The webbing engulfs $N, gumming up $S limbs!", FALSE, ch, 0, victim, TO_NOTVICT);
+
+	// Recreate the affect so its expiry and drain both restart from this hit.
+	affect_from_char(victim, TAG_WEB_SPRAY);
+	memset(&af, 0, sizeof(af));
+	af.type = TAG_WEB_SPRAY;
+	af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL;
+	af.duration = 30 * WAIT_SEC;
+	af.modifier = GET_LEVEL(ch) / 8;
+	affect_to_char(victim, &af);
+
+	engage(ch, victim);
+}
+
+// Called after every room move: a webbed character has a 10% chance to tear free.
+void web_spray_move_check(P_char ch)
+{
+	if (!affected_by_spell(ch, TAG_WEB_SPRAY) || number(1, 100) > 10)
+	{
+		return;
+	}
+
+	affect_from_char(ch, TAG_WEB_SPRAY);
+	send_to_char("&+WYou tear free of the sticky webbing!&n\n", ch);
+	act("$n tears free of the sticky webbing.", TRUE, ch, 0, 0, TO_ROOM);
 }
 
 #define DEVIL_IMP 63

@@ -17,8 +17,8 @@ all_ok = True
 structs = (SRC / "structs.h").read_text()
 all_ok &= check("INNATE_ARCANE_RUDIMENTS #define",
 	contains(structs, "#define INNATE_ARCANE_RUDIMENTS       177"))
-all_ok &= check("LAST_INNATE updated",
-	contains(structs, "#define LAST_INNATE INNATE_ARCANE_RUDIMENTS"))
+all_ok &= check("next innate follows arcane rudiments",
+	contains(structs, "#define INNATE_WEB_SPRAY 178"))
 
 # 2. innates_data array
 innates = (SRC / "innates.c").read_text()
