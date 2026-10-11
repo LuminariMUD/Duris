@@ -4,9 +4,10 @@
 The harness compiles the module's own source files whole, links the real RNG
 (src/core/random.c), safe_format.c and both config modules at their compiled-in
 defaults, and takes the few helpers it calls from elsewhere (dice, strip_ansi,
-FirstWord, isname, material_restrictions, GET_CLASS, BOUNDED) from their real source. Only
+FirstWord, isname, material_restrictions, GET_CLASS, BOUNDED and the string setters)
+from their real source. Only
 the world is stubbed: three zones, four rooms, the two blank objects, materials and
-stones by vnum, the string setters and the difficulty dials. It runs under ASan
+stones by vnum and the difficulty dials. It runs under ASan
 and UBSan.
 
 Each case seeds the RNG from its own name, so a failure names one case and adding a
@@ -14,7 +15,9 @@ case moves no other. The output must equal tests/fixtures/random_equipment_golde
 written once from the code of 2026-10-10 and never edited: a change that moves, adds
 or drops a single roll changes the output. The random equipment rewrite in
 docs/ongoing-projects/plan.md changes only MODULE_SOURCES and the calls into the
-module, never the fixture.
+module, never the fixtures. A companion fixture records a sentinel roll after each
+case to detect terminal draws that leave the current item unchanged. Direct assertions
+also cover every suffix total without changing the frozen output.
 """
 import os
 from pathlib import Path
@@ -24,6 +27,7 @@ import tempfile
 from _paths import ROOT, extract_function
 
 FIXTURE = ROOT / "tests/fixtures/random_equipment_golden.txt"
+RNG_FIXTURE = ROOT / "tests/fixtures/random_equipment_rng_golden.txt"
 MODULE_SOURCES = ["src/item/randomeq.c"]
 LINKED_SOURCES = [
     "src/core/random.c",
@@ -39,6 +43,9 @@ HELPERS = [
     ("handler.c", "char *FirstWord(char *namelist)"),
     ("handler.c", "bool isname(const char *str, const char *namelist)"),
     ("objconv.c", "void material_restrictions(P_obj obj)"),
+    ("salchemist.c", "void set_keywords(P_obj t_obj, const char *newKeys)"),
+    ("salchemist.c", "void set_short_description(P_obj t_obj, const char *newShort)"),
+    ("salchemist.c", "void set_long_description(P_obj t_obj, const char *newDescription)"),
 ]
 
 
@@ -66,6 +73,8 @@ HARNESS = r'''
 #include "world/difficulty.h"
 #include "world/vnum.obj.h"
 
+#include <cassert>
+#include <climits>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -149,9 +158,10 @@ P_obj read_object(int nr, int type)
 		return nullptr;
 	P_obj obj = new obj_data{};
 	obj->R_num = nr; // The harness reads the vnum back from here.
-	obj->name = strdup(nr == VOBJ_RANDOM_WEAPON ? "object enchant" : "object random");
-	obj->short_description = strdup("a blank");
-	obj->description = strdup("A blank lies here.");
+	// Prototype strings are borrowed until a real setter installs an owned replacement.
+	obj->name = const_cast<char *>(nr == VOBJ_RANDOM_WEAPON ? "object enchant" : "object random");
+	obj->short_description = const_cast<char *>("a blank");
+	obj->description = const_cast<char *>("A blank lies here.");
 	if (blank)
 	{
 		obj->type = ITEM_TRASH;
@@ -161,24 +171,19 @@ P_obj read_object(int nr, int type)
 	}
 	return obj;
 }
-void set_keywords(P_obj obj, const char *text) { free(obj->name); obj->name = strdup(text); }
-void set_short_description(P_obj obj, const char *text)
-{
-	free(obj->short_description);
-	obj->short_description = strdup(text);
-}
-void set_long_description(P_obj obj, const char *text)
-{
-	free(obj->description);
-	obj->description = strdup(text);
-}
 static void release(P_obj obj)
 {
 	if (!obj)
 		return;
-	free(obj->name);
-	free(obj->short_description);
-	free(obj->description);
+	// Every generated name must survive persistence, for direct and kill-drop cases.
+	if (obj->R_num == VOBJ_RANDOM_ARMOR || obj->R_num == VOBJ_RANDOM_WEAPON)
+		assert(obj->str_mask == (STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2));
+	if (obj->str_mask & STRUNG_KEYS)
+		free(obj->name);
+	if (obj->str_mask & STRUNG_DESC2)
+		free(obj->short_description);
+	if (obj->str_mask & STRUNG_DESC1)
+		free(obj->description);
 	delete obj;
 }
 
@@ -257,6 +262,8 @@ static void put(const char *format, ...)
 static void finish_case()
 {
 	std::printf("%s%s\n", current.c_str(), sent.c_str());
+	// Keep the original item fixture intact; record the next global RNG draw separately.
+	std::fprintf(stderr, "%.*s | %d\n", (int)current.find(" |"), current.c_str(), number(0, INT_MAX));
 }
 static void put_obj(P_obj o)
 {
@@ -347,6 +354,13 @@ static void kill_case(bool by_pet, int killer_level, int mob_level, int luck)
 	start_case(name);
 	person owner("Owner", killer_level, luck, true, ROOM_PLAIN);
 	person pet("wolf companion", killer_level, luck, false, ROOM_PLAIN);
+	if (by_pet)
+	{
+		// Only the message goes to the owner. Drop rolls and generation use the pet.
+		owner.ch.player.level = 62;
+		owner.ch.curr_stats.Luk = 60;
+		owner.ch.in_room = ROOM_GUILD_HALL;
+	}
 	P_char killer = by_pet ? &pet.ch : &owner.ch;
 	pet_owner = &owner.ch;
 	owned_pet = &pet.ch;
@@ -477,6 +491,58 @@ static void materials_and_stones()
 	finish_case();
 }
 
+// ---- Every suffix total, including the rare 5/6/7 and no-affect 28/29/30 ----
+static void suffix_outcomes()
+{
+	const struct {
+		uint64_t seed;
+		unsigned long bits1, bits2, bits3, bits5;
+	} cases[] = {
+		{ 20476, AFF_DETECT_INVISIBLE, 0, 0, 0 },
+		{ 1167, 0, AFF2_ULTRAVISION, 0, 0 },
+		{ 3, 0, AFF2_FIRESHIELD, 0, 0 },
+		{ 67, AFF_SLOW_POISON, 0, 0, 0 },
+		{ 39, AFF_WATERBREATH, 0, 0, 0 },
+		{ 7, AFF_INFRAVISION, 0, 0, 0 },
+		{ 60, AFF_PROTECT_GOOD, 0, 0, 0 },
+		{ 42, AFF_PROTECT_EVIL, 0, 0, 0 },
+		{ 30, 0, AFF2_PROT_COLD, 0, 0 },
+		{ 4, AFF_LEVITATE, 0, 0, 0 },
+		{ 8, 0, AFF2_DETECT_EVIL, 0, 0 },
+		{ 1, 0, AFF2_DETECT_GOOD, 0, 0 },
+		{ 10, 0, AFF2_DETECT_MAGIC, 0, 0 },
+		{ 14, AFF_PROT_FIRE, 0, 0, 0 },
+		{ 12, 0, 0, 0, AFF5_PROT_UNDEAD },
+		{ 6, 0, AFF2_PROT_ACID, 0, 0 },
+		{ 15, AFF_SENSE_LIFE, 0, 0, 0 },
+		{ 25, AFF_MINOR_GLOBE, 0, 0, 0 },
+		{ 31, AFF_FARSEE, 0, 0, 0 },
+		{ 99, 0, 0, AFF3_COLDSHIELD, 0 },
+		{ 5, 0, AFF2_SOULSHIELD, 0, 0 },
+		{ 18, AFF_BARKSKIN, 0, 0, 0 },
+		{ 359, AFF_HASTE, 0, 0, 0 },
+		{ 215, 0, 0, 0, 0 },
+		{ 909, 0, 0, 0, 0 },
+		{ 10194, 0, 0, 0, 0 },
+	};
+	for (int i = 0; i < (int)ARRAY_SIZE(cases); i++)
+	{
+		const auto &expected = cases[i];
+		randomize(expected.seed);
+		assert(dice(5, 6) == i + 5);
+		const int next_roll = number(1, 1000000);
+		randomize(expected.seed);
+		obj_data obj{};
+		assert(setsuffix_obj_new(&obj) == &obj);
+		assert(obj.bitvector == expected.bits1);
+		assert(obj.bitvector2 == expected.bits2);
+		assert(obj.bitvector3 == expected.bits3);
+		assert(obj.bitvector4 == 0);
+		assert(obj.bitvector5 == expected.bits5);
+		assert(number(1, 1000000) == next_roll);
+	}
+}
+
 // ---- Encrust and true name ----
 static void encrust_and_true_name()
 {
@@ -519,6 +585,7 @@ int main()
 	kill_drop();
 	generator();
 	materials_and_stones();
+	suffix_outcomes();
 	encrust_and_true_name();
 	return 0;
 }
@@ -547,22 +614,23 @@ def main():
         run = subprocess.run([str(binary)], env=env, capture_output=True, text=True)
         if run.returncode:
             raise SystemExit(f"FAILED: the harness exited {run.returncode}\n{run.stderr}")
-        actual = run.stdout
-        expected = FIXTURE.read_text() if FIXTURE.exists() else ""
-        if actual == expected:
-            print(f"random equipment golden test passed: {len(actual.splitlines())} cases")
-            return
-        output = work.parent / "random_equipment_golden.actual.txt"
-        output.write_text(actual)
-        actual_lines, expected_lines = actual.splitlines(), expected.splitlines()
-        differing = [i for i in range(max(len(actual_lines), len(expected_lines)))
-                     if i >= len(actual_lines) or i >= len(expected_lines)
-                     or actual_lines[i] != expected_lines[i]]
-        for i in differing[:3]:
-            print("expected:", expected_lines[i] if i < len(expected_lines) else "(none)")
-            print("actual:  ", actual_lines[i] if i < len(actual_lines) else "(none)")
-        raise SystemExit(f"FAILED: {len(differing)} of {len(expected_lines)} cases differ;"
-                         f" the whole output is in {output}")
+        for fixture, actual in ((FIXTURE, run.stdout), (RNG_FIXTURE, run.stderr)):
+            expected = fixture.read_text()
+            if actual == expected:
+                continue
+            output = work.parent / (fixture.stem + ".actual.txt")
+            output.write_text(actual)
+            actual_lines, expected_lines = actual.splitlines(), expected.splitlines()
+            differing = [i for i in range(max(len(actual_lines), len(expected_lines)))
+                         if i >= len(actual_lines) or i >= len(expected_lines)
+                         or actual_lines[i] != expected_lines[i]]
+            for i in differing[:3]:
+                print("expected:", expected_lines[i] if i < len(expected_lines) else "(none)")
+                print("actual:  ", actual_lines[i] if i < len(actual_lines) else "(none)")
+            raise SystemExit(f"FAILED: {fixture.name}: {len(differing)} of {len(expected_lines)}"
+                             f" cases differ; the whole output is in {output}")
+        print(f"random equipment golden test passed: {len(run.stdout.splitlines())} cases"
+              " and RNG sentinels, plus all 26 suffix totals")
 
 
 main()

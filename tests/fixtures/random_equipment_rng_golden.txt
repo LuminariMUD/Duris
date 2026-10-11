@@ -1,0 +1,1480 @@
+drop k01 m01 luck60 plain equipment | 1098043090
+drop k01 m01 luck100 plain equipment | 1912336097
+drop k01 m01 luck160 plain equipment | 1800207630
+drop k01 m01 luck100 plain material | 1266867279
+drop k01 m05 luck60 plain equipment | 718817124
+drop k01 m05 luck100 plain equipment | 1819270490
+drop k01 m05 luck160 plain equipment | 1825253345
+drop k01 m05 luck100 plain material | 1101500962
+drop k01 m09 luck60 plain equipment | 767936513
+drop k01 m09 luck100 plain equipment | 1918672993
+drop k01 m09 luck160 plain equipment | 143404451
+drop k01 m09 luck100 plain material | 1281804107
+drop k01 m13 luck60 plain equipment | 1436682965
+drop k01 m13 luck100 plain equipment | 669024880
+drop k01 m13 luck160 plain equipment | 78623725
+drop k01 m13 luck100 plain material | 1089826502
+drop k01 m17 luck60 plain equipment | 2117395191
+drop k01 m17 luck100 plain equipment | 320832870
+drop k01 m17 luck160 plain equipment | 1252636237
+drop k01 m17 luck100 plain material | 1707945823
+drop k01 m25 luck60 plain equipment | 1443655632
+drop k01 m25 luck100 plain equipment | 1489524502
+drop k01 m25 luck160 plain equipment | 322983118
+drop k01 m25 luck100 plain material | 619152387
+drop k01 m35 luck60 plain equipment | 1791101782
+drop k01 m35 luck100 plain equipment | 786937240
+drop k01 m35 luck160 plain equipment | 841483987
+drop k01 m35 luck100 plain material | 197058687
+drop k01 m50 luck60 plain equipment | 819353910
+drop k01 m50 luck100 plain equipment | 1893188266
+drop k01 m50 luck160 plain equipment | 1495950324
+drop k01 m50 luck100 plain material | 300085989
+drop k01 m62 luck60 plain equipment | 22220041
+drop k01 m62 luck100 plain equipment | 1320477312
+drop k01 m62 luck160 plain equipment | 1476549544
+drop k01 m62 luck100 plain material | 1648478471
+drop k02 m01 luck60 plain equipment | 1897764110
+drop k02 m01 luck100 plain equipment | 178699427
+drop k02 m01 luck160 plain equipment | 1889169982
+drop k02 m01 luck100 plain material | 1512374653
+drop k02 m05 luck60 plain equipment | 1709283973
+drop k02 m05 luck100 plain equipment | 92558611
+drop k02 m05 luck160 plain equipment | 380336928
+drop k02 m05 luck100 plain material | 288757910
+drop k02 m09 luck60 plain equipment | 1071708950
+drop k02 m09 luck100 plain equipment | 1651835113
+drop k02 m09 luck160 plain equipment | 1141529822
+drop k02 m09 luck100 plain material | 2084093780
+drop k02 m13 luck60 plain equipment | 1024395159
+drop k02 m13 luck100 plain equipment | 1036162010
+drop k02 m13 luck160 plain equipment | 1196373121
+drop k02 m13 luck100 plain material | 1664777293
+drop k02 m17 luck60 plain equipment | 734361392
+drop k02 m17 luck100 plain equipment | 1451352683
+drop k02 m17 luck160 plain equipment | 4672045
+drop k02 m17 luck100 plain material | 394822975
+drop k02 m25 luck60 plain equipment | 532278472
+drop k02 m25 luck100 plain equipment | 1614351499
+drop k02 m25 luck160 plain equipment | 423987847
+drop k02 m25 luck100 plain material | 178223981
+drop k02 m35 luck60 plain equipment | 1494939523
+drop k02 m35 luck100 plain equipment | 1410465229
+drop k02 m35 luck160 plain equipment | 272950579
+drop k02 m35 luck100 plain material | 221205340
+drop k02 m50 luck60 plain equipment | 1246101226
+drop k02 m50 luck100 plain equipment | 1244575906
+drop k02 m50 luck160 plain equipment | 2101625626
+drop k02 m50 luck100 plain material | 340112169
+drop k02 m62 luck60 plain equipment | 230210471
+drop k02 m62 luck100 plain equipment | 1188068088
+drop k02 m62 luck160 plain equipment | 1050446929
+drop k02 m62 luck100 plain material | 2126483513
+drop k03 m01 luck60 plain equipment | 267142887
+drop k03 m01 luck100 plain equipment | 1720790825
+drop k03 m01 luck160 plain equipment | 1037139592
+drop k03 m01 luck100 plain material | 1125925656
+drop k03 m05 luck60 plain equipment | 287349251
+drop k03 m05 luck100 plain equipment | 1428177266
+drop k03 m05 luck160 plain equipment | 1415030857
+drop k03 m05 luck100 plain material | 2016642043
+drop k03 m09 luck60 plain equipment | 2138504982
+drop k03 m09 luck100 plain equipment | 1129491503
+drop k03 m09 luck160 plain equipment | 1242402457
+drop k03 m09 luck100 plain material | 697905725
+drop k03 m13 luck60 plain equipment | 1780223099
+drop k03 m13 luck100 plain equipment | 903193023
+drop k03 m13 luck160 plain equipment | 1867340405
+drop k03 m13 luck100 plain material | 1688668332
+drop k03 m17 luck60 plain equipment | 2058628822
+drop k03 m17 luck100 plain equipment | 398296556
+drop k03 m17 luck160 plain equipment | 1784935390
+drop k03 m17 luck100 plain material | 1790194018
+drop k03 m25 luck60 plain equipment | 1927329894
+drop k03 m25 luck100 plain equipment | 2136581392
+drop k03 m25 luck160 plain equipment | 2117561410
+drop k03 m25 luck100 plain material | 764879976
+drop k03 m35 luck60 plain equipment | 1619493229
+drop k03 m35 luck100 plain equipment | 1359041710
+drop k03 m35 luck160 plain equipment | 610557697
+drop k03 m35 luck100 plain material | 1747482474
+drop k03 m50 luck60 plain equipment | 1282221614
+drop k03 m50 luck100 plain equipment | 284186576
+drop k03 m50 luck160 plain equipment | 17543978
+drop k03 m50 luck100 plain material | 948768429
+drop k03 m62 luck60 plain equipment | 685537343
+drop k03 m62 luck100 plain equipment | 1404753038
+drop k03 m62 luck160 plain equipment | 691213764
+drop k03 m62 luck100 plain material | 521125967
+drop k04 m01 luck60 plain equipment | 640024636
+drop k04 m01 luck100 plain equipment | 237686073
+drop k04 m01 luck160 plain equipment | 900122170
+drop k04 m01 luck100 plain material | 809853563
+drop k04 m05 luck60 plain equipment | 1800269517
+drop k04 m05 luck100 plain equipment | 1136972429
+drop k04 m05 luck160 plain equipment | 123981785
+drop k04 m05 luck100 plain material | 1300166036
+drop k04 m09 luck60 plain equipment | 270635584
+drop k04 m09 luck100 plain equipment | 638647844
+drop k04 m09 luck160 plain equipment | 485107766
+drop k04 m09 luck100 plain material | 2077933898
+drop k04 m13 luck60 plain equipment | 873526840
+drop k04 m13 luck100 plain equipment | 163049554
+drop k04 m13 luck160 plain equipment | 289240827
+drop k04 m13 luck100 plain material | 786482423
+drop k04 m17 luck60 plain equipment | 852055562
+drop k04 m17 luck100 plain equipment | 941216987
+drop k04 m17 luck160 plain equipment | 541532809
+drop k04 m17 luck100 plain material | 71305187
+drop k04 m25 luck60 plain equipment | 290262790
+drop k04 m25 luck100 plain equipment | 614609761
+drop k04 m25 luck160 plain equipment | 2053291370
+drop k04 m25 luck100 plain material | 77922593
+drop k04 m35 luck60 plain equipment | 832273810
+drop k04 m35 luck100 plain equipment | 1970012373
+drop k04 m35 luck160 plain equipment | 1956101222
+drop k04 m35 luck100 plain material | 76787608
+drop k04 m50 luck60 plain equipment | 672296150
+drop k04 m50 luck100 plain equipment | 946925481
+drop k04 m50 luck160 plain equipment | 729695102
+drop k04 m50 luck100 plain material | 669896253
+drop k04 m62 luck60 plain equipment | 1805203397
+drop k04 m62 luck100 plain equipment | 735342340
+drop k04 m62 luck160 plain equipment | 1292227261
+drop k04 m62 luck100 plain material | 1797527743
+drop k05 m01 luck60 plain equipment | 12559986
+drop k05 m01 luck100 plain equipment | 586328540
+drop k05 m01 luck160 plain equipment | 1982575716
+drop k05 m01 luck100 plain material | 1402070417
+drop k05 m05 luck60 plain equipment | 479289393
+drop k05 m05 luck100 plain equipment | 1424071477
+drop k05 m05 luck160 plain equipment | 185114651
+drop k05 m05 luck100 plain material | 1944787006
+drop k05 m09 luck60 plain equipment | 1725419314
+drop k05 m09 luck100 plain equipment | 10953013
+drop k05 m09 luck160 plain equipment | 1712334271
+drop k05 m09 luck100 plain material | 1927366761
+drop k05 m13 luck60 plain equipment | 1521983533
+drop k05 m13 luck100 plain equipment | 705542407
+drop k05 m13 luck160 plain equipment | 2031530817
+drop k05 m13 luck100 plain material | 210698533
+drop k05 m17 luck60 plain equipment | 1577659942
+drop k05 m17 luck100 plain equipment | 1024056772
+drop k05 m17 luck160 plain equipment | 2033244160
+drop k05 m17 luck100 plain material | 313350836
+drop k05 m25 luck60 plain equipment | 546119515
+drop k05 m25 luck100 plain equipment | 1119756653
+drop k05 m25 luck160 plain equipment | 1974042387
+drop k05 m25 luck100 plain material | 1271302046
+drop k05 m35 luck60 plain equipment | 541108562
+drop k05 m35 luck100 plain equipment | 1509363898
+drop k05 m35 luck160 plain equipment | 1481130331
+drop k05 m35 luck100 plain material | 875077061
+drop k05 m50 luck60 plain equipment | 932254770
+drop k05 m50 luck100 plain equipment | 932480601
+drop k05 m50 luck160 plain equipment | 1806953309
+drop k05 m50 luck100 plain material | 455998410
+drop k05 m62 luck60 plain equipment | 1818852250
+drop k05 m62 luck100 plain equipment | 1507728878
+drop k05 m62 luck160 plain equipment | 1046993053
+drop k05 m62 luck100 plain material | 1677188316
+drop k06 m01 luck60 plain equipment | 1679110428
+drop k06 m01 luck100 plain equipment | 1399857676
+drop k06 m01 luck160 plain equipment | 911144722
+drop k06 m01 luck100 plain material | 1741290593
+drop k06 m05 luck60 plain equipment | 447299136
+drop k06 m05 luck100 plain equipment | 1171915716
+drop k06 m05 luck160 plain equipment | 876746322
+drop k06 m05 luck100 plain material | 105128681
+drop k06 m09 luck60 plain equipment | 1986443944
+drop k06 m09 luck100 plain equipment | 585134559
+drop k06 m09 luck160 plain equipment | 1095527384
+drop k06 m09 luck100 plain material | 1880501560
+drop k06 m13 luck60 plain equipment | 3108685
+drop k06 m13 luck100 plain equipment | 361330656
+drop k06 m13 luck160 plain equipment | 1613441742
+drop k06 m13 luck100 plain material | 1105581291
+drop k06 m17 luck60 plain equipment | 1383956999
+drop k06 m17 luck100 plain equipment | 2031457114
+drop k06 m17 luck160 plain equipment | 1190042704
+drop k06 m17 luck100 plain material | 1784989473
+drop k06 m25 luck60 plain equipment | 1663509695
+drop k06 m25 luck100 plain equipment | 1693228542
+drop k06 m25 luck160 plain equipment | 475159471
+drop k06 m25 luck100 plain material | 262299638
+drop k06 m35 luck60 plain equipment | 1544096292
+drop k06 m35 luck100 plain equipment | 1007552395
+drop k06 m35 luck160 plain equipment | 901468907
+drop k06 m35 luck100 plain material | 748883073
+drop k06 m50 luck60 plain equipment | 2138052829
+drop k06 m50 luck100 plain equipment | 1814776588
+drop k06 m50 luck160 plain equipment | 420351046
+drop k06 m50 luck100 plain material | 2014819117
+drop k06 m62 luck60 plain equipment | 1922604240
+drop k06 m62 luck100 plain equipment | 650495979
+drop k06 m62 luck160 plain equipment | 1919899709
+drop k06 m62 luck100 plain material | 611469049
+drop k07 m01 luck60 plain equipment | 911218693
+drop k07 m01 luck100 plain equipment | 287609599
+drop k07 m01 luck160 plain equipment | 1534752770
+drop k07 m01 luck100 plain material | 1700581325
+drop k07 m05 luck60 plain equipment | 98567321
+drop k07 m05 luck100 plain equipment | 137976993
+drop k07 m05 luck160 plain equipment | 822445027
+drop k07 m05 luck100 plain material | 1797576973
+drop k07 m09 luck60 plain equipment | 1117995837
+drop k07 m09 luck100 plain equipment | 1346258617
+drop k07 m09 luck160 plain equipment | 1299008324
+drop k07 m09 luck100 plain material | 1029930190
+drop k07 m13 luck60 plain equipment | 485296528
+drop k07 m13 luck100 plain equipment | 391447157
+drop k07 m13 luck160 plain equipment | 1461385732
+drop k07 m13 luck100 plain material | 486188325
+drop k07 m17 luck60 plain equipment | 331656863
+drop k07 m17 luck100 plain equipment | 296665369
+drop k07 m17 luck160 plain equipment | 1265607533
+drop k07 m17 luck100 plain material | 503910936
+drop k07 m25 luck60 plain equipment | 916807438
+drop k07 m25 luck100 plain equipment | 1034299489
+drop k07 m25 luck160 plain equipment | 209243151
+drop k07 m25 luck100 plain material | 989984830
+drop k07 m35 luck60 plain equipment | 1107410252
+drop k07 m35 luck100 plain equipment | 2058002011
+drop k07 m35 luck160 plain equipment | 540916453
+drop k07 m35 luck100 plain material | 1606791304
+drop k07 m50 luck60 plain equipment | 1947293034
+drop k07 m50 luck100 plain equipment | 1531322672
+drop k07 m50 luck160 plain equipment | 92447491
+drop k07 m50 luck100 plain material | 957043948
+drop k07 m62 luck60 plain equipment | 924034295
+drop k07 m62 luck100 plain equipment | 1277038187
+drop k07 m62 luck160 plain equipment | 2075120021
+drop k07 m62 luck100 plain material | 639362785
+drop k08 m01 luck60 plain equipment | 357506377
+drop k08 m01 luck100 plain equipment | 458613523
+drop k08 m01 luck160 plain equipment | 1207002318
+drop k08 m01 luck100 plain material | 576558321
+drop k08 m05 luck60 plain equipment | 1401366651
+drop k08 m05 luck100 plain equipment | 774310703
+drop k08 m05 luck160 plain equipment | 1446328714
+drop k08 m05 luck100 plain material | 703790053
+drop k08 m09 luck60 plain equipment | 1577301461
+drop k08 m09 luck100 plain equipment | 2069093021
+drop k08 m09 luck160 plain equipment | 1610907282
+drop k08 m09 luck100 plain material | 1067801447
+drop k08 m13 luck60 plain equipment | 1562457610
+drop k08 m13 luck100 plain equipment | 965635690
+drop k08 m13 luck160 plain equipment | 949251692
+drop k08 m13 luck100 plain material | 1903715796
+drop k08 m17 luck60 plain equipment | 1152308623
+drop k08 m17 luck100 plain equipment | 625067852
+drop k08 m17 luck160 plain equipment | 2112424069
+drop k08 m17 luck100 plain material | 2136666144
+drop k08 m25 luck60 plain equipment | 168879060
+drop k08 m25 luck100 plain equipment | 1482063710
+drop k08 m25 luck160 plain equipment | 1331387750
+drop k08 m25 luck100 plain material | 488633108
+drop k08 m35 luck60 plain equipment | 902515340
+drop k08 m35 luck100 plain equipment | 1210243215
+drop k08 m35 luck160 plain equipment | 1754845363
+drop k08 m35 luck100 plain material | 1685673340
+drop k08 m50 luck60 plain equipment | 2010520164
+drop k08 m50 luck100 plain equipment | 1510496217
+drop k08 m50 luck160 plain equipment | 1267377667
+drop k08 m50 luck100 plain material | 500868989
+drop k08 m62 luck60 plain equipment | 874243926
+drop k08 m62 luck100 plain equipment | 265740356
+drop k08 m62 luck160 plain equipment | 73374031
+drop k08 m62 luck100 plain material | 1866918789
+drop k09 m01 luck60 plain equipment | 914719314
+drop k09 m01 luck100 plain equipment | 1082215090
+drop k09 m01 luck160 plain equipment | 1736420907
+drop k09 m01 luck100 plain material | 1850083237
+drop k09 m05 luck60 plain equipment | 1166360679
+drop k09 m05 luck100 plain equipment | 1582061076
+drop k09 m05 luck160 plain equipment | 72642679
+drop k09 m05 luck100 plain material | 1863489062
+drop k09 m09 luck60 plain equipment | 1125763001
+drop k09 m09 luck100 plain equipment | 1420594001
+drop k09 m09 luck160 plain equipment | 864916046
+drop k09 m09 luck100 plain material | 94256855
+drop k09 m13 luck60 plain equipment | 1439019814
+drop k09 m13 luck100 plain equipment | 1515154613
+drop k09 m13 luck160 plain equipment | 1960816009
+drop k09 m13 luck100 plain material | 547783706
+drop k09 m17 luck60 plain equipment | 774748511
+drop k09 m17 luck100 plain equipment | 2038098009
+drop k09 m17 luck160 plain equipment | 1043214590
+drop k09 m17 luck100 plain material | 1254638038
+drop k09 m25 luck60 plain equipment | 1392759009
+drop k09 m25 luck100 plain equipment | 1744862809
+drop k09 m25 luck160 plain equipment | 1624941579
+drop k09 m25 luck100 plain material | 1886466331
+drop k09 m35 luck60 plain equipment | 490257966
+drop k09 m35 luck100 plain equipment | 2097948964
+drop k09 m35 luck160 plain equipment | 1145861985
+drop k09 m35 luck100 plain material | 1844372662
+drop k09 m50 luck60 plain equipment | 1151157830
+drop k09 m50 luck100 plain equipment | 840905678
+drop k09 m50 luck160 plain equipment | 2119289701
+drop k09 m50 luck100 plain material | 653778248
+drop k09 m62 luck60 plain equipment | 1997770274
+drop k09 m62 luck100 plain equipment | 1510437442
+drop k09 m62 luck160 plain equipment | 2076946264
+drop k09 m62 luck100 plain material | 490813717
+drop k10 m01 luck60 plain equipment | 777477035
+drop k10 m01 luck100 plain equipment | 175513924
+drop k10 m01 luck160 plain equipment | 488924050
+drop k10 m01 luck100 plain material | 1893213245
+drop k10 m05 luck60 plain equipment | 362102790
+drop k10 m05 luck100 plain equipment | 599441607
+drop k10 m05 luck160 plain equipment | 954878549
+drop k10 m05 luck100 plain material | 422574154
+drop k10 m09 luck60 plain equipment | 1106299781
+drop k10 m09 luck100 plain equipment | 1325791535
+drop k10 m09 luck160 plain equipment | 1715973012
+drop k10 m09 luck100 plain material | 420859733
+drop k10 m13 luck60 plain equipment | 1723375043
+drop k10 m13 luck100 plain equipment | 1149203372
+drop k10 m13 luck160 plain equipment | 976791513
+drop k10 m13 luck100 plain material | 1096908532
+drop k10 m17 luck60 plain equipment | 1744617169
+drop k10 m17 luck100 plain equipment | 1104677334
+drop k10 m17 luck160 plain equipment | 1229124772
+drop k10 m17 luck100 plain material | 43768329
+drop k10 m25 luck60 plain equipment | 1407868047
+drop k10 m25 luck100 plain equipment | 1454306901
+drop k10 m25 luck160 plain equipment | 1134343468
+drop k10 m25 luck100 plain material | 1829508871
+drop k10 m35 luck60 plain equipment | 518739970
+drop k10 m35 luck100 plain equipment | 777395084
+drop k10 m35 luck160 plain equipment | 1128478216
+drop k10 m35 luck100 plain material | 163312874
+drop k10 m50 luck60 plain equipment | 747536824
+drop k10 m50 luck100 plain equipment | 1478601323
+drop k10 m50 luck160 plain equipment | 277863214
+drop k10 m50 luck100 plain material | 567805615
+drop k10 m62 luck60 plain equipment | 1783613474
+drop k10 m62 luck100 plain equipment | 1822991994
+drop k10 m62 luck160 plain equipment | 1445109683
+drop k10 m62 luck100 plain material | 463728416
+drop k11 m01 luck60 plain equipment | 1019032896
+drop k11 m01 luck100 plain equipment | 770169292
+drop k11 m01 luck160 plain equipment | 352617722
+drop k11 m01 luck100 plain material | 1065455318
+drop k11 m05 luck60 plain equipment | 598049538
+drop k11 m05 luck100 plain equipment | 2105231192
+drop k11 m05 luck160 plain equipment | 225135882
+drop k11 m05 luck100 plain material | 1931683388
+drop k11 m09 luck60 plain equipment | 816466476
+drop k11 m09 luck100 plain equipment | 1919021785
+drop k11 m09 luck160 plain equipment | 1341118500
+drop k11 m09 luck100 plain material | 252875375
+drop k11 m13 luck60 plain equipment | 1226460191
+drop k11 m13 luck100 plain equipment | 374984872
+drop k11 m13 luck160 plain equipment | 773090004
+drop k11 m13 luck100 plain material | 949514774
+drop k11 m17 luck60 plain equipment | 1504285732
+drop k11 m17 luck100 plain equipment | 1251552970
+drop k11 m17 luck160 plain equipment | 2030355215
+drop k11 m17 luck100 plain material | 360694129
+drop k11 m25 luck60 plain equipment | 1028169909
+drop k11 m25 luck100 plain equipment | 1694807082
+drop k11 m25 luck160 plain equipment | 754428951
+drop k11 m25 luck100 plain material | 1323975177
+drop k11 m35 luck60 plain equipment | 1413594687
+drop k11 m35 luck100 plain equipment | 407550871
+drop k11 m35 luck160 plain equipment | 1798087357
+drop k11 m35 luck100 plain material | 1537775145
+drop k11 m50 luck60 plain equipment | 290579129
+drop k11 m50 luck100 plain equipment | 1325873237
+drop k11 m50 luck160 plain equipment | 1382135076
+drop k11 m50 luck100 plain material | 891289325
+drop k11 m62 luck60 plain equipment | 1687574745
+drop k11 m62 luck100 plain equipment | 935632753
+drop k11 m62 luck160 plain equipment | 606185549
+drop k11 m62 luck100 plain material | 1747901982
+drop k12 m01 luck60 plain equipment | 105466899
+drop k12 m01 luck100 plain equipment | 830578984
+drop k12 m01 luck160 plain equipment | 240441120
+drop k12 m01 luck100 plain material | 2014915309
+drop k12 m05 luck60 plain equipment | 226604801
+drop k12 m05 luck100 plain equipment | 1597657041
+drop k12 m05 luck160 plain equipment | 1339410172
+drop k12 m05 luck100 plain material | 1245124240
+drop k12 m09 luck60 plain equipment | 1149274614
+drop k12 m09 luck100 plain equipment | 609420229
+drop k12 m09 luck160 plain equipment | 1396050830
+drop k12 m09 luck100 plain material | 1709763079
+drop k12 m13 luck60 plain equipment | 673979703
+drop k12 m13 luck100 plain equipment | 1973565085
+drop k12 m13 luck160 plain equipment | 1801310520
+drop k12 m13 luck100 plain material | 1437279988
+drop k12 m17 luck60 plain equipment | 936831639
+drop k12 m17 luck100 plain equipment | 270973094
+drop k12 m17 luck160 plain equipment | 1951071749
+drop k12 m17 luck100 plain material | 1938766036
+drop k12 m25 luck60 plain equipment | 1949484147
+drop k12 m25 luck100 plain equipment | 2048463027
+drop k12 m25 luck160 plain equipment | 547653808
+drop k12 m25 luck100 plain material | 1018838413
+drop k12 m35 luck60 plain equipment | 263166455
+drop k12 m35 luck100 plain equipment | 758835022
+drop k12 m35 luck160 plain equipment | 2014713800
+drop k12 m35 luck100 plain material | 1810964877
+drop k12 m50 luck60 plain equipment | 814913118
+drop k12 m50 luck100 plain equipment | 1350593901
+drop k12 m50 luck160 plain equipment | 605601209
+drop k12 m50 luck100 plain material | 593218986
+drop k12 m62 luck60 plain equipment | 88297631
+drop k12 m62 luck100 plain equipment | 293415784
+drop k12 m62 luck160 plain equipment | 1104746292
+drop k12 m62 luck100 plain material | 1146480287
+drop k13 m01 luck60 plain equipment | 1821503134
+drop k13 m01 luck100 plain equipment | 178797824
+drop k13 m01 luck160 plain equipment | 1120646755
+drop k13 m01 luck100 plain material | 1589054856
+drop k13 m05 luck60 plain equipment | 1226028575
+drop k13 m05 luck100 plain equipment | 1893352024
+drop k13 m05 luck160 plain equipment | 1263214958
+drop k13 m05 luck100 plain material | 930852283
+drop k13 m09 luck60 plain equipment | 139197383
+drop k13 m09 luck100 plain equipment | 1431962434
+drop k13 m09 luck160 plain equipment | 1515443231
+drop k13 m09 luck100 plain material | 2018952414
+drop k13 m13 luck60 plain equipment | 2063528123
+drop k13 m13 luck100 plain equipment | 1890541331
+drop k13 m13 luck160 plain equipment | 39801251
+drop k13 m13 luck100 plain material | 1266321129
+drop k13 m17 luck60 plain equipment | 2092800043
+drop k13 m17 luck100 plain equipment | 2069091175
+drop k13 m17 luck160 plain equipment | 949577
+drop k13 m17 luck100 plain material | 1512406666
+drop k13 m25 luck60 plain equipment | 1173667186
+drop k13 m25 luck100 plain equipment | 2129719412
+drop k13 m25 luck160 plain equipment | 1702636545
+drop k13 m25 luck100 plain material | 1946001640
+drop k13 m35 luck60 plain equipment | 1272145428
+drop k13 m35 luck100 plain equipment | 1308278353
+drop k13 m35 luck160 plain equipment | 573752785
+drop k13 m35 luck100 plain material | 1652180051
+drop k13 m50 luck60 plain equipment | 1348481764
+drop k13 m50 luck100 plain equipment | 2068707183
+drop k13 m50 luck160 plain equipment | 967422340
+drop k13 m50 luck100 plain material | 2132184563
+drop k13 m62 luck60 plain equipment | 973929962
+drop k13 m62 luck100 plain equipment | 1154760687
+drop k13 m62 luck160 plain equipment | 1305143636
+drop k13 m62 luck100 plain material | 73596333
+drop k14 m01 luck60 plain equipment | 16809817
+drop k14 m01 luck100 plain equipment | 955713521
+drop k14 m01 luck160 plain equipment | 1379526197
+drop k14 m01 luck100 plain material | 1137711179
+drop k14 m05 luck60 plain equipment | 266905513
+drop k14 m05 luck100 plain equipment | 1583814902
+drop k14 m05 luck160 plain equipment | 1101339706
+drop k14 m05 luck100 plain material | 1110425693
+drop k14 m09 luck60 plain equipment | 958088650
+drop k14 m09 luck100 plain equipment | 1061300899
+drop k14 m09 luck160 plain equipment | 579889952
+drop k14 m09 luck100 plain material | 1701320882
+drop k14 m13 luck60 plain equipment | 437511094
+drop k14 m13 luck100 plain equipment | 56039894
+drop k14 m13 luck160 plain equipment | 1760574844
+drop k14 m13 luck100 plain material | 169102354
+drop k14 m17 luck60 plain equipment | 1105689173
+drop k14 m17 luck100 plain equipment | 971163023
+drop k14 m17 luck160 plain equipment | 64506395
+drop k14 m17 luck100 plain material | 252136151
+drop k14 m25 luck60 plain equipment | 694136272
+drop k14 m25 luck100 plain equipment | 923276765
+drop k14 m25 luck160 plain equipment | 1749905402
+drop k14 m25 luck100 plain material | 1633665563
+drop k14 m35 luck60 plain equipment | 1165018060
+drop k14 m35 luck100 plain equipment | 496172868
+drop k14 m35 luck160 plain equipment | 1747342779
+drop k14 m35 luck100 plain material | 899958875
+drop k14 m50 luck60 plain equipment | 941929282
+drop k14 m50 luck100 plain equipment | 1008213596
+drop k14 m50 luck160 plain equipment | 416648304
+drop k14 m50 luck100 plain material | 48314001
+drop k14 m62 luck60 plain equipment | 627655257
+drop k14 m62 luck100 plain equipment | 1824142937
+drop k14 m62 luck160 plain equipment | 790043202
+drop k14 m62 luck100 plain material | 668947983
+drop k15 m01 luck60 plain equipment | 323511887
+drop k15 m01 luck100 plain equipment | 1267702122
+drop k15 m01 luck160 plain equipment | 379023783
+drop k15 m01 luck100 plain material | 796219179
+drop k15 m05 luck60 plain equipment | 1928018296
+drop k15 m05 luck100 plain equipment | 1513141370
+drop k15 m05 luck160 plain equipment | 1791585087
+drop k15 m05 luck100 plain material | 128242435
+drop k15 m09 luck60 plain equipment | 274503017
+drop k15 m09 luck100 plain equipment | 1174337407
+drop k15 m09 luck160 plain equipment | 1074200339
+drop k15 m09 luck100 plain material | 854263613
+drop k15 m13 luck60 plain equipment | 1231263039
+drop k15 m13 luck100 plain equipment | 1028674533
+drop k15 m13 luck160 plain equipment | 1592355623
+drop k15 m13 luck100 plain material | 2015774360
+drop k15 m17 luck60 plain equipment | 460973261
+drop k15 m17 luck100 plain equipment | 286672421
+drop k15 m17 luck160 plain equipment | 2147098942
+drop k15 m17 luck100 plain material | 309173477
+drop k15 m25 luck60 plain equipment | 386390507
+drop k15 m25 luck100 plain equipment | 22550306
+drop k15 m25 luck160 plain equipment | 1648901016
+drop k15 m25 luck100 plain material | 1142119670
+drop k15 m35 luck60 plain equipment | 1661637464
+drop k15 m35 luck100 plain equipment | 2112246913
+drop k15 m35 luck160 plain equipment | 382466966
+drop k15 m35 luck100 plain material | 1920513165
+drop k15 m50 luck60 plain equipment | 923669364
+drop k15 m50 luck100 plain equipment | 896412798
+drop k15 m50 luck160 plain equipment | 460394358
+drop k15 m50 luck100 plain material | 1626896555
+drop k15 m62 luck60 plain equipment | 824273481
+drop k15 m62 luck100 plain equipment | 1076429610
+drop k15 m62 luck160 plain equipment | 1095593275
+drop k15 m62 luck100 plain material | 1079383127
+drop k16 m01 luck60 plain equipment | 1251857827
+drop k16 m01 luck100 plain equipment | 225978241
+drop k16 m01 luck160 plain equipment | 1061092836
+drop k16 m01 luck100 plain material | 118259019
+drop k16 m05 luck60 plain equipment | 991852088
+drop k16 m05 luck100 plain equipment | 1320123824
+drop k16 m05 luck160 plain equipment | 1277319499
+drop k16 m05 luck100 plain material | 2084117523
+drop k16 m09 luck60 plain equipment | 72925306
+drop k16 m09 luck100 plain equipment | 1082850105
+drop k16 m09 luck160 plain equipment | 1769568717
+drop k16 m09 luck100 plain material | 773550657
+drop k16 m13 luck60 plain equipment | 120759157
+drop k16 m13 luck100 plain equipment | 2004535303
+drop k16 m13 luck160 plain equipment | 1233867508
+drop k16 m13 luck100 plain material | 264200915
+drop k16 m17 luck60 plain equipment | 582289218
+drop k16 m17 luck100 plain equipment | 1358960587
+drop k16 m17 luck160 plain equipment | 1526868431
+drop k16 m17 luck100 plain material | 132212196
+drop k16 m25 luck60 plain equipment | 912537463
+drop k16 m25 luck100 plain equipment | 1332738084
+drop k16 m25 luck160 plain equipment | 1345848992
+drop k16 m25 luck100 plain material | 531488002
+drop k16 m35 luck60 plain equipment | 1148960730
+drop k16 m35 luck100 plain equipment | 1108449618
+drop k16 m35 luck160 plain equipment | 862371049
+drop k16 m35 luck100 plain material | 123003110
+drop k16 m50 luck60 plain equipment | 437301954
+drop k16 m50 luck100 plain equipment | 506863521
+drop k16 m50 luck160 plain equipment | 2058009103
+drop k16 m50 luck100 plain material | 3148574
+drop k16 m62 luck60 plain equipment | 1305677578
+drop k16 m62 luck100 plain equipment | 1540426550
+drop k16 m62 luck160 plain equipment | 964812910
+drop k16 m62 luck100 plain material | 1079172931
+drop k20 m01 luck60 plain equipment | 2133796806
+drop k20 m01 luck100 plain equipment | 182849886
+drop k20 m01 luck160 plain equipment | 1692429760
+drop k20 m01 luck100 plain material | 769829766
+drop k20 m05 luck60 plain equipment | 1650197027
+drop k20 m05 luck100 plain equipment | 1268334641
+drop k20 m05 luck160 plain equipment | 2042301606
+drop k20 m05 luck100 plain material | 2112266111
+drop k20 m09 luck60 plain equipment | 15370281
+drop k20 m09 luck100 plain equipment | 1129229888
+drop k20 m09 luck160 plain equipment | 1978099758
+drop k20 m09 luck100 plain material | 1468940803
+drop k20 m13 luck60 plain equipment | 450346845
+drop k20 m13 luck100 plain equipment | 298411590
+drop k20 m13 luck160 plain equipment | 1788264303
+drop k20 m13 luck100 plain material | 361367699
+drop k20 m17 luck60 plain equipment | 1677481827
+drop k20 m17 luck100 plain equipment | 1768941412
+drop k20 m17 luck160 plain equipment | 964899178
+drop k20 m17 luck100 plain material | 660676264
+drop k20 m25 luck60 plain equipment | 1611089103
+drop k20 m25 luck100 plain equipment | 560290695
+drop k20 m25 luck160 plain equipment | 1478723847
+drop k20 m25 luck100 plain material | 1722880127
+drop k20 m35 luck60 plain equipment | 2074421145
+drop k20 m35 luck100 plain equipment | 829171854
+drop k20 m35 luck160 plain equipment | 2099318832
+drop k20 m35 luck100 plain material | 679916886
+drop k20 m50 luck60 plain equipment | 1473006072
+drop k20 m50 luck100 plain equipment | 751023447
+drop k20 m50 luck160 plain equipment | 557543737
+drop k20 m50 luck100 plain material | 359070013
+drop k20 m62 luck60 plain equipment | 850915208
+drop k20 m62 luck100 plain equipment | 1275460556
+drop k20 m62 luck160 plain equipment | 1220001106
+drop k20 m62 luck100 plain material | 1841140439
+drop k30 m01 luck60 plain equipment | 1278727467
+drop k30 m01 luck100 plain equipment | 1142305628
+drop k30 m01 luck160 plain equipment | 809818538
+drop k30 m01 luck100 plain material | 285207153
+drop k30 m05 luck60 plain equipment | 487698056
+drop k30 m05 luck100 plain equipment | 1731652366
+drop k30 m05 luck160 plain equipment | 807123344
+drop k30 m05 luck100 plain material | 1806183115
+drop k30 m09 luck60 plain equipment | 927287421
+drop k30 m09 luck100 plain equipment | 403588929
+drop k30 m09 luck160 plain equipment | 1557201594
+drop k30 m09 luck100 plain material | 460146613
+drop k30 m13 luck60 plain equipment | 618749553
+drop k30 m13 luck100 plain equipment | 1181714675
+drop k30 m13 luck160 plain equipment | 1201009045
+drop k30 m13 luck100 plain material | 165940776
+drop k30 m17 luck60 plain equipment | 24262318
+drop k30 m17 luck100 plain equipment | 964289088
+drop k30 m17 luck160 plain equipment | 2117515952
+drop k30 m17 luck100 plain material | 617736694
+drop k30 m25 luck60 plain equipment | 26278730
+drop k30 m25 luck100 plain equipment | 171482742
+drop k30 m25 luck160 plain equipment | 1465540456
+drop k30 m25 luck100 plain material | 431441392
+drop k30 m35 luck60 plain equipment | 1536550003
+drop k30 m35 luck100 plain equipment | 2097694433
+drop k30 m35 luck160 plain equipment | 122795432
+drop k30 m35 luck100 plain material | 1860023191
+drop k30 m50 luck60 plain equipment | 358920737
+drop k30 m50 luck100 plain equipment | 1515460137
+drop k30 m50 luck160 plain equipment | 1754901284
+drop k30 m50 luck100 plain material | 1083939570
+drop k30 m62 luck60 plain equipment | 452344289
+drop k30 m62 luck100 plain equipment | 923862698
+drop k30 m62 luck160 plain equipment | 840233662
+drop k30 m62 luck100 plain material | 1496455985
+drop k45 m01 luck60 plain equipment | 547313172
+drop k45 m01 luck100 plain equipment | 1890327972
+drop k45 m01 luck160 plain equipment | 1104079120
+drop k45 m01 luck100 plain material | 1295539048
+drop k45 m05 luck60 plain equipment | 1857049163
+drop k45 m05 luck100 plain equipment | 656977251
+drop k45 m05 luck160 plain equipment | 2020087704
+drop k45 m05 luck100 plain material | 1107182439
+drop k45 m09 luck60 plain equipment | 1523853104
+drop k45 m09 luck100 plain equipment | 1278692401
+drop k45 m09 luck160 plain equipment | 1077779339
+drop k45 m09 luck100 plain material | 143164441
+drop k45 m13 luck60 plain equipment | 2135120979
+drop k45 m13 luck100 plain equipment | 485633331
+drop k45 m13 luck160 plain equipment | 2106115423
+drop k45 m13 luck100 plain material | 1676835298
+drop k45 m17 luck60 plain equipment | 1698052892
+drop k45 m17 luck100 plain equipment | 1262449181
+drop k45 m17 luck160 plain equipment | 518583704
+drop k45 m17 luck100 plain material | 1572245077
+drop k45 m25 luck60 plain equipment | 815279106
+drop k45 m25 luck100 plain equipment | 1183437575
+drop k45 m25 luck160 plain equipment | 1743031217
+drop k45 m25 luck100 plain material | 799474904
+drop k45 m35 luck60 plain equipment | 1420007540
+drop k45 m35 luck100 plain equipment | 1394101662
+drop k45 m35 luck160 plain equipment | 2062400156
+drop k45 m35 luck100 plain material | 1940933437
+drop k45 m50 luck60 plain equipment | 2118289122
+drop k45 m50 luck100 plain equipment | 1235625742
+drop k45 m50 luck160 plain equipment | 1161310718
+drop k45 m50 luck100 plain material | 434557841
+drop k45 m62 luck60 plain equipment | 1981728988
+drop k45 m62 luck100 plain equipment | 357861702
+drop k45 m62 luck160 plain equipment | 1167059288
+drop k45 m62 luck100 plain material | 2042017341
+drop k62 m01 luck60 plain equipment | 462395266
+drop k62 m01 luck100 plain equipment | 539291403
+drop k62 m01 luck160 plain equipment | 1565107673
+drop k62 m01 luck100 plain material | 1752675496
+drop k62 m05 luck60 plain equipment | 1534445023
+drop k62 m05 luck100 plain equipment | 1684396668
+drop k62 m05 luck160 plain equipment | 507555027
+drop k62 m05 luck100 plain material | 2133592311
+drop k62 m09 luck60 plain equipment | 145977784
+drop k62 m09 luck100 plain equipment | 1391872998
+drop k62 m09 luck160 plain equipment | 1631421683
+drop k62 m09 luck100 plain material | 1064577284
+drop k62 m13 luck60 plain equipment | 1653713842
+drop k62 m13 luck100 plain equipment | 21615240
+drop k62 m13 luck160 plain equipment | 1205929378
+drop k62 m13 luck100 plain material | 248094876
+drop k62 m17 luck60 plain equipment | 54231578
+drop k62 m17 luck100 plain equipment | 1637314379
+drop k62 m17 luck160 plain equipment | 949724445
+drop k62 m17 luck100 plain material | 1697817149
+drop k62 m25 luck60 plain equipment | 1208952390
+drop k62 m25 luck100 plain equipment | 1411773251
+drop k62 m25 luck160 plain equipment | 441046173
+drop k62 m25 luck100 plain material | 695856890
+drop k62 m35 luck60 plain equipment | 2064652323
+drop k62 m35 luck100 plain equipment | 550042619
+drop k62 m35 luck160 plain equipment | 215441301
+drop k62 m35 luck100 plain material | 1785659067
+drop k62 m50 luck60 plain equipment | 1469032969
+drop k62 m50 luck100 plain equipment | 428431702
+drop k62 m50 luck160 plain equipment | 1551318704
+drop k62 m50 luck100 plain material | 167518006
+drop k62 m62 luck60 plain equipment | 509875562
+drop k62 m62 luck100 plain equipment | 467849445
+drop k62 m62 luck160 plain equipment | 441689470
+drop k62 m62 luck100 plain material | 813965329
+drop k10 m12 luck100 elite equipment | 779523561
+drop k10 m12 luck100 elite material | 411510872
+drop k30 m30 luck100 elite equipment | 2111127416
+drop k30 m30 luck100 elite material | 202542569
+drop k50 m45 luck100 elite equipment | 208197893
+drop k50 m45 luck100 elite material | 167096415
+drop k10 m12 luck100 neutral equipment | 1071062943
+drop k10 m12 luck100 neutral material | 1826035359
+drop k30 m30 luck100 neutral equipment | 1637121369
+drop k30 m30 luck100 neutral material | 1209057637
+drop k50 m45 luck100 neutral equipment | 1248951581
+drop k50 m45 luck100 neutral material | 1687978265
+drop k10 m12 luck100 hardcore equipment | 2045042338
+drop k10 m12 luck100 hardcore material | 358367715
+drop k30 m30 luck100 hardcore equipment | 1702991349
+drop k30 m30 luck100 hardcore material | 788563622
+drop k50 m45 luck100 hardcore equipment | 1051682602
+drop k50 m45 luck100 hardcore material | 2049099655
+drop k10 m12 luck100 town equipment | 2068717080
+drop k10 m12 luck100 town material | 1577638616
+drop k30 m30 luck100 town equipment | 1437281563
+drop k30 m30 luck100 town material | 324480459
+drop k50 m45 luck100 town equipment | 1466417439
+drop k50 m45 luck100 town material | 312176051
+drop k10 m12 luck100 guild equipment | 766088409
+drop k10 m12 luck100 guild material | 377238999
+drop k30 m30 luck100 guild equipment | 244708818
+drop k30 m30 luck100 guild material | 125732047
+drop k50 m45 luck100 guild equipment | 355909435
+drop k50 m45 luck100 guild material | 635841531
+drop k10 m12 luck100 no-exp equipment | 1738158220
+drop k10 m12 luck100 no-exp material | 344657604
+drop k30 m30 luck100 no-exp equipment | 1692615208
+drop k30 m30 luck100 no-exp material | 1158156535
+drop k50 m45 luck100 no-exp equipment | 710988192
+drop k50 m45 luck100 no-exp material | 761278461
+drop k10 m12 luck100 shopkeeper equipment | 1218279404
+drop k10 m12 luck100 shopkeeper material | 978970288
+drop k30 m30 luck100 shopkeeper equipment | 1837998254
+drop k30 m30 luck100 shopkeeper material | 717916842
+drop k50 m45 luck100 shopkeeper equipment | 978864503
+drop k50 m45 luck100 shopkeeper material | 1241481782
+drop k10 m12 luck100 dial1.5 equipment | 1033678590
+drop k10 m12 luck100 dial1.5 material | 542718889
+drop k30 m30 luck100 dial1.5 equipment | 1046847424
+drop k30 m30 luck100 dial1.5 material | 1653938937
+drop k50 m45 luck100 dial1.5 equipment | 1694728731
+drop k50 m45 luck100 dial1.5 material | 1838719290
+kill player k01 m12 luck160 | 16018132
+kill player k30 m30 luck100 | 1605642093
+kill player k50 m45 luck160 | 869112967
+kill player k01 m62 luck160 | 998315838
+kill pet k01 m12 luck160 | 168252623
+kill pet k30 m30 luck100 | 1745300842
+kill pet k50 m45 luck160 | 1779284696
+kill pet k01 m62 luck160 | 2020476080
+gen slot k56 m62 luck160 coloured pc slot0 material-1 | 1382845269
+gen slot k56 m62 luck160 coloured pc slot1 material-1 | 71035976
+gen slot k56 m62 luck160 coloured pc slot2 material-1 | 1937619225
+gen slot k56 m62 luck160 coloured pc slot3 material-1 | 1736223170
+gen slot k56 m62 luck160 coloured pc slot4 material-1 | 272729613
+gen slot k56 m62 luck160 coloured pc slot5 material-1 | 1645771212
+gen slot k56 m62 luck160 coloured pc slot6 material-1 | 1926988081
+gen slot k56 m62 luck160 coloured pc slot7 material-1 | 1554418430
+gen slot k56 m62 luck160 coloured pc slot8 material-1 | 653625364
+gen slot k56 m62 luck160 coloured pc slot9 material-1 | 2108471812
+gen slot k56 m62 luck160 coloured pc slot10 material-1 | 1858042338
+gen slot k56 m62 luck160 coloured pc slot11 material-1 | 1232409000
+gen slot k56 m62 luck160 coloured pc slot12 material-1 | 600596835
+gen slot k56 m62 luck160 coloured pc slot13 material-1 | 363802787
+gen slot k56 m62 luck160 coloured pc slot14 material-1 | 1592842461
+gen slot k56 m62 luck160 coloured pc slot15 material-1 | 1984105155
+gen slot k56 m62 luck160 coloured pc slot16 material-1 | 569152502
+gen slot k56 m62 luck160 coloured pc slot17 material-1 | 979412670
+gen slot k56 m62 luck160 coloured pc slot18 material-1 | 1756597303
+gen slot k56 m62 luck160 coloured pc slot19 material-1 | 1166511854
+gen slot k56 m62 luck160 coloured pc slot20 material-1 | 1509113247
+gen slot k56 m62 luck160 coloured pc slot21 material-1 | 1273885603
+gen slot k56 m62 luck160 coloured pc slot22 material-1 | 1062954694
+gen slot k56 m62 luck160 coloured pc slot23 material-1 | 640853087
+gen slot k56 m62 luck160 coloured pc slot24 material-1 | 2125501486
+gen slot k56 m62 luck160 coloured pc slot25 material-1 | 899070858
+gen slot k56 m62 luck160 coloured pc slot26 material-1 | 124319102
+gen slot k56 m62 luck160 coloured pc slot27 material-1 | 1032498293
+gen slot k56 m62 luck160 coloured pc slot28 material-1 | 189869648
+gen slot k56 m62 luck160 coloured pc slot29 material-1 | 197955218
+gen slot k56 m62 luck160 coloured pc slot30 material-1 | 1227786499
+gen slot k56 m62 luck160 coloured pc slot31 material-1 | 995399595
+gen slot k56 m62 luck160 coloured pc slot32 material-1 | 740633127
+gen slot k56 m62 luck160 coloured pc slot33 material-1 | 1919037785
+gen slot k56 m62 luck160 coloured pc slot34 material-1 | 1783373721
+gen slot k56 m62 luck160 coloured pc slot35 material-1 | 771195597
+gen slot k56 m62 luck160 coloured pc slot36 material-1 | 358175461
+gen slot k56 m62 luck160 coloured pc slot37 material-1 | 532304080
+gen slot k56 m62 luck160 coloured pc slot38 material-1 | 1857763689
+gen slot k56 m62 luck160 coloured pc slot39 material-1 | 234332137
+gen slot k56 m62 luck160 coloured pc slot40 material-1 | 1085563398
+gen slot k56 m62 luck160 coloured pc slot41 material-1 | 1681028918
+gen slot k56 m62 luck160 coloured pc slot42 material-1 | 1489860901
+gen slot k56 m62 luck160 coloured pc slot43 material-1 | 280493602
+gen slot k56 m62 luck160 coloured pc slot44 material-1 | 774543659
+gen slot k56 m62 luck160 coloured pc slot45 material-1 | 2027794316
+gen slot k56 m62 luck160 coloured pc slot46 material-1 | 670284532
+gen slot k56 m62 luck160 coloured pc slot47 material-1 | 1488802189
+gen slot k56 m62 luck160 coloured pc slot48 material-1 | 1202517529
+gen slot k56 m62 luck160 coloured pc slot49 material-1 | 152137530
+gen slot k56 m62 luck160 coloured pc slot50 material-1 | 1405125933
+gen slot k56 m62 luck160 coloured pc slot51 material-1 | 20642629
+gen slot k56 m62 luck160 coloured pc slot52 material-1 | 2098652369
+gen slot k56 m62 luck160 coloured pc slot53 material-1 | 1401989985
+gen slot k56 m62 luck160 coloured pc slot54 material-1 | 67302238
+gen slot k56 m62 luck160 coloured pc slot55 material-1 | 1720704722
+gen slot k56 m62 luck160 coloured pc slot56 material-1 | 260862300
+gen slot k56 m62 luck160 coloured pc slot57 material-1 | 62851829
+gen slot k56 m62 luck160 coloured pc slot58 material-1 | 917876719
+gen slot k56 m62 luck160 coloured pc slot59 material-1 | 42859911
+gen slot k56 m62 luck160 coloured pc slot60 material-1 | 173832260
+gen slot k56 m62 luck160 coloured pc slot61 material-1 | 1283043616
+gen slot k56 m62 luck160 coloured pc slot62 material-1 | 2134901646
+gen slot k56 m62 luck160 coloured pc slot63 material-1 | 962522051
+gen slot k56 m62 luck160 coloured pc slot64 material-1 | 365173672
+gen slot k56 m62 luck160 coloured pc slot65 material-1 | 1127815729
+gen slot k56 m62 luck160 coloured pc slot66 material-1 | 1188895007
+gen slot k56 m62 luck160 coloured pc slot67 material-1 | 1867678653
+gen slot k56 m62 luck160 coloured pc slot68 material-1 | 165349212
+gen slot k56 m62 luck160 coloured pc slot69 material-1 | 96008355
+gen slot k56 m62 luck160 coloured pc slot70 material-1 | 153821132
+gen slot k56 m62 luck160 coloured pc slot71 material-1 | 14654454
+gen slot k56 m62 luck160 coloured pc slot72 material-1 | 198461693
+gen slot k56 m62 luck160 coloured pc slot73 material-1 | 1976117058
+gen slot k56 m62 luck160 coloured pc slot74 material-1 | 1453019264
+gen slot k56 m62 luck160 coloured pc slot75 material-1 | 538428182
+gen slot k56 m62 luck160 coloured pc slot76 material-1 | 383674297
+gen slot k56 m62 luck160 coloured pc slot77 material-1 | 1908170894
+gen slot k56 m62 luck160 coloured pc slot78 material-1 | 292160884
+gen slot k56 m62 luck160 coloured pc slot79 material-1 | 3241010
+gen slot k56 m62 luck160 coloured pc slot80 material-1 | 1790744993
+gen slot k56 m62 luck160 coloured pc slot81 material-1 | 2033683690
+gen slot k56 m62 luck160 coloured pc slot82 material-1 | 1187652327
+gen slot k56 m62 luck160 coloured pc slot83 material-1 | 1632116117
+gen slot k56 m62 luck160 coloured pc slot84 material-1 | 184854511
+gen slot k56 m62 luck160 coloured pc slot85 material-1 | 150760325
+gen slot k56 m62 luck160 coloured pc slot86 material-1 | 961785452
+gen slot k56 m62 luck160 coloured pc slot87 material-1 | 999727737
+gen slot k56 m62 luck160 coloured pc slot88 material-1 | 2061696509
+gen slot k56 m62 luck160 coloured pc slot89 material-1 | 277423513
+gen slot k56 m62 luck160 coloured pc slot90 material-1 | 1622107883
+gen slot k56 m62 luck160 coloured pc slot91 material-1 | 1351368536
+gen slot k56 m62 luck160 coloured pc slot92 material-1 | 672336674
+gen slot k56 m62 luck160 coloured pc slot93 material-1 | 611705303
+gen slot k56 m62 luck160 coloured pc slot94 material-1 | 291207278
+gen slot k56 m62 luck160 coloured pc slot95 material-1 | 1605493481
+gen slot k56 m62 luck160 coloured pc slot96 material-1 | 1938822949
+gen slot k56 m62 luck160 coloured pc slot97 material-1 | 1657049031
+gen slot k56 m62 luck160 coloured pc slot98 material-1 | 1784893181
+gen slot k56 m62 luck160 coloured pc slot99 material-1 | 1757032013
+gen slot k56 m62 luck160 coloured pc slot100 material-1 | 1853942695
+gen slot k56 m62 luck160 coloured pc slot101 material-1 | 281317669
+gen slot k56 m62 luck160 coloured pc slot102 material-1 | 1072790372
+gen slot k56 m62 luck160 coloured pc slot103 material-1 | 751279702
+gen slot k56 m62 luck160 coloured pc slot104 material-1 | 946330942
+gen slot k56 m62 luck160 coloured pc slot105 material-1 | 1606246504
+gen slot k56 m62 luck160 coloured pc slot106 material-1 | 494915387
+gen slot k56 m62 luck160 coloured pc slot107 material-1 | 1288931326
+gen slot k56 m62 luck160 coloured pc slot108 material-1 | 692324029
+gen slot k50 m50 luck100 plain pc slot0 material-1 | 833610435
+gen slot k50 m50 luck100 plain pc slot1 material-1 | 1113958430
+gen slot k50 m50 luck100 plain pc slot2 material-1 | 633016272
+gen slot k50 m50 luck100 plain pc slot3 material-1 | 826677522
+gen slot k50 m50 luck100 plain pc slot4 material-1 | 2136408248
+gen slot k50 m50 luck100 plain pc slot5 material-1 | 634365632
+gen slot k50 m50 luck100 plain pc slot6 material-1 | 1600428155
+gen slot k50 m50 luck100 plain pc slot7 material-1 | 193681475
+gen slot k50 m50 luck100 plain pc slot8 material-1 | 1812461587
+gen slot k50 m50 luck100 plain pc slot9 material-1 | 1481709287
+gen slot k50 m50 luck100 plain pc slot10 material-1 | 873887685
+gen slot k50 m50 luck100 plain pc slot11 material-1 | 1045184315
+gen slot k50 m50 luck100 plain pc slot12 material-1 | 606804484
+gen slot k50 m50 luck100 plain pc slot13 material-1 | 1586845023
+gen slot k50 m50 luck100 plain pc slot14 material-1 | 112167477
+gen slot k50 m50 luck100 plain pc slot15 material-1 | 1636085897
+gen slot k50 m50 luck100 plain pc slot16 material-1 | 1857149046
+gen slot k50 m50 luck100 plain pc slot17 material-1 | 482400242
+gen slot k50 m50 luck100 plain pc slot18 material-1 | 345040188
+gen slot k50 m50 luck100 plain pc slot19 material-1 | 588961387
+gen slot k50 m50 luck100 plain pc slot20 material-1 | 1754029155
+gen slot k50 m50 luck100 plain pc slot21 material-1 | 1555314703
+gen slot k50 m50 luck100 plain pc slot22 material-1 | 146911784
+gen slot k50 m50 luck100 plain pc slot23 material-1 | 1140797542
+gen slot k50 m50 luck100 plain pc slot24 material-1 | 384220100
+gen slot k50 m50 luck100 plain pc slot25 material-1 | 1418606853
+gen slot k50 m50 luck100 plain pc slot26 material-1 | 644843871
+gen slot k50 m50 luck100 plain pc slot27 material-1 | 1596519945
+gen slot k50 m50 luck100 plain pc slot28 material-1 | 856437754
+gen slot k50 m50 luck100 plain pc slot29 material-1 | 112434502
+gen slot k50 m50 luck100 plain pc slot30 material-1 | 283166477
+gen slot k50 m50 luck100 plain pc slot31 material-1 | 2113713770
+gen slot k50 m50 luck100 plain pc slot32 material-1 | 741025633
+gen slot k50 m50 luck100 plain pc slot33 material-1 | 105973795
+gen slot k50 m50 luck100 plain pc slot34 material-1 | 1957508006
+gen slot k50 m50 luck100 plain pc slot35 material-1 | 317922474
+gen slot k50 m50 luck100 plain pc slot36 material-1 | 2114200886
+gen slot k50 m50 luck100 plain pc slot37 material-1 | 456525460
+gen slot k50 m50 luck100 plain pc slot38 material-1 | 1238089899
+gen slot k50 m50 luck100 plain pc slot39 material-1 | 436224432
+gen slot k50 m50 luck100 plain pc slot40 material-1 | 85721450
+gen slot k50 m50 luck100 plain pc slot41 material-1 | 635852687
+gen slot k50 m50 luck100 plain pc slot42 material-1 | 595858206
+gen slot k50 m50 luck100 plain pc slot43 material-1 | 245104639
+gen slot k50 m50 luck100 plain pc slot44 material-1 | 1913335693
+gen slot k50 m50 luck100 plain pc slot45 material-1 | 857187602
+gen slot k50 m50 luck100 plain pc slot46 material-1 | 1674776654
+gen slot k50 m50 luck100 plain pc slot47 material-1 | 1967590952
+gen slot k50 m50 luck100 plain pc slot48 material-1 | 1360301839
+gen slot k50 m50 luck100 plain pc slot49 material-1 | 1745456817
+gen slot k50 m50 luck100 plain pc slot50 material-1 | 670294316
+gen slot k50 m50 luck100 plain pc slot51 material-1 | 255648666
+gen slot k50 m50 luck100 plain pc slot52 material-1 | 470291117
+gen slot k50 m50 luck100 plain pc slot53 material-1 | 1347947498
+gen slot k50 m50 luck100 plain pc slot54 material-1 | 1341534603
+gen slot k50 m50 luck100 plain pc slot55 material-1 | 1513400533
+gen slot k50 m50 luck100 plain pc slot56 material-1 | 7948884
+gen slot k50 m50 luck100 plain pc slot57 material-1 | 366162108
+gen slot k50 m50 luck100 plain pc slot58 material-1 | 860300291
+gen slot k50 m50 luck100 plain pc slot59 material-1 | 1852321813
+gen slot k50 m50 luck100 plain pc slot60 material-1 | 1961669513
+gen slot k50 m50 luck100 plain pc slot61 material-1 | 242205802
+gen slot k50 m50 luck100 plain pc slot62 material-1 | 1178721461
+gen slot k50 m50 luck100 plain pc slot63 material-1 | 464079982
+gen slot k50 m50 luck100 plain pc slot64 material-1 | 1837820870
+gen slot k50 m50 luck100 plain pc slot65 material-1 | 1093263475
+gen slot k50 m50 luck100 plain pc slot66 material-1 | 1612556122
+gen slot k50 m50 luck100 plain pc slot67 material-1 | 388309067
+gen slot k50 m50 luck100 plain pc slot68 material-1 | 1234546395
+gen slot k50 m50 luck100 plain pc slot69 material-1 | 788062885
+gen slot k50 m50 luck100 plain pc slot70 material-1 | 1120743670
+gen slot k50 m50 luck100 plain pc slot71 material-1 | 563105497
+gen slot k50 m50 luck100 plain pc slot72 material-1 | 1766625501
+gen slot k50 m50 luck100 plain pc slot73 material-1 | 1117056251
+gen slot k50 m50 luck100 plain pc slot74 material-1 | 1814523610
+gen slot k50 m50 luck100 plain pc slot75 material-1 | 2031451686
+gen slot k50 m50 luck100 plain pc slot76 material-1 | 837367497
+gen slot k50 m50 luck100 plain pc slot77 material-1 | 1467291286
+gen slot k50 m50 luck100 plain pc slot78 material-1 | 138597277
+gen slot k50 m50 luck100 plain pc slot79 material-1 | 704338225
+gen slot k50 m50 luck100 plain pc slot80 material-1 | 870755413
+gen slot k50 m50 luck100 plain pc slot81 material-1 | 1166240253
+gen slot k50 m50 luck100 plain pc slot82 material-1 | 1200008812
+gen slot k50 m50 luck100 plain pc slot83 material-1 | 347784902
+gen slot k50 m50 luck100 plain pc slot84 material-1 | 357442468
+gen slot k50 m50 luck100 plain pc slot85 material-1 | 1478328007
+gen slot k50 m50 luck100 plain pc slot86 material-1 | 167363819
+gen slot k50 m50 luck100 plain pc slot87 material-1 | 1472655000
+gen slot k50 m50 luck100 plain pc slot88 material-1 | 416550516
+gen slot k50 m50 luck100 plain pc slot89 material-1 | 1415621844
+gen slot k50 m50 luck100 plain pc slot90 material-1 | 590290397
+gen slot k50 m50 luck100 plain pc slot91 material-1 | 1967229066
+gen slot k50 m50 luck100 plain pc slot92 material-1 | 1678543366
+gen slot k50 m50 luck100 plain pc slot93 material-1 | 102242684
+gen slot k50 m50 luck100 plain pc slot94 material-1 | 1512172116
+gen slot k50 m50 luck100 plain pc slot95 material-1 | 1763548416
+gen slot k50 m50 luck100 plain pc slot96 material-1 | 1808844982
+gen slot k50 m50 luck100 plain pc slot97 material-1 | 1074370073
+gen slot k50 m50 luck100 plain pc slot98 material-1 | 2127663892
+gen slot k50 m50 luck100 plain pc slot99 material-1 | 1252407521
+gen slot k50 m50 luck100 plain pc slot100 material-1 | 1257254963
+gen slot k50 m50 luck100 plain pc slot101 material-1 | 681656943
+gen slot k50 m50 luck100 plain pc slot102 material-1 | 356698448
+gen slot k50 m50 luck100 plain pc slot103 material-1 | 802109219
+gen slot k50 m50 luck100 plain pc slot104 material-1 | 935254369
+gen slot k50 m50 luck100 plain pc slot105 material-1 | 533000482
+gen slot k50 m50 luck100 plain pc slot106 material-1 | 839605043
+gen slot k50 m50 luck100 plain pc slot107 material-1 | 499123189
+gen slot k50 m50 luck100 plain pc slot108 material-1 | 723259847
+gen random k01 m01 luck60 coloured pc slot-1 material-1 | 259827519
+gen random k01 m01 luck100 coloured pc slot-1 material-1 | 626841625
+gen random k01 m01 luck160 coloured pc slot-1 material-1 | 705591864
+gen random k01 m01 luck100 plain pc slot-1 material-1 | 583015786
+gen random k01 m01 luck100 coloured npc slot-1 material-1 | 1192570488
+gen random k01 m20 luck60 coloured pc slot-1 material-1 | 1655991514
+gen random k01 m20 luck100 coloured pc slot-1 material-1 | 1257898271
+gen random k01 m20 luck160 coloured pc slot-1 material-1 | 651558010
+gen random k01 m20 luck100 plain pc slot-1 material-1 | 1211251255
+gen random k01 m20 luck100 coloured npc slot-1 material-1 | 419176330
+gen random k01 m46 luck60 coloured pc slot-1 material-1 | 1443124332
+gen random k01 m46 luck100 coloured pc slot-1 material-1 | 2127880312
+gen random k01 m46 luck160 coloured pc slot-1 material-1 | 1059096719
+gen random k01 m46 luck100 plain pc slot-1 material-1 | 1155540456
+gen random k01 m46 luck100 coloured npc slot-1 material-1 | 970836881
+gen random k01 m62 luck60 coloured pc slot-1 material-1 | 374629762
+gen random k01 m62 luck100 coloured pc slot-1 material-1 | 89321160
+gen random k01 m62 luck160 coloured pc slot-1 material-1 | 796086784
+gen random k01 m62 luck100 plain pc slot-1 material-1 | 1908523868
+gen random k01 m62 luck100 coloured npc slot-1 material-1 | 291044453
+gen random k11 m01 luck60 coloured pc slot-1 material-1 | 277690510
+gen random k11 m01 luck100 coloured pc slot-1 material-1 | 1631628020
+gen random k11 m01 luck160 coloured pc slot-1 material-1 | 1608326635
+gen random k11 m01 luck100 plain pc slot-1 material-1 | 1737398632
+gen random k11 m01 luck100 coloured npc slot-1 material-1 | 1053805679
+gen random k11 m20 luck60 coloured pc slot-1 material-1 | 1736197541
+gen random k11 m20 luck100 coloured pc slot-1 material-1 | 1569323869
+gen random k11 m20 luck160 coloured pc slot-1 material-1 | 1741563322
+gen random k11 m20 luck100 plain pc slot-1 material-1 | 1034327428
+gen random k11 m20 luck100 coloured npc slot-1 material-1 | 516116743
+gen random k11 m46 luck60 coloured pc slot-1 material-1 | 1170616781
+gen random k11 m46 luck100 coloured pc slot-1 material-1 | 1409204841
+gen random k11 m46 luck160 coloured pc slot-1 material-1 | 792140201
+gen random k11 m46 luck100 plain pc slot-1 material-1 | 13654228
+gen random k11 m46 luck100 coloured npc slot-1 material-1 | 1918595902
+gen random k11 m62 luck60 coloured pc slot-1 material-1 | 577869880
+gen random k11 m62 luck100 coloured pc slot-1 material-1 | 2050876332
+gen random k11 m62 luck160 coloured pc slot-1 material-1 | 185083437
+gen random k11 m62 luck100 plain pc slot-1 material-1 | 24570219
+gen random k11 m62 luck100 coloured npc slot-1 material-1 | 337516716
+gen random k25 m01 luck60 coloured pc slot-1 material-1 | 29440687
+gen random k25 m01 luck100 coloured pc slot-1 material-1 | 1983865633
+gen random k25 m01 luck160 coloured pc slot-1 material-1 | 967458540
+gen random k25 m01 luck100 plain pc slot-1 material-1 | 2046848378
+gen random k25 m01 luck100 coloured npc slot-1 material-1 | 1145122324
+gen random k25 m20 luck60 coloured pc slot-1 material-1 | 1127164385
+gen random k25 m20 luck100 coloured pc slot-1 material-1 | 2076540940
+gen random k25 m20 luck160 coloured pc slot-1 material-1 | 481359722
+gen random k25 m20 luck100 plain pc slot-1 material-1 | 1157349908
+gen random k25 m20 luck100 coloured npc slot-1 material-1 | 345991346
+gen random k25 m46 luck60 coloured pc slot-1 material-1 | 968978729
+gen random k25 m46 luck100 coloured pc slot-1 material-1 | 984059911
+gen random k25 m46 luck160 coloured pc slot-1 material-1 | 2055316748
+gen random k25 m46 luck100 plain pc slot-1 material-1 | 901033688
+gen random k25 m46 luck100 coloured npc slot-1 material-1 | 66675278
+gen random k25 m62 luck60 coloured pc slot-1 material-1 | 1312870521
+gen random k25 m62 luck100 coloured pc slot-1 material-1 | 259346704
+gen random k25 m62 luck160 coloured pc slot-1 material-1 | 30036856
+gen random k25 m62 luck100 plain pc slot-1 material-1 | 1386378832
+gen random k25 m62 luck100 coloured npc slot-1 material-1 | 1654325518
+gen random k40 m01 luck60 coloured pc slot-1 material-1 | 287860585
+gen random k40 m01 luck100 coloured pc slot-1 material-1 | 2120115923
+gen random k40 m01 luck160 coloured pc slot-1 material-1 | 849680481
+gen random k40 m01 luck100 plain pc slot-1 material-1 | 81752187
+gen random k40 m01 luck100 coloured npc slot-1 material-1 | 1898507701
+gen random k40 m20 luck60 coloured pc slot-1 material-1 | 203193768
+gen random k40 m20 luck100 coloured pc slot-1 material-1 | 725530590
+gen random k40 m20 luck160 coloured pc slot-1 material-1 | 1725392767
+gen random k40 m20 luck100 plain pc slot-1 material-1 | 1326463098
+gen random k40 m20 luck100 coloured npc slot-1 material-1 | 2053257788
+gen random k40 m46 luck60 coloured pc slot-1 material-1 | 574784032
+gen random k40 m46 luck100 coloured pc slot-1 material-1 | 146737453
+gen random k40 m46 luck160 coloured pc slot-1 material-1 | 975143563
+gen random k40 m46 luck100 plain pc slot-1 material-1 | 1479615090
+gen random k40 m46 luck100 coloured npc slot-1 material-1 | 1282084653
+gen random k40 m62 luck60 coloured pc slot-1 material-1 | 1412769846
+gen random k40 m62 luck100 coloured pc slot-1 material-1 | 1385817885
+gen random k40 m62 luck160 coloured pc slot-1 material-1 | 247881128
+gen random k40 m62 luck100 plain pc slot-1 material-1 | 200313127
+gen random k40 m62 luck100 coloured npc slot-1 material-1 | 199044125
+gen random k56 m01 luck60 coloured pc slot-1 material-1 | 975881016
+gen random k56 m01 luck100 coloured pc slot-1 material-1 | 1308603465
+gen random k56 m01 luck160 coloured pc slot-1 material-1 | 1845102903
+gen random k56 m01 luck100 plain pc slot-1 material-1 | 909579085
+gen random k56 m01 luck100 coloured npc slot-1 material-1 | 407967391
+gen random k56 m20 luck60 coloured pc slot-1 material-1 | 1492248404
+gen random k56 m20 luck100 coloured pc slot-1 material-1 | 2061659243
+gen random k56 m20 luck160 coloured pc slot-1 material-1 | 944056107
+gen random k56 m20 luck100 plain pc slot-1 material-1 | 1539144229
+gen random k56 m20 luck100 coloured npc slot-1 material-1 | 1034700452
+gen random k56 m46 luck60 coloured pc slot-1 material-1 | 1578680776
+gen random k56 m46 luck100 coloured pc slot-1 material-1 | 441171550
+gen random k56 m46 luck160 coloured pc slot-1 material-1 | 1451325792
+gen random k56 m46 luck100 plain pc slot-1 material-1 | 952758410
+gen random k56 m46 luck100 coloured npc slot-1 material-1 | 1668959899
+gen random k56 m62 luck60 coloured pc slot-1 material-1 | 1305329228
+gen random k56 m62 luck100 coloured pc slot-1 material-1 | 270040452
+gen random k56 m62 luck160 coloured pc slot-1 material-1 | 635098807
+gen random k56 m62 luck100 plain pc slot-1 material-1 | 822828461
+gen random k56 m62 luck100 coloured npc slot-1 material-1 | 1776571787
+gen random k62 m01 luck60 coloured pc slot-1 material-1 | 585659884
+gen random k62 m01 luck100 coloured pc slot-1 material-1 | 207742477
+gen random k62 m01 luck160 coloured pc slot-1 material-1 | 1931039024
+gen random k62 m01 luck100 plain pc slot-1 material-1 | 1835127439
+gen random k62 m01 luck100 coloured npc slot-1 material-1 | 380964370
+gen random k62 m20 luck60 coloured pc slot-1 material-1 | 1300382699
+gen random k62 m20 luck100 coloured pc slot-1 material-1 | 2087184279
+gen random k62 m20 luck160 coloured pc slot-1 material-1 | 1595604923
+gen random k62 m20 luck100 plain pc slot-1 material-1 | 1447564893
+gen random k62 m20 luck100 coloured npc slot-1 material-1 | 1661549693
+gen random k62 m46 luck60 coloured pc slot-1 material-1 | 508803136
+gen random k62 m46 luck100 coloured pc slot-1 material-1 | 2064168963
+gen random k62 m46 luck160 coloured pc slot-1 material-1 | 1111644838
+gen random k62 m46 luck100 plain pc slot-1 material-1 | 135864129
+gen random k62 m46 luck100 coloured npc slot-1 material-1 | 52801239
+gen random k62 m62 luck60 coloured pc slot-1 material-1 | 857371723
+gen random k62 m62 luck100 coloured pc slot-1 material-1 | 1447734240
+gen random k62 m62 luck160 coloured pc slot-1 material-1 | 429152600
+gen random k62 m62 luck100 plain pc slot-1 material-1 | 1115264062
+gen random k62 m62 luck100 coloured npc slot-1 material-1 | 470431533
+gen shop k56 m62 luck160 coloured shopkeeper slot-1 material-1 | 91158981
+gen newbie k56 m62 luck160 coloured newbie slot-1 material-1 | 599963486
+gen shop k56 m62 luck161 coloured shopkeeper slot-1 material-1 | 1838741226
+gen newbie k56 m62 luck161 coloured newbie slot-1 material-1 | 1207962657
+gen shop k56 m62 luck162 coloured shopkeeper slot-1 material-1 | 1395495040
+gen newbie k56 m62 luck162 coloured newbie slot-1 material-1 | 402102735
+gen shop k56 m62 luck163 coloured shopkeeper slot-1 material-1 | 1234476947
+gen newbie k56 m62 luck163 coloured newbie slot-1 material-1 | 1844997640
+gen material k40 m40 luck100 coloured pc slot-1 material0 | 1687699049
+gen material k40 m40 luck100 coloured pc slot-1 material1 | 1324274540
+gen material k40 m40 luck100 coloured pc slot-1 material2 | 1699959417
+gen material k40 m40 luck100 coloured pc slot-1 material3 | 768743293
+gen material k40 m40 luck100 coloured pc slot-1 material4 | 317884484
+gen material k40 m40 luck100 coloured pc slot-1 material5 | 1124183295
+gen material k40 m40 luck100 coloured pc slot-1 material6 | 1859309231
+gen material k40 m40 luck100 coloured pc slot-1 material7 | 1384000748
+gen material k40 m40 luck100 coloured pc slot-1 material8 | 2008029668
+gen material k40 m40 luck100 coloured pc slot-1 material9 | 1267969290
+gen material k40 m40 luck100 coloured pc slot-1 material10 | 1089219495
+gen material k40 m40 luck100 coloured pc slot-1 material11 | 475735187
+gen material k40 m40 luck100 coloured pc slot-1 material12 | 211995334
+gen material k40 m40 luck100 coloured pc slot-1 material13 | 405330964
+gen material k40 m40 luck100 coloured pc slot-1 material14 | 640928343
+gen material k40 m40 luck100 coloured pc slot-1 material15 | 919395561
+gen material k40 m40 luck100 coloured pc slot-1 material16 | 2069136591
+gen material k40 m40 luck100 coloured pc slot-1 material17 | 6828358
+gen material k40 m40 luck100 coloured pc slot-1 material18 | 1853249556
+gen material k40 m40 luck100 coloured pc slot-1 material19 | 1076870958
+gen material k40 m40 luck100 coloured pc slot-1 material20 | 947476413
+gen material k40 m40 luck100 coloured pc slot-1 material21 | 966736063
+gen material k40 m40 luck100 coloured pc slot-1 material22 | 747138139
+gen material k40 m40 luck100 coloured pc slot-1 material23 | 1451644456
+gen material k40 m40 luck100 coloured pc slot-1 material24 | 433577955
+gen material k40 m40 luck100 coloured pc slot-1 material25 | 419096214
+gen material k40 m40 luck100 coloured pc slot-1 material26 | 1740996103
+gen material k40 m40 luck100 coloured pc slot-1 material27 | 126617492
+gen material k40 m40 luck100 coloured pc slot-1 material28 | 1880892020
+gen material k40 m40 luck100 coloured pc slot-1 material29 | 1475661405
+gen material k40 m40 luck100 coloured pc slot-1 material30 | 516937894
+gen material k40 m40 luck100 coloured pc slot-1 material31 | 165167327
+gen material k40 m40 luck100 coloured pc slot-1 material32 | 532845182
+gen material k40 m40 luck100 coloured pc slot-1 material33 | 1847330672
+gen material k40 m40 luck100 coloured pc slot-1 material34 | 1557276759
+gen material k40 m40 luck100 coloured pc slot-1 material35 | 1201017404
+gen material k40 m40 luck100 coloured pc slot-1 material36 | 845697999
+gen material k40 m40 luck100 coloured pc slot-1 material37 | 1118497256
+gen material k40 m40 luck100 coloured pc slot-1 material38 | 1182193862
+gen material k40 m40 luck100 coloured pc slot-1 material39 | 564050266
+gen material k40 m40 luck100 coloured pc slot-1 material40 | 1724333287
+gen material k40 m40 luck100 coloured pc slot-1 material41 | 1376826685
+gen material k40 m40 luck100 coloured pc slot-1 material42 | 1756575500
+gen bounds k40 m40 luck100 coloured pc slot500 material-1 | 1948443102
+gen bounds k40 m40 luck100 coloured pc slot-7 material-1 | 533785755
+gen bounds k40 m40 luck100 coloured pc slot-1 material99 | 1349892338
+gen bounds k40 m40 luck100 coloured pc slot-1 material-7 | 1091807894
+gen quality1.5 k10 m20 luck100 coloured pc slot-1 material-1 | 1420654634
+gen quality1.5 k10 m62 luck100 coloured pc slot-1 material-1 | 53031306
+gen quality1.5 k30 m20 luck100 coloured pc slot-1 material-1 | 900593148
+gen quality1.5 k30 m62 luck100 coloured pc slot-1 material-1 | 393776536
+gen quality1.5 k50 m20 luck100 coloured pc slot-1 material-1 | 1212236936
+gen quality1.5 k50 m62 luck100 coloured pc slot-1 material-1 | 83539207
+gen missing-blank k40 m40 luck100 coloured pc slot-1 material-1 | 1062689953
+material level01 other | 348159587
+material level01 alchemist | 418879593
+material level02 other | 655648402
+material level02 alchemist | 1943609668
+material level03 other | 387894601
+material level03 alchemist | 891846513
+material level04 other | 1922643950
+material level04 alchemist | 137682069
+material level05 other | 1600947251
+material level05 alchemist | 888279843
+material level06 other | 530244674
+material level06 alchemist | 667129205
+material level07 other | 810524805
+material level07 alchemist | 1490399818
+material level08 other | 1258990468
+material level08 alchemist | 1383306728
+material level09 other | 1872149477
+material level09 alchemist | 1291404692
+material level10 other | 1113952901
+material level10 alchemist | 2020934783
+material level11 other | 401690055
+material level11 alchemist | 733419825
+material level12 other | 78900827
+material level12 alchemist | 1890902726
+material level13 other | 1872456809
+material level13 alchemist | 692096575
+material level14 other | 1627293054
+material level14 alchemist | 855395724
+material level15 other | 34179280
+material level15 alchemist | 1999728168
+material level16 other | 1100582278
+material level16 alchemist | 852892200
+material level17 other | 1736085024
+material level17 alchemist | 1800942383
+material level18 other | 119721535
+material level18 alchemist | 1205621489
+material level19 other | 448124854
+material level19 alchemist | 1748883574
+material level20 other | 494423475
+material level20 alchemist | 1802353170
+material level21 other | 251359414
+material level21 alchemist | 733234266
+material level22 other | 1632752755
+material level22 alchemist | 471641551
+material level23 other | 1870177379
+material level23 alchemist | 1020843826
+material level24 other | 350444492
+material level24 alchemist | 358845599
+material level25 other | 736586753
+material level25 alchemist | 526310032
+material level26 other | 1158919457
+material level26 alchemist | 601033860
+material level27 other | 2117313155
+material level27 alchemist | 2040285442
+material level28 other | 519249447
+material level28 alchemist | 845153795
+material level29 other | 21160572
+material level29 alchemist | 1204133092
+material level30 other | 897672077
+material level30 alchemist | 52071972
+material level31 other | 1016520730
+material level31 alchemist | 1042606093
+material level32 other | 2080023163
+material level32 alchemist | 1288102995
+material level33 other | 890397069
+material level33 alchemist | 1828908497
+material level34 other | 6312268
+material level34 alchemist | 2104558920
+material level35 other | 139828806
+material level35 alchemist | 1045032305
+material level36 other | 1587676938
+material level36 alchemist | 1234305284
+material level37 other | 1590675900
+material level37 alchemist | 1015297981
+material level38 other | 1189508953
+material level38 alchemist | 1970928313
+material level39 other | 1423552727
+material level39 alchemist | 586259681
+material level40 other | 2073059992
+material level40 alchemist | 1480051240
+material level41 other | 168028436
+material level41 alchemist | 832366631
+material level42 other | 1592618220
+material level42 alchemist | 178266800
+material level43 other | 1060937698
+material level43 alchemist | 1241989668
+material level44 other | 483003807
+material level44 alchemist | 1021702228
+material level45 other | 1331442372
+material level45 alchemist | 1023433764
+material level46 other | 2100529364
+material level46 alchemist | 577413367
+material level47 other | 1836951147
+material level47 alchemist | 155829764
+material level48 other | 2066562502
+material level48 alchemist | 1624023244
+material level49 other | 1626874136
+material level49 alchemist | 1541231963
+material level50 other | 1490352795
+material level50 alchemist | 1502454302
+material level51 other | 2005457854
+material level51 alchemist | 629942375
+material level52 other | 305765726
+material level52 alchemist | 283351357
+material level53 other | 1144849550
+material level53 alchemist | 1257736713
+material level54 other | 737278361
+material level54 alchemist | 932545157
+material level55 other | 349897459
+material level55 alchemist | 1790317865
+material level56 other | 521496953
+material level56 alchemist | 1485879580
+material level57 other | 646828254
+material level57 alchemist | 1363370758
+material level58 other | 1809501990
+material level58 alchemist | 443297456
+material level59 other | 688256350
+material level59 alchemist | 301606332
+material level60 other | 854715128
+material level60 alchemist | 74705185
+material level61 other | 1320915384
+material level61 alchemist | 93200430
+material level62 other | 946792059
+material level62 alchemist | 1624270174
+material index0 | 1660088593
+material index1 | 80743765
+material index2 | 1842961463
+material index3 | 224859590
+material index4 | 690867170
+material index5 | 1892553887
+material index6 | 444349892
+material index7 | 1031750009
+material index8 | 305144217
+material index9 | 1544639944
+material index10 | 561246084
+material index11 | 479227128
+material index12 | 1836555458
+material index13 | 869498344
+material index14 | 1334841588
+material index15 | 613593961
+material index16 | 2097075162
+material index17 | 759274390
+material index18 | 1189966734
+material index19 | 991907064
+material index20 | 1939700947
+material index21 | 1625518634
+material index22 | 113260306
+material index23 | 2117120255
+material index24 | 276815624
+material index25 | 562999715
+material index26 | 1944947775
+material index27 | 208066235
+material index28 | 295122016
+material index29 | 263094407
+material index30 | 1358358623
+material index31 | 716593654
+material index32 | 780578803
+material index33 | 862327189
+material index34 | 1991599584
+material index35 | 800869981
+material index36 | 683557291
+material index37 | 1600523938
+material index38 | 1248070403
+material index39 | 145185308
+material index40 | 1489921140
+material index41 | 1631474710
+material index42 | 1459467717
+material index43 | 1237577360
+stones | 643184
+encrust spell0 | 269611779
+encrust spell116 | 1902789826
+encrust spell26 | 1177891197
+encrust spell32 | 2132427651
+encrust spell8 | 1820770561
+encrust spell378 | 475250374
+encrust spell37 | 1064442707
+encrust spell21 | 1903637753
+encrust spell4 | 1076955730
+encrust spell25 | 1865284090
+encrust spell28 | 1916579363
+true-name entry-1 spell0 plain | 632766750
+true-name entry-1 spell0 already-named | 2042746375
+true-name entry0 spell191 plain | 1364115116
+true-name entry0 spell191 already-named | 1942148010
+true-name entry1 spell16 plain | 1768305545
+true-name entry1 spell16 already-named | 1223504451
+true-name entry2 spell14 plain | 1989053997
+true-name entry2 spell14 already-named | 1472669181
+true-name entry3 spell32 plain | 484869477
+true-name entry3 spell32 already-named | 43686206
+true-name entry4 spell37 plain | 1047038743
+true-name entry4 spell37 already-named | 1419869219
+true-name entry5 spell102 plain | 354154819
+true-name entry5 spell102 already-named | 1962167271
+true-name entry6 spell1 plain | 1997650166
+true-name entry6 spell1 already-named | 1307777327
+true-name entry7 spell18 plain | 1065000486
+true-name entry7 spell18 already-named | 957062215
+true-name entry8 spell22 plain | 1470605844
+true-name entry8 spell22 already-named | 2134355336
+true-name entry9 spell3 plain | 323461634
+true-name entry9 spell3 already-named | 1262679539
+true-name entry10 spell38 plain | 1488758404
+true-name entry10 spell38 already-named | 492430973
+true-name entry11 spell61 plain | 1240921735
+true-name entry11 spell61 already-named | 476249722
+true-name entry12 spell72 plain | 538383269
+true-name entry12 spell72 already-named | 309643942
+true-name entry13 spell118 plain | 2033475620
+true-name entry13 spell118 already-named | 606824193
+true-name entry14 spell172 plain | 1791525652
+true-name entry14 spell172 already-named | 2079560967
+true-name entry15 spell179 plain | 404006016
+true-name entry15 spell179 already-named | 2024206126
+true-name entry16 spell193 plain | 256867461
+true-name entry16 spell193 already-named | 493821009
+true-name entry17 spell204 plain | 968857813
+true-name entry17 spell204 already-named | 865984837
+true-name entry18 spell197 plain | 880542391
+true-name entry18 spell197 already-named | 158693434
+true-name entry19 spell195 plain | 301584186
+true-name entry19 spell195 already-named | 1524192077
+true-name entry20 spell205 plain | 1416887547
+true-name entry20 spell205 already-named | 1789260222
+true-name entry21 spell57 plain | 241384158
+true-name entry21 spell57 already-named | 136312431
+true-name entry22 spell61 plain | 1964655285
+true-name entry22 spell61 already-named | 778608436
+true-name entry23 spell71 plain | 1994429425
+true-name entry23 spell71 already-named | 1418725078
+true-name entry24 spell99 plain | 1623062216
+true-name entry24 spell99 already-named | 902162545
+true-name entry25 spell121 plain | 1425775914
+true-name entry25 spell121 already-named | 1905099695
+true-name entry26 spell141 plain | 514340261
+true-name entry26 spell141 already-named | 1268068553
+true-name entry27 spell157 plain | 1107116592
+true-name entry27 spell157 already-named | 1413187640
+true-name entry28 spell160 plain | 568113239
+true-name entry28 spell160 already-named | 1966312345
+true-name entry29 spell207 plain | 757658367
+true-name entry29 spell207 already-named | 1380283146
+true-name entry30 spell206 plain | 1910911158
+true-name entry30 spell206 already-named | 329444908
+true-name entry31 spell209 plain | 416404543
+true-name entry31 spell209 already-named | 1955703489
+true-name entry32 spell401 plain | 381665750
+true-name entry32 spell401 already-named | 1275934893
+true-name entry33 spell232 plain | 1715273932
+true-name entry33 spell232 already-named | 27917796
+true-name entry34 spell235 plain | 925998224
+true-name entry34 spell235 already-named | 1467398649
+true-name entry35 spell195 plain | 1220492432
+true-name entry35 spell195 already-named | 55329622
+true-name entry36 spell103 plain | 354048640
+true-name entry36 spell103 already-named | 1017306232
+true-name entry37 spell95 plain | 228805788
+true-name entry37 spell95 already-named | 984489529
+true-name entry38 spell111 plain | 1607188946
+true-name entry38 spell111 already-named | 1764927477
+true-name entry39 spell131 plain | 921599546
+true-name entry39 spell131 already-named | 1883401549
+true-name entry40 spell126 plain | 1284326682
+true-name entry40 spell126 already-named | 1830422191
+true-name entry41 spell109 plain | 793861623
+true-name entry41 spell109 already-named | 2022427370
+true-name entry42 spell108 plain | 860297029
+true-name entry42 spell108 already-named | 2141290093
+true-name entry43 spell8 plain | 848949997
+true-name entry43 spell8 already-named | 590865149
+true-name entry44 spell26 plain | 33734589
+true-name entry44 spell26 already-named | 1758372026
+true-name entry45 spell28 plain | 1093775592
+true-name entry45 spell28 already-named | 1894990224
+true-name entry46 spell33 plain | 1796434630
+true-name entry46 spell33 already-named | 1906648193
+true-name entry47 spell54 plain | 1296287258
+true-name entry47 spell54 already-named | 56770179
+true-name entry48 spell84 plain | 1989983991
+true-name entry48 spell84 already-named | 1388827054
+true-name entry49 spell109 plain | 507952755
+true-name entry49 spell109 already-named | 1183649521
+true-name entry50 spell144 plain | 1915105637
+true-name entry50 spell144 already-named | 1483878168
+true-name entry51 spell27 plain | 2128721352
+true-name entry51 spell27 already-named | 1152208071
+true-name entry52 spell248 plain | 756168306
+true-name entry52 spell248 already-named | 726893275
+true-name entry53 spell249 plain | 1769380270
+true-name entry53 spell249 already-named | 146444864
+true-name entry54 spell221 plain | 1138352835
+true-name entry54 spell221 already-named | 1222966463
+true-name entry55 spell167 plain | 746849722
+true-name entry55 spell167 already-named | 1911896980
+true-name entry56 spell17 plain | 1632249534
+true-name entry56 spell17 already-named | 52376956
+true-name entry57 spell36 plain | 1449117611
+true-name entry57 spell36 already-named | 1042865111
+true-name entry58 spell161 plain | 1708275428
+true-name entry58 spell161 already-named | 1083723133
+true-name entry59 spell277 plain | 1070153416
+true-name entry59 spell277 already-named | 2034089648
+true-name entry60 spell263 plain | 376020632
+true-name entry60 spell263 already-named | 81460374

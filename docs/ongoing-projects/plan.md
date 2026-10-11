@@ -5,6 +5,45 @@ same day. This file is a working note: delete it when the last pull request land
 [RANDOM_EQUIPMENT.md](../reference/RANDOM_EQUIPMENT.md) describes how the system behaves
 today; that behaviour is what this plan keeps.
 
+## Review follow-up (2026-10-11)
+
+**Outcome:** address every review finding, oldest PR first, and leave the five published
+PRs ready to merge. **Non-goals:** game-rule changes, unrelated cleanup and landing the PRs.
+**Files:** the existing harness, affected implementation and their documentation as findings
+require. **Proof:** focused regressions, the unchanged golden fixture, mutation checks for
+test-coverage findings and the applicable local gates below; GitHub CI is not a gate.
+
+`origin/master` remains `879adf0aa`, already an ancestor of every phase. Keep the published
+stack and existing review tags; merge lower fixes upward in order and tag each fixed
+head with the next `randeq/phase-<n>-review-<round>` tag. No rebase or squash is needed.
+
+PR #25 is ready to merge at `randeq/phase-1-review-2`; all four review threads have
+replies and are resolved. The existing harness now covers:
+
+- different pet/owner level, luck and room attributes;
+- all 26 suffix totals and their RNG consumption;
+- a sentinel RNG draw after all 1,480 cases, stored in a companion fixture captured
+  from original `master` code at `879adf0aa`;
+- real string setters and all three string ownership bits on every generated item,
+  including kill drops, so generated names are marked for persistence.
+
+The original item fixture remains unchanged. Both fixtures are frozen for later phases.
+Temporary mutations proved the repairs: either pet roll using the owner fails four cases;
+removing suffix 5, 6 or 7 fails its assertion; an extra terminal longbow draw leaves item
+output unchanged but fails three RNG sentinels; bypassing each string setter fails the
+ownership assertion. No game code changed. The real setters replace three test stubs.
+
+**Proof:** final code/test commit `be9c9915d` passed the ASan/UBSan harness, full formatting,
+`make test-all -j16 TEST_JOBS=16` (707/707, no reruns, including both build profiles),
+`npm test --prefix site` (15 checks) and 12 documentation checks. `make security-check`
+also passed on the unchanged security sources. The final record commit only updates this
+plan. `make test-db` remains exempt for this tests/comments/docs phase. Logs are under
+`/home/aiwithapex/projects/randeq-gate/`: `pr1-review3.log`, `pr1-review3-site.log`,
+`pr1-review1-security.log`, `pr1-review1-mutations.log`, `pr1-review2-rng.log` and
+`pr1-review3-ownership.log`. Earlier full gates also passed; their logs are retained.
+CodeQL and Trivy are not installed locally; those external scanners were not rerun.
+Next: merge these fixes into PR #26 and review it, then #27, #28 and #29, in order.
+
 ## Goal
 
 1. **Clear code.** The random-equipment code (the kill-drop decision, the item generator,
@@ -72,11 +111,14 @@ Also worth fixing:
 compiles the module's own source files whole (not extracted functions), links the real
 `src/core/random.c` and `src/item/random_equipment_config.c`, and stubs only the world:
 
-- two zones, one with colour codes in its name (difficulty 5) and one plain (difficulty 1);
+- three zones: one with colour codes in its name (difficulty 5), one plain (difficulty 1),
+  and a town; four rooms, including a guild room;
 - blank objects for vnums 1252 and 1254;
 - materials and stones by vnum;
-- the string setters;
 - the difficulty dials at 1.0, plus one case at 1.5.
+
+The three string setters are extracted from their real source. Generated equipment must
+set all three string ownership bits so persistence saves its names.
 
 Each case calls `randomize(seed)` with its own seed first, so cases are independent: a
 failure names one case, and adding a case shifts no other.
@@ -84,7 +126,7 @@ failure names one case, and adding a case shifts no other.
 | Part | Cases | Recorded |
 |---|---|---|
 | Drop decision | A grid: killer levels 1 to 16 and four higher, nine mob levels, luck 60/100/160, equipment roll; the material roll at luck 100. Each special condition (elite, neutral player, Hardcore, town, guild room, no-experience mob, shopkeeper, the loot dial at 1.5) at three level pairs, both rolls. 50 draws per case | One bit string per case |
-| Kill drop | The drop block of `die()`, player and pet killer, a few level pairs, 20 kills each | Each kill's objects put on the victim, and who reads the salvage line |
+| Kill drop | The drop block of `die()`, player and pet killer, four level pairs including level 1 versus 62 so both rolls always win, 40 kills each | Each kill's objects put on the victim, and who reads the salvage line |
 | Generator | Every slot fixed, in the coloured zone at the best odds (so nearly all are named: every weapon path, shield, quiver, robe and the weapon spell) and in the plain zone; random slot across killer and mob levels, luck 60/100/160, both zones, player, NPC and shopkeeper killer; every material fixed; the quality dial at 1.5; a missing blank | Every field the generator sets: keywords, both descriptions, wear flags, type, extra flags, anti-class flags, material, craftsmanship, weight, `value[0..7]`, the four affects, all bitvectors, and its messages |
 | Materials and stones | Levels 1 to 62, alchemist and not; `create_material(index)` for every index; stones | Vnums, and the alchemist's bind refund |
 | Encrust and true name | `set_encrust_affect()` for each stone spell; `identify_random()` for every spell in the table | Bitvectors; the new short description |
@@ -99,6 +141,11 @@ only the harness's file list and the calls into the new interface, never the fix
 phase whose output differs is wrong. The fixture never changes, so its coverage (named
 items, owner tags, weapon spells, every item type) was checked once by hand when it was
 written, not by an assertion.
+
+The review added direct assertions for all 26 suffix totals and a companion RNG fixture,
+captured from the original implementation, that pins the next draw after every case.
+This catches terminal draws even when all fields of the current item still match.
+Both fixtures stay frozen through the remaining phases.
 
 Every refactor below must therefore keep the order of the random rolls. Turning a switch
 into a table keeps the roll and its mapping. A helper that moves a roll must leave it at the
@@ -401,7 +448,8 @@ based on the one below, so each pull request's diff is its own phase. The first 
 - **Parallel sessions.** If one session per pull request runs at once, the session that owns
   `duris-plan` keeps it. The others each use their own worktree (`duris-plan-pr<n>`), set up
   the same way.
-- **Landing.** Land in order. Retarget each next pull request to `master`
+- **Landing.** Land in order with merge commits, which this repository permits, to keep
+  the shared ancestry of the stack. Retarget each next pull request to `master`
   (`gh pr edit <n> --base master`) before deleting the branch it was stacked on.
 
 | PR | Phase | Branch | GitHub | State |
