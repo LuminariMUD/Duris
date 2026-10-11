@@ -13,11 +13,14 @@ PRs ready to merge. **Non-goals:** game-rule changes, unrelated cleanup and land
 require. **Proof:** focused regressions, the unchanged golden fixture, mutation checks for
 test-coverage findings and the applicable local gates below; GitHub CI is not a gate.
 
-`origin/master` remains `879adf0aa`, already an ancestor of every phase. Keep the published
-stack and existing review tags; merge lower fixes upward in order and tag each fixed
-head with the next `randeq/phase-<n>-review-<round>` tag. No rebase or squash is needed.
+`origin/master` advanced to `cdfcacf0a` with only a contributor-policy documentation
+change. It is merged into the bottom branch and carried upward in order. Server sources
+and tests are unchanged by this sync, so completed validation remains applicable; the
+12 documentation checks pass. Keep the published stack and existing tags, with a new
+`randeq/phase-<n>-review-<round>` tag for each ready head. No rebase or squash is needed.
+Repository admins or organization owners handle landing; these PRs remain unmerged.
 
-PR #25 is ready to merge at `randeq/phase-1-review-3`; all six review threads have
+PR #25 is ready to merge at `randeq/phase-1-review-4`; all six review threads have
 replies and are resolved. The harness now covers:
 
 - different pet/owner level, luck and room attributes;
@@ -55,7 +58,7 @@ full formatting, both builds and `make test-all -j16 TEST_JOBS=16` (707/707, no 
 record changes only this plan and reuses that code/test gate.
 
 
-PR #26 is ready to merge at `randeq/phase-2-review-3`; its startup-help finding is fixed.
+PR #26 is ready to merge at `randeq/phase-2-review-4`; its startup-help finding is fixed.
 Merge `b4f4252a6` brings in all PR #25 repairs without conflicts or changes to Phase 2's
 server code. It passed the strengthened ASan/UBSan golden harness, minimal boot checks,
 full formatting, `make test-all -j16 TEST_JOBS=16` (707/707, both build profiles),
@@ -74,8 +77,8 @@ message. Only that string changes in server code; option parsing and runtime beh
 are unchanged. Both builds and minimal-boot/format checks pass, and invalid invocations
 of both binaries from a temporary directory exit with the corrected usage and no `[-l]`.
 Evidence: `pr2-review3-{dev,production,focused,usage}.log`. Full regression/database
-results above are retained for this help-only edit. Next: propagate through #27–#29;
-#29's interrupted gate will restart after the final merge.
+results above are retained for this help-only edit. The final master sync changes
+only documentation, preserving all source/test evidence; documentation checks pass.
 
 ## Goal
 
