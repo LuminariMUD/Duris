@@ -11,6 +11,78 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Argument tokenizer: unterminated quoted words
+
+`lohrr_chop()` resets its output pointer when an unterminated single quote makes it
+restart as an ordinary word. Previously it appended the second attempt to the first,
+duplicating text and overflowing a command-sized output buffer on long input.
+
+```sh
+python3 tests/async/test_argument_tokenizer.py
+```
+
+The native ASan/UBSan test uses the real tokenizer and a maximum-length unterminated
+word, which reproduced a stack-buffer-overflow before the fix. It also checks the
+unquoted fallback, complete quotes, whitespace, empty input and the returned remainder.
+This tests the shared tokenizer directly; the randobj harness separately drives long
+unterminated words through the command.
+
+## Randobj: invalid arguments and missing generated objects
+
+`randobj` validates the whole subcommand before creating anything. Equipment, material
+and stone failures are checked before inventory placement or `stat`; a missing blank
+stops a batch and preserves earlier items. Recipe, mob and sample-name generation also
+stop on failure. Explicit levels are passed to the generators without changing the
+staff character.
+
+```sh
+python3 tests/async/test_randobj_command.py
+```
+
+The native ASan/UBSan harness calls the real command with the real tokenizer, wear words
+and slot tables. Recording generators cover every noun and wear group, defaults, both
+numeric forms, bounds, extra words, trust, null returns and mid-batch failures. It also
+checks `eq list`, single-item stat output, batch totals and unchanged map/zone operations.
+It does not prove the live command's generator output; the random-equipment golden harness
+and the local gameplay check recorded in the ongoing plan cover those separately.
+
+## Randobj: recipe totals count delivered scrolls
+
+`create_recipe()` reports success only after placing a scroll in inventory. Recipe
+batches use that result for their success lines and total, so rejected targets no longer
+inflate the count. The attempt limit, eligibility rules and target cleanup are unchanged.
+
+`test_randobj_command.py` compiles the real recipe function alongside the command. Under
+ASan/UBSan it checks full containers/storage, prohibited affects in all four bitvectors,
+combat/spell pulse affects and a false crafting-availability result. All-rejected, mixed
+and single attempts check inventory, cleanup and exact output. The all-rejected case
+failed before the fix. The availability gate itself is controlled by a test stub; these
+checks verify how the recipe function and command handle its result.
+
+## Randobj: stat output selects the new item
+
+Single-item equipment generation passes its object directly to `do_stat()`'s renderer.
+Previously it passed the generated keywords, whose first word is always `random`; the
+command parser looked up that word and could display an older carried or worn item.
+Ordinary `stat` commands retain their existing lookup.
+
+The same native command harness asserts the exact object passed for display after several
+items with identical keywords. The local gameplay check also inspects successive weapon
+and ring stat blocks; the harness uses a recording stat function, not the full renderer.
+
+## Random equipment: revealing a foreign weapon spell
+
+`identify_random()` bounds its search by the 61-entry spell table. A weapon with a spell
+outside that table keeps its name; the old 62-iteration search read past the table.
+
+```sh
+python3 tests/async/test_random_equipment_golden.py
+```
+
+The native ASan/UBSan harness asserts that a weapon with `SPELL_BLINDNESS` stays unchanged,
+in addition to comparing every existing true-name case with the frozen fixture. This
+covers the real naming function, not the live reveal-true-name spell command.
+
 ## Achievement zones: quest givers, tie order and area names
 
 `achievements zones` lists each zone where the character has completed a quest. A quest
@@ -400,9 +472,6 @@ pet ownership or summon timers.
   instance, and logs a recovery review with vnum, instance and room. A degraded, unowned
   template is written as an empty extension so it cannot block saving the world. No name
   is invented and no shared prototype string is freed.
-- The 15-map-NPC loop in `create_randoms()` (`src/item/randomeq.c`) is under
-  `#ifndef RANDOM_ZONES`, and `src/core/defines.h` defines `RANDOM_ZONES`, so it does
-  not run and is not a source of boot growth.
 
 ```sh
 python3 tests/async/test_generated_npc_state.py

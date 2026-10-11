@@ -28,6 +28,7 @@
 #include "world/map.h"
 #include "core/mm.h"
 #include "item/objmisc.h"
+#include "item/random_equipment.h"
 #include "ships/ships.h"
 #include "world/specs.prototypes.h"
 #include "magic/spells.h"
@@ -774,7 +775,7 @@ int equipped_value(P_char ch)
 	return total;
 }
 
-void create_recipe(P_char ch, P_obj temp)
+bool create_recipe(P_char ch, P_obj temp)
 {
 	/***RECIPE CREATE***/
 	P_obj objrecipe;
@@ -783,7 +784,7 @@ void create_recipe(P_char ch, P_obj temp)
 
 	if ((temp->type == ITEM_CONTAINER || temp->type == ITEM_STORAGE) && temp->contains)
 	{
-		return;
+		return false;
 	}
 
 	// No recipes for high end equipment.
@@ -796,19 +797,19 @@ void create_recipe(P_char ch, P_obj temp)
 		   (AFF4_VAMPIRE_FORM | AFF4_HOLY_SACRIFICE | AFF4_BATTLE_ECSTASY | AFF4_SANCTUARY |
 		    AFF4_HELLFIRE | AFF4_ICE_AURA | AFF4_WILDMAGIC)))
 	{
-		return;
+		return false;
 	}
 	for (int i = 0; i < MAX_OBJ_AFFECT; i++)
 	{
 		if ((temp->affected[i].location == APPLY_COMBAT_PULSE) ||
 		    (temp->affected[i].location == APPLY_SPELL_PULSE))
 		{
-			return;
+			return false;
 		}
 	}
 
 	if (!crafting_recipe_target_is_available(temp))
-		return;
+		return false;
 
 	objrecipe = read_object(400210, VIRTUAL);
 	SET_BIT(objrecipe->value[6], recipenumber);
@@ -825,6 +826,7 @@ void create_recipe(P_char ch, P_obj temp)
 	debug("create_recipe: %s reward was: %s ival: %d.", J_NAME(ch),
 	      objrecipe->short_description, itemvalue(temp));
 	obj_to_char(objrecipe, ch);
+	return true;
 }
 
 void random_recipe(P_char ch, P_char victim)
@@ -881,7 +883,7 @@ P_obj random_zone_item(P_char ch)
 	}
 
 	if (!reward)
-		reward = create_random_eq_new(ch, ch, -1, -1);
+		reward = create_random_eq(ch, GET_LEVEL(ch), GET_LEVEL(ch), -1, -1);
 
 	if (reward)
 	{

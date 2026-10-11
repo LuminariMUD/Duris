@@ -1580,6 +1580,12 @@ void stat_game(P_char ch)
 // CMD = 555 is used for storing stat o string in db.
 void do_stat(P_char ch, char *argument, int cmd)
 {
+	do_stat(ch, argument, cmd, nullptr);
+}
+
+// Callers that already own an object can inspect it without an ambiguous keyword lookup.
+void do_stat(P_char ch, char *argument, int cmd, P_obj object)
+{
 	P_char k = 0, t_mob = 0, shopkeeper, mob;
 	P_obj j = 0, t_obj = 0;
 	P_room rm = 0;
@@ -1831,13 +1837,13 @@ void do_stat(P_char ch, char *argument, int cmd)
 	}
 	else if ((*arg1 == 'o') || (*arg1 == 'O') || (*arg1 == 'i') || (*arg1 == 'I'))
 	{
-		if (!*arg2)
+		if (!*arg2 && !object)
 		{
 			send_to_char(STAT_SYNTAX, ch);
 			return;
 		}
 
-		if (is_number(arg2))
+		if (!object && is_number(arg2))
 		{
 			if ((i = real_object(atoi(arg2))) < 0)
 			{
@@ -1876,7 +1882,7 @@ void do_stat(P_char ch, char *argument, int cmd)
 		    }
 		    else
 		*/
-		if (!(j = get_obj_vis(ch, arg2)))
+		if (!(j = object ? object : get_obj_vis(ch, arg2)))
 		{
 			send_to_char("No such object.\n", ch);
 			if (t_obj)

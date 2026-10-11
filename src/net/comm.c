@@ -429,7 +429,6 @@ int max_users_playing = 0;
 int used_descs = 0, avail_descs = 0, max_descs = 0, max_descs_this_hour = 0;
 struct mm_ds *dead_desc_pool = NULL;
 int RUNNING_PORT = 0;
-int no_random = 0;
 int no_ferries = 0;
 
 // copyover support
@@ -564,7 +563,6 @@ int main(int argc, char **argv)
 		if (!strcmp(argv[pos], "--minimal"))
 		{
 			mini_mode = 1;
-			no_random = 1;
 			no_ferries = 1;
 			logit(LOG_STATUS, "Running in minimal world mode");
 			pos++;
@@ -583,11 +581,6 @@ int main(int argc, char **argv)
 		case 'f':
 			no_ferries = 1;
 			logit(LOG_STATUS, "Without ferries.");
-			break;
-		case 'l':
-			no_random = 1;
-			// lawful = 1;
-			logit(LOG_STATUS, "Without randoms.");
 			break;
 		case 'd':
 			if (*(argv[pos] + 2))
@@ -609,7 +602,6 @@ int main(int argc, char **argv)
 			break;
 		case 'm':
 			mini_mode = 1;
-			no_random = 1;
 			no_ferries = 1;
 			logit(LOG_STATUS, "Running in mini mode");
 			break;
@@ -635,7 +627,7 @@ int main(int argc, char **argv)
 		if (!isdigit(*argv[pos]))
 		{
 			fatal_boot_error("comm",
-					 "Usage: %s [-l] [-m|--minimal] [-s] [-p] [-f] "
+					 "Usage: %s [-m|--minimal] [-s] [-p] [-f] "
 					 "[-d pathname] [ port # ]",
 					 argv[0]);
 		}
@@ -903,11 +895,6 @@ int run_the_game(int port, int sslport)
 
 	// clear stale online list from previous boot/crash
 	redis_clear_online_players();
-
-	if (no_random == 0)
-		create_randoms();
-	else
-		fprintf(stderr, "Starting without random zones!.\n");
 
 	if (!mini_mode)
 	{

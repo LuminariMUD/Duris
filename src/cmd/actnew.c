@@ -68,8 +68,6 @@ extern const int rev_dir[];
 extern const int innate2_abilities[];
 extern const int class_innates2[][5];
 extern const char *game_type[];
-extern struct randomeq_slots slot_data[];
-extern struct randomeq_material material_data[];
 extern struct zone_data *zone_table;
 extern Skill skills[];
 extern const flagDef affected1_bits[];

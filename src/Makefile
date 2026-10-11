@@ -419,7 +419,9 @@ OBJS =  $(SHIP_OBJS) \
 				 classes/psionics.o \
 				 world/quest.o \
 				 core/random.o \
-				 item/randomeq.o \
+				 item/random_equipment.o \
+				 item/random_equipment_drop.o \
+				 item/random_equipment_tables.o \
 				 world/random.mob.o \
 				 world/random.zone.o \
 				 item/randobj.o \

@@ -52,6 +52,7 @@
 #include "core/mm.h"
 #include "classes/necromancy.h"
 #include "item/objmisc.h"
+#include "item/random_equipment.h"
 #include "world/outposts.h"
 #include "persistence/persistence_checkpoint.h"
 #include "classes/paladins.h"
@@ -2330,7 +2331,6 @@ void die(P_char ch, P_char killer)
 {
 	char buf[MAX_STRING_LENGTH];
 	P_char tmp_ch;
-	P_obj tempobj;
 	struct affected_type *af, *next_af;
 	P_obj corpse = NULL;
 	int loss = 0, i;
@@ -2605,56 +2605,7 @@ void die(P_char ch, P_char killer)
 	    !affected_by_spell(ch, TAG_CONJURED_PET))
 		random_recipe(killer, ch);
 
-	// object code - Normal kills.  Kvark
-	if ((IS_PC(killer) || IS_PC_PET(killer)) && IS_NPC(ch) && IS_ALIVE(killer))
-	{
-		// A pet's kill is reported to its owner; the pet has no one to read it.
-		P_char credited_killer = IS_PC_PET(killer) ? GET_MASTER(killer) : killer;
-
-		// if(GET_LEVEL(ch) < 30 || GET_LEVEL(killer) < 20)
-		//   {
-		if (check_random_drop(killer, ch, TRUE))
-		{
-			if (!number(0, 25)) // &&
-			// (GET_LEVEL(ch) > 51))
-			{
-				tempobj = create_stones();
-			}
-			else
-			{
-				// if(GET_LEVEL(ch) < 30 || GET_LEVEL(killer) < 20) //removing level restriction, adding racewar check goods only - drannak
-				// if(GET_RACEWAR(killer) == RACEWAR_GOOD || GET_RACEWAR(killer) == RACEWAR_EVIL) //allowing evils to get randoms 1/26/13 drannak
-				if (GET_LEVEL(killer) > 0)
-				{
-					tempobj = create_random_eq_new(killer, ch, -1, -1);
-					send_to_char(
-						"It appears you were able to salvage a piece of equipment from your enemy.\n",
-						credited_killer);
-				}
-				else
-				{
-					tempobj = create_material(killer, ch);
-					send_to_char(
-						"It appears you were able to salvage a piece of material from your enemy.\n",
-						credited_killer);
-				}
-			}
-			if (tempobj && ch)
-				obj_to_char(tempobj, ch);
-		}
-		if (check_random_drop(killer, ch, FALSE))
-		{
-			if (!number(0, 25)) // &&
-				// (GET_LEVEL(ch) > 51))
-				tempobj = create_stones();
-			else
-				tempobj = create_material(killer, ch);
-
-			if (tempobj)
-				obj_to_char(tempobj, ch);
-		}
-		// }
-	}
+	random_equipment_kill_drop(killer, ch);
 
 	update_pos(ch);
 	SET_POS(ch, GET_POS(ch) + STAT_DEAD);

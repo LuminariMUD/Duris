@@ -1386,8 +1386,6 @@ struct material_data
 #define FIND_AND_KILL 1
 #define FIND_AND_ASK 2
 
-#define RANDOM_ZONES 1 // Set to 1 to enable
-
 #define MAX_ALTITUDE 3
 
 #define ROLL_BAD -1

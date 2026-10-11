@@ -39,6 +39,7 @@ using namespace std;
 #include "combat/justice.h"
 #include "world/map.h"
 #include "item/objmisc.h"
+#include "item/random_equipment.h"
 #include "item/item_movement_transaction.h"
 #include "persistence/persistence_checkpoint.h"
 #include "magic/spells.h"
@@ -205,7 +206,7 @@ P_obj quest_item_reward(P_char ch)
 
 	if (!reward)
 	{
-		reward = create_random_eq_new(ch, ch, -1, -1);
+		reward = create_random_eq(ch, GET_LEVEL(ch), GET_LEVEL(ch), -1, -1);
 	}
 
 	if (reward)

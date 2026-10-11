@@ -480,9 +480,10 @@ project. The current Community-Duris/Duris repository was created on 24 August 2
 **2026.** From 25 August 2026, Zusuk (moshehbenavraham, founder of LuminariMUD) did a large
 modernisation of the community code: the source tree reorganised, warnings treated as errors, a
 test suite, documentation, and a flat-file backend
-(see [CREDITS.md](CREDITS.md)). Community releases that year brought kingdoms built on
-guildhalls (a design the 2008 wipe had promised), Chaos events, ships and quest records. The
-September 2026 news gave players a "catch-up" covering December 2025 to September 2026. On
+(see [CREDITS_modernizations.md](CREDITS_modernizations.md)). Community releases that year
+brought kingdoms built on guildhalls (a design the 2008 wipe had promised), Chaos events,
+ships and quest records. The September 2026 news gave players a "catch-up" covering December
+2025 to September 2026. On
 23 September 2026 (`e1357a30a`) this repository's line and Community Duris diverged. This line
 lived on GitLab from 28 September 2026 and has been on GitHub at `LuminariMUD/Duris` since
 8 October 2026.
@@ -729,7 +730,7 @@ dated here.
   `be8dd5166` and `642da5400` (source and areas added), `98dac76eb` (Tharnadia replaces WH),
   `49df21a02` (pwipe 2012-04-14), `94ab06371` (shutdown pwipe), `591d6cbb8` (the last 2017
   commit), `2a79fe583` (Arih credits), `e1357a30a` (the 2026 divergence).
-- [CREDITS.md](CREDITS.md) and [COMMUNITY_DURIS_TRACKING.md](COMMUNITY_DURIS_TRACKING.md).
+- [CREDITS_modernizations.md](CREDITS_modernizations.md) and [COMMUNITY_DURIS_TRACKING.md](COMMUNITY_DURIS_TRACKING.md).
 
 **Archived websites** (Internet Archive Wayback Machine):
 

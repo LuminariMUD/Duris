@@ -4,17 +4,20 @@ When a player kills an NPC, the server may generate a piece of equipment, a salv
 material or an encrust stone and put it on the corpse. The player sees "It appears you
 were able to salvage a piece of equipment from your enemy." Nothing is drawn from a loot
 table: the item is built at that moment from tables of slots, materials and prefixes.
-The code lives in `src/item/randomeq.c`, the trigger in `die()` in
-`src/combat/fight.c`, and the settings in `lib/random_equipment.cfg`.
+The generator lives in `src/item/random_equipment.c`, its tables in
+`src/item/random_equipment_tables.c`, and the drop decision and kill-drop handler in
+`src/item/random_equipment_drop.c`. Callers include `src/item/random_equipment.h`;
+`die()` in `src/combat/fight.c` calls `random_equipment_kill_drop()`. Settings live in
+`lib/random_equipment.cfg`.
 
 ## When a kill drops something
 
-The drop block in `die()` runs when the victim is an NPC and the killer, still alive, is
+`random_equipment_kill_drop()` runs when the victim is an NPC and the killer, still alive, is
 a player or a player's pet. It makes two independent rolls with `check_random_drop()`:
 
 | Roll | Scaled by | A win gives |
 | --- | --- | --- |
-| Equipment | `drop.piece.percentage` (15.0) | `create_random_eq_new()`, or `create_stones()` one time in 26 |
+| Equipment | `drop.piece.percentage` (15.0) | `create_random_eq()`, or `create_stones()` one time in 26 |
 | Material | `drop.equipment.percentage` (8.0) | `create_material()`, or `create_stones()` one time in 26 |
 
 The setting names are historical: the "piece" percentage governs equipment, and the
@@ -57,9 +60,12 @@ The Hardcore multiplier is `bonus.random.equipment.multiplier` in `lib/hardcore.
 
 ## What the equipment is
 
-`create_random_eq_new(killer, mob, slot, material)` starts from a blank object,
+`create_random_eq(finder, finder_level, source_level, slot, material)` starts from a blank object,
 `VOBJ_RANDOM_WEAPON` (1254) for a wielded slot or `VOBJ_RANDOM_ARMOR` (1252) for
-anything else, and fills it in:
+anything else, and fills it in. Existing callers pass the killer's and mob's levels;
+explicit levels let staff generate the same item without changing their character.
+The steps are `choose_slot()`, `choose_material()`, `choose_name()`/`name_item()`,
+`add_name_affects()`, `set_wear_and_weight()`, `set_stat_affects()` and `set_type_values()`:
 
 - **Slot.** Two times in three it picks from the first 71 entries of `slot_data`
   (armour, jewellery and shields), otherwise from all 109. About one drop in sixteen is a
@@ -117,13 +123,14 @@ mob's level (capped at 60), re-rolled while it is self-only. It fires through th
 that there is more to the weapon; the reveal true name spell appends "of <spell>" to its
 name (`identify_random()`).
 
-`random_eq_proc()` in `randomeq.c` is not attached to any object, so neither it nor the
-random-equipment route in [weapon actions](WEAPON_ACTIONS.md) runs in the game. Only
-`tests/async/test_weapon_actions_runtime.py` calls it.
+`random_eq_proc()` in `random_equipment.c` is not connected yet: no object has it, so neither it nor
+the random-equipment route in [weapon actions](WEAPON_ACTIONS.md) runs in the game. It is
+kept until it is attached on purpose; only `tests/async/test_weapon_actions_runtime.py`
+calls it.
 
 ## Salvage materials and encrust stones
 
-`create_material(killer, mob)` draws a quality index from 0 up to the sum of both levels
+`create_material(finder, finder_level, source_level)` draws a quality index from 0 up to the sum of both levels
 divided by 2.8, maps it onto one of five quality tiers, and picks one of 42 material
 families at random. The materials are vnums 400000 to 400209, five tiers per family.
 When an alchemist's kill drops a material, one time in seven the alchemist also regains
@@ -147,6 +154,39 @@ The same generators serve:
 
 The calls in shops, crafting and NPC ship crews are commented out.
 
+## The staff command
+
+`randobj` requires Forger rank and trust. All arguments are optional unless shown as
+literal words. Invalid slots, numbers, limits and extra words print syntax before
+anything is created. Missing generator objects stop a batch while keeping earlier items.
+
+| Command | Result | Defaults |
+| --- | --- | --- |
+| `randobj eq [slot] [level] [count]` | Equipment at the given finder/source level, using your luck and zone | `any`, your level, 1 |
+| `randobj eq list` | Slot words grouped by wear location | |
+| `randobj piece [level] [count]` | Salvage materials with the usual alchemist refund roll | your level, 1 |
+| `randobj stone [count]` | Encrust stones | 1 |
+| `randobj recipe [count]` | Zone recipe attempts; ineligible random objects are discarded | 1 |
+| `randobj mob [level] [count]` | Random mobs, which stay in the world as wanderers | 0 (automatic), 1 |
+| `randobj encrust [count]` | Sample encrusted names | 10 |
+| `randobj zone`, `map`, `remove` | Existing random-zone and test-lab operations | |
+
+Equipment/material levels range from 1 to 62. Mob levels range from 1 to 61, with
+0 choosing automatically. Counts range from 1 to 50,
+or 1 to 10 for mobs. For equipment, the first number is the level: `randobj eq 50 5`
+creates five items at level 50. `randobj eq ring 30 3` creates three level-30 rings;
+`randobj piece 40 5` creates five salvage materials at level 40.
+
+Slot words are `any`, wear locations (`finger`, `body`, `wield`, and the other names
+listed by `eq list`), or table nouns with colour removed and spaces replaced by hyphens
+(`ring`, `tower-shield`, `long-sword`). A wear word chooses uniformly among its rows;
+`any` retains the generator's usual worn-equipment weighting. A word that names both a
+wear group and a noun selects the group. One equipment item displays its `stat`; batches
+print descriptions, the level where applicable, and a total.
+
+Recipe counts are attempts. Random blanks and targets rejected by the crafting rules
+produce no scroll; only delivered recipes receive a success line and count in the total.
+
 ## Other drops on the same death
 
 Next to the random drop, `die()` handles three more. A dragon that grants experience
@@ -163,12 +203,33 @@ loot-drops and loot-quality dials are `difficulty.dial.loot.drops` and
 [server difficulty dials](CODEBASE.md#server-difficulty-dials).
 
 ```sh
+python3 tests/async/test_random_equipment_golden.py
+python3 tests/async/test_randobj_command.py
 python3 tests/async/test_random_equipment_config_contract.py
 python3 tests/async/test_random_equipment_config_runtime.py
 python3 tests/async/test_random_drop_owner_message.py
 python3 tests/async/test_difficulty_dials.py
 ```
 
-The first two hold the settings and their loader, the third the salvage message's
-recipient, and the fourth the loot dials' hooks. No test rolls a drop on a running
-server.
+The golden test holds the rolls themselves. It compiles all three module sources whole
+under ASan and UBSan with the real random number generator and settings at their defaults,
+stubs only the world, and records 1,480 seeded cases: drop decisions, `random_equipment_kill_drop()`,
+generated items field by field, materials, stones, encrust affects and true names. The
+output must equal `tests/fixtures/random_equipment_golden.txt`, so any change that moves,
+adds or drops a covered roll fails it. Pet owners have different level, luck and room
+attributes, so using the owner for the pet's drop rolls fails the existing fixture.
+`tests/fixtures/random_equipment_rng_golden.txt` records the next RNG draw after every
+case, captured from the original `879adf0aa` implementation. It also catches extra terminal
+draws that leave the current item unchanged but would shift the next live random event.
+The harness uses the real string setters and asserts that every generated item has
+`STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2`, so its generated names are marked for saving.
+Direct assertions also require the weapon/armor blank vnum to match each item's wear
+flags. NPC killers, player victims and dead player/pet killers must produce no drops,
+messages or RNG draws. Both checks preserve the frozen fixtures.
+Additional direct assertions cover all 26 suffix totals (5 through 30), their bitvectors
+and RNG consumption without changing that fixture. The command harness compiles the real
+`randobj.c` with recording generators and the real slot tables, tokenizer and recipe
+function, checking defaults, every slot word, limits, errors, null returns and recipe
+rejection/delivery totals. The remaining tests hold the
+settings and loader, salvage message recipient and loot dials' hooks. The golden harness
+does not roll a drop on a running server.
