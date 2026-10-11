@@ -171,7 +171,8 @@ anything is created. Missing generator objects stop a batch while keeping earlie
 | `randobj encrust [count]` | Sample encrusted names | 10 |
 | `randobj zone`, `map`, `remove` | Existing random-zone and test-lab operations | |
 
-Levels range from 1 to 62, with 0 also allowed for mobs. Counts range from 1 to 50,
+Equipment/material levels range from 1 to 62. Mob levels range from 1 to 61, with
+0 choosing automatically. Counts range from 1 to 50,
 or 1 to 10 for mobs. For equipment, the first number is the level: `randobj eq 50 5`
 creates five items at level 50. `randobj eq ring 30 3` creates three level-30 rings;
 `randobj piece 40 5` creates five salvage materials at level 40.

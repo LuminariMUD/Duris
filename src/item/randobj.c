@@ -238,8 +238,8 @@ static void randobj_recipe(P_char ch, char *arguments)
 static void randobj_mob(P_char ch, char *arguments)
 {
 	int level = 0, count = 1;
-	if (!read_options(arguments, &level, 0, count, 10))
-		return usage(ch, "mob [level] [count] (level 0 chooses automatically)");
+	if (!read_options(arguments, &level, 0, count, 10) || level > 61)
+		return usage(ch, "mob [level] [count] (level 0-61; 0 chooses automatically)");
 	for (int i = 0; i < count; i++)
 	{
 		P_char mob = create_random_mob(-1, level);

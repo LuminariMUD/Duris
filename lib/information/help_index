@@ -20313,7 +20313,8 @@ wield, etc.) chooses uniformly from that group; a noun (ring, tower-shield,
 long-sword, etc.) selects that item shape. Any keeps the usual weighted slot roll.
 If a word names both a group and a shape, it selects the group.
 
-Levels are 1-62. Mob level defaults to 0, meaning the generator's own choice.
+Equipment/material levels are 1-62; mob levels are 1-61. Mob level defaults to 0,
+meaning the generator's own choice.
 Counts are 1-50, or 1-10 for mobs, which remain in the world as wanderers.
 Encrust prints sample names and defaults to 10. Piece makes salvage materials;
 stone makes encrust stones; recipe repeats the current zone-recipe generator.

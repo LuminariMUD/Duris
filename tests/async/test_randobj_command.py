@@ -240,7 +240,7 @@ int main() {
     reset(); run("mob 20"); assert(requests.size() == 1 && requests[0].finder_level == 20);
     reset(); run("mob 0 10"); assert(requests.size() == 10 && requests[0].finder_level == 0);
     assert(output.find("Created 10 mobs") != std::string::npos && output.find("level 37") != std::string::npos);
-    reset(); run("mob 62 2"); assert(requests.size() == 2 && requests[0].finder_level == 62);
+    reset(); run("mob 61 2"); assert(requests.size() == 2 && requests[0].finder_level == 61);
     reset(); run("encrust"); assert(samples == 10 && extracted == 10);
     reset(); run("encrust 1"); assert(samples == 1 && extracted == 1);
     reset(); run("encrust 50"); assert(samples == 50 && extracted == 50);
@@ -253,7 +253,7 @@ int main() {
          "eq 9999999999999999999999999999999", "eq ring 3.5", "eq ring +30", "eq ring -", "eq ring thirty",
          "piece 0", "piece 63", "piece 30 0", "piece 30 51", "piece 30 2 extra", "piece at 30",
          "stone 0", "stone 51", "stone -1", "stone x", "stone 1 extra", "stone 1 with",
-         "recipe 0", "recipe 51", "recipe 1 extra", "mob -1", "mob 63", "mob 1 0", "mob 1 11", "mob 1 1 extra",
+         "recipe 0", "recipe 51", "recipe 1 extra", "mob -1", "mob 62", "mob 62 2", "mob 63", "mob 1 0", "mob 1 11", "mob 1 1 extra",
          "encrust 0", "encrust 51", "encrust 1 extra", "map extra", "remove extra", "zone extra"}) rejected(input);
     rejected("eq '" + std::string(MAX_INPUT_LENGTH - 6, 'A'));
     rejected("eq ring '" + std::string(MAX_INPUT_LENGTH - 11, '9'));

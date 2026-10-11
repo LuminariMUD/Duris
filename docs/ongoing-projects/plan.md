@@ -154,8 +154,16 @@ script stopped at a pagination prompt; adding page handling to that private scri
 completed the check (`pr5-review1-live-pages.log`). It saved and shut down cleanly.
 The final follow-up adds #26's corrected startup usage string. The earlier gate on
 `37abdac8c` was intentionally interrupted before completion when that finding arrived;
-`pr5-review1.log` is not a completed gate. Fresh builds and full regression/database
-gates will run on the merged revision (`pr5-review2.log`).
+`pr5-review1.log` is not a completed gate. The replacement gate on `7204c8431` was also interrupted when the mob-level review
+finding arrived (`pr5-review2.log`); neither interrupted log is completion evidence.
+
+PR #29 also now rejects explicit mob level 62 before generation. The existing generator
+caps the stored level at 61 while deriving other stats from the requested level. Enforce
+its supported 0–61 range at the command boundary, retaining equipment/material levels
+through 62 and the existing mob rules. The command harness checks level 61 succeeds and
+62 (single or batch) creates nothing; help and reference limits agree. The rejection
+case failed before the fix (`pr5-review3-mob-before.log`). Fresh builds, live boundary
+checks and full gates will validate the final revision (`pr5-review3.log`).
 
 ## Goal
 
@@ -363,7 +371,7 @@ Syntax (Forger and up, as today):
   - a slot noun from the table, colour stripped and spaces as hyphens (`ring`,
     `tower-shield`, `long-sword`).
 - **Limits:**
-  - level 1 to 62;
+  - equipment/material level 1 to 62; mob level 1 to 61, with 0 choosing automatically;
   - count 1 to 50 for objects and 1 to 10 for mobs, since each random mob stays in the world
     as a wanderer.
 - **Errors:** an unknown slot word, a level or count out of range, or a stray argument
