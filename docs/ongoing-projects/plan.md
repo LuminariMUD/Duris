@@ -13,11 +13,14 @@ PRs ready to merge. **Non-goals:** game-rule changes, unrelated cleanup and land
 require. **Proof:** focused regressions, the unchanged golden fixture, mutation checks for
 test-coverage findings and the applicable local gates below; GitHub CI is not a gate.
 
-`origin/master` remains `879adf0aa`, already an ancestor of every phase. Keep the published
-stack and existing review tags; merge lower fixes upward in order and tag each fixed
-head with the next `randeq/phase-<n>-review-<round>` tag. No rebase or squash is needed.
+`origin/master` advanced to `cdfcacf0a` with only a contributor-policy documentation
+change. It is merged into the bottom branch and carried upward in order. Server sources
+and tests are unchanged by this sync, so completed validation remains applicable; the
+12 documentation checks pass. Keep the published stack and existing tags, with a new
+`randeq/phase-<n>-review-<round>` tag for each ready head. No rebase or squash is needed.
+Repository admins or organization owners handle landing; these PRs remain unmerged.
 
-PR #25 is ready to merge at `randeq/phase-1-review-3`; all six review threads have
+PR #25 is ready to merge at `randeq/phase-1-review-4`; all six review threads have
 replies and are resolved. The harness now covers:
 
 - different pet/owner level, luck and room attributes;
@@ -53,8 +56,7 @@ of the existing wear flags, and rejected contexts must be side-effect free. Evid
 full formatting, both builds and `make test-all -j16 TEST_JOBS=16` (707/707, no reruns;
 `pr1-review4.log`), plus site checks (15) and documentation checks (12). The final
 record changes only this plan and reuses that code/test gate.
-Then merge upward through #26, #27, #28 and #29 in order; their prior fixes and evidence
-remain valid, and #29's recipe repair is already committed at `02e391102`.
+Carry the documentation-only master sync through #26–#29 before final handoff.
 
 ## Goal
 
