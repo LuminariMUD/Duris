@@ -1226,12 +1226,12 @@ int random_quest_mob_proc(P_char ch, P_char pl, int cmd, char *arg)
 
 			while (1)
 			{
-				obj = create_material(ch, ch);
+				obj = create_material(ch, GET_LEVEL(ch), GET_LEVEL(ch));
 				obj_to_char(obj, pl);
 				act("$n gives $q to $N!", TRUE, ch, obj, pl, TO_NOTVICT);
 				act("$n gives you $q ", TRUE, ch, obj, pl, TO_VICT);
 
-				obj = create_random_eq_new(ch, ch, -1, -1);
+				obj = create_random_eq(ch, GET_LEVEL(ch), GET_LEVEL(ch), -1, -1);
 				obj_to_char(obj, pl);
 				act("$n gives $q to $N!", TRUE, ch, obj, pl, TO_NOTVICT);
 				act("$n gives you $q ", TRUE, ch, obj, pl, TO_VICT);

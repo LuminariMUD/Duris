@@ -163,9 +163,6 @@ static void release(P_obj obj)
 {
 	if (!obj)
 		return;
-	// Every generated name must survive persistence, for direct and kill-drop cases.
-	if (obj->R_num == VOBJ_RANDOM_ARMOR || obj->R_num == VOBJ_RANDOM_WEAPON)
-		assert(obj->str_mask == (STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2));
 	if (obj->str_mask & STRUNG_KEYS)
 		free(obj->name);
 	if (obj->str_mask & STRUNG_DESC2)
@@ -182,6 +179,7 @@ void obj_to_char(P_obj obj, P_char ch)
 	char line[64];
 	if (obj->R_num == VOBJ_RANDOM_ARMOR || obj->R_num == VOBJ_RANDOM_WEAPON)
 	{
+		assert(obj->str_mask == (STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2));
 		assert(obj->R_num == (obj->wear_flags & ITEM_WIELD ? VOBJ_RANDOM_WEAPON : VOBJ_RANDOM_ARMOR));
 		given += std::string(" eq[") + obj->name + "]";
 	}
@@ -263,6 +261,8 @@ static void put_obj(P_obj o)
 		put(" NULL");
 		return;
 	}
+	// Generated descriptions must be owned so persistence saves them.
+	assert(o->str_mask == (STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2));
 	assert(o->R_num == (o->wear_flags & ITEM_WIELD ? VOBJ_RANDOM_WEAPON : VOBJ_RANDOM_ARMOR));
 	put(" %s | %s | %s | type=%d wear=%u extra=%u", o->name, o->short_description,
 	    o->description, o->type, o->wear_flags, o->extra_flags);
@@ -423,8 +423,7 @@ static void gen_case(const char *group, int killer_level, int mob_level, int luc
 		killer.npc.R_num = 1;
 	if (kind == NEWBIE)
 		SET_BIT(killer.ch.specials.act2, PLR2_NEWBIE);
-	person mob("goblin warrior", mob_level, 100, false, room);
-	P_obj obj = create_random_eq_new(&killer.ch, &mob.ch, slot, material);
+	P_obj obj = create_random_eq(&killer.ch, killer_level, mob_level, slot, material);
 	put_obj(obj);
 	release(obj);
 	finish_case();
@@ -478,10 +477,9 @@ static void materials_and_stones()
 			person killer("Finder", level, 100, true);
 			if (alchemist)
 				killer.ch.player.m_class = CLASS_ALCHEMIST;
-			person mob("goblin warrior", level, 100, false);
 			for (int i = 0; i < 5; i++)
 			{
-				P_obj obj = create_material(&killer.ch, &mob.ch);
+				P_obj obj = create_material(&killer.ch, level, level);
 				put(" %d", obj ? obj->R_num : 0);
 				release(obj);
 			}
@@ -596,6 +594,17 @@ static void encrust_and_true_name()
 		}
 }
 
+// A valid spell outside the random-weapon table must leave the name alone.
+// This assertion adds no fixture output; ASan also checks the table boundary.
+static void foreign_spell_name()
+{
+	P_obj obj = read_object(VOBJ_RANDOM_WEAPON, VIRTUAL);
+	obj->value[5] = SPELL_BLINDNESS;
+	assert(!identify_random(obj));
+	assert(!strcmp(obj->short_description, "a blank"));
+	release(obj);
+}
+
 int main()
 {
 	setup_world();
@@ -606,6 +615,7 @@ int main()
 	materials_and_stones();
 	suffix_outcomes();
 	encrust_and_true_name();
+	foreign_spell_name();
 	return 0;
 }
 '''

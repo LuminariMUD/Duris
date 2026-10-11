@@ -22,6 +22,7 @@
 #include "world/difficulty.h"
 #include "world/vnum.obj.h"
 #include <string.h>
+#include <string>
 
 /*
  * external variables
@@ -52,7 +53,7 @@ P_obj create_material(int index)
 	return read_object(matnum, VIRTUAL);
 }
 
-P_obj create_material(P_char killer, P_char mob)
+P_obj create_material(P_char killer, int finder_level, int source_level)
 {
 	if (GET_CLASS(killer, CLASS_ALCHEMIST))
 	{
@@ -62,8 +63,7 @@ P_obj create_material(P_char killer, P_char mob)
 			send_to_char("&+YYou feel your power increase some...&n\n", killer);
 		}
 	}
-	int howgood = (int)((GET_LEVEL(killer) + GET_LEVEL(mob)) /
-			    2.8); /* make sure you understand this value before ya change it. */
+	int howgood = (int)((finder_level + source_level) / 2.8);
 	int material_index = number(0, BOUNDED(1, howgood, MAXMATERIAL));
 
 	return create_material(material_index);
@@ -74,257 +74,149 @@ P_obj create_stones(void)
 	return read_object(number(ENCRUST_VNUM_BEGIN, ENCRUST_VNUM_END), VIRTUAL);
 }
 
-P_obj create_random_eq_new(P_char killer, P_char mob, int object_type, int material_type)
+// Slots 0..70 are the worn-equipment pool selected on two of three draws.
+static constexpr int LAST_WORN_SLOT = 70;
+static constexpr int WORN_SLOT_ROLL_MAX = 2;
+static constexpr int NAMED_ROLL_MAX = 100000;
+static constexpr int OWNER_MIN_LEVEL = 45; // Owner keywords require a source above this.
+static constexpr int OWNER_ROLL_MAX = 9; // One in ten, also used for the first owner suffix.
+static constexpr int EXTRA_SUFFIX_ROLL_MAX = 19; // Zone sets repeat a suffix one in twenty.
+static constexpr int WEAPON_SPELL_ROLL_MAX = 2; // One in three zone-named weapons.
+static constexpr double ONE_HANDED_BONUS = 0.7; // One-handed weapons retain 70% of hit/damage.
+
+static int choose_slot(int requested)
 {
-	P_obj obj;
-	int ansi_n = 0;
-	int howgood, material, prefix, slot, value, bonus, count, chance;
-	int splnum, tries;
-	bool should_have_weapon_proc = FALSE;
-	struct zone_data *zone = NULL;
-	char o_name[MAX_STRING_LENGTH];
-	char o_short[MAX_STRING_LENGTH];
-	char o_long[MAX_STRING_LENGTH];
-	char owner[MAX_STRING_LENGTH];
-	float weight;
-	const struct random_equipment_config *config = random_equipment_config_get();
+	if (requested != -1)
+		return BOUNDED(0, requested, MAX_SLOT - 1);
+	return number(0, WORN_SLOT_ROLL_MAX) ? number(0, LAST_WORN_SLOT) : number(0, MAX_SLOT - 1);
+}
 
-	// Load the random item blank
-	if (object_type == -1)
-	{
-		// This is hack to make equipment load more often than weapons. Aug09 -Lucrot
-		if (number(0, 2))
-		{
-			slot = number(0, 70); // Worn eq
-		}
-		else
-		{
-			slot = number(0, MAX_SLOT - 1); // Anything
-		}
-	}
-	else
-	{
-		slot = BOUNDED(0, object_type, MAX_SLOT - 1);
-	}
-
-	if (slot_data[slot].wear_bit == ITEM_WIELD)
-	{
-		obj = read_object(VOBJ_RANDOM_WEAPON, VIRTUAL);
-	}
-	else
-	{
-		obj = read_object(VOBJ_RANDOM_ARMOR, VIRTUAL);
-	}
-
-	if (!obj)
-	{
-		send_to_char("Failed to load a new item.\n\r", killer);
-		return NULL;
-	}
-
-	prefix = number(0, MAXPREFIX);
-
-	// Make sure you understand this value before ya change it.
-	// howgood runs from 1 to 62 to start.
-	howgood = (int)((GET_LEVEL(killer) + GET_LEVEL(mob)) / 2.0);
-	// howgood is then changed by the configured seasonal multiplier.
+static int choose_material(int finder_level, int source_level, int requested)
+{
+	const auto *config = random_equipment_config_get();
+	int howgood = (int)((finder_level + source_level) / 2.0);
 	howgood = (int)(howgood * config->quality_level_multiplier);
 	howgood = difficulty_scale_int(howgood, difficulty_multiplier(DIFFICULTY_LOOT_QUALITY));
+	if (requested != -1)
+		return BOUNDED(0, requested, MAXMATERIAL - 1);
+	int material = howgood > source_level / 3 ? number(source_level / 3, howgood) : howgood;
+	return BOUNDED(0, material, MAXMATERIAL - 1);
+}
 
-	if (material_type == -1)
-	{
-		// howgood caps level check.
-		if (howgood > GET_LEVEL(mob) / 3)
-		{
-			material = number(GET_LEVEL(mob) / 3, howgood);
-		}
-		else
-		{
-			material = howgood;
-		}
-		// Keep within bounds.
-		material = BOUNDED(0, material, MAXMATERIAL - 1);
-	}
-	else
-	{
-		material = BOUNDED(0, material_type, MAXMATERIAL - 1);
-	}
+enum random_name_style
+{
+	PLAIN_NAME,
+	ZONE_NAME,
+	OWNER_NAME
+};
 
-	zone = &zone_table[world[killer->in_room].zone];
+static random_name_style choose_name(P_char finder, int finder_level, int source_level,
+				     int requested_material, const zone_data *zone)
+{
+	// Integer division intentionally makes each 11 levels and each 4 luck a step.
+	int chance = 8 * (finder_level / 11) * ((GET_C_LUK(finder) - 60) / 4) * (source_level + 38);
+	bool coloured = strip_ansi(zone->name) != zone->name;
+	// Both rolls precede the other eligibility checks, even for a fixed material.
+	if (number(1, NAMED_ROLL_MAX) < chance && requested_material == -1 && coloured &&
+	    (IS_PC(finder) || mob_index[GET_RNUM(finder)].func.mob != shop_keeper))
+		return ZONE_NAME;
+	if (!number(0, OWNER_ROLL_MAX) && requested_material == -1 &&
+	    source_level > OWNER_MIN_LEVEL)
+		return OWNER_NAME;
+	return PLAIN_NAME;
+}
 
-	ansi_n = strcmp(strip_ansi(zone->name).c_str(), zone->name);
-
-	if (IS_PC(killer))
+static void name_item(P_obj obj, P_char finder, int slot, int material, int prefix,
+		      const zone_data *zone, random_name_style style)
+{
+	const char *adjective = prefix_data[prefix].m_name;
+	const char *substance = material_data[material].m_name;
+	const char *noun = slot_data[slot].m_name;
+	std::string keyword_tag, display_tag;
+	if (style == ZONE_NAME)
 	{
-		snprintf(owner, MAX_STRING_LENGTH, "%s", GET_NAME(killer));
-	}
-	else
-	{
-		snprintf(owner, MAX_STRING_LENGTH, "%s", FirstWord(GET_NAME(killer)));
-	}
-
-	// Chance for a named item. 0% for <= level 10, luck = every 4 points over 60 gives one point to multiplier
-	// At level 11 killer, 100 luck, 20 mob: 8 * 1 * 10 *  58 =   4640 ->  4.6% chance
-	// At level 11 killer, 160 luck, 20 mob: 8 * 1 * 25 *  58 =  11600 -> 11.6% chance
-	// At level 56 killer, 100 luck, 62 mob: 8 * 5 * 10 * 100 =  40000 -> 40.0% chance
-	// At level 56 killer, 160 luck, 62 mob: 8 * 5 * 25 * 100 = 100000 -> almost certain
-	chance = 8 * (GET_LEVEL(killer) / 11) * ((GET_C_LUK(killer) - 60) / 4) *
-		 (GET_LEVEL(mob) + 38);
-	//  Set the items name / short / long descriptions!
-	//  For PCs and non-shop-keeper mobs.
-	if ((number(1, 100000) < chance) && (material_type == -1) && ansi_n &&
-	    (IS_PC(killer) || mob_index[GET_RNUM(killer)].func.mob != shop_keeper))
-	{
-		if (IS_NEWBIE(killer))
-		{
+		keyword_tag = " " + strip_ansi(zone->name);
+		display_tag = std::string(" &+rfrom ") + zone->name;
+		if (IS_NEWBIE(finder))
 			send_to_char(
 				"You got a named random item!  Use 'help named equipment' for a list of what named eq can do for you!\n\r",
-				killer);
-		}
-		snprintf(o_name, MAX_STRING_LENGTH, "random _noquest_ %s %s %s %s",
-			 strip_ansi(prefix_data[prefix].m_name).c_str(),
-			 strip_ansi(material_data[material].m_name).c_str(),
-			 strip_ansi(slot_data[slot].m_name).c_str(),
-			 strip_ansi(zone->name).c_str());
-
-		// If it's a plural noun (ie shoes / boots / leggings / etc).
-		// Note: Some plural nouns don't end in s, but ok.
-		if (slot_data[slot].m_name[strlen(slot_data[slot].m_name) - 3] == 's')
-		{
-			snprintf(o_short, MAX_STRING_LENGTH, "some %s %s %s &+rfrom %s&n",
-				 prefix_data[prefix].m_name, material_data[material].m_name,
-				 slot_data[slot].m_name, zone->name);
-			snprintf(o_long, MAX_STRING_LENGTH,
-				 "Some %s %s %s &+rfrom %s&n lie here on the ground.",
-				 prefix_data[prefix].m_name, material_data[material].m_name,
-				 slot_data[slot].m_name, zone->name);
-		}
-		else
-		{
-			snprintf(o_short, MAX_STRING_LENGTH, "%s %s %s %s &+rfrom %s&n",
-				 VOWEL(prefix_data[prefix].m_name[3]) ? "an" : "a",
-				 prefix_data[prefix].m_name, material_data[material].m_name,
-				 slot_data[slot].m_name, zone->name);
-			snprintf(o_long, MAX_STRING_LENGTH,
-				 "%s %s %s %s &+rfrom %s&n lies here on the ground.",
-				 VOWEL(prefix_data[prefix].m_name[3]) ? "An" : "A",
-				 prefix_data[prefix].m_name, material_data[material].m_name,
-				 slot_data[slot].m_name, zone->name);
-		}
-
-		//  Zone named items get a higher chance to get multiple affects set.
-		// 99.45% chance for one.
-		obj = setsuffix_obj_new(obj);
-		// 5% chance for 2, .025% chance for 3 ...
-		while (!number(0, 19))
-		{
-			obj = setsuffix_obj_new(obj);
-		}
-		// set values for a proc(should the item turn out to be a weapon)
-		if (!number(0, 2) && (slot_data[slot].wear_bit == ITEM_WIELD))
-		{
-			should_have_weapon_proc = TRUE;
-		}
+				finder);
 	}
-	else if (!number(0, 9) && (material_type == -1) && (GET_LEVEL(mob) > 45))
+	else if (style == OWNER_NAME)
 	{
-		checked_snprintf(o_name, MAX_STRING_LENGTH, "random _noquest_ %s %s %s %s",
-				 strip_ansi(prefix_data[prefix].m_name).c_str(),
-				 strip_ansi(material_data[material].m_name).c_str(),
-				 strip_ansi(slot_data[slot].m_name).c_str(), owner);
-		if (slot_data[slot].m_name[strlen(slot_data[slot].m_name) - 3] == 's')
-		{
-			snprintf(o_short, MAX_STRING_LENGTH, "some %s %s %s&n",
-				 prefix_data[prefix].m_name, material_data[material].m_name,
-				 slot_data[slot].m_name);
-			snprintf(o_long, MAX_STRING_LENGTH,
-				 "Some %s %s %s&n lie here on the ground.",
-				 prefix_data[prefix].m_name, material_data[material].m_name,
-				 slot_data[slot].m_name);
-		}
-		else
-		{
-			snprintf(o_short, MAX_STRING_LENGTH, "%s %s %s %s&n",
-				 VOWEL(prefix_data[prefix].m_name[3]) ? "an" : "a",
-				 prefix_data[prefix].m_name, material_data[material].m_name,
-				 slot_data[slot].m_name);
-			snprintf(o_long, MAX_STRING_LENGTH,
-				 "%s %s %s %s&n lies here on the ground.",
-				 VOWEL(prefix_data[prefix].m_name[3]) ? "An" : "A",
-				 prefix_data[prefix].m_name, material_data[material].m_name,
-				 slot_data[slot].m_name);
-		}
-
-		if (!number(0, 9))
-		{
-			obj = setsuffix_obj_new(obj);
-			// To ensure that we don't infinite loop if difficulty isn't set
-			count = 0;
-			// Zone difficulty generally 1, range 1 to 9 (as of 5/27/2016).
-			// For difficutly 1: 1 in 7 chance (about 14%), 2: 2 in 8, 3: 3 in 9, 4: 4 in 10 .. 9: 9 in 15 = 60% chance.
-			while ((number(1, zone->difficulty + 6) > 6) && count < 2)
-			{
-				obj = setsuffix_obj_new(obj);
-				count++;
-			}
-		}
+		char owner[MAX_STRING_LENGTH];
+		snprintf(owner, sizeof(owner), "%s",
+			 IS_PC(finder) ? GET_NAME(finder) : FirstWord(GET_NAME(finder)));
+		keyword_tag = std::string(" ") + owner;
 	}
-	else
+	// The original tables end each noun with a two-character colour reset.
+	bool plural = noun[strlen(noun) - 3] == 's';
+	bool vowel = VOWEL(adjective[3]);
+	char name[MAX_STRING_LENGTH], brief[MAX_STRING_LENGTH], description[MAX_STRING_LENGTH];
+	snprintf(name, sizeof(name), "random _noquest_ %s %s %s%s", strip_ansi(adjective).c_str(),
+		 strip_ansi(substance).c_str(), strip_ansi(noun).c_str(), keyword_tag.c_str());
+	snprintf(brief, sizeof(brief), "%s %s %s %s%s&n",
+		 plural ? "some" :
+		 vowel	? "an" :
+			  "a",
+		 adjective, substance, noun, display_tag.c_str());
+	snprintf(description, sizeof(description), "%s %s %s %s%s&n %s here on the ground.",
+		 plural ? "Some" :
+		 vowel	? "An" :
+			  "A",
+		 adjective, substance, noun, display_tag.c_str(), plural ? "lie" : "lies");
+	set_keywords(obj, name);
+	set_short_description(obj, brief);
+	set_long_description(obj, description);
+}
+
+static bool add_name_affects(P_obj obj, random_name_style style, int slot, const zone_data *zone)
+{
+	if (style == ZONE_NAME)
 	{
-		snprintf(o_name, MAX_STRING_LENGTH, "random _noquest_ %s %s %s",
-			 strip_ansi(prefix_data[prefix].m_name).c_str(),
-			 strip_ansi(material_data[material].m_name).c_str(),
-			 strip_ansi(slot_data[slot].m_name).c_str());
-		if (slot_data[slot].m_name[strlen(slot_data[slot].m_name) - 3] == 's')
+		setsuffix_obj_new(obj);
+		while (!number(0, EXTRA_SUFFIX_ROLL_MAX))
+			setsuffix_obj_new(obj);
+		// Draw even for worn items; reversing the operands would shift later rolls.
+		return !number(0, WEAPON_SPELL_ROLL_MAX) && slot_data[slot].wear_bit == ITEM_WIELD;
+	}
+	if (style == OWNER_NAME && !number(0, OWNER_ROLL_MAX))
+	{
+		setsuffix_obj_new(obj);
+		int count = 0;
+		// Draw before checking the cap, including after the second extra suffix.
+		while (number(1, zone->difficulty + 6) > 6 && count < 2)
 		{
-			snprintf(o_short, MAX_STRING_LENGTH, "some %s %s %s&n",
-				 prefix_data[prefix].m_name, material_data[material].m_name,
-				 slot_data[slot].m_name);
-			snprintf(o_long, MAX_STRING_LENGTH,
-				 "Some %s %s %s&n lie here on the ground.",
-				 prefix_data[prefix].m_name, material_data[material].m_name,
-				 slot_data[slot].m_name);
-		}
-		else
-		{
-			snprintf(o_short, MAX_STRING_LENGTH, "%s %s %s %s&n",
-				 VOWEL(prefix_data[prefix].m_name[3]) ? "an" : "a",
-				 prefix_data[prefix].m_name, material_data[material].m_name,
-				 slot_data[slot].m_name);
-			snprintf(o_long, MAX_STRING_LENGTH,
-				 "%s %s %s %s&n lies here on the ground.",
-				 VOWEL(prefix_data[prefix].m_name[3]) ? "An" : "A",
-				 prefix_data[prefix].m_name, material_data[material].m_name,
-				 slot_data[slot].m_name);
+			setsuffix_obj_new(obj);
+			count++;
 		}
 	}
+	return false;
+}
 
-	set_keywords(obj, o_name);
-	set_short_description(obj, o_short);
-	set_long_description(obj, o_long);
-
-	// Set wear flags
+// Apply the shape and weight, preserving float intermediates and truncation.
+static void set_wear_and_weight(P_obj obj, int slot, int material, int prefix)
+{
+	const auto *config = random_equipment_config_get();
+	float weight;
 	SET_BIT(obj->wear_flags, ITEM_TAKE);
 	SET_BIT(obj->wear_flags, slot_data[slot].wear_bit);
 
-	// base_weight ( 1 - 40 ) * weight_mod ( 0.75 - 1.21 ) * weight_mod( 0.15 - 5.00 )
-	// Weight range = 0 - 242 .. wow 242 for an (unearthly or brutal) adamantium platemail
 	weight = (slot_data[slot].base_weight * prefix_data[prefix].weight_mod *
 		  material_data[material].weight_mod);
-	// This brings the crazy platemail down to 107.
 	weight = (weight + config->weight_base_multiplier * slot_data[slot].base_weight) /
 		 config->weight_divisor;
-	// If it's between .1 and 1, round up.
 	obj->weight = ((weight < 1.0) && (weight > 0.1)) ? 1 : weight;
+}
 
-	// Shields run from ( 5 - 20) * ( 0.75 - 1.21 ) * ( 0.15 - 5.00 )
-	// Min: (( 5 * 0.75 * 0.15) + (2 *  5)) / 3 = 10.5625 / 3 = 3
-	// Max: ((11 * 1.21 * 5.00) + (2 * 11)) / 3 = 88.55 / 3 = 29.
-
-	int maxValue = random_equipment_stat_max(GET_LEVEL(mob));
-	// Item Attributes
+// Draw tertiary, secondary, then primary, including eligibility rolls below their level.
+static void set_stat_affects(P_obj obj, int slot, int material, int prefix, int source_level)
+{
+	const auto *config = random_equipment_config_get();
+	int value;
+	int maxValue = random_equipment_stat_max(source_level);
 	if (!number(0, config->stat_tertiary_roll_max) &&
-	    (GET_LEVEL(mob) > config->stat_tertiary_min_level))
+	    (source_level > config->stat_tertiary_min_level))
 	{
 		value = (int)(material_data[material].m_stat * prefix_data[prefix].m_stat *
 				      slot_data[slot].m_stat +
@@ -334,7 +226,7 @@ P_obj create_random_eq_new(P_char killer, P_char mob, int object_type, int mater
 			2);
 	}
 	if (!number(0, config->stat_secondary_roll_max) &&
-	    (GET_LEVEL(mob) > config->stat_secondary_min_level))
+	    (source_level > config->stat_secondary_min_level))
 	{
 		value = (int)(material_data[material].m_stat * prefix_data[prefix].m_stat *
 				      slot_data[slot].m_stat +
@@ -348,17 +240,133 @@ P_obj create_random_eq_new(P_char killer, P_char mob, int object_type, int mater
 		      number(0, config->stat_random_bonus_max));
 	obj = setprefix_obj(
 		obj, number(MIN(value / config->stat_primary_divisor, maxValue), maxValue), 0);
+}
 
-	obj->material = material_data[material].m_number;
-
-	// Sets anti-class flags based on material type (exemptions via object name)
-	material_restrictions(obj);
-
-	if (isname("unique", obj->name))
+static void set_weapon_spell(P_obj obj, int source_level)
+{
+	int spell, tries = 0;
+	do
 	{
-		obj->craftsmanship = OBJCRAFT_HIGHEST;
+		// Low-level negative indices clamp to ice missiles, the table's first row.
+		spell = BOUNDED(1, source_level, 60) - number(0, 15);
+		spell = MAX(0, spell);
+		tries++;
+	} while (spells_data[spell].self_only && tries < 100);
+	if (tries < 100)
+	{
+		obj->value[5] = spells_data[spell].spell;
+		obj->value[6] = number(15, MAX(20, source_level - 10));
+		obj->value[7] = number(45, 60); // One cast per this many hits, on average.
+		SET_BIT(obj->extra2_flags, ITEM2_MAGIC);
+	}
+}
+
+static void set_melee_values(P_obj obj, int slot, int material, int prefix, int source_level,
+			     bool should_have_weapon_proc)
+{
+	int bonus;
+	obj->value[0] = slot_data[slot].damage_type;
+	obj->type = ITEM_WEAPON;
+
+	if (slot_data[slot].numb_material > 2)
+		obj->extra_flags |= ITEM_TWOHANDS;
+
+	obj->value[1] = (int)(1 + (material_data[material].m_stat * prefix_data[prefix].m_stat *
+					   slot_data[slot].m_ac +
+				   number(0, 20)) /
+					  20);
+
+	// MIN is a macro: its repeated dice roll is part of the established sequence.
+	obj->value[2] = MIN((1 + (material_data[material].m_stat * prefix_data[prefix].m_stat *
+					  slot_data[slot].m_ac +
+				  number(0, 20)) /
+					 20),
+			    ((obj->extra_flags & ITEM_TWOHANDS) ? 32 : 24) / obj->value[1]);
+	obj->value[2] = BOUNDED(4, obj->value[2], 10);
+
+	bonus = (int)((material_data[material].m_stat * prefix_data[prefix].m_stat *
+		       slot_data[slot].m_stat) /
+			      18 +
+		      1);
+
+	// Move 2 and 1 up to 3 and 2 so 1 doesn't get overwritten.
+	obj->affected[3].location = obj->affected[2].location;
+	obj->affected[3].modifier = obj->affected[2].modifier;
+	obj->affected[2].location = obj->affected[1].location;
+	obj->affected[2].modifier = obj->affected[1].modifier;
+
+	obj->affected[1].location = APPLY_HITROLL;
+	obj->affected[1].modifier = bonus + number(0, 1);
+	obj->affected[0].location = APPLY_DAMROLL;
+	obj->affected[0].modifier = bonus + number(0, 1);
+
+	if (!(obj->extra_flags & ITEM_TWOHANDS))
+	{
+		obj->affected[0].modifier = (sbyte)(obj->affected[0].modifier * ONE_HANDED_BONUS);
+		obj->affected[1].modifier = (sbyte)(obj->affected[1].modifier * ONE_HANDED_BONUS);
 	}
 
+	if (IS_BACKSTABBER(obj))
+	{
+		obj->value[1] = BOUNDED(1, (int)(obj->value[1] / 1.5), 3);
+		obj->value[2] = BOUNDED(4, (int)(obj->value[2] * 1.6) + number(0, 2),
+					obj->value[1] == 1 ? 8 : 6);
+	}
+
+	if (isname("lance", obj->name))
+	{
+		obj->value[1] = 1;
+		obj->value[2] = BOUNDED(6, (int)(obj->value[2] * 1.6) + number(2, 4),
+					obj->value[1] == 1 ? 13 : 9);
+	}
+
+	if (should_have_weapon_proc)
+		set_weapon_spell(obj, source_level);
+
+	if ((obj->affected[3].location != APPLY_NONE) || (obj->affected[2].location != APPLY_NONE))
+	{
+		SET_BIT(obj->extra2_flags, ITEM2_MAGIC);
+	}
+}
+
+static void set_longbow_values(P_obj obj, int slot, int material, int prefix)
+{
+	int bonus;
+	obj->type = ITEM_FIREWEAPON;
+	obj->value[3] = 1;
+
+	if (slot_data[slot].numb_material > 2)
+	{
+		obj->extra_flags |= ITEM_TWOHANDS;
+	}
+
+	obj->value[0] = (int)(1 + (material_data[material].m_stat * prefix_data[prefix].m_stat *
+					   slot_data[slot].m_ac +
+				   number(0, 40)));
+	obj->value[1] = (int)(1 + (material_data[material].m_stat * prefix_data[prefix].m_stat *
+					   slot_data[slot].m_ac +
+				   number(0, 40)));
+
+	bonus = (int)((material_data[material].m_stat * prefix_data[prefix].m_stat *
+		       slot_data[slot].m_stat) /
+			      20 +
+		      1);
+
+	// Move 2 and 1 up to 3 and 2 so 1 doesn't get overwritten.
+	obj->affected[3].location = obj->affected[2].location;
+	obj->affected[3].modifier = obj->affected[2].modifier;
+	obj->affected[2].location = obj->affected[1].location;
+	obj->affected[2].modifier = obj->affected[1].modifier;
+
+	obj->affected[1].location = APPLY_HITROLL;
+	obj->affected[1].modifier = bonus + number(0, 2);
+	obj->affected[0].location = APPLY_DAMROLL;
+	obj->affected[0].modifier = bonus + number(0, 2);
+}
+
+static void set_type_values(P_obj obj, int slot, int material, int prefix, int source_level,
+			    bool should_have_weapon_proc)
+{
 	if (IS_SET(obj->wear_flags, ITEM_WEAR_QUIVER))
 	{
 		GET_ITEM_TYPE(obj) = ITEM_QUIVER;
@@ -373,16 +381,13 @@ P_obj create_random_eq_new(P_char killer, P_char mob, int object_type, int mater
 		obj->value[0] = number(1, 2);
 		obj->value[1] = number(1, 8);
 		obj->value[2] = number(1, 5);
-		// m_stat ranges from 12 - 50,  12-50 + 75 = 87-125 = ac bonus
 		obj->value[3] = (int)(material_data[material].m_stat + 75);
 		if (isname("heater", obj->name) || isname("buckler", obj->name))
 		{
-			// 37-75
 			obj->value[3] -= 50;
 		}
 		else if (isname("tower", obj->name))
 		{
-			// 137-175
 			obj->value[3] += 50;
 		}
 		obj->value[4] = number(1, 5);
@@ -397,380 +402,146 @@ P_obj create_random_eq_new(P_char killer, P_char mob, int object_type, int mater
 		obj->value[3] = 1;
 	}
 	else if (IS_SET(obj->wear_flags, ITEM_WIELD) && !isname("longbow", obj->name))
-	{
-		obj->value[0] = slot_data[slot].damage_type;
-		obj->type = ITEM_WEAPON;
-
-		if (slot_data[slot].numb_material > 2)
-			obj->extra_flags |= ITEM_TWOHANDS;
-
-		obj->value[1] =
-			(int)(1 + (material_data[material].m_stat * prefix_data[prefix].m_stat *
-					   slot_data[slot].m_ac +
-				   number(0, 20)) /
-					  20);
-
-		obj->value[2] =
-			MIN((1 + (material_data[material].m_stat * prefix_data[prefix].m_stat *
-					  slot_data[slot].m_ac +
-				  number(0, 20)) /
-					 20),
-			    ((obj->extra_flags & ITEM_TWOHANDS) ? 32 : 24) / obj->value[1]);
-		obj->value[2] = BOUNDED(4, obj->value[2], 10);
-
-		bonus = (int)((material_data[material].m_stat * prefix_data[prefix].m_stat *
-			       slot_data[slot].m_stat) /
-				      18 +
-			      1);
-
-		// Move 2 and 1 up to 3 and 2 so 1 doesn't get overwritten.
-		obj->affected[3].location = obj->affected[2].location;
-		obj->affected[3].modifier = obj->affected[2].modifier;
-		obj->affected[2].location = obj->affected[1].location;
-		obj->affected[2].modifier = obj->affected[1].modifier;
-
-		obj->affected[1].location = APPLY_HITROLL;
-		obj->affected[1].modifier = bonus + number(0, 1);
-		obj->affected[0].location = APPLY_DAMROLL;
-		obj->affected[0].modifier = bonus + number(0, 1);
-
-		if (!(obj->extra_flags & ITEM_TWOHANDS))
-		{
-			obj->affected[0].modifier = (sbyte)(obj->affected[0].modifier * 0.7);
-			obj->affected[1].modifier = (sbyte)(obj->affected[1].modifier * 0.7);
-		}
-
-		if (IS_BACKSTABBER(obj))
-		{
-			obj->value[1] = BOUNDED(1, (int)(obj->value[1] / 1.5), 3);
-			obj->value[2] = BOUNDED(4, (int)(obj->value[2] * 1.6) + number(0, 2),
-						obj->value[1] == 1 ? 8 : 6);
-		}
-
-		if (isname("lance", obj->name))
-		{
-			obj->value[1] = 1;
-			obj->value[2] = BOUNDED(6, (int)(obj->value[2] * 1.6) + number(2, 4),
-						obj->value[1] == 1 ? 13 : 9);
-		}
-
-		if (should_have_weapon_proc)
-		{
-			tries = 0;
-			// Why are we making ice missiles so common here?
-			do
-			{
-				// Range from -14 to 60
-				splnum = BOUNDED(1, GET_LEVEL(mob), 60) - number(0, 15);
-				// Range 0 to 60
-				splnum = MAX(0, splnum);
-				tries++;
-			} while (spells_data[splnum].self_only && tries < 100);
-
-			if (tries < 100)
-			{
-				// Spell number
-				obj->value[5] = spells_data[splnum].spell;
-				// Spell level
-				obj->value[6] = number(15, MAX(20, GET_LEVEL(mob) - 10));
-				// Chance for spell proc (1 in val7).
-				obj->value[7] = number(45, 60);
-				SET_BIT(obj->extra2_flags, ITEM2_MAGIC);
-			}
-		}
-
-		if ((obj->affected[3].location != APPLY_NONE) ||
-		    (obj->affected[2].location != APPLY_NONE))
-		{
-			SET_BIT(obj->extra2_flags, ITEM2_MAGIC);
-		}
-	}
+		set_melee_values(obj, slot, material, prefix, source_level,
+				 should_have_weapon_proc);
 	else if (isname("longbow", obj->name))
-	{
-		obj->type = ITEM_FIREWEAPON;
-		obj->value[3] = 1;
-
-		if (slot_data[slot].numb_material > 2)
-		{
-			obj->extra_flags |= ITEM_TWOHANDS;
-		}
-
-		obj->value[0] =
-			(int)(1 + (material_data[material].m_stat * prefix_data[prefix].m_stat *
-					   slot_data[slot].m_ac +
-				   number(0, 40)));
-		obj->value[1] =
-			(int)(1 + (material_data[material].m_stat * prefix_data[prefix].m_stat *
-					   slot_data[slot].m_ac +
-				   number(0, 40)));
-
-		bonus = (int)((material_data[material].m_stat * prefix_data[prefix].m_stat *
-			       slot_data[slot].m_stat) /
-				      20 +
-			      1);
-
-		// Move 2 and 1 up to 3 and 2 so 1 doesn't get overwritten.
-		obj->affected[3].location = obj->affected[2].location;
-		obj->affected[3].modifier = obj->affected[2].modifier;
-		obj->affected[2].location = obj->affected[1].location;
-		obj->affected[2].modifier = obj->affected[1].modifier;
-
-		obj->affected[1].location = APPLY_HITROLL;
-		obj->affected[1].modifier = bonus + number(0, 2);
-		obj->affected[0].location = APPLY_DAMROLL;
-		obj->affected[0].modifier = bonus + number(0, 2);
-	}
+		set_longbow_values(obj, slot, material, prefix);
 	else
 	{
 		GET_ITEM_TYPE(obj) = ITEM_ARMOR;
 		obj->value[0] = (int)(material_data[material].m_ac * prefix_data[prefix].m_ac *
 				      slot_data[slot].m_ac);
 	}
+}
 
+P_obj create_random_eq(P_char finder, int finder_level, int source_level, int requested_slot,
+		       int requested_material)
+{
+	int slot = choose_slot(requested_slot);
+	P_obj obj = read_object(slot_data[slot].wear_bit == ITEM_WIELD ? VOBJ_RANDOM_WEAPON :
+									 VOBJ_RANDOM_ARMOR,
+				VIRTUAL);
+	if (!obj)
+	{
+		send_to_char("Failed to load a new item.\n\r", finder);
+		return NULL;
+	}
+	// Each step keeps the old roll order, including rolls whose result is discarded.
+	int prefix = number(0, MAXPREFIX);
+	int material = choose_material(finder_level, source_level, requested_material);
+	const auto *zone = &zone_table[world[finder->in_room].zone];
+	random_name_style style =
+		choose_name(finder, finder_level, source_level, requested_material, zone);
+	name_item(obj, finder, slot, material, prefix, zone, style);
+	bool weapon_spell = add_name_affects(obj, style, slot, zone);
+	set_wear_and_weight(obj, slot, material, prefix);
+	set_stat_affects(obj, slot, material, prefix, source_level);
+	obj->material = material_data[material].m_number;
+	material_restrictions(obj);
+	if (isname("unique", obj->name))
+		obj->craftsmanship = OBJCRAFT_HIGHEST;
+	set_type_values(obj, slot, material, prefix, source_level, weapon_spell);
 	return obj;
 }
 
-// Good chance of adding a bitvector effect on item. 1 - ( 1 + 6 + 36 ) / 6^5 = about 99.45%
+// A 5d6 sum from 5 through 27 sets a permanent affect. Sums 28..30 do nothing
+// (21 of 7776 outcomes); the table keeps each sum's original field and bit.
 P_obj setsuffix_obj_new(P_obj obj)
 {
-	switch (dice(5, 6))
+	static const struct
 	{
-	case 5:
-		SET_BIT(obj->bitvector, AFF_DETECT_INVISIBLE);
-		break;
-	case 6:
-		SET_BIT(obj->bitvector2, AFF2_ULTRAVISION);
-		break;
-	case 7:
-		SET_BIT(obj->bitvector2, AFF2_FIRESHIELD);
-		break;
-	case 8:
-		SET_BIT(obj->bitvector, AFF_SLOW_POISON);
-		break;
-	case 9:
-		SET_BIT(obj->bitvector, AFF_WATERBREATH);
-		break;
-	case 10:
-		SET_BIT(obj->bitvector, AFF_INFRAVISION);
-		break;
-	case 11:
-		SET_BIT(obj->bitvector, AFF_PROTECT_GOOD);
-		break;
-	case 12:
-		SET_BIT(obj->bitvector, AFF_PROTECT_EVIL);
-		break;
-	case 13:
-		SET_BIT(obj->bitvector2, AFF2_PROT_COLD);
-		break;
-	case 14:
-		SET_BIT(obj->bitvector, AFF_LEVITATE);
-		break;
-	case 15:
-		SET_BIT(obj->bitvector2, AFF2_DETECT_EVIL);
-		break;
-	case 16:
-		SET_BIT(obj->bitvector2, AFF2_DETECT_GOOD);
-		break;
-	case 17:
-		SET_BIT(obj->bitvector2, AFF2_DETECT_MAGIC);
-		break;
-	case 18:
-		SET_BIT(obj->bitvector, AFF_PROT_FIRE);
-		break;
-	case 19:
-		SET_BIT(obj->bitvector5, AFF5_PROT_UNDEAD);
-		break;
-	case 20:
-		SET_BIT(obj->bitvector2, AFF2_PROT_ACID);
-		break;
-	case 21:
-		SET_BIT(obj->bitvector, AFF_SENSE_LIFE);
-		break;
-	case 22:
-		SET_BIT(obj->bitvector, AFF_MINOR_GLOBE);
-		break;
-	case 23:
-		SET_BIT(obj->bitvector, AFF_FARSEE);
-		break;
-	case 24:
-		SET_BIT(obj->bitvector3, AFF3_COLDSHIELD);
-		break;
-	case 25:
-		SET_BIT(obj->bitvector2, AFF2_SOULSHIELD);
-		break;
-	case 26:
-		SET_BIT(obj->bitvector, AFF_BARKSKIN);
-		break;
-	case 27:
-		SET_BIT(obj->bitvector, AFF_HASTE);
-		break;
-	default:
-		break;
-	}
+		unsigned long obj_data::*field;
+		unsigned long bit;
+	} affects[] = {
+		{ &obj_data::bitvector, AFF_DETECT_INVISIBLE }, // 5
+		{ &obj_data::bitvector2, AFF2_ULTRAVISION }, // 6
+		{ &obj_data::bitvector2, AFF2_FIRESHIELD }, // 7
+		{ &obj_data::bitvector, AFF_SLOW_POISON }, // 8
+		{ &obj_data::bitvector, AFF_WATERBREATH }, // 9
+		{ &obj_data::bitvector, AFF_INFRAVISION }, // 10
+		{ &obj_data::bitvector, AFF_PROTECT_GOOD }, // 11
+		{ &obj_data::bitvector, AFF_PROTECT_EVIL }, // 12
+		{ &obj_data::bitvector2, AFF2_PROT_COLD }, // 13
+		{ &obj_data::bitvector, AFF_LEVITATE }, // 14
+		{ &obj_data::bitvector2, AFF2_DETECT_EVIL }, // 15
+		{ &obj_data::bitvector2, AFF2_DETECT_GOOD }, // 16
+		{ &obj_data::bitvector2, AFF2_DETECT_MAGIC }, // 17
+		{ &obj_data::bitvector, AFF_PROT_FIRE }, // 18
+		{ &obj_data::bitvector5, AFF5_PROT_UNDEAD }, // 19
+		{ &obj_data::bitvector2, AFF2_PROT_ACID }, // 20
+		{ &obj_data::bitvector, AFF_SENSE_LIFE }, // 21
+		{ &obj_data::bitvector, AFF_MINOR_GLOBE }, // 22
+		{ &obj_data::bitvector, AFF_FARSEE }, // 23
+		{ &obj_data::bitvector3, AFF3_COLDSHIELD }, // 24
+		{ &obj_data::bitvector2, AFF2_SOULSHIELD }, // 25
+		{ &obj_data::bitvector, AFF_BARKSKIN }, // 26
+		{ &obj_data::bitvector, AFF_HASTE }, // 27
+	};
+	int index = dice(5, 6) - 5;
+	if (index < static_cast<int>(ARRAY_SIZE(affects)))
+		obj->*affects[index].field |= affects[index].bit;
 	return obj;
 }
 
 static P_obj setprefix_obj(P_obj obj, float modifier, int affectnumber)
 {
+	static const struct
+	{
+		int location;
+		float multiplier;
+	} affects[] = {
+		{ APPLY_HITROLL, 1 }, // 0
+		{ APPLY_STR, 1.5 }, // 1
+		{ APPLY_DEX, 1.5 }, // 2
+		{ APPLY_INT, 1.5 }, // 3
+		{ APPLY_WIS, 1.5 }, // 4
+		{ APPLY_CON, 1.5 }, // 5
+		{ APPLY_MANA, 8 }, // 6
+		{ APPLY_HIT, 8 }, // 7
+		{ APPLY_MOVE, 8 }, // 8
+		{ APPLY_DAMROLL, 1 }, // 9
+		{ APPLY_HITROLL, 1 }, // 10
+		{ APPLY_DAMROLL, 1 }, // 11
+		{ APPLY_SAVING_PARA, -1 }, // 12
+		{ APPLY_SAVING_FEAR, -1 }, // 13
+		{ APPLY_SAVING_BREATH, -1 }, // 14
+		{ APPLY_SAVING_SPELL, -1 }, // 15
+		{ APPLY_AGI, 1.5 }, // 16
+		{ APPLY_POW, 1.5 }, // 17
+		{ APPLY_LUCK, 1.5 }, // 18
+		{ APPLY_STR_MAX, 1 }, // 19
+		{ APPLY_DEX_MAX, 1 }, // 20
+		{ APPLY_INT_MAX, 1 }, // 21
+		{ APPLY_WIS_MAX, 1 }, // 22
+		{ APPLY_CON_MAX, 1 }, // 23
+		{ APPLY_AGI_MAX, 1 }, // 24
+		{ APPLY_POW_MAX, 1 }, // 25
+		{ APPLY_LUCK_MAX, 1 }, // 26
+		{ APPLY_HIT, 7 }, // 27
+		{ APPLY_HIT, 6 }, // 28
+		{ APPLY_HIT, 5 }, // 29
+		{ APPLY_HIT, 4 }, // 30
+	};
 	if ((int)modifier == 0)
 	{
 		obj->affected[affectnumber].location = APPLY_NONE;
+		obj->affected[affectnumber].modifier = modifier;
+		return obj;
 	}
-	else
+	bool duplicate;
+	do
 	{
-		int inUse[ARRAY_SIZE(obj->affected)];
-		int i;
-		bool reroll = true;
-		float modOriginal = modifier;
-
-		for (i = 0; i < static_cast<int>(ARRAY_SIZE(inUse)); i++)
-		{
-			inUse[i] = obj->affected[i].location;
-		}
-
-		while (reroll)
-		{
-			switch (number(0, 30))
+		const auto &affect = affects[number(0, ARRAY_SIZE(affects) - 1)];
+		obj->affected[affectnumber].location = affect.location;
+		obj->affected[affectnumber].modifier = (int)(modifier * affect.multiplier);
+		duplicate = false;
+		for (int i = 0; i < static_cast<int>(ARRAY_SIZE(obj->affected)); i++)
+			if (i != affectnumber && obj->affected[i].location == affect.location)
 			{
-			case 0:
-				obj->affected[affectnumber].location = APPLY_HITROLL;
-				modifier = (int)(modifier * 1);
-				break;
-			case 1:
-				obj->affected[affectnumber].location = APPLY_STR;
-				modifier = (int)(modifier * 1.5);
-				break;
-			case 2:
-				obj->affected[affectnumber].location = APPLY_DEX;
-				modifier = (int)(modifier * 1.5);
-				break;
-			case 3:
-				obj->affected[affectnumber].location = APPLY_INT;
-				modifier = (int)(modifier * 1.5);
-				break;
-			case 4:
-				obj->affected[affectnumber].location = APPLY_WIS;
-				modifier = (int)(modifier * 1.5);
-				break;
-			case 5:
-				obj->affected[affectnumber].location = APPLY_CON;
-				modifier = (int)(modifier * 1.5);
-				break;
-			case 6:
-				obj->affected[affectnumber].location = APPLY_MANA;
-				modifier = (8 * modifier);
-				break;
-			case 7:
-				obj->affected[affectnumber].location = APPLY_HIT;
-				modifier = (8 * modifier);
-				break;
-			case 8:
-				obj->affected[affectnumber].location = APPLY_MOVE;
-				modifier = (8 * modifier);
-				break;
-			case 9:
-				obj->affected[affectnumber].location = APPLY_DAMROLL;
-				break;
-			case 10:
-				obj->affected[affectnumber].location = APPLY_HITROLL;
-				break;
-			case 11:
-				obj->affected[affectnumber].location = APPLY_DAMROLL;
-				break;
-			case 12:
-				obj->affected[affectnumber].location = APPLY_SAVING_PARA;
-				modifier = (0 - modifier);
-				break;
-			case 13:
-				obj->affected[affectnumber].location = APPLY_SAVING_FEAR;
-				modifier = (0 - modifier);
-				break;
-			case 14:
-				obj->affected[affectnumber].location = APPLY_SAVING_BREATH;
-				modifier = (0 - modifier);
-				break;
-			case 15:
-				obj->affected[affectnumber].location = APPLY_SAVING_SPELL;
-				modifier = (0 - modifier);
-				break;
-			case 16:
-				obj->affected[affectnumber].location = APPLY_AGI;
-				modifier = (int)(modifier * 1.5);
-				break;
-			case 17:
-				obj->affected[affectnumber].location = APPLY_POW;
-				modifier = (int)(modifier * 1.5);
-				break;
-			case 18:
-				obj->affected[affectnumber].location = APPLY_LUCK;
-				modifier = (int)(modifier * 1.5);
-				break;
-			case 19:
-				obj->affected[affectnumber].location = APPLY_STR_MAX;
-				break;
-			case 20:
-				obj->affected[affectnumber].location = APPLY_DEX_MAX;
-				break;
-			case 21:
-				obj->affected[affectnumber].location = APPLY_INT_MAX;
-				break;
-			case 22:
-				obj->affected[affectnumber].location = APPLY_WIS_MAX;
-				break;
-			case 23:
-				obj->affected[affectnumber].location = APPLY_CON_MAX;
-				break;
-			case 24:
-				obj->affected[affectnumber].location = APPLY_AGI_MAX;
-				break;
-			case 25:
-				obj->affected[affectnumber].location = APPLY_POW_MAX;
-				break;
-			case 26:
-				obj->affected[affectnumber].location = APPLY_LUCK_MAX;
-				break;
-			case 27:
-				obj->affected[affectnumber].location = APPLY_HIT;
-				modifier = (7 * modifier);
-				break;
-			case 28:
-				obj->affected[affectnumber].location = APPLY_HIT;
-				modifier = (6 * modifier);
-				break;
-			case 29:
-				obj->affected[affectnumber].location = APPLY_HIT;
-				modifier = (5 * modifier);
-				break;
-			case 30:
-				obj->affected[affectnumber].location = APPLY_HIT;
-				modifier = (4 * modifier);
-				break;
-			default:
-				obj->affected[affectnumber].location = APPLY_HIT;
-				modifier = (3 * modifier);
+				duplicate = true;
 				break;
 			}
-
-			for (i = 0; i < static_cast<int>(ARRAY_SIZE(inUse)); i++)
-			{
-				if (i == affectnumber)
-				{
-					continue;
-				}
-
-				if (obj->affected[affectnumber].location ==
-				    obj->affected[i].location)
-				{
-					// collision on an existing affect slot
-					modifier = modOriginal;
-					break;
-				}
-			}
-			reroll = (i < static_cast<int>(ARRAY_SIZE(inUse)));
-		}
-	}
-
-	obj->affected[affectnumber].modifier = modifier;
+	} while (duplicate);
 	return obj;
 }
 
@@ -892,7 +663,7 @@ int random_eq_proc(P_obj obj, P_char ch, int cmd, char *argument)
 	return FALSE;
 }
 
-P_obj set_encrust_affect(P_obj obj, int proc)
+void set_encrust_affect(P_obj obj, int proc)
 {
 	switch (proc)
 	{
@@ -925,8 +696,6 @@ P_obj set_encrust_affect(P_obj obj, int proc)
 		SET_BIT(obj->bitvector, AFF_HASTE);
 		break;
 	}
-
-	return 0;
 }
 
 bool identify_random(P_obj obj)
@@ -939,10 +708,12 @@ bool identify_random(P_obj obj)
 	if (!obj->value[5])
 		return false;
 
-	for (i = 0; i < 62 && spells_data[i].spell != obj->value[5]; i++)
+	for (i = 0;
+	     i < static_cast<int>(ARRAY_SIZE(spells_data)) && spells_data[i].spell != obj->value[5];
+	     i++)
 		;
 
-	if (i == 62 || !*spells_data[i].name)
+	if (i == static_cast<int>(ARRAY_SIZE(spells_data)) || !*spells_data[i].name)
 		return false;
 
 	strcpy(old_name, obj->short_description);

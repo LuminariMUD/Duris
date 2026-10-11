@@ -58,7 +58,7 @@ void do_randobj(P_char ch, char *strn, int /*val*/)
 
 	if (!str_cmp("piece", strn))
 	{
-		o = create_material(ch, ch);
+		o = create_material(ch, GET_LEVEL(ch), GET_LEVEL(ch));
 		obj_to_char(o, ch);
 		return;
 	}
@@ -70,7 +70,7 @@ void do_randobj(P_char ch, char *strn, int /*val*/)
 	}
 	if (!str_cmp("eq", strn))
 	{
-		o = create_random_eq_new(ch, ch, -1, -1);
+		o = create_random_eq(ch, GET_LEVEL(ch), GET_LEVEL(ch), -1, -1);
 		obj_to_char(o, ch);
 		snprintf(Gbuf5, MAX_STRING_LENGTH, "o %s", o->name);
 		do_stat(ch, Gbuf5, CMD_STAT);

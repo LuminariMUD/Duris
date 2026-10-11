@@ -8,14 +8,15 @@ today; that behaviour is what this plan keeps.
 ## Current handoff (2026-10-11)
 
 All five phases are implemented and published as PRs #25 through #29. This checkout is
-`enhancement/randeq-3-module`; its reviewed head is tagged `randeq/phase-3-review-4`.
-PRs #25, #26 and #27 are ready to merge in order. Review #28 and #29 next.
+`enhancement/randeq-4-generator`; its reviewed head is tagged `randeq/phase-4-review-4`.
+PRs #25 through #28 are ready to merge in order. Review #29 next.
 
-Phase 3's implementation is `a3bff0079`; review merge `131f095d8` passed 707/707 regressions
-and 72/72 database tests without reruns. The final follow-up removes added author-credit
-comments and records these results. All C++ after the affected file banners is unchanged;
-both build profiles, the strengthened golden harness and documentation checks pass after
-the comment edit. The stack table records the current heads and remaining review work.
+Phase 4's original implementation is `4b7e68cb4`; review merge `00778b1b2` passed both
+build profiles, 707/707 regressions and 72/72 database tests without reruns. Its strengthened
+harness matches both frozen fixtures, including ending RNG draws, all suffix totals,
+string ownership and the foreign-spell assertion. The second review merge adds template
+identity and rejected-kill assertions, with no server changes. The stack table records
+the current review state.
 
 ## Review follow-up (2026-10-11)
 
@@ -111,6 +112,29 @@ The previously completed module/golden/full gates remain valid; the help string 
 built and exercised in both profiles on #26. Minimal-boot, formatting and 12 documentation
 checks pass here. The final master sync changes only documentation; the source/test
 tree still matches `cd712da5f`, and 12 documentation checks pass after this sync.
+
+PR #28 is ready to merge at `randeq/phase-4-review-4` and has no review findings.
+The inherited ownership assertion initially treated the bare prototype in the foreign-spell
+regression as generated equipment. It now runs at the direct-generation and kill-drop
+observation points, retaining both exact mask checks while accepting the untouched
+prototype. Temporary mutations removing `STRUNG_KEYS` fail on both observation paths.
+No game code changed in this review pass, and both fixtures remain frozen.
+
+Merge `00778b1b2` passed full formatting, both builds, the ASan/UBSan golden harness,
+`make test-all -j16 TEST_JOBS=16` (707/707), `make test-db` (72/72), site checks (15) and
+documentation checks (12). No gate reruns were needed. The final record changes only this
+plan. Evidence: `randeq-gate/pr4-review1.log`, `pr4-review1-site.log`,
+`pr4-review1-focused.log` and `pr4-review1-ownership.log`.
+
+The second review merge retains both the ownership and template assertions at the two
+generated-object observation points. Server sources and build scripts are identical to
+`646ba5ca9`; their completed full-gate evidence remains valid. The ASan/UBSan golden
+harness, 12 documentation checks, 15 site checks and formatting pass
+(`pr4-review2-focused.log`, `pr4-review2-site.log`).
+The third review merge adds only #26's corrected startup-help string and its record.
+Minimal-boot, formatting and 12 documentation checks pass; the previous generator/full
+and focused evidence is retained. The final master sync changes only documentation;
+server sources and tests still match `92ba5294f`, and 12 documentation checks pass.
 
 ## Goal
 
@@ -500,6 +524,25 @@ the production `-O2` profile).
 
 ### Phase 4: a readable generator
 
+**Original implementation, committed and published:** `4b7e68cb4`,
+[PR #28](https://github.com/LuminariMUD/Duris/pull/28), tag `randeq/phase-4-review-0`.
+The independent fixes are `316444732` (true-name
+bounds) and `143fb1d5b` (void encrust return); the foreign-spell assertion and all existing
+encrust cases pass under ASan/UBSan. The generator now has separate slot, material, naming,
+suffix, weight, stat and type steps. The three naming copies are one function, and all
+three switches are tables with the same mapping. Equipment and salvage use explicit
+levels, with every live caller passing the same levels as before.
+
+All 1,480 golden cases match the unchanged fixture. The fixture caught an attempted
+`MAX(0, ... - number(...))` simplification drawing twice; the roll and clamp remain separate.
+The weapon-dice `MIN` expression also deliberately retains its original repeated draw.
+Every module function is at most 80 lines except the untouched, disconnected proc (112).
+Development and production builds passed (`make -C src -j8`, `make build-production -j8`),
+with logs `randeq-gate/pr4-dev.log` and `randeq-gate/pr4-production.log`. The affected
+contracts and documentation checks passed. On `4b7e68cb4`, `make test-all -j16 TEST_JOBS=16`
+passed 707/707 and `make test-db` passed 72/72 without reruns (`randeq-gate/pr4.log`).
+Current review validation is recorded above.
+
 Split `create_random_eq_new()` into the steps above, behind `create_random_eq()` with level
 parameters (the old name goes, every caller moves). Then:
 
@@ -569,9 +612,9 @@ based on the one below, so each pull request's diff is its own phase. The first 
 | PR | Phase | Branch | GitHub | State |
 |---|---|---|---|---|
 | 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | [#25](https://github.com/LuminariMUD/Duris/pull/25) | Ready at `fdfdffb19` (`randeq/phase-1-review-4`); all six findings fixed |
-| 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | [#26](https://github.com/LuminariMUD/Duris/pull/26) | Ready at `2e11670ae` (`randeq/phase-2-review-4`); no findings, full gates passed |
-| 3 | 3, module and interface | `enhancement/randeq-3-module` | [#27](https://github.com/LuminariMUD/Duris/pull/27) | Ready at `randeq/phase-3-review-4`; both findings fixed and full gates passed |
-| 4 | 4, readable generator | `enhancement/randeq-4-generator` | [#28](https://github.com/LuminariMUD/Duris/pull/28) | Implemented and verified at `4b7e68cb4`; review follow-up pending |
+| 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | [#26](https://github.com/LuminariMUD/Duris/pull/26) | Ready at `2e11670ae` (`randeq/phase-2-review-4`); startup-help finding fixed; full gates retained |
+| 3 | 3, module and interface | `enhancement/randeq-3-module` | [#27](https://github.com/LuminariMUD/Duris/pull/27) | Ready at `8acc03583` (`randeq/phase-3-review-4`); both findings fixed and full gates passed |
+| 4 | 4, readable generator | `enhancement/randeq-4-generator` | [#28](https://github.com/LuminariMUD/Duris/pull/28) | Ready at `randeq/phase-4-review-4`; no findings, full gates retained and new assertions passed |
 | 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | [#29](https://github.com/LuminariMUD/Duris/pull/29) | Implemented and verified at `6364ebf58`; review follow-up pending |
 
 ## Checks per pull request

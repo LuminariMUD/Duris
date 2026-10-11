@@ -206,7 +206,7 @@ P_obj quest_item_reward(P_char ch)
 
 	if (!reward)
 	{
-		reward = create_random_eq_new(ch, ch, -1, -1);
+		reward = create_random_eq(ch, GET_LEVEL(ch), GET_LEVEL(ch), -1, -1);
 	}
 
 	if (reward)

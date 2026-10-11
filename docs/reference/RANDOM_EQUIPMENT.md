@@ -17,7 +17,7 @@ a player or a player's pet. It makes two independent rolls with `check_random_dr
 
 | Roll | Scaled by | A win gives |
 | --- | --- | --- |
-| Equipment | `drop.piece.percentage` (15.0) | `create_random_eq_new()`, or `create_stones()` one time in 26 |
+| Equipment | `drop.piece.percentage` (15.0) | `create_random_eq()`, or `create_stones()` one time in 26 |
 | Material | `drop.equipment.percentage` (8.0) | `create_material()`, or `create_stones()` one time in 26 |
 
 The setting names are historical: the "piece" percentage governs equipment, and the
@@ -60,9 +60,13 @@ The Hardcore multiplier is `bonus.random.equipment.multiplier` in `lib/hardcore.
 
 ## What the equipment is
 
-`create_random_eq_new(killer, mob, slot, material)` starts from a blank object,
+`create_random_eq(finder, finder_level, source_level, slot, material)` starts from a blank object,
 `VOBJ_RANDOM_WEAPON` (1254) for a wielded slot or `VOBJ_RANDOM_ARMOR` (1252) for
-anything else, and fills it in:
+anything else, and fills it in. Existing callers pass the killer's and mob's levels;
+explicit levels let staff generate the same item without changing their character.
+The steps are `choose_slot()`, `choose_material()`, `choose_name()`/`name_item()`,
+`add_name_affects()`, `set_wear_and_weight()`, `set_stat_affects()` and `set_type_values()`:
+
 
 - **Slot.** Two times in three it picks from the first 71 entries of `slot_data`
   (armour, jewellery and shields), otherwise from all 109. About one drop in sixteen is a
@@ -127,7 +131,7 @@ calls it.
 
 ## Salvage materials and encrust stones
 
-`create_material(killer, mob)` draws a quality index from 0 up to the sum of both levels
+`create_material(finder, finder_level, source_level)` draws a quality index from 0 up to the sum of both levels
 divided by 2.8, maps it onto one of five quality tiers, and picks one of 42 material
 families at random. The materials are vnums 400000 to 400209, five tiers per family.
 When an alchemist's kill drops a material, one time in seven the alchemist also regains

@@ -11,6 +11,19 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Random equipment: revealing a foreign weapon spell
+
+`identify_random()` bounds its search by the 61-entry spell table. A weapon with a spell
+outside that table keeps its name; the old 62-iteration search read past the table.
+
+```sh
+python3 tests/async/test_random_equipment_golden.py
+```
+
+The native ASan/UBSan harness asserts that a weapon with `SPELL_BLINDNESS` stays unchanged,
+in addition to comparing every existing true-name case with the frozen fixture. This
+covers the real naming function, not the live reveal-true-name spell command.
+
 ## Achievement zones: quest givers, tie order and area names
 
 `achievements zones` lists each zone where the character has completed a quest. A quest
