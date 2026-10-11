@@ -3168,8 +3168,10 @@ void update_racial_shrug_data()
 
 	for (i = 0; i <= LAST_RACE; i++)
 	{
-		snprintf(buf, 128, "innate.shrug.%s", race_names_table[i].no_spaces);
-		racial_shrug_data[i] = get_property(buf, 0);
+		// Player and monster vampires share other race settings, but not shrug.
+		snprintf(buf, 128, "innate.shrug.%s",
+			 i == RACE_PVAMPIRE ? "PVampire" : race_names_table[i].no_spaces);
+		racial_shrug_data[i] = get_property(buf, i == RACE_PVAMPIRE ? 40 : 0);
 	}
 }
 
