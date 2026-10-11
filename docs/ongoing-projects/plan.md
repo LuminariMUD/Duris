@@ -8,14 +8,14 @@ today; that behaviour is what this plan keeps.
 ## Current handoff (2026-10-11)
 
 All five phases are implemented and published as PRs #25 through #29. This checkout is
-`enhancement/randeq-4-generator`. PRs #25, #26 and #27 are ready to merge in order.
-PR #28 has no review findings; its merge carries in the completed fixes and stronger
-harness from the lower phases. Verify this merged head, then review #29.
+`enhancement/randeq-4-generator`; its reviewed head is tagged `randeq/phase-4-review-1`.
+PRs #25 through #28 are ready to merge in order. Review #29 next.
 
-Phase 4's original implementation `4b7e68cb4` passed 707/707 regressions and 72/72 database
-tests without reruns. Its two defect repairs are `316444732` (true-name bounds) and
-`143fb1d5b` (void encrust return). The review merge changes no executable source code.
-Both fixtures remain frozen; the stack table records the current review state.
+Phase 4's original implementation is `4b7e68cb4`; review merge `00778b1b2` passed both
+build profiles, 707/707 regressions and 72/72 database tests without reruns. Its strengthened
+harness matches both frozen fixtures, including ending RNG draws, all suffix totals,
+string ownership and the foreign-spell assertion. The final follow-up only records these
+results. The stack table records the current review state.
 
 ## Review follow-up (2026-10-11)
 
@@ -72,13 +72,18 @@ The final comment-only correction passed development and production builds, the 
 golden test and 12 documentation checks; the site checks passed (15). No executable code
 changed after the full gate. Evidence: `randeq-gate/pr3-review1.log`,
 `pr3-review1-site.log` and `pr3-review1-attribution-{dev,production}.log`.
-PR #28 has no review findings. The inherited ownership assertion initially treated the
-bare prototype in the foreign-spell regression as generated equipment. The assertion now
-runs at the direct-generation and kill-drop observation points, so both generated-item
-paths retain the exact mask check while the untouched prototype remains valid. The
-strengthened golden harness passes both frozen fixtures, all suffix totals and the
-foreign-spell assertion. This changes no game code. Full merge validation is pending;
-PR #29 follows.
+PR #28 is ready to merge at `randeq/phase-4-review-1` and has no review findings.
+The inherited ownership assertion initially treated the bare prototype in the foreign-spell
+regression as generated equipment. It now runs at the direct-generation and kill-drop
+observation points, retaining both exact mask checks while accepting the untouched
+prototype. Temporary mutations removing `STRUNG_KEYS` fail on both observation paths.
+No game code changed in this review pass, and both fixtures remain frozen.
+
+Merge `00778b1b2` passed full formatting, both builds, the ASan/UBSan golden harness,
+`make test-all -j16 TEST_JOBS=16` (707/707), `make test-db` (72/72), site checks (15) and
+documentation checks (12). No gate reruns were needed. The final record changes only this
+plan. Evidence: `randeq-gate/pr4-review1.log`, `pr4-review1-site.log`,
+`pr4-review1-focused.log` and `pr4-review1-ownership.log`. Next: PR #29.
 
 ## Goal
 
@@ -558,7 +563,7 @@ based on the one below, so each pull request's diff is its own phase. The first 
 | 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | [#25](https://github.com/LuminariMUD/Duris/pull/25) | Ready at `06d14aab6` (`randeq/phase-1-review-2`); all four findings fixed |
 | 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | [#26](https://github.com/LuminariMUD/Duris/pull/26) | Ready at `fd38db525` (`randeq/phase-2-review-1`); no findings, full gates passed |
 | 3 | 3, module and interface | `enhancement/randeq-3-module` | [#27](https://github.com/LuminariMUD/Duris/pull/27) | Ready at `9cbdca5fc` (`randeq/phase-3-review-1`); both findings fixed and full gates passed |
-| 4 | 4, readable generator | `enhancement/randeq-4-generator` | [#28](https://github.com/LuminariMUD/Duris/pull/28) | Implementation `4b7e68cb4` passed full gates; review merge validation in progress |
+| 4 | 4, readable generator | `enhancement/randeq-4-generator` | [#28](https://github.com/LuminariMUD/Duris/pull/28) | Ready at `randeq/phase-4-review-1`; no findings, full gates passed |
 | 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | [#29](https://github.com/LuminariMUD/Duris/pull/29) | Implemented and verified at `6364ebf58`; review follow-up pending |
 
 ## Checks per pull request
