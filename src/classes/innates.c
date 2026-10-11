@@ -3680,7 +3680,7 @@ int get_innate_resistance(P_char ch)
 		if (count > 0)
 		{
 			count = MIN(count, (int)get_property("innate.rrakkma.maxSteps", 5));
-			res += count * (int)get_property("innate.rrakkma.stepPc", 5);
+			res += count * (int)get_property("innate.rrakkma.stepPct", 5);
 		}
 		//  debug("after: %d", res);
 	}
