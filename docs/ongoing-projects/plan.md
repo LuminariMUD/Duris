@@ -7,167 +7,109 @@ today; that behaviour is what this plan keeps.
 
 ## Current handoff (2026-10-11)
 
-All five phases are implemented and published as PRs #25 through #29. This checkout is
-`enhancement/randeq-5-randobj`. PRs #25 through #28 are ready to merge in order; their
-reviewed heads and local results are recorded below. PR #29's review is in progress.
+All five phases are implemented, reviewed and ready to merge as PRs #25 through #29.
+This checkout is `enhancement/randeq-5-randobj`, tagged `randeq/phase-5-review-1`.
+All twelve review findings are fixed and their threads resolved. The PRs remain open;
+land them in the order below using merge commits, retargeting each next PR to `master`
+before deleting its former base. Repository admins or organization owners handle landing.
 
-Phase 5's original code commit `dbbc89dfe` passed both builds, 709/709 regressions,
-72/72 database tests and the live command checks recorded in its phase section. The
-current review carries in the lower-phase repairs and fixes recipe batch reporting:
-only scrolls actually delivered count as created. The expanded ASan/UBSan command test
-reproduced the old overcount and passes with the fix; both frozen fixtures, tokenizer,
-formatting and documentation checks also pass. The live recipe check passed; only the
-final full local gates remain. The PRs remain open and unmerged.
+Current master `cdfcacf0a` is merged through the stack. Its contributor-policy change
+is documentation only; no history was rewritten and earlier review tags are preserved.
+No implementation or verification work remains for this five-phase plan. PRs #30–#32
+are separate changes, outside this random-equipment plan.
+
+The final behavioral revision `e35d9ff89` passed 709/709 regressions and 72/72 database
+tests without reruns, both builds, formatting and the private live checks. A subsequent
+short-usage text correction passed all three builds and the native command harness.
+The final master sync and handoff record change only documentation, preserving that
+source/test evidence. Both frozen 1,480-case fixtures remain unchanged.
 
 ## Review follow-up (2026-10-11)
 
-**Outcome:** address every review finding, oldest PR first, and leave the five published
-PRs ready to merge. **Non-goals:** game-rule changes, unrelated cleanup and landing the PRs.
-**Files:** the existing harness, affected implementation and their documentation as findings
-require. **Proof:** focused regressions, the unchanged golden fixture, mutation checks for
-test-coverage findings and the applicable local gates below; GitHub CI is not a gate.
+**Outcome:** address every review finding, oldest PR first, and leave the published PRs
+ready to merge. **Non-goals:** game-rule changes, unrelated cleanup and landing the PRs.
+**Files:** existing harnesses, the implementation each finding affects and its documentation.
+**Proof:** focused regressions, frozen item/RNG fixtures, mutation checks for coverage
+findings and applicable local gates; GitHub CI is not a gate.
 
-`origin/master` remains `879adf0aa`, already an ancestor of every phase. Keep the published
-stack and existing review tags; merge lower fixes upward in order and tag each fixed
-head with the next `randeq/phase-<n>-review-<round>` tag. No rebase or squash is needed.
+PR #25 (`randeq/phase-1-review-4`) addresses six coverage findings:
 
-PR #25 is ready to merge at `randeq/phase-1-review-3`; all six review threads have
-replies and are resolved. The harness now covers:
+- pet owners differ in level, luck and room, so either drop roll using the wrong actor fails;
+- all 26 suffix totals have direct seeded bitvector and RNG assertions;
+- the next RNG draw after every case is compared with a companion fixture captured from
+  original `master` at `879adf0aa`, detecting terminal draws that leave item fields unchanged;
+- real string setters and exact ownership bits ensure generated names are marked for saving;
+- direct and kill-drop equipment must retain the correct weapon/armor blank vnum;
+- NPC killers, player victims and dead player/pet killers produce no drops, messages or RNG draws.
 
-- different pet/owner level, luck and room attributes;
-- all 26 suffix totals and their RNG consumption;
-- a sentinel RNG draw after all 1,480 cases, stored in a companion fixture captured
-  from original `master` code at `879adf0aa`;
-- real string setters and all three string ownership bits on every generated item,
-  including kill drops, so generated names are marked for persistence;
-- the weapon/armor blank vnum at both direct-generation and kill-drop observation points;
-- ordinary NPC killers, player victims, dead player killers and dead pet killers, with no
-  drops, messages or RNG draws allowed in these rejected contexts.
+Temporary mutations demonstrated each repair: swapped pet actor, removed rare suffixes,
+extra terminal draw, bypassed setters, swapped blank and omitted eligibility predicates
+all fail. Both fixtures remain frozen. Code/test commit `a32d39dd7` passed full formatting,
+both builds and `make test-all -j16 TEST_JOBS=16` (707/707, no reruns), plus 15 site and
+12 documentation checks. The tests/comments/docs phase is exempt from `make test-db`.
+Evidence: `pr1-review4.log`, `pr1-review4-focused.log`, `pr1-review4-mutations.log`,
+`pr1-review4-site.log`, `pr1-review1-mutations.log`, `pr1-review2-rng.log` and
+`pr1-review3-ownership.log`, all under `/home/aiwithapex/projects/randeq-gate/`.
 
-The original item fixture remains unchanged. Both fixtures are frozen for later phases.
-Temporary mutations proved the repairs: either pet roll using the owner fails four cases;
-removing suffix 5, 6 or 7 fails its assertion; an extra terminal longbow draw leaves item
-output unchanged but fails three RNG sentinels; bypassing each string setter fails the
-ownership assertion. No game code changed. The real setters replace three test stubs.
+PR #26 (`randeq/phase-2-review-4`) fixes the remaining `[-l]` startup-help reference.
+Both build profiles and actual invalid invocations prove the corrected usage; minimal-boot,
+formatting/tidy and documentation checks pass. Its full gate on `b4f4252a6` passed 707/707
+regressions and 72/72 database tests without reruns. Later harness additions passed against
+this phase; the only subsequent server edit is that help string. Evidence:
+`pr2-review1.log`, `pr2-review2-{focused,site}.log` and
+`pr2-review3-{dev,production,focused,usage}.log`.
 
-**Previous proof:** code/test commit `be9c9915d` passed the ASan/UBSan harness, full formatting,
-`make test-all -j16 TEST_JOBS=16` (707/707, no reruns, including both build profiles),
-`npm test --prefix site` (15 checks) and 12 documentation checks. `make security-check`
-also passed on the unchanged security sources. The final record commit only updates this
-plan. `make test-db` remains exempt for this tests/comments/docs phase. Logs are under
-`/home/aiwithapex/projects/randeq-gate/`: `pr1-review3.log`, `pr1-review3-site.log`,
-`pr1-review1-security.log`, `pr1-review1-mutations.log`, `pr1-review2-rng.log` and
-`pr1-review3-ownership.log`. Earlier full gates also passed; their logs are retained.
-CodeQL and Trivy are not installed locally; those external scanners were not rerun.
-The new assertions preserve both frozen fixtures. ASan/UBSan passes, and temporary
-mutations swapping the weapon blank or omitting any of the three eligibility predicates
-fail. No new fixture or production code is needed: template identity is a fixed invariant
-of the existing wear flags, and rejected contexts must be side-effect free. Evidence:
-`pr1-review4-focused.log` and `pr1-review4-mutations.log`. Commit `a32d39dd7` passed
-full formatting, both builds and `make test-all -j16 TEST_JOBS=16` (707/707, no reruns;
-`pr1-review4.log`), plus site checks (15) and documentation checks (12). The final
-record changes only this plan and reuses that code/test gate.
+PR #27 (`randeq/phase-3-review-4`) fixes the stale handoff and removes added author credits
+from all three new module files. Merge `131f095d8` passed 707/707 regressions, 72/72 database
+tests and both builds without reruns. The comment edit passed both builds, and the expanded
+harness passes against the extracted module, including direct rejected-kill calls.
+Evidence: `pr3-review1.log`, `pr3-review1-attribution-{dev,production}.log` and
+`pr3-review2-{focused,site}.log`.
 
+PR #28 (`randeq/phase-4-review-4`) has no review findings. Its inherited ownership assertion
+was moved to generated-object observation points so the foreign-spell test's untouched
+prototype remains valid; missing-flag mutations still fail both direct and kill-drop paths.
+Merge `00778b1b2` passed 707/707 regressions, 72/72 database tests and both builds without
+reruns. The later template and eligibility assertions also pass against this generator.
+Evidence: `pr4-review1.log`, `pr4-review1-ownership.log` and
+`pr4-review2-{focused,site}.log`.
 
-PR #26 is ready to merge at `randeq/phase-2-review-3`; its startup-help finding is fixed.
-Merge `b4f4252a6` brings in all PR #25 repairs without conflicts or changes to Phase 2's
-server code. It passed the strengthened ASan/UBSan golden harness, minimal boot checks,
-full formatting, `make test-all -j16 TEST_JOBS=16` (707/707, both build profiles),
-`make test-db` (72/72) and the site checks (15). No reruns were needed. The final record
-only updates this plan and passes its 12 documentation checks. Evidence:
-`randeq-gate/pr2-review1.log` and `pr2-review1-site.log`.
+PR #29 (`randeq/phase-5-review-1`) addresses all three findings:
 
-The second review merge adds only the two new golden assertions and documentation.
-Its server source tree is byte-identical to the fully gated `fd38db525` revision. Reuse
-that full build/regression/database evidence. The changed ASan/UBSan harness, 12
-documentation checks, 15 site checks and formatting pass on this merge
-(`pr2-review2-focused.log`, `pr2-review2-site.log`).
+- `create_recipe()` reports success only after delivery; rejected targets contribute neither
+  a success line nor the total. The existing command harness now uses the real recipe
+  function for full containers/storage, prohibited affects, pulse affects and a controlled
+  crafting-availability rejection. Rejected, mixed and successful delivery checks pass;
+  the all-rejected batch failed before the repair.
+- `randobj mob` accepts 0–61, matching the existing generator; 62 is rejected before any
+  creation. Equipment/material levels still reach 62. The boundary test failed before
+  the repair, and the generator's game rules are unchanged.
+- Short usage, subcommand usage, detailed help and reference documentation agree on those ranges.
 
-The final review repair removes the retired `[-l]` token from the fatal startup usage
-message. Only that string changes in server code; option parsing and runtime behavior
-are unchanged. Both builds and minimal-boot/format checks pass, and invalid invocations
-of both binaries from a temporary directory exit with the corrected usage and no `[-l]`.
-Evidence: `pr2-review3-{dev,production,focused,usage}.log`. Full regression/database
-results above are retained for this help-only edit. The change propagates through #27–#29 before restarting #29's gate.
+On `e35d9ff89`, `make test-all -j16 TEST_JOBS=16` passed 709/709 and `make test-db` passed
+72/72 without reruns (`pr5-review3.log`). The development, production and dedicated flat-file
+builds, ASan/UBSan command/tokenizer/golden harnesses, formatting/tidy, 15 site checks and
+12 documentation checks pass. The final usage-only edit `5369802c6` passed all three
+builds and the real command harness; bare and unknown commands print the corrected ranges
+(`pr5-review3-usage-{dev,production,flatfile,output}.log`). No command behavior changed after
+the full gate. The two earlier interrupted gate logs (`pr5-review1.log`, `pr5-review2.log`)
+are superseded and are not completion evidence.
 
-PR #27 is ready to merge at `randeq/phase-3-review-3`. Both findings are addressed: the
-handoff, phase records and stack table now describe committed, published work and completed
-gates; added author credits were removed from the three new module files. The inherited
-harness retains the module split and all PR #25 repairs. Merge `131f095d8` passed full
-formatting, 707/707 regressions, both builds and 72/72 database tests without reruns.
-The final comment-only correction passed development and production builds, the ASan/UBSan
-golden test and 12 documentation checks; the site checks passed (15). No executable code
-changed after the full gate. Evidence: `randeq-gate/pr3-review1.log`,
-`pr3-review1-site.log` and `pr3-review1-attribution-{dev,production}.log`.
-The second review merge carries the new template and eligibility assertions into the
-split module; rejected contexts call `random_equipment_kill_drop()` directly. Server
-sources and build scripts remain identical to `9cbdca5fc`, retaining the completed full
-gate above. The ASan/UBSan golden harness, 12 documentation checks, 15 site checks
-and formatting pass (`pr3-review2-focused.log`, `pr3-review2-site.log`).
-The third review merge adds only #26's corrected startup-help string and its record.
-The previously completed module/golden/full gates remain valid; the help string was
-built and exercised in both profiles on #26. Minimal-boot, formatting and 12 documentation
-checks pass here.
+The private full-world live run repeated the five required commands and new-object stat
+checks. A level-61 mob was created at level 61; level 62 printed usage without generation.
+Fifty recipe attempts produced zero eligible scrolls, reported zero and left inventory at
+39 items. Successful and mixed recipe delivery are covered by the native harness. The
+synthetic character saved and the private server shut down cleanly; state was removed.
+Evidence: `pr5-review3-live.log` (script `pr5-review3-live.py`). No live kill drop or
+full-server sanitizer run is claimed.
 
-
-PR #28 is ready to merge at `randeq/phase-4-review-3` and has no review findings.
-The inherited ownership assertion initially treated the bare prototype in the foreign-spell
-regression as generated equipment. It now runs at the direct-generation and kill-drop
-observation points, retaining both exact mask checks while accepting the untouched
-prototype. Temporary mutations removing `STRUNG_KEYS` fail on both observation paths.
-No game code changed in this review pass, and both fixtures remain frozen.
-
-Merge `00778b1b2` passed full formatting, both builds, the ASan/UBSan golden harness,
-`make test-all -j16 TEST_JOBS=16` (707/707), `make test-db` (72/72), site checks (15) and
-documentation checks (12). No gate reruns were needed. The final record changes only this
-plan. Evidence: `randeq-gate/pr4-review1.log`, `pr4-review1-site.log`,
-`pr4-review1-focused.log` and `pr4-review1-ownership.log`.
-
-The second review merge retains both the ownership and template assertions at the two
-generated-object observation points. Server sources and build scripts are identical to
-`646ba5ca9`; their completed full-gate evidence remains valid. The ASan/UBSan golden
-harness, 12 documentation checks, 15 site checks and formatting pass
-(`pr4-review2-focused.log`, `pr4-review2-site.log`).
-The third review merge adds only #26's corrected startup-help string and its record.
-Minimal-boot, formatting and 12 documentation checks pass; the previous generator/full
-and focused evidence is retained.
-
-
-PR #29 review: `create_recipe()` now returns `bool`, reporting success only after
-delivery, and the command uses it to guard the batch count and success line. Existing
-eligibility rules and attempt limits are unchanged. The command harness uses the real
-recipe function for containers/storage, four affect bitvectors, combat/spell pulse and
-a controlled crafting-availability rejection, plus successful and mixed batches. Files: `randobj.c`, `drannak.c`,
-`tradeskill.h`, the command harness and these notes. Proof: ASan/UBSan command checks,
-both frozen fixtures, both builds, full regression/database gates and a private live
-recipe check. This directly fixes the reporting boundary without duplicating eligibility
-checks or adding retries. The all-rejected command failed before the repair and passes
-afterward (`pr5-review1-recipe-before.log`, `pr5-review1-recipe.log`).
-
-Merge `37abdac8c` retained every lower-phase assertion without changing server sources
-from recipe-fix commit `02e391102`. Development, production and dedicated flat-file builds
-passed (`pr5-review1-{dev,production,flatfile}.log`). The private level-62 live check
-repeated the five requested commands and stat identity checks, then made 50 recipe
-attempts: zero were eligible, output reported zero, and inventory stayed at 39 items.
-Successful and mixed delivery are covered by the native command test. The first live
-script stopped at a pagination prompt; adding page handling to that private script
-completed the check (`pr5-review1-live-pages.log`). It saved and shut down cleanly.
-The final follow-up adds #26's corrected startup usage string. The earlier gate on
-`37abdac8c` was intentionally interrupted before completion when that finding arrived;
-`pr5-review1.log` is not a completed gate. The replacement gate on `7204c8431` was also interrupted when the mob-level review
-finding arrived (`pr5-review2.log`); neither interrupted log is completion evidence.
-
-PR #29 also now rejects explicit mob level 62 before generation. The existing generator
-caps the stored level at 61 while deriving other stats from the requested level. Enforce
-its supported 0–61 range at the command boundary, retaining equipment/material levels
-through 62 and the existing mob rules. The command harness checks level 61 succeeds and
-62 (single or batch) creates nothing; help and reference limits agree. The rejection
-case failed before the fix (`pr5-review3-mob-before.log`). The follow-up short usage
-message now also distinguishes equipment/material levels 1–62 from mob levels 0–61.
-This follow-up changes displayed text only and passes the native command harness
-(`pr5-review3-usage.log`); the ongoing full gate on `e35d9ff89` remains valid for its
-unchanged command behavior. Fresh builds and the private live 61/62 boundary check
-passed on `e35d9ff89`; full regression/database results are in `pr5-review3.log`.
+The later test-only merges reran the affected harness against each phase, plus documentation,
+site and formatting checks; unchanged full-gate results were retained. The startup-help
+change was built and exercised directly. The final master sync changes only documentation;
+server sources and tests match their previously validated revisions and all 12 documentation
+checks pass. Owned gate worktrees are removed; proof logs and unrelated worktrees are retained.
+`make security-check` passed on unchanged security sources. CodeQL and Trivy are not installed
+locally and were not rerun.
 
 ## Goal
 
@@ -513,8 +455,8 @@ existed only for what went:
 
 `#define TROPHY` survives in other files, which use it for their own purposes.
 
-**Ready to merge (2026-10-11):** `fd38db525`, [PR #26](https://github.com/LuminariMUD/Duris/pull/26),
-tag `randeq/phase-2-review-1`. The review merge `b4f4252a6` passed both build profiles,
+**Ready to merge (2026-10-11):** `2e11670ae`, [PR #26](https://github.com/LuminariMUD/Duris/pull/26),
+tag `randeq/phase-2-review-4`. The review merge `b4f4252a6` passed both build profiles,
 707/707 regressions and 72/72 database tests with no reruns. Golden, formatting, focused
 and documentation/site checks also passed. The original interrupted gate is superseded;
 its temporary worktree was removed. Evidence: `randeq-gate/pr2-review1.log`.
@@ -699,11 +641,11 @@ based on the one below, so each pull request's diff is its own phase. The first 
 
 | PR | Phase | Branch | GitHub | State |
 |---|---|---|---|---|
-| 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | [#25](https://github.com/LuminariMUD/Duris/pull/25) | Ready at `ef0f6ec8a` (`randeq/phase-1-review-3`); all six findings fixed |
-| 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | [#26](https://github.com/LuminariMUD/Duris/pull/26) | Ready at `40e6db8b4` (`randeq/phase-2-review-3`); startup-help finding fixed; full gates retained |
-| 3 | 3, module and interface | `enhancement/randeq-3-module` | [#27](https://github.com/LuminariMUD/Duris/pull/27) | Ready at `cd712da5f` (`randeq/phase-3-review-3`); both findings fixed and full gates passed |
-| 4 | 4, readable generator | `enhancement/randeq-4-generator` | [#28](https://github.com/LuminariMUD/Duris/pull/28) | Ready at `92ba5294f` (`randeq/phase-4-review-3`); no findings, full gates retained and new assertions passed |
-| 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | [#29](https://github.com/LuminariMUD/Duris/pull/29) | Review fix `02e391102` and all lower fixes merged; final full gates pending |
+| 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | [#25](https://github.com/LuminariMUD/Duris/pull/25) | Ready at `fdfdffb19` (`randeq/phase-1-review-4`); all six findings fixed |
+| 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | [#26](https://github.com/LuminariMUD/Duris/pull/26) | Ready at `2e11670ae` (`randeq/phase-2-review-4`); startup-help finding fixed; full gates retained |
+| 3 | 3, module and interface | `enhancement/randeq-3-module` | [#27](https://github.com/LuminariMUD/Duris/pull/27) | Ready at `8acc03583` (`randeq/phase-3-review-4`); both findings fixed and full gates passed |
+| 4 | 4, readable generator | `enhancement/randeq-4-generator` | [#28](https://github.com/LuminariMUD/Duris/pull/28) | Ready at `ca1d9374b` (`randeq/phase-4-review-4`); no findings, full gates retained and new assertions passed |
+| 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | [#29](https://github.com/LuminariMUD/Duris/pull/29) | Ready at `randeq/phase-5-review-1`; all three findings fixed; 709/709 and 72/72 passed |
 
 ## Checks per pull request
 
