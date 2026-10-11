@@ -11,13 +11,15 @@
 #   ./scripts/import_help_to_prod.sh [OPTIONS]
 #
 # Options:
-#   --local              Import to localhost MySQL directly (default)
+#   --local              Connect directly using .env database settings (default)
 #   --remote <host>      Import to remote server via SSH (implies --ssh mode)
 #   --user <username>    SSH username for remote connection (default: current user)
+#   --news-only          Import only lib/information/news into mud_info
 #   --clean              Clear all existing help entries before import
 #   --dry-run            Show what would be imported without making changes
 #
 # Examples:
+#   ./scripts/import_help_to_prod.sh --news-only --dry-run
 #   ./scripts/import_help_to_prod.sh --dry-run
 #   ./scripts/import_help_to_prod.sh --local
 #   ./scripts/import_help_to_prod.sh --clean --dry-run
@@ -59,6 +61,7 @@ PARSED_HELP_FILE="help/duris_help_parsed.hlp"
 DRY_RUN=0
 USE_SSH=0  # Default to local mode
 CLEAN_DB=0  # Default to not cleaning database
+NEWS_ONLY=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -68,6 +71,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --clean)
             CLEAN_DB=1
+            shift
+            ;;
+        --news-only)
+            NEWS_ONLY=1
             shift
             ;;
         --remote)
@@ -95,14 +102,17 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --local              Import to localhost MySQL directly (default)"
+            echo "  --local              Connect directly using .env database settings (default)"
             echo "  --remote <host>      Import to remote server via SSH"
             echo "  --user <username>    SSH username for remote (default: $USER)"
+            echo "  --news-only          Import only lib/information/news into mud_info"
             echo "  --clean              Clear all existing help entries before import"
             echo "  --dry-run            Show what would be imported without changes"
             echo "  --help, -h           Show this help message"
             echo ""
             echo "Examples:"
+            echo "  $0 --news-only --dry-run"
+            echo "  $0 --news-only"
             echo "  $0 --dry-run"
             echo "  $0 --local"
             echo "  $0 --clean --dry-run"
@@ -114,12 +124,27 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: $0 [--local|--remote <host>] [--user <username>] [--clean] [--dry-run]"
+            echo "Usage: $0 [--local|--remote <host>] [--user <username>] [--news-only|--clean] [--dry-run]"
             echo "Use --help for more information"
             exit 1
             ;;
     esac
 done
+
+if [ $NEWS_ONLY -eq 1 ]; then
+    if [ $CLEAN_DB -eq 1 ]; then
+        echo "Error: --news-only cannot be combined with --clean"
+        exit 1
+    fi
+    if [ ! -f "$HELP_DIR/news" ]; then
+        echo "Error: news file not found: $HELP_DIR/news"
+        exit 1
+    fi
+    if [ ! -s "$HELP_DIR/news" ]; then
+        echo "Error: news file is empty: $HELP_DIR/news"
+        exit 1
+    fi
+fi
 
 # Validate SSH mode requirements
 if [ $USE_SSH -eq 1 ] && [ -z "$REMOTE_HOST" ]; then
@@ -230,6 +255,26 @@ stage_sql_file() {
     printf '\n' >> "$IMPORT_SQL_FILE"
 }
 
+# Both import modes publish through the same transaction and connection path.
+complete_import() {
+    echo ""
+    if [ $DRY_RUN -eq 1 ]; then
+        echo "=== Dry run complete. Run without --dry-run to apply to the selected database ==="
+    else
+        printf '%s\n' 'COMMIT;' >> "$IMPORT_SQL_FILE"
+        if ! execute_sql_file "$IMPORT_SQL_FILE"; then
+            echo "ERROR: import failed; transaction rolled back on disconnect."
+            exit 1
+        fi
+        echo "=== All Import Operations Committed Atomically! ==="
+        echo "Run plain page (no arguments) as an immortal, or restart the game, to reload cached news, MOTD and wizard MOTD."
+        if [ $NEWS_ONLY -eq 0 ]; then
+            echo "Help refreshes in the background within 60 seconds after an idle refresh slot is available."
+            echo "Use page help for an immediate refresh and page help status to confirm publication."
+        fi
+    fi
+}
+
 # ============================================================================
 # HEADER
 # ============================================================================
@@ -239,15 +284,23 @@ if [ $USE_SSH -eq 1 ]; then
     echo "Remote Host: $REMOTE_HOST"
     echo "Authentication: remote MySQL client configuration"
 else
-    echo "Mode: LOCAL"
-    echo "Host: $MYSQL_HOST:$MYSQL_PORT"
+    echo "Mode: DIRECT (--local uses .env; it does not select a development database)"
+    if [ -n "$MYSQL_SOCKET" ]; then
+        echo "Socket: $MYSQL_SOCKET"
+    else
+        echo "Host: $MYSQL_HOST:$MYSQL_PORT"
+    fi
 fi
 echo "Database: $MYSQL_DB"
 echo ""
 echo "This will import:"
-echo "  1. Individual help files (mud_info + pages)"
-echo "  2. Help index entries"
-echo "  3. Parsed help file entries"
+if [ $NEWS_ONLY -eq 1 ]; then
+    echo "  Only $HELP_DIR/news -> mud_info.name = 'news'"
+else
+    echo "  1. Individual help files (mud_info + pages)"
+    echo "  2. Help index entries"
+    echo "  3. Parsed help file entries"
+fi
 echo ""
 
 if [ $DRY_RUN -eq 1 ]; then
@@ -255,7 +308,7 @@ if [ $DRY_RUN -eq 1 ]; then
 else
     echo "Mode: LIVE (changes will be committed to the selected database)"
     echo ""
-    read -r -p "Continue with help import? (yes/no): " confirm
+    read -r -p "Continue with import to $MYSQL_DB? (yes/no): " confirm
     if [ "$confirm" != "yes" ]; then
         echo "Aborted."
         exit 0
@@ -277,9 +330,15 @@ if [ $DRY_RUN -eq 0 ]; then
         fi
         exit 1
     fi
-    engines=$(execute_sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN ('pages','mud_info') AND engine='InnoDB';" | tail -n 1)
-    if [ "$engines" != "2" ]; then
-        echo "ERROR: atomic import requires existing InnoDB pages and mud_info tables."
+    required_tables="'pages','mud_info'"
+    required_count=2
+    if [ $NEWS_ONLY -eq 1 ]; then
+        required_tables="'mud_info'"
+        required_count=1
+    fi
+    engines=$(execute_sql "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN ($required_tables) AND engine='InnoDB';" | tail -n 1)
+    if [ "$engines" != "$required_count" ]; then
+        echo "ERROR: atomic import requires existing InnoDB tables: $required_tables."
         exit 1
     fi
     echo "Connected successfully!"
@@ -343,6 +402,9 @@ declare -A MUD_INFO_FILES=(
     ["faq"]="faq"
     ["wizlist"]="wizlist"
 )
+if [ $NEWS_ONLY -eq 1 ]; then
+    MUD_INFO_FILES=(["news"]="news")
+fi
 
 # Files to import to pages table
 declare -A HELP_FILES=(
@@ -392,6 +454,11 @@ for filename in "${!MUD_INFO_FILES[@]}"; do
 
     rm "$tmpfile"
 done
+
+if [ $NEWS_ONLY -eq 1 ]; then
+    complete_import
+    exit 0
+fi
 
 echo ""
 echo ">> Importing to pages table..."
@@ -916,16 +983,4 @@ fi
 # ============================================================================
 # COMPLETE
 # ============================================================================
-echo ""
-if [ $DRY_RUN -eq 1 ]; then
-    echo "=== Dry run complete. Run without --dry-run to apply to the selected database ==="
-else
-    printf '%s\n' 'COMMIT;' >> "$IMPORT_SQL_FILE"
-    if ! execute_sql_file "$IMPORT_SQL_FILE"; then
-        echo "ERROR: import failed; transaction rolled back on disconnect."
-        exit 1
-    fi
-    echo "=== All Import Operations Committed Atomically! ==="
-    echo "Help refreshes in the background within 60 seconds after an idle refresh slot is available."
-    echo "Use page help for an immediate refresh and page help status to confirm publication."
-fi
+complete_import

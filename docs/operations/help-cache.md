@@ -66,10 +66,20 @@ use an InnoDB transaction for multi-statement edits; arbitrary autocommit script
 cannot provide this atomicity. Such committed edits are discovered by periodic
 refresh, or by `page help` after committing.
 
+For news updates, use `--news-only`: only `mud_info.name = 'news'` is replaced and
+only `mud_info` needs to exist and use InnoDB. Missing or empty news and the
+combination with `--clean` are rejected. Reload news with plain `page`, as described
+in [Publishing news only](../content/HELP_SYSTEM.md#publishing-news-only).
+
 `TEST_DB_HOST=<disposable-host> python3 tests/async/test_help_import_atomic.py`
 checks SQL-error rollback, reader visibility during a delayed three-section import,
-and rejection of nontransactional tables. The loader harness also measures response
-bytes for oversized rows, aggregate content, and page counts, and verifies the real
-60-second automatic refresh interval. Both DB tests use test-only root/cache-test
+rejection of nontransactional tables, and news-only isolation and byte preservation.
+Without a database, it still tests news-only previews, invalid inputs, and declined
+confirmation without allowing connections. The importer test also accepts
+`TEST_DB_PORT`, `TEST_DB_USER`, and `TEST_DB_PASSWORD`, so it can run under
+`tests/async/with_disposable_mariadb.sh python3 tests/async/test_help_import_atomic.py -v`.
+The loader harness also measures response bytes for oversized rows, aggregate
+content, and page counts, and verifies the real
+60-second automatic refresh interval. Both DB tests default to test-only root/cache-test
 credentials. Import execution explicitly disables mysql's continue-on-error option
 and enables strict SQL and literal backslash handling for generated title literals.

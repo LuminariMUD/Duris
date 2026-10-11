@@ -1,0 +1,4 @@
+interface:
+  display_name: "News Update"
+  short_description: "Turn GitHub history into colorful Duris player news"
+  default_prompt: "Use $news-update to update and publish comprehensive, entertaining Duris news from GitHub history to the verified current environment, following its production safeguards."

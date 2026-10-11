@@ -75,14 +75,15 @@ lib/information/*          help/                      database
 
 > [!WARNING]
 > Despite its name, this script can write to any database selected by `.env`
-> or to a remote host supplied with `--remote`. Run `--dry-run` first, verify
+> or to a remote host supplied with `--remote`. `--local` means a direct connection
+> using `.env`, not a development database. Run `--dry-run` first, verify
 > `DB_HOST`, `DB_PORT`, and `DB_NAME`, and take a database backup before a live
 > import. `--clean` deletes all rows from `pages` before re-importing content.
 > The script prompts for confirmation for live and clean operations.
 
-- Maps files from `lib/information/` into `mud_info` (motd, news, wizmotd)
-  and `pages` (help, help.1/2, guild/ship/kingdom helps, faq, rules, info,
-  credits, wizlist, hints).
+- By default, maps files from `lib/information/` into `mud_info` (motd, news,
+  wizmotd, credits, faq, wizlist) and `pages` (help, help.1/2, ship/kingdom helps,
+  chaos pouch help, faq, rules, credits, wizlist, hints).
 - `hints.txt` now lives at `docs/lib/information/hints.txt`; the script reads
   it from there (the login screen streams it via `src/account/nanny.c`).
 - Imports the parsed help entries from `help/duris_help_parsed.hlp` (~500+
@@ -113,6 +114,31 @@ lib/information/*          help/                      database
   discoverable; names colliding with spells/skills are quoted so the
   parentheses survive (`"ECHO (IMMORTAL)"`). Because import deletes by
   title, new entries must never re-use an existing bare title.
+
+### Publishing news only
+
+Use `--news-only` for a news update:
+
+```sh
+./scripts/import_help_to_prod.sh --news-only --dry-run
+./scripts/import_help_to_prod.sh --news-only
+```
+
+This imports only `lib/information/news` into `mud_info.name = 'news'`, preserving
+the file's bytes, colors, and line breaks. Other information rows and all help
+pages stay unchanged. The source must exist and contain at least one byte;
+`--news-only --clean` is rejected. A live import requires an existing InnoDB
+`mud_info` table and publishes in one transaction, so an SQL error leaves the old
+news intact. It does not require a `pages` table. Connection options and live
+confirmation work as for the bulk import, with the selected database displayed
+before confirmation.
+
+Dry-run lists the file and byte count without connecting to the database; it
+does not compare against existing database text or create a backup. Review the
+source and back up the destination before publishing. Without `--news-only`,
+even an import without `--clean` overwrites matching information and help content.
+After publishing, an immortal must run plain `page` (no arguments), or restart the
+game, to refresh cached news. `page help` refreshes only help pages.
 
 ## Editing help
 
