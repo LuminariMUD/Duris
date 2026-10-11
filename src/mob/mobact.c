@@ -6412,12 +6412,6 @@ void MobCombat(P_char ch)
 		return;
 	}
 
-	if (!number(0, 9) && has_innate(ch, INNATE_STAMPEDE) && !IS_PC_PET(ch))
-	{
-		do_stampede(ch, NULL, CMD_STAMPEDE);
-		return;
-	}
-
 	if (!number(0, 5) && has_innate(ch, INNATE_BITE) && (tch = pick_target(ch, PT_WEAKEST)))
 	{
 		bite(ch, tch);

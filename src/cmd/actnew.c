@@ -410,13 +410,16 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	int missed;
 	int count;
-	P_char vict, next_vict = 0;
+	int room;
+	bool engaged;
+	std::vector<P_char> candidates;
 
 	/*  struct group_list *gl; */
 
 	if (!SanityCheck(ch, "do_stampede"))
 		return;
-	if (!has_innate(ch, INNATE_STAMPEDE))
+	/* Player-only: mobs, pets and charmies can't stampede. */
+	if (IS_NPC(ch) || !has_innate(ch, INNATE_STAMPEDE))
 	{
 		send_to_char("You're not shaped right for that.\r\n", ch);
 		return;
@@ -436,17 +439,31 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 		send_to_char("Stampeding from way back here? I think not.\r\n", ch);
 		return;
 	}
+	/* Cooldown: 60 seconds by default, tunable via innate.timer.secs.stampede. */
+	if (!check_innate_time(ch, INNATE_STAMPEDE, get_property("innate.timer.secs.stampede", 60)))
+	{
+		send_to_char("You're too winded to stampede again so soon.\r\n", ch);
+		return;
+	}
 	count = 0;
 	appear(ch);
 	send_to_char("You go madly crashing around the room!\r\n", ch);
 	act("$n crashes wildly around!", TRUE, ch, 0, 0, TO_ROOM);
 
-	for (vict = world[ch->in_room].people; vict; vict = next_vict)
+	/* set_fighting() can run combat callbacks that kill or move people, so
+	   work from a snapshot of the room and revalidate each candidate. */
+	room = ch->in_room;
+	for (P_char tch = world[room].people; tch; tch = tch->next_in_room)
+		if (tch != ch)
+			candidates.push_back(tch);
+
+	for (P_char vict : candidates)
 	{
-		next_vict = vict->next_in_room;
-		if (count >= number(2, 3))
+		if (!char_in_list(ch) || !IS_ALIVE(ch) || ch->in_room != room)
+			break;
+		if (!char_in_list(vict) || !IS_ALIVE(vict) || vict->in_room != room)
 			continue;
-		if (vict == ch)
+		if (count >= number(2, 3))
 			continue;
 		if (!CAN_SEE(ch, vict))
 			continue;
@@ -468,24 +485,21 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 		    (IS_AFFECTED4(vict, AFF4_PHANTASMAL_FORM)))
 			continue;
 
-		if (GET_OPPONENT(vict))
-			continue;
+		/* Targets already in combat can be stampeded. */
+		engaged = IS_FIGHTING(vict);
 
-		missed = 0;
-
-		if (!number(0, 9))
+		/* Back-ranked targets always dodge; otherwise 10% always hit. */
+		missed = !on_front_line(vict) ||
+			 (number(0, 9) &&
+			  number(1, 100) >
+				  (GET_LEVEL(ch) - GET_LEVEL(vict) - STAT_INDEX(GET_C_AGI(vict)) +
+				   dice(10, IS_AFFECTED(vict, AFF_AWARE) ? 5 : 10)));
+		if (missed)
 		{
-		}
-		else if (number(1, 100) >
-				 (GET_LEVEL(ch) - GET_LEVEL(vict) - STAT_INDEX(GET_C_AGI(vict)) +
-				  dice(10, IS_AFFECTED(vict, AFF_AWARE) ? 5 : 10)) ||
-			 !on_front_line(vict))
-		{
-			missed = 1;
 			act("$n jumps nimbly out of the way!", 0, vict, 0, 0, TO_ROOM);
 			act("You jump out of the way of $n's stampede!", 0, ch, 0, vict, TO_VICT);
 		}
-		if (!missed)
+		else
 		{
 			act("$n crashes wildly into $N!", 0, ch, 0, vict, TO_ROOM);
 			act("You crash wildly into $N!", 0, ch, 0, vict, TO_CHAR);
@@ -494,7 +508,12 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 			Stun(vict, ch, PULSE_VIOLENCE / 2, TRUE);
 			count++;
 		}
-		set_fighting(vict, ch);
+
+		/* Only idle targets start fighting the stampeder. An engaged target
+		   keeps its opponent; if the stun broke combat, its opponent's next
+		   hit re-engages it, as after any other stun. */
+		if (!engaged)
+			set_fighting(vict, ch);
 	}
 
 	count = MIN(2, count);
