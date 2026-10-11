@@ -3849,7 +3849,7 @@ Dexterity   : 90
 Constitution: 155
 Power       : 65
 Intelligence: 80
-Wisdom      : 90
+Wisdom      : 110
 Charisma    : 90
 Luck        : 90
 Karma       : 100
@@ -7008,18 +7008,18 @@ magic.
 * Reaver      : Earth Reaver
 ==Racial Statistics==
 Strength    : 130
-Agility     : 90
-Dexterity   : 90
-Constitution: 135
+Agility     : 95
+Dexterity   : 100
+Constitution: 125
 Power       : 85
-Intelligence: 75
-Wisdom      : 130
+Intelligence: 85
+Wisdom      : 125
 Charisma    : 70
 Luck        : 100
 Karma       : 100
 ==Racial Traits==
 Combat Pulse : bad
-Spell Pulse  : above average
+Spell Pulse  : good
 ==Innate abilities==
  invisibility
  strength (obtained at level 6)
@@ -9735,6 +9735,7 @@ Spell Pulse  : awesome
 *infravision
 *ultravision
 *farsee (obtained at level 21)
+ reflection (obtained at level 31)
 '*' Designates passive ability.
 The following help topics also matched your search:
  Gnome directions
@@ -14814,7 +14815,7 @@ Luck        : 85
 Karma       : 100
 ==Racial Traits==
 Combat Pulse : atrociously bad
-Spell Pulse  : bad
+Spell Pulse  : below average
 ==Innate abilities==
  doorbash
 *ultravision
@@ -15279,8 +15280,8 @@ magic.
 * BeRSeRKeR   : MaUleR, RaGeloRd
 ==Racial Statistics==
 Strength    : 135
-Agility     : 85
-Dexterity   : 95
+Agility     : 95
+Dexterity   : 100
 Constitution: 120
 Power       : 90
 Intelligence: 85
@@ -15290,7 +15291,7 @@ Luck        : 100
 Karma       : 100
 ==Racial Traits==
 Combat Pulse : bad
-Spell Pulse  : above average
+Spell Pulse  : good
 ==Innate abilities==
  strength
 *infravision
@@ -22664,18 +22665,18 @@ are among the lowest of any race.
 * Berserker   : MaUleR, RaGeloRd
 ==Racial Statistics==
 Strength    : 160
-Agility     : 100
+Agility     : 90
 Dexterity   : 90
 Constitution: 160
 Power       : 75
-Intelligence: 75
-Wisdom      : 90
+Intelligence: 70
+Wisdom      : 95
 Charisma    : 70
 Luck        : 90
 Karma       : 100
 ==Racial Traits==
 Combat Pulse : atrociously bad
-Spell Pulse  : very bad
+Spell Pulse  : poor
 ==Innate abilities==
  doorbash
 *ultravision
@@ -22684,7 +22685,6 @@ Spell Pulse  : very bad
 *troll skin (obtained at level 21)
 *vulnerable to fire
 *vulnerable to sun
-*groundfighting (obtained at level 21)
 *swamp sneak (obtained at level 11)
 '*' Designates passive ability.
 #0
@@ -23226,7 +23226,7 @@ Luck        : 100
 Karma       : 100
 ==Racial Traits==
 Combat Pulse : below average
-Spell Pulse  : above average
+Spell Pulse  : good
 ==Innate abilities==
  levitate (obtained at level 11)
 *ultravision
@@ -23278,19 +23278,19 @@ wear standard human trousers, greaves, or footwear.
 * Reaver      : Ice Reaver, Flame Reaver, Shock Reaver, Earth Reaver
 * Blighter    : Storm Bringer, Scourge, Ruiner
 ==Racial Statistics==
-Strength    : 95
+Strength    : 120
 Agility     : 110
 Dexterity   : 110
-Constitution: 115
-Power       : 85
-Intelligence: 100
+Constitution: 120
+Power       : 90
+Intelligence: 110
 Wisdom      : 90
 Charisma    : 70
 Luck        : 100
 Karma       : 100
 ==Racial Traits==
 Combat Pulse : average
-Spell Pulse  : above average
+Spell Pulse  : below average
 ==Innate abilities==
 *ultravision
 *magic resistance
@@ -23353,11 +23353,12 @@ Luck        : 110
 Karma       : 100
 ==Racial Traits==
 Combat Pulse : formidable
-Spell Pulse  : formidable
+Spell Pulse  : awesome
 ==Innate abilities==
 *ultravision
 *ud-sneak
 *dayvision
+ reflection (obtained at level 31)
 '*' Designates passive ability.
 #0
 Planetbound Illithid
@@ -23513,7 +23514,7 @@ Luck        : 90
 Karma       : 100
 ==Racial Traits==
 Combat Pulse : atrociously bad
-Spell Pulse  : atrociously bad
+Spell Pulse  : bad
 ==Innate abilities==
  doorbash
  bodyslam
@@ -23568,7 +23569,7 @@ physical constitution.
 * Summoner    : Controller, Mentalist, Naturalist
 * Dragoon     : Dragon Hunter, Dragon Priest, Dragon Lancer
 ==Racial Statistics==
-Strength    : 110
+Strength    : 100
 Agility     : 110
 Dexterity   : 110
 Constitution: 100
@@ -23576,11 +23577,11 @@ Power       : 100
 Intelligence: 120
 Wisdom      : 100
 Charisma    : 120
-Luck        : 110
+Luck        : 95
 Karma       : 100
 ==Racial Traits==
 Combat Pulse : average
-Spell Pulse  : above average
+Spell Pulse  : good
 ==Innate abilities==
 *infravision
 *ultravision
