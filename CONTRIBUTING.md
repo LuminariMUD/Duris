@@ -6,6 +6,25 @@ Make focused changes on a topic branch and open a pull request against `master`.
 Keep unrelated worktree changes intact and do not commit generated files, credentials,
 logs, player/account data, backups, or anything under `bin/`.
 
+## Contributor Access and Merge Permissions
+
+Contributors receive **Write** access to `LuminariMUD/Duris`. They can push topic
+branches, open pull requests, and review or approve other contributors' PRs.
+They **cannot push directly to `master` or merge PRs into it**, even after a PR
+has been approved.
+
+The active [Master ruleset](https://github.com/LuminariMUD/Duris/rules/24724295)
+targets the default branch (`master`) and restricts branch updates to actors with
+bypass permission. Only repository admins and organization owners have that
+permission; they handle merges into `master`.
+
+To add a contributor, invite their GitHub username through the repository's
+**Settings → Collaborators and teams** with **Write** access. Outside collaborators
+can receive access to this repository without organization membership and must
+accept the invitation before their access takes effect. Keep contributors out of
+the ruleset's bypass list and do not grant them repository Admin or organization
+Owner access.
+
 ## Recommended Git Workflow
 
 This repository uses `master` as its default branch, so the workflow below uses
@@ -33,7 +52,7 @@ This repository uses `master` as its default branch, so the workflow below uses
     explicitly.
 12. **If `master` moved:** `git fetch origin && git merge origin/master`, then
     push normally. No rebase, no force-push. Escape hatch: `git merge --abort`.
-13. Green checks → **Squash and merge**.
+13. Green checks → a repository admin or organization owner performs **Squash and merge**.
 14. **Remove the worktree first** (if used): `git worktree remove ../duris-my-thing`.
 15. `git switch master && git pull --ff-only && git fetch --prune`
 16. `git branch -D feature/my-thing`—**`-D`, not `-d`**: squash merge leaves
