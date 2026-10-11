@@ -764,7 +764,7 @@ void schedule_chaos_new_character_kit_before_entry(P_char ch)
 
 void restore_chaos_character_kit(P_char staff, const char *name)
 {
-	if (!staff || !IS_TRUSTED(staff) || !chaos_mud_enabled())
+	if (!chaos_command_allowed(staff))
 		return;
 	if (!name || !*name)
 		return send_to_char("Usage: chaos kit <character>\r\n", staff);
@@ -795,10 +795,11 @@ void restore_chaos_character_kit(P_char staff, const char *name)
 
 void load_chaos_kit_bag(P_char staff, char *argument)
 {
-	if (!staff || !chaos_mud_enabled())
+	if (!chaos_command_allowed(staff))
 		return;
 	if (GET_LEVEL(staff) < LESSER_G)
-		return send_to_char("Loading a kit bag takes the level of the load command.\r\n",
+		return send_to_char("Loading a kit bag takes the level of the load command. "
+				    "(Level 59 staff required.)\r\n",
 				    staff);
 	char class_name[MAX_INPUT_LENGTH], race_name[MAX_INPUT_LENGTH];
 	one_argument(one_argument(argument, class_name), race_name);
@@ -1800,27 +1801,27 @@ void enter_game(P_desc d)
 		loginlog(GET_LEVEL(ch), "&+GIMMORTAL&n: (%s) [%s] has logged on.%s", GET_NAME(ch),
 			 d->host, Gbuf1);
 
-		//  /* multiplay check */
-		//  for (P_desc k = descriptor_list; k; k = k->next)
-		//  {
-		//    if( d == k || !k->character )
-		//      continue;
-		//
-		//    if (k->connected == CON_PLAYING && d->host && k->host && !str_cmp(d->host, k->host) )
-		//    {
-		//      logit(LOG_STATUS, "%s and %s are logged in from the same IP address",
-		//            d->character->player.name, k->character->player.name);
-		//      sql_log(d->character, PLAYERLOG, "%s and %s logged in from same IP address", d->character->player.name, k->character->player.name);
-		//
-		//      if( d->character->in_room != k->character->in_room )
-		//      {
-		//        wizlog(AVATAR, "%s and %s are logged in from the same IP address but not in the same room",
-		//               d->character->player.name, k->character->player.name);
-		//      }
-		//    }
-		//  }
+	//  /* multiplay check */
+	//  for (P_desc k = descriptor_list; k; k = k->next)
+	//  {
+	//    if( d == k || !k->character )
+	//      continue;
+	//
+	//    if (k->connected == CON_PLAYING && d->host && k->host && !str_cmp(d->host, k->host) )
+	//    {
+	//      logit(LOG_STATUS, "%s and %s are logged in from the same IP address",
+	//            d->character->player.name, k->character->player.name);
+	//      sql_log(d->character, PLAYERLOG, "%s and %s logged in from same IP address", d->character->player.name, k->character->player.name);
+	//
+	//      if( d->character->in_room != k->character->in_room )
+	//      {
+	//        wizlog(AVATAR, "%s and %s are logged in from the same IP address but not in the same room",
+	//               d->character->player.name, k->character->player.name);
+	//      }
+	//    }
+	//  }
 
-		// CTF - level them up, and setbit hardcore off them!
+	// CTF - level them up, and setbit hardcore off them!
 #if defined(CTF_MUD) && (CTF_MUD == 1)
 	// setbit hardcore off according to policy
 	if (hardcore_config_get()->disable_in_ctf)

@@ -774,6 +774,7 @@ void initialize_boards(void);
 /* chaos.c */
 
 void do_chaos(P_char ch, char *arg, int cmd);
+bool chaos_command_allowed(P_char ch);
 
 /* chess.c */
 

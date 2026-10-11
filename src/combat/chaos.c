@@ -26,6 +26,29 @@
 extern long new_exp_table[];
 extern const int top_of_world;
 
+bool chaos_command_allowed(P_char ch)
+{
+	if (!ch || !IS_PC(ch))
+		return false;
+	if (GET_LEVEL(ch) >= OVERLORD)
+		return true;
+	if (!IS_TRUSTED(ch))
+	{
+		send_to_char("No, you can't have pony.  Not yours. "
+			     "(Trusted staff required; mortal mode does not qualify.)\n",
+			     ch);
+		return false;
+	}
+	if (!chaos_mud_enabled())
+	{
+		send_to_char("No, you can't have pony.  Not yours. "
+			     "(Chaos mode is disabled; level 62 staff can override it.)\n",
+			     ch);
+		return false;
+	}
+	return true;
+}
+
 static struct
 {
 	int vnum;
@@ -63,7 +86,7 @@ static struct
 static void chaos_port(P_char ch, const char *arg)
 {
 	if (!*arg)
-		return send_to_char("Port to where?\n", ch);
+		return send_to_char("Port to where? (Usage: chaos portal <destination>.)\n", ch);
 	for (int i = 0; portdata[i].vnum; i++)
 		if (isname(arg, portdata[i].name))
 		{
@@ -108,7 +131,7 @@ static void chaos_port(P_char ch, const char *arg)
 			return;
 		}
 
-	send_to_char("No portal leads there.\n", ch);
+	send_to_char("No portal leads there. (Unknown Chaos portal destination.)\n", ch);
 }
 
 static struct
@@ -141,7 +164,7 @@ static void chaos_side(P_char ch, const char *arg)
 			return;
 		}
 
-	send_to_char("There's no such side.\n", ch);
+	send_to_char("There's no such side. (Choose good, evil, undead, or neutral.)\n", ch);
 }
 
 static void chaos_pouch_test_seed(P_char ch)
@@ -201,17 +224,25 @@ static bool chaos_test_account_authorized(P_char ch)
 
 static bool chaos_test_questroom(P_char ch, char *arg)
 {
-	if (!chaos_mud_enabled() || !chaos_test_commands_enabled() ||
-	    !chaos_test_account_authorized(ch))
-		return false;
-
 	char command[MAX_INPUT_LENGTH];
 	arg = one_argument(arg, command);
-	if (!is_abbrev(command, "questroom"))
+	if (!*command || !is_abbrev(command, "questroom"))
 		return false;
+	if (GET_LEVEL(ch) < OVERLORD && (!chaos_mud_enabled() || !chaos_test_commands_enabled() ||
+					 !chaos_test_account_authorized(ch)))
+	{
+		send_to_char("No test-room pony for you. "
+			     "(Requires level 62 staff, or Chaos test mode on a local server "
+			     "with the configured test account connected from localhost.)\n",
+			     ch);
+		return true;
+	}
 	const int room_vnum = atoi(arg);
 	if (room_vnum != 16633)
-		return false;
+	{
+		send_to_char("That is not the test room. (Usage: chaos questroom 16633.)\n", ch);
+		return true;
+	}
 	const int room = real_room(room_vnum);
 	if (room == NOWHERE)
 	{
@@ -249,8 +280,8 @@ void do_chaos(P_char ch, char *arg, int /*cmd*/)
 	if (chaos_test_questroom(ch, arg))
 		return;
 
-	if (!IS_TRUSTED(ch) || !chaos_mud_enabled())
-		return send_to_char("No, you can't have pony.  Not yours.\n", ch);
+	if (!chaos_command_allowed(ch))
+		return;
 
 	char buff[MAX_STRING_LENGTH];
 
@@ -266,12 +297,16 @@ void do_chaos(P_char ch, char *arg, int /*cmd*/)
 	if (is_abbrev(buff, "kitbag"))
 		return load_chaos_kit_bag(ch, arg);
 
-	if (chaos_test_commands_enabled())
+	if (is_abbrev(buff, "pouchseed") || is_abbrev(buff, "pouchgenerate"))
 	{
+		if (GET_LEVEL(ch) < OVERLORD && !chaos_test_commands_enabled())
+			return send_to_char("No test-pouch pony for you. "
+					    "(Requires level 62 staff, or Chaos test commands "
+					    "enabled on a local server.)\n",
+					    ch);
 		if (is_abbrev(buff, "pouchseed"))
 			return chaos_pouch_test_seed(ch);
-		if (is_abbrev(buff, "pouchgenerate"))
-			return chaos_pouch_test_generate(ch, arg);
+		return chaos_pouch_test_generate(ch, arg);
 	}
 
 	if (is_abbrev(buff, "platinum") || is_abbrev(buff, "plats"))
@@ -283,17 +318,22 @@ void do_chaos(P_char ch, char *arg, int /*cmd*/)
 
 	if (is_abbrev(buff, "level"))
 	{
-		if (IS_TRUSTED(ch))
-			return send_to_char("So you want to become a smelly mortal? Nah.\n", ch);
+		if (IS_TRUSTED(ch) && GET_LEVEL(ch) < OVERLORD)
+			return send_to_char(
+				"So you want to become a smelly mortal? Nah. "
+				"(Only level 62 staff can use Chaos to lower their staff level.)\n",
+				ch);
 
 		long oldl = GET_LEVEL(ch);
 		long newl = strtol(arg, NULL, 10);
 		if (newl < 1 || newl > 56)
-			return send_to_char("1..56, please.\n", ch);
+			return send_to_char("1..56, please. (Usage: chaos level <1-56>.)\n", ch);
 		if (oldl == newl)
-			return send_to_char("Refusing to do a no-op operation!\n", ch);
+			return send_to_char("Refusing to do a no-op operation! "
+					    "(You are already at that level.)\n",
+					    ch);
 
-		GET_EXP(ch) = new_exp_table[GET_LEVEL(ch) + 1] / 2;
+		GET_EXP(ch) = new_exp_table[MIN(GET_LEVEL(ch), MAXLVLMORTAL) + 1] / 2;
 		if (oldl < newl)
 			advance_to_level(ch, newl);
 		for (; oldl > newl; oldl--)
@@ -306,14 +346,19 @@ void do_chaos(P_char ch, char *arg, int /*cmd*/)
 	{
 		P_ship ship = get_ship_from_owner(GET_NAME(ch));
 		if (!ship)
-			return send_to_char("Ye don't own a ship, landlubber!\n", ch);
+			return send_to_char("Ye don't own a ship, landlubber! "
+					    "(No ship is registered to your character.)\n",
+					    ch);
 
 		char *err;
 		unsigned long newf = strtoul(arg, &err, 10);
 		if (*err || !*arg)
-			return send_to_char("Gimme a numbah, pleez.\n", ch);
+			return send_to_char("Gimme a numbah, pleez. "
+					    "(Usage: chaos shipfrags <0-10000>.)\n",
+					    ch);
 		if (newf > 10000)
-			return send_to_char("Be real.\n", ch);
+			return send_to_char("Be real. (Ship frags must be between 0 and 10000.)\n",
+					    ch);
 		ship->frags = newf;
 		return send_to_char("Ok.\n", ch);
 	}
@@ -322,7 +367,9 @@ void do_chaos(P_char ch, char *arg, int /*cmd*/)
 	{
 		P_ship ship = get_ship_from_owner(GET_NAME(ch));
 		if (!ship)
-			return send_to_char("Ye don't own a ship, landlubber!\n", ch);
+			return send_to_char("Ye don't own a ship, landlubber! "
+					    "(No ship is registered to your character.)\n",
+					    ch);
 
 		int max = 10000;
 		int s, g, r;
@@ -333,7 +380,9 @@ void do_chaos(P_char ch, char *arg, int /*cmd*/)
 			return send_to_char("One or three numbers, for sail/gun/repair exp.\n", ch);
 		if (s > max || g > max || r > max)
 			return send_to_char(
-				"Nobody that experienced would work for a wuss like you.\n", ch);
+				"Nobody that experienced would work for a wuss like you. "
+				"(Sail, gun, and repair experience must each be between 0 and 10000.)\n",
+				ch);
 
 		ship->crew.sail_skill = s;
 		ship->crew.guns_skill = g;
@@ -349,6 +398,6 @@ void do_chaos(P_char ch, char *arg, int /*cmd*/)
 
 noarg:
 	send_to_char(
-		"Nuh uh. Can give only &+Wplat&n, &+Wlevel&n, &+Wshipfrags&n, &+Wcrewexp&n, &+Wportal&n, &+Wside&n, &+Wkit <character>&n, &+Wkitbag <class> <race>&n.\n",
+		"Nuh uh. (Missing or unknown Chaos subcommand.) Use &+Wplat&n, &+Wlevel&n, &+Wshipfrags&n, &+Wcrewexp&n, &+Wportal&n, &+Wside&n, &+Wkit <character>&n, &+Wkitbag <class> <race>&n, &+Wpouchseed&n, &+Wpouchgenerate <count>&n, or &+Wquestroom 16633&n.\n",
 		ch);
 }

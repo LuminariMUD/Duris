@@ -26,7 +26,18 @@ to enabled when unset, but every feature still requires both `CHAOS_MUD` and
 the master starter-bonus switch. An invalid starter value disables that grant.
 
 `CHAOS_TEST_COMMANDS=TRUE` exposes the bounded Chaos integration helpers only
-when `ENVIRONMENT=local`. It does not enable Chaos mode by itself.
+when `ENVIRONMENT=local`. It does not enable Chaos mode by itself. Level 62
+staff can use every `chaos` subcommand regardless of these switches, Chaos mode,
+or their mortal-mode flag, including `kit`, `kitbag`, and the test helpers.
+The quest-room helper also waives its test-account and localhost restrictions
+for level 62 staff. Other users keep the usual trusted-staff/Chaos-mode checks
+and the existing local test-account exception for `questroom`.
+
+The override affects command access only; it does not enable automatic Chaos
+character creation or starter rewards. Argument ranges, target requirements,
+and item/movement checks still apply. `chaos level <1-56>` lets level 62 staff
+lower their own level to the requested mortal level. Denial messages explain
+the failed requirement alongside any quip.
 
 ## New-character grants
 

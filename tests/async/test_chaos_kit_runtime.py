@@ -273,6 +273,15 @@ int main()
     assert(restore_calls == 2 && restore_queued && restore_message.find("queued") != std::string::npos);
     restore_chaos_character_kit(&staff, "target");
     assert(restore_calls == 2);
+    // Level 62 staff can restore kits with Chaos off, even in mortal mode.
+    staff.player.level = OVERLORD;
+    staff.specials.act |= PLR_MORTAL;
+    chaos_enabled = false;
+    restore_busy = restore_queued = false;
+    restore_chaos_character_kit(&staff, "target");
+    assert(restore_calls == 3 && restore_queued);
+    staff.specials.act &= ~PLR_MORTAL;
+    chaos_enabled = true;
     // The skip rules that creation and the staff kit bag share.
     actor.player.m_class = CLASS_MONK;
     assert(!strcmp(chaos_kit_skip_reason(&actor, PRIMARY_WEAPON), "monks fight unarmed"));
@@ -309,10 +318,13 @@ int main()
         assert(!build_calls && restore_message.find("Usage: chaos kitbag") != std::string::npos);
     }
     snprintf(args, sizeof(args), "necromancer githzerai");
+    staff.player.level = LESSER_G;
     chaos_enabled = false;
     load_chaos_kit_bag(&staff, args);
     assert(!build_calls);
-    chaos_enabled = true;
+    assert(restore_message.find("Chaos mode is disabled") != std::string::npos);
+    staff.player.level = OVERLORD;
+    staff.specials.act |= PLR_MORTAL;
     const int extracts_before = extracts;
     build_succeeds = false;
     load_chaos_kit_bag(&staff, args);
@@ -341,6 +353,8 @@ int main()
     assert(sql_logged == "wiz: Loaded the CHAOS kit of a Githzerai Necromancer\n");
     rooms[0].number = 22800;
     staff.player.level = LESSER_G;
+    staff.specials.act &= ~PLR_MORTAL;
+    chaos_enabled = true;
     sql_logged.clear();
     load_chaos_kit_bag(&staff, args);
     assert(build_calls == 3 && wizlog_level == LESSER_G);
@@ -358,7 +372,8 @@ def main():
                  "static const char *chaos_kit_skip_reason",
                  "static bool append_chaos_kit_item", "void restore_chaos_character_kit",
                  "void load_chaos_kit_bag"]
-    harness = "\n".join([PRELUDE, BUILDER, KIT_STUB, *[extract_function("nanny.c", sig) for sig in functions], DRIVER])
+    harness = "\n".join([PRELUDE, extract_function("chaos.c", "bool chaos_command_allowed"),
+                         BUILDER, KIT_STUB, *[extract_function("nanny.c", sig) for sig in functions], DRIVER])
     with tempfile.TemporaryDirectory(prefix="chaos-kit-unit-") as directory:
         source, binary = Path(directory) / "kit.cpp", Path(directory) / "kit"
         source.write_text(harness)
