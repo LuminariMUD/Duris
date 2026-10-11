@@ -412,12 +412,20 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	int missed;
 	int count;
-	P_char vict, next_vict = 0;
+	/* Hit-roll penalty against targets already in combat. 0 = none. */
+	const int engaged_penalty = 0;
+	P_char vict, next_vict = 0, prev_opp;
 
 	/*  struct group_list *gl; */
 
 	if (!SanityCheck(ch, "do_stampede"))
 		return;
+	/* Player-only: mobs, pets and charmies can't stampede. */
+	if (IS_NPC(ch))
+	{
+		send_to_char("You're not shaped right for that.\r\n", ch);
+		return;
+	}
 	if (!has_innate(ch, INNATE_STAMPEDE))
 	{
 		send_to_char("You're not shaped right for that.\r\n", ch);
@@ -436,6 +444,12 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 	if (!on_front_line(ch))
 	{
 		send_to_char("Stampeding from way back here? I think not.\r\n", ch);
+		return;
+	}
+	/* Cooldown: 60 seconds by default, tunable via innate.timer.secs.stampede. */
+	if (!check_innate_time(ch, INNATE_STAMPEDE, get_property("innate.timer.secs.stampede", 60)))
+	{
+		send_to_char("You're too winded to stampede again so soon.\r\n", ch);
 		return;
 	}
 	count = 0;
@@ -470,8 +484,8 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 		    (IS_AFFECTED4(vict, AFF4_PHANTASMAL_FORM)))
 			continue;
 
-		if (GET_OPPONENT(vict))
-			continue;
+		/* Targets already in combat can be stampeded. */
+		prev_opp = GET_OPPONENT(vict);
 
 		missed = 0;
 
@@ -479,7 +493,8 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 		{
 		}
 		else if (number(1, 100) >
-				 (GET_LEVEL(ch) - GET_LEVEL(vict) - STAT_INDEX(GET_C_AGI(vict)) +
+				 (GET_LEVEL(ch) - GET_LEVEL(vict) - STAT_INDEX(GET_C_AGI(vict)) -
+				  (prev_opp ? engaged_penalty : 0) +
 				  dice(10, IS_AFFECTED(vict, AFF_AWARE) ? 5 : 10)) ||
 			 !on_front_line(vict))
 		{
@@ -496,7 +511,19 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 			Stun(vict, ch, PULSE_VIOLENCE / 2, TRUE);
 			count++;
 		}
-		set_fighting(vict, ch);
+
+		/* set_fighting() refuses (and logs an assert) if vict is already
+		   fighting, so only engage those who are free. A stun may have
+		   broken vict off its old target: send it back there if possible
+		   so stampede doesn't pull aggro off the tank. */
+		if (IS_ALIVE(vict) && !IS_FIGHTING(vict))
+		{
+			if (prev_opp && char_in_list(prev_opp) && IS_ALIVE(prev_opp) &&
+			    prev_opp->in_room == vict->in_room)
+				set_fighting(vict, prev_opp);
+			else
+				set_fighting(vict, ch);
+		}
 	}
 
 	count = MIN(2, count);
