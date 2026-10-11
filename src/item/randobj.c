@@ -311,7 +311,8 @@ void do_randobj(P_char ch, char *arguments, int /*val*/)
 		"Syntax: randobj eq [slot] [level] [count] | eq list\r\n"
 		"               piece [level] [count] | stone [count] | recipe [count]\r\n"
 		"               mob [level] [count] | encrust [count] | zone | map | remove\r\n"
-		"Levels: 1-62 (mob: 0 for automatic). Counts: 1-50 (mobs: 1-10).\r\n"
+		"Equipment/material levels: 1-62. Mob levels: 0-61 (0 is automatic).\r\n"
+		"Counts: 1-50 (mobs: 1-10).\r\n"
 		"Defaults: any slot, your level, count 1; mob level 0, encrust count 10.\r\n",
 		ch);
 }

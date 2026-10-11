@@ -162,8 +162,12 @@ caps the stored level at 61 while deriving other stats from the requested level.
 its supported 0–61 range at the command boundary, retaining equipment/material levels
 through 62 and the existing mob rules. The command harness checks level 61 succeeds and
 62 (single or batch) creates nothing; help and reference limits agree. The rejection
-case failed before the fix (`pr5-review3-mob-before.log`). Fresh builds, live boundary
-checks and full gates will validate the final revision (`pr5-review3.log`).
+case failed before the fix (`pr5-review3-mob-before.log`). The follow-up short usage
+message now also distinguishes equipment/material levels 1–62 from mob levels 0–61.
+This follow-up changes displayed text only and passes the native command harness
+(`pr5-review3-usage.log`); the ongoing full gate on `e35d9ff89` remains valid for its
+unchanged command behavior. Fresh builds and the private live 61/62 boundary check
+passed on `e35d9ff89`; full regression/database results are in `pr5-review3.log`.
 
 ## Goal
 
