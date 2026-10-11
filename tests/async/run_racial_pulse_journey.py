@@ -156,10 +156,18 @@ def check_rebalance(operator: journey.MudClient, port: int) -> None:
         setfield("level", "31")
         for stat in ("str", "dex", "agi", "con", "pow", "int", "wis", "cha", "luck"):
             setfield(stat, "100")
-        run(operator, "properties reload")
         for race, stats in STATS.items():
             display = names.get(race, race)
+            # Start with different active factors and a character carrying those cached stats.
+            for stat, value in stats.items():
+                run(operator, f"properties set stats.{stat}.{race} {value - 5}.000")
             setfield("race", display)
+            before = paged(operator, f"stat char {name}", "Str:")
+            for stat, value in stats.items():
+                require(re.search(rf"{stat.capitalize()}:\s*{value - 5}\s*\(\s*100\)", before),
+                        f"{race} {stat} did not start with the old factor:\n{before}")
+            # Reload must update this online character without resetting race or equipment.
+            run(operator, "properties reload")
             shown = paged(operator, f"stat char {name}", "Str:")
             for stat, value in stats.items():
                 label = stat.capitalize()
