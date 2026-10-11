@@ -1864,6 +1864,7 @@ int do_simple_move_skipping_procs(P_char ch, int exitnumb, unsigned int flags)
 	}
 	telemetry_gameplay_context_changed(ch);
 	telemetry_gameplay_movement(ch);
+	web_spray_move_check(ch);
 
 	char_light(ch);
 	room_light(ch->in_room, REAL);
