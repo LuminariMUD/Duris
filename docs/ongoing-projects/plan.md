@@ -42,7 +42,14 @@ plan. `make test-db` remains exempt for this tests/comments/docs phase. Logs are
 `pr1-review1-security.log`, `pr1-review1-mutations.log`, `pr1-review2-rng.log` and
 `pr1-review3-ownership.log`. Earlier full gates also passed; their logs are retained.
 CodeQL and Trivy are not installed locally; those external scanners were not rerun.
-Next: merge these fixes into PR #26 and review it, then #27, #28 and #29, in order.
+
+PR #26 is ready to merge at `randeq/phase-2-review-1` and has no review findings.
+Merge `b4f4252a6` brings in all PR #25 repairs without conflicts or changes to Phase 2's
+server code. It passed the strengthened ASan/UBSan golden harness, minimal boot checks,
+full formatting, `make test-all -j16 TEST_JOBS=16` (707/707, both build profiles),
+`make test-db` (72/72) and the site checks (15). No reruns were needed. The final record
+only updates this plan and passes its 12 documentation checks. Evidence:
+`randeq-gate/pr2-review1.log` and `pr2-review1-site.log`. Next: PR #27, then #28 and #29.
 
 ## Goal
 
@@ -59,7 +66,10 @@ Not in this plan: tuning or new settings, attaching `random_eq_proc()` (D1), ran
 random-mob internals beyond `randobj mob`'s options, and crafting's commented-out code that
 once called the generator (`src/economy/crafting.c`, around lines 1011 to 1090).
 
-## What is there now
+## Baseline before Phase 1
+
+This inventory describes `879adf0aa`, not the current checkout. The phase records below
+track what has been removed or moved; the line numbers here are historical.
 
 `src/item/randomeq.c` (1,814 lines) holds everything, in this order:
 
