@@ -212,7 +212,16 @@ under ASan and UBSan with the real random number generator and settings at their
 stubs only the world, and records 1,480 seeded cases: drop decisions, `random_equipment_kill_drop()`,
 generated items field by field, materials, stones, encrust affects and true names. The
 output must equal `tests/fixtures/random_equipment_golden.txt`, so any change that moves,
-adds or drops a roll fails it. The command harness compiles the real `randobj.c` with
-recording generators and the real slot tables and tokenizer, checking defaults, every
-slot word, limits, errors and null returns. The remaining tests hold the settings and loader, salvage message recipient
-and loot dials' hooks. The golden harness does not roll a drop on a running server.
+adds or drops a covered roll fails it. Pet owners have different level, luck and room
+attributes, so using the owner for the pet's drop rolls fails the existing fixture.
+`tests/fixtures/random_equipment_rng_golden.txt` records the next RNG draw after every
+case, captured from the original `879adf0aa` implementation. It also catches extra terminal
+draws that leave the current item unchanged but would shift the next live random event.
+The harness uses the real string setters and asserts that every generated item has
+`STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2`, so its generated names are marked for saving.
+Additional direct assertions cover all 26 suffix totals (5 through 30), their bitvectors
+and RNG consumption without changing that fixture. The command harness compiles the real
+`randobj.c` with recording generators and the real slot tables and tokenizer, checking
+defaults, every slot word, limits, errors and null returns. The remaining tests hold the
+settings and loader, salvage message recipient and loot dials' hooks. The golden harness
+does not roll a drop on a running server.
