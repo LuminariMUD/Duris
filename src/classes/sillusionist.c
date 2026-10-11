@@ -80,8 +80,6 @@ extern bool create_walls(int room, int exit, P_char ch, int level, int type, int
 			 const char *short_desc, const char *desc, ulong flags);
 extern bool has_skin_spell(P_char);
 
-#define TITAN_NUMBER 650
-
 /* Let's do some spells yah! */
 
 void spell_phantom_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,

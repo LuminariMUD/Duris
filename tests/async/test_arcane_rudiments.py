@@ -19,6 +19,9 @@ all_ok &= check("INNATE_ARCANE_RUDIMENTS #define",
 	contains(structs, "#define INNATE_ARCANE_RUDIMENTS       177"))
 all_ok &= check("next innate follows arcane rudiments",
 	contains(structs, "#define INNATE_WEB_SPRAY 178"))
+last = re.search(r"#define LAST_INNATE (INNATE_\w+)", structs).group(1)
+last_number = int(re.search(rf"#define {last} (\d+)", structs).group(1))
+all_ok &= check("LAST_INNATE covers arcane rudiments", last_number >= 177)
 
 # 2. innates_data array
 innates = (SRC / "innates.c").read_text()

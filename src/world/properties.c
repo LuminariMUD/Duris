@@ -34,6 +34,7 @@
 #define FNM_CASEFOLD 1 << 4
 #endif
 int properties_count;
+extern P_char character_list;
 extern void update_damage_data();
 extern void update_spellpulse_data();
 extern void update_racial_shrug_data();
@@ -490,6 +491,12 @@ void do_properties(P_char ch, char *args, int /*cmd*/)
 		else if (!strcmp(command, "reload") && (GET_LEVEL(ch) >= FORGER))
 		{
 			initialize_properties();
+			// Racial stat factors are cached by players, NPCs and pets alike.
+			for (P_char character = character_list; character;
+			     character = character->next)
+			{
+				balance_affects(character);
+			}
 			std::string ability_error;
 			if (!studio_abilities_reload_file(ability_error))
 			{

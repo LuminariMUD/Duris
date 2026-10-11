@@ -450,8 +450,9 @@ struct edit_data
 #define INNATE_WARDING_FAITH 176
 #define INNATE_ARCANE_RUDIMENTS 177
 #define INNATE_WEB_SPRAY 178
+#define INNATE_REFLECTION 179
 
-#define LAST_INNATE INNATE_WEB_SPRAY // LAST means last, not last + 1 or whatever
+#define LAST_INNATE INNATE_REFLECTION // LAST means last, not last + 1 or whatever
 
 struct extra_descr_data
 {

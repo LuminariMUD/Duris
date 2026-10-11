@@ -95,6 +95,7 @@ void do_flurry(P_char, char *, int);
 void do_shapechange(P_char, char *, int);
 void do_throw_lightning(P_char, char *, int);
 void do_stone_skin(P_char, char *, int);
+void do_innate_reflection(P_char, char *, int);
 void do_phantasmal_form(P_char, char *, int);
 void do_shade_movement(P_char, char *, int);
 void do_dimension_door(P_char, char *, int);
@@ -316,6 +317,7 @@ const struct innate_data innates_data[LAST_INNATE + 1] = {
 	{ "warding faith", NULL },
 	{ "arcane rudiments", NULL },
 	{ "web_spray", do_web_spray },
+	{ "reflection", do_innate_reflection },
 };
 
 string list_innates(int race, int cls, int spec)
@@ -509,6 +511,7 @@ void assign_innates()
 	ADD_RACIAL_INNATE(INNATE_INFRAVISION, RACE_GNOME, 1);
 	ADD_RACIAL_INNATE(INNATE_ULTRAVISION, RACE_GNOME, 1);
 	ADD_RACIAL_INNATE(INNATE_FARSEE, RACE_GNOME, 21);
+	ADD_RACIAL_INNATE(INNATE_REFLECTION, RACE_GNOME, 31);
 	// ADD_RACIAL_INNATE(INNATE_MINER, RACE_GNOME, 51);
 	/* List of Grey Elf Innates       */
 	ADD_RACIAL_INNATE(INNATE_INFRAVISION, RACE_GREY, 1);
@@ -582,6 +585,7 @@ void assign_innates()
 	// ADD_RACIAL_INNATE(INNATE_MINER, RACE_KOBOLD, 51);
 	// ADD_RACIAL_INNATE(INNATE_CALMING, RACE_KOBOLD, 1);
 	ADD_RACIAL_INNATE(INNATE_UD_SNEAK, RACE_KOBOLD, 1);
+	ADD_RACIAL_INNATE(INNATE_REFLECTION, RACE_KOBOLD, 31);
 	/* List of Kuo Toa Innates         */
 	ADD_RACIAL_INNATE(INNATE_ULTRAVISION, RACE_KUOTOA, 1);
 	//ADD_RACIAL_INNATE(INNATE_DAYBLIND, RACE_KUOTOA, 1);
@@ -637,7 +641,6 @@ void assign_innates()
 	ADD_RACIAL_INNATE(INNATE_BODYSLAM, RACE_TROLL, 1);
 	ADD_RACIAL_INNATE(INNATE_VULN_FIRE, RACE_TROLL, 1);
 	ADD_RACIAL_INNATE(INNATE_VULN_SUN, RACE_TROLL, 1);
-	ADD_RACIAL_INNATE(INNATE_GROUNDFIGHTING, RACE_TROLL, 21);
 	//ADD_RACIAL_INNATE(INNATE_DAYBLIND, RACE_TROLL, 1);
 	ADD_RACIAL_INNATE(INNATE_SWAMP_SNEAK, RACE_TROLL, 11);
 	/* List of (P)Vampire Innates */
@@ -2542,6 +2545,30 @@ void do_stone_skin(P_char ch, char * /*arg*/, int /*cmd*/)
 	}
 	spell_stone_skin(GET_LEVEL(ch), ch, 0, 0, ch, 0);
 	CharWait(ch, PULSE_VIOLENCE * 3);
+}
+
+// Gnome and kobold innate: the illusionist's reflection, always on the user.
+// The cooldown is innate.timer.secs.reflection.
+void do_innate_reflection(P_char ch, char * /*arg*/, int /*cmd*/)
+{
+	// Match the spell's titan restriction before spending cooldown or combat lag.
+	for (auto *link = ch->linked; link; link = link->next_linked)
+	{
+		if (link->type == LNK_PET && IS_NPC(link->linking) &&
+		    GET_VNUM(link->linking) == TITAN_NUMBER)
+		{
+			send_to_char("&+LBut you cant support so many different illusions!&n\r\n",
+				     ch);
+			return;
+		}
+	}
+	if (!check_innate_time(ch, INNATE_REFLECTION))
+	{
+		send_to_char("You're too tired to do that right now.\n", ch);
+		return;
+	}
+	spell_reflection(GET_LEVEL(ch), ch, 0, 0, ch, 0);
+	CharWait(ch, PULSE_VIOLENCE);
 }
 
 void do_shade_movement(P_char ch, char * /*arg*/, int /*cmd*/)

@@ -16,6 +16,9 @@ int hitroll_cap;
 int errand_notch;
 static unsigned completed_applies;
 static std::string output;
+P_char character_list;
+static unsigned rebalanced_characters;
+static int cached_strength;
 
 void update_item_action_properties() {}
 void update_weapon_action_properties() {}
@@ -23,7 +26,15 @@ void update_device_action_properties() {}
 void update_studio_ability_properties() {}
 void update_native_artifact_properties() {}
 void update_difficulty_dials() {}
-void update_stat_data() {}
+void update_stat_data()
+{
+	cached_strength = get_property("stats.str.Drider", 100);
+}
+void balance_affects(P_char character)
+{
+	character->curr_stats.Str = cached_strength;
+	++rebalanced_characters;
+}
 void update_damage_data() {}
 void update_spellpulse_data() {}
 void update_racial_shrug_data() {}
@@ -114,10 +125,11 @@ static void command(P_char actor, const char *text)
 	do_properties(actor, args.data(), 0);
 }
 
-static void property_file(float payout)
+static void property_file(float payout, int strength = 95)
 {
 	std::ofstream file("lib/duris.properties");
 	file << "epic.touch.PayoutFactor=" << payout << '\n' << "hitpoints.mob.conFactor=0.75\n";
+	file << "stats.str.Drider=" << strength << '\n';
 	assert(file.good());
 }
 
@@ -155,9 +167,19 @@ int main()
 	assert(output.find("reverted") != std::string::npos);
 	command(&actor, "save");
 	assert(seen.count == 3); // Saving without an effective change is not a reload.
-	property_file(3.0F);
+	char_data online{}, npc{};
+	actor.next = &npc;
+	npc.next = &online;
+	npc.specials.act = ACT_ISNPC;
+	actor.curr_stats.Str = online.curr_stats.Str = npc.curr_stats.Str = 95;
+	character_list = &actor;
+	property_file(3.0F, 120);
 	command(&actor, "reload");
 	assert(seen.count == 4 && seen.values[3] == 3.0F);
+	assert(rebalanced_characters == 3);
+	assert(actor.curr_stats.Str == 120 && online.curr_stats.Str == 120 &&
+	       npc.curr_stats.Str == 120);
+	character_list = nullptr;
 	command(&actor, "set epic.touch.PayoutFactor bad");
 	assert(seen.count == 4);
 	actor.player.level = 1;

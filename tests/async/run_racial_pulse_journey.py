@@ -5,7 +5,8 @@ A disposable character is created in the minimal world and raised to OVERLORD wh
 server is down (creation refuses the god_list names that once did this), which is above
 the Forger level the command needs for 'adjust' and 'save'. The journey lists the rates,
 refuses badly formed and out-of-range values, adjusts one casting and one melee rate,
-checks the change reached the property table, saves, and checks the saved file. Run it
+checks the change reached the property table, saves, and checks the saved file. It also
+checks the six rebalanced races after reload and both Reflection races at levels 30/31. Run it
 explicitly with a fresh flat-file binary:
 
     python3 tests/async/run_racial_pulse_journey.py --server bin/server/dms_new
@@ -23,13 +24,15 @@ import tempfile
 import time
 
 import test_flatfile_combat_journey as journey
+from test_race_rebalance import STATS
+from test_racial_pulse import CAST
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 ACCOUNT = "Pulseacct"
 CHARACTER = "Pulsewarden"
 EMAIL = "pulse@example.invalid"
-PROMPTS = ("Pos: standing >", "<>")
+PROMPTS = ("<>",)
 
 
 def require(condition: bool, message: str) -> None:
@@ -125,6 +128,97 @@ def row(listing: str, race: str) -> tuple[float, float, float]:
     return tuple(float(match.group(i)) for i in (1, 2, 3))
 
 
+
+def check_rebalance(operator: journey.MudClient, port: int) -> None:
+    """Check the rebalance on a mortal after reload, using only disposable state."""
+    player = journey.MudClient(port)
+    name = "Racereader"
+    names = {"MountainDwarf": "Mountain Dwarf", "DuergarDwarf": "Duergar Dwarf"}
+    try:
+        journey.create_character(player, account="Raceacct", character=name,
+                                 email="race@example.invalid")
+        player.expect_any(PROMPTS)
+        # Commands can have no text response; the following prompt marks completion.
+        def run(client: journey.MudClient, line: str) -> str:
+            # Race changes and staff actions can send unsolicited prompts to the player.
+            while client._receive():
+                pass
+            client.pending.clear()
+            return command(client, line, "")
+
+        def setfield(field: str, value: str) -> None:
+            reply = run(operator, f"setbit char {name} {field} '{value}'")
+            require(not any(error in reply for error in ("Usage:", "not a valid", "No one by")), reply)
+
+        run(player, "toggle boon")
+        run(player, "remove all")
+        run(player, "drop all")
+        setfield("level", "31")
+        for stat in ("str", "dex", "agi", "con", "pow", "int", "wis", "cha", "luck"):
+            setfield(stat, "100")
+        for race, stats in STATS.items():
+            display = names.get(race, race)
+            # Start with different active factors and a character carrying those cached stats.
+            for stat, value in stats.items():
+                run(operator, f"properties set stats.{stat}.{race} {value - 5}.000")
+            setfield("race", display)
+            before = paged(operator, f"stat char {name}", "Str:")
+            for stat, value in stats.items():
+                require(re.search(rf"{stat.capitalize()}:\s*{value - 5}\s*\(\s*100\)", before),
+                        f"{race} {stat} did not start with the old factor:\n{before}")
+            if race == "MountainDwarf":
+                run(operator, "setbit mob raoul race 'Mountain Dwarf'")
+                run(operator, "setbit mob raoul dex 100")
+                mob_before = paged(operator, "stat mob raoul", "Dex:")
+                require(re.search(r"Dex:\s*95\s*\(\s*100\)", mob_before), mob_before)
+            # Reload must update this online character without resetting race or equipment.
+            run(operator, "properties reload")
+            if race == "MountainDwarf":
+                mob_after = paged(operator, "stat mob raoul", "Dex:")
+                require(re.search(r"Dex:\s*100\s*\(\s*100\)", mob_after), mob_after)
+            shown = paged(operator, f"stat char {name}", "Str:")
+            for stat, value in stats.items():
+                label = stat.capitalize()
+                found = re.search(rf"{label}:\s*(\d+)\s*\(\s*100\)", shown)
+                require(found is not None and int(found[1]) == value,
+                        f"{race} {stat} expected {value}:\n{shown}")
+            helptext = paged(player, f"help {display}", "Racial Statistics")
+            labels = {"str": "Strength", "agi": "Agility", "dex": "Dexterity",
+                      "con": "Constitution", "pow": "Power", "int": "Intelligence",
+                      "wis": "Wisdom", "luc": "Luck"}
+            for stat, value in stats.items():
+                require(re.search(rf"{labels[stat]}\s*:\s*{value}\b", helptext),
+                        f"{race} help {stat}:\n{helptext}")
+        for race in ("Troll", "Barbarian", "Drider"):
+            setfield("race", race)
+            listing = run(player, "innate")
+            require(("groundfighting" in listing) == (race != "Troll"), listing)
+        for race in ("Gnome", "Kobold"):
+            setfield("race", race)
+            setfield("level", "30")
+            refused = run(player, "innate reflection")
+            require("You know no such ability" in refused, refused)
+            setfield("level", "31")
+            listing = run(player, "innate")
+            require("reflection" in listing and "reflection (unlocks" not in listing, listing)
+            # Reset only this disposable character between the two racial cases.
+            run(operator, f"affectpurge {name} all")
+            reply = run(player, f"innate reflection {CHARACTER}")
+            require("into many images" in reply, reply)
+            images = run(player, "look")
+            require(re.search(rf"^{name} .*stands here\.", images, re.M), images)
+            reply = run(player, "innate reflection")
+            require("too tired" in reply, reply)
+            # Its namesake image would otherwise intercept the next staff setbit lookup.
+            run(operator, "purge image")
+        print("[PASS] rebalance: six races' stats/help after reload, groundfighting, level-31 gnome/kobold reflection and cooldown", flush=True)
+    except Exception:
+        print(bytes(player.transcript).decode(errors="replace").replace(journey.PASSWORD, "[REDACTED]")[-9000:], flush=True)
+        raise
+    finally:
+        player.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server", type=pathlib.Path, required=True)
@@ -144,8 +238,9 @@ def main() -> None:
         (run_root / "logs/log").mkdir(parents=True)
         (run_root / "logs/log/.gitignore").write_text("*\n!.gitignore\n")
         journey.make_fixture(run_root)
+        (run_root / "help").symlink_to(ROOT / "help", target_is_directory=True)
         journey.generate_certificate(run_root)
-        (run_root / "journals/critical").mkdir(mode=0o700)
+        (run_root / "journals/critical").mkdir(parents=True, mode=0o700)
         plain_port, tls_port, websocket_port = journey.available_ports()
         environment = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "ENVIRONMENT": "local",
@@ -193,10 +288,16 @@ def main() -> None:
                 client.expect_any(PROMPTS, timeout=30)
 
                 listing = command(client, "pulse", "pulse save")
+                display_names = {"DrowElf": "Drow Elf", "GreyElf": "Grey Elf",
+                                 "MountainDwarf": "Mountain Dwarf", "DuergarDwarf": "Duergar Dwarf"}
+                for race, value in CAST.items():
+                    require(row(listing, display_names.get(race, race))[2] == float(value),
+                            f"{race}: expected cast pulse {value}")
+                check_rebalance(client, plain_port)
                 require("Racial pulse" in listing, listing)
-                require(row(listing, "Gnome") == (12.0, 14.0, 0.895), f"gnome row: {row(listing, 'Gnome')}")
-                require(row(listing, "Ogre") == (16.25, 18.25, 1.055), f"ogre row: {row(listing, 'Ogre')}")
-                require(row(listing, "Kobold") == (12.0, 14.0, 0.895), f"kobold row: {row(listing, 'Kobold')}")
+                require(row(listing, "Gnome") == (12.0, 14.0, 0.700), f"gnome row: {row(listing, 'Gnome')}")
+                require(row(listing, "Ogre") == (16.25, 18.25, 1.310), f"ogre row: {row(listing, 'Ogre')}")
+                require(row(listing, "Kobold") == (12.0, 14.0, 0.700), f"kobold row: {row(listing, 'Kobold')}")
                 print("list: gnome", row(listing, "Gnome"), "ogre", row(listing, "Ogre"), flush=True)
 
                 for bad in ("0.9", "0.90", "0.9000", "-0.900", "0.900 extra"):
@@ -208,17 +309,17 @@ def main() -> None:
                 reply = command(client, "pulse adjust fast gnome 0.900", "Usage: pulse adjust")
 
                 reply = command(client, "pulse adjust cast gnome 0.900", "pulse:")
-                require("Gnome cast pulse: 0.895 -> 0.900" in reply, reply)
+                require("Gnome cast pulse: 0.700 -> 0.900" in reply, reply)
                 reply = command(client, "pulse adjust melee ogre 16.500", "pulse:")
                 require("Ogre melee pulse: 16.250 -> 16.500" in reply, reply)
                 shown = command(client, "properties show spellcast.pulse.racial.Gnome", "spellcast.pulse.racial.Gnome")
-                require("0.900(0.895)" in shown, f"property table did not change:\n{shown}")
+                require("0.900(0.700)" in shown, f"property table did not change:\n{shown}")
                 listing = command(client, "pulse", "pulse save")
                 require(row(listing, "Gnome")[2] == 0.900 and row(listing, "Ogre")[0] == 16.5,
                         f"list after adjust: gnome {row(listing, 'Gnome')} ogre {row(listing, 'Ogre')}")
                 every = paged(client, "pulse list all", "pulse save")
                 require(re.search(r"^\s*Illithid\s", every, re.M), "list all omitted a restricted race")
-                print("adjust: gnome cast 0.895 -> 0.900, ogre melee 16.250 -> 16.500; list all has",
+                print("adjust: gnome cast 0.700 -> 0.900, ogre melee 16.250 -> 16.500; list all has",
                       len(re.findall(r"^\s+\S.*\d+\.\d{3}\s*$", every, re.M)), "rows", flush=True)
 
                 client.send("pulse save")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile and run the real administrator-property command journey, narrowly."""
+"""Execute property commands, including refreshing loaded PCs and NPCs after reload."""
 from pathlib import Path
 import os
 import subprocess

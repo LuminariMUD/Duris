@@ -18,12 +18,12 @@ from _paths import ROOT, source
 
 PROPERTIES = (ROOT / "lib" / "duris.properties").read_text()
 
-CAST = {"Kobold": "0.895", "Gnome": "0.895", "Goblin": "0.920", "Halfling": "0.920",
-        "DrowElf": "0.955", "GreyElf": "0.955", "MountainDwarf": "0.960", "DuergarDwarf": "0.960",
-        "Githzerai": "0.975", "Githyanki": "0.975", "Tiefling": "0.975", "Drider": "0.985",
-        "Human": "1.000", "Orc": "1.000", "Thri-Kreen": "1.000", "Centaur": "1.020",
-        "Barbarian": "1.035", "Troll": "1.035", "Minotaur": "1.040", "Firbolg": "1.055",
-        "Ogre": "1.055"}
+CAST = {"Kobold": "0.700", "Gnome": "0.700", "Goblin": "0.730", "Halfling": "0.730",
+        "DrowElf": "0.820", "GreyElf": "0.820", "MountainDwarf": "0.850", "DuergarDwarf": "0.850",
+        "Githzerai": "0.850", "Githyanki": "0.850", "Tiefling": "0.875", "Human": "1.000",
+        "Orc": "1.000", "Thri-Kreen": "1.000", "Centaur": "1.090", "Drider": "1.090",
+        "Minotaur": "1.150", "Barbarian": "1.220", "Troll": "1.220", "Firbolg": "1.310",
+        "Ogre": "1.310"}
 MELEE = {"Kobold": "12.000", "Gnome": "12.000", "Goblin": "12.500", "Halfling": "13.000",
          "DrowElf": "14.000", "GreyElf": "14.000", "Drider": "14.000", "Tiefling": "14.250",
          "Human": "15.000", "Orc": "15.000", "Githzerai": "15.000", "Githyanki": "15.000",
