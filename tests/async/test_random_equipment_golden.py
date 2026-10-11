@@ -4,9 +4,10 @@
 The harness compiles the module's own source files whole, links the real RNG
 (src/core/random.c), safe_format.c and both config modules at their compiled-in
 defaults, and takes the few helpers it calls from elsewhere (dice, strip_ansi,
-FirstWord, isname, material_restrictions, GET_CLASS, BOUNDED) from their real source. Only
+FirstWord, isname, material_restrictions, GET_CLASS, BOUNDED and the string setters)
+from their real source. Only
 the world is stubbed: three zones, four rooms, the two blank objects, materials and
-stones by vnum, the string setters and the difficulty dials. It runs under ASan
+stones by vnum and the difficulty dials. It runs under ASan
 and UBSan.
 
 Each case seeds the RNG from its own name, so a failure names one case and adding a
@@ -42,6 +43,9 @@ HELPERS = [
     ("handler.c", "char *FirstWord(char *namelist)"),
     ("handler.c", "bool isname(const char *str, const char *namelist)"),
     ("objconv.c", "void material_restrictions(P_obj obj)"),
+    ("salchemist.c", "void set_keywords(P_obj t_obj, const char *newKeys)"),
+    ("salchemist.c", "void set_short_description(P_obj t_obj, const char *newShort)"),
+    ("salchemist.c", "void set_long_description(P_obj t_obj, const char *newDescription)"),
 ]
 
 
@@ -154,9 +158,10 @@ P_obj read_object(int nr, int type)
 		return nullptr;
 	P_obj obj = new obj_data{};
 	obj->R_num = nr; // The harness reads the vnum back from here.
-	obj->name = strdup(nr == VOBJ_RANDOM_WEAPON ? "object enchant" : "object random");
-	obj->short_description = strdup("a blank");
-	obj->description = strdup("A blank lies here.");
+	// Prototype strings are borrowed until a real setter installs an owned replacement.
+	obj->name = const_cast<char *>(nr == VOBJ_RANDOM_WEAPON ? "object enchant" : "object random");
+	obj->short_description = const_cast<char *>("a blank");
+	obj->description = const_cast<char *>("A blank lies here.");
 	if (blank)
 	{
 		obj->type = ITEM_TRASH;
@@ -166,24 +171,19 @@ P_obj read_object(int nr, int type)
 	}
 	return obj;
 }
-void set_keywords(P_obj obj, const char *text) { free(obj->name); obj->name = strdup(text); }
-void set_short_description(P_obj obj, const char *text)
-{
-	free(obj->short_description);
-	obj->short_description = strdup(text);
-}
-void set_long_description(P_obj obj, const char *text)
-{
-	free(obj->description);
-	obj->description = strdup(text);
-}
 static void release(P_obj obj)
 {
 	if (!obj)
 		return;
-	free(obj->name);
-	free(obj->short_description);
-	free(obj->description);
+	// Every generated name must survive persistence, for direct and kill-drop cases.
+	if (obj->R_num == VOBJ_RANDOM_ARMOR || obj->R_num == VOBJ_RANDOM_WEAPON)
+		assert(obj->str_mask == (STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2));
+	if (obj->str_mask & STRUNG_KEYS)
+		free(obj->name);
+	if (obj->str_mask & STRUNG_DESC2)
+		free(obj->short_description);
+	if (obj->str_mask & STRUNG_DESC1)
+		free(obj->description);
 	delete obj;
 }
 

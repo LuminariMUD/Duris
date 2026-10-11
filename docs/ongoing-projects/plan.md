@@ -38,7 +38,12 @@ item unchanged. A companion fixture, `tests/fixtures/random_equipment_rng_golden
 now records a sentinel draw after each of the 1,480 cases, captured from original
 `master` code at `879adf0aa`. The original item fixture remains unchanged. A temporary
 longbow mutation confirms that the item output still matches while the RNG sentinel fails.
-Validation of this follow-up is in progress; then continue with #26, #27, #28 and #29.
+
+A fourth finding concerns string ownership: the harness now uses the real string setters,
+borrows prototype strings as the server does, and asserts all three ownership bits on
+every generated item, including kill drops. The invariant is asserted separately to keep
+both fixtures frozen. Bypassing a setter must fail even if its text would match.
+Validation of these follow-ups is in progress; then continue with #26, #27, #28 and #29.
 
 ## Goal
 
@@ -111,8 +116,10 @@ compiles the module's own source files whole (not extracted functions), links th
   and a town; four rooms, including a guild room;
 - blank objects for vnums 1252 and 1254;
 - materials and stones by vnum;
-- the string setters;
 - the difficulty dials at 1.0, plus one case at 1.5.
+
+The three string setters are extracted from their real source. Generated equipment must
+set all three string ownership bits so persistence saves its names.
 
 Each case calls `randomize(seed)` with its own seed first, so cases are independent: a
 failure names one case, and adding a case shifts no other.
