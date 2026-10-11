@@ -627,7 +627,7 @@ int main(int argc, char **argv)
 		if (!isdigit(*argv[pos]))
 		{
 			fatal_boot_error("comm",
-					 "Usage: %s [-l] [-m|--minimal] [-s] [-p] [-f] "
+					 "Usage: %s [-m|--minimal] [-s] [-p] [-f] "
 					 "[-d pathname] [ port # ]",
 					 argv[0]);
 		}
