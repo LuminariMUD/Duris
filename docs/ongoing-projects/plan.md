@@ -14,8 +14,8 @@ require. **Proof:** focused regressions, the unchanged golden fixture, mutation 
 test-coverage findings and the applicable local gates below; GitHub CI is not a gate.
 
 `origin/master` remains `879adf0aa`, already an ancestor of every phase. Keep the published
-stack and `review-0` tags; merge lower fixes upward in order and tag the fixed heads
-`randeq/phase-<n>-review-1`. No rebase or squash is needed for review.
+stack and existing review tags; merge lower fixes upward in order and tag each fixed
+head with the next `randeq/phase-<n>-review-<round>` tag. No rebase or squash is needed.
 
 PR #25's two findings are addressed in the existing golden harness: pet owners now differ
 in level, luck and room, and direct seeded assertions cover all 26 suffix totals and RNG
@@ -24,15 +24,21 @@ harness and 12 documentation checks pass. Temporary mutations swapping either pe
 the owner each fail all four pet cases; removing each of suffix totals 5, 6 and 7 fails its
 direct assertion. Evidence: `randeq-gate/pr1-review1-mutations.log`.
 
-PR #25 is ready to merge at tag `randeq/phase-1-review-1`. Both review threads have replies
-and are resolved. On code/test commit `dabc2d15c`, `make test-all -j16 TEST_JOBS=16` passed
+PR #25's first two review threads have replies and are resolved at tag
+`randeq/phase-1-review-1`. On code/test commit `dabc2d15c`, `make test-all -j16 TEST_JOBS=16` passed
 707/707 with no reruns, including development and production builds. Full formatting,
 `npm test --prefix site` (15 checks) and `make security-check` passed. `make test-db` remains
 exempt for this tests/comments/docs phase. Logs: `randeq-gate/pr1-review1.log`,
 `pr1-review1-site.log` and `pr1-review1-security.log`. The follow-up commit only records
 these results and corrects the older harness description; its documentation checks pass.
 CodeQL and Trivy are not installed locally; those external scanners were not rerun.
-Next: PR #26, then #27, #28 and #29, in order.
+
+A further PR #25 finding showed that an extra terminal RNG draw could leave the generated
+item unchanged. A companion fixture, `tests/fixtures/random_equipment_rng_golden.txt`,
+now records a sentinel draw after each of the 1,480 cases, captured from original
+`master` code at `879adf0aa`. The original item fixture remains unchanged. A temporary
+longbow mutation confirms that the item output still matches while the RNG sentinel fails.
+Validation of this follow-up is in progress; then continue with #26, #27, #28 and #29.
 
 ## Goal
 
@@ -129,6 +135,11 @@ only the harness's file list and the calls into the new interface, never the fix
 phase whose output differs is wrong. The fixture never changes, so its coverage (named
 items, owner tags, weapon spells, every item type) was checked once by hand when it was
 written, not by an assertion.
+
+The review added direct assertions for all 26 suffix totals and a companion RNG fixture,
+captured from the original implementation, that pins the next draw after every case.
+This catches terminal draws even when all fields of the current item still match.
+Both fixtures stay frozen through the remaining phases.
 
 Every refactor below must therefore keep the order of the random rolls. Turning a switch
 into a table keeps the roll and its mapping. A helper that moves a roll must leave it at the

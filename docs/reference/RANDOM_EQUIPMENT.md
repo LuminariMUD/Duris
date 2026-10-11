@@ -178,6 +178,9 @@ generated items field by field, materials, stones, encrust affects and true name
 output must equal `tests/fixtures/random_equipment_golden.txt`, so any change that moves,
 adds or drops a covered roll fails it. Pet owners have different level, luck and room
 attributes, so using the owner for the pet's drop rolls fails the existing fixture.
+`tests/fixtures/random_equipment_rng_golden.txt` records the next RNG draw after every
+case, captured from the original `879adf0aa` implementation. It also catches extra terminal
+draws that leave the current item unchanged but would shift the next live random event.
 Additional direct assertions cover all 26 suffix totals (5 through 30), their bitvectors
 and RNG consumption without changing that fixture. The next two hold the settings and
 their loader, then the salvage message's recipient, and the last the loot dials' hooks.

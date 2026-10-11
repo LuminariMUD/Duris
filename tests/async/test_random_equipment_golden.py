@@ -14,8 +14,9 @@ case moves no other. The output must equal tests/fixtures/random_equipment_golde
 written once from the code of 2026-10-10 and never edited: a change that moves, adds
 or drops a single roll changes the output. The random equipment rewrite in
 docs/ongoing-projects/plan.md changes only MODULE_SOURCES and the calls into the
-module, never the fixture. Direct assertions also cover every suffix total without
-changing the frozen output.
+module, never the fixtures. A companion fixture records a sentinel roll after each
+case to detect terminal draws that leave the current item unchanged. Direct assertions
+also cover every suffix total without changing the frozen output.
 """
 import os
 from pathlib import Path
@@ -25,6 +26,7 @@ import tempfile
 from _paths import ROOT, extract_function
 
 FIXTURE = ROOT / "tests/fixtures/random_equipment_golden.txt"
+RNG_FIXTURE = ROOT / "tests/fixtures/random_equipment_rng_golden.txt"
 MODULE_SOURCES = ["src/item/randomeq.c"]
 LINKED_SOURCES = [
     "src/core/random.c",
@@ -68,6 +70,7 @@ HARNESS = r'''
 #include "world/vnum.obj.h"
 
 #include <cassert>
+#include <climits>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -259,6 +262,8 @@ static void put(const char *format, ...)
 static void finish_case()
 {
 	std::printf("%s%s\n", current.c_str(), sent.c_str());
+	// Keep the original item fixture intact; record the next global RNG draw separately.
+	std::fprintf(stderr, "%.*s | %d\n", (int)current.find(" |"), current.c_str(), number(0, INT_MAX));
 }
 static void put_obj(P_obj o)
 {
@@ -609,23 +614,23 @@ def main():
         run = subprocess.run([str(binary)], env=env, capture_output=True, text=True)
         if run.returncode:
             raise SystemExit(f"FAILED: the harness exited {run.returncode}\n{run.stderr}")
-        actual = run.stdout
-        expected = FIXTURE.read_text() if FIXTURE.exists() else ""
-        if actual == expected:
-            print(f"random equipment golden test passed: {len(actual.splitlines())} cases,"
-                  " plus all 26 suffix totals")
-            return
-        output = work.parent / "random_equipment_golden.actual.txt"
-        output.write_text(actual)
-        actual_lines, expected_lines = actual.splitlines(), expected.splitlines()
-        differing = [i for i in range(max(len(actual_lines), len(expected_lines)))
-                     if i >= len(actual_lines) or i >= len(expected_lines)
-                     or actual_lines[i] != expected_lines[i]]
-        for i in differing[:3]:
-            print("expected:", expected_lines[i] if i < len(expected_lines) else "(none)")
-            print("actual:  ", actual_lines[i] if i < len(actual_lines) else "(none)")
-        raise SystemExit(f"FAILED: {len(differing)} of {len(expected_lines)} cases differ;"
-                         f" the whole output is in {output}")
+        for fixture, actual in ((FIXTURE, run.stdout), (RNG_FIXTURE, run.stderr)):
+            expected = fixture.read_text()
+            if actual == expected:
+                continue
+            output = work.parent / (fixture.stem + ".actual.txt")
+            output.write_text(actual)
+            actual_lines, expected_lines = actual.splitlines(), expected.splitlines()
+            differing = [i for i in range(max(len(actual_lines), len(expected_lines)))
+                         if i >= len(actual_lines) or i >= len(expected_lines)
+                         or actual_lines[i] != expected_lines[i]]
+            for i in differing[:3]:
+                print("expected:", expected_lines[i] if i < len(expected_lines) else "(none)")
+                print("actual:  ", actual_lines[i] if i < len(actual_lines) else "(none)")
+            raise SystemExit(f"FAILED: {fixture.name}: {len(differing)} of {len(expected_lines)}"
+                             f" cases differ; the whole output is in {output}")
+        print(f"random equipment golden test passed: {len(run.stdout.splitlines())} cases"
+              " and RNG sentinels, plus all 26 suffix totals")
 
 
 main()
