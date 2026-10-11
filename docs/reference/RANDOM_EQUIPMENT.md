@@ -222,6 +222,9 @@ case, captured from the original `879adf0aa` implementation. It also catches ext
 draws that leave the current item unchanged but would shift the next live random event.
 The harness uses the real string setters and asserts that every generated item has
 `STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2`, so its generated names are marked for saving.
+Direct assertions also require the weapon/armor blank vnum to match each item's wear
+flags. NPC killers, player victims and dead player/pet killers must produce no drops,
+messages or RNG draws. Both checks preserve the frozen fixtures.
 Additional direct assertions cover all 26 suffix totals (5 through 30), their bitvectors
 and RNG consumption without changing that fixture. The command harness compiles the real
 `randobj.c` with recording generators and the real slot tables, tokenizer and recipe
