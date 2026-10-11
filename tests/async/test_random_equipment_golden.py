@@ -17,7 +17,8 @@ or drops a single roll changes the output. The random equipment rewrite in
 docs/ongoing-projects/plan.md changes only MODULE_SOURCES and the calls into the
 module, never the fixtures. A companion fixture records a sentinel roll after each
 case to detect terminal draws that leave the current item unchanged. Direct assertions
-also cover every suffix total without changing the frozen output.
+also cover every suffix total, blank template identity and rejected kill contexts
+without changing the frozen output.
 """
 import os
 from pathlib import Path
@@ -180,7 +181,10 @@ void obj_to_char(P_obj obj, P_char ch)
 {
 	char line[64];
 	if (obj->R_num == VOBJ_RANDOM_ARMOR || obj->R_num == VOBJ_RANDOM_WEAPON)
+	{
+		assert(obj->R_num == (obj->wear_flags & ITEM_WIELD ? VOBJ_RANDOM_WEAPON : VOBJ_RANDOM_ARMOR));
 		given += std::string(" eq[") + obj->name + "]";
+	}
 	else
 	{
 		snprintf(line, sizeof(line), " obj%d", obj->R_num);
@@ -259,6 +263,7 @@ static void put_obj(P_obj o)
 		put(" NULL");
 		return;
 	}
+	assert(o->R_num == (o->wear_flags & ITEM_WIELD ? VOBJ_RANDOM_WEAPON : VOBJ_RANDOM_ARMOR));
 	put(" %s | %s | %s | type=%d wear=%u extra=%u", o->name, o->short_description,
 	    o->description, o->type, o->wear_flags, o->extra_flags);
 	// Flag fields that are almost always zero are shown only when they are not.
@@ -369,6 +374,34 @@ static void kill_drop()
 		kill_case(by_pet, 30, 30, 100);
 		kill_case(by_pet, 50, 45, 160);
 		kill_case(by_pet, 1, 62, 160); // Both rolls always win.
+	}
+}
+
+// Rejected kill contexts must produce neither drops/messages nor RNG draws.
+static void rejected_kills()
+{
+	for (int context = 0; context < 4; context++)
+	{
+		// Ordinary NPC killer, player victim, dead player killer, dead pet killer.
+		person killer("Finder", 1, 160, context != 0 && context != 3, ROOM_PLAIN);
+		person victim("victim", 62, 100, context == 1, ROOM_PLAIN);
+		person owner("Owner", 1, 160, true, ROOM_PLAIN);
+		if (context == 3)
+		{
+			owned_pet = &killer.ch;
+			pet_owner = &owner.ch;
+		}
+		if (context >= 2)
+			SET_POS(&killer.ch, STAT_DEAD + POS_STANDING);
+		randomize(1234);
+		const int next_roll = number(0, INT_MAX);
+		randomize(1234);
+		given.clear();
+		sent.clear();
+		random_equipment_kill_drop(&killer.ch, &victim.ch);
+		assert(given.empty() && sent.empty());
+		assert(number(0, INT_MAX) == next_roll);
+		pet_owner = owned_pet = nullptr;
 	}
 }
 
@@ -568,6 +601,7 @@ int main()
 	setup_world();
 	drop_decision();
 	kill_drop();
+	rejected_kills();
 	generator();
 	materials_and_stones();
 	suffix_outcomes();
@@ -615,7 +649,7 @@ def main():
             raise SystemExit(f"FAILED: {fixture.name}: {len(differing)} of {len(expected_lines)}"
                              f" cases differ; the whole output is in {output}")
         print(f"random equipment golden test passed: {len(run.stdout.splitlines())} cases"
-              " and RNG sentinels, plus all 26 suffix totals")
+              " and RNG sentinels, plus suffix totals, template identity and rejected kills")
 
 
 main()
