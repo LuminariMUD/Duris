@@ -190,9 +190,11 @@ def check_rebalance(operator: journey.MudClient, port: int) -> None:
             reply = run(player, f"innate reflection {CHARACTER}")
             require("into many images" in reply, reply)
             images = run(player, "look")
-            require(f"{name} stands here." in images, images)
+            require(re.search(rf"^{name} .*stands here\.", images, re.M), images)
             reply = run(player, "innate reflection")
             require("too tired" in reply, reply)
+            # Its namesake image would otherwise intercept the next staff setbit lookup.
+            run(operator, "purge image")
         print("[PASS] rebalance: six races' stats/help after reload, groundfighting, level-31 gnome/kobold reflection and cooldown", flush=True)
     except Exception:
         print(bytes(player.transcript).decode(errors="replace").replace(journey.PASSWORD, "[REDACTED]")[-9000:], flush=True)
