@@ -214,7 +214,13 @@ def main() -> int:
                 text = closed_within(refused, 10)
                 require(text is not None and REFUSAL in text,
                         f"the ninth connection from one address was not refused: {text!r}")
-                debug = (server.run_root / "logs/log/debug").read_text(errors="replace")
+                # Socket closure can precede the asynchronous log writer's append.
+                deadline = time.monotonic() + 10
+                while True:
+                    debug = (server.run_root / "logs/log/debug").read_text(errors="replace")
+                    if "Refused connection from 127.0.0.1" in debug or time.monotonic() >= deadline:
+                        break
+                    time.sleep(0.05)
                 require("Refused connection from 127.0.0.1" in debug,
                         "the refusal left no debug-log line:\n" + debug[-4000:])
 
