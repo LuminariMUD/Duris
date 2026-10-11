@@ -172,9 +172,9 @@ def test_every_dial_reaches_its_hook() -> None:
          "XP *= difficulty_multiplier(DIFFICULTY_DEATH_PENALTY);"),
         ("world/limits.c", "void update_exp_table(",
          "difficulty_scale_long(propVal, difficulty_multiplier(DIFFICULTY_EXP_REQUIRED));"),
-        ("item/randomeq.c", "bool check_random_drop(",
+        ("item/random_equipment_drop.c", "bool check_random_drop(",
          "chance *= static_cast<float>(difficulty_multiplier(DIFFICULTY_LOOT_DROPS));"),
-        ("item/randomeq.c", "P_obj create_random_eq_new(",
+        ("item/random_equipment.c", "P_obj create_random_eq_new(",
          "howgood = difficulty_scale_int(howgood, "
          "difficulty_multiplier(DIFFICULTY_LOOT_QUALITY));"),
         ("world/db.c", "void reset_zone(",

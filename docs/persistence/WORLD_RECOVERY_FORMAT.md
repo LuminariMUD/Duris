@@ -125,7 +125,7 @@ terminator: 513 bytes for the name and for the short description, 1,025 for the 
 description and for the action text. These are bounded recovery strings, not an
 unbounded serialization of arbitrary object prose.
 
-The generated-equipment audit covers the runtime overrides in `randomeq.c`,
+The generated-equipment audit covers the runtime overrides in `random_equipment.c`,
 including its fixed affects and bitvectors. Prototype-linked extra descriptions,
 linked temporary object affects, event pointers, and database bookkeeping are
 not serialized. It is not a general replacement for player

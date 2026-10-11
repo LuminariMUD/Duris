@@ -32,6 +32,7 @@
 #include "combat/justice.h"
 #include "core/mm.h"
 #include "item/objmisc.h"
+#include "item/random_equipment.h"
 #include "world/specs.prototypes.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
@@ -183,8 +184,6 @@ extern struct message_list fight_messages[];
 extern struct str_app_type str_app[];
 extern struct time_info_data time_info;
 extern struct zone_data *zone_table;
-
-P_obj set_encrust_affect(P_obj obj, int proc);
 
 struct potion potion_data[] = {
 	{ SPELL_GREATER_LIVING_STONE,

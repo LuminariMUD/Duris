@@ -90,6 +90,7 @@
 #include <string.h>
 #include "world/map.h"
 #include "item/objmisc.h"
+#include "item/random_equipment.h"
 #include "ships/ship_npc_ai.h"
 #include "magic/spells.h"
 
@@ -1703,7 +1704,6 @@ void assign_ship_crew_funcs()
 static int materials[] = {
 	7, 13, 20, 21, 22, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34
 }; // quality materials
-P_obj create_material(int index);
 
 /*
  * Put the ship's treasure chest aboard and its key on the captain.

@@ -2461,42 +2461,11 @@ struct proc_data
 	struct damage_messages *messages;
 };
 
-/* Self-targeted entries carry no adjective, so most rows stop after
-   self_only and rely on name being an empty string. */
-struct random_spells
-{
-	int s_number = 0;
-	int spell = 0;
-	bool self_only = false;
-	char name[32] = "";
-};
-
 struct random_quest
 {
 	int z_number;
 	char *z_mapdesc;
 	int z_justan;
-};
-
-struct randomeq_slots
-{
-	int m_number;
-	const char *m_name;
-	float m_stat;
-	float m_ac;
-	int wear_bit;
-	int numb_material;
-	int damage_type;
-	int base_weight;
-};
-
-struct randomeq_material
-{
-	int m_number;
-	const char *m_name;
-	float m_stat;
-	float m_ac;
-	float weight_mod;
 };
 
 struct spell_target_data

@@ -5,6 +5,18 @@ same day. This file is a working note: delete it when the last pull request land
 [RANDOM_EQUIPMENT.md](../reference/RANDOM_EQUIPMENT.md) describes how the system behaves
 today; that behaviour is what this plan keeps.
 
+## Current handoff (2026-10-11)
+
+All five phases are implemented and published as PRs #25 through #29. This checkout is
+`enhancement/randeq-3-module`; its reviewed head is tagged `randeq/phase-3-review-4`.
+PRs #25, #26 and #27 are ready to merge in order. Review #28 and #29 next.
+
+Phase 3's implementation is `a3bff0079`; review merge `131f095d8` passed 707/707 regressions
+and 72/72 database tests without reruns. The final follow-up removes added author-credit
+comments and records these results. All C++ after the affected file banners is unchanged;
+both build profiles, the strengthened golden harness and documentation checks pass after
+the comment edit. The stack table records the current heads and remaining review work.
+
 ## Review follow-up (2026-10-11)
 
 **Outcome:** address every review finding, oldest PR first, and leave the five published
@@ -79,6 +91,26 @@ of both binaries from a temporary directory exit with the corrected usage and no
 Evidence: `pr2-review3-{dev,production,focused,usage}.log`. Full regression/database
 results above are retained for this help-only edit. The final master sync changes
 only documentation, preserving all source/test evidence; documentation checks pass.
+
+PR #27 is ready to merge at `randeq/phase-3-review-4`. Both findings are addressed: the
+handoff, phase records and stack table now describe committed, published work and completed
+gates; added author credits were removed from the three new module files. The inherited
+harness retains the module split and all PR #25 repairs. Merge `131f095d8` passed full
+formatting, 707/707 regressions, both builds and 72/72 database tests without reruns.
+The final comment-only correction passed development and production builds, the ASan/UBSan
+golden test and 12 documentation checks; the site checks passed (15). No executable code
+changed after the full gate. Evidence: `randeq-gate/pr3-review1.log`,
+`pr3-review1-site.log` and `pr3-review1-attribution-{dev,production}.log`.
+The second review merge carries the new template and eligibility assertions into the
+split module; rejected contexts call `random_equipment_kill_drop()` directly. Server
+sources and build scripts remain identical to `9cbdca5fc`, retaining the completed full
+gate above. The ASan/UBSan golden harness, 12 documentation checks, 15 site checks
+and formatting pass (`pr3-review2-focused.log`, `pr3-review2-site.log`).
+The third review merge adds only #26's corrected startup-help string and its record.
+The previously completed module/golden/full gates remain valid; the help string was
+built and exercised in both profiles on #26. Minimal-boot, formatting and 12 documentation
+checks pass here. The final master sync changes only documentation; the source/test
+tree still matches `cd712da5f`, and 12 documentation checks pass after this sync.
 
 ## Goal
 
@@ -212,6 +244,11 @@ player or shopkeeper status and newbie flag. The new core is:
 ```c
 P_obj create_random_eq(P_char finder, int finder_level, int source_level, int slot, int material);
 ```
+
+Salvage generation also takes explicit levels as
+`create_material(P_char finder, int finder_level, int source_level)`; its existing index
+overload stays. This lets `randobj piece [level]` keep the alchemist refund and tier rolls
+without mutating the staff character or constructing a fake mob.
 
 The kill path and every other caller pass `GET_LEVEL(killer)` and `GET_LEVEL(mob)`, so they
 generate exactly what they do today. `randobj eq <level>` passes the level it was given for
@@ -362,6 +399,15 @@ The harness takes `dice`, `strip_ansi`, `FirstWord`, `isname`, `material_restric
 `GET_CLASS` and `BOUNDED` from their real source by signature, and `ALL_MAGES` and
 `ALL_ROGUES` from `objconv.c`. Phase 3 changes `MODULE_SOURCES` and the kill drop's call.
 
+**Review and verification:** commit `3fdd367af`, open
+[PR #25](https://github.com/LuminariMUD/Duris/pull/25), tag `randeq/phase-1-review-0`.
+The golden test, seven other focused checks and formatting passed. `make test-all`
+built the development and production profiles, then reported 706/707 Python tests
+passing. `test_telemetry_capacity_272.py` exceeded its 5 ms budget during a concurrent
+build, then passed alone on the same commit. The original log still records that
+failure at `/home/aiwithapex/projects/randeq-gate/pr1.log`; the isolated pass was recorded
+in the session and PR. `make test-db` was intentionally skipped for this phase.
+
 ### Phase 2: dead code out
 
 Remove what nothing runs:
@@ -398,21 +444,50 @@ existed only for what went:
 
 `#define TROPHY` survives in other files, which use it for their own purposes.
 
+**Ready to merge (2026-10-11):** `fd38db525`, [PR #26](https://github.com/LuminariMUD/Duris/pull/26),
+tag `randeq/phase-2-review-1`. The review merge `b4f4252a6` passed both build profiles,
+707/707 regressions and 72/72 database tests with no reruns. Golden, formatting, focused
+and documentation/site checks also passed. The original interrupted gate is superseded;
+its temporary worktree was removed. Evidence: `randeq-gate/pr2-review1.log`.
+
 ### Phase 3: the module and its interface
+
+**Original implementation, committed and published:** `a3bff0079`, [PR #27](https://github.com/LuminariMUD/Duris/pull/27),
+tag `randeq/phase-3-review-0`. The rename, three
+new module files, moved structs/constants/prototypes, caller includes, `die()` delegation
+and Makefile entries are in place. `setprefix_obj()` is private to the generator; the
+unused `BUGGED` slot and empty material terminator are gone. The six affected tests and
+four reference documents now follow the split, and every table's columns are documented.
+
+The interrupted session's build failed on missing `CMD_*`, `TO_*`, `MAT_*` and `WEAPON_*`
+definitions. Restoring `cmd/interp.h`, `net/comm.h` and `item/objmisc.h` fixed it; the
+row-count assertions now compile. The golden harness includes the module header, compiles
+all three source files and calls `random_equipment_kill_drop(killer, victim)` directly.
+
+Original implementation validation: `make -C src -j16`, the unchanged 1,480-case golden fixture, all five other
+affected tests and the 12 documentation checks. The disconnected proc body was compared
+with Phase 2 and is unchanged. `make build-production -j16` and `./scripts/format.sh --check` also passed. Build logs:
+`randeq-gate/pr3-dev.log` and `randeq-gate/pr3-production.log`. On `a3bff0079`,
+`make test-all -j16 TEST_JOBS=16` passed 707/707 and `make test-db` passed 72/72 without
+reruns (`randeq-gate/pr3.log`). The current review pass corrects this previously stale
+handoff and carries in the stronger harness; its validation is recorded above.
 
 - **Files:** `git mv` `randomeq.c` to `random_equipment.c`; move the tables to
   `random_equipment_tables.c` and the drop decision to `random_equipment_drop.c`.
-- **Header:** add `random_equipment.h` with the structs, the size constants and their
-  `static_assert`s; drop the `BUGGED` row (`number(0, MAX_SLOT - 1)` never reached it).
+- **Header:** add `random_equipment.h` with the structs and size constants, checked by
+  `static_assert`s beside the table definitions; drop the `BUGGED` row
+  (`number(0, MAX_SLOT - 1)` never reached it).
 - **Kill drop:** move the block out of `die()` into `random_equipment_kill_drop()`. `die()`
   keeps one call in the same place, and its `tempobj` goes if nothing else uses it.
 - **Declarations:** replace every local declaration and `prototypes.h` or `structs.h` entry
   with the header; update `src/Makefile`.
 - **Tests that read files by name:**
+  - `test_random_equipment_golden.py` (module sources, header and kill-drop call);
   - `test_random_equipment_config_contract.py`;
   - `test_difficulty_dials.py` (its hook strings);
   - `test_deferred_findings_repairs.py`;
-  - `test_random_drop_owner_message.py` (now reads the new function).
+  - `test_random_drop_owner_message.py` (now reads the new function);
+  - `test_weapon_actions_runtime.py` (proc source path and the header for `random_spells`).
 
 Every document that names `randomeq.c` or the moved functions follows:
 [RANDOM_EQUIPMENT.md](../reference/RANDOM_EQUIPMENT.md),
@@ -493,11 +568,11 @@ based on the one below, so each pull request's diff is its own phase. The first 
 
 | PR | Phase | Branch | GitHub | State |
 |---|---|---|---|---|
-| 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | opened | Done; up for review (`randeq/phase-1-review-0`) |
-| 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | | Done; gate pending |
-| 3 | 3, module and interface | `enhancement/randeq-3-module` | | Not started |
-| 4 | 4, readable generator | `enhancement/randeq-4-generator` | | Not started |
-| 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | | Not started |
+| 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | [#25](https://github.com/LuminariMUD/Duris/pull/25) | Ready at `fdfdffb19` (`randeq/phase-1-review-4`); all six findings fixed |
+| 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | [#26](https://github.com/LuminariMUD/Duris/pull/26) | Ready at `2e11670ae` (`randeq/phase-2-review-4`); no findings, full gates passed |
+| 3 | 3, module and interface | `enhancement/randeq-3-module` | [#27](https://github.com/LuminariMUD/Duris/pull/27) | Ready at `randeq/phase-3-review-4`; both findings fixed and full gates passed |
+| 4 | 4, readable generator | `enhancement/randeq-4-generator` | [#28](https://github.com/LuminariMUD/Duris/pull/28) | Implemented and verified at `4b7e68cb4`; review follow-up pending |
+| 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | [#29](https://github.com/LuminariMUD/Duris/pull/29) | Implemented and verified at `6364ebf58`; review follow-up pending |
 
 ## Checks per pull request
 
@@ -525,3 +600,11 @@ The plan was checked part by part against what each part is for:
   every slot row in one naming style.
 - **Scaled:** PR 1's gate skips `make test-db`.
 - **Kept:** everything else. Each part serves the goal or an owner decision (D1 to D4).
+
+## Ablation review at takeover (2026-10-10)
+
+Outcome, non-goals, files and proof remain those above. Keep the module split: the drop
+decision has independent callers, while the generator and staff command have different
+responsibilities. Reuse the golden fixture and existing harnesses; no new compatibility
+wrapper or test framework is needed for the move. The missing includes and stale harness
+paths are required integration repairs, not changes to game rules.

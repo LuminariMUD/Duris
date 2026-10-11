@@ -1192,16 +1192,6 @@ void training_dummy_record_damage(P_char ch, int damage);
 void display_random_zones(P_char ch);
 int reset_lab(int type);
 
-/* randomeq.c */
-
-bool check_random_drop(P_char ch, P_char mob, bool piece);
-P_obj create_random_eq_new(P_char killer, P_char mob, int item_type, int material_type);
-P_obj setprefix_obj(P_obj obj, float modifier, int affectnumber);
-P_obj create_stones(void);
-P_obj create_material(int index);
-P_obj create_material(P_char ch, P_char mob);
-P_obj setsuffix_obj_new(P_obj obj);
-
 P_obj create_sigil(int x);
 
 int create_lab(int type);

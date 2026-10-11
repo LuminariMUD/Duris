@@ -29,7 +29,11 @@ from _paths import ROOT, extract_function
 
 FIXTURE = ROOT / "tests/fixtures/random_equipment_golden.txt"
 RNG_FIXTURE = ROOT / "tests/fixtures/random_equipment_rng_golden.txt"
-MODULE_SOURCES = ["src/item/randomeq.c"]
+MODULE_SOURCES = [
+    "src/item/random_equipment.c",
+    "src/item/random_equipment_drop.c",
+    "src/item/random_equipment_tables.c",
+]
 LINKED_SOURCES = [
     "src/core/random.c",
     "src/core/safe_format.c",
@@ -56,19 +60,12 @@ def class_groups():
     return text[text.index("#define ALL_MAGES") : text.index("// Sets anti-class flags")]
 
 
-def kill_drop_block():
-    """The random drop block of die(), as a function of the victim and the killer."""
-    die = extract_function("fight.c", "void die(P_char ch, P_char killer)")
-    start = die.index("// object code - Normal kills.")
-    block = die[start : die.index("update_pos(ch);", start)]
-    return "void golden_kill_drop(P_char ch, P_char killer)\n{\nP_obj tempobj = NULL;\n" + block + "}\n"
-
-
 HARNESS = r'''
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "core/utils.h"
 #include "item/objmisc.h"
+#include "item/random_equipment.h"
 #include "item/weapon_actions.h"
 #include "magic/spells.h"
 #include "world/difficulty.h"
@@ -82,16 +79,6 @@ HARNESS = r'''
 #include <cstdlib>
 #include <cstring>
 #include <string>
-
-// ---- The module's interface, as its callers see it today ----
-P_obj create_random_eq_new(P_char killer, P_char mob, int item_type, int material_type);
-bool check_random_drop(P_char ch, P_char mob, bool piece);
-P_obj create_material(int index);
-P_obj create_material(P_char ch, P_char mob);
-P_obj create_stones(void);
-P_obj set_encrust_affect(P_obj obj, int proc);
-bool identify_random(P_obj obj);
-extern struct random_spells spells_data[61];
 
 // ---- The world ----
 // Zone 0 has colour codes in its name, so its items can be named; zone 1 is plain; zone 2
@@ -349,8 +336,6 @@ static void drop_decision()
 }
 
 // ---- Kill drop ----
-void golden_kill_drop(P_char ch, P_char killer);
-
 static void kill_case(bool by_pet, int killer_level, int mob_level, int luck)
 {
 	char name[128];
@@ -372,7 +357,7 @@ static void kill_case(bool by_pet, int killer_level, int mob_level, int luck)
 	for (int i = 0; i < 40; i++)
 	{
 		person victim("victim", mob_level, 100, false, ROOM_PLAIN);
-		golden_kill_drop(&victim.ch, killer);
+		random_equipment_kill_drop(killer, &victim.ch);
 		put(" %d:%s%s;", i, given.empty() ? " -" : given.c_str(), sent.c_str());
 		given.clear();
 		sent.clear();
@@ -413,7 +398,7 @@ static void rejected_kills()
 		randomize(1234);
 		given.clear();
 		sent.clear();
-		golden_kill_drop(&victim.ch, &killer.ch);
+		random_equipment_kill_drop(&killer.ch, &victim.ch);
 		assert(given.empty() && sent.empty());
 		assert(number(0, INT_MAX) == next_roll);
 		pet_owner = owned_pet = nullptr;
@@ -631,7 +616,7 @@ def main():
         work = Path(directory)
         harness = work / "harness.cpp"
         helpers = class_groups() + "\n".join(extract_function(name, signature) for name, signature in HELPERS)
-        harness.write_text(HARNESS + "\n" + helpers + "\n" + kill_drop_block())
+        harness.write_text(HARNESS + "\n" + helpers)
         binary = work / "golden"
         subprocess.run(
             [

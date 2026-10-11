@@ -45,10 +45,11 @@ callbacks = "\n".join([
     function(ROOT / "src/specs/specs.underworld.c", "void resolve_avernus_drain("),
     function(ROOT / "src/specs/specs.underworld.c", "int avernus("),
     function(ROOT / "src/combat/fight.c", "bool weapon_proc("),
-    function(ROOT / "src/item/randomeq.c", "int random_eq_proc("),
+    function(ROOT / "src/item/random_equipment.c", "int random_eq_proc("),
 ])
 
 DOUBLES = r'''
+#include "item/random_equipment.h"
 #include "item/weapon_actions.c"
 #include "item/native_artifact_actions.h"
 bool native_artifact_owns(int) { return false; }

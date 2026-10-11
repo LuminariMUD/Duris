@@ -34,7 +34,7 @@ numbers. The legacy nonzero-count/sparse-slot behavior is preserved, rather than
 silently compressing sparse bundles into a different effect sequence.
 
 **Not connected yet.** The random-equipment route's source, `random_eq_proc()` in
-`src/item/randomeq.c`, is attached to no object (`specs.assign.c` gives the random armour
+`src/item/random_equipment.c`, is attached to no object (`specs.assign.c` gives the random armour
 blank `set_proc()` and the random weapon blank nothing), so the route below never starts in
 the game, whatever `itemActions.randomWeapons` says. `test_weapon_actions_runtime.py` drives
 it directly. Named random weapons proc through the packed `weapon_proc()` route instead

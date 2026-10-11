@@ -26,10 +26,6 @@
 #define KEYFILE "duris.key"
 #define CERTFILE "duris.crt"
 
-// randomeq constants
-#define MAX_SLOT 109
-#define MAXMATERIAL 43
-#define MAXPREFIX 56
 /* configurable options */
 
 #define ENABLE_TERSE 1

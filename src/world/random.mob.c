@@ -28,6 +28,7 @@
 #include "world/map.h"
 #include "core/mm.h"
 #include "item/objmisc.h"
+#include "item/random_equipment.h"
 #include "core/profile.h"
 #include "redis/redis_report_cache.h"
 #include "magic/spells.h"

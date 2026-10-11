@@ -25,7 +25,7 @@ nq = src("nq.c")
 artifact = src("artifact.c")
 language = src("language.c")
 randobj = src("randobj.c")
-randomeq = src("randomeq.c")
+randomeq = src("random_equipment.c")
 mining = src("mining.c")
 mining_config = src("mining_config.c")
 prototypes = src("prototypes.h")
@@ -145,7 +145,7 @@ check(
 )
 check(
     "create_stones no longer takes a character it ignores",
-    "P_obj create_stones(void);" in prototypes,
+    "P_obj create_stones(void);" in src("random_equipment.h"),
 )
 check(
     "gem mines scale with mine quality, like the sibling ore roll",
