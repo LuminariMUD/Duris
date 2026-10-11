@@ -183,6 +183,9 @@ listed by `eq list`), or table nouns with colour removed and spaces replaced by 
 wear group and a noun selects the group. One equipment item displays its `stat`; batches
 print descriptions, the level where applicable, and a total.
 
+Recipe counts are attempts. Random blanks and targets rejected by the crafting rules
+produce no scroll; only delivered recipes receive a success line and count in the total.
+
 ## Other drops on the same death
 
 Next to the random drop, `die()` handles three more. A dragon that grants experience
@@ -221,7 +224,8 @@ The harness uses the real string setters and asserts that every generated item h
 `STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2`, so its generated names are marked for saving.
 Additional direct assertions cover all 26 suffix totals (5 through 30), their bitvectors
 and RNG consumption without changing that fixture. The command harness compiles the real
-`randobj.c` with recording generators and the real slot tables and tokenizer, checking
-defaults, every slot word, limits, errors and null returns. The remaining tests hold the
+`randobj.c` with recording generators and the real slot tables, tokenizer and recipe
+function, checking defaults, every slot word, limits, errors, null returns and recipe
+rejection/delivery totals. The remaining tests hold the
 settings and loader, salvage message recipient and loot dials' hooks. The golden harness
 does not roll a drop on a running server.

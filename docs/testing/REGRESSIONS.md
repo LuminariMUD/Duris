@@ -46,6 +46,19 @@ checks `eq list`, single-item stat output, batch totals and unchanged map/zone o
 It does not prove the live command's generator output; the random-equipment golden harness
 and the local gameplay check recorded in the ongoing plan cover those separately.
 
+## Randobj: recipe totals count delivered scrolls
+
+`create_recipe()` reports success only after placing a scroll in inventory. Recipe
+batches use that result for their success lines and total, so rejected targets no longer
+inflate the count. The attempt limit, eligibility rules and target cleanup are unchanged.
+
+`test_randobj_command.py` compiles the real recipe function alongside the command. Under
+ASan/UBSan it checks full containers/storage, prohibited affects in all four bitvectors,
+combat/spell pulse affects and a false crafting-availability result. All-rejected, mixed
+and single attempts check inventory, cleanup and exact output. The all-rejected case
+failed before the fix. The availability gate itself is controlled by a test stub; these
+checks verify how the recipe function and command handle its result.
+
 ## Randobj: stat output selects the new item
 
 Single-item equipment generation passes its object directly to `do_stat()`'s renderer.

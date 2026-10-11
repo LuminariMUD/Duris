@@ -223,10 +223,12 @@ static void randobj_recipe(P_char ch, char *arguments)
 			extract_obj(obj);
 			continue;
 		}
-		create_recipe(ch, obj);
-		created++;
-		if (count > 1)
-			send_to_char_f(ch, "Recipe for %s\r\n", obj->short_description);
+		if (create_recipe(ch, obj))
+		{
+			created++;
+			if (count > 1)
+				send_to_char_f(ch, "Recipe for %s\r\n", obj->short_description);
+		}
 		extract_obj(obj);
 	}
 	if (count > 1)

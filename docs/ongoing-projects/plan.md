@@ -14,8 +14,10 @@ reviewed heads and local results are recorded below. PR #29's review is in progr
 Phase 5's original code commit `dbbc89dfe` passed both builds, 709/709 regressions,
 72/72 database tests and the live command checks recorded in its phase section. The
 current review carries in the lower-phase repairs and fixes recipe batch reporting:
-only scrolls actually delivered may count as created. Focused and full local validation
-of that repair is still pending. The PRs remain open and unmerged.
+only scrolls actually delivered count as created. The expanded ASan/UBSan command test
+reproduced the old overcount and passes with the fix; both frozen fixtures, tokenizer,
+formatting and documentation checks also pass. Full gates and the live recipe check
+are still pending. The PRs remain open and unmerged.
 
 ## Review follow-up (2026-10-11)
 
@@ -85,15 +87,16 @@ documentation checks (12). No gate reruns were needed. The final record changes 
 plan. Evidence: `randeq-gate/pr4-review1.log`, `pr4-review1-site.log`,
 `pr4-review1-focused.log` and `pr4-review1-ownership.log`.
 
-PR #29 review: change the existing `create_recipe()` return type to `bool`, returning
-success only after delivery, and use it to guard the batch count and success line.
-Keep the existing eligibility rules and attempt limit. Extend the existing command
-harness with the real recipe function to cover rejected containers, affects and crafting
-availability, plus successful and mixed batches. Files: `randobj.c`, `drannak.c`,
+PR #29 review: `create_recipe()` now returns `bool`, reporting success only after
+delivery, and the command uses it to guard the batch count and success line. Existing
+eligibility rules and attempt limits are unchanged. The command harness uses the real
+recipe function for containers/storage, four affect bitvectors, combat/spell pulse and
+a controlled crafting-availability rejection, plus successful and mixed batches. Files: `randobj.c`, `drannak.c`,
 `tradeskill.h`, the command harness and these notes. Proof: ASan/UBSan command checks,
 both frozen fixtures, both builds, full regression/database gates and a private live
 recipe check. This directly fixes the reporting boundary without duplicating eligibility
-checks or adding retries.
+checks or adding retries. The all-rejected command failed before the repair and passes
+afterward (`pr5-review1-recipe-before.log`, `pr5-review1-recipe.log`).
 
 ## Goal
 

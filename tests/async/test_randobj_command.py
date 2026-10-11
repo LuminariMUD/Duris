@@ -3,7 +3,9 @@
 
 The slot tables, wear words, tokenizer, numeric-word predicate and colour stripping
 come from the server. Generators record their inputs; the golden harness separately
-proves their output. This test never starts a server or changes world/account data.
+proves their output. Recipe rejection and delivery use the real create_recipe(), with
+a controlled crafting availability gate. This test never starts a server or changes
+world/account data.
 """
 import os
 from pathlib import Path
@@ -17,6 +19,9 @@ HARNESS = r'''
 #include "core/structs.h"
 #include "core/utils.h"
 #include "item/objmisc.h"
+#include "economy/tradeskill.h"
+#include "economy/crafting.h"
+#include "world/db.h"
 #include "item/random_equipment.h"
 #include "world/vnum.obj.h"
 #include "cmd/interp.h"
@@ -42,6 +47,7 @@ static std::vector<std::pair<int, int>> rolls;
 static std::string output;
 static int stats, recipes, samples, extracted, maps, removals, zones, fail_at;
 static bool reject_recipe;
+static std::vector<int> recipe_rejections;
 
 void send_to_char(const char *text, P_char ch) { assert(ch == &staff); output += text; }
 void send_to_char_f(P_char ch, const char *format, ...) {
@@ -79,15 +85,47 @@ P_obj random_zone_item(P_char ch) {
     P_obj obj = object("zone-item");
     obj_index[0].virtual_number = reject_recipe ? VOBJ_RANDOM_WEAPON : 123;
     reject_recipe = false;
+    if (obj && requests.size() <= recipe_rejections.size()) {
+        switch (recipe_rejections[requests.size() - 1]) {
+        case 1: obj->type = ITEM_CONTAINER; obj->contains = obj; break;
+        case 2: obj->type = ITEM_STORAGE; obj->contains = obj; break;
+        case 3: obj->bitvector = AFF_STONE_SKIN; break;
+        case 4: obj->bitvector2 = AFF2_EARTH_AURA; break;
+        case 5: obj->bitvector3 = AFF3_BLUR; break;
+        case 6: obj->bitvector4 = AFF4_SANCTUARY; break;
+        case 7: obj->affected[MAX_OBJ_AFFECT - 1].location = APPLY_COMBAT_PULSE; break;
+        case 8: obj->affected[MAX_OBJ_AFFECT - 1].location = APPLY_SPELL_PULSE; break;
+        case 9: obj->value[0] = -1; break; // Crafting availability/level gate rejects it.
+        }
+    }
     return obj;
 }
-void obj_to_char(P_obj obj, P_char ch) { assert(obj && ch == &staff); inventory.push_back(obj); }
+void obj_to_char(P_obj obj, P_char ch) {
+    assert(obj && ch == &staff); inventory.push_back(obj);
+    if (obj->type == ITEM_SCROLL) recipes++;
+}
 void do_stat(P_char ch, char *argument, int command, P_obj obj) {
     assert(ch == &staff && !strcmp(argument, "o") && command == CMD_STAT);
     assert(obj == inventory.back()); stats++;
 }
 void extract_obj(P_obj obj, int) { assert(obj); extracted++; release(obj); }
-void create_recipe(P_char ch, P_obj obj) { assert(ch == &staff && obj); recipes++; }
+P_obj read_object(int vnum, int mode) {
+    assert(vnum == 400210 && mode == VIRTUAL);
+    auto *obj = new obj_data{};
+    obj->type = ITEM_SCROLL; obj->name = strdup("recipe");
+    obj->short_description = strdup("a recipe for"); obj->str_mask = STRUNG_DESC2;
+    return obj;
+}
+bool crafting_recipe_target_is_available(P_obj obj) { return obj->value[0] != -1; }
+void crafting_configure_recipe_scroll(P_obj recipe, P_obj target) { assert(recipe && target); }
+void debug(const char *, ...) {}
+int itemvalue(P_obj) { return 1; }
+char *str_dup(const char *text) { return strdup(text); }
+void __free(void *ptr, const char *, int) { free(ptr); }
+int checked_snprintf_at(const char *, int, char *buffer, size_t size, const char *format, ...) {
+    va_list args; va_start(args, format);
+    int result = vsnprintf(buffer, size, format, args); va_end(args); return result;
+}
 void describe_encrusted_enhanced(P_obj obj) {
     assert(obj && obj->affected[2].location == APPLY_MOVE_REG); samples++;
 }
@@ -107,7 +145,7 @@ static void reset() {
     for (P_obj obj : inventory) release(obj);
     inventory.clear(); requests.clear(); rolls.clear(); output.clear();
     stats = recipes = samples = extracted = maps = removals = zones = fail_at = 0;
-    reject_recipe = false;
+    reject_recipe = false; recipe_rejections.clear();
     staff = {}; staff.only.pc = &player; staff.player.level = 62; staff.in_room = 123;
 }
 static void run(const std::string &arguments) {
@@ -181,11 +219,23 @@ int main() {
     assert(output.find("Created 5 materials") != std::string::npos);
     reset(); run("stone"); assert(requests.size() == 1 && requests[0].kind == "stone");
     reset(); run("stone 50"); assert(requests.size() == 50 && inventory.size() == 50);
-    reset(); run("recipe"); assert(recipes == 1 && extracted == 1 && inventory.empty());
+    reset(); run("recipe"); assert(recipes == 1 && extracted == 1 && inventory.size() == 1);
     reset(); run("recipe 3"); assert(recipes == 3 && extracted == 3);
     reset(); reject_recipe = true; run("recipe 3");
     assert(requests.size() == 3 && recipes == 2 && extracted == 3);
     assert(output.find("Created 2 recipes") != std::string::npos);
+    // The real recipe function can reject otherwise valid zone items. Only delivered
+    // scrolls may contribute a success line or the total, including mixed batches.
+    for (int rejection = 1; rejection <= 9; rejection++) {
+        reset(); recipe_rejections = {rejection, rejection}; run("recipe 2");
+        assert(requests.size() == 2 && recipes == 0 && inventory.empty() && extracted == 2);
+        assert(output == "Created 0 recipes.\r\n");
+        reset(); recipe_rejections = {0, rejection, 0}; run("recipe 3");
+        assert(requests.size() == 3 && recipes == 2 && inventory.size() == 2 && extracted == 3);
+        assert(output == "Recipe for a test item\r\nRecipe for a test item\r\nCreated 2 recipes.\r\n");
+        reset(); recipe_rejections = {rejection}; run("recipe");
+        assert(recipes == 0 && inventory.empty() && extracted == 1 && output.empty());
+    }
     reset(); run("mob"); assert(requests.size() == 1 && requests[0].finder_level == 0);
     reset(); run("mob 20"); assert(requests.size() == 1 && requests[0].finder_level == 20);
     reset(); run("mob 0 10"); assert(requests.size() == 10 && requests[0].finder_level == 0);
@@ -235,6 +285,7 @@ def main():
         ("interp.c", "char *lohrr_chop(char *string, char *arg1)"),
         ("interp.c", "bool is_number(char *str)"),
         ("utility.c", "string strip_ansi(const char *str)"),
+        ("drannak.c", "bool create_recipe(P_char ch, P_obj temp)"),
     ))
     output = ROOT / "bin/tests"
     output.mkdir(parents=True, exist_ok=True)
