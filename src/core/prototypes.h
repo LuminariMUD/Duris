@@ -646,6 +646,7 @@ void do_snoop(P_char, char *, int);
 void do_start(P_char, int);
 void do_start_deferred_newbie_kit(P_char, int);
 void do_stat(P_char, char *, int);
+void do_stat(P_char, char *, int, P_obj);
 void do_training_dummy(P_char, char *, int);
 void do_switch(P_char, char *, int);
 void do_teleport(P_char, char *, int);

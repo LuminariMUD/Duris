@@ -3982,6 +3982,7 @@ void check_aggro_from_command(P_char exec_char)
 char *lohrr_chop(char *string, char *arg1)
 {
 	char *index;
+	char *output_start = arg1;
 	bool single_quoted;
 
 	// First test for empty.
@@ -4019,6 +4020,7 @@ char *lohrr_chop(char *string, char *arg1)
 			if (single_quoted)
 			{
 				index = string;
+				arg1 = output_start;
 				single_quoted = FALSE;
 			}
 			else
