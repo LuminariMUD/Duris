@@ -5,6 +5,26 @@ same day. This file is a working note: delete it when the last pull request land
 [RANDOM_EQUIPMENT.md](../reference/RANDOM_EQUIPMENT.md) describes how the system behaves
 today; that behaviour is what this plan keeps.
 
+## Review follow-up (2026-10-11)
+
+**Outcome:** address every review finding, oldest PR first, and leave the five published
+PRs ready to merge. **Non-goals:** game-rule changes, unrelated cleanup and landing the PRs.
+**Files:** the existing harness, affected implementation and their documentation as findings
+require. **Proof:** focused regressions, the unchanged golden fixture, mutation checks for
+test-coverage findings and the applicable local gates below; GitHub CI is not a gate.
+
+`origin/master` remains `879adf0aa`, already an ancestor of every phase. Keep the published
+stack and `review-0` tags; merge lower fixes upward in order and tag the fixed heads
+`randeq/phase-<n>-review-1`. No rebase or squash is needed for review.
+
+PR #25's two findings are addressed in the existing golden harness: pet owners now differ
+in level, luck and room, and direct seeded assertions cover all 26 suffix totals and RNG
+consumption. These checks preserve the original 1,480-case fixture. The focused ASan/UBSan
+harness and 12 documentation checks pass. Temporary mutations swapping either pet roll to
+the owner each fail all four pet cases; removing each of suffix totals 5, 6 and 7 fails its
+direct assertion. Evidence: `randeq-gate/pr1-review1-mutations.log`. The full local gate and
+review replies are pending; process PR #26 only after this PR is finished.
+
 ## Goal
 
 1. **Clear code.** The random-equipment code (the kill-drop decision, the item generator,

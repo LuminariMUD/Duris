@@ -14,7 +14,8 @@ case moves no other. The output must equal tests/fixtures/random_equipment_golde
 written once from the code of 2026-10-10 and never edited: a change that moves, adds
 or drops a single roll changes the output. The random equipment rewrite in
 docs/ongoing-projects/plan.md changes only MODULE_SOURCES and the calls into the
-module, never the fixture.
+module, never the fixture. Direct assertions also cover every suffix total without
+changing the frozen output.
 """
 import os
 from pathlib import Path
@@ -66,6 +67,7 @@ HARNESS = r'''
 #include "world/difficulty.h"
 #include "world/vnum.obj.h"
 
+#include <cassert>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -347,6 +349,13 @@ static void kill_case(bool by_pet, int killer_level, int mob_level, int luck)
 	start_case(name);
 	person owner("Owner", killer_level, luck, true, ROOM_PLAIN);
 	person pet("wolf companion", killer_level, luck, false, ROOM_PLAIN);
+	if (by_pet)
+	{
+		// Only the message goes to the owner. Drop rolls and generation use the pet.
+		owner.ch.player.level = 62;
+		owner.ch.curr_stats.Luk = 60;
+		owner.ch.in_room = ROOM_GUILD_HALL;
+	}
 	P_char killer = by_pet ? &pet.ch : &owner.ch;
 	pet_owner = &owner.ch;
 	owned_pet = &pet.ch;
@@ -477,6 +486,58 @@ static void materials_and_stones()
 	finish_case();
 }
 
+// ---- Every suffix total, including the rare 5/6/7 and no-affect 28/29/30 ----
+static void suffix_outcomes()
+{
+	const struct {
+		uint64_t seed;
+		unsigned long bits1, bits2, bits3, bits5;
+	} cases[] = {
+		{ 20476, AFF_DETECT_INVISIBLE, 0, 0, 0 },
+		{ 1167, 0, AFF2_ULTRAVISION, 0, 0 },
+		{ 3, 0, AFF2_FIRESHIELD, 0, 0 },
+		{ 67, AFF_SLOW_POISON, 0, 0, 0 },
+		{ 39, AFF_WATERBREATH, 0, 0, 0 },
+		{ 7, AFF_INFRAVISION, 0, 0, 0 },
+		{ 60, AFF_PROTECT_GOOD, 0, 0, 0 },
+		{ 42, AFF_PROTECT_EVIL, 0, 0, 0 },
+		{ 30, 0, AFF2_PROT_COLD, 0, 0 },
+		{ 4, AFF_LEVITATE, 0, 0, 0 },
+		{ 8, 0, AFF2_DETECT_EVIL, 0, 0 },
+		{ 1, 0, AFF2_DETECT_GOOD, 0, 0 },
+		{ 10, 0, AFF2_DETECT_MAGIC, 0, 0 },
+		{ 14, AFF_PROT_FIRE, 0, 0, 0 },
+		{ 12, 0, 0, 0, AFF5_PROT_UNDEAD },
+		{ 6, 0, AFF2_PROT_ACID, 0, 0 },
+		{ 15, AFF_SENSE_LIFE, 0, 0, 0 },
+		{ 25, AFF_MINOR_GLOBE, 0, 0, 0 },
+		{ 31, AFF_FARSEE, 0, 0, 0 },
+		{ 99, 0, 0, AFF3_COLDSHIELD, 0 },
+		{ 5, 0, AFF2_SOULSHIELD, 0, 0 },
+		{ 18, AFF_BARKSKIN, 0, 0, 0 },
+		{ 359, AFF_HASTE, 0, 0, 0 },
+		{ 215, 0, 0, 0, 0 },
+		{ 909, 0, 0, 0, 0 },
+		{ 10194, 0, 0, 0, 0 },
+	};
+	for (int i = 0; i < (int)ARRAY_SIZE(cases); i++)
+	{
+		const auto &expected = cases[i];
+		randomize(expected.seed);
+		assert(dice(5, 6) == i + 5);
+		const int next_roll = number(1, 1000000);
+		randomize(expected.seed);
+		obj_data obj{};
+		assert(setsuffix_obj_new(&obj) == &obj);
+		assert(obj.bitvector == expected.bits1);
+		assert(obj.bitvector2 == expected.bits2);
+		assert(obj.bitvector3 == expected.bits3);
+		assert(obj.bitvector4 == 0);
+		assert(obj.bitvector5 == expected.bits5);
+		assert(number(1, 1000000) == next_roll);
+	}
+}
+
 // ---- Encrust and true name ----
 static void encrust_and_true_name()
 {
@@ -519,6 +580,7 @@ int main()
 	kill_drop();
 	generator();
 	materials_and_stones();
+	suffix_outcomes();
 	encrust_and_true_name();
 	return 0;
 }
@@ -550,7 +612,8 @@ def main():
         actual = run.stdout
         expected = FIXTURE.read_text() if FIXTURE.exists() else ""
         if actual == expected:
-            print(f"random equipment golden test passed: {len(actual.splitlines())} cases")
+            print(f"random equipment golden test passed: {len(actual.splitlines())} cases,"
+                  " plus all 26 suffix totals")
             return
         output = work.parent / "random_equipment_golden.actual.txt"
         output.write_text(actual)

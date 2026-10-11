@@ -176,6 +176,9 @@ UBSan with the real random number generator and settings at their defaults, stub
 the world, and records 1,480 seeded cases: drop decisions, the kill-drop block of `die()`,
 generated items field by field, materials, stones, encrust affects and true names. The
 output must equal `tests/fixtures/random_equipment_golden.txt`, so any change that moves,
-adds or drops a roll fails it. The next two hold the settings and their loader, then the
-salvage message's recipient, and the last the loot dials' hooks. No test rolls a drop on
-a running server.
+adds or drops a covered roll fails it. Pet owners have different level, luck and room
+attributes, so using the owner for the pet's drop rolls fails the existing fixture.
+Additional direct assertions cover all 26 suffix totals (5 through 30), their bitvectors
+and RNG consumption without changing that fixture. The next two hold the settings and
+their loader, then the salvage message's recipient, and the last the loot dials' hooks.
+No test rolls a drop on a running server.
