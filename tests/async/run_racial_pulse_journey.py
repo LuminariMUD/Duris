@@ -166,8 +166,16 @@ def check_rebalance(operator: journey.MudClient, port: int) -> None:
             for stat, value in stats.items():
                 require(re.search(rf"{stat.capitalize()}:\s*{value - 5}\s*\(\s*100\)", before),
                         f"{race} {stat} did not start with the old factor:\n{before}")
+            if race == "MountainDwarf":
+                run(operator, "setbit mob raoul race 'Mountain Dwarf'")
+                run(operator, "setbit mob raoul dex 100")
+                mob_before = paged(operator, "stat mob raoul", "Dex:")
+                require(re.search(r"Dex:\s*95\s*\(\s*100\)", mob_before), mob_before)
             # Reload must update this online character without resetting race or equipment.
             run(operator, "properties reload")
+            if race == "MountainDwarf":
+                mob_after = paged(operator, "stat mob raoul", "Dex:")
+                require(re.search(r"Dex:\s*100\s*\(\s*100\)", mob_after), mob_after)
             shown = paged(operator, f"stat char {name}", "Str:")
             for stat, value in stats.items():
                 label = stat.capitalize()

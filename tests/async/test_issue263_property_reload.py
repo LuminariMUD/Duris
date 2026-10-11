@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute property commands, including refreshing loaded players after reload."""
+"""Execute property commands, including refreshing loaded PCs and NPCs after reload."""
 from pathlib import Path
 import os
 import subprocess

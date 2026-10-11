@@ -491,11 +491,11 @@ void do_properties(P_char ch, char *args, int /*cmd*/)
 		else if (!strcmp(command, "reload") && (GET_LEVEL(ch) >= FORGER))
 		{
 			initialize_properties();
-			// Racial stat factors are cached in each loaded player's current stats.
-			for (P_char player = character_list; player; player = player->next)
+			// Racial stat factors are cached by players, NPCs and pets alike.
+			for (P_char character = character_list; character;
+			     character = character->next)
 			{
-				if (IS_PC(player))
-					balance_affects(player);
+				balance_affects(character);
 			}
 			std::string ability_error;
 			if (!studio_abilities_reload_file(ability_error))

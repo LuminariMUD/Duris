@@ -17,7 +17,7 @@ int errand_notch;
 static unsigned completed_applies;
 static std::string output;
 P_char character_list;
-static unsigned rebalanced_players;
+static unsigned rebalanced_characters;
 static int cached_strength;
 
 void update_item_action_properties() {}
@@ -30,11 +30,10 @@ void update_stat_data()
 {
 	cached_strength = get_property("stats.str.Drider", 100);
 }
-void balance_affects(P_char player)
+void balance_affects(P_char character)
 {
-	assert(IS_PC(player));
-	player->curr_stats.Str = cached_strength;
-	++rebalanced_players;
+	character->curr_stats.Str = cached_strength;
+	++rebalanced_characters;
 }
 void update_damage_data() {}
 void update_spellpulse_data() {}
@@ -172,13 +171,14 @@ int main()
 	actor.next = &npc;
 	npc.next = &online;
 	npc.specials.act = ACT_ISNPC;
-	actor.curr_stats.Str = online.curr_stats.Str = 95;
+	actor.curr_stats.Str = online.curr_stats.Str = npc.curr_stats.Str = 95;
 	character_list = &actor;
 	property_file(3.0F, 120);
 	command(&actor, "reload");
 	assert(seen.count == 4 && seen.values[3] == 3.0F);
-	assert(rebalanced_players == 2);
-	assert(actor.curr_stats.Str == 120 && online.curr_stats.Str == 120);
+	assert(rebalanced_characters == 3);
+	assert(actor.curr_stats.Str == 120 && online.curr_stats.Str == 120 &&
+	       npc.curr_stats.Str == 120);
 	character_list = nullptr;
 	command(&actor, "set epic.touch.PayoutFactor bad");
 	assert(seen.count == 4);
