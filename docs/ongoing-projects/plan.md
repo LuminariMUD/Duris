@@ -22,8 +22,17 @@ in level, luck and room, and direct seeded assertions cover all 26 suffix totals
 consumption. These checks preserve the original 1,480-case fixture. The focused ASan/UBSan
 harness and 12 documentation checks pass. Temporary mutations swapping either pet roll to
 the owner each fail all four pet cases; removing each of suffix totals 5, 6 and 7 fails its
-direct assertion. Evidence: `randeq-gate/pr1-review1-mutations.log`. The full local gate and
-review replies are pending; process PR #26 only after this PR is finished.
+direct assertion. Evidence: `randeq-gate/pr1-review1-mutations.log`.
+
+PR #25 is ready to merge at tag `randeq/phase-1-review-1`. Both review threads have replies
+and are resolved. On code/test commit `dabc2d15c`, `make test-all -j16 TEST_JOBS=16` passed
+707/707 with no reruns, including development and production builds. Full formatting,
+`npm test --prefix site` (15 checks) and `make security-check` passed. `make test-db` remains
+exempt for this tests/comments/docs phase. Logs: `randeq-gate/pr1-review1.log`,
+`pr1-review1-site.log` and `pr1-review1-security.log`. The follow-up commit only records
+these results and corrects the older harness description; its documentation checks pass.
+CodeQL and Trivy are not installed locally; those external scanners were not rerun.
+Next: PR #26, then #27, #28 and #29, in order.
 
 ## Goal
 
@@ -92,7 +101,8 @@ Also worth fixing:
 compiles the module's own source files whole (not extracted functions), links the real
 `src/core/random.c` and `src/item/random_equipment_config.c`, and stubs only the world:
 
-- two zones, one with colour codes in its name (difficulty 5) and one plain (difficulty 1);
+- three zones: one with colour codes in its name (difficulty 5), one plain (difficulty 1),
+  and a town; four rooms, including a guild room;
 - blank objects for vnums 1252 and 1254;
 - materials and stones by vnum;
 - the string setters;
@@ -104,7 +114,7 @@ failure names one case, and adding a case shifts no other.
 | Part | Cases | Recorded |
 |---|---|---|
 | Drop decision | A grid: killer levels 1 to 16 and four higher, nine mob levels, luck 60/100/160, equipment roll; the material roll at luck 100. Each special condition (elite, neutral player, Hardcore, town, guild room, no-experience mob, shopkeeper, the loot dial at 1.5) at three level pairs, both rolls. 50 draws per case | One bit string per case |
-| Kill drop | The drop block of `die()`, player and pet killer, a few level pairs, 20 kills each | Each kill's objects put on the victim, and who reads the salvage line |
+| Kill drop | The drop block of `die()`, player and pet killer, four level pairs including level 1 versus 62 so both rolls always win, 40 kills each | Each kill's objects put on the victim, and who reads the salvage line |
 | Generator | Every slot fixed, in the coloured zone at the best odds (so nearly all are named: every weapon path, shield, quiver, robe and the weapon spell) and in the plain zone; random slot across killer and mob levels, luck 60/100/160, both zones, player, NPC and shopkeeper killer; every material fixed; the quality dial at 1.5; a missing blank | Every field the generator sets: keywords, both descriptions, wear flags, type, extra flags, anti-class flags, material, craftsmanship, weight, `value[0..7]`, the four affects, all bitvectors, and its messages |
 | Materials and stones | Levels 1 to 62, alchemist and not; `create_material(index)` for every index; stones | Vnums, and the alchemist's bind refund |
 | Encrust and true name | `set_encrust_affect()` for each stone spell; `identify_random()` for every spell in the table | Bitvectors; the new short description |
