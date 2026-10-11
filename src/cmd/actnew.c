@@ -412,8 +412,6 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	int missed;
 	int count;
-	/* Hit-roll penalty against targets already in combat. 0 = none. */
-	const int engaged_penalty = 0;
 	P_char vict, next_vict = 0, prev_opp;
 
 	/*  struct group_list *gl; */
@@ -421,12 +419,7 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 	if (!SanityCheck(ch, "do_stampede"))
 		return;
 	/* Player-only: mobs, pets and charmies can't stampede. */
-	if (IS_NPC(ch))
-	{
-		send_to_char("You're not shaped right for that.\r\n", ch);
-		return;
-	}
-	if (!has_innate(ch, INNATE_STAMPEDE))
+	if (IS_NPC(ch) || !has_innate(ch, INNATE_STAMPEDE))
 	{
 		send_to_char("You're not shaped right for that.\r\n", ch);
 		return;
@@ -493,8 +486,7 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 		{
 		}
 		else if (number(1, 100) >
-				 (GET_LEVEL(ch) - GET_LEVEL(vict) - STAT_INDEX(GET_C_AGI(vict)) -
-				  (prev_opp ? engaged_penalty : 0) +
+				 (GET_LEVEL(ch) - GET_LEVEL(vict) - STAT_INDEX(GET_C_AGI(vict)) +
 				  dice(10, IS_AFFECTED(vict, AFF_AWARE) ? 5 : 10)) ||
 			 !on_front_line(vict))
 		{

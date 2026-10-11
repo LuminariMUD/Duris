@@ -16070,6 +16070,22 @@ weapon.
 See also: NECROLYTE, WEAPONS
 
 #
+STAMPEDE (Innate)
+===========================================================================
+Syntax: stampede
+        innate stampede
+
+Available to Centaurs at level 21, stampede crashes into nearby enemies,
+including enemies already fighting someone else. It can knock targets prone
+and stun them. Engaged targets keep their current opponent when possible.
+
+Only players can stampede. You must have footing and stand on the front line,
+and the room cannot be single file. Stampede has a 60-second cooldown;
+failing these requirements does not use the cooldown.
+===========================================================================
+See also: CENTAUR, INNATE
+
+#
 STANCES
 ===========================================================================
 Syntax: <stance none|offensive|defensive>
