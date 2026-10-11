@@ -13,9 +13,8 @@ and UBSan.
 Each case seeds the RNG from its own name, so a failure names one case and adding a
 case moves no other. The output must equal tests/fixtures/random_equipment_golden.txt,
 written once from the code of 2026-10-10 and never edited: a change that moves, adds
-or drops a single roll changes the output. The random equipment rewrite in
-docs/ongoing-projects/plan.md changes only MODULE_SOURCES and the calls into the
-module, never the fixtures. A companion fixture records a sentinel roll after each
+or drops a single roll changes the output. The fixtures remain frozen across module
+refactors. A companion fixture records a sentinel roll after each
 case to detect terminal draws that leave the current item unchanged. Direct assertions
 also cover every suffix total, blank template identity and rejected kill contexts
 without changing the frozen output.
