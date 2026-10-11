@@ -17,33 +17,32 @@ test-coverage findings and the applicable local gates below; GitHub CI is not a 
 stack and existing review tags; merge lower fixes upward in order and tag each fixed
 head with the next `randeq/phase-<n>-review-<round>` tag. No rebase or squash is needed.
 
-PR #25's two findings are addressed in the existing golden harness: pet owners now differ
-in level, luck and room, and direct seeded assertions cover all 26 suffix totals and RNG
-consumption. These checks preserve the original 1,480-case fixture. The focused ASan/UBSan
-harness and 12 documentation checks pass. Temporary mutations swapping either pet roll to
-the owner each fail all four pet cases; removing each of suffix totals 5, 6 and 7 fails its
-direct assertion. Evidence: `randeq-gate/pr1-review1-mutations.log`.
+PR #25 is ready to merge at `randeq/phase-1-review-2`; all four review threads have
+replies and are resolved. The existing harness now covers:
 
-PR #25's first two review threads have replies and are resolved at tag
-`randeq/phase-1-review-1`. On code/test commit `dabc2d15c`, `make test-all -j16 TEST_JOBS=16` passed
-707/707 with no reruns, including development and production builds. Full formatting,
-`npm test --prefix site` (15 checks) and `make security-check` passed. `make test-db` remains
-exempt for this tests/comments/docs phase. Logs: `randeq-gate/pr1-review1.log`,
-`pr1-review1-site.log` and `pr1-review1-security.log`. The follow-up commit only records
-these results and corrects the older harness description; its documentation checks pass.
+- different pet/owner level, luck and room attributes;
+- all 26 suffix totals and their RNG consumption;
+- a sentinel RNG draw after all 1,480 cases, stored in a companion fixture captured
+  from original `master` code at `879adf0aa`;
+- real string setters and all three string ownership bits on every generated item,
+  including kill drops, so generated names are marked for persistence.
+
+The original item fixture remains unchanged. Both fixtures are frozen for later phases.
+Temporary mutations proved the repairs: either pet roll using the owner fails four cases;
+removing suffix 5, 6 or 7 fails its assertion; an extra terminal longbow draw leaves item
+output unchanged but fails three RNG sentinels; bypassing each string setter fails the
+ownership assertion. No game code changed. The real setters replace three test stubs.
+
+**Proof:** final code/test commit `be9c9915d` passed the ASan/UBSan harness, full formatting,
+`make test-all -j16 TEST_JOBS=16` (707/707, no reruns, including both build profiles),
+`npm test --prefix site` (15 checks) and 12 documentation checks. `make security-check`
+also passed on the unchanged security sources. The final record commit only updates this
+plan. `make test-db` remains exempt for this tests/comments/docs phase. Logs are under
+`/home/aiwithapex/projects/randeq-gate/`: `pr1-review3.log`, `pr1-review3-site.log`,
+`pr1-review1-security.log`, `pr1-review1-mutations.log`, `pr1-review2-rng.log` and
+`pr1-review3-ownership.log`. Earlier full gates also passed; their logs are retained.
 CodeQL and Trivy are not installed locally; those external scanners were not rerun.
-
-A further PR #25 finding showed that an extra terminal RNG draw could leave the generated
-item unchanged. A companion fixture, `tests/fixtures/random_equipment_rng_golden.txt`,
-now records a sentinel draw after each of the 1,480 cases, captured from original
-`master` code at `879adf0aa`. The original item fixture remains unchanged. A temporary
-longbow mutation confirms that the item output still matches while the RNG sentinel fails.
-
-A fourth finding concerns string ownership: the harness now uses the real string setters,
-borrows prototype strings as the server does, and asserts all three ownership bits on
-every generated item, including kill drops. The invariant is asserted separately to keep
-both fixtures frozen. Bypassing a setter must fail even if its text would match.
-Validation of these follow-ups is in progress; then continue with #26, #27, #28 and #29.
+Next: merge these fixes into PR #26 and review it, then #27, #28 and #29, in order.
 
 ## Goal
 
@@ -435,7 +434,8 @@ based on the one below, so each pull request's diff is its own phase. The first 
 - **Parallel sessions.** If one session per pull request runs at once, the session that owns
   `duris-plan` keeps it. The others each use their own worktree (`duris-plan-pr<n>`), set up
   the same way.
-- **Landing.** Land in order. Retarget each next pull request to `master`
+- **Landing.** Land in order with merge commits, which this repository permits, to keep
+  the shared ancestry of the stack. Retarget each next pull request to `master`
   (`gh pr edit <n> --base master`) before deleting the branch it was stacked on.
 
 | PR | Phase | Branch | GitHub | State |
