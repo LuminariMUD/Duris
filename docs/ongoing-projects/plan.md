@@ -5,29 +5,80 @@ same day. This file is a working note: delete it when the last pull request land
 [RANDOM_EQUIPMENT.md](../reference/RANDOM_EQUIPMENT.md) describes how the system behaves
 today; that behaviour is what this plan keeps.
 
-## Current handoff (2026-10-10)
+## Current handoff (2026-10-11)
 
-Phases 1–3 are committed. Phase 4's two defect fixes are committed, and its generator
-refactor is implemented locally: both build profiles, the unchanged 1,480-case golden
-fixture and the focused checks pass. Phase 5 has not started.
+All five phases are implemented and published as PRs #25 through #29. This checkout is
+`enhancement/randeq-4-generator`. PRs #25, #26 and #27 are ready to merge in order.
+PR #28 has no review findings; its merge carries in the completed fixes and stronger
+harness from the lower phases. Verify this merged head, then review #29.
 
-- **Checkout:** `/home/aiwithapex/projects/duris-plan`, branch
-  `enhancement/randeq-4-generator`. Phase 3 is `a3bff0079`; Phase 4's fixes are
-  `316444732` (true-name bounds) and `143fb1d5b` (void encrust return). The generator
-  refactor and its caller/test/documentation updates are uncommitted.
-- **Published:** [PR #25](https://github.com/LuminariMUD/Duris/pull/25) is open against
-  `master` at `3fdd367af`, tagged `randeq/phase-1-review-0`. Later phases remain local.
-- **Gates:** Phase 2 is being resumed at `7d2026fea` in
-  `/home/aiwithapex/projects/duris-plan-gate-pr2`. Logs are
-  `/home/aiwithapex/projects/randeq-gate/pr2-all-resume.log` and `pr2-db-resume.log`.
-  Two database journeys exceeded pulse budgets under concurrent load (`world_capture`,
-  262 ms; `game_loop_budget`, 330 ms; limit 250 ms). Rerun them alone after the suites
-  finish before concluding whether a code repair is needed. Phases 3 and 4 still need
-  their full committed-head gates.
+Phase 4's original implementation `4b7e68cb4` passed 707/707 regressions and 72/72 database
+tests without reruns. Its two defect repairs are `316444732` (true-name bounds) and
+`143fb1d5b` (void encrust return). The review merge changes no executable source code.
+Both fixtures remain frozen; the stack table records the current review state.
 
-Finish Phase 4's review/commit and implement Phase 5 on its own branch. Complete every
-phase's local gate before its review tag, push and stacked PR; do not merge the PRs.
-Keep the golden fixture unchanged throughout.
+## Review follow-up (2026-10-11)
+
+**Outcome:** address every review finding, oldest PR first, and leave the five published
+PRs ready to merge. **Non-goals:** game-rule changes, unrelated cleanup and landing the PRs.
+**Files:** the existing harness, affected implementation and their documentation as findings
+require. **Proof:** focused regressions, the unchanged golden fixture, mutation checks for
+test-coverage findings and the applicable local gates below; GitHub CI is not a gate.
+
+`origin/master` remains `879adf0aa`, already an ancestor of every phase. Keep the published
+stack and existing review tags; merge lower fixes upward in order and tag each fixed
+head with the next `randeq/phase-<n>-review-<round>` tag. No rebase or squash is needed.
+
+PR #25 is ready to merge at `randeq/phase-1-review-2`; all four review threads have
+replies and are resolved. The existing harness now covers:
+
+- different pet/owner level, luck and room attributes;
+- all 26 suffix totals and their RNG consumption;
+- a sentinel RNG draw after all 1,480 cases, stored in a companion fixture captured
+  from original `master` code at `879adf0aa`;
+- real string setters and all three string ownership bits on every generated item,
+  including kill drops, so generated names are marked for persistence.
+
+The original item fixture remains unchanged. Both fixtures are frozen for later phases.
+Temporary mutations proved the repairs: either pet roll using the owner fails four cases;
+removing suffix 5, 6 or 7 fails its assertion; an extra terminal longbow draw leaves item
+output unchanged but fails three RNG sentinels; bypassing each string setter fails the
+ownership assertion. No game code changed. The real setters replace three test stubs.
+
+**Proof:** final code/test commit `be9c9915d` passed the ASan/UBSan harness, full formatting,
+`make test-all -j16 TEST_JOBS=16` (707/707, no reruns, including both build profiles),
+`npm test --prefix site` (15 checks) and 12 documentation checks. `make security-check`
+also passed on the unchanged security sources. The final record commit only updates this
+plan. `make test-db` remains exempt for this tests/comments/docs phase. Logs are under
+`/home/aiwithapex/projects/randeq-gate/`: `pr1-review3.log`, `pr1-review3-site.log`,
+`pr1-review1-security.log`, `pr1-review1-mutations.log`, `pr1-review2-rng.log` and
+`pr1-review3-ownership.log`. Earlier full gates also passed; their logs are retained.
+CodeQL and Trivy are not installed locally; those external scanners were not rerun.
+
+PR #26 is ready to merge at `randeq/phase-2-review-1` and has no review findings.
+Merge `b4f4252a6` brings in all PR #25 repairs without conflicts or changes to Phase 2's
+server code. It passed the strengthened ASan/UBSan golden harness, minimal boot checks,
+full formatting, `make test-all -j16 TEST_JOBS=16` (707/707, both build profiles),
+`make test-db` (72/72) and the site checks (15). No reruns were needed. The final record
+only updates this plan and passes its 12 documentation checks. Evidence:
+`randeq-gate/pr2-review1.log` and `pr2-review1-site.log`.
+
+PR #27 is ready to merge at `randeq/phase-3-review-1`. Both findings are addressed: the
+handoff, phase records and stack table now describe committed, published work and completed
+gates; added author credits were removed from the three new module files. The inherited
+harness retains the module split and all PR #25 repairs. Merge `131f095d8` passed full
+formatting, 707/707 regressions, both builds and 72/72 database tests without reruns.
+The final comment-only correction passed development and production builds, the ASan/UBSan
+golden test and 12 documentation checks; the site checks passed (15). No executable code
+changed after the full gate. Evidence: `randeq-gate/pr3-review1.log`,
+`pr3-review1-site.log` and `pr3-review1-attribution-{dev,production}.log`.
+PR #28 has no review findings. The inherited ownership assertion initially treated the
+bare prototype in the foreign-spell regression as generated equipment. The assertion now
+runs at the direct-generation and kill-drop observation points, so both generated-item
+paths retain the exact mask check while the untouched prototype remains valid. The
+strengthened golden harness passes both frozen fixtures, all suffix totals and the
+foreign-spell assertion. This changes no game code. Full merge validation is pending;
+PR #29 follows.
 
 ## Goal
 
@@ -103,8 +154,10 @@ compiles the module's own source files whole (not extracted functions), links th
   and a town; four rooms, including a guild room;
 - blank objects for vnums 1252 and 1254;
 - materials and stones by vnum;
-- the string setters;
 - the difficulty dials at 1.0, plus one case at 1.5.
+
+The three string setters are extracted from their real source. Generated equipment must
+set all three string ownership bits so persistence saves its names.
 
 Each case calls `randomize(seed)` with its own seed first, so cases are independent: a
 failure names one case, and adding a case shifts no other.
@@ -127,6 +180,11 @@ only the harness's file list and the calls into the new interface, never the fix
 phase whose output differs is wrong. The fixture never changes, so its coverage (named
 items, owner tags, weapon spells, every item type) was checked once by hand when it was
 written, not by an assertion.
+
+The review added direct assertions for all 26 suffix totals and a companion RNG fixture,
+captured from the original implementation, that pins the next draw after every case.
+This catches terminal draws even when all fields of the current item still match.
+Both fixtures stay frozen through the remaining phases.
 
 Every refactor below must therefore keep the order of the random rolls. Turning a switch
 into a table keeps the roll and its mapping. A helper that moves a roll must leave it at the
@@ -354,21 +412,16 @@ existed only for what went:
 
 `#define TROPHY` survives in other files, which use it for their own purposes.
 
-**Committed, gate incomplete:** `7d2026fea` on `enhancement/randeq-2-dead-code`.
-The development build, golden test and eight other focused tests passed before commit;
-the commit's formatting and tidy checks passed. The detached gate then passed its full
-format check and development/production builds, but `make test-all` was terminated
-at progress 692/707 (the last recorded test passed). There is no final suite result and
-`make test-db` was not reached. Evidence:
-`/home/aiwithapex/projects/randeq-gate/pr2.log`; retained worktree:
-`/home/aiwithapex/projects/duris-plan-gate-pr2` at `7d2026fea`.
-Rerun `make test-all` and `make test-db` there before publishing. Avoid a competing build
-during the latency test. The saved `randeq-gate/gate.sh` creates its worktree first, so
-do not invoke it again with `pr2` while that worktree still exists.
+**Ready to merge (2026-10-11):** `fd38db525`, [PR #26](https://github.com/LuminariMUD/Duris/pull/26),
+tag `randeq/phase-2-review-1`. The review merge `b4f4252a6` passed both build profiles,
+707/707 regressions and 72/72 database tests with no reruns. Golden, formatting, focused
+and documentation/site checks also passed. The original interrupted gate is superseded;
+its temporary worktree was removed. Evidence: `randeq-gate/pr2-review1.log`.
 
 ### Phase 3: the module and its interface
 
-**Implemented locally, verification in progress (2026-10-10).** The rename, three
+**Original implementation, committed and published:** `a3bff0079`, [PR #27](https://github.com/LuminariMUD/Duris/pull/27),
+tag `randeq/phase-3-review-0`. The rename, three
 new module files, moved structs/constants/prototypes, caller includes, `die()` delegation
 and Makefile entries are in place. `setprefix_obj()` is private to the generator; the
 unused `BUGGED` slot and empty material terminator are gone. The six affected tests and
@@ -379,11 +432,13 @@ definitions. Restoring `cmd/interp.h`, `net/comm.h` and `item/objmisc.h` fixed i
 row-count assertions now compile. The golden harness includes the module header, compiles
 all three source files and calls `random_equipment_kill_drop(killer, victim)` directly.
 
-Passed so far: `make -C src -j16`, the unchanged 1,480-case golden fixture, all five other
+Original implementation validation: `make -C src -j16`, the unchanged 1,480-case golden fixture, all five other
 affected tests and the 12 documentation checks. The disconnected proc body was compared
 with Phase 2 and is unchanged. `make build-production -j16` and `./scripts/format.sh --check` also passed. Build logs:
-`/tmp/randeq-phase3-dev.log` and `/tmp/randeq-phase3-production.log`. The committed-head
-`test-all` and `test-db` gate remains before publishing.
+`randeq-gate/pr3-dev.log` and `randeq-gate/pr3-production.log`. On `a3bff0079`,
+`make test-all -j16 TEST_JOBS=16` passed 707/707 and `make test-db` passed 72/72 without
+reruns (`randeq-gate/pr3.log`). The current review pass corrects this previously stale
+handoff and carries in the stronger harness; its validation is recorded above.
 
 - **Files:** `git mv` `randomeq.c` to `random_equipment.c`; move the tables to
   `random_equipment_tables.c` and the drop decision to `random_equipment_drop.c`.
@@ -413,7 +468,9 @@ the production `-O2` profile).
 
 ### Phase 4: a readable generator
 
-**Implemented, full gate pending.** The independent fixes are `316444732` (true-name
+**Original implementation, committed and published:** `4b7e68cb4`,
+[PR #28](https://github.com/LuminariMUD/Duris/pull/28), tag `randeq/phase-4-review-0`.
+The independent fixes are `316444732` (true-name
 bounds) and `143fb1d5b` (void encrust return); the foreign-spell assertion and all existing
 encrust cases pass under ASan/UBSan. The generator now has separate slot, material, naming,
 suffix, weight, stat and type steps. The three naming copies are one function, and all
@@ -425,8 +482,10 @@ All 1,480 golden cases match the unchanged fixture. The fixture caught an attemp
 The weapon-dice `MIN` expression also deliberately retains its original repeated draw.
 Every module function is at most 80 lines except the untouched, disconnected proc (112).
 Development and production builds passed (`make -C src -j8`, `make build-production -j8`),
-with logs `/tmp/randeq-phase4-dev.log` and `/tmp/randeq-phase4-production.log`. The affected
-contracts and documentation checks pass; full `test-all`/`test-db` gating remains.
+with logs `randeq-gate/pr4-dev.log` and `randeq-gate/pr4-production.log`. The affected
+contracts and documentation checks passed. On `4b7e68cb4`, `make test-all -j16 TEST_JOBS=16`
+passed 707/707 and `make test-db` passed 72/72 without reruns (`randeq-gate/pr4.log`).
+Current review validation is recorded above.
 
 Split `create_random_eq_new()` into the steps above, behind `create_random_eq()` with level
 parameters (the old name goes, every caller moves). Then:
@@ -490,16 +549,17 @@ based on the one below, so each pull request's diff is its own phase. The first 
 - **Parallel sessions.** If one session per pull request runs at once, the session that owns
   `duris-plan` keeps it. The others each use their own worktree (`duris-plan-pr<n>`), set up
   the same way.
-- **Landing.** Land in order. Retarget each next pull request to `master`
+- **Landing.** Land in order with merge commits, which this repository permits, to keep
+  the shared ancestry of the stack. Retarget each next pull request to `master`
   (`gh pr edit <n> --base master`) before deleting the branch it was stacked on.
 
 | PR | Phase | Branch | GitHub | State |
 |---|---|---|---|---|
-| 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | [#25](https://github.com/LuminariMUD/Duris/pull/25) | Open for review at `3fdd367af` (`randeq/phase-1-review-0`) |
-| 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | Not opened | Committed locally at `7d2026fea`; gate interrupted, database tests outstanding |
-| 3 | 3, module and interface | `enhancement/randeq-3-module` | Not opened | Committed at `a3bff0079`; both builds and focused checks pass, full gate pending |
-| 4 | 4, readable generator | `enhancement/randeq-4-generator` | Not opened | Implemented locally; both builds and golden/focused checks pass, full gate pending |
-| 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | | Not started |
+| 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | [#25](https://github.com/LuminariMUD/Duris/pull/25) | Ready at `06d14aab6` (`randeq/phase-1-review-2`); all four findings fixed |
+| 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | [#26](https://github.com/LuminariMUD/Duris/pull/26) | Ready at `fd38db525` (`randeq/phase-2-review-1`); no findings, full gates passed |
+| 3 | 3, module and interface | `enhancement/randeq-3-module` | [#27](https://github.com/LuminariMUD/Duris/pull/27) | Ready at `9cbdca5fc` (`randeq/phase-3-review-1`); both findings fixed and full gates passed |
+| 4 | 4, readable generator | `enhancement/randeq-4-generator` | [#28](https://github.com/LuminariMUD/Duris/pull/28) | Implementation `4b7e68cb4` passed full gates; review merge validation in progress |
+| 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | [#29](https://github.com/LuminariMUD/Duris/pull/29) | Implemented and verified at `6364ebf58`; review follow-up pending |
 
 ## Checks per pull request
 

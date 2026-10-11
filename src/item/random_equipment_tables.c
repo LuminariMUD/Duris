@@ -5,7 +5,6 @@
  *         built from
  *  Copyright  1990, 1991 - see 'license.doc' for complete information.
  *  Copyright 1994 - 2008 - Duris Systems Ltd.
- *  Created by: Kvark                   Date: 2002-04-18
  * ***************************************************************************
  */
 
