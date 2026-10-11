@@ -117,9 +117,10 @@ mob's level (capped at 60), re-rolled while it is self-only. It fires through th
 that there is more to the weapon; the reveal true name spell appends "of <spell>" to its
 name (`identify_random()`).
 
-`random_eq_proc()` in `randomeq.c` is not attached to any object, so neither it nor the
-random-equipment route in [weapon actions](WEAPON_ACTIONS.md) runs in the game. Only
-`tests/async/test_weapon_actions_runtime.py` calls it.
+`random_eq_proc()` in `randomeq.c` is not connected yet: no object has it, so neither it nor
+the random-equipment route in [weapon actions](WEAPON_ACTIONS.md) runs in the game. It is
+kept until it is attached on purpose; only `tests/async/test_weapon_actions_runtime.py`
+calls it.
 
 ## Salvage materials and encrust stones
 
@@ -163,12 +164,29 @@ loot-drops and loot-quality dials are `difficulty.dial.loot.drops` and
 [server difficulty dials](CODEBASE.md#server-difficulty-dials).
 
 ```sh
+python3 tests/async/test_random_equipment_golden.py
 python3 tests/async/test_random_equipment_config_contract.py
 python3 tests/async/test_random_equipment_config_runtime.py
 python3 tests/async/test_random_drop_owner_message.py
 python3 tests/async/test_difficulty_dials.py
 ```
 
-The first two hold the settings and their loader, the third the salvage message's
-recipient, and the fourth the loot dials' hooks. No test rolls a drop on a running
-server.
+The golden test holds the rolls themselves. It compiles `randomeq.c` whole under ASan and
+UBSan with the real random number generator and settings at their defaults, stubs only
+the world, and records 1,480 seeded cases: drop decisions, the kill-drop block of `die()`,
+generated items field by field, materials, stones, encrust affects and true names. The
+output must equal `tests/fixtures/random_equipment_golden.txt`, so any change that moves,
+adds or drops a covered roll fails it. Pet owners have different level, luck and room
+attributes, so using the owner for the pet's drop rolls fails the existing fixture.
+`tests/fixtures/random_equipment_rng_golden.txt` records the next RNG draw after every
+case, captured from the original `879adf0aa` implementation. It also catches extra terminal
+draws that leave the current item unchanged but would shift the next live random event.
+The harness uses the real string setters and asserts that every generated item has
+`STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2`, so its generated names are marked for saving.
+Direct assertions also require the weapon/armor blank vnum to match each item's wear
+flags. NPC killers, player victims and dead player/pet killers must produce no drops,
+messages or RNG draws. Both checks preserve the frozen fixtures.
+Additional direct assertions cover all 26 suffix totals (5 through 30), their bitvectors
+and RNG consumption without changing that fixture. The next two hold the settings and
+their loader, then the salvage message's recipient, and the last the loot dials' hooks.
+No test rolls a drop on a running server.

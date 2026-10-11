@@ -1564,6 +1564,11 @@ P_obj setprefix_obj(P_obj obj, float modifier, int affectnumber)
 	return obj;
 }
 
+// NOT CONNECTED: no object has this proc. specs.assign.c gives the random armour blank
+// set_proc() and the random weapon blank nothing, and no other code assigns it, so it never
+// runs in the game; tests/async/test_weapon_actions_runtime.py is its only caller. It is kept
+// until it is attached on purpose. Its offensive route, selected_random_weapon_action() and
+// the itemActions.randomWeapons settings, cannot start until then either.
 int random_eq_proc(P_obj obj, P_char ch, int cmd, char *argument)
 {
 	P_char kala;

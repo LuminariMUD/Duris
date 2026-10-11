@@ -33,6 +33,13 @@ instant legacy path and do not publish a new action or consume extra random
 numbers. The legacy nonzero-count/sparse-slot behavior is preserved, rather than
 silently compressing sparse bundles into a different effect sequence.
 
+**Not connected yet.** The random-equipment route's source, `random_eq_proc()` in
+`src/item/randomeq.c`, is attached to no object (`specs.assign.c` gives the random armour
+blank `set_proc()` and the random weapon blank nothing), so the route below never starts in
+the game, whatever `itemActions.randomWeapons` says. `test_weapon_actions_runtime.py` drives
+it directly. Named random weapons proc through the packed `weapon_proc()` route instead
+([random equipment](RANDOM_EQUIPMENT.md#zone-sets-and-weapon-spells)).
+
 Random equipment's defensive `CMD_GOTHIT` and `CMD_GOTNUKED` routes, self-only
 effects, and beneficial effects stay legacy. Its offensive route historically
 uses `GET_OPPONENT` at the trigger; that identity is captured there and never read
@@ -74,7 +81,7 @@ explicit rollback: pending actions cancel and future selections use legacy.
 | --- | ---: | --- |
 | `itemActions.avernus.enabled` | 0 | Avernus offensive callback |
 | `itemActions.weapons.enabled` | 0 | Packed offensive/mixed bundles |
-| `itemActions.randomWeapons.enabled` | 0 | Offensive random equipment |
+| `itemActions.randomWeapons.enabled` | 0 | Offensive random equipment; not connected yet (see below) |
 | Each category's `.windupPulses` | 8 | Integer 4–600, also subject to engine bounds |
 | `itemActions.weapon.<vnum>.enabled` | 1 | Independent template rollback under the category/master gates |
 | `itemActions.weapon.<vnum>.manaCost` | 0 | Fixed-point debit; 1,000 units equal one mana point |
