@@ -8,11 +8,14 @@ today; that behaviour is what this plan keeps.
 ## Current handoff (2026-10-11)
 
 All five phases are implemented and published as PRs #25 through #29. This checkout is
-`enhancement/randeq-3-module`; its original implementation is committed at `a3bff0079`
-and passed 707/707 regressions and 72/72 database tests. The review merge carries in the
-completed fixes from PRs #25 and #26. PR #27's handoff correction and inherited harness
-are being verified now; review #28 and #29 afterward. The stack table records each head.
-There are no unpublished Phase 3 implementation changes or unfinished original gates.
+`enhancement/randeq-3-module`; its reviewed head is tagged `randeq/phase-3-review-1`.
+PRs #25, #26 and #27 are ready to merge in order. Review #28 and #29 next.
+
+Phase 3's implementation is `a3bff0079`; review merge `131f095d8` passed 707/707 regressions
+and 72/72 database tests without reruns. The final follow-up removes added author-credit
+comments and records these results. All C++ after the affected file banners is unchanged;
+both build profiles, the strengthened golden harness and documentation checks pass after
+the comment edit. The stack table records the current heads and remaining review work.
 
 ## Review follow-up (2026-10-11)
 
@@ -58,7 +61,18 @@ server code. It passed the strengthened ASan/UBSan golden harness, minimal boot 
 full formatting, `make test-all -j16 TEST_JOBS=16` (707/707, both build profiles),
 `make test-db` (72/72) and the site checks (15). No reruns were needed. The final record
 only updates this plan and passes its 12 documentation checks. Evidence:
-`randeq-gate/pr2-review1.log` and `pr2-review1-site.log`. Next: PR #27, then #28 and #29.
+`randeq-gate/pr2-review1.log` and `pr2-review1-site.log`.
+
+PR #27 is ready to merge at `randeq/phase-3-review-1`. Both findings are addressed: the
+handoff, phase records and stack table now describe committed, published work and completed
+gates; added author credits were removed from the three new module files. The inherited
+harness retains the module split and all PR #25 repairs. Merge `131f095d8` passed full
+formatting, 707/707 regressions, both builds and 72/72 database tests without reruns.
+The final comment-only correction passed development and production builds, the ASan/UBSan
+golden test and 12 documentation checks; the site checks passed (15). No executable code
+changed after the full gate. Evidence: `randeq-gate/pr3-review1.log`,
+`pr3-review1-site.log` and `pr3-review1-attribution-{dev,production}.log`.
+Next: PR #28, then #29.
 
 ## Goal
 
@@ -400,7 +414,7 @@ its temporary worktree was removed. Evidence: `randeq-gate/pr2-review1.log`.
 
 ### Phase 3: the module and its interface
 
-**Committed and published:** `a3bff0079`, [PR #27](https://github.com/LuminariMUD/Duris/pull/27),
+**Original implementation, committed and published:** `a3bff0079`, [PR #27](https://github.com/LuminariMUD/Duris/pull/27),
 tag `randeq/phase-3-review-0`. The rename, three
 new module files, moved structs/constants/prototypes, caller includes, `die()` delegation
 and Makefile entries are in place. `setprefix_obj()` is private to the generator; the
@@ -518,7 +532,7 @@ based on the one below, so each pull request's diff is its own phase. The first 
 |---|---|---|---|---|
 | 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | [#25](https://github.com/LuminariMUD/Duris/pull/25) | Ready at `06d14aab6` (`randeq/phase-1-review-2`); all four findings fixed |
 | 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | [#26](https://github.com/LuminariMUD/Duris/pull/26) | Ready at `fd38db525` (`randeq/phase-2-review-1`); no findings, full gates passed |
-| 3 | 3, module and interface | `enhancement/randeq-3-module` | [#27](https://github.com/LuminariMUD/Duris/pull/27) | Implementation `a3bff0079` passed full gates; review merge and handoff correction in progress |
+| 3 | 3, module and interface | `enhancement/randeq-3-module` | [#27](https://github.com/LuminariMUD/Duris/pull/27) | Ready at `randeq/phase-3-review-1`; both findings fixed and full gates passed |
 | 4 | 4, readable generator | `enhancement/randeq-4-generator` | [#28](https://github.com/LuminariMUD/Duris/pull/28) | Implemented and verified at `4b7e68cb4`; review follow-up pending |
 | 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | [#29](https://github.com/LuminariMUD/Duris/pull/29) | Implemented and verified at `6364ebf58`; review follow-up pending |
 
