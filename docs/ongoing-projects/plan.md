@@ -55,7 +55,7 @@ full formatting, both builds and `make test-all -j16 TEST_JOBS=16` (707/707, no 
 record changes only this plan and reuses that code/test gate.
 
 
-PR #26 is ready to merge at `randeq/phase-2-review-2` and has no review findings.
+PR #26 is ready to merge at `randeq/phase-2-review-3`; its startup-help finding is fixed.
 Merge `b4f4252a6` brings in all PR #25 repairs without conflicts or changes to Phase 2's
 server code. It passed the strengthened ASan/UBSan golden harness, minimal boot checks,
 full formatting, `make test-all -j16 TEST_JOBS=16` (707/707, both build profiles),
@@ -67,7 +67,15 @@ The second review merge adds only the two new golden assertions and documentatio
 Its server source tree is byte-identical to the fully gated `fd38db525` revision. Reuse
 that full build/regression/database evidence. The changed ASan/UBSan harness, 12
 documentation checks, 15 site checks and formatting pass on this merge
-(`pr2-review2-focused.log`, `pr2-review2-site.log`). Next: PR #27, then #28 and #29.
+(`pr2-review2-focused.log`, `pr2-review2-site.log`).
+
+The final review repair removes the retired `[-l]` token from the fatal startup usage
+message. Only that string changes in server code; option parsing and runtime behavior
+are unchanged. Both builds and minimal-boot/format checks pass, and invalid invocations
+of both binaries from a temporary directory exit with the corrected usage and no `[-l]`.
+Evidence: `pr2-review3-{dev,production,focused,usage}.log`. Full regression/database
+results above are retained for this help-only edit. Next: propagate through #27–#29;
+#29's interrupted gate will restart after the final merge.
 
 ## Goal
 
