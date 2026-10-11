@@ -11,6 +11,38 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Monster shrug and Rrakkma
+
+The seven restored monster shrug values leave playable vampires at 40 through a
+dedicated `innate.shrug.PVampire` key; other vampire settings still share their existing
+race name. Rrakkma reads `innate.rrakkma.stepPct`.
+
+`python3 tests/async/test_racial_shrug.py` executes the real lookup, race/innate tables,
+and resistance calculation under ASan/UBSan with the shipped properties. At level 50,
+playable vampires retain 34 resistance and monster vampires have 54. Two grouped
+Githzerai have 19 resistance with step 5, 14 with step 0, and 17 with step 3. The
+playable-vampire and zero-step assertions both failed before their fixes. Unrelated
+services are stubbed; this is not a live combat journey.
+
+## Property saves, reloads and key bounds
+
+Save failures preserve the original file and the saved-value baseline. Only a successful
+replacement updates the baseline and logs success. Reloads install and apply the complete
+new table only after successful reading and validation, freeing the previous keys; failed
+reloads leave values and character caches unchanged. Startup refuses an unreadable or
+malformed configuration. Keys up to 127 characters fit; longer keys are rejected whole.
+
+`python3 tests/async/test_issue263_property_reload.py` executes the real property commands
+under ASan/UBSan in both SQL and flat-file builds. It checks 127-, 128-, and 200-character
+keys; missing sources and an unopenable temporary file; partial reads; write/flush failures
+using `RLIMIT_FSIZE`; separate source/target close failures; failed rename; malformed
+properties and capacity overflow. Failures must preserve the file, active values and
+`diff`/`revert` baseline, clean incomplete temporary files and notify the operator. The
+success path checks save/reload/revert and the existing loaded-player/NPC stat refresh.
+These scenarios use disposable files and injected I/O failures, not the running server
+or its configuration. The pre-fix code overflowed under ASan, crashed on failed opens,
+lost active reload values and falsely reported successful saves.
+
 ## Web Spray: targeting, refresh, recovery and mounted travel
 
 Driders use `innate web_spray <target>` from level 31. A successful hit replaces the
