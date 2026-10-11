@@ -8,7 +8,7 @@ today; that behaviour is what this plan keeps.
 ## Current handoff (2026-10-11)
 
 All five phases are implemented and published as PRs #25 through #29. This checkout is
-`enhancement/randeq-4-generator`; its reviewed head is tagged `randeq/phase-4-review-3`.
+`enhancement/randeq-4-generator`; its reviewed head is tagged `randeq/phase-4-review-4`.
 PRs #25 through #28 are ready to merge in order. Review #29 next.
 
 Phase 4's original implementation is `4b7e68cb4`; review merge `00778b1b2` passed both
@@ -26,11 +26,14 @@ PRs ready to merge. **Non-goals:** game-rule changes, unrelated cleanup and land
 require. **Proof:** focused regressions, the unchanged golden fixture, mutation checks for
 test-coverage findings and the applicable local gates below; GitHub CI is not a gate.
 
-`origin/master` remains `879adf0aa`, already an ancestor of every phase. Keep the published
-stack and existing review tags; merge lower fixes upward in order and tag each fixed
-head with the next `randeq/phase-<n>-review-<round>` tag. No rebase or squash is needed.
+`origin/master` advanced to `cdfcacf0a` with only a contributor-policy documentation
+change. It is merged into the bottom branch and carried upward in order. Server sources
+and tests are unchanged by this sync, so completed validation remains applicable; the
+12 documentation checks pass. Keep the published stack and existing tags, with a new
+`randeq/phase-<n>-review-<round>` tag for each ready head. No rebase or squash is needed.
+Repository admins or organization owners handle landing; these PRs remain unmerged.
 
-PR #25 is ready to merge at `randeq/phase-1-review-3`; all six review threads have
+PR #25 is ready to merge at `randeq/phase-1-review-4`; all six review threads have
 replies and are resolved. The harness now covers:
 
 - different pet/owner level, luck and room attributes;
@@ -68,7 +71,7 @@ full formatting, both builds and `make test-all -j16 TEST_JOBS=16` (707/707, no 
 record changes only this plan and reuses that code/test gate.
 
 
-PR #26 is ready to merge at `randeq/phase-2-review-3`; its startup-help finding is fixed.
+PR #26 is ready to merge at `randeq/phase-2-review-4`; its startup-help finding is fixed.
 Merge `b4f4252a6` brings in all PR #25 repairs without conflicts or changes to Phase 2's
 server code. It passed the strengthened ASan/UBSan golden harness, minimal boot checks,
 full formatting, `make test-all -j16 TEST_JOBS=16` (707/707, both build profiles),
@@ -87,9 +90,10 @@ message. Only that string changes in server code; option parsing and runtime beh
 are unchanged. Both builds and minimal-boot/format checks pass, and invalid invocations
 of both binaries from a temporary directory exit with the corrected usage and no `[-l]`.
 Evidence: `pr2-review3-{dev,production,focused,usage}.log`. Full regression/database
-results above are retained for this help-only edit. The change propagates through #27–#29 before restarting #29's gate.
+results above are retained for this help-only edit. The final master sync changes
+only documentation, preserving all source/test evidence; documentation checks pass.
 
-PR #27 is ready to merge at `randeq/phase-3-review-3`. Both findings are addressed: the
+PR #27 is ready to merge at `randeq/phase-3-review-4`. Both findings are addressed: the
 handoff, phase records and stack table now describe committed, published work and completed
 gates; added author credits were removed from the three new module files. The inherited
 harness retains the module split and all PR #25 repairs. Merge `131f095d8` passed full
@@ -106,10 +110,10 @@ and formatting pass (`pr3-review2-focused.log`, `pr3-review2-site.log`).
 The third review merge adds only #26's corrected startup-help string and its record.
 The previously completed module/golden/full gates remain valid; the help string was
 built and exercised in both profiles on #26. Minimal-boot, formatting and 12 documentation
-checks pass here.
+checks pass here. The final master sync changes only documentation; the source/test
+tree still matches `cd712da5f`, and 12 documentation checks pass after this sync.
 
-
-PR #28 is ready to merge at `randeq/phase-4-review-3` and has no review findings.
+PR #28 is ready to merge at `randeq/phase-4-review-4` and has no review findings.
 The inherited ownership assertion initially treated the bare prototype in the foreign-spell
 regression as generated equipment. It now runs at the direct-generation and kill-drop
 observation points, retaining both exact mask checks while accepting the untouched
@@ -129,7 +133,8 @@ harness, 12 documentation checks, 15 site checks and formatting pass
 (`pr4-review2-focused.log`, `pr4-review2-site.log`).
 The third review merge adds only #26's corrected startup-help string and its record.
 Minimal-boot, formatting and 12 documentation checks pass; the previous generator/full
-and focused evidence is retained. Next: finish #29's full gates after the final merge.
+and focused evidence is retained. The final master sync changes only documentation;
+server sources and tests still match `92ba5294f`, and 12 documentation checks pass.
 
 ## Goal
 
@@ -606,10 +611,10 @@ based on the one below, so each pull request's diff is its own phase. The first 
 
 | PR | Phase | Branch | GitHub | State |
 |---|---|---|---|---|
-| 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | [#25](https://github.com/LuminariMUD/Duris/pull/25) | Ready at `ef0f6ec8a` (`randeq/phase-1-review-3`); all six findings fixed |
-| 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | [#26](https://github.com/LuminariMUD/Duris/pull/26) | Ready at `40e6db8b4` (`randeq/phase-2-review-3`); startup-help finding fixed; full gates retained |
-| 3 | 3, module and interface | `enhancement/randeq-3-module` | [#27](https://github.com/LuminariMUD/Duris/pull/27) | Ready at `cd712da5f` (`randeq/phase-3-review-3`); both findings fixed and full gates passed |
-| 4 | 4, readable generator | `enhancement/randeq-4-generator` | [#28](https://github.com/LuminariMUD/Duris/pull/28) | Ready at `randeq/phase-4-review-3`; no findings, full gates retained and new assertions passed |
+| 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | [#25](https://github.com/LuminariMUD/Duris/pull/25) | Ready at `fdfdffb19` (`randeq/phase-1-review-4`); all six findings fixed |
+| 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | [#26](https://github.com/LuminariMUD/Duris/pull/26) | Ready at `2e11670ae` (`randeq/phase-2-review-4`); startup-help finding fixed; full gates retained |
+| 3 | 3, module and interface | `enhancement/randeq-3-module` | [#27](https://github.com/LuminariMUD/Duris/pull/27) | Ready at `8acc03583` (`randeq/phase-3-review-4`); both findings fixed and full gates passed |
+| 4 | 4, readable generator | `enhancement/randeq-4-generator` | [#28](https://github.com/LuminariMUD/Duris/pull/28) | Ready at `randeq/phase-4-review-4`; no findings, full gates retained and new assertions passed |
 | 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | [#29](https://github.com/LuminariMUD/Duris/pull/29) | Implemented and verified at `6364ebf58`; review follow-up pending |
 
 ## Checks per pull request
