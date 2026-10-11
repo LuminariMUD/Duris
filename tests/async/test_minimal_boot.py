@@ -63,7 +63,6 @@ for row in weather_rows:
         assert 0 <= row[index] <= 8, "weather precipitation index is out of bounds"
 
 assert 'strcmp(argv[pos], "--minimal")' in COMM
-assert COMM.count("no_random = 1;") >= 2
 assert '"areas_mini/world.weather"' in DB
 assert '"areas_mini/world.tab"' in DB
 assert "Skipping full-world state restoration in mini mode." in DB

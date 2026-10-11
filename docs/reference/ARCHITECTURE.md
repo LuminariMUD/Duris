@@ -61,7 +61,6 @@ interprets them to decide whether to restart (see [RUNBOOK.md](../operations/RUN
 | `-m` | Mini mode (reduced area set); also disables ferries. |
 | `-z` | Mini mode with the area debugger on. |
 | `-f` | Disable ferries. |
-| `-l` | Disable random encounters. |
 | `-s` | Suppress special-procedure assignment. |
 | `-p` | Allow password change without the old password. |
 | `-d <dir>` | Data directory (default `.`). |

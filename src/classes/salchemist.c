@@ -1095,8 +1095,6 @@ void do_spellbind(P_char ch, char *argument, int /*cmd*/)
 	set_short_description(item, tempbuf);
 }
 
-// Jewel list is located in randomeq.c under stone_list and stone_spell_list
-
 void do_encrust(P_char ch, char *argument, int /*cmd*/)
 {
 	char arg[MAX_STRING_LENGTH];

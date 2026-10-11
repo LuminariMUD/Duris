@@ -56,7 +56,29 @@ of the existing wear flags, and rejected contexts must be side-effect free. Evid
 full formatting, both builds and `make test-all -j16 TEST_JOBS=16` (707/707, no reruns;
 `pr1-review4.log`), plus site checks (15) and documentation checks (12). The final
 record changes only this plan and reuses that code/test gate.
-Carry the documentation-only master sync through #26–#29 before final handoff.
+
+
+PR #26 is ready to merge at `randeq/phase-2-review-4`; its startup-help finding is fixed.
+Merge `b4f4252a6` brings in all PR #25 repairs without conflicts or changes to Phase 2's
+server code. It passed the strengthened ASan/UBSan golden harness, minimal boot checks,
+full formatting, `make test-all -j16 TEST_JOBS=16` (707/707, both build profiles),
+`make test-db` (72/72) and the site checks (15). No reruns were needed. The final record
+only updates this plan and passes its 12 documentation checks. Evidence:
+`randeq-gate/pr2-review1.log` and `pr2-review1-site.log`.
+
+The second review merge adds only the two new golden assertions and documentation.
+Its server source tree is byte-identical to the fully gated `fd38db525` revision. Reuse
+that full build/regression/database evidence. The changed ASan/UBSan harness, 12
+documentation checks, 15 site checks and formatting pass on this merge
+(`pr2-review2-focused.log`, `pr2-review2-site.log`).
+
+The final review repair removes the retired `[-l]` token from the fatal startup usage
+message. Only that string changes in server code; option parsing and runtime behavior
+are unchanged. Both builds and minimal-boot/format checks pass, and invalid invocations
+of both binaries from a temporary directory exit with the corrected usage and no `[-l]`.
+Evidence: `pr2-review3-{dev,production,focused,usage}.log`. Full regression/database
+results above are retained for this help-only edit. The final master sync changes
+only documentation, preserving all source/test evidence; documentation checks pass.
 
 ## Goal
 
@@ -73,7 +95,10 @@ Not in this plan: tuning or new settings, attaching `random_eq_proc()` (D1), ran
 random-mob internals beyond `randobj mob`'s options, and crafting's commented-out code that
 once called the generator (`src/economy/crafting.c`, around lines 1011 to 1090).
 
-## What is there now
+## Baseline before Phase 1
+
+This inventory describes `879adf0aa`, not the current checkout. The phase records below
+track what has been removed or moved; the line numbers here are historical.
 
 `src/item/randomeq.c` (1,814 lines) holds everything, in this order:
 
@@ -359,6 +384,20 @@ Tests and docs that name these change with them:
 
 Done when the golden test passes unchanged and `git grep` finds none of the removed names.
 
+**Done (2026-10-10).** 836 lines out. Found on the way and removed with the rest, since each
+existed only for what went:
+
+- two prototypes with no definition, `create_random_eq(int, int, int, int)` and
+  `setsuffix_obj()`;
+- `RANDOM_ZONES` in `defines.h`, read only by `create_randoms()`;
+- the boot's `no_random` switch, which only guarded `create_randoms()`, with its `-l`
+  option (nothing passes it; an unknown option only logs a line), the `-l` row in
+  [ARCHITECTURE.md](../reference/ARCHITECTURE.md) ("disable random encounters", which it
+  never did), and `test_minimal_boot.py`'s `no_random` assertion;
+- the comment in `salchemist.c` pointing at `stone_list` and `stone_spell_list`.
+
+`#define TROPHY` survives in other files, which use it for their own purposes.
+
 ### Phase 3: the module and its interface
 
 - **Files:** `git mv` `randomeq.c` to `random_equipment.c`; move the tables to
@@ -455,7 +494,7 @@ based on the one below, so each pull request's diff is its own phase. The first 
 | PR | Phase | Branch | GitHub | State |
 |---|---|---|---|---|
 | 1 | 1, golden test (plus the plan and the notes above) | `enhancement/randeq-1-golden` | opened | Done; up for review (`randeq/phase-1-review-0`) |
-| 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | | Not started |
+| 2 | 2, dead code out | `enhancement/randeq-2-dead-code` | | Done; gate pending |
 | 3 | 3, module and interface | `enhancement/randeq-3-module` | | Not started |
 | 4 | 4, readable generator | `enhancement/randeq-4-generator` | | Not started |
 | 5 | 5, `randobj` with arguments | `enhancement/randeq-5-randobj` | | Not started |
@@ -468,6 +507,9 @@ Every pull request runs the golden test and its own focused tests, then
 (`git worktree add --detach ../duris-plan-gate <sha>`, removed after), in the background, so
 the checkout can move on while the gate runs. PR 1 changes no server code (a test, comments
 and documents), so it skips `make test-db`.
+For later tests/documentation-only follow-ups, retain the completed full gate after
+verifying the server source tree is identical, and rerun the affected tests against each
+phase's implementation. Behavioral changes still require fresh full gates.
 
 ## Ablation review (2026-10-10, before Phase 1)
 
