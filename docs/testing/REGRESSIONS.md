@@ -11,6 +11,28 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Web Spray: targeting, refresh, recovery and mounted travel
+
+Driders use `innate web_spray <target>` from level 31. A successful hit replaces the
+30-second affect and its expiry event. The affect stores the drain amount, and its
+creation/removal arms/cancels the drain for both fresh hits and player/NPC recovery.
+Both NPC serializers update short affects from their scheduled expiry before saving,
+so recovery preserves the remaining duration.
+The final ordinary movement pass checks each living rider and mount that changed rooms;
+the temporary visibility placement and self-loop exits give no extra escape rolls.
+
+```sh
+python3 tests/async/test_web_spray.py
+```
+
+The ASan/UBSan harness executes the production innate parser, dispatcher, target selection,
+cooldown, spray, affect lifecycle, player affect codec, both NPC serializers/restore blocks and final
+movement block. It checks an explicit target different from the current opponent with a
+bystander named `spray`, hits at 0 and 29 seconds expiring at 59, saved drain rates and
+remaining time, one drain after restoration, both mounted control directions, failed moves,
+self-loops, uncarried/dead partners, defence outcomes and vitality clamping. Scheduling,
+combat outcomes and room placement are controlled fixtures; it is not a live copyover test.
+
 ## Argument tokenizer: unterminated quoted words
 
 `lohrr_chop()` resets its output pointer when an unterminated single quote makes it

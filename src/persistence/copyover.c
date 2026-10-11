@@ -538,6 +538,7 @@ static bool read_generated_npc_state(FILE *fp, int vnum, std::string *generated)
 
 static int write_mob_affects(FILE *fp, P_char mob)
 {
+	updateShortAffects(mob);
 	struct copyover_affect entry;
 	struct affected_type *af;
 
@@ -1725,6 +1726,8 @@ int copyover_write_mob_to_buffer(P_char mob, char *buf, size_t max_len)
 	int mob_rnum = GET_RNUM(mob);
 	if (mob_rnum < 0)
 		return -1;
+
+	updateShortAffects(mob);
 
 	memset(&entry, 0, sizeof(entry));
 	entry.vnum = mob_index[mob_rnum].virtual_number;

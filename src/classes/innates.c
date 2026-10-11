@@ -315,7 +315,7 @@ const struct innate_data innates_data[LAST_INNATE + 1] = {
 	{ "ophidian eyes", NULL },
 	{ "warding faith", NULL },
 	{ "arcane rudiments", NULL },
-	{ "web spray", do_web_spray },
+	{ "web_spray", do_web_spray },
 };
 
 string list_innates(int race, int cls, int spec)
@@ -3912,26 +3912,26 @@ void do_webwrap(P_char ch, char *argument, int /*cmd*/)
 
 // Web Spray (drider, lvl 31): sticky webbing that saps the target's moves every
 // combat round for 30 seconds. Runs on the victim while TAG_WEB_SPRAY lasts.
-void event_web_spray(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
+void event_web_spray(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
 {
-	int moves = *(int *)data;
+	struct affected_type *af = get_spell_from_char(ch, TAG_WEB_SPRAY);
 
-	if (!IS_ALIVE(ch) || !affected_by_spell(ch, TAG_WEB_SPRAY))
+	if (!af)
 	{
 		return;
 	}
 
 	send_to_char("&+WThe sticky webbing drags at your every movement.&n\n", ch);
-	GET_VITALITY(ch) = MAX(0, GET_VITALITY(ch) - moves);
+	GET_VITALITY(ch) = MAX(0, GET_VITALITY(ch) - af->modifier);
 
-	add_event(event_web_spray, PULSE_VIOLENCE, ch, NULL, NULL, 0, &moves, sizeof(moves));
+	add_event(event_web_spray, PULSE_VIOLENCE, ch, NULL, NULL, 0, NULL, 0);
 }
 
 void do_web_spray(P_char ch, char *argument, int /*cmd*/)
 {
-	struct affected_type af, *afp;
+	struct affected_type af;
 	P_char victim;
-	int cagi, vagi, moves;
+	int cagi, vagi;
 	float chance;
 
 	if (!(victim = parse_victim(ch, argument, 0)))
@@ -4011,23 +4011,14 @@ void do_web_spray(P_char ch, char *argument, int /*cmd*/)
 	act("The webbing engulfs you, gumming up your limbs!", FALSE, ch, 0, victim, TO_VICT);
 	act("The webbing engulfs $N, gumming up $S limbs!", FALSE, ch, 0, victim, TO_NOTVICT);
 
-	// A fresh spray refreshes the 30 seconds and restarts the drain at this caster's level.
-	if ((afp = get_spell_from_char(victim, TAG_WEB_SPRAY)))
-	{
-		afp->duration = 30 * WAIT_SEC;
-	}
-	else
-	{
-		memset(&af, 0, sizeof(af));
-		af.type = TAG_WEB_SPRAY;
-		af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL;
-		af.duration = 30 * WAIT_SEC;
-		affect_to_char(victim, &af);
-	}
-
-	moves = GET_LEVEL(ch) / 8;
-	disarm_char_nevents(victim, event_web_spray);
-	add_event(event_web_spray, PULSE_VIOLENCE, victim, NULL, NULL, 0, &moves, sizeof(moves));
+	// Recreate the affect so its expiry and drain both restart from this hit.
+	affect_from_char(victim, TAG_WEB_SPRAY);
+	memset(&af, 0, sizeof(af));
+	af.type = TAG_WEB_SPRAY;
+	af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL;
+	af.duration = 30 * WAIT_SEC;
+	af.modifier = GET_LEVEL(ch) / 8;
+	affect_to_char(victim, &af);
 
 	engage(ch, victim);
 }
@@ -4041,7 +4032,6 @@ void web_spray_move_check(P_char ch)
 	}
 
 	affect_from_char(ch, TAG_WEB_SPRAY);
-	disarm_char_nevents(ch, event_web_spray);
 	send_to_char("&+WYou tear free of the sticky webbing!&n\n", ch);
 	act("$n tears free of the sticky webbing.", TRUE, ch, 0, 0, TO_ROOM);
 }

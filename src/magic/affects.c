@@ -1879,6 +1879,13 @@ struct affected_type *affect_to_char(P_char ch, struct affected_type *af)
 		add_event(event_short_affect, af->duration, ch, 0, 0, 0, &data, sizeof(data));
 	}
 
+	// Both player and NPC restoration recreate affects through this path.
+	if (af->type == TAG_WEB_SPRAY)
+	{
+		disarm_char_nevents(ch, event_web_spray);
+		add_event(event_web_spray, PULSE_VIOLENCE, ch, NULL, NULL, 0, NULL, 0);
+	}
+
 	/* Update web client affects display */
 	gmcp_char_affects(ch);
 
@@ -2086,6 +2093,11 @@ void affect_remove(P_char ch, struct affected_type *af)
 	if (IS_SET(af->flags, AFFTYPE_LINKED_OBJ))
 	{
 		unlink_char_obj_affect(ch, af);
+	}
+
+	if (af->type == TAG_WEB_SPRAY)
+	{
+		disarm_char_nevents(ch, event_web_spray);
 	}
 
 	mm_release(dead_affect_pool, af);

@@ -23246,13 +23246,19 @@ spider-goddesses in their subterranean city of Arach-Drathos, driders are an evi
 combines Drow magical intellect with the lethal predatory traits of arachnids.
 
 Because of their eight-legged spider body, driders possess exceptional balance and stability,
-making them nearly impossible to trip or knock down in combat. They can spin thick, sticky webs
-to wrap and immobilize their victims before closing in with blade and venomous spellcraft.
+making them nearly impossible to trip or knock down in combat. They can spray thick, sticky webs
+to sap their victims' movement before closing in with blade and venomous spellcraft.
 
 ==Strengths==
-Driders possess innate magic resistance, the Webwrap ability to paralyze foes in combat,
+Driders possess innate magic resistance, Web Spray at level 31 to drain movement in combat,
 natural groundfighting stability from their spider body, high agility and constitution, and keen
 ultravision. They excel as Warriors, Sorcerers, Necromancers, Reavers, and Blighters.
+
+Use 'innate web_spray <target>' to spray a foe (five-minute cooldown). A hit coats the
+target for 30 seconds, draining the caster's level divided by 8 in movement each combat
+round. Freedom of movement and evade can stop the spray. Moving into another room gives
+a 10% chance to tear free, including mounted travel. Another hit refreshes the duration
+and replaces the drain; sprays do not stack. The webbing cannot be dispelled.
 
 ==Weakness==
 Driders suffer from dayblindness under bright sunlight. Due to their spider anatomy, they cannot
