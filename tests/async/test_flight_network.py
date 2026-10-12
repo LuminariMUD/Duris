@@ -176,6 +176,21 @@ int main() {
     assert(GET_MONEY(ch) == money - 500 && ch->carrying);
     P_obj ticket = ch->carrying;
     assert(ticket->value[6] == 47017 && ticket->value[7] == 635756);
+    // The shared validator also protects direct redemption while the proc is unavailable.
+    for (bool sleeping : {false, true}) {
+        recipient->specials.position = sleeping ? STAT_SLEEPING : STAT_NORMAL;
+        recipient->specials.affected_by2 = sleeping ? 0 : AFF2_MINOR_PARALYSIS;
+        command(CMD_GIVE, "ticket carrier");
+        assert(output.find("not ready to depart") != std::string::npos);
+        assert(ch->carrying == ticket && !GET_MOUNT(ch));
+        assert(GET_MONEY(ch) == money - 500);
+    }
+    recipient->specials.position = STAT_NORMAL;
+    recipient->specials.affected_by2 = 0;
+    masters[recipient] = other;
+    assert(command(CMD_GIVE, "ticket carrier"));
+    assert(ch->carrying == ticket && !GET_MOUNT(ch));
+    masters.erase(recipient);
     char_to_room(other, 2, -1);
     obj_from_char(ticket); obj_to_char(ticket, other);
     char give[] = "ticket carrier";
@@ -197,7 +212,12 @@ int main() {
     assert(command(CMD_FLIGHTS) == 0); // proc lets the interpreter run the anywhere command
     do_flights(ch, nullptr, CMD_FLIGHTS);
     assert(output.find("Quietus") != std::string::npos && awards == 2);
-    while (!scheduled.empty()) run_event(recipient);
+    while (GET_MOUNT(ch)) run_event(recipient);
+    // Empty returns must never retain the passenger's extraction-sensitive event link.
+    while (!scheduled.empty()) {
+        assert(scheduled.at(recipient).rider == nullptr);
+        run_event(recipient);
+    }
     assert(ch->in_room == 1 && recipient->in_room == 2 && !GET_MOUNT(ch));
     // Busy, wrong-origin and already-mounted attempts keep the ticket and money.
     visit(2);

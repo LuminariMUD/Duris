@@ -429,7 +429,8 @@ void initialize_transport()
 static bool transport_waiting(P_char ch, P_char carrier)
 {
 	const int service = transport_service(carrier);
-	return ch && !IS_NPC(ch) && service >= 0 && IS_ALIVE(carrier) &&
+	return ch && !IS_NPC(ch) && service >= 0 && IS_ALIVE(carrier) && IS_AWAKE(carrier) &&
+	       !IS_IMMOBILE(carrier) && !affected_by_spell(carrier, TAG_CONJURED_PET) &&
 	       ch->in_room == carrier->in_room &&
 	       carrier->in_room == real_room(transports[service].origin_vnum) &&
 	       TRANSPORT_STATE(carrier) == TRANSPORT_STATE_WAITING && !IS_FIGHTING(carrier) &&
@@ -836,8 +837,8 @@ void event_flying_transport_move(P_char ch, P_char victim, P_obj /*obj*/, void *
 
 		act("$n launches $mself into the air.", FALSE, ch, 0, victim, TO_ROOM);
 
-		if (!add_event(event_flying_transport_return, (int)(PULSE_VIOLENCE / 2), ch, victim,
-			       0, 0, 0, 0))
+		if (!add_event(event_flying_transport_return, (int)(PULSE_VIOLENCE / 2), ch,
+			       nullptr, 0, 0, 0, 0))
 			transport_land_at_home(ch, real_room(transports[service].origin_vnum));
 		return;
 	}
@@ -882,7 +883,7 @@ void event_flying_transport_move(P_char ch, P_char victim, P_obj /*obj*/, void *
 		transport_land_at_home(ch, real_room(transports[service].origin_vnum));
 }
 
-void event_flying_transport_return(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
+void event_flying_transport_return(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
 {
 	char buff[MAX_STRING_LENGTH];
 
@@ -931,7 +932,7 @@ void event_flying_transport_return(P_char ch, P_char victim, P_obj /*obj*/, void
 			logit(LOG_DEBUG, "Invalid return flight path for %s.", GET_NAME(ch));
 		}
 
-		act("$n lands.", FALSE, ch, 0, victim, TO_ROOM);
+		act("$n lands.", FALSE, ch, 0, nullptr, TO_ROOM);
 		transport_land_at_home(ch, real_room(transports[service].origin_vnum));
 		return;
 	}
@@ -957,7 +958,7 @@ void event_flying_transport_return(P_char ch, P_char victim, P_obj /*obj*/, void
 		 dirs2[rev_dir[dir]]);
 	act(buff, FALSE, ch, 0, 0, TO_ROOM | ACT_IGNORE_ZCOORD);
 
-	if (!add_event(event_flying_transport_return, (int)(PULSE_VIOLENCE / 8), ch, victim, 0, 0,
+	if (!add_event(event_flying_transport_return, (int)(PULSE_VIOLENCE / 8), ch, nullptr, 0, 0,
 		       0, 0))
 		transport_land_at_home(ch, real_room(transports[service].origin_vnum));
 }

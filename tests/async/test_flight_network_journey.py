@@ -230,6 +230,20 @@ def run(binary, backend, build):
                 assert money(before) - money(after) == steps * 500, (before, after)
                 evidence['ordinary_wallet_before'] = before['wallet']
                 evidence['ordinary_wallet_after'] = after['wallet']
+                # The real dispatcher skips an immobile carrier's special procedure.
+                # Ordinary give must still retain the paid ticket, without another debit.
+                command(god, 'setbit char griffin aff2 MINOR_PARA 1')
+                carrier = command(god, 'stat mob griffin')
+                assert 'MINOR_PARA' in carrier, carrier
+                refused = command(player, 'give ticket griffin')
+                assert 'not ready to depart' in refused, refused
+                assert 'ticket' in command(player, 'inventory').lower()
+                carrier = command(god, 'stat mob griffin')
+                assert 'a flight ticket' not in carrier.lower(), carrier
+                save(player)
+                assert progress()['wallet'] == after['wallet']
+                command(god, 'setbit char griffin aff2 MINOR_PARA 0')
+                evidence['immobile_ticket_retained'] = True
                 player.send('give ticket griffin')
                 player.expect('launches', timeout=20)
                 player.expect('flies ', timeout=20)
@@ -253,6 +267,30 @@ def run(binary, backend, build):
                 evidence['ordinary_route_steps'] = steps
                 evidence['copyovers'] = 2
                 print(backend + ': occupied flight and empty return survived copyover', flush=True)
+                # Land and extract the passenger before the empty return completes.
+                # No copyover/reconciliation may rescue this carrier.
+                command(god, 'goto 543662')
+                command(god, 'setbit room here flag SAFE 1')
+                command(god, 'goto 543701')
+                command(god, 'setbit char ' + PLAYER + ' platinum 25')
+                assert 'Here is your ticket' in command(player, f'buy {choice}')
+                player.send('give ticket griffin')
+                player.expect('launches', timeout=20)
+                player.expect('lands.', timeout=90)
+                player.send('quit')
+                player.expect('ACCOUNT MENU', timeout=30)
+                player.send('0')
+                player.close()
+                clients.remove(player)
+                deadline = time.monotonic() + 30
+                while 'Flight Service' not in command(god, 'list'):
+                    assert time.monotonic() < deadline, 'logout canceled the empty carrier return'
+                    time.sleep(.5)
+                player = login(PLAYER, ACCOUNT)
+                visit(543701)
+                assert 'Kimordril' in command(player, 'list')
+                evidence['return_after_logout'] = True
+                print(backend + ': immobile ticket retained and empty return survived logout', flush=True)
                 # Dedicated services do not discover anything and keep their level gates.
                 for room, keyword, destination, fare in (
                     (619771, 'krrlytstalarryn', 'Cavern', 50),

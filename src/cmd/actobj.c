@@ -13,6 +13,7 @@
 #include "net/comm.h"
 #include "world/db.h"
 #include "world/events.h"
+#include "world/transport.h"
 #include "cmd/interp.h"
 #include "mob/studioproc.h"
 #include "core/utility.h"
@@ -3940,6 +3941,7 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 
 void do_give(P_char ch, char *argument, int cmd)
 {
+	char *give_argument = argument;
 	char obj_name[MAX_INPUT_LENGTH], vict_name[MAX_INPUT_LENGTH];
 	char arg[MAX_INPUT_LENGTH];
 	char Gbuf1[MAX_STRING_LENGTH];
@@ -4073,6 +4075,10 @@ void do_give(P_char ch, char *argument, int cmd)
 		send_to_char("No one by that name around here.\r\n", ch);
 		return;
 	}
+	// Sleeping or immobile carriers are skipped by the special-procedure dispatcher.
+	if (IS_NPC(vict) && GET_RNUM(vict) >= 0 && MOB_PROC(vict) == flying_transport &&
+	    flying_transport_cmd_give(ch, vict, give_argument))
+		return;
 	if (training_dummy_is(vict))
 	{
 		send_to_char("The training dummy refuses every item.\r\n", ch);
