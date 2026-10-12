@@ -24249,3 +24249,40 @@ or other ailments outside those handled by these cures.
 Usage: cast 'mass purification'
 
 See also: Remove Poison, Cure Blind, Cure Disease
+
+#0
+
+Blood Tithe
+Blood Tithe - Last Edited: 2026-10-12
+Anti-Paladin circle: 10th (Dark Knight, Demonic Rider)
+Area of effect: <caster>
+Aggressive: No
+Cumulative: No
+Type of spell: Enhancement
+
+Blood Tithe pledges the anti-paladin's blood to the wrath of the group. While
+it lasts, damage that enemies deal to the caster builds malice, and malice
+makes every player groupmate in the same room hit harder with weapons and
+spells. The caster does not share in the bonus.
+
+Malice is measured against the caster's maximum hit points. Each hit counts
+for at most 5% of maximum hit points, and malice fades by a quarter every
+combat round, so only a caster who keeps taking about 15% of maximum hit
+points each round holds a full charge. Blows from the caster's own group or
+its pets, or from players of the caster's own side, never feed it.
+
+At full charge each groupmate deals 12% more damage. Beyond three groupmates
+in the room the bonus shrinks: about 9% with five, 7% with eight and 5% with
+fifteen. Against players the bonus is halved.
+
+Blood Tithes do not stack. A groupmate gains only the strongest one in the
+room, and a caster with a Blood Tithe gains none from others. Battle Lust
+silences it: a groupmate under the aura of battlelust gains nothing from
+Blood Tithe, so an anti-paladin chooses between the two. The score command
+shows the bonus the caster is granting.
+
+Duration: 15 ticks, plus 1 for every 10 points of Devotion.
+
+Usage: cast 'blood tithe'
+
+See also: Holy Sacrifice, Battle Ecstasy, Aura of Battlelust

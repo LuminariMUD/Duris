@@ -1306,6 +1306,9 @@ void schedule_pc_events(P_char ch)
 
 	if (affected_by_spell(ch, SPELL_BLEAK_FOEMAN))
 		add_event(event_bleak_foeman_check, WAIT_SEC, ch, 0, 0, 0, 0, 0);
+
+	if (affected_by_spell(ch, SPELL_BLOOD_TITHE))
+		add_event(event_blood_tithe, PULSE_VIOLENCE, ch, 0, 0, 0, 0, 0);
 }
 /*
  *    existing or new character entering game

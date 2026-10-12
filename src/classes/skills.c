@@ -2682,6 +2682,12 @@ void initialize_skills()
 	SPEC_SPELL_ADD(CLASS_PALADIN, 10, SPEC_CAVALIER);
 	SPEC_SPELL_ADD(CLASS_PALADIN, 10, SPEC_CRUSADER);
 
+	SPELL_CREATE_MSG("blood tithe", SPELL_BLOOD_TITHE, PULSE_SPELLCAST * 3, TAR_SELF_ONLY,
+			 spell_blood_tithe,
+			 "&+rYour blood is no longer pledged to your comrades' wrath.&n");
+	SPEC_SPELL_ADD(CLASS_ANTIPALADIN, 10, SPEC_DARKKNIGHT);
+	SPEC_SPELL_ADD(CLASS_ANTIPALADIN, 10, SPEC_DEMONIC);
+
 	SPELL_CREATE_MSG("battle ecstasy", SPELL_BATTLE_ECSTASY, PULSE_SPELLCAST * 3, TAR_SELF_ONLY,
 			 spell_battle_ecstasy, "&+WYou feel your inner turmoil disappear&n.");
 	// SPEC_SPELL_ADD(CLASS_ANTIPALADIN, 9, SPEC_DARKKNIGHT);

@@ -741,6 +741,12 @@ dam_mod->type = dam_mod_type::More;
 }
 }
 }
+, { MAKE_DAM_MOD_PRED(){
+	  if (!(flags & PHSDAM_NOREDUCE)){ dam_mod->mod += blood_tithe_damage_bonus(caster, victim);
+dam_mod->type = dam_mod_type::More;
+}
+}
+}
 , { MAKE_DAM_MOD_PRED(){ if (has_innate(caster, INNATE_WARCALLERS_FURY)){
 	  int group_size = num_group_members_in_room(victim);
 double bonus = BOUNDEDF(.02, (group_size / 100.0) + (GET_LEVEL(caster) / 1120.0), (double).15);

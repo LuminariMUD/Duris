@@ -38,5 +38,10 @@ void event_bleak_foeman_check(P_char ch, P_char victim, P_obj obj, void *data);
 void spell_dread_blade(int level, P_char ch, char *arg, int type, P_char victim, P_obj obj);
 bool dread_blade_proc(P_char ch, P_char victim);
 bool holy_weapon_proc(P_char ch, P_char victim);
+void spell_blood_tithe(int level, P_char ch, char *arg, int type, P_char victim, P_obj obj);
+void event_blood_tithe(P_char ch, P_char victim, P_obj obj, void *data);
+void blood_tithe_charge(P_char attacker, P_char victim, double dam);
+double blood_tithe_bonus(P_char ap);
+double blood_tithe_damage_bonus(P_char ch, P_char victim);
 
 #endif // __PALADINS_H__

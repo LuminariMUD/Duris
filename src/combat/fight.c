@@ -5706,7 +5706,11 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 		}
 
 		if ((ch != victim))
+		{
+			// Ahead of check_vamp, whose early returns must not stop the tithe.
+			blood_tithe_charge(ch, victim, dam);
 			check_vamp(ch, victim, dam, flags);
+		}
 
 		P_char rider = GET_RIDER(victim);
 
