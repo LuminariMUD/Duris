@@ -11,6 +11,55 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Learned flight network
+
+Issue #40 replaces fixed ordinary routes with 25 per-character discoveries and
+500-copper-per-room tickets. Scorched and Snow Ogres departures remain epic-only,
+with their original level-51 gates, 200p/50p fares and one-way service. Discovery
+EXP uses the current gain cap times discovery count divided by 27, then the normal
+modifiers and caps. The discovery mask and EXP share the existing status checkpoint;
+migration 0038 and snapshot schema 8 preserve both backends and old supported saves.
+
+`test_flight_network.py` executes the production catalog, BFS and command handlers
+under ASan/UBSan. It covers all paths and wrapped edges, first/repeated discovery,
+distance ordering and ties, exact half-platinum fares, payment/creation failures,
+busy carriers, transferred and malformed tickets, epic exclusions, the new level-one
+Stronghold trip, anywhere/in-flight listing, and unavailable map positions.
+`test_world_singletons.py` retains its repeated initialization, duplicate passenger
+and item preservation, occupied recovery, empty return, and older-record checks.
+The capture/codec, flat-file repository and SQL save/load fixtures exercise the new
+field, older versions 1/3/5/7, unrelated partial saves, account siblings, rollback,
+retry and the actual pwipe reset/query. The final audit additionally reads valid
+checksummed files for all four old versions through the real flat-file reader under
+ASan/UBSan, verifying an unsigned zero discovery mask. The EXP fixture checks capped/immortal
+characters and credited amounts across level advancement.
+
+`test_flight_network_journey.py` runs the complete world with synthetic characters.
+The default is flat-file; the database gate passes `--backend mariadb --server
+bin/server/dms_new` under `with_disposable_mariadb.sh`. Each backend discovers all
+25 ordinary stops, checks a 39-room flight costing 19.5p, preserves an occupied
+flight and an empty returning carrier through copyover, takes both restricted
+trips, and verifies discoveries/EXP after a crash and a normal logout/login. It
+also kills the seven named dragons and checks their corpse objects. The SQL leg
+imports the maintained help sources; both clients read the same FLIGHTS guidance.
+
+Fixtures supply light and detect invisibility because the existing epic caster can
+turn invisible; their epic departure pads are quieted to isolate ticket access from
+unrelated combat. A small purse avoids the normal accidental coin drops caused by
+carrying too many loose coins. A diagnostic quiet-room copyover preserved 1000p;
+the overfull-purse loss began during movement before copyover, so that mechanic was
+retained. Neither transport recovery format changed: file copyover remains version
+16 and Redis generations remain schema 13. Full servers use development builds;
+sanitizers cover the isolated native fixtures.
+
+Validation on 2026-10-12 at `11354ecd1`: `make test-all -j16 TEST_JOBS=8` passed all
+720 scripts (539.50s); `make test-db` passed all 73 legs (361s). All 603 routes loaded;
+one MariaDB run prepared paths in 483–645 ms across five boots. Full-tree formatting,
+maintained pfile/migration-tool builds, and the 15 site tests passed. The before/after
+check against `b79c08eef` catches the flight command and journey changes; four test
+maintenance cases pass on both revisions. The busy-carrier case was also observed
+failing before its focused repair. No production data or running game was used.
+
 ## Login statistics retain event-time identity
 
 `test_session_audit_snapshot.py` drives the real submit and codec path, mutates the

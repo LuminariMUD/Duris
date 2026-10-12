@@ -33,12 +33,12 @@ multiple occupied dragons, one flight survives and extra passengers are landed
 at that service's origin before their extra dragon is removed. Carried and worn
 items on retired dragons are transferred to the survivor.
 
-File copyover version 13 reads version 12 records as well. Version 12 did not
-record routes or riders, so those old flights cannot be resumed from their
-snapshot; their dragons are returned home. Redis schema 12 accepts its original
-NPC record and a bounded optional `TRN1` transport tail. Ordinary NPC wire
-records are unchanged. An older binary cannot read the new transport tail and
-will reject that Redis generation rather than interpret it incorrectly.
+Current file copyover version 16 accepts versions 12 through 16. Version 13
+introduced the transport endpoints and rider state; version 12 flights lack that
+state and return home. Current Redis world generations use schema 13, while the
+NPC codec accepts the original record and its bounded optional `TRN1` transport
+tail. The flight network changes neither format. Generation schema checks remain
+strict; see [World recovery format](../persistence/WORLD_RECOVERY_FORMAT.md).
 
 Shop inventory has different authorities in each recovery mode:
 
