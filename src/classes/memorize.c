@@ -1975,6 +1975,11 @@ int knows_spell(P_char ch, int spell)
 	if (!IS_SPELL(spell) || !ch->player.m_class)
 		return FALSE;
 
+	// Saved memorized copies must obey the current spell table and character level.
+	circle = get_spell_circle(ch, spell);
+	if (circle > get_max_circle(ch))
+		return FALSE;
+
 	if (IS_PC(ch) && !USES_SPELL_SLOTS(ch) && has_memorized(ch, spell))
 		return -1;
 
@@ -1988,8 +1993,7 @@ int knows_spell(P_char ch, int spell)
 		}
 	}
 
-	circle = get_spell_circle(ch, spell);
-	return (circle > get_max_circle(ch)) ? 0 : circle;
+	return circle;
 }
 
 void *has_memorized(P_char ch, int spell)
