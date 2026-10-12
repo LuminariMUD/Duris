@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from _paths import ROOT, extract_function
+from _paths import ROOT, extract_function, source
 
 zones = [("lizard", 60, 6000), ("bugentol", 958, 95800),
          ("quietus", 17, 1700), ("stormport", 224, 22400)]
@@ -47,9 +47,13 @@ static std::vector<std::pair<int, int>> rng_ranges;
 static std::string output;
 static bool cooldown_allowed = true, move_allowed = true;
 static int cooldown_checks, moved, lag, departures, missing = NOWHERE;
+static bool destinations_missing;
+static int only_destination = NOWHERE;
 bool SanityCheck(P_char ch, const char *) { return ch != nullptr; }
 int real_room(const int vnum) {
     if (vnum == missing) return NOWHERE;
+    if (vnum != 19701 && (destinations_missing ||
+        (only_destination != NOWHERE && vnum != only_destination))) return NOWHERE;
     for (size_t i = 0; i < rooms.size(); ++i)
         if (rooms[i].number == vnum) return static_cast<int>(i);
     return NOWHERE;
@@ -80,6 +84,7 @@ bool char_to_room(P_char ch, int room, int direction) {
 
 driver = r'''
 static void reset(P_char ch, int race = RACE_GITHYANKI) {
+    destinations_missing = false; only_destination = missing = NOWHERE;
     *ch = char_data{};
     ch->player.race = race; ch->in_room = real_room(19701);
     choices.clear(); rng_ranges.clear(); output.clear();
@@ -120,10 +125,20 @@ int main() {
             reset(&ch, race); choices = {slot}; shift(&ch);
             assert(world[ch.in_room].number == expected[slot] && rng_ranges.size() == 1);
         }
-        // Missing replacement anchors retry without indexing world[NOWHERE].
+        // Missing anchors are excluded before drawing; every surviving slot stays reachable.
         for (int z = 1; z <= 4; ++z) {
-            reset(&ch, race); missing = anchors[z-1]; choices = {slots[z-1], 1}; shift(&ch);
-            assert(world[ch.in_room].number == 2381 && rng_ranges.size() == 2);
+            for (int slot = 0; slot < 15; ++slot) {
+                if (slot == slots[z-1]) continue;
+                reset(&ch, race); missing = anchors[z-1];
+                choices = {slot - (slot > slots[z-1] ? 1 : 0)};
+                int target = real_room(expected[slot]);
+                for (int zone = 1; zone <= 4; ++zone) {
+                    if (slot != slots[zone-1]) continue;
+                    target = zones[zone].real_top; choices.push_back(target);
+                }
+                shift(&ch);
+                assert(ch.in_room == target && rng_ranges[0] == std::make_pair(0, 13));
+            }
         }
     }
     const int zerai[] = { ZERAI_ROOMS };
@@ -136,6 +151,21 @@ int main() {
         reset(&ch, RACE_PHANTOM); choices = {i}; shift(&ch);
         assert(world[ch.in_room].number == phantom[i] && rng_ranges.size() == 1);
     }
+    // Empty and partially loaded worlds must terminate for every supported race.
+    for (int race : {RACE_GITHYANKI, RACE_PILLITHID, RACE_ILLITHID,
+                     RACE_GITHZERAI, RACE_PHANTOM}) {
+        reset(&ch, race); destinations_missing = true; shift(&ch);
+        assert(ch.in_room == real_room(19701) && !departures && !lag && rng_ranges.empty());
+        assert(output.find("cannot find a path") != std::string::npos);
+        reset(&ch, race);
+        only_destination = race == RACE_GITHZERAI ? 557620 : race == RACE_PHANTOM ? 8430 : 53122;
+        choices = {0}; shift(&ch);
+        assert(world[ch.in_room].number == only_destination);
+        assert(rng_ranges.size() == 1 && rng_ranges[0] == std::make_pair(0, 0));
+    }
+    reset(&ch); missing = 19701; shift(&ch);
+    assert(!departures && !cooldown_checks && !lag && rng_ranges.empty());
+    assert(output.find("will not work here") != std::string::npos);
     reset(&ch); ch.specials.fighting = &ch; shift(&ch);
     assert(!departures && !cooldown_checks && lag == PULSE_VIOLENCE);
     assert(output.find("too busy fighting") != std::string::npos);
@@ -150,7 +180,7 @@ int main() {
     reset(&ch); move_allowed = false; choices = {1}; shift(&ch);
     assert(moved == real_room(2381) && !lag);
     printf("Shift prime: %d replacement-zone landings passed across three shared races.\n", landings);
-    puts("All 11 fixed destinations, Githzerai/Phantom lists, missing-anchor retry, combat, Astral restriction, cooldown and movement failure passed.");
+    puts("All 11 fixed destinations, Githzerai/Phantom lists, missing/empty destinations, missing Astral anchor, combat, Astral restriction, cooldown and movement failure passed.");
 }
 '''
 driver = (driver.replace("FIXTURES", ",".join(f"{{{v}, {z}}}" for v, z in fixtures))
@@ -162,7 +192,10 @@ build = ROOT / "bin/tests"
 build.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="shift-prime-", dir=build) as directory:
     cpp, binary = Path(directory) / "harness.cpp", Path(directory) / "harness"
-    cpp.write_text(prelude + extract_function("innates.c", "void do_shift_prime(P_char ch") + driver)
+    innates = source("innates.c").read_text()
+    selector = innates[innates.index("struct shift_prime_destination\n"):
+                      innates.index("#define PLANE_ZONETARG_ROOMNUMB")]
+    cpp.write_text(prelude + selector + extract_function("innates.c", "void do_shift_prime(P_char ch") + driver)
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Wpedantic",
                     "-Og", "-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
                     "-fno-pie", "-no-pie", "-I" + str(ROOT / "src"), str(cpp),

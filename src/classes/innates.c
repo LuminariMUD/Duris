@@ -1969,16 +1969,47 @@ void do_shift_ethereal(P_char ch, char * /*arg*/, int /*cmd*/)
 	CharWait(ch, PULSE_VIOLENCE);
 }
 
+struct shift_prime_destination
+{
+	int room;
+	bool random_in_zone = false;
+};
+
+template <size_t N>
+static int select_shift_prime_room(const shift_prime_destination (&destinations)[N])
+{
+	int available = 0;
+	for (const auto &destination : destinations)
+		if (real_room(destination.room) != NOWHERE)
+			++available;
+
+	if (!available)
+		return NOWHERE;
+
+	// Keep equal odds per loaded destination without an unbounded retry loop.
+	int choice = number(0, available - 1);
+	for (const auto &destination : destinations)
+	{
+		const int room = real_room(destination.room);
+		if (room == NOWHERE)
+			continue;
+		if (choice-- != 0)
+			continue;
+		if (!destination.random_in_zone)
+			return room;
+
+		const auto &zone = zone_table[world[room].zone];
+		return number(zone.real_bottom, zone.real_top);
+	}
+	return NOWHERE;
+}
+
 #define PLANE_ZONETARG_ROOMNUMB 19701 /* astral */
 
 void do_shift_prime(P_char ch, char * /*arg*/, int /*cmd*/)
 {
-	int astral = world[real_room(PLANE_ZONETARG_ROOMNUMB)].zone, r_room = NOWHERE;
-	const struct
-	{
-		int room;
-		bool random_in_zone;
-	} githyanki_room[] = {
+	int r_room = NOWHERE;
+	static constexpr shift_prime_destination githyanki_room[] = {
 		{ 6000, true }, // Clavikord, replacing Killing Fields
 		{ 2381, false },   { 11545, false },
 		{ 95800, true }, // Bugentolen (bugbears), replacing Drustl
@@ -1989,9 +2020,14 @@ void do_shift_prime(P_char ch, char * /*arg*/, int /*cmd*/)
 		{ 6405, false },   { 1700, true }, // Quietus Quay, replacing Kelek
 		{ 53122, false },
 	};
-	const int githzerai_room[] = { 41767, 20484, 6224,  66651, 7117,  93665,  16805,
-				       5759,  2018,  99295, 93919, 16302, 574427, 557620 };
-	const int phantom_room[] = { 5927, 98731, 14373, 99465, 18305, 217481, 15100, 8486, 8430 };
+	static constexpr shift_prime_destination githzerai_room[] = {
+		{ 41767 }, { 20484 }, { 6224 },	 { 66651 }, { 7117 },  { 93665 },  { 16805 },
+		{ 5759 },  { 2018 },  { 99295 }, { 93919 }, { 16302 }, { 574427 }, { 557620 },
+	};
+	static constexpr shift_prime_destination phantom_room[] = {
+		{ 5927 },   { 98731 }, { 14373 }, { 99465 }, { 18305 },
+		{ 217481 }, { 15100 }, { 8486 },  { 8430 },
+	};
 
 	if (IS_FIGHTING(ch))
 	{
@@ -2000,7 +2036,8 @@ void do_shift_prime(P_char ch, char * /*arg*/, int /*cmd*/)
 		return;
 	}
 
-	if (world[ch->in_room].zone != astral)
+	const int astral = real_room(PLANE_ZONETARG_ROOMNUMB);
+	if (astral == NOWHERE || world[ch->in_room].zone != world[astral].zone)
 	{
 		send_to_char("Your shifting will not work here!\n", ch);
 		return;
@@ -2014,34 +2051,13 @@ void do_shift_prime(P_char ch, char * /*arg*/, int /*cmd*/)
 
 	if (GET_RACE(ch) == RACE_GITHYANKI || GET_RACE(ch) == RACE_PILLITHID ||
 	    GET_RACE(ch) == RACE_ILLITHID)
-	{
-		do
-		{
-			const auto &destination = githyanki_room[number(
-				0, (sizeof(githyanki_room) / sizeof(githyanki_room[0])) - 1)];
-			r_room = real_room(destination.room);
-			if (r_room != NOWHERE && destination.random_in_zone)
-			{
-				const auto &zone = zone_table[world[r_room].zone];
-				r_room = number(zone.real_bottom, zone.real_top);
-			}
-		} while (r_room == -1);
-	}
+		r_room = select_shift_prime_room(githyanki_room);
 	else if (GET_RACE(ch) == RACE_GITHZERAI)
-	{
-		do
-			r_room = real_room(githzerai_room[number(
-				0, (sizeof(githzerai_room) / sizeof(int)) - 1)]);
-		while (r_room == -1);
-	}
+		r_room = select_shift_prime_room(githzerai_room);
 	else if (GET_RACE(ch) == RACE_PHANTOM)
-	{
-		do
-			r_room = real_room(
-				phantom_room[number(0, (sizeof(phantom_room) / sizeof(int)) - 1)]);
-		while (r_room == -1);
-	}
-	else
+		r_room = select_shift_prime_room(phantom_room);
+
+	if (r_room == NOWHERE)
 	{
 		send_to_char("You cannot find a path back to the prime plane.\n", ch);
 		return;
