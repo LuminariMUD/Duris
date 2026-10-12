@@ -39,9 +39,14 @@ bool redis_invalidate_named_report(void);
 bool redis_cache_fraglist(struct char_data *ch = nullptr);
 char *redis_get_fraglist(void);
 bool redis_invalidate_fraglist(void);
-// The leaderboard's top and lowest fraggers matching filter (SQL), as rows tagged 'top'
-// and 'low': the tag, char_name and total_frags. For the writer.
+// Each side's frag total, as rows tagged 'total' (the tag, racewar and total), then the
+// leaderboard's top and lowest fraggers matching filter (SQL), as rows tagged 'top' and
+// 'low' (the tag, char_name and total_frags). For the writer.
 bool fraglist_leaders(MYSQL *connection, const char *filter, sql_rows *rows);
+// The fraglist's level-cap header from those rows, split around its timer: before ends
+// with "Timer: " and after follows the timer. Returns when the next level can be unlocked.
+time_t fraglist_cap_header(const sql_rows &rows, char *before, size_t before_size, char *after,
+			   size_t after_size);
 
 void redis_cache_epic_zones(void);
 void redis_cache_epic_zones_output(const char *output);

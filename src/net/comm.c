@@ -175,6 +175,7 @@ extern struct zone_data *zone;
 extern struct zone_data *zone_table;
 extern const int max_ingame_good;
 extern const int max_ingame_evil;
+extern const racewar_struct racewar_color[MAX_RACEWAR + 2];
 extern TimedShutdownData shutdownData;
 extern void timedShutdown(P_char ch, P_char, P_obj, void *data);
 extern void checkpointing(void);
@@ -262,11 +263,20 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 		{
 			sql_level_cap_reload();
 			redis_invalidate_fraglist();
-			if (result.value_count == 3 && result.values[0] > 0 &&
-			    result.values[0] <= INT32_MAX)
-				boon_notify_snapshot(static_cast<int>(result.values[0]),
-						     static_cast<int>(result.values[1]),
-						     static_cast<int>(result.values[2]), BN_CREATE);
+			const int side = static_cast<int>(result.values[0]);
+			if (result.value_count == 3 &&
+			    (side == RACEWAR_GOOD || side == RACEWAR_EVIL))
+			{
+				char announcement[MAX_STRING_LENGTH];
+				snprintf(
+					announcement, sizeof(announcement),
+					"&+YThe level cap rises!&n The forces of &+%c%s&n have unlocked "
+					"&+Wlevel %d&n %s.\r\n",
+					racewar_color[side].color, racewar_color[side].name,
+					static_cast<int>(result.values[1]),
+					result.values[2] ? "for everyone" : "for their side");
+				send_to_all(announcement);
+			}
 		}
 		// The jobs that change zone alignments and rarity: memory reads them again.
 		if ((result.job_id == maintenance_job_id::epic_zone_balance ||

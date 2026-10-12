@@ -443,16 +443,10 @@ bool sql_hydrate_item_owner_revisions(void)
 {
 	return false;
 }
-void get_level_cap_info(long *max_frags, int *racewar, int *level, time_t *next_update)
+void get_level_cap_info(int *open_level, int *good_level, int *evil_level, time_t *next_update)
 {
-	if (max_frags)
-		*max_frags = -1;
-	if (racewar)
-		*racewar = RACEWAR_NONE;
-	if (level)
-		*level = frag_cap_config_get()->cap_floor_level;
-	if (next_update)
-		*next_update = 0;
+	*open_level = *good_level = *evil_level = frag_cap_config_get()->cap_floor_level;
+	*next_update = 0;
 }
 int sql_level_cap(int /*racewar_side*/)
 {
@@ -2279,31 +2273,31 @@ int sql_save_player_core(P_char ch)
 #define PROGRESS_FRAGS 1
 #define PROGRESS_EXP 2
 
-// The level_cap row, read at boot and after the maintenance job changes it, and kept
-// current by sql_check_level_cap(), so the game never waits to read it.
+// The level_cap row, read at boot and again after the maintenance job changes it, so the
+// game never waits to read it.
 static struct
 {
 	bool loaded = false;
-	long most_frags = -1;
-	int racewar = RACEWAR_NONE;
 	int level = 0;
+	int level_good = 0;
+	int level_evil = 0;
 	time_t next_update = 0;
 } level_cap_row;
 
-static void level_cap_row_publish(const char *most_frags, const char *racewar, const char *level,
+static void level_cap_row_publish(const char *level, const char *level_good, const char *level_evil,
 				  const char *next_update)
 {
-	level_cap_row.loaded = most_frags && racewar && level && next_update;
+	level_cap_row.loaded = level && level_good && level_evil && next_update;
 	if (!level_cap_row.loaded)
 		return;
-	level_cap_row.most_frags = (long)(atof(most_frags) * 100. + .01);
-	level_cap_row.racewar = atoi(racewar);
 	level_cap_row.level = atoi(level);
+	level_cap_row.level_good = atoi(level_good);
+	level_cap_row.level_evil = atoi(level_evil);
 	level_cap_row.next_update = atol(next_update);
 }
 
 static const char level_cap_query[] =
-	"SELECT most_frags, racewar_leader, level, UNIX_TIMESTAMP(next_update) FROM level_cap";
+	"SELECT level, level_good, level_evil, UNIX_TIMESTAMP(next_update) FROM level_cap";
 
 // Boot only: the game loop is not running yet.
 static void sql_load_level_cap(void)
@@ -2329,38 +2323,33 @@ void sql_level_cap_reload(void)
 		 });
 }
 
-// Retrieves the current highest number of frags and which racewar side has it.
-void get_level_cap_info(long *max_frags, int *racewar, int *level, time_t *next_update)
-{
-	if (!level_cap_row.loaded)
-	{
-		*max_frags = (long)-1;
-		*racewar = RACEWAR_NONE;
-		*level = frag_cap_config_get()->cap_floor_level;
-		*next_update = 0;
-		return;
-	}
-	*max_frags = level_cap_row.most_frags;
-	*racewar = level_cap_row.racewar;
-	*level = level_cap_row.level;
-	*next_update = level_cap_row.next_update;
-}
-
-// Returns the highest level achievable by mortals, limited by racewar side.
-int sql_level_cap(int /*racewar_side*/)
+// The level open to all, Good's and Evil's caps (the higher of that and the level the side
+// opened beyond it), all clamped to the configured range, and when the next level can be
+// unlocked.
+void get_level_cap_info(int *open_level, int *good_level, int *evil_level, time_t *next_update)
 {
 	const struct frag_cap_config *config = frag_cap_config_get();
-	if (!level_cap_row.loaded)
-		return config->cap_floor_level;
-	const int level_cap = level_cap_row.level;
+	const int open = level_cap_row.loaded ? level_cap_row.level : 0;
+	*open_level = std::clamp(open, config->cap_floor_level, config->cap_maximum_level);
+	*good_level = std::clamp(std::max(open, level_cap_row.level_good), config->cap_floor_level,
+				 config->cap_maximum_level);
+	*evil_level = std::clamp(std::max(open, level_cap_row.level_evil), config->cap_floor_level,
+				 config->cap_maximum_level);
+	*next_update = level_cap_row.loaded ? level_cap_row.next_update : 0;
+}
 
-	// Clamp database values to the configured mortal-cap range.
-	if (level_cap >= config->cap_maximum_level)
-		return config->cap_maximum_level;
-	if (level_cap <= config->cap_floor_level)
-		return config->cap_floor_level;
-
-	return level_cap;
+// Returns the highest level a mortal on racewar_side can reach; sides other than Good and
+// Evil have the level open to all.
+int sql_level_cap(int racewar_side)
+{
+	int open_level, good_level, evil_level;
+	time_t next_update;
+	get_level_cap_info(&open_level, &good_level, &evil_level, &next_update);
+	if (racewar_side == RACEWAR_GOOD)
+		return good_level;
+	if (racewar_side == RACEWAR_EVIL)
+		return evil_level;
+	return open_level;
 }
 
 /*
@@ -3992,6 +3981,8 @@ bool sql_verify_pwipe_manifest(void)
 		{ "level_cap", "most_frags" },
 		{ "level_cap", "racewar_leader" },
 		{ "level_cap", "level" },
+		{ "level_cap", "level_good" },
+		{ "level_cap", "level_evil" },
 		{ "level_cap", "next_update" },
 		{ "season_reset_state", "state_id" },
 		{ "season_reset_state", "season_epoch" },
@@ -4747,8 +4738,9 @@ bool sql_pwipe(int code_verify)
 		}
 		logit(LOG_DEBUG, "sql_pwipe: Resetting level_cap data... .. .");
 		send_to_all("Resetting level_cap data... .. .");
-		if (qry("UPDATE level_cap SET most_frags=0, racewar_leader=0, level=%d, next_update=NOW() + INTERVAL %d DAY",
-			frag_cap_config_reset_level(), frag_cap_config_reset_timer_days()))
+		// No timer: the season's first qualifying frag unlocks the next level.
+		if (qry("UPDATE level_cap SET most_frags=0, racewar_leader=0, level=%d, level_good=0, level_evil=0, next_update=NOW()",
+			frag_cap_config_reset_level()))
 		{
 			logit(LOG_DEBUG, "  success!");
 			send_to_all("  success!\n");

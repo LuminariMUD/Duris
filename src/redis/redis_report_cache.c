@@ -52,8 +52,6 @@ struct zone_random_data
 
 extern struct zone_random_data zones_random_data[];
 extern Skill skills[];
-extern void get_level_cap_info(long *max_frags, int *racewar, int *level, time_t *next_update);
-extern const racewar_struct racewar_color[];
 
 namespace
 {
@@ -287,36 +285,18 @@ static char *fraglist_cache_payload(const sql_rows &rows)
 		return NULL;
 
 	output[0] = '\0';
-	char buf[2048], name[256], prefix[1024];
+	char buf[2048], name[256], before[1024], after[256];
 	int frags, count;
 	float fragnum;
-	int cap_level, cap_racewar, cap_others;
-	long cap_frags;
-	time_t cap_deadline;
 
-	get_level_cap_info(&cap_frags, &cap_racewar, &cap_level, &cap_deadline);
-	if (cap_frags < 0 || cap_racewar < 0 || cap_racewar >= MAX_RACEWAR + 2 || cap_deadline <= 0)
+	const time_t cap_deadline =
+		fraglist_cap_header(rows, before, sizeof before, after, sizeof after);
+	if (cap_deadline <= 0)
 	{
 		free(output);
 		return NULL;
 	}
-	const struct frag_cap_config *cap_config = frag_cap_config_get();
-	if (!cap_config)
-	{
-		free(output);
-		return NULL;
-	}
-	cap_others = std::clamp(cap_level, cap_config->cap_floor_level,
-				std::min(cap_config->cap_maximum_level, MAXLVLMORTAL));
-
-	snprintf(
-		prefix, sizeof prefix,
-		"&+YFrag Level Cap:&+w %d - &+%c%s&n, &+w%d&N - Others, &+YTop Frag Amount: &+w%d.%02d\n"
-		"&+YTimer:&+w ",
-		cap_level, racewar_color[cap_racewar].color, racewar_color[cap_racewar].name,
-		cap_others, static_cast<int>(cap_frags / 100), static_cast<int>(cap_frags % 100));
-	snprintf(output, 65536, " &+YFrags needed:&+w %.2f&n\n\n&+WTop Fraggers\n\n",
-		 frag_cap_config_frags_for_level(cap_level + 1));
+	snprintf(output, 65536, "%s&+WTop Fraggers\n\n", after);
 
 	count = 0;
 	for (const sql_row &row : rows)
@@ -361,7 +341,7 @@ static char *fraglist_cache_payload(const sql_rows &rows)
 	}
 
 	strcat(output, "\r\n");
-	char *payload = report_cache_countdown_encode(prefix, output,
+	char *payload = report_cache_countdown_encode(before, output,
 						      static_cast<uint64_t>(time(NULL)),
 						      static_cast<uint64_t>(cap_deadline));
 	free(output);
@@ -374,7 +354,11 @@ static char *fraglist_cache_payload(const sql_rows &rows)
 bool fraglist_leaders(MYSQL *connection, const char *filter, sql_rows *rows)
 {
 	const std::string where = filter && *filter ? std::string(" AND ") + filter : "";
-	return !sql_select(
+	return !sql_select(connection,
+			   "SELECT 'total', racewar, SUM(total_frags) FROM frag_leaderboard "
+			   "GROUP BY racewar",
+			   rows) &&
+	       !sql_select(
 		       connection,
 		       sql_format("SELECT 'top', char_name, total_frags FROM frag_leaderboard "
 				  "WHERE deleted_at IS NULL%s ORDER BY total_frags DESC LIMIT %d",
@@ -386,6 +370,38 @@ bool fraglist_leaders(MYSQL *connection, const char *filter, sql_rows *rows)
 				  "WHERE deleted_at IS NULL%s ORDER BY total_frags ASC LIMIT %d",
 				  where.c_str(), max_frag_size),
 		       rows);
+}
+
+time_t fraglist_cap_header(const sql_rows &rows, char *before, size_t before_size, char *after,
+			   size_t after_size)
+{
+	long totals[MAX_RACEWAR] = { 0 };
+	for (const sql_row &row : rows)
+		if (!strcmp(row[0], "total") && row[1] && row[2])
+		{
+			const int racewar = atoi(row[1]);
+			if (racewar >= 0 && racewar < MAX_RACEWAR)
+				totals[racewar] = atol(row[2]);
+		}
+	int open_level, good_level, evil_level;
+	time_t next_update;
+	get_level_cap_info(&open_level, &good_level, &evil_level, &next_update);
+	snprintf(before, before_size,
+		 "&+YFrag Level Cap:&+w %d - All, &+Y%d&+w - Good, &+R%d&+w - Evil\n"
+		 "&+WGoodies Total Frags - &+w%.2f, &+REvils Total Frags - &+w%.2f\n"
+		 "&+YTimer:&+w ",
+		 open_level, good_level, evil_level, totals[RACEWAR_GOOD] / 100.0,
+		 totals[RACEWAR_EVIL] / 100.0);
+	const struct frag_cap_config *config = frag_cap_config_get();
+	if (open_level >= config->cap_maximum_level)
+		snprintf(after, after_size, "&+Y, all levels are open&n\n\n");
+	else
+		snprintf(after, after_size,
+			 "&+Y, then a level %d+ foe worth at least %.2f frags to one player on "
+			 "the leading side (either side if tied) unlocks a level&n\n\n",
+			 open_level - config->unlock_victim_levels_below,
+			 config->unlock_minimum_frag_points / 100.0);
+	return next_update;
 }
 
 bool redis_report_cache_configure(const char *key_namespace, uint64_t epoch)

@@ -28,77 +28,98 @@ assert "FRAGS_TO_LEVEL" not in sql_h
 
 for key in (
     "cap.floor.level",
-    "cap.frag.base.level",
     "cap.reset.level",
     "cap.maximum.level",
-    "cap.level.step",
-    "cap.frags.per.level",
-    "timer.default.days",
-    "timer.circle.level.35.days",
-    "timer.circle.level.40.days",
-    "timer.circle.level.45.days",
-    "timer.level.50.days",
-    "timer.level.51.days",
-    "timer.level.52.days",
-    "timer.level.53.days",
-    "timer.level.54.days",
-    "timer.level.55.days",
+    "timer.unlock.days",
+    "unlock.victim.levels.below.open",
+    "unlock.minimum.frag.points",
     "hardcore.levels.beyond.cap",
-    "boon.duration.minutes",
-    "boon.bonus",
 ):
-    assert key in config, key
-    assert key in impl, key
+    assert key + "=" in config, key
+    assert '"' + key + '"' in impl, key
 
 for token in (
     "cap_floor_level",
-    "cap_frag_base_level",
     "cap_reset_level",
     "cap_maximum_level",
-    "cap_level_step",
-    "cap_frags_per_level",
-    "timer_default_days",
-    "timer_circle_level_35_days",
-    "timer_circle_level_40_days",
-    "timer_circle_level_45_days",
-    "timer_level_50_days",
-    "timer_level_51_days",
-    "timer_level_52_days",
-    "timer_level_53_days",
-    "timer_level_54_days",
-    "timer_level_55_days",
+    "unlock_timer_days",
+    "unlock_victim_levels_below",
+    "unlock_minimum_frag_points",
     "hardcore_levels_beyond_cap",
-    "boon_duration_minutes",
-    "boon_bonus",
 ):
+    assert token in header, token
     assert token in impl, token
 
-assert "frag_cap_config_cap_level_from_frags" in impl
-assert "frag_cap_config_frags_for_level" in fraglist
-assert "frag_cap_config_frags_for_level" in report_cache
-assert "frag_cap_config_frags_for_level" not in redis
-assert "frag_cap_config_timer_days" in impl
-assert "timer.circle.level.35" in config
-assert "cap.level.step=1" in config
-assert "timer.default.days=5" in config
+# Frag thresholds, per-level timers and the unlock boon are gone.
+for retired in (
+    "cap.frag.base.level", "cap.level.step", "cap.frags.per.level", "timer.default.days",
+    "timer.circle.level", "timer.level.5", "boon.duration.minutes", "boon.bonus",
+):
+    assert retired not in config, retired
+    assert retired not in impl, retired
+for retired in ("frags_for_level", "cap_level_from_frags", "frag_cap_config_timer_days",
+                "frag_cap_config_reset_timer_days", "boon_duration", "boon_bonus"):
+    assert retired not in header, retired
+    assert retired not in fraglist + report_cache + maintenance + sql, retired
+
+assert "cap.reset.level=30" in config
+assert "timer.unlock.days=3" in config
+assert "unlock.victim.levels.below.open=5" in config
+assert "unlock.minimum.frag.points=10" in config
 assert "hardcore.levels.beyond.cap=2" in config
-assert "timer.level.56.days" not in config
-assert "timer_level_56_days" not in header
-assert "timer_level_56_days" not in impl
 assert "frag_cap_config_hardcore_level_cap" in limits
 assert "IS_HARDCORE(ch)" in limits
-assert "frag_cap_config_boon_duration_minutes" in impl
-assert "frag_cap_config_boon_bonus" in impl
-# The maintenance job raises the cap; the game keeps the row in memory and reads it
-# again when the job changed it.
-assert "sql_check_level_cap_periodic" not in sql + sql_h + comm
+assert "sql_level_cap(GET_RACEWAR(ch))" in limits
+
+# Each side has its own cap; other sides have the level open to all.
+level_cap = sql[sql.index("int sql_level_cap(int racewar_side)"):]
+level_cap = level_cap[:level_cap.index("\n}\n")]
+assert "RACEWAR_GOOD" in level_cap and "RACEWAR_EVIL" in level_cap
+assert "SELECT level, level_good, level_evil, UNIX_TIMESTAMP(next_update) FROM level_cap" in sql
+# A wipe opens cap.reset.level to all with no timer, so the first frag unlocks the next.
+assert "level=%d, level_good=0, level_evil=0, next_update=NOW()" in sql
+assert "frag_cap_config_reset_level" in sql
+for column in ("level_good", "level_evil"):
+    assert '{ "level_cap", "' + column + '" }' in sql
+
+# The maintenance job unlocks levels; the game keeps the row in memory and reads it
+# again when the job changed it, and announces the unlock.
+job = maintenance[maintenance.index("maintenance_result execute_level_cap("):]
+job = job[:job.index("\n}\n")]
+for token in (
+    "FROM level_cap ORDER BY id LIMIT 1 FOR UPDATE",
+    "request.values[0] < strtoll(row[4].c_str(), nullptr, 10)",
+    "COALESCE(SUM(total_frags),0) FROM frag_leaderboard",
+    "p.frag_delta>=",
+    "v.level>=",
+    "unlock_victim_levels_below",
+    "unlock_minimum_frag_points",
+    "ORDER BY o.created_at,o.operation_id LIMIT 1",
+    "(level - 1) % 5 == 0",
+    "unlock_timer_days",
+    "level_cap_changed",
+):
+    assert token in job, token
+assert "boons" not in job
 assert "maintenance_job_id::level_cap" in comm
 assert "sql_level_cap_reload();" in comm
-assert "frag_cap_config_cap_level_from_frags" in maintenance
-assert "frag_cap_config_timer_days" in maintenance
-assert "COALESCE(SUM(total_frags),0)" in maintenance
-assert "FROM_UNIXTIME" in sql
-assert "frag_cap_config_reset_level" in sql
-assert "frag_cap_config_reset_timer_days" in sql
+completion = comm[comm.index("result.job_id == maintenance_job_id::level_cap"):]
+completion = completion[:completion.index("// The jobs that change zone alignments")]
+assert "send_to_all(announcement)" in completion
+assert "boon_notify_snapshot" not in completion
+assert "sql_check_level_cap_periodic" not in sql + sql_h + comm
+
+# Both fraglist views share one header: each side's cap, each side's frag total and what
+# unlocks the next level.
+for view in (fraglist, report_cache):
+    assert "fraglist_cap_header(rows, before" in view
+cap_header = report_cache[report_cache.index("time_t fraglist_cap_header("):]
+cap_header = cap_header[:cap_header.index("\n}\n")]
+for token in ("get_level_cap_info(&open_level, &good_level, &evil_level",
+              "Goodies Total Frags", "unlock_victim_levels_below",
+              "unlock_minimum_frag_points / 100.0", "worth at least %.2f frags to one player"):
+    assert token in cap_header, token
+assert "SELECT 'total', racewar, SUM(total_frags)" in report_cache
+assert "frag_cap_config" not in redis
 
 print("frag-cap configuration source contract passed")

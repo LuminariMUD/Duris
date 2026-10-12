@@ -16,26 +16,10 @@ extern "C" MYSQL *sql_pool_acquire(void)
 {
 	return connection;
 }
-// The prune never reaches the frag cap jobs.
+// The prune never reaches the level cap job.
 const struct frag_cap_config *frag_cap_config_get(void)
 {
 	return nullptr;
-}
-int frag_cap_config_cap_level_from_frags(double)
-{
-	return 0;
-}
-int frag_cap_config_timer_days(int)
-{
-	return 0;
-}
-int frag_cap_config_boon_duration_minutes(void)
-{
-	return 0;
-}
-int frag_cap_config_boon_bonus(void)
-{
-	return 0;
 }
 
 int main(int argc, char **argv)

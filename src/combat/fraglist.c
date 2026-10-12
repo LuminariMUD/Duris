@@ -20,7 +20,6 @@
 #include <string.h>
 #include "guild/assocs.h"
 #include "core/config.h"
-#include "combat/frag_cap_config.h"
 #include "redis/redis_report_cache.h"
 #include "ships/ships.h"
 #include "magic/spells.h"
@@ -34,9 +33,6 @@ extern P_char misfire_check(P_char ch, P_char spell_target, int flag);
 
 extern P_room world;
 extern const racewar_struct racewar_color[MAX_RACEWAR + 2];
-
-extern void get_level_cap_info(long *max_frags, int *racewar, int *level, time_t *next_update);
-extern int sql_level_cap(int racewar_side);
 
 /*
  * fragWorthy - is ch worthy of gaining a frag and victim worthy of losing
@@ -169,27 +165,18 @@ static void show_fraglist(P_char ch, const std::string &filter)
 		ch,
 		[filter](MYSQL *connection, sql_rows *rows) -> unsigned int
 		{
-			if (const unsigned int error_code = sql_select(
-				    connection,
-				    "SELECT 'total', racewar, SUM(total_frags) FROM frag_leaderboard "
-				    "GROUP BY racewar",
-				    rows))
-				return error_code;
 			return fraglist_leaders(connection, filter.c_str(), rows) ?
 				       0 :
 				       (mysql_errno(connection) ? mysql_errno(connection) : EIO);
 		},
 		[](P_char viewer, const sql_rows &rows)
 		{
-			char buf[65536], buf2[2048], name[256];
+			char buf[65536], buf2[2048], name[256], before[1024], after[256];
 			int count;
-			int cap_level, cap_racewar;
-			long cap_frags;
-			time_t cap_timer;
 			int days, hours, mins, secs;
 
-			// get level cap info (already uses sql)
-			get_level_cap_info(&cap_frags, &cap_racewar, &cap_level, &cap_timer);
+			time_t cap_timer = fraglist_cap_header(rows, before, sizeof before, after,
+							       sizeof after);
 			cap_timer -= time(NULL);
 
 			if (cap_timer <= 0)
@@ -207,23 +194,9 @@ static void show_fraglist(P_char ch, const std::string &filter)
 				days = cap_timer;
 			}
 
-			long frag_totals[MAX_RACEWAR] = { 0 };
-			for (const sql_row &row : rows)
-				if (!strcmp(row[0], "total") && row[1] && row[2])
-				{
-					const int racewar = atoi(row[1]);
-					if (racewar >= 0 && racewar < MAX_RACEWAR)
-						frag_totals[racewar] = atol(row[2]);
-				}
-
-			snprintf(
-				buf, MAX_STRING_LENGTH,
-				"&+YFrag Level Cap:&+w %d - All, &+WGoodies Total Frags - &+w%d.%02d, &+REvils Total Frags - &+w%d.%02d\n&+YTimer:&+w %02d:%02d:%02d:%02d &+YFrags needed:&+w %.2f&n\n\n&+WTop Fraggers\n\n",
-				cap_level, (int)(frag_totals[RACEWAR_GOOD] / 100),
-				(int)(frag_totals[RACEWAR_GOOD] % 100),
-				(int)(frag_totals[RACEWAR_EVIL] / 100),
-				(int)(frag_totals[RACEWAR_EVIL] % 100), days, hours, mins, secs,
-				frag_cap_config_frags_for_level(cap_level + 1));
+			snprintf(buf, MAX_STRING_LENGTH,
+				 "%s%02d:%02d:%02d:%02d%s&+WTop Fraggers\n\n", before, days, hours,
+				 mins, secs, after);
 
 			for (const char *tag : { "top", "low" })
 			{
