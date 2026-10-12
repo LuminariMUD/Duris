@@ -604,7 +604,7 @@ def make_overlord(state_root: pathlib.Path, name: str) -> None:
     ever started as an OVERLORD, so a journey that needs a god promotes an
     ordinary character here, as staff must after a wipe.
     """
-    with tempfile.TemporaryDirectory(prefix="overlord-fixture-") as build:
+    with tempfile.TemporaryDirectory(prefix="overlord-fixture-", dir=ROOT / "bin/tests") as build:
         source = pathlib.Path(build) / "overlord.cpp"
         binary = pathlib.Path(build) / "overlord"
         source.write_text(OVERLORD_FIXTURE, encoding="utf-8")

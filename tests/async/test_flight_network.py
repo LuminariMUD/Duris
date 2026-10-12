@@ -38,10 +38,12 @@ int gain_exp(P_char ch, P_char, int reward, int type) {
     GET_EXP(ch) += reward;
     return reward;
 }
+bool reject_payment = false;
 int SUB_MONEY(P_char ch, int amount, int) {
+    if (reject_payment) return -1;
     assert(GET_COPPER(ch) >= amount);
     GET_COPPER(ch) -= amount;
-    return 1;
+    return 0;
 }
 char *coin_stringv(int amount, int) {
     static char text[64];
@@ -70,7 +72,7 @@ int main() {
     map.mapy = 1;
     zone_table = &map;
     top_of_zone_table = 0;
-    room_direction_data east[29]{}, west[29]{};
+    room_direction_data east[29]{}, west[29]{}, wrap_east{}, wrap_west{};
     for (int i = 0; i < 27; ++i) {
         rooms[i].number = transports[i].origin_vnum;
         mob_indexes[i].virtual_number = transports[i].mob_vnum;
@@ -84,6 +86,10 @@ int main() {
         rooms[i].dir_option[1] = &east[i];
         rooms[i + 1].dir_option[3] = &west[i];
     }
+    wrap_west.to_room = 29;
+    wrap_east.to_room = 0;
+    rooms[0].dir_option[3] = &wrap_west;
+    rooms[29].dir_option[1] = &wrap_east;
     obj_index[0].virtual_number = 420;
     obj_index[1].virtual_number = 47008;
     initialize_transport();
@@ -160,6 +166,10 @@ int main() {
     command(CMD_BUY, "1");
     assert(GET_MONEY(ch) == money && !ch->carrying);
     obj_index[1].virtual_number = 47008;
+    reject_payment = true;
+    command(CMD_BUY, "1");
+    assert(GET_MONEY(ch) == money && !ch->carrying && obj_index[1].number == 0);
+    reject_payment = false;
     command(CMD_BUY, "1oops");
     assert(GET_MONEY(ch) == money && !ch->carrying);
     command(CMD_BUY, "1");
@@ -196,6 +206,14 @@ int main() {
     char buy[] = "1";
     flying_transport_cmd_buy(ch, recipient, buy);
     assert(GET_MONEY(ch) == before_busy && !ch->carrying);
+    P_obj busy_ticket = read_object(47008, VIRTUAL);
+    busy_ticket->value[6] = 47017;
+    busy_ticket->value[7] = 635756;
+    obj_to_char(busy_ticket, other);
+    char busy_give[] = "ticket carrier";
+    assert(flying_transport(recipient, other, CMD_GIVE, busy_give));
+    assert(other->carrying == busy_ticket && !GET_MOUNT(other));
+    extract_obj(busy_ticket);
     TRANSPORT_STATE(recipient) = TRANSPORT_STATE_WAITING;
     command(CMD_BUY, "1");
     ticket = ch->carrying;
@@ -246,12 +264,29 @@ int main() {
         assert(ch->in_room == landing && recipient->in_room == service);
         ch->player.level = 1;
     }
+    // Storm Port's separate Stronghold ticket remains available at level one.
+    visit(2);
+    pc.learned_flight_stops = 0;
+    GET_COPPER(ch) = 10000;
+    auto extras = transport_choices(ch, recipient);
+    assert(extras.size() == 1 && transport_routes[extras[0]].destination_vnum == 637082);
+    command(CMD_BUY, "1");
+    assert(GET_MONEY(ch) == 0 && ch->carrying);
+    command(CMD_GIVE, "ticket carrier");
+    while (!scheduled.empty()) run_event(recipient);
+    assert(ch->in_room == 29 && recipient->in_room == 2 && !pc.learned_flight_stops);
+    pc.learned_flight_stops = 6;
+    // A wrap edge wins over the long way around the synthetic map.
+    for (const auto &route : transport_routes)
+        if (route.origin_vnum == 557220 && route.destination_vnum == 635756)
+            assert(route.path.size() == 5);
     // The anywhere command maps a zone entrance without dereferencing a NOWHERE exit.
     zone_data maps[2] = {map, {}};
     zone_table = maps;
     top_of_zone_table = 1;
     maps[1].real_bottom = maps[1].real_top = 29;
     rooms[29].zone = 1;
+    rooms[29].dir_option[1] = nullptr;
     room_direction_data invalid_exit{};
     invalid_exit.to_room = NOWHERE;
     rooms[29].dir_option[0] = &invalid_exit;

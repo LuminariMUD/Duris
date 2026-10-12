@@ -188,10 +188,13 @@ static void inspect_authority(const std::string &root, int32_t pid)
 				<< (field.is_unsigned ? field.unsigned_value : field.signed_value);
 	for (const auto &field : snapshot.status_integers)
 	{
-		const char *name = field.field == player_status_field::deaths	  ? "death_count" :
-				   field.field == player_status_field::experience ? "experience" :
-				   field.field == player_status_field::level	  ? "level" :
-										    nullptr;
+		const char *name =
+			field.field == player_status_field::deaths     ? "death_count" :
+			field.field == player_status_field::experience ? "experience" :
+			field.field == player_status_field::level      ? "level" :
+			field.field == player_status_field::learned_flight_stops ?
+								    "learned_flight_stops" :
+								    nullptr;
 		if (name)
 			std::cout
 				<< ",\"" << name << "\":"

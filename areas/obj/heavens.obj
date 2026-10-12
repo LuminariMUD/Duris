@@ -4434,13 +4434,14 @@ sign battered _id_~
 0 0 100
 E
 sign battered _id_~
-&+y/----------------------\
-&+y| &+WFlight Service       &+y|
-&+y|  Type 'list' when    |
-&+y|  carrier is present  |
-&+y|  to see available    |
-&+y|  routes.             |
-&+y\----------------------/
+&+WFLIGHT SERVICE&n
+Visit an ordinary carrier and type &+Ylist&n to discover its stop.
+Use &+Yflights&n anywhere to see the stops you have learned.
+Ordinary flights cost &+Y0.5 platinum per room flown&n.
+Type &+Ybuy <number>&n, then &+Ygive ticket <carrier>&n to depart.
+Extra Destinations are separate, fixed-price, one-way trips.
+Scorched and Snow Ogres services remain outside the ordinary network.
+For details, read &+Yhelp flights&n.
 ~
 #421
 elixir youth bubbling~

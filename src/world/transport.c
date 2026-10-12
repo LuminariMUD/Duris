@@ -24,6 +24,7 @@
 #include <ctype.h>
 #include <list>
 #include <algorithm>
+#include <chrono>
 #include "persistence/persistence_checkpoint.h"
 #include "world/map.h"
 #include <vector>
@@ -242,6 +243,7 @@ static void transport_land_at_home(P_char mob, int origin)
 void initialize_transport()
 {
 	static bool paths_initialized = false;
+	const auto started = std::chrono::steady_clock::now();
 	for (int service = 0; !paths_initialized && transports[service].mob_vnum; ++service)
 	{
 		const int origin = real_room(transports[service].origin_vnum);
@@ -285,6 +287,19 @@ void initialize_transport()
 				route.cost_in_copper = static_cast<int>(route.path.size()) * 500;
 		}
 		bfs_clear_marks();
+	}
+	if (!paths_initialized)
+	{
+		const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+					     std::chrono::steady_clock::now() - started)
+					     .count();
+		const auto available = std::count_if(transport_routes.begin(),
+						     transport_routes.end(), [](const auto &route)
+						     { return !route.path.empty(); });
+		logit(LOG_STATUS,
+		      "Flight network: %zu services, %zu routes, %ld available; paths prepared in %lld ms.",
+		      std::size(transports) - 1, transport_routes.size() - 1,
+		      static_cast<long>(available), static_cast<long long>(elapsed));
 	}
 	paths_initialized = true;
 
@@ -607,7 +622,12 @@ bool flying_transport_cmd_buy(P_char ch, P_char victim, char *arg)
 			     ch);
 		return true;
 	}
-	SUB_MONEY(ch, route.cost_in_copper, 0);
+	if (SUB_MONEY(ch, route.cost_in_copper, 0) < 0)
+	{
+		extract_obj(ticket, TRUE);
+		send_to_char("Unable to pay for the flight. Please try again.\n", ch);
+		return true;
+	}
 	ticket->value[6] = route.service_vnum;
 	ticket->value[7] = route.destination_vnum;
 	obj_to_char(ticket, ch);
@@ -699,6 +719,11 @@ int flying_transport(P_char ch, P_char victim, int cmd, char *arg)
 		return FALSE;
 	}
 
+	// A ticket given to a busy carrier must remain with its owner, rather than
+	// falling through to the ordinary give command and entering the mob's inventory.
+	if (cmd == CMD_GIVE && victim && flying_transport_cmd_give(victim, ch, arg))
+		return TRUE;
+
 	if (TRANSPORT_STATE(ch) == TRANSPORT_STATE_WAITING)
 	{
 		if (!victim)
@@ -712,8 +737,6 @@ int flying_transport(P_char ch, P_char victim, int cmd, char *arg)
 			return flying_transport_cmd_list(victim, ch, arg);
 		case CMD_BUY:
 			return flying_transport_cmd_buy(victim, ch, arg);
-		case CMD_GIVE:
-			return flying_transport_cmd_give(victim, ch, arg);
 		default:
 			break;
 		}

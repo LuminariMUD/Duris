@@ -10,6 +10,20 @@ anywhere in the world and keeps one sign at each configured origin. Repeated
 calls do not create extra dragons, signs, or movement events. Only the explicit
 transport catalog and signs at its origins are reconciled.
 
+The flight catalog has 27 services: 25 discoverable ordinary stops and two
+separate epic-only services. Catalog discovery bits remain fixed when a pad or
+name changes. Endpoint metadata is available before recovery reads transport
+snapshots; paths are computed once from each origin after the world loads.
+Ordinary tickets hold the service mob and destination room, so table reordering
+cannot redirect them. Redemption rechecks the recipient's learned stop or the
+extra trip's level gate before consuming the ticket.
+
+Character discoveries live in player status with EXP, independently of transport
+or Redis recovery. Snapshot schema 8 reads supported old player files with an
+empty discovery mask. Migration `0038_learned_flight_stops` adds the SQL column;
+pwipe clears it on retained player rows. The two epic departure stops and their
+entrances cannot be learned or used as ordinary network destinations.
+
 New snapshots retain a transport's origin, destination, movement state, path
 step, and passenger name. Recovery validates the saved position against the
 recomputed route. A co-located recovered passenger resumes the flight. An

@@ -12,7 +12,7 @@ revision `7a2900b74`. This plan covers the complete feature in
 ## Current implementation handoff
 
 - Branch: `feature/40-flight-network`; master was merged before implementation.
-  Persistence foundation commit `f0c829f47` is pushed to origin. The working tree
+  Persistence commit `f0c829f47` and core transport commit `b79c08eef` are pushed to origin. The working tree
   was clean when feature work began. No feature PR exists yet.
 - Outcome, files, non-goals, and proof remain the complete scope below. Ablation
   confirms one status mask, existing transport callbacks, and existing EXP/save
@@ -51,7 +51,8 @@ revision `7a2900b74`. This plan covers the complete feature in
   and obsolete tickets, wrong origins, busy/mounted carriers, in-flight `flights`,
   invalid movement state, catalog reordering, epic gates, and zone/map lookup.
   `test_world_singletons.py` still passes its five recovery cycles and duplicate
-  passenger/item cases. No gameplay journey exists yet.
+  passenger/item cases. The dual-backend full-world journey is now implemented and
+  registered in both gates; it is being driven to completion.
 - EXP_QUEST now returns the amount actually credited before level advancement;
   its existing callers ignore the result. This supplies accurate discovery feedback
   without changing other EXP return contracts. `test_world_quest_xp_feedback.py`
@@ -61,6 +62,27 @@ revision `7a2900b74`. This plan covers the complete feature in
   its sentinel check now precedes the room lookup. The new command test executes
   this production lookup with an invalid exit and both present/missing map entrances.
   No change to map-distance or shared graph APIs is needed.
+- Current guidance/journey work: sign 420, shared `help_index` FLIGHTS topic,
+  command attributes and recovery docs are updated locally. Both the flat-file
+  help tests and SQL maintained importer load the new text. Full-world runs
+  confirm all 603 paths (roughly 450–480 ms preparation), all 25 discoveries,
+  Ugta → Kimordril at 39 rooms / 19.5p, and occupied/empty-return copyovers.
+  The complete journey still needs to pass its epic, crash/relog and corpse checks.
+- Resolved journey fixture problems: wait for login completion, disable paging,
+  use `setbit` (not abbreviated `set`), wait for the returning carrier rather than
+  a fixed 12 seconds, light the departure rooms, and isolate epic departure pads
+  from unrelated aggression. Grant only the fare plus a small purse: 1000 coins
+  triggered normal accidental coin drops during flight. A separate quiet-room
+  probe preserved 1000p through copyover, and a two-stop probe showed the loss
+  and explicit coin-spill message before copyover; currency behavior is unchanged.
+- Review fixes: refuse ticket issuance when `SUB_MONEY` fails; handle ticket gifts
+  before the carrier's busy-state dispatch so they cannot fall through to ordinary
+  give. ASan/UBSan coverage passes both; the busy-carrier assertion was observed
+  failing before its fix. The command fixture also covers wrap edges and the
+  level-one Storm Port Stronghold extra trip.
+- Additional checks passed: full-tree formatting, command-attribute coverage,
+  maintained pfile/migration-tool builds, and `npm ci --prefix site && npm test
+  --prefix site` (15 tests). Full feature gates remain pending.
 - Remaining: complete all six implementation steps and their proofs, run final
   gates, review the full diff, commit/push, and open a review-ready PR. No production
   deployment or release tag is part of this work.
@@ -433,7 +455,7 @@ tests/async/run_player_load_repository_mysql.sh
 These existing checks need assertions for the new field and behavior; passing them
 unchanged does not prove the feature. Proposed new files, only where existing tests
 cannot cover the behavior, are `tests/async/test_flight_network.py` and
-`tests/async/test_flight_network_journey.py`. They do not exist yet. Use compiled
+`tests/async/test_flight_network_journey.py`. The command test exists and passes; the new full-world journey is under validation. Use compiled
 production handlers and real journeys, not tests that merely repeat catalog constants.
 
 Final implementation gates:
