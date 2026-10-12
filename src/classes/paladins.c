@@ -19,6 +19,7 @@
 #include "cmd/interp.h"
 #include "core/utils.h"
 #include "classes/paladins.h"
+#include <cmath>
 #include <stdio.h>
 #include <string.h>
 #include "combat/damage.h"
@@ -754,4 +755,136 @@ bool holy_weapon_proc(P_char ch, P_char victim)
 	victim->specials.apply_saving_throw[SAVING_SPELL] = save;
 	*/
 	return TRUE;
+}
+
+/*
+ Blood Tithe, the anti-paladin mirror of holy sacrifice. Damage enemies deal to the
+ caster fills a malice meter, kept in hit points in the affect's modifier. The meter
+ decays every round and powers a damage bonus for player groupmates in the room.
+*/
+
+/* malice that sustains full charge: taking fullChargePerRound of max hp each round */
+static double blood_tithe_full_malice(P_char ap)
+{
+	return GET_MAX_HIT(ap) * get_property("spell.bloodTithe.fullChargePerRound", 0.15) /
+	       get_property("spell.bloodTithe.decayPerRound", 0.25);
+}
+
+static P_char blood_tithe_body(P_char player)
+{
+	return IS_PC(player) && player->only.pc->switched ? player->only.pc->switched : player;
+}
+
+void spell_blood_tithe(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
+		       P_char /*victim*/, P_obj /*obj*/)
+{
+	struct affected_type af;
+
+	if (affected_by_spell(ch, SPELL_BLOOD_TITHE))
+	{
+		send_to_char("&+rYour blood is already pledged.&n\n", ch);
+		return;
+	}
+
+	memset(&af, 0, sizeof(af));
+	af.type = SPELL_BLOOD_TITHE;
+	af.duration = 15 + GET_CHAR_SKILL(ch, SKILL_DEVOTION) / 10;
+	affect_to_char(ch, &af);
+
+	act("&+rYou pledge your blood to fuel your comrades' wrath.&n", FALSE, ch, 0, 0, TO_CHAR);
+	act("&+r$n&+r pledges $s blood to fuel $s comrades' wrath.&n", FALSE, ch, 0, 0, TO_ROOM);
+
+	disarm_char_nevents(ch, event_blood_tithe);
+	add_event(event_blood_tithe, PULSE_VIOLENCE, ch, 0, 0, 0, 0, 0);
+}
+
+void event_blood_tithe(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
+{
+	struct affected_type *af = get_spell_from_char(ch, SPELL_BLOOD_TITHE);
+
+	if (!af)
+		return;
+
+	af->modifier =
+		(int)(af->modifier * (1.0 - get_property("spell.bloodTithe.decayPerRound", 0.25)));
+	add_event(event_blood_tithe, PULSE_VIOLENCE, ch, 0, 0, 0, 0, 0);
+}
+
+/* called for every hit that lands; only enemies of the tithe holder fill the meter */
+void blood_tithe_charge(P_char attacker, P_char victim, double dam)
+{
+	victim = GET_PLYR(victim);
+	struct affected_type *af = get_spell_from_char(victim, SPELL_BLOOD_TITHE);
+
+	if (!af || dam <= 0)
+		return;
+
+	// Morphs fight as their player; pets fight for their (possibly morphed) master.
+	P_char source = GET_PLYR(attacker);
+	if (P_char master = GET_MASTER(source))
+		source = GET_PLYR(master);
+
+	if (source == victim || grouped(source, victim) ||
+	    (IS_PC(source) && !opposite_racewar(source, victim)))
+		return;
+
+	double hit =
+		MIN(dam, GET_MAX_HIT(victim) * get_property("spell.bloodTithe.perHitCap", 0.05));
+	af->modifier = (int)MIN(af->modifier + hit, blood_tithe_full_malice(victim));
+}
+
+/* the bonus one tithe holder grants each groupmate, before the pvp modifier */
+double blood_tithe_bonus(P_char ap)
+{
+	ap = GET_PLYR(ap);
+	struct affected_type *af = get_spell_from_char(ap, SPELL_BLOOD_TITHE);
+
+	if (!af || !IS_ALIVE(ap) || !IS_PC(ap))
+		return 0;
+	P_char body = blood_tithe_body(ap);
+	if (!IS_ALIVE(body))
+		return 0;
+
+	double charge = MIN(1.0, af->modifier / blood_tithe_full_malice(ap));
+	double reference = get_property("spell.bloodTithe.refGroupSize", 3.0);
+	int members = 0;
+	for (struct group_list *gl = ap->group; gl; gl = gl->next)
+	{
+		if (!gl->ch || gl->ch == ap || !IS_PC(gl->ch))
+			continue;
+		// A morphed player's group entry stays on the original body in limbo.
+		if (blood_tithe_body(gl->ch)->in_room == body->in_room)
+			++members;
+	}
+	double groupmates = MAX(reference, (double)members);
+
+	return get_property("spell.bloodTithe.maxBonus", 0.12) * charge *
+	       pow(reference / groupmates, get_property("spell.bloodTithe.falloffExponent", 0.5));
+}
+
+/*
+ damage bonus for ch's hit on victim: the strongest tithe among ch's groupmates in the
+ room. Tithe holders and anyone carrying Battle Lust get none, so tithes never stack on
+ each other or on Battle Lust.
+*/
+double blood_tithe_damage_bonus(P_char ch, P_char victim)
+{
+	P_char player = GET_PLYR(ch);
+	if (!IS_PC(player) || !player->group || affected_by_spell(player, SPELL_BLOOD_TITHE) ||
+	    affected_by_spell(ch, SPELL_BLOOD_TITHE) || has_aura(ch, AURA_BATTLELUST) ||
+	    has_aura(player, AURA_BATTLELUST))
+		return 0;
+
+	double bonus = 0;
+
+	for (struct group_list *gl = player->group; gl; gl = gl->next)
+	{
+		if (gl->ch && gl->ch != player && blood_tithe_body(gl->ch)->in_room == ch->in_room)
+			bonus = MAX(bonus, blood_tithe_bonus(gl->ch));
+	}
+
+	if (IS_PC(GET_PLYR(victim)))
+		bonus *= get_property("spell.bloodTithe.pvpMod", 0.5);
+
+	return bonus;
 }

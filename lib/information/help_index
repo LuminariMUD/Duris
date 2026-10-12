@@ -3330,9 +3330,10 @@ Skills
 Spells
 ---------------------------------------------------------------------------
 9th circle:     Armageddon
+10th circle:    Blood Tithe
 
 ===========================================================================
-See also: ANTI-PALADIN, SKEWER, ARMAGEDDON
+See also: ANTI-PALADIN, SKEWER, ARMAGEDDON, "BLOOD TITHE"
 
 #
 DARKNESS (Spell)
@@ -3571,8 +3572,12 @@ Innate Abilities
 ---------------------------------------------------------------------------
 30th level:     Knight
 
+Spells
+---------------------------------------------------------------------------
+10th circle:    Blood Tithe
+
 ===========================================================================
-See also: ANTI-PALADIN, KNIGHT, SIDESTEP, "LANCE CHARGE"
+See also: ANTI-PALADIN, KNIGHT, SIDESTEP, "LANCE CHARGE", "BLOOD TITHE"
 
 #
 "DESTROY UNDEAD" (Spell)
@@ -23972,3 +23977,39 @@ ordinary flight ticket. There is no passenger return service at the special
 entrance; the empty dragon returns home on its own.
 
 See also: list, buy, give, save
+
+#
+"BLOOD TITHE" (Spell)
+===========================================================================
+Anti-Paladin circle: 10th (Dark Knight, Demonic Rider)
+Area of effect: <caster>
+Aggressive: No
+Cumulative: No
+Type of spell: Enhancement
+
+Blood Tithe pledges the anti-paladin's blood to the wrath of the group. While
+it lasts, damage that enemies deal to the caster builds malice, and malice
+makes every player groupmate in the same room hit harder with weapons and
+spells. The caster does not share in the bonus.
+
+Malice is measured against the caster's maximum hit points. Each hit counts
+for at most 5% of maximum hit points, and malice fades by a quarter every
+combat round, so only a caster who keeps taking about 15% of maximum hit
+points each round holds a full charge. Blows from the caster's own group or
+its pets, or from players of the caster's own side, never feed it.
+
+At full charge each groupmate deals 12% more damage. Beyond three groupmates
+in the room the bonus shrinks: about 9% with five, 7% with eight and 5% with
+fifteen. Against players the bonus is halved.
+
+Blood Tithes do not stack. A groupmate gains only the strongest one in the
+room, and a caster with a Blood Tithe gains none from others. A groupmate
+under the aura of battlelust gains nothing from Blood Tithe. Battle Lust on
+the caster does not silence the bonus for groupmates without that aura.
+The score command shows the bonus available to eligible groupmates.
+
+Duration: 15 ticks, plus 1 for every 10 points of Devotion.
+
+Usage: cast 'blood tithe'
+
+See also: Holy Sacrifice, Battle Ecstasy, Aura of Battlelust

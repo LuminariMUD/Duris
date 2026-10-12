@@ -6037,6 +6037,14 @@ void do_score(P_char ch, char * /*argument*/, int /*cmd*/)
 		strcat(buf, " &+WSanctuary&n");
 	if (IS_AFFECTED4(ch, AFF4_HELLFIRE))
 		strcat(buf, " &+rHell&+Rfire&n");
+	if (affected_by_spell(GET_PLYR(ch), SPELL_BLOOD_TITHE))
+	{
+		char tithe[MAX_STRING_LENGTH];
+
+		snprintf(tithe, sizeof(tithe), " &+rBlood Tithe&n (+%.1f%% group damage)",
+			 100 * blood_tithe_bonus(ch));
+		strcat(buf, tithe);
+	}
 
 	if (IS_AFFECTED4(ch, AFF4_NEG_SHIELD))
 		strcat(buf, " &+LNegative Shielded&n");
