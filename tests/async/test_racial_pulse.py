@@ -14,6 +14,7 @@ import tempfile
 from pathlib import Path
 
 from _paths import ROOT, source
+from _source_contract import strip_comments
 
 
 PROPERTIES = (ROOT / "lib" / "duris.properties").read_text()
@@ -82,9 +83,13 @@ int main() {
 def test_command_is_registered() -> None:
     assert "#define CMD_PULSE 861" in source("cmd/interp.h").read_text()
     interp = source("cmd/interp.c").read_text()
-    assert '\t"pulse",\n\t"collector",\n\t"_retired_863",\n\t"dummy",\n\t"\\n" /* MAX_CMD = 865' in interp
+    table = re.search(r"const char \*command\[MAX_CMD\] = \{(.*?)\n\};", interp, re.S)
+    assert table is not None
+    commands = re.findall(r'"([^"]*)"', strip_comments(table.group(1)))
+    assert commands[861 - 1] == "pulse"
+    count = re.search(r"#define MAX_CMD (\d+)\b", source("core/config.h").read_text())
+    assert count is not None and int(count.group(1)) == len(commands)
     assert "CMD_GRT(CMD_PULSE, STAT_DEAD + POS_PRONE, do_pulse, LESSER_G);" in interp
-    assert re.search(r"#define MAX_CMD 865\b", source("core/config.h").read_text())
     assert "void do_pulse(P_char, char *, int);" in source("core/prototypes.h").read_text()
     assert "world/racial_pulse.o" in (ROOT / "src" / "Makefile").read_text()
     attributes = (ROOT / "docs/lib/information/command_attributes.txt").read_text()

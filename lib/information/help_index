@@ -23950,7 +23950,9 @@ LIST and BUY use the same distance order. Unlearned stops are not offered.
 Ordinary flights have no level or race restriction. They cost exactly half a
 platinum for each room flown, including half-platinum fares, with no minimum
 or maximum. Buy the listed ticket, then give it to the same waiting carrier.
-Handing a ticket to someone else does not teach its destination or bypass
+You must be able to see the carrier to give it a ticket; light or detect
+invisibility may be needed. Handing a ticket to someone else does not teach
+its destination or bypass
 that character's access rules. Old route tickets may need to be replaced.
 
 Discovery experience grows with the number of ordinary stops you have found:

@@ -83,6 +83,14 @@ revision `7a2900b74`. This plan covers the complete feature in
 - Additional checks passed: full-tree formatting, command-attribute coverage,
   maintained pfile/migration-tool builds, and `npm ci --prefix site && npm test
   --prefix site` (15 tests). Full feature gates remain pending.
+- First full `make test-all -j16 TEST_JOBS=8` run on `6194a9bfb`: **715/720
+  passed**, with no timeouts or signals. Four failures were stale checks: artifact
+  source line numbers after sign editing, two tests pinning the old end of the
+  command table, and the runner's missing expected flight-journey entry. All four
+  are repaired and pass focused checks. The fifth was the epic journey: the existing
+  caster dragon can become invisible. A focused probe with detect invisibility
+  completed both restricted trips; the complete journey now supplies that standard
+  effect. Help notes that ticket recipients must be visible. Full gate rerun pending.
 - Remaining: complete all six implementation steps and their proofs, run final
   gates, review the full diff, commit/push, and open a review-ready PR. No production
   deployment or release tag is part of this work.
@@ -242,8 +250,8 @@ an unsigned status field to the existing player snapshot. Save it in one
 DEFAULT 0`. Reuse `PLAYER_COMPONENT_STATUS`, which already contains EXP.
 
 Update capture, SQL column mapping, SQL loading, materialization validation, and the
-snapshot codec. The current materializer expects 63 integer status fields and the
-current codec uses schema version 7: both contracts must account for the new field.
+snapshot codec. The planning baseline had 63 integer status fields and schema 7;
+the implementation now uses 64 fields and schema 8 for the added discovery mask.
 Preserve decoding of currently supported old formats, including versions 1, 3, 5,
 and 7, defaulting their missing flight field to zero. Keep stored field IDs stable.
 Version any incompatible encoding change explicitly and test old-file loading.

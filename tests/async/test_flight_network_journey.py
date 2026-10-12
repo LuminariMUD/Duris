@@ -264,6 +264,8 @@ def run(binary, backend, build):
                     assert 'Invalid choice' in command(player, 'buy 1')
                     command(god, 'setbit char ' + PLAYER + ' level 51')
                     command(god, 'setbit char ' + PLAYER + ' platinum ' + str(fare))
+                    # The existing caster dragon can turn invisible between boots.
+                    command(god, 'setbit char ' + PLAYER + ' aff DET_INV 1')
                     listing = command(player, 'list')
                     assert destination in listing and f'{fare} platinum' in listing and 'one-way' in listing
                     assert 'You discover' not in listing
