@@ -195,3 +195,6 @@ are in Git history at commit `212592e3`.
 - `lib/` is **not documentation**. `lib/information/` is read by the server at runtime
   (`src/cmd/wikihelp.c`, `src/account/nanny.c`) and by `scripts/import_help_to_prod.sh`; moving it
   breaks the running game.
+- Each race page in `help/duris_help_parsed.hlp` ends with an `==Innate abilities==` list generated
+  from `src/classes/innates.c`. After changing a racial innate, run
+  `scripts/sync_race_innate_help.py`; `tests/async/test_race_innate_help_sync.py` fails until you do.
