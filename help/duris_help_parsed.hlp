@@ -455,7 +455,6 @@ Spell Pulse  : below average
 *ultravision
 *waterbreath (obtained at level 15)
  throw lightning (obtained at level 30)
-*dayblind
 *vulnerable to sun
 *swamp sneak
 '*' Designates passive ability.
@@ -6858,7 +6857,6 @@ Spell Pulse  : very good
 *ultravision
  globe of darkness (obtained at level 26)
 *magic resistance
-*dayblind
 *vulnerable to sun
 *longsword master (obtained at level 11)
 '*' Designates passive ability.
@@ -7028,7 +7026,6 @@ Spell Pulse  : good
  enlarge (obtained at level 26)
 *battle frenzy (obtained at level 16)
  battlerage (obtained at level 31)
-*dayblind
 *vulnerable to sun
 *magical reduction
 '*' Designates passive ability.
@@ -9567,10 +9564,9 @@ Spell Pulse  : good
 ==Innate abilities==
  levitate (obtained at level 11)
 *ultravision
- shift astral
- shift prime
+ shift_astral
+ shift_prime
 *magic resistance
-*dayblind
 *vulnerable to sun
 '*' Designates passive ability.
 #0
@@ -9808,7 +9804,6 @@ Spell Pulse  : excellent
 ==Innate abilities==
 *ultravision
  disappear (obtained at level 31)
-*dayblind
  summon totem (obtained at level 26)
 '*' Designates passive ability.
 #0
@@ -16240,7 +16235,6 @@ Spell Pulse  : bad
 *ultravision
  bodyslam
  ogre roar (obtained at level 11)
-*dayblind
 *vulnerable to sun
 *magic vulnerability
 '*' Designates passive ability.
@@ -20038,7 +20032,7 @@ Spell Pulse  : awesome
 ==Innate abilities==
  darkness
 *ultravision
- phantasmal form
+ shade movement (obtained at level 21)
 *vulnerable to fire
 '*' Designates passive ability.
 #0
@@ -23068,7 +23062,7 @@ Karma       : 100
 Combat Pulse : below average
 Spell Pulse  : atrociously bad
 ==Innate abilities==
-No innate abilities.
+None.
 #0
 Wight
 Wight - Last Edited: 2026-08-25 12:00:00 by duris
@@ -23296,6 +23290,7 @@ Spell Pulse  : below average
 *magic resistance
 *groundfighting (obtained at level 21)
 *spider body
+ web_spray (obtained at level 31)
 '*' Designates passive ability.
 #0
 Kobold
@@ -23519,6 +23514,7 @@ Spell Pulse  : bad
  doorbash
  bodyslam
 *forest sight
+*magic vulnerability
 '*' Designates passive ability.
 #0
 Tiefling
