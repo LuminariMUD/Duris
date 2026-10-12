@@ -129,6 +129,12 @@ Migration 0036 widens `log_entries.ip_address` from `VARCHAR(15)` to `VARCHAR(45
 length and issues no `ALTER` once it holds 45, so the step re-runs, and its verifier checks
 the shape. An existing database must apply it before the updated binary boots.
 
+Migration 0037 adds nullable `account_name` and `is_staff` columns to
+`session_audit_outcome`. Login commands capture them before queueing; existing
+rows and version-1 replay retain NULL rather than inventing historical identity.
+The additive migration guards each column separately and re-runs safely.
+See [daily login statistics](../operations/LOGIN_STATS.md) for rollout and export.
+
 ## Post-baseline migration contract
 
 Files live under `migrations/immutable/` and are listed explicitly in the manifest.

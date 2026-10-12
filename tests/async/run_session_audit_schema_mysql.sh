@@ -24,3 +24,4 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -Isrc \
     src/persistence/critical_command_repository.c "${MYSQL_LIBS[@]}" -lcrypto \
     -o "$ROOT/bin/tests/session_audit_mysql_harness"
 "$ROOT/bin/tests/session_audit_mysql_harness"
+python3 "$ROOT/tests/async/run_login_stats_export_mysql.py"

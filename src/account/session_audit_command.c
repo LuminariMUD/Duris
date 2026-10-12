@@ -38,7 +38,7 @@ template <typename T> bool read_le(const uint8_t **cursor, const uint8_t *end, T
 
 bool valid(const session_audit_payload &payload)
 {
-	return payload.pid && payload.occurred_at > 0 &&
+	return payload.pid && payload.occurred_at > 0 && payload.account_name.size() <= 50 &&
 	       (payload.event == session_audit_event::login ||
 		payload.event == session_audit_event::logout);
 }
@@ -62,6 +62,10 @@ bool session_audit_command_build(critical_command *command, critical_operation_i
 	append_le<uint32_t>(&command->payload, payload.pid);
 	append_le<uint8_t>(&command->payload, static_cast<uint8_t>(payload.event));
 	append_le<int64_t>(&command->payload, payload.occurred_at);
+	append_le<uint8_t>(&command->payload, payload.is_staff);
+	append_le<uint8_t>(&command->payload, payload.account_name.size());
+	command->payload.insert(command->payload.end(), payload.account_name.begin(),
+				payload.account_name.end());
 	return true;
 }
 
@@ -69,14 +73,29 @@ bool session_audit_command_decode_payload(const critical_command &command,
 					  session_audit_payload *payload)
 {
 	if (!payload || command.type != critical_command_type::session_audit ||
-	    command.payload_version != SESSION_AUDIT_PAYLOAD_VERSION)
+	    (command.payload_version != 1 &&
+	     command.payload_version != SESSION_AUDIT_PAYLOAD_VERSION))
 		return false;
 	*payload = {};
 	const uint8_t *cursor = command.payload.data();
 	const uint8_t *end = cursor + command.payload.size();
 	uint8_t event = 0;
 	if (!read_le(&cursor, end, &payload->pid) || !read_le(&cursor, end, &event) ||
-	    !read_le(&cursor, end, &payload->occurred_at) || cursor != end)
+	    !read_le(&cursor, end, &payload->occurred_at))
+		return false;
+	// Version 1 journal entries have no identity snapshot. Replay them unchanged;
+	// filling from current player state would invent historical attribution.
+	if (command.payload_version == SESSION_AUDIT_PAYLOAD_VERSION)
+	{
+		uint8_t is_staff = 0, length = 0;
+		if (!read_le(&cursor, end, &is_staff) || is_staff > 1 ||
+		    !read_le(&cursor, end, &length) || end - cursor != length)
+			return false;
+		payload->is_staff = is_staff;
+		payload->account_name.assign(reinterpret_cast<const char *>(cursor), length);
+		cursor += length;
+	}
+	if (cursor != end)
 		return false;
 	payload->event = static_cast<session_audit_event>(event);
 	critical_command expected = {};
@@ -96,10 +115,11 @@ bool session_audit_command_encode_result(const session_audit_result &result,
 	critical_command command = {};
 	critical_operation_id operation = {};
 	operation.bytes[0] = 1;
-	if (!session_audit_command_build(&command, operation, result) ||
-	    command.payload.size() > encoded->size())
+	if (!session_audit_command_build(&command, operation, result))
 		return false;
+	// Receipts retain the original pid/event/time result. The durable command and
+	// outcome row carry the snapshot; no receipt consumer needs a new result format.
 	encoded->fill(0);
-	std::copy(command.payload.begin(), command.payload.end(), encoded->begin());
+	std::copy_n(command.payload.begin(), 13, encoded->begin());
 	return true;
 }

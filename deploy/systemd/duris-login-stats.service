@@ -1,0 +1,21 @@
+[Unit]
+Description=Export daily Duris account login statistics for the website
+Wants=duris-mariadb.service
+After=duris-mariadb.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+UMask=0022
+WorkingDirectory=%h/duris
+# Holds LOGIN_STATS_DB_DATABASE, LOGIN_STATS_DB_USER and LOGIN_STATS_DB_PASSWORD; keep it mode 0600.
+EnvironmentFile=%h/.config/duris/login-stats.env
+Environment=LOGIN_STATS_DB_HOST=127.0.0.1 LOGIN_STATS_DB_PORT=3307
+# --timezone must match the zone on OnCalendar= in duris-login-stats.timer.
+ExecStart=/usr/bin/python3 %h/duris/scripts/login_stats_export.py --output-dir %h/durisweb/backend/public/stats --timezone UTC
+NoNewPrivileges=true
+# User units on the shared host cannot create mount namespaces. The exporter
+# creates the output directory as this user on its first successful run.
+Restart=on-failure
+RestartSec=5min
+TimeoutStartSec=10min

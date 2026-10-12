@@ -13,12 +13,15 @@
  ****************************************************************************/
 
 #include "account/session_audit_transaction.h"
+#include "account/account.h"
 
 #include "persistence/critical_command_coordinator.h"
 #include "core/prototypes.h"
 #include "core/utils.h"
 
 #include <ctime>
+#include <algorithm>
+#include <cctype>
 
 bool session_audit_transaction_submit(P_char character, session_audit_event event)
 {
@@ -26,8 +29,16 @@ bool session_audit_transaction_submit(P_char character, session_audit_event even
 		return false;
 	critical_operation_id operation_id = {};
 	critical_command command = {};
-	const session_audit_payload payload = { static_cast<uint32_t>(GET_PID(character)), event,
-						time(nullptr) };
+	session_audit_payload payload = { static_cast<uint32_t>(GET_PID(character)), event,
+					  time(nullptr) };
+	if (character->desc && character->desc->account && character->desc->account->acct_name)
+	{
+		payload.account_name = character->desc->account->acct_name;
+		std::transform(payload.account_name.begin(), payload.account_name.end(),
+			       payload.account_name.begin(),
+			       [](unsigned char value) { return std::tolower(value); });
+		payload.is_staff = GET_LEVEL(character) >= MINLVLIMMORTAL;
+	}
 	if (!critical_operation_id_generate(&operation_id) ||
 	    !session_audit_command_build(&command, operation_id, payload))
 		return false;

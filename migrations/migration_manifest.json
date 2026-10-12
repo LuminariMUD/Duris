@@ -538,6 +538,16 @@
       "verify": "immutable/0036_log_entries_ipv6.sh",
       "verify_checksum": "1c5f6a8ae3cb11b38de3e0f3c45d70eb877d5301f36c10dd68241c930c9c05cd",
       "compatibility": "mysql8-mariadb10"
+    },
+    {
+      "id": "0037_session_audit_identity",
+      "sequence": 37,
+      "description": "Capture immutable account identity and staff status in session audit events",
+      "apply": "immutable/0037_session_audit_identity.sql",
+      "verify": "immutable/0037_session_audit_identity.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "b60e407fe4adef9ea3e5e673260de1a3def7a8370593a6a6822da2f0e6187e73",
+      "verify_checksum": "ab967f59d779ac978be2023fe3681a61ad57d1475140954c0ce409ab9fda5b49"
     }
   ],
   "engine_verifiers": [
