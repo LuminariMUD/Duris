@@ -613,7 +613,8 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 		if (!in.number(snapshot.schema_version))
 			return in.failure();
 		const uint32_t wire_version = snapshot.schema_version;
-		if (wire_version == 1 || wire_version == 3 || wire_version == 5)
+		if (wire_version == 1 || wire_version == 3 || wire_version == 5 ||
+		    wire_version == 7)
 			snapshot.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
 		if (snapshot.schema_version != PLAYER_SNAPSHOT_SCHEMA_VERSION)
 			return player_snapshot_codec_result::unsupported_version;
@@ -624,13 +625,15 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 		snapshot.encoded_size_bound = encoded_bound;
 		if (!valid_metadata(snapshot))
 			return player_snapshot_codec_result::invalid_value;
+		const auto last_status_field = wire_version < 8 ?
+						       player_status_field::last_ip :
+						       player_status_field::learned_flight_stops;
 		if (!in.vector(snapshot.status_integers,
 			       [&](auto &row)
 			       {
 				       uint16_t field = 0;
 				       if (!in.number(field) ||
-					   field > static_cast<uint16_t>(
-							   player_status_field::last_ip) ||
+					   field > static_cast<uint16_t>(last_status_field) ||
 					   !in.number(row.signed_value) ||
 					   !in.number(row.unsigned_value) ||
 					   !in.boolean(row.is_unsigned))
@@ -730,6 +733,13 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 		for (const player_pet_snapshot &pet : snapshot.pets)
 			if (!valid_item_relationships(pet.items))
 				return player_snapshot_codec_result::invalid_value;
+		if (wire_version < 8 && (snapshot.components & PLAYER_COMPONENT_STATUS))
+		{
+			if (snapshot.status_integers.size() == PLAYER_SNAPSHOT_MAX_ROWS)
+				return player_snapshot_codec_result::limit_exceeded;
+			snapshot.status_integers.push_back(
+				{ player_status_field::learned_flight_stops, 0, 0, true });
+		}
 		*snapshot_out = std::move(snapshot);
 	}
 	catch (const std::bad_alloc &)

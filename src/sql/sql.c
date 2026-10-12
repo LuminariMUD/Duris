@@ -3963,6 +3963,7 @@ bool sql_verify_pwipe_manifest(void)
 					      "zone_trophy",
 					      NULL };
 	static const char *const columns[][2] = {
+		{ "player_data", "learned_flight_stops" },
 		{ "account_bound_rewards", "id" },
 		{ "account_bound_rewards", "expires_at" },
 		{ "account_bound_rewards", "remaining_pwipes" },
@@ -4719,7 +4720,7 @@ bool sql_pwipe(int code_verify)
 		}
 		logit(LOG_DEBUG, "sql_pwipe: Deactivating player_data... .. .");
 		send_to_all("Deactivating player_data... .. .");
-		if (qry("UPDATE player_data SET active = 0"))
+		if (qry("UPDATE player_data SET active = 0, learned_flight_stops = 0"))
 		{
 			logit(LOG_DEBUG, "  success!");
 			send_to_all("  success!\n");
@@ -4822,16 +4823,16 @@ bool sql_pwipe(int code_verify)
 					postflight_ok = FALSE;
 				}
 			}
-			/* Verify player_data is all inactive. */
-			MYSQL_RES *res =
-				db_query("SELECT COUNT(*) FROM player_data WHERE active = 1");
+			/* Retained player rows must be inactive and have no seasonal discoveries. */
+			MYSQL_RES *res = db_query(
+				"SELECT COUNT(*) FROM player_data WHERE active = 1 OR learned_flight_stops <> 0");
 			if (res)
 			{
 				MYSQL_ROW row = mysql_fetch_row(res);
 				if (row && row[0] && atoi(row[0]) > 0)
 				{
 					logit(LOG_DEBUG,
-					      "sql_pwipe: Postflight FAILED: %d active player_data rows.",
+					      "sql_pwipe: Postflight FAILED: %d player_data rows retain active state or flight discoveries.",
 					      atoi(row[0]));
 					postflight_ok = FALSE;
 				}
@@ -4840,7 +4841,7 @@ bool sql_pwipe(int code_verify)
 			else
 			{
 				logit(LOG_DEBUG,
-				      "sql_pwipe: Postflight FAILED: cannot query player_data active count.");
+				      "sql_pwipe: Postflight FAILED: cannot query player_data reset state.");
 				postflight_ok = FALSE;
 			}
 			/* Verify account_characters are all soft-deleted. */

@@ -37,6 +37,7 @@ telemetry_repository $DB python3 tests/async/test_telemetry_repository.py --sql-
 telemetry_schema_boot $DB python3 tests/async/run_telemetry_schema_boot_journey.py --server $SERVER
 saved_item_allocator $DB python3 tests/async/run_saved_item_allocator_journey.py $SERVER
 mysql_combat $DB python3 tests/async/test_mysql_combat_journey.py --server $SERVER
+flight_network $DB python3 tests/async/test_flight_network_journey.py --backend mariadb --server $SERVER
 world_restart_copyover $DB python3 tests/async/run_world_restart_journey.py $SERVER copyover
 world_restart_midcapture $DB python3 tests/async/run_world_restart_journey.py $SERVER midcapture
 world_restart_clean $DB python3 tests/async/run_world_restart_journey.py $SERVER restart

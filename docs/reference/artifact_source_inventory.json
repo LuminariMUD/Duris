@@ -287,7 +287,7 @@
     {
       "vnum": 424,
       "source": "areas/obj/heavens.obj",
-      "line": 4472,
+      "line": 4473,
       "name": "a wispy astral-twined mindstone ring",
       "keywords": "ring wispy astral unique",
       "type": 9,
@@ -317,7 +317,7 @@
     {
       "vnum": 425,
       "source": "areas/obj/heavens.obj",
-      "line": 4495,
+      "line": 4496,
       "name": "the holy avenger of Ambran",
       "keywords": "holy sword avenger ambran unique",
       "type": 5,
@@ -348,7 +348,7 @@
     {
       "vnum": 430,
       "source": "areas/obj/heavens.obj",
-      "line": 4554,
+      "line": 4555,
       "name": "the holy flamberge of the efreeti",
       "keywords": "holy flamberge efreeti sword",
       "type": 5,
@@ -379,7 +379,7 @@
     {
       "vnum": 790,
       "source": "areas/obj/heavens.obj",
-      "line": 7419,
+      "line": 7420,
       "name": "the standard of the Good Races of Duris",
       "keywords": "flag standard good",
       "type": 8,
@@ -408,7 +408,7 @@
     {
       "vnum": 791,
       "source": "areas/obj/heavens.obj",
-      "line": 7427,
+      "line": 7428,
       "name": "the standard of the Evil Races of Duris",
       "keywords": "flag standard evil",
       "type": 8,
@@ -437,7 +437,7 @@
     {
       "vnum": 900,
       "source": "areas/obj/heavens.obj",
-      "line": 8246,
+      "line": 8247,
       "name": "a bright purple ioun stone",
       "keywords": "blue ioun stone",
       "type": 9,
@@ -466,7 +466,7 @@
     {
       "vnum": 901,
       "source": "areas/obj/heavens.obj",
-      "line": 8258,
+      "line": 8259,
       "name": "a bright red ioun stone",
       "keywords": "red ioun stone",
       "type": 9,
@@ -495,7 +495,7 @@
     {
       "vnum": 902,
       "source": "areas/obj/heavens.obj",
-      "line": 8268,
+      "line": 8269,
       "name": "a bright blue ioun stone",
       "keywords": "green ioun stone",
       "type": 9,
@@ -524,7 +524,7 @@
     {
       "vnum": 903,
       "source": "areas/obj/heavens.obj",
-      "line": 8280,
+      "line": 8281,
       "name": "a dark yellow ioun stone",
       "keywords": "yellow ioun stone",
       "type": 9,
@@ -553,7 +553,7 @@
     {
       "vnum": 904,
       "source": "areas/obj/heavens.obj",
-      "line": 8290,
+      "line": 8291,
       "name": "a dark red ioun stone",
       "keywords": "red ioun stone",
       "type": 9,
@@ -582,7 +582,7 @@
     {
       "vnum": 905,
       "source": "areas/obj/heavens.obj",
-      "line": 8300,
+      "line": 8301,
       "name": "a dark green ioun stone",
       "keywords": "green ioun stone",
       "type": 9,
@@ -611,7 +611,7 @@
     {
       "vnum": 906,
       "source": "areas/obj/heavens.obj",
-      "line": 8310,
+      "line": 8311,
       "name": "a dark purple ioun stone",
       "keywords": "purple ioun stone",
       "type": 9,
@@ -640,7 +640,7 @@
     {
       "vnum": 907,
       "source": "areas/obj/heavens.obj",
-      "line": 8320,
+      "line": 8321,
       "name": "a dark cyan ioun stone",
       "keywords": "cyan ioun stone",
       "type": 9,
@@ -669,7 +669,7 @@
     {
       "vnum": 908,
       "source": "areas/obj/heavens.obj",
-      "line": 8330,
+      "line": 8331,
       "name": "a dark blue ioun stone",
       "keywords": "blue ioun stone",
       "type": 9,
@@ -698,7 +698,7 @@
     {
       "vnum": 909,
       "source": "areas/obj/heavens.obj",
-      "line": 8340,
+      "line": 8341,
       "name": "a soft white ioun stone",
       "keywords": "white ioun stone",
       "type": 9,
@@ -727,7 +727,7 @@
     {
       "vnum": 910,
       "source": "areas/obj/heavens.obj",
-      "line": 8352,
+      "line": 8353,
       "name": "a bright green ioun stone",
       "keywords": "green ioun stone",
       "type": 9,
@@ -757,7 +757,7 @@
     {
       "vnum": 911,
       "source": "areas/obj/heavens.obj",
-      "line": 8360,
+      "line": 8361,
       "name": "a dark ioun stone",
       "keywords": "dark ioun stone",
       "type": 9,
@@ -787,7 +787,7 @@
     {
       "vnum": 912,
       "source": "areas/obj/heavens.obj",
-      "line": 8368,
+      "line": 8369,
       "name": "a rainbow colored ioun stone",
       "keywords": "rainbow ioun stone",
       "type": 9,
@@ -816,7 +816,7 @@
     {
       "vnum": 913,
       "source": "areas/obj/heavens.obj",
-      "line": 8376,
+      "line": 8377,
       "name": "a swirling ioun stone",
       "keywords": "swirling blue ioun stone",
       "type": 9,
@@ -845,7 +845,7 @@
     {
       "vnum": 914,
       "source": "areas/obj/heavens.obj",
-      "line": 8384,
+      "line": 8385,
       "name": "a BRIGHT blue ioun stone",
       "keywords": "bright blue ioun stone",
       "type": 9,
@@ -874,7 +874,7 @@
     {
       "vnum": 915,
       "source": "areas/obj/heavens.obj",
-      "line": 8394,
+      "line": 8395,
       "name": "a LARGE blue ioun stone",
       "keywords": "large blue ioun stone",
       "type": 9,
@@ -903,7 +903,7 @@
     {
       "vnum": 916,
       "source": "areas/obj/heavens.obj",
-      "line": 8404,
+      "line": 8405,
       "name": "a glowing white ioun stone",
       "keywords": "glowing white ioun stone",
       "type": 9,
@@ -932,7 +932,7 @@
     {
       "vnum": 917,
       "source": "areas/obj/heavens.obj",
-      "line": 8412,
+      "line": 8413,
       "name": "a flaming ioun stone",
       "keywords": "flaming ioun stone",
       "type": 9,
@@ -961,7 +961,7 @@
     {
       "vnum": 918,
       "source": "areas/obj/heavens.obj",
-      "line": 8420,
+      "line": 8421,
       "name": "an icy ioun stone",
       "keywords": "chilly ioun stone",
       "type": 9,
@@ -990,7 +990,7 @@
     {
       "vnum": 919,
       "source": "areas/obj/heavens.obj",
-      "line": 8428,
+      "line": 8429,
       "name": "a deep blue ioun stone",
       "keywords": "deep blue ioun stone",
       "type": 9,
@@ -1020,7 +1020,7 @@
     {
       "vnum": 920,
       "source": "areas/obj/heavens.obj",
-      "line": 8436,
+      "line": 8437,
       "name": "a phased ioun stone",
       "keywords": "phased ioun stone",
       "type": 9,
@@ -1050,7 +1050,7 @@
     {
       "vnum": 921,
       "source": "areas/obj/heavens.obj",
-      "line": 8444,
+      "line": 8445,
       "name": "a LARGE green ioun stone",
       "keywords": "large green ioun stone",
       "type": 9,
@@ -1079,7 +1079,7 @@
     {
       "vnum": 922,
       "source": "areas/obj/heavens.obj",
-      "line": 8456,
+      "line": 8457,
       "name": "a mirrored ioun stone",
       "keywords": "mirrored ioun stone",
       "type": 9,
@@ -1109,7 +1109,7 @@
     {
       "vnum": 923,
       "source": "areas/obj/heavens.obj",
-      "line": 8464,
+      "line": 8465,
       "name": "Orcus' Left Testicle",
       "keywords": "left testicle orcus",
       "type": 9,
@@ -1139,7 +1139,7 @@
     {
       "vnum": 924,
       "source": "areas/obj/heavens.obj",
-      "line": 8472,
+      "line": 8473,
       "name": "Orcus' Left Testicle",
       "keywords": "left testicle orcus",
       "type": 9,
@@ -1169,7 +1169,7 @@
     {
       "vnum": 925,
       "source": "areas/obj/heavens.obj",
-      "line": 8480,
+      "line": 8481,
       "name": "Orcus' Left Testicle",
       "keywords": "left testicle orcus",
       "type": 9,
@@ -1199,7 +1199,7 @@
     {
       "vnum": 926,
       "source": "areas/obj/heavens.obj",
-      "line": 8488,
+      "line": 8489,
       "name": "Orcus' Left Testicle",
       "keywords": "left testicle orcus",
       "type": 9,
@@ -1229,7 +1229,7 @@
     {
       "vnum": 1210,
       "source": "areas/obj/heavens.obj",
-      "line": 9368,
+      "line": 9369,
       "name": "tendrils of shadowy mist",
       "keywords": "tendrils shadowy mist",
       "type": 9,
@@ -1259,7 +1259,7 @@
     {
       "vnum": 1220,
       "source": "areas/obj/heavens.obj",
-      "line": 9475,
+      "line": 9476,
       "name": "Lyrical Instrument of Time",
       "keywords": "lyrical instrument time",
       "type": 32,
@@ -1289,7 +1289,7 @@
     {
       "vnum": 1222,
       "source": "areas/obj/heavens.obj",
-      "line": 9493,
+      "line": 9494,
       "name": "the God Stone",
       "keywords": "god stone nobody",
       "type": 13,
@@ -1319,7 +1319,7 @@
     {
       "vnum": 1230,
       "source": "areas/obj/heavens.obj",
-      "line": 9638,
+      "line": 9639,
       "name": "the Totem of Mastery",
       "keywords": "totem mastery",
       "type": 34,

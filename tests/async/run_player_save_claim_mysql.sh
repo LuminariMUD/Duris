@@ -34,6 +34,8 @@ done
 # The audit migration is additive and rerunnable, and its verifier checks it.
 "${MYSQL[@]}" "$DB_NAME" < "$ROOT/migrations/immutable/0033_item_owner_audit.sql"
 "$ROOT/migrations/immutable/0033_item_owner_audit.sh"
+"${MYSQL[@]}" "$DB_NAME" < "$ROOT/migrations/immutable/0038_learned_flight_stops.sql"
+"$ROOT/migrations/immutable/0038_learned_flight_stops.sh"
 "${MYSQL[@]}" "$DB_NAME" -e "INSERT INTO accounts(account_name) VALUES ('claim_probe');
 INSERT INTO player_data(pid,name,account_name) VALUES (1,'Claimer','claim_probe'),(2,'Other','claim_probe');"
 
@@ -63,6 +65,22 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fd
     -Wl,--gc-sections "${MYSQL_LIBS[@]}" -lcrypto \
     -o "$ROOT/bin/tests/player_load_filter_mysql_harness"
 "$ROOT/bin/tests/player_load_filter_mysql_harness"
+
+# Execute the real pwipe reset/postflight SQL on retained synthetic character rows.
+python3 - "$ROOT" > "$WORK/flight-reset.sql" <<'PY'
+from pathlib import Path
+import re
+import sys
+source = (Path(sys.argv[1]) / "src/sql/sql.c").read_text()
+body = source[source.rindex("bool sql_pwipe(int code_verify)"):]
+reset = re.search(r'qry\("(UPDATE player_data SET [^"]+)"\)', body).group(1)
+postflight = re.search(r'db_query\(\s*"(SELECT COUNT\(\*\) FROM player_data WHERE [^"]+)"\)', body).group(1)
+print(reset + ";")
+print(postflight + ";")
+PY
+reset_remaining=$("${MYSQL[@]}" "$DB_NAME" < "$WORK/flight-reset.sql")
+[[ "$reset_remaining" == 0 ]]
+[[ $("${MYSQL[@]}" "$DB_NAME" -e "SELECT COUNT(*) FROM player_data WHERE learned_flight_stops <> 0") == 0 ]]
 
 # The zone-story state is saved through sql_queue() on the writer: a state above 64 KiB
 # is stored whole on the same schema.

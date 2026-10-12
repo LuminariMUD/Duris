@@ -138,7 +138,11 @@ void resetQuest(P_char ch) {
     ch->only.pc->quest_active = 0;
     ch->only.pc->quest_mob_vnum = 0;
 }
-static void advance_level_impl(P_char, bool, bool, std::uint64_t) { assert(false); }
+uint64_t discoveries_at_level_save = 0;
+static void advance_level_impl(P_char ch, bool, bool, std::uint64_t) {
+    discoveries_at_level_save = ch->only.pc->learned_flight_stops;
+    ++ch->player.level;
+}
 static void lose_level_impl(P_char, std::uint64_t,
     telemetry_progression_source, telemetry_progression_reason) { assert(false); }
 static void notify_level_advancement(P_char, int) {}
@@ -345,6 +349,29 @@ int main() {
     quest_line(1300);
     assert(output.find("You gain some experience.") != std::string::npos);
 #endif
+    // Flight discovery uses EXP_QUEST and needs the credited amount even across a level-up.
+    reset();
+    pc.learned_flight_stops = 2;
+    assert(gain_exp(&player, nullptr, 100, EXP_QUEST) == 100);
+    reset();
+    rested_tag = TAG_RESTED;
+    assert(gain_exp(&player, nullptr, 100, EXP_QUEST) == 150);
+    reset();
+    rested_tag = TAG_WELLRESTED;
+    assert(gain_exp(&player, nullptr, 100, EXP_QUEST) == 200);
+    reset();
+    player.points.curr_exp = global_exp_limit;
+    assert(gain_exp(&player, nullptr, 100, EXP_QUEST) == 0);
+    reset();
+    player.player.level = MINLVLIMMORTAL;
+    assert(gain_exp(&player, nullptr, 100, EXP_QUEST) == 0);
+    reset();
+    player.player.level = 19;
+    player.points.curr_exp = 9900;
+    assert(gain_exp(&player, nullptr, 1000, EXP_QUEST) == 1000);
+    assert(player.player.level == 20 && player.points.curr_exp == 900);
+    assert(discoveries_at_level_save == 2);
+
 }
 '''
 

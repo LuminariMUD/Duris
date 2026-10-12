@@ -9,7 +9,8 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
-with tempfile.TemporaryDirectory(prefix="duris-item-codec-") as temporary:
+(ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="duris-item-codec-", dir=ROOT / "bin/tests") as temporary:
     binary = pathlib.Path(temporary) / "player_item_snapshot_codec_test"
     compile_result = subprocess.run(
         [
@@ -25,6 +26,9 @@ with tempfile.TemporaryDirectory(prefix="duris-item-codec-") as temporary:
             "-Isrc",
             "tests/async/player_item_snapshot_codec_harness.cpp",
             rel("player_snapshot_codec.c"),
+            rel("flatfile_player_snapshot_file.c"),
+            rel("flatfile_store.c"),
+            "-lcrypto",
             "-o",
             str(binary),
         ],
@@ -36,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix="duris-item-codec-") as temporary:
     if compile_result.returncode:
         raise SystemExit(compile_result.stdout)
     run_result = subprocess.run(
-        [str(binary)],
+        [str(binary), temporary],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,

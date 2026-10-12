@@ -4113,10 +4113,9 @@ int maproom_of_zone(int zone_num)
 
 	for (i = zone->real_bottom; (i != NOWHERE) && (i <= zone->real_top); i++)
 		for (i2 = 0; i2 < NUM_EXITS; i2++)
-			if (world[i].dir_option[i2])
+			if (world[i].dir_option[i2] && world[i].dir_option[i2]->to_room != NOWHERE)
 				if (world[world[i].dir_option[i2]->to_room].zone != world[i].zone)
-					if (world[i].dir_option[i2]->to_room != NOWHERE &&
-					    IS_MAP_ROOM(world[i].dir_option[i2]->to_room))
+					if (IS_MAP_ROOM(world[i].dir_option[i2]->to_room))
 						return (world[world[i].dir_option[i2]->to_room]
 								.number);
 	return NOWHERE;

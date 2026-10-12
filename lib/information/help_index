@@ -23930,3 +23930,44 @@ or other ailments outside those handled by these cures.
 Usage: cast 'mass purification'
 
 See also: Remove Poison, Cure Blind, Cure Disease
+
+#
+FLIGHTS
+===========================================================================
+Syntax: flights
+        list                      (at a waiting flight carrier)
+        buy <number>              (at that carrier)
+        give ticket <carrier>
+
+Explore 25 ordinary flight stops. Your first LIST at each ordinary carrier
+learns that stop for this character and awards discovery experience once.
+New characters know no stops. Other characters on your account have their
+own discoveries. Progress survives saving and relogging, and resets at pwipe.
+
+FLIGHTS shows your learned ordinary stops anywhere, even while flying. Its
+map distances are estimates; LIST at a carrier gives actual routes and fares.
+LIST and BUY use the same distance order. Unlearned stops are not offered.
+Ordinary flights have no level or race restriction. They cost exactly half a
+platinum for each room flown, including half-platinum fares, with no minimum
+or maximum. Buy the listed ticket, then give it to the same waiting carrier.
+You must be able to see the carrier to give it a ticket; light or detect
+invisibility may be needed. Handing a ticket to someone else does not teach
+its destination or bypass
+that character's access rules. Old route tickets may need to be replaced.
+
+Discovery experience grows with the number of ordinary stops you have found:
+base reward = your current EXP-gain cap * discovery count / 27.
+Normal racial, rested, well-rested and difficulty modifiers and EXP limits
+apply. You still learn the stop if you cannot gain EXP, with no later repeat
+reward. Use SAVE to checkpoint your progress.
+
+Extra Destinations are separate one-way trips with fixed fares. Storm Port
+also serves its Stronghold for 10 platinum. The Snow Ogres departure dragon
+serves its cavern approach for 50 platinum, and the Isle of Undeath dragon
+serves the Desolate Island approach to Scorched for 200 platinum. Both epic
+trips require level 51. Their departure dragons and epic entrances are
+outside the ordinary network: they cannot be learned or reached with an
+ordinary flight ticket. There is no passenger return service at the special
+entrance; the empty dragon returns home on its own.
+
+See also: list, buy, give, save

@@ -14,6 +14,7 @@ import tempfile
 from pathlib import Path
 
 from _paths import ROOT, source
+from _source_contract import strip_comments
 from _paths import HARNESS_STUBS
 
 
@@ -275,12 +276,14 @@ def test_breath_money_regen_and_corpse_hooks_are_complete() -> None:
 
 def test_command_is_registered() -> None:
     interp = source("cmd/interp.c").read_text()
-    assert '"difficulty",\n\t"itemmana",\n\t"pulse",\n\t"collector",\n\t"_retired_863",\n\t"dummy",\n\t"\\n" /* MAX_CMD = 865, MAX_CMD_LIST = 1000 */' in interp
+    table = re.search(r"const char \*command\[MAX_CMD\] = \{(.*?)\n\};", interp, re.S)
+    assert table is not None
+    commands = re.findall(r'"([^"]*)"', strip_comments(table.group(1)))
+    assert commands[859 - 1] == "difficulty"
+    count = re.search(r"#define MAX_CMD (\d+)\b", source("core/config.h").read_text())
+    assert count is not None and int(count.group(1)) == len(commands)
     assert "CMD_GRT(CMD_DIFFICULTY, STAT_DEAD + POS_PRONE, do_difficulty, LESSER_G);" in interp
     assert "#define CMD_DIFFICULTY 859" in source("cmd/interp.h").read_text()
-    # The command-name table is sized by MAX_CMD, which counts its terminating entry.
-    headers = "".join(path.read_text() for path in (ROOT / "src").rglob("*.h"))
-    assert "#define MAX_CMD 865 " in headers
     assert "void do_difficulty(P_char, char *, int);" in source("core/prototypes.h").read_text()
     command = _body("world/difficulty.c", "void do_difficulty(")
     assert "GET_LEVEL(ch) < FORGER" in command

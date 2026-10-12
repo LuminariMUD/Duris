@@ -10,6 +10,20 @@ anywhere in the world and keeps one sign at each configured origin. Repeated
 calls do not create extra dragons, signs, or movement events. Only the explicit
 transport catalog and signs at its origins are reconciled.
 
+The flight catalog has 27 services: 25 discoverable ordinary stops and two
+separate epic-only services. Catalog discovery bits remain fixed when a pad or
+name changes. Endpoint metadata is available before recovery reads transport
+snapshots; paths are computed once from each origin after the world loads.
+Ordinary tickets hold the service mob and destination room, so table reordering
+cannot redirect them. Redemption rechecks the recipient's learned stop or the
+extra trip's level gate before consuming the ticket.
+
+Character discoveries live in player status with EXP, independently of transport
+or Redis recovery. Snapshot schema 8 reads supported old player files with an
+empty discovery mask. Migration `0038_learned_flight_stops` adds the SQL column;
+pwipe clears it on retained player rows. The two epic departure stops and their
+entrances cannot be learned or used as ordinary network destinations.
+
 New snapshots retain a transport's origin, destination, movement state, path
 step, and passenger name. Recovery validates the saved position against the
 recomputed route. A co-located recovered passenger resumes the flight. An
@@ -19,12 +33,12 @@ multiple occupied dragons, one flight survives and extra passengers are landed
 at that service's origin before their extra dragon is removed. Carried and worn
 items on retired dragons are transferred to the survivor.
 
-File copyover version 13 reads version 12 records as well. Version 12 did not
-record routes or riders, so those old flights cannot be resumed from their
-snapshot; their dragons are returned home. Redis schema 12 accepts its original
-NPC record and a bounded optional `TRN1` transport tail. Ordinary NPC wire
-records are unchanged. An older binary cannot read the new transport tail and
-will reject that Redis generation rather than interpret it incorrectly.
+Current file copyover version 16 accepts versions 12 through 16. Version 13
+introduced the transport endpoints and rider state; version 12 flights lack that
+state and return home. Current Redis world generations use schema 13, while the
+NPC codec accepts the original record and its bounded optional `TRN1` transport
+tail. The flight network changes neither format. Generation schema checks remain
+strict; see [World recovery format](../persistence/WORLD_RECOVERY_FORMAT.md).
 
 Shop inventory has different authorities in each recovery mode:
 

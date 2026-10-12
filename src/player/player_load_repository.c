@@ -49,7 +49,7 @@ struct status_column
 	bool unsigned_value;
 };
 
-constexpr std::array<status_column, 63> STATUS_COLUMNS = { {
+constexpr std::array<status_column, 64> STATUS_COLUMNS = { {
 	{ player_status_field::class_primary, "m_class", false, false },
 	{ player_status_field::class_secondary, "secondary_class", false, false },
 	{ player_status_field::specialization, "spec", false, false },
@@ -113,6 +113,7 @@ constexpr std::array<status_column, 63> STATUS_COLUMNS = { {
 	{ player_status_field::highest_level, "highest_level", false, false },
 	{ player_status_field::screen_length, "screen_length", false, false },
 	{ player_status_field::last_ip, "last_ip", false, true },
+	{ player_status_field::learned_flight_stops, "learned_flight_stops", false, true },
 } };
 
 constexpr std::array<const char *, 7> STATUS_STRINGS = {

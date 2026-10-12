@@ -27,7 +27,9 @@ struct transport_snapshot
 void transport_capture(P_char mob, transport_snapshot *snapshot);
 void transport_restore(P_char mob, const transport_snapshot &snapshot);
 void initialize_transport();
+void do_flights(P_char ch, char *argument, int cmd);
 int flying_transport(P_char ch, P_char victim, int cmd, char *arg);
+bool flying_transport_cmd_give(P_char ch, P_char victim, char *arg);
 void event_flying_transport_move(P_char ch, P_char victim, P_obj obj, void *data);
 void event_flying_transport_return(P_char ch, P_char victim, P_obj obj, void *data);
 

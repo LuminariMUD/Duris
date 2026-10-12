@@ -5,9 +5,125 @@ travel between learned stops at distance-based fares, and earn discovery EXP. Ke
 dedicated epic-zone trips separate, with their existing origins, fares, restrictions,
 and one-way service.
 
-Status: planned; implementation has not started. Updated 2026-10-12 against source
-revision `c3f8fffc0`. This plan covers the complete feature in
+Status: implementation, PR #51 review repairs and local qualification complete.
+Updated 2026-10-12. The initial feature was qualified at `11354ecd1`.
+This plan covers the complete feature in
 [issue #40](https://github.com/LuminariMUD/Duris/issues/40).
+
+## Completion and rollout handoff
+
+All six implementation steps and all three review repairs are complete. There is
+no remaining development phase in this plan. [PR #51](https://github.com/LuminariMUD/Duris/pull/51)
+is the delivery record and closes issue #40 when merged.
+
+The merge strategy is squash, preserving master's required linear history. Master
+`0da9292ca` is already contained in the branch; no rebase, conflict resolution or
+stacked dependency is needed. This merge does not create a release tag.
+
+The next session, if requested, is an owner-authorized production rollout under
+the [deployment tracker](../operations/PRODUCTION_DEPLOYMENT.md) and
+[operations runbook](../operations/RUNBOOK.md). Verify the target and backup, qualify
+the pending [immutable migrations](../persistence/IMMUTABLE_MIGRATIONS.md) on a
+disposable restore, and apply through `0038_learned_flight_stops` before starting
+the matching production build. Include the changed world/sign and maintained help
+sources, using the existing SQL help import path where applicable. Verify the
+running executable, health/readiness, discovery, fare and ticket redemption, carrier
+return, and retained discoveries after relog. Rollout has not been started here.
+
+## Review handoff
+
+[PR #51](https://github.com/LuminariMUD/Duris/pull/51) contains the complete feature
+on `feature/40-flight-network`, based on master `0da9292ca`. All six implementation
+steps remain implemented. The subsequent review identified two flight regressions
+and an older equipment-removal use-after-free; the repairs and new evidence are
+recorded below.
+
+- User decisions: 25 ordinary stops, exact 500-copper-per-room fares, and discovery
+  EXP `current gain cap * count / 27` with normal racial, rested and difficulty
+  modifiers. The two epic-only departures are excluded; bits 0 and 12 are reserved.
+- One status mask stores discovery with EXP. Migration `0038_learned_flight_stops`
+  is additive/rerunnable; snapshot schema 8 reads versions 1/3/5/7 with zero
+  discoveries. Pwipes clear the field even on retained inactive player rows.
+- The corrected catalog prepares 603 paths once per boot, using one BFS per
+  origin. Shared list/buy selection, endpoint tickets and redemption checks keep
+  discovery and epic access consistent. Existing movement and recovery are reused.
+- Review repairs: failed payment cannot issue a ticket; a busy carrier cannot take
+  a ticket through ordinary give; the zone/map lookup checks an invalid exit before
+  dereferencing it. Native ASan/UBSan checks include these cases and wrapped paths.
+- Sign 420, shared FLIGHTS help, command attributes and recovery documentation are
+  updated. Existing visibility and loose-coin carrying rules remain: the journeys
+  supply light/detect invisibility and carry a small purse. All seven named dragons
+  remain killable and leave their normal corpses.
+
+Verification on 2026-10-12:
+
+| Check | Result |
+| --- | --- |
+| `make test-all -j16 TEST_JOBS=8` | 720 passed, zero failures/timeouts/signals; 539.50 seconds. Includes development and production builds and the full flat-file journey. |
+| `make test-db` | 73 passed; 361 seconds. Includes the new MariaDB journey, immutable migration/legacy replay, and supported engine/runtime checks. |
+| `./scripts/format.sh --all --check` | Full-tree formatting passed; subsequent touched-line checks and commit hooks passed too. |
+| `make -C src pfile -j16` and `make -C migrations/tools all affects pfile_converter -j16` | Maintained auxiliary binaries built successfully. |
+| `npm ci --prefix site && npm test --prefix site` | 15 tests passed. |
+| `scripts/check_tests_catch.sh b79c08eef 11354ecd10bc` | Flight command and full-world journey tests pass on the implementation and fail before the validation/guidance fixes. Four maintenance checks pass on both; no control failures. |
+| `python3 tests/async/test_player_item_snapshot_codec.py` (final audit) | ASan/UBSan: real checksummed files containing versions 1/3/5/7 load through the flat-file reader with an unsigned zero discovery mask. |
+
+Both full-world backend journeys prove all 25 discoveries, exact 19.5p payment for
+the 39-room Ugta–Kimordril route, occupied and empty-return copyovers, both restricted
+epic trips, crash recovery, normal relogging, and the seven named-dragon corpses.
+All five MariaDB boots found 603 available routes, prepared in 483–645 ms. The tested
+MariaDB binary SHA-256 is
+`51ff1e66ecd0d90cb02deb213fcbbaf324997e590163693c76efa6cea9629111`.
+The full server journeys use ordinary development builds; sanitizers cover the native
+command/recovery fixtures. No production migration, deployment or release tag was made.
+
+The [regression record](../testing/REGRESSIONS.md#learned-flight-network) describes
+coverage and the existing mechanics preserved during verification. The PR review
+repairs below supersede the initial qualification for those paths.
+Production rollout remains separate.
+
+## PR #51 review repairs (2026-10-12)
+
+All three findings in the [review](https://github.com/LuminariMUD/Duris/pull/51#pullrequestreview-5492994949)
+were valid and are addressed in `69065e32f` and `68b638d9e`:
+
+- Empty return events no longer link to the former passenger. Each return step
+  schedules with a null victim; recovery already chooses a null rider for an
+  unoccupied carrier. The real-server journey quits immediately after landing and
+  verifies that the carrier returns home and resumes service without reconciliation.
+- Ordinary `give` identifies a carrier by its flight procedure and calls the
+  existing ticket validator even when that procedure is skipped. Readiness includes awake/mobile
+  checks. The journey applies `MINOR_PARA`, verifies the flag, checks that the paid
+  ticket and wallet remain with the player, then clears paralysis and flies.
+- The older crumbleloot removal defect is fixed separately: item effects are
+  removed before transfer can destroy the object, and an explicit extracted result
+  protects single/all removal and automatic replacement. Shared robe cleanup
+  replaces the two copies that previously dereferenced the item after transfer.
+  The public removal regression reproduces the original heap-use-after-free under
+  ASan/UBSan and covers ordinary items and trusted-player exemptions as well.
+
+No new persistence fields, event types or inventory-transfer API were needed.
+The review fixes remain separate commits in the PR's source history. The delivery
+and next-session boundary are recorded in the completion handoff above; repository
+protections remain unchanged.
+
+Final local qualification on `68b638d9e`:
+
+| Check | Result |
+| --- | --- |
+| `make test-all -j16 TEST_JOBS=8` | 721 passed, zero failures/timeouts/signals; 672.99 seconds. Includes development/production builds, sanitizers and the full flat-file flight journey. |
+| `make test-db` | All 73 legs passed in 443 seconds. After the final carrier-identity refinement, the affected MariaDB flight journey was rerun against the final server and passed again; the other database code and tests were unchanged. |
+| `tests/async/with_disposable_mariadb.sh python3 tests/async/test_flight_network_journey.py --backend mariadb --server bin/server/dms_new` | Final MariaDB flight journey passed all discovery, fare, unavailable-ticket, logout-return, copyover, epic, persistence and corpse checks. |
+| `scripts/check_tests_catch.sh 6df413724 68b638d9e` | All three changed regressions pass on the repaired code and fail on the reviewed revision: native flight commands, full-world flight journey, and public crumbleloot removal. |
+| `./scripts/format.sh --all --check` | All 1045 tracked C/C++ files passed. Commit hooks also passed formatting and clang-tidy. |
+| `make security-check` | Dependency baseline and source/configuration checks passed. |
+| `npm test --prefix site` | 15 tests passed against the updated documentation; locked dependencies were installed with `npm ci --prefix site`. |
+
+Both backend journeys prove ticket retention during paralysis and a carrier's return
+following immediate post-arrival logout, in addition to the original complete
+feature journey. The final MariaDB binary SHA-256 is
+`d70f9713a4e65e3529658eb2fd95578cdee2b5f1aa070218c0dc42e129b978b8`.
+Full servers use development builds; the native command/removal/recovery tests use
+ASan/UBSan. The final documentation commit changes no server or test behavior.
 
 ## Requirements and decision authority
 
@@ -22,15 +138,16 @@ issue's older persistence suggestions.
 
 The required outcome is:
 
-- The 27 ordinary stops use the corrected landing rooms and builder names below.
-- Characters start with no learned stops. Their first `list` at a flight dragon
+- The 25 ordinary stops use the corrected landing rooms and builder names below.
+  The two epic-only services retain their original departure pads.
+- Characters start with no learned stops. Their first `list` at an ordinary flight dragon
   discovers that dragon's ordinary stop; repeated visits do not award EXP again.
-- From a participating dragon, characters can buy flights to their learned ordinary
+- From a participating ordinary dragon, characters can buy flights to their learned ordinary
   stops. Ordinary travel has no level or race restriction; the fare is the barrier.
 - Normal fares use 0.5 platinum per room flown. Listings sort by distance.
 - `flights` displays the character's learned stops anywhere, including during flight.
 - Discovery EXP grows with discoveries and scales with the character's EXP-gain cap;
-  rested bonuses apply. The exact formula remains a builder decision.
+  rested bonuses apply. Use the approved formula in the resolved decisions below.
 - Discoveries belong to the character, survive saves and restarts, and reset at pwipe.
 - Extra Destinations remain specific trips from designated dragons. Epic entrances
   cannot be learned as normal network stops or reached with unrestricted tickets.
@@ -40,39 +157,30 @@ The required outcome is:
 
 ## Epic access explained
 
-The dragon's ordinary map location and the entrance it serves are separate places.
-Think of the map dragon as a bus station and the epic entrance as a special trip
-offered by that station.
+Scorched and Snow Ogres keep their existing departure dragons, fixed fares and
+level gates. Players reach those dragons by other means, buy the dedicated one-way
+trip, and leave the epic entrance by other means. Neither the departure stop nor
+the epic entrance can be learned or reached through the ordinary network.
 
-Under Fotenak's proposal, the Snow Ogres journey is:
+The dragon returning home after a drop-off does not create a passenger return
+service. Fotenak's earlier proposal included the departure stop in the network; the
+user's 2026-10-12 exclusion supersedes that proposal. Other services remain ordinary
+stops even when near epic content. Storm Port may serve its ordinary network plus
+its separate Stronghold extra trip.
 
-1. Discover the dragon's ordinary map stop, then reach it through the normal network.
-2. Buy a separate, restricted one-way trip from that dragon to the Snow Ogres approach.
-3. Leave the epic zone by another means; its entrance has no return flight service.
+## Resolved decisions (2026-10-12)
 
-The dragon returning home after dropping off a passenger does not create a passenger
-return service. Learning the departure stop does not teach the special destination.
-The same dragon may serve both kinds of trip.
+| Decision | Selected behavior and authority |
+| --- | --- |
+| Epic departure stops | User excludes services 47015 and 47027 from the ordinary network entirely. No learning, ordinary ticket purchase, or ordinary destination for either service; their dedicated trips remain. This supersedes Fotenak's proposed inclusion. |
+| Normal fares | User delegated the bound choice: charge exactly 500 copper per path step, no minimum/maximum, no rounding. |
+| Discovery EXP | User approved `current EXP-gain cap * new discovery count / 27` before normal rested, racial and global modifiers/caps. The later exclusion of two stations leaves 25 available discoveries; retain the approved divisor. |
+| Scorched route | Service 47015, origin 576577, landing 579365 on Scorched Island, 200p, level 51+, one-way. Verified by the connected land path and continent seed below. |
 
-Beltorin supports the general feature with epic-zone exceptions. His brief feedback
-does not establish whether easier access to the departure dragon itself is acceptable.
-Keep that decision open; do not describe full agreement as established.
+These choices apply to the complete implementation and its PR. No production deployment
+or database changes are authorized by this plan.
 
-## Open decisions
-
-| Decision | Established behavior | Resolution needed before the affected behavior is finalized |
-| --- | --- | --- |
-| Epic departure stops | Special epic access routes stay exempt. Fotenak proposes including their ordinary departure stops. | Confirm with Beltorin whether easier access to those departure dragons is acceptable. |
-| Normal fare bounds | The rate is 0.5 platinum per room. Fotenak mentioned 20p for a short trip and 250p as a starting point. | Determine whether 20p is a minimum and what 250p means. Do not silently turn 250p into a maximum. |
-| Fare precision | The wallet supports copper, and 0.5p is 500 copper. | Exact half-platinum fares need no rounding; confirm if the intended display/charge instead requires whole-platinum rounding. |
-| Discovery EXP | Cap-relative rewards, growth with discovery count, and rested bonuses are selected. | Specify the numerical formula and whether ordinary racial EXP modifiers apply. "No race barriers" does not explicitly settle EXP multipliers. |
-| Scorched route | Scorched must retain dedicated access. The source explicitly labels Snow Ogres but not Scorched. | Confirm the service mob and origin/destination pair. Do not label Desolate Island as Scorched solely by inference. |
-
-These decisions do not prevent preparing the catalog, persistence, shared command
-selection, and tests. Record the answers here and in the issue before completing the
-affected behavior. There is no authorization in this plan to deploy or change production.
-
-## Ordinary destination catalog
+## Service catalog (25 ordinary stops and two epic-only departures)
 
 Use the following permanent bit assignment for learned stops: bit `mob_vnum - 47015`.
 Store the assignment explicitly in the catalog, independent of its display order.
@@ -108,13 +216,15 @@ Moving a landing pad or changing a display name must not change the learned iden
 | 25 | 47040 | 616547 | Thur'Gurax | a large wyvern |
 | 26 | 47041 | 557220 | Moonshae Island | Glimmyris, the ancient faerie dragon |
 
-The epic departure stops in this table reflect Fotenak's proposal and remain subject
-to the open player-feedback decision. Do not exclude unrelated surface stops merely
-because they are near epic content.
+**Services 47015 and 47027 are epic-only under the user's final decision.** Their
+rows retain the permanent bit assignments for reference, but bits 0 and 12 are
+reserved and never taught or listed by the ordinary network. All 27 service mobs
+still initialize. Do not exclude other surface stops merely for proximity to epic content.
 
-All 27 mob records, all 27 distinct landing rooms, and the three Extra Destination
-rooms below were found in the current world files during planning. This establishes
-record existence, not full-world route reachability or runtime behavior.
+The full-world journeys load all 27 services and corrected landing rooms, and all
+603 routes are available. Every landing pad is a ground sector; both backend
+journeys complete the ordinary and epic flights. The native fixture also exercises
+the new Storm Port Stronghold trip at level one.
 
 Fort Boyard uses `563522`, not the historical spreadsheet's `564319`. Torrhan uses
 `582084`, not the old service origin `580080`. Recompute paths; do not reuse the old
@@ -127,7 +237,7 @@ the dropped Behemoth Herders proposal are outside this catalog.
 | Service mob | Origin | Destination | Trip | Fare and restriction |
 | --- | --- | --- | --- | --- |
 | 47027 | 619771 | 620606 | Snow Ogres cavern approach | Existing 50p, level 51+, one-way. Preserve. |
-| 47015 | 576577 | 579365 | A Desolate Island | Existing 200p, level 51+, one-way. Preserve while confirming its epic-zone classification. |
+| 47015 | 576577 | 579365 | A Desolate Island | Existing 200p, level 51+, one-way to Scorched Island. Preserve. |
 | 47017 | 588326 | 637082 | Storm Port Stronghold | Proposed new extra trip: 10p, level 1 in the retained sheet, one-way. |
 
 The sheet's older proposed 100p fares do not override the issue's requirement to
@@ -137,37 +247,42 @@ them to ordinary players or add a general bypass.
 
 Snow Ogres is source-confirmed: the flight lands at `620606`, west leads to `620605`,
 and down leads to zone room `87700`. Scorched's zone entrance is `71201`, connected to
-surface room `576166`; that alone does not identify its flight service. Complete the
-classification by service mob, origin, and destination before accepting the catalog.
-Any additional dedicated epic route found in that inventory gets the same exemption.
+surface room `576166`. The existing Desolate Island service (mob `47015`, origin
+`576577`, landing `579365`) is now confirmed as its dedicated access route: the
+landing reaches that continent seed over nine reciprocal, same-zone, non-ocean
+exits: `579365 → 578965 → 578565 → 578165 → 577765 → 577365 → 576965 → 576565 →
+576566 → 576166`. `src/world/map.c` names that seed `CONT_SCORCHED`;
+`areas/wld/scorchvalley.wld` links it to `71201`. This establishes the island
+classification without equating a display name with a zone. The original route
+inventory contains two dedicated epic routes; both retain their existing gates.
 
 ## Implementation sequence
 
-### 1 Finalize the catalog and route classification
+### 1 (complete) Finalize the catalog and route classification
 
 Replace the normal-stop metadata in `src/world/transport.c` with the catalog above
 and a separate Extra Destination table. Keep route eligibility tied to the service
 and destination, rather than inferring it from a display name or proximity to a zone.
 
 Validate unique service mobs, landing rooms, and discovery bits; verify all referenced
-records are loaded by the actual world. Confirm the Scorched mapping and record the
-departure-stop decision. Retain the seven named dragons' combat and corpse behavior.
+records are loaded by the actual world. Enforce the confirmed Scorched mapping and the
+departure-stop exclusion recorded above. Retain the seven named dragons' combat and corpse behavior.
 Their `Quest? = Y` flag does not turn learning a stop into a quest reward.
 
 Proof: the corrected catalog loads, existing ordinary routes are replaced coherently,
 the eleven new service mobs are initialized, and each exempt destination has exactly
 its designated access route. Behemoth Herders and the placeholder do not become stops.
 
-### 2 Add learned stops to character status
+### 2 (complete) Add learned stops to character status
 
 Add a zero-initialized `uint64_t` learned-stop mask to the player data structure and
 an unsigned status field to the existing player snapshot. Save it in one
-`player_data` column, proposed as `learned_flight_stops BIGINT UNSIGNED NOT NULL
+`player_data` column, `learned_flight_stops BIGINT UNSIGNED NOT NULL
 DEFAULT 0`. Reuse `PLAYER_COMPONENT_STATUS`, which already contains EXP.
 
 Update capture, SQL column mapping, SQL loading, materialization validation, and the
-snapshot codec. The current materializer expects 63 integer status fields and the
-current codec uses schema version 7: both contracts must account for the new field.
+snapshot codec. The planning baseline had 63 integer status fields and schema 7;
+the implementation now uses 64 fields and schema 8 for the added discovery mask.
 Preserve decoding of currently supported old formats, including versions 1, 3, 5,
 and 7, defaulting their missing flight field to zero. Keep stored field IDs stable.
 Version any incompatible encoding change explicitly and test old-file loading.
@@ -176,9 +291,8 @@ The flat-file backend already replaces status as a unit. Verify that the mask fo
 that path, including partial saves of unrelated components. No flight-specific
 repository or additional dirty-component bit is needed.
 
-Add a guarded, re-runnable immutable migration and its verifier. Use the next free
-migration sequence at implementation time; the planning baseline is
-`0036_log_entries_ipv6`. Update migration checksums, runtime schema contracts, and
+Add a guarded, re-runnable immutable migration and its verifier. The implementation uses
+`0038_learned_flight_stops`, after `0037_session_audit_identity`. Update migration checksums, runtime schema contracts, and
 the applicable bootstrap path. Do not change historical migrations or invent another
 table solely for discoveries.
 
@@ -192,7 +306,7 @@ Proof: new characters start empty; SQL and flat-file saves retain the mask; old 
 load; catalog reordering does not change learned identities; account siblings have
 independent masks; wipe and recreation reset progress.
 
-### 3 Build paths and fares through the existing service
+### 3 (complete) Build paths and fares through the existing service
 
 Build route metadata before `transport_restore()` needs to resolve saved endpoints.
 Keep `initialize_transport()` after world recovery, preserving singleton reconciliation.
@@ -223,7 +337,7 @@ fares match distance, invalid routes cannot start, and repeated initialization a
 recovery preserve one dragon/sign/event as applicable. Measure startup cost on the
 full world; do not move route searches into the game loop to hide startup work.
 
-### 4 Implement discovery and travel commands
+### 4 (complete) Implement discovery and travel commands
 
 On the first valid player `list` at a waiting service dragon, learn only that dragon's
 ordinary stop. Add no discovery flags for its Extra Destinations. Repeated calls must
@@ -241,7 +355,7 @@ Update `MAX_CMD` and register a read-only handler in the normal interpreter. Exp
 allow it through the transport proc's in-flight command restriction. It lists known
 stops without learning anything, granting EXP, or offering tickets remotely.
 
-For the anywhere display, the proposed UX default is distance ordering from the
+For the anywhere display, the implemented order is distance from the
 current surface room or a mapped zone entrance. Reuse existing map-location lookup
 where suitable. Display order away from a station may use cheap map distance, clearly
 distinguished from a ticket quote based on the actual flight path. If no map position
@@ -265,9 +379,9 @@ Proof: exercise production `list`, `flights`, `buy`, and `give` handlers, includ
 empty lists, ties, unknown destinations, insufficient funds, busy carriers, transferred
 tickets, malformed values, and epic-route bypass attempts.
 
-### 5 Award discovery EXP with the discovery state
+### 5 (complete) Award discovery EXP with the discovery state
 
-After the formula is settled, compute the base reward from the character's current
+Using the approved count/27 formula, compute the base reward from the character's current
 EXP-gain cap and new discovery count. The old flat 10k examples are superseded.
 Use the existing EXP award path for rested bonuses, the global difficulty modifier,
 caps, level advancement, logging, and telemetry. Reuse `EXP_QUEST` if ordinary racial
@@ -295,7 +409,7 @@ policies are correct; capped and immortal characters do not get a repeatable awa
 relogs, queued saves, save failures, and crashes cannot preserve a reward while
 forgetting its discovery.
 
-### 6 Complete guidance and integrated verification
+### 6 (complete) Complete guidance and integrated verification
 
 Update sign `420` in `areas/obj/heavens.obj` to explain discovery and `flights`.
 Add flight help through the maintained help sources and import path, covering both
@@ -335,21 +449,20 @@ missing. Production migration and deployment remain separate authorized actions.
 | [tests/async](../../tests/async), [database test runner](../../tests/run_db_tests.sh) | Extend command, snapshot, persistence, migration, lifecycle, and recovery coverage; register any new database journey. |
 | [WORLD_SINGLETON_RECOVERY.md](../operations/WORLD_SINGLETON_RECOVERY.md), [REGRESSIONS.md](../testing/REGRESSIONS.md) | Explain the completed behavior and record actual validation evidence. |
 
-No new persistence component is planned in `player_revision_state.h`: discoveries and
-EXP share status. No wire-format change is planned in `copyover.c` or the Redis
-transport tail: the existing endpoint-based snapshot already expresses the journey.
-If implementation changes either decision, justify it with a traced requirement here.
+No new persistence component was needed in `player_revision_state.h`: discoveries and
+EXP share status. File copyover version 16 and Redis generation schema 13 are
+unchanged; the existing endpoint-based transport snapshot already expresses the journey.
 
 ## Proof and completion criteria
 
 | Requirement | Required evidence |
 | --- | --- |
-| Corrected catalog | All 27 ordinary pads and service mobs load; IDs remain stable under catalog reordering; corrected Fort Boyard/Torrhan routes are used. |
+| Corrected catalog | All 25 ordinary pads and two epic-only services load; IDs remain stable under catalog reordering; corrected Fort Boyard/Torrhan routes are used. |
 | New and existing dragons | All configured services initialize once; named dragons remain killable and leave corpses; repeated initialization creates no extras. |
 | Discovery and commands | First `list` teaches one ordinary stop; repeats do nothing; `flights` works away from dragons and while flying; unknown normal stops cannot be purchased. |
 | Ordering and pricing | Distance ordering and tie-breaks are stable, `list`/`buy` agree, normal fares match the approved formula, and extras retain their own fares. |
 | Ordinary access | Low-level and different-race characters can use learned ordinary routes without the removed travel gates. |
-| Epic exceptions | Each exempt route retains its origin and access rules; learning its departure stop does not unlock its entrance elsewhere; no return station appears there. |
+| Epic exceptions | Each exempt route retains its origin and access rules; neither its departure nor entrance can be learned as an ordinary stop; no return station appears there. |
 | Ticket integrity | Transferred, forged, stale, wrong-origin, unknown-destination, and out-of-range tickets cannot bypass access or corrupt movement; valid tickets still work. |
 | EXP | Agreed discovery scaling, rested behavior, race policy, caps, and level-up behavior hold; repeated discovery cannot duplicate a durable reward. |
 | Persistence | SQL and flat-file round trips, old snapshots, unrelated partial saves, account siblings, relogs, save failures, and crash boundaries preserve the intended state. |
@@ -376,11 +489,11 @@ python3 tests/async/test_documentation_contract.py
 tests/async/run_player_load_repository_mysql.sh
 ```
 
-These existing checks need assertions for the new field and behavior; passing them
-unchanged does not prove the feature. Proposed new files, only where existing tests
-cannot cover the behavior, are `tests/async/test_flight_network.py` and
-`tests/async/test_flight_network_journey.py`. They do not exist yet. Use compiled
-production handlers and real journeys, not tests that merely repeat catalog constants.
+Existing persistence fixtures were extended with discovery assertions. The additional
+`tests/async/test_flight_network.py` executes production handlers under ASan/UBSan;
+`tests/async/test_flight_network_journey.py` drives real full-world clients and is
+registered in both applicable gates. Both pass; the journey's SQL leg uses
+`--backend mariadb --server bin/server/dms_new` under the disposable database wrapper.
 
 Final implementation gates:
 
@@ -399,8 +512,8 @@ supported MySQL/MariaDB variants. Use the disposable database wrappers described
 checks without a relevant change. Verify the running executable when testing a built
 server; the supervisor can consume or replace `dms_new`.
 
-These are future implementation gates. Planning verified world-record existence and
-source integration points; it did not implement or runtime-test the flight network.
+All final feature gates passed. The review handoff records the tested revision,
+commands, results and runtime evidence.
 
 ## Ablation and non goals
 
@@ -408,7 +521,7 @@ source integration points; it did not implement or runtime-test the flight netwo
 | --- | --- |
 | Keep the existing transport service and movement callbacks | They already implement flight, passengers, home return, and recovery. |
 | Keep a separate Extra Destination table | Epic access and ordinary learned travel have different required rules. |
-| Use one saved status mask | The 27 fixed discoveries fit in one scalar and must be saved with EXP. |
+| Use one saved status mask | The 25 discoveries and two reserved identities fit in one scalar and must be saved with EXP. |
 | Share route selection between listing and buying | Both real callers must use identical eligibility and numbering. |
 | Precompute paths from each origin | The larger network needs many destinations per origin without command-time searches. |
 | Drop a discovery table, repository, and dirty component | Existing character status already supplies storage and atomicity. |
@@ -417,7 +530,7 @@ source integration points; it did not implement or runtime-test the flight netwo
 | Leave dragon quests, ferry changes, and unrelated world cleanup outside this feature | They are separate work; preserve compatibility with the builder's dragon quests. |
 | Drop an unrestricted intermediate release | It would bypass the required discovery and epic-access behavior. |
 
-Implementation is complete only when the open behavior decisions are resolved, every
+Implementation is complete only when every
 required behavior has its corresponding proof, and the final diff contains only the
 necessary feature, compatibility, test, and documentation changes. Keep progress and
 decision updates in this file while the project remains open.

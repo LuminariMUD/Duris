@@ -900,6 +900,7 @@ extern unsigned int game_locked_level;
 #define CMD_COLLECTOR 862
 #define CMD_RETIRED_863 863 // Reserved retired command slot; do not reuse.
 #define CMD_DUMMY 864
+#define CMD_FLIGHTS 865
 
 /* The CMD_s below are not real commands, they are used in item special procedures to identify
  * when wearer gets hit in melee or nuked and when an item is poofing on ground.

@@ -4,6 +4,10 @@ The server refuses to mutate database state or publish gameplay until the config
 database proves the exact migration, schema, and connection contract. This is a
 read-only compatibility gate, not an automatic migration mechanism.
 
+Migration 0038 adds `player_data.learned_flight_stops` as an unsigned, non-null
+64-bit mask defaulting to zero. It stores discoveries with character status and EXP;
+the season reset clears it even though player rows are retained.
+
 ## Required installation sequence
 
 For a fresh development database, load the sealed 170-table baseline,
@@ -16,7 +20,7 @@ python3 scripts/migration_runner.py run
 ./migrations/verify_runtime_compatibility.sh
 ```
 
-The current head is `0037_session_audit_identity`, and the contract
+The current head is `0038_learned_flight_stops`, and the contract
 describes 198 current tables: the 170-table baseline plus the post-baseline runtime tables created
 by immutable migrations. Migration 0029 adds the replay-safe
 `critical_operation_inbox.failure_stage` receipt field as `SMALLINT UNSIGNED NOT
