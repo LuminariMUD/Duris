@@ -26,6 +26,7 @@
 #include <ctype.h>
 #include <signal.h>
 #include <string.h>
+#include <vector>
 #include "core/config.h"
 #include "combat/damage.h"
 #include "combat/guard.h"
@@ -1976,32 +1977,45 @@ struct shift_prime_destination
 };
 
 template <size_t N>
-static int select_shift_prime_room(const shift_prime_destination (&destinations)[N])
+static int select_shift_prime_room(P_char ch, const shift_prime_destination (&destinations)[N])
 {
+	std::vector<int> rooms[N];
+	int available_slots[N];
 	int available = 0;
-	for (const auto &destination : destinations)
-		if (real_room(destination.room) != NOWHERE)
-			++available;
-
-	if (!available)
-		return NOWHERE;
-
-	// Keep equal odds per loaded destination without an unbounded retry loop.
-	int choice = number(0, available - 1);
-	for (const auto &destination : destinations)
+	for (size_t slot = 0; slot < N; ++slot)
 	{
+		const auto &destination = destinations[slot];
 		const int room = real_room(destination.room);
 		if (room == NOWHERE)
 			continue;
-		if (choice-- != 0)
-			continue;
 		if (!destination.random_in_zone)
-			return room;
-
-		const auto &zone = zone_table[world[room].zone];
-		return number(zone.real_bottom, zone.real_top);
+			rooms[slot].push_back(room);
+		else
+		{
+			const auto &zone = zone_table[world[room].zone];
+			for (int target = zone.real_bottom; target <= zone.real_top; ++target)
+			{
+				if (IS_ROOM(target, ROOM_PRIVATE | ROOM_NO_MAGIC |
+							    ROOM_NO_TELEPORT | ROOM_NO_GATE) ||
+				    IS_HOMETOWN(target) ||
+				    world[target].sector_type == SECT_OCEAN ||
+				    world[target].sector_type == SECT_NO_GROUND ||
+				    world[target].sector_type == SECT_UNDRWLD_NOGROUND ||
+				    !can_enter_room(ch, target, FALSE))
+					continue;
+				rooms[slot].push_back(target);
+			}
+		}
+		if (!rooms[slot].empty())
+			available_slots[available++] = slot;
 	}
-	return NOWHERE;
+	if (!available)
+		return NOWHERE;
+
+	// Keep equal odds per usable destination, then per eligible room within its zone.
+	const int slot = available_slots[number(0, available - 1)];
+	return destinations[slot].random_in_zone ? rooms[slot][number(0, rooms[slot].size() - 1)] :
+						   rooms[slot][0];
 }
 
 #define PLANE_ZONETARG_ROOMNUMB 19701 /* astral */
@@ -2036,6 +2050,13 @@ void do_shift_prime(P_char ch, char * /*arg*/, int /*cmd*/)
 		return;
 	}
 
+	if (affected_by_spell(ch, TAG_PVPDELAY))
+	{
+		send_to_char("There is too much adrenaline pumping through your body right now.\n",
+			     ch);
+		return;
+	}
+
 	const int astral = real_room(PLANE_ZONETARG_ROOMNUMB);
 	if (astral == NOWHERE || world[ch->in_room].zone != world[astral].zone)
 	{
@@ -2051,11 +2072,11 @@ void do_shift_prime(P_char ch, char * /*arg*/, int /*cmd*/)
 
 	if (GET_RACE(ch) == RACE_GITHYANKI || GET_RACE(ch) == RACE_PILLITHID ||
 	    GET_RACE(ch) == RACE_ILLITHID)
-		r_room = select_shift_prime_room(githyanki_room);
+		r_room = select_shift_prime_room(ch, githyanki_room);
 	else if (GET_RACE(ch) == RACE_GITHZERAI)
-		r_room = select_shift_prime_room(githzerai_room);
+		r_room = select_shift_prime_room(ch, githzerai_room);
 	else if (GET_RACE(ch) == RACE_PHANTOM)
-		r_room = select_shift_prime_room(phantom_room);
+		r_room = select_shift_prime_room(ch, phantom_room);
 
 	if (r_room == NOWHERE)
 	{
