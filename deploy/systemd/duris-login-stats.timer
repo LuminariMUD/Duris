@@ -1,0 +1,12 @@
+[Unit]
+Description=Nightly Duris account login statistics export
+
+[Timer]
+# Just after midnight in the export's time zone, so yesterday is complete.
+OnCalendar=*-*-* 00:15:00 UTC
+Persistent=true
+RandomizedDelaySec=5min
+Unit=duris-login-stats.service
+
+[Install]
+WantedBy=timers.target

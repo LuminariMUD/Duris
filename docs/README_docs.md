@@ -100,6 +100,7 @@ Colorization:
 
 | Document | Purpose |
 |----------|---------|
+| [LOGIN_STATS.md](operations/LOGIN_STATS.md) | Immutable login snapshots, nightly JSON export, user-service setup and local verification. |
 | [RUNBOOK.md](operations/RUNBOOK.md) | Startup, migration, backup, restore, recovery, reconciliation, and the release boundary. |
 | [CONFIGURATION.md](operations/CONFIGURATION.md) | Runtime variables, Redis, listeners, proxy handling, and diagnostics. |
 | [BACKUPS.md](operations/BACKUPS.md) | Backup policy, generations, off-host copies, and isolated restore qualification. |
@@ -195,3 +196,6 @@ are in Git history at commit `212592e3`.
 - `lib/` is **not documentation**. `lib/information/` is read by the server at runtime
   (`src/cmd/wikihelp.c`, `src/account/nanny.c`) and by `scripts/import_help_to_prod.sh`; moving it
   breaks the running game.
+- Each race page in `help/duris_help_parsed.hlp` ends with an `==Innate abilities==` list generated
+  from `src/classes/innates.c`. After changing a racial innate, run
+  `scripts/sync_race_innate_help.py`; `tests/async/test_race_innate_help_sync.py` fails until you do.
