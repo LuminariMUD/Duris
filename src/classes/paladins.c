@@ -770,6 +770,11 @@ static double blood_tithe_full_malice(P_char ap)
 	       get_property("spell.bloodTithe.decayPerRound", 0.25);
 }
 
+static P_char blood_tithe_body(P_char player)
+{
+	return IS_PC(player) && player->only.pc->switched ? player->only.pc->switched : player;
+}
+
 void spell_blood_tithe(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char /*victim*/, P_obj /*obj*/)
 {
@@ -808,6 +813,7 @@ void event_blood_tithe(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*dat
 /* called for every hit that lands; only enemies of the tithe holder fill the meter */
 void blood_tithe_charge(P_char attacker, P_char victim, double dam)
 {
+	victim = GET_PLYR(victim);
 	struct affected_type *af = get_spell_from_char(victim, SPELL_BLOOD_TITHE);
 
 	if (!af || dam <= 0)
@@ -830,9 +836,13 @@ void blood_tithe_charge(P_char attacker, P_char victim, double dam)
 /* the bonus one tithe holder grants each groupmate, before the pvp modifier */
 double blood_tithe_bonus(P_char ap)
 {
+	ap = GET_PLYR(ap);
 	struct affected_type *af = get_spell_from_char(ap, SPELL_BLOOD_TITHE);
 
 	if (!af || !IS_ALIVE(ap) || !IS_PC(ap))
+		return 0;
+	P_char body = blood_tithe_body(ap);
+	if (!IS_ALIVE(body))
 		return 0;
 
 	double charge = MIN(1.0, af->modifier / blood_tithe_full_malice(ap));
@@ -843,8 +853,7 @@ double blood_tithe_bonus(P_char ap)
 		if (!gl->ch || gl->ch == ap || !IS_PC(gl->ch))
 			continue;
 		// A morphed player's group entry stays on the original body in limbo.
-		P_char body = gl->ch->only.pc->switched ? gl->ch->only.pc->switched : gl->ch;
-		if (body->in_room == ap->in_room)
+		if (blood_tithe_body(gl->ch)->in_room == body->in_room)
 			++members;
 	}
 	double groupmates = MAX(reference, (double)members);
@@ -870,7 +879,7 @@ double blood_tithe_damage_bonus(P_char ch, P_char victim)
 
 	for (struct group_list *gl = player->group; gl; gl = gl->next)
 	{
-		if (gl->ch && gl->ch != player && gl->ch->in_room == ch->in_room)
+		if (gl->ch && gl->ch != player && blood_tithe_body(gl->ch)->in_room == ch->in_room)
 			bonus = MAX(bonus, blood_tithe_bonus(gl->ch));
 	}
 

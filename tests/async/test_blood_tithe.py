@@ -409,6 +409,40 @@ int main() {
         mate.only.pc->switched = nullptr;
     }
 
+    // Call of the Wild can transform a tithe holder. Its affect, HP basis and decay
+    // remain on the original player, while charge and proximity use the active form.
+    {
+        test_group party({&ap, &mate, &crowd[0], &crowd[1], &crowd[2]});
+        morph_npc.orig_char = &ap;
+        ap.only.pc->switched = &morph;
+        ap.in_room = 2;
+        morph.in_room = 1;
+        morph.points.max_hit = 10000; // the holder's own max HP still defines malice
+        set_malice(&ap, 0);
+        blood_tithe_charge(&enemy, &morph, 1000);
+        assert(malice(&ap) == 50 && morph.affected == nullptr);
+        blood_tithe_charge(&morph, &morph, 100);
+        blood_tithe_charge(&mate, &morph, 100);
+        blood_tithe_charge(&ally_pc, &morph, 100);
+        assert(malice(&ap) == 50);
+        for (int hit = 0; hit < 40; ++hit) blood_tithe_charge(&enemy, &morph, 1000);
+        assert(malice(&ap) == 600);
+        const double expected = 0.12 * std::sqrt(3.0 / 4.0);
+        assert(about(blood_tithe_bonus(&ap), expected));
+        assert(about(blood_tithe_bonus(&morph), expected));
+        assert(about(blood_tithe_damage_bonus(&mate, &enemy), expected));
+        event_blood_tithe(&ap, nullptr, nullptr, nullptr);
+        assert(malice(&ap) == 450);
+        assert(about(blood_tithe_damage_bonus(&mate, &enemy), expected * 0.75));
+        morph.specials.position = STAT_DEAD;
+        assert(blood_tithe_damage_bonus(&mate, &enemy) == 0);
+        morph.specials.position = STAT_NORMAL;
+        morph.in_room = 2;
+        ap.in_room = 1;
+        assert(blood_tithe_damage_bonus(&mate, &enemy) == 0);
+        ap.only.pc->switched = nullptr;
+    }
+
     // Score reports the offered bonus even when only the holder has Battle Lust.
     {
         test_group party({&ap, &mate});
@@ -440,6 +474,7 @@ int main() {
 functions = [extract_function("paladins.c", signature) for signature in (
     "bool has_aura(",
     "static double blood_tithe_full_malice(",
+    "static P_char blood_tithe_body(",
     "void spell_blood_tithe(",
     "void event_blood_tithe(",
     "void blood_tithe_charge(",
