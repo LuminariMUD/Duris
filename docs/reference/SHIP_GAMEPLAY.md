@@ -386,20 +386,21 @@ buying from you, columns the goods' origin:
 
 | Buyer ↓ / goods → | Fla | Dal | Men | Myr | Tor | Sar | Sto | Ven | Thu | Der |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Flann | — | 254 | 190 | 214 | 225 | 311 | 211 | 249 | 272 | 200 |
-| Dalvik | 254 | — | 286 | 178 | 235 | 257 | 275 | 296 | 201 | 208 |
-| Menden | 190 | 286 | — | 246 | 271 | 290 | 179 | 185 | 297 | 252 |
-| Myrabolus | 214 | 178 | 246 | — | 273 | 287 | 290 | 247 | 239 | 289 |
-| Torrhan | 225 | 235 | 271 | 273 | — | 308 | 224 | 254 | 203 | 313 |
-| Sarmiz'Duul | 311 | 257 | 290 | 287 | 308 | — | 243 | 276 | 314 | 386 |
-| Storm Port | 211 | 275 | 179 | 290 | 224 | 243 | — | 231 | 271 | 184 |
-| Venan'Trut | 249 | 296 | 185 | 247 | 254 | 276 | 231 | — | 252 | 297 |
-| Thur'Gurax | 272 | 201 | 297 | 239 | 203 | 314 | 271 | 252 | — | 281 |
-| Deramuth | 252 | 207 | 283 | 309 | 351 | 325 | 406 | 264 | 317 | — |
+| Flann | — | 254 | 190 | 214 | 225 | 311 | 211 | 249 | 272 | 267 |
+| Dalvik | 254 | — | 286 | 178 | 235 | 257 | 275 | 296 | 201 | 273 |
+| Menden | 190 | 286 | — | 246 | 271 | 290 | 179 | 185 | 297 | 203 |
+| Myrabolus | 214 | 178 | 246 | — | 273 | 287 | 290 | 247 | 239 | 234 |
+| Torrhan | 225 | 235 | 271 | 273 | — | 308 | 224 | 254 | 203 | 294 |
+| Sarmiz'Duul | 311 | 257 | 290 | 287 | 308 | — | 243 | 276 | 314 | 238 |
+| Storm Port | 211 | 275 | 179 | 290 | 224 | 243 | — | 231 | 271 | 249 |
+| Venan'Trut | 249 | 296 | 185 | 247 | 254 | 276 | 231 | — | 252 | 165 |
+| Thur'Gurax | 272 | 201 | 297 | 239 | 203 | 314 | 271 | 252 | — | 292 |
+| Deramuth | 267 | 273 | 203 | 234 | 294 | 238 | 249 | 165 | 292 | — |
 
-The same matrix applies to contraband. It was tuned against sailing distances
-(see `calculate_port_distances()`, now dormant), so longer runs generally pay
-more.
+The same matrix applies to contraband. Every value is the sailing distance
+printed by `calculate_port_distances()` (now dormant), so the matrix is
+symmetric and longer runs pay more. Deramuth ↔ Venan'Trut (165) is the
+shortest route and Sarmiz'Duul ↔ Thur'Gurax (314) the longest.
 
 ### Prices
 

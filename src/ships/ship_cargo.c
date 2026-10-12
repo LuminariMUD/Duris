@@ -454,21 +454,23 @@ const CargoData cargo_location_data[NUM_PORTS] = {
 };
 
 // This is the matrix that shows each port's preference for the other ports' cargo. Number is percentage.
+// Each value is the sailing distance printed by calculate_port_distances(), so the
+// matrix is symmetric and longer runs pay more.
 const int cargo_location_mod[NUM_PORTS][NUM_PORTS] = {
-	//            Flann  Dalvik Menden Myrabo Torrha Sarmiz Storm  Venan' Thur'G             MIN     MAX
-	/*  Flann */ { 0, 254, 190, 214, 225, 311, 211, 249, 272, 200 }, // Menden  Sarmiz
-	/* Dalvik */ { 254, 0, 286, 178, 235, 257, 275, 296, 201, 208 }, // Myrabo  Venan
-	/* Menden */ { 190, 286, 0, 246, 271, 290, 179, 185, 297, 252 }, // Storm   Thur'G
-	/* Myrabo */ { 214, 178, 246, 0, 273, 287, 290, 247, 239, 289 }, // Dalvik  Storm
-	/* Torrha */ { 225, 235, 271, 273, 0, 308, 224, 254, 203, 313 }, // Thur'G  Sarmiz
-	/* Sarmiz */ { 311, 257, 290, 287, 308, 0, 243, 276, 314, 386 }, // Storm   Thur'G
-	/* Storm  */ { 211, 275, 179, 290, 224, 243, 0, 231, 271, 184 }, // Menden  Myrabo
-	/* Venan' */ { 249, 296, 185, 247, 254, 276, 231, 0, 252, 297 }, // Menden  Dalvik
-	/* Thur'G */ { 272, 201, 297, 239, 203, 314, 271, 252, 0, 281 }, // Dalvik  Sarmiz
-	/* Dera   */ { 252, 207, 283, 309, 351, 325, 406, 264, 317, 0 } //
-	// Shortest route: Dalvik <-> Myrabolus (178)
+	//            Flann  Dalvik Menden Myrabo Torrha Sarmiz Storm  Venan' Thur'G Dera      MIN     MAX
+	/*  Flann */ { 0, 254, 190, 214, 225, 311, 211, 249, 272, 267 }, // Menden  Sarmiz
+	/* Dalvik */ { 254, 0, 286, 178, 235, 257, 275, 296, 201, 273 }, // Myrabo  Venan
+	/* Menden */ { 190, 286, 0, 246, 271, 290, 179, 185, 297, 203 }, // Storm   Thur'G
+	/* Myrabo */ { 214, 178, 246, 0, 273, 287, 290, 247, 239, 234 }, // Dalvik  Storm
+	/* Torrha */ { 225, 235, 271, 273, 0, 308, 224, 254, 203, 294 }, // Thur'G  Sarmiz
+	/* Sarmiz */ { 311, 257, 290, 287, 308, 0, 243, 276, 314, 238 }, // Dera    Thur'G
+	/* Storm  */ { 211, 275, 179, 290, 224, 243, 0, 231, 271, 249 }, // Menden  Myrabo
+	/* Venan' */ { 249, 296, 185, 247, 254, 276, 231, 0, 252, 165 }, // Dera    Dalvik
+	/* Thur'G */ { 272, 201, 297, 239, 203, 314, 271, 252, 0, 292 }, // Dalvik  Sarmiz
+	/* Dera   */ { 267, 273, 203, 234, 294, 238, 249, 165, 292, 0 } // Venan'  Torrha
+	// Shortest route: Deramuth <-> Venan'Trut (165)
 	// Longest route: Sarmiz'Duul <-> Thur'Gurax (314)
-	// Num routes: 36, Average distance: 250
+	// Num routes: 45, Average distance: 249
 };
 
 const char *cargo_name[NUM_PORTS] = {
