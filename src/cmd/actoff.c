@@ -399,14 +399,6 @@ float takedown_check(P_char ch, P_char victim, float chance, int skill, ulong ap
 		return TAKEDOWN_CANCELLED;
 	}
 
-	if (check_freedom_of_movement(
-		    victim, GET_LEVEL(ch) - GET_LEVEL(victim) >= 10 ? true : number(0, 1)))
-	{
-		show_failed_takedown_messages(ch, victim, skill, TAKEDOWN_EVADE);
-		CharWait(ch, WAIT_SEC * number(1, 3));
-		return TAKEDOWN_CANCELLED;
-	}
-
 	// Evade - Dodges takedowns, max 33% chance.
 	if (GET_CHAR_SKILL(victim, SKILL_EVADE) && !get_spell_from_char(victim, SKILL_EVADE) &&
 	    (notch_skill(victim, SKILL_EVADE, get_property("skill.notch.offensive", 7)) ||
@@ -582,6 +574,12 @@ float takedown_check(P_char ch, P_char victim, float chance, int skill, ulong ap
 		//   nor do we need to worry about an upper bounds and definitely don't need to upper at 75%!
 		// chance = BOUNDED(0, (int) (chance * get_property("spell.GuardianSpirit", 0.750)), 75);
 		chance *= get_property("spell.GuardianSpirit", 0.750);
+	}
+
+	// Freedom of movement steadies the victim for the whole spell instead of being used up.
+	if (affected_by_spell(victim, SPELL_FREEDOM_OF_MOVEMENT))
+	{
+		chance *= get_property("spell.FreedomOfMovement.takedown", 0.800);
 	}
 
 	// No need to bind chance here either.
@@ -6452,6 +6450,12 @@ bool backstab(P_char ch, P_char victim)
 	{
 		guardian_spirits_messages(ch, victim);
 		percent_chance = MAX(0, percent_chance - GET_LEVEL(victim));
+	}
+
+	if (affected_by_spell(victim, SPELL_FREEDOM_OF_MOVEMENT))
+	{
+		percent_chance = (int)(percent_chance *
+				       get_property("spell.FreedomOfMovement.backstab", 0.700));
 	}
 
 	if (DEBUG)
