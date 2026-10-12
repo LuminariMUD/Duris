@@ -1571,6 +1571,26 @@ Mauler's blood.
 See also: MAULER, MANGLE, SPEC_LIST, BERSERKER, SKILL_BERSERKER
 
 #
+"BOON" (Command)
+===========================================================================
+Syntax: boon
+
+Boons grant bonuses or rewards for meeting goals such as killing monsters,
+completing zones, gaining levels or earning frags.
+
+Type "boon" to see the specific details of current boons: requirements,
+rewards, eligible racewar sides and time remaining. An "R" marks a
+repeatable boon.
+
+Boons apply automatically while enabled; "toggle boon" turns participation
+on or off.
+
+"boon shop" shows your shop and stat points. Spend an available stat point
+with "boon shop stat <attribute>", for example "boon shop stat str".
+===========================================================================
+See also: TOGGLE, EPIC, FRAGS
+
+#
 "BOULDER" (Spell)
 ===========================================================================
 Area of effect: <victim>
