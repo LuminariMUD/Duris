@@ -5,10 +5,30 @@ travel between learned stops at distance-based fares, and earn discovery EXP. Ke
 dedicated epic-zone trips separate, with their existing origins, fares, restrictions,
 and one-way service.
 
-Status: PR #51 review repairs and local qualification complete.
+Status: implementation, PR #51 review repairs and local qualification complete.
 Updated 2026-10-12. The initial feature was qualified at `11354ecd1`.
 This plan covers the complete feature in
 [issue #40](https://github.com/LuminariMUD/Duris/issues/40).
+
+## Completion and rollout handoff
+
+All six implementation steps and all three review repairs are complete. There is
+no remaining development phase in this plan. [PR #51](https://github.com/LuminariMUD/Duris/pull/51)
+is the delivery record and closes issue #40 when merged.
+
+The merge strategy is squash, preserving master's required linear history. Master
+`0da9292ca` is already contained in the branch; no rebase, conflict resolution or
+stacked dependency is needed. This merge does not create a release tag.
+
+The next session, if requested, is an owner-authorized production rollout under
+the [deployment tracker](../operations/PRODUCTION_DEPLOYMENT.md) and
+[operations runbook](../operations/RUNBOOK.md). Verify the target and backup, qualify
+the pending [immutable migrations](../persistence/IMMUTABLE_MIGRATIONS.md) on a
+disposable restore, and apply through `0038_learned_flight_stops` before starting
+the matching production build. Include the changed world/sign and maintained help
+sources, using the existing SQL help import path where applicable. Verify the
+running executable, health/readiness, discovery, fare and ticket redemption, carrier
+return, and retained discoveries after relog. Rollout has not been started here.
 
 ## Review handoff
 
@@ -82,10 +102,9 @@ were valid and are addressed in `69065e32f` and `68b638d9e`:
   ASan/UBSan and covers ordinary items and trusted-player exemptions as well.
 
 No new persistence fields, event types or inventory-transfer API were needed.
-The branch already contains master `0da9292ca`; the review fixes remain separate
-commits, with no stacked dependency or release tag. Use a maintainer squash merge
-to satisfy master's existing linear-history and restricted-update rules. The PR
-is left unmerged; no repository protection is changed.
+The review fixes remain separate commits in the PR's source history. The delivery
+and next-session boundary are recorded in the completion handoff above; repository
+protections remain unchanged.
 
 Final local qualification on `68b638d9e`:
 
