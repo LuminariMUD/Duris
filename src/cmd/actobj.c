@@ -5551,6 +5551,7 @@ int wearing_invis(P_char ch)
 #define REMOVE_BREAK_ENCHANT 2
 #define REMOVE_CANT_CARRY 3
 #define REMOVE_NOT_USING 4
+#define REMOVE_EXTRACTED 5
 int remove_item(P_char ch, P_obj obj, int position)
 {
 	struct obj_affect *o_af;
@@ -5585,23 +5586,33 @@ int remove_item(P_char ch, P_obj obj, int position)
 				strip_holy_sword(ch);
 			}
 
-			// DEFERRED: use-after-free — obj_to_char may free obj via crumbleloot
-			// extraction (handler.c), but callers below dereference obj (IS_SET,
-			// get_obj_affect, obj_affect_remove). Fix requires obj_to_char
-			// returning freed-status or a zombie flag.
-			obj_to_char(unequip_char(ch, position), ch);
+			unequip_char(ch, position);
 
 			// Remove Affects
 			if (IS_SET(obj->bitvector, AFF_INVISIBLE) &&
 			    affected_by_spell(ch, TAG_PERMINVIS) && !wearing_invis(ch))
 				affect_from_char(ch, TAG_PERMINVIS);
 
-			if (obj && (o_af = get_obj_affect(obj, SKILL_ENCHANT)))
+			int result = REMOVE_SUCCESS;
+			if ((o_af = get_obj_affect(obj, SKILL_ENCHANT)))
 			{
 				affect_from_char(ch, o_af->data);
 				obj_affect_remove(obj, o_af);
-				return REMOVE_BREAK_ENCHANT;
+				result = REMOVE_BREAK_ENCHANT;
 			}
+
+			// Clean up item effects before inventory transfer can crumble the object.
+			if (OBJ_VNUM(obj) == 400218 && !IS_MULTICLASS_PC(ch))
+			{
+				affect_from_char(ch, SPELL_BATTLEMAGE);
+				send_to_char(
+					"&+rAs you remove the &+Ymaje&+rst&+Yic &+Yrobe&+r, you feel your enhanced &+mpower&+r fade.&n\r\n",
+					ch);
+			}
+			const bool crumbles = IS_OBJ_STAT2(obj, ITEM2_CRUMBLELOOT) && IS_PC(ch) &&
+					      !IS_TRUSTED(ch);
+			obj_to_char(obj, ch);
+			return crumbles ? REMOVE_EXTRACTED : result;
 		}
 		else
 		{
@@ -5629,9 +5640,10 @@ int remove_and_wear(P_char ch, P_obj obj_object, int position, int keyword, bool
 	if (temp)
 	{
 		removed = remove_item(ch, temp, position);
-		if (removed == REMOVE_SUCCESS || removed == REMOVE_BREAK_ENCHANT)
+		if (removed == REMOVE_SUCCESS || removed == REMOVE_BREAK_ENCHANT ||
+		    removed == REMOVE_EXTRACTED)
 		{
-			if (showit)
+			if (showit && removed != REMOVE_EXTRACTED)
 			{
 				act("You stop using $p.", FALSE, ch, temp, 0, TO_CHAR);
 				if (removed == REMOVE_BREAK_ENCHANT)
@@ -7098,9 +7110,13 @@ void do_remove(P_char ch, char *argument, int /*cmd*/)
 				temp_obj = ch->equipment[k];
 				ret_type = remove_item(ch, ch->equipment[k], k);
 				// Acknowledge Removal
-				if (ret_type == REMOVE_SUCCESS || ret_type == REMOVE_BREAK_ENCHANT)
+				if (ret_type == REMOVE_SUCCESS ||
+				    ret_type == REMOVE_BREAK_ENCHANT ||
+				    ret_type == REMOVE_EXTRACTED)
 				{
-					act("You stop using $p.", FALSE, ch, temp_obj, 0, TO_CHAR);
+					if (ret_type != REMOVE_EXTRACTED)
+						act("You stop using $p.", FALSE, ch, temp_obj, 0,
+						    TO_CHAR);
 					// Drannak - set affect noauction to prevent selling off equip prior to being fragged
 					affect_from_char(ch, SPELL_NOAUCTION);
 					bzero(&af, sizeof(af));
@@ -7108,17 +7124,6 @@ void do_remove(P_char ch, char *argument, int /*cmd*/)
 					af.duration = 2;
 					af.modifier = 4000;
 					affect_to_char(ch, &af);
-
-					// Battlemage robe
-					if (temp_obj->R_num >= 0 &&
-					    obj_index[temp_obj->R_num].virtual_number == 400218 &&
-					    !IS_MULTICLASS_PC(ch))
-					{
-						affect_from_char(ch, SPELL_BATTLEMAGE);
-						send_to_char(
-							"&+rAs you remove the &+Ymaje&+rst&+Yic &+Yrobe&+r, you feel your enhanced &+mpower&+r fade.&n\r\n",
-							ch);
-					}
 
 					if (naked == TRUE)
 						naked = FALSE;
@@ -7161,10 +7166,15 @@ void do_remove(P_char ch, char *argument, int /*cmd*/)
 			obj_object = get_object_in_equip(ch, Gbuf1, &j);
 			ret_type = remove_item(ch, obj_object, j);
 			// Acknowledge Removal
-			if (ret_type == REMOVE_SUCCESS || ret_type == REMOVE_BREAK_ENCHANT)
+			if (ret_type == REMOVE_SUCCESS || ret_type == REMOVE_BREAK_ENCHANT ||
+			    ret_type == REMOVE_EXTRACTED)
 			{
-				act("You stop using $p.", FALSE, ch, obj_object, 0, TO_CHAR);
-				act("$n stops using $p.", TRUE, ch, obj_object, 0, TO_ROOM);
+				if (ret_type != REMOVE_EXTRACTED)
+				{
+					act("You stop using $p.", FALSE, ch, obj_object, 0,
+					    TO_CHAR);
+					act("$n stops using $p.", TRUE, ch, obj_object, 0, TO_ROOM);
+				}
 
 				affect_from_char(ch, SPELL_NOAUCTION);
 				bzero(&af, sizeof(af));
@@ -7172,17 +7182,6 @@ void do_remove(P_char ch, char *argument, int /*cmd*/)
 				af.duration = 2;
 				af.modifier = 4000;
 				affect_to_char(ch, &af);
-
-				// Battlemage robe
-				if (obj_object->R_num >= 0 &&
-				    obj_index[obj_object->R_num].virtual_number == 400218 &&
-				    !IS_MULTICLASS_PC(ch))
-				{
-					affect_from_char(ch, SPELL_BATTLEMAGE);
-					send_to_char(
-						"&+rAs you remove the &+Ymaje&+rst&+Yic &+Yrobe&+r, you feel your enhanced &+mpower&+r fade.&n\r\n",
-						ch);
-				}
 			}
 
 			// Parse Remaining Messages

@@ -11,6 +11,23 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Crumbling equipment removal
+
+PR #51's review reproduced a pre-existing use-after-free when `obj_to_char()`
+destroyed `ITEM2_CRUMBLELOOT` equipment during removal. `remove_item()` now removes
+item effects before transfer and reports extraction to its callers. Single-item
+removal, `remove all`, and automatic replacement never inspect or message the freed
+object; a replacement can still occupy the vacated slot. The duplicated battlemage
+robe cleanup now runs in the shared removal path before the object can disappear.
+
+`python3 tests/async/test_remove_crumbleloot.py` compiles the production public
+remove command, removal/replacement helpers and inventory-transfer function under
+ASan/UBSan. It covers crumbling and ordinary items, trusted-player exemptions,
+invisibility/enchantment cleanup, and the robe's spell cleanup. The fixture uses
+real heap deletion at extraction; the original code reports heap-use-after-free
+in `remove_item()` through `do_remove()`. World messaging, equipment detachment
+and spell bookkeeping are fixture boundaries, not a complete server journey.
+
 ## Learned flight network
 
 Issue #40 replaces fixed ordinary routes with 25 per-character discoveries and
