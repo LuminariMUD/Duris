@@ -23,9 +23,13 @@ Connection settings come only from the environment:
   LOGIN_STATS_DB_USER
   LOGIN_STATS_DB_PASSWORD
 
-The database user needs nothing more than:
+For the checked-in service's loopback TCP connection, create a dedicated user
+with the same password as LOGIN_STATS_DB_PASSWORD and grant only:
 
-  GRANT SELECT ON <db>.session_audit_outcome TO 'duris_stats'@'localhost';
+  CREATE USER 'duris_stats'@'127.0.0.1' IDENTIFIED BY '<password>';
+  GRANT SELECT ON <db>.session_audit_outcome TO 'duris_stats'@'127.0.0.1';
+
+Use 'localhost' instead only for a Unix-socket connection (the script default).
 
 Example:
 

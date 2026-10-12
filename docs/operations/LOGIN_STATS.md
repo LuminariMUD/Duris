@@ -36,8 +36,14 @@ needs the `mysql` client, Python 3 and IANA timezone data. Use a dedicated accou
 with only `SELECT` on `session_audit_outcome`; no access to `player_data` is needed:
 
 ```sql
-GRANT SELECT ON duris_prod.session_audit_outcome TO 'duris_stats'@'localhost';
+CREATE USER 'duris_stats'@'127.0.0.1' IDENTIFIED BY '<password from login-stats.env>';
+GRANT SELECT ON duris_prod.session_audit_outcome TO 'duris_stats'@'127.0.0.1';
 ```
+
+Use the same password in `LOGIN_STATS_DB_PASSWORD`. The account host must match
+the connection: `127.0.0.1` for the unit's loopback TCP connection, or `localhost`
+if overriding `LOGIN_STATS_DB_HOST` to use a Unix socket. A `localhost` grant does
+not authorize loopback TCP on MariaDB/Linux.
 
 After the migration and updated MUD are installed, run as the service account:
 
