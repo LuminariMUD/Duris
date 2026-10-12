@@ -11571,7 +11571,8 @@ void do_legsweep(P_char ch, char *arg, int /*cmd*/)
 
 	appear(ch);
 
-	if (get_takedown_size(vict) < get_takedown_size(ch))
+	const int size_difference = get_takedown_size(vict) - get_takedown_size(ch);
+	if (size_difference < -1)
 	{
 		act("Due to $S small size, you manage to take your own legs out from under you!",
 		    FALSE, ch, 0, vict, TO_CHAR);
@@ -11584,7 +11585,7 @@ void do_legsweep(P_char ch, char *arg, int /*cmd*/)
 		return;
 	}
 
-	if (get_takedown_size(vict) > (get_takedown_size(ch) + 1))
+	if (size_difference > 1)
 	{
 		act("You attempt to legsweep $M only to manage to hit $S massive shin and fall down yourself!",
 		    FALSE, ch, 0, vict, TO_CHAR);
@@ -11619,6 +11620,10 @@ void do_legsweep(P_char ch, char *arg, int /*cmd*/)
 	{
 		percent_chance *= .75;
 	}
+
+	// Adjacent size categories are harder to sweep, not automatic failures.
+	if (size_difference != 0)
+		percent_chance *= 0.75;
 
 	percent_chance = takedown_check(ch, vict, percent_chance, SKILL_LEGSWEEP, TAKEDOWN_ALL);
 
