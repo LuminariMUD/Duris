@@ -30,7 +30,7 @@ bool chaos_command_allowed(P_char ch)
 {
 	if (!ch || !IS_PC(ch))
 		return false;
-	if (GET_LEVEL(ch) >= OVERLORD)
+	if (GET_LEVEL(ch) >= FORGER)
 		return true;
 	if (!IS_TRUSTED(ch))
 	{
@@ -42,7 +42,7 @@ bool chaos_command_allowed(P_char ch)
 	if (!chaos_mud_enabled())
 	{
 		send_to_char("No, you can't have pony.  Not yours. "
-			     "(Chaos mode is disabled; level 62 staff can override it.)\n",
+			     "(Chaos mode is disabled; level 61 staff can override it.)\n",
 			     ch);
 		return false;
 	}

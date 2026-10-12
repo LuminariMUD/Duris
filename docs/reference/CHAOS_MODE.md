@@ -30,8 +30,10 @@ when `ENVIRONMENT=local`. It does not enable Chaos mode by itself. Level 62
 staff can use every `chaos` subcommand regardless of these switches, Chaos mode,
 or their mortal-mode flag, including `kit`, `kitbag`, and the test helpers.
 The quest-room helper also waives its test-account and localhost restrictions
-for level 62 staff. Other users keep the usual trusted-staff/Chaos-mode checks
-and the existing local test-account exception for `questroom`.
+for level 62 staff. Level 61 staff can also bypass the Chaos-mode and
+mortal-mode checks for ordinary commands, including `kit` and `kitbag`.
+Other users keep the usual trusted-staff/Chaos-mode checks and the existing
+local test-account exception for `questroom`.
 
 The override affects command access only; it does not enable automatic Chaos
 character creation or starter rewards. Argument ranges, target requirements,

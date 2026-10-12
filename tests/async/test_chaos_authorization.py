@@ -89,10 +89,11 @@ int main() {
                 staff.specials.act = mortal ? PLR_MORTAL : 0;
                 int before = money;
                 run(&staff, "plat");
-                bool allowed = level == OVERLORD || (mode && level > MAXLVLMORTAL && !mortal);
+                bool allowed = level >= FORGER || (mode && level > MAXLVLMORTAL && !mortal);
                 assert(money == before + (allowed ? 10000000 : 0));
                 if (!allowed)
-                    explains(level <= MAXLVLMORTAL || mortal ? "Trusted staff required" : "Chaos mode is disabled");
+                    explains(level <= MAXLVLMORTAL || mortal ? "Trusted staff required" :
+                             "Chaos mode is disabled; level 61 staff can override it.");
             }
         }
     }

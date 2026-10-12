@@ -273,8 +273,8 @@ int main()
     assert(restore_calls == 2 && restore_queued && restore_message.find("queued") != std::string::npos);
     restore_chaos_character_kit(&staff, "target");
     assert(restore_calls == 2);
-    // Level 62 staff can restore kits with Chaos off, even in mortal mode.
-    staff.player.level = OVERLORD;
+    // Level 61 staff can restore kits with Chaos off, even in mortal mode.
+    staff.player.level = FORGER;
     staff.specials.act |= PLR_MORTAL;
     chaos_enabled = false;
     restore_busy = restore_queued = false;
