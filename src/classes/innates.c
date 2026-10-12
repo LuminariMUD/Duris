@@ -50,6 +50,7 @@ float regen_factor[REG_MAX + 1];
 
 extern Skill skills[];
 extern P_room world;
+extern struct zone_data *zone_table;
 extern P_index mob_index;
 extern const char *dirs[];
 // extern int rev_dir[];
@@ -1973,8 +1974,21 @@ void do_shift_ethereal(P_char ch, char * /*arg*/, int /*cmd*/)
 void do_shift_prime(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	int astral = world[real_room(PLANE_ZONETARG_ROOMNUMB)].zone, r_room = NOWHERE;
-	const int githyanki_room[] = { 33366, 2381,  11545,  42950, 23691, 36171, 93001, 4437,
-				       90803, 96803, 619036, 17607, 6405,  88122, 53122 };
+	const struct
+	{
+		int room;
+		bool random_in_zone;
+	} githyanki_room[] = {
+		{ 6000, true }, // Clavikord, replacing Killing Fields
+		{ 2381, false },   { 11545, false },
+		{ 95800, true }, // Bugentolen (bugbears), replacing Drustl
+		{ 23691, false },  { 22400, true }, // Storm Port, replacing Crescent Chasm
+		{ 93001, false },  { 4437, false },
+		{ 90803, false },  { 96803, false },
+		{ 619036, false }, { 17607, false },
+		{ 6405, false },   { 1700, true }, // Quietus Quay, replacing Kelek
+		{ 53122, false },
+	};
 	const int githzerai_room[] = { 41767, 20484, 6224,  66651, 7117,  93665,  16805,
 				       5759,  2018,  99295, 93919, 16302, 574427, 557620 };
 	const int phantom_room[] = { 5927, 98731, 14373, 99465, 18305, 217481, 15100, 8486, 8430 };
@@ -1998,12 +2012,20 @@ void do_shift_prime(P_char ch, char * /*arg*/, int /*cmd*/)
 		return;
 	}
 
-	if (GET_RACE(ch) == RACE_GITHYANKI || GET_RACE(ch) == RACE_PILLITHID)
+	if (GET_RACE(ch) == RACE_GITHYANKI || GET_RACE(ch) == RACE_PILLITHID ||
+	    GET_RACE(ch) == RACE_ILLITHID)
 	{
 		do
-			r_room = real_room(githyanki_room[number(
-				0, (sizeof(githyanki_room) / sizeof(int)) - 1)]);
-		while (r_room == -1);
+		{
+			const auto &destination = githyanki_room[number(
+				0, (sizeof(githyanki_room) / sizeof(githyanki_room[0])) - 1)];
+			r_room = real_room(destination.room);
+			if (r_room != NOWHERE && destination.random_in_zone)
+			{
+				const auto &zone = zone_table[world[r_room].zone];
+				r_room = number(zone.real_bottom, zone.real_top);
+			}
+		} while (r_room == -1);
 	}
 	else if (GET_RACE(ch) == RACE_GITHZERAI)
 	{
@@ -2017,13 +2039,6 @@ void do_shift_prime(P_char ch, char * /*arg*/, int /*cmd*/)
 		do
 			r_room = real_room(
 				phantom_room[number(0, (sizeof(phantom_room) / sizeof(int)) - 1)]);
-		while (r_room == -1);
-	}
-	else if (GET_RACE(ch) == RACE_ILLITHID)
-	{
-		do
-			r_room = real_room(githyanki_room[number(
-				0, (sizeof(githyanki_room) / sizeof(int)) - 1)]);
 		while (r_room == -1);
 	}
 	else
