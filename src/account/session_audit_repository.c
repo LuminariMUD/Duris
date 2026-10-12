@@ -49,11 +49,20 @@ bool session_audit_repository_execute(MYSQL *connection, const critical_command 
 	}
 	const std::string operation =
 		bytes_hex(command.operation_id.bytes.data(), command.operation_id.bytes.size());
+	const std::string account = result->account_name.empty() ?
+					    "NULL" :
+					    "UNHEX('" +
+						    bytes_hex(reinterpret_cast<const uint8_t *>(
+								      result->account_name.data()),
+							      result->account_name.size()) +
+						    "')";
+	const std::string staff = result->account_name.empty() ? "NULL" :
+								 (result->is_staff ? "1" : "0");
 	const std::string sql =
-		"INSERT INTO session_audit_outcome(operation_id,pid,event_type,occurred_at) "
+		"INSERT INTO session_audit_outcome(operation_id,pid,event_type,occurred_at,account_name,is_staff) "
 		"VALUES(UNHEX('" +
 		operation + "')," + std::to_string(result->pid) + "," +
 		std::to_string(static_cast<unsigned int>(result->event)) + ",FROM_UNIXTIME(" +
-		std::to_string(result->occurred_at) + "))";
+		std::to_string(result->occurred_at) + ")," + account + "," + staff + ")";
 	return mysql_real_query(connection, sql.data(), sql.size()) == 0;
 }

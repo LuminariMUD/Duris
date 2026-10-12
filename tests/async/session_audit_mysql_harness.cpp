@@ -54,17 +54,50 @@ int main()
 	assert(critical_operation_id_generate(&operation));
 	critical_command command = {};
 	assert(session_audit_command_build(&command, operation,
-					   { PID, session_audit_event::login, 1700000000 }));
+					   { PID, session_audit_event::login, 1700000000, "alice",
+					     false }));
 	command.accepted_at_usec = 1;
 	const critical_apply_result applied = critical_command_repository_apply(db, command);
 	assert(applied.outcome == critical_apply_outcome::applied);
 	assert(scalar(db, "SELECT COUNT(*) FROM session_audit_outcome WHERE pid=" +
-				  std::to_string(PID) + " AND event_type=1") == 1);
+				  std::to_string(PID) +
+				  " AND event_type=1 AND account_name='alice' AND is_staff=0") ==
+	       1);
 	assert(critical_command_repository_apply(db, command).outcome ==
 	       critical_apply_outcome::already_applied);
 	assert(scalar(db, "SELECT COUNT(*) FROM session_audit_outcome WHERE pid=" +
 				  std::to_string(PID)) == 1);
-	cleanup(db);
+	// Keep these isolated fixtures for the exporter test which follows this harness.
+	for (const auto &payload : { session_audit_payload{ PID + 1, session_audit_event::login,
+							    1700000001, "Alice", false },
+				     session_audit_payload{ PID + 2, session_audit_event::login,
+							    1700000002, "bob", false },
+				     session_audit_payload{ PID + 3, session_audit_event::login,
+							    1700000003, "staff", true },
+				     session_audit_payload{ PID + 4, session_audit_event::logout,
+							    1700000004, "logout", false },
+				     session_audit_payload{ PID + 5, session_audit_event::login,
+							    1700100000, "today", false } })
+	{
+		assert(critical_operation_id_generate(&operation));
+		assert(session_audit_command_build(&command, operation, payload));
+		command.accepted_at_usec = 1;
+		assert(critical_command_repository_apply(db, command).outcome ==
+		       critical_apply_outcome::applied);
+	}
+	assert(critical_operation_id_generate(&operation));
+	assert(session_audit_command_build(&command, operation,
+					   { PID + 6, session_audit_event::login, 1700000005 }));
+	command.payload_version = 1;
+	command.payload.resize(13);
+	command.accepted_at_usec = 1;
+	assert(critical_command_repository_apply(db, command).outcome ==
+	       critical_apply_outcome::applied);
+	assert(critical_command_repository_apply(db, command).outcome ==
+	       critical_apply_outcome::already_applied);
+	assert(scalar(db, "SELECT COUNT(*) FROM session_audit_outcome WHERE pid=" +
+				  std::to_string(PID + 6) +
+				  " AND account_name IS NULL AND is_staff IS NULL") == 1);
 	mysql_close(db);
 	std::cout << "typed session audit apply and replay passed\n";
 }

@@ -11,6 +11,17 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Login statistics retain event-time identity
+
+`test_session_audit_snapshot.py` drives the real submit and codec path, mutates the
+live account and level after queueing, and verifies unchanged identity, version-1
+replay and malformed-payload rejection. `run_session_audit_schema_mysql.sh` writes
+through the real typed repository and runs the SELECT-only exporter before and
+after promotion, transfer and deletion. It also covers alts, staff, legacy NULL
+snapshots, today exclusion and UTC/Sydney boundaries. The temporary user-unit
+journey `run_login_stats_service.py` checks ordering, first-run directory creation
+and recovery after the first query fails. No test changes the live deployment.
+
 ## Monster shrug and Rrakkma
 
 The seven restored monster shrug values leave playable vampires at 40 through a

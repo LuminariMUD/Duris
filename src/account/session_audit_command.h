@@ -18,8 +18,9 @@
 #include "persistence/critical_command.h"
 
 #include <array>
+#include <string>
 
-constexpr uint16_t SESSION_AUDIT_PAYLOAD_VERSION = 1;
+constexpr uint16_t SESSION_AUDIT_PAYLOAD_VERSION = 2;
 constexpr size_t SESSION_AUDIT_RESULT_BYTES = 16;
 
 enum class session_audit_event : uint8_t
@@ -33,6 +34,8 @@ struct session_audit_payload
 	uint32_t pid;
 	session_audit_event event;
 	int64_t occurred_at;
+	std::string account_name = {};
+	bool is_staff = false;
 };
 
 using session_audit_result = session_audit_payload;
