@@ -15,6 +15,7 @@
 #include "persistence/maintenance_repository.h"
 
 #include "combat/frag_cap_config.h"
+#include "core/defines.h"
 #include "persistence/persistence_observability.h"
 #include "sql/sql_pool.h"
 #ifdef __NO_MYSQL__
@@ -332,6 +333,28 @@ maintenance_result execute_epic_modifiers(MYSQL *connection, const maintenance_r
 	return result;
 }
 
+// Runs a query and stores its first row in values, left empty when it returns none.
+bool query_first_row(MYSQL *connection, const std::string &sql, std::vector<std::string> *values)
+{
+	if (!execute_sql(connection, sql))
+		return false;
+	MYSQL_RES *rows = mysql_store_result(connection);
+	if (!rows)
+		return false;
+	values->clear();
+	if (MYSQL_ROW row = mysql_fetch_row(rows))
+		for (unsigned int index = 0; index < mysql_num_fields(rows); ++index)
+			values->push_back(row[index] ? row[index] : "");
+	mysql_free_result(rows);
+	return true;
+}
+
+// Once next_update has passed, the first frag since then by the side with more total frags
+// (by either side while the totals are level), of a victim at most unlock_victim_levels_below
+// the level open to all, unlocks one more level for that side if an individual's gain
+// meets unlock_minimum_frag_points. Group gains are never summed for eligibility. A level
+// that opens a spell circle (see get_max_circle()) or reaches the maximum opens to every
+// side instead. The next unlock waits unlock_timer_days from this one.
 maintenance_result execute_level_cap(MYSQL *connection, const maintenance_request &request)
 {
 	if (request.value_count != 1 || request.values[0] <= 0)
@@ -348,100 +371,91 @@ maintenance_result execute_level_cap(MYSQL *connection, const maintenance_reques
 			return sql_failure(connection, request);
 		return failure(request, maintenance_outcome::complete, 0);
 	}
+	std::vector<std::string> row;
 	if (!before_deadline(request) ||
-	    !execute_sql(connection,
-			 "SELECT id,most_frags,racewar_leader,level,UNIX_TIMESTAMP(next_update) "
-			 "FROM level_cap ORDER BY id LIMIT 1 FOR UPDATE"))
+	    !query_first_row(connection,
+			     "SELECT id,level,level_good,level_evil,UNIX_TIMESTAMP(next_update) "
+			     "FROM level_cap ORDER BY id LIMIT 1 FOR UPDATE",
+			     &row))
 		return sql_failure(connection, request);
-	MYSQL_RES *rows = mysql_store_result(connection);
-	if (!rows)
-		return sql_failure(connection, request);
-	MYSQL_ROW row = mysql_fetch_row(rows);
-	if (!row || !row[0] || !row[1] || !row[2] || !row[3] || !row[4])
-	{
-		mysql_free_result(rows);
-		if (!execute_sql(connection, "COMMIT"))
-			return sql_failure(connection, request);
-		return failure(request, maintenance_outcome::complete, 0);
-	}
-	const uint64_t id = strtoull(row[0], nullptr, 10);
-	const double old_max = strtod(row[1], nullptr);
-	const int racewar = atoi(row[2]);
-	const int old_level = atoi(row[3]);
-	const int64_t next_update = strtoll(row[4], nullptr, 10);
-	mysql_free_result(rows);
 	const auto *config = frag_cap_config_get();
-	if (!id || !config || racewar == 0 || old_level < 0 ||
-	    old_level >= config->cap_maximum_level)
+	if (row.empty() || atoi(row[1].c_str()) >= config->cap_maximum_level ||
+	    request.values[0] < strtoll(row[4].c_str(), nullptr, 10))
 	{
 		if (!execute_sql(connection, "COMMIT"))
 			return sql_failure(connection, request);
 		return failure(request, maintenance_outcome::complete, 0);
 	}
-	if (!execute_sql(connection,
-			 "SELECT COALESCE(SUM(total_frags),0) FROM frag_leaderboard WHERE racewar=" +
-				 std::to_string(racewar)))
+	const std::string id = row[0];
+	const int open_level = atoi(row[1].c_str());
+	int good_level = atoi(row[2].c_str());
+	int evil_level = atoi(row[3].c_str());
+	const int64_t next_update = strtoll(row[4].c_str(), nullptr, 10);
+
+	const std::string good = std::to_string(RACEWAR_GOOD), evil = std::to_string(RACEWAR_EVIL);
+	const std::string side_frags =
+		"SELECT COALESCE(SUM(total_frags),0) FROM frag_leaderboard WHERE racewar=";
+	if (!query_first_row(connection,
+			     "SELECT (" + side_frags + good + "),(" + side_frags + evil + ")",
+			     &row) ||
+	    row.empty())
 		return sql_failure(connection, request);
-	rows = mysql_store_result(connection);
-	row = rows ? mysql_fetch_row(rows) : nullptr;
-	if (!rows || !row || !row[0])
-	{
-		if (rows)
-			mysql_free_result(rows);
+	const int64_t good_frags = strtoll(row[0].c_str(), nullptr, 10);
+	const int64_t evil_frags = strtoll(row[1].c_str(), nullptr, 10);
+	const std::string leaders = good_frags > evil_frags ? good :
+				    evil_frags > good_frags ? evil :
+							      good + "," + evil;
+	if (!before_deadline(request) ||
+	    !query_first_row(
+		    connection,
+		    "SELECT f.racewar,UNIX_TIMESTAMP(o.created_at) FROM combat_outcome o "
+		    "JOIN pkill_info v ON v.event_id=o.pkill_event_id AND v.pid=o.victim_pid "
+		    "JOIN combat_outcome_participant p ON p.operation_id=o.operation_id "
+		    "AND p.frag_delta>=" +
+			    std::to_string(config->unlock_minimum_frag_points) +
+			    " JOIN frag_leaderboard f ON f.pid=p.pid "
+			    "WHERE o.created_at>=FROM_UNIXTIME(" +
+			    std::to_string(next_update) + ") AND v.level>=" +
+			    std::to_string(open_level - config->unlock_victim_levels_below) +
+			    " AND f.racewar IN (" + leaders +
+			    ") ORDER BY o.created_at,o.operation_id LIMIT 1",
+		    &row))
 		return sql_failure(connection, request);
-	}
-	const int64_t raw_frags = strtoll(row[0], nullptr, 10);
-	mysql_free_result(rows);
-	const double frags = raw_frags / 100.0;
-	uint64_t created_boon = 0;
-	bool level_cap_changed = false;
-	if (request.values[0] >= next_update &&
-	    old_level < frag_cap_config_cap_level_from_frags(frags))
+	if (row.empty())
 	{
-		const std::string boon =
-			"INSERT INTO boons(time,duration,racewar,type,opt,criteria,criteria2,bonus,"
-			"bonus2,random,active,pid,rpt) SELECT " +
-			std::to_string(request.values[0]) + ',' +
-			std::to_string(frag_cap_config_boon_duration_minutes()) + ',' +
-			std::to_string(racewar) + ",1,3,1,-1," +
-			std::to_string(frag_cap_config_boon_bonus()) +
-			",0,0,1,0,1 WHERE (SELECT COUNT(*) FROM boons WHERE active=1)<99";
-		const int next_level =
-			std::min(old_level + config->cap_level_step, config->cap_maximum_level);
-		const int64_t next_time =
-			request.values[0] + 86400LL * frag_cap_config_timer_days(old_level);
-		if (!execute_sql(connection, boon))
+		if (!execute_sql(connection, "COMMIT"))
 			return sql_failure(connection, request);
-		if (mysql_affected_rows(connection) == 1)
-			created_boon = mysql_insert_id(connection);
-		if (!execute_sql(connection,
-				 "UPDATE level_cap SET most_frags=" + std::to_string(frags) +
-					 ",racewar_leader=" + std::to_string(racewar) +
-					 ",level=" + std::to_string(next_level) +
-					 ",next_update=FROM_UNIXTIME(" + std::to_string(next_time) +
-					 ") WHERE id=" + std::to_string(id)))
-			return sql_failure(connection, request);
-		level_cap_changed = mysql_affected_rows(connection) == 1;
+		return failure(request, maintenance_outcome::complete, 0);
 	}
-	else if (frags > old_max)
-	{
-		if (!execute_sql(connection,
-				 "UPDATE level_cap SET most_frags=" + std::to_string(frags) +
-					 ",racewar_leader=" + std::to_string(racewar) +
-					 " WHERE id=" + std::to_string(id)))
-			return sql_failure(connection, request);
-		level_cap_changed = mysql_affected_rows(connection) == 1;
-	}
+	const int side = atoi(row[0].c_str());
+	const int64_t frag_time = strtoll(row[1].c_str(), nullptr, 10);
+	int &side_level = side == RACEWAR_GOOD ? good_level : evil_level;
+	const int level = std::min(std::max(open_level, side_level) + 1, config->cap_maximum_level);
+	const bool for_all = level == config->cap_maximum_level || (level - 1) % 5 == 0;
+	if (!for_all)
+		side_level = level;
+	// From the unlock, not an older frag, so frags recorded before the job ran cannot chain
+	// unlocks; and at least a second on, so that with no timer the frag cannot unlock again.
+	const int64_t next_unlock = std::max(frag_time, request.values[0]) +
+				    std::max<int64_t>(1, 86400LL * config->unlock_timer_days);
+	if (!execute_sql(connection, "UPDATE level_cap SET level=" +
+					     std::to_string(for_all ? level : open_level) +
+					     ",level_good=" + std::to_string(good_level) +
+					     ",level_evil=" + std::to_string(evil_level) +
+					     ",next_update=FROM_UNIXTIME(" +
+					     std::to_string(next_unlock) + ") WHERE id=" + id))
+		return sql_failure(connection, request);
+	const bool level_cap_changed = mysql_affected_rows(connection) == 1;
 	if (!before_deadline(request) || !execute_sql(connection, "COMMIT"))
 		return sql_failure(connection, request);
 	maintenance_result result = failure(request, maintenance_outcome::complete, 0);
-	result.rows = level_cap_changed ? 1 : 0;
-	if (created_boon)
+	if (level_cap_changed)
 	{
+		result.rows = 1;
 		result.value_count = 3;
-		result.values[0] = static_cast<int64_t>(created_boon);
-		result.values[1] = racewar;
-		result.values[2] = 0;
+		result.values[0] = side;
+		result.values[1] = level;
+		result.values[2] = for_all;
 	}
 	return result;
 }

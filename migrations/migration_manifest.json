@@ -558,6 +558,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "baa72890fa944e7631567af358394151f330ddcbbeea1e3f0297101433cd672a",
       "verify_checksum": "132f2bc9fc74fcfe2ad697c7fe7ad65e1f665fb7bbb3cbb42a1c324cb65f6556"
+    },
+    {
+      "id": "0039_level_cap_sides",
+      "sequence": 39,
+      "description": "Give each racewar side its own level-cap level beyond the level open to all",
+      "apply": "immutable/0039_level_cap_sides.sql",
+      "verify": "immutable/0039_level_cap_sides.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "4c343e649e77e70cf9cf66fcaaca714e35b2f1c0ed0f9922f988a947c4a78f3e",
+      "verify_checksum": "a9cbde7decfc928629dc2a88baead64305c55a67b919b2dbe5ce3c20d0d3d652"
     }
   ],
   "engine_verifiers": [

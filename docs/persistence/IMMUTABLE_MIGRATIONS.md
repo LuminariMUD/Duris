@@ -135,6 +135,13 @@ rows and version-1 replay retain NULL rather than inventing historical identity.
 The additive migration guards each column separately and re-runs safely.
 See [daily login statistics](../operations/LOGIN_STATS.md) for rollout and export.
 
+Migration 0039 adds `level_good` and `level_evil` to `level_cap`, each `INT NOT NULL
+DEFAULT 0`: the level a racewar side has unlocked beyond `level`, which stays the level
+open to all. A side's cap is the higher of the two, so the 0 every existing row receives
+keeps the live cap unchanged until the next unlock. The migration guards each column
+separately and re-runs safely, and its verifier checks both shapes and that each side
+level lies in 0-56. An existing database must apply it before the updated binary boots.
+
 ## Post-baseline migration contract
 
 Files live under `migrations/immutable/` and are listed explicitly in the manifest.
