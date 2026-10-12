@@ -12,7 +12,8 @@ revision `7a2900b74`. This plan covers the complete feature in
 ## Current implementation handoff
 
 - Branch: `feature/40-flight-network`; master was merged before implementation.
-  The working tree was clean when feature work began. No feature PR exists yet.
+  Persistence foundation commit `f0c829f47` is pushed to origin. The working tree
+  was clean when feature work began. No feature PR exists yet.
 - Outcome, files, non-goals, and proof remain the complete scope below. Ablation
   confirms one status mask, existing transport callbacks, and existing EXP/save
   paths; no separate discovery repository, reward writer, or recovery format.
@@ -39,7 +40,27 @@ revision `7a2900b74`. This plan covers the complete feature in
   `run_player_load_repository_mysql.sh`; `run_runtime_compatibility_mysql.sh` on
   MySQL 8.0, MariaDB 10.11 and 11.8. New engine fingerprints were measured, then all
   three runtime compatibility legs passed. No flight commands or gameplay journey
-  are implemented/proven yet. Full feature gates remain pending.
+  were proven by that commit. Full feature gates remain pending.
+- In progress after the persistence commit: corrected 27-service catalog (25 ordinary),
+  startup breadth-first paths, discovery and approved EXP, `flights`, common list/buy
+  selection, destination-based tickets, and redemption/movement bounds are implemented
+  locally. The server builds; existing singleton/recovery and quest EXP tests pass.
+  New `test_flight_network.py` passes under ASan/UBSan using production handlers:
+  all catalog paths, discovery/repeats, low-level/racial ordinary access, exact half
+  fares, list/buy agreement and ties, failed ticket creation, transfers, malformed
+  and obsolete tickets, wrong origins, busy/mounted carriers, in-flight `flights`,
+  invalid movement state, catalog reordering, epic gates, and zone/map lookup.
+  `test_world_singletons.py` still passes its five recovery cycles and duplicate
+  passenger/item cases. No gameplay journey exists yet.
+- EXP_QUEST now returns the amount actually credited before level advancement;
+  its existing callers ignore the result. This supplies accurate discovery feedback
+  without changing other EXP return contracts. `test_world_quest_xp_feedback.py`
+  passes on both backend builds, including rested/well-rested rewards, capped and
+  immortal characters, and the credited amount across a level-up.
+- The anywhere map lookup exposed an invalid-exit dereference in `maproom_of_zone`;
+  its sentinel check now precedes the room lookup. The new command test executes
+  this production lookup with an invalid exit and both present/missing map entrances.
+  No change to map-distance or shared graph APIs is needed.
 - Remaining: complete all six implementation steps and their proofs, run final
   gates, review the full diff, commit/push, and open a review-ready PR. No production
   deployment or release tag is part of this work.

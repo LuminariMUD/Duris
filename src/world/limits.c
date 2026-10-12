@@ -1583,7 +1583,8 @@ int gain_exp(P_char ch, P_char victim, const int value, int type)
 	// A mortal's quest line shows what was credited; an immortal is credited nothing, so its
 	// "would have gained" log keeps the award.
 	display_gain(ch,
-		     type == EXP_WORLD_QUEST && GET_LEVEL(ch) < MINLVLIMMORTAL ?
+		     (type == EXP_WORLD_QUEST || type == EXP_QUEST) &&
+				     GET_LEVEL(ch) < MINLVLIMMORTAL ?
 			     after_exp - before_exp :
 			     (int)XP_final,
 		     type);
@@ -1654,7 +1655,7 @@ int gain_exp(P_char ch, P_char victim, const int value, int type)
 	gmcp_char_vitals(ch);
 
 	// debug("Gain exps final return (%d).", XP_final);
-	return XP_final;
+	return type == EXP_QUEST ? after_exp - before_exp : XP_final;
 }
 
 int gain_condition(P_char ch, int condition, int value)

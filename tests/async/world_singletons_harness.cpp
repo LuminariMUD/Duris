@@ -44,6 +44,10 @@ struct scheduled_event
 std::unordered_map<P_char, scheduled_event> scheduled;
 int next_id = 1;
 int bfs_cur_marker = 1;
+void bfs_clear_marks()
+{
+	++bfs_cur_marker;
+}
 int players_landed = 0;
 bool shop_save_succeeds = true;
 int shops_saved = 0;
@@ -306,11 +310,6 @@ int shop_producing(P_obj obj, int shop)
 			return 1;
 	return 0;
 }
-bool dijkstra(int from, int to, valid_edge_func *, std::vector<int> &path)
-{
-	path = from < to ? std::vector<int>{ 1, 1 } : std::vector<int>{ 3, 3 };
-	return true;
-}
 int flying_transport(P_char, P_char, int, char *)
 {
 	return 0;
@@ -393,8 +392,8 @@ int main()
 		west[i].to_room = i;
 		rooms[i + 1].dir_option[3] = &west[i];
 	}
-	mob_indexes[0].virtual_number = 47030;
-	mob_indexes[1].virtual_number = 47028;
+	mob_indexes[0].virtual_number = 47026;
+	mob_indexes[1].virtual_number = 47025;
 	mob_indexes[2].virtual_number = 29429;
 	mob_indexes[3].virtual_number = 1234;
 	for (int i = 0; i < 5; ++i)
@@ -534,7 +533,12 @@ int main()
 	char_to_room(flight, 1, -1);
 	link_char(rider, flight, LNK_RIDING);
 	TRANSPORT_STATE(flight) = TRANSPORT_STATE_MOVING;
-	TRANSPORT_ROUTE(flight) = 16;
+	TRANSPORT_ROUTE(flight) = -1;
+	for (size_t i = 0; i + 1 < transport_routes.size(); ++i)
+		if (transport_routes[i].origin_vnum == rooms[0].number &&
+		    transport_routes[i].destination_vnum == rooms[2].number)
+			TRANSPORT_ROUTE(flight) = i;
+	assert(TRANSPORT_ROUTE(flight) >= 0);
 	TRANSPORT_STEP(flight) = 1;
 	for (int cycle = 0; cycle < 5; ++cycle)
 	{

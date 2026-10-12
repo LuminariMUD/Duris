@@ -23,6 +23,9 @@
 #include "world/transport.h"
 #include <ctype.h>
 #include <list>
+#include <algorithm>
+#include "persistence/persistence_checkpoint.h"
+#include "world/map.h"
 #include <vector>
 #include <stdio.h>
 #include <string.h>
@@ -43,6 +46,7 @@ extern int top_of_world;
 extern const char *dirs[];
 extern const char *dirs2[];
 extern const int rev_dir[];
+extern long new_exp_table[];
 extern int top_of_zone_table;
 extern struct zone_data *zone;
 extern struct zone_data *zone_table;
@@ -60,101 +64,93 @@ extern P_obj object_list;
 
 #define TRANSPORT_SIGN_VNUM 420
 
-/* Routes without an explicit waypoint list stop before `path` and travel
-   directly; the empty vector is the documented default. */
+// Discovery bits are permanent identities, independent of catalog order or pad changes.
+// Bits 0 (Scorched departure) and 12 (Snow Ogres departure) remain reserved:
+// those two services offer their dedicated trips only and cannot be discovered.
+struct transport_data
+{
+	int mob_vnum;
+	int origin_vnum;
+	int discovery_bit;
+	const char *name;
+} transports[] = { { 47015, 576577, -1, "&+LThe Isle of &NUndeath&n" },
+		   { 47016, 635756, 1, "&+mQuietus Quay&N" },
+		   { 47017, 588326, 2, "&+WSto&+Lrm Port&N" },
+		   { 47018, 606262, 3, "&+RBloodstone Keep&N" },
+		   { 47019, 514072, 4, "&+MMyrabolus&N" },
+		   { 47020, 582084, 5, "&+WThe City of &+YTorrhan&N" },
+		   { 47021, 543701, 6, "&+yUgta&N" },
+		   { 47022, 545407, 7, "&+YVenan'Trut&N" },
+		   { 47023, 563522, 8, "&+rFort &+RBoyard&N" },
+		   { 47024, 622276, 9, "&+ySarmiz'Duul&N" },
+		   { 47025, 519043, 10, "&+WFort &+CKhoralator&N" },
+		   { 47026, 543662, 11, "&+YKimordril&N" },
+		   { 47027, 619771, -1,
+		     "&+GS&+gw&+Ga&+gm&+Gp &+gof &+GChief &+rBlood-&+RE&+ry&+Re&N" },
+		   { 47028, 522247, 13, "&+RHel&+rgor &+WOutpost&N" },
+		   { 47029, 631413, 14, "&+WClan Shatter Stone&N" },
+		   { 47030, 514279, 15, "&+WBone Fort Inn&N" },
+		   { 47031, 533479, 16, "&+WWinterhaven&N" },
+		   { 47032, 584293, 17, "&+GShady Grove&N" },
+		   { 47033, 570024, 18, "&+WTharnadia&N" },
+		   { 47034, 529229, 19, "&+cFenaline&n" },
+		   { 47035, 546144, 20, "&+WCanderthal Harbor&N" },
+		   { 47036, 575328, 21, "&+yNizari&N" },
+		   { 47037, 641295, 22, "&+gThe &+GJade &+gEmpire&N" },
+		   { 47038, 634060, 23, "&+WDalvik's Dockyard&n" },
+		   { 47039, 577835, 24, "&+WV&Na&+Wr&Na&+Wt&Nh&+Wo&Nr&+Wn &+LKeep&N" },
+		   { 47040, 616547, 25, "&+rThur'Gurax&N" },
+		   { 47041, 557220, 26, "&+GMoonshae &+YIsland&N" },
+		   {} };
+
 struct transport_route
 {
 	int origin_vnum = 0;
 	int destination_vnum = 0;
 	const char *name = nullptr;
-	int cost_in_plat = 0;
+	int cost_in_copper = 0;
 	int min_level = 0;
-	int max_level = 0;
+	int discovery_bit = -1; // -1 is a dedicated Extra Destination
 	vector<int> path = {};
-} transport_routes[] = {
-	/*
-     { start room vnum, destination room vnum, name of route, cost in platinum, min level (0 for none), max level (0 for none)
-     }
-     */
-
-	// snogres dragon
-	{ 619771, 620606, "&+LA Huge &N&+rCavern &+Lon the &N&+rBloodfist &+yMountains", 50, 51,
-	  0 },
-
-	// skeletal dragon
-	{ 576577, 579365, "&+LA Desolate Island", 200, 51, 0 },
-
-	//
-	{ 606262, 635756, "&+LQuietus Quay", 20, 0, 0 },
-	{ 606262, 588326, "&+WSto&+Lrm &+bPort", 20, 0, 0 },
-
-	//
-	{ 635756, 606262, "&+RBloodstone Keep", 20, 0, 0 },
-
-	//
-	{ 588326, 606262, "&+RBloodstone Keep", 20, 0, 0 },
-
-	//
-	{ 543701, 514072, "&+MMyrabolus", 10, 0, 0 },
-	{ 543701, 582084, "&+WThe City of &+YTorrhan", 10, 0, 0 },
-
-	//
-	{ 582084, 543701, "&+yUgta", 10, 0, 0 },
-
-	//
-	{ 514072, 543701, "&+yUgta", 10, 0, 0 },
-
-	//
-	{ 580080, 545407, "&+YVenan'Trut", 50, 47, 0 },
-
-	//
-	{ 545407, 564319, "&+rFort &+RBoyard", 50, 46, 0 },
-	{ 545407, 622276, "Sarmiz'Duul", 50, 46, 0 },
-	{ 545407, 580080, "&+WThe City of &+YTorrhan", 50, 46, 0 },
-
-	//
-	{ 622276, 545407, "&+YVenan'Trut", 50, 47, 0 },
-
-	//
-	{ 563522, 545407, "&+YVenan'Trut", 50, 47, 0 },
-
-	// alatorin routes
-	{ 543662, 519043, "&+CFort &+WKhor&N&+calator", 100, 0, 0 }, // Kimordril -> Fort Khoralator
-	{ 519043, 543662, "&+YKimordril", 100, 0, 0 }, // Fort Khoralator -> Kimordril
-	{ 631413, 522247, "&+RHel&N&+rgor Outpost", 100, 0,
-	  0 }, // Clan Shatter Stone -> Helgor Outpost
-	{ 522247, 631413, "&+WClan Shatter Stone", 100, 0,
-	  0 }, // Helgor Outpost -> Clan Shatter Stone
-
-	{}
+	int service_vnum = 0;
 };
 
-struct transport_data
+static const transport_route extra_destinations[] = {
+	{ 619771,
+	  620606,
+	  "&+LA Huge &N&+rCavern &+Lon the &N&+rBloodfist &+yMountains&n",
+	  50000,
+	  51,
+	  -1,
+	  {},
+	  47027 },
+	{ 576577, 579365, "&+LA Desolate Island&n", 200000, 51, -1, {}, 47015 },
+	{ 588326, 637082, "&+WStorm Port Stronghold&n", 10000, 1, -1, {}, 47017 },
+};
+
+// Endpoint metadata exists before file/Redis recovery calls transport_restore().
+// Only paths and live service mobs wait for the fully loaded world.
+static vector<transport_route> transport_routes = []
 {
-	int mob_vnum;
-	int origin_vnum;
-} transports[] = {
-	// { mob vnum , load room vnum }
-	{ 47027, 619771 }, // snogres dragon
-	{ 47015, 576577 }, // skeletal dragon
-	{ 47016, 606262 },
-	{ 47017, 635756 },
-	{ 47018, 588326 },
-	{ 47021, 543701 },
-	{ 47025, 582084 },
-	{ 47022, 514072 },
-	{ 47020, 580080 },
-	{ 47019, 545407 },
-	{ 47023, 622276 },
-	{ 47024, 563522 },
-	// alatorin routes
-	{ 47028, 519043 }, // Fort Khoralator
-	{ 47030, 543662 }, // Kimordril
-	{ 47026, 522247 }, // Helgor Outpost
-	{ 47029, 631413 }, // Clan Shatter Stone
-
-	{}
-};
+	vector<transport_route> routes;
+	for (const auto &origin : transports)
+		if (origin.mob_vnum && origin.discovery_bit >= 0)
+			for (const auto &destination : transports)
+				if (destination.mob_vnum && destination.discovery_bit >= 0 &&
+				    origin.mob_vnum != destination.mob_vnum)
+					routes.push_back({ origin.origin_vnum,
+							   destination.origin_vnum,
+							   destination.name,
+							   0,
+							   0,
+							   destination.discovery_bit,
+							   {},
+							   origin.mob_vnum });
+	for (const auto &extra : extra_destinations)
+		routes.push_back(extra);
+	routes.push_back({});
+	return routes;
+}();
 
 bool valid_flying_edge(int from_room, int dir)
 {
@@ -246,21 +242,49 @@ static void transport_land_at_home(P_char mob, int origin)
 void initialize_transport()
 {
 	static bool paths_initialized = false;
-	for (int i = 0; !paths_initialized && transport_routes[i].origin_vnum; i++)
+	for (int service = 0; !paths_initialized && transports[service].mob_vnum; ++service)
 	{
-		const int origin = real_room(transport_routes[i].origin_vnum);
-		const int destination = real_room(transport_routes[i].destination_vnum);
-		bool found_path =
-			origin >= 0 && destination >= 0 &&
-			dijkstra(origin, destination, valid_flying_edge, transport_routes[i].path);
-		if (!found_path)
+		const int origin = real_room(transports[service].origin_vnum);
+		if (origin < 0)
 		{
-			fprintf(stderr, "  - no route found for [%d] -> [%d] %s\n",
-				transport_routes[i].origin_vnum,
-				transport_routes[i].destination_vnum,
-				strip_ansi(transport_routes[i].name).c_str());
-			transport_routes[i].path.clear();
+			logit(LOG_FILE, "Flight service %d has no origin room %d",
+			      transports[service].mob_vnum, transports[service].origin_vnum);
+			continue;
 		}
+		// Unit-cost flying edges need one traversal per origin, not one per ticket.
+		vector<int> previous(top_of_world + 1, -1);
+		vector<int> direction(top_of_world + 1, -1);
+		vector<int> pending{ origin };
+		bfs_clear_marks();
+		BFSMARK(origin);
+		for (size_t next = 0; next < pending.size(); ++next)
+			for (int dir = 0; dir < NUM_EXITS; ++dir)
+				if (valid_flying_edge(pending[next], dir))
+				{
+					const int room = TOROOM(pending[next], dir);
+					BFSMARK(room);
+					previous[room] = pending[next];
+					direction[room] = dir;
+					pending.push_back(room);
+				}
+		for (auto &route : transport_routes)
+		{
+			if (route.service_vnum != transports[service].mob_vnum)
+				continue;
+			const int destination = real_room(route.destination_vnum);
+			if (destination < 0 || previous[destination] < 0)
+			{
+				logit(LOG_FILE, "No flight route from %d to %d", route.origin_vnum,
+				      route.destination_vnum);
+				continue;
+			}
+			for (int room = destination; room != origin; room = previous[room])
+				route.path.push_back(direction[room]);
+			std::reverse(route.path.begin(), route.path.end());
+			if (route.discovery_bit >= 0)
+				route.cost_in_copper = static_cast<int>(route.path.size()) * 500;
+		}
+		bfs_clear_marks();
 	}
 	paths_initialized = true;
 
@@ -386,54 +410,166 @@ void initialize_transport()
 	}
 }
 
-// Handles list command for flying_transport proc
+// Handles list command and shared selection for the flight service
+static bool transport_waiting(P_char ch, P_char carrier)
+{
+	const int service = transport_service(carrier);
+	return ch && !IS_NPC(ch) && service >= 0 && IS_ALIVE(carrier) &&
+	       ch->in_room == carrier->in_room &&
+	       carrier->in_room == real_room(transports[service].origin_vnum) &&
+	       TRANSPORT_STATE(carrier) == TRANSPORT_STATE_WAITING && !IS_FIGHTING(carrier) &&
+	       !IS_RIDING(carrier) && !GET_RIDER(carrier);
+}
+
+static vector<int> transport_choices(P_char ch, P_char carrier)
+{
+	vector<int> choices;
+	if (!transport_waiting(ch, carrier))
+		return choices;
+	const int service_vnum = mob_index[GET_RNUM(carrier)].virtual_number;
+	for (int i = 0; transport_routes[i].origin_vnum; ++i)
+	{
+		const auto &route = transport_routes[i];
+		if (route.service_vnum != service_vnum || route.path.empty())
+			continue;
+		if (route.discovery_bit >= 0)
+		{
+			if (!(ch->only.pc->learned_flight_stops &
+			      (uint64_t{ 1 } << route.discovery_bit)))
+				continue;
+		}
+		else if (!IS_TRUSTED(ch) && GET_LEVEL(ch) < route.min_level)
+			continue;
+		choices.push_back(i);
+	}
+	std::sort(choices.begin(), choices.end(),
+		  [](int left, int right)
+		  {
+			  const auto &a = transport_routes[left];
+			  const auto &b = transport_routes[right];
+			  if (a.path.size() != b.path.size())
+				  return a.path.size() < b.path.size();
+			  const int a_id = a.discovery_bit >= 0 ? a.discovery_bit :
+								  64 + a.destination_vnum;
+			  const int b_id = b.discovery_bit >= 0 ? b.discovery_bit :
+								  64 + b.destination_vnum;
+			  return a_id < b_id;
+		  });
+	return choices;
+}
+
 bool flying_transport_cmd_list(P_char ch, P_char victim, char * /*arg*/)
 {
-	// ch - player listing command
-	// victim - mob with the flying_transport proc
-
-	char buff[MAX_STRING_LENGTH];
-
-	if (!ch)
-		return FALSE;
-
-	send_to_char("&+WFlight Service\n", ch);
-	send_to_char("The following routes are available:\n", ch);
-
-	bool has_one = false;
-	for (int i = 0, j = 1; transport_routes[i].origin_vnum; i++)
+	if (!transport_waiting(ch, victim))
 	{
-		if (real_room(transport_routes[i].origin_vnum) != victim->in_room)
-			continue;
-
-		if (transport_routes[i].path.size() < 1)
-			continue;
-
-		if (!IS_TRUSTED(ch) && transport_routes[i].min_level &&
-		    GET_LEVEL(ch) < transport_routes[i].min_level)
-			continue;
-
-		if (!IS_TRUSTED(ch) && transport_routes[i].max_level &&
-		    GET_LEVEL(ch) > transport_routes[i].max_level)
-			continue;
-
-		has_one = true;
-		snprintf(buff, MAX_STRING_LENGTH, "%d) %s &n- %s\n", j++,
-			 pad_ansi(transport_routes[i].name, 20).c_str(),
-			 coin_stringv(transport_routes[i].cost_in_plat * 1000));
-		send_to_char(buff, ch);
+		if (ch)
+			send_to_char("This flight service is not ready to depart.\n", ch);
+		return true;
 	}
-
-	if (!has_one)
+	const auto &stop = transports[transport_service(victim)];
+	if (stop.discovery_bit >= 0 &&
+	    !(ch->only.pc->learned_flight_stops & (uint64_t{ 1 } << stop.discovery_bit)))
 	{
-		send_to_char("None!\n", ch);
+		ch->only.pc->learned_flight_stops |= uint64_t{ 1 } << stop.discovery_bit;
+		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
+		// Set the discovery before gain_exp(): level advancement can capture a save.
+		int discoveries = 0;
+		for (const auto &known : transports)
+			if (known.mob_vnum && known.discovery_bit >= 0 &&
+			    (ch->only.pc->learned_flight_stops &
+			     (uint64_t{ 1 } << known.discovery_bit)))
+				++discoveries;
+		send_to_char_f(ch, "&+YYou discover a flight stop: %s&n.\n", stop.name);
+		if (GET_LEVEL(ch) > 0 && GET_LEVEL(ch) < MINLVLIMMORTAL)
+		{
+			const int cap = new_exp_table[GET_LEVEL(ch) + 1] / 3;
+			const int reward =
+				static_cast<int>(static_cast<int64_t>(cap) * discoveries / 27);
+			if (reward > 0)
+			{
+				const int credited = gain_exp(ch, nullptr, reward, EXP_QUEST);
+				if (credited > 0)
+					send_to_char_f(ch, "&+CDiscovery EXP: &+G%d&n\n", credited);
+			}
+		}
 	}
+	send_to_char("&+WFlight Service&n\nOrdinary flights cost 0.5 platinum per room flown.\n",
+		     ch);
+	const auto choices = transport_choices(ch, victim);
+	for (size_t i = 0; i < choices.size(); ++i)
+	{
+		const auto &route = transport_routes[choices[i]];
+		send_to_char_f(
+			ch, "%zu) %s&n - %zu rooms - %s%s\n", i + 1, route.name, route.path.size(),
+			coin_stringv(route.cost_in_copper),
+			route.discovery_bit < 0 ? " (Extra Destination: one-way, fixed fare)" : "");
+	}
+	if (choices.empty())
+		send_to_char(
+			"No destinations available. Discover ordinary stops by visiting their carriers and typing 'list'.\n",
+			ch);
 	else
-	{
-		send_to_char("\nType 'buy <id>' to ride to the destination\n", ch);
-	}
+		send_to_char("Type 'buy <id>', then 'give ticket <carrier>' to depart.\n", ch);
+	return true;
+}
 
-	return TRUE;
+void do_flights(P_char ch, char * /*argument*/, int /*cmd*/)
+{
+	if (!ch || IS_NPC(ch))
+		return;
+	int position = ch->in_room;
+	if (position >= 0 && position <= top_of_world && !IS_MAP_ROOM(position))
+		position = real_room(maproom_of_zone(world[position].zone));
+	struct known_stop
+	{
+		int service;
+		int distance;
+	};
+	vector<known_stop> known;
+	for (int i = 0; transports[i].mob_vnum; ++i)
+	{
+		const auto &stop = transports[i];
+		if (stop.discovery_bit < 0 ||
+		    !(ch->only.pc->learned_flight_stops & (uint64_t{ 1 } << stop.discovery_bit)))
+			continue;
+		int distance = -1;
+		const int destination = real_room(stop.origin_vnum);
+		int dx = 0, dy = 0;
+		if (position >= 0 && position <= top_of_world && destination >= 0 &&
+		    calculate_map_coords(position, destination, dx, dy))
+		{
+			const auto &map = zone_table[world[position].zone];
+			dx = std::abs(dx);
+			dy = std::abs(dy);
+			distance = std::min(dx, map.mapx - dx) + std::min(dy, map.mapy - dy);
+		}
+		known.push_back({ i, distance });
+	}
+	std::sort(known.begin(), known.end(),
+		  [](const auto &a, const auto &b)
+		  {
+			  if (a.distance != b.distance)
+				  return a.distance >= 0 &&
+					 (b.distance < 0 || a.distance < b.distance);
+			  return transports[a.service].discovery_bit <
+				 transports[b.service].discovery_bit;
+		  });
+	send_to_char("&+WYour learned flight stops&n\n", ch);
+	if (known.empty())
+		send_to_char(
+			"None yet. Visit an ordinary flight carrier and type 'list' to discover its stop.\n",
+			ch);
+	for (const auto &stop : known)
+		if (stop.distance >= 0)
+			send_to_char_f(ch, "%s&n - approximately %d map rooms away\n",
+				       transports[stop.service].name, stop.distance);
+		else
+			send_to_char_f(ch, "%s&n - distance unavailable\n",
+				       transports[stop.service].name);
+	if (!known.empty())
+		send_to_char(
+			"Map estimates are not ticket quotes. Use 'list' at a carrier for routes and fares.\n",
+			ch);
 }
 
 #define VNUM_OBJ_FLIGHT_PATH_TICKET 47008
@@ -441,119 +577,99 @@ bool flying_transport_cmd_list(P_char ch, P_char victim, char * /*arg*/)
 // Handles buy command for flying_transport proc
 bool flying_transport_cmd_buy(P_char ch, P_char victim, char *arg)
 {
-	// ch - player listing command
-	// victim - mob with the flying_transport proc
-
-	char buff[MAX_STRING_LENGTH];
-	P_obj ticket = NULL;
-
-	if (IS_RIDING(victim))
-		return FALSE;
-
-	one_argument(arg, buff);
-	int choice = atoi(buff);
-
-	int i, j;
-	bool found_it = false;
-	for (i = 0, j = 1; transport_routes[i].origin_vnum; i++)
+	if (!transport_waiting(ch, victim))
 	{
-		if (real_room(transport_routes[i].origin_vnum) != victim->in_room)
-			continue;
-
-		if (transport_routes[i].path.size() < 1)
-			continue;
-
-		if (!IS_TRUSTED(ch) && transport_routes[i].min_level &&
-		    GET_LEVEL(ch) < transport_routes[i].min_level)
-			continue;
-
-		if (!IS_TRUSTED(ch) && transport_routes[i].max_level &&
-		    GET_LEVEL(ch) > transport_routes[i].max_level)
-			continue;
-
-		if (choice == j)
-		{
-			found_it = true;
-			break;
-		}
-
-		j++;
+		if (ch)
+			send_to_char("This flight service is not ready to depart.\n", ch);
+		return true;
 	}
-
-	if (!found_it || !transport_routes[i].origin_vnum)
+	char number[MAX_INPUT_LENGTH];
+	one_argument(arg, number);
+	char *end = nullptr;
+	const long choice = strtol(number, &end, 10);
+	const auto choices = transport_choices(ch, victim);
+	if (!number[0] || !end || *end || choice < 1 ||
+	    static_cast<size_t>(choice) > choices.size())
 	{
-		send_to_char("Invalid choice.\n", ch);
-		return TRUE;
+		send_to_char("Invalid choice. Use 'list' to see available flights.\n", ch);
+		return true;
 	}
-
-	if (GET_MONEY(ch) < (transport_routes[i].cost_in_plat * 1000))
+	const auto &route = transport_routes[choices[choice - 1]];
+	if (GET_MONEY(ch) < route.cost_in_copper)
 	{
 		send_to_char("You don't have enough money!\n", ch);
-		return TRUE;
+		return true;
 	}
-
-	ticket = read_object(VNUM_OBJ_FLIGHT_PATH_TICKET, VIRTUAL);
-
-	if (ticket)
+	P_obj ticket = read_object(VNUM_OBJ_FLIGHT_PATH_TICKET, VIRTUAL);
+	if (!ticket)
 	{
-		SUB_MONEY(ch, (transport_routes[i].cost_in_plat * 1000), 0);
-		send_to_char("Here is your ticket!\n", ch);
-		ticket->value[6] = mob_index[GET_RNUM(victim)].virtual_number;
-		ticket->value[7] = i;
-		obj_to_char(ticket, ch);
+		send_to_char("Unable to create a flight ticket. Please report this with 'bug'.\n",
+			     ch);
+		return true;
 	}
-	else
-	{
-		send_to_char("&+RCan't create ticket object, please bug this right now.\n", ch);
-	}
-
-	return TRUE;
+	SUB_MONEY(ch, route.cost_in_copper, 0);
+	ticket->value[6] = route.service_vnum;
+	ticket->value[7] = route.destination_vnum;
+	obj_to_char(ticket, ch);
+	send_to_char("Here is your ticket! Give it to this carrier to depart.\n", ch);
+	return true;
 }
 
 // Handles give command for flying_transport proc
 bool flying_transport_cmd_give(P_char ch, P_char victim, char *arg)
 {
-	// ch - player listing command
-	// victim - mob with the flying_transport proc
+	if (!ch || IS_NPC(ch))
+		return false;
 	char objectarg[MAX_INPUT_LENGTH], targetarg[MAX_INPUT_LENGTH];
-	P_obj ticket = NULL;
-	P_char target = NULL;
-
 	arg = one_argument(arg, objectarg);
 	one_argument(arg, targetarg);
-
-	if (objectarg[0] == '\0' || targetarg[0] == '\0')
-		return FALSE;
-
-	ticket = get_obj_in_list_vis(ch, objectarg, ch->carrying);
-	if (!ticket || obj_index[ticket->R_num].virtual_number != VNUM_OBJ_FLIGHT_PATH_TICKET ||
-	    ticket->value[6] != mob_index[GET_RNUM(victim)].virtual_number)
+	if (!objectarg[0] || !targetarg[0] || get_char_room_vis(ch, targetarg) != victim)
+		return false;
+	P_obj ticket = get_obj_in_list_vis(ch, objectarg, ch->carrying);
+	if (!ticket || OBJ_VNUM(ticket) != VNUM_OBJ_FLIGHT_PATH_TICKET)
+		return false;
+	if (!transport_waiting(ch, victim))
 	{
-		return FALSE;
+		send_to_char("This flight service is not ready to depart.\n", ch);
+		return true;
 	}
-
-	target = get_char_room_vis(ch, targetarg);
-	if (!target || target != victim)
-		return FALSE;
-
+	int route_index = -1;
+	for (int choice : transport_choices(ch, victim))
+	{
+		const auto &route = transport_routes[choice];
+		if (route.service_vnum == ticket->value[6] &&
+		    route.destination_vnum == ticket->value[7])
+		{
+			route_index = choice;
+			break;
+		}
+	}
+	if (route_index < 0)
+	{
+		send_to_char("That ticket is not valid for a flight you can take from here.\n", ch);
+		return true;
+	}
 	if (IS_FIGHTING(ch))
 	{
-		send_to_char("You're a bit busy fighting to be flying!", ch);
-		return TRUE;
+		send_to_char("You're a bit busy fighting to be flying!\n", ch);
+		return true;
 	}
-
 	if (IS_RIDING(ch))
 	{
 		send_to_char("You're already riding something!\n", ch);
-		return TRUE;
+		return true;
 	}
-
-	// just destroy the ticket
-	extract_obj(ticket, TRUE); // Not an arti, but 'in game.'
-
-	TRANSPORT_ROUTE(victim) = ticket->value[7];
+	if (!add_event(event_flying_transport_move, PULSE_VIOLENCE, victim, ch, 0, 0, 0, 0))
+	{
+		send_to_char(
+			"The carrier cannot depart right now. Keep your ticket and try again.\n",
+			ch);
+		return true;
+	}
+	// The route is resolved and access checked before extraction frees the ticket.
+	extract_obj(ticket, TRUE);
+	TRANSPORT_ROUTE(victim) = route_index;
 	TRANSPORT_STEP(victim) = 0;
-
 #if defined(CTF_MUD) && (CTF_MUD == 1)
 	if (ctf_carrying_flag(ch) == CTF_PRIMARY)
 	{
@@ -561,20 +677,14 @@ bool flying_transport_cmd_give(P_char ch, P_char victim, char *arg)
 		drop_ctf_flag(ch);
 	}
 #endif
-
 	act("You climb up and ride $n.", FALSE, victim, 0, ch, TO_VICT);
 	act("$N climbs up and rides $n.", FALSE, victim, 0, ch, TO_NOTVICT);
 	link_char(ch, victim, LNK_RIDING);
-
 	ch->specials.z_cord = 10;
 	victim->specials.z_cord = 10;
-
 	TRANSPORT_STATE(victim) = TRANSPORT_STATE_MOVING;
-
 	act("With a mighty leap, $n launches $mself into the air.", FALSE, victim, 0, ch, TO_ROOM);
-	add_event(event_flying_transport_move, PULSE_VIOLENCE, victim, ch, 0, 0, 0, 0);
-
-	return TRUE;
+	return true;
 }
 
 int flying_transport(P_char ch, P_char victim, int cmd, char *arg)
@@ -622,7 +732,7 @@ int flying_transport(P_char ch, P_char victim, int cmd, char *arg)
 
 		if (cmd == CMD_LOOK || cmd == CMD_SCORE || cmd == CMD_INVENTORY ||
 		    cmd == CMD_ATTRIBUTES || cmd == CMD_NEWS || cmd == CMD_PETITION ||
-		    cmd == CMD_TOGGLE)
+		    cmd == CMD_TOGGLE || cmd == CMD_FLIGHTS)
 		{
 			return FALSE;
 		}
@@ -647,8 +757,18 @@ void event_flying_transport_move(P_char ch, P_char victim, P_obj /*obj*/, void *
 	if (TRANSPORT_STATE(ch) != TRANSPORT_STATE_MOVING || ch->in_room != victim->in_room)
 		return;
 
-	if (TRANSPORT_ROUTE(ch) < 0)
+	const int service = transport_service(ch);
+	if (service < 0)
 		return;
+	const int route = TRANSPORT_ROUTE(ch);
+	if (route < 0 || route >= static_cast<int>(transport_routes.size()) - 1 ||
+	    transport_routes[route].service_vnum != transports[service].mob_vnum ||
+	    TRANSPORT_STEP(ch) < 0 ||
+	    TRANSPORT_STEP(ch) > static_cast<int>(transport_routes[route].path.size()))
+	{
+		transport_land_at_home(ch, real_room(transports[service].origin_vnum));
+		return;
+	}
 
 	int dir = BFS_ERROR;
 
@@ -661,10 +781,6 @@ void event_flying_transport_move(P_char ch, P_char victim, P_obj /*obj*/, void *
 	else if (TRANSPORT_STEP(ch) == path_size)
 	{
 		dir = BFS_ALREADY_THERE;
-	}
-	else if (TRANSPORT_STEP(ch) > path_size)
-	{
-		dir = BFS_ERROR;
 	}
 	else
 	{
@@ -680,15 +796,11 @@ void event_flying_transport_move(P_char ch, P_char victim, P_obj /*obj*/, void *
 		act("$n looks confused for a moment, lands, and $N dismounts hastily.", FALSE, ch,
 		    0, victim, TO_NOTVICT);
 
-		ch->specials.z_cord = 0;
-		victim->specials.z_cord = 0;
-		do_dismount(victim, 0, CMD_DISMOUNT);
-
 		logit(LOG_DEBUG,
 		      "BFS_ERROR or BFS_NO_PATH in event_flying_transport_move() transport.c with %s as rider and %s as transport.",
 		      GET_NAME(victim), GET_NAME(ch));
 
-		TRANSPORT_STATE(ch) = TRANSPORT_STATE_WAITING;
+		transport_land_at_home(ch, real_room(transports[service].origin_vnum));
 		return;
 	}
 	else if (dir == BFS_ALREADY_THERE)
@@ -701,14 +813,17 @@ void event_flying_transport_move(P_char ch, P_char victim, P_obj /*obj*/, void *
 
 		act("$n launches $mself into the air.", FALSE, ch, 0, victim, TO_ROOM);
 
-		add_event(event_flying_transport_return, (int)(PULSE_VIOLENCE / 2), ch, victim, 0,
-			  0, 0, 0);
+		if (!add_event(event_flying_transport_return, (int)(PULSE_VIOLENCE / 2), ch, victim,
+			       0, 0, 0, 0))
+			transport_land_at_home(ch, real_room(transports[service].origin_vnum));
 		return;
 	}
 
 	int was_in = ch->in_room;
 
-	if (!world[was_in].dir_option[dir])
+	if (was_in < 0 || was_in > top_of_world || dir < 0 || dir >= NUM_EXITS ||
+	    !world[was_in].dir_option[dir] || TOROOM(was_in, dir) < 0 ||
+	    TOROOM(was_in, dir) > top_of_world)
 	{
 		act("$n looks confused for a moment, lands, and you dismount hastily.", FALSE, ch,
 		    0, victim, TO_VICT);
@@ -719,11 +834,7 @@ void event_flying_transport_move(P_char ch, P_char victim, P_obj /*obj*/, void *
 		      "dir option error in event_flying_transport_move() transport.c with %s as rider and %s as transport.",
 		      GET_NAME(victim), GET_NAME(ch));
 
-		ch->specials.z_cord = 0;
-		victim->specials.z_cord = 0;
-		do_dismount(victim, 0, CMD_DISMOUNT);
-
-		TRANSPORT_STATE(ch) = TRANSPORT_STATE_WAITING;
+		transport_land_at_home(ch, real_room(transports[service].origin_vnum));
 		return;
 	}
 
@@ -743,7 +854,9 @@ void event_flying_transport_move(P_char ch, P_char victim, P_obj /*obj*/, void *
 		 dirs2[rev_dir[dir]]);
 	act(buff, FALSE, ch, 0, victim, TO_NOTVICT | ACT_IGNORE_ZCOORD);
 
-	add_event(event_flying_transport_move, (int)(PULSE_VIOLENCE / 5), ch, victim, 0, 0, 0, 0);
+	if (!add_event(event_flying_transport_move, (int)(PULSE_VIOLENCE / 5), ch, victim, 0, 0, 0,
+		       0))
+		transport_land_at_home(ch, real_room(transports[service].origin_vnum));
 }
 
 void event_flying_transport_return(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
@@ -756,8 +869,18 @@ void event_flying_transport_return(P_char ch, P_char victim, P_obj /*obj*/, void
 	if (TRANSPORT_STATE(ch) != TRANSPORT_STATE_MOVING)
 		return;
 
-	if (TRANSPORT_ROUTE(ch) < 0)
+	const int service = transport_service(ch);
+	if (service < 0)
 		return;
+	const int route = TRANSPORT_ROUTE(ch);
+	if (route < 0 || route >= static_cast<int>(transport_routes.size()) - 1 ||
+	    transport_routes[route].service_vnum != transports[service].mob_vnum ||
+	    TRANSPORT_STEP(ch) < 0 ||
+	    TRANSPORT_STEP(ch) > static_cast<int>(transport_routes[route].path.size()))
+	{
+		transport_land_at_home(ch, real_room(transports[service].origin_vnum));
+		return;
+	}
 
 	int dir = BFS_ERROR;
 
@@ -771,10 +894,6 @@ void event_flying_transport_return(P_char ch, P_char victim, P_obj /*obj*/, void
 	{
 		dir = BFS_ALREADY_THERE;
 	}
-	else if (TRANSPORT_STEP(ch) < 0)
-	{
-		dir = BFS_ERROR;
-	}
 	else
 	{
 		dir = rev_dir[transport_routes[TRANSPORT_ROUTE(ch)].path[--TRANSPORT_STEP(ch)]];
@@ -786,18 +905,22 @@ void event_flying_transport_return(P_char ch, P_char victim, P_obj /*obj*/, void
 	{
 		if (dir == BFS_ERROR || dir == BFS_NO_PATH)
 		{
-			logit(LOG_DEBUG,
-			      "BFS_ERROR or BFS_NO_PATH in event_flying_transport_return() transport.c with %s as rider and %s as transport.",
-			      GET_NAME(victim), GET_NAME(ch));
+			logit(LOG_DEBUG, "Invalid return flight path for %s.", GET_NAME(ch));
 		}
 
-		ch->specials.z_cord = 0;
 		act("$n lands.", FALSE, ch, 0, victim, TO_ROOM);
-		TRANSPORT_STATE(ch) = TRANSPORT_STATE_WAITING;
+		transport_land_at_home(ch, real_room(transports[service].origin_vnum));
 		return;
 	}
 
 	int was_in = ch->in_room;
+	if (was_in < 0 || was_in > top_of_world || dir < 0 || dir >= NUM_EXITS ||
+	    !world[was_in].dir_option[dir] || TOROOM(was_in, dir) < 0 ||
+	    TOROOM(was_in, dir) > top_of_world)
+	{
+		transport_land_at_home(ch, real_room(transports[service].origin_vnum));
+		return;
+	}
 	int dest_room = TOROOM(was_in, dir);
 
 	snprintf(buff, MAX_STRING_LENGTH, "Far above, $n flies %s.", dirs[dir]);
@@ -811,5 +934,7 @@ void event_flying_transport_return(P_char ch, P_char victim, P_obj /*obj*/, void
 		 dirs2[rev_dir[dir]]);
 	act(buff, FALSE, ch, 0, 0, TO_ROOM | ACT_IGNORE_ZCOORD);
 
-	add_event(event_flying_transport_return, (int)(PULSE_VIOLENCE / 8), ch, victim, 0, 0, 0, 0);
+	if (!add_event(event_flying_transport_return, (int)(PULSE_VIOLENCE / 8), ch, victim, 0, 0,
+		       0, 0))
+		transport_land_at_home(ch, real_room(transports[service].origin_vnum));
 }
