@@ -2,7 +2,7 @@
 """Blood Tithe: anti-paladin group damage fed by damage taken, and every guardrail on it.
 
 Runs the real spell, charge, decay and bonus functions from paladins.c (with the real
-grouped, opposite_racewar, num_group_members_in_room and has_aura) against the shipped
+grouped, opposite_racewar, IS_MORPH and has_aura) against the shipped
 spell.bloodTithe.* properties, and checks how the spell is wired into the server.
 """
 
@@ -145,6 +145,7 @@ DRIVER = r"""
 static void init(char_data &ch, bool pc, int room, int racewar) {
     ch.specials.position = STAT_NORMAL;
     if (!pc) ch.specials.act |= ACT_ISNPC;
+    else ch.only.pc = new pc_only_data{};
     ch.in_room = room;
     ch.player.racewar = racewar;
     ch.points.max_hit = 1000;
@@ -378,6 +379,36 @@ int main() {
         assert(blood_tithe_damage_bonus(&ap2, &enemy) == 0);
     }
 
+    // Shapechange leaves membership on the original player in limbo, not on the body.
+    {
+        test_group party({&ap, &mate, &crowd[0], &crowd[1], &crowd[2]});
+        set_malice(&ap, 600);
+        morph_npc.orig_char = &mate;
+        mate.only.pc->switched = &morph;
+        mate.in_room = 2;
+        morph.in_room = 1;
+        assert(morph.group == nullptr);
+        const double expected = 0.12 * std::sqrt(3.0 / 4.0);
+        assert(about(blood_tithe_bonus(&ap), expected));
+        assert(about(blood_tithe_damage_bonus(&morph, &enemy), expected));
+        assert(about(blood_tithe_damage_bonus(&morph, &enemy_pc), expected * 0.5));
+        aura(&morph, AURA_BATTLELUST);
+        assert(blood_tithe_damage_bonus(&morph, &enemy) == 0);
+        clear(&morph);
+        aura(&mate, SPELL_BLOOD_TITHE);
+        assert(blood_tithe_damage_bonus(&morph, &enemy) == 0);
+        clear(&mate);
+        aura(&mate, AURA_BATTLELUST);
+        assert(blood_tithe_damage_bonus(&morph, &enemy) == 0);
+        clear(&mate);
+        // Only the active body determines presence, even if the original is in this room.
+        morph.in_room = 2;
+        mate.in_room = 1;
+        assert(blood_tithe_damage_bonus(&morph, &enemy) == 0);
+        assert(about(blood_tithe_bonus(&ap), 0.12));
+        mate.only.pc->switched = nullptr;
+    }
+
     // Score reports the offered bonus even when only the holder has Battle Lust.
     {
         test_group party({&ap, &mate});
@@ -399,6 +430,9 @@ int main() {
     assert(unknown_properties.empty());
 
     for (char_data *ch : {&ap, &ap2, &mate}) clear(ch);
+    for (char_data *ch : {&ap, &ap2, &mate, &far_mate, &stranger, &enemy_pc, &ally_pc})
+        delete ch->only.pc;
+    for (auto &ch : crowd) delete ch.only.pc;
     std::puts("Blood Tithe charge, decay, scaling and guardrails passed.");
 }
 """
@@ -416,7 +450,6 @@ functions += [
     extract_function("fight.c", "bool opposite_racewar("),
     extract_function("utility.c", "bool grouped("),
     extract_function("utility.c", "int IS_MORPH("),
-    extract_function("group.c", "int num_group_members_in_room("),
 ]
 
 output = ROOT / "bin/tests/blood-tithe"

@@ -837,7 +837,17 @@ double blood_tithe_bonus(P_char ap)
 
 	double charge = MIN(1.0, af->modifier / blood_tithe_full_malice(ap));
 	double reference = get_property("spell.bloodTithe.refGroupSize", 3.0);
-	double groupmates = MAX(reference, (double)num_group_members_in_room(ap));
+	int members = 0;
+	for (struct group_list *gl = ap->group; gl; gl = gl->next)
+	{
+		if (!gl->ch || gl->ch == ap || !IS_PC(gl->ch))
+			continue;
+		// A morphed player's group entry stays on the original body in limbo.
+		P_char body = gl->ch->only.pc->switched ? gl->ch->only.pc->switched : gl->ch;
+		if (body->in_room == ap->in_room)
+			++members;
+	}
+	double groupmates = MAX(reference, (double)members);
 
 	return get_property("spell.bloodTithe.maxBonus", 0.12) * charge *
 	       pow(reference / groupmates, get_property("spell.bloodTithe.falloffExponent", 0.5));
@@ -850,15 +860,17 @@ double blood_tithe_bonus(P_char ap)
 */
 double blood_tithe_damage_bonus(P_char ch, P_char victim)
 {
-	if (!IS_PC(ch) || !ch->group || affected_by_spell(ch, SPELL_BLOOD_TITHE) ||
-	    has_aura(ch, AURA_BATTLELUST))
+	P_char player = GET_PLYR(ch);
+	if (!IS_PC(player) || !player->group || affected_by_spell(player, SPELL_BLOOD_TITHE) ||
+	    affected_by_spell(ch, SPELL_BLOOD_TITHE) || has_aura(ch, AURA_BATTLELUST) ||
+	    has_aura(player, AURA_BATTLELUST))
 		return 0;
 
 	double bonus = 0;
 
-	for (struct group_list *gl = ch->group; gl; gl = gl->next)
+	for (struct group_list *gl = player->group; gl; gl = gl->next)
 	{
-		if (gl->ch && gl->ch != ch && gl->ch->in_room == ch->in_room)
+		if (gl->ch && gl->ch != player && gl->ch->in_room == ch->in_room)
 			bonus = MAX(bonus, blood_tithe_bonus(gl->ch));
 	}
 
