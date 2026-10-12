@@ -42,7 +42,9 @@ phantom = [5927, 98731, 14373, 99465, 18305, 217481, 15100, 8486, 8430]
 fixtures.extend((vnum, 5) for vnum in fixed + zerai + phantom)
 fixtures.append((19701, 0))
 room_data.extend([(0, 0)] * (len(fixtures) - len(room_data)))
-assert next(i for i, (vnum, _) in enumerate(fixtures) if vnum == 1781) not in eligible[2]
+for internal_room in (1780, 1781, 1784, 1794):
+    assert next(i for i, (vnum, _) in enumerate(fixtures) if vnum == internal_room) not in eligible[2]
+assert next(i for i, (vnum, _) in enumerate(fixtures) if vnum == 22542) not in eligible[3]
 
 prelude = r'''
 #include "core/prototypes.h"
@@ -112,8 +114,8 @@ static void reset(P_char ch, int race = RACE_GITHYANKI) {
 }
 static void shift(P_char ch) { do_shift_prime(ch, nullptr, 0); assert(choices.empty()); }
 int main() {
-    const std::pair<int, int> fixture[] = { FIXTURES };
-    const std::pair<unsigned int, int> metadata[] = { METADATA };
+    static const std::pair<int, int> fixture[] = { FIXTURES };
+    static const std::pair<unsigned int, int> metadata[] = { METADATA };
     const std::vector<int> eligible[] = { ELIGIBLE };
     rooms.resize(sizeof(fixture) / sizeof(fixture[0])); world = rooms.data();
     for (size_t i = 0; i < rooms.size(); ++i) {
