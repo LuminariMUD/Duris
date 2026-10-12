@@ -42,6 +42,8 @@ under ASan/UBSan. It covers all paths and wrapped edges, first/repeated discover
 distance ordering and ties, exact half-platinum fares, payment/creation failures,
 busy carriers, transferred and malformed tickets, epic exclusions, the new level-one
 Stronghold trip, anywhere/in-flight listing, and unavailable map positions.
+The PR #51 review additions check sleeping/paralyzed and controlled-carrier redemption and require every
+empty-return event to have a null passenger.
 `test_world_singletons.py` retains its repeated initialization, duplicate passenger
 and item preservation, occupied recovery, empty return, and older-record checks.
 The capture/codec, flat-file repository and SQL save/load fixtures exercise the new
@@ -59,6 +61,10 @@ flight and an empty returning carrier through copyover, takes both restricted
 trips, and verifies discoveries/EXP after a crash and a normal logout/login. It
 also kills the seven named dragons and checks their corpse objects. The SQL leg
 imports the maintained help sources; both clients read the same FLIGHTS guidance.
+Both backend journeys also apply and verify minor paralysis on the actual carrier,
+then use ordinary `give` to prove ticket ownership and wallet retention. A separate
+flight logs out immediately after landing and verifies that the empty carrier
+returns home and resumes service without a reboot or copyover to rescue it.
 
 Fixtures supply light and detect invisibility because the existing epic caster can
 turn invisible; their epic departure pads are quieted to isolate ticket access from
@@ -76,6 +82,13 @@ maintained pfile/migration-tool builds, and the 15 site tests passed. The before
 check against `b79c08eef` catches the flight command and journey changes; four test
 maintenance cases pass on both revisions. The busy-carrier case was also observed
 failing before its focused repair. No production data or running game was used.
+
+PR #51 review qualification at `68b638d9e`: the final `make test-all -j16
+TEST_JOBS=8` passed 721 scripts (672.99s). All 73 database legs passed (443s),
+and the affected MariaDB flight journey passed again after the final carrier guard
+refinement. `scripts/check_tests_catch.sh 6df413724 68b638d9e` reports that all
+three changed regressions pass after the repairs and fail on the reviewed code.
+Full-tree formatting, security checks, and the documentation's 15 site tests passed.
 
 ## Login statistics retain event-time identity
 

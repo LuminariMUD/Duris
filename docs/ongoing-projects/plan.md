@@ -5,17 +5,18 @@ travel between learned stops at distance-based fares, and earn discovery EXP. Ke
 dedicated epic-zone trips separate, with their existing origins, fares, restrictions,
 and one-way service.
 
-Status: implementation and validation complete. Updated 2026-10-12; the complete
-code and test suite were qualified at `11354ecd1`. This plan covers the complete feature in
+Status: PR #51 review repairs and local qualification complete.
+Updated 2026-10-12. The initial feature was qualified at `11354ecd1`.
+This plan covers the complete feature in
 [issue #40](https://github.com/LuminariMUD/Duris/issues/40).
 
 ## Review handoff
 
 [PR #51](https://github.com/LuminariMUD/Duris/pull/51) contains the complete feature
 on `feature/40-flight-network`, based on master `0da9292ca`. All six implementation
-steps and their acceptance criteria below are complete. Final changes after the
-qualified revision only record this evidence, correct documentation, and strengthen
-the old-file reader regression; no server code changed.
+steps remain implemented. The subsequent review identified two flight regressions
+and an older equipment-removal use-after-free; the repairs and new evidence are
+recorded below.
 
 - User decisions: 25 ordinary stops, exact 500-copper-per-room fares, and discovery
   EXP `current gain cap * count / 27` with normal racial, rested and difficulty
@@ -56,8 +57,54 @@ The full server journeys use ordinary development builds; sanitizers cover the n
 command/recovery fixtures. No production migration, deployment or release tag was made.
 
 The [regression record](../testing/REGRESSIONS.md#learned-flight-network) describes
-coverage and the existing mechanics preserved during verification. No implementation
-work remains; review and any later production rollout are separate steps.
+coverage and the existing mechanics preserved during verification. The PR review
+repairs below supersede the initial qualification for those paths.
+Production rollout remains separate.
+
+## PR #51 review repairs (2026-10-12)
+
+All three findings in the [review](https://github.com/LuminariMUD/Duris/pull/51#pullrequestreview-5492994949)
+were valid and are addressed in `69065e32f` and `68b638d9e`:
+
+- Empty return events no longer link to the former passenger. Each return step
+  schedules with a null victim; recovery already chooses a null rider for an
+  unoccupied carrier. The real-server journey quits immediately after landing and
+  verifies that the carrier returns home and resumes service without reconciliation.
+- Ordinary `give` identifies a carrier by its flight procedure and calls the
+  existing ticket validator even when that procedure is skipped. Readiness includes awake/mobile
+  checks. The journey applies `MINOR_PARA`, verifies the flag, checks that the paid
+  ticket and wallet remain with the player, then clears paralysis and flies.
+- The older crumbleloot removal defect is fixed separately: item effects are
+  removed before transfer can destroy the object, and an explicit extracted result
+  protects single/all removal and automatic replacement. Shared robe cleanup
+  replaces the two copies that previously dereferenced the item after transfer.
+  The public removal regression reproduces the original heap-use-after-free under
+  ASan/UBSan and covers ordinary items and trusted-player exemptions as well.
+
+No new persistence fields, event types or inventory-transfer API were needed.
+The branch already contains master `0da9292ca`; the review fixes remain separate
+commits, with no stacked dependency or release tag. Use a maintainer squash merge
+to satisfy master's existing linear-history and restricted-update rules. The PR
+is left unmerged; no repository protection is changed.
+
+Final local qualification on `68b638d9e`:
+
+| Check | Result |
+| --- | --- |
+| `make test-all -j16 TEST_JOBS=8` | 721 passed, zero failures/timeouts/signals; 672.99 seconds. Includes development/production builds, sanitizers and the full flat-file flight journey. |
+| `make test-db` | All 73 legs passed in 443 seconds. After the final carrier-identity refinement, the affected MariaDB flight journey was rerun against the final server and passed again; the other database code and tests were unchanged. |
+| `tests/async/with_disposable_mariadb.sh python3 tests/async/test_flight_network_journey.py --backend mariadb --server bin/server/dms_new` | Final MariaDB flight journey passed all discovery, fare, unavailable-ticket, logout-return, copyover, epic, persistence and corpse checks. |
+| `scripts/check_tests_catch.sh 6df413724 68b638d9e` | All three changed regressions pass on the repaired code and fail on the reviewed revision: native flight commands, full-world flight journey, and public crumbleloot removal. |
+| `./scripts/format.sh --all --check` | All 1045 tracked C/C++ files passed. Commit hooks also passed formatting and clang-tidy. |
+| `make security-check` | Dependency baseline and source/configuration checks passed. |
+| `npm test --prefix site` | 15 tests passed against the updated documentation; locked dependencies were installed with `npm ci --prefix site`. |
+
+Both backend journeys prove ticket retention during paralysis and a carrier's return
+following immediate post-arrival logout, in addition to the original complete
+feature journey. The final MariaDB binary SHA-256 is
+`d70f9713a4e65e3529658eb2fd95578cdee2b5f1aa070218c0dc42e129b978b8`.
+Full servers use development builds; the native command/removal/recovery tests use
+ASan/UBSan. The final documentation commit changes no server or test behavior.
 
 ## Requirements and decision authority
 
