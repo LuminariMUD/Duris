@@ -24002,10 +24002,10 @@ in the room the bonus shrinks: about 9% with five, 7% with eight and 5% with
 fifteen. Against players the bonus is halved.
 
 Blood Tithes do not stack. A groupmate gains only the strongest one in the
-room, and a caster with a Blood Tithe gains none from others. Battle Lust
-silences it: a groupmate under the aura of battlelust gains nothing from
-Blood Tithe, so an anti-paladin chooses between the two. The score command
-shows the bonus the caster is granting.
+room, and a caster with a Blood Tithe gains none from others. A groupmate
+under the aura of battlelust gains nothing from Blood Tithe. Battle Lust on
+the caster does not silence the bonus for groupmates without that aura.
+The score command shows the bonus available to eligible groupmates.
 
 Duration: 15 ticks, plus 1 for every 10 points of Devotion.
 

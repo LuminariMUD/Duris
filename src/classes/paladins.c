@@ -813,8 +813,10 @@ void blood_tithe_charge(P_char attacker, P_char victim, double dam)
 	if (!af || dam <= 0)
 		return;
 
-	// Pets fight for their master.
-	P_char source = GET_MASTER(attacker) ? GET_MASTER(attacker) : attacker;
+	// Morphs fight as their player; pets fight for their (possibly morphed) master.
+	P_char source = GET_PLYR(attacker);
+	if (P_char master = GET_MASTER(source))
+		source = GET_PLYR(master);
 
 	if (source == victim || grouped(source, victim) ||
 	    (IS_PC(source) && !opposite_racewar(source, victim)))
@@ -860,7 +862,7 @@ double blood_tithe_damage_bonus(P_char ch, P_char victim)
 			bonus = MAX(bonus, blood_tithe_bonus(gl->ch));
 	}
 
-	if (IS_PC(victim))
+	if (IS_PC(GET_PLYR(victim)))
 		bonus *= get_property("spell.bloodTithe.pvpMod", 0.5);
 
 	return bonus;

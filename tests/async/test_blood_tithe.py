@@ -61,7 +61,9 @@ assert re.search(
 
 # The score command shows the tithe, and the help explains it.
 score = extract_function("actinf.c", "void do_score(")
-assert "blood_tithe_bonus(ch)" in score and "silenced by Battle Lust" in score
+assert "blood_tithe_bonus(ch)" in score
+score_start = score.index("\tif (affected_by_spell(ch, SPELL_BLOOD_TITHE)")
+score_output = score[score_start:score.index("\n\tif (IS_AFFECTED4(ch, AFF4_NEG_SHIELD))", score_start)]
 for help_file in ("help/duris_help.hlp", "help/duris_help_parsed.hlp"):
     assert "\nBlood Tithe - Last Edited:" in (ROOT / help_file).read_text(encoding="utf-8")
 assert '"BLOOD TITHE" (Spell)' in (ROOT / "lib/information/help_index").read_text(
@@ -240,6 +242,34 @@ int main() {
         masters.clear();
     }
 
+    // A morph represents its original player for side, group, self, and pet ownership.
+    char_data morph{};
+    npc_only_data morph_npc{};
+    init(morph, false, 1, 0);
+    morph.only.npc = &morph_npc;
+    {
+        test_group party({&ap, &mate});
+        set_malice(&ap, 0);
+        morph_npc.orig_char = &ally_pc;
+        blood_tithe_charge(&morph, &ap, 50);
+        assert(malice(&ap) == 0);
+        morph_npc.orig_char = &ap;
+        blood_tithe_charge(&morph, &ap, 50);
+        assert(malice(&ap) == 0);
+        morph_npc.orig_char = &mate;
+        mate.player.racewar = RACEWAR_GOOD; // grouping still excludes a cross-side friend
+        blood_tithe_charge(&morph, &ap, 50);
+        masters[&pet] = &morph;
+        blood_tithe_charge(&pet, &ap, 50);
+        assert(malice(&ap) == 0);
+        mate.player.racewar = RACEWAR_EVIL;
+        morph_npc.orig_char = &enemy_pc;
+        blood_tithe_charge(&morph, &ap, 50);
+        blood_tithe_charge(&pet, &ap, 50);
+        assert(malice(&ap) == 100);
+        masters.clear();
+    }
+
     // Someone without the spell is untouched.
     blood_tithe_charge(&enemy, &mate, 50);
     assert(mate.affected == nullptr);
@@ -304,6 +334,8 @@ int main() {
         // A groupmate in the room hits harder; against players it is halved.
         assert(about(blood_tithe_damage_bonus(&mate, &enemy), 0.12));
         assert(about(blood_tithe_damage_bonus(&mate, &enemy_pc), 0.06));
+        morph_npc.orig_char = &enemy_pc;
+        assert(about(blood_tithe_damage_bonus(&mate, &morph), 0.06));
 
         // The caster, groupmates elsewhere, pets and outsiders get nothing.
         assert(blood_tithe_damage_bonus(&ap, &enemy) == 0);
@@ -346,6 +378,20 @@ int main() {
         assert(blood_tithe_damage_bonus(&ap2, &enemy) == 0);
     }
 
+    // Score reports the offered bonus even when only the holder has Battle Lust.
+    {
+        test_group party({&ap, &mate});
+        set_malice(&ap, 600);
+        aura(&ap, AURA_BATTLELUST);
+        assert(about(blood_tithe_damage_bonus(&mate, &enemy), 0.12));
+        assert(render_tithe_score(&ap).find("+12.0% group damage") != std::string::npos);
+        assert(render_tithe_score(&ap).find("silenced") == std::string::npos);
+        aura(&mate, AURA_BATTLELUST);
+        assert(blood_tithe_damage_bonus(&mate, &enemy) == 0);
+        assert(render_tithe_score(&ap).find("+12.0% group damage") != std::string::npos);
+        assert(render_tithe_score(&stranger).empty());
+    }
+
     // Without a group there is no one to empower.
     assert(blood_tithe_damage_bonus(&mate, &enemy) == 0);
 
@@ -369,13 +415,15 @@ functions = [extract_function("paladins.c", signature) for signature in (
 functions += [
     extract_function("fight.c", "bool opposite_racewar("),
     extract_function("utility.c", "bool grouped("),
+    extract_function("utility.c", "int IS_MORPH("),
     extract_function("group.c", "int num_group_members_in_room("),
 ]
 
 output = ROOT / "bin/tests/blood-tithe"
 output.mkdir(parents=True, exist_ok=True)
 harness = output / "harness.cpp"
-harness.write_text(PRELUDE + "\n".join(functions) + DRIVER, encoding="utf-8")
+score_function = "std::string render_tithe_score(P_char ch) { char buf[MAX_STRING_LENGTH] = {};\n" + score_output + "\nreturn buf; }\n"
+harness.write_text(PRELUDE + "\n".join(functions) + score_function + DRIVER, encoding="utf-8")
 binary = output / "harness"
 subprocess.run(
     ["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined",
