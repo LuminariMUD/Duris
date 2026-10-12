@@ -74,9 +74,20 @@ int main()
     require_cost("ocean-to-ocean", run_move(actor, SECT_OCEAN, SECT_OCEAN), 56);
     require_cost("ocean-to-land", run_move(actor, SECT_OCEAN, SECT_FIELD), 29);
 
+    // Freedom of Movement: 1 per room on land, half the usual cost when
+    // either room is water.
+    require_cost("freedom-of-movement-land",
+                 run_move(actor, SECT_DESERT, SECT_DESERT, AFF_FREEDOM_OF_MVMNT), 1);
+    require_cost("freedom-of-movement-ocean",
+                 run_move(actor, SECT_OCEAN, SECT_OCEAN, AFF_FREEDOM_OF_MVMNT), 28);
+    require_cost("freedom-of-movement-leaving-water",
+                 run_move(actor, SECT_OCEAN, SECT_FIELD, AFF_FREEDOM_OF_MVMNT), 14);
+    require_cost("freedom-of-movement-entering-water",
+                 run_move(actor, SECT_FIELD, SECT_OCEAN, AFF_FREEDOM_OF_MVMNT), 14);
+    require_cost("freedom-of-movement-cheap-water-floor",
+                 run_move(actor, SECT_FIELD, SECT_WATER_SWIM, AFF_FREEDOM_OF_MVMNT), 1);
+
     // Spell and movement modifiers remain distinct from terrain lookup.
-    require_cost("freedom-of-movement",
-                 run_move(actor, SECT_OCEAN, SECT_OCEAN, AFF_FREEDOM_OF_MVMNT), 1);
     require_cost("ordinary-flight-at-zero-altitude",
                  run_move(actor, SECT_OCEAN, SECT_OCEAN, AFF_FLY), 56);
     require_cost("positive-altitude",

@@ -3988,7 +3988,7 @@ void do_web_spray(P_char ch, char *argument, int /*cmd*/)
 	act("$n rears back and sprays a mass of &+Wsticky webbing&n at $N!", FALSE, ch, 0, victim,
 	    TO_NOTVICT);
 
-	// Same defences as a tackle: freedom of movement, then evade.
+	// Webbing is stopped by freedom of movement, then evade.
 	if (check_freedom_of_movement(
 		    victim, GET_LEVEL(ch) - GET_LEVEL(victim) >= 10 ? true : number(0, 1)))
 	{

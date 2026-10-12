@@ -2494,11 +2494,6 @@ int move_cost(P_char ch, int dir)
 	if ((dir < 0) || (dir > (NUM_EXITS - 1)))
 		return -1;
 
-	if (IS_AFFECTED(ch, AFF_FREEDOM_OF_MVMNT))
-	{
-		return 1;
-	}
-
 	int sector_idx_a = (int)world[ch->in_room].sector_type;
 	int sector_idx_b = (int)world[world[ch->in_room].dir_option[dir]->to_room].sector_type;
 	int num_sectors = NUM_SECT_TYPES;
@@ -2540,6 +2535,16 @@ int move_cost(P_char ch, int dir)
 
 	if (IS_TLEGLOCK(ch))
 		moves += 10;
+
+	// Freedom of movement: 1 move per room, but water still costs half the usual amount.
+	if (IS_AFFECTED(ch, AFF_FREEDOM_OF_MVMNT))
+	{
+		if (!IS_WATER_ROOM(ch->in_room) &&
+		    !IS_WATER_ROOM(world[ch->in_room].dir_option[dir]->to_room))
+			return 1;
+
+		moves /= 2;
+	}
 
 	return MAX(1, moves);
 }
