@@ -21,7 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const struct frag_cap_config defaults = { 25, 30, 56, 3, 5, 10, 2 };
+static const struct frag_cap_config defaults = { 25, 30, 56, 3, 5, 20, 2 };
 
 static struct frag_cap_config active;
 static bool config_initialized;
@@ -70,7 +70,7 @@ static void apply_value(const char *key, const char *value)
 	INT_KEY("cap.maximum.level", cap_maximum_level, 1, MAXLVLMORTAL)
 	INT_KEY("timer.unlock.days", unlock_timer_days, 0, 3650)
 	INT_KEY("unlock.victim.levels.below.open", unlock_victim_levels_below, 0, MAXLVLMORTAL)
-	INT_KEY("unlock.minimum.frag.points", unlock_minimum_frag_points, 1, 100)
+	INT_KEY("unlock.minimum.share.points", unlock_minimum_share_points, 1, 100)
 	INT_KEY("hardcore.levels.beyond.cap", hardcore_levels_beyond_cap, 0, 56)
 
 #undef INT_KEY
@@ -113,10 +113,10 @@ void boot_frag_cap_config(void)
 	}
 
 	logit(LOG_STATUS,
-	      "Loaded frag-cap config: floor %d, reset %d, ceiling %d, unlock timer %d days, unlock victim at most %d levels below the open cap, minimum individual frag gain %d points, hardcore allowance %d.",
+	      "Loaded frag-cap config: floor %d, reset %d, ceiling %d, unlock timer %d days, unlock victim at most %d levels below the open cap, minimum base frag share %d points, hardcore allowance %d.",
 	      active.cap_floor_level, active.cap_reset_level, active.cap_maximum_level,
 	      active.unlock_timer_days, active.unlock_victim_levels_below,
-	      active.unlock_minimum_frag_points, active.hardcore_levels_beyond_cap);
+	      active.unlock_minimum_share_points, active.hardcore_levels_beyond_cap);
 }
 
 const struct frag_cap_config *frag_cap_config_get(void)

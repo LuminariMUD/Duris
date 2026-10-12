@@ -32,7 +32,7 @@ for key in (
     "cap.maximum.level",
     "timer.unlock.days",
     "unlock.victim.levels.below.open",
-    "unlock.minimum.frag.points",
+    "unlock.minimum.share.points",
     "hardcore.levels.beyond.cap",
 ):
     assert key + "=" in config, key
@@ -44,7 +44,7 @@ for token in (
     "cap_maximum_level",
     "unlock_timer_days",
     "unlock_victim_levels_below",
-    "unlock_minimum_frag_points",
+    "unlock_minimum_share_points",
     "hardcore_levels_beyond_cap",
 ):
     assert token in header, token
@@ -65,7 +65,7 @@ for retired in ("frags_for_level", "cap_level_from_frags", "frag_cap_config_time
 assert "cap.reset.level=30" in config
 assert "timer.unlock.days=3" in config
 assert "unlock.victim.levels.below.open=5" in config
-assert "unlock.minimum.frag.points=10" in config
+assert "unlock.minimum.share.points=20" in config
 assert "hardcore.levels.beyond.cap=2" in config
 assert "frag_cap_config_hardcore_level_cap" in limits
 assert "IS_HARDCORE(ch)" in limits
@@ -90,10 +90,10 @@ for token in (
     "FROM level_cap ORDER BY id LIMIT 1 FOR UPDATE",
     "request.values[0] < strtoll(row[4].c_str(), nullptr, 10)",
     "COALESCE(SUM(total_frags),0) FROM frag_leaderboard",
-    "p.frag_delta>=",
+    "p.frag_delta>0 AND (p.flags&",
+    "COMBAT_PARTICIPANT_CAP_SHARE",
     "v.level>=",
     "unlock_victim_levels_below",
-    "unlock_minimum_frag_points",
     "ORDER BY o.created_at,o.operation_id LIMIT 1",
     "(level - 1) % 5 == 0",
     "unlock_timer_days",
@@ -117,9 +117,25 @@ cap_header = report_cache[report_cache.index("time_t fraglist_cap_header("):]
 cap_header = cap_header[:cap_header.index("\n}\n")]
 for token in ("get_level_cap_info(&open_level, &good_level, &evil_level",
               "Goodies Total Frags", "unlock_victim_levels_below",
-              "unlock_minimum_frag_points / 100.0", "worth at least %.2f frags to one player"):
+              "100 / config->unlock_minimum_share_points",
+              "with at most %d of that side in the room"):
     assert token in cap_header, token
 assert "SELECT 'total', racewar, SUM(total_frags)" in report_cache
 assert "frag_cap_config" not in redis
+
+# The kill records whether its base share (1.00 frag over the killer's side in the room,
+# before level modifiers) met the minimum, compared without rounding; the job reads the flag.
+command = (SRC / "combat_outcome_command.h").read_text()
+assert "COMBAT_PARTICIPANT_CAP_SHARE = UINT8_C(1) << 3" in command
+fight = (SRC / "fight.c").read_text()
+award = fight[fight.index("static bool submit_pvp_outcome("):]
+award = award[:award.index("\n}\n")]
+for token in ("allies * frag_cap_config_get()->unlock_minimum_share_points <= 100",
+              "entry->flags |= COMBAT_PARTICIPANT_CAP_SHARE"):
+    assert token in award, token
+assert award.index("float gain = 100.0F / allies") < award.index("frag.evil.penalty")
+assert "CAP_SHARE = 8" in (ROOT / "tests/async/run_level_cap_mysql.py").read_text()
+for retired in ("unlock.minimum.frag.points", "unlock_minimum_frag_points"):
+    assert retired not in config + header + impl + maintenance + report_cache, retired
 
 print("frag-cap configuration source contract passed")

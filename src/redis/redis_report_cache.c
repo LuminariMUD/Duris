@@ -397,10 +397,10 @@ time_t fraglist_cap_header(const sql_rows &rows, char *before, size_t before_siz
 		snprintf(after, after_size, "&+Y, all levels are open&n\n\n");
 	else
 		snprintf(after, after_size,
-			 "&+Y, then a level %d+ foe worth at least %.2f frags to one player on "
-			 "the leading side (either side if tied) unlocks a level&n\n\n",
+			 "&+Y, then a frag of a level %d+ foe by the leading side (either side if "
+			 "tied), with at most %d of that side in the room, unlocks a level&n\n\n",
 			 open_level - config->unlock_victim_levels_below,
-			 config->unlock_minimum_frag_points / 100.0);
+			 100 / config->unlock_minimum_share_points);
 	return next_update;
 }
 

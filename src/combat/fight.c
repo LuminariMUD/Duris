@@ -77,6 +77,7 @@
 #include "item/item_ownership_runtime.h"
 #include "item/forced_weapon_drop.h"
 #include "combat/combat_outcome_transaction.h"
+#include "combat/frag_cap_config.h"
 #include "persistence/gameplay_read_state.h"
 /*
  * external variables //
@@ -991,6 +992,9 @@ static bool submit_pvp_outcome(P_char ch, P_char victim, bool award_frags)
 		if (allies < 1)
 			return false;
 		float gain = 100.0F / allies;
+		// The base share, 100 points over allies, meets the minimum without rounding.
+		const bool cap_share =
+			allies * frag_cap_config_get()->unlock_minimum_share_points <= 100;
 		if (EVIL_RACE(ch) && GOOD_RACE(victim))
 			gain *= get_property("frag.evil.penalty", 0.666);
 		for (P_char current = world[ch->in_room].people; current;
@@ -1012,6 +1016,8 @@ static bool submit_pvp_outcome(P_char ch, P_char victim, bool award_frags)
 			else if (GET_LEVEL(current) + 5 < GET_LEVEL(victim))
 				real_gain *= get_property("frag.leveldiff.modifier.high", 1.200);
 			entry->frag_delta = static_cast<int64_t>(real_gain);
+			if (cap_share)
+				entry->flags |= COMBAT_PARTICIPANT_CAP_SHARE;
 			int recent = 0;
 			for (struct affected_type *afp = current->affected; afp; afp = afp->next)
 				if (afp->type == TAG_PLR_RECENT_FRAG)

@@ -3,9 +3,10 @@
 
 The maintenance job with the shipped lib/frag_cap.cfg, from a wipe: level 30 open to all
 and no timer. Frags of victims more than 5 levels below the level open to all unlock
-nothing. A gain below 0.10 frag per participant cannot unlock either, even if a group's
-gains sum to a full frag. With the totals level, the first frag unlocks 31, a spell circle level, for every
-side, and starts the 3-day timer from that unlock. A frag before the timer ends does
+nothing. Neither do kills recorded without a base frag share of at least 0.20 (the
+COMBAT_PARTICIPANT_CAP_SHARE flag), however many group members gained, nor flagged kills
+that gained nothing; a flagged kill unlocks even when one gain is as small as 0.10. With
+the totals level, the first frag unlocks 31, a spell circle level, for every side, and starts the 3-day timer from that unlock. A frag before the timer ends does
 nothing. After it, only the side with more total frags unlocks: the other side's and the
 undead's frags are passed over, and the leader's next frag unlocks one level for that side
 alone. A level that opens a spell circle opens to every side, and 56 ends it. Frags
@@ -26,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DAY = 86400
 WIPE = 1_800_000_000
 GOOD, EVIL, UNDEAD, GOOD_TWO = 1, 2, 3, 4  # frag_leaderboard pids, racewar 1, 2, 3, 1
+CAP_SHARE = 8  # COMBAT_PARTICIPANT_CAP_SHARE in src/combat/combat_outcome_command.h
 
 
 def main():
@@ -90,7 +92,9 @@ def main():
 
         kills = iter(range(1, 1000))
 
-        def kill(at, killer, victim, victim_level, gain=100):
+        def kill(at, killer, victim, victim_level, gain=100, cap_share=True):
+            # The game sets the flag when 1.00 frag over the killer's side in the room is at
+            # least unlock.minimum.share.points.
             event = next(kills)
             operation = f"UNHEX('{event:032x}')"
             sql(f"""
@@ -105,7 +109,8 @@ INSERT INTO combat_outcome (operation_id, pkill_event_id, victim_pid, room_vnum,
 INSERT INTO combat_outcome_participant (operation_id, participant_index, pid, role, flags,
   frag_delta, epic_delta, wallet_delta_copper, frag_after, frag_revision, epic_revision,
   wallet_revision, bank_revision) VALUES
-  ({operation}, 0, {killer}, 1, 0, {gain}, 0, 0, {gain}, 1, 0, 0, 0),
+  ({operation}, 0, {killer}, 1, {CAP_SHARE if cap_share else 0}, {gain}, 0, 0, {gain},
+   1, 0, 0, 0),
   ({operation}, 1, {victim}, 3, 0, {-gain}, 0, 0, {-gain}, 1, 0, 0, 0);
 """)
             return operation
@@ -122,11 +127,12 @@ UPDATE level_cap SET most_frags=0, racewar_leader=0, level=30, level_good=0, lev
         # 24 is more than 5 levels below the 30 open to all.
         kill(WIPE + 100, GOOD, EVIL, 24)
         assert job(WIPE + 150) == 'complete 0', 'a low-level victim unlocked a level'
-        for index, gain in enumerate((0, 1, 9)):
-            kill(WIPE + 160 + index, GOOD, EVIL, 30, gain=gain)
-            assert job(WIPE + 170 + index) == 'complete 0', f'{gain} points unlocked'
-        # Twenty winners at 0.05 each must not qualify by their combined 1.00 frag.
-        operation = kill(WIPE + 180, GOOD, EVIL, 30, gain=5)
+        kill(WIPE + 160, GOOD, EVIL, 30, cap_share=False)
+        assert job(WIPE + 170) == 'complete 0', 'a kill without the base share unlocked'
+        kill(WIPE + 172, GOOD, EVIL, 30, gain=0)
+        assert job(WIPE + 175) == 'complete 0', 'a kill that gained nothing unlocked'
+        # Twenty winners at 0.05 each: 1.00 frag over 20 is below the 0.20 base share.
+        operation = kill(WIPE + 180, GOOD, EVIL, 30, gain=5, cap_share=False)
         for index in range(2, 21):
             pid = 100 + index
             sql(f"INSERT INTO frag_leaderboard "
@@ -140,13 +146,15 @@ UPDATE level_cap SET most_frags=0, racewar_leader=0, level=30, level_good=0, lev
         sql(f"UPDATE combat_outcome SET participant_count=21 WHERE operation_id={operation}")
         assert job(WIPE + 190) == 'complete 0', '20 small gains were combined to unlock'
         assert cap() == f'30\t0\t0\t{WIPE}', cap()
-        print('[PASS] 0/1/9 points and twenty 5-point gains cannot unlock', flush=True)
-        # The totals are level, so the first qualifying frag by either side unlocks.
+        print('[PASS] kills below the base share, even of a full frag, cannot unlock',
+              flush=True)
+        # The totals are level, so the first qualifying frag by either side unlocks. 0.10 is
+        # a 0.20 base share halved for a killer more than 5 levels above the victim.
         kill(WIPE + 200, EVIL, GOOD, 25, gain=10)
         assert job(WIPE + 250) == 'complete 1 2 31 1'
         timer = WIPE + 250 + 3 * DAY
         assert cap() == f'31\t0\t0\t{timer}', cap()
-        print('[PASS] exactly 10 points and the minimum victim level open 31 to all',
+        print('[PASS] the base share and the minimum victim level open 31 to all',
               flush=True)
 
         kill(WIPE + 300, GOOD, EVIL, 31)
@@ -207,20 +215,6 @@ UPDATE level_cap SET most_frags=0, racewar_leader=0, level=30, level_good=0, lev
             assert job(later + 1, no_timer) == 'complete 1 2 41 1'
             assert job(later + 2, no_timer) == 'complete 0', 'one frag unlocked twice'
         print('[PASS] with no timer, one frag unlocks one level', flush=True)
-
-        with tempfile.TemporaryDirectory() as higher_threshold:
-            (Path(higher_threshold) / 'lib').mkdir()
-            (Path(higher_threshold) / 'lib/frag_cap.cfg').write_text(
-                config.replace('unlock.minimum.frag.points=10', 'unlock.minimum.frag.points=20'))
-            later += DAY
-            sql('UPDATE level_cap SET level=40, level_good=0, level_evil=0, '
-                f'next_update=FROM_UNIXTIME({later})')
-            kill(later + 1, EVIL, GOOD, 40, gain=19)
-            assert job(later + 1, higher_threshold) == 'complete 0'
-            kill(later + 2, EVIL, GOOD, 40, gain=20)
-            assert job(later + 2, higher_threshold) == 'complete 1 2 41 1'
-        print('[PASS] configured threshold rejects below and accepts exactly at its boundary',
-              flush=True)
     finally:
         sql('DROP DATABASE ' + database, False)
 

@@ -24050,8 +24050,8 @@ Syntax: fraglist
 Good and Evil unlock one level at a time. After the timer expires, the side
 leading in total frags must earn a fresh qualifying frag. With equal totals,
 either side can claim the unlock. The victim must be no more than five
-levels below the level open to all, and an individual participant must gain
-at least 0.10 frag; group members' smaller shares are not added together.
+levels below the level open to all, and no more than five of the killer's
+side may be in the room, grouped or not.
 
 Intermediate levels open only for the winning side. Spell-circle levels
 31, 36, 41, 46, 51 and 56 open for all sides. Other sides always use the
