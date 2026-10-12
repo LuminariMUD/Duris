@@ -102,6 +102,7 @@ Colorization:
 |----------|---------|
 | [LOGIN_STATS.md](operations/LOGIN_STATS.md) | Immutable login snapshots, nightly JSON export, user-service setup and local verification. |
 | [RUNBOOK.md](operations/RUNBOOK.md) | Startup, migration, backup, restore, recovery, reconciliation, and the release boundary. |
+| [PRODUCTION_UPDATE_INVENTORY.md](operations/PRODUCTION_UPDATE_INVENTORY.md) | Post-pull production steps, immutable migrations, content imports, installed jobs, and conditional legacy tools. |
 | [CONFIGURATION.md](operations/CONFIGURATION.md) | Runtime variables, Redis, listeners, proxy handling, and diagnostics. |
 | [BACKUPS.md](operations/BACKUPS.md) | Backup policy, generations, off-host copies, and isolated restore qualification. |
 | [DOCKER.md](operations/DOCKER.md) | Local Compose deployment, persistent data, upgrades, and reset boundaries. |

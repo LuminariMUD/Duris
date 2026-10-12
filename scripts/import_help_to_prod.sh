@@ -488,7 +488,7 @@ for filename in "${!HELP_FILES[@]}"; do
         echo "DELETE FROM pages WHERE title = '$title';"
         echo -n "INSERT INTO pages (title, text, last_update, last_update_by, category_id) VALUES ('$title', X'"
         od -An -v -tx1 "$filepath" | tr -d ' \n'
-        echo "', '$now', 'Arih_importDB', 0);"
+        echo "', '$now', 'zusuk-import-db', 0);"
     } > "$tmpfile"
 
     if [ $DRY_RUN -eq 1 ]; then
@@ -797,7 +797,7 @@ for title, content in entries:
 
     sql = f"""DELETE FROM pages WHERE title = '{title.replace("'", "''")}';
 INSERT INTO pages (title, text, last_update, last_update_by, category_id)
-VALUES ('{title.replace("'", "''")}', 0x{content_hex}, '{now}', 'Arih_importDB', 0);"""
+VALUES ('{title.replace("'", "''")}', 0x{content_hex}, '{now}', 'zusuk-import-db', 0);"""
 
     with open(os.environ["IMPORT_SQL_FILE"], "a", encoding="utf-8") as staged:
         staged.write(sql + "\n")
@@ -962,7 +962,7 @@ for title, content in entries:
 
     sql = f"""DELETE FROM pages WHERE title = '{safe_title}';
 INSERT INTO pages (title, text, last_update, last_update_by, category_id)
-VALUES ('{safe_title}', 0x{content_hex}, '{now}', 'Arih_importDB', 0);"""
+VALUES ('{safe_title}', 0x{content_hex}, '{now}', 'zusuk-import-db', 0);"""
 
     with open(os.environ["IMPORT_SQL_FILE"], "a", encoding="utf-8") as staged:
         staged.write(sql + "\n")

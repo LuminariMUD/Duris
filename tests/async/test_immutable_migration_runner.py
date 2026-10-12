@@ -331,6 +331,93 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
                                         "does not identify"):
                 runner.validate_production_backup(backup, "other")
 
+    def test_online_level_cap_preserves_sealed_sql_and_rejects_other_steps(self):
+        manifest = runner.load_manifest()
+        environment = {
+            "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
+            "DB_NAME": "duris", "DB_USER": "x", "DB_PASSWD": "x",
+            "DB_ALLOWED_TARGETS": "127.0.0.1/duris",
+        }
+        with tempfile.TemporaryDirectory() as temporary, \
+                mock.patch.dict(os.environ, environment, clear=True):
+            backup = self.make_production_backup(Path(temporary))
+            executor = runner.MysqlExecutor(manifest, "127.0.0.1/duris", backup, True)
+            with mock.patch.object(executor, "sql", side_effect=[
+                    "11.8.6-MariaDB-5ubuntu0.1", "InnoDB", ""]) as sql:
+                executor.apply(manifest.migrations[-1])
+                payload = sql.call_args.args[1]
+                self.assertTrue(payload.endswith(manifest.migrations[-1].apply_path.read_bytes()))
+                self.assertIn(b"alter_algorithm='INSTANT'", payload)
+                self.assertIn(b"lock_wait_timeout=1", payload)
+            with mock.patch.object(executor, "sql") as sql:
+                with self.assertRaisesRegex(runner.MigrationContractError, "only reviewed"):
+                    executor.apply(manifest.migrations[-2])
+                sql.assert_not_called()
+            for answers in (["8.0.39"], ["11.8.6-MariaDB", "MyISAM"]):
+                with mock.patch.object(executor, "sql", side_effect=answers) as sql:
+                    with self.assertRaises(runner.MigrationContractError):
+                        executor.apply(manifest.migrations[-1])
+                    self.assertFalse(any(len(call.args) > 1 for call in sql.call_args_list))
+            with mock.patch.object(executor, "sql", side_effect=[
+                    "11.8.6-MariaDB", "InnoDB", runner.MigrationContractError("lock timeout")]), \
+                    mock.patch.object(executor, "record") as record:
+                with self.assertRaisesRegex(runner.MigrationContractError, "lock timeout"):
+                    executor.apply(manifest.migrations[-1])
+                record.assert_not_called()
+
+    def test_online_level_cap_keeps_production_authorization_and_manifest_guards(self):
+        manifest = runner.load_manifest()
+        environment = {
+            "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
+            "DB_NAME": "duris", "DB_USER": "x", "DB_PASSWD": "x",
+            "DB_ALLOWED_TARGETS": "127.0.0.1/duris",
+        }
+        with tempfile.TemporaryDirectory() as temporary, \
+                mock.patch.dict(os.environ, environment, clear=True):
+            backup = self.make_production_backup(Path(temporary))
+            for target, path in ((None, backup), ("127.0.0.1/duris", None)):
+                with self.assertRaises(runner.MigrationContractError):
+                    runner.MysqlExecutor(manifest, target, path, True)
+            changed = runner.replace(manifest, migrations=manifest.migrations[:-1])
+            with self.assertRaisesRegex(runner.MigrationContractError, "reviewed production"):
+                runner.MysqlExecutor(changed, "127.0.0.1/duris", backup, True)
+            changed = runner.replace(manifest, migrations=manifest.migrations[:-1] + (
+                runner.replace(manifest.migrations[-1], apply_checksum="0" * 64),))
+            with self.assertRaisesRegex(runner.MigrationContractError, "reviewed production"):
+                runner.MysqlExecutor(changed, "127.0.0.1/duris", backup, True)
+            normal = runner.MysqlExecutor(manifest, "127.0.0.1/duris", backup)
+            with mock.patch.object(normal, "sql", return_value="9") as sql:
+                with self.assertRaisesRegex(runner.MigrationContractError, "every other"):
+                    normal.apply(manifest.migrations[-1])
+                self.assertEqual(sql.call_count, 1)
+
+    def test_online_migration_keeps_lock_client_open_until_release(self):
+        manifest = runner.load_manifest()
+        environment = {
+            "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
+            "DB_NAME": "duris", "DB_USER": "x", "DB_PASSWD": "x",
+            "DB_ALLOWED_TARGETS": "127.0.0.1/duris",
+        }
+        with tempfile.TemporaryDirectory() as temporary, \
+                mock.patch.dict(os.environ, environment, clear=True):
+            directory = Path(temporary)
+            backup = self.make_production_backup(directory)
+            client = directory / "lock_client.py"
+            client.write_text("import sys\n"
+                              "assert 'GET_LOCK' in sys.stdin.readline()\n"
+                              "print('1', flush=True)\n"
+                              "sys.stdin.read()\n")
+            executor = runner.MysqlExecutor(manifest, "127.0.0.1/duris", backup, True)
+            executor.command = [sys.executable, str(client)]
+            try:
+                executor.acquire_lock()
+                process = executor.lock_process
+                self.assertIsNone(process.poll())
+            finally:
+                executor.release_lock()
+            self.assertEqual(process.returncode, 0)
+            self.assertIsNone(executor.lock_process)
+
     def test_socket_adapter_keeps_no_defaults_first_and_overrides_routing(self):
         with tempfile.TemporaryDirectory() as temporary:
             client = Path(temporary) / "mysql-arguments"

@@ -3,6 +3,12 @@
 Day-to-day operation of a DurisMUD instance. First-time setup is in
 [README.md](../../README.md).
 
+For ordinary assisted production preparation, follow the
+[`deploy-production` skill](../../.agents/skills/deploy-production/SKILL.md).
+It completes the release with services running and hands the user the in-game
+REBOOT command. The maintenance, qualification and stop/start procedures below
+apply when separately requested; they do not extend that preparation task.
+
 ## Starting and stopping
 
 ```bash
@@ -25,18 +31,22 @@ production port 7777; the default remains 4000.
   `DB_USER`, `DB_PASSWD`, `DB_NAME`, and `DB_ALLOWED_TARGETS`; `flatfile-primary`
   instead requires an absolute `FLATFILE_STATE_DIR`. It has no source-code credential
   fallback.
-- Runs migrations, schema verification, and MySQL shutdown logging only for a
-  database-backed mode. A `flatfile-primary` launch does not invoke those database
-  tools, even when Redis is enabled.
+- Runs schema verification and MySQL shutdown logging only for a database-backed
+  mode. Automatic migration application additionally requires `ENVIRONMENT=local`;
+  production verifies the schema and does not migrate at boot. A `flatfile-primary`
+  launch does not invoke those database tools, even when Redis is enabled.
 - Raises core dump limits (`ulimit -c unlimited`).
 - Rebuilds area tools and regenerates `areas/world.*` when the `make_*`
   helpers are missing.
 - Regenerates `lib/misc/event_names` with `scripts/event_names.sh`: the
   executable's function names, local and weak ones included, which the event
   diagnostics use to name a callback.
-- Promotes `bin/server/dms_new` to `bin/server/dms`, retains the five newest
+- Promotes `bin/server/dms_new` to `bin/server/dms` only for result 53/57 (including
+  the launcher's initial preset 53), retains the five newest
   prior executables under `bin/server/history/` by default, and runs the active
   binary in an outer loop. Set `DMS_BINARY_HISTORY_LIMIT` to change the limit.
+  Ordinary in-game reboot returns 52 and executes the existing `dms` pathname;
+  preparing that handoff requires installing the checked candidate there first.
   A `--production` launch promotes and runs nothing except a stamped
   `PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=production` build: a staged binary
   with another stamp is logged and left in place, and the runtime binary keeps
@@ -579,8 +589,10 @@ These are investigated and understood; they are not signs of a failed boot.
 | `scripts/migrate_players_to_accounts.sh`, `scripts/convert_all_pfiles.sh` | One-shot legacy data conversions; back up and review their assumptions before use. |
 | `bin/migrations/*` | Offline pfile/schema conversion binaries built from `migrations/tools/`. |
 
-Schema operations follow the safety rules in [DATABASE.md](../reference/DATABASE.md):
-back up, clone, validate replay on the clone -- never against live data.
+Migration qualification follows the isolation rules in
+[DATABASE.md](../reference/DATABASE.md): preserve the backup and validate replay
+on a clone, never against live data. For authorized production application,
+select the supported online or stopped-client path in the procedure below.
 
 Full backup policy, generation format, journal consistency, retention,
 separate/off-host custody, erasure preflight, isolated restore qualification and
@@ -589,6 +601,16 @@ BACKUP_POLICY_FILE is mandatory; legacy per-mode backup-root variables and the
 old raw-copy restore interface no longer select or bypass the policy.
 
 ### Migration procedure
+
+For routine pre-reboot preparation, first check the runner's supported online
+paths in [IMMUTABLE_MIGRATIONS.md](../persistence/IMMUTABLE_MIGRATIONS.md).
+The reviewed `run --online-level-cap-sides` path permits only the exact sealed
+0039 addition on MariaDB 11.8/InnoDB, with a fresh verified backup, compatible
+running writers, coordinated backup jobs and the runner's locking/DDL guards.
+An authorized deploy completes that supported path without stopping services.
+The remaining procedure below covers isolated qualification and a separately
+authorized stopped-client rollout; clone qualification is not a requirement of
+the deployment skill's pre-reboot handoff.
 
 All migration qualification is offline work on a disposable database or a restored,
 backed-up development clone. Stop every writer before cloning. Record the source
@@ -645,8 +667,9 @@ python3 scripts/migration_runner.py run
 ./migrations/verify_runtime_compatibility.sh
 ```
 
-After that exact backup has passed on the clone, an explicitly authorized production rollout may
-apply only the immutable pending prefix. Keep every production writer stopped, create a fresh
+For the separately authorized stopped-client rollout described here, after that
+exact backup has passed on the clone, apply only the immutable pending prefix.
+Keep every production writer stopped, create a fresh
 backup with `scripts/backup_pfiles.sh`, and pass both the resolved target and backup explicitly:
 
 ```bash
@@ -659,11 +682,13 @@ python3 scripts/migration_runner.py run \
 ./migrations/verify_runtime_compatibility.sh
 ```
 
-The production path refuses baseline adoption and legacy migration. It requires
+The default production path refuses baseline adoption and legacy migration. It requires
 `ENVIRONMENT=production`, an exact `DB_ALLOWED_TARGETS` match, a backup no more than two hours old
 that is an owner-only regular gzip containing the configured Duris schema, CA-verified TLS for a
-remote database, and zero other connections to the target before it applies each step. Never stop
-or bypass one of these checks. Preserve the backup through deployment and the final soak.
+remote database, and zero other connections to the target before it applies each step.
+The reviewed online path retains the target, backup, ledger and verification guards
+while allowing live clients under its specific constraints. Do not bypass those
+guards. Preserve the backup through deployment and the final soak.
 
 Keep the clone configuration separate from the server's `.env`; the legacy runner
 loads the file named by `MIGRATION_ENV_FILE` and rejects symlinks, non-regular files,
@@ -678,7 +703,7 @@ database-connected and must receive the intended target. Never use production fo
 discovery, qualification, or exploratory replay. The guarded immutable application and its final
 read-only compatibility verification are the only production steps in this procedure.
 
-If any step fails, keep writers stopped and preserve the database, command output,
+If this stopped-client procedure fails, keep writers stopped and preserve the database, command output,
 manifest, and backup. Do not edit ledger rows, skip a verifier, rerun a partial legacy
 bundle blindly, or guess a reverse DDL. MySQL DDL may already have committed. Recovery
 is to investigate on another clone or discard the failed clone and restore the known

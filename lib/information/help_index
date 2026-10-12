@@ -21323,6 +21323,9 @@ See also: headlock, armlock, groundslam, bearhug
 ===========================================================================
 Aggressive:     Yes
 
+Targets one size category smaller or larger are eligible, at 75% of the
+normal chance. A difference of more than one category topples the sweeper.
+
 "Legsweep" drops the fighter low and whips a leg through their opponent's stance, dumping a standing victim onto the ground - a truly masterful sweep knocks them flat on their back entirely. Misjudge the reach, however, and the sweeper is the one left sitting in the dust, for foes far larger or strangely shaped punish the attempt. Awareness guards against it, and both parties need a moment to recover their footing afterward.
 ===========================================================================
 See also: bash, kick, tackle, trip
@@ -22459,6 +22462,11 @@ Aggressive:     No
 Cumulative:     No
 Duration:       Dependent on level of caster
 Type of spell:  Enhancement 
+
+Available at 11th circle (level 51) to Druids, Blighters, Clerics, Bards,
+Reavers and Rangers. Previously memorized copies still require this level.
+Takedown chance is multiplied by 0.80 and backstab chance by 0.70 while
+the spell lasts; takedowns do not consume it.
 
 "Freedom of movement": a blessing of unencumbered motion settles over the caster, letting them stride unhindered through the world. Bonds of paralysis great and small, grasping earth, and clinging vines all slough away the moment the blessing takes hold, and fresh bindings and webbing may slide off while it lasts, though turning one aside can exhaust the blessing early. For its whole duration the caster keeps surer footing, so bashes, trips and other attempts to bring them down succeed less often, and a blade slipped in from behind finds its mark less readily. Every step over land costs the barest effort; water still drags at the limbs, but only half as much as it otherwise would. The liberation lasts longest in the hands of the most seasoned casters, and cannot be renewed while its protection already rests upon the body.
 ===========================================================================
@@ -24033,3 +24041,26 @@ Duration: 15 ticks, plus 1 for every 10 points of Devotion.
 Usage: cast 'blood tithe'
 
 See also: Holy Sacrifice, Battle Ecstasy, Aura of Battlelust
+
+#
+"LEVEL CAP" (General Information)
+===========================================================================
+Syntax: fraglist
+
+Good and Evil unlock one level at a time. After the timer expires, the side
+leading in total frags must earn a fresh qualifying frag. With equal totals,
+either side can claim the unlock. The victim must be no more than five
+levels below the level open to all, and an individual participant must gain
+at least 0.10 frag; group members' smaller shares are not added together.
+
+Intermediate levels open only for the winning side. Spell-circle levels
+31, 36, 41, 46, 51 and 56 open for all sides. Other sides always use the
+shared cap. Each unlock begins a three-day wait; waiting alone cannot
+unlock another level. Cap unlocks no longer grant an experience boon.
+
+FRAGLIST shows the shared and side caps, totals and remaining timer.
+Hardcore may advance two levels beyond its side's cap, never beyond 56.
+The release preserves existing caps. Future season resets start at shared
+level 30 with no waiting period before the first qualifying frag.
+===========================================================================
+See also: FRAGS, HARDCORE

@@ -33,11 +33,30 @@ python3 scripts/migration_runner.py run
 ```
 
 By default, the runner requires `ENVIRONMENT` to be local/development/test, a loopback `DB_HOST`,
-a non-production database name, and explicit credentials. After the exact production backup has
-passed on a disposable clone, an owner-authorized production `run` additionally requires the exact
+a non-production database name, and explicit credentials. An owner-authorized
+production `run` additionally requires the exact
 `--confirm-production-target HOST/DB` and a fresh owner-only
 `--production-backup /absolute/path.sql.gz`. Production baseline adoption remains prohibited, and
-the runner refuses to apply while another connection is using the configured database.
+the default production path refuses to apply while another connection is using
+the configured database. Isolated clone/restore qualification is separate work;
+the deployment skill requires verified backups, not a restore-drill receipt.
+
+For the reviewed `0039_level_cap_sides` addition on MariaDB 11.8, an explicit
+`run --online-level-cap-sides` path retains the production target, allow-list,
+fresh backup, sealed checksums, baseline, ordered history and success-last
+verification requirements while allowing live connections. It accepts only the
+manifest ending at the exact reviewed 0039 step and only an InnoDB `level_cap`.
+It executes the unchanged sealed SQL with session `alter_algorithm=INSTANT` and
+one-second metadata/InnoDB lock waits: an unsupported instant operation or lock
+timeout fails rather than falling back to a table rebuild. A dedicated connection
+holds the migration advisory lock through verification and history publication.
+Other production migrations still require stopped clients.
+
+Before using this path, verify the running writers name their `level_cap` columns
+explicitly and remain compatible with the two default-zero additions. Coordinate
+schema-aware backup jobs so a backup cannot straddle DDL, preserve the deployed
+contract for the pre-change backup, and select the new contract after successful
+live verification. Do not edit the immutable SQL or its recorded checksums.
 
 [RUNTIME_COMPATIBILITY.md](RUNTIME_COMPATIBILITY.md) states the current head and the
 runtime table count. After the head is applied, the history singleton records the

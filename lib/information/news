@@ -1,12 +1,99 @@
 &+W======================================================================&n
 &+Y                           DURIS PLAYER NEWS&n
 &+W======================================================================&n
-&+WUpdated: October 11, 2026&n
+&+WUpdated: October 12, 2026&n
 
-Welcome back! This update catches up September 15 to October 11, 2026.
+Welcome back! This update catches up September 15 to October 12, 2026.
 Racial powers, ship battles and everyday adventuring all have news. The
 newest changes come first; later updates replace older rules. Earlier
 coverage, back to December 14, 2025, and the archive follow.
+
+&+R10/12/26&n &+L-&n &+YNew roads, sharper blades and a blood bargain&n
+&+W----------------------------------------------------------------------&n
+
+&+YRelease note:&n The changes below describe the prepared October 12 release.
+The new combat, shifting and level-cap rules take effect at the next reboot.
+
+&+CYour next level is your side's next victory&n
+&+Y-&n Good and Evil now unlock one level at a time. Once the timer expires,
+  the side leading in total frags needs a fresh qualifying frag to unlock
+  its next level. On equal totals, either side can claim the next unlock.
+&+Y-&n Levels between spell circles open for the winning side. Circle levels
+  &+Y31, 36, 41, 46, 51 and 56&n open for everyone. Other sides use that shared
+  cap. Each unlock starts a &+Ythree-day&n wait; an expired timer alone does
+  not grant a level. The old cap-unlock experience boon is gone.
+&+Y-&n The victim must be no more than &+Yfive levels&n below the shared cap, and
+  at least one individual gain must reach &+Y0.10 frag&n. Small shares from
+  several groupmates do not add together to meet that minimum. Check
+  &+C'fraglist'&n for both sides' caps and the timer. Hardcore keeps its
+  &+Ytwo-level&n allowance, with &+Y56&n still the maximum. Existing caps carry
+  over; future new seasons begin with level &+Y30&n open to everyone.
+
+&+CAnti-paladins: let the enemy pay your group&n
+&+Y-&n Dark Knights and Demonic Riders gain the &+Y10th-circle&n spell
+  &+C'blood tithe'&n. Cast it on yourself: enemy damage builds malice that
+  boosts your player groupmates' weapon and spell damage in the same room.
+  The caster receives no bonus. &+C'score'&n shows the available group bonus.
+&+Y-&n At full charge, up to three groupmates gain &+Y12%&n damage. Larger groups
+  share a smaller benefit: about &+Y9%&n with five, &+Y7%&n with eight and &+Y5%&n with
+  fifteen. The bonus is halved against players. Only the strongest tithe
+  applies; tithe casters and allies under Battle Lust gain no tithe bonus.
+&+Y-&n Each hit feeds at most &+Y5%&n of your maximum hit points into malice, which
+  loses &+Yone quarter&n each combat round. Sustaining full charge takes about
+  &+Y15%&n of your maximum hit points in enemy damage per round. Your group,
+  its pets and players of your own side cannot feed it. The spell lasts
+  &+Y15 ticks&n plus one per ten points of Devotion.
+
+&+CFreedom of Movement: lasting footing, later training&n
+&+Y-&n Freedom of Movement moves to &+Y11th circle, level 51&n for Druids,
+  Blighters, Clerics, Bards, Reavers and Rangers. Previously prepared
+  copies no longer bypass your current spell-circle eligibility.
+&+Y-&n While the spell lasts, takedown chances are multiplied by &+Y0.80&n and
+  backstab chances by &+Y0.70&n. Takedowns no longer consume the spell for an
+  outright block. Its protections against bindings and webbing still can
+  exhaust it. Land travel costs &+Yone move&n per room; water costs half the
+  usual movement, with a minimum of one.
+
+&+CSwashbucklers and a better-aimed sweep&n
+&+Y-&n Swashbucklers' attacks are harder to parry. Triple Attack arrives at
+  &+Ylevel 41&n with a &+Y90%&n training cap, and Vicious Attack's cap rises to
+  &+Y100%&n at level 56. Dual Wield remains at level 30.
+&+Y-&n Legsweep now works against a foe one size category smaller or larger,
+  at &+Y75%&n of the normal chance. A bigger size gap still topples the sweeper.
+
+&+CA flight map you earn by exploring&n
+&+Y-&n Use &+C'list'&n at each of &+Y25 ordinary flight carriers&n to learn its stop
+  and earn discovery experience once per character. &+C'flights'&n shows your
+  discoveries anywhere, even in the air. Save and relog retain them; a
+  new season resets them. Alts discover their own routes.
+&+Y-&n Carriers list learned destinations in distance order. &+C'buy <number>'&n
+  buys the matching ticket; &+C'give ticket <carrier>'&n boards that same
+  waiting carrier. Ordinary fares are &+Yhalf a platinum per room flown&n,
+  with no minimum or maximum, level limit or race restriction. You must
+  see the carrier. Passing a ticket to an alt does not teach the stop;
+  old route tickets may need replacing.
+&+Y-&n Discovery rewards grow with your discoveries: your current EXP-gain
+  cap times the number of stops learned, divided by &+Y27&n, before normal
+  racial, rested and difficulty adjustments and limits. You still learn
+  a stop when unable to gain EXP; no repeat reward is saved for later.
+&+Y-&n Extra Destinations remain separate one-way journeys: Storm Port's
+  Stronghold costs &+Y10 platinum&n; the Snow Ogres cavern approach costs
+  &+Y50 platinum&n; the Desolate Island approach to Scorched costs &+Y200&n.
+  Both epic trips require &+Ylevel 51&n. Their departure dragons and entrances
+  are outside the ordinary network, with no passenger return service.
+
+&+CShifting home and sailing for profit&n
+&+Y-&n Githyanki, Illithid and Pillithid prime shifting now includes Clavikord,
+  Bugentolen, Storm Port and Quietus Quay in place of Killing Fields,
+  Drustl, Crescent Chasm and Kelek. Each picks an eligible room in that
+  area, avoiding private, protected, hometown, ocean and groundless rooms.
+  &+C'innate shift_prime'&n requires the Astral Plane, no combat and no PvP
+  adrenaline. Missing destinations now fail cleanly.
+&+Y-&n Deramuth cargo and contraband prices now follow measured sailing
+  distances in both directions. Recheck your trade routes: &+Ycargo already
+  aboard sells at the new prices&n, too.
+&+Y-&n Racial innate help now lists active abilities, unlock levels and
+  command names more accurately, including Web Spray and shade movement.
 
 &+R10/11/26&n &+L-&n &+YHooves, webs and a few convincing doubles&n
 &+W----------------------------------------------------------------------&n

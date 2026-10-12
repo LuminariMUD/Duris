@@ -3335,7 +3335,7 @@ the swashbuckler specialization abandon their more brutish traits, and
 embrace a much more graceful form of combat.
 The Swashbuckler has learned many fine combat techniques. However, they
 must be using their rapier and dirk innate skill. Their ability to parry and
-disarm is enhanced.
+disarm is enhanced. Their attacks are harder for opponents to parry.
 ==See also==
 * Warrior
 ==Allowed races==
@@ -3349,10 +3349,9 @@ Skills Lost: 1h bludgeon, 1h flaying, 2h bludgeon, 2h flaying, 2h slashing, bash
 1st Level: awareness
 30th Level: dual wield, legsweep, switch opponents
 36th Level: quick step
-41st Level: evade, sneak
-46th Level: triple attack
+41st Level: evade, sneak, triple attack (90% training cap)
 51st Level: follow-up riposte
-56th Level: vicious attack
+56th Level: vicious attack (100% training cap)
 ==Spells==
 None.
 #0
@@ -9185,6 +9184,8 @@ Epic Skills, Smelt, Forge
 Frag
 Frag - Last Edited: 2008-04-14 15:58:43 by Blaize
 =================================================
+See LEVEL CAP for side-specific unlocks, qualifying frags and the timer.
+
 Syntax:     frag
             frag <classname>
             frag <racename>
@@ -20392,15 +20393,19 @@ See also:  Astral Plane, innate, githyanki, githzerai
 #0
 
 Shift prime
-Shift prime - Last Edited: 2014-07-26 01:40:23 by ashyel
+Shift prime - Last Edited: 2026-10-12
 ========================================================
-Shifting is an ability granted to only a few classes of players
-on Duris.  It is rumored that their is an entire race of
-people that also have this skill.  In order to 'shift prime'
-one must be on the Astral Plane and unengaged.  A successful
-shift prime will send you randomly to anywhere on the surface
-or the Underdark.
-The format for usage of this skill is "innate shift_prime".
+Syntax: innate shift_prime
+
+Shift from the Astral Plane to a randomly selected available destination
+for your race. You must be out of combat and free of PvP adrenaline.
+Githyanki, Illithid and Pillithid destinations now include Clavikord,
+Bugentolen, Storm Port and Quietus Quay instead of Killing Fields, Drustl,
+Crescent Chasm and Kelek. These four choose a room you can enter in the
+selected area, excluding private, no-magic, no-teleport, no-gate, hometown,
+ocean and groundless rooms. Each usable destination has equal odds.
+Other destination sets are unchanged. If no destination is available,
+shifting fails without moving you.
 ==See also==
 Astral Plane, shift astral, githyanki, githzerai
 #0

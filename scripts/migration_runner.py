@@ -10,6 +10,7 @@ import hmac
 import json
 import os
 import re
+import select
 import shutil
 import stat
 import subprocess
@@ -38,6 +39,9 @@ MIGRATION_FIELDS = {
 # its checksum is in every database's history. The history keeps the sealed checksum.
 ENGINE_VERIFIER_FIELDS = {"migration", "engine", "verify", "verify_checksum"}
 ENGINE_VERSIONS = {"mariadb-11.8": r"11\.8\.[0-9]+-MariaDB.*"}
+ONLINE_LEVEL_CAP_ID = "0039_level_cap_sides"
+ONLINE_LEVEL_CAP_APPLY = "4c343e649e77e70cf9cf66fcaaca714e35b2f1c0ed0f9922f988a947c4a78f3e"
+ONLINE_LEVEL_CAP_VERIFY = "a9cbde7decfc928629dc2a88baead64305c55a67b919b2dbe5ce3c20d0d3d652"
 
 
 class MigrationContractError(Exception):
@@ -335,12 +339,15 @@ def run_pending(manifest: Manifest, executor: Executor) -> list[str]:
 
 class MysqlExecutor:
     def __init__(self, manifest: Manifest, confirmed_production_target: str | None = None,
-                 production_backup: Path | None = None):
+                 production_backup: Path | None = None,
+                 online_level_cap_sides: bool = False):
         environment = os.environ.get("ENVIRONMENT", "").casefold()
         host = os.environ.get("DB_HOST", "")
         database = os.environ.get("DB_NAME", "")
         socket_path = os.environ.get("DB_SOCKET", "")
         self.production = environment == "production"
+        self.online_level_cap_sides = online_level_cap_sides
+        self.lock_process = None
         if self.production:
             expected_target = f"{host}/{database}"
             if confirmed_production_target is None or not hmac.compare_digest(
@@ -367,6 +374,13 @@ class MysqlExecutor:
         for name in ("DB_USER", "DB_PASSWD", "DB_NAME"):
             if not os.environ.get(name):
                 raise MigrationContractError(f"missing migration credential: {name}")
+        if online_level_cap_sides:
+            head = manifest.migrations[-1] if manifest.migrations else None
+            if not self.production or head is None or len(manifest.migrations) != 39 or \
+                    (head.migration_id, head.apply_checksum, head.verify_checksum) != \
+                    (ONLINE_LEVEL_CAP_ID, ONLINE_LEVEL_CAP_APPLY, ONLINE_LEVEL_CAP_VERIFY):
+                raise MigrationContractError(
+                    "online level-cap migration requires the reviewed production 0039 manifest")
         self.manifest = manifest
         self.socket_path = socket_path
         self.engine: str | None = None
@@ -395,6 +409,8 @@ class MysqlExecutor:
                         "-N", "-B", database]
 
     def sql(self, statement: str, input_payload: bytes | None = None) -> str:
+        if self.lock_process is not None and self.lock_process.poll() is not None:
+            raise MigrationContractError("online migration lock connection was lost")
         environment = dict(os.environ)
         environment["MYSQL_PWD"] = os.environ["DB_PASSWD"]
         result = subprocess.run(self.command + (["-e", statement] if input_payload is None
@@ -408,10 +424,39 @@ class MysqlExecutor:
         return result.stdout.decode().strip()
 
     def acquire_lock(self) -> None:
+        if self.online_level_cap_sides:
+            # Keep this connection open through apply, verification and recording.
+            # A one-shot mysql -e GET_LOCK releases its lock as soon as it exits.
+            environment = dict(os.environ, MYSQL_PWD=os.environ["DB_PASSWD"])
+            self.lock_process = subprocess.Popen(
+                self.command + ["--unbuffered", "--skip-reconnect", "--connect-timeout=5"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, env=environment)
+            try:
+                self.lock_process.stdin.write("SELECT GET_LOCK('duris_immutable_migration',5);\n")
+                self.lock_process.stdin.flush()
+                readable, _, _ = select.select([self.lock_process.stdout], [], [], 12)
+                if not readable or self.lock_process.stdout.readline().strip() != "1":
+                    raise MigrationContractError("migration lock unavailable")
+            except (OSError, MigrationContractError) as error:
+                self.release_lock()
+                raise MigrationContractError("migration lock unavailable") from error
+            return
         if self.sql("SELECT GET_LOCK('duris_immutable_migration',5);") != "1":
             raise MigrationContractError("migration lock unavailable")
 
     def release_lock(self) -> None:
+        if self.lock_process is not None:
+            process = self.lock_process
+            self.lock_process = None
+            process.stdin.close()
+            process.stdin = None
+            try:
+                process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate()
+            return
         try:
             self.sql("SELECT RELEASE_LOCK('duris_immutable_migration');")
         except MigrationContractError:
@@ -462,6 +507,25 @@ class MysqlExecutor:
         return rows
 
     def apply(self, migration: Migration) -> None:
+        if self.online_level_cap_sides:
+            if (migration.migration_id, migration.apply_checksum, migration.verify_checksum) != \
+                    (ONLINE_LEVEL_CAP_ID, ONLINE_LEVEL_CAP_APPLY, ONLINE_LEVEL_CAP_VERIFY):
+                raise MigrationContractError("only reviewed migration 0039 may run online")
+            if engine_of(self.sql("SELECT VERSION();")) != "mariadb-11.8":
+                raise MigrationContractError("online migration requires MariaDB 11.8")
+            if self.sql("SELECT ENGINE FROM information_schema.TABLES WHERE "
+                        "TABLE_SCHEMA=DATABASE() AND TABLE_NAME='level_cap';") != "InnoDB":
+                raise MigrationContractError("online migration requires InnoDB level_cap")
+            payload = read_regular(migration.apply_path, MAX_MIGRATION_BYTES,
+                                   "migration apply")
+            if checksum(payload) != ONLINE_LEVEL_CAP_APPLY:
+                raise MigrationContractError("online migration apply checksum changed")
+            # Execute the sealed SQL unchanged, with no table-rebuild fallback and
+            # a bounded wait for the brief metadata locks needed by instant DDL.
+            self.sql("", b"SET SESSION alter_algorithm='INSTANT';\n"
+                     b"SET SESSION lock_wait_timeout=1;\n"
+                     b"SET SESSION innodb_lock_wait_timeout=1;\n" + payload)
+            return
         if self.production:
             self.require_quiescent()
         self.sql("", read_regular(migration.apply_path, MAX_MIGRATION_BYTES,
@@ -535,11 +599,16 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--confirm-production-target")
     parser.add_argument("--production-backup", type=Path)
+    parser.add_argument("--online-level-cap-sides", action="store_true",
+                        help="apply only reviewed 0039 on MariaDB 11.8 using INSTANT DDL; "
+                             "requires production confirmation, backup and compatible live writers")
     parser.add_argument("command", choices=("inspect", "adopt", "run"))
     parser.add_argument("--kind", choices=("fresh_bootstrap", "verified_legacy_adoption"))
     arguments = parser.parse_args()
     try:
         manifest = load_manifest(arguments.manifest)
+        if arguments.online_level_cap_sides and arguments.command != "run":
+            raise MigrationContractError("online level-cap option requires run")
         if arguments.command == "inspect":
             print(json.dumps({"baseline_id": manifest.baseline_id,
                               "required_table_count": manifest.required_table_count,
@@ -554,7 +623,7 @@ def main() -> int:
             raise MigrationContractError(
                 "production migration options are valid only with the run command")
         executor = MysqlExecutor(manifest, arguments.confirm_production_target,
-                                 arguments.production_backup)
+                                 arguments.production_backup, arguments.online_level_cap_sides)
         if arguments.command == "adopt":
             if arguments.kind is None:
                 raise MigrationContractError("adopt requires --kind")
@@ -564,7 +633,7 @@ def main() -> int:
             finally:
                 executor.release_lock()
         else:
-            if executor.production:
+            if executor.production and not executor.online_level_cap_sides:
                 executor.require_quiescent()
             run_pending(manifest, executor)
         return 0

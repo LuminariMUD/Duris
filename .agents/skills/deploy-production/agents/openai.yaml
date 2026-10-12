@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deploy Production"
+  short_description: "Prepare Duris production for the user's in-game reboot"
+  default_prompt: "Use $deploy-production to finish production preparation, including backups, required migrations and content, then verify readiness and hand me the in-game REBOOT command with services still running."
