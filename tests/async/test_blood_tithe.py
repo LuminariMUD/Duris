@@ -62,7 +62,7 @@ assert re.search(
 # The score command shows the tithe, and the help explains it.
 score = extract_function("actinf.c", "void do_score(")
 assert "blood_tithe_bonus(ch)" in score
-score_start = score.index("\tif (affected_by_spell(ch, SPELL_BLOOD_TITHE)")
+score_start = score.index("\tif (affected_by_spell(GET_PLYR(ch), SPELL_BLOOD_TITHE)")
 score_output = score[score_start:score.index("\n\tif (IS_AFFECTED4(ch, AFF4_NEG_SHIELD))", score_start)]
 for help_file in ("help/duris_help.hlp", "help/duris_help_parsed.hlp"):
     assert "\nBlood Tithe - Last Edited:" in (ROOT / help_file).read_text(encoding="utf-8")
@@ -430,6 +430,8 @@ int main() {
         const double expected = 0.12 * std::sqrt(3.0 / 4.0);
         assert(about(blood_tithe_bonus(&ap), expected));
         assert(about(blood_tithe_bonus(&morph), expected));
+        assert(render_tithe_score(&morph).find("Blood Tithe") != std::string::npos);
+        assert(render_tithe_score(&morph) == render_tithe_score(&ap));
         assert(about(blood_tithe_damage_bonus(&mate, &enemy), expected));
         event_blood_tithe(&ap, nullptr, nullptr, nullptr);
         assert(malice(&ap) == 450);
