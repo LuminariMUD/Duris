@@ -13,11 +13,13 @@ authorize deployment or change the running game.
 
 ## Requirements and evidence
 
-The design uses the mechanics report (`tmp/medievia-hero-battles.md`),
-live evidence (`tmp/medievia-hero-battles-live.md`), and
-source inventory (`tmp/medievia-hero-battles-sources.tsv`). These research files
-are local, ignored inputs; the requirements and proposed decisions below are
-included here so implementation does not depend on those files being distributed.
+The supporting research is preserved beside this plan in `arena-research/`:
+the [mechanics report](arena-research/medievia-hero-battles.md),
+[timestamped live evidence](arena-research/medievia-hero-battles-live.md), and
+[63-record source inventory](arena-research/medievia-hero-battles-sources.tsv).
+These retain the historical accounts, source URLs and retrieval hashes, observed
+behavior, and unresolved questions. The requirements and proposed decisions below
+remain self-contained; none of these documents depends on the old temporary files.
 The inventory distinguishes official help, historical testimony, narrative examples,
 and direct observations. An empty live spectator list established command access,
 not a successfully observed match. No complete arena map, equipment catalogue,
@@ -53,6 +55,29 @@ Hero Points, Master Hero status, Adversary, and four-class hero progression are
 separate systems; they are not additional Arena features to transplant. Duris Arena
 ratings must also remain separate from epic points, frags, guild scores, and ordinary
 PK rankings.
+
+### Design lessons retained from the research
+
+Use these lessons when building the item catalogue, maps, help and playtests. They
+describe the intended experience; Medievia's historical numbers are not Duris balance
+targets.
+
+| Research finding | Application to Duris |
+| --- | --- |
+| Players described HP/mana equipment early and offensive or saving-throw equipment later, with collected items denied to the opponent | Test meaningful equipment tradeoffs and changes during a fight; avoid a catalogue with one best loadout for every situation |
+| Retreat, protection renewal, recovery and attacking during an opponent's wait state were central tactics | Verify that map routes and native Duris timing permit those choices alongside pursuit and pressure |
+| A novice found identifying and selecting unfamiliar gear especially difficult | Give match items clear names and useful identification text; include a first-time competitor in catalogue and preparation playtests |
+| Watching is presented as a way to learn; interviews describe recognition of skilled fighters and interest in wagers | Make the public feed understandable enough to learn from, including action outcomes and recovery decisions rather than only damage totals |
+| Live help still gave the wrong registration route and an obsolete return shortcut | Walk every published Duris entrance and help sequence on the finished world; command help alone is not navigation proof |
+
+The [2002 preparation account](arena-research/medievia-hero-battles.md#preparation-and-the-equipment-race)
+and [historical tactics](arena-research/medievia-hero-battles.md#historical-tactics-and-the-learning-curve)
+support the tactical lessons. The [2009 novice account](arena-research/medievia-hero-battles.md#preparation-and-the-equipment-race)
+estimated 3–5 minutes of preparation and reported roughly 1,600 HP/800 mana; those
+were one player's estimates and achieved values, not verified timers or caps.
+The tour's lightsaber, chef's hat and bottled healing item are narrative inspiration,
+not recovered item templates. Preserve the distinction between an observed feature,
+a historical report, and a proposed Duris rule when tuning or revising this plan.
 
 ## Current Duris integration points
 
