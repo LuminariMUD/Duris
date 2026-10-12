@@ -38,6 +38,9 @@ int main() {
     pc_only_data pc = {};
     ch.only.pc = &pc;
     pc.pid = 42;
+    assert(pc.learned_flight_stops == 0);
+    pc.learned_flight_stops = (uint64_t{1} << 26) | 1;
+    GET_EXP(&ch) = 12345;
     ch.player.time.played = 3600;
     ch.player.time.logon = 9400;
     ch.player.time.saved = 9000;
@@ -54,6 +57,18 @@ int main() {
         assert(player_snapshot_encode(snapshot, &bytes) == player_snapshot_codec_result::ok);
         player_snapshot decoded;
         assert(player_snapshot_decode(bytes.data(), bytes.size(), &decoded) == player_snapshot_codec_result::ok);
+        bool found_flights = false, found_exp = false;
+        for (const auto &row : decoded.status_integers) {
+            if (row.field == player_status_field::learned_flight_stops) {
+                assert(row.is_unsigned && row.unsigned_value == pc.learned_flight_stops);
+                found_flights = true;
+            }
+            if (row.field == player_status_field::experience) {
+                assert(row.signed_value == GET_EXP(&ch));
+                found_exp = true;
+            }
+        }
+        assert(found_flights && found_exp);
         for (const auto &row : decoded.status_integers)
             if (row.field == player_status_field::played_time)
                 return row.is_unsigned ? row.unsigned_value : static_cast<uint64_t>(row.signed_value);

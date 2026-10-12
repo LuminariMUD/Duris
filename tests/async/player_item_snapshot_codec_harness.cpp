@@ -349,16 +349,23 @@ int main()
 			bytes.erase(bytes.begin() + state_at, bytes.begin() + state_at + 9);
 		if (version < 5)
 			bytes.resize(bytes.size() - 4 - full.output_preferences.size());
-		bytes.erase(bytes.begin() + uid_at, bytes.begin() + uid_at + 8);
+		if (version < 7)
+			bytes.erase(bytes.begin() + uid_at, bytes.begin() + uid_at + 8);
 		put32(bytes, 0, version);
 		return bytes;
 	};
-	for (uint32_t version : { 1u, 3u, 5u })
+	for (uint32_t version : { 1u, 3u, 5u, 7u })
 	{
 		const auto bytes = wire(version);
 		require(player_snapshot_decode(bytes.data(), bytes.size(), &read_back) ==
 					player_snapshot_codec_result::ok &&
-				read_back.pets.size() == 1 && read_back.pets[0].pet_uid == 0 &&
+				read_back.pets.size() == 1 &&
+				read_back.pets[0].pet_uid ==
+					(version >= 7 ? full.pets[0].pet_uid : 0) &&
+				read_back.status_integers.back().field ==
+					player_status_field::learned_flight_stops &&
+				read_back.status_integers.back().is_unsigned &&
+				read_back.status_integers.back().unsigned_value == 0 &&
 				read_back.pets[0].mob_vnum == 5 &&
 				read_back.pets[0].restore_state == (version >= 3 ? "a" : "") &&
 				read_back.output_preferences ==
@@ -366,13 +373,33 @@ int main()
 				read_back.recipes_are_external,
 			"a version-" + std::to_string(version) + " snapshot did not decode");
 	}
+	changed = full;
+	changed.status_integers.push_back(
+		{ player_status_field::learned_flight_stops, 0, UINT64_MAX, true });
+	require(player_snapshot_encode(changed, &other) == player_snapshot_codec_result::ok &&
+			player_snapshot_decode(other.data(), other.size(), &read_back) ==
+				player_snapshot_codec_result::ok &&
+			read_back.status_integers.back().unsigned_value == UINT64_MAX &&
+			read_back.status_integers.back().is_unsigned,
+		"flight discoveries lost unsigned bits in the snapshot round trip");
+	// Old partial saves must not supply status and clear discoveries during merging.
+	changed = full;
+	changed.components = PLAYER_COMPONENT_LANGUAGES;
+	changed.status_integers.clear();
+	require(player_snapshot_encode(changed, &other) == player_snapshot_codec_result::ok,
+		"partial legacy fixture did not encode");
+	put32(other, 0, 7);
+	require(player_snapshot_decode(other.data(), other.size(), &read_back) ==
+				player_snapshot_codec_result::ok &&
+			read_back.status_integers.empty(),
+		"old non-status save invented discovery state");
 	// Version 3 ends in a boolean: every proper prefix of it is truncated as well.
 	const auto three = wire(3);
 	for (size_t length = 1; length < three.size(); ++length)
 		require(player_snapshot_decode(three.data(), length, &read_back) ==
 				player_snapshot_codec_result::truncated,
 			"a " + std::to_string(length) + "-byte version-3 prefix was not truncated");
-	for (uint32_t version : { 2u, 4u, 6u, 8u })
+	for (uint32_t version : { 2u, 4u, 6u, 9u })
 	{
 		auto bytes = current;
 		put32(bytes, 0, version);
@@ -388,7 +415,8 @@ int main()
 		"the snapshot with status field 0 did not encode");
 	auto bad = current;
 	const size_t integer_at = first_difference(current, other);
-	const uint16_t past_integer = static_cast<uint16_t>(player_status_field::last_ip) + 1;
+	const uint16_t past_integer =
+		static_cast<uint16_t>(player_status_field::learned_flight_stops) + 1;
 	bad[integer_at] = static_cast<uint8_t>(past_integer);
 	bad[integer_at + 1] = static_cast<uint8_t>(past_integer >> 8);
 	require(player_snapshot_decode(bad.data(), bad.size(), &read_back) ==

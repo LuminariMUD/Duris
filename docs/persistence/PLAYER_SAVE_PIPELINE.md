@@ -47,6 +47,11 @@ runs on the first pulse. After the writer start, a job the writer refuses is log
 
 ## What a save writes
 
+Flight discoveries (`learned_flight_stops`) and EXP share `PLAYER_COMPONENT_STATUS`.
+A checkpoint saves both together, and unrelated component saves preserve them.
+Snapshot schema 8 retains field IDs and reads versions 1, 3, 5 and 7 with an empty
+discovery mask; no transport recovery or reward journal is required.
+
 A player save writes the wallet, epic points, frags and old frags with the rest of the
 character; a bank change is its own `bank` job (see
 [Money lives in memory](CRITICAL_COMMAND_PIPELINE.md#money-lives-in-memory) and

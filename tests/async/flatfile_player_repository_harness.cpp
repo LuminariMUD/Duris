@@ -69,6 +69,8 @@ static player_snapshot make_full(player_revision_t revision)
 				  static_cast<unsigned int>(player_status_field::base_strength) +
 				  index),
 			  50 + index, 0, false });
+	snapshot.status_integers.push_back(
+		{ player_status_field::learned_flight_stops, 0, (uint64_t{ 1 } << 26) | 1, true });
 	snapshot.status_strings.push_back({ player_status_string_field::name, "Player" });
 	snapshot.conditions = { 1, 2, 3, 4, 5 };
 	snapshot.quest_values[3] = 77;
@@ -643,7 +645,31 @@ int main(int argc, char **argv)
 			load_result.error_code == ETIMEDOUT,
 		"expired flat-file load request was accepted");
 
+	// An unrelated component save leaves the discoveries from the full checkpoint intact.
+	player_snapshot language_checkpoint = {};
+	language_checkpoint.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
+	language_checkpoint.pid = 42;
+	language_checkpoint.revision = 2;
+	language_checkpoint.components = PLAYER_COMPONENT_LANGUAGES;
+	language_checkpoint.encoded_size_bound = 1024;
+	language_checkpoint.languages = { { 1, 90, 0 } };
+	require(flatfile_player_snapshot_apply(root.string(), language_checkpoint, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"language checkpoint failed");
+	require(flatfile_player_snapshot_load(root.string(), 42, &loaded, &error) ==
+			flatfile_player_load_result::ok,
+		"language checkpoint could not load");
+	bool found_flights = false;
+	for (const auto &field : loaded.status_integers)
+		if (field.field == player_status_field::learned_flight_stops)
+			found_flights = field.is_unsigned &&
+					field.unsigned_value == ((uint64_t{ 1 } << 26) | 1);
+	require(found_flights, "unrelated component save erased flight discoveries");
 	player_snapshot trophy_checkpoint = make_status(2, 51, 1202);
+	trophy_checkpoint.status_integers.push_back(
+		{ player_status_field::learned_flight_stops, 0, 7, true });
+	trophy_checkpoint.status_integers.push_back(
+		{ player_status_field::experience, 12345, 0, false });
 	trophy_checkpoint.components |= PLAYER_COMPONENT_TROPHIES;
 	trophy_checkpoint.trophies = { { 12, 645 }, { 34, 678 } };
 	applied = flatfile_player_snapshot_apply(root.string(), trophy_checkpoint, &error);
@@ -659,6 +685,9 @@ int main(int argc, char **argv)
 			loaded.trophies[1].experience == 678 && loaded.output_preferences.empty(),
 		"partial status merge discarded an untouched component");
 
+	require(loaded.status_integers[1].unsigned_value == 7 &&
+			loaded.status_integers[2].signed_value == 12345,
+		"status checkpoint did not keep discoveries and EXP together");
 	player_snapshot torn_items = {};
 	torn_items.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
 	torn_items.pid = 42;

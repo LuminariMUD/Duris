@@ -181,6 +181,70 @@ int main()
 			(loaded_uids(again) == std::vector<uint64_t>{ 2001, 2002 }),
 		"after its next save the giver has no stale rows left");
 
+	// Discoveries and their EXP are one status checkpoint, scoped to the character.
+	const auto progress = [&](int pid)
+	{
+		const auto result = load(pid, 100 + pid);
+		require(result.outcome == player_load_outcome::applied,
+			"flight status load failed");
+		uint64_t stops = 0;
+		int64_t experience = 0;
+		bool found = false;
+		for (const auto &field : result.snapshot.status_integers)
+		{
+			if (field.field == player_status_field::learned_flight_stops)
+			{
+				require(field.is_unsigned, "flight mask was loaded as signed");
+				stops = field.unsigned_value;
+				found = true;
+			}
+			if (field.field == player_status_field::experience)
+				experience = field.signed_value;
+		}
+		require(found, "flight status field is missing");
+		return std::pair(stops, experience);
+	};
+	require(progress(11).first == 0 && progress(12).first == 0,
+		"new SQL characters must start without discoveries");
+	player_snapshot discovery = {};
+	discovery.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
+	discovery.pid = 11;
+	discovery.revision = 3;
+	discovery.components = PLAYER_COMPONENT_STATUS;
+	discovery.encoded_size_bound = 4096;
+	discovery.status_integers = {
+		{ player_status_field::learned_flight_stops, 0, (uint64_t{ 1 } << 26) | 1, true },
+		{ player_status_field::experience, 12345, 0, false },
+	};
+	require(player_snapshot_repository_apply(test_connection, discovery).outcome ==
+			player_save_apply_outcome::applied,
+		"discovery checkpoint failed");
+	const auto saved_progress = progress(11);
+	require(saved_progress == std::pair((uint64_t{ 1 } << 26) | 1, int64_t{ 12345 }) &&
+			progress(12).first == 0,
+		"discovery checkpoint mixed account siblings");
+	discovery.components = PLAYER_COMPONENT_LANGUAGES;
+	discovery.revision++;
+	require(player_snapshot_repository_apply(test_connection, discovery).outcome ==
+				player_save_apply_outcome::applied &&
+			progress(11) == saved_progress,
+		"unrelated SQL component save changed flight progress");
+	execute("CREATE TRIGGER reject_flight_save BEFORE UPDATE ON player_data FOR EACH ROW "
+		"SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic save failure'");
+	discovery.components = PLAYER_COMPONENT_STATUS;
+	discovery.revision++;
+	discovery.status_integers[0].unsigned_value = 7;
+	discovery.status_integers[1].signed_value = 54321;
+	require(player_snapshot_repository_apply(test_connection, discovery).outcome ==
+				player_save_apply_outcome::terminal_failure &&
+			progress(11) == saved_progress,
+		"failed save retained only one half of discovery progress");
+	execute("DROP TRIGGER reject_flight_save");
+	require(player_snapshot_repository_apply(test_connection, discovery).outcome ==
+				player_save_apply_outcome::applied &&
+			progress(11) == std::pair(uint64_t{ 7 }, int64_t{ 54321 }),
+		"discovery checkpoint retry failed");
+
 	mysql_close(test_connection);
 	mysql_library_end();
 	std::cout << "player load filter MariaDB leg passed\n";

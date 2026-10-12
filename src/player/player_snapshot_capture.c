@@ -199,6 +199,7 @@ bool capture_status(P_char ch, player_snapshot &snapshot, capture_budget &budget
 	ADD_STATUS(highest_level, ch->only.pc->highest_level);
 	ADD_STATUS(screen_length, ch->only.pc->screen_length);
 	ADD_STATUS(last_ip, ch->only.pc->last_ip);
+	ADD_STATUS(learned_flight_stops, ch->only.pc->learned_flight_stops);
 #undef ADD_STATUS
 
 	for (size_t index = 0; index < snapshot.conditions.size(); ++index)

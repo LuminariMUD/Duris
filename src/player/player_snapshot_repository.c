@@ -226,7 +226,8 @@ const char *status_column(player_status_field field)
 		"aggressive",
 		"highest_level",
 	};
-	static constexpr std::array<const char *, 2> tail = { "screen_length", "last_ip" };
+	static constexpr std::array<const char *, 3> tail = { "screen_length", "last_ip",
+							      "learned_flight_stops" };
 	const size_t index = static_cast<size_t>(field);
 	if (index < columns.size())
 		return columns[index];

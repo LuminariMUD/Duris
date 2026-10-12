@@ -548,6 +548,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "b60e407fe4adef9ea3e5e673260de1a3def7a8370593a6a6822da2f0e6187e73",
       "verify_checksum": "ab967f59d779ac978be2023fe3681a61ad57d1475140954c0ce409ab9fda5b49"
+    },
+    {
+      "id": "0038_learned_flight_stops",
+      "sequence": 38,
+      "description": "Save per-character flight discoveries with player status",
+      "apply": "immutable/0038_learned_flight_stops.sql",
+      "verify": "immutable/0038_learned_flight_stops.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "baa72890fa944e7631567af358394151f330ddcbbeea1e3f0297101433cd672a",
+      "verify_checksum": "132f2bc9fc74fcfe2ad697c7fe7ad65e1f665fb7bbb3cbb42a1c324cb65f6556"
     }
   ],
   "engine_verifiers": [

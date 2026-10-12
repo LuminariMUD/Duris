@@ -54,7 +54,7 @@ bool valid_snapshot(const player_load_result &result)
 	     result.snapshot.components != PLAYER_LOAD_SESSION02_COMPONENTS &&
 	     result.snapshot.components != PLAYER_LOAD_SESSION03_COMPONENTS) ||
 	    result.snapshot.status_strings.size() != 7 ||
-	    result.snapshot.status_integers.size() != 63)
+	    result.snapshot.status_integers.size() != 64)
 		return false;
 	std::unordered_set<unsigned int> integers;
 	std::unordered_set<unsigned int> strings;
@@ -63,7 +63,9 @@ bool valid_snapshot(const player_load_result &result)
 		return false;
 	for (const player_snapshot_integer &entry : result.snapshot.status_integers)
 		if (entry.field < player_status_field::class_primary ||
-		    entry.field > player_status_field::last_ip ||
+		    entry.field > player_status_field::learned_flight_stops ||
+		    (entry.field == player_status_field::learned_flight_stops &&
+		     !entry.is_unsigned) ||
 		    !integers.insert(static_cast<unsigned int>(entry.field)).second)
 			return false;
 	for (const player_snapshot_string &entry : result.snapshot.status_strings)
@@ -355,6 +357,9 @@ void apply_integer(P_char ch, const player_snapshot_integer &entry, int *hit_dif
 		break;
 	case player_status_field::last_ip:
 		ch->only.pc->last_ip = loaded;
+		break;
+	case player_status_field::learned_flight_stops:
+		ch->only.pc->learned_flight_stops = entry.unsigned_value;
 		break;
 	case player_status_field::copper:
 	case player_status_field::silver:

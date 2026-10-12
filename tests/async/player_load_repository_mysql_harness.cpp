@@ -214,7 +214,7 @@ int main()
 	       result.metrics.byte_count <= PLAYER_SNAPSHOT_MAX_BYTES);
 	assert(result.metrics.transaction_usec <= PLAYER_LOAD_TIMEOUT_USEC);
 	assert(result.snapshot.status_strings.size() == 7);
-	assert(result.snapshot.status_integers.size() == 63);
+	assert(result.snapshot.status_integers.size() == 64);
 	assert(strcasecmp(result.account_name.c_str(), required_env("GAME_ACCOUNT_NAME")) == 0);
 
 	const std::string values_sql =

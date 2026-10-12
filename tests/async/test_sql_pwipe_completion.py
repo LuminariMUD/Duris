@@ -11,5 +11,8 @@ assert 'send_to_all("WIPE COMPLETED!");' in body
 assert body.index('redis_clear_pwipe_state()') < body.index('sql_pwipe: COMPLETED!')
 assert body.index('sql_pwipe: COMPLETED!') < body.index('return TRUE;')
 assert body.count('sql_pwipe: COMPLETED!') == 1
+assert '{ "player_data", "learned_flight_stops" }' in source
+assert 'UPDATE player_data SET active = 0, learned_flight_stops = 0' in body
+assert 'WHERE active = 1 OR learned_flight_stops <> 0' in body
 
 print("sql pwipe completion reporting checks passed")
