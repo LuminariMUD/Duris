@@ -14,6 +14,7 @@
 struct char_data;
 struct allowed_race_spec_struct;
 struct damage_messages;
+struct innate_data;
 
 namespace character_mechanics
 {
@@ -24,7 +25,10 @@ enum class MechanicId
 	innate_identity,
 	innate_unlock,
 	innate_eligibility,
+	innate_entry,
+	innate_dispatch,
 	guardian_bulwark_grant,
+	guardian_bulwark_callback,
 	guardian_bulwark_factor,
 	guardian_bulwark_effect,
 	specialization_entry,
@@ -41,6 +45,7 @@ enum class Relation
 	identity,
 	eligibility,
 	grant,
+	passive,
 	configuration,
 	effect,
 	entry,
@@ -87,9 +92,10 @@ using CommandHandler = void (*)(char_data *, char *, int);
 using CommandSlot = CommandHandler const *;
 using RaceSpecPredicate = bool (*)(int, unsigned int, int);
 using CharacterAction = void (*)(char_data *);
-using MechanicBinding = std::variant<const char *, const float *, InnatePredicate, InnateUnlock,
-				     EffectiveRace, MeleeDamage, CommandHandler, CommandSlot,
-				     RaceSpecPredicate, CharacterAction, player_status_field>;
+using MechanicBinding =
+	std::variant<const char *, const float *, InnatePredicate, InnateUnlock, EffectiveRace,
+		     MeleeDamage, CommandHandler, CommandSlot, RaceSpecPredicate, CharacterAction,
+		     player_status_field, const innate_data *>;
 
 struct MechanicConnection
 {

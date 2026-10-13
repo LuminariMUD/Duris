@@ -22,11 +22,12 @@ double bulwark_melee(P_char attacker, P_char victim, bool bypass = false);
 extern Skill skills[MAX_SKILLS];
 extern command_info cmd_info[MAX_CMD_LIST];
 extern P_room world;
-void initialize_specialization_command();
+extern std::string mechanic_output;
+void initialize_mechanic_commands();
 
 static void specialization_transition()
 {
-	initialize_specialization_command();
+	initialize_mechanic_commands();
 	const auto mechanics = mechanic_connections();
 	const auto transitions = transition_connections();
 	const auto errors = validate_transitions(transitions, mechanics);
@@ -159,6 +160,11 @@ static void guardian_bulwark()
 			assert(*std::get<const char *>(connection.binding) == 41);
 		if (connection.id == MechanicId::guardian_bulwark_factor)
 			assert(*std::get<const float *>(connection.binding) == 0.85f);
+		if (connection.id == MechanicId::guardian_bulwark_callback)
+		{
+			const auto *row = std::get<const innate_data *>(connection.binding);
+			assert(!strcmp(row->name, "bulwark") && row->func == nullptr);
+		}
 	}
 	auto missing_effect = mechanics;
 	missing_effect.pop_back();
@@ -169,6 +175,11 @@ static void guardian_bulwark()
 	auto wrong_type = mechanics;
 	wrong_type.front().binding = static_cast<const char *>(nullptr);
 	assert(!validate_mechanics(wrong_type).empty());
+	auto no_passive_consumer = mechanics;
+	for (auto &connection : no_passive_consumer)
+		if (connection.id == MechanicId::guardian_bulwark_callback)
+			connection.dependencies = {};
+	assert(!validate_mechanics(no_passive_consumer).empty());
 	char_data attacker{}, victim{};
 	obj_data shield{};
 	SET_POS(&attacker, STAT_NORMAL + POS_STANDING);
@@ -179,9 +190,23 @@ static void guardian_bulwark()
 	victim.player.spec = SPEC_GUARDIAN;
 	victim.equipment[WEAR_SHIELD] = &shield;
 	assert(has_innate(&victim, INNATE_GUARDIANS_BULWARK));
+	char innate_args[] = "bulwark";
+	const auto innate_command = cmd_info[CMD_INNATE].command_pointer;
+	assert(innate_command == do_innate);
+	mechanic_output.clear();
+	innate_command(&victim, innate_args, CMD_INNATE);
+	assert(mechanic_output == "This innate is always active.\n");
+	assert(!victim.affected);
 	assert(bulwark_melee(&attacker, &victim) == 850);
 	assert(bulwark_melee(&attacker, &victim, true) == 1000);
 	victim.player.level = 40;
+	mechanic_output.clear();
+	innate_command(&victim, innate_args, CMD_INNATE);
+	assert(mechanic_output == "You know no such ability!\n");
+	char list_args[] = "";
+	mechanic_output.clear();
+	innate_command(&victim, list_args, CMD_INNATE);
+	assert(mechanic_output.find("*bulwark (unlocks at level 41)") != std::string::npos);
 	assert(!has_innate(&victim, INNATE_GUARDIANS_BULWARK));
 	assert(bulwark_melee(&attacker, &victim) == 1000);
 	victim.player.level = 41;

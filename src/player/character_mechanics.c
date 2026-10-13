@@ -20,8 +20,14 @@ std::string_view mechanic_name(MechanicId id)
 		return "innate.unlock";
 	case MechanicId::innate_eligibility:
 		return "innate.eligibility";
+	case MechanicId::innate_entry:
+		return "innate.entry";
+	case MechanicId::innate_dispatch:
+		return "innate.dispatch";
 	case MechanicId::guardian_bulwark_grant:
 		return "guardian.bulwark.grant";
+	case MechanicId::guardian_bulwark_callback:
+		return "guardian.bulwark.callback";
 	case MechanicId::guardian_bulwark_factor:
 		return "guardian.bulwark.factor";
 	case MechanicId::guardian_bulwark_effect:
@@ -107,12 +113,23 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 		case Relation::grant:
 			compatible = std::holds_alternative<const char *>(connection.binding);
 			break;
+		case Relation::passive:
+			compatible =
+				std::holds_alternative<const innate_data *>(connection.binding);
+			if (const auto *row = std::get_if<const innate_data *>(&connection.binding);
+			    row && *row)
+			{
+				require((*row)->name && *(*row)->name, "passive has no name");
+				require((*row)->func == nullptr, "passive has an active callback");
+			}
+			break;
 		case Relation::configuration:
 			compatible = std::holds_alternative<const float *>(connection.binding);
 			break;
 		case Relation::effect:
 			compatible = std::holds_alternative<MeleeDamage>(connection.binding) ||
-				     std::holds_alternative<CharacterAction>(connection.binding);
+				     std::holds_alternative<CharacterAction>(connection.binding) ||
+				     std::holds_alternative<CommandHandler>(connection.binding);
 			break;
 		case Relation::entry:
 			compatible = std::holds_alternative<CommandSlot>(connection.binding);
@@ -162,6 +179,31 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 					    [&](const auto &candidate)
 					    { return candidate.id == dependency; }),
 				"missing dependency");
+		if (connection.relation == Relation::entry)
+		{
+			const auto *slot = std::get_if<CommandSlot>(&connection.binding);
+			bool registered = false;
+			for (auto id : connection.dependencies)
+				for (const auto &target : connections)
+					if (target.id == id)
+						if (const auto *handler =
+							    std::get_if<CommandHandler>(
+								    &target.binding))
+							registered |= slot && *slot && **slot &&
+								      **slot == *handler;
+			require(registered, "command registration missing or different handler");
+		}
+		if (connection.relation == Relation::passive)
+		{
+			bool consumer = false;
+			for (auto id : connection.dependencies)
+				for (const auto &target : connections)
+					consumer |= target.id == id &&
+						    target.relation == Relation::effect &&
+						    connection.innate > 0 &&
+						    target.innate == connection.innate;
+			require(consumer, "passive lacks a matching effect connection");
+		}
 	}
 	for (size_t id = 0; id < seen.size(); ++id)
 		if (!seen[id])

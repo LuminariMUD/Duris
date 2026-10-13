@@ -248,6 +248,7 @@ struct command_info cmd_info[MAX_CMD_LIST];
 std::span<const character_mechanics::MechanicConnection> character_mechanics::command_connections()
 {
 	static constexpr MechanicId dependencies[] = { MechanicId::specialization_select };
+	static constexpr MechanicId innate_dependencies[] = { MechanicId::innate_dispatch };
 	static const MechanicConnection connections[] = {
 		{ MechanicId::specialization_entry,
 		  Relation::entry,
@@ -258,6 +259,16 @@ std::span<const character_mechanics::MechanicConnection> character_mechanics::co
 		  Access::conditional,
 		  Implementation::connected,
 		  "Actual command slot populated by assign_command_pointers; interpreter position and command gates still apply.",
+		  {} },
+		{ MechanicId::innate_entry,
+		  Relation::entry,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(&cmd_info[CMD_INNATE].command_pointer),
+		  innate_dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Innate command slot; requires standing/normal status, permits combat and checks aggression.",
 		  {} }
 	};
 	return connections;
@@ -3369,6 +3380,7 @@ void assign_command_pointers(void)
 	CMD_Y(CMD_HOLD, STAT_RESTING + POS_PRONE, do_grab, 0, TRUE);
 	CMD_Y(CMD_IDEA, STAT_DEAD + POS_PRONE, do_idea, 0, FALSE);
 	CMD_Y(CMD_IGNORE, STAT_SLEEPING + POS_PRONE, do_ignore, 0, FALSE);
+	CHARACTER_MECHANIC_SITE(innate_entry);
 	CMD_Y(CMD_INNATE, STAT_NORMAL + POS_STANDING, do_innate, 0, TRUE);
 	CMD_Y(CMD_INSULT, STAT_RESTING + POS_PRONE, do_insult, 0, TRUE);
 	CMD_Y(CMD_INVENTORY, STAT_RESTING + POS_PRONE, do_inventory, 0, FALSE);

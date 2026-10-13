@@ -1045,6 +1045,11 @@ std::span<const character_mechanics::MechanicConnection> character_mechanics::in
 	static constexpr MechanicId eligibility_dependencies[] = { MechanicId::innate_unlock };
 	static constexpr MechanicId grant_dependencies[] = { MechanicId::innate_eligibility,
 							     MechanicId::specialization_select };
+	static constexpr MechanicId dispatch_dependencies[] = { MechanicId::innate_eligibility };
+	static constexpr MechanicId passive_dependencies[] = {
+		MechanicId::innate_dispatch, MechanicId::guardian_bulwark_grant,
+		MechanicId::guardian_bulwark_effect
+	};
 	static const MechanicConnection connections[] = {
 		{ MechanicId::innate_identity,
 		  Relation::identity,
@@ -1087,6 +1092,26 @@ std::span<const character_mechanics::MechanicConnection> character_mechanics::in
 		  Access::conditional,
 		  Implementation::connected,
 		  "Passive grant from assign_innates; the existing table cell supplies its unlock level. Acquisition is not proven by this grant.",
+		  {} },
+		{ MechanicId::innate_dispatch,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(do_innate),
+		  dispatch_dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native name/eligibility lookup invokes an active callback or reports an always-active passive; listing shows locked grants.",
+		  {} },
+		{ MechanicId::guardian_bulwark_callback,
+		  Relation::passive,
+		  { OptionKind::specialization, CLASS_WARRIOR, SPEC_GUARDIAN },
+		  INNATE_GUARDIANS_BULWARK,
+		  CHARACTER_MECHANIC_BIND(&innates_data[INNATE_GUARDIANS_BULWARK]),
+		  passive_dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "The actual innate row has no active callback; its effect is the connected shield/melee consumer.",
 		  {} }
 	};
 	return connections;
@@ -3562,6 +3587,7 @@ void do_innate(P_char ch, char *arg, int cmd)
 
 	if (i <= LAST_INNATE)
 	{
+		CHARACTER_MECHANIC_SITE(innate_dispatch);
 		if (innates_data[i].func)
 		{
 			(innates_data[i].func)(ch, innate_args, CMD_INNATE);

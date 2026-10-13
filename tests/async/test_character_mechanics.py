@@ -37,6 +37,8 @@ def check_mechanic_sites(sources, bindings):
         "specialization_refresh": ("classes/specializations.c", r"update_skills\(ch\)\s*;"),
         "specialization_capture": ("player/player_snapshot_capture.c", r"ADD_STATUS\(specialization,\s*ch->player\.spec\)\s*;"),
         "specialization_load": ("player/player_load_materialize.c", r"ch->player\.spec\s*=\s*loaded\s*;"),
+        "innate_entry": ("cmd/interp.c", r"CMD_Y\(\s*CMD_INNATE\s*,\s*STAT_NORMAL\s*\+\s*POS_STANDING\s*,\s*do_innate\s*,\s*0\s*,\s*TRUE\s*\)\s*;"),
+        "innate_dispatch": ("classes/innates.c", r'if\s*\(innates_data\[i\]\.func\)\s*\{\s*\(innates_data\[i\]\.func\)\(ch,\s*innate_args,\s*CMD_INNATE\);\s*\}\s*else\s*\{\s*send_to_char\("This innate is always active\.\\n",\s*ch\);\s*\}'),
     }
     seen = set()
     errors = []
@@ -117,6 +119,12 @@ inputs = [
 # not claim to exercise the latter's HP, death, ward or persistence machinery.
 innates = source("innates.c").read_text()
 properties = source("properties.c").read_text()
+# Preserve every production name/callback slot. Active effects are outside this
+# passive fixture; any attempt to invoke one fails instead of simulating success.
+innate_table = re.search(r"const struct innate_data innates_data\[LAST_INNATE \+ 1\] = .*?\n};", innates, re.S).group()
+active_callbacks = sorted(set(re.findall(r'\{ "[^"]+", (\w+) \}', innate_table)) - {"NULL"})
+innate_stubs = "\n".join(f'void {name}(P_char, char *, int) {{ assert(false && "unexpected active innate callback"); }}'
+                         for name in active_callbacks)
 combat_prelude = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
@@ -132,6 +140,7 @@ combat_prelude = r'''
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <string>
 #define PROPERTIES_FILE "lib/duris.properties"
 #define MAX_PROPERTIES 3000
 int properties_count;
@@ -139,6 +148,11 @@ Skill skills[MAX_SKILLS];
 int GET_LVL_FOR_SKILL(P_char, int);
 command_info cmd_info[MAX_CMD_LIST];
 P_room world;
+extern const innate_data innates_data[];
+std::string mechanic_output;
+void send_to_char(const char *text, P_char) { mechanic_output += text; }
+bool epic_summon(P_char, char *) { assert(false && "not a summon fixture"); return false; }
+void do_list_innates(P_char, char *) { assert(false && "not a catalog fixture"); }
 void mobsay(P_char, const char *) {} // Dialogue/quest side effects belong to the full-world journey.
 bool is_linked_to(P_char, P_char, ush_int) { return false; } // No staff-consent teacher in this fixture.
 float dam_factor[LAST_DF + 1];
@@ -171,9 +185,11 @@ int raw_damage(P_char, P_char, double amount, unsigned int, damage_messages *, i
 }
 '''
 combat_bodies = (
-    properties[properties.index("struct property\n{"):properties.index("int key_property_comp(")]
+    innate_stubs + "\n" + innate_table + "\n"
+    + properties[properties.index("struct property\n{"):properties.index("int key_property_comp(")]
     + innates[innates.index("#define ADD_RACIAL_INNATE"):innates.index("float regen_factor")]
     + innates[innates.index("char racial_innates["):innates.index("extern const struct race_names")]
+    + production_function("interp.c", "const char *fill_words[]") + ";\n"
     + "\n".join(production_function(file, signature) for file, signature in [
         ("properties.c", "int key_property_comp("),
         ("properties.c", "int property_comp("),
@@ -187,12 +203,17 @@ combat_bodies = (
         ("innates.c", "static int innate_unlock_level("),
         ("innates.c", "bool has_innate("),
         ("innates.c", "void assign_innates("),
+        ("innates.c", "bool can_use_innate("),
+        ("innates.c", "void do_innate(P_char ch, char *arg, int cmd)"),
         ("innates.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::innate_connections("),
         ("fight.c", "void update_dam_factors("),
         ("fight.c", "int melee_damage("),
         ("fight.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::melee_connections("),
         ("interp.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::command_connections("),
         ("interp.c", "bool is_abbrev("),
+        ("interp.c", "int search_block("),
+        ("interp.c", "int fill_word("),
+        ("interp.c", "void argument_interpreter("),
         ("guild.c", "void update_skills("),
         ("guild.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::training_connections("),
         ("player_snapshot_capture.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::status_capture_connections("),
@@ -201,8 +222,9 @@ combat_bodies = (
 )
 interpreter = source("interp.c").read_text()
 registration = re.search(r"CHARACTER_MECHANIC_SITE\(specialization_entry\);\s*CMD_N\([^;]+;", interpreter).group()
-combat_bodies += "\n" + interpreter[interpreter.index("#define CMD_N("):interpreter.index("#define CMD_Y(")]
-combat_bodies += "\nvoid initialize_specialization_command() {\n" + registration + "\n}\n"
+innate_registration = re.search(r"CHARACTER_MECHANIC_SITE\(innate_entry\);\s*CMD_Y\([^;]+;", interpreter).group()
+combat_bodies += "\n" + interpreter[interpreter.index("#define CMD_N("):interpreter.index("#define CMD_CNF_Y(")]
+combat_bodies += "\nvoid initialize_mechanic_commands() {\n" + registration + "\n" + innate_registration + "\n}\n"
 combat_driver = r'''
 void load_character_properties() {
     properties_count = load_properties(duris_properties);
@@ -314,6 +336,11 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
          'get_property("damage.reduction.guardians.bulwark", 0.250)',
          "bulwark_melee(&attacker, &victim) == 850"),
         ("registration_unset", registration, "", "command registration missing or different handler"),
+        ("innate_registration_unset", innate_registration, "", "innate.entry: command registration missing or different handler"),
+        ("passive_changed_to_active", '{ "bulwark", NULL }', '{ "bulwark", do_innate_reflection }',
+         "passive has an active callback"),
+        ("passive_dispatch_stubbed", 'send_to_char("This innate is always active.\\n", ch);',
+         'send_to_char("Nothing happened.\\n", ch);', 'mechanic_output == "This innate is always active.\\n"'),
     ]:
         assert combat_bodies.count(old) == 1, name
         variant = work / "mutations" / name
@@ -326,6 +353,7 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         rejected = subprocess.run([str(variant_binary)], cwd=work, env=env, text=True, capture_output=True)
         assert rejected.returncode != 0 and diagnostic in rejected.stderr, (name, rejected.stderr)
     print("guardian.bulwark.mutations: PASS (stubbed effect and changed fallback fail the native damage assertion)")
+    print("innate.dispatch.mutations: PASS (removed registration, active passive callback and stubbed dispatch rejected)")
     # Removing the actual refresh call must fail the learned/taught assertion,
     # even though the refresh function and connection still exist.
     variant = work / "mutations" / "refresh_not_called"

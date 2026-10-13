@@ -219,12 +219,66 @@ Validation for these connections:
   `e8feeac502021b9876fc16f8865da625c489f5b09a5eb8fef0abd211f6c0ddc8`.
   No new whole-suite or database-gate claim is made.
 
-Next: bind individual teacher/timer guards and passive callback registration,
+The transition slice is committed and pushed as `9fbec36f8`.
+
+### Passive callback and innate dispatch connections
+
+The next slice binds Bulwark's actual `innates_data` row, the real `CMD_INNATE`
+slot and `do_innate`. A passive connection requires a null callback and a matching
+effect dependency; it cannot claim completion merely because its callback is
+absent. Command-entry validation now checks actual slot contents for both
+specialization and innate dispatch. Exact markers cover the command assignment
+and active/passive dispatch branch. Existing interpreter position/combat/aggro
+policy and gameplay execution remain unchanged.
+
+The native fixture keeps the entire production innate table unchanged. Active
+callback functions are aborting fixture boundaries, while native name parsing,
+eligibility, listing and dispatch run for Bulwark. Tests check the locked level-40
+listing/denial and level-41 passive response without adding a timer affect.
+Compiled variants remove the innate command assignment, give the passive an
+active callback, or replace its dispatch message; each must fail. These checks
+do not qualify the other innate effects. The existing full-world journey already
+exercises real innate dispatch; its broader fixture boundaries still apply.
+
+Outcome: connect intentional passive registration to actual command/use/effect.
+Files: existing contract pair, `innates.c`, `interp.c`, and existing native
+mechanics fixture. Proof: that fixture and mutations, affected innate tests,
+required builds and the isolated journey. No additional callback registry or
+runtime dispatch layer is introduced.
+
+Validation:
+
+- `python3 tests/async/test_character_mechanics.py`: passed under ASan/UBSan,
+  including the new compiled mutations and retained specialization/Bulwark
+  mutations. Native SHA256:
+  `4677219564753914d5dcb4f120f3792779f9dafbe8093dc4b61469c9990afd51`.
+- `python3 tests/async/test_innate_reflection.py` and
+  `python3 tests/async/test_racial_shrug.py`: passed.
+- `make -C src -j8`, `make -j8 build-production build-editor`, and
+  `make -C src -j4 pfile`: passed.
+- The isolated full-world mechanics journey passed again with the new callback
+  and command connections. All evidence uses the
+  `bin/tests/character-mechanics-passive` prefix (`.log`, `-reflection.log`,
+  `-shrug.log`, `-build.log`, `-consumers.log`, `-pfile.log`, `-journey.log`).
+- Formatting and whitespace checks passed. No new whole-suite or database-gate
+  claim is made.
+
+Next: bind individual teacher/timer guards,
 cover unspecialization failures/reversal, creation and remaining persistence
 dependencies, then complete real HP damage and the other two initial traces.
 The successful journey does not replace missing structural links. Ordinary
 travel, live progression caps and the broader acceptance matrix remain open.
 No completion or review-ready claim is made for the whole issue.
+
+Continuation finding: `epic_transaction_submit_identified` currently changes
+the authoritative in-memory epic balance and calls its completion **before
+returning**, then queues the ledger row. An unspecialize purchase must therefore
+be tested against that current ordering. A rejected ledger enqueue does not
+roll back a completed purchase; insufficient funds and invalid submit inputs
+have different outcomes. Reuse `test_epic_in_memory.py` and
+`test_unspecialize_guard.py` rather than assuming an asynchronous purchase.
+The actual altar assignments are objects 2203 and 12016; their world resets put
+them in rooms 2263 and 12116. These are source/world leads, not tested travel.
 
 Entry-route source findings:
 
