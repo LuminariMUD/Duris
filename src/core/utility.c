@@ -4968,6 +4968,14 @@ ClassSkillInfo SKILL_DATA_ALL(P_char ch, int skill)
 
 	pri_class = flag2idx(ch->player.m_class) - 1;
 	sec_class = flag2idx(ch->player.secondary_class) - 1;
+	// Preserve the existing Warrior fallback before either PC lookup can index
+	// the primary row. Multiclass NPCs enumerate their mask separately below.
+	if (!IS_MULTICLASS_NPC(ch) && (pri_class < 0 || pri_class >= CLASS_COUNT))
+	{
+		printf("Invalid m_class %x for %s\n", ch->player.m_class, J_NAME(ch));
+		ch->player.m_class = CLASS_WARRIOR;
+		pri_class = flag2idx(ch->player.m_class) - 1;
+	}
 
 	// Note: Class 0 is warrior per above.
 	if (IS_PC(ch) && (sec_class >= 0))
@@ -5031,14 +5039,8 @@ ClassSkillInfo SKILL_DATA_ALL(P_char ch, int skill)
 
 		dummy = *highestClassEntry;
 	}
-	else if (pri_class >= 0 && pri_class < CLASS_COUNT)
-	{
-		dummy = SKILL_DATA(ch, skill);
-	}
 	else
 	{
-		printf("Invalid m_class %x for %s\n", ch->player.m_class, J_NAME(ch));
-		ch->player.m_class = 1; // warrior
 		dummy = SKILL_DATA(ch, skill);
 	}
 

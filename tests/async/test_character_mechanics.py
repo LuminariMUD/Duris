@@ -114,6 +114,7 @@ combat_prelude = r'''
 #define PROPERTIES_FILE "lib/duris.properties"
 #define MAX_PROPERTIES 3000
 int properties_count;
+Skill skills[MAX_SKILLS];
 float dam_factor[LAST_DF + 1];
 static double delivered_damage;
 static int damage_calls;
@@ -201,7 +202,7 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
     binary = work / "harness"
     compile_command = [
         "g++", "-std=c++20", "-g", "-D__NO_MYSQL__", "-ffunction-sections", "-fdata-sections",
-        "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
+        "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
         "-I" + str(ROOT / "src"), "-I" + str(ROOT / "src/no_mysql"),
         *map(str, inputs), str(combat), "-Wl,--gc-sections", "-lbsd",
         "-o", str(binary),

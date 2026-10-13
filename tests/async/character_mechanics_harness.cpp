@@ -4,6 +4,7 @@
 #include "classes/specializations.h"
 #include "player/character_mechanics.h"
 #include "combat/damage.h"
+#include "magic/spells.h"
 
 #include <cassert>
 #include <cstdio>
@@ -17,6 +18,48 @@ void set_bulwark_property(float value);
 void clear_character_properties();
 void update_dam_factors();
 double bulwark_melee(P_char attacker, P_char victim, bool bypass = false);
+extern Skill skills[MAX_SKILLS];
+
+static void skill_class_mask_bounds()
+{
+	// Explicit skill fixture; this checks class-index safety, not registration
+	// completeness or the ordinary acquisition of this fixture skill.
+	char_data ch{};
+	ch.player.name = const_cast<char *>("Maskfixture");
+	ch.player.m_class = CLASS_WARRIOR;
+	auto &primary = skills[SKILL_GUARD].m_class[flag2idx(CLASS_WARRIOR) - 1];
+	auto &secondary = skills[SKILL_GUARD].m_class[flag2idx(CLASS_CLERIC) - 1];
+	primary.rlevel[0] = 20;
+	primary.maxlearn[0] = 80;
+	secondary.rlevel[0] = 30;
+	secondary.maxlearn[0] = 70;
+	auto check = [&](int level, int cap)
+	{
+		const auto data = SKILL_DATA_ALL(&ch, SKILL_GUARD);
+		assert(data.rlevel[0] == level && data.maxlearn[0] == cap);
+	};
+	check(20, 80);
+	ch.player.secondary_class = BIT_32; // Existing non-multiclass sentinel.
+	check(20, 80);
+	ch.player.secondary_class = CLASS_CLERIC;
+	check(20, 80);
+	ch.player.m_class = CLASS_NONE;
+	check(20, 80);
+	assert(ch.player.m_class == CLASS_WARRIOR);
+	ch.player.m_class = BIT_32;
+	check(20, 80);
+	assert(ch.player.m_class == CLASS_WARRIOR);
+	ch.specials.act = ACT_ISNPC;
+	ch.specials.affected_by4 = AFF4_MULTI_CLASS;
+	ch.player.secondary_class = 0;
+	ch.player.m_class = CLASS_WARRIOR | CLASS_CLERIC;
+	check(20, 80);
+	ch.player.m_class = BIT_32 | CLASS_CLERIC;
+	check(30, 70);
+	assert(ch.player.m_class == (BIT_32 | CLASS_CLERIC));
+	std::puts(
+		"skill.class-mask: PASS (legacy secondary sentinel, primary normalization and NPC class masks)");
+}
 
 static void guardian_bulwark()
 {
@@ -109,6 +152,7 @@ static void expect_diagnostic(const IdentityConnections &connections, const char
 int main()
 {
 	guardian_bulwark();
+	skill_class_mask_bounds();
 	assert(!creation_all_races_enabled() && !creation_all_classes_enabled());
 	assert(!strcmp(getenv("CHAOS_MUD"), "FALSE"));
 	const auto connections = identity_connections();

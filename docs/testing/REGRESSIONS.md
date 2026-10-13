@@ -11,6 +11,29 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Clearing class masks with setbit
+
+The class-index copier used by `setbit` now maps `None` to `CLASS_NONE` (zero).
+The previous conversion evaluated `1 << -1` for the real class
+table's `None` entry; UBSan reproduced the negative shift through
+`setbit_parseTable`. Named nonzero classes retain their existing bit masks.
+Existing saved masks and the historical multiclass sentinel are not rewritten.
+When a PC has a secondary class, `SKILL_DATA_ALL` now applies its existing Warrior
+fallback for an invalid/empty primary **before** indexing the primary row. The
+former multiclass branch read index -1; only its single-class path normalized the
+primary. Multiclass NPCs keep their separate mask-enumeration behavior.
+
+`python3 tests/async/test_setbit_flag_bits.py` exercises the production parser and
+both copy functions under ASan/UBSan. It uses the real class-name table, checks
+every defined class for primary and secondary fields, verifies clearing/reselection
+and invalid-name retention, and retains the earlier item race-bit boundary cases.
+This focused fixture does not exercise command authorization or skill refresh.
+`python3 tests/async/test_character_mechanics.py` additionally executes the real
+skill-data lookup with explicit skill fixtures, checking zero/sentinel primary
+normalization, the existing secondary sentinel, valid class pairs and NPC masks.
+UBSan stops at the first finding. The original lookup fails on index -1 with a
+valid secondary class; the fixed lookup passes without changing valid-pair results.
+
 ## Specialization allowance table bounds
 
 `is_allowed_race_spec` iterates the actual allowance array, so a denied race/class/
