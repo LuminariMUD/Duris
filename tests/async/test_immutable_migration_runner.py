@@ -333,6 +333,9 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
 
     def test_online_level_cap_preserves_sealed_sql_and_rejects_other_steps(self):
         manifest = runner.load_manifest()
+        # This narrowly authorized mode is permanently pinned to migration 0039.
+        manifest = runner.replace(manifest, migrations=tuple(
+            step for step in manifest.migrations if step.sequence <= 39))
         environment = {
             "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
             "DB_NAME": "duris", "DB_USER": "x", "DB_PASSWD": "x",
@@ -367,6 +370,9 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
 
     def test_online_level_cap_keeps_production_authorization_and_manifest_guards(self):
         manifest = runner.load_manifest()
+        # This narrowly authorized mode is permanently pinned to migration 0039.
+        manifest = runner.replace(manifest, migrations=tuple(
+            step for step in manifest.migrations if step.sequence <= 39))
         environment = {
             "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
             "DB_NAME": "duris", "DB_USER": "x", "DB_PASSWD": "x",
@@ -385,6 +391,9 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
                 runner.replace(manifest.migrations[-1], apply_checksum="0" * 64),))
             with self.assertRaisesRegex(runner.MigrationContractError, "reviewed production"):
                 runner.MysqlExecutor(changed, "127.0.0.1/duris", backup, True)
+            # A later schema head must use the normal stopped-server procedure.
+            with self.assertRaisesRegex(runner.MigrationContractError, "reviewed production"):
+                runner.MysqlExecutor(runner.load_manifest(), "127.0.0.1/duris", backup, True)
             normal = runner.MysqlExecutor(manifest, "127.0.0.1/duris", backup)
             with mock.patch.object(normal, "sql", return_value="9") as sql:
                 with self.assertRaisesRegex(runner.MigrationContractError, "every other"):
@@ -393,6 +402,9 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
 
     def test_online_migration_keeps_lock_client_open_until_release(self):
         manifest = runner.load_manifest()
+        # This narrowly authorized mode is permanently pinned to migration 0039.
+        manifest = runner.replace(manifest, migrations=tuple(
+            step for step in manifest.migrations if step.sequence <= 39))
         environment = {
             "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
             "DB_NAME": "duris", "DB_USER": "x", "DB_PASSWD": "x",
