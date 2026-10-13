@@ -263,9 +263,52 @@ Validation:
 - Formatting and whitespace checks passed. No new whole-suite or database-gate
   claim is made.
 
-Next: bind individual teacher/timer guards,
-cover unspecialization failures/reversal, creation and remaining persistence
-dependencies, then complete real HP damage and the other two initial traces.
+The passive slice is committed and pushed as `8733398c0`.
+
+### Unspecialization behavior and reversal evidence
+
+Current slice extends existing tests before connecting this route. The native
+`test_unspecialize_guard.py` now executes both production handler and completion
+with the real epic transaction and command codec. It checks unspecialized and
+insufficient-funds denials; an injected invalid PID checks submission rejection.
+The refusal callback is also exercised directly, without claiming that a valid
+single-threaded purchase can pass the handler's funds guard and then lose its
+balance before submission. Success debits exactly 10, clears the spec and invokes
+refresh/forgetting before ledger enqueue. A rejected ledger queue retains the
+completed in-memory change; repeating the prayer does not charge twice. Skill
+refresh and spell forgetting are observed call boundaries in this native test.
+
+The isolated game journey now goes to the loaded blood-red altar (object 12016,
+room 12116), using explicit staff transfers and epic-balance fixtures (9 and 12).
+It checks insufficient funds, the actual prayer/purchase, removed Shield Punch
+and Bulwark, retained Guard at learned 40 / taught 70 (the base Warrior grant at
+level 41), and save/restart. The existing inspector adds the saved epic balance.
+This does not prove ordinary travel, earning the points, or memorized-spell
+removal. The native test, extended journey and repository checks all pass.
+
+Ablation: use the existing guard test, full-world journey and snapshot inspector;
+no production behavior or new test infrastructure changes. Required proof is
+native transaction ordering plus the actual altar/persistence path. Connect the
+altar assignments, completion, resets and field/lifecycle dependencies next;
+behavioral evidence alone does not supply those links.
+
+Validation for this test-only slice:
+
+- `python3 tests/async/test_unspecialize_guard.py`: passed with ASan/UBSan and
+  non-recovering undefined-behavior checks.
+- `python3 tests/async/test_flatfile_player_repository.py` and
+  `python3 tests/async/test_epic_in_memory.py`: passed.
+- `DURIS_REGRESSION_BUILD_CACHE=bin/regression-artifacts python3
+  tests/async/test_character_mechanics_journey.py`: passed both selection and
+  reversal journeys. It reused the unchanged verified server, SHA256
+  `27c30d19f90e8b9a04a413101bd6b0f5f2265934c9981df42997d3cc901aca19`.
+- Logs are `bin/tests/character-mechanics-unspecialize-{native,repository,epics,journey}.log`.
+  Formatting and whitespace checks passed. Production source is unchanged in
+  this slice; no redundant server build or whole-suite run was required.
+
+Next: bind individual teacher/timer guards, unspecialization, creation and
+remaining persistence dependencies, then complete real HP damage and the other
+two initial traces.
 The successful journey does not replace missing structural links. Ordinary
 travel, live progression caps and the broader acceptance matrix remain open.
 No completion or review-ready claim is made for the whole issue.
@@ -278,7 +321,16 @@ roll back a completed purchase; insufficient funds and invalid submit inputs
 have different outcomes. Reuse `test_epic_in_memory.py` and
 `test_unspecialize_guard.py` rather than assuming an asynchronous purchase.
 The actual altar assignments are objects 2203 and 12016; their world resets put
-them in rooms 2263 and 12116. These are source/world leads, not tested travel.
+them in rooms 2263 and 12116. These locations do not prove ordinary travel.
+The native object callback type is the existing `obj_proc_type`; both slots are
+assigned in `specs.assign.c`. `unspec_altar` handles `CMD_PRAY` for a living PC
+when the argument contains `altar`, then invokes `unspecialize`. `CMD_PRAY` also
+has a normal `do_memorize` command-table fallback, so do not misdescribe the
+altar as that command's direct handler. The current transition validator only
+supports a direct command-handler entry; the altar route needs its real object
+slots and purchase/completion path connected. A prototype binding must retain
+the expected vnum: `real_object0` returns slot zero when a vnum is absent, so
+pointer presence alone cannot establish the intended object's registration.
 
 Entry-route source findings:
 

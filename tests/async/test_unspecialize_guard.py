@@ -1,23 +1,15 @@
 #!/usr/bin/env python3
-"""Verify that unspecialize denies invalid state before charging epic points."""
+"""Execute unspecialization guards/completion with the real in-memory epic purchase.
+
+Refresh and spell-forgetting are observed call boundaries here; the full-world
+mechanics journey checks actual refreshed/persisted skills and the loaded altar.
+"""
 
 from pathlib import Path
 import subprocess
 import tempfile
 
-from _paths import ROOT, SRC, extract_function
-from _source_contract import function_body
-from _paths import HARNESS_STUBS
-
-
-source = (SRC / "specializations.c").read_text(encoding="utf-8", errors="replace")
-body = function_body(source, r"\bvoid\s+unspecialize\s*\(")
-assert body is not None, "unspecialize definition is missing"
-guard_at = body.index("if (!IS_SPECIALIZED(ch))")
-denial_at = body.index("Water Goddess", guard_at)
-return_at = body.index("return;", denial_at)
-charge_at = body.index("epic_transaction_submit", guard_at)
-assert return_at < charge_at, "non-specialized guard must return before epic charge"
+from _paths import ROOT, HARNESS_STUBS, extract_function, source
 
 
 PRELUDE = r'''
@@ -26,69 +18,118 @@ PRELUDE = r'''
 #include "net/comm.h"
 #include "world/epic.h"
 #include "world/epic_transaction.h"
+#include "persistence/persistence_checkpoint.h"
 #include <cassert>
 #include <cstdio>
+#include <string>
 
-static int message_count = 0;
-static int submissions = 0;
+static std::string output;
+static int refreshes, forgotten, ledger_calls, dirty;
+static P_char current;
+static critical_submit_result ledger_result = critical_submit_result::accepted;
 
-void send_to_char(const char *, P_char) { ++message_count; }
-void unspecialize_committed(P_char, bool, const epic_command_result &, unsigned int,
-                            const uint8_t *, size_t) {}
-bool epic_transaction_submit(P_char, int64_t, epic_reason_type, int64_t, uint16_t,
-                             critical_source_site, critical_deadline_class,
-                             epic_completion_fn, const void *, size_t) {
-    ++submissions;
-    return true;
+void send_to_char(const char *text, P_char) { output += text; }
+void update_skills(P_char ch) {
+    assert(ch == current && ch->player.spec == 0 && ch->only.pc->epics == 2);
+    ++refreshes;
+}
+int forget_spells(P_char ch, int spell) {
+    assert(ch == current && spell == -1 && refreshes == 1);
+    ++forgotten;
+    return 0;
+}
+void mark_player_dirty_components(int pid, player_component_mask_t components) {
+    assert(pid == 42 && components == PLAYER_COMPONENT_STATUS);
+    ++dirty;
+}
+critical_submit_result critical_command_coordinator_submit(critical_command command) {
+    epic_command_payload payload{};
+    assert(epic_command_decode_payload(command, &payload));
+    assert(payload.pid == 42 && payload.delta == -10 && payload.reason_id == 0);
+    assert(payload.reason == epic_reason_type::specialization_purchase);
+    assert(payload.flags == EPIC_COMMAND_REQUIRE_FUNDS);
+    // The state mutation, skill refresh and forgetting finish before ledger enqueue.
+    assert(current->player.spec == 0 && current->only.pc->epics == 2);
+    assert(refreshes == 1 && forgotten == 1);
+    ++ledger_calls;
+    return ledger_result;
 }
 '''
 
 DRIVER = r'''
 int main() {
-    char_data non_specialized{};
-    pc_only_data non_specialized_pc{};
-    non_specialized.only.pc = &non_specialized_pc;
-    non_specialized_pc.epics = 10;
-    non_specialized.player.spec = 0;
-    unspecialize(&non_specialized, nullptr);
-    assert(submissions == 0);
-    assert(non_specialized.player.spec == 0);
-    assert(message_count == 1);
+    char_data ch{};
+    pc_only_data pc{};
+    ch.only.pc = &pc;
+    current = &ch;
+    pc.pid = 42;
+    pc.epics = 12;
+    unspecialize(&ch, nullptr);
+    assert(ch.player.spec == 0 && pc.epics == 12 && ledger_calls == 0);
+    assert(output.find("get no response") != std::string::npos);
 
-    char_data specialized{};
-    pc_only_data specialized_pc{};
-    specialized.only.pc = &specialized_pc;
-    specialized_pc.epics = 10;
-    specialized.player.spec = 1;
-    unspecialize(&specialized, nullptr);
-    assert(submissions == 1);
+    ch.player.spec = SPEC_GUARDIAN;
+    pc.epics = 9;
+    output.clear();
+    unspecialize(&ch, nullptr);
+    assert(ch.player.spec == SPEC_GUARDIAN && pc.epics == 9 && ledger_calls == 0);
+    assert(output.find("need 10 epic points") != std::string::npos);
+    assert(refreshes == 0 && forgotten == 0 && dirty == 0);
 
-    std::puts("unspecialize invalid-state charge guard regression passed");
+    // Inject invalid submit input to exercise the existing service-rejection path.
+    // A normally loaded mortal has a valid PID; this is not ordinary reachability.
+    pc.epics = 12;
+    pc.pid = 0;
+    output.clear();
+    unspecialize(&ch, nullptr);
+    assert(ch.player.spec == SPEC_GUARDIAN && pc.epics == 12 && ledger_calls == 0);
+    assert(output.find("service is busy") != std::string::npos);
+    assert(refreshes == 0 && forgotten == 0);
+    pc.pid = 42;
+
+    // Characterize the refusal callback directly. With stable valid input, the
+    // ordinary handler's earlier funds check already prevents this purchase.
+    unspecialize_committed(&ch, false, {}, 0, nullptr, 0);
+    assert(ch.player.spec == SPEC_GUARDIAN && pc.epics == 12);
+    assert(refreshes == 0 && forgotten == 0);
+
+    for (auto queue_result : {critical_submit_result::accepted, critical_submit_result::overloaded}) {
+        ledger_result = queue_result;
+        ch.player.spec = SPEC_GUARDIAN;
+        pc.epics = 12;
+        pc.epic_revision = 0;
+        refreshes = forgotten = ledger_calls = dirty = 0;
+        output.clear();
+        epic_transaction_reset_for_tests();
+        unspecialize(&ch, nullptr);
+        assert(ch.player.spec == 0 && pc.epics == 2 && pc.epic_revision == 1);
+        assert(refreshes == 1 && forgotten == 1 && ledger_calls == 1 && dirty == 1);
+        assert(output.find("old habits fall away") != std::string::npos);
+        const auto health = epic_transaction_health_copy();
+        assert(health.committed == 1 && health.rejected == 0);
+        assert(health.submission_failures == (queue_result == critical_submit_result::overloaded ? 1u : 0u));
+        // Repeating the request after completion neither charges nor refreshes again.
+        unspecialize(&ch, nullptr);
+        assert(pc.epics == 2 && ledger_calls == 1 && refreshes == 1 && forgotten == 1);
+    }
+    std::puts("unspecialize: invalid state/funds/submit guards, refusal callback, native debit/completion ordering and ledger rejection passed");
 }
 '''
 
-
-with tempfile.TemporaryDirectory(prefix="duris-unspecialize-") as directory:
-    directory_path = Path(directory)
-    harness = directory_path / "harness.cpp"
-    binary = directory_path / "harness"
-    harness.write_text(
-        PRELUDE + extract_function("specializations.c", "void unspecialize(P_char ch,") + DRIVER,
-        encoding="utf-8",
-    )
-    subprocess.run(
-        [
-            "g++",
-            "-std=c++20",
-            "-Wall",
-            "-Wextra",
-            "-Werror",
-            "-fsanitize=address,undefined",
-            "-I" + str(ROOT / "src"),
-            str(harness),
-            str(HARNESS_STUBS), "-o",
-            str(binary),
-        ],
-        check=True,
-    )
+build = ROOT / "bin/tests"
+build.mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="unspecialize-", dir=build) as directory:
+    harness, binary = Path(directory) / "harness.cpp", Path(directory) / "harness"
+    harness.write_text(PRELUDE
+        + extract_function("specializations.c", "void unspecialize_committed(")
+        + extract_function("specializations.c", "void unspecialize(P_char ch,") + DRIVER)
+    subprocess.run([
+        "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-g", "-D__NO_MYSQL__",
+        "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined", "-fno-pie", "-no-pie",
+        "-ffunction-sections", "-fdata-sections", "-I" + str(ROOT / "src"),
+        "-I" + str(ROOT / "src/no_mysql"), str(harness),
+        str(source("epic_transaction.c")), str(source("epic_command.c")),
+        str(source("critical_command.c")), str(HARNESS_STUBS),
+        "-Wl,--gc-sections", "-lcrypto", "-o", str(binary),
+    ], check=True)
     subprocess.run([str(binary)], check=True)

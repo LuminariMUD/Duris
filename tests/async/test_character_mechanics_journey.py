@@ -180,7 +180,43 @@ def run(binary, build):
                 save(player)
                 assert snapshot()["specialization"] == 2
                 print("PASS specialization.entry/persistence: mortal denials, real teacher selection, skills, Bulwark 40/41, relog and restart", flush=True)
-                print("Fixture: flatfile; Human Warrior; staff levels 29/30/40/41, identity denial cases and hall transfer; camp.timer=1; loaded Arian 9432 in room 9725; acquisition travel and live caps unverified", flush=True)
+                staff = login(STAFF, STAFF_ACCOUNT)
+                command(staff, "goto 12116")
+                command(staff, "transfer " + PLAYER)
+                altar_room = command(player, "look")
+                assert "A strange altar the colour of blood is here." in altar_room, altar_room
+                command(staff, "setbit char " + PLAYER + " epics 9")
+                denied = command(player, "pray altar")
+                assert "need 10 epic points" in denied, denied
+                save(player)
+                denied_state = snapshot()
+                assert denied_state["epics"] == 9 and denied_state["specialization"] == 2
+                command(staff, "setbit char " + PLAYER + " epics 12")
+                reverted = command(player, "pray altar")
+                assert "old habits fall away" in reverted, reverted
+                assert "You know no such ability!" in command(player, "innate bulwark")
+                denied = command(player, "pray altar")
+                assert "get no response" in denied, denied
+                save(player)
+                reverted_state = snapshot()
+                assert reverted_state["epics"] == 2 and reverted_state["specialization"] == 0
+                assert reverted_state["class_primary"] == 1 and reverted_state["class_secondary"] == 0
+                assert reverted_state["race"] == 1 and reverted_state["level"] == 41
+                assert SHIELD_PUNCH not in reverted_state["skills"]
+                # Guard is also a base Warrior skill at 41: keep it with its
+                # lower unspecialized cap instead of erasing all prior grants.
+                assert reverted_state["skills"][GUARD] == {"learned": 40, "taught": 70}
+                stop()
+                boot()
+                player = login(PLAYER, ACCOUNT)
+                assert "You know no such ability!" in command(player, "innate bulwark")
+                save(player)
+                restarted = snapshot()
+                assert restarted["epics"] == 2 and restarted["specialization"] == 0
+                assert SHIELD_PUNCH not in restarted["skills"]
+                assert restarted["skills"][GUARD] == reverted_state["skills"][GUARD]
+                print("PASS specialization.reversal: loaded altar, insufficient funds, single 10-epic purchase, skill/passive refresh and restart", flush=True)
+                print("Fixture: flatfile; Human Warrior; staff levels 29/30/40/41, identity denial cases, epic balances 9/12 and transfers; camp.timer=1; Arian 9432 in room 9725 and altar 12016 in room 12116; acquisition travel and live caps unverified", flush=True)
                 print("Server SHA256:", hashlib.sha256(binary.read_bytes()).hexdigest(), flush=True)
             except BaseException:
                 for client in clients:

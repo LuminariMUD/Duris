@@ -191,6 +191,7 @@ static void inspect_authority(const std::string &root, int32_t pid)
 		const char *name =
 			field.field == player_status_field::deaths	    ? "death_count" :
 			field.field == player_status_field::experience	    ? "experience" :
+			field.field == player_status_field::epics	    ? "epics" :
 			field.field == player_status_field::level	    ? "level" :
 			field.field == player_status_field::class_primary   ? "class_primary" :
 			field.field == player_status_field::class_secondary ? "class_secondary" :
