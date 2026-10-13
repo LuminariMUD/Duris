@@ -387,8 +387,8 @@ three decimals, and `pulse save`. Like the difficulty dials it routes through
 `properties set`, so a change applies at once (melee by re-totalling every character of that
 race) and stays in memory until saved.
 
-Gear does not grant faster pulse. Every player-obtainable object that carried a negative
-`APPLY_COMBAT_PULSE` or `APPLY_SPELL_PULSE` carries a racial-maximum stat instead, worth at
-least as much in `rate_object()`, and the shaman spirit totem gives wisdom. Mob-only objects
-(no-show or untakeable procs) keep theirs, as do spells and skills such as berserk and the
-reaver buffs.
+Player-obtainable gear carries negative `APPLY_COMBAT_PULSE` and `APPLY_SPELL_PULSE` applies
+again, as does the shaman spirit totem (spell pulse -1). Mob-only objects (no-show or
+untakeable procs) keep theirs, as do spells and skills such as berserk and the reaver buffs.
+Existing saved gear retains its saved applies; the restored prototypes affect newly
+created gear. No existing-item migration is required.

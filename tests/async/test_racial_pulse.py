@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Contracts for racial pulse: the 'pulse' command, the shipped rates, and pulse-free gear.
+"""Contracts for racial pulse: the 'pulse' command, the shipped rates, and pulse-bearing gear.
 
 The command sets absolute values with exactly three decimals and routes through
-'properties set' like the difficulty dials. Player gear no longer makes a pulse faster;
-mob-only proc objects keep theirs.
+'properties set' like the difficulty dials. Player gear and the spirit totem carry
+negative combat and spell pulse again; mob-only proc objects keep theirs.
 """
 
 from __future__ import annotations
@@ -25,12 +25,12 @@ CAST = {"Kobold": "0.700", "Gnome": "0.700", "Goblin": "0.730", "Halfling": "0.7
         "Orc": "1.000", "Thri-Kreen": "1.000", "Centaur": "1.090", "Drider": "1.090",
         "Minotaur": "1.150", "Barbarian": "1.220", "Troll": "1.220", "Firbolg": "1.310",
         "Ogre": "1.310"}
-MELEE = {"Kobold": "12.000", "Gnome": "12.000", "Goblin": "12.500", "Halfling": "13.000",
-         "DrowElf": "14.000", "GreyElf": "14.000", "Drider": "14.000", "Tiefling": "14.250",
+MELEE = {"Kobold": "10.000", "Gnome": "11.500", "Goblin": "12.000", "Halfling": "12.500",
+         "DrowElf": "13.500", "GreyElf": "13.500", "Drider": "13.500", "Tiefling": "14.000",
          "Human": "15.000", "Orc": "15.000", "Githzerai": "15.000", "Githyanki": "15.000",
-         "Centaur": "15.250", "MountainDwarf": "16.000", "DuergarDwarf": "16.000",
-         "Thri-Kreen": "16.000", "Barbarian": "16.250", "Troll": "16.250", "Minotaur": "16.250",
-         "Firbolg": "16.250", "Ogre": "16.250"}
+         "Centaur": "15.500", "MountainDwarf": "17.000", "DuergarDwarf": "17.000",
+         "Thri-Kreen": "17.500", "Barbarian": "18.250", "Troll": "18.250", "Minotaur": "18.500",
+         "Firbolg": "19.000", "Ogre": "19.000"}
 
 
 def _flat(text: str) -> str:
@@ -145,7 +145,7 @@ def _objects():
             yield path.name, int(lines[start].strip()[1:]), int(head[7]), int(head[6]), found
 
 
-def test_player_gear_has_no_faster_pulse() -> None:
+def test_player_gear_grants_pulse_again() -> None:
     faster, mob_only, scanned = [], [], 0
     for name, vnum, wear, extra, found in _objects():
         scanned += 1
@@ -159,19 +159,22 @@ def test_player_gear_has_no_faster_pulse() -> None:
     assert scanned > 5000, scanned
     # The scan must still see the mob-only procs, or it is not reading applies at all.
     assert mob_only, "no mob-only pulse objects found"
-    assert not faster, faster
+    # 59726ccf's inverse: 83 negative combat/spell pulse applies on player gear across 30 files.
+    assert sum(len(pulse) for _, _, pulse in faster) == 83, faster
+    assert len({name for name, _, _ in faster}) == 30, faster
 
 
-def test_spirit_totem_gives_wisdom_not_pulse() -> None:
+def test_spirit_totem_gives_spell_pulse() -> None:
     totem = source("classes/new_skills.c").read_text()
-    assert "totem->affected[2].location = APPLY_WIS;" in totem
-    assert "APPLY_SPELL_PULSE" not in totem
+    assert "totem->affected[2].location = APPLY_SPELL_PULSE;" in totem
+    assert "totem->affected[2].modifier = -1;" in totem
+    assert "totem->affected[2].location = APPLY_WIS;" not in totem
 
 
 if __name__ == "__main__":
     for test in (test_values_take_exactly_three_decimals, test_command_is_registered,
                  test_changes_are_forger_only_and_go_through_properties,
-                 test_rates_ship_the_revised_values, test_player_gear_has_no_faster_pulse,
-                 test_spirit_totem_gives_wisdom_not_pulse):
+                 test_rates_ship_the_revised_values, test_player_gear_grants_pulse_again,
+                 test_spirit_totem_gives_spell_pulse):
         test()
     print("racial pulse contracts passed")

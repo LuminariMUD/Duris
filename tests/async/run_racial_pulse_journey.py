@@ -25,7 +25,7 @@ import time
 
 import test_flatfile_combat_journey as journey
 from test_race_rebalance import STATS
-from test_racial_pulse import CAST
+from test_racial_pulse import CAST, MELEE
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -293,11 +293,15 @@ def main() -> None:
                 for race, value in CAST.items():
                     require(row(listing, display_names.get(race, race))[2] == float(value),
                             f"{race}: expected cast pulse {value}")
+                for race, value in MELEE.items():
+                    require(row(listing, display_names.get(race, race))[:2] ==
+                            (float(value), float(value) + 2),
+                            f"{race}: expected melee pulse {value} plus the class adjustment")
                 check_rebalance(client, plain_port)
                 require("Racial pulse" in listing, listing)
-                require(row(listing, "Gnome") == (12.0, 14.0, 0.700), f"gnome row: {row(listing, 'Gnome')}")
-                require(row(listing, "Ogre") == (16.25, 18.25, 1.310), f"ogre row: {row(listing, 'Ogre')}")
-                require(row(listing, "Kobold") == (12.0, 14.0, 0.700), f"kobold row: {row(listing, 'Kobold')}")
+                require(row(listing, "Gnome") == (11.5, 13.5, 0.700), f"gnome row: {row(listing, 'Gnome')}")
+                require(row(listing, "Ogre") == (19.0, 21.0, 1.310), f"ogre row: {row(listing, 'Ogre')}")
+                require(row(listing, "Kobold") == (10.0, 12.0, 0.700), f"kobold row: {row(listing, 'Kobold')}")
                 print("list: gnome", row(listing, "Gnome"), "ogre", row(listing, "Ogre"), flush=True)
 
                 for bad in ("0.9", "0.90", "0.9000", "-0.900", "0.900 extra"):
@@ -311,7 +315,7 @@ def main() -> None:
                 reply = command(client, "pulse adjust cast gnome 0.900", "pulse:")
                 require("Gnome cast pulse: 0.700 -> 0.900" in reply, reply)
                 reply = command(client, "pulse adjust melee ogre 16.500", "pulse:")
-                require("Ogre melee pulse: 16.250 -> 16.500" in reply, reply)
+                require("Ogre melee pulse: 19.000 -> 16.500" in reply, reply)
                 shown = command(client, "properties show spellcast.pulse.racial.Gnome", "spellcast.pulse.racial.Gnome")
                 require("0.900(0.700)" in shown, f"property table did not change:\n{shown}")
                 listing = command(client, "pulse", "pulse save")
@@ -319,7 +323,7 @@ def main() -> None:
                         f"list after adjust: gnome {row(listing, 'Gnome')} ogre {row(listing, 'Ogre')}")
                 every = paged(client, "pulse list all", "pulse save")
                 require(re.search(r"^\s*Illithid\s", every, re.M), "list all omitted a restricted race")
-                print("adjust: gnome cast 0.700 -> 0.900, ogre melee 16.250 -> 16.500; list all has",
+                print("adjust: gnome cast 0.700 -> 0.900, ogre melee 19.000 -> 16.500; list all has",
                       len(re.findall(r"^\s+\S.*\d+\.\d{3}\s*$", every, re.M)), "rows", flush=True)
 
                 client.send("pulse save")
@@ -338,9 +342,28 @@ def main() -> None:
                 client = None
                 process.send_signal(signal.SIGTERM)
                 process.wait(timeout=30)
+                # A fresh process must read the saved rates, retaining all other races.
+                process = start()
+                wait_for_boot(3)
+                client = journey.reconnect_character(plain_port, expected_room=None,
+                                                     account=ACCOUNT, character=CHARACTER)
+                client.expect_any(PROMPTS, timeout=30)
+                listing = command(client, "pulse", "pulse save")
+                for race, value in MELEE.items():
+                    expected = 16.5 if race == "Ogre" else float(value)
+                    require(row(listing, display_names.get(race, race))[0] == expected,
+                            f"{race}: melee pulse changed across restart")
+                for race, value in CAST.items():
+                    expected = .9 if race == "Gnome" else float(value)
+                    require(row(listing, display_names.get(race, race))[2] == expected,
+                            f"{race}: cast pulse changed across restart")
+                client.close()
+                client = None
+                process.send_signal(signal.SIGTERM)
+                process.wait(timeout=30)
                 log = output_path.read_text(errors="replace")
                 require("FATAL:" not in log and "assert:" not in log, "server logged a fatal or assertion")
-                print("[PASS] racial pulse journey: list, refusals, adjust cast and melee, properties, save", flush=True)
+                print("[PASS] racial pulse journey: all 21 races, refusals, adjust cast and melee, properties, save/restart", flush=True)
             except Exception as error:
                 raise AssertionError(f"{error}\n--- server output ---\n"
                                      + output_path.read_text(errors="replace")[-10000:]) from error
