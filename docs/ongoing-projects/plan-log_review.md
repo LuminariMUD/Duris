@@ -234,17 +234,8 @@ The existing scheduler harness alone does not prove cross-store agreement.
 
 [boon.c](../../src/economy/boon.c), `boon_publish_transaction_result()`, announces
 completion before `gain_epic()` can decline a below-level award.
-[epic.c](../../src/world/epic.c) already provides `epic_level_can_gain()` and
-`epic_gain_min_level()`; the checked-in minimum is 50. Reuse those rules to explain
-why a completed epic boon awarded no epics. Preserve boon completion semantics,
-non-epic rewards, and the existing successful-award feedback; do not lower the
-gate, reopen a consumed boon, or claim a persistence failure.
-
-Extend [test_epic_level_gate.py](../../tests/async/test_epic_level_gate.py) with
-the actual publication/award path, supplementing its helper/source checks.
-At levels 49/50 and an overridden configured boundary, assert message, epic
-balance, and completion state together. Cover a declined award without a false
-success message and ensure the change adds no second reward application.
+Obsolete: epic points no longer have a level gate, so `gain_epic()` cannot decline a
+below-level award and this plan's level-boundary work is not needed.
 
 ### LR-03 — Epic training minimum (medium; policy decision; #56 §3)
 

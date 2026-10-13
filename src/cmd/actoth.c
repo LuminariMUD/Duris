@@ -4447,13 +4447,6 @@ void do_quaff(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	if (OBJ_VNUM(bottle) == VOBJ_EPIC_BOTTLE_EPICS && !epic_level_can_gain(ch))
-	{
-		send_to_char_f(ch, "You must reach level %d before you can quaff epic potions.\r\n",
-			       epic_gain_min_level());
-		return;
-	}
-
 	if (affected_by_spell(ch, TAG_POTION_TIMER))
 	{
 		// gellz added potion messages for timer durations  070316
