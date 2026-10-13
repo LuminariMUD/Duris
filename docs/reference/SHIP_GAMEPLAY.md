@@ -545,7 +545,7 @@ The **Ship Damage Control** epic skill protects its owner's ship while the
 owner is aboard: every sail and hull hit from another ship is cut by 4% plus a
 fifth of the skill (14% at 50, 24% at 100), never below 1 point. Spells and
 other damage a character deals to a hull are not reduced. The headless
-commodore (mob 2733, in Headless) teaches it from level 56 in 10-point lessons.
+commodore (mob 2733, in Headless) teaches it from `epic.skills.minLevel` (default 30) in 10-point lessons.
 The first lesson costs 240 epic points and 16,000 platinum, and the price
 rises with the skill. New Chaos characters with starter epic skills enabled
 start with it at 100.

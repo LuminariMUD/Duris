@@ -2,7 +2,7 @@
 """Contracts for the epic point and epic skill level gates.
 
 epic.gain.minLevel (default 50): no epic points below it, from any source.
-epic.skills.minLevel (default 56): no epic skills learned below it.
+epic.skills.minLevel (default 30): no epic skills learned below it.
 Touch-stone level costs for 51-56 are untouched.
 """
 
@@ -54,8 +54,8 @@ float get_property(const char *key, double fallback) {
 }
 ''' + helpers + r'''
 int main() {
-    // Defaults: epics from 50, epic skills from 56.
-    if (epic_gain_min_level() != 50 || epic_skills_min_level() != 56) return 1;
+    // Defaults: epics from 50, epic skills from 30.
+    if (epic_gain_min_level() != 50 || epic_skills_min_level() != 30) return 1;
     test_player low{{49}}, gate{{50}}, top{{56}};
     if (epic_level_can_gain(&low) || !epic_level_can_gain(&gate) || !epic_level_can_gain(&top)) return 2;
     if (epic_level_can_gain(nullptr)) return 3;
@@ -109,7 +109,7 @@ def test_properties_ship_the_defaults() -> None:
     section = PROPERTIES[PROPERTIES.index("[epic]"):]
     section = section[: section.index("\n[", 1)].splitlines()
     assert "epic.gain.minLevel=50.000" in section
-    assert "epic.skills.minLevel=56.000" in section
+    assert "epic.skills.minLevel=30.000" in section
     # Levels 51-56 still cost what they cost.
     for level, cost in ((51, "1000.000"), (56, "13500.000")):
         assert f"epic.forLevel.{level}={cost}" in section

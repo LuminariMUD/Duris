@@ -89,7 +89,7 @@ void do_epic_zones(P_char ch, char *arg, int cmd);
 void do_epic_share(P_char ch, char *arg, int cmd);
 void gain_epic(P_char, int type, int data, int amount);
 // Epic points are earned from epic.gain.minLevel (default 50) upward, and epic skills are
-// learned from epic.skills.minLevel (default 56) upward.
+// learned from epic.skills.minLevel (default 30) upward.
 int epic_gain_min_level();
 bool epic_level_can_gain(P_char ch);
 int epic_skills_min_level();
