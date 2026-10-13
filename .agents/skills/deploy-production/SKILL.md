@@ -2,7 +2,7 @@
 name: deploy-production
 description: >-
   Update the native Duris production checkout from remote master, resolve Git
-  conflicts, and prepare the production binary, database prerequisites, world,
+  conflicts, and prepare the production binary, online migrations, world,
   help, news, configuration, and jobs for the user's in-game reboot. Use when
   asked to deploy production or prepare its next release. Stop at the handoff;
   the user performs the reboot.
@@ -20,6 +20,12 @@ copyover, or shutdown commands, stop or restart the MUD or website services, or
 take over an outage. Do not ask for a maintenance window as the next step of this
 workflow. A separate explicit request for maintenance establishes a different
 task; a pending migration does not establish that request.
+
+Run required migrations with the database, MUD and website online. A blanket
+zero-client check or missing online runner option is a tooling limitation to
+resolve, not evidence that the migration needs downtime. Follow the
+[online migration procedure](references/maintenance.md) to assess the actual SQL
+and, where needed, add a narrowly scoped online path to the runner.
 
 A verified, fully prepared handoff completes this task; activation and its
 verification are not prerequisites for finishing preparation. Carry the work
@@ -61,15 +67,16 @@ Do not provision testing infrastructure or repair unrelated tests during a deplo
 
 An explicit request to run this deployment authorizes its ordinary production
 preparation: backups, Git integration, builds, generated world/configuration
-updates, and required database/content publication whose safety prerequisites
-are already satisfied without interrupting the running services. Reuse that
+updates, required online database/content publication, and narrow runner fixes
+needed to apply the reviewed migrations with services running. Reuse that
 authorization; do not ask separately for each script's confirmation. Creating,
 reviewing, or dry-running this skill is not authorization to deploy.
 
-For work requiring stopped writers, a new launcher, or another outage, use
-[the prerequisite handoff](references/maintenance.md). Prepare the exact work
-and explain why an ordinary in-game reboot cannot yet activate it. Keep the
-running service intact; do not convert this preparation task into maintenance.
+Use [the prerequisite handoff](references/maintenance.md) only for a demonstrated
+constraint that cannot be resolved online, such as an incompatible writer or a
+required new launcher. Name that constraint and the online approaches assessed;
+do not hand back a migration merely because the existing runner demands stopped
+clients. Keep the running services intact.
 
 Deployment does not authorize player wipes, arbitrary historical repairs,
 destructive content replacement, discarding local work, pushing Git history,
@@ -175,6 +182,8 @@ when its source, configuration and dependencies are unchanged. Do not invoke
 `make test-all`, `make test-db`, burn-in, or a substitute native test suite.
 Existing unrelated test or formatting failures are follow-up work, not deployment
 prerequisites. Do not wait for CI or start additional tests while waiting for input.
+For a required online runner fix, run focused database-free checks of its guards
+and execution path; do not point test harnesses at production.
 
 ```bash
 python3 scripts/migration_runner.py inspect
@@ -204,14 +213,12 @@ valid output and record the binary hash it belongs to.
 Review these together before declaring the release ready for the user's reboot:
 
 - Pending immutable migration prefix, metadata changes and the target binary's
-  runtime contract. Select the supported runner invocation for step 4.
-  Check for a supported online runner path before declaring stopped clients
-  necessary; follow its specific compatibility, backup and locking requirements
-  in [the prerequisite reference](references/maintenance.md).
-  For migrations needing stopped clients, prepare the exact invocation and backup
-  requirements in [the prerequisite handoff](references/maintenance.md), leave
-  them unapplied, and report that reboot is not yet ready. Production boot verifies
-  schema compatibility; it does not automatically run pending migrations.
+  runtime contract. Prepare an online runner invocation for step 4 using the
+  [online migration procedure](references/maintenance.md). Assess compatibility
+  with active writers and the target engine's DDL/locking behavior. Extend the
+  runner for the reviewed pending steps when its existing online path is too
+  narrow; retain target, backup, checksum, locking and ledger checks. Production
+  boot verifies schema compatibility; it does not apply pending migrations.
 - Durable object/world recovery and deleted or renumbered rooms/mobs. If copyover
   was explicitly requested, also compare the running writer's recovery format with
   the candidate reader, including struct/layout changes; a matching version
@@ -260,7 +267,7 @@ prerequisite can be completed with services running. If a known outage, unsuppor
 recovery format or missing required configuration prevents that, finish independent
 preparation and report it before changing the live schema or dependent content.
 
-## 4. Back up, apply supported migrations, and publish content
+## 4. Back up, apply migrations online, and publish content
 
 Check scheduled reboots and concurrent staff activity without cancelling another
 operator's schedule. Preserve recovery files and take a verified full backup with
@@ -274,10 +281,11 @@ Record any temporarily held backup schedules; leave MUD/website clients running.
 Use the prepared release's runner and content sources with the verified production
 configuration, checking each tool's resolved paths and database destination.
 
-Apply the selected pending migrations through the supported runner path under
-the existing deployment authorization. If the live ledger already matches the
-candidate head, skip migration application and verify compatibility directly. Follow
-[migration prerequisites](references/maintenance.md) for exported configuration,
+Apply the selected pending migrations through the reviewed online runner path
+under the existing deployment authorization, keeping the database and its clients
+running. If the live ledger already matches the candidate head, skip migration
+application and verify compatibility directly. Follow
+[the online migration procedure](references/maintenance.md) for exported configuration,
 target confirmation, fresh backup and online-path requirements. Verify the ordered
 history/state and run `migrations/verify_runtime_compatibility.sh` against the
 candidate contract. An in-game reboot will not apply migrations for the user.
