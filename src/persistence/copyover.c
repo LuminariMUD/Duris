@@ -1373,7 +1373,8 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 					save_room = 0;
 				}
 				ch->in_room = NOWHERE;
-				char_to_room(ch, save_room, FALSE);
+				// Recovery restores location without running movement hazards or procs.
+				char_to_room(ch, save_room, -1);
 				player_load_pets_place(ch);
 				epic_bonus_hydrate(ch);
 
@@ -1512,7 +1513,7 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 		GET_IDNUM(mob) = mob_entry.idnum;
 
 		// place in saved room
-		char_to_room(mob, rnum, FALSE);
+		char_to_room(mob, rnum, -1);
 
 		// restore saved state
 		GET_HIT(mob) = mob_entry.hit;
@@ -1986,7 +1987,7 @@ P_char copyover_restore_mob_from_buffer(const char *buf, size_t len, size_t *byt
 		return NULL;
 	}
 	GET_IDNUM(mob) = mob_entry.idnum;
-	char_to_room(mob, rnum, FALSE);
+	char_to_room(mob, rnum, -1);
 	GET_HIT(mob) = mob_entry.hit;
 	GET_MAX_HIT(mob) = mob_entry.max_hit;
 	GET_MANA(mob) = mob_entry.mana;

@@ -147,6 +147,21 @@ Kingdom-payment interleaving and failure recovery, remaining state-ordering/
 lifecycle details, and complete final-source gates remain open. LR-01's full-suite counts
 above do not qualify these subsequent changes.
 
+## Recovery placement and room-entry hazards
+
+A full-server artifact journey crashed after announcing copyover completion. The
+kernel address resolved to transport recovery reading an NPC whose room-entry
+hook had removed it. An unchanged rerun passed: the triggering world state was
+intermittent. File and buffer recovery now use the existing placement mode that
+skips movement hazards and procs for restored players and NPCs.
+
+`python3 tests/async/test_world_singletons.py` runs the production buffer restorer
+under ASan/UBSan. Its room-entry adapter extracts on ordinary movement; before
+the fix the next state write is a heap-use-after-free. With recovery placement,
+five restore cycles preserve the NPC, stock and equipment. File/player call-site
+checks accompany the native test. The new full-server/database gates remain due;
+the native test controls entry effects and does not execute the entire room handler.
+
 ## Crumbling equipment removal
 
 PR #51's review reproduced a pre-existing use-after-free when `obj_to_char()`
