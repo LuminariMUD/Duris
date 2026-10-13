@@ -94,6 +94,28 @@ historical checkpoint below. Step 1, all multiclass/Revenant traces, and steps 2
 are still incomplete. The earlier full gate has not been rerun for these new
 descriptors/tests; the final completion gate remains required.
 
+Entry-route investigation for the next slice:
+
+- `interp.c` assigns `CMD_SPECIALIZE` to `do_specialize` through `CMD_N` with
+  `STAT_SLEEPING + POS_PRONE`, level 0, and no aggro check. Connect the actual
+  registration, not just the handler's existence.
+- The handler checks teacher presence, PC identity, teacher class, existing
+  specialization, `time_unspecced`, level 30, and the race/spec allowance before
+  assigning `player.spec`, calling `update_skills`, and sending the teacher's
+  success message. Teacher search uses `GET_CLASS`, but the subsequent non-Dragoon
+  check also requires exact primary-class equality; retain both decisions.
+- Read-only inspection of generated world data found loaded pure-Warrior teachers
+  with `ACT_SPEC_TEACHER`: Arian (mobile 9432, reset room 9725 in Sarmiz), Rethorn
+  (42939, room 42934 in Raxthan), and Ugort (83229, room 83134 in Alatorin), among
+  others. Their areas are selected by `areas/AREA`. These are acquisition leads,
+  **not** proof of mortal travel, teacher interaction, or ordinary reachability.
+- Reuse the full-world setup in `run_world_quest_dual_backend.setup_run_root`,
+  the existing clients/build-artifact helper, and disposable authority. The
+  recovery `IsolatedServer` always boots with `--minimal`; it cannot by itself
+  establish full-world teacher acquisition. The planned new
+  `test_character_mechanics_journey.py` does not exist yet. Any staff level,
+  transport, or equipment setup must remain explicit fixture scope.
+
 ### Historical pause checkpoint
 
 Completed and pushed before this checkpoint:
