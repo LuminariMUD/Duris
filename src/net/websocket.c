@@ -1755,6 +1755,16 @@ int websocket_process_input(struct descriptor_data *d)
 	if (!d || d->descriptor < 0)
 		return -1;
 
+	if (!d->ws_handshake_done && !d->proxy_named_client && !d->ws_handshake_len &&
+	    proxy_peer_is_trusted(d->descriptor))
+	{
+		const int proxy = process_proxy_protocol(d);
+		if (proxy == 2)
+			return 0;
+		if (proxy < 0)
+			return -1;
+	}
+
 	bytes_read = read(d->descriptor, buf, sizeof(buf));
 
 	if (bytes_read < 0)
