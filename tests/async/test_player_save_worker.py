@@ -24,11 +24,27 @@ HARNESS = r'''
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
+#include <new>
+#include <cerrno>
 #include <map>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
+
+// Fail only allocations made by the submitting thread; the blocked writer and
+// test bookkeeping remain independent of the injected failure.
+static thread_local int allocation_fail_after = -1;
+void *operator new(size_t bytes)
+{
+    if (allocation_fail_after >= 0 && allocation_fail_after-- == 0)
+        throw std::bad_alloc();
+    if (void *memory = std::malloc(bytes ? bytes : 1)) return memory;
+    throw std::bad_alloc();
+}
+void operator delete(void *memory) noexcept { std::free(memory); }
+void operator delete(void *memory, size_t) noexcept { std::free(memory); }
 
 struct apply_state
 {
@@ -135,8 +151,66 @@ std::vector<player_save_completion> drain()
     return all;
 }
 
+static void test_admission_allocation_failure()
+{
+    player_save_worker_reset_for_tests();
+    assert(player_save_worker_init(apply_snapshot, nullptr));
+    assert(player_save_worker_submit(snapshot_for(1, 1)) == player_save_submit_result::accepted);
+    {
+        std::unique_lock<std::mutex> lock(state.mutex);
+        state.changed.wait(lock, [] { return state.first_started; });
+    }
+    unsigned int failures = 0;
+    bool errors_reported = true;
+    bool admitted = false;
+    for (int index = 0; index < 8; ++index)
+    {
+        allocation_fail_after = index;
+        const auto result = player_save_worker_submit(snapshot_for(14, 1));
+        allocation_fail_after = -1;
+        if (result == player_save_submit_result::accepted)
+        {
+            admitted = true;
+            break;
+        }
+        ++failures;
+        errors_reported = errors_reported && errno == ENOMEM;
+        assert(result == player_save_submit_result::unavailable);
+        assert(!player_save_worker_pid_pending(14));
+        assert(persistence_writer_pending_owners().size() == 1);
+        const auto health = player_save_worker_health_copy();
+        assert(health.queued_jobs == 0 && health.queued_bytes == 0 && health.submitted == 1);
+    }
+    // Both the list-node and owner-index admission failures leave no partial job.
+    assert(admitted && failures >= 2 && errors_reported);
+    auto replacement = snapshot_for(14, 2);
+    replacement.encoded_size_bound = 1024;
+    allocation_fail_after = 0;
+    const auto replaced = player_save_worker_submit(std::move(replacement));
+    const bool allocated = allocation_fail_after != 0;
+    allocation_fail_after = -1;
+    assert(replaced == player_save_submit_result::replaced && !allocated);
+    assert(player_save_worker_pid_pending(14));
+    assert(persistence_writer_pending_owners().size() == 2);
+    const auto health = player_save_worker_health_copy();
+    assert(health.queued_jobs == 1 && health.queued_bytes == 1024);
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        state.release_first = true;
+        state.changed.notify_all();
+    }
+    assert(persistence_writer_wait_idle(5000));
+    assert((state.order == std::vector<std::string>{"p1:1", "p14:2"}));
+    assert(drain().size() == 2);
+    player_save_worker_reset_for_tests();
+    state.order.clear();
+    state.attempts.clear();
+    state.first_started = state.release_first = false;
+}
+
 int main()
 {
+    test_admission_allocation_failure();
     player_save_worker_reset_for_tests();
     assert(player_save_worker_init(apply_snapshot, nullptr));
     assert(!player_save_worker_init(apply_snapshot, nullptr));
@@ -290,7 +364,9 @@ int main()
 '''
 
 
-with tempfile.TemporaryDirectory(prefix="duris-player-save-worker-") as temp_dir:
+test_outputs = ROOT / "bin/tests"
+test_outputs.mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="duris-player-save-worker-", dir=test_outputs) as temp_dir:
     source = Path(temp_dir) / "worker_test.cpp"
     binary = Path(temp_dir) / "worker_test"
     source.write_text(HARNESS)
@@ -317,6 +393,7 @@ with tempfile.TemporaryDirectory(prefix="duris-player-save-worker-") as temp_dir
         text=True,
     )
     subprocess.run([str(binary)], check=True, timeout=30)
+print("[PASS] allocation failures admit neither partial queue jobs nor owner entries; tail replacement allocates nothing")
 print("[PASS] one writer applies saves in capture order; a newer save replaces its queued one")
 print("[PASS] a lost connection is retried at the head; other failures are reported and dropped")
 print("[PASS] shutdown stops a stuck retry and names the owners it could not write")
