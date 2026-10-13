@@ -28,6 +28,20 @@ mechanics world journey exercises the actual reset and saved before/after totals
 staff-supplied level, balance and room transfer are explicit setup, not ordinary
 level progression or temple acquisition.
 
+## Multiclass room denial messages
+
+The assigned multiclass room consumes requests it has already denied for race or
+epic balance. Previously it returned “unhandled” after printing the denial, so
+the ordinary command repeated the race message or incorrectly told an eligible
+Human/Orc in the temple that they were in the wrong location. The eligibility
+conditions, state and balances are unchanged.
+
+`python3 tests/async/test_character_mechanics.py` executes the real room procedure
+and ordinary fallback together, checks one race denial and no false location
+message at a configured epic threshold, and rejects any reset/refund on these
+paths. The isolated mechanics journey checks the same messages through the real
+interpreter in room 52904 for Human/Orc characters and preserves the rejected state.
+
 ## Clearing class masks with setbit
 
 The class-index copier used by `setbit` now maps `None` to `CLASS_NONE` (zero).

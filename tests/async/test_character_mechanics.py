@@ -172,6 +172,11 @@ Skill skills[MAX_SKILLS];
 int GET_LVL_FOR_SKILL(P_char, int);
 command_info cmd_info[MAX_CMD_LIST];
 P_room world;
+extern const class_names class_names_table[];
+void do_start(P_char, int) { assert(false && "denial fixture must not reset a character"); }
+void do_restore(P_char, char *, int) { assert(false && "denial fixture must not restore"); }
+void refund_epic_skills(P_char) { assert(false && "denial fixture must not refund"); }
+void clear_zone_trophy(P_char) { assert(false && "denial fixture must not clear trophies"); }
 index_data object_prototypes[3]{};
 P_index obj_index = object_prototypes;
 int top_of_objt = 2;
@@ -259,6 +264,8 @@ combat_bodies = (
         ("interp.c", "int fill_word("),
         ("interp.c", "void argument_interpreter("),
         ("guild.c", "void update_skills("),
+        ("actoth.c", "void do_multiclass("),
+        ("specs.room.c", "int multiclass_proc("),
         ("guild.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::training_connections("),
         ("memorize.c", "int forget_spells("),
         ("memorize.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::memorization_connections("),
@@ -288,8 +295,8 @@ void load_character_properties() {
     qsort(duris_properties, properties_count, sizeof(property), property_comp);
     update_dam_factors();
 }
-void set_bulwark_property(float value) {
-    auto *p = static_cast<property *>(bsearch("damage.reduction.guardians.bulwark",
+void set_character_property(const char *key, float value) {
+    auto *p = static_cast<property *>(bsearch(key,
         duris_properties, properties_count, sizeof(property), key_property_comp));
     assert(p); p->value = value; update_dam_factors();
 }

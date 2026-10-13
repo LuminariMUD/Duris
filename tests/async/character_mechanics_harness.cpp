@@ -15,7 +15,7 @@
 using namespace character_mechanics;
 
 void load_character_properties();
-void set_bulwark_property(float value);
+void set_character_property(const char *key, float value);
 void clear_character_properties();
 void update_dam_factors();
 double bulwark_melee(P_char attacker, P_char victim, bool bypass = false);
@@ -27,6 +27,49 @@ void initialize_mechanic_commands();
 void initialize_mechanic_objects();
 extern P_index obj_index;
 extern int mechanic_removed_affects, mechanic_stop_memorizing, mechanic_ledger_calls;
+int multiclass_proc(int, P_char, int, char *);
+
+static void multiclass_denials()
+{
+	load_character_properties();
+	char_data student{};
+	pc_only_data pc{};
+	student.only.pc = &pc;
+	student.player.m_class = CLASS_WARRIOR;
+	student.player.level = 50;
+	pc.epics = 17;
+	auto command = [&](const char *choice)
+	{
+		char args[MAX_INPUT_LENGTH];
+		strcpy(args, choice);
+		mechanic_output.clear();
+		if (!multiclass_proc(0, &student, CMD_MULTICLASS, args))
+			do_multiclass(&student, args, CMD_MULTICLASS);
+		assert(student.player.secondary_class == 0 && student.player.level == 50);
+		assert(pc.epics == 17);
+	};
+	student.player.race = RACE_GNOME;
+	command("cleric");
+	assert(mechanic_output == "Your race is not versatile enough to learn that much.\n");
+	set_character_property("multiclass.epic.req.min", 20);
+	for (int race : { RACE_HUMAN, RACE_ORC })
+	{
+		student.player.race = race;
+		command("cleric");
+		assert(mechanic_output.find("need more") != std::string::npos);
+		assert(mechanic_output.find("proper location") == std::string::npos);
+	}
+	set_character_property("multiclass.epic.req.min", 0);
+	command("nonsense");
+	assert(mechanic_output.find("no class, bubba") != std::string::npos);
+	command("sorcerer");
+	assert(mechanic_output.find("cannot multiclass to that particular class") !=
+	       std::string::npos);
+	assert(!multiclass_proc(0, nullptr, CMD_SET_PERIODIC, nullptr));
+	clear_character_properties();
+	std::puts(
+		"multiclass.denials: PASS (room owns race/funds denials; no duplicate or incorrect location fallback; no state changes)");
+}
 
 static void specialization_transition()
 {
@@ -317,7 +360,7 @@ static void guardian_bulwark()
 	assert(bulwark_melee(&attacker, &victim) == 1000);
 	victim.player.m_class = CLASS_WARRIOR;
 	victim.player.secondary_class = 0;
-	set_bulwark_property(0.5f);
+	set_character_property("damage.reduction.guardians.bulwark", 0.5f);
 	assert(bulwark_melee(&attacker, &victim) == 500);
 	clear_character_properties();
 	update_dam_factors();
@@ -341,6 +384,7 @@ int main()
 	guardian_bulwark();
 	unspecialization_transition();
 	skill_class_mask_bounds();
+	multiclass_denials();
 	assert(!creation_all_races_enabled() && !creation_all_classes_enabled());
 	assert(!strcmp(getenv("CHAOS_MUD"), "FALSE"));
 	const auto connections = identity_connections();

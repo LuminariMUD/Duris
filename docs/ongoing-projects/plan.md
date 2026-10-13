@@ -435,11 +435,22 @@ scoped from the connection migration.
 Post-fix evidence is in `bin/tests/multiclass-playtime-{after,checkpoint,build}.log`
 and `bin/tests/character-mechanics-multiclass-journey.log`. The tested server SHA256
 is `3f7c6410ba6c15efc060d3ead7ff519deb67f716fec04e6e0bb512f0c34fda4d`.
-The journey/creation-helper/inspector extensions remain a separate working change
-while the playtime repair is committed independently. The journey also exposed a
+The playtime repair is committed and pushed as `e29f344b6`. The
+journey/creation-helper/inspector extensions remain a separate working change.
+The journey also exposed a
 denial-flow defect: insufficient funds in the correct room falls through to the
-generic command and incorrectly says the player is in the wrong location. That
-message-path repair is next; it must not change eligibility or mutate state.
+generic command and incorrectly says the player is in the wrong location; race
+denials were duplicated. The room now returns handled for those two denials.
+The native room-plus-fallback test fails before this repair and passes after it;
+the full Human/Orc journey also passes with exact denial-message assertions.
+No eligibility or mutation rule changed. Logs:
+`bin/tests/multiclass-denial-{before,after,build}.log` and
+`bin/tests/character-mechanics-multiclass-journey.log`; latest server SHA256:
+`ceb39f059f638a040bf51c10950815b3af986df2f4a796e354f47c4041f6f141`.
+Native positive executable SHA256:
+`be6655d2d44987824218c75e3307c9cd058e235a33d76326baf29c1f9f1fbf62`.
+This message-path repair is kept separate from the playtime fix and the connection
+migration. Native success/reset/refund/derived-stat connections are still open.
 
 Next: bind individual teacher/timer guards, creation and
 remaining persistence dependencies, then complete real HP damage and the other

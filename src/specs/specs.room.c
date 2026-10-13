@@ -169,7 +169,7 @@ int multiclass_proc(int /*room*/, P_char ch, int cmd, char *arg)
 	if (GET_RACE(ch) != RACE_ORC && GET_RACE(ch) != RACE_HUMAN)
 	{
 		send_to_char("Your race is not versatile enough to learn that much.\n", ch);
-		return FALSE;
+		return TRUE;
 	}
 
 	if (IS_MULTICLASS_PC(ch))
@@ -188,7 +188,7 @@ int multiclass_proc(int /*room*/, P_char ch, int cmd, char *arg)
 		if (ch->only.pc->epics < get_property("multiclass.epic.req.min", 250))
 		{
 			send_to_char("You need more &+yepic&n experience.\r\n", ch);
-			return FALSE;
+			return TRUE;
 		}
 		if (!*arg)
 		{
