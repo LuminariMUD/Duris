@@ -991,6 +991,7 @@ static bool submit_pvp_outcome(P_char ch, P_char victim, bool award_frags)
 		if (allies < 1)
 			return false;
 		float gain = 100.0F / allies;
+		payload.killer_allies = static_cast<uint32_t>(allies);
 		if (EVIL_RACE(ch) && GOOD_RACE(victim))
 			gain *= get_property("frag.evil.penalty", 0.666);
 		for (P_char current = world[ch->in_room].people; current;

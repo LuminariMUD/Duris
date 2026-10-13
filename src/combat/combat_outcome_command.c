@@ -128,6 +128,7 @@ bool combat_outcome_command_encode_payload(const combat_outcome_payload &payload
 		append_string(encoded, entry.account_name);
 		append_string(encoded, entry.description);
 	}
+	append_le<uint32_t>(encoded, payload.killer_allies);
 	return encoded->size() <= CRITICAL_COMMAND_MAX_PAYLOAD_BYTES;
 }
 
@@ -135,7 +136,8 @@ bool combat_outcome_command_decode_payload(const critical_command &command,
 					   combat_outcome_payload *payload)
 {
 	if (!payload || command.type != critical_command_type::combat_outcome ||
-	    command.payload_version != COMBAT_OUTCOME_PAYLOAD_VERSION)
+	    (command.payload_version != 1 &&
+	     command.payload_version != COMBAT_OUTCOME_PAYLOAD_VERSION))
 		return false;
 	*payload = {};
 	const uint8_t *cursor = command.payload.data();
@@ -165,6 +167,9 @@ bool combat_outcome_command_decode_payload(const critical_command &command,
 			return false;
 		entry.role = static_cast<combat_participant_role>(role);
 	}
+	// Version 1 journals remain replayable, with an unknown ally count.
+	if (command.payload_version >= 2 && !read_le(&cursor, end, &payload->killer_allies))
+		return false;
 	if (cursor != end || !valid(*payload))
 		return false;
 	critical_command expected = {};

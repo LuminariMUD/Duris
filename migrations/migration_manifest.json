@@ -568,6 +568,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "4c343e649e77e70cf9cf66fcaaca714e35b2f1c0ed0f9922f988a947c4a78f3e",
       "verify_checksum": "a9cbde7decfc928629dc2a88baead64305c55a67b919b2dbe5ce3c20d0d3d652"
+    },
+    {
+      "id": "0040_combat_outcome_allies",
+      "sequence": 40,
+      "description": "Record the killer-side ally count for configurable level-cap eligibility",
+      "apply": "immutable/0040_combat_outcome_allies.sql",
+      "verify": "immutable/0040_combat_outcome_allies.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "a773ccf7be009953a432bec85132313cd372424720465616738e419588e7b05e",
+      "verify_checksum": "da0f8d40b37af4333c56bfd930babd20cd06e745b480c548dc9fb48859d7cffa"
     }
   ],
   "engine_verifiers": [

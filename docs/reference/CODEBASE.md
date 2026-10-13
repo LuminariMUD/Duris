@@ -106,6 +106,19 @@ Representative entry points by feature:
   pre-entry grant flow in `src/account/nanny.c`; see
   [CHAOS_MODE.md](CHAOS_MODE.md).
 
+## Frag-based level caps
+
+A qualifying kill's base frag share is 1.00 frag divided by the killer's side in the
+room, including ungrouped mortals and excluding staff. The default
+`unlock.minimum.share.points=20` permits at most five allies. Maintenance compares
+the stored `combat_outcome.killer_allies` against the current setting; individual
+level and race modifiers still affect rewards, but do not affect eligibility.
+
+Migration `0040_combat_outcome_allies` adds that count before the updated server boots.
+Old outcomes and replayed version-1 combat commands have count 0 (unknown) and cannot
+unlock a level. New commands use payload version 2; existing rewards and history are
+preserved. Follow the normal migration/backup procedure when deploying.
+
 ## Ships subsystem
 
 `src/ships/` is the self-contained naval simulation. `src/ships/ship_base.c` owns the

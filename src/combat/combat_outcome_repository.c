@@ -222,11 +222,12 @@ bool combat_outcome_repository_execute(MYSQL *connection, const critical_command
 	const uint64_t event_id = mysql_insert_id(connection);
 	if (!execute(connection,
 		     "INSERT INTO combat_outcome(operation_id,pkill_event_id,victim_pid,room_vnum,"
-		     "participant_count) VALUES(UNHEX('" +
+		     "participant_count,killer_allies) VALUES(UNHEX('" +
 			     operation + "')," + std::to_string(event_id) + "," +
 			     std::to_string(payload.victim_pid) + "," +
 			     std::to_string(payload.room_vnum) + "," +
-			     std::to_string(payload.participant_count) + ")"))
+			     std::to_string(payload.participant_count) + "," +
+			     std::to_string(payload.killer_allies) + ")"))
 		return false;
 
 	result->event_id = event_id;

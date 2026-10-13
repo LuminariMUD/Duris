@@ -22,7 +22,7 @@ struct frag_cap_config
 	int cap_maximum_level;
 	int unlock_timer_days;
 	int unlock_victim_levels_below;
-	int unlock_minimum_frag_points;
+	int unlock_minimum_share_points;
 	int hardcore_levels_beyond_cap;
 };
 
