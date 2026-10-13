@@ -2,8 +2,9 @@
 
 Tracking issue: [#56 — Production follow-ups from the 2026-10-13 log review](https://github.com/LuminariMUD/Duris/issues/56).
 
-Status: paused at the owner's request on 2026-10-13, on
-`fix/58-56-estale-log-review` (started from `7a2a63447`). Resume only when requested.
+Status: resumed at the owner's request on 2026-10-13 from `c8655bfbd`, on
+`fix/58-56-estale-log-review` (started from `7a2a63447`). #58 qualification continues
+from the saved checkpoint below before the remaining LR work.
 The unchecked items below remain open until their required evidence is recorded.
 Production operations are not part of this local-worktree execution.
 
@@ -14,7 +15,17 @@ was last verified open, ready for review, and unmerged on `fix/56-statistics-res
 at `66dbfc016`. Other LR items remain open. `skeer` is explicitly skipped by owner
 decision under LR-08.
 
+Current continuation: #58 now has a passing full-server Summon Ghasts burst,
+blocked-writer/copyover cancellation, writer recovery, successful copyover and
+clean restart journey. Shared allocation-admission fixes `dfecafbda` and
+`532fe0653` are committed/pushed and each has a passing before/after regression.
+Remaining #58 cases and the source-audit findings are in
+[the continuation evidence](plan-estale.md#continuation-evidence-2026-10-13).
+These advances do not close another LR item or make #58 review-ready yet.
+
 ## Pause handoff
+
+This records the earlier checkpoint; work is active again as described above.
 
 - The work branch has uncommitted artifact/guild implementation and tests above
   `0ccec836e`. [plan-estale.md](plan-estale.md#pause-handoff) records the current

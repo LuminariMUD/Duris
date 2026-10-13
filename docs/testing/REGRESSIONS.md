@@ -54,9 +54,9 @@ the statistics matrix and the MariaDB flight journey.
 
 ## Artifact and guild rewards (qualification in progress)
 
-Issue #58 is paused with uncommitted implementation on
-`fix/58-56-estale-log-review`. This is focused evidence, not a completed gameplay
-journey or release qualification; [the handoff](../ongoing-projects/plan-estale.md#pause-handoff)
+Issue #58 is in progress with uncommitted implementation on
+`fix/58-56-estale-log-review`. Focused checks and the initial full-server journey
+pass; the complete release matrix remains open; [the handoff](../ongoing-projects/plan-estale.md#pause-handoff)
 records remaining work and local logs.
 
 `python3 tests/async/test_artifact_guild_rewards_runtime.py` links real reward
@@ -80,11 +80,33 @@ passed captured-history bursts, immutable replay, preservation of newer gameplay
 snapshots, cap no-op, identity/malformed/missing-parent diagnostics, committed v1
 receipt/outbox delivery, and history after artifact removal. The actual reconciliation
 script accepts legitimate live/history divergence and detects mirror mismatches and
-missing rows. A later fixture-only return-type/header correction awaits rerun.
+missing rows. The fixture-only return-type/header correction also passes on rerun.
 
-Real boon/PvP/stone producer deduplication beyond the completion cache, kingdom
-payment interleaving, the Summon Ghasts journey, crash/restart/copyover cases, and
-full final-source builds and test gates remain open. LR-01's full-suite counts
+The runtime fixture now also links the actual stone publication code to artifact
+capture/application, covering offline return, derived identity, duplicate completion
+and reconnect after child completion, and recovered claims without re-awarding.
+The snapshot fixture passes bulk soul-reset acknowledgement and failure recovery.
+`test_player_save_worker.py` injects every admission allocation failure and proves
+no partial job/index survives refusal. Against `0ccec836e`, it compiles and fails
+because a refused job remains queued; the repaired writer passes and replaces its
+tail without allocating. Commit `dfecafbda` passes the before/after check.
+The coordinator's allocation walk additionally exposed a reserved operation/fence
+with no writer job when callback construction failed. `532fe0653` releases it and
+counts acceptance only after dispatch; the native fault, identity, retry, ordering
+and capacity tests pass.
+
+`tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_artifact_guild_reward_journey.py`
+passes a full-world Summon Ghasts cast, three actual kills and epic boon awards.
+With the artifact row locked, all live rewards apply while SQL retains the original
+timer and 85/0 guild totals; health reports three pending histories. Copyover fails
+and the server remains live. Releasing the writer yields +10,800 seconds, 115/1
+and three consistent histories. A subsequent copyover and clean restart preserve
+state without re-awarding. This is registered in the database gate. The recorded
+binary predates the later coordinator allocation fix; final-source gates remain due.
+
+Real PvP producer deduplication, actual coordinator-cache eviction, kingdom
+payment interleaving, the remaining crash stages and late-save lifecycle cases,
+and full final-source test gates remain open. LR-01's full-suite counts
 above do not qualify these subsequent changes.
 
 ## Crumbling equipment removal

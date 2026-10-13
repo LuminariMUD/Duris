@@ -191,7 +191,7 @@ rows the coordinator would not queue. Focused validation is
 
 ## Artifact and guild rewards live in memory
 
-This section describes the uncommitted #58 branch implementation, paused on
+This section describes the uncommitted #58 branch implementation, resumed on
 2026-10-13. Focused runtime, snapshot and repository tests pass; complete producer,
 gameplay, crash/restart and copyover qualification remains open in
 [plan-estale.md](../ongoing-projects/plan-estale.md#pause-handoff).
@@ -230,8 +230,9 @@ so an earlier read cannot become current after those changes.
 Domain drains run before coordinator quiescence and again after final copyover
 saves. Failure aborts copyover through the existing resume guard; shutdown reports
 unresolved histories and dirty entities. Executable lifecycle qualification is
-still pending. The new domain health fields exist but are not yet displayed by
-`world persistence`; that integration is an explicit handoff item.
+still pending. `world persistence` displays domain live applications, capture failures, dirty
+snapshots, history results/loss/pending counts, admission failures and oldest
+pending-history age separately. Its age is not wizlog suppression age.
 
 History success and snapshot durability are distinct: either may fail independently.
 A crash may lose unsaved state, and restart loads persisted snapshots without

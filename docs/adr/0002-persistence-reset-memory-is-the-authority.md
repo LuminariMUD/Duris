@@ -4,7 +4,7 @@
 **Date:** 2026-09-28 (decided); on `master` since 2026-10-02
 
 **2026-10-13 follow-up:** the artifact/guild reward clarification below describes
-the uncommitted #58 implementation on `fix/58-56-estale-log-review`. It is paused
+the uncommitted #58 implementation on `fix/58-56-estale-log-review`. Work has resumed
 with full gameplay/restart qualification pending; see the
 [handoff](../ongoing-projects/plan-estale.md#pause-handoff). It is not a production
 rollout or a claim that the original reset included this change.

@@ -2,13 +2,91 @@
 
 Tracking issue: [#58 — Batched epic awards fail with ESTALE](https://github.com/LuminariMUD/Duris/issues/58).
 
-Status: paused at the owner's request on 2026-10-13. Resume only when requested.
-The working branch is `fix/58-56-estale-log-review`, with implementation changes
-still uncommitted above `0ccec836e`. LR-01 statistics is qualified separately in
+Status: resumed at the owner's request on 2026-10-13 from `c8655bfbd`.
+The working branch is `fix/58-56-estale-log-review`. The reward cutover remains
+uncommitted; shared admission fixes `dfecafbda` and `532fe0653` are committed and
+pushed separately. LR-01 statistics is qualified separately in
 [PR #66](https://github.com/LuminariMUD/Duris/pull/66). All ES acceptance items
 remain open; the artifact/guild changes are not ready for review or deployment.
 
+## Continuation evidence (2026-10-13)
+
+The reward cutover builds with `make -C src -j16`, and the updated disposable
+MariaDB artifact/guild fixture passes, including the corrected outbox stub.
+`world persistence` now shows live applications, capture failures, dirty
+artifact/soul and guild snapshots, committed/rejected/lost/pending history,
+admission failures, malformed completions, and oldest pending-history age.
+`test_persistence_status_contract.py` verifies that metadata boundary.
+
+The writer allocation regression now injects failure at every admission allocation.
+It proves that a refused submission leaves neither a queued job nor an owner-index
+entry, and that replacing the tail needs no allocation. It passes on the worktree;
+`0ccec836e` compiles but fails because a refused job remains queued. Evidence:
+`bin/analysis/artifact-estale/writer-allocation-before.log`. This exposes a concrete
+shared-writer defect required by snapshot admission recovery, not only an errno change.
+It is committed in `dfecafbda`; `scripts/check_tests_catch.sh c8655bfbd dfecafbda`
+confirms 1/1 changed tests pass after and fail before.
+
+The snapshot fixture additionally passes bulk soul-reset receipt ownership,
+later binding changes, and reset admission/allocation failure recovery. The reward
+fixture adds a positive different-guild control and links the real stone publisher
+to the actual artifact reward path: online publication, offline return, derived
+parent identity, duplicate completion/reconnect after child completion, and a
+recovered claim all pass. Its coordinator has no completed-ID cache, so the stone
+source guards supply deduplication. Full real-coordinator cache-eviction and PvP
+producer evidence remain open.
+
+Allocation probing then reproduced a reservation leak between coordinator
+reservation and writer submission: constructing the owned callback could throw,
+leaving a fenced operation with no writer job. `532fe0653` releases that reservation
+on dispatch failure, distinguishes admission errors, and counts acceptance only
+once the writer accepts. The native fault test warms the hash buckets before
+walking allocations (otherwise a failed rehash can shift a later failure point).
+It fails before the fix with retained inflight/fence state and passes after it.
+Local evidence is `/tmp/duris-es-coordinator-allocation-before.log` and
+`/tmp/duris-es-coordinator-allocation.log`.
+`scripts/check_tests_catch.sh dfecafbda 532fe0653` confirms 1/1 tests catch the
+pre-fix behavior. The server was rebuilt successfully after this fix.
+
+No new completed-result API is needed after that cleanup: admitted history remains
+queued, retries submit only unadmitted commands, and source guards own new live
+publication. Actual coordinator-cache eviction and the PvP producer still need
+end-to-end proof; do not replace them with the finite cache as a deduplication store.
+
+`test_mysql_artifact_guild_reward_journey.py` now passes against a disposable full
+server/world and is registered in `tests/run_db_tests.sh`. The actual mortal
+necromancer casts Summon Ghasts, its delayed event kills three targets, and the
+real boon publisher grants three 4-epic awards. An SQL row lock holds the writer:
+`world persistence` reports three live applications, one dirty artifact and guild,
+and three pending histories while SQL still holds the old timer and 85/0 totals.
+Copyover fails boundedly and leaves the server live. After release, the timer gains
+exactly 10,800 seconds and guild totals become 115/1; the three history rows retain
+successive timer values and 95/0, 105/1, 115/1 guild outcomes. Copyover then succeeds,
+and a clean restart preserves state without granting history again.
+
+Evidence is `bin/analysis/artifact-estale/gameplay-journey.json` (binary hash,
+cast/event/award/history timestamps, held-writer health, SQL values and synthetic
+transcript) and `/tmp/duris-es-gameplay.log`. This run used the server before the
+later coordinator allocation fix; the complete final-source database gate still
+must rerun it. The current journey does not yet cover crash stages, PvP, all
+transfers/removals/spending, or real coordinator-cache eviction.
+
+`make -C src -j16 pfile` and `make -C migrations/tools -j16 all affects pfile_converter`
+pass. The migration build exposed one obsolete `Guild::add_points_from_epics` stub,
+now removed. Full-tree formatting passed for tracked C/C++ before the subsequent
+coordinator fix; the two untracked C++ fixtures have also been formatted.
+
+Additional source-audit findings to reproduce and fix before final qualification:
+`arti_syncdb_sql()` clears and hydrates artifact memory in an asynchronous callback,
+which can overwrite changes made after the staff command was queued. The kingdom
+payment pair still reports queue admission as durability and lacks terminal-failure
+receipt tracking. Preserve paired guild/realm semantics while investigating it;
+keep any independent pre-existing repair separate from the reward cutover.
+
 ## Pause handoff
+
+This checkpoint was saved before resumption. The implementation and qualification
+are active again; subsequent evidence is recorded below as it completes.
 
 The worktree is `/home/aiwithapex/projects/duris-estale-log-review`; its common
 Git directory is `/home/aiwithapex/projects/duris/.git`. Preserve the source,
@@ -83,22 +161,21 @@ evidence, and `/tmp` is not durable storage.
 
 ### Resume checklist
 
-1. Review the existing diff before editing. Add the missing metadata-only
-   artifact/guild health output to `world persistence`; the new health fields have
-   no command consumer yet. Keep live application, unsaved state, and history
-   success/loss separate.
+1. Review the existing diff and the continuation evidence above. Diagnostics and
+   shared admission repairs are implemented; preserve their separation of live
+   application, unsaved state, and history success/loss.
 2. Prove real boon/PvP/stone publication guards, including reconnect and completion
-   cache eviction. Audit coordinator attachment to an already-completed cached
-   operation: the current history entry can assume a future completion. Do not
+   cache eviction. The dispatch-allocation reservation leak is now fixed; retain that
+   fault regression while checking source publication guards. Do not
    use that finite cache as permanent live-award deduplication.
 3. Audit every artifact tombstone/removal loop, bulk soul-reset acknowledgement,
    and the kingdom-payment/member-removal shared SQL builders. Prove kingdom
-   payment interleaving and writer enqueue allocation failure, beyond the existing
-   source contracts. Extend the different-guild positive control.
-4. Qualify final copyover drain and shutdown reporting, then implement/register
-   `test_mysql_artifact_guild_reward_journey.py` with actual producers, Summon
-   Ghasts, SQL snapshot equality after drain, crashes, restart, and copyover.
-   The full matrix below remains required.
+   payment interleaving beyond source contracts. Writer enqueue allocation, bulk
+   soul reset and the different-guild positive control now have executable coverage.
+4. Extend the registered `test_mysql_artifact_guild_reward_journey.py` from its
+   passing Summon Ghasts / blocked writer / copyover / clean restart cases to the
+   remaining crash stages and gameplay interleavings. Qualify shutdown reporting
+   and the final copyover drain after late saves. The full matrix below remains required.
 5. Rerun the changed MariaDB fixture, build the final server and maintained tools
    affected by shared headers, format, run all local gates below, and retain genuine
    before/after evidence. References and regression notes now describe the branch
