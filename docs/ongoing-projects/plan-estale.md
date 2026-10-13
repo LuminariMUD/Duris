@@ -14,6 +14,11 @@ remain open; the artifact/guild changes are not ready for review or deployment.
 This checkpoint records the reward cutover and new qualification files after the
 pushed handoff `8cea037d5`. Work is active. No shared-game or production operation was used.
 
+Implementation checkpoint: `999c2ae71`, committed and pushed with all source and
+qualification fixtures. No untracked implementation is needed to resume. Focused
+checks and the six individual live variants have passed; the complete final-source
+gates and remaining cases below are still required before review readiness.
+
 - Reproduced and fixed stale publication in `arti_syncdb_sql()`: an older repair
   callback could restore a previous timer/owner after a feed or transfer. The
   callback now checks the existing generation and outstanding dirty state, retains
