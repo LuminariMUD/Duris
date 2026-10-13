@@ -86,9 +86,15 @@ maintenance_result execute(const maintenance_request &request, void *raw)
 // Keep the harness deterministic: only the auction job may be submitted, so no
 // other job can leave durable request or completion state behind across the
 // simulated restarts below.
+size_t captures = 0;
 bool auction_only(maintenance_request &request, void *)
 {
-    return request.job_id == maintenance_job_id::auction_due_scan;
+    if (request.job_id != maintenance_job_id::auction_due_scan)
+        return false;
+    request.value_count = 2;
+    request.values[0] = 1791849599 + ++captures;
+    request.values[1] = captures * 11;
+    return true;
 }
 
 template <typename Predicate> void wait_until(Predicate predicate)
@@ -178,6 +184,11 @@ int main(int argc, char **argv)
     assert(auction_requests.size() == 2);
     assert(auction_requests[0].work_id == auction_requests[1].work_id);
     assert(auction_requests[0].cursor == 0 && auction_requests[1].cursor == 0);
+    // A failed output may have committed one of its effects. Retry must not
+    // replace its captured counters/date under the same identity.
+    assert(auction_requests[0].values == auction_requests[1].values);
+    assert(auction_requests[0].scheduled_tick == auction_requests[1].scheduled_tick);
+    assert(captures == 1);
     const uint64_t persisted_work_id = auction_requests[0].work_id;
 
     // The worker persisted the exact continuation before publishing its completion.
@@ -205,6 +216,7 @@ int main(int argc, char **argv)
 	assert(resumed.job_id == maintenance_job_id::auction_due_scan);
 	assert(resumed.work_id == persisted_work_id);
 	assert(resumed.cursor == 77);
+	assert(resumed.values != auction_requests[0].values); // a new continuation
 	wait_until([&] { return maintenance_scheduler_health_copy(2).completions == 1; });
 	maintenance_scheduler_pulse(2, results, MAINTENANCE_COMPLETION_MAX);
 	health = maintenance_scheduler_health_copy(2);
@@ -233,6 +245,11 @@ int main(int argc, char **argv)
 	maintenance_scheduler_shutdown();
 	maintenance_scheduler_reset_for_tests();
 	assert(stat(made.c_str(), &made_metadata) == 0 && S_ISREG(made_metadata.st_mode));
+	assert(acknowledged.requests.size() == 1);
+	// Same instance, schedule, and tick after a fresh boot is a NEW sample.
+	assert(acknowledged.requests[0].work_id != persisted_work_id);
+	// Tick-derived legacy IDs always ended with a registered job's index + 1.
+	assert((acknowledged.requests[0].work_id & 255) > MAINTENANCE_JOB_COUNT);
 
 	// A state file that cannot be written is tried again after a pause. The worker
 	// retried at once, and held a core for as long as the write kept failing. The

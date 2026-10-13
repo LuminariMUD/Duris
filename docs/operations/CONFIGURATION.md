@@ -146,6 +146,29 @@ per-operation authority transfer is not supported.
 | `MAINTENANCE_STATE_FILE` | Optional; `runtime/maintenance-scheduler.state` | Durable scheduler cursor/completion state. The server makes a missing parent directory with mode `0700`; an existing one must be server-user controlled. A write that fails is logged once per streak in `logs/log/status`. Keep it outside `bin/`, which `make clean-all` removes. |
 | `COPYOVER_STATE_FILE` | Optional; `copyover.dat` | State file a copyover writes and the new image reads; its `.tmp` sibling is in the same directory, which the server user must be able to write. Docker sets `/var/lib/duris/copyover.dat`. |
 
+Maintenance state retains the existing v4 layout and reads v2/v3 pending work.
+New work uses an opaque random 64-bit identity, excluding the low bytes used by
+legacy tick-derived IDs. Identity uniqueness relies on the OS random generator;
+it does not rely on ports, elapsed ticks, or wall-clock monotonicity. Retries and
+restart recovery reuse the stored identity and captured values. A missing state
+file starts new work; it cannot recover a lost pending capture. Invalid state
+refuses scheduler initialization. Restore state together with its corresponding
+database and output files, never rewind only the scheduler file after newer work
+has completed: SQL markers describe each job's latest work, not a replay ledger.
+
+Statistics keep their captured timestamp and eleven counters until both SQL and
+the daily file succeed. The file still uses local calendar date/hour and the same
+columns. A retry repairs only a partial row matching the pending sample, retries
+file sync even when the full row already exists, and syncs the daily directory.
+Unrelated partial data or a work ID carrying different counters returns `EILSEQ`
+instead of silently dropping or rewriting data. Preserve that file for diagnosis.
+The first retry in a streak and each terminal failure log the job, opaque work
+ID and error code in the status log; repeated retries retain their health count.
+The scheduler also syncs the state directory before executing persisted work.
+No database or durable-state migration is needed for this change. An older binary
+can decode the state but retains the old retry/identity defects; drain before a
+rollback and do not run two schedulers against the same authority.
+
 `scripts/cycle_mud.sh --check-config` validates the selected mode without starting the
 server. Add `--production` to require `ENVIRONMENT=production` and the production-port
 runtime role; the production systemd unit always supplies that flag. `--production`

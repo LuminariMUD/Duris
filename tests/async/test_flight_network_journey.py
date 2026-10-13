@@ -358,9 +358,13 @@ def run(binary, backend, build):
                     assert 'Type: CORPSE' in corpse and keyword in corpse.lower(), corpse
                 evidence['named_dragon_corpses'] = 7
                 stop()
-                status = (runtime / 'logs/log/status').read_text(errors='replace')
+                # Address retention can rotate the earlier boots' records during
+                # this journey. Include that history when measuring every boot.
+                status_logs = [runtime / 'logs/log/status',
+                               *sorted((runtime / 'logs/old-logs').glob('*/status'))]
+                status = '\n'.join(path.read_text(errors='replace') for path in status_logs)
                 times = re.findall(r'Flight network: 27 services, 603 routes, 603 available; paths prepared in (\d+) ms', status)
-                assert len(times) >= 4, status[-8000:]
+                assert len(times) >= 4, re.findall(r'Flight network:[^\n]*', status)
                 evidence['path_prepare_ms'] = [int(value) for value in times]
                 print(json.dumps(evidence, sort_keys=True), flush=True)
             except BaseException:

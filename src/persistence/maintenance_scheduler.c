@@ -31,6 +31,7 @@
 #include <mutex>
 #include <new>
 #include <string>
+#include <sys/random.h>
 #include <sys/stat.h>
 #include <thread>
 #include <unistd.h>
@@ -165,6 +166,21 @@ bool persist_state(const durable_scheduler_state &state)
 		errno = error;
 		return persist_failed();
 	}
+	const size_t slash = state_path.rfind('/');
+	const std::string parent =
+		slash == std::string::npos ? "." : state_path.substr(0, slash ? slash : 1);
+	const int directory = open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+	if (directory < 0)
+		return persist_failed();
+	const bool directory_synced = fsync(directory) == 0;
+	const int error = errno;
+	const bool directory_closed = close(directory) == 0;
+	if (!directory_synced || !directory_closed)
+	{
+		if (!directory_synced)
+			errno = error;
+		return persist_failed();
+	}
 	persist_failing = false;
 	return true;
 }
@@ -241,9 +257,27 @@ size_t index_of(maintenance_job_id id)
 	return static_cast<size_t>(id);
 }
 
-uint64_t next_work_id(maintenance_job_id id, uint64_t scheduled_tick)
+uint64_t next_work_id()
 {
-	return (scheduled_tick << 8) | (static_cast<uint64_t>(id) + 1);
+	// A fresh process (or a missing state file) must not reuse a previous boot's
+	// tick IDs. Keep the 64-bit on-disk identity and reserve the legacy low bytes
+	// for replay only. Retries continue to use the persisted request's ID.
+	uint64_t id = 0;
+	do
+	{
+		size_t offset = 0;
+		while (offset < sizeof(id))
+		{
+			const ssize_t count = getrandom(reinterpret_cast<char *>(&id) + offset,
+							sizeof(id) - offset, GRND_NONBLOCK);
+			if (count < 0 && errno == EINTR)
+				continue;
+			if (count <= 0)
+				return 0;
+			offset += static_cast<size_t>(count);
+		}
+	} while ((id & 255) <= MAINTENANCE_JOB_COUNT);
+	return id;
 }
 
 void refresh_health_locked()
@@ -335,7 +369,14 @@ void worker_main()
 		try
 		{
 			if (!result.error_code)
+			{
+				// Queueing and state sync are not repository execution. A slow
+				// capture write must not expire a sample before its first attempt.
+				queued.request.deadline_usec =
+					persistence_observability_now_usec() +
+					queued.request.time_budget_usec;
 				result = execute_callback(queued.request, execute_context);
+			}
 		}
 		catch (const std::bad_alloc &)
 		{
@@ -418,8 +459,14 @@ void submit_due_locked(uint64_t tick)
 	    completions.size() >= MAINTENANCE_COMPLETION_MAX)
 		return;
 	auto &job = health.jobs[index_of(selected->id)];
-	const uint64_t work_id = job.work_id ? job.work_id :
-					       next_work_id(selected->id, job.next_due_tick);
+	const uint64_t work_id = job.work_id ? job.work_id : next_work_id();
+	if (!work_id)
+	{
+		++job.failures;
+		job.next_due_tick = tick + MAINTENANCE_RETRY_MAX_TICKS;
+		logit(LOG_STATUS, "Maintenance identity allocation failed: %s", strerror(errno));
+		return;
+	}
 	maintenance_request request = { work_id,
 					selected->id,
 					job.cursor,
@@ -428,7 +475,10 @@ void submit_due_locked(uint64_t tick)
 						selected->time_budget_usec,
 					selected->row_budget,
 					selected->time_budget_usec };
-	if (prepare_callback && !prepare_callback(request, prepare_callback_context))
+	const auto &durable = durable_state.jobs[index_of(selected->id)];
+	if (durable.request_pending)
+		request = durable.request;
+	else if (prepare_callback && !prepare_callback(request, prepare_callback_context))
 	{
 		job.next_due_tick += selected->cadence_ticks;
 		return;
@@ -465,11 +515,18 @@ void apply_completion_locked(const maintenance_result &result, uint64_t tick)
 		break;
 	case maintenance_outcome::retryable_failure:
 		++job.retries;
+		if (job.retries == 1)
+			logit(LOG_STATUS, "Maintenance job=%s work_id=%llu outcome=retry error=%u",
+			      maintenance_job_name(result.job_id),
+			      static_cast<unsigned long long>(result.work_id), result.error_code);
 		job.next_due_tick =
 			tick + std::min<uint64_t>(1ULL << std::min<uint64_t>(job.retries, 7),
 						  MAINTENANCE_RETRY_MAX_TICKS);
 		break;
 	case maintenance_outcome::permanent_failure:
+		logit(LOG_STATUS, "Maintenance job=%s work_id=%llu outcome=failed error=%u",
+		      maintenance_job_name(result.job_id),
+		      static_cast<unsigned long long>(result.work_id), result.error_code);
 		++job.failures;
 		job.cursor = 0;
 		job.work_id = 0;
@@ -481,8 +538,12 @@ void apply_completion_locked(const maintenance_result &result, uint64_t tick)
 	auto &durable = durable_state.jobs[index_of(result.job_id)];
 	durable.work_id = job.work_id;
 	durable.cursor = job.cursor;
-	durable.request_pending = false;
-	durable.request = {};
+	if (result.outcome != maintenance_outcome::retryable_failure &&
+	    result.outcome != maintenance_outcome::cancelled)
+	{
+		durable.request_pending = false;
+		durable.request = {};
+	}
 	durable.completion_pending = false;
 	durable.completion = {};
 	durable_state_dirty = true;
