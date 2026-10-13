@@ -7,10 +7,12 @@ from `7a2a63447`. The unchecked items below remain open until their required
 evidence is recorded. The local development environment is prepared; production
 operations are not part of this local-worktree execution.
 
-Current work: LR-01, owned by the server maintainer. Its implementation and
-focused scheduler/SQL/file tests pass; the historical recovery proposal is
-prepared. Full local gates and publication remain outstanding. See LR-01.
-Other LR items and ES-01–ES-05 have not yet been implemented on this branch.
+Current work: LR-01 is implemented and locally qualified: 727 regression checks,
+75 disposable database checks, and 15 site tests pass; the historical recovery
+proposal is prepared. PR publication is next. Other LR items remain open;
+`skeer` is explicitly skipped by owner decision under LR-08. ES-01 baseline
+reproduction is recorded in [plan-estale.md](plan-estale.md); the artifact/guild
+cutover remains to be implemented.
 
 Prepared on 2026-10-13 against `master` at
 `690ff313f3e3f115ef14b58612b0e302de2ce28d`, the current issue body and its scope-transfer
@@ -89,7 +91,7 @@ claims that host work has already been requested or performed.
 
 ### LR-01 — Restart-safe statistics output (medium; #56 §2)
 
-- [ ] Write each logical sample exactly once to SQL and its daily file across
+- [x] Write each logical sample exactly once to SQL and its daily file across
   retries/restarts; separately assess recovery of the 76 missing file samples.
 
 **Execution, 2026-10-13.** The scheduler now allocates random 64-bit identities
@@ -111,10 +113,18 @@ The scheduler test fails before the fix on changed captured values.
 The server build and full-tree format check passed. The first broad regression
 run passed 725/727: its wrapper-permission failure is repaired, and its flight
 journey had completed gameplay before failing to count archived boot logs.
-`81b8350e1` separately fixes that evidence collector. The final broad regression
-rerun and DB gate are pending. The slow-state-sync regression also failed before
-the deadline adjustment and passes after it. Output conflicts are refused with
-`EILSEQ`; first retry and terminal failures now log the opaque work ID and error.
+`81b8350e1` separately fixes that evidence collector. The final
+`make test-all -j16 TEST_JOBS=16` passed all 727 checks in 700.33 seconds, including
+flight evidence collection. `scripts/check_tests_catch.sh 81b8350e1 1e735655e`
+confirms the scheduler regression passes after and fails before the repair.
+The slow-state-sync regression also failed before the deadline adjustment and
+passes after it. Output conflicts are refused with `EILSEQ`; first retry and
+terminal failures log the opaque work ID and error. All 15 site tests pass.
+`make test-db` passed all 75 isolated database checks in 459 seconds, including
+the statistics matrix and MariaDB flight journey. LR-01 implementation is
+`1e735655e`; `81b8350e1` is the separate flight-test correction. Validation logs
+are retained under the ignored, owner-only `bin/analysis/lr01-validation/`
+directory. No production rollout or historical replacement has been performed.
 
 **Historical assessment, 2026-10-13 16:47 UTC.** A bounded read-only production
 transaction and a private copy of the original daily file confirm 1,007 existing
@@ -306,8 +316,12 @@ otherwise retain this report's separate disposition and any needed owner decisio
 
 ### LR-08 — Missing help topics/aliases (low; #56 §3)
 
-- [ ] Resolve `web-spray`, `quickstep`, and `seadog` searches; establish what
-  `skeer` meant before deciding whether to add a topic.
+- [ ] Resolve `web-spray`, `quickstep`, and `seadog` searches.
+
+Owner decision, 2026-10-13: skip `skeer` for now because its meaning is unknown.
+Source/help searches found no matching ability or topic. Do not invent an alias;
+this term is excluded from the current implementation, while the three named
+topics above remain in scope.
 
 Inspect the real abilities and current titles in
 [help_index](../../lib/information/help_index) and
@@ -316,8 +330,7 @@ documents `innate web_spray` under Drider and mentions seadog; mentions inside a
 page do not make a title searchable. Add the smallest accurate topic or redirect
 using [HELP_SYSTEM.md](../content/HELP_SYSTEM.md) and
 [HELP_STYLE_GUIDE.md](../content/HELP_STYLE_GUIDE.md). Check importer precedence
-so a later source does not overwrite the entry. Keep `skeer` unresolved until
-the intended spelling/ability is established.
+so a later source does not overwrite the entry.
 
 Dry-run [import_help_to_prod.sh](../../scripts/import_help_to_prod.sh), then
 exercise the selected topics through `wiki_help()` after an isolated import and

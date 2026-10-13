@@ -45,6 +45,13 @@ archive earlier boots' status logs before the final timing count. Commit
 `81b8350e1` reads the archived records too; it retains the route and boot-count
 assertions and changes no flight behavior.
 
+The repaired source is `1e735655e`. Full-tree formatting and all 15 site tests
+pass. `make test-all -j16 TEST_JOBS=16` passed 727/727 checks in 700.33 seconds,
+including the flight journey; `scripts/check_tests_catch.sh 81b8350e1 1e735655e`
+reports that the changed scheduler regression catches the pre-fix behavior.
+`make test-db` passed all 75 isolated database checks in 459 seconds, including
+the statistics matrix and the MariaDB flight journey.
+
 ## Crumbling equipment removal
 
 PR #51's review reproduced a pre-existing use-after-free when `obj_to_char()`
