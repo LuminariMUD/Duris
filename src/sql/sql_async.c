@@ -201,6 +201,12 @@ bool sql_queue_work_at(struct persistence_query_site site, sql_work work)
 	return work && queue(site, sizeof(work), std::move(work));
 }
 
+bool sql_queue_work_at(struct persistence_query_site site, sql_work work,
+		       std::shared_ptr<sql_write_receipt> receipt)
+{
+	return work && queue(site, sizeof(work), std::move(work), std::move(receipt));
+}
+
 bool sql_read_work_at(struct persistence_query_site site, sql_read_work_fn work,
 		      std::function<void(bool ok, const sql_rows &rows)> done)
 {

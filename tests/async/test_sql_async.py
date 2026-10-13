@@ -176,10 +176,17 @@ int main()
     // Nothing after boot was applied on the game thread.
     assert(applied_at_boot == 4);
 
-    // Snapshot receipts are complete only after the repository's commit returns.
+    // Statement and composed-work receipts complete only after COMMIT returns.
+    for (bool composed : {false, true}) {
     auto receipt = std::make_shared<sql_write_receipt>();
+    commit_reached.store(false);
     commit_held.store(true);
-    assert(sql_queue_statements({"WRITE held"}, receipt));
+    if (composed)
+        assert(sql_queue_work([](MYSQL *connection) {
+            return sql_execute(connection, "WRITE held");
+        }, receipt));
+    else
+        assert(sql_queue_statements({"WRITE held"}, receipt));
     auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (!commit_reached.load())
     {
@@ -190,9 +197,12 @@ int main()
     commit_held.store(false);
     wait_for_writer();
     assert(receipt->finished.load(std::memory_order_acquire) && receipt->ok);
+    }
     auto failed = std::make_shared<sql_write_receipt>();
     auto allocation = std::make_shared<sql_write_receipt>();
-    assert(sql_queue_statements({"WRITE broken"}, failed));
+    assert(sql_queue_work([](MYSQL *connection) {
+        return sql_execute(connection, "WRITE broken");
+    }, failed));
     assert(sql_queue_statements({"WRITE allocation_failure"}, allocation));
     wait_for_writer();
     assert(failed->finished.load() && !failed->ok && failed->error_code == 1064);

@@ -301,6 +301,9 @@ bool artifact_guild_transaction_drain(uint64_t timeout_msec)
 	do
 	{
 		critical_command_coordinator_drain(1);
+		// A committed character deletion must release its guild member before
+		// a fresh guild snapshot can retry without that deleted player's FK.
+		sql_async_pulse();
 		artifact_guild_transaction_pulse();
 		if (pending.empty() && !health.dirty_artifacts && !health.dirty_guilds &&
 		    !critical_command_coordinator_health_copy().inflight)

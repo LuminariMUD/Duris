@@ -62,6 +62,8 @@ bool sql_queue_statements_at(struct persistence_query_site site,
 			     std::shared_ptr<sql_write_receipt> receipt);
 // Writes that need the database's answer first (a lookup, then an update or an insert).
 bool sql_queue_work_at(struct persistence_query_site site, sql_work work);
+bool sql_queue_work_at(struct persistence_query_site site, sql_work work,
+		       std::shared_ptr<sql_write_receipt> receipt);
 // done(ok, rows) runs on the game thread; ok is false when the read failed.
 bool sql_read_at(struct persistence_query_site site, std::string query,
 		 std::function<void(bool ok, const sql_rows &rows)> done);

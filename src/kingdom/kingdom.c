@@ -696,7 +696,7 @@ void kingdom_shutdown(void)
 	kingdom_square_index.clear();
 	kingdom_realms.clear();
 
-	/* After the flush and the clears: the pending list and the cycle stamp
+	/* After the flush and the clears: the pending flags and the cycle stamp
 	 * are meaningless once no realm exists. */
 	kingdom_upkeep_reset();
 }
@@ -887,11 +887,6 @@ void kingdom_on_guild_deleted(int assoc_id)
 	 * both containers are empty and this costs nothing, and gating it would
 	 * mean an id reused during a disabled period inherited a live index. */
 	kingdom_unindex_realm(assoc_id);
-
-	/* And any payment pair still waiting to be retried under this id: a
-	 * reused id must not inherit it, and the debit it stood for dies with
-	 * the guild. Unconditional for the same reason as the unindex. */
-	kingdom_upkeep_forget_guild(assoc_id);
 
 	/* Same reasoning for the cached terrain tally: ids are reused, and a
 	 * recycled id must not inherit the dead realm's yield-bonus tally.

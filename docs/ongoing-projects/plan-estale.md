@@ -11,6 +11,55 @@ remain open; the artifact/guild changes are not ready for review or deployment.
 
 ## Qualification update (2026-10-14)
 
+Current continuation: the kingdom-payment repair follows `15ccfdd56` and is
+being qualified. The native snapshot matrix and disposable
+MariaDB history/payment leg pass. Admission no longer clears `payment_pending`:
+the existing guild commit receipt settles only its matching realm capture.
+Every later guild save, including member-deletion composition, carries a pending
+realm with it. Failed snapshots retry current guild/realm values without another
+debit. The redundant pending-association list is removed; the realm owns its retry
+state. Flat-file paired-journal behavior is retained.
+
+The payment matrix covers old acknowledgements, later rewards/spending/settings,
+failed admission/allocation, transaction rollback, late resource changes and realm-ID
+reuse. The SQL leg forces an error in the realm update after guild statements,
+proves both roll back, then proves a fresh retry stores the latest values. It also
+checks the existing optional-garrison-table compatibility. Evidence:
+`/tmp/duris-es-payment-before.log`, `/tmp/duris-es-payment.log`, and
+`/tmp/duris-es-payment-db.log`.
+
+Source review also found guild member capture leaving memory partly changed
+when SQL construction throws. Independent commit `15ccfdd56` restores the member
+and frag totals on that path. Its account-deletion test passes under both build
+modes; `scripts/check_tests_catch.sh ebcc7fccf 15ccfdd56` reports **1/1** tests
+pass after and fail before. The commit is pushed.
+
+The server, pfile, maintained migration tools, full-tree formatting, SQL async,
+reward producer replay, flat-file artifact/association/kingdom repositories and
+copyover guards passed during this continuation. The reward runtime fixture now
+supplies the new unrelated kingdom callback and passes again. These are focused
+results, not the final release gates.
+
+The standard journey exposed an intermittent copyover crash after its completion
+notice. The kernel instruction address resolves to `transport_service()` reading
+a removed NPC (`/tmp/duris-es-copyover-kernel.log`). Recovery called ordinary
+room entry, which can extract that NPC. The actual buffer restorer reproduces a
+heap-use-after-free under ASan when the entry adapter removes it. File/player and
+buffer recovery use the existing negative-direction placement mode in `07d3e2835`, skipping
+movement hazards/procs. The extended singleton fixture passes on the repair;
+before/draft-after evidence is `/tmp/duris-es-copyover-placement-before.log` and
+`/tmp/duris-es-copyover-placement-draft.log`. The first full-server failure is
+`/tmp/duris-es-payment-gameplay.log`; an unchanged rerun passed, so that rerun alone
+did not settle the defect. Current-source full-server verification remains due.
+Future failures preserve isolated logs under `bin/analysis/artifact-estale/failure-*`.
+
+The first full gate completed **726/731** in 648.19 seconds. Its five failures
+were stale documentation/source assertions, the changed `epic.h` source hash in
+the seed manifest (no payout data changed), and missing copyover fixture adapters.
+All five pass after correction; the singleton and kingdom checks also pass. The
+server rebuild passes. Final regression/database gates are being rerun on the
+updated source. The shared dev game and production were not used.
+
 This checkpoint records the reward cutover and new qualification files after the
 pushed handoff `8cea037d5`. Work is active. No shared-game or production operation was used.
 
@@ -76,8 +125,8 @@ pushed handoff `8cea037d5`. Work is active. No shared-game or production operati
 | PvP reward drained and restarted | 720,000 seconds | 105 / 1 | 1 |
 
 The database gate now registers the six-case journey first and honors its
-`DURIS_SERVER_BINARY` override. Remaining work: qualify kingdom-payment and
-remaining state-ordering cases (including failed pair writes);
+`DURIS_SERVER_BINARY` override. Remaining work: finish current-source copyover,
+kingdom-payment/lifecycle qualification and the remaining state-ordering cases;
 review the full diff; run complete final-source gates; publish the #58 review;
 then continue the remaining #56 items. The prior checkpoint and full acceptance
 matrix below remain the scope; passing these cases does not close the entire issue.

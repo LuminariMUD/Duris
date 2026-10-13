@@ -3,6 +3,7 @@
 #include "guild/artifact.c"
 #include "guild/assocs.h"
 #include "sql/sql_player.h"
+#include "kingdom/kingdom_internal.h"
 #include <cassert>
 #include <cstdarg>
 #include <new>
@@ -36,6 +37,7 @@ struct job
 {
 	std::vector<std::string> sql;
 	std::shared_ptr<sql_write_receipt> receipt;
+	sql_work work = {};
 };
 static std::vector<job> jobs;
 static bool accepting = true;
@@ -45,6 +47,7 @@ index_data indexes[1] = {};
 P_index obj_index = indexes;
 char guild_default_titles[ASC_NUM_RANKS][ASC_MAX_STR_RANK] = {};
 extern P_Guild guild_list;
+kingdom_config kingdom_cfg;
 
 std::string sql_format(const char *format, ...)
 {
@@ -83,6 +86,37 @@ bool sql_queue_statements_at(persistence_query_site site, std::vector<std::strin
 {
 	return sql_queue_statements_at(site, std::move(sql), {});
 }
+bool sql_queue_work_at(persistence_query_site, sql_work work)
+{
+	if (!accepting)
+	{
+		errno = ESHUTDOWN;
+		return false;
+	}
+	jobs.push_back({ {}, {}, std::move(work) });
+	return true;
+}
+bool sql_queue_work_at(persistence_query_site, sql_work work,
+		       std::shared_ptr<sql_write_receipt> receipt)
+{
+	if (!accepting)
+	{
+		errno = ESHUTDOWN;
+		return false;
+	}
+	jobs.push_back({ {}, std::move(receipt), std::move(work) });
+	return true;
+}
+bool sql_queue_at(persistence_query_site, const char *, ...)
+{
+	return true;
+}
+char *coins_to_string(int, int, int, int, const char *)
+{
+	static char text[] = "fixture coins";
+	return text;
+}
+
 bool sql_read_at(persistence_query_site, std::string,
 		 std::function<void(bool, const sql_rows &)> done)
 {
@@ -112,9 +146,16 @@ bool sql_read_work_for_at(persistence_query_site, P_char ch, sql_read_work_fn,
 	};
 	return true;
 }
-unsigned int sql_execute(MYSQL *, const std::string &)
+static job *executing = nullptr;
+unsigned int sql_execute(MYSQL *connection, const std::string &statement)
 {
-	std::abort();
+	if (connection)
+		return mysql_real_query(connection, statement.data(), statement.size()) ?
+			       mysql_errno(connection) :
+			       0;
+	assert(executing);
+	executing->sql.push_back(statement);
+	return 0;
 }
 unsigned int sql_select(MYSQL *, const std::string &, sql_rows *)
 {
@@ -157,23 +198,212 @@ bool persistence_log_submit(const char *text)
 
 // GUILD_SQL_CAPTURE
 
+// The optional database leg uses the same owned production snapshots. Writer
+// scheduling/receipts remain controlled; each job's SQL runs in a real transaction.
+static MYSQL *payment_db = nullptr;
+static size_t database_next_job = 0;
+static void query(const char *statement)
+{
+	if (sql_execute(payment_db, statement))
+	{
+		fprintf(stderr, "payment SQL failed: %s\n", mysql_error(payment_db));
+		std::abort();
+	}
+}
+static void open_disposable_database()
+{
+	assert(getenv("TEST_DB_HOST") && getenv("DB_NAME"));
+	assert(std::string(getenv("TEST_DB_HOST")) == "127.0.0.1" &&
+	       std::string(getenv("DB_HOST")) == "127.0.0.1" &&
+	       std::string(getenv("DB_NAME")) == "duris_test" &&
+	       std::string(getenv("DB_PORT")) == getenv("TEST_DB_PORT"));
+	payment_db = mysql_init(nullptr);
+	assert(mysql_real_connect(payment_db, getenv("DB_HOST"), getenv("DB_USER"),
+				  getenv("DB_PASSWD"), getenv("DB_NAME"),
+				  std::stoul(getenv("DB_PORT")), nullptr, 0));
+}
+static void saved_payment(long coins, long prestige, long paid, long mineral = 0, long wood = 0)
+{
+	if (!payment_db)
+		return;
+	query("SELECT platinum*1000+gold*100+silver*10+copper,prestige,construction,"
+	      "upkeep_paid_through,res_mineral,res_wood FROM guilds g "
+	      "JOIN kingdom_realms k ON k.assoc_id=g.id WHERE g.id=7");
+	MYSQL_RES *result = mysql_store_result(payment_db);
+	assert(result);
+	MYSQL_ROW row = mysql_fetch_row(result);
+	assert(row && std::stol(row[0]) == coins && std::stol(row[1]) == prestige &&
+	       std::stol(row[2]) == 20 && std::stol(row[3]) == paid &&
+	       std::stol(row[4]) == mineral && std::stol(row[5]) == wood);
+	mysql_free_result(result);
+}
 static void finish(size_t index, bool ok = true)
 {
 	assert(jobs.at(index).receipt);
+	if (payment_db)
+	{
+		// Preserve writer order, including intervening realm-only jobs.
+		for (; database_next_job <= index; ++database_next_job)
+		{
+			const bool fail = database_next_job == index && !ok;
+			if (fail)
+				query("CREATE TRIGGER refuse_payment BEFORE UPDATE ON kingdom_realms "
+				      "FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fixture rollback'");
+			query("START TRANSACTION");
+			auto &j = jobs.at(database_next_job);
+			unsigned int error = 0;
+			if (j.work)
+				error = j.work(payment_db);
+			else
+				for (const auto &statement : j.sql)
+					if ((error = sql_execute(payment_db, statement)))
+						break;
+			assert(fail ? error == 1644 : error == 0);
+			query(error ? "ROLLBACK" : "COMMIT");
+			if (fail)
+				query("DROP TRIGGER refuse_payment");
+		}
+	}
 	jobs[index].receipt->ok = ok;
 	jobs[index].receipt->error_code = ok ? 0 : EIO;
 	jobs[index].receipt->finished.store(true, std::memory_order_release);
 }
-static bool contains(const job &j, const std::string &text)
+static bool contains(job &j, const std::string &text)
 {
+	if (j.work && j.sql.empty())
+	{
+		executing = &j;
+		assert(j.work(nullptr) == 0);
+		executing = nullptr;
+	}
 	for (const auto &s : j.sql)
 		if (s.find(text) != std::string::npos)
 			return true;
 	return false;
 }
 
-int main()
+static void payment_cases(Guild *guild)
 {
+	jobs.clear();
+	kingdom_cfg.enabled = true;
+	kingdom_realm realm;
+	realm.assoc_id = 7;
+	realm.realm_id = 1;
+	realm.hall_vnum = 100;
+	realm.highest_claim = 1;
+	realm.upkeep_paid_through = 2000000000;
+	kingdom_realms.emplace(7, realm);
+	auto &paid = kingdom_realms.at(7);
+	if (payment_db)
+	{
+		query("INSERT INTO kingdom_realms (assoc_id,realm_id,hall_vnum,highest_claim,upkeep_paid_through) "
+		      "VALUES(7,1,100,1,2000000000)");
+	}
+	assert(guild->add_copper(1000));
+	assert(guild->save()); // an older pre-payment capture
+	assert(guild->sub_copper(125));
+	paid.upkeep_paid_through += 3600;
+	paid.dirty = true;
+	assert(kingdom_persist_payment(guild, paid));
+	assert(paid.payment_pending); // admission alone cannot settle the payment
+	assert(guild_save_pulse(false) == 1);
+	finish(0);
+	assert(paid.payment_pending && guild_save_pulse(false) == 1);
+	saved_payment(1000, 70, 2000000000);
+
+	assert(contains(jobs[1], ", 70, 20, 0, 8, 7, 5,"));
+	assert(contains(jobs[1], "INSERT INTO kingdom_realms") && contains(jobs[1], "2000003600"));
+	paid.resources[KRES_MINERAL] = 5;
+	paid.dirty = true;
+	guild->add_prestige(10); // later reward must keep the unpaid realm paired
+	assert(jobs.size() == 3 && contains(jobs[2], ", 80, 20, 0, 8, 7, 5,"));
+	assert(contains(jobs[2], "INSERT INTO kingdom_realms"));
+	finish(1);
+	assert(guild_save_pulse(false) == 1 && paid.payment_pending);
+	saved_payment(875, 70, 2000003600);
+	finish(2, false);
+	assert(guild_save_pulse(false) == 1 && paid.payment_pending && paid.dirty);
+	saved_payment(875, 70, 2000003600); // the later reward and resources both rolled back
+	const auto held_jobs = jobs.size();
+	kingdom_db_flush_dirty();
+	assert(jobs.size() == held_jobs); // no realm-only publication after paired failure
+	paid.resources[KRES_MINERAL] = 9;
+	accepting = false;
+	guild->set_prestige(90);
+	assert(guild_save_pulse(false) == 1 && paid.payment_pending);
+	accepting = true;
+	guild_save_pulse(true);
+	assert(jobs.size() == held_jobs + 1);
+	assert(contains(jobs.back(), ", 90, 20, 0, 8, 7, 5,")); // no second debit
+	assert(contains(jobs.back(), "(7,1,100,1,9,0,0,0,2000003600"));
+	// A later resource change remains dirty when the earlier pair commits.
+	paid.resources[KRES_WOOD] = 7;
+	paid.dirty = true;
+	finish(jobs.size() - 1);
+	assert(guild_save_pulse(false) == 0 && !paid.payment_pending && paid.dirty);
+	saved_payment(875, 90, 2000003600, 9);
+	kingdom_db_flush_dirty();
+	assert(contains(jobs.back(), "(7,1,100,1,9,7,0,0,2000003600"));
+	assert(!contains(jobs.back(), "insert into guilds"));
+	assert(!paid.dirty);
+	assert(guild->sub_copper(25));
+	paid.upkeep_paid_through += 3600;
+	paid.dirty = true;
+	assert(kingdom_persist_payment(guild, paid));
+	const auto second_payment = jobs.size() - 1;
+	// A member-deletion transaction uses the same public composition seam.
+	job member_deletion = { {},
+				{},
+				kingdom_guild_save_work(7, sql_save_guild_statements(guild)) };
+	assert(contains(member_deletion, "insert into guilds") &&
+	       contains(member_deletion, "INSERT INTO kingdom_realms"));
+	accepting = false;
+	guild->set_prestige(91);
+	finish(second_payment);
+	saved_payment(850, 90, 2000007200, 9, 7);
+	assert(guild_save_pulse(false) == 1 && paid.payment_pending);
+	accepting = true;
+	guild_save_pulse(true);
+	assert(contains(jobs.back(), ", 91, 20, 0, 8, 5, 0,"));
+	assert(contains(jobs.back(), "2000007200"));
+	finish(jobs.size() - 1);
+	assert(guild_save_pulse(false) == 0 && !paid.payment_pending);
+	saved_payment(850, 91, 2000007200, 9, 7);
+	// A supported deployment without the optional roster still commits the pair.
+	if (payment_db)
+		query("DROP TABLE kingdom_garrison");
+	fail_allocation = true;
+	assert(!kingdom_persist_payment(guild, paid));
+	assert(guild_save_pulse(false) == 1 && paid.payment_pending);
+	guild_save_pulse(true);
+	const auto old_receipt = jobs.back().receipt;
+	// Removing a realm removes its pending state; old ACK cannot settle a new one.
+	kingdom_realms.erase(7);
+	kingdom_realms.emplace(7, realm);
+	auto &replacement = kingdom_realms.at(7);
+	assert(!replacement.payment_pending);
+	assert(kingdom_persist_payment(guild, replacement));
+	finish(jobs.size() - 2);
+	assert(guild_save_pulse(false) == 1 && replacement.payment_pending);
+	finish(jobs.size() - 1);
+	assert(guild_save_pulse(false) == 0 && !replacement.payment_pending);
+	saved_payment(850, 91, 2000000000);
+	puts("PASS kingdom payment admission/commit boundary, later rewards, rollback and fresh paired retries, late realm changes and recreation");
+}
+
+int main(int argc, char **argv)
+{
+	if (argc == 2)
+	{
+		assert(std::string(argv[1]) == "--mysql");
+		open_disposable_database();
+		char name[] = "Snapshot fixture";
+		auto *guild = new Guild(name, RACEWAR_GOOD, 7, 70, 20, 0, 0);
+		guild_list = guild;
+		payment_cases(guild);
+		mysql_close(payment_db);
+		return 0;
+	}
 	indexes[0].virtual_number = 900;
 	artifact_rows[900] = { true, ARTIFACT_ON_PC, 42, 1000, ARTIFACT_MAJOR };
 	artifact_binds[900] = { 42, 0 };
@@ -414,4 +644,5 @@ int main()
 		"domain=guild_snapshot/admission_failed action=allocation_failure outcome=alert detail=guild_id=7 error=" +
 		std::to_string(ENOMEM)));
 	puts("PASS real guild capture, spending/settings, current-state retry and exact-capture ACK; snapshot diagnostics survive the real reporter");
+	payment_cases(guild);
 }

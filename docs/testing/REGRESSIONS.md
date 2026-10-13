@@ -69,7 +69,7 @@ not run a server or a real database.
 
 Issue #58 implementation and qualification are in progress on
 `fix/58-56-estale-log-review`. Focused checks and the initial full-server journey
-pass; the complete release matrix remains open; [the handoff](../ongoing-projects/plan-estale.md#pause-handoff)
+pass; the complete release matrix remains open; [the handoff](../ongoing-projects/plan-estale.md#qualification-update-2026-10-14)
 records remaining work and local logs.
 
 `python3 tests/async/test_artifact_guild_rewards_runtime.py` links real reward
@@ -143,8 +143,16 @@ artifact write held, it applies the feed and guild reward immediately, then save
 restart preserve that result. The fixture retains the genuine soul/ownership
 checks and uses a free soul for this positive case.
 
-Kingdom-payment interleaving and failure recovery, remaining state-ordering/
-lifecycle details, and complete final-source gates remain open. LR-01's full-suite counts
+The snapshot fixture now links the real kingdom payment/guild writers. It covers
+pending-through-commit behavior, later rewards/settings/spending, old receipts,
+failed admission/allocation, current-state retry, late resource changes and realm
+recreation. The disposable SQL wrapper also runs it with real transactions: a
+trigger fails the realm update after guild statements, both roll back, and retry
+captures the latest values without another treasury debit. The optional missing
+garrison table remains compatible. Writer scheduling/receipts are controlled;
+this payment matrix does not boot a full game.
+
+Remaining state-ordering/lifecycle details and complete final-source gates remain open. LR-01's full-suite counts
 above do not qualify these subsequent changes.
 
 ## Recovery placement and room-entry hazards

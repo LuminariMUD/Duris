@@ -99,15 +99,13 @@
  *
  *      MariaDB    the debited guild and the realm's paid mark are written
  *                 inside ONE transaction, or neither is written. No crash
- *                 can keep one without the other. When the transaction
- *                 cannot be opened, or either write or the commit fails,
- *                 nothing is left written: the realm is marked
- *                 payment_pending, the debit stands in memory, the generic
- *                 flush withholds the record and the sweep stops billing
- *                 the realm until kingdom_upkeep_retry_pending() lands the
- *                 pair. A crash while pending loses the in-memory debit, so
- *                 the realm is billed again for the same period -- the safe
- *                 direction.
+ *                 can keep one without the other. payment_pending lasts until
+ *                 the latest guild receipt confirms COMMIT. Later guild saves
+ *                 carry the current realm too; failures retry current captures
+ *                 without debiting again. The generic flush withholds the realm
+ *                 and the sweep stops billing it while pending. After a crash,
+ *                 boot sees either the committed pair or the previous pair;
+ *                 a lost acknowledgement never creates an unpaired payment.
  *
  *      flat-file  the guild and realm catalogues are after-images in one
  *                 recovery journal. The journal lands before either image;
@@ -117,10 +115,8 @@
  *
  *    THE PENDING RULE. A paid mark must never reach disk without its debit,
  *    and kingdom_db_save_realm() is a primitive that cannot enforce that for
- *    itself: kingdom_persist_payment() is precisely the caller that must be
- *    allowed to publish a pending record, because it writes the guild in the
- *    same breath. So the obligation falls on every OTHER caller. Each
- *    kingdom_db_save_realm() outside kingdom_db.c and kingdom_persist_payment()
+ *    itself. Only the composed guild/realm writer publishes a pending record.
+ *    Each ordinary kingdom_db_save_realm() caller outside kingdom_db.c
  *    -- the default write at the end of the sweep below, kingdom_rehome_realm()
  *    in kingdom.c after a hall change, the abandon path in kingdom_claim.c --
  *    has to test realm.payment_pending first and, when it is set, write
@@ -399,67 +395,21 @@ static bool charge_treasury(P_Guild guild, long copper_total)
  * Making a payment durable
  * ------------------------------------------------------------------ */
 
-/* Association ids of realms whose payment pair has not landed. Each is
- * retried as a PAIR by kingdom_upkeep_retry_pending(); while listed, its realm
- * carries payment_pending, which keeps every flush from publishing the record
- * and the sweep from billing it again. In-memory only, on purpose: the debit
- * it stands for is in-memory too, so a crash loses both together and the
- * realm is simply billed again for the same period. */
-static std::vector<int> kingdom_pending_payments;
-
-/* Add an association id to the pending list, once. */
-static void remember_pending(int assoc_id)
-{
-	for (const int id : kingdom_pending_payments)
-		if (id == assoc_id)
-			return;
-	kingdom_pending_payments.push_back(assoc_id);
-}
-
-/* Remove an association id from the pending list; a no-op when absent. */
-static void forget_pending(int assoc_id)
-{
-	for (size_t i = 0; i < kingdom_pending_payments.size(); i++)
-	{
-		if (kingdom_pending_payments[i] == assoc_id)
-		{
-			kingdom_pending_payments.erase(kingdom_pending_payments.begin() +
-						       static_cast<long>(i));
-			return;
-		}
-	}
-}
-
-/* Mark a realm's payment as not yet durable: set payment_pending, list the id
- * for kingdom_upkeep_retry_pending(), and log why. The debit stays in memory,
+/* Mark a realm's payment as not yet durable for kingdom_upkeep_retry_pending(),
+ * and log why. The debit stays in memory,
  * so the realm is not charged twice within this process. */
 static void hold_payment(kingdom_realm &realm, const char *why)
 {
 	realm.payment_pending = true;
-	remember_pending(realm.assoc_id);
 	logit(LOG_KINGDOM,
 	      "upkeep: payment for realm %d (association %d) is NOT durable: %.128s; the "
 	      "record is held back from every flush and the pair will be retried",
 	      realm.realm_id, realm.assoc_id, why);
 }
 
-/* Write the debited guild and this realm's record as ONE unit and report
- * whether they are durable. What each build mode guarantees:
- *
- *   MariaDB    The guild's statements and the realm's write are one job on
- *              the persistence writer, run in one transaction: guild, then
- *              realm. The debit is in memory already, so once queued the
- *              record is clean; no flush is needed. A job that could not be
- *              queued writes NOTHING -- never an unpaired write -- and the
- *              realm is held.
- *
- *   flat-file  The guild and realm catalogue after-images share one recovery
- *              journal. The journal is durable before either image, so an
- *              interrupted commit completes on recovery. Success means both
- *              are durable; failure holds the realm for a retry.
- *
- * False in either mode means hold_payment() ran: payment_pending is set, the
- * id is listed for retry, and the debit stands in memory. */
+/* Capture the debited guild and realm as one unit. MariaDB true means admitted,
+ * not committed: the pending flag lasts until that capture's receipt succeeds.
+ * Flat-file true still means the recoverable pair has been committed. */
 bool kingdom_persist_payment(Guild *guild, kingdom_realm &realm)
 {
 	if (!guild)
@@ -469,14 +419,12 @@ bool kingdom_persist_payment(Guild *guild, kingdom_realm &realm)
 	}
 
 #ifndef __NO_MYSQL__
-	if (!kingdom_db_save_payment_pair(sql_save_guild_statements(guild), realm))
+	realm.payment_pending = true;
+	if (!guild->save())
 	{
 		hold_payment(realm, "the guild and realm write was not queued");
 		return false;
 	}
-
-	realm.dirty = false;
-	realm.payment_pending = false;
 	return true;
 #else
 	if (!guild->save_with_kingdom(realm))
@@ -491,65 +439,34 @@ bool kingdom_persist_payment(Guild *guild, kingdom_realm &realm)
 #endif
 }
 
-/* Retry every held payment as a PAIR through kingdom_persist_payment(). An id
- * whose realm is gone is dropped; one whose guild is gone has its realm's
- * payment_pending cleared and is dropped with a log, since the debit died
- * with the guild and there is nothing left to pair; anything else leaves the
- * list only when the pair lands. */
+/* Pending state belongs to the realm, so erasing it also erases its retry.
+ * MariaDB's guild receipt and ordinary dirty pulse own paired write recovery. */
 void kingdom_upkeep_retry_pending(void)
 {
-	size_t i = 0;
-
-	while (i < kingdom_pending_payments.size())
+	for (auto &[assoc_id, realm] : kingdom_realms)
 	{
-		const int assoc_id = kingdom_pending_payments[i];
-		kingdom_realm *realm = kingdom_find_realm(assoc_id);
-		bool settled;
-
-		if (!realm)
+		if (!realm.payment_pending)
+			continue;
+		P_Guild guild = get_guild_from_id(assoc_id);
+		if (!guild)
 		{
-			settled = true; /* realm erased; nothing left to write */
+			realm.payment_pending = false;
+			logit(LOG_KINGDOM,
+			      "pending payment for realm %d lost its guild %d; retry dropped",
+			      realm.realm_id, assoc_id);
+			continue;
 		}
-		else
-		{
-			P_Guild guild = get_guild_from_id(assoc_id);
-
-			if (!guild)
-			{
-				realm->payment_pending = false;
-				logit(LOG_KINGDOM,
-				      "upkeep: realm %d (association %d) had a payment pending but "
-				      "its guild is gone; the pending payment is dropped",
-				      realm->realm_id, assoc_id);
-				settled = true;
-			}
-			else
-			{
-				/* On failure this re-lists the same id, which the
-				 * dedup in remember_pending() makes a no-op. */
-				settled = kingdom_persist_payment(guild, *realm);
-				if (settled)
-					logit(LOG_KINGDOM,
-					      "upkeep: pending payment for realm %d (association %d) "
-					      "is now durable",
-					      realm->realm_id, assoc_id);
-			}
-		}
-
-		if (settled)
-			kingdom_pending_payments.erase(kingdom_pending_payments.begin() +
-						       static_cast<long>(i));
-		else
-			i++;
+#ifndef __NO_MYSQL__
+		// Poll first, and never enqueue another copy while the current one waits.
+		if (!guild->save_pending(true) && realm.payment_pending)
+			(void)kingdom_persist_payment(guild, realm);
+#else
+		if (kingdom_persist_payment(guild, realm))
+			logit(LOG_KINGDOM,
+			      "pending payment for realm %d (association %d) is now durable",
+			      realm.realm_id, assoc_id);
+#endif
 	}
-}
-
-/* Drop any pending retry keyed on this association id. The realm record
- * itself is the caller's to erase; this only stops a reused id from
- * inheriting the dead guild's retry. */
-void kingdom_upkeep_forget_guild(int assoc_id)
-{
-	forget_pending(assoc_id);
 }
 
 /* ------------------------------------------------------------------ *
@@ -622,12 +539,10 @@ static bool take_boot_grace(int assoc_id)
  * whose paid period has not yet run out. */
 static time_t kingdom_upkeep_last_cycle = 0;
 
-/* Clear the pending-payment list, the spent boot graces and the cycle stamp.
- * For kingdom_shutdown(); a pending payment dropped here is lost with the
- * process, and the realm is billed again for the period at the next boot. */
+/* Clear the spent boot graces and cycle stamp after kingdom_shutdown() has
+ * dropped the realms, which own their pending payment state. */
 void kingdom_upkeep_reset(void)
 {
-	kingdom_pending_payments.clear();
 	kingdom_boot_grace_used.clear();
 	kingdom_upkeep_last_cycle = 0;
 }
@@ -932,16 +847,8 @@ void kingdom_upkeep_event(void)
 
 	if (touched)
 	{
-		/* Under MariaDB every PAYMENT is already durable in its own
-		 * transaction and every DEFAULT was written as it was applied, so
-		 * what remains dirty here is the cheap bookkeeping -- realms
-		 * owing nothing, clock re-arms -- plus any write that failed
-		 * above. Under the flat-file build the paid realms are dirty too,
-		 * by design: this is the one catalogue rewrite that publishes
-		 * their paid marks, after their guilds were written. Records held
-		 * for a pending payment are skipped by both backends. Neither
-		 * backend erases from kingdom_realms, so flushing after the sweep
-		 * costs nothing. */
+		/* Flush ordinary bookkeeping and writes refused above. Pending
+		 * payments remain held for their paired commit/retry in both backends. */
 		kingdom_db_flush_dirty();
 		logit(LOG_KINGDOM,
 		      "upkeep: cycle complete; %d realm(s) paid, %d in default, %d written", paid,

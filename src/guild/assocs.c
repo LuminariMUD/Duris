@@ -983,6 +983,7 @@ bool Guild::save_pending([[maybe_unused]] bool retry)
 					  "guild_id=%u reason=storage_failure error=%u", id_number,
 					  save_error);
 		}
+		kingdom_guild_save_completed(static_cast<int>(id_number), save_receipt);
 		save_receipt.reset();
 	}
 	if (retry && save_dirty && !save_receipt)

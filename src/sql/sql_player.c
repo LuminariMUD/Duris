@@ -47,6 +47,7 @@
 #include "magic/spells.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
+#include "kingdom/kingdom.h"
 #include "player/player_name.h"
 #include "account/password_hash.h"
 #include "player/player_revision_state.h"
@@ -4796,7 +4797,8 @@ bool sql_save_guild(Guild *guild)
 	try
 	{
 		auto receipt = std::make_shared<sql_write_receipt>();
-		if (sql_queue_statements(sql_save_guild_statements(guild), receipt))
+		if (kingdom_queue_guild_save(static_cast<int>(guild->get_id()),
+					     sql_save_guild_statements(guild), receipt))
 		{
 			guild->save_receipt = std::move(receipt);
 			return true;
