@@ -3,6 +3,8 @@
 Status: implementation plan only. Inspected on 2026-10-12 at
 `6b9845556ea6fcd7e3ef29b911c83906933de181`. This document changes no gameplay.
 
+Tracking issue: [#52 — Make character mechanics explicitly connected and mechanically traceable](https://github.com/LuminariMUD/Duris/issues/52).
+
 ## Outcome, boundaries, and proof
 
 Add a small compiled C++ contract connecting character options to their existing
