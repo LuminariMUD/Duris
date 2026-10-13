@@ -50,19 +50,67 @@ def check_mechanic_sites(sources, bindings):
         "epics_capture": ("player/player_snapshot_capture.c", r"ADD_STATUS\(epics,\s*ch->only\.pc->epics\);"),
         "epics_load": ("player/player_load_materialize.c", r"ch->only\.pc->epics\s*=\s*result\.domains\.epics;"),
         "epics_transaction": ("world/epic_transaction.c", r"balance\s*\+=\s*delta;"),
+        "multiclass_command": ("cmd/interp.c", r"CMD_N\(CMD_MULTICLASS,\s*STAT_NORMAL\s*\+\s*POS_PRONE,\s*do_multiclass,\s*0,\s*FALSE\);"),
+        "multiclass_room_test": ("specs/specs.assign.c", r"world\[real_room0\(17\)\]\.funct\s*=\s*multiclass_proc;"),
+        "multiclass_room_temple": ("specs/specs.assign.c", r"world\[real_room0\(52904\)\]\.funct\s*=\s*multiclass_proc;"),
+        "multiclass_select": ("specs/specs.room.c", r"ch->player\.secondary_class\s*=\s*1\s*<<\s*\(i\s*-\s*1\);"),
+        "multiclass_reset": ("specs/specs.room.c", r"do_start\(ch,\s*cmd\);"),
+        "multiclass_restore": ("specs/specs.room.c", r"do_restore\(ch,\s*GET_NAME\(ch\),\s*0\);"),
+        "multiclass_forget": ("specs/specs.room.c", r"forget_spells\(ch,\s*-1\);"),
+        "multiclass_refund": ("specs/specs.room.c", r"refund_epic_skills\(ch\);"),
+        "multiclass_trophies": ("specs/specs.room.c", r"clear_zone_trophy\(ch\);"),
+        "multiclass_newbie_skills": ("cmd/actwiz.c", r"NewbySkillSet\(ch,\s*\(nomsg\s*!=\s*CMD_MULTICLASS\)\s*\?\s*TRUE\s*:\s*FALSE\);"),
+        "multiclass_refund_commit": ("world/epic.c", r'if\s*\(!epic_transaction_submit\(ch,\s*point_refund,\s*epic_reason_type::epic_skill_refund,\s*0,\s*0,\s*critical_source_site::command,\s*critical_deadline_class::interactive,\s*epic_skill_refund_committed,\s*&context,\s*sizeof\(context\)\)\)\s*send_to_char\("The epic transaction service is busy\. Please try again\.\\n",\s*ch\);'),
+        "multiclass_wallet_refund": ("world/epic.c", r'if\s*\(!currency_transaction_submit_wallet_value\(\s*ch,\s*context\.coins,\s*currency_reason_type::refund,\s*context\.points,\s*critical_source_site::recovery,\s*critical_deadline_class::recovery,\s*epic_coin_refund_committed,\s*nullptr,\s*0\)\)\s*send_to_char\(\s*"Your coin refund could not be queued\. Please contact staff\.\\n",\s*ch\);'),
+        "multiclass_primary_cap": ("core/utility.c", r'float pri_mod\s*=\s*get_property\("skill\.cap\.multi\.mod\.primarySkill",\s*100\.0\);'),
+        "multiclass_secondary_cap": ("core/utility.c", r'float sec_mod\s*=\s*get_property\("skill\.cap\.multi\.mod\.secondarySkill",\s*95\.0\);'),
+        "multiclass_skill_data": ("core/utility.c", r"if\s*\(IS_PC\(ch\)\s*&&\s*\(sec_class\s*>=\s*0\)\)"),
+        "multiclass_hitpoints": ("magic/affects.c", r"class_mod\s*=\s*MAX\(class_mod,\s*class_hitpoints\[flag2idx\(ch->player\.secondary_class\)\]\);"),
+        "class_hitpoint_factors": ("magic/affects.c", r"class_hitpoints\[i\]\s*=\s*get_property\(buf,\s*1\.0\);"),
+        "racial_constitution": ("world/db.c", r"stat_factor\[i\]\.Con\s*=\s*\(sh_int\)get_property\(buf,\s*100\.\);"),
+        "skills_capture": ("player/player_snapshot_capture.c", r"snapshot\.skills\.push_back\(\{\s*index,\s*static_cast<uint8_t>\(skill\.learned\),\s*static_cast<uint8_t>\(skill\.taught\)\s*\}\);"),
+        "affects_capture": ("player/player_snapshot_capture.c", r"snapshot\.affects\.push_back\(std::move\(row\)\);"),
+        "trophies_capture": ("player/player_snapshot_capture.c", r"snapshot\.trophies\.push_back\(\{\s*trophy\.zone_number,\s*trophy\.exp\s*\}\);"),
+        "skills_load": ("player/player_load_materialize.c", r"for\s*\(const player_skill_snapshot &entry\s*:\s*result\.snapshot\.skills\)"),
+        "affects_load": ("player/player_load_materialize.c", r"for\s*\(const player_affect_snapshot &entry\s*:\s*result\.snapshot\.affects\)"),
+        "trophies_load": ("player/player_load_materialize.c", r"for\s*\(const player_trophy_snapshot &entry\s*:\s*result\.snapshot\.trophies\)"),
+        "status_capture": ("player/player_snapshot_capture.c", r"if\s*\(\(components & PLAYER_COMPONENT_STATUS\)\s*&&\s*!capture_status\(ch,\s*snapshot,\s*budget,\s*save_intent\)\)\s*return player_snapshot_capture_result::limit_exceeded;"),
+        "status_load": ("player/player_load_materialize.c", (
+            r"for\s*\(const player_snapshot_string &entry\s*:\s*result\.snapshot\.status_strings\)\s*if\s*\(!apply_string\(ch,\s*entry\)\)\s*return false;",
+            r"for\s*\(const player_snapshot_integer &entry\s*:\s*result\.snapshot\.status_integers\)\s*apply_integer\(ch,\s*entry,\s*&hit_difference\);",
+            r"for\s*\(size_t index = 0; index < result\.snapshot\.conditions\.size\(\); \+\+index\)\s*ch->specials\.conditions\[index\] = result\.snapshot\.conditions\[index\];",
+            r"for\s*\(size_t index = 0; index < result\.snapshot\.quest_values\.size\(\); \+\+index\)\s*\*quest\[index\] = result\.snapshot\.quest_values\[index\];",
+        )),
     }
+    state_fields = {
+        "class_secondary": "ch->player.secondary_class", "level": "GET_LEVEL(ch)",
+        "base_mana": "ch->points.base_mana", "base_hit": "ch->points.base_hit",
+        "base_vitality": "ch->points.base_vitality", "experience": "GET_EXP(ch)",
+        "prestige": "ch->only.pc->prestige", "guild_status": "ch->specials.guild_status",
+        "copper": "GET_COPPER(ch)", "silver": "GET_SILVER(ch)",
+        "gold": "GET_GOLD(ch)", "platinum": "GET_PLATINUM(ch)",
+    }
+    wallet_fields = ("copper", "silver", "gold", "platinum")
+    obligations["multiclass_status_capture"] = ("player/player_snapshot_capture.c", tuple(
+        rf"ADD_STATUS\({field},\s*{re.escape(value)}\);" for field, value in state_fields.items()))
+    obligations["multiclass_status_load"] = ("player/player_load_materialize.c", tuple(
+        re.escape("ch->player.level" if field == "level" else value) + r"\s*=\s*" +
+        (rf"result\.domains\.wallet\[{wallet_fields.index(field)}\];" if field in wallet_fields else "loaded;")
+        for field, value in state_fields.items()))
+    obligations = {key: (owner, (patterns,) if isinstance(patterns, str) else patterns)
+                   for key, (owner, patterns) in obligations.items()}
     seen = set()
     errors = []
-    symbols = re.compile(r"\b(?:INNATE_GUARDIANS_BULWARK|DF_GUARDIANS_BULWARK|unspec_altar|2203|12016)\b")
+    symbols = re.compile(r"\b(?:INNATE_GUARDIANS_BULWARK|DF_GUARDIANS_BULWARK|unspec_altar|multiclass_proc|2203|12016|52904)\b|\bworld\s*\[\s*real_room0\(\s*17\s*\)\s*\]\.funct")
     # Macro stringification makes these names the same native bindings the
     # executable used, rather than a second editable table of function names.
-    for mechanic, symbol in bindings.items():
-        if re.fullmatch(r"[a-zA-Z_]\w*", symbol):
+    for mechanic, (symbol, kind) in bindings.items():
+        if kind == "callable" and re.fullmatch(r"[a-zA-Z_]\w*", symbol):
             definitions = 0
             for path, text in sources.items():
                 if symbol not in text:
                     continue
-                for body in function_bodies(text, rf"\b(?:int|bool|void)\s+{symbol}\s*\("):
+                for body in function_bodies(text, rf"\b(?:int|bool|void|ClassSkillInfo)\s+{symbol}\s*\("):
                     # The offline pfile executable deliberately has no skill
                     # refresh. Exclude only its exact empty stub, not the file.
                     if (path == "account/pfile-stubs.c" and symbol == "update_skills"
@@ -86,18 +134,23 @@ def check_mechanic_sites(sources, bindings):
             if site not in obligations:
                 errors.append(f"{path}:{code.count(chr(10), 0, marker.start()) + 1}: unknown site {site}")
                 continue
-            owner, statement = obligations[site]
-            match = re.match(r"\s*(" + statement + r")", code[marker.end():])
-            if path != owner or not match:
+            owner, statements = obligations[site]
+            matches = [(i, match) for i, statement in enumerate(statements)
+                       if (match := re.match(r"\s*(" + statement + r")", code[marker.end():]))]
+            if path != owner or len(matches) != 1:
                 errors.append(f"{path}:{code.count(chr(10), 0, marker.start()) + 1}: missing/unsupported binding for {site}")
                 continue
-            if site in seen:
+            index, match = matches[0]
+            if (site, index) in seen:
                 errors.append(f"{path}: duplicate site {site}")
-            seen.add(site)
+            seen.add((site, index))
             covered.append((marker.end(), marker.end() + match.end()))
             if site == "specialization_load" and not re.search(
                     r"case player_status_field::specialization:\s*$", code[:marker.start()]):
                 errors.append(f"{path}: specialization load mapped from wrong field")
+            if site == "multiclass_status_load" and tuple(state_fields)[index] not in wallet_fields and not re.search(
+                    rf"case player_status_field::{tuple(state_fields)[index]}:\s*$", code[:marker.start()]):
+                errors.append(f"{path}: multiclass status load mapped from wrong field")
         for token in symbols.finditer(code):
             if any(start <= token.start() < end for start, end in covered):
                 continue
@@ -112,9 +165,14 @@ def check_mechanic_sites(sources, bindings):
             if (token.group() == "unspec_altar" and path in ("specs/specs.object.c", "world/specs.prototypes.h")
                     and re.fullmatch(r"int unspec_altar\(P_obj obj, P_char ch, int cmd, char \*(?:arg|argument)\);?\s*", line)):
                 continue
+            if (token.group() == "multiclass_proc" and path in ("specs/specs.room.c", "world/specs.prototypes.h")
+                    and re.fullmatch(r"int multiclass_proc\(int\s*(?:room)?, P_char(?: ch)?, int cmd, char \*arg\);?\s*", line)):
+                continue
             errors.append(f"{path}:{code.count(chr(10), 0, token.start()) + 1}: unregistered site/alias {token.group()}")
-    for site in obligations.keys() - seen:
-        errors.append(f"{site}: missing implementation site")
+    for site, (_, statements) in obligations.items():
+        for index in range(len(statements)):
+            if (site, index) not in seen:
+                errors.append(f"{site}[{index}]: missing implementation site")
     for site in obligations:
         if site.replace("_", ".") not in bindings:
             errors.append(f"{site}: missing compiled connection")
@@ -131,6 +189,7 @@ inputs = [
     source("safe_format.c"),
     source("epic_transaction.c"), source("epic_command.c"), source("critical_command.c"),
     source("hardcore_config.c"),
+    source("currency_transaction.c"), source("currency_command.c"),
     HARNESS_STUBS,
 ]
 
@@ -168,6 +227,11 @@ combat_prelude = r'''
 #include "world/epic.h"
 #include "world/hardcore_config.h"
 #include "economy/currency_transaction.h"
+#include "persistence/persistence_mode.h"
+#include "player/player_save_pipeline.h"
+#include "player/player_snapshot_repository.h"
+#include "flatfile/flatfile_player_repository.h"
+#include "sql/sql_player.h"
 #include <cassert>
 #include <cctype>
 #include <cstdarg>
@@ -180,7 +244,9 @@ int properties_count;
 Skill skills[MAX_SKILLS];
 int GET_LVL_FOR_SKILL(P_char, int);
 command_info cmd_info[MAX_CMD_LIST];
-P_room world;
+room_data mechanic_rooms[3]{};
+P_room world = mechanic_rooms;
+extern const int top_of_world = 2;
 extern const class_names class_names_table[];
 extern const race_names race_names_table[];
 extern const racial_data_type racial_data[];
@@ -200,15 +266,22 @@ void do_restore(P_char ch, char *, int) {
     assert(ch->player.level == 1 && ch->player.secondary_class == CLASS_CLERIC && ch->player.spec == 0);
     ++mechanic_restores;
 }
-bool insert_money_pickup(int pid, int value) { assert(pid == 42); mechanic_coin_refund += value; return true; }
+bool mechanic_stage_coin_refund = true;
+bool insert_money_pickup(int pid, int value) { assert(pid == 42); mechanic_coin_refund += value; return mechanic_stage_coin_refund; }
 bool do_save_silent(P_char ch, int) {
     assert(ch->player.secondary_class == CLASS_CLERIC && ch->only.pc->skills[SKILL_EPIC_STRENGTH].learned == 0);
     ++mechanic_saves; return true;
 }
-bool currency_transaction_submit_wallet_value(P_char, int64_t, currency_reason_type, int64_t,
-        critical_source_site, critical_deadline_class, currency_completion_fn, const void *, size_t) {
-    assert(false && "native fixture accepts staged coin pickup"); return false;
-}
+void gmcp_char_vitals(P_char) {}
+bool persistence_log_submit(const char *) { return true; }
+const char *get_account_name_safe(P_char) { return "mechanics_account"; }
+persistence_mode persistence_mode_get() { std::abort(); }
+const char *persistence_mode_flatfile_root() { std::abort(); }
+player_save_apply_result flatfile_bank_delta_apply(const std::string &, const std::string &,
+        int8_t, const std::array<int64_t, 4> &, flatfile_authority_operation *, std::string *) { std::abort(); }
+player_save_apply_result bank_delta_repository_apply_from_pool(const bank_delta_snapshot &) { std::abort(); }
+player_save_submit_result persistence_writer_submit(persistence_job_kind, uint64_t, size_t, persistence_job_write_fn) { std::abort(); }
+player_save_pipeline_result player_save_pipeline_request(P_char, player_component_mask_t, int, int) { std::abort(); }
 index_data object_prototypes[3]{};
 P_index obj_index = object_prototypes;
 int top_of_objt = 2;
@@ -330,18 +403,32 @@ combat_bodies = (
         ("tradeskill.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::object_value_connections("),
         ("player_snapshot_capture.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::status_capture_connections("),
         ("player_load_materialize.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::status_load_connections("),
+        ("specs.assign.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::room_registration_connections("),
+        ("actoth.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::multiclass_command_connections("),
+        ("specs.room.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::multiclass_connections("),
+        ("specs.room.c", "std::span<const character_mechanics::TransitionConnection> character_mechanics::multiclass_transitions("),
+        ("actwiz.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::reset_connections("),
+        ("affects.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::hitpoint_connections("),
+        ("db.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::racial_stat_connections("),
+        ("epic.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::epic_refund_connections("),
+        ("trophy.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::trophy_connections("),
+        ("db.c", "int real_room0("), ("db.c", "int real_room("),
     ])
 )
 interpreter = source("interp.c").read_text()
 registration = re.search(r"CHARACTER_MECHANIC_SITE\(specialization_entry\);\s*CMD_N\([^;]+;", interpreter).group()
 innate_registration = re.search(r"CHARACTER_MECHANIC_SITE\(innate_entry\);\s*CMD_Y\([^;]+;", interpreter).group()
+multiclass_registration = re.search(r"CHARACTER_MECHANIC_SITE\(multiclass_command\);\s*CMD_N\([^;]+;", interpreter).group()
 combat_bodies += "\n" + interpreter[interpreter.index("#define CMD_N("):interpreter.index("#define CMD_CNF_Y(")]
-combat_bodies += "\nvoid initialize_mechanic_commands() {\n" + registration + "\n" + innate_registration + "\n}\n"
+combat_bodies += "\nvoid initialize_mechanic_commands() {\n" + registration + "\n" + innate_registration + "\n" + multiclass_registration + "\n}\n"
 assignments = source("specs.assign.c").read_text()
 altar_registrations = [re.search(r"CHARACTER_MECHANIC_SITE\(unspecialization_entry_" + name +
                                 r"\);\s*obj_index\[[^;]+;", assignments).group()
                        for name in ("coral", "blood")]
 combat_bodies += '\nvoid initialize_mechanic_objects() {\nobject_prototypes[1].virtual_number = 2203;\nobject_prototypes[2].virtual_number = 12016;\n' + "\n".join(altar_registrations) + "\n}\n"
+room_registrations = [re.search(r"CHARACTER_MECHANIC_SITE\(multiclass_room_" + name + r"\);\s*world\[[^;]+;", assignments).group()
+                      for name in ("test", "temple")]
+combat_bodies += '\nvoid initialize_mechanic_rooms() {\nmechanic_rooms[1].number = 17;\nmechanic_rooms[2].number = 52904;\n' + "\n".join(room_registrations) + "\n}\n"
 combat_driver = r'''
 void load_character_properties() {
     properties_count = load_properties(duris_properties);
@@ -408,17 +495,22 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
     if result.returncode:
         print(result.stderr, end="")
     result.check_returncode()
-    bindings = {row.split("\t")[1]: row.split("\t")[2]
+    bindings = {row.split("\t")[1]: tuple(row.split("\t")[2:4])
                 for row in result.stdout.splitlines() if row.startswith("CONNECTION\t")}
     for row in result.stdout.splitlines():
         if row.startswith("CONNECTION\t"):
-            _, mechanic, _, path, line = row.split("\t")
+            _, mechanic, _, kind, path, line = row.split("\t")
+            assert kind in ("callable", "value"), (mechanic, kind)
             path = str(Path(path).relative_to(ROOT)) if Path(path).is_absolute() else path
             assert path in ("src/classes/innates.c", "src/combat/fight.c", "src/cmd/interp.c",
                             "src/classes/specializations.c", "src/guild/guild.c",
                             "src/specs/specs.assign.c", "src/specs/specs.object.c", "src/classes/memorize.c",
                             "src/world/epic_transaction.c",
                             "src/economy/tradeskill.c",
+                            "src/cmd/actoth.c", "src/cmd/actwiz.c", "src/specs/specs.room.c",
+                            "src/magic/affects.c", "src/world/db.c", "src/world/epic.c",
+                            "src/core/utility.c", "src/item/trophy.c",
+                            "src/economy/currency_transaction.c",
                             "src/player/player_snapshot_capture.c", "src/player/player_load_materialize.c"), (mechanic, path)
             assert 0 < int(line) <= len((ROOT / path).read_text().splitlines()), (mechanic, line)
     sources = {str(path.relative_to(ROOT / "src")): path.read_text(errors="replace")
@@ -437,6 +529,9 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         ("altar_overwrite", "specs/unregistered.c", "void overwrite() { obj_index[real_object0(2203)].func.obj = different_altar; }\n", "unregistered site/alias"),
         ("altar_alias", "specs/unregistered.h", "#define MY_ALTAR 12016\n", "unregistered site/alias"),
         ("altar_new_caller", "specs/unregistered.c", "int invoke(P_obj obj, P_char ch, int cmd, char *arg) { return unspec_altar(obj, ch, cmd, arg); }\n", "unregistered site/alias"),
+        ("multiclass_overwrite", "specs/unregistered.c", "void overwrite() { world[real_room0(17)].funct = different_room; }\n", "unregistered site/alias"),
+        ("multiclass_alias", "specs/unregistered.h", "#define MY_MULTIROOM 52904\n", "unregistered site/alias"),
+        ("multiclass_new_caller", "specs/unregistered.c", "int invoke(int room, P_char ch, int cmd, char *arg) { return multiclass_proc(room, ch, cmd, arg); }\n", "unregistered site/alias"),
     ]
     for name, path, changed, diagnostic in mutations:
         fixture = work / "mutations" / name / path
@@ -447,6 +542,7 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         assert any(diagnostic in error for error in errors), (name, errors)
     print("guardian.bulwark.reverse: PASS (missing consumer/marker, new file/alias, nested branch mutations)")
     print("unspecialization.reverse: PASS (new overwrite, numeric alias and caller rejected)")
+    print("multiclass.reverse: PASS (new room overwrite, temple alias and caller rejected)")
     for name, path, old, new, diagnostic in [
         ("registration_removed", "cmd/interp.c",
          "CMD_N(CMD_SPECIALIZE, STAT_SLEEPING + POS_PRONE, do_specialize, 0, FALSE);", ";", "specialization_entry"),
@@ -466,6 +562,12 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         ("forget_removed", "classes/specializations.c", "forget_spells(ch, -1);", ";", "unspecialization_forget"),
         ("epics_materialize_removed", "player/player_load_materialize.c", "ch->only.pc->epics = result.domains.epics;",
          ";", "epics_load"),
+        ("secondary_capture_removed", "player/player_snapshot_capture.c", "ADD_STATUS(class_secondary, ch->player.secondary_class);",
+         ";", "multiclass_status_capture"),
+        ("secondary_load_wrong_field", "player/player_load_materialize.c", "case player_status_field::class_secondary:",
+         "case player_status_field::class_primary:", "multiclass status load mapped from wrong field"),
+        ("skills_load_removed", "player/player_load_materialize.c", "CHARACTER_MECHANIC_SITE(skills_load);\n\tfor (const player_skill_snapshot &entry : result.snapshot.skills)",
+         "CHARACTER_MECHANIC_SITE(skills_load);\n\tfor (const player_skill_snapshot &entry : std::vector<player_skill_snapshot>{})", "skills_load"),
     ]:
         assert old in sources[path], name
         changed = sources[path].replace(old, new, 1)
@@ -502,6 +604,8 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         ("multiclass_hp_ignores_secondary",
          "class_mod = MAX(class_mod, class_hitpoints[flag2idx(ch->player.secondary_class)]);", ";",
          "calculate_hitpoints2(&student) == warrior_hp"),
+        ("multiclass_room_unregistered", room_registrations[1], "", "room registration missing or different handler"),
+        ("multiclass_command_unregistered", multiclass_registration, "", "multiclass.command: command registration missing or different handler"),
     ]:
         assert combat_bodies.count(old) == 1, name
         variant = work / "mutations" / name
@@ -523,6 +627,9 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         ("debit_not_applied", "epic_transaction.c", "balance += delta;", ";", "student.player.spec == 0 && pc.epics == 2"),
         ("secondary_skill_delay_removed", "utility.c", "required_level = sec_rlevel + 5;", "required_level = sec_rlevel;",
          "SKILL_DATA_ALL(&student, SKILL_MEDITATE).rlevel[0] == 6"),
+        ("wallet_refund_credit_missing", "currency_transaction.c",
+         "GET_PLATINUM(character) = static_cast<int>(result.wallet.amount[3]);", ";",
+         "GET_PLATINUM(&student) == scenario.expected_platinum"),
     ]:
         variant = work / "mutations" / name
         variant.mkdir(parents=True, exist_ok=True)
@@ -534,4 +641,4 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         assert rejected.returncode != 0 and diagnostic in rejected.stderr, (name, rejected.stderr)
     print("specialization.mutations: PASS (removed registration and refresh call fail native assertions)")
     print("unspecialization.mutations: PASS (removed altar registration, purchase callback, debit and forgetting call fail native assertions)")
-    print("multiclass.mutations: PASS (removed reset/refund/clock retention, secondary skill delay and secondary HP contribution rejected)")
+    print("multiclass.mutations: PASS (removed reset/refund/wallet credit/clock retention, secondary skill delay and secondary HP contribution rejected)")

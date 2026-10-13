@@ -797,9 +797,12 @@ character_mechanics::specialization_transitions()
 		player_status_field::copper,	    player_status_field::silver,
 		player_status_field::gold,	    player_status_field::platinum
 	};
-	static constexpr MechanicId lifecycle[] = { MechanicId::specialization_refresh,
-						    MechanicId::specialization_capture,
-						    MechanicId::specialization_load };
+	static constexpr MechanicId lifecycle[] = {
+		MechanicId::status_capture,	    MechanicId::status_load,
+		MechanicId::skills_capture,	    MechanicId::skills_load,
+		MechanicId::specialization_refresh, MechanicId::specialization_capture,
+		MechanicId::specialization_load
+	};
 	static constexpr player_status_field reversal_retained[] = {
 		player_status_field::class_primary, player_status_field::class_secondary,
 		player_status_field::race,	    player_status_field::level,
@@ -807,7 +810,13 @@ character_mechanics::specialization_transitions()
 		player_status_field::silver,	    player_status_field::gold,
 		player_status_field::platinum
 	};
-	static constexpr MechanicId reversal_lifecycle[] = { MechanicId::unspecialization_refresh,
+	static constexpr MechanicId reversal_lifecycle[] = { MechanicId::status_capture,
+							     MechanicId::status_load,
+							     MechanicId::skills_capture,
+							     MechanicId::skills_load,
+							     MechanicId::affects_capture,
+							     MechanicId::affects_load,
+							     MechanicId::unspecialization_refresh,
 							     MechanicId::unspecialization_forget,
 							     MechanicId::specialization_capture,
 							     MechanicId::specialization_load,
@@ -816,10 +825,12 @@ character_mechanics::specialization_transitions()
 	static const TransitionConnection connections[] = {
 		{ MechanicId::specialization_select, selection_entries, TransitionKind::permanent,
 		  changed, retained, lifecycle,
-		  "Assign spec before refreshing learned/taught skills. No purchase/async commit or automatic reversal. Ordinary checkpoints save it; unspecialize is a separate route." },
+		  "Assign spec before refreshing learned/taught skills. No purchase/async commit or automatic reversal. Ordinary checkpoints save it; unspecialize is a separate route.",
+		  PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_SKILLS },
 		{ MechanicId::unspecialization_commit, reversal_entries, TransitionKind::permanent,
 		  reversal_changed, reversal_retained, reversal_lifecycle,
-		  "Debit 10 epics in memory, then clear spec, refresh skills and forget memorized/pending spells before ledger enqueue. Invalid state/funds/submit or refused completion preserve state; ledger rejection does not undo completion. Ordinary checkpoints persist it." }
+		  "Debit 10 epics in memory, then clear spec, refresh skills and forget memorized/pending spells before ledger enqueue. Invalid state/funds/submit or refused completion preserve state; ledger rejection does not undo completion. Ordinary checkpoints persist it.",
+		  PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_SKILLS | PLAYER_COMPONENT_AFFECTS }
 	};
 	return connections;
 }

@@ -2186,8 +2186,10 @@ void assign_rooms(void)
 	world[real_room0(1201)].funct = player_council_room;
 
 	// testing for multiclass
+	CHARACTER_MECHANIC_SITE(multiclass_room_test);
 	world[real_room0(17)].funct = multiclass_proc;
 	// world[real_room0(6801)].funct = multiclass_proc;
+	CHARACTER_MECHANIC_SITE(multiclass_room_temple);
 	world[real_room0(52904)].funct = multiclass_proc;
 
 	// Dwarf and duergar berserkers
@@ -2591,6 +2593,35 @@ character_mechanics::object_registration_connections()
 		  Access::conditional,
 		  Implementation::connected,
 		  "Blood-red altar prototype's actual special-procedure slot; world reset and object dispatch are required.",
+		  {} }
+	};
+	return connections;
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::room_registration_connections()
+{
+	static constexpr MechanicId dependencies[] = { MechanicId::multiclass_select };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::multiclass_room_test,
+		  Relation::entry,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND((RoomRegistration{ 17, &world, real_room })),
+		  dependencies,
+		  Access::unresolved,
+		  Implementation::connected,
+		  "Testing-room assignment; ordinary mortal access is unresolved.",
+		  {} },
+		{ MechanicId::multiclass_room_temple,
+		  Relation::entry,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND((RoomRegistration{ 52904, &world, real_room })),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Temple room assignment; travel, gate and encounter prerequisites are separate from the room command.",
 		  {} }
 	};
 	return connections;

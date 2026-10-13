@@ -4,6 +4,7 @@
 #include "core/defines.h"
 #include "player/player_snapshot.h"
 #include "world/epic_transaction.h"
+#include "economy/currency_transaction.h"
 
 #include <span>
 #include <source_location>
@@ -49,6 +50,36 @@ enum class MechanicId
 	epics_capture,
 	epics_load,
 	epics_transaction,
+	multiclass_command,
+	multiclass_list,
+	multiclass_room_test,
+	multiclass_room_temple,
+	multiclass_select,
+	multiclass_allowed,
+	multiclass_reset,
+	multiclass_newbie_skills,
+	multiclass_restore,
+	multiclass_forget,
+	multiclass_refund,
+	multiclass_refund_commit,
+	multiclass_wallet_refund,
+	multiclass_trophies,
+	multiclass_skill_data,
+	multiclass_primary_cap,
+	multiclass_secondary_cap,
+	multiclass_hitpoints,
+	class_hitpoint_factors,
+	racial_constitution,
+	multiclass_status_capture,
+	multiclass_status_load,
+	status_capture,
+	status_load,
+	skills_capture,
+	skills_load,
+	affects_capture,
+	affects_load,
+	trophies_capture,
+	trophies_load,
 	count
 };
 
@@ -96,9 +127,9 @@ struct Option
 	unsigned int secondary;
 };
 
-using InnatePredicate = bool (*)(char_data *, int);
+using CharacterIntPredicate = bool (*)(char_data *, int);
 using CharacterIntFunction = int (*)(char_data *, int);
-using EffectiveRace = int (*)(char_data *);
+using CharacterQuery = int (*)(char_data *);
 using MeleeDamage = int (*)(char_data *, char_data *, double, int, damage_messages *, int *);
 using CommandHandler = void (*)(char_data *, char *, int);
 using CommandSlot = CommandHandler const *;
@@ -106,7 +137,15 @@ using RaceSpecPredicate = bool (*)(int, unsigned int, int);
 using CharacterAction = void (*)(char_data *);
 using ObjectAction = void (*)(char_data *, obj_data *);
 using EpicSubmit = decltype(&epic_transaction_submit);
+using WalletSubmit = decltype(&currency_transaction_submit_wallet_value);
 using ObjectProcValue = int (*)(obj_proc_type);
+using RoomProcedure = decltype(room_data::funct);
+using CharacterReset = void (*)(char_data *, int);
+using SkillReset = void (*)(char_data *, bool);
+using SkillDataQuery = ClassSkillInfo (*)(char_data *, int);
+using ClassHitpointFactors = const float (*)[CLASS_COUNT + 1];
+using RacialStatFactors = const stat_data (*)[LAST_RACE + 1];
+using StatusFields = std::span<const player_status_field>;
 
 // Bind the vnum to the loaded native prototype table and its lookup. Missing
 // vnums are invalid registrations, even when the legacy real_object0 assignment
@@ -117,11 +156,20 @@ struct ObjectRegistration
 	index_data *const *index;
 	int (*lookup)(int);
 };
+struct RoomRegistration
+{
+	int vnum;
+	room_data *const *world;
+	int (*lookup)(int);
+};
 using MechanicBinding =
-	std::variant<const char *, const float *, InnatePredicate, CharacterIntFunction,
-		     EffectiveRace, MeleeDamage, CommandHandler, CommandSlot, RaceSpecPredicate,
+	std::variant<const char *, const float *, CharacterIntPredicate, CharacterIntFunction,
+		     CharacterQuery, MeleeDamage, CommandHandler, CommandSlot, RaceSpecPredicate,
 		     CharacterAction, player_status_field, const innate_data *, ObjectRegistration,
-		     obj_proc_type, ObjectAction, epic_completion_fn, EpicSubmit, ObjectProcValue>;
+		     obj_proc_type, ObjectAction, epic_completion_fn, EpicSubmit, ObjectProcValue,
+		     RoomRegistration, RoomProcedure, CharacterReset, SkillReset, SkillDataQuery,
+		     WalletSubmit, ClassHitpointFactors, RacialStatFactors, StatusFields,
+		     player_checkpoint_component>;
 
 struct MechanicConnection
 {
@@ -159,6 +207,7 @@ struct TransitionConnection
 	std::span<const player_status_field> retained_status;
 	std::span<const MechanicId> lifecycle;
 	std::string_view context;
+	player_component_mask_t changed_components = 0;
 };
 
 // Bindings retain native pointer types or existing status-field IDs. Their
@@ -182,8 +231,19 @@ std::span<const MechanicConnection> object_value_connections();
 std::span<const MechanicConnection> training_connections();
 std::span<const MechanicConnection> status_capture_connections();
 std::span<const MechanicConnection> status_load_connections();
+std::span<const MechanicConnection> room_registration_connections();
+std::span<const MechanicConnection> multiclass_command_connections();
+std::span<const MechanicConnection> multiclass_connections();
+std::span<const MechanicConnection> reset_connections();
+std::span<const MechanicConnection> skill_data_connections();
+std::span<const MechanicConnection> hitpoint_connections();
+std::span<const MechanicConnection> racial_stat_connections();
+std::span<const MechanicConnection> epic_refund_connections();
+std::span<const MechanicConnection> trophy_connections();
+std::span<const MechanicConnection> currency_connections();
+std::span<const TransitionConnection> multiclass_transitions();
 std::span<const TransitionConnection> specialization_transitions();
-std::span<const TransitionConnection> transition_connections();
+std::vector<TransitionConnection> transition_connections();
 std::vector<MechanicConnection> mechanic_connections();
 std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> connections);
 std::vector<std::string> validate_transitions(std::span<const TransitionConnection> transitions,

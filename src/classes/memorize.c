@@ -1929,6 +1929,16 @@ std::span<const character_mechanics::MechanicConnection>
 character_mechanics::memorization_connections()
 {
 	static const MechanicConnection connections[] = {
+		{ MechanicId::multiclass_forget,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(forget_spells),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Called with -1 after reset: discard pending/full memorization affects and stop memorizing; generic affect/event cleanup remains native.",
+		  {} },
 		{ MechanicId::unspecialization_forget,
 		  Relation::effect,
 		  { OptionKind::shared, 0, 0 },

@@ -92,7 +92,7 @@ def run(binary, build):
                 return json.loads(subprocess.check_output(
                     [str(inspector), env["FLATFILE_STATE_DIR"], "inspect", str(pid)], text=True))
 
-            def multiclass_case(player, staff, name, pid, race):
+            def multiclass_case(player, staff, name, pid, race, safe_room):
                 command(staff, "setbit char " + name + " level 50")
                 if race == 1:
                     command(staff, "goto 9724")
@@ -102,6 +102,10 @@ def run(binary, build):
                 outside = command(player, "multiclass cleric")
                 assert "not in the proper location" in outside, outside
                 command(staff, "goto 52904")
+                # The loaded guardian is an acquisition prerequisite. This
+                # fixture isolates command/persistence behavior from combat.
+                command(staff, "purge golem")
+                assert "ice golem" not in command(staff, "look").lower()
                 command(staff, "transfer " + name)
                 command(staff, "setbit char " + name + " level 49")
                 denied = command(player, "multiclass cleric")
@@ -151,6 +155,11 @@ def run(binary, build):
                 assert level_six["skills"]["1022"] == {"learned": 9, "taught": 95}  # Secondary meditate.
                 assert level_six["skills"]["1005"]["taught"] == 100  # Primary kick.
                 assert level_six["skills"]["1046"]["taught"] == 95  # Best primary/secondary bandage cap.
+                # World resets may reload the guardian at the next boot. Save
+                # at the character's original creation room for the relog proof.
+                command(staff, "goto " + str(safe_room))
+                command(staff, "transfer " + name)
+                save(player, name)
                 return level_six
 
             try:
@@ -279,7 +288,7 @@ def run(binary, build):
                 assert restarted["skills"][GUARD] == reverted_state["skills"][GUARD]
                 print("PASS specialization.reversal: loaded altar, insufficient funds, single 10-epic purchase, skill/passive refresh and restart", flush=True)
                 staff = login(STAFF, STAFF_ACCOUNT)
-                human_multi = multiclass_case(player, staff, PLAYER, 1, 1)
+                human_multi = multiclass_case(player, staff, PLAYER, 1, 1, initial["room"])
                 stop()
                 boot()
                 player = login(PLAYER, ACCOUNT)
@@ -295,10 +304,11 @@ def run(binary, build):
                 journey.create_character(orc, expected_room=None, account=ORC_ACCOUNT,
                                          character=ORC, email="mechorc@example.invalid", race_name="o")
                 save(orc, ORC)
-                assert snapshot(3)["race"] == 13 and snapshot(3)["class_primary"] == 1
+                orc_initial = snapshot(3)
+                assert orc_initial["race"] == 13 and orc_initial["class_primary"] == 1
                 command(orc, "toggle paging no")
                 staff = login(STAFF, STAFF_ACCOUNT)
-                orc_multi = multiclass_case(orc, staff, ORC, 3, 13)
+                orc_multi = multiclass_case(orc, staff, ORC, 3, 13, orc_initial["room"])
                 stop()
                 boot()
                 orc = login(ORC, ORC_ACCOUNT)
@@ -307,7 +317,7 @@ def run(binary, build):
                 assert orc_reloaded["class_secondary"] == 32 and orc_reloaded["epics"] == 17
                 assert orc_reloaded["skills"]["1022"] == orc_multi["skills"]["1022"]
                 print("PASS multiclass.entry/persistence: normal Human/Orc creation, room 52904, denials, level/XP reset, playtime retention, no threshold charge, secondary skill 5/6 boundary/caps and restart", flush=True)
-                print("Fixture: flatfile; normally created Human/Orc Warriors; staff levels 5/6/29/30/40/41/49/50, identity denial cases, epic balances -1/9/12/17, played=12 hours, prestige=9 and transfers; camp.timer=1; Arian 9432 in room 9725, altar 12016 in room 12116 and multiclass room 52904; acquisition travel and live caps unverified", flush=True)
+                print("Fixture: flatfile; normally created Human/Orc Warriors; staff levels 5/6/29/30/40/41/49/50, identity denial cases, epic balances -1/9/12/17, played=12 hours, prestige=9 and transfers; temple golem purged and restart saves returned to creation rooms; camp.timer=1; Arian 9432 in room 9725, altar 12016 in room 12116 and multiclass room 52904; acquisition travel/encounters and live caps unverified", flush=True)
                 print("Server SHA256:", hashlib.sha256(binary.read_bytes()).hexdigest(), flush=True)
             except BaseException:
                 for client in clients:

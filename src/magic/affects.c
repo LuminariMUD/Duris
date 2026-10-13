@@ -9,6 +9,7 @@
  */
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "core/profile.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -392,6 +393,7 @@ int calculate_hitpoints2(P_char ch)
 	class_mod = class_hitpoints[flag2idx(ch->player.m_class)];
 	if (IS_MULTICLASS_PC(ch))
 	{
+		CHARACTER_MECHANIC_SITE(multiclass_hitpoints);
 		class_mod = MAX(class_mod, class_hitpoints[flag2idx(ch->player.secondary_class)]);
 	}
 	old_bonus *= class_mod - 1.0;
@@ -3216,6 +3218,7 @@ void update_damage_data()
 		snprintf(buf, 128, "damage.pulse.class.%s", class_names_table[i].normal);
 		combat_by_class[i][0] = get_property(buf, 0.0);
 		snprintf(buf, 128, "hitpoints.class.%s", class_names_table[i].normal);
+		CHARACTER_MECHANIC_SITE(class_hitpoint_factors);
 		class_hitpoints[i] = get_property(buf, 1.0);
 	}
 
@@ -4064,4 +4067,33 @@ void strip_holy_sword(P_char ch)
 		send_to_char("&+wYour weapon abruptly ceases to &+Cglow&+w with holy power.\n&n",
 			     ch);
 	}
+}
+
+std::span<const character_mechanics::MechanicConnection> character_mechanics::hitpoint_connections()
+{
+	static constexpr MechanicId dependencies[] = { MechanicId::class_hitpoint_factors,
+						       MechanicId::racial_constitution };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::multiclass_hitpoints,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(calculate_hitpoints2),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "HP calculation uses the larger primary/secondary class multiplier for a multiclass PC; racial Con, equipment, toughness, newbie and Hardcore terms remain native.",
+		  {} },
+		{ MechanicId::class_hitpoint_factors,
+		  Relation::configuration,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(&class_hitpoints),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Actual class-indexed HP factors, populated by update_damage_data from hitpoints.class names and fallback 1.0.",
+		  {} }
+	};
+	return connections;
 }

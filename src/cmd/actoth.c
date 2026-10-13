@@ -10,6 +10,7 @@
  */
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "telemetry/telemetry_runtime.h"
 #include "item/device_actions.h"
 #include "player/output_message.h"
@@ -7703,4 +7704,23 @@ void do_old_descend(P_char ch, char *arg, int /*cmd*/)
 			GET_HOME(ch) = GET_BIRTHPLACE(ch) = GET_ORIG_BIRTHPLACE(ch) = 55126;
 		}
 	}
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::multiclass_command_connections()
+{
+	static constexpr MechanicId dependencies[] = { MechanicId::multiclass_allowed };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::multiclass_list,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(do_multiclass),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "List choices for eligible Human/Orc PCs; configured level floor, legacy fallback 41; no identity mutation.",
+		  {} }
+	};
+	return connections;
 }

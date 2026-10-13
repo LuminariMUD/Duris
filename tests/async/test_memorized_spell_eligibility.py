@@ -16,6 +16,7 @@ assert len(classes) == 6 and all(circle == "11" for _, circle in classes)
 
 prelude = r'''
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "core/utils.h"
 #include "magic/spells.h"
 #include <cassert>

@@ -196,6 +196,7 @@ void apply_integer(P_char ch, const player_snapshot_integer &entry, int *hit_dif
 		ch->player.m_class = loaded;
 		break;
 	case player_status_field::class_secondary:
+		CHARACTER_MECHANIC_SITE(multiclass_status_load);
 		ch->player.secondary_class = loaded;
 		break;
 	case player_status_field::specialization:
@@ -209,6 +210,7 @@ void apply_integer(P_char ch, const player_snapshot_integer &entry, int *hit_dif
 		GET_RACEWAR(ch) = loaded;
 		break;
 	case player_status_field::level:
+		CHARACTER_MECHANIC_SITE(multiclass_status_load);
 		ch->player.level = loaded;
 		break;
 	case player_status_field::sex:
@@ -272,24 +274,28 @@ void apply_integer(P_char ch, const player_snapshot_integer &entry, int *hit_dif
 		GET_MANA(ch) = loaded;
 		break;
 	case player_status_field::base_mana:
+		CHARACTER_MECHANIC_SITE(multiclass_status_load);
 		ch->points.base_mana = loaded;
 		break;
 	case player_status_field::hit_difference:
 		*hit_difference = loaded;
 		break;
 	case player_status_field::base_hit:
+		CHARACTER_MECHANIC_SITE(multiclass_status_load);
 		ch->points.base_hit = loaded;
 		break;
 	case player_status_field::vitality:
 		GET_VITALITY(ch) = loaded;
 		break;
 	case player_status_field::base_vitality:
+		CHARACTER_MECHANIC_SITE(multiclass_status_load);
 		ch->points.base_vitality = loaded;
 		break;
 	case player_status_field::extra_memorization:
 		ch->only.pc->spells_memmed[MAX_CIRCLE] = loaded;
 		break;
 	case player_status_field::experience:
+		CHARACTER_MECHANIC_SITE(multiclass_status_load);
 		GET_EXP(ch) = loaded;
 		break;
 	case player_status_field::epic_skill_points:
@@ -317,12 +323,14 @@ void apply_integer(P_char ch, const player_snapshot_integer &entry, int *hit_dif
 		ch->specials.alignment = loaded;
 		break;
 	case player_status_field::prestige:
+		CHARACTER_MECHANIC_SITE(multiclass_status_load);
 		ch->only.pc->prestige = loaded;
 		break;
 	case player_status_field::guild_id:
 		ch->specials.guild = loaded > 0 ? get_guild_from_id(loaded) : nullptr;
 		break;
 	case player_status_field::guild_status:
+		CHARACTER_MECHANIC_SITE(multiclass_status_load);
 		ch->specials.guild_status = loaded;
 		break;
 	case player_status_field::time_left_guild:
@@ -428,6 +436,7 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 	try
 	{
 		zone_trophies->reserve(result.snapshot.trophies.size());
+		CHARACTER_MECHANIC_SITE(trophies_load);
 		for (const player_trophy_snapshot &entry : result.snapshot.trophies)
 			zone_trophies->push_back({ entry.zone_number, entry.experience });
 	}
@@ -463,9 +472,11 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 	ch->only.pc->output_preferences =
 		decode_output_preferences(result.snapshot.output_preferences);
 	int hit_difference = 0;
+	CHARACTER_MECHANIC_SITE(status_load);
 	for (const player_snapshot_string &entry : result.snapshot.status_strings)
 		if (!apply_string(ch, entry))
 			return false;
+	CHARACTER_MECHANIC_SITE(status_load);
 	for (const player_snapshot_integer &entry : result.snapshot.status_integers)
 		apply_integer(ch, entry, &hit_difference);
 	ch->only.pc->pid = result.pid;
@@ -505,9 +516,13 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 			ch->specials.was_in_room = world[exit_room].number;
 		}
 	}
+	CHARACTER_MECHANIC_SITE(multiclass_status_load);
 	GET_COPPER(ch) = result.domains.wallet[0];
+	CHARACTER_MECHANIC_SITE(multiclass_status_load);
 	GET_SILVER(ch) = result.domains.wallet[1];
+	CHARACTER_MECHANIC_SITE(multiclass_status_load);
 	GET_GOLD(ch) = result.domains.wallet[2];
+	CHARACTER_MECHANIC_SITE(multiclass_status_load);
 	GET_PLATINUM(ch) = result.domains.wallet[3];
 	GET_BALANCE_COPPER(ch) = result.domains.bank[0];
 	GET_BALANCE_SILVER(ch) = result.domains.bank[1];
@@ -534,6 +549,7 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 		ch->base_stats.Kar = result.domains.base_stats[8];
 		ch->base_stats.Luk = result.domains.base_stats[9];
 	}
+	CHARACTER_MECHANIC_SITE(status_load);
 	for (size_t index = 0; index < result.snapshot.conditions.size(); ++index)
 		ch->specials.conditions[index] = result.snapshot.conditions[index];
 	int32_t *quest[] = {
@@ -545,6 +561,7 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 		&ch->only.pc->quest_kill_how_many, &ch->only.pc->quest_kill_original,
 		&ch->only.pc->quest_map_room,	   &ch->only.pc->quest_map_bought,
 	};
+	CHARACTER_MECHANIC_SITE(status_load);
 	for (size_t index = 0; index < result.snapshot.quest_values.size(); ++index)
 		*quest[index] = result.snapshot.quest_values[index];
 	for (const player_index_value_snapshot &entry : result.snapshot.languages)
@@ -570,11 +587,13 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 		for (size_t index = 0; index < result.snapshot.granted_commands.size(); ++index)
 			ch->only.pc->gcmd_arr[index] = result.snapshot.granted_commands[index];
 	}
+	CHARACTER_MECHANIC_SITE(skills_load);
 	for (const player_skill_snapshot &entry : result.snapshot.skills)
 	{
 		ch->only.pc->skills[entry.skill_id].learned = entry.learned;
 		ch->only.pc->skills[entry.skill_id].taught = entry.taught;
 	}
+	CHARACTER_MECHANIC_SITE(affects_load);
 	for (const player_affect_snapshot &entry : result.snapshot.affects)
 	{
 		affected_type affect = {};
@@ -735,7 +754,69 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 std::span<const character_mechanics::MechanicConnection>
 character_mechanics::status_load_connections()
 {
+	static constexpr player_status_field fields[] = { player_status_field::copper,
+							  player_status_field::silver,
+							  player_status_field::gold,
+							  player_status_field::platinum,
+							  player_status_field::class_secondary,
+							  player_status_field::level,
+							  player_status_field::base_mana,
+							  player_status_field::base_hit,
+							  player_status_field::base_vitality,
+							  player_status_field::experience,
+							  player_status_field::prestige,
+							  player_status_field::guild_status };
 	static const MechanicConnection connections[] = {
+		{ MechanicId::status_load,
+		  Relation::load,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(PLAYER_COMPONENT_STATUS),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native status block: integers, text (including title), conditions and quest values.",
+		  {} },
+		{ MechanicId::multiclass_status_load,
+		  Relation::load,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(StatusFields{ fields }),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native multiclass status fields: secondary class, level, XP, base resources, prestige, guild rank and conditional refund wallet credits.",
+		  {} },
+		{ MechanicId::skills_load,
+		  Relation::load,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(PLAYER_COMPONENT_SKILLS),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native skills snapshot load; existing limits, filters and cleanup rules apply.",
+		  {} },
+		{ MechanicId::affects_load,
+		  Relation::load,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(PLAYER_COMPONENT_AFFECTS),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native affects snapshot load; existing limits, filters and cleanup rules apply.",
+		  {} },
+		{ MechanicId::trophies_load,
+		  Relation::load,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(PLAYER_COMPONENT_TROPHIES),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native trophies snapshot load; existing limits, filters and cleanup rules apply.",
+		  {} },
 		{ MechanicId::specialization_load,
 		  Relation::load,
 		  { OptionKind::shared, 0, 0 },

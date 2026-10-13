@@ -11,6 +11,7 @@ HARNESS = r'''
 #include "core/files.h"
 #include "core/config.h"
 #include "cmd/interp.h"
+#include "player/character_mechanics.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_codec.h"
 #include <cassert>

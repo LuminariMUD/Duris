@@ -26,6 +26,17 @@ bool entry_registered(const MechanicConnection &entry,
 				if (*slot && **slot && handler && **slot == *handler)
 					return true;
 			}
+			if (const auto *room = std::get_if<RoomRegistration>(&entry.binding))
+			{
+				const auto *handler = std::get_if<RoomProcedure>(&target.binding);
+				if (!room->world || !*room->world || !room->lookup || !handler ||
+				    !*handler)
+					continue;
+				const int slot = room->lookup(room->vnum);
+				if (slot >= 0 && (*room->world)[slot].number == room->vnum &&
+				    (*room->world)[slot].funct == *handler)
+					return true;
+			}
 			if (const auto *object = std::get_if<ObjectRegistration>(&entry.binding))
 			{
 				const auto *handler = std::get_if<obj_proc_type>(&target.binding);
@@ -99,6 +110,66 @@ std::string_view mechanic_name(MechanicId id)
 		return "epics.load";
 	case MechanicId::epics_transaction:
 		return "epics.transaction";
+	case MechanicId::multiclass_command:
+		return "multiclass.command";
+	case MechanicId::multiclass_list:
+		return "multiclass.list";
+	case MechanicId::multiclass_room_test:
+		return "multiclass.room.test";
+	case MechanicId::multiclass_room_temple:
+		return "multiclass.room.temple";
+	case MechanicId::multiclass_select:
+		return "multiclass.select";
+	case MechanicId::multiclass_allowed:
+		return "multiclass.allowed";
+	case MechanicId::multiclass_reset:
+		return "multiclass.reset";
+	case MechanicId::multiclass_newbie_skills:
+		return "multiclass.newbie.skills";
+	case MechanicId::multiclass_restore:
+		return "multiclass.restore";
+	case MechanicId::multiclass_forget:
+		return "multiclass.forget";
+	case MechanicId::multiclass_refund:
+		return "multiclass.refund";
+	case MechanicId::multiclass_refund_commit:
+		return "multiclass.refund.commit";
+	case MechanicId::multiclass_wallet_refund:
+		return "multiclass.wallet.refund";
+	case MechanicId::multiclass_trophies:
+		return "multiclass.trophies";
+	case MechanicId::multiclass_skill_data:
+		return "multiclass.skill.data";
+	case MechanicId::multiclass_primary_cap:
+		return "multiclass.primary.cap";
+	case MechanicId::multiclass_secondary_cap:
+		return "multiclass.secondary.cap";
+	case MechanicId::multiclass_hitpoints:
+		return "multiclass.hitpoints";
+	case MechanicId::class_hitpoint_factors:
+		return "class.hitpoint.factors";
+	case MechanicId::racial_constitution:
+		return "racial.constitution";
+	case MechanicId::multiclass_status_capture:
+		return "multiclass.status.capture";
+	case MechanicId::multiclass_status_load:
+		return "multiclass.status.load";
+	case MechanicId::status_capture:
+		return "status.capture";
+	case MechanicId::status_load:
+		return "status.load";
+	case MechanicId::skills_capture:
+		return "skills.capture";
+	case MechanicId::skills_load:
+		return "skills.load";
+	case MechanicId::affects_capture:
+		return "affects.capture";
+	case MechanicId::affects_load:
+		return "affects.load";
+	case MechanicId::trophies_capture:
+		return "trophies.capture";
+	case MechanicId::trophies_load:
+		return "trophies.load";
 	case MechanicId::count:
 		break;
 	}
@@ -108,19 +179,39 @@ std::string_view mechanic_name(MechanicId id)
 std::vector<MechanicConnection> mechanic_connections()
 {
 	std::vector<MechanicConnection> result;
-	for (auto connections :
-	     { innate_connections(), melee_connections(), command_connections(),
-	       specialization_connections(), training_connections(), status_capture_connections(),
-	       status_load_connections(), unspecialization_connections(),
-	       object_registration_connections(), object_action_connections(),
-	       memorization_connections(), epic_connections(), object_value_connections() })
+	for (auto connections : { innate_connections(),
+				  melee_connections(),
+				  command_connections(),
+				  specialization_connections(),
+				  training_connections(),
+				  status_capture_connections(),
+				  status_load_connections(),
+				  unspecialization_connections(),
+				  object_registration_connections(),
+				  object_action_connections(),
+				  memorization_connections(),
+				  epic_connections(),
+				  object_value_connections(),
+				  room_registration_connections(),
+				  multiclass_command_connections(),
+				  multiclass_connections(),
+				  reset_connections(),
+				  skill_data_connections(),
+				  hitpoint_connections(),
+				  racial_stat_connections(),
+				  epic_refund_connections(),
+				  trophy_connections(),
+				  currency_connections() })
 		result.insert(result.end(), connections.begin(), connections.end());
 	return result;
 }
 
-std::span<const TransitionConnection> transition_connections()
+std::vector<TransitionConnection> transition_connections()
 {
-	return specialization_transitions();
+	std::vector<TransitionConnection> result;
+	for (auto connections : { specialization_transitions(), multiclass_transitions() })
+		result.insert(result.end(), connections.begin(), connections.end());
+	return result;
 }
 
 std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> connections)
@@ -148,8 +239,17 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 				[](auto binding)
 				{
 					if constexpr (std::is_same_v<decltype(binding),
-								     player_status_field>)
+								     player_status_field> ||
+						      std::is_same_v<decltype(binding),
+								     player_checkpoint_component>)
 						return true; // A typed field ID, not a nullable pointer.
+					else if constexpr (std::is_same_v<decltype(binding),
+									  StatusFields>)
+						return !binding.empty();
+					else if constexpr (std::is_same_v<decltype(binding),
+									  RoomRegistration>)
+						return binding.world && *binding.world &&
+						       binding.lookup;
 					else if constexpr (std::is_same_v<decltype(binding),
 									  ObjectRegistration>)
 						return binding.index && *binding.index &&
@@ -165,11 +265,11 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 		switch (connection.relation)
 		{
 		case Relation::identity:
-			compatible = std::holds_alternative<EffectiveRace>(connection.binding);
+			compatible = std::holds_alternative<CharacterQuery>(connection.binding);
 			break;
 		case Relation::eligibility:
 			compatible =
-				std::holds_alternative<InnatePredicate>(connection.binding) ||
+				std::holds_alternative<CharacterIntPredicate>(connection.binding) ||
 				std::holds_alternative<CharacterIntFunction>(connection.binding) ||
 				std::holds_alternative<RaceSpecPredicate>(connection.binding);
 			break;
@@ -187,8 +287,12 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 			}
 			break;
 		case Relation::configuration:
-			compatible = std::holds_alternative<const float *>(connection.binding) ||
-				     std::holds_alternative<ObjectProcValue>(connection.binding);
+			compatible =
+				std::holds_alternative<const float *>(connection.binding) ||
+				std::holds_alternative<ObjectProcValue>(connection.binding) ||
+				std::holds_alternative<SkillDataQuery>(connection.binding) ||
+				std::holds_alternative<ClassHitpointFactors>(connection.binding) ||
+				std::holds_alternative<RacialStatFactors>(connection.binding);
 			break;
 		case Relation::effect:
 			compatible =
@@ -198,23 +302,42 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 				std::holds_alternative<obj_proc_type>(connection.binding) ||
 				std::holds_alternative<ObjectAction>(connection.binding) ||
 				std::holds_alternative<CharacterIntFunction>(connection.binding) ||
-				std::holds_alternative<EpicSubmit>(connection.binding);
+				std::holds_alternative<EpicSubmit>(connection.binding) ||
+				std::holds_alternative<WalletSubmit>(connection.binding) ||
+				std::holds_alternative<CharacterReset>(connection.binding) ||
+				std::holds_alternative<SkillReset>(connection.binding) ||
+				std::holds_alternative<SkillDataQuery>(connection.binding) ||
+				std::holds_alternative<CharacterQuery>(connection.binding) ||
+				std::holds_alternative<epic_completion_fn>(connection.binding);
 			break;
 		case Relation::entry:
-			compatible = std::holds_alternative<CommandSlot>(connection.binding) ||
-				     std::holds_alternative<ObjectRegistration>(connection.binding);
+			compatible =
+				std::holds_alternative<CommandSlot>(connection.binding) ||
+				std::holds_alternative<ObjectRegistration>(connection.binding) ||
+				std::holds_alternative<RoomRegistration>(connection.binding);
 			break;
 		case Relation::mutation:
-			compatible = std::holds_alternative<CommandHandler>(connection.binding) ||
-				     std::holds_alternative<epic_completion_fn>(connection.binding);
+			compatible =
+				std::holds_alternative<CommandHandler>(connection.binding) ||
+				std::holds_alternative<epic_completion_fn>(connection.binding) ||
+				std::holds_alternative<RoomProcedure>(connection.binding);
 			break;
 		case Relation::capture:
 		case Relation::load:
 			compatible =
-				std::holds_alternative<player_status_field>(connection.binding);
+				std::holds_alternative<player_status_field>(connection.binding) ||
+				std::holds_alternative<StatusFields>(connection.binding) ||
+				std::holds_alternative<player_checkpoint_component>(
+					connection.binding);
 			break;
 		}
 		require(compatible, "relation/native binding disagree");
+		if (const auto *component =
+			    std::get_if<player_checkpoint_component>(&connection.binding))
+			require(std::has_single_bit(player_component_mask_t(*component)) &&
+					!(player_component_mask_t(*component) &
+					  ~PLAYER_CHECKPOINT_COMPONENT_ALL),
+				"invalid snapshot component");
 		require(connection.implementation == Implementation::connected ?
 				connection.gap.empty() :
 				!connection.gap.empty(),
@@ -252,6 +375,8 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 				"missing dependency");
 		if (connection.relation == Relation::entry)
 			require(entry_registered(connection, connections),
+				std::holds_alternative<RoomRegistration>(connection.binding) ?
+					"room registration missing or different handler" :
 				std::holds_alternative<ObjectRegistration>(connection.binding) ?
 					"object registration missing or different handler" :
 					"command registration missing or different handler");
@@ -320,6 +445,8 @@ std::vector<std::string> validate_transitions(std::span<const TransitionConnecti
 			if (!entry)
 				continue;
 			require(entry_registered(*entry, connections),
+				std::holds_alternative<RoomRegistration>(entry->binding) ?
+					"room registration missing or different handler" :
 				std::holds_alternative<ObjectRegistration>(entry->binding) ?
 					"object registration missing or different handler" :
 					"command registration missing or different handler");
@@ -339,12 +466,34 @@ std::vector<std::string> validate_transitions(std::span<const TransitionConnecti
 				for (auto id : transition.lifecycle)
 					if (const auto *part = find(id);
 					    part && part->relation == role)
+					{
 						if (const auto *bound =
 							    std::get_if<player_status_field>(
 								    &part->binding))
 							found |= *bound == field;
+						if (const auto *fields = std::get_if<StatusFields>(
+							    &part->binding))
+							found |= std::find(fields->begin(),
+									   fields->end(),
+									   field) != fields->end();
+					}
 				require(found, "changed field lacks capture/load connection");
 			}
+		}
+		require(!(transition.changed_components & ~PLAYER_CHECKPOINT_COMPONENT_ALL),
+			"invalid changed components");
+		for (auto role : { Relation::capture, Relation::load })
+		{
+			player_component_mask_t covered = 0;
+			for (auto id : transition.lifecycle)
+				if (const auto *part = find(id); part && part->relation == role)
+					if (const auto *component =
+						    std::get_if<player_checkpoint_component>(
+							    &part->binding))
+						covered |= *component;
+			require((covered & transition.changed_components) ==
+					transition.changed_components,
+				"changed component lacks capture/load connection");
 		}
 		for (auto id : transition.lifecycle)
 			require(find(id) != nullptr, "missing lifecycle connection");

@@ -9,6 +9,7 @@
  */
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "account/creation_availability_config.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -5773,6 +5774,7 @@ static void do_start_impl(P_char ch, int nomsg, bool grant_newbie_kit)
 			ch->player.spec = SPEC_CUTPURSE;
 	}
 
+	CHARACTER_MECHANIC_SITE(multiclass_newbie_skills);
 	NewbySkillSet(ch, (nomsg != CMD_MULTICLASS) ? TRUE : FALSE);
 
 	GET_EXP(ch) = 1;
@@ -14183,4 +14185,45 @@ void do_eqrate(P_char ch, char *argument, int /*cmd*/)
 
 	FREE(out_buf);
 	FREE(ratings);
+}
+
+std::span<const character_mechanics::MechanicConnection> character_mechanics::reset_connections()
+{
+	static constexpr MechanicId dependencies[] = { MechanicId::multiclass_newbie_skills,
+						       MechanicId::multiclass_trophies };
+	static constexpr MechanicId skill_dependencies[] = { MechanicId::multiclass_skill_data };
+	static constexpr MechanicId restore_dependencies[] = { MechanicId::multiclass_hitpoints };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::multiclass_reset,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(do_start),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native reset with CMD_MULTICLASS: level/XP/base resources, title, skills, prestige and guild rank; requests the existing newbie kit service.",
+		  {} },
+		{ MechanicId::multiclass_newbie_skills,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(NewbySkillSet),
+		  skill_dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Preserve epic/trade learned values for multiclass reset; reinitialize normal learned skills and eligible taught values from the current primary class.",
+		  {} },
+		{ MechanicId::multiclass_restore,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(do_restore),
+		  restore_dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Called after secondary assignment/spec clear; restore resources using the new identity.",
+		  {} }
+	};
+	return connections;
 }

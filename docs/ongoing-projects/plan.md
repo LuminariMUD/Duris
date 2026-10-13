@@ -491,8 +491,76 @@ Validation for this behavior slice:
 - Logs use `bin/tests/character-mechanics-multiclass-{native,journey,helper,inspector}.log`.
   These are focused results, not a new whole-suite/database gate.
 
-The room, reset, refund, skill/stat and persistence **connections** for this trace
-are next. Its behavior evidence does not replace the missing structural links.
+The behavior baseline is committed and pushed as `6f471558a`.
+
+### Multiclass connections in progress
+
+The compiled contract now connects the listing command, actual room assignments
+(17 and 52904), the native selection predicate and mutation, reset/skill setup,
+restore, forgetting, epic refund/completion, trophy clearing, skill lookup/cap
+properties, and HP/racial-Con inputs. Room 17 remains explicitly unresolved for
+ordinary mortal access. Existing handlers still execute the transition.
+
+The two record shapes remain. A room binding uses the live table, vnum and native
+lookup, as object bindings do. Related multiclass status fields use a read-only
+span of existing `player_status_field` IDs. Status, skills, affects and trophies
+use the native checkpoint-component enum; transition validation requires their
+capture and load links. The whole status component includes text (such as title),
+conditions and quest values alongside the explicitly named integer fields. The
+specialization transitions also name their changed status/skill/affect components.
+Exact markers bind every member of a grouped status link;
+removing one member cannot be hidden by the other markers. Collection markers
+name the actual capture statements and materialization loops, without swallowing
+new code inside those loops.
+
+The native fixture initializes both production room assignments with real lookup,
+checks removal of each registration, and executes the assigned function slots.
+It rejects missing status members and mismatched collection load links. Native
+output now reports whether a binding is callable or data, derived from its C++
+type; the source check no longer mistakes native component constants for function
+names. New source/compiled mutations cover room overwrite/caller/alias, command
+or room registration removal, status capture removal/wrong source field, and
+collection load removal. Existing reset/refund/clock/skill/HP mutations remain.
+
+Review corrected the transition's wallet description: a failed coin-pickup stage
+can use the existing direct-wallet fallback, so the carried denominations are
+conditionally changed, not unconditionally retained. They now have native
+capture/domain-materialization links. The fixture links the real currency
+transaction and codec, and tests staged pickup, successful direct credit, and
+credit refusal at the wallet limit. Refusal preserves the wallet while retaining
+the completed epic refund/skill reset and its existing staff-contact message.
+Account identity, bank/writer services and pickup storage remain fixture
+boundaries. A compiled missing-credit mutation must fail the wallet assertion.
+
+Ablation: extend the existing typed records and fixtures; reuse native field and
+component IDs instead of inventing persistence state or a transition runner.
+Files are the contract pair and existing command, room, reset, skill/stat, refund,
+trophy and capture/load owners, plus the existing tests. Proof is the native
+route/consumer/mutation suite, focused persistence tests, builds, and the existing
+isolated journey. The final focused native run, including all structural/reverse
+and executable mutations, passed with SHA256
+`b275c6003daaa286afd18164cf2548c53b5689f008baa0215e572b0890a9e95a`.
+Development/production/editor/pfile/migration-tool builds and focused playtime,
+snapshot capture/load and currency tests passed. The full `make test-all -j8
+TEST_JOBS=8` gate finished with **728 passed, 2 failed**, no timeouts or signal
+exits, in 740.38 seconds. The failures were fixture integration: the memorized
+spell test omitted the marker header from extracted `SKILL_DATA_ALL`, and the
+temple's loaded ice golem put the Orc into combat before selection. The spell
+fixture now includes the header and its focused run passes. The journey now
+purges only the temple guardian before transport and returns characters to their
+saved creation rooms before restart; its focused rerun passed all specialization,
+reversal and Human/Orc multiclass cases. This is
+explicit handler/persistence setup, not temple-acquisition or encounter proof.
+Evidence is under
+`bin/tests/character-mechanics-multiclass-connections-*.log` (native output uses
+`character-mechanics-multiclass-connections.log`). The exact failed spell fixture
+and revised journey were rerun successfully; the whole gate was not repeated
+after these test-only repairs. The final journey server SHA256 is
+`90526f6acb3e780937c873eb600092bbafb96ee9a98879d20c25cc615ab3e2f0`.
+The native mechanics test also passed within the full gate (86.54 seconds).
+No production changes followed that gate. Kit delivery, broader backend and
+cleanup dependencies, full acquisition and remaining option families still need
+their separate connections/proof; no complete-trace or whole-issue claim is made.
 
 Next: bind individual teacher/timer guards, creation and
 remaining persistence dependencies, then complete real HP damage and the other
@@ -500,6 +568,21 @@ two initial traces.
 The successful journey does not replace missing structural links. Ordinary
 travel, live progression caps and the broader acceptance matrix remain open.
 No completion or review-ready claim is made for the whole issue.
+
+Read-only leads for the next Revenant trace: object 22070 is defined in
+`areas/obj/cerebusp.obj`, and the selected world gives it to Haratius Drakenstone
+(mobile 142425, room 142446) in `areas/zon/Voluntown.zon`. The assigned
+`revenant_helm` runs on a worn item's periodic call, strips other equipment,
+adds `TAG_RACE_CHANGE` with the original race and `AFFTYPE_NOSAVE`, changes race
+and birth time, and schedules `event_revenant_crown`. The event retains the form
+while the crown is on the head; otherwise it restores race, resets birth time to
+the race's base age, removes the affect and strips equipment. Generic
+`affect_remove` also restores the saved race, and the fatal-damage path restores
+race before death handling. Capture currently saves `GET_RACE` while omitting
+NOSAVE affects; neither that fact nor the old code's comments proves a safe
+relog. Reproduce application, removal, death, save/relog/restart and conflicting
+forms before choosing any repair. These are source leads, not lifecycle proof or
+ordinary acquisition evidence.
 
 Continuation finding: `epic_transaction_submit_identified` currently changes
 the authoritative in-memory epic balance and calls its completion **before

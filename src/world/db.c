@@ -10,6 +10,7 @@
  */
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "world/world_singletons.h"
 #include "world/difficulty.h"
 #include "core/structs.h"
@@ -61,7 +62,7 @@ extern const char *equipment_types[];
 extern const char *town_name_list[];
 extern const int min_stats_for_class[][8];
 extern const struct race_names race_names_table[];
-extern struct stat_data stat_factor[];
+extern struct stat_data stat_factor[LAST_RACE + 1];
 extern int hometown[];
 extern int no_specials;
 extern int pulse;
@@ -794,6 +795,7 @@ void update_stat_data()
 		snprintf(buf, 128, "stats.agi.%s", race_names_table[i].no_spaces);
 		stat_factor[i].Agi = (sh_int)get_property(buf, 100.);
 		snprintf(buf, 128, "stats.con.%s", race_names_table[i].no_spaces);
+		CHARACTER_MECHANIC_SITE(racial_constitution);
 		stat_factor[i].Con = (sh_int)get_property(buf, 100.);
 		snprintf(buf, 128, "stats.pow.%s", race_names_table[i].no_spaces);
 		stat_factor[i].Pow = (sh_int)get_property(buf, 100.);
@@ -4940,3 +4942,21 @@ void save_obj_limits()
 }
 
 #endif
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::racial_stat_connections()
+{
+	static const MechanicConnection connections[] = {
+		{ MechanicId::racial_constitution,
+		  Relation::configuration,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(&stat_factor),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native racial stat table; Con populated from stats.con race properties and fallback 100. Other stat fields have separate consumers.",
+		  {} }
+	};
+	return connections;
+}

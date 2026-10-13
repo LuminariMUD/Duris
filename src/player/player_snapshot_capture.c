@@ -131,11 +131,13 @@ bool capture_status(P_char ch, player_snapshot &snapshot, capture_budget &budget
 		return false;
 
 	ADD_STATUS(class_primary, ch->player.m_class);
+	CHARACTER_MECHANIC_SITE(multiclass_status_capture);
 	ADD_STATUS(class_secondary, ch->player.secondary_class);
 	CHARACTER_MECHANIC_SITE(specialization_capture);
 	ADD_STATUS(specialization, ch->player.spec);
 	ADD_STATUS(race, GET_RACE(ch));
 	ADD_STATUS(racewar, GET_RACEWAR(ch));
+	CHARACTER_MECHANIC_SITE(multiclass_status_capture);
 	ADD_STATUS(level, GET_LEVEL(ch));
 	ADD_STATUS(sex, GET_SEX(ch));
 	ADD_STATUS(weight, ch->player.weight);
@@ -162,19 +164,27 @@ bool capture_status(P_char ch, player_snapshot &snapshot, capture_budget &budget
 	ADD_STATUS(base_karma, ch->base_stats.Kar);
 	ADD_STATUS(base_luck, ch->base_stats.Luk);
 	ADD_STATUS(mana, GET_MANA(ch));
+	CHARACTER_MECHANIC_SITE(multiclass_status_capture);
 	ADD_STATUS(base_mana, ch->points.base_mana);
 	const int hit_difference = save_intent == RENT_DEATH ?
 					   MAX(0, GET_MAX_HIT(ch) - 1) :
 					   MAX(0, GET_MAX_HIT(ch) - GET_HIT(ch));
 	ADD_STATUS(hit_difference, hit_difference);
+	CHARACTER_MECHANIC_SITE(multiclass_status_capture);
 	ADD_STATUS(base_hit, ch->points.base_hit);
 	ADD_STATUS(vitality, GET_VITALITY(ch));
+	CHARACTER_MECHANIC_SITE(multiclass_status_capture);
 	ADD_STATUS(base_vitality, ch->points.base_vitality);
 	ADD_STATUS(extra_memorization, ch->only.pc->spells_memmed[MAX_CIRCLE]);
+	CHARACTER_MECHANIC_SITE(multiclass_status_capture);
 	ADD_STATUS(copper, GET_COPPER(ch));
+	CHARACTER_MECHANIC_SITE(multiclass_status_capture);
 	ADD_STATUS(silver, GET_SILVER(ch));
+	CHARACTER_MECHANIC_SITE(multiclass_status_capture);
 	ADD_STATUS(gold, GET_GOLD(ch));
+	CHARACTER_MECHANIC_SITE(multiclass_status_capture);
 	ADD_STATUS(platinum, GET_PLATINUM(ch));
+	CHARACTER_MECHANIC_SITE(multiclass_status_capture);
 	ADD_STATUS(experience, GET_EXP(ch));
 	CHARACTER_MECHANIC_SITE(epics_capture);
 	ADD_STATUS(epics, ch->only.pc->epics);
@@ -186,8 +196,10 @@ bool capture_status(P_char ch, player_snapshot &snapshot, capture_budget &budget
 	ADD_STATUS(action_flags_3, ch->specials.act3);
 	ADD_STATUS(vote, ch->only.pc->vote);
 	ADD_STATUS(alignment, ch->specials.alignment);
+	CHARACTER_MECHANIC_SITE(multiclass_status_capture);
 	ADD_STATUS(prestige, ch->only.pc->prestige);
 	ADD_STATUS(guild_id, GET_ASSOC_ID(ch));
+	CHARACTER_MECHANIC_SITE(multiclass_status_capture);
 	ADD_STATUS(guild_status, ch->specials.guild_status);
 	ADD_STATUS(time_left_guild, ch->only.pc->time_left_guild);
 	ADD_STATUS(times_left_guild, ch->only.pc->nb_left_guild);
@@ -288,6 +300,7 @@ bool capture_skills(P_char ch, player_snapshot &snapshot, capture_budget &budget
 			continue;
 		if (!budget.add(sizeof(player_skill_snapshot), 1))
 			return false;
+		CHARACTER_MECHANIC_SITE(skills_capture);
 		snapshot.skills.push_back({ index, static_cast<uint8_t>(skill.learned),
 					    static_cast<uint8_t>(skill.taught) });
 	}
@@ -327,6 +340,7 @@ player_snapshot_capture_result capture_affects(P_char ch, player_snapshot &snaps
 					 row.wear_off_room, budget))
 				return player_snapshot_capture_result::limit_exceeded;
 		}
+		CHARACTER_MECHANIC_SITE(affects_capture);
 		snapshot.affects.push_back(std::move(row));
 	}
 	return player_snapshot_capture_result::ok;
@@ -630,6 +644,7 @@ player_snapshot_capture_result capture_shapes_and_trophies(P_char ch,
 		{
 			if (!budget.add(sizeof(player_trophy_snapshot), 1))
 				return player_snapshot_capture_result::limit_exceeded;
+			CHARACTER_MECHANIC_SITE(trophies_capture);
 			snapshot.trophies.push_back({ trophy.zone_number, trophy.exp });
 		}
 	return player_snapshot_capture_result::ok;
@@ -749,6 +764,7 @@ player_snapshot_capture_result player_snapshot_capture(P_char ch, player_revisio
 		snapshot.room_vnum = save_room_vnum(ch, room_vnum);
 		snapshot.recipes_are_external = true;
 		capture_budget budget;
+		CHARACTER_MECHANIC_SITE(status_capture);
 		if ((components & PLAYER_COMPONENT_STATUS) &&
 		    !capture_status(ch, snapshot, budget, save_intent))
 			return player_snapshot_capture_result::limit_exceeded;
@@ -801,7 +817,69 @@ player_snapshot_capture_result player_snapshot_capture(P_char ch, player_revisio
 std::span<const character_mechanics::MechanicConnection>
 character_mechanics::status_capture_connections()
 {
+	static constexpr player_status_field fields[] = { player_status_field::copper,
+							  player_status_field::silver,
+							  player_status_field::gold,
+							  player_status_field::platinum,
+							  player_status_field::class_secondary,
+							  player_status_field::level,
+							  player_status_field::base_mana,
+							  player_status_field::base_hit,
+							  player_status_field::base_vitality,
+							  player_status_field::experience,
+							  player_status_field::prestige,
+							  player_status_field::guild_status };
 	static const MechanicConnection connections[] = {
+		{ MechanicId::status_capture,
+		  Relation::capture,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(PLAYER_COMPONENT_STATUS),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native status block: integers, text (including title), conditions and quest values.",
+		  {} },
+		{ MechanicId::multiclass_status_capture,
+		  Relation::capture,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(StatusFields{ fields }),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native multiclass status fields: secondary class, level, XP, base resources, prestige, guild rank and conditional refund wallet credits.",
+		  {} },
+		{ MechanicId::skills_capture,
+		  Relation::capture,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(PLAYER_COMPONENT_SKILLS),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native skills snapshot capture; existing limits, filters and cleanup rules apply.",
+		  {} },
+		{ MechanicId::affects_capture,
+		  Relation::capture,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(PLAYER_COMPONENT_AFFECTS),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native affects snapshot capture; existing limits, filters and cleanup rules apply.",
+		  {} },
+		{ MechanicId::trophies_capture,
+		  Relation::capture,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(PLAYER_COMPONENT_TROPHIES),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native trophies snapshot capture; existing limits, filters and cleanup rules apply.",
+		  {} },
 		{ MechanicId::specialization_capture,
 		  Relation::capture,
 		  { OptionKind::shared, 0, 0 },

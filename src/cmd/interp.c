@@ -249,6 +249,7 @@ std::span<const character_mechanics::MechanicConnection> character_mechanics::co
 {
 	static constexpr MechanicId dependencies[] = { MechanicId::specialization_select };
 	static constexpr MechanicId innate_dependencies[] = { MechanicId::innate_dispatch };
+	static constexpr MechanicId multiclass_dependencies[] = { MechanicId::multiclass_list };
 	static const MechanicConnection connections[] = {
 		{ MechanicId::specialization_entry,
 		  Relation::entry,
@@ -259,6 +260,16 @@ std::span<const character_mechanics::MechanicConnection> character_mechanics::co
 		  Access::conditional,
 		  Implementation::connected,
 		  "Actual command slot populated by assign_command_pointers; interpreter position and command gates still apply.",
+		  {} },
+		{ MechanicId::multiclass_command,
+		  Relation::entry,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(&cmd_info[CMD_MULTICLASS].command_pointer),
+		  multiclass_dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Ordinary command lists choices; room procedure interception owns selection.",
 		  {} },
 		{ MechanicId::innate_entry,
 		  Relation::entry,
@@ -3294,6 +3305,7 @@ void assign_command_pointers(void)
 	CMD_N(CMD_SMELT, STAT_NORMAL + POS_STANDING, do_smelt, 0, TRUE);
 	CMD_N(CMD_TEST_DESC, STAT_NORMAL + POS_PRONE, do_testdesc, LESSER_G, FALSE);
 	CMD_N(CMD_TESTCOLOR, STAT_NORMAL + POS_PRONE, do_testcolor, 0, FALSE);
+	CHARACTER_MECHANIC_SITE(multiclass_command);
 	CMD_N(CMD_MULTICLASS, STAT_NORMAL + POS_PRONE, do_multiclass, 0, FALSE);
 	CMD_Y(CMD_TARGET, STAT_DEAD + POS_PRONE, do_target, 0, TRUE);
 	CMD_N(CMD_INTRODUCE, STAT_NORMAL + POS_PRONE, do_introduce, 0, TRUE);

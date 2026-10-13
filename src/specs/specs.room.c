@@ -8,6 +8,7 @@
  */
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -215,6 +216,7 @@ int multiclass_proc(int /*room*/, P_char ch, int cmd, char *arg)
 				time_t logon = ch->player.time.logon;
 				// These aren't needed anymore since do_start is now smarter and doesn't reset epic skills/tradeskills.
 				//          save_epic_skills(ch, skls);
+				CHARACTER_MECHANIC_SITE(multiclass_reset);
 				do_start(ch, cmd);
 				//          restore_epic_skills(ch, skls);
 				ch->player.time.played = played;
@@ -222,11 +224,16 @@ int multiclass_proc(int /*room*/, P_char ch, int cmd, char *arg)
 				send_to_char(
 					"&+WWith a suddenness that stops your breath, you feel oddly different..  less powerful, and yet with the potential to be something much greater than you ever were before.\r\n",
 					ch);
+				CHARACTER_MECHANIC_SITE(multiclass_select);
 				ch->player.secondary_class = 1 << (i - 1);
 				ch->player.spec = 0;
+				CHARACTER_MECHANIC_SITE(multiclass_restore);
 				do_restore(ch, GET_NAME(ch), 0);
+				CHARACTER_MECHANIC_SITE(multiclass_forget);
 				forget_spells(ch, -1);
+				CHARACTER_MECHANIC_SITE(multiclass_refund);
 				refund_epic_skills(ch);
+				CHARACTER_MECHANIC_SITE(multiclass_trophies);
 				clear_zone_trophy(ch);
 			}
 			else
@@ -1678,4 +1685,103 @@ int avernus_overland(int /*room*/, P_char /*ch*/, int cmd, char * /*argument*/)
 	}
 
 	return FALSE;
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::multiclass_connections()
+{
+	static constexpr MechanicId dependencies[] = { MechanicId::multiclass_allowed,
+						       MechanicId::multiclass_reset,
+						       MechanicId::multiclass_restore,
+						       MechanicId::multiclass_forget,
+						       MechanicId::multiclass_refund,
+						       MechanicId::multiclass_trophies,
+						       MechanicId::multiclass_skill_data,
+						       MechanicId::multiclass_hitpoints,
+						       MechanicId::multiclass_status_capture,
+						       MechanicId::multiclass_status_load,
+						       MechanicId::specialization_capture,
+						       MechanicId::specialization_load,
+						       MechanicId::epics_capture,
+						       MechanicId::epics_load,
+						       MechanicId::skills_capture,
+						       MechanicId::skills_load,
+						       MechanicId::affects_capture,
+						       MechanicId::affects_load,
+						       MechanicId::trophies_capture,
+						       MechanicId::trophies_load };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::multiclass_select,
+		  Relation::mutation,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(multiclass_proc),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Require Human/Orc PC, no existing secondary/morph, level and epic thresholds, and an allowed ordered pair. Reset before assigning secondary and clearing spec; preserve both playtime fields.",
+		  {} }
+	};
+	return connections;
+}
+
+std::span<const character_mechanics::TransitionConnection>
+character_mechanics::multiclass_transitions()
+{
+	static constexpr MechanicId entries[] = { MechanicId::multiclass_room_test,
+						  MechanicId::multiclass_room_temple };
+	static constexpr player_status_field changed[] = { player_status_field::copper,
+							   player_status_field::silver,
+							   player_status_field::gold,
+							   player_status_field::platinum,
+							   player_status_field::class_secondary,
+							   player_status_field::specialization,
+							   player_status_field::level,
+							   player_status_field::experience,
+							   player_status_field::base_hit,
+							   player_status_field::base_mana,
+							   player_status_field::base_vitality,
+							   player_status_field::prestige,
+							   player_status_field::guild_status,
+							   player_status_field::epics };
+	static constexpr player_status_field retained[] = { player_status_field::class_primary,
+							    player_status_field::race,
+							    player_status_field::racewar,
+							    player_status_field::alignment,
+							    player_status_field::hometown,
+							    player_status_field::birthplace,
+							    player_status_field::original_birthplace,
+							    player_status_field::birth_time,
+							    player_status_field::played_time,
+							    player_status_field::guild_id };
+	static constexpr MechanicId lifecycle[] = { MechanicId::status_capture,
+						    MechanicId::status_load,
+						    MechanicId::multiclass_reset,
+						    MechanicId::multiclass_restore,
+						    MechanicId::multiclass_forget,
+						    MechanicId::multiclass_refund,
+						    MechanicId::multiclass_refund_commit,
+						    MechanicId::multiclass_trophies,
+						    MechanicId::multiclass_skill_data,
+						    MechanicId::multiclass_hitpoints,
+						    MechanicId::multiclass_status_capture,
+						    MechanicId::multiclass_status_load,
+						    MechanicId::specialization_capture,
+						    MechanicId::specialization_load,
+						    MechanicId::epics_capture,
+						    MechanicId::epics_load,
+						    MechanicId::skills_capture,
+						    MechanicId::skills_load,
+						    MechanicId::affects_capture,
+						    MechanicId::affects_load,
+						    MechanicId::trophies_capture,
+						    MechanicId::trophies_load };
+	static const TransitionConnection connections[] = {
+		{ MechanicId::multiclass_select, entries, TransitionKind::permanent, changed,
+		  retained, lifecycle,
+		  "Reset at the old primary class, preserve baseline/logon, then assign secondary and clear spec. Restore, forget, refund eligible epic skills, and clear trophies. The epic requirement is a threshold; a separate refund may add epics/stage coins or credit the wallet if staging fails. Title clears; guild rank becomes parole. Newbie-kit delivery is a separate service. No automatic reversal.",
+		  PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_SKILLS | PLAYER_COMPONENT_AFFECTS |
+			  PLAYER_COMPONENT_TROPHIES }
+	};
+	return connections;
 }

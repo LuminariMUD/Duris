@@ -22,6 +22,7 @@
 using namespace std;
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "world/difficulty.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -298,6 +299,7 @@ void epic_skill_refund_committed(P_char ch, bool committed, const epic_command_r
 		logit(LOG_WIZ,
 		      "epic_skill_refund_committed: failed to stage coin refund for pid %d",
 		      GET_PID(ch));
+		CHARACTER_MECHANIC_SITE(multiclass_wallet_refund);
 		if (!currency_transaction_submit_wallet_value(
 			    ch, context.coins, currency_reason_type::refund, context.points,
 			    critical_source_site::recovery, critical_deadline_class::recovery,
@@ -2391,9 +2393,44 @@ void refund_epic_skills(P_char ch)
 	if (!point_refund)
 		return;
 	const epic_skill_refund_context context = { point_refund, coins_refund };
+	CHARACTER_MECHANIC_SITE(multiclass_refund_commit);
 	if (!epic_transaction_submit(ch, point_refund, epic_reason_type::epic_skill_refund, 0, 0,
 				     critical_source_site::command,
 				     critical_deadline_class::interactive,
 				     epic_skill_refund_committed, &context, sizeof(context)))
 		send_to_char("The epic transaction service is busy. Please try again.\n", ch);
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::epic_refund_connections()
+{
+	static constexpr MechanicId dependencies[] = { MechanicId::epics_transaction,
+						       MechanicId::multiclass_refund_commit };
+	static constexpr MechanicId commit_dependencies[] = {
+		MechanicId::multiclass_wallet_refund, MechanicId::skills_capture,
+		MechanicId::skills_load, MechanicId::epics_capture, MechanicId::epics_load
+	};
+	static const MechanicConnection connections[] = {
+		{ MechanicId::multiclass_refund,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(refund_epic_skills),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Compute refunds from actual epic rewards and learned levels, excluding forge/mine/craft; submit only a nonzero refund.",
+		  {} },
+		{ MechanicId::multiclass_refund_commit,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(epic_skill_refund_committed),
+		  commit_dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "On accepted refund, clear non-trade epic skills, stage coin pickup (wallet fallback on failure), then request save.",
+		  {} }
+	};
+	return connections;
 }

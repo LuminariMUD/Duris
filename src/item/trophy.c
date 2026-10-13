@@ -1,5 +1,6 @@
 /* Experience trophy observation: game-thread state, checkpoint persistence. */
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "core/structs.h"
 #include "core/utility.h"
 #include "core/utils.h"
@@ -148,4 +149,23 @@ void do_trophy(P_char ch, char *arg, int /*cmd*/)
 				 entry.zone_number, entry.exp);
 		send_to_char(line, ch);
 	}
+}
+
+std::span<const character_mechanics::MechanicConnection> character_mechanics::trophy_connections()
+{
+	static constexpr MechanicId dependencies[] = { MechanicId::trophies_capture,
+						       MechanicId::trophies_load };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::multiclass_trophies,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(clear_zone_trophy),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Clear the actual zone-trophy collection and mark status/trophies dirty so an empty checkpoint removes saved rows.",
+		  {} }
+	};
+	return connections;
 }

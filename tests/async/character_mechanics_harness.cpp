@@ -10,9 +10,11 @@
 #include "item/trophy.h"
 
 #include <cassert>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <type_traits>
 
 using namespace character_mechanics;
 
@@ -27,9 +29,11 @@ extern P_room world;
 extern std::string mechanic_output;
 void initialize_mechanic_commands();
 void initialize_mechanic_objects();
+void initialize_mechanic_rooms();
 extern P_index obj_index;
 extern int mechanic_removed_affects, mechanic_stop_memorizing, mechanic_ledger_calls;
 extern int mechanic_kit_requests, mechanic_restores, mechanic_coin_refund, mechanic_saves;
+extern bool mechanic_stage_coin_refund;
 void update_stat_data();
 void update_damage_data();
 int calculate_hitpoints2(P_char);
@@ -79,6 +83,27 @@ static void multiclass_denials()
 
 static void multiclass_reset_and_consumers()
 {
+	const auto mechanics = mechanic_connections();
+	const auto transitions = transition_connections();
+	for (int vnum : { 17, 52904 })
+	{
+		const int room = real_room(vnum);
+		assert(room > 0);
+		const auto handler = world[room].funct;
+		world[room].funct = nullptr;
+		assert(!validate_transitions(transitions, mechanics).empty());
+		world[room].funct = handler;
+	}
+	auto missing_fields = mechanics;
+	for (auto &connection : missing_fields)
+		if (connection.id == MechanicId::multiclass_status_capture)
+			connection.binding = std::get<StatusFields>(connection.binding).subspan(1);
+	assert(!validate_transitions(transitions, missing_fields).empty());
+	auto missing_skills = mechanics;
+	for (auto &connection : missing_skills)
+		if (connection.id == MechanicId::skills_load)
+			connection.binding = PLAYER_COMPONENT_AFFECTS;
+	assert(!validate_transitions(transitions, missing_skills).empty());
 	load_character_properties();
 	update_stat_data();
 	update_damage_data();
@@ -101,8 +126,19 @@ static void multiclass_reset_and_consumers()
 	skills[SKILL_EPIC_STRENGTH].targets = TAR_MENTAL | TAR_EPIC;
 	skills[SKILL_FORGE].name = "forge";
 	skills[SKILL_FORGE].targets = TAR_MENTAL | TAR_EPIC;
-	for (int race : { RACE_HUMAN, RACE_ORC })
+	struct RefundCase
 	{
+		int race;
+		bool staged;
+		int platinum;
+		int expected_platinum;
+		int revision;
+	};
+	for (const auto scenario :
+	     { RefundCase{ RACE_HUMAN, true, 3, 3, 0 }, RefundCase{ RACE_ORC, false, 3, 2003, 1 },
+	       RefundCase{ RACE_ORC, false, INT_MAX, INT_MAX, 0 } })
+	{
+		const int race = scenario.race;
 		char_data student{};
 		pc_only_data pc{};
 		Guild guild;
@@ -111,6 +147,7 @@ static void multiclass_reset_and_consumers()
 		student.player.name = const_cast<char *>("Multifixture");
 		student.player.title = strdup("old title");
 		student.player.race = race;
+		student.player.racewar = race == RACE_HUMAN ? RACEWAR_GOOD : RACEWAR_EVIL;
 		student.player.m_class = CLASS_WARRIOR;
 		student.player.spec = SPEC_GUARDIAN;
 		student.player.level = 50;
@@ -123,7 +160,7 @@ static void multiclass_reset_and_consumers()
 		student.specials.act = PLR_ECHO | PLR_VICIOUS;
 		SET_POS(&student, STAT_NORMAL + POS_STANDING);
 		GET_EXP(&student) = 999999;
-		GET_PLATINUM(&student) = 3;
+		GET_PLATINUM(&student) = scenario.platinum;
 		student.points.max_mana = 200;
 		student.points.base_vitality = 80;
 		pc.pid = 42;
@@ -143,8 +180,11 @@ static void multiclass_reset_and_consumers()
 		mechanic_kit_requests = mechanic_restores = mechanic_coin_refund = mechanic_saves =
 			0;
 		mechanic_removed_affects = mechanic_stop_memorizing = mechanic_ledger_calls = 0;
+		mechanic_stage_coin_refund = scenario.staged;
+		mechanic_output.clear();
 		char choice[] = "cleric";
-		assert(multiclass_proc(0, &student, CMD_MULTICLASS, choice));
+		const int room = real_room(race == RACE_HUMAN ? 52904 : 17);
+		assert(world[room].funct(room, &student, CMD_MULTICLASS, choice));
 		assert(student.player.m_class == CLASS_WARRIOR &&
 		       student.player.secondary_class == CLASS_CLERIC);
 		assert(student.player.race == race && student.player.spec == 0);
@@ -156,8 +196,12 @@ static void multiclass_reset_and_consumers()
 		assert(student.specials.guild == &guild &&
 		       IS_MEMBER(student.specials.guild_status) &&
 		       IS_PAROLE(student.specials.guild_status));
-		assert(student.specials.act == (PLR_ECHO | PLR_VICIOUS) &&
-		       GET_PLATINUM(&student) == 3);
+		assert(student.specials.act == (PLR_ECHO | PLR_VICIOUS));
+		assert(GET_PLATINUM(&student) == scenario.expected_platinum);
+		assert(pc.wallet_revision == unsigned(scenario.revision));
+		if (!scenario.staged && scenario.revision == 0)
+			assert(mechanic_output.find("Your coin refund could not be credited") !=
+			       std::string::npos);
 		assert(mechanic_kit_requests == 1 && mechanic_restores == 1);
 		assert(pc.skills[SKILL_KICK].learned == 20 && pc.skills[SKILL_KICK].taught == 90);
 		assert(pc.skills[SKILL_GUARD].learned == 0 && pc.skills[SKILL_GUARD].taught == 100);
@@ -213,13 +257,14 @@ static void specialization_transition()
 {
 	initialize_mechanic_commands();
 	initialize_mechanic_objects();
+	initialize_mechanic_rooms();
 	const auto mechanics = mechanic_connections();
 	const auto transitions = transition_connections();
 	const auto errors = validate_transitions(transitions, mechanics);
 	for (const auto &error : errors)
 		std::fprintf(stderr, "%s\n", error.c_str());
 	assert(errors.empty());
-	assert(transitions.size() == 2);
+	assert(transitions.size() == 3);
 	assert(transitions.front().kind == TransitionKind::permanent);
 
 	const auto handler = cmd_info[CMD_SPECIALIZE].command_pointer;
@@ -257,6 +302,7 @@ static void specialization_transition()
 	teacher.specials.act = ACT_ISNPC | ACT_SPEC_TEACHER;
 	teacher.player.m_class = CLASS_WARRIOR;
 	room.people = &teacher;
+	P_room saved_world = world;
 	world = &room;
 	auto &grant = skills[SKILL_GUARD].m_class[flag2idx(CLASS_WARRIOR) - 1];
 	grant.rlevel[SPEC_GUARDIAN] = 30;
@@ -274,7 +320,7 @@ static void specialization_transition()
 	assert(GET_EXP(&student) == 12345 && pc.epics == 17);
 	assert(GET_COPPER(&student) == 2 && GET_SILVER(&student) == 3 && GET_GOLD(&student) == 4 &&
 	       GET_PLATINUM(&student) == 5);
-	world = nullptr;
+	world = saved_world;
 	std::puts(
 		"specialization.transition: PASS (native command registration, timer denial, assignment and skill refresh; missing registration/load/transition rejected)");
 }
@@ -416,9 +462,17 @@ static void guardian_bulwark()
 	for (const auto &connection : mechanics)
 	{
 		const auto name = mechanic_name(connection.id);
-		std::printf("CONNECTION\t%.*s\t%.*s\t%s\t%u\n", int(name.size()), name.data(),
+		const bool callable = std::visit(
+			[](auto binding)
+			{
+				return std::is_pointer_v<decltype(binding)> &&
+				       std::is_function_v<std::remove_pointer_t<decltype(binding)>>;
+			},
+			connection.binding);
+		std::printf("CONNECTION\t%.*s\t%.*s\t%s\t%s\t%u\n", int(name.size()), name.data(),
 			    int(connection.symbol.size()), connection.symbol.data(),
-			    connection.declared_at.file_name(), connection.declared_at.line());
+			    callable ? "callable" : "value", connection.declared_at.file_name(),
+			    connection.declared_at.line());
 		for (auto dependency : connection.dependencies)
 		{
 			const auto target = mechanic_name(dependency);

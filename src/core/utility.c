@@ -4963,7 +4963,9 @@ ClassSkillInfo SKILL_DATA_ALL(P_char ch, int skill)
 	int required_level, new_cap;
 	int pri_class, sec_class;
 	int pri_rlevel, sec_rlevel, pri_cap, sec_cap;
+	CHARACTER_MECHANIC_SITE(multiclass_primary_cap);
 	float pri_mod = get_property("skill.cap.multi.mod.primarySkill", 100.0);
+	CHARACTER_MECHANIC_SITE(multiclass_secondary_cap);
 	float sec_mod = get_property("skill.cap.multi.mod.secondarySkill", 95.0);
 
 	pri_class = flag2idx(ch->player.m_class) - 1;
@@ -4978,6 +4980,7 @@ ClassSkillInfo SKILL_DATA_ALL(P_char ch, int skill)
 	}
 
 	// Note: Class 0 is warrior per above.
+	CHARACTER_MECHANIC_SITE(multiclass_skill_data);
 	if (IS_PC(ch) && (sec_class >= 0))
 	{
 		// Note: Currently you should not be spec'd and multi'd so ch->player.spec should be 0.
@@ -7120,4 +7123,54 @@ unsigned int popcnt(unsigned long long x)
 	}
 	return res;
 #endif
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::skill_data_connections()
+{
+	static constexpr MechanicId dependencies[] = { MechanicId::multiclass_primary_cap,
+						       MechanicId::multiclass_secondary_cap };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::multiclass_allowed,
+		  Relation::eligibility,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(can_char_multi_to_class),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Ordered primary/secondary table and the current race/class cell; argument is a class-table index, not a bit mask.",
+		  {} },
+		{ MechanicId::multiclass_skill_data,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(SKILL_DATA_ALL),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Primary/secondary-only/shared skill lookup: secondary-only requirement +5, configured caps, highest allowed cap and lowest eligible requirement; NPC masks have separate semantics.",
+		  {} },
+		{ MechanicId::multiclass_primary_cap,
+		  Relation::configuration,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(SKILL_DATA_ALL),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native primary-skill cap property lookup; shipped/default 100 percent.",
+		  {} },
+		{ MechanicId::multiclass_secondary_cap,
+		  Relation::configuration,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(SKILL_DATA_ALL),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Native secondary-skill cap property lookup; shipped/default 95 percent.",
+		  {} }
+	};
+	return connections;
 }

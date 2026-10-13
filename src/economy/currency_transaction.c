@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "economy/currency_transaction.h"
+#include "player/character_mechanics.h"
 
 #include "core/files.h"
 #include "flatfile/flatfile_player_repository.h"
@@ -382,4 +383,23 @@ currency_transaction_health currency_transaction_health_copy(void)
 void currency_transaction_reset_for_tests(void)
 {
 	health = {};
+}
+
+std::span<const character_mechanics::MechanicConnection> character_mechanics::currency_connections()
+{
+	static constexpr MechanicId dependencies[] = { MechanicId::multiclass_status_capture,
+						       MechanicId::multiclass_status_load };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::multiclass_wallet_refund,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(currency_transaction_submit_wallet_value),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "If coin-pickup staging fails, the native currency service attempts direct wallet credit and reports acceptance/refusal through its completion.",
+		  {} }
+	};
+	return connections;
 }
