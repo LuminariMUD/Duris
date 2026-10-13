@@ -25,7 +25,7 @@ import time
 
 import test_flatfile_combat_journey as journey
 from test_race_rebalance import STATS
-from test_racial_pulse import CAST
+from test_racial_pulse import CAST, MELEE
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -293,6 +293,10 @@ def main() -> None:
                 for race, value in CAST.items():
                     require(row(listing, display_names.get(race, race))[2] == float(value),
                             f"{race}: expected cast pulse {value}")
+                for race, value in MELEE.items():
+                    require(row(listing, display_names.get(race, race))[:2] ==
+                            (float(value), float(value) + 2),
+                            f"{race}: expected melee pulse {value} plus the class adjustment")
                 check_rebalance(client, plain_port)
                 require("Racial pulse" in listing, listing)
                 require(row(listing, "Gnome") == (11.5, 13.5, 0.700), f"gnome row: {row(listing, 'Gnome')}")
@@ -338,9 +342,28 @@ def main() -> None:
                 client = None
                 process.send_signal(signal.SIGTERM)
                 process.wait(timeout=30)
+                # A fresh process must read the saved rates, retaining all other races.
+                process = start()
+                wait_for_boot(3)
+                client = journey.reconnect_character(plain_port, expected_room=None,
+                                                     account=ACCOUNT, character=CHARACTER)
+                client.expect_any(PROMPTS, timeout=30)
+                listing = command(client, "pulse", "pulse save")
+                for race, value in MELEE.items():
+                    expected = 16.5 if race == "Ogre" else float(value)
+                    require(row(listing, display_names.get(race, race))[0] == expected,
+                            f"{race}: melee pulse changed across restart")
+                for race, value in CAST.items():
+                    expected = .9 if race == "Gnome" else float(value)
+                    require(row(listing, display_names.get(race, race))[2] == expected,
+                            f"{race}: cast pulse changed across restart")
+                client.close()
+                client = None
+                process.send_signal(signal.SIGTERM)
+                process.wait(timeout=30)
                 log = output_path.read_text(errors="replace")
                 require("FATAL:" not in log and "assert:" not in log, "server logged a fatal or assertion")
-                print("[PASS] racial pulse journey: list, refusals, adjust cast and melee, properties, save", flush=True)
+                print("[PASS] racial pulse journey: all 21 races, refusals, adjust cast and melee, properties, save/restart", flush=True)
             except Exception as error:
                 raise AssertionError(f"{error}\n--- server output ---\n"
                                      + output_path.read_text(errors="replace")[-10000:]) from error
