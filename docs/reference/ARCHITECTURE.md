@@ -258,6 +258,14 @@ dead-letter, restart, and operator reconciliation. Auctions, the collector, item
 repairs and destruction, boons, artifacts, combat outcomes and zone touches use typed
 repositories; wallets, banks, epic points and frags change in memory and are saved.
 
+The #58 branch applies epic-derived artifact feeds and guild rewards
+in memory too. Ordered entity snapshots persist current state; type-9 commands
+record captured history and never apply rewards on completion. Per-entity dirty
+metadata and commit receipts distinguish unsaved state from committed history.
+Full producer/restart qualification is pending in the
+[qualification handoff](../ongoing-projects/plan-estale.md#pause-handoff); the detailed
+contract is in [CRITICAL_COMMAND_PIPELINE.md](../persistence/CRITICAL_COMMAND_PIPELINE.md#artifact-and-guild-rewards-live-in-memory).
+
 Recurring database work uses `src/persistence/maintenance_scheduler.c`. Stable per-instance offsets
 replace aligned modulus spikes; every job has row and time budgets, continuation state,
 bounded retry, and game-thread completion. The lifecycle archive slot remains disabled

@@ -20,126 +20,95 @@
 #include "economy/nexus_stones.h"
 #include "core/prototypes.h"
 #include "world/difficulty.h"
-#include "sql/sql.h"
+#include "persistence/persistence_mode.h"
 #include "magic/spells.h"
 #include "core/utils.h"
 
 #include <algorithm>
 #include <cerrno>
 #include <ctime>
-#include <mysql.h>
-#include <unordered_map>
+#include <cmath>
+#include <climits>
 
 namespace
 {
-std::unordered_map<uint32_t, uint64_t> guild_revisions;
-bool hydrated = false;
-
-#ifndef __NO_MYSQL__
-bool parse_u64(const char *text, uint64_t *value)
+bool checked_seconds(double value, int *seconds)
 {
-	if (!text || !value)
+	if (!std::isfinite(value) || value < INT_MIN || value > INT_MAX)
 		return false;
-	char *end = nullptr;
-	errno = 0;
-	const unsigned long long parsed = strtoull(text, &end, 10);
-	if (errno || !end || *end)
-		return false;
-	*value = parsed;
+	*seconds = static_cast<int>(value);
 	return true;
 }
-#endif
 
-int artifact_feed_seconds(P_char character, int epics, int epic_type)
+bool artifact_feed_seconds(P_char character, int epics, int epic_type, int *output)
 {
-	int seconds = epics * get_property("artifact.feeding.epic.point.seconds", 3600);
+	int seconds = 0;
+	if (!checked_seconds(static_cast<double>(epics) *
+				     get_property("artifact.feeding.epic.point.seconds", 3600),
+			     &seconds))
+		return false;
+	double modifier = 1.0;
 	switch (epic_type)
 	{
 	case EPIC_ZONE:
-		seconds = static_cast<int>(seconds *
-					   get_property("artifact.feeding.epic.typeMod.zone", 1.0));
+		modifier = get_property("artifact.feeding.epic.typeMod.zone", 1.0);
 		break;
 	case EPIC_PVP:
-		seconds = static_cast<int>(seconds *
-					   get_property("artifact.feeding.epic.typeMod.pvp", 2.0));
+		modifier = get_property("artifact.feeding.epic.typeMod.pvp", 2.0);
 		break;
 	case EPIC_SHIP_PVP:
-		seconds = static_cast<int>(
-			seconds * get_property("artifact.feeding.epic.typeMod.pvpShip", 2.0));
+		modifier = get_property("artifact.feeding.epic.typeMod.pvpShip", 2.0);
 		break;
 	case EPIC_ELITE_MOB:
-		seconds = static_cast<int>(
-			seconds * get_property("artifact.feeding.epic.typeMod.eliteMob", 1.0));
+		modifier = get_property("artifact.feeding.epic.typeMod.eliteMob", 1.0);
 		break;
 	case EPIC_QUEST:
-		seconds = static_cast<int>(
-			seconds * get_property("artifact.feeding.epic.typeMod.quest", 1.0));
+		modifier = get_property("artifact.feeding.epic.typeMod.quest", 1.0);
 		break;
 	case EPIC_RANDOM_ZONE:
-		seconds = static_cast<int>(
-			seconds * get_property("artifact.feeding.epic.typeMod.randomZone", 1.0));
+		modifier = get_property("artifact.feeding.epic.typeMod.randomZone", 1.0);
 		break;
 	case EPIC_NEXUS_STONE:
-		seconds = static_cast<int>(
-			seconds * get_property("artifact.feeding.epic.typeMod.nexusStone", 1.0));
+		modifier = get_property("artifact.feeding.epic.typeMod.nexusStone", 1.0);
 		break;
 	case EPIC_BOON:
-		seconds = static_cast<int>(
-			seconds * get_property("artifact.feeding.epic.typeMod.boon", 0.25));
+		modifier = get_property("artifact.feeding.epic.typeMod.boon", 0.25);
 		break;
 	case EPIC_STRAHDME:
 	case EPIC_RANDOMMOB:
 		break;
 	default:
-		seconds = 0;
+		modifier = 0;
 		break;
 	}
+	if (!checked_seconds(seconds * modifier, &seconds))
+		return false;
 	seconds = difficulty_scale_int(seconds, difficulty_multiplier(DIFFICULTY_ARTIFACT_FEEDING));
 	if (affected_by_spell(character, TAG_PLR_RECENT_FRAG))
-		seconds = (seconds * 3) / 2;
-	return seconds;
+	{
+		const int64_t boosted = static_cast<int64_t>(seconds) * 3 / 2;
+		if (boosted < INT_MIN || boosted > INT_MAX)
+			return false;
+		seconds = static_cast<int>(boosted);
+	}
+	*output = seconds;
+	return true;
 }
 } // namespace
-
-bool artifact_guild_state_hydrate(void)
-{
-#ifdef __NO_MYSQL__
-	return false;
-#else
-	std::unordered_map<uint32_t, uint64_t> next_guilds;
-	if (!qry("SELECT id,outcome_revision FROM guilds ORDER BY id"))
-		return false;
-	MYSQL_RES *rows = mysql_store_result(DB);
-	if (!rows)
-		return false;
-	MYSQL_ROW row = nullptr;
-	while ((row = mysql_fetch_row(rows)))
-	{
-		uint64_t guild_id = 0, revision = 0;
-		if (!parse_u64(row[0], &guild_id) || !parse_u64(row[1], &revision) || !guild_id ||
-		    guild_id > UINT32_MAX)
-		{
-			mysql_free_result(rows);
-			return false;
-		}
-		next_guilds.emplace(static_cast<uint32_t>(guild_id), revision);
-	}
-	mysql_free_result(rows);
-	guild_revisions.swap(next_guilds);
-	hydrated = true;
-	return true;
-#endif
-}
 
 artifact_guild_capture_status
 artifact_guild_state_capture(P_char character, int epics, int epic_type,
 			     const critical_operation_id &parent_operation_id,
 			     artifact_guild_payload *payload)
 {
-	if (!character || IS_NPC(character) || !payload || epics <= 0 || !hydrated ||
+	if (!character || IS_NPC(character) || !payload || epics <= 0 ||
+	    !persistence_mode_requires_mysql() ||
 	    critical_operation_id_is_zero(parent_operation_id))
 		return artifact_guild_capture_status::unavailable;
 	*payload = {};
+	const int64_t now = time(nullptr);
+	if (now < 0 || now > INT64_MAX - ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY)
+		return artifact_guild_capture_status::invalid;
 	payload->parent_operation_id = parent_operation_id;
 	payload->actor_pid = static_cast<uint32_t>(GET_PID(character));
 
@@ -156,9 +125,6 @@ artifact_guild_state_capture(P_char character, int epics, int epic_type,
 		    static_cast<int>(get_property("prestige.guildedInGroupMinimum", 3.0)))
 		{
 			const uint32_t guild_id = guild->get_id();
-			auto revision = guild_revisions.find(guild_id);
-			if (revision == guild_revisions.end())
-				return artifact_guild_capture_status::unavailable;
 			int prestige =
 				(epic_type == EPIC_PVP || epic_type == EPIC_SHIP_PVP) ?
 					static_cast<int>(get_property("prestige.gain.pvp", 20)) :
@@ -168,19 +134,28 @@ artifact_guild_state_capture(P_char character, int epics, int epic_type,
 			const uint64_t notch = static_cast<uint64_t>(std::max(
 				1, get_property("prestige.constructionPoints.notch", 100)));
 			payload->guild_id = guild_id;
-			payload->expected_guild_revision = revision->second;
 			payload->prestige_delta = prestige;
-			payload->construction_delta =
-				static_cast<int64_t>((guild->get_prestige() + prestige) / notch -
-						     guild->get_prestige() / notch);
+			payload->prestige_before = guild->get_prestige();
+			payload->construction_before = guild->get_construction();
+			if (static_cast<uint64_t>(prestige) > UINT64_MAX - payload->prestige_before)
+				return artifact_guild_capture_status::invalid;
+			payload->prestige_after = payload->prestige_before + prestige;
+			payload->construction_delta = static_cast<int64_t>(
+				payload->prestige_after / notch - payload->prestige_before / notch);
+			if (static_cast<uint64_t>(payload->construction_delta) >
+			    UINT64_MAX - payload->construction_before)
+				return artifact_guild_capture_status::invalid;
+			payload->construction_after =
+				payload->construction_before + payload->construction_delta;
 		}
 	}
 
 	if (!IS_TRUSTED(character))
 	{
-		const int feed_seconds = artifact_feed_seconds(character, epics, epic_type);
-		const int64_t maximum = static_cast<int64_t>(time(nullptr)) +
-					ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY;
+		int feed_seconds = 0;
+		if (!artifact_feed_seconds(character, epics, epic_type, &feed_seconds))
+			return artifact_guild_capture_status::invalid;
+		const int64_t maximum = now + ARTIFACT_BLOOD_DAYS * SECS_PER_REAL_DAY;
 		for (int slot = 0; slot < MAX_WEAR && feed_seconds &&
 				   payload->artifact_count < payload->artifacts.size();
 		     ++slot)
@@ -188,13 +163,20 @@ artifact_guild_state_capture(P_char character, int epics, int epic_type,
 			P_obj object = character->equipment[slot];
 			if (!object || !IS_ARTIFACT(object))
 				continue;
-			// The timer and soul the game holds; the transaction checks them against
-			// the tables, which every change queued before it has reached.
+			// Current game-thread state, including every preceding award.
 			const int32_t vnum = OBJ_VNUM(object);
 			int64_t timer = 0, bind_timer = 0;
 			int32_t bind_owner_pid = 0;
 			if (!artifact_feed_state(vnum, &timer, &bind_owner_pid, &bind_timer))
+			{
+				logit(LOG_FILE,
+				      "artifact_guild: stage=capture reason=missing_state entity=artifact vnum=%d",
+				      vnum);
 				continue;
+			}
+			if (timer < 0 || bind_timer < 0 ||
+			    (feed_seconds > 0 && timer > INT64_MAX - feed_seconds))
+				return artifact_guild_capture_status::invalid;
 			const bool soul_check = epic_type == EPIC_PVP || epic_type == EPIC_SHIP_PVP;
 			if (soul_check && bind_owner_pid != -1 &&
 			    bind_owner_pid != GET_PID(character))
@@ -207,47 +189,32 @@ artifact_guild_state_capture(P_char character, int epics, int epic_type,
 			payload->artifacts[payload->artifact_count++] = {
 				.vnum = vnum,
 				.flags = ARTIFACT_DELTA_FEED,
-				.expected_revision = 0,
-				.expected_timer = timer,
+				.timer_before = timer,
 				.timer = target,
-				.expected_bind_owner_pid = bind_owner_pid,
+				.bind_owner_before = bind_owner_pid,
 				.bind_owner_pid = bind_owner_pid,
-				.expected_bind_timer = bind_timer,
+				.bind_timer_before = bind_timer,
 				.bind_timer = bind_timer,
 			};
 		}
 	}
 	if (!payload->guild_id && !payload->artifact_count)
 		return artifact_guild_capture_status::no_effect;
-	return artifact_guild_capture_status::ready;
+	return artifact_guild_payload_valid(*payload) ? artifact_guild_capture_status::ready :
+							artifact_guild_capture_status::invalid;
 }
 
-void artifact_guild_state_publish(const artifact_guild_result &result,
-				  [[maybe_unused]] const artifact_guild_payload &payload)
+// Called only for a new source award, immediately after capture on the game thread.
+// History delivery, retry and replay never enter this path.
+void artifact_guild_state_apply(P_char character, const artifact_guild_payload &payload)
 {
-#ifndef __NO_MYSQL__
-	// The transaction fed the timers the payload captured.
-	for (size_t index = 0; index < result.artifact_count; ++index)
-		artifact_feed_published(result.artifacts[index].vnum,
-					payload.artifacts[index].expected_timer,
-					result.artifacts[index].timer);
-#endif
-	if (result.guild_id)
+	for (size_t index = 0; index < payload.artifact_count; ++index)
+		artifact_feed_set_timer(payload.artifacts[index].vnum,
+					payload.artifacts[index].timer);
+	if (payload.guild_id)
 	{
-		guild_revisions[result.guild_id] = result.guild_revision;
-		Guild *guild = get_guild_from_id(static_cast<int>(result.guild_id));
-		if (guild)
-			guild->publish_outcome_totals(result.prestige, result.construction);
+		Guild *guild = GET_ASSOC(character);
+		guild->publish_outcome_totals(payload.prestige_after, payload.construction_after);
+		guild->save();
 	}
-}
-
-bool artifact_guild_state_ready(void)
-{
-	return hydrated;
-}
-
-void artifact_guild_state_reset_for_tests(void)
-{
-	guild_revisions.clear();
-	hydrated = false;
 }

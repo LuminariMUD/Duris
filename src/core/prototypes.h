@@ -718,7 +718,9 @@ void setupMortArtiList_sql(void);
 void arti_cache_init(void);
 bool artifacts_load(void);
 void artifacts_forget_deleted_account_character(int pid);
-void artifact_feed_published(int vnum, time_t captured_timer, time_t timer);
+void artifact_feed_set_timer(int vnum, time_t timer);
+size_t artifact_save_pulse(bool retry);
+void artifact_report_unsaved(void);
 // An artifact's timer and soul, as the game holds them; false for an unknown artifact.
 bool artifact_feed_state(int vnum, int64_t *timer, int32_t *bind_owner_pid, int64_t *bind_timer);
 

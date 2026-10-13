@@ -11,6 +11,7 @@
 #include "world/db.h"
 #include "core/utils.h"
 #include "persistence/copyover.h"
+#include "guild/artifact_guild_transaction.h"
 #include "combat/training_dummy.h"
 #include "world/generated_npc_state.h"
 #include "item/item_movement_transaction.h"
@@ -810,6 +811,12 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 			"\r\n*** Copyover cancelled: a pending locker save failed. ***\r\n");
 		return false;
 	}
+	if (!artifact_guild_transaction_drain(3000))
+	{
+		logit(LOG_STATUS, "copyover: artifact/guild drain failed, aborting copyover");
+		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
+		return false;
+	}
 	copyover_worker_resume_guard resume_workers;
 	maintenance_scheduler_quiesce();
 	critical_command_coordinator_quiesce();
@@ -903,6 +910,14 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	{
 		critical_command_coordinator_resume();
 		logit(LOG_STATUS, "copyover: world recovery drain failed, aborting copyover");
+		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
+		return false;
+	}
+
+	// Terminal player/shop/locker callbacks can have produced newer snapshots.
+	if (!artifact_guild_transaction_drain(3000))
+	{
+		logit(LOG_STATUS, "copyover: final artifact/guild drain failed; aborting copyover");
 		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
 		return false;
 	}

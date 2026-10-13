@@ -20,7 +20,7 @@
 #include <array>
 #include <cstdint>
 
-constexpr uint16_t ARTIFACT_GUILD_PAYLOAD_VERSION = 1;
+constexpr uint16_t ARTIFACT_GUILD_PAYLOAD_VERSION = 2;
 constexpr size_t ARTIFACT_GUILD_MAX_ARTIFACTS = 15;
 constexpr size_t ARTIFACT_GUILD_RESULT_BYTES = 576;
 constexpr uint8_t ARTIFACT_DELTA_FEED = 1 << 0;
@@ -30,12 +30,11 @@ struct artifact_guild_delta
 {
 	int32_t vnum;
 	uint8_t flags;
-	uint64_t expected_revision;
-	int64_t expected_timer;
+	int64_t timer_before;
 	int64_t timer;
-	int32_t expected_bind_owner_pid;
+	int32_t bind_owner_before;
 	int32_t bind_owner_pid;
-	int64_t expected_bind_timer;
+	int64_t bind_timer_before;
 	int64_t bind_timer;
 };
 
@@ -44,7 +43,10 @@ struct artifact_guild_payload
 	critical_operation_id parent_operation_id;
 	uint32_t actor_pid;
 	uint32_t guild_id;
-	uint64_t expected_guild_revision;
+	uint64_t prestige_before;
+	uint64_t prestige_after;
+	uint64_t construction_before;
+	uint64_t construction_after;
 	int64_t prestige_delta;
 	int64_t construction_delta;
 	uint16_t artifact_count;
@@ -70,6 +72,8 @@ struct artifact_guild_result
 	std::array<artifact_guild_result_entry, ARTIFACT_GUILD_MAX_ARTIFACTS> artifacts;
 };
 
+// Current payloads describe completed live rewards; before-values are history, not SQL fences.
+bool artifact_guild_payload_valid(const artifact_guild_payload &payload);
 bool artifact_guild_command_encode_payload(const artifact_guild_payload &payload,
 					   std::vector<uint8_t> *encoded);
 bool artifact_guild_command_decode_payload(const critical_command &command,

@@ -82,14 +82,59 @@ bool apply_at_boot(struct persistence_query_site site, const sql_work &work)
 	return false;
 }
 
-bool queue(struct persistence_query_site site, size_t bytes, sql_work work)
+void finish_write(const std::shared_ptr<sql_write_receipt> &receipt,
+		  const player_save_apply_result &result)
+{
+	if (!receipt || result.outcome == player_save_apply_outcome::retryable_failure ||
+	    result.outcome == player_save_apply_outcome::ambiguous_commit)
+		return;
+	receipt->ok = result.outcome == player_save_apply_outcome::applied ||
+		      result.outcome == player_save_apply_outcome::already_applied;
+	receipt->error_code = result.error_code;
+	receipt->finished.store(true, std::memory_order_release);
+}
+
+bool queue(struct persistence_query_site site, size_t bytes, sql_work work,
+	   std::shared_ptr<sql_write_receipt> receipt = {})
 {
 	if (!DB)
+	{
+		errno = ENOTCONN;
 		return false;
+	}
 	if (booting)
-		return apply_at_boot(site, work);
-	return submit(site, bytes, [work = std::move(work)]()
-		      { return sql_work_repository_apply_from_pool(work); });
+	{
+		if (!receipt)
+			return apply_at_boot(site, work);
+		const auto result = sql_work_repository_apply(DB, work);
+		finish_write(receipt, result);
+		if (result.outcome != player_save_apply_outcome::applied)
+		{
+			errno = result.error_code;
+			return false;
+		}
+		return true;
+	}
+	return submit(
+		site, bytes,
+		[work = std::move(work), receipt = std::move(receipt)]()
+		{
+			player_save_apply_result result = {};
+			try
+			{
+				result = sql_work_repository_apply_from_pool(work);
+			}
+			catch (const std::bad_alloc &)
+			{
+				result = { player_save_apply_outcome::terminal_failure, 0, ENOMEM };
+			}
+			catch (...)
+			{
+				result = { player_save_apply_outcome::terminal_failure, 0, EFAULT };
+			}
+			finish_write(receipt, result);
+			return result;
+		});
 }
 
 P_char live_character(P_char expected, uint64_t runtime_id)
@@ -126,20 +171,29 @@ bool sql_queue_at(struct persistence_query_site site, const char *format, ...)
 bool sql_queue_statements_at(struct persistence_query_site site,
 			     std::vector<std::string> statements)
 {
+	return sql_queue_statements_at(site, std::move(statements), {});
+}
+
+bool sql_queue_statements_at(struct persistence_query_site site,
+			     std::vector<std::string> statements,
+			     std::shared_ptr<sql_write_receipt> receipt)
+{
 	if (statements.empty())
 		return false;
 	size_t bytes = sizeof(statements);
 	for (const std::string &statement : statements)
 		bytes += statement.size();
-	return queue(site, bytes,
-		     [statements = std::move(statements)](MYSQL *connection) -> unsigned int
-		     {
-			     for (const std::string &statement : statements)
-				     if (const unsigned int error_code =
-						 sql_execute(connection, statement))
-					     return error_code;
-			     return 0;
-		     });
+	return queue(
+		site, bytes,
+		[statements = std::move(statements)](MYSQL *connection) -> unsigned int
+		{
+			for (const std::string &statement : statements)
+				if (const unsigned int error_code =
+					    sql_execute(connection, statement))
+					return error_code;
+			return 0;
+		},
+		std::move(receipt));
 }
 
 bool sql_queue_work_at(struct persistence_query_site site, sql_work work)

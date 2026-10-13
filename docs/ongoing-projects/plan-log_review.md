@@ -2,45 +2,52 @@
 
 Tracking issue: [#56 — Production follow-ups from the 2026-10-13 log review](https://github.com/LuminariMUD/Duris/issues/56).
 
-Status: LR-01 source repair and historical assessment are complete in
-[PR #66](https://github.com/LuminariMUD/Duris/pull/66). The remaining work continues
-separately on `fix/58-56-estale-log-review`. Unchecked items remain open until
-their required evidence is recorded; a source merge does not establish rollout.
+Status: resumed at the owner's request on 2026-10-13 from `c8655bfbd`, on
+`fix/58-56-estale-log-review` (started from `7a2a63447`). #58 qualification continues
+from the saved checkpoint below before the remaining LR work.
+The unchecked items below remain open until their required evidence is recorded.
+Production operations are not part of this local-worktree execution.
 
-Current work: LR-01 is implemented and locally qualified: 727 regression checks,
-75 disposable database checks, and 15 site tests pass; the historical recovery
-proposal is prepared and unapplied. Other LR items remain open;
-`skeer` is explicitly skipped by owner decision under LR-08. ES-01 baseline
-reproduction and partial artifact/guild implementation are recorded in the
-[work branch's plan-estale.md](https://github.com/LuminariMUD/Duris/blob/fix/58-56-estale-log-review/docs/ongoing-projects/plan-estale.md).
-That work is not qualified or included in PR #66.
+LR-01 is implemented and locally qualified: 727 regression checks, 75 disposable
+database checks, and 15 site tests passed on its source; the historical recovery
+proposal is prepared and unapplied. [PR #66](https://github.com/LuminariMUD/Duris/pull/66)
+was last verified open, ready for review, and unmerged on `fix/56-statistics-restart`
+at `66dbfc016`. Other LR items remain open. `skeer` is explicitly skipped by owner
+decision under LR-08.
 
-## Integration handoff — 2026-10-13
+Current continuation: #58 now has a passing full-server Summon Ghasts burst,
+blocked-writer/copyover cancellation, writer recovery, successful copyover and
+clean restart journey. Shared allocation-admission fixes `dfecafbda` and
+`532fe0653` are committed/pushed and each has a passing before/after regression.
+The three crash boundaries, blocked shutdown and real coordinator-cache eviction
+now pass too. Remaining #58 cases and the source-audit findings are in
+[the current qualification update](plan-estale.md#qualification-update-2026-10-14).
+These advances do not close another LR item or make #58 review-ready yet.
 
-PR #66 uses a squash merge to satisfy `master`'s linear-history rule. Its tested
-code tip is `66dbfc016e2ac9f59101a75e0b32ac9d7a7542a0`; subsequent handoff edits
-change documentation only. The merge-session evidence is recorded on the PR.
+## Pause handoff
 
-The follow-on worktree `/home/aiwithapex/projects/duris-estale-log-review` contains
-committed descendants of that tip and uncommitted #58 implementation/tests. It
-was intentionally left intact. Before integrating that branch, preserve its
-current changes and recheck its live state. Once it is safely checkpointed and
-clean, rebase only the descendants after `66dbfc016` onto the freshly fetched
-`origin/master`; do not replay the four squashed PR #66 commits. Resolve plan
-collisions by retaining the newer #58 evidence and this integration record.
-Any rewritten published branch needs an exact remote-head lease.
+This records the earlier checkpoint; work is active again as described above.
 
-The next implementation step is to finish the existing #58 qualification from
-its worktree's `plan-estale.md`, then submit that work for separate review.
-Continue LR-02–LR-20 afterward; LR-03 already has the level-30 policy from #55
-and still needs teacher-command verification. #56 and #58 remain open.
-The character-mechanics project in [plan.md](plan.md), tracked by #52, is
-independent and was not advanced by this merge session.
-
-Preserve the private LR-01 validation and recovery inputs under the existing
-worktree's ignored `bin/analysis/` directories. Historical replacement and
-production rollout remain separate, specifically authorized operations.
-This session starts no follow-on implementation, deployment, or recovery.
+- The work branch has uncommitted artifact/guild implementation and tests above
+  `0ccec836e`. [plan-estale.md](plan-estale.md#pause-handoff) records the current
+  code, passing focused checks, known gaps, temporary evidence, and exact next
+  actions. The v2 history/memory/snapshot changes exist but are not fully qualified;
+  no #58 acceptance item is complete. Keep this work off PR #66's review branch.
+- After resumption, finish the #58 matrix and separate review, then continue
+  LR-02–LR-20. LR-03's level-30 rule was selected in merged PR #55; its remaining
+  work is teacher-command verification. The prior issue #56 update records LR-01,
+  PR #66, and the `skeer` disposition; no additional LR completion is claimed.
+- LR-01 validation and failure-before evidence remain under ignored
+  `bin/analysis/lr01-validation/`; private recovery inputs and the unapplied
+  proposal are in `bin/analysis/lr01-recovery/`. Preserve them before any cleanup
+  of `bin/`. The LR-01 section below records commands, counts, commits,
+  limitations, and recovery preconditions.
+- No task test/build/disposable-database process is pending. The shared local/dev
+  game and database remain running and may be used by another worktree. Use
+  isolated tests and recheck runtime ownership before operational actions.
+  No production repair, rollout, restore, backup change, or alert test occurred.
+  Host-owner work remains open with its specific access/authorization requirements;
+  the statistics assessment used read-only production access.
 
 Prepared on 2026-10-13 against `master` at
 `690ff313f3e3f115ef14b58612b0e302de2ce28d`, the current issue body and its scope-transfer
@@ -79,9 +86,10 @@ Scope relationships:
 
 Follow [ADR 0002](../adr/0002-persistence-reset-memory-is-the-authority.md): live
 character state is authoritative, saves follow capture order on the existing
-writer, and the game loop does not wait for SQL. The ADR explicitly retains some
-durable economy commands, including boons and artifacts; their existence does
-not authorize adding database approval to ordinary character changes.
+writer, and the game loop does not wait for SQL. The ADR retains some durable
+economy commands, including boons; the #58 branch narrows the artifact/guild
+exception for epic-derived rewards. None of these commands authorizes adding
+database approval to ordinary character changes.
 
 The relevant failures have different causes:
 
@@ -107,7 +115,7 @@ values alone do not prove these outcomes.
 | Order | Work | Responsible role and dependencies |
 | --- | --- | --- |
 | 1 | LR-01 statistics | Server maintainer; isolate the failure before any historical recovery. |
-| 2 | LR-02–LR-08 gameplay/help | Server/content maintainer; LR-03 needs a game-owner policy decision, LR-05 and LR-07 need reproduction. Other items can proceed independently. |
+| 2 | LR-02–LR-08 gameplay/help | Server/content maintainer; LR-03's level-30 policy needs command verification; LR-05 and LR-07 need reproduction. Other items can proceed independently. |
 | 3 | LR-09–LR-11 lifecycle/connections | Server maintainer; preserve the existing guards, admission limits, and proxy trust rules. |
 | Independent host track | LR-12–LR-15 and LR-20 | Host owner/backup custodian; access and specific production actions must be authorized. Prioritize restoring alert delivery before deliberately exercising backup failures. |
 | Measured follow-ups | LR-16–LR-19 | Server maintainer plus tunnel/monitoring owner; change behavior only when measurement supports it. |
@@ -127,9 +135,9 @@ outside the legacy low-byte namespace; its existing v4 state records them before
 effects. No layout change, second queue, or database schema is needed. Retries
 retain the entire capture; only cursor continuation prepares new values. Queue
 delay and durable-state sync no longer consume the repository execution deadline.
-The file append repairs
-only a matching partial row, checks the complete row on replay, and retries
-syncs. State rename and daily-file creation both sync their containing directory.
+The file append repairs only a matching partial row, checks the complete row on
+replay, and retries syncs. State rename and daily-file creation both sync their
+containing directory.
 See the [runtime/recovery contract](../operations/CONFIGURATION.md) and
 [regression evidence](../testing/REGRESSIONS.md#statistics-across-restarts-and-interrupted-output).
 
@@ -153,7 +161,7 @@ the statistics matrix and MariaDB flight journey. LR-01 implementation is
 `1e735655e`; `81b8350e1` is the separate flight-test correction. Validation logs
 are retained under the ignored, owner-only `bin/analysis/lr01-validation/`
 directory. No production rollout or historical replacement has been performed.
-Source integration: [PR #66](https://github.com/LuminariMUD/Duris/pull/66).
+Review: [PR #66](https://github.com/LuminariMUD/Duris/pull/66), left unmerged.
 
 **Historical assessment, 2026-10-13 16:47 UTC.** A bounded read-only production
 transaction and a private copy of the original daily file confirm 1,007 existing
@@ -173,16 +181,16 @@ replacement requires separate specific authorization and the retained original.
 
 **Evidence and files.** The review found 76 SQL samples from 22:25:20–23:59:11
 missing from the October 12 file, with all extrapolated work IDs already in that
-file's last 8 KiB. Current
+file's last 8 KiB. Before the fix,
 [maintenance_scheduler.c](../../src/persistence/maintenance_scheduler.c)
-originally derived IDs as `(scheduled_tick << 8) | (job_id + 1)`.
+derived IDs as `(scheduled_tick << 8) | (job_id + 1)`.
 The instance seed in [comm.c](../../src/net/comm.c) comes from listener ports,
 so it does not supply a boot identity. The file check in
 [maintenance_repository.c](../../src/persistence/maintenance_repository.c)
-uses only the work ID; SQL uses the latest high/low timer marker. Capture lives
+used only the work ID; SQL uses the latest high/low timer marker. Capture lives
 in [maintenance_snapshot.c](../../src/persistence/maintenance_snapshot.c).
 
-**Implementation sequence.**
+**Original implementation sequence (completed; evidence above).**
 
 1. Reproduce two same-day boots with the same ports/tick schedule and distinct
    sample payloads, including the old IDs in the file tail. Exercise the actual
@@ -194,9 +202,9 @@ in [maintenance_snapshot.c](../../src/persistence/maintenance_snapshot.c).
    supported restart/state-recovery contract. Increasing the tail scan or
    inventing a fresh ID on retry does not solve that contract.
 3. Keep the captured timestamp and all 11 counters unchanged for the lifetime
-   of a sample. Inspect the retry path specifically: `apply_completion_locked()`
-   clears the durable request, while `submit_due_locked()` invokes preparation
-   again. A file failure after SQL commit must not retry the same ID with newly
+   of a sample. Before the fix, `apply_completion_locked()` cleared the durable
+   request, while `submit_due_locked()` invoked preparation again. A file failure
+   after SQL commit must not retry the same ID with newly
    captured counters or a new date. This is an additional source-derived risk
    to reproduce, not a claimed observation from the production window.
 4. Preserve acknowledged/pending completion recovery, cursor continuation,

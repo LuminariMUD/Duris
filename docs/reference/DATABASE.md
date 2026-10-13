@@ -1,6 +1,6 @@
 # Database
 
-DurisMUD stores all durable state in MySQL/MariaDB. This document covers how
+This document covers the MySQL/MariaDB backend: how
 the server talks to the database, what tables matter, and how schema changes
 are managed. Setup steps (creating users/databases) are in
 [README.md](../../README.md#3-create-a-development-database). An entity-relationship
@@ -58,12 +58,16 @@ verification; a protected local loopback/socket path is the only plaintext excep
 | Player load | Unique request ID, one PID | One consistent read transaction returning owned typed rows | Required-component, limit, timeout, cancellation, or stale result publishes no character |
 | Player checkpoint | Owner, in capture order on the one writer | One transaction: claim the items the owner holds, then write its rows from memory | Lost connection retries at the head of the queue; any other failure drops the job and marks the owner dirty; nothing waits or refuses |
 | Critical command | Stable 128-bit operation ID plus sorted entity keys, in capture order on the one writer | Inbox, typed domain rows/ledgers, result, and outbox in one transaction | Lost connection or ambiguous commit retries on the writer and rereads a committed result; entity keys stay fenced until the game thread takes the completion |
+| Artifact/guild snapshot (#58 branch; qualification pending) | Current entity capture and its commit receipt, ordered on the same writer | Artifact row/soul plus domain mirror, or the full guild snapshot including both reward totals | Failed admission or terminal write retains dirty state; bounded retry captures current values; an older acknowledgement cannot clear a newer capture |
+| Artifact/guild reward history (#58 branch) | Derived parent/actor operation ID and immutable v2 facts | Inbox, reward outcome/delta ledgers, result and outbox | History failure does not undo live rewards; receipt replay never applies gameplay state |
 | Item ownership | Item UID (`PRIMARY KEY`), one owner | Claimed by the holder's save; a takeover writes `item_owner_audit` | A load skips a row another owner holds; `logs/log/dupes` records each item a save or load gave up |
 | Maintenance | Stable job/work ID plus continuation | Bounded row/time batch and success-last cursor | Retryable failure retains cursor; permanent failure is visible; lifecycle slot is disabled |
 | World recovery | Sequence, checksum, and item UID graph | Immutable Redis generation plus current-pointer publication; SQL custody remains authoritative | Floor and generation trees are planned together; every UID/root/parent/VNUM/room/state is reconciled before rollback-capable materialization |
 
-Queued jobs live only in memory. A clean shutdown or copyover writes them first; a crash
-loses what had not reached the database, at most one 30-second checkpoint.
+Queued jobs live only in memory. Clean shutdown and copyover attempt to drain them;
+a crash loses what had not reached the database. Thirty seconds is the normal player
+checkpoint interval, not a bound during an outage or a checkpoint for artifact/guild
+state. Those entities queue immediate snapshots and retain dirty retry metadata.
 
 Redis is not an authority for player dirty state. It holds floor-delta recovery data
 and optional sequence-numbered world generations used after graceful restart or an unclean exit
@@ -79,6 +83,17 @@ identity/result metadata in `critical_operation_inbox`, applies typed state, and
 inbox. Delivery is at least once with `(consumer_id,outbox_id)` dedupe, bounded retry,
 and retained dead letters. See
 [CRITICAL_COMMAND_PIPELINE.md](../persistence/CRITICAL_COMMAND_PIPELINE.md).
+
+The #58 implementation separates artifact/guild reward history from
+saved gameplay state. `artifacts`, `artifact_bind` and `artifact_domain_state`
+hold the artifact snapshot/mirror; `guilds` holds current guild totals.
+`artifact_guild_outcome`, `artifact_guild_outcome_delta`, `artifact_delta_ledger`
+and `guild_outcome_ledger` record captured reward facts. Their revisions order
+history; they do not approve gameplay or reconstruct present totals after later
+spending or timer adjustments. A history receipt alone does not prove that all
+state snapshots committed. Existing schema and committed v1 receipts/outbox remain
+supported. See the [qualification handoff](../ongoing-projects/plan-estale.md#pause-handoff)
+and the pipeline's reconciliation contract before interpreting these tables.
 
 ## External consumers and writers
 

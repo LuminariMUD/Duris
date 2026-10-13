@@ -35,6 +35,7 @@ static std::mutex applied_mutex;
 static std::vector<std::string> applied;
 static std::vector<std::string> told;
 static std::atomic<int> lost_connections{0};
+static std::atomic<bool> commit_held{false}, commit_reached{false};
 
 void send_to_char(const char *text, P_char) { told.push_back(text); }
 
@@ -43,6 +44,8 @@ unsigned int sql_execute(MYSQL *, const std::string &statement)
 {
     std::lock_guard<std::mutex> lock(applied_mutex);
     applied.push_back(statement);
+    if (statement == "WRITE broken") return 1064;
+    if (statement == "WRITE allocation_failure") throw std::bad_alloc();
     return 0;
 }
 
@@ -65,7 +68,15 @@ player_save_apply_result sql_work_repository_apply_from_pool(const sql_work &wor
 {
     const unsigned int error_code = work(reinterpret_cast<MYSQL *>(&connection));
     if (!error_code)
+    {
+        // The statements ran, but COMMIT has not finished yet.
+        while (commit_held.load())
+        {
+            commit_reached.store(true);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
         return {player_save_apply_outcome::applied, 0, 0};
+    }
     return {error_code == 2013 ? player_save_apply_outcome::retryable_failure
                                : player_save_apply_outcome::terminal_failure,
             0, error_code};
@@ -164,6 +175,34 @@ int main()
 
     // Nothing after boot was applied on the game thread.
     assert(applied_at_boot == 4);
+
+    // Snapshot receipts are complete only after the repository's commit returns.
+    auto receipt = std::make_shared<sql_write_receipt>();
+    commit_held.store(true);
+    assert(sql_queue_statements({"WRITE held"}, receipt));
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!commit_reached.load())
+    {
+        assert(std::chrono::steady_clock::now() < deadline);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    assert(!receipt->finished.load(std::memory_order_acquire));
+    commit_held.store(false);
+    wait_for_writer();
+    assert(receipt->finished.load(std::memory_order_acquire) && receipt->ok);
+    auto failed = std::make_shared<sql_write_receipt>();
+    auto allocation = std::make_shared<sql_write_receipt>();
+    assert(sql_queue_statements({"WRITE broken"}, failed));
+    assert(sql_queue_statements({"WRITE allocation_failure"}, allocation));
+    wait_for_writer();
+    assert(failed->finished.load() && !failed->ok && failed->error_code == 1064);
+    assert(allocation->finished.load() && !allocation->ok && allocation->error_code == ENOMEM);
+    // No callback-queue allocation or SQL pulse is required to retain these outcomes.
+    assert(sql_async_pulse() == 0);
+    player_save_worker_shutdown();
+    errno = 0;
+    assert(!sql_queue_statements({"WRITE stopped"}, std::make_shared<sql_write_receipt>()));
+    assert(errno == ESHUTDOWN);
 
     // Without a database nothing is queued.
     DB = nullptr;
