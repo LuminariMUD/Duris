@@ -2,10 +2,10 @@
 
 Tracking issue: [#56 — Production follow-ups from the 2026-10-13 log review](https://github.com/LuminariMUD/Duris/issues/56).
 
-Status: implementation in progress on `fix/58-56-estale-log-review`, starting
-from `7a2a63447`. The unchecked items below remain open until their required
-evidence is recorded. The local development environment is prepared; production
-operations are not part of this local-worktree execution.
+Status: paused at the owner's request on 2026-10-13, on
+`fix/58-56-estale-log-review` (started from `7a2a63447`). Resume only when requested.
+The unchecked items below remain open until their required evidence is recorded.
+Production operations are not part of this local-worktree execution.
 
 Current work: LR-01 is implemented and locally qualified: 727 regression checks,
 75 disposable database checks, and 15 site tests pass; the historical recovery
@@ -14,6 +14,33 @@ open and ready for review on `fix/56-statistics-restart`. Other LR items remain 
 `skeer` is explicitly skipped by owner decision under LR-08. ES-01 baseline
 reproduction is recorded in [plan-estale.md](plan-estale.md); the artifact/guild
 cutover remains to be implemented.
+
+## Pause handoff
+
+- [PR #66](https://github.com/LuminariMUD/Duris/pull/66) was verified open,
+  ready for review, and unmerged at pause. Its branch is
+  `fix/56-statistics-restart`, head `66dbfc016`. Keep subsequent artifact/guild
+  implementation off that review branch. The active work branch's pre-handoff
+  tip is `7ea3b73f9`; both branches are pushed.
+- LR-01 is the only completed LR item. LR-02–LR-20 remain open, with `skeer`
+  explicitly excluded by owner decision. LR-03 already has the selected
+  level-30 rule from merged PR #55; its remaining work is teacher-command
+  verification, not another policy decision. Issue #56's statistics checkbox,
+  PR reference, and `skeer` disposition have been synchronized.
+- Next implementation is ES-01 onward in [plan-estale.md](plan-estale.md), whose
+  handoff records the probes and source-inspection findings. Then continue the
+  remaining LR items without narrowing their acceptance scope.
+- Completed verification and failure-before evidence are retained under
+  `bin/analysis/lr01-validation/`; private recovery inputs and the unapplied
+  proposal are under `bin/analysis/lr01-recovery/`. Both directories are ignored,
+  owner-only local evidence, not tracked deliverables. Preserve them before any
+  clean that removes `bin/`. LR-01 below records commands, counts, commits,
+  limitations, and recovery preconditions.
+- No task test/build/database process is pending. The shared local/dev game was
+  left running and may be used by another worktree. Tests used isolated authority;
+  no production repair, rollout, restore, backup change, or alert test occurred.
+  Host-owner items remain open and still require access and specific operational
+  authorization; the statistics assessment used read-only production access.
 
 Prepared on 2026-10-13 against `master` at
 `690ff313f3e3f115ef14b58612b0e302de2ce28d`, the current issue body and its scope-transfer
@@ -80,7 +107,7 @@ values alone do not prove these outcomes.
 | Order | Work | Responsible role and dependencies |
 | --- | --- | --- |
 | 1 | LR-01 statistics | Server maintainer; isolate the failure before any historical recovery. |
-| 2 | LR-02–LR-08 gameplay/help | Server/content maintainer; LR-03 needs a game-owner policy decision, LR-05 and LR-07 need reproduction. Other items can proceed independently. |
+| 2 | LR-02–LR-08 gameplay/help | Server/content maintainer; LR-03's level-30 policy needs command verification; LR-05 and LR-07 need reproduction. Other items can proceed independently. |
 | 3 | LR-09–LR-11 lifecycle/connections | Server maintainer; preserve the existing guards, admission limits, and proxy trust rules. |
 | Independent host track | LR-12–LR-15 and LR-20 | Host owner/backup custodian; access and specific production actions must be authorized. Prioritize restoring alert delivery before deliberately exercising backup failures. |
 | Measured follow-ups | LR-16–LR-19 | Server maintainer plus tunnel/monitoring owner; change behavior only when measurement supports it. |
@@ -100,9 +127,9 @@ outside the legacy low-byte namespace; its existing v4 state records them before
 effects. No layout change, second queue, or database schema is needed. Retries
 retain the entire capture; only cursor continuation prepares new values. Queue
 delay and durable-state sync no longer consume the repository execution deadline.
-The file append repairs
-only a matching partial row, checks the complete row on replay, and retries
-syncs. State rename and daily-file creation both sync their containing directory.
+The file append repairs only a matching partial row, checks the complete row on
+replay, and retries syncs. State rename and daily-file creation both sync their
+containing directory.
 See the [runtime/recovery contract](../operations/CONFIGURATION.md) and
 [regression evidence](../testing/REGRESSIONS.md#statistics-across-restarts-and-interrupted-output).
 
@@ -146,16 +173,16 @@ replacement requires separate specific authorization and the retained original.
 
 **Evidence and files.** The review found 76 SQL samples from 22:25:20–23:59:11
 missing from the October 12 file, with all extrapolated work IDs already in that
-file's last 8 KiB. Current
+file's last 8 KiB. Before the fix,
 [maintenance_scheduler.c](../../src/persistence/maintenance_scheduler.c)
-originally derived IDs as `(scheduled_tick << 8) | (job_id + 1)`.
+derived IDs as `(scheduled_tick << 8) | (job_id + 1)`.
 The instance seed in [comm.c](../../src/net/comm.c) comes from listener ports,
 so it does not supply a boot identity. The file check in
 [maintenance_repository.c](../../src/persistence/maintenance_repository.c)
-uses only the work ID; SQL uses the latest high/low timer marker. Capture lives
+used only the work ID; SQL uses the latest high/low timer marker. Capture lives
 in [maintenance_snapshot.c](../../src/persistence/maintenance_snapshot.c).
 
-**Implementation sequence.**
+**Original implementation sequence (completed; evidence above).**
 
 1. Reproduce two same-day boots with the same ports/tick schedule and distinct
    sample payloads, including the old IDs in the file tail. Exercise the actual
@@ -167,9 +194,9 @@ in [maintenance_snapshot.c](../../src/persistence/maintenance_snapshot.c).
    supported restart/state-recovery contract. Increasing the tail scan or
    inventing a fresh ID on retry does not solve that contract.
 3. Keep the captured timestamp and all 11 counters unchanged for the lifetime
-   of a sample. Inspect the retry path specifically: `apply_completion_locked()`
-   clears the durable request, while `submit_due_locked()` invokes preparation
-   again. A file failure after SQL commit must not retry the same ID with newly
+   of a sample. Before the fix, `apply_completion_locked()` cleared the durable
+   request, while `submit_due_locked()` invoked preparation again. A file failure
+   after SQL commit must not retry the same ID with newly
    captured counters or a new date. This is an additional source-derived risk
    to reproduce, not a claimed observation from the production window.
 4. Preserve acknowledged/pending completion recovery, cursor continuation,

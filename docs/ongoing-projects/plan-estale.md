@@ -2,10 +2,11 @@
 
 Tracking issue: [#58 — Batched epic awards fail with ESTALE](https://github.com/LuminariMUD/Duris/issues/58).
 
-Status: baseline reproduction in progress on `fix/58-56-estale-log-review`,
-starting from `7a2a63447`. LR-01 statistics is the first implementation slice;
-artifact/guild production source has not changed. All acceptance items below
-remain open.
+Status: paused at the owner's request on 2026-10-13, on
+`fix/58-56-estale-log-review`. LR-01 statistics is complete for local review in
+[PR #66](https://github.com/LuminariMUD/Duris/pull/66). Artifact/guild work has
+reproduction evidence and source inspection only; its production source has not
+changed. All ES acceptance items below remain open. Resume only when requested.
 
 Current evidence (2026-10-13): reran the issue's repository probe against private,
 socket-only MariaDB and reproduced artifact/guild burst rejection, capped-target
@@ -22,6 +23,55 @@ construction delta zero; memory stays at 85/0 instead of the required 115/1.
 This is real capture-path evidence, not the Summon Ghasts journey or a completed
 ES-01 matrix. Next: promote/extend the fixture into maintained regression coverage,
 then implement the coherent memory/snapshot/history cutover below.
+
+## Pause handoff
+
+The pre-handoff branch tip is `7ea3b73f9` (pushed); the working tree was clean
+before this documentation update. No #58 code or maintained-test edit was made
+in the interrupted continuation. There are no outstanding task builds, regression
+runs, or disposable database processes to resume. The shared local/dev game is
+still running; another worktree may use it. Keep future tests isolated and check
+its owner before any operational action.
+
+Resume from ES-01. Preserve the baseline artifacts under
+`bin/analysis/artifact-estale/`; they are ignored local evidence and would be
+removed by `make clean-all`. `probe.py` reproduces the SQL repository failures
+using a private MariaDB socket; `result.txt` records its completed run. Rebuild
+the native capture fixture against the unchanged pre-cutover source with:
+
+```sh
+g++ -std=c++20 -Wall -Wextra -Werror -pthread \
+  -ffunction-sections -fdata-sections -Isrc -I/usr/include/mysql \
+  bin/analysis/artifact-estale/runtime_before.cpp \
+  src/guild/artifact_guild_transaction.c src/guild/artifact_guild_command.c \
+  src/guild/assocs.c src/core/safe_format.c src/persistence/critical_command.c \
+  tests/async/harness_stubs.cpp -Wl,--gc-sections -lcrypto \
+  -o bin/analysis/artifact-estale/runtime_before
+bin/analysis/artifact-estale/runtime_before
+```
+
+These assertions characterize the old defect; their passing is not acceptance
+of the required behavior. Promote and extend the fixture before changing the
+reward path. The complete ES-01 matrix and real Summon Ghasts journey remain open.
+
+Source inspection immediately before the pause identified these implementation
+constraints; no new API or storage design has been implemented:
+
+- `sql_queue_statements()` reports admission, not durable completion. Existing
+  callbacks return through `sql_async_pulse()`. Dirty-state retries must acknowledge
+  only the captured generation that succeeded, remain visible if submission or
+  completion retention fails, and participate in the existing shutdown drain.
+- Artifact row/bind stores discard queue results; artifact clearing erases memory
+  before queueing deletion. Account/player deletion changes the caches too. Cover
+  these paths so delayed saves cannot resurrect older state. `Guild::save()` and
+  its shared SQL statement builder also serve kingdom payments; retain their
+  full-field and transaction behavior while saving both reward totals.
+- The generic critical repository decodes commands before receipt lookup. Keep
+  committed v1 payload replay decodable and refuse uncommitted legacy commands
+  after lookup; the result/outbox format remains v1. Allocate history revisions
+  from ledger metadata independently of live state. The callback/dirty-state
+  design and ledger-only payload cutover are still implementation work.
+
 Prepared on 2026-10-13 against `master` at `79541e206`, the current issue and its
 two reproduction/trigger comments. Production observations below are the issue's
 reported evidence, not a new inspection of the production database or logs.
@@ -66,14 +116,15 @@ those currently have their own immediate queued writes, without that checkpoint.
 **Non-goals:** spell balance, changing reward amounts or level gates, completing
 the other #56 findings, a general persistence rewrite, new writer/journal/lock
 infrastructure, new flat-file reward support, or automatic historical compensation.
-This planning change performs no server implementation, production repair,
-migration, restart, or deployment.
+Production repair, migration, restart, deployment, and historical compensation
+require their specific authorization; none has been performed for this repair.
 
 **Files and proof:** the source owners and existing tests are listed below.
 Implementation needs executable tests of the actual capture/application path,
 disposable database tests of snapshots/history, and a gameplay/restart journey.
-The delivery of this plan needs source/issue coverage review, valid links, the
-documentation site checks, publication on `master`, and an issue backlink.
+The original planning document was published before implementation began.
+Implementation delivery is through reviewed PRs, with documentation and
+qualification evidence updated alongside the code.
 
 ## Evidence and implementation consequences
 
