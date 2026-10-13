@@ -52,6 +52,19 @@ reports that the changed scheduler regression catches the pre-fix behavior.
 `make test-db` passed all 75 isolated database checks in 459 seconds, including
 the statistics matrix and the MariaDB flight journey.
 
+## Guild member deletion capture failure
+
+Building a member-deletion snapshot temporarily removes that member and their
+frag totals. An allocation failure used to leave those temporary changes in
+live memory. `Guild::statements_without_member()` now restores membership and
+all frag fields before propagating an exception, just as it does after capture.
+
+`python3 tests/async/test_account_character_delete_runtime.py` executes the actual
+capture method with a failing SQL builder. It fails before the repair at the
+retained-membership assertion and passes afterward, alongside the existing
+MariaDB and flat-file account-menu deletion cases. This allocation case does
+not run a server or a real database.
+
 ## Artifact and guild rewards (qualification in progress)
 
 Issue #58 implementation and qualification are in progress on
