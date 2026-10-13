@@ -398,6 +398,49 @@ Validation on 2026-10-14:
   `epics`, `capture`, `load`, `reflection`, `shrug`, `web-spray`, and
   `root-harness` log suffixes. Formatting and whitespace checks pass.
 
+### Human/Orc multiclass trace in progress
+
+The next trace uses the actual assigned room at 52904 for normally created Human
+and Orc Warriors choosing Cleric as their secondary class. The existing journey
+now covers wrong location, level 49, wrong race, invalid/disallowed class,
+insufficient epic balance, success, repeated selection, and restart. Boundary
+levels and balances remain explicit staff fixtures. Expected behavior follows
+the inspected native path: reset to level/experience 1, preserve played time,
+clear spec/prestige/trophies, retain the primary class, and treat the shipped
+zero-epic requirement as a threshold rather than a purchase. Secondary-only
+Meditate becomes usable at level 6 with cap 95; primary Kick retains cap 100 and
+shared Bandage takes the better cap (95). The world run passes for both races,
+including normal Orc creation, the full reset and secondary skills through restart.
+
+Outcome: connect and qualify the room/reset/secondary-class/persistence chain for
+both races. Files: existing mechanics/native/world fixtures and snapshot inspector,
+the shared creation helper, and the actual room/reset/skill/persistence owners as
+their connections are added. Proof: native policy/reset/consumer assertions plus
+the real mortal room command and persisted before/after state. Reuse existing
+reset and skill code; do not add a transition executor. Guild, epic-skill refund,
+spell cleanup and ordinary temple acquisition still need their specific evidence.
+No change to eligibility, thresholds or balance is intended by the migration.
+
+A separate defect was reproduced while adding this journey: `multiclass_proc`
+restored `played` after `do_start` but left the new `logon`, losing elapsed time
+in the current session. The real saved total fell from 20,043,221 to 20,043,201.
+The extended playtime capture test also fails before the fix on the preserved
+clock assertion. The procedure now restores both fields. The fixed-clock capture
+test, periodic checkpoint test, server build and full-world Human/Orc journey pass.
+Before-fix evidence is in
+`bin/tests/character-mechanics-multiclass-before.log` and
+`bin/tests/multiclass-playtime-before.log`. Keep this gameplay repair separately
+scoped from the connection migration.
+
+Post-fix evidence is in `bin/tests/multiclass-playtime-{after,checkpoint,build}.log`
+and `bin/tests/character-mechanics-multiclass-journey.log`. The tested server SHA256
+is `3f7c6410ba6c15efc060d3ead7ff519deb67f716fec04e6e0bb512f0c34fda4d`.
+The journey/creation-helper/inspector extensions remain a separate working change
+while the playtime repair is committed independently. The journey also exposed a
+denial-flow defect: insufficient funds in the correct room falls through to the
+generic command and incorrectly says the player is in the wrong location. That
+message-path repair is next; it must not change eligibility or mutate state.
+
 Next: bind individual teacher/timer guards, creation and
 remaining persistence dependencies, then complete real HP damage and the other
 two initial traces.

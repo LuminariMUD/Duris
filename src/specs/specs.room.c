@@ -212,11 +212,13 @@ int multiclass_proc(int /*room*/, P_char ch, int cmd, char *arg)
 				ch->points.max_mana = 0;
 				ch->points.base_vitality = 0;
 				uint played = ch->player.time.played;
+				time_t logon = ch->player.time.logon;
 				// These aren't needed anymore since do_start is now smarter and doesn't reset epic skills/tradeskills.
 				//          save_epic_skills(ch, skls);
 				do_start(ch, cmd);
 				//          restore_epic_skills(ch, skls);
 				ch->player.time.played = played;
+				ch->player.time.logon = logon;
 				send_to_char(
 					"&+WWith a suddenness that stops your breath, you feel oddly different..  less powerful, and yet with the potential to be something much greater than you ever were before.\r\n",
 					ch);

@@ -11,6 +11,23 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Multiclass session playtime
+
+The multiclass room procedure preserves both accumulated playtime and the active
+session's start time across `do_start`. Restoring only the accumulated baseline
+lost the current session's elapsed time when the reset replaced `logon` with the
+current clock. A private full-world Human Warrior → Warrior/Cleric journey
+reproduced a saved total falling from 20,043,221 to 20,043,201 seconds (including
+the existing wipe-display offset).
+
+`python3 tests/async/test_player_playtime_capture.py` now runs the real room
+procedure for Human and Orc through the real status capture/codec with a fixed
+clock. Its reset-service fixture deliberately replaces both time fields, and the
+procedure must retain the original pair and continue accruing time once. The
+mechanics world journey exercises the actual reset and saved before/after totals;
+staff-supplied level, balance and room transfer are explicit setup, not ordinary
+level progression or temple acquisition.
+
 ## Clearing class masks with setbit
 
 The class-index copier used by `setbit` now maps `None` to `CLASS_NONE` (zero).
