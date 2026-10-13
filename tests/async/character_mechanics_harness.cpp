@@ -6,6 +6,8 @@
 #include "combat/damage.h"
 #include "magic/spells.h"
 #include "cmd/interp.h"
+#include "guild/assocs.h"
+#include "item/trophy.h"
 
 #include <cassert>
 #include <cstdio>
@@ -27,6 +29,10 @@ void initialize_mechanic_commands();
 void initialize_mechanic_objects();
 extern P_index obj_index;
 extern int mechanic_removed_affects, mechanic_stop_memorizing, mechanic_ledger_calls;
+extern int mechanic_kit_requests, mechanic_restores, mechanic_coin_refund, mechanic_saves;
+void update_stat_data();
+void update_damage_data();
+int calculate_hitpoints2(P_char);
 int multiclass_proc(int, P_char, int, char *);
 
 static void multiclass_denials()
@@ -69,6 +75,138 @@ static void multiclass_denials()
 	clear_character_properties();
 	std::puts(
 		"multiclass.denials: PASS (room owns race/funds denials; no duplicate or incorrect location fallback; no state changes)");
+}
+
+static void multiclass_reset_and_consumers()
+{
+	load_character_properties();
+	update_stat_data();
+	update_damage_data();
+	for (auto &skill : skills)
+		skill = Skill{};
+	auto grant = [](int skill, unsigned int cls, int level, int cap)
+	{
+		auto &row = skills[skill].m_class[flag2idx(cls) - 1];
+		row.rlevel[0] = level;
+		row.maxlearn[0] = cap;
+	};
+	// Explicit skill cells isolate consumer branches; the world journey uses
+	// the real initialized skill table at the same 5/6 boundary.
+	grant(SKILL_KICK, CLASS_WARRIOR, 1, 100);
+	grant(SKILL_MEDITATE, CLASS_CLERIC, 1, 100);
+	grant(SKILL_BANDAGE, CLASS_WARRIOR, 1, 90);
+	grant(SKILL_BANDAGE, CLASS_CLERIC, 1, 100);
+	grant(SKILL_GUARD, CLASS_WARRIOR, 41, 70);
+	skills[SKILL_EPIC_STRENGTH].name = "epic strength";
+	skills[SKILL_EPIC_STRENGTH].targets = TAR_MENTAL | TAR_EPIC;
+	skills[SKILL_FORGE].name = "forge";
+	skills[SKILL_FORGE].targets = TAR_MENTAL | TAR_EPIC;
+	for (int race : { RACE_HUMAN, RACE_ORC })
+	{
+		char_data student{};
+		pc_only_data pc{};
+		Guild guild;
+		std::vector<zone_trophy_data> trophies{ { 12, 300 } };
+		student.only.pc = &pc;
+		student.player.name = const_cast<char *>("Multifixture");
+		student.player.title = strdup("old title");
+		student.player.race = race;
+		student.player.m_class = CLASS_WARRIOR;
+		student.player.spec = SPEC_GUARDIAN;
+		student.player.level = 50;
+		student.player.time.played = 12345;
+		const time_t logon = time(nullptr) - 600;
+		student.player.time.logon = logon;
+		student.specials.guild = &guild;
+		SET_MEMBER(student.specials.guild_status);
+		SET_NORMAL(student.specials.guild_status);
+		student.specials.act = PLR_ECHO | PLR_VICIOUS;
+		SET_POS(&student, STAT_NORMAL + POS_STANDING);
+		GET_EXP(&student) = 999999;
+		GET_PLATINUM(&student) = 3;
+		student.points.max_mana = 200;
+		student.points.base_vitality = 80;
+		pc.pid = 42;
+		pc.epics = 17;
+		pc.prestige = 9;
+		pc.zone_trophy = &trophies;
+		pc.skills[SKILL_EPIC_STRENGTH] = { 20, 20 };
+		pc.skills[SKILL_FORGE] = { 70, 70 };
+		pc.skills[SKILL_GUARD] = { 80, 100 };
+		auto *full = new affected_type{};
+		full->type = TAG_MEMORIZE;
+		full->flags = MEMTYPE_FULL;
+		auto *pending = new affected_type{};
+		pending->type = TAG_MEMORIZE;
+		pending->next = full;
+		student.affected = pending;
+		mechanic_kit_requests = mechanic_restores = mechanic_coin_refund = mechanic_saves =
+			0;
+		mechanic_removed_affects = mechanic_stop_memorizing = mechanic_ledger_calls = 0;
+		char choice[] = "cleric";
+		assert(multiclass_proc(0, &student, CMD_MULTICLASS, choice));
+		assert(student.player.m_class == CLASS_WARRIOR &&
+		       student.player.secondary_class == CLASS_CLERIC);
+		assert(student.player.race == race && student.player.spec == 0);
+		assert(student.player.level == 1 && GET_EXP(&student) == 1);
+		assert(student.player.time.played == 12345 && student.player.time.logon == logon);
+		assert(student.points.base_hit == 1 && student.points.base_mana == 1 &&
+		       student.points.base_vitality == 0);
+		assert(student.player.title == nullptr && pc.prestige == 0 && trophies.empty());
+		assert(student.specials.guild == &guild &&
+		       IS_MEMBER(student.specials.guild_status) &&
+		       IS_PAROLE(student.specials.guild_status));
+		assert(student.specials.act == (PLR_ECHO | PLR_VICIOUS) &&
+		       GET_PLATINUM(&student) == 3);
+		assert(mechanic_kit_requests == 1 && mechanic_restores == 1);
+		assert(pc.skills[SKILL_KICK].learned == 20 && pc.skills[SKILL_KICK].taught == 90);
+		assert(pc.skills[SKILL_GUARD].learned == 0 && pc.skills[SKILL_GUARD].taught == 100);
+		assert(pc.skills[SKILL_FORGE].learned == 70 && pc.skills[SKILL_FORGE].taught == 70);
+		assert(pc.skills[SKILL_EPIC_STRENGTH].learned == 0 &&
+		       pc.skills[SKILL_EPIC_STRENGTH].taught == 0);
+		assert(pc.epics == 317 && mechanic_coin_refund == 2000000 &&
+		       mechanic_ledger_calls == 1 && mechanic_saves == 1);
+		assert(student.affected == nullptr && mechanic_removed_affects == 2 &&
+		       mechanic_stop_memorizing == 1);
+
+		assert(SKILL_DATA_ALL(&student, SKILL_KICK).rlevel[0] == 1);
+		assert(SKILL_DATA_ALL(&student, SKILL_KICK).maxlearn[0] == 100);
+		assert(SKILL_DATA_ALL(&student, SKILL_MEDITATE).rlevel[0] == 6);
+		assert(SKILL_DATA_ALL(&student, SKILL_MEDITATE).maxlearn[0] == 95);
+		assert(SKILL_DATA_ALL(&student, SKILL_BANDAGE).rlevel[0] == 1);
+		assert(SKILL_DATA_ALL(&student, SKILL_BANDAGE).maxlearn[0] == 95);
+		student.player.level = 5;
+		update_skills(&student);
+		assert(pc.skills[SKILL_MEDITATE].learned == 0);
+		student.player.level = 6;
+		update_skills(&student);
+		assert(pc.skills[SKILL_MEDITATE].learned == 9 &&
+		       pc.skills[SKILL_MEDITATE].taught == 95);
+		set_character_property("skill.cap.multi.mod.secondarySkill", 80);
+		assert(SKILL_DATA_ALL(&student, SKILL_MEDITATE).maxlearn[0] == 80);
+		assert(SKILL_DATA_ALL(&student, SKILL_BANDAGE).maxlearn[0] == 90);
+		set_character_property("skill.cap.multi.mod.secondarySkill", 95);
+		set_character_property("skill.cap.multi.mod.primarySkill", 75);
+		assert(SKILL_DATA_ALL(&student, SKILL_KICK).maxlearn[0] == 75);
+		set_character_property("skill.cap.multi.mod.primarySkill", 100);
+
+		student.player.level = 40;
+		student.curr_stats.Con = 100;
+		student.points.base_hit = student.points.max_hit = 1;
+		student.player.secondary_class = 0;
+		const int warrior_hp = calculate_hitpoints2(&student);
+		student.player.m_class = CLASS_CLERIC;
+		const int cleric_hp = calculate_hitpoints2(&student);
+		assert(warrior_hp > cleric_hp);
+		student.player.secondary_class = CLASS_WARRIOR;
+		assert(calculate_hitpoints2(&student) == warrior_hp);
+		student.player.m_class = CLASS_WARRIOR;
+		student.player.secondary_class = CLASS_CLERIC;
+		assert(calculate_hitpoints2(&student) == warrior_hp);
+	}
+	clear_character_properties();
+	std::puts(
+		"multiclass.reset/consumers: PASS (native reset/refund/forget, guild rank bits, retained state, secondary skills/caps and larger class HP modifier for Human/Orc; delivery/persistence/affect cleanup remain fixture boundaries)");
 }
 
 static void specialization_transition()
@@ -385,6 +523,7 @@ int main()
 	unspecialization_transition();
 	skill_class_mask_bounds();
 	multiclass_denials();
+	multiclass_reset_and_consumers();
 	assert(!creation_all_races_enabled() && !creation_all_classes_enabled());
 	assert(!strcmp(getenv("CHAOS_MUD"), "FALSE"));
 	const auto connections = identity_connections();

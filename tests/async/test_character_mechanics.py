@@ -130,6 +130,7 @@ inputs = [
     source("chaos_config.c"),
     source("safe_format.c"),
     source("epic_transaction.c"), source("epic_command.c"), source("critical_command.c"),
+    source("hardcore_config.c"),
     HARNESS_STUBS,
 ]
 
@@ -157,11 +158,19 @@ combat_prelude = r'''
 #include "classes/necromancy.h"
 #include "combat/chaos_config.h"
 #include "classes/specializations.h"
+#include "account/creation_availability_config.h"
 #include "cmd/interp.h"
 #include "player/character_mechanics.h"
 #include "persistence/persistence_checkpoint.h"
+#include "guild/assocs.h"
+#include "item/trophy.h"
+#include "classes/epic_skills.h"
+#include "world/epic.h"
+#include "world/hardcore_config.h"
+#include "economy/currency_transaction.h"
 #include <cassert>
 #include <cctype>
+#include <cstdarg>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -173,10 +182,33 @@ int GET_LVL_FOR_SKILL(P_char, int);
 command_info cmd_info[MAX_CMD_LIST];
 P_room world;
 extern const class_names class_names_table[];
-void do_start(P_char, int) { assert(false && "denial fixture must not reset a character"); }
-void do_restore(P_char, char *, int) { assert(false && "denial fixture must not restore"); }
-void refund_epic_skills(P_char) { assert(false && "denial fixture must not refund"); }
-void clear_zone_trophy(P_char) { assert(false && "denial fixture must not clear trophies"); }
+extern const race_names race_names_table[];
+extern const racial_data_type racial_data[];
+extern stat_data stat_factor[LAST_RACE + 1];
+float class_hitpoints[CLASS_COUNT + 1], combat_by_class[CLASS_COUNT + 1][2];
+float combat_by_race[LAST_RACE + 1][3], pulse_all, shield_combat_mult, shield_combat_tank_mult;
+// Guild storage, kit delivery, restore presentation and refund persistence are
+// boundaries. Reset/skill/refund calculations below are production functions.
+Guild::Guild() = default;
+Guild::~Guild() = default;
+int mechanic_kit_requests, mechanic_restores, mechanic_coin_refund, mechanic_saves;
+void load_obj_to_newbies(P_char ch) {
+    assert(ch->player.level == 1 && ch->player.secondary_class == 0);
+    ++mechanic_kit_requests;
+}
+void do_restore(P_char ch, char *, int) {
+    assert(ch->player.level == 1 && ch->player.secondary_class == CLASS_CLERIC && ch->player.spec == 0);
+    ++mechanic_restores;
+}
+bool insert_money_pickup(int pid, int value) { assert(pid == 42); mechanic_coin_refund += value; return true; }
+bool do_save_silent(P_char ch, int) {
+    assert(ch->player.secondary_class == CLASS_CLERIC && ch->only.pc->skills[SKILL_EPIC_STRENGTH].learned == 0);
+    ++mechanic_saves; return true;
+}
+bool currency_transaction_submit_wallet_value(P_char, int64_t, currency_reason_type, int64_t,
+        critical_source_site, critical_deadline_class, currency_completion_fn, const void *, size_t) {
+    assert(false && "native fixture accepts staged coin pickup"); return false;
+}
 index_data object_prototypes[3]{};
 P_index obj_index = object_prototypes;
 int top_of_objt = 2;
@@ -186,7 +218,8 @@ void mark_player_dirty_components(int, player_component_mask_t) {}
 critical_submit_result critical_command_coordinator_submit(critical_command command) {
     epic_command_payload payload{};
     assert(epic_command_decode_payload(command, &payload));
-    assert(payload.delta == -10 && payload.reason == epic_reason_type::specialization_purchase);
+    assert((payload.delta == -10 && payload.reason == epic_reason_type::specialization_purchase) ||
+           (payload.delta == 300 && payload.reason == epic_reason_type::epic_skill_refund));
     ++mechanic_ledger_calls;
     return critical_submit_result::accepted;
 }
@@ -200,6 +233,11 @@ void stop_memorizing(P_char, memorization_stop_reason) { ++mechanic_stop_memoriz
 extern const innate_data innates_data[];
 std::string mechanic_output;
 void send_to_char(const char *text, P_char) { mechanic_output += text; }
+void send_to_char_f(P_char, const char *format, ...) {
+    char message[MAX_STRING_LENGTH]; va_list args;
+    va_start(args, format); vsnprintf(message, sizeof(message), format, args); va_end(args);
+    mechanic_output += message;
+}
 bool epic_summon(P_char, char *) { assert(false && "not a summon fixture"); return false; }
 void do_list_innates(P_char, char *) { assert(false && "not a catalog fixture"); }
 void mobsay(P_char, const char *) {} // Dialogue/quest side effects belong to the full-world journey.
@@ -239,6 +277,8 @@ combat_bodies = (
     + innates[innates.index("#define ADD_RACIAL_INNATE"):innates.index("float regen_factor")]
     + innates[innates.index("char racial_innates["):innates.index("extern const struct race_names")]
     + production_function("interp.c", "const char *fill_words[]") + ";\n"
+    + production_function("epic_skills.c", "epic_reward epic_rewards[] =") + ";\n"
+    + production_function("epic.c", "struct epic_skill_refund_context") + ";\n"
     + "\n".join(production_function(file, signature) for file, signature in [
         ("properties.c", "int key_property_comp("),
         ("properties.c", "int property_comp("),
@@ -264,6 +304,20 @@ combat_bodies = (
         ("interp.c", "int fill_word("),
         ("interp.c", "void argument_interpreter("),
         ("guild.c", "void update_skills("),
+        ("handler.c", "bool isname(const char *str, const char *namelist)"),
+        ("limits.c", "void clear_title("),
+        ("limits.c", "int vitality_limit("),
+        ("memorize.c", "bool praying_class("),
+        ("actwiz.c", "void NewbySkillSet("),
+        ("actwiz.c", "static void do_start_impl("),
+        ("actwiz.c", "void do_start(P_char ch, int nomsg)"),
+        ("epic.c", "void epic_coin_refund_committed("),
+        ("epic.c", "void epic_skill_refund_committed("),
+        ("epic.c", "void refund_epic_skills("),
+        ("trophy.c", "void clear_zone_trophy("),
+        ("db.c", "void update_stat_data("),
+        ("affects.c", "void update_damage_data("),
+        ("affects.c", "int calculate_hitpoints2("),
         ("actoth.c", "void do_multiclass("),
         ("specs.room.c", "int multiclass_proc("),
         ("guild.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::training_connections("),
@@ -439,6 +493,15 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         ("altar_registration_unset", altar_registrations[0], "", "object registration missing or different handler"),
         ("altar_valuation_changed", "if (proc == unspec_altar)\n\t\treturn -100000;",
          "if (proc == unspec_altar)\n\t\treturn 0;", "value(obj_index[slot].func.obj) == -100000"),
+        ("multiclass_start_omitted", "do_start(ch, cmd);", ";",
+         "ch->player.level == 1 && ch->player.secondary_class == CLASS_CLERIC"),
+        ("multiclass_refund_omitted", "refund_epic_skills(ch);", ";",
+         "pc.skills[SKILL_EPIC_STRENGTH].learned == 0"),
+        ("multiclass_clock_not_restored", "ch->player.time.logon = logon;", ";",
+         "student.player.time.played == 12345 && student.player.time.logon == logon"),
+        ("multiclass_hp_ignores_secondary",
+         "class_mod = MAX(class_mod, class_hitpoints[flag2idx(ch->player.secondary_class)]);", ";",
+         "calculate_hitpoints2(&student) == warrior_hp"),
     ]:
         assert combat_bodies.count(old) == 1, name
         variant = work / "mutations" / name
@@ -458,6 +521,8 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
          "student.player.spec == 0 && pc.epics == 2"),
         ("forget_not_called", "specializations.c", "forget_spells(ch, -1);", ";", "mechanic_removed_affects == 2"),
         ("debit_not_applied", "epic_transaction.c", "balance += delta;", ";", "student.player.spec == 0 && pc.epics == 2"),
+        ("secondary_skill_delay_removed", "utility.c", "required_level = sec_rlevel + 5;", "required_level = sec_rlevel;",
+         "SKILL_DATA_ALL(&student, SKILL_MEDITATE).rlevel[0] == 6"),
     ]:
         variant = work / "mutations" / name
         variant.mkdir(parents=True, exist_ok=True)
@@ -469,3 +534,4 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         assert rejected.returncode != 0 and diagnostic in rejected.stderr, (name, rejected.stderr)
     print("specialization.mutations: PASS (removed registration and refresh call fail native assertions)")
     print("unspecialization.mutations: PASS (removed altar registration, purchase callback, debit and forgetting call fail native assertions)")
+    print("multiclass.mutations: PASS (removed reset/refund/clock retention, secondary skill delay and secondary HP contribution rejected)")

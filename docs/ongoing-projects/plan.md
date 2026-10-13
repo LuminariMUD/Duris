@@ -408,7 +408,7 @@ levels and balances remain explicit staff fixtures. Expected behavior follows
 the inspected native path: reset to level/experience 1, preserve played time,
 clear spec/prestige/trophies, retain the primary class, and treat the shipped
 zero-epic requirement as a threshold rather than a purchase. Secondary-only
-Meditate becomes usable at level 6 with cap 95; primary Kick retains cap 100 and
+Meditate is granted at level 6 with cap 95; primary Kick retains cap 100 and
 shared Bandage takes the better cap (95). The world run passes for both races,
 including normal Orc creation, the full reset and secondary skills through restart.
 
@@ -450,7 +450,49 @@ No eligibility or mutation rule changed. Logs:
 Native positive executable SHA256:
 `be6655d2d44987824218c75e3307c9cd058e235a33d76326baf29c1f9f1fbf62`.
 This message-path repair is kept separate from the playtime fix and the connection
-migration. Native success/reset/refund/derived-stat connections are still open.
+migration. The denial repair is committed and pushed as `32d41fae9`.
+
+The native mechanics fixture now additionally runs actual `do_start` /
+`do_start_impl`, `NewbySkillSet`, `refund_epic_skills` and its completion, and
+`clear_zone_trophy`. It uses the production epic reward table and real property,
+racial-stat and class-HP loaders. Human/Orc assertions cover level/XP/base-stat
+reset, title/prestige/trophy clearing, both time fields, guild pointer retention
+with parole rank, retained flags/coins/tradeskills, and normal learned-skill reset
+(including retained taught values for unavailable skills). A seeded 20-point
+Epic Strength skill returns 300 epics and stages 2,000,000 copper using the native
+refund logic; the epic skill is cleared while Forge remains. Both pending and
+full memorization affects are selected for removal.
+
+Guild construction/storage, kit delivery, restore presentation, coin pickup,
+save requests and affect/event cleanup are explicit fixture boundaries. Skill
+cells are controlled fixtures; actual initialized skill cells are checked by the
+world journey. Native consumer tests cover primary, secondary-only and shared
+skill requirements/caps, configured cap changes, the 5/6 grant boundary, and the
+HP calculator taking the larger class modifier in both class orders. They do not
+claim live level-cap progression, full guild/coin-refund persistence or ordinary
+acquisition. Compiled mutations remove reset, refund, time retention, the
+secondary delay or the secondary HP contribution; every variant must fail.
+
+Validation for this behavior slice:
+
+- `python3 tests/async/test_character_mechanics.py`: passed with ASan/UBSan and
+  all retained/new mutations. Native SHA256:
+  `c7a485667006059658d94b65e21a26173ca1682f0d0873770cb0cfce5bab1035`.
+- `DURIS_REGRESSION_BUILD_CACHE=bin/regression-artifacts python3
+  tests/async/test_character_mechanics_journey.py`: passed the complete
+  specialization and Human/Orc multiclass cases with the server identified above.
+- The shared creation helper handles actual alignment/hometown/automatic-town
+  prompts and adds only the race selector needed by Orc creation. The existing
+  `test_flatfile_newbie_regrant_journey.py` also passed all Warrior/Sorcerer cases
+  with Chaos off and on. Its concurrent observer's maximum response was 0.250s.
+- `python3 tests/async/test_flatfile_player_repository.py`: passed. The inspector
+  exposes played time, prestige, guild fields and trophy count, and preserves
+  signed values (including the `-1` epic denial fixture) when printing JSON.
+- Logs use `bin/tests/character-mechanics-multiclass-{native,journey,helper,inspector}.log`.
+  These are focused results, not a new whole-suite/database gate.
+
+The room, reset, refund, skill/stat and persistence **connections** for this trace
+are next. Its behavior evidence does not replace the missing structural links.
 
 Next: bind individual teacher/timer guards, creation and
 remaining persistence dependencies, then complete real HP damage and the other

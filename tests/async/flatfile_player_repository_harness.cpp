@@ -183,15 +183,19 @@ static void inspect_authority(const std::string &root, int32_t pid)
 	std::cout << "],\"bank_revision\":" << domains.domains.bank_revision;
 	for (const auto &field : snapshot.status_integers)
 		if (field.field == player_status_field::wimpy)
-			std::cout
-				<< ",\"wimpy\":"
-				<< (field.is_unsigned ? field.unsigned_value : field.signed_value);
+			std::cout << ",\"wimpy\":"
+				  << (field.is_unsigned ? std::to_string(field.unsigned_value) :
+							  std::to_string(field.signed_value));
 	for (const auto &field : snapshot.status_integers)
 	{
 		const char *name =
 			field.field == player_status_field::deaths	    ? "death_count" :
 			field.field == player_status_field::experience	    ? "experience" :
 			field.field == player_status_field::epics	    ? "epics" :
+			field.field == player_status_field::played_time	    ? "played" :
+			field.field == player_status_field::prestige	    ? "prestige" :
+			field.field == player_status_field::guild_id	    ? "guild_id" :
+			field.field == player_status_field::guild_status    ? "guild_status" :
 			field.field == player_status_field::level	    ? "level" :
 			field.field == player_status_field::class_primary   ? "class_primary" :
 			field.field == player_status_field::class_secondary ? "class_secondary" :
@@ -201,9 +205,9 @@ static void inspect_authority(const std::string &root, int32_t pid)
 								   "learned_flight_stops" :
 								   nullptr;
 		if (name)
-			std::cout
-				<< ",\"" << name << "\":"
-				<< (field.is_unsigned ? field.unsigned_value : field.signed_value);
+			std::cout << ",\"" << name << "\":"
+				  << (field.is_unsigned ? std::to_string(field.unsigned_value) :
+							  std::to_string(field.signed_value));
 	}
 	std::cout << ",\"skills\":{";
 	bool first_skill = true;
@@ -218,6 +222,7 @@ static void inspect_authority(const std::string &root, int32_t pid)
 			  << ",\"taught\":" << unsigned(skill.taught) << '}';
 	}
 	std::cout << '}';
+	std::cout << ",\"trophies\":" << snapshot.trophies.size();
 	for (const auto &owner :
 	     { item_owner_identity{ item_owner_type::player, static_cast<uint64_t>(pid), 0 },
 	       item_owner_identity{ item_owner_type::room,

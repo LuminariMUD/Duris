@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Mortal specialization and persisted abilities in an isolated full world.
+"""Mortal specialization/multiclass and persisted abilities in an isolated world.
 
-Normal creation/Chaos switches are explicit. Staff supplies boundary levels and
-transfers the mortal to the hall adjoining a loaded teacher. This proves the
+Normal creation/Chaos switches are explicit. Staff supplies boundary state and
+transfers mortals to a loaded teacher, altar and multiclass temple. This proves
 command and persistence paths, not travel from a hometown or level progression.
 No .env, shared listener, production database or staff account is used.
 """
@@ -24,6 +24,7 @@ from test_flight_network_journey import authority, command
 ROOT = journey.ROOT
 PLAYER, ACCOUNT = "Mechstudent", "Mechacct"
 STAFF, STAFF_ACCOUNT = "Mechwarden", "Mechstaff"
+ORC, ORC_ACCOUNT = "Mechorc", "Mechorcacct"
 # Existing skill IDs; expected outcomes are independent of production formulas.
 GUARD, SHIELD_PUNCH = "1120", "1145"
 
@@ -87,9 +88,70 @@ def run(binary, build):
                 client.send("save")
                 client.expect("Save complete for " + name + ".", timeout=60)
 
-            def snapshot():
+            def snapshot(pid=1):
                 return json.loads(subprocess.check_output(
-                    [str(inspector), env["FLATFILE_STATE_DIR"], "inspect", "1"], text=True))
+                    [str(inspector), env["FLATFILE_STATE_DIR"], "inspect", str(pid)], text=True))
+
+            def multiclass_case(player, staff, name, pid, race):
+                command(staff, "setbit char " + name + " level 50")
+                if race == 1:
+                    command(staff, "goto 9724")
+                    command(staff, "transfer " + name)
+                    command(player, "south")
+                    assert "From this day onwards" in command(player, "specialize guardian")
+                outside = command(player, "multiclass cleric")
+                assert "not in the proper location" in outside, outside
+                command(staff, "goto 52904")
+                command(staff, "transfer " + name)
+                command(staff, "setbit char " + name + " level 49")
+                denied = command(player, "multiclass cleric")
+                assert "until you reach level 50" in denied, denied
+                command(staff, "setbit char " + name + " level 50")
+                command(staff, "setbit char " + name + " race Gnome")
+                denied = command(player, "multiclass cleric")
+                assert denied.count("not versatile enough") == 1, denied
+                command(staff, "setbit char " + name + " race " + ("Human" if race == 1 else "Orc"))
+                denied = command(player, "multiclass nonsense")
+                assert "no class, bubba" in denied, denied
+                denied = command(player, "multiclass sorcerer")
+                assert "cannot multiclass to that particular class" in denied, denied
+                command(staff, "setbit char " + name + " epics -1")
+                denied = command(player, "multiclass cleric")
+                assert "need more" in denied and "experience" in denied, denied
+                assert "not in the proper location" not in denied, denied
+                save(player, name)
+                assert snapshot(pid)["epics"] == -1 and snapshot(pid)["class_secondary"] == 0
+                command(staff, "setbit char " + name + " epics 17")
+                command(staff, "setbit char " + name + " played 12")
+                command(staff, "setbit char " + name + " prestige 9")
+                save(player, name)
+                before = snapshot(pid)
+                if race == 1:
+                    assert before["specialization"] == 2
+                selected = command(player, "multiclass cleric")
+                assert "with the potential to be something much greater" in selected, selected
+                save(player, name)
+                after = snapshot(pid)
+                assert after["class_primary"] == 1 and after["class_secondary"] == 32
+                assert after["race"] == race and after["specialization"] == 0
+                assert after["level"] == 1 and after["experience"] == 1
+                assert after["epics"] == before["epics"] == 17  # Threshold, not a charge.
+                assert before["played"] <= after["played"] <= before["played"] + 30, (before["played"], after["played"])
+                assert after["prestige"] == 0 and after["trophies"] == 0
+                assert after["guild_id"] == before["guild_id"] == 0
+                denied = command(player, "multiclass mercenary")
+                assert "already chosen your secondary class" in denied, denied
+                # Staff supplies these boundary levels; this is not XP/cap progression.
+                command(staff, "setbit char " + name + " level 5")
+                save(player, name)
+                assert snapshot(pid)["skills"].get("1022", {"learned": 0})["learned"] == 0
+                command(staff, "setbit char " + name + " level 6")
+                save(player, name)
+                level_six = snapshot(pid)
+                assert level_six["skills"]["1022"] == {"learned": 9, "taught": 95}  # Secondary meditate.
+                assert level_six["skills"]["1005"]["taught"] == 100  # Primary kick.
+                assert level_six["skills"]["1046"]["taught"] == 95  # Best primary/secondary bandage cap.
+                return level_six
 
             try:
                 boot()
@@ -216,7 +278,36 @@ def run(binary, build):
                 assert SHIELD_PUNCH not in restarted["skills"]
                 assert restarted["skills"][GUARD] == reverted_state["skills"][GUARD]
                 print("PASS specialization.reversal: loaded altar, insufficient funds, single 10-epic purchase, skill/passive refresh and restart", flush=True)
-                print("Fixture: flatfile; Human Warrior; staff levels 29/30/40/41, identity denial cases, epic balances 9/12 and transfers; camp.timer=1; Arian 9432 in room 9725 and altar 12016 in room 12116; acquisition travel and live caps unverified", flush=True)
+                staff = login(STAFF, STAFF_ACCOUNT)
+                human_multi = multiclass_case(player, staff, PLAYER, 1, 1)
+                stop()
+                boot()
+                player = login(PLAYER, ACCOUNT)
+                save(player)
+                human_reloaded = snapshot()
+                assert human_reloaded["class_secondary"] == 32 and human_reloaded["epics"] == 17
+                assert human_reloaded["skills"]["1022"] == human_multi["skills"]["1022"]
+                stop()
+                boot()
+                # Create the opposite-side mortal while the Human is offline.
+                orc = journey.MudClient(ports[0])
+                clients.append(orc)
+                journey.create_character(orc, expected_room=None, account=ORC_ACCOUNT,
+                                         character=ORC, email="mechorc@example.invalid", race_name="o")
+                save(orc, ORC)
+                assert snapshot(3)["race"] == 13 and snapshot(3)["class_primary"] == 1
+                command(orc, "toggle paging no")
+                staff = login(STAFF, STAFF_ACCOUNT)
+                orc_multi = multiclass_case(orc, staff, ORC, 3, 13)
+                stop()
+                boot()
+                orc = login(ORC, ORC_ACCOUNT)
+                save(orc, ORC)
+                orc_reloaded = snapshot(3)
+                assert orc_reloaded["class_secondary"] == 32 and orc_reloaded["epics"] == 17
+                assert orc_reloaded["skills"]["1022"] == orc_multi["skills"]["1022"]
+                print("PASS multiclass.entry/persistence: normal Human/Orc creation, room 52904, denials, level/XP reset, playtime retention, no threshold charge, secondary skill 5/6 boundary/caps and restart", flush=True)
+                print("Fixture: flatfile; normally created Human/Orc Warriors; staff levels 5/6/29/30/40/41/49/50, identity denial cases, epic balances -1/9/12/17, played=12 hours, prestige=9 and transfers; camp.timer=1; Arian 9432 in room 9725, altar 12016 in room 12116 and multiclass room 52904; acquisition travel and live caps unverified", flush=True)
                 print("Server SHA256:", hashlib.sha256(binary.read_bytes()).hexdigest(), flush=True)
             except BaseException:
                 for client in clients:
