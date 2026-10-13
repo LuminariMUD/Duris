@@ -142,7 +142,7 @@ completed or their selected contract is explicitly managed.
 `PREBOOT_BACKUP=1` enables launcher backups; the default is off. Hourly timers
 are not proof that a fresh pre-change backup succeeded. The documented host
 still has follow-ups for an off-host replica, restore drill, and failure alert;
-see [Host follow-ups](../ongoing-projects/production-host-follow-ups.md).
+see [Backup operations](BACKUPS.md#separateoff-host-storage).
 
 ### Supported production migration invocation
 
