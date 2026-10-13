@@ -3953,7 +3953,10 @@ int new_descriptor(int s, int conn_type)
 	newd->descriptor = desc;
 	// newd->connected = CON_HOST_LOOKUP;
 	newd->wait = 1;
-	resolve_descriptor_hostname_async(newd->host, desc);
+	// WebSocket proxy metadata will supply the client address on input. Looking
+	// up the shared proxy now would compete with that client's bounded DNS worker.
+	if (!shared_address || conn_type != 2)
+		resolve_descriptor_hostname_async(newd->host, desc);
 	*newd->host2 = '\0';
 	newd->prompt_mode = FALSE;
 	*newd->buf = '\0';
