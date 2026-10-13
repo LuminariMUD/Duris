@@ -210,7 +210,7 @@ ALTER TABLE level_cap
     MODIFY COLUMN most_frags FLOAT NOT NULL AFTER id,
     MODIFY COLUMN racewar_leader INT NOT NULL AFTER most_frags,
     MODIFY COLUMN level INT NOT NULL AFTER racewar_leader,
-    MODIFY COLUMN next_update DATETIME NOT NULL AFTER level;
+    MODIFY COLUMN next_update DATETIME NOT NULL;
 
 CALL duris_add_column_if_missing('locker_items','bitvector1',
     'BIGINT UNSIGNED DEFAULT NULL AFTER `item_condition`');
