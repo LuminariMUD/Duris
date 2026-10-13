@@ -2,8 +2,15 @@
 
 Tracking issue: [#56 — Production follow-ups from the 2026-10-13 log review](https://github.com/LuminariMUD/Duris/issues/56).
 
-Status: plan only; execution has not started. The unchecked items below track the
-remaining work in #56. Creating this plan does not close those findings.
+Status: implementation in progress on `fix/58-56-estale-log-review`, starting
+from `7a2a63447`. The unchecked items below remain open until their required
+evidence is recorded. The local development environment is prepared; production
+operations are not part of this local-worktree execution.
+
+Current work: LR-01, owned by the server maintainer. Its implementation and
+focused scheduler/SQL/file tests pass; the historical recovery proposal is
+prepared. Full local gates and publication remain outstanding. See LR-01.
+Other LR items and ES-01–ES-05 have not yet been implemented on this branch.
 
 Prepared on 2026-10-13 against `master` at
 `690ff313f3e3f115ef14b58612b0e302de2ce28d`, the current issue body and its scope-transfer
@@ -21,11 +28,10 @@ decision, or evidence that the investigated behavior is expected. Start with
 statistics loss. Keep an unresolved report or missing host access open with its
 specific next action; inability to reproduce once is not evidence of correctness.
 
-The planning change adds this file and an issue backlink. Later implementation
-uses the existing source owners, test harnesses, content import, and backup tools
-identified below. It does not need a new persistence framework, monitoring
-service, or test runner. Implementation, production repairs, imports, restarts,
-configuration changes, and test alerts are separate execution work.
+Implementation uses the existing source owners, test harnesses, content import,
+and backup tools identified below. It does not need a new persistence framework,
+monitoring service, or test runner. Production repairs, imports, restarts,
+configuration changes, and test alerts require their specific authorization.
 
 Scope relationships:
 
@@ -86,11 +92,51 @@ claims that host work has already been requested or performed.
 - [ ] Write each logical sample exactly once to SQL and its daily file across
   retries/restarts; separately assess recovery of the 76 missing file samples.
 
+**Execution, 2026-10-13.** The scheduler now allocates random 64-bit identities
+outside the legacy low-byte namespace; its existing v4 state records them before
+effects. No layout change, second queue, or database schema is needed. Retries
+retain the entire capture; only cursor continuation prepares new values. Queue
+delay and durable-state sync no longer consume the repository execution deadline.
+The file append repairs
+only a matching partial row, checks the complete row on replay, and retries
+syncs. State rename and daily-file creation both sync their containing directory.
+See the [runtime/recovery contract](../operations/CONFIGURATION.md) and
+[regression evidence](../testing/REGRESSIONS.md#statistics-across-restarts-and-interrupted-output).
+
+Passed focused commands: `python3 tests/async/test_maintenance_scheduler.py` and
+`tests/async/with_disposable_mariadb.sh bash tests/async/run_statistics_mysql.sh`.
+The latter is registered in `tests/run_db_tests.sh`; it checks SQL/file agreement,
+all injected fault/restart cases, and actual legacy IDs in v2/v3/v4 state.
+The scheduler test fails before the fix on changed captured values.
+The server build and full-tree format check passed. The first broad regression
+run passed 725/727: its wrapper-permission failure is repaired, and its flight
+journey had completed gameplay before failing to count archived boot logs.
+`81b8350e1` separately fixes that evidence collector. The final broad regression
+rerun and DB gate are pending. The slow-state-sync regression also failed before
+the deadline adjustment and passes after it. Output conflicts are refused with
+`EILSEQ`; first retry and terminal failures now log the opaque work ID and error.
+
+**Historical assessment, 2026-10-13 16:47 UTC.** A bounded read-only production
+transaction and a private copy of the original daily file confirm 1,007 existing
+rows, all before hour 22, and all 76 reported SQL samples still present (28 in
+hour 22 and 48 in hour 23). Both source timezone and proposed output mapping are
+UTC. The private dry run under `bin/analysis/lr01-recovery/` retains `original`,
+`proposed`, `samples.json` (SQL primary keys, timestamps and all counters), and
+`assessment.json` (collection time and hashes), with owner-only permissions.
+The proposal preserves the original bytes and adds 76 legacy-format rows,
+bringing the total to 1,083. It invents no scheduler IDs: SQL primary keys identify
+the source samples, and the existing file consumer accepts rows without a work
+ID. An exact original-file hash is the application precondition; a changed or
+already-repaired file must be refused rather than appended again. Scheduler IDs
+cannot be reconstructed from SQL. This assesses only the reported interval,
+not other possible historical gaps. No production file or table was changed;
+replacement requires separate specific authorization and the retained original.
+
 **Evidence and files.** The review found 76 SQL samples from 22:25:20–23:59:11
 missing from the October 12 file, with all extrapolated work IDs already in that
 file's last 8 KiB. Current
 [maintenance_scheduler.c](../../src/persistence/maintenance_scheduler.c)
-still derives IDs as `(scheduled_tick << 8) | (job_id + 1)`.
+originally derived IDs as `(scheduled_tick << 8) | (job_id + 1)`.
 The instance seed in [comm.c](../../src/net/comm.c) comes from listener ports,
 so it does not supply a boot identity. The file check in
 [maintenance_repository.c](../../src/persistence/maintenance_repository.c)

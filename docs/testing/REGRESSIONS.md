@@ -11,6 +11,40 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Statistics across restarts and interrupted output
+
+Issue #56 (LR-01): new maintenance work no longer reuses port/tick-derived IDs.
+The original captured request survives retry; cursor continuation still prepares
+the next page. Worker execution gets its own time budget after queueing and
+durable-state sync. Daily
+statistics append repairs a matching partial row and repeats a failed sync even
+when the full row is present, preserving all existing consumer columns.
+
+`python3 tests/async/test_maintenance_scheduler.py` fails against `7a2a63447`
+because retry changes the captured values, and passes with the repair. It also
+checks new identity after a fresh same-schedule boot, cursor continuation,
+acknowledged/pending completions, old state layouts, bounds, and state-write failure.
+
+`tests/async/with_disposable_mariadb.sh bash tests/async/run_statistics_mysql.sh`
+links the real scheduler and repository against the full disposable schema.
+It compares SQL and file values and multiplicity for same-day fresh boots,
+identical samples, legacy file IDs, lost scheduler state, local midnight,
+slow state sync, rollback, lost commit acknowledgement, repeated file failures,
+partial writes, and failed file sync. The slow-sync case fails before the
+deadline adjustment. Corrupt partial data and conflicting complete rows return
+`EILSEQ` without rewriting the file. Process exits before completion persistence and pending
+completion delivery are replayed from v2/v3/v4 state using legacy work IDs.
+Every recovered sample retains its original timestamp and eleven counters;
+an invalid state produces no output. All cases pass locally. Capture fixtures
+supply counters instead of booting players; no production history is rewritten.
+The random identity and consistent-restore contract is documented in
+[configuration](../operations/CONFIGURATION.md).
+
+The full gate also exposed a flight-journey evidence bug: address retention can
+archive earlier boots' status logs before the final timing count. Commit
+`81b8350e1` reads the archived records too; it retains the route and boot-count
+assertions and changes no flight behavior.
+
 ## Crumbling equipment removal
 
 PR #51's review reproduced a pre-existing use-after-free when `obj_to_char()`
