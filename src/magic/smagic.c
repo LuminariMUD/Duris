@@ -1528,10 +1528,13 @@ void earthen_grasp(int level, P_char ch, P_char victim, bool greater)
 	// If they fail their str bonus save..
 	else if (!NewSaves(victim, SAVING_PARA, save_mod))
 	{
-		// If they fail an easier save.
-		if (!NewSaves(victim, SAVING_PARA, save_mod / 3))
+		// Dividing a negative mod makes the save harder. Keep GEG follow-ups at
+		// least as easy as its initial save; single Earthen Grasp is unchanged.
+		if (!NewSaves(victim, SAVING_PARA,
+			      greater ? MIN(save_mod, save_mod / 3) : save_mod / 3))
 			effect = EG_LONG;
-		else if (!NewSaves(victim, SAVING_PARA, save_mod / 2))
+		else if (!NewSaves(victim, SAVING_PARA,
+				   greater ? MIN(save_mod, save_mod / 2) : save_mod / 2))
 			effect = EG_SHORT;
 		else
 			effect = EG_FAIL;

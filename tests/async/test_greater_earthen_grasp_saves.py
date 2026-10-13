@@ -8,9 +8,9 @@ spell.gEarthGrasp.paraSaveBonus property, while single Earthen Grasp keeps its
 original saves (issue #35).
 
 The harness compiles the real earthen_grasp(), its two spell callers and
-check_freedom_of_movement(). NewSaves() is scripted: it records each modifier
-it receives and returns the next queued outcome. Dice, damage, messages and
-affects are stubs that record what the spell asked for.
+check_freedom_of_movement() and NewSaves(). Controlled d100 rolls exercise real
+save thresholds; rolls 1/100 also force branches for the duration and immunity
+cases. Dice, damage, messages and affects record what the spell asked for.
 """
 
 from pathlib import Path
@@ -27,6 +27,9 @@ FREEDOM = extract_function("magic.c", "bool check_freedom_of_movement(P_char ch,
 GRASP = extract_function(
     "smagic.c", "void earthen_grasp(int level, P_char ch, P_char victim, bool greater)"
 )
+SAVES = extract_function("sparser.c", "bool NewSaves(P_char ch, int save_type, int mod)").replace(
+    "bool NewSaves(", "bool production_saves(", 1
+)
 SINGLE = extract_function("smagic.c", "void spell_earthen_grasp(int level")
 GREATER_TARGET = extract_function("smagic.c", "void spell_single_earthen_grasp(int level")
 
@@ -36,6 +39,8 @@ PRELUDE = r'''
 #include "combat/damage.h"
 #include "magic/spells.h"
 #include "net/comm.h"
+#include "world/difficulty.h"
+#include "world/difficulty_math.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -43,6 +48,7 @@ PRELUDE = r'''
 #include <deque>
 #include <vector>
 
+static std::deque<int> para_rolls;
 static std::deque<bool> para_outcomes;  // next SAVING_PARA results, in call order
 static std::vector<int> para_mods;      // the mod each SAVING_PARA call received
 static int jitter;                      // number(-WAIT_SEC, WAIT_SEC)
@@ -54,20 +60,37 @@ static ulong victim_act;
 static int damage_result, damage_calls, applications;
 static affected_type applied;
 
-bool NewSaves(P_char, int save_type, int mod)
+int find_save(P_char, int) { return 45; }
+bool difficulty_world_npc(P_char) { return false; }
+double difficulty_multiplier(difficulty_dial) { return 1.0; }
+bool production_saves(P_char, int, int);
+
+bool NewSaves(P_char ch, int save_type, int mod)
 {
     if (save_type == SAVING_SPELL)
         return true; // the damage save; not under test
-    if (save_type != SAVING_PARA || para_outcomes.empty())
+    if (save_type != SAVING_PARA)
         std::abort();
     para_mods.push_back(mod);
-    bool saved = para_outcomes.front();
-    para_outcomes.pop_front();
-    return saved;
+    return production_saves(ch, save_type, mod);
 }
 
 int number(int low, int high)
 {
+    if (low == 1 && high == 100)
+    {
+        if (!para_rolls.empty())
+        {
+            int roll = para_rolls.front();
+            para_rolls.pop_front();
+            return roll;
+        }
+        if (para_outcomes.empty())
+            std::abort();
+        int roll = para_outcomes.front() ? 100 : 1;
+        para_outcomes.pop_front();
+        return roll;
+    }
     if (low == -WAIT_SEC && high == WAIT_SEC)
         return jitter;
     if (low == 0 && high == 1)
@@ -115,7 +138,7 @@ int get_default_save_mod(P_char, P_char, int, int) { return 0; }
 int dice(int, int) { return 1; }
 void stop_fighting(P_char) {}
 void StopMercifulAttackers(P_char) {}
-''' + BOUNDED + FREEDOM
+''' + BOUNDED + FREEDOM + SAVES
 
 DRIVER = r'''
 static int failures;
@@ -195,7 +218,7 @@ int main()
     para_bonus = 2.0;
     jitter = 0;
     cast(true, 100, 100, {FAIL, FAIL});
-    require_mods("equal STR, long hold", {-2, 0});
+    require_mods("equal STR, long hold", {-2, -2});
     require_hold("equal STR, long hold", 5 * WAIT_SEC);
     require(damage_calls == 1, "equal STR, long hold", "grasp did no damage");
 
@@ -217,11 +240,11 @@ int main()
     cast(true, 220, 100, {FAIL, FAIL});
     require_mods("+120 STR, capped", {4, 1});
     cast(true, 100, 220, {FAIL, SAVE, SAVE});
-    require_mods("-120 STR, capped", {-8, -2, -4});
+    require_mods("-120 STR, capped", {-8, -8, -8});
 
     // Integer division truncates toward zero on both the STR gap and the divided saves.
     cast(true, 71, 100, {FAIL, SAVE, SAVE});
-    require_mods("-29 STR truncates toward zero", {-3, -1, -1});
+    require_mods("-29 STR truncates toward zero", {-3, -3, -3});
 
     // Passing the STR save leaves only the fallback save, at the bonus alone.
     cast(true, 220, 100, {SAVE, FAIL});
@@ -243,8 +266,28 @@ int main()
     bonus_reads = 0;
     para_bonus = 3.0;
     cast(true, 100, 100, {FAIL, FAIL});
-    require_mods("bonus 3 after reload", {-3, -1});
+    require_mods("bonus 3 after reload", {-3, -3});
     require(bonus_reads == 1, "bonus 3 after reload", "bonus was not read per cast");
+
+    // Sweep real NewSaves d100 thresholds for all follow-up branches. With a
+    // base threshold of 45, mods -2 and -8 fail at <=35 and <=5, respectively.
+    // Both follow-ups must keep those easier odds, including the roll boundary.
+    para_bonus = 2.0;
+    jitter = 0;
+    for (int str : {100, 10})
+    {
+        int threshold = str == 100 ? 35 : 5;
+        for (int roll = 1; roll <= 100; ++roll)
+        {
+            para_rolls = {1, roll, 100};
+            cast(true, str, 100, {});
+            require_hold("real long-save threshold", roll <= threshold ? 5 * WAIT_SEC : 0);
+            para_rolls = {1, 100, roll};
+            cast(true, str, 100, {});
+            require_hold("real short-save threshold", roll <= threshold ? WAIT_SEC : 0);
+        }
+    }
+    para_rolls.clear();
 
     // Single Earthen Grasp keeps the duration as its save mod and never reads the bonus.
     bonus_reads = 0;
@@ -256,6 +299,8 @@ int main()
     cast(false, 160, 100, {SAVE, FAIL});
     require_mods("single grasp, fallback", {24, 0});
     jitter = 0;
+    cast(false, 100, 160, {FAIL, SAVE, SAVE});
+    require_mods("single grasp, negative mods unchanged", {-20, -6, -10});
     cast(false, 250, 100, {FAIL, FAIL});
     require_mods("single grasp, duration bound", {40, 13});
     require(bonus_reads == 0, "single grasp", "single grasp read the GEG bonus");
