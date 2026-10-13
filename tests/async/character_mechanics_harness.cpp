@@ -15,12 +15,44 @@ using namespace character_mechanics;
 void load_character_properties();
 void set_bulwark_property(float value);
 void clear_character_properties();
+void update_dam_factors();
 double bulwark_melee(P_char attacker, P_char victim, bool bypass = false);
 
 static void guardian_bulwark()
 {
 	load_character_properties();
 	assign_innates();
+	const auto mechanics = mechanic_connections();
+	const auto errors = validate_mechanics(mechanics);
+	for (const auto &error : errors)
+		std::fprintf(stderr, "%s\n", error.c_str());
+	assert(errors.empty());
+	for (const auto &connection : mechanics)
+	{
+		const auto name = mechanic_name(connection.id);
+		std::printf("CONNECTION\t%.*s\t%.*s\t%s\t%u\n", int(name.size()), name.data(),
+			    int(connection.symbol.size()), connection.symbol.data(),
+			    connection.declared_at.file_name(), connection.declared_at.line());
+		for (auto dependency : connection.dependencies)
+		{
+			const auto target = mechanic_name(dependency);
+			std::printf("DEPENDENCY\t%.*s\t%.*s\n", int(name.size()), name.data(),
+				    int(target.size()), target.data());
+		}
+		if (connection.id == MechanicId::guardian_bulwark_grant)
+			assert(*std::get<const char *>(connection.binding) == 41);
+		if (connection.id == MechanicId::guardian_bulwark_factor)
+			assert(*std::get<const float *>(connection.binding) == 0.85f);
+	}
+	auto missing_effect = mechanics;
+	missing_effect.pop_back();
+	assert(!validate_mechanics(missing_effect).empty());
+	auto conflicting = mechanics;
+	conflicting.push_back(mechanics.front());
+	assert(!validate_mechanics(conflicting).empty());
+	auto wrong_type = mechanics;
+	wrong_type.front().binding = static_cast<const char *>(nullptr);
+	assert(!validate_mechanics(wrong_type).empty());
 	char_data attacker{}, victim{};
 	obj_data shield{};
 	SET_POS(&attacker, STAT_NORMAL + POS_STANDING);
@@ -59,6 +91,8 @@ static void guardian_bulwark()
 	set_bulwark_property(0.5f);
 	assert(bulwark_melee(&attacker, &victim) == 500);
 	clear_character_properties();
+	update_dam_factors();
+	assert(bulwark_melee(&attacker, &victim) == 850);
 	std::puts(
 		"guardian.bulwark: PASS (real grants, eligibility, property loading and melee reduction; raw damage is a fixture boundary)");
 }
@@ -199,5 +233,5 @@ int main()
 	std::puts(
 		"eligibility.examples: PASS (normal configuration, overrides, ordered pairs; predicate scope only)");
 	std::puts(
-		"UNVERIFIED: entry commands, effects, transitions, persistence and reverse site coverage");
+		"UNVERIFIED: entry commands, raw HP/death, other effects, transitions, persistence and remaining reverse coverage");
 }

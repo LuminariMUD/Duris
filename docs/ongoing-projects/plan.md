@@ -1,6 +1,6 @@
 # Character mechanics: explicit connections in gameplay code
 
-Status: **paused at the user's request on 2026-10-13**. Work is on
+Status: **active, resumed at the user's request on 2026-10-13**. Work is on
 `feature/52-character-mechanics`, based on
 `7a2a6344727b3cdd63851bde37f6a5a2d67aeb8d`. The full acceptance scope below remains
 open. Original source inspection: 2026-10-12; implementation started 2026-10-13.
@@ -13,7 +13,7 @@ Tracking issue: [#52 — Make character mechanics explicitly connected and mecha
   `origin/master`. Keep all implementation on this worktree. Another session may
   use the shared local/dev game; use isolated harnesses and disposable servers,
   without stopping or modifying that instance or its database/Redis state.
-- Step 1 is incomplete and paused; steps 2–4 remain required. The compiled identity foundation
+- Step 1 is active and incomplete; steps 2–4 remain required. The compiled identity foundation
   below is implemented; next complete Guardian/Bulwark, ordered multiclass, and
   Revenant traces. Do not treat an inventory as completion of these traces.
 - Separately scoped defect repaired in `86de3042a` while connecting specialization eligibility:
@@ -33,7 +33,68 @@ Tracking issue: [#52 — Make character mechanics explicitly connected and mecha
   runtime gameplay dispatch is needed. Every retained connection still needs
   reverse coverage and appropriately scoped behavior/lifecycle evidence.
 
-### Pause checkpoint
+### Resume work
+
+Resumed from clean, published checkpoint `95bcf2e82`. The issue scope is unchanged;
+`origin/master` remains the original baseline. Current work adds the first typed
+`MechanicConnection` records to the existing header/source, with providers beside
+innate and combat owners. Six IDs connect effective innate identity, unlock,
+eligibility, the Guardian grant cell, the loaded factor, and the real melee handler.
+Compiled markers bind the exact grant, property load, and shield/effect statements.
+Access, implementation state and proof remain independent; no proof flag is saved.
+
+Outcome for this slice: a connected and testable passive chain plus a reverse
+tripwire that rejects an unowned/missing passive site. Non-goals: moving gameplay
+rules or claiming creation/teacher/lifecycle completion. Files are the existing
+contract pair, `innates.c`, `fight.c`, and the existing native tests (Reflection
+needs the marker header in its extracted-code fixture). Proof is the existing
+Bulwark executable fixture, compiled connection validation, source mutation cases,
+formatting, and the server build. No generalized dispatcher or registry is added.
+This passive slice is implemented and locally validated. It changes no gameplay
+decision: the production additions are descriptors and compile-time site markers.
+`CHARACTER_MECHANIC_BIND` keeps native pointer types and stringifies the same
+symbol for source checks; there is no type-erased invocation API. The aggregate
+validates ID uniqueness/completeness, dependency resolution, owner identities,
+binding types, and gap/state consistency. Native output prints the actual
+connections, dependency edges and declaration locations.
+
+The reverse check scans maintained C/C++ sources and headers for the migrated
+Bulwark identities. It recognizes the three exact current statement forms and
+their compiled markers, plus numeric definitions and typed descriptor
+initializers. Unsupported reshaping requires review; a marker cannot absorb a
+new nested branch. The checker currently covers **Bulwark only**, not every
+innate/helper caller or the remaining option families. That broader migration
+remains required; no baseline exemption list was introduced.
+
+Validation after resume:
+
+- `python3 tests/async/test_character_mechanics.py`: passed under ASan/UBSan.
+  Source fixtures under `bin/` detect consumer removal, marker removal, new
+  source-file use, a new macro alias, and a nested branch. Compiled mutation
+  fixtures also prove that a stubbed damage effect and changed property fallback
+  fail the native damage assertion. The positive native binary SHA256 was
+  `632a900a2258dad790c1a721d010916d566783accce3eec0379ed17692bce6bf`.
+- `python3 tests/async/test_innate_reflection.py`: passed; its extraction fixture
+  includes the new marker header and retains its original dispatch/cooldown scope.
+- `make -C src -j8`, `make -j8 build-production build-editor`, and
+  `make -C src -j4 pfile`: passed.
+- `./scripts/format.sh --check` and `git diff --check`: passed. Evidence is in
+  `bin/tests/character-mechanics-connections.log`,
+  `bin/tests/character-mechanics-connections-build.log`,
+  `bin/tests/character-mechanics-connections-consumers.log`,
+  `bin/tests/character-mechanics-connections-pfile.log`, and
+  `bin/tests/character-mechanics-reflection.log`.
+
+**Still open for the first trace:** connect creation and actual specialization
+command registration/teacher guards/mutation/skill refresh; bind the passive's
+null callback; add the complete applicable save/load path and real damage/command
+journey. Grant history/conflict detection and wider reverse coverage also remain
+open. The current fixture ends at the raw-damage boundary as described in the
+historical checkpoint below. Step 1, all multiclass/Revenant traces, and steps 2–4
+are still incomplete. The earlier full gate has not been rerun for these new
+descriptors/tests; the final completion gate remains required.
+
+### Historical pause checkpoint
 
 Completed and pushed before this checkpoint:
 
@@ -89,15 +150,16 @@ dispatches gameplay nor stores copied formulas. Table sentinels are retained so
 their removal can be diagnosed. The specialization row type moved to its existing
 header without changing layout or table content.
 
-`python3 tests/async/test_character_mechanics.py` compiles these complete production
+At `831fda768`, `python3 tests/async/test_character_mechanics.py` compiled these complete production
 translation units with ASan/UBSan. Its temporary fixture copies the committed
 creation configuration, explicitly disables all three mode switches, and never
 reads `.env`. It reports the native executable identity and separates structural
 binding assertions from named predicate-policy examples. It covers all race names,
 all class names, every spec slot including empty/"Not Used" slots, raw creation
 and ordered-secondary tables, out-of-player-range forms, normal/override example
-results, and malformed-view diagnostics. It does **not** yet establish mechanic
-IDs, grant/effect connections, source mutation detection, or command reachability.
+results, and malformed-view diagnostics. That foundation alone did **not** establish
+mechanic IDs, grant/effect connections, source mutation detection, or command
+reachability; the resumed passive work above adds the first limited connections.
 
 Next implementation work remains:
 

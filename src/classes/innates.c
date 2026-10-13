@@ -39,6 +39,7 @@
 #include "magic/spells.h"
 #include "world/weather.h"
 #include "core/safe_format.h"
+#include "player/character_mechanics.h"
 
 #define ADD_RACIAL_INNATE(innate, race, level) (racial_innates[(innate)][(race)] = (level))
 #define ADD_CLASS_INNATE(innate, ch_class, level, spec)                              \
@@ -887,6 +888,7 @@ void assign_innates()
 
 	ADD_CLASS_INNATE(INNATE_DET_SUBVERSION, CLASS_MERCENARY, 30, SPEC_BOUNTY);
 
+	CHARACTER_MECHANIC_SITE(guardian_bulwark_grant);
 	ADD_CLASS_INNATE(INNATE_GUARDIANS_BULWARK, CLASS_WARRIOR, 41, SPEC_GUARDIAN);
 
 	// ADD_CLASS_INNATE(INNATE_MINER, CLASS_ALCHEMIST, 36, SPEC_BLACKSMITH);
@@ -1035,6 +1037,58 @@ void assign_innates()
 	ADD_CLASS_INNATE(INNATE_SUMMON_MOUNT, CLASS_DRAGOON, 1, 0);
 	ADD_CLASS_INNATE(INNATE_BATTLE_FRENZY, CLASS_DRAGOON, 16, 0);
 	ADD_CLASS_INNATE(INNATE_OPHIDIAN_EYES, CLASS_DRAGOON, 1, 0);
+}
+
+std::span<const character_mechanics::MechanicConnection> character_mechanics::innate_connections()
+{
+	static constexpr MechanicId unlock_dependencies[] = { MechanicId::innate_identity };
+	static constexpr MechanicId eligibility_dependencies[] = { MechanicId::innate_unlock };
+	static constexpr MechanicId grant_dependencies[] = { MechanicId::innate_eligibility };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::innate_identity,
+		  Relation::identity,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(innate_char_race),
+		  {},
+		  Access::available,
+		  Implementation::connected,
+		  "Innates use shape race; regular corpseform uses the saved race-change modifier.",
+		  {} },
+		{ MechanicId::innate_unlock,
+		  Relation::eligibility,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(innate_unlock_level),
+		  unlock_dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Lowest racial/class unlock; primary class gates class innates before GET_CLASS considers secondary class.",
+		  {} },
+		{ MechanicId::innate_eligibility,
+		  Relation::eligibility,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(has_innate),
+		  eligibility_dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Current level must reach the nonzero unlock.",
+		  {} },
+		{ MechanicId::guardian_bulwark_grant,
+		  Relation::grant,
+		  { OptionKind::specialization, CLASS_WARRIOR, SPEC_GUARDIAN },
+		  INNATE_GUARDIANS_BULWARK,
+		  CHARACTER_MECHANIC_BIND(
+			  &class_innates[INNATE_GUARDIANS_BULWARK][flag2idx(CLASS_WARRIOR) - 1]
+					[SPEC_GUARDIAN]),
+		  grant_dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Passive grant from assign_innates; the existing table cell supplies its unlock level. Acquisition is not proven by this grant.",
+		  {} }
+	};
+	return connections;
 }
 
 P_char parse_victim(P_char ch, char *arg, uint flags)

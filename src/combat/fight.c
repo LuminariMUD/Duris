@@ -11,6 +11,7 @@
 #define TROPHY
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "telemetry/telemetry_runtime.h"
 #include "net/output_style.h"
 #include "item/item_actions.h"
@@ -350,6 +351,7 @@ void update_dam_factors()
 	dam_factor[DF_RAGED] = get_property("damage.increase.rage", 2.000);
 	dam_factor[DF_ENERGY_CONTAINMENT] =
 		get_property("damage.reduction.EnergyContainment", 0.750);
+	CHARACTER_MECHANIC_SITE(guardian_bulwark_factor);
 	dam_factor[DF_GUARDIANS_BULWARK] =
 		get_property("damage.reduction.guardians.bulwark", 0.850);
 	dam_factor[DF_DAMROLL_MOD] = get_property("damroll.mod", 1.0);
@@ -4828,6 +4830,7 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 		}
 		*/
 
+		CHARACTER_MECHANIC_SITE(guardian_bulwark_effect);
 		if (has_innate(victim, INNATE_GUARDIANS_BULWARK) && victim->equipment[WEAR_SHIELD])
 			dam *= dam_factor[DF_GUARDIANS_BULWARK];
 
@@ -5079,6 +5082,35 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 		return attack_back(ch, victim, TRUE);
 
 	return shld_result;
+}
+
+std::span<const character_mechanics::MechanicConnection> character_mechanics::melee_connections()
+{
+	static constexpr MechanicId effect_dependencies[] = { MechanicId::guardian_bulwark_grant,
+							      MechanicId::guardian_bulwark_factor };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::guardian_bulwark_factor,
+		  Relation::configuration,
+		  { OptionKind::specialization, CLASS_WARRIOR, SPEC_GUARDIAN },
+		  INNATE_GUARDIANS_BULWARK,
+		  CHARACTER_MECHANIC_BIND(&dam_factor[DF_GUARDIANS_BULWARK]),
+		  {},
+		  Access::available,
+		  Implementation::connected,
+		  "update_dam_factors loads damage.reduction.guardians.bulwark, including its production default.",
+		  {} },
+		{ MechanicId::guardian_bulwark_effect,
+		  Relation::effect,
+		  { OptionKind::specialization, CLASS_WARRIOR, SPEC_GUARDIAN },
+		  INNATE_GUARDIANS_BULWARK,
+		  CHARACTER_MECHANIC_BIND(melee_damage),
+		  effect_dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Victim innate and worn shield; PHSDAM_NOREDUCE bypasses this effect. Multiplies after armor/troll skin and before later reductions/raw damage.",
+		  {} }
+	};
+	return connections;
 }
 
 void check_vamp(P_char ch, P_char victim, double fdam, uint flags)

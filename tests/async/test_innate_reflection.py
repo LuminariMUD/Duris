@@ -19,6 +19,7 @@ prelude = r'''
 #include "cmd/interp.h"
 #include "magic/spells.h"
 #include "classes/necromancy.h"
+#include "player/character_mechanics.h"
 #include <cassert>
 #include <cstring>
 #include <string>

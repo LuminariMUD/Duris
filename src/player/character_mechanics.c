@@ -3,11 +3,132 @@
 #include "classes/specializations.h"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cstring>
 
 namespace character_mechanics
 {
+std::string_view mechanic_name(MechanicId id)
+{
+	switch (id)
+	{
+	case MechanicId::innate_identity:
+		return "innate.identity";
+	case MechanicId::innate_unlock:
+		return "innate.unlock";
+	case MechanicId::innate_eligibility:
+		return "innate.eligibility";
+	case MechanicId::guardian_bulwark_grant:
+		return "guardian.bulwark.grant";
+	case MechanicId::guardian_bulwark_factor:
+		return "guardian.bulwark.factor";
+	case MechanicId::guardian_bulwark_effect:
+		return "guardian.bulwark.effect";
+	case MechanicId::count:
+		break;
+	}
+	return {};
+}
+
+std::vector<MechanicConnection> mechanic_connections()
+{
+	std::vector<MechanicConnection> result;
+	for (auto connections : { innate_connections(), melee_connections() })
+		result.insert(result.end(), connections.begin(), connections.end());
+	return result;
+}
+
+std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> connections)
+{
+	std::vector<std::string> errors;
+	std::array<bool, size_t(MechanicId::count)> seen{};
+	auto valid_class = [](unsigned int mask)
+	{ return std::has_single_bit(mask) && std::countr_zero(mask) < CLASS_COUNT; };
+	for (const auto &connection : connections)
+	{
+		const std::string name(mechanic_name(connection.id));
+		auto require = [&](bool valid, const char *problem)
+		{
+			if (!valid)
+				errors.push_back(name + ": " + problem);
+		};
+		if (name.empty())
+		{
+			errors.push_back("unknown mechanic ID");
+			continue;
+		}
+		require(!seen[size_t(connection.id)], "duplicate connection");
+		seen[size_t(connection.id)] = true;
+		require(std::visit([](auto pointer) { return pointer != nullptr; },
+				   connection.binding),
+			"missing native binding");
+		require(!connection.symbol.empty(), "missing native symbol");
+		require(!connection.context.empty(), "missing context");
+		bool compatible = false;
+		switch (connection.relation)
+		{
+		case Relation::identity:
+			compatible = std::holds_alternative<EffectiveRace>(connection.binding);
+			break;
+		case Relation::eligibility:
+			compatible = std::holds_alternative<InnatePredicate>(connection.binding) ||
+				     std::holds_alternative<InnateUnlock>(connection.binding);
+			break;
+		case Relation::grant:
+			compatible = std::holds_alternative<const char *>(connection.binding);
+			break;
+		case Relation::configuration:
+			compatible = std::holds_alternative<const float *>(connection.binding);
+			break;
+		case Relation::effect:
+			compatible = std::holds_alternative<MeleeDamage>(connection.binding);
+			break;
+		}
+		require(compatible, "relation/native binding disagree");
+		require(connection.implementation == Implementation::connected ?
+				connection.gap.empty() :
+				!connection.gap.empty(),
+			"implementation/gap disagree");
+		require(connection.innate >= 0 && connection.innate <= LAST_INNATE,
+			"invalid innate");
+		const auto &owner = connection.owner;
+		switch (owner.kind)
+		{
+		case OptionKind::shared:
+			require(owner.primary == 0 && owner.secondary == 0, "invalid shared owner");
+			break;
+		case OptionKind::race:
+			require(owner.primary <= LAST_RACE && owner.secondary == 0,
+				"invalid race owner");
+			break;
+		case OptionKind::character_class:
+			require(valid_class(owner.primary) && owner.secondary == 0,
+				"invalid class owner");
+			break;
+		case OptionKind::specialization:
+			require(valid_class(owner.primary) && owner.secondary > 0 &&
+					owner.secondary <= MAX_SPEC,
+				"invalid specialization owner");
+			break;
+		case OptionKind::multiclass:
+			require(valid_class(owner.primary) && valid_class(owner.secondary),
+				"invalid multiclass owner");
+			break;
+		}
+		for (auto dependency : connection.dependencies)
+			require(std::any_of(connections.begin(), connections.end(),
+					    [&](const auto &candidate)
+					    { return candidate.id == dependency; }),
+				"missing dependency");
+	}
+	for (size_t id = 0; id < seen.size(); ++id)
+		if (!seen[id])
+			errors.push_back(std::string(mechanic_name(MechanicId(id))) +
+					 ": missing connection");
+	return errors;
+}
+
 IdentityConnections identity_connections()
 {
 	IdentityConnections connections;

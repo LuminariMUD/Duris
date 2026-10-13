@@ -4,14 +4,107 @@
 #include "core/defines.h"
 
 #include <span>
+#include <source_location>
 #include <string>
+#include <string_view>
+#include <variant>
 #include <vector>
 
 struct char_data;
 struct allowed_race_spec_struct;
+struct damage_messages;
 
 namespace character_mechanics
 {
+// IDs belong to mechanics, not saved character data. Connections are supplied
+// beside their owners; exact branch markers below carry the same compiled ID.
+enum class MechanicId
+{
+	innate_identity,
+	innate_unlock,
+	innate_eligibility,
+	guardian_bulwark_grant,
+	guardian_bulwark_factor,
+	guardian_bulwark_effect,
+	count
+};
+
+enum class Relation
+{
+	identity,
+	eligibility,
+	grant,
+	configuration,
+	effect
+};
+enum class Access
+{
+	available,
+	conditional,
+	disabled,
+	unresolved
+};
+enum class Implementation
+{
+	connected,
+	incomplete,
+	legacy
+};
+enum class OptionKind
+{
+	shared,
+	race,
+	character_class,
+	specialization,
+	multiclass
+};
+
+struct Option
+{
+	OptionKind kind;
+	// Native race ID or CLASS_* mask. Specializations use (class mask, slot);
+	// multiclass uses ordered (primary mask, secondary mask). Shared is (0, 0).
+	unsigned int primary;
+	unsigned int secondary;
+};
+
+using InnatePredicate = bool (*)(char_data *, int);
+using InnateUnlock = int (*)(char_data *, int);
+using EffectiveRace = int (*)(char_data *);
+using MeleeDamage = int (*)(char_data *, char_data *, double, int, damage_messages *, int *);
+using MechanicBinding = std::variant<const char *, const float *, InnatePredicate, InnateUnlock,
+				     EffectiveRace, MeleeDamage>;
+
+struct MechanicConnection
+{
+	MechanicId id;
+	Relation relation;
+	Option owner;
+	// Zero means the shared innate rules; nonzero is the existing INNATE_* ID.
+	int innate;
+	MechanicBinding binding;
+	std::string_view symbol;
+	std::span<const MechanicId> dependencies;
+	Access access;
+	Implementation implementation;
+	std::string_view context;
+	std::string_view gap;
+	std::source_location declared_at = std::source_location::current();
+};
+
+// A binding remains a typed native pointer. Its spelling is for source-location
+// checks, never a second evaluator or a dispatcher.
+#define CHARACTER_MECHANIC_BIND(symbol) (symbol), #symbol
+#define CHARACTER_MECHANIC_SITE(id)                           \
+	static_assert(::character_mechanics::MechanicId::id < \
+		      ::character_mechanics::MechanicId::count)
+
+std::string_view mechanic_name(MechanicId id);
+std::span<const MechanicConnection> innate_connections();
+std::span<const MechanicConnection> melee_connections();
+std::vector<MechanicConnection> mechanic_connections();
+std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> connections);
+
 using SpecializationNames = const char *[MAX_SPEC];
 using ClassRow = int[CLASS_COUNT + 1];
 using SecondaryClasses = int[5];
