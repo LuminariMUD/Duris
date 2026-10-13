@@ -1399,7 +1399,17 @@ std::vector<std::string> Guild::statements_without_member(P_char ch)
 		frags.top_frags = 0;
 	}
 	frags.frags -= GET_FRAGS(ch);
-	std::vector<std::string> statements = sql_save_guild_statements(this);
+	std::vector<std::string> statements;
+	try
+	{
+		statements = sql_save_guild_statements(this);
+	}
+	catch (...)
+	{
+		frags = old_frags;
+		*link = member;
+		throw;
+	}
 	frags = old_frags;
 	*link = member;
 	return statements;
