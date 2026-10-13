@@ -9,13 +9,14 @@ is not production rollout or historical restoration. LR-02–LR-20 remain open.
 The owner explicitly skipped the unidentified `skeer` term under LR-08.
 
 #58 implementation and local qualification are complete on
-`fix/58-artifact-guild-memory`; it is ready for review. The actual Summon
+`fix/58-artifact-guild-memory`, published for review in
+[PR #70](https://github.com/LuminariMUD/Duris/pull/70), open and unmerged. The actual Summon
 Ghasts/PvP, crash, shutdown, copyover/restart, payment rollback and artifact-ordering
 cases pass. The 731-regression gate passes; 76 database legs pass across the full
 run plus eight reruns after one shared fixture-link correction. All 15 site tests
 pass. Detailed evidence and fixture boundaries are in
 [plan-estale.md](plan-estale.md#qualification-update-2026-10-14).
-No additional LR item is completed by that work. Next: publish the #58 review, then continue LR-02. LR-03's level-30 policy was already chosen
+No additional LR item is completed by that work. Next: continue LR-02. LR-03's level-30 policy was already chosen
 in #55; teacher-command verification remains.
 
 ## Integration handoff — 2026-10-14

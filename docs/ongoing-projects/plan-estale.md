@@ -3,7 +3,8 @@
 Tracking issue: [#58 — Batched epic awards fail with ESTALE](https://github.com/LuminariMUD/Duris/issues/58).
 
 Status: implementation and local qualification complete on 2026-10-14; ready for
-review on `fix/58-artifact-guild-memory`, based on `origin/master` at `0e27ef1e8`.
+review in [PR #70](https://github.com/LuminariMUD/Duris/pull/70) on
+`fix/58-artifact-guild-memory`, based on `origin/master` at `0e27ef1e8`.
 No #58 merge, production rollout or compensation has occurred. LR-01 statistics
 was already squash-merged through [PR #66](https://github.com/LuminariMUD/Duris/pull/66)
 as `8c3f7384a`; LR-02–LR-20 remain in [plan-log_review.md](plan-log_review.md).
