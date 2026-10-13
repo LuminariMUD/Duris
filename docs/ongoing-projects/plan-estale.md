@@ -2,10 +2,26 @@
 
 Tracking issue: [#58 — Batched epic awards fail with ESTALE](https://github.com/LuminariMUD/Duris/issues/58).
 
-Status: queued for implementation on `fix/58-56-estale-log-review`, starting
-from `7a2a63447`. The local development environment is prepared. LR-01 statistics
-is the first implementation slice; artifact/guild implementation and gameplay
-qualification have not started. All acceptance items below remain open.
+Status: baseline reproduction in progress on `fix/58-56-estale-log-review`,
+starting from `7a2a63447`. LR-01 statistics is the first implementation slice;
+artifact/guild production source has not changed. All acceptance items below
+remain open.
+
+Current evidence (2026-10-13): reran the issue's repository probe against private,
+socket-only MariaDB and reproduced artifact/guild burst rejection, capped-target
+rejection, mirror mismatch, and successful receipt replay. The disposable server
+was stopped. `bin/analysis/artifact-estale/probe.py` and `result.txt` retain it.
+A separate native `runtime_before.cpp` in that directory includes the real state
+capture and links transaction submission, identity and codec. With hydration and
+unrelated engine services supplied by the fixture, three uncapped 4-epic boon
+submissions capture the same timer and all target +3,600 seconds; memory advances
+by zero while the writer/completions are held, versus the required +10,800.
+The same fixture links the real Guild constructor and submits awards from three
+same-guild actors starting at 85 prestige. Every capture uses revision zero and
+construction delta zero; memory stays at 85/0 instead of the required 115/1.
+This is real capture-path evidence, not the Summon Ghasts journey or a completed
+ES-01 matrix. Next: promote/extend the fixture into maintained regression coverage,
+then implement the coherent memory/snapshot/history cutover below.
 Prepared on 2026-10-13 against `master` at `79541e206`, the current issue and its
 two reproduction/trigger comments. Production observations below are the issue's
 reported evidence, not a new inspection of the production database or logs.
