@@ -1043,7 +1043,8 @@ std::span<const character_mechanics::MechanicConnection> character_mechanics::in
 {
 	static constexpr MechanicId unlock_dependencies[] = { MechanicId::innate_identity };
 	static constexpr MechanicId eligibility_dependencies[] = { MechanicId::innate_unlock };
-	static constexpr MechanicId grant_dependencies[] = { MechanicId::innate_eligibility };
+	static constexpr MechanicId grant_dependencies[] = { MechanicId::innate_eligibility,
+							     MechanicId::specialization_select };
 	static const MechanicConnection connections[] = {
 		{ MechanicId::innate_identity,
 		  Relation::identity,

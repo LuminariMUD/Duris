@@ -85,16 +85,14 @@ Validation after resume:
   `bin/tests/character-mechanics-connections-pfile.log`, and
   `bin/tests/character-mechanics-reflection.log`.
 
-**Still open for the first trace:** connect creation and actual specialization
-command registration/teacher guards/mutation/skill refresh; bind the passive's
-null callback; add the complete applicable save/load path and real damage/command
-journey. Grant history/conflict detection and wider reverse coverage also remain
-open. The current fixture ends at the raw-damage boundary as described in the
-historical checkpoint below. Step 1, all multiclass/Revenant traces, and steps 2–4
-are still incomplete. The earlier full gate has not been rerun for these new
-descriptors/tests; the final completion gate remains required.
+At that checkpoint the command/persistence journey and transition connections
+were still open; subsequent work is recorded below. Creation, individual teacher
+guards, passive callback registration, complete save/load dependencies, real HP
+damage, grant history/conflicts and wider reverse coverage remain open. The
+native combat fixture still ends at the raw-damage boundary. Step 1, all
+multiclass/Revenant traces, and steps 2–4 are incomplete.
 
-### Specialization entry/persistence work in progress
+### Specialization entry/persistence journey
 
 The planned `test_character_mechanics_journey.py` is now implemented and its
 focused run passes. It reuses the existing verified flat-file server builder,
@@ -123,8 +121,8 @@ path. The verified flat-file binary SHA256 is
 `0e31e606bce06d776e7b02340bdef24ac75c4e27b243e297a521c28c6fe89c7b`.
 The new journey is assigned to the existing
 runner's resource-intensive phase rather than competing with native compiles.
-After this baseline is verified, connect the actual command registration,
-eligibility/mutation/refresh and capture/load owners to the compiled contract.
+The journey was committed and pushed as `9e1d85eb0`. The compiled links built on
+this baseline are described in the next section.
 
 A separate repair, committed and pushed as `ec6672d19`, was required while preparing identity-denial fixtures:
 `ac_idx2flagCopy` shifted by -1 for the class table's `None` entry, reproduced by
@@ -160,11 +158,73 @@ Validation for the entry/persistence slice and repair:
   character-mechanics tests passed. No database gate was run; this journey's
   authority is explicitly flat-file.
 
-Next: connect the command slot, eligibility/teacher guards, assignment, skill
-refresh and status capture/load in the compiled structure. The successful
-journey does not replace those structural links. Timer/unspecialization failure
-cases, ordinary travel, real HP damage, and the broader acceptance matrix remain
-open. No completion or review-ready claim is made for the whole issue.
+### Specialization transition connections
+
+Current slice: six additional compiled IDs bind the actual `CMD_SPECIALIZE`
+function-pointer slot, race/spec predicate, selection handler, skill refresh,
+snapshot capture field, and load field. Markers identify the registration,
+assignment, refresh call, capture and materialization statements. The Guardian
+grant depends on the selection connection. All production additions describe
+existing execution; they do not change gameplay decisions or saved data.
+
+`TransitionConnection` refers to those same IDs and existing `player_status_field`
+values. It describes the permanent spec assignment, retained primary/secondary
+class, race, level, experience, epics and carried coins, and refresh/capture/load
+dependencies. The validator compares the live command-slot value with the bound
+handler, rejects absent/duplicate transitions and overlapping changed/retained
+state, and requires matching capture/load fields for changed status. Skills are
+described by the real refresh action; they are not represented as fake status
+fields. This remains the first transition description, not certification of
+every state component or lifecycle route.
+
+Ablation: reuse the existing native harness, command macro, handler, skill
+lookup/refresh, and full-world journey. No dispatcher, alternate save format,
+second eligibility evaluator or new test runner is needed. Files are the
+contract pair and native owners (`interp`, `specializations`, `guild`, snapshot
+capture/materialization, and the existing innate dependency), plus the existing
+mechanics test/harness. Proof combines native execution, deliberate broken-source
+variants, the isolated journey and affected builds/tests.
+
+The native fixture executes the production `CMD_N` assignment, calls that slot,
+checks a future `time_unspecced` denial, selects Guardian after expiry, and checks
+real `update_skills` results and retained values. Room/teacher/skill cells and
+dialogue/consent services are explicit fixture boundaries; actual loaded teacher,
+registered skill cells and persisted skills are covered by the separate journey.
+Source mutations remove each marked statement or change the loaded field.
+Compiled mutations remove the actual registration or refresh call while leaving
+their functions/descriptors present. Existing Bulwark mutations remain required.
+The source-definition check excludes only the exact empty `update_skills` stub
+in `account/pfile-stubs.c`, because that is an offline executable without skill
+refresh; a mutation of that body must lose the exclusion.
+
+Validation for these connections:
+
+- `python3 tests/async/test_character_mechanics.py`: passed under ASan/UBSan,
+  including all source and compiled mutation cases. Positive native SHA256:
+  `38c24baa9ddd074d0924530811be02e9773948a2a782da6c7493e20697827b6d`.
+  Log: `bin/tests/character-mechanics-transitions.log`.
+- `python3 tests/async/test_specialization_eligibility.py`,
+  `test_player_snapshot_capture.py`, `test_player_load_pipeline.py`, and
+  `test_death_respawn_state.py`: passed (each path is under `tests/async/`).
+- `make -C src -j8`, `make -j8 build-production build-editor`,
+  `make -C src -j4 pfile`, and
+  `make -C migrations/tools -j4 all affects pfile_converter`: passed; migration
+  tools required no rebuild. Logs use `bin/tests/character-mechanics-transitions-`
+  with `build`, `consumers`, `pfile`, and `migration-tools` suffixes.
+- `./scripts/format.sh --check` and `git diff --check`: passed.
+- `DURIS_REGRESSION_BUILD_CACHE=bin/regression-artifacts python3
+  tests/async/test_character_mechanics_journey.py`: passed, including teacher
+  selection, real skill rows, passive dispatch, relog and restart. Log:
+  `bin/tests/character-mechanics-transitions-journey.log`; server SHA256:
+  `e8feeac502021b9876fc16f8865da625c489f5b09a5eb8fef0abd211f6c0ddc8`.
+  No new whole-suite or database-gate claim is made.
+
+Next: bind individual teacher/timer guards and passive callback registration,
+cover unspecialization failures/reversal, creation and remaining persistence
+dependencies, then complete real HP damage and the other two initial traces.
+The successful journey does not replace missing structural links. Ordinary
+travel, live progression caps and the broader acceptance matrix remain open.
+No completion or review-ready claim is made for the whole issue.
 
 Entry-route source findings:
 

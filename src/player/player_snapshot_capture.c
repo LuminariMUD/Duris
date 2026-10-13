@@ -13,6 +13,8 @@
  ****************************************************************************/
 
 #include "player/player_snapshot_capture.h"
+#include "player/character_mechanics.h"
+
 #include "net/output_preference_codec.h"
 #include "player/player_playtime.h"
 #include "player/player_snapshot_codec.h"
@@ -130,6 +132,7 @@ bool capture_status(P_char ch, player_snapshot &snapshot, capture_budget &budget
 
 	ADD_STATUS(class_primary, ch->player.m_class);
 	ADD_STATUS(class_secondary, ch->player.secondary_class);
+	CHARACTER_MECHANIC_SITE(specialization_capture);
 	ADD_STATUS(specialization, ch->player.spec);
 	ADD_STATUS(race, GET_RACE(ch));
 	ADD_STATUS(racewar, GET_RACEWAR(ch));
@@ -792,4 +795,22 @@ player_snapshot_capture_result player_snapshot_capture(P_char ch, player_revisio
 		return player_snapshot_capture_result::retryable_allocation_failure;
 	}
 	return player_snapshot_capture_result::ok;
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::status_capture_connections()
+{
+	static const MechanicConnection connections[] = {
+		{ MechanicId::specialization_capture,
+		  Relation::capture,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(player_status_field::specialization),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Status snapshot captures player.spec at the ordinary save checkpoint.",
+		  {} }
+	};
+	return connections;
 }

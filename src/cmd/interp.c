@@ -11,6 +11,7 @@
  */
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "telemetry/telemetry_runtime.h"
 #include "item/item_actions.h"
 #include "item/artifact_mana.h"
@@ -243,6 +244,24 @@ void check_aggro_from_command(P_char exec_char);
 /*=========================================================================*/
 
 struct command_info cmd_info[MAX_CMD_LIST];
+
+std::span<const character_mechanics::MechanicConnection> character_mechanics::command_connections()
+{
+	static constexpr MechanicId dependencies[] = { MechanicId::specialization_select };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::specialization_entry,
+		  Relation::entry,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(&cmd_info[CMD_SPECIALIZE].command_pointer),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Actual command slot populated by assign_command_pointers; interpreter position and command gates still apply.",
+		  {} }
+	};
+	return connections;
+}
 
 /*
  * NOTE!  the order of this list is IMPORTANT! and must match up with the
@@ -3102,6 +3121,7 @@ void assign_command_pointers(void)
 	CMD_N(CMD_DESCEND, STAT_NORMAL + POS_PRONE, do_descend, 0, TRUE);
 	CMD_N(CMD_ENHANCE, STAT_NORMAL + POS_PRONE, do_enhance, 0, TRUE);
 	CMD_N(CMD_REMORT, STAT_NORMAL + POS_PRONE, do_remort, 0, TRUE);
+	CHARACTER_MECHANIC_SITE(specialization_entry);
 	CMD_N(CMD_SPECIALIZE, STAT_SLEEPING + POS_PRONE, do_specialize, 0, FALSE);
 	//  CMD_N(CMD_SPECIALIZE, STAT_NORMAL + POS_PRONE, do_spec, 0, FALSE);
 	CMD_N(CMD_APPRAISE, STAT_NORMAL + POS_PRONE, do_appraise, 0, FALSE);

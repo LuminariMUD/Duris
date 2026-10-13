@@ -5,6 +5,7 @@
 #include "player/character_mechanics.h"
 #include "combat/damage.h"
 #include "magic/spells.h"
+#include "cmd/interp.h"
 
 #include <cassert>
 #include <cstdio>
@@ -19,6 +20,78 @@ void clear_character_properties();
 void update_dam_factors();
 double bulwark_melee(P_char attacker, P_char victim, bool bypass = false);
 extern Skill skills[MAX_SKILLS];
+extern command_info cmd_info[MAX_CMD_LIST];
+extern P_room world;
+void initialize_specialization_command();
+
+static void specialization_transition()
+{
+	initialize_specialization_command();
+	const auto mechanics = mechanic_connections();
+	const auto transitions = transition_connections();
+	const auto errors = validate_transitions(transitions, mechanics);
+	for (const auto &error : errors)
+		std::fprintf(stderr, "%s\n", error.c_str());
+	assert(errors.empty());
+	assert(transitions.size() == 1);
+	assert(transitions.front().kind == TransitionKind::permanent);
+
+	const auto handler = cmd_info[CMD_SPECIALIZE].command_pointer;
+	assert(handler == do_specialize);
+	cmd_info[CMD_SPECIALIZE].command_pointer = nullptr;
+	assert(!validate_transitions(transitions, mechanics).empty());
+	cmd_info[CMD_SPECIALIZE].command_pointer = handler;
+	auto wrong_field = mechanics;
+	for (auto &connection : wrong_field)
+		if (connection.id == MechanicId::specialization_load)
+			connection.binding = player_status_field::class_primary;
+	assert(!validate_transitions(transitions, wrong_field).empty());
+	assert(!validate_transitions({}, mechanics).empty());
+	std::vector<TransitionConnection> duplicate{ transitions.front(), transitions.front() };
+	assert(!validate_transitions(duplicate, mechanics).empty());
+
+	// Explicit room, NPC teacher and skill cells exercise the real registered
+	// handler/refresh. The separate world journey proves loaded teacher/grants,
+	// interpreter guards and persistent skill rows.
+	room_data room{};
+	char_data student{}, teacher{};
+	pc_only_data pc{};
+	student.only.pc = &pc;
+	student.player.name = const_cast<char *>("NativeStudent");
+	student.player.race = RACE_HUMAN;
+	student.player.m_class = CLASS_WARRIOR;
+	student.player.level = 30;
+	GET_EXP(&student) = 12345;
+	pc.epics = 17;
+	GET_COPPER(&student) = 2;
+	GET_SILVER(&student) = 3;
+	GET_GOLD(&student) = 4;
+	GET_PLATINUM(&student) = 5;
+	student.in_room = 0;
+	teacher.specials.act = ACT_ISNPC | ACT_SPEC_TEACHER;
+	teacher.player.m_class = CLASS_WARRIOR;
+	room.people = &teacher;
+	world = &room;
+	auto &grant = skills[SKILL_GUARD].m_class[flag2idx(CLASS_WARRIOR) - 1];
+	grant.rlevel[SPEC_GUARDIAN] = 30;
+	grant.maxlearn[SPEC_GUARDIAN] = 100;
+	char argument[] = "guardian";
+	pc.time_unspecced = time(nullptr) + 3600;
+	handler(&student, argument, CMD_SPECIALIZE);
+	assert(student.player.spec == 0 && pc.skills[SKILL_GUARD].learned == 0);
+	pc.time_unspecced = time(nullptr) - 1;
+	handler(&student, argument, CMD_SPECIALIZE);
+	assert(student.player.spec == SPEC_GUARDIAN);
+	assert(pc.skills[SKILL_GUARD].learned == 40 && pc.skills[SKILL_GUARD].taught == 100);
+	assert(student.player.m_class == CLASS_WARRIOR && student.player.secondary_class == 0);
+	assert(student.player.race == RACE_HUMAN && student.player.level == 30);
+	assert(GET_EXP(&student) == 12345 && pc.epics == 17);
+	assert(GET_COPPER(&student) == 2 && GET_SILVER(&student) == 3 && GET_GOLD(&student) == 4 &&
+	       GET_PLATINUM(&student) == 5);
+	world = nullptr;
+	std::puts(
+		"specialization.transition: PASS (native command registration, timer denial, assignment and skill refresh; missing registration/load/transition rejected)");
+}
 
 static void skill_class_mask_bounds()
 {
@@ -151,6 +224,7 @@ static void expect_diagnostic(const IdentityConnections &connections, const char
 
 int main()
 {
+	specialization_transition();
 	guardian_bulwark();
 	skill_class_mask_bounds();
 	assert(!creation_all_races_enabled() && !creation_all_classes_enabled());
@@ -277,5 +351,5 @@ int main()
 	std::puts(
 		"eligibility.examples: PASS (normal configuration, overrides, ordered pairs; predicate scope only)");
 	std::puts(
-		"UNVERIFIED: entry commands, raw HP/death, other effects, transitions, persistence and remaining reverse coverage");
+		"UNVERIFIED HERE: full interpreter/world/persistence (separate journey), raw HP/death, other effects/transitions and remaining reverse coverage");
 }

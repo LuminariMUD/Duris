@@ -735,7 +735,9 @@ void do_specialize(P_char ch, char *argument, int /*cmd*/)
 			snprintf(buf, MAX_STRING_LENGTH,
 				 "From this day onwards you will follow the path of the %s&n!",
 				 GET_SPEC_NAME(ch->player.m_class, i));
+			CHARACTER_MECHANIC_SITE(specialization_select);
 			ch->player.spec = i + 1;
+			CHARACTER_MECHANIC_SITE(specialization_refresh);
 			update_skills(ch);
 			mobsay(teacher, buf);
 			return;
@@ -743,6 +745,60 @@ void do_specialize(P_char ch, char *argument, int /*cmd*/)
 	}
 
 	mobsay(teacher, "I'm sorry, but that specialization isn't available to you.");
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::specialization_connections()
+{
+	static constexpr MechanicId dependencies[] = { MechanicId::specialization_eligibility,
+						       MechanicId::specialization_refresh,
+						       MechanicId::specialization_capture,
+						       MechanicId::specialization_load };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::specialization_eligibility,
+		  Relation::eligibility,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(is_allowed_race_spec),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Race/class/slot allowance and all-classes bypass; teacher, level, timer and existing-state checks remain in do_specialize.",
+		  {} },
+		{ MechanicId::specialization_select,
+		  Relation::mutation,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(do_specialize),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Mortal teacher command: level 30, no spec/multiclass, expired time_unspecced, permitted slot and matching teacher; Dragoon teacher exceptions remain native.",
+		  {} }
+	};
+	return connections;
+}
+
+std::span<const character_mechanics::TransitionConnection>
+character_mechanics::specialization_transitions()
+{
+	static constexpr player_status_field changed[] = { player_status_field::specialization };
+	static constexpr player_status_field retained[] = {
+		player_status_field::class_primary, player_status_field::class_secondary,
+		player_status_field::race,	    player_status_field::level,
+		player_status_field::experience,    player_status_field::epics,
+		player_status_field::copper,	    player_status_field::silver,
+		player_status_field::gold,	    player_status_field::platinum
+	};
+	static constexpr MechanicId lifecycle[] = { MechanicId::specialization_refresh,
+						    MechanicId::specialization_capture,
+						    MechanicId::specialization_load };
+	static const TransitionConnection connections[] = {
+		{ MechanicId::specialization_select, MechanicId::specialization_entry,
+		  TransitionKind::permanent, changed, retained, lifecycle,
+		  "Assign spec before refreshing learned/taught skills. No purchase/async commit or automatic reversal. Ordinary checkpoints save it; unspecialize is a separate route." }
+	};
+	return connections;
 }
 
 namespace

@@ -6,6 +6,7 @@
 #include <array>
 #include <bit>
 #include <cstring>
+#include <type_traits>
 
 namespace character_mechanics
 {
@@ -25,6 +26,18 @@ std::string_view mechanic_name(MechanicId id)
 		return "guardian.bulwark.factor";
 	case MechanicId::guardian_bulwark_effect:
 		return "guardian.bulwark.effect";
+	case MechanicId::specialization_entry:
+		return "specialization.entry";
+	case MechanicId::specialization_eligibility:
+		return "specialization.eligibility";
+	case MechanicId::specialization_select:
+		return "specialization.select";
+	case MechanicId::specialization_refresh:
+		return "specialization.refresh";
+	case MechanicId::specialization_capture:
+		return "specialization.capture";
+	case MechanicId::specialization_load:
+		return "specialization.load";
 	case MechanicId::count:
 		break;
 	}
@@ -34,9 +47,16 @@ std::string_view mechanic_name(MechanicId id)
 std::vector<MechanicConnection> mechanic_connections()
 {
 	std::vector<MechanicConnection> result;
-	for (auto connections : { innate_connections(), melee_connections() })
+	for (auto connections : { innate_connections(), melee_connections(), command_connections(),
+				  specialization_connections(), training_connections(),
+				  status_capture_connections(), status_load_connections() })
 		result.insert(result.end(), connections.begin(), connections.end());
 	return result;
+}
+
+std::span<const TransitionConnection> transition_connections()
+{
+	return specialization_transitions();
 }
 
 std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> connections)
@@ -60,8 +80,16 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 		}
 		require(!seen[size_t(connection.id)], "duplicate connection");
 		seen[size_t(connection.id)] = true;
-		require(std::visit([](auto pointer) { return pointer != nullptr; },
-				   connection.binding),
+		require(std::visit(
+				[](auto binding)
+				{
+					if constexpr (std::is_same_v<decltype(binding),
+								     player_status_field>)
+						return true; // A typed field ID, not a nullable pointer.
+					else
+						return binding != nullptr;
+				},
+				connection.binding),
 			"missing native binding");
 		require(!connection.symbol.empty(), "missing native symbol");
 		require(!connection.context.empty(), "missing context");
@@ -73,7 +101,8 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 			break;
 		case Relation::eligibility:
 			compatible = std::holds_alternative<InnatePredicate>(connection.binding) ||
-				     std::holds_alternative<InnateUnlock>(connection.binding);
+				     std::holds_alternative<InnateUnlock>(connection.binding) ||
+				     std::holds_alternative<RaceSpecPredicate>(connection.binding);
 			break;
 		case Relation::grant:
 			compatible = std::holds_alternative<const char *>(connection.binding);
@@ -82,7 +111,19 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 			compatible = std::holds_alternative<const float *>(connection.binding);
 			break;
 		case Relation::effect:
-			compatible = std::holds_alternative<MeleeDamage>(connection.binding);
+			compatible = std::holds_alternative<MeleeDamage>(connection.binding) ||
+				     std::holds_alternative<CharacterAction>(connection.binding);
+			break;
+		case Relation::entry:
+			compatible = std::holds_alternative<CommandSlot>(connection.binding);
+			break;
+		case Relation::mutation:
+			compatible = std::holds_alternative<CommandHandler>(connection.binding);
+			break;
+		case Relation::capture:
+		case Relation::load:
+			compatible =
+				std::holds_alternative<player_status_field>(connection.binding);
 			break;
 		}
 		require(compatible, "relation/native binding disagree");
@@ -126,6 +167,69 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 		if (!seen[id])
 			errors.push_back(std::string(mechanic_name(MechanicId(id))) +
 					 ": missing connection");
+	return errors;
+}
+
+std::vector<std::string> validate_transitions(std::span<const TransitionConnection> transitions,
+					      std::span<const MechanicConnection> connections)
+{
+	std::vector<std::string> errors;
+	auto find = [&](MechanicId id) -> const MechanicConnection *
+	{
+		for (const auto &connection : connections)
+			if (connection.id == id)
+				return &connection;
+		return nullptr;
+	};
+	for (const auto &transition : transitions)
+	{
+		const std::string name(mechanic_name(transition.mutation));
+		auto require = [&](bool valid, const char *message)
+		{
+			if (!valid)
+				errors.push_back(name + ": " + message);
+		};
+		const auto *mutation = find(transition.mutation);
+		const auto *entry = find(transition.entry);
+		require(mutation && mutation->relation == Relation::mutation, "missing mutation");
+		require(entry && entry->relation == Relation::entry, "missing entry");
+		if (!mutation || !entry)
+			continue;
+		const auto *handler = std::get_if<CommandHandler>(&mutation->binding);
+		const auto *slot = std::get_if<CommandSlot>(&entry->binding);
+		require(handler && *handler && slot && *slot && **slot == *handler,
+			"command registration missing or different handler");
+		require(!transition.changed_status.empty() && !transition.context.empty(),
+			"missing state description");
+		for (auto field : transition.changed_status)
+		{
+			require(std::find(transition.retained_status.begin(),
+					  transition.retained_status.end(),
+					  field) == transition.retained_status.end(),
+				"state both changed and retained");
+			for (auto role : { Relation::capture, Relation::load })
+			{
+				bool found = false;
+				for (auto id : transition.lifecycle)
+					if (const auto *part = find(id);
+					    part && part->relation == role)
+						if (const auto *bound =
+							    std::get_if<player_status_field>(
+								    &part->binding))
+							found |= *bound == field;
+				require(found, "changed field lacks capture/load connection");
+			}
+		}
+		for (auto id : transition.lifecycle)
+			require(find(id) != nullptr, "missing lifecycle connection");
+	}
+	for (const auto &connection : connections)
+		if (connection.relation == Relation::mutation)
+			if (std::count_if(transitions.begin(), transitions.end(),
+					  [&](const auto &transition)
+					  { return transition.mutation == connection.id; }) != 1)
+				errors.push_back(std::string(mechanic_name(connection.id)) +
+						 ": missing/duplicate transition");
 	return errors;
 }
 

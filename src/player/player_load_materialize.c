@@ -13,6 +13,8 @@
  ****************************************************************************/
 
 #include "player/player_load_materialize.h"
+#include "player/character_mechanics.h"
+
 #include "net/output_preference_codec.h"
 
 #include "item/item_ownership_runtime.h"
@@ -197,6 +199,7 @@ void apply_integer(P_char ch, const player_snapshot_integer &entry, int *hit_dif
 		ch->player.secondary_class = loaded;
 		break;
 	case player_status_field::specialization:
+		CHARACTER_MECHANIC_SITE(specialization_load);
 		ch->player.spec = loaded;
 		break;
 	case player_status_field::race:
@@ -726,4 +729,22 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 	GET_MANA(ch) = BOUNDED(1, loaded_mana, GET_MAX_MANA(ch));
 	GET_VITALITY(ch) = BOUNDED(1, loaded_vitality, GET_MAX_VITALITY(ch));
 	return true;
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::status_load_connections()
+{
+	static const MechanicConnection connections[] = {
+		{ MechanicId::specialization_load,
+		  Relation::load,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(player_status_field::specialization),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Loaded specialization status materializes into player.spec before game entry.",
+		  {} }
+	};
+	return connections;
 }

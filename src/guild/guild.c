@@ -9,6 +9,7 @@
  */
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -163,6 +164,23 @@ void update_skills(P_char ch)
 					       SKILL_DATA_ALL(ch, skl).maxlearn[ch->player.spec]));
 		}
 	}
+}
+
+std::span<const character_mechanics::MechanicConnection> character_mechanics::training_connections()
+{
+	static const MechanicConnection connections[] = {
+		{ MechanicId::specialization_refresh,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(update_skills),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Refresh learned/taught skills for resulting class/spec/level, including separate instrument/song handling and existing Chaos rules.",
+		  {} }
+	};
+	return connections;
 }
 
 bool notch_skill(P_char ch, int skill, float chance)

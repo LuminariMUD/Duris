@@ -2,6 +2,7 @@
 #define CHARACTER_MECHANICS_H
 
 #include "core/defines.h"
+#include "player/player_snapshot.h"
 
 #include <span>
 #include <source_location>
@@ -26,6 +27,12 @@ enum class MechanicId
 	guardian_bulwark_grant,
 	guardian_bulwark_factor,
 	guardian_bulwark_effect,
+	specialization_entry,
+	specialization_eligibility,
+	specialization_select,
+	specialization_refresh,
+	specialization_capture,
+	specialization_load,
 	count
 };
 
@@ -35,7 +42,11 @@ enum class Relation
 	eligibility,
 	grant,
 	configuration,
-	effect
+	effect,
+	entry,
+	mutation,
+	capture,
+	load
 };
 enum class Access
 {
@@ -72,15 +83,20 @@ using InnatePredicate = bool (*)(char_data *, int);
 using InnateUnlock = int (*)(char_data *, int);
 using EffectiveRace = int (*)(char_data *);
 using MeleeDamage = int (*)(char_data *, char_data *, double, int, damage_messages *, int *);
+using CommandHandler = void (*)(char_data *, char *, int);
+using CommandSlot = CommandHandler const *;
+using RaceSpecPredicate = bool (*)(int, unsigned int, int);
+using CharacterAction = void (*)(char_data *);
 using MechanicBinding = std::variant<const char *, const float *, InnatePredicate, InnateUnlock,
-				     EffectiveRace, MeleeDamage>;
+				     EffectiveRace, MeleeDamage, CommandHandler, CommandSlot,
+				     RaceSpecPredicate, CharacterAction, player_status_field>;
 
 struct MechanicConnection
 {
 	MechanicId id;
 	Relation relation;
 	Option owner;
-	// Zero means the shared innate rules; nonzero is the existing INNATE_* ID.
+	// Zero when not specific to one innate; nonzero is the existing INNATE_* ID.
 	int innate;
 	MechanicBinding binding;
 	std::string_view symbol;
@@ -92,8 +108,29 @@ struct MechanicConnection
 	std::source_location declared_at = std::source_location::current();
 };
 
-// A binding remains a typed native pointer. Its spelling is for source-location
-// checks, never a second evaluator or a dispatcher.
+enum class TransitionKind
+{
+	permanent,
+	temporary,
+	disguise,
+	control_transfer
+};
+
+// State/lifecycle attributes of a mutation connection. The IDs refer to the
+// same native connections above instead of repeating handlers or execution.
+struct TransitionConnection
+{
+	MechanicId mutation;
+	MechanicId entry;
+	TransitionKind kind;
+	std::span<const player_status_field> changed_status;
+	std::span<const player_status_field> retained_status;
+	std::span<const MechanicId> lifecycle;
+	std::string_view context;
+};
+
+// Bindings retain native pointer types or existing status-field IDs. Their
+// spelling is for source checks, never a second evaluator or a dispatcher.
 #define CHARACTER_MECHANIC_BIND(symbol) (symbol), #symbol
 #define CHARACTER_MECHANIC_SITE(id)                           \
 	static_assert(::character_mechanics::MechanicId::id < \
@@ -102,8 +139,17 @@ struct MechanicConnection
 std::string_view mechanic_name(MechanicId id);
 std::span<const MechanicConnection> innate_connections();
 std::span<const MechanicConnection> melee_connections();
+std::span<const MechanicConnection> command_connections();
+std::span<const MechanicConnection> specialization_connections();
+std::span<const MechanicConnection> training_connections();
+std::span<const MechanicConnection> status_capture_connections();
+std::span<const MechanicConnection> status_load_connections();
+std::span<const TransitionConnection> specialization_transitions();
+std::span<const TransitionConnection> transition_connections();
 std::vector<MechanicConnection> mechanic_connections();
 std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> connections);
+std::vector<std::string> validate_transitions(std::span<const TransitionConnection> transitions,
+					      std::span<const MechanicConnection> connections);
 
 using SpecializationNames = const char *[MAX_SPEC];
 using ClassRow = int[CLASS_COUNT + 1];

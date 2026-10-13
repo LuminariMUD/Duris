@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute identity and Bulwark connections; broader site migration remains open."""
+"""Execute identity, specialization and Bulwark links; wider migration remains open."""
 
 import hashlib
 import os
@@ -16,14 +16,15 @@ from _source_contract import strip_comments, function_bodies
 def production_function(file, signature):
     path = source(file)
     text = path.read_text()
+    signature = re.search(re.escape(signature).replace(r"\ ", r"\s+"), text).group()
     line = text[:text.index(signature)].count("\n") + 1
     return f'\n#line {line} "{path.relative_to(ROOT)}"\n' + extract_function(file, signature) + "\n"
 
 
-def check_bulwark_sites(sources, bindings):
-    """Migrated Bulwark sites only; no baseline exception for a new use/alias.
+def check_mechanic_sites(sources, bindings):
+    """Migrated statements plus Bulwark reverse coverage, without baseline exemptions.
 
-    This bounded tripwire accepts the three actual statement forms. It rejects
+    This bounded tripwire accepts the actual marked statement forms. It rejects
     unsupported reshaping for review; executable assertions own the arithmetic.
     The remainder of the option-site migration is still explicitly outstanding.
     """
@@ -31,6 +32,11 @@ def check_bulwark_sites(sources, bindings):
         "guardian_bulwark_grant": ("classes/innates.c", r"ADD_CLASS_INNATE\(\s*INNATE_GUARDIANS_BULWARK\s*,\s*CLASS_WARRIOR\s*,\s*[^,;{}]+,\s*SPEC_GUARDIAN\s*\)\s*;"),
         "guardian_bulwark_factor": ("combat/fight.c", r'dam_factor\[DF_GUARDIANS_BULWARK\]\s*=\s*get_property\(\s*"damage\.reduction\.guardians\.bulwark"\s*,\s*[^;{}]+\)\s*;'),
         "guardian_bulwark_effect": ("combat/fight.c", r"if\s*\(\s*has_innate\(victim,\s*INNATE_GUARDIANS_BULWARK\)\s*&&\s*victim->equipment\[WEAR_SHIELD\]\s*\)\s*dam\s*\*=\s*dam_factor\[DF_GUARDIANS_BULWARK\]\s*;"),
+        "specialization_entry": ("cmd/interp.c", r"CMD_N\(\s*CMD_SPECIALIZE\s*,\s*STAT_SLEEPING\s*\+\s*POS_PRONE\s*,\s*do_specialize\s*,\s*0\s*,\s*FALSE\s*\)\s*;"),
+        "specialization_select": ("classes/specializations.c", r"ch->player\.spec\s*=\s*i\s*\+\s*1\s*;"),
+        "specialization_refresh": ("classes/specializations.c", r"update_skills\(ch\)\s*;"),
+        "specialization_capture": ("player/player_snapshot_capture.c", r"ADD_STATUS\(specialization,\s*ch->player\.spec\)\s*;"),
+        "specialization_load": ("player/player_load_materialize.c", r"ch->player\.spec\s*=\s*loaded\s*;"),
     }
     seen = set()
     errors = []
@@ -39,8 +45,15 @@ def check_bulwark_sites(sources, bindings):
     # executable used, rather than a second editable table of function names.
     for mechanic, symbol in bindings.items():
         if re.fullmatch(r"[a-zA-Z_]\w*", symbol):
-            definitions = sum(len(function_bodies(text, rf"\b(?:int|bool)\s+{symbol}\s*\("))
-                              for text in sources.values())
+            definitions = 0
+            for path, text in sources.items():
+                for body in function_bodies(text, rf"\b(?:int|bool|void)\s+{symbol}\s*\("):
+                    # The offline pfile executable deliberately has no skill
+                    # refresh. Exclude only its exact empty stub, not the file.
+                    if (path == "account/pfile-stubs.c" and symbol == "update_skills"
+                            and re.fullmatch(r"\{\s*\}", body)):
+                        continue
+                    definitions += 1
             if definitions != 1:
                 errors.append(f"{mechanic}: native definition missing/conflicting: {symbol}")
     for path, text in sources.items():
@@ -67,6 +80,9 @@ def check_bulwark_sites(sources, bindings):
                 errors.append(f"{path}: duplicate site {site}")
             seen.add(site)
             covered.append((marker.end(), marker.end() + match.end()))
+            if site == "specialization_load" and not re.search(
+                    r"case player_status_field::specialization:\s*$", code[:marker.start()]):
+                errors.append(f"{path}: specialization load mapped from wrong field")
         for token in symbols.finditer(code):
             if any(start <= token.start() < end for start, end in covered):
                 continue
@@ -91,6 +107,8 @@ inputs = [
     ROOT / "tests/async/character_mechanics_harness.cpp",
     source("character_mechanics.c"), source("common.c"), source("constant.c"),
     source("creation_availability_config.c"), source("specializations.c"), source("utility.c"),
+    source("chaos_config.c"),
+    source("safe_format.c"),
     HARNESS_STUBS,
 ]
 
@@ -106,6 +124,9 @@ combat_prelude = r'''
 #include "combat/damage.h"
 #include "magic/spells.h"
 #include "classes/necromancy.h"
+#include "combat/chaos_config.h"
+#include "classes/specializations.h"
+#include "cmd/interp.h"
 #include "player/character_mechanics.h"
 #include <cassert>
 #include <cctype>
@@ -115,6 +136,11 @@ combat_prelude = r'''
 #define MAX_PROPERTIES 3000
 int properties_count;
 Skill skills[MAX_SKILLS];
+int GET_LVL_FOR_SKILL(P_char, int);
+command_info cmd_info[MAX_CMD_LIST];
+P_room world;
+void mobsay(P_char, const char *) {} // Dialogue/quest side effects belong to the full-world journey.
+bool is_linked_to(P_char, P_char, ush_int) { return false; } // No staff-consent teacher in this fixture.
 float dam_factor[LAST_DF + 1];
 static double delivered_damage;
 static int damage_calls;
@@ -165,8 +191,18 @@ combat_bodies = (
         ("fight.c", "void update_dam_factors("),
         ("fight.c", "int melee_damage("),
         ("fight.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::melee_connections("),
+        ("interp.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::command_connections("),
+        ("interp.c", "bool is_abbrev("),
+        ("guild.c", "void update_skills("),
+        ("guild.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::training_connections("),
+        ("player_snapshot_capture.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::status_capture_connections("),
+        ("player_load_materialize.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::status_load_connections("),
     ])
 )
+interpreter = source("interp.c").read_text()
+registration = re.search(r"CHARACTER_MECHANIC_SITE\(specialization_entry\);\s*CMD_N\([^;]+;", interpreter).group()
+combat_bodies += "\n" + interpreter[interpreter.index("#define CMD_N("):interpreter.index("#define CMD_Y(")]
+combat_bodies += "\nvoid initialize_specialization_command() {\n" + registration + "\n}\n"
 combat_driver = r'''
 void load_character_properties() {
     properties_count = load_properties(duris_properties);
@@ -221,12 +257,15 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
     for row in result.stdout.splitlines():
         if row.startswith("CONNECTION\t"):
             _, mechanic, _, path, line = row.split("\t")
-            assert path in ("src/classes/innates.c", "src/combat/fight.c"), (mechanic, path)
+            path = str(Path(path).relative_to(ROOT)) if Path(path).is_absolute() else path
+            assert path in ("src/classes/innates.c", "src/combat/fight.c", "src/cmd/interp.c",
+                            "src/classes/specializations.c", "src/guild/guild.c",
+                            "src/player/player_snapshot_capture.c", "src/player/player_load_materialize.c"), (mechanic, path)
             assert 0 < int(line) <= len((ROOT / path).read_text().splitlines()), (mechanic, line)
     sources = {str(path.relative_to(ROOT / "src")): path.read_text(errors="replace")
                for path in sorted((ROOT / "src").rglob("*"))
                if path.suffix in (".c", ".h", ".cpp", ".hpp", ".cc", ".hh", ".cxx", ".hxx")}
-    errors = check_bulwark_sites(sources, bindings)
+    errors = check_mechanic_sites(sources, bindings)
     assert not errors, "\n".join(errors)
     fight = sources["combat/fight.c"]
     effect = re.search(r"\t\tif \(has_innate\(victim, INNATE_GUARDIANS_BULWARK\).*?;", fight, re.S).group()
@@ -242,16 +281,39 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         fixture.parent.mkdir(parents=True, exist_ok=True)
         fixture.write_text(changed)
         mutated = dict(sources, **{path: fixture.read_text()})
-        errors = check_bulwark_sites(mutated, bindings)
+        errors = check_mechanic_sites(mutated, bindings)
         assert any(diagnostic in error for error in errors), (name, errors)
     print("guardian.bulwark.reverse: PASS (missing consumer/marker, new file/alias, nested branch mutations)")
+    for name, path, old, new, diagnostic in [
+        ("registration_removed", "cmd/interp.c",
+         "CMD_N(CMD_SPECIALIZE, STAT_SLEEPING + POS_PRONE, do_specialize, 0, FALSE);", ";", "specialization_entry"),
+        ("assignment_removed", "classes/specializations.c", "ch->player.spec = i + 1;", ";", "specialization_select"),
+        ("refresh_removed", "classes/specializations.c", "update_skills(ch);", ";", "specialization_refresh"),
+        ("capture_removed", "player/player_snapshot_capture.c", "ADD_STATUS(specialization, ch->player.spec);", ";", "specialization_capture"),
+        ("load_removed", "player/player_load_materialize.c", "ch->player.spec = loaded;", ";", "specialization_load"),
+        ("load_wrong_field", "player/player_load_materialize.c", "case player_status_field::specialization:",
+         "case player_status_field::class_primary:", "load mapped from wrong field"),
+        ("pfile_exclusion_changed", "account/pfile-stubs.c", "void update_skills(P_char) {}",
+         "void update_skills(P_char ch) { ch->player.spec = 0; }", "native definition missing/conflicting"),
+    ]:
+        assert old in sources[path], name
+        changed = sources[path].replace(old, new, 1)
+        fixture = work / "mutations" / name / path
+        fixture.parent.mkdir(parents=True, exist_ok=True)
+        fixture.write_text(changed)
+        errors = check_mechanic_sites(dict(sources, **{path: fixture.read_text()}), bindings)
+        assert any(diagnostic in error for error in errors), (name, errors)
+    print("specialization.sites: PASS (removed registration/assignment/refresh/capture/load, wrong loaded field and changed exact exclusion rejected)")
     print("Native executable SHA256:", hashlib.sha256(binary.read_bytes()).hexdigest())
     # The behavioral oracle must fail too when outcomes change. Build variants
     # under bin/; never edit/revert production files under a running test.
-    for name, old, new in [
-        ("effect_stubbed", "dam *= dam_factor[DF_GUARDIANS_BULWARK];", "dam *= 1.0;"),
+    for name, old, new, diagnostic in [
+        ("effect_stubbed", "dam *= dam_factor[DF_GUARDIANS_BULWARK];", "dam *= 1.0;",
+         "bulwark_melee(&attacker, &victim) == 850"),
         ("fallback_changed", 'get_property("damage.reduction.guardians.bulwark", 0.850)',
-         'get_property("damage.reduction.guardians.bulwark", 0.250)'),
+         'get_property("damage.reduction.guardians.bulwark", 0.250)',
+         "bulwark_melee(&attacker, &victim) == 850"),
+        ("registration_unset", registration, "", "command registration missing or different handler"),
     ]:
         assert combat_bodies.count(old) == 1, name
         variant = work / "mutations" / name
@@ -262,5 +324,17 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
                    str(variant_binary) if arg == str(binary) else arg for arg in compile_command]
         subprocess.run(command, check=True)
         rejected = subprocess.run([str(variant_binary)], cwd=work, env=env, text=True, capture_output=True)
-        assert rejected.returncode != 0 and "bulwark_melee(&attacker, &victim) == 850" in rejected.stderr, (name, rejected.stderr)
+        assert rejected.returncode != 0 and diagnostic in rejected.stderr, (name, rejected.stderr)
     print("guardian.bulwark.mutations: PASS (stubbed effect and changed fallback fail the native damage assertion)")
+    # Removing the actual refresh call must fail the learned/taught assertion,
+    # even though the refresh function and connection still exist.
+    variant = work / "mutations" / "refresh_not_called"
+    variant.mkdir(parents=True, exist_ok=True)
+    variant_source, variant_binary = variant / "specializations.cpp", variant / "harness"
+    variant_source.write_text(source("specializations.c").read_text().replace("update_skills(ch);", ";", 1))
+    command = [str(variant_source) if arg == str(source("specializations.c")) else
+               str(variant_binary) if arg == str(binary) else arg for arg in compile_command]
+    subprocess.run(command, check=True)
+    rejected = subprocess.run([str(variant_binary)], cwd=work, env=env, text=True, capture_output=True)
+    assert rejected.returncode != 0 and "pc.skills[SKILL_GUARD].learned == 40" in rejected.stderr, rejected.stderr
+    print("specialization.mutations: PASS (removed registration and refresh call fail native assertions)")
