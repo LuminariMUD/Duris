@@ -237,8 +237,10 @@ player-facing coverage and prepare `lib/information/news` through the pinned
 release. Treat this as preparation until this deployment reaches publication;
 override its standalone publication timing and do not follow newer remote
 features into news without integrating them into the same release. Avoid duplicate
-entries on repeat runs. Say when features await the user's reboot; do not announce
-them as already active. Include generated source edits in the release evidence.
+entries on repeat runs. Prepare and publish the final player-facing text once;
+do not add temporary deployment/reboot notices or plan a second edit after
+activation. Put activation status in the operator handoff and release evidence.
+Include generated source edits in the release evidence.
 
 Read [HELP_SYSTEM.md](../../../docs/content/HELP_SYSTEM.md). Reconcile imported
 information and help with the final source, including `docs/lib/information/hints.txt`,

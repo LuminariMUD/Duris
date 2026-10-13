@@ -104,9 +104,10 @@ Technical work belongs in news only when it has a supported player consequence.
 Translate a concrete crash or lost-progress fix into that consequence; do not
 turn a refactor or new test into a promise of faster or safer play.
 
-Do not infer deployment from a merged commit. This workflow prepares the news
-source from landed history; report live publication separately. If the user has
-identified a feature as awaiting rollout, label it accordingly.
+Write release news in its final player-facing form. Keep deployment, publication
+and reboot status in the operator report, never in the news file; deployment must
+not require a second edit to remove temporary status notices. Do not infer
+activation from a merged commit when reporting deployment status.
 
 ## Write for the adventurer, not the developer
 

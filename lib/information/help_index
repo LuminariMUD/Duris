@@ -7132,6 +7132,11 @@ Type of spell:  Elemental
 "Greater Earthen Grasp" causes many earthen fists to burst from the ground
 grasping as many victims as they can, squeezing the life out of them for 
 serious damage and possible paralysis.
+
+Victims resist the paralysis with saving throws. Greater Earthen Grasp
+limits how much the caster's Strength advantage can worsen those saves.
+The ordinary Earthen Grasp spell, including the Earth Reaver version,
+uses its own unchanged saves. Hold durations are unchanged.
 ===========================================================================
 See also: "EARTHEN GRASP", "MINOR PARALYSIS"
 

@@ -50,13 +50,24 @@ It executes the unchanged sealed SQL with session `alter_algorithm=INSTANT` and
 one-second metadata/InnoDB lock waits: an unsupported instant operation or lock
 timeout fails rather than falling back to a table rebuild. A dedicated connection
 holds the migration advisory lock through verification and history publication.
-Other production migrations still require stopped clients.
+The equivalent `run --online-combat-outcome-allies` path accepts only the manifest
+ending at the sealed `0040_combat_outcome_allies` step and an InnoDB
+`combat_outcome` table on MariaDB 11.8. It uses the same INSTANT-only execution,
+bounded lock waits and production safeguards. Select only one online option;
+neither permits earlier pending steps or arbitrary later migrations.
 
 Before using this path, verify the running writers name their `level_cap` columns
 explicitly and remain compatible with the two default-zero additions. Coordinate
 schema-aware backup jobs so a backup cannot straddle DDL, preserve the deployed
 contract for the pre-change backup, and select the new contract after successful
 live verification. Do not edit the immutable SQL or its recorded checksums.
+
+For 0040, check that active `combat_outcome` writers name their columns explicitly
+and readers tolerate the new `killer_allies INT UNSIGNED NOT NULL DEFAULT 0` column.
+Zero represents an unknown historical ally count; the migration does not rewrite
+rewards or infer eligibility for older kills. The default production guard remains
+in place for unreviewed operations; other online migrations need their own review
+and scoped runner support.
 
 [RUNTIME_COMPATIBILITY.md](RUNTIME_COMPATIBILITY.md) states the current head and the
 runtime table count. After the head is applied, the history singleton records the

@@ -7847,6 +7847,10 @@ Epic skills - Last Edited: 2015-01-22 20:31:43 by ashyel
 ========================================================
 Epic skills are a series of skills that can be enhanced through advanced learning.  In order to gain these skills a player would need to seek out a special teacher and provide him payment in the form of epic skill points and platinum.  A list of the available epic skills and the teachers who can provide them can be found by typing 'epic skills'.  Further details, including zone information, can be found by typing help <epic skill name>.
 Epic skills can be notched in parts or maxed out in one visit based on how many skill points/platinum coins a player is willing or able to spend at one time.
+
+Epic skill training begins at level 30. Each skill still requires its usual
+eligibility, epic points and platinum. Earning new epic points requires
+level 50; lowering the training level does not change stone costs.
 A more comprehensive list, including names and locations of epic skill teachers, can be found on the DurisMUD wiki at http://duris.wikia.com/wiki/Epic_skills.
 ==See also==
 * Epic skill cost
@@ -10622,6 +10626,11 @@ Greater Earthen Grasp - Last Edited: 2007-04-20 14:02:09 by Unknown
 "Greater Earthen Grasp" causes many earthen fists to burst from the ground
 grasping as many victims as they can, squeezing the life out of them for
 serious damage and possible paralysis.
+
+Victims resist the paralysis with saving throws. Greater Earthen Grasp
+limits how much the caster's Strength advantage can worsen those saves.
+The ordinary Earthen Grasp spell, including the Earth Reaver version,
+uses its own unchanged saves. Hold durations are unchanged.
 ==See also==
 * Earthen Grasp
 * Minor Paralysis
