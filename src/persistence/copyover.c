@@ -12,6 +12,7 @@
 #include "core/utils.h"
 #include "persistence/copyover.h"
 #include "guild/artifact_guild_transaction.h"
+#include "kingdom/kingdom.h"
 #include "combat/training_dummy.h"
 #include "world/generated_npc_state.h"
 #include "item/item_movement_transaction.h"
@@ -818,6 +819,9 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 		return false;
 	}
 	copyover_worker_resume_guard resume_workers;
+	// The payment ACK can release a realm held by the pre-copyover flush.
+	// Capture any later resource changes before the writer drain below.
+	kingdom_flush_persistent_state();
 	maintenance_scheduler_quiesce();
 	critical_command_coordinator_quiesce();
 	critical_outbox_quiesce();

@@ -2,6 +2,7 @@
 """Real artifact/guild snapshots, dirty retries and cache-generation fences."""
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 from _paths import ROOT, HARNESS_STUBS, extract_function
 
@@ -21,6 +22,8 @@ with tempfile.TemporaryDirectory(prefix='artifact-snapshots-',dir=out) as direct
     cpp.write_text(source)
     subprocess.run(['g++','-std=c++20','-Wall','-Wextra','-Werror','-pthread',
         '-ffunction-sections','-fdata-sections','-Isrc','-I/usr/include/mysql',
-        str(cpp),'src/guild/assocs.c','src/core/safe_format.c',str(HARNESS_STUBS),
+        str(cpp),'src/guild/assocs.c','src/core/safe_format.c',
+        'src/kingdom/kingdom.c','src/kingdom/kingdom_db.c','src/kingdom/kingdom_upkeep.c',
+        str(HARNESS_STUBS),
         '-Wl,--gc-sections','-lcjson','-lmysqlclient','-o',str(binary)],cwd=ROOT,check=True)
-    subprocess.run([str(binary)],check=True,timeout=30)
+    subprocess.run([str(binary), *sys.argv[1:]],check=True,timeout=30)

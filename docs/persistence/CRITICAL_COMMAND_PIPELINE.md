@@ -17,7 +17,7 @@ snapshots can still queue owned SQL statements through `sql_async`.
 
 | Command | What its transaction commits | Entity keys |
 |---|---|---|
-| Item grant, operator repair and destruction | `item_current_owner`, `item_ownership_ledger` | item + owners |
+| Item grant, operator repair and destruction | Current owner (`item_current_owner`) and transfer history (`item_ownership_ledger`) | item + owners |
 | Auction | auction, custody and ledger rows | auction + item + players/accounts |
 | Collector | the listing, its item custody and ledger rows | listing + player/account + items |
 | Shop trade (flat-file backend only) | the trade and its item custody | player + shopkeeper + items |
@@ -196,7 +196,7 @@ This section describes the #58 branch implementation, resumed on
 2026-10-13. Focused runtime, snapshot, repository and producer-replay tests pass. Full-server
 boon/PvP, crash, shutdown, copyover and restart cases also pass; remaining
 interleavings and final qualification are tracked in
-[plan-estale.md](../ongoing-projects/plan-estale.md#pause-handoff).
+[plan-estale.md](../ongoing-projects/plan-estale.md#qualification-update-2026-10-14).
 
 For a new source award, the game thread captures eligible artifact feeds and guild
 prestige/construction from current memory, checks the combined bounds, applies
@@ -228,6 +228,15 @@ bounded pulses capture the entity's latest state rather than the old reward valu
 Artifact removal retains a tombstone through deletion acknowledgement. Cache
 generations change on mutation and successful resubmission after failed admission,
 so an earlier read cannot become current after those changes.
+
+A guild with a pending kingdom payment captures its current realm in the same
+transaction as every guild snapshot, including a member-deletion snapshot.
+`payment_pending` lasts until the matching guild receipt confirms commit. Failed
+captures or transactions retry current values without another debit; an older
+receipt cannot settle a newer capture or a recreated realm. Later realm changes
+remain dirty after an earlier pair succeeds, so copyover flushes them after the
+payment drain and before the writer drain. Flat-file payments retain their shared
+recovery-journal transaction.
 
 Domain drains run before coordinator quiescence and again after final copyover
 saves. Failure aborts copyover through the existing resume guard; shutdown reports

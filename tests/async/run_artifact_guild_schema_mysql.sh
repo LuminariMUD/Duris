@@ -24,3 +24,4 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fd
     src/persistence/critical_command_repository.c "${MYSQL_LIBS[@]}" -lcrypto -Wl,--gc-sections \
     -o "$ROOT/bin/tests/artifact_guild_mysql_harness"
 "$ROOT/bin/tests/artifact_guild_mysql_harness"
+python3 tests/async/test_artifact_guild_snapshots.py --mysql

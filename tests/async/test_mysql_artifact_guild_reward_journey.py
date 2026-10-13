@@ -360,6 +360,12 @@ def run(binary, case):
                 (target / 'gameplay-journey.json').write_text(json.dumps(evidence, indent=2) + '\n')
                 print('PASS Summon Ghasts -> actual kills/boons -> three feeds and cumulative guild threshold; clean restart', flush=True)
             except Exception as error:
+                failure = ROOT / 'bin/analysis/artifact-estale' / f'failure-{case}-{time.time_ns()}'
+                failure.mkdir(parents=True)
+                shutil.copy2(output_path, failure / 'server.out')
+                shutil.copytree(runtime / 'logs', failure / 'logs')
+                (failure / 'process.txt').write_text(f'pid={process.pid if process else None} returncode={process.poll() if process else None}\n')
+                print(f'artifact journey failure evidence: {failure}', flush=True)
                 traces = '\n'.join(bytes(c.transcript[-6000:]).decode(errors='replace') for c in clients)
                 raise AssertionError(str(error) + '\n' + traces + '\n' +
                                      output_path.read_text(errors='replace')[-6000:]) from error

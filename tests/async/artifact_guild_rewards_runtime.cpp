@@ -92,6 +92,8 @@ bool sql_save_guild(Guild *guild)
 	guild_snapshots.emplace_back(guild->get_prestige(), guild->get_construction());
 	return true;
 }
+// Kingdom persistence is covered by the snapshot fixture; this fixture has no realms.
+void kingdom_guild_save_completed(int, const std::shared_ptr<sql_write_receipt> &) {}
 static std::vector<P_char> online;
 P_char find_player_by_pid(int pid)
 {

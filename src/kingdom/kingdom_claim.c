@@ -38,9 +38,10 @@
  *                 image, so a crash after one write is completed on the next
  *                 authority access rather than losing the paid change.
  *
- *  A write that fails outright leaves the claim standing in memory, flags the
- *  realm payment_pending, and the pair is retried by the upkeep sweep. While
- *  that flag is set nothing in this file may publish the realm record on its
+ *  The claim stands in memory while its paired save is pending. MariaDB keeps
+ *  payment_pending until the guild receipt confirms COMMIT, and later guild
+ *  writes keep the current realm paired. Failed captures retry without another
+ *  debit. While that flag is set nothing here may publish the realm record on its
  *  own; kingdom_persist_realm() carries the rule and the reason.
  *
  *  NO SPECIAL CASE FOR RECLAIMING. Ruling 6 says a ring reverted for unpaid
@@ -364,7 +365,8 @@ static void kingdom_refresh_index(const kingdom_realm &realm)
  * kingdom_upkeep_retry_pending() lands the pair -- whatever the record holds
  * by then, this abandon's shrink included, since the record is written whole.
  *
- * True when the record is on disk. False -- held for a pending payment, or a
+ * True when the write is accepted (queued on MariaDB, committed on flat-file).
+ * False -- held for a pending payment, or a
  * write that failed -- leaves the realm dirty and logs everything needed to
  * reconstruct the write by hand. */
 bool kingdom_persist_realm(kingdom_realm &realm)
@@ -395,9 +397,9 @@ bool kingdom_persist_realm(kingdom_realm &realm)
 /* Make a realm change durable TOGETHER WITH the guild whose treasury it
  * belongs to, by way of kingdom_persist_payment().
  *
- * True means both records are durable: under MariaDB they share one database
- * transaction; under the flat-file build their after-images share one recovery
- * journal. The file header spells out the retry behavior in each mode.
+ * True means accepted: under MariaDB one transaction has been queued and the
+ * pending flag lasts through COMMIT; under the flat-file build the after-images
+ * have committed through their shared recovery journal.
  *
  * False means the change stands in memory (any debit is kept -- there is no
  * refund path), kingdom_persist_payment() has flagged the realm
@@ -625,14 +627,14 @@ bool kingdom_convert_guild(P_char ch)
 	 * rather than published alone by the generic flush. The realm exists in
 	 * memory either way -- the guild IS a kingdom from this line on, whatever
 	 * the disk says yet. */
-	const bool durable = kingdom_persist_paid_change(guild, *realm, "CONVERT");
+	const bool accepted = kingdom_persist_paid_change(guild, *realm, "CONVERT");
 
 	logit(LOG_KINGDOM, "CONVERT: %s (assoc %d) founded realm %d on hall vnum %d%s.",
 	      guild->get_name().c_str(), assoc_id, realm->realm_id, realm->hall_vnum,
-	      durable ? "" : " (record pending)");
+	      accepted ? "" : " (record pending)");
 
 	send_to_char("Your guild is now a kingdom. Its realm holds no land yet.\r\n", ch);
-	if (!durable)
+	if (!accepted)
 	{
 		kingdom_tell_record_pending(ch);
 	}
@@ -814,7 +816,7 @@ bool kingdom_claim_next(P_char ch)
 	 * guild write is then a no-op in effect, and one persist path for every
 	 * claim beats a second one that is only exercised on muds where land is
 	 * free. */
-	const bool durable = kingdom_persist_paid_change(guild, *realm, "CLAIM");
+	const bool accepted = kingdom_persist_paid_change(guild, *realm, "CLAIM");
 
 	const int ring = kingdom_ring_for_index(index);
 	const int claimed_rnum = kingdom_room_for_claim(realm->hall_rnum, index);
@@ -824,7 +826,7 @@ bool kingdom_claim_next(P_char ch)
 	      "CLAIM: %s (assoc %d) took square %d (ring %d, vnum %d) for %ld copper and %ld of "
 	      "each resource%s.",
 	      guild->get_name().c_str(), realm->assoc_id, index, ring, claimed_vnum, price,
-	      material, durable ? "" : " (record pending)");
+	      material, accepted ? "" : " (record pending)");
 
 	char told[MAX_INPUT_LENGTH];
 
@@ -832,7 +834,7 @@ bool kingdom_claim_next(P_char ch)
 		 "You claim square %d of %d for your realm. Ring %d of %d, %d squares held.\r\n",
 		 index, KINGDOM_MAX_SQUARES, ring, KINGDOM_MAX_RING, realm->highest_claim);
 	send_to_char(told, ch);
-	if (!durable)
+	if (!accepted)
 	{
 		kingdom_tell_record_pending(ch);
 	}
@@ -1012,8 +1014,8 @@ void kingdom_build_work(P_char ch, char *rest)
 		 * under "BUILD CREDITED", and the log names the sum to restore by
 		 * hand. */
 		const bool credited = price <= 0 || guild->add_copper(price);
-		const bool durable = credited &&
-				     kingdom_persist_paid_change(guild, *realm, "BUILD CREDITED");
+		const bool accepted = credited &&
+				      kingdom_persist_paid_change(guild, *realm, "BUILD CREDITED");
 
 		send_to_char(credited ?
 				     "The builders could not raise it, and nothing has been "
@@ -1021,7 +1023,7 @@ void kingdom_build_work(P_char ch, char *rest)
 				     "The builders could not raise it, and the treasury could not "
 				     "be credited back. Please petition.\r\n",
 			     ch);
-		if (credited && !durable)
+		if (credited && !accepted)
 		{
 			kingdom_tell_record_pending(ch);
 		}
@@ -1043,13 +1045,13 @@ void kingdom_build_work(P_char ch, char *rest)
 	 * it up before it saves the hall, and answers false if either fails);
 	 * this makes the treasury's side durable, through the same paired write
 	 * every other treasury verb in this file uses. */
-	const bool durable = kingdom_persist_paid_change(guild, *realm, "BUILD");
+	const bool accepted = kingdom_persist_paid_change(guild, *realm, "BUILD");
 
 	send_to_char_f(ch,
 		       "Builders raise your realm's %s %s of here, and the treasury pays %s.\r\n",
 		       name, dirs[dir], kingdom_price_string(price));
 
-	if (!durable)
+	if (!accepted)
 	{
 		kingdom_tell_record_pending(ch);
 	}
@@ -1061,7 +1063,7 @@ void kingdom_build_work(P_char ch, char *rest)
 
 	logit(LOG_KINGDOM, "BUILD: %s (assoc %d) raised a %s off vnum %d for %ld copper%s.",
 	      guild->get_name().c_str(), realm->assoc_id, name, from_vnum, price,
-	      durable ? "" : " (record pending)");
+	      accepted ? "" : " (record pending)");
 }
 
 /* ------------------------------------------------------------------ *
@@ -1123,7 +1125,7 @@ bool kingdom_abandon_last(P_char ch)
 	 * write at all while a payment is pending -- an abandon must not be the
 	 * thing that publishes an unpaired debit -- and the actor is then told the
 	 * record is still to come, which is true either way. */
-	const bool durable = kingdom_persist_realm(*realm);
+	const bool accepted = kingdom_persist_realm(*realm);
 
 	/* Fewer squares may mean fewer guards allowed; reconcile now so a guard
 	 * never stands on ground the realm has just given up. */
@@ -1131,7 +1133,7 @@ bool kingdom_abandon_last(P_char ch)
 
 	logit(LOG_KINGDOM, "ABANDON: %s (assoc %d) released square %d (vnum %d); %d remain%s.",
 	      guild->get_name().c_str(), realm->assoc_id, index, released_vnum,
-	      realm->highest_claim, durable ? "" : " (record pending)");
+	      realm->highest_claim, accepted ? "" : " (record pending)");
 
 	char told[MAX_INPUT_LENGTH];
 
@@ -1148,7 +1150,7 @@ bool kingdom_abandon_last(P_char ch)
 			     ch);
 	}
 
-	if (!durable)
+	if (!accepted)
 	{
 		kingdom_tell_record_pending(ch);
 	}
@@ -1428,7 +1430,7 @@ void kingdom_roster_hire(P_char ch, char *rest)
 	realm->guards[slot].guard_class = guard_class;
 	realm->guards[slot].level = KINGDOM_GUARD_BASE_LEVEL;
 
-	const bool durable = kingdom_persist_paid_change(guild, *realm, "HIRE");
+	const bool accepted = kingdom_persist_paid_change(guild, *realm, "HIRE");
 
 	char told[MAX_INPUT_LENGTH];
 
@@ -1437,7 +1439,7 @@ void kingdom_roster_hire(P_char ch, char *rest)
 		 kingdom_guard_class_name(guard_class), slot + 1, KINGDOM_GUARD_BASE_LEVEL);
 	send_to_char(told, ch);
 
-	if (!durable)
+	if (!accepted)
 	{
 		kingdom_tell_record_pending(ch);
 	}
@@ -1448,7 +1450,7 @@ void kingdom_roster_hire(P_char ch, char *rest)
 
 	logit(LOG_KINGDOM, "HIRE: %s (assoc %d) raised guard %d, %s, for %ld copper%s.",
 	      guild->get_name().c_str(), realm->assoc_id, slot + 1,
-	      kingdom_guard_class_name(guard_class), price, durable ? "" : " (record pending)");
+	      kingdom_guard_class_name(guard_class), price, accepted ? "" : " (record pending)");
 
 	/* The body appears here, through the one reconciliation path. */
 	kingdom_garrison_refresh(*realm);
@@ -1575,7 +1577,7 @@ void kingdom_roster_upgrade(P_char ch, char *rest)
 	realm->guards[slot].level = to;
 	realm->guards[slot].guard_class = guard_class;
 
-	const bool durable = kingdom_persist_paid_change(guild, *realm, "PROMOTE");
+	const bool accepted = kingdom_persist_paid_change(guild, *realm, "PROMOTE");
 
 	char told[MAX_INPUT_LENGTH];
 
@@ -1592,7 +1594,7 @@ void kingdom_roster_upgrade(P_char ch, char *rest)
 	}
 	send_to_char(told, ch);
 
-	if (!durable)
+	if (!accepted)
 	{
 		kingdom_tell_record_pending(ch);
 	}
@@ -1603,7 +1605,7 @@ void kingdom_roster_upgrade(P_char ch, char *rest)
 
 	logit(LOG_KINGDOM, "PROMOTE: %s (assoc %d) raised guard %d to %d (%s) for %ld copper%s.",
 	      guild->get_name().c_str(), realm->assoc_id, slot + 1, to,
-	      kingdom_guard_class_name(guard_class), price, durable ? "" : " (record pending)");
+	      kingdom_guard_class_name(guard_class), price, accepted ? "" : " (record pending)");
 
 	/* The old body no longer matches its roster line's level, so the
 	 * reconciler replaces it with one that does. */
@@ -1723,7 +1725,7 @@ void kingdom_roster_champion(P_char ch, char *rest)
 
 	realm->champion_class = class_one | class_two;
 
-	const bool durable = kingdom_persist_paid_change(guild, *realm, "CHAMPION");
+	const bool accepted = kingdom_persist_paid_change(guild, *realm, "CHAMPION");
 
 	char told[MAX_INPUT_LENGTH];
 
@@ -1733,7 +1735,7 @@ void kingdom_roster_champion(P_char ch, char *rest)
 		 KINGDOM_CHAMPION_LEVEL);
 	send_to_char(told, ch);
 
-	if (!durable)
+	if (!accepted)
 	{
 		kingdom_tell_record_pending(ch);
 	}
@@ -1743,7 +1745,7 @@ void kingdom_roster_champion(P_char ch, char *rest)
 
 	logit(LOG_KINGDOM, "CHAMPION: %s (assoc %d) raised a %s/%s champion for %ld copper%s.",
 	      guild->get_name().c_str(), realm->assoc_id, kingdom_guard_class_name(class_one),
-	      kingdom_guard_class_name(class_two), price, durable ? "" : " (record pending)");
+	      kingdom_guard_class_name(class_two), price, accepted ? "" : " (record pending)");
 
 	kingdom_champion_refresh(*realm);
 }
@@ -1879,7 +1881,7 @@ void kingdom_roster_respec(P_char ch, char *rest)
 	realm->guards[slot].guard_class = guard_class;
 	realm->dirty = true;
 
-	const bool durable = kingdom_persist_paid_change(guild, *realm, "RESPEC");
+	const bool accepted = kingdom_persist_paid_change(guild, *realm, "RESPEC");
 
 	char told[MAX_INPUT_LENGTH];
 
@@ -1890,7 +1892,7 @@ void kingdom_roster_respec(P_char ch, char *rest)
 		 realm->guards[slot].level);
 	send_to_char(told, ch);
 
-	if (!durable)
+	if (!accepted)
 	{
 		kingdom_tell_record_pending(ch);
 	}
@@ -1899,7 +1901,7 @@ void kingdom_roster_respec(P_char ch, char *rest)
 	      "RESPEC: %s (assoc %d) re-schooled guard %d from %s to %s for %lu prestige%s.",
 	      guild->get_name().c_str(), realm->assoc_id, slot + 1, kingdom_guard_class_name(was),
 	      kingdom_guard_class_name(guard_class), (unsigned long)KINGDOM_GUARD_RESPEC_PRESTIGE,
-	      durable ? "" : " (record pending)");
+	      accepted ? "" : " (record pending)");
 
 	/* The body carries the old calling, and the reconciler now compares
 	 * class, so this is what replaces it. */
@@ -1994,7 +1996,7 @@ void kingdom_roster_champion_respec(P_char ch, char *rest)
 	realm->champion_class = class_one | class_two;
 	realm->dirty = true;
 
-	const bool durable = kingdom_persist_paid_change(guild, *realm, "CHAMPION RESPEC");
+	const bool accepted = kingdom_persist_paid_change(guild, *realm, "CHAMPION RESPEC");
 
 	char told[MAX_INPUT_LENGTH];
 
@@ -2004,7 +2006,7 @@ void kingdom_roster_champion_respec(P_char ch, char *rest)
 		 KINGDOM_CHAMPION_LEVEL);
 	send_to_char(told, ch);
 
-	if (!durable)
+	if (!accepted)
 	{
 		kingdom_tell_record_pending(ch);
 	}
@@ -2016,7 +2018,7 @@ void kingdom_roster_champion_respec(P_char ch, char *rest)
 	      "%lu prestige%s.",
 	      guild->get_name().c_str(), realm->assoc_id, kingdom_guard_class_name(class_one),
 	      kingdom_guard_class_name(class_two), (unsigned long)KINGDOM_CHAMPION_RESPEC_PRESTIGE,
-	      durable ? "" : " (record pending)");
+	      accepted ? "" : " (record pending)");
 
 	kingdom_champion_refresh(*realm);
 }

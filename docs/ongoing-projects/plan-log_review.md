@@ -20,7 +20,11 @@ blocked-writer/copyover cancellation, writer recovery, successful copyover and
 clean restart journey. Shared allocation-admission fixes `dfecafbda` and
 `532fe0653` are committed/pushed and each has a passing before/after regression.
 The three crash boundaries, blocked shutdown and real coordinator-cache eviction
-now pass too. Remaining #58 cases and the source-audit findings are in
+now pass too. Kingdom-payment receipt/rollback qualification is in progress;
+its native and MariaDB matrix passes. The standard journey exposed a copyover
+room-entry use-after-free; the repair passes its focused sanitizer test and awaits
+final full-server qualification. Independent guild-member
+capture fix `15ccfdd56` passes its before/after regression. Remaining #58 cases and the source-audit findings are in
 [the current qualification update](plan-estale.md#qualification-update-2026-10-14).
 These advances do not close another LR item or make #58 review-ready yet.
 
