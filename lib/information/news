@@ -1,18 +1,59 @@
 &+W======================================================================&n
 &+Y                           DURIS PLAYER NEWS&n
 &+W======================================================================&n
-&+WUpdated: October 12, 2026&n
+&+WUpdated: October 13, 2026&n
 
-Welcome back! This update catches up September 15 to October 12, 2026.
+Welcome back! This update catches up September 15 to October 13, 2026.
 Racial powers, ship battles and everyday adventuring all have news. The
 newest changes come first; later updates replace older rules. Earlier
 coverage, back to December 14, 2025, and the archive follow.
 
-&+R10/12/26&n &+L-&n &+YNew roads, sharper blades and a blood bargain&n
+&+R10/12/26 - 10/13/26&n &+L-&n &+YOld battle rhythms and earlier epic training&n
 &+W----------------------------------------------------------------------&n
 
-&+YRelease note:&n The changes below describe the prepared October 12 release.
-The new combat, shifting and level-cap rules take effect at the next reboot.
+&+CFive allies, one chance to open the next level&n
+&+Y-&n A qualifying kill now needs a base share of at least &+Y0.20 frag&n:
+  no more than &+Yfive&n of the killer's side may be in the room, including
+  the killer and ungrouped allies. Level-based frag bonuses cannot make
+  a larger force qualify. The timer, leading-side and victim-level
+  requirements still apply; &+C'fraglist'&n shows the current requirements.
+&+Y-&n Kills made before this update cannot unlock a level under the new rule.
+  Your existing frags and unlocked levels remain yours.
+
+&+CEpic lessons from level 30&n
+&+Y-&n You can begin learning epic skills at &+Ylevel 30&n, down from level 56,
+  if you meet the skill's other requirements and can pay its epic-point
+  and platinum costs. Use &+C'epic skills'&n to find the available teachers.
+  Earning new epic points still requires &+Ylevel 50&n; stone costs are unchanged.
+
+&+CYour race's familiar rhythm returns&n
+&+Y-&n Melee attacks become faster for Drow Elves, Grey Elves, Halflings,
+  Gnomes, Tieflings, Goblins, Driders and Kobolds.
+&+Y-&n Melee attacks become slower for Barbarians, Mountain Dwarves, Duergar
+  Dwarves, Ogres, Trolls, Thri-Kreen, Centaurs, Minotaurs and Firbolgs.
+  These restore the older racial melee rates. Racial spellcasting rates,
+  attributes and innate powers keep their current settings.
+&+Y-&n Newly created copies of affected equipment regain their old combat
+  and spell speed bonuses, replacing the attributes previously given
+  in exchange. &+WEquipment you already saved keeps its saved bonuses.&n
+&+Y-&n A spirit totem summoned at &+Ylevel 56&n or above once again improves
+  casting speed instead of granting the replacement &+Y3 Wisdom&n.
+
+&+CEarthen fists, recovery and connecting&n
+&+Y-&n Greater Earthen Grasp gives victims a better chance to resist
+  paralysis: the caster's Strength advantage has a smaller, capped
+  influence on the save. Ordinary Earthen Grasp, including the Earth
+  Reaver version, keeps its existing saves. Hold durations are unchanged.
+&+Y-&n Positive character regeneration returns to its normal baseline,
+  removing the reduced recovery setting.
+&+Y-&n Browser connections handle delayed connection details correctly,
+  so login limits count your own address instead of confusing players
+  sharing the website's connection to the game.
+&+Y-&n &+C'help boon'&n now explains current boon requirements and rewards,
+  participation toggling, and how to spend boon shop stat points.
+
+&+R10/12/26&n &+L-&n &+YNew roads, sharper blades and a blood bargain&n
+&+W----------------------------------------------------------------------&n
 
 &+CYour next level is your side's next victory&n
 &+Y-&n Good and Evil now unlock one level at a time. Once the timer expires,
@@ -23,8 +64,8 @@ The new combat, shifting and level-cap rules take effect at the next reboot.
   cap. Each unlock starts a &+Ythree-day&n wait; an expired timer alone does
   not grant a level. The old cap-unlock experience boon is gone.
 &+Y-&n The victim must be no more than &+Yfive levels&n below the shared cap, and
-  no more than &+Yfive&n of the killer's side may be in the room, grouped or not,
-  so a big group ganging up on one victim cannot unlock a level. Check
+  at least one individual gain must reach &+Y0.10 frag&n. Small shares from
+  several groupmates do not add together to meet that minimum. Check
   &+C'fraglist'&n for both sides' caps and the timer. Hardcore keeps its
   &+Ytwo-level&n allowance, with &+Y56&n still the maximum. Existing caps carry
   over; future new seasons begin with level &+Y30&n open to everyone.
