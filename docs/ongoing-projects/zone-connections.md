@@ -3,7 +3,9 @@
 Status: proposed implementation plan; no server changes made.
 Tracking issue: [#65 — Add native zone connection tracking and in-game reports](https://github.com/LuminariMUD/Duris/issues/65).
 Source baseline: `d860af6e40a6c42a2f180a9a0f6d92c6a2c21de8`, inspected 2026-10-13.
-Related work: [world placements and the Underdark connector, issue #37](https://github.com/LuminariMUD/Duris/issues/37).
+Related work: [#37 — workbook zone placements and Misty Chasm Underdark connection](https://github.com/LuminariMUD/Duris/issues/37).
+The planned connection reports support route discovery and validation for that
+issue; the placement and connector changes remain tracked there.
 
 ## Outcome
 
