@@ -82,12 +82,21 @@ def upgrade(sock: socket.socket, forwarded_for: str) -> bytes:
     return frames
 
 
-def proxied(port: int, client: str, forwarded_for: str | None = None) -> socket.socket:
+def proxied(port: int, client: str, forwarded_for: str | None = None, fragmented: bool = False) -> socket.socket:
     """A WebSocket-port connection from the proxy carrying a PROXY header for client, then
     with forwarded_for a completed upgrade that names another address."""
     family, local = ("TCP6", "::1") if ":" in client else ("TCP4", "127.0.0.1")
     sock = socket.create_connection(("127.0.0.1", port), timeout=5, source_address=(PROXY, 0))
-    sock.sendall(f"PROXY {family} {client} {local} 40000 4050\r\n".encode("ascii"))
+    header = f"PROXY {family} {client} {local} 40000 4050\r\n".encode("ascii")
+    if fragmented:
+        # Let accept complete before any bytes arrive, then split both the prefix
+        # and line terminator. Neither timing nor TCP packet boundaries are a contract.
+        time.sleep(.3)
+        for part in (header[:3], header[3:-1], header[-1:]):
+            sock.sendall(part)
+            time.sleep(.2)
+    else:
+        sock.sendall(header)
     if forwarded_for:
         upgrade(sock, forwarded_for)
     return sock
@@ -262,7 +271,8 @@ def main() -> int:
                 # untouched, does not take a connection out of its PROXY address's count.
                 for _ in range(LIMIT - 1):
                     held.append(proxied(websocket_port, "198.51.100.1"))
-                held.append(proxied(websocket_port, "198.51.100.1", forwarded_for="10.66.0.1"))
+                held.append(proxied(websocket_port, "198.51.100.1", forwarded_for="10.66.0.1",
+                                    fragmented=True))
                 time.sleep(1)
                 excess = proxied(websocket_port, "198.51.100.1")
                 require(closed_within(excess, 10) is not None,

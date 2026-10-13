@@ -3552,7 +3552,7 @@ int proxy_peer_is_trusted(int desc)
 	return 0;
 }
 
-/* parse proxy protocol v1 header - returns 1 if found, stores real ip */
+/* 1: consumed a valid header; 0: ordinary HTTP; 2: await more bytes; -1: invalid. */
 static int parse_proxy_protocol(int desc, char *real_ip, size_t ip_len)
 {
 	char buf[108];
@@ -3561,51 +3561,51 @@ static int parse_proxy_protocol(int desc, char *real_ip, size_t ip_len)
 	struct in_addr src4, dst4;
 	struct in6_addr src6, dst6;
 	ssize_t n;
-	int i;
 
-	/* peek first 6 bytes to check for "PROXY " */
-	n = recv(desc, buf, 6, MSG_PEEK);
-	if (n < 6 || strncmp(buf, "PROXY ", 6) != 0)
-		return 0;
-
-	/* read full line up to \r\n */
-	for (i = 0; i < (int)sizeof(buf) - 1; i++)
+	// TCP may deliver the prefix or line in pieces. Do not consume any part until
+	// the complete bounded line is available, and never block the game loop.
+	n = recv(desc, buf, sizeof(buf) - 1, MSG_PEEK | MSG_DONTWAIT);
+	if (n <= 0)
 	{
-		n = recv(desc, &buf[i], 1, 0);
-		if (n <= 0)
-			return 0;
-		if (buf[i] == '\n')
-		{
-			buf[i + 1] = '\0';
-			break;
-		}
+		if (n < 0 && (errno == EAGAIN
+#if EWOULDBLOCK != EAGAIN
+			      || errno == EWOULDBLOCK
+#endif
+			      ))
+			return 2;
+		return -1;
 	}
-	buf[i] = '\0';
-	if (i > 0 && buf[i - 1] == '\r')
-		buf[i - 1] = '\0';
+	if (memcmp(buf, "PROXY ", std::min<ssize_t>(n, 6)) != 0)
+		return 0;
+	buf[n] = '\0';
+	char *end = strstr(buf, "\r\n");
+	if (!end)
+		return n == static_cast<ssize_t>(sizeof(buf) - 1) ? -1 : 2;
+	const size_t bytes = static_cast<size_t>(end - buf) + 2;
+	*end = '\0';
 
 	if (sscanf(buf, "PROXY %7s %45s %45s %d %d %c", proto, src_ip, dst_ip, &src_port, &dst_port,
 		   &trailing) != 5)
-		return 0;
+		return -1;
 	if (src_port < 1 || src_port > 65535 || dst_port < 1 || dst_port > 65535)
-		return 0;
+		return -1;
 	if (strcmp(proto, "TCP4") == 0)
 	{
 		if (inet_pton(AF_INET, src_ip, &src4) != 1 ||
 		    inet_pton(AF_INET, dst_ip, &dst4) != 1)
-			return 0;
+			return -1;
 	}
 	else if (strcmp(proto, "TCP6") == 0)
 	{
 		if (inet_pton(AF_INET6, src_ip, &src6) != 1 ||
 		    inet_pton(AF_INET6, dst_ip, &dst6) != 1)
-			return 0;
+			return -1;
 	}
 	else
-		return 0;
+		return -1;
 
 	strlcpy(real_ip, src_ip, ip_len);
-	return 1;
+	return recv(desc, buf, bytes, MSG_DONTWAIT) == static_cast<ssize_t>(bytes) ? 1 : -1;
 }
 
 struct hostname_lookup_request
@@ -3793,6 +3793,27 @@ static int login_connections_from(const char *host)
 	return count;
 }
 
+// Called only for the first WebSocket input from a trusted proxy. The descriptor
+// is already linked, so the count includes this connection.
+int process_proxy_protocol(P_desc d)
+{
+	char client_ip[46];
+	const int result = parse_proxy_protocol(d->descriptor, client_ip, sizeof(client_ip));
+	if (result != 1)
+		return result;
+	strlcpy(d->host, client_ip, sizeof(d->host));
+	d->proxy_named_client = 1;
+	if (login_connections_from(d->host) > MAX_LOGIN_CONNECTIONS_PER_ADDRESS)
+	{
+		logit(LOG_DEBUG,
+		      "Refused connection from %s: %d open connections have not logged in.",
+		      d->host, MAX_LOGIN_CONNECTIONS_PER_ADDRESS);
+		return -1;
+	}
+	resolve_descriptor_hostname_async(d->host, d->descriptor);
+	return 1;
+}
+
 int new_descriptor(int s, int conn_type)
 {
 	P_desc newd;
@@ -3874,20 +3895,9 @@ int new_descriptor(int s, int conn_type)
 			memmove(newd->host, mapped, strlen(mapped) + 1);
 		}
 
-		/* check for proxy protocol on websocket connections; without it the address is
-		 * the trusted proxy's, which all its clients share */
-		if (proxy_peer_is_trusted(desc))
-		{
-			char proxy_ip[46];
-			if (conn_type == 2 &&
-			    parse_proxy_protocol(desc, proxy_ip, sizeof(proxy_ip)))
-			{
-				strlcpy(newd->host, proxy_ip, sizeof newd->host);
-				newd->proxy_named_client = 1;
-			}
-			else
-				shared_address = true;
-		}
+		// A trusted proxy is shared until its client address arrives in the input
+		// stream. WebSocket input handles fragmented PROXY headers after accept.
+		shared_address = proxy_peer_is_trusted(desc);
 
 		/*
 		 * things got ugly, 20k+ sites, so, split it into 2 files, a
@@ -3943,7 +3953,10 @@ int new_descriptor(int s, int conn_type)
 	newd->descriptor = desc;
 	// newd->connected = CON_HOST_LOOKUP;
 	newd->wait = 1;
-	resolve_descriptor_hostname_async(newd->host, desc);
+	// WebSocket proxy metadata will supply the client address on input. Looking
+	// up the shared proxy now would compete with that client's bounded DNS worker.
+	if (!shared_address || conn_type != 2)
+		resolve_descriptor_hostname_async(newd->host, desc);
 	*newd->host2 = '\0';
 	newd->prompt_mode = FALSE;
 	*newd->buf = '\0';
