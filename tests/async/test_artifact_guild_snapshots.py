@@ -9,6 +9,7 @@ from _paths import ROOT, HARNESS_STUBS, extract_function
 out=ROOT/'bin/tests'
 out.mkdir(parents=True,exist_ok=True)
 source=(ROOT/'tests/async/artifact_guild_snapshots.cpp').read_text()
+source=source.replace('// PARSER_BODY',extract_function('interp.c','char *one_argument(')+'\n'+extract_function('interp.c','bool is_abbrev('))
 utility=(ROOT/'src/core/utility.c').read_text()
 reporter=utility[utility.index('static int persistence_alert_format_is_numeric('):utility.index('unsigned long long persistence_next_item_uid(')]
 source=source.replace('// PERSISTENCE_REPORTER', reporter)

@@ -12,6 +12,51 @@
 #include <limits>
 #include <mutex>
 
+extern "C" time_t time(time_t *out)
+{
+	constexpr time_t now = 1792000000;
+	if (out)
+		*out = now;
+	return now;
+}
+float get_property(const char *name, double fallback)
+{
+	return std::string(name) == "artifact.wars.modifier" ? .25f : fallback;
+}
+P_char find_player_by_pid(int)
+{
+	return nullptr;
+}
+P_obj unequip_char(P_char, int, bool)
+{
+	std::abort();
+}
+void obj_to_room(P_obj, int)
+{
+	std::abort();
+}
+void obj_from_char(P_obj)
+{
+	std::abort();
+}
+void nevent_periodic_mark_failure(const char *)
+{
+	std::abort();
+}
+void nevent_periodic_retry_after(unsigned long long, const char *)
+{
+	std::abort();
+}
+void nevent_periodic_continue_after(unsigned long long)
+{
+	std::abort();
+}
+int fill_word(char *)
+{
+	return 0;
+}
+// PARSER_BODY
+
 static bool fail_allocation = false;
 void *operator new(size_t size)
 {
@@ -391,6 +436,92 @@ static void payment_cases(Guild *guild)
 	puts("PASS kingdom payment admission/commit boundary, later rewards, rollback and fresh paired retries, late realm changes and recreation");
 }
 
+static void artifact_ordering_cases()
+{
+	artifact_rows.clear();
+	artifact_binds.clear();
+	jobs.clear();
+	database_next_job = 0;
+	const time_t now = time(nullptr);
+	artifact_update_sql(900, true, ARTIFACT_ON_PC, 42, now + 8000, ARTIFACT_MAJOR);
+	artifact_bind_store(900, 42, 0);
+	artifact_feed_set_timer(900, now + 8100);
+	// Transfer and soul change capture the timer already fed in memory.
+	artifact_update_sql(900, true, ARTIFACT_ON_PC, 77, artifact_rows.at(900).timer,
+			    ARTIFACT_MAJOR);
+	artifact_bind_store(900, 77, 33);
+	artifact_feed_set_timer(900, artifact_rows.at(900).timer + 100);
+	char_data staff = {};
+	staff.player.level = FORGER;
+	char extend[] = "add 900 1";
+	arti_timer_sql(&staff, extend);
+	assert(artifact_rows.at(900).timer == now + 8260);
+	artifact_update_sql(901, true, ARTIFACT_ON_PC, 77, now + 10000, ARTIFACT_MAJOR);
+	event_artifact_wars_sql(nullptr, nullptr, nullptr, nullptr);
+	// One excess major artifact burns one quarter of each remaining timer.
+	assert(artifact_rows.at(900).timer == now + 6195);
+	assert(artifact_rows.at(901).timer == now + 7500);
+	artifact_feed_set_timer(900, artifact_rows.at(900).timer + 100);
+	obj_data object = {};
+	object.R_num = 0;
+	object.extra_flags = ITEM_ARTIFACT;
+	assert(remove_owned_artifact_sql(&object, 77));
+	assert(artifact_rows.at(900).locType == ARTIFACT_ONCORPSE &&
+	       artifact_rows.at(900).location == 77);
+	assert(artifact_rows.at(900).timer == now + 6295 && artifact_binds.at(900).owner_pid == -1);
+	artifact_update_sql(900, true, ARTIFACT_ON_PC, 88, artifact_rows.at(900).timer,
+			    ARTIFACT_MAJOR);
+	artifact_bind_store(900, 88, 0);
+	artifact_feed_set_timer(900, artifact_rows.at(900).timer + 100);
+	artifact_update_sql(900, true, ARTIFACT_ON_PC, 88, now - 1, ARTIFACT_MAJOR);
+	assert(artifact_expired(artifact_rows.at(900)));
+	assert(remove_owned_artifact_sql(&object, 0));
+	assert(!artifact_expired(artifact_rows.at(900)) && !artifact_rows.at(900).owned);
+	char number[] = "900";
+	arti_clear_sql(&staff, number);
+	assert(artifact_rows.at(900).removed);
+	artifact_update_sql(900, true, ARTIFACT_ON_PC, 99, now + 9000, ARTIFACT_MAJOR);
+	artifact_bind_store(900, 99, 55);
+	for (size_t i = 0; i < jobs.size(); ++i)
+		finish(i);
+	assert(artifact_save_pulse(false) == 0 && artifact_rows.at(900).location == 99);
+	if (payment_db)
+	{
+		artifact_rows.clear();
+		artifact_binds.clear();
+		for (const char *statement : { ARTIFACT_ROWS_QUERY, ARTIFACT_BINDS_QUERY })
+		{
+			query(statement);
+			MYSQL_RES *result = mysql_store_result(payment_db);
+			assert(result);
+			while (MYSQL_ROW row = mysql_fetch_row(result))
+				artifact_row_read(row);
+			mysql_free_result(result);
+		}
+	}
+	assert(artifact_rows.at(900).owned && !artifact_rows.at(900).removed &&
+	       artifact_rows.at(900).locType == ARTIFACT_ON_PC &&
+	       artifact_rows.at(900).location == 99 && artifact_rows.at(900).timer == now + 9000);
+	assert(artifact_binds.at(900).owner_pid == 99 && artifact_binds.at(900).timer == 55);
+	assert(artifact_rows.at(901).timer == now + 7500);
+	if (payment_db)
+	{
+		query("SELECT COUNT(*) FROM artifacts a LEFT JOIN artifact_bind b ON b.vnum=a.vnum "
+		      "LEFT JOIN artifact_domain_state d ON d.vnum=a.vnum WHERE a.vnum IN(900,901) AND "
+		      "(d.vnum IS NULL OR d.owned<>(a.owned='Y') OR d.loc_type<>a.locType OR "
+		      "d.location<>a.location OR d.timer_epoch<>UNIX_TIMESTAMP(a.timer) OR "
+		      "d.artifact_type<>a.type OR d.bind_owner_pid<>COALESCE(b.owner_pid,0) OR "
+		      "d.bind_timer_epoch<>COALESCE(b.timer,0))");
+		MYSQL_RES *result = mysql_store_result(payment_db);
+		assert(result);
+		MYSQL_ROW row = mysql_fetch_row(result);
+		assert(row && std::string(row[0]) == "0");
+		mysql_free_result(result);
+		puts("PASS artifact SQL drain, actual boot-row reload and mirror agreement");
+	}
+	puts("PASS artifact feed/transfer/soul/extension/wars/corpse/expiry/removal/recreation ordering");
+}
+
 int main(int argc, char **argv)
 {
 	if (argc == 2)
@@ -401,6 +532,8 @@ int main(int argc, char **argv)
 		auto *guild = new Guild(name, RACEWAR_GOOD, 7, 70, 20, 0, 0);
 		guild_list = guild;
 		payment_cases(guild);
+		indexes[0].virtual_number = 900;
+		artifact_ordering_cases();
 		mysql_close(payment_db);
 		return 0;
 	}
@@ -645,4 +778,5 @@ int main(int argc, char **argv)
 		std::to_string(ENOMEM)));
 	puts("PASS real guild capture, spending/settings, current-state retry and exact-capture ACK; snapshot diagnostics survive the real reporter");
 	payment_cases(guild);
+	artifact_ordering_cases();
 }
