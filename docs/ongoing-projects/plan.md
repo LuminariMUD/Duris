@@ -1,6 +1,7 @@
 # Character mechanics: explicit connections in gameplay code
 
-Status: implementation in progress on `feature/52-character-mechanics`, based on
+Status: **paused at the user's request on 2026-10-13**. Work is on
+`feature/52-character-mechanics`, based on
 `7a2a6344727b3cdd63851bde37f6a5a2d67aeb8d`. The full acceptance scope below remains
 open. Original source inspection: 2026-10-12; implementation started 2026-10-13.
 
@@ -12,7 +13,7 @@ Tracking issue: [#52 — Make character mechanics explicitly connected and mecha
   `origin/master`. Keep all implementation on this worktree. Another session may
   use the shared local/dev game; use isolated harnesses and disposable servers,
   without stopping or modifying that instance or its database/Redis state.
-- Step 1 is active; steps 2–4 remain required. The compiled identity foundation
+- Step 1 is incomplete and paused; steps 2–4 remain required. The compiled identity foundation
   below is implemented; next complete Guardian/Bulwark, ordered multiclass, and
   Revenant traces. Do not treat an inventory as completion of these traces.
 - Separately scoped defect repaired in `86de3042a` while connecting specialization eligibility:
@@ -31,6 +32,52 @@ Tracking issue: [#52 — Make character mechanics explicitly connected and mecha
   another roster or evaluator. No registration framework, export format, or
   runtime gameplay dispatch is needed. Every retained connection still needs
   reverse coverage and appropriately scoped behavior/lifecycle evidence.
+
+### Pause checkpoint
+
+Completed and pushed before this checkpoint:
+
+- `86de3042a` — specialization allowance bounds repair and regression.
+- `831fda768` — identity-table/predicate bindings and their native validator.
+
+The subsequent work only extends
+`tests/async/test_character_mechanics.py` and
+`tests/async/character_mechanics_harness.cpp`; it changes no production behavior.
+It is retained with this pause checkpoint. The extension extracts the actual
+`assign_innates`, innate effective-race/unlock/eligibility functions, property
+parser/loader/lookups, damage-factor loader, and complete `melee_damage` body into
+the existing native test. It uses the committed properties and creation config
+in a private directory under `bin/tests/`, with all three mode switches disabled.
+
+`python3 tests/async/test_character_mechanics.py` passed with ASan/UBSan immediately
+before the pause. The result is in `bin/tests/character-mechanics-bulwark.log`;
+the tested native executable SHA256 was
+`2b9a459235937975c2e1ee4d5a0a5c225acc83f73fdd9edf5a28e0699e198b2f`.
+Named assertions cover Guardian at level 40/41, shield absent/present, wrong and
+unset specialization, class ownership versus a shared slot number/secondary class,
+the reduction-bypass flag, the shipped 0.850 factor, and property reload to 0.5.
+The observed 1,000-point melee input becomes 850 or 500 when applicable and stays
+1,000 on the named denials/bypass paths.
+
+**Evidence boundary:** `raw_damage` is a recording stub. Armor calculation,
+unrelated combat services, and randomness are controlled fixtures. These cases
+prove the real melee reduction delivered to raw damage, not actual HP/death,
+equipment validation, teacher selection, ordinary acquisition, save/load, or a
+complete Guardian route. No mechanic/transition record types, compiled branch IDs,
+grant-write ledger, or reverse checker were added yet. Do not infer an accepted
+graph design from the test extension.
+
+The 729-case full gate below belongs to the foundation and **predates the Bulwark
+test extension**; it was not rerun for this pause. The last in-flight focused test
+finished successfully, so no test or build from this work remains running. The
+shared dev game and its data were not touched.
+
+On explicit resume, inspect the checkpoint diff and this plan, then add the actual
+grant/property/eligibility/effect connections beside their owners. Extend the same
+test with source-mutation detection for a missing passive consumer and bind named
+assertions to the mechanic IDs. Continue through real specialization entry and
+lifecycle proof, then the multiclass and Revenant traces and every remaining
+acceptance item below. The paused work is not ready for a review PR or release tag.
 
 ### Implemented foundation (partial step 1)
 
@@ -495,7 +542,7 @@ are connected; mutation checks detect missing/conflicting/stale/unregistered lin
 and proof is current and limited to its assertions. Documentation explains this
 code structure. This plan authorizes no implementation by itself.
 
-Planning validation: all 57 local source/document links resolved, scope/revision
+Historical planning validation (before implementation): all 57 local source/document links resolved, scope/revision
 and whitespace checks passed, and these existing focused commands passed:
 
 ```bash
@@ -507,5 +554,7 @@ python3 tests/async/test_frag_cap_config_contract.py
 ```
 
 Their evidence is limited as described above; the frag-cap test is a source
-contract. No full build, database test, or gameplay journey was run for this
-document-only change. The proposed contract and acceptance tests do not yet exist.
+contract. No full build, database test, or gameplay journey was run for that
+document-only change. At that checkpoint the proposed contract and acceptance
+tests did not yet exist; the current implementation and evidence are recorded
+in the continuation and pause sections above.

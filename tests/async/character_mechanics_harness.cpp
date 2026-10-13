@@ -3,6 +3,7 @@
 #include "account/creation_availability_config.h"
 #include "classes/specializations.h"
 #include "player/character_mechanics.h"
+#include "combat/damage.h"
 
 #include <cassert>
 #include <cstdio>
@@ -10,6 +11,57 @@
 #include <cstring>
 
 using namespace character_mechanics;
+
+void load_character_properties();
+void set_bulwark_property(float value);
+void clear_character_properties();
+double bulwark_melee(P_char attacker, P_char victim, bool bypass = false);
+
+static void guardian_bulwark()
+{
+	load_character_properties();
+	assign_innates();
+	char_data attacker{}, victim{};
+	obj_data shield{};
+	SET_POS(&attacker, STAT_NORMAL + POS_STANDING);
+	SET_POS(&victim, STAT_NORMAL + POS_STANDING);
+	attacker.player.race = victim.player.race = RACE_HUMAN;
+	attacker.player.m_class = victim.player.m_class = CLASS_WARRIOR;
+	attacker.player.level = victim.player.level = 41;
+	victim.player.spec = SPEC_GUARDIAN;
+	victim.equipment[WEAR_SHIELD] = &shield;
+	assert(has_innate(&victim, INNATE_GUARDIANS_BULWARK));
+	assert(bulwark_melee(&attacker, &victim) == 850);
+	assert(bulwark_melee(&attacker, &victim, true) == 1000);
+	victim.player.level = 40;
+	assert(!has_innate(&victim, INNATE_GUARDIANS_BULWARK));
+	assert(bulwark_melee(&attacker, &victim) == 1000);
+	victim.player.level = 41;
+	victim.equipment[WEAR_SHIELD] = nullptr;
+	assert(has_innate(&victim, INNATE_GUARDIANS_BULWARK));
+	assert(bulwark_melee(&attacker, &victim) == 1000);
+	victim.equipment[WEAR_SHIELD] = &shield;
+	victim.player.spec = SPEC_SWORDSMAN;
+	assert(!has_innate(&victim, INNATE_GUARDIANS_BULWARK));
+	assert(bulwark_melee(&attacker, &victim) == 1000);
+	victim.player.spec = 0;
+	victim.player.secondary_class = CLASS_CLERIC;
+	assert(!has_innate(&victim, INNATE_GUARDIANS_BULWARK));
+	assert(bulwark_melee(&attacker, &victim) == 1000);
+	// The shared slot number on another class is not Guardian ownership.
+	victim.player.m_class = CLASS_CLERIC;
+	victim.player.secondary_class = CLASS_WARRIOR;
+	victim.player.spec = SPEC_GUARDIAN;
+	assert(!has_innate(&victim, INNATE_GUARDIANS_BULWARK));
+	assert(bulwark_melee(&attacker, &victim) == 1000);
+	victim.player.m_class = CLASS_WARRIOR;
+	victim.player.secondary_class = 0;
+	set_bulwark_property(0.5f);
+	assert(bulwark_melee(&attacker, &victim) == 500);
+	clear_character_properties();
+	std::puts(
+		"guardian.bulwark: PASS (real grants, eligibility, property loading and melee reduction; raw damage is a fixture boundary)");
+}
 
 static void expect_diagnostic(const IdentityConnections &connections, const char *expected)
 {
@@ -22,6 +74,7 @@ static void expect_diagnostic(const IdentityConnections &connections, const char
 
 int main()
 {
+	guardian_bulwark();
 	assert(!creation_all_races_enabled() && !creation_all_classes_enabled());
 	assert(!strcmp(getenv("CHAOS_MUD"), "FALSE"));
 	const auto connections = identity_connections();
