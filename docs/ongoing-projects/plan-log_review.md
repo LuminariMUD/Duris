@@ -19,8 +19,9 @@ Current continuation: #58 now has a passing full-server Summon Ghasts burst,
 blocked-writer/copyover cancellation, writer recovery, successful copyover and
 clean restart journey. Shared allocation-admission fixes `dfecafbda` and
 `532fe0653` are committed/pushed and each has a passing before/after regression.
-Remaining #58 cases and the source-audit findings are in
-[the continuation evidence](plan-estale.md#continuation-evidence-2026-10-13).
+The three crash boundaries, blocked shutdown and real coordinator-cache eviction
+now pass too. Remaining #58 cases and the source-audit findings are in
+[the current qualification update](plan-estale.md#qualification-update-2026-10-14).
 These advances do not close another LR item or make #58 review-ready yet.
 
 ## Pause handoff

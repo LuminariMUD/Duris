@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+from _paths import extract_function
 
 ROOT = Path(__file__).resolve().parents[2]
 utility = (ROOT / 'src/core/utility.c').read_text()
@@ -15,7 +16,10 @@ reporter = utility[utility.index('static int persistence_alert_format_is_numeric
 # A 30-second wizlog window is too long to wait out here.
 assert reporter.count('std::chrono::seconds(30)') == 2
 reporter = reporter.replace('std::chrono::seconds(30)', 'std::chrono::milliseconds(300)')
+diagnostic = extract_function('artifact_guild_transaction.c', 'void diagnostic(')
 harness = r'''
+#include "persistence/critical_command.h"
+#define AVATAR 57
 #include <cassert>
 #include <cctype>
 #include <cstdarg>
@@ -45,7 +49,7 @@ void wizlog(int level, const char *format, ...) {
     vsnprintf(text, sizeof(text), format, args); va_end(args);
     audience = level; broadcasts.emplace_back(text);
 }
-''' + severity + '\n' + reporter + r'''
+''' + severity + '\n' + reporter + '\n' + diagnostic + r'''
 void verify(const char *outcome, bool alert) {
     assert(logs.size() == 2);
     assert(logs[0].sink == LOG_FILE && logs[1].sink == LOG_WIZ);
@@ -112,13 +116,27 @@ int main() {
                       "rate_limit_action", "retry=%d", 5);
     assert(broadcasts.size() == 3);
     assert(broadcasts[2].find("detail=retry=5 (suppressed=3 age=") != std::string::npos);
+    logs.clear(); broadcasts.clear();
+    critical_operation_id operation = {}, parent = {};
+    for(size_t i=0;i<16;++i) { operation.bytes[i]=i*17; parent.bytes[i]=255-i*17; }
+    diagnostic(operation,parent,"history_completion","missing_parent",2,37);
+    assert(logs.size()==2);
+    assert(logs[0].text.find("operation=00112233445566778899aabbccddeeff")!=std::string::npos);
+    assert(logs[0].text.find("parent=ffeeddccbbaa99887766554433221100")!=std::string::npos);
+    assert(logs[0].text.find("domain=artifact_guild/history_completion action=missing_parent")!=std::string::npos);
+    assert(logs[0].text.find("error=2 elapsed_ms=37")!=std::string::npos);
+    diagnostic(operation,parent,"history_completion","missing_parent",2,38);
+    assert(logs.size()==4 && broadcasts.size()==1);
+
 }
 '''
-with tempfile.TemporaryDirectory(prefix='persistence-severity-') as temp:
+outputs = ROOT / 'bin/tests'
+outputs.mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix='persistence-severity-', dir=outputs) as temp:
     source = Path(temp) / 'reporter.cpp'
     binary = Path(temp) / 'reporter'
     source.write_text(harness)
-    subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror', str(source), '-o', str(binary)], check=True)
+    subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-Isrc', str(source), 'src/persistence/critical_command.c', '-lcrypto', '-o', str(binary)], cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True)
 print('[PASS] production reporter routing, fallback severity, legacy alerts, formatting and redaction')
 print('[PASS] wizlog repeats are grouped by domain and action and counted')

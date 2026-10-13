@@ -1,6 +1,6 @@
 # Database
 
-DurisMUD stores all durable state in MySQL/MariaDB. This document covers how
+This document covers the MySQL/MariaDB backend: how
 the server talks to the database, what tables matter, and how schema changes
 are managed. Setup steps (creating users/databases) are in
 [README.md](../../README.md#3-create-a-development-database). An entity-relationship
@@ -84,7 +84,7 @@ inbox. Delivery is at least once with `(consumer_id,outbox_id)` dedupe, bounded 
 and retained dead letters. See
 [CRITICAL_COMMAND_PIPELINE.md](../persistence/CRITICAL_COMMAND_PIPELINE.md).
 
-The uncommitted #58 implementation separates artifact/guild reward history from
+The #58 implementation separates artifact/guild reward history from
 saved gameplay state. `artifacts`, `artifact_bind` and `artifact_domain_state`
 hold the artifact snapshot/mirror; `guilds` holds current guild totals.
 `artifact_guild_outcome`, `artifact_guild_outcome_delta`, `artifact_delta_ledger`

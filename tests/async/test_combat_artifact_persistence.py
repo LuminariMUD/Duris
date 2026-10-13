@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Combat and artifact persistence-boundary source contracts."""
 
-from _paths import SRC
+from _paths import SRC, extract_function
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[2]
@@ -36,16 +36,14 @@ bind_lookup = function(
     "void sql_update_bind_data",
 )
 bind_update = function(artifact_text, "void sql_update_bind_data", "#else")
-store = function(artifact_text, "void artifact_bind_store(", "// Frees vnum's soul")
+store = extract_function("artifact.c", "void artifact_bind_store(")
 checks = {
     "reads memory": "artifact_binds.find(vnum)" in bind_lookup and "qry(" not in bind_lookup,
     "no soul yet is owner 0, timer 0": bind_lookup.count("? 0 :") == 2
     and "return true;" in bind_lookup,
     "update goes through the store": "artifact_bind_store(vnum, *owner_pid, *timer);" in bind_update,
-    "store changes memory, then queues": store.index("artifact_binds[vnum] =")
-    < store.index("sql_queue_statements(")
-    and "ON DUPLICATE KEY UPDATE" in store
-    and "artifact_domain_mirror(vnum)" in store,
+    "store changes memory before handing off the snapshot": store.index("artifact_binds[vnum] =")
+    < store.index("artifact_bind_save(vnum, current)"),
 }
 for label, passed in checks.items():
     print(f"[{'PASS' if passed else 'FAIL'}] bind data: {label}")

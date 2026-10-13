@@ -258,7 +258,7 @@ dead-letter, restart, and operator reconciliation. Auctions, the collector, item
 repairs and destruction, boons, artifacts, combat outcomes and zone touches use typed
 repositories; wallets, banks, epic points and frags change in memory and are saved.
 
-The uncommitted #58 branch applies epic-derived artifact feeds and guild rewards
+The #58 branch applies epic-derived artifact feeds and guild rewards
 in memory too. Ordered entity snapshots persist current state; type-9 commands
 record captured history and never apply rewards on completion. Per-entity dirty
 metadata and commit receipts distinguish unsaved state from committed history.

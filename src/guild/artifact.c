@@ -96,9 +96,16 @@ namespace
 /*
  * The artifacts and artifact_bind tables, read at boot (artifacts_load()) and kept current by
  * the game: each change is made here at once and queued on the writer, so the game never
- * waits on them. The corpse, artifact guild and deletion transactions, which also write
+ * waits on them. The corpse and deletion transactions, which also write
  * them, publish their changes here.
  */
+struct artifact_save
+{
+	bool dirty = false;
+	std::shared_ptr<sql_write_receipt> pending;
+	unsigned int error = 0;
+};
+
 struct artifact_row
 {
 	bool owned;
@@ -106,11 +113,14 @@ struct artifact_row
 	int location;
 	time_t timer; // 0: none
 	int type;
+	artifact_save save = {};
+	bool removed = false;
 };
 struct artifact_bind_row
 {
 	int owner_pid;
 	int timer;
+	artifact_save save = {};
 };
 std::map<int, artifact_row> artifact_rows;
 std::map<int, artifact_bind_row> artifact_binds;
@@ -119,8 +129,8 @@ const char ARTIFACT_ROWS_QUERY[] =
 	"SELECT 'a', vnum, owned, locType, location, UNIX_TIMESTAMP(timer), type FROM artifacts";
 const char ARTIFACT_BINDS_QUERY[] = "SELECT 'b', vnum, owner_pid, timer FROM artifact_bind";
 
-/* artifact_domain_state repeats each artifact's row and soul for the transactions that
- * ledger artifact changes (the artifact guild outcome checks the two agree), so every
+/* artifact_domain_state repeats each artifact's row and soul for persistence
+ * reconciliation and item ownership references, so every
  * change the game queues here is repeated there in the same job. vnum -1: every artifact. */
 std::string artifact_domain_mirror(int vnum)
 {
@@ -154,51 +164,165 @@ template <typename Row> void artifact_row_read(const Row &row)
 // Owned and past its timer (a row with no timer never expires).
 bool artifact_expired(const artifact_row &row)
 {
-	return row.owned && row.timer && row.timer < time(NULL);
+	return !row.removed && row.owned && row.timer && row.timer < time(NULL);
 }
 
-// Sets vnum's row and queues the same change.
+void artifact_save_error(int vnum, const char *kind, artifact_save &save, const char *stage,
+			 unsigned int error)
+{
+	if (save.error != error)
+	{
+		char domain[64];
+		snprintf(domain, sizeof(domain), "artifact_snapshot/%s/%s", stage, kind);
+		persistence_alert(AVATAR, domain, "redacted", "none", "none",
+				  error == ENOMEM    ? "allocation_failure" :
+				  error == ESHUTDOWN ? "writer_stopped" :
+				  error == ENOTCONN  ? "unavailable" :
+						       "storage_failure",
+				  "vnum=%d error=%u", vnum, error);
+	}
+	save.error = error;
+}
+
+void artifact_save_complete(int vnum, const char *kind, artifact_save &save)
+{
+	if (!save.pending || !save.pending->finished.load(std::memory_order_acquire))
+		return;
+	if (save.pending->ok)
+		save.dirty = false;
+	else
+		artifact_save_error(vnum, kind, save, "write_failed", save.pending->error_code);
+	save.pending.reset();
+}
+
+bool artifact_queue_save(int vnum, const char *kind, artifact_save &save,
+			 std::vector<std::string> statements)
+{
+	save.pending = std::make_shared<sql_write_receipt>();
+	if (!sql_queue_statements(std::move(statements), save.pending))
+	{
+		const unsigned int error = errno ? errno : EIO;
+		save.pending.reset();
+		artifact_save_error(vnum, kind, save, "admission_failed", error);
+		return false;
+	}
+	artifact_save_complete(vnum, kind, save);
+	return true;
+}
+
+bool artifact_row_save(int vnum, artifact_row &row)
+{
+	try
+	{
+		if (row.removed)
+			return artifact_queue_save(
+				vnum, "artifact", row.save,
+				{ sql_format("DELETE FROM artifact_domain_state WHERE vnum=%d",
+					     vnum),
+				  sql_format("DELETE FROM artifacts WHERE vnum=%d", vnum),
+				  sql_format("DELETE FROM artifacts_mortal WHERE vnum=%d", vnum) });
+		return artifact_queue_save(
+			vnum, "artifact", row.save,
+			{ sql_format(
+				  "INSERT INTO artifacts (vnum, owned, locType, location, timer, type, lastUpdate) "
+				  "VALUES(%d, '%c', %d, %d, FROM_UNIXTIME(NULLIF(%ld, 0)), %d, SYSDATE()) "
+				  "ON DUPLICATE KEY UPDATE owned=VALUES(owned), locType=VALUES(locType), "
+				  "location=VALUES(location), timer=VALUES(timer), type=VALUES(type), lastUpdate=VALUES(lastUpdate)",
+				  vnum, row.owned ? 'Y' : 'N', row.locType, row.location,
+				  (long)row.timer, row.type),
+			  artifact_domain_mirror(vnum) });
+	}
+	catch (const std::bad_alloc &)
+	{
+		row.save.pending.reset();
+		artifact_save_error(vnum, "artifact", row.save, "admission_failed", ENOMEM);
+		return false;
+	}
+}
+
+// Mutate now. The receipt belongs only to this capture, not an older queued save.
 void artifact_row_store(int vnum, const artifact_row &row)
 {
-	artifact_rows[vnum] = row;
-	sql_queue_statements(
-		{ sql_format(
-			  "INSERT INTO artifacts (vnum, owned, locType, location, timer, type, lastUpdate) "
-			  "VALUES(%d, '%c', %d, %d, FROM_UNIXTIME(NULLIF(%ld, 0)), %d, SYSDATE()) "
-			  "ON DUPLICATE KEY UPDATE owned=VALUES(owned), locType=VALUES(locType), "
-			  "location=VALUES(location), timer=VALUES(timer), type=VALUES(type), "
-			  "lastUpdate=VALUES(lastUpdate)",
-			  vnum, row.owned ? 'Y' : 'N', row.locType, row.location, (long)row.timer,
-			  row.type),
-		  artifact_domain_mirror(vnum) });
+	artifact_rows[vnum] = { row.owned, row.locType, row.location, row.timer, row.type };
+	auto &current = artifact_rows.at(vnum);
+	current.save.dirty = true;
+	artifact_row_save(vnum, current);
 	arti_cache_invalidate();
 }
 
-// Sets vnum's soul and queues the same change.
+bool artifact_bind_save(int vnum, artifact_bind_row &bind)
+{
+	try
+	{
+		return artifact_queue_save(
+			vnum, "soul", bind.save,
+			{ sql_format(
+				  "INSERT INTO artifact_bind (vnum,owner_pid,timer) VALUES(%d,%d,%d) "
+				  "ON DUPLICATE KEY UPDATE owner_pid=VALUES(owner_pid),timer=VALUES(timer)",
+				  vnum, bind.owner_pid, bind.timer),
+			  artifact_domain_mirror(vnum) });
+	}
+	catch (const std::bad_alloc &)
+	{
+		bind.save.pending.reset();
+		artifact_save_error(vnum, "soul", bind.save, "admission_failed", ENOMEM);
+		return false;
+	}
+}
+
 void artifact_bind_store(int vnum, int owner_pid, int timer)
 {
 	artifact_binds[vnum] = { owner_pid, timer };
-	sql_queue_statements(
-		{ sql_format(
-			  "INSERT INTO artifact_bind (vnum, owner_pid, timer) VALUES(%d, %d, %d) "
-			  "ON DUPLICATE KEY UPDATE owner_pid=VALUES(owner_pid), timer=VALUES(timer)",
-			  vnum, owner_pid, timer),
-		  artifact_domain_mirror(vnum) });
+	auto &current = artifact_binds.at(vnum);
+	current.save.dirty = true;
+	artifact_bind_save(vnum, current);
+	arti_cache_invalidate();
 }
 
-// Frees vnum's soul (every soul for -1) and queues the same change.
+// Keep the existing all-souls transaction; each changed record retains its own
+// dirty indication and shares the receipt of this one captured write.
 bool artifact_binds_reset(int vnum)
 {
 	for (auto &entry : artifact_binds)
 		if (vnum < 0 || entry.first == vnum)
+		{
 			entry.second = { -1, 0 };
-	return sql_queue_statements(
-		{ vnum < 0 ? "UPDATE artifact_bind SET owner_pid = -1, timer = 0" :
-			     sql_format("UPDATE artifact_bind SET owner_pid = -1, timer = 0 WHERE "
-					"vnum = %d",
-					vnum),
-		  artifact_domain_mirror(vnum) });
+			entry.second.save.dirty = true;
+		}
+	arti_cache_invalidate();
+	try
+	{
+		auto receipt = std::make_shared<sql_write_receipt>();
+		const bool queued = sql_queue_statements(
+			{ vnum < 0 ?
+				  "UPDATE artifact_bind SET owner_pid=-1,timer=0" :
+				  sql_format(
+					  "UPDATE artifact_bind SET owner_pid=-1,timer=0 WHERE vnum=%d",
+					  vnum),
+			  artifact_domain_mirror(vnum) },
+			receipt);
+		for (auto &entry : artifact_binds)
+			if (vnum < 0 || entry.first == vnum)
+			{
+				if (queued)
+					entry.second.save.pending = receipt;
+				else
+					artifact_save_error(entry.first, "soul", entry.second.save,
+							    "admission_failed",
+							    errno ? errno : EIO);
+			}
+		return queued;
+	}
+	catch (const std::bad_alloc &)
+	{
+		for (auto &entry : artifact_binds)
+			if (vnum < 0 || entry.first == vnum)
+				artifact_save_error(entry.first, "soul", entry.second.save,
+						    "admission_failed", ENOMEM);
+		return false;
+	}
 }
+
 } // namespace
 
 bool artifacts_load(void)
@@ -221,7 +345,7 @@ bool artifacts_load(void)
 bool artifact_feed_state(int vnum, int64_t *timer, int32_t *bind_owner_pid, int64_t *bind_timer)
 {
 	const auto row = artifact_rows.find(vnum);
-	if (row == artifact_rows.end())
+	if (row == artifact_rows.end() || row->second.removed)
 		return false;
 	int owner_pid = 0, soul_timer = 0;
 	sql_get_bind_data(vnum, &owner_pid, &soul_timer);
@@ -239,6 +363,7 @@ void artifacts_forget_deleted_character(int pid)
 		{
 			entry.second.owned = false;
 			entry.second.timer = 0;
+			entry.second.save = {};
 		}
 	arti_cache_invalidate();
 }
@@ -256,19 +381,78 @@ void artifacts_forget_deleted_account_character(int pid)
 	arti_cache_invalidate();
 }
 
-// A guild feed committed timer for vnum, which it computed from captured_timer. Memory takes it
-// unless its timer changed since (a poof, the wars), and the row is queued again either way:
-// a move queued while the feed ran stored the timer memory held before it. The feed leaves
-// the soul as it found it.
-void artifact_feed_published(int vnum, time_t captured_timer, time_t timer)
+void artifact_feed_set_timer(int vnum, time_t timer)
 {
 	const auto row = artifact_rows.find(vnum);
-	if (row == artifact_rows.end())
+	if (row == artifact_rows.end() || row->second.removed)
 		return;
 	artifact_row fed = row->second;
-	if (fed.timer == captured_timer)
-		fed.timer = timer;
+	fed.timer = timer;
 	artifact_row_store(vnum, fed);
+}
+
+// Poll only completion metadata on the game thread. Retries capture the state
+// that is current now, including transfers, spending-related removal and souls.
+size_t artifact_save_pulse(bool retry)
+{
+	size_t dirty = 0;
+	for (auto row = artifact_rows.begin(); row != artifact_rows.end();)
+	{
+		artifact_save_complete(row->first, "artifact", row->second.save);
+		if (row->second.removed && !row->second.save.dirty)
+		{
+			row = artifact_rows.erase(row);
+			continue;
+		}
+		dirty += row->second.save.dirty;
+		++row;
+	}
+	for (auto &[vnum, bind] : artifact_binds)
+	{
+		artifact_save_complete(vnum, "soul", bind.save);
+		dirty += bind.save.dirty;
+	}
+	if (retry)
+	{
+		// Round-robin by stable vnum: one bad row cannot starve later entities.
+		static int row_cursor = 0, bind_cursor = 0;
+		const auto retry_rows = [](auto &records, int &cursor, auto save)
+		{
+			auto next = records.upper_bound(cursor);
+			size_t remaining = records.size(), attempts = 0;
+			while (remaining-- && attempts < 4)
+			{
+				if (next == records.end())
+					next = records.begin();
+				auto current = next++;
+				cursor = current->first;
+				if (current->second.save.dirty && !current->second.save.pending)
+				{
+					++attempts;
+					if (save(current->first, current->second))
+						arti_cache_invalidate();
+				}
+			}
+		};
+		retry_rows(artifact_rows, row_cursor, artifact_row_save);
+		retry_rows(artifact_binds, bind_cursor, artifact_bind_save);
+	}
+	return dirty;
+}
+
+void artifact_report_unsaved()
+{
+	artifact_save_pulse(false);
+	for (const auto &[vnum, row] : artifact_rows)
+		if (row.save.dirty)
+			logit(LOG_FILE,
+			      "artifact_guild: stage=shutdown reason=unsaved entity=artifact vnum=%d removed=%d",
+			      vnum, row.removed);
+	for (const auto &[vnum, bind] : artifact_binds)
+		if (bind.save.dirty)
+			logit(LOG_FILE,
+			      "artifact_guild: stage=shutdown reason=unsaved entity=soul vnum=%d",
+			      vnum);
 }
 
 // The artifact's soul: owner_pid 0 and timer 0 when it has none yet.
@@ -295,6 +479,12 @@ std::vector<std::string> remove_all_artifacts_sql(int pid)
 		 artifact_domain_mirror(-1) };
 }
 #else
+void artifact_feed_set_timer(int, time_t) {}
+size_t artifact_save_pulse(bool)
+{
+	return 0;
+}
+void artifact_report_unsaved() {}
 void artifacts_forget_deleted_character(int /*pid*/) {}
 
 bool artifact_feed_state(int, int64_t *, int32_t *, int64_t *)
@@ -1191,7 +1381,7 @@ void artifact_feed_to_min_sql(P_obj arti, int min_minutes)
 	}
 #else
 	const auto found = artifact_rows.find(vnum);
-	if (found != artifact_rows.end())
+	if (found != artifact_rows.end() && !found->second.removed)
 	{
 		artifact_row row = found->second;
 		if (!row.owned)
@@ -1514,7 +1704,7 @@ void artifact_update_sql(P_obj arti, char owned, time_t timer)
 	return;
 #else
 	const auto found = artifact_rows.find(vnum);
-	if (found != artifact_rows.end())
+	if (found != artifact_rows.end() && !found->second.removed)
 	{
 		new_owned = UPPER(owned) == 'Y' ? TRUE :
 			    UPPER(owned) == 'N' ? FALSE :
@@ -1620,7 +1810,7 @@ bool remove_owned_artifact_sql(P_obj arti, int pid)
 	arti_cache_invalidate();
 #else
 	const auto found = artifact_rows.find(vnum);
-	if (found != artifact_rows.end())
+	if (found != artifact_rows.end() && !found->second.removed)
 	{
 		// Non-positive pid -> remove arti from game; otherwise it's on the corpse of pid.
 		artifact_row row = found->second;
@@ -1720,7 +1910,7 @@ bool get_artifact_data_sql(int vnum, P_arti adata)
 	return record.owned;
 #else
 	const auto found = artifact_rows.find(vnum);
-	if (found == artifact_rows.end())
+	if (found == artifact_rows.end() || found->second.removed)
 		return FALSE;
 	if (adata)
 	{
@@ -3523,9 +3713,12 @@ void arti_clear_sql(P_char ch, char *arg)
 		send_to_char("&+WFailed to remove entry from artifact data.&n\n\r", ch);
 	}
 #else
-	artifact_rows.erase(vnum);
-	sql_queue_statements({ sql_format("DELETE FROM artifacts WHERE vnum = %d", vnum),
-			       sql_format("DELETE FROM artifacts_mortal WHERE vnum = %d", vnum) });
+	// Keep the deletion dirty until its current capture is acknowledged.
+	auto &removed = artifact_rows[vnum];
+	removed = { false, ARTIFACT_NOTINGAME, 0, 0, 0 };
+	removed.removed = true;
+	removed.save.dirty = true;
+	artifact_row_save(vnum, removed);
 	arti_cache_invalidate();
 	act("&+WThe artifact data for $p&+W has been cleared from the Immortal and Mortal lists.  You fool!",
 	    FALSE, ch, arti, 0, TO_CHAR);
@@ -4498,6 +4691,8 @@ void arti_syncdb_sql(P_char ch)
 		       counts.cleared, counts.updated);
 #else
 	send_to_char("Syncing artifact ownership from player saves...\n\r", ch);
+	const unsigned int generation = arti_cache_generation;
+	const uint64_t staff_runtime_id = ch->runtime_id;
 	// On the writer: clear what players held, set what their saves hold, and read the
 	// tables back for memory. The first row holds the counts.
 	const auto sync = [](MYSQL *connection, sql_rows *rows) -> unsigned int
@@ -4539,18 +4734,51 @@ void arti_syncdb_sql(P_char ch)
 			return error;
 		return sql_select(connection, ARTIFACT_BINDS_QUERY, rows);
 	};
-	const auto synced = [](P_char staff, const sql_rows &rows)
+	const auto synced = [generation, staff_runtime_id](bool ok, const sql_rows &rows)
 	{
+		P_char staff = find_character_by_runtime_id(staff_runtime_id);
+		if (!ok)
+		{
+			if (staff)
+				send_to_char("Artifact synchronization failed.\n\r", staff);
+			return;
+		}
+		// Earlier saves run before this repair on the writer. A later mutation, or
+		// an earlier save that failed, makes its returned state obsolete. Retain
+		// current memory and let ordinary fresh snapshots repair any SQL it changed.
+		if (generation != arti_cache_generation || artifact_save_pulse(false))
+		{
+			for (auto &[vnum, row] : artifact_rows)
+			{
+				row.save.dirty = true;
+				row.save.pending.reset();
+			}
+			for (auto &[vnum, bind] : artifact_binds)
+			{
+				bind.save.dirty = true;
+				bind.save.pending.reset();
+			}
+			arti_cache_invalidate();
+			if (staff)
+				send_to_char(
+					"Artifact updates superseded this synchronization. "
+					"Current state retained; retry after pending saves complete.\n\r",
+					staff);
+			return;
+		}
 		artifact_rows.clear();
 		artifact_binds.clear();
 		for (size_t index = 1; index < rows.size(); ++index)
 			artifact_row_read(rows[index]);
 		arti_cache_invalidate();
-		send_to_char_f(staff,
-			       "Cleared %s, updated %s artifact ownerships from player saves.\n\r",
-			       rows[0][0], rows[0][1]);
+		if (staff)
+			send_to_char_f(
+				staff,
+				"Cleared %s, updated %s artifact ownerships from player saves.\n\r",
+				rows[0][0], rows[0][1]);
 	};
-	if (!sql_read_work_for(ch, sync, synced))
+	// State publication is required even if the issuing staff character logs out.
+	if (!sql_read_work(sync, synced))
 		send_to_char("That is not available right now.\r\n", ch);
 #endif
 }

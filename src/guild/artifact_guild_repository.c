@@ -13,53 +13,22 @@
  ****************************************************************************/
 
 #include "guild/artifact_guild_repository.h"
+#include "core/utility.h"
+#include "core/files.h"
+#include "persistence/persistence_log.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cerrno>
-#include <climits>
 #include <cstdlib>
 #include <mysql.h>
 #include <string>
 
 namespace
 {
-struct artifact_state
-{
-	int64_t timer;
-	int32_t bind_owner_pid;
-	int64_t bind_timer;
-	uint64_t revision;
-};
-
 bool execute(MYSQL *connection, const std::string &sql)
 {
 	return mysql_real_query(connection, sql.data(), sql.size()) == 0;
-}
-
-bool parse_i64(const char *text, int64_t *value)
-{
-	if (!text || !value)
-		return false;
-	char *end = nullptr;
-	errno = 0;
-	const long long parsed = strtoll(text, &end, 10);
-	if (errno || !end || *end)
-		return false;
-	*value = parsed;
-	return true;
-}
-
-bool parse_u64(const char *text, uint64_t *value)
-{
-	if (!text || !value)
-		return false;
-	char *end = nullptr;
-	errno = 0;
-	const unsigned long long parsed = strtoull(text, &end, 10);
-	if (errno || !end || *end)
-		return false;
-	*value = parsed;
-	return true;
 }
 
 std::string bytes_hex(const uint8_t *bytes, size_t size)
@@ -74,124 +43,107 @@ std::string bytes_hex(const uint8_t *bytes, size_t size)
 	return result;
 }
 
-bool load_artifact(MYSQL *connection, int32_t vnum, artifact_state *state)
+// The one writer orders history. These revisions belong to the ledgers, not to
+// gameplay snapshots, and continue to work after the live entity is removed.
+bool next_revision(MYSQL *connection, const std::string &query, uint64_t *revision)
 {
-	if (!execute(connection,
-		     "SELECT s.timer_epoch,s.bind_owner_pid,s.bind_timer_epoch,s.revision,"
-		     "COALESCE(UNIX_TIMESTAMP(a.timer),0),COALESCE(b.owner_pid,0),"
-		     "COALESCE(b.timer,0) FROM artifact_domain_state s JOIN artifacts a ON "
-		     "a.vnum=s.vnum LEFT JOIN artifact_bind b ON b.vnum=s.vnum WHERE s.vnum=" +
-			     std::to_string(vnum) + " FOR UPDATE"))
+	if (!execute(connection, query))
 		return false;
 	MYSQL_RES *rows = mysql_store_result(connection);
 	MYSQL_ROW row = rows ? mysql_fetch_row(rows) : nullptr;
-	int64_t bind_owner = 0, legacy_timer = 0, legacy_bind_owner = 0, legacy_bind_timer = 0;
-	const bool ok = row && parse_i64(row[0], &state->timer) && parse_i64(row[1], &bind_owner) &&
-			parse_i64(row[2], &state->bind_timer) &&
-			parse_u64(row[3], &state->revision) && parse_i64(row[4], &legacy_timer) &&
-			parse_i64(row[5], &legacy_bind_owner) &&
-			parse_i64(row[6], &legacy_bind_timer) && bind_owner >= INT32_MIN &&
-			bind_owner <= INT32_MAX && state->timer == legacy_timer &&
-			bind_owner == legacy_bind_owner && state->bind_timer == legacy_bind_timer;
-	if (ok)
-		state->bind_owner_pid = static_cast<int32_t>(bind_owner);
+	char *end = nullptr;
+	errno = 0;
+	const uint64_t prior = row && row[0] ? strtoull(row[0], &end, 10) : 0;
+	const bool valid = row && row[0] && end && !*end && !errno && prior < UINT64_MAX;
 	if (rows)
 		mysql_free_result(rows);
-	if (!ok && mysql_errno(connection) == 0)
-		errno = row ? ESTALE : ENOENT;
-	return ok;
-}
-
-bool load_guild(MYSQL *connection, uint32_t guild_id, uint64_t *prestige, uint64_t *construction,
-		uint64_t *revision)
-{
-	if (!execute(connection,
-		     "SELECT prestige,construction,outcome_revision FROM guilds WHERE id=" +
-			     std::to_string(guild_id) + " FOR UPDATE"))
+	if (!valid)
+	{
+		errno = ERANGE;
 		return false;
-	MYSQL_RES *rows = mysql_store_result(connection);
-	MYSQL_ROW row = rows ? mysql_fetch_row(rows) : nullptr;
-	const bool ok = row && parse_u64(row[0], prestige) && parse_u64(row[1], construction) &&
-			parse_u64(row[2], revision);
-	if (rows)
-		mysql_free_result(rows);
-	if (!ok && mysql_errno(connection) == 0)
-		errno = ENOENT;
-	return ok;
-}
-
-bool apply_delta(uint64_t value, int64_t delta, uint64_t *result)
-{
-	if (!result || (delta < 0 && static_cast<uint64_t>(-(delta + 1)) + 1 > value) ||
-	    (delta > 0 && static_cast<uint64_t>(delta) > UINT64_MAX - value))
-		return false;
-	*result = delta < 0 ? value - (static_cast<uint64_t>(-(delta + 1)) + 1) :
-			      value + static_cast<uint64_t>(delta);
+	}
+	*revision = prior + 1;
 	return true;
 }
 } // namespace
+
+void artifact_guild_repository_diagnostic(const critical_command &command, const char *reason,
+					  unsigned int error)
+{
+	char operation[CRITICAL_COMMAND_ID_HEX_SIZE] = {},
+	     parent[CRITICAL_COMMAND_ID_HEX_SIZE] = {};
+	critical_operation_id_to_hex(command.operation_id, operation, sizeof(operation));
+	if (command.payload.size() >= CRITICAL_COMMAND_ID_BYTES)
+	{
+		critical_operation_id parent_id = {};
+		std::copy_n(command.payload.begin(), parent_id.bytes.size(),
+			    parent_id.bytes.begin());
+		critical_operation_id_to_hex(parent_id, parent, sizeof(parent));
+	}
+	char record[512];
+	snprintf(
+		record, sizeof(record),
+		"domain=artifact_guild action=history outcome=alert detail=reason=%s operation=%s parent=%s version=%u accepted_us=%llu error=%u",
+		reason, operation, parent[0] ? parent : "unavailable", command.payload_version,
+		static_cast<unsigned long long>(command.accepted_at_usec), error);
+	// This runs on the SQL writer. The record contains only controlled categories,
+	// opaque IDs and numbers; never traverse descriptors or use logit's shared clock.
+	persistence_log_submit(record);
+}
 
 bool artifact_guild_repository_execute(MYSQL *connection, const critical_command &command,
 				       artifact_guild_result *result, unsigned int *result_code,
 				       bool *mutation_applied)
 {
-	if (!critical_command_valid(command))
-	{
-		errno = EPROTONOSUPPORT;
-		return false;
-	}
-
 	if (!connection || !result || !result_code || !mutation_applied)
 		return false;
+	const auto fail = [&](const char *reason, unsigned int code)
+	{
+		artifact_guild_repository_diagnostic(command, reason, code);
+		errno = code;
+		return false;
+	};
+	if (!critical_command_valid(command))
+		return fail("malformed_command", EINVAL);
+	// The generic repository resolves an existing receipt before reaching here.
+	// Never execute an old, uncommitted state-changing command after the cutover.
+	if (command.payload_version != ARTIFACT_GUILD_PAYLOAD_VERSION)
+		return fail("legacy_uncommitted", EPROTONOSUPPORT);
 	artifact_guild_payload payload = {};
 	if (!artifact_guild_command_decode_payload(command, &payload))
-	{
-		errno = EINVAL;
-		return false;
-	}
+		return fail("malformed_payload", EINVAL);
 	*result = {};
 	*result_code = 0;
 	*mutation_applied = false;
-
-	std::array<artifact_state, ARTIFACT_GUILD_MAX_ARTIFACTS> artifact_states = {};
-	for (size_t index = 0; index < payload.artifact_count; ++index)
+	const auto storage_failure = [&]()
 	{
-		const auto &entry = payload.artifacts[index];
-		if (!load_artifact(connection, entry.vnum, &artifact_states[index]))
-			return false;
-		// The game holds an artifact's timer and soul, not its revision, which the other
-		// transactions that ledger artifact changes advance too.
-		const auto &state = artifact_states[index];
-		if (state.timer != entry.expected_timer ||
-		    state.bind_owner_pid != entry.expected_bind_owner_pid ||
-		    state.bind_timer != entry.expected_bind_timer)
-		{
-			errno = ESTALE;
-			return false;
-		}
-	}
-
-	uint64_t guild_prestige = 0, guild_construction = 0, guild_revision = 0;
-	if (payload.guild_id && !load_guild(connection, payload.guild_id, &guild_prestige,
-					    &guild_construction, &guild_revision))
-		return false;
-	if (payload.guild_id && guild_revision != payload.expected_guild_revision)
-	{
-		errno = ESTALE;
-		return false;
-	}
-	uint64_t final_prestige = guild_prestige, final_construction = guild_construction;
-	if (!apply_delta(guild_prestige, payload.prestige_delta, &final_prestige) ||
-	    !apply_delta(guild_construction, payload.construction_delta, &final_construction))
-	{
-		errno = ERANGE;
-		return false;
-	}
-	const uint64_t final_guild_revision = payload.guild_id ? guild_revision + 1 : 0;
+		return fail("storage_failure", mysql_errno(connection) ? mysql_errno(connection) :
+									 (errno ? errno : EIO));
+	};
 	const std::string operation =
 		bytes_hex(command.operation_id.bytes.data(), command.operation_id.bytes.size());
 	const std::string parent = bytes_hex(payload.parent_operation_id.bytes.data(),
 					     payload.parent_operation_id.bytes.size());
+	if (!execute(connection,
+		     "SELECT status FROM critical_operation_inbox WHERE operation_id=UNHEX('" +
+			     parent + "')"))
+		return storage_failure();
+	MYSQL_RES *parents = mysql_store_result(connection);
+	MYSQL_ROW parent_row = parents ? mysql_fetch_row(parents) : nullptr;
+	const bool parent_committed = parent_row && parent_row[0] && atoi(parent_row[0]) == 1;
+	if (parents)
+		mysql_free_result(parents);
+	if (!parent_committed)
+		return fail("missing_parent", ENOENT);
+
+	uint64_t guild_revision = 0;
+	if (payload.guild_id &&
+	    !next_revision(
+		    connection,
+		    "SELECT COALESCE(MAX(guild_revision),0) FROM guild_outcome_ledger WHERE guild_id=" +
+			    std::to_string(payload.guild_id),
+		    &guild_revision))
+		return storage_failure();
 	if (!execute(
 		    connection,
 		    "INSERT INTO artifact_guild_outcome(operation_id,parent_operation_id,actor_pid,"
@@ -203,88 +155,67 @@ bool artifact_guild_repository_execute(MYSQL *connection, const critical_command
 			    std::to_string(payload.prestige_delta) + "," +
 			    std::to_string(payload.construction_delta) + "," +
 			    std::to_string(payload.artifact_count) + "," +
-			    std::to_string(final_prestige) + "," +
-			    std::to_string(final_construction) + "," +
-			    std::to_string(final_guild_revision) + ")"))
-		return false;
-
+			    std::to_string(payload.prestige_after) + "," +
+			    std::to_string(payload.construction_after) + "," +
+			    std::to_string(guild_revision) + ")"))
+		return fail(mysql_errno(connection) == 1062 ? "identity_conflict" :
+							      "storage_failure",
+			    mysql_errno(connection));
 	result->guild_id = payload.guild_id;
-	result->prestige = final_prestige;
-	result->construction = final_construction;
-	result->guild_revision = final_guild_revision;
+	result->prestige = payload.prestige_after;
+	result->construction = payload.construction_after;
+	result->guild_revision = guild_revision;
 	result->artifact_count = payload.artifact_count;
 	for (size_t index = 0; index < payload.artifact_count; ++index)
 	{
 		const auto &entry = payload.artifacts[index];
-		const uint64_t revision = artifact_states[index].revision + 1;
-		if (!execute(connection,
-			     "UPDATE artifact_domain_state SET timer_epoch=" +
-				     std::to_string(entry.timer) +
-				     ",bind_owner_pid=" + std::to_string(entry.bind_owner_pid) +
-				     ",bind_timer_epoch=" + std::to_string(entry.bind_timer) +
-				     ",revision=" + std::to_string(revision) + " WHERE vnum=" +
-				     std::to_string(entry.vnum) + " AND revision=" +
-				     std::to_string(artifact_states[index].revision)) ||
-		    mysql_affected_rows(connection) != 1 ||
-		    !execute(connection, "UPDATE artifacts SET timer=FROM_UNIXTIME(" +
-						 std::to_string(entry.timer) +
-						 "),lastUpdate=SYSDATE() WHERE vnum=" +
-						 std::to_string(entry.vnum)) ||
-		    !execute(
+		uint64_t revision = 0;
+		if (!next_revision(
 			    connection,
-			    "INSERT INTO artifact_bind(vnum,owner_pid,timer) VALUES(" +
-				    std::to_string(entry.vnum) + "," +
-				    std::to_string(entry.bind_owner_pid) + "," +
-				    std::to_string(entry.bind_timer) +
-				    ") ON DUPLICATE KEY UPDATE owner_pid=VALUES(owner_pid),timer=VALUES(timer)") ||
-		    !execute(
+			    "SELECT GREATEST(COALESCE((SELECT MAX(revision) FROM artifact_delta_ledger WHERE vnum=" +
+				    std::to_string(entry.vnum) +
+				    "),0),COALESCE((SELECT opening_revision FROM artifact_domain_baseline WHERE vnum=" +
+				    std::to_string(entry.vnum) + "),0))",
+			    &revision))
+			return storage_failure();
+		if (!execute(
 			    connection,
-			    "INSERT INTO artifact_guild_outcome_delta(operation_id,artifact_index,vnum,"
-			    "flags,timer_before,timer_after,bind_owner_before,bind_owner_after,"
-			    "bind_timer_before,bind_timer_after,revision) VALUES(UNHEX('" +
+			    "INSERT INTO artifact_guild_outcome_delta(operation_id,artifact_index,vnum,flags,"
+			    "timer_before,timer_after,bind_owner_before,bind_owner_after,bind_timer_before,bind_timer_after,revision) "
+			    "VALUES(UNHEX('" +
 				    operation + "')," + std::to_string(index) + "," +
 				    std::to_string(entry.vnum) + "," + std::to_string(entry.flags) +
-				    "," + std::to_string(entry.expected_timer) + "," +
+				    "," + std::to_string(entry.timer_before) + "," +
 				    std::to_string(entry.timer) + "," +
-				    std::to_string(entry.expected_bind_owner_pid) + "," +
+				    std::to_string(entry.bind_owner_before) + "," +
 				    std::to_string(entry.bind_owner_pid) + "," +
-				    std::to_string(entry.expected_bind_timer) + "," +
+				    std::to_string(entry.bind_timer_before) + "," +
 				    std::to_string(entry.bind_timer) + "," +
 				    std::to_string(revision) + ")") ||
 		    !execute(connection,
-			     "INSERT INTO artifact_delta_ledger(operation_id,artifact_index,vnum,"
-			     "timer_delta,bind_owner_pid,bind_timer_epoch,revision) VALUES(UNHEX('" +
+			     "INSERT INTO artifact_delta_ledger(operation_id,artifact_index,vnum,timer_delta,bind_owner_pid,bind_timer_epoch,revision) "
+			     "VALUES(UNHEX('" +
 				     operation + "')," + std::to_string(index) + "," +
 				     std::to_string(entry.vnum) + "," +
-				     std::to_string(entry.timer - entry.expected_timer) + "," +
+				     std::to_string(entry.timer - entry.timer_before) + "," +
 				     std::to_string(entry.bind_owner_pid) + "," +
 				     std::to_string(entry.bind_timer) + "," +
 				     std::to_string(revision) + ")"))
-			return false;
+			return storage_failure();
 		result->artifacts[index] = { entry.vnum, entry.timer, entry.bind_owner_pid,
 					     entry.bind_timer, revision };
 	}
-	if (payload.guild_id)
-	{
-		if (!execute(connection,
-			     "UPDATE guilds SET prestige=" + std::to_string(final_prestige) +
-				     ",construction=" + std::to_string(final_construction) +
-				     ",outcome_revision=" + std::to_string(final_guild_revision) +
-				     " WHERE id=" + std::to_string(payload.guild_id) +
-				     " AND outcome_revision=" + std::to_string(guild_revision)) ||
-		    mysql_affected_rows(connection) != 1 ||
-		    !execute(connection,
-			     "INSERT INTO guild_outcome_ledger(operation_id,guild_id,prestige_delta,"
-			     "construction_delta,prestige_after,construction_after,guild_revision) "
-			     "VALUES(UNHEX('" +
-				     operation + "')," + std::to_string(payload.guild_id) + "," +
-				     std::to_string(payload.prestige_delta) + "," +
-				     std::to_string(payload.construction_delta) + "," +
-				     std::to_string(final_prestige) + "," +
-				     std::to_string(final_construction) + "," +
-				     std::to_string(final_guild_revision) + ")"))
-			return false;
-	}
-	*mutation_applied = true;
+	if (payload.guild_id &&
+	    !execute(connection,
+		     "INSERT INTO guild_outcome_ledger(operation_id,guild_id,prestige_delta,construction_delta,prestige_after,construction_after,guild_revision) "
+		     "VALUES(UNHEX('" +
+			     operation + "')," + std::to_string(payload.guild_id) + "," +
+			     std::to_string(payload.prestige_delta) + "," +
+			     std::to_string(payload.construction_delta) + "," +
+			     std::to_string(payload.prestige_after) + "," +
+			     std::to_string(payload.construction_after) + "," +
+			     std::to_string(guild_revision) + ")"))
+		return storage_failure();
+	*mutation_applied = true; // history/outbox only; gameplay state was already applied
 	return true;
 }

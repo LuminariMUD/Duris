@@ -10,7 +10,8 @@ The destination stores command identity and result in an InnoDB inbox, applies t
 domain mutation or history record, and writes its outbox record in the same transaction. Outside mini mode,
 startup requires the verified critical-command schema; failure leaves critical gameplay
 stopped. The legacy item/scalar/large queues, their flat fallback log and the raw SQL
-executor are gone: nothing executes SQL text.
+command executor are gone. Critical envelopes carry typed payloads; ordinary
+snapshots can still queue owned SQL statements through `sql_async`.
 
 ## Domains
 
@@ -191,9 +192,10 @@ rows the coordinator would not queue. Focused validation is
 
 ## Artifact and guild rewards live in memory
 
-This section describes the uncommitted #58 branch implementation, resumed on
-2026-10-13. Focused runtime, snapshot and repository tests pass; complete producer,
-gameplay, crash/restart and copyover qualification remains open in
+This section describes the #58 branch implementation, resumed on
+2026-10-13. Focused runtime, snapshot, repository and producer-replay tests pass. Full-server
+boon/PvP, crash, shutdown, copyover and restart cases also pass; remaining
+interleavings and final qualification are tracked in
 [plan-estale.md](../ongoing-projects/plan-estale.md#pause-handoff).
 
 For a new source award, the game thread captures eligible artifact feeds and guild
@@ -230,9 +232,19 @@ so an earlier read cannot become current after those changes.
 Domain drains run before coordinator quiescence and again after final copyover
 saves. Failure aborts copyover through the existing resume guard; shutdown reports
 unresolved histories and dirty entities. Executable lifecycle qualification is
-still pending. `world persistence` displays domain live applications, capture failures, dirty
+still pending for late saves. `world persistence` displays domain live applications, capture failures, dirty
 snapshots, history results/loss/pending counts, admission failures and oldest
 pending-history age separately. Its age is not wizlog suppression age.
+
+The counts describe observations on the game thread, not fresh SQL queries. In
+particular, a history can have committed before its completion reaches that thread.
+Diagnostic stage/reason labels use the reporter's category fields and numeric
+substitutions retain the full opaque IDs; the string-redaction policy is unchanged.
+
+The staff `artifacts reset syncdb` repair keeps current memory if its asynchronous
+result overlaps a later artifact update or an unresolved snapshot failure. Existing
+dirty retries then capture fresh state. The result is processed after staff logout;
+only notification requires the same live staff character.
 
 History success and snapshot durability are distinct: either may fail independently.
 A crash may lose unsaved state, and restart loads persisted snapshots without

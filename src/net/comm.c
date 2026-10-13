@@ -961,9 +961,6 @@ int run_the_game(int port, int sslport)
 
 		Guild::initialize();
 		fprintf(stderr, "-- Done loading guilds\n");
-		if (!artifact_guild_state_hydrate())
-			logit(LOG_FILE,
-			      "artifact_guild: component=hydration outcome=unavailable state=retained");
 
 		Guildhall::initialize();
 		fprintf(stderr, "-- Done loading guildhalls\n");
@@ -1136,6 +1133,7 @@ int run_the_game(int port, int sslport)
 		locker_async_drain(shutdown_writer_remaining_msec(2000));
 		report_unwritten_saves(player_save_pipeline_finish(shutdown_writer_deadline_usec,
 								   sql_pool_interrupt_borrowed));
+		artifact_guild_transaction_report_unsaved();
 		locker_async_shutdown();
 	}
 
@@ -2192,6 +2190,7 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 				     loop_tick);
 	}
 	sql_async_pulse();
+	artifact_guild_transaction_pulse();
 	if (!(pulse % (WAIT_SEC * 60)))
 		sql_mud_info_refresh();
 	maintenance_result maintenance_results[MAINTENANCE_COMPLETION_MAX] = {};
@@ -2695,6 +2694,9 @@ resume_game_loop:
 	if (!_pwipe && item_creation_grant_batches_pending())
 		persistence_alert(AVATAR, "starter_grant", "shutdown", "none", "none",
 				  "kit_pending", "shutdown_cancelled=0");
+	if (!_pwipe && !artifact_guild_transaction_drain(3000))
+		persistence_alert(AVATAR, "artifact_guild", "shutdown", "none", "none",
+				  "drain_failed", "shutdown_cancelled=0");
 	critical_command_coordinator_quiesce();
 	critical_outbox_quiesce();
 	if (!_pwipe && !critical_command_coordinator_drain(3000))

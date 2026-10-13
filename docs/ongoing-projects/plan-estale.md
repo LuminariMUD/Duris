@@ -3,11 +3,84 @@
 Tracking issue: [#58 — Batched epic awards fail with ESTALE](https://github.com/LuminariMUD/Duris/issues/58).
 
 Status: resumed at the owner's request on 2026-10-13 from `c8655bfbd`.
-The working branch is `fix/58-56-estale-log-review`. The reward cutover remains
-uncommitted; shared admission fixes `dfecafbda` and `532fe0653` are committed and
-pushed separately. LR-01 statistics is qualified separately in
+The working branch is `fix/58-56-estale-log-review`. It holds the reward cutover
+and qualification work; shared admission fixes `dfecafbda` and `532fe0653` were
+committed and pushed separately. LR-01 statistics is qualified separately in
 [PR #66](https://github.com/LuminariMUD/Duris/pull/66). All ES acceptance items
 remain open; the artifact/guild changes are not ready for review or deployment.
+
+## Qualification update (2026-10-14)
+
+This checkpoint records the reward cutover and new qualification files after the
+pushed handoff `8cea037d5`. Work is active. No shared-game or production operation was used.
+
+- Reproduced and fixed stale publication in `arti_syncdb_sql()`: an older repair
+  callback could restore a previous timer/owner after a feed or transfer. The
+  callback now checks the existing generation and outstanding dirty state, retains
+  current memory when superseded, and uses ordinary fresh snapshot retries to
+  restore any SQL it changed. State publication runs even if staff disconnects;
+  only notification depends on an online recipient. Native tests pass for later
+  feed/transfer/deletion, unsaved inputs, and disconnect. The normal full-server
+  game-loop-query journey passes with zero main-loop SQL sites. Before evidence:
+  `/tmp/duris-es-sync-before.log`; after evidence: `/tmp/duris-es-snapshots.log`
+  and `/tmp/duris-es-sync-gameplay.log`.
+- Three full-server crash cases pass: before the artifact save; after the first
+  artifact save but before the guild save; and after the first history COMMIT but
+  before its completion. Restart loads exactly the persisted prefix and never
+  re-awards history. The last case uses a small test-only `LD_PRELOAD` interposer
+  around `mysql_real_query`, armed only for a type-9 COMMIT in the private fixture.
+  It holds the writer after the real commit; it changes no production executable.
+  Evidence is `bin/analysis/artifact-estale/gameplay-before_artifact.json`,
+  `gameplay-after_artifact.json`, and `gameplay-after_history.json`, plus matching
+  `/tmp/duris-es-crash-<case>.log` files.
+- The standard Summon Ghasts / blocked writer / copyover / clean restart case also
+  passes again. The fixture uses normal weak NPCs and the existing `offensive off`
+  setting so weapon attacks cannot take a kill while ghasts defer. Its attempted
+  high-HP targets were unsuitable and are no longer part of the fixture.
+- Blocked shutdown exits in **36.65 seconds**, reports the unsaved artifact and
+  guild plus all three distinct operation/parent pairs, and restarts with the old
+  saved state and no new history. `gameplay-shutdown.json` and
+  `/tmp/duris-es-crash-shutdown.log` retain the result. Shutdown assertions read
+  `logs/log/file` directly: the generic bounded log excerpt can omit that file.
+- Shutdown qualification exposed missing diagnostic details: `persistence_alert`
+  deliberately rejects string substitutions. The new transaction/snapshot callers
+  now put controlled stage/reason labels in categories and use numeric fields;
+  opaque IDs retain all 128 bits. The actual reporter, not a variadic mock, now
+  verifies transaction and artifact/guild snapshot diagnostics. Its redaction rule
+  is unchanged. Repository diagnostics use the metadata log worker directly,
+  avoiding game-descriptor access and `logit`'s shared clock on the SQL writer.
+  Before: `/tmp/duris-es-diagnostic-before.log`; after:
+  `/tmp/duris-es-diagnostic.log` and the passing shutdown/MariaDB fixture.
+- `test_reward_producer_replay.py` passes with real boon/combat/stone handlers,
+  coordinator and writer. It completes 276 later operations, exceeding the real
+  256-entry cache, then redelivers the old notifications. Publication and live
+  combat balances stay unchanged; an offline stone recipient publishes once on
+  return. SQL results and final notification/artifact adapters are controlled in
+  this fixture; the live boon and artifact paths have their separate full-server
+  and native proofs.
+- The full-server PvP variant passes. An actual opposing-side death awards 100
+  controlled epics, applies an uncapped +720,000-second feed and guild totals
+  105/1 while its artifact write is held, then commits one child linked to the
+  type-8 combat parent. Save/restart retains the result without another award.
+  `gameplay-pvp.json` and `/tmp/duris-es-pvp.log` retain the evidence. The fixture
+  uses an Orc without Drow magic resistance, valid side-switch/login state, and
+  explicit PvP properties; these setup changes do not alter game mechanics.
+
+| Full-server boundary | Persisted artifact increment | Guild prestige / construction | Reward histories |
+| --- | ---: | --- | ---: |
+| Crash before the first artifact save | 0 | 85 / 0 | 0 |
+| Crash after the first artifact save, before guild save | 3,600 seconds | 85 / 0 | 0 |
+| Crash after the first history COMMIT, before notification | 3,600 seconds | 95 / 0 | 1 |
+| Boon burst drained, copied over, then restarted | 10,800 seconds | 115 / 1 | 3 |
+| Blocked bounded shutdown, then restart | 0 | 85 / 0 | 0 |
+| PvP reward drained and restarted | 720,000 seconds | 105 / 1 | 1 |
+
+The database gate now registers the six-case journey first and honors its
+`DURIS_SERVER_BINARY` override. Remaining work: qualify kingdom-payment and
+remaining state-ordering cases (including failed pair writes);
+review the full diff; run complete final-source gates; publish the #58 review;
+then continue the remaining #56 items. The prior checkpoint and full acceptance
+matrix below remain the scope; passing these cases does not close the entire issue.
 
 ## Continuation evidence (2026-10-13)
 
