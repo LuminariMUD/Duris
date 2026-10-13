@@ -11,6 +11,21 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Specialization allowance table bounds
+
+`is_allowed_race_spec` iterates the actual allowance array, so a denied race/class/
+specialization returns false without reading past its end. The former sentinel
+loop had no sentinel and ASan reproduced a global-buffer-overflow for Thri-Kreen
+Warrior/Guardian. The matching rules and all-classes override are unchanged.
+
+`python3 tests/async/test_specialization_eligibility.py` compiles the complete
+production specialization and creation-configuration modules under ASan/UBSan.
+It asserts Human Guardian and Thri-Kreen Swordsman grants, Thri-Kreen Guardian and
+legacy/restricted combinations' denials, and the override. Exhaustive traversal of
+defined race/class/slot inputs checks memory safety, not an independently specified
+policy matrix. It does not exercise teachers, costs, specialization mutation, or
+persistence, and reads no environment file or database.
+
 ## Crumbling equipment removal
 
 PR #51's review reproduced a pre-existing use-after-free when `obj_to_char()`

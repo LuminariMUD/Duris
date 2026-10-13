@@ -1,9 +1,40 @@
 # Character mechanics: explicit connections in gameplay code
 
-Status: implementation plan only. Inspected on 2026-10-12 at
-`6b9845556ea6fcd7e3ef29b911c83906933de181`. This document changes no gameplay.
+Status: implementation in progress on `feature/52-character-mechanics`, based on
+`7a2a6344727b3cdd63851bde37f6a5a2d67aeb8d`. The full acceptance scope below remains
+open. Original source inspection: 2026-10-12; implementation started 2026-10-13.
 
 Tracking issue: [#52 — Make character mechanics explicitly connected and mechanically traceable](https://github.com/LuminariMUD/Duris/issues/52).
+
+## Current work and continuation
+
+- The worktree started clean, matching the published feature branch and
+  `origin/master`. Keep all implementation on this worktree. Another session may
+  use the shared local/dev game; use isolated harnesses and disposable servers,
+  without stopping or modifying that instance or its database/Redis state.
+- Step 1 is active; steps 2–4 remain required. Begin with the compiled identity
+  inventory and owner bindings, then complete Guardian/Bulwark, ordered multiclass,
+  and Revenant traces. Do not treat an inventory as completion of these traces.
+- Separately scoped defect found while connecting specialization eligibility:
+  `is_allowed_race_spec` scanned a 265-row table using a nonexistent sentinel.
+  A denied Thri-Kreen Guardian selection reproduced an ASan global-buffer-overflow
+  at `specializations.c:452`. Repair uses a range loop over the existing array,
+  preserving matching rules and the all-classes bypass. The focused native test
+  compiles the complete production translation unit and checks explicit grants,
+  denials, override, and exhaustive defined race/class/slot traversal under
+  ASan/UBSan. `python3 tests/async/test_specialization_eligibility.py`,
+  `python3 tests/async/test_creation_all_classes_toggle.py`,
+  `./scripts/format.sh --check`, and `make -C src -j8` passed. Before-fix ASan
+  evidence is local at `bin/tests/specialization-before.log`. Full completion
+  gates remain pending.
+- Ablation: retain production tables and their actual bounds instead of adding
+  another roster or evaluator. No registration framework, export format, or
+  runtime gameplay dispatch is needed. Every retained connection still needs
+  reverse coverage and appropriately scoped behavior/lifecycle evidence.
+
+No contract, reverse-coverage migration, mutation qualification, or gameplay
+journey is complete yet. The original planning checks at the end of this document
+are historical evidence only.
 
 ## Outcome, boundaries, and proof
 
