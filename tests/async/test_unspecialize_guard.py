@@ -18,6 +18,7 @@ PRELUDE = r'''
 #include "net/comm.h"
 #include "world/epic.h"
 #include "world/epic_transaction.h"
+#include "player/character_mechanics.h"
 #include "persistence/persistence_checkpoint.h"
 #include <cassert>
 #include <cstdio>

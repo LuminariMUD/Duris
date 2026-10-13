@@ -11,6 +11,7 @@
 #define TROPHY
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -3887,6 +3888,10 @@ int get_ival_from_proc(obj_proc_type proc)
 		return 200;
 	}
 
+	CHARACTER_MECHANIC_SITE(unspecialization_value);
+	if (proc == unspec_altar)
+		return -100000;
+
 	// Will make itemvalue(P_obj) return 1 (hopefully).
 	// This is important since we want these items to always load. (load % based on itemvalue for 2015-6 wipe).
 	if (proc == teleporting_map_pool || proc == storage_locker_obj_hook ||
@@ -3901,18 +3906,18 @@ int get_ival_from_proc(obj_proc_type proc)
 	    proc == pesky_imp_chest || proc == tower_summoning || proc == shabo_trap_north ||
 	    proc == shabo_trap_north_two || proc == shabo_trap_south ||
 	    proc == shabo_trap_south_two || proc == shabo_trap_up || proc == shabo_trap_down ||
-	    proc == shabo_trap_up_two || proc == slot_machine || proc == unspec_altar ||
-	    proc == epic_stone || proc == stat_pool_str || proc == stat_pool_dex ||
-	    proc == stat_pool_agi || proc == stat_pool_con || proc == stat_pool_pow ||
-	    proc == stat_pool_int || proc == stat_pool_wis || proc == stat_pool_cha ||
-	    proc == stat_pool_luc || proc == spell_pool || proc == druid_spring ||
-	    proc == blighter_pond || proc == flying_citadel || proc == trap_razor_hooks ||
-	    proc == trap_tower1_para || proc == trap_tower2_sleep || proc == hoa_plat ||
-	    proc == vecna_deathportal || proc == vecna_deathaltar || proc == vecna_stonemist ||
-	    proc == vecna_ghosthands || proc == vecna_torturerroom || proc == vecna_gorge ||
-	    proc == mob_vecna_procs || proc == arenaobj_proc || proc == burn_touch_obj ||
-	    proc == drowcrusher || proc == hewards_mystical_organ || proc == mir_fire ||
-	    proc == board || proc == random_tomb || proc == random_glass || proc == random_slab ||
+	    proc == shabo_trap_up_two || proc == slot_machine || proc == epic_stone ||
+	    proc == stat_pool_str || proc == stat_pool_dex || proc == stat_pool_agi ||
+	    proc == stat_pool_con || proc == stat_pool_pow || proc == stat_pool_int ||
+	    proc == stat_pool_wis || proc == stat_pool_cha || proc == stat_pool_luc ||
+	    proc == spell_pool || proc == druid_spring || proc == blighter_pond ||
+	    proc == flying_citadel || proc == trap_razor_hooks || proc == trap_tower1_para ||
+	    proc == trap_tower2_sleep || proc == hoa_plat || proc == vecna_deathportal ||
+	    proc == vecna_deathaltar || proc == vecna_stonemist || proc == vecna_ghosthands ||
+	    proc == vecna_torturerroom || proc == vecna_gorge || proc == mob_vecna_procs ||
+	    proc == arenaobj_proc || proc == burn_touch_obj || proc == drowcrusher ||
+	    proc == hewards_mystical_organ || proc == mir_fire || proc == board ||
+	    proc == random_tomb || proc == random_glass || proc == random_slab ||
 	    proc == refreshing_fountain || proc == magical_fountain || proc == changelog ||
 	    proc == wall_generic || proc == huntsman_ward || proc == item_switch ||
 	    proc == verzanan_portal || proc == die_roller || proc == elfgate ||
@@ -3929,6 +3934,24 @@ int get_ival_from_proc(obj_proc_type proc)
 
 	// Default.. tough call here, but 100 guarentees it's not craftable.
 	return 100;
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::object_value_connections()
+{
+	static const MechanicConnection connections[] = {
+		{ MechanicId::unspecialization_value,
+		  Relation::configuration,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(get_ival_from_proc),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "The altar callback contributes -100000 to object valuation; downstream itemvalue and world-reset load calculations are separate consumers.",
+		  {} }
+	};
+	return connections;
 }
 
 // Calculates the base cost of ore (metal and size variables & level and skill of ch).

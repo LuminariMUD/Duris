@@ -7,6 +7,7 @@
  */
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "world/difficulty.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -1922,6 +1923,24 @@ int forget_spells(P_char ch, int spell)
 		stop_memorizing(ch);
 
 	return 0;
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::memorization_connections()
+{
+	static const MechanicConnection connections[] = {
+		{ MechanicId::unspecialization_forget,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(forget_spells),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Called with -1: remove every TAG_MEMORIZE affect (including full spells), then stop memorizing. Generic affect removal/event cleanup remain native.",
+		  {} }
+	};
+	return connections;
 }
 
 void do_forget(P_char ch, char *argument, int /*cmd*/)

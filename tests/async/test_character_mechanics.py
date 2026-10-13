@@ -22,7 +22,7 @@ def production_function(file, signature):
 
 
 def check_mechanic_sites(sources, bindings):
-    """Migrated statements plus Bulwark reverse coverage, without baseline exemptions.
+    """Migrated statements plus Bulwark/altar reverse checks, without baseline exemptions.
 
     This bounded tripwire accepts the actual marked statement forms. It rejects
     unsupported reshaping for review; executable assertions own the arithmetic.
@@ -39,16 +39,29 @@ def check_mechanic_sites(sources, bindings):
         "specialization_load": ("player/player_load_materialize.c", r"ch->player\.spec\s*=\s*loaded\s*;"),
         "innate_entry": ("cmd/interp.c", r"CMD_Y\(\s*CMD_INNATE\s*,\s*STAT_NORMAL\s*\+\s*POS_STANDING\s*,\s*do_innate\s*,\s*0\s*,\s*TRUE\s*\)\s*;"),
         "innate_dispatch": ("classes/innates.c", r'if\s*\(innates_data\[i\]\.func\)\s*\{\s*\(innates_data\[i\]\.func\)\(ch,\s*innate_args,\s*CMD_INNATE\);\s*\}\s*else\s*\{\s*send_to_char\("This innate is always active\.\\n",\s*ch\);\s*\}'),
+        "unspecialization_entry_coral": ("specs/specs.assign.c", r"obj_index\[real_object0\(2203\)\]\.func\.obj\s*=\s*unspec_altar;"),
+        "unspecialization_entry_blood": ("specs/specs.assign.c", r"obj_index\[real_object0\(12016\)\]\.func\.obj\s*=\s*unspec_altar;"),
+        "unspecialization_altar": ("specs/specs.object.c", r"unspecialize\(ch,\s*obj\);"),
+        "unspecialization_value": ("economy/tradeskill.c", r"if\s*\(proc\s*==\s*unspec_altar\)\s*return\s*-100000;"),
+        "unspecialization_purchase": ("classes/specializations.c", r'if\s*\(!epic_transaction_submit\(ch,\s*-10,\s*epic_reason_type::specialization_purchase,\s*0,\s*EPIC_COMMAND_REQUIRE_FUNDS,\s*critical_source_site::command,\s*critical_deadline_class::interactive,\s*unspecialize_committed,\s*nullptr,\s*0\)\)\s*send_to_char\("The epic transaction service is busy\. Please try again\.\\n",\s*ch\);'),
+        "unspecialization_commit": ("classes/specializations.c", r"ch->player\.spec\s*=\s*0;"),
+        "unspecialization_refresh": ("classes/specializations.c", r"update_skills\(ch\);"),
+        "unspecialization_forget": ("classes/specializations.c", r"forget_spells\(ch,\s*-1\);"),
+        "epics_capture": ("player/player_snapshot_capture.c", r"ADD_STATUS\(epics,\s*ch->only\.pc->epics\);"),
+        "epics_load": ("player/player_load_materialize.c", r"ch->only\.pc->epics\s*=\s*result\.domains\.epics;"),
+        "epics_transaction": ("world/epic_transaction.c", r"balance\s*\+=\s*delta;"),
     }
     seen = set()
     errors = []
-    symbols = re.compile(r"\b(?:INNATE_GUARDIANS_BULWARK|DF_GUARDIANS_BULWARK)\b")
+    symbols = re.compile(r"\b(?:INNATE_GUARDIANS_BULWARK|DF_GUARDIANS_BULWARK|unspec_altar|2203|12016)\b")
     # Macro stringification makes these names the same native bindings the
     # executable used, rather than a second editable table of function names.
     for mechanic, symbol in bindings.items():
         if re.fullmatch(r"[a-zA-Z_]\w*", symbol):
             definitions = 0
             for path, text in sources.items():
+                if symbol not in text:
+                    continue
                 for body in function_bodies(text, rf"\b(?:int|bool|void)\s+{symbol}\s*\("):
                     # The offline pfile executable deliberately has no skill
                     # refresh. Exclude only its exact empty stub, not the file.
@@ -94,6 +107,11 @@ def check_mechanic_sites(sources, bindings):
             if ((path == "core/structs.h" and re.fullmatch(r"#define INNATE_GUARDIANS_BULWARK\s+\d+\s*", line)) or
                 (path == "combat/damage.h" and re.fullmatch(r"#define DF_GUARDIANS_BULWARK\s+\d+\s*", line))):
                 continue
+            # Only the exact native definition/prototype header is vocabulary;
+            # the function body remains subject to the same use-site scan.
+            if (token.group() == "unspec_altar" and path in ("specs/specs.object.c", "world/specs.prototypes.h")
+                    and re.fullmatch(r"int unspec_altar\(P_obj obj, P_char ch, int cmd, char \*(?:arg|argument)\);?\s*", line)):
+                continue
             errors.append(f"{path}:{code.count(chr(10), 0, token.start()) + 1}: unregistered site/alias {token.group()}")
     for site in obligations.keys() - seen:
         errors.append(f"{site}: missing implementation site")
@@ -111,6 +129,7 @@ inputs = [
     source("creation_availability_config.c"), source("specializations.c"), source("utility.c"),
     source("chaos_config.c"),
     source("safe_format.c"),
+    source("epic_transaction.c"), source("epic_command.c"), source("critical_command.c"),
     HARNESS_STUBS,
 ]
 
@@ -125,6 +144,10 @@ innate_table = re.search(r"const struct innate_data innates_data\[LAST_INNATE \+
 active_callbacks = sorted(set(re.findall(r'\{ "[^"]+", (\w+) \}', innate_table)) - {"NULL"})
 innate_stubs = "\n".join(f'void {name}(P_char, char *, int) {{ assert(false && "unexpected active innate callback"); }}'
                          for name in active_callbacks)
+valuation_body = production_function("tradeskill.c", "int get_ival_from_proc(obj_proc_type proc)")
+valued_callbacks = sorted(set(re.findall(r"\bproc\s*==\s*(\w+)", strip_comments(valuation_body))) - {"unspec_altar"})
+valuation_stubs = "\n".join(f'int {name}(P_obj, P_char, int, char *) {{ assert(false && "valuation does not invoke object callbacks"); return 0; }}'
+                            for name in valued_callbacks)
 combat_prelude = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
@@ -136,6 +159,7 @@ combat_prelude = r'''
 #include "classes/specializations.h"
 #include "cmd/interp.h"
 #include "player/character_mechanics.h"
+#include "persistence/persistence_checkpoint.h"
 #include <cassert>
 #include <cctype>
 #include <cmath>
@@ -148,6 +172,26 @@ Skill skills[MAX_SKILLS];
 int GET_LVL_FOR_SKILL(P_char, int);
 command_info cmd_info[MAX_CMD_LIST];
 P_room world;
+index_data object_prototypes[3]{};
+P_index obj_index = object_prototypes;
+int top_of_objt = 2;
+int unspec_altar(P_obj, P_char, int, char *);
+int mechanic_removed_affects, mechanic_stop_memorizing, mechanic_ledger_calls;
+void mark_player_dirty_components(int, player_component_mask_t) {}
+critical_submit_result critical_command_coordinator_submit(critical_command command) {
+    epic_command_payload payload{};
+    assert(epic_command_decode_payload(command, &payload));
+    assert(payload.delta == -10 && payload.reason == epic_reason_type::specialization_purchase);
+    ++mechanic_ledger_calls;
+    return critical_submit_result::accepted;
+}
+void affect_remove(P_char ch, affected_type *removed) {
+    auto **link = &ch->affected;
+    while (*link && *link != removed) link = &(*link)->next;
+    assert(*link && removed->type == TAG_MEMORIZE);
+    *link = removed->next; delete removed; ++mechanic_removed_affects;
+}
+void stop_memorizing(P_char, memorization_stop_reason) { ++mechanic_stop_memorizing; }
 extern const innate_data innates_data[];
 std::string mechanic_output;
 void send_to_char(const char *text, P_char) { mechanic_output += text; }
@@ -185,7 +229,7 @@ int raw_damage(P_char, P_char, double amount, unsigned int, damage_messages *, i
 }
 '''
 combat_bodies = (
-    innate_stubs + "\n" + innate_table + "\n"
+    innate_stubs + "\n" + innate_table + "\n" + valuation_stubs + "\n" + valuation_body
     + properties[properties.index("struct property\n{"):properties.index("int key_property_comp(")]
     + innates[innates.index("#define ADD_RACIAL_INNATE"):innates.index("float regen_factor")]
     + innates[innates.index("char racial_innates["):innates.index("extern const struct race_names")]
@@ -216,6 +260,13 @@ combat_bodies = (
         ("interp.c", "void argument_interpreter("),
         ("guild.c", "void update_skills("),
         ("guild.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::training_connections("),
+        ("memorize.c", "int forget_spells("),
+        ("memorize.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::memorization_connections("),
+        ("db.c", "int real_object0("), ("db.c", "int real_object(const int"),
+        ("specs.object.c", "int unspec_altar("),
+        ("specs.object.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::object_action_connections("),
+        ("specs.assign.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::object_registration_connections("),
+        ("tradeskill.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::object_value_connections("),
         ("player_snapshot_capture.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::status_capture_connections("),
         ("player_load_materialize.c", "std::span<const character_mechanics::MechanicConnection> character_mechanics::status_load_connections("),
     ])
@@ -225,6 +276,11 @@ registration = re.search(r"CHARACTER_MECHANIC_SITE\(specialization_entry\);\s*CM
 innate_registration = re.search(r"CHARACTER_MECHANIC_SITE\(innate_entry\);\s*CMD_Y\([^;]+;", interpreter).group()
 combat_bodies += "\n" + interpreter[interpreter.index("#define CMD_N("):interpreter.index("#define CMD_CNF_Y(")]
 combat_bodies += "\nvoid initialize_mechanic_commands() {\n" + registration + "\n" + innate_registration + "\n}\n"
+assignments = source("specs.assign.c").read_text()
+altar_registrations = [re.search(r"CHARACTER_MECHANIC_SITE\(unspecialization_entry_" + name +
+                                r"\);\s*obj_index\[[^;]+;", assignments).group()
+                       for name in ("coral", "blood")]
+combat_bodies += '\nvoid initialize_mechanic_objects() {\nobject_prototypes[1].virtual_number = 2203;\nobject_prototypes[2].virtual_number = 12016;\n' + "\n".join(altar_registrations) + "\n}\n"
 combat_driver = r'''
 void load_character_properties() {
     properties_count = load_properties(duris_properties);
@@ -258,14 +314,31 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
     combat = work / "combat.cpp"
     combat.write_text(combat_prelude + combat_bodies + combat_driver)
     binary = work / "harness"
-    compile_command = [
+    compiler = [
         "g++", "-std=c++20", "-g", "-D__NO_MYSQL__", "-ffunction-sections", "-fdata-sections",
         "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
         "-I" + str(ROOT / "src"), "-I" + str(ROOT / "src/no_mysql"),
-        *map(str, inputs), str(combat), "-Wl,--gc-sections", "-lbsd",
-        "-o", str(binary),
     ]
-    subprocess.run(compile_command, check=True)
+    # The mutation suite changes one translation unit at a time. Compile the
+    # unchanged units once within this private run, with the same sanitizer
+    # flags; there is no cross-run cache or modification of the worktree.
+    units = [*inputs, combat]
+    objects = [work / f"unit-{index}.o" for index in range(len(units))]
+    for unit, obj in zip(units, objects):
+        subprocess.run([*compiler, "-c", str(unit), "-o", str(obj)], check=True)
+
+    def link_harness(output, linked_objects):
+        subprocess.run([*compiler, *map(str, linked_objects), "-Wl,--gc-sections",
+                        "-lbsd", "-lcrypto", "-o", str(output)], check=True)
+
+    def build_variant(original, replacement, output):
+        obj = output.with_suffix(".o")
+        subprocess.run([*compiler, "-c", str(replacement), "-o", str(obj)], check=True)
+        linked = list(objects)
+        linked[units.index(original)] = obj
+        link_harness(output, linked)
+
+    link_harness(binary, objects)
     # Deliberately replace inherited overrides. No .env or running game is used.
     env = dict(os.environ, CHAOS_MUD="FALSE", CREATION_ALL_RACES="FALSE",
                CREATION_ALL_CLASSES="FALSE")
@@ -282,6 +355,9 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
             path = str(Path(path).relative_to(ROOT)) if Path(path).is_absolute() else path
             assert path in ("src/classes/innates.c", "src/combat/fight.c", "src/cmd/interp.c",
                             "src/classes/specializations.c", "src/guild/guild.c",
+                            "src/specs/specs.assign.c", "src/specs/specs.object.c", "src/classes/memorize.c",
+                            "src/world/epic_transaction.c",
+                            "src/economy/tradeskill.c",
                             "src/player/player_snapshot_capture.c", "src/player/player_load_materialize.c"), (mechanic, path)
             assert 0 < int(line) <= len((ROOT / path).read_text().splitlines()), (mechanic, line)
     sources = {str(path.relative_to(ROOT / "src")): path.read_text(errors="replace")
@@ -297,6 +373,9 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         ("new_branch", "player/unregistered.c", "bool missed(P_char ch) { return has_innate(ch, INNATE_GUARDIANS_BULWARK); }\n", "unregistered site"),
         ("new_alias", "player/unregistered.h", "#define MY_INNATE INNATE_GUARDIANS_BULWARK\nbool missed(P_char ch) { return has_innate(ch, MY_INNATE); }\n", "unregistered site/alias"),
         ("nested_branch", "combat/fight.c", fight.replace(effect, effect.replace("\n\t\t\tdam", " { if (GET_RACE(victim) == RACE_HUMAN) return 0;\n\t\t\tdam") + " }", 1), "unsupported binding"),
+        ("altar_overwrite", "specs/unregistered.c", "void overwrite() { obj_index[real_object0(2203)].func.obj = different_altar; }\n", "unregistered site/alias"),
+        ("altar_alias", "specs/unregistered.h", "#define MY_ALTAR 12016\n", "unregistered site/alias"),
+        ("altar_new_caller", "specs/unregistered.c", "int invoke(P_obj obj, P_char ch, int cmd, char *arg) { return unspec_altar(obj, ch, cmd, arg); }\n", "unregistered site/alias"),
     ]
     for name, path, changed, diagnostic in mutations:
         fixture = work / "mutations" / name / path
@@ -306,6 +385,7 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
         errors = check_mechanic_sites(mutated, bindings)
         assert any(diagnostic in error for error in errors), (name, errors)
     print("guardian.bulwark.reverse: PASS (missing consumer/marker, new file/alias, nested branch mutations)")
+    print("unspecialization.reverse: PASS (new overwrite, numeric alias and caller rejected)")
     for name, path, old, new, diagnostic in [
         ("registration_removed", "cmd/interp.c",
          "CMD_N(CMD_SPECIALIZE, STAT_SLEEPING + POS_PRONE, do_specialize, 0, FALSE);", ";", "specialization_entry"),
@@ -317,6 +397,14 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
          "case player_status_field::class_primary:", "load mapped from wrong field"),
         ("pfile_exclusion_changed", "account/pfile-stubs.c", "void update_skills(P_char) {}",
          "void update_skills(P_char ch) { ch->player.spec = 0; }", "native definition missing/conflicting"),
+        ("altar_registration_removed", "specs/specs.assign.c", "obj_index[real_object0(2203)].func.obj = unspec_altar;",
+         ";", "unspecialization_entry_coral"),
+        ("altar_call_removed", "specs/specs.object.c", "unspecialize(ch, obj);", ";", "unspecialization_altar"),
+        ("purchase_callback_removed", "classes/specializations.c", "unspecialize_committed, nullptr, 0)",
+         "nullptr, nullptr, 0)", "unspecialization_purchase"),
+        ("forget_removed", "classes/specializations.c", "forget_spells(ch, -1);", ";", "unspecialization_forget"),
+        ("epics_materialize_removed", "player/player_load_materialize.c", "ch->only.pc->epics = result.domains.epics;",
+         ";", "epics_load"),
     ]:
         assert old in sources[path], name
         changed = sources[path].replace(old, new, 1)
@@ -341,28 +429,36 @@ with tempfile.TemporaryDirectory(prefix="character-mechanics-", dir=build) as di
          "passive has an active callback"),
         ("passive_dispatch_stubbed", 'send_to_char("This innate is always active.\\n", ch);',
          'send_to_char("Nothing happened.\\n", ch);', 'mechanic_output == "This innate is always active.\\n"'),
+        ("altar_registration_unset", altar_registrations[0], "", "object registration missing or different handler"),
+        ("altar_valuation_changed", "if (proc == unspec_altar)\n\t\treturn -100000;",
+         "if (proc == unspec_altar)\n\t\treturn 0;", "value(obj_index[slot].func.obj) == -100000"),
     ]:
         assert combat_bodies.count(old) == 1, name
         variant = work / "mutations" / name
         variant.mkdir(parents=True, exist_ok=True)
         variant_source, variant_binary = variant / "combat.cpp", variant / "harness"
         variant_source.write_text(combat_prelude + combat_bodies.replace(old, new) + combat_driver)
-        command = [str(variant_source) if arg == str(combat) else
-                   str(variant_binary) if arg == str(binary) else arg for arg in compile_command]
-        subprocess.run(command, check=True)
+        build_variant(combat, variant_source, variant_binary)
         rejected = subprocess.run([str(variant_binary)], cwd=work, env=env, text=True, capture_output=True)
         assert rejected.returncode != 0 and diagnostic in rejected.stderr, (name, rejected.stderr)
     print("guardian.bulwark.mutations: PASS (stubbed effect and changed fallback fail the native damage assertion)")
     print("innate.dispatch.mutations: PASS (removed registration, active passive callback and stubbed dispatch rejected)")
     # Removing the actual refresh call must fail the learned/taught assertion,
     # even though the refresh function and connection still exist.
-    variant = work / "mutations" / "refresh_not_called"
-    variant.mkdir(parents=True, exist_ok=True)
-    variant_source, variant_binary = variant / "specializations.cpp", variant / "harness"
-    variant_source.write_text(source("specializations.c").read_text().replace("update_skills(ch);", ";", 1))
-    command = [str(variant_source) if arg == str(source("specializations.c")) else
-               str(variant_binary) if arg == str(binary) else arg for arg in compile_command]
-    subprocess.run(command, check=True)
-    rejected = subprocess.run([str(variant_binary)], cwd=work, env=env, text=True, capture_output=True)
-    assert rejected.returncode != 0 and "pc.skills[SKILL_GUARD].learned == 40" in rejected.stderr, rejected.stderr
+    for name, file, old, new, diagnostic in [
+        ("refresh_not_called", "specializations.c", "update_skills(ch);", ";", "pc.skills[SKILL_GUARD].learned == 40"),
+        ("purchase_callback_not_called", "specializations.c", "unspecialize_committed, nullptr, 0)", "nullptr, nullptr, 0)",
+         "student.player.spec == 0 && pc.epics == 2"),
+        ("forget_not_called", "specializations.c", "forget_spells(ch, -1);", ";", "mechanic_removed_affects == 2"),
+        ("debit_not_applied", "epic_transaction.c", "balance += delta;", ";", "student.player.spec == 0 && pc.epics == 2"),
+    ]:
+        variant = work / "mutations" / name
+        variant.mkdir(parents=True, exist_ok=True)
+        variant_source, variant_binary = variant / (file + ".cpp"), variant / "harness"
+        assert old in source(file).read_text(), name
+        variant_source.write_text(source(file).read_text().replace(old, new, 1))
+        build_variant(source(file), variant_source, variant_binary)
+        rejected = subprocess.run([str(variant_binary)], cwd=work, env=env, text=True, capture_output=True)
+        assert rejected.returncode != 0 and diagnostic in rejected.stderr, (name, rejected.stderr)
     print("specialization.mutations: PASS (removed registration and refresh call fail native assertions)")
+    print("unspecialization.mutations: PASS (removed altar registration, purchase callback, debit and forgetting call fail native assertions)")

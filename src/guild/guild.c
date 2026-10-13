@@ -178,6 +178,16 @@ std::span<const character_mechanics::MechanicConnection> character_mechanics::tr
 		  Access::conditional,
 		  Implementation::connected,
 		  "Refresh learned/taught skills for resulting class/spec/level, including separate instrument/song handling and existing Chaos rules.",
+		  {} },
+		{ MechanicId::unspecialization_refresh,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(update_skills),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Recompute taught/learned values after clearing spec; retain skills still granted by the base class/level.",
 		  {} }
 	};
 	return connections;

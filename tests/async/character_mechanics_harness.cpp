@@ -24,17 +24,21 @@ extern command_info cmd_info[MAX_CMD_LIST];
 extern P_room world;
 extern std::string mechanic_output;
 void initialize_mechanic_commands();
+void initialize_mechanic_objects();
+extern P_index obj_index;
+extern int mechanic_removed_affects, mechanic_stop_memorizing, mechanic_ledger_calls;
 
 static void specialization_transition()
 {
 	initialize_mechanic_commands();
+	initialize_mechanic_objects();
 	const auto mechanics = mechanic_connections();
 	const auto transitions = transition_connections();
 	const auto errors = validate_transitions(transitions, mechanics);
 	for (const auto &error : errors)
 		std::fprintf(stderr, "%s\n", error.c_str());
 	assert(errors.empty());
-	assert(transitions.size() == 1);
+	assert(transitions.size() == 2);
 	assert(transitions.front().kind == TransitionKind::permanent);
 
 	const auto handler = cmd_info[CMD_SPECIALIZE].command_pointer;
@@ -92,6 +96,90 @@ static void specialization_transition()
 	world = nullptr;
 	std::puts(
 		"specialization.transition: PASS (native command registration, timer denial, assignment and skill refresh; missing registration/load/transition rejected)");
+}
+
+static void unspecialization_transition()
+{
+	const auto mechanics = mechanic_connections();
+	const auto transitions = transition_connections();
+	assert(transitions[1].entries.size() == 2);
+	for (int slot : { 1, 2 })
+	{
+		for (const auto &connection : mechanics)
+			if (connection.id == MechanicId::unspecialization_value)
+			{
+				const auto value = std::get<ObjectProcValue>(connection.binding);
+				assert(value(obj_index[slot].func.obj) == -100000);
+			}
+		const auto handler = obj_index[slot].func.obj;
+		obj_index[slot].func.obj = nullptr;
+		assert(!validate_mechanics(mechanics).empty());
+		assert(!validate_transitions(transitions, mechanics).empty());
+		obj_index[slot].func.obj = handler;
+	}
+	// A legacy missing-vnum assignment can land at prototype zero. Even with
+	// the right handler there, it must not validate as the requested altar.
+	obj_index[0].func.obj = obj_index[1].func.obj;
+	obj_index[1].virtual_number = 2202;
+	assert(!validate_transitions(transitions, mechanics).empty());
+	obj_index[1].virtual_number = 2203;
+	auto disconnected = mechanics;
+	for (auto &connection : disconnected)
+		if (connection.id == MechanicId::unspecialization_purchase)
+			connection.dependencies = {};
+	assert(!validate_transitions(transitions, disconnected).empty());
+
+	char_data student{};
+	pc_only_data pc{};
+	obj_data altar{};
+	student.only.pc = &pc;
+	student.player.m_class = CLASS_WARRIOR;
+	student.player.race = RACE_HUMAN;
+	student.player.level = 30;
+	SET_POS(&student, STAT_NORMAL + POS_STANDING);
+	GET_EXP(&student) = 23456;
+	GET_COPPER(&student) = 7;
+	GET_SILVER(&student) = 8;
+	GET_GOLD(&student) = 9;
+	GET_PLATINUM(&student) = 10;
+	pc.pid = 42;
+	char prayer[] = "altar";
+	for (int slot : { 1, 2 })
+	{
+		student.player.spec = SPEC_GUARDIAN;
+		pc.epics = 12;
+		pc.skills[SKILL_GUARD] = { 40, 100 };
+		affected_type unrelated{};
+		unrelated.type = SPELL_BLESS;
+		auto *full = new affected_type{};
+		full->type = TAG_MEMORIZE;
+		full->flags = MEMTYPE_FULL;
+		full->next = &unrelated;
+		auto *pending = new affected_type{};
+		pending->type = TAG_MEMORIZE;
+		pending->next = full;
+		student.affected = pending;
+		mechanic_removed_affects = mechanic_stop_memorizing = mechanic_ledger_calls = 0;
+		const auto handler = obj_index[slot].func.obj;
+		assert(handler(&altar, &student, CMD_LOOK, prayer) == FALSE);
+		assert(student.player.spec == SPEC_GUARDIAN && pc.epics == 12);
+		assert(handler(&altar, &student, CMD_PRAY, prayer) == TRUE);
+		assert(student.player.spec == 0 && pc.epics == 2);
+		assert(student.player.m_class == CLASS_WARRIOR &&
+		       student.player.secondary_class == 0);
+		assert(student.player.race == RACE_HUMAN && student.player.level == 30);
+		assert(GET_EXP(&student) == 23456 && GET_COPPER(&student) == 7 &&
+		       GET_SILVER(&student) == 8 && GET_GOLD(&student) == 9 &&
+		       GET_PLATINUM(&student) == 10);
+		assert(pc.skills[SKILL_GUARD].learned == 0 && pc.skills[SKILL_GUARD].taught == 0);
+		assert(mechanic_removed_affects == 2 && mechanic_stop_memorizing == 1);
+		assert(student.affected == &unrelated && mechanic_ledger_calls == 1);
+		assert(handler(&altar, &student, CMD_PRAY, prayer) == TRUE);
+		assert(pc.epics == 2 && mechanic_ledger_calls == 1);
+		student.affected = nullptr;
+	}
+	std::puts(
+		"unspecialization.transition: PASS (both actual object assignments, native prayer/purchase/completion/refresh/forget selection; missing slots/vnum/path rejected; affect removal and ledger are fixture boundaries)");
 }
 
 static void skill_class_mask_bounds()
@@ -251,6 +339,7 @@ int main()
 {
 	specialization_transition();
 	guardian_bulwark();
+	unspecialization_transition();
 	skill_class_mask_bounds();
 	assert(!creation_all_races_enabled() && !creation_all_classes_enabled());
 	assert(!strcmp(getenv("CHAOS_MUD"), "FALSE"));

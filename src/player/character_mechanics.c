@@ -10,6 +10,39 @@
 
 namespace character_mechanics
 {
+namespace
+{
+bool entry_registered(const MechanicConnection &entry,
+		      std::span<const MechanicConnection> connections)
+{
+	for (auto id : entry.dependencies)
+		for (const auto &target : connections)
+		{
+			if (target.id != id)
+				continue;
+			if (const auto *slot = std::get_if<CommandSlot>(&entry.binding))
+			{
+				const auto *handler = std::get_if<CommandHandler>(&target.binding);
+				if (*slot && **slot && handler && **slot == *handler)
+					return true;
+			}
+			if (const auto *object = std::get_if<ObjectRegistration>(&entry.binding))
+			{
+				const auto *handler = std::get_if<obj_proc_type>(&target.binding);
+				if (!object->index || !*object->index || !object->lookup ||
+				    !handler || !*handler)
+					continue;
+				const int slot = object->lookup(object->vnum);
+				if (slot >= 0 &&
+				    (*object->index)[slot].virtual_number == object->vnum &&
+				    (*object->index)[slot].func.obj == *handler)
+					return true;
+			}
+		}
+	return false;
+}
+} // namespace
+
 std::string_view mechanic_name(MechanicId id)
 {
 	switch (id)
@@ -44,6 +77,28 @@ std::string_view mechanic_name(MechanicId id)
 		return "specialization.capture";
 	case MechanicId::specialization_load:
 		return "specialization.load";
+	case MechanicId::unspecialization_entry_coral:
+		return "unspecialization.entry.coral";
+	case MechanicId::unspecialization_entry_blood:
+		return "unspecialization.entry.blood";
+	case MechanicId::unspecialization_altar:
+		return "unspecialization.altar";
+	case MechanicId::unspecialization_value:
+		return "unspecialization.value";
+	case MechanicId::unspecialization_purchase:
+		return "unspecialization.purchase";
+	case MechanicId::unspecialization_commit:
+		return "unspecialization.commit";
+	case MechanicId::unspecialization_refresh:
+		return "unspecialization.refresh";
+	case MechanicId::unspecialization_forget:
+		return "unspecialization.forget";
+	case MechanicId::epics_capture:
+		return "epics.capture";
+	case MechanicId::epics_load:
+		return "epics.load";
+	case MechanicId::epics_transaction:
+		return "epics.transaction";
 	case MechanicId::count:
 		break;
 	}
@@ -53,9 +108,12 @@ std::string_view mechanic_name(MechanicId id)
 std::vector<MechanicConnection> mechanic_connections()
 {
 	std::vector<MechanicConnection> result;
-	for (auto connections : { innate_connections(), melee_connections(), command_connections(),
-				  specialization_connections(), training_connections(),
-				  status_capture_connections(), status_load_connections() })
+	for (auto connections :
+	     { innate_connections(), melee_connections(), command_connections(),
+	       specialization_connections(), training_connections(), status_capture_connections(),
+	       status_load_connections(), unspecialization_connections(),
+	       object_registration_connections(), object_action_connections(),
+	       memorization_connections(), epic_connections(), object_value_connections() })
 		result.insert(result.end(), connections.begin(), connections.end());
 	return result;
 }
@@ -92,6 +150,10 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 					if constexpr (std::is_same_v<decltype(binding),
 								     player_status_field>)
 						return true; // A typed field ID, not a nullable pointer.
+					else if constexpr (std::is_same_v<decltype(binding),
+									  ObjectRegistration>)
+						return binding.index && *binding.index &&
+						       binding.lookup;
 					else
 						return binding != nullptr;
 				},
@@ -106,9 +168,10 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 			compatible = std::holds_alternative<EffectiveRace>(connection.binding);
 			break;
 		case Relation::eligibility:
-			compatible = std::holds_alternative<InnatePredicate>(connection.binding) ||
-				     std::holds_alternative<InnateUnlock>(connection.binding) ||
-				     std::holds_alternative<RaceSpecPredicate>(connection.binding);
+			compatible =
+				std::holds_alternative<InnatePredicate>(connection.binding) ||
+				std::holds_alternative<CharacterIntFunction>(connection.binding) ||
+				std::holds_alternative<RaceSpecPredicate>(connection.binding);
 			break;
 		case Relation::grant:
 			compatible = std::holds_alternative<const char *>(connection.binding);
@@ -124,18 +187,26 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 			}
 			break;
 		case Relation::configuration:
-			compatible = std::holds_alternative<const float *>(connection.binding);
+			compatible = std::holds_alternative<const float *>(connection.binding) ||
+				     std::holds_alternative<ObjectProcValue>(connection.binding);
 			break;
 		case Relation::effect:
-			compatible = std::holds_alternative<MeleeDamage>(connection.binding) ||
-				     std::holds_alternative<CharacterAction>(connection.binding) ||
-				     std::holds_alternative<CommandHandler>(connection.binding);
+			compatible =
+				std::holds_alternative<MeleeDamage>(connection.binding) ||
+				std::holds_alternative<CharacterAction>(connection.binding) ||
+				std::holds_alternative<CommandHandler>(connection.binding) ||
+				std::holds_alternative<obj_proc_type>(connection.binding) ||
+				std::holds_alternative<ObjectAction>(connection.binding) ||
+				std::holds_alternative<CharacterIntFunction>(connection.binding) ||
+				std::holds_alternative<EpicSubmit>(connection.binding);
 			break;
 		case Relation::entry:
-			compatible = std::holds_alternative<CommandSlot>(connection.binding);
+			compatible = std::holds_alternative<CommandSlot>(connection.binding) ||
+				     std::holds_alternative<ObjectRegistration>(connection.binding);
 			break;
 		case Relation::mutation:
-			compatible = std::holds_alternative<CommandHandler>(connection.binding);
+			compatible = std::holds_alternative<CommandHandler>(connection.binding) ||
+				     std::holds_alternative<epic_completion_fn>(connection.binding);
 			break;
 		case Relation::capture:
 		case Relation::load:
@@ -180,19 +251,10 @@ std::vector<std::string> validate_mechanics(std::span<const MechanicConnection> 
 					    { return candidate.id == dependency; }),
 				"missing dependency");
 		if (connection.relation == Relation::entry)
-		{
-			const auto *slot = std::get_if<CommandSlot>(&connection.binding);
-			bool registered = false;
-			for (auto id : connection.dependencies)
-				for (const auto &target : connections)
-					if (target.id == id)
-						if (const auto *handler =
-							    std::get_if<CommandHandler>(
-								    &target.binding))
-							registered |= slot && *slot && **slot &&
-								      **slot == *handler;
-			require(registered, "command registration missing or different handler");
-		}
+			require(entry_registered(connection, connections),
+				std::holds_alternative<ObjectRegistration>(connection.binding) ?
+					"object registration missing or different handler" :
+					"command registration missing or different handler");
 		if (connection.relation == Relation::passive)
 		{
 			bool consumer = false;
@@ -223,6 +285,21 @@ std::vector<std::string> validate_transitions(std::span<const TransitionConnecti
 				return &connection;
 		return nullptr;
 	};
+	auto reaches = [&](MechanicId start, MechanicId target)
+	{
+		std::vector<MechanicId> pending{ start };
+		for (size_t i = 0; i < pending.size(); ++i)
+		{
+			if (pending[i] == target)
+				return true;
+			if (const auto *part = find(pending[i]))
+				for (auto id : part->dependencies)
+					if (std::find(pending.begin(), pending.end(), id) ==
+					    pending.end())
+						pending.push_back(id);
+		}
+		return false;
+	};
 	for (const auto &transition : transitions)
 	{
 		const std::string name(mechanic_name(transition.mutation));
@@ -232,15 +309,22 @@ std::vector<std::string> validate_transitions(std::span<const TransitionConnecti
 				errors.push_back(name + ": " + message);
 		};
 		const auto *mutation = find(transition.mutation);
-		const auto *entry = find(transition.entry);
 		require(mutation && mutation->relation == Relation::mutation, "missing mutation");
-		require(entry && entry->relation == Relation::entry, "missing entry");
-		if (!mutation || !entry)
+		if (!mutation)
 			continue;
-		const auto *handler = std::get_if<CommandHandler>(&mutation->binding);
-		const auto *slot = std::get_if<CommandSlot>(&entry->binding);
-		require(handler && *handler && slot && *slot && **slot == *handler,
-			"command registration missing or different handler");
+		require(!transition.entries.empty(), "missing entry");
+		for (auto id : transition.entries)
+		{
+			const auto *entry = find(id);
+			require(entry && entry->relation == Relation::entry, "missing entry");
+			if (!entry)
+				continue;
+			require(entry_registered(*entry, connections),
+				std::holds_alternative<ObjectRegistration>(entry->binding) ?
+					"object registration missing or different handler" :
+					"command registration missing or different handler");
+			require(reaches(id, transition.mutation), "entry does not reach mutation");
+		}
 		require(!transition.changed_status.empty() && !transition.context.empty(),
 			"missing state description");
 		for (auto field : transition.changed_status)

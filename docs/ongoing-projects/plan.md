@@ -267,7 +267,7 @@ The passive slice is committed and pushed as `8733398c0`.
 
 ### Unspecialization behavior and reversal evidence
 
-Current slice extends existing tests before connecting this route. The native
+Committed behavior evidence (`a885c8611`) extends existing tests before connecting this route. The native
 `test_unspecialize_guard.py` now executes both production handler and completion
 with the real epic transaction and command codec. It checks unspecialized and
 insufficient-funds denials; an injected invalid PID checks submission rejection.
@@ -306,7 +306,99 @@ Validation for this test-only slice:
   Formatting and whitespace checks passed. Production source is unchanged in
   this slice; no redundant server build or whole-suite run was required.
 
-Next: bind individual teacher/timer guards, unspecialization, creation and
+### Altar registration and completion connections
+
+Current slice connects both actual altar assignments to the object procedure,
+purchase handler, native epic transaction/debit and completion, skill refresh, spell forgetting, and
+spec/epic capture/materialization. It reuses `obj_proc_type`,
+`epic_completion_fn`, the existing status field IDs and the existing connection
+aggregate. `ObjectRegistration` retains the vnum, address of the loaded native
+prototype table and native lookup function. The validator checks the current
+vnum and callback, including a missing vnum whose legacy assignment fell back to
+slot zero. These are read-only descriptors and compiled site markers; gameplay
+handlers and ordering remain unchanged.
+
+A transition can now name both real entries for one mutation. Its validator
+follows declared dependencies to that mutation and checks each actual entry
+registration. This replaces the assumption that every transition is directly
+handled by a command callback. The only helper added to validation is shared by
+the connection and transition checks; no gameplay dispatcher, registry or
+alternate execution path is introduced.
+
+The expanded native fixture initializes the two production assignment statements
+using the real object lookup over an explicit three-prototype fixture, then
+executes each altar's function slot through prayer, purchase, completion and
+refresh. Real `forget_spells(-1)` selects both pending and fully memorized spell
+affects while preserving an unrelated affect. Affect unlinking/event stop and
+ledger enqueue are controlled fixture boundaries; the test does not certify the
+generic affect/event cleanup implementation. Missing slots, missing vnums and
+disconnected purchase paths must be rejected. Source and compiled variants remove
+registration, the debit, completion or forgetting to prove those checks detect
+breakage. The reverse scan now also accounts for the two altar vnum literals and
+`unspec_altar`: a new overwrite, numeric alias or caller creates an unowned-site
+diagnostic. Only the native function/prototype headers are vocabulary exclusions,
+not their bodies. Wider registration history and helper/alias migration remain
+open; these bounded checks are not whole-repository coverage.
+
+That reverse scan found the existing `get_ival_from_proc` comparison in
+`tradeskill.c`. It is now a connected valuation dependency of both altar entries.
+The altar's comparison was separated from the existing infrastructure-object
+disjunction at the same point, preserving its `-100000` contribution. The native
+fixture executes the real valuation function and rejects a changed contribution;
+other object callback bodies are aborting fixtures because valuation only
+compares their addresses. `itemvalue` and world-reset calculations remain separate
+downstream dependencies to connect.
+
+The epic balance is materialized from `result.domains.epics`; its status-switch
+case intentionally does nothing. The marker binds that real assignment. Backend
+decoding into `result.domains` still needs its own connections in the wider
+persistence trace; the new field connection alone does not prove that hop.
+
+Outcome: connect the already-tested altar route and its state changes. Files:
+existing contract pair, assignment/object/specialization/memorization/training
+owners, snapshot capture/load, and existing native mechanics/guard fixtures.
+Proof: native route and broken-source cases, affected persistence tests and
+builds. The full-world behavior evidence from `a885c8611` remains applicable;
+this slice changes no gameplay decisions.
+
+The native mutation fixture now compiles unchanged translation units once per
+private test run and rebuilds only the changed unit for each variant. It retains
+all native sources, sanitizer flags and outcome assertions, with no cross-run
+cache or edits to production files during tests.
+
+Validation on 2026-10-14:
+
+- `make test-all -j8 TEST_JOBS=8`: development/production/editor/tool builds
+  succeeded; **729 passed and 1 fixture-integration test failed**, with no
+  timeouts or signal exits, in 656.52 seconds. The mechanics native test passed
+  in 32.90 seconds; its full-world selection/reversal journey passed in 143.45
+  seconds. Log: `bin/tests/character-mechanics-altar-test-all.log`.
+- The failure was `test_web_spray.py` extracting the newly marked `do_innate`
+  body without including the marker header. The fixture now includes it, and
+  `python3 tests/async/test_web_spray.py` passes its targeting, cooldown/defence,
+  refresh, restoration, movement and cleanup cases. No production repair was
+  needed for this failure.
+- `test_root_test_harness.py` now requires discovery of the mechanics native and
+  world tests plus the specialization eligibility and unspecialization guard
+  tests. Its focused run passes; removing or renaming one cannot silently omit
+  that evidence from the default suite.
+- `make -C src -j8`, `make -j8 build-production build-editor`,
+  `make -C src -j4 pfile`, and
+  `make -C migrations/tools -j4 all affects pfile_converter`: passed. The last
+  command found its artifacts current. Focused unspecialization, epic memory,
+  snapshot capture/load, Reflection and racial-shrug tests also passed.
+- The final native mechanics fixture run passed all source and compiled mutation
+  cases, including explicit nonzero experience/coin retention for both altars.
+  Native executable SHA256:
+  `6285860c8eb158a9d2a13795e92b726e0a9b6a56e0ebf2191b5394a64a25d5c2`.
+  The whole gate was not repeated after these test-only changes. No database-gate
+  claim is made.
+- Evidence uses the `bin/tests/character-mechanics-altar-` prefix with
+  `connections`, `build`, `consumers`, `pfile`, `migration-tools`, `guard`,
+  `epics`, `capture`, `load`, `reflection`, `shrug`, `web-spray`, and
+  `root-harness` log suffixes. Formatting and whitespace checks pass.
+
+Next: bind individual teacher/timer guards, creation and
 remaining persistence dependencies, then complete real HP damage and the other
 two initial traces.
 The successful journey does not replace missing structural links. Ordinary
@@ -326,9 +418,8 @@ The native object callback type is the existing `obj_proc_type`; both slots are
 assigned in `specs.assign.c`. `unspec_altar` handles `CMD_PRAY` for a living PC
 when the argument contains `altar`, then invokes `unspecialize`. `CMD_PRAY` also
 has a normal `do_memorize` command-table fallback, so do not misdescribe the
-altar as that command's direct handler. The current transition validator only
-supports a direct command-handler entry; the altar route needs its real object
-slots and purchase/completion path connected. A prototype binding must retain
+altar as that command's direct handler. The altar connections above use their
+real object slots and purchase/completion path. A prototype binding retains
 the expected vnum: `real_object0` returns slot zero when a vnum is absent, so
 pointer presence alone cannot establish the intended object's registration.
 
@@ -427,7 +518,7 @@ Next implementation work remains:
    bindings, starting with Guardian/Bulwark, multiclass reset/consumers, and
    Revenant application/reversal/capture/load. Identity views are only their
    shared input; do not claim step 1 complete from the current validator.
-2. Add the bounded reverse check to the same test entry, enumerate/classify every
+2. Extend the bounded reverse check from its migrated Bulwark/altar sites to every
    scoped site, and retain a finite backlog during migration. No broad exclusion
    or automatic whole-file ownership is acceptable.
 3. Complete all owner groups, registration-write conflict detection, source
@@ -459,7 +550,8 @@ classes, core tables/accessors, creation/account, commands, magic, world, combat
 and special procedures. This is only an investigation starting point: it includes
 definitions/declarations and misses indirect aliases, some form flags, callbacks,
 and lifecycle dependencies. It is **not** reverse coverage or an exemption list.
-The bounded reverse check and its mutation proofs remain to be implemented.
+At the foundation checkpoint the reverse check was still absent; the later slices
+above add it for a limited set of sites. Exhaustive classification remains open.
 
 All work remains on the feature branch. The foundation is an intermediate commit,
 not a release; no release tag or ready-for-review PR is appropriate yet. The
@@ -819,7 +911,10 @@ Reuse existing evidence at its actual scope:
 - [test_innate_reflection.py](../../tests/async/test_innate_reflection.py) executes
   grants/eligibility/dispatch/cooldown but stubs the spell effect.
 - [test_unspecialize_guard.py](../../tests/async/test_unspecialize_guard.py) checks
-  invalid-state charging; its commit callback is stubbed.
+  guards and the real completion with the native epic debit/ledger ordering;
+  refresh and spell forgetting are observed call boundaries. The mechanics
+  fixture additionally runs real refresh/forget selection with controlled affect
+  removal, and the world journey checks the loaded altar and persisted results.
 - [test_item_race_restriction_runtime.py](../../tests/async/test_item_race_restriction_runtime.py)
   executes real item race predicates, not every equipment/body restriction.
 - Race/class help coverage and

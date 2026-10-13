@@ -3,6 +3,7 @@
 
 #include "core/defines.h"
 #include "player/player_snapshot.h"
+#include "world/epic_transaction.h"
 
 #include <span>
 #include <source_location>
@@ -37,6 +38,17 @@ enum class MechanicId
 	specialization_refresh,
 	specialization_capture,
 	specialization_load,
+	unspecialization_entry_coral,
+	unspecialization_entry_blood,
+	unspecialization_altar,
+	unspecialization_value,
+	unspecialization_purchase,
+	unspecialization_commit,
+	unspecialization_refresh,
+	unspecialization_forget,
+	epics_capture,
+	epics_load,
+	epics_transaction,
 	count
 };
 
@@ -85,17 +97,31 @@ struct Option
 };
 
 using InnatePredicate = bool (*)(char_data *, int);
-using InnateUnlock = int (*)(char_data *, int);
+using CharacterIntFunction = int (*)(char_data *, int);
 using EffectiveRace = int (*)(char_data *);
 using MeleeDamage = int (*)(char_data *, char_data *, double, int, damage_messages *, int *);
 using CommandHandler = void (*)(char_data *, char *, int);
 using CommandSlot = CommandHandler const *;
 using RaceSpecPredicate = bool (*)(int, unsigned int, int);
 using CharacterAction = void (*)(char_data *);
+using ObjectAction = void (*)(char_data *, obj_data *);
+using EpicSubmit = decltype(&epic_transaction_submit);
+using ObjectProcValue = int (*)(obj_proc_type);
+
+// Bind the vnum to the loaded native prototype table and its lookup. Missing
+// vnums are invalid registrations, even when the legacy real_object0 assignment
+// fell back to slot zero.
+struct ObjectRegistration
+{
+	int vnum;
+	index_data *const *index;
+	int (*lookup)(int);
+};
 using MechanicBinding =
-	std::variant<const char *, const float *, InnatePredicate, InnateUnlock, EffectiveRace,
-		     MeleeDamage, CommandHandler, CommandSlot, RaceSpecPredicate, CharacterAction,
-		     player_status_field, const innate_data *>;
+	std::variant<const char *, const float *, InnatePredicate, CharacterIntFunction,
+		     EffectiveRace, MeleeDamage, CommandHandler, CommandSlot, RaceSpecPredicate,
+		     CharacterAction, player_status_field, const innate_data *, ObjectRegistration,
+		     obj_proc_type, ObjectAction, epic_completion_fn, EpicSubmit, ObjectProcValue>;
 
 struct MechanicConnection
 {
@@ -127,7 +153,7 @@ enum class TransitionKind
 struct TransitionConnection
 {
 	MechanicId mutation;
-	MechanicId entry;
+	std::span<const MechanicId> entries;
 	TransitionKind kind;
 	std::span<const player_status_field> changed_status;
 	std::span<const player_status_field> retained_status;
@@ -147,6 +173,12 @@ std::span<const MechanicConnection> innate_connections();
 std::span<const MechanicConnection> melee_connections();
 std::span<const MechanicConnection> command_connections();
 std::span<const MechanicConnection> specialization_connections();
+std::span<const MechanicConnection> unspecialization_connections();
+std::span<const MechanicConnection> object_registration_connections();
+std::span<const MechanicConnection> object_action_connections();
+std::span<const MechanicConnection> memorization_connections();
+std::span<const MechanicConnection> epic_connections();
+std::span<const MechanicConnection> object_value_connections();
 std::span<const MechanicConnection> training_connections();
 std::span<const MechanicConnection> status_capture_connections();
 std::span<const MechanicConnection> status_load_connections();

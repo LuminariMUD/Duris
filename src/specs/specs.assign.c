@@ -8,6 +8,7 @@
  */
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "core/structs.h"
 #include "world/db.h"
 #include "world/events.h"
@@ -1421,7 +1422,9 @@ void assign_objects(void)
 	/* objs */
 	obj_index[real_object0(1191)].func.obj = fun_dagger;
 
+	CHARACTER_MECHANIC_SITE(unspecialization_entry_coral);
 	obj_index[real_object0(2203)].func.obj = unspec_altar;
+	CHARACTER_MECHANIC_SITE(unspecialization_entry_blood);
 	obj_index[real_object0(12016)].func.obj = unspec_altar;
 	obj_index[real_object0(1190)].func.obj = rax_red_dagger;
 	obj_index[real_object0(2204)].func.obj = cutting_dagger;
@@ -2561,4 +2564,34 @@ void item_procs(void)
 	for (i = object_list; i; i = i->next)
 		if (obj_index[i->R_num].func.obj)
 			(*obj_index[i->R_num].func.obj)(i, NULL, 0, NULL);
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::object_registration_connections()
+{
+	static constexpr MechanicId dependencies[] = { MechanicId::unspecialization_altar,
+						       MechanicId::unspecialization_value };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::unspecialization_entry_coral,
+		  Relation::entry,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND((ObjectRegistration{ 2203, &obj_index, real_object })),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Coral altar prototype's actual special-procedure slot; world reset and object dispatch are required.",
+		  {} },
+		{ MechanicId::unspecialization_entry_blood,
+		  Relation::entry,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND((ObjectRegistration{ 12016, &obj_index, real_object })),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Blood-red altar prototype's actual special-procedure slot; world reset and object dispatch are required.",
+		  {} }
+	};
+	return connections;
 }

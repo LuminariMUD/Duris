@@ -515,6 +515,7 @@ bool player_load_materialize(P_char ch, const player_load_result &result)
 	GET_BALANCE_PLATINUM(ch) = result.domains.bank[3];
 	ch->only.pc->wallet_revision = result.domains.wallet_revision;
 	ch->only.pc->bank_revision = result.domains.bank_revision;
+	CHARACTER_MECHANIC_SITE(epics_load);
 	ch->only.pc->epics = result.domains.epics;
 	ch->only.pc->epic_revision = result.domains.epic_revision;
 	ch->only.pc->frags = result.domains.frags;
@@ -744,6 +745,16 @@ character_mechanics::status_load_connections()
 		  Access::conditional,
 		  Implementation::connected,
 		  "Loaded specialization status materializes into player.spec before game entry.",
+		  {} },
+		{ MechanicId::epics_load,
+		  Relation::load,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(player_status_field::epics),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Materialize the checkpoint's epic balance; ledger rows do not replace the saved balance.",
 		  {} }
 	};
 	return connections;

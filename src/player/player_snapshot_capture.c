@@ -176,6 +176,7 @@ bool capture_status(P_char ch, player_snapshot &snapshot, capture_budget &budget
 	ADD_STATUS(gold, GET_GOLD(ch));
 	ADD_STATUS(platinum, GET_PLATINUM(ch));
 	ADD_STATUS(experience, GET_EXP(ch));
+	CHARACTER_MECHANIC_SITE(epics_capture);
 	ADD_STATUS(epics, ch->only.pc->epics);
 	ADD_STATUS(epic_skill_points, ch->only.pc->epic_skill_points);
 	ADD_STATUS(skill_points, ch->only.pc->skillpoints);
@@ -810,6 +811,16 @@ character_mechanics::status_capture_connections()
 		  Access::conditional,
 		  Implementation::connected,
 		  "Status snapshot captures player.spec at the ordinary save checkpoint.",
+		  {} },
+		{ MechanicId::epics_capture,
+		  Relation::capture,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(player_status_field::epics),
+		  {},
+		  Access::conditional,
+		  Implementation::connected,
+		  "Ordinary status checkpoints save the authoritative in-memory epic balance.",
 		  {} }
 	};
 	return connections;

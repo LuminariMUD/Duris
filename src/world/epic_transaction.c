@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "world/epic_transaction.h"
+#include "player/character_mechanics.h"
 
 #include "world/epic.h"
 #include "persistence/persistence_checkpoint.h"
@@ -71,6 +72,7 @@ bool epic_transaction_submit_identified(P_char character, const critical_operati
 				   bytes, context_size);
 		return true;
 	}
+	CHARACTER_MECHANIC_SITE(epics_transaction);
 	balance += delta;
 	const epic_command_result result = { balance, ++character->only.pc->epic_revision, delta };
 	mark_player_dirty_components(GET_PID(character), PLAYER_COMPONENT_STATUS);
@@ -107,4 +109,23 @@ epic_transaction_health epic_transaction_health_copy(void)
 void epic_transaction_reset_for_tests(void)
 {
 	health = {};
+}
+
+std::span<const character_mechanics::MechanicConnection> character_mechanics::epic_connections()
+{
+	static constexpr MechanicId dependencies[] = { MechanicId::epics_capture,
+						       MechanicId::epics_load };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::epics_transaction,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(epic_transaction_submit),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Validate the request, apply its signed delta to memory with funds/overflow guards, mark status dirty, call completion, then queue the ledger record. A ledger rejection is not a refund.",
+		  {} }
+	};
+	return connections;
 }

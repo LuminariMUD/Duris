@@ -14,6 +14,7 @@ from _paths import ROOT, HARNESS_STUBS, extract_function, source
 
 PRELUDE = r'''
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "core/utils.h"
 #include "core/profile.h"
 #include "core/files.h"

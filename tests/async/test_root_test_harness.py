@@ -81,6 +81,11 @@ assert runner.MANUAL_ONLY_TEST_NAMES == {
     "test_playtime_mysql_repository.py",
 }
 discovered = {path.name for path in runner.discover_tests(None)}
+required_mechanics = {
+    "test_character_mechanics.py", "test_character_mechanics_journey.py",
+    "test_specialization_eligibility.py", "test_unspecialize_guard.py",
+}
+assert required_mechanics <= discovered, f"missing mechanics evidence tests: {sorted(required_mechanics - discovered)}"
 assert not (runner.MANUAL_ONLY_TEST_NAMES & discovered)
 assert {
     "test_player_playtime_capture.py", "test_playtime_checkpoint.py",

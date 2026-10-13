@@ -16,6 +16,7 @@
 ;
 
 #include "core/prototypes.h"
+#include "player/character_mechanics.h"
 #include "item/forced_weapon_drop.h"
 #include "item/native_artifact_actions.h"
 #include "core/structs.h"
@@ -13700,8 +13701,28 @@ int unspec_altar(P_obj obj, P_char ch, int cmd, char *arg)
 	do_save_silent(ch, 1); // racial skills require a save.
 	       }*/
 
+	CHARACTER_MECHANIC_SITE(unspecialization_altar);
 	unspecialize(ch, obj);
 	return TRUE;
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::object_action_connections()
+{
+	static constexpr MechanicId dependencies[] = { MechanicId::unspecialization_purchase };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::unspecialization_altar,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(unspec_altar),
+		  dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Object procedure intercepts CMD_PRAY for a living PC whose argument contains altar, before the ordinary command fallback.",
+		  {} }
+	};
+	return connections;
 }
 
 int unmulti_altar(P_obj obj, P_char ch, int cmd, char *arg)

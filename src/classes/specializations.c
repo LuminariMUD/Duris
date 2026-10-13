@@ -782,7 +782,14 @@ character_mechanics::specialization_connections()
 std::span<const character_mechanics::TransitionConnection>
 character_mechanics::specialization_transitions()
 {
+	static constexpr MechanicId selection_entries[] = { MechanicId::specialization_entry };
+	static constexpr MechanicId reversal_entries[] = {
+		MechanicId::unspecialization_entry_coral, MechanicId::unspecialization_entry_blood
+	};
 	static constexpr player_status_field changed[] = { player_status_field::specialization };
+	static constexpr player_status_field reversal_changed[] = {
+		player_status_field::specialization, player_status_field::epics
+	};
 	static constexpr player_status_field retained[] = {
 		player_status_field::class_primary, player_status_field::class_secondary,
 		player_status_field::race,	    player_status_field::level,
@@ -793,10 +800,26 @@ character_mechanics::specialization_transitions()
 	static constexpr MechanicId lifecycle[] = { MechanicId::specialization_refresh,
 						    MechanicId::specialization_capture,
 						    MechanicId::specialization_load };
+	static constexpr player_status_field reversal_retained[] = {
+		player_status_field::class_primary, player_status_field::class_secondary,
+		player_status_field::race,	    player_status_field::level,
+		player_status_field::experience,    player_status_field::copper,
+		player_status_field::silver,	    player_status_field::gold,
+		player_status_field::platinum
+	};
+	static constexpr MechanicId reversal_lifecycle[] = { MechanicId::unspecialization_refresh,
+							     MechanicId::unspecialization_forget,
+							     MechanicId::specialization_capture,
+							     MechanicId::specialization_load,
+							     MechanicId::epics_capture,
+							     MechanicId::epics_load };
 	static const TransitionConnection connections[] = {
-		{ MechanicId::specialization_select, MechanicId::specialization_entry,
-		  TransitionKind::permanent, changed, retained, lifecycle,
-		  "Assign spec before refreshing learned/taught skills. No purchase/async commit or automatic reversal. Ordinary checkpoints save it; unspecialize is a separate route." }
+		{ MechanicId::specialization_select, selection_entries, TransitionKind::permanent,
+		  changed, retained, lifecycle,
+		  "Assign spec before refreshing learned/taught skills. No purchase/async commit or automatic reversal. Ordinary checkpoints save it; unspecialize is a separate route." },
+		{ MechanicId::unspecialization_commit, reversal_entries, TransitionKind::permanent,
+		  reversal_changed, reversal_retained, reversal_lifecycle,
+		  "Debit 10 epics in memory, then clear spec, refresh skills and forget memorized/pending spells before ledger enqueue. Invalid state/funds/submit or refused completion preserve state; ledger rejection does not undo completion. Ordinary checkpoints persist it." }
 	};
 	return connections;
 }
@@ -812,8 +835,11 @@ void unspecialize_committed(P_char ch, bool committed, const epic_command_result
 		return;
 	}
 	send_to_char("Your old habits fall away and you feel ready to learn new ways.\n", ch);
+	CHARACTER_MECHANIC_SITE(unspecialization_commit);
 	ch->player.spec = 0;
+	CHARACTER_MECHANIC_SITE(unspecialization_refresh);
 	update_skills(ch);
+	CHARACTER_MECHANIC_SITE(unspecialization_forget);
 	forget_spells(ch, -1);
 }
 } // namespace
@@ -833,6 +859,7 @@ void unspecialize(P_char ch, P_obj obj)
 	{
 		act("You kneel in front of $p and offer 10 epic points to the Water Goddess.\n",
 		    FALSE, ch, obj, 0, TO_CHAR);
+		CHARACTER_MECHANIC_SITE(unspecialization_purchase);
 		if (!epic_transaction_submit(ch, -10, epic_reason_type::specialization_purchase, 0,
 					     EPIC_COMMAND_REQUIRE_FUNDS,
 					     critical_source_site::command,
@@ -841,4 +868,41 @@ void unspecialize(P_char ch, P_obj obj)
 			send_to_char("The epic transaction service is busy. Please try again.\n",
 				     ch);
 	}
+}
+
+std::span<const character_mechanics::MechanicConnection>
+character_mechanics::unspecialization_connections()
+{
+	static constexpr MechanicId purchase_dependencies[] = {
+		MechanicId::epics_transaction, MechanicId::unspecialization_commit
+	};
+	static constexpr MechanicId commit_dependencies[] = { MechanicId::unspecialization_refresh,
+							      MechanicId::unspecialization_forget,
+							      MechanicId::specialization_capture,
+							      MechanicId::specialization_load,
+							      MechanicId::epics_capture,
+							      MechanicId::epics_load };
+	static const MechanicConnection connections[] = {
+		{ MechanicId::unspecialization_purchase,
+		  Relation::effect,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(unspecialize),
+		  purchase_dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Require an existing spec and 10 epics; submit a -10 purchase with funds required and the native completion callback.",
+		  {} },
+		{ MechanicId::unspecialization_commit,
+		  Relation::mutation,
+		  { OptionKind::shared, 0, 0 },
+		  0,
+		  CHARACTER_MECHANIC_BIND(unspecialize_committed),
+		  commit_dependencies,
+		  Access::conditional,
+		  Implementation::connected,
+		  "Refused completion changes nothing. Accepted completion clears spec and invokes refresh/forgetting; native epic completion is synchronous, before ledger enqueue.",
+		  {} }
+	};
+	return connections;
 }
