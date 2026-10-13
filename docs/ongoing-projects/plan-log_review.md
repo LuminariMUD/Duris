@@ -166,15 +166,14 @@ success message and ensure the change adds no second reward application.
 - [ ] Record the game owner's intended minimum, then align configuration, help,
   and teacher boundary behavior.
 
-The current rule is `epic.skills.minLevel=56.000` in
-[duris.properties](../../lib/duris.properties), read by `epic_skills_min_level()`
-and enforced by `epic_teacher()` in
-[epic_skills.c](../../src/classes/epic_skills.c). Refusal below 56 follows that
-rule. Staff discussion of a lower level is not a selected replacement value.
-Keep 56 until a decision is recorded on #56; this decision need not block the
-other fixes. Update the property/default, relevant help, and
-[CODEBASE.md](../reference/CODEBASE.md#epic-point-and-epic-skill-levels) together
-if the owner chooses a different rule.
+[PR #55](https://github.com/LuminariMUD/Duris/pull/55) selects
+`epic.skills.minLevel=30.000` in [duris.properties](../../lib/duris.properties),
+read by `epic_skills_min_level()` and enforced by `epic_teacher()` in
+[epic_skills.c](../../src/classes/epic_skills.c). Refusal below 30 follows that
+rule. The property, compiled default, [Ship Damage Control reference](../reference/SHIP_GAMEPLAY.md#ship-damage-control),
+and [CODEBASE.md](../reference/CODEBASE.md#epic-point-and-epic-skill-levels) now
+agree. Epic point gain remains separately gated at level 50. The teacher-command
+journey below remains the focused follow-up for this plan.
 
 Prove teacher behavior at minimum minus one, minimum, and minimum plus one with
 otherwise eligible characters and sufficient funds. Refusal must spend nothing;
