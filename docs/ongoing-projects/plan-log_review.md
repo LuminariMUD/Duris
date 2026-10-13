@@ -2,31 +2,40 @@
 
 Tracking issue: [#56 — Production follow-ups from the 2026-10-13 log review](https://github.com/LuminariMUD/Duris/issues/56).
 
-Status: resumed at the owner's request on 2026-10-13 from `c8655bfbd`, on
-`fix/58-56-estale-log-review` (started from `7a2a63447`). #58 qualification continues
-from the saved checkpoint below before the remaining LR work.
-The unchecked items below remain open until their required evidence is recorded.
-Production operations are not part of this local-worktree execution.
+Status: active. LR-01 statistics was squash-merged in
+[PR #66](https://github.com/LuminariMUD/Duris/pull/66) as `8c3f7384a` on 2026-10-13.
+Its historical recovery proposal remains private and unapplied; a source merge
+is not production rollout or historical restoration. LR-02–LR-20 remain open.
+The owner explicitly skipped the unidentified `skeer` term under LR-08.
 
-LR-01 is implemented and locally qualified: 727 regression checks, 75 disposable
-database checks, and 15 site tests passed on its source; the historical recovery
-proposal is prepared and unapplied. [PR #66](https://github.com/LuminariMUD/Duris/pull/66)
-was last verified open, ready for review, and unmerged on `fix/56-statistics-restart`
-at `66dbfc016`. Other LR items remain open. `skeer` is explicitly skipped by owner
-decision under LR-08.
+#58 implementation and local qualification are complete on
+`fix/58-artifact-guild-memory`; it is ready for review. The actual Summon
+Ghasts/PvP, crash, shutdown, copyover/restart, payment rollback and artifact-ordering
+cases pass. The 731-regression gate passes; 76 database legs pass across the full
+run plus eight reruns after one shared fixture-link correction. All 15 site tests
+pass. Detailed evidence and fixture boundaries are in
+[plan-estale.md](plan-estale.md#qualification-update-2026-10-14).
+No additional LR item is completed by that work. Next: publish the #58 review, then continue LR-02. LR-03's level-30 policy was already chosen
+in #55; teacher-command verification remains.
 
-Current continuation: #58 now has a passing full-server Summon Ghasts burst,
-blocked-writer/copyover cancellation, writer recovery, successful copyover and
-clean restart journey. Shared allocation-admission fixes `dfecafbda` and
-`532fe0653` are committed/pushed and each has a passing before/after regression.
-The three crash boundaries, blocked shutdown and real coordinator-cache eviction
-now pass too. Kingdom-payment receipt/rollback qualification is in progress;
-its native and MariaDB matrix passes. The standard journey exposed a copyover
-room-entry use-after-free; the repair passes its focused sanitizer test and awaits
-final full-server qualification. Independent guild-member
-capture fix `15ccfdd56` passes its before/after regression. Remaining #58 cases and the source-audit findings are in
-[the current qualification update](plan-estale.md#qualification-update-2026-10-14).
-These advances do not close another LR item or make #58 review-ready yet.
+## Integration handoff — 2026-10-14
+
+The statistics PR's tested code tip was `66dbfc016`; its later handoff-only
+changes were included in squash commit `8c3f7384a`. The published
+`fix/58-56-estale-log-review` checkpoint is retained. The new #58 review branch
+starts at freshly fetched `origin/master` (`0e27ef1e8`) and replays only the #58
+implementation/qualification commits, excluding the four already-squashed
+statistics commits. Documentation conflicts retain the newer #58 evidence and
+this integration record. No published history is rewritten. The complete server
+source tree equals the qualified checkpoint. The upstream migration and documentation
+integration checks, full-tree formatting and all 15 site tests pass.
+
+Preserve ignored `bin/analysis/lr01-validation/` and `bin/analysis/lr01-recovery/`
+before cleaning build output. Production repairs, rollout, backup/host changes,
+and historical replacement require their specific authorization. The independent
+character-mechanics project in [plan.md](plan.md) belongs to #52 and is not advanced
+by this work. The shared dev game may be used by another worktree; qualification
+here uses isolated worlds and databases.
 
 ## Pause handoff
 

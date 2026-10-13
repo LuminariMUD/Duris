@@ -65,12 +65,12 @@ retained-membership assertion and passes afterward, alongside the existing
 MariaDB and flat-file account-menu deletion cases. This allocation case does
 not run a server or a real database.
 
-## Artifact and guild rewards (qualification in progress)
+## Artifact and guild rewards
 
-Issue #58 implementation and qualification are in progress on
-`fix/58-56-estale-log-review`. Focused checks and the initial full-server journey
-pass; the complete release matrix remains open; [the handoff](../ongoing-projects/plan-estale.md#qualification-update-2026-10-14)
-records remaining work and local logs.
+Issue #58 is locally qualified on `fix/58-artifact-guild-memory`. The
+[qualification record](../ongoing-projects/plan-estale.md#qualification-update-2026-10-14)
+maps the acceptance criteria to tests, records local logs and separates review
+readiness from production rollout.
 
 `python3 tests/async/test_artifact_guild_rewards_runtime.py` links real reward
 capture/application, transaction submission and codec code, with controlled writer
@@ -115,7 +115,7 @@ timer and 85/0 guild totals; health reports three pending histories. Copyover fa
 and the server remains live. Releasing the writer yields +10,800 seconds, 115/1
 and three consistent histories. A subsequent copyover and clean restart preserve
 state without re-awarding. This is registered in the database gate. The recorded
-binary predates the later coordinator allocation fix; final-source gates remain due.
+binary predated the coordinator allocation fix; the final qualification below covers the later repairs.
 
 The journey now also passes crashes before the artifact save, between artifact
 and guild saves, and after a real history COMMIT before completion (a test-only
@@ -152,8 +152,19 @@ captures the latest values without another treasury debit. The optional missing
 garrison table remains compatible. Writer scheduling/receipts are controlled;
 this payment matrix does not boot a full game.
 
-Remaining state-ordering/lifecycle details and complete final-source gates remain open. LR-01's full-suite counts
-above do not qualify these subsequent changes.
+The expanded state-ordering fixture also runs transfer/soul changes, the actual
+staff timer command and artifact-war callback, corpse moves, expiry/removal and
+recreation around feeds. Real SQL drains and the production boot-row decoder
+retain the final state; the domain mirror agrees. Room/inventory movement and
+writer scheduling are fixture boundaries.
+
+Final production-source qualification passed all 731 regressions in 695.94 seconds
+and all six full-server artifact journey variants. The 76-leg database run passed
+68 and found eight harness linker failures for the metadata-log callback; those
+eight passed after the shared weak fixture adapter, as did the expanded artifact
+SQL leg. This is 76 distinct passing legs across the run and reruns, not a claim
+that the original make invocation exited successfully. Full-tree formatting,
+maintained builds and all 15 site tests pass.
 
 ## Recovery placement and room-entry hazards
 
@@ -167,8 +178,10 @@ skips movement hazards and procs for restored players and NPCs.
 under ASan/UBSan. Its room-entry adapter extracts on ordinary movement; before
 the fix the next state write is a heap-use-after-free. With recovery placement,
 five restore cycles preserve the NPC, stock and equipment. File/player call-site
-checks accompany the native test. The new full-server/database gates remain due;
-the native test controls entry effects and does not execute the entire room handler.
+checks accompany the native test. All six full-server artifact/database variants
+then passed on the repaired source. The native test controls entry effects and
+does not execute the entire room handler. `scripts/check_tests_catch.sh
+15ccfdd56 07d3e2835` reports 1/1 passing after and failing before the fix.
 
 ## Crumbling equipment removal
 

@@ -58,7 +58,7 @@ verification; a protected local loopback/socket path is the only plaintext excep
 | Player load | Unique request ID, one PID | One consistent read transaction returning owned typed rows | Required-component, limit, timeout, cancellation, or stale result publishes no character |
 | Player checkpoint | Owner, in capture order on the one writer | One transaction: claim the items the owner holds, then write its rows from memory | Lost connection retries at the head of the queue; any other failure drops the job and marks the owner dirty; nothing waits or refuses |
 | Critical command | Stable 128-bit operation ID plus sorted entity keys, in capture order on the one writer | Inbox, typed domain rows/ledgers, result, and outbox in one transaction | Lost connection or ambiguous commit retries on the writer and rereads a committed result; entity keys stay fenced until the game thread takes the completion |
-| Artifact/guild snapshot (#58 branch; qualification pending) | Current entity capture and its commit receipt, ordered on the same writer | Artifact row/soul plus domain mirror, or the full guild snapshot including both reward totals | Failed admission or terminal write retains dirty state; bounded retry captures current values; an older acknowledgement cannot clear a newer capture |
+| Artifact/guild snapshot (#58 branch; locally qualified) | Current entity capture and its commit receipt, ordered on the same writer | Artifact row/soul plus domain mirror, or the full guild snapshot including both reward totals | Failed admission or terminal write retains dirty state; bounded retry captures current values; an older acknowledgement cannot clear a newer capture |
 | Artifact/guild reward history (#58 branch) | Derived parent/actor operation ID and immutable v2 facts | Inbox, reward outcome/delta ledgers, result and outbox | History failure does not undo live rewards; receipt replay never applies gameplay state |
 | Pending kingdom payment (#58 branch) | Matching guild commit receipt | Current guild and realm snapshots in one transaction; later guild writes keep the pending realm paired | Remains pending until commit; failure retries current values without debiting again; ordinary realm flushes hold the pending row |
 | Item ownership | Item UID (`PRIMARY KEY`), one owner | Claimed by the holder's save; a takeover writes `item_owner_audit` | A load skips a row another owner holds; `logs/log/dupes` records each item a save or load gave up |
@@ -93,7 +93,7 @@ and `guild_outcome_ledger` record captured reward facts. Their revisions order
 history; they do not approve gameplay or reconstruct present totals after later
 spending or timer adjustments. A history receipt alone does not prove that all
 state snapshots committed. Existing schema and committed v1 receipts/outbox remain
-supported. See the [qualification handoff](../ongoing-projects/plan-estale.md#pause-handoff)
+supported. See the [qualification evidence](../ongoing-projects/plan-estale.md#qualification-update-2026-10-14)
 and the pipeline's reconciliation contract before interpreting these tables.
 
 ## External consumers and writers

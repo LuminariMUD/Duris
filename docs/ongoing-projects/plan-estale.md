@@ -2,134 +2,113 @@
 
 Tracking issue: [#58 — Batched epic awards fail with ESTALE](https://github.com/LuminariMUD/Duris/issues/58).
 
-Status: resumed at the owner's request on 2026-10-13 from `c8655bfbd`.
-The working branch is `fix/58-56-estale-log-review`. It holds the reward cutover
-and qualification work; shared admission fixes `dfecafbda` and `532fe0653` were
-committed and pushed separately. LR-01 statistics is qualified separately in
-[PR #66](https://github.com/LuminariMUD/Duris/pull/66). All ES acceptance items
-remain open; the artifact/guild changes are not ready for review or deployment.
+Status: implementation and local qualification complete on 2026-10-14; ready for
+review on `fix/58-artifact-guild-memory`, based on `origin/master` at `0e27ef1e8`.
+No #58 merge, production rollout or compensation has occurred. LR-01 statistics
+was already squash-merged through [PR #66](https://github.com/LuminariMUD/Duris/pull/66)
+as `8c3f7384a`; LR-02–LR-20 remain in [plan-log_review.md](plan-log_review.md).
 
 ## Qualification update (2026-10-14)
 
-Current continuation: the kingdom-payment repair follows `15ccfdd56` and is
-being qualified. The native snapshot matrix and disposable
-MariaDB history/payment leg pass. Admission no longer clears `payment_pending`:
-the existing guild commit receipt settles only its matching realm capture.
-Every later guild save, including member-deletion composition, carries a pending
-realm with it. Failed snapshots retry current guild/realm values without another
-debit. The redundant pending-association list is removed; the realm owns its retry
-state. Flat-file paired-journal behavior is retained.
+Live eligible feeds and guild prestige/construction apply once on the game thread.
+The existing ordered writer saves current entity snapshots; type-9 v2 commands
+record immutable history and never apply rewards on completion/replay. Failed
+snapshot admission or terminal writes retain dirty state and retry fresh captures.
+History retention is bounded at 256 entries with at most eight unqueued retries
+per second. Old committed v1 receipts/outbox remain readable; an uncommitted v1
+command is refused explicitly. No schema migration is required for this cutover.
 
-The payment matrix covers old acknowledgements, later rewards/spending/settings,
-failed admission/allocation, transaction rollback, late resource changes and realm-ID
-reuse. The SQL leg forces an error in the realm update after guild statements,
-proves both roll back, then proves a fresh retry stores the latest values. It also
-checks the existing optional-garrison-table compatibility. Evidence:
-`/tmp/duris-es-payment-before.log`, `/tmp/duris-es-payment.log`, and
-`/tmp/duris-es-payment-db.log`.
+The payment repair keeps `payment_pending` until the matching guild receipt
+confirms COMMIT. Later guild saves and member-deletion transactions carry the
+current pending realm in the same transaction. Failed writes retry without
+another debit. The realm owns retry state; the duplicate pending-ID list is gone.
+Flat-file payments retain their existing shared recovery journal.
 
-Source review also found guild member capture leaving memory partly changed
-when SQL construction throws. Independent commit `15ccfdd56` restores the member
-and frag totals on that path. Its account-deletion test passes under both build
-modes; `scripts/check_tests_catch.sh ebcc7fccf 15ccfdd56` reports **1/1** tests
-pass after and fail before. The commit is pushed.
+| #58 acceptance criterion | Local evidence |
+| --- | --- |
+| Actual clustered gameplay awards | The full-server journey casts Summon Ghasts, records cast/feedback/history timing, kills three boon targets, and observes three live rewards while the writer is held. The original repository probe isolates expected-timer/guild-revision vetoes; the native real-capture test fails before immediate publication. The exact historical cast remains unproven. |
+| Every eligible feed and guild increment; state ordering | Native real reward capture covers same-character and same/different-guild bursts, cumulative construction and mixed rewards. Real artifact stores, timer command, wars callback and corpse/removal APIs run through held snapshots, then actual MariaDB transactions and the boot-row decoder verify final state and mirror agreement. |
+| Capped feed and genuine eligibility | Native capture and SQL history cover below/at/above cap, same-second awards, zero-effect capped success, unworn/missing artifacts, trusted actors, group eligibility and wrong/right/free PvP souls. No blanket ESTALE retry was added. |
+| Stable identity and no repeated benefit | Parent/actor-derived IDs, immutable history replay, actual boon/combat/stone producers, offline return/reconnect, and eviction beyond the real 256-entry completion cache all pass. Full-server crash/restart and PvP cases pass. |
+| Useful bounded diagnostics | Actual reporters retain full opaque IDs plus stage/reason, entity and error metadata. Reconciliation detects mirror/missing-row/identity/history defects without equating history totals to current gameplay state. New history has no old SQL gameplay veto to report. Suppression age remains distinct from operation age. |
+| Regressions, gameplay and historical assessment | The gates and fault cases below pass after documented fixture corrections. The bounded historical disposition below establishes no compensable amount from the reported capped bursts. |
 
-The server, pfile, maintained migration tools, full-tree formatting, SQL async,
-reward producer replay, flat-file artifact/association/kingdom repositories and
-copyover guards passed during this continuation. The reward runtime fixture now
-supplies the new unrelated kingdom callback and passes again. These are focused
-results, not the final release gates.
-
-The standard journey exposed an intermittent copyover crash after its completion
-notice. The kernel instruction address resolves to `transport_service()` reading
-a removed NPC (`/tmp/duris-es-copyover-kernel.log`). Recovery called ordinary
-room entry, which can extract that NPC. The actual buffer restorer reproduces a
-heap-use-after-free under ASan when the entry adapter removes it. File/player and
-buffer recovery use the existing negative-direction placement mode in `07d3e2835`, skipping
-movement hazards/procs. The extended singleton fixture passes on the repair;
-before/draft-after evidence is `/tmp/duris-es-copyover-placement-before.log` and
-`/tmp/duris-es-copyover-placement-draft.log`. The first full-server failure is
-`/tmp/duris-es-payment-gameplay.log`; an unchanged rerun passed, so that rerun alone
-did not settle the defect. Current-source full-server verification remains due.
-Future failures preserve isolated logs under `bin/analysis/artifact-estale/failure-*`.
-
-The first full gate completed **726/731** in 648.19 seconds. Its five failures
-were stale documentation/source assertions, the changed `epic.h` source hash in
-the seed manifest (no payout data changed), and missing copyover fixture adapters.
-All five pass after correction; the singleton and kingdom checks also pass. The
-server rebuild passes. Final regression/database gates are being rerun on the
-updated source. The shared dev game and production were not used.
-
-This checkpoint records the reward cutover and new qualification files after the
-pushed handoff `8cea037d5`. Work is active. No shared-game or production operation was used.
-
-- Reproduced and fixed stale publication in `arti_syncdb_sql()`: an older repair
-  callback could restore a previous timer/owner after a feed or transfer. The
-  callback now checks the existing generation and outstanding dirty state, retains
-  current memory when superseded, and uses ordinary fresh snapshot retries to
-  restore any SQL it changed. State publication runs even if staff disconnects;
-  only notification depends on an online recipient. Native tests pass for later
-  feed/transfer/deletion, unsaved inputs, and disconnect. The normal full-server
-  game-loop-query journey passes with zero main-loop SQL sites. Before evidence:
-  `/tmp/duris-es-sync-before.log`; after evidence: `/tmp/duris-es-snapshots.log`
-  and `/tmp/duris-es-sync-gameplay.log`.
-- Three full-server crash cases pass: before the artifact save; after the first
-  artifact save but before the guild save; and after the first history COMMIT but
-  before its completion. Restart loads exactly the persisted prefix and never
-  re-awards history. The last case uses a small test-only `LD_PRELOAD` interposer
-  around `mysql_real_query`, armed only for a type-9 COMMIT in the private fixture.
-  It holds the writer after the real commit; it changes no production executable.
-  Evidence is `bin/analysis/artifact-estale/gameplay-before_artifact.json`,
-  `gameplay-after_artifact.json`, and `gameplay-after_history.json`, plus matching
-  `/tmp/duris-es-crash-<case>.log` files.
-- The standard Summon Ghasts / blocked writer / copyover / clean restart case also
-  passes again. The fixture uses normal weak NPCs and the existing `offensive off`
-  setting so weapon attacks cannot take a kill while ghasts defer. Its attempted
-  high-HP targets were unsuitable and are no longer part of the fixture.
-- Blocked shutdown exits in **36.65 seconds**, reports the unsaved artifact and
-  guild plus all three distinct operation/parent pairs, and restarts with the old
-  saved state and no new history. `gameplay-shutdown.json` and
-  `/tmp/duris-es-crash-shutdown.log` retain the result. Shutdown assertions read
-  `logs/log/file` directly: the generic bounded log excerpt can omit that file.
-- Shutdown qualification exposed missing diagnostic details: `persistence_alert`
-  deliberately rejects string substitutions. The new transaction/snapshot callers
-  now put controlled stage/reason labels in categories and use numeric fields;
-  opaque IDs retain all 128 bits. The actual reporter, not a variadic mock, now
-  verifies transaction and artifact/guild snapshot diagnostics. Its redaction rule
-  is unchanged. Repository diagnostics use the metadata log worker directly,
-  avoiding game-descriptor access and `logit`'s shared clock on the SQL writer.
-  Before: `/tmp/duris-es-diagnostic-before.log`; after:
-  `/tmp/duris-es-diagnostic.log` and the passing shutdown/MariaDB fixture.
-- `test_reward_producer_replay.py` passes with real boon/combat/stone handlers,
-  coordinator and writer. It completes 276 later operations, exceeding the real
-  256-entry cache, then redelivers the old notifications. Publication and live
-  combat balances stay unchanged; an offline stone recipient publishes once on
-  return. SQL results and final notification/artifact adapters are controlled in
-  this fixture; the live boon and artifact paths have their separate full-server
-  and native proofs.
-- The full-server PvP variant passes. An actual opposing-side death awards 100
-  controlled epics, applies an uncapped +720,000-second feed and guild totals
-  105/1 while its artifact write is held, then commits one child linked to the
-  type-8 combat parent. Save/restart retains the result without another award.
-  `gameplay-pvp.json` and `/tmp/duris-es-pvp.log` retain the evidence. The fixture
-  uses an Orc without Drow magic resistance, valid side-switch/login state, and
-  explicit PvP properties; these setup changes do not alter game mechanics.
+The deterministic native direct-award control covers capped and uncapped bursts;
+the full-server legs exercise actual spell/boon and PvP publication. The state-ordering
+SQL leg controls writer scheduling and receipts, then runs real SQL and reloads
+through the production row decoder. It covers feeds around transfer, soul changes,
+staff extension, war burn, corpse moves, expiry/removal and recreation. It does
+not simulate the full physical inventory/room engine. Those boundaries retain
+existing gameplay checks and have the separate full-server reward/restart legs.
 
 | Full-server boundary | Persisted artifact increment | Guild prestige / construction | Reward histories |
 | --- | ---: | --- | ---: |
 | Crash before the first artifact save | 0 | 85 / 0 | 0 |
 | Crash after the first artifact save, before guild save | 3,600 seconds | 85 / 0 | 0 |
-| Crash after the first history COMMIT, before notification | 3,600 seconds | 95 / 0 | 1 |
+| Crash after first history COMMIT, before notification | 3,600 seconds | 95 / 0 | 1 |
 | Boon burst drained, copied over, then restarted | 10,800 seconds | 115 / 1 | 3 |
 | Blocked bounded shutdown, then restart | 0 | 85 / 0 | 0 |
 | PvP reward drained and restarted | 720,000 seconds | 105 / 1 | 1 |
 
-The database gate now registers the six-case journey first and honors its
-`DURIS_SERVER_BINARY` override. Remaining work: finish current-source copyover,
-kingdom-payment/lifecycle qualification and the remaining state-ordering cases;
-review the full diff; run complete final-source gates; publish the #58 review;
-then continue the remaining #56 items. The prior checkpoint and full acceptance
-matrix below remain the scope; passing these cases does not close the entire issue.
+All six variants passed together on the final production source in the database
+gate. A test-only interposer holds the real history COMMIT before notification.
+Blocked shutdown names unsaved artifact/guild state and every unresolved history
+pair; copyover cancels while the writer is blocked and succeeds after recovery.
+`bin/analysis/artifact-estale/gameplay*.json` retains the private fixture evidence.
+
+Validation and corrections:
+
+- `make test-all -j16 TEST_JOBS=16`: **731/731 passed**, 695.94 seconds.
+  An earlier run had five stale source/documentation/fixture checks; all were
+  corrected before this passing run. The epic seed manifest changed only the
+  `epic.h` source hash, not payout data.
+- `make test-db`: **76 distinct legs**. Its full run passed 68 and exposed eight
+  linker failures for the new metadata-log callback. A shared weak fixture adapter
+  fixes those; all eight reran successfully under disposable MariaDB, plus the
+  expanded artifact/guild SQL leg. The aggregate is 76/76; the original make
+  invocation exited nonzero, and the entire already-passing set was not repeated.
+- Server/development/production builds, `make -C src pfile`, maintained migration
+  tools (`all affects pfile_converter`), and full-tree formatting pass.
+- `npm ci --prefix site && npm test --prefix site`: **15/15 passed**.
+- Writer/coordinator allocation regressions, guild-member capture restoration and
+  copyover lifetime regression each pass after and fail before their repair.
+  `scripts/check_tests_catch.sh` reports 1/1 for each corresponding isolated range.
+
+Qualification also repaired three concrete persistence/lifetime defects: stale
+staff artifact-sync publication, temporary guild-member removal surviving a
+capture exception, and copyover running room-entry effects on restored characters.
+The last was observed as an intermittent full-server crash and reproduced as an
+ASan heap-use-after-free in the actual buffer restorer. Recovery now uses the
+existing placement mode that skips movement hazards/procs. Old acknowledgements
+cannot settle a newer snapshot or a recreated realm. No extra persistence queue
+or generic retry framework was introduced.
+
+The published working checkpoint is preserved on `fix/58-56-estale-log-review`.
+The review branch replays only the #58 code/qualification commits onto current
+master; it does not replay the squash-merged statistics commits. Its complete
+`src/` tree equals the tested checkpoint (`5959df9992b3a0e8f6ca6af2f5d9dbcc191f5597`).
+Only upstream migration/docs/help/news changes accompany the new base. Integration
+checks pass: 18 migration-runner tests, 12 documentation tests, the pipeline contract,
+full-tree formatting and all 15 site tests. No published branch was
+rewritten. The earlier continuation/pause records below are historical and are
+superseded by this section.
+
+Historical compensation assessment: the reported three capped bursts contain
+seven committed parent epic awards, three successful artifact-only children and
+four rejected children. Successful feeds added 8, 123 and 55 seconds, each reaching
+the ten-day cap; this evidence establishes no additional compensable timer value
+or missing guild amount. Rejected transactions leave no child inbox/payload, so
+alert counts and parent awards cannot reconstruct each rejected benefit. Below-cap
+and guild-only loss is reproduced synthetically but is not an attributable recovery
+amount for these historical failures. No compensation is proposed or applied.
+Any later adjustment requires recoverable parent/actor/state/cap evidence and
+specific owner authorization.
+
+Local logs: `/tmp/duris-es-final-test-all.log`, `/tmp/duris-es-final-test-db.log`,
+`/tmp/duris-es-db-fixed-*.log`, `/tmp/duris-es-copyover-placement-catches.log`,
+`/tmp/duris-es-guild-capture-catches.log`, and `/tmp/duris-es-state-ordering*.log`.
+All gameplay/database tests used isolated worlds and disposable schemas. The
+shared dev game and production were not used for this implementation/qualification.
 
 ## Continuation evidence (2026-10-13)
 
@@ -333,7 +312,7 @@ sequence; retries, completion delivery, and history replay must add no rewards.
 
 [ADR 0002](../adr/0002-persistence-reset-memory-is-the-authority.md) and the
 pipeline reference now record the branch's narrowed economy exception for
-epic-derived artifact/guild rewards, with qualification still pending. Other
+epic-derived artifact/guild rewards, now locally qualified for review. Other
 economy transactions retain their current authority and durability contracts.
 
 **Crash contract:** this is asynchronous persistence, not a new durable gameplay
@@ -393,7 +372,7 @@ The exact production cast and rejected comparison remain unverified.
 
 ### ES-01 — Establish executable evidence through gameplay capture
 
-- [ ] Add failing-before tests for the real reward path and identify each old rejection.
+- [x] Add failing-before tests for the real reward path and identify each old rejection.
 
 Extend [test_artifact_guild_transactional_cutover.py](../../tests/async/test_artifact_guild_transactional_cutover.py)
 with a native runtime fixture, or a focused `test_artifact_guild_rewards_runtime.py`
@@ -414,7 +393,7 @@ before-fix case even when the final implementation removes these checks.
 
 ### ES-02 — Apply rewards once in memory and save the actual state
 
-- [ ] Make live application synchronous and remove completion-driven state changes.
+- [x] Make live application synchronous and remove completion-driven state changes.
 
 1. Keep one calculation path in `artifact_guild_state.c`, using the existing
    artifact memory and `Guild` objects. Preserve epic-source modifiers, difficulty
@@ -456,7 +435,7 @@ must not accidentally enable an unsupported backend or change its reward rules.
 
 ### ES-03 — Make type-9 history idempotent and independent of live state
 
-- [ ] Convert the existing command/repository to record captured reward facts only.
+- [x] Convert the existing command/repository to record captured reward facts only.
 
 Use [artifact_guild_command.h](../../src/guild/artifact_guild_command.h) and
 [artifact_guild_command.c](../../src/guild/artifact_guild_command.c) for a versioned
@@ -525,7 +504,7 @@ and compatibility contracts together. Preserve existing history and baselines.
 
 ### ES-04 — Keep diagnostics and reconciliation truthful
 
-- [ ] Separate live application, saved state, history results, and genuine integrity failures.
+- [x] Separate live application, saved state, history results, and genuine integrity failures.
 
 Use bounded fields in existing persistence diagnostics: stage, reason, opaque
 operation/parent IDs, entity kind, counts, relevant non-sensitive values, and
@@ -558,7 +537,7 @@ ADR, and the existing database reference where affected.
 
 ### ES-05 — Prove gameplay, persistence, replay, and restart
 
-- [ ] Pass the matrix below, a real Summon Ghasts journey, and the required local gates.
+- [x] Pass the matrix below, a real Summon Ghasts journey, and the required local gates.
 
 | Case | Required evidence |
 | --- | --- |
@@ -615,7 +594,7 @@ for CI in place of local verification.
 
 ## Rollout, historical impact, and closure
 
-- [ ] Record code/test evidence for all six #58 acceptance criteria before closure.
+- [x] Record code/test evidence for all six #58 acceptance criteria before closure.
 
 The first criterion maps to ES-01 and the Summon Ghasts journey; reward/cap/state
 ordering maps to ES-02 and the matrix; identity/retry/restart maps to ES-03 and
