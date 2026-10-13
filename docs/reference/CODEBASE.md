@@ -390,3 +390,5 @@ race) and stays in memory until saved.
 Player-obtainable gear carries negative `APPLY_COMBAT_PULSE` and `APPLY_SPELL_PULSE` applies
 again, as does the shaman spirit totem (spell pulse -1). Mob-only objects (no-show or
 untakeable procs) keep theirs, as do spells and skills such as berserk and the reaver buffs.
+Existing saved gear retains its saved applies; the restored prototypes affect newly
+created gear. No existing-item migration is required.
