@@ -6,13 +6,19 @@ and recommendations. It does not activate telemetry or change server behavior.
 
 Follow-up work: [GitHub issue #59](https://github.com/LuminariMUD/Duris/issues/59).
 
+**Deployment constraint, confirmed 2026-10-13:** collection, storage, rollups
+and reports must fit on the existing shared host alongside gameplay and player
+saves. Another machine is not available in the near future. A design that needs
+one is not feasible for this deployment. If measurements exceed the host's
+budgets, reduce telemetry scope and cost or leave collection disabled.
+
 **Recommendation: keep the architecture, fix reporting compatibility and
 monitoring of capture failures, then qualify it under representative gameplay
 before enabling continuous collection.** The bounded memory footprint and
 asynchronous writer are sensible for Duris. The main concerns are event volume,
 database work, reporting completeness, and ongoing operational ownership.
-The implementation is feasible, but the full system is not ready to be treated as a working,
-low-cost analytics service merely because its component tests pass.
+Feasibility on this host remains unproven. Passing component tests does not
+establish that the full system is a working, low-cost analytics service.
 
 The most consequential findings are:
 
@@ -475,8 +481,8 @@ queue buys burst time and cannot fix a sustained service deficit.
 Budget one ingest connection plus external analytics connections. Serialize
 external jobs operationally: one connection per tool instance does not prevent
 several operators or schedulers from launching concurrent jobs. A separate
-schema on the same instance would not provide hardware isolation. A separate
-endpoint would require explicit configuration support and qualification.
+schema on the same instance would not provide hardware isolation. Moving work
+to another machine is outside the near-term deployment budget.
 
 ### The outage journal is a small file with recurring synchronization cost
 
@@ -634,7 +640,9 @@ admission/commit rates by kind, producer occupancy/refusals, queue age/depth,
 database work and durable/publication lag. Offline queue timings cannot supply
 those comparisons.
 
-Suggested initial acceptance criteria are **proposals**, not existing guarantees:
+Fitting the complete pipeline on the existing shared host is a required
+acceptance condition. Suggested initial performance criteria are **proposals**,
+not existing guarantees:
 no normal-load admission loss or slot overflow; no sustained queue growth;
 writer and rollup service rates above measured peak input with explicit
 headroom; and no more than 5% deterioration in matched game-pulse and
@@ -657,8 +665,11 @@ enqueue benchmark.
 Retain the queue/worker design while connecting the reporting contracts and
 making capture failures visible. Define the questions before reducing event
 volume, and preserve the distinction between observation and gameplay authority.
-If measured database interference remains excessive, qualify a separate ingest
-endpoint and its operational cost.
+If measured database interference remains excessive, reduce collection detail,
+retention or report frequency while preserving explicit coverage and useful
+report semantics. Requalify that smaller system on the existing host. If it
+still cannot meet gameplay and save budgets, keep telemetry disabled and record
+that the proposed scope is not currently feasible.
 
 ## Evidence and reproducibility
 
