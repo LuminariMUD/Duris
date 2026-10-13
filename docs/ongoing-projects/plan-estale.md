@@ -2,10 +2,14 @@
 
 Tracking issue: [#58 — Batched epic awards fail with ESTALE](https://github.com/LuminariMUD/Duris/issues/58).
 
-Status: queued for implementation on `fix/58-56-estale-log-review`, starting
-from `7a2a63447`. The local development environment is prepared. LR-01 statistics
-is the first implementation slice; artifact/guild implementation and gameplay
-qualification have not started. All acceptance items below remain open.
+Status: partial implementation and qualification continue separately on
+`fix/58-56-estale-log-review`. Its worktree contains unfinished changes; consult
+the [work branch's current handoff](https://github.com/LuminariMUD/Duris/blob/fix/58-56-estale-log-review/docs/ongoing-projects/plan-estale.md)
+and local changes before resuming. LR-01 statistics is delivered separately by
+[PR #66](https://github.com/LuminariMUD/Duris/pull/66); it does not complete any
+artifact/guild acceptance item. All acceptance items below remain open.
+See the [integration handoff](plan-log_review.md#integration-handoff--2026-10-13)
+before reconciling the stacked work branch with `master`.
 Prepared on 2026-10-13 against `master` at `79541e206`, the current issue and its
 two reproduction/trigger comments. Production observations below are the issue's
 reported evidence, not a new inspection of the production database or logs.

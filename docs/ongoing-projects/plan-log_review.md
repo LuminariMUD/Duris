@@ -2,18 +2,45 @@
 
 Tracking issue: [#56 — Production follow-ups from the 2026-10-13 log review](https://github.com/LuminariMUD/Duris/issues/56).
 
-Status: implementation in progress on `fix/58-56-estale-log-review`, starting
-from `7a2a63447`. The unchecked items below remain open until their required
-evidence is recorded. The local development environment is prepared; production
-operations are not part of this local-worktree execution.
+Status: LR-01 source repair and historical assessment are complete in
+[PR #66](https://github.com/LuminariMUD/Duris/pull/66). The remaining work continues
+separately on `fix/58-56-estale-log-review`. Unchecked items remain open until
+their required evidence is recorded; a source merge does not establish rollout.
 
 Current work: LR-01 is implemented and locally qualified: 727 regression checks,
 75 disposable database checks, and 15 site tests pass; the historical recovery
-proposal is prepared. [PR #66](https://github.com/LuminariMUD/Duris/pull/66) is
-open and ready for review on `fix/56-statistics-restart`. Other LR items remain open;
+proposal is prepared and unapplied. Other LR items remain open;
 `skeer` is explicitly skipped by owner decision under LR-08. ES-01 baseline
-reproduction is recorded in [plan-estale.md](plan-estale.md); the artifact/guild
-cutover remains to be implemented.
+reproduction and partial artifact/guild implementation are recorded in the
+[work branch's plan-estale.md](https://github.com/LuminariMUD/Duris/blob/fix/58-56-estale-log-review/docs/ongoing-projects/plan-estale.md).
+That work is not qualified or included in PR #66.
+
+## Integration handoff — 2026-10-13
+
+PR #66 uses a squash merge to satisfy `master`'s linear-history rule. Its tested
+code tip is `66dbfc016e2ac9f59101a75e0b32ac9d7a7542a0`; subsequent handoff edits
+change documentation only. The merge-session evidence is recorded on the PR.
+
+The follow-on worktree `/home/aiwithapex/projects/duris-estale-log-review` contains
+committed descendants of that tip and uncommitted #58 implementation/tests. It
+was intentionally left intact. Before integrating that branch, preserve its
+current changes and recheck its live state. Once it is safely checkpointed and
+clean, rebase only the descendants after `66dbfc016` onto the freshly fetched
+`origin/master`; do not replay the four squashed PR #66 commits. Resolve plan
+collisions by retaining the newer #58 evidence and this integration record.
+Any rewritten published branch needs an exact remote-head lease.
+
+The next implementation step is to finish the existing #58 qualification from
+its worktree's `plan-estale.md`, then submit that work for separate review.
+Continue LR-02–LR-20 afterward; LR-03 already has the level-30 policy from #55
+and still needs teacher-command verification. #56 and #58 remain open.
+The character-mechanics project in [plan.md](plan.md), tracked by #52, is
+independent and was not advanced by this merge session.
+
+Preserve the private LR-01 validation and recovery inputs under the existing
+worktree's ignored `bin/analysis/` directories. Historical replacement and
+production rollout remain separate, specifically authorized operations.
+This session starts no follow-on implementation, deployment, or recovery.
 
 Prepared on 2026-10-13 against `master` at
 `690ff313f3e3f115ef14b58612b0e302de2ce28d`, the current issue body and its scope-transfer
@@ -126,7 +153,7 @@ the statistics matrix and MariaDB flight journey. LR-01 implementation is
 `1e735655e`; `81b8350e1` is the separate flight-test correction. Validation logs
 are retained under the ignored, owner-only `bin/analysis/lr01-validation/`
 directory. No production rollout or historical replacement has been performed.
-Review: [PR #66](https://github.com/LuminariMUD/Duris/pull/66), left unmerged.
+Source integration: [PR #66](https://github.com/LuminariMUD/Duris/pull/66).
 
 **Historical assessment, 2026-10-13 16:47 UTC.** A bounded read-only production
 transaction and a private copy of the original daily file confirm 1,007 existing
