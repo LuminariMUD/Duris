@@ -52,6 +52,41 @@ reports that the changed scheduler regression catches the pre-fix behavior.
 `make test-db` passed all 75 isolated database checks in 459 seconds, including
 the statistics matrix and the MariaDB flight journey.
 
+## Artifact and guild rewards (qualification in progress)
+
+Issue #58 is paused with uncommitted implementation on
+`fix/58-56-estale-log-review`. This is focused evidence, not a completed gameplay
+journey or release qualification; [the handoff](../ongoing-projects/plan-estale.md#pause-handoff)
+records remaining work and local logs.
+
+`python3 tests/async/test_artifact_guild_rewards_runtime.py` links real reward
+capture/application, transaction submission and codec code, with controlled writer
+and unrelated engine services. Three feeds change memory before any completion;
+same-guild awards accumulate prestige and cross construction thresholds. Caps,
+eligibility, invalid combined arithmetic, pending duplicates, late completions and
+bounded history refusal/retry do not revert current state. It passes in the worktree
+and fails against `0ccec836e` at the first pre-completion timer assertion.
+
+`python3 tests/async/test_artifact_guild_snapshots.py` uses real artifact storage,
+guild methods and SQL capture bodies with controlled commit receipts. It passes
+current-state retry, old-acknowledgement exclusion, allocation/admission failures,
+removal/recreation, bounded retry fairness, guild spending/settings and cache
+generation cases. A read started after failed admission could previously publish
+stale data after retry; the added case failed before retry invalidation and now
+passes. These tests do not boot a server or prove SQL restart durability.
+
+`tests/async/with_disposable_mariadb.sh bash tests/async/run_artifact_guild_schema_mysql.sh`
+passed captured-history bursts, immutable replay, preservation of newer gameplay
+snapshots, cap no-op, identity/malformed/missing-parent diagnostics, committed v1
+receipt/outbox delivery, and history after artifact removal. The actual reconciliation
+script accepts legitimate live/history divergence and detects mirror mismatches and
+missing rows. A later fixture-only return-type/header correction awaits rerun.
+
+Real boon/PvP/stone producer deduplication beyond the completion cache, kingdom
+payment interleaving, the Summon Ghasts journey, crash/restart/copyover cases, and
+full final-source builds and test gates remain open. LR-01's full-suite counts
+above do not qualify these subsequent changes.
+
 ## Crumbling equipment removal
 
 PR #51's review reproduced a pre-existing use-after-free when `obj_to_char()`

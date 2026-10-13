@@ -3,6 +3,12 @@
 **Status:** Accepted and implemented
 **Date:** 2026-09-28 (decided); on `master` since 2026-10-02
 
+**2026-10-13 follow-up:** the artifact/guild reward clarification below describes
+the uncommitted #58 implementation on `fix/58-56-estale-log-review`. It is paused
+with full gameplay/restart qualification pending; see the
+[handoff](../ongoing-projects/plan-estale.md#pause-handoff). It is not a production
+rollout or a claim that the original reset included this change.
+
 This records why the server saves the way it does and what was deliberately left out. How
 it works is described where the code is documented:
 [PLAYER_SAVE_PIPELINE.md](../persistence/PLAYER_SAVE_PIPELINE.md) (the one writer, what a
@@ -46,10 +52,12 @@ disagreement, and nothing ever settled one. On a running server that meant:
 
 ## Consequences
 
-- **A crash loses what had not reached the database**, at most one 30-second checkpoint
-  (`dirty-player-checkpoint`): the classic MUD model. A clean shutdown or copyover writes
-  everything first. Shutdown gives the writer 30 seconds and always goes; a copyover that
-  cannot drain in that time is called off.
+- **A crash loses what had not reached the database.** The normal player checkpoint
+  interval is 30 seconds (`dirty-player-checkpoint`); an outage can leave unsaved state
+  older than that. Artifact/guild state uses its own immediate queued snapshots and
+  dirty retries, not the player checkpoint. Clean shutdown and copyover attempt to
+  drain pending work. Shutdown gives the writer 30 seconds and always goes; a copyover
+  that cannot drain in that time is called off.
 - **Nothing is duplicated by a crash.** An item handed over during one stays with
   whichever owner was written last. Money is lost rather than paid twice, because the
   owner it leaves is queued first. On MariaDB a bank delta or `sql` job whose commit
@@ -75,9 +83,17 @@ disagreement, and nothing ever settled one. On a running server that meant:
   lockers, banks and shops are saved without it. It is off unless a server sets
   `REDIS_WORLD_STATE=TRUE` ([CONFIGURATION.md](../operations/CONFIGURATION.md)).
 - The economy still commits in the database where it must (auctions, the collector, item
-  grants, repairs and destruction, boons, artifacts, combat outcomes, zone touches), as
-  critical commands on the one writer. Auctions, shops and the collector take what they
-  trade out of memory at submit and give it back if the command is refused.
+  grants, repairs and destruction, boons, combat outcomes, zone touches), as critical
+  commands on the one writer. Auctions, shops and the collector take what they trade
+  out of memory at submit and give it back if the command is refused.
+- **Epic-derived artifact feeding and guild rewards follow memory authority.** The
+  game thread applies eligible timers, prestige and construction before the next award.
+  Existing ordered snapshots save current state; type-9 commands record captured
+  reward history only. A history failure never reverses the live reward, and committed
+  history never grants it again at boot. Snapshot admission is not durable success:
+  dirty state remains until its corresponding capture commits. A successful history
+  receipt does not certify that every gameplay snapshot committed, and no atomic
+  durability across the epic balance, artifacts, guild and history is promised.
 
 ## What was left out, and why
 

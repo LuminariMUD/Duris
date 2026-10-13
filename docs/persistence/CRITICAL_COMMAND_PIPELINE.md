@@ -7,7 +7,7 @@ revisions, and owned payload bytes. It contains no live game pointers, SQL, Redi
 paths, account names, or character names.
 
 The destination stores command identity and result in an InnoDB inbox, applies the typed
-domain mutation, and writes its outbox record in the same transaction. Outside mini mode,
+domain mutation or history record, and writes its outbox record in the same transaction. Outside mini mode,
 startup requires the verified critical-command schema; failure leaves critical gameplay
 stopped. The legacy item/scalar/large queues, their flat fallback log and the raw SQL
 executor are gone: nothing executes SQL text.
@@ -22,7 +22,7 @@ executor are gone: nothing executes SQL text.
 | Shop trade (flat-file backend only) | the trade and its item custody | player + shopkeeper + items |
 | Boon shop (flat-file backend only) | the purchase | player |
 | PvP/combat outcome | `pkill_event`, `pkill_info`, `combat_outcome`, frag and epic ledgers, frag leaderboard | all participant players |
-| Artifact/guild | domain state and outcome ledgers | actor + artifacts + guild |
+| Artifact/guild | captured reward history only; artifact/guild snapshots save state ([branch status below](#artifact-and-guild-rewards-live-in-memory)) | actor + artifacts + guild |
 | Boon reward | progress and bounded outcomes | player |
 | Zone touch | zone, history, alignment, participants | zone + participants |
 | Epic | `epic_ledger` history only; the balance is the save's ([below](#epic-points-and-frags-live-in-memory)) | player |
@@ -121,7 +121,7 @@ This is the required result at each boundary;
 
 | Boundary | Failure | Required result |
 |---|---|---|
-| Admission | queue full, coordinator unavailable, key fenced | reject before gameplay success; what the command took out of memory is given back |
+| Admission | queue full, coordinator unavailable, key fenced | state-changing commands reject before gameplay success and return what they took from memory; history-only submission failure does not undo a live reward |
 | DB acquire/begin | outage, timeout, pool close | the writer retries at the head of its queue; fences stay |
 | DB apply | deadlock or lock timeout | rollback and retry with the same operation ID |
 | DB commit | connection loss, ambiguous result | reread the inbox by operation ID; never resubmit under a new ID |
@@ -147,6 +147,15 @@ migrations/reconcile_phase02_domains.sh
 Any nonzero mismatch blocks a release. Do not repair with direct SQL: keep the inbox,
 ledger and current-row evidence, find the owning domain, and issue only a guarded
 idempotent command or a reviewed additive repair migration.
+
+For the #58 branch, `reconcile_artifact_guild_outcomes.sh` requires explicit
+`DB_HOST`, `DB_USER`, `DB_PASSWD`, `DB_NAME` and optional `DB_PORT`; it does not load
+the checkout's `.env`. Use disposable/local credentials. Its read-only snapshot
+checks artifact mirror agreement (including missing rows), item-owner references,
+outcome/ledger agreement, committed parent receipts, and parent/actor uniqueness.
+It does not equate reward-ledger totals with current timers or guild balances:
+transfers, timer adjustments and spending can legitimately change current state.
+It cannot observe unsaved memory or prove that the writer drained.
 
 Focused validation is `python3 tests/async/test_critical_command_admission.py`,
 `python3 tests/async/test_critical_command_coordinator.py`,
@@ -179,6 +188,55 @@ rows the coordinator would not queue. Focused validation is
 `python3 tests/async/test_epic_stone_runtime.py` and, on a guarded development database,
 `tests/async/run_epic_transaction_schema_mysql.sh` and
 `tests/async/run_combat_outcome_schema_mysql.sh`.
+
+## Artifact and guild rewards live in memory
+
+This section describes the uncommitted #58 branch implementation, paused on
+2026-10-13. Focused runtime, snapshot and repository tests pass; complete producer,
+gameplay, crash/restart and copyover qualification remains open in
+[plan-estale.md](../ongoing-projects/plan-estale.md#pause-handoff).
+
+For a new source award, the game thread captures eligible artifact feeds and guild
+prestige/construction from current memory, checks the combined bounds, applies
+them immediately, and publishes feedback. It queues artifact rows/souls and guild
+snapshots on the existing writer before submitting type-9 reward history. Later
+transfers, soul changes, removal, spending and settings capture their current
+state independently; history completion never changes that state or repeats feedback.
+
+New history uses payload v2 with parent/actor identity and calculated before/after
+facts. The repository records outcome/delta ledgers with history revisions, not
+gameplay approval revisions. It never compares current SQL timer/soul/guild totals
+to authorize a reward and never writes those gameplay fields. Committed v1 commands
+still decode for receipt replay; an uncommitted v1 command is refused with the named
+`legacy_uncommitted` reason. The existing v1 result/outbox format remains readable,
+and delivery invalidates caches without applying a reward.
+
+The pending history bound is 256 entries. Retries retain the original command
+identity and bytes and attempt at most eight unqueued entries per second. Admission
+or retention failure is reported separately from live success; it never reverses
+the reward. Missing history is not regenerated by granting again. Source publication
+guards own once-only live application; the coordinator's finite completion cache
+is not a permanent deduplication store. Proof of those real producer boundaries
+remains part of the open qualification.
+
+Artifact and guild snapshots retain per-entity dirty metadata and a preallocated
+`sql_write_receipt`. Only acknowledgement of the current capture clears its dirty
+state. Admission, allocation or terminal write failure leaves it dirty; later
+bounded pulses capture the entity's latest state rather than the old reward values.
+Artifact removal retains a tombstone through deletion acknowledgement. Cache
+generations change on mutation and successful resubmission after failed admission,
+so an earlier read cannot become current after those changes.
+
+Domain drains run before coordinator quiescence and again after final copyover
+saves. Failure aborts copyover through the existing resume guard; shutdown reports
+unresolved histories and dirty entities. Executable lifecycle qualification is
+still pending. The new domain health fields exist but are not yet displayed by
+`world persistence`; that integration is an explicit handoff item.
+
+History success and snapshot durability are distinct: either may fail independently.
+A crash may lose unsaved state, and restart loads persisted snapshots without
+re-awarding committed history. This change adds no schema migration, gameplay
+journal or new flat-file reward support; the MySQL capability check remains explicit.
 
 ## Money lives in memory
 

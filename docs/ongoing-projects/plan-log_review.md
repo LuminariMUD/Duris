@@ -7,40 +7,35 @@ Status: paused at the owner's request on 2026-10-13, on
 The unchecked items below remain open until their required evidence is recorded.
 Production operations are not part of this local-worktree execution.
 
-Current work: LR-01 is implemented and locally qualified: 727 regression checks,
-75 disposable database checks, and 15 site tests pass; the historical recovery
-proposal is prepared. [PR #66](https://github.com/LuminariMUD/Duris/pull/66) is
-open and ready for review on `fix/56-statistics-restart`. Other LR items remain open;
-`skeer` is explicitly skipped by owner decision under LR-08. ES-01 baseline
-reproduction is recorded in [plan-estale.md](plan-estale.md); the artifact/guild
-cutover remains to be implemented.
+LR-01 is implemented and locally qualified: 727 regression checks, 75 disposable
+database checks, and 15 site tests passed on its source; the historical recovery
+proposal is prepared and unapplied. [PR #66](https://github.com/LuminariMUD/Duris/pull/66)
+was last verified open, ready for review, and unmerged on `fix/56-statistics-restart`
+at `66dbfc016`. Other LR items remain open. `skeer` is explicitly skipped by owner
+decision under LR-08.
 
 ## Pause handoff
 
-- [PR #66](https://github.com/LuminariMUD/Duris/pull/66) was verified open,
-  ready for review, and unmerged at pause. Its branch is
-  `fix/56-statistics-restart`, head `66dbfc016`. Keep subsequent artifact/guild
-  implementation off that review branch. The active work branch's pre-handoff
-  tip is `7ea3b73f9`; both branches are pushed.
-- LR-01 is the only completed LR item. LR-02–LR-20 remain open, with `skeer`
-  explicitly excluded by owner decision. LR-03 already has the selected
-  level-30 rule from merged PR #55; its remaining work is teacher-command
-  verification, not another policy decision. Issue #56's statistics checkbox,
-  PR reference, and `skeer` disposition have been synchronized.
-- Next implementation is ES-01 onward in [plan-estale.md](plan-estale.md), whose
-  handoff records the probes and source-inspection findings. Then continue the
-  remaining LR items without narrowing their acceptance scope.
-- Completed verification and failure-before evidence are retained under
+- The work branch has uncommitted artifact/guild implementation and tests above
+  `0ccec836e`. [plan-estale.md](plan-estale.md#pause-handoff) records the current
+  code, passing focused checks, known gaps, temporary evidence, and exact next
+  actions. The v2 history/memory/snapshot changes exist but are not fully qualified;
+  no #58 acceptance item is complete. Keep this work off PR #66's review branch.
+- After resumption, finish the #58 matrix and separate review, then continue
+  LR-02–LR-20. LR-03's level-30 rule was selected in merged PR #55; its remaining
+  work is teacher-command verification. The prior issue #56 update records LR-01,
+  PR #66, and the `skeer` disposition; no additional LR completion is claimed.
+- LR-01 validation and failure-before evidence remain under ignored
   `bin/analysis/lr01-validation/`; private recovery inputs and the unapplied
-  proposal are under `bin/analysis/lr01-recovery/`. Both directories are ignored,
-  owner-only local evidence, not tracked deliverables. Preserve them before any
-  clean that removes `bin/`. LR-01 below records commands, counts, commits,
+  proposal are in `bin/analysis/lr01-recovery/`. Preserve them before any cleanup
+  of `bin/`. The LR-01 section below records commands, counts, commits,
   limitations, and recovery preconditions.
-- No task test/build/database process is pending. The shared local/dev game was
-  left running and may be used by another worktree. Tests used isolated authority;
-  no production repair, rollout, restore, backup change, or alert test occurred.
-  Host-owner items remain open and still require access and specific operational
-  authorization; the statistics assessment used read-only production access.
+- No task test/build/disposable-database process is pending. The shared local/dev
+  game and database remain running and may be used by another worktree. Use
+  isolated tests and recheck runtime ownership before operational actions.
+  No production repair, rollout, restore, backup change, or alert test occurred.
+  Host-owner work remains open with its specific access/authorization requirements;
+  the statistics assessment used read-only production access.
 
 Prepared on 2026-10-13 against `master` at
 `690ff313f3e3f115ef14b58612b0e302de2ce28d`, the current issue body and its scope-transfer
@@ -79,9 +74,10 @@ Scope relationships:
 
 Follow [ADR 0002](../adr/0002-persistence-reset-memory-is-the-authority.md): live
 character state is authoritative, saves follow capture order on the existing
-writer, and the game loop does not wait for SQL. The ADR explicitly retains some
-durable economy commands, including boons and artifacts; their existence does
-not authorize adding database approval to ordinary character changes.
+writer, and the game loop does not wait for SQL. The ADR retains some durable
+economy commands, including boons; the #58 branch narrows the artifact/guild
+exception for epic-derived rewards. None of these commands authorizes adding
+database approval to ordinary character changes.
 
 The relevant failures have different causes:
 

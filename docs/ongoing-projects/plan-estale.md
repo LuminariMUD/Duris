@@ -2,75 +2,110 @@
 
 Tracking issue: [#58 — Batched epic awards fail with ESTALE](https://github.com/LuminariMUD/Duris/issues/58).
 
-Status: paused at the owner's request on 2026-10-13, on
-`fix/58-56-estale-log-review`. LR-01 statistics is complete for local review in
-[PR #66](https://github.com/LuminariMUD/Duris/pull/66). Artifact/guild work has
-reproduction evidence and source inspection only; its production source has not
-changed. All ES acceptance items below remain open. Resume only when requested.
-
-Current evidence (2026-10-13): reran the issue's repository probe against private,
-socket-only MariaDB and reproduced artifact/guild burst rejection, capped-target
-rejection, mirror mismatch, and successful receipt replay. The disposable server
-was stopped. `bin/analysis/artifact-estale/probe.py` and `result.txt` retain it.
-A separate native `runtime_before.cpp` in that directory includes the real state
-capture and links transaction submission, identity and codec. With hydration and
-unrelated engine services supplied by the fixture, three uncapped 4-epic boon
-submissions capture the same timer and all target +3,600 seconds; memory advances
-by zero while the writer/completions are held, versus the required +10,800.
-The same fixture links the real Guild constructor and submits awards from three
-same-guild actors starting at 85 prestige. Every capture uses revision zero and
-construction delta zero; memory stays at 85/0 instead of the required 115/1.
-This is real capture-path evidence, not the Summon Ghasts journey or a completed
-ES-01 matrix. Next: promote/extend the fixture into maintained regression coverage,
-then implement the coherent memory/snapshot/history cutover below.
+Status: paused at the owner's request on 2026-10-13. Resume only when requested.
+The working branch is `fix/58-56-estale-log-review`, with implementation changes
+still uncommitted above `0ccec836e`. LR-01 statistics is qualified separately in
+[PR #66](https://github.com/LuminariMUD/Duris/pull/66). All ES acceptance items
+remain open; the artifact/guild changes are not ready for review or deployment.
 
 ## Pause handoff
 
-The pre-handoff branch tip is `7ea3b73f9` (pushed); the working tree was clean
-before this documentation update. No #58 code or maintained-test edit was made
-in the interrupted continuation. There are no outstanding task builds, regression
-runs, or disposable database processes to resume. The shared local/dev game is
-still running; another worktree may use it. Keep future tests isolated and check
-its owner before any operational action.
+The worktree is `/home/aiwithapex/projects/duris-estale-log-review`; its common
+Git directory is `/home/aiwithapex/projects/duris/.git`. Preserve the source,
+reconciliation script, and maintained-test changes shown by `git status`, including
+the four new runtime/snapshot fixture files. They are local work in progress,
+not part of PR #66. This handoff updates documentation only.
 
-Resume from ES-01. Preserve the baseline artifacts under
-`bin/analysis/artifact-estale/`; they are ignored local evidence and would be
-removed by `make clean-all`. `probe.py` reproduces the SQL repository failures
-using a private MariaDB socket; `result.txt` records its completed run. Rebuild
-the native capture fixture against the unchanged pre-cutover source with:
+The last pending snapshot/shutdown/severity test sequence completed successfully.
+No task build, test, or disposable database process remains running. The shared
+local/dev game and database remain running and may be used by another worktree.
+Keep future journeys isolated; check current runtime ownership before operating
+any shared instance. No #58 production operation, deployment, or compensation
+has occurred.
 
-```sh
-g++ -std=c++20 -Wall -Wextra -Werror -pthread \
-  -ffunction-sections -fdata-sections -Isrc -I/usr/include/mysql \
-  bin/analysis/artifact-estale/runtime_before.cpp \
-  src/guild/artifact_guild_transaction.c src/guild/artifact_guild_command.c \
-  src/guild/assocs.c src/core/safe_format.c src/persistence/critical_command.c \
-  tests/async/harness_stubs.cpp -Wl,--gc-sections -lcrypto \
-  -o bin/analysis/artifact-estale/runtime_before
-bin/analysis/artifact-estale/runtime_before
-```
+### Implementation present in the worktree
 
-These assertions characterize the old defect; their passing is not acceptance
-of the required behavior. Promote and extend the fixture before changing the
-reward path. The complete ES-01 matrix and real Summon Ghasts journey remain open.
+- `artifact_guild_command.*`, `artifact_guild_state.*`, and
+  `artifact_guild_transaction.*` implement v2 captured before/after facts,
+  immediate game-thread rewards and feedback, immutable bounded pending history,
+  and completion handling that does not apply rewards. Guild thresholds accumulate
+  from current memory. The MySQL capability gate remains explicit; unused duplicate
+  feeding formulas and the SQL approval/hydration cache are removed.
+- `artifact_guild_repository.*` writes history only. It preserves committed v1
+  receipt and outbox replay, refuses uncommitted v1 commands, and reports named
+  malformed/identity/missing-parent failures. History revisions come from ledger
+  metadata. No schema migration was added.
+- `sql_async.*` adds preallocated commit receipts; `artifact.c`, `assocs.*`, and
+  `sql_player.c` retain dirty current state after snapshot failure, acknowledge only
+  the corresponding capture, and retry fresh snapshots in bounded batches. Guild
+  upserts include both reward totals. Artifact removal retains a deletion tombstone
+  until its write completes. The player writer preserves admission atomicity on
+  allocation failure; coordinator admission distinguishes capacity, allocation,
+  and quiescence errors.
+- `comm.c` and `copyover.c` add domain pulse/drain accounting and unresolved-write
+  reporting. The most recent copyover change adds a final domain drain after final
+  saves; it still needs executable lifecycle qualification.
+- `reconcile_artifact_guild_outcomes.sh` now takes explicit database credentials,
+  checks persisted mirrors/references and internal history consistency in a read-only
+  snapshot, and permits legitimate divergence between reward history and current
+  gameplay totals. Cache generation invalidation also covers a successful retry
+  after earlier snapshot admission failed.
 
-Source inspection immediately before the pause identified these implementation
-constraints; no new API or storage design has been implemented:
+### Verified evidence and limits
 
-- `sql_queue_statements()` reports admission, not durable completion. Existing
-  callbacks return through `sql_async_pulse()`. Dirty-state retries must acknowledge
-  only the captured generation that succeeded, remain visible if submission or
-  completion retention fails, and participate in the existing shutdown drain.
-- Artifact row/bind stores discard queue results; artifact clearing erases memory
-  before queueing deletion. Account/player deletion changes the caches too. Cover
-  these paths so delayed saves cannot resurrect older state. `Guild::save()` and
-  its shared SQL statement builder also serve kingdom payments; retain their
-  full-field and transaction behavior while saving both reward totals.
-- The generic critical repository decodes commands before receipt lookup. Keep
-  committed v1 payload replay decodable and refuse uncommitted legacy commands
-  after lookup; the result/outbox format remains v1. Allocate history revisions
-  from ledger metadata independently of live state. The callback/dirty-state
-  design and ledger-only payload cutover are still implementation work.
+| Check | Result at pause |
+| --- | --- |
+| `test_artifact_guild_rewards_runtime.py` | Passes real capture/application tests for bursts, cumulative guild thresholds, caps, eligibility, invalid arithmetic, pending duplicates, delayed completions, and history refusal/retry/capacity. Against `0ccec836e`, fails at the first pre-completion timer assertion. |
+| `test_artifact_guild_snapshots.py` | Passes real artifact row/soul and guild capture, exact-capture acknowledgement, terminal/admission/allocation failure, current-state retry, removal/recreation, bounded round-robin retries, and cache generation cases. The cache read after failed admission case failed before retry invalidation was added and now passes. SQL completion is controlled by the fixture; this is not a full database/restart journey. |
+| `run_artifact_guild_schema_mysql.sh` under `with_disposable_mariadb.sh` | Passed captured history/replay, newer snapshot preservation, reconciliation mismatch/missing-row detection, cap no-op, malformed/identity/missing-parent failures, committed v1 receipt/outbox, and history after removal. A subsequent fixture-only return-type/header correction still needs a rerun. |
+| Codec and existing focused tests | Passed `test_artifact_guild_transactional_cutover.py`, `test_combat_artifact_persistence.py`, `test_artifact_cache_codec.py`, `test_sql_async.py`, `test_player_save_worker.py`, `test_critical_command_coordinator.py`, `test_epic_in_memory.py`, `test_epic_stone_runtime.py`, `test_kingdom_contract.py`, `test_flatfile_artifact_repository.py`, and `test_flatfile_association_repository.py`. The stone fixture's artifact stub does not prove the full producer. |
+| Latest completed sequence | Snapshot tests, `test_shutdown_writer_bound.py`, and `test_persistence_severity.py` pass. The shutdown test is a source contract, not the required live shutdown/copyover journey. |
+| Server build | `make -C src -j16` passed during implementation, before the latest cache/copyover/diagnostic edits. A build of the final source is still required. |
+| Complete qualification | Not run for #58. LR-01's 727 regression / 75 database / 15 site successes apply to its earlier source only. |
+
+Before-fix evidence is retained under the ignored
+`bin/analysis/artifact-estale/`: `probe.py`, `result.txt`, `runtime_before.cpp`,
+and `runtime-regression-before.log`. The original SQL probe reproduced burst/cap
+rejection, mirror disagreement, and successful receipt replay. The old native
+fixture captured three identical +3,600-second feeds while memory advanced zero,
+and three same-guild awards left memory at 85 prestige / 0 construction instead
+of 115 / 1. Run old-source fixtures only in a detached checkout of `0ccec836e`,
+with separate build outputs; their old APIs do not describe the new worktree.
+The maintained runtime fixture's before-fix failure was a behavior assertion,
+not a compile error.
+
+Additional local logs are temporary files: `/tmp/duris-es-runtime.log`,
+`/tmp/duris-es-sql-async.log`, `/tmp/duris-es-codec.log`,
+`/tmp/duris-es-mysql.log`, `/tmp/duris-es-snapshots.log`,
+`/tmp/duris-es-snapshot-retry-before.log`, and `/tmp/duris-es-build.log`.
+Preserve needed evidence before cleanup; `make clean-all` removes ignored `bin/`
+evidence, and `/tmp` is not durable storage.
+
+### Resume checklist
+
+1. Review the existing diff before editing. Add the missing metadata-only
+   artifact/guild health output to `world persistence`; the new health fields have
+   no command consumer yet. Keep live application, unsaved state, and history
+   success/loss separate.
+2. Prove real boon/PvP/stone publication guards, including reconnect and completion
+   cache eviction. Audit coordinator attachment to an already-completed cached
+   operation: the current history entry can assume a future completion. Do not
+   use that finite cache as permanent live-award deduplication.
+3. Audit every artifact tombstone/removal loop, bulk soul-reset acknowledgement,
+   and the kingdom-payment/member-removal shared SQL builders. Prove kingdom
+   payment interleaving and writer enqueue allocation failure, beyond the existing
+   source contracts. Extend the different-guild positive control.
+4. Qualify final copyover drain and shutdown reporting, then implement/register
+   `test_mysql_artifact_guild_reward_journey.py` with actual producers, Summon
+   Ghasts, SQL snapshot equality after drain, crashes, restart, and copyover.
+   The full matrix below remains required.
+5. Rerun the changed MariaDB fixture, build the final server and maintained tools
+   affected by shared headers, format, run all local gates below, and retain genuine
+   before/after evidence. References and regression notes now describe the branch
+   implementation with its qualification limits; reconcile them with the final code.
+6. Commit/push coherent qualified changes and open a separate #58 PR, leaving it
+   unmerged. Then continue LR-02–LR-20 in [plan-log_review.md](plan-log_review.md).
+   `skeer` stays skipped by owner decision.
 
 Prepared on 2026-10-13 against `master` at `79541e206`, the current issue and its
 two reproduction/trigger comments. Production observations below are the issue's
@@ -97,10 +132,9 @@ existing eligibility, feeding cap, and soul rules. Transfers, spending, expiry,
 and removal must see those updated values. Ordered saves must preserve that
 sequence; retries, completion delivery, and history replay must add no rewards.
 
-[ADR 0002](../adr/0002-persistence-reset-memory-is-the-authority.md) currently
-retains artifacts among the database-committed economy exceptions. This plan
-deliberately narrows that exception for epic-derived artifact/guild rewards;
-implementation must update the ADR and pipeline documentation together. Other
+[ADR 0002](../adr/0002-persistence-reset-memory-is-the-authority.md) and the
+pipeline reference now record the branch's narrowed economy exception for
+epic-derived artifact/guild rewards, with qualification still pending. Other
 economy transactions retain their current authority and durability contracts.
 
 **Crash contract:** this is asynchronous persistence, not a new durable gameplay
@@ -126,9 +160,13 @@ The original planning document was published before implementation began.
 Implementation delivery is through reviewed PRs, with documentation and
 qualification evidence updated alongside the code.
 
-## Evidence and implementation consequences
+## Original evidence and implementation consequences
 
-| Current path | Finding and consequence |
+The table records the pre-cutover behavior at `0ccec836e`; the pause handoff above
+describes what is now implemented. The work sequence below remains the acceptance
+contract, not a claim that every listed change or test is still unstarted.
+
+| Original path | Finding and consequence |
 | --- | --- |
 | [epic_transaction.c](../../src/world/epic_transaction.c), `epic_transaction_submit_identified()` | Changes the balance and calls completion before returning. The writer records history; player saves persist the balance. Preserve this model. |
 | [epic.c](../../src/world/epic.c), `gain_epic()`; [boon.c](../../src/economy/boon.c), `boon_publish_transaction_result()` | Each completed epic boon can submit a child before any preceding child's completion is handled. Ordinary awards are a real burst producer. |
@@ -213,7 +251,7 @@ before-fix case even when the final implementation removes these checks.
 
 Do not revive the unused `epic_feed_artifacts()`/`Guild::add_points_from_epics()`
 formula copies as a second path. Keep backend capability checks explicit:
-`artifact_guild_state_hydrate()` currently returns false without MySQL, and the
+The old `artifact_guild_state_hydrate()` returned false without MySQL, and the
 flat-file critical dispatcher has no type-9 implementation. Removing hydration
 must not accidentally enable an unsupported backend or change its reward rules.
 
@@ -260,7 +298,7 @@ producers:
   gameplay snapshots because it writes no gameplay fields. Queue refusal,
   unavailable history, malformed data, or a missing parent receipt must be
   reported separately from live reward success; none reverses an earned reward.
-- Check snapshot admission errors too: `artifact_row_store()` currently ignores
+- Check snapshot admission errors too: the old `artifact_row_store()` ignored
   the SQL queue result. Surface the failure and retain a dirty indication on the
   affected current artifact/guild state for a bounded later save attempt. Retry
   a freshly captured current snapshot, not the old reward's values. Keep this
@@ -309,9 +347,9 @@ Check artifact mirror agreement including missing rows, outcome/ledger internal
 agreement, identity uniqueness, and referential integrity separately. Do not
 silence a real mismatch by rewriting baselines or replaying rewards. Prove state
 equality after an observed writer drain in disposable tests; distinguish pending
-writes from settled divergence. This script currently reads `.env`; refactor its
-test invocation to use explicit disposable credentials rather than running it
-against the configured game database.
+writes from settled divergence. The old script read `.env`; the branch version
+requires explicit credentials. Keep its tests on disposable storage rather than
+the configured game database.
 
 Keep `artifact_domain_state` and its item ownership reference; removing that
 table or the one-item/one-owner protections is unnecessary. Document the new
