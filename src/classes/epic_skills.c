@@ -464,7 +464,7 @@ int epic_teacher(P_char ch, P_char pl, int cmd, char *arg)
 
 	skl = pReward->value;
 
-	// Epic skills are learned from epic.skills.minLevel (default 56) upward.
+	// Epic skills are learned from epic.skills.minLevel (default 30) upward.
 	if (GET_LEVEL(pl) < epic_skills_min_level())
 	{
 		send_to_char_f(pl, "You must reach level %d before you can learn epic skills.\r\n",

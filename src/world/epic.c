@@ -534,7 +534,7 @@ bool epic_level_can_gain(P_char ch)
 
 int epic_skills_min_level()
 {
-	return BOUNDED(1, static_cast<int>(get_property("epic.skills.minLevel", 56.000)), MAXLVL);
+	return BOUNDED(1, static_cast<int>(get_property("epic.skills.minLevel", 30.000)), MAXLVL);
 }
 
 static bool prepare_epic_award(P_char ch, int type, int data, int amount, bool completing_task,
