@@ -12,10 +12,10 @@ Tracking issue: [#52 — Make character mechanics explicitly connected and mecha
   `origin/master`. Keep all implementation on this worktree. Another session may
   use the shared local/dev game; use isolated harnesses and disposable servers,
   without stopping or modifying that instance or its database/Redis state.
-- Step 1 is active; steps 2–4 remain required. Begin with the compiled identity
-  inventory and owner bindings, then complete Guardian/Bulwark, ordered multiclass,
-  and Revenant traces. Do not treat an inventory as completion of these traces.
-- Separately scoped defect found while connecting specialization eligibility:
+- Step 1 is active; steps 2–4 remain required. The compiled identity foundation
+  below is implemented; next complete Guardian/Bulwark, ordered multiclass, and
+  Revenant traces. Do not treat an inventory as completion of these traces.
+- Separately scoped defect repaired in `86de3042a` while connecting specialization eligibility:
   `is_allowed_race_spec` scanned a 265-row table using a nonexistent sentinel.
   A denied Thri-Kreen Guardian selection reproduced an ASan global-buffer-overflow
   at `specializations.c:452`. Repair uses a range loop over the existing array,
@@ -32,9 +32,69 @@ Tracking issue: [#52 — Make character mechanics explicitly connected and mecha
   runtime gameplay dispatch is needed. Every retained connection still needs
   reverse coverage and appropriately scoped behavior/lifecycle evidence.
 
-No contract, reverse-coverage migration, mutation qualification, or gameplay
-journey is complete yet. The original planning checks at the end of this document
-are historical evidence only.
+### Implemented foundation (partial step 1)
+
+`src/player/character_mechanics.h` and `.c` now expose `IdentityConnections`:
+read-only spans supplied beside the actual tables in `common.c`, `constant.c`,
+and `specializations.c`, and typed references supplied beside the real creation,
+specialization, and multiclass predicates. The explicit aggregator neither
+dispatches gameplay nor stores copied formulas. Table sentinels are retained so
+their removal can be diagnosed. The specialization row type moved to its existing
+header without changing layout or table content.
+
+`python3 tests/async/test_character_mechanics.py` compiles these complete production
+translation units with ASan/UBSan. Its temporary fixture copies the committed
+creation configuration, explicitly disables all three mode switches, and never
+reads `.env`. It reports the native executable identity and separates structural
+binding assertions from named predicate-policy examples. It covers all race names,
+all class names, every spec slot including empty/"Not Used" slots, raw creation
+and ordered-secondary tables, out-of-player-range forms, normal/override example
+results, and malformed-view diagnostics. It does **not** yet establish mechanic
+IDs, grant/effect connections, source mutation detection, or command reachability.
+
+Next implementation work remains:
+
+1. Add the actual mechanic/transition relationships and exact compiled branch
+   bindings, starting with Guardian/Bulwark, multiclass reset/consumers, and
+   Revenant application/reversal/capture/load. Identity views are only their
+   shared input; do not claim step 1 complete from the current validator.
+2. Add the bounded reverse check to the same test entry, enumerate/classify every
+   scoped site, and retain a finite backlog during migration. No broad exclusion
+   or automatic whole-file ownership is acceptable.
+3. Complete all owner groups, registration-write conflict detection, source
+   mutations, and command/lifecycle acceptance in steps 2–4 below. No evidence
+   in the identity harness replaces those tests.
+
+Foundation validation on 2026-10-13:
+
+- `make test-all -j8 TEST_JOBS=8`: **729 passed, 0 failed**, no timeouts or
+  signal exits, in 748.07 seconds. This includes the development/production
+  server builds, area editor/tools/world, focused tests and isolated server
+  journeys. Both new native tests are discovered by the existing runner.
+- `make -C src -j4 pfile` and
+  `make -C migrations/tools -j4 all affects pfile_converter`: passed.
+- `./scripts/format.sh --check` and `git diff --check`: passed.
+- `CHAOS_MUD=TRUE CREATION_ALL_RACES=TRUE CREATION_ALL_CLASSES=TRUE python3
+  tests/async/test_character_mechanics.py`: passed, proving the test establishes
+  its normal baseline even with inherited overrides enabled. Its native binary
+  SHA256 was `6b1bd7abf95b08fd48abf8a3609333cbb1fa6d5b36d650f325428a785b18c3a2`.
+  Native predicate fixtures use client-free compilation and no persistence backend.
+- Local evidence is in `bin/tests/character-mechanics-{native,override-isolation,
+  test-all,pfile,migration-tools}.log`. These logs and binaries are not committed.
+  No database gate was run for these table/predicate bindings; the planned
+  progression/database and new lifecycle qualifications remain open.
+
+An initial comment-stripped identity-token scan found 7,716 candidate source lines,
+saved locally in `bin/tests/character-mechanics-candidate-sites.txt`. Most are in
+classes, core tables/accessors, creation/account, commands, magic, world, combat,
+and special procedures. This is only an investigation starting point: it includes
+definitions/declarations and misses indirect aliases, some form flags, callbacks,
+and lifecycle dependencies. It is **not** reverse coverage or an exemption list.
+The bounded reverse check and its mutation proofs remain to be implemented.
+
+All work remains on the feature branch. The foundation is an intermediate commit,
+not a release; no release tag or ready-for-review PR is appropriate yet. The
+original planning checks at the end of this document are historical evidence only.
 
 ## Outcome, boundaries, and proof
 
@@ -68,13 +128,15 @@ faction, level, equipment, and world requirements remain separate conditions.
 Staff grants and Chaos rewards do not establish ordinary acquisition. Creation
 switches must not become new restrictions on existing characters or progression.
 
-**Non-goals:** changing balance, enabling disabled routes, fixing discovered
-mechanical defects, changing storage formats, or consolidating all character
+**Non-goals for the connection migration:** changing balance, enabling disabled
+routes, fixing discovered mechanical defects, changing storage formats, or consolidating all character
 code. No JSON catalogue, export scripts, service, database registry, plugin
 system, rules language, or generic transition engine. Documentation consumes the
-code structure and test evidence.
+code structure and test evidence. The current implementation request authorizes
+autonomous defect repair; keep such repairs in separately scoped commits, as with
+the specialization bounds fix above.
 
-**Files:** this planning change replaces only this document. Implementation adds
+**Files:** implementation adds
 one small header/source pair under `src/player/`, changes existing mechanic owners,
 and adds focused checks through the existing test runner.
 

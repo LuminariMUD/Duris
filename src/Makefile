@@ -374,6 +374,7 @@ OBJS =  $(SHIP_OBJS) \
 				 account/session_audit_command.o \
 				 account/session_audit_repository.o \
 				 account/session_audit_transaction.o \
+				 player/character_mechanics.o \
 				 player/player_load_repository.o \
 				 player/player_load_topology.o \
 				 player/player_load_pipeline.o \

@@ -26,6 +26,7 @@ using namespace std;
 #include "world/epic.h"
 #include "world/epic_transaction.h"
 #include "classes/specializations.h"
+#include "player/character_mechanics.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
 
@@ -37,12 +38,7 @@ extern const struct race_names race_names_table[];
 #define SPEC_ALL 0
 
 // this is the list of class specialziations blocked for certain races
-struct allowed_race_spec_struct
-{
-	int race;
-	uint m_class;
-	int spec;
-} allowed_race_specs[] =
+allowed_race_spec_struct allowed_race_specs[] =
 {
     /* War Ran Psi Pal APa Cle Mon Dru Sha Sor Nec Con Rog Mer Bar Ber Rea Illu Dre Eth Ave The */
 	/* RACE_HUMAN,     RACE_BARBARIAN, RACE_DROW,      RACE_GREY,      RACE_MOUNTAIN, RACE_DUERGAR,
@@ -458,6 +454,12 @@ bool is_allowed_race_spec(int race, uint m_class, int spec)
 		}
 	}
 	return FALSE;
+}
+
+void character_mechanics::connect_specialization_predicate(IdentityConnections &connections)
+{
+	connections.race_specializations = allowed_race_specs;
+	connections.specialization_allowed = is_allowed_race_spec;
 }
 
 bool append_valid_specs(char *buf, P_char ch)

@@ -12,6 +12,7 @@
 #include "core/prototypes.h"
 #include "item/objmisc.h"
 #include "magic/spells.h"
+#include "player/character_mechanics.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -921,6 +922,13 @@ const struct class_names class_names_table[] = {
 	{ "Dragoon", "&+GDr&+Lago&n&+Gon&n", "Dra", '4' },
 	{ NULL, NULL, NULL, '\0' }
 };
+
+void character_mechanics::connect_identity_names(IdentityConnections &connections)
+{
+	connections.races = race_names_table;
+	connections.classes = class_names_table;
+	connections.specializations = specdata;
+}
 
 flagDef action2_bits[] = { { "COMBAT_NEARBY", "Listens for combat nearby", 1, 0 },
 			   { "NO_LURE", "Not lurable", 1, 0 },

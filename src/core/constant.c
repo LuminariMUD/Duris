@@ -17,6 +17,7 @@
 #include "ships/ships.h"
 #include "magic/spells.h"
 #include "world/vnum.obj.h"
+#include "player/character_mechanics.h"
 
 extern const char *god_list[];
 const char *god_list[] = { "Arih", "Fotenak", "Xanadin", "Tyrus", "Zusuk", "\0" };
@@ -1689,6 +1690,15 @@ const struct restricted_class_row restricted_class_rows[] = {
 
 	{ -1, { 0 } } /* Sentinel */
 };
+
+void character_mechanics::connect_identity_tables(IdentityConnections &connections)
+{
+	connections.creation_roster = playable_races;
+	connections.restricted_roster = restricted_races;
+	connections.race_classes = class_table;
+	connections.restricted_classes = restricted_class_rows;
+	connections.secondary_classes = allowed_secondary_classes;
+}
 
 /* arena 'pre-entry' room, start of arena, end of arena */
 /* start to end should be nothing but arena (inclusive), pre-entry can be anywhere */

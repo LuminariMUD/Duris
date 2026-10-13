@@ -14,6 +14,7 @@
 
 #include "core/prototypes.h"
 #include "account/creation_availability_config.h"
+#include "player/character_mechanics.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -283,4 +284,12 @@ int creation_class_align(int race_id, int class_id)
 		return 2;
 
 	return align;
+}
+
+void character_mechanics::connect_creation_predicates(IdentityConnections &connections)
+{
+	connections.race_enabled = creation_race_enabled;
+	connections.class_enabled = creation_class_enabled;
+	connections.class_alignment = creation_class_align;
+	connections.class_normally_available = creation_class_normally_available;
 }

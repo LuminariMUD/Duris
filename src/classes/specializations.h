@@ -17,6 +17,13 @@
 
 #define GET_SPEC_NAME(cls, spc) (specdata[flag2idx(cls)][spc])
 
+struct allowed_race_spec_struct
+{
+	int race;
+	unsigned int m_class;
+	int spec;
+};
+
 void do_specialize(P_char ch, char *argument, int cmd);
 string single_spec_list(int race, int cls);
 void unspecialize(P_char ch, P_obj obj);

@@ -32,6 +32,7 @@ using namespace std;
 #include "cmd/interp.h"
 #include "item/item_uid_allocator.h"
 #include "core/utility.h"
+#include "player/character_mechanics.h"
 #include "core/utils.h"
 #include "guild/assocs.h"
 #include "economy/auction_houses.h"
@@ -2021,6 +2022,11 @@ bool can_char_multi_to_class(P_char ch, int m_class)
 	}
 
 	return FALSE;
+}
+
+void character_mechanics::connect_multiclass_predicate(IdentityConnections &connections)
+{
+	connections.secondary_allowed = can_char_multi_to_class;
 }
 
 int coin_type(char *s)
