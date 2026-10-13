@@ -35,6 +35,7 @@ int main()
     combat_outcome_payload payload = {};
     payload.victim_pid = 22;
     payload.room_vnum = 101;
+    payload.killer_allies = 5;
     memcpy(payload.room_name.data(), "A bounded room", 14);
     payload.participant_count = 2;
     payload.participants[0] = participant(11, combat_participant_role::killer);
@@ -53,6 +54,15 @@ int main()
     combat_outcome_payload decoded = {};
     assert(combat_outcome_command_decode_payload(command, &decoded));
     assert(decoded.participant_count == 2);
+    assert(decoded.killer_allies == 5);
+    critical_command legacy = command;
+    legacy.payload_version = 1;
+    legacy.payload.resize(legacy.payload.size() - sizeof(uint32_t));
+    assert(combat_outcome_command_decode_payload(legacy, &decoded));
+    assert(decoded.killer_allies == 0);
+    legacy.payload_version = COMBAT_OUTCOME_PAYLOAD_VERSION;
+    assert(!combat_outcome_command_decode_payload(legacy, &decoded));
+    assert(combat_outcome_command_decode_payload(command, &decoded));
     assert(decoded.participants[0].epic_delta == 500);
 
     critical_command tampered = command;

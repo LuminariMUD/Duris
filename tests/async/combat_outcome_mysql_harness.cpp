@@ -123,6 +123,7 @@ int main()
 	combat_outcome_payload payload = {};
 	payload.victim_pid = VICTIM_PID;
 	payload.room_vnum = 1234;
+	payload.killer_allies = 5;
 	snprintf(payload.room_name.data(), payload.room_name.size(), "%s", "Combat Harness Room");
 	payload.participant_count = 2;
 	payload.participants[0] = participant(KILLER_PID, combat_participant_role::killer);
@@ -174,6 +175,9 @@ int main()
 	assert(critical_command_repository_apply(db, second).outcome ==
 	       critical_apply_outcome::applied);
 	assert(scalar(db, "SELECT COUNT(*) FROM combat_outcome WHERE victim_pid=" + victim) == 2);
+	assert(scalar(db,
+		      "SELECT COUNT(*) FROM combat_outcome WHERE killer_allies=5 AND victim_pid=" +
+			      victim) == 2);
 	assert(scalar(db, "SELECT frags_after FROM combat_frag_ledger WHERE pid=" + killer +
 				  " AND frag_revision=2") == 400);
 	assert(scalar(db, "SELECT balance_after FROM epic_ledger WHERE pid=" + killer +

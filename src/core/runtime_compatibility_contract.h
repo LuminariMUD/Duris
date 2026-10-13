@@ -72,9 +72,9 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'world_quest_accomplished','zone_story_quest_state','zone_touch_outcome',"
 	"'zone_touch_outcome_participant','zone_touches','zone_trophy','zones'";
 constexpr const char *RUNTIME_MYSQL8_METADATA_FINGERPRINT =
-	"2dc3f72dafa2be62cb7fb0006cf8ef7132cf618a054465724c1c1fdf04e76be5";
+	"c5508712a74ade2cfd1bd34e36c050ff30a350a1549d9e291c46b9c95944bf09";
 constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
-	"e779842e03e3c82fe6d22015027393571f42cf087eb3b06aca4f391664296b70";
+	"e0d811dab0125be50a148689dd4e2924ec1301542865c713057bd8143238c35d";
 /* Includes the six telemetry stores introduced by migration 0014, the two
  * rollup stores introduced by migration 0017, the five Collector authority
  * stores introduced by migration 0018, corpse catalog authority introduced by
@@ -95,15 +95,16 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * immutable account identity and staff status to session audit outcomes. Migration 0038
  * adds the learned flight stops mask to player status. Migration 0039 adds
  * level_cap.level_good and level_evil, the levels unlocked by each side.
+ * Migration 0040 records the killer-side ally count on combat outcomes.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0039_level_cap_sides";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 39;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0040_combat_outcome_allies";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 40;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"4c343e649e77e70cf9cf66fcaaca714e35b2f1c0ed0f9922f988a947c4a78f3e";
+	"a773ccf7be009953a432bec85132313cd372424720465616738e419588e7b05e";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"a9cbde7decfc928629dc2a88baead64305c55a67b919b2dbe5ce3c20d0d3d652";
+	"da0f8d40b37af4333c56bfd930babd20cd06e745b480c548dc9fb48859d7cffa";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"308405aa069bbac027a98d66c94e286732b3a351f3f9095a32332379ffa8b635";
+	"dd995ce9e89ed15e8299c2e705fdf9647d1ada360abfcd9d57e535fa80d98106";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";

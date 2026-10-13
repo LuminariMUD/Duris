@@ -14,7 +14,6 @@
 
 #include "persistence/maintenance_repository.h"
 
-#include "combat/combat_outcome_command.h"
 #include "combat/frag_cap_config.h"
 #include "core/defines.h"
 #include "persistence/persistence_observability.h"
@@ -353,8 +352,8 @@ bool query_first_row(MYSQL *connection, const std::string &sql, std::vector<std:
 // Once next_update has passed, the first frag since then by the side with more total frags
 // (by either side while the totals are level), of a victim at most unlock_victim_levels_below
 // the level open to all, unlocks one more level for that side if the kill's base frag share
-// met unlock_minimum_share_points (COMBAT_PARTICIPANT_CAP_SHARE, set when the kill was
-// recorded), so a large group cannot unlock by ganging up on one victim. A level
+// meets the current unlock_minimum_share_points, using the recorded ally count so a
+// large group cannot unlock by ganging up on one victim. A level
 // that opens a spell circle (see get_max_circle()) or reaches the maximum opens to every
 // side instead. The next unlock waits unlock_timer_days from this one.
 maintenance_result execute_level_cap(MYSQL *connection, const maintenance_request &request)
@@ -413,11 +412,11 @@ maintenance_result execute_level_cap(MYSQL *connection, const maintenance_reques
 		    "SELECT f.racewar,UNIX_TIMESTAMP(o.created_at) FROM combat_outcome o "
 		    "JOIN pkill_info v ON v.event_id=o.pkill_event_id AND v.pid=o.victim_pid "
 		    "JOIN combat_outcome_participant p ON p.operation_id=o.operation_id "
-		    "AND p.frag_delta>0 AND (p.flags&" +
-			    std::to_string(COMBAT_PARTICIPANT_CAP_SHARE) +
-			    ")<>0 JOIN frag_leaderboard f ON f.pid=p.pid "
-			    "WHERE o.created_at>=FROM_UNIXTIME(" +
-			    std::to_string(next_update) + ") AND v.level>=" +
+		    "AND p.frag_delta>0 JOIN frag_leaderboard f ON f.pid=p.pid "
+		    "WHERE o.killer_allies>0 AND o.killer_allies<=" +
+			    std::to_string(100 / config->unlock_minimum_share_points) +
+			    " AND o.created_at>=FROM_UNIXTIME(" + std::to_string(next_update) +
+			    ") AND v.level>=" +
 			    std::to_string(open_level - config->unlock_victim_levels_below) +
 			    " AND f.racewar IN (" + leaders +
 			    ") ORDER BY o.created_at,o.operation_id LIMIT 1",

@@ -3,10 +3,11 @@
 
 The maintenance job with the shipped lib/frag_cap.cfg, from a wipe: level 30 open to all
 and no timer. Frags of victims more than 5 levels below the level open to all unlock
-nothing. Neither do kills recorded without a base frag share of at least 0.20 (the
-COMBAT_PARTICIPANT_CAP_SHARE flag), however many group members gained, nor flagged kills
-that gained nothing; a flagged kill unlocks even when one gain is as small as 0.10. With
-the totals level, the first frag unlocks 31, a spell circle level, for every side, and starts the 3-day timer from that unlock. A frag before the timer ends does
+nothing. Neither do kills with unknown ally counts, base shares below the current
+threshold, or no frag gain. Eligibility uses the recorded ally count, not the modified
+individual gain, and follows configuration changes while a kill is pending. With the
+totals level, the first qualifying frag unlocks 31 for every side and starts the
+three-day timer. A frag before the timer ends does
 nothing. After it, only the side with more total frags unlocks: the other side's and the
 undead's frags are passed over, and the leader's next frag unlocks one level for that side
 alone. A level that opens a spell circle opens to every side, and 56 ends it. Frags
@@ -27,7 +28,6 @@ ROOT = Path(__file__).resolve().parents[2]
 DAY = 86400
 WIPE = 1_800_000_000
 GOOD, EVIL, UNDEAD, GOOD_TWO = 1, 2, 3, 4  # frag_leaderboard pids, racewar 1, 2, 3, 1
-CAP_SHARE = 8  # COMBAT_PARTICIPANT_CAP_SHARE in src/combat/combat_outcome_command.h
 
 
 def main():
@@ -92,9 +92,7 @@ def main():
 
         kills = iter(range(1, 1000))
 
-        def kill(at, killer, victim, victim_level, gain=100, cap_share=True):
-            # The game sets the flag when 1.00 frag over the killer's side in the room is at
-            # least unlock.minimum.share.points.
+        def kill(at, killer, victim, victim_level, gain=100, allies=5):
             event = next(kills)
             operation = f"UNHEX('{event:032x}')"
             sql(f"""
@@ -104,12 +102,12 @@ INSERT INTO critical_operation_inbox (operation_id, command_hash, keys_hash, com
 INSERT INTO pkill_info (event_id, pid, level, pk_type, equip)
   VALUES ({event}, {victim}, {victim_level}, 'VICTIM', '');
 INSERT INTO combat_outcome (operation_id, pkill_event_id, victim_pid, room_vnum,
-  participant_count, created_at) VALUES ({operation}, {event}, {victim}, 0, 2,
-  FROM_UNIXTIME({at}));
+  participant_count, killer_allies, created_at) VALUES ({operation}, {event}, {victim}, 0, 2,
+  {allies}, FROM_UNIXTIME({at}));
 INSERT INTO combat_outcome_participant (operation_id, participant_index, pid, role, flags,
   frag_delta, epic_delta, wallet_delta_copper, frag_after, frag_revision, epic_revision,
   wallet_revision, bank_revision) VALUES
-  ({operation}, 0, {killer}, 1, {CAP_SHARE if cap_share else 0}, {gain}, 0, 0, {gain},
+  ({operation}, 0, {killer}, 1, 0, {gain}, 0, 0, {gain},
    1, 0, 0, 0),
   ({operation}, 1, {victim}, 3, 0, {-gain}, 0, 0, {-gain}, 1, 0, 0, 0);
 """)
@@ -127,12 +125,14 @@ UPDATE level_cap SET most_frags=0, racewar_leader=0, level=30, level_good=0, lev
         # 24 is more than 5 levels below the 30 open to all.
         kill(WIPE + 100, GOOD, EVIL, 24)
         assert job(WIPE + 150) == 'complete 0', 'a low-level victim unlocked a level'
-        kill(WIPE + 160, GOOD, EVIL, 30, cap_share=False)
+        kill(WIPE + 160, GOOD, EVIL, 30, allies=0)
         assert job(WIPE + 170) == 'complete 0', 'a kill without the base share unlocked'
-        kill(WIPE + 172, GOOD, EVIL, 30, gain=0)
+        kill(WIPE + 171, GOOD, EVIL, 30, allies=6)
+        assert job(WIPE + 172) == 'complete 0', 'six allies unlocked at the five-ally limit'
+        kill(WIPE + 173, GOOD, EVIL, 30, gain=0)
         assert job(WIPE + 175) == 'complete 0', 'a kill that gained nothing unlocked'
         # Twenty winners at 0.05 each: 1.00 frag over 20 is below the 0.20 base share.
-        operation = kill(WIPE + 180, GOOD, EVIL, 30, gain=5, cap_share=False)
+        operation = kill(WIPE + 180, GOOD, EVIL, 30, gain=5, allies=20)
         for index in range(2, 21):
             pid = 100 + index
             sql(f"INSERT INTO frag_leaderboard "
@@ -215,6 +215,40 @@ UPDATE level_cap SET most_frags=0, racewar_leader=0, level=30, level_good=0, lev
             assert job(later + 1, no_timer) == 'complete 1 2 41 1'
             assert job(later + 2, no_timer) == 'complete 0', 'one frag unlocked twice'
         print('[PASS] with no timer, one frag unlocks one level', flush=True)
+
+        # A pending five-allies kill becomes ineligible when raised from 20 to 25,
+        # then eligible again when lowered. The stored fact stays unchanged.
+        with tempfile.TemporaryDirectory() as threshold_root:
+            cfg = Path(threshold_root) / 'lib/frag_cap.cfg'
+            cfg.parent.mkdir()
+            later += DAY
+            sql('UPDATE level_cap SET level=40, level_good=0, level_evil=0, '
+                f'next_update=FROM_UNIXTIME({later})')
+            pending = kill(later + 1, EVIL, GOOD, 40, gain=10, allies=5)
+            for threshold, expected in ((25, 'complete 0'), (20, 'complete 1 2 41 1')):
+                cfg.write_text(config.replace('unlock.minimum.share.points=20',
+                                               f'unlock.minimum.share.points={threshold}'))
+                assert job(later + 2, threshold_root) == expected
+            assert sql(f'SELECT killer_allies FROM combat_outcome WHERE operation_id={pending}') == '5'
+            # Integer thresholds compare without rounding: 3*33 <=100, 3*34 >100.
+            later += 4 * DAY
+            sql('UPDATE level_cap SET level=40, level_good=0, level_evil=0, '
+                f'next_update=FROM_UNIXTIME({later})')
+            kill(later + 1, EVIL, GOOD, 40, allies=3)
+            for threshold, expected in ((34, 'complete 0'), (33, 'complete 1 2 41 1')):
+                cfg.write_text(config.replace('unlock.minimum.share.points=20',
+                                               f'unlock.minimum.share.points={threshold}'))
+                assert job(later + 2, threshold_root) == expected
+        print('[PASS] pending kills follow changed thresholds without rounding', flush=True)
+
+        # Reapplying the additive migration preserves the captured facts.
+        migration = (ROOT / 'migrations/immutable/0040_combat_outcome_allies.sql').read_text()
+        before = sql('SELECT HEX(operation_id),killer_allies FROM combat_outcome ORDER BY operation_id')
+        sql(migration)
+        sql(migration)
+        assert sql('SELECT HEX(operation_id),killer_allies FROM combat_outcome ORDER BY operation_id') == before
+        print('[PASS] ally-count migration is rerunnable and preserves history', flush=True)
+
     finally:
         sql('DROP DATABASE ' + database, False)
 

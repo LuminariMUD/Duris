@@ -90,8 +90,9 @@ for token in (
     "FROM level_cap ORDER BY id LIMIT 1 FOR UPDATE",
     "request.values[0] < strtoll(row[4].c_str(), nullptr, 10)",
     "COALESCE(SUM(total_frags),0) FROM frag_leaderboard",
-    "p.frag_delta>0 AND (p.flags&",
-    "COMBAT_PARTICIPANT_CAP_SHARE",
+    "p.frag_delta>0",
+    "o.killer_allies>0 AND o.killer_allies<=",
+    "100 / config->unlock_minimum_share_points",
     "v.level>=",
     "unlock_victim_levels_below",
     "ORDER BY o.created_at,o.operation_id LIMIT 1",
@@ -123,18 +124,16 @@ for token in ("get_level_cap_info(&open_level, &good_level, &evil_level",
 assert "SELECT 'total', racewar, SUM(total_frags)" in report_cache
 assert "frag_cap_config" not in redis
 
-# The kill records whether its base share (1.00 frag over the killer's side in the room,
-# before level modifiers) met the minimum, compared without rounding; the job reads the flag.
+# Record the unmodified denominator, including ungrouped allies. The maintenance
+# query applies today's threshold; the kill capture must not freeze it.
 command = (SRC / "combat_outcome_command.h").read_text()
-assert "COMBAT_PARTICIPANT_CAP_SHARE = UINT8_C(1) << 3" in command
+assert "uint32_t killer_allies;" in command
 fight = (SRC / "fight.c").read_text()
 award = fight[fight.index("static bool submit_pvp_outcome("):]
 award = award[:award.index("\n}\n")]
-for token in ("allies * frag_cap_config_get()->unlock_minimum_share_points <= 100",
-              "entry->flags |= COMBAT_PARTICIPANT_CAP_SHARE"):
-    assert token in award, token
-assert award.index("float gain = 100.0F / allies") < award.index("frag.evil.penalty")
-assert "CAP_SHARE = 8" in (ROOT / "tests/async/run_level_cap_mysql.py").read_text()
+assert "payload.killer_allies = static_cast<uint32_t>(allies);" in award
+assert "unlock_minimum_share_points" not in award
+assert award.index("payload.killer_allies =") < award.index("frag.evil.penalty")
 for retired in ("unlock.minimum.frag.points", "unlock_minimum_frag_points"):
     assert retired not in config + header + impl + maintenance + report_cache, retired
 

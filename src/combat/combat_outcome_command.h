@@ -21,7 +21,7 @@
 #include <array>
 #include <cstdint>
 
-constexpr uint16_t COMBAT_OUTCOME_PAYLOAD_VERSION = 1;
+constexpr uint16_t COMBAT_OUTCOME_PAYLOAD_VERSION = 2;
 constexpr size_t COMBAT_OUTCOME_MAX_PARTICIPANTS = 15;
 constexpr size_t COMBAT_OUTCOME_ROOM_NAME_MAX_BYTES = 96;
 constexpr size_t COMBAT_OUTCOME_DESCRIPTION_MAX_BYTES = 128;
@@ -41,9 +41,6 @@ enum combat_participant_flag : uint8_t
 	COMBAT_PARTICIPANT_IN_ROOM = UINT8_C(1) << 0,
 	COMBAT_PARTICIPANT_LEADER = UINT8_C(1) << 1,
 	COMBAT_PARTICIPANT_SPILL_BLOOD = UINT8_C(1) << 2,
-	// The kill's base frag share (1.00 frag over the killer's side in the room) met
-	// unlock.minimum.share.points, so a frag gain can unlock a level cap.
-	COMBAT_PARTICIPANT_CAP_SHARE = UINT8_C(1) << 3,
 };
 
 struct combat_outcome_participant
@@ -67,6 +64,8 @@ struct combat_outcome_participant
 struct combat_outcome_payload
 {
 	uint32_t victim_pid;
+	// Same-side mortals in the killer's room; 0 means unknown or no frag award.
+	uint32_t killer_allies;
 	int32_t room_vnum;
 	int64_t gameplay_read_occurred_at;
 	uint64_t gameplay_read_token;
