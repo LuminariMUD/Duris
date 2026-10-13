@@ -9,7 +9,8 @@ operations are not part of this local-worktree execution.
 
 Current work: LR-01 is implemented and locally qualified: 727 regression checks,
 75 disposable database checks, and 15 site tests pass; the historical recovery
-proposal is prepared. PR publication is next. Other LR items remain open;
+proposal is prepared. [PR #66](https://github.com/LuminariMUD/Duris/pull/66) is
+open and ready for review on `fix/56-statistics-restart`. Other LR items remain open;
 `skeer` is explicitly skipped by owner decision under LR-08. ES-01 baseline
 reproduction is recorded in [plan-estale.md](plan-estale.md); the artifact/guild
 cutover remains to be implemented.
@@ -125,6 +126,7 @@ the statistics matrix and MariaDB flight journey. LR-01 implementation is
 `1e735655e`; `81b8350e1` is the separate flight-test correction. Validation logs
 are retained under the ignored, owner-only `bin/analysis/lr01-validation/`
 directory. No production rollout or historical replacement has been performed.
+Review: [PR #66](https://github.com/LuminariMUD/Duris/pull/66), left unmerged.
 
 **Historical assessment, 2026-10-13 16:47 UTC.** A bounded read-only production
 transaction and a private copy of the original daily file confirm 1,007 existing
