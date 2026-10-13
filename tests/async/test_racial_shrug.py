@@ -27,6 +27,7 @@ prelude = r'''
 #include "world/properties.c"
 #include "magic/spells.h"
 #include "classes/necromancy.h"
+#include "player/character_mechanics.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>

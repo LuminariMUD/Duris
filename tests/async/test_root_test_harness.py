@@ -57,6 +57,7 @@ expected_resource_intensive = {
     "test_account_recovery_journey.py",
     "test_connection_limit_journey.py",
     "test_creation_prompt_journey.py",
+    "test_character_mechanics_journey.py",
     "test_game_loop_session_journey.py",
     "test_area_coin_pickup.py",
     "test_flatfile_auction_coin_put_journey.py",
@@ -93,6 +94,7 @@ sample_tests = [
     Path("test_mysql_combat_journey.py"),
     Path("test_information_cache_journey.py"),
     Path("test_creation_prompt_journey.py"),
+    Path("test_character_mechanics_journey.py"),
 ]
 parallel_tests, resource_intensive_tests = runner.partition_tests(sample_tests)
 assert parallel_tests == [Path("test_fast.py")]

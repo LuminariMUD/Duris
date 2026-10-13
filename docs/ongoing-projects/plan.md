@@ -94,7 +94,79 @@ historical checkpoint below. Step 1, all multiclass/Revenant traces, and steps 2
 are still incomplete. The earlier full gate has not been rerun for these new
 descriptors/tests; the final completion gate remains required.
 
-Entry-route investigation for the next slice:
+### Specialization entry/persistence work in progress
+
+The planned `test_character_mechanics_journey.py` is now implemented and its
+focused run passes. It reuses the existing verified flat-file server builder,
+full-world setup, clients, and disposable authority. It creates a mortal Human
+Warrior through Telnet, uses staff-supplied boundary levels and a transfer to the
+hall adjoining the loaded teacher Arian, then exercises mortal specialization,
+real skill refresh, Bulwark 40/41 visibility, save/relog and restart. The existing
+flat-file inspector now exposes primary/secondary class, spec, race and nonzero
+skill rows so persistence assertions observe saved state rather than score text.
+
+This is an explicit handler/lifecycle fixture: staff setup does not prove travel
+from a hometown or real experience/side-cap progression. As in existing lifecycle
+journeys, the private fixture shortens `camp.timer` from 9 to 1; mortal `quit`
+dispatches to camping and the original duration exceeded the observation window.
+The innate list deliberately shows Bulwark as locked at level 40, so the journey
+asserts that label and actual dispatch denial, then the passive response at 41.
+No production mechanic
+has been changed in this slice. Run evidence is local at
+`bin/tests/character-mechanics-journey.log`. It passes missing/wrong teacher,
+level-29, wrong-race/spec, multiclass, invalid spec-name and repeated-selection
+denials; selects Guardian at 30; verifies Guard and Shield Punch at learned 40 /
+taught 100 in the actual saved snapshot; observes Bulwark denial at 40 and passive
+dispatch at 41; and preserves the spec/skills through relog and restart. It also
+executes the repaired class-None/secondary-None setters through the real command
+path. The verified flat-file binary SHA256 is
+`0e31e606bce06d776e7b02340bdef24ac75c4e27b243e297a521c28c6fe89c7b`.
+The new journey is assigned to the existing
+runner's resource-intensive phase rather than competing with native compiles.
+After this baseline is verified, connect the actual command registration,
+eligibility/mutation/refresh and capture/load owners to the compiled contract.
+
+A separate repair, committed and pushed as `ec6672d19`, was required while preparing identity-denial fixtures:
+`ac_idx2flagCopy` shifted by -1 for the class table's `None` entry, reproduced by
+the extended `test_setbit_flag_bits.py`. Following the primary-class update into
+`SKILL_DATA_ALL` also reproduced an index -1 read when a secondary class was
+present. The copier now maps None to zero; skill lookup applies its existing
+Warrior normalization before the PC multiclass branch. Valid pairs, the historical
+secondary sentinel and NPC mask enumeration are preserved. Both focused sanitizer
+tests pass; before-fix evidence is in `bin/tests/setbit-class-before.log` and
+`bin/tests/skill-class-mask-before.log`, with native post-fix evidence in
+`bin/tests/skill-class-mask-after.log`. This repair is separate from the new journey.
+
+Validation for the entry/persistence slice and repair:
+
+- The focused native setter and mechanics tests pass with ASan/UBSan. The
+  mechanics test now stops on the first UBSan finding. Its positive native binary
+  SHA256 is `3cba335b12ce9059ef6bcee5dff50b6b07348296f58f41a3f132423c7000e7d6`.
+- `DURIS_REGRESSION_BUILD_CACHE=bin/regression-artifacts python3
+  tests/async/test_character_mechanics_journey.py`: passed, including the
+  repaired setter path and denials described above.
+- `make test-all -j8 TEST_JOBS=8`: development/production/editor/tool builds
+  succeeded; **728 cases passed and 2 test-integration cases failed**, with no
+  timeouts or signal exits, in 654.97 seconds. Both new mechanics tests passed
+  within this run. Log: `bin/tests/character-mechanics-entry-test-all.log`.
+- Both failures were then repaired and their exact tests rerun successfully:
+  `python3 tests/async/test_racial_shrug.py` adds the marker header to its extracted
+  innate fixture; `python3 tests/async/test_root_test_harness.py` includes the new
+  journey in the expected resource-intensive set and partition case. Logs:
+  `bin/tests/character-mechanics-racial-shrug.log` and
+  `bin/tests/character-mechanics-root-harness.log`. No further production edits
+  followed the gate. The whole gate was not rerun after these test-only repairs.
+- `./scripts/format.sh --check`, `git diff --check`, and discovery of both
+  character-mechanics tests passed. No database gate was run; this journey's
+  authority is explicitly flat-file.
+
+Next: connect the command slot, eligibility/teacher guards, assignment, skill
+refresh and status capture/load in the compiled structure. The successful
+journey does not replace those structural links. Timer/unspecialization failure
+cases, ordinary travel, real HP damage, and the broader acceptance matrix remain
+open. No completion or review-ready claim is made for the whole issue.
+
+Entry-route source findings:
 
 - `interp.c` assigns `CMD_SPECIALIZE` to `do_specialize` through `CMD_N` with
   `STAT_SLEEPING + POS_PRONE`, level 0, and no aggro check. Connect the actual
@@ -113,7 +185,7 @@ Entry-route investigation for the next slice:
   the existing clients/build-artifact helper, and disposable authority. The
   recovery `IsolatedServer` always boots with `--minimal`; it cannot by itself
   establish full-world teacher acquisition. The planned new
-  `test_character_mechanics_journey.py` does not exist yet. Any staff level,
+  `test_character_mechanics_journey.py` is the current implementation above. Any staff level,
   transport, or equipment setup must remain explicit fixture scope.
 
 ### Historical pause checkpoint

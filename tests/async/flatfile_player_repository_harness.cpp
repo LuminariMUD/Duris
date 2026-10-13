@@ -189,17 +189,34 @@ static void inspect_authority(const std::string &root, int32_t pid)
 	for (const auto &field : snapshot.status_integers)
 	{
 		const char *name =
-			field.field == player_status_field::deaths     ? "death_count" :
-			field.field == player_status_field::experience ? "experience" :
-			field.field == player_status_field::level      ? "level" :
+			field.field == player_status_field::deaths	    ? "death_count" :
+			field.field == player_status_field::experience	    ? "experience" :
+			field.field == player_status_field::level	    ? "level" :
+			field.field == player_status_field::class_primary   ? "class_primary" :
+			field.field == player_status_field::class_secondary ? "class_secondary" :
+			field.field == player_status_field::specialization  ? "specialization" :
+			field.field == player_status_field::race	    ? "race" :
 			field.field == player_status_field::learned_flight_stops ?
-								    "learned_flight_stops" :
-								    nullptr;
+								   "learned_flight_stops" :
+								   nullptr;
 		if (name)
 			std::cout
 				<< ",\"" << name << "\":"
 				<< (field.is_unsigned ? field.unsigned_value : field.signed_value);
 	}
+	std::cout << ",\"skills\":{";
+	bool first_skill = true;
+	for (const auto &skill : snapshot.skills)
+	{
+		if (!skill.learned && !skill.taught)
+			continue;
+		if (!first_skill)
+			std::cout << ',';
+		first_skill = false;
+		std::cout << '"' << skill.skill_id << "\":{\"learned\":" << unsigned(skill.learned)
+			  << ",\"taught\":" << unsigned(skill.taught) << '}';
+	}
+	std::cout << '}';
 	for (const auto &owner :
 	     { item_owner_identity{ item_owner_type::player, static_cast<uint64_t>(pid), 0 },
 	       item_owner_identity{ item_owner_type::room,
