@@ -529,7 +529,7 @@ int epic_gain_min_level()
 
 bool epic_level_can_gain(P_char ch)
 {
-	return ch && GET_LEVEL(ch) >= epic_gain_min_level();
+	return ch != NULL;
 }
 
 int epic_skills_min_level()
