@@ -126,3 +126,23 @@ and rejected command paths, recipient/echo variations, concealment, text bounds,
 and native operation during endpoint outages/overflow. Existing output tests
 exercise native rendering separately. Full isolated game and copyover journeys
 remain later integration gates, distinct from these harnesses.
+
+For the real Node/native boundary, check out the companion bridge integration
+branch and install its Node dependencies, then run from this checkout:
+
+```sh
+python3 tests/async/test_discord_petition_export.py \
+  --node-driver /path/to/discord-mud-chat/scripts/testing/duris-integration.js
+```
+
+The runner first executes native command regressions, then supplies the freshly
+built harness to the Node driver. Its test-only stdio controls invoke the exact
+production commands on synthetic players; the Node transport connects to the
+production listener through a loopback fragmentation proxy and an in-memory
+Discord sink. It checks accepted petition/reply labels, concealment, native
+delivery/audit counts, blocked Discord ingress, direct forged chat, malformed
+and oversized recovery, chunking/mentions, reconnect, and native operation after
+disconnect/disable. Proxy-injected invalid output tests Node recovery; native
+serialization always emits valid records. No real Discord API is called.
+`SANITIZE=1` also covers this mode with ASan/UBSan. This is a command-boundary
+harness, not a full game boot or copyover journey.

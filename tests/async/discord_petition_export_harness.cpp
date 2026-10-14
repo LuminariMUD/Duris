@@ -13,6 +13,7 @@
 #include <cstdarg>
 #include <cstring>
 #include <functional>
+#include <iostream>
 #include <string>
 #include <vector>
 #include <arpa/inet.h>
@@ -421,8 +422,94 @@ static void unavailable(int peer)
 	assert(discord_bridge_get_status().dropped_events == dropped);
 }
 
-int main()
+// A test-only stdio control plane invokes the same production commands while
+// an external Node process connects to the actual native bridge listener.
+static int node_peer()
 {
+	int probe = endpoint();
+	close(probe);
+	discord_bridge_poll();
+	std::cout << "{\"port\":" << discord_bridge_get_status().port << "}" << std::endl;
+	player petitioner("Player"), staff("Staff", 64), monitor("Monitor", 64);
+	recipients({ &petitioner, &staff, &monitor });
+	unsigned dispatches = 0;
+	for (;;)
+	{
+		discord_bridge_poll();
+		discord_bridge_flush();
+		pollfd input{ STDIN_FILENO, POLLIN, 0 };
+		if (poll(&input, 1, 5) <= 0)
+			continue;
+		std::string line;
+		if (!std::getline(std::cin, line))
+			break;
+		cJSON *request = cJSON_Parse(line.c_str());
+		assert(request);
+		const cJSON *action = cJSON_GetObjectItem(request, "action");
+		const cJSON *text = cJSON_GetObjectItem(request, "text");
+		assert(cJSON_IsString(action));
+		const std::string command = action->valuestring;
+		const std::string message = cJSON_IsString(text) ? text->valuestring : "";
+		if (command == "petition" || command == "rejected_petition")
+		{
+			++dispatches;
+			if (command == "rejected_petition")
+				petitioner.ch.specials.act |= PLR_SILENCE;
+			invoke(do_petition, petitioner, message);
+			petitioner.ch.specials.act &= ~PLR_SILENCE;
+		}
+		else if (command == "reply" || command == "hidden_reply")
+		{
+			++dispatches;
+			staff.pc.wiz_invis = command == "hidden_reply" ? 64 : 0;
+			invoke(do_ptell, staff, "Player " + message);
+			staff.pc.wiz_invis = 0;
+		}
+		else if (command == "notice")
+		{
+			delivered.clear();
+			std::string notice = message;
+			send_to_gods(notice.data());
+		}
+		else if (command == "restart" || command == "disable" || command == "enable")
+		{
+			setenv("DURIS_DISCORD_ENABLED", command == "disable" ? "FALSE" : "TRUE", 1);
+			assert(discord_bridge_init());
+		}
+		else
+			assert(command == "status" || command == "quit");
+		discord_bridge_poll();
+		discord_bridge_flush();
+		const auto status = discord_bridge_get_status();
+		cJSON *response = cJSON_CreateObject();
+		cJSON_AddNumberToObject(response, "id",
+					cJSON_GetObjectItem(request, "id")->valueint);
+		cJSON_AddBoolToObject(response, "connected", status.connected);
+		cJSON_AddBoolToObject(response, "authenticated", status.authenticated);
+		cJSON_AddBoolToObject(response, "listening", status.listening);
+		cJSON_AddNumberToObject(response, "sent", status.sent_events);
+		cJSON_AddNumberToObject(response, "dropped", status.dropped_events);
+		cJSON_AddNumberToObject(response, "rejected", status.rejected_records);
+		cJSON_AddNumberToObject(response, "dispatches", dispatches);
+		cJSON_AddNumberToObject(response, "native_deliveries", delivered.size());
+		cJSON_AddNumberToObject(response, "audit_entries", audit.size());
+		char *json = cJSON_PrintUnformatted(response);
+		assert(json);
+		std::cout << json << std::endl;
+		cJSON_free(json);
+		cJSON_Delete(response);
+		cJSON_Delete(request);
+		if (command == "quit")
+			break;
+	}
+	discord_bridge_shutdown();
+	return 0;
+}
+
+int main(int argc, char **argv)
+{
+	if (argc == 2 && strcmp(argv[1], "--node-peer") == 0)
+		return node_peer();
 	int peer = endpoint();
 	accepted(peer);
 	rejected(peer);
