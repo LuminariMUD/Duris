@@ -519,8 +519,9 @@ def reconnect_character(
     *,
     account: str = ACCOUNT,
     character: str = CHARACTER,
+    source_host: str | None = None,
 ) -> MudClient:
-    client = MudClient(port)
+    client = MudClient(port, source_host=source_host)
     try:
         entry, _ = client.expect_any(("term type", "account name"))
         if entry == "term type":

@@ -16,7 +16,7 @@ The Discord destination must be visible only to the intended staff and bot.
 Discord posts never become game replies. The feed is optional and best effort;
 native petition logs remain the audit record.
 The cross-repository plan is
-[`discord-mud-chat/docs/ongoing-projects/duris-petition-compatibility.md`](https://github.com/LuminariMUD/discord-mud-chat/blob/codex/duris-one-way-mappings/docs/ongoing-projects/duris-petition-compatibility.md).
+[`discord-mud-chat/docs/ongoing-projects/duris-petition-compatibility.md`](https://github.com/LuminariMUD/discord-mud-chat/blob/codex/duris-game-acceptance/docs/ongoing-projects/duris-petition-compatibility.md).
 
 ## Text and concealed identities
 
@@ -24,7 +24,10 @@ The two accepted-command hooks call `discord_petition_export`, which uses native
 `AnsiString`/UTF-8 conversion and strips terminal escape sequences (CSI, OSC,
 DCS, SOS, PM, APC and single escape commands). LF/tab whitespace, punctuation,
 quotes, backslashes, literal `@`, and dollars are preserved; malformed UTF-8
-becomes U+FFFD. Native `act()` dollar escaping is separate and unchanged.
+becomes U+FFFD. Player input doubles dollar signs before command dispatch; the
+exporter uses native `delete_doubledollar()` on its converted copy so one or
+several typed dollar signs remain literal on Discord. Command arguments, native
+`act()` rendering, recipient output and audit text are unchanged.
 Input names are bounded by `MAX_NAME_LENGTH + 1`; messages by
 `MAX_STRING_LENGTH`, both including the terminator. Conversion expands at most
 three bytes per source byte, then cJSON escapes the whole record. Overlong
@@ -124,8 +127,8 @@ synthetic players, boundary output/log/visibility stubs, and the real conversion
 serializer, and listener. Set `SANITIZE=1` to add ASan/UBSan. This tests accepted
 and rejected command paths, recipient/echo variations, concealment, text bounds,
 and native operation during endpoint outages/overflow. Existing output tests
-exercise native rendering separately. Full isolated game and copyover journeys
-remain later integration gates, distinct from these harnesses.
+exercise native rendering separately. The full isolated-game journey below is
+distinct from these harnesses.
 
 For the real Node/native boundary, check out the companion bridge integration
 branch and install its Node dependencies, then run from this checkout:
@@ -146,3 +149,23 @@ disconnect/disable. Proxy-injected invalid output tests Node recovery; native
 serialization always emits valid records. No real Discord API is called.
 `SANITIZE=1` also covers this mode with ASan/UBSan. This is a command-boundary
 harness, not a full game boot or copyover journey.
+
+For a real game process, player login, persistence and lifecycle check, run:
+
+```sh
+python3 tests/async/test_discord_game_journey.py \
+  --node-driver /path/to/discord-mud-chat/scripts/testing/duris-game-sink.js
+```
+
+This builds the current flat-file server and fixture inspector under `bin/tests/`
+and boots a disposable minimal world with temporary accounts, saved players,
+TLS certificates, logs and binaries. It does not read `.env`, connect to the
+operator's database, or change a running game. It verifies both commands through
+real gameplay sockets and the actual Node relay with an in-memory Discord sink.
+Cases cover no staff online, echo off, concealed staff, dollar escaping, rejected
+commands, unrelated chat, blocked/forged ingress, saves, reload, bridge disconnect,
+disabled restart, and normal shutdown. A deliberately invalid staged executable
+forces a real failed `execl`; a subsequent valid copyover must preserve the
+original player sockets and let Node reconnect. Native audit entries remain
+required during rollback. This is a full server with a minimal flat-file world,
+not a live Discord or production-database test.
