@@ -578,6 +578,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "a773ccf7be009953a432bec85132313cd372424720465616738e419588e7b05e",
       "verify_checksum": "da0f8d40b37af4333c56bfd930babd20cd06e745b480c548dc9fb48859d7cffa"
+    },
+    {
+      "id": "0041_pkill_log_capacity",
+      "sequence": 41,
+      "description": "Widen legacy PvP log storage for 99999-byte public combat snapshots",
+      "apply": "immutable/0041_pkill_log_capacity.sql",
+      "verify": "immutable/0041_pkill_log_capacity.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "1908a011cb2f7b08e27370a305ed2f092d6faa41e792b9e3f822707f985620e4",
+      "verify_checksum": "2a087ca5f9dafe94fc55384cb6cd21ef8783a3d225363746422e4647f7ab4f4a"
     }
   ],
   "engine_verifiers": [

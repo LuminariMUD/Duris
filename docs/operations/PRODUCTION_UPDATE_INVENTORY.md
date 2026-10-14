@@ -242,6 +242,12 @@ migration supersedes.
 | `0038_learned_flight_stops` | Persist character flight discoveries |
 | `0039_level_cap_sides` | Independent good/evil unlocked level caps; pending at inspection |
 | `0040_combat_outcome_allies` | Record killer-side ally counts for level-cap eligibility; required before the updated server boots |
+| `0041_pkill_log_capacity` | Widen legacy PvP logs to MEDIUMTEXT; preserve history and require the new migration head before boot |
+
+Migration 0041 uses the normal offline migration path; the narrowly scoped 0040
+online option does not authorize it. Qualify the legacy upgrade on a disposable
+database, then apply 0041 with stopped writers and the usual production target and
+backup safeguards before installing the updated server.
 
 Migration 0040 is additive and rerunnable. On MariaDB 11.8/InnoDB, apply it with
 `run --online-combat-outcome-allies` after reviewing active writers and satisfying
