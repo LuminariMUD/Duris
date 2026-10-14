@@ -58,9 +58,10 @@ Do not stop or modify that game, its database, or Redis.
 
 ## Current checkpoint
 
-Last committed checkpoint: `b8cbf9678`, shared innate timer/affect lifecycle
-ownership. Last pushed checkpoint: `41714f500`, the separately scoped phantasmal
-removal lifetime repair. Earlier passing batches are `2fe7f8d72` (disabled routes),
+Implementation checkpoints pushed: `6060b7e86` fixes hatred traversal/bounds;
+`b8cbf9678` connects shared innate timer/affect lifecycle ownership;
+`41714f500` fixes phantasmal removal lifetime. Earlier passing batches are
+`2fe7f8d72` (disabled routes),
 `c926e427b` (commands), `4a11e79f6` (creation), `1abfef484` (ability tables), and
 `ff80bae30` (generic race/death cleanup). Upstream `0e27ef1e8` was integrated
 through `f75e77b34`; this is not a later remote-head claim. Work is active.
