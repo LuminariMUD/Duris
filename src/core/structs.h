@@ -1782,6 +1782,9 @@ struct descriptor_data
 	size_t telnet_output_offset;
 	int telnet_tls_retry;
 	int gmcp_quest_map_sent;
+	int gmcp_ship_bridge; /* room index + 1; zero means no bridge subscription */
+	unsigned long gmcp_ship_contacts_hash;
+	unsigned long gmcp_ship_info_hash;
 	char client_name[64];
 	char client_version[32];
 	int durisweb_verified;

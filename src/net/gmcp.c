@@ -60,7 +60,10 @@ void gmcp_handle_negotiation(struct descriptor_data *d, int cmd)
 
 	if (cmd == TELNET_DO)
 	{
+		bool was_enabled = d->gmcp_enabled;
 		d->gmcp_enabled = 1;
+		if (!was_enabled && STATE(d) == CON_PLAYING)
+			gmcp_send_initial_state(d->character);
 		statuslog(56, "GMCP enabled for %s", d->host);
 	}
 	else if (cmd == TELNET_DONT)
@@ -238,6 +241,29 @@ void gmcp_send(struct descriptor_data *d, const char *package, const char *json)
 	}
 }
 
+/* Bootstrap state that otherwise only changes after a gameplay event. */
+void gmcp_send_initial_state(struct char_data *ch)
+{
+	if (!GMCP_ENABLED(ch) || IS_NPC(ch))
+		return;
+	ch->desc->gmcp_ship_bridge = 0;
+	ch->desc->gmcp_ship_contacts_hash = 0;
+	ch->desc->gmcp_ship_info_hash = 0;
+	gmcp_send(ch->desc, GMCP_PKG_SHIP_INFO, "{}");
+	gmcp_send(ch->desc, GMCP_PKG_SHIP_CONTACTS, "{\"contacts\":[]}");
+	gmcp_char_status(ch);
+	gmcp_char_vitals(ch);
+	gmcp_char_affects(ch);
+	gmcp_send_group_status(ch);
+	gmcp_room_info(ch);
+	ch->desc->last_map_update = 1;
+	gmcp_quest_status(ch);
+	if (GET_OPPONENT(ch))
+		gmcp_combat_target(ch, GET_OPPONENT(ch));
+	else
+		gmcp_combat_end(ch);
+}
+
 /* send room.info when character enters a room */
 void gmcp_room_info(struct char_data *ch)
 {
@@ -389,28 +415,30 @@ void gmcp_flush_dirty_rooms(void)
  * players on ships
  */
 
-/* check if ship has any gmcp-enabled players on board */
-static bool ship_has_gmcp_players(struct ShipData *ship)
+/* Track bridge subscriptions per descriptor: a new observer needs a snapshot
+ * even when the ship has not changed since another player last saw it. */
+static struct ShipData *gmcp_player_ship(struct descriptor_data *d)
 {
-	struct char_data *tch;
-	int bridge_rnum;
+	if (!d || STATE(d) != CON_PLAYING || !GMCP_ENABLED(d->character))
+		return NULL;
 
-	if (!ship)
-		return false;
+	struct ShipData *ship = get_ship_from_char(d->character);
+	if (ship && (!SHIP_LOADED(ship) || real_room(ship->bridge) != d->character->in_room))
+		ship = NULL;
 
-	/* only check the bridge room (where the control panel is) */
-	bridge_rnum = real_room(ship->bridge);
-	if (bridge_rnum < 0)
-		return false;
-
-	for (tch = world[bridge_rnum].people; tch; tch = tch->next_in_room)
+	int bridge = ship ? d->character->in_room + 1 : 0;
+	if (bridge != d->gmcp_ship_bridge)
 	{
-		if (!IS_NPC(tch) && tch->desc && GMCP_ENABLED(tch))
+		d->gmcp_ship_bridge = bridge;
+		d->gmcp_ship_contacts_hash = 0;
+		d->gmcp_ship_info_hash = 0;
+		if (!ship)
 		{
-			return true;
+			gmcp_send(d, GMCP_PKG_SHIP_INFO, "{}");
+			gmcp_send(d, GMCP_PKG_SHIP_CONTACTS, "{\"contacts\":[]}");
 		}
 	}
-	return false;
+	return ship;
 }
 
 /* simple djb2 hash for strings */
@@ -579,120 +607,44 @@ static char *json_build_ship_contacts(struct ShipData *ship, struct descriptor_d
 
 void gmcp_flush_dirty_ship_contacts(void)
 {
-	ShipVisitor svs;
-	struct ShipData *ship;
-	struct char_data *tch;
-	char *json, *player_json;
-	unsigned long new_hash;
-	int bridge_rnum;
-
-	/* iterate through all ships */
-	for (bool fn = shipObjHash.get_first(svs); fn; fn = shipObjHash.get_next(svs))
+	for (struct descriptor_data *d = descriptor_list; d; d = d->next)
 	{
-		ship = svs;
-
-		if (!ship || !SHIP_LOADED(ship))
+		struct ShipData *ship = gmcp_player_ship(d);
+		if (!ship)
 			continue;
 
-		/* skip ships not on map, docked, or without gmcp players on bridge */
-		if (!IS_MAP_ROOM(ship->location))
-			continue;
-		if (SHIP_DOCKED(ship))
-			continue;
-		if (!ship_has_gmcp_players(ship))
-			continue;
-
-		/* build base json for hash check */
-		json = json_build_ship_contacts(ship, NULL);
+		/* Docking must send an empty list to retire contacts from open sea. */
+		char *json = json_build_ship_contacts(ship, d);
 		if (!json)
 			continue;
-
-		/* calculate hash of current contacts */
-		new_hash = hash_string(json);
-
-		/* send if contacts changed OR location changed */
-		if (new_hash != ship->contacts_hash || ship->location != ship->last_gmcp_location)
+		unsigned long new_hash = hash_string(json);
+		if (new_hash != d->gmcp_ship_contacts_hash)
 		{
-			bridge_rnum = real_room(ship->bridge);
-			if (bridge_rnum >= 0)
-			{
-				for (tch = world[bridge_rnum].people; tch; tch = tch->next_in_room)
-				{
-					if (!IS_NPC(tch) && tch->desc && GMCP_ENABLED(tch))
-					{
-						/* build per-player json */
-						player_json =
-							json_build_ship_contacts(ship, tch->desc);
-						if (player_json)
-						{
-							gmcp_send(tch->desc, GMCP_PKG_SHIP_CONTACTS,
-								  player_json);
-							free(player_json);
-						}
-					}
-				}
-			}
-			ship->contacts_hash = new_hash;
-			ship->last_gmcp_location = ship->location;
+			gmcp_send(d, GMCP_PKG_SHIP_CONTACTS, json);
+			d->gmcp_ship_contacts_hash = new_hash;
 		}
-
 		free(json);
 	}
 }
 
-/* ship.info - sends static/slow-changing ship data */
+/* Hash the personalized payload, including this observer's racial bonuses. */
 void gmcp_flush_dirty_ship_info(void)
 {
-	ShipVisitor svs;
-	struct ShipData *ship;
-	struct char_data *tch;
-	char *json, *player_json;
-	unsigned long new_hash;
-	int bridge_rnum;
-
-	/* iterate through all ships */
-	for (bool fn = shipObjHash.get_first(svs); fn; fn = shipObjHash.get_next(svs))
+	for (struct descriptor_data *d = descriptor_list; d; d = d->next)
 	{
-		ship = svs;
-
-		if (!ship || !SHIP_LOADED(ship))
+		struct ShipData *ship = gmcp_player_ship(d);
+		if (!ship)
 			continue;
 
-		/* skip ships without gmcp players on bridge */
-		if (!ship_has_gmcp_players(ship))
-			continue;
-
-		/* build base json for hash check (no player-specific bonuses) */
-		json = json_build_ship_info(ship, NULL);
+		char *json = json_build_ship_info(ship, d->character);
 		if (!json)
 			continue;
-
-		/* check if anything changed */
-		new_hash = hash_string(json);
-
-		if (new_hash != ship->ship_info_hash)
+		unsigned long new_hash = hash_string(json);
+		if (new_hash != d->gmcp_ship_info_hash)
 		{
-			bridge_rnum = real_room(ship->bridge);
-			if (bridge_rnum >= 0)
-			{
-				for (tch = world[bridge_rnum].people; tch; tch = tch->next_in_room)
-				{
-					if (!IS_NPC(tch) && tch->desc && GMCP_ENABLED(tch))
-					{
-						/* build per-player json with racial bonuses */
-						player_json = json_build_ship_info(ship, tch);
-						if (player_json)
-						{
-							gmcp_send(tch->desc, GMCP_PKG_SHIP_INFO,
-								  player_json);
-							free(player_json);
-						}
-					}
-				}
-			}
-			ship->ship_info_hash = new_hash;
+			gmcp_send(d, GMCP_PKG_SHIP_INFO, json);
+			d->gmcp_ship_info_hash = new_hash;
 		}
-
 		free(json);
 	}
 }
@@ -701,6 +653,10 @@ void gmcp_flush_dirty_ship_info(void)
 void gmcp_char_vitals(struct char_data *ch)
 {
 	char *json;
+
+	/* Group observers need changes even when this member does not use GMCP. */
+	if (ch)
+		update_groupies(ch);
 
 	if (!ch || !ch->desc)
 		return;
@@ -741,7 +697,7 @@ void gmcp_send_group_status(struct char_data *ch)
 	struct group_list *gl;
 	char *json_str;
 	int count = 0;
-	int max_size = 20; /* Default max group size */
+	int max_size = 13;
 	int is_first = 1;
 
 	if (!ch || !ch->desc)
@@ -749,11 +705,21 @@ void gmcp_send_group_status(struct char_data *ch)
 	if (!GMCP_ENABLED(ch))
 		return;
 
+	if (IS_RACEWAR_EVIL(ch))
+		max_size = (int)get_property("groups.size.max.evil", 13);
+	if (IS_RACEWAR_GOOD(ch))
+		max_size = (int)get_property("groups.size.max.good", 13);
+#if defined(CTF_MUD) && (CTF_MUD == 1)
+	max_size = 5;
+#endif
+
 	/* if not in a group, send empty */
 	if (!ch->group)
 	{
-		gmcp_send(ch->desc, GMCP_PKG_GROUP_STATUS,
-			  "{\"members\":[],\"size\":0,\"maxSize\":20}");
+		char empty[80];
+		snprintf(empty, sizeof(empty), "{\"members\":[],\"size\":0,\"maxSize\":%d}",
+			 max_size);
+		gmcp_send(ch->desc, GMCP_PKG_GROUP_STATUS, empty);
 		return;
 	}
 

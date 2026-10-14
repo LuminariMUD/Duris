@@ -60,6 +60,9 @@ void gmcp_handle_input(struct descriptor_data *d, const char *data, size_t len);
 /* core send - handles both telnet (iac sb gmcp) and websocket (json) */
 void gmcp_send(struct descriptor_data *d, const char *package, const char *json);
 
+/* Initial snapshot on character entry or GMCP re-enable. */
+void gmcp_send_initial_state(struct char_data *ch);
+
 /* room info - sends when character enters a room */
 void gmcp_room_info(struct char_data *ch);
 
