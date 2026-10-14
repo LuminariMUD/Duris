@@ -396,11 +396,15 @@ void epic_complete_errand(P_char ch, int zone)
 	}
 }
 
-int epic_random_task_zone(P_char ch)
+int epic_random_task_zone(P_char ch, epic_task_selection_status *status)
 {
 	if (!ch || IS_NPC(ch))
+	{
+		if (status)
+			*status = epic_task_selection_status::unavailable;
 		return -1;
-	return epic_task_catalog_select(&ch->only.pc->gameplay_reads);
+	}
+	return epic_task_catalog_select(&ch->only.pc->gameplay_reads, status);
 }
 
 void epic_choose_new_epic_task(P_char ch)
@@ -420,10 +424,27 @@ void epic_choose_new_epic_task(P_char ch)
 	af.flags = AFFTYPE_STORE | AFFTYPE_PERM;
 	af.duration = -1;
 
-	// Now a 5% chance to get spill blood down from 9%.
+	// An unavailable catalogue must not silently become a Spill Blood task.
+	if (!epic_task_catalog_ready() ||
+	    ch->only.pc->gameplay_reads.status != gameplay_read_status::ready)
+	{
+		logit(LOG_STATUS, "Epic task assignment unavailable: catalog_ready=%d zones=%zu",
+		      epic_task_catalog_ready(), epic_task_catalog_size());
+		send_to_char("The Gods cannot assign an epic task right now. Notify an immortal.\n",
+			     ch);
+		return;
+	}
+
+	// Preserve the intentional 5% non-zone task roll and exhausted-zone fallback.
 	if (number(0, 19))
 	{
-		zone_number = epic_random_task_zone(ch);
+		epic_task_selection_status status = epic_task_selection_status::unavailable;
+		zone_number = epic_random_task_zone(ch, &status);
+		if (status == epic_task_selection_status::unavailable)
+		{
+			logit(LOG_STATUS, "Epic task selection unavailable after readiness check.");
+			return;
+		}
 	}
 
 	// Getting rid of nexus . 7/13 Drannak
