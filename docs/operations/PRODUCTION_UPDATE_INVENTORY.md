@@ -140,9 +140,11 @@ new default manifest are subject to the same mismatch until the upgrade is
 completed or their selected contract is explicitly managed.
 
 `PREBOOT_BACKUP=1` enables launcher backups; the default is off. Hourly timers
-are not proof that a fresh pre-change backup succeeded. The documented host
-still has follow-ups for an off-host replica, restore drill, and failure alert;
-see [Backup operations](BACKUPS.md#separateoff-host-storage).
+are not proof that a fresh pre-change backup succeeded. The recorded host follow-ups
+include an off-host replica, restore drill, and a connected failure alert whose mail
+was blocked by Plesk; see the [deployment tracker](PRODUCTION_DEPLOYMENT.md#host-follow-ups)
+and [Backup operations](BACKUPS.md#separateoff-host-storage). Completion of those
+follow-ups has not been verified in this inventory.
 
 ### Supported production migration invocation
 
