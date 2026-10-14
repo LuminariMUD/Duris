@@ -3,7 +3,7 @@
 Tracking: [#56](https://github.com/LuminariMUD/Duris/issues/56) and
 [#58](https://github.com/LuminariMUD/Duris/issues/58).
 Completed work, acceptance contracts, test evidence and history are in
-[plan-estale.md](plan-estale.md). This file records the merged delivery and the remaining conditional/deferred work.
+[log-server-review.md](log-server-review.md). This file records the merged delivery and the remaining conditional/deferred work.
 
 ## Integration and review fixes
 
@@ -100,7 +100,7 @@ gameplay path is needed.
   changes; caps and real eligibility remain enforced; v2 history/replay grants
   no reward; bounded retries, old v1 receipts/outbox handling, reconciliation and
   crash/shutdown/copyover/restart remain correct. Use the
-  [retained ES-01–ES-05 acceptance matrix](plan-estale.md#work-sequence).
+  [retained ES-01–ES-05 acceptance matrix](log-server-review.md#work-sequence).
 
 Integration evidence:
 [#69 conflict/policy handoff](https://github.com/LuminariMUD/Duris/pull/70#issuecomment-6165130394)
@@ -188,7 +188,7 @@ review finding is fixed and qualified.
 
 Use isolated worlds/databases and retain evidence in ignored `bin/analysis/`.
 Another worktree may be testing the shared dev game. These tasks do not advance
-that separate [#52 character-mechanics plan](plan.md) or
+that separate [#52 character-mechanics plan](class-anchor.md) or
 [#57 PSP/movement defects](https://github.com/LuminariMUD/Duris/issues/57).
 
 ## Next session: release preparation, when requested
@@ -229,7 +229,7 @@ authorization; listing them here does not authorize production changes.
   mapping before replacement. Preserve the original; refuse changed/already-fixed
   input; verify the proposed 1,007 → 1,083 rows and per-counter agreement after
   application. Do not fabricate scheduler IDs. See the
-  [retained assessment](plan-estale.md#lr-01--restart-safe-statistics-output-medium-56-2).
+  [retained assessment](log-server-review.md#lr-01--restart-safe-statistics-output-medium-56-2).
   #58's existing assessment proposes no compensation; any later adjustment needs
   attributable loss evidence and separate specific authorization.
 
@@ -238,7 +238,7 @@ authorization; listing them here does not authorize production changes.
 **We are skipping the following work for now.** These are unresolved/deferred,
 not fixed, and are excluded from the active queue above. Resume them only when
 the owner requests it. The decisions were made on 2026-10-14, except `skeer`
-on 2026-10-13. Full requirements and evidence remain in [plan-estale.md](plan-estale.md).
+on 2026-10-13. Full requirements and evidence remain in [log-server-review.md](log-server-review.md).
 
 | Item | Work we are skipping for now |
 | --- | --- |

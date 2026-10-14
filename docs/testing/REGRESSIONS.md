@@ -168,7 +168,7 @@ not final combined-stack qualification or production rollout; full-server fault
 journeys and the broad gates remain due after #73–#75 integration.
 
 Issue #58 is locally qualified on `fix/58-artifact-guild-memory`. The
-[qualification record](../ongoing-projects/plan-estale.md#qualification-update-2026-10-14)
+[qualification record](../ongoing-projects/log-server-review.md#qualification-update-2026-10-14)
 maps the acceptance criteria to tests, records local logs and separates review
 readiness from production rollout.
 

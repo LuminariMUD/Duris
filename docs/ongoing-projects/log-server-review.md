@@ -1689,7 +1689,7 @@ integration checks, full-tree formatting and all 15 site tests pass.
 Preserve ignored `bin/analysis/lr01-validation/` and `bin/analysis/lr01-recovery/`
 before cleaning build output. Production repairs, rollout, backup/host changes,
 and historical replacement require their specific authorization. The independent
-character-mechanics project in [plan.md](plan.md) belongs to #52 and is not advanced
+character-mechanics project in [class-anchor.md](class-anchor.md) belongs to #52 and is not advanced
 by this work. The shared dev game may be used by another worktree; qualification
 here uses isolated worlds and databases.
 
@@ -1727,7 +1727,7 @@ Scope relationships:
 - [#57](https://github.com/LuminariMUD/Duris/issues/57) owns the reproduced PSP
   regeneration and movement over-cap defects. LR-07 must correlate the original
   movement report with that work, without assuming it proves the player's cause.
-- The character-mechanics plan in [plan.md](plan.md), tracked by
+- The character-mechanics plan in [class-anchor.md](class-anchor.md), tracked by
   [#52](https://github.com/LuminariMUD/Duris/issues/52), is separate. These focused
   fixes do not depend on completing that project.
 
