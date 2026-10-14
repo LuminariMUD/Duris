@@ -2537,7 +2537,7 @@ character_mechanics::revenant_transitions()
 	static const TransitionConnection transitions[] = {
 		{ MechanicId::revenant_apply, entries, TransitionKind::temporary, changed, retained,
 		  lifecycle,
-		  "Original race is the affect modifier; checkpoints project removal identity and omit the tag. Loaded worn crown reapplies through normal periodic dispatch. Actual death and generic affect cleanup still require separate qualification.",
+		  "Original race is the affect modifier; checkpoints project removal identity and omit the tag. Loaded worn crown reapplies through normal periodic dispatch.",
 		  PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_AFFECTS | PLAYER_COMPONENT_EQUIPMENT |
 			  PLAYER_COMPONENT_INVENTORY }
 	};

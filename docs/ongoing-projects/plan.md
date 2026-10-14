@@ -666,9 +666,9 @@ the race's base age, removes the affect and strips equipment. Generic
 `affect_remove` also restores the saved race, and the fatal-damage path restores
 race before death handling. The original capture saved `GET_RACE` while omitting
 NOSAVE affects; the reproduced restart failure and repair are recorded above.
-The connection slice below binds application/reversal; actual death, authentic
-conflicting-form entry and other lifecycle paths still need their own evidence.
-These source leads do not prove those paths or ordinary acquisition.
+The connection and death-repair sections below record the resulting proof.
+Authentic conflicting-form entry, broader lifecycle paths and ordinary
+acquisition remain open; these source leads do not qualify them.
 
 ### Revenant registration, callback and persistence connections
 
@@ -723,10 +723,10 @@ incorrect collapsing of adjacent spaces in heading anchors (including a new
 spacing/duplicate-anchor case). The existing documentation link was valid and
 was preserved. Logs have `-periodic`, `-template` and `-documentation` suffixes.
 No production changes followed the gate, and the whole gate was not repeated
-after these test-only repairs. The death-age defect below remains unresolved;
-these results do not complete the Revenant lifecycle or the overall plan.
+after these test-only repairs. At that checkpoint the death-age defect below was
+unresolved; those results did not complete the Revenant lifecycle or the plan.
 
-**Next separate defect repair: death cleanup retains the form's birth date.**
+**Separate repair: death cleanup retained the form's birth date.**
 A private normal-Orc/crown probe used the real staff bare-hand `kill` command
 (`do_kill` → `die`; this is not the normal fatal-`raw_damage` path). The terminal
 snapshot restored race 13 and removed `TAG_RACE_CHANGE`, but retained birth
@@ -734,17 +734,49 @@ snapshot restored race 13 and removed `TAG_RACE_CHANGE`, but retained birth
 That is approximately 85 MUD years of extra age. The game returned the player to
 the account menu and persisted the terminal snapshot; the assertion comparing
 death and normal-removal birth policies failed. Evidence:
-`bin/tests/character-mechanics-revenant-death-before.log`. The isolated probe is
-`bin/tests/revenant-death-probe.py`, adapting the existing focused world journey
-without changing maintained source. The shared game was untouched.
+`bin/tests/character-mechanics-revenant-death-before.log`. The temporary probe
+adapted the focused world journey without changing maintained source; it has
+been replaced by the maintained death cases described below. The shared game
+was untouched.
 
 Source path: `die` removes non-permanent affects before terminal capture;
 `affect_remove` restores the tag's original race but does not restore birth.
-By then the tag is gone, so checkpoint projection cannot normalize it. Repair
-this cleanup in a separately scoped gameplay commit, preserve saveable race-change
-semantics, and add native plus actual death/restart evidence. Also qualify normal
-combat death and the generic cleanup connection. Do not mark this lifecycle
-complete merely because the registered callback/removal tests pass.
+By then the tag is gone, so checkpoint projection cannot normalize it. That
+required the separate gameplay repair below. The generic cleanup and death paths
+still need explicit compiled connections; behavior tests alone do not complete
+the lifecycle trace.
+
+The repair in `affects.c` makes generic removal apply the existing
+base-age birth policy only to NOSAVE `TAG_RACE_CHANGE` affects, while the original
+race is still available. Invalid original-race indices do not access the age
+table. Saveable race tags and Draconic Apotheosis retain their existing birth
+semantics. No schema or stored-player rewrite is needed. The existing capture
+regression now executes the real `affect_remove` before actual death-intent
+capture, with stat/light notifications, linked events and allocation kept as
+explicit fixture boundaries. It failed on birth before the repair and passes
+after it (`character-mechanics-revenant-death-native-before.log` / `-native.log`).
+
+The extended focused world journey now passes both staff kill and ordinary
+combat against the loaded temple ice golem, followed in each case by terminal
+snapshot, restart and resurrection with the repaired race/birth. This qualifies
+the fatal-damage path that restores race before `die` reaches affect cleanup.
+Staff supplies the crowns and transfers the character; ordinary acquisition is
+still unverified. World log: `bin/tests/character-mechanics-revenant-death-journey.log`;
+tested server SHA256:
+`fb7c324ce8d3dc0a9f674b0a8943183164c1da56e4fda639001893d509c0a659`.
+Native mechanics/mutation checks, development/production/editor, pfile and
+migration-tool builds pass. The transition's stale behavioral-proof sentence was
+removed; its actual state/lifecycle description remains. The full gate finished
+with **729 passed, 1 failed**, no timeouts or signal exits, in **669.44 seconds**.
+The combined mechanics journey passed in 336.87 seconds and the native mechanics
+test in 116.18 seconds. The only failure was Web Spray's extracted cleanup fixture
+missing the new racial-table dependency. It now declares and links the real table;
+its exact ASan/UBSan targeting, cooldown, restoration, movement and cleanup test
+passes. No production changes followed the gate; the whole gate was not repeated
+after this fixture repair. Logs: `character-mechanics-revenant-death-test-all.log`
+and `character-mechanics-revenant-death-web-spray.log`, under `bin/tests/`.
+Generic cleanup still needs its explicit connection; this behavior fix does not
+complete the whole mechanics plan.
 
 Continuation finding: `epic_transaction_submit_identified` currently changes
 the authoritative in-memory epic balance and calls its completion **before

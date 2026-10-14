@@ -36,9 +36,19 @@ saveable/unrelated affects, invalid race bounds and cyclic affect lists. The
 private world case in `test_character_mechanics_journey.py --trace revenant`
 creates an Orc normally, supplies a crown and level through staff setup, then
 wears, saves, restarts and removes it. The default journey repeats that case after
-multiclassing. It proves item-handler and persistence behavior, not crown
-acquisition, actual death, or recovery of pre-transformation age (which the
-existing mechanic does not retain).
+multiclassing. Staff setup does not prove crown acquisition or recovery of
+pre-transformation age (which the existing mechanic does not retain).
+
+A subsequent death case reproduced loss of the birth-date policy: `die` removed
+the NOSAVE tag before capture, so race was restored but the Revenant birth date
+remained. Generic affect removal now restores the same base-age birth date as
+normal item removal. Saveable race-change tags and Draconic Apotheosis keep their
+existing birth semantics. The capture regression runs real generic removal
+before death-intent capture; stat/light updates, linked events and the allocator
+are fixture boundaries. The world journey now includes both bare-hand staff
+kill and mortal combat with the temple ice golem, checking the terminal save and
+resurrection after restart. Crowns and transport are supplied by staff; ordinary
+item acquisition remains outside this fixture.
 
 ## Multiclass session playtime
 

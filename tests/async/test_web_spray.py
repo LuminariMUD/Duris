@@ -30,6 +30,7 @@ PRELUDE = r'''
 #include <cstring>
 #include <vector>
 
+extern const racial_data_type racial_data[];
 P_char character_list;
 bool do_profile = false;
 PROFILE_DEFINE(short_affect_liveness)
@@ -331,7 +332,8 @@ with tempfile.TemporaryDirectory(prefix='web-spray-', dir=build) as directory:
     cpp.write_text(PRELUDE + production + DRIVER)
     subprocess.run(['g++', '-std=c++20', '-g', '-ffunction-sections', '-fdata-sections',
                     '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie',
-                    '-I' + str(ROOT / 'src'), str(cpp), str(HARNESS_STUBS), '-Wl,--gc-sections', '-lbsd',
+                    '-I' + str(ROOT / 'src'), str(cpp), str(ROOT / 'src/core/constant.c'),
+                    str(HARNESS_STUBS), '-Wl,--gc-sections', '-lbsd',
                     '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True, env={**os.environ,
         'ASAN_OPTIONS': 'detect_leaks=1:halt_on_error=1',

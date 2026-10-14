@@ -207,6 +207,52 @@ def run(binary, build, trace="all"):
                 assert abs(restored["birth_time"] - transformed["birth_time"]) < 180
                 print("PASS revenant.reversal/persistence: worn crown applies, checkpoint/restart preserves reversible identity, removal restores Orc", flush=True)
 
+                for death_mode in ("staff", "combat"):
+                    staff = login(STAFF, STAFF_ACCOUNT)
+                    command(staff, "goto " + str(orc_initial["room"]))
+                    if death_mode == "combat":
+                        command(staff, "load obj 22070")
+                        assert "Ok." in command(staff, "give icecrown " + ORC)
+                    assert "head" in command(orc, "wear icecrown").lower()
+                    wait_for_race("Revenant")
+                    save(orc, ORC)
+                    before_death = snapshot(3)
+                    if death_mode == "staff":
+                        command(staff, "remove all")
+                        killed = command(staff, "kill " + ORC)
+                        assert "still beating heart" in killed, killed
+                    else:
+                        command(staff, "goto 52904")
+                        assert "ice golem" in command(staff, "look").lower()
+                        command(staff, "transfer " + ORC)
+                        orc.send("kill golem")
+                    death_text = orc.expect("Your wounds claim you at last", timeout=120)
+                    if death_mode == "combat":
+                        assert "golem" in death_text.lower(), death_text
+                    orc.expect("ACCOUNT MENU", timeout=60)
+                    deadline = time.monotonic() + 30
+                    while True:
+                        dead = snapshot(3)
+                        if dead["revision"] > before_death["revision"] and dead["intent"] == 4:  # RENT_DEATH.
+                            break
+                        assert time.monotonic() < deadline, dead
+                        time.sleep(.1)
+                    assert dead["race"] == 13
+                    assert all(affect["type"] != 2060 for affect in dead["affects"])
+                    assert abs(dead["birth_time"] - before_death["birth_time"]) < 180
+                    stop()
+                    boot()
+                    orc = journey.reconnect_character(ports[0], return_message="You rejoin the land of the living",
+                                                      expected_room=None, account=ORC_ACCOUNT, character=ORC)
+                    clients.append(orc)
+                    orc.expect_any(("Pos: standing >", "<>"), timeout=20)
+                    command(orc, "toggle paging no")
+                    assert "Race: Orc" in command(orc, "score")
+                    save(orc, ORC)
+                    reloaded = snapshot(3)
+                    assert reloaded["race"] == 13 and reloaded["birth_time"] == dead["birth_time"]
+                    print("PASS revenant.death/persistence (" + death_mode + "): base race/birth survive death cleanup, terminal save, restart and resurrection", flush=True)
+
             try:
                 boot()
                 for name, account in ((PLAYER, ACCOUNT), (STAFF, STAFF_ACCOUNT)):
@@ -231,7 +277,7 @@ def run(binary, build, trace="all"):
                     command(orc, "toggle paging no")
                     staff = login(STAFF, STAFF_ACCOUNT)
                     revenant_case(orc, staff, orc_initial)
-                    print("Fixture: focused Revenant; normal Orc Warrior, staff level 41 and supplied crown; flatfile, camp.timer=1; acquisition unverified", flush=True)
+                    print("Fixture: focused Revenant; normal Orc Warrior, staff level 41, supplied crowns, bare-hand staff kill and transferred temple-golem combat; flatfile, camp.timer=1; acquisition unverified", flush=True)
                     print("Server SHA256:", hashlib.sha256(binary.read_bytes()).hexdigest(), flush=True)
                     return
                 staff = login(STAFF, STAFF_ACCOUNT)

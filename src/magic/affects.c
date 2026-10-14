@@ -2071,6 +2071,13 @@ void affect_remove(P_char ch, struct affected_type *af)
 	if (af->type == TAG_RACE_CHANGE || af->type == SPELL_DRACONIC_APOTHEOSIS)
 	{
 		GET_RACE(ch) = af->modifier;
+		// NOSAVE crown/legacy Dragonlord forms replace birth on application.
+		// Death can remove their tag before checkpoint capture sees it, so use
+		// the same birth-date policy as normal item removal here as well.
+		if (af->type == TAG_RACE_CHANGE && IS_SET(af->flags, AFFTYPE_NOSAVE) &&
+		    af->modifier >= RACE_NONE && af->modifier <= LAST_RACE)
+			ch->player.time.birth =
+				time(NULL) - racial_data[af->modifier].base_age * SECS_PER_MUD_YEAR;
 	}
 
 	// If it's a short affect.

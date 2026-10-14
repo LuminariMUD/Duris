@@ -6,7 +6,7 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
-from _paths import HARNESS_STUBS
+from _paths import HARNESS_STUBS, extract_function
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -187,6 +187,8 @@ print("immutable player snapshot capture contracts passed")
 # Exercise the production adapter and codec with live engine structures.
 # Engine-only services are inert.
 HELD_PETS_HARNESS = r"""
+#include "core/prototypes.h"
+#include "core/mm.h"
 #include "core/utils.h"
 #include "classes/necromancy.h"
 #include "core/files.h"
@@ -229,6 +231,26 @@ P_char get_linked_char(P_char ch, ush_int type)
         if (link->type == type) return link->linked;
     return nullptr;
 }
+
+// Real generic removal with controlled stat/light notification and allocation
+// boundaries. Event/link branches are not part of these race-change cases.
+extern const racial_data_type racial_data[];
+mm_ds *dead_affect_pool = nullptr;
+void all_affects(P_char, int) {}
+void balance_affects(P_char) {}
+int char_light(P_char) { return 0; }
+int room_light(int, int) { return 0; }
+void gmcp_char_affects(P_char) {}
+void mm_release(mm_ds *, void *value) { delete static_cast<affected_type *>(value); }
+void unlink_char_affect(P_char, affected_type *) { std::abort(); }
+void unlink_char_obj_affect(P_char, affected_type *) { std::abort(); }
+void event_short_affect(P_char, P_char, P_obj, void *) { std::abort(); }
+void event_web_spray(P_char, P_char, P_obj, void *) { std::abort(); }
+void disarm_char_nevents(P_char, event_func_type) { std::abort(); }
+nevent_handle nevent_handle_from_event(P_nevent) { std::abort(); }
+nevent_cancel_result nevent_cancel(nevent_handle) { std::abort(); }
+
+/* RACE_CLEANUP */
 
 int main()
 {
@@ -362,8 +384,57 @@ int main()
     assert(player_snapshot_capture(&ch, 99, PLAYER_COMPONENT_STATUS, RENT_CRASH, 22800, &unchanged) == player_snapshot_capture_result::object_cycle);
     assert(unchanged.pid == 123);
     std::cout << "[PASS] transient race/birth capture, saveable forms, component isolation, immutable source, malformed/cyclic affect rejection\n";
+
+    // Death removes the tag before capturing status. Its original identity
+    // must already be restored when that tag can no longer be consulted.
+    form.next = nullptr;
+    ch.affected = nullptr;
+    for (int original : {RACE_ORC, RACE_HUMAN}) {
+        for (int flags : {AFFTYPE_NOSAVE | AFFTYPE_NODISPEL | AFFTYPE_NOAPPLY,
+                          AFFTYPE_NOSAVE | AFFTYPE_NODISPEL, AFFTYPE_NODISPEL}) {
+            auto *removed = new affected_type{};
+            removed->type = TAG_RACE_CHANGE;
+            removed->modifier = original;
+            removed->flags = flags;
+            ch.affected = removed;
+            ch.player.race = RACE_REVENANT;
+            ch.player.time.birth = form_birth;
+            affect_remove(&ch, removed);
+            assert(!ch.affected && ch.player.race == original);
+            const auto expected_birth = (flags & AFFTYPE_NOSAVE)
+                ? capture_time - (original == RACE_ORC ? 15 : 17) * SECS_PER_MUD_YEAR : form_birth;
+            assert(ch.player.time.birth == expected_birth);
+            player_snapshot death;
+            assert(player_snapshot_capture(&ch, 100, PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_AFFECTS,
+                                           RENT_DEATH, 22800, &death) == player_snapshot_capture_result::ok);
+            assert(integer(death, player_status_field::race) == original);
+            assert(integer(death, player_status_field::birth_time) == expected_birth);
+            assert(death.affects.empty());
+        }
+    }
+    auto *apotheosis = new affected_type{};
+    apotheosis->type = SPELL_DRACONIC_APOTHEOSIS;
+    apotheosis->modifier = RACE_HUMAN;
+    ch.affected = apotheosis;
+    ch.player.race = RACE_DRAGONKIN;
+    ch.player.time.birth = form_birth;
+    affect_remove(&ch, apotheosis);
+    assert(ch.player.race == RACE_HUMAN && ch.player.time.birth == form_birth);
+    for (int invalid : {-1, LAST_RACE + 1}) {
+        auto *removed = new affected_type{};
+        removed->type = TAG_RACE_CHANGE;
+        removed->flags = AFFTYPE_NOSAVE;
+        removed->modifier = invalid;
+        ch.affected = removed;
+        ch.player.time.birth = form_birth;
+        affect_remove(&ch, removed);
+        assert(!ch.affected && ch.player.time.birth == form_birth);
+    }
+    std::cout << "[PASS] generic race cleanup restores transient birth before death capture; saveable forms and apotheosis retain birth\n";
 }
 """
+HELD_PETS_HARNESS = HELD_PETS_HARNESS.replace("/* RACE_CLEANUP */",
+                                           extract_function("affects.c", "void affect_remove("))
 
 build = ROOT / "bin/tests/player-held-pet-capture"
 build.mkdir(parents=True, exist_ok=True)
