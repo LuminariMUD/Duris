@@ -19,6 +19,7 @@ submit_source = submit_source[:submit_source.index('\n}\n')]
 assert 'try_to_lock' not in submit_source and 'try_lock' not in submit_source
 harness = r'''
 #include "persistence/persistence_log.h"
+#include "persistence/critical_command_completion.h"
 #include <atomic>
 #include <cassert>
 #include <cerrno>
@@ -37,6 +38,7 @@ harness = r'''
 #include <sys/stat.h>
 #include <unistd.h>
 #define AVATAR 57
+#define LOG_FILE "logs/log/file"
 #define checked_snprintf snprintf
 std::vector<std::string> broadcasts;
 void wizlog(int level, const char *format, ...) {
@@ -112,6 +114,26 @@ int main(int argc, char **argv) {
     assert(read(file).find("outcome=ok detail=retry=1") != std::string::npos);
     assert(read(file).find("outcome=info") != std::string::npos);
     assert(read(file).find("outcome=alert") != std::string::npos);
+
+    // A developer can find both failures on disk without an in-game listener,
+    // even though the second staff notice is rate limited.
+    critical_completion failure = {};
+    failure.type = critical_command_type::artifact;
+    failure.outcome = critical_apply_outcome::terminal_failure;
+    failure.error_code = ESTALE;
+    snprintf(failure.failure_detail.data(), failure.failure_detail.size(),
+             "actor_pid=42 check=guild_revision expected_revision=3 actual_revision=4");
+    for (unsigned int id : {0xab, 0xcd}) {
+        failure.operation_id.bytes[0] = id;
+        persistence_critical_failure(AVATAR, failure);
+        assert(persistence_log_drain(3000));
+    }
+    assert(broadcasts.size() == 2);
+    assert(read(file) == read(wiz));
+    assert(occurrences(read(file), "action=terminal_failure") == 2);
+    assert(read(file).find("operation=ab000000000000000000000000000000") != std::string::npos);
+    assert(read(file).find("operation=cd000000000000000000000000000000") != std::string::npos);
+    assert(occurrences(read(file), "expected_revision=3 actual_revision=4") == 2);
 
     // Rotate while an append is already open: it belongs to the old inode once,
     // and the following record goes to the newly created file.
@@ -209,5 +231,6 @@ with tempfile.TemporaryDirectory(prefix='persistence-log-') as temp:
     subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-pthread',
                     '-I', str(ROOT / 'src'), str(source),
                     str(ROOT / 'src/persistence/persistence_log.c'),
+                    str(ROOT / 'src/persistence/critical_command.c'), '-lcrypto',
                     '-Wl,--wrap=write', '-Wl,--wrap=close', '-o', str(binary)], check=True)
     subprocess.run([str(binary), temp], check=True, timeout=20)

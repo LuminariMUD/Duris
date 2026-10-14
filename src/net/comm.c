@@ -339,6 +339,8 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 static void critical_gameplay_handle_completions(const critical_completion *completions,
 						 size_t count)
 {
+	for (size_t index = 0; index < count; ++index)
+		persistence_critical_failure(AVATAR, completions[index]);
 	locker_identify_pulse();
 	item_movement_transaction_handle_completions(completions, count);
 	shop_trade_transaction_handle_completions(completions, count);
@@ -2151,16 +2153,6 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 		collector_transaction_publish_outbox();
 		combat_outcome_transaction_publish_outbox();
 		artifact_guild_transaction_publish_outbox();
-		// The command's type and its refusal reason (an errno, a database error or a
-		// command's result code) are numbers, which keeps player data out of the alert.
-		for (size_t index = 0; index < critical_completion_count; ++index)
-			if (critical_completions[index].outcome ==
-			    critical_apply_outcome::terminal_failure)
-				persistence_alert(
-					AVATAR, "critical_command", "completion", "none", "none",
-					"integrity_failure", "type=%u error=%u",
-					static_cast<unsigned int>(critical_completions[index].type),
-					critical_completions[index].error_code);
 		player_save_pipeline_pulse();
 		persistence_pulse_character_saves();
 		player_load_result load_completions[32] = {};
